@@ -119,11 +119,15 @@ function onDragEnd(e: PointerEvent) {
   const d = drag.value
   if (!d || e.pointerId !== d.pointer) return
   const p = byId.value.get(d.pane)
+  if (d.touch) planPress.suppressClick()
   stopDrag()
   if (d.started && p && d.over && d.side) dropPane(p, d.over, d.side)
 }
 function onDragCancel(e: PointerEvent) {
-  if (drag.value && e.pointerId === drag.value.pointer) stopDrag()
+  if (drag.value && e.pointerId === drag.value.pointer) {
+    if (drag.value.touch) planPress.suppressClick()
+    stopDrag()
+  }
 }
 function onDragKey(e: KeyboardEvent) {
   if (e.key !== 'Escape') return

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { boardSections, decisionPrefix, listKind, normalizeThreads, ownerIsMe, parseTaskLine, parseTasks, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage } from '../shared/projectBoard'
+import { boardSections, decisionPrefix, detailPrefix, launchPrefix, listKind, normalizeThreads, ownerIsMe, parseTaskLine, parseTasks, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage } from '../shared/projectBoard'
 import { pluginBinary } from '../server/utils/projectBoard'
 import { isCoordinator } from '../shared/projects'
 import type { Pane } from '../shared/types'
@@ -105,6 +105,25 @@ describe('réponses aux décisions (À décider)', () => {
     expect(prefillDraft('', answer)).toBe(answer)
     expect(prefillDraft('Autre réponse', answer)).toBe(`Autre réponse\n${answer}`)
     expect(prefillDraft(answer, answer)).toBe(answer)
+  })
+})
+
+describe('actions du Backlog', () => {
+  it('prépare Lancer et Préciser sans toucher au responsable de la tâche', () => {
+    const task = parseTaskLine('- [ ] Améliorer le panneau Projet (agent)')!
+    expect(launchPrefix(task.text)).toBe('↳ Lancer : Améliorer le panneau Projet — ')
+    expect(launchPrefix(' Improve the project panel ', 'en')).toBe('↳ Launch: Improve the project panel — ')
+    expect(detailPrefix(task.text)).toBe('↳ Précision sur Améliorer le panneau Projet — ')
+    expect(detailPrefix(' Improve the project panel ', 'en')).toBe('↳ Detail on Improve the project panel — ')
+  })
+
+  it('garde un brouillon existant et évite le doublon au second toucher', () => {
+    const launch = launchPrefix('Améliorer le panneau Projet')
+    const detail = detailPrefix('Améliorer le panneau Projet')
+    expect(prefillDraft('', launch)).toBe(launch)
+    expect(prefillDraft('Autre demande', launch)).toBe(`Autre demande\n${launch}`)
+    expect(prefillDraft(launch, launch)).toBe(launch)
+    expect(prefillDraft(launch, detail)).toBe(`${launch.trimEnd()}\n${detail}`)
   })
 })
 
@@ -223,5 +242,35 @@ describe('retours de test (À tester)', () => {
     expect(prefillDraft(`Autre chose\n${pre}`, pre)).toBe(`Autre chose\n${pre}`)
     // Explication déjà commencée : un nouveau signalement vient à la suite.
     expect(prefillDraft(`${pre}elle ne tourne pas`, pre)).toBe(`${pre}elle ne tourne pas\n${pre}`)
+  })
+})
+
+describe('aide du tableau (Réglages › Plugins)', () => {
+  it('le modèle TASKS.md se relit avec les listes reconnues', async () => {
+    const { tasksTemplate, parseTasks } = await import('../shared/projectBoard')
+    for (const lang of ['fr', 'en'] as const) {
+      const md = tasksTemplate(lang)
+      expect(md.startsWith('# Tasks\n')).toBe(true)
+      const lists = parseTasks(md)
+      expect(lists.map(l => l.kind)).toEqual(['test', 'decide', 'doing', 'backlog'])
+      expect(lists.every(l => l.tasks.length === 1)).toBe(true)
+    }
+    expect(parseTasks(tasksTemplate('fr'))[0]!.title).toBe('À tester')
+    expect(parseTasks(tasksTemplate('en'))[1]!.title).toBe('To decide')
+  })
+  it('détecte les listes À tester / À décider manquantes', async () => {
+    const { missingLists, parseTasks } = await import('../shared/projectBoard')
+    expect(missingLists(parseTasks('## Backlog\n- [ ] a'))).toEqual(['test', 'decide'])
+    expect(missingLists(parseTasks('## To verify\n## Questions'))).toEqual([])
+    expect(missingLists(parseTasks('## À tester\n## Idées'))).toEqual(['decide'])
+  })
+  it('les règles reprennent les messages envoyés par le panneau', async () => {
+    const m = await import('../shared/projectBoard')
+    const fr = m.coordinatorRules('fr')
+    expect(fr).toContain(m.testedMessage('…'))
+    for (const p of [m.problemPrefix, m.questionPrefix, m.decisionPrefix, m.launchPrefix, m.detailPrefix]) {
+      expect(fr).toContain(p('…', 'fr'))
+      expect(m.coordinatorRules('en')).toContain(p('…', 'en'))
+    }
   })
 })

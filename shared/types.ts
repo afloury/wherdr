@@ -224,6 +224,8 @@ export interface Quotas {
   // Présent seulement quand les machines en ligne n'utilisent pas le même compte
   // Claude : un bloc par compte (au moins deux).
   claudeAccounts?: AccountQuota[]
+  // Idem pour Codex (empreinte tirée de ses conversations).
+  codexAccounts?: AccountQuota[]
   // Machines en ligne dont la barre d'état de wherdr n'est pas en place
   // (absent : toutes configurées).
   claudeSetup?: ClaudeSetup[]

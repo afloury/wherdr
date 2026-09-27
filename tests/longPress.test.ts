@@ -34,4 +34,17 @@ describe('appui long', () => {
     expect(onPress).not.toHaveBeenCalled()
     expect(lp.swallowClick()).toBe(false)
   })
+
+  it('avale le clic iPhone après un glisser long relâché sur un autre pane', () => {
+    const lp = longPress({ onPress: vi.fn() })
+    lp.down(at(10))
+    vi.advanceTimersByTime(450)
+    lp.move(at(180))
+    vi.advanceTimersByTime(1200)
+    expect(lp.swallowClick()).toBe(false)
+    lp.suppressClick() // pointerup du glisser, avant le clic synthétique
+    expect(lp.swallowClick()).toBe(true)
+    vi.advanceTimersByTime(801)
+    expect(lp.swallowClick()).toBe(false)
+  })
 })

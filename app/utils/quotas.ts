@@ -1,8 +1,8 @@
 // Quotas de l'accueil, répartis entre le haut de la liste et les machines. Pur, sans Vue.
 //  - Un compte commun à toutes les machines en ligne (Codex, ou un seul compte
 //    Claude) : une fois en haut, comme avant.
-//  - Comptes Claude différents : chaque machine a le tableau de son compte sous
-//    son en-tête (replié avec elle), plus rien de Claude en haut.
+//  - Comptes différents (Claude ou Codex) : chaque machine a le tableau de son
+//    compte sous son en-tête (replié avec elle), plus rien de cet agent en haut.
 import type { ClaudeSetup, Quota, QuotaWindow, Quotas } from '../../shared/types'
 import installer from '../../scripts/install-claude-statusline.sh?raw'
 
@@ -13,18 +13,24 @@ export function quotaRows(q: Quotas | null, hidden: readonly string[] = []): Quo
   if (!q) return []
   const rows: QuotaRow[] = []
   if (q.claude && !hidden.includes('claude') && !((q.claudeAccounts?.length || 0) > 1)) rows.push({ key: 'claude', agent: 'claude', q: q.claude })
-  if (q.codex && !hidden.includes('codex')) rows.push({ key: 'codex', agent: 'codex', q: q.codex })
+  if (q.codex && !hidden.includes('codex') && !((q.codexAccounts?.length || 0) > 1)) rows.push({ key: 'codex', agent: 'codex', q: q.codex })
   return rows
 }
 
-// Lignes propres à une machine (clé '' = locale) : son compte Claude, seulement
-// quand les machines n'utilisent pas le même.
+// Lignes propres à une machine (clé '' = locale) : son compte Claude, son compte
+// Codex, chacun seulement quand les machines n'utilisent pas le même.
 export function machineQuotaRows(q: Quotas | null, key: string, hidden: readonly string[] = []): QuotaRow[] {
-  if (!q || hidden.includes('claude') || (q.claudeAccounts?.length || 0) < 2) return []
-  const a = q.claudeAccounts!.find(a => a.machines.some(m => m.key === key))
-  if (!a) return []
-  const { machines: _, ...quota } = a
-  return [{ key: `claude:${key}`, agent: 'claude', q: quota }]
+  if (!q) return []
+  const rows: QuotaRow[] = []
+  for (const agent of ['claude', 'codex'] as const) {
+    const list = agent === 'claude' ? q.claudeAccounts : q.codexAccounts
+    if (hidden.includes(agent) || (list?.length || 0) < 2) continue
+    const a = list!.find(a => a.machines.some(m => m.key === key))
+    if (!a) continue
+    const { machines: _, ...quota } = a
+    rows.push({ key: `${agent}:${key}`, agent, q: quota })
+  }
+  return rows
 }
 
 // Bandeau « quotas Claude non configurés » d'une machine qui a des agents Claude.

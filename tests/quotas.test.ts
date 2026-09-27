@@ -4,7 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Quota } from '../shared/types'
 import { localFs } from '../server/utils/fsx'
-import { claudeQuota, claudeSetupState, codexQuota, lastCodexLimits, latestCodexQuota, mergeQuotas, readCodex, sameAccount } from '../server/utils/quotas'
+import { claudeQuota, claudeSetupState, codexAccount, codexQuota, machineCodexQuota, lastCodexLimits, latestCodexQuota, mergeQuotas, readCodex, sameAccount } from '../server/utils/quotas'
 
 describe('quotas', () => {
   it('lit les quotas de la barre d’état de Claude Code', () => {
@@ -196,5 +196,47 @@ describe('barre d’état Claude en place ?', () => {
     ])
     expect(out.claudeSetup).toEqual([{ key: 'f27df2ea', state: 'missing', installable: true }])
     expect(mergeQuotas([{ key: '', label: 'Server', claude: null, codex: null }])).toEqual({ claude: null, codex: null })
+  })
+})
+
+describe('quotas Codex par compte', () => {
+  const cx = (at: number, account?: string | null, used = 10) => ({ five: { used, resetsAt: 1790395200000, minutes: 300 }, week: null, at, account })
+  const r = (key: string, label: string, codex: ReturnType<typeof cx> | null) => ({ key, label, claude: null, codex })
+
+  it('empreinte tirée de session_meta, jamais la valeur brute', () => {
+    const head = `${JSON.stringify({ type: 'session_meta', payload: { id: 'x', creator_account_id: 'acct-test-1' } })}\n{"type":"x"}`
+    const fp = codexAccount(head)!
+    expect(fp).toMatch(/^[0-9a-f]{16}$/)
+    expect(fp).not.toContain('acct')
+    expect(codexAccount(head.replace('acct-test-1', 'acct-test-2'))).not.toBe(fp)
+    expect(codexAccount('{"type":"session_meta","payload":{}}')).toBeNull()
+    expect(codexAccount('{"type":"event_msg","payload":{"creator_account_id":"a"}}')).toBeNull()
+  })
+
+  it('même compte : un seul bloc', () => {
+    const out = mergeQuotas([r('', 'Server', cx(1, 'aaaaaaaaaaaaaaaa')), r('f27df2ea', 'Laptop', cx(2, 'aaaaaaaaaaaaaaaa', 30))])
+    expect(out.codexAccounts).toBeUndefined()
+    expect(out.codex).toEqual({ five: { used: 30, resetsAt: 1790395200000, minutes: 300 }, week: null, at: 2 })
+  })
+
+  it('comptes différents : un bloc par machine', () => {
+    const out = mergeQuotas([r('', 'Server', cx(5, 'aaaaaaaaaaaaaaaa')), r('f27df2ea', 'Laptop', cx(3, 'bbbbbbbbbbbbbbbb'))])
+    expect(out.codexAccounts!.map(a => [a.machines.map(m => m.label), a.at])).toEqual([[['Server'], 5], [['Laptop'], 3]])
+    expect(out.codexAccounts![0]).not.toHaveProperty('account')
+    expect(out.codex).not.toHaveProperty('account')
+  })
+
+  it('sans empreinte : comportement d’avant (la plus récente)', () => {
+    const out = mergeQuotas([r('', 'Server', cx(1, null)), r('f27df2ea', 'Laptop', cx(4))])
+    expect(out.codexAccounts).toBeUndefined()
+    expect(out.codex!.at).toBe(4)
+  })
+
+  it('une machine : le compte de la conversation la plus récente', () => {
+    const rd = (stamp: number, account: string | null, used: number) => ({ q: { five: { used, resetsAt: 1790395200000, minutes: 300 }, week: null, at: stamp }, stamp, account })
+    const q = machineCodexQuota([rd(1, 'aaaaaaaaaaaaaaaa', 90), rd(2, 'bbbbbbbbbbbbbbbb', 5), rd(0, null, 7)])!
+    expect(q.account).toBe('bbbbbbbbbbbbbbbb')
+    expect(q.five!.used).toBe(7)
+    expect(machineCodexQuota([])).toBeNull()
   })
 })

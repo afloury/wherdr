@@ -1,0 +1,14 @@
+# Forbidden patterns for `npm run check:leaks` and the pre-commit hook.
+# Copy this file to .leak-patterns (git-ignored) and list YOUR private values:
+# user names, host names, e-mail addresses, tailnet name, private IPs, real IDs...
+# One JavaScript regex per line, case-insensitive.
+#   <regex>                      forbidden everywhere
+#   <regex>  !! LICENSE, docs/*  allowed in these files (comma-separated globs, ** = any depth)
+#   ! <glob>                     file never scanned by the patterns
+#
+# my-user-name  !! LICENSE, README.md
+# /home/my-user-name
+# my-laptop-hostname
+# me@my-domain\.com
+# my-tailnet\.ts\.net
+# \b100\.101\.102\.\d{1,3}\b

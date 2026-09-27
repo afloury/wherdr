@@ -1,0 +1,3 @@
+#!/bin/sh
+# Contrôle anti-fuite des fichiers indexés (installé par `npm run hooks:install`).
+exec node scripts/check-leaks.mjs --staged

@@ -262,6 +262,7 @@ const EN: Record<string, string> = {
   'À relire': 'Ready for review', 'Atterrissage': 'Landing', 'Inactif': 'Idle',
   'toi': 'you', 'Rien pour l’instant': 'Nothing yet', 'Lecture du projet…': 'Reading the project…',
   'Confirmer : testé, ça marche': 'Confirm: tested, it works', 'Signaler un problème': 'Report a problem', 'Poser une question': 'Ask a question', 'Largeur du panneau Projet': 'Project panel width', 'Glisser pour élargir · double-clic : largeur par défaut': 'Drag to resize · double-click: default width', 'Envoyé au coordinateur': 'Sent to the coordinator',
+  'Préciser': 'Clarify',
   'Pas encore de TASKS.md dans ce projet.': 'No TASKS.md in this project yet.', 'Threads illisibles': 'Threads unavailable',
   'Voir le rapport': 'View report', 'Ouvrir l’agent': 'Open agent', 'Pull request': 'Pull request',
   'Rapport tronqué (trop long).': 'Report truncated (too long).', 'Agent de ce thread introuvable': 'This thread’s agent was not found',

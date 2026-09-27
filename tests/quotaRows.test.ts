@@ -91,3 +91,20 @@ describe('quotas Claude non configurés', () => {
     } finally { fs.rmSync(home, { recursive: true, force: true }) }
   })
 })
+
+describe('comptes Codex différents', () => {
+  it('Codex sous chaque machine, plus en haut', () => {
+    const w = (used: number) => ({ used, resetsAt: null, minutes: 300 })
+    const q: Quotas = {
+      claude: { five: w(5), week: null, at: 1 },
+      codex: { five: w(40), week: null, at: 2 },
+      codexAccounts: [
+        { five: w(40), week: null, at: 2, machines: [{ key: '', label: 'host-a' }] },
+        { five: w(70), week: null, at: 1, machines: [{ key: 'f27df2ea', label: 'Laptop' }] },
+      ],
+    }
+    expect(quotaRows(q).map(r => r.key)).toEqual(['claude'])
+    expect(machineQuotaRows(q, 'f27df2ea').map(r => [r.key, r.q.five!.used])).toEqual([['codex:f27df2ea', 70]])
+    expect(machineQuotaRows(q, '', ['codex'])).toEqual([])
+  })
+})

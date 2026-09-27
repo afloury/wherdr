@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readShowShells, repoHeaderState } from '../app/utils/terminalVisibility'
+import { readShowShells, repoHeaderState, threadCountLabel } from '../app/utils/terminalVisibility'
 
 describe('Afficher les terminaux', () => {
   it('est activé sans préférence et conserve les choix enregistrés', () => {
@@ -8,9 +8,21 @@ describe('Afficher les terminaux', () => {
     expect(readShowShells('0')).toBe(false)
   })
 
-  it('rend l’en-tête Dépôt interactif seulement si les terminaux sont affichés', () => {
-    expect(repoHeaderState(true, false)).toEqual({ tag: 'button', selected: false })
-    expect(repoHeaderState(true, true)).toEqual({ tag: 'button', selected: true })
-    expect(repoHeaderState(false, true)).toEqual({ tag: 'div', selected: false })
+  it('propose le terminal de l’en-tête Dépôt dans un menu seulement si les terminaux sont affichés', () => {
+    expect(repoHeaderState(true, false)).toEqual({ menu: true, selected: false })
+    expect(repoHeaderState(true, true)).toEqual({ menu: true, selected: true })
+    expect(repoHeaderState(false, true)).toEqual({ menu: false, selected: false })
+  })
+
+  it('n’a pas de menu sans terminal racine', () => {
+    expect(repoHeaderState(true, true, false)).toEqual({ menu: false, selected: false })
+  })
+})
+
+describe('Nombre de threads', () => {
+  it('accorde singulier et pluriel', () => {
+    expect(threadCountLabel(1)).toBe('1 thread')
+    expect(threadCountLabel(0)).toBe('0 threads')
+    expect(threadCountLabel(3)).toBe('3 threads')
   })
 })

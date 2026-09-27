@@ -5,12 +5,15 @@
 // Coordinateur sur une autre machine (`remote`) : les threads restent sous la
 // leur, l'en-tête dit d'où le projet est coordonné et y mène.
 // Terminal racine du dépôt des threads (`roots`) : petit en-tête « Dépôt <nom> ·
-// N worktrees » au-dessus d'eux, qui ouvre ce terminal.
+// N worktrees » au-dessus d'eux : un clic le replie, son menu (clic droit sur
+// ordinateur, appui long sur téléphone) ouvre ce terminal.
 import type { Pane } from '#shared/types'
 import type { ProjectGroup } from '#shared/projects'
 import type { RepoRoot, Row } from '#shared/spaces'
 import { projectSections, threadNumber } from '#shared/projects'
-import { repoHeaderState } from '~/utils/terminalVisibility'
+import type { MenuItem } from '~/composables/useUi'
+import { repoHeaderState, threadCountLabel } from '~/utils/terminalVisibility'
+import { longPress } from '~/utils/longPress'
 
 const props = defineProps<{ group: ProjectGroup<Pane>, machine?: string, rowOf?: (p: Pane) => Row | undefined, remote?: Pane | null, roots?: RepoRoot[] }>()
 const sections = computed(() => projectSections(props.group, props.roots || []))
@@ -20,7 +23,31 @@ function openRoot(r: RepoRoot) {
 }
 // Son terminal est ouvert (ordinateur : vue à droite de la liste).
 const isOpen = (r: RepoRoot) => (r.row.kind === 'space' ? r.row.panes : [r.row.pane]).some(p => p.id === curPane.value)
-const headerState = (r: RepoRoot) => repoHeaderState(showShells.value, isOpen(r))
+const headerState = (r?: RepoRoot | null) => repoHeaderState(showShells.value, !!r && isOpen(r), !!r)
+function repoItems(r?: RepoRoot | null): MenuItem[] {
+  if (!r || !headerState(r).menu) return []
+  return [{ label: tl('Ouvrir le terminal', 'Open terminal'), icon: 'i-lucide-square-terminal', run: () => openRoot(r) }]
+}
+const repoMenuTitle = (name: string) => `${tl('Dépôt', 'Repo')} ${name}`
+let pressed: { root?: RepoRoot | null, name: string } | null = null
+const lp = longPress({
+  onPress: () => {
+    const items = repoItems(pressed?.root)
+    if (!pressed || !items.length) return
+    haptic()
+    openMenu(items, repoMenuTitle(pressed.name))
+  },
+})
+// Téléphone seulement : sur ordinateur, le menu contextuel s'en charge.
+function repoDown(e: PointerEvent, root: RepoRoot | null | undefined, name: string) {
+  if (desk.value) return
+  pressed = { root, name }
+  lp.down(e)
+}
+function repoClick(key: string) {
+  if (lp.swallowClick()) return
+  toggleRepo(key)
+}
 const worktreeCount = (n: number) => (n === 1 ? tl('1 worktree', '1 worktree') : tl(`${n} worktrees`, `${n} worktrees`))
 function openCoordinator() {
   if (!props.remote) return
@@ -73,27 +100,22 @@ const tag = (p: Pane) => {
         <AgentCard :pane="sections.coordinator" :tag="tag(sections.coordinator)" :row="rowOf?.(sections.coordinator)" />
       </div>
       <div v-for="repo in sections.repos" :key="repo.key" class="project-repo-group" :class="{ folded: repoCollapsed(repo.key) }">
-        <div class="project-repo" :class="{ sel: repo.root && headerState(repo.root).selected }">
-          <button type="button" class="project-repo-toggle" :aria-expanded="!repoCollapsed(repo.key)"
-            :aria-label="tl(`${repoCollapsed(repo.key) ? 'Déplier' : 'Replier'} le dépôt ${repo.name}`, `${repoCollapsed(repo.key) ? 'Expand' : 'Collapse'} repo ${repo.name}`)"
-            @click="toggleRepo(repo.key)">
-            <UIcon name="i-lucide-chevron-down" />
-          </button>
-          <component :is="repo.root ? headerState(repo.root).tag : 'div'"
-            :type="repo.root && showShells ? 'button' : undefined" class="project-repo-main"
-            :class="{ interactive: repo.root && showShells }"
-            :aria-current="repo.root && headerState(repo.root).selected ? 'page' : undefined"
+        <UContextMenu :disabled="!desk || !repoItems(repo.root).length" :items="desk ? toDropdown(repoItems(repo.root)) : []" :ui="{ content: 'hw-dropdown' }">
+          <button type="button" class="project-repo" :class="{ sel: headerState(repo.root).selected }"
+            :aria-expanded="!repoCollapsed(repo.key)"
+            :aria-current="headerState(repo.root).selected ? 'page' : undefined"
             :title="repo.root?.row.lead.cwd || undefined"
-            v-on="repo.root && showShells ? { click: () => openRoot(repo.root!) } : {}">
+            @pointerdown="repoDown($event, repo.root, repo.name)" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
+            @contextmenu="!desk && $event.preventDefault()" @click="repoClick(repo.key)">
+            <UIcon name="i-lucide-chevron-down" class="project-repo-chev" />
             <UIcon name="i-lucide-git-fork" class="project-repo-icon" />
             <span class="project-repo-l">{{ tl('Dépôt', 'Repo') }}</span>
             <b>{{ repo.name }}</b>
             <span class="project-repo-n">· {{ worktreeCount(repo.worktrees) }}</span>
-            <UIcon v-if="repo.root && showShells" name="i-lucide-square-terminal" class="project-repo-go" />
-          </component>
-          <span v-if="repoCollapsed(repo.key)" class="project-repo-summary" :class="repo.blocked ? 'blocked' : repo.working ? 'working' : 'ready'"
-            :title="tl(`${repo.panes.length} threads`, `${repo.panes.length} threads`)"><i />{{ repo.panes.length }}<span>{{ tl('threads', 'threads') }}</span></span>
-        </div>
+            <span v-if="repoCollapsed(repo.key)" class="project-repo-summary" :class="repo.blocked ? 'blocked' : repo.working ? 'working' : 'ready'"
+              :title="threadCountLabel(repo.panes.length)"><i />{{ repo.panes.length }}<span>{{ repo.panes.length === 1 ? 'thread' : 'threads' }}</span></span>
+          </button>
+        </UContextMenu>
         <div v-if="!repoCollapsed(repo.key)" class="project-repo-threads card-list">
           <div v-for="p in repo.panes" :key="p.id" class="project-thread-item">
             <AgentCard :pane="p" :tag="tag(p)" :row="rowOf?.(p)" />

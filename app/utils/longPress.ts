@@ -42,6 +42,9 @@ export function longPress({ delay = 450, slop = 8, onPress }: LongPressOptions) 
       if (timer && Math.hypot(e.clientX - x, e.clientY - y) > slop) cancel()
     },
     cancel,
+    // Un glisser peut durer bien plus de 800 ms après l'appui long.
+    // Repartir du relâchement pour ignorer le clic synthétique d'iOS.
+    suppressClick: () => { firedAt = Date.now() },
     // Le clic qui suit l'appui long (doigt levé) : à ignorer.
     swallowClick: () => Date.now() - firedAt < 800,
   }

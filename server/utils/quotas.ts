@@ -10,7 +10,10 @@
 // une empreinte du compte (claude-account, hash tronqué de son identifiant, jamais
 // l'identifiant lui-même) ; des machines sur des comptes différents ont alors
 // chacune leur bloc (claudeAccounts), affiché sous leur machine par l'app.
+// Codex : même principe (codexAccounts), empreinte tirée de `creator_account_id`
+// de l'en-tête (session_meta) de ses conversations, jamais de auth.json.
 import { spawn } from 'node:child_process'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { AccountQuota, ClaudeSetup, Quota, QuotaWindow, Quotas } from '../../shared/types'
@@ -138,10 +141,10 @@ export function sameAccount(a: ClaudeReading, b: ClaudeReading): boolean {
 // Regroupe les lectures par compte : la plus récente de chaque compte, avec ses
 // machines dans l'ordre reçu. Le groupe est comparé à sa première lecture qui a
 // une empreinte (à défaut, sa première lecture).
-export function groupAccounts(list: { key: string, label: string, q: ClaudeReading }[]): AccountQuota[] {
+export function groupAccounts(list: { key: string, label: string, q: ClaudeReading }[], same = sameAccount): AccountQuota[] {
   const groups: { rep: ClaudeReading, best: ClaudeReading, machines: { key: string, label: string }[] }[] = []
   for (const { key, label, q } of list) {
-    const g = groups.find(g => sameAccount(g.rep, q))
+    const g = groups.find(g => same(g.rep, q))
     if (!g) { groups.push({ rep: q, best: q, machines: [{ key, label }] }); continue }
     g.machines.push({ key, label })
     if (q.at > g.best.at) g.best = q
@@ -155,7 +158,7 @@ export function groupAccounts(list: { key: string, label: string, q: ClaudeReadi
 // la lecture la plus récente (horodatage de la ligne, 0 s'il manque) ; dans la
 // même fenêtre (même heure de réinitialisation, à quelques minutes près : elle
 // est recalculée à chaque réponse), l'usage ne peut que croître : le plus élevé.
-export type CodexReading = { q: Quota, stamp: number }
+export type CodexReading = { q: Quota, stamp: number, account?: string | null }
 const SAME_WINDOW = 10 * 60000
 function latestWindow(list: { w: QuotaWindow, stamp: number }[]): QuotaWindow | null {
   if (!list.length) return null
@@ -175,7 +178,37 @@ export function latestCodexQuota(readings: CodexReading[]): Quota | null {
   return quota(pick('five'), pick('week'), Math.max(...readings.map(r => r.q.at)))
 }
 
-export async function readCodex(fs: MachineFs, home: string): Promise<Quota | null> {
+// Empreinte du compte Codex d'une conversation : `creator_account_id` de sa
+// première ligne (session_meta). Seul un hash tronqué en sort, jamais la valeur.
+export function codexAccount(head: string): string | null {
+  const first = head.split('\n', 1)[0] || ''
+  if (!first.includes('"session_meta"')) return null
+  const m = /"creator_account_id"\s*:\s*"([^"\\]{1,200})"/.exec(first)
+  return m ? crypto.createHash('sha256').update(`wherdr:${m[1]}`).digest('hex').slice(0, 16) : null
+}
+
+// Quota Codex d'une machine : celui du compte de la conversation la plus récente
+// (lectures sans empreinte comprises : ancien Codex).
+export function machineCodexQuota(readings: CodexReading[]): CodexAccountReading | null {
+  if (!readings.length) return null
+  const newest = readings.reduce((a, b) => (b.stamp > a.stamp ? b : a))
+  const account = newest.account ?? readings.find(r => r.account)?.account ?? null
+  const q = latestCodexQuota(readings.filter(r => !r.account || !account || r.account === account))
+  return q ? { ...q, account } : null
+}
+
+export type CodexAccountReading = ClaudeReading
+
+async function readHead(fs: MachineFs, f: string, size: number): Promise<string> {
+  for (const max of [64 * 1024, 512 * 1024]) {
+    const len = Math.min(size, max)
+    const t = (await fs.read(f, 0, len)).toString('utf8')
+    if (t.includes('\n') || len === size) return t
+  }
+  return ''
+}
+
+export async function readCodex(fs: MachineFs, home: string): Promise<CodexAccountReading | null> {
   const root = path.posix.join(home, '.codex/sessions')
   const files: string[] = []
   const now = new Date()
@@ -196,25 +229,35 @@ export async function readCodex(fs: MachineFs, home: string): Promise<Quota | nu
       try {
         const hit = lastCodexLimits((await fs.read(f, s!.size - len, len)).toString('utf8'))
         const q = hit && codexQuota(hit.rl, hit.at || s!.mtimeMs)
-        if (q) return { q, stamp: hit!.at }
+        if (q) return { q, stamp: hit!.at, account: codexAccount(await readHead(fs, f, s!.size).catch(() => '')) }
       } catch { return null /* fichier illisible */ }
       if (len === s!.size) break
     }
     return null
   }))
-  return latestCodexQuota(readings.filter(Boolean) as CodexReading[])
+  return machineCodexQuota(readings.filter(Boolean) as CodexReading[])
 }
 
 const fresher = (a: Quota | null, b: Quota | null) => (!a ? b : !b ? a : b.at > a.at ? b : a)
 
+// Codex : seules les empreintes séparent les comptes (sans empreinte, même
+// compte : affichage d'avant, la lecture la plus récente l'emporte).
+export const sameCodexAccount = (a: ClaudeReading, b: ClaudeReading) => !a.account || !b.account || a.account === b.account
+
 // Assemble les lectures des machines en ligne (dans l'ordre des machines).
-export function mergeQuotas(readings: { key: string, label: string, claude: ClaudeReading | null, codex: Quota | null, setup?: ClaudeSetup | null }[]): Quotas {
+export function mergeQuotas(readings: { key: string, label: string, claude: ClaudeReading | null, codex: (Quota & { account?: string | null }) | null, setup?: ClaudeSetup | null }[]): Quotas {
   let codex: Quota | null = null
-  for (const r of readings) codex = fresher(codex, r.codex)
+  for (const r of readings) {
+    if (!r.codex) continue
+    const { account: _, ...q } = r.codex
+    codex = fresher(codex, q)
+  }
+  const codexAccounts = groupAccounts(readings.flatMap(r => (r.codex ? [{ key: r.key, label: r.label, q: { ...r.codex, account: r.codex.account ?? null } }] : [])), sameCodexAccount)
   const accounts = groupAccounts(readings.flatMap(r => (r.claude ? [{ key: r.key, label: r.label, q: r.claude }] : [])))
   let claude: Quota | null = null
   for (const { machines: _, ...a } of accounts) claude = fresher(claude, a)
   const out: Quotas = accounts.length > 1 ? { claude, codex, claudeAccounts: accounts } : { claude, codex }
+  if (codexAccounts.length > 1) out.codexAccounts = codexAccounts
   const setup = readings.flatMap(r => (r.setup ? [r.setup] : []))
   if (setup.length) out.claudeSetup = setup
   return out

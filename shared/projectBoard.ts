@@ -235,3 +235,73 @@ export function prefillDraft(draft: string, prefix: string): string {
   if (kept.endsWith(prefix.trimEnd())) return `${kept} `
   return `${kept}\n${prefix}`
 }
+
+// Boutons « Lancer » et « Préciser » d'une tâche du Backlog : même forme que
+// les autres retours du panneau.
+export function launchPrefix(task: string, lang: TestLang = 'fr'): string {
+  return `${lang === 'en' ? '↳ Launch: ' : '↳ Lancer : '}${task.trim()} — `
+}
+
+export function detailPrefix(task: string, lang: TestLang = 'fr'): string {
+  return `${lang === 'en' ? '↳ Detail on ' : '↳ Précision sur '}${task.trim()} — `
+}
+
+// ---------------------------------------------------------------- aide (Réglages › Plugins)
+// Listes recommandées de TASKS.md, dans l'ordre du modèle. herdr-projects
+// n'impose que des listes `##` ; « À tester » et « À décider » sont une
+// convention de wherdr, lue par le panneau Projet.
+const TEMPLATE_LISTS: { kind: ListKind, fr: string, en: string }[] = [
+  { kind: 'test', fr: 'À tester', en: 'To test' },
+  { kind: 'decide', fr: 'À décider', en: 'To decide' },
+  { kind: 'doing', fr: 'En cours', en: 'In progress' },
+  { kind: 'backlog', fr: 'Backlog', en: 'Backlog' },
+]
+
+export function listTitle(kind: ListKind, lang: TestLang = 'fr'): string {
+  if (kind === 'done') return lang === 'en' ? 'Done' : 'Fait'
+  const l = TEMPLATE_LISTS.find(x => x.kind === kind)!
+  return lang === 'en' ? l.en : l.fr
+}
+
+export function tasksTemplate(lang: TestLang = 'fr'): string {
+  const ex = lang === 'en'
+    ? { test: '- [ ] Check the new settings page (me)', decide: '- [ ] Keep the old layout? (me)', doing: '- [ ] Fix the offline banner (agent → t-0001)', backlog: '- [ ] Dark mode for charts (agent)' }
+    : { test: '- [ ] Vérifier la nouvelle page Réglages (me)', decide: '- [ ] Garder l’ancienne disposition ? (me)', doing: '- [ ] Corriger le bandeau hors ligne (agent → t-0001)', backlog: '- [ ] Mode sombre des graphiques (agent)' }
+  const blocks = TEMPLATE_LISTS.map(l => `## ${lang === 'en' ? l.en : l.fr}\n\n${ex[l.kind as keyof typeof ex]}`)
+  return `# Tasks\n\n${blocks.join('\n\n')}\n`
+}
+
+// Listes de la convention wherdr absentes de TASKS.md (suggestion du panneau).
+export function missingLists(lists: Pick<ProjectList, 'kind'>[]): ListKind[] {
+  return (['test', 'decide'] as ListKind[]).filter(k => !lists.some(l => l.kind === k))
+}
+
+// Texte à coller au coordinateur : ce que signifient les messages du panneau.
+export function coordinatorRules(lang: TestLang = 'fr'): string {
+  const en = lang === 'en'
+  const m = (prefix: (task: string, lang: TestLang) => string) => `${prefix('…', lang)}…`
+  const lines = en
+    ? [
+        'wherdr Project panel: TASKS.md conventions and messages.',
+        'Lists: "## To test" (what I must check after a deploy), "## To decide" (questions for me), "## In progress" (threads), "## Backlog". One task per line: "- [ ] title (owner)".',
+        `"${testedMessage('…', lang)}" → remove the line from To test.`,
+        `"${m(problemPrefix)}" → treat it as a bug: fix it (new thread).`,
+        `"${m(questionPrefix)}" → answer: explain what to test and how.`,
+        `"${m(decisionPrefix)}" → apply the decision and remove the line from To decide.`,
+        `"${m(launchPrefix)}" → launch a thread for this Backlog task.`,
+        `"${m(detailPrefix)}" → add the detail to the task.`,
+        'After each deploy, add to To test what I must check.',
+      ]
+    : [
+        'Panneau Projet de wherdr : conventions de TASKS.md et messages.',
+        'Listes : « ## À tester » (ce que je dois vérifier après un déploiement), « ## À décider » (questions pour moi), « ## En cours » (threads), « ## Backlog ». Une tâche par ligne : « - [ ] titre (responsable) ».',
+        `« ${testedMessage('…', lang)} » → retirer la ligne d’À tester.`,
+        `« ${m(problemPrefix)} » → c’est un bug : le corriger (nouveau thread).`,
+        `« ${m(questionPrefix)} » → répondre : expliquer quoi tester et comment.`,
+        `« ${m(decisionPrefix)} » → appliquer la décision et retirer la ligne d’À décider.`,
+        `« ${m(launchPrefix)} » → lancer un thread pour cette tâche du Backlog.`,
+        `« ${m(detailPrefix)} » → compléter la tâche avec cette précision.`,
+        'Après chaque déploiement, ajouter à À tester ce que je dois vérifier.',
+      ]
+  return `${lines.join('\n')}\n`
+}

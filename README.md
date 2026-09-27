@@ -293,7 +293,9 @@ mount. `PUID` must be `1000` for ssh to find `~/.ssh` (the image maps user 1000 
 The home screen shows what is left of the Claude and Codex usage limits (5-hour window and
 week, with reset times), for every online machine.
 
-- **Codex**: nothing to do, Codex writes its limits in its session files.
+- **Codex**: nothing to do, Codex writes its limits in its session files. Machines on different
+  Codex accounts get one block each (told apart by a short hash of the account ID found in the
+  session files; `~/.codex/auth.json` is never read).
 - **Claude Code** only gives them to its status line. On each machine, install wherdr's
   invisible status line (it displays nothing, and chains to your existing status line if you
   have one):
@@ -306,6 +308,9 @@ week, with reset times), for every online machine.
   it over SSH on a remote machine) and **Copy command**. Quotas show after the next exchange with
   a Claude agent. The status line stores the limits in `~/.cache/herdr-web/claude-status.json`
   and a short hash of the account ID (never a token or email) to tell accounts apart.
+
+  **New machine**: run `sh scripts/install-claude-statusline.sh` on it once (or click **Install** in
+  the banner), then send a message to any Claude agent there; its quotas appear on the home screen.
 
 ## Notifications
 
@@ -385,6 +390,18 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability.
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
+Every commit is public, so a leak check runs on the files tracked or staged in git:
+
+```sh
+cp .leak-patterns.example .leak-patterns   # git-ignored: list your own names, hosts, e-mails, IPs
+npm run check:leaks                        # gitleaks (if installed) + your forbidden patterns
+npm run hooks:install                      # optional: same check on staged files before each commit
+```
+
+Matches are printed as `file:line`, truncated so the secret itself is never shown, and the command
+exits with a non-zero code. Install [gitleaks](https://github.com/gitleaks/gitleaks) to also catch
+tokens and keys.
 
 ## License
 

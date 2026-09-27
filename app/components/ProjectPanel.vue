@@ -15,10 +15,11 @@ const confirmedByPane = new Map<string, Set<string>>()
 // coordinateur), Problème (« ✗ Problème : … — ») et Question (« ? Question : … — »),
 // ces deux-là mis dans son champ de saisie (émis vers la vue de l'agent).
 // « À décider » : Question et Répondre préparent aussi un brouillon.
+// « Backlog » : Lancer et Préciser préparent un brouillon sans l'envoyer.
 // Le fichier n'est jamais écrit d'ici.
 // `side` : colonne à droite de la conversation (ordinateur), repliable.
 import type { Pane, QueuedMessage } from '#shared/types'
-import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, boardSections, decisionPrefix, ownerIsMe, problemPrefix, questionPrefix, testedMessage } from '#shared/projectBoard'
+import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, boardSections, decisionPrefix, detailPrefix, launchPrefix, missingLists, ownerIsMe, problemPrefix, questionPrefix, testedMessage } from '#shared/projectBoard'
 import { md } from '~/utils/markdown'
 
 const props = defineProps<{ paneId: string, board: ProjectBoard | null, loading: boolean, error: string, side?: boolean }>()
@@ -122,6 +123,7 @@ watch(() => props.board, (b) => {
 
 const testable = (s: BoardSection, task: ProjectTask) => s.kind === 'test' && !task.done
 const decidable = (s: BoardSection, task: ProjectTask) => s.kind === 'decide' && !task.done
+const launchable = (s: BoardSection, task: ProjectTask) => s.kind === 'backlog' && !task.done
 async function confirmTask(task: ProjectTask) {
   if (confirming.value || confirmed.value.has(task.text)) return
   const pane = herdrState.value.panes.find(p => p.id === props.paneId)
@@ -136,10 +138,26 @@ async function confirmTask(task: ProjectTask) {
   } catch (e) { toast((e as Error).message, true) }
   finally { confirming.value = null }
 }
-function prefill(task: ProjectTask, kind: 'problem' | 'question' | 'decision') {
+function prefill(task: ProjectTask, kind: 'problem' | 'question' | 'decision' | 'launch' | 'detail') {
   haptic()
-  const prefix = kind === 'problem' ? problemPrefix : kind === 'decision' ? decisionPrefix : questionPrefix
+  const prefix = { problem: problemPrefix, question: questionPrefix, decision: decisionPrefix, launch: launchPrefix, detail: detailPrefix }[kind]
   emit('prefill', prefix(task.text, lang()))
+}
+
+// ------------------------------------------------------------ suggestion
+// « À tester » ou « À décider » absents de TASKS.md : une ligne discrète renvoie
+// vers Réglages › Plugins (masquée pour de bon une fois fermée).
+const HINT_KEY = 'hw-project-hint-off'
+const hintOff = ref(false)
+onMounted(() => { try { hintOff.value = localStorage.getItem(HINT_KEY) === '1' } catch {} })
+const missing = computed(() => (props.board && !props.board.tasksMissing ? missingLists(props.board.lists) : []))
+const hintText = computed(() => {
+  const names = missing.value.map(k => (k === 'test' ? tl('« À tester »', '“To test”') : tl('« À décider »', '“To decide”')))
+  return tl(`Pas de liste ${names.join(' ni ')} dans TASKS.md.`, `No ${names.join(' or ')} list in TASKS.md.`)
+})
+function hideHint() {
+  hintOff.value = true
+  try { localStorage.setItem(HINT_KEY, '1') } catch {}
 }
 
 // ------------------------------------------------------------ tâches
@@ -170,6 +188,10 @@ function ownerLabel(task: ProjectTask) {
       <p v-if="!board && loading" class="pp-notice"><span class="spinner" /> {{ t('Lecture du projet…') }}</p>
       <template v-if="board">
         <p v-if="board.tasksMissing" class="pp-notice">{{ t('Pas encore de TASKS.md dans ce projet.') }}</p>
+        <p v-if="missing.length && !hintOff" class="pp-hint">
+          <span>{{ hintText }} <NuxtLink to="/settings?section=plugins">{{ tl('Voir la convention', 'See the convention') }}</NuxtLink></span>
+          <button type="button" class="pp-hint-x" :aria-label="tl('Masquer la suggestion', 'Hide the suggestion')" @click="hideHint"><UIcon name="i-lucide-x" /></button>
+        </p>
         <p v-if="board.threadsError" class="pp-notice error">{{ t('Threads illisibles') }} · <code>{{ board.threadsError }}</code></p>
 
         <section v-for="s in sections" :key="s.key" class="pp-sec" :class="[s.kind, { folded: !isOpen(s) }]">
@@ -197,21 +219,21 @@ function ownerLabel(task: ProjectTask) {
             </li>
             <li
               v-for="(task, i) in s.tasks" :key="`t${i}`" class="pp-row pp-task"
-              :class="{ done: task.done, mine: ownerIsMe(task.owner), testable: testable(s, task), decidable: decidable(s, task), sent: testable(s, task) && confirmed.has(task.text) }"
+              :class="{ done: task.done, mine: ownerIsMe(task.owner), testable: testable(s, task), decidable: decidable(s, task), launchable: launchable(s, task), sent: testable(s, task) && confirmed.has(task.text) }"
             >
               <span class="pp-box" aria-hidden="true" />
-              <template v-if="!testable(s, task) && !decidable(s, task)">
+              <template v-if="!testable(s, task) && !decidable(s, task) && !launchable(s, task)">
                 <span class="pp-task-text">{{ task.text }}</span>
                 <span v-if="task.owner" class="pp-owner">{{ ownerLabel(task) }}</span>
               </template>
-              <!-- À tester / À décider : texte sur toute la largeur ; dessous,
+              <!-- À tester / À décider / Backlog : texte sur toute la largeur ; dessous,
                    le responsable et les actions de la section. -->
               <span v-else class="pp-task-body">
                 <span class="pp-task-text">{{ task.text }}</span>
                 <span class="pp-task-foot">
                   <span v-if="testable(s, task) && confirmed.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
                   <span v-else-if="task.owner" class="pp-owner">{{ ownerLabel(task) }}</span>
-                  <span v-if="decidable(s, task) || !confirmed.has(task.text)" class="pp-verdict">
+                  <span v-if="decidable(s, task) || launchable(s, task) || !confirmed.has(task.text)" class="pp-verdict">
                     <UTooltip v-if="testable(s, task)" :text="t('Confirmer : testé, ça marche')" :disabled="!desk">
                       <button
                         type="button" class="pp-vbtn ok" :disabled="confirming !== null"
@@ -225,7 +247,7 @@ function ownerLabel(task: ProjectTask) {
                         <UIcon name="i-lucide-x" />
                       </button>
                     </UTooltip>
-                    <UTooltip :text="t('Poser une question')" :disabled="!desk">
+                    <UTooltip v-if="testable(s, task) || decidable(s, task)" :text="t('Poser une question')" :disabled="!desk">
                       <button type="button" class="pp-vbtn ask" :aria-label="tl(`Question : ${task.text}`, `Question: ${task.text}`)" @click="prefill(task, 'question')">
                         <UIcon name="i-lucide-circle-help" />
                       </button>
@@ -233,6 +255,16 @@ function ownerLabel(task: ProjectTask) {
                     <UTooltip v-if="decidable(s, task)" :text="tl('Répondre à cette décision', 'Answer this decision')" :disabled="!desk">
                       <button type="button" class="pp-vbtn decide" :aria-label="tl(`Répondre : ${task.text}`, `Answer: ${task.text}`)" @click="prefill(task, 'decision')">
                         <UIcon name="i-lucide-reply" />
+                      </button>
+                    </UTooltip>
+                    <UTooltip v-if="launchable(s, task)" :text="tl('Préparer le lancement', 'Prepare the launch')" :disabled="!desk">
+                      <button type="button" class="pp-vbtn backlog-action launch" :aria-label="tl(`Lancer : ${task.text}`, `Launch: ${task.text}`)" @click="prefill(task, 'launch')">
+                        <UIcon name="i-lucide-play" /><span>{{ t('Lancer') }}</span>
+                      </button>
+                    </UTooltip>
+                    <UTooltip v-if="launchable(s, task)" :text="tl('Préciser cette tâche', 'Clarify this task')" :disabled="!desk">
+                      <button type="button" class="pp-vbtn backlog-action clarify" :aria-label="tl(`Préciser : ${task.text}`, `Clarify: ${task.text}`)" @click="prefill(task, 'detail')">
+                        <UIcon name="i-lucide-pencil" /><span>{{ t('Préciser') }}</span>
                       </button>
                     </UTooltip>
                   </span>

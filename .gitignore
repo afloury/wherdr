@@ -11,3 +11,4 @@ test-sandbox/
 test-data-old/
 /branding/
 /docker-compose.override.yml
+.leak-patterns

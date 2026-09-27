@@ -13,14 +13,16 @@ const appVersion = pkg.version
 const router = useRouter()
 // Sections : barre latérale sur ordinateur (une section affichée), liste façon
 // Réglages iOS sur téléphone (un appui ouvre la section, Retour revient à la liste).
-const section = ref<SettingsSection | null>(null)
+// `?section=plugins` (lien du panneau Projet) ouvre directement une section.
+const route = useRoute()
+const section = ref<SettingsSection | null>((SETTINGS_SECTIONS as readonly string[]).includes(String(route.query.section)) ? route.query.section as SettingsSection : null)
 const sectionIcons: Record<SettingsSection, string> = {
   appearance: 'i-lucide-palette', conversation: 'i-lucide-message-square', terminal: 'i-lucide-square-terminal',
-  agents: 'i-lucide-bot', notifications: 'i-lucide-bell', security: 'i-lucide-lock', desktop: 'i-lucide-monitor', about: 'i-lucide-info',
+  agents: 'i-lucide-bot', plugins: 'i-lucide-puzzle', notifications: 'i-lucide-bell', security: 'i-lucide-lock', desktop: 'i-lucide-monitor', about: 'i-lucide-info',
 }
 const sectionLabels: Record<SettingsSection, string> = {
   appearance: 'Apparence', conversation: 'Conversation', terminal: 'Terminal', agents: 'Agents',
-  notifications: 'Notifications', security: 'Sécurité', desktop: 'Ordinateur', about: 'À propos',
+  plugins: 'Plugins', notifications: 'Notifications', security: 'Sécurité', desktop: 'Ordinateur', about: 'À propos',
 }
 const sections = computed(() => SETTINGS_SECTIONS
   .filter(id => id !== 'desktop' || desk.value)
@@ -360,6 +362,10 @@ onMounted(() => {
             <URadioGroup v-model="selectedScope" :items="scopeItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
             <p class="muted notify-hint">{{ t('Les threads de projet restent visibles et leurs messages non lus sont conservés.') }}</p>
           </div>
+        </div>
+
+        <div v-show="activeSection === 'plugins'" class="settings-section">
+          <ProjectsPluginSettings :machines="appConfig.machines || [{ key: '', label: hostLabel || t('Cette machine'), local: true, home: '', dirs: [], online: true, kinds: [] }]" />
         </div>
 
         <div v-show="activeSection === 'security'" class="settings-section">

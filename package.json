@@ -11,7 +11,9 @@
     "start": "HOST=${HOST:-127.0.0.1} PORT=${PORT:-7683} node .output/server/index.mjs",
     "typecheck": "nuxt typecheck",
     "test": "vitest run",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare",
+    "check:leaks": "node scripts/check-leaks.mjs",
+    "hooks:install": "git config core.hooksPath .githooks"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "^5.3.0",

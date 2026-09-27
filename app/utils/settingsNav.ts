@@ -1,6 +1,6 @@
 // Réglages : sections et bouton Retour.
 
-export const SETTINGS_SECTIONS = ['appearance', 'conversation', 'terminal', 'agents', 'notifications', 'security', 'desktop', 'about'] as const
+export const SETTINGS_SECTIONS = ['appearance', 'conversation', 'terminal', 'agents', 'plugins', 'notifications', 'security', 'desktop', 'about'] as const
 export type SettingsSection = typeof SETTINGS_SECTIONS[number]
 
 // Téléphone : une section ouverte revient à la liste ; sinon on revient à la
