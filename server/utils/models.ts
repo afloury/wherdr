@@ -1,0 +1,317 @@
+// Modèle des agents : lecture dans les transcriptions (Claude : `message.model`
+// des réponses et sortie locale « Set model to … » de /model ; Codex :
+// `turn_context`), libellés lisibles, et lecture du menu /model à l'écran.
+//
+// Menus relevés (Claude Code v2.1.282, Codex v0.156.1) :
+//
+//    Select model                                   Select Model and Effort
+//    ❯ 1.  Default (recommended) ✔  Sonnet 5 · …     1. GPT-6-Astra (default)  Frontier…
+//      2.  Opus 5.5                 Most capable…  › 2. GPT-6-Sol (current)    Workhorse…
+//    ↓ 10. Opus 4.6                 Best for…        enter select · esc back
+//       … +1 model
+//    ◐ Medium effort (default) ←/→ to adjust        Select Reasoning Level for GPT-6-Luna
+//    Enter to set as default · s to use this        › 2. Medium (default)  Balances…
+//    session only · Esc to cancel                   enter default · s session · esc back
+//
+// ↑/↓ devant un numéro : la liste défile (Claude en montre 10 à la fois).
+// Entrée enregistre le choix comme défaut global (~/.claude/settings.json,
+// ~/.codex/config.toml) : on valide toujours avec `s` (cette session seulement).
+import type { ModelInfo, ModelOption } from '../../shared/types'
+import { keysFor, parseChoices } from './choices'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Json = any
+
+const cap = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s)
+
+// claude-opus-5-5 → « Opus 5.5 », claude-haiku-4-5-20251001 → « Haiku 4.5 »,
+// claude-3-5-sonnet-20241022 → « Sonnet 3.5 », claude-fable-5-1[1m] → « Fable 5.1 (1M) ».
+export function claudeModelLabel(id: string): string {
+  const m = String(id || '').trim()
+  const oneM = /\[1m\]$/i.test(m)
+  const parts = m.replace(/\[[^\]]*\]$/, '').replace(/^claude-/i, '').split('-').filter(Boolean)
+  const words = parts.filter(x => !/^\d+$/.test(x))
+  const nums = parts.filter(x => /^\d{1,2}$/.test(x)) // les dates (20251001) sont ignorées
+  if (!words.length) return m
+  const label = `${words.map(cap).join(' ')}${nums.length ? ' ' + nums.join('.') : ''}`
+  return oneM ? `${label} (1M)` : label
+}
+
+// gpt-6-sol → « GPT-6-Sol », gpt-5.6-terra → « GPT-5.6-Terra », o3 → « o3 ».
+export function codexModelLabel(id: string): string {
+  const m = String(id || '').trim()
+  if (!/^gpt-/i.test(m)) return m
+  return m.split('-').map((x, i) => (i === 0 ? 'GPT' : cap(x))).join('-')
+}
+
+export const modelLabel = (kind: string | null, id: string) => (kind === 'codex' ? codexModelLabel(id) : claudeModelLabel(id))
+
+// Libellé d'un menu ou d'une sortie de /model : « Opus 5 (1M context) (default) » → « Opus 5 (1M) ».
+export function cleanModelName(s: string): string {
+  return String(s || '')
+    .replace(/\u001b\[[0-9;]*m/g, '')
+    .replace(/✔/g, '')
+    .replace(/\s*\((?:default|current)\)/gi, '')
+    .replace(/\(1M context\)/i, '(1M)')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// Même modèle ? (« Opus 5.5 » = « opus 5.5 (1M) » ; les parenthèses sont des variantes.)
+export const sameModel = (a: string | null | undefined, b: string | null | undefined) => {
+  const k = (s: string | null | undefined) => cleanModelName(s || '').replace(/\s*\(.*?\)/g, '').toLowerCase()
+  return Boolean(a && b) && k(a) === k(b)
+}
+
+// Sortie locale de /model : « Set model to `Sonnet 5` for this session only »,
+// « Set model to `Opus 5 (1M context) (default)` and saved as… », « Kept model as `Opus 5.5` ».
+const SET_RE = /(?:Set model to|Kept model as)\s+`([^`]+)`/
+
+// Modèle porté par une ligne de transcription (null si elle n'en dit rien).
+export function modelFromLine(line: string, kind: string | null): ModelInfo | null {
+  if (!line) return null
+  if (kind === 'codex') {
+    if (!line.includes('"turn_context"')) return null
+    let d: Json
+    try { d = JSON.parse(line) }
+    catch { return null }
+    if (d.type !== 'turn_context' || !d.payload || !d.payload.model) return null
+    const p = d.payload
+    const effort = p.effort || (p.collaboration_mode && p.collaboration_mode.settings && p.collaboration_mode.settings.reasoning_effort) || null
+    return { id: String(p.model), label: codexModelLabel(String(p.model)), effort, at: d.timestamp || null }
+  }
+  const setHit = line.includes('Set model to') || line.includes('Kept model as')
+  if (!setHit && !line.includes('"model"')) return null
+  let d: Json
+  try { d = JSON.parse(line) }
+  catch { return null }
+  if (d.isSidechain) return null
+  if (d.type === 'assistant' && d.message && typeof d.message.model === 'string') {
+    const id = d.message.model
+    if (!id || id.startsWith('<')) return null // « <synthetic> » : erreur, interruption
+    return { id, label: claudeModelLabel(id), effort: typeof d.effort === 'string' ? d.effort : null, at: d.timestamp || null }
+  }
+  if (setHit && (d.type === 'user' || d.type === 'system')) {
+    const c = d.type === 'user' ? d.message && d.message.content : d.content
+    const text = typeof c === 'string' ? c : Array.isArray(c) ? c.map((x: Json) => (x && x.text) || '').join('\n') : ''
+    const m = text.match(SET_RE)
+    if (!m || !text.includes('local-command-stdout')) return null
+    const label = cleanModelName(m[1]!)
+    return label ? { id: null, label, at: d.timestamp || null } : null
+  }
+  return null
+}
+
+// Dernier modèle connu d'un bloc de lignes (la plus récente l'emporte).
+export function lastModel(lines: string[], kind: string | null): ModelInfo | null {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const r = modelFromLine(lines[i]!, kind)
+    if (r) return r
+  }
+  return null
+}
+
+// ---------------------------------------------------------------- menu /model
+export interface ModelMenu {
+  kind: 'model' | 'effort'
+  options: (ModelOption & { n: number })[]
+  cursor: number // numéro (1…) de l'option sous le curseur
+  scrollDown: boolean // la liste continue plus bas (↓ ou « … +N »)
+  sessionKey: boolean // « s » = cette session seulement
+  enterSelects: boolean // Entrée = passer à l'étape suivante (Codex), pas enregistrer
+  effort: string | null // Claude : « ◐ Medium effort »
+}
+
+const HEADER = /^\s*Select (?:model\b|Model and Effort|Reasoning Level)/i
+const OPTION = /^\s*([❯›↑↓])?\s*(\d{1,2})\.\s+(\S.*?)\s*$/
+const FOOTER = /Esc to cancel|esc back/i
+
+export function parseModelMenu(text: string | null | undefined): ModelMenu | null {
+  if (!text) return null
+  const lines = String(text).replace(/\s+$/, '').split('\n').slice(-60)
+  let h = -1
+  for (let i = lines.length - 1; i >= 0; i--) if (HEADER.test(lines[i]!)) { h = i; break }
+  if (h < 0) return null
+  const rest = lines.slice(h + 1)
+  const footer = rest.find(l => FOOTER.test(l))
+  if (!footer) return null // menu refermé : l'en-tête n'est qu'un reste d'historique
+  const options: ModelMenu['options'] = []
+  let cursor = -1
+  let scrollDown = false
+  let effort: string | null = null
+  for (const line of rest) {
+    const m = line.match(OPTION)
+    if (m) {
+      const [labelPart, ...hint] = m[3]!.split(/\s{2,}/)
+      const n = Number(m[2])
+      if (m[1] === '❯' || m[1] === '›') cursor = n
+      if (m[1] === '↓') scrollDown = true
+      options.push({
+        n,
+        label: cleanModelName(labelPart!),
+        hint: hint.join(' ').trim() || null,
+        current: /✔|\(current\)/i.test(labelPart!),
+        isDefault: /\(default\)/i.test(labelPart!),
+      })
+      continue
+    }
+    if (options.length && /^\s*…\s*\+\d+/.test(line)) scrollDown = true
+    const e = line.match(/^\s*\S?\s*(\w[\w ]*?) effort\b/i)
+    if (e && options.length) effort = e[1]!.toLowerCase()
+  }
+  if (!options.length || cursor < 0) return null
+  // Une vraie liste : numéros consécutifs.
+  for (let i = 1; i < options.length; i++) if (options[i]!.n !== options[i - 1]!.n + 1) return null
+  return {
+    kind: /Reasoning Level/i.test(lines[h]!) ? 'effort' : 'model',
+    options,
+    cursor,
+    scrollDown,
+    sessionKey: /s to use this session only|\bs session\b/i.test(rest.join('\n')),
+    enterSelects: /enter select/i.test(footer),
+    effort,
+  }
+}
+
+// Claude, au milieu d'une conversation : après « s », il demande confirmation
+// (« Switch model? … ❯ 1. Yes, switch to Sonnet 4.6 / 2. No, go back ») car le
+// cache de la conversation sera relu. Touches pour répondre « oui » à cette
+// question précise, pour ce modèle-là ; null sinon. (Entrée ici confirme le
+// changement pour la session, sans l'enregistrer comme défaut.)
+export function switchConfirmKeys(text: string | null | undefined, label: string): string[] | null {
+  if (!text || !/^\s*Switch model\?\s*$/m.test(text)) return null
+  const c = parseChoices(text, { strict: true })
+  if (!c) return null
+  const i = c.options.findIndex((o) => {
+    const m = o.label.match(/^Yes, switch to (.+)$/)
+    return Boolean(m && sameModel(m[1], label))
+  })
+  return i < 0 ? null : keysFor(c, i)
+}
+
+// Codex : effort courant (« medium », « xhigh ») → option du menu (« Medium (default) », « Extra high »).
+export function effortMatches(option: string, effort: string | null | undefined): boolean {
+  if (!effort) return false
+  const o = cleanModelName(option).toLowerCase().replace(/\s+/g, '')
+  const e = String(effort).toLowerCase().replace(/[\s_-]+/g, '')
+  return o === e || (e === 'xhigh' && o === 'extrahigh')
+}
+
+export function effortValue(label: string): string | null {
+  const value = cleanModelName(label).toLowerCase().replace(/\s+/g, '')
+  return value === 'extrahigh' ? 'xhigh' : /^(low|medium|high|xhigh|max|ultra|ultracode|minimal)$/.test(value) ? value : null
+}
+
+export function codexCachedEfforts(json: string, model: string): string[] {
+  try {
+    const data = JSON.parse(json)
+    const entry = data.models?.find((m: { slug?: string, display_name?: string }) =>
+      sameModel(m.slug, model) || sameModel(m.display_name, model))
+    return Array.isArray(entry?.supported_reasoning_levels)
+      ? entry.supported_reasoning_levels.map((x: { effort?: string }) => x.effort).filter((x: string) => Boolean(effortValue(x)))
+      : []
+  } catch { return [] }
+}
+
+// Claude expose les paliers étendus sur les modèles de raisonnement les plus puissants.
+export function claudeEffortLevels(model: string | null | undefined): string[] {
+  if (!model) return []
+  const name = cleanModelName(model).replace(/\s*\([^)]*\)/g, '').toLowerCase()
+  if (/^(?:opus|sonnet) 4\.6$/.test(name)) return ['low', 'medium', 'high', 'max']
+  if (/^(?:fable (?:5|5\.1)|opus (?:4\.7|4\.8|5|5\.5)|sonnet 5)$/.test(name)) return ['low', 'medium', 'high', 'xhigh', 'max']
+  return []
+}
+
+export function claudeEffortCommand(level: string, model: string | null | undefined): string | null {
+  // `/effort <level>` écrit le défaut utilisateur ; le curseur sans argument
+  // permet de choisir le niveau puis de valider avec `s` pour cette session.
+  // Les niveaux réels (dont « ultracode ») sont vérifiés sur le curseur affiché.
+  const levels = claudeEffortLevels(model)
+  if (!levels.length || effortValue(level) !== level) return null
+  return levels.includes(level) || (level === 'ultracode' && levels.includes('xhigh')) ? '/effort' : null
+}
+
+export interface ClaudeEffortSlider {
+  current: string
+  levels: string[] // niveaux affichés par Claude, dans l'ordre des flèches
+}
+
+// Légende du curseur : ancienne (« s to use this session only ») ou 2.1.283
+// (« ←/→ to adjust · Enter to confirm · s for this session only · Esc to cancel »).
+const SLIDER_SESSION = /s (?:to use|for) this session only/i
+
+// Curseur /effort de Claude Code, lu en bas de l'écran ; null s'il n'est pas ouvert.
+// 2.1.283 : règle « ───▲───┊─── » au-dessus des libellés « low  medium … max  ultracode » ;
+// le niveau courant est le libellé le plus proche de la colonne du ▲.
+export function parseClaudeEffortScreen(text: string | null | undefined): ClaudeEffortSlider | null {
+  const lines = String(text || '').replace(/\s+$/, '').split('\n').slice(-30)
+  let legend = -1
+  for (let i = lines.length - 1; i >= 0; i--) if (SLIDER_SESSION.test(lines[i]!)) { legend = i; break }
+  if (legend < 0) return null
+  const body = lines.slice(0, legend)
+  for (let r = body.length - 1; r >= 0; r--) {
+    const ruler = Array.from(body[r]!)
+    const mark = ruler.indexOf('▲')
+    if (mark < 0 || !ruler.some(c => c === '─')) continue
+    // Ligne des libellés : la première sous la règle qui en contient.
+    for (let k = r + 1; k < body.length; k++) {
+      const chars = Array.from(body[k]!)
+      const words: { value: string, from: number, to: number }[] = []
+      const re = /\S+/g
+      const str = chars.join('')
+      let m: RegExpExecArray | null
+      while ((m = re.exec(str))) {
+        const value = effortValue(m[0])
+        const from = Array.from(str.slice(0, m.index)).length
+        if (value) words.push({ value, from, to: from + Array.from(m[0]).length - 1 })
+      }
+      if (words.length < 2) continue
+      const dist = (w: typeof words[number]) => mark < w.from ? w.from - mark : mark > w.to ? mark - w.to : 0
+      const best = words.reduce((a, b) => (dist(b) < dist(a) ? b : a))
+      return { current: best.value, levels: words.map(w => w.value) }
+    }
+    return null
+  }
+  // Ancien écran : « ◐ Medium effort (default) ←/→ to adjust ».
+  const m = body.join('\n').match(/[●◐○◑◒◓]\s*(Low|Medium|High|Extra high|xhigh|Max) effort/i)
+  const current = m ? effortValue(m[1]!) : null
+  return current ? { current, levels: [] } : null
+}
+
+export function parseClaudeEffortSlider(text: string | null | undefined): string | null {
+  return parseClaudeEffortScreen(text)?.current || null
+}
+
+// Effort courant de Claude annoncé à l'écran : bannière (« Opus 5.5 with low effort »)
+// ou retour de /effort (« Set effort level to low (for this session only) ») ; le plus bas l'emporte.
+export function claudeScreenEffort(text: string | null | undefined): string | null {
+  const lines = String(text || '').split('\n')
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = lines[i]!.match(/\bwith (low|medium|high|xhigh|max|ultracode) effort\b|Set effort level to (low|medium|high|xhigh|max|ultracode)\b/i)
+    if (m) return (m[1] || m[2])!.toLowerCase()
+  }
+  return null
+}
+
+// Codex au repos : sa ligne d'état sous le champ de saisie donne le modèle et
+// l'effort réellement en service (« GPT-5.6-Terra medium · ~ · … »), y compris
+// après un /model tapé ailleurs, que la rollout n'enregistre qu'au tour suivant.
+export function codexFooterModel(text: string | null | undefined): ModelInfo | null {
+  const lines = String(text || '').replace(/\s+$/, '').split('\n').slice(-6)
+  const input = lines.findIndex(l => /^\s*›\s/.test(l))
+  if (input < 0) return null
+  for (const l of lines.slice(input + 1)) {
+    const m = l.match(/^\s*((?:GPT|gpt)-[\w.-]+|o\d[\w.-]*)(?:\s+(minimal|low|medium|high|xhigh|max|ultra))?\s+·/)
+    if (m) return { id: null, label: m[1]!.startsWith('gpt') ? codexModelLabel(m[1]!) : m[1]!, effort: m[2] || null, at: null }
+  }
+  return null
+}
+
+// Codex : modèle et effort par défaut (~/.codex/config.toml, clés de premier niveau).
+export function codexConfigModel(toml: string): ModelInfo | null {
+  const top = String(toml || '').split(/^\s*\[/m)[0]!
+  const m = top.match(/^\s*model\s*=\s*"([^"]+)"/m)
+  if (!m) return null
+  const e = top.match(/^\s*model_reasoning_effort\s*=\s*"([^"]+)"/m)
+  return { id: m[1]!, label: codexModelLabel(m[1]!), effort: e ? e[1]! : null, at: null }
+}

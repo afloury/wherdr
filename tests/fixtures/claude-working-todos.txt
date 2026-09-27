@@ -1,0 +1,11 @@
+⏺ J'enchaîne sur la vue.
+
+✻ Orbiting… (12s · ↑ 1.2k tokens · esc to interrupt)
+  ⎿  ☒ Parseur de la ligne d'activité
+     ☐ Affichage dans la conversation
+     ☐ Captures
+
+────────────────────────────────────────────────────────────
+❯ Ce message attend · Levitating…
+────────────────────────────────────────────────────────────
+  ? for shortcuts

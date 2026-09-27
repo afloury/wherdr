@@ -1,0 +1,64 @@
+# herdr-web — PWA pour piloter depuis le téléphone les agents de code (Claude Code,
+# Codex) qui tournent dans Herdr (Nuxt 4 + Nuxt UI 4 ; passerelle Herdr dans Nitro).
+#
+# Réglages propres à l'installation : fichier `.env` (non suivi par git), à créer
+# depuis `.env.example`. Icônes personnelles : cf. docker-compose.override.example.yml.
+#
+# ⚠ C'est un shell sur la machine (lancer/piloter des agents = exécuter des
+# commandes en tant que l'utilisateur de l'hôte). L'isolation Docker est
+# symbolique : le conteneur parle au socket de Herdr qui tourne sur l'hôte.
+# D'où : écoute sur 127.0.0.1 uniquement, publié sur le tailnet seulement par
+#   tailscale serve --bg --https=${PORT} http://127.0.0.1:${PORT}
+# -> https://<hôte>.<tailnet>.ts.net:<port>. Jamais de route publique (Caddy, Cloudflare…).
+services:
+  herdr-web:
+    build:
+      context: .
+      # Dossier personnel de l'utilisateur du conteneur (ssh y lit ~/.ssh).
+      args:
+        HOST_HOME: ${HOST_HOME:-${HOME}}
+        PUID: ${PUID:-1000}
+        PGID: ${PGID:-1000}
+    image: herdr-web:local
+    container_name: herdr-web
+    hostname: ${HOST_LABEL:-wherdr}
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      - PORT=${PORT:-7683}
+      - HOME=${HOST_HOME:-${HOME}}
+      - DATA_DIR=/data
+      # Binaire Herdr de l'hôte (statique musl, tourne tel quel sous alpine) :
+      # client et serveur restent à la même version après un `herdr update`.
+      - HERDR_BIN=${HERDR_BIN:-${HOST_HOME:-${HOME}}/.local/bin/herdr}
+      # Vide = session par défaut de Herdr. `hwtest` pour les essais.
+      # Surtout pas HERDR_SESSION : Herdr lit cette variable lui-même.
+      - HERDR_WEB_SESSION=${HERDR_WEB_SESSION:-}
+      - AGENT_KINDS=${AGENT_KINDS:-pi,claude,codex,gemini,cursor,devin,agy,cline,omp,mastracode,opencode,copilot,kimi,kiro,droid,amp,grok,hermes,kilo,qodercli,qwen,letta,maki,muse}
+      # Machines SSH de Herdr (`herdr machine list`) : `off` pour s'en tenir à celle-ci.
+      - HERDR_WEB_MACHINES=${HERDR_WEB_MACHINES:-on}
+      - HERDR_WEB_SELF_HOSTS=${HERDR_WEB_SELF_HOSTS:-}
+      - APP_URL=${APP_URL:-}
+      - HERDR_WEB_ALLOWED_HOSTS=${HERDR_WEB_ALLOWED_HOSTS:-}
+      - HOST_LABEL=${HOST_LABEL:-}
+      - PASSKEY_USER=${PASSKEY_USER:-wherdr}
+      - TZ=${TZ:-UTC}
+    # Noms courts du tailnet (`ssh laptop`) : musl ne tente le domaine de
+    # recherche (MagicDNS) que si le nom a moins de `ndots` points ; Docker met 0.
+    dns_opt:
+      - ndots:1
+    ports:
+      - "127.0.0.1:${PORT:-7683}:${PORT:-7683}"
+    volumes:
+      # Clés VAPID, abonnements push, clés d'accès, dossiers récents.
+      - ./data:/data
+      # $HOME en lecture seule : sélecteur de dossier, transcriptions, binaire herdr,
+      # au même chemin que sur l'hôte (les cwd que Herdr renvoie sont des chemins de l'hôte).
+      - ${HOST_HOME:-${HOME}}:${HOST_HOME:-${HOME}}:ro
+      # …sauf la config Herdr, en écriture : sockets de l'API et du client.
+      - ${HOST_HOME:-${HOME}}/.config/herdr:${HOST_HOME:-${HOME}}/.config/herdr
+      # Le catalogue des profils SSH doit être modifiable pour « Renommer la machine ».
+      - ${HOST_HOME:-${HOME}}/.local/state/herdr/client:${HOST_HOME:-${HOME}}/.local/state/herdr/client
+      # …et le dépôt des photos envoyées depuis le téléphone (purgé après 7 jours),
+      # que les agents lisent par leur chemin.
+      - ${HOST_HOME:-${HOME}}/.cache/herdr-web:${HOST_HOME:-${HOME}}/.cache/herdr-web

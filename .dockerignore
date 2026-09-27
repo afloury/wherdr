@@ -1,0 +1,14 @@
+node_modules
+.nuxt
+.output
+.git
+data
+test-data
+.shots
+.env
+test-sandbox
+tests
+*.md
+branding
+docker-compose.override*.yml
+.env.example

@@ -1,0 +1,29 @@
+# Changelog
+
+All notable changes to this project are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
+[Semantic Versioning](https://semver.org/).
+
+## [0.1.0] — Unreleased
+
+First public release.
+
+### Added
+
+- Live agent list grouped by state, with answer previews and one-tap answers to permission
+  prompts and questions.
+- Conversation view for Claude Code and Codex transcripts (Markdown, tool calls, images,
+  search, infinite scroll), typing effect with optional encrypted-text reveal.
+- Terminal view (xterm.js, WebGL or DOM renderer) with a phone key bar and take-over.
+- Composer with queued messages (cancellable), photos, paste, slash commands and their output.
+- Per-session model and effort pickers for Claude Code and Codex.
+- New agent: installed agents or terminal, folder browser, Git worktree and branch, resume the
+  last conversation, queued first message.
+- Git changes view and worktree management; global search.
+- herdr-projects grouping (coordinator and threads).
+- Several machines through the SSH machines registered in Herdr; named Herdr sessions.
+- Claude and Codex quotas on the home screen, with an invisible Claude Code status line.
+- Web Push notifications, including `herdr notification show`; Herdr plugin actions.
+- Offline reading of the last known state and recent conversations.
+- Passkey lock (WebAuthn).
+- herdr.dev and Herdr themes, English and French interface, phone and desktop layouts.

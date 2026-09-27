@@ -1,0 +1,23 @@
+{"type":"user","isSidechain":false,"timestamp":"2026-09-26T09:21:30.000Z","message":{"role":"user","content":"Vérifie le calcul"}}
+{"type":"assistant","isSidechain":false,"timestamp":"2026-09-26T09:21:46.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Le calcul est prêt."}]}}
+{"type":"system","subtype":"turn_duration","timestamp":"2026-09-26T09:21:46.900Z"}
+{"type":"queue-operation","operation":"enqueue","timestamp":"2026-09-26T09:21:58.083Z","content":"<task-notification>\n<task-id>task-demo-01</task-id>\n<summary>Monitor event</summary>\n</task-notification>"}
+{"type":"queue-operation","operation":"dequeue","timestamp":"2026-09-26T09:21:58.105Z"}
+{"type":"user","isSidechain":false,"timestamp":"2026-09-26T09:21:58.125Z","message":{"role":"user","content":"<task-notification>\n<task-id>task-demo-01</task-id>\n<summary>Monitor event</summary>\n</task-notification>"}}
+{"type":"assistant","isSidechain":false,"timestamp":"2026-09-26T09:22:02.568Z","message":{"role":"assistant","content":[{"type":"text","text":"J'attends ton choix."}]}}
+{"type":"system","subtype":"turn_duration","timestamp":"2026-09-26T09:22:02.603Z"}
+{"type":"user","isSidechain":false,"timestamp":"2026-09-26T09:22:52.936Z","origin":{"kind":"human"},"promptSource":"typed","message":{"role":"user","content":"\n\n<pasted_content id=\"37d4\">\n- Le total est correct\n- <b>Arrondi</b> à ajuster\n</pasted_content id=\"37d4\">\n\n"}}
+{"type":"assistant","isSidechain":false,"timestamp":"2026-09-26T09:23:02.861Z","message":{"role":"assistant","content":[{"type":"text","text":"Je corrige l'arrondi."}]}}
+{"type":"system","subtype":"turn_duration","timestamp":"2026-09-26T09:23:23.627Z"}
+{"type":"user","isSidechain":false,"timestamp":"2026-09-26T09:24:00.000Z","message":{"role":"user","content":[{"type":"text","text":"[Image #21] \n\n<pasted_content id=\"5959\">\nLe bouton est trop petit.\n</pasted_content id=\"5959\">"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":""}}]}}
+{"type":"assistant","isSidechain":false,"timestamp":"2026-09-26T09:24:10.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Je regarde le bouton."}]}}
+{"type":"queue-operation","operation":"enqueue","timestamp":"2026-09-26T09:24:20.000Z","content":"\n\n<pasted_content id=\"aa11\">\nPuis ajoute un test\npour zéro\n</pasted_content id=\"aa11\">\n\n"}
+{"type":"queue-operation","operation":"enqueue","timestamp":"2026-09-26T09:24:25.000Z","content":"Et le cas négatif ?"}
+{"type":"system","subtype":"turn_duration","timestamp":"2026-09-26T09:24:30.000Z"}
+{"type":"user","isSidechain":false,"timestamp":"2026-09-26T09:24:31.000Z","message":{"role":"user","content":"\n\n<pasted_content id=\"aa11\">\nPuis ajoute un test\npour zéro\n</pasted_content id=\"aa11\">\n\n"}}
+{"type":"assistant","isSidechain":false,"timestamp":"2026-09-26T09:24:40.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Test zéro ajouté."}]}}
+{"type":"system","subtype":"turn_duration","timestamp":"2026-09-26T09:24:41.000Z"}
+{"type":"user","isSidechain":false,"timestamp":"2026-09-26T09:24:42.000Z","message":{"role":"user","content":"Et pour -1, stp ?"}}
+{"type":"assistant","isSidechain":false,"timestamp":"2026-09-26T09:24:50.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Cas négatif ajouté."}]}}
+{"type":"system","subtype":"turn_duration","timestamp":"2026-09-26T09:24:51.000Z"}
+{"type":"queue-operation","operation":"enqueue","timestamp":"2026-09-26T09:25:00.000Z","content":"Toujours en attente"}

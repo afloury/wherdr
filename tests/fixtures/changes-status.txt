@@ -1,0 +1,5 @@
+ M src/app.ts
+A  new file.ts
+ D removed.ts
+?? fresh space.txt
+R  renamed-new.ts\0renamed-old.ts

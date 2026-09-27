@@ -1,0 +1,13 @@
+node_modules/
+.nuxt/
+.output/
+data/
+.env
+.shots/
+test-data/
+coverage/
+*.log
+test-sandbox/
+test-data-old/
+/branding/
+/docker-compose.override.yml

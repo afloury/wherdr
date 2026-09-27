@@ -1,0 +1,30 @@
+     Auto-compact window: 1m tokens
+
+     MCP tools · /mcp (loaded on-demand)
+     └ 74 tools · 0 tokens
+
+     Skills · /skills
+     └ 25 skills · 4.4k tokens
+
+     /context all to expand
+
+❯ Utilise l’outil AskUserQuestion pour me demander
+  quel fruit je préfère (options : Pomme, Poire,
+  Banane), avec une courte description pour chaque.
+  Puis réponds juste avec le fruit.
+────────────────────────────────────────────────────
+ ☐ Fruit
+
+Quel fruit préfères-tu ?
+
+❯ 1. Pomme
+     Croquante et acidulée
+  2. Poire
+     Juteuse et fondante
+  3. Banane
+     Douce et énergétique
+  4. Type something.
+────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel

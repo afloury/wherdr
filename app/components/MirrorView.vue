@@ -1,0 +1,145 @@
+<script setup lang="ts">
+// Miroir en direct d'un pane (vue côte à côte, ordinateur) : l'écran du pane à
+// sa taille réelle dans Herdr, mis à l'échelle pour tenir dans la case, sans
+// jamais redimensionner le vrai terminal (/ws/mirror, observateur de Herdr).
+// `interactive` (case cliquée) : les frappes partent au pane, texte ou touches
+// nommées, toujours sans prendre la main sur le terminal.
+import '@xterm/xterm/css/xterm.css'
+import { Terminal } from '@xterm/xterm'
+import { mirrorInput } from '#shared/spaces'
+
+const props = defineProps<{ paneId: string, interactive?: boolean }>()
+const box = ref<HTMLElement | null>(null)
+const host = ref<HTMLElement | null>(null)
+const scale = ref(1)
+const ready = ref(false)
+const failed = ref(false)
+
+let term: Terminal | null = null
+let ws: WebSocket | null = null
+let retry = 0
+let retryTimer: ReturnType<typeof setTimeout> | undefined
+let ro: ResizeObserver | null = null
+let alive = true
+
+const FONT = '"Wherdr Symbols", "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace'
+
+// Échelle « contenir » : tout l'écran du pane dans la case, jamais agrandi.
+function fit() {
+  const b = box.value
+  const el = term?.element?.querySelector('.xterm-screen') as HTMLElement | null
+  if (!b || !el || !el.offsetWidth || !el.offsetHeight) return
+  scale.value = Math.min(1, b.clientWidth / el.offsetWidth, b.clientHeight / el.offsetHeight)
+}
+
+function connect() {
+  if (!alive || !term || ws) return
+  clearTimeout(retryTimer)
+  const s = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/mirror?${new URLSearchParams({ pane: props.paneId })}`)
+  ws = s
+  s.onmessage = (e) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let m: any
+    try { m = JSON.parse(e.data) }
+    catch { return }
+    if (!term) return
+    if (m.type === 'mirror.size') {
+      term.reset()
+      term.resize(m.cols, m.rows)
+      nextTick(fit)
+    } else if (m.type === 'terminal.frame') {
+      if (m.width && m.height && (m.width !== term.cols || m.height !== term.rows)) {
+        term.resize(m.width, m.height)
+        nextTick(fit)
+      }
+      term.write(b64ToBytes(m.bytes || ''))
+      if (!ready.value) {
+        ready.value = true
+        failed.value = false
+        retry = 0
+        nextTick(fit)
+      }
+    } else if (m.type === 'web.error') {
+      toast(m.message, true)
+    }
+  }
+  s.onclose = () => {
+    if (ws !== s) return
+    ws = null
+    if (!alive || document.hidden) return
+    if (retry >= 4) {
+      failed.value = true
+      return
+    }
+    retryTimer = setTimeout(connect, Math.min(6000, 500 * 2 ** retry++))
+  }
+}
+function disconnect() {
+  clearTimeout(retryTimer)
+  const s = ws
+  ws = null
+  if (s) {
+    try { s.close(1000) }
+    catch { /* déjà fermée */ }
+  }
+}
+function send(obj: unknown) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'input', ...obj as object }))
+}
+
+onMounted(() => {
+  term = new Terminal({
+    fontFamily: FONT, fontSize: 13, lineHeight: 1, scrollback: 0, cursorBlink: false,
+    allowProposedApi: true, disableStdin: !props.interactive, theme: terminalTheme.value, cols: 80, rows: 24,
+  })
+  term.open(host.value!)
+  term.attachCustomWheelEventHandler(() => false)
+  term.onData((d) => {
+    if (!props.interactive) return
+    for (const x of mirrorInput(d)) send(x)
+  })
+  document.fonts?.load('13px "JetBrains Mono Variable"').then(() => nextTick(fit)).catch(() => {})
+  ro = new ResizeObserver(() => fit())
+  ro.observe(box.value!)
+  connect()
+})
+onUnmounted(() => {
+  alive = false
+  ro?.disconnect()
+  disconnect()
+  term?.dispose()
+  term = null
+})
+watch(terminalTheme, (th) => { if (term) term.options.theme = th })
+watch(() => props.interactive, (on) => {
+  if (!term) return
+  term.options.disableStdin = !on
+  if (on) nextTick(() => term?.focus())
+  else term.blur()
+})
+// Page cachée : plus de flux ; il reprend au retour.
+watch(pageVisible, (v) => {
+  if (!v) return disconnect()
+  retry = 0
+  failed.value = false
+  connect()
+})
+function retryNow() {
+  retry = 0
+  failed.value = false
+  connect()
+}
+function focusIf() { if (props.interactive) term?.focus() }
+defineExpose({ focus: () => term?.focus() })
+</script>
+
+<template>
+  <div ref="box" class="mirror" :class="{ interactive }" @mousedown="focusIf">
+    <div ref="host" class="mirror-screen" :style="{ transform: `scale(${scale})` }" />
+    <div v-if="!ready && !failed" class="term-loading"><span class="spinner" /></div>
+    <button v-if="failed" type="button" class="mirror-failed" @click="retryNow">
+      <UIcon name="i-lucide-refresh-cw" />{{ t('Miroir indisponible · réessayer') }}
+    </button>
+    <span class="mirror-tag">{{ interactive ? t('Saisie directe') : t('Miroir') }}</span>
+  </div>
+</template>
