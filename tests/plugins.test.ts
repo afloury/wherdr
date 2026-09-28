@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { actionContext, logResult, needsConfirm, normalizeActions, outputTail, shortLabel } from '../server/utils/pluginPolicy'
+import { execFileSync } from 'node:child_process'
+import { REMOTE_PROJECTS_SCRIPT, actionContext, logResult, needsConfirm, normalizeActions, outputTail, shortLabel } from '../server/utils/pluginPolicy'
 
 // Réponses réelles de Herdr 0.9.1 (plugin.action.list / plugin.list), dont les
 // actions du plugin herdr-projects.
@@ -86,5 +87,13 @@ describe('actions des plugins', () => {
       .toEqual({ status: 'failed', exitCode: 3, output: 'boom' })
     expect(logResult({ status: 'running' })).toEqual({ status: 'running', exitCode: null, output: '' })
     expect(logResult(null).status).toBe('running')
+  })
+})
+
+describe('REMOTE_PROJECTS_SCRIPT', () => {
+  it('exporte HERDR_BIN_PATH vers le binaire du plugin et garde ses arguments', () => {
+    // `sh -c 'echo …'` joue le binaire du plugin : il ne voit que l'environnement exporté.
+    const out = execFileSync('sh', ['-c', REMOTE_PROJECTS_SCRIPT, 'sh', '/opt/herdr', 'sh', '-c', 'printf "%s|%s" "$HERDR_BIN_PATH" "$1"', 'x', 'a b'], { encoding: 'utf8', env: { PATH: process.env.PATH } })
+    expect(out).toBe('/opt/herdr|a b')
   })
 })
