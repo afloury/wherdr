@@ -18,6 +18,7 @@ import type { MachineInfo, NamedSession, Pane } from '#shared/types'
 import { groupByProject, remoteCoordinator } from '#shared/projects'
 import { type Row, projectRoots, readyLists, repoRoots, rowGroup, spaceRows } from '#shared/spaces'
 import { claudeSetupOf, machineQuotaRows, quotaRows } from '~/utils/quotas'
+import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
 const emit = defineEmits<{ search: [] }>()
 useQuotaLoader()
 
@@ -107,6 +108,62 @@ function toggleMachine(key: string) {
 }
 const renamingMachine = ref<MachineInfo | null>(null)
 const machineLabel = ref('')
+const awakeByMachine = ref<Record<string, AwakeState>>({})
+const awakeTarget = ref<MachineInfo | null>(null)
+const awakeBusy = ref(false)
+const awakeLid = ref(false)
+const diagnosticTarget = ref<MachineInfo | null>(null)
+const assertions = ref<SleepAssertion[]>([])
+const diagnosticBusy = ref(false)
+const awakeOpen = computed({ get: () => Boolean(awakeTarget.value), set: v => { if (!v) awakeTarget.value = null } })
+const diagnosticOpen = computed({ get: () => Boolean(diagnosticTarget.value), set: v => { if (!v) diagnosticTarget.value = null } })
+const awakeUrl = (key: string, diagnostic = false) => `/api/machine/awake?key=${encodeURIComponent(key)}${diagnostic ? '&diagnostic=1' : ''}`
+async function refreshAwake(m: MachineInfo) {
+  if (m.status !== 'online') return
+  try { awakeByMachine.value[m.key] = await api<AwakeState>(awakeUrl(m.key)) }
+  catch { /* machine peut disparaître entre deux sondages */ }
+}
+watch(() => machines.value.map(m => `${m.key}:${m.status}`).join('|'), () => {
+  for (const m of machines.value) refreshAwake(m)
+}, { immediate: true })
+let awakeTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => { awakeTimer = setInterval(() => { if (document.visibilityState === 'visible') for (const m of machines.value) refreshAwake(m) }, 30000) })
+onBeforeUnmount(() => clearInterval(awakeTimer))
+function openAwake(m: MachineInfo) {
+  awakeTarget.value = m
+  awakeLid.value = awakeByMachine.value[m.key]?.lid || false
+  refreshAwake(m)
+}
+async function chooseAwake(mode: AwakeMode | 'off') {
+  const m = awakeTarget.value
+  if (!m || awakeBusy.value) return
+  awakeBusy.value = true
+  try {
+    awakeByMachine.value[m.key] = await api<AwakeState>('/api/machine/awake', { key: m.key, mode, lid: mode === 'off' ? false : awakeLid.value })
+    awakeTarget.value = null
+  } catch (e) { toast((e as Error).message, true) }
+  finally { awakeBusy.value = false }
+}
+async function openDiagnostic(m: MachineInfo) {
+  diagnosticTarget.value = m
+  diagnosticBusy.value = true
+  assertions.value = []
+  try {
+    const result = await api<AwakeState & { assertions: SleepAssertion[] }>(awakeUrl(m.key, true))
+    awakeByMachine.value[m.key] = result
+    assertions.value = result.assertions
+  } catch (e) { toast((e as Error).message, true) }
+  finally { diagnosticBusy.value = false }
+}
+function durationLabel(seconds: number) {
+  if (seconds < 60) return tl('moins d’une minute', 'less than a minute')
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min`
+  return `${Math.floor(seconds / 3600)} h ${Math.floor(seconds % 3600 / 60)} min`
+}
+function awakeLabel(state?: AwakeState) {
+  if (!state?.active) return ''
+  return state.until ? tl(`Éveillé jusqu’à ${new Date(state.until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, `Awake until ${new Date(state.until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`) : tl('Éveillé jusqu’à désactivation', 'Awake until turned off')
+}
 const savingMachine = ref(false)
 const sessionTarget = ref<MachineInfo | null>(null)
 const sessionRows = ref<NamedSession[]>([])
@@ -145,6 +202,10 @@ function machineMenu(m: MachineInfo) {
     renamingMachine.value = m
     machineLabel.value = m.label
   } }]
+  if (m.status === 'online' && awakeByMachine.value[m.key]?.supported) {
+    items.push({ label: t('Garder éveillé'), icon: 'i-lucide-sun', run: () => openAwake(m) })
+    if (awakeByMachine.value[m.key]?.platform === 'mac') items.push({ label: t('Ce qui empêche la veille'), icon: 'i-lucide-list-filter', run: () => openDiagnostic(m) })
+  }
   // Actions globales des plugins Herdr de cette machine.
   if (m.status === 'online' && machinePluginActions(m.key).length) {
     items.push({ label: t('Actions des plugins'), icon: 'i-lucide-puzzle', run: () => openPluginMenu({ machine: m.key }) })
@@ -225,10 +286,11 @@ function openSearch() { emit('search') }
         {{ t('Le serveur Herdr ne répond pas') }}{{ st.error ? ` : ${st.error}` : '' }}.<br>
         {{ hostLabel ? tl(`Lance herdr sur ${hostLabel} pour le démarrer.`, `Run herdr on ${hostLabel} to start it.`) : tl('Lance herdr sur le serveur pour le démarrer.', 'Run herdr on the server to start it.') }}
       </div>
-      <button v-if="!multiMachine" type="button" class="solo-session-row" :aria-label="t('Sessions Herdr')" @click="openSessions(soloMachine)">
+      <div v-if="!multiMachine" class="solo-machine-row"><button type="button" class="solo-session-row" :aria-label="t('Sessions Herdr')" @click="openSessions(soloMachine)">
         <span><UIcon name="i-lucide-layers" />{{ soloMachine.label }}</span>
         <b>{{ soloMachine.session || 'default' }}<UIcon name="i-lucide-chevron-right" /></b>
-      </button>
+      </button><UDropdownMenu v-if="awakeByMachine[soloMachine.key]?.supported" :items="machineMenu(soloMachine)" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :aria-label="t('Options')" /></UDropdownMenu></div>
+      <p v-if="!multiMachine && awakeByMachine[soloMachine.key]?.active" class="machine-awake"><UIcon name="i-lucide-sun" />{{ awakeLabel(awakeByMachine[soloMachine.key]) }}</p>
 
       <div v-if="showCounters && agents.length" class="stats">
         <div v-for="c in stats" :key="c.s" class="stat" :class="[c.s, { zero: !c.n }]">
@@ -276,6 +338,7 @@ function openSearch() { emit('search') }
               <UIcon name="i-lucide-chevron-down" class="machine-chev" />
               <UIcon :name="s.m.local ? 'i-lucide-server' : 'i-lucide-laptop'" class="machine-icon" />
               <span class="machine-name">{{ s.name }}<small v-if="s.m.session && s.m.session !== 'default'" class="machine-session">{{ s.m.session }}</small></span>
+              <span v-if="awakeByMachine[s.m.key]?.active" class="machine-awake" :title="awakeLabel(awakeByMachine[s.m.key])"><UIcon name="i-lucide-sun" /><span>{{ awakeByMachine[s.m.key]?.until ? new Date(awakeByMachine[s.m.key]!.until!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '∞' }}</span></span>
               <span class="machine-state"><i />{{ s.state }}</span>
               <span class="machine-count">
                 <b v-if="s.waiting && s.collapsed" class="machine-waiting">{{ s.waiting }}</b>
@@ -334,6 +397,23 @@ function openSearch() { emit('search') }
           <UIcon v-if="sessionTarget?.session === s.name" name="i-lucide-check" />
         </button>
         <p v-if="!sessionRows.length" class="session-intro">{{ t('Aucune session trouvée.') }}</p>
+      </div>
+    </AppSheet>
+    <AppSheet v-model:open="awakeOpen" :title="t('Garder éveillé')">
+      <p class="session-intro">{{ awakeTarget?.label }} · {{ awakeLabel(awakeTarget ? awakeByMachine[awakeTarget.key] : undefined) || t('Veille normale') }}</p>
+      <p v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.battery" class="session-intro"><UIcon name="i-lucide-battery" /> {{ awakeByMachine[awakeTarget.key]?.battery?.percent }} % · {{ awakeByMachine[awakeTarget.key]?.battery?.source === 'ac' ? t('Secteur') : t('Batterie') }}</p>
+      <label v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.platform === 'mac'" class="awake-lid"><input v-model="awakeLid" type="checkbox" :disabled="awakeByMachine[awakeTarget.key]?.battery?.source !== 'ac'"> {{ t('Capot fermé (sur secteur uniquement)') }}</label>
+      <div class="session-list">
+        <button v-for="choice in [{ mode: 'hour', label: t('1 heure') }, { mode: 'fourHours', label: t('4 heures') }, { mode: 'evening', label: t('Jusqu’à ce soir (20 h)') }, { mode: 'untilOff', label: t('Jusqu’à désactivation') }]" :key="choice.mode" class="session-choice" type="button" :disabled="awakeBusy" @click="chooseAwake(choice.mode as AwakeMode)"><b>{{ choice.label }}</b><UIcon name="i-lucide-chevron-right" /></button>
+        <button v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.active" class="session-choice" type="button" :disabled="awakeBusy" @click="chooseAwake('off')"><b>{{ t('Désactiver') }}</b><UIcon name="i-lucide-x" /></button>
+      </div>
+      <p class="awake-note">{{ tl('Sur batterie, fermer le capot met le Mac en veille. Une machine endormie ne peut pas être réveillée à distance.', 'Closing a Mac lid on battery puts it to sleep. A sleeping machine cannot be woken remotely.') }}</p>
+    </AppSheet>
+    <AppSheet v-model:open="diagnosticOpen" :title="t('Ce qui empêche la veille')">
+      <p v-if="diagnosticBusy" class="session-intro">{{ t('Chargement…') }}</p>
+      <div v-else class="session-list">
+        <div v-for="(a, i) in assertions" :key="i" class="session-choice awake-assertion"><span><b>{{ a.ours ? t('wherdr · Garder éveillé') : a.name }}</b><small>{{ a.kind }} · {{ durationLabel(a.seconds) }}</small></span></div>
+        <p v-if="!assertions.length" class="session-intro awake-empty">{{ t('Aucune app ne bloque la veille.') }}</p>
       </div>
     </AppSheet>
   </section>
