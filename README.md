@@ -433,6 +433,9 @@ npm run check:leaks                        # gitleaks (if installed) + your forb
 npm run hooks:install                      # optional: same check on staged files before each commit
 ```
 
+In a linked worktree (`git worktree add`), the check falls back to the main checkout's
+`.leak-patterns`, and the hook runs there too since `core.hooksPath` lives in the shared git config.
+
 Matches are printed as `file:line`, truncated so the secret itself is never shown, and the command
 exits with a non-zero code. Install [gitleaks](https://github.com/gitleaks/gitleaks) to also catch
 tokens and keys.
