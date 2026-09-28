@@ -53,6 +53,7 @@ async function copy(machine: MachineConfig) {
 const boardLists = computed(() => [
   { icon: 'i-lucide-flask-conical', name: tl('À tester', 'To test'), also: 'To test, Testing, À vérifier', what: tl('Ce que tu dois vérifier : Confirmer, Problème, Question.', 'What you must check: Confirm, Problem, Question.') },
   { icon: 'i-lucide-circle-help', name: tl('À décider', 'To decide'), also: 'To decide, Décisions, Questions', what: tl('Questions pour toi : Répondre.', 'Questions for you: Answer.') },
+  { icon: 'i-lucide-octagon-alert', name: tl('Bloqué', 'Blocked'), also: 'Bloque, Bloquée(s), Blocked, On hold, En attente, Waiting, Stuck', what: tl('Attente extérieure : raison facultative « — bloqué par : … » ; Débloquer envoie une demande, Préciser prépare un message.', 'External dependency: optional “— blocked by: …” reason; Unblock sends a request, Clarify prepares a message.') },
   { icon: 'i-lucide-loader', name: tl('En cours', 'In progress'), also: 'In progress, Doing, WIP', what: tl('Threads ouverts, en direct.', 'Open threads, live.') },
   { icon: 'i-lucide-list-todo', name: 'Backlog', also: 'À faire, Todo, Next, Later, Idées', what: tl('Lancer envoie la tâche au coordinateur ; Préciser prépare un message.', 'Launch sends the task to the coordinator; Clarify prepares a message.') },
   { icon: 'i-lucide-check', name: tl('Fait', 'Done'), also: 'Done, Terminé, Finished', what: tl('Remplie par les threads clôturés.', 'Filled by resolved threads.') },
@@ -99,7 +100,7 @@ const copyRules = () => copyText(coordinatorRules(lang()), tl('Règles copiées 
   <div class="settings-group projects-plugin-settings">
     <h3>{{ tl('Réglages herdr-projects', 'herdr-projects settings') }}</h3>
     <h4 id="project-board" class="projects-board-title">{{ tl('Tableau du projet', 'Project board') }}</h4>
-    <p class="projects-plugin-intro">{{ tl('Le panneau Projet lit TASKS.md : une liste par titre ##, une tâche par ligne « - [ ] titre (responsable) ». herdr-projects n’impose que le Backlog ; « À tester » et « À décider » sont une convention de wherdr, avec leurs boutons.', 'The Project panel reads TASKS.md: one list per ## heading, one task per line “- [ ] title (owner)”. herdr-projects only requires the Backlog; “To test” and “To decide” are a wherdr convention, with their own buttons.') }}</p>
+    <p class="projects-plugin-intro">{{ tl('Le panneau Projet lit TASKS.md : une liste par titre ##, une tâche par ligne « - [ ] titre (responsable) ». herdr-projects n’impose que le Backlog ; « À tester », « À décider » et « Bloqué » sont une convention de wherdr, avec leurs boutons.', 'The Project panel reads TASKS.md: one list per ## heading, one task per line “- [ ] title (owner)”. herdr-projects only requires the Backlog; “To test”, “To decide” and “Blocked” are a wherdr convention, with their own buttons.') }}</p>
     <ul class="projects-board-lists">
       <li v-for="l in boardLists" :key="l.name">
         <UIcon :name="l.icon" />

@@ -3,6 +3,7 @@
 // jusqu'à ce que le coordinateur les retire de TASKS.md.
 const confirmedByPane = new Map<string, Set<string>>()
 const launchedByPane = new Map<string, Set<string>>()
+const unblockedByPane = new Map<string, Set<string>>()
 </script>
 
 <script setup lang="ts">
@@ -20,7 +21,7 @@ const launchedByPane = new Map<string, Set<string>>()
 // Le fichier n'est jamais écrit d'ici.
 // `side` : colonne à droite de la conversation (ordinateur), repliable.
 import type { Pane, QueuedMessage } from '#shared/types'
-import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, boardSections, decisionPrefix, detailPrefix, launchMessage, missingLists, ownerIsMe, problemPrefix, questionPrefix, testedMessage } from '#shared/projectBoard'
+import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, boardSections, decisionPrefix, detailPrefix, launchMessage, missingLists, ownerIsMe, problemPrefix, questionPrefix, testedMessage, unblockMessage } from '#shared/projectBoard'
 import { md } from '~/utils/markdown'
 
 const props = defineProps<{ paneId: string, board: ProjectBoard | null, loading: boolean, error: string, side?: boolean }>()
@@ -33,6 +34,7 @@ const sections = computed<BoardSection[]>(() => (props.board ? boardSections(pro
 const ICONS: Record<ListKind, string> = {
   test: 'i-lucide-flask-conical',
   decide: 'i-lucide-signpost',
+  blocked: 'i-lucide-octagon-alert',
   doing: 'i-lucide-activity',
   backlog: 'i-lucide-list-todo',
   done: 'i-lucide-circle-check',
@@ -113,6 +115,8 @@ const confirmed = ref(new Set(confirmedByPane.get(props.paneId) || []))
 const confirming = ref<string | null>(null)
 const launched = ref(new Set(launchedByPane.get(props.paneId) || []))
 const launching = ref<string | null>(null)
+const unblocked = ref(new Set(unblockedByPane.get(props.paneId) || []))
+const unblocking = ref<string | null>(null)
 // Tâche retirée de « À tester » par le coordinateur : on l'oublie.
 watch(() => props.board, (b) => {
   if (!b) return
@@ -128,11 +132,18 @@ watch(() => props.board, (b) => {
     launched.value = keptLaunches
     launchedByPane.set(props.paneId, keptLaunches)
   }
+  const blocked = new Set(b.lists.filter(l => l.kind === 'blocked').flatMap(l => l.tasks.map(x => x.text)))
+  const keptUnblocks = new Set([...unblocked.value].filter(x => blocked.has(x)))
+  if (keptUnblocks.size !== unblocked.value.size) {
+    unblocked.value = keptUnblocks
+    unblockedByPane.set(props.paneId, keptUnblocks)
+  }
 }, { immediate: true })
 
 const testable = (s: BoardSection, task: ProjectTask) => s.kind === 'test' && !task.done
 const decidable = (s: BoardSection, task: ProjectTask) => s.kind === 'decide' && !task.done
 const launchable = (s: BoardSection, task: ProjectTask) => s.kind === 'backlog' && !task.done
+const unblockable = (s: BoardSection, task: ProjectTask) => s.kind === 'blocked' && !task.done
 async function confirmTask(task: ProjectTask) {
   if (confirming.value || confirmed.value.has(task.text)) return
   const pane = herdrState.value.panes.find(p => p.id === props.paneId)
@@ -160,6 +171,20 @@ async function launchTask(task: ProjectTask) {
     emit('sent', queued)
   } catch (e) { toast((e as Error).message, true) }
   finally { launching.value = null }
+}
+async function unblockTask(task: ProjectTask) {
+  if (unblocking.value || unblocked.value.has(task.text)) return
+  const pane = herdrState.value.panes.find(p => p.id === props.paneId)
+  if (!eventsOpen.value || offlineView.value || paneStale(pane)) return toast(t('Envoi indisponible hors ligne'), true)
+  unblocking.value = task.text
+  haptic()
+  try {
+    const queued = await sendMessage(pane, props.paneId, unblockMessage(task.text, lang()))
+    unblocked.value = new Set([...unblocked.value, task.text])
+    unblockedByPane.set(props.paneId, unblocked.value)
+    emit('sent', queued)
+  } catch (e) { toast((e as Error).message, true) }
+  finally { unblocking.value = null }
 }
 function prefill(task: ProjectTask, kind: 'problem' | 'question' | 'decision' | 'detail') {
   haptic()
@@ -242,22 +267,25 @@ function ownerLabel(task: ProjectTask) {
             </li>
             <li
               v-for="(task, i) in s.tasks" :key="`t${i}`" class="pp-row pp-task"
-              :class="{ done: task.done, mine: ownerIsMe(task.owner), testable: testable(s, task), decidable: decidable(s, task), launchable: launchable(s, task), sent: (testable(s, task) && confirmed.has(task.text)) || (launchable(s, task) && launched.has(task.text)) }"
+              :class="{ done: task.done, mine: ownerIsMe(task.owner), testable: testable(s, task), decidable: decidable(s, task), launchable: launchable(s, task), unblockable: unblockable(s, task), sent: (testable(s, task) && confirmed.has(task.text)) || (launchable(s, task) && launched.has(task.text)) || (unblockable(s, task) && unblocked.has(task.text)) }"
             >
               <span class="pp-box" aria-hidden="true" />
-              <template v-if="!testable(s, task) && !decidable(s, task) && !launchable(s, task)">
-                <span class="pp-task-text">{{ task.text }}</span>
+              <template v-if="!testable(s, task) && !decidable(s, task) && !launchable(s, task) && !unblockable(s, task)">
+                <span v-if="task.reason" class="pp-task-body"><span class="pp-task-text">{{ task.text }}</span><span class="pp-reason">{{ task.reason }}</span></span>
+                <span v-else class="pp-task-text">{{ task.text }}</span>
                 <span v-if="task.owner" class="pp-owner">{{ ownerLabel(task) }}</span>
               </template>
               <!-- À tester / À décider / Backlog : texte sur toute la largeur ; dessous,
                    le responsable et les actions de la section. -->
               <span v-else class="pp-task-body">
                 <span class="pp-task-text">{{ task.text }}</span>
+                <span v-if="task.reason" class="pp-reason">{{ task.reason }}</span>
                 <span class="pp-task-foot">
                   <span v-if="testable(s, task) && confirmed.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
                   <span v-else-if="launchable(s, task) && launched.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
+                  <span v-else-if="unblockable(s, task) && unblocked.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
                   <span v-else-if="task.owner" class="pp-owner">{{ ownerLabel(task) }}</span>
-                  <span v-if="decidable(s, task) || launchable(s, task) || !confirmed.has(task.text)" class="pp-verdict">
+                  <span v-if="decidable(s, task) || launchable(s, task) || unblockable(s, task) || !confirmed.has(task.text)" class="pp-verdict">
                     <UTooltip v-if="testable(s, task)" :text="t('Confirmer : testé, ça marche')" :disabled="!desk">
                       <button
                         type="button" class="pp-vbtn ok" :disabled="confirming !== null"
@@ -286,7 +314,12 @@ function ownerLabel(task: ProjectTask) {
                         <span v-if="launching === task.text" class="spinner" /><UIcon v-else name="i-lucide-play" /><span>{{ t('Lancer') }}</span>
                       </button>
                     </UTooltip>
-                    <UTooltip v-if="launchable(s, task)" :text="tl('Préciser cette tâche', 'Clarify this task')" :disabled="!desk">
+                    <UTooltip v-if="unblockable(s, task) && !unblocked.has(task.text)" :text="tl('Demander de débloquer cette tâche', 'Ask to unblock this task')" :disabled="!desk">
+                      <button type="button" class="pp-vbtn backlog-action unblock" :disabled="unblocking !== null" :aria-label="tl(`Débloquer : ${task.text}`, `Unblock: ${task.text}`)" @click="unblockTask(task)">
+                        <span v-if="unblocking === task.text" class="spinner" /><UIcon v-else name="i-lucide-lock-keyhole-open" /><span>{{ tl('Débloquer', 'Unblock') }}</span>
+                      </button>
+                    </UTooltip>
+                    <UTooltip v-if="launchable(s, task) || unblockable(s, task)" :text="tl('Préciser cette tâche', 'Clarify this task')" :disabled="!desk">
                       <button type="button" class="pp-vbtn backlog-action clarify" :aria-label="tl(`Préciser : ${task.text}`, `Clarify: ${task.text}`)" @click="prefill(task, 'detail')">
                         <UIcon name="i-lucide-pencil" /><span>{{ t('Préciser') }}</span>
                       </button>

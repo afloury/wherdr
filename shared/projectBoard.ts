@@ -6,13 +6,14 @@
 // tâche par ligne `- [ ] <titre> (<responsable>)`, le responsable étant `me`,
 // `agent`, un nom, ou `agent → t-0031`.
 
-export type ListKind = 'test' | 'decide' | 'doing' | 'backlog' | 'done'
+export type ListKind = 'test' | 'decide' | 'blocked' | 'doing' | 'backlog' | 'done'
 
 export interface ProjectTask {
   text: string
   done: boolean
   owner: string | null // tel qu'écrit : « me », « agent », « Alice »…
   thread: string | null // t-0031 (responsable « agent → t-0031 »)
+  reason?: string // cause d'une tâche dans la liste Bloqué
 }
 export interface ProjectList { title: string, kind: ListKind | null, tasks: ProjectTask[] }
 
@@ -50,6 +51,7 @@ const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCa
 const KINDS: [ListKind, RegExp][] = [
   ['test', /^(a tester|to test|testing|to verify|a verifier|test)$/],
   ['decide', /^(a decider|to decide|decisions?|decide|questions?)$/],
+  ['blocked', /^(bloque(?:e|es|s)?|blocked|on hold|en attente|waiting|stuck)$/],
   ['doing', /^(en cours|in progress|doing|ongoing|wip|active)$/],
   ['backlog', /^(backlog|a faire|todo|to do|next|later|plus tard|idees|ideas)$/],
   ['done', /^(fait|faits|done|termine|terminees?|finished|completed?)$/],
@@ -64,7 +66,7 @@ const TASK_LINE = /^[-*+]\s+(?:\[([ xX])\](?:\s+|$))?(.*)$/
 // Responsable : dernière parenthèse de la ligne, courte, sans parenthèse imbriquée.
 const OWNER = /\s*\(([^()]{1,48})\)\s*$/
 
-export function parseTaskLine(line: string): ProjectTask | null {
+export function parseTaskLine(line: string, kind: ListKind | null = null): ProjectTask | null {
   const m = TASK_LINE.exec(line.trim())
   if (!m) return null
   let text = m[2]!.trim()
@@ -74,9 +76,17 @@ export function parseTaskLine(line: string): ProjectTask | null {
     owner = o[1]!.trim()
     text = text.slice(0, o.index).trim()
   }
+  let reason: string | undefined
+  if (kind === 'blocked') {
+    const cause = /\s+—\s*(?:bloqu[eé]e? par|blocked by)\s*:\s*(.+)$/i.exec(text)
+    if (cause?.[1]?.trim()) {
+      reason = cause[1].trim()
+      text = text.slice(0, cause.index).trim()
+    }
+  }
   if (!text) return null
   const ref = owner && THREAD_ID.exec(owner)
-  return { text, done: m[1] === 'x' || m[1] === 'X', owner, thread: ref ? ref[0].toLowerCase() : null }
+  return { text, done: m[1] === 'x' || m[1] === 'X', owner, thread: ref ? ref[0].toLowerCase() : null, ...(reason ? { reason } : {}) }
 }
 
 // Toutes les listes `##`, dans l'ordre du fichier (vides comprises). Les lignes
@@ -97,7 +107,7 @@ export function parseTasks(md: string): ProjectList[] {
     }
     if (/^#\s/.test(raw)) { cur = null; continue }
     if (!cur || /^\s/.test(raw)) continue
-    const task = parseTaskLine(raw)
+    const task = parseTaskLine(raw, cur.kind)
     if (task) cur.tasks.push(task)
   }
   return lists
@@ -187,7 +197,7 @@ export function boardSections(board: Pick<ProjectBoard, 'lists' | 'open' | 'reso
   let doing = sections.find(s => s.kind === 'doing')
   if (!doing && board.open.length) {
     doing = { key: 'doing', title: labels.doing, kind: 'doing', tasks: [], threads: [] }
-    const at = sections.findIndex(s => s.kind !== 'test' && s.kind !== 'decide')
+    const at = sections.findIndex(s => s.kind !== 'test' && s.kind !== 'decide' && s.kind !== 'blocked')
     sections.splice(at < 0 ? sections.length : at, 0, doing)
   }
   if (doing) doing.threads = board.open
@@ -245,6 +255,10 @@ export function detailPrefix(task: string, lang: TestLang = 'fr'): string {
   return `${lang === 'en' ? '↳ Detail on ' : '↳ Précision sur '}${task.trim()} — `
 }
 
+export function unblockMessage(task: string, lang: TestLang = 'fr'): string {
+  return `${lang === 'en' ? '↳ Unblock: ' : '↳ Débloquer : '}${task.trim()}`
+}
+
 // ---------------------------------------------------------------- aide (Réglages › Plugins)
 // Listes recommandées de TASKS.md, dans l'ordre du modèle. herdr-projects
 // n'impose que des listes `##` ; « À tester » et « À décider » sont une
@@ -252,6 +266,7 @@ export function detailPrefix(task: string, lang: TestLang = 'fr'): string {
 const TEMPLATE_LISTS: { kind: ListKind, fr: string, en: string }[] = [
   { kind: 'test', fr: 'À tester', en: 'To test' },
   { kind: 'decide', fr: 'À décider', en: 'To decide' },
+  { kind: 'blocked', fr: 'Bloqué', en: 'Blocked' },
   { kind: 'doing', fr: 'En cours', en: 'In progress' },
   { kind: 'backlog', fr: 'Backlog', en: 'Backlog' },
 ]
@@ -264,8 +279,8 @@ export function listTitle(kind: ListKind, lang: TestLang = 'fr'): string {
 
 export function tasksTemplate(lang: TestLang = 'fr'): string {
   const ex = lang === 'en'
-    ? { test: '- [ ] Check the new settings page (me)', decide: '- [ ] Keep the old layout? (me)', doing: '- [ ] Fix the offline banner (agent → t-0001)', backlog: '- [ ] Dark mode for charts (agent)' }
-    : { test: '- [ ] Vérifier la nouvelle page Réglages (me)', decide: '- [ ] Garder l’ancienne disposition ? (me)', doing: '- [ ] Corriger le bandeau hors ligne (agent → t-0001)', backlog: '- [ ] Mode sombre des graphiques (agent)' }
+    ? { test: '- [ ] Check the new settings page (me)', decide: '- [ ] Keep the old layout? (me)', blocked: '- [ ] Publish the guide — blocked by: review (agent)', doing: '- [ ] Fix the offline banner (agent → t-0001)', backlog: '- [ ] Dark mode for charts (agent)' }
+    : { test: '- [ ] Vérifier la nouvelle page Réglages (me)', decide: '- [ ] Garder l’ancienne disposition ? (me)', blocked: '- [ ] Publier le guide — bloqué par : relecture (agent)', doing: '- [ ] Corriger le bandeau hors ligne (agent → t-0001)', backlog: '- [ ] Mode sombre des graphiques (agent)' }
   const blocks = TEMPLATE_LISTS.map(l => `## ${lang === 'en' ? l.en : l.fr}\n\n${ex[l.kind as keyof typeof ex]}`)
   return `# Tasks\n\n${blocks.join('\n\n')}\n`
 }
@@ -282,22 +297,24 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
   const lines = en
     ? [
         'wherdr Project panel: TASKS.md conventions and messages.',
-        'Lists: "## To test" (what I must check after a deploy), "## To decide" (questions for me), "## In progress" (threads), "## Backlog". One task per line: "- [ ] title (owner)".',
+        'Lists: "## To test" (what I must check after a deploy), "## To decide" (questions for me), "## Blocked" (waiting for something external), "## In progress" (threads), "## Backlog". One task per line: "- [ ] title (owner)"; blocked tasks may add "— blocked by: reason" before the owner.',
         `"${testedMessage('…', lang)}" → remove the line from To test.`,
         `"${m(problemPrefix)}" → treat it as a bug: fix it (new thread).`,
         `"${m(questionPrefix)}" → answer: explain what to test and how.`,
         `"${m(decisionPrefix)}" → apply the decision and remove the line from To decide.`,
+        `"${unblockMessage('…', lang)}" → restart the task or ask what is missing. Move a task to Blocked when it waits for something external.`,
         `"${launchMessage('…', lang)}" → launch a thread for this Backlog task.`,
         `"${m(detailPrefix)}" → add the detail to the task.`,
         'After each deploy, add to To test what I must check.',
       ]
     : [
         'Panneau Projet de wherdr : conventions de TASKS.md et messages.',
-        'Listes : « ## À tester » (ce que je dois vérifier après un déploiement), « ## À décider » (questions pour moi), « ## En cours » (threads), « ## Backlog ». Une tâche par ligne : « - [ ] titre (responsable) ».',
+        'Listes : « ## À tester » (ce que je dois vérifier après un déploiement), « ## À décider » (questions pour moi), « ## Bloqué » (attente extérieure), « ## En cours » (threads), « ## Backlog ». Une tâche par ligne : « - [ ] titre (responsable) » ; une tâche bloquée peut ajouter « — bloqué par : raison » avant le responsable.',
         `« ${testedMessage('…', lang)} » → retirer la ligne d’À tester.`,
         `« ${m(problemPrefix)} » → c’est un bug : le corriger (nouveau thread).`,
         `« ${m(questionPrefix)} » → répondre : expliquer quoi tester et comment.`,
         `« ${m(decisionPrefix)} » → appliquer la décision et retirer la ligne d’À décider.`,
+        `« ${unblockMessage('…', lang)} » → relancer la tâche ou demander ce qui manque. Déplacer une tâche en Bloqué quand elle attend quelque chose d’extérieur.`,
         `« ${launchMessage('…', lang)} » → lancer un thread pour cette tâche du Backlog.`,
         `« ${m(detailPrefix)} » → compléter la tâche avec cette précision.`,
         'Après chaque déploiement, ajouter à À tester ce que je dois vérifier.',

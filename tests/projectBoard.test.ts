@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { boardSections, decisionPrefix, detailPrefix, launchMessage, listKind, normalizeThreads, ownerIsMe, parseTaskLine, parseTasks, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage } from '../shared/projectBoard'
+import { boardSections, decisionPrefix, detailPrefix, launchMessage, listKind, normalizeThreads, ownerIsMe, parseTaskLine, parseTasks, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage, unblockMessage } from '../shared/projectBoard'
 import { pluginBinary } from '../server/utils/projectBoard'
 import { isCoordinator } from '../shared/projects'
 import type { Pane } from '../shared/types'
@@ -78,7 +78,17 @@ describe('TASKS.md', () => {
     expect(listKind('In progress')).toBe('doing')
     expect(listKind('À faire')).toBe('backlog')
     expect(listKind('Done')).toBe('done')
+    for (const heading of ['Bloqué', 'Bloque', 'Bloquée', 'Bloquées', 'Blocked', 'On hold', 'En attente', 'Waiting', 'Stuck']) {
+      expect(listKind(heading)).toBe('blocked')
+    }
     expect(listKind('Notes')).toBeNull()
+  })
+
+  it('lit la raison uniquement dans une liste Bloqué, après le responsable', () => {
+    const lists = parseTasks('## Bloqué\n- [ ] Publier le guide — bloqué par : relecture (agent)\n## Backlog\n- [ ] Publier le guide — bloqué par : relecture (agent)')
+    expect(lists[0]!.tasks[0]).toEqual({ text: 'Publier le guide', reason: 'relecture', done: false, owner: 'agent', thread: null })
+    expect(lists[1]!.tasks[0]!.text).toBe('Publier le guide — bloqué par : relecture')
+    expect(parseTasks('## Blocked\n- [ ] Ship guide — blocked by: review (me)')[0]!.tasks[0]!.reason).toBe('review')
   })
 
   it('lignes limites', () => {
@@ -122,6 +132,15 @@ describe('actions du Backlog', () => {
     expect(prefillDraft('', detail)).toBe(detail)
     expect(prefillDraft('Autre demande', detail)).toBe(`Autre demande\n${detail}`)
     expect(prefillDraft(detail, detail)).toBe(detail)
+  })
+})
+
+describe('actions de Bloqué', () => {
+  it('envoie Débloquer et prépare Préciser sur le titre seul', () => {
+    const task = parseTasks('## Bloqué\n- [ ] Publier le guide — bloqué par : relecture (agent)')[0]!.tasks[0]!
+    expect(unblockMessage(task.text)).toBe('↳ Débloquer : Publier le guide')
+    expect(unblockMessage(' Ship guide ', 'en')).toBe('↳ Unblock: Ship guide')
+    expect(detailPrefix(task.text)).toBe('↳ Précision sur Publier le guide — ')
   })
 })
 
@@ -181,6 +200,19 @@ describe('sections du panneau', () => {
     expect(s.at(-1)!.tasks.map(t => t.text)).toEqual(['c'])
     // Pas de TASKS.md : En cours (si des threads tournent) et Fait.
     expect(boardSections({ lists: [], open: [], resolved: [] }, labels).map(x => x.kind)).toEqual(['done'])
+  })
+
+  it('place En cours après Bloqué si cette section est absente, tout en respectant le fichier', () => {
+    const lists = parseTasks('## À décider\n## Bloqué\n- [ ] Attendre une revue\n## Backlog')
+    expect(boardSections({ lists, ...threads }, labels).map(s => s.kind)).toEqual(['decide', 'blocked', 'doing', 'backlog', 'done'])
+    expect(boardSections({ lists: parseTasks('## En cours\n## Bloqué'), ...threads }, labels).map(s => s.kind)).toEqual(['doing', 'blocked', 'done'])
+  })
+
+  it('laisse un thread en attente dans En cours, sans le confondre avec la liste Bloqué', () => {
+    const waiting = normalizeThreads([raw('t-0002', { group: 'Waiting on you', group_token: 'waiting-on-you', rank: 1 })])
+    const sections = boardSections({ lists: parseTasks('## Bloqué\n- [ ] Validation externe\n## En cours'), open: waiting, resolved: [] }, labels)
+    expect(sections.find(s => s.kind === 'blocked')!.threads).toEqual([])
+    expect(sections.find(s => s.kind === 'doing')!.threads.map(t => t.id)).toEqual(['t-0002'])
   })
 })
 
@@ -250,7 +282,7 @@ describe('aide du tableau (Réglages › Plugins)', () => {
       const md = tasksTemplate(lang)
       expect(md.startsWith('# Tasks\n')).toBe(true)
       const lists = parseTasks(md)
-      expect(lists.map(l => l.kind)).toEqual(['test', 'decide', 'doing', 'backlog'])
+      expect(lists.map(l => l.kind)).toEqual(['test', 'decide', 'blocked', 'doing', 'backlog'])
       expect(lists.every(l => l.tasks.length === 1)).toBe(true)
     }
     expect(parseTasks(tasksTemplate('fr'))[0]!.title).toBe('À tester')
@@ -267,7 +299,10 @@ describe('aide du tableau (Réglages › Plugins)', () => {
     const fr = m.coordinatorRules('fr')
     expect(fr).toContain(m.testedMessage('…'))
     expect(fr).toContain(m.launchMessage('…', 'fr'))
+    expect(fr).toContain(m.unblockMessage('…', 'fr'))
+    expect(fr).toContain('Déplacer une tâche en Bloqué')
     expect(m.coordinatorRules('en')).toContain(m.launchMessage('…', 'en'))
+    expect(m.coordinatorRules('en')).toContain(m.unblockMessage('…', 'en'))
     for (const p of [m.problemPrefix, m.questionPrefix, m.decisionPrefix, m.detailPrefix]) {
       expect(fr).toContain(p('…', 'fr'))
       expect(m.coordinatorRules('en')).toContain(p('…', 'en'))
