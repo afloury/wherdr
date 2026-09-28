@@ -147,12 +147,16 @@ export interface HerdrState {
   machines?: MachineInfo[]
 }
 
-export type ChatRole = 'user' | 'assistant' | 'tool' | 'cmd' | 'system'
+// 'bash' : commande « ! » de Claude Code (mode bash), 'cmd' : commande locale « / ».
+export type ChatRole = 'user' | 'assistant' | 'tool' | 'cmd' | 'bash' | 'system'
 export interface ChatItem {
   role: ChatRole
   text: string
   ts: string | null
   name?: string
+  // Sortie d'une commande 'bash' ou 'cmd' (stdout / stderr).
+  out?: string
+  err?: string
   images?: number
   ref?: string
   error?: boolean

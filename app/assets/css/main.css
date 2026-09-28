@@ -938,6 +938,40 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
   padding: 8px 12px; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 .msg-cmd span { color: var(--dim); }
+/* Commande « ! » (mode bash) ou commande locale avec sa sortie. */
+.msg-shell {
+  align-self: flex-end; width: fit-content; min-width: min(300px, 100%); max-width: min(92%, 760px);
+  display: flex; flex-direction: column; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); background: var(--code-bg);
+}
+.msg-shell-cmd {
+  display: flex; align-items: center; gap: 10px; padding: 4px 4px 4px 12px; min-height: 36px;
+  font: 500 12.5px/1.5 var(--mono); color: var(--text);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.msg-shell-cmd code { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.msg-shell-sign { flex: none; font-weight: 700; color: var(--accent); }
+.msg-shell:not(.bash) .msg-shell-sign { color: var(--dim); font-weight: 500; }
+.msg-shell-copy { flex: none; color: var(--dim); width: 24px; height: 24px; justify-content: center; }
+.msg-shell-copy:hover { color: var(--text); }
+.msg-shell-body { border-top: 1px solid var(--line-soft); overflow: hidden; }
+.msg-shell-out {
+  margin: 0; padding: 9px 12px; overflow-x: auto; white-space: pre; tab-size: 4;
+  font: 400 12px/1.55 var(--mono); color: var(--text-2);
+}
+.msg-shell-out + .msg-shell-out { border-top: 1px dashed var(--line-soft); }
+.msg-shell-out.err { color: var(--danger); }
+.msg-shell.long:not(.open) .msg-shell-body {
+  max-height: calc(12 * 12px * 1.55 + 18px);
+  mask-image: linear-gradient(to bottom, #000 70%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
+}
+.msg-shell-empty { border-top: 1px solid var(--line-soft); padding: 7px 12px; font: 400 11px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.msg-shell-more {
+  display: flex; align-items: center; gap: 6px; width: 100%; min-height: 32px; padding: 0 12px;
+  border-top: 1px solid var(--line-soft); font: 500 10.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+}
+.msg-shell-more:hover { color: var(--text); background: var(--surface); }
+@media (pointer: coarse) { .msg-shell-more { min-height: 40px; } .msg-shell-copy { width: 32px; height: 32px; } }
 .msg-system, .day-sep {
   display: flex; align-items: center; gap: 12px; margin: 6px 0;
   font: 500 10.5px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--dim);

@@ -76,7 +76,7 @@ export async function unqueueClaude(d: UnqueueDeps, text: string): Promise<{ req
 
   // ↑ ramène toute la file. Mais si le tour l'a prise entre-temps, c'est
   // l'historique qui revient : notre message est alors dans la conversation.
-  const saidCount = (items: ChatItem[], q: string) => items.filter(i => i.role === 'user' && sameMsg(q, i.text)).length
+  const saidCount = (items: ChatItem[], q: string) => items.filter(i => (i.role === 'user' || i.role === 'bash') && sameMsg(q, i.text)).length
   const saidNew = (a: ChatItem[], q: string) => saidCount(a, q) > saidCount(before.items, q)
   let after = before
   for (let i = 0; i < 15; i++) {
