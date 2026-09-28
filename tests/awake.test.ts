@@ -23,9 +23,10 @@ describe('machine sleep controls', () => {
   })
   it('uses exact PID and bounded inhibitor commands', () => {
     expect(CONTROL_SCRIPT).toContain('kill "$old_pid"')
-    expect(CONTROL_SCRIPT).toContain('caffeinate -i -s -t "$seconds"')
+    expect(CONTROL_SCRIPT).toContain('flags="-i -s"')
+    expect(CONTROL_SCRIPT).toContain('caffeinate $flags -t "$seconds"')
     expect(CONTROL_SCRIPT).toContain('systemd-inhibit --what=idle:sleep sleep "$seconds"')
     expect(CONTROL_SCRIPT).toContain('(20 - hour) * 3600')
-    expect(STATUS_SCRIPT).toContain('ps -p "$pid" -o comm=')
+    expect(STATUS_SCRIPT).toContain('ps -p "$1" -o lstart=')
   })
 })
