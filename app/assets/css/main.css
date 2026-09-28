@@ -1320,6 +1320,32 @@ body.kb .composer { padding-bottom: 8px; }
 .plugin-input { display: grid; gap: 10px; }
 .plugin-input-label { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--text-2); }
 .plugin-input-hint { font-size: 12px; color: var(--text-2); }
+.plugin-input-hint { margin-top: -4px; }
+.plugin-input-mono input { font-family: var(--mono); font-size: 13px; }
+.plugin-input-note { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; line-height: 1.45; color: var(--text-2); }
+.plugin-input-note > .iconify { flex: none; margin-top: 2px; color: var(--accent); }
+.plugin-input-note > div { display: grid; gap: 8px; justify-items: start; }
+.plugin-input-note p { margin: 0; }
+.plugin-input-note strong { color: var(--text-strong); font-weight: 600; }
+.plugin-input-note.warn { border-color: color-mix(in srgb, var(--ochre) 55%, var(--line)); }
+.plugin-input-note.warn > .iconify { color: var(--ochre); }
+.plugin-input-note.reload { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.plugin-input-note kbd { font: 600 11px var(--mono); padding: 1px 5px; border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--text); }
+.projects-plugin-reload { margin-top: 12px; }
+.plugin-result { display: grid; gap: 12px; min-width: 0; }
+.plugin-setup { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0; padding: 10px 12px; border: 1px solid var(--line); background: var(--surface); }
+.plugin-setup dt { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding-top: 2px; }
+.plugin-setup dd { margin: 0; font: 12px/1.5 var(--mono); color: var(--text); overflow-wrap: anywhere; }
+.plugin-setup dd.warn { color: var(--ochre); }
+@media (max-width: 520px) { .plugin-setup { grid-template-columns: minmax(0, 1fr); gap: 2px; } .plugin-setup dd { margin-bottom: 8px; } .plugin-setup dd:last-child { margin-bottom: 0; } }
+.plugin-setup-why { display: block; font-family: var(--sans); color: var(--ochre); }
+.plugin-result-status { margin: 0; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--done); }
+.plugin-result-status.warn { color: var(--ochre); }
+.plugin-result-status.fail { color: var(--danger); }
+.plugin-result-out { margin: 0; max-height: min(46vh, 420px); overflow: auto; padding: 10px 12px; border: 1px solid var(--line); background: var(--code-bg); font: 11.5px/1.55 var(--mono); color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.plugin-result-out .ok { color: var(--text-2); }
+.plugin-result-out .warn { color: var(--ochre); }
+.plugin-result-out .fail { color: var(--danger); }
 .projects-plugin-note { margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .projects-plugin-settings { padding-top: 2px; }
 .settings-typing .encrypted-toggle { margin-top: 14px; }

@@ -269,4 +269,7 @@ export interface PluginActionResult {
   status: 'succeeded' | 'failed' | 'running'
   exitCode: number | null
   output: string // fin de la sortie (stdout, sinon stderr), courte
+  // « Check setup » de herdr-projects : ce que wherdr utilise, puis la sortie entière.
+  setup?: { key: 'version' | 'binary' | 'home' | 'config', value: string, warn?: boolean }[]
+  full?: string
 }

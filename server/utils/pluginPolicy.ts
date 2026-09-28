@@ -91,11 +91,14 @@ export function normalizeActions(actions: RawPluginAction[], plugins: RawPlugin[
 // Fin de sortie lisible dans un toast : dernières lignes non vides, sans
 // séquences ANSI ni caractères de contrôle.
 const ANSI = /\x1B(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1B]*(?:\x07|\x1B\\)|[@-Z\\-_])/g
-export function outputTail(text: string | null | undefined, max = 300): string {
-  const lines = String(text || '')
+export function stripAnsi(text: string | null | undefined): string {
+  return String(text || '')
     .replace(ANSI, '')
     // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x08\x0B-\x1F\x7F]/g, '')
+}
+export function outputTail(text: string | null | undefined, max = 300): string {
+  const lines = stripAnsi(text)
     .split('\n').map(l => l.trim()).filter(Boolean)
   let out = ''
   for (let i = lines.length - 1; i >= 0; i--) {
