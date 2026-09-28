@@ -1,0 +1,11 @@
+ Bash command                                            3 files changed
+                                                         app/components/Card.vue
+   npm test                                              18   <UFormField
+   Run the unit tests                                    19     name="title"
+                                                         20 -   v-if="old"
+ Do you want to proceed?                                 22 +   v-if="show"
+ ❯ 1. Yes                                                23 +   label="Title"
+   2. Yes, and don't ask again for npm test commands     24 +   :error="err"
+   3. No, and tell Claude what to do differently (esc)   25 + >
+                                                         26     <UInput />
+ Esc to cancel · Tab to amend                            27   </UFormField>

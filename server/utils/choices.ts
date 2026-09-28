@@ -19,6 +19,45 @@ import type { Choices } from '../../shared/types'
 const CURSOR = /^(\s*)[❯›]\s+(\S.*?)\s*$/
 const NUMBERED = /^(\s*)(?:[❯›]\s+)?(\d{1,2})\.\s+(\S.*?)\s*$/
 const RULE = /^[\s─━═—-]+$/
+// Début d'une colonne voisine : au moins 3 espaces ou un trait vertical │.
+const GAP = /\S(?: {3,}| *│ *)(?=\S)/g
+
+// Colonnes où reprend du texte après un écart, sur une ligne.
+function gapColumns(line: string): number[] {
+  const cols: number[] = []
+  for (const m of line.matchAll(GAP)) {
+    const bar = m[0].indexOf('│')
+    cols.push(m.index! + (bar >= 0 ? bar : m[0].length))
+  }
+  return cols
+}
+
+// Claude Code peut afficher un panneau à droite de la boîte de dialogue (vue
+// diff « N files changed ») : chaque ligne de l'écran porte alors les deux
+// colonnes. La colonne voisine se reconnaît à un écart sur une ligne de texte
+// hors options (la question), à la même position qu'un blanc suivi de texte
+// sur la ligne du curseur ; les descriptions alignées d'une liste (/model)
+// n'apparaissent que sur les lignes d'options. On coupe alors l'écran à cette
+// colonne.
+function dropSidePanel(lines: string[], c: number): string[] {
+  const cursor = lines[c]!
+  const splitsCursor = (x: number) => x < cursor.length && /[\s│]/.test(cursor[x - 1]!) && /\S/.test(cursor[x]!)
+  // Seules les deux lignes de texte juste au-dessus des options comptent :
+  // plus haut, un en-tête encadré (Codex) peut s'aligner par hasard.
+  let split = -1
+  let seen = 0
+  for (let i = c - 1; i >= Math.max(0, c - 40) && split < 0 && seen < 2; i--) {
+    const line = lines[i]!
+    if (!line.trim() || NUMBERED.test(line) || CURSOR.test(line)) continue
+    seen++
+    split = gapColumns(line).find(splitsCursor) ?? -1
+  }
+  if (split < 0) return lines
+  return lines.map((line) => {
+    if (line.length <= split || !/[\s│]/.test(line[split - 1]!)) return line
+    return line.slice(0, split).replace(/[\s│]+$/, '')
+  })
+}
 
 // Colonne (en caractères) où commence le texte d'une ligne d'option.
 function textColumn(line: string): number {
@@ -34,13 +73,14 @@ interface RawOption { n: number | null, label: string, hint: string | null, line
 // (« › Ask Codex… » suivi de la ligne du modèle, alignée pareil).
 export function parseChoices(text: string | null | undefined, { strict = false }: { strict?: boolean } = {}): Choices | null {
   if (!text) return null
-  const lines = text.replace(/\s+$/, '').split('\n').slice(-60)
+  let lines = text.replace(/\s+$/, '').split('\n').slice(-60)
 
   // Le dernier ❯ de l'écran : les précédents sont l'historique (prompts
   // envoyés), l'invite active est toujours en bas.
   let c = -1
   for (let i = lines.length - 1; i >= 0; i--) if (CURSOR.test(lines[i]!)) { c = i; break }
   if (c < 0) return null
+  lines = dropSidePanel(lines, c)
 
   const cursorLine = lines[c]!
   const col = textColumn(cursorLine)
