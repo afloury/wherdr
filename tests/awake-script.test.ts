@@ -10,7 +10,14 @@ import { CONTROL_SCRIPT, STATUS_SCRIPT, parseAwakeStatus, parseControl } from '.
 let root: string, home: string, bin: string, log: string
 const pidFile = () => join(home, '.cache/herdr-web/awake.pid')
 const env = () => ({ PATH: `${bin}:/usr/bin:/bin`, HOME: home })
-const control = (mode: string, lid = '0') => execFileSync('sh', ['-c', CONTROL_SCRIPT, 'sh', mode, lid], { env: env(), encoding: 'utf8' })
+// Chaque inhibiteur lancé est noté, pour l'arrêter (et l'attendre) après le test.
+let spawned: number[] = []
+function control(mode: string, lid = '0') {
+  const out = execFileSync('sh', ['-c', CONTROL_SCRIPT, 'sh', mode, lid], { env: env(), encoding: 'utf8' })
+  const pid = Number(/^started=(\d+)$/m.exec(out)?.[1])
+  if (pid) spawned.push(pid)
+  return out
+}
 const status = () => parseAwakeStatus(execFileSync('sh', ['-c', STATUS_SCRIPT], { env: env(), encoding: 'utf8' }))
 // Un zombie (orphelin non récolté, ex. Docker sans --init) compte comme mort.
 function alive(pid: number) {
@@ -48,12 +55,13 @@ describe.skipIf(process.platform === 'win32' || !canInspect)('keep-awake control
     writeFileSync(join(bin, 'uname'), '#!/bin/sh\necho Darwin\n'); chmodSync(join(bin, 'uname'), 0o755)
     fakeCaffeinate(LIVE.replaceAll('$LOG', log).replaceAll('$FAIL', join(root, 'fail')))
   })
-  afterEach(() => {
-    if (existsSync(pidFile())) {
-      const pid = Number(readFileSync(pidFile(), 'utf8').split('|')[0])
-      if (pid && alive(pid)) process.kill(pid)
-    }
-    rmSync(root, { recursive: true, force: true })
+  // Un caffeinate arrêté écrit encore « stop » dans le journal : l'attendre
+  // avant de supprimer le dossier (sinon ENOTEMPTY sur machine chargée).
+  afterEach(async () => {
+    for (const pid of spawned) if (alive(pid)) process.kill(pid)
+    for (const pid of spawned) await gone(pid)
+    spawned = []
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
   it('re-arming starts the new inhibitor before stopping the old one', async () => {
