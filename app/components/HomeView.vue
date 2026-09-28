@@ -181,11 +181,8 @@ async function refreshAwake(m: MachineInfo) {
   try { awakeByMachine.value[m.key] = await api<AwakeState>(awakeUrl(m.key)) }
   catch { /* machine peut disparaître entre deux sondages */ }
 }
-watch(() => machines.value.map(m => `${m.key}:${m.status}`).join('|'), () => {
-  for (const m of machines.value) refreshAwake(m)
-}, { immediate: true })
 let awakeTimer: ReturnType<typeof setInterval> | undefined
-onMounted(() => { awakeTimer = setInterval(() => { if (document.visibilityState === 'visible') for (const m of machines.value) refreshAwake(m) }, 30000) })
+onMounted(() => { awakeTimer = setInterval(() => { if (document.visibilityState === 'visible') for (const m of awakeMachines()) refreshAwake(m) }, 30000) })
 onBeforeUnmount(() => clearInterval(awakeTimer))
 function openAwake(m: MachineInfo) {
   awakeTarget.value = m
@@ -236,6 +233,11 @@ const soloMachine = computed<MachineInfo>(() => machines.value[0] || {
   key: '', label: hostLabel.value || 'herdr', local: true, status: st.value.ok ? 'online' : 'offline',
   error: null, session: st.value.session || 'default',
 })
+// Une seule machine : l'état ne liste pas de machines, on sonde la machine seule.
+const awakeMachines = () => machines.value.length ? machines.value : [soloMachine.value]
+watch(() => awakeMachines().map(m => `${m.key}:${m.status}`).join('|'), () => {
+  for (const m of awakeMachines()) refreshAwake(m)
+}, { immediate: true })
 const baseKeyOf = (m: MachineInfo) => m.baseKey ?? m.key
 async function openSessions(m: MachineInfo) {
   sessionTarget.value = m
