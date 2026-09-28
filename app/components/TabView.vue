@@ -258,7 +258,7 @@ function open(paneId: string) {
           <span class="tab-meta-tab">{{ t('Onglet') }} {{ entry ? tabLabel(entry.tab.label, entry.tab.number) : '' }}</span>
           <span v-if="entry">{{ `${entry.panes.length} pane${entry.panes.length > 1 ? 's' : ''}` }}</span>
           <span v-if="entry?.layout.zoomed" class="tab-meta-zoom" :title="t('Un pane est agrandi dans Herdr')">zoom</span>
-          <span v-if="machine" class="tab-meta-machine" :class="machine.status"><UIcon :name="machine.local ? 'i-lucide-server' : 'i-lucide-laptop'" />{{ machineName(machine.key) }}</span>
+          <span v-if="machine" class="tab-meta-machine" :class="machine.status"><UIcon :name="machine.local ? 'i-lucide-server' : 'i-lucide-laptop'" /><span class="machine-inline-name">{{ machineName(machine.key) }}</span><MachineLocalBadge v-if="machine.local" /></span>
         </div>
       </div>
       <UButton

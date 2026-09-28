@@ -411,7 +411,10 @@ function openSearch() { emit('search') }
             >
               <UIcon name="i-lucide-chevron-down" class="machine-chev" />
               <UIcon :name="s.m.local ? 'i-lucide-server' : 'i-lucide-laptop'" class="machine-icon" />
-              <span class="machine-name">{{ s.name }}<small v-if="s.m.session && s.m.session !== 'default'" class="machine-session">{{ s.m.session }}</small></span>
+              <span class="machine-ident">
+                <span class="machine-name">{{ s.name }}<small v-if="s.m.session && s.m.session !== 'default'" class="machine-session">{{ s.m.session }}</small></span>
+                <MachineLocalBadge v-if="s.m.local" />
+              </span>
               <span v-if="awakeByMachine[s.m.key]?.active" class="machine-awake" :title="awakeLabel(awakeByMachine[s.m.key])"><UIcon name="i-lucide-sun" /><span>{{ awakeByMachine[s.m.key]?.until ? new Date(awakeByMachine[s.m.key]!.until!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '∞' }}</span></span>
               <span class="machine-state"><i />{{ s.state }}</span>
               <span class="machine-count">

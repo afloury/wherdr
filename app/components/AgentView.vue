@@ -410,7 +410,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
           <span v-if="subtitle" class="agent-subtitle">{{ subtitle }}</span>
           <span v-if="tabName" class="agent-subtitle">{{ tabName }}</span>
           <span v-if="machine" class="agent-machine" :class="machine.status" :title="machine.target ? `ssh ${machine.target}` : undefined">
-            <UIcon :name="machine.local ? 'i-lucide-server' : 'i-lucide-laptop'" />{{ machineName(machine.key) }}
+            <UIcon :name="machine.local ? 'i-lucide-server' : 'i-lucide-laptop'" /><span class="machine-inline-name">{{ machineName(machine.key) }}</span><MachineLocalBadge v-if="machine.local" />
           </span>
           <span v-if="where" class="where">{{ where }}</span>
         </div>

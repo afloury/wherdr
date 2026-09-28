@@ -268,7 +268,8 @@ async function launch() {
             :disabled="!online(m)" :data-machine="m.key || 'local'" @click="pickMachine(m)"
           >
             <UIcon :name="m.local ? 'i-lucide-server' : 'i-lucide-laptop'" class="seg-icon" />
-            <span>{{ m.label || t('Cette machine') }}</span>
+            <span class="machine-choice-name">{{ m.label || t('Cette machine') }}</span>
+            <MachineLocalBadge v-if="m.local" />
             <i class="seg-dot" />
           </button>
         </div>
