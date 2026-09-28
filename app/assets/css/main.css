@@ -215,17 +215,16 @@ body.short-bottom { --safe-bottom: 0px; }
    Liste des agents
    ================================================================ */
 .home-top {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex: none;
+  display: flex; flex-direction: column; gap: 10px; flex: none;
   padding: calc(var(--safe-top) + 18px) 16px 16px;
 }
-.home-brand { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
-.home-brand .display { font-size: 40px; }
+.home-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.home-title-row .display { font-size: 40px; }
 /* Logo = voyant de connexion : texte si connecté, rose si Herdr injoignable. */
 .home-logo { width: 32px; height: 14px; color: var(--dim); flex: none; margin-right: 2px; }
 .home-logo.ok { color: var(--text); }
 .home-logo.bad { color: var(--rose); }
-.home-top .icon-btn { margin: -2px -6px 0 0; }
-.home-actions { display: flex; align-items: center; gap: 8px; }
+.home-actions { display: flex; align-items: center; gap: 4px; flex: none; margin-right: -6px; }
 /* Recherche globale : fenêtre carrée à traits fins (comme les feuilles), en-têtes
    de groupe façon carte d'agent, occurrence surlignée en ocre comme la
    recherche dans une conversation. Aucun arrondi. */
@@ -1846,7 +1845,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
   #btnBack { display: none; }
 
   .home-top { padding: 22px 16px 18px; }
-  .home-brand .display { font-size: 34px; }
+  .home-title-row .display { font-size: 34px; }
   .scroll { padding: 0 12px 96px; }
   .stats { margin-bottom: 22px; }
   .stat b { font-size: 26px; }
