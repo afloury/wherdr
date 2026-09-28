@@ -7,6 +7,8 @@ import { PANE_RE as SHARED_PANE_RE } from '../../shared/ids'
 const env = process.env
 
 export const HOME = env.HOME || os.homedir()
+// Dans le conteneur Docker (HOME de l'hôte monté en lecture seule, cf. docker-compose.yml).
+export const IN_DOCKER = fs.existsSync('/.dockerenv')
 export const DATA_DIR = env.DATA_DIR || path.join(process.cwd(), 'data')
 // Installateur de herdr.dev : ~/.local/bin ; sinon (Homebrew…) celui du PATH.
 const LOCAL_HERDR = path.join(HOME, '.local/bin/herdr')

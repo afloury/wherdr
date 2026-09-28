@@ -185,7 +185,8 @@ may create missing host folders as root, leaving the container unable to write t
 `PUID` and `PGID` in `.env` to the output of `id -u` and `id -g` for that user.
 
 ```sh
-mkdir -p data "$HOME/.config/herdr" "$HOME/.local/state/herdr/client" "$HOME/.cache/herdr-web"
+mkdir -p data "$HOME/.config/herdr" "$HOME/.local/state/herdr/client" "$HOME/.cache/herdr-web" \
+  "$HOME/.herdr-projects"
 ```
 
 Then build and start:
@@ -210,8 +211,9 @@ only needed when registering the **first** passkey. The passkey lock is recommen
 the app works without one on your private network.
 
 The container runs as your user and mounts your home folder **read-only**, except
-`~/.config/herdr` (Herdr sockets), `~/.local/state/herdr/client` (machine names) and
-`~/.cache/herdr-web` (uploaded photos, quotas). It uses the server's own `herdr` binary, so the
+`~/.config/herdr` (Herdr sockets), `~/.local/state/herdr/client` (machine names),
+`~/.cache/herdr-web` (uploaded photos, quotas) and `~/.herdr-projects` (herdr-projects
+projects, see [Herdr plugins](#herdr-plugins)). It uses the server's own `herdr` binary, so the
 client and the server always stay on the same version.
 
 To update: `git pull && docker compose up -d --build`.
@@ -366,6 +368,19 @@ the menus: workspace / tab / pane actions in the agent menu, global actions in t
 wherdr always passes the agent's pane explicitly. It asks for confirmation before running an
 action, except for actions that only show or check something (list, show, status, doctor…).
 Actions that open a plugin panel open it in the attached Herdr terminal client, not on the phone.
+
+**herdr-projects** actions that ask for input (New project, continue this workspace as a
+project, open, pause, resume) are run by wherdr itself as `herdr-projects` commands, because
+Herdr's API cannot pass them arguments. **New project** suggests the root of the current
+space's Git repository (nothing outside a repository, never your home folder itself).
+With Docker, these commands write to the projects folder, so `docker-compose.yml` mounts
+`~/.herdr-projects` read-write. If you set another `root` in
+`~/.config/herdr-projects/config.toml`, mount that folder instead (same path on both sides);
+otherwise wherdr reports that the home folder is read-only. Check setup only reads; the other
+actions (Configure…) run on the host through Herdr, as in the terminal client. When no herdr-projects
+ticker is running yet, the one these commands start inside the container is stopped right away;
+the next `herdr-projects` command run on the host (a coordinator starting a thread, Herdr
+starting) starts it there.
 
 ## Security
 
