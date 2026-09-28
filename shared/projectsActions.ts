@@ -3,7 +3,8 @@
 // Options vérifiées sur herdr-projects 0.2.30 (`<commande> --help`) :
 //  - adopt-workspace --name --pane --workspace-cwd --goal --session (pas d'option
 //    pour la tâche en cours : elle rejoint l'objectif) ;
-//  - new <nom> --goal --repo <PATH[@MACHINE]> ;
+//  - new <nom> --goal --repo <PATH[@MACHINE]> (MACHINE : id ou libellé d'une
+//    machine de `herdr machine list`, lettres, chiffres, « - _ . » seulement) ;
 //  - open / pause / resume <slug>, doctor --session.
 import type { ChatResponse } from './types'
 
@@ -12,14 +13,15 @@ export const PROJECT_INPUTS: Record<string, string[]> = {
 }
 // Saisies facultatives, en plus des champs ci-dessus. L'objectif l'est aussi :
 // herdr-projects ne l'exige pas et un projet continu n'a pas de cap figé.
-export const PROJECT_OPTIONAL: Record<string, string[]> = { new: ['goal', 'repo'], 'adopt-workspace': ['goal', 'task'] }
+// `machine` : clé wherdr de la machine du dépôt (absente = celle du projet).
+export const PROJECT_OPTIONAL: Record<string, string[]> = { new: ['goal', 'repo', 'machine'], 'adopt-workspace': ['goal', 'task'] }
 // Champs à remplir : nom (ou slug).
 export const PROJECT_REQUIRED: Record<string, string[]> = {
   new: ['name'], 'adopt-workspace': ['name'], open: ['slug'], pause: ['slug'], resume: ['slug'],
 }
-export const INPUT_MAX: Record<string, number> = { name: 120, slug: 120, goal: 400, task: 400, repo: 1024 }
+export const INPUT_MAX: Record<string, number> = { name: 120, slug: 120, goal: 400, task: 400, repo: 1024, machine: 64 }
 
-export type ProjectInput = Partial<Record<'name' | 'goal' | 'task' | 'slug' | 'repo', string>>
+export type ProjectInput = Partial<Record<'name' | 'goal' | 'task' | 'slug' | 'repo' | 'machine', string>>
 
 // Saisie nettoyée, ou null si un champ manque ou déborde.
 export function cleanProjectInput(action: string, raw: unknown): ProjectInput | null {
@@ -36,6 +38,47 @@ export function cleanProjectInput(action: string, raw: unknown): ProjectInput | 
     if (s) out[key as keyof ProjectInput] = s
   }
   return (PROJECT_REQUIRED[action] || []).every(k => out[k as keyof ProjectInput]) ? out : null
+}
+
+// Nom de projet accepté par herdr-projects (`slug_from_name`) : ni « / », ni
+// « \ », ni « .. », et au moins une lettre ou un chiffre ASCII pour le slug.
+// « ~ » (libellé d'un space ouvert dans le HOME) ou un chemin n'en sont pas.
+export function projectNameOk(name: string | null | undefined): boolean {
+  const s = (name || '').trim()
+  return Boolean(s) && !/[/\\]|\.\./.test(s) && /[a-z0-9]/i.test(s)
+}
+
+// Nom proposé : « New project » prend le nom du dossier du dépôt choisi (rien
+// sans dépôt) ; l'adoption, le libellé du space. Jamais un nom refusé.
+export function suggestedProjectName(action: string, o: { repo?: string | null, space?: string | null }): string {
+  const name = action === 'new'
+    ? (o.repo || '').replace(/\/+$/, '').split('/').pop() || ''
+    : (o.space || '').trim()
+  return projectNameOk(name) ? name : ''
+}
+
+// Où en est le dossier choisi comme dépôt, d'après /api/gitroot (racine Git
+// proposée, ou null) : le dépôt lui-même, un sous-dossier du dépôt `root`, ou
+// rien d'utilisable (hors dépôt, ou le HOME).
+export type RepoState = 'repo' | 'inside' | 'none'
+export function repoState(dir: string, root: string | null | undefined): RepoState {
+  const d = dir.trim().replace(/\/+$/, '')
+  const r = (root || '').trim().replace(/\/+$/, '')
+  if (!r) return 'none'
+  return r === d ? 'repo' : d.startsWith(`${r}/`) ? 'inside' : 'none'
+}
+
+// Valeur de `--repo` : le chemin seul si le dépôt est sur la machine où tourne
+// herdr-projects, sinon `chemin@<id Herdr de la machine>`. Seul un projet de la
+// machine locale peut viser une machine distante (les ids viennent de son
+// `herdr machine list`) ; autre cas : null. Un chemin seul qui finit par
+// « @nom » serait lu comme une machine par herdr-projects : refusé aussi.
+export interface RepoMachine { local: boolean, profileId: string | null }
+export function repoArgument(path: string, repo: RepoMachine, project: RepoMachine): string | null {
+  const same = repo.local ? project.local : !project.local && repo.profileId === project.profileId
+  if (same) return /@[A-Za-z0-9._-]+$/.test(path) ? null : path
+  if (!project.local || repo.local || !repo.profileId || !/^[A-Za-z0-9._-]+$/.test(repo.profileId)) return null
+  return `${path}@${repo.profileId}`
 }
 
 // Tâche en cours d'un workspace adopté : ajoutée à l'objectif, que le plugin

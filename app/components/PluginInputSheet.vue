@@ -1,16 +1,44 @@
 <script setup lang="ts">
+import { projectNameOk } from '#shared/projectsActions'
+
 const open = computed({ get: () => pluginFormState.open, set: (v) => { if (!v) closePluginForm() } })
 const action = computed(() => pluginFormState.action?.id || '')
 const isName = computed(() => action.value === 'new' || action.value === 'adopt-workspace')
 const valid = computed(() => pluginFormValid())
 const canSwitch = computed(() => action.value === 'adopt-workspace' && pluginFormState.empty === true && Boolean(newProjectAction()))
 const input = ref<{ inputRef?: HTMLInputElement } | null>(null)
-watch(open, (v) => { if (v) setTimeout(() => input.value?.inputRef?.focus(), 80) })
+const browsing = ref(false)
+watch(open, (v) => {
+  browsing.value = false
+  if (v) setTimeout(() => input.value?.inputRef?.focus(), 80)
+})
+const f = pluginFormState
+const nameBad = computed(() => isName.value && Boolean(f.name.trim()) && !projectNameOk(f.name))
+
+// « New project » : machine du dépôt (choix seulement pour un projet de la
+// machine locale : herdr-projects y vise une autre machine par son id), puis
+// dossier comme dans « Nouvel agent » (navigateur, récents de cette machine).
+const projectMachine = computed(() => pluginTargetMachine(f.target))
+const repoMachines = computed(() => (machineInfo(projectMachine.value)?.local ? machineChoices.value : null))
+const repoCfg = computed(() => machineChoices.value?.find(m => m.key === f.machine))
+const repoHome = computed(() => (repoCfg.value ? repoCfg.value.home : appConfig.value.home))
+// Récents de la machine, sans le HOME (jamais un dépôt de projet).
+const recents = computed(() => ((repoCfg.value ? repoCfg.value.dirs : appConfig.value.dirs) || [])
+  .filter(d => d !== repoHome.value && shortPath(d) !== '~').slice(0, 6))
+const repo = computed({ get: () => f.repo, set: (v) => { f.repo = v || ''; checkPluginRepo() } })
+function chooseRepo(d: string) {
+  repo.value = d
+  browsing.value = false
+}
+function useRoot() {
+  if (f.repoRoot) repo.value = f.repoRoot
+}
 </script>
 
 <template>
-  <AppSheet v-model:open="open" :title="pluginFormState.action?.label || t('Actions des plugins')">
-    <form class="rename plugin-input" @submit.prevent="submitPluginForm">
+  <AppSheet v-model:open="open" :title="pluginFormState.action?.label || t('Actions des plugins')" :tall="browsing">
+    <DirBrowser v-if="browsing" :start="f.repo || null" :machine="f.machine" @choose="chooseRepo" @cancel="browsing = false" />
+    <form v-else class="rename plugin-input" @submit.prevent="submitPluginForm">
       <template v-if="action === 'adopt-workspace'">
         <div class="plugin-input-note">
           <UIcon name="i-lucide-git-branch-plus" />
@@ -26,8 +54,10 @@ watch(open, (v) => { if (v) setTimeout(() => input.value?.inputRef?.focus(), 80)
       </template>
 
       <label class="plugin-input-label" for="plugin-primary">{{ isName ? tl('Nom du projet', 'Project name') : tl('Identifiant du projet', 'Project slug') }}</label>
-      <UInput v-if="isName" id="plugin-primary" ref="input" v-model="pluginFormState.name" maxlength="120" size="xl" class="w-full" required />
+      <UInput v-if="isName" id="plugin-primary" ref="input" :model-value="pluginFormState.name" maxlength="120" size="xl" class="w-full" required
+        :placeholder="action === 'new' ? tl('Nom du dépôt, ou un autre nom', 'Repository name, or another name') : undefined" @update:model-value="setPluginFormName(String($event ?? ''))" />
       <UInput v-else id="plugin-primary" ref="input" v-model="pluginFormState.slug" maxlength="120" size="xl" class="w-full" required />
+      <p v-if="nameBad" class="plugin-input-hint bad">{{ tl('Un nom de projet contient des lettres ou des chiffres, sans « / » ni « .. ».', 'A project name has letters or digits, and no “/” or “..”.') }}</p>
       <p v-if="action === 'adopt-workspace'" class="plugin-input-hint">{{ tl('Le nom proposé vient du space sélectionné.', 'The suggested name comes from the selected space.') }}</p>
 
       <template v-if="isName">
@@ -45,10 +75,21 @@ watch(open, (v) => { if (v) setTimeout(() => input.value?.inputRef?.focus(), 80)
       </template>
 
       <template v-if="action === 'new'">
-        <label class="plugin-input-label" for="plugin-repo">{{ tl('Dépôt (facultatif)', 'Repository (optional)') }}</label>
-        <UInput id="plugin-repo" v-model="pluginFormState.repo" maxlength="1024" size="xl" class="w-full plugin-input-mono"
-          :placeholder="tl('Chemin d’un dépôt Git', 'Path to a Git repository')" />
-        <p class="plugin-input-hint">{{ pluginFormState.repo ? tl('Proposé : le dépôt Git du space courant. Vide = aucun dépôt.', 'Suggested: the current space’s Git repository. Empty = no repository.') : tl('Les threads du projet travailleront dans des worktrees de ce dépôt.', 'The project’s threads will work in worktrees of this repository.') }}</p>
+        <template v-if="repoMachines">
+          <label class="plugin-input-label">{{ t('Machine') }}</label>
+          <MachineChoice :machines="repoMachines" :model-value="f.machine" @pick="setPluginRepoMachine($event.key)" />
+        </template>
+        <label class="plugin-input-label">{{ tl('Dépôt (facultatif)', 'Repository (optional)') }}</label>
+        <DirField v-model="repo" :recents="recents" clearable :placeholder="tl('Aucun dépôt', 'No repository')" @browse="browsing = true" />
+        <p v-if="f.repo && f.repoState === 'checking'" class="repo-state"><span class="spinner" />{{ tl('Vérification…', 'Checking…') }}</p>
+        <p v-else-if="f.repo && f.repoState === 'repo'" class="repo-state repo"><UIcon name="i-lucide-git-branch" />{{ tl('Dépôt Git', 'Git repository') }}</p>
+        <div v-else-if="f.repo && f.repoState === 'inside'" class="repo-state inside">
+          <UIcon name="i-lucide-corner-left-up" />
+          <span>{{ tl('Sous-dossier du dépôt', 'Inside the repository') }} <code>{{ ltr(shortPath(f.repoRoot)) }}</code></span>
+          <UButton size="xs" color="primary" variant="outline" icon="i-lucide-arrow-up-to-line" @click="useRoot">{{ tl('Prendre la racine', 'Use the root') }}</UButton>
+        </div>
+        <p v-else-if="f.repo && f.repoState === 'none'" class="repo-state none"><UIcon name="i-lucide-triangle-alert" />{{ tl('Pas un dépôt Git : choisissez-en un, ou videz le champ.', 'Not a Git repository: choose one, or clear the field.') }}</p>
+        <p v-if="!f.repo || f.repoState === 'repo'" class="plugin-input-hint">{{ f.repo ? tl('Les threads du projet travailleront dans des worktrees de ce dépôt.', 'The project’s threads will work in worktrees of this repository.') : tl('Sans dépôt, chaque thread travaille dans un onglet du projet.', 'Without a repository, each thread runs in a tab of the project.') }}</p>
       </template>
 
       <div class="rename-actions">

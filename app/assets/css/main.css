@@ -1325,6 +1325,16 @@ body.kb .composer { padding-bottom: 8px; }
 .dir-pick:hover { border-color: var(--line-strong); }
 .dir-pick span { flex: 1; min-width: 0; font: 14px/1.2 var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
 .dir-pick .iconify { color: var(--muted); width: 18px; height: 18px; flex: none; }
+.dir-field { display: flex; }
+.dir-field .dir-pick { flex: 1; min-width: 0; }
+.dir-pick.unset span { color: var(--muted); direction: ltr; }
+/* Vider le champ (dépôt de « New project ») : case collée au champ. */
+.dir-clear {
+  flex: none; width: 48px; display: grid; place-items: center;
+  background: var(--bg); border: 1px solid var(--line); border-left: 0; color: var(--muted);
+}
+.dir-clear:hover { color: var(--text); border-color: var(--line-strong); }
+.dir-clear .iconify { width: 16px; height: 16px; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .chips button {
   padding: 6px 10px; font: 400 12.5px/1.2 var(--mono);
@@ -1421,11 +1431,20 @@ body.kb .composer { padding-bottom: 8px; }
 .projects-board-lists .also { display: block; margin-top: 2px; color: var(--muted); font: 500 11px/1.4 var(--mono); }
 .projects-board-lists p { margin: 3px 0 0; color: var(--text-2); font-size: 13px; line-height: 1.45; }
 .projects-plugin-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
-.plugin-input { display: grid; gap: 10px; }
+.plugin-input { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .plugin-input-label { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--text-2); }
 .plugin-input-hint { font-size: 12px; color: var(--text-2); }
 .plugin-input-hint { margin-top: -4px; }
 .plugin-input-mono input { font-family: var(--mono); font-size: 13px; }
+.plugin-input .chips { margin-top: -2px; }
+.plugin-input-hint.bad { color: var(--rose); }
+/* État du dépôt choisi : dépôt Git, sous-dossier d'un dépôt, ou rien d'utilisable. */
+.repo-state { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin-top: -2px; font: 12px/1.4 var(--mono); color: var(--text-2); }
+.repo-state > .iconify { flex: none; width: 14px; height: 14px; }
+.repo-state.repo > .iconify { color: var(--green); }
+.repo-state.inside > .iconify, .repo-state.none > .iconify { color: var(--ochre); }
+.repo-state > span { flex: 1 1 12em; min-width: 0; }
+.repo-state code { color: var(--text); overflow-wrap: anywhere; }
 .plugin-input-note { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; line-height: 1.45; color: var(--text-2); }
 .plugin-input-note > .iconify { flex: none; margin-top: 2px; color: var(--accent); }
 .plugin-input-note > div { display: grid; gap: 8px; justify-items: start; }
