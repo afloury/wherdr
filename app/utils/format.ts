@@ -1,6 +1,7 @@
 // Petits outils d'affichage (titres, chemins, dates, durées).
 import type { HerdrState, Pane } from '#shared/types'
 import { cleanTitle, paneTitle as sharedPaneTitle } from '#shared/paneTitle'
+export { spaceTitle, conversationSubtitle } from '#shared/displayTitles'
 
 export const KIND_LABEL: Record<string, string> = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini CLI', opencode: 'OpenCode', kimi: 'Kimi', qodercli: 'Qoder CLI', mastracode: 'Mastra Code', copilot: 'Copilot', qwen: 'Qwen Code', pi: 'Pi' }
 export const kindLabel = (k: string | null | undefined) => (k && KIND_LABEL[k]) || (k ? k[0]!.toUpperCase() + k.slice(1) : 'Shell')

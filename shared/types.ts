@@ -20,6 +20,7 @@ export interface Workspace {
   // au checkout principal et à ses worktrees ; absent hors dépôt.
   repo?: string
   repoName?: string
+  branch?: string
 }
 
 // Onglet d'un workspace Herdr et sa disposition (splits réels, cf. shared/layout.ts).

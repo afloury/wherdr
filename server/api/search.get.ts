@@ -2,7 +2,7 @@ import type { ConversationHit, ConversationSearchResponse } from '../../shared/t
 import { SEARCH_DEADLINE_MS, SEARCH_MAX_RESULTS } from '../utils/conversationSearch'
 import { getState } from '../utils/state'
 import { machineOfPane } from '../utils/machines'
-import { isProjectThread, paneTitle } from '../../shared/paneTitle'
+import { spaceTitle } from '../../shared/displayTitles'
 
 export default defineApi(async (event): Promise<ConversationSearchResponse> => {
   const query = String(getQuery(event).q || '').trim().slice(0, 100)
@@ -28,9 +28,7 @@ export default defineApi(async (event): Promise<ConversationSearchResponse> => {
         limited ||= result.limited
         for (const hit of result.hits) {
           if (hits.length >= SEARCH_MAX_RESULTS) { limited = true; break }
-          const title = isProjectThread(p)
-            ? paneTitle(p, getState().workspaces.find(w => w.id === p.workspace)?.label)
-            : p.label || p.name || p.title || p.tabLabel || p.agent!
+          const title = spaceTitle(p, getState().workspaces.find(w => w.id === p.workspace))
           hits.push({ ...hit, pane: p.id, agent: result.kind || p.agent!, title })
         }
       } catch { limited = true }

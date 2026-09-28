@@ -659,6 +659,8 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 /* Le chemin passe sur une 2e ligne masquée s'il n'a pas la place d'au moins « · /pr… ». */
 .agent-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 20px 8px; margin-top: 3px; min-width: 0; max-height: 16px; overflow: hidden; }
 .agent-meta .pill { font-size: 11px; }
+.agent-meta .agent-subtitle { min-width: 0; max-width: 42%; font: 400 11px/1.2 var(--mono); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-meta .agent-subtitle::before { content: '· '; color: var(--dim); }
 .agent-meta .where { flex: 1 1 0; min-width: 6ch; font: 400 11px/1.2 var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agent-meta .where::before { content: '· '; }
 .agent-meta .agent-machine {
