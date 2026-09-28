@@ -39,7 +39,7 @@ export function openMirror(ws: WsLike, url: URL): TermSession | null {
   }
   const machine = machineOfPane(pane)
   if (!machine || !machine.sock()) {
-    ws.send(JSON.stringify({ type: 'terminal.closed', reason: machine ? `${machine.label} injoignable` : 'machine inconnue' }))
+    ws.send(JSON.stringify({ type: 'terminal.closed', reason: machine ? `${machine.label} injoignable` : 'machine inconnue', code: machine ? 'unreachable' : 'unknown_machine', machine: machine?.label }))
     ws.close(4503, 'machine injoignable')
     return null
   }

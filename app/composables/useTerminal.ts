@@ -6,6 +6,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { terminalPixelWidth } from '~/utils/terminalSize'
 import { bindTerminalSelection } from '~/utils/terminalSelection'
+import { terminalClosedText, terminalUnavailableText } from '~/utils/terminalClosed'
 
 const TERM_FONT = '"Wherdr Symbols", "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace'
 
@@ -200,7 +201,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         const current = term
         current.write(b64ToBytes(m.bytes || ''), () => selectionHint.refresh(current))
       } else if (m.type === 'terminal.closed') {
-        closedReason = m.reason || ''
+        closedReason = terminalClosedText(m)
       } else if (m.type === 'herdr.stderr') {
         if (!/^run 'herdr --help'/.test(m.message)) lastErr = m.message
       } else if (m.type === 'web.error') {
@@ -225,7 +226,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       if (!gotFrame && twsRetry >= 3) {
         twsRetry = 0
         const why = lastErr || closedReason
-        return opts.setBanner({ text: `${t('Terminal indisponible')}${why ? ` : ${why}` : ''}`, btn: t('Réessayer'), fn: () => { opts.setBanner(null); connect(false) } })
+        return opts.setBanner({ text: terminalUnavailableText(why), btn: t('Réessayer'), fn: () => { opts.setBanner(null); connect(false) } })
       }
       twsTimer = setTimeout(() => connect(false), Math.min(6000, 400 * 2 ** twsRetry++))
     }
