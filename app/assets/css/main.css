@@ -1281,6 +1281,9 @@ body.kb .composer { padding-bottom: 8px; }
 .projects-board-lists .also { display: block; margin-top: 2px; color: var(--muted); font: 500 11px/1.4 var(--mono); }
 .projects-board-lists p { margin: 3px 0 0; color: var(--text-2); font-size: 13px; line-height: 1.45; }
 .projects-plugin-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
+.plugin-input { display: grid; gap: 10px; }
+.plugin-input-label { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--text-2); }
+.plugin-input-hint { font-size: 12px; color: var(--text-2); }
 .projects-plugin-note { margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .projects-plugin-settings { padding-top: 2px; }
 .settings-typing .encrypted-toggle { margin-top: 14px; }

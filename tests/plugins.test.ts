@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { logResult, needsConfirm, normalizeActions, outputTail, shortLabel } from '../server/utils/pluginPolicy'
+import { actionContext, logResult, needsConfirm, normalizeActions, outputTail, shortLabel } from '../server/utils/pluginPolicy'
 
 // Réponses réelles de Herdr 0.9.1 (plugin.action.list / plugin.list), dont les
 // actions du plugin herdr-projects.
@@ -20,6 +20,14 @@ const PLUGINS = [
 ]
 
 describe('actions des plugins', () => {
+  it('vise le space affiché, même si Herdr est focalisé ailleurs, sur chaque machine', () => {
+    const pane = { id: 'abcd1234~w2:p1', tab: 'abcd1234~w2:t1', workspace: 'abcd1234~w2', cwd: '/tmp/project-b' }
+    const spaces = [{ id: 'w1', label: 'Autre space' }, { id: 'abcd1234~w2', label: 'Nouveau space' }]
+    expect(actionContext(pane as never, spaces as never)).toMatchObject({
+      focused_pane_id: 'w2:p1', tab_id: 'w2:t1', workspace_id: 'w2',
+      workspace_label: 'Nouveau space', workspace_cwd: '/tmp/project-b', focused_pane_cwd: '/tmp/project-b',
+    })
+  })
   it('répartit les actions entre le menu de l’agent et celui de la machine', () => {
     const list = normalizeActions(ACTIONS, PLUGINS)
     const pick = (id: string) => list.find(a => a.id === id)!

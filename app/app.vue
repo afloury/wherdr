@@ -74,6 +74,7 @@ onUnmounted(() => {
     <RenameSheet />
     <CommandResultSheet />
     <ConfirmSheet />
+    <PluginInputSheet />
     <ImageLightbox />
     <LockScreen v-if="locked" />
   </UApp>

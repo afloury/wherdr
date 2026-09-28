@@ -46,7 +46,7 @@ export function pluginBinary(plugins: RawPluginFull[]): string | null {
 }
 
 const bins = new Map<string, { at: number, bin: Promise<string | null> }>()
-function binaryOn(m: Machine): Promise<string | null> {
+export function binaryOn(m: Machine): Promise<string | null> {
   const hit = bins.get(m.key)
   if (hit && Date.now() - hit.at < BIN_TTL_MS) return hit.bin
   const bin = herdrOn<{ plugins?: RawPluginFull[] }>(m.key, 'plugin.list', {}, 8000)

@@ -10,6 +10,7 @@
 //  - selection seulement : il faut du texte sélectionné dans le terminal, ce
 //    que wherdr n'a pas : écartée.
 import type { PluginAction, PluginActionResult } from '../../shared/types'
+import type { Pane, Workspace } from '../../shared/types'
 
 export interface RawPluginAction {
   plugin_id?: string
@@ -31,6 +32,18 @@ export interface RawPluginLog {
 // Identifiants acceptés par Herdr (cf. doc des plugins) : on ne relaie rien d'autre.
 export const PLUGIN_ID_RE = /^[A-Za-z0-9.:_-]{1,100}$/
 export const ACTION_ID_RE = /^[A-Za-z0-9:_-]{1,100}$/
+
+export function actionContext(pane: Pane | null, workspaces: Workspace[] = []): Record<string, string> {
+  const context: Record<string, string> = { invocation_source: 'wherdr' }
+  if (!pane) return context
+  const local = (id: string) => id.includes('~') ? id.slice(id.indexOf('~') + 1) : id
+  const workspace = workspaces.find(w => w.id === pane.workspace)
+  return {
+    ...context,
+    focused_pane_id: local(pane.id), tab_id: local(pane.tab), workspace_id: local(pane.workspace),
+    workspace_label: workspace?.label || '', workspace_cwd: pane.cwd || '', focused_pane_cwd: pane.cwd || '',
+  }
+}
 
 const AGENT_CONTEXTS = ['workspace', 'tab', 'pane']
 
