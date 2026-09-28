@@ -29,9 +29,11 @@ async function press(a: WaitAction) {
 <template>
   <div class="choices" :class="{ 'choices-screen': screen }">
     <p class="eyebrow choices-eyebrow"><i />{{ t('À toi') }}</p>
+    <!-- Demande de permission : ce qui est demandé, à la place du texte brut de la boîte. -->
+    <PromptDetailBlock v-if="prompt?.detail" :detail="prompt.detail" />
     <p v-if="question" class="choices-q">{{ question }}</p>
     <p v-if="note" class="choices-note">{{ note }}</p>
-    <pre v-if="screen && screen.lines.length" class="choices-screen-text" :class="{ wrap: !tabular }">{{ screen.lines.join('\n') }}</pre>
+    <pre v-if="screen && screen.lines.length && !prompt?.detail" class="choices-screen-text" :class="{ wrap: !tabular }">{{ screen.lines.join('\n') }}</pre>
     <div v-if="prompt" class="choices-list">
       <button
         v-for="(o, i) in prompt.options" :key="i" type="button" :class="{ cur: i === prompt.cursor }"

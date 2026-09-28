@@ -566,6 +566,13 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .card.blocked .card-preview { color: var(--text); }
+/* Demande de permission : ce qui est demandé, en une ligne (commande, fichier). */
+.card-detail {
+  flex: 0 0 calc(100% - 50px); min-width: 0; margin: -2px 0 0 50px; display: flex; align-items: baseline; gap: 8px;
+  padding: 6px 8px; background: var(--bg-2); border: 1px solid var(--line); border-left: 2px solid var(--rose);
+}
+.card-detail-tool { flex: none; font: 600 10px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--rose); max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-detail code { min-width: 0; font: 400 12px/1.35 var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card-choices { flex: 0 0 calc(100% - 50px); min-width: 0; display: flex; flex-direction: column; gap: 6px; margin-left: 50px; }
 .card-choices button {
   display: flex; align-items: center; gap: 10px; text-align: left;
@@ -1000,6 +1007,34 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 }
 .choices-eyebrow { color: var(--rose); margin: 0 2px 8px; }
 .choices-eyebrow i { width: 7px; height: 7px; background: var(--rose); animation: pulse .9s ease-in-out infinite; }
+/* Demande de permission : outil, description, fichier, commande ou diff entiers. */
+.choices:has(.prompt-detail) { max-height: 62%; }
+.prompt-detail { margin: 0 0 12px; border: 1px solid var(--line); border-left: 2px solid var(--rose); background: var(--bg-2); }
+.prompt-detail-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; padding: 8px 10px 6px; }
+.prompt-detail-tool { font: 600 10.5px/1.3 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--rose); }
+.prompt-detail-desc { font-size: 13px; line-height: 1.4; color: var(--text-2); overflow-wrap: anywhere; }
+.prompt-detail-file { display: flex; align-items: center; gap: 6px; margin: 0; padding: 0 10px 6px; font: 400 12.5px/1.35 var(--mono); color: var(--text); min-width: 0; }
+.prompt-detail-file .iconify { flex: none; width: 13px; height: 13px; color: var(--muted); }
+.prompt-detail-file .path { min-width: 0; overflow-wrap: anywhere; }
+.prompt-detail-stats { flex: none; display: flex; gap: 6px; margin-left: auto; }
+.prompt-detail-file .add { color: var(--green); }
+.prompt-detail-file .del { color: var(--rose); }
+.prompt-detail-code {
+  margin: 0; padding: 8px 10px; border-top: 1px solid var(--line); background: var(--bg);
+  font: 400 12.5px/1.5 var(--mono); color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere;
+  max-height: 60vh; overflow: auto; -webkit-overflow-scrolling: touch;
+}
+.prompt-detail-code.collapsed { max-height: calc(6 * 1.5em + 16px); }
+.prompt-detail-code code > span { display: block; min-height: 1.5em; margin: 0 -10px; padding: 0 10px; }
+.prompt-detail-code .add { color: var(--green); background: color-mix(in srgb, var(--green) 10%, transparent); }
+.prompt-detail-code .del { color: var(--rose); background: color-mix(in srgb, var(--rose) 10%, transparent); }
+.prompt-detail-note { margin: 0; padding: 6px 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ochre); }
+.prompt-detail-more {
+  display: flex; align-items: center; gap: 6px; width: 100%; padding: 7px 10px; border-top: 1px solid var(--line);
+  font: 500 10.5px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); text-align: left;
+}
+.prompt-detail-more:hover { color: var(--text); background: var(--surface-2); }
+.prompt-detail-more .iconify { width: 13px; height: 13px; }
 .choices-q { font-size: 14.5px; font-weight: 600; color: var(--text); margin: 0 2px 10px; line-height: 1.4; }
 .choices-list { display: flex; flex-direction: column; }
 .choices-list button {
@@ -1678,6 +1713,11 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
 }
 .plan-cell.blocked .plan-cell-line { color: var(--text); }
+.plan-cell-detail {
+  flex: none; min-width: 0; padding: 4px 6px; font: 400 11.5px/1.35 var(--mono); color: var(--text);
+  background: var(--bg-2); border: 1px solid var(--line); border-left: 2px solid var(--rose);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .plan-cell-choices { display: flex; flex-direction: column; gap: 5px; flex: none; }
 .plan-cell-choices button {
   display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 8px; text-align: left;
