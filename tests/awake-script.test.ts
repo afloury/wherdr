@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -12,7 +12,20 @@ const pidFile = () => join(home, '.cache/herdr-web/awake.pid')
 const env = () => ({ PATH: `${bin}:/usr/bin:/bin`, HOME: home })
 const control = (mode: string, lid = '0') => execFileSync('sh', ['-c', CONTROL_SCRIPT, 'sh', mode, lid], { env: env(), encoding: 'utf8' })
 const status = () => parseAwakeStatus(execFileSync('sh', ['-c', STATUS_SCRIPT], { env: env(), encoding: 'utf8' }))
-const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch { return false } }
+// Un zombie (orphelin non récolté, ex. Docker sans --init) compte comme mort.
+function alive(pid: number) {
+  try { process.kill(pid, 0) }
+  catch { return false }
+  try { return !/^\d+ \(.*\) Z/.test(readFileSync(`/proc/${pid}/stat`, 'utf8')) }
+  catch { return true }
+}
+async function gone(pid: number) {
+  for (let i = 0; i < 50 && alive(pid); i++) await new Promise(r => setTimeout(r, 100))
+  return !alive(pid)
+}
+// Les scripts lisent /proc (Linux) ou `ps -p` (macOS) : sans l'un ni l'autre, on ignore.
+const canInspect = existsSync(`/proc/${process.pid}/stat`)
+  || Boolean(spawnSync('ps', ['-p', String(process.pid), '-o', 'args='], { encoding: 'utf8' }).stdout?.trim())
 const events = () => readFileSync(log, 'utf8').trim().split('\n')
 function fakeCaffeinate(body: string) {
   writeFileSync(join(bin, 'caffeinate'), `#!/bin/sh\n${body}\n`)
@@ -20,7 +33,7 @@ function fakeCaffeinate(body: string) {
 }
 const LIVE = `echo "start $$" >> "${'$'}LOG"; trap 'echo "stop $$" >> "${'$'}LOG"; kill $! 2>/dev/null; exit 0' TERM; sleep 30 & wait`
 
-describe.skipIf(process.platform === 'win32')('keep-awake control script', () => {
+describe.skipIf(process.platform === 'win32' || !canInspect)('keep-awake control script', () => {
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'awake-'))
     home = join(root, 'home'); bin = join(root, 'bin'); log = join(root, 'events.log')
@@ -36,7 +49,7 @@ describe.skipIf(process.platform === 'win32')('keep-awake control script', () =>
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('re-arming starts the new inhibitor before stopping the old one', () => {
+  it('re-arming starts the new inhibitor before stopping the old one', async () => {
     const first = parseControl(control('fourHours'))
     expect(first).toMatchObject({ started: expect.any(Number) })
     const a = (first as { started: number }).started
@@ -45,6 +58,7 @@ describe.skipIf(process.platform === 'win32')('keep-awake control script', () =>
     expect(b).not.toBe(a)
     expect(alive(b)).toBe(true)
     // Aucun instant sans assertion : B démarre, puis A s'arrête.
+    await gone(a)
     expect(events()).toEqual([`start ${a}`, `start ${b}`, `stop ${a}`])
     const s = status()
     expect(s.active).toBe(true)
@@ -74,10 +88,10 @@ describe.skipIf(process.platform === 'win32')('keep-awake control script', () =>
     expect(status().active).toBe(true)
   })
 
-  it('shows "not awake" once the recorded process is dead', () => {
+  it('shows "not awake" once the recorded process is dead', async () => {
     const a = (parseControl(control('hour')) as { started: number }).started
     process.kill(a)
-    execFileSync('sh', ['-c', `while kill -0 ${a} 2>/dev/null; do sleep 0.1; done`])
+    expect(await gone(a)).toBe(true)
     expect(status().active).toBe(false)
     expect(existsSync(pidFile())).toBe(false)
   })
@@ -101,12 +115,11 @@ describe.skipIf(process.platform === 'win32')('keep-awake control script', () =>
     process.kill(a)
   })
 
-  it('turns off by exact PID', () => {
+  it('turns off by exact PID', async () => {
     const a = (parseControl(control('untilOff')) as { started: number }).started
     expect(status()).toMatchObject({ active: true, until: null })
     expect(control('off')).toContain('stopped')
-    execFileSync('sh', ['-c', `while kill -0 ${a} 2>/dev/null; do sleep 0.1; done`])
-    expect(alive(a)).toBe(false)
+    expect(await gone(a)).toBe(true)
     expect(status().active).toBe(false)
   })
 })

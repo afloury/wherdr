@@ -16,16 +16,24 @@ export interface SleepAssertion { name: string, kind: string, seconds: number, o
 
 // Reconnaît notre inhibiteur : PID + commande exacte + heure de démarrage
 // enregistrée (un PID recyclé par un autre caffeinate n'est pas le nôtre).
-const OURS = `ours() {
+// Portable : /proc sous Linux (procps comme busybox, dont le ps n'a pas -p),
+// ps -p sur macOS. Un zombie a un cmdline vide : pas le nôtre.
+const OURS = `cmdline() {
+  if [ -r "/proc/$1/cmdline" ]; then tr '\\000' ' ' < "/proc/$1/cmdline"
+  else ps -p "$1" -o args= 2>/dev/null; fi
+}
+started() {
+  if [ -r "/proc/$1/stat" ]; then sed 's/.*) //' "/proc/$1/stat" | cut -d' ' -f20
+  else ps -p "$1" -o lstart= 2>/dev/null | sed 's/ *$//'; fi
+}
+ours() {
   case "$1" in *[!0-9]*|'') return 1;; esac
-  args=$(ps -p "$1" -o args= 2>/dev/null) || return 1
-  case "$args" in
+  case "$(cmdline "$1")" in
     caffeinate\\ -i*|*/caffeinate\\ -i*|systemd-inhibit\\ --what=idle:sleep*|*/systemd-inhibit\\ --what=idle:sleep*) ;;
     *) return 1;;
   esac
   [ -z "\${2:-}" ] || [ "$(started "$1")" = "$2" ]
-}
-started() { ps -p "$1" -o lstart= 2>/dev/null | sed 's/ *$//'; }`
+}`
 
 export const STATUS_SCRIPT = `${OURS}
 platform=$(uname -s)
