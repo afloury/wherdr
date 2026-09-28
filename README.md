@@ -98,7 +98,8 @@ Claude Code, Codex and other product names are trademarks of their respective ow
   (arrow keys work on a focused divider); changes go to Herdr itself.
 - **Spaces and tabs**: sidebar with every space, tabs at the top, active tab remembered per space.
 - **Keyboard shortcuts**: `Ctrl/⌘+K` global search across agents and conversations,
-  `Alt+Shift+arrows` to swap the current pane with its neighbour, `Esc` to close dialogs,
+  `Alt+Shift+arrows` to swap the current pane with its neighbour,
+  `Ctrl/⌘+Alt+arrows` to move focus to the neighbouring pane in a side-by-side tab, `Esc` to close dialogs,
   `Enter` to send and `Shift+Enter` for a new line.
 - **Project board** for [herdr-projects](https://herdr.dev): coordinator and threads grouped
   under their project, and a side panel with the project's task lists (to test, to decide,
