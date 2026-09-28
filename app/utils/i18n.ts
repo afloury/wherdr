@@ -223,7 +223,7 @@ const EN: Record<string, string> = {
   'Marquer comme lu': 'Mark as read', 'Marquer comme non lu': 'Mark as unread',
   'Commandes': 'Commands', 'Réinitialisation': 'Resets', 'restant': 'left', 'Semaine': 'Week', 'réinitialisé': 'reset', 'fenêtre neuve': 'new window', 'à l’instant': 'just now', 'Quotas restants': 'Remaining quotas', 'Installer': 'Install', 'Copier la commande': 'Copy command', 'cette machine': 'this machine', 'Ils apparaîtront après le prochain échange avec un Claude.': 'They will show after the next exchange with a Claude.', 'mis à jour': 'updated', 'utilisé': 'used', 'Résultat de la commande': 'Command output',
   'Agent': 'Agent', 'Précédent': 'Previous', 'Suivant': 'Next',
-  'Conversation compactée': 'Conversation compacted', 'Interrompu': 'Interrupted',
+  'Conversation compactée': 'Conversation compacted', 'Conversation effacée': 'Conversation cleared', 'Interrompu': 'Interrupted',
   'app verrouillée': 'App is locked', 'origine refusée': 'Origin refused', 'introuvable': 'Not found',
   'En attente de ta réponse — détail dans l’onglet Terminal': 'Waiting for your reply — details in the Terminal tab',
   'Copier': 'Copy', 'Copier la réponse': 'Copy reply', 'Aucune sortie': 'No output', 'Copié': 'Copied', 'Copie impossible': 'Copy failed',

@@ -241,7 +241,7 @@ type Block =
   | { k: 'who', key: string }
   | { k: 'user', key: string, text: string, srcs: string[], time: string | null }
   | { k: 'assistant', key: string, id: string, text: string, html: string }
-  | { k: 'cmd' | 'system', key: string, text: string }
+  | { k: 'system', key: string, text: string }
   | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean }
   | { k: 'tools', key: string, list: ChatItem[], live: boolean }
   | { k: 'turn', key: string, text: string, copy: string | null }
@@ -332,14 +332,15 @@ const blocks = computed<Block[]>(() => {
     } else if (it.role === 'assistant') {
       lastReply = it.text
       out.push({ k: 'assistant', key, id: replyId(it), text: it.text, html: md(it.text) })
-    } else if (it.role === 'bash' || (it.role === 'cmd' && (it.out || it.err))) {
+    } else if (it.role === 'bash') {
       const o = it.out || ''
       const e = it.err || ''
       const lines = (o ? o.split('\n').length : 0) + (e ? e.split('\n').length : 0)
       out.push({ k: 'shell', key: `s:${it.ts}:${it.text.slice(0, 40)}`, bash: it.role === 'bash', text: it.text, out: o, err: e, lines, long: lines > SHELL_LINES || o.length + e.length > 1500 })
     } else {
       const effort = it.role === 'system' ? it.text.match(/^Effort : (low|medium|high|xhigh|max|ultracode) \(cette session\)$/) : null
-      out.push({ k: it.role === 'cmd' ? 'cmd' : 'system', key, text: effort
+      // Commande locale « / » : séparateur système d'une ligne (« /cost → … »).
+      out.push({ k: 'system', key, text: effort
         ? tl(`Effort : ${effort[1]} (cette session)`, `Effort: ${effort[1]} (this session)`)
         : it.role === 'system' ? t(it.text) : it.text })
     }
@@ -726,7 +727,6 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
                 </template>
               </UChatMessage>
 
-              <div v-else-if="b.k === 'cmd'" class="msg-cmd"><span>❯</span>{{ b.text }}</div>
               <div v-else-if="b.k === 'shell'" class="msg-shell" :class="{ bash: b.bash, long: b.long, open: isOpen(b.key) }">
                 <div class="msg-shell-cmd">
                   <span class="msg-shell-sign" aria-hidden="true">{{ b.bash ? '!' : '❯' }}</span>

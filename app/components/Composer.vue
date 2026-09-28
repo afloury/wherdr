@@ -309,6 +309,7 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
 
 <template>
   <div class="composer">
+    <div v-if="pane?.claudeNotice" class="composer-notice" role="status">{{ pane.claudeNotice }}</div>
     <div v-if="slashOpen" class="slash-menu" role="listbox" :aria-label="t('Commandes')">
       <div ref="slashListEl" class="slash-list">
         <button

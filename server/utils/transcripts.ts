@@ -108,6 +108,11 @@ export function toolSummary(name: string, input: Json, home = ''): string {
 // contenu. On ne montre que les confirmations d'un vrai changement, sous forme
 // de ligne système. « Kept model as … » et « Cancelled » restent invisibles.
 const isPickerCmd = (name: string) => /^\/(?:model|effort)$/.test(name.trim())
+// /clear, /new, /reset : séparateur « Conversation effacée », sans sortie (ce que
+// Claude Code écrit après n'est pas une sortie de la commande, souvent un statut
+// comme « Update installed »). /compact garde sa ligne (ses consignes), sans
+// sortie non plus : son séparateur vient de compact_boundary.
+const isResetCmd = (name: string) => /^\/(?:clear|new|reset)$/.test(name.trim())
 function modelChange(text: unknown): string | null {
   const m = String(text || '').match(/<local-command-stdout>\s*Set model to\s+`([^`]+)`/)
   return m ? `/model → ${cleanModelName(m[1]!)}` : null
@@ -142,6 +147,18 @@ export function commandOutput(text: string): { out: string, err: string } | null
   return { out: cleanOut(out), err: cleanOut(err) }
 }
 
+// Sortie d'une commande locale réduite à une ligne utile : jamais le texte de
+// l'écran que Claude Code y recopie parfois (spinner, « Running N shell
+// command… », astuces, statuts de mise à jour).
+const SCREEN_JUNK = /^(?:[*✢✳✶✻✽·⏺●◯○]\s*\S+…|Running \d+ (?:shell )?commands?…?|Tip:|Context Usage$|\(no content\)$|✔?\s*Update installed|Restart to update|.*\besc to interrupt\b|.*\bctrl\+\w+ to\b|⎿)/i
+export function usefulOutput(out: string | undefined, err: string | undefined): string | null {
+  for (const raw of `${err || ''}\n${out || ''}`.split('\n')) {
+    const l = raw.replace(/^[\s⎿]+/, '').trim()
+    if (l && !SCREEN_JUNK.test(l)) return clip(l, 160)
+  }
+  return null
+}
+
 export function parseClaude(lines: Lines, home = ''): Parsed {
   const items: Parsed = []
   const tools = new Map<string, ChatItem>()
@@ -163,20 +180,35 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
   }
   // Commande (« ! » ou « / ») qui attend sa sortie : le message suivant.
   let open: ChatItem | null = null
+  // Commande « / » suivie d'une réponse de l'agent (skill, commande perso,
+  // /review…) : c'est un message de l'utilisateur, pas un bloc de commande.
+  let pendingCmd: ChatItem | null = null
   const pushCmd = (it: ChatItem) => {
+    if (/^\/compact\b/.test(it.text)) it.out = ''
     items.push(it)
     open = it
+    pendingCmd = it.role === 'cmd' ? it : null
   }
   // Sortie de la commande juste avant ; ailleurs (menus /model, /effort…) ignorée.
   const output = (text: string) => {
     const o = commandOutput(text)
     if (!o) return false
+    if (open && !open.text) {
+      open = null
+      return true
+    }
     if (open && items[items.length - 1] === open && open.out === undefined) {
       open.out = o.out
       open.err = o.err
     }
     open = null
     return true
+  }
+  // /clear… : séparateur, et la sortie qui suit est avalée (item sans rendu).
+  const swallow = (ts: string | null) => {
+    items.push({ role: 'system', text: 'Conversation effacée', ts })
+    pendingCmd = null
+    open = { role: 'system', text: '', ts }
   }
   // Message texte « spécial » (commande, sortie) : traité ici.
   const special = (text: string, ts: string | null) => {
@@ -222,6 +254,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       const images = parts.filter(p => p.type === 'image').length
       if (text || images) {
         items.push({ role: 'user', text: clip(text), images, ref: images ? ref : undefined, ts: d.attachment.timestamp || ts })
+        pendingCmd = null
         said(text, d.attachment.timestamp || ts)
       }
       continue
@@ -236,6 +269,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       const cmd = d.content.match(/<command-name>([^<]*)<\/command-name>/)
       const changed = effortChange(d.content) || modelChange(d.content)
       if (changed) items.push({ role: 'system', text: changed, ts })
+      else if (cmd && isResetCmd(cmd[1]!)) swallow(ts)
       else if (cmd && !isPickerCmd(cmd[1]!)) {
         const args = (d.content.match(/<command-args>([^<]*)<\/command-args>/) || [])[1] || ''
         pushCmd({ role: 'cmd', text: `${cmd[1]} ${args}`.trim(), ts })
@@ -245,12 +279,22 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     }
     if (d.type !== 'user' && d.type !== 'assistant') continue
     const content = d.message && d.message.content
+    if (d.type === 'assistant' && pendingCmd && Array.isArray(content) && content.some((c: Json) => c.type === 'tool_use' || (c.type === 'text' && String(c.text || '').trim()))) {
+      const c: ChatItem = pendingCmd
+      c.role = 'user'
+      delete c.out
+      delete c.err
+      said(c.text, c.ts || null)
+      pendingCmd = null
+      if (open === c) open = null
+    }
     if (d.type === 'user') {
       if (d.isCompactSummary) continue
       if (typeof content === 'string') {
         const cmd = content.match(/<command-name>([^<]*)<\/command-name>/)
         const changed = effortChange(content) || modelChange(content)
         if (changed) items.push({ role: 'system', text: changed, ts })
+        else if (cmd && isResetCmd(cmd[1]!)) swallow(ts)
         else if (cmd && isPickerCmd(cmd[1]!)) open = null
         else if (cmd) {
           const args = (content.match(/<command-args>([^<]*)<\/command-args>/) || [])[1] || ''
@@ -263,6 +307,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
           const text = humanText(content)
           if (text) {
             items.push({ role: 'user', text: clip(text), ts })
+            pendingCmd = null
             said(text, ts)
           }
         }
@@ -285,6 +330,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       }
       if (text.trim() || images) {
         items.push({ role: 'user', text: clip(text.trim()), images, ref: images ? ref : undefined, ts })
+        pendingCmd = null
         said(text, ts)
       }
     } else if (Array.isArray(content)) {
@@ -298,6 +344,14 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
         }
       }
     }
+  }
+  // Commandes locales : une ligne « /cmd → sortie utile », sans bloc.
+  for (const it of items) {
+    if (it.role !== 'cmd') continue
+    const line = usefulOutput(it.out, it.err)
+    if (line) it.text = `${it.text} → ${line}`
+    delete it.out
+    delete it.err
   }
   // Notifications de tâches en file : pas des messages de l'utilisateur.
   items.queue = queue.filter(q => !isNoise(q.text))

@@ -47,7 +47,7 @@ describe('Claude', () => {
     expect(texts).toContain('system:Conversation compactée')
     expect(texts).toContain('system:Interrompu')
     expect(texts).toContain('cmd:/compact garde le plan')
-    expect(texts).toContain('cmd:/context')
+    expect(texts.some(t => t.startsWith('cmd:/context'))).toBe(true)
     expect(texts.some(t => t.includes('bruit'))).toBe(false)
     expect(texts.some(t => t.includes('sous-agent'))).toBe(false)
     expect(texts.some(t => t.includes('Context Usage'))).toBe(false) // isMeta
@@ -191,5 +191,56 @@ describe('Codex à démon partagé (hook de session rapporté au mauvais pane)',
     roll('rnew', born.c + 600000)
     t.forget(a.id)
     expect((await t.locate({ ...a, agentSession: 'rnew' }))?.session).toBe('rnew')
+  })
+})
+
+describe('/clear', () => {
+  const j = (o: object) => JSON.stringify(o)
+  const u = (content: string, ts: string) => j({ type: 'user', timestamp: ts, message: { role: 'user', content } })
+  it('séparateur « Conversation effacée », sans sortie rattachée', () => {
+    const items = parseLines([
+      u('<command-name>/clear</command-name>\n<command-message>clear</command-message>\n<command-args></command-args>', '2026-01-01T00:00:00Z'),
+      u('<local-command-stdout>✔ Update installed · Restart to update</local-command-stdout>', '2026-01-01T00:00:01Z'),
+      j({ type: 'system', subtype: 'local_command', timestamp: '2026-01-01T00:00:02Z', content: '<command-name>/new</command-name><command-args></command-args>' }),
+      j({ type: 'system', subtype: 'local_command', timestamp: '2026-01-01T00:00:03Z', content: '<local-command-stdout>(no content)</local-command-stdout>' }),
+      u('<command-name>/compact</command-name><command-args></command-args>', '2026-01-01T00:00:04Z'),
+      u('<local-command-stdout>Compacted</local-command-stdout>', '2026-01-01T00:00:05Z'),
+    ].join('\n'), 'claude')
+    expect(items.map(i => `${i.role}:${i.text}`)).toEqual(['system:Conversation effacée', 'system:Conversation effacée', 'cmd:/compact'])
+    expect(items.some(i => i.out)).toBe(false)
+  })
+})
+
+describe('commandes « / »', () => {
+  const j = (o: object) => JSON.stringify(o)
+  const u = (content: unknown, ts: string, extra = {}) => j({ type: 'user', timestamp: ts, message: { role: 'user', content }, ...extra })
+  const a = (text: string, ts: string) => j({ type: 'assistant', timestamp: ts, message: { role: 'assistant', content: [{ type: 'text', text }] } })
+  const cmd = (name: string, args = '') => `<command-message>${name.slice(1)}</command-message>\n<command-name>${name}</command-name>\n<command-args>${args}</command-args>`
+  const run = (lines: string[]) => parseLines(lines.join('\n'), 'claude').map(i => `${i.role}:${i.text}${i.out ? `|${i.out}` : ''}`)
+
+  it('skill suivi d’une réponse : message utilisateur normal, sans sortie d’écran', () => {
+    expect(run([
+      u(cmd('/daily-log', 'hier'), '2026-01-01T00:00:00Z'),
+      u('<local-command-stdout>Running 1 shell command…\n* Working… (1s · ↓ 113 tokens · thinking)\nTip: use /help</local-command-stdout>', '2026-01-01T00:00:01Z'),
+      u([{ type: 'text', text: 'Base directory for this skill: /x' }], '2026-01-01T00:00:01Z', { isMeta: true }),
+      a('Voici le journal.', '2026-01-01T00:00:02Z'),
+    ])).toEqual(['user:/daily-log hier', 'assistant:Voici le journal.'])
+  })
+
+  it('commande locale : ligne système avec la sortie utile seulement', () => {
+    expect(run([
+      u(cmd('/cost'), '2026-01-01T00:00:00Z'),
+      u('<local-command-stdout>Total cost: $0.12\nTotal duration: 3m</local-command-stdout>', '2026-01-01T00:00:01Z'),
+      u(cmd('/status'), '2026-01-01T00:00:02Z'),
+      u('<local-command-stdout>* Working… (1s)\nTip: press ?</local-command-stdout>', '2026-01-01T00:00:03Z'),
+      a('Rien à voir.', '2026-01-01T00:00:10Z'),
+    ])).toEqual(['cmd:/cost → Total cost: $0.12', 'user:/status', 'assistant:Rien à voir.'])
+  })
+
+  it('commande « ! » : garde son bloc et sa vraie sortie', () => {
+    expect(run([
+      u('<bash-input>ls</bash-input>', '2026-01-01T00:00:00Z'),
+      u('<bash-stdout>a.txt</bash-stdout><bash-stderr></bash-stderr>', '2026-01-01T00:00:01Z'),
+    ])).toEqual(['bash:ls|a.txt'])
   })
 })

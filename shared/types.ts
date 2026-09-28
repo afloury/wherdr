@@ -97,6 +97,8 @@ export interface Pane {
   activity?: string
   // Claude au travail, conversation affichée : ce que montre son écran.
   claudeScreen?: ClaudeScreen
+  // Statut de Claude Code près du champ de saisie (« ✔ Update installed · Restart to update »).
+  claudeNotice?: string
 }
 
 export interface ChangeLine { kind: 'add' | 'del' | 'context' | 'hunk' | 'meta', text: string }
