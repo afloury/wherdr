@@ -9,7 +9,7 @@ const open = computed({
 <template>
   <AppSheet v-model:open="open">
     <div class="confirm">
-      <p>{{ confirmState.message }}</p>
+      <p style="white-space: pre-line">{{ confirmState.message }}</p>
       <div class="rename-actions">
         <UButton color="neutral" variant="ghost" class="sheet-btn" @click="answerConfirm(false)">{{ t('Annuler') }}</UButton>
         <UButton :color="confirmState.tone" variant="solid" class="sheet-btn" :class="{ 'hw-cta': confirmState.tone === 'primary' }" @click="answerConfirm(true)">{{ confirmState.action }}</UButton>

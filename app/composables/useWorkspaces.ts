@@ -115,14 +115,19 @@ function land(l: Landing) {
 // connu (fermer un onglet montre son voisin, comme Herdr ; la liste seulement
 // quand le space n'a plus rien). Renvoie la suite, appelée avec le résultat de
 // l'appel : réussi, cacher ce qui part, mémoriser l'onglet voisin, y aller.
-export function prepareClose(closing: Closing) {
+export function prepareClose(closing: Closing, groupWorkspaces: string[] = []) {
   const s = liveState.value
-  const landing = afterClose(s, closing, viewedNow())
-  const panes = s.panes.filter(p => ('tab' in closing ? p.tab === closing.tab : 'pane' in closing ? p.id === closing.pane : p.workspace === closing.workspace))
+  const viewed = viewedNow()
+  const viewedPane = viewed && 'pane' in viewed ? s.panes.find(p => p.id === viewed.pane) : undefined
+  const viewedWorkspace = viewedPane?.workspace ?? (viewed && 'tab' in viewed ? s.tabs?.find(t => t.id === viewed.tab)?.workspace : undefined)
+  const landing = groupWorkspaces.length && viewedWorkspace && groupWorkspaces.includes(viewedWorkspace)
+    ? 'home' : afterClose(s, closing, viewed)
+  const panes = s.panes.filter(p => groupWorkspaces.length ? groupWorkspaces.includes(p.workspace)
+    : 'tab' in closing ? p.tab === closing.tab : 'pane' in closing ? p.id === closing.pane : p.workspace === closing.workspace)
   // Onglet qui disparaît (fermé, ou son dernier pane) : son voisin devient
   // l'onglet mémorisé du space s'il l'était.
   const p0 = panes[0]
-  const tab = 'tab' in closing ? closing.tab : 'pane' in closing && p0 && s.panes.filter(p => p.tab === p0.tab).length === 1 ? p0.tab : null
+  const tab = groupWorkspaces.length ? null : 'tab' in closing ? closing.tab : 'pane' in closing && p0 && s.panes.filter(p => p.tab === p0.tab).length === 1 ? p0.tab : null
   const ws = p0?.workspace
   const next = tab ? neighborTab(s, tab) : null
   const ids = [...panes.map(p => p.id), ...new Set(panes.map(p => p.tab))]

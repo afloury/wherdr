@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { parseDiff, parseNumstat, parseStatus, readChanges } from '../server/utils/changes'
+import { parseDiff, parseNumstat, parseStatus, readChangeStatus, readChanges } from '../server/utils/changes'
 import type { Machine } from '../server/utils/machines'
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
@@ -56,5 +56,20 @@ describe('Git changes parsing', () => {
     expect(calls.length).toBeGreaterThan(4)
     expect(calls.every(c => !c.script.includes(cwd) && !c.script.includes(name))).toBe(true)
     expect(calls.some(c => c.args.includes(`${cwd}/${name}`))).toBe(true)
+  })
+
+  it('counts modified and untracked files for a remote close without requesting diffs', async () => {
+    const calls: string[] = []
+    const exec: NonNullable<Machine['exec']> = async (script) => {
+      calls.push(script)
+      const out = script.includes('rev-parse --show-toplevel') ? '/tmp/checkout\n'
+        : ' M src/app.ts\0?? new.txt\0?? another.txt\0'
+      return { code: 0, stdout: Buffer.from(out), stderr: '' }
+    }
+    expect(await readChangeStatus({ exec } as Machine, '/tmp/checkout')).toEqual({
+      git: true, modified: 1, untracked: 2, truncated: false,
+    })
+    expect(calls).toHaveLength(2)
+    expect(calls.every(s => !s.includes(' diff --'))).toBe(true)
   })
 })
