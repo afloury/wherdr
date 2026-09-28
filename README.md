@@ -388,7 +388,8 @@ container talks to the Herdr server running on the host.
 - Without a passkey, **anyone who can reach the address can control your agents**: every device
   on your tailnet, and every user of your tailnet if you share it.
 - Writes require `Content-Type: application/json` (or `image/*` for photos) and an `Origin`
-  matching the host, WebSockets included.
+  matching the host, WebSockets included. API reads sent from another site (links, images,
+  `no-cors` fetches, reported by the browser's `Sec-Fetch-Site`) are refused too.
 - A strict Content Security Policy limits scripts to the app's own origin and hashed inline
   scripts, and connections to that origin and its WebSockets. It also blocks embedded objects
   and framing.

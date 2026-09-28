@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createAuth } from '../server/utils/auth'
-import { allowedHosts, hostAllowed } from '../server/utils/hosts'
+import { allowedHosts, crossSiteRequest, hostAllowed } from '../server/utils/hosts'
 import { cspForHtml } from '../server/utils/csp'
 
 const req = (cookie = '') => ({ headers: { origin: 'http://localhost:7683', cookie } })
@@ -58,4 +58,16 @@ it('autorise uniquement les scripts inline exacts du HTML Nuxt', () => {
   expect(policy.match(/script-src ([^;]+)/)?.[1]).not.toContain('unsafe-inline')
   expect(policy).toContain("frame-ancestors 'none'")
   expect(policy).toContain("connect-src 'self' ws://localhost:7690 wss://localhost:7690")
+})
+
+describe('crossSiteRequest', () => {
+  it('refuse une requête d’API lancée depuis un autre site, même localhost sur un autre port', () => {
+    expect(crossSiteRequest({ 'sec-fetch-site': 'cross-site' })).toBe(true)
+    expect(crossSiteRequest({ 'sec-fetch-site': 'same-site' })).toBe(true)
+  })
+  it('accepte l’app elle-même, une adresse tapée et les clients sans l’en-tête', () => {
+    expect(crossSiteRequest({ 'sec-fetch-site': 'same-origin' })).toBe(false)
+    expect(crossSiteRequest({ 'sec-fetch-site': 'none' })).toBe(false)
+    expect(crossSiteRequest({})).toBe(false)
+  })
 })
