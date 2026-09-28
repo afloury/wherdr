@@ -154,6 +154,11 @@ function machineMenu(m: MachineInfo) {
 // Actions des plugins de chaque machine en ligne (une seule : la locale).
 const onlineKeys = computed(() => JSON.stringify(multiMachine.value ? machines.value.filter(m => m.status === 'online').map(m => m.key) : (st.value.ok ? [''] : [])))
 watch(onlineKeys, (keys) => { for (const k of JSON.parse(keys) as string[]) loadPluginActions(k) }, { immediate: true })
+// Mode silence actif : cloche barrée à côté des réglages ; l'appui le coupe.
+const quietLabel = computed(() => tl('Silence actif — toucher pour réactiver les notifications', 'Do not disturb is on — tap to turn notifications back on'))
+const onQuietVisible = () => { if (document.visibilityState === 'visible') refreshQuiet() }
+onMounted(() => { refreshQuiet(); document.addEventListener('visibilitychange', onQuietVisible) })
+onBeforeUnmount(() => document.removeEventListener('visibilitychange', onQuietVisible))
 const soloPlugins = computed(() => !multiMachine.value && machinePluginActions('').length > 0)
 function openSoloPlugins() {
   haptic()
@@ -201,6 +206,9 @@ function openSearch() { emit('search') }
         </UTooltip>
         <UTooltip :text="tl('Rechercher agents et conversations', 'Search agents and conversations')" :disabled="!desk">
           <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Rechercher agents et conversations', 'Search agents and conversations')" @click="openSearch" />
+        </UTooltip>
+        <UTooltip v-if="quietCurrent" :text="quietLabel" :disabled="!desk">
+          <UButton icon="i-lucide-bell-off" color="neutral" variant="ghost" size="lg" class="icon-btn quiet-on" :aria-label="quietLabel" @click="endQuiet" />
         </UTooltip>
         <UTooltip :text="t('Réglages')" :disabled="!desk">
           <UButton

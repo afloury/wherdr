@@ -1307,6 +1307,12 @@ body.kb .composer { padding-bottom: 8px; }
 .settings-renderer-status { margin: 9px 2px 0; font: 500 11px/1.4 var(--mono); color: var(--teal); }
 .notify-caption { margin: 18px 2px 9px; font: 500 10.5px/1 var(--mono); letter-spacing: .13em; text-transform: uppercase; color: var(--muted); }
 .notify-hint { margin: 10px 2px 0; font-size: 12.5px; line-height: 1.4; }
+/* Mode silence : icône dans le titre, heure de fin en mono quand il est actif. */
+.quiet-toggle b { display: flex; align-items: center; gap: 8px; }
+.quiet-toggle b .iconify { width: 17px; height: 17px; color: var(--muted); }
+.notify-hint.quiet-end { font: 500 11.5px/1.4 var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--ochre); }
+/* Accueil : cloche barrée tant que le silence est actif (un appui le coupe). */
+.icon-btn.quiet-on { color: var(--ochre); }
 /* Thèmes : pastilles de couleurs, sélection repérée par l'accent. */
 .theme-list { display: grid; grid-template-columns: 1fr; border: 1px solid var(--line); }
 .theme-opt {
