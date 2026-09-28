@@ -14,7 +14,7 @@ export function pushConfig(appUrl: string): { enabled: boolean, subject: string 
 
 // Abonnement envoyé par le navigateur : le serveur postera ensuite vers
 // `endpoint`, donc seulement une adresse HTTPS (service push), avec ses clés.
-export function validPushSubscription(b: unknown): b is { endpoint: string, keys: { p256dh: string, auth: string } } {
+export function validPushSubscription(b: unknown): boolean {
   if (!b || typeof b !== 'object') return false
   const { endpoint, keys } = b as { endpoint?: unknown, keys?: { p256dh?: unknown, auth?: unknown } }
   if (typeof endpoint !== 'string' || endpoint.length > 2048) return false
