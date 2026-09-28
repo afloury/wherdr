@@ -242,7 +242,7 @@ const EN: Record<string, string> = {
   // Machines
   // Actions des plugins Herdr
   'Actions des plugins': 'Plugin actions', 'Exécuter': 'Run',
-  'Machine': 'Machine', 'Cette machine': 'This machine', 'en ligne': 'online', 'reconnexion…': 'reconnecting…',
+  'Machine': 'Machine', 'Cette machine': 'This machine', 'LOCAL': 'LOCAL', 'en ligne': 'online', 'reconnexion…': 'reconnecting…',
   'hors ligne': 'offline', 'Aucun agent sur cette machine.': 'No agents on this machine.', 'Aucun agent connu.': 'No known agents.',
   'machine inconnue': 'unknown machine',
   'Renommer la machine': 'Rename machine', 'Nom de la machine': 'Machine name', 'Machine renommée': 'Machine renamed',
