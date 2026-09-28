@@ -232,6 +232,8 @@ const SEQ: Record<string, string> = {
   '\x1bOP': 'f1', '\x1bOQ': 'f2', '\x1bOR': 'f3', '\x1bOS': 'f4',
 }
 // Une séquence d'échappement complète (CSI, SS3) ou Alt+caractère.
+const PASTE_START = '\x1b[200~'
+const PASTE_END = '\x1b[201~'
 const ESC_RE = /^\x1b(?:\[[0-9;?]*[ -/]*[@-~]|O[@-~]|[^[O])?/
 export function mirrorInput(data: string): MirrorInput[] {
   const out: MirrorInput[] = []
@@ -244,6 +246,12 @@ export function mirrorInput(data: string): MirrorInput[] {
     const last = out[out.length - 1]
     if (last && 'text' in last) last.text += s
     else out.push({ text: s })
+  }
+  // Collage entre crochets (mode 2004 activé par le programme) : le contenu
+  // est du texte, jamais des Entrée qui enverraient chaque ligne.
+  if (data.startsWith(PASTE_START) && data.endsWith(PASTE_END)) {
+    const body = data.slice(PASTE_START.length, -PASTE_END.length).replace(/\r\n?/g, '\n')
+    return body ? [{ text: body }] : []
   }
   // Collage de plusieurs lignes : du texte, retours compris.
   if (data.length > 1 && !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(data)) {
