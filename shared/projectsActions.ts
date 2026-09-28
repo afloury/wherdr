@@ -99,3 +99,34 @@ export function doctorLevel(line: string): 'ok' | 'warn' | 'fail' | null {
   const m = /^\[(ok|warn|fail)\s*\]/i.exec(line.trim())
   return m ? m[1]!.toLowerCase() as 'ok' | 'warn' | 'fail' : null
 }
+
+// Dépôt proposé pour « New project » : la racine Git du dossier du space
+// (`git rev-parse --show-toplevel`), sous le HOME de la machine. Jamais le HOME
+// lui-même (un dépôt de dotfiles n'est pas le dépôt d'un projet) ; sinon rien.
+export function proposedRepo(root: string | null | undefined, home: string): string {
+  const r = (root || '').trim().replace(/\/+$/, '')
+  const h = home.replace(/\/+$/, '')
+  return r.startsWith('/') && h && r.startsWith(`${h}/`) ? r : ''
+}
+
+// `herdr-projects ticker status` : « ticker: running » ou « ticker: not running ».
+export function tickerRunning(status: string | null | undefined): boolean {
+  return /^ticker: running\b/m.test(status || '')
+}
+
+// Écriture refusée par un système de fichiers en lecture seule (EROFS), telle
+// que herdr-projects la rapporte : « could not create <chemin>: Read-only file
+// system (os error 30) ». Message clair à la place, ou null pour une autre erreur.
+export function readOnlyMessage(error: string, o: { docker: boolean, lang?: 'fr' | 'en' }): string | null {
+  if (!/read-only file system|os error 30\b|EROFS/i.test(error)) return null
+  const path = /(\/[^:\n]*?):\s*Read-only file system/i.exec(error)?.[1] || ''
+  const fr = o.lang === 'fr'
+  if (o.docker) {
+    return fr
+      ? `wherdr tourne en Docker avec le HOME en lecture seule : herdr-projects ne peut pas écrire${path ? ` dans ${path}` : ''}. Montez son dossier de projets (~/.herdr-projects par défaut) en écriture dans docker-compose.yml (cf. README, « Herdr plugins »), puis relancez le conteneur.`
+      : `wherdr runs in Docker with your home folder read-only: herdr-projects cannot write${path ? ` to ${path}` : ''}. Mount its projects folder (~/.herdr-projects by default) read-write in docker-compose.yml (see README, “Herdr plugins”), then restart the container.`
+  }
+  return fr
+    ? `herdr-projects ne peut pas écrire${path ? ` dans ${path}` : ''} : système de fichiers en lecture seule.`
+    : `herdr-projects cannot write${path ? ` to ${path}` : ''}: read-only file system.`
+}

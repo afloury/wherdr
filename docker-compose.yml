@@ -23,6 +23,8 @@ services:
     container_name: herdr-web
     hostname: ${HOST_LABEL:-wherdr}
     restart: unless-stopped
+    # Init minimal en PID 1 : récupère les processus détachés (commandes de plugins).
+    init: true
     user: "${PUID:-1000}:${PGID:-1000}"
     environment:
       - PORT=${PORT:-7683}
@@ -62,3 +64,7 @@ services:
       # …et le dépôt des photos envoyées depuis le téléphone (purgé après 7 jours),
       # que les agents lisent par leur chemin.
       - ${HOST_HOME:-${HOME}}/.cache/herdr-web:${HOST_HOME:-${HOME}}/.cache/herdr-web
+      # Projets herdr-projects (New project, adopter, ouvrir, pause/reprise depuis
+      # l'app) : leur dossier racine, en écriture. Autre racine (`root` dans
+      # ~/.config/herdr-projects/config.toml) : monter celle-là à la place.
+      - ${HOST_HOME:-${HOME}}/.herdr-projects:${HOST_HOME:-${HOME}}/.herdr-projects

@@ -5,7 +5,7 @@
 // (plugin.log.list) quelques secondes pour donner le résultat.
 import type { PluginAction, PluginActionResult } from '../../shared/types'
 import { splitId } from '../../shared/ids'
-import { HERDR_BIN, HERDR_CHILD_ENV, HOME, log } from './env'
+import { HERDR_BIN, HERDR_CHILD_ENV, HOME, IN_DOCKER, log } from './env'
 import { execFile } from 'node:child_process'
 import { binaryOn } from './projectBoard'
 import { getState } from './state'
@@ -13,7 +13,7 @@ import { HerdrError, herdrOn, sleep } from './herdr'
 import { findPane } from './state'
 import { isGitRepo, machineFor, underHome } from './actions'
 import { ACTION_ID_RE, PLUGIN_ID_RE, REMOTE_PROJECTS_SCRIPT, type RawPlugin, type RawPluginAction, type RawPluginLog, actionContext, logResult, normalizeActions, outputTail, stripAnsi } from './pluginPolicy'
-import { PROJECT_INPUTS, cleanProjectInput, projectCommandArgs, setupHeader } from '../../shared/projectsActions'
+import { PROJECT_INPUTS, cleanProjectInput, projectCommandArgs, readOnlyMessage, setupHeader, tickerRunning } from '../../shared/projectsActions'
 
 // Liste gardée quelques secondes par machine (le menu la redemande à chaque ouverture).
 const CACHE_MS = 10000
@@ -60,10 +60,38 @@ async function projectsBin(m: Machine): Promise<string> {
   return bin
 }
 
-async function projectsCommand(m: Machine, args: string[]): Promise<string> {
+async function projectsCommand(m: Machine, args: string[], lang: 'fr' | 'en' = 'en'): Promise<string> {
   const r = await runProjects(m, await projectsBin(m), args)
-  if (r.code !== 0) throw new HerdrError('plugin_failed', r.stderr || r.stdout || `code ${r.code}`)
+  if (r.code !== 0) {
+    const error = r.stderr || r.stdout || `code ${r.code}`
+    // HOME en lecture seule (Docker) : dire quoi monter plutôt que l'erreur brute.
+    const readOnly = readOnlyMessage(error, { docker: m.local && IN_DOCKER, lang })
+    if (readOnly) log(`herdr-projects ${args[0]} : ${error}`)
+    throw new HerdrError(readOnly ? 'read_only' : 'plugin_failed', readOnly || error)
+  }
   return r.stdout
+}
+
+// En Docker, `open` et `adopt-workspace` lancent le ticker de herdr-projects
+// s'il ne tourne pas : il tournerait alors dans le conteneur (sans gh, HOME en
+// lecture seule, routines hors de l'environnement de l'hôte) et, de même
+// version, l'hôte ne le remplacerait pas. On l'arrête aussitôt : le prochain
+// `herdr-projects` lancé sur l'hôte (`thread start` du coordinateur, démarrage
+// de Herdr) en relance un au bon endroit.
+async function withoutContainerTicker<T>(m: Machine, run: () => Promise<T>): Promise<T> {
+  if (!m.local || !IN_DOCKER) return run()
+  const bin = await projectsBin(m)
+  const before = await runProjects(m, bin, ['ticker', 'status']).catch(() => null)
+  try { return await run() }
+  finally {
+    if (before && before.code === 0 && !tickerRunning(before.stdout)) {
+      const after = await runProjects(m, bin, ['ticker', 'status']).catch(() => null)
+      if (after && tickerRunning(after.stdout)) {
+        log('herdr-projects : ticker lancé dans le conteneur, arrêt demandé (il repartira sur l’hôte)')
+        runProjects(m, bin, ['ticker', 'stop']).then(r => r.code && log(`herdr-projects ticker stop : ${r.stderr || r.code}`))
+      }
+    }
+  }
 }
 
 // « Check setup » : `doctor` lancé comme les autres commandes de wherdr, avec en
@@ -120,17 +148,20 @@ export async function invokePluginAction(body: { machine?: unknown, pane_id?: un
     }
     const lang = (body as { lang?: unknown }).lang === 'fr' ? 'fr' : 'en'
     const args = projectCommandArgs(action, input, { pane: pane ? splitId(pane.id).local : undefined, cwd: pane?.cwd || undefined, session: m.session, lang })
-    const output = await projectsCommand(m, args)
-    // Le panneau « New project » ouvre ensuite le projet. Garder la création
-    // visible même si l’ouverture échoue : l’utilisateur peut la retenter.
-    if (action === 'new') {
-      const slug = /created `([^`]+)`/.exec(output)?.[1]
-      if (slug) {
-        try { return { status: 'succeeded', exitCode: 0, output: outputTail(`${output}\n${await projectsCommand(m, projectCommandArgs('open', { slug }, { session: m.session }))}`) } }
-        catch (e) { return { status: 'failed', exitCode: null, output: outputTail(`${output}\n${(e as Error).message}`) } }
+    const exec = async (): Promise<PluginActionResult> => {
+      const output = await projectsCommand(m, args, lang)
+      // Le panneau « New project » ouvre ensuite le projet. Garder la création
+      // visible même si l’ouverture échoue : l’utilisateur peut la retenter.
+      if (action === 'new') {
+        const slug = /created `([^`]+)`/.exec(output)?.[1]
+        if (slug) {
+          try { return { status: 'succeeded', exitCode: 0, output: outputTail(`${output}\n${await projectsCommand(m, projectCommandArgs('open', { slug }, { session: m.session }), lang)}`) } }
+          catch (e) { return { status: 'failed', exitCode: null, output: outputTail(`${output}\n${(e as Error).message}`) } }
+        }
       }
+      return { status: 'succeeded', exitCode: 0, output: outputTail(output) }
     }
-    return { status: 'succeeded', exitCode: 0, output: outputTail(output) }
+    return ['new', 'open', 'adopt-workspace'].includes(action) ? withoutContainerTicker(m, exec) : exec()
   }
 
   // Contexte explicite : sans lui, Herdr prendrait le pane actif du terminal

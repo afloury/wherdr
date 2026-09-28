@@ -78,6 +78,12 @@ const git = 'git --no-optional-locks -c core.fsmonitor=false -c core.hooksPath=/
 const generated = /(^|\/)(?:dist|build|generated|coverage|node_modules|\.nuxt)\/|(^|\/)(?:package-lock\.json|pnpm-lock\.yaml|yarn\.lock|Cargo\.lock|composer\.lock|Gemfile\.lock|.*\.min\.(?:js|css)|.*\.map|.*\.generated\.[^/]+)$/i
 const emptySet = (): ChangeSet => ({ files: [], truncated: false, count: 0 })
 
+// Racine du dépôt Git qui contient `cwd` (vide hors dépôt), mêmes options en lecture seule.
+export async function gitToplevel(m: Machine, cwd: string): Promise<string> {
+  const out = await runner(m)(`cd "$1" 2>/dev/null && ${git} rev-parse --show-toplevel 2>/dev/null || true`, [cwd]).catch(() => Buffer.alloc(0))
+  return out.toString('utf8').trim()
+}
+
 // État léger pour la confirmation de fermeture : mêmes options Git en lecture
 // seule que la vue Changements, sans calculer les diffs fichier par fichier.
 export async function readChangeStatus(m: Machine, cwd: string) {

@@ -91,10 +91,11 @@ async function prepareForm(target: Target, action: string) {
     if (toRaw(pluginFormState.target) === target) pluginFormState.empty = conversationEmpty(r)
   }
   if (action === 'adopt-workspace' || action === 'new') {
-    // Dépôt du space courant, proposé pour « New project ».
+    // Racine du dépôt Git du space courant, proposée pour « New project » ;
+    // rien hors d'un dépôt (ni pour le HOME lui-même).
     if (!pane.cwd) return
-    const r = await api<{ git: boolean }>(`/api/isgit?machine=${encodeURIComponent(pane.machine || '')}&path=${encodeURIComponent(pane.cwd)}`).catch(() => null)
-    if (toRaw(pluginFormState.target) === target && r?.git && !pluginFormState.repo) pluginFormState.repo = pane.cwd
+    const r = await api<{ root: string | null }>(`/api/gitroot?machine=${encodeURIComponent(pane.machine || '')}&path=${encodeURIComponent(pane.cwd)}`).catch(() => null)
+    if (toRaw(pluginFormState.target) === target && r?.root && !pluginFormState.repo) pluginFormState.repo = r.root
   }
 }
 // Nom de la machine ; une seule : HOST_LABEL.
