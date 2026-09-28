@@ -1365,7 +1365,16 @@ body.kb .composer { padding-bottom: 8px; }
 
 .dir-browser { display: flex; flex-direction: column; min-height: 100%; }
 .dir-top { display: flex; align-items: center; gap: 8px; margin: 2px 0 10px; }
-.dir-path { font: 13px/1.2 var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; flex: 1; }
+.dir-go { display: flex; flex: 1; min-width: 0; }
+.dir-input {
+  flex: 1; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid var(--line); border-right: 0;
+  background: var(--bg); color: var(--text-strong); font: 16px/1 var(--mono); border-radius: 0; outline: none;
+}
+.dir-input:focus { border-color: var(--text-strong); }
+.dir-input[aria-invalid="true"] { border-color: var(--danger); }
+.dir-go > button { border-radius: 0; height: 34px; width: 34px; justify-content: center; }
+.dir-go-error { margin: -4px 0 10px; }
+@media (max-width: 480px) { .dir-parent-label { display: none; } }
 .dir-list { display: flex; flex-direction: column; flex: 1; border-top: 1px solid var(--line-soft); }
 .dir-list button {
   display: flex; align-items: center; gap: 12px; text-align: left;

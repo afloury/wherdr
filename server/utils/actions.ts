@@ -199,7 +199,8 @@ export async function listDirs(p: string | null, machine: unknown = ''): Promise
     if (r.code !== 0) throw new HerdrError('bad_path', `dossier illisible : ${dir}`)
     raw = parseDirList(r.stdout.toString('utf8'))
   } else {
-    raw = await listDirsLocal(dir)
+    try { raw = await listDirsLocal(dir) }
+    catch { throw new HerdrError('bad_path', `dossier illisible : ${dir}`) }
   }
   const out = raw.map(e => ({ name: e.name, path: px.join(dir, e.name), git: e.git }))
   out.sort((a, b) => (Number(b.git) - Number(a.git)) || a.name.localeCompare(b.name))
