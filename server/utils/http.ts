@@ -89,5 +89,7 @@ export function sendImage(event: H3Event, img: { type: string, body: Buffer }) {
   setResponseHeader(event, 'content-type', img.type)
   setResponseHeader(event, 'cache-control', 'private, max-age=86400')
   setResponseHeader(event, 'x-content-type-options', 'nosniff')
+  // Ouverte seule dans un onglet, l'image n'exécute rien.
+  setResponseHeader(event, 'content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox")
   return img.body
 }
