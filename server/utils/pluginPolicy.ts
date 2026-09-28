@@ -33,6 +33,10 @@ export interface RawPluginLog {
 export const PLUGIN_ID_RE = /^[A-Za-z0-9.:_-]{1,100}$/
 export const ACTION_ID_RE = /^[A-Za-z0-9:_-]{1,100}$/
 
+// Binaire herdr-projects sur une machine distante : `$1` = binaire herdr (à
+// exporter, sinon le plugin ne le voit pas), `$2` = binaire du plugin, puis ses arguments.
+export const REMOTE_PROJECTS_SCRIPT = 'export HERDR_BIN_PATH="$1"; shift; bin="$1"; shift; exec "$bin" "$@"'
+
 export function actionContext(pane: Pane | null, workspaces: Workspace[] = []): Record<string, string> {
   const context: Record<string, string> = { invocation_source: 'wherdr' }
   if (!pane) return context

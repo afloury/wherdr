@@ -74,7 +74,10 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   }
   const readCookie = (req: ReqLike) => {
     const c = String(req.headers.cookie || '').split(/;\s*/).find(s => s.startsWith(`${AUTH_COOKIE}=`))
-    return c ? decodeURIComponent(c.slice(AUTH_COOKIE.length + 1)) : null
+    if (!c) return null
+    // Cookie abîmé (« %E0 »…) : simplement pas de session, jamais une erreur 500.
+    try { return decodeURIComponent(c.slice(AUTH_COOKIE.length + 1)) }
+    catch { return null }
   }
   const challengeClient = (req: ReqLike) => {
     const c = String(req.headers.cookie || '').split(/;\s*/).find(s => s.startsWith(`${CHALLENGE_COOKIE}=`))

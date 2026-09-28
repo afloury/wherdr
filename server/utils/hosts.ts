@@ -26,3 +26,12 @@ export function hostAllowed(host: string | undefined, names = allowedHosts()): b
   const name = hostname(host || '')
   return Boolean(name && names.has(name))
 }
+
+// Requête d'API lancée depuis une autre page (lien, <img>, fetch sans CORS) :
+// certaines lectures agissent sur un pane (GET /api/models ouvre /model). Les
+// navigateurs récents le disent dans Sec-Fetch-Site ; sans cet en-tête (curl,
+// anciens navigateurs), la requête est acceptée comme avant.
+export function crossSiteRequest(headers: Record<string, string | string[] | undefined>): boolean {
+  const site = headers['sec-fetch-site']
+  return typeof site === 'string' && site !== 'same-origin' && site !== 'none'
+}

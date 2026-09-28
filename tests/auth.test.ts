@@ -85,3 +85,12 @@ describe('auth', () => {
     await expect(a.registerOptions(req())).rejects.toMatchObject({ code: 'locked' })
   })
 })
+
+describe('auth : cookie abîmé', () => {
+  it('reste verrouillé sans lever d’erreur', () => {
+    const a = createAuth({ dataDir: dir() })
+    withKey(a)
+    expect(a.isUnlocked(req('hw_session=%E0%A4%A'))).toBe(false)
+    expect(a.status(req('hw_session=%E0%A4%A')).unlocked).toBe(false)
+  })
+})

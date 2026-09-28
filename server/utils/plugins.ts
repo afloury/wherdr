@@ -12,7 +12,7 @@ import { getState } from './state'
 import { HerdrError, herdrOn, sleep } from './herdr'
 import { findPane } from './state'
 import { isGitRepo, machineFor, underHome } from './actions'
-import { ACTION_ID_RE, PLUGIN_ID_RE, type RawPlugin, type RawPluginAction, type RawPluginLog, actionContext, logResult, normalizeActions, outputTail, stripAnsi } from './pluginPolicy'
+import { ACTION_ID_RE, PLUGIN_ID_RE, REMOTE_PROJECTS_SCRIPT, type RawPlugin, type RawPluginAction, type RawPluginLog, actionContext, logResult, normalizeActions, outputTail, stripAnsi } from './pluginPolicy'
 import { PROJECT_INPUTS, cleanProjectInput, projectCommandArgs, setupHeader } from '../../shared/projectsActions'
 
 // Liste gardée quelques secondes par machine (le menu la redemande à chaque ouverture).
@@ -43,7 +43,7 @@ export function pluginInputFields(plugin: string, action: string): string[] {
 type Machine = ReturnType<typeof machineFor>
 async function runProjects(m: Machine, bin: string, args: string[]): Promise<{ code: number, stdout: string, stderr: string }> {
   if (m.exec) {
-    const r = await m.exec('HERDR_BIN_PATH="$1"; shift; bin="$1"; shift; exec "$bin" "$@"', [(m as { bin?: string }).bin || 'herdr', bin, ...args], { timeoutMs: 60000 })
+    const r = await m.exec(REMOTE_PROJECTS_SCRIPT, [(m as { bin?: string }).bin || 'herdr', bin, ...args], { timeoutMs: 60000 })
     return { code: r.code ?? 1, stdout: r.stdout.toString('utf8').trim(), stderr: r.stderr.trim() }
   }
   return new Promise(resolve => execFile(bin, args, {
