@@ -17,8 +17,9 @@ let pointerType = ''
 let touchMenuOpenedAt = 0
 
 const ws = computed(() => herdrState.value.workspaces.find(w => w.id === props.pane.workspace))
-// Worktree : la branche (libellé du workspace) plutôt que le long chemin.
-const branch = computed(() => (ws.value && ws.value.worktree ? ws.value.label : null))
+const branch = computed(() => ws.value?.branch || null)
+const title = computed(() => spaceTitle(props.pane, ws.value))
+const subtitle = computed(() => conversationSubtitle(props.pane, ws.value))
 // Sélection (ordinateur) : le pane regardé, ou pour un space un de ses panes / onglets.
 const route = useRoute()
 const selected = computed(() => {
@@ -37,12 +38,9 @@ const where = computed(() => {
   // Space : le pane dont viennent l'état et l'aperçu (et son onglet s'il y en a plusieurs).
   if (space.value) {
     const s = space.value
-    return [s.tabs.length > 1 ? `${t('Onglet')} ${s.leadTab.tab.label || s.leadTab.tab.number}` : '', paneTitle(p)].filter(Boolean).join(' · ')
+    return [s.tabs.length > 1 ? `${t('Onglet')} ${s.leadTab.tab.label || s.leadTab.tab.number}` : '', subtitle.value].filter(Boolean).join(' · ')
   }
-  if (branch.value) return branch.value === paneTitle(p) ? '' : branch.value
-  const parts = [workspaceLabel(herdrState.value, p), shortPath(p.cwd)].filter(Boolean)
-  if (parts[0] === parts[1]) parts.pop()
-  return parts.join(' · ')
+  return [subtitle.value, branch.value || shortPath(p.cwd)].filter(Boolean).join(' · ')
 })
 const prompt = computed(() => (props.pane.status === 'blocked' ? props.pane.prompt : undefined))
 const preview = computed(() => (prompt.value ? prompt.value.question : props.pane.preview))
@@ -76,7 +74,7 @@ const contextItems = computed(() => toDropdown(space.value ? [
   ...workspaceItems(space.value.workspace.id),
 ] : [
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
-  { label: t('Renommer'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = props.pane.id } },
+  { label: t('Renommer l’espace'), icon: 'i-lucide-pencil', run: () => { if (ws.value) renameWorkspace(ws.value.id) } },
   ...paneSpaceItems(props.pane),
   ...paneWorkspaceItems(props.pane),
   { kind: 'separator' },
@@ -118,7 +116,7 @@ watch(() => props.pane.prompt, () => { busy.value = false })
       <AgentAvatar v-else :agent="pane.agent" />
       <div class="card-main">
         <div class="card-title">
-          <UIcon v-if="space && space.workspace.worktree" name="i-lucide-git-branch" class="card-title-branch" />{{ space ? space.workspace.label : paneTitle(pane) }}
+          {{ title }}
         </div>
         <div class="card-meta">
           <span v-if="tag" class="card-tag">{{ tag }}</span>

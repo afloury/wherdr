@@ -16,7 +16,7 @@ const active = ref(0)
 const agentMatches = computed(() => {
   const q = query.value.trim().toLocaleLowerCase()
   if (q.length < 2) return []
-  return herdrState.value.panes.filter(p => p.agent && [paneTitle(p), kindLabel(p.agent), p.name || ''].some(s => s.toLocaleLowerCase().includes(q))).slice(0, 12)
+  return herdrState.value.panes.filter(p => p.agent && [spaceTitle(p, herdrState.value.workspaces.find(w => w.id === p.workspace)), conversationSubtitle(p, herdrState.value.workspaces.find(w => w.id === p.workspace)), kindLabel(p.agent), p.name || ''].some(s => s.toLocaleLowerCase().includes(q))).slice(0, 12)
 })
 const input = ref<HTMLInputElement | null>(null)
 const list = ref<HTMLElement | null>(null)
@@ -35,7 +35,8 @@ const groups = computed(() => {
     const key = machineOf(id)
     return {
       id, items, agent: first.agent || pane?.agent, pane,
-      title: pane ? paneTitle(pane) : first.title,
+      title: pane ? spaceTitle(pane, herdrState.value.workspaces.find(w => w.id === pane.workspace)) : first.title,
+      subtitle: pane ? conversationSubtitle(pane, herdrState.value.workspaces.find(w => w.id === pane.workspace)) : '',
       machine: multiMachine.value ? machineName(key) : '',
       machineIcon: machineInfo(key)?.local ? 'i-lucide-server' : 'i-lucide-laptop',
     }
@@ -132,7 +133,7 @@ async function choose(hit: ConversationHit) {
         <p v-else-if="!busy && !hits.length && !agentMatches.length" class="global-search-note">{{ t('Aucun résultat') }}</p>
         <button v-for="(p, index) in agentMatches" :id="hitId(index)" :key="p.id" type="button" role="option" tabindex="-1" :aria-selected="index === active" class="global-search-agent-match" :class="{ active: index === active }" @mousemove="active = index" @click="chooseAgent(p)">
           <AgentAvatar :agent="p.agent" />
-          <span class="global-search-agent-main"><span class="global-search-agent-title">{{ paneTitle(p) }}</span><span class="global-search-agent-meta"><StatusPill :pane="p" kind /></span></span>
+          <span class="global-search-agent-main"><span class="global-search-agent-title">{{ spaceTitle(p, herdrState.workspaces.find(w => w.id === p.workspace)) }}</span><span class="global-search-agent-meta"><StatusPill :pane="p" kind /><span v-if="conversationSubtitle(p, herdrState.workspaces.find(w => w.id === p.workspace))">{{ conversationSubtitle(p, herdrState.workspaces.find(w => w.id === p.workspace)) }}</span></span></span>
           <UIcon name="i-lucide-arrow-up-right" />
         </button>
         <section v-for="g in groups" :key="g.id" class="global-search-group" :class="{ stale: busy }" role="group" :aria-label="g.title">
@@ -142,6 +143,7 @@ async function choose(hit: ConversationHit) {
               <div class="global-search-agent-title">{{ g.title }}</div>
               <div class="global-search-agent-meta">
                 <StatusPill :pane="g.pane" />
+                <span v-if="g.subtitle">{{ g.subtitle }}</span>
                 <span v-if="g.machine" class="global-search-machine"><UIcon :name="g.machineIcon" />{{ g.machine }}</span>
               </div>
             </div>

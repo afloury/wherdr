@@ -42,6 +42,9 @@ onUnmounted(() => {
 })
 
 const pane = computed(() => herdrState.value.panes.find(p => p.id === props.paneId))
+const workspace = computed(() => herdrState.value.workspaces.find(w => w.id === pane.value?.workspace))
+const subtitle = computed(() => pane.value ? conversationSubtitle(pane.value, workspace.value) : '')
+const tabName = computed(() => pane.value && herdrState.value.tabs?.filter(x => x.workspace === pane.value?.workspace).length! > 1 ? pane.value.tabLabel : '')
 // Onglet de ce pane (chaque conversation garde le sien).
 const viewMode = computed<PaneViewMode>({
   get: () => paneViewMode(props.paneId),
@@ -208,7 +211,7 @@ const agentMenu = computed<MenuItem[]>(() => {
   const p = pane.value
   const items: MenuItem[] = []
   if (p) items.push({ label: t('Voir les changements'), icon: 'i-lucide-file-diff', run: () => { changesOpen.value = true } })
-  if (p) items.push({ label: t('Renommer'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } })
+  if (p && workspace.value) items.push({ label: t('Renommer l’espace'), icon: 'i-lucide-pencil', run: () => renameWorkspace(workspace.value!.id) })
   // Diviser, déplacer vers un autre onglet (jamais de zoom ni de redimensionnement).
   if (p) items.push(...paneSpaceItems(p))
   // Actions des plugins Herdr de sa machine qui portent sur un workspace / pane.
@@ -373,9 +376,11 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         :aria-label="t('Retour')" @click="goBack"
       />
       <div class="agent-head">
-        <div class="agent-title">{{ pane ? paneTitle(pane) : '—' }}</div>
+        <div class="agent-title">{{ pane ? spaceTitle(pane, workspace) : '—' }}</div>
         <div class="agent-meta">
           <StatusPill :pane="pane" kind />
+          <span v-if="subtitle" class="agent-subtitle">{{ subtitle }}</span>
+          <span v-if="tabName" class="agent-subtitle">{{ tabName }}</span>
           <span v-if="machine" class="agent-machine" :class="machine.status" :title="machine.target ? `ssh ${machine.target}` : undefined">
             <UIcon :name="machine.local ? 'i-lucide-server' : 'i-lucide-laptop'" />{{ machineName(machine.key) }}
           </span>

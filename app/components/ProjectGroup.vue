@@ -71,6 +71,10 @@ function toggle() {
   collapsedProjects.value = c.includes(id.value) ? c.filter(k => k !== id.value) : [...c, id.value]
 }
 const ready = computed(() => props.group.panes.length - props.group.blocked - props.group.working)
+const projectTitle = computed(() => {
+  const p = props.group.coordinator || props.remote
+  return p ? spaceTitle(p, herdrState.value.workspaces.find(w => w.id === p.workspace)) : props.group.name
+})
 const tag = (p: Pane) => {
   if (p === props.group.coordinator) return t('coordinateur')
   const n = threadNumber(p)
@@ -82,7 +86,7 @@ const tag = (p: Pane) => {
   <section class="agent-group project" :class="{ collapsed, blocked: group.blocked > 0 }" :data-project="group.key">
     <button type="button" class="group-title project-head" :aria-expanded="!collapsed" @click="toggle">
       <UIcon name="i-lucide-chevron-down" class="project-chev" />
-      <span class="project-name">{{ group.name }}</span>
+      <span class="project-name">{{ projectTitle }}</span>
       <span class="count">{{ group.panes.length }}</span>
       <span class="project-sum">
         <span v-if="group.blocked" class="blocked"><i />{{ group.blocked }}<span class="project-sum-l">{{ t('à toi') }}</span></span>

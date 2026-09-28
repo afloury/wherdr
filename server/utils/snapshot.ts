@@ -21,6 +21,7 @@ export function reduceSnapshot(s: Json, machine = LOCAL, session = 'default'): H
     // Workspace ouvert sur un worktree Git (créé par Herdr, souvent une branche d'agent).
     worktree: Boolean(w.worktree && w.worktree.is_linked_worktree),
     ...(w.worktree && w.worktree.repo_key ? { repo: String(w.worktree.repo_key), repoName: String(w.worktree.repo_name || '') } : {}),
+    ...(w.worktree?.branch ? { branch: String(w.worktree.branch) } : {}),
   }))
   const layouts = new Map<string, Json>((s.layouts || []).filter((l: Json) => l && l.tab_id).map((l: Json) => [String(l.tab_id), l]))
   const tabs: Tab[] = (s.tabs || []).filter((t: Json) => t && t.tab_id).map((t: Json) => ({

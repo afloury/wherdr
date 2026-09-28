@@ -16,6 +16,10 @@ const snap = {
 }
 
 describe('reduceSnapshot', () => {
+  it('conserve la branche fournie par Herdr pour un worktree', () => {
+    const withBranch = { ...snap, workspaces: [{ ...snap.workspaces[0], worktree: { is_linked_worktree: true, branch: 'develop', repo_key: 'demo', repo_name: 'demo' } }] }
+    expect(reduceSnapshot(withBranch).workspaces[0]).toMatchObject({ label: 'herdr-web', worktree: true, branch: 'develop' })
+  })
   it('garde les onglets et leur disposition', () => {
     const s = reduceSnapshot(snap)
     expect(s.session).toBe('default')
