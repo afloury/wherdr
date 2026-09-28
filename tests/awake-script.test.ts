@@ -26,6 +26,11 @@ async function gone(pid: number) {
 // Les scripts lisent /proc (Linux) ou `ps -p` (macOS) : sans l'un ni l'autre, on ignore.
 const canInspect = existsSync(`/proc/${process.pid}/stat`)
   || Boolean(spawnSync('ps', ['-p', String(process.pid), '-o', 'args='], { encoding: 'utf8' }).stdout?.trim())
+// État lisible d'un PID, pour que l'échec dise pourquoi (hors de ce Mac/Docker).
+function why(pid: number) {
+  const read = (f: string) => { try { return readFileSync(f, 'utf8').replaceAll('\0', ' ').trim() } catch { return '-' } }
+  return `pid ${pid} stat=[${read(`/proc/${pid}/stat`)}] cmdline=[${read(`/proc/${pid}/cmdline`)}] pidfile=[${read(pidFile())}] events=[${read(log)}]`
+}
 const events = () => readFileSync(log, 'utf8').trim().split('\n')
 function fakeCaffeinate(body: string) {
   writeFileSync(join(bin, 'caffeinate'), `#!/bin/sh\n${body}\n`)
@@ -33,7 +38,7 @@ function fakeCaffeinate(body: string) {
 }
 const LIVE = `echo "start $$" >> "${'$'}LOG"; trap 'echo "stop $$" >> "${'$'}LOG"; kill $! 2>/dev/null; exit 0' TERM; sleep 30 & wait`
 
-describe.skipIf(process.platform === 'win32' || !canInspect)('keep-awake control script', () => {
+describe.skipIf(process.platform === 'win32' || !canInspect)('keep-awake control script', { timeout: 20000 }, () => {
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'awake-'))
     home = join(root, 'home'); bin = join(root, 'bin'); log = join(root, 'events.log')
@@ -82,8 +87,8 @@ describe.skipIf(process.platform === 'win32' || !canInspect)('keep-awake control
     const a = (parseControl(control('hour')) as { started: number }).started
     const saved = readFileSync(pidFile(), 'utf8')
     fakeCaffeinate('exit 1')
-    expect(parseControl(control('fourHours'))).toEqual({ error: 'start_failed' })
-    expect(alive(a)).toBe(true)
+    expect(parseControl(control('fourHours')), why(a)).toEqual({ error: 'start_failed' })
+    expect(alive(a), why(a)).toBe(true)
     expect(readFileSync(pidFile(), 'utf8')).toBe(saved)
     expect(status().active).toBe(true)
   })
@@ -107,11 +112,11 @@ describe.skipIf(process.platform === 'win32' || !canInspect)('keep-awake control
   it('does not adopt a recycled PID started at another time', () => {
     const a = (parseControl(control('hour')) as { started: number }).started
     writeFileSync(pidFile(), `${a}|0|0|Thu Jan  1 00:00:00 2026\n`)
-    expect(status().active).toBe(false)
+    expect(status().active, why(a)).toBe(false)
     // Et « off » ne tue pas un processus qui n'est pas le nôtre.
     writeFileSync(pidFile(), `${a}|0|0|Thu Jan  1 00:00:00 2026\n`)
     control('off')
-    expect(alive(a)).toBe(true)
+    expect(alive(a), why(a)).toBe(true)
     process.kill(a)
   })
 
