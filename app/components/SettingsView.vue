@@ -405,6 +405,7 @@ onMounted(() => {
             </label>
             <p class="notify-caption">{{ tl('Couper pour', 'Silence on') }}</p>
             <URadioGroup :model-value="quietScope" :items="quietScopeItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" @update:model-value="v => pickQuietScope(v as QuietScope)" />
+            <p v-if="!subscribed" class="muted notify-hint">{{ tl('« Cet appareil » demande d’activer les notifications ci-dessous.', '“This device” needs notifications turned on below.') }}</p>
             <p class="notify-caption">{{ tl('Durée', 'Duration') }}</p>
             <URadioGroup :model-value="quietDuration" :items="quietDurationItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" @update:model-value="v => pickQuietDuration(v as QuietDuration)" />
             <p class="muted notify-hint" :class="{ 'quiet-end': quietOn }">{{ quietEnd || tl('Retour automatique à la normale à la fin de la durée choisie.', 'Notifications come back on by themselves at the end.') }}</p>
