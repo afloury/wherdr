@@ -1793,7 +1793,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .plan-cell-choices button:disabled { opacity: .5; }
 
 /* Côte à côte (ordinateur) : une vue agent compacte par case, toutes vivantes ;
-   la case active a un trait d'accent en haut et le champ de saisie. */
+   la case active a une bordure d'accent (et reçoit le clavier). */
 .split { position: relative; flex: 1; min-height: 0; margin: 10px 12px 12px; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
 .split-box { position: absolute; display: flex; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); overflow: hidden; }
 .cell-view { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
@@ -1802,7 +1802,9 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
   padding: 6px 6px 6px 12px; column-gap: 8px; box-shadow: inset 0 2px 0 transparent;
 }
 .cell-view.active .agent-top { box-shadow: inset 0 2px 0 var(--mauve); }
-.cell-view:not(.active) .agent-title { color: var(--text-2); }
+/* Focus : seulement la bordure, par-dessus le contenu (rien d'autre ne bouge). */
+.cell-view::after { content: ""; position: absolute; inset: 0; z-index: 5; pointer-events: none; box-shadow: inset 0 0 0 1px transparent; }
+.cell-view.active::after { box-shadow: inset 0 0 0 1px var(--mauve); }
 .cell-view .agent-title { font-size: 14px; }
 .cell-view .agent-top .view-tabs { width: 220px; }
 /* Question de l'agent dans une case basse : elle défile au lieu de manger la case. */

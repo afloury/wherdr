@@ -21,7 +21,7 @@ import type { PaneViewMode } from '~/composables/useHerdr'
 import { neighborPane } from '#shared/layout'
 import { prefillDraft } from '#shared/projectBoard'
 import { swipeAxis, swipeOffset, swipeStep } from '~/utils/swipe'
-import { showComposer, terminalAttachment } from '~/utils/viewMode'
+import { cellMode, showComposer, terminalAttachment } from '~/utils/viewMode'
 
 const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, grip?: boolean }>()
 const emit = defineEmits<{ activate: [] }>()
@@ -53,12 +53,12 @@ const viewMode = computed<PaneViewMode>({
 })
 // État pas encore reçu (ouverture depuis une notification) : on attend de
 // savoir si c'est un agent, pour ne pas ouvrir le terminal pour rien.
-// Case : la conversation, sinon (terminal, ou onglet Terminal de la case
-// active) le miroir.
+// Case : le mode mémorisé du pane (conversation ou miroir du terminal), que la
+// case ait le focus ou non ; le focus ne change que la bordure et la saisie.
 const mode = computed<PaneViewMode | 'mirror' | null>(() => {
   const p = pane.value
   if (!p) return null
-  if (props.cell) return hasChat(p) && !(props.active && viewMode.value === 'term') ? 'chat' : 'mirror'
+  if (props.cell) return cellMode({ chat: hasChat(p), viewMode: viewMode.value })
   // Projet : onglet du téléphone seulement (colonne à droite sur ordinateur).
   if (viewMode.value === 'project') return projectTab.value ? 'project' : hasChat(p) ? 'chat' : 'term'
   return hasChat(p) ? viewMode.value : 'term'
@@ -209,7 +209,7 @@ const machine = computed(() => (multiMachine.value && pane.value ? machineInfo(p
 const machineDown = computed(() => Boolean(machine.value && machine.value.status !== 'online'))
 const changesOpen = ref(false)
 const attachInput = ref<HTMLInputElement | null>(null)
-const composerShown = computed(() => showComposer({ desk: desk.value, live: live.value, mode: mode.value }))
+const composerShown = computed(() => showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) }))
 const canAttachTerminal = computed(() => terminalAttachment({
   desk: desk.value, live: live.value, mode: mode.value,
   available: Boolean(pane.value && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value)),
@@ -448,7 +448,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
           v-if="controls.term" icon="i-lucide-square-terminal" color="neutral" variant="ghost" size="lg" class="icon-btn mode-btn"
           :class="{ on: mode === 'term' }" :aria-label="t('Terminal')" :aria-pressed="mode === 'term'" @click="toggleMode('term')"
         />
-        <UTooltip v-if="hasChat(pane) && live" :text="t('Rechercher')" :disabled="!desk">
+        <UTooltip v-if="hasChat(pane) && (live || cell)" :text="t('Rechercher')" :disabled="!desk">
           <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :class="{ on: searchOpen }" :aria-label="t('Rechercher')" @click="toggleSearch" />
         </UTooltip>
         <UDropdownMenu v-if="desk" :items="dropdownItems" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
