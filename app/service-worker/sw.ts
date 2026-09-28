@@ -1,4 +1,4 @@
-// Service worker de herdr-web : installable + notifications.
+// Service worker de wherdr : installable + notifications.
 // Tout passe par le réseau d'abord (l'app n'a de sens que connectée au serveur) ;
 // le cache ne sert qu'à afficher la coquille si le réseau est coupé.
 // Jamais de cache pour /api/, /ws/ ni /uploads/.
