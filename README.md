@@ -1,6 +1,7 @@
 # wherdr
 
-**Drive the coding agents running in [Herdr](https://herdr.dev) from your phone.**
+**A complete workspace for the coding agents running in [Herdr](https://herdr.dev), on your
+computer and on your phone.**
 
 ## Quick start
 
@@ -11,12 +12,16 @@ git clone https://github.com/afloury/wherdr.git && cd wherdr
 npm ci && npm run build && npm start    # then open http://localhost:7683
 ```
 
-wherdr is a small self-hosted web app (installable as a PWA) that talks to the Herdr server on
-your machine. It lists your agents live — Claude Code, Codex and the other agents Herdr
-recognizes — and lets you read their conversations, answer their questions in one tap, send
-messages and photos, switch models, open the real terminal and get push notifications when an
-agent finishes or needs you. It is the same Herdr session your computer attaches to with
-`herdr`: nothing is copied, nothing runs in the cloud.
+wherdr is a small self-hosted web app that talks to the Herdr server on your machine. **On a
+computer**, it can replace the Herdr terminal client day to day: your spaces, tabs and split panes
+side by side, live conversations and real terminals, drag-and-drop layout, keyboard shortcuts
+and a project board for herdr-projects. **On a phone**, installed as a PWA, it is the companion
+that follows your agents when you are away: push notifications when an agent finishes or needs
+you, one-tap answers, quick replies and offline reading.
+
+It lists your agents live — Claude Code, Codex and the other agents Herdr recognizes — and works
+on the same Herdr session `herdr` attaches to: nothing is copied, nothing runs in the cloud. Use
+it on `localhost`, or from your other devices over Tailscale.
 
 > [!WARNING]
 > **wherdr is a remote shell on your machine.** Anyone who can reach it can start agents and
@@ -26,12 +31,11 @@ agent finishes or needs you. It is the same Herdr session your computer attaches
 > strongly recommended. See [Security](#security).
 
 <p align="center">
-  <img src="docs/screenshots/home-phone.png" alt="Agent list on a phone" width="260">
-  <img src="docs/screenshots/chat-phone.png" alt="Conversation view on a phone" width="260">
+  <img src="docs/screenshots/desktop.png" alt="wherdr on a computer: agent sidebar and conversation" height="360">
+  <img src="docs/screenshots/home-phone.png" alt="Agent list on a phone" height="360">
+  <img src="docs/screenshots/chat-phone.png" alt="Conversation view on a phone" height="360">
 </p>
-<p align="center">
-  <img src="docs/screenshots/desktop.png" alt="wherdr on a desktop browser" width="820">
-</p>
+<p align="center"><sub>Computer (left) and phone (right): the same agents, the same session.</sub></p>
 
 *Unofficial project. Not affiliated with or endorsed by Herdr, Anthropic or OpenAI. Claude,
 Claude Code, Codex and other product names are trademarks of their respective owners.*
@@ -57,15 +61,15 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 
 ## Features
 
-- **Live agent list**, grouped by state (your turn, working, ready), with a preview of
-  each agent's last answer. When an agent asks for permission or asks a question, the options
-  show on its card: **answer in one tap** without opening it.
+### Everywhere
+
+- **Live agent list**, one line per Herdr space, grouped by state (your turn, working, ready),
+  with a preview of each agent's last answer. When an agent asks for permission or asks a
+  question, the options show on its card: **answer in one tap** without opening it.
 - **Conversation view**: the agent's real transcript (Claude Code and Codex), rendered as
   Markdown, with grouped tool calls, images, timestamps, search and infinite scroll back to the
-  first message. Reading a conversation never touches the terminal, so it never resizes the
-  pane you are looking at on your computer.
-- **Terminal view**: the real terminal (xterm.js, WebGL or DOM renderer) with a key bar for
-  phones (Esc, Enter, arrows, Shift+Tab, Ctrl+C…), touch scrolling and take-over.
+  first message. Reading a conversation never touches the terminal, so it never resizes a pane.
+- **Terminal view**: the real terminal (xterm.js, WebGL or DOM renderer) with take-over.
 - **Composer**: send messages while the agent works (queued, cancellable), attach or paste
   photos, run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
   of local commands. Stop button while the agent works.
@@ -74,19 +78,38 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - **New agent**: pick an installed agent (or a plain terminal), a folder, optionally a separate
   Git **worktree** and branch, resume the last conversation, and queue a first message.
 - **Changes view**: Git status and diff of an agent's working folder; worktree management.
-- **Global search** across agents and conversations.
-- **herdr-projects**: coordinator and threads grouped under their project.
 - **Several machines**: agents of the SSH machines registered in Herdr (`herdr machine add`)
   appear in their own section; everything works the same on a remote agent.
-- **Named Herdr sessions**: switch between running sessions.
-- **Quotas**: remaining Claude and Codex usage limits on the home screen.
-- **Web Push notifications** when an agent finishes or needs you, and for
-  `herdr notification show` (plugins, scripts).
-- **Herdr plugin actions** in the menus.
-- **Offline reading** of the last known state and of recently opened conversations.
-- **Passkey lock** (Face ID, Touch ID, Windows Hello, Android…).
+- **Named Herdr sessions**, **quotas** (remaining Claude and Codex usage limits), **Herdr plugin
+  actions** in the menus, **passkey lock** (Face ID, Touch ID, Windows Hello, Android…).
 - **Themes**: herdr.dev (default) and Herdr's built-in themes, or follow your Herdr theme.
-- **English and French** interface. Phone and desktop layouts.
+  **English and French** interface.
+
+### On a computer
+
+- **Split panes, live**: a tab with several panes is drawn with Herdr's real layout; every pane
+  shows its conversation or terminal live, and the one you click becomes interactive.
+- **Rearrange the layout**: drag a pane onto another to move it, drag a divider to resize
+  (arrow keys work on a focused divider); changes go to Herdr itself.
+- **Spaces and tabs**: sidebar with every space, tabs at the top, active tab remembered per space.
+- **Keyboard shortcuts**: `Ctrl/⌘+K` global search across agents and conversations,
+  `Alt+Shift+arrows` to swap the current pane with its neighbour, `Esc` to close dialogs,
+  `Enter` to send and `Shift+Enter` for a new line.
+- **Project board** for [herdr-projects](https://herdr.dev): coordinator and threads grouped
+  under their project, and a side panel with the project's task lists (to test, to decide,
+  in progress, backlog) and one-click replies to the coordinator.
+- **Settings** in a sidebar, with desktop-only options such as the content width.
+
+### On a phone
+
+- **Installable app (PWA)** on iPhone and Android, with safe-area and keyboard handling.
+- **Web Push notifications** when an agent finishes or needs you (with its question), and for
+  `herdr notification show` (plugins, scripts).
+- **Quick replies**: answer permissions and questions in one tap from the agent list.
+- **Split tabs on a small screen**: a plan of the tab's panes in Herdr's proportions, then each
+  pane full screen with a mini-map and swipe to its neighbours.
+- **Terminal key bar** (Esc, Enter, arrows, Shift+Tab, Ctrl+C…) and touch scrolling.
+- **Offline reading** of the last known state and of recently opened conversations.
 
 ## How it works
 
@@ -128,7 +151,8 @@ Web Push, lock) runs in Nitro.
    tailnet with `tailscale serve`.
 3. On the phone: open `https://<server>.<tailnet>.ts.net:7683/`, **install the app** to the home
    screen, and enable the **passkey lock** (recommended) and **notifications** in Settings.
-4. On the computer: use the same address in a browser (desktop layout), next to your terminal.
+4. On the computer: use the same address in a browser (desktop layout); it can replace the
+   Herdr terminal client for daily work.
 
 ## Install with Docker
 
