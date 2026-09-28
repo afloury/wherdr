@@ -248,6 +248,7 @@ type Toaster = ReturnType<typeof useToast>
 let toaster: Toaster | null = null
 export function setToaster(t: Toaster) { toaster = t }
 // `detail` : ligne de plus, en petit (sortie d'une action de plugin…).
+export function clearToast() { toaster?.clear() }
 export function toast(msg: string, err = false, detail?: string) {
   if (!toaster) return
   toaster.clear()

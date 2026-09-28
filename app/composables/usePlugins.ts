@@ -79,6 +79,7 @@ export const pluginResultState = reactive<{
   open: boolean, title: string, result: PluginActionResult | null, reload: boolean,
 }>({ open: false, title: '', result: null, reload: false })
 export function showPluginResult(title: string, result: PluginActionResult, reload = false) {
+  clearToast()
   Object.assign(pluginResultState, { open: true, title, result, reload })
 }
 
@@ -105,14 +106,7 @@ async function runPluginAction(a: PluginAction, target: Target) {
     : tl(`sur ${machineLabelOf(target.machine)}`, `on ${machineLabelOf(target.machine)}`)
   // Toasts : « Projects · Pause project » (le libellé seul ne dit pas quel plugin).
   const name = a.label === a.title ? a.title : `${a.pluginName} · ${a.label}`
-  if (a.confirm) {
-    const ok = await askConfirm(
-      tl(`Lancer « ${a.label} » (${a.pluginName}) ${where} ? Le plugin exécute sa commande sur la machine.`,
-        `Run “${a.label}” (${a.pluginName}) ${where}? The plugin runs its command on the machine.`),
-      t('Exécuter'), 'primary',
-    )
-    if (!ok) return
-  }
+  // Saisie d'abord : la feuille, avec son bouton Exécuter, vaut confirmation.
   if (a.plugin === 'herdr-projects' && ['new', 'adopt-workspace', 'open', 'pause', 'resume'].includes(a.id)) {
     pluginFormState.action = a
     pluginFormState.target = target
@@ -125,6 +119,14 @@ async function runPluginAction(a: PluginAction, target: Target) {
     })
     prepareForm(target, a.id)
     return
+  }
+  if (a.confirm) {
+    const ok = await askConfirm(
+      tl(`Lancer « ${a.label} » (${a.pluginName}) ${where} ? Le plugin exécute sa commande sur la machine.`,
+        `Run “${a.label}” (${a.pluginName}) ${where}? The plugin runs its command on the machine.`),
+      t('Exécuter'), 'primary',
+    )
+    if (!ok) return
   }
   await executePluginAction(a, target)
 }

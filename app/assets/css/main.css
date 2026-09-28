@@ -1337,6 +1337,7 @@ body.kb .composer { padding-bottom: 8px; }
 .plugin-setup dt { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding-top: 2px; }
 .plugin-setup dd { margin: 0; font: 12px/1.5 var(--mono); color: var(--text); overflow-wrap: anywhere; }
 .plugin-setup dd.warn { color: var(--ochre); }
+@media (max-width: 520px) { .plugin-setup { grid-template-columns: minmax(0, 1fr); gap: 2px; } .plugin-setup dd { margin-bottom: 8px; } .plugin-setup dd:last-child { margin-bottom: 0; } }
 .plugin-setup-why { display: block; font-family: var(--sans); color: var(--ochre); }
 .plugin-result-status { margin: 0; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--done); }
 .plugin-result-status.warn { color: var(--ochre); }
