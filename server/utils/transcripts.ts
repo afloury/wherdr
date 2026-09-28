@@ -120,6 +120,28 @@ function effortChange(text: unknown): string | null {
     : m[1]!.trim()
 }
 
+// Commandes « ! » (mode bash de Claude Code) : <bash-input>cmd</bash-input>,
+// puis un message <bash-stdout>…</bash-stdout><bash-stderr>…</bash-stderr>.
+// Sorties des commandes locales : <local-command-stdout|stderr>.
+const MAX_OUT = 8000
+const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g
+const tagText = (s: string, tag: string) => {
+  const m = s.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`))
+  return m ? m[1]! : null
+}
+const cleanOut = (s: string | null) => clip(String(s || '').replace(ANSI, '').replace(/\r\n?/g, '\n').replace(/^\n+|\s+$/g, ''), MAX_OUT)
+export function bashInput(text: string): string | null {
+  const m = String(text || '').match(/^\s*<bash-input>([\s\S]*?)<\/bash-input>\s*$/)
+  return m ? m[1]!.trim() : null
+}
+export function commandOutput(text: string): { out: string, err: string } | null {
+  const s = String(text || '')
+  if (!/^\s*<(?:bash-std(?:out|err)|local-command-std(?:out|err))>/.test(s)) return null
+  const out = tagText(s, 'bash-stdout') ?? tagText(s, 'local-command-stdout')
+  const err = tagText(s, 'bash-stderr') ?? tagText(s, 'local-command-stderr')
+  return { out: cleanOut(out), err: cleanOut(err) }
+}
+
 export function parseClaude(lines: Lines, home = ''): Parsed {
   const items: Parsed = []
   const tools = new Map<string, ChatItem>()
@@ -138,6 +160,33 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     }
     const head = queue.find(q => !isNoise(q.text))
     if (queue.length === before && head && (!head.ts || !ts || head.ts <= ts)) started = head
+  }
+  // Commande (« ! » ou « / ») qui attend sa sortie : le message suivant.
+  let open: ChatItem | null = null
+  const pushCmd = (it: ChatItem) => {
+    items.push(it)
+    open = it
+  }
+  // Sortie de la commande juste avant ; ailleurs (menus /model, /effort…) ignorée.
+  const output = (text: string) => {
+    const o = commandOutput(text)
+    if (!o) return false
+    if (open && items[items.length - 1] === open && open.out === undefined) {
+      open.out = o.out
+      open.err = o.err
+    }
+    open = null
+    return true
+  }
+  // Message texte « spécial » (commande, sortie) : traité ici.
+  const special = (text: string, ts: string | null) => {
+    const bash = bashInput(text)
+    if (bash !== null) {
+      pushCmd({ role: 'bash', text: clip(bash, 2000), ts })
+      said(bash, ts)
+      return true
+    }
+    return output(text)
   }
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li]
@@ -189,8 +238,9 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       if (changed) items.push({ role: 'system', text: changed, ts })
       else if (cmd && !isPickerCmd(cmd[1]!)) {
         const args = (d.content.match(/<command-args>([^<]*)<\/command-args>/) || [])[1] || ''
-        items.push({ role: 'cmd', text: `${cmd[1]} ${args}`.trim(), ts })
-      }
+        pushCmd({ role: 'cmd', text: `${cmd[1]} ${args}`.trim(), ts })
+      } else if (cmd) open = null
+      else output(d.content)
       continue
     }
     if (d.type !== 'user' && d.type !== 'assistant') continue
@@ -201,10 +251,12 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
         const cmd = content.match(/<command-name>([^<]*)<\/command-name>/)
         const changed = effortChange(content) || modelChange(content)
         if (changed) items.push({ role: 'system', text: changed, ts })
-        else if (cmd && isPickerCmd(cmd[1]!)) continue
+        else if (cmd && isPickerCmd(cmd[1]!)) open = null
         else if (cmd) {
           const args = (content.match(/<command-args>([^<]*)<\/command-args>/) || [])[1] || ''
-          items.push({ role: 'cmd', text: `${cmd[1]} ${args}`.trim(), ts })
+          pushCmd({ role: 'cmd', text: `${cmd[1]} ${args}`.trim(), ts })
+        } else if (special(content, ts)) {
+          continue
         } else if (/^\[Request interrupted/.test(content)) {
           items.push({ role: 'system', text: 'Interrompu', ts })
         } else {
@@ -224,6 +276,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
           const t = tools.get(part.tool_use_id)
           if (t && part.is_error) t.error = true
         } else if (part.type === 'text') {
+          if (special(String(part.text || ''), ts)) continue
           const t = humanText(part.text)
           if (t === null) continue
           if (/^\[Request interrupted/.test(t)) items.push({ role: 'system', text: 'Interrompu', ts })

@@ -217,7 +217,7 @@ const EN: Record<string, string> = {
   'Conversation compactée': 'Conversation compacted', 'Interrompu': 'Interrupted',
   'app verrouillée': 'App is locked', 'origine refusée': 'Origin refused', 'introuvable': 'Not found',
   'En attente de ta réponse — détail dans l’onglet Terminal': 'Waiting for your reply — details in the Terminal tab',
-  'Copier': 'Copy', 'Copier la réponse': 'Copy reply', 'Copié': 'Copied', 'Copie impossible': 'Copy failed',
+  'Copier': 'Copy', 'Copier la réponse': 'Copy reply', 'Aucune sortie': 'No output', 'Copié': 'Copied', 'Copie impossible': 'Copy failed',
   'Entrée': 'Enter', 'envoyer': 'send', 'nouvelle ligne': 'new line', 'Arrêter': 'Stop',
   'image introuvable': 'Image not found', 'JSON invalide': 'Invalid JSON', 'requête trop grosse': 'Request too large',
   // Modèle

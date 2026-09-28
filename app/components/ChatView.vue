@@ -241,6 +241,7 @@ type Block =
   | { k: 'user', key: string, text: string, srcs: string[], time: string | null }
   | { k: 'assistant', key: string, id: string, text: string, html: string }
   | { k: 'cmd' | 'system', key: string, text: string }
+  | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean }
   | { k: 'tools', key: string, list: ChatItem[], live: boolean }
   | { k: 'turn', key: string, text: string, copy: string | null }
 
@@ -293,11 +294,12 @@ const blocks = computed<Block[]>(() => {
         lastDay = day
       }
     }
-    if (it.role === 'user' || it.role === 'cmd') {
+    if (it.role === 'user' || it.role === 'cmd' || it.role === 'bash') {
       flush()
       closeTurn()
       needWho = true
-      if (it.role === 'user') turn = { start: it.ts, end: null, tools: 0, replies: 0 }
+      // La sortie d'une commande « ! » part aussi à l'agent, qui peut y répondre.
+      if (it.role !== 'cmd') turn = { start: it.ts, end: null, tools: 0, replies: 0 }
     } else if (turn && it.ts) {
       turn.end = it.ts
       if (it.role === 'tool') turn.tools++
@@ -329,6 +331,11 @@ const blocks = computed<Block[]>(() => {
     } else if (it.role === 'assistant') {
       lastReply = it.text
       out.push({ k: 'assistant', key, id: replyId(it), text: it.text, html: md(it.text) })
+    } else if (it.role === 'bash' || (it.role === 'cmd' && (it.out || it.err))) {
+      const o = it.out || ''
+      const e = it.err || ''
+      const lines = (o ? o.split('\n').length : 0) + (e ? e.split('\n').length : 0)
+      out.push({ k: 'shell', key: `s:${it.ts}:${it.text.slice(0, 40)}`, bash: it.role === 'bash', text: it.text, out: o, err: e, lines, long: lines > SHELL_LINES || o.length + e.length > 1500 })
     } else {
       const effort = it.role === 'system' ? it.text.match(/^Effort : (low|medium|high|xhigh|max|ultracode) \(cette session\)$/) : null
       out.push({ k: it.role === 'cmd' ? 'cmd' : 'system', key, text: effort
@@ -347,6 +354,8 @@ const blocks = computed<Block[]>(() => {
   return out
 })
 
+// Sortie d'une commande : repliée au-delà de quelques lignes.
+const SHELL_LINES = 12
 // Bloc d'actions : trois ou moins, une ligne chacune ; au-delà, repliées
 // derrière « N actions · dernière action ».
 const isOpen = (key: string) => openTools.has(key)
@@ -391,10 +400,12 @@ const isUploadLine = (l: string) => l.includes('/.cache/herdr-web/uploads/')
 const queuedList = computed(() => {
   const p = props.pane
   // Déjà dans la conversation (le serveur ne l'a pas encore constaté) : on n'en
-  // montre pas deux exemplaires.
+  // montre pas deux exemplaires. « ! cmd » y figure comme commande sans « ! ».
   const inChat = (q: QueuedMessage) => {
     const n = normText(q.text.split('\n').filter(l => !isUploadLine(l)).join(' ')).slice(0, 60)
-    return Boolean(n) && items.value.some(i => i.role === 'user' && (!q.at || !i.ts || Date.parse(i.ts) >= q.at - 10000) && normText(i.text).includes(n))
+    const nb = normText(q.text.replace(/^\s*!\s*/, '')).slice(0, 60)
+    return Boolean(n) && items.value.some(i => (!q.at || !i.ts || Date.parse(i.ts) >= q.at - 10000)
+      && (i.role === 'user' ? normText(i.text).includes(n) : i.role === 'bash' && Boolean(nb) && normText(i.text).includes(nb)))
   }
   const mine = readOnly.value ? [] : [...(p.queued || [])]
   for (const q of props.localQueued) if (!mine.some(x => x.id === q.id)) mine.push(q)
@@ -693,6 +704,24 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
               </UChatMessage>
 
               <div v-else-if="b.k === 'cmd'" class="msg-cmd"><span>❯</span>{{ b.text }}</div>
+              <div v-else-if="b.k === 'shell'" class="msg-shell" :class="{ bash: b.bash, long: b.long, open: isOpen(b.key) }">
+                <div class="msg-shell-cmd">
+                  <span class="msg-shell-sign" aria-hidden="true">{{ b.bash ? '!' : '❯' }}</span>
+                  <code>{{ b.text }}</code>
+                  <UTooltip :text="t('Copier la commande')" :disabled="!desk">
+                    <UButton icon="i-lucide-copy" color="neutral" variant="ghost" size="xs" class="msg-shell-copy" :aria-label="t('Copier la commande')" @click="copyText(b.bash ? `!${b.text}` : b.text)" />
+                  </UTooltip>
+                </div>
+                <div v-if="b.out || b.err" class="msg-shell-body">
+                  <pre v-if="b.out" class="msg-shell-out">{{ b.out }}</pre>
+                  <pre v-if="b.err" class="msg-shell-out err">{{ b.err }}</pre>
+                </div>
+                <div v-else-if="b.bash" class="msg-shell-empty">{{ t('Aucune sortie') }}</div>
+                <button v-if="b.long" type="button" class="msg-shell-more" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
+                  <UIcon :name="isOpen(b.key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" />
+                  <span>{{ isOpen(b.key) ? t('Réduire') : tl(`Tout afficher · ${b.lines} lignes`, `Show all · ${b.lines} lines`) }}</span>
+                </button>
+              </div>
               <div v-else-if="b.k === 'system'" class="msg-system"><span>{{ b.text }}</span></div>
               <div v-else-if="b.k === 'turn'" class="turn-end">
                 <UTooltip v-if="b.copy" :text="t('Copier la réponse')" :disabled="!desk">
