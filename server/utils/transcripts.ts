@@ -316,6 +316,10 @@ export function parseLines(text: string, kind: string | null, base = 0, home = '
   return kind === 'codex' ? parseCodex(lines) : parseClaude(lines, home)
 }
 
+// Types servis tels quels : une image SVG (ou un type quelconque écrit dans la
+// transcription) ouverte depuis wherdr exécuterait ses scripts sur son origine.
+const IMAGE_TYPES = /^image\/(?:png|jpeg|gif|webp)$/
+
 // Première image n° `index` d'une ligne JSON de transcription (Claude ou Codex).
 export function extractImage(d: Json, index: number): { type: string, body: Buffer } | null {
   const found: { type: string, data: string }[] = []
@@ -333,7 +337,9 @@ export function extractImage(d: Json, index: number): { type: string, body: Buff
   visit(d.attachment && Array.isArray(d.attachment.prompt) ? d.attachment.prompt : null)
   visit(d.payload && Array.isArray(d.payload.content) ? d.payload.content : null)
   const img = found[index]
-  return img ? { type: img.type, body: Buffer.from(img.data, 'base64') } : null
+  if (!img) return null
+  const type = String(img.type).toLowerCase()
+  return { type: IMAGE_TYPES.test(type) ? type : 'application/octet-stream', body: Buffer.from(img.data, 'base64') }
 }
 
 // `fs` : disque de la machine où tournent les agents (local, ou distant par SSH).

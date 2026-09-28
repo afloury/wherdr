@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createTranscripts, parseLines, stripBlobs } from '../server/utils/transcripts'
+import { createTranscripts, extractImage, parseLines, stripBlobs } from '../server/utils/transcripts'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 const HOME = '/home/user'
@@ -78,6 +78,21 @@ describe('Codex', () => {
     const img = items.find(i => i.images)!
     expect(img.text).toBe('Regarde ça')
     expect(img.images).toBe(1)
+  })
+})
+
+describe('extractImage', () => {
+  const b64 = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>').toString('base64')
+  it('ne sert jamais une image SVG (ou un type inconnu) comme telle', () => {
+    const codex = { payload: { content: [{ type: 'input_image', image_url: `data:image/svg+xml;base64,${b64}` }] } }
+    expect(extractImage(codex, 0)!.type).toBe('application/octet-stream')
+    const claude = { message: { content: [{ type: 'image', source: { media_type: 'text/html', data: b64 } }] } }
+    expect(extractImage(claude, 0)!.type).toBe('application/octet-stream')
+  })
+  it('garde les types d’images courants', () => {
+    const d = { message: { content: [{ type: 'image', source: { media_type: 'image/PNG', data: b64 } }] } }
+    expect(extractImage(d, 0)!.type).toBe('image/png')
+    expect(extractImage(d, 1)).toBeNull()
   })
 })
 
