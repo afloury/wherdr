@@ -31,10 +31,10 @@ watch(open, (v) => { if (v) setTimeout(() => input.value?.inputRef?.focus(), 80)
       <p v-if="action === 'adopt-workspace'" class="plugin-input-hint">{{ tl('Le nom proposé vient du space sélectionné.', 'The suggested name comes from the selected space.') }}</p>
 
       <template v-if="isName">
-        <label class="plugin-input-label" for="plugin-goal">{{ tl('Objectif', 'Goal') }}</label>
-        <UTextarea id="plugin-goal" v-model="pluginFormState.goal" :rows="2" autoresize :maxrows="5" maxlength="400" size="xl" class="w-full" required
-          :placeholder="tl('Ce que le projet doit accomplir', 'What the project should achieve')" />
-        <p class="plugin-input-hint">{{ tl('Le coordinateur le lit à chaque tour : une ou deux phrases sur le résultat attendu.', 'The coordinator reads it every turn: one or two sentences on the expected outcome.') }}</p>
+        <label class="plugin-input-label" for="plugin-goal">{{ tl('Objectif (facultatif)', 'Goal (optional)') }}</label>
+        <UTextarea id="plugin-goal" v-model="pluginFormState.goal" :rows="2" autoresize :maxrows="5" maxlength="400" size="xl" class="w-full"
+          :placeholder="tl('Maintenir et faire évoluer le projet', 'Maintain and evolve the project')" />
+        <p class="plugin-input-hint">{{ tl('Le cap du projet, relu par le coordinateur à chaque tour. Pour un projet continu : « Maintenir et faire évoluer … ». Modifiable plus tard dans PROJECT.md.', 'The project’s direction, reread by the coordinator every turn. For an ongoing project: “Maintain and evolve …”. Editable later in PROJECT.md.') }}</p>
       </template>
 
       <template v-if="action === 'adopt-workspace'">
