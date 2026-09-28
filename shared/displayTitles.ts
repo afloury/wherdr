@@ -1,6 +1,12 @@
 import type { Pane, Workspace } from './types'
 import { cleanTitle, paneTitle } from './paneTitle'
 
+// herdr-projects marks its spaces with invisible characters (braille blank
+// U+2800, zero-width spaces); some fonts draw them as dot grids.
+export function cleanLabel(label: string | null | undefined): string {
+  return (label ?? '').replace(/[\u200B-\u200D\u2060\uFEFF]/g, '').replace(/[\u2800\s]+/g, ' ').trim()
+}
+
 // Herdr's workspace label is the visible identity of a space. A pane title is
 // still useful context, but only when it carries more information.
 export function spaceTitle(p: Pane, workspace?: Workspace | null): string {

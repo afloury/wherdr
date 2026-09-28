@@ -7,6 +7,7 @@ import { LOCAL, joinId } from '../../shared/ids'
 import { reduceLayout } from '../../shared/layout'
 import { paneAgentKind } from '../../shared/agentKind'
 import { projectToken } from '../../shared/projects'
+import { cleanLabel } from '../../shared/displayTitles'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
@@ -17,7 +18,7 @@ export function reduceSnapshot(s: Json, machine = LOCAL, session = 'default'): H
   const id = (x: unknown) => (x == null ? x : joinId(machine, String(x))) as string
   const mk = machine ? { machine } : {}
   const workspaces: Workspace[] = (s.workspaces || []).map((w: Json) => ({
-    id: id(w.workspace_id), ...mk, label: w.label, number: w.number, status: w.agent_status,
+    id: id(w.workspace_id), ...mk, label: cleanLabel(w.label), number: w.number, status: w.agent_status,
     // Workspace ouvert sur un worktree Git (créé par Herdr, souvent une branche d'agent).
     worktree: Boolean(w.worktree && w.worktree.is_linked_worktree),
     ...(w.worktree && w.worktree.repo_key ? { repo: String(w.worktree.repo_key), repoName: String(w.worktree.repo_name || '') } : {}),
@@ -48,7 +49,7 @@ export function reduceSnapshot(s: Json, machine = LOCAL, session = 'default'): H
       agent: p.agent || null,
       name: p.name || null,
       // Nom choisi par l'utilisateur (pane.rename), aussi affiché dans le client herdr.
-      label: p.label || null,
+      label: cleanLabel(p.label) || null,
       status: p.agent ? p.agent_status : null,
       title: p.terminal_title_stripped || p.terminal_title || null,
       cwd: p.foreground_cwd || p.cwd || null,
