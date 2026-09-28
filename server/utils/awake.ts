@@ -1,8 +1,9 @@
 import { execFile } from 'node:child_process'
 import type { Machine } from './machines'
 import type { ExecResult } from './fsx'
+import { HerdrError } from './herdr'
 
-export type AwakeMode = 'hour' | 'fourHours' | 'evening' | 'untilOff'
+export type AwakeMode = 'hour' | 'fourHours' | 'evening' | 'untilOff' | 'extend'
 export interface AwakeState {
   supported: boolean
   platform: 'mac' | 'linux' | 'other'
@@ -13,63 +14,81 @@ export interface AwakeState {
 }
 export interface SleepAssertion { name: string, kind: string, seconds: number, ours: boolean }
 
-export const STATUS_SCRIPT = `platform=$(uname -s)
+// Reconnaît notre inhibiteur : PID + commande exacte + heure de démarrage
+// enregistrée (un PID recyclé par un autre caffeinate n'est pas le nôtre).
+const OURS = `ours() {
+  case "$1" in *[!0-9]*|'') return 1;; esac
+  args=$(ps -p "$1" -o args= 2>/dev/null) || return 1
+  case "$args" in
+    caffeinate\\ -i*|*/caffeinate\\ -i*|systemd-inhibit\\ --what=idle:sleep*|*/systemd-inhibit\\ --what=idle:sleep*) ;;
+    *) return 1;;
+  esac
+  [ -z "\${2:-}" ] || [ "$(started "$1")" = "$2" ]
+}
+started() { ps -p "$1" -o lstart= 2>/dev/null | sed 's/ *$//'; }`
+
+export const STATUS_SCRIPT = `${OURS}
+platform=$(uname -s)
 case "$platform" in Darwin) platform=mac;; Linux) platform=linux;; *) platform=other;; esac
 echo "platform=$platform"
 if [ "$platform" = mac ]; then pmset -g batt 2>/dev/null; fi
 if [ "$platform" = linux ]; then command -v systemd-inhibit >/dev/null 2>&1 && echo "inhibit=1"; fi
 d="$HOME/.cache/herdr-web/awake.pid"
 if [ -f "$d" ]; then
-  IFS='|' read -r pid until lid < "$d"
-  case "$pid" in *[!0-9]*|'') exit 0;; esac
-  cmd=$(ps -p "$pid" -o comm= 2>/dev/null | sed 's|.*/||')
-  if { [ "$platform" = mac ] && [ "$cmd" = caffeinate ]; } || { [ "$platform" = linux ] && [ "$cmd" = systemd-inhibit ]; }; then
+  IFS='|' read -r pid until lid start < "$d" || true
+  case "$until" in *[!0-9]*|'') until=0;; esac
+  if ours "$pid" "\${start:-}" && { [ "$until" -eq 0 ] || [ "$until" -gt "$(date +%s)" ]; }; then
     echo "awake=$pid|$until|$lid"
   else rm -f "$d"; fi
 fi`
 
-// The process keeps stdout/stderr closed so the SSH mux returns immediately.
-export const CONTROL_SCRIPT = `set -eu
+// Remplacement sans trou : le nouvel inhibiteur est lancé et vérifié vivant
+// AVANT d'arrêter l'ancien. Tuer d'abord laissait le Mac sans assertion un
+// instant ; inactif depuis longtemps, il partait aussitôt en veille.
+// stdout/stderr du processus restent fermés pour que le mux SSH rende la main.
+// Erreurs attendues : ligne « error=<code> » (sortie 0).
+export const CONTROL_SCRIPT = `set -u
+${OURS}
 mode=$1; lid=$2
-d="$HOME/.cache/herdr-web/awake.pid"
-mkdir -p "$HOME/.cache/herdr-web"
+dir="$HOME/.cache/herdr-web"; d="$dir/awake.pid"
+mkdir -p "$dir"
+fail() { echo "error=$1"; exit 0; }
 platform=$(uname -s)
 now=$(date +%s)
-if [ "$mode" = off ]; then seconds=0
-else
-  case "$mode" in
-    hour) seconds=3600;; fourHours) seconds=14400;;
-    evening) hour=$(expr "$(date +%H)" + 0); minute=$(expr "$(date +%M)" + 0); seconds=$(( (20 - hour) * 3600 - minute * 60 )); [ "$seconds" -gt 0 ] || exit 2;;
-    untilOff) seconds=0;; *) exit 2;;
-  esac
+old_pid=; old_until=0; old_lid=0; old_start=
+if [ -f "$d" ]; then IFS='|' read -r old_pid old_until old_lid old_start < "$d" || true; fi
+case "$old_until" in *[!0-9]*|'') old_until=0;; esac
+ours "$old_pid" "$old_start" || old_pid=
+if [ "$mode" = off ]; then
+  [ -z "$old_pid" ] || kill "$old_pid" 2>/dev/null || true
+  rm -f "$d"; echo "stopped"; exit 0
 fi
-if [ -f "$d" ]; then
-  IFS='|' read -r old_pid old_until old_lid < "$d" || true
-  case "$old_pid" in *[!0-9]*|'') ;; *)
-    cmd=$(ps -p "$old_pid" -o comm= 2>/dev/null | sed 's|.*/||')
-    if [ "$cmd" = caffeinate ] || [ "$cmd" = systemd-inhibit ]; then kill "$old_pid" 2>/dev/null || true; fi;;
-  esac
-  rm -f "$d"
-fi
-[ "$mode" = off ] && exit 0
+case "$mode" in
+  hour) seconds=3600;; fourHours) seconds=14400;;
+  evening) hour=$(expr "$(date +%H)" + 0); minute=$(expr "$(date +%M)" + 0); seconds=$(( (20 - hour) * 3600 - minute * 60 )); [ "$seconds" -gt 0 ] || fail evening_past;;
+  untilOff) seconds=0;;
+  extend) { [ -n "$old_pid" ] && [ "$old_until" -gt "$now" ]; } || fail not_active; seconds=$((old_until - now + 3600));;
+  *) fail bad_mode;;
+esac
 until=0; [ "$seconds" -eq 0 ] || until=$((now + seconds))
 if [ "$platform" = Darwin ]; then
-  command -v caffeinate >/dev/null 2>&1 || exit 3
-  if [ "$lid" = 1 ]; then
-    if [ "$seconds" -eq 0 ]; then nohup caffeinate -i -s </dev/null >/dev/null 2>&1 &
-    else nohup caffeinate -i -s -t "$seconds" </dev/null >/dev/null 2>&1 & fi
-  else
-    if [ "$seconds" -eq 0 ]; then nohup caffeinate -i </dev/null >/dev/null 2>&1 &
-    else nohup caffeinate -i -t "$seconds" </dev/null >/dev/null 2>&1 & fi
-  fi
+  command -v caffeinate >/dev/null 2>&1 || fail no_tool
+  flags=-i; [ "$lid" != 1 ] || flags="-i -s"
+  if [ "$seconds" -eq 0 ]; then nohup caffeinate $flags </dev/null >/dev/null 2>&1 &
+  else nohup caffeinate $flags -t "$seconds" </dev/null >/dev/null 2>&1 & fi
 elif [ "$platform" = Linux ]; then
-  command -v systemd-inhibit >/dev/null 2>&1 || exit 3
-  [ "$lid" = 0 ] || exit 2
+  command -v systemd-inhibit >/dev/null 2>&1 || fail no_tool
+  [ "$lid" = 0 ] || fail lid_mac_only
   if [ "$seconds" -eq 0 ]; then nohup systemd-inhibit --what=idle:sleep sleep infinity </dev/null >/dev/null 2>&1 &
   else nohup systemd-inhibit --what=idle:sleep sleep "$seconds" </dev/null >/dev/null 2>&1 & fi
-else exit 3; fi
+else fail no_tool; fi
 pid=$!
-printf '%s|%s|%s\\n' "$pid" "$until" "$lid" > "$d"
+sleep 1
+# Échec : l'ancien inhibiteur (s'il y en a un) continue, fichier intact.
+ours "$pid" || fail start_failed
+start=$(started "$pid")
+printf '%s|%s|%s|%s\\n' "$pid" "$until" "$lid" "$start" > "$d.tmp" && mv "$d.tmp" "$d"
+if [ -n "$old_pid" ] && [ "$old_pid" != "$pid" ]; then kill "$old_pid" 2>/dev/null || true; fi
 echo "started=$pid"`
 
 export const ASSERTIONS_SCRIPT = 'pmset -g assertions 2>/dev/null'
@@ -109,13 +128,36 @@ async function run(machine: Machine, script: string, args: string[] = []) {
   return result.stdout.toString('utf8')
 }
 export async function awakeStatus(machine: Machine) { return parseAwakeStatus(await run(machine, STATUS_SCRIPT)) }
+// Codes « error=… » du script de contrôle -> message (traduit côté client).
+export const CONTROL_ERRORS: Record<string, string> = {
+  no_tool: 'Contrôle de veille indisponible sur cette machine',
+  lid_mac_only: 'Capot fermé disponible uniquement sur Mac',
+  evening_past: 'Il est déjà 20 h passées',
+  not_active: 'Aucun éveil en cours à prolonger',
+  bad_mode: 'option de veille invalide',
+  start_failed: 'Le maintien éveillé n’a pas démarré ; l’état précédent est conservé',
+}
+export function parseControl(raw: string): { error: string } | { started: number | null } {
+  const error = /^error=(\w+)$/m.exec(raw)?.[1]
+  if (error) return { error }
+  return { started: Number(/^started=(\d+)$/m.exec(raw)?.[1]) || null }
+}
+
 export async function setAwake(machine: Machine, mode: AwakeMode | 'off', lid: boolean) {
   const status = await awakeStatus(machine)
-  if (!status.supported) throw new Error('Contrôle de veille indisponible sur cette machine')
-  if (lid && status.platform !== 'mac') throw new Error('Capot fermé disponible uniquement sur Mac')
-  if (lid && status.battery?.source !== 'ac') throw new Error('Le capot fermé nécessite le secteur')
-  await run(machine, CONTROL_SCRIPT, [mode, lid ? '1' : '0'])
-  return awakeStatus(machine)
+  if (!status.supported) throw new HerdrError('awake_unsupported', CONTROL_ERRORS.no_tool!)
+  if (mode === 'extend') {
+    if (!status.active || !status.until) throw new HerdrError('awake_not_active', CONTROL_ERRORS.not_active!)
+    lid = status.lid
+  }
+  if (lid && status.platform !== 'mac') throw new HerdrError('awake_lid', CONTROL_ERRORS.lid_mac_only!)
+  if (lid && status.battery?.source !== 'ac') throw new HerdrError('awake_lid', 'Le capot fermé nécessite le secteur')
+  const result = parseControl(await run(machine, CONTROL_SCRIPT, [mode, lid ? '1' : '0']))
+  if ('error' in result) throw new HerdrError(`awake_${result.error}`, CONTROL_ERRORS[result.error] || 'Commande de veille impossible')
+  const after = await awakeStatus(machine)
+  // L'état renvoyé est celui du processus réel : s'il n'est pas là, c'est un échec.
+  if (mode !== 'off' && !after.active) throw new HerdrError('awake_start_failed', CONTROL_ERRORS.start_failed!)
+  return after
 }
 export async function sleepAssertions(machine: Machine) {
   const status = await awakeStatus(machine)

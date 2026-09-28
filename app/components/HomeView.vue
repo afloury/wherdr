@@ -218,6 +218,11 @@ function durationLabel(seconds: number) {
   if (seconds < 3600) return `${Math.floor(seconds / 60)} min`
   return `${Math.floor(seconds / 3600)} h ${Math.floor(seconds % 3600 / 60)} min`
 }
+function extendLabel(state?: AwakeState) {
+  if (!state?.until) return ''
+  const at = new Date(Math.max(state.until, Date.now()) + 3600000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return tl(`Jusqu’à ${at}`, `Until ${at}`)
+}
 function awakeLabel(state?: AwakeState) {
   if (!state?.active) return ''
   return state.until ? tl(`Éveillé jusqu’à ${new Date(state.until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, `Awake until ${new Date(state.until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`) : tl('Éveillé jusqu’à désactivation', 'Awake until turned off')
@@ -481,6 +486,7 @@ function openSearch() { emit('search') }
       <p v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.battery" class="session-intro"><UIcon name="i-lucide-battery" /> {{ awakeByMachine[awakeTarget.key]?.battery?.percent }} % · {{ awakeByMachine[awakeTarget.key]?.battery?.source === 'ac' ? t('Secteur') : t('Batterie') }}</p>
       <label v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.platform === 'mac'" class="awake-lid"><input v-model="awakeLid" type="checkbox" :disabled="awakeByMachine[awakeTarget.key]?.battery?.source !== 'ac'"> {{ t('Capot fermé (sur secteur uniquement)') }}</label>
       <div class="session-list">
+        <button v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.active && awakeByMachine[awakeTarget.key]?.until" class="session-choice" type="button" :disabled="awakeBusy" @click="chooseAwake('extend')"><span><b>{{ t('Prolonger d’une heure') }}</b><small>{{ extendLabel(awakeByMachine[awakeTarget.key]) }}</small></span><UIcon name="i-lucide-plus" /></button>
         <button v-for="choice in [{ mode: 'hour', label: t('1 heure') }, { mode: 'fourHours', label: t('4 heures') }, { mode: 'evening', label: t('Jusqu’à ce soir (20 h)') }, { mode: 'untilOff', label: t('Jusqu’à désactivation') }]" :key="choice.mode" class="session-choice" type="button" :disabled="awakeBusy" @click="chooseAwake(choice.mode as AwakeMode)"><b>{{ choice.label }}</b><UIcon name="i-lucide-chevron-right" /></button>
         <button v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.active" class="session-choice" type="button" :disabled="awakeBusy" @click="chooseAwake('off')"><b>{{ t('Désactiver') }}</b><UIcon name="i-lucide-x" /></button>
       </div>
