@@ -7,7 +7,7 @@
 // démarre dans un pane qui n'existe pas encore, créé seulement au clic sur
 // « Lancer », sur la machine du pane divisé ou de l'espace ; ni choix de
 // machine ni worktree.
-import type { DirListing, MachineConfig } from '#shared/types'
+import type { MachineConfig } from '#shared/types'
 import { machineOf } from '#shared/ids'
 import { splitPreview } from '#shared/layout'
 import { selectedAgentKind, visibleAgentKinds } from '~/utils/agentChoices'
@@ -64,12 +64,10 @@ watch(newAgentOpen, (o) => {
 
 // ------------------------------------------------------------ machine
 // `machines` n'existe qu'avec plusieurs machines ; sinon tout est local, comme avant.
-const machineList = computed(() => (multiMachine.value ? (appConfig.value.machines || []).filter(m => machines.value.some(s => s.key === m.key)) : null))
+const machineList = machineChoices
 const machine = ref('')
 const machineCfg = computed(() => (machineList.value ? machineList.value.find(m => m.key === machine.value) : undefined))
-// En ligne : d'après l'état en direct (la config a pu être lue avant la connexion).
-const online = (m: MachineConfig) => m.local || (machineInfo(m.key)?.status === 'online' && Boolean(m.home))
-const machineState = (m: MachineConfig) => (m.local ? 'online' : machineInfo(m.key)?.status || 'offline')
+const online = machineOnline
 const home = computed(() => (machineCfg.value ? machineCfg.value.home : appConfig.value.home))
 const recents = computed(() => ((machineCfg.value ? machineCfg.value.dirs : appConfig.value.dirs) || []).slice(0, 6))
 const qMachine = () => (machine.value ? `&machine=${encodeURIComponent(machine.value)}` : '')
@@ -93,8 +91,6 @@ function setMachine(k: string) {
   syncKind()
 }
 function pickMachine(m: MachineConfig) {
-  if (!online(m)) return
-  haptic()
   setMachine(m.key)
   lastMachine.value = m.key
 }
@@ -142,25 +138,8 @@ const branchInput = ref<{ inputRef?: HTMLInputElement } | null>(null)
 watch(worktree, (v) => { if (v) setTimeout(() => branchInput.value?.inputRef?.focus(), 50) })
 
 // ------------------------------------------------------------ navigateur de dossiers
-const listing = ref<DirListing | null>(null)
-const listError = ref<string | null>(null)
-const listLoading = ref(false)
-async function browse(p: string | null) {
-  listLoading.value = true
-  listError.value = null
-  try { listing.value = await api<DirListing>(`/api/dirs?path=${encodeURIComponent(p || '')}${qMachine()}`) }
-  catch (err) { listError.value = (err as Error).message }
-  finally { listLoading.value = false }
-}
-function openBrowser() {
-  browsing.value = true
-  browse(dir.value)
-}
-function pickDir(d: string) {
+function chooseDir(d: string) {
   dir.value = d
-}
-function chooseDir() {
-  if (listing.value) dir.value = listing.value.path
   browsing.value = false
 }
 
@@ -262,17 +241,7 @@ async function launch() {
       </template>
       <template v-else-if="machineList">
         <label class="field-label">{{ t('Machine') }}</label>
-        <div class="segmented machine-seg" :style="{ '--segment-count': machineList.length }">
-          <button
-            v-for="m in machineList" :key="m.key" type="button" :class="[{ on: m.key === machine }, machineState(m)]"
-            :disabled="!online(m)" :data-machine="m.key || 'local'" @click="pickMachine(m)"
-          >
-            <UIcon :name="m.local ? 'i-lucide-server' : 'i-lucide-laptop'" class="seg-icon" />
-            <span class="machine-choice-name">{{ m.label || t('Cette machine') }}</span>
-            <MachineLocalBadge v-if="m.local" />
-            <i class="seg-dot" />
-          </button>
-        </div>
+        <MachineChoice :machines="machineList" :model-value="machine" @pick="pickMachine" />
       </template>
 
       <label class="field-label">{{ t('Type') }}</label>
@@ -283,14 +252,7 @@ async function launch() {
       </div>
 
       <label class="field-label">{{ t('Dossier') }}</label>
-      <button type="button" class="dir-pick" @click="openBrowser">
-        <UIcon name="i-lucide-folder" />
-        <span>{{ ltr(shortPath(dir)) }}</span>
-        <UIcon name="i-lucide-chevron-right" class="chev" />
-      </button>
-      <div class="chips">
-        <button v-for="d in recents" :key="d" type="button" :class="{ on: d === dir }" @click="pickDir(d)">{{ shortPath(d).split('/').pop() || '~' }}</button>
-      </div>
+      <DirField v-model="dir" :recents="recents" @browse="browsing = true" />
 
       <label v-if="isGit && !fixedMachine" class="toggle-row">
         <span><b>{{ t('Worktree séparé') }}</b><small>{{ t('nouvelle branche, sans toucher au dossier d’origine') }}</small></span>
@@ -329,30 +291,6 @@ async function launch() {
       </UButton>
     </div>
 
-    <div v-else class="dir-browser">
-      <div class="dir-top">
-        <UButton
-          size="sm" color="neutral" variant="ghost" icon="i-lucide-chevron-left" :class="{ invisible: !listing?.parent }"
-          :disabled="!listing?.parent" @click="browse(listing?.parent || null)"
-        >
-          {{ t('Parent') }}
-        </UButton>
-        <span class="dir-path">{{ listing ? ltr(shortPath(listing.path)) : '' }}</span>
-      </div>
-      <div class="dir-list">
-        <div v-if="listLoading" class="term-loading static"><span class="spinner" /></div>
-        <p v-else-if="listError" class="form-error">{{ listError }}</p>
-        <template v-else-if="listing">
-          <button v-for="d in listing.dirs" :key="d.path" type="button" @click="browse(d.path)">
-            <UIcon name="i-lucide-folder" /><span>{{ d.name }}</span><span v-if="d.git" class="git">git</span>
-          </button>
-          <p v-if="!listing.dirs.length" class="muted" style="padding:16px 8px">{{ t('Aucun sous-dossier.') }}</p>
-        </template>
-      </div>
-      <div class="dir-actions">
-        <UButton color="neutral" variant="ghost" size="lg" block @click="browsing = false">{{ t('Annuler') }}</UButton>
-        <UButton color="primary" variant="solid" size="lg" block class="hw-cta" @click="chooseDir">{{ t('Choisir ce dossier') }}</UButton>
-      </div>
-    </div>
+    <DirBrowser v-else :start="dir" :machine="machine" @choose="chooseDir" @cancel="browsing = false" />
   </AppSheet>
 </template>

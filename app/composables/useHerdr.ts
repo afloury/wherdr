@@ -1,6 +1,6 @@
 // État global de l'app : agents en direct (WebSocket /ws/events), réglages de
 // l'appareil, verrouillage, appels d'API. Singletons de module (app cliente).
-import type { AppConfig, AuthStatus, HerdrState, MachineInfo, NamedSession, Pane, Quotas } from '#shared/types'
+import type { AppConfig, AuthStatus, HerdrState, MachineConfig, MachineInfo, NamedSession, Pane, Quotas } from '#shared/types'
 import { LOCAL, splitId } from '#shared/ids'
 import { clearOffline, readOffline, saveHome } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess, setOfflineAccess } from '~/utils/offlineAccess'
@@ -215,6 +215,12 @@ export const currentPane = computed<Pane | undefined>(() => herdrState.value.pan
 export const machines = computed<MachineInfo[]>(() => herdrState.value.machines || [])
 export const multiMachine = computed(() => machines.value.length > 1 || Boolean(machines.value[0]?.baseKey))
 export const machineInfo = (key: string | null | undefined) => machines.value.find(m => m.key === (key || ''))
+// Machines proposées par les feuilles « Nouvel agent » et « New project » (null
+// avec une seule machine) ; en ligne d'après l'état en direct (la config a pu
+// être lue avant la connexion).
+export const machineChoices = computed(() => (multiMachine.value ? (appConfig.value.machines || []).filter(m => machines.value.some(s => s.key === m.key)) : null))
+export const machineOnline = (m: MachineConfig) => m.local || (machineInfo(m.key)?.status === 'online' && Boolean(m.home))
+export const machineStateOf = (m: MachineConfig) => (m.local ? 'online' : machineInfo(m.key)?.status || 'offline')
 export const machineName = (key: string | null | undefined) => {
   const m = machineInfo(key)
   return m ? m.label || t('Cette machine') : ''

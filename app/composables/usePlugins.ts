@@ -2,7 +2,7 @@
 // workspace / tab / pane, lancées avec le pane de l'agent) et menu de la machine
 // (actions globales). Liste gardée par machine, relue au plus toutes les 30 s.
 import type { ChatResponse, Pane, PluginAction, PluginActionList, PluginActionResult } from '#shared/types'
-import { PROJECT_REQUIRED, conversationEmpty } from '#shared/projectsActions'
+import { PROJECT_REQUIRED, type RepoState, conversationEmpty, projectNameOk, repoState, suggestedProjectName } from '#shared/projectsActions'
 
 const REFRESH_MS = 30000
 export const pluginActions = ref<Record<string, PluginAction[]>>({})
@@ -35,23 +35,69 @@ type Target = { pane: Pane } | { machine: string }
 export const pluginFormState = reactive<{
   open: boolean, action: PluginAction | null, target: Target | null,
   name: string, goal: string, task: string, slug: string, repo: string,
+  // « New project » : machine du dépôt (clé wherdr) ; nom encore proposé par
+  // l'app (suit le dépôt tant que l'utilisateur ne l'a pas tapé) ; état du
+  // dépôt choisi d'après /api/gitroot, et sa racine Git.
+  machine: string, nameAuto: boolean, repoState: 'idle' | 'checking' | RepoState, repoRoot: string,
   // Adoption : conversation du pane sans message (true), avec (false), inconnue (null).
   empty: boolean | null, busy: boolean,
-}>({ open: false, action: null, target: null, name: '', goal: '', task: '', slug: '', repo: '', empty: null, busy: false })
+}>({
+  open: false, action: null, target: null, name: '', goal: '', task: '', slug: '', repo: '',
+  machine: '', nameAuto: true, repoState: 'idle', repoRoot: '', empty: null, busy: false,
+})
 export function closePluginForm() { if (!pluginFormState.busy) pluginFormState.open = false }
+// Machine où tourne la commande herdr-projects (celle du projet).
+export const pluginTargetMachine = (target: Target | null) => (!target ? '' : 'pane' in target ? target.pane.machine || '' : target.machine)
 
-// Champs à remplir avant « Exécuter ».
+// Champs à remplir avant « Exécuter » ; nom de projet valide ; dépôt choisi
+// vérifié (un dépôt Git, pas un sous-dossier ni le HOME).
 export function pluginFormValid(): boolean {
-  const need = PROJECT_REQUIRED[pluginFormState.action?.id || ''] || []
-  const s = pluginFormState as unknown as Record<string, string>
-  return need.every(k => String(s[k] || '').trim())
+  const f = pluginFormState
+  const id = f.action?.id || ''
+  const need = PROJECT_REQUIRED[id] || []
+  const s = f as unknown as Record<string, string>
+  if (!need.every(k => String(s[k] || '').trim())) return false
+  if ((id === 'new' || id === 'adopt-workspace') && !projectNameOk(f.name)) return false
+  return id !== 'new' || !f.repo.trim() || f.repoState === 'repo'
+}
+
+// Dossier du dépôt de « New project » : vérifié par /api/gitroot sur sa machine ;
+// le nom proposé suit le dépôt tant que l'utilisateur ne l'a pas tapé.
+let repoCheck = 0
+export async function checkPluginRepo() {
+  const f = pluginFormState
+  const repo = f.repo.trim()
+  const n = ++repoCheck
+  if (!repo) {
+    Object.assign(f, { repoState: 'idle', repoRoot: '' })
+    if (f.nameAuto) f.name = ''
+    return
+  }
+  f.repoState = 'checking'
+  const r = await api<{ root: string | null }>(`/api/gitroot?machine=${encodeURIComponent(f.machine)}&path=${encodeURIComponent(repo)}`).catch(() => null)
+  if (n !== repoCheck) return
+  f.repoRoot = r?.root || ''
+  f.repoState = repoState(repo, r?.root)
+  // Sous-dossier : le nom du dépôt (sa racine), pas celui du sous-dossier.
+  if (f.nameAuto) f.name = suggestedProjectName('new', { repo: f.repoState === 'none' ? '' : f.repoRoot })
+}
+export function setPluginFormName(v: string) {
+  pluginFormState.name = v
+  // Champ vidé : l'app propose de nouveau le nom du dépôt.
+  pluginFormState.nameAuto = !v.trim()
+}
+export function setPluginRepoMachine(key: string) {
+  if (pluginFormState.machine === key) return
+  pluginFormState.machine = key
+  pluginFormState.repo = ''
+  checkPluginRepo()
 }
 export async function submitPluginForm() {
   const { action, target } = pluginFormState
   if (!action || !target || pluginFormState.busy || !pluginFormValid()) return
   const f = pluginFormState
   const input: Record<string, string> = action.id === 'new'
-    ? { name: f.name.trim(), goal: f.goal.trim(), repo: f.repo.trim() }
+    ? { name: f.name.trim(), goal: f.goal.trim(), repo: f.repo.trim(), ...(f.repo.trim() ? { machine: f.machine } : {}) }
     : action.id === 'adopt-workspace'
       ? { name: f.name.trim(), goal: f.goal.trim(), task: f.task.trim() }
       : { slug: f.slug.trim() }
@@ -71,6 +117,11 @@ export function switchToNewProject() {
   if (!a || pluginFormState.busy) return
   pluginFormState.action = a
   pluginFormState.empty = null
+  // Même feuille que « New project » ouvert depuis le menu : dépôt proposé,
+  // nom tiré du dépôt tant que l'utilisateur n'en a pas tapé un.
+  loadConfig()
+  checkPluginRepo()
+  if (pluginFormState.target) prepareForm(pluginFormState.target, 'new')
 }
 
 // Résultat qui reste à l'écran : « Check setup » (en-tête et sortie entière) et
@@ -90,12 +141,18 @@ async function prepareForm(target: Target, action: string) {
     const r = await api<ChatResponse>(`/api/chat?pane=${encodeURIComponent(pane.id)}`).catch(() => null)
     if (toRaw(pluginFormState.target) === target) pluginFormState.empty = conversationEmpty(r)
   }
-  if (action === 'adopt-workspace' || action === 'new') {
+  if (action === 'new') {
     // Racine du dépôt Git du space courant, proposée pour « New project » ;
-    // rien hors d'un dépôt (ni pour le HOME lui-même).
+    // rien hors d'un dépôt (ni pour le HOME lui-même, filtré par le serveur).
+    // Jamais le dossier du space tel quel : seulement ce que /api/gitroot rend.
     if (!pane.cwd) return
-    const r = await api<{ root: string | null }>(`/api/gitroot?machine=${encodeURIComponent(pane.machine || '')}&path=${encodeURIComponent(pane.cwd)}`).catch(() => null)
-    if (toRaw(pluginFormState.target) === target && r?.root && !pluginFormState.repo) pluginFormState.repo = r.root
+    const machine = pane.machine || ''
+    const r = await api<{ root: string | null }>(`/api/gitroot?machine=${encodeURIComponent(machine)}&path=${encodeURIComponent(pane.cwd)}`).catch(() => null)
+    const f = pluginFormState
+    if (toRaw(f.target) === target && r?.root && shortPath(r.root) !== '~' && !f.repo && f.machine === machine) {
+      f.repo = r.root
+      checkPluginRepo()
+    }
   }
 }
 // Nom de la machine ; une seule : HOST_LABEL.
@@ -109,15 +166,18 @@ async function runPluginAction(a: PluginAction, target: Target) {
   const name = a.label === a.title ? a.title : `${a.pluginName} · ${a.label}`
   // Saisie d'abord : la feuille, avec son bouton Exécuter, vaut confirmation.
   if (a.plugin === 'herdr-projects' && ['new', 'adopt-workspace', 'open', 'pause', 'resume'].includes(a.id)) {
-    pluginFormState.action = a
-    pluginFormState.target = target
-    pluginFormState.name = 'pane' in target
-      ? herdrState.value.workspaces.find(w => w.id === target.pane.workspace)?.label || '' : ''
+    // Nom proposé : le libellé du space pour l'adoption s'il fait un nom valide
+    // (pas « ~ » ni un chemin) ; pour « New project », celui du dépôt choisi.
+    const space = 'pane' in target ? herdrState.value.workspaces.find(w => w.id === target.pane.workspace)?.label || '' : ''
     Object.assign(pluginFormState, {
+      action: a, target,
+      name: a.id === 'adopt-workspace' ? suggestedProjectName(a.id, { space }) : '',
+      nameAuto: true, machine: pluginTargetMachine(target), repoState: 'idle', repoRoot: '',
       goal: '', task: '', repo: '', empty: null,
       slug: 'pane' in target ? target.pane.project || '' : '',
       open: true,
     })
+    if (a.id === 'new') loadConfig()
     prepareForm(target, a.id)
     return
   }

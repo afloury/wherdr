@@ -13,7 +13,7 @@ import { HerdrError, herdrOn, sleep } from './herdr'
 import { findPane } from './state'
 import { isGitRepo, machineFor, underHome } from './actions'
 import { ACTION_ID_RE, PLUGIN_ID_RE, REMOTE_PROJECTS_SCRIPT, type RawPlugin, type RawPluginAction, type RawPluginLog, actionContext, logResult, normalizeActions, outputTail, stripAnsi } from './pluginPolicy'
-import { PROJECT_INPUTS, cleanProjectInput, projectCommandArgs, readOnlyMessage, setupHeader, tickerRunning } from '../../shared/projectsActions'
+import { PROJECT_INPUTS, cleanProjectInput, projectCommandArgs, readOnlyMessage, repoArgument, setupHeader, tickerRunning } from '../../shared/projectsActions'
 
 // Liste gardée quelques secondes par machine (le menu la redemande à chaque ouverture).
 const CACHE_MS = 10000
@@ -140,12 +140,17 @@ export async function invokePluginAction(body: { machine?: unknown, pane_id?: un
     if (action === 'adopt-workspace' && (!pane || !pane.agent || !pane.cwd)) {
       throw new HerdrError('bad_context', 'un agent et son dossier sont nécessaires dans ce space')
     }
-    // Dépôt proposé pour « New project » : un dossier Git de la machine, sous son HOME.
+    // Dépôt de « New project » : un dossier Git sous le HOME de sa machine (celle
+    // du projet par défaut), passé en `chemin@<id Herdr>` s'il est sur une autre.
     if (input.repo) {
-      const repo = underHome(input.repo, m.home)
-      if (!repo || !(await isGitRepo(repo, m))) throw new HerdrError('bad_input', `pas un dépôt Git : ${input.repo}`)
-      input.repo = repo
+      const rm = input.machine ? machineFor(input.machine) : m
+      const repo = underHome(input.repo, rm.home)
+      if (!repo || !(await isGitRepo(repo, rm))) throw new HerdrError('bad_input', `pas un dépôt Git : ${input.repo}`)
+      const arg = repoArgument(repo, rm, m)
+      if (!arg) throw new HerdrError('bad_input', `dépôt inutilisable depuis ${m.label} : ${repo}${rm === m ? '' : ` (${rm.label})`}`)
+      input.repo = arg
     }
+    delete input.machine
     const lang = (body as { lang?: unknown }).lang === 'fr' ? 'fr' : 'en'
     const args = projectCommandArgs(action, input, { pane: pane ? splitId(pane.id).local : undefined, cwd: pane?.cwd || undefined, session: m.session, lang })
     const exec = async (): Promise<PluginActionResult> => {

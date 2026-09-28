@@ -371,8 +371,12 @@ Actions that open a plugin panel open it in the attached Herdr terminal client, 
 
 **herdr-projects** actions that ask for input (New project, continue this workspace as a
 project, open, pause, resume) are run by wherdr itself as `herdr-projects` commands, because
-Herdr's API cannot pass them arguments. **New project** suggests the root of the current
-space's Git repository (nothing outside a repository, never your home folder itself).
+Herdr's API cannot pass them arguments. **New project** picks its repository like **New agent**
+picks a folder: the machine (when the project is created from this machine, a repository on an
+SSH machine is passed as `PATH@MACHINE`), a folder browser and recent folders. It suggests the
+root of the current space's Git repository (nothing outside a repository, never your home
+folder itself), offers the root when you pick a subfolder, and names the project after the
+repository.
 With Docker, these commands write to the projects folder, so `docker-compose.yml` mounts
 `~/.herdr-projects` read-write. If you set another `root` in
 `~/.config/herdr-projects/config.toml`, mount that folder instead (same path on both sides);
