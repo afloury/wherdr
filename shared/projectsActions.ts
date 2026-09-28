@@ -8,13 +8,14 @@
 import type { ChatResponse } from './types'
 
 export const PROJECT_INPUTS: Record<string, string[]> = {
-  new: ['name', 'goal'], 'adopt-workspace': ['name', 'goal'], open: ['slug'], pause: ['slug'], resume: ['slug'],
+  new: ['name'], 'adopt-workspace': ['name'], open: ['slug'], pause: ['slug'], resume: ['slug'],
 }
-// Saisies facultatives, en plus des champs ci-dessus.
-export const PROJECT_OPTIONAL: Record<string, string[]> = { new: ['repo'], 'adopt-workspace': ['task'] }
-// Champs à remplir : nom (ou slug) et objectif.
+// Saisies facultatives, en plus des champs ci-dessus. L'objectif l'est aussi :
+// herdr-projects ne l'exige pas et un projet continu n'a pas de cap figé.
+export const PROJECT_OPTIONAL: Record<string, string[]> = { new: ['goal', 'repo'], 'adopt-workspace': ['goal', 'task'] }
+// Champs à remplir : nom (ou slug).
 export const PROJECT_REQUIRED: Record<string, string[]> = {
-  new: ['name', 'goal'], 'adopt-workspace': ['name', 'goal'], open: ['slug'], pause: ['slug'], resume: ['slug'],
+  new: ['name'], 'adopt-workspace': ['name'], open: ['slug'], pause: ['slug'], resume: ['slug'],
 }
 export const INPUT_MAX: Record<string, number> = { name: 120, slug: 120, goal: 400, task: 400, repo: 1024 }
 
@@ -38,10 +39,12 @@ export function cleanProjectInput(action: string, raw: unknown): ProjectInput | 
 }
 
 // Tâche en cours d'un workspace adopté : ajoutée à l'objectif, que le plugin
-// écrit dans PROJECT.md (adopt-workspace n'a pas d'option dédiée).
+// écrit dans PROJECT.md (adopt-workspace n'a pas d'option dédiée). Sans
+// objectif, la tâche seule en tient lieu.
 export function goalWithTask(goal: string, task: string | undefined, lang: 'fr' | 'en' = 'en'): string {
   const t = (task || '').trim()
   if (!t) return goal
+  if (!goal.trim()) return t
   const sep = /[.!?…]$/.test(goal) ? '' : '.'
   return `${goal}${sep} ${lang === 'fr' ? 'Tâche en cours' : 'Current task'}: ${t}`
 }
@@ -56,12 +59,14 @@ export interface ProjectContext {
 // argv de la commande herdr-projects ; jamais de shell, chaque valeur est un argument.
 export function projectCommandArgs(action: string, input: ProjectInput, ctx: ProjectContext): string[] {
   const session = ctx.session && ctx.session !== 'default' ? ['--session', ctx.session] : []
+  // --goal seulement s'il y a quelque chose à écrire (défaut du plugin : vide).
+  const goalArg = (g: string) => g ? ['--goal', g] : []
   if (action === 'adopt-workspace') {
     if (!ctx.pane || !ctx.cwd) throw new Error('pane et dossier nécessaires')
     return ['adopt-workspace', '--name', input.name!, '--pane', ctx.pane, '--workspace-cwd', ctx.cwd,
-      '--goal', goalWithTask(input.goal || '', input.task, ctx.lang), ...session]
+      ...goalArg(goalWithTask(input.goal || '', input.task, ctx.lang)), ...session]
   }
-  if (action === 'new') return ['new', input.name!, '--goal', input.goal || '', ...(input.repo ? ['--repo', input.repo] : [])]
+  if (action === 'new') return ['new', input.name!, ...goalArg(input.goal || ''), ...(input.repo ? ['--repo', input.repo] : [])]
   if (action === 'open') return ['open', input.slug!, ...session]
   if (action === 'doctor') return ['doctor', ...session]
   return [action, input.slug!]
