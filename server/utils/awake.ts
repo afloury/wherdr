@@ -33,6 +33,10 @@ ours() {
     *) return 1;;
   esac
   [ -z "\${2:-}" ] || [ "$(started "$1")" = "$2" ]
+}
+running() {
+  kill -0 "$1" 2>/dev/null || return 1
+  [ ! -r "/proc/$1/stat" ] || [ "$(sed 's/.*) //' "/proc/$1/stat" | cut -d' ' -f1)" != Z ]
 }`
 
 export const STATUS_SCRIPT = `${OURS}
@@ -91,6 +95,10 @@ elif [ "$platform" = Linux ]; then
   else nohup systemd-inhibit --what=idle:sleep sleep "$seconds" </dev/null >/dev/null 2>&1 & fi
 else fail no_tool; fi
 pid=$!
+# Machine chargée : attendre que nohup ait lancé l'outil (5 s max), puis 1 s
+# pour qu'un échec immédiat ait le temps de se voir.
+i=0
+while [ "$i" -lt 50 ] && running "$pid" && ! ours "$pid"; do sleep 0.1; i=$((i + 1)); done
 sleep 1
 # Échec : l'ancien inhibiteur (s'il y en a un) continue, fichier intact.
 ours "$pid" || fail start_failed
