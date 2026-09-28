@@ -228,4 +228,10 @@ describe('miroir d’un terminal', () => {
     expect(mirrorInput('\x1b[3~x')).toEqual([{ text: 'x' }])
     expect(mirrorInput('un\ndeux\r\n')).toEqual([{ text: 'un\ndeux\n' }])
   })
+
+  it('collage entre crochets : du texte, pas des Entrée', () => {
+    expect(mirrorInput('\x1b[200~un\rdeux\x1b[201~')).toEqual([{ text: 'un\ndeux' }])
+    expect(mirrorInput('\x1b[200~a\tb\x1b[201~')).toEqual([{ text: 'a\tb' }])
+    expect(mirrorInput('\x1b[200~\x1b[201~')).toEqual([])
+  })
 })
