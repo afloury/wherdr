@@ -28,6 +28,20 @@ export interface WaitScreen { kind: WaitKind, title: string | null, lines: strin
 
 export interface QueuedMessage { id: string, text: string, at?: number }
 
+// Écran de Claude Code au travail (cf. server/utils/claudeScreen.ts) : la
+// commande « ! » en cours d'exécution, le dernier message parti, les messages
+// encore dans sa file. La transcription n'a la commande « ! » qu'à la fin.
+export interface ShellRun {
+  command: string
+  // Dernières lignes de sortie affichées (Claude n'en montre que quelques-unes).
+  lines: string[]
+  // Lignes masquées au-dessus (« +12 lines »).
+  hidden: number
+  // Début de l'exécution (ms), déduit du compteur « (37s) ».
+  since: number | null
+}
+export interface ClaudeScreen { shell: ShellRun | null, sent: string | null, queued: string[] }
+
 export interface Workspace {
   id: string
   // Machine distante (clé courte) ; absent pour la machine locale.
@@ -81,6 +95,8 @@ export interface Pane {
   model?: ModelInfo
   // Claude au travail, conversation affichée : verbe de sa ligne d'activité (« Orbiting »).
   activity?: string
+  // Claude au travail, conversation affichée : ce que montre son écran.
+  claudeScreen?: ClaudeScreen
 }
 
 export interface ChangeLine { kind: 'add' | 'del' | 'context' | 'hunk' | 'meta', text: string }

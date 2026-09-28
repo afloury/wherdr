@@ -73,7 +73,7 @@ const EN: Record<string, string> = {
   'Commande': 'Command', 'Lecture': 'Read', 'Écriture': 'Write', 'Modif': 'Edit',
   'Recherche': 'Search', 'Fichiers': 'Files', 'Recherche web': 'Web search',
   'Sous-agent': 'Subagent', 'Tâches': 'Tasks', 'Outil': 'Tool', 'actions': 'actions',
-  'En attente · ': 'Queued · ', 'Message retiré de la file': 'Removed from the queue',
+  'En attente · ': 'Queued · ', 'Envoyé · lu par l’agent': 'Sent · read by the agent', 'En cours d’exécution': 'Running', 'Pas encore de sortie': 'No output yet', 'Message retiré de la file': 'Removed from the queue',
   'Message déjà lu par l’agent': 'Already read by the agent', 'Le champ de saisie de l’agent n’est pas vide': 'The agent’s input field is not empty',
   'Champ de saisie de l’agent introuvable': 'Agent input field not found', 'Champ de l’agent pas vidé : vérifie son terminal': 'Agent input not cleared: check its terminal',
   'Annulation impossible pour cet agent': 'This agent can’t cancel queued messages', 'Annulation déjà en cours': 'Already cancelling', 'sera lu à la prochaine étape de l’agent': 'will be read at the agent’s next step',
