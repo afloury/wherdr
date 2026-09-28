@@ -103,13 +103,20 @@ export function toolSummary(name: string, input: Json, home = ''): string {
   }
 }
 
-// /model : la commande elle-même n'est pas affichée (le téléphone l'ouvre et la
-// referme pour lire la liste des modèles) ; seul un vrai changement l'est,
-// en « /model → Sonnet 4.6 ». « Kept model as … » (menu refermé) : rien.
-const isModelCmd = (name: string) => name.trim() === '/model'
+// Les menus /model et /effort peuvent être ouverts puis annulés pour lire leur
+// contenu. On ne montre que les confirmations d'un vrai changement, sous forme
+// de ligne système. « Kept model as … » et « Cancelled » restent invisibles.
+const isPickerCmd = (name: string) => /^\/(?:model|effort)$/.test(name.trim())
 function modelChange(text: unknown): string | null {
   const m = String(text || '').match(/<local-command-stdout>\s*Set model to\s+`([^`]+)`/)
   return m ? `/model → ${cleanModelName(m[1]!)}` : null
+}
+function effortChange(text: unknown): string | null {
+  const m = String(text || '').match(/<local-command-stdout>\s*(Set effort level to (low|medium|high|xhigh|max|ultracode)\b[\s\S]*?)<\/local-command-stdout>/i)
+  if (!m) return null
+  return /\((?:for )?this session only\)/i.test(m[1]!)
+    ? `Effort : ${m[2]!.toLowerCase()} (cette session)`
+    : m[1]!.trim()
 }
 
 export function parseClaude(lines: Lines, home = ''): Parsed {
@@ -177,9 +184,9 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     // l'écrivent comme message système, sans sa sortie (lue à l'écran).
     if (d.type === 'system' && d.subtype === 'local_command' && typeof d.content === 'string') {
       const cmd = d.content.match(/<command-name>([^<]*)<\/command-name>/)
-      const changed = modelChange(d.content)
-      if (changed) items.push({ role: 'cmd', text: changed, ts })
-      else if (cmd && !isModelCmd(cmd[1]!)) {
+      const changed = effortChange(d.content) || modelChange(d.content)
+      if (changed) items.push({ role: 'system', text: changed, ts })
+      else if (cmd && !isPickerCmd(cmd[1]!)) {
         const args = (d.content.match(/<command-args>([^<]*)<\/command-args>/) || [])[1] || ''
         items.push({ role: 'cmd', text: `${cmd[1]} ${args}`.trim(), ts })
       }
@@ -191,9 +198,9 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       if (d.isCompactSummary) continue
       if (typeof content === 'string') {
         const cmd = content.match(/<command-name>([^<]*)<\/command-name>/)
-        const changed = modelChange(content)
-        if (changed) items.push({ role: 'cmd', text: changed, ts })
-        else if (cmd && isModelCmd(cmd[1]!)) continue
+        const changed = effortChange(content) || modelChange(content)
+        if (changed) items.push({ role: 'system', text: changed, ts })
+        else if (cmd && isPickerCmd(cmd[1]!)) continue
         else if (cmd) {
           const args = (content.match(/<command-args>([^<]*)<\/command-args>/) || [])[1] || ''
           items.push({ role: 'cmd', text: `${cmd[1]} ${args}`.trim(), ts })

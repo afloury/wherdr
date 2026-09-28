@@ -333,12 +333,10 @@ export async function listEfforts(paneId: string): Promise<EffortList> {
     if (!model) return { levels: [], current: null }
     if (p.agent === 'claude') {
       const fallback = claudeEffortLevels(model.label)
-      if (!fallback.length) return { levels: [], current: model.effort || null }
-      const slider = await openEffortSlider(p)
-      await closeEffortSlider(p.id)
-      observedEfforts.set(p.id, { label: model.label, effort: slider.current })
-      screenEfforts.set(p.id, { effort: slider.current, ms: Date.now() })
-      return { levels: slider.levels.length ? slider.levels : fallback, current: slider.current }
+      // Lire la liste ne doit pas envoyer /effort : Claude inscrit même une
+      // ouverture annulée dans la transcription. Le choix vérifie les niveaux
+      // réellement proposés dans le curseur avant de modifier quoi que ce soit.
+      return { levels: fallback, current: model.effort || null }
     }
     const machine = machineOfPane(p.id)
     if (machine?.home) {

@@ -91,14 +91,33 @@ describe('modèle dans une rollout Codex', () => {
   })
 })
 
-describe('conversation : /model', () => {
+describe('conversation : commandes locales des sélecteurs', () => {
   it('masque /model et « Kept model as », affiche un vrai changement', () => {
     const cmd = j({ type: 'system', subtype: 'local_command', timestamp: 't', content: '<command-name>/model</command-name>\n<command-args></command-args>' })
     const kept = j({ type: 'system', subtype: 'local_command', timestamp: 't', content: '<local-command-stdout>Kept model as `Opus 5.5`</local-command-stdout>' })
     const userCmd = j({ type: 'user', timestamp: 't', message: { role: 'user', content: '<command-name>/model</command-name>\n<command-args></command-args>' } })
     const set = j({ type: 'user', timestamp: 't', message: { role: 'user', content: '<local-command-stdout>Set model to `Sonnet 4.6` for this session only</local-command-stdout>' } })
     const items = parseLines([cmd, kept, userCmd, set].join('\n'), 'claude')
-    expect(items.map(i => `${i.role}:${i.text}`)).toEqual(['cmd:/model → Sonnet 4.6'])
+    expect(items.map(i => `${i.role}:${i.text}`)).toEqual(['system:/model → Sonnet 4.6'])
+  })
+
+  it('masque le curseur /effort annulé et affiche une seule confirmation système', () => {
+    const command = (type: 'user' | 'system') => type === 'user'
+      ? j({ type, timestamp: 't', message: { role: 'user', content: '<command-name>/effort</command-name>\n<command-args></command-args>' } })
+      : j({ type, subtype: 'local_command', timestamp: 't', content: '<command-name>/effort</command-name>\n<command-args></command-args>' })
+    const output = (value: string) => j({ type: 'user', timestamp: 't', message: { role: 'user', content: `<local-command-stdout>${value}</local-command-stdout>` } })
+    const human = j({ type: 'user', timestamp: 't', message: { role: 'user', content: 'Aide-moi' } })
+    const items = parseLines([
+      command('system'), output('Cancelled'), command('user'),
+      output('Set effort level to low (this session only): Quick, straightforward implementation'), human,
+    ].join('\n'), 'claude')
+    expect(items.map(i => `${i.role}:${i.text}`)).toEqual([
+      'system:Effort : low (cette session)', 'user:Aide-moi',
+    ])
+    expect(parseLines(output('Set effort level to high (for this session only)'), 'claude').map(i => i.text))
+      .toEqual(['Effort : high (cette session)'])
+    expect(parseLines(output('Set effort level to max and saved as your default'), 'claude').map(i => i.text))
+      .toEqual(['Set effort level to max and saved as your default'])
   })
 })
 
@@ -122,9 +141,9 @@ describe('transcripts.model()', () => {
 
 describe('menu /model', () => {
   it('propose les efforts Claude selon le modèle et construit une commande valide', () => {
-    expect(claudeEffortLevels('Opus 5.5')).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+    expect(claudeEffortLevels('Opus 5.5')).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultracode'])
     expect(claudeEffortLevels('Sonnet 4.6')).toEqual(['low', 'medium', 'high', 'max'])
-    expect(claudeEffortLevels('Opus 5.5 (1M)')).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+    expect(claudeEffortLevels('Opus 5.5 (1M)')).toEqual(['low', 'medium', 'high', 'xhigh', 'max', 'ultracode'])
     expect(claudeEffortLevels('Haiku 4.5')).toEqual([])
     expect(claudeEffortLevels('autre')).toEqual([])
     expect(claudeEffortCommand('max', 'Opus 5.5')).toBe('/effort')
