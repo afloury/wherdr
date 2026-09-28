@@ -9,6 +9,7 @@ import { addQueued, findPane, pendingPrompts, poll } from './state'
 import { type Machine, RemoteMachine, allMachines, getMachine, machineOfPane } from './machines'
 import { LIST_DIRS_SCRIPT, listDirsLocal, parseDirList } from './fsx'
 import { AGENT_NAME_HINT, AGENT_NAME_RE, PANE_RE, joinId } from '../../shared/ids'
+import { safeUploadExtension } from '../../shared/uploadName'
 import type { DirListing, MachineConfig } from '../../shared/types'
 import { installedAgentKinds } from './agentAvailability'
 
@@ -229,10 +230,11 @@ export async function closePanel(paneId: string) {
 export const UPLOAD_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/heic': 'heic' }
 // Photo pour un agent d'une machine distante : gardée ici (miniatures de
 // l'app, /uploads/<nom>) et copiée sur sa machine, dont on renvoie le chemin.
-export async function saveUpload(data: Buffer, ctype: string, paneId?: string | null) {
-  const name = `${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomBytes(3).toString('hex')}.${UPLOAD_TYPES[ctype]}`
+export async function saveUpload(data: Buffer, ctype: string, paneId?: string | null, requestedExtension?: string) {
+  const ext = requestedExtension === undefined ? UPLOAD_TYPES[ctype] : safeUploadExtension(requestedExtension)
+  const name = `${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomBytes(3).toString('hex')}.${ext}`
   const file = path.join(UPLOAD_DIR, name)
-  if (!data.length) throw new HerdrError('empty', 'image vide')
+  if (!data.length) throw new HerdrError('empty', 'fichier vide')
   const m = paneId ? machineOfPane(paneId) : null
   if (paneId && !m) throw new HerdrError('bad_pane', 'pane introuvable')
   await fsp.mkdir(UPLOAD_DIR, { recursive: true })

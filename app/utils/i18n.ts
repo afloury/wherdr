@@ -69,6 +69,7 @@ const EN: Record<string, string> = {
   '⏸ En attente de ta réponse — détail dans l’onglet Terminal': '⏸ Waiting for your reply — details in the Terminal tab',
   'Photo en cours d’envoi…': 'Photo is uploading…', 'Retirer': 'Remove',
   'Photo non envoyée': 'Photo upload failed',
+  'Joindre un fichier…': 'Attach a file…', 'Fichier non envoyé': 'File upload failed',
   'Presse-papiers inaccessible ici — colle dans le champ de message.': 'Clipboard unavailable here — paste into the message field.',
   'Pas d’image dans le presse-papiers': 'No image in the clipboard', 'Collage refusé': 'Paste denied',
   'Collage impossible': 'Paste failed',
