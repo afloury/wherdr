@@ -393,7 +393,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
   <section
     :id="cell ? undefined : 'agent'" :class="cell ? ['cell-view', { active, gripped: grip }] : 'view'" :style="cell ? undefined : viewStyle" :data-pane="cell ? paneId : undefined"
     @touchstart="onSwipeStart" @touchmove="onSwipeMove" @touchend="onSwipeEnd" @touchcancel="onSwipeEnd"
-    @pointerdown.capture="cell && emit('activate')"
+    @pointerdown.capture="cell && emit('activate')" @focusin="cell && emit('activate')"
   >
     <SpaceTabs v-if="!cell && pane" :workspace="pane.workspace" :current="pane.tab" />
     <header class="top bar agent-top">

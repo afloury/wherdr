@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cellMode, showComposer, spaceTabControls, terminalAttachment, toggleViewMode, viewControls } from '../app/utils/viewMode'
+import { cellFocusStep, cellMode, showComposer, spaceTabControls, terminalAttachment, toggleViewMode, viewControls } from '../app/utils/viewMode'
 
 const base = { desk: false, cell: false, chat: true, live: true, project: false }
 
@@ -87,5 +87,22 @@ describe('cellMode', () => {
     const before = show()
     for (const _focus of ['a', 'b', 'c', 'a']) expect(show()).toEqual(before)
     expect(before).toEqual({ a: 'mirror', b: 'mirror', c: 'chat' })
+  })
+})
+
+describe('cellFocusStep', () => {
+  const k = (key: string, o: Partial<{ altKey: boolean, ctrlKey: boolean, metaKey: boolean, shiftKey: boolean }> = {}) =>
+    cellFocusStep({ key, altKey: true, ctrlKey: true, metaKey: false, shiftKey: false, ...o })
+  it('Ctrl/⌘ + Alt + flèche : case précédente ou suivante', () => {
+    expect(k('ArrowLeft')).toBe(-1)
+    expect(k('ArrowUp')).toBe(-1)
+    expect(k('ArrowRight')).toBe(1)
+    expect(k('ArrowDown', { ctrlKey: false, metaKey: true })).toBe(1)
+  })
+  it('ignore les autres combinaisons (Alt + Maj + flèche échange les panes)', () => {
+    expect(k('ArrowLeft', { shiftKey: true })).toBe(0)
+    expect(k('ArrowLeft', { ctrlKey: false })).toBe(0)
+    expect(k('ArrowLeft', { altKey: false })).toBe(0)
+    expect(k('Tab')).toBe(0)
   })
 })

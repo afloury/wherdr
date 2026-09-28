@@ -45,3 +45,11 @@ export function spaceTabControls(count: number) {
 export function toggleViewMode(current: Mode | 'mirror' | null, target: Exclude<Mode, 'chat'>): Mode {
   return current === target ? 'chat' : target
 }
+
+// Côte à côte : Ctrl/⌘ + Alt + flèche donne le focus à la case voisine (ordre
+// de lecture de Herdr : gauche / haut = précédente, droite / bas = suivante).
+// Capté avant le terminal, où Tab et les flèches partent au pane.
+export function cellFocusStep(e: { key: string, altKey: boolean, ctrlKey: boolean, metaKey: boolean, shiftKey: boolean }): 1 | -1 | 0 {
+  if (!e.altKey || !(e.ctrlKey || e.metaKey) || e.shiftKey) return 0
+  return ({ ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 } as const)[e.key as 'ArrowLeft'] ?? 0
+}

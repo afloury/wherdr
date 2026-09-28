@@ -8,8 +8,9 @@
 // case active de wherdr n'est pas le focus de Herdr. Gestes explicites :
 // glisser un pane (poignée de l'en-tête, appui long au téléphone) sur un
 // autre, et glisser un trait de séparation pour redimensionner.
-import { type Divider, type DropSide, type TabLayout, dividers, dropPreview, dropZone, paneBoxes, ratioAt, resizePreview } from '#shared/layout'
+import { type Divider, type DropSide, type TabLayout, dividers, dropPreview, dropZone, neighborPane, paneBoxes, ratioAt, resizePreview } from '#shared/layout'
 import { longPress } from '~/utils/longPress'
+import { cellFocusStep } from '~/utils/viewMode'
 
 const props = defineProps<{ tabId: string }>()
 const route = useRoute()
@@ -58,6 +59,17 @@ function activate(paneId: string) {
   active.value = paneId
   router.replace({ query: { pane: paneId } })
 }
+// Clavier : Ctrl/⌘ + Alt + flèche, case voisine (capté avant le terminal).
+function onFocusKey(e: KeyboardEvent) {
+  const step = desk.value && entry.value && active.value ? cellFocusStep(e) : 0
+  const next = step ? neighborPane(entry.value!.layout, active.value!, step) : null
+  if (!next) return
+  e.preventDefault()
+  e.stopPropagation()
+  activate(next)
+}
+onMounted(() => window.addEventListener('keydown', onFocusKey, true))
+onUnmounted(() => window.removeEventListener('keydown', onFocusKey, true))
 
 // Titre (nom du space) : appui long (téléphone) ou clic droit (ordinateur),
 // options du space.
