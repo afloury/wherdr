@@ -5,6 +5,7 @@ node_modules
 data
 test-data
 .shots
+.herdr-project
 .env
 test-sandbox
 tests

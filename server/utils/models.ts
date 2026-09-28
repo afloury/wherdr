@@ -218,6 +218,7 @@ export function claudeEffortLevels(model: string | null | undefined): string[] {
   if (!model) return []
   const name = cleanModelName(model).replace(/\s*\([^)]*\)/g, '').toLowerCase()
   if (/^(?:opus|sonnet) 4\.6$/.test(name)) return ['low', 'medium', 'high', 'max']
+  if (name === 'opus 5.5') return ['low', 'medium', 'high', 'xhigh', 'max', 'ultracode']
   if (/^(?:fable (?:5|5\.1)|opus (?:4\.7|4\.8|5|5\.5)|sonnet 5)$/.test(name)) return ['low', 'medium', 'high', 'xhigh', 'max']
   return []
 }

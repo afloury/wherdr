@@ -330,7 +330,10 @@ const blocks = computed<Block[]>(() => {
       lastReply = it.text
       out.push({ k: 'assistant', key, id: replyId(it), text: it.text, html: md(it.text) })
     } else {
-      out.push({ k: it.role === 'cmd' ? 'cmd' : 'system', key, text: it.role === 'system' ? t(it.text) : it.text })
+      const effort = it.role === 'system' ? it.text.match(/^Effort : (low|medium|high|xhigh|max|ultracode) \(cette session\)$/) : null
+      out.push({ k: it.role === 'cmd' ? 'cmd' : 'system', key, text: effort
+        ? tl(`Effort : ${effort[1]} (cette session)`, `Effort: ${effort[1]} (this session)`)
+        : it.role === 'system' ? t(it.text) : it.text })
     }
   })
   flush()
