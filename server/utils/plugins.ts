@@ -5,14 +5,15 @@
 // (plugin.log.list) quelques secondes pour donner le résultat.
 import type { PluginAction, PluginActionResult } from '../../shared/types'
 import { splitId } from '../../shared/ids'
-import { HERDR_BIN, HERDR_CHILD_ENV, log } from './env'
+import { HERDR_BIN, HERDR_CHILD_ENV, HOME, log } from './env'
 import { execFile } from 'node:child_process'
 import { binaryOn } from './projectBoard'
 import { getState } from './state'
 import { HerdrError, herdrOn, sleep } from './herdr'
 import { findPane } from './state'
-import { machineFor } from './actions'
-import { ACTION_ID_RE, PLUGIN_ID_RE, type RawPlugin, type RawPluginAction, type RawPluginLog, actionContext, logResult, normalizeActions } from './pluginPolicy'
+import { isGitRepo, machineFor, underHome } from './actions'
+import { ACTION_ID_RE, PLUGIN_ID_RE, type RawPlugin, type RawPluginAction, type RawPluginLog, actionContext, logResult, normalizeActions, outputTail, stripAnsi } from './pluginPolicy'
+import { PROJECT_INPUTS, cleanProjectInput, projectCommandArgs, setupHeader } from '../../shared/projectsActions'
 
 // Liste gardée quelques secondes par machine (le menu la redemande à chaque ouverture).
 const CACHE_MS = 10000
@@ -33,32 +34,57 @@ export async function listPluginActions(machineKey: string, fresh = false): Prom
 
 const WAIT_MS = 12000
 
-const PROJECT_INPUTS: Record<string, string[]> = {
-  new: ['name', 'goal'], 'adopt-workspace': ['name'], open: ['slug'], pause: ['slug'], resume: ['slug'],
-}
-
 export function pluginInputFields(plugin: string, action: string): string[] {
   return plugin === 'herdr-projects' ? PROJECT_INPUTS[action] || [] : []
 }
 
 // Une commande du plugin plutôt que sa popup : Herdr ne publie aucun flux de
 // lecture ou de saisie pour les popups. argv et machine sont toujours explicites.
-async function projectsCommand(m: ReturnType<typeof machineFor>, args: string[]): Promise<string> {
-  const bin = await binaryOn(m)
-  if (!bin) throw new HerdrError('plugin_unavailable', 'binaire Projects introuvable')
+type Machine = ReturnType<typeof machineFor>
+async function runProjects(m: Machine, bin: string, args: string[]): Promise<{ code: number, stdout: string, stderr: string }> {
   if (m.exec) {
     const r = await m.exec('HERDR_BIN_PATH="$1"; shift; bin="$1"; shift; exec "$bin" "$@"', [(m as { bin?: string }).bin || 'herdr', bin, ...args], { timeoutMs: 60000 })
-    if (r.code !== 0) throw new HerdrError('plugin_failed', r.stderr.trim() || r.stdout.toString('utf8').trim() || `code ${r.code}`)
-    return r.stdout.toString('utf8').trim()
+    return { code: r.code ?? 1, stdout: r.stdout.toString('utf8').trim(), stderr: r.stderr.trim() }
   }
-  return new Promise((resolve, reject) => execFile(bin, args, {
+  return new Promise(resolve => execFile(bin, args, {
     env: { ...HERDR_CHILD_ENV, HERDR_BIN_PATH: HERDR_BIN }, timeout: 60000, maxBuffer: 1024 * 1024,
-  }, (err, stdout, stderr) => err
-    ? reject(new HerdrError('plugin_failed', String(stderr || err.message).trim()))
-    : resolve(String(stdout).trim())))
+  }, (err, stdout, stderr) => resolve({
+    code: err ? (typeof err.code === 'number' ? err.code : 1) : 0,
+    stdout: String(stdout).trim(), stderr: String(stderr || (err && !stdout ? err.message : '')).trim(),
+  })))
 }
 
-export async function invokePluginAction(body: { machine?: unknown, pane_id?: unknown, plugin?: unknown, action?: unknown, input?: unknown }): Promise<PluginActionResult> {
+async function projectsBin(m: Machine): Promise<string> {
+  const bin = await binaryOn(m)
+  if (!bin) throw new HerdrError('plugin_unavailable', 'binaire Projects introuvable')
+  return bin
+}
+
+async function projectsCommand(m: Machine, args: string[]): Promise<string> {
+  const r = await runProjects(m, await projectsBin(m), args)
+  if (r.code !== 0) throw new HerdrError('plugin_failed', r.stderr || r.stdout || `code ${r.code}`)
+  return r.stdout
+}
+
+// « Check setup » : `doctor` lancé comme les autres commandes de wherdr, avec en
+// tête la version du binaire, le HOME et la config Herdr qu'il voit. Lecture seule
+// (jamais --fix) ; code non nul = des contrôles ont échoué, la sortie reste utile.
+async function projectsDoctor(m: Machine): Promise<PluginActionResult> {
+  const bin = await projectsBin(m)
+  const [version, doctor] = await Promise.all([
+    runProjects(m, bin, ['--version']).catch(() => null),
+    runProjects(m, bin, projectCommandArgs('doctor', {}, { session: m.session })),
+  ])
+  const home = m.local ? String(HERDR_CHILD_ENV.HOME || HOME) : m.home
+  const full = stripAnsi([doctor.stdout, doctor.stderr].filter(Boolean).join('\n')).slice(-12000)
+  return {
+    status: doctor.code === 0 ? 'succeeded' : 'failed', exitCode: doctor.code,
+    output: outputTail(full), full,
+    setup: setupHeader({ version: version && version.code === 0 ? version.stdout : null, binary: bin, home }),
+  }
+}
+
+export async function invokePluginAction(body: { machine?: unknown, pane_id?: unknown, plugin?: unknown, action?: unknown, input?: unknown, lang?: unknown }): Promise<PluginActionResult> {
   const plugin = String(body.plugin || '')
   const action = String(body.action || '')
   if (!PLUGIN_ID_RE.test(plugin) || !ACTION_ID_RE.test(action)) throw new HerdrError('bad_action', 'action invalide')
@@ -75,27 +101,32 @@ export async function invokePluginAction(body: { machine?: unknown, pane_id?: un
   if (plugin === 'herdr-projects' && action === 'open-popup') {
     throw new HerdrError('popup_unavailable', 'Le panneau Projects est disponible dans le client Herdr ; ses saisies ne sont pas accessibles par l’API Herdr.')
   }
+  if (plugin === 'herdr-projects' && action === 'doctor') {
+    log(`plugin ${plugin}.${action}${m.local ? '' : ` sur ${m.label}`} (commande)`)
+    return projectsDoctor(m)
+  }
   const fields = pluginInputFields(plugin, action)
   if (fields.length) {
-    const input = body.input && typeof body.input === 'object' && !Array.isArray(body.input) ? body.input as Record<string, unknown> : {}
-    const value = (key: string) => typeof input[key] === 'string' ? (input[key] as string).trim() : ''
-    if (fields.some(key => typeof input[key] !== 'string' || value(key).length > 120) || !value(fields[0]!)) {
-      throw new HerdrError('bad_input', 'saisie du plugin invalide')
+    const input = cleanProjectInput(action, body.input)
+    if (!input) throw new HerdrError('bad_input', 'saisie du plugin invalide')
+    if (action === 'adopt-workspace' && (!pane || !pane.agent || !pane.cwd)) {
+      throw new HerdrError('bad_context', 'un agent et son dossier sont nécessaires dans ce space')
     }
-    let args: string[]
-    if (action === 'adopt-workspace') {
-      if (!pane || !pane.agent || !pane.cwd) throw new HerdrError('bad_context', 'un agent et son dossier sont nécessaires dans ce space')
-      args = ['adopt-workspace', '--name', value('name'), '--pane', splitId(pane.id).local, '--workspace-cwd', pane.cwd]
-    } else if (action === 'new') args = ['new', value('name'), '--goal', value('goal')]
-    else args = [action, value('slug')]
-    if ((action === 'adopt-workspace' || action === 'open') && m.session !== 'default') args.push('--session', m.session)
+    // Dépôt proposé pour « New project » : un dossier Git de la machine, sous son HOME.
+    if (input.repo) {
+      const repo = underHome(input.repo, m.home)
+      if (!repo || !(await isGitRepo(repo, m))) throw new HerdrError('bad_input', `pas un dépôt Git : ${input.repo}`)
+      input.repo = repo
+    }
+    const lang = (body as { lang?: unknown }).lang === 'fr' ? 'fr' : 'en'
+    const args = projectCommandArgs(action, input, { pane: pane ? splitId(pane.id).local : undefined, cwd: pane?.cwd || undefined, session: m.session, lang })
     const output = await projectsCommand(m, args)
     // Le panneau « New project » ouvre ensuite le projet. Garder la création
     // visible même si l’ouverture échoue : l’utilisateur peut la retenter.
     if (action === 'new') {
       const slug = /created `([^`]+)`/.exec(output)?.[1]
       if (slug) {
-        try { return { status: 'succeeded', exitCode: 0, output: outputTail(`${output}\n${await projectsCommand(m, ['open', slug, ...(m.session !== 'default' ? ['--session', m.session] : [])])}`) } }
+        try { return { status: 'succeeded', exitCode: 0, output: outputTail(`${output}\n${await projectsCommand(m, projectCommandArgs('open', { slug }, { session: m.session }))}`) } }
         catch (e) { return { status: 'failed', exitCode: null, output: outputTail(`${output}\n${(e as Error).message}`) } }
       }
     }

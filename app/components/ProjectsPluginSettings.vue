@@ -9,6 +9,8 @@ const states = ref<Record<string, PluginState>>({})
 const errors = ref<Record<string, string>>({})
 const loading = ref<Record<string, boolean>>({})
 const busy = ref<Record<string, boolean>>({})
+// Installé depuis wherdr : rappel de recharger la config du client Herdr, jusqu'au prochain chargement.
+const justInstalled = ref<Record<string, boolean>>({})
 
 async function refresh(machine: MachineConfig) {
   if (!machine.online) return
@@ -35,6 +37,7 @@ async function install(machine: MachineConfig) {
   try {
     await api('/api/plugins/projects', { machine: machine.key })
     toast(tl(`herdr-projects installé sur ${machine.label}.`, `herdr-projects installed on ${machine.label}.`))
+    justInstalled.value = { ...justInstalled.value, [machine.key]: true }
     await refresh(machine)
   } catch (e) { toast((e as Error).message, true) }
   finally { busy.value = { ...busy.value, [machine.key]: false } }
@@ -94,6 +97,13 @@ const copyRules = () => copyText(coordinatorRules(lang()), tl('Règles copiées 
         </div>
         <p v-if="!states[machine.key]?.installable" class="projects-plugin-note">{{ tl('Installation directe indisponible ici : lance la commande sur cette machine.', 'Direct installation is unavailable here: run the command on this machine.') }}</p>
       </template>
+      <div v-if="justInstalled[machine.key]" class="plugin-input-note reload projects-plugin-reload">
+        <UIcon name="i-lucide-refresh-cw" />
+        <div>
+          <strong>{{ tl('Recharge la config du client Herdr', 'Reload the Herdr client config') }}</strong>
+          <p>{{ tl('Dans le terminal Herdr : ', 'In the Herdr terminal: ') }}<kbd>prefix</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd>. {{ tl('Puis lance « Set up the sidebar… » depuis le menu d’un agent pour installer la barre latérale et les hooks.', 'Then run “Set up the sidebar…” from an agent’s menu to install the sidebar and the hooks.') }}</p>
+        </div>
+      </div>
       <p v-if="states[machine.key]?.installed && !states[machine.key]?.enabled" class="projects-plugin-note">{{ tl('Le plugin est désactivé dans Herdr.', 'The plugin is disabled in Herdr.') }}</p>
     </div>
   </div>
