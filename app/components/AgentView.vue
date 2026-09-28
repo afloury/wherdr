@@ -197,7 +197,8 @@ watch(pane, (p) => {
 })
 
 const prompt = computed(() => (pane.value && pane.value.status === 'blocked' && pane.value.prompt && pane.value.prompt.options ? pane.value.prompt : null))
-watch(() => JSON.stringify(prompt.value), () => nextTick(() => chatRef.value?.scrollToEnd(false)))
+const screen = computed(() => knownScreen(pane.value))
+watch(() => JSON.stringify([prompt.value, screen.value]), () => nextTick(() => chatRef.value?.scrollToEnd(false)))
 
 const where = computed(() => {
   const p = pane.value
@@ -489,7 +490,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <div v-else class="chat" />
     <p v-if="pane?.agent && !hasChat(pane) && mode === 'term'" class="terminal-transcript-note">{{ tl('Conversation non disponible pour cet agent · suivi dans le terminal', 'Conversation unavailable for this agent · follow it in the terminal') }}</p>
 
-    <ChoicesPanel v-if="prompt && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" />
+    <ChoicesPanel v-if="(prompt || screen) && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :screen="screen" />
     <Keybar v-if="mode === 'term' && eventsOpen && !offlineView && !machineDown" :ctl="ctl" />
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" @sent="onSent" />
     </div>

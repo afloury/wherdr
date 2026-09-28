@@ -324,7 +324,8 @@ function setNetDown(down: boolean) {
 function normalize(s: HerdrState): HerdrState {
   // Une question à l'écran (ex. confiance du dossier chez Codex, que Herdr
   // voit « idle ») : pour l'utilisateur, l'agent attend sa réponse.
-  for (const p of s.panes) if (p.prompt && p.prompt.options && p.status !== 'working') p.status = 'blocked'
+  // Idem pour un écran d'attente reconnu (hooks de Codex, connexion…).
+  for (const p of s.panes) if (((p.prompt && p.prompt.options) || knownScreen(p)) && p.status !== 'working') p.status = 'blocked'
   return s
 }
 

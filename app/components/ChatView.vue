@@ -443,6 +443,18 @@ const queuedWhy = computed(() => {
 })
 watch(() => queuedList.value.map(q => q.id).join(','), () => nextTick(() => scrollToEnd(false)))
 
+// Pas encore de conversation mais un écran d'attente (légende de touches) :
+// l'agent attend une action. Écran reconnu : détail et boutons dans le panneau
+// « À toi » en bas ; sinon aperçu des dernières lignes, à faire dans le terminal.
+const waiting = computed(() => {
+  const p = props.pane
+  if (unavailable.value !== 'not_found' || !p.screen || p.status === 'working' || readOnly.value) return null
+  const who = kindLabel(p.agent)
+  return knownScreen(p)
+    ? { text: tl(`${who} attend ta réponse, ci-dessous ou dans le terminal.`, `${who} is waiting for your answer, below or in the terminal.`), lines: [] }
+    : { text: tl(`${who} attend une action dans le terminal.`, `${who} is waiting for an action in the terminal.`), lines: p.screen.lines }
+})
+
 const status = computed(() => {
   if (readOnly.value) return null
   const p = props.pane
@@ -453,7 +465,7 @@ const status = computed(() => {
   // l'étoile qui tourne devant est animée côté app (ClaudeSpinner).
   if (p.status === 'working' && p.agent === 'claude' && p.activity) return { typing: true, verb: true, text: `${p.activity}…` }
   if (p.status === 'working') return { typing: true, text: `${kindLabel(p.agent)} ${tl('travaille…', 'is working…')}` }
-  if (p.status === 'blocked' && !(p.prompt && p.prompt.options)) return { typing: false, text: t('En attente de ta réponse — détail dans l’onglet Terminal') }
+  if (p.status === 'blocked' && !(p.prompt && p.prompt.options) && !knownScreen(p)) return { typing: false, text: t('En attente de ta réponse — détail dans l’onglet Terminal') }
   return null
 })
 watch(() => props.pane.status, () => nextTick(() => scrollToEnd(false)))
@@ -629,7 +641,13 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
         :ui="{ root: 'chat-msgs', viewport: 'hw-jump-vp', autoScroll: 'hw-jump' }"
       >
         <div ref="listEl" class="chat-list" @click="onListClick">
-          <div v-if="unavailable" class="chat-empty">
+          <div v-if="unavailable && waiting" class="chat-empty waiting">
+            <UIcon name="i-lucide-square-terminal" class="chat-empty-icon" />
+            <p>{{ waiting.text }}</p>
+            <pre v-if="waiting.lines.length" class="choices-screen-text">{{ waiting.lines.join('\n') }}</pre>
+            <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('Voir le terminal') }}</UButton>
+          </div>
+          <div v-else-if="unavailable" class="chat-empty">
             <UIcon name="i-lucide-message-square-dashed" class="chat-empty-icon" />
             <p>{{ unavailable === 'not_found' ? t('Pas encore de conversation pour cet agent.') : t('Conversation indisponible pour cet agent.') }}</p>
             <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('Voir le terminal') }}</UButton>
