@@ -23,7 +23,7 @@ export function workspaceLabel(state: HerdrState, p: Pane): string {
 
 const locale = () => (language === 'en' ? 'en-GB' : 'fr-FR')
 
-export function fmtTime(ts: string) {
+export function fmtTime(ts: string | number) {
   return new Date(ts).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })
 }
 
