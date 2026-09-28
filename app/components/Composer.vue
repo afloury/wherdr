@@ -109,23 +109,28 @@ function removeAtt(i: number) {
 watch(() => attachments.value.length, () => nextTick(layout))
 
 async function shrink(file: Blob): Promise<Blob> {
+  const url = URL.createObjectURL(file)
   try {
-    const url = URL.createObjectURL(file)
     const img = await new Promise<HTMLImageElement>((res, rej) => {
       const i = new Image()
       i.onload = () => res(i)
       i.onerror = rej
       i.src = url
     })
-    URL.revokeObjectURL(url)
     const k = Math.min(1, 2048 / Math.max(img.naturalWidth, img.naturalHeight))
     const c = document.createElement('canvas')
     c.width = Math.round(img.naturalWidth * k)
     c.height = Math.round(img.naturalHeight * k)
-    c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height)
+    const g = c.getContext('2d')!
+    // JPEG sans transparence : fond blanc, sinon les zones transparentes
+    // (captures d'écran PNG) deviennent noires.
+    g.fillStyle = '#fff'
+    g.fillRect(0, 0, c.width, c.height)
+    g.drawImage(img, 0, 0, c.width, c.height)
     const blob = await new Promise<Blob | null>(res => c.toBlob(res, 'image/jpeg', 0.86))
     if (blob) return blob
   } catch { /* image illisible : envoyée telle quelle */ }
+  finally { URL.revokeObjectURL(url) }
   return file
 }
 
@@ -143,6 +148,7 @@ async function addImages(files: File[]) {
     } catch (err) {
       toast(`${t('Photo non envoyée')} : ${(err as Error).message}`, true)
       attachments.value = attachments.value.filter(x => x !== a)
+      URL.revokeObjectURL(a.url)
     }
   }
 }
