@@ -18,7 +18,7 @@ import type { MachineInfo, NamedSession, Pane } from '#shared/types'
 import { groupByProject, remoteCoordinator } from '#shared/projects'
 import { type Row, projectRoots, readyLists, repoRoots, rowGroup, spaceRows } from '#shared/spaces'
 import { claudeSetupOf, machineQuotaRows, quotaRows } from '~/utils/quotas'
-import { moveMachine, sortMachines } from '#shared/machineOrder'
+import { dropMachineKey, shiftMachineKey, sortMachines } from '#shared/machineOrder'
 import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
 const emit = defineEmits<{ search: [] }>()
 useQuotaLoader()
@@ -109,27 +109,21 @@ async function saveMachineOrder(order: string[]) {
   catch (err) { machineOrder.value = previous; toast((err as Error).message, true) }
 }
 function shiftMachine(key: string, direction: -1 | 1) {
-  const keys = visibleKeys.value
-  const at = keys.indexOf(key)
-  const other = at + direction
-  if (at < 0 || other < 0 || other >= keys.length) return
-  const next = [...keys]
-  ;[next[at], next[other]] = [next[other]!, next[at]!]
+  const next = shiftMachineKey(visibleKeys.value, key, direction)
+  if (!next) return
   haptic()
   saveMachineOrder(next)
 }
+// La machine locale a pour clé '' : on compare draggingMachine à null.
 function onMachineDrop(key: string, event: DragEvent) {
   event.preventDefault()
-  const from = draggingMachine.value
-  const keys = visibleKeys.value
-  const before = dropAfter.value ? keys[keys.indexOf(key) + 1] ?? null : key
+  const next = dropMachineKey(visibleKeys.value, draggingMachine.value, key, dropAfter.value)
   draggingMachine.value = null
   dropMachine.value = null
-  if (!from || from === key) return
-  saveMachineOrder(moveMachine(keys, from, before))
+  if (next) saveMachineOrder(next)
 }
 function onMachineDragOver(key: string, event: DragEvent) {
-  if (!draggingMachine.value || draggingMachine.value === key) return
+  if (draggingMachine.value === null || draggingMachine.value === key) return
   event.preventDefault()
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
   dropMachine.value = key
@@ -137,7 +131,8 @@ function onMachineDragOver(key: string, event: DragEvent) {
 }
 function onMachineDragStart(key: string, event: DragEvent) {
   draggingMachine.value = key
-  event.dataTransfer?.setData('text/plain', key)
+  // Une donnée vide peut annuler le glisser selon le navigateur.
+  event.dataTransfer?.setData('text/plain', key || 'local')
   if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
 }
 function onMachineDragEnd() { draggingMachine.value = null; dropMachine.value = null }

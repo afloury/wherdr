@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { cleanMachineOrder } from '../../shared/machineOrder'
 import { DATA_DIR } from './env'
 import { baseMachines } from './machines'
 
@@ -9,12 +10,8 @@ const file = path.join(DATA_DIR, 'machine-order.json')
 export function currentMachineKeys() { return baseMachines().map(m => m.key) }
 
 export async function readMachineOrder(): Promise<string[]> {
-  try {
-    const value: unknown = JSON.parse(await fs.readFile(file, 'utf8'))
-    if (!Array.isArray(value)) return []
-    const known = new Set(currentMachineKeys())
-    return value.filter((key, index): key is string => typeof key === 'string' && known.has(key) && value.indexOf(key) === index)
-  } catch { return [] }
+  try { return cleanMachineOrder(JSON.parse(await fs.readFile(file, 'utf8')), currentMachineKeys()) }
+  catch { return [] }
 }
 
 export async function writeMachineOrder(order: string[]): Promise<void> {
