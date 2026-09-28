@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { spaceTabControls, toggleViewMode, viewControls } from '../app/utils/viewMode'
+import { showComposer, spaceTabControls, terminalAttachment, toggleViewMode, viewControls } from '../app/utils/viewMode'
 
 const base = { desk: false, cell: false, chat: true, live: true, project: false }
 
@@ -19,6 +19,25 @@ describe('viewControls', () => {
     expect(viewControls({ ...base, chat: false, project: true })).toEqual(none)
     expect(viewControls({ ...base, desk: true, chat: false })).toEqual(none)
     expect(viewControls({ ...base, desk: true, cell: true, live: false })).toEqual(none)
+  })
+})
+
+describe('saisie du pane', () => {
+  it.each(['term', 'mirror'] as const)('retire le champ sur ordinateur en mode %s', mode => {
+    expect(showComposer({ desk: true, live: true, mode })).toBe(false)
+    expect(terminalAttachment({ desk: true, live: true, mode, available: true })).toBe(true)
+    expect(showComposer({ desk: false, live: true, mode })).toBe(true)
+    expect(terminalAttachment({ desk: false, live: true, mode, available: true })).toBe(false)
+  })
+  it('garde le champ dans la conversation sur les deux appareils', () => {
+    expect(showComposer({ desk: true, live: true, mode: 'chat' })).toBe(true)
+    expect(showComposer({ desk: false, live: true, mode: 'chat' })).toBe(true)
+    expect(terminalAttachment({ desk: true, live: true, mode: 'chat', available: true })).toBe(false)
+  })
+  it('ne propose rien dans une case inactive ou hors ligne', () => {
+    expect(showComposer({ desk: true, live: false, mode: 'mirror' })).toBe(false)
+    expect(terminalAttachment({ desk: true, live: false, mode: 'mirror', available: true })).toBe(false)
+    expect(terminalAttachment({ desk: true, live: true, mode: 'term', available: false })).toBe(false)
   })
 })
 

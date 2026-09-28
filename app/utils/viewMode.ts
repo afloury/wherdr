@@ -16,6 +16,16 @@ export function viewControls(o: { desk: boolean, cell: boolean, chat: boolean, l
   }
 }
 
+// Le terminal se saisit directement sur ordinateur, y compris dans une case
+// côte à côte. Le champ reste utile sur téléphone et dans la conversation.
+export function showComposer(o: { desk: boolean, live: boolean, mode: Mode | 'mirror' | null }) {
+  return o.live && (!o.desk || (o.mode !== 'term' && o.mode !== 'mirror'))
+}
+
+export function terminalAttachment(o: { desk: boolean, live: boolean, mode: Mode | 'mirror' | null, available: boolean }) {
+  return o.desk && o.live && o.available && (o.mode === 'term' || o.mode === 'mirror')
+}
+
 // Un seul onglet : le bouton « + » tient dans l'en-tête. Dès le deuxième,
 // la rangée d'onglets précède l'en-tête et porte elle-même le bouton.
 export function spaceTabControls(count: number) {

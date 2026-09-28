@@ -21,6 +21,7 @@ import type { PaneViewMode } from '~/composables/useHerdr'
 import { neighborPane } from '#shared/layout'
 import { prefillDraft } from '#shared/projectBoard'
 import { swipeAxis, swipeOffset, swipeStep } from '~/utils/swipe'
+import { showComposer, terminalAttachment } from '~/utils/viewMode'
 
 const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, grip?: boolean }>()
 const emit = defineEmits<{ activate: [] }>()
@@ -155,6 +156,7 @@ watch(mode, (m, old) => {
 function setMode(m: PaneViewMode) {
   if (props.cell) emit('activate')
   viewMode.value = m
+  if (desk.value && m === 'term') nextTick(() => (props.cell ? mirror.value : ctl)?.focus())
   haptic()
 }
 // Icônes d'en-tête (téléphone) : un toucher montre le terminal (ou le panneau
@@ -205,11 +207,37 @@ const where = computed(() => {
 const machine = computed(() => (multiMachine.value && pane.value ? machineInfo(pane.value.machine) : undefined))
 const machineDown = computed(() => Boolean(machine.value && machine.value.status !== 'online'))
 const changesOpen = ref(false)
+const attachInput = ref<HTMLInputElement | null>(null)
+const composerShown = computed(() => showComposer({ desk: desk.value, live: live.value, mode: mode.value }))
+const canAttachTerminal = computed(() => terminalAttachment({
+  desk: desk.value, live: live.value, mode: mode.value,
+  available: Boolean(pane.value && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value)),
+}))
+
+async function attachFile(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = [...(input.files || [])]
+  input.value = ''
+  if (!canAttachTerminal.value || !pane.value) return
+  for (const file of files) {
+    try {
+      const ext = file.name.includes('.') ? file.name.split('.').pop() || '' : ''
+      const r = await fetch(`/api/file?pane=${encodeURIComponent(props.paneId)}&ext=${encodeURIComponent(ext)}`, {
+        method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: file,
+      })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(t(data.error || `HTTP ${r.status}`))
+      onSent(await sendMessage(pane.value, props.paneId, data.path))
+      haptic()
+    } catch (err) { toast(`${t('Fichier non envoyé')} : ${(err as Error).message}`, true) }
+  }
+}
 
 // Menu de l'agent : feuille sur téléphone, menu déroulant sur ordinateur.
 const agentMenu = computed<MenuItem[]>(() => {
   const p = pane.value
   const items: MenuItem[] = []
+  if (canAttachTerminal.value) items.push({ label: t('Joindre un fichier…'), icon: 'i-lucide-paperclip', run: () => attachInput.value?.click() })
   if (p) items.push({ label: t('Voir les changements'), icon: 'i-lucide-file-diff', run: () => { changesOpen.value = true } })
   if (p && workspace.value) items.push({ label: t('Renommer l’espace'), icon: 'i-lucide-pencil', run: () => renameWorkspace(workspace.value!.id) })
   // Diviser, déplacer vers un autre onglet (jamais de zoom ni de redimensionnement).
@@ -347,9 +375,9 @@ const swipeStyle = computed(() => (inTab.value && !desk.value
   ? { transform: drag.value ? `translateX(${drag.value}px)` : undefined, transition: dragging.value ? 'none' : 'transform .18s ease' }
   : {}))
 
-// Ordinateur : le champ de saisie prend le focus à l'ouverture.
+// Ordinateur : donner le clavier à la vue interactive à l'ouverture.
 onMounted(() => {
-  if (desk.value && live.value) setTimeout(() => composer.value?.focus(), 50)
+  if (desk.value && live.value) setTimeout(() => (mode.value === 'term' ? ctl : mode.value === 'mirror' ? mirror.value : composer.value)?.focus(), 50)
 })
 // Case tout juste activée d'un clic ailleurs que dans son contenu : on lui donne le clavier.
 watch(() => props.active, (a, was) => {
@@ -463,7 +491,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
 
     <ChoicesPanel v-if="prompt && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" />
     <Keybar v-if="mode === 'term' && eventsOpen && !offlineView && !machineDown" :ctl="ctl" />
-    <Composer v-if="live" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" @sent="onSent" />
+    <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" @sent="onSent" />
     </div>
     <div
       v-if="projectSide && sideOpen" class="side-handle" :class="{ dragging: sideDrag }" role="separator" aria-orientation="vertical"
@@ -478,5 +506,6 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <AppSheet v-model:open="changesOpen" :title="t('Changements')" wide full>
       <ChangesView v-if="changesOpen && pane" :pane-id="paneId" />
     </AppSheet>
+    <input ref="attachInput" type="file" multiple hidden @change="attachFile">
   </section>
 </template>
