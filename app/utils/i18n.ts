@@ -2,6 +2,13 @@
 // l'anglais est la langue par défaut. Le choix est gardé sur l'appareil.
 
 const EN: Record<string, string> = {
+  'Garder éveillé': 'Keep awake', 'Ce qui empêche la veille': 'What prevents sleep',
+  'Veille normale': 'Normal sleep', 'Secteur': 'Power adapter', 'Batterie': 'Battery',
+  'Capot fermé (sur secteur uniquement)': 'Closed lid (power adapter only)',
+  '1 heure': '1 hour', '4 heures': '4 hours', 'Jusqu’à ce soir (20 h)': 'Until tonight (8 pm)',
+  'Jusqu’à désactivation': 'Until turned off',
+  'Aucune app ne bloque la veille.': 'No app is preventing sleep.',
+  'wherdr · Garder éveillé': 'wherdr · Keep awake',
   // Verrouillage
   'Sécurité': 'Security', 'wherdr est verrouillé': 'wherdr is locked',
   'Déverrouille avec ta clé d’accès (Face ID, Touch ID, Windows Hello…) pour accéder à tes agents.': 'Unlock with your passkey (Face ID, Touch ID, Windows Hello…) to reach your agents.',

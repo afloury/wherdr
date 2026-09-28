@@ -413,6 +413,15 @@ body.short-bottom { --safe-bottom: 0px; }
 }
 .machine-session { display: block; margin-top: 4px; color: var(--mauve); font: 500 10px/1 var(--mono); letter-spacing: .1em; }
 .solo-session-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; margin: 0 0 18px; padding: 9px 12px; border: 1px solid var(--line); color: var(--muted); font: 500 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .1em; text-align: left; }
+.solo-machine-row { display: flex; align-items: flex-start; gap: 4px; }
+.solo-machine-row .solo-session-row { flex: 1; }
+.machine-awake { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--ochre); font: 600 10px/1 var(--mono); white-space: nowrap; }
+.machine-awake svg { width: 13px; height: 13px; }
+.awake-lid { display: flex; gap: 8px; align-items: center; margin: 0 0 16px; color: var(--text); font: 600 12px/1.4 var(--mono); }
+.awake-lid input { accent-color: var(--mauve); }
+.awake-note { margin: 16px 0 0; padding: 12px; border: 1px solid var(--line); color: var(--muted); font: 500 11px/1.5 var(--mono); }
+.awake-assertion { cursor: default; }
+.awake-empty { padding: 14px; margin: 0; background: var(--surface); }
 .solo-session-row span, .solo-session-row b { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 .solo-session-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .solo-session-row b { color: var(--mauve); text-transform: none; letter-spacing: 0; flex: none; }
