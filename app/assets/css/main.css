@@ -767,10 +767,11 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 
 /* ---------- Terminal ---------- */
 #termWrap { position: relative; flex: 1; min-height: 0; padding: 6px 4px 0 6px; background: var(--bg); }
-/* z-index 0 : les calques d'xterm (canevas WebGL, z-index 1 à 10) restent sous
-   #touch, qui reçoit doigt et molette (sinon xterm envoie ↑/↓ à l'agent). */
+/* Le calque reçoit les gestes tactiles ; sur ordinateur, la souris doit atteindre
+   xterm pour la sélection et le mode souris des programmes. */
 #term { position: absolute; inset: 6px 4px 0 6px; z-index: 0; }
-#touch { position: absolute; inset: 0; z-index: 1; touch-action: none; }
+#touch { position: absolute; inset: 0; z-index: 1; touch-action: none; pointer-events: none; }
+@media (hover: none) and (pointer: coarse) { #touch { pointer-events: auto; } }
 .term-loading { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
 .term-loading.static { position: static; padding: 30px; }
 .xterm .xterm-viewport { background: transparent !important; overflow-y: hidden !important; }
@@ -1766,6 +1767,13 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
   color: var(--dim); background: color-mix(in srgb, var(--bg) 80%, transparent); border: 1px solid var(--line-soft);
 }
 .mirror.interactive .mirror-tag { color: var(--mauve); border-color: color-mix(in srgb, var(--mauve) 50%, transparent); }
+.terminal-selection-hint {
+  position: absolute; z-index: 2; right: 8px; top: 8px; display: flex; align-items: center; gap: 8px;
+  padding: 4px 5px 4px 8px; background: var(--bg-2); border: 1px solid var(--line);
+  color: var(--muted); font: 500 10px/1.2 var(--mono); pointer-events: auto;
+}
+.terminal-selection-hint button { padding: 0 3px; color: var(--text-2); font-size: 16px; line-height: 1; }
+.terminal-selection-hint button:hover { color: var(--text); }
 .mirror-failed { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; font: 500 12px/1.3 var(--mono); color: var(--muted); }
 .mirror-failed:hover { color: var(--text); }
 

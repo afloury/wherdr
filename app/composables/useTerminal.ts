@@ -5,6 +5,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { terminalPixelWidth } from '~/utils/terminalSize'
+import { bindTerminalSelection } from '~/utils/terminalSelection'
 
 const TERM_FONT = '"Wherdr Symbols", "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace'
 
@@ -23,6 +24,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   let disposed = false
   const loading = ref(false)
   const kbdOn = ref(false)
+  const selectionHint = useTerminalSelectionHint()
+  let unbindSelection: (() => void) | null = null
 
   const wsBase = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
 
@@ -40,12 +43,14 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       cursorBlink: false,
       allowProposedApi: true,
       macOptionIsMeta: true,
+      macOptionClickForcesSelection: true,
       // Palette du thème de l'app (Réglages → Thème), mise à jour à chaud.
       theme: terminalTheme.value,
     })
     fit = new FitAddon()
     term.loadAddon(fit)
     term.open(host)
+    unbindSelection = bindTerminalSelection(term)
     // Le choix de l'appareil peut changer pendant que le terminal reste monté.
     setRenderer(terminalRenderer.value)
     // JetBrains Mono (embarquée) : une fois chargée, xterm remesure ses cellules.
@@ -192,7 +197,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         loading.value = false
         if (!term) return
         if (m.width && m.height && (m.width !== term.cols || m.height !== term.rows)) term.resize(m.width, m.height)
-        term.write(b64ToBytes(m.bytes || ''))
+        const current = term
+        current.write(b64ToBytes(m.bytes || ''), () => selectionHint.refresh(current))
       } else if (m.type === 'terminal.closed') {
         closedReason = m.reason || ''
       } else if (m.type === 'herdr.stderr') {
@@ -256,6 +262,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   function dispose() {
     disposed = true
     disconnect()
+    unbindSelection?.()
+    unbindSelection = null
     webgl = null // term.dispose() détruit ses addons
     term?.dispose()
     term = null
@@ -264,7 +272,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   return {
     mount, connect, disconnect, isConnected, sendTerm, sendKeys, fitNow, setFontSize,
     reset, focus, blur, hasFocus, rowHeight, pageRows, setVisible, dispose, loading, kbdOn,
-    hasBanner: opts.hasBanner,
+    hasBanner: opts.hasBanner, selectionHint,
   }
 }
 

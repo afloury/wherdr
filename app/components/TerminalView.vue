@@ -62,12 +62,15 @@ function onTouchEnd() {
     ;(document.activeElement as HTMLElement | null)?.blur?.()
   }
 }
-// Souris (ordinateur) : un clic donne le clavier au terminal.
+// Le calque ne reçoit la souris que sur écran tactile (main.css) : sur
+// ordinateur, xterm la reçoit directement (sélection, mode souris).
 function onMouseDown() { props.ctl.focus() }
-// Écouté sur tout le bloc : même un événement arrivé à xterm (qui le refuse,
-// cf. useTerminal) remonte ici. Herdr applique le mode souris de l'application.
+// Écouté sur tout le bloc, avant xterm : sur ordinateur la souris atteint
+// xterm (sélection), qui enverrait sinon la molette au programme en mode
+// souris. Herdr applique lui-même le mode souris de l'application.
 function onWheel(e: WheelEvent) {
   e.preventDefault()
+  e.stopPropagation()
   const scroller = host.value?.querySelector('.xterm') as HTMLElement | null
   if (scroller && scroller.scrollWidth > scroller.clientWidth && (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY))) {
     scroller.scrollLeft += e.shiftKey ? e.deltaY : e.deltaX
@@ -106,7 +109,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div id="termWrap" @wheel="onWheel">
+  <div id="termWrap" @wheel.capture="onWheel">
     <div id="term" ref="host" />
     <div
       id="touch" aria-hidden="true"
@@ -114,5 +117,9 @@ onUnmounted(() => {
       @mousedown.prevent="onMouseDown"
     />
     <div v-if="ctl.loading.value" class="term-loading"><span class="spinner" /></div>
+    <div v-if="ctl.selectionHint.visible.value" class="terminal-selection-hint">
+      {{ tl('Shift + glisser pour sélectionner', 'Shift + drag to select') }}
+      <button type="button" :aria-label="t('Masquer')" @click="ctl.selectionHint.dismiss()">×</button>
+    </div>
   </div>
 </template>

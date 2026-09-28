@@ -8,6 +8,7 @@ import '@xterm/xterm/css/xterm.css'
 import { Terminal } from '@xterm/xterm'
 import { mirrorInput } from '#shared/spaces'
 import { mirrorTop } from '~/utils/mirrorViewport'
+import { bindTerminalSelection } from '~/utils/terminalSelection'
 
 const props = defineProps<{ paneId: string, interactive?: boolean }>()
 const box = ref<HTMLElement | null>(null)
@@ -15,6 +16,7 @@ const host = ref<HTMLElement | null>(null)
 const top = ref(6)
 const ready = ref(false)
 const failed = ref(false)
+const selectionHint = useTerminalSelectionHint()
 
 let term: Terminal | null = null
 let ws: WebSocket | null = null
@@ -22,6 +24,7 @@ let retry = 0
 let retryTimer: ReturnType<typeof setTimeout> | undefined
 let ro: ResizeObserver | null = null
 let alive = true
+let unbindSelection: (() => void) | null = null
 
 const FONT = '"Wherdr Symbols", "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace'
 
@@ -54,7 +57,11 @@ function connect() {
         term.resize(m.width, m.height)
         nextTick(positionScreen)
       }
-      term.write(b64ToBytes(m.bytes || ''), positionScreen)
+      const current = term
+      current.write(b64ToBytes(m.bytes || ''), () => {
+        positionScreen()
+        selectionHint.refresh(current)
+      })
       if (!ready.value) {
         ready.value = true
         failed.value = false
@@ -92,9 +99,11 @@ function send(obj: unknown) {
 onMounted(() => {
   term = new Terminal({
     fontFamily: FONT, fontSize: fontSize.value, lineHeight: 1, scrollback: 0, cursorBlink: false,
-    allowProposedApi: true, disableStdin: !props.interactive, theme: terminalTheme.value, cols: 80, rows: 24,
+    allowProposedApi: true, disableStdin: !props.interactive, macOptionClickForcesSelection: true,
+    theme: terminalTheme.value, cols: 80, rows: 24,
   })
   term.open(host.value!)
+  unbindSelection = bindTerminalSelection(term)
   term.attachCustomWheelEventHandler(() => false)
   term.onData((d) => {
     if (!props.interactive) return
@@ -111,6 +120,7 @@ onUnmounted(() => {
   alive = false
   ro?.disconnect()
   disconnect()
+  unbindSelection?.()
   term?.dispose()
   term = null
 })
@@ -150,5 +160,9 @@ defineExpose({ focus: () => term?.focus() })
       <UIcon name="i-lucide-refresh-cw" />{{ t('Miroir indisponible · réessayer') }}
     </button>
     <span class="mirror-tag">{{ interactive ? t('Saisie directe') : t('Miroir') }}</span>
+    <div v-if="selectionHint.visible.value" class="terminal-selection-hint">
+      {{ tl('Shift + glisser pour sélectionner', 'Shift + drag to select') }}
+      <button type="button" :aria-label="t('Masquer')" @click="selectionHint.dismiss()">×</button>
+    </div>
   </div>
 </template>
