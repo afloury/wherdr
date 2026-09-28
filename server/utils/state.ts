@@ -16,7 +16,7 @@ import { parseChoices } from './choices'
 import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseWaitScreen } from './waitScreen'
 import { parseClaudeActivity } from './activity'
-import { parseClaudeScreen } from './claudeScreen'
+import { parseClaudeNotice, parseClaudeScreen } from './claudeScreen'
 import { isUploadLine, queuedDone } from './queued'
 import { msgText, unqueueClaude } from './unqueue'
 import { type TranscriptPane, sameMsg } from './transcripts'
@@ -117,7 +117,8 @@ function refreshPreview(p: Pane) {
 // partis ou encore en file (cf. claudeScreen.ts) ; le début de la commande est
 // gardé d'une lecture à l'autre (le compteur ne fait pas bouger l'état).
 const ACTIVITY_MS = 1500
-const activities = new Map<string, { verb: string | null, screen: ClaudeScreen | null, at: number }>()
+const NOTICE_MS = 5000
+const activities = new Map<string, { verb: string | null, screen: ClaudeScreen | null, notice: string | null, at: number }>()
 const activityBusy = new Set<string>()
 function refreshActivity(p: Pane) {
   if (activityBusy.has(p.id)) return
@@ -125,15 +126,19 @@ function refreshActivity(p: Pane) {
   herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
     .then((r) => {
       const text = r.read && r.read.text
-      return { verb: parseClaudeActivity(text)?.verb ?? null, screen: parseClaudeScreen(text) }
+      return { verb: parseClaudeActivity(text)?.verb ?? null, screen: parseClaudeScreen(text), notice: parseClaudeNotice(text) }
     })
-    .catch(() => ({ verb: null, screen: null }))
-    .then(({ verb, screen }) => {
+    .catch(() => ({ verb: null, screen: null, notice: null }))
+    .then(({ verb, screen, notice }) => {
       const old = activities.get(p.id)?.screen?.shell
       const sh = screen && screen.shell
       if (sh && old && old.command === sh.command && old.since && (!sh.since || Math.abs(sh.since - old.since) < 5000)) sh.since = old.since
       // Lecture finie après la fin du tour : pas de verbe périmé au tour suivant.
-      if (findPane(p.id)?.status === 'working') activities.set(p.id, { verb, screen, at: Date.now() })
+      // Hors travail, seul le statut près du champ de saisie est gardé.
+      const working = findPane(p.id)?.status === 'working'
+      const old2 = activities.get(p.id)
+      activities.set(p.id, working ? { verb, screen, notice, at: Date.now() } : { verb: null, screen: null, notice, at: Date.now() })
+      if ((old2?.notice ?? null) !== notice) setTimeout(poll, 0)
     })
     .finally(() => activityBusy.delete(p.id))
 }
@@ -373,11 +378,15 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
     const md = models.get(p.id)
     if (!md || md.status !== p.status || Date.now() - md.at > 5000) refreshModel(p)
     if (md && md.info) p.model = md.info
-    if (p.agent === 'claude' && p.status === 'working' && isViewed(p.id)) {
+    // Claude affiché : écran relu (vite au travail, plus lentement sinon, pour
+    // son statut près du champ de saisie).
+    if (p.agent === 'claude' && isViewed(p.id)) {
       const a = activities.get(p.id)
-      if (!a || Date.now() - a.at >= ACTIVITY_MS) refreshActivity(p)
-      if (a && a.verb) p.activity = a.verb
-      if (a && a.screen) p.claudeScreen = a.screen
+      const working = p.status === 'working'
+      if (!a || Date.now() - a.at >= (working ? ACTIVITY_MS : NOTICE_MS)) refreshActivity(p)
+      if (a && a.verb && working) p.activity = a.verb
+      if (a && a.screen && working) p.claudeScreen = a.screen
+      if (a && a.notice) p.claudeNotice = a.notice
     } else activities.delete(p.id)
   }
   // Nettoyage des panes disparus… de cette machine seulement.

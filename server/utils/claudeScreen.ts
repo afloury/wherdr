@@ -107,3 +107,29 @@ export function parseClaudeScreen(text: string | null | undefined, now = Date.no
   }
   return { shell, sent, queued }
 }
+
+// Statut de Claude Code à côté du champ de saisie (« ✔ Update installed ·
+// Restart to update »…), aligné à droite dans les dernières lignes. Seuls des
+// statuts connus sont retenus : le reste de ces lignes (astuces, raccourcis,
+// barre d'état) n'est pas fiable.
+const NOTICES = [
+  /✔?\s*Update installed\s*·\s*Restart to update\b/,
+  /Update available!?\s*(?:·\s*)?Run[^\n]*?update\b/i,
+  /✗?\s*Auto-update failed\b(?:\s*·[^\n]*)?/,
+]
+export function parseClaudeNotice(text: string | null | undefined): string | null {
+  if (!text) return null
+  const lines = text.split('\n').map(l => l.replace(/\s+$/, ''))
+  while (lines.length && !lines[lines.length - 1]) lines.pop()
+  // Dernier cadre du champ de saisie : on regarde de 3 lignes au-dessus jusqu'au bas.
+  let rule = -1
+  for (let i = lines.length - 1; i >= 0 && rule < 0; i--) if (RULE_RE.test(lines[i]!)) rule = i
+  const from = Math.max(0, (rule < 0 ? lines.length : rule) - 8)
+  for (let i = lines.length - 1; i >= from; i--) {
+    for (const re of NOTICES) {
+      const m = re.exec(lines[i]!)
+      if (m) return m[0].trim().replace(/\s+/g, ' ')
+    }
+  }
+  return null
+}
