@@ -8,6 +8,7 @@ import type { ChatItem, ChatResponse, ClaudeQueueEntry, Pane, QueuedMessage } fr
 import { readOffline, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { canCancelQueued, restoreDraft } from '~/utils/queuedCancel'
+import { queuedPhase } from '#shared/queuedPhase'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 
@@ -395,6 +396,25 @@ function onListClick(e: MouseEvent) {
 // sous la conversation, jusqu'à ce qu'ils apparaissent dans sa transcription.
 // Nos envois pas encore pris + la file propre à Claude (messages tapés sur
 // l'ordinateur pendant qu'il travaillait), sans doublons.
+// Écran de Claude au travail (lu par le serveur) : la transcription n'a une
+// commande « ! » qu'à la fin ; l'écran dit déjà qu'elle tourne, et quels
+// messages sont partis ou encore dans sa file (cf. shared/queuedPhase.ts).
+const screen = computed(() => (!readOnly.value && props.pane.agent === 'claude' && props.pane.status === 'working' ? props.pane.claudeScreen || null : null))
+const liveShell = computed(() => (screen.value && screen.value.shell) || null)
+// Durée de la commande en cours, à la seconde.
+const nowTick = ref(Date.now())
+let tick: ReturnType<typeof setInterval> | undefined
+watch(liveShell, (sh) => {
+  if (sh && !tick) tick = setInterval(() => { nowTick.value = Date.now() }, 1000)
+  if (!sh && tick) { clearInterval(tick); tick = undefined }
+}, { immediate: true })
+onUnmounted(() => clearInterval(tick))
+const shellDuration = computed(() => {
+  const since = liveShell.value && liveShell.value.since
+  if (!since) return null
+  const s = Math.max(0, Math.round((nowTick.value - since) / 1000))
+  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`
+})
 const normText = (s: string) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase()
 const isUploadLine = (l: string) => l.includes('/.cache/herdr-web/uploads/')
 const queuedList = computed(() => {
@@ -420,6 +440,7 @@ const queuedList = computed(() => {
       id: q.id,
       raw: q.text,
       mine: !q.id.startsWith('cc-'),
+      phase: queuedPhase(q.text, screen.value),
       photos: lines.filter(isUploadLine).map(l => `/uploads/${encodeURIComponent(l.trim().split('/').pop()!)}`),
       text: lines.filter(l => !isUploadLine(l)).join('\n').trim(),
     }
@@ -452,7 +473,8 @@ const queuedWhy = computed(() => {
   if (p.status === 'blocked') return t('après ta réponse à la question')
   return t('envoi…')
 })
-watch(() => queuedList.value.map(q => q.id).join(','), () => nextTick(() => scrollToEnd(false)))
+watch(() => queuedList.value.map(q => `${q.id}:${q.phase}`).join(','), () => nextTick(() => scrollToEnd(false)))
+watch(() => liveShell.value && liveShell.value.lines.join('\n'), () => nextTick(() => scrollToEnd(false)))
 
 // Pas encore de conversation mais un écran d'attente (légende de touches) :
 // l'agent attend une action. Écran reconnu : détail et boutons dans le panneau
@@ -474,6 +496,7 @@ const status = computed(() => {
   }
   // Claude : son verbe du moment (« ✻ Orbiting… »), lu à l'écran par le serveur ;
   // l'étoile qui tourne devant est animée côté app (ClaudeSpinner).
+  if (liveShell.value) return { typing: true, text: tl('Commande en cours…', 'Command running…') }
   if (p.status === 'working' && p.agent === 'claude' && p.activity) return { typing: true, verb: true, text: `${p.activity}…` }
   if (p.status === 'working') return { typing: true, text: `${kindLabel(p.agent)} ${tl('travaille…', 'is working…')}` }
   if (p.status === 'blocked' && !(p.prompt && p.prompt.options) && !knownScreen(p)) return { typing: false, text: t('En attente de ta réponse — détail dans l’onglet Terminal') }
@@ -760,8 +783,32 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
           </template>
         </div>
 
-        <div v-if="queuedList.length" class="queued-list">
-          <div v-for="q in queuedList" :key="q.id" class="msg-user-wrap">
+        <div v-if="queuedList.length || liveShell" class="queued-list">
+          <!-- Déjà partis (visibles comme envoyés à l'écran), pas encore dans la transcription. -->
+          <div v-for="q in queuedList.filter(x => x.phase === 'sent')" :key="q.id" class="msg-user-wrap">
+            <div class="msg-bubble sent">
+              <span v-if="q.photos.length" class="thumbs" :class="{ one: q.photos.length === 1 }"><img v-for="src in q.photos" :key="src" class="msg-img" :src="src" alt="" @click="openImage(src)"></span>{{ q.text }}
+            </div>
+            <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ t('Envoyé · lu par l’agent') }}</span></div>
+          </div>
+          <!-- Commande « ! » en cours : sortie en direct lue à l'écran. -->
+          <div v-if="liveShell" class="msg-user-wrap">
+            <div class="msg-shell bash running">
+              <div class="msg-shell-cmd">
+                <span class="msg-shell-sign" aria-hidden="true">!</span>
+                <code>{{ liveShell.command }}</code>
+              </div>
+              <div v-if="liveShell.lines.length" class="msg-shell-body">
+                <div v-if="liveShell.hidden" class="msg-shell-hidden">{{ tl(`+ ${liveShell.hidden} lignes au-dessus`, `+ ${liveShell.hidden} lines above`) }}</div>
+                <pre class="msg-shell-out">{{ liveShell.lines.join('\n') }}</pre>
+              </div>
+              <div v-else class="msg-shell-empty">{{ t('Pas encore de sortie') }}</div>
+            </div>
+            <div class="queued-tag running">
+              <UIcon name="i-lucide-loader-circle" class="spin" /><span>{{ t('En cours d’exécution') }}<template v-if="shellDuration"> · {{ shellDuration }}</template></span>
+            </div>
+          </div>
+          <div v-for="q in queuedList.filter(x => x.phase === 'queued')" :key="q.id" class="msg-user-wrap">
             <div class="msg-bubble queued">
               <span v-if="q.photos.length" class="thumbs" :class="{ one: q.photos.length === 1 }"><img v-for="src in q.photos" :key="src" class="msg-img" :src="src" alt="" @click="openImage(src)"></span>{{ q.text }}
             </div>

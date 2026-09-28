@@ -1,0 +1,18 @@
+❯ Corrige le titre de la page
+  d'accueil, puis relance les tests
+
+⏺ Je corrige le titre.
+
+⏺ Update(app/pages/index.vue)
+  ⎿  Added 1 line, removed 1 line
+
+✶ Pondering… (14s · ↓ 312 tokens)
+
+❯ Ajoute aussi un test
+  ctrl+enter to send now
+❯ Et mets à jour le changelog
+
+────────────────────────────────────────────────────────────────────────────────
+❯ Press up to edit queued messages
+────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle)

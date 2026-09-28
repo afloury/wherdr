@@ -6,7 +6,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import type { Choices, HerdrState, WaitScreen, MachineInfo, ModelInfo, Pane, QueuedMessage } from '../../shared/types'
+import type { Choices, ClaudeScreen, HerdrState, WaitScreen, MachineInfo, ModelInfo, Pane, QueuedMessage } from '../../shared/types'
 import { LOCAL, joinId, machineOf } from '../../shared/ids'
 import { isProjectThread, paneTitle } from '../../shared/paneTitle'
 import { reduceSnapshot } from './snapshot'
@@ -16,6 +16,7 @@ import { parseChoices } from './choices'
 import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseWaitScreen } from './waitScreen'
 import { parseClaudeActivity } from './activity'
+import { parseClaudeScreen } from './claudeScreen'
 import { isUploadLine, queuedDone } from './queued'
 import { msgText, unqueueClaude } from './unqueue'
 import { type TranscriptPane, sameMsg } from './transcripts'
@@ -112,18 +113,27 @@ function refreshPreview(p: Pane) {
 // Claude au travail dont la conversation est affichée sur un appareil, au plus
 // toutes les ACTIVITY_MS ; oublié dès qu'il ne travaille plus. Seul le verbe est
 // diffusé (la durée et les jetons changeraient l'état à chaque seconde).
+// La même lecture donne la commande « ! » en cours, sa sortie, et les messages
+// partis ou encore en file (cf. claudeScreen.ts) ; le début de la commande est
+// gardé d'une lecture à l'autre (le compteur ne fait pas bouger l'état).
 const ACTIVITY_MS = 1500
-const activities = new Map<string, { verb: string | null, at: number }>()
+const activities = new Map<string, { verb: string | null, screen: ClaudeScreen | null, at: number }>()
 const activityBusy = new Set<string>()
 function refreshActivity(p: Pane) {
   if (activityBusy.has(p.id)) return
   activityBusy.add(p.id)
   herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
-    .then(r => parseClaudeActivity(r.read && r.read.text)?.verb ?? null)
-    .catch(() => null)
-    .then((verb) => {
+    .then((r) => {
+      const text = r.read && r.read.text
+      return { verb: parseClaudeActivity(text)?.verb ?? null, screen: parseClaudeScreen(text) }
+    })
+    .catch(() => ({ verb: null, screen: null }))
+    .then(({ verb, screen }) => {
+      const old = activities.get(p.id)?.screen?.shell
+      const sh = screen && screen.shell
+      if (sh && old && old.command === sh.command && old.since && (!sh.since || Math.abs(sh.since - old.since) < 5000)) sh.since = old.since
       // Lecture finie après la fin du tour : pas de verbe périmé au tour suivant.
-      if (findPane(p.id)?.status === 'working') activities.set(p.id, { verb, at: Date.now() })
+      if (findPane(p.id)?.status === 'working') activities.set(p.id, { verb, screen, at: Date.now() })
     })
     .finally(() => activityBusy.delete(p.id))
 }
@@ -367,6 +377,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       const a = activities.get(p.id)
       if (!a || Date.now() - a.at >= ACTIVITY_MS) refreshActivity(p)
       if (a && a.verb) p.activity = a.verb
+      if (a && a.screen) p.claudeScreen = a.screen
     } else activities.delete(p.id)
   }
   // Nettoyage des panes disparus… de cette machine seulement.

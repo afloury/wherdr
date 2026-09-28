@@ -995,6 +995,15 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .queued-cancel:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
 .queued-cancel:disabled { opacity: .55; cursor: default; }
 .queued-cancel .spin { animation: spin .8s linear infinite; }
+/* Parti mais pas encore dans la transcription ; commande « ! » en cours. */
+.msg-bubble.sent { max-width: 88%; }
+.queued-tag.sent .iconify { color: var(--accent); }
+.queued-tag.running { color: var(--text-2); letter-spacing: .08em; text-transform: uppercase; font-size: 10.5px; }
+.queued-tag.running .iconify { color: var(--accent); }
+.queued-tag .spin { animation: spin .8s linear infinite; }
+.msg-shell.running { border-color: var(--accent); }
+.msg-shell.running .msg-shell-cmd { padding-right: 12px; }
+.msg-shell-hidden { padding: 6px 12px 0; font: 400 11px/1.3 var(--mono); color: var(--dim); }
 
 /* « Claude travaille… » (UChatShimmer). */
 .chat-status { display: flex; align-items: center; gap: 10px; padding: 4px 16px 18px; font-size: 14px; color: var(--muted); }
