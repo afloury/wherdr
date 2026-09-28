@@ -74,4 +74,10 @@ describe('check-leaks dans un worktree', () => {
     expect(r.stderr).toContain('WARNING: no .leak-patterns file found')
     expect(r.stderr).toContain(path.join(main, '.leak-patterns'))
   })
+
+  it('avertit quand le fichier de motifs ne contient aucun motif actif', () => {
+    const { main, wt } = repoWithWorktree()
+    writeFileSync(path.join(main, '.leak-patterns'), '# only comments\n\n')
+    expect(run(wt).stderr).toContain('has no active pattern')
+  })
 })

@@ -158,6 +158,7 @@ function main(argv) {
     }
     else {
       console.log(`patterns: using ${found.file}${found.from === 'main' ? ' (main checkout)' : ''}`)
+      if (!patterns.rules.length) console.warn(`WARNING: ${found.file} has no active pattern, nothing is forbidden.`)
       const hits = []
       for (const file of files) {
         const buf = readFileSync(path.join(dir, file))
