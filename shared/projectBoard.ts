@@ -236,10 +236,9 @@ export function prefillDraft(draft: string, prefix: string): string {
   return `${kept}\n${prefix}`
 }
 
-// Boutons « Lancer » et « Préciser » d'une tâche du Backlog : même forme que
-// les autres retours du panneau.
-export function launchPrefix(task: string, lang: TestLang = 'fr'): string {
-  return `${lang === 'en' ? '↳ Launch: ' : '↳ Lancer : '}${task.trim()} — `
+// « Lancer » est envoyé immédiatement ; « Préciser » prépare un brouillon.
+export function launchMessage(task: string, lang: TestLang = 'fr'): string {
+  return `${lang === 'en' ? '↳ Launch: ' : '↳ Lancer : '}${task.trim()}`
 }
 
 export function detailPrefix(task: string, lang: TestLang = 'fr'): string {
@@ -288,7 +287,7 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
         `"${m(problemPrefix)}" → treat it as a bug: fix it (new thread).`,
         `"${m(questionPrefix)}" → answer: explain what to test and how.`,
         `"${m(decisionPrefix)}" → apply the decision and remove the line from To decide.`,
-        `"${m(launchPrefix)}" → launch a thread for this Backlog task.`,
+        `"${launchMessage('…', lang)}" → launch a thread for this Backlog task.`,
         `"${m(detailPrefix)}" → add the detail to the task.`,
         'After each deploy, add to To test what I must check.',
       ]
@@ -299,7 +298,7 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
         `« ${m(problemPrefix)} » → c’est un bug : le corriger (nouveau thread).`,
         `« ${m(questionPrefix)} » → répondre : expliquer quoi tester et comment.`,
         `« ${m(decisionPrefix)} » → appliquer la décision et retirer la ligne d’À décider.`,
-        `« ${m(launchPrefix)} » → lancer un thread pour cette tâche du Backlog.`,
+        `« ${launchMessage('…', lang)} » → lancer un thread pour cette tâche du Backlog.`,
         `« ${m(detailPrefix)} » → compléter la tâche avec cette précision.`,
         'Après chaque déploiement, ajouter à À tester ce que je dois vérifier.',
       ]
