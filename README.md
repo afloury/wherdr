@@ -348,6 +348,11 @@ to **blocked** (with its question and options) or to **done** (with the start of
 There is no push for the agent currently on screen. Settings → Notifications lets each device
 choose between all agents and main agents only (herdr-projects threads are muted by default).
 
+**Do not disturb** (top of Settings → Notifications) stops every push, for this device or for all
+devices, for 1 hour, until 8 am or until turned back on. The server applies it before sending and
+keeps it across restarts (`data/quiet.json` for all devices). While it is on, a crossed-out bell
+next to Settings on the home screen turns it off in one tap.
+
 wherdr also relays custom notifications sent with `herdr notification show` (plugins, scripts).
 To receive them it connects to Herdr's client socket as a **passive** client: it never becomes
 the foreground client and never resizes anything. Side effects: with wherdr connected,

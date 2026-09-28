@@ -1,5 +1,6 @@
 // Notifications Web Push : abonnement de l'appareil, test, langue des notifs.
 import type { NotifyScope } from '../../server/utils/notificationPolicy'
+import { type Quiet, type QuietScope, quietActive } from '../../shared/quiet'
 
 const scopeKey = 'pushNotifyScope'
 function savedScope(): NotifyScope {
@@ -61,5 +62,50 @@ export async function testPush() {
   try {
     const r = await api<{ sent: number }>('/api/push/test', {})
     toast(t(r.sent ? 'Notification envoyée' : 'Aucun appareil n’a accepté la notification'), !r.sent)
+  } catch (err) { toast((err as Error).message, true) }
+}
+
+// ------------------------------------------------------------ mode silence
+// État lu sur le serveur (le filtre s'applique là-bas, avant l'envoi). `now`
+// avance chaque minute : un silence expiré disparaît de l'interface tout seul.
+export const quietState = ref<{ global: Quiet | null, device: Quiet | null }>({ global: null, device: null })
+export const quietNow = ref(Date.now())
+if (import.meta.client) setInterval(() => { quietNow.value = Date.now() }, 30000)
+
+// Silence en cours vu par cet appareil : le sien d'abord, sinon celui de tous.
+export const quietCurrent = computed<{ scope: QuietScope, quiet: Quiet } | null>(() => {
+  const { global, device } = quietState.value
+  if (quietActive(device, quietNow.value)) return { scope: 'device', quiet: device! }
+  if (quietActive(global, quietNow.value)) return { scope: 'all', quiet: global! }
+  return null
+})
+
+async function pushEndpoint(): Promise<string> {
+  try {
+    if (!('serviceWorker' in navigator)) return ''
+    const reg = await navigator.serviceWorker.ready
+    return (await reg.pushManager.getSubscription())?.endpoint || ''
+  } catch { return '' }
+}
+
+export async function refreshQuiet() {
+  try {
+    quietState.value = await api('/api/push/quiet', { endpoint: await pushEndpoint() })
+    quietNow.value = Date.now()
+  } catch { /* on garde le dernier état connu */ }
+}
+
+export async function setQuiet(scope: QuietScope, on: boolean, until: number | null = null) {
+  quietState.value = await api('/api/push/quiet', { endpoint: await pushEndpoint(), scope, on, until })
+  quietNow.value = Date.now()
+}
+
+// Indicateur de l'accueil : coupe tous les silences qui touchent cet appareil.
+export async function endQuiet() {
+  try {
+    const { global, device } = quietState.value
+    if (quietActive(device)) await setQuiet('device', false)
+    if (quietActive(global)) await setQuiet('all', false)
+    toast(tl('Notifications réactivées', 'Notifications back on'))
   } catch (err) { toast((err as Error).message, true) }
 }

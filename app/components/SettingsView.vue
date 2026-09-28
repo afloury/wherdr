@@ -8,6 +8,7 @@ import type { TypingSpeed } from '~/utils/typewriter'
 import pkg from '../../package.json'
 import { SETTINGS_SECTIONS, settingsBack } from '~/utils/settingsNav'
 import type { SettingsSection } from '~/utils/settingsNav'
+import { type QuietDuration, type QuietScope, quietUntil } from '#shared/quiet'
 
 const appVersion = pkg.version
 const router = useRouter()
@@ -107,6 +108,52 @@ const selectedScope = computed({
   set: (v: 'project_leads' | 'all') => { setNotifyScope(v).catch(e => toast((e as Error).message, true)) },
 })
 async function refreshPush() { subscribed.value = await pushSubscribed() }
+
+// Mode silence : portée (cet appareil = son abonnement, ou tous) et durée.
+// Le serveur garde le réglage et filtre avant l'envoi (shared/quiet.ts).
+const quietScope = ref<QuietScope>('all')
+const quietDuration = ref<QuietDuration>('manual')
+const quietScopeItems = computed(() => [
+  { label: tl('Cet appareil', 'This device'), value: 'device', disabled: !subscribed.value },
+  { label: tl('Tous les appareils', 'All devices'), value: 'all' },
+])
+const quietDurationItems = [
+  { label: tl('1 heure', '1 hour'), value: 'hour' },
+  { label: tl('Jusqu’à demain matin (8 h)', 'Until tomorrow morning (8 am)'), value: 'morning' },
+  { label: tl('Jusqu’à réactivation', 'Until turned back on'), value: 'manual' },
+]
+watch(quietCurrent, (cur) => {
+  if (!cur) return
+  quietScope.value = cur.scope
+  const left = cur.quiet.until === null ? null : cur.quiet.until - Date.now()
+  quietDuration.value = left === null ? 'manual' : left <= 3600 * 1000 ? 'hour' : 'morning'
+}, { immediate: true })
+async function applyQuiet(on: boolean) {
+  try {
+    const previous = quietCurrent.value?.scope
+    if (on) await setQuiet(quietScope.value, true, quietUntil(quietDuration.value))
+    // Changement de portée : l'ancien silence s'arrête.
+    if (previous && (!on || previous !== quietScope.value)) await setQuiet(previous, false)
+  } catch (err) { toast((err as Error).message, true) }
+}
+const quietOn = computed({
+  get: () => Boolean(quietCurrent.value),
+  set: (v: boolean) => { applyQuiet(v) },
+})
+function pickQuietScope(v: QuietScope) { quietScope.value = v; if (quietOn.value) applyQuiet(true) }
+function pickQuietDuration(v: QuietDuration) { quietDuration.value = v; if (quietOn.value) applyQuiet(true) }
+const quietEnd = computed(() => {
+  const cur = quietCurrent.value
+  if (!cur) return ''
+  const who = cur.scope === 'all' ? tl('tous les appareils', 'all devices') : tl('cet appareil', 'this device')
+  if (cur.quiet.until === null) return tl(`Silence sur ${who} jusqu’à réactivation.`, `Silenced on ${who} until turned back on.`)
+  const end = new Date(cur.quiet.until)
+  const time = end.toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' })
+  const today = end.toDateString() === new Date(quietNow.value).toDateString()
+  return today
+    ? tl(`Silence sur ${who} jusqu’à ${time}.`, `Silenced on ${who} until ${time}.`)
+    : tl(`Silence sur ${who} jusqu’à demain ${time}.`, `Silenced on ${who} until tomorrow ${time}.`)
+})
 async function pushAction() {
   if (await pushSubscribed()) await testPush()
   else await enablePush()
@@ -205,7 +252,7 @@ async function disableLock() {
 onMounted(() => {
   refreshTerminalRenderStatus()
   loadConfig() // thème de Herdr à jour pour « Suivre Herdr »
-  refreshPush()
+  refreshPush().then(refreshQuiet)
   refreshSecurity()
 })
 </script>
@@ -351,6 +398,18 @@ onMounted(() => {
         </div>
 
         <div v-show="activeSection === 'notifications'" class="settings-section">
+          <div class="settings-group">
+            <label class="settings-toggle quiet-toggle">
+              <span><b><UIcon :name="quietOn ? 'i-lucide-bell-off' : 'i-lucide-bell'" />{{ tl('Silence', 'Do not disturb') }}</b><small>{{ tl('Aucune notification push tant qu’il est actif.', 'No push notifications while it is on.') }}</small></span>
+              <USwitch v-model="quietOn" color="success" size="xl" />
+            </label>
+            <p class="notify-caption">{{ tl('Couper pour', 'Silence on') }}</p>
+            <URadioGroup :model-value="quietScope" :items="quietScopeItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" @update:model-value="v => pickQuietScope(v as QuietScope)" />
+            <p v-if="!subscribed" class="muted notify-hint">{{ tl('« Cet appareil » demande d’activer les notifications ci-dessous.', '“This device” needs notifications turned on below.') }}</p>
+            <p class="notify-caption">{{ tl('Durée', 'Duration') }}</p>
+            <URadioGroup :model-value="quietDuration" :items="quietDurationItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" @update:model-value="v => pickQuietDuration(v as QuietDuration)" />
+            <p class="muted notify-hint" :class="{ 'quiet-end': quietOn }">{{ quietEnd || tl('Retour automatique à la normale à la fin de la durée choisie.', 'Notifications come back on by themselves at the end.') }}</p>
+          </div>
           <div class="settings-group">
             <div class="settings-card">
               <button type="button" class="settings-action" @click="pushAction">

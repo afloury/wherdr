@@ -8,10 +8,12 @@ import { APP_URL, DATA_DIR, log } from './env'
 import { pushConfig } from './pushConfig'
 import { shouldNotify, type NotifyScope } from './notificationPolicy'
 import type { Pane } from '../../shared/types'
+import { type Quiet, quietActive, silenced } from '../../shared/quiet'
 
 const fsp = fs.promises
 const VAPID_FILE = path.join(DATA_DIR, 'vapid.json')
 const SUBS_FILE = path.join(DATA_DIR, 'push.json')
+const QUIET_FILE = path.join(DATA_DIR, 'quiet.json')
 
 export interface PushSub {
   endpoint: string
@@ -20,6 +22,7 @@ export interface PushSub {
   addedAt: string
   notifyScope?: NotifyScope
   sessions?: Record<string, string>
+  quiet?: Quiet // mode silence de cet appareil
 }
 export interface PushPayload {
   title: string
@@ -77,12 +80,28 @@ export function subWatchesSession(sub: PushSub, baseKey: string, session: string
   return (sub.sessions?.[baseKey] || baseSession) === session
 }
 
-export async function pushSend(payload: PushPayload, audience?: PushAudience): Promise<number> {
+// Mode silence pour tous les appareils (DATA_DIR/quiet.json, gardé au redémarrage).
+export async function readGlobalQuiet(): Promise<Quiet | null> {
+  try {
+    const q = JSON.parse(await fsp.readFile(QUIET_FILE, 'utf8')).quiet
+    return q && (q.until === null || typeof q.until === 'number') && quietActive(q) ? { until: q.until } : null
+  } catch { return null }
+}
+export async function writeGlobalQuiet(quiet: Quiet | null) {
+  await fsp.mkdir(DATA_DIR, { recursive: true })
+  await fsp.writeFile(QUIET_FILE, JSON.stringify({ quiet }, null, 2) + '\n', { mode: 0o600 })
+}
+
+// `force` : la notification de test passe malgré le silence (geste explicite).
+export async function pushSend(payload: PushPayload, audience?: PushAudience, force = false): Promise<number> {
   if (!pushReady()) return 0
   const subs = await readSubs()
+  const globalQuiet = force ? null : await readGlobalQuiet()
   const dead: string[] = []
   let ok = 0
   for (const sub of subs) {
+    // Filtre avant l'envoi : rien ne part vers un appareil en silence.
+    if (!force && silenced(globalQuiet, sub.quiet)) continue
     if (typeof audience === 'function' ? !audience(sub.notifyScope, sub) : audience && !shouldNotify(sub.notifyScope, audience)) continue
     try {
       const { titleEn, bodyEn, ...message } = payload
