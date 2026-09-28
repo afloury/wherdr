@@ -48,6 +48,35 @@ describe('parseChoices', () => {
     expect(parseChoices(fx('codex-idle.txt'))).toBeNull()
   })
 
+  it('ignore le panneau diff affiché à droite d’une demande de permission', () => {
+    const c = parseChoices(fx('claude-permission-diff.txt'), { strict: true })!
+    expect(c.question).toBe('Do you want to proceed?')
+    expect(c.options.map(o => o.label)).toEqual([
+      'Yes',
+      'Yes, and don\'t ask again for npm test commands',
+      'No, and tell Claude what to do differently (esc)',
+    ])
+    expect(c.options.every(o => o.hint === null)).toBe(true)
+    expect(c.cursor).toBe(0)
+  })
+
+  it('coupe au trait vertical d’un panneau voisin, même collé aux options', () => {
+    const screen = [
+      ' Do you want to proceed? │ 12 + <div v-if="ok">',
+      ' ❯ 1. Yes                │ 13 +   label="Name"',
+      '   2. No                 │ 14 + />',
+      '                         │ 15 + >',
+    ].join('\n')
+    const c = parseChoices(screen)!
+    expect(c.question).toBe('Do you want to proceed?')
+    expect(c.options.map(o => o.label)).toEqual(['Yes', 'No'])
+  })
+
+  it('garde les descriptions alignées d’une liste sans panneau voisin', () => {
+    const c = parseChoices('  Pick a size\n\n❯ 1. Small     Quick\n  2. Large     Slow')!
+    expect(c.options.map(o => o.label)).toEqual(['Small     Quick', 'Large     Slow'])
+  })
+
   it('refuse une liste numérotée avec un trou', () => {
     expect(parseChoices('Choix ?\n❯ 1. A\n  3. C')).toBeNull()
   })
