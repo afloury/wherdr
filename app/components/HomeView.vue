@@ -220,7 +220,7 @@ function durationLabel(seconds: number) {
 }
 function awakeLabel(state?: AwakeState) {
   if (!state?.active) return ''
-  return state.until ? tl(`Éveillé jusqu’à ${new Date(state.until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, `Awake until ${new Date(state.until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`) : tl('Éveillé jusqu’à désactivation', 'Awake until turned off')
+  return state.until ? tl(`Éveillé jusqu’à ${fmtTime(state.until)}`, `Awake until ${fmtTime(state.until)}`) : tl('Éveillé jusqu’à désactivation', 'Awake until turned off')
 }
 const savingMachine = ref(false)
 const sessionTarget = ref<MachineInfo | null>(null)
@@ -415,7 +415,7 @@ function openSearch() { emit('search') }
                 <span class="machine-name">{{ s.name }}<small v-if="s.m.session && s.m.session !== 'default'" class="machine-session">{{ s.m.session }}</small></span>
                 <MachineLocalBadge v-if="s.m.local" />
               </span>
-              <span v-if="awakeByMachine[s.m.key]?.active" class="machine-awake" :title="awakeLabel(awakeByMachine[s.m.key])"><UIcon name="i-lucide-sun" /><span>{{ awakeByMachine[s.m.key]?.until ? new Date(awakeByMachine[s.m.key]!.until!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '∞' }}</span></span>
+              <span v-if="awakeByMachine[s.m.key]?.active" class="machine-awake" :title="awakeLabel(awakeByMachine[s.m.key])"><UIcon name="i-lucide-sun" /><span>{{ awakeByMachine[s.m.key]?.until ? fmtTime(awakeByMachine[s.m.key]!.until!) : '∞' }}</span></span>
               <span class="machine-state"><i />{{ s.state }}</span>
               <span class="machine-count">
                 <b v-if="s.waiting && s.collapsed" class="machine-waiting">{{ s.waiting }}</b>
