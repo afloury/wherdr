@@ -2,6 +2,8 @@
 // l'anglais est la langue par défaut. Le choix est gardé sur l'appareil.
 
 const EN: Record<string, string> = {
+  'Monter': 'Move up', 'Descendre': 'Move down', 'Réinitialiser l’ordre': 'Reset order',
+  'Glisser pour réordonner': 'Drag to reorder',
   'Garder éveillé': 'Keep awake', 'Ce qui empêche la veille': 'What prevents sleep',
   'Veille normale': 'Normal sleep', 'Secteur': 'Power adapter', 'Batterie': 'Battery',
   'Capot fermé (sur secteur uniquement)': 'Closed lid (power adapter only)',
