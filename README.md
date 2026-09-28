@@ -5,7 +5,8 @@ computer and on your phone.**
 
 ## Quick start
 
-With [Herdr](https://herdr.dev) running and Node.js 22, on macOS or Linux (`localhost` only):
+To try it on one computer, with [Herdr](https://herdr.dev) running and Node.js 22, on macOS or
+Linux (`localhost` only). For phone access, see the [recommended setup](#recommended-always-on-server--tailscale).
 
 ```sh
 git clone https://github.com/afloury/wherdr.git && cd wherdr
@@ -51,14 +52,15 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - [Features](#features)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
-- [Recommended setup](#recommended-setup)
-- [Install with Docker](#install-with-docker)
-- [Run without Docker](#run-without-docker)
+- [Installation](#installation): [which setup?](#which-setup) ·
+  [always-on server + Tailscale](#recommended-always-on-server--tailscale) ·
+  [one computer, no Docker](#simple-one-computer-no-docker)
 - [Install the app on your phone](#install-the-app-on-your-phone)
 - [Configuration](#configuration)
 - [Several machines (SSH)](#several-machines-ssh)
 - [Claude and Codex quotas](#claude-and-codex-quotas)
 - [Notifications](#notifications)
+- [Works great with herdr-projects](#works-great-with-herdr-projects)
 - [Herdr plugins](#herdr-plugins)
 - [Security](#security)
 - [Troubleshooting](#troubleshooting)
@@ -101,7 +103,7 @@ Claude Code, Codex and other product names are trademarks of their respective ow
   `Alt+Shift+arrows` to swap the current pane with its neighbour,
   `Ctrl/⌘+Alt+arrows` to move focus to the neighbouring pane in a side-by-side tab, `Esc` to close dialogs,
   `Enter` to send and `Shift+Enter` for a new line.
-- **Project board** for [herdr-projects](https://herdr.dev): coordinator and threads grouped
+- **Project board** for [herdr-projects](#works-great-with-herdr-projects): coordinator and threads grouped
   under their project, and a side panel with the project's task lists (to test, to decide,
   blocked, in progress, backlog) and one-click replies to the coordinator.
 - **Settings** in a sidebar, with desktop-only options such as the content width.
@@ -150,19 +152,29 @@ Web Push, lock) runs in Nitro.
   [`tailscale serve`](https://tailscale.com/kb/1312/serve); a reverse proxy **reachable only
   from your private network** with a valid certificate also works.
 
-## Recommended setup
+## Installation
 
-1. Install **Tailscale** on the server and on your phone (and computer), same tailnet.
-2. On the server: follow [Install with Docker](#install-with-docker), then publish it on your
-   tailnet with `tailscale serve`.
-3. On the phone: open `https://<server>.<tailnet>.ts.net:7683/`, **install the app** to the home
-   screen, and enable the **passkey lock** (recommended) and **notifications** in Settings.
-4. On the computer: use the same address in a browser (desktop layout); it can replace the
-   Herdr terminal client for daily work.
+### Which setup?
 
-## Install with Docker
+| | **Always-on server + Tailscale** (recommended) | **One computer, no Docker** |
+| --- | --- | --- |
+| Runs on | A machine that never sleeps: Raspberry Pi, mini-PC, home server, private VPS (Linux, Docker) | The computer you work on (macOS or Linux, Node.js 22) |
+| Reach it from | Your phone and every computer on your tailnet | That computer only (`http://localhost:7683`) |
+| Installable app, push notifications, passkeys | Yes (private HTTPS from `tailscale serve`) | Desktop browser only; no phone access |
+| Other machines (a Mac, a laptop…) | Added in Herdr over SSH, shown in wherdr | Also possible, but they are only reachable while this computer is awake |
 
-On a **Linux** server (on macOS, see [Run without Docker](#run-without-docker)):
+Both setups use the same app. You can start with the second one and move to the first later.
+
+### Recommended: always-on server + Tailscale
+
+Your agents keep running when your laptop is closed, and you follow them from your phone.
+wherdr stays on your private network: it is **never published on the Internet**.
+
+**1. Herdr on the server.** Install [Herdr](https://herdr.dev) (≥ 0.9.1) and start it
+(`herdr` or `herdr server`), with the integrations of the agents you use
+(`herdr integration install claude|codex`).
+
+**2. wherdr with Docker** (Linux, Compose v2):
 
 ```sh
 git clone https://github.com/afloury/wherdr.git
@@ -177,54 +189,74 @@ Edit `.env` (every value has a default; `HOST_HOME` defaults to your `$HOME`):
 | `HOST_HOME` | `/home/alice` | Your home folder on the server (default: `$HOME`). Mounted at the same path, read-only. |
 | `PUID` / `PGID` | `1000` | Your user and group IDs (`id -u`, `id -g`). |
 | `PORT` | `7683` | Listening port, published on `127.0.0.1` only. |
-| `APP_URL` | `https://server.example.ts.net:7683/` | Private HTTPS address of the app (also used as the Web Push contact and an allowed host). Use `http://localhost:7683/` for local testing. |
+| `APP_URL` | `https://server.example.ts.net:7683/` | Private HTTPS address of the app (step 3; also used as the Web Push contact and an allowed host). Use `http://localhost:7683/` for local testing. |
 | `HOST_LABEL` | `server` | Name of this machine in the app. |
 | `TZ` | `Europe/Paris` | Time zone for timestamps and logs. |
 
 Create the bind-mount folders **before** starting Compose, as your own user. Otherwise Docker
-may create missing host folders as root, leaving the container unable to write to them. Set
-`PUID` and `PGID` in `.env` to the output of `id -u` and `id -g` for that user.
+may create missing host folders as root, leaving the container unable to write to them.
 
 ```sh
 mkdir -p data "$HOME/.config/herdr" "$HOME/.local/state/herdr/client" "$HOME/.cache/herdr-web" \
   "$HOME/.herdr-projects"
-```
-
-Then build and start:
-
-```sh
 docker compose up -d --build
 docker compose logs -f        # optional: follow the logs and find the first-passkey token
 ```
 
-Publish it on your tailnet (HTTPS certificate included):
-
-```sh
-tailscale serve --bg --https=7683 http://127.0.0.1:7683
-# → https://<server>.<tailnet>.ts.net:7683/
-```
-
-Use that HTTPS address for `APP_URL` in `.env`. The `--https=7683` option makes Tailscale Serve
-listen on HTTPS port 7683, matching the URL above; it forwards to wherdr's local HTTP port 7683.
-For the first passkey, Settings → Security asks for a bootstrap token. Find it with
-`docker logs herdr-web` (or `docker compose logs`). The token changes on each restart and is
-only needed when registering the **first** passkey. The passkey lock is recommended but optional;
-the app works without one on your private network.
-
 The container runs as your user and mounts your home folder **read-only**, except
 `~/.config/herdr` (Herdr sockets), `~/.local/state/herdr/client` (machine names),
 `~/.cache/herdr-web` (uploaded photos, quotas) and `~/.herdr-projects` (herdr-projects
-projects, see [Herdr plugins](#herdr-plugins)). It uses the server's own `herdr` binary, so the
-client and the server always stay on the same version.
+projects, see [Works great with herdr-projects](#works-great-with-herdr-projects)). It uses the
+server's own `herdr` binary, so the client and the server always stay on the same version.
 
-To update: `git pull && docker compose up -d --build`.
+To update: `git pull && docker compose up -d --build`. **Custom icons** (optional): copy
+`docker-compose.override.example.yml` to `docker-compose.override.yml` and put your icons in
+`branding/` (both untracked).
 
-**Custom icons** (optional): copy `docker-compose.override.example.yml` to
-`docker-compose.override.yml` and put your icons in `branding/` (both untracked).
+**3. Private HTTPS with Tailscale.** Install [Tailscale](https://tailscale.com) on the server,
+your phone and your computers, on the same tailnet, with
+[MagicDNS and HTTPS certificates](https://tailscale.com/kb/1153/enabling-https) enabled. Then,
+on the server:
 
-## Run without Docker
+```sh
+tailscale serve --bg --https=7683 http://127.0.0.1:7683
+# → https://<machine>.<tailnet>.ts.net:7683/   (e.g. https://server.example.ts.net:7683/)
+```
 
-With Node.js 22 on the server:
+Tailscale Serve listens on HTTPS port 7683 of your tailnet name, with a valid certificate, and
+forwards to wherdr's local HTTP port. Only devices of your tailnet can reach it. Put that address
+in `APP_URL` in `.env`, then `docker compose up -d` again.
+
+**Why HTTPS matters.** Browsers only allow three things on `https://` (or on `localhost` itself):
+
+- **installing the app** on the home screen (PWA) on iPhone and Android;
+- **push notifications** (on iOS, only in the installed app);
+- **passkeys** for the lock screen (Face ID, Touch ID, Windows Hello, Android).
+
+**4. On the phone:** open the address, [install the app](#install-the-app-on-your-phone), then
+Settings → **Enable notifications**. **On the computer:** use the same address in a browser; the
+desktop layout can replace the Herdr terminal client for daily work.
+
+**5. Passkey lock** (recommended, optional): Settings → Security → **Enable passkey lock**. The
+first passkey asks for a bootstrap token, printed in the server logs (`docker compose logs`);
+it changes on each restart and is only needed for that first passkey. Add a passkey on each of
+your devices after that. Without one, every device of your tailnet can control your agents.
+
+**6. More machines** (optional): register your other computers in Herdr over SSH
+(`herdr machine add`, see [Several machines (SSH)](#several-machines-ssh)). Their agents show
+in wherdr in their own section, and everything works the same on them. The machine menu also has
+**Keep awake**, which stops a Mac (`caffeinate`) or a Linux machine (`systemd-inhibit`) from
+sleeping for an hour, four hours, the evening or until turned off.
+
+> [!CAUTION]
+> Never publish wherdr on the Internet: no port forwarding on your router, no public reverse
+> proxy, no Cloudflare Tunnel or ngrok, no `tailscale funnel`. Use `tailscale serve`, which stays
+> inside your tailnet. See [Security](#security).
+
+### Simple: one computer, no Docker
+
+The quickest way to try it, and the way to run wherdr **on macOS**: Docker Desktop cannot reach
+Herdr's Unix socket on the host. With Herdr running, Git and Node.js 22 on the same machine:
 
 ```sh
 git clone https://github.com/afloury/wherdr.git
@@ -234,23 +266,20 @@ npm run build
 npm start                  # listens on 127.0.0.1:7683
 ```
 
-For another device, start it with its private HTTPS address instead:
-`APP_URL=https://server.example.ts.net:7683/ npm start`.
+Open `http://localhost:7683` in a browser on that computer: the desktop layout, passkeys and the
+installable app work there, since browsers treat `localhost` as secure. There is no phone access
+and no push notification in this setup; for that, use the recommended setup (or publish this
+instance with `tailscale serve` as above and start it with
+`APP_URL=https://server.example.ts.net:7683/ npm start`).
 
-Run it as the user who runs Herdr, with Herdr and Git installed on the same machine. It uses
-`$HOME` and `$HOME/.local/bin/herdr`, or `herdr` from the `PATH` (Homebrew); set `HERDR_BIN`
-otherwise. `DATA_DIR` holds passkeys, push data and recent folders; without it, the app uses
-`./data`. Set `APP_URL` to the private HTTPS address you actually use, or to
-`http://localhost:7683/` for local-only access. Publish it with `tailscale serve` as above, or
-open `http://localhost:7683` on the same machine. `npm start` listens on `127.0.0.1` (`HOST`)
-and port `7683` (`PORT`) by default. Find the first-passkey bootstrap token in the output of
-`npm start`. Keep the process running with your usual service manager (systemd user unit,
-launchd, tmux…). Passkeys remain optional.
+Run it as the user who runs Herdr. It uses `$HOME` and `$HOME/.local/bin/herdr`, or `herdr` from
+the `PATH` (Homebrew); set `HERDR_BIN` otherwise. `DATA_DIR` holds passkeys, push data and recent
+folders (default `./data`). `npm start` listens on `127.0.0.1` (`HOST`) and port `7683` (`PORT`).
+The first-passkey bootstrap token is printed in its output. Keep the process running with your
+usual service manager (systemd user unit, launchd, tmux…).
 
-With `APP_URL=http://localhost:7683/`, wherdr starts normally but disables Web Push and logs a
-warning. Passkeys and the installable app are available only when the browser itself opens
-`localhost`; another device needs private HTTPS. For phone notifications and passkeys, use
-`tailscale serve` (or another private HTTPS proxy) and set `APP_URL` to that HTTPS address.
+With `APP_URL` empty or `http://localhost:7683/`, wherdr starts normally but disables Web Push
+and logs a warning.
 
 ## Install the app on your phone
 
@@ -361,6 +390,33 @@ To receive them it connects to Herdr's client socket as a **passive** client: it
 the foreground client and never resizes anything. Side effects: with wherdr connected,
 `notification show` reports `shown: true` even with no terminal attached, and an empty session
 gets a default workspace, as with any attached client.
+
+## Works great with herdr-projects
+
+[herdr-projects](https://github.com/eliasstravik/herdr-projects) is a Herdr plugin that runs a
+project as one **coordinator** conversation and parallel **threads**, each in its own Git
+worktree. It is optional; with it installed, wherdr adds:
+
+- **Project groups** in the agent list: the coordinator first, its threads indented under it,
+  grouped by repository (`Repo web-shop · 2 worktrees`), with their thread number and state.
+- **Project panel** next to the coordinator (a side panel on a computer, a tab on a phone). It
+  reads the project's `TASKS.md` and shows its lists — **To test**, **To decide**, **Blocked**,
+  **In progress**, **Backlog** and **Done** — with the open threads live (state, progress,
+  report) and resolved threads under Done. Each list has its buttons, which send a ready-made
+  message to the coordinator: **Confirm** / **Problem** / **Question** on things to test, **Question** / **Answer** on
+  decisions, **Launch** or **Clarify** on backlog items, **Unblock** on blocked ones.
+- **Settings → Plugins → herdr-projects**: install status per machine, the `TASKS.md` convention,
+  a template and the coordinator rules to copy.
+- **New project** from the plugin actions of an agent's menu, with the same machine and folder
+  picker as **New agent** (see [Herdr plugins](#herdr-plugins)).
+
+<p align="center">
+  <img src="docs/screenshots/project-panel.png" alt="A coordinator with the Project panel open, and its project group with threads in the sidebar" width="900">
+</p>
+<p align="center">
+  <img src="docs/screenshots/project-phone.png" alt="The Project panel on a phone" width="340">
+</p>
+<p align="center"><sub>A coordinator with its Project panel, on a computer and on a phone (demo data).</sub></p>
 
 ## Herdr plugins
 
