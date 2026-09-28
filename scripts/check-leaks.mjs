@@ -2,6 +2,8 @@
 // Contrôle anti-fuite : gitleaks (s'il est installé) + motifs interdits lus dans un fichier local
 // non suivi (.leak-patterns). Scanne le contenu de l'index git (fichiers suivis ou indexés) ;
 // `--staged` ne scanne que les fichiers indexés (hook pre-commit).
+// Dans un worktree lié (`git worktree add`), .leak-patterns (ignoré par git) n'existe souvent
+// que dans le checkout principal : on se rabat alors sur celui-ci.
 //
 // Format de .leak-patterns (voir .leak-patterns.example) :
 //   # commentaire
@@ -59,6 +61,37 @@ export function loadPatterns(file) {
   return parsePatterns(readFileSync(file, 'utf8'))
 }
 
+const git = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 << 20 })
+
+/** Racine du checkout principal quand `root` est un worktree lié ; `null` sinon. */
+export function mainCheckoutRoot(root) {
+  let common
+  try { common = git(['rev-parse', '--git-common-dir'], root).trim() }
+  catch { return null }
+  common = path.resolve(root, common)
+  // Dépôt nu ou sous-module : pas de checkout principal à côté du dossier .git commun.
+  if (path.basename(common) !== '.git') return null
+  const main = path.dirname(common)
+  return path.resolve(main) === path.resolve(root) ? null : main
+}
+
+/**
+ * Fichier de motifs à utiliser : celui du checkout courant, sinon celui du checkout principal.
+ * Renvoie `{ file, from: 'checkout' | 'main' }`, ou `{ file: null, tried }` si aucun n'existe.
+ */
+export function findPatternsFile(root) {
+  const own = path.join(root, PATTERNS_FILE)
+  if (existsSync(own)) return { file: own, from: 'checkout' }
+  const tried = [own]
+  const main = mainCheckoutRoot(root)
+  if (main) {
+    const shared = path.join(main, PATTERNS_FILE)
+    if (existsSync(shared)) return { file: shared, from: 'main' }
+    tried.push(shared)
+  }
+  return { file: null, tried }
+}
+
 /** Montre assez pour retrouver la valeur sans l'afficher en entier. */
 export function redact(value) {
   if (value.length <= 4) return `${value[0] ?? ''}…`
@@ -81,8 +114,6 @@ export function scanText(file, text, patterns) {
   }
   return hits
 }
-
-const git = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 << 20 })
 
 /** Copie le contenu de l'index (tous les fichiers ou seulement les indexés) dans un dossier temporaire. */
 function exportIndex(root, staged) {
@@ -116,11 +147,17 @@ function main(argv) {
     if (!files.length) { console.log('check:leaks: nothing to scan.'); return 0 }
     let ok = runGitleaks(dir)
 
-    const patterns = loadPatterns(path.join(root, PATTERNS_FILE))
+    const found = findPatternsFile(root)
+    const patterns = found.file && loadPatterns(found.file)
     if (!patterns) {
-      console.log(`patterns: no ${PATTERNS_FILE} file, skipped (copy ${PATTERNS_FILE}.example and fill it).`)
+      console.warn([
+        `WARNING: no ${PATTERNS_FILE} file found, forbidden patterns were NOT checked.`,
+        ...found.tried.map((f) => `  looked for: ${f}`),
+        `  Copy ${PATTERNS_FILE}.example to ${PATTERNS_FILE} in the main checkout and fill it.`,
+      ].join('\n'))
     }
     else {
+      console.log(`patterns: using ${found.file}${found.from === 'main' ? ' (main checkout)' : ''}`)
       const hits = []
       for (const file of files) {
         const buf = readFileSync(path.join(dir, file))
