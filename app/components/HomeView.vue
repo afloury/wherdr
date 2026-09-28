@@ -90,12 +90,19 @@ const visibleKeys = computed(() => [...new Set(orderedMachines.value.map(m => m.
 const draggingMachine = ref<string | null>(null)
 const dropMachine = ref<string | null>(null)
 const dropAfter = ref(false)
+let orderLoad = 0
 async function loadMachineOrder() {
-  try { machineOrder.value = (await api<{ order: string[] }>('/api/machine/order')).order }
+  const request = ++orderLoad
+  try {
+    const { order } = await api<{ order: string[] }>('/api/machine/order')
+    if (request === orderLoad) machineOrder.value = order
+  }
   catch { /* L'ordre de Herdr reste disponible hors ligne. */ }
 }
 onMounted(loadMachineOrder)
+watch(() => machines.value.map(m => m.baseKey ?? m.key).join('|'), loadMachineOrder)
 async function saveMachineOrder(order: string[]) {
+  ++orderLoad
   const previous = machineOrder.value
   machineOrder.value = order
   try { machineOrder.value = (await api<{ order: string[] }>('/api/machine/order', { order })).order }
