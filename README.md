@@ -102,7 +102,7 @@ Claude Code, Codex and other product names are trademarks of their respective ow
   `Enter` to send and `Shift+Enter` for a new line.
 - **Project board** for [herdr-projects](https://herdr.dev): coordinator and threads grouped
   under their project, and a side panel with the project's task lists (to test, to decide,
-  in progress, backlog) and one-click replies to the coordinator.
+  blocked, in progress, backlog) and one-click replies to the coordinator.
 - **Settings** in a sidebar, with desktop-only options such as the content width.
 
 ### On a phone

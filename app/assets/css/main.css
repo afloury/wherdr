@@ -1730,6 +1730,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .pp-sec-icon { width: 14px; height: 14px; flex: none; color: var(--muted); }
 .pp-sec.test .pp-sec-icon { color: var(--ochre); }
 .pp-sec.decide .pp-sec-icon { color: var(--rose); }
+.pp-sec.blocked .pp-sec-icon { color: var(--coral); }
 .pp-sec.doing .pp-sec-icon { color: var(--working); }
 .pp-sec.done .pp-sec-icon { color: var(--done); }
 .pp-sec-title { flex: 1; min-width: 0; font: 600 11px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1744,6 +1745,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .pp-box { flex: none; width: 6px; height: 6px; margin: 7px 3px 0 4px; background: var(--dim); }
 .pp-sec.test .pp-box { background: var(--ochre); }
 .pp-sec.decide .pp-box { background: var(--rose); }
+.pp-sec.blocked .pp-box { background: var(--coral); }
 .pp-sec.doing .pp-box { background: var(--working); }
 .pp-task.done .pp-box { background: var(--line-strong); }
 .pp-task-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -1752,6 +1754,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .pp-task.mine .pp-owner { color: var(--mauve); }
 .pp-task-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
 .pp-task-body .pp-task-text { flex: none; }
+.pp-reason { font: 11px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 .pp-task-body .pp-owner { max-width: 100%; margin-top: 0; }
 .pp-task-foot { display: flex; align-items: center; gap: 6px; min-height: 26px; }
 /* Confirmer / Problème / Question : carrés teintés de 26 px, dans une zone
@@ -1763,6 +1766,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .pp-vbtn.ask { color: var(--accent); }
 .pp-vbtn.decide { color: var(--rose); }
 .pp-vbtn.launch { color: var(--green); }
+.pp-vbtn.unblock { color: var(--coral); }
 .pp-vbtn.clarify { color: var(--accent); }
 .pp-vbtn.backlog-action { width: auto; min-width: 78px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font: 600 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .04em; }
 .pp-vbtn.backlog-action::after { width: auto; inset: 0; }
