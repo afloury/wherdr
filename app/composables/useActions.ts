@@ -44,20 +44,21 @@ export function statusLabel(p: Pane) {
 }
 
 export async function closePane(p: Pane) {
+  const workspace = herdrState.value.workspaces.find(w => w.id === p.workspace)
   const what = p.agent
     ? tl(`${kindLabel(p.agent)} « ${paneTitle(p)} »`, `${kindLabel(p.agent)} “${paneTitle(p)}”`)
-    : t('ce terminal')
-  const ok = await askConfirm(
+    : tl(`le terminal de l’espace « ${workspace?.label || paneTitle(p)} »`, `the terminal in space “${workspace?.label || paneTitle(p)}”`)
+  const plan = await confirmClose('pane', p.id,
     tl(`Fermer ${what} ? Le processus sera arrêté.`, `Close ${what}? The process will be stopped.`),
     t('Fermer le pane'),
   )
-  if (!ok) return
+  if (!plan) return
   // Fermé depuis sa vue : son onglet s'il y reste des panes, sinon l'onglet
   // voisin, sinon la liste. Fermé depuis le plan : on y reste.
-  const done = prepareClose({ pane: p.id })
+  const done = prepareClose(plan.group ? { workspace: p.workspace } : { pane: p.id }, plan.group ? plan.workspaces.map(w => w.id) : [])
   try {
-    await api('/api/close', { pane_id: p.id })
-    toast(t('Pane fermé'))
+    await api('/api/close', { pane_id: p.id, close_group: plan.group })
+    toast(plan.group ? tl('Groupe fermé', 'Group closed') : t('Pane fermé'))
     done(true)
   } catch (err) {
     done(false)

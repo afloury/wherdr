@@ -1132,7 +1132,9 @@ body.kb .composer { padding-bottom: 8px; }
 }
 .menu pre.screen .spinner { display: block; margin: 16px auto; }
 
-.confirm p { margin: 6px 2px 4px; font-size: 16px; line-height: 1.45; }
+.confirm { display: flex; flex-direction: column; min-height: 0; max-height: calc(88dvh - var(--safe-bottom) - 48px); }
+.confirm p { margin: 6px 2px 4px; font-size: 16px; line-height: 1.45; min-height: 0; overflow-y: auto; }
+.confirm .rename-actions { flex: none; }
 .rename { padding: 4px 0 4px; }
 .rename-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 

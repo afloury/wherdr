@@ -19,8 +19,8 @@ export type SpaceAction =
   | { op: 'tab.create', workspace_id: string, label?: string | null, cwd?: string | null }
   | { op: 'workspace.rename', workspace_id: string, label: string }
   | { op: 'tab.rename', tab_id: string, label: string }
-  | { op: 'workspace.close', workspace_id: string }
-  | { op: 'tab.close', tab_id: string }
+  | { op: 'workspace.close', workspace_id: string, close_group?: boolean }
+  | { op: 'tab.close', tab_id: string, close_group?: boolean }
   | { op: 'pane.split', pane_id: string, direction: SplitDirection, cwd?: string | null }
   | { op: 'pane.move', pane_id: string, to: MoveDestination }
   | { op: 'pane.swap', pane_id: string, direction: PaneDirection }
@@ -76,10 +76,11 @@ export function spaceCall(body: any): HerdrCall {
     }
     case 'workspace.close': {
       const w = idOf(b.workspace_id, WORKSPACE_RE, 'workspace')
-      return { machine: w.machine, method: op, params: { workspace_id: w.local } }
+      return { machine: w.machine, method: op, params: { workspace_id: w.local, ...(b.close_group === true ? { close_group: true } : {}) } }
     }
     case 'tab.close': {
       const x = idOf(b.tab_id, TAB_RE, 'onglet')
+      if (b.close_group === true) return { machine: x.machine, method: 'workspace.close', params: { workspace_id: x.local.split(':')[0], close_group: true } }
       return { machine: x.machine, method: op, params: { tab_id: x.local } }
     }
     case 'pane.split': {

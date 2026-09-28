@@ -78,6 +78,22 @@ const git = 'git --no-optional-locks -c core.fsmonitor=false -c core.hooksPath=/
 const generated = /(^|\/)(?:dist|build|generated|coverage|node_modules|\.nuxt)\/|(^|\/)(?:package-lock\.json|pnpm-lock\.yaml|yarn\.lock|Cargo\.lock|composer\.lock|Gemfile\.lock|.*\.min\.(?:js|css)|.*\.map|.*\.generated\.[^/]+)$/i
 const emptySet = (): ChangeSet => ({ files: [], truncated: false, count: 0 })
 
+// État léger pour la confirmation de fermeture : mêmes options Git en lecture
+// seule que la vue Changements, sans calculer les diffs fichier par fichier.
+export async function readChangeStatus(m: Machine, cwd: string) {
+  const run = runner(m)
+  const root = (await run(`cd "$1" 2>/dev/null && ${git} rev-parse --show-toplevel 2>/dev/null || true`, [cwd])).toString('utf8').trim()
+  if (!root) return { git: false as const }
+  const raw = await run(`cd "$1" && ${git} status --porcelain=v1 -z --untracked-files=all | head -c ${STATUS_BYTES + 1}`, [root], 20000)
+  const entries = parseStatus(raw.subarray(0, STATUS_BYTES).toString('utf8'))
+  return {
+    git: true as const,
+    modified: entries.filter(f => f.status !== '??').length,
+    untracked: entries.filter(f => f.status === '??').length,
+    truncated: raw.length > STATUS_BYTES,
+  }
+}
+
 async function fillDiffs(run: Run, root: string, set: ChangeSet, committedRef?: string, hasHead = true) {
   let total = 0
   for (let i = 0; i < set.files.length; i++) {

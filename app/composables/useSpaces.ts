@@ -68,10 +68,11 @@ export async function closeTab(id: string) {
     kind: 'tab', label: e.tab.label || String(e.tab.number), panes: e.panes,
     lastTab: siblings.length <= 1, workspaceLabel: ws?.label,
   }, tl)
-  if (!(await askConfirm(c.message, c.action))) return
-  const done = prepareClose({ tab: id })
-  if (!(await spaceApi({ op: 'tab.close', tab_id: id }))) return done(false)
-  toast(t('Onglet fermé'))
+  const plan = await confirmClose('tab', id, c.message, c.action)
+  if (!plan) return
+  const done = prepareClose(plan.group ? { workspace: e.tab.workspace } : { tab: id }, plan.group ? plan.workspaces.map(w => w.id) : [])
+  if (!(await spaceApi({ op: 'tab.close', tab_id: id, close_group: plan.group }))) return done(false)
+  toast(plan.group ? tl('Groupe fermé', 'Group closed') : t('Onglet fermé'))
   done(true)
 }
 
@@ -80,10 +81,11 @@ export async function closeWorkspace(id: string) {
   if (!w) return
   const panes = herdrState.value.panes.filter(p => p.workspace === id)
   const c = closeConfirm({ kind: 'workspace', label: w.label, panes }, tl)
-  if (!(await askConfirm(c.message, c.action))) return
-  const done = prepareClose({ workspace: id })
-  if (!(await spaceApi({ op: 'workspace.close', workspace_id: id }))) return done(false)
-  toast(t('Espace fermé'))
+  const plan = await confirmClose('workspace', id, c.message, c.action)
+  if (!plan) return
+  const done = prepareClose({ workspace: id }, plan.group ? plan.workspaces.map(w => w.id) : [])
+  if (!(await spaceApi({ op: 'workspace.close', workspace_id: id, close_group: plan.group }))) return done(false)
+  toast(plan.group ? tl('Groupe fermé', 'Group closed') : t('Espace fermé'))
   done(true)
 }
 
