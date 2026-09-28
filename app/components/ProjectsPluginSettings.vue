@@ -54,7 +54,7 @@ const boardLists = computed(() => [
   { icon: 'i-lucide-flask-conical', name: tl('À tester', 'To test'), also: 'To test, Testing, À vérifier', what: tl('Ce que tu dois vérifier : Confirmer, Problème, Question.', 'What you must check: Confirm, Problem, Question.') },
   { icon: 'i-lucide-circle-help', name: tl('À décider', 'To decide'), also: 'To decide, Décisions, Questions', what: tl('Questions pour toi : Répondre.', 'Questions for you: Answer.') },
   { icon: 'i-lucide-loader', name: tl('En cours', 'In progress'), also: 'In progress, Doing, WIP', what: tl('Threads ouverts, en direct.', 'Open threads, live.') },
-  { icon: 'i-lucide-list-todo', name: 'Backlog', also: 'À faire, Todo, Next, Later, Idées', what: tl('Tâches à lancer plus tard.', 'Tasks to launch later.') },
+  { icon: 'i-lucide-list-todo', name: 'Backlog', also: 'À faire, Todo, Next, Later, Idées', what: tl('Lancer envoie la tâche au coordinateur ; Préciser prépare un message.', 'Launch sends the task to the coordinator; Clarify prepares a message.') },
   { icon: 'i-lucide-check', name: tl('Fait', 'Done'), also: 'Done, Terminé, Finished', what: tl('Remplie par les threads clôturés.', 'Filled by resolved threads.') },
 ])
 async function copyText(text: string, done: string) {

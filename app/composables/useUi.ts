@@ -63,7 +63,7 @@ export function answerConfirm(ok: boolean) {
 
 // Une fenêtre est ouverte : Échap la ferme au lieu d'agir ailleurs.
 export const anySheetOpen = computed(() => menuState.open || newAgentOpen.value || Boolean(renameTarget.value) || Boolean(renameSpace.value)
-  || commandResult.open || confirmState.open || Boolean(lightboxSrc.value))
+  || commandResult.open || confirmState.open || pluginFormState.open || Boolean(lightboxSrc.value))
 
 // Les commandes locales ne laissent pas de trace dans la transcription : on
 // montre ce qu'elles ont affiché, extrait de l'écran du terminal.

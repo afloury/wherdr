@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { boardSections, decisionPrefix, detailPrefix, launchPrefix, listKind, normalizeThreads, ownerIsMe, parseTaskLine, parseTasks, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage } from '../shared/projectBoard'
+import { boardSections, decisionPrefix, detailPrefix, launchMessage, listKind, normalizeThreads, ownerIsMe, parseTaskLine, parseTasks, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage } from '../shared/projectBoard'
 import { pluginBinary } from '../server/utils/projectBoard'
 import { isCoordinator } from '../shared/projects'
 import type { Pane } from '../shared/types'
@@ -109,21 +109,19 @@ describe('réponses aux décisions (À décider)', () => {
 })
 
 describe('actions du Backlog', () => {
-  it('prépare Lancer et Préciser sans toucher au responsable de la tâche', () => {
+  it('compose le message envoyé par Lancer et le brouillon de Préciser sans responsable', () => {
     const task = parseTaskLine('- [ ] Améliorer le panneau Projet (agent)')!
-    expect(launchPrefix(task.text)).toBe('↳ Lancer : Améliorer le panneau Projet — ')
-    expect(launchPrefix(' Improve the project panel ', 'en')).toBe('↳ Launch: Improve the project panel — ')
+    expect(launchMessage(task.text)).toBe('↳ Lancer : Améliorer le panneau Projet')
+    expect(launchMessage(' Improve the project panel ', 'en')).toBe('↳ Launch: Improve the project panel')
     expect(detailPrefix(task.text)).toBe('↳ Précision sur Améliorer le panneau Projet — ')
     expect(detailPrefix(' Improve the project panel ', 'en')).toBe('↳ Detail on Improve the project panel — ')
   })
 
-  it('garde un brouillon existant et évite le doublon au second toucher', () => {
-    const launch = launchPrefix('Améliorer le panneau Projet')
+  it('garde le brouillon de Préciser et évite le doublon au second toucher', () => {
     const detail = detailPrefix('Améliorer le panneau Projet')
-    expect(prefillDraft('', launch)).toBe(launch)
-    expect(prefillDraft('Autre demande', launch)).toBe(`Autre demande\n${launch}`)
-    expect(prefillDraft(launch, launch)).toBe(launch)
-    expect(prefillDraft(launch, detail)).toBe(`${launch.trimEnd()}\n${detail}`)
+    expect(prefillDraft('', detail)).toBe(detail)
+    expect(prefillDraft('Autre demande', detail)).toBe(`Autre demande\n${detail}`)
+    expect(prefillDraft(detail, detail)).toBe(detail)
   })
 })
 
@@ -268,7 +266,9 @@ describe('aide du tableau (Réglages › Plugins)', () => {
     const m = await import('../shared/projectBoard')
     const fr = m.coordinatorRules('fr')
     expect(fr).toContain(m.testedMessage('…'))
-    for (const p of [m.problemPrefix, m.questionPrefix, m.decisionPrefix, m.launchPrefix, m.detailPrefix]) {
+    expect(fr).toContain(m.launchMessage('…', 'fr'))
+    expect(m.coordinatorRules('en')).toContain(m.launchMessage('…', 'en'))
+    for (const p of [m.problemPrefix, m.questionPrefix, m.decisionPrefix, m.detailPrefix]) {
       expect(fr).toContain(p('…', 'fr'))
       expect(m.coordinatorRules('en')).toContain(p('…', 'en'))
     }
