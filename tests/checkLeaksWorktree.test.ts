@@ -37,7 +37,10 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })
 })
 
-describe('check-leaks dans un worktree', () => {
+// Ces tests créent de vrais dépôts : ignorés là où git n'est pas installé (image node:22-alpine).
+const hasGit = spawnSync('git', ['--version']).status === 0
+
+describe.skipIf(!hasGit)('check-leaks dans un worktree', () => {
   it('trouve le checkout principal depuis un worktree lié, pas depuis le principal', () => {
     const { main, wt } = repoWithWorktree()
     expect(realpathSync(mainCheckoutRoot(wt))).toBe(main)
