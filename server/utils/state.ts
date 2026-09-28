@@ -6,7 +6,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import type { Choices, HerdrState, MachineInfo, ModelInfo, Pane, QueuedMessage } from '../../shared/types'
+import type { Choices, HerdrState, WaitScreen, MachineInfo, ModelInfo, Pane, QueuedMessage } from '../../shared/types'
 import { LOCAL, joinId, machineOf } from '../../shared/ids'
 import { isProjectThread, paneTitle } from '../../shared/paneTitle'
 import { reduceSnapshot } from './snapshot'
@@ -14,6 +14,7 @@ import { DATA_DIR, HERDR_SESSION, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
 import { HerdrError, herdr, herdrOn, sleep } from './herdr'
 import { parseChoices } from './choices'
 import { isPermissionQuestion, mergeDetail } from './promptDetail'
+import { parseWaitScreen } from './waitScreen'
 import { parseClaudeActivity } from './activity'
 import { isUploadLine, queuedDone } from './queued'
 import { msgText, unqueueClaude } from './unqueue'
@@ -64,25 +65,34 @@ export const findPane = (id: string | null | undefined) => state.panes.find(p =>
 
 // Invites bloquantes : relues seulement quand l'écran du pane a changé
 // (`revision` de Herdr), et oubliées dès que l'agent n'est plus bloqué.
-export const choicesCache = new Map<string, { rev: unknown, strict: boolean, choices: Choices | null }>()
+// L'écran d'attente (légende de touches, cf. waitScreen.ts) est lu en même temps.
+// `watch` : la `revision` de Herdr ne bouge pas quand l'écran d'un agent au repos
+// change (Codex qui démarre, boîte fermée depuis le terminal) ; on relit alors
+// toutes les SCREEN_MS tant qu'une invite est affichée ou que l'agent n'a pas de conversation.
 // Demande de permission : la commande ou le fichier demandé vient de
 // préférence de la transcription (entière), sinon de l'écran.
-async function choicesFor(p: Pane, rev: unknown, strict: boolean) {
+const SCREEN_MS = 3000
+type OnScreen = { choices: Choices | null, screen: WaitScreen | null }
+export const choicesCache = new Map<string, { rev: unknown, strict: boolean, at: number } & OnScreen>()
+async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false): Promise<OnScreen> {
   const c = choicesCache.get(p.id)
-  if (c && c.rev === rev && c.strict === strict) return c.choices
-  let choices: Choices | null = null
+  const recheck = c && (watch || c.choices || c.screen) && Date.now() - c.at >= SCREEN_MS
+  if (c && c.rev === rev && c.strict === strict && !recheck) return c
+  let out: OnScreen
   try {
     const r = await herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
-    choices = parseChoices(r.read && r.read.text, { strict })
-    noteScreen(p.id, p.agent, r.read && r.read.text) // Codex : modèle de sa ligne d'état
+    const text = r.read && r.read.text
+    const choices = parseChoices(text, { strict })
+    out = { choices, screen: parseWaitScreen(text, { choices: Boolean(choices) }) }
+    noteScreen(p.id, p.agent, text) // Codex : modèle de sa ligne d'état
     if (choices && (choices.detail || isPermissionQuestion(choices.question))) {
       const tr = await transcripts.pendingTool(p).catch(() => null)
       const detail = mergeDetail(tr, choices.detail || null)
       if (detail) choices.detail = detail
     }
-  } catch { choices = c ? c.choices : null }
-  choicesCache.set(p.id, { rev, strict, choices })
-  return choices
+  } catch { out = { choices: c ? c.choices : null, screen: c ? c.screen : null } }
+  choicesCache.set(p.id, { rev, strict, at: Date.now(), ...out })
+  return out
 }
 
 // Aperçu (dernière réponse de l'agent) : rafraîchi en tâche de fond, sans
@@ -340,8 +350,12 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
     // Hors `working`, on cherche aussi une question : certaines (confiance du
     // dossier chez Codex) ne font pas passer l'agent en `blocked` pour Herdr.
     if (p.status !== 'working') {
-      const c = await choicesFor(p, revs.get(p.id), p.status !== 'blocked')
-      if (c) p.prompt = c
+      // Agent sans conversation ou né il y a moins de 2 min (Codex rapporte parfois
+      // la session d'un autre pane, cf. transcripts.ts) : écran surveillé.
+      const young = !p.agentSession || (p.bornAt && Date.now() - p.bornAt < 120000)
+      const c = await choicesFor(p, revs.get(p.id), p.status !== 'blocked', Boolean(young))
+      if (c.choices) p.prompt = c.choices
+      if (c.screen) p.screen = c.screen
     } else choicesCache.delete(p.id)
     const pv = previews.get(p.id)
     if (!pv || pv.status !== p.status || (p.status === 'working' && Date.now() - pv.at > 10000)) refreshPreview(p)

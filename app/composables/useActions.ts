@@ -1,5 +1,5 @@
 // Actions sur les agents partagées entre la liste et la vue agent.
-import type { Pane, QueuedMessage } from '#shared/types'
+import type { Pane, QueuedMessage, WaitAction } from '#shared/types'
 
 // Choisir une option d'une invite bloquante (le serveur revérifie l'écran).
 export async function choose(paneId: string, index: number, label: string): Promise<boolean> {
@@ -7,6 +7,19 @@ export async function choose(paneId: string, index: number, label: string): Prom
   try {
     await api('/api/choose', { pane_id: paneId, index, label })
     toast(`✓ ${label}`)
+    return true
+  } catch (err) {
+    toast((err as Error).message, true)
+    return false
+  }
+}
+
+// Appuyer sur une touche de la légende d'un écran d'attente (le serveur revérifie l'écran).
+export async function pressScreenKey(paneId: string, a: WaitAction): Promise<boolean> {
+  haptic()
+  try {
+    await api('/api/screen-key', { pane_id: paneId, key: a.key, label: a.label })
+    toast(`✓ ${screenActionLabel(a)}`)
     return true
   } catch (err) {
     toast((err as Error).message, true)

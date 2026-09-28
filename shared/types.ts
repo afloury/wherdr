@@ -18,6 +18,14 @@ export interface PromptDetail {
 }
 export interface Choices { question: string | null, cursor: number, options: ChoiceOption[], detail?: PromptDetail }
 
+// Écran d'attente d'un agent (Codex au démarrage : hooks, confiance du dossier,
+// connexion…), cf. server/utils/waitScreen.ts. `other` : écran non reconnu,
+// montré seulement tant qu'il n'y a pas de conversation.
+export type WaitKind = 'hooks' | 'trust' | 'login' | 'update' | 'other'
+// Touche de la légende de l'écran (« t trust all » → { key: 't', label: 'trust all' }).
+export interface WaitAction { key: string, label: string }
+export interface WaitScreen { kind: WaitKind, title: string | null, lines: string[], actions: WaitAction[] }
+
 export interface QueuedMessage { id: string, text: string, at?: number }
 
 export interface Workspace {
@@ -68,6 +76,7 @@ export interface Pane {
   pendingPrompt?: boolean
   queued?: QueuedMessage[]
   prompt?: Choices
+  screen?: WaitScreen
   preview?: string
   model?: ModelInfo
   // Claude au travail, conversation affichée : verbe de sa ligne d'activité (« Orbiting »).

@@ -1051,6 +1051,31 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .choices-list .n { font: 600 12px/1.55 var(--mono); color: var(--rose); flex: none; min-width: 14px; }
 .choices-list .l { font-size: 15px; font-weight: 500; line-height: 1.4; }
 .choices-list small { display: block; font-size: 12.5px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+/* Écran d'attente (hooks de Codex, connexion…) : explication, texte de la boîte, touches. */
+.choices-note { font-size: 13px; color: var(--text-3); margin: -4px 2px 10px; line-height: 1.45; }
+.choices-screen-text {
+  font: 400 11.5px/1.5 var(--mono); color: var(--muted); margin: 0 0 10px; padding: 8px 10px;
+  background: var(--bg-2); border: 1px solid var(--line); overflow: auto; white-space: pre; max-height: 24vh;
+}
+/* Les touches doivent rester visibles sous le texte de la boîte. */
+.choices.choices-screen { max-height: 64%; }
+.choices-screen-text.wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.choices-screen-text + .choices-list { margin-top: 0; }
+.choices-keys { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.choices-keys button {
+  font: 500 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+  padding: 10px 12px; min-height: 36px; background: var(--bg-2); border: 1px solid var(--line); color: var(--text);
+}
+.choices-keys kbd {
+  font: 500 11px/1 var(--mono); letter-spacing: 0; text-transform: none; color: var(--rose);
+  margin-left: 8px; padding: 2px 5px; border: 1px solid var(--line);
+}
+.choices-keys button:hover { background: var(--surface-2); }
+.choices-keys button:active { background: var(--surface-3); }
+.choices-keys button:disabled { opacity: .5; }
+/* Pas encore de conversation, mais l'agent attend une action dans le terminal. */
+.chat-empty.waiting .chat-empty-icon { color: var(--rose); }
+.chat-empty.waiting .choices-screen-text { text-align: left; align-self: stretch; max-width: 720px; margin: 0 auto; width: 100%; }
 
 /* ---------- Barre de saisie (UChatPrompt) ---------- */
 .composer { flex: none; background: var(--bg); padding: 6px 12px max(10px, calc(var(--safe-bottom) - 6px)); }

@@ -16,9 +16,10 @@
 import type { Choices } from '../../shared/types'
 import { isPermissionQuestion, screenDetail } from './promptDetail'
 
-// ❯ chez Claude Code, › chez Codex.
-const CURSOR = /^(\s*)[❯›]\s+(\S.*?)\s*$/
-const NUMBERED = /^(\s*)(?:[❯›]\s+)?(\d{1,2})\.\s+(\S.*?)\s*$/
+// ❯ chez Claude Code, › chez Codex ; > sur l'écran de connexion de Codex, pris
+// seulement devant une option numérotée (sinon une citation « > … » compterait).
+const CURSOR = /^(\s*)(?:[❯›]|>(?=\s+\d{1,2}\.\s))\s+(\S.*?)\s*$/
+const NUMBERED = /^(\s*)(?:[❯›>]\s+)?(\d{1,2})\.\s+(\S.*?)\s*$/
 const RULE = /^[\s─━═—-]+$/
 // Début d'une colonne voisine : au moins 3 espaces ou un trait vertical │.
 const GAP = /\S(?: {3,}| *│ *)(?=\S)/g
@@ -62,7 +63,7 @@ function dropSidePanel(lines: string[], c: number): string[] {
 
 // Colonne (en caractères) où commence le texte d'une ligne d'option.
 function textColumn(line: string): number {
-  const m = line.match(/^(\s*)(?:[❯›]\s+)?/)
+  const m = line.match(/^(\s*)(?:(?:[❯›]|>(?=\s+\d))\s+)?/)
   return m ? m[0].length : 0
 }
 
