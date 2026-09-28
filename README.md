@@ -31,11 +31,16 @@ it on `localhost`, or from your other devices over Tailscale.
 > strongly recommended. See [Security](#security).
 
 <p align="center">
-  <img src="docs/screenshots/desktop.png" alt="wherdr on a computer: agent sidebar and conversation" height="360">
-  <img src="docs/screenshots/home-phone.png" alt="Agent list on a phone" height="360">
-  <img src="docs/screenshots/chat-phone.png" alt="Conversation view on a phone" height="360">
+  <img src="docs/screenshots/desktop.png" alt="wherdr on a computer: agent sidebar and conversation" width="900">
 </p>
-<p align="center"><sub>Computer (left) and phone (right): the same agents, the same session.</sub></p>
+<p align="center"><sub>On a computer</sub></p>
+<br>
+<p align="center">
+  <img src="docs/screenshots/home-phone.png" alt="Agent list on a phone" width="340">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="docs/screenshots/chat-phone.png" alt="Conversation view on a phone" width="340">
+</p>
+<p align="center"><sub>On a phone: the same agents, the same session.</sub></p>
 
 *Unofficial project. Not affiliated with or endorsed by Herdr, Anthropic or OpenAI. Claude,
 Claude Code, Codex and other product names are trademarks of their respective owners.*
