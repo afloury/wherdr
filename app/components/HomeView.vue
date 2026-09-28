@@ -18,6 +18,7 @@ import type { MachineInfo, NamedSession, Pane } from '#shared/types'
 import { groupByProject, remoteCoordinator } from '#shared/projects'
 import { type Row, projectRoots, readyLists, repoRoots, rowGroup, spaceRows } from '#shared/spaces'
 import { claudeSetupOf, machineQuotaRows, quotaRows } from '~/utils/quotas'
+import { moveMachine, sortMachines } from '#shared/machineOrder'
 import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
 const emit = defineEmits<{ search: [] }>()
 useQuotaLoader()
@@ -83,9 +84,59 @@ const localSetup = computed(() => (showQuotas.value ? claudeSetupOf(homeQuotas.v
 
 // ------------------------------------------------------------ machines
 const STATE_LABEL: Record<MachineInfo['status'], string> = { online: 'en ligne', connecting: 'reconnexion…', offline: 'hors ligne' }
+const machineOrder = ref<string[]>([])
+const orderedMachines = computed(() => sortMachines(machines.value, machineOrder.value))
+const visibleKeys = computed(() => [...new Set(orderedMachines.value.map(m => m.baseKey ?? m.key))])
+const draggingMachine = ref<string | null>(null)
+const dropMachine = ref<string | null>(null)
+const dropAfter = ref(false)
+async function loadMachineOrder() {
+  try { machineOrder.value = (await api<{ order: string[] }>('/api/machine/order')).order }
+  catch { /* L'ordre de Herdr reste disponible hors ligne. */ }
+}
+onMounted(loadMachineOrder)
+async function saveMachineOrder(order: string[]) {
+  const previous = machineOrder.value
+  machineOrder.value = order
+  try { machineOrder.value = (await api<{ order: string[] }>('/api/machine/order', { order })).order }
+  catch (err) { machineOrder.value = previous; toast((err as Error).message, true) }
+}
+function shiftMachine(key: string, direction: -1 | 1) {
+  const keys = visibleKeys.value
+  const at = keys.indexOf(key)
+  const other = at + direction
+  if (at < 0 || other < 0 || other >= keys.length) return
+  const next = [...keys]
+  ;[next[at], next[other]] = [next[other]!, next[at]!]
+  haptic()
+  saveMachineOrder(next)
+}
+function onMachineDrop(key: string, event: DragEvent) {
+  event.preventDefault()
+  const from = draggingMachine.value
+  const keys = visibleKeys.value
+  const before = dropAfter.value ? keys[keys.indexOf(key) + 1] ?? null : key
+  draggingMachine.value = null
+  dropMachine.value = null
+  if (!from || from === key) return
+  saveMachineOrder(moveMachine(keys, from, before))
+}
+function onMachineDragOver(key: string, event: DragEvent) {
+  if (!draggingMachine.value || draggingMachine.value === key) return
+  event.preventDefault()
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  dropMachine.value = key
+  dropAfter.value = event.clientY > rect.top + rect.height / 2
+}
+function onMachineDragStart(key: string, event: DragEvent) {
+  draggingMachine.value = key
+  event.dataTransfer?.setData('text/plain', key)
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+}
+function onMachineDragEnd() { draggingMachine.value = null; dropMachine.value = null }
 const sections = computed(() => {
   if (!multiMachine.value) return null
-  return machines.value.map((m) => {
+  return orderedMachines.value.map((m) => {
     const mine = (p: Pane) => (p.machine || '') === m.key
     const a = agents.value.filter(mine)
     return {
@@ -202,6 +253,13 @@ function machineMenu(m: MachineInfo) {
     renamingMachine.value = m
     machineLabel.value = m.label
   } }]
+  if (multiMachine.value) {
+    const key = baseKeyOf(m)
+    const at = visibleKeys.value.indexOf(key)
+    if (at > 0) items.push({ label: t('Monter'), icon: 'i-lucide-arrow-up', run: () => shiftMachine(key, -1) })
+    if (at >= 0 && at < visibleKeys.value.length - 1) items.push({ label: t('Descendre'), icon: 'i-lucide-arrow-down', run: () => shiftMachine(key, 1) })
+    if (machineOrder.value.length) items.push({ label: t('Réinitialiser l’ordre'), icon: 'i-lucide-rotate-ccw', run: () => saveMachineOrder([]) })
+  }
   if (m.status === 'online' && awakeByMachine.value[m.key]?.supported) {
     items.push({ label: t('Garder éveillé'), icon: 'i-lucide-sun', run: () => openAwake(m) })
     if (awakeByMachine.value[m.key]?.platform === 'mac') items.push({ label: t('Ce qui empêche la veille'), icon: 'i-lucide-list-filter', run: () => openDiagnostic(m) })
@@ -327,10 +385,19 @@ function openSearch() { emit('search') }
       <!-- Plusieurs machines : une section par machine. -->
       <template v-else>
         <section
-          v-for="s in sections" :key="s.m.key" class="machine" :class="[s.m.status, { collapsed: s.collapsed }]"
+          v-for="s in sections" :key="s.m.key" class="machine" :class="[s.m.status, { collapsed: s.collapsed, 'machine-drop-before': dropMachine === baseKeyOf(s.m) && !dropAfter, 'machine-drop-after': dropMachine === baseKeyOf(s.m) && dropAfter }]"
           :data-machine="s.m.key || 'local'"
+          @dragover="onMachineDragOver(baseKeyOf(s.m), $event)"
+          @dragleave="(e: DragEvent) => { if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) dropMachine = null }"
+          @drop="onMachineDrop(baseKeyOf(s.m), $event)"
         >
           <div class="machine-row">
+            <button v-if="desk" type="button" class="machine-grip" draggable="true"
+              :aria-label="tl(`Déplacer ${s.name} — flèches haut et bas`, `Move ${s.name} — up and down arrows`)"
+              :title="t('Glisser pour réordonner')"
+              @dragstart="onMachineDragStart(baseKeyOf(s.m), $event)" @dragend="onMachineDragEnd"
+              @keydown.up.prevent="shiftMachine(baseKeyOf(s.m), -1)" @keydown.down.prevent="shiftMachine(baseKeyOf(s.m), 1)"
+            ><UIcon name="i-lucide-grip-vertical" /></button>
             <button
               type="button" class="machine-head" :aria-expanded="!s.collapsed"
               :title="s.m.target ? `ssh ${s.m.target}` : undefined" @click="toggleMachine(s.m.key)"

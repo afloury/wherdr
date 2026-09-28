@@ -396,6 +396,12 @@ body.short-bottom { --safe-bottom: 0px; }
 .machine { margin: 0 0 8px; }
 .machine + .machine { margin-top: 4px; }
 .machine-row { display: flex; align-items: center; border-top: 1px solid var(--line); margin-bottom: 6px; }
+.machine-grip { flex: none; display: grid; place-items: center; width: 23px; min-height: 44px; color: var(--dim); cursor: grab; }
+.machine-grip:hover, .machine-grip:focus-visible { color: var(--mauve); }
+.machine-grip:focus-visible { outline: 1px solid var(--mauve); outline-offset: -2px; }
+.machine-grip .iconify { width: 17px; height: 17px; }
+.machine.machine-drop-before { border-top: 2px solid var(--mauve); }
+.machine.machine-drop-after { border-bottom: 2px solid var(--mauve); }
 .machine-head {
   flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; text-align: left; cursor: pointer;
   padding: 13px 2px 13px 0;
