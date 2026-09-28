@@ -118,6 +118,8 @@ export async function pushSend(payload: PushPayload, audience?: PushAudience, fo
       log(`push ${code}: ${String(err.body || err.message).slice(0, 140)}`)
     }
   }
-  if (dead.length) await writeSubs(subs.filter(s => !dead.includes(s.endpoint)))
+  // Relire avant d'écrire : les envois ont pris du temps, et un abonnement ou un
+  // silence enregistré entre-temps ne doit pas être écrasé par l'ancienne liste.
+  if (dead.length) await writeSubs((await readSubs()).filter(s => !dead.includes(s.endpoint)))
   return ok
 }
