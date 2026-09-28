@@ -36,7 +36,9 @@ function fakeCaffeinate(body: string) {
   writeFileSync(join(bin, 'caffeinate'), `#!/bin/sh\n${body}\n`)
   chmodSync(join(bin, 'caffeinate'), 0o755)
 }
-const LIVE = `echo "start $$" >> "${'$'}LOG"; trap 'echo "stop $$" >> "${'$'}LOG"; kill $! 2>/dev/null; exit 0' TERM; sleep 30 & wait`
+// Le script n'est jamais réécrit pendant qu'un caffeinate l'exécute (sh relit
+// son script au fil de l'eau) : l'échec de lancement passe par un fichier témoin.
+const LIVE = `[ ! -f "${'$'}FAIL" ] || exit 1; echo "start $$" >> "${'$'}LOG"; trap 'echo "stop $$" >> "${'$'}LOG"; kill $! 2>/dev/null; exit 0' TERM; sleep 30 & wait`
 
 describe.skipIf(process.platform === 'win32' || !canInspect)('keep-awake control script', { timeout: 20000 }, () => {
   beforeEach(() => {
@@ -44,7 +46,7 @@ describe.skipIf(process.platform === 'win32' || !canInspect)('keep-awake control
     home = join(root, 'home'); bin = join(root, 'bin'); log = join(root, 'events.log')
     mkdirSync(home); mkdirSync(bin); writeFileSync(log, '')
     writeFileSync(join(bin, 'uname'), '#!/bin/sh\necho Darwin\n'); chmodSync(join(bin, 'uname'), 0o755)
-    fakeCaffeinate(LIVE.replaceAll('$LOG', log))
+    fakeCaffeinate(LIVE.replaceAll('$LOG', log).replaceAll('$FAIL', join(root, 'fail')))
   })
   afterEach(() => {
     if (existsSync(pidFile())) {
@@ -86,7 +88,7 @@ describe.skipIf(process.platform === 'win32' || !canInspect)('keep-awake control
   it('keeps the previous inhibitor when the new one fails to start', () => {
     const a = (parseControl(control('hour')) as { started: number }).started
     const saved = readFileSync(pidFile(), 'utf8')
-    fakeCaffeinate('exit 1')
+    writeFileSync(join(root, 'fail'), '')
     expect(parseControl(control('fourHours')), why(a)).toEqual({ error: 'start_failed' })
     expect(alive(a), why(a)).toBe(true)
     expect(readFileSync(pidFile(), 'utf8')).toBe(saved)
