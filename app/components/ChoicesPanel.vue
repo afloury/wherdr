@@ -15,6 +15,7 @@ async function pick(i: number, label: string) {
 <template>
   <div class="choices">
     <p class="eyebrow choices-eyebrow"><i />{{ t('À toi') }}</p>
+    <PromptDetailBlock v-if="prompt.detail" :detail="prompt.detail" />
     <p v-if="prompt.question" class="choices-q">{{ prompt.question }}</p>
     <div class="choices-list">
       <button

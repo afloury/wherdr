@@ -4,7 +4,19 @@ import type { TabLayout } from './layout'
 export type AgentStatus = 'working' | 'blocked' | 'done' | 'idle' | 'unknown'
 
 export interface ChoiceOption { label: string, hint: string | null }
-export interface Choices { question: string | null, cursor: number, options: ChoiceOption[] }
+// Ce qu'une demande de permission autorise : l'outil, sa description, et la
+// commande (ou l'entrée de l'outil) en entier, ou le fichier touché.
+export interface PromptDetail {
+  tool: string
+  description?: string
+  command?: string
+  file?: string
+  added?: number
+  removed?: number
+  // Commande coupée côté serveur (très longue) : l'app le dit.
+  truncated?: boolean
+}
+export interface Choices { question: string | null, cursor: number, options: ChoiceOption[], detail?: PromptDetail }
 
 export interface QueuedMessage { id: string, text: string, at?: number }
 

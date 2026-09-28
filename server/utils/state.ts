@@ -13,6 +13,7 @@ import { reduceSnapshot } from './snapshot'
 import { DATA_DIR, HERDR_SESSION, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
 import { HerdrError, herdr, herdrOn, sleep } from './herdr'
 import { parseChoices } from './choices'
+import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseClaudeActivity } from './activity'
 import { isUploadLine, queuedDone } from './queued'
 import { msgText, unqueueClaude } from './unqueue'
@@ -36,6 +37,7 @@ export const transcripts = {
   image: (p: TranscriptPane, file: string | null, ref: string | null, i: number) => trFor(p).image(p, file, ref, i),
   model: (p: TranscriptPane) => trFor(p).model(p),
   locate: (p: TranscriptPane) => trFor(p).locate(p),
+  pendingTool: (p: TranscriptPane) => trFor(p).pendingTool(p),
   forget: (id: string) => machineOfPane(id)?.transcripts.forget(id),
 }
 
@@ -63,16 +65,23 @@ export const findPane = (id: string | null | undefined) => state.panes.find(p =>
 // Invites bloquantes : relues seulement quand l'écran du pane a changé
 // (`revision` de Herdr), et oubliées dès que l'agent n'est plus bloqué.
 export const choicesCache = new Map<string, { rev: unknown, strict: boolean, choices: Choices | null }>()
-async function choicesFor(paneId: string, rev: unknown, strict: boolean, agent: string | null = null) {
-  const c = choicesCache.get(paneId)
+// Demande de permission : la commande ou le fichier demandé vient de
+// préférence de la transcription (entière), sinon de l'écran.
+async function choicesFor(p: Pane, rev: unknown, strict: boolean) {
+  const c = choicesCache.get(p.id)
   if (c && c.rev === rev && c.strict === strict) return c.choices
   let choices: Choices | null = null
   try {
-    const r = await herdr('pane.read', { pane_id: paneId, source: 'detection' }, 4000)
+    const r = await herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
     choices = parseChoices(r.read && r.read.text, { strict })
-    noteScreen(paneId, agent, r.read && r.read.text) // Codex : modèle de sa ligne d'état
+    noteScreen(p.id, p.agent, r.read && r.read.text) // Codex : modèle de sa ligne d'état
+    if (choices && (choices.detail || isPermissionQuestion(choices.question))) {
+      const tr = await transcripts.pendingTool(p).catch(() => null)
+      const detail = mergeDetail(tr, choices.detail || null)
+      if (detail) choices.detail = detail
+    }
   } catch { choices = c ? c.choices : null }
-  choicesCache.set(paneId, { rev, strict, choices })
+  choicesCache.set(p.id, { rev, strict, choices })
   return choices
 }
 
@@ -331,7 +340,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
     // Hors `working`, on cherche aussi une question : certaines (confiance du
     // dossier chez Codex) ne font pas passer l'agent en `blocked` pour Herdr.
     if (p.status !== 'working') {
-      const c = await choicesFor(p.id, revs.get(p.id), p.status !== 'blocked', p.agent)
+      const c = await choicesFor(p, revs.get(p.id), p.status !== 'blocked')
       if (c) p.prompt = c
     } else choicesCache.delete(p.id)
     const pv = previews.get(p.id)

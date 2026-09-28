@@ -127,6 +127,9 @@ watch(() => props.pane.prompt, () => { busy.value = false })
           <UIcon v-if="space" name="i-lucide-corner-down-right" class="card-where-lead" /><UIcon v-else-if="branch" name="i-lucide-git-branch" />{{ where }}
         </div>
       </div>
+      <div v-if="prompt?.detail" class="card-detail" :title="detailLine(prompt.detail)">
+        <span class="card-detail-tool">{{ prompt.detail.tool }}</span><code>{{ detailLine(prompt.detail) }}</code>
+      </div>
       <div v-if="preview" class="card-preview">{{ preview }}</div>
       <div v-if="prompt && prompt.options" class="card-choices">
         <button

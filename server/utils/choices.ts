@@ -14,6 +14,7 @@
 // Le curseur ❯ marque l'option sélectionnée. On y répond en déplaçant le
 // curseur (↑/↓) puis Entrée, ce qui marche pour les deux formes.
 import type { Choices } from '../../shared/types'
+import { isPermissionQuestion, screenDetail } from './promptDetail'
 
 // ❯ chez Claude Code, › chez Codex.
 const CURSOR = /^(\s*)[❯›]\s+(\S.*?)\s*$/
@@ -129,24 +130,30 @@ export function parseChoices(text: string | null | undefined, { strict = false }
   // La question : la ligne non vide la plus proche au-dessus des options,
   // de préférence celle qui se termine par « ? ».
   // À défaut, une ligne qui contient un « ? », puis la plus proche.
-  let question: string | null = null
-  let asks: string | null = null
-  let nearest: string | null = null
+  let question: { t: string, i: number } | null = null
+  let asks: { t: string, i: number } | null = null
+  let nearest: { t: string, i: number } | null = null
   const top = options[0]!.line
   for (let i = top - 1; i >= Math.max(0, top - 12); i--) {
     const t = lines[i]!.trim()
     if (!t || RULE.test(t)) continue
-    if (/\?\s*$/.test(t)) { question = t; break }
-    if (!asks && t.includes('?')) asks = t
-    if (!nearest) nearest = t
+    if (/\?\s*$/.test(t)) { question = { t, i }; break }
+    if (!asks && t.includes('?')) asks = { t, i }
+    if (!nearest) nearest = { t, i }
   }
   question = question || asks || nearest
 
-  return {
-    question: question ? question.replace(/^[☐☒✔●◆▸•\s]+/, '').slice(0, 300) : null,
+  const out: Choices = {
+    question: question ? question.t.replace(/^[☐☒✔●◆▸•\s]+/, '').slice(0, 300) : null,
     cursor,
     options: options.map(o => ({ label: o.label.slice(0, 200), hint: o.hint ? o.hint.slice(0, 200) : null })),
   }
+  // Demande de permission : ce qui est demandé (outil, commande, fichier).
+  if (question && isPermissionQuestion(out.question)) {
+    const detail = screenDetail(lines, question.i, top)
+    if (detail) out.detail = detail
+  }
+  return out
 }
 
 // Touches à envoyer pour choisir l'option `index` quand le curseur est sur `cursor`.

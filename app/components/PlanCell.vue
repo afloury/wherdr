@@ -27,6 +27,7 @@ watch(() => props.pane.prompt, () => { busy.value = false })
       <SpaceMenu :items="() => paneItems(pane)" :title="paneTitle(pane)" size="sm" :label="t('Options du pane')" />
     </div>
     <StatusPill :pane="pane" model />
+    <code v-if="prompt?.detail" class="plan-cell-detail">{{ detailLine(prompt.detail) }}</code>
     <p v-if="line" class="plan-cell-line">{{ line }}</p>
     <div v-if="prompt" class="plan-cell-choices">
       <button

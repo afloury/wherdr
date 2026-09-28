@@ -13,7 +13,8 @@
 //    principale (thread_source "user", sans parent) du même cwd, modifiée en
 //    dernier. Ambigu seulement si deux Codex tournent dans le même dossier.
 import path from 'node:path'
-import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo } from '../../shared/types'
+import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail } from '../../shared/types'
+import { pendingClaudeTool, pendingCodexTool } from './promptDetail'
 import { cleanModelName, lastModel } from './models'
 import { type MachineFs, localFs } from './fsx'
 import { searchFile } from './conversationSearch'
@@ -677,12 +678,36 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     return info
   }
 
+  // Appel d'outil qui attend une permission : le dernier sans résultat, lu
+  // dans la fin de la transcription (relu seulement si le fichier a grandi).
+  const PENDING_WINDOW = 1024 * 1024
+  const pendingCache = new Map<string, { file: string, size: number, detail: PromptDetail | null }>()
+  async function pendingTool(pane: TranscriptPane): Promise<PromptDetail | null> {
+    if (pane.agent !== 'claude' && pane.agent !== 'codex') return null
+    const loc = await locate(pane)
+    if (!loc) return null
+    let size: number
+    try { size = (await fs.stat(loc.file)).size }
+    catch { return null }
+    const c = pendingCache.get(pane.id)
+    if (c && c.file === loc.file && c.size === size) return c.detail
+    let detail: PromptDetail | null = null
+    try {
+      const r = await readRange(loc.file, Math.max(0, size - PENDING_WINDOW), size)
+      const lines = r.text.split('\n').map(stripBlobs)
+      detail = (transcriptKind(loc.file) || pane.agent) === 'codex' ? pendingCodexTool(lines) : pendingClaudeTool(lines, home)
+    } catch { detail = null }
+    pendingCache.set(pane.id, { file: loc.file, size, detail })
+    return detail
+  }
+
   function forget(paneId: string) {
     locCache.delete(paneId)
     modelCache.delete(paneId)
+    pendingCache.delete(paneId)
   }
 
-  return { chat, preview, image, forget, locate, model, observe, search }
+  return { chat, preview, image, forget, locate, model, observe, search, pendingTool }
 }
 
 export type Transcripts = ReturnType<typeof createTranscripts>

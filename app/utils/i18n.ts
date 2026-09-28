@@ -4,7 +4,10 @@
 const EN: Record<string, string> = {
   'Monter': 'Move up', 'Descendre': 'Move down', 'Réinitialiser l’ordre': 'Reset order',
   'Glisser pour réordonner': 'Drag to reorder',
-  'Garder éveillé': 'Keep awake', 'Ce qui empêche la veille': 'What prevents sleep',
+  'Garder éveillé': 'Keep awake',
+  // Demande de permission
+  'Réduire': 'Collapse',
+  'Trop long : seul le début est affiché. Le terminal montre la suite.': 'Too long: only the beginning is shown. The terminal shows the rest.', 'Ce qui empêche la veille': 'What prevents sleep',
   'Veille normale': 'Normal sleep', 'Secteur': 'Power adapter', 'Batterie': 'Battery',
   'Capot fermé (sur secteur uniquement)': 'Closed lid (power adapter only)',
   '1 heure': '1 hour', '4 heures': '4 hours', 'Jusqu’à ce soir (20 h)': 'Until tonight (8 pm)',
