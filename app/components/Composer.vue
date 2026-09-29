@@ -95,11 +95,7 @@ const hint = computed(() => desk.value && !stopMode.value)
 
 async function submit() {
   if (readOnly.value) return toast(t('Envoi indisponible hors ligne'), true)
-  if (stopMode.value) {
-    haptic()
-    await props.sendKeys(['esc'])
-    return toast(t('Interruption envoyée'))
-  }
+  if (stopMode.value) return interrupt()
   if (attachments.value.some(a => !a.path)) return toast(t('Photo en cours d’envoi…'))
   // Les photos partent comme des chemins de fichiers : Claude Code et Codex
   // les ouvrent eux-mêmes.
@@ -126,6 +122,27 @@ async function submit() {
     sending.value = false
   }
 }
+
+// ------------------------------------------------------------ Stop
+// Le serveur envoie Échap, le renvoie si l'agent travaille encore, arrête les
+// tâches de fond de Claude (cf. server/utils/interruptSeq.ts) puis dit si l'agent
+// s'est arrêté. Sinon : message durable avec un accès au terminal.
+const interrupting = ref<'running' | 'failed' | null>(null)
+async function interrupt() {
+  if (interrupting.value === 'running') return
+  haptic()
+  interrupting.value = 'running'
+  try {
+    const r = await api<{ stopped: boolean, background: number }>('/api/interrupt', { pane_id: props.paneId })
+    interrupting.value = r.stopped ? null : 'failed'
+    if (r.stopped) toast(r.background ? tl(`Agent arrêté (${r.background} tâche${r.background > 1 ? 's' : ''} de fond arrêtée${r.background > 1 ? 's' : ''})`, `Agent stopped (${r.background} background task${r.background > 1 ? 's' : ''} stopped)`) : t('Agent arrêté'))
+  } catch (err) {
+    interrupting.value = null
+    toast((err as Error).message, true)
+  }
+}
+// L'agent finit par s'arrêter (ou l'utilisateur agit dans le terminal) : le message s'efface.
+watch(() => props.pane?.status, s => { if (interrupting.value === 'failed' && s !== 'working') interrupting.value = null })
 
 // ------------------------------------------------------------ photos
 function clearAttachments() {
@@ -342,7 +359,18 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
 
 <template>
   <div class="composer">
-    <div v-if="pane?.restart" class="composer-notice restart" :class="pane.restart.phase" role="status">
+    <div v-if="interrupting" class="composer-notice restart" :class="{ failed: interrupting === 'failed' }" role="status">
+      <template v-if="interrupting === 'failed'">
+        <span class="restart-text">{{ t('L’agent travaille encore.') }}</span>
+        <button type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('Voir le terminal') }}</button>
+        <button type="button" class="notice-btn" @click="interrupting = null">{{ t('Masquer') }}</button>
+      </template>
+      <template v-else>
+        <span class="notice-spin" aria-hidden="true" />
+        <span class="restart-text">{{ t('Interruption…') }}</span>
+      </template>
+    </div>
+    <div v-else-if="pane?.restart" class="composer-notice restart" :class="pane.restart.phase" role="status">
       <template v-if="pane.restart.phase === 'failed'">
         <span class="restart-text">{{ t('Redémarrage échoué') }}{{ tl(' : ', ': ') }}{{ t(pane.restart.error || '') }}</span>
         <button type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('Voir le terminal') }}</button>
@@ -416,7 +444,7 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
         <span v-if="hint && suggestion" class="prompt-hint"><UKbd value="tab" size="sm" /> {{ t('suggestion') }} <span class="sep">·</span> <UKbd value="enter" size="sm" /> {{ t('envoyer') }}</span>
         <span v-else-if="hint" class="prompt-hint"><UKbd value="enter" size="sm" /> {{ t('envoyer') }} <span class="sep">·</span> <UKbd value="shift" size="sm" /><UKbd value="enter" size="sm" /> {{ t('nouvelle ligne') }}</span>
         <UChatPromptSubmit
-          :status="stopMode ? 'streaming' : 'ready'" :disabled="readOnly || (!canSend && !stopMode) || sending"
+          :status="stopMode ? 'streaming' : 'ready'" :disabled="readOnly || (!canSend && !stopMode) || sending || interrupting === 'running'"
           color="primary" variant="solid" streaming-color="neutral" streaming-variant="solid" streaming-icon="i-herdr-stop" size="sm"
           class="prompt-send" :class="{ stop: stopMode }" :aria-label="t(stopMode ? 'Arrêter l’agent' : 'Envoyer')"
           @mousedown.prevent @click="onSubmitClick"
