@@ -199,7 +199,9 @@ watch(pane, (p) => {
 
 const prompt = computed(() => (pane.value && pane.value.status === 'blocked' && pane.value.prompt && pane.value.prompt.options ? pane.value.prompt : null))
 const screen = computed(() => knownScreen(pane.value))
-watch(() => JSON.stringify([prompt.value, screen.value]), () => nextTick(() => chatRef.value?.scrollToEnd(false)))
+// Menu interactif de Claude Code ouvert (/resume…), agent au repos.
+const menu = computed(() => (pane.value && pane.value.menu && pane.value.status !== 'working' && !prompt.value && !screen.value ? pane.value.menu : null))
+watch(() => JSON.stringify([prompt.value, screen.value, menu.value]), () => nextTick(() => chatRef.value?.scrollToEnd(false)))
 
 const where = computed(() => {
   const p = pane.value
@@ -210,7 +212,9 @@ const machine = computed(() => (multiMachine.value && pane.value ? machineInfo(p
 const machineDown = computed(() => Boolean(machine.value && machine.value.status !== 'online'))
 const changesOpen = ref(false)
 const attachInput = ref<HTMLInputElement | null>(null)
-const composerShown = computed(() => showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) }))
+// Menu interactif ouvert (vue conversation) : ce qui serait tapé irait dans sa
+// recherche ; la carte du menu a son propre champ.
+const composerShown = computed(() => showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) }) && !(menu.value && mode.value !== 'term'))
 const canAttachTerminal = computed(() => terminalAttachment({
   desk: desk.value, live: live.value, mode: mode.value,
   available: Boolean(pane.value && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value)),
@@ -536,6 +540,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <p v-if="pane?.agent && !hasChat(pane) && mode === 'term'" class="terminal-transcript-note">{{ tl('Conversation non disponible pour cet agent · suivi dans le terminal', 'Conversation unavailable for this agent · follow it in the terminal') }}</p>
 
     <ChoicesPanel v-if="(prompt || screen) && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :screen="screen" />
+    <MenuPanel v-else-if="menu && mode !== 'term' && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :menu="menu" @terminal="setMode('term')" />
     <Keybar v-if="mode === 'term' && eventsOpen && !offlineView && !machineDown" :ctl="ctl" />
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" @sent="onSent" @show-terminal="setMode('term')" />
     </div>

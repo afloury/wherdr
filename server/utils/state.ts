@@ -6,7 +6,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import type { Choices, ClaudeScreen, HerdrState, WaitScreen, MachineInfo, ModelInfo, Pane, QueuedMessage } from '../../shared/types'
+import type { Choices, ClaudeScreen, HerdrState, InteractiveMenu, WaitScreen, MachineInfo, ModelInfo, Pane, QueuedMessage } from '../../shared/types'
 import { LOCAL, joinId, machineOf } from '../../shared/ids'
 import { isProjectThread, paneTitle } from '../../shared/paneTitle'
 import { reduceSnapshot } from './snapshot'
@@ -15,6 +15,7 @@ import { HerdrError, herdr, herdrOn, sleep } from './herdr'
 import { parseChoices } from './choices'
 import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseWaitScreen } from './waitScreen'
+import { parseMenu } from '../../shared/menuScreen'
 import { parseClaudeActivity } from './activity'
 import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './claudeScreen'
 import { isUploadLine, queuedDone } from './queued'
@@ -64,6 +65,12 @@ export const getStateJson = () => stateJson
 export const getState = () => state
 export const findPane = (id: string | null | undefined) => state.panes.find(p => p.id === id)
 
+// Écran visible en ANSI → menu interactif (null s'il n'y en a pas).
+export async function readMenu(paneId: string): Promise<InteractiveMenu | null> {
+  const r = await herdr('pane.read', { pane_id: paneId, source: 'visible', format: 'ansi' }, 4000)
+  return parseMenu(r.read && r.read.text)
+}
+
 // Invites bloquantes : relues seulement quand l'écran du pane a changé
 // (`revision` de Herdr), et oubliées dès que l'agent n'est plus bloqué.
 // L'écran d'attente (légende de touches, cf. waitScreen.ts) est lu en même temps.
@@ -73,25 +80,41 @@ export const findPane = (id: string | null | undefined) => state.panes.find(p =>
 // Demande de permission : la commande ou le fichier demandé vient de
 // préférence de la transcription (entière), sinon de l'écran.
 const SCREEN_MS = 3000
-type OnScreen = { choices: Choices | null, screen: WaitScreen | null }
+type OnScreen = { choices: Choices | null, screen: WaitScreen | null, menu: InteractiveMenu | null }
+// Écran à relire pendant un moment même sans nouvelle `revision` (commande « / »
+// envoyée : un menu interactif peut s'ouvrir), cf. watchScreen().
+const screenWatch = new Map<string, number>()
+export function watchScreen(paneId: string, ms = 60000) {
+  screenWatch.set(paneId, Date.now() + ms)
+  choicesCache.delete(paneId)
+}
 export const choicesCache = new Map<string, { rev: unknown, strict: boolean, at: number } & OnScreen>()
 async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false): Promise<OnScreen> {
   const c = choicesCache.get(p.id)
-  const recheck = c && (watch || c.choices || c.screen) && Date.now() - c.at >= SCREEN_MS
+  const watched = (screenWatch.get(p.id) || 0) > Date.now()
+  if (!watched) screenWatch.delete(p.id)
+  const recheck = c && (watch || watched || c.choices || c.screen || c.menu) && Date.now() - c.at >= SCREEN_MS
   if (c && c.rev === rev && c.strict === strict && !recheck) return c
   let out: OnScreen
   try {
     const r = await herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
     const text = r.read && r.read.text
-    const choices = parseChoices(text, { strict })
-    out = { choices, screen: parseWaitScreen(text, { choices: Boolean(choices) }) }
+    // Menu interactif de Claude Code (/resume, /model…) : relu en ANSI (les
+    // descriptions grises s'y distinguent des entrées). Herdr en croit certains
+    // bloquants (/hooks) : une vraie question reconnue garde alors la priorité.
+    const framed = /^\s*▔{8,}\s*$/m.test(text || '')
+    let menu = strict && framed ? await readMenu(p.id) : null
+    let choices = menu ? null : parseChoices(text, { strict })
+    if (!strict && framed && !choices) menu = await readMenu(p.id)
+    if (menu) choices = null
+    out = { choices, screen: menu ? null : parseWaitScreen(text, { choices: Boolean(choices) }), menu }
     noteScreen(p.id, p.agent, text) // Codex : modèle de sa ligne d'état
     if (choices && (choices.detail || isPermissionQuestion(choices.question))) {
       const tr = await transcripts.pendingTool(p).catch(() => null)
       const detail = mergeDetail(tr, choices.detail || null)
       if (detail) choices.detail = detail
     }
-  } catch { out = { choices: c ? c.choices : null, screen: c ? c.screen : null } }
+  } catch { out = { choices: c ? c.choices : null, screen: c ? c.screen : null, menu: c ? c.menu : null } }
   choicesCache.set(p.id, { rev, strict, at: Date.now(), ...out })
   return out
 }
@@ -399,6 +422,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       const c = await choicesFor(p, revs.get(p.id), p.status !== 'blocked', Boolean(young))
       if (c.choices) p.prompt = c.choices
       if (c.screen) p.screen = c.screen
+      if (c.menu) p.menu = c.menu
     } else choicesCache.delete(p.id)
     const pv = previews.get(p.id)
     if (!pv || pv.status !== p.status || (p.status === 'working' && Date.now() - pv.at > 10000)) refreshPreview(p)

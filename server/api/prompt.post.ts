@@ -5,7 +5,12 @@ export default defineApi(async (event, b) => {
   if (await closePanel(b.pane_id).catch(() => false)) log(`panneau refermé avant envoi sur ${b.pane_id}`)
   await herdr('agent.prompt', { target: b.pane_id, text })
   // Les commandes (/compact…) ne sont pas des messages : pas de bulle.
-  if (text.trim().startsWith('/')) return { ok: true }
+  // Un menu interactif (/resume, /model…) peut s'ouvrir : écran surveillé.
+  if (text.trim().startsWith('/')) {
+    watchScreen(b.pane_id)
+    setTimeout(poll, 1500)
+    return { ok: true }
+  }
   const q = addQueued(b.pane_id, text)
   setTimeout(poll, 50)
   return { ok: true, queued: q }
