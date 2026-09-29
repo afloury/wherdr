@@ -5,15 +5,22 @@
 // Entrée ; rien n'est envoyé sans geste. Menu sans entrée reconnue : repli vers
 // le terminal.
 import type { InteractiveMenu, WaitAction } from '#shared/types'
+import { clickMovesOnly } from '#shared/menuScreen'
 
 const props = defineProps<{ paneId: string, menu: InteractiveMenu }>()
 const emit = defineEmits<{ terminal: [] }>()
 const busy = ref(false)
-watch(() => props.menu, () => { busy.value = false })
+const listRef = ref<HTMLElement | null>(null)
+// Entrée sous le curseur visible (liste longue : /model…).
+const showCursor = () => nextTick(() => listRef.value?.querySelector('.cur')?.scrollIntoView({ block: 'nearest' }))
+watch(() => props.menu, () => { busy.value = false; showCursor() })
+onMounted(showCursor)
 
 const disabled = computed(() => busy.value || !eventsOpen.value || offlineView.value)
-// Avec des entrées cliquables, Entrée fait doublon.
-const actions = computed(() => props.menu.actions.filter(a => !(a.key === 'enter' && props.menu.cursor !== null)))
+// Un clic sur une entrée n'y amène que le curseur (Entrée = « set as default »…).
+const moveOnly = computed(() => clickMovesOnly(props.menu))
+// Avec des entrées cliquables qui valident, Entrée fait doublon.
+const actions = computed(() => props.menu.actions.filter(a => !(a.key === 'enter' && props.menu.cursor !== null && !moveOnly.value)))
 const known = computed(() => props.menu.cursor !== null && props.menu.items.length > 0)
 
 async function pick(i: number, label: string) {
@@ -48,7 +55,8 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
   <div class="choices choices-menu">
     <p class="eyebrow choices-eyebrow"><i />{{ t('À toi') }}<span class="menu-kind">{{ t('Menu interactif') }}</span></p>
     <p v-if="menu.title" class="choices-q">{{ menu.title }}</p>
-    <p v-if="menu.lines.length" class="choices-note">{{ menu.lines[0] }}</p>
+    <p v-if="known && menu.lines.length" class="choices-note">{{ menu.lines[0] }}</p>
+    <p v-if="known && moveOnly" class="choices-note">{{ tl('Toucher une entrée y place le curseur ; valide ensuite avec un bouton ci-dessous.', 'Tap an entry to move the cursor there, then confirm with a button below.') }}</p>
     <form v-if="menu.search !== null" class="menu-search" @submit.prevent="sendSearch">
       <UIcon name="i-lucide-search" aria-hidden="true" />
       <input
@@ -56,7 +64,7 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
         enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" :disabled="!eventsOpen || offlineView" @input="onInput"
       >
     </form>
-    <div v-if="known" class="choices-list menu-list">
+    <div v-if="known" ref="listRef" class="choices-list menu-list">
       <template v-for="(o, i) in menu.items" :key="i">
         <p v-if="o.header" class="menu-group">{{ o.label }}</p>
         <button v-else type="button" :class="{ cur: i === menu.cursor }" :aria-current="i === menu.cursor ? 'true' : undefined" :disabled="disabled" @click="pick(i, o.label)">
@@ -65,7 +73,10 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
       </template>
       <p v-if="menu.more" class="menu-more">{{ menu.more }}</p>
     </div>
-    <p v-else class="choices-note">{{ tl('Menu interactif en cours : ses entrées se choisissent dans le terminal.', 'Interactive menu open: pick its entries in the terminal.') }}</p>
+    <template v-else>
+      <pre v-if="menu.lines.length" class="choices-screen-text wrap">{{ menu.lines.join('\n') }}</pre>
+      <p class="choices-note">{{ tl('Menu interactif en cours : ses entrées se choisissent dans le terminal.', 'Interactive menu open: pick its entries in the terminal.') }}</p>
+    </template>
     <div class="choices-keys">
       <button v-for="a in actions" :key="a.key + a.label" type="button" :disabled="disabled" @click="press(a)">
         {{ screenActionText(a) }}<kbd>{{ screenKeyName(a.key) }}</kbd>

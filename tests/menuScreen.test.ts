@@ -1,7 +1,7 @@
 // Menus interactifs de Claude Code : écrans synthétiques reproduisant la forme
 // (et les couleurs ANSI) des vrais, contenu fictif.
 import { describe, expect, it } from 'vitest'
-import { findEntry, parseMenu, searchKeys, stepToward } from '../shared/menuScreen'
+import { clickMovesOnly, findEntry, parseMenu, searchKeys, stepToward } from '../shared/menuScreen'
 
 const G = (s: string) => `\x1b[0m\x1b[38;2;153;153;153m${s}\x1b[0m` // gris (descriptions, légende)
 const A = (s: string) => `\x1b[0m\x1b[38;2;177;185;249m${s}\x1b[0m` // accent (curseur)
@@ -85,6 +85,14 @@ describe('parseMenu', () => {
     expect(parseMenu(resume('⌕ tabl'))!.search).toBe('tabl')
   })
 
+  it('/resume en recherche (sans curseur) : texte sous la recherche gardé, légende propre à ce mode', () => {
+    const m = parseMenu([TOP, '   Resume session', '   ╭──╮', '   │ ⌕ zzz │', '   ╰──╯', '    No sessions match "zzz".', `     ${G('Type to Search · Enter to select · Esc to clear')}`].join('\n'))!
+    expect(m.search).toBe('zzz')
+    expect(m.cursor).toBeNull()
+    expect(m.lines).toEqual(['No sessions match "zzz".'])
+    expect(m.actions).toEqual([{ key: 'enter', label: 'select' }, { key: 'esc', label: 'clear' }])
+  })
+
   it('lit /model : numéros retirés, colonnes en description, flèche de défilement, « +2 models »', () => {
     const m = parseMenu(model)!
     expect(m.title).toBe('Select model')
@@ -153,6 +161,11 @@ describe('navigation', () => {
     expect(findEntry(m, 2, 'Corriger les tests')).toBe(2)
     expect(findEntry(m, 5, 'Corriger les tests')).toBe(2)
     expect(findEntry(m, 2, 'Autre')).toBe(-1)
+  })
+  it('/model (Entrée = « set as default ») : un clic ne fait que déplacer le curseur', () => {
+    expect(clickMovesOnly(parseMenu(model)!)).toBe(true)
+    expect(clickMovesOnly(m)).toBe(false)
+    expect(clickMovesOnly(parseMenu(mcp)!)).toBe(false)
   })
   it('recherche : efface puis tape lettre par lettre', () => {
     expect(searchKeys('ab', 'c d')).toEqual(['backspace', 'backspace', 'c', 'space', 'd'])

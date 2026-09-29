@@ -89,7 +89,7 @@ async function readCommandResult(pane: string, cmd: string, tries = 5) {
       const { text, tab } = await api<{ text: string, tab: string | null }>(`/api/screen?pane=${encodeURIComponent(pane)}`)
       if (!current()) return
       // Menu interactif (/resume, /model…) : pas une sortie, il se pilote dans la conversation.
-      if (parseMenu(text)) { closeCommandResult(); return }
+      if (parseMenu(text)) { closeCommandResult(false); return }
       const shown = extractResult(text, cmd)
       const loading = /\bLoading\b/.test(shown)
       if (loading && i < tries - 1) { await new Promise(r => setTimeout(r, 1200)); continue }
@@ -151,11 +151,13 @@ export async function switchCommandTab(target: string) {
 }
 // En refermant le résultat, on referme aussi le panneau côté agent (/usage…),
 // sinon il reste ouvert et avale les messages suivants.
-export function closeCommandResult() {
+// `dismiss` : Échap envoyé au terminal pour fermer le panneau de la commande ;
+// jamais pour un menu interactif (Échap l'annulerait).
+export function closeCommandResult(dismiss = true) {
   if (!commandResult.open) return
   commandResult.open = false
   const pane = commandResult.pane
-  if (pane) api('/api/dismiss', { pane_id: pane }).catch(() => {})
+  if (pane && dismiss) api('/api/dismiss', { pane_id: pane }).catch(() => {})
 }
 
 // Mêmes entrées en menu déroulant (ordinateur) : groupes séparés, actions

@@ -81,10 +81,19 @@ export async function readMenu(paneId: string): Promise<InteractiveMenu | null> 
 // préférence de la transcription (entière), sinon de l'écran.
 const SCREEN_MS = 3000
 type OnScreen = { choices: Choices | null, screen: WaitScreen | null, menu: InteractiveMenu | null }
+// Écran à relire pendant un moment même sans nouvelle `revision` (commande « / »
+// envoyée : un menu interactif peut s'ouvrir), cf. watchScreen().
+const screenWatch = new Map<string, number>()
+export function watchScreen(paneId: string, ms = 60000) {
+  screenWatch.set(paneId, Date.now() + ms)
+  choicesCache.delete(paneId)
+}
 export const choicesCache = new Map<string, { rev: unknown, strict: boolean, at: number } & OnScreen>()
 async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false): Promise<OnScreen> {
   const c = choicesCache.get(p.id)
-  const recheck = c && (watch || c.choices || c.screen || c.menu) && Date.now() - c.at >= SCREEN_MS
+  const watched = (screenWatch.get(p.id) || 0) > Date.now()
+  if (!watched) screenWatch.delete(p.id)
+  const recheck = c && (watch || watched || c.choices || c.screen || c.menu) && Date.now() - c.at >= SCREEN_MS
   if (c && c.rev === rev && c.strict === strict && !recheck) return c
   let out: OnScreen
   try {

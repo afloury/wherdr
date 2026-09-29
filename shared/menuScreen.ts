@@ -210,10 +210,19 @@ export function parseMenu(text: string | null | undefined): InteractiveMenu | nu
     const t = body[i]!.text.trim()
     if (t && !BOX.test(body[i]!.text) && intro.length < 4) intro.push(t)
   }
+  // Sans curseur (recherche en cours, « No sessions match… ») : le texte sous la
+  // recherche, tel quel, pour que la carte dise ce que montre le terminal.
+  const rest: string[] = []
+  if (cursorRow < 0 && boxAt >= 0) {
+    for (let i = Math.max(afterBox, first + 1); i < body.length && rest.length < 8; i++) {
+      const t = body[i]!.text.trim()
+      if (t && !BOX.test(body[i]!.text)) rest.push(t.slice(0, 200))
+    }
+  }
   first = items.findIndex(it => it.cursor)
   return {
     title,
-    lines: intro.length ? [intro.join(' ').slice(0, 400)] : [],
+    lines: [...(intro.length ? [intro.join(' ').slice(0, 400)] : []), ...rest],
     items: items.slice(0, 40).map(({ row: _row, start: _start, ...it }) => ({ ...it, label: it.label.slice(0, 200), hint: it.hint ? it.hint.slice(0, 200) : null })),
     cursor: first >= 0 && first < 40 ? first : null,
     search,
@@ -236,11 +245,19 @@ export function findEntry(menu: InteractiveMenu, index: number, label: string): 
   return menu.items.findIndex(it => !it.header && it.label === label)
 }
 
-// Touches pour taper `text` dans le champ de recherche (lettre par lettre : un
+// Touches pour taper `text` dans le champ de recherche (à envoyer une par une : un
 // collage n'y est pas pris), après avoir effacé `current`.
 export function searchKeys(current: string, text: string): string[] {
   const keys: string[] = []
   for (let i = 0; i < [...current].length; i++) keys.push('backspace')
   for (const ch of text) keys.push(ch === ' ' ? 'space' : ch)
   return keys
+}
+
+// Entrée n'est pas un simple choix (« Enter to set as default » de /model, qui
+// change le modèle par défaut du compte) : un clic sur une entrée n'y amène que
+// le curseur, et l'action d'Entrée reste un bouton explicite.
+export function clickMovesOnly(menu: InteractiveMenu): boolean {
+  const enter = menu.actions.find(a => a.key === 'enter')
+  return Boolean(enter && !/^(?:select|confirm|choose|open|resume|continue)$/i.test(enter.label.trim()))
 }

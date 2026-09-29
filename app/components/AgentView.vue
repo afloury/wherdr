@@ -211,7 +211,9 @@ const machine = computed(() => (multiMachine.value && pane.value ? machineInfo(p
 const machineDown = computed(() => Boolean(machine.value && machine.value.status !== 'online'))
 const changesOpen = ref(false)
 const attachInput = ref<HTMLInputElement | null>(null)
-const composerShown = computed(() => showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) }))
+// Menu interactif ouvert (vue conversation) : ce qui serait tapé irait dans sa
+// recherche ; la carte du menu a son propre champ.
+const composerShown = computed(() => showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) }) && !(menu.value && mode.value !== 'term'))
 const canAttachTerminal = computed(() => terminalAttachment({
   desk: desk.value, live: live.value, mode: mode.value,
   available: Boolean(pane.value && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value)),
