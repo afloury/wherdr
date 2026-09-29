@@ -99,10 +99,14 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
   try {
     const r = await herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
     const text = r.read && r.read.text
-    // Menu interactif de Claude Code (/resume, /model…), agent au repos : relu
-    // en ANSI (les descriptions grises s'y distinguent des entrées).
-    const menu = strict && /^\s*▔{8,}\s*$/m.test(text || '') ? await readMenu(p.id) : null
-    const choices = menu ? null : parseChoices(text, { strict })
+    // Menu interactif de Claude Code (/resume, /model…) : relu en ANSI (les
+    // descriptions grises s'y distinguent des entrées). Herdr en croit certains
+    // bloquants (/hooks) : une vraie question reconnue garde alors la priorité.
+    const framed = /^\s*▔{8,}\s*$/m.test(text || '')
+    let menu = strict && framed ? await readMenu(p.id) : null
+    let choices = menu ? null : parseChoices(text, { strict })
+    if (!strict && framed && !choices) menu = await readMenu(p.id)
+    if (menu) choices = null
     out = { choices, screen: menu ? null : parseWaitScreen(text, { choices: Boolean(choices) }), menu }
     noteScreen(p.id, p.agent, text) // Codex : modèle de sa ligne d'état
     if (choices && (choices.detail || isPermissionQuestion(choices.question))) {
