@@ -17,6 +17,15 @@ describe('herdr-projects : saisies et arguments', () => {
     expect(cleanProjectInput('delete', { slug: 'demo' })).toBeNull()
   })
 
+  it('refuse un nom ou un slug lu comme une option, et un nom refusé par le formulaire', () => {
+    expect(cleanProjectInput('new', { name: '--help' })).toBeNull()
+    expect(cleanProjectInput('adopt-workspace', { name: '-x' })).toBeNull()
+    expect(cleanProjectInput('open', { slug: '--session=autre' })).toBeNull()
+    expect(cleanProjectInput('new', { name: '~' })).toBeNull()
+    expect(cleanProjectInput('new', { name: 'a/b' })).toBeNull()
+    expect(cleanProjectInput('new', { name: 'Demo-2' })).toEqual({ name: 'Demo-2' })
+  })
+
   it('construit adopt-workspace avec l’objectif, la tâche en cours et la session', () => {
     const input = cleanProjectInput('adopt-workspace', { name: 'Demo', goal: 'Faire X', task: 'corriger Y' })!
     expect(projectCommandArgs('adopt-workspace', input, { pane: 'w1:p2', cwd: '/tmp/demo', session: 'hwtest', lang: 'fr' })).toEqual([
