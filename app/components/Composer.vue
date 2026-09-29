@@ -6,6 +6,7 @@
 // leur chemin part avec le message.
 import type { Pane, QueuedMessage, SlashCommand } from '#shared/types'
 import type { DraftAtt } from '~/composables/useDraft'
+import { withReply } from '#shared/replyQuote'
 
 const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void> }>()
 const emit = defineEmits<{ sent: [queued: QueuedMessage | null], showTerminal: [] }>()
@@ -32,6 +33,8 @@ const enterSends = computed(() => desk.value && !isIOS && !touchKeyboard)
 
 type Att = DraftAtt
 const attachments = toRef(draft, 'atts')
+// Réponse à un message précis de l'agent : encadré au-dessus du champ, repère court à l'envoi.
+const replyTo = toRef(draft, 'reply')
 
 const canSend = computed(() => Boolean(text.value.trim() || attachments.value.length))
 const readOnly = computed(() => !eventsOpen.value || offlineView.value || paneStale(props.pane))
@@ -99,7 +102,10 @@ async function submit() {
   // Les photos partent comme des chemins de fichiers : Claude Code et Codex
   // les ouvrent eux-mêmes.
   const paths = attachments.value.map(a => a.path!)
-  const msg = [text.value.trim(), ...paths].filter(Boolean).join('\n')
+  const body = [text.value.trim(), ...paths].filter(Boolean).join('\n')
+  // Pas de repère devant une commande « / » ou « ! » : l'agent ne la lirait plus comme telle.
+  const reply = /^[/!]/.test(body) ? null : replyTo.value
+  const msg = withReply(reply, body, language)
   if (!msg || sending.value) return
   const p = props.pane
   sending.value = true
@@ -107,6 +113,7 @@ async function submit() {
     const queued = await sendMessage(p, props.paneId, msg)
     text.value = ''
     clearAttachments()
+    if (reply) replyTo.value = null
     haptic()
     emit('sent', queued)
     // Commande « / » : son résultat (écran du terminal), comme depuis le menu +.
@@ -369,6 +376,14 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
           <span class="slash-desc">{{ c.desc }}</span>
         </button>
       </div>
+    </div>
+    <div v-if="replyTo" class="composer-reply" role="status">
+      <UIcon name="i-lucide-reply" class="composer-reply-icon" />
+      <span class="composer-reply-label">{{ t('En réponse à') }} · {{ replyTo.time }}</span>
+      <span class="composer-reply-text">{{ replyTo.excerpt }}</span>
+      <button type="button" class="composer-reply-x" :aria-label="t('Annuler la réponse')" @mousedown.prevent @click="replyTo = null">
+        <UIcon name="i-lucide-x" />
+      </button>
     </div>
     <UChatPrompt
       ref="promptRef" v-model="text" :placeholder="readOnly ? t('Brouillon conservé — envoi indisponible hors ligne') : placeholder" variant="outline" color="neutral"

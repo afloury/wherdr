@@ -5,13 +5,15 @@
 // via /uploads/<nom>).
 
 import { effectScope, reactive, watch } from 'vue'
+import type { ReplyTarget } from '../../shared/replyQuote'
 
 export interface DraftAtt {
   url: string // aperçu : blob local tant que la page vit, sinon /uploads/<nom>
   path: string | null // null pendant l'envoi de la photo
   name?: string
 }
-interface Draft { text: string, atts: DraftAtt[] }
+// reply : message de l'agent auquel on répond (cf. utils/replyQuote.ts).
+interface Draft { text: string, atts: DraftAtt[], reply: ReplyTarget | null }
 
 const KEY = 'draft:'
 // Les photos déposées sont purgées au bout de 7 jours : on les oublie avant.
@@ -30,23 +32,24 @@ function load(paneId: string): Draft {
   try {
     const raw = localStorage.getItem(KEY + paneId)
     if (raw) {
-      const d = JSON.parse(raw) as { text?: string, atts?: { path: string, name?: string }[] }
+      const d = JSON.parse(raw) as { text?: string, atts?: { path: string, name?: string }[], reply?: ReplyTarget }
       return {
         text: d.text || '',
         atts: (d.atts || [])
           .filter(a => a.path && a.name && Date.now() - uploadedAt(a.name) < ATT_MAX_AGE)
           .map(a => ({ url: `/uploads/${encodeURIComponent(a.name!)}`, path: a.path, name: a.name })),
+        reply: d.reply && typeof d.reply.time === 'string' && typeof d.reply.excerpt === 'string' ? { time: d.reply.time, excerpt: d.reply.excerpt } : null,
       }
     }
   } catch { /* stockage indisponible ou brouillon illisible */ }
-  return { text: '', atts: [] }
+  return { text: '', atts: [], reply: null }
 }
 
 function persist(paneId: string, d: Draft) {
   const atts = d.atts.filter(a => a.path && a.name).map(a => ({ path: a.path, name: a.name }))
   try {
-    if (!d.text && !atts.length) localStorage.removeItem(KEY + paneId)
-    else localStorage.setItem(KEY + paneId, JSON.stringify({ text: d.text, atts }))
+    if (!d.text && !atts.length && !d.reply) localStorage.removeItem(KEY + paneId)
+    else localStorage.setItem(KEY + paneId, JSON.stringify({ text: d.text, atts, reply: d.reply || undefined }))
   } catch { /* stockage indisponible */ }
 }
 
@@ -58,7 +61,7 @@ export function useDraft(paneId: string): Draft {
     d = reactive(load(paneId)) as Draft
     drafts.set(paneId, d)
     const draft = d
-    scope.run(() => watch(() => [draft.text, draft.atts.map(a => a.path).join('|')], () => persist(paneId, draft)))
+    scope.run(() => watch(() => [draft.text, draft.atts.map(a => a.path).join('|'), draft.reply?.excerpt, draft.reply?.time], () => persist(paneId, draft)))
   }
   return d
 }

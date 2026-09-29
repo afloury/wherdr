@@ -11,10 +11,11 @@ import { canCancelQueued, restoreDraft } from '~/utils/queuedCancel'
 import { queuedPhase } from '#shared/queuedPhase'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
+import { dropReplyMarker, findReplyOrigin, parseReply, replyTarget, type ReplyTarget } from '#shared/replyQuote'
 
 const props = defineProps<{ pane: Pane, localQueued: QueuedMessage[] }>()
 const route = useRoute()
-const emit = defineEmits<{ gotoTerm: [], restored: [] }>()
+const emit = defineEmits<{ gotoTerm: [], restored: [], reply: [] }>()
 const searchOpen = defineModel<boolean>('search', { default: false })
 
 const box = ref<HTMLElement | null>(null)
@@ -239,12 +240,12 @@ const UPLOAD_RE = /\/\.cache\/herdr-web\/uploads\/\S+/g
 type Block =
   | { k: 'day', key: string, label: string }
   | { k: 'who', key: string }
-  | { k: 'user', key: string, text: string, srcs: string[], time: string | null }
-  | { k: 'assistant', key: string, id: string, text: string, html: string }
+  | { k: 'user', key: string, text: string, srcs: string[], time: string | null, reply: ReplyTarget | null, origin: string | null }
+  | { k: 'assistant', key: string, id: string, text: string, html: string, time: string | null, endsTurn: boolean }
   | { k: 'system', key: string, text: string }
   | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean }
   | { k: 'tools', key: string, list: ChatItem[], live: boolean }
-  | { k: 'turn', key: string, text: string, copy: string | null }
+  | { k: 'turn', key: string, text: string, copy: string | null, reply: string | null }
 
 const openTools = reactive(new Set<string>())
 const working = computed(() => !readOnly.value && props.pane.status === 'working')
@@ -274,14 +275,19 @@ const blocks = computed<Block[]>(() => {
   let needWho = true
   // Dernière réponse d'un tour : copiable depuis la ligne de fin de tour.
   let lastReply: string | null = null
+  let lastReplyBlock: (Block & { k: 'assistant' }) | null = null
+  const replies: { key: string, time: string | null, text: string }[] = []
   const closeTurn = () => {
     if (turn && turn.end && turn.start && (turn.tools || turn.replies)) {
       const s = Math.max(0, Math.round((Date.parse(turn.end) - Date.parse(turn.start)) / 1000))
       const acts = turn.tools ? ` · ${turn.tools} ${t(turn.tools > 1 ? 'actions' : 'action')}` : ''
-      out.push({ k: 'turn', key: `e:${out.length}`, text: `✓ ${fmtDuration(s)}${acts}`, copy: lastReply })
+      // « Répondre » de la dernière réponse : à côté de « Copier », sur la ligne de fin de tour.
+      if (lastReplyBlock) lastReplyBlock.endsTurn = true
+      out.push({ k: 'turn', key: `e:${out.length}`, text: `✓ ${fmtDuration(s)}${acts}`, copy: lastReply, reply: lastReplyBlock?.key || null })
     }
     turn = null
     lastReply = null
+    lastReplyBlock = null
   }
   list.forEach((it, i) => {
     if (it.ts) {
@@ -328,10 +334,16 @@ const blocks = computed<Block[]>(() => {
         }
       }
       for (const u of uploads) srcs.push(`/uploads/${encodeURIComponent(u.split('/').pop()!)}`)
-      out.push({ k: 'user', key, text, srcs, time: it.ts ? fmtTime(it.ts) : null })
+      // Réponse à un message précis : le repère devient une citation qui renvoie à l'original.
+      const parsed = parseReply(text)
+      const origin = parsed ? findReplyOrigin(replies, parsed.reply)?.key || null : null
+      out.push({ k: 'user', key, text: parsed ? parsed.body : text, srcs, time: it.ts ? fmtTime(it.ts) : null, reply: parsed?.reply || null, origin })
     } else if (it.role === 'assistant') {
       lastReply = it.text
-      out.push({ k: 'assistant', key, id: replyId(it), text: it.text, html: md(it.text) })
+      const time = it.ts ? fmtTime(it.ts) : null
+      lastReplyBlock = { k: 'assistant', key, id: replyId(it), text: it.text, html: md(it.text), time, endsTurn: false }
+      out.push(lastReplyBlock)
+      replies.push({ key, time, text: it.text })
     } else if (it.role === 'bash') {
       const o = it.out || ''
       const e = it.err || ''
@@ -364,6 +376,37 @@ const isOpen = (key: string) => openTools.has(key)
 function setOpen(key: string, v: boolean) {
   if (v) openTools.add(key)
   else openTools.delete(key)
+}
+
+// « Répondre » : encadré au-dessus du champ de saisie. Un passage sélectionné
+// dans ce message (relevé dès l'appui, avant que le tap ne le désélectionne)
+// sert de repère à la place du début du message.
+let pickedSel = ''
+const msgEl = (key: string) => [...(listEl.value?.querySelectorAll<HTMLElement>('[data-hit-key]') || [])].find(el => el.dataset.hitKey === key) || null
+function readSelection(key: string) {
+  const sel = window.getSelection()
+  const el = msgEl(key)
+  pickedSel = sel && !sel.isCollapsed && el && sel.anchorNode && el.contains(sel.anchorNode) ? sel.toString() : ''
+}
+function replyTo(key: string) {
+  const b = blocks.value.find(x => x.key === key)
+  if (!b || b.k !== 'assistant') return
+  if (!pickedSel) readSelection(key)
+  useDraft(props.pane.id).reply = replyTarget(b.text, b.time || '', language === 'en' ? 'en' : 'fr', pickedSel)
+  pickedSel = ''
+  window.getSelection()?.removeAllRanges()
+  haptic()
+  emit('reply')
+}
+// Citation touchée : défile jusqu'au message d'origine et le met en évidence.
+function gotoOrigin(key: string | null) {
+  const el = key ? msgEl(key) : null
+  if (!el) return toast(t('Message d’origine introuvable (plus haut dans la conversation ?)'), true)
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  el.classList.remove('msg-flash')
+  void el.offsetWidth
+  el.classList.add('msg-flash')
+  setTimeout(() => el.classList.remove('msg-flash'), 1700)
 }
 
 async function copyText(text: string) {
@@ -416,7 +459,7 @@ const shellDuration = computed(() => {
   const s = Math.max(0, Math.round((nowTick.value - since) / 1000))
   return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`
 })
-const normText = (s: string) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase()
+const normText = (s: string) => dropReplyMarker(String(s || '').replace(/\s+/g, ' ').trim().toLowerCase())
 const isUploadLine = (l: string) => l.includes('/.cache/herdr-web/uploads/')
 const queuedList = computed(() => {
   const p = props.pane
@@ -703,6 +746,9 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
               </div>
 
               <div v-else-if="b.k === 'user'" class="msg-user-wrap" :data-hit-key="b.key">
+                <button v-if="b.reply" type="button" class="msg-quote" :aria-label="t('Voir le message d’origine')" @click="gotoOrigin(b.origin)">
+                  <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ b.reply.time }}</span><span class="msg-quote-text">{{ b.reply.excerpt }}</span>
+                </button>
                 <UChatMessage
                   :id="b.key" role="user" side="right" variant="soft"
                   :parts="[...b.srcs.map(url => ({ type: 'file' as const, mediaType: 'image/jpeg', url })), ...(b.text ? [{ type: 'text' as const, text: b.text }] : [])]"
@@ -716,16 +762,23 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
                 <div v-if="b.time" class="msg-time">{{ b.time }}</div>
               </div>
 
-              <UChatMessage
-                v-else-if="b.k === 'assistant'" :id="b.key" role="assistant" side="left" variant="naked"
-                :data-hit-key="b.key"
-                :parts="[{ type: 'text', text: b.text }]"
-                :ui="{ root: 'msg msg-ai', container: 'msg-c', content: 'md' }"
-              >
-                <template #content>
-                  <ChatMarkdown :html="b.html" :typing="typingAt(b.id)" @done="typingDone(b.id)" />
-                </template>
-              </UChatMessage>
+              <template v-else-if="b.k === 'assistant'">
+                <UChatMessage
+                  :id="b.key" role="assistant" side="left" variant="naked"
+                  :data-hit-key="b.key"
+                  :parts="[{ type: 'text', text: b.text }]"
+                  :ui="{ root: 'msg msg-ai', container: 'msg-c', content: 'md' }"
+                >
+                  <template #content>
+                    <ChatMarkdown :html="b.html" :typing="typingAt(b.id)" @done="typingDone(b.id)" />
+                  </template>
+                </UChatMessage>
+                <div v-if="!b.endsTurn && !readOnly" class="msg-actions">
+                  <button type="button" class="msg-reply" @pointerdown="readSelection(b.key)" @click="replyTo(b.key)">
+                    <UIcon name="i-lucide-reply" /><span>{{ t('Répondre') }}</span>
+                  </button>
+                </div>
+              </template>
 
               <div v-else-if="b.k === 'shell'" class="msg-shell" :class="{ bash: b.bash, long: b.long, open: isOpen(b.key) }">
                 <div class="msg-shell-cmd">
@@ -750,6 +803,9 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
                 <UTooltip v-if="b.copy" :text="t('Copier la réponse')" :disabled="!desk">
                   <UButton icon="i-lucide-copy" color="neutral" variant="ghost" size="xs" class="turn-copy" :aria-label="t('Copier la réponse')" @click="copyText(b.copy)" />
                 </UTooltip>
+                <button v-if="b.reply && !readOnly" type="button" class="msg-reply" @pointerdown="readSelection(b.reply)" @click="replyTo(b.reply)">
+                  <UIcon name="i-lucide-reply" /><span>{{ t('Répondre') }}</span>
+                </button>
                 <span>{{ b.text }}</span>
               </div>
 
@@ -787,7 +843,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
           <!-- Déjà partis (visibles comme envoyés à l'écran), pas encore dans la transcription. -->
           <div v-for="q in queuedList.filter(x => x.phase === 'sent')" :key="q.id" class="msg-user-wrap">
             <div class="msg-bubble sent">
-              <span v-if="q.photos.length" class="thumbs" :class="{ one: q.photos.length === 1 }"><img v-for="src in q.photos" :key="src" class="msg-img" :src="src" alt="" @click="openImage(src)"></span>{{ q.text }}
+              <span v-if="q.photos.length" class="thumbs" :class="{ one: q.photos.length === 1 }"><img v-for="src in q.photos" :key="src" class="msg-img" :src="src" alt="" @click="openImage(src)"></span>{{ parseReply(q.text)?.body ?? q.text }}
             </div>
             <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ t('Envoyé · lu par l’agent') }}</span></div>
           </div>
@@ -810,7 +866,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
           </div>
           <div v-for="q in queuedList.filter(x => x.phase === 'queued')" :key="q.id" class="msg-user-wrap">
             <div class="msg-bubble queued">
-              <span v-if="q.photos.length" class="thumbs" :class="{ one: q.photos.length === 1 }"><img v-for="src in q.photos" :key="src" class="msg-img" :src="src" alt="" @click="openImage(src)"></span>{{ q.text }}
+              <span v-if="q.photos.length" class="thumbs" :class="{ one: q.photos.length === 1 }"><img v-for="src in q.photos" :key="src" class="msg-img" :src="src" alt="" @click="openImage(src)"></span>{{ parseReply(q.text)?.body ?? q.text }}
             </div>
             <div class="queued-tag">
               <UIcon name="i-lucide-clock" /><span>{{ t('En attente · ') }}{{ queuedWhy }}</span>

@@ -2,6 +2,7 @@
 // remettre le message dans le champ de saisie (texte + photos jointes).
 import type { Pane } from '../../shared/types'
 import type { DraftAtt } from '../composables/useDraft'
+import { parseReply, type ReplyTarget } from '../../shared/replyQuote'
 
 const UPLOAD = '/.cache/herdr-web/uploads/'
 
@@ -15,7 +16,13 @@ export function canCancelQueued(p: Pane | undefined): boolean {
 
 // Remet un message annulé dans le brouillon, comme s'il n'avait jamais été
 // envoyé : son texte avant ce qui était déjà tapé, ses photos jointes.
-export function restoreDraft(draft: { text: string, atts: DraftAtt[] }, message: string) {
+export function restoreDraft(draft: { text: string, atts: DraftAtt[], reply?: ReplyTarget | null }, message: string) {
+  // Réponse à un message précis : le repère redevient l'encadré « En réponse à ».
+  const parsed = parseReply(message)
+  if (parsed && 'reply' in draft) {
+    draft.reply = parsed.reply
+    message = parsed.body
+  }
   const lines = String(message || '').split('\n')
   const photos = lines.filter(l => l.includes(UPLOAD)).map(l => l.trim())
   const text = lines.filter(l => !l.includes(UPLOAD)).join('\n').trim()

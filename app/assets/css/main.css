@@ -2193,3 +2193,40 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .tab-chip.tab-add .iconify { width: 13px; height: 13px; }
 @media (hover: hover) { .tab-chip.tab-add:hover { border-style: solid; color: var(--text); } }
 .tab-chip.tab-add:disabled { opacity: .4; cursor: default; }
+
+/* Réponse à un message précis de l'agent (cf. utils/replyQuote.ts). */
+.composer-reply {
+  display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0 0 6px; padding: 6px 4px 6px 10px;
+  border: 1px solid var(--line); border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.composer-reply-icon { flex: none; width: 14px; height: 14px; color: var(--accent); }
+.composer-reply-label { flex: none; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+.composer-reply-text { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.35; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.composer-reply-x {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  color: var(--dim); background: none; border: 0; border-radius: 0; cursor: pointer;
+}
+.composer-reply-x:hover { color: var(--text); }
+.msg-actions { display: flex; align-items: center; margin: -10px 0 4px -6px; min-height: 28px; }
+.msg-reply {
+  display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 6px;
+  font: 500 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--dim); background: none; border: 0; border-radius: 0; cursor: pointer;
+}
+.msg-reply:hover, .msg-reply:focus-visible { color: var(--text); }
+.msg-reply .iconify, .msg-reply svg { width: 13px; height: 13px; }
+.turn-end .msg-reply { margin-left: -4px; }
+.msg-quote {
+  display: flex; align-items: baseline; gap: 6px; max-width: 88%; min-width: 0; padding: 5px 10px;
+  font-size: 12px; line-height: 1.35; text-align: left; color: var(--text-2);
+  background: transparent; border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: 0; cursor: pointer;
+}
+.msg-quote:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); border-left-color: var(--accent); }
+.msg-quote-time { flex: none; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; color: var(--dim); }
+.msg-quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-flash { animation: msg-flash 1.6s ease-out; }
+@keyframes msg-flash {
+  0%, 30% { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 16%, transparent); }
+  100% { background: transparent; box-shadow: 0 0 0 6px transparent; }
+}
+@media (prefers-reduced-motion: reduce) { .msg-flash { animation: none; outline: 1px solid var(--accent); } }
