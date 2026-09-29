@@ -129,6 +129,14 @@ describe('paneSpaceEntries', () => {
     expect(paneSpaceEntries(state, 'w2:p2')).toEqual(['tab.create', 'workspace.rename', 'workspace.close'])
     expect(paneSpaceEntries(state, 'w9:p9')).toEqual([])
   })
+
+  it('chaque action une seule fois (« Renommer l’espace » n’est pas en double)', () => {
+    for (const p of state.panes) {
+      const e = paneSpaceEntries(state, p.id)
+      expect(new Set(e).size).toBe(e.length)
+      expect(e.filter(x => x === 'workspace.rename')).toHaveLength(1)
+    }
+  })
 })
 
 describe('closeConfirm', () => {

@@ -243,6 +243,7 @@ const agentMenu = computed<MenuItem[]>(() => {
   if (p && workspace.value) items.push({ label: t('Renommer l’espace'), icon: 'i-lucide-pencil', run: () => renameWorkspace(workspace.value!.id) })
   // Diviser, déplacer vers un autre onglet (jamais de zoom ni de redimensionnement).
   if (p) items.push(...paneSpaceItems(p))
+  if (p) items.push(copyPaneIdItem(p))
   // Actions des plugins Herdr de sa machine qui portent sur un workspace / pane.
   if (p && agentPluginActions(p.machine).length) {
     items.push({ label: t('Actions des plugins'), icon: 'i-lucide-puzzle', run: () => openPluginMenu({ pane: p }) })

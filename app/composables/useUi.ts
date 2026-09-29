@@ -10,6 +10,8 @@ export interface MenuItem {
   cmd?: string
   // Commande : sa description ; action : ligne sous le libellé.
   desc?: string
+  // Ligne sous le libellé en police mono (un ID…).
+  mono?: boolean
   // Raccourci clavier (menus déroulants de l'ordinateur), touches Nuxt UI.
   kbds?: string[]
   run?: () => void
@@ -156,13 +158,15 @@ export function closeCommandResult() {
 // Mêmes entrées en menu déroulant (ordinateur) : groupes séparés, actions
 // destructrices en rouge, notes ignorées.
 export function toDropdown(items: MenuItem[]) {
-  const groups: { label?: string, icon?: string, color?: 'error', kbds?: string[], onSelect: () => void }[][] = [[]]
+  const groups: { label?: string, description?: string, icon?: string, color?: 'error', kbds?: string[], ui?: { itemDescription: string }, onSelect: () => void }[][] = [[]]
   for (const it of items) {
     if (it.kind === 'separator' || it.kind === 'group') groups.push([])
     else if (it.kind === 'note') continue
     else {
       groups[groups.length - 1]!.push({
         label: it.kind === 'command' ? `${it.cmd}  ${it.desc}` : it.label,
+        ...(it.kind !== 'command' && it.desc ? { description: it.desc } : {}),
+        ...(it.mono ? { ui: { itemDescription: 'font-mono' } } : {}),
         icon: it.icon,
         color: it.danger ? 'error' : undefined,
         kbds: it.kbds,

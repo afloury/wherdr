@@ -239,7 +239,7 @@ const EN: Record<string, string> = {
   'Conversation compactée': 'Conversation compacted', 'Conversation effacée': 'Conversation cleared', 'Interrompu': 'Interrupted',
   'app verrouillée': 'App is locked', 'origine refusée': 'Origin refused', 'introuvable': 'Not found',
   'En attente de ta réponse — détail dans l’onglet Terminal': 'Waiting for your reply — details in the Terminal tab',
-  'Copier': 'Copy', 'Répondre': 'Reply', 'En réponse à': 'Replying to', 'En réponse à un passage': 'Replying to a passage', 'En réponse au message': 'Replying to the message', 'Répondre à ce passage': 'Reply to this passage', 'Annuler la réponse': 'Cancel reply', 'Voir le message d’origine': 'Show original message', 'Message d’origine introuvable (plus haut dans la conversation ?)': 'Original message not found (further up the conversation?)', 'Copier la réponse': 'Copy reply', 'Aucune sortie': 'No output', 'Copié': 'Copied', 'Copie impossible': 'Copy failed',
+  'Copier': 'Copy', 'Répondre': 'Reply', 'En réponse à': 'Replying to', 'En réponse à un passage': 'Replying to a passage', 'En réponse au message': 'Replying to the message', 'Répondre à ce passage': 'Reply to this passage', 'Annuler la réponse': 'Cancel reply', 'Voir le message d’origine': 'Show original message', 'Message d’origine introuvable (plus haut dans la conversation ?)': 'Original message not found (further up the conversation?)', 'Copier la réponse': 'Copy reply', 'Aucune sortie': 'No output', 'Copié': 'Copied', 'Copier l’ID du pane': 'Copy pane ID', 'Copie impossible': 'Copy failed',
   'Entrée': 'Enter', 'envoyer': 'send', 'suggestion': 'suggestion', 'Utiliser la suggestion': 'Use suggestion', 'nouvelle ligne': 'new line', 'Arrêter': 'Stop',
   'image introuvable': 'Image not found', 'JSON invalide': 'Invalid JSON', 'requête trop grosse': 'Request too large',
   // Modèle
@@ -296,7 +296,7 @@ const EN: Record<string, string> = {
   'Projet': 'Project', 'Fait': 'Done', 'Afficher le panneau Projet': 'Show the Project panel', 'Replier le panneau': 'Collapse the panel',
   'À relire': 'Ready for review', 'Atterrissage': 'Landing', 'Inactif': 'Idle',
   'toi': 'you', 'Rien pour l’instant': 'Nothing yet', 'Lecture du projet…': 'Reading the project…',
-  'Confirmer : testé, ça marche': 'Confirm: tested, it works', 'Signaler un problème': 'Report a problem', 'Poser une question': 'Ask a question', 'Largeur du panneau Projet': 'Project panel width', 'Glisser pour élargir · double-clic : largeur par défaut': 'Drag to resize · double-click: default width', 'Envoyé au coordinateur': 'Sent to the coordinator',
+  'Confirmer : testé, ça marche': 'Confirm: tested, it works', 'Signaler un problème': 'Report a problem', 'Poser une question': 'Ask a question', 'Largeur du panneau Projet': 'Project panel width', 'Largeur de la liste': 'List width', 'Glisser pour élargir · double-clic : largeur par défaut': 'Drag to resize · double-click: default width', 'Envoyé au coordinateur': 'Sent to the coordinator',
   'Préciser': 'Clarify',
   'Pas encore de TASKS.md dans ce projet.': 'No TASKS.md in this project yet.', 'Threads illisibles': 'Threads unavailable',
   'Voir le rapport': 'View report', 'Ouvrir l’agent': 'Open agent', 'Pull request': 'Pull request',

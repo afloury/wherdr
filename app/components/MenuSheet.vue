@@ -18,7 +18,7 @@ function run(item: MenuItem) {
         </button>
         <button v-else type="button" :class="{ danger: it.danger }" @click="run(it)">
           <UIcon v-if="it.icon" :name="it.icon" class="menu-icon" />
-          <span v-if="it.desc" class="menu-text"><span>{{ it.label }}</span><span class="menu-sub">{{ it.desc }}</span></span>
+          <span v-if="it.desc" class="menu-text"><span>{{ it.label }}</span><span class="menu-sub" :class="{ 'font-mono': it.mono }">{{ it.desc }}</span></span>
           <template v-else>{{ it.label }}</template>
         </button>
       </template>

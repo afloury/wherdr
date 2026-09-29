@@ -2079,6 +2079,13 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
   .settings-section-title { display: block; margin: 0 0 26px; font: 850 30px/1 var(--display); letter-spacing: -.04em; color: var(--text-strong); }
 
   #home { right: auto; width: var(--side); border-right: 1px solid var(--line-soft); background: var(--bg-2); }
+  .list-handle { position: fixed; top: 0; bottom: 0; left: var(--side); width: 0; z-index: 30; cursor: col-resize; touch-action: none; outline: none; }
+  .list-handle::before { content: ''; position: absolute; top: 0; bottom: 0; left: -5px; width: 9px; cursor: col-resize; }
+  .list-handle::after { content: ''; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: transparent; transition: background-color .12s ease; pointer-events: none; }
+  .list-handle:hover::after, .list-handle.dragging::after, .list-handle:focus-visible::after { background: var(--mauve); }
+  #home.resizing, body:has(#home.resizing) { user-select: none; }
+  body:has(#home.resizing) { cursor: col-resize; }
+  body:has(#home.resizing) iframe, body:has(#home.resizing) .xterm { pointer-events: none; }
   #agent, #placeholder, #settings, #tabview { left: var(--side); }
   .tab-back { display: none; }
   #btnBack { display: none; }
