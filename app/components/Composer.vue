@@ -8,7 +8,16 @@ import type { Pane, QueuedMessage, SlashCommand } from '#shared/types'
 import type { DraftAtt } from '~/composables/useDraft'
 
 const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void> }>()
-const emit = defineEmits<{ sent: [queued: QueuedMessage | null] }>()
+const emit = defineEmits<{ sent: [queued: QueuedMessage | null], showTerminal: [] }>()
+
+// Mise à jour de Claude Code installée : la ligne de statut redémarre l'agent.
+const updateReady = computed(() => Boolean(props.pane?.claudeNotice && /Restart to update/i.test(props.pane.claudeNotice) && canRestart(props.pane)))
+const restartLabel = computed(() => {
+  const r = props.pane?.restart
+  if (!r) return ''
+  const who = kindLabel(r.agent)
+  return r.phase === 'stopping' ? tl(`Arrêt de ${who}…`, `Stopping ${who}…`) : tl(`Relance de ${who} sur la même conversation…`, `Restarting ${who} on the same conversation…`)
+})
 
 // Brouillon de la conversation (texte + photos), gardé en changeant de conversation.
 const draft = useDraft(props.paneId)
@@ -324,7 +333,26 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
 
 <template>
   <div class="composer">
-    <div v-if="pane?.claudeNotice" class="composer-notice" role="status">{{ pane.claudeNotice }}</div>
+    <div v-if="pane?.restart" class="composer-notice restart" :class="pane.restart.phase" role="status">
+      <template v-if="pane.restart.phase === 'failed'">
+        <span class="restart-text">{{ t('Redémarrage échoué') }}{{ tl(' : ', ': ') }}{{ t(pane.restart.error || '') }}</span>
+        <button type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('Voir le terminal') }}</button>
+        <button type="button" class="notice-btn" @click="dismissRestart(paneId)">{{ t('Masquer') }}</button>
+      </template>
+      <template v-else>
+        <span class="notice-spin" aria-hidden="true" />
+        <span class="restart-text">{{ restartLabel }}</span>
+      </template>
+    </div>
+    <div v-else-if="pane?.claudeNotice" class="composer-notice" role="status">
+      <template v-if="updateReady">
+        <span class="restart-text">{{ pane.claudeNotice.replace(/\s*·\s*Restart to update\b.*$/, '') }} ·</span>
+        <button type="button" class="notice-btn" :disabled="readOnly" @click="restartAgent(pane)">
+          <UIcon name="i-lucide-rotate-cw" />{{ t('Redémarrer pour mettre à jour') }}
+        </button>
+      </template>
+      <template v-else>{{ pane.claudeNotice }}</template>
+    </div>
     <button
       v-if="suggestion && !enterSends" type="button" class="composer-suggest" @mousedown.prevent @click="useSuggestion"
     >

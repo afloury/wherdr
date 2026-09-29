@@ -250,6 +250,8 @@ export const pendingPrompts = new Map<string, { text: string, at: number }>()
 const PENDING_TTL_MS = 15 * 60 * 1000
 const pendingBusy = new Set<string>()
 export const READY = new Set(['done', 'idle'])
+// Redémarrages en cours ou échoués, par pane (cf. restart.ts).
+export const restarts = new Map<string, NonNullable<Pane['restart']> & { at: number, session?: string | null, stopped?: boolean, started?: boolean }>()
 function flushPending(p: Pane) {
   const pend = pendingPrompts.get(p.id)
   if (!pend || pendingBusy.has(p.id)) return
@@ -371,6 +373,22 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       const list = queued.get(p.id)
       if (list && list.length) p.queued = list.map(({ id, text, at }) => ({ id, text, at }))
     }
+    const rs = restarts.get(p.id)
+    // Échec à la relance puis agent relancé à la main, ou échec ancien : plus rien à signaler.
+    if (rs && rs.phase === 'failed' && ((p.agent && rs.stopped) || Date.now() - rs.at > 600000)) restarts.delete(p.id)
+    // Relancé : terminé dès que Herdr voit l'agent (ou au bout de 15 s).
+    else if (rs && rs.started && (p.agent || Date.now() - rs.at > 15000)) restarts.delete(p.id)
+    else if (rs) {
+      p.restart = { phase: rs.phase, agent: rs.agent, ...(rs.error ? { error: rs.error } : {}) }
+      // Entre l'arrêt et la relance (ou après une relance ratée), le pane n'a
+      // plus d'agent : on garde sa conversation affichée, avec le suivi.
+      if (!p.agent) {
+        p.agent = rs.agent
+        p.agentSession = rs.session || null
+        p.status = 'unknown'
+        continue
+      }
+    }
     if (!p.agent) continue
     // Hors `working`, on cherche aussi une question : certaines (confiance du
     // dossier chez Codex) ne font pas passer l'agent en `blocked` pour Herdr.
@@ -405,6 +423,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
   for (const id of choicesCache.keys()) if (!alive(id)) choicesCache.delete(id)
   for (const id of pendingPrompts.keys()) if (!alive(id)) pendingPrompts.delete(id)
   for (const id of queued.keys()) if (!alive(id)) queued.delete(id)
+  for (const id of restarts.keys()) if (!alive(id)) restarts.delete(id)
   for (const id of agentBorn.keys()) if (!alive(id)) { agentBorn.delete(id); bornDirty = true }
   saveBorn()
   for (const id of seen.keys()) if (!alive(id)) { seen.delete(id); seenDirty = true }
