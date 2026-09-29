@@ -9,7 +9,8 @@ import { CONTROL_SCRIPT, STATUS_SCRIPT, parseAwakeStatus, parseControl } from '.
 // faux uname (Darwin) dans un HOME temporaire.
 let root: string, home: string, bin: string, log: string
 const pidFile = () => join(home, '.cache/herdr-web/awake.pid')
-const env = () => ({ PATH: `${bin}:/usr/bin:/bin`, HOME: home })
+let extra: Record<string, string> = {}
+const env = () => ({ PATH: `${bin}:/usr/bin:/bin`, HOME: home, ...extra })
 // Chaque inhibiteur lancé est noté, pour l'arrêter (et l'attendre) après le test.
 let spawned: number[] = []
 function control(mode: string, lid = '0') {
@@ -61,6 +62,7 @@ describe.skipIf(process.platform === 'win32' || !canInspect)('keep-awake control
     for (const pid of spawned) if (alive(pid)) process.kill(pid)
     for (const pid of spawned) await gone(pid)
     spawned = []
+    extra = {}
     rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
@@ -136,5 +138,81 @@ describe.skipIf(process.platform === 'win32' || !canInspect)('keep-awake control
     expect(control('off')).toContain('stopped')
     expect(await gone(a)).toBe(true)
     expect(status().active).toBe(false)
+  })
+})
+
+// Sorties réelles de `ps -p <pid> -o lstart=` relevées sur macOS (BSD ps) :
+// le format suit LANG/LC_ALL et l'heure suit TZ, espaces de fin compris.
+const MAC_LSTART = {
+  cUtc: 'Tue Sep 29 17:58:41 2026    ',
+  cParis: 'Tue Sep 29 19:58:41 2026    ',
+  frParis: 'mar. 29 sept. 19:58:41 2026 ',
+}
+// Faux ps BSD : args lus dans /proc (processus réel), lstart selon locale et fuseau.
+const FAKE_MAC_PS = `#!/bin/sh
+pid=$2; field=$4
+[ -r "/proc/$pid/cmdline" ] || exit 1
+case "$field" in
+  args=) tr '\\000' ' ' < "/proc/$pid/cmdline"; echo;;
+  lstart=)
+    loc=\${LC_ALL:-\${LANG:-C}}
+    case "$loc:\${TZ:-}" in
+      C:UTC0) echo '${MAC_LSTART.cUtc}';;
+      fr*) echo '${MAC_LSTART.frParis}';;
+      *) echo '${MAC_LSTART.cParis}';;
+    esac;;
+esac`
+
+describe.skipIf(process.platform !== 'linux' || !existsSync(`/proc/${process.pid}/stat`))('keep-awake scripts with macOS ps', { timeout: 20000 }, () => {
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'awake-'))
+    home = join(root, 'home'); bin = join(root, 'bin'); log = join(root, 'events.log')
+    mkdirSync(home); mkdirSync(bin); writeFileSync(log, '')
+    writeFileSync(join(bin, 'uname'), '#!/bin/sh\necho Darwin\n'); chmodSync(join(bin, 'uname'), 0o755)
+    writeFileSync(join(bin, 'ps'), FAKE_MAC_PS); chmodSync(join(bin, 'ps'), 0o755)
+    fakeCaffeinate(LIVE.replaceAll('$LOG', log).replaceAll('$FAIL', join(root, 'fail')))
+    // Pas de /proc pour les scripts : ils passent par ps, comme sur macOS.
+    extra = { AWAKE_PROC: join(root, 'no-proc'), LANG: 'fr_FR.UTF-8', TZ: 'Europe/Paris' }
+  })
+  afterEach(async () => {
+    for (const pid of spawned) if (alive(pid)) process.kill(pid)
+    for (const pid of spawned) await gone(pid)
+    spawned = []
+    extra = {}
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  })
+
+  it('records a locale- and timezone-independent start time', () => {
+    control('hour')
+    expect(readFileSync(pidFile(), 'utf8').trim().split('|')[3]).toBe(MAC_LSTART.cUtc.trim())
+  })
+
+  it('keeps the state when another SSH session has another locale', () => {
+    const a = (parseControl(control('fourHours')) as { started: number }).started
+    extra = { ...extra, LANG: 'C.UTF-8', TZ: 'America/New_York' }
+    expect(status(), why(a)).toMatchObject({ active: true })
+    expect(existsSync(pidFile())).toBe(true)
+  })
+
+  it('still recognizes a file written in the old raw format', () => {
+    const a = (parseControl(control('hour')) as { started: number }).started
+    const [, until, lid] = readFileSync(pidFile(), 'utf8').trim().split('|')
+    writeFileSync(pidFile(), `${a}|${until}|${lid}|${MAC_LSTART.frParis.trim()}\n`)
+    expect(status().active).toBe(true)
+  })
+
+  it('turns off from another locale', async () => {
+    const a = (parseControl(control('untilOff')) as { started: number }).started
+    extra = { ...extra, LANG: 'C', TZ: 'Asia/Tokyo' }
+    expect(control('off')).toContain('stopped')
+    expect(await gone(a)).toBe(true)
+  })
+
+  it('does not adopt a recycled PID started at another time', () => {
+    const a = (parseControl(control('hour')) as { started: number }).started
+    writeFileSync(pidFile(), `${a}|0|0|Thu Jan  1 00:00:00 2026\n`)
+    control('off')
+    expect(alive(a)).toBe(true)
+    process.kill(a)
   })
 })
