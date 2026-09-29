@@ -20,13 +20,20 @@ export interface SleepAssertion { name: string, kind: string, seconds: number, o
 // enregistrée (un PID recyclé par un autre caffeinate n'est pas le nôtre).
 // Portable : /proc sous Linux (procps comme busybox, dont le ps n'a pas -p),
 // ps -p sur macOS. Un zombie a un cmdline vide : pas le nôtre.
+// Sur macOS, lstart dépend de la locale et du fuseau de la session SSH
+// (LANG transmis ou non) : on le fige en C/UTC, sinon une autre session voit
+// une autre date et efface le fichier d'un caffeinate bien vivant. Un fichier
+// écrit avant ce correctif (lstart brut) reste reconnu.
 const OURS = `cmdline() {
-  if [ -r "/proc/$1/cmdline" ]; then tr '\\000' ' ' < "/proc/$1/cmdline"
+  if [ -r "\${AWAKE_PROC:-/proc}/$1/cmdline" ]; then tr '\\000' ' ' < "\${AWAKE_PROC:-/proc}/$1/cmdline"
   else ps -p "$1" -o args= 2>/dev/null; fi
 }
 started() {
-  if [ -r "/proc/$1/stat" ]; then sed 's/.*) //' "/proc/$1/stat" | cut -d' ' -f20
-  else ps -p "$1" -o lstart= 2>/dev/null | sed 's/ *$//'; fi
+  if [ -r "\${AWAKE_PROC:-/proc}/$1/stat" ]; then sed 's/.*) //' "\${AWAKE_PROC:-/proc}/$1/stat" | cut -d' ' -f20
+  else LC_ALL=C TZ=UTC0 ps -p "$1" -o lstart= 2>/dev/null | sed 's/ *$//'; fi
+}
+legacy_started() {
+  [ ! -r "\${AWAKE_PROC:-/proc}/$1/stat" ] && ps -p "$1" -o lstart= 2>/dev/null | sed 's/ *$//'
 }
 ours() {
   case "$1" in *[!0-9]*|'') return 1;; esac
@@ -34,11 +41,11 @@ ours() {
     caffeinate\\ -i*|*/caffeinate\\ -i*|systemd-inhibit\\ --what=idle:sleep*|*/systemd-inhibit\\ --what=idle:sleep*) ;;
     *) return 1;;
   esac
-  [ -z "\${2:-}" ] || [ "$(started "$1")" = "$2" ]
+  [ -z "\${2:-}" ] || [ "$(started "$1")" = "$2" ] || [ "$(legacy_started "$1")" = "$2" ]
 }
 running() {
   kill -0 "$1" 2>/dev/null || return 1
-  [ ! -r "/proc/$1/stat" ] || [ "$(sed 's/.*) //' "/proc/$1/stat" | cut -d' ' -f1)" != Z ]
+  [ ! -r "\${AWAKE_PROC:-/proc}/$1/stat" ] || [ "$(sed 's/.*) //' "\${AWAKE_PROC:-/proc}/$1/stat" | cut -d' ' -f1)" != Z ]
 }`
 
 export const STATUS_SCRIPT = `${OURS}
