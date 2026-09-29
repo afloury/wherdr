@@ -16,7 +16,7 @@ import { parseChoices } from './choices'
 import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseWaitScreen } from './waitScreen'
 import { parseClaudeActivity } from './activity'
-import { parseClaudeNotice, parseClaudeScreen } from './claudeScreen'
+import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './claudeScreen'
 import { isUploadLine, queuedDone } from './queued'
 import { msgText, unqueueClaude } from './unqueue'
 import { type TranscriptPane, sameMsg } from './transcripts'
@@ -118,27 +118,37 @@ function refreshPreview(p: Pane) {
 // gardé d'une lecture à l'autre (le compteur ne fait pas bouger l'état).
 const ACTIVITY_MS = 1500
 const NOTICE_MS = 5000
-const activities = new Map<string, { verb: string | null, screen: ClaudeScreen | null, notice: string | null, at: number }>()
+// Au repos, l'écran est lu en ANSI pour la suggestion grisée de Claude
+// (cf. parseClaudeSuggestion) ; elle n'est gardée que hors travail.
+const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g // eslint-disable-line no-control-regex
+type Activity = { verb: string | null, screen: ClaudeScreen | null, notice: string | null, suggestion: string | null, at: number }
+const activities = new Map<string, Activity>()
 const activityBusy = new Set<string>()
 function refreshActivity(p: Pane) {
   if (activityBusy.has(p.id)) return
   activityBusy.add(p.id)
-  herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
-    .then((r) => {
-      const text = r.read && r.read.text
-      return { verb: parseClaudeActivity(text)?.verb ?? null, screen: parseClaudeScreen(text), notice: parseClaudeNotice(text) }
-    })
-    .catch(() => ({ verb: null, screen: null, notice: null }))
-    .then(({ verb, screen, notice }) => {
+  const idle = p.status !== 'working'
+  const read = idle
+    ? herdr('pane.read', { pane_id: p.id, source: 'visible', format: 'ansi' }, 4000).then((r) => {
+        const ansi = String((r.read && r.read.text) || '')
+        return { verb: null, screen: null, notice: parseClaudeNotice(ansi.replace(ANSI_RE, '')), suggestion: parseClaudeSuggestion(ansi) }
+      })
+    : herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000).then((r) => {
+        const text = r.read && r.read.text
+        return { verb: parseClaudeActivity(text)?.verb ?? null, screen: parseClaudeScreen(text), notice: parseClaudeNotice(text), suggestion: null }
+      })
+  read
+    .catch(() => ({ verb: null, screen: null, notice: null, suggestion: null }))
+    .then(({ verb, screen, notice, suggestion }) => {
       const old = activities.get(p.id)?.screen?.shell
       const sh = screen && screen.shell
       if (sh && old && old.command === sh.command && old.since && (!sh.since || Math.abs(sh.since - old.since) < 5000)) sh.since = old.since
       // Lecture finie après la fin du tour : pas de verbe périmé au tour suivant.
-      // Hors travail, seul le statut près du champ de saisie est gardé.
+      // Hors travail, seuls le statut près du champ de saisie et la suggestion sont gardés.
       const working = findPane(p.id)?.status === 'working'
       const old2 = activities.get(p.id)
-      activities.set(p.id, working ? { verb, screen, notice, at: Date.now() } : { verb: null, screen: null, notice, at: Date.now() })
-      if ((old2?.notice ?? null) !== notice) setTimeout(poll, 0)
+      activities.set(p.id, working ? { verb, screen, notice, suggestion: null, at: Date.now() } : { verb: null, screen: null, notice, suggestion, at: Date.now() })
+      if ((old2?.notice ?? null) !== notice || (old2?.suggestion ?? null) !== (working ? null : suggestion)) setTimeout(poll, 0)
     })
     .finally(() => activityBusy.delete(p.id))
 }
@@ -405,6 +415,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       if (a && a.verb && working) p.activity = a.verb
       if (a && a.screen && working) p.claudeScreen = a.screen
       if (a && a.notice) p.claudeNotice = a.notice
+      if (a && a.suggestion && !working && p.status !== 'blocked') p.claudeSuggestion = a.suggestion
     } else activities.delete(p.id)
   }
   // Nettoyage des panes disparus… de cette machine seulement.

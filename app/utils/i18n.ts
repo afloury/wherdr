@@ -234,7 +234,7 @@ const EN: Record<string, string> = {
   'app verrouillée': 'App is locked', 'origine refusée': 'Origin refused', 'introuvable': 'Not found',
   'En attente de ta réponse — détail dans l’onglet Terminal': 'Waiting for your reply — details in the Terminal tab',
   'Copier': 'Copy', 'Copier la réponse': 'Copy reply', 'Aucune sortie': 'No output', 'Copié': 'Copied', 'Copie impossible': 'Copy failed',
-  'Entrée': 'Enter', 'envoyer': 'send', 'nouvelle ligne': 'new line', 'Arrêter': 'Stop',
+  'Entrée': 'Enter', 'envoyer': 'send', 'suggestion': 'suggestion', 'Utiliser la suggestion': 'Use suggestion', 'nouvelle ligne': 'new line', 'Arrêter': 'Stop',
   'image introuvable': 'Image not found', 'JSON invalide': 'Invalid JSON', 'requête trop grosse': 'Request too large',
   // Modèle
   'Modèle': 'Model', 'Modèle inconnu': 'Unknown model',

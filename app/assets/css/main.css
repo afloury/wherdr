@@ -1146,6 +1146,13 @@ body.kb .composer { padding-bottom: 8px; }
 }
 @keyframes notice-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .notice-spin { animation: none; } }
+/* Suggestion de Claude (écran tactile) : puce discrète au-dessus du champ. */
+.composer-suggest {
+  display: inline-flex; align-items: center; gap: 6px; margin: 0 0 6px 2px; padding: 3px 8px;
+  font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 0; cursor: pointer;
+}
+.composer-suggest:active { background: var(--bg-2); }
 /* Suggestions « / » : juste au-dessus du champ, façon menu du terminal. */
 .slash-menu {
   position: absolute; left: 12px; right: 12px; bottom: calc(100% - 2px); z-index: 20;

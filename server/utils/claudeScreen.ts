@@ -133,3 +133,34 @@ export function parseClaudeNotice(text: string | null | undefined): string | nul
   }
   return null
 }
+
+// Suggestion de prochain message de Claude Code : texte grisé (SGR 2) seul dans
+// son champ de saisie, que Tab accepte. Lue dans l'écran ANSI :
+//
+//   ────────────────────────
+//   ❯  ESC[0mESC[2mOui, pousse la brancheESC[0m
+//   ────────────────────────
+//
+// Un texte tapé n'est pas grisé ; l'aide « Press up to edit queued messages »
+// l'est aussi, mais ce n'est pas une suggestion. null : pas de suggestion.
+// eslint-disable-next-line no-control-regex
+const SGR_ANY = /\x1b\[[0-9;?]*[ -/]*[@-~]/g
+const HINTS = /^Press up to edit queued messages$|^Try "|^Type your message/i
+export function parseClaudeSuggestion(ansi: string | null | undefined): string | null {
+  if (!ansi) return null
+  const lines = String(ansi).split('\n').map(l => l.replace(/\r$/, ''))
+  const plain = lines.map(l => l.replace(SGR_ANY, '').trimEnd())
+  // Dernier cadre du champ : ligne « ❯ » (espace insécable) entre deux traits.
+  let at = -1
+  for (let i = plain.length - 1; i > 0; i--) {
+    if (plain[i]!.startsWith('❯ ')) { at = i; break }
+  }
+  if (at < 1 || !RULE_RE.test(plain[at - 1]!) || !RULE_RE.test(plain[at + 1] || '')) return null
+  // Tout le contenu après l'invite doit être grisé : un seul segment SGR 2.
+  const rest = lines[at]!.slice(lines[at]!.indexOf('❯') + 2)
+  const m = /^\s*(?:\x1b\[0m)*\x1b\[2m([^\x1b]*)(?:\x1b\[0m)?\s*$/.exec(rest) // eslint-disable-line no-control-regex
+  if (!m) return null
+  const text = m[1]!.replace(/ /g, ' ').trim()
+  if (!text || HINTS.test(text)) return null
+  return text
+}

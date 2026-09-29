@@ -102,6 +102,8 @@ export interface Pane {
   // Redémarrage demandé depuis wherdr (cf. server/utils/restart.ts) : l'agent
   // quitte puis revient, le pane passe un instant sans agent.
   restart?: { phase: 'stopping' | 'starting' | 'failed', agent: string, error?: string }
+  // Suggestion de prochain message grisée dans le champ de Claude Code (Tab l'accepte).
+  claudeSuggestion?: string
 }
 
 export interface ChangeLine { kind: 'add' | 'del' | 'context' | 'hunk' | 'meta', text: string }
