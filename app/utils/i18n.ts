@@ -60,7 +60,7 @@ const EN: Record<string, string> = {
   'chargement…': 'loading…', 'aucun résultat': 'no results',
   // Heures, fin de réponse, Stop, connexion
   'Aujourd’hui': 'Today', 'Hier': 'Yesterday', 'action': 'action',
-  'Arrêter l’agent': 'Stop the agent', 'Envoyer': 'Send', 'Interruption envoyée': 'Stop sent',
+  'Arrêter l’agent': 'Stop the agent', 'Envoyer': 'Send', 'Interruption envoyée': 'Stop sent', 'Interruption…': 'Stopping…', 'Agent arrêté': 'Agent stopped', 'L’agent travaille encore.': 'The agent is still working.',
   'Dernier état connu': 'Last known state', 'Lecture hors ligne': 'Offline reading',
   'Image non disponible hors ligne': 'Image unavailable offline',
   'Terminal indisponible hors ligne': 'Terminal unavailable offline',
