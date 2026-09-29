@@ -13,6 +13,13 @@ describe('machine sleep controls', () => {
     expect(parseAwakeStatus('platform=linux\n')).toMatchObject({ supported: false, active: false })
     expect(parseAwakeStatus('platform=linux\ninhibit=1\n')).toMatchObject({ supported: true, active: false })
   })
+  it('flags the evening mode as past 20:00 from the machine clock', () => {
+    expect(parseAwakeStatus('platform=mac\nclock=1959\n').eveningPast).toBe(false)
+    expect(parseAwakeStatus('platform=mac\nclock=2000\n').eveningPast).toBe(true)
+    expect(parseAwakeStatus('platform=mac\nclock=2345\n').eveningPast).toBe(true)
+    expect(parseAwakeStatus('platform=mac\n').eveningPast).toBe(false)
+    expect(STATUS_SCRIPT).toContain('echo "clock=$(date +%H%M)"')
+  })
   it('extracts sleep assertions and identifies ours by PID', () => {
     const raw = 'pid 123(caffeinate): [0x1] 00:12:34 PreventUserIdleSystemSleep named: "wherdr"\n' +
       'pid 99(Backup App): [0x2] 01:02:03 PreventSystemSleep named: "Backup"\n'

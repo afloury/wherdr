@@ -223,9 +223,12 @@ describe('miroir d’un terminal', () => {
     expect(mirrorInput('\x03')).toEqual([{ keys: ['ctrl+c'] }])
     expect(mirrorInput('\x1b')).toEqual([{ keys: ['esc'] }])
     expect(mirrorInput('\x1bb')).toEqual([{ keys: ['alt+b'] }])
+    expect(mirrorInput('\x1b[H\x1b[F\x1b[3~')).toEqual([{ keys: ['home', 'end', 'delete'] }])
+    expect(mirrorInput('\x1b[1~\x1b[4~\x1bOH\x1bOF')).toEqual([{ keys: ['home', 'end', 'home', 'end'] }])
+    expect(mirrorInput('\x1b[5~\x1b[6~\x1b[2~')).toEqual([{ keys: ['pageup', 'pagedown', 'insert'] }])
     expect(mirrorInput('\x1b[Z')).toEqual([{ keys: ['shift+tab'] }])
     expect(mirrorInput('a\x7fb')).toEqual([{ text: 'a' }, { keys: ['backspace'] }, { text: 'b' }])
-    expect(mirrorInput('\x1b[3~x')).toEqual([{ text: 'x' }])
+    expect(mirrorInput('\x1b[3~x')).toEqual([{ keys: ['delete'] }, { text: 'x' }])
     expect(mirrorInput('un\ndeux\r\n')).toEqual([{ text: 'un\ndeux\n' }])
   })
 

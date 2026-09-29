@@ -230,6 +230,10 @@ const SEQ: Record<string, string> = {
   '\x1b[A': 'up', '\x1b[B': 'down', '\x1b[C': 'right', '\x1b[D': 'left',
   '\x1bOA': 'up', '\x1bOB': 'down', '\x1bOC': 'right', '\x1bOD': 'left', '\x1b[Z': 'shift+tab',
   '\x1bOP': 'f1', '\x1bOQ': 'f2', '\x1bOR': 'f3', '\x1bOS': 'f4',
+  // Début / Fin (xterm normal, applicatif et VT220), Suppr, Inser, Page préc./suiv.
+  '\x1b[H': 'home', '\x1bOH': 'home', '\x1b[1~': 'home', '\x1b[7~': 'home',
+  '\x1b[F': 'end', '\x1bOF': 'end', '\x1b[4~': 'end', '\x1b[8~': 'end',
+  '\x1b[3~': 'delete', '\x1b[2~': 'insert', '\x1b[5~': 'pageup', '\x1b[6~': 'pagedown',
 }
 // Une séquence d'échappement complète (CSI, SS3) ou Alt+caractère.
 const PASTE_START = '\x1b[200~'

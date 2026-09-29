@@ -35,6 +35,10 @@ export async function syncPushLanguage(lang = language) {
   if (sub) await api('/api/push/subscribe', { ...sub.toJSON(), lang, notifyScope: notifyScope.value, sessions: machineSessions.value })
 }
 
+const LAST_ENDPOINT = 'pushEndpoint'
+function readLastEndpoint() {
+  try { return localStorage.getItem(LAST_ENDPOINT) || undefined } catch { return undefined }
+}
 export async function enablePush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
     return toast(t(isIOS && !standalone
@@ -49,9 +53,13 @@ export async function enablePush() {
     const reg = await navigator.serviceWorker.ready
     const key = urlB64ToUint8(appConfig.value.push.key)
     let sub = await reg.pushManager.getSubscription()
+    // Ancien endpoint (abonnement courant, sinon le dernier connu si le
+    // navigateur l'a déjà perdu) : le serveur le remplace et garde son silence.
+    const previous = sub?.endpoint || readLastEndpoint()
     if (sub) await sub.unsubscribe().catch(() => {})
     sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key })
-    await api('/api/push/subscribe', { ...sub.toJSON(), lang: language, notifyScope: notifyScope.value, sessions: machineSessions.value })
+    await api('/api/push/subscribe', { ...sub.toJSON(), previous, lang: language, notifyScope: notifyScope.value, sessions: machineSessions.value })
+    try { localStorage.setItem(LAST_ENDPOINT, sub.endpoint) } catch { /* stockage indisponible */ }
     toast(t('Notifications activées ✓'))
   } catch (err) {
     toast(`${t('Échec')} : ${(err as Error).message}`, true)

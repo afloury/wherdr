@@ -11,7 +11,8 @@ const EN: Record<string, string> = {
   'option de veille invalide': 'Invalid keep-awake option',
   'Commande de veille impossible': 'Keep-awake command failed',
   'Aucun éveil en cours à prolonger': 'Nothing to extend: the machine is not being kept awake',
-  'Il est déjà 20 h passées': 'It is already past 8 pm',
+  'Il est déjà plus de 20 h sur cette machine : choisis une durée': 'It is already past 8 pm on this machine: pick a duration',
+  'Il est déjà plus de 20 h sur cette machine': 'It is already past 8 pm on this machine',
   'Le maintien éveillé n’a pas démarré ; l’état précédent est conservé': 'Keep awake did not start; the previous state is kept',
   'Le capot fermé nécessite le secteur': 'Closed lid requires the power adapter',
   // Redémarrage de l'agent

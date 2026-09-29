@@ -168,6 +168,7 @@ const awakeLid = ref(false)
 const diagnosticTarget = ref<MachineInfo | null>(null)
 const assertions = ref<SleepAssertion[]>([])
 const diagnosticBusy = ref(false)
+const eveningPast = computed(() => Boolean(awakeTarget.value && awakeByMachine.value[awakeTarget.value.key]?.eveningPast))
 const awakeOpen = computed({ get: () => Boolean(awakeTarget.value), set: v => { if (!v) awakeTarget.value = null } })
 const diagnosticOpen = computed({ get: () => Boolean(diagnosticTarget.value), set: v => { if (!v) diagnosticTarget.value = null } })
 const awakeUrl = (key: string, diagnostic = false) => `/api/machine/awake?key=${encodeURIComponent(key)}${diagnostic ? '&diagnostic=1' : ''}`
@@ -484,7 +485,7 @@ function openSearch() { emit('search') }
       <label v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.platform === 'mac'" class="awake-lid"><input v-model="awakeLid" type="checkbox" :disabled="awakeByMachine[awakeTarget.key]?.battery?.source !== 'ac'"> {{ t('Capot fermé (sur secteur uniquement)') }}</label>
       <div class="session-list">
         <button v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.active && awakeByMachine[awakeTarget.key]?.until" class="session-choice" type="button" :disabled="awakeBusy" @click="chooseAwake('extend')"><span><b>{{ t('Prolonger d’une heure') }}</b><small>{{ extendLabel(awakeByMachine[awakeTarget.key]) }}</small></span><UIcon name="i-lucide-plus" /></button>
-        <button v-for="choice in [{ mode: 'hour', label: t('1 heure') }, { mode: 'fourHours', label: t('4 heures') }, { mode: 'evening', label: t('Jusqu’à ce soir (20 h)') }, { mode: 'untilOff', label: t('Jusqu’à désactivation') }]" :key="choice.mode" class="session-choice" type="button" :disabled="awakeBusy" @click="chooseAwake(choice.mode as AwakeMode)"><b>{{ choice.label }}</b><UIcon name="i-lucide-chevron-right" /></button>
+        <button v-for="choice in [{ mode: 'hour', label: t('1 heure') }, { mode: 'fourHours', label: t('4 heures') }, { mode: 'evening', label: t('Jusqu’à ce soir (20 h)') }, { mode: 'untilOff', label: t('Jusqu’à désactivation') }]" :key="choice.mode" class="session-choice" type="button" :disabled="awakeBusy || (choice.mode === 'evening' && eveningPast)" @click="chooseAwake(choice.mode as AwakeMode)"><span><b>{{ choice.label }}</b><small v-if="choice.mode === 'evening' && eveningPast">{{ t('Il est déjà plus de 20 h sur cette machine') }}</small></span><UIcon name="i-lucide-chevron-right" /></button>
         <button v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.active" class="session-choice" type="button" :disabled="awakeBusy" @click="chooseAwake('off')"><b>{{ t('Désactiver') }}</b><UIcon name="i-lucide-x" /></button>
       </div>
       <p class="awake-note">{{ tl('Sur batterie, fermer le capot met le Mac en veille. Une machine endormie ne peut pas être réveillée à distance.', 'Closing a Mac lid on battery puts it to sleep. A sleeping machine cannot be woken remotely.') }}</p>
