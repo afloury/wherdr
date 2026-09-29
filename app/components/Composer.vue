@@ -381,7 +381,7 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
     </div>
     <div v-if="replyTo" class="composer-reply" role="status">
       <UIcon name="i-lucide-reply" class="composer-reply-icon" />
-      <span class="composer-reply-label">{{ t('En réponse à') }} · {{ replyTo.time }}</span>
+      <span class="composer-reply-label">{{ replyTo.part ? t('En réponse à un passage') : t('En réponse au message') }} · {{ replyTo.time }}</span>
       <span class="composer-reply-text">{{ replyTo.excerpt }}</span>
       <button type="button" class="composer-reply-x" :aria-label="t('Annuler la réponse')" @mousedown.prevent @click="replyTo = null">
         <UIcon name="i-lucide-x" />

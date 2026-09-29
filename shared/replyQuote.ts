@@ -9,6 +9,7 @@
 export interface ReplyTarget {
   time: string // heure affichée du message d'origine (« 14:32 »)
   excerpt: string // extrait lisible, déjà tronqué
+  part?: boolean // passage sélectionné plutôt que le message entier
 }
 
 // Longueur maximale du repère entier (ligne « ↳ … »).
@@ -46,8 +47,9 @@ const close = (lang: 'fr' | 'en') => (lang === 'en' ? '")' : ' »)')
 // assez court pour que le repère entier tienne dans MARKER_MAX.
 export function replyTarget(message: string, time: string, lang: 'fr' | 'en', selection?: string): ReplyTarget {
   const room = MARKER_MAX - head(lang, time).length - open(lang).length - close(lang).length
-  const src = plainText(selection && selection.trim() ? selection : message)
-  return { time, excerpt: truncate(src, Math.max(20, room)) }
+  const part = Boolean(selection && selection.trim())
+  const src = plainText(part ? selection! : message)
+  return part ? { time, excerpt: truncate(src, Math.max(20, room)), part } : { time, excerpt: truncate(src, Math.max(20, room)) }
 }
 
 export function replyMarker(r: ReplyTarget, lang: 'fr' | 'en'): string {

@@ -35,3 +35,21 @@ export function queuedPhase(text: string, s: ClaudeScreen | null | undefined): Q
   }
   return s.sent && !isBash(s.sent) && same(n, norm(s.sent)) ? 'sent' : 'queued'
 }
+
+// Phases d'une file dans l'ordre d'envoi. L'écran ne garde que le dernier
+// message parti : quand Claude prend deux messages de sa file d'un coup, seul
+// le second y est reconnu, et il s'afficherait « envoyé » avant le premier.
+// Règle : un message n'est envoyé que si tous les plus anciens le sont. Un
+// message plus récent déjà parti prouve que les plus anciens hors de la file
+// de l'écran sont partis aussi ; un plus ancien encore dans cette file retient
+// les suivants.
+export function queuedPhases(texts: string[], s: ClaudeScreen | null | undefined): QueuedPhase[] {
+  const raw = texts.map(t => queuedPhase(t, s))
+  const inQueue = texts.map(t => Boolean(s && s.queued.some(q => same(msgNorm(t), norm(q)))))
+  const lastGone = raw.reduce((acc, p, i) => (p !== 'queued' ? i : acc), -1)
+  return raw.map((p, i) => {
+    if (i > lastGone) return p
+    if (inQueue.slice(0, i + 1).some(Boolean)) return 'queued'
+    return p === 'queued' ? 'sent' : p
+  })
+}
