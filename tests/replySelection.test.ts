@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { parseReply, replyTarget, withReply } from '../shared/replyQuote'
+import { findReplyOrigin, MARKER_MAX, parseReply, replyMarker, replyTarget, withReply } from '../shared/replyQuote'
 import { queuedPhases } from '../shared/queuedPhase'
 import { createSelectionSettler, lastLineRect, trimmedEnd, selectionReplyPos, SETTLE_KEYBOARD, SETTLE_POINTER, SETTLE_SCROLL, SETTLE_TOUCH } from '../app/utils/selectionReply'
 import type { ClaudeScreen } from '../shared/types'
@@ -128,5 +128,36 @@ describe('file d’attente : citation', () => {
   it('la bulle en file garde sa citation', () => {
     const msg = withReply(replyTarget(MSG, '14:32', 'fr', 'passer à IndexedDB'), 'Yes please', 'fr')
     expect(parseReply(msg)).toEqual({ reply: { time: '14:32', excerpt: 'passer à IndexedDB' }, body: 'Yes please' })
+  })
+})
+
+describe('repère d’une longue sélection : début et fin', () => {
+  const long = 'Premier point important sur le cache actuel, puis une longue explication intermédiaire qui ne tient pas du tout dans le repère, et enfin la conclusion qui recommande IndexedDB.'
+  it('extrait « début… fin », coupé aux mots, repère ≤ MARKER_MAX', () => {
+    for (const lang of ['fr', 'en'] as const) {
+      const r = replyTarget('x', '14:32', lang, long)
+      expect(r.part).toBe(true)
+      expect(r.excerpt.startsWith('Premier point')).toBe(true)
+      expect(r.excerpt.endsWith('recommande IndexedDB.')).toBe(true)
+      expect(r.excerpt).toMatch(/^\S.*\S… \S.*\S$/)
+      const [a, b] = r.excerpt.split('… ')
+      expect(long.startsWith(a!)).toBe(true)
+      expect(long.endsWith(b!)).toBe(true)
+      expect(Math.abs(a!.length - b!.length)).toBeLessThan(15)
+      expect(replyMarker(r, lang).length).toBeLessThanOrEqual(MARKER_MAX)
+    }
+  })
+  it('sélection courte et message entier inchangés', () => {
+    expect(replyTarget(MSG, '14:32', 'fr', 'passer à IndexedDB').excerpt).toBe('passer à IndexedDB')
+    expect(replyTarget(long, '14:32', 'fr').excerpt).toMatch(/^Premier point.*…$/)
+  })
+  it('parseReply et findReplyOrigin : nouveau et ancien format', () => {
+    const list = [{ time: '14:32', text: MSG }, { time: '14:32', text: long }]
+    const r = replyTarget('x', '14:32', 'fr', long)
+    const p = parseReply(withReply(r, 'ok', 'fr'))!
+    expect(p.reply.excerpt).toBe(r.excerpt)
+    expect(p.body).toBe('ok')
+    expect(findReplyOrigin(list, p.reply)).toBe(list[1])
+    expect(findReplyOrigin(list, { time: '14:32', excerpt: 'Premier point important sur le cache…' })).toBe(list[1])
   })
 })
