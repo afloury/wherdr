@@ -8,7 +8,7 @@ import '@xterm/xterm/css/xterm.css'
 import { Terminal } from '@xterm/xterm'
 import { mirrorInput } from '#shared/spaces'
 import { mirrorTop } from '~/utils/mirrorViewport'
-import { bindTerminalSelection } from '~/utils/terminalSelection'
+import { bindTerminalSelection, followSelection, type SelectionFollower } from '~/utils/terminalSelection'
 
 const props = defineProps<{ paneId: string, interactive?: boolean }>()
 const box = ref<HTMLElement | null>(null)
@@ -25,6 +25,7 @@ let retryTimer: ReturnType<typeof setTimeout> | undefined
 let ro: ResizeObserver | null = null
 let alive = true
 let unbindSelection: (() => void) | null = null
+let follower: SelectionFollower | null = null
 
 const FONT = '"Wherdr Symbols", "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace'
 
@@ -60,6 +61,7 @@ function connect() {
       const current = term
       current.write(b64ToBytes(m.bytes || ''), () => {
         positionScreen()
+        if (term === current) follower?.frame()
         selectionHint.refresh(current)
       })
       if (!ready.value) {
@@ -103,7 +105,8 @@ onMounted(() => {
     theme: terminalTheme.value, cols: 80, rows: 24,
   })
   term.open(host.value!)
-  unbindSelection = bindTerminalSelection(term)
+  follower = followSelection(term)
+  unbindSelection = bindTerminalSelection(term, follower)
   term.attachCustomWheelEventHandler(() => false)
   term.onData((d) => {
     if (!props.interactive) return
@@ -121,6 +124,7 @@ onUnmounted(() => {
   ro?.disconnect()
   disconnect()
   unbindSelection?.()
+  follower?.dispose()
   term?.dispose()
   term = null
 })
