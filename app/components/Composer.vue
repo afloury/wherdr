@@ -7,6 +7,7 @@
 import type { Pane, QueuedMessage, SlashCommand } from '#shared/types'
 import type { DraftAtt } from '~/composables/useDraft'
 import { withReply } from '#shared/replyQuote'
+import { isAgentCommand } from '#shared/commandScreen'
 
 const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void> }>()
 const emit = defineEmits<{ sent: [queued: QueuedMessage | null], showTerminal: [] }>()
@@ -115,7 +116,12 @@ async function submit() {
     haptic()
     emit('sent', queued)
     // Commande « / » : son résultat (écran du terminal), comme depuis le menu +.
-    if (p && p.agent && !paths.length && /^\/\S+$/.test(msg.split(/\s/)[0]!) && !msg.includes('\n')) showCommandResult(props.paneId, msg.split(/\s/)[0]!)
+    // Un skill ou une commande personnalisée fait répondre l'agent : pas de panneau.
+    const cmd = msg.split(/\s/)[0]!
+    const listed = slashCache.get(props.paneId)?.list || slashList.value
+    if (p && p.agent && !paths.length && /^\/\S+$/.test(cmd) && !msg.includes('\n') && !isAgentCommand(cmd, listed)) {
+      showCommandResult(props.paneId, cmd, listed.some(c => c.source === 'builtin' && `/${c.name}` === cmd))
+    }
   } catch (err) {
     toast((err as Error).message, true)
   } finally {
