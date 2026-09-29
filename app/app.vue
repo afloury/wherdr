@@ -35,11 +35,21 @@ function onShortcut(e: KeyboardEvent) {
   }
 }
 
+// Fichier lâché hors d'une zone de dépôt : le navigateur l'ouvrirait à la place
+// de l'app. Les zones (vue agent) le prennent avant ; ici, on refuse le reste.
+function blockFileDrop(e: DragEvent) {
+  if (!carriesFiles(e.dataTransfer) || e.defaultPrevented) return
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
+}
+
 // Clavier (ordinateur) : Échap ferme la fenêtre ouverte (géré par les modales).
 onMounted(() => {
   installViewport()
   document.addEventListener('visibilitychange', onVisibility)
   document.addEventListener('keydown', onShortcut)
+  window.addEventListener('dragover', blockFileDrop)
+  window.addEventListener('drop', blockFileDrop)
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {})
     // Un tap sur une notif alors que l'app est ouverte : le SW nous demande d'y aller.
@@ -60,6 +70,8 @@ let leaseTimer: ReturnType<typeof setInterval> | undefined
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibility)
   document.removeEventListener('keydown', onShortcut)
+  window.removeEventListener('dragover', blockFileDrop)
+  window.removeEventListener('drop', blockFileDrop)
   clearInterval(leaseTimer)
 })
 </script>
