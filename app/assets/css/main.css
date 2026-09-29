@@ -1137,6 +1137,7 @@ body.kb .composer { padding-bottom: 8px; }
 }
 .composer-notice .notice-btn:hover { background: color-mix(in srgb, currentColor 14%, transparent); }
 .composer-notice .notice-btn:disabled { opacity: .5; cursor: default; }
+.composer-notice.error { color: var(--rose); }
 .composer-notice.failed { color: var(--rose); flex-wrap: wrap; justify-content: flex-start; row-gap: 4px; }
 .composer-notice.failed .restart-text { flex: 1 1 100%; white-space: normal; text-align: left; }
 .composer-notice.failed .notice-btn { color: var(--rose); }

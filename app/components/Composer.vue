@@ -12,6 +12,8 @@ const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (k
 const emit = defineEmits<{ sent: [queued: QueuedMessage | null], showTerminal: [] }>()
 
 // Mise à jour de Claude Code installée : la ligne de statut redémarre l'agent.
+// Statut d'erreur de Claude Code (« Auto-update failed… ») : en rouge, comme dans le terminal.
+const noticeIsError = computed(() => /\b(failed|error)\b/i.test(props.pane?.claudeNotice || ''))
 const updateReady = computed(() => Boolean(props.pane?.claudeNotice && /Restart to update/i.test(props.pane.claudeNotice) && canRestart(props.pane)))
 const restartLabel = computed(() => {
   const r = props.pane?.restart
@@ -351,14 +353,14 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
         <span class="restart-text">{{ restartLabel }}</span>
       </template>
     </div>
-    <div v-else-if="pane?.claudeNotice" class="composer-notice" role="status">
+    <div v-else-if="pane?.claudeNotice" class="composer-notice" :class="{ error: noticeIsError }" role="status">
       <template v-if="updateReady">
         <span class="restart-text">{{ pane.claudeNotice.replace(/\s*·\s*Restart to update\b.*$/, '') }} ·</span>
         <button type="button" class="notice-btn" :disabled="readOnly" @click="restartAgent(pane)">
           <UIcon name="i-lucide-rotate-cw" />{{ t('Redémarrer pour mettre à jour') }}
         </button>
       </template>
-      <template v-else>{{ pane.claudeNotice }}</template>
+      <template v-else>{{ noticeIsError && !/^[✗✘]/.test(pane.claudeNotice) ? `✘ ${pane.claudeNotice}` : pane.claudeNotice }}</template>
     </div>
     <button
       v-if="suggestion && !enterSends" type="button" class="composer-suggest" @mousedown.prevent @click="useSuggestion"
