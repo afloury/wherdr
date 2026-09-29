@@ -546,11 +546,13 @@ function resetListWidth() {
         <p v-if="!assertions.length" class="session-intro awake-empty">{{ t('Aucune app ne bloque la veille.') }}</p>
       </div>
     </AppSheet>
-    <div
-      v-if="desk" class="list-handle" :class="{ dragging: listDrag }" role="separator" aria-orientation="vertical" tabindex="0"
-      :aria-label="t('Largeur de la liste')" :aria-valuenow="listWidth ?? LIST_DEFAULT" :aria-valuemin="LIST_MIN" :aria-valuemax="LIST_MAX"
-      :title="t('Glisser pour élargir · double-clic : largeur par défaut')"
-      @pointerdown="onListGrab" @dblclick="resetListWidth" @keydown="onListKey"
-    />
+    <Teleport to="body">
+      <div
+        v-if="desk" class="list-handle" :class="{ dragging: listDrag }" role="separator" aria-orientation="vertical" tabindex="0"
+        :aria-label="t('Largeur de la liste')" :aria-valuenow="listWidth ?? LIST_DEFAULT" :aria-valuemin="LIST_MIN" :aria-valuemax="LIST_MAX"
+        :title="t('Glisser pour élargir · double-clic : largeur par défaut')"
+        @pointerdown="onListGrab" @dblclick="resetListWidth" @keydown="onListKey"
+      />
+    </Teleport>
   </section>
 </template>

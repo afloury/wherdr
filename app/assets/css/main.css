@@ -2083,7 +2083,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
   .list-handle::before { content: ''; position: absolute; top: 0; bottom: 0; left: -5px; width: 9px; cursor: col-resize; }
   .list-handle::after { content: ''; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: transparent; transition: background-color .12s ease; pointer-events: none; }
   .list-handle:hover::after, .list-handle.dragging::after, .list-handle:focus-visible::after { background: var(--mauve); }
-  #home.resizing { user-select: none; }
+  #home.resizing, body:has(#home.resizing) { user-select: none; }
   body:has(#home.resizing) { cursor: col-resize; }
   body:has(#home.resizing) iframe, body:has(#home.resizing) .xterm { pointer-events: none; }
   #agent, #placeholder, #settings, #tabview { left: var(--side); }
