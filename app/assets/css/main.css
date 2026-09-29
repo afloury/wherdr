@@ -917,10 +917,13 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .md-body .tw-trail > span { position: relative; color: transparent; }
 .md-body .tw-trail > span::before {
   content: attr(data-g); position: absolute; left: 50%; top: 0; transform: translateX(-50%);
-  font-family: var(--mono); font-weight: 400; font-style: normal; color: var(--mauve); opacity: .8;
+  font-family: var(--mono); font-weight: 400; font-style: normal; color: var(--tw-color, var(--mauve)); opacity: .8;
   pointer-events: none;
 }
 .md-body .tw-trail > .tw-front::before { opacity: .4; }
+/* Couleur de l'effet chiffré selon l'agent : orange Claude, bleu Codex, accent sinon. */
+.tw-claude { --tw-color: var(--claude); }
+.tw-codex { --tw-color: var(--codex); }
 .md-body blockquote { margin: 0 0 .75em; padding: 2px 0 2px 14px; border-left: 2px solid var(--mauve); color: var(--text-3); }
 .md-body table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 13.5px; margin: 0 0 .9em; max-width: 100%; }
 .md-body th, .md-body td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }

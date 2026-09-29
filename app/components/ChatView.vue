@@ -816,7 +816,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
                   :id="b.key" role="assistant" side="left" variant="naked"
                   :data-hit-key="b.key"
                   :parts="[{ type: 'text', text: b.text }]"
-                  :ui="{ root: 'msg msg-ai', container: 'msg-c', content: 'md' }"
+                  :ui="{ root: `msg msg-ai tw-${pane.agent || 'agent'}`, container: 'msg-c', content: 'md' }"
                 >
                   <template #content>
                     <ChatMarkdown :html="b.html" :typing="typingAt(b.id)" @done="typingDone(b.id)" />
