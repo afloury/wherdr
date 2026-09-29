@@ -159,7 +159,10 @@ export function followSelection(term: Terminal): SelectionFollower {
       }
       if (now.every((l, i) => l === before[i])) return
       hint = 0
-      const k = findShift(before, now, h)
+      let k = findShift(before, now, h)
+      // Grand saut (écrans sans ligne commune) : on se fie aux lignes demandées ;
+      // selectionIntact efface si Herdr a buté en haut de l'historique.
+      if (k === null && h) k = h
       if (k === null) {
         // Le texte sélectionné n'a pas bougé (sortie ailleurs à l'écran).
         if (selectionIntact(tracked, now)) return
