@@ -1,0 +1,81 @@
+# Image Docker publiée sur ghcr.io à chaque tag de version (vX.Y.Z), ou à la main :
+#   ghcr.io/<owner>/wherdr:<version>, :<majeur>.<mineur> et :latest — linux/arm64 + linux/amd64.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Tag to build (e.g. v1.2.0); empty = current commit, tagged edge'
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version || github.ref }}
+
+      - name: Version
+        id: v
+        run: |
+          ref="${{ inputs.version || github.ref_name }}"
+          if [[ "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            pkg=$(node -p "require('./package.json').version")
+            if [ "v$pkg" != "$ref" ]; then
+              echo "::error::package.json version ($pkg) does not match tag $ref"; exit 1
+            fi
+            echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=edge" >> "$GITHUB_OUTPUT"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ steps.v.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.v.outputs.version }},enable=${{ steps.v.outputs.release }}
+            type=raw,value=latest,enable=${{ steps.v.outputs.release }}
+          labels: |
+            org.opencontainers.image.title=wherdr
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.version=${{ steps.v.outputs.version }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: VERSION=${{ steps.v.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

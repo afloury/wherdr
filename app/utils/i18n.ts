@@ -177,6 +177,11 @@ const EN: Record<string, string> = {
   'Ce qu’il reste de chaque fenêtre, comme Codex.': 'What is left in each window, like Codex.',
   'Ce qui est consommé, comme Claude.': 'What has been used, like Claude.',
   'La couleur signale toujours un quota presque épuisé. Réglage propre à cet appareil.': 'The color always flags a nearly exhausted quota. Saved on this device.',
+  // Nouvelle version
+  'Commande copiée : colle-la dans un terminal du serveur, dans le dossier de wherdr.': 'Command copied: paste it into a terminal on the server, in the wherdr folder.',
+  'Puis relance wherdr.': 'Then restart wherdr.', 'Notes': 'Release notes',
+  'Masquer jusqu’à la version suivante': 'Hide until the next version',
+  'C’est la dernière version.': 'This is the latest version.',
   'À propos': 'About', 'Sections des réglages': 'Settings sections',
   'Conversation, terminal, réglages et autres contenus. Réglage propre à cet appareil.': 'Conversation, terminal, settings and other content. Saved on this device.',
   'Colonne de 760 px · terminal ajusté.': '760 px column · terminal fitted to width.',

@@ -1,5 +1,9 @@
-# herdr-web (Nuxt 4) : construit dans node:22-alpine, image finale = .output seul.
-FROM node:22-alpine AS build
+# wherdr (Nuxt 4) : construit dans node:22-alpine, image finale = .output seul.
+# Image générique (publiée sur ghcr.io, cf. .github/workflows/release.yml ; source et
+# révision ajoutées par le workflow) :
+# l'utilisateur, son UID/GID et son dossier personnel sont fixés au démarrage
+# (scripts/docker-entrypoint.sh, variables PUID, PGID et HOME de docker-compose.yml).
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 # Scripts d'installation ignorés : `nuxt prepare` (postinstall) a besoin des
@@ -11,22 +15,21 @@ RUN NODE_OPTIONS=--max-old-space-size=1800 npm run build
 
 FROM node:22-alpine
 WORKDIR /app
-# Machines distantes (profils SSH de Herdr) : client OpenSSH. ssh prend le
-# dossier personnel dans /etc/passwd (pas dans $HOME) pour ~/.ssh/config, la clé
-# et known_hosts : l'utilisateur wherdr reçoit l'UID/GID et le home de l'hôte,
-# monté en lecture seule au même chemin (cf. docker-compose.yml, build.args).
-ARG HOST_HOME=/home/node
-ARG PUID=1000
-ARG PGID=1000
-# git : vue « Changements » des agents locaux (lecture seule).
-RUN apk add --no-cache openssh-client git \
- && deluser node \
- && addgroup -g "$PGID" wherdr \
- && adduser -D -u "$PUID" -G wherdr -h "$HOST_HOME" wherdr
+ARG VERSION=dev
+LABEL org.opencontainers.image.title="wherdr" \
+      org.opencontainers.image.description="Mobile web client (PWA) to drive the coding agents running in Herdr" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="$VERSION"
+# openssh-client : machines distantes (profils SSH de Herdr) ; git : vue « Changements »
+# (lecture seule) ; su-exec : passage à l'utilisateur de l'hôte au démarrage.
+RUN apk add --no-cache openssh-client git su-exec \
+ && deluser node
 # Arrêt rapide (docker stop, redémarrage) : les WebSockets ouvertes ne retiennent pas
-# le serveur 30 s ; les clients se reconnectent tout seuls.
-ENV NODE_ENV=production PORT=7683 NITRO_SHUTDOWN_TIMEOUT=1500
+# le serveur 30 s ; les clients se reconnectent tout seuls. WHERDR_INSTALL : commande
+# de mise à jour proposée dans l'app (docker-compose.build.yml la remplace).
+ENV NODE_ENV=production PORT=7683 NITRO_SHUTDOWN_TIMEOUT=1500 WHERDR_INSTALL=docker
 COPY --from=build /app/.output ./.output
-USER wherdr
+COPY scripts/docker-entrypoint.sh /usr/local/bin/wherdr-entrypoint
 EXPOSE 7683
+ENTRYPOINT ["wherdr-entrypoint"]
 CMD ["node", ".output/server/index.mjs"]

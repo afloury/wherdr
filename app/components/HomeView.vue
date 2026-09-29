@@ -22,6 +22,7 @@ import { dropMachineKey, shiftMachineKey, sortMachines } from '#shared/machineOr
 import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
 const emit = defineEmits<{ search: [] }>()
 useQuotaLoader()
+onMounted(loadUpdate)
 
 const everOpen = ref(false)
 watch(eventsOpen, (v) => { if (v) everOpen.value = true })
@@ -368,6 +369,7 @@ function openSearch() { emit('search') }
       </div>
       <QuotaStrip :rows="topQuotas" :class="{ 'after-stats': showCounters && agents.length }" />
 
+      <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />
       <ClaudeSetupBanner v-if="!sections && localSetup" :setup="localSetup" :name="machineName('') || t('cette machine')" class="solo" />
 
       <!-- Une seule machine : la liste d'avant. -->

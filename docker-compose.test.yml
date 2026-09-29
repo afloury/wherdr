@@ -8,17 +8,15 @@ services:
   herdr-web-test:
     build:
       context: .
-      # Dossier personnel de l'utilisateur du conteneur (ssh y lit ~/.ssh).
-      args:
-        HOST_HOME: ${HOST_HOME:-${HOME}}
-        PUID: ${PUID:-1000}
-        PGID: ${PGID:-1000}
     image: herdr-web:test
     container_name: ${TEST_CONTAINER:-herdr-web-test}
-    user: "${PUID:-1000}:${PGID:-1000}"
     environment:
       - PORT=7684
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
       - HOME=${HOST_HOME:-${HOME}}
+      - WHERDR_INSTALL=docker-build
+      - WHERDR_UPDATE_CHECK=off
       - DATA_DIR=/data
       - HERDR_BIN=${HERDR_BIN:-${HOST_HOME:-${HOME}}/.local/bin/herdr}
       - HERDR_WEB_SESSION=hwtest
