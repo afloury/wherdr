@@ -3,12 +3,13 @@
 // d'exécution. La transcription ne le dit qu'après coup (une commande « ! »
 // n'y est écrite qu'à la fin), l'écran tout de suite.
 import type { ClaudeScreen } from './types'
+import { dropReplyMarker } from './replyQuote'
 
 export type QueuedPhase = 'queued' | 'sent' | 'running'
 
 const UPLOAD = '/.cache/herdr-web/uploads/'
 // L'écran remplace les photos par « [Image #1] » et coupe les longues lignes.
-const norm = (t: string) => String(t || '').replace(/\[Image #\d+\]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase()
+const norm = (t: string) => dropReplyMarker(String(t || '').replace(/\[Image #\d+\]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase())
 const msgNorm = (t: string) => norm(String(t || '').split('\n').filter(l => !l.includes(UPLOAD)).join('\n'))
 
 // Même message (80 premiers caractères) ; ou l'un commence par l'autre, assez
