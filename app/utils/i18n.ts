@@ -296,7 +296,7 @@ const EN: Record<string, string> = {
   'Projet': 'Project', 'Fait': 'Done', 'Afficher le panneau Projet': 'Show the Project panel', 'Replier le panneau': 'Collapse the panel',
   'À relire': 'Ready for review', 'Atterrissage': 'Landing', 'Inactif': 'Idle',
   'toi': 'you', 'Rien pour l’instant': 'Nothing yet', 'Lecture du projet…': 'Reading the project…',
-  'Confirmer : testé, ça marche': 'Confirm: tested, it works', 'Signaler un problème': 'Report a problem', 'Poser une question': 'Ask a question', 'Largeur du panneau Projet': 'Project panel width', 'Glisser pour élargir · double-clic : largeur par défaut': 'Drag to resize · double-click: default width', 'Envoyé au coordinateur': 'Sent to the coordinator',
+  'Confirmer : testé, ça marche': 'Confirm: tested, it works', 'Signaler un problème': 'Report a problem', 'Poser une question': 'Ask a question', 'Largeur du panneau Projet': 'Project panel width', 'Largeur de la liste': 'List width', 'Glisser pour élargir · double-clic : largeur par défaut': 'Drag to resize · double-click: default width', 'Envoyé au coordinateur': 'Sent to the coordinator',
   'Préciser': 'Clarify',
   'Pas encore de TASKS.md dans ce projet.': 'No TASKS.md in this project yet.', 'Threads illisibles': 'Threads unavailable',
   'Voir le rapport': 'View report', 'Ouvrir l’agent': 'Open agent', 'Pull request': 'Pull request',

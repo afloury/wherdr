@@ -18,6 +18,7 @@ import type { MachineInfo, NamedSession, Pane } from '#shared/types'
 import { groupByProject, remoteCoordinator } from '#shared/projects'
 import { type Row, projectRoots, readyLists, repoRoots, rowGroup, spaceRows } from '#shared/spaces'
 import { claudeSetupOf, machineQuotaRows, quotaRows } from '~/utils/quotas'
+import { LIST_DEFAULT, LIST_MAX, LIST_MIN, clampListWidth, listWidthCss, readListWidth, saveListWidth } from '~/utils/sideWidth'
 import { dropMachineKey, shiftMachineKey, sortMachines } from '#shared/machineOrder'
 import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
 const emit = defineEmits<{ search: [] }>()
@@ -319,10 +320,56 @@ function newAgent() {
   newAgentOpen.value = true
 }
 function openSearch() { emit('search') }
+
+// Largeur de la barre latérale (ordinateur) : poignée sur son bord droit
+// (glisser, flèches du clavier ; double-clic = largeur par défaut), bornée,
+// gardée sur l'appareil. Elle règle --side, que suivent les vues de droite.
+const listWidth = ref<number | null>(null)
+const listDrag = ref(false)
+onMounted(() => { listWidth.value = readListWidth() })
+watch(listWidth, (w) => {
+  const root = document.documentElement.style
+  if (w === null) root.removeProperty('--side')
+  else root.setProperty('--side', listWidthCss(w))
+})
+function listNow() { return document.getElementById('home')?.getBoundingClientRect().width || LIST_DEFAULT }
+function onListGrab(e: PointerEvent) {
+  if (e.button !== 0) return
+  const handle = e.currentTarget as HTMLElement
+  e.preventDefault()
+  const x0 = e.clientX
+  const w0 = listNow()
+  handle.setPointerCapture(e.pointerId)
+  listDrag.value = true
+  const move = (ev: PointerEvent) => { listWidth.value = clampListWidth(w0 + ev.clientX - x0, window.innerWidth) }
+  const up = () => {
+    handle.removeEventListener('pointermove', move)
+    handle.removeEventListener('pointerup', up)
+    handle.removeEventListener('pointercancel', up)
+    listDrag.value = false
+    saveListWidth(listWidth.value)
+  }
+  handle.addEventListener('pointermove', move)
+  handle.addEventListener('pointerup', up)
+  handle.addEventListener('pointercancel', up)
+}
+function onListKey(e: KeyboardEvent) {
+  const step = e.shiftKey ? 64 : 16
+  const d = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
+  if (e.key === 'Home' || e.key === 'Enter') { e.preventDefault(); return resetListWidth() }
+  if (!d) return
+  e.preventDefault()
+  listWidth.value = clampListWidth(listNow() + d, window.innerWidth)
+  saveListWidth(listWidth.value)
+}
+function resetListWidth() {
+  listWidth.value = null
+  saveListWidth(null)
+}
 </script>
 
 <template>
-  <section id="home" class="view">
+  <section id="home" class="view" :class="{ resizing: listDrag }">
     <header class="home-top">
       <p class="eyebrow">
         <AppLogo class="home-logo" :class="conn.idle ? '' : conn.ok ? 'ok' : 'bad'" /><span>{{ conn.text }}</span>
@@ -499,5 +546,11 @@ function openSearch() { emit('search') }
         <p v-if="!assertions.length" class="session-intro awake-empty">{{ t('Aucune app ne bloque la veille.') }}</p>
       </div>
     </AppSheet>
+    <div
+      v-if="desk" class="list-handle" :class="{ dragging: listDrag }" role="separator" aria-orientation="vertical" tabindex="0"
+      :aria-label="t('Largeur de la liste')" :aria-valuenow="listWidth ?? LIST_DEFAULT" :aria-valuemin="LIST_MIN" :aria-valuemax="LIST_MAX"
+      :title="t('Glisser pour élargir · double-clic : largeur par défaut')"
+      @pointerdown="onListGrab" @dblclick="resetListWidth" @keydown="onListKey"
+    />
   </section>
 </template>

@@ -76,7 +76,6 @@ const contextItems = computed(() => toDropdown(space.value ? [
   ...workspaceItems(space.value.workspace.id),
 ] : [
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
-  { label: t('Renommer l’espace'), icon: 'i-lucide-pencil', run: () => { if (ws.value) renameWorkspace(ws.value.id) } },
   ...paneSpaceItems(props.pane),
   ...paneWorkspaceItems(props.pane),
   { kind: 'separator' },
