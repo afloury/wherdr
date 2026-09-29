@@ -11,6 +11,8 @@ export interface AwakeState {
   until: number | null
   lid: boolean
   battery: { percent: number, source: 'ac' | 'battery' } | null
+  // Heure de la machine ≥ 20 h : « jusqu'à ce soir » n'a plus de sens.
+  eveningPast: boolean
 }
 export interface SleepAssertion { name: string, kind: string, seconds: number, ours: boolean }
 
@@ -43,6 +45,7 @@ export const STATUS_SCRIPT = `${OURS}
 platform=$(uname -s)
 case "$platform" in Darwin) platform=mac;; Linux) platform=linux;; *) platform=other;; esac
 echo "platform=$platform"
+echo "clock=$(date +%H%M)"
 if [ "$platform" = mac ]; then pmset -g batt 2>/dev/null; fi
 if [ "$platform" = linux ]; then command -v systemd-inhibit >/dev/null 2>&1 && echo "inhibit=1"; fi
 d="$HOME/.cache/herdr-web/awake.pid"
@@ -120,7 +123,8 @@ export function parseAwakeStatus(raw: string): AwakeState {
   const match = /^awake=(\d+)\|(\d+)\|([01])$/m.exec(raw)
   return { platform, supported: platform === 'mac' || (platform === 'linux' && /^inhibit=1$/m.test(raw)),
     active: Boolean(match), until: match && Number(match[2]) ? Number(match[2]) * 1000 : null,
-    lid: match?.[3] === '1', battery: platform === 'mac' ? parseBattery(raw) : null }
+    lid: match?.[3] === '1', battery: platform === 'mac' ? parseBattery(raw) : null,
+    eveningPast: Number(/^clock=(\d{4})$/m.exec(raw)?.[1] ?? 0) >= 2000 }
 }
 
 export function parseAssertions(raw: string, ownPid?: number): SleepAssertion[] {
@@ -140,7 +144,7 @@ function localExec(script: string, args: string[]): Promise<ExecResult> {
 }
 async function run(machine: Machine, script: string, args: string[] = []) {
   const result = machine.exec ? await machine.exec(script, args, { timeoutMs: 10000 }) : await localExec(script, args)
-  if (result.code !== 0) throw new Error(result.stderr.trim() || 'Commande de veille impossible')
+  if (result.code !== 0) throw new HerdrError('awake_command_failed', result.stderr.trim() || 'Commande de veille impossible')
   return result.stdout.toString('utf8')
 }
 export async function awakeStatus(machine: Machine) { return parseAwakeStatus(await run(machine, STATUS_SCRIPT)) }
@@ -148,7 +152,7 @@ export async function awakeStatus(machine: Machine) { return parseAwakeStatus(aw
 export const CONTROL_ERRORS: Record<string, string> = {
   no_tool: 'Contrôle de veille indisponible sur cette machine',
   lid_mac_only: 'Capot fermé disponible uniquement sur Mac',
-  evening_past: 'Il est déjà 20 h passées',
+  evening_past: 'Il est déjà plus de 20 h sur cette machine : choisis une durée',
   not_active: 'Aucun éveil en cours à prolonger',
   bad_mode: 'option de veille invalide',
   start_failed: 'Le maintien éveillé n’a pas démarré ; l’état précédent est conservé',
@@ -166,6 +170,7 @@ export async function setAwake(machine: Machine, mode: AwakeMode | 'off', lid: b
     if (!status.active || !status.until) throw new HerdrError('awake_not_active', CONTROL_ERRORS.not_active!)
     lid = status.lid
   }
+  if (mode === 'evening' && status.eveningPast) throw new HerdrError('awake_evening_past', CONTROL_ERRORS.evening_past!)
   if (lid && status.platform !== 'mac') throw new HerdrError('awake_lid', CONTROL_ERRORS.lid_mac_only!)
   if (lid && status.battery?.source !== 'ac') throw new HerdrError('awake_lid', 'Le capot fermé nécessite le secteur')
   const result = parseControl(await run(machine, CONTROL_SCRIPT, [mode, lid ? '1' : '0']))
