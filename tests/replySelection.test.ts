@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseReply, replyTarget, withReply } from '../shared/replyQuote'
 import { queuedPhases } from '../shared/queuedPhase'
-import { createSelectionSettler, lastLineRect, selectionReplyPos, SETTLE_KEYBOARD, SETTLE_POINTER, SETTLE_SCROLL, SETTLE_TOUCH } from '../app/utils/selectionReply'
+import { createSelectionSettler, lastLineRect, trimmedEnd, selectionReplyPos, SETTLE_KEYBOARD, SETTLE_POINTER, SETTLE_SCROLL, SETTLE_TOUCH } from '../app/utils/selectionReply'
 import type { ClaudeScreen } from '../shared/types'
 
 const MSG = 'Je propose deux options : garder le cache actuel, ou passer à IndexedDB avec une purge au démarrage.'
@@ -26,6 +26,21 @@ describe('répondre à une sélection', () => {
     const rects = [{ top: 280, bottom: 300, left: 100, right: 900 }, { top: 300, bottom: 320, left: 100, right: 260 }, { top: 320, bottom: 320, left: 100, right: 100 }]
     expect(lastLineRect(rects)).toEqual(rects[1])
     expect(lastLineRect([])).toBeNull()
+  })
+  it('fin rognée : saut de ligne final d’un triple-clic', () => {
+    expect(trimmedEnd(['Dernier paragraphe complet.\n'])).toEqual({ index: 0, offset: 27 })
+  })
+  it('fin rognée : nœuds blancs après le paragraphe (pied, message suivant rognés)', () => {
+    expect(trimmedEnd(['Début ', 'fin du message.', '\n\n', '  '])).toEqual({ index: 1, offset: 15 })
+    expect(trimmedEnd(['\n', ' '])).toBeNull()
+    expect(trimmedEnd([])).toBeNull()
+  })
+  it('fin rognée : emoji final entier', () => {
+    expect(trimmedEnd(['ok 👍\n'])).toEqual({ index: 0, offset: 5 })
+  })
+  it('rectangles vides de fin ignorés', () => {
+    const rects = [{ top: 300, bottom: 320, left: 100, right: 500 }, { top: 320, bottom: 340, left: 100, right: 100 }, { top: 340, bottom: 340, left: 0, right: 0 }]
+    expect(lastLineRect(rects)).toEqual(rects[0])
   })
   it('débordement à droite : sous la fin de la ligne, aligné sur le dernier mot', () => {
     expect(selectionReplyPos({ top: 300, bottom: 320, left: 1200, right: 1400 }, btn, view, false)).toEqual({ top: 326, left: 1300 })

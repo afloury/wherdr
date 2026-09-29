@@ -9,7 +9,7 @@ import { readOffline, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { canCancelQueued, restoreDraft } from '~/utils/queuedCancel'
 import { queuedPhases } from '#shared/queuedPhase'
-import { createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
+import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 import { dropReplyMarker, findReplyOrigin, parseReply, replyTarget, type ReplyTarget } from '#shared/replyQuote'
@@ -399,10 +399,14 @@ const isTouch = () => window.matchMedia('(pointer: coarse)').matches
 function currentSelection() {
   const sel = window.getSelection()
   const range = sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : null
-  const text = range ? sel!.toString().trim() : ''
-  const host = range ? (range.commonAncestorContainer.nodeType === 1 ? range.commonAncestorContainer as Element : range.commonAncestorContainer.parentElement)?.closest<HTMLElement>('.msg-ai[data-hit-key]') : null
-  if (!text || !host || readOnly.value || !listEl.value?.contains(host)) return null
-  const end = lastLineRect(range!.getClientRects()) || range!.getBoundingClientRect()
+  const start = range ? (range.startContainer.nodeType === 1 ? range.startContainer as Element : range.startContainer.parentElement) : null
+  // Message du début de la sélection ; la plage est rognée à son contenu (cf. clampRange).
+  const host = start?.closest<HTMLElement>('.msg-ai[data-hit-key]')
+  if (!range || !host || readOnly.value || !listEl.value?.contains(host)) return null
+  const clamped = clampRange(range, host.querySelector('.md') || host)
+  const text = clamped?.toString().trim() || ''
+  if (!clamped || !text) return null
+  const end = lastLineRect(clamped.getClientRects()) || clamped.getBoundingClientRect()
   return { host, text, end, sig: `${text}|${Math.round(end.right)}|${Math.round(end.top)}` }
 }
 function showSelectionReply() {
