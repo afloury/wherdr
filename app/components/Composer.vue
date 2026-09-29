@@ -28,10 +28,20 @@ const canSend = computed(() => Boolean(text.value.trim() || attachments.value.le
 const readOnly = computed(() => !eventsOpen.value || offlineView.value || paneStale(props.pane))
 // Hors ligne, pas de Stop : UChatPromptSubmit ignore `disabled` en mode « streaming ».
 const stopMode = computed(() => Boolean(!readOnly.value && props.pane && props.pane.agent && props.pane.status === 'working' && !canSend.value))
+// Suggestion grisée de Claude Code (cf. parseClaudeSuggestion) : placeholder du
+// champ vide ; Tab (ou la puce, sur un écran tactile) la met dans le champ, sans l'envoyer.
+const suggestion = computed(() => (!readOnly.value && !canSend.value && props.pane?.claudeSuggestion) || null)
+function useSuggestion() {
+  const s = suggestion.value
+  if (!s) return
+  text.value = s
+  focusEnd()
+}
 const placeholder = computed(() => {
   const p = props.pane
   if (!p) return t('Message à l’agent…')
   if (p.status === 'blocked') return t('Réponse libre…')
+  if (suggestion.value) return suggestion.value
   if (p.agent) return tl(`Message à ${kindLabel(p.agent)}…`, `Message to ${kindLabel(p.agent)}…`)
   return t('Commande…')
 })
@@ -50,6 +60,11 @@ function onKeydown(e: KeyboardEvent) {
       pickSlash(slashMatches.value[slashSel.value] || slashMatches.value[0]!)
       return
     }
+  }
+  if (e.key === 'Tab' && !e.shiftKey && !e.isComposing && suggestion.value && !text.value) {
+    e.preventDefault()
+    useSuggestion()
+    return
   }
   if (enterSends.value && e.key === 'Enter' && !e.shiftKey && !e.isComposing && !text.value.trim()) {
     e.preventDefault()
@@ -310,6 +325,11 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
 <template>
   <div class="composer">
     <div v-if="pane?.claudeNotice" class="composer-notice" role="status">{{ pane.claudeNotice }}</div>
+    <button
+      v-if="suggestion && !enterSends" type="button" class="composer-suggest" @mousedown.prevent @click="useSuggestion"
+    >
+      <UIcon name="i-lucide-corner-down-left" /> {{ t('Utiliser la suggestion') }}
+    </button>
     <div v-if="slashOpen" class="slash-menu" role="listbox" :aria-label="t('Commandes')">
       <div ref="slashListEl" class="slash-list">
         <button
@@ -348,7 +368,8 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
         />
         <input ref="fileInput" type="file" accept="image/*" multiple hidden @change="onFiles">
         <ModelPicker v-if="pane && hasChat(pane)" :pane="pane" />
-        <span v-if="hint" class="prompt-hint"><UKbd value="enter" size="sm" /> {{ t('envoyer') }} <span class="sep">·</span> <UKbd value="shift" size="sm" /><UKbd value="enter" size="sm" /> {{ t('nouvelle ligne') }}</span>
+        <span v-if="hint && suggestion" class="prompt-hint"><UKbd value="tab" size="sm" /> {{ t('suggestion') }} <span class="sep">·</span> <UKbd value="enter" size="sm" /> {{ t('envoyer') }}</span>
+        <span v-else-if="hint" class="prompt-hint"><UKbd value="enter" size="sm" /> {{ t('envoyer') }} <span class="sep">·</span> <UKbd value="shift" size="sm" /><UKbd value="enter" size="sm" /> {{ t('nouvelle ligne') }}</span>
         <UChatPromptSubmit
           :status="stopMode ? 'streaming' : 'ready'" :disabled="readOnly || (!canSend && !stopMode) || sending"
           color="primary" variant="solid" streaming-color="neutral" streaming-variant="solid" streaming-icon="i-herdr-stop" size="sm"
