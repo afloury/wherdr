@@ -24,7 +24,7 @@ const reviewedByPane = new Map<string, Set<string>>()
 // Le fichier n'est jamais écrit d'ici.
 // `side` : colonne à droite de la conversation (ordinateur), repliable.
 import type { Pane, QueuedMessage } from '#shared/types'
-import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, boardSections, decisionPrefix, detailPrefix, launchMessage, missingLists, ownerIsMe, problemPrefix, prLabel, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, unblockMessage } from '#shared/projectBoard'
+import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, boardSections, visibleSections, decisionPrefix, detailPrefix, launchMessage, missingLists, ownerIsMe, problemPrefix, prLabel, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, unblockMessage } from '#shared/projectBoard'
 import { md } from '~/utils/markdown'
 
 const props = defineProps<{ paneId: string, board: ProjectBoard | null, loading: boolean, error: string, side?: boolean }>()
@@ -32,7 +32,7 @@ const emit = defineEmits<{ reload: [], collapse: [], sent: [queued: QueuedMessag
 
 const DONE_SHOWN = 20
 
-const sections = computed<BoardSection[]>(() => (props.board ? boardSections(props.board, { doing: t('En cours'), done: t('Fait') }) : []))
+const sections = computed<BoardSection[]>(() => (props.board ? visibleSections(boardSections(props.board, { doing: t('En cours'), done: t('Fait') }), projectHideEmpty.value) : []))
 
 const ICONS: Record<ListKind, string> = {
   test: 'i-lucide-flask-conical',

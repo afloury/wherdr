@@ -70,6 +70,7 @@ async function copyText(text: string, done: string) {
   } catch { toast(t('Copie impossible'), true) }
 }
 const lang = () => (language === 'en' ? 'en' : 'fr')
+const hideEmptyOn = projectHideEmpty
 const copyTemplate = () => copyText(tasksTemplate(lang()), tl('Modèle copié : colle-le dans TASKS.md du projet.', 'Template copied: paste it into the project’s TASKS.md.'))
 const copyRules = () => copyText(coordinatorRules(lang()), tl('Règles copiées : colle-les au coordinateur.', 'Rules copied: paste them to the coordinator.'))
 </script>
@@ -124,6 +125,10 @@ const copyRules = () => copyText(coordinatorRules(lang()), tl('Règles copiées 
     </ul>
     <p class="projects-plugin-note">{{ tl('Toute autre liste ## s’affiche aussi, en style neutre.', 'Any other ## list is shown too, in a neutral style.') }}</p>
     <p class="projects-plugin-note">{{ tl('Les listes présentes dans TASKS.md sont les listes actives : pour en ajouter ou en retirer une, demande-le au coordinateur (pas de réglage dans wherdr).', 'The lists in TASKS.md are the active lists: to add or remove one, ask the coordinator (there is no setting in wherdr).') }}</p>
+    <label class="settings-toggle">
+      <span><b>{{ tl('Masquer les listes vides', 'Hide empty lists') }}</b><small>{{ tl('Afficher une liste du panneau Projet seulement si elle a des éléments (En cours et Fait compris). Réglage propre à cet appareil.', 'Show a Project panel list only when it has items (In progress and Done included). Setting specific to this device.') }}</small></span>
+      <USwitch v-model="hideEmptyOn" color="success" size="xl" />
+    </label>
     <div class="projects-plugin-actions">
       <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-file-text" @click="copyTemplate">{{ tl('Copier le modèle TASKS.md', 'Copy TASKS.md template') }}</UButton>
       <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-clipboard-list" @click="copyRules">{{ tl('Copier les règles pour le coordinateur', 'Copy rules for the coordinator') }}</UButton>

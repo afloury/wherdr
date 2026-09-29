@@ -252,6 +252,12 @@ export function boardSections(board: Pick<ProjectBoard, 'lists' | 'open' | 'reso
   return sections
 }
 
+// Réglage « Masquer les listes vides » : une section sans tâche ni thread
+// n'est pas affichée (En cours et Fait compris). La suggestion des listes
+// absentes (missingLists) lit TASKS.md, pas cet affichage.
+export function visibleSections(sections: BoardSection[], hideEmpty: boolean): BoardSection[] {
+  return hideEmpty ? sections.filter(s => s.tasks.length > 0 || s.threads.length > 0) : sections
+}
 
 // ---------------------------------------------------------------- retours du panneau Projet
 // Confirmer envoie un message ; les autres actions préparent le début du message.

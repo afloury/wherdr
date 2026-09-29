@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { boardSections, coordinatorRules, decisionPrefix, extractLinks, prLabel, reviewCommentPrefix, reviewedMessage, detailPrefix, launchMessage, listKind, normalizeThreads, ownerIsMe, parseTaskLine, parseTasks, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage, unblockMessage } from '../shared/projectBoard'
+import { boardSections, visibleSections, missingLists as missingListsOf, coordinatorRules, decisionPrefix, extractLinks, prLabel, reviewCommentPrefix, reviewedMessage, detailPrefix, launchMessage, listKind, normalizeThreads, ownerIsMe, parseTaskLine, parseTasks, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage, unblockMessage } from '../shared/projectBoard'
 import { pluginBinary } from '../server/utils/projectBoard'
 import { isCoordinator } from '../shared/projects'
 import type { Pane } from '../shared/types'
@@ -339,5 +339,22 @@ describe('liste À relire', () => {
     const lists = parseTasks('## À relire\n- [ ] a\n## Backlog')
     const open = [{ id: 't-0001' }] as never
     expect(boardSections({ lists, open, resolved: [] }, { doing: 'En cours', done: 'Fait' }).map(s => s.kind)).toEqual(['review', 'doing', 'backlog', 'done'])
+  })
+})
+
+describe('Masquer les listes vides', () => {
+  const lists = parseTasks('## À tester\n## À décider\n- [ ] Choix (me)\n## En cours\n## Backlog')
+  const labels = { doing: 'En cours', done: 'Fait' }
+  const all = boardSections({ lists, open: [], resolved: [] }, labels)
+  it('réglage coupé : toutes les listes', () => {
+    expect(visibleSections(all, false).map(s => s.kind)).toEqual(['test', 'decide', 'doing', 'backlog', 'done'])
+  })
+  it('réglage actif : seulement les listes avec des éléments, En cours et Fait compris', () => {
+    expect(visibleSections(all, true).map(s => s.kind)).toEqual(['decide'])
+    const open = normalizeThreads([{ id: 't-0002', status: 'open' }])
+    expect(visibleSections(boardSections({ lists, open, resolved: [] }, labels), true).map(s => s.kind)).toEqual(['decide', 'doing'])
+  })
+  it('une liste vide masquée ne déclenche pas la suggestion', () => {
+    expect(missingListsOf(lists)).toEqual([])
   })
 })
