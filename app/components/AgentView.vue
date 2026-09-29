@@ -22,6 +22,7 @@ import { neighborPane } from '#shared/layout'
 import { prefillDraft } from '#shared/projectBoard'
 import { swipeAxis, swipeOffset, swipeStep } from '~/utils/swipe'
 import { cellMode, showComposer, terminalAttachment } from '~/utils/viewMode'
+import { carriesFiles, dragDepth, splitDropped } from '~/utils/fileDrop'
 
 const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, grip?: boolean }>()
 const emit = defineEmits<{ activate: [] }>()
@@ -123,7 +124,7 @@ const ctl = createTerminal(props.paneId, {
   hasBanner: () => Boolean(banner.value),
 })
 const chatRef = ref<{ scrollToEnd: (force: boolean) => void, reload: () => void } | null>(null)
-const composer = ref<{ focus: () => void, focusEnd: () => void, blur: () => void } | null>(null)
+const composer = ref<{ focus: () => void, focusEnd: () => void, blur: () => void, addImages: (files: File[]) => Promise<void> } | null>(null)
 const mirror = ref<{ focus: () => void } | null>(null)
 const searchOpen = ref(typeof route.query.q === 'string' && typeof route.query.hit === 'string')
 
@@ -215,10 +216,13 @@ const canAttachTerminal = computed(() => terminalAttachment({
   available: Boolean(pane.value && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value)),
 }))
 
-async function attachFile(e: Event) {
+function attachFile(e: Event) {
   const input = e.target as HTMLInputElement
   const files = [...(input.files || [])]
   input.value = ''
+  sendFiles(files)
+}
+async function sendFiles(files: File[]) {
   if (!canAttachTerminal.value || !pane.value) return
   for (const file of files) {
     try {
@@ -231,6 +235,38 @@ async function attachFile(e: Event) {
       onSent(await sendMessage(pane.value, props.paneId, data.path))
       haptic()
     } catch (err) { toast(`${t('Fichier non envoyé')} : ${(err as Error).message}`, true) }
+  }
+}
+
+// Fichiers glissés depuis le Finder / l'explorateur : conversation → photos du
+// champ (même chemin que le « + ») ; terminal → même envoi que « Joindre un
+// fichier… ». Ailleurs (panneau Projet, hors ligne), rien : app.vue empêche
+// seulement le navigateur d'ouvrir le fichier.
+const dropTarget = computed<'chat' | 'term' | null>(() => {
+  if (canAttachTerminal.value) return 'term'
+  if (composerShown.value && mode.value !== 'project' && !offlineView.value) return 'chat'
+  return null
+})
+const dropDepth = ref(0)
+function onDrag(e: DragEvent) {
+  if (!carriesFiles(e.dataTransfer) || !dropTarget.value) return
+  e.preventDefault()
+  if (e.type === 'dragover' && e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+  dropDepth.value = dragDepth(dropDepth.value, e.type)
+}
+function onDrop(e: DragEvent) {
+  dropDepth.value = 0
+  if (!carriesFiles(e.dataTransfer) || !dropTarget.value) return
+  e.preventDefault()
+  const files = [...(e.dataTransfer?.files || [])]
+  if (!files.length) return
+  if (dropTarget.value === 'term') return sendFiles(files)
+  const { images, refused } = splitDropped(files)
+  if (refused.length) toast(tl(`Seules les images se joignent au message : ${refused.map(f => f.name).join(', ')}`, `Only images can be attached to a message: ${refused.map(f => f.name).join(', ')}`), true)
+  if (images.length) {
+    composer.value?.addImages(images)
+    composer.value?.focus()
+    haptic()
   }
 }
 
@@ -397,7 +433,13 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     :id="cell ? undefined : 'agent'" :class="cell ? ['cell-view', { active, gripped: grip }] : 'view'" :style="cell ? undefined : viewStyle" :data-pane="cell ? paneId : undefined"
     @touchstart="onSwipeStart" @touchmove="onSwipeMove" @touchend="onSwipeEnd" @touchcancel="onSwipeEnd"
     @pointerdown.capture="cell && emit('activate')" @focusin="cell && emit('activate')"
+    @dragenter="onDrag" @dragover="onDrag" @dragleave="onDrag" @drop="onDrop"
   >
+    <div v-if="dropDepth && dropTarget" class="file-drop" aria-hidden="true">
+      <UIcon :name="dropTarget === 'term' ? 'i-lucide-paperclip' : 'i-lucide-image-plus'" class="file-drop-icon" />
+      <span class="file-drop-label">{{ t('Déposer pour joindre') }}</span>
+      <small>{{ dropTarget === 'term' ? t('Le chemin du fichier part dans le terminal') : t('Images · réduites avant l’envoi') }}</small>
+    </div>
     <SpaceTabs v-if="!cell && pane" :workspace="pane.workspace" :current="pane.tab" />
     <header class="top bar agent-top">
       <span v-if="cell && grip" class="cell-grip" role="button" :aria-label="t('Glisser pour déplacer le pane')" :title="t('Glisser pour déplacer le pane')">
