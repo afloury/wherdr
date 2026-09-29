@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { boardSections, decisionPrefix, detailPrefix, launchMessage, listKind, normalizeThreads, ownerIsMe, parseTaskLine, parseTasks, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage, unblockMessage } from '../shared/projectBoard'
+import { boardSections, coordinatorRules, decisionPrefix, extractLinks, prLabel, reviewCommentPrefix, reviewedMessage, detailPrefix, launchMessage, listKind, normalizeThreads, ownerIsMe, parseTaskLine, parseTasks, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage, unblockMessage } from '../shared/projectBoard'
 import { pluginBinary } from '../server/utils/projectBoard'
 import { isCoordinator } from '../shared/projects'
 import type { Pane } from '../shared/types'
@@ -282,7 +282,7 @@ describe('aide du tableau (Réglages › Plugins)', () => {
       const md = tasksTemplate(lang)
       expect(md.startsWith('# Tasks\n')).toBe(true)
       const lists = parseTasks(md)
-      expect(lists.map(l => l.kind)).toEqual(['test', 'decide', 'blocked', 'doing', 'backlog'])
+      expect(lists.map(l => l.kind)).toEqual(['test', 'decide', 'review', 'blocked', 'doing', 'backlog'])
       expect(lists.every(l => l.tasks.length === 1)).toBe(true)
     }
     expect(parseTasks(tasksTemplate('fr'))[0]!.title).toBe('À tester')
@@ -307,5 +307,37 @@ describe('aide du tableau (Réglages › Plugins)', () => {
       expect(fr).toContain(p('…', 'fr'))
       expect(m.coordinatorRules('en')).toContain(p('…', 'en'))
     }
+  })
+})
+
+describe('liste À relire', () => {
+  it('reconnaît les titres et synonymes', () => {
+    for (const h of ['À relire', 'To review', 'a relire', 'Relire', 'Review', 'Reviews', 'PR', 'PRs', 'Pull requests', 'À valider'])
+      expect(listKind(h)).toBe('review')
+    expect(listKind('Previews')).toBeNull()
+  })
+  it('retire les liens https du texte', () => {
+    expect(extractLinks('Bandeau hors ligne https://github.com/owner/repo/pull/12')).toEqual({ text: 'Bandeau hors ligne', links: ['https://github.com/owner/repo/pull/12'] })
+    expect(extractLinks('Voir [la PR](https://gitlab.com/g/p/-/merge_requests/3), merci')).toEqual({ text: 'Voir la PR, merci', links: ['https://gitlab.com/g/p/-/merge_requests/3'] })
+    expect(extractLinks('Ancien http://example.test/x et <https://example.test/a>.')).toEqual({ text: 'Ancien http://example.test/x et.', links: ['https://example.test/a'] })
+    expect(extractLinks('javascript:alert(1)').links).toEqual([])
+  })
+  it('lit la liste et garde le responsable', () => {
+    const [l] = parseTasks('## À relire\n- [ ] Bandeau — https://github.com/o/r/pull/7 (me)\n- [ ] https://bitbucket.org/o/r/pull-requests/4')
+    expect(l!.kind).toBe('review')
+    expect(l!.tasks[0]).toMatchObject({ text: 'Bandeau', owner: 'me', links: ['https://github.com/o/r/pull/7'] })
+    expect(l!.tasks[1]!.text).toBe('o/r#4')
+    expect(prLabel('https://example.test/doc')).toBe('example.test')
+  })
+  it('messages Relu et Commenter', () => {
+    expect(reviewedMessage(' Bandeau ')).toBe('✓ Relu : Bandeau')
+    expect(reviewedMessage('Banner', 'en')).toBe('✓ Reviewed: Banner')
+    expect(reviewCommentPrefix('Bandeau')).toBe('↳ Retour sur Bandeau : ')
+    expect(coordinatorRules()).toContain('✓ Relu : …')
+  })
+  it('En cours se place après À relire', () => {
+    const lists = parseTasks('## À relire\n- [ ] a\n## Backlog')
+    const open = [{ id: 't-0001' }] as never
+    expect(boardSections({ lists, open, resolved: [] }, { doing: 'En cours', done: 'Fait' }).map(s => s.kind)).toEqual(['review', 'doing', 'backlog', 'done'])
   })
 })

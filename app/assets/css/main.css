@@ -1947,6 +1947,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .pp-sec-icon { width: 14px; height: 14px; flex: none; color: var(--muted); }
 .pp-sec.test .pp-sec-icon { color: var(--ochre); }
 .pp-sec.decide .pp-sec-icon { color: var(--rose); }
+.pp-sec.review .pp-sec-icon { color: var(--accent); }
 .pp-sec.blocked .pp-sec-icon { color: var(--coral); }
 .pp-sec.doing .pp-sec-icon { color: var(--working); }
 .pp-sec.done .pp-sec-icon { color: var(--done); }
@@ -1962,6 +1963,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .pp-box { flex: none; width: 6px; height: 6px; margin: 7px 3px 0 4px; background: var(--dim); }
 .pp-sec.test .pp-box { background: var(--ochre); }
 .pp-sec.decide .pp-box { background: var(--rose); }
+.pp-sec.review .pp-box { background: var(--accent); }
 .pp-sec.blocked .pp-box { background: var(--coral); }
 .pp-sec.doing .pp-box { background: var(--working); }
 .pp-task.done .pp-box { background: var(--line-strong); }
@@ -1973,7 +1975,11 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .pp-task-body .pp-task-text { flex: none; }
 .pp-reason { font: 11px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 .pp-task-body .pp-owner { max-width: 100%; margin-top: 0; }
-.pp-task-foot { display: flex; align-items: center; gap: 6px; min-height: 26px; }
+.pp-task-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 26px; }
+.pp-links { display: inline-flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.pp-link { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 0 7px; border: 1px solid var(--line); color: var(--accent); font: 600 10px/1 var(--mono); letter-spacing: .04em; text-transform: uppercase; text-decoration: none; white-space: nowrap; }
+.pp-link:hover, .pp-link:focus-visible { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.pp-link .iconify { width: 12px; height: 12px; flex: none; }
 /* Confirmer / Problème / Question : carrés teintés de 26 px, dans une zone
    de toucher invisible d'au moins 40 px. */
 .pp-verdict { flex: none; display: flex; margin-left: auto; margin-right: -6px; }
@@ -1984,6 +1990,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .pp-vbtn.decide { color: var(--rose); }
 .pp-vbtn.launch { color: var(--green); }
 .pp-vbtn.unblock { color: var(--coral); }
+.pp-vbtn.reviewed { color: var(--green); }
 .pp-vbtn.clarify { color: var(--accent); }
 .pp-vbtn.backlog-action { width: auto; min-width: 78px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font: 600 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .04em; }
 .pp-vbtn.backlog-action::after { width: auto; inset: 0; }
