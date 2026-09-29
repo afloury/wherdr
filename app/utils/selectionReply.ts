@@ -75,3 +75,43 @@ export function createSelectionSettler(o: { show: () => void, hide: () => void, 
     dispose() { clear() },
   }
 }
+
+// Longueur d'un morceau de texte sans ses blancs de fin (espaces, sauts de ligne).
+// Renvoie le morceau (index) et le décalage juste après son dernier caractère
+// non blanc, en partant de la fin ; null si tout est blanc.
+export function trimmedEnd(parts: readonly string[]): { index: number, offset: number } | null {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const offset = parts[i]!.replace(/\s+$/u, '').length
+    if (offset > 0) return { index: i, offset }
+  }
+  return null
+}
+
+// Plage rognée au contenu d'un message : un triple-clic ou un glissé jusqu'au
+// bout déborde souvent (pied « Répondre », message suivant, liste) et finit par
+// un saut de ligne. On garde le début, on coupe la fin au contenu, puis aux
+// derniers caractères non blancs. Null si rien de visible ne reste.
+export function clampRange(range: Range, content: Node): Range | null {
+  const r = range.cloneRange()
+  if (!content.contains(r.startContainer)) {
+    // Début avant le contenu (dans l'en-tête du message) : on part du contenu.
+    if (r.comparePoint(content, 0) < 0) return null
+    r.setStart(content, 0)
+  }
+  if (!content.contains(r.endContainer)) r.setEnd(content, content.childNodes.length)
+  const nodes: Text[] = []
+  const parts: string[] = []
+  const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT)
+  for (let n = walker.nextNode() as Text | null; n; n = walker.nextNode() as Text | null) {
+    if (!r.intersectsNode(n)) continue
+    const from = n === r.startContainer ? r.startOffset : 0
+    const to = n === r.endContainer ? r.endOffset : n.data.length
+    nodes.push(n)
+    parts.push(n.data.slice(from, to))
+  }
+  const end = trimmedEnd(parts)
+  if (!end) return null
+  const node = nodes[end.index]!
+  r.setEnd(node, (node === r.startContainer ? r.startOffset : 0) + end.offset)
+  return r
+}

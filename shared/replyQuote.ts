@@ -37,19 +37,32 @@ export function truncate(s: string, max: number): string {
   return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,;:.]+$/, '')}…`
 }
 
+// Garde le début et la fin, coupés aux mots : « <début>… <fin> » en `max`
+// caractères au plus, pour que l'agent sache exactement quel passage est visé.
+export function truncateMiddle(s: string, max: number): string {
+  if (s.length <= max) return s
+  const room = max - 2 // « … »
+  const startLen = Math.ceil(room / 2)
+  const start = truncate(s, startLen + 1).replace(/…$/, '')
+  let end = s.slice(s.length - (room - start.length))
+  const space = end.indexOf(' ')
+  if (space >= 0 && space < end.length * 0.4) end = end.slice(space + 1)
+  return `${start}… ${end.replace(/^[\s,;:.]+/, '')}`
+}
+
 function head(lang: 'fr' | 'en', time: string) {
   return lang === 'en' ? `↳ Replying to your message from ${time} (` : `↳ En réponse à ton message de ${time} (`
 }
 const open = (lang: 'fr' | 'en') => (lang === 'en' ? '"' : '« ')
 const close = (lang: 'fr' | 'en') => (lang === 'en' ? '")' : ' »)')
 
-// Cible d'une réponse : extrait du passage choisi, sinon du début du message,
+// Cible d'une réponse : passage choisi (début et fin s'il est trop long), sinon début du message,
 // assez court pour que le repère entier tienne dans MARKER_MAX.
 export function replyTarget(message: string, time: string, lang: 'fr' | 'en', selection?: string): ReplyTarget {
   const room = MARKER_MAX - head(lang, time).length - open(lang).length - close(lang).length
   const part = Boolean(selection && selection.trim())
   const src = plainText(part ? selection! : message)
-  return part ? { time, excerpt: truncate(src, Math.max(20, room)), part } : { time, excerpt: truncate(src, Math.max(20, room)) }
+  return part ? { time, excerpt: truncateMiddle(src, Math.max(20, room)), part } : { time, excerpt: truncate(src, Math.max(20, room)) }
 }
 
 export function replyMarker(r: ReplyTarget, lang: 'fr' | 'en'): string {
@@ -79,7 +92,8 @@ const norm = (s: string) => plainText(s).toLowerCase()
 // même heure et texte qui contient l'extrait ; à défaut l'extrait seul, puis
 // l'heure seule. Le plus récent avant la réponse (index `before`) l'emporte.
 export function findReplyOrigin<T extends { time: string | null, text: string }>(list: T[], r: ReplyTarget, before = list.length): T | null {
-  const bit = norm(r.excerpt.replace(/…$/, '')).slice(0, 60)
+  // Partie avant le premier « … » : début du message, ou d'un passage « début… fin ».
+  const bit = norm(r.excerpt.split('…')[0]!).slice(0, 60)
   const cands = list.slice(0, before).reverse()
   const hasBit = (x: T) => Boolean(bit) && norm(x.text).includes(bit)
   return cands.find(x => x.time === r.time && hasBit(x))
