@@ -382,9 +382,10 @@ function setOpen(key: string, v: boolean) {
 // dans ce message (relevé dès l'appui, avant que le tap ne le désélectionne)
 // sert de repère à la place du début du message.
 let pickedSel = ''
+const msgEl = (key: string) => [...(listEl.value?.querySelectorAll<HTMLElement>('[data-hit-key]') || [])].find(el => el.dataset.hitKey === key) || null
 function readSelection(key: string) {
   const sel = window.getSelection()
-  const el = document.getElementById(key)
+  const el = msgEl(key)
   pickedSel = sel && !sel.isCollapsed && el && sel.anchorNode && el.contains(sel.anchorNode) ? sel.toString() : ''
 }
 function replyTo(key: string) {
@@ -399,7 +400,7 @@ function replyTo(key: string) {
 }
 // Citation touchée : défile jusqu'au message d'origine et le met en évidence.
 function gotoOrigin(key: string | null) {
-  const el = key ? document.getElementById(key) : null
+  const el = key ? msgEl(key) : null
   if (!el) return toast(t('Message d’origine introuvable (plus haut dans la conversation ?)'), true)
   el.scrollIntoView({ block: 'center', behavior: 'smooth' })
   el.classList.remove('msg-flash')
