@@ -294,6 +294,27 @@ export function claudeScreenEffort(text: string | null | undefined): string | nu
   return null
 }
 
+// Claude : modèle annoncé à l'écran, pour un agent qui n'a pas encore de
+// transcription. En-tête de Claude Code (« Opus 5.5 with low effort · Claude
+// Pro », « Sonnet 5 (1M context) · Claude Max ») ou retour d'un /model tapé
+// (« Set model to Sonnet 5 »). Le plus bas l'emporte.
+const HEADER_RE = /([A-Z][A-Za-z]+ \d+(?:\.\d+)*(?: \([^)]*\))?)(?: with (low|medium|high|xhigh|max|ultracode) effort)? · (?:Claude\b|API\b)/
+const SET_SCREEN_RE = /(?:Set model to|Kept model as) `?([^`\n]+?)`?(?= for this session| and saved|\s*$)/
+export function claudeScreenModel(text: string | null | undefined): ModelInfo | null {
+  const lines = String(text || '').split('\n')
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const l = lines[i]!.replace(/\s+$/, '')
+    const s = SET_SCREEN_RE.exec(l)
+    if (s) {
+      const label = cleanModelName(s[1]!)
+      if (label) return { id: null, label, effort: null, at: null }
+    }
+    const h = HEADER_RE.exec(l)
+    if (h) return { id: null, label: cleanModelName(h[1]!), effort: h[2] ? h[2].toLowerCase() : null, at: null }
+  }
+  return null
+}
+
 // Codex au repos : sa ligne d'état sous le champ de saisie donne le modèle et
 // l'effort réellement en service (« GPT-5.6-Terra medium · ~ · … »), y compris
 // après un /model tapé ailleurs, que la rollout n'enregistre qu'au tour suivant.

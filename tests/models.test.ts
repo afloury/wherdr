@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  claudeEffortCommand, claudeEffortLevels, claudeModelLabel, codexCachedEfforts, codexConfigModel, codexFooterModel, codexModelLabel, effortMatches, effortValue, lastModel, modelFromLine, parseClaudeEffortSlider, parseClaudeEffortScreen, claudeScreenEffort, parseModelMenu, sameModel, switchConfirmKeys,
+  claudeEffortCommand, claudeEffortLevels, claudeModelLabel, codexCachedEfforts, codexConfigModel, codexFooterModel, codexModelLabel, effortMatches, effortValue, lastModel, modelFromLine, parseClaudeEffortSlider, parseClaudeEffortScreen, claudeScreenEffort, claudeScreenModel, parseModelMenu, sameModel, switchConfirmKeys,
 } from '../server/utils/models'
 import { createTranscripts, parseLines } from '../server/utils/transcripts'
 
@@ -174,6 +174,20 @@ describe('menu /model', () => {
     expect(claudeScreenEffort(' Opus 5.5 with low effort · Claude Pro')).toBe('low')
     expect(claudeScreenEffort('Opus 5.5 with medium effort\n⎿  Set effort level to low (for this session only)')).toBe('low')
     expect(claudeScreenEffort('rien')).toBeNull()
+  })
+  it('lit le modèle de Claude sur l’en-tête d’un agent neuf', () => {
+    const head = (l: string) => ` ▐▛███▜▌   Claude Code v2.1.90\n▝▜█████▛▘  ${l}\n  ▘▘ ▝▝    ~/projets/demo\n\n────────\n❯ \n────────`
+    expect(claudeScreenModel(head('Opus 5.5 with low effort · Claude Pro'))).toEqual({ id: null, label: 'Opus 5.5', effort: 'low', at: null })
+    expect(claudeScreenModel(head('Sonnet 5 · Claude Max'))).toEqual({ id: null, label: 'Sonnet 5', effort: null, at: null })
+    expect(claudeScreenModel(head('Fable 5.1 (1M context) with xhigh effort · Claude Max'))?.label).toBe('Fable 5.1 (1M)')
+    expect(claudeScreenModel(head('Haiku 4.5 · API Usage Billing'))?.label).toBe('Haiku 4.5')
+    // /model tapé avant le premier message : le plus bas l'emporte.
+    expect(claudeScreenModel(head('Opus 5.5 with low effort · Claude Pro') + '\n❯ /model\n  ⎿  Set model to Sonnet 5 for this session only')?.label).toBe('Sonnet 5')
+    expect(claudeScreenModel('rien · Claude')).toBeNull()
+    expect(claudeScreenModel(null)).toBeNull()
+  })
+  it('lit le modèle de Codex neuf sur sa ligne d’état', () => {
+    expect(codexFooterModel('\n› Write tests\n\n  GPT-5.6-Terra medium · ~/projets/demo')).toMatchObject({ label: 'GPT-5.6-Terra', effort: 'medium' })
   })
   it('lit les niveaux proposés par le menu Codex', () => {
     const menu = parseModelMenu(fx('codex-model-2.txt'))
