@@ -1,7 +1,11 @@
-# wherdr
+<p align="center">
+  <img src="server/assets/branding/icons/icon-512.png" alt="wherdr logo" width="120">
+</p>
 
-**A complete workspace for the coding agents running in [Herdr](https://herdr.dev), on your
-computer and on your phone.**
+<h1 align="center">wherdr</h1>
+
+<p align="center"><b>A complete workspace for the coding agents running in <a href="https://herdr.dev">Herdr</a>, on your
+computer and on your phone.</b></p>
 
 ## Quick start
 
