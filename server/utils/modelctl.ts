@@ -14,7 +14,7 @@ import { HerdrError, herdr, sleep } from './herdr'
 import { closePanel } from './actions'
 import { READY, findPane, poll, transcripts } from './state'
 import { machineOfPane } from './machines'
-import { type ClaudeEffortSlider, type ModelMenu, claudeEffortCommand, claudeEffortLevels, cleanModelName, codexCachedEfforts, codexConfigModel, claudeScreenEffort, codexFooterModel, effortMatches, effortValue, parseClaudeEffortScreen, parseModelMenu, sameModel, switchConfirmKeys } from './models'
+import { type ClaudeEffortSlider, type ModelMenu, claudeEffortCommand, claudeEffortLevels, cleanModelName, codexCachedEfforts, codexConfigModel, claudeScreenEffort, claudeScreenModel, codexFooterModel, effortMatches, effortValue, parseClaudeEffortScreen, parseModelMenu, sameModel, switchConfirmKeys } from './models'
 
 // ---------------------------------------------------------------- modèle courant
 // Choix fait depuis le téléphone : affiché tout de suite, jusqu'à ce que la
@@ -45,8 +45,12 @@ const footers = new Map<string, { info: ModelInfo, ms: number }>()
 // Claude : effort annoncé à l'écran (bannière, retour de /effort), plus fiable
 // que la transcription qui garde l'effort par défaut.
 const screenEfforts = new Map<string, { effort: string, ms: number }>()
+// Claude : modèle de l'en-tête (ou d'un /model tapé), repli tant qu'il n'y a pas de transcription.
+const screenModels = new Map<string, ModelInfo>()
 export function noteScreen(paneId: string, agent: string | null, text: string | null | undefined) {
   if (agent === 'claude') {
+    const model = claudeScreenModel(text)
+    if (model) screenModels.set(paneId, model)
     const effort = claudeScreenEffort(text)
     if (effort && screenEfforts.get(paneId)?.effort !== effort) screenEfforts.set(paneId, { effort, ms: Date.now() })
     return
@@ -61,6 +65,7 @@ export function forgetModel(paneId: string) {
   overrides.delete(paneId)
   observedEfforts.delete(paneId)
   screenEfforts.delete(paneId)
+  screenModels.delete(paneId)
 }
 
 export async function currentModel(p: Pane): Promise<ModelInfo | null> {
@@ -87,6 +92,11 @@ export async function currentModel(p: Pane): Promise<ModelInfo | null> {
   const observed = observedEfforts.get(p.id)
   if (fromFile && !fromFile.effort && observed && sameModel(fromFile.label, observed.label)) {
     return { ...fromFile, effort: observed.effort }
+  }
+  if (!fromFile && p.agent === 'claude') {
+    // Agent neuf : l'en-tête de Claude Code dit déjà modèle et effort.
+    const sm = screenModels.get(p.id)
+    if (sm) return { ...sm, effort: seen ? seen.effort : sm.effort }
   }
   return fromFile || fallbackModel(p)
 }
