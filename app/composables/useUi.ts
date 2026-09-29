@@ -2,6 +2,7 @@
 // ordinateur) : menus, nouvel agent, renommer, résultat de commande, aperçu
 // d'image, confirmation.
 import { parseMenu } from '../../shared/menuScreen'
+import { agentAnswering } from '../../shared/commandScreen'
 
 export interface MenuItem {
   kind?: 'action' | 'command' | 'separator' | 'note' | 'group'
@@ -70,34 +71,45 @@ export const anySheetOpen = computed(() => menuState.open || newAgentOpen.value 
 
 // Les commandes locales ne laissent pas de trace dans la transcription : on
 // montre ce qu'elles ont affiché, extrait de l'écran du terminal.
-export async function showCommandResult(pane: string, cmd: string) {
+// `builtin` : commande intégrée de l'agent, panneau ouvert tout de suite (il
+// charge) ; sinon (commande inconnue du catalogue) il ne s'ouvre qu'une fois
+// l'écran lu, si ce n'est ni un menu ni l'agent au travail.
+let resultSeq = 0
+export async function showCommandResult(pane: string, cmd: string, builtin = true) {
+  const seq = ++resultSeq
   commandResult.pane = pane
   commandResult.cmd = cmd
   commandResult.text = null
   commandResult.tab = null
-  commandResult.open = true
+  commandResult.open = builtin
   await new Promise(r => setTimeout(r, 1800))
-  await readCommandResult(pane, cmd)
+  if (seq !== resultSeq) return
+  await readCommandResult(pane, cmd, 5, seq)
 }
 
 // Lit l'écran et en extrait le résultat ; relit tant que le panneau charge
 // (« Loading… » : les jauges de /usage arrivent après un instant).
-async function readCommandResult(pane: string, cmd: string, tries = 5) {
-  const current = () => commandResult.open && commandResult.pane === pane && commandResult.cmd === cmd
+async function readCommandResult(pane: string, cmd: string, tries = 5, seq = resultSeq) {
+  const current = () => seq === resultSeq && commandResult.pane === pane && commandResult.cmd === cmd
+    && (commandResult.open || commandResult.text === null)
   for (let i = 0; i < tries && current(); i++) {
     try {
       const { text, tab } = await api<{ text: string, tab: string | null }>(`/api/screen?pane=${encodeURIComponent(pane)}`)
       if (!current()) return
       // Menu interactif (/resume, /model…) : pas une sortie, il se pilote dans la conversation.
-      if (parseMenu(text)) { closeCommandResult(false); return }
+      // Skill, commande personnalisée, /compact… : l'agent travaille, la
+      // conversation le montre ; Échap l'interromprait.
+      if (parseMenu(text) || agentAnswering(text, cmd)) { closeCommandResult(false); return }
       const shown = extractResult(text, cmd)
       const loading = /\bLoading\b/.test(shown)
       if (loading && i < tries - 1) { await new Promise(r => setTimeout(r, 1200)); continue }
       commandResult.tab = tab
       commandResult.text = shown || t('Rien d’affiché — regarde l’onglet Terminal.')
+      commandResult.open = true
       return
     } catch (err) {
       commandResult.text = (err as Error).message
+      commandResult.open = true
       return
     }
   }
@@ -154,6 +166,7 @@ export async function switchCommandTab(target: string) {
 // `dismiss` : Échap envoyé au terminal pour fermer le panneau de la commande ;
 // jamais pour un menu interactif (Échap l'annulerait).
 export function closeCommandResult(dismiss = true) {
+  resultSeq++
   if (!commandResult.open) return
   commandResult.open = false
   const pane = commandResult.pane
