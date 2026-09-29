@@ -1,6 +1,6 @@
 // Écrans d'attente des agents (cf. server/utils/waitScreen.ts) : ce que l'app
 // en montre. Les touches ne partent que sur un bouton de l'utilisateur.
-import type { Pane, WaitAction, WaitKind, WaitScreen } from '../../shared/types'
+import type { InteractiveMenu, Pane, WaitAction, WaitKind, WaitScreen } from '../../shared/types'
 import { language } from './i18n'
 
 // Écran reconnu (hooks, confiance, connexion, mise à jour) : l'agent attend
@@ -10,7 +10,9 @@ export function knownScreen(p: Pane | null | undefined): WaitScreen | null {
   return p && p.screen && p.screen.kind !== 'other' && p.status !== 'working' ? p.screen : null
 }
 
-const KEYS: Record<string, [string, string]> = { enter: ['Entrée', 'Enter'], esc: ['Échap', 'Esc'], tab: ['Tab', 'Tab'] }
+const KEYS: Record<string, [string, string]> = {
+  enter: ['Entrée', 'Enter'], esc: ['Échap', 'Esc'], tab: ['Tab', 'Tab'], space: ['Espace', 'Space'], left: ['←', '←'], right: ['→', '→'],
+}
 // Libellés anglais des légendes de Codex / Claude Code.
 const LABELS: Record<string, [string, string]> = {
   'trust all': ['Tout approuver', 'Trust all'],
@@ -28,11 +30,29 @@ const LABELS: Record<string, [string, string]> = {
   'select': ['Choisir', 'Select'],
   'apply': ['Appliquer', 'Apply'],
   'dismiss': ['Ignorer', 'Dismiss'],
+  // Menus de Claude Code (/resume, /model…).
+  'show all projects': ['Tous les projets', 'All projects'],
+  'only show current branch': ['Branche courante seulement', 'Current branch only'],
+  'preview': ['Aperçu', 'Preview'],
+  'set as default': ['Définir par défaut', 'Set as default'],
+  'use this session only': ['Cette session seulement', 'This session only'],
+  'resume': ['Reprendre', 'Resume'],
+  'clear': ['Effacer', 'Clear'],
+  '← switch': ['Onglet précédent', 'Previous tab'],
+  '→ switch': ['Onglet suivant', 'Next tab'],
 }
 const pick = (pair: [string, string], en: boolean) => pair[en ? 1 : 0]
 
 export function screenKeyName(key: string, en = language === 'en'): string {
-  return KEYS[key] ? pick(KEYS[key]!, en) : key
+  if (KEYS[key]) return pick(KEYS[key]!, en)
+  // « ctrl+a » → « Ctrl+A ».
+  const m = key.match(/^ctrl\+(\w)$/)
+  return m ? `Ctrl+${m[1]!.toUpperCase()}` : key
+}
+
+// Résumé d'un menu interactif ouvert pour la carte de l'accueil.
+export function menuSummary(m: InteractiveMenu, en = language === 'en'): string {
+  return m.title ? `${pick(['Menu', 'Menu'], en)} · ${m.title}` : pick(['Menu ouvert', 'Menu open'], en)
 }
 
 // « Tout approuver », « Revoir » ; libellé inconnu : tel quel, capitalisé.

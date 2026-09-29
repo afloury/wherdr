@@ -45,7 +45,7 @@ const where = computed(() => {
 const prompt = computed(() => (props.pane.status === 'blocked' ? props.pane.prompt : undefined))
 // Écran d'attente reconnu (hooks de Codex…) : son titre dit mieux ce qui est attendu.
 const screen = computed(() => knownScreen(props.pane))
-const preview = computed(() => (screen.value && screenSummary(screen.value)) || (prompt.value ? prompt.value.question : props.pane.preview))
+const preview = computed(() => (screen.value && screenSummary(screen.value)) || (props.pane.menu && props.pane.status !== 'working' && menuSummary(props.pane.menu)) || (prompt.value ? prompt.value.question : props.pane.preview))
 // Lu / non lu : seulement pour un agent qui a fini (prêt).
 const unread = computed(() => (space.value ? space.value.panes.filter(p => p.agent && p.status === 'done') : []))
 const readItem = computed(() => {

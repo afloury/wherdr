@@ -26,6 +26,20 @@ export type WaitKind = 'hooks' | 'trust' | 'login' | 'update' | 'other'
 export interface WaitAction { key: string, label: string }
 export interface WaitScreen { kind: WaitKind, title: string | null, lines: string[], actions: WaitAction[] }
 
+// Menu interactif plein écran de Claude Code (/resume, /model, /mcp…), cf.
+// shared/menuScreen.ts. `header` : en-tête de groupe, pas une entrée ; `search` :
+// texte du champ de recherche (null : pas de recherche) ; `more` : « 19 more below ».
+export interface MenuEntry { label: string, hint: string | null, header?: boolean, cursor?: boolean }
+export interface InteractiveMenu {
+  title: string | null
+  lines: string[]
+  items: MenuEntry[]
+  cursor: number | null
+  search: string | null
+  actions: WaitAction[]
+  more: string | null
+}
+
 export interface QueuedMessage { id: string, text: string, at?: number }
 
 // Écran de Claude Code au travail (cf. server/utils/claudeScreen.ts) : la
@@ -91,6 +105,8 @@ export interface Pane {
   queued?: QueuedMessage[]
   prompt?: Choices
   screen?: WaitScreen
+  // Menu interactif ouvert (agent au repos) : il remplace `prompt` et `screen`.
+  menu?: InteractiveMenu
   preview?: string
   model?: ModelInfo
   // Claude au travail, conversation affichée : verbe de sa ligne d'activité (« Orbiting »).

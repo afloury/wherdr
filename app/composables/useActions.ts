@@ -28,6 +28,21 @@ export async function pressScreenKey(paneId: string, a: WaitAction): Promise<boo
   }
 }
 
+// Menu interactif de Claude Code (/resume…) : choisir une entrée, appuyer sur
+// une touche de sa légende, remplacer le texte de sa recherche. Le serveur
+// relit l'écran avant chaque touche.
+export async function menuAction(paneId: string, body: { op: 'select', index: number, label: string } | { op: 'key', key: string, label: string } | { op: 'search', text: string }): Promise<boolean> {
+  haptic()
+  try {
+    await api('/api/menu', { pane_id: paneId, ...body })
+    if (body.op === 'select') toast(`✓ ${body.label}`)
+    return true
+  } catch (err) {
+    toast((err as Error).message, true)
+    return false
+  }
+}
+
 // Envoyer un message à un agent (champ de saisie, panneau Projet). Agent bloqué :
 // l'invite attend une saisie libre (« Type something… »), agent.prompt la
 // refuserait : on tape le texte tel quel. Agent au travail : le serveur met le
