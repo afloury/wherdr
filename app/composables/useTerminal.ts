@@ -5,7 +5,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { terminalPixelWidth } from '~/utils/terminalSize'
-import { bindTerminalSelection } from '~/utils/terminalSelection'
+import { bindTerminalSelection, followSelection, type SelectionFollower } from '~/utils/terminalSelection'
 import { terminalClosedText, terminalUnavailableText } from '~/utils/terminalClosed'
 
 const TERM_FONT = '"Wherdr Symbols", "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace'
@@ -27,6 +27,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   const kbdOn = ref(false)
   const selectionHint = useTerminalSelectionHint()
   let unbindSelection: (() => void) | null = null
+  let follower: SelectionFollower | null = null
 
   const wsBase = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
 
@@ -51,7 +52,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     fit = new FitAddon()
     term.loadAddon(fit)
     term.open(host)
-    unbindSelection = bindTerminalSelection(term)
+    follower = followSelection(term)
+    unbindSelection = bindTerminalSelection(term, follower)
     // Le choix de l'appareil peut changer pendant que le terminal reste monté.
     setRenderer(terminalRenderer.value)
     // JetBrains Mono (embarquée) : une fois chargée, xterm remesure ses cellules.
@@ -199,7 +201,10 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         if (!term) return
         if (m.width && m.height && (m.width !== term.cols || m.height !== term.rows)) term.resize(m.width, m.height)
         const current = term
-        current.write(b64ToBytes(m.bytes || ''), () => selectionHint.refresh(current))
+        current.write(b64ToBytes(m.bytes || ''), () => {
+          if (term === current) follower?.frame()
+          selectionHint.refresh(current)
+        })
       } else if (m.type === 'terminal.closed') {
         closedReason = terminalClosedText(m)
       } else if (m.type === 'herdr.stderr') {
@@ -253,6 +258,10 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   const hasFocus = () => Boolean(term && document.activeElement === term.textarea)
   const rowHeight = () => (term && term.rows && el ? el.clientHeight / term.rows : 16)
   const pageRows = () => term?.rows || 24
+  // Défilement demandé à Herdr : la sélection suivra le texte à l'image suivante.
+  function scroll(lines: number) {
+    if (sendTerm({ type: 'terminal.scroll', direction: lines > 0 ? 'up' : 'down', lines: Math.abs(lines) })) follower?.scrolled(lines)
+  }
 
   function setVisible(visible: boolean) {
     sendTerm({ type: 'visibility', visible })
@@ -265,6 +274,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     disconnect()
     unbindSelection?.()
     unbindSelection = null
+    follower?.dispose()
+    follower = null
     webgl = null // term.dispose() détruit ses addons
     term?.dispose()
     term = null
@@ -272,7 +283,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
 
   return {
     mount, connect, disconnect, isConnected, sendTerm, sendKeys, fitNow, setFontSize,
-    reset, focus, blur, hasFocus, rowHeight, pageRows, setVisible, dispose, loading, kbdOn,
+    reset, scroll, focus, blur, hasFocus, rowHeight, pageRows, setVisible, dispose, loading, kbdOn,
     hasBanner: opts.hasBanner, selectionHint,
   }
 }

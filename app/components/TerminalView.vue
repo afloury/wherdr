@@ -16,7 +16,7 @@ let moved = false
 const flush = () => {
   raf = 0
   if (!pendingLines) return
-  props.ctl.sendTerm({ type: 'terminal.scroll', direction: pendingLines > 0 ? 'up' : 'down', lines: Math.abs(pendingLines) })
+  props.ctl.scroll(pendingLines)
   pendingLines = 0
 }
 const queue = (n: number) => {
