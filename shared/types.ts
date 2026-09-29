@@ -99,6 +99,9 @@ export interface Pane {
   claudeScreen?: ClaudeScreen
   // Statut de Claude Code près du champ de saisie (« ✔ Update installed · Restart to update »).
   claudeNotice?: string
+  // Redémarrage demandé depuis wherdr (cf. server/utils/restart.ts) : l'agent
+  // quitte puis revient, le pane passe un instant sans agent.
+  restart?: { phase: 'stopping' | 'starting' | 'failed', agent: string, error?: string }
 }
 
 export interface ChangeLine { kind: 'add' | 'del' | 'context' | 'hunk' | 'meta', text: string }

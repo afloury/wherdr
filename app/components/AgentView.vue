@@ -251,6 +251,8 @@ const agentMenu = computed<MenuItem[]>(() => {
     label: t('Prendre la main sur ce terminal'), icon: 'i-lucide-arrow-left-right',
     run: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => ctl.connect(true)) },
   })
+  // Relancer Claude / Codex dans ce pane, sur la même conversation.
+  if (p && canRestart(p) && !p.restart) items.push({ label: t('Redémarrer l’agent'), icon: 'i-lucide-rotate-cw', run: () => restartAgent(p) })
   items.push({
     label: t('Reconnecter'), icon: 'i-lucide-refresh-cw',
     run: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => { ctl.reset(); ctl.connect(false) }) },
@@ -492,7 +494,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
 
     <ChoicesPanel v-if="(prompt || screen) && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :screen="screen" />
     <Keybar v-if="mode === 'term' && eventsOpen && !offlineView && !machineDown" :ctl="ctl" />
-    <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" @sent="onSent" />
+    <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" @sent="onSent" @show-terminal="setMode('term')" />
     </div>
     <div
       v-if="projectSide && sideOpen" class="side-handle" :class="{ dragging: sideDrag }" role="separator" aria-orientation="vertical"

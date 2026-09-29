@@ -1,5 +1,6 @@
 // Actions sur les agents partagées entre la liste et la vue agent.
 import type { Pane, QueuedMessage, WaitAction } from '#shared/types'
+import { type RestartPreview, RESTARTABLE, restartNotice } from '#shared/restart'
 
 // Choisir une option d'une invite bloquante (le serveur revérifie l'écran).
 export async function choose(paneId: string, index: number, label: string): Promise<boolean> {
@@ -52,8 +53,42 @@ export function statusKey(p: Pane) {
 export function statusLabel(p: Pane) {
   const s = statusKey(p)
   if (!p.agent) return 'Shell'
+  if (p.restart && p.restart.phase !== 'failed') return t('Redémarrage')
   if (s === 'unknown' && p.pendingPrompt) return t('Démarrage')
   return t((STATUS[s] || STATUS.unknown!).label)
+}
+
+// Redémarrer l'agent dans son pane (mise à jour installée…) en reprenant sa
+// conversation. Confirmation seulement s'il y a quelque chose à dire : agent
+// au travail ou en attente, options de lancement non retrouvées, conversation
+// vide. Le suivi s'affiche ensuite au-dessus du champ (pane.restart).
+export async function restartAgent(p: Pane) {
+  if (!p.agent || !canRestart(p)) return
+  const who = kindLabel(p.agent)
+  let pv: RestartPreview
+  try {
+    pv = await api<RestartPreview>(`/api/restart?pane=${encodeURIComponent(p.id)}`)
+  } catch (err) { return toast((err as Error).message, true) }
+  const n = restartNotice(p.status, pv)
+  if (n.confirm) {
+    const lines: string[] = []
+    if (n.busy) lines.push(tl(`${who} est en train de travailler : le redémarrer interrompra son travail en cours.`, `${who} is working: restarting it will interrupt what it is doing.`))
+    else lines.push(tl(`Redémarrer ${who} ? Il reprendra la même conversation.`, `Restart ${who}? It will resume the same conversation.`))
+    if (n.fresh) lines.push(tl('Cette conversation est encore vide : l’agent repartira sur une conversation neuve.', 'This conversation is still empty: the agent will start a new one.'))
+    if (n.defaults) lines.push(tl('Options de lancement introuvables : l’agent repartira avec tes réglages par défaut (modèle, effort, permissions).', 'Launch options not found: the agent will restart with your default settings (model, effort, permissions).'))
+    else if (n.dropped.length) lines.push(tl(`Options non reprises, l’agent repartira avec tes réglages par défaut pour : ${n.dropped.join(' ')}`, `Options not kept, the agent will use your defaults for: ${n.dropped.join(' ')}`))
+    const ok = await askConfirm(lines.join('\n\n'), n.busy ? t('Redémarrer quand même') : t('Redémarrer'), n.busy ? 'error' : 'primary')
+    if (!ok) return
+  }
+  haptic()
+  try {
+    await api('/api/restart', { pane_id: p.id })
+  } catch (err) { toast((err as Error).message, true) }
+}
+export const canRestart = (p: Pane) => Boolean(p.agent && RESTARTABLE.has(p.agent))
+export async function dismissRestart(paneId: string) {
+  try { await api('/api/restart', { pane_id: paneId, dismiss: true }) }
+  catch (err) { toast((err as Error).message, true) }
 }
 
 export async function closePane(p: Pane) {

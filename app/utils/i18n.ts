@@ -14,6 +14,13 @@ const EN: Record<string, string> = {
   'Il est déjà 20 h passées': 'It is already past 8 pm',
   'Le maintien éveillé n’a pas démarré ; l’état précédent est conservé': 'Keep awake did not start; the previous state is kept',
   'Le capot fermé nécessite le secteur': 'Closed lid requires the power adapter',
+  // Redémarrage de l'agent
+  'Redémarrer l’agent': 'Restart agent', 'Redémarrer': 'Restart', 'Redémarrer quand même': 'Restart anyway',
+  'Redémarrer pour mettre à jour': 'Restart to update', 'Redémarrage': 'Restarting',
+  'Redémarrage échoué': 'Restart failed',
+  'l’agent ne s’est pas arrêté': 'the agent did not stop', 'l’agent n’a pas redémarré': 'the agent did not restart',
+  'redémarrage déjà en cours': 'restart already in progress', 'agent non pris en charge': 'agent not supported',
+  'agent introuvable': 'agent not found', 'timed out waiting for agent startup': 'timed out waiting for the agent to start',
   // Demande de permission
   'Réduire': 'Collapse',
   'Trop long : seul le début est affiché. Le terminal montre la suite.': 'Too long: only the beginning is shown. The terminal shows the rest.', 'Ce qui empêche la veille': 'What prevents sleep',

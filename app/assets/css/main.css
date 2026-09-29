@@ -1125,6 +1125,27 @@ body.kb .composer { padding-bottom: 8px; }
   font: 400 11px/1.3 var(--mono); color: var(--blue);
   text-align: right; padding: 0 2px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* Ligne cliquable (« Redémarrer pour mettre à jour ») et suivi du redémarrage. */
+.composer-notice:has(.notice-btn), .composer-notice.restart {
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0;
+}
+.composer-notice .restart-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.composer-notice .notice-btn {
+  flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px;
+  font: 500 10.5px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .04em;
+  color: var(--blue); background: none; border: 1px solid currentColor; border-radius: 0; cursor: pointer;
+}
+.composer-notice .notice-btn:hover { background: color-mix(in srgb, currentColor 14%, transparent); }
+.composer-notice .notice-btn:disabled { opacity: .5; cursor: default; }
+.composer-notice.failed { color: var(--rose); flex-wrap: wrap; justify-content: flex-start; row-gap: 4px; }
+.composer-notice.failed .restart-text { flex: 1 1 100%; white-space: normal; text-align: left; }
+.composer-notice.failed .notice-btn { color: var(--rose); }
+.notice-spin {
+  flex: none; width: 9px; height: 9px; border: 1px solid currentColor; border-right-color: transparent;
+  border-radius: 50%; animation: notice-spin .8s linear infinite;
+}
+@keyframes notice-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .notice-spin { animation: none; } }
 /* Suggestions « / » : juste au-dessus du champ, façon menu du terminal. */
 .slash-menu {
   position: absolute; left: 12px; right: 12px; bottom: calc(100% - 2px); z-index: 20;
