@@ -7,6 +7,7 @@ import { type MoveDestination, type SpaceEntry, type SplitDirection, moveTargets
 import { reorderWorkspaces } from '#shared/spaces'
 import { type DropSide, type PaneDirection, type TabLayout, directionNeighbor, dropPreview, layoutTree, resizePreview, swapDirections, swapInLayout } from '#shared/layout'
 import { closeConfirm } from '~/utils/spaceConfirm'
+import { herdrPaneId, paneIdLine } from '~/utils/paneId'
 
 // Renommer un espace ou un onglet (le pane garde `renameTarget`).
 export const renameSpace = ref<{ kind: 'workspace' | 'tab', id: string, label: string } | null>(null)
@@ -205,6 +206,20 @@ export function swapShortcut(e: KeyboardEvent): boolean {
 
 // Entrées des menus.
 export const newTabItem = (workspaceId: string): MenuItem => ({ label: t('Nouvel onglet'), icon: 'i-lucide-plus', run: () => newTab(workspaceId) })
+// Copier l'ID Herdr du pane (celui de sa machine, sans préfixe wherdr).
+export function copyPaneIdItem(p: Pane): MenuItem {
+  const id = herdrPaneId(p.id)
+  return {
+    label: t('Copier l’ID du pane'), icon: 'i-lucide-copy', mono: true,
+    desc: paneIdLine(p.id, machineName(p.machine)),
+    run: async () => {
+      try {
+        await navigator.clipboard.writeText(id)
+        toast(`${t('Copié')} : ${id}`)
+      } catch { toast(t('Copie impossible'), true) }
+    },
+  }
+}
 export function paneSpaceItems(p: Pane): MenuItem[] {
   return [
     { label: t('Diviser à droite'), icon: 'i-lucide-columns-2', run: () => splitPane(p, 'right') },

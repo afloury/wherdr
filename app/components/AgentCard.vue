@@ -79,6 +79,8 @@ const contextItems = computed(() => toDropdown(space.value ? [
   ...paneSpaceItems(props.pane),
   ...paneWorkspaceItems(props.pane),
   { kind: 'separator' },
+  copyPaneIdItem(props.pane),
+  { kind: 'separator' },
   {
     label: props.pane.agent
       ? tl(`Fermer ce pane (arrête ${kindLabel(props.pane.agent)})`, `Close this pane (stops ${kindLabel(props.pane.agent)})`)
