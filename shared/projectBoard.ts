@@ -74,7 +74,8 @@ export function parseTaskLine(line: string, kind: ListKind | null = null): Proje
   let text = m[2]!.trim()
   let owner: string | null = null
   const o = OWNER.exec(text)
-  if (o && o.index > 0) {
+  // « [PR](https://…) » en fin de ligne : un lien Markdown, pas un responsable.
+  if (o && o.index > 0 && !(text[o.index] === '(' && text[o.index - 1] === ']')) {
     owner = o[1]!.trim()
     text = text.slice(0, o.index).trim()
   }

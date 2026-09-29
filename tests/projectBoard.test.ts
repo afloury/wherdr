@@ -101,6 +101,12 @@ describe('TASKS.md', () => {
     expect(ownerIsMe('agent')).toBe(false)
     expect(ownerIsMe(null)).toBe(false)
   })
+  it('un lien Markdown en fin de ligne reste un lien, pas le responsable', () => {
+    expect(parseTaskLine('- [ ] Bandeau [PR](https://github.com/owner/repo/pull/12)', 'review'))
+      .toEqual({ text: 'Bandeau PR', done: false, owner: null, thread: null, links: ['https://github.com/owner/repo/pull/12'] })
+    expect(parseTaskLine('- [ ] Bandeau [PR](https://github.com/owner/repo/pull/12) (me)', 'review')?.owner).toBe('me')
+    expect(parseTaskLine('- [ ] Case [x] (me)')?.owner).toBe('me')
+  })
 })
 
 describe('réponses aux décisions (À décider)', () => {
@@ -323,7 +329,7 @@ describe('liste À relire', () => {
     expect(extractLinks('javascript:alert(1)').links).toEqual([])
   })
   it('lit la liste et garde le responsable', () => {
-    const [l] = parseTasks('## À relire\n- [ ] Bandeau — https://github.com/o/r/pull/7 (me)\n- [ ] https://bitbucket.org/o/r/pull-requests/4')
+    const [l] = parseTasks('## À relire\n- [ ] Bandeau — https://github.com/o/r/pull/7 (me)\n- [ ] https://git.example.test/o/r/pull-requests/4')
     expect(l!.kind).toBe('review')
     expect(l!.tasks[0]).toMatchObject({ text: 'Bandeau', owner: 'me', links: ['https://github.com/o/r/pull/7'] })
     expect(l!.tasks[1]!.text).toBe('o/r#4')

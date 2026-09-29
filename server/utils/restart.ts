@@ -35,13 +35,20 @@ export async function restartPlanFor(p: Pane, d: RestartDeps = defaultDeps): Pro
   return planRestart({ kind: p.agent, argv, session, hadSession: Boolean(p.agentSession), current })
 }
 
+// Panes dont le plan de relance est en cours de lecture : `restarts` n'est
+// rempli qu'après, un double toucher lancerait sinon deux séquences.
+const planning = new Set<string>()
+
 // Lance le redémarrage en tâche de fond ; l'état est publié dans `pane.restart`.
 export async function restartAgent(paneId: string) {
   const p = findPane(paneId)
   if (!p || !p.agent) throw new HerdrError('bad_pane', 'agent introuvable')
   const cur = restarts.get(paneId)
-  if (cur && cur.phase !== 'failed') throw new HerdrError('restart_busy', 'redémarrage déjà en cours')
-  const plan = await restartPlanFor(p)
+  if (planning.has(paneId) || (cur && cur.phase !== 'failed')) throw new HerdrError('restart_busy', 'redémarrage déjà en cours')
+  planning.add(paneId)
+  let plan: RestartPlan
+  try { plan = await restartPlanFor(p) }
+  finally { planning.delete(paneId) }
   const snap = { id: p.id, agent: p.agent, status: p.status, name: p.name }
   const session = p.agentSession
   restarts.set(paneId, { phase: 'stopping', agent: p.agent, session, at: Date.now() })

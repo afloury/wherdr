@@ -35,8 +35,12 @@ export function cleanProjectInput(action: string, raw: unknown): ProjectInput | 
     if (typeof v !== 'string') return null
     const s = v.replace(/\s+/g, ' ').trim()
     if (s.length > (INPUT_MAX[key] || 120)) return null
+    // Nom ou slug passés en argument : « -… » serait lu comme une option.
+    if ((key === 'name' || key === 'slug') && s.startsWith('-')) return null
     if (s) out[key as keyof ProjectInput] = s
   }
+  // Le serveur applique la même règle de nom que le formulaire.
+  if (out.name && !projectNameOk(out.name)) return null
   return (PROJECT_REQUIRED[action] || []).every(k => out[k as keyof ProjectInput]) ? out : null
 }
 
