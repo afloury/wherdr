@@ -17,16 +17,15 @@ describe('répondre à une sélection', () => {
     expect(r.part).toBeUndefined()
     expect(r.excerpt.startsWith('Je propose deux options')).toBe(true)
   })
-  it('bouton au-dessus de la sélection, centré et dans l’écran', () => {
-    const view = { width: 390, top: 0, bottom: 800 }
-    expect(selectionReplyPos({ top: 300, bottom: 320, left: 100, right: 200 }, { width: 100, height: 32 }, view, true)).toEqual({ top: 260, left: 100 })
-    expect(selectionReplyPos({ top: 300, bottom: 320, left: 0, right: 20 }, { width: 100, height: 32 }, view, true)!.left).toBe(8)
-  })
-  it('sans place au-dessus : dessous sur ordinateur, jamais sur téléphone', () => {
+  it('bouton au coin inférieur droit de la sélection', () => {
     const view = { width: 1440, top: 100, bottom: 900 }
-    const sel = { top: 110, bottom: 130, left: 400, right: 500 }
-    expect(selectionReplyPos(sel, { width: 100, height: 32 }, view, false)!.top).toBe(138)
-    expect(selectionReplyPos(sel, { width: 100, height: 32 }, view, true)!.top).toBe(100)
+    expect(selectionReplyPos({ top: 300, bottom: 320, left: 100, right: 400 }, { width: 100, height: 32 }, view, false)).toEqual({ top: 328, left: 300 })
+    expect(selectionReplyPos({ top: 300, bottom: 320, left: 0, right: 40 }, { width: 100, height: 32 }, view, true)!.left).toBe(8)
+    expect(selectionReplyPos({ top: 300, bottom: 320, left: 1300, right: 1440 }, { width: 100, height: 32 }, view, false)!.left).toBe(1332)
+  })
+  it('sans place dessous : au-dessus ; hors écran : pas de bouton', () => {
+    const view = { width: 1440, top: 100, bottom: 900 }
+    expect(selectionReplyPos({ top: 800, bottom: 880, left: 100, right: 400 }, { width: 100, height: 32 }, view, false)!.top).toBe(760)
     expect(selectionReplyPos({ top: 950, bottom: 970, left: 1, right: 2 }, { width: 100, height: 32 }, view, false)).toBeNull()
   })
 })

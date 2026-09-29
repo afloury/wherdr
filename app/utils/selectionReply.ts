@@ -8,13 +8,14 @@ export interface Box { width: number, height: number }
 export const SEL_GAP = 8
 export const SEL_MARGIN = 8
 
-export function selectionReplyPos(sel: Rect, btn: Box, view: { width: number, top: number, bottom: number }, touch: boolean): { top: number, left: number } | null {
+export function selectionReplyPos(sel: Rect, btn: Box, view: { width: number, top: number, bottom: number }, _touch: boolean): { top: number, left: number } | null {
   // Sélection sortie de la zone visible (défilement) : pas de bouton.
   if (sel.bottom < view.top || sel.top > view.bottom) return null
-  const center = (sel.left + sel.right) / 2
-  const left = Math.min(Math.max(SEL_MARGIN, center - btn.width / 2), view.width - btn.width - SEL_MARGIN)
+  // Coin inférieur droit de la sélection (au-dessus s'il n'y a pas la place dessous).
+  const left = Math.min(Math.max(SEL_MARGIN, sel.right - btn.width), view.width - btn.width - SEL_MARGIN)
+  const below = sel.bottom + SEL_GAP
+  if (below + btn.height <= view.bottom) return { top: below, left }
   const above = sel.top - SEL_GAP - btn.height
   if (above >= view.top) return { top: above, left }
-  if (!touch && sel.bottom + SEL_GAP + btn.height <= view.bottom) return { top: sel.bottom + SEL_GAP, left }
-  return { top: view.top, left }
+  return { top: Math.max(view.top, view.bottom - btn.height - SEL_MARGIN), left }
 }
