@@ -12,22 +12,21 @@
 # -> https://<hôte>.<tailnet>.ts.net:<port>. Jamais de route publique (Caddy, Cloudflare…).
 services:
   herdr-web:
-    build:
-      context: .
-      # Dossier personnel de l'utilisateur du conteneur (ssh y lit ~/.ssh).
-      args:
-        HOST_HOME: ${HOST_HOME:-${HOME}}
-        PUID: ${PUID:-1000}
-        PGID: ${PGID:-1000}
-    image: herdr-web:local
+    # Image publiée à chaque release (arm64 + amd64). Mise à jour :
+    #   docker compose pull && docker compose up -d
+    # Construire soi-même à partir des sources : cf. docker-compose.build.yml.
+    image: ${WHERDR_IMAGE:-ghcr.io/afloury/wherdr:latest}
     container_name: herdr-web
     hostname: ${HOST_LABEL:-wherdr}
     restart: unless-stopped
     # Init minimal en PID 1 : récupère les processus détachés (commandes de plugins).
     init: true
-    user: "${PUID:-1000}:${PGID:-1000}"
     environment:
       - PORT=${PORT:-7683}
+      # Utilisateur du conteneur, créé au démarrage : UID/GID et dossier personnel
+      # de l'hôte (ssh y lit ~/.ssh ; git, Herdr et les fichiers gardent leur propriétaire).
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
       - HOME=${HOST_HOME:-${HOME}}
       - DATA_DIR=/data
       # Binaire Herdr de l'hôte (statique musl, tourne tel quel sous alpine) :
@@ -45,6 +44,8 @@ services:
       - HOST_LABEL=${HOST_LABEL:-}
       - PASSKEY_USER=${PASSKEY_USER:-wherdr}
       - TZ=${TZ:-UTC}
+      # Avis « nouvelle version » (une requête par jour à l'API des releases GitHub) : `off` pour le couper.
+      - WHERDR_UPDATE_CHECK=${WHERDR_UPDATE_CHECK:-on}
     # Noms courts du tailnet (`ssh laptop`) : musl ne tente le domaine de
     # recherche (MagicDNS) que si le nom a moins de `ndots` points ; Docker met 0.
     dns_opt:

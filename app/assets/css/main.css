@@ -480,6 +480,19 @@ body.short-bottom { --safe-bottom: 0px; }
 .claude-setup p small { display: block; margin-top: 2px; font-size: 11px; color: var(--dim); }
 .claude-setup-actions { display: flex; gap: 6px; margin-left: auto; }
 .claude-setup-actions .iconify { width: 14px; height: 14px; }
+/* Nouvelle version de wherdr (accueil, Réglages › À propos). */
+.update-banner {
+  display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px 12px; margin: -12px 0 26px; padding: 9px 10px 9px 12px;
+  border: 1px solid var(--line-strong); font: 400 12px/1.4 var(--mono); color: var(--text-3);
+}
+.settings-group .update-banner { margin: 12px 0; }
+.update-banner-icon { width: 15px; height: 15px; flex: none; margin-top: 1px; color: var(--accent); }
+.update-banner-body { flex: 1 1 220px; min-width: 0; display: grid; gap: 6px; }
+.update-banner-body p { margin: 0; color: var(--text); }
+.update-banner-body p small, .update-banner-body > small { display: block; margin-top: 2px; font-size: 11px; color: var(--dim); }
+.update-banner-body code { display: block; padding: 5px 7px; border: 1px solid var(--line); font: 400 11px/1.45 var(--mono); color: var(--text-2); overflow-wrap: anywhere; user-select: all; }
+.update-banner-actions { display: flex; gap: 6px; margin-left: auto; }
+.update-banner-actions .iconify { width: 14px; height: 14px; }
 .machine-waiting { padding: 3px 5px; background: color-mix(in srgb, var(--rose) 16%, transparent); color: var(--rose); font-weight: 600; }
 .machine-error {
   margin: -6px 0 14px 24px; font: 400 11px/1.45 var(--mono); color: var(--text-3);

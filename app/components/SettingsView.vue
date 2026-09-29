@@ -249,6 +249,7 @@ async function disableLock() {
   refreshSecurity()
 }
 
+onMounted(loadUpdate)
 onMounted(() => {
   refreshTerminalRenderStatus()
   loadConfig() // thème de Herdr à jour pour « Suivre Herdr »
@@ -461,6 +462,8 @@ onMounted(() => {
           <div class="settings-group">
             <h3>{{ t('Application') }}</h3>
             <p class="settings-version">wherdr · v{{ appVersion }}</p>
+            <UpdateBanner v-if="updateInfo?.latest" :info="updateInfo" />
+            <p v-else-if="updateInfo?.checked" class="muted settings-hint">{{ t('C’est la dernière version.') }}</p>
             <button type="button" class="settings-action solo" @click="reloadApp"><UIcon name="i-lucide-refresh-cw" />{{ t('Recharger l’app') }}</button>
           </div>
         </div>

@@ -59,6 +59,7 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - [Installation](#installation): [which setup?](#which-setup) ·
   [always-on server + Tailscale](#recommended-always-on-server--tailscale) ·
   [one computer, no Docker](#simple-one-computer-no-docker)
+- [Updating](#updating)
 - [Install the app on your phone](#install-the-app-on-your-phone)
 - [Configuration](#configuration)
 - [Several machines (SSH)](#several-machines-ssh)
@@ -196,6 +197,7 @@ Edit `.env` (every value has a default; `HOST_HOME` defaults to your `$HOME`):
 | `APP_URL` | `https://server.example.ts.net:7683/` | Private HTTPS address of the app (step 3; also used as the Web Push contact and an allowed host). Use `http://localhost:7683/` for local testing. |
 | `HOST_LABEL` | `server` | Name of this machine in the app. |
 | `TZ` | `Europe/Paris` | Time zone for timestamps and logs. |
+| `WHERDR_UPDATE_CHECK` | `off` | Disable the daily check for a new release (default `on`). |
 
 Create the bind-mount folders **before** starting Compose, as your own user. Otherwise Docker
 may create missing host folders as root, leaving the container unable to write to them.
@@ -203,7 +205,7 @@ may create missing host folders as root, leaving the container unable to write t
 ```sh
 mkdir -p data "$HOME/.config/herdr" "$HOME/.local/state/herdr/client" "$HOME/.cache/herdr-web" \
   "$HOME/.herdr-projects"
-docker compose up -d --build
+docker compose up -d          # pulls ghcr.io/afloury/wherdr (arm64 and amd64)
 docker compose logs -f        # optional: follow the logs and find the first-passkey token
 ```
 
@@ -213,7 +215,9 @@ The container runs as your user and mounts your home folder **read-only**, excep
 projects, see [Works great with herdr-projects](#works-great-with-herdr-projects)). It uses the
 server's own `herdr` binary, so the client and the server always stay on the same version.
 
-To update: `git pull && docker compose up -d --build`. **Custom icons** (optional): copy
+The repository is only needed for `docker-compose.yml` and `.env`: the image is prebuilt and
+published for each release. To build it from source instead, see [Updating](#updating).
+**Custom icons** (optional): copy
 `docker-compose.override.example.yml` to `docker-compose.override.yml` and put your icons in
 `branding/` (both untracked).
 
@@ -285,6 +289,39 @@ usual service manager (systemd user unit, launchd, tmux…).
 With `APP_URL` empty or `http://localhost:7683/`, wherdr starts normally but disables Web Push
 and logs a warning.
 
+## Updating
+
+wherdr checks the latest GitHub release at most once a day (an anonymous request to
+`api.github.com`, nothing is sent) and shows a small **“wherdr X.Y.Z is available”** banner on the
+home screen and in Settings › About, with the release notes and the exact command for your setup.
+Hide it until the next version with ×. Set `WHERDR_UPDATE_CHECK=off` to disable the check. The
+installed version is shown in Settings › About.
+
+| Setup | Update command (in the wherdr folder) |
+| --- | --- |
+| Docker, published image (default) | `docker compose pull && docker compose up -d` |
+| Docker, built from source | `git pull && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` |
+| No Docker | `git pull && npm ci && npm run build`, then restart wherdr |
+
+Also run `git pull` now and then with the published image: it brings the latest
+`docker-compose.yml` and `.env.example`.
+
+**Build from source.** `docker-compose.build.yml` builds the image locally (`herdr-web:local`)
+instead of pulling it: add `-f docker-compose.yml -f docker-compose.build.yml` to every
+`docker compose` command (and `-f docker-compose.override.yml` if you use one). A build needs
+about 2 GB of free memory.
+
+**Automatic updates** (optional). [Watchtower](https://containrrr.dev/watchtower/) can pull new
+images and restart the container for you:
+
+```sh
+docker run -d --name watchtower --restart unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  containrrr/watchtower --cleanup --schedule "0 0 4 * * *" herdr-web
+```
+
+Pin a version instead of `latest` with `WHERDR_IMAGE=ghcr.io/afloury/wherdr:1.2.0` in `.env`.
+
 ## Install the app on your phone
 
 The app must be served over HTTPS (see [Requirements](#requirements)).
@@ -351,7 +388,8 @@ wherdr picks it up within 30 seconds; `herdr machine rename|disable|remove` work
 Machines can also be renamed from the app (machine menu → Options).
 
 With Docker, the image includes `openssh-client` and reads `~/.ssh` through the read-only home
-mount. `PUID` must be `1000` for ssh to find `~/.ssh` (the image maps user 1000 to `HOST_HOME`).
+mount. At startup the container creates its user with your `PUID`/`PGID` and `HOST_HOME` as its
+home folder, so ssh finds `~/.ssh` there.
 
 ## Claude and Codex quotas
 
