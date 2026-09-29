@@ -2259,6 +2259,9 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
   color: var(--text); background: var(--bg-2); border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: 0;
   box-shadow: 0 4px 14px rgb(0 0 0 / .18); cursor: pointer; -webkit-user-select: none; user-select: none;
 }
+.sel-reply { animation: sel-reply-in 120ms ease-out; }
+@keyframes sel-reply-in { from { opacity: 0; transform: translateY(3px); } }
+@media (prefers-reduced-motion: reduce) { .sel-reply { animation: none; } }
 .sel-reply:hover, .sel-reply:focus-visible { border-color: var(--accent); }
 .sel-reply .iconify, .sel-reply svg { width: 13px; height: 13px; color: var(--accent); }
 .msg-flash { animation: msg-flash 1.6s ease-out; }

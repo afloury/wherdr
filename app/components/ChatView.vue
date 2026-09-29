@@ -9,7 +9,7 @@ import { readOffline, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { canCancelQueued, restoreDraft } from '~/utils/queuedCancel'
 import { queuedPhases } from '#shared/queuedPhase'
-import { selectionReplyPos } from '~/utils/selectionReply'
+import { createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 import { dropReplyMarker, findReplyOrigin, parseReply, replyTarget, type ReplyTarget } from '#shared/replyQuote'
@@ -381,7 +381,7 @@ function setOpen(key: string, v: boolean) {
 
 // « Répondre » sous un message : répond au message entier. Un passage
 // sélectionné dans un message de l'agent fait apparaître un bouton flottant
-// « Répondre » à côté de lui, qui répond au passage (cf. utils/selectionReply.ts).
+// « Répondre » juste après lui, une fois la sélection terminée (cf. utils/selectionReply.ts).
 const msgEl = (key: string) => [...(listEl.value?.querySelectorAll<HTMLElement>('[data-hit-key]') || [])].find(el => el.dataset.hitKey === key) || null
 function replyTo(key: string, selection = '') {
   const b = blocks.value.find(x => x.key === key)
@@ -392,29 +392,47 @@ function replyTo(key: string, selection = '') {
   haptic()
   emit('reply')
 }
-const selReply = ref<{ key: string, text: string, top: number, left: number } | null>(null)
+const selReply = ref<{ key: string, text: string, sig: string, top: number, left: number } | null>(null)
 const selBtn = ref<HTMLElement | null>(null)
-function readSelectionReply() {
+const isTouch = () => window.matchMedia('(pointer: coarse)').matches
+// Sélection courante dans un message de l'agent : texte, fin (dernière ligne) et signature.
+function currentSelection() {
   const sel = window.getSelection()
   const range = sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : null
   const text = range ? sel!.toString().trim() : ''
   const host = range ? (range.commonAncestorContainer.nodeType === 1 ? range.commonAncestorContainer as Element : range.commonAncestorContainer.parentElement)?.closest<HTMLElement>('.msg-ai[data-hit-key]') : null
-  if (!text || !host || readOnly.value || !listEl.value?.contains(host)) { selReply.value = null; return }
-  const r = range!.getBoundingClientRect()
-  const view = listEl.value.getBoundingClientRect()
-  const touch = window.matchMedia('(pointer: coarse)').matches
-  const pos = selectionReplyPos(r, { width: selBtn.value?.offsetWidth || 104, height: selBtn.value?.offsetHeight || 32 }, { width: window.innerWidth, top: Math.max(0, view.top), bottom: Math.min(window.innerHeight, view.bottom) }, touch)
-  selReply.value = pos ? { key: host.dataset.hitKey!, text, ...pos } : null
+  if (!text || !host || readOnly.value || !listEl.value?.contains(host)) return null
+  const end = lastLineRect(range!.getClientRects()) || range!.getBoundingClientRect()
+  return { host, text, end, sig: `${text}|${Math.round(end.right)}|${Math.round(end.top)}` }
 }
+function showSelectionReply() {
+  const cur = currentSelection()
+  if (!cur || !listEl.value) { selReply.value = null; return }
+  const view = listEl.value.getBoundingClientRect()
+  const pos = selectionReplyPos(cur.end, { width: selBtn.value?.offsetWidth || 104, height: selBtn.value?.offsetHeight || 32 }, { width: window.innerWidth, top: Math.max(0, view.top), bottom: Math.min(window.innerHeight, view.bottom) }, isTouch())
+  selReply.value = pos ? { key: cur.host.dataset.hitKey!, text: cur.text, sig: cur.sig, ...pos } : null
+}
+const settler = createSelectionSettler({ show: showSelectionReply, hide: () => { selReply.value = null }, touch: isTouch })
+const onSelDown = (e: PointerEvent) => { if (e.button === 0 && !(e.target as Element | null)?.closest?.('.sel-reply')) settler.down() }
+const onSelUp = () => settler.up()
+const onSelChange = () => settler.change(!!selReply.value && currentSelection()?.sig === selReply.value.sig)
+const onSelScroll = () => { if (selReply.value || window.getSelection()?.isCollapsed === false) settler.scroll() }
 onMounted(() => {
-  document.addEventListener('selectionchange', readSelectionReply)
-  window.addEventListener('scroll', readSelectionReply, true)
-  window.addEventListener('resize', readSelectionReply)
+  document.addEventListener('pointerdown', onSelDown, true)
+  document.addEventListener('pointerup', onSelUp, true)
+  document.addEventListener('pointercancel', onSelUp, true)
+  document.addEventListener('selectionchange', onSelChange)
+  window.addEventListener('scroll', onSelScroll, true)
+  window.addEventListener('resize', onSelScroll)
 })
 onUnmounted(() => {
-  document.removeEventListener('selectionchange', readSelectionReply)
-  window.removeEventListener('scroll', readSelectionReply, true)
-  window.removeEventListener('resize', readSelectionReply)
+  settler.dispose()
+  document.removeEventListener('pointerdown', onSelDown, true)
+  document.removeEventListener('pointerup', onSelUp, true)
+  document.removeEventListener('pointercancel', onSelUp, true)
+  document.removeEventListener('selectionchange', onSelChange)
+  window.removeEventListener('scroll', onSelScroll, true)
+  window.removeEventListener('resize', onSelScroll)
 })
 // Citation touchée : défile jusqu'au message d'origine et le met en évidence.
 function gotoOrigin(key: string | null) {
