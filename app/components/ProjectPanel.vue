@@ -4,6 +4,7 @@
 const confirmedByPane = new Map<string, Set<string>>()
 const launchedByPane = new Map<string, Set<string>>()
 const unblockedByPane = new Map<string, Set<string>>()
+const reviewedByPane = new Map<string, Set<string>>()
 </script>
 
 <script setup lang="ts">
@@ -17,11 +18,13 @@ const unblockedByPane = new Map<string, Set<string>>()
 // coordinateur), Problème (« ✗ Problème : … — ») et Question (« ? Question : … — »),
 // ces deux-là mis dans son champ de saisie (émis vers la vue de l'agent).
 // « À décider » : Question et Répondre préparent aussi un brouillon.
+// « À relire » : les liens https de la ligne deviennent « Ouvrir la PR » ; Relu
+// envoie « ✓ Relu : … », Commenter prépare « ↳ Retour sur … : ».
 // « Backlog » : Lancer envoie le message ; Préciser prépare un brouillon.
 // Le fichier n'est jamais écrit d'ici.
 // `side` : colonne à droite de la conversation (ordinateur), repliable.
 import type { Pane, QueuedMessage } from '#shared/types'
-import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, boardSections, decisionPrefix, detailPrefix, launchMessage, missingLists, ownerIsMe, problemPrefix, questionPrefix, testedMessage, unblockMessage } from '#shared/projectBoard'
+import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, boardSections, visibleSections, decisionPrefix, detailPrefix, launchMessage, missingLists, ownerIsMe, problemPrefix, prLabel, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, unblockMessage } from '#shared/projectBoard'
 import { md } from '~/utils/markdown'
 
 const props = defineProps<{ paneId: string, board: ProjectBoard | null, loading: boolean, error: string, side?: boolean }>()
@@ -29,11 +32,12 @@ const emit = defineEmits<{ reload: [], collapse: [], sent: [queued: QueuedMessag
 
 const DONE_SHOWN = 20
 
-const sections = computed<BoardSection[]>(() => (props.board ? boardSections(props.board, { doing: t('En cours'), done: t('Fait') }) : []))
+const sections = computed<BoardSection[]>(() => (props.board ? visibleSections(boardSections(props.board, { doing: t('En cours'), done: t('Fait') }), projectHideEmpty.value) : []))
 
 const ICONS: Record<ListKind, string> = {
   test: 'i-lucide-flask-conical',
   decide: 'i-lucide-signpost',
+  review: 'i-lucide-git-pull-request',
   blocked: 'i-lucide-octagon-alert',
   doing: 'i-lucide-activity',
   backlog: 'i-lucide-list-todo',
@@ -117,6 +121,8 @@ const launched = ref(new Set(launchedByPane.get(props.paneId) || []))
 const launching = ref<string | null>(null)
 const unblocked = ref(new Set(unblockedByPane.get(props.paneId) || []))
 const unblocking = ref<string | null>(null)
+const reviewed = ref(new Set(reviewedByPane.get(props.paneId) || []))
+const reviewing = ref<string | null>(null)
 // Tâche retirée de « À tester » par le coordinateur : on l'oublie.
 watch(() => props.board, (b) => {
   if (!b) return
@@ -138,12 +144,38 @@ watch(() => props.board, (b) => {
     unblocked.value = keptUnblocks
     unblockedByPane.set(props.paneId, keptUnblocks)
   }
+  const toReview = new Set(b.lists.filter(l => l.kind === 'review').flatMap(l => l.tasks.map(x => x.text)))
+  const keptReviews = new Set([...reviewed.value].filter(x => toReview.has(x)))
+  if (keptReviews.size !== reviewed.value.size) {
+    reviewed.value = keptReviews
+    reviewedByPane.set(props.paneId, keptReviews)
+  }
 }, { immediate: true })
 
 const testable = (s: BoardSection, task: ProjectTask) => s.kind === 'test' && !task.done
 const decidable = (s: BoardSection, task: ProjectTask) => s.kind === 'decide' && !task.done
 const launchable = (s: BoardSection, task: ProjectTask) => s.kind === 'backlog' && !task.done
 const unblockable = (s: BoardSection, task: ProjectTask) => s.kind === 'blocked' && !task.done
+const reviewable = (s: BoardSection, task: ProjectTask) => s.kind === 'review' && !task.done
+const actionable = (s: BoardSection, task: ProjectTask) => testable(s, task) || decidable(s, task) || launchable(s, task) || unblockable(s, task) || reviewable(s, task) || Boolean(task.links?.length)
+async function reviewTask(task: ProjectTask) {
+  if (reviewing.value || reviewed.value.has(task.text)) return
+  const pane = herdrState.value.panes.find(p => p.id === props.paneId)
+  if (!eventsOpen.value || offlineView.value || paneStale(pane)) return toast(t('Envoi indisponible hors ligne'), true)
+  reviewing.value = task.text
+  haptic()
+  try {
+    const queued = await sendMessage(pane, props.paneId, reviewedMessage(task.text, lang()))
+    reviewed.value = new Set([...reviewed.value, task.text])
+    reviewedByPane.set(props.paneId, reviewed.value)
+    emit('sent', queued)
+  } catch (e) { toast((e as Error).message, true) }
+  finally { reviewing.value = null }
+}
+// Libellé d'un lien : « Ouvrir la PR » (plusieurs : avec leur nom court).
+const linkLabel = (task: ProjectTask, url: string) => (/\/(pull|pulls|merge_requests|pull-requests)\/\d+/.test(url)
+  ? ((task.links?.length || 0) > 1 ? `${tl('PR', 'PR')} ${prLabel(url).split('/').pop()}` : tl('Ouvrir la PR', 'Open PR'))
+  : prLabel(url))
 async function confirmTask(task: ProjectTask) {
   if (confirming.value || confirmed.value.has(task.text)) return
   const pane = herdrState.value.panes.find(p => p.id === props.paneId)
@@ -186,9 +218,9 @@ async function unblockTask(task: ProjectTask) {
   } catch (e) { toast((e as Error).message, true) }
   finally { unblocking.value = null }
 }
-function prefill(task: ProjectTask, kind: 'problem' | 'question' | 'decision' | 'detail') {
+function prefill(task: ProjectTask, kind: 'problem' | 'question' | 'decision' | 'detail' | 'comment') {
   haptic()
-  const prefix = { problem: problemPrefix, question: questionPrefix, decision: decisionPrefix, detail: detailPrefix }[kind]
+  const prefix = { problem: problemPrefix, question: questionPrefix, decision: decisionPrefix, detail: detailPrefix, comment: reviewCommentPrefix }[kind]
   emit('prefill', prefix(task.text, lang()))
 }
 
@@ -267,10 +299,10 @@ function ownerLabel(task: ProjectTask) {
             </li>
             <li
               v-for="(task, i) in s.tasks" :key="`t${i}`" class="pp-row pp-task"
-              :class="{ done: task.done, mine: ownerIsMe(task.owner), testable: testable(s, task), decidable: decidable(s, task), launchable: launchable(s, task), unblockable: unblockable(s, task), sent: (testable(s, task) && confirmed.has(task.text)) || (launchable(s, task) && launched.has(task.text)) || (unblockable(s, task) && unblocked.has(task.text)) }"
+              :class="{ done: task.done, mine: ownerIsMe(task.owner), testable: testable(s, task), decidable: decidable(s, task), launchable: launchable(s, task), unblockable: unblockable(s, task), reviewable: reviewable(s, task), sent: (reviewable(s, task) && reviewed.has(task.text)) || (testable(s, task) && confirmed.has(task.text)) || (launchable(s, task) && launched.has(task.text)) || (unblockable(s, task) && unblocked.has(task.text)) }"
             >
               <span class="pp-box" aria-hidden="true" />
-              <template v-if="!testable(s, task) && !decidable(s, task) && !launchable(s, task) && !unblockable(s, task)">
+              <template v-if="!actionable(s, task)">
                 <span v-if="task.reason" class="pp-task-body"><span class="pp-task-text">{{ task.text }}</span><span class="pp-reason">{{ task.reason }}</span></span>
                 <span v-else class="pp-task-text">{{ task.text }}</span>
                 <span v-if="task.owner" class="pp-owner">{{ ownerLabel(task) }}</span>
@@ -284,8 +316,25 @@ function ownerLabel(task: ProjectTask) {
                   <span v-if="testable(s, task) && confirmed.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
                   <span v-else-if="launchable(s, task) && launched.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
                   <span v-else-if="unblockable(s, task) && unblocked.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
+                  <span v-else-if="reviewable(s, task) && reviewed.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
                   <span v-else-if="task.owner" class="pp-owner">{{ ownerLabel(task) }}</span>
-                  <span v-if="decidable(s, task) || launchable(s, task) || unblockable(s, task) || !confirmed.has(task.text)" class="pp-verdict">
+                  <span v-if="task.links?.length" class="pp-links">
+                    <a
+                      v-for="url in task.links" :key="url" class="pp-link" :href="url" target="_blank" rel="noopener noreferrer"
+                      :title="url" @click="haptic()"
+                    ><UIcon name="i-lucide-git-pull-request" /><span>{{ linkLabel(task, url) }}</span><UIcon name="i-lucide-arrow-up-right" /></a>
+                  </span>
+                  <span v-if="decidable(s, task) || launchable(s, task) || unblockable(s, task) || (reviewable(s, task) && !reviewed.has(task.text)) || (testable(s, task) && !confirmed.has(task.text))" class="pp-verdict">
+                    <UTooltip v-if="reviewable(s, task)" :text="tl('Relu : prévenir le coordinateur', 'Reviewed: tell the coordinator')" :disabled="!desk">
+                      <button type="button" class="pp-vbtn backlog-action reviewed" :disabled="reviewing !== null" :aria-label="tl(`Relu : ${task.text}`, `Reviewed: ${task.text}`)" @click="reviewTask(task)">
+                        <span v-if="reviewing === task.text" class="spinner" /><UIcon v-else name="i-lucide-check" /><span>{{ tl('Relu', 'Reviewed') }}</span>
+                      </button>
+                    </UTooltip>
+                    <UTooltip v-if="reviewable(s, task)" :text="tl('Préparer un retour de relecture', 'Draft review feedback')" :disabled="!desk">
+                      <button type="button" class="pp-vbtn backlog-action clarify" :aria-label="tl(`Commenter : ${task.text}`, `Comment: ${task.text}`)" @click="prefill(task, 'comment')">
+                        <UIcon name="i-lucide-message-square" /><span>{{ tl('Commenter', 'Comment') }}</span>
+                      </button>
+                    </UTooltip>
                     <UTooltip v-if="testable(s, task)" :text="t('Confirmer : testé, ça marche')" :disabled="!desk">
                       <button
                         type="button" class="pp-vbtn ok" :disabled="confirming !== null"
