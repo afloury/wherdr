@@ -2245,6 +2245,15 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .msg-quote:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); border-left-color: var(--accent); }
 .msg-quote-time { flex: none; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; color: var(--dim); }
 .msg-quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Bouton flottant « Répondre » près d'un passage sélectionné. */
+.sel-reply {
+  position: fixed; z-index: 60; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px;
+  font: 500 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text); background: var(--bg-2); border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: 0;
+  box-shadow: 0 4px 14px rgb(0 0 0 / .18); cursor: pointer; -webkit-user-select: none; user-select: none;
+}
+.sel-reply:hover, .sel-reply:focus-visible { border-color: var(--accent); }
+.sel-reply .iconify, .sel-reply svg { width: 13px; height: 13px; color: var(--accent); }
 .msg-flash { animation: msg-flash 1.6s ease-out; }
 @keyframes msg-flash {
   0%, 30% { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 16%, transparent); }

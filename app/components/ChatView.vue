@@ -8,7 +8,8 @@ import type { ChatItem, ChatResponse, ClaudeQueueEntry, Pane, QueuedMessage } fr
 import { readOffline, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { canCancelQueued, restoreDraft } from '~/utils/queuedCancel'
-import { queuedPhase } from '#shared/queuedPhase'
+import { queuedPhases } from '#shared/queuedPhase'
+import { selectionReplyPos } from '~/utils/selectionReply'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 import { dropReplyMarker, findReplyOrigin, parseReply, replyTarget, type ReplyTarget } from '#shared/replyQuote'
@@ -378,26 +379,43 @@ function setOpen(key: string, v: boolean) {
   else openTools.delete(key)
 }
 
-// « Répondre » : encadré au-dessus du champ de saisie. Un passage sélectionné
-// dans ce message (relevé dès l'appui, avant que le tap ne le désélectionne)
-// sert de repère à la place du début du message.
-let pickedSel = ''
+// « Répondre » sous un message : répond au message entier. Un passage
+// sélectionné dans un message de l'agent fait apparaître un bouton flottant
+// « Répondre » à côté de lui, qui répond au passage (cf. utils/selectionReply.ts).
 const msgEl = (key: string) => [...(listEl.value?.querySelectorAll<HTMLElement>('[data-hit-key]') || [])].find(el => el.dataset.hitKey === key) || null
-function readSelection(key: string) {
-  const sel = window.getSelection()
-  const el = msgEl(key)
-  pickedSel = sel && !sel.isCollapsed && el && sel.anchorNode && el.contains(sel.anchorNode) ? sel.toString() : ''
-}
-function replyTo(key: string) {
+function replyTo(key: string, selection = '') {
   const b = blocks.value.find(x => x.key === key)
   if (!b || b.k !== 'assistant') return
-  if (!pickedSel) readSelection(key)
-  useDraft(props.pane.id).reply = replyTarget(b.text, b.time || '', language === 'en' ? 'en' : 'fr', pickedSel)
-  pickedSel = ''
+  useDraft(props.pane.id).reply = replyTarget(b.text, b.time || '', language === 'en' ? 'en' : 'fr', selection)
+  selReply.value = null
   window.getSelection()?.removeAllRanges()
   haptic()
   emit('reply')
 }
+const selReply = ref<{ key: string, text: string, top: number, left: number } | null>(null)
+const selBtn = ref<HTMLElement | null>(null)
+function readSelectionReply() {
+  const sel = window.getSelection()
+  const range = sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : null
+  const text = range ? sel!.toString().trim() : ''
+  const host = range ? (range.commonAncestorContainer.nodeType === 1 ? range.commonAncestorContainer as Element : range.commonAncestorContainer.parentElement)?.closest<HTMLElement>('.msg-ai[data-hit-key]') : null
+  if (!text || !host || readOnly.value || !listEl.value?.contains(host)) { selReply.value = null; return }
+  const r = range!.getBoundingClientRect()
+  const view = listEl.value.getBoundingClientRect()
+  const touch = window.matchMedia('(pointer: coarse)').matches
+  const pos = selectionReplyPos(r, { width: selBtn.value?.offsetWidth || 104, height: selBtn.value?.offsetHeight || 32 }, { width: window.innerWidth, top: Math.max(0, view.top), bottom: Math.min(window.innerHeight, view.bottom) }, touch)
+  selReply.value = pos ? { key: host.dataset.hitKey!, text, ...pos } : null
+}
+onMounted(() => {
+  document.addEventListener('selectionchange', readSelectionReply)
+  window.addEventListener('scroll', readSelectionReply, true)
+  window.addEventListener('resize', readSelectionReply)
+})
+onUnmounted(() => {
+  document.removeEventListener('selectionchange', readSelectionReply)
+  window.removeEventListener('scroll', readSelectionReply, true)
+  window.removeEventListener('resize', readSelectionReply)
+})
 // Citation touchée : défile jusqu'au message d'origine et le met en évidence.
 function gotoOrigin(key: string | null) {
   const el = key ? msgEl(key) : null
@@ -473,20 +491,29 @@ const queuedList = computed(() => {
   }
   const mine = readOnly.value ? [] : [...(p.queued || [])]
   for (const q of props.localQueued) if (!mine.some(x => x.id === q.id)) mine.push(q)
+  // Ordre d'envoi, quelle que soit la source (serveur ou envoi local).
+  mine.sort((a, b) => (a.at && b.at ? a.at - b.at : 0))
   const list: QueuedMessage[] = mine.filter(q => !inChat(q))
   for (const q of chat.value.queue || []) {
     const n = normText(q.text).slice(0, 60)
     if (n && !list.some(x => normText(x.text).includes(n))) list.push({ id: `cc-${q.ts}`, text: q.text })
   }
-  return list.map((q) => {
+  const phases = queuedPhases(list.map(q => q.text), screen.value)
+  const replies = blocks.value.filter(b => b.k === 'assistant')
+  return list.map((q, i) => {
     const lines = q.text.split('\n')
+    const text = lines.filter(l => !isUploadLine(l)).join('\n').trim()
+    const parsed = parseReply(text)
     return {
       id: q.id,
       raw: q.text,
       mine: !q.id.startsWith('cc-'),
-      phase: queuedPhase(q.text, screen.value),
+      phase: phases[i]!,
       photos: lines.filter(isUploadLine).map(l => `/uploads/${encodeURIComponent(l.trim().split('/').pop()!)}`),
-      text: lines.filter(l => !isUploadLine(l)).join('\n').trim(),
+      text,
+      body: parsed ? parsed.body : text,
+      reply: parsed?.reply || null,
+      origin: parsed ? findReplyOrigin(replies, parsed.reply)?.key || null : null,
     }
   })
 })
@@ -774,7 +801,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
                   </template>
                 </UChatMessage>
                 <div v-if="!b.endsTurn && !readOnly" class="msg-actions">
-                  <button type="button" class="msg-reply" @pointerdown="readSelection(b.key)" @click="replyTo(b.key)">
+                  <button type="button" class="msg-reply" @click="replyTo(b.key)">
                     <UIcon name="i-lucide-reply" /><span>{{ t('Répondre') }}</span>
                   </button>
                 </div>
@@ -803,7 +830,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
                 <UTooltip v-if="b.copy" :text="t('Copier la réponse')" :disabled="!desk">
                   <UButton icon="i-lucide-copy" color="neutral" variant="ghost" size="xs" class="turn-copy" :aria-label="t('Copier la réponse')" @click="copyText(b.copy)" />
                 </UTooltip>
-                <button v-if="b.reply && !readOnly" type="button" class="msg-reply" @pointerdown="readSelection(b.reply)" @click="replyTo(b.reply)">
+                <button v-if="b.reply && !readOnly" type="button" class="msg-reply" @click="replyTo(b.reply)">
                   <UIcon name="i-lucide-reply" /><span>{{ t('Répondre') }}</span>
                 </button>
                 <span>{{ b.text }}</span>
@@ -839,11 +866,22 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
           </template>
         </div>
 
+        <Teleport to="body">
+          <button
+            v-if="selReply" ref="selBtn" type="button" class="sel-reply" :style="{ top: `${selReply.top}px`, left: `${selReply.left}px` }"
+            :aria-label="t('Répondre à ce passage')" @pointerdown.prevent @mousedown.prevent @click="replyTo(selReply.key, selReply.text)"
+          >
+            <UIcon name="i-lucide-reply" /><span>{{ t('Répondre') }}</span>
+          </button>
+        </Teleport>
         <div v-if="queuedList.length || liveShell" class="queued-list">
           <!-- Déjà partis (visibles comme envoyés à l'écran), pas encore dans la transcription. -->
           <div v-for="q in queuedList.filter(x => x.phase === 'sent')" :key="q.id" class="msg-user-wrap">
+            <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Voir le message d’origine')" @click="gotoOrigin(q.origin)">
+              <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
+            </button>
             <div class="msg-bubble sent">
-              <span v-if="q.photos.length" class="thumbs" :class="{ one: q.photos.length === 1 }"><img v-for="src in q.photos" :key="src" class="msg-img" :src="src" alt="" @click="openImage(src)"></span>{{ parseReply(q.text)?.body ?? q.text }}
+              <span v-if="q.photos.length" class="thumbs" :class="{ one: q.photos.length === 1 }"><img v-for="src in q.photos" :key="src" class="msg-img" :src="src" alt="" @click="openImage(src)"></span>{{ q.body }}
             </div>
             <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ t('Envoyé · lu par l’agent') }}</span></div>
           </div>
@@ -865,8 +903,11 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
             </div>
           </div>
           <div v-for="q in queuedList.filter(x => x.phase === 'queued')" :key="q.id" class="msg-user-wrap">
+            <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Voir le message d’origine')" @click="gotoOrigin(q.origin)">
+              <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
+            </button>
             <div class="msg-bubble queued">
-              <span v-if="q.photos.length" class="thumbs" :class="{ one: q.photos.length === 1 }"><img v-for="src in q.photos" :key="src" class="msg-img" :src="src" alt="" @click="openImage(src)"></span>{{ parseReply(q.text)?.body ?? q.text }}
+              <span v-if="q.photos.length" class="thumbs" :class="{ one: q.photos.length === 1 }"><img v-for="src in q.photos" :key="src" class="msg-img" :src="src" alt="" @click="openImage(src)"></span>{{ q.body }}
             </div>
             <div class="queued-tag">
               <UIcon name="i-lucide-clock" /><span>{{ t('En attente · ') }}{{ queuedWhy }}</span>
