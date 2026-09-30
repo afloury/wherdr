@@ -24,7 +24,7 @@ const reviewedByPane = new Map<string, Set<string>>()
 // Le fichier n'est jamais écrit d'ici.
 // `side` : colonne à droite de la conversation (ordinateur), repliable.
 import type { Pane, QueuedMessage } from '#shared/types'
-import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, boardSections, visibleSections, decisionPrefix, detailPrefix, launchMessage, missingLists, ownerIsMe, problemPrefix, prLabel, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, unblockMessage } from '#shared/projectBoard'
+import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, boardSections, visibleSections, decisionPrefix, detailPrefix, launchMessage, classifyLink, missingLists, ownerIsMe, problemPrefix, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, unblockMessage } from '#shared/projectBoard'
 import { md } from '~/utils/markdown'
 
 const props = defineProps<{ paneId: string, board: ProjectBoard | null, loading: boolean, error: string, side?: boolean }>()
@@ -172,10 +172,13 @@ async function reviewTask(task: ProjectTask) {
   } catch (e) { toast((e as Error).message, true) }
   finally { reviewing.value = null }
 }
-// Libellé d'un lien : « Ouvrir la PR » (plusieurs : avec leur nom court).
-const linkLabel = (task: ProjectTask, url: string) => (/\/(pull|pulls|merge_requests|pull-requests)\/\d+/.test(url)
-  ? ((task.links?.length || 0) > 1 ? `${tl('PR', 'PR')} ${prLabel(url).split('/').pop()}` : tl('Ouvrir la PR', 'Open PR'))
-  : prLabel(url))
+// Libellé d'un lien : PR → « Ouvrir la PR » (plusieurs PR : « repo#N ») ;
+// lien ordinaire → hôte et chemin court.
+const linkLabel = (task: ProjectTask, url: string) => {
+  const l = classifyLink(url)
+  if (!l.pr) return l.label
+  return (task.links || []).filter(u => classifyLink(u).pr).length > 1 ? l.label : tl('Ouvrir la PR', 'Open PR')
+}
 async function confirmTask(task: ProjectTask) {
   if (confirming.value || confirmed.value.has(task.text)) return
   const pane = herdrState.value.panes.find(p => p.id === props.paneId)
@@ -320,9 +323,9 @@ function ownerLabel(task: ProjectTask) {
                   <span v-else-if="task.owner" class="pp-owner">{{ ownerLabel(task) }}</span>
                   <span v-if="task.links?.length" class="pp-links">
                     <a
-                      v-for="url in task.links" :key="url" class="pp-link" :href="url" target="_blank" rel="noopener noreferrer"
+                      v-for="url in task.links" :key="url" class="pp-link" :class="{ web: !classifyLink(url).pr }" :href="url" target="_blank" rel="noopener noreferrer"
                       :title="url" @click="haptic()"
-                    ><UIcon name="i-lucide-git-pull-request" /><span>{{ linkLabel(task, url) }}</span><UIcon name="i-lucide-arrow-up-right" /></a>
+                    ><UIcon :name="classifyLink(url).pr ? 'i-lucide-git-pull-request' : 'i-lucide-globe'" /><span>{{ linkLabel(task, url) }}</span><UIcon name="i-lucide-arrow-up-right" /></a>
                   </span>
                   <span v-if="decidable(s, task) || launchable(s, task) || unblockable(s, task) || (reviewable(s, task) && !reviewed.has(task.text)) || (testable(s, task) && !confirmed.has(task.text))" class="pp-verdict">
                     <UTooltip v-if="reviewable(s, task)" :text="tl('Relu : prévenir le coordinateur', 'Reviewed: tell the coordinator')" :disabled="!desk">

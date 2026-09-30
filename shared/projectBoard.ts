@@ -119,13 +119,35 @@ export function extractLinks(input: string): { text: string, links: string[] } {
   return { text, links }
 }
 
-// Nom court d'un lien de PR (« owner/repo#12 »), sinon l'hôte.
+// Lien de tâche classé : vrai lien de PR/MR (GitHub `/pull/N`, GitLab
+// `/-/merge_requests/N`, Bitbucket `/pull-requests/N`, Azure DevOps
+// `/_git/<repo>/pullrequest/N`) ou lien ordinaire (hôte + chemin court).
+export interface TaskLink { pr: boolean, label: string, repo?: string, number?: number }
+const PR_PATHS = [
+  /^\/[^/]+\/([^/]+)\/pulls?\/(\d+)(?:[/?#]|$)/,
+  /^\/(?:[^/]+\/)+?([^/]+)\/-\/merge_requests\/(\d+)(?:[/?#]|$)/,
+  /^\/[^/]+\/([^/]+)\/pull-requests\/(\d+)(?:[/?#]|$)/,
+  /^\/(?:[^/]+\/)+?_git\/([^/]+)\/pullrequest\/(\d+)(?:[/?#]|$)/i,
+]
+export function classifyLink(url: string): TaskLink {
+  let u: URL
+  try { u = new URL(url) } catch { return { pr: false, label: url } }
+  for (const re of PR_PATHS) {
+    const m = re.exec(u.pathname)
+    if (m) return { pr: true, label: `${m[1]}#${m[2]}`, repo: m[1], number: Number(m[2]) }
+  }
+  const host = u.host.replace(/^www\./, '')
+  const path = u.pathname.replace(/\/+$/, '')
+  if (!path) return { pr: false, label: host }
+  const short = path.length > 24 ? `${path.slice(0, 23)}…` : path
+  return { pr: false, label: host + short }
+}
+
+// Nom court d'un lien de PR (« repo#12 »), sinon l'hôte.
 export function prLabel(url: string): string {
-  try {
-    const u = new URL(url)
-    const m = /^\/([^/]+\/[^/]+?)(?:\/-)?\/(?:pull|pulls|merge_requests|pull-requests)\/(\d+)/.exec(u.pathname)
-    return m ? `${m[1]}#${m[2]}` : u.host
-  } catch { return url }
+  const l = classifyLink(url)
+  if (l.pr) return l.label
+  try { return new URL(url).host } catch { return url }
 }
 
 // Toutes les listes `##`, dans l'ordre du fichier (vides comprises). Les lignes
