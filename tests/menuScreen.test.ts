@@ -171,3 +171,63 @@ describe('navigation', () => {
     expect(searchKeys('ab', 'c d')).toEqual(['backspace', 'backspace', 'c', 'space', 'd'])
   })
 })
+
+// /mcp : la ligne du haut porte un avis de quota ; entrées en groupes (en-têtes
+// en gras), icône d'état en tête de libellé, lien d'aide hors de la liste.
+const Y = (s: string) => `\x1b[0m\x1b[38;2;255;193;7m${s}\x1b[0m` // jaune (avis, ⚠)
+const V = (s: string) => `\x1b[0m\x1b[38;2;78;186;101m${s}\x1b[0m` // vert (✔)
+const mcpGroups = [
+  ...HISTORY,
+  `${A('▔'.repeat(7))} ${Y('You\'ve used 80% of your weekly limit · resets Oct 4, 7pm')}${G(' · try /model sonnet ')}${A('▔')}`,
+  `   ${B(A('Manage MCP servers'))}`,
+  `   ${G('7 servers')}`,
+  '',
+  `     ${B('User MCPs')} ${G('(~/.demo.json)')}`,
+  `   ${A('❯ ')}${V('✔ ')}${A('demo-browser        ')}${G('· connected')}`,
+  `     ${V('✔ ')}demo-headless       ${G('· connected')}`,
+  `     ${Y('✘ ')}demo-database       ${G('· failed')}`,
+  '',
+  `     ${B('claude.ai')}`,
+  `     ${V('✔ ')}claude.ai Notes     ${G('8 tools')}`,
+  `     ${Y('⚠ ')}claude.ai Agenda    ${G('needs authentication')}`,
+  '',
+  `     ${B('Built-in MCPs')} ${G('(always available)')}`,
+  `     ${V('✔ ')}demo-computer       ${G('· connected')}`,
+  `     → Show unused connectors      ${G('1 hidden')}`,
+  '',
+  `   ${G('https://example.com/docs/mcp for help')}`,
+  `   ${I('↑/↓ to navigate · Enter to confirm · Esc to cancel')}`,
+].join('\n')
+
+describe('parseMenu : /mcp en groupes, avis de quota', () => {
+  const m = parseMenu(mcpGroups)!
+  it('reconnaît le menu malgré l\'avis sur la ligne du haut', () => {
+    expect(m).not.toBeNull()
+    expect(m.title).toBe('Manage MCP servers')
+    expect(m.lines).toEqual(['7 servers'])
+  })
+  it('garde les groupes comme en-têtes et toutes les entrées, dans l\'ordre', () => {
+    expect(m.items.map(it => (it.header ? `# ${it.label}` : it.label))).toEqual([
+      '# User MCPs (~/.demo.json)',
+      '✔ demo-browser',
+      '✔ demo-headless',
+      '✘ demo-database',
+      '# claude.ai',
+      '✔ claude.ai Notes',
+      '⚠ claude.ai Agenda',
+      '# Built-in MCPs (always available)',
+      '✔ demo-computer',
+      '→ Show unused connectors',
+    ])
+    expect(m.items[3]!.hint).toBe('· failed')
+  })
+  it('met le curseur sur la bonne entrée et y va entrée par entrée', () => {
+    expect(m.cursor).toBe(1)
+    expect(m.items[m.cursor!]!.label).toBe('✔ demo-browser')
+    expect(stepToward(m, 5)).toBe('down')
+    expect(stepToward(m, 4)).toBeNull() // en-tête
+    expect(stepToward(m, 1)).toBe('enter')
+    expect(clickMovesOnly(m)).toBe(false)
+    expect(m.actions.map(a => a.key)).toEqual(['enter', 'esc'])
+  })
+})
