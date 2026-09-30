@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { boardSections, visibleSections, missingLists as missingListsOf, coordinatorRules, decisionPrefix, extractLinks, prLabel, reviewCommentPrefix, reviewedMessage, detailPrefix, launchMessage, listKind, normalizeThreads, ownerIsMe, parseTaskLine, parseTasks, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage, unblockMessage } from '../shared/projectBoard'
+import { boardSections, visibleSections, missingLists as missingListsOf, coordinatorRules, decisionPrefix, classifyLink, extractLinks, prLabel, reviewCommentPrefix, reviewedMessage, detailPrefix, launchMessage, listKind, normalizeThreads, ownerIsMe, parseTaskLine, parseTasks, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage, unblockMessage } from '../shared/projectBoard'
 import { pluginBinary } from '../server/utils/projectBoard'
 import { isCoordinator } from '../shared/projects'
 import type { Pane } from '../shared/types'
@@ -332,7 +332,7 @@ describe('liste À relire', () => {
     const [l] = parseTasks('## À relire\n- [ ] Bandeau — https://github.com/o/r/pull/7 (me)\n- [ ] https://git.example.test/o/r/pull-requests/4')
     expect(l!.kind).toBe('review')
     expect(l!.tasks[0]).toMatchObject({ text: 'Bandeau', owner: 'me', links: ['https://github.com/o/r/pull/7'] })
-    expect(l!.tasks[1]!.text).toBe('o/r#4')
+    expect(l!.tasks[1]!.text).toBe('r#4')
     expect(prLabel('https://example.test/doc')).toBe('example.test')
   })
   it('messages Relu et Commenter', () => {
@@ -362,5 +362,23 @@ describe('Masquer les listes vides', () => {
   })
   it('une liste vide masquée ne déclenche pas la suggestion', () => {
     expect(missingListsOf(lists)).toEqual([])
+  })
+})
+
+describe('classifyLink', () => {
+  it('reconnaît les vrais liens de PR/MR', () => {
+    expect(classifyLink('https://github.com/o/r/pull/12')).toEqual({ pr: true, label: 'r#12', repo: 'r', number: 12 })
+    expect(classifyLink('https://github.com/o/r/pull/12/files')).toMatchObject({ pr: true, label: 'r#12' })
+    expect(classifyLink('https://gitlab.example.com/g/sub/app/-/merge_requests/3')).toMatchObject({ pr: true, label: 'app#3' })
+    expect(classifyLink('https://bitbucket.org/ws/lib/pull-requests/45/overview')).toMatchObject({ pr: true, label: 'lib#45' })
+    expect(classifyLink('https://dev.azure.com/org/proj/_git/svc/pullrequest/9')).toMatchObject({ pr: true, label: 'svc#9' })
+  })
+  it('laisse les autres liens ordinaires', () => {
+    expect(classifyLink('https://github.com/o/r')).toEqual({ pr: false, label: 'github.com/o/r' })
+    expect(classifyLink('https://github.com/o/r/issues/5')).toMatchObject({ pr: false })
+    expect(classifyLink('https://github.com/o/r/pull/abc')).toMatchObject({ pr: false })
+    expect(classifyLink('https://app.example.com/')).toEqual({ pr: false, label: 'app.example.com' })
+    expect(classifyLink('https://www.example.com/docs/a/very/long/path/here')).toEqual({ pr: false, label: 'example.com/docs/a/very/long/path/…' })
+    expect(classifyLink('pas une url')).toEqual({ pr: false, label: 'pas une url' })
   })
 })
