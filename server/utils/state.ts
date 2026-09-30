@@ -15,7 +15,7 @@ import { HerdrError, herdr, herdrOn, sleep } from './herdr'
 import { parseChoices } from './choices'
 import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseWaitScreen } from './waitScreen'
-import { parseMenu } from '../../shared/menuScreen'
+import { parseMenu, TOP } from '../../shared/menuScreen'
 import { parseClaudeActivity } from './activity'
 import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './claudeScreen'
 import { isUploadLine, queuedDone } from './queued'
@@ -102,7 +102,7 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
     // Menu interactif de Claude Code (/resume, /model…) : relu en ANSI (les
     // descriptions grises s'y distinguent des entrées). Herdr en croit certains
     // bloquants (/hooks) : une vraie question reconnue garde alors la priorité.
-    const framed = /^\s*▔{8,}\s*$/m.test(text || '')
+    const framed = String(text || '').split('\n').some((l: string) => TOP.test(l))
     let menu = strict && framed ? await readMenu(p.id) : null
     let choices = menu ? null : parseChoices(text, { strict })
     if (!strict && framed && !choices) menu = await readMenu(p.id)

@@ -26,7 +26,8 @@ import type { InteractiveMenu, MenuEntry, WaitAction } from './types'
 const SGR = /\x1b\[([0-9;]*)m/g
 // eslint-disable-next-line no-control-regex
 const OTHER_ESC = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g
-const TOP = /^\s*▔{8,}\s*$/
+// La ligne peut porter un avis (« ▔▔▔ You've used 80% of your weekly limit… ▔ »).
+export const TOP = /^\s*▔{3,}(?:.*▔)?\s*$/
 const BOX = /^\s*[╭╰│]/
 const MORE = /^(?:[↑↓]\s*)?\d+\s+more\b.*$|^…\s*\+?\d+/
 // Segment de légende : « Ctrl+A to show all projects », « Esc to cancel »,
@@ -147,7 +148,8 @@ export function parseMenu(text: string | null | undefined): InteractiveMenu | nu
   const legendRow = region[legendAt]!
   const hintFg = legendRow.fg[textColumn(legendRow.text)] ?? null
   const isDim = (l: Styled, from: number) => all(l, from, i => l.dim[i]! || (hintFg !== null && l.fg[i] === hintFg))
-  const isBold = (l: Styled, from: number) => all(l, from, i => l.bold[i]!)
+  // En-tête de groupe en gras, éventuellement suivi d'un complément gris (« User MCPs (~/.x.json) »).
+  const isBold = (l: Styled, from: number) => Boolean(l.bold[from]) && all(l, from, i => l.bold[i]! || l.dim[i]! || (hintFg !== null && l.fg[i] === hintFg))
 
   const body = region.slice(0, legendAt)
   let first = body.findIndex(r => r.text.trim())

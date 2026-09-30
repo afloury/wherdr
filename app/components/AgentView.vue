@@ -222,6 +222,9 @@ const changesOpen = ref(false)
 const attachInput = ref<HTMLInputElement | null>(null)
 // Menu interactif ouvert (vue conversation) : ce qui serait tapé irait dans sa
 // recherche ; la carte du menu a son propre champ.
+// Terminal affiché (vue terminal ou miroir) : l'invite, l'écran d'attente ou le
+// menu y sont déjà, et la barre de touches y répond ; pas de carte « À toi » en double.
+const termShown = computed(() => mode.value === 'term' || mode.value === 'mirror')
 const composerShown = computed(() => showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) }) && !(menu.value && mode.value !== 'term'))
 const canAttachTerminal = computed(() => terminalAttachment({
   desk: desk.value, live: live.value, mode: mode.value,
@@ -550,8 +553,8 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <div v-else class="chat" />
     <p v-if="pane?.agent && !hasChat(pane) && mode === 'term'" class="terminal-transcript-note">{{ tl('Conversation non disponible pour cet agent · suivi dans le terminal', 'Conversation unavailable for this agent · follow it in the terminal') }}</p>
 
-    <ChoicesPanel v-if="(prompt || screen) && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :screen="screen" />
-    <MenuPanel v-else-if="menu && mode !== 'term' && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :menu="menu" @terminal="setMode('term')" />
+    <ChoicesPanel v-if="(prompt || screen) && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :screen="screen" />
+    <MenuPanel v-else-if="menu && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :menu="menu" @terminal="setMode('term')" />
     <Keybar v-if="mode === 'term' && eventsOpen && !offlineView && !machineDown" :ctl="ctl" />
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" @sent="onSent" @show-terminal="setMode('term')" />
     </div>
