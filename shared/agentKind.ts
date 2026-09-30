@@ -14,9 +14,17 @@ export function paneAgentKind(raw: Json, entry?: Json | null): string | null {
   return raw.agent || sessionAgent(raw) || sessionAgent(entry) || (entry && entry.agent) || null
 }
 
-// Type d'après le chemin de la transcription (~/.claude/projects, ~/.codex/sessions).
-export function transcriptKind(file: string): 'claude' | 'codex' | null {
+// Agents dont wherdr lit la transcription (vue « Conversation », aperçus, recherche).
+export const TRANSCRIPT_AGENTS = ['claude', 'codex', 'omp'] as const
+export type TranscriptAgent = typeof TRANSCRIPT_AGENTS[number]
+export const hasTranscript = (kind: string | null | undefined): kind is TranscriptAgent =>
+  (TRANSCRIPT_AGENTS as readonly string[]).includes(kind || '')
+
+// Type d'après le chemin de la transcription (~/.claude/projects, ~/.codex/sessions,
+// ~/.omp/agent/sessions).
+export function transcriptKind(file: string): TranscriptAgent | null {
   if (/\/\.claude\/projects\//.test(file)) return 'claude'
   if (/\/\.codex\/(?:archived_)?sessions\//.test(file)) return 'codex'
+  if (/\/\.omp\/agent\/sessions\//.test(file)) return 'omp'
   return null
 }

@@ -1,16 +1,17 @@
 // Petits outils d'affichage (titres, chemins, dates, durées).
 import type { HerdrState, Pane } from '#shared/types'
 import { cleanTitle, paneTitle as sharedPaneTitle } from '#shared/paneTitle'
+import { hasTranscript } from '#shared/agentKind'
 export { spaceTitle, conversationSubtitle } from '#shared/displayTitles'
 
-export const KIND_LABEL: Record<string, string> = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini CLI', opencode: 'OpenCode', kimi: 'Kimi', qodercli: 'Qoder CLI', mastracode: 'Mastra Code', copilot: 'Copilot', qwen: 'Qwen Code', pi: 'Pi' }
+export const KIND_LABEL: Record<string, string> = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini CLI', opencode: 'OpenCode', kimi: 'Kimi', qodercli: 'Qoder CLI', mastracode: 'Mastra Code', copilot: 'Copilot', qwen: 'Qwen Code', pi: 'Pi', omp: 'omp' }
 export const kindLabel = (k: string | null | undefined) => (k && KIND_LABEL[k]) || (k ? k[0]!.toUpperCase() + k.slice(1) : 'Shell')
 export { cleanTitle }
 // Dossier personnel -> ~ (Linux /home/<user>, macOS /Users/<user>).
 export const shortPath = (p: string | null | undefined) => (p || '').replace(/^\/(?:home|Users)\/[^/]+/, '~') || '~'
 // Chemin affiché de droite à gauche (on voit la fin) : marques LTR autour.
 export const ltr = (s: string) => `‎${s}‎`
-export const hasChat = (p: Pane | null | undefined) => Boolean(p && (p.agent === 'claude' || p.agent === 'codex'))
+export const hasChat = (p: Pane | null | undefined) => hasTranscript(p?.agent)
 
 export function paneTitle(p: Pane): string {
   return sharedPaneTitle(p, herdrState.value.workspaces.find(w => w.id === p.workspace)?.label)

@@ -448,7 +448,7 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
           :aria-label="t('Photo, collage, commandes')" @click="openPlus"
         />
         <input ref="fileInput" type="file" accept="image/*" multiple hidden @change="onFiles">
-        <ModelPicker v-if="pane && hasChat(pane)" :pane="pane" />
+        <ModelPicker v-if="pane && (pane.agent === 'claude' || pane.agent === 'codex')" :pane="pane" />
         <span v-if="hint && suggestion" class="prompt-hint"><UKbd value="tab" size="sm" /> {{ t('suggestion') }} <span class="sep">·</span> <UKbd value="enter" size="sm" /> {{ t('envoyer') }}</span>
         <span v-else-if="hint" class="prompt-hint"><UKbd value="enter" size="sm" /> {{ t('envoyer') }} <span class="sep">·</span> <UKbd value="shift" size="sm" /><UKbd value="enter" size="sm" /> {{ t('nouvelle ligne') }}</span>
         <UChatPromptSubmit

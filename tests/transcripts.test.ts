@@ -156,6 +156,91 @@ describe('createTranscripts', () => {
   })
 })
 
+describe('omp', () => {
+  const j = (o: object) => JSON.stringify(o)
+  const msg = (message: object, ts: string, extra = {}) => j({ type: 'message', id: ts, timestamp: ts, message, ...extra })
+  const hash = 'ab'.repeat(32)
+  const lines = [
+    j({ type: 'session', version: 3, id: 's1', timestamp: '2026-01-01T00:00:00Z', cwd: '/home/user/x' }),
+    j({ type: 'model_change', timestamp: '2026-01-01T00:00:00Z', model: 'anthropic/claude-opus-5-5' }),
+    msg({ role: 'user', content: [{ type: 'text', text: 'rappel injecté' }], synthetic: true, attribution: 'agent' }, '2026-01-01T00:00:01Z'),
+    msg({ role: 'developer', content: [{ type: 'text', text: '<system-reminder>todo</system-reminder>' }] }, '2026-01-01T00:00:01Z'),
+    msg({ role: 'user', content: [{ type: 'text', text: 'Regarde ça [Image #1, 756x477]' }, { type: 'image', data: `blob:sha256:${hash}`, mimeType: 'image/webp' }], attribution: 'user' }, '2026-01-01T00:00:02Z'),
+    msg({ role: 'assistant', content: [
+      { type: 'thinking', thinking: 'réflexion privée' },
+      { type: 'text', text: 'Je lis.' },
+      { type: 'toolCall', id: 't1', name: 'read', arguments: { path: '/home/user/x/a.ts', i: 'Reading a.ts' } },
+      { type: 'toolCall', id: 't2', name: 'bash', arguments: { command: 'false\necho' } },
+    ] }, '2026-01-01T00:00:03Z'),
+    msg({ role: 'toolResult', toolCallId: 't2', toolName: 'bash', content: [{ type: 'text', text: 'exit 1' }], isError: true }, '2026-01-01T00:00:04Z'),
+    j({ type: 'custom_message', customType: 'skill-prompt', attribution: 'user', timestamp: '2026-01-01T00:00:05Z', content: '# Skill…', details: { name: 'plan', args: 'la suite' } }),
+    j({ type: 'custom_message', customType: 'advisor', attribution: 'agent', timestamp: '2026-01-01T00:00:05Z', content: 'note interne' }),
+    msg({ role: 'assistant', content: [], stopReason: 'aborted', errorMessage: 'Interrupted by user' }, '2026-01-01T00:00:06Z'),
+    j({ type: 'compaction', timestamp: '2026-01-01T00:00:07Z', summary: 'résumé' }),
+    msg({ role: 'user', content: 'Continue', attribution: 'user', steering: true }, '2026-01-01T00:00:08Z'),
+    msg({ role: 'assistant', content: [{ type: 'text', text: '**Fini**' }] }, '2026-01-01T00:00:09Z'),
+  ].join('\n') + '\n'
+
+  it('garde les messages de l’utilisateur, les réponses et les outils ; ignore les injections de l’agent', () => {
+    const items = parseLines(lines, 'omp', 0, HOME)
+    expect(items.map(i => `${i.role}:${i.name ? i.name + ' ' : ''}${i.text}${i.error ? ' !' : ''}`)).toEqual([
+      'user:Regarde ça',
+      'assistant:Je lis.',
+      'tool:Read Reading a.ts',
+      'tool:Bash false !',
+      'user:/skill:plan la suite',
+      'system:Interrompu',
+      'system:Conversation compactée',
+      'user:Continue',
+      'assistant:**Fini**',
+    ])
+    expect(items[0]!.images).toBe(1)
+    expect(items[0]!.ref).toMatch(/^\d+:\d+$/)
+  })
+
+  it('remet « /nom args » à la place du texte d’une commande-fichier', () => {
+    const body = '# Aside\n\nRéponds vite, puis reprends la tâche.'
+    const long = `Revue complète du code. ${'Vérifie chaque fichier modifié. '.repeat(8)}`
+    const said = (text: string) => msg({ role: 'user', content: [{ type: 'text', text }], attribution: 'user' }, '2026-01-01T00:00:10Z')
+    const items = parseLines([said(`${body}\n\nquelle heure ?`), said(body), said(`${long}\n\nfichier : a.ts`), said('# Aside mais autre chose')].join('\n'), 'omp', 0, HOME,
+      [{ name: 'aside', body }, { name: 'review', body: `${long}\n\nPlus de consignes : $ARGUMENTS` }])
+    expect(items.map(i => i.text)).toEqual(['/aside quelle heure ?', '/aside', '/review', '# Aside mais autre chose'])
+  })
+
+  it('lit la session rapportée par l’intégration (chemin) et relit ses images dans ~/.omp/agent/blobs', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-omp-'))
+    const dir = path.join(home, '.omp/agent/sessions/-x')
+    mkdirSync(dir, { recursive: true })
+    mkdirSync(path.join(home, '.omp/agent/blobs'), { recursive: true })
+    const file = path.join(dir, '2026-01-01T00-00-00-000Z_s1.jsonl')
+    writeFileSync(file, lines)
+    writeFileSync(path.join(home, '.omp/agent/blobs', hash), Buffer.from('RIFF0000WEBP'))
+    const t = createTranscripts({ home, herdr: async () => { throw new Error('pas de Herdr') } })
+    const omp = { id: 'wO:p1', agent: 'omp', cwd: '/x', agentSession: file }
+    const r = await t.chat(omp, {})
+    expect(r.available).toBe(true)
+    expect(r.file).toBe(path.basename(file))
+    expect(await t.preview(omp)).toBe('Fini')
+    const img = await t.image(omp, r.file!, r.items!.find(i => i.images)!.ref!, 0)
+    expect(img!.type).toBe('image/webp')
+    expect(img!.body.toString()).toBe('RIFF0000WEBP')
+    expect((await t.search(omp, 'regarde', Date.now() + 5000)).hits.map(h => h.text)).toEqual(['Regarde ça'])
+    expect(await t.chat({ ...omp, id: 'wO:p2', agentSession: path.join(dir, 'absent.jsonl') }, {})).toEqual({ available: false, reason: 'not_found' })
+    // Un autre .jsonl lisible, hors des sessions d'omp : jamais servi.
+    const other = path.join(home, 'autre.jsonl')
+    writeFileSync(other, lines)
+    expect(await t.chat({ ...omp, id: 'wO:p3', agentSession: other }, {})).toEqual({ available: false, reason: 'not_found' })
+    expect(await t.chat({ ...omp, id: 'wO:p4', agentSession: `${dir}/../../../../autre.jsonl` }, {})).toEqual({ available: false, reason: 'not_found' })
+    // Commande-fichier de ~/.omp/agent/commands : la conversation montre « /nom args ».
+    mkdirSync(path.join(home, '.omp/agent/commands'), { recursive: true })
+    writeFileSync(path.join(home, '.omp/agent/commands/aside.md'), '---\ndescription: Aparté\n---\n# Aside\n\nRéponds vite.\n')
+    const withCmd = path.join(dir, '2026-01-02T00-00-00-000Z_s2.jsonl')
+    writeFileSync(withCmd, msg({ role: 'user', content: [{ type: 'text', text: '# Aside\n\nRéponds vite.\n\nquelle heure ?' }], attribution: 'user' }, '2026-01-02T00:00:00Z') + '\n')
+    const t2 = createTranscripts({ home, herdr: async () => { throw new Error('pas de Herdr') } })
+    expect((await t2.chat({ ...omp, id: 'wO:p5', agentSession: withCmd }, {})).items!.map(i => i.text)).toEqual(['/aside quelle heure ?'])
+  })
+})
+
 describe('Codex à démon partagé (hook de session rapporté au mauvais pane)', () => {
   // Trois Codex dans le même dossier ; le démon app-server, lancé par le premier,
   // rapporte la session du troisième au premier pane.

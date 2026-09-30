@@ -12,8 +12,10 @@ First public release.
 
 - Live agent list grouped by state, with answer previews and one-tap answers to permission
   prompts and questions.
-- Conversation view for Claude Code and Codex transcripts (Markdown, tool calls, images,
+- Conversation view for Claude Code, Codex and omp transcripts (Markdown, tool calls, images,
   search, infinite scroll), typing effect with optional encrypted-text reveal.
+- omp slash commands in the composer: built-in commands, file commands and `/skill:<name>`
+  suggestions; file commands show as `/name args` in the conversation.
 - Terminal view (xterm.js, WebGL or DOM renderer) with a phone key bar and take-over.
 - Composer with queued messages (cancellable), photos, paste, slash commands and their output.
 - Per-session model and effort pickers for Claude Code and Codex.
