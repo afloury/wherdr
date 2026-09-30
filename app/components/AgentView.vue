@@ -453,68 +453,70 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
       <small>{{ dropTarget === 'term' ? t('Le chemin du fichier part dans le terminal') : t('Images · réduites avant l’envoi') }}</small>
     </div>
     <SpaceTabs v-if="!cell && pane" :workspace="pane.workspace" :current="pane.tab" />
-    <header class="top bar agent-top">
-      <span v-if="cell && grip" class="cell-grip" role="button" :aria-label="t('Glisser pour déplacer le pane')" :title="t('Glisser pour déplacer le pane')">
-        <UIcon name="i-lucide-grip-vertical" />
-      </span>
-      <UButton
-        v-if="!cell" id="btnBack" icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn back"
-        :aria-label="t('Retour')" @click="goBack"
-      />
-      <div class="agent-head">
-        <div class="agent-title">{{ headTitle }}</div>
-        <div class="agent-meta">
-          <StatusPill :pane="pane" kind />
-          <span v-if="subtitle" class="agent-subtitle">{{ subtitle }}</span>
-          <span v-if="command" class="agent-subtitle agent-command">{{ command }}</span>
-          <span v-if="tabName" class="agent-subtitle">{{ tabName }}</span>
-          <span v-if="machine" class="agent-machine" :class="machine.status" :title="machine.target ? `ssh ${machine.target}` : undefined">
-            <UIcon :name="machine.local ? 'i-lucide-server' : 'i-lucide-laptop'" /><span class="machine-inline-name">{{ machineName(machine.key) }}</span><MachineLocalBadge v-if="machine.local" />
-          </span>
-          <span v-if="where" class="where">{{ where }}</span>
+    <HeaderMenu :items="() => agentMenu" :disabled="!pane">
+      <header class="top bar agent-top">
+        <span v-if="cell && grip" class="cell-grip" role="button" :aria-label="t('Glisser pour déplacer le pane')" :title="t('Glisser pour déplacer le pane')">
+          <UIcon name="i-lucide-grip-vertical" />
+        </span>
+        <UButton
+          v-if="!cell" id="btnBack" icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn back"
+          :aria-label="t('Retour')" @click="goBack"
+        />
+        <div class="agent-head">
+          <div class="agent-title">{{ headTitle }}</div>
+          <div class="agent-meta">
+            <StatusPill :pane="pane" kind />
+            <span v-if="subtitle" class="agent-subtitle">{{ subtitle }}</span>
+            <span v-if="command" class="agent-subtitle agent-command">{{ command }}</span>
+            <span v-if="tabName" class="agent-subtitle">{{ tabName }}</span>
+            <span v-if="machine" class="agent-machine" :class="machine.status" :title="machine.target ? `ssh ${machine.target}` : undefined">
+              <UIcon :name="machine.local ? 'i-lucide-server' : 'i-lucide-laptop'" /><span class="machine-inline-name">{{ machineName(machine.key) }}</span><MachineLocalBadge v-if="machine.local" />
+            </span>
+            <span v-if="where" class="where">{{ where }}</span>
+          </div>
         </div>
-      </div>
-      <UTabs
-        v-if="controls.selector === 'cell'" v-model="tab" :items="tabs" :content="false" color="neutral" variant="pill" size="xs"
-        class="view-tabs" :ui="{ list: 'hw-tabs', trigger: 'hw-tab', indicator: 'hw-tab-ind' }"
-      />
-      <div class="agent-actions">
         <UTabs
-          v-if="controls.selector === 'header'" v-model="tab" :items="tabs" :content="false" color="neutral" variant="pill" size="xs"
+          v-if="controls.selector === 'cell'" v-model="tab" :items="tabs" :content="false" color="neutral" variant="pill" size="xs"
           class="view-tabs" :ui="{ list: 'hw-tabs', trigger: 'hw-tab', indicator: 'hw-tab-ind' }"
         />
-        <UButton
-          v-if="headerAdd && pane" icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn"
-          :aria-label="t('Nouvel onglet')" :title="t('Nouvel onglet')" :disabled="offlineView" @click="newTab(pane.workspace)"
-        />
-        <UTooltip v-if="cell" :text="t('Ouvrir seul')">
-          <UButton icon="i-lucide-maximize-2" color="neutral" variant="ghost" size="md" class="icon-btn" :aria-label="t('Ouvrir seul')" :to="panePath(paneId)" />
-        </UTooltip>
-        <UTooltip v-else-if="inTab && tabEnt" :text="t('Côte à côte')" :disabled="!desk">
-          <button type="button" class="map-btn" :aria-label="desk ? t('Côte à côte') : t('Plan de l’onglet')" @click="openPlan">
-            <TabMap :layout="tabEnt.layout" :panes="tabEnt.panes" :current="paneId" />
-          </button>
-        </UTooltip>
-        <UTooltip v-if="projectSide && !sideOpen" :text="t('Afficher le panneau Projet')">
-          <UButton icon="i-lucide-panel-right-open" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Afficher le panneau Projet')" @click="setSideOpen(true)" />
-        </UTooltip>
-        <UButton
-          v-if="controls.project" icon="i-lucide-folder-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn mode-btn"
-          :class="{ on: mode === 'project' }" :aria-label="t('Projet')" :aria-pressed="mode === 'project'" @click="toggleMode('project')"
-        />
-        <UButton
-          v-if="controls.term" icon="i-lucide-square-terminal" color="neutral" variant="ghost" size="lg" class="icon-btn mode-btn"
-          :class="{ on: mode === 'term' }" :aria-label="t('Terminal')" :aria-pressed="mode === 'term'" @click="toggleMode('term')"
-        />
-        <UTooltip v-if="hasChat(pane) && (live || cell)" :text="t('Rechercher')" :disabled="!desk">
-          <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :class="{ on: searchOpen }" :aria-label="t('Rechercher')" @click="toggleSearch" />
-        </UTooltip>
-        <UDropdownMenu v-if="desk" :items="dropdownItems" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
-          <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Options')" />
-        </UDropdownMenu>
-        <UButton v-else icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Options')" @click="openAgentMenu" />
-      </div>
-    </header>
+        <div class="agent-actions">
+          <UTabs
+            v-if="controls.selector === 'header'" v-model="tab" :items="tabs" :content="false" color="neutral" variant="pill" size="xs"
+            class="view-tabs" :ui="{ list: 'hw-tabs', trigger: 'hw-tab', indicator: 'hw-tab-ind' }"
+          />
+          <UButton
+            v-if="headerAdd && pane" icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn"
+            :aria-label="t('Nouvel onglet')" :title="t('Nouvel onglet')" :disabled="offlineView" @click="newTab(pane.workspace)"
+          />
+          <UTooltip v-if="cell" :text="t('Ouvrir seul')">
+            <UButton icon="i-lucide-maximize-2" color="neutral" variant="ghost" size="md" class="icon-btn" :aria-label="t('Ouvrir seul')" :to="panePath(paneId)" />
+          </UTooltip>
+          <UTooltip v-else-if="inTab && tabEnt" :text="t('Côte à côte')" :disabled="!desk">
+            <button type="button" class="map-btn" :aria-label="desk ? t('Côte à côte') : t('Plan de l’onglet')" @click="openPlan">
+              <TabMap :layout="tabEnt.layout" :panes="tabEnt.panes" :current="paneId" />
+            </button>
+          </UTooltip>
+          <UTooltip v-if="projectSide && !sideOpen" :text="t('Afficher le panneau Projet')">
+            <UButton icon="i-lucide-panel-right-open" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Afficher le panneau Projet')" @click="setSideOpen(true)" />
+          </UTooltip>
+          <UButton
+            v-if="controls.project" icon="i-lucide-folder-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn mode-btn"
+            :class="{ on: mode === 'project' }" :aria-label="t('Projet')" :aria-pressed="mode === 'project'" @click="toggleMode('project')"
+          />
+          <UButton
+            v-if="controls.term" icon="i-lucide-square-terminal" color="neutral" variant="ghost" size="lg" class="icon-btn mode-btn"
+            :class="{ on: mode === 'term' }" :aria-label="t('Terminal')" :aria-pressed="mode === 'term'" @click="toggleMode('term')"
+          />
+          <UTooltip v-if="hasChat(pane) && (live || cell)" :text="t('Rechercher')" :disabled="!desk">
+            <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :class="{ on: searchOpen }" :aria-label="t('Rechercher')" @click="toggleSearch" />
+          </UTooltip>
+          <UDropdownMenu v-if="desk" :items="dropdownItems" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
+            <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Options')" />
+          </UDropdownMenu>
+          <UButton v-else icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Options')" @click="openAgentMenu" />
+        </div>
+      </header>
+    </HeaderMenu>
 
     <div class="agent-body">
     <div class="agent-main">

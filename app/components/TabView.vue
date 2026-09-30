@@ -10,6 +10,7 @@
 // autre, et glisser un trait de séparation pour redimensionner.
 import { type Divider, type DropSide, type TabLayout, dividers, dropPreview, dropZone, neighborPane, paneBoxes, ratioAt, resizePreview } from '#shared/layout'
 import { longPress } from '~/utils/longPress'
+import { skipsPress } from '~/utils/headerMenu'
 import { cellFocusStep } from '~/utils/viewMode'
 
 const props = defineProps<{ tabId: string }>()
@@ -71,15 +72,9 @@ function onFocusKey(e: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', onFocusKey, true))
 onUnmounted(() => window.removeEventListener('keydown', onFocusKey, true))
 
-// Titre (nom du space) : appui long (téléphone) ou clic droit (ordinateur),
-// options du space.
-const wsPress = longPress({
-  onPress: () => {
-    if (!ws.value) return
-    haptic()
-    openMenu(workspaceItems(ws.value.id), tl(`Espace « ${ws.value.label} »`, `Space “${ws.value.label}”`))
-  },
-})
+// En-tête (clic droit, appui long) et bouton « … » : l'onglet puis son space.
+const tabMenu = () => [...tabPlanItems(props.tabId), ...settingsMenuItems()]
+const tabMenuTitle = computed(() => entry.value ? `${t('Onglet')} ${tabLabel(entry.value.tab.label, entry.value.tab.number)}` : undefined)
 
 // ---------- Glisser un pane sur un autre ----------
 // Ordinateur : poignée de l'en-tête de la case (souris ou doigt). Téléphone :
@@ -133,6 +128,7 @@ function onDragEnd(e: PointerEvent) {
   const p = byId.value.get(d.pane)
   if (d.touch) planPress.suppressClick()
   stopDrag()
+  if (d.touch && !d.started && pressHead) return paneMenu(d.pane)
   if (d.started && p && d.over && d.side) dropPane(p, d.over, d.side)
 }
 function onDragCancel(e: PointerEvent) {
@@ -178,9 +174,18 @@ function gripDown(pane: string, e: PointerEvent) {
 // Téléphone : appui long sur une case du plan, puis le doigt la déplace.
 let pressEv: PointerEvent | null = null
 let pressPane = ''
+// Appui long sur l'en-tête de la case, doigt levé sans bouger : menu du pane.
+let pressHead = false
+function paneMenu(paneId: string) {
+  const p = byId.value.get(paneId)
+  if (!p) return
+  haptic()
+  openMenu(paneItems(p), paneTitle(p))
+}
 const planPress = longPress({
   onPress: () => {
-    if (!pressEv || !draggable.value) return
+    if (!pressEv) return
+    if (!draggable.value) return pressHead ? paneMenu(pressPane) : undefined
     haptic()
     startDrag(pressPane, pressEv, true)
   },
@@ -188,6 +193,7 @@ const planPress = longPress({
 function planDown(pane: string, e: PointerEvent) {
   pressEv = e
   pressPane = pane
+  pressHead = !!(e.target as Element | null)?.closest?.('.plan-cell-head') && !skipsPress(e.target as Element | null)
   planPress.down(e)
 }
 function planMove(e: PointerEvent) {
@@ -255,30 +261,27 @@ function open(paneId: string) {
 <template>
   <section id="tabview" class="view">
     <SpaceTabs v-if="entry" :workspace="entry.tab.workspace" :current="tabId" />
-    <header class="top bar tab-top">
-      <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn back tab-back" :aria-label="t('Retour')" to="/" />
-      <div class="tab-head">
-        <UContextMenu :disabled="!desk || !ws" :items="desk && ws ? toDropdown(workspaceItems(ws.id)) : []" :ui="{ content: 'hw-dropdown' }">
-          <div
-            class="tab-title" @pointerdown="!desk && wsPress.down($event)" @pointermove="wsPress.move" @pointerup="wsPress.cancel"
-            @pointercancel="wsPress.cancel" @contextmenu="!desk && $event.preventDefault()"
-          >
+    <HeaderMenu :items="tabMenu" :title="tabMenuTitle" :disabled="!entry">
+      <header class="top bar tab-top">
+        <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn back tab-back" :aria-label="t('Retour')" to="/" />
+        <div class="tab-head">
+          <div class="tab-title">
             <UIcon v-if="ws?.worktree" name="i-lucide-git-branch" class="tab-title-branch" />{{ ws?.label || '—' }}
           </div>
-        </UContextMenu>
-        <div class="tab-meta">
-          <span class="tab-meta-tab">{{ t('Onglet') }} {{ entry ? tabLabel(entry.tab.label, entry.tab.number) : '' }}</span>
-          <span v-if="entry">{{ `${entry.panes.length} pane${entry.panes.length > 1 ? 's' : ''}` }}</span>
-          <span v-if="entry?.layout.zoomed" class="tab-meta-zoom" :title="t('Un pane est agrandi dans Herdr')">zoom</span>
-          <span v-if="machine" class="tab-meta-machine" :class="machine.status"><UIcon :name="machine.local ? 'i-lucide-server' : 'i-lucide-laptop'" /><span class="machine-inline-name">{{ machineName(machine.key) }}</span><MachineLocalBadge v-if="machine.local" /></span>
+          <div class="tab-meta">
+            <span class="tab-meta-tab">{{ t('Onglet') }} {{ entry ? tabLabel(entry.tab.label, entry.tab.number) : '' }}</span>
+            <span v-if="entry">{{ `${entry.panes.length} pane${entry.panes.length > 1 ? 's' : ''}` }}</span>
+            <span v-if="entry?.layout.zoomed" class="tab-meta-zoom" :title="t('Un pane est agrandi dans Herdr')">zoom</span>
+            <span v-if="machine" class="tab-meta-machine" :class="machine.status"><UIcon :name="machine.local ? 'i-lucide-server' : 'i-lucide-laptop'" /><span class="machine-inline-name">{{ machineName(machine.key) }}</span><MachineLocalBadge v-if="machine.local" /></span>
+          </div>
         </div>
-      </div>
-      <UButton
-        v-if="headerAdd && entry" icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn"
-        :aria-label="t('Nouvel onglet')" :title="t('Nouvel onglet')" :disabled="offlineView" @click="newTab(entry.tab.workspace)"
-      />
-      <SpaceMenu v-if="entry" :items="() => [...tabPlanItems(tabId), ...settingsMenuItems()]" size="lg" :title="`${t('Onglet')} ${tabLabel(entry.tab.label, entry.tab.number)}`" :label="t('Options de l’onglet')" />
-    </header>
+        <UButton
+          v-if="headerAdd && entry" icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn"
+          :aria-label="t('Nouvel onglet')" :title="t('Nouvel onglet')" :disabled="offlineView" @click="newTab(entry.tab.workspace)"
+        />
+        <SpaceMenu v-if="entry" :items="tabMenu" size="lg" :title="tabMenuTitle" :label="t('Options de l’onglet')" />
+      </header>
+    </HeaderMenu>
 
     <OfflineNote v-if="!desk && (netDown || offlineView)" :label="offlineView ? t('Dernier état connu') : undefined" :at="cachedAt" />
     <div v-if="closed" class="chat-empty">

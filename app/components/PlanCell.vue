@@ -21,12 +21,15 @@ watch(() => props.pane.prompt, () => { busy.value = false })
     class="plan-cell" :class="[statusKey(pane), { stale: paneStale(pane), fresh }]" role="button" tabindex="0" :data-pane="pane.id"
     @click="emit('open')" @keydown.enter.self="emit('open')"
   >
-    <div class="plan-cell-head">
-      <AgentAvatar :agent="pane.agent" />
-      <span class="plan-cell-title">{{ paneTitle(pane) }}</span>
-      <span v-if="focused" class="plan-cell-focus" :title="t('Pane actif dans Herdr')" />
-      <SpaceMenu :items="() => paneItems(pane)" :title="paneTitle(pane)" size="sm" :label="t('Options du pane')" />
-    </div>
+    <!-- Appui long sur l'en-tête : géré par le plan (TabView), avec le glisser. -->
+    <HeaderMenu :items="() => paneItems(pane)" :title="paneTitle(pane)" :press="false">
+      <div class="plan-cell-head">
+        <AgentAvatar :agent="pane.agent" />
+        <span class="plan-cell-title">{{ paneTitle(pane) }}</span>
+        <span v-if="focused" class="plan-cell-focus" :title="t('Pane actif dans Herdr')" />
+        <SpaceMenu :items="() => paneItems(pane)" :title="paneTitle(pane)" size="sm" :label="t('Options du pane')" />
+      </div>
+    </HeaderMenu>
     <StatusPill :pane="pane" model />
     <code v-if="prompt?.detail" class="plan-cell-detail">{{ detailLine(prompt.detail) }}</code>
     <p v-if="line" class="plan-cell-line">{{ line }}</p>
