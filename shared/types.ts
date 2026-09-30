@@ -179,6 +179,8 @@ export interface NamedSession { name: string, running: boolean, key: string }
 
 export interface HerdrState {
   ok: boolean
+  // false : serveur tout juste (re)démarré, état encore partiel (shared/stateReady.ts).
+  ready?: boolean
   error?: string
   version?: string
   session?: string
