@@ -12,6 +12,7 @@ import { queuedPhases } from '#shared/queuedPhase'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
+import { isStale, noMisses, onError, onUnavailable, type ChatMisses } from '~/utils/chatMiss'
 import { dropReplyMarker, findReplyOrigin, parseReply, replyTarget, type ReplyTarget } from '#shared/replyQuote'
 
 const props = defineProps<{ pane: Pane, localQueued: QueuedMessage[] }>()
@@ -36,6 +37,7 @@ const chat = shallowRef<ChatData>(fresh())
 const items = computed(() => chat.value.older.concat(chat.value.tail))
 const unavailable = ref<'not_found' | 'unsupported' | null>(null)
 const loadError = ref<string | null>(null)
+const misses = shallowRef<ChatMisses>(noMisses()) // sondages ratés, vue gardée
 const rendered = ref(false)
 const olderBusy = ref(false)
 const savedAt = ref<number | null>(null)
@@ -145,6 +147,9 @@ async function loadChat(): Promise<void> {
     const r = await api<ChatResponse>(`/api/chat?${q}`)
     if (pane !== props.pane.id) return
     if (!r.available) {
+      const m = onUnavailable(misses.value, Boolean(chat.value.file) && items.value.length > 0)
+      misses.value = m.next
+      if (!m.clear) return
       chat.value = fresh()
       unavailable.value = r.reason || 'unsupported'
       // Conversation ouverte avant sa première réponse : celle-ci est nouvelle.
@@ -153,6 +158,7 @@ async function loadChat(): Promise<void> {
     }
     unavailable.value = null
     loadError.value = null
+    if (misses.value.misses || misses.value.errors) misses.value = noMisses()
     if (r.unchanged) return
     savedAt.value = null
     // Nouvelle session (/clear, nouvel agent) : les octets de l'ancienne ne
@@ -178,7 +184,9 @@ async function loadChat(): Promise<void> {
     })
     saveChat(pane, items.value)
   } catch (err) {
-    if (pane === props.pane.id && !items.value.length) loadError.value = (err as Error).message
+    if (pane !== props.pane.id) return
+    if (!items.value.length) loadError.value = (err as Error).message
+    else misses.value = onError(misses.value)
   } finally { busy = false }
 }
 
@@ -760,6 +768,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
 
   <div class="chat-wrap">
     <OfflineNote v-if="readOnly || netDown" :label="readOnly ? t('Lecture hors ligne') : undefined" :at="savedAt" />
+    <OfflineNote v-else-if="isStale(misses)" :label="t('Conversation non à jour — reconnexion…')" />
     <div ref="box" class="chat" @scroll.passive="onScroll">
       <UChatMessages
         :status="working ? 'streaming' : 'ready'" :should-auto-scroll="false"

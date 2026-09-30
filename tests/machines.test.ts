@@ -8,7 +8,8 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { PANE_RE, isSelfTarget, joinId, machineKey, machineOf, parseMachineList, parseStatusSocket, routeParams, splitId, targetHost } from '../shared/ids'
 import { type ShellExec, createShellFs, LIST_DIRS_SCRIPT, parseDirList, parseStatLine, shq } from '../server/utils/fsx'
-import { createTranscripts } from '../server/utils/transcripts'
+import { createTranscripts, isMissing } from '../server/utils/transcripts'
+import { FsError } from '../server/utils/fsx'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 
@@ -192,5 +193,73 @@ describe('fichiers d’une machine distante (shell)', () => {
     const size = Buffer.byteLength(fx('claude-session.jsonl'))
     const older = await t.chat(pane, { before: Math.floor(size / 2) })
     expect(older.older).toBe(true)
+  })
+})
+
+// Lecture distante qui flanche (SSH coupé, délai dépassé) : la conversation
+// déjà trouvée ne doit jamais devenir « introuvable » (la vue se viderait).
+describe('transcription distante instable', () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'hw-flaky-'))
+  const dir = path.join(home, '.claude/projects/-Users-x')
+  mkdirSync(dir, { recursive: true })
+  const file = path.join(dir, 'abc-123.jsonl')
+  writeFileSync(file, fx('claude-session.jsonl'))
+  let mode: 'ok' | 'fail' | 'timeout' = 'ok'
+  const flakySh: ShellExec = (script, args, opts) => {
+    if (mode === 'fail') return Promise.resolve({ code: 255, stdout: Buffer.alloc(0), stderr: 'Connection closed by remote host' })
+    if (mode === 'timeout') return Promise.resolve({ code: null, stdout: Buffer.alloc(0), stderr: '' }) // tué au délai
+    return localSh(script, args, opts)
+  }
+  const fs = createShellFs(flakySh, { statTtlMs: 0 })
+  const noHerdr = async () => { throw new Error('pas de Herdr') }
+  const pane = { id: '12345678~w1:p1', agent: 'claude', cwd: '/Users/x', agentSession: 'abc-123' }
+
+  it('distingue un fichier absent d’une lecture ratée', () => {
+    expect(isMissing(new FsError('ENOENT', 'introuvable : x'))).toBe(true)
+    expect(isMissing(new FsError('remote', 'cat: x: No such file or directory'))).toBe(true)
+    expect(isMissing(new FsError('remote', 'Connection closed by remote host'))).toBe(false)
+    expect(isMissing(new FsError('remote', 'code null'))).toBe(false)
+  })
+
+  it('lecture en échec ou délai dépassé : une erreur, jamais « introuvable »', async () => {
+    const t = createTranscripts({ home, herdr: noHerdr, fs })
+    mode = 'ok'
+    expect((await t.chat(pane, {})).available).toBe(true)
+    t.forget(pane.id) // relocalisation forcée : c'est elle qui échouait en « not_found »
+    const again = createTranscripts({ home, herdr: noHerdr, fs })
+    expect((await again.chat(pane, {})).available).toBe(true)
+    for (const m of ['fail', 'timeout'] as const) {
+      mode = m
+      await expect(again.chat(pane, {})).rejects.toThrow()
+    }
+    mode = 'ok'
+    expect((await again.chat(pane, {})).available).toBe(true)
+  })
+
+  it('recherche du fichier ratée : on garde le dernier fichier connu', async () => {
+    const t = createTranscripts({ home, herdr: noHerdr, fs })
+    mode = 'ok'
+    const first = await t.chat(pane, {})
+    // Session absente d'un sondage (instantané incomplet) et SSH qui flanche.
+    mode = 'fail'
+    const loc = await t.locate({ ...pane, agentSession: null })
+    expect(loc && loc.file).toBe(file)
+    mode = 'ok'
+    const r = await t.chat({ ...pane, agentSession: null }, {})
+    expect(r.available).toBe(true)
+    expect(r.file).toBe(first.file)
+  })
+
+  it('fichier vraiment supprimé : « introuvable »', async () => {
+    const other = path.join(dir, 'gone-1.jsonl')
+    writeFileSync(other, fx('claude-session.jsonl'))
+    const t = createTranscripts({ home, herdr: noHerdr, fs })
+    mode = 'ok'
+    const p = { ...pane, id: '12345678~w1:p2', agentSession: 'gone-1' }
+    expect((await t.chat(p, {})).available).toBe(true)
+    const { rmSync } = await import('node:fs')
+    rmSync(other)
+    t.forget(p.id)
+    expect(await t.chat(p, {})).toEqual({ available: false, reason: 'not_found' })
   })
 })

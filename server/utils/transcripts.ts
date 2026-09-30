@@ -450,8 +450,19 @@ export function extractImage(d: Json, index: number): { type: string, body: Buff
 }
 
 // `fs` : disque de la machine où tournent les agents (local, ou distant par SSH).
+// Fichier vraiment absent, par opposition à une lecture ratée (SSH coupé,
+// délai dépassé) : seule l'absence dit « pas de conversation ». À distance,
+// `cat`/`ls` ne rendent que leur message d'erreur.
+export function isMissing(e: unknown): boolean {
+  const err = e as { code?: string, message?: string } | null
+  if (!err) return false
+  if (err.code === 'ENOENT' || err.code === 'ENOTDIR') return true
+  return err.code === 'remote' && /no such file|not a directory|introuvable/i.test(err.message || '')
+}
+
 export function createTranscripts({ home, herdr, fs = localFs }: { home: string, herdr: HerdrCall, fs?: MachineFs }) {
   const locCache = new Map<string, { at: number, loc: Loc | null, session?: string | null }>()
+  const lastLoc = new Map<string, Loc>() // dernier fichier trouvé, repli si une recherche échoue
   const parseCache = new Map<string, { size: number, r: TailResult }>()
   const metaCache = new Map<string, Json>()
 
@@ -467,7 +478,10 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
 
   async function exists(f: string) {
     try { return (await fs.stat(f)).isFile }
-    catch { return false }
+    catch (e) {
+      if (isMissing(e)) return false
+      throw e
+    }
   }
   // Premier fichier existant parmi `files` (un seul aller-retour à distance).
   async function firstExisting(files: string[]) {
@@ -478,13 +492,19 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
   }
   async function listDir(d: string) {
     try { return await fs.readdir(d) }
-    catch { return [] }
+    catch (e) {
+      if (isMissing(e)) return []
+      throw e
+    }
   }
 
   async function locateClaude(proc: { pid: number }): Promise<Loc | null> {
     let sess: Json
     try { sess = JSON.parse(await fs.readFile(path.join(home, '.claude/sessions', `${proc.pid}.json`))) }
-    catch { return null }
+    catch (e) {
+      if (e instanceof SyntaxError || isMissing(e)) return null
+      throw e
+    }
     if (!sess.sessionId) return null
     const direct = path.join(home, '.claude/projects', encodeCwd(sess.cwd || ''), `${sess.sessionId}.jsonl`)
     if (await exists(direct)) return { file: direct, session: sess.sessionId }
@@ -605,6 +625,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     const hit = locCache.get(pane.id)
     if (hit && Date.now() - hit.at < 8000 && hit.session === pane.agentSession) return hit.loc
     let loc: Loc | null = null
+    let failed = false
     try {
       if (pane.agent === 'codex') loc = await locateCodexPane(pane)
       else if (pane.agentSession) {
@@ -615,8 +636,15 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
         const proc = await paneProcess(pane.id, 'claude')
         if (proc) loc = await locateClaude(proc)
       }
-    } catch { loc = null }
+    } catch { failed = true }
+    // Lecture ratée (SSH, délai) : on garde le dernier fichier connu plutôt
+    // que de conclure « pas de conversation » (la vue se viderait une seconde).
+    if (failed) {
+      const last = lastLoc.get(pane.id)
+      return last && (!pane.agentSession || last.session === pane.agentSession) ? last : null
+    }
     locCache.set(pane.id, { at: Date.now(), loc, session: pane.agentSession })
+    if (loc) lastLoc.set(pane.id, loc)
     return loc
   }
 
@@ -700,8 +728,11 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     if (!loc) return { available: false, reason: 'not_found' }
     let st
     try { st = await fs.stat(loc.file) }
-    catch {
+    catch (e) {
+      // Lecture ratée : une erreur (le client garde ce qu'il affiche), pas un vide.
+      if (!isMissing(e)) throw e
       locCache.delete(pane.id)
+      lastLoc.delete(pane.id)
       return { available: false, reason: 'not_found' }
     }
     const fileId = path.basename(loc.file)
@@ -816,6 +847,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
 
   function forget(paneId: string) {
     locCache.delete(paneId)
+    lastLoc.delete(paneId)
     modelCache.delete(paneId)
     pendingCache.delete(paneId)
   }
