@@ -5,7 +5,7 @@
 // légende en boutons (« Tout approuver (t) »). Rien n'est envoyé sans un clic.
 import type { Choices, WaitAction, WaitScreen } from '#shared/types'
 
-const props = defineProps<{ paneId: string, prompt?: Choices | null, screen?: WaitScreen | null }>()
+const props = defineProps<{ paneId: string, prompt?: Choices | null, screen?: WaitScreen | null, keys?: boolean }>()
 const busy = ref(false)
 watch(() => [props.prompt, props.screen], () => { busy.value = false })
 
@@ -24,6 +24,17 @@ async function press(a: WaitAction) {
   busy.value = true
   if (!(await pressScreenKey(props.paneId, a))) busy.value = false
 }
+
+// Clavier (ordinateur, vue active) sur une invite à options : ↑ ↓ Entrée Échap
+// partent au terminal (la carte suit l'écran relu), 1-9 choisit l'option.
+const disabled = computed(() => busy.value || !eventsOpen.value || offlineView.value)
+const keyboard = computed(() => Boolean(props.keys && desk.value && props.prompt && props.prompt.options.length && !disabled.value))
+useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.options.length || 0), enter: true }), (k) => {
+  const p = props.prompt
+  if (!p) return
+  if (k.kind === 'digit') return pick(k.n - 1, p.options[k.n - 1]!.label)
+  navKey(props.paneId, k.key)
+})
 </script>
 
 <template>
@@ -42,13 +53,14 @@ async function press(a: WaitAction) {
         <span class="n">{{ i + 1 }}</span><span class="l">{{ o.label }}<small v-if="o.hint">{{ o.hint }}</small></span>
       </button>
     </div>
-    <div v-if="actions.length" class="choices-keys">
+    <div v-if="actions.length || keyboard" class="choices-keys">
       <button
         v-for="a in actions" :key="a.key + a.label" type="button"
         :disabled="busy || !eventsOpen || offlineView" @click="press(a)"
       >
         {{ screenActionText(a) }}<kbd>{{ screenKeyName(a.key) }}</kbd>
       </button>
+      <span v-if="keyboard" class="card-kbd" aria-hidden="true"><kbd>↑↓</kbd><kbd>{{ screenKeyName('enter') }}</kbd><kbd>1–{{ Math.min(9, prompt!.options.length) }}</kbd></span>
     </div>
   </div>
 </template>

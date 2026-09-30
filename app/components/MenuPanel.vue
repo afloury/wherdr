@@ -7,7 +7,7 @@
 import type { InteractiveMenu, WaitAction } from '#shared/types'
 import { clickMovesOnly } from '#shared/menuScreen'
 
-const props = defineProps<{ paneId: string, menu: InteractiveMenu }>()
+const props = defineProps<{ paneId: string, menu: InteractiveMenu, keys?: boolean }>()
 const emit = defineEmits<{ terminal: [] }>()
 const busy = ref(false)
 const listRef = ref<HTMLElement | null>(null)
@@ -49,6 +49,16 @@ async function sendSearch() {
   typing.value = false
 }
 onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
+
+// Clavier (ordinateur, vue active) : ↑ ↓ Entrée Échap partent au terminal, la
+// carte suit l'écran relu. Entrée seulement si elle valide simplement l'entrée.
+const searchRef = ref<HTMLInputElement | null>(null)
+const esc = computed(() => props.menu.actions.some(a => a.key === 'esc'))
+const keyboard = computed(() => Boolean(props.keys && desk.value && known.value && !disabled.value))
+useCardKeys(() => keyboard.value, () => ({ digits: 0, enter: !moveOnly.value, own: searchRef.value }), (k) => {
+  if (k.kind !== 'nav' || (k.key === 'esc' && !esc.value)) return
+  navKey(props.paneId, k.key)
+})
 </script>
 
 <template>
@@ -60,7 +70,7 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
     <form v-if="menu.search !== null" class="menu-search" @submit.prevent="sendSearch">
       <UIcon name="i-lucide-search" aria-hidden="true" />
       <input
-        v-model="query" type="search" :placeholder="t('Rechercher…')" :aria-label="t('Rechercher dans le menu')"
+        ref="searchRef" v-model="query" type="search" :placeholder="t('Rechercher…')" :aria-label="t('Rechercher dans le menu')"
         enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" :disabled="!eventsOpen || offlineView" @input="onInput"
       >
     </form>
@@ -81,6 +91,7 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
       <button v-for="a in actions" :key="a.key + a.label" type="button" :disabled="disabled" @click="press(a)">
         {{ screenActionText(a) }}<kbd>{{ screenKeyName(a.key) }}</kbd>
       </button>
+      <span v-if="keyboard" class="card-kbd" aria-hidden="true"><kbd>↑↓</kbd><kbd v-if="!moveOnly">{{ screenKeyName('enter') }}</kbd></span>
       <button type="button" class="menu-term" @click="emit('terminal')">
         <UIcon name="i-lucide-square-terminal" aria-hidden="true" />{{ t('Voir le terminal') }}
       </button>

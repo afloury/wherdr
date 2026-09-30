@@ -43,6 +43,24 @@ export async function menuAction(paneId: string, body: { op: 'select', index: nu
   }
 }
 
+// Clavier de l'ordinateur sur une carte « À toi » : une vraie touche au
+// terminal (le serveur vérifie qu'un menu ou une invite est encore affiché).
+// Touches envoyées l'une après l'autre, dans l'ordre de frappe.
+let navChain: Promise<unknown> = Promise.resolve()
+export function navKey(paneId: string, key: 'up' | 'down' | 'enter' | 'esc'): Promise<boolean> {
+  const run = navChain.then(async () => {
+    try {
+      await api('/api/nav', { pane_id: paneId, key })
+      return true
+    } catch (err) {
+      toast((err as Error).message, true)
+      return false
+    }
+  })
+  navChain = run
+  return run
+}
+
 // Envoyer un message à un agent (champ de saisie, panneau Projet). Agent bloqué :
 // l'invite attend une saisie libre (« Type something… »), agent.prompt la
 // refuserait : on tape le texte tel quel. Agent au travail : le serveur met le
