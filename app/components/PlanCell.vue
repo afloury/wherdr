@@ -22,7 +22,7 @@ watch(() => props.pane.prompt, () => { busy.value = false })
     @click="emit('open')" @keydown.enter.self="emit('open')"
   >
     <!-- Appui long sur l'en-tête : géré par le plan (TabView), avec le glisser. -->
-    <HeaderMenu :items="() => paneItems(pane)" :title="paneTitle(pane)" :press="false">
+    <HeaderMenu :items="() => paneItems(pane)" :title="paneTitle(pane)" manual-press>
       <div class="plan-cell-head">
         <AgentAvatar :agent="pane.agent" />
         <span class="plan-cell-title">{{ paneTitle(pane) }}</span>

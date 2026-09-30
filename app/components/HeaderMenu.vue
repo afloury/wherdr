@@ -6,7 +6,7 @@
 import { longPress } from '~/utils/longPress'
 import { keepsNativeMenu, skipsPress } from '~/utils/headerMenu'
 
-const props = defineProps<{ items: () => MenuItem[], title?: string, disabled?: boolean, press?: boolean }>()
+const props = defineProps<{ items: () => MenuItem[], title?: string, disabled?: boolean, manualPress?: boolean }>()
 const dropdown = ref<ReturnType<typeof toDropdown>>([])
 
 // Défilement : Reka ne ferme pas le menu, on simule Échap.
@@ -33,8 +33,8 @@ const lp = longPress({
   },
 })
 function down(e: PointerEvent) {
-  // `press: false` : le parent gère l'appui long (glisser-déposer du plan).
-  if (desk.value || props.disabled || props.press === false || skipsPress(e.target as Element | null)) return
+  // `manualPress` : le parent gère l'appui long (glisser-déposer du plan).
+  if (desk.value || props.disabled || props.manualPress || skipsPress(e.target as Element | null)) return
   lp.down(e)
 }
 </script>
