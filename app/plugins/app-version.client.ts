@@ -1,6 +1,6 @@
 // Nouvelle version après un déploiement (remplace les rechargements
 // automatiques de Nuxt, coupés dans nuxt.config.ts) : vérification toutes les
-// 5 min et au retour sur la page ; morceau de code manquant pendant une
+// 5 min, au retour sur la page et à chaque reconnexion au serveur ; morceau de code manquant pendant une
 // navigation → un seul rechargement vers la vue demandée, sinon le bandeau.
 import { isChunkLoadError, mayReloadForChunk } from '../utils/appVersion'
 

@@ -10,6 +10,7 @@ import { settleState } from '#shared/stateReady'
 import { readSessionSelection, selectSessions, writeSessionSelection } from '~/utils/sessionSelection'
 import { effectiveTypingSpeed, encryptedTextActive, parseTypingSettings } from '~/utils/typewriter'
 import { readHiddenAgents } from '~/utils/agentChoices'
+import { checkNewVersion } from './useAppVersion'
 import { migrateContentWidth } from '~/utils/contentWidth'
 import { readQuotaDisplay } from '~/utils/quotas'
 import { readShowShells } from '~/utils/terminalVisibility'
@@ -352,7 +353,12 @@ export function connectEvents() {
   ws.onopen = () => {
     evRetry = 0
     eventsOpen.value = true
-    if (everOpen) settleUntil = Date.now() + SETTLE_MS
+    if (everOpen) {
+      settleUntil = Date.now() + SETTLE_MS
+      // Reconnexion = souvent un redéploiement : on regarde tout de suite si
+      // une nouvelle version est servie (bandeau « Recharger »).
+      checkNewVersion()
+    }
     everOpen = true
     sendViewing()
     restoreMachineSessions()
