@@ -7,7 +7,7 @@ services:
   herdr-web:
     build:
       context: .
-    image: herdr-web:local
+    image: wherdr:local
     pull_policy: build
     environment:
       # Commande de mise à jour proposée dans l'app.

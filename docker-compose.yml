@@ -1,4 +1,4 @@
-# herdr-web — PWA pour piloter depuis le téléphone les agents de code (Claude Code,
+# wherdr — PWA pour piloter depuis le téléphone les agents de code (Claude Code,
 # Codex) qui tournent dans Herdr (Nuxt 4 + Nuxt UI 4 ; passerelle Herdr dans Nitro).
 #
 # Réglages propres à l'installation : fichier `.env` (non suivi par git), à créer
@@ -16,9 +16,9 @@ services:
     #   docker compose pull && docker compose up -d
     # Construire soi-même à partir des sources : cf. docker-compose.build.yml.
     image: ${WHERDR_IMAGE:-ghcr.io/afloury/wherdr:latest}
-    container_name: herdr-web
+    container_name: wherdr
     hostname: ${HOST_LABEL:-wherdr}
-    restart: unless-stopped
+    restart: always  # redémarre aussi après un arrêt manuel du démon ou un reboot
     # Init minimal en PID 1 : récupère les processus détachés (commandes de plugins).
     init: true
     environment:

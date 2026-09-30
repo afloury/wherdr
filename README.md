@@ -306,7 +306,7 @@ installed version is shown in Settings › About.
 Also run `git pull` now and then with the published image: it brings the latest
 `docker-compose.yml` and `.env.example`.
 
-**Build from source.** `docker-compose.build.yml` builds the image locally (`herdr-web:local`)
+**Build from source.** `docker-compose.build.yml` builds the image locally (`wherdr:local`)
 instead of pulling it: add `-f docker-compose.yml -f docker-compose.build.yml` to every
 `docker compose` command (and `-f docker-compose.override.yml` if you use one). A build needs
 about 2 GB of free memory.
@@ -317,7 +317,7 @@ images and restart the container for you:
 ```sh
 docker run -d --name watchtower --restart unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  containrrr/watchtower --cleanup --schedule "0 0 4 * * *" herdr-web
+  containrrr/watchtower --cleanup --schedule "0 0 4 * * *" wherdr
 ```
 
 Pin a version instead of `latest` with `WHERDR_IMAGE=ghcr.io/afloury/wherdr:1.2.0` in `.env`.
