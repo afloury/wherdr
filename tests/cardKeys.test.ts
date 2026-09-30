@@ -12,10 +12,10 @@ describe('cardKey', () => {
     expect(cardKey({ key: 'Enter' }, body, opts)).toEqual({ kind: 'nav', key: 'enter' })
     expect(cardKey({ key: 'Escape' }, body, opts)).toEqual({ kind: 'nav', key: 'esc' })
   })
-  it('champ de message vide : flèches prises, chiffres non', () => {
+  it('champ de message vide : flèches et chiffres pris', () => {
     expect(cardKey({ key: 'ArrowDown' }, field(''), opts)).toEqual({ kind: 'nav', key: 'down' })
     expect(cardKey({ key: 'Enter' }, field(''), opts)).toEqual({ kind: 'nav', key: 'enter' })
-    expect(cardKey({ key: '1' }, field(''), opts)).toBeNull()
+    expect(cardKey({ key: '1' }, field(''), opts)).toEqual({ kind: 'digit', n: 1 })
   })
   it('texte en cours : rien n’est volé', () => {
     for (const key of ['ArrowUp', 'ArrowDown', 'Enter', 'Escape', '2']) expect(cardKey({ key }, field('bonjour'), opts)).toBeNull()
@@ -45,5 +45,6 @@ describe('cardKey', () => {
     expect(cardKey({ key: 'ArrowDown' }, own, opts)).toEqual({ kind: 'nav', key: 'down' })
     expect(cardKey({ key: 'Enter' }, own, opts)).toBeNull()
     expect(cardKey({ key: 'Escape' }, own, opts)).toBeNull()
+    expect(cardKey({ key: '1' }, { ...field(''), own: true }, opts)).toBeNull()
   })
 })

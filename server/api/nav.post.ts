@@ -24,7 +24,6 @@ export default defineApi(async (event, b) => {
   await herdr('pane.send_input', { pane_id: pane, keys: [key] })
   watchScreen(pane, 30000)
   // Relecture rapide : la nouvelle sélection s'affiche sans attendre le sondage.
-  setTimeout(poll, 60)
-  setTimeout(poll, 400)
+  for (const ms of [50, 150, 400]) setTimeout(() => { choicesCache.delete(pane); poll() }, ms)
   return { ok: true }
 })

@@ -3,8 +3,10 @@
 // de vraies touches, les chiffres 1-9 choisissent une option numérotée.
 // Règle de capture : la carte est affichée dans la vue active, aucune fenêtre
 // (modale, menu déroulant) n'est ouverte, et le focus n'est pas dans un champ
-// de saisie qui contient du texte — un champ vide (celui du message) laisse
-// passer ↑/↓/Entrée/Échap, jamais les chiffres (ils commencent un message).
+// de saisie qui contient du texte. Le champ du message, focalisé d'office sur
+// ordinateur, est vide la plupart du temps : il laisse passer ↑/↓/Entrée/Échap
+// et les chiffres (comme dans le terminal, où un chiffre choisit l'option) ;
+// dès qu'on y a tapé une lettre, plus rien n'est pris.
 // Focus sur un bouton : Entrée / Espace gardent leur effet natif (le clic).
 export type CardKey = { kind: 'nav', key: 'up' | 'down' | 'enter' | 'esc' } | { kind: 'digit', n: number }
 
@@ -37,7 +39,7 @@ export function cardKey(e: KeyInfo, f: FocusInfo, opts: { digits: number, enter:
     if (nav === 'enter' && (f.control || !opts.enter)) return null
     return { kind: 'nav', key: nav }
   }
-  if (/^[1-9]$/.test(e.key) && !f.editable) {
+  if (/^[1-9]$/.test(e.key) && !f.own) {
     const n = Number(e.key)
     return n <= opts.digits ? { kind: 'digit', n } : null
   }
