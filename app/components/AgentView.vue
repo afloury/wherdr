@@ -289,7 +289,6 @@ const agentMenu = computed<MenuItem[]>(() => {
   if (canAttachTerminal.value) items.push({ label: t('Joindre un fichier…'), icon: 'i-lucide-paperclip', run: () => attachInput.value?.click() })
   if (p) items.push({ label: t('Voir les changements'), icon: 'i-lucide-file-diff', run: () => { changesOpen.value = true } })
   if (p) items.push({ label: t('Renommer le pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } })
-  if (p && workspace.value) items.push({ label: t('Renommer l’espace'), icon: 'i-lucide-pencil', run: () => renameWorkspace(workspace.value!.id) })
   // Diviser, déplacer vers un autre onglet (jamais de zoom ni de redimensionnement).
   if (p) items.push(...paneSpaceItems(p))
   if (p) items.push(copyPaneIdItem(p))
