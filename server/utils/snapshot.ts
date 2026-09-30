@@ -50,6 +50,7 @@ export function reduceSnapshot(s: Json, machine = LOCAL, session = 'default'): H
       name: p.name || null,
       // Nom choisi par l'utilisateur (pane.rename), aussi affiché dans le client herdr.
       label: cleanLabel(p.label) || null,
+      ...(cleanLabel(p.display_agent) ? { displayAgent: cleanLabel(p.display_agent) } : {}),
       status: p.agent ? p.agent_status : null,
       title: p.terminal_title_stripped || p.terminal_title || null,
       cwd: p.foreground_cwd || p.cwd || null,
@@ -61,4 +62,17 @@ export function reduceSnapshot(s: Json, machine = LOCAL, session = 'default'): H
     }
   })
   return { ok: true, version: s.version, session: machine ? undefined : session, workspaces, tabs, panes }
+}
+
+const SHELL_NAMES = new Set(['sh', 'bash', 'zsh', 'fish', 'dash', 'ksh', 'tcsh', 'csh', 'nu', 'pwsh', 'login'])
+// `pane.process_info` : commande au premier plan (« pnpm dev »), vide quand le
+// shell attend au prompt. Chemin de l'exécutable réduit à son nom, 60 caractères max.
+export function foregroundCommand(info: Json): string {
+  const procs: Json[] = (info && info.foreground_processes) || []
+  const p = procs.find(x => x && x.pid !== info.shell_pid) || procs[0]
+  if (!p || p.pid === info.shell_pid) return ''
+  const argv: string[] = Array.isArray(p.argv) && p.argv.length ? p.argv.map(String) : String(p.cmdline || p.name || '').split(/\s+/)
+  const name = (argv[0] || '').split('/').pop()!.replace(/^-/, '')
+  if (!name || SHELL_NAMES.has(name)) return ''
+  return [name, ...argv.slice(1)].join(' ').replace(/\s+/g, ' ').trim().slice(0, 60)
 }

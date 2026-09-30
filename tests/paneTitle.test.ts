@@ -28,3 +28,33 @@ describe('titre affiché du pane', () => {
     expect(paneTitle(pane({ name: 'coordinator', cwd: '/home/user/.herdr-projects/wherdr' }), 'Projet wherdr')).toBe('Read brief and act')
   })
 })
+
+describe('nom d’un pane dans un space à plusieurs panes', () => {
+  const shell = (o: Partial<Pane> = {}) => pane({ agent: null, name: null, status: null, title: 'user@host: ~/src/demo-app', cwd: '/srv/src/demo-app', ...o })
+
+  it('préfère le nom choisi, même vide de tout autre titre', () => {
+    expect(paneTitle(shell({ label: 'Serveur', command: 'pnpm dev' }), 'demo-app')).toBe('Serveur')
+  })
+  it('prend le nom d’agent affiché par Herdr, sauf s’il est générique', () => {
+    expect(paneTitle(pane({ displayAgent: 'Relecteur', title: 'Autre chose' }))).toBe('Relecteur')
+    expect(paneTitle(pane({ displayAgent: 'Codex', title: 'Corriger le menu' }))).toBe('Corriger le menu')
+    expect(paneTitle(pane({ agent: 'claude', name: 'claude', displayAgent: 'Claude Code', title: 'Claude Code' }))).toBe('Claude')
+  })
+  it('garde un titre de terminal parlant', () => {
+    expect(paneTitle(shell({ title: 'htop' }))).toBe('htop')
+    expect(paneTitle(shell({ title: 'vim README.md', command: 'vim README.md' }))).toBe('vim README.md')
+  })
+  it('ignore le prompt du shell, le nom du shell, un chemin ou le dossier', () => {
+    for (const title of ['user@host: ~/src/demo-app', 'bash', '-zsh', '/usr/bin/fish', '~/src/demo-app', 'demo-app', '', null]) {
+      expect(paneTitle(shell({ title, command: 'pnpm dev' }))).toBe('pnpm dev')
+    }
+  })
+  it('se rabat sur le nom du dossier, jamais sur le nom du space', () => {
+    expect(paneTitle(shell(), 'Mon espace')).toBe('demo-app')
+    expect(paneTitle(shell({ cwd: null }))).toBe('Shell')
+  })
+  it('revient au titre automatique quand le nom est effacé', () => {
+    const named = shell({ label: 'Serveur', command: 'pnpm dev' })
+    expect(paneTitle({ ...named, label: null })).toBe('pnpm dev')
+  })
+})

@@ -263,7 +263,7 @@ export function paneWorkspaceItems(p: Pane): MenuItem[] {
 // Menu complet d'un pane du plan : renommer, diviser, déplacer, fermer.
 export function paneItems(p: Pane): MenuItem[] {
   return [
-    { label: t('Renommer'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } },
+    { label: t('Renommer le pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } },
     ...paneSpaceItems(p),
     { kind: 'separator' },
     {

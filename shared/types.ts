@@ -94,6 +94,10 @@ export interface Pane {
   agent: string | null
   name: string | null
   label: string | null
+  // Nom d'agent affiché par Herdr (`display_agent`), s'il dit plus que le type d'agent.
+  displayAgent?: string
+  // Pane sans agent : commande au premier plan (« pnpm dev »), absente au prompt du shell.
+  command?: string
   status: AgentStatus | null
   title: string | null
   cwd: string | null

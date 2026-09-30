@@ -48,6 +48,7 @@ const EN: Record<string, string> = {
   'Branche': 'Branch', '(optionnel)': '(optional)',
   // Renommer, recherche
   '✏️ Renommer': '✏️ Rename', 'Nom de l’agent': 'Agent name', 'Réinitialiser': 'Reset', 'Enregistrer': 'Save',
+  'Renommer le pane': 'Rename pane', 'Nom du pane (vide = nom automatique)': 'Pane name (empty = automatic name)',
   'Renommé': 'Renamed', 'Nom automatique rétabli': 'Automatic name restored',
   'Rechercher': 'Search', 'Rechercher dans la conversation': 'Search the conversation',
   'Rechercher dans toutes les conversations': 'Search all conversations',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { reduceSnapshot } from '../server/utils/snapshot'
+import { foregroundCommand, reduceSnapshot } from '../server/utils/snapshot'
 import { selectSessions } from '../app/utils/sessionSelection'
 import { tabLayout } from '../shared/layout'
 import type { HerdrState } from '../shared/types'
@@ -78,5 +78,19 @@ describe('sessions affichées', () => {
     expect(tabs.filter(t => t.startsWith('beef0001~'))).toHaveLength(4)
     expect(tabs.filter(t => t.startsWith('abcd1234~'))).toHaveLength(0)
     expect(tabs.filter(t => !t.includes('~'))).toHaveLength(4)
+  })
+})
+
+describe('commande au premier plan d’un pane', () => {
+  const info = (procs: object[]) => ({ shell_pid: 10, foreground_processes: procs })
+  it('donne la commande lancée depuis le shell', () => {
+    expect(foregroundCommand(info([{ pid: 12, argv: ['/usr/local/bin/pnpm', 'dev'], name: 'pnpm' }]))).toBe('pnpm dev')
+    expect(foregroundCommand(info([{ pid: 12, cmdline: 'npm run build', name: 'npm' }]))).toBe('npm run build')
+  })
+  it('reste vide au prompt du shell', () => {
+    expect(foregroundCommand(info([{ pid: 10, argv: ['-bash'], name: 'bash' }]))).toBe('')
+    expect(foregroundCommand(info([{ pid: 11, argv: ['zsh'], name: 'zsh' }]))).toBe('')
+    expect(foregroundCommand(info([]))).toBe('')
+    expect(foregroundCommand(null)).toBe('')
   })
 })
