@@ -1137,6 +1137,10 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .choices-keys button:hover { background: var(--surface-2); }
 .choices-keys button:active { background: var(--surface-3); }
 .choices-keys button:disabled { opacity: .5; }
+/* Touches du clavier prises par la carte (ordinateur) : discret, en bout de ligne. */
+.choices-keys .card-kbd { display: inline-flex; align-items: center; gap: 4px; align-self: center; margin-left: auto; }
+.choices-keys .card-kbd kbd { margin-left: 0; color: var(--muted); }
+.choices-keys .card-kbd + .menu-term { margin-left: 0; }
 /* Pas encore de conversation, mais l'agent attend une action dans le terminal. */
 .chat-empty.waiting .chat-empty-icon { color: var(--rose); }
 .chat-empty.waiting .choices-screen-text { text-align: left; align-self: stretch; max-width: 720px; margin: 0 auto; width: 100%; }

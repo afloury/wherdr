@@ -553,8 +553,8 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <div v-else class="chat" />
     <p v-if="pane?.agent && !hasChat(pane) && mode === 'term'" class="terminal-transcript-note">{{ tl('Conversation non disponible pour cet agent · suivi dans le terminal', 'Conversation unavailable for this agent · follow it in the terminal') }}</p>
 
-    <ChoicesPanel v-if="(prompt || screen) && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :screen="screen" />
-    <MenuPanel v-else-if="menu && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :menu="menu" @terminal="setMode('term')" />
+    <ChoicesPanel v-if="(prompt || screen) && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :screen="screen" :keys="live" />
+    <MenuPanel v-else-if="menu && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :menu="menu" :keys="live" @terminal="setMode('term')" />
     <Keybar v-if="mode === 'term' && eventsOpen && !offlineView && !machineDown" :ctl="ctl" />
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" @sent="onSent" @show-terminal="setMode('term')" />
     </div>
