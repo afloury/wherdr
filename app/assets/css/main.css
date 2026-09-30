@@ -2317,3 +2317,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .new-version-btn.primary { border-color: var(--accent); color: var(--accent); }
 .new-version-btn:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .new-version-btn:disabled { opacity: .5; cursor: default; }
+@media (max-width: 640px) {
+  .new-version { left: 16px; right: 16px; transform: none; width: auto; max-width: none; }
+  .new-version-text { flex: 1; }
+}

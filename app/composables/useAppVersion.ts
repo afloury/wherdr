@@ -18,7 +18,9 @@ export function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return
   navigator.serviceWorker.register('/sw.js').then((reg) => {
     swReg = reg
-    if (reg.waiting && navigator.serviceWorker.controller) markNew()
+    // Un SW en attente au démarrage : la page vient d'être chargée depuis le
+    // réseau, on peut l'activer sans rien interrompre (il ne recharge rien).
+    reg.waiting?.postMessage({ type: 'skip-waiting' })
     reg.addEventListener('updatefound', () => {
       const sw = reg.installing
       sw?.addEventListener('statechange', () => {
@@ -44,6 +46,14 @@ export async function checkNewVersion() {
 export async function applyNewVersion(hash?: string) {
   if (applying) return
   applying = true
+  // Nouveau SW encore en cours d'installation : on attend qu'il soit prêt.
+  const installing = swReg?.installing
+  if (installing) {
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, 5000)
+      installing.addEventListener('statechange', () => { if (installing.state !== 'installing') { clearTimeout(timer); resolve() } })
+    })
+  }
   const waiting = swReg?.waiting
   if (waiting && 'serviceWorker' in navigator) {
     await new Promise<void>((resolve) => {
