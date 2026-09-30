@@ -86,6 +86,7 @@ const EN: Record<string, string> = {
   'Reprendre': 'Take back control', 'Terminal indisponible': 'Terminal unavailable',
   'Réessayer': 'Retry', 'Pas encore de conversation pour cet agent.': 'No conversation for this agent yet.',
   'Conversation indisponible pour cet agent.': 'Conversation unavailable for this agent.',
+  'Conversation non à jour — reconnexion…': 'Conversation not up to date — reconnecting…',
   'Voir le terminal': 'View terminal', 'Menu interactif': 'Interactive menu', 'Rechercher…': 'Search…',
   'Rechercher dans le menu': 'Search the menu', 'Menu ouvert': 'Menu open', 'Charger plus haut': 'Load earlier messages',
   'Début de la conversation': 'Start of conversation', 'Conversation vide pour l’instant.': 'No messages yet.',
