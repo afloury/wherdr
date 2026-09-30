@@ -1,42 +1,47 @@
-// Sélection et copie dans un terminal xterm (ordinateur).
-// xterm garde la sélection en interne, même avec le moteur WebGL : la copie lit
-// getSelection(), pas la sélection DOM du canevas.
+// Sélection et copie dans un terminal xterm (ordinateur), comme un terminal
+// natif : glisser près du bord haut ou bas fait défiler et la sélection
+// continue ; au relâchement, le texte est copié.
+// Herdr garde l'historique (scrollback 0 côté xterm) : xterm ne peut pas faire
+// défiler seul pendant une sélection. wherdr mène donc le glisser lui-même :
+// défilement demandé à Herdr, lignes vues mémorisées par position absolue,
+// surlignage de la partie visible avec term.select().
 import type { Terminal } from '@xterm/xterm'
 
 type Keys = Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey'>
-type Press = Pick<MouseEvent, 'button' | 'shiftKey' | 'altKey'>
+type Press = Pick<MouseEvent, 'button' | 'detail' | 'shiftKey' | 'altKey'>
 
 // ⌘C (Mac) ou Ctrl+Shift+C (ailleurs). Ctrl+C reste au programme.
 export function isTerminalCopyKey(e: Keys): boolean {
   return e.key.toLowerCase() === 'c' && !e.altKey && (e.metaKey || (e.ctrlKey && e.shiftKey))
 }
 
-// Shift + glisser doit toujours commencer une sélection. Sans mode souris,
-// xterm prend Shift pour « étendre la sélection » (rien sans sélection
-// existante) ; avec, il ne force la sélection sur Mac qu'avec ⌥. On rejoue
-// alors l'appui sans Shift, avec ⌥ sur Mac en mode souris. wherdr déclare
-// `mouse_capture: false` à Herdr : le mode souris ne devrait pas arriver.
-export function shiftDragPress(e: Press, mac: boolean, mouseTracking: boolean): { shiftKey: boolean, altKey: boolean } | null {
-  if (e.button !== 0 || !e.shiftKey || e.altKey) return null
-  if (!mouseTracking) return { shiftKey: false, altKey: false }
-  return mac ? { shiftKey: false, altKey: true } : null
+// Le glisser est-il à wherdr ? Bouton gauche, simple clic (double et triple
+// clic : sélection de mot / ligne par xterm). Si le programme suit la souris,
+// il garde le glisser nu ; Shift ou ⌥ + glisser sélectionne quand même, comme
+// dans Terminal, iTerm ou Ghostty. wherdr déclare `mouse_capture: false` à
+// Herdr : le mode souris ne devrait pas arriver.
+export function ownsDrag(e: Press, mouseTracking: boolean): boolean {
+  if (e.button !== 0 || e.detail > 1) return false
+  return !mouseTracking || e.shiftKey || e.altKey
 }
 
-const isMac = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
+// --- Défilement au bord ----------------------------------------------------
+// Vitesse en lignes par seconde (positif = vers le haut de l'historique) selon
+// la position du pointeur : zone d'une ligne le long de chaque bord, puis plus
+// vite à mesure qu'on s'éloigne, plafonnée. 0 dans la zone.
+export const EDGE_MAX_SPEED = 80
+export function edgeScrollSpeed(y: number, top: number, bottom: number, rowHeight: number): number {
+  const h = rowHeight > 0 ? rowHeight : 16
+  const depth = y < top + h ? top + h - y : y > bottom - h ? -(y - (bottom - h)) : 0
+  if (!depth) return 0
+  return Math.sign(depth) * Math.min(EDGE_MAX_SPEED, 4 + 12 * Math.abs(depth) / h)
+}
 
-// --- La sélection suit le texte ------------------------------------------
-// Sans historique local (scrollback 0), Herdr renvoie un nouvel écran à chaque
-// défilement ; xterm garderait le surlignage aux mêmes coordonnées d'écran. On
-// compare donc l'écran avant et après chaque image pour trouver de combien de
-// lignes le texte a bougé, et on déplace la sélection d'autant.
-
-// Sélection en coordonnées d'écran (lignes éventuellement hors écran), fin
-// exclusive comme getSelectionPosition() ; `lines` = texte des lignes
-// couvertes, pour vérifier qu'on surligne toujours le même texte.
-export interface TrackedSelection {
-  startX: number, startY: number, endX: number, endY: number
-  text: string
-  lines: string[]
+// Lignes entières à demander pour `dt` ms, et le reste gardé.
+export function edgeLines(speed: number, dtMs: number, acc: number, maxLines: number): { lines: number, rest: number } {
+  const total = acc + speed * dtMs / 1000
+  const lines = Math.max(-maxLines, Math.min(maxLines, Math.trunc(total)))
+  return { lines, rest: lines === Math.trunc(total) ? total - lines : 0 }
 }
 
 // Décalage k tel que la ligne i de l'ancien écran est la ligne i + k du
@@ -72,9 +77,17 @@ export function findShift(before: string[], after: string[], hint = 0): number |
   return best
 }
 
-// Partie visible d'une sélection décalée, au format de term.select(), ou null
-// si elle est entièrement hors écran.
-export function visibleRange(s: Pick<TrackedSelection, 'startX' | 'startY' | 'endX' | 'endY'>, cols: number, rows: number): { column: number, row: number, length: number } | null {
+// Point de sélection en ligne absolue (0 = première ligne à l'écran au début
+// du glisser, négatif = plus haut dans l'historique) et colonne.
+export interface Cell { row: number, col: number }
+
+export function ordered(a: Cell, b: Cell): [Cell, Cell] {
+  return a.row < b.row || (a.row === b.row && a.col <= b.col) ? [a, b] : [b, a]
+}
+
+// Partie visible d'une sélection (fin exclusive), au format de term.select(),
+// ou null si elle est entièrement hors écran.
+export function visibleRange(s: { startX: number, startY: number, endX: number, endY: number }, cols: number, rows: number): { column: number, row: number, length: number } | null {
   const sy = Math.max(0, s.startY)
   const sx = s.startY < 0 ? 0 : s.startX
   const ey = Math.min(rows - 1, s.endY)
@@ -84,14 +97,40 @@ export function visibleRange(s: Pick<TrackedSelection, 'startX' | 'startY' | 'en
   return { column: sx, row: sy, length }
 }
 
-// Le texte des lignes visibles de la sélection est-il toujours à sa place ?
-export function selectionIntact(s: TrackedSelection, screen: string[]): boolean {
-  for (let i = 0; i < s.lines.length; i++) {
-    const y = s.startY + i
-    if (y < 0 || y >= screen.length) continue
-    if (screen[y]!.trimEnd() !== s.lines[i]!.trimEnd()) return false
+// Texte entre deux points (fin exclusive) à partir des lignes mémorisées.
+export function selectionText(lines: Map<number, string>, a: Cell, b: Cell): string {
+  const [s, e] = ordered(a, b)
+  const out: string[] = []
+  for (let r = s.row; r <= e.row; r++) {
+    const line = lines.get(r) ?? ''
+    out.push(line.slice(r === s.row ? s.col : 0, r === e.row ? e.col : undefined).trimEnd())
   }
-  return true
+  // Lignes vides sous le texte (bas d'écran) : pas copiées.
+  while (out.length > 1 && !out[out.length - 1]) out.pop()
+  return out.join('\n')
+}
+
+// Copie : API du presse-papiers, sinon execCommand (contexte non sécurisé).
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch { /* refusé : on tente l'ancienne méthode */ }
+  try {
+    const active = document.activeElement as HTMLElement | null
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.setAttribute('readonly', '')
+    ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0'
+    document.body.appendChild(ta)
+    ta.select()
+    const ok = document.execCommand('copy')
+    ta.remove()
+    active?.focus?.({ preventScroll: true })
+    return ok
+  } catch { return false }
 }
 
 function screenLines(term: Terminal): string[] {
@@ -101,113 +140,226 @@ function screenLines(term: Terminal): string[] {
   return out
 }
 
-export interface SelectionFollower {
+export interface SelectionOptions {
+  // Demande à Herdr de faire défiler (positif = vers le haut). false : pas
+  // d'historique à parcourir (miroir), le bord ne fait rien.
+  scroll?: (lines: number) => boolean
+  // Le glisser est pris avant xterm : c'est wherdr qui donne le focus.
+  focus?: () => void
+  // Retour discret après la copie au relâchement ou au raccourci.
+  copied?: (ok: boolean) => void
+}
+
+export interface TerminalSelection {
   // À appeler une fois l'image écrite (rappel de term.write).
   frame: () => void
-  // Lignes demandées à Herdr (positif = vers le haut de l'historique).
-  scrolled: (lines: number) => void
-  // Texte à copier : la sélection mémorisée, même hors écran.
-  text: () => string
   dispose: () => void
 }
 
-export function followSelection(term: Terminal): SelectionFollower {
-  let tracked: TrackedSelection | null = null
-  let last = screenLines(term)
-  let hint = 0
-  let applying = false
+// Attente maximale de l'image après une demande de défilement : sans image,
+// Herdr n'avait plus rien à montrer dans cette direction.
+const SCROLL_WAIT = 350
+const TICK = 50
 
-  const capture = () => {
-    const p = term.getSelectionPosition()
-    if (!p) return null
-    const screen = screenLines(term)
-    return {
-      startX: p.start.x, startY: p.start.y, endX: p.end.x, endY: p.end.y,
-      text: term.getSelection(),
-      lines: screen.slice(p.start.y, p.end.y + 1),
+export function bindTerminalSelection(term: Terminal, opts: SelectionOptions = {}): TerminalSelection {
+  const root = term.element
+  if (!root) return { frame() {}, dispose() {} }
+  let last = screenLines(term)
+
+  // Glisser en cours (ou dernière sélection faite par glisser).
+  let drag: {
+    anchor: Cell, focus: Cell, moved: boolean
+    offset: number // lignes remontées depuis le début du glisser
+    lines: Map<number, string>
+    x: number, y: number
+  } | null = null
+  let active = false // bouton encore enfoncé
+  let text = '' // texte de la sélection faite par glisser
+  let pending = 0 // lignes demandées, pas encore vues
+  let pendingAt = 0
+  let exhausted = 0 // direction où Herdr n'a plus rien (1 haut, -1 bas)
+  let acc = 0
+  let timer: ReturnType<typeof setInterval> | undefined
+  let lastTick = 0
+  let rendering = false
+
+  const screenRect = () => (root.querySelector('.xterm-screen') as HTMLElement | null ?? root).getBoundingClientRect()
+  const cellAt = (x: number, y: number): Cell => {
+    const r = screenRect()
+    const w = r.width / term.cols
+    const h = r.height / term.rows
+    if (y < r.top) return { row: -drag!.offset, col: 0 }
+    if (y >= r.bottom) return { row: term.rows - 1 - drag!.offset, col: term.cols }
+    const row = Math.min(term.rows - 1, Math.floor((y - r.top) / h))
+    const col = Math.max(0, Math.min(term.cols, Math.round((x - r.left) / w)))
+    return { row: row - drag!.offset, col }
+  }
+  const remember = (screen: string[]) => {
+    if (!drag) return
+    screen.forEach((l, y) => drag!.lines.set(y - drag!.offset, l))
+  }
+  const render = () => {
+    if (!drag) return
+    const [s, e] = ordered(drag.anchor, drag.focus)
+    const r = visibleRange({ startX: s.col, startY: s.row + drag.offset, endX: e.col, endY: e.row + drag.offset }, term.cols, term.rows)
+    rendering = true
+    try {
+      if (r && (s.row !== e.row || s.col !== e.col)) term.select(r.column, r.row, r.length)
+      else term.clearSelection()
+    } finally { rendering = false }
+    text = selectionText(drag.lines, drag.anchor, drag.focus)
+  }
+  const extend = () => {
+    if (!drag) return
+    drag.focus = cellAt(drag.x, drag.y)
+    if (drag.focus.row !== drag.anchor.row || drag.focus.col !== drag.anchor.col) drag.moved = true
+    render()
+  }
+
+  const tick = () => {
+    const now = performance.now()
+    const dt = Math.min(200, now - lastTick)
+    lastTick = now
+    if (!drag || !active || !opts.scroll) return
+    const r = screenRect()
+    const speed = edgeScrollSpeed(drag.y, r.top, r.bottom, r.height / term.rows)
+    if (!speed) {
+      acc = 0
+      exhausted = 0
+      return
+    }
+    if (Math.sign(speed) !== exhausted) exhausted = 0
+    if (exhausted) return
+    if (pending) {
+      // Pas d'image : Herdr est au bout dans cette direction.
+      if (now - pendingAt > SCROLL_WAIT) {
+        exhausted = Math.sign(pending)
+        pending = 0
+        acc = 0
+      }
+      return
+    }
+    const step = edgeLines(speed, dt, acc, Math.max(1, term.rows - 2))
+    acc = step.rest
+    if (!step.lines) return
+    if (opts.scroll(step.lines)) {
+      pending = step.lines
+      pendingAt = now
     }
   }
-  const sub = term.onSelectionChange(() => {
-    if (applying) return
-    // Nouvelle sélection (ou clic qui l'efface) : c'est elle qu'on suit.
-    tracked = term.hasSelection() ? capture() : null
-  })
-  const apply = () => {
-    applying = true
-    try {
-      const r = tracked && visibleRange(tracked, term.cols, term.rows)
-      if (r) term.select(r.column, r.row, r.length)
-      else term.clearSelection()
-    } finally { applying = false }
+
+  const onMove = (e: MouseEvent) => {
+    if (!drag || !active) return
+    drag.x = e.clientX
+    drag.y = e.clientY
+    extend()
   }
+  const onUp = () => {
+    window.removeEventListener('mousemove', onMove, true)
+    window.removeEventListener('mouseup', onUp, true)
+    clearInterval(timer)
+    timer = undefined
+    if (!active) return
+    active = false
+    if (drag && !drag.moved) {
+      drag = null
+      text = ''
+      term.clearSelection()
+      return
+    }
+    if (text) void copyText(text).then(ok => opts.copied?.(ok))
+  }
+  const onDown = (e: MouseEvent) => {
+    if (!ownsDrag(e, term.modes.mouseTrackingMode !== 'none')) {
+      // Double ou triple clic : xterm sélectionne ; on copie au relâchement.
+      if (e.button === 0 && e.detail > 1) {
+        drag = null
+        window.addEventListener('mouseup', () => setTimeout(() => {
+          const t = term.getSelection()
+          if (t) void copyText(t).then(ok => opts.copied?.(ok))
+        }), { capture: true, once: true })
+      }
+      return
+    }
+    e.preventDefault()
+    e.stopImmediatePropagation()
+    opts.focus?.()
+    last = screenLines(term)
+    drag = { anchor: { row: 0, col: 0 }, focus: { row: 0, col: 0 }, moved: false, offset: 0, lines: new Map(), x: e.clientX, y: e.clientY }
+    remember(last)
+    drag.anchor = cellAt(e.clientX, e.clientY)
+    drag.focus = drag.anchor
+    text = ''
+    active = true
+    term.clearSelection()
+    pending = 0
+    exhausted = 0
+    acc = 0
+    lastTick = performance.now()
+    clearInterval(timer)
+    timer = setInterval(tick, TICK)
+    window.addEventListener('mousemove', onMove, true)
+    window.addEventListener('mouseup', onUp, true)
+  }
+  const onKey = (e: KeyboardEvent) => {
+    if (!isTerminalCopyKey(e)) return
+    const t = (drag && text) || term.getSelection()
+    if (!t) return
+    e.preventDefault()
+    e.stopPropagation()
+    void copyText(t).then(ok => opts.copied?.(ok))
+  }
+  // Nouvelle sélection par xterm (double clic, clavier) : la nôtre est finie.
+  const sub = term.onSelectionChange(() => {
+    if (rendering || active) return
+    drag = null
+    text = ''
+  })
+
+  root.addEventListener('keydown', onKey, true)
+  root.addEventListener('mousedown', onDown, true)
 
   return {
     frame() {
       const now = screenLines(term)
       const before = last
       last = now
-      const h = hint
-      if (!tracked) {
-        hint = 0
-        return
-      }
+      if (!drag) return
       if (now.length !== before.length) {
         // Redimensionné : les coordonnées n'ont plus de sens.
-        tracked = null
-        hint = 0
-        return apply()
+        drag = null
+        text = ''
+        pending = 0
+        rendering = true
+        try { term.clearSelection() } finally { rendering = false }
+        return
       }
-      if (now.every((l, i) => l === before[i])) return
-      hint = 0
-      let k = findShift(before, now, h)
-      // Grand saut (écrans sans ligne commune) : on se fie aux lignes demandées ;
-      // selectionIntact efface si Herdr a buté en haut de l'historique.
-      if (k === null && h) k = h
-      if (k === null) {
-        // Le texte sélectionné n'a pas bougé (sortie ailleurs à l'écran).
-        if (selectionIntact(tracked, now)) return
-        // Écran sans rapport (autre programme, effacement) : plutôt pas de
-        // surlignage que sur le mauvais texte.
-        tracked = null
-        return apply()
+      if (!active) {
+        // Sélection terminée : comme un terminal natif, elle s'efface quand
+        // le texte sous elle bouge (défilement, nouvelle sortie).
+        if (now.some((l, i) => l !== before[i])) {
+          drag = null
+          text = ''
+          rendering = true
+          try { term.clearSelection() } finally { rendering = false }
+        }
+        return
       }
-      const moved = { ...tracked, startY: tracked.startY + k, endY: tracked.endY + k }
-      tracked = selectionIntact(moved, now) ? moved : null
-      apply()
+      const hint = pending
+      pending = 0
+      let k = findShift(before, now, hint)
+      // Grand saut (écrans sans ligne commune) : on se fie aux lignes demandées.
+      if (k === null) k = hint
+      if (hint && k === 0) exhausted = Math.sign(hint)
+      drag.offset += k
+      remember(now)
+      extend()
     },
-    scrolled(lines) { hint += lines },
-    text: () => tracked?.text ?? term.getSelection(),
-    dispose: () => sub.dispose(),
-  }
-}
-
-export function bindTerminalSelection(term: Terminal, follower?: SelectionFollower): () => void {
-  const root = term.element
-  if (!root) return () => {}
-  const mac = isMac()
-  const onKey = (e: KeyboardEvent) => {
-    if (!isTerminalCopyKey(e)) return
-    const text = follower ? follower.text() : term.getSelection()
-    if (!text) return
-    e.preventDefault()
-    e.stopPropagation()
-    void navigator.clipboard?.writeText(text).catch(() => {})
-  }
-  const onDown = (e: MouseEvent) => {
-    const mods = shiftDragPress(e, mac, term.modes.mouseTrackingMode !== 'none')
-    if (!mods) return
-    e.preventDefault()
-    e.stopImmediatePropagation()
-    e.target?.dispatchEvent(new MouseEvent('mousedown', {
-      bubbles: true, cancelable: true, composed: true, view: window, detail: e.detail,
-      clientX: e.clientX, clientY: e.clientY, screenX: e.screenX, screenY: e.screenY,
-      button: e.button, buttons: e.buttons, ctrlKey: e.ctrlKey, metaKey: e.metaKey, ...mods,
-    }))
-  }
-  root.addEventListener('keydown', onKey, true)
-  root.addEventListener('mousedown', onDown, true)
-  return () => {
-    root.removeEventListener('keydown', onKey, true)
-    root.removeEventListener('mousedown', onDown, true)
+    dispose() {
+      onUp()
+      sub.dispose()
+      root.removeEventListener('keydown', onKey, true)
+      root.removeEventListener('mousedown', onDown, true)
+    },
   }
 }
