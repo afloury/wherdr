@@ -32,8 +32,13 @@ sw.addEventListener('install', (e) => {
     const c = await caches.open(CACHE)
     // Un fichier manquant ne doit pas empêcher l'installation.
     await Promise.all(PRECACHE.map(u => c.add(new Request(u, { cache: 'no-cache' })).catch(() => {})))
-    await sw.skipWaiting()
+    // Pas de skipWaiting ici : une nouvelle version attend que l'utilisateur
+    // clique « Recharger » (bandeau de l'app), jamais de bascule en plein usage.
   })())
+})
+
+sw.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'skip-waiting') sw.skipWaiting()
 })
 
 sw.addEventListener('activate', (e) => {

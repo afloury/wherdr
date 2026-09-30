@@ -50,8 +50,8 @@ onMounted(() => {
   document.addEventListener('keydown', onShortcut)
   window.addEventListener('dragover', blockFileDrop)
   window.addEventListener('drop', blockFileDrop)
+  registerServiceWorker()
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {})
     // Un tap sur une notif alors que l'app est ouverte : le SW nous demande d'y aller.
     navigator.serviceWorker.addEventListener('message', (e) => {
       if (e.data && e.data.type === 'navigate' && e.data.url) {
@@ -89,6 +89,7 @@ onUnmounted(() => {
     <PluginInputSheet />
     <PluginResultSheet />
     <ImageLightbox />
+    <NewVersionBanner v-if="!locked" />
     <LockScreen v-if="locked" />
   </UApp>
 </template>

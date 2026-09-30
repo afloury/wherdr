@@ -2302,3 +2302,18 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .menu-more { font: 400 11.5px/1.3 var(--mono); color: var(--muted); margin: 8px 2px 0; }
 .choices-keys .menu-term { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
 .choices-keys .menu-term .iconify { width: 13px; height: 13px; }
+
+/* Bandeau « Nouvelle version disponible » (app/components/NewVersionBanner.vue). */
+.new-version {
+  position: fixed; z-index: 60; top: calc(env(safe-area-inset-top) + 8px); left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 32px); padding: 7px 8px 7px 12px;
+  border: 1px solid var(--line-strong); background: var(--bg-2); color: var(--text);
+  font: 600 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  box-shadow: 0 6px 24px rgb(0 0 0 / .35);
+}
+.new-version svg { width: 14px; height: 14px; flex: none; color: var(--accent); }
+.new-version-text { min-width: 0; margin-right: 4px; }
+.new-version-btn { position: relative; flex: none; padding: 5px 9px; border: 1px solid var(--line-strong); color: var(--text-2); font: inherit; letter-spacing: .1em; text-transform: inherit; cursor: pointer; }
+.new-version-btn.primary { border-color: var(--accent); color: var(--accent); }
+.new-version-btn:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.new-version-btn:disabled { opacity: .5; cursor: default; }

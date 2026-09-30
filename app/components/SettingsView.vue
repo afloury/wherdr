@@ -473,5 +473,5 @@ onMounted(() => {
 </template>
 
 <script lang="ts">
-function reloadApp() { location.reload() }
+function reloadApp() { applyNewVersion() }
 </script>

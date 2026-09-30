@@ -114,5 +114,10 @@ export default defineNuxtConfig({
     '/_nuxt/**': { headers: { 'cache-control': 'public, max-age=31536000, immutable' } },
   },
 
+  // Jamais de rechargement automatique après un déploiement (Nuxt rechargerait
+  // à la navigation suivante) : app/plugins/app-version.client.ts détecte le
+  // nouveau build et affiche un bandeau « Recharger ».
+  experimental: { emitRouteChunkError: 'manual', checkOutdatedBuildInterval: false },
+
   compatibilityDate: '2025-07-15',
 })
