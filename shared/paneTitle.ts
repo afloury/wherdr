@@ -17,12 +17,41 @@ export function isProjectThread(p: Pick<Pane, 'name' | 'cwd'>): boolean {
 export const cleanTitle = (title: string | null | undefined) =>
   (title || '').replace(/^[^\p{L}\p{N}~/]+/u, '').trim()
 
+const SHELLS = new Set(['sh', 'bash', 'zsh', 'fish', 'dash', 'ksh', 'tcsh', 'csh', 'nu', 'pwsh', 'login', 'tmux', 'screen'])
+const GENERIC_AGENTS = new Set(['claude', 'claude code', 'codex', 'gemini', 'gemini cli', 'opencode', 'kimi', 'agent'])
+
+const baseName = (dir: string | null | undefined) =>
+  (dir || '').replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop() || ''
+
+// Titre que le programme a posé et qui dit quelque chose : pas le prompt du
+// shell (« user@host: ~/dir »), pas le nom du shell, pas un chemin ni le dossier.
+export function meaningfulTitle(p: Pick<Pane, 'title' | 'cwd' | 'agent'>): string {
+  const title = cleanTitle(p.title).replace(/\s*\|\s*\S+$/, '').trim()
+  if (!title || /^\S+@\S+:/.test(title)) return ''
+  const low = title.toLocaleLowerCase()
+  const first = baseName(low.split(/\s+/)[0]).replace(/^-/, '')
+  if (SHELLS.has(first) && !/\s/.test(low)) return ''
+  if (/^(?:~|\/)/.test(title) && !/\s/.test(title)) return ''
+  const dir = baseName(p.cwd).toLocaleLowerCase()
+  if (dir && (low === dir || low === `${dir}/`)) return ''
+  if (p.agent && GENERIC_AGENTS.has(low)) return ''
+  if (p.agent && low === p.agent.toLocaleLowerCase()) return ''
+  return title
+}
+
+// Nom d'un pane, indépendant du nom de son space : nom choisi (pane.rename),
+// nom de l'agent, titre du terminal s'il est parlant, commande au premier
+// plan, et en dernier recours le dossier.
 export function paneTitle(p: Pane, workspaceTitle?: string | null): string {
   if (p.label) return p.label
-  if (isProjectThread(p) && workspaceTitle?.trim()) return workspaceTitle.trim()
-  const title = cleanTitle(p.title)
-  if (!title || /^\S+@\S+:/.test(title)) return p.name || kindLabel(p.agent)
-  return title.replace(/\s*\|\s*\S+$/, '')
+  if (p.agent && isProjectThread(p) && workspaceTitle?.trim()) return workspaceTitle.trim()
+  const shown = p.displayAgent?.trim()
+  if (p.agent && shown && !GENERIC_AGENTS.has(shown.toLocaleLowerCase()) && shown.toLocaleLowerCase() !== p.agent.toLocaleLowerCase()) return shown
+  const title = meaningfulTitle(p)
+  if (title) return title
+  if (p.agent) return p.name && p.name !== p.agent ? p.name : kindLabel(p.agent)
+  if (p.command) return p.command
+  return baseName(p.cwd) || (p.cwd ? '/' : 'Shell')
 }
 
 function kindLabel(kind: string | null) {

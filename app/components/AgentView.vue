@@ -45,7 +45,15 @@ onUnmounted(() => {
 
 const pane = computed(() => herdrState.value.panes.find(p => p.id === props.paneId))
 const workspace = computed(() => herdrState.value.workspaces.find(w => w.id === pane.value?.workspace))
-const subtitle = computed(() => pane.value ? conversationSubtitle(pane.value, workspace.value) : '')
+// Plusieurs panes dans l'onglet (case ou plein écran) : chaque pane porte son
+// propre nom ; le nom du space reste dans l'en-tête de l'onglet.
+const ownTitle = computed(() => Boolean(props.cell || (tabEnt.value && tabEnt.value.panes.length > 1)))
+const headTitle = computed(() => (pane.value ? (ownTitle.value ? paneTitle(pane.value) : spaceTitle(pane.value, workspace.value)) : '—'))
+const subtitle = computed(() => {
+  const s = pane.value ? conversationSubtitle(pane.value, workspace.value) : ''
+  return s && s !== headTitle.value ? s : ''
+})
+const command = computed(() => (pane.value?.command && pane.value.command !== headTitle.value && pane.value.command !== subtitle.value ? pane.value.command : ''))
 const tabName = computed(() => pane.value && herdrState.value.tabs?.filter(x => x.workspace === pane.value?.workspace).length! > 1 ? pane.value.tabLabel : '')
 // Onglet de ce pane (chaque conversation garde le sien).
 const viewMode = computed<PaneViewMode>({
@@ -280,6 +288,7 @@ const agentMenu = computed<MenuItem[]>(() => {
   const items: MenuItem[] = []
   if (canAttachTerminal.value) items.push({ label: t('Joindre un fichier…'), icon: 'i-lucide-paperclip', run: () => attachInput.value?.click() })
   if (p) items.push({ label: t('Voir les changements'), icon: 'i-lucide-file-diff', run: () => { changesOpen.value = true } })
+  if (p) items.push({ label: t('Renommer le pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } })
   if (p && workspace.value) items.push({ label: t('Renommer l’espace'), icon: 'i-lucide-pencil', run: () => renameWorkspace(workspace.value!.id) })
   // Diviser, déplacer vers un autre onglet (jamais de zoom ni de redimensionnement).
   if (p) items.push(...paneSpaceItems(p))
@@ -454,10 +463,11 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         :aria-label="t('Retour')" @click="goBack"
       />
       <div class="agent-head">
-        <div class="agent-title">{{ pane ? spaceTitle(pane, workspace) : '—' }}</div>
+        <div class="agent-title">{{ headTitle }}</div>
         <div class="agent-meta">
           <StatusPill :pane="pane" kind />
           <span v-if="subtitle" class="agent-subtitle">{{ subtitle }}</span>
+          <span v-if="command" class="agent-subtitle agent-command">{{ command }}</span>
           <span v-if="tabName" class="agent-subtitle">{{ tabName }}</span>
           <span v-if="machine" class="agent-machine" :class="machine.status" :title="machine.target ? `ssh ${machine.target}` : undefined">
             <UIcon :name="machine.local ? 'i-lucide-server' : 'i-lucide-laptop'" /><span class="machine-inline-name">{{ machineName(machine.key) }}</span><MachineLocalBadge v-if="machine.local" />

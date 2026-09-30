@@ -13,8 +13,8 @@ const open = computed({
 const pane = computed(() => herdrState.value.panes.find(p => p.id === renameTarget.value))
 const value = ref('')
 const input = ref<{ inputRef?: HTMLInputElement } | null>(null)
-const title = computed(() => (renameSpace.value ? (renameSpace.value.kind === 'tab' ? t('Renommer l’onglet') : t('Renommer l’espace')) : t('Renommer')))
-const placeholder = computed(() => (renameSpace.value ? (renameSpace.value.kind === 'tab' ? t('Nom de l’onglet') : t('Nom de l’espace')) : t('Nom de l’agent')))
+const title = computed(() => (renameSpace.value ? (renameSpace.value.kind === 'tab' ? t('Renommer l’onglet') : t('Renommer l’espace')) : t('Renommer le pane')))
+const placeholder = computed(() => (renameSpace.value ? (renameSpace.value.kind === 'tab' ? t('Nom de l’onglet') : t('Nom de l’espace')) : t('Nom du pane (vide = nom automatique)')))
 function focusInput() {
   setTimeout(() => {
     input.value?.inputRef?.focus()

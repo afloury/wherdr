@@ -9,7 +9,7 @@ import crypto from 'node:crypto'
 import type { Choices, ClaudeScreen, HerdrState, InteractiveMenu, WaitScreen, MachineInfo, ModelInfo, Pane, QueuedMessage } from '../../shared/types'
 import { LOCAL, joinId, machineOf } from '../../shared/ids'
 import { isProjectThread, paneTitle } from '../../shared/paneTitle'
-import { reduceSnapshot } from './snapshot'
+import { foregroundCommand, reduceSnapshot } from './snapshot'
 import { DATA_DIR, HERDR_SESSION, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
 import { HerdrError, herdr, herdrOn, sleep } from './herdr'
 import { parseChoices } from './choices'
@@ -367,13 +367,34 @@ export function markSeen(paneId: string, read: boolean) {
   return { ok: true }
 }
 
+// Commande au premier plan des panes sans agent (titre de leur carte) : lue
+// hors du sondage, au plus toutes les 3 s par pane ; le sondage suivant la reprend.
+const COMMAND_TTL_MS = 3000
+const commands = new Map<string, { cmd: string, at: number, busy?: boolean }>()
+function paneCommand(id: string): string {
+  const c = commands.get(id)
+  if (!c || (!c.busy && Date.now() - c.at > COMMAND_TTL_MS)) {
+    const entry = { cmd: c?.cmd || '', at: Date.now(), busy: true }
+    commands.set(id, entry)
+    herdr('pane.process_info', { pane_id: id }, 3000)
+      .then((r) => { entry.cmd = foregroundCommand(r?.process_info || r) })
+      .catch(() => { entry.cmd = '' })
+      .finally(() => { entry.busy = false; entry.at = Date.now() })
+  }
+  return c?.cmd || ''
+}
+
 async function enrich(next: HerdrState, snap: Json, machine: string) {
   const firstSnapshot = !seenMachines.has(machine)
   const prevStatus = new Map((mstates.get(machine)?.panes || []).map(p => [p.id, p.status || undefined]))
+  const live = new Set(next.panes.map(p => p.id))
+  for (const id of commands.keys()) if (machineOf(id) === machine && !live.has(id)) commands.delete(id)
   for (const p of next.panes) {
     const b = agentBorn.get(p.id)
     if (!p.agent) {
       if (b) { agentBorn.delete(p.id); bornDirty = true }
+      const cmd = paneCommand(p.id)
+      if (cmd) p.command = cmd
       continue
     }
     if (!b || b.agent !== p.agent) {
