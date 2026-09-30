@@ -87,7 +87,9 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 // Le bouton gère lui-même Envoyer et Stop (un clic = une action, sans
-// repasser par le formulaire).
+// repasser par le formulaire). En mode Stop (status « streaming »),
+// UChatPromptSubmit remplace notre @click par son événement « stop » :
+// c'est @stop qui déclenche l'interruption.
 function onSubmitClick(e: MouseEvent) {
   e.preventDefault()
   submit()
@@ -453,7 +455,7 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
           :status="stopMode ? 'streaming' : 'ready'" :disabled="readOnly || (!canSend && !stopMode) || sending || interrupting === 'running'"
           color="primary" variant="solid" streaming-color="neutral" streaming-variant="solid" streaming-icon="i-herdr-stop" size="sm"
           class="prompt-send" :class="{ stop: stopMode }" :aria-label="t(stopMode ? 'Arrêter l’agent' : 'Envoyer')"
-          @mousedown.prevent @click="onSubmitClick"
+          @mousedown.prevent @click="onSubmitClick" @stop="interrupt"
         />
       </template>
     </UChatPrompt>
