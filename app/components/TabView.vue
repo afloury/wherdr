@@ -128,7 +128,8 @@ function onDragEnd(e: PointerEvent) {
   const p = byId.value.get(d.pane)
   if (d.touch) planPress.suppressClick()
   stopDrag()
-  if (d.touch && !d.started && pressHead) return paneMenu(d.pane)
+  // Doigt levé sans avoir bougé depuis l'appui long sur l'en-tête : menu.
+  if (d.touch && pressHead && Math.hypot(d.x - d.x0, d.y - d.y0) <= 5) return paneMenu(d.pane)
   if (d.started && p && d.over && d.side) dropPane(p, d.over, d.side)
 }
 function onDragCancel(e: PointerEvent) {
