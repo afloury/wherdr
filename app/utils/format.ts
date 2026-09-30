@@ -27,6 +27,11 @@ export function fmtTime(ts: string | number) {
   return new Date(ts).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })
 }
 
+// Date et heure complètes (infobulle de l'heure d'un message).
+export function fmtDateTime(ts: string | number) {
+  return new Date(ts).toLocaleString(locale(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
 export function dayLabel(ts: string) {
   const d = new Date(ts)
   const today = new Date()

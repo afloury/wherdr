@@ -249,7 +249,7 @@ const UPLOAD_RE = /\/\.cache\/herdr-web\/uploads\/\S+/g
 type Block =
   | { k: 'day', key: string, label: string }
   | { k: 'who', key: string }
-  | { k: 'user', key: string, text: string, srcs: string[], time: string | null, reply: ReplyTarget | null, origin: string | null }
+  | { k: 'user', key: string, text: string, srcs: string[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null }
   | { k: 'assistant', key: string, id: string, text: string, html: string, time: string | null, endsTurn: boolean }
   | { k: 'system', key: string, text: string }
   | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean }
@@ -346,7 +346,7 @@ const blocks = computed<Block[]>(() => {
       // Réponse à un message précis : le repère devient une citation qui renvoie à l'original.
       const parsed = parseReply(text)
       const origin = parsed ? findReplyOrigin(replies, parsed.reply)?.key || null : null
-      out.push({ k: 'user', key, text: parsed ? parsed.body : text, srcs, time: it.ts ? fmtTime(it.ts) : null, reply: parsed?.reply || null, origin })
+      out.push({ k: 'user', key, text: parsed ? parsed.body : text, srcs, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null, reply: parsed?.reply || null, origin })
     } else if (it.role === 'assistant') {
       lastReply = it.text
       const time = it.ts ? fmtTime(it.ts) : null
@@ -817,7 +817,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
                   </template>
                   <template #content>{{ b.text }}</template>
                 </UChatMessage>
-                <div v-if="b.time" class="msg-time">{{ b.time }}</div>
+                <div v-if="b.time" class="msg-time" :title="b.at || undefined">{{ b.time }}</div>
               </div>
 
               <template v-else-if="b.k === 'assistant'">
