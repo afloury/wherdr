@@ -6,6 +6,7 @@ import { clearOffline, readOffline, saveHome } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess, setOfflineAccess } from '~/utils/offlineAccess'
 import { activeTerminalRenderer, parseTerminalRenderer } from '~/utils/terminalRenderer'
 import type { ActiveTerminalRenderer } from '~/utils/terminalRenderer'
+import { settleState } from '#shared/stateReady'
 import { readSessionSelection, selectSessions, writeSessionSelection } from '~/utils/sessionSelection'
 import { effectiveTypingSpeed, encryptedTextActive, parseTypingSettings } from '~/utils/typewriter'
 import { readHiddenAgents } from '~/utils/agentChoices'
@@ -308,6 +309,10 @@ export async function loadConfig() {
 // ---------------------------------------------------------------- état en direct
 let evWs: WebSocket | null = null
 let evRetry = 0
+// Reconnexion après une coupure : le serveur a pu redémarrer (cf. settleState).
+let everOpen = false
+let settleUntil = 0
+const SETTLE_MS = 30000
 let lastStateAt: number | null = null
 let evTimer: ReturnType<typeof setTimeout> | undefined
 let netTimer: ReturnType<typeof setTimeout> | undefined
@@ -347,13 +352,19 @@ export function connectEvents() {
   ws.onopen = () => {
     evRetry = 0
     eventsOpen.value = true
+    if (everOpen) settleUntil = Date.now() + SETTLE_MS
+    everOpen = true
     sendViewing()
-    setNetDown(false)
     restoreMachineSessions()
   }
   ws.onmessage = (e) => {
     try {
-      const state = normalize(JSON.parse(e.data)) as HerdrState
+      const got = normalize(JSON.parse(e.data)) as HerdrState
+      // Serveur tout juste redémarré, état encore partiel : on garde tout
+      // l'affichage, le bandeau « reconnexion » reste en place.
+      const state = settleState(lastStateAt ? fullState : null, got, Date.now() < settleUntil)
+      if (!state) return
+      setNetDown(false)
       if (!state.ok && herdrState.value.ok && lastStateAt) {
         cachedAt.value = lastStateAt
         return

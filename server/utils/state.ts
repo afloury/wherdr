@@ -24,7 +24,8 @@ import { type TranscriptPane, sameMsg } from './transcripts'
 import { pushSend, subWatchesSession } from './push'
 import { shouldNotify } from './notificationPolicy'
 import { currentModel, forgetModel, noteScreen } from './modelctl'
-import { type Machine, RemoteMachine, allMachines, getMachine, machineOfPane, multiMachine, onMachinesChange } from './machines'
+import { type Machine, RemoteMachine, allMachines, getMachine, machineOfPane, machinesListed, multiMachine, onMachinesChange, remoteMachines } from './machines'
+import { READY_MAX_MS, serverReady } from '../../shared/stateReady'
 
 const fsp = fs.promises
 
@@ -509,6 +510,7 @@ function rebuild() {
       return { ...info, version: ms && ms.version }
     })
   }
+  if (!isReady()) next.ready = false
   const json = JSON.stringify(next)
   if (json === stateJson) return
   state = next
@@ -520,6 +522,20 @@ onMachinesChange(() => {
   // Machine tout juste connectée : son état sans attendre le prochain tour.
   setTimeout(poll, 0)
 })
+
+// « Prêt » (cf. shared/stateReady.ts) : une fois atteint, on n'y revient plus.
+const startedAt = Date.now()
+let ready = false
+function isReady() {
+  ready ||= serverReady({
+    machinesListed: machinesListed(),
+    localPolled: mstates.has(LOCAL),
+    remotes: remoteMachines().map(m => ({ status: m.status, polled: mstates.has(m.key) })),
+    elapsedMs: Date.now() - startedAt,
+  })
+  return ready
+}
+setTimeout(rebuild, READY_MAX_MS + 100).unref?.()
 
 async function pollMachine(m: Machine) {
   const prev = mstates.get(m.key)

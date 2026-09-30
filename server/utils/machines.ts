@@ -507,8 +507,17 @@ setSocketResolver((key) => {
 })
 
 // Relit les profils de Herdr : ajoute, retire, renomme sans redémarrer.
+// Première lecture des profils faite (réussie ou non) : l'état peut se dire prêt.
+let listed = false
+export const machinesListed = () => listed || !MACHINES_ENABLED
 export async function refreshMachines() {
   if (!MACHINES_ENABLED) return
+  try { await readMachines() }
+  finally {
+    if (!listed) { listed = true; changed() }
+  }
+}
+async function readMachines() {
   const r = await runFile(HERDR_BIN, ['machine', 'list', '--json'], 10000)
   if (r.code !== 0) {
     log(`herdr machine list : ${lastLine(r.stderr) || r.code}`)
