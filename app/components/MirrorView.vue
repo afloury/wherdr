@@ -8,7 +8,7 @@ import '@xterm/xterm/css/xterm.css'
 import { Terminal } from '@xterm/xterm'
 import { mirrorInput } from '#shared/spaces'
 import { mirrorTop } from '~/utils/mirrorViewport'
-import { bindTerminalSelection, followSelection, type SelectionFollower } from '~/utils/terminalSelection'
+import { bindTerminalSelection, type TerminalSelection } from '~/utils/terminalSelection'
 
 const props = defineProps<{ paneId: string, interactive?: boolean }>()
 const box = ref<HTMLElement | null>(null)
@@ -24,8 +24,7 @@ let retry = 0
 let retryTimer: ReturnType<typeof setTimeout> | undefined
 let ro: ResizeObserver | null = null
 let alive = true
-let unbindSelection: (() => void) | null = null
-let follower: SelectionFollower | null = null
+let selection: TerminalSelection | null = null
 
 const FONT = '"Wherdr Symbols", "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace'
 
@@ -61,7 +60,7 @@ function connect() {
       const current = term
       current.write(b64ToBytes(m.bytes || ''), () => {
         positionScreen()
-        if (term === current) follower?.frame()
+        if (term === current) selection?.frame()
         selectionHint.refresh(current)
       })
       if (!ready.value) {
@@ -105,8 +104,11 @@ onMounted(() => {
     theme: terminalTheme.value, cols: 80, rows: 24,
   })
   term.open(host.value!)
-  follower = followSelection(term)
-  unbindSelection = bindTerminalSelection(term, follower)
+  // Le miroir n'a pas d'historique à parcourir : pas de défilement au bord.
+  selection = bindTerminalSelection(term, {
+    focus: focusIf,
+    copied: ok => toast(ok ? t('Copié') : t('Copie impossible'), false, ok ? undefined : t('Le navigateur refuse l’accès au presse-papiers.')),
+  })
   term.attachCustomWheelEventHandler(() => false)
   term.onData((d) => {
     if (!props.interactive) return
@@ -123,8 +125,7 @@ onUnmounted(() => {
   alive = false
   ro?.disconnect()
   disconnect()
-  unbindSelection?.()
-  follower?.dispose()
+  selection?.dispose()
   term?.dispose()
   term = null
 })

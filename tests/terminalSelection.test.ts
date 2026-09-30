@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { findShift, isTerminalCopyKey, selectionIntact, shiftDragPress, visibleRange } from '../app/utils/terminalSelection'
+import { EDGE_MAX_SPEED, edgeLines, edgeScrollSpeed, findShift, isTerminalCopyKey, ownsDrag, selectionText, visibleRange } from '../app/utils/terminalSelection'
 
 const key = (mods: Partial<Parameters<typeof isTerminalCopyKey>[0]>) => ({
   key: 'c', metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...mods,
 })
-const press = (mods: Partial<Parameters<typeof shiftDragPress>[0]>) => ({ button: 0, shiftKey: false, altKey: false, ...mods })
+const press = (mods: Partial<Parameters<typeof ownsDrag>[0]>) => ({ button: 0, detail: 1, shiftKey: false, altKey: false, ...mods })
 
 describe('terminal copy shortcut', () => {
   it('accepts Command+C and Ctrl+Shift+C', () => {
@@ -20,27 +20,69 @@ describe('terminal copy shortcut', () => {
   })
 })
 
-describe('Shift + drag', () => {
-  it('starts a new selection instead of extending a missing one', () => {
-    expect(shiftDragPress(press({ shiftKey: true }), true, false)).toEqual({ shiftKey: false, altKey: false })
-    expect(shiftDragPress(press({ shiftKey: true }), false, false)).toEqual({ shiftKey: false, altKey: false })
+describe('drag ownership', () => {
+  it('takes plain and Shift drags when the program does not track the mouse', () => {
+    expect(ownsDrag(press({}), false)).toBe(true)
+    expect(ownsDrag(press({ shiftKey: true }), false)).toBe(true)
   })
 
-  it('forces the selection with Option on a Mac when the program has the mouse', () => {
-    expect(shiftDragPress(press({ shiftKey: true }), true, true)).toEqual({ shiftKey: false, altKey: true })
-    // Ailleurs, xterm force déjà la sélection avec Shift.
-    expect(shiftDragPress(press({ shiftKey: true }), false, true)).toBeNull()
+  it('leaves the plain drag to a mouse-tracking program, Shift or Option still select', () => {
+    expect(ownsDrag(press({}), true)).toBe(false)
+    expect(ownsDrag(press({ shiftKey: true }), true)).toBe(true)
+    expect(ownsDrag(press({ altKey: true }), true)).toBe(true)
   })
 
-  it('leaves plain, Option and non-primary presses alone', () => {
-    expect(shiftDragPress(press({}), true, true)).toBeNull()
-    expect(shiftDragPress(press({ altKey: true }), true, true)).toBeNull()
-    expect(shiftDragPress(press({ shiftKey: true, altKey: true }), true, false)).toBeNull()
-    expect(shiftDragPress(press({ shiftKey: true, button: 2 }), true, false)).toBeNull()
+  it('leaves double clicks and other buttons to xterm', () => {
+    expect(ownsDrag(press({ detail: 2 }), false)).toBe(false)
+    expect(ownsDrag(press({ button: 2 }), false)).toBe(false)
   })
 })
 
-describe('selection follows scrolled text', () => {
+describe('edge auto-scroll', () => {
+  // Zone de 100 à 500 px, lignes de 20 px.
+  it('does not scroll inside the area', () => {
+    expect(edgeScrollSpeed(300, 100, 500, 20)).toBe(0)
+    expect(edgeScrollSpeed(121, 100, 500, 20)).toBe(0)
+    expect(edgeScrollSpeed(479, 100, 500, 20)).toBe(0)
+  })
+
+  it('scrolls up near the top and down near the bottom', () => {
+    expect(edgeScrollSpeed(110, 100, 500, 20)).toBeGreaterThan(0)
+    expect(edgeScrollSpeed(490, 100, 500, 20)).toBeLessThan(0)
+  })
+
+  it('goes faster the farther the pointer is past the edge, up to a cap', () => {
+    const near = edgeScrollSpeed(95, 100, 500, 20)
+    const far = edgeScrollSpeed(20, 100, 500, 20)
+    expect(far).toBeGreaterThan(near)
+    expect(-edgeScrollSpeed(560, 100, 500, 20)).toBeGreaterThan(-edgeScrollSpeed(505, 100, 500, 20))
+    expect(edgeScrollSpeed(-5000, 100, 500, 20)).toBe(EDGE_MAX_SPEED)
+    expect(edgeScrollSpeed(9000, 100, 500, 20)).toBe(-EDGE_MAX_SPEED)
+  })
+
+  it('turns a speed into whole lines, keeping the fraction', () => {
+    expect(edgeLines(10, 50, 0, 20)).toEqual({ lines: 0, rest: 0.5 })
+    expect(edgeLines(10, 50, 0.5, 20)).toEqual({ lines: 1, rest: 0 })
+    expect(edgeLines(-40, 50, 0, 20)).toEqual({ lines: -2, rest: 0 })
+    // Plafonné à moins d'un écran par pas : le décalage reste mesurable.
+    expect(edgeLines(EDGE_MAX_SPEED, 1000, 0, 20)).toEqual({ lines: 20, rest: 0 })
+  })
+})
+
+describe('selected text', () => {
+  const lines = new Map([[-2, 'alpha one'], [-1, 'beta two  '], [0, 'gamma three'], [1, 'delta']])
+  it('joins the rows between the two points, whatever the drag direction', () => {
+    expect(selectionText(lines, { row: -2, col: 6 }, { row: 0, col: 5 })).toBe('one\nbeta two\ngamma')
+    expect(selectionText(lines, { row: 0, col: 5 }, { row: -2, col: 6 })).toBe('one\nbeta two\ngamma')
+    expect(selectionText(lines, { row: 1, col: 0 }, { row: 1, col: 3 })).toBe('del')
+  })
+
+  it('drops the blank rows below the text', () => {
+    expect(selectionText(lines, { row: 1, col: 0 }, { row: 4, col: 10 })).toBe('delta')
+  })
+})
+
+describe('scroll measurement', () => {
   const screen = (from: number, rows = 6) => Array.from({ length: rows }, (_, i) => `line ${from + i}`)
 
   it('finds how far the text moved', () => {
@@ -69,10 +111,4 @@ describe('selection follows scrolled text', () => {
     expect(visibleRange({ ...sel, startY: 6, endY: 7 }, 10, 6)).toBeNull()
   })
 
-  it('checks the highlighted text is still the selected one', () => {
-    const sel = { startX: 0, startY: 2, endX: 4, endY: 3, text: '', lines: ['line 12', 'line 13'] }
-    expect(selectionIntact(sel, screen(10))).toBe(true)
-    expect(selectionIntact(sel, screen(11))).toBe(false)
-    expect(selectionIntact({ ...sel, startY: -1 }, ['line 13  ', 'x', 'x'])).toBe(true)
-  })
 })
