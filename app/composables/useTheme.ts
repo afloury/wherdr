@@ -1,7 +1,7 @@
-// Thème de l'app : choisi dans les Réglages (gardé sur l'appareil), appliqué
-// tout de suite par l'attribut data-theme de <html>, avec la couleur de la
-// barre iOS (theme-color) et la palette des terminaux. « Suivre Herdr » : le
-// thème de ~/.config/herdr/config.toml, transmis par /api/config.
+// App theme: chosen in Settings (kept on the device), applied
+// right away through the data-theme attribute of <html>, with the color of the
+// iOS bar (theme-color) and the terminal palette. "Follow Herdr": the
+// theme of ~/.config/herdr/config.toml, passed by /api/config.
 
 export const FOLLOW_HERDR = 'follow'
 
@@ -18,7 +18,7 @@ if (import.meta.client) {
   mq.addEventListener('change', () => { systemLight.value = mq.matches })
 }
 
-// Thème réellement affiché (+ jetons [theme.custom] de Herdr en mode suivi).
+// Theme actually shown (+ Herdr's [theme.custom] tokens in follow mode).
 export const activeTheme = computed(() => {
   if (themeChoice.value === FOLLOW_HERDR) {
     const r = resolveHerdrTheme(appConfig.value.herdrTheme, systemLight.value)
@@ -27,7 +27,7 @@ export const activeTheme = computed(() => {
   return { def: themeById(themeChoice.value) || THEMES[0]!, custom: {} as Record<string, string> }
 })
 
-// Couleur de la barre iOS (meta theme-color, posée par useHead dans app.vue).
+// Color of the iOS bar (meta theme-color, set by useHead in app.vue).
 export const themeColor = computed(() => activeTheme.value.custom['--bg'] || activeTheme.value.def.c.bg)
 
 let applied: string[] = []
@@ -56,7 +56,7 @@ export function installTheme() {
   })
 }
 
-// Palette de xterm du thème affiché.
+// xterm palette of the theme shown.
 export const terminalTheme = computed(() => {
   const { def, custom } = activeTheme.value
   const th = xtermTheme(def)

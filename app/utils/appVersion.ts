@@ -1,25 +1,25 @@
-// Nouvelle version de l'app après un redéploiement : jamais de rechargement
-// forcé pendant l'usage. On compare l'identifiant du build chargé à celui que
-// sert le serveur (/_nuxt/builds/latest.json) et on propose un bandeau
-// « Recharger ». Seule exception : un morceau de code introuvable (vue pas
-// encore chargée, supprimée par le déploiement) ; on recharge alors vers la
-// vue demandée, une seule fois (garde en sessionStorage, pas de boucle).
-// À ne pas confondre avec l'avis de nouvelle image (server/utils/updates.ts).
+// New app version after a redeployment: never a forced reload
+// during use. We compare the identifier of the loaded build with the one
+// the server serves (/_nuxt/builds/latest.json) and offer a
+// "Reload" banner. Only exception: a code chunk not found (view not
+// loaded yet, deleted by the deployment); we then reload to the
+// requested view, only once (guard in sessionStorage, no loop).
+// Not to be confused with the new image notice (server/utils/updates.ts).
 
 const GUARD_KEY = 'wherdr:chunk-reload'
-// Un second échec dans ce délai après un rechargement = la nouvelle version
-// ne suffit pas : on s'arrête au bandeau.
+// A second failure within this delay after a reload = the new version
+// is not enough: we stop at the banner.
 export const CHUNK_RELOAD_GUARD_MS = 30000
 
-// Vrai si le serveur annonce un autre build que celui qui tourne.
+// True if the server announces a build other than the one running.
 export function isNewBuild(current: string | undefined, latest: unknown): boolean {
   if (!current || !latest || typeof latest !== 'object') return false
   const id = (latest as { id?: unknown }).id
   return typeof id === 'string' && id !== '' && id !== current
 }
 
-// Erreur de chargement d'un morceau de code (import dynamique) : formulations
-// de Chromium, WebKit et Firefox.
+// Error loading a code chunk (dynamic import): wordings
+// of Chromium, WebKit and Firefox.
 export function isChunkLoadError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : ''
   return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Unable to preload CSS/i.test(msg)
@@ -27,8 +27,8 @@ export function isChunkLoadError(err: unknown): boolean {
 
 interface MiniStorage { getItem(k: string): string | null, setItem(k: string, v: string): void }
 
-// Peut-on recharger pour un morceau manquant ? Oui une fois ; non si l'on
-// vient déjà de recharger pour ça (boucle). Enregistre la tentative.
+// Can we reload for a missing chunk? Yes once; no if we
+// just reloaded for it (loop). Records the attempt.
 export function mayReloadForChunk(storage: MiniStorage | null, now: number): boolean {
   if (!storage) return false
   try {

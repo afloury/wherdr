@@ -13,8 +13,8 @@ export function readSessionSelection(raw: string | null): Record<string, string>
 
 export const writeSessionSelection = (names: Record<string, string>) => JSON.stringify(names)
 
-// Le serveur suit toutes les sessions ouvertes ; chaque appareil ne montre que
-// la session choisie pour chaque machine physique.
+// The server follows all open sessions; each device only shows
+// the session chosen for each physical machine.
 export function selectSessions(state: HerdrState, names: Record<string, string>): HerdrState {
   if (!state.machines) return state
   const selected: MachineInfo[] = []

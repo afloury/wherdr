@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Ce que la permission autorise : outil, description, fichier et commande (ou
-// diff) en entier. Longue : repliée à quelques lignes, défilable, dépliable.
+// What the permission allows: tool, description, file and full command (or
+// diff). Long: collapsed to a few lines, scrollable, expandable.
 import type { PromptDetail } from '#shared/types'
 
 const props = defineProps<{ detail: PromptDetail }>()
@@ -9,7 +9,7 @@ const open = ref(false)
 watch(() => props.detail.command, () => { open.value = false })
 
 const lines = computed(() => (props.detail.command || '').split('\n'))
-// Repliée seulement si ça vaut la peine (au moins trois lignes cachées).
+// Collapsed only if worth it (at least three hidden lines).
 const long = computed(() => lines.value.length > COLLAPSED_LINES + 2 || (props.detail.command || '').length > 800)
 const stats = computed(() => detailStats(props.detail))
 </script>

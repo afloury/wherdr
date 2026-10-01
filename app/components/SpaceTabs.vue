@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// Onglets d'un space, au-dessus de l'en-tête quand il y en a plusieurs.
-// Le « + » d'un onglet unique est dans l'en-tête de sa vue. Mini-carte pour
-// un onglet de plusieurs panes, point d'état du pane le plus urgent sinon.
-// L'onglet ouvert est mémorisé pour le space. Appui long (téléphone) ou clic
-// droit (ordinateur) sur un onglet : ses options (renommer, nouvel onglet, fermer).
+// Tabs of a space, above the header when there are several.
+// The "+" of a single tab is in its view's header. Mini-map for
+// a tab with several panes, otherwise state dot of the most urgent pane.
+// The open tab is remembered for the space. Long press (phone) or right
+// click (computer) on a tab: its options (rename, new tab, close).
 import { leadPane } from '#shared/spaces'
 import { longPress } from '~/utils/longPress'
 
@@ -28,7 +28,7 @@ const lp = longPress({
     openMenu(tabItems(pressed.id), menuTitle(pressed.label))
   },
 })
-// Téléphone seulement : sur ordinateur, le menu contextuel s'en charge.
+// Phone only: on a computer, the context menu handles it.
 function down(e: PointerEvent, id: string, label: string) {
   if (desk.value) return
   pressed = { id, label }

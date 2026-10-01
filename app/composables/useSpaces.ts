@@ -1,7 +1,7 @@
-// Actions sur les espaces, onglets et panes (menus « … » de la liste par
-// espace, du plan d'un onglet et de la vue agent) : nouvel onglet, diviser,
-// renommer, fermer, déplacer, glisser-déposer, redimensionner. Toujours sur un
-// geste explicite ; jamais de zoom (la disposition est partagée avec le client attaché).
+// Actions on spaces, tabs and panes ("…" menus of the list by
+// space, of a tab's plan and of the agent view): new tab, split,
+// rename, close, move, drag and drop, resize. Always on an
+// explicit gesture; never zoom (the layout is shared with the attached client).
 import type { Pane } from '#shared/types'
 import { type MoveDestination, type SpaceEntry, type SplitDirection, moveTargets, paneSpaceEntries } from '#shared/spaceActions'
 import { reorderWorkspaces } from '#shared/spaces'
@@ -11,8 +11,8 @@ import { herdrPaneId, paneIdLine } from '~/utils/paneId'
 
 // Renommer un espace ou un onglet (le pane garde `renameTarget`).
 export const renameSpace = ref<{ kind: 'workspace' | 'tab', id: string, label: string } | null>(null)
-// « Nouvel onglet » dans cet espace, ou « Diviser » ce pane dans ce sens : la
-// feuille « Nouvel agent » crée l'onglet ou le pane seulement sur « Lancer ».
+// "New tab" in this space, or "Split" this pane in this direction: the
+// "New agent" sheet only creates the tab or pane on "Launch".
 export const newTabSpace = ref<string | null>(null)
 export const newSplit = ref<{ paneId: string, direction: SplitDirection } | null>(null)
 
@@ -26,16 +26,16 @@ async function spaceApi(body: Record<string, unknown>): Promise<SpaceReply | nul
   }
 }
 
-// Nouvel onglet : la feuille « Nouvel agent » s'ouvre d'abord, rien n'est
-// créé ; l'onglet naît au clic sur « Lancer » (NewAgentSheet), la fermer
-// n'a laissé aucune trace dans Herdr.
+// New tab: the "New agent" sheet opens first, nothing is
+// created; the tab is born on clicking "Launch" (NewAgentSheet), closing it
+// has left no trace in Herdr.
 export function newTab(workspaceId: string) {
   haptic()
   newSplit.value = null
   newTabSpace.value = workspaceId
   newAgentOpen.value = true
 }
-// Diviser : même principe, le pane naît au clic sur « Lancer ».
+// Split: same principle, the pane is born on clicking "Launch".
 export function splitPane(p: Pane, direction: SplitDirection) {
   haptic()
   newTabSpace.value = null
@@ -90,8 +90,8 @@ export async function closeWorkspace(id: string) {
   done(true)
 }
 
-// Déplacer un pane : menu des destinations (onglets de sa machine, nouvel
-// onglet de son espace, nouvel espace). La vue qui le montrait le suit.
+// Move a pane: menu of destinations (tabs of its machine, new
+// tab of its space, new space). The view that showed it follows it.
 export function movePane(p: Pane) {
   const targets = moveTargets(herdrState.value, p.id)
   const go = (to: MoveDestination) => () => doMove(p, to)
@@ -117,17 +117,17 @@ async function doMove(p: Pane, to: MoveDestination) {
   const r = await spaceApi({ op: 'pane.move', pane_id: p.id, to })
   if (!r) return
   toast(t('Pane déplacé'))
-  // Déplacé vers un autre espace, le pane change d'ID : la vue le suit.
+  // Moved to another space, the pane changes ID: the view follows it.
   const route = useRouter().currentRoute.value
   if (r.pane_id && r.pane_id !== p.id && route.path === panePath(p.id)) navigateTo(panePath(r.pane_id), { replace: true })
 }
 
-// Échanger un pane avec son voisin (Ctrl+B puis Shift+H/J/K/L dans Herdr) :
-// seulement les directions où il y en a un, d'après la vraie disposition.
-// Le pane garde son ID : la case active et la vue le suivent d'elles-mêmes.
+// Swap a pane with its neighbour (Ctrl+B then Shift+H/J/K/L in Herdr):
+// only the directions where there is one, according to the real layout.
+// The pane keeps its ID: the active cell and the view follow it on their own.
 export function paneSwapDirections(p: Pane): PaneDirection[] {
   const e = tabOf(p.tab)
-  // Disposition reconstituée (pas celle de Herdr) : pas de voisins fiables.
+  // Rebuilt layout (not Herdr's): no reliable neighbours.
   if (!e || e.layout !== e.tab.layout) return []
   return swapDirections(e.layout, p.id)
 }
@@ -135,20 +135,20 @@ export async function swapPane(p: Pane, direction: PaneDirection) {
   const e = tabOf(p.tab)
   const other = e ? directionNeighbor(e.layout, p.id, direction) : null
   const tabs = herdrState.value.tabs
-  // Nouvelle disposition affichée tout de suite ; l'état suivant la confirme.
+  // New layout shown right away; the next state confirms it.
   if (tabs && other) herdrState.value = { ...herdrState.value, tabs: tabs.map(x => (x.id === p.tab && x.layout ? { ...x, layout: swapInLayout(x.layout, p.id, other) } : x)) }
   const r = await spaceApi({ op: 'pane.swap', pane_id: p.id, direction })
   if (!r) {
     if (herdrState.value.tabs !== tabs && tabs) herdrState.value = { ...herdrState.value, tabs }
     return
   }
-  // Plan ou côte à côte de son onglet : la case déplacée devient la case active.
+  // Plan or side by side of its tab: the moved cell becomes the active cell.
   const router = useRouter()
   if (router.currentRoute.value.path === tabPath(p.tab)) router.replace({ query: { pane: p.id } })
 }
-// Disposition d'un onglet montrée tout de suite (glisser-déposer, trait
-// glissé), avant la confirmation de Herdr ; l'ancienne revient si l'appel
-// échoue et qu'aucun état plus récent n'est arrivé entre-temps.
+// Layout of a tab shown right away (drag and drop, dragged
+// divider), before Herdr confirms; the old one comes back if the call
+// fails and no newer state arrived in the meantime.
 async function withLayout(tabId: string, next: TabLayout, body: Record<string, unknown>) {
   const tabs = herdrState.value.tabs
   const mine = tabs?.map(x => (x.id === tabId && x.layout ? { ...x, layout: next } : x))
@@ -157,12 +157,12 @@ async function withLayout(tabId: string, next: TabLayout, body: Record<string, u
   if (!r && tabs && herdrState.value.tabs === mine) herdrState.value = { ...herdrState.value, tabs }
   return r
 }
-// Glisser-déposer possible : vraie disposition de Herdr, arbre lisible, pas agrandi.
+// Drag and drop possible: Herdr's real layout, readable tree, not zoomed.
 export function tabDraggable(tabId: string): boolean {
   const e = tabOf(tabId)
   return Boolean(e && e.layout === e.tab.layout && !e.layout.zoomed && e.panes.length > 1 && layoutTree(e.layout))
 }
-// Déposer `p` sur `target` (même onglet) : centre = échanger, bord = placer à côté.
+// Drop `p` onto `target` (same tab): center = swap, edge = place beside.
 export async function dropPane(p: Pane, target: string, side: DropSide) {
   const e = tabOf(p.tab)
   const next = e ? dropPreview(e.layout, p.id, target, side) : null
@@ -171,7 +171,7 @@ export async function dropPane(p: Pane, target: string, side: DropSide) {
   const router = useRouter()
   if (router.currentRoute.value.path === tabPath(p.tab)) router.replace({ query: { pane: p.id } })
 }
-// Trait de séparation relâché : un seul appel, avec le ratio final.
+// Divider released: a single call, with the final ratio.
 export async function resizeSplit(tabId: string, path: string, ratio: number) {
   const e = tabOf(tabId)
   if (!e) return
@@ -186,9 +186,9 @@ const SWAP: Record<PaneDirection, { label: string, icon: string, key: string, ar
 export const paneSwapItems = (p: Pane): MenuItem[] => paneSwapDirections(p).map(d => ({
   label: t(SWAP[d].label), icon: SWAP[d].icon, kbds: ['alt', 'shift', SWAP[d].arrow], run: () => swapPane(p, d),
 }))
-// Raccourci (ordinateur) : Alt+Maj+flèche ou Alt+Maj+H/J/K/L, sur le pane
-// regardé, jamais pendant une saisie (champ, terminal) : ces touches y
-// sélectionnent du texte ou partent au programme.
+// Shortcut (computer): Alt+Shift+arrow or Alt+Shift+H/J/K/L, on the pane
+// being viewed, never while typing (field, terminal): these keys
+// select text there or go to the program.
 const SWAP_CODES: Record<string, PaneDirection> = {
   ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', KeyH: 'left', KeyL: 'right', KeyK: 'up', KeyJ: 'down',
 }
@@ -204,9 +204,9 @@ export function swapShortcut(e: KeyboardEvent): boolean {
   return true
 }
 
-// Entrées des menus.
+// Menu entries.
 export const newTabItem = (workspaceId: string): MenuItem => ({ label: t('Nouvel onglet'), icon: 'i-lucide-plus', run: () => newTab(workspaceId) })
-// Copier l'ID Herdr du pane (celui de sa machine, sans préfixe wherdr).
+// Copy the pane's Herdr ID (its machine's, without the wherdr prefix).
 export function copyPaneIdItem(p: Pane): MenuItem {
   const id = herdrPaneId(p.id)
   return {
@@ -244,8 +244,8 @@ export function workspaceItems(id: string): MenuItem[] {
     { label: t('Fermer l’espace'), icon: 'i-lucide-trash-2', danger: true, run: () => closeWorkspace(id) },
   ]
 }
-// Espace et onglet d'un pane (vue agent, appui long de sa carte) : groupe
-// « Espace », nouvel onglet en tête.
+// Space and tab of a pane (agent view, long press on its card): "Space"
+// group, new tab first.
 export function paneWorkspaceItems(p: Pane): MenuItem[] {
   const ws = herdrState.value.workspaces.find(w => w.id === p.workspace)
   const entries = paneSpaceEntries(herdrState.value, p.id)
@@ -260,7 +260,7 @@ export function paneWorkspaceItems(p: Pane): MenuItem[] {
   return [{ kind: 'group', label: tl(`Espace « ${ws.label} »`, `Space “${ws.label}”`) }, ...entries.map(e => item[e])]
 }
 
-// Menu complet d'un pane du plan : renommer, diviser, déplacer, fermer.
+// Full menu of a plan pane: rename, split, move, close.
 export function paneItems(p: Pane): MenuItem[] {
   return [
     { label: t('Renommer le pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } },
@@ -272,7 +272,7 @@ export function paneItems(p: Pane): MenuItem[] {
     },
   ]
 }
-// Menu du plan d'un onglet : l'onglet, puis son espace.
+// Menu of a tab's plan: the tab, then its space.
 export function tabPlanItems(tabId: string): MenuItem[] {
   const e = tabOf(tabId)
   if (!e) return []
@@ -285,14 +285,14 @@ export function tabPlanItems(tabId: string): MenuItem[] {
   ]
 }
 
-// Réordonner les espaces (glisser-déposer de la liste) : placé avant `before`
-// (null : à la fin), sur la machine de l'espace. Nouvel ordre affiché tout de
-// suite ; l'état suivant de Herdr le confirme (ou le défait si l'appel échoue).
+// Reorder spaces (drag and drop in the list): placed before `before`
+// (null: at the end), on the space's machine. New order shown right
+// away; Herdr's next state confirms it (or undoes it if the call fails).
 export async function moveWorkspace(id: string, before: string | null) {
   const prev = herdrState.value.workspaces
   const next = reorderWorkspaces(prev, id, before)
   herdrState.value = { ...herdrState.value, workspaces: next }
   const r = await spaceApi({ op: 'workspace.move', workspace_id: id, before_workspace_id: before })
-  // Échec, et pas d'état plus récent entre-temps : on remet l'ordre d'avant.
+  // Failure, and no newer state in the meantime: we restore the previous order.
   if (!r && herdrState.value.workspaces === next) herdrState.value = { ...herdrState.value, workspaces: prev }
 }

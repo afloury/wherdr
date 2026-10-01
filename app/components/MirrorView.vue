@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// Miroir en direct d'un pane (vue côte à côte, ordinateur) : l'écran du pane à
-// sa taille réelle dans Herdr, rogné si nécessaire pour tenir dans la case, sans
-// jamais redimensionner le vrai terminal (/ws/mirror, observateur de Herdr).
-// `interactive` (case cliquée) : les frappes partent au pane, texte ou touches
-// nommées, toujours sans prendre la main sur le terminal.
+// Live mirror of a pane (side-by-side view, computer): the pane's screen at
+// its real size in Herdr, cropped if needed to fit in the cell, without
+// ever resizing the real terminal (/ws/mirror, Herdr observer).
+// `interactive` (clicked cell): keystrokes go to the pane, text or named
+// keys, always without taking control of the terminal.
 import '@xterm/xterm/css/xterm.css'
 import { Terminal } from '@xterm/xterm'
 import { mirrorInput } from '#shared/spaces'
@@ -28,8 +28,8 @@ let selection: TerminalSelection | null = null
 
 const FONT = '"Wherdr Symbols", "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace'
 
-// Le PTY reste à la taille du client Herdr. Cadrer sur la ligne du curseur
-// si la case est trop basse, sans réduire les caractères.
+// The PTY stays at the Herdr client's size. Frame on the cursor line
+// if the cell is too short, without shrinking the characters.
 function positionScreen() {
   const b = box.value
   const el = term?.element?.querySelector('.xterm-screen') as HTMLElement | null
@@ -90,7 +90,7 @@ function disconnect() {
   ws = null
   if (s) {
     try { s.close(1000) }
-    catch { /* déjà fermée */ }
+    catch { /* already closed */ }
   }
 }
 function send(obj: unknown) {
@@ -104,7 +104,7 @@ onMounted(() => {
     theme: terminalTheme.value, cols: 80, rows: 24,
   })
   term.open(host.value!)
-  // Le miroir n'a pas d'historique à parcourir : pas de défilement au bord.
+  // The mirror has no history to browse: no scrolling at the edge.
   selection = bindTerminalSelection(term, {
     focus: focusIf,
     copied: ok => toast(ok ? t('Copié') : t('Copie impossible'), false, ok ? undefined : t('Le navigateur refuse l’accès au presse-papiers.')),
@@ -141,7 +141,7 @@ watch(() => props.interactive, (on) => {
   if (on) nextTick(() => term?.focus())
   else term.blur()
 })
-// Page cachée : plus de flux ; il reprend au retour.
+// Hidden page: no more stream; it resumes on return.
 watch(pageVisible, (v) => {
   if (!v) return disconnect()
   retry = 0

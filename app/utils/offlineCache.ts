@@ -1,4 +1,4 @@
-// Données lisibles hors réseau. Le service worker ne stocke jamais les API.
+// Data readable offline. The service worker never stores the APIs.
 import type { ChatItem, HerdrState, Quotas } from '#shared/types'
 import { splitId, LOCAL } from '../../shared/ids'
 
@@ -72,9 +72,9 @@ async function write(s: Snapshot): Promise<void> {
       tx.oncomplete = () => resolve()
       tx.onerror = () => reject(tx.error)
     })
-  } catch { /* quota, navigation privée, éviction : lecture en direct conservée */ }
+  } catch { /* quota, private browsing, eviction: live reading kept */ }
 }
-// Sérialisation des écritures : un état et une conversation arrivent souvent ensemble.
+// Serialized writes: a state and a conversation often arrive together.
 let pending = Promise.resolve()
 function mutate(fn: (s: Snapshot) => Snapshot) {
   pending = pending.then(async () => write(fn(await read()))).catch(() => {})

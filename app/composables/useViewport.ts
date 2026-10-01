@@ -1,10 +1,10 @@
-// Dimensions sur iPhone : clavier, barre d'accueil, page raccourcie (iOS 26).
+// Dimensions on iPhone: keyboard, home bar, shortened page (iOS 26).
 
 // Clavier ouvert : hauteur et position de la zone visible au-dessus.
 export const kbOpen = ref(false)
 export const vvHeight = ref(0)
 export const vvTop = ref(0)
-// Incrémenté à chaque changement de dimensions (le terminal se recale dessus).
+// Incremented on each dimension change (the terminal readjusts on it).
 export const layoutTick = ref(0)
 
 const fullH = { orient: '', h: 0 }
@@ -13,9 +13,9 @@ export function layout() {
   const vv = window.visualViewport
   const h = vv ? vv.height : window.innerHeight
   const top = vv ? vv.offsetTop : 0
-  // Clavier ouvert = la zone visible a perdu plus de 120 px par rapport à la
-  // plus grande hauteur vue dans cette orientation. (Comparer à innerHeight ne
-  // marche pas : avec interactive-widget=resizes-content, iOS rétrécit les deux.)
+  // Keyboard open = the visible area lost more than 120 px compared with the
+  // largest height seen in this orientation. (Comparing with innerHeight does not
+  // work: with interactive-widget=resizes-content, iOS shrinks both.)
   const orient = screen.width > screen.height || innerWidth > innerHeight ? 'l' : 'p'
   if (orient !== fullH.orient) {
     fullH.orient = orient
@@ -30,12 +30,12 @@ export function layout() {
   layoutTick.value++
 }
 
-// App installée dont la page s'arrête au-dessus du bas de l'écran (iOS 26 avec
-// une barre d'état translucide, ou icône installée avant le changement) : la
-// zone de sécurité du bas tomberait dans le vide.
-// Signature du bug : page sous la barre d'état (zone de sécurité du haut non
-// nulle) ET plus courte que l'écran d'autant. Avec une barre d'état opaque, la
-// page commence sous l'heure (zone du haut nulle) et touche bien le bas.
+// Installed app whose page stops above the bottom of the screen (iOS 26 with
+// a translucent status bar, or icon installed before the change): the
+// bottom safe area would fall into the void.
+// Signature of the bug: page under the status bar (non-zero top safe
+// area) AND shorter than the screen by as much. With an opaque status bar, the
+// page starts below the clock (zero top area) and does reach the bottom.
 export function checkShortBottom() {
   const probe = document.createElement('div')
   probe.style.cssText = 'position:fixed;padding-top:env(safe-area-inset-top);visibility:hidden'

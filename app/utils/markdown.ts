@@ -1,6 +1,6 @@
-// Markdown des réponses : marked pour le rendu, DOMPurify pour ne rien
-// exécuter de ce qu'un agent aurait écrit. Mis en cache par texte (la
-// conversation est relue toutes les 1,5 s).
+// Markdown of replies: marked for rendering, DOMPurify so that nothing
+// an agent might have written gets executed. Cached by text (the
+// conversation is re-read every 1.5 s).
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 
@@ -14,7 +14,7 @@ export function md(text: string): string {
   if (hit !== undefined) return hit
   if (!hooked) {
     hooked = true
-    // Blocs de code encadrés façon terminal : langue + bouton « Copier ».
+    // Terminal-style framed code blocks: language + "Copy" button.
     marked.use({
       renderer: {
         code({ text, lang }) {

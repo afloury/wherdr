@@ -1,11 +1,11 @@
-// Panneau « Projet » : quand lire l'état du projet (fonction pure, testée dans
+// "Project" panel: when to read the project state (pure function, tested in
 // tests/projectRefresh.test.ts).
-//  - `poll` : panneau visible, on lit tout de suite puis on sonde ;
-//  - `probe` : panneau caché, on lit une fois pour savoir s'il faut montrer
-//    l'onglet / le bouton (disponibilité encore inconnue) ;
-//  - `none` : rien (pas un coordinateur, herdr-projects absent, page cachée,
-//    ou état hors ligne : au rechargement, l'app montre d'abord le dernier état
-//    gardé ; la lecture part dès que l'état en direct arrive).
+//  - `poll`: panel visible, we read right away then poll;
+//  - `probe`: panel hidden, we read once to know whether to show
+//    the tab / button (availability still unknown);
+//  - `none`: nothing (not a coordinator, herdr-projects missing, page hidden,
+//    or offline state: on reload, the app first shows the last kept
+//    state; the read starts as soon as the live state arrives).
 export interface RefreshInput {
   coordinator: boolean
   offline: boolean

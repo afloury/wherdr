@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Logo de l'agent : étoile de Claude, logo OpenAI pour Codex, >_ pour un terminal.
+// Agent logo: Claude's star, OpenAI logo for Codex, >_ for a terminal.
 defineProps<{ agent: string | null | undefined }>()
 </script>
 

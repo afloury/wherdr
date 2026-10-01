@@ -1,15 +1,15 @@
 <script setup lang="ts">
-// Carte d'un agent dans la liste : titre, état et modèle (« working · claude ·
-// opus 5.5 »), dossier
-// (ou branche du worktree), aperçu de sa dernière réponse, et réponses en un
-// tap à sa question.
-// Space de plusieurs onglets ou panes (`row`) : une seule carte, au nom du space,
-// avec sa mini-carte, le nombre d'onglets / panes, et l'état, l'aperçu et les
-// réponses de son pane le plus urgent (`pane`). La toucher ouvre le space.
+// Card of an agent in the list: title, state and model ("working · claude ·
+// opus 5.5"), folder
+// (or worktree branch), preview of its last reply, and one-tap answers
+// to its question.
+// Space with several tabs or panes (`row`): a single card, named after the space,
+// with its mini-map, the number of tabs / panes, and the state, preview and
+// answers of its most urgent pane (`pane`). Tapping it opens the space.
 import type { Pane } from '#shared/types'
 import type { Row } from '#shared/spaces'
 
-// `tag` : rôle dans un projet herdr-projects (coordinateur, t-0018).
+// `tag`: role in a herdr-projects project (coordinator, t-0018).
 const props = defineProps<{ pane: Pane, tag?: string | null, row?: Row | null }>()
 const space = computed(() => (props.row && props.row.kind === 'space' ? props.row : null))
 const busy = ref(false)
@@ -20,7 +20,7 @@ const ws = computed(() => herdrState.value.workspaces.find(w => w.id === props.p
 const branch = computed(() => ws.value?.branch || null)
 const title = computed(() => spaceTitle(props.pane, ws.value))
 const subtitle = computed(() => conversationSubtitle(props.pane, ws.value))
-// Sélection (ordinateur) : le pane regardé, ou pour un space un de ses panes / onglets.
+// Selection (computer): the pane being viewed, or for a space one of its panes / tabs.
 const route = useRoute()
 const selected = computed(() => {
   if (!space.value) return props.pane.id === curPane.value
@@ -35,7 +35,7 @@ const counts = computed(() => {
 })
 const where = computed(() => {
   const p = props.pane
-  // Space : le pane dont viennent l'état et l'aperçu (et son onglet s'il y en a plusieurs).
+  // Space: the pane the state and preview come from (and its tab if there are several).
   if (space.value) {
     const s = space.value
     return [s.tabs.length > 1 ? `${t('Onglet')} ${s.leadTab.tab.label || s.leadTab.tab.number}` : '', subtitle.value].filter(Boolean).join(' · ')
@@ -43,10 +43,10 @@ const where = computed(() => {
   return [subtitle.value, branch.value || shortPath(p.cwd)].filter(Boolean).join(' · ')
 })
 const prompt = computed(() => (props.pane.status === 'blocked' ? props.pane.prompt : undefined))
-// Écran d'attente reconnu (hooks de Codex…) : son titre dit mieux ce qui est attendu.
+// Recognized waiting screen (Codex hooks…): its title says better what is expected.
 const screen = computed(() => knownScreen(props.pane))
 const preview = computed(() => (screen.value && screenSummary(screen.value)) || (props.pane.menu && props.pane.status !== 'working' && menuSummary(props.pane.menu)) || (prompt.value ? prompt.value.question : props.pane.preview))
-// Lu / non lu : seulement pour un agent qui a fini (prêt).
+// Read / unread: only for an agent that has finished (ready).
 const unread = computed(() => (space.value ? space.value.panes.filter(p => p.agent && p.status === 'done') : []))
 const readItem = computed(() => {
   if (space.value) return unread.value.length ? { label: t('Marquer comme lu'), icon: 'i-lucide-mail-open', run: () => readAll() } : null
@@ -66,8 +66,8 @@ async function setRead(read: boolean) {
   try {
     await api('/api/seen', { pane_id: props.pane.id, read })
     haptic()
-    // Non lu alors qu'elle est ouverte à côté (ordinateur) : on la referme,
-    // sinon elle repasserait aussitôt en « lu ».
+    // Unread while it is open alongside (computer): we close it,
+    // otherwise it would immediately go back to "read".
     if (!read && curPane.value === props.pane.id) navigateTo('/')
   } catch (err) { toast((err as Error).message, true) }
 }
@@ -103,7 +103,7 @@ async function pick(i: number, label: string) {
   if (recentTouchMenu()) return
   busy.value = true
   const ok = await choose(props.pane.id, i, label)
-  // Réussi : les boutons disparaissent avec la question au prochain état.
+  // Success: the buttons disappear with the question on the next state.
   if (!ok) busy.value = false
 }
 watch(() => props.pane.prompt, () => { busy.value = false })

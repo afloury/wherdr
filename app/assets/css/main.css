@@ -1,15 +1,15 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
-/* Polices embarquées dans le bundle (aucun appel réseau à l'exécution). */
+/* Fonts bundled with the app (no network call at runtime). */
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/archivo";
 @import "@fontsource-variable/jetbrains-mono";
 
-/* DejaVu Sans Mono pour traits/blocs et Noto Sans Symbols pour les contrôles
-   absents de DejaVu. Chasses ajustées à JetBrains Mono (0,600 em) ; toutes
-   les autres lettres gardent la police principale. La couleur ANSI vient
-   des spans xterm et s'applique à ces faces comme aux autres glyphes. */
+/* DejaVu Sans Mono for lines/blocks and Noto Sans Symbols for the controls
+   missing from DejaVu. Advances adjusted to JetBrains Mono (0.600 em); all
+   other letters keep the main font. The ANSI color comes from the
+   xterm spans and applies to these faces like to the other glyphs. */
 @font-face {
   font-family: "Wherdr Symbols";
   src: url("../fonts/wherdr-symbols.woff2") format("woff2");
@@ -35,7 +35,7 @@
   unicode-range: U+23F5, U+23FA;
 }
 
-/* Sources Tailwind : les composants de l'app. */
+/* Tailwind sources: the app's components. */
 @source "../../components";
 @source "../../pages";
 
@@ -46,8 +46,8 @@
 }
 
 /* ================================================================
-   Jetons — patte « INK » de herdr.dev : fond presque noir, traits fins,
-   mauve en accent, couleurs d'état façon Catppuccin, angles droits.
+   Tokens — herdr.dev "INK" look: near-black background, thin lines,
+   mauve accent, Catppuccin-style state colors, square corners.
    ================================================================ */
 :root {
   --bg: #17171a;
@@ -76,22 +76,22 @@
   --working: var(--blue);
   --blocked: var(--rose);
   --done: var(--teal);
-  --idle: var(--teal);          /* prêt : même famille que done, carré creux */
-  --input-line: var(--line);    /* contour du champ de saisie */
+  --idle: var(--teal);          /* ready: same family as done, hollow square */
+  --input-line: var(--line);    /* input field outline */
   --unknown: var(--dim);
   --danger: var(--rose);
   --accent: var(--mauve);
-  --on-accent: #17171a;         /* texte posé sur l'accent */
-  --line-strong: #4a4a55;       /* contour des boutons principaux (plus clair que --line) */
-  --text-strong: #ffffff;       /* titres et gras du markdown */
+  --on-accent: #17171a;         /* text on top of the accent */
+  --line-strong: #4a4a55;       /* outline of the main buttons (lighter than --line) */
+  --text-strong: #ffffff;       /* markdown headings and bold */
   --code-bg: #131316;
   --selection: color-mix(in srgb, var(--accent) 32%, transparent);
-  /* Grille façon herdr.dev, autour du contenu seulement. */
+  /* herdr.dev-style grid, around the content only. */
   --grid: color-mix(in srgb, var(--line) 34%, transparent);
   --grid-size: 72px;
   --shadow: rgba(0, 0, 0, .5);
 
-  /* Logos d'agents monochromes, façon herdr.dev (pixel crab / nuage Codex) */
+  /* Monochrome agent logos, herdr.dev style (pixel crab / Codex cloud) */
   --claude: #d77757;
   --codex: #7a9dff;
 
@@ -103,12 +103,12 @@
   --read: 760px;
   color-scheme: dark;
 }
-/* Réglages → Ordinateur → Largeur du contenu. En pleine largeur, --read dépend du
-   conteneur où il est utilisé (colonne, marges du composer, traits du fond). */
+/* Settings → Computer → Content width. At full width, --read depends on the
+   container where it is used (column, composer margins, background lines). */
 :root[data-content-width="wide"] { --read: min(1100px, 100% - 48px); }
 :root[data-content-width="full"] { --read: calc(100% - 48px); }
 
-/* Nuxt UI branché sur les jetons du thème (cf. app/utils/themes.ts). */
+/* Nuxt UI wired to the theme tokens (see app/utils/themes.ts). */
 :root, .dark {
   --ui-bg: var(--bg);
   --ui-bg-muted: var(--surface);
@@ -125,8 +125,8 @@
   --ui-text-toned: var(--text-2);
   --ui-text-highlighted: var(--text-strong);
   --ui-text-inverted: var(--bg);
-  /* Comme herdr.dev : boutons neutres (blanc cassé / contour ; sombre sur
-     clair en thème clair), l'accent reste réservé aux repères. */
+  /* Like herdr.dev: neutral buttons (off-white / outline; dark on
+     light in the light theme), the accent stays reserved for markers. */
   --ui-primary: var(--text);
   --ui-success: var(--green);
   --ui-warning: var(--ochre);
@@ -194,11 +194,11 @@
   display: flex; flex-direction: column;
   background: var(--bg);
 }
-/* Page raccourcie par le bas (bug iOS 26, cf. README) : elle n'atteint pas
-   la barre d'accueil, inutile d'ajouter la zone de sécurité du bas. */
+/* Page shortened from the bottom (iOS 26 bug, see README): it does not reach
+   the home bar, no need to add the bottom safe area. */
 body.short-bottom { --safe-bottom: 0px; }
 
-/* ---------- En-têtes ---------- */
+/* ---------- Headers ---------- */
 .top {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: calc(var(--safe-top) + 10px) 16px 10px;
@@ -212,7 +212,7 @@ body.short-bottom { --safe-bottom: 0px; }
 }
 
 /* ================================================================
-   Liste des agents
+   Agent list
    ================================================================ */
 .home-top {
   display: flex; flex-direction: column; gap: 10px; flex: none;
@@ -220,14 +220,14 @@ body.short-bottom { --safe-bottom: 0px; }
 }
 .home-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
 .home-title-row .display { font-size: 40px; }
-/* Logo = voyant de connexion : texte si connecté, rose si Herdr injoignable. */
+/* Logo = connection light: text color if connected, pink if Herdr is unreachable. */
 .home-logo { width: 32px; height: 14px; color: var(--dim); flex: none; margin-right: 2px; }
 .home-logo.ok { color: var(--text); }
 .home-logo.bad { color: var(--rose); }
 .home-actions { display: flex; align-items: center; gap: 4px; flex: none; margin-right: -6px; }
-/* Recherche globale : fenêtre carrée à traits fins (comme les feuilles), en-têtes
-   de groupe façon carte d'agent, occurrence surlignée en ocre comme la
-   recherche dans une conversation. Aucun arrondi. */
+/* Global search: square window with thin lines (like the sheets), agent-card-style
+   group headers, match highlighted in ochre like the
+   search in a conversation. No rounding. */
 .global-search-backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(8, 8, 10, .62); display: flex; justify-content: center; align-items: flex-start; padding: max(10vh, 32px) 16px 24px; }
 .global-search {
   width: min(660px, 100%); max-height: min(76vh, 760px); display: flex; flex-direction: column; overflow: hidden;
@@ -297,7 +297,7 @@ body.short-bottom { --safe-bottom: 0px; }
 
 .scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 0 16px calc(var(--safe-bottom) + 104px); }
 
-/* Compteurs : cellules à traits fins, gros chiffres Archivo. */
+/* Counters: thin-line cells, big Archivo digits. */
 .stats {
   display: grid; grid-template-columns: repeat(3, 1fr);
   border: 1px solid var(--line); margin: 0 0 26px;
@@ -317,7 +317,7 @@ body.short-bottom { --safe-bottom: 0px; }
 .stat.zero b { color: var(--dim); }
 .stat.blocked:not(.zero) b { color: var(--rose); }
 
-/* Quotas restants (Claude, Codex) : même grille que les compteurs, sous eux. */
+/* Remaining quotas (Claude, Codex): same grid as the counters, below them. */
 .quotas { margin: 0 0 26px; }
 .quotas.after-stats { margin-top: -14px; }
 .quotas .quota-row:last-child { margin-bottom: 0; }
@@ -326,8 +326,8 @@ body.short-bottom { --safe-bottom: 0px; }
 .quota-who { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-right: 1px solid var(--line); min-width: 0; }
 .quota-who small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font: 400 8.5px/1 var(--mono); color: var(--dim); white-space: nowrap; }
 .quota-who small .iconify { width: 9px; height: 9px; margin-right: 2px; vertical-align: -1px; }
-/* Lecture de plus d'une heure : âge en ocre, chiffres atténués. Fenêtre
-   réinitialisée depuis la lecture (100 % supposés) : barre hachurée. */
+/* Reading older than an hour: age in ochre, numbers dimmed. Window
+   reset since the reading (100 % assumed): hatched bar. */
 .quota-row.stale .quota-who small { color: var(--ochre); }
 .quota-row.stale .quota-top b { color: var(--muted); }
 .quota.guessed .quota-bar i { background: repeating-linear-gradient(90deg, var(--teal) 0 4px, transparent 4px 7px); }
@@ -365,8 +365,8 @@ body.short-bottom { --safe-bottom: 0px; }
   color: var(--mauve); padding: 4px 0;
 }
 
-/* Projet herdr-projects : en-tête repliable (nom, nombre d'agents, état résumé),
-   le coordinateur puis ses threads. Même trait que les groupes d'état. */
+/* herdr-projects project: collapsible header (name, number of agents, summarized state),
+   the coordinator then its threads. Same line as the state groups. */
 .project-head { width: 100%; padding: 6px 0; margin-bottom: 4px; text-align: left; cursor: pointer; }
 .project-head::before { display: none; }
 .project-head:focus-visible { outline: 1px solid var(--mauve); outline-offset: 2px; }
@@ -384,16 +384,16 @@ body.short-bottom { --safe-bottom: 0px; }
 .project-sum .ready { color: var(--muted); }
 .project-sum-l { margin-left: 2px; }
 .project.blocked .project-name { color: var(--rose); }
-/* Rôle dans le projet, devant l'état : « COORDINATEUR », « T-0018 ». */
+/* Role in the project, before the state: "COORDINATEUR", "T-0018". */
 .card-tag {
   flex: none; padding: 2px 5px; border: 1px solid var(--line);
   font: 500 9.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
 }
 @media (max-width: 420px) { .project-sum-l { display: none; } }
 
-/* Plusieurs machines : une section par machine, comme la barre latérale de
-   Herdr. En-tête = nom (Archivo), état de connexion, nombre d'agents ;
-   repliable. Machine injoignable : son dernier état, grisé. */
+/* Several machines: one section per machine, like Herdr's
+   sidebar. Header = name (Archivo), connection state, number of agents;
+   collapsible. Unreachable machine: its last state, grayed out. */
 .machine { margin: 0 0 8px; }
 .machine + .machine { margin-top: 4px; }
 .machine-row { display: flex; align-items: center; border-top: 1px solid var(--line); margin-bottom: 6px; }
@@ -468,9 +468,9 @@ body.short-bottom { --safe-bottom: 0px; }
   margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex: none;
   font: 500 11px/1 var(--mono); color: var(--dim);
 }
-/* Quotas du compte Claude propre à la machine (comptes différents), sous son en-tête. */
+/* Quotas of the Claude account specific to the machine (different accounts), under its header. */
 .machine-body .quotas.machine-quotas { margin: 2px 0 18px; }
-/* Quotas Claude non configurés sur une machine qui a des agents Claude. */
+/* Claude quotas not configured on a machine that has Claude agents. */
 .claude-setup {
   display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 2px 0 18px; padding: 9px 10px 9px 12px;
   border: 1px dashed var(--line-strong); font: 400 12px/1.4 var(--mono); color: var(--text-3);
@@ -482,7 +482,7 @@ body.short-bottom { --safe-bottom: 0px; }
 .claude-setup p small { display: block; margin-top: 2px; font-size: 11px; color: var(--dim); }
 .claude-setup-actions { display: flex; gap: 6px; margin-left: auto; }
 .claude-setup-actions .iconify { width: 14px; height: 14px; }
-/* Nouvelle version de wherdr (accueil, Réglages › À propos). */
+/* New wherdr version (home, Settings › About). */
 .update-banner {
   display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px 12px; margin: -12px 0 26px; padding: 9px 10px 9px 12px;
   border: 1px solid var(--line-strong); font: 400 12px/1.4 var(--mono); color: var(--text-3);
@@ -507,7 +507,7 @@ body.short-bottom { --safe-bottom: 0px; }
 .machine-body .agent-group:last-child { margin-bottom: 18px; }
 .machine-empty { margin: -2px 0 20px 24px; font: 400 12px/1.4 var(--mono); color: var(--dim); }
 
-/* Carte d'une machine injoignable (vue agent, etc.). */
+/* Card of an unreachable machine (agent view, etc.). */
 .card.stale { cursor: pointer; }
 .card.stale .card-choices { display: none; }
 
@@ -529,13 +529,13 @@ body.short-bottom { --safe-bottom: 0px; }
 .card::before { content: ''; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 2px; background: transparent; }
 .card:active { background: var(--surface-2); }
 .card.blocked::before { background: var(--rose); }
-/* Non lu (fini, pas encore regardé) : trait et titre marqués, comme un courriel. */
+/* Unread (finished, not looked at yet): line and title marked, like an email. */
 .card.done::before { background: var(--done); }
 .card.done .card-title { font-weight: 700; }
 .card:focus-visible { outline: 1px solid var(--mauve); outline-offset: -1px; }
 
-/* Réordonner les espaces (ReorderList) : carte saisie, fantôme sous le doigt,
-   trait de dépôt entre deux cartes. */
+/* Reorder spaces (ReorderList): grabbed card, ghost under the finger,
+   drop line between two cards. */
 .reorder-list { position: relative; }
 .card.reorder-armed { background: var(--surface-2); outline: 1px solid var(--mauve); outline-offset: -1px; transition: background-color .12s ease; }
 .card.reorder-source { opacity: .35; }
@@ -563,11 +563,11 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .card-meta { display: flex; align-items: center; gap: 8px; margin-top: 5px; min-width: 0; overflow: hidden; }
-/* Ligne trop étroite (space : nombre d'onglets et de panes) : le modèle se
-   tronque avec « … » au lieu d'être coupé net. */
+/* Line too narrow (space: number of tabs and panes): the model is
+   truncated with "…" instead of being cut sharply. */
 .card-meta .pill { flex-shrink: 1; min-width: 0; }
 .card-meta .pill-model { min-width: 0; }
-/* Branche du worktree (ou dossier) : sa propre ligne, sous l'état, lisible en entier. */
+/* Worktree branch (or folder): its own line, below the state, readable in full. */
 .card-where {
   display: block; min-width: 0; margin-top: 4px;
   font: 400 11.5px/1.3 var(--mono); color: var(--dim);
@@ -575,13 +575,13 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 }
 .card-where .iconify { width: 12px; height: 12px; margin-right: 4px; vertical-align: -2px; color: var(--green); }
 .card-preview {
-  /* Décalé sous le titre : largeur = carte − décalage, sinon ça déborde à droite. */
+  /* Offset under the title: width = card − offset, otherwise it overflows on the right. */
   flex: 0 0 calc(100% - 50px); min-width: 0; margin: -2px 0 0 50px; font-size: 13.5px; line-height: 1.45; color: var(--text-3);
   overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .card.blocked .card-preview { color: var(--text); }
-/* Demande de permission : ce qui est demandé, en une ligne (commande, fichier). */
+/* Permission request: what is requested, on one line (command, file). */
 .card-detail {
   flex: 0 0 calc(100% - 50px); min-width: 0; margin: -2px 0 0 50px; display: flex; align-items: baseline; gap: 8px;
   padding: 6px 8px; background: var(--bg-2); border: 1px solid var(--line); border-left: 2px solid var(--rose);
@@ -605,8 +605,8 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
   padding: 12px 14px; margin: 0 0 18px;
   background: color-mix(in srgb, var(--rose) 7%, transparent); border: 1px solid color-mix(in srgb, var(--rose) 40%, transparent); color: color-mix(in srgb, var(--rose) 55%, var(--text)); font-size: 14px;
 }
-/* Grille façon herdr.dev : seulement autour du contenu (marges, panneaux vides),
-   jamais derrière le texte. Motif CSS, aligné sur la fenêtre. */
+/* herdr.dev-style grid: only around the content (margins, empty panels),
+   never behind the text. CSS pattern, aligned with the window. */
 .hw-grid {
   background-color: var(--bg);
   background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
@@ -628,9 +628,9 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 }
 .fab .iconify { width: 18px; height: 18px; }
 
-/* ---------- Boutons principaux, comme INSTALL sur herdr.dev ----------
-   Au repos : fond du thème, contour fin clair, texte mono majuscules espacé.
-   Survol / appui / focus clavier : fond d'accent, texte sombre, sans contour. */
+/* ---------- Main buttons, like INSTALL on herdr.dev ----------
+   At rest: theme background, thin light outline, spaced uppercase mono text.
+   Hover / press / keyboard focus: accent background, dark text, no outline. */
 .hw-cta {
   background: var(--bg); color: var(--text);
   box-shadow: inset 0 0 0 1px var(--line-strong);
@@ -645,7 +645,7 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .fab.hw-cta { box-shadow: inset 0 0 0 1px var(--line-strong), 0 12px 30px var(--shadow); }
 .fab.hw-cta:hover, .fab.hw-cta:active, .fab.hw-cta:focus-visible { box-shadow: 0 12px 30px var(--shadow); }
 
-/* ---------- État d'un agent : point + « working · claude » ---------- */
+/* ---------- Agent state: dot + "working · claude" ---------- */
 .pill {
   display: inline-flex; align-items: center; gap: 6px; flex: none;
   font: 500 11.5px/1.2 var(--mono); text-transform: lowercase; color: var(--muted); white-space: nowrap;
@@ -660,9 +660,9 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .pill.idle { color: var(--idle); opacity: .85; }
 .pill.idle i { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
 .pill.unknown, .pill.shell { color: var(--dim); }
-/* Modèle sur la carte : discret, la couleur de l'état reste sur « working ». */
+/* Model on the card: discreet, the state color stays on "working". */
 .pill .pill-model { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
-/* Niveau de raisonnement (medium, high…) à côté du modèle. */
+/* Reasoning level (medium, high…) next to the model. */
 .pill .pill-effort { color: var(--dim); margin-left: -2px; flex: none; }
 
 /* ---------- Logos d'agents ---------- */
@@ -678,18 +678,18 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .avatar.gemini { color: var(--blue); }
 .avatar.opencode { color: var(--green); }
 .avatar.kimi { color: var(--mauve); }
-/* Nom de l'agent dans « ready · claude · opus 5.5 » : neutre (la couleur de
-   marque reste sur le logo, le texte en couleur faisait trop). */
+/* Agent name in "ready · claude · opus 5.5": neutral (the brand color
+   stays on the logo, colored text was too much). */
 .pill-kind { color: var(--text-2); }
 .avatar.codex .iconify { width: 22px; height: 22px; }
 .avatar.shell { color: var(--muted); }
 .terminal-transcript-note { padding: 7px 12px; border-top: 1px solid var(--line); color: var(--muted); font: 11px/1.4 var(--mono); text-align: center; }
 
 /* ================================================================
-   Vue agent
+   Agent view
    ================================================================ */
 #agent { overflow: hidden; }
-/* Fichier glissé depuis le Finder / l'explorateur : zone de dépôt sur toute la vue. */
+/* File dragged from the Finder / file explorer: drop zone over the whole view. */
 .file-drop {
   position: absolute; inset: 8px; z-index: 60; pointer-events: none;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
@@ -709,15 +709,15 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .agent-actions { grid-area: actions; display: flex; align-items: center; gap: 2px; flex: none; }
 .agent-top .view-tabs { grid-area: tabs; }
 .agent-actions .view-tabs { width: 220px; margin-right: 10px; }
-/* Bascules d'en-tête (téléphone) : terminal `>_`, Projet. Allumée = affichée. */
+/* Header toggles (phone): terminal `>_`, Project. Lit = shown. */
 .agent-actions .mode-btn.on { border-color: var(--mauve); background: color-mix(in srgb, var(--mauve) 14%, transparent); color: var(--mauve); }
 @media (max-width: 380px) { .agent-actions .icon-btn { width: 36px; } }
-/* Le sélecteur tient dans l'en-tête, avant les actions. */
+/* The selector fits in the header, before the actions. */
 .agent-title {
   font-weight: 600; font-size: 15.5px; letter-spacing: -.01em; line-height: 1.25;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* Le chemin passe sur une 2e ligne masquée s'il n'a pas la place d'au moins « · /pr… ». */
+/* The path moves to a hidden 2nd line if it does not have room for at least "· /pr…". */
 .agent-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 20px 8px; margin-top: 3px; min-width: 0; max-height: 16px; overflow: hidden; }
 .agent-meta .pill { font-size: 11px; }
 .agent-meta .agent-subtitle { min-width: 0; max-width: 42%; font: 400 11px/1.2 var(--mono); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -737,19 +737,19 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .machine-banner > .term-banner-icon { color: var(--rose); }
 .machine-banner small { display: block; margin-top: 2px; font: 400 11px/1.35 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 
-/* Sélecteur (UTabs) : bloc bordé discret, onglet actif plein, comme INK / PAPER. */
+/* Selector (UTabs): discreet bordered block, active tab filled, like INK / PAPER. */
 .hw-tabs { padding: 0; border: 1px solid var(--line); background: transparent; width: 100%; }
 .hw-tab {
   flex: 1; justify-content: center; padding: 6px 8px;
   font: 500 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
 }
 .hw-tab[data-state="inactive"] { color: var(--muted); }
-/* Onglet actif en mauve, texte sombre (téléphone et ordinateur). */
+/* Active tab in mauve, dark text (phone and computer). */
 .hw-tab[data-state="active"] { color: var(--on-accent); }
 .hw-tab-ind { background: var(--mauve); inset-block: 0; }
 
-/* Revue Git : chaque fichier se replie. Les lignes longues reviennent à la
-   ligne sur téléphone, avec un retrait visuel stable pour le signe +/- . */
+/* Git review: each file collapses. Long lines wrap
+   on the phone, with a stable visual indent for the +/- sign. */
 .changes-view { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .changes-inner { max-width: 1100px; margin: 0 auto; padding: 18px 14px 48px; }
 .changes-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
@@ -799,8 +799,8 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 
 /* ---------- Terminal ---------- */
 #termWrap { position: relative; flex: 1; min-height: 0; padding: 6px 4px 0 6px; background: var(--bg); }
-/* Le calque reçoit les gestes tactiles ; sur ordinateur, la souris doit atteindre
-   xterm pour la sélection et le mode souris des programmes. */
+/* The layer receives touch gestures; on a computer, the mouse must reach
+   xterm for selection and the programs' mouse mode. */
 #term { position: absolute; inset: 6px 4px 0 6px; z-index: 0; }
 #touch { position: absolute; inset: 0; z-index: 1; touch-action: none; pointer-events: none; }
 @media (hover: none) and (pointer: coarse) { #touch { pointer-events: auto; } }
@@ -808,7 +808,7 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .term-loading.static { position: static; padding: 30px; }
 .xterm .xterm-viewport { background: transparent !important; overflow-y: hidden !important; }
 .xterm { padding: 0; }
-/* Un client Herdr peut envoyer une frame plus large : défilement, sans déformer les glyphes. */
+/* A Herdr client may send a wider frame: scrolling, without distorting the glyphs. */
 #term .xterm { box-sizing: border-box; width: 100%; overflow-x: auto; overflow-y: hidden; }
 
 .keybar {
@@ -851,7 +851,7 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .msg-ai .msg-c { padding-bottom: 0; }
 .msg-ai:has(.msg-actions) .msg-c { padding-bottom: 36px; }
 
-/* Message de l'utilisateur : bloc carré à droite. */
+/* User message: square block on the right. */
 .msg-user-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; margin-top: 6px; }
 .msg-user .msg-c { max-width: 88%; }
 .msg-bubble {
@@ -862,7 +862,7 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .msg-files { margin-bottom: 6px; }
 .msg-time { font: 400 10.5px/1 var(--mono); color: var(--dim); letter-spacing: .04em; }
 
-/* Nom de l'agent en tête de sa réponse. */
+/* Agent name at the top of its reply. */
 .msg-who {
   display: flex; align-items: center; gap: 7px; margin: 10px 0 -4px;
   font: 600 10.5px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--text-3);
@@ -871,7 +871,7 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .msg-who.claude .iconify { color: var(--claude); }
 .msg-who.codex .iconify { color: var(--codex); }
 
-/* Réponse : markdown soigné. */
+/* Reply: polished markdown. */
 .md { font-size: 15.5px; line-height: 1.6; color: var(--text); overflow-wrap: anywhere; }
 .md-body > :first-child { margin-top: 0; }
 .md-body > :last-child { margin-bottom: 0; }
@@ -909,13 +909,13 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 }
 .md-body .code-copy:hover { color: var(--text); background: var(--surface-2); }
 .md-body .code-copy.done { color: var(--green); }
-/* Doigt : zone d'appui agrandie sans changer le dessin. */
+/* Finger: enlarged touch area without changing the drawing. */
 @media (pointer: coarse) {
   .md-body .code-copy { position: relative; }
   .md-body .code-copy::before { content: ''; position: absolute; inset: -8px -4px; }
 }
-/* Bande chiffrée : les vrais caractères gardent leur place, transparents ;
-   les glyphes sont peints par-dessus, sans changer la largeur du texte. */
+/* Cipher band: the real characters keep their place, transparent;
+   the glyphs are painted on top, without changing the text width. */
 .md-body .tw-trail > span { position: relative; color: transparent; }
 .md-body .tw-trail > span::before {
   content: attr(data-g); position: absolute; left: 50%; top: 0; transform: translateX(-50%);
@@ -923,13 +923,13 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
   pointer-events: none;
 }
 .md-body .tw-trail > .tw-front::before { opacity: .4; }
-/* Couleur de l'effet chiffré selon l'agent : orange Claude, bleu Codex, accent sinon. */
+/* Color of the cipher effect per agent: Claude orange, Codex blue, accent otherwise. */
 .tw-claude { --tw-color: var(--claude); }
 .tw-codex { --tw-color: var(--codex); }
 .md-body blockquote { margin: 0 0 .75em; padding: 2px 0 2px 14px; border-left: 2px solid var(--mauve); color: var(--text-3); }
 .md-body table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 13.5px; margin: 0 0 .9em; max-width: 100%; }
 .md-body th, .md-body td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
-/* Colonnes étroites : on coupe entre les mots (le tableau défile), jamais au milieu d'un mot. */
+/* Narrow columns: break between words (the table scrolls), never in the middle of a word. */
 .md-body th, .md-body td { overflow-wrap: normal; min-width: 4.5em; }
 .md-body th { font: 500 10.5px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); background: var(--bg-2); }
 .md-body hr { border: 0; border-top: 1px solid var(--line); margin: 1.2em 0; }
@@ -939,7 +939,7 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .msg-actions button { color: var(--dim); }
 .msg-actions button:hover { color: var(--text); }
 
-/* Actions de l'agent (UChatTool) : colonne fine façon arbre de terminal. */
+/* Agent actions (UChatTool): thin column like a terminal tree. */
 .tools { display: flex; flex-direction: column; gap: 2px; padding: 2px 0 2px 12px; border-left: 1px solid var(--line); margin-left: 1px; }
 .tools.live { border-left-color: color-mix(in srgb, var(--blue) 50%, transparent); }
 .tool { min-width: 0; }
@@ -960,7 +960,7 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .tool-row span { font: 400 12px/1.2 var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .tool-row.err b, .tool-row.err .iconify { color: var(--rose); }
 
-/* Commande « ! » (mode bash) et sa sortie. */
+/* "!" command (bash mode) and its output. */
 .msg-shell {
   align-self: flex-end; width: fit-content; min-width: min(300px, 100%); max-width: min(92%, 760px);
   display: flex; flex-direction: column; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); background: var(--code-bg);
@@ -994,7 +994,7 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 }
 .msg-shell-more:hover { color: var(--text); background: var(--surface); }
 @media (pointer: coarse) { .msg-shell-more { min-height: 40px; } .msg-shell-copy { width: 32px; height: 32px; } }
-/* Note de l'agent hors de ses réponses (conseiller d'omp, tâche de fond…). */
+/* Agent note outside its replies (omp advisor, background task…). */
 .msg-notice {
   align-self: flex-start; width: 100%; max-width: min(100%, 760px);
   display: flex; flex-direction: column; border-left: 2px solid color-mix(in srgb, var(--mauve) 60%, var(--line)); background: var(--bg-2);
@@ -1021,7 +1021,7 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .turn-copy:hover { color: var(--text); }
 @media (pointer: coarse) { .turn-copy { position: relative; } .turn-copy::before { content: ''; position: absolute; inset: -6px; } }
 
-/* Messages envoyés, pas encore pris par l'agent. */
+/* Messages sent, not yet taken by the agent. */
 .queued-list { display: flex; flex-direction: column; gap: 12px; padding: 4px 16px 10px; }
 .msg-bubble.queued { max-width: 88%; background: transparent; border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); color: var(--text-2); }
 .msg-bubble.queued .msg-img { opacity: .75; }
@@ -1032,7 +1032,7 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .queued-cancel:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
 .queued-cancel:disabled { opacity: .55; cursor: default; }
 .queued-cancel .spin { animation: spin .8s linear infinite; }
-/* Parti mais pas encore dans la transcription ; commande « ! » en cours. */
+/* Sent but not yet in the transcript; "!" command running. */
 .msg-bubble.sent { max-width: 88%; }
 .queued-tag.sent .iconify { color: var(--accent); }
 .queued-tag.running { color: var(--text-2); letter-spacing: .08em; text-transform: uppercase; font-size: 10.5px; }
@@ -1042,25 +1042,25 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .msg-shell.running .msg-shell-cmd { padding-right: 12px; }
 .msg-shell-hidden { padding: 6px 12px 0; font: 400 11px/1.3 var(--mono); color: var(--dim); }
 
-/* « Claude travaille… » (UChatShimmer). */
+/* "Claude is working…" (UChatShimmer). */
 .chat-status { display: flex; align-items: center; gap: 10px; padding: 4px 16px 18px; font-size: 14px; color: var(--muted); }
 .chat-status .status-dot { width: 7px; height: 7px; background: var(--working); flex: none; animation: pulse 1.3s ease-in-out infinite; }
 .chat-status.waiting { color: color-mix(in srgb, var(--rose) 55%, var(--text)); }
 .chat-status.waiting .status-dot { background: var(--rose); }
-/* Verbe de Claude (« ✻ Orbiting… ») : même reflet, en orange Claude. L'étoile
-   (ClaudeSpinner) a une boîte fixe : le verbe ne bouge pas quand elle change. */
+/* Claude's verb ("✻ Orbiting…"): same shimmer, in Claude orange. The star
+   (ClaudeSpinner) has a fixed box: the verb does not move when it changes. */
 .chat-status .claude-verb-line { display: inline-flex; align-items: baseline; min-width: 0; font-family: var(--font-mono); font-size: 13px; }
 .chat-status .claude-verb { --ui-text-muted: var(--claude); --ui-text-highlighted: color-mix(in srgb, var(--claude) 45%, var(--text)); }
 .chat-status .claude-spinner { display: inline-block; flex: none; width: 1.6em; margin-left: -.3em; text-align: center; color: var(--claude); overflow: hidden; }
 
-/* Bouton « aller en bas » de UChatMessages. */
+/* UChatMessages "scroll to bottom" button. */
 .hw-jump-vp { top: auto; bottom: 14px; pointer-events: none; z-index: 2; }
 .hw-jump {
   pointer-events: auto; border-radius: 0; width: 38px; height: 38px; justify-content: center;
   background: var(--surface-2); border: 1px solid var(--line); box-shadow: 0 8px 22px var(--shadow);
 }
 
-/* Images dans les messages */
+/* Images in messages */
 .thumbs { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; white-space: normal; }
 .thumbs .msg-img { width: 92px; height: 92px; object-fit: cover; cursor: zoom-in; background: var(--surface-2); border: 1px solid var(--line); }
 .thumbs.one .msg-img { width: auto; height: auto; max-width: min(100%, 280px); max-height: 280px; }
@@ -1088,7 +1088,7 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 }
 .choices-eyebrow { color: var(--rose); margin: 0 2px 8px; }
 .choices-eyebrow i { width: 7px; height: 7px; background: var(--rose); animation: pulse .9s ease-in-out infinite; }
-/* Demande de permission : outil, description, fichier, commande ou diff entiers. */
+/* Permission request: tool, description, file, full command or diff. */
 .choices:has(.prompt-detail) { max-height: 62%; }
 .prompt-detail { margin: 0 0 12px; border: 1px solid var(--line); border-left: 2px solid var(--rose); background: var(--bg-2); }
 .prompt-detail-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; padding: 8px 10px 6px; }
@@ -1136,13 +1136,13 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .choices-list.multi button:not(.on) .n { color: var(--dim); }
 .choices-list .choices-next { margin-top: 8px; justify-content: space-between; align-items: center; font-weight: 600; border-color: color-mix(in srgb, var(--rose) 60%, var(--line)); }
 .choices-list .choices-next kbd { font: 500 11px/1 var(--mono); color: var(--muted); }
-/* Écran d'attente (hooks de Codex, connexion…) : explication, texte de la boîte, touches. */
+/* Waiting screen (Codex hooks, login…): explanation, box text, keys. */
 .choices-note { font-size: 13px; color: var(--text-3); margin: -4px 2px 10px; line-height: 1.45; }
 .choices-screen-text {
   font: 400 11.5px/1.5 var(--mono); color: var(--muted); margin: 0 0 10px; padding: 8px 10px;
   background: var(--bg-2); border: 1px solid var(--line); overflow: auto; white-space: pre; max-height: 24vh;
 }
-/* Les touches doivent rester visibles sous le texte de la boîte. */
+/* The keys must stay visible below the box text. */
 .choices.choices-screen { max-height: 64%; }
 .choices-screen-text.wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .choices-screen-text + .choices-list { margin-top: 0; }
@@ -1158,29 +1158,29 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .choices-keys button:hover { background: var(--surface-2); }
 .choices-keys button:active { background: var(--surface-3); }
 .choices-keys button:disabled { opacity: .5; }
-/* Touches du clavier prises par la carte (ordinateur) : discret, en bout de ligne. */
+/* Keyboard keys captured by the card (computer): discreet, at the end of the line. */
 .choices-keys .card-kbd { display: inline-flex; align-items: center; gap: 4px; align-self: center; margin-left: auto; }
 .choices-keys .card-kbd kbd { margin-left: 0; color: var(--muted); }
 .choices-keys .card-kbd + .menu-term { margin-left: 0; }
-/* Pas encore de conversation, mais l'agent attend une action dans le terminal. */
+/* No conversation yet, but the agent is waiting for an action in the terminal. */
 .chat-empty.waiting .chat-empty-icon { color: var(--rose); }
 .chat-empty.waiting .choices-screen-text { text-align: left; align-self: stretch; max-width: 720px; margin: 0 auto; width: 100%; }
 
-/* ---------- Barre de saisie (UChatPrompt) ---------- */
+/* ---------- Input bar (UChatPrompt) ---------- */
 .composer { flex: none; background: var(--bg); padding: 6px 12px max(10px, calc(var(--safe-bottom) - 6px)); }
 body.kb .composer { padding-bottom: 8px; }
 .composer { position: relative; }
-/* Statut de Claude Code (« ✔ Update installed · Restart to update ») : petit
-   texte bleu à droite, juste au-dessus du champ, comme dans le terminal. */
+/* Claude Code status ("✔ Update installed · Restart to update"): small
+   blue text on the right, just above the field, as in the terminal. */
 .composer-notice {
   font: 400 11px/1.3 var(--mono); color: var(--blue);
   text-align: right; padding: 0 2px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* Ligne d'état d'omp sous le champ : une ligne, coupée, jauges à droite. */
+/* omp status line below the field: one line, cut, gauges on the right. */
 .composer-status { display: flex; gap: 12px; padding: 5px 2px 0; min-width: 0; font: 400 11px/1.3 var(--mono); color: var(--muted); white-space: nowrap; }
 .composer-status-line { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .composer-status-meters { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
-/* Ligne cliquable (« Redémarrer pour mettre à jour ») et suivi du redémarrage. */
+/* Clickable line ("Restart to update") and restart progress. */
 .composer-notice:has(.notice-btn), .composer-notice.restart {
   display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0;
 }
@@ -1202,14 +1202,14 @@ body.kb .composer { padding-bottom: 8px; }
 }
 @keyframes notice-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .notice-spin { animation: none; } }
-/* Suggestion de Claude (écran tactile) : puce discrète au-dessus du champ. */
+/* Claude suggestion (touch screen): discreet chip above the field. */
 .composer-suggest {
   display: inline-flex; align-items: center; gap: 6px; margin: 0 0 6px 2px; padding: 3px 8px;
   font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase;
   color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 0; cursor: pointer;
 }
 .composer-suggest:active { background: var(--bg-2); }
-/* Suggestions « / » : juste au-dessus du champ, façon menu du terminal. */
+/* "/" suggestions: just above the field, like the terminal's menu. */
 .slash-menu {
   position: absolute; left: 12px; right: 12px; bottom: calc(100% - 2px); z-index: 20;
   background: var(--bg-2); border: 1px solid var(--line);
@@ -1246,7 +1246,7 @@ body.kb .composer { padding-bottom: 8px; }
 }
 .prompt-hint .sep { margin: 0 4px; }
 .prompt-hint [data-slot], .prompt-hint kbd { border-radius: 0; font-family: var(--mono); }
-/* Sélecteur de modèle (pied de la barre de saisie) : bouton neutre, mono, sans fond. */
+/* Model selector (footer of the input bar): neutral button, mono, no background. */
 .model-pick-wrap { display: inline-flex; min-width: 0; flex: none; }
 .model-pick {
   height: 32px; padding: 0 8px; gap: 6px; min-width: 0; max-width: 40vw;
@@ -1269,9 +1269,9 @@ body.kb .composer { padding-bottom: 8px; }
 .model-menu .model-menu-label { font: 500 10.5px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
 .model-menu .model-loading .iconify { animation: spin 1s linear infinite; }
 .prompt-send { width: 32px; height: 32px; justify-content: center; margin-left: auto; position: relative; touch-action: manipulation; }
-/* Zone de toucher de 48 px (Apple : 44 minimum) sans grossir le bouton. Le bouton ne
-   prend pas le focus (mousedown.prevent) : le clavier reste ouvert, la barre ne bouge
-   pas sous le doigt pendant le toucher. */
+/* 48 px touch area (Apple: 44 minimum) without enlarging the button. The button does not
+   take the focus (mousedown.prevent): the keyboard stays open, the bar does not move
+   under the finger during the tap. */
 .prompt-send::after { content: ''; position: absolute; inset: -8px; }
 .prompt-plus { position: relative; touch-action: manipulation; }
 .prompt-plus::after { content: ''; position: absolute; inset: -8px; }
@@ -1294,7 +1294,7 @@ body.kb .composer { padding-bottom: 8px; }
 .attachments .att button .iconify { width: 13px; height: 13px; }
 
 /* ================================================================
-   Fenêtres (UModal) : feuille en bas sur téléphone, centrée sur ordinateur
+   Windows (UModal): bottom sheet on the phone, centered on a computer
    ================================================================ */
 .hw-scrim { background: rgba(8, 8, 10, .62); z-index: 20; }
 .hw-sheet {
@@ -1315,7 +1315,7 @@ body.kb .composer { padding-bottom: 8px; }
 .hw-sheet > [data-slot="body"] { padding: 0; order: 2; overflow-y: auto; flex: 1; min-height: 0; }
 .hw-sheet-title { font: 850 24px/1 var(--display); letter-spacing: -.035em; word-spacing: .06em; color: var(--text); }
 .hw-sheet [data-slot="close"] { position: static; inset: auto; }
-/* Poignée (décorative) en haut de la feuille, sur téléphone. */
+/* Handle (decorative) at the top of the sheet, on the phone. */
 .hw-sheet::before { content: ''; order: 0; width: 36px; height: 4px; background: var(--line); margin: 0 auto 10px; flex: none; }
 @keyframes rise { from { transform: translateY(100%); } }
 @keyframes sink { to { transform: translateY(100%); } }
@@ -1334,7 +1334,7 @@ body.kb .composer { padding-bottom: 8px; }
 .menu button.danger .menu-icon { color: var(--rose); }
 .menu button .cmd { font: 500 13.5px/1 var(--mono); color: var(--mauve); min-width: 88px; }
 .menu button .desc { color: var(--text-3); font-size: 14.5px; }
-/* Action avec une description (actions des plugins) : libellé, puis la description dessous. */
+/* Action with a description (plugin actions): label, then the description below. */
 .menu button .menu-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .menu button .menu-sub { color: var(--text-3); font-size: 13px; line-height: 1.35; }
 .menu .menu-group {
@@ -1356,7 +1356,7 @@ body.kb .composer { padding-bottom: 8px; }
 .rename { padding: 4px 0 4px; }
 .rename-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 
-/* Champs et formulaires */
+/* Fields and forms */
 .field-label {
   display: block; margin: 22px 2px 8px;
   font: 500 10.5px/1.2 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--muted);
@@ -1392,7 +1392,7 @@ body.kb .composer { padding-bottom: 8px; }
 .segmented button .avatar .iconify { width: 18px; height: 18px; }
 .segmented button.on { background: var(--surface-2); color: var(--text); }
 .segmented button.on::after { content: ''; position: absolute; left: -1px; right: -1px; top: -1px; height: 2px; background: var(--mauve); }
-/* Choix de la machine (feuille « Nouveau ») : icône, nom, voyant de connexion. */
+/* Machine choice ("New" sheet): icon, name, connection light. */
 .segmented.machine-seg button { flex-direction: row; gap: 4px; padding: 12px 5px; text-transform: none; letter-spacing: .02em; font-size: 11.5px; }
 .segmented.machine-seg .seg-icon { width: 15px; height: 15px; }
 .segmented.machine-seg .machine-choice-name { min-width: 0; }
@@ -1412,7 +1412,7 @@ body.kb .composer { padding-bottom: 8px; }
 .dir-field { display: flex; }
 .dir-field .dir-pick { flex: 1; min-width: 0; }
 .dir-pick.unset span { color: var(--muted); direction: ltr; }
-/* Vider le champ (dépôt de « New project ») : case collée au champ. */
+/* Clear the field ("New project" repository): box attached to the field. */
 .dir-clear {
   flex: none; width: 48px; display: grid; place-items: center;
   background: var(--bg); border: 1px solid var(--line); border-left: 0; color: var(--muted);
@@ -1473,13 +1473,13 @@ body.kb .composer { padding-bottom: 8px; }
 .dir-actions { display: flex; gap: 8px; padding-top: 12px; position: sticky; bottom: 0; background: var(--bg-2); }
 .dir-actions > * { flex: 1; justify-content: center; }
 
-/* Interrupteurs carrés, verts une fois activés. */
+/* Square switches, green once enabled. */
 [role="switch"][data-slot="base"] { border-radius: 0; }
 [role="switch"][data-slot="base"] [data-slot="thumb"] { border-radius: 0; background: var(--text-strong); }
 [role="switch"][data-slot="base"][data-state="unchecked"] { background: var(--surface-3); }
 
 /* ================================================================
-   Réglages
+   Settings
    ================================================================ */
 .settings-view { z-index: 3; }
 .settings-top { justify-content: flex-start; gap: 6px; }
@@ -1495,7 +1495,7 @@ body.kb .composer { padding-bottom: 8px; }
 .settings-nav-item.selected { color: var(--text-strong); background: var(--surface-2); box-shadow: inset 2px 0 0 var(--mauve); }
 .settings-nav-item:hover { background: var(--surface-2); }
 .settings-body { flex: 1; min-height: 0; width: 100%; overflow-y: auto; padding: 22px 16px calc(var(--safe-bottom) + 32px); }
-/* Titre de la section : dans l'en-tête sur téléphone, en tête du contenu sur ordinateur. */
+/* Section title: in the header on the phone, at the top of the content on a computer. */
 .settings-section-title { display: none; }
 .settings-version { font: 500 12px/1.5 var(--mono); color: var(--muted); }
 .settings-group { margin: 0 0 30px; }
@@ -1532,7 +1532,7 @@ body.kb .composer { padding-bottom: 8px; }
 .plugin-input-mono input { font-family: var(--mono); font-size: 13px; }
 .plugin-input .chips { margin-top: -2px; }
 .plugin-input-hint.bad { color: var(--rose); }
-/* État du dépôt choisi : dépôt Git, sous-dossier d'un dépôt, ou rien d'utilisable. */
+/* State of the chosen repository: Git repository, subfolder of a repository, or nothing usable. */
 .repo-state { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin-top: -2px; font: 12px/1.4 var(--mono); color: var(--text-2); }
 .repo-state > .iconify { flex: none; width: 14px; height: 14px; }
 .repo-state.repo > .iconify { color: var(--green); }
@@ -1567,7 +1567,7 @@ body.kb .composer { padding-bottom: 8px; }
 .projects-plugin-settings { padding-top: 2px; }
 .settings-typing .encrypted-toggle { margin-top: 14px; }
 .settings-typing .encrypted-toggle.is-disabled { opacity: .48; cursor: not-allowed; }
-/* Aperçu de la machine à écrire : exemple de réponse, rejoué à chaque réglage. */
+/* Typewriter preview: sample reply, replayed on each setting change. */
 .typing-preview { margin: 14px 0 0; border: 1px solid var(--line); background: var(--bg); }
 .typing-preview figcaption {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -1584,20 +1584,20 @@ body.kb .composer { padding-bottom: 8px; }
 .settings-renderer-status { margin: 9px 2px 0; font: 500 11px/1.4 var(--mono); color: var(--teal); }
 .notify-caption { margin: 18px 2px 9px; font: 500 10.5px/1 var(--mono); letter-spacing: .13em; text-transform: uppercase; color: var(--muted); }
 .notify-hint { margin: 10px 2px 0; font-size: 12.5px; line-height: 1.4; }
-/* Mode silence : icône dans le titre, heure de fin en mono quand il est actif. */
+/* Quiet mode: icon in the title, end time in mono when it is active. */
 .settings-toggle.quiet-toggle b { display: flex; align-items: center; gap: 8px; }
 .quiet-toggle b .iconify { width: 17px; height: 17px; color: var(--muted); }
 .notify-hint.quiet-end { font: 500 11.5px/1.4 var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--ochre); }
-/* Accueil : cloche barrée tant que le silence est actif (un appui le coupe). */
+/* Home: crossed-out bell while quiet mode is active (a tap turns it off). */
 .icon-btn.quiet-on { color: var(--ochre); }
-/* Thèmes : pastilles de couleurs, sélection repérée par l'accent. */
+/* Themes: color swatches, selection marked by the accent. */
 .theme-list { display: grid; grid-template-columns: 1fr; border: 1px solid var(--line); }
 .theme-opt {
   display: flex; align-items: center; gap: 14px; padding: 11px 14px; text-align: left; position: relative;
   border-top: 1px solid var(--line-soft);
 }
 .theme-opt:first-child { border-top: 0; }
-/* En-tête repliable : thème courant, liste dépliée juste dessous. */
+/* Collapsible header: current theme, list expanded just below. */
 .theme-current { width: 100%; border: 1px solid var(--line); }
 .theme-current[aria-expanded="true"] { border-bottom-color: var(--line-soft); }
 .theme-current + .theme-list { border-top: 0; }
@@ -1620,7 +1620,7 @@ body.kb .composer { padding-bottom: 8px; }
 .settings-action + .settings-action { border-top: 1px solid var(--line-soft); padding-top: 14px; margin-top: 10px; }
 .settings-action .iconify { width: 18px; height: 18px; color: var(--muted); }
 .settings-action.danger, .settings-action.danger .iconify { color: var(--rose); }
-/* Worktrees : une ligne par checkout, suppression à droite. */
+/* Worktrees: one line per checkout, removal on the right. */
 .wt-card { padding-top: 4px; }
 .wt-list { list-style: none; margin: 0; padding: 0; }
 .wt-list li { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line-soft); }
@@ -1659,7 +1659,7 @@ body.kb .composer { padding-bottom: 8px; }
 .settings-radio [data-slot="label"] { font-size: 15px; font-weight: 400; color: var(--text); }
 
 /* ================================================================
-   Verrouillage, bandeau réseau, toasts, menus déroulants
+   Lock, network banner, toasts, dropdown menus
    ================================================================ */
 .lock-screen {
   position: fixed; inset: 0; z-index: 60; background: var(--bg); display: grid; place-items: center; padding: 24px;
@@ -1683,7 +1683,7 @@ body.kb .composer { padding-bottom: 8px; }
 .offline-terminal { flex: 1; justify-content: center; }
 .offline-image { display: flex; width: 100px; min-height: 74px; align-items: center; justify-content: center; padding: 8px; border: 1px solid var(--line); color: var(--text-3); background: var(--bg-2); font: 600 9px/1.4 var(--mono); letter-spacing: .05em; text-transform: uppercase; text-align: center; }
 
-/* Notifications au-dessus du contenu, avec la même géométrie que l'interface. */
+/* Notifications above the content, with the same geometry as the interface. */
 ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom: auto !important; }
 .hw-toast[data-slot="root"] {
   border-radius: 0; border: 1px solid var(--line); background: var(--bg-2);
@@ -1698,7 +1698,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
   display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden;
 }
 
-/* Résultat de commande : onglets du panneau de réglages et jauges d'utilisation. */
+/* Command result: settings panel tabs and usage gauges. */
 .cmd-tabs { display: flex; border: 1px solid var(--line); margin: 0 0 14px; }
 .cmd-tabs button {
   flex: 1; padding: 9px 4px; background: none; border: 0; border-right: 1px solid var(--line);
@@ -1720,7 +1720,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 
 .hw-dropdown { min-width: 250px; border: 1px solid var(--line); background: var(--bg-2); box-shadow: 0 16px 40px var(--shadow); }
 
-/* ---------- Accueil sur ordinateur ---------- */
+/* ---------- Home on a computer ---------- */
 .placeholder { display: grid; place-items: center; text-align: center; color: var(--muted); background-attachment: fixed; }
 .placeholder .empty-box { padding: 34px 40px; }
 .placeholder .empty-art { font-size: 56px; color: var(--line); }
@@ -1728,11 +1728,11 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .placeholder p:first-of-type { color: var(--text); font-weight: 600; }
 
 /* ================================================================
-   Espaces : liste par workspace, mini-carte, plan d'un onglet
+   Spaces: list by workspace, mini-map, plan of a tab
    ================================================================ */
 
-/* Mini-carte : les panes aux proportions de Herdr, traits de 1 px (bord haut et
-   gauche sur le cadre, bas et droit sur chaque case). */
+/* Mini-map: the panes in Herdr's proportions, 1 px lines (top and
+   left edge on the frame, bottom and right on each cell). */
 .tabmap {
   position: relative; display: block; flex: none; width: 44px; height: 30px;
   border-top: 1px solid var(--muted); border-left: 1px solid var(--muted);
@@ -1743,8 +1743,8 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .tabmap i.done { background: color-mix(in srgb, var(--done) 30%, transparent); }
 .tabmap i.cur { background: var(--mauve); }
 
-/* Carte d'un space de plusieurs onglets ou panes : mini-carte de l'onglet du
-   pane le plus urgent à la place de l'avatar, nombre d'onglets / panes. */
+/* Card of a space with several tabs or panes: mini-map of the tab of the
+   most urgent pane instead of the avatar, number of tabs / panes. */
 .space-avatar { display: grid; place-items: center; width: 38px; height: 38px; flex: none; }
 .space-avatar .tabmap { width: 36px; height: 26px; }
 .space-avatar .tabmap i.cur { background: color-mix(in srgb, var(--mauve) 70%, transparent); }
@@ -1753,7 +1753,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .card-count { flex: none; font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--text-3); padding: 3px 5px; border: 1px solid var(--line); }
 .card-where .card-where-lead { color: var(--dim); }
 
-/* Projet coordonné depuis une autre machine : lien vers le coordinateur. */
+/* Project coordinated from another machine: link to the coordinator. */
 .project-remote {
   display: flex; align-items: center; gap: 8px; width: 100%; margin: -2px 0 8px; padding: 7px 10px 7px 10px; text-align: left;
   border: 1px dashed var(--line); font: 500 11px/1.3 var(--mono); letter-spacing: .04em; color: var(--muted); cursor: pointer;
@@ -1765,7 +1765,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .project-remote-go .iconify { width: 12px; height: 12px; }
 .project-remote:hover { border-color: var(--mauve); color: var(--text-2); }
 .project-remote:focus-visible { outline: 1px solid var(--mauve); outline-offset: 2px; }
-/* Terminal racine du dépôt des threads : ligne discrète au-dessus d'eux. */
+/* Root terminal of the threads' repository: discreet line above them. */
 .project-repo {
   display: flex; align-items: center; gap: 7px; width: 100%; min-width: 0; min-height: 34px; margin: 0 0 6px; padding: 5px 2px 5px 8px; text-align: left; cursor: pointer;
   border-bottom: 1px solid var(--line); font: 500 11px/1.3 var(--mono); letter-spacing: .04em; color: var(--muted);
@@ -1790,21 +1790,21 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .project-repo-icon { width: 13px; height: 13px; flex: none; color: var(--green); }
 .project-repo-l { flex: none; text-transform: uppercase; letter-spacing: .12em; font-size: 10px; color: var(--dim); }
 .project-repo b { flex: 0 1 auto; min-width: 6ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); font-weight: 600; }
-/* Le nombre de worktrees cède la place au nom du dépôt en premier. */
+/* The number of worktrees gives way to the repository name first. */
 .project-repo-n { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-repo-summary { margin-left: auto; }
 .project-repo.sel { color: var(--text-2); border-bottom-color: var(--green); }
 .project-repo.sel b { color: var(--text); }
 .space-menu.icon-btn { flex: none; }
 
-/* Vue agent d'un onglet de plusieurs panes : mini-carte (retour au plan) et
-   balayage vers les voisins. */
+/* Agent view of a tab with several panes: mini-map (back to the plan) and
+   swipe to the neighbours. */
 .map-btn { display: grid; place-items: center; width: 52px; height: 40px; flex: none; }
 .map-btn .tabmap { width: 32px; height: 22px; }
 .map-btn:hover .tabmap, .map-btn:focus-visible .tabmap { border-color: var(--text); }
 .map-btn:focus-visible { outline: 1px solid var(--mauve); outline-offset: -1px; }
 .swipe-area { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-/* will-change casse background-attachment: fixed (grille décalée) : seulement là où l'on balaie. */
+/* will-change breaks background-attachment: fixed (shifted grid): only where we swipe. */
 @media (hover: none) and (pointer: coarse) { .swipe-area { will-change: transform; } }
 .swipe-area.enter-next, #termWrap.enter-next { animation: enter-next .2s ease-out; }
 .swipe-area.enter-prev, #termWrap.enter-prev { animation: enter-prev .2s ease-out; }
@@ -1812,7 +1812,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 @keyframes enter-prev { from { transform: translateX(-28%); opacity: .3; } }
 @media (prefers-reduced-motion: reduce) { .enter-next, .enter-prev { animation: none !important; } }
 
-/* Plan d'un onglet (téléphone). */
+/* Plan of a tab (phone). */
 #tabview { overflow: hidden; }
 .tab-top { display: flex; justify-content: flex-start; align-items: center; gap: 4px; }
 .tab-head { flex: 1; min-width: 0; padding: 0 4px; }
@@ -1830,7 +1830,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .tab-chip {
   display: inline-flex; align-items: center; gap: 8px; flex: none; padding: 6px 10px 6px 7px;
   border: 1px solid var(--line); color: var(--muted); font: 500 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
-  /* Appui long : ses options, pas la loupe ni la bulle de sélection d'iOS. */
+  /* Long press: its options, not iOS's magnifier or selection bubble. */
   -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation;
 }
 .tab-chip .tabmap { width: 22px; height: 15px; }
@@ -1851,7 +1851,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .plan-cell.done::before { background: var(--done); }
 .plan-cell:active { background: var(--surface-2); }
 .plan-cell:focus-visible { outline: 1px solid var(--mauve); outline-offset: -1px; }
-/* Pane tout juste créé (« Diviser ») : repéré dans le plan. */
+/* Pane just created ("Split"): marked in the plan. */
 .plan-cell.fresh { outline: 1px solid var(--mauve); outline-offset: -1px; }
 .plan-cell.stale { opacity: .55; }
 .plan-cell-head { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
@@ -1886,8 +1886,8 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .plan-cell-choices button:active { background: color-mix(in srgb, var(--rose) 22%, transparent); }
 .plan-cell-choices button:disabled { opacity: .5; }
 
-/* Côte à côte (ordinateur) : une vue agent compacte par case, toutes vivantes ;
-   la case active a une bordure d'accent (et reçoit le clavier). */
+/* Side by side (computer): one compact agent view per cell, all live;
+   the active cell has an accent border (and receives the keyboard). */
 .split { position: relative; flex: 1; min-height: 0; margin: 10px 12px 12px; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
 .split-box { position: absolute; display: flex; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); overflow: hidden; }
 .cell-view { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
@@ -1896,18 +1896,18 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
   padding: 6px 6px 6px 12px; column-gap: 8px; box-shadow: inset 0 2px 0 transparent;
 }
 .cell-view.active .agent-top { box-shadow: inset 0 2px 0 var(--mauve); }
-/* Focus : seulement la bordure, par-dessus le contenu (rien d'autre ne bouge). */
+/* Focus: only the border, on top of the content (nothing else moves). */
 .cell-view::after { content: ""; position: absolute; inset: 0; z-index: 5; pointer-events: none; box-shadow: inset 0 0 0 1px transparent; }
 .cell-view.active::after { box-shadow: inset 0 0 0 1px var(--mauve); }
 .cell-view .agent-title { font-size: 14px; }
 .cell-view .agent-top .view-tabs { width: 220px; }
-/* Question de l'agent dans une case basse : elle défile au lieu de manger la case. */
+/* Agent question in a short cell: it scrolls instead of eating the cell. */
 .cell-view .choices { max-height: 58%; overflow-y: auto; overscroll-behavior: contain; }
 .cell-view .agent-actions { justify-self: end; }
 .cell-view .agent-actions .icon-btn { width: 34px; height: 34px; }
 .cell-view .agent-actions .icon-btn .iconify { width: 17px; height: 17px; }
 
-/* Glisser-déposer des panes et traits de séparation (ordinateur et plan). */
+/* Drag and drop of panes and dividers (computer and plan). */
 .cell-view.gripped .agent-top { grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "grip head tabs actions"; padding-left: 2px; column-gap: 4px; }
 .cell-grip {
   grid-area: grip; display: flex; align-items: center; justify-content: center; width: 20px; height: 34px;
@@ -1920,7 +1920,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .split.resizing * { cursor: inherit !important; }
 .split.resizing:has(.divider.right.on) { cursor: col-resize; }
 .split.resizing:has(.divider.down.on) { cursor: row-resize; }
-/* Plan déplaçable : le doigt reste au glisser-déposer (pas de défilement ni de retour). */
+/* Draggable plan: the finger stays on drag and drop (no scrolling nor back gesture). */
 .plan.movable { touch-action: none; }
 .split-box.drag-src, .plan-box.drag-src { opacity: .45; }
 .drop-zone {
@@ -1943,7 +1943,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .divider.right::after { top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px; }
 .divider.down::after { left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; }
 .divider:hover::after, .divider:focus-visible::after, .divider.on::after { background: var(--mauve); }
-/* Plan (doigt) : zone d'appui plus large, trait toujours marqué d'une encoche. */
+/* Plan (finger): wider touch area, line always marked with a notch. */
 .plan .divider.right { width: 24px; }
 .plan .divider.down { height: 24px; }
 .plan .divider::before { content: ''; position: absolute; left: 50%; top: 50%; background: var(--line); transform: translate(-50%, -50%); }
@@ -1951,8 +1951,8 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .plan .divider.down::before { width: 26px; height: 4px; }
 .plan .divider.on::before { background: var(--mauve); }
 
-/* Miroir d'un terminal : caractères à la taille du réglage, écran rogné par
-   la case quand le terminal Herdr partagé est plus grand. */
+/* Terminal mirror: characters at the setting's size, screen cropped by
+   the cell when the shared Herdr terminal is larger. */
 .mirror { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg); cursor: default; }
 .mirror.interactive { cursor: text; }
 .mirror-screen { position: absolute; left: 8px; top: 6px; }
@@ -1975,15 +1975,15 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .mirror-failed { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; font: 500 12px/1.3 var(--mono); color: var(--muted); }
 .mirror-failed:hover { color: var(--text); }
 
-/* ---------- Panneau « Projet » du coordinateur herdr-projects ----------
-   Onglet sur téléphone, colonne repliable à droite de la conversation sur
-   ordinateur. Listes de TASKS.md, threads en cours et faits. */
+/* ---------- "Project" panel of the herdr-projects coordinator ----------
+   Tab on the phone, collapsible column to the right of the conversation on a
+   computer. TASKS.md lists, threads in progress and done. */
 .agent-body { flex: 1; min-height: 0; display: flex; }
 .agent-main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
 .project-panel { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
 .project-panel.side { flex: none; width: clamp(300px, 27vw, 400px); min-width: 260px; max-width: 50%; border-left: 1px solid var(--line); background: var(--bg-2); }
-/* Poignée de largeur : trait fin sur le bord gauche de la colonne, zone de prise
-   de 9 px ; mauve au survol et pendant le glisser. */
+/* Width handle: thin line on the column's left edge, 9 px grab
+   area; mauve on hover and while dragging. */
 .side-handle { position: relative; flex: none; width: 0; z-index: 5; cursor: col-resize; touch-action: none; }
 .side-handle::before { content: ''; position: absolute; top: 0; bottom: 0; left: -5px; width: 9px; cursor: col-resize; }
 .side-handle::after { content: ''; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: transparent; transition: background-color .12s ease; pointer-events: none; }
@@ -2016,7 +2016,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .pp-list { list-style: none; margin: 0; padding: 0 0 12px; }
 .pp-row { display: flex; align-items: flex-start; gap: 8px; padding: 0 12px 0 16px; }
 .pp-task { gap: 10px; padding-top: 6px; padding-bottom: 6px; font-size: 13.5px; line-height: 1.4; color: var(--text); }
-/* Puce : petit carré plein, couleur de la section (pas une case à cocher). */
+/* Bullet: small filled square, color of the section (not a checkbox). */
 .pp-box { flex: none; width: 6px; height: 6px; margin: 7px 3px 0 4px; background: var(--dim); }
 .pp-sec.test .pp-box { background: var(--ochre); }
 .pp-sec.decide .pp-box { background: var(--rose); }
@@ -2027,9 +2027,9 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .pp-task-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .pp-task.done .pp-task-text { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--dim); }
 .pp-tags { flex: none; max-width: 45%; margin-top: 1px; display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
-/* Badge libre [b:couleur(texte)] : texte coloré, bordure et fond très légers. */
+/* Free badge [b:color(text)]: colored text, very light border and background. */
 .pp-badge { --bc: var(--muted); display: inline-flex; align-items: center; max-width: 100%; padding: 3px 5px; border: 1px solid color-mix(in srgb, var(--bc) 45%, transparent); background: color-mix(in srgb, var(--bc) 9%, transparent); font: 500 10px/1 var(--mono); letter-spacing: .04em; color: var(--bc); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* Hex libre : mêlé à la couleur du texte pour rester lisible dans les deux thèmes. */
+/* Free hex: mixed with the text color to stay readable in both themes. */
 .pp-badge.hex { color: color-mix(in srgb, var(--bc) 70%, var(--text)); }
 .pp-badge.c-red { --bc: var(--danger); }
 .pp-badge.c-orange { --bc: var(--coral); }
@@ -2040,20 +2040,20 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .pp-badge.c-violet { --bc: var(--lav); }
 .pp-badge.c-pink { --bc: var(--mauve); }
 .pp-badge.c-gray { --bc: var(--muted); }
-/* Badge-lien (URL ou thread) : petite flèche, contour plus net au survol. */
+/* Link badge (URL or thread): small arrow, sharper outline on hover. */
 button.pp-badge { font: 500 10px/1 var(--mono); }
 .pp-badge.link { gap: 4px; cursor: pointer; text-decoration: none; }
 .pp-badge-go { font-style: normal; opacity: .6; }
 @media (hover: hover) { .pp-badge.link:hover { border-color: var(--bc); } }
 .pp-badge.link:focus-visible { outline: 1px solid var(--bc); outline-offset: 1px; }
-/* URL dans le texte d'une tâche : lien texte simple. */
+/* URL in a task's text: plain text link. */
 .pp-tlink { color: var(--accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); text-underline-offset: 2px; overflow-wrap: anywhere; }
 .pp-task-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
 .pp-task-body .pp-task-text { flex: none; }
 .pp-reason { font: 11px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 .pp-task-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 26px; }
-/* Confirmer / Problème / Question : carrés teintés de 26 px, dans une zone
-   de toucher invisible d'au moins 40 px. */
+/* Confirm / Problem / Question: 26 px tinted squares, in an invisible
+   touch area of at least 40 px. */
 .pp-verdict { flex: none; display: flex; margin-left: auto; margin-right: -6px; }
 .pp-vbtn { position: relative; width: 30px; height: 26px; display: grid; place-items: center; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .pp-vbtn.ok { color: var(--green); }
@@ -2072,8 +2072,8 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .pp-vbtn .iconify, .pp-vbtn .spinner { position: relative; z-index: 1; width: 14px; height: 14px; }
 .pp-vbtn:hover:not(:disabled)::after, .pp-vbtn:active:not(:disabled)::after { background: color-mix(in srgb, currentColor 22%, transparent); }
 .pp-vbtn:active:not(:disabled) .iconify { transform: translateY(1px); }
-/* Souris : les actions n'apparaissent qu'au survol de la tâche (ou au focus
-   clavier) ; au toucher, toujours visibles. La place reste réservée. */
+/* Mouse: the actions only appear on hovering the task (or on keyboard
+   focus); on touch, always visible. The space stays reserved. */
 @media (hover: hover) and (pointer: fine) {
   .pp-verdict { opacity: 0; transition: opacity .12s ease; }
   .pp-task:hover .pp-verdict, .pp-task:focus-within .pp-verdict { opacity: 1; }
@@ -2084,7 +2084,7 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
   .pp-vbtn { width: 40px; }
   .pp-vbtn::before { inset: -9px 0; }
 }
-/* Confirmée : ligne atténuée jusqu'à la mise à jour de TASKS.md. */
+/* Confirmed: line dimmed until TASKS.md is updated. */
 .pp-task.sent .pp-task-text { color: var(--muted); }
 .pp-task.sent .pp-box { background: var(--green); }
 .pp-sent { display: inline-flex; align-items: center; gap: 5px; font: 500 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--green); }
@@ -2121,8 +2121,8 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .pp-report .md { font-size: 14px; }
 
 /* ================================================================
-   Ordinateur (≥ 900 px) : liste en barre latérale + agent à droite,
-   conversation centrée sur une largeur de lecture, feuilles en fenêtres.
+   Computer (≥ 900 px): list as a sidebar + agent on the right,
+   conversation centered on a reading width, sheets as windows.
    ================================================================ */
 @media (min-width: 900px) {
   :root { --side: 340px; }
@@ -2145,7 +2145,7 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
   body:has(#home.resizing) { cursor: col-resize; }
   body:has(#home.resizing) iframe, body:has(#home.resizing) .xterm { pointer-events: none; }
   #agent, #placeholder, #settings, #tabview { left: var(--side); }
-  /* Liste réduite : colonne d'icônes et compteurs d'état, le reste masqué (état gardé). */
+  /* Collapsed list: column of icons and state counters, the rest hidden (state kept). */
   #home.rail > .home-top, #home.rail > .scroll, #home.rail > .fab-wrap { display: none; }
   .home-rail { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 20px 0 16px; min-height: 0; overflow-y: auto; }
   .home-rail .home-logo { margin: 0 0 14px; }
@@ -2179,7 +2179,7 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
   .fab.hw-cta { box-shadow: inset 0 0 0 1px var(--line-strong); }
   .fab.hw-cta:hover, .fab.hw-cta:active, .fab.hw-cta:focus-visible { box-shadow: none; }
 
-  /* Titre | sélecteur et actions, sur une seule ligne. */
+  /* Title | selector and actions, on a single line. */
   .agent-top {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas: "head actions";
@@ -2194,7 +2194,7 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
   .msg-user .msg-c { max-width: 78%; }
   .choices, .composer { padding-left: max(12px, calc((100% - var(--read)) / 2 + 12px)); padding-right: max(12px, calc((100% - var(--read)) / 2 + 12px)); }
   .slash-menu { left: max(12px, calc((100% - var(--read)) / 2 + 12px)); right: max(12px, calc((100% - var(--read)) / 2 + 12px)); }
-  /* Colonne de lecture encadrée de traits fins, grille dans les marges. */
+  /* Reading column framed by thin lines, grid in the margins. */
   .chat, .composer, .keybar {
     --col-l: calc(50% - var(--read) / 2);
     --col-r: calc(50% + var(--read) / 2);
@@ -2210,14 +2210,14 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
     background-repeat: no-repeat, repeat, repeat;
   }
   .composer { padding-bottom: 18px; }
-  /* La séparation des touches appartient à la colonne, pas aux marges quadrillées. */
+  /* The key separator belongs to the column, not to the gridded margins. */
   .keybar { position: relative; border-top: 0; }
   .keybar::before {
     content: ''; position: absolute; top: 0; left: var(--col-l);
     width: var(--read); height: 1px; background: var(--line-soft);
   }
-  /* Terminal : même colonne encadrée que la conversation et le composeur.
-     FitAddon mesure la place disponible après la marge intérieure. */
+  /* Terminal: same framed column as the conversation and the composer.
+     FitAddon measures the available space after the padding. */
   #termWrap {
     padding: 0;
     background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
@@ -2233,7 +2233,7 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
   .keybar { justify-content: center; }
   .search-bar { max-width: calc(var(--read) - 24px); margin: 10px auto 0; width: calc(100% - 24px); }
 
-  /* Cases côte à côte : pleine largeur, sans colonne de lecture ni grille. */
+  /* Side-by-side cells: full width, without reading column or grid. */
   .cell-view .chat-list { max-width: none; padding: 16px 16px 8px; gap: 12px; }
   .cell-view .queued-list, .cell-view .chat-status { max-width: none; padding-left: 16px; padding-right: 16px; }
   .cell-view .md { font-size: 14px; }
@@ -2266,11 +2266,11 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .sheet-btn { padding: 11px 16px; font: 600 11.5px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
 .settings-radio [data-slot="base"], .settings-radio [data-slot="indicator"] { border-radius: 0; }
 
-/* Images dans les réponses : cliquables (aperçu en grand). */
+/* Images in replies: clickable (large preview). */
 .md-body img { max-width: 100%; height: auto; cursor: zoom-in; border: 1px solid var(--line); }
 
-/* Onglets d'un space (en haut de sa vue) : point d'état pour un onglet d'un
-   seul pane, mini-carte sinon. */
+/* Tabs of a space (at the top of its view): state dot for a tab with a
+   single pane, mini-map otherwise. */
 .space-tabs { padding-top: calc(var(--safe-top) + 10px); padding-bottom: 2px; }
 .space-tabs + .top.bar { padding-top: 6px; }
 .tab-chip-dot { width: 7px; height: 7px; flex: none; border: 1px solid var(--muted); }
@@ -2278,12 +2278,12 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .tab-chip.working .tab-chip-dot { background: var(--working); border-color: var(--working); }
 .tab-chip.done .tab-chip-dot { background: var(--done); border-color: var(--done); }
 .tab-chip-label { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Survol : seulement avec une vraie souris (collant sur iOS après un toucher), jamais sur l'onglet ouvert. */
+/* Hover: only with a real mouse (sticky on iOS after a tap), never on the open tab. */
 @media (hover: hover) { .tab-chip:not([aria-current="page"]):hover { color: var(--text-2); border-color: var(--line-strong); } }
 .tab-chip:focus-visible { outline: 1px solid var(--mauve); outline-offset: 1px; }
-/* « + » au bout des onglets : carré, trait pointillé. */
+/* "+" at the end of the tabs: square, dotted line. */
 .tab-chip.tab-add { justify-content: center; min-width: 32px; padding: 6px 9px; border-style: dashed; cursor: pointer; }
-/* Doigt : puces d'onglets à 36 px de haut, bouton « + » carré. */
+/* Finger: tab chips 36 px high, square "+" button. */
 @media (pointer: coarse) {
   .tab-chip { min-height: 36px; }
   .tab-chip.tab-add { min-width: 36px; }
@@ -2292,7 +2292,7 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 @media (hover: hover) { .tab-chip.tab-add:hover { border-style: solid; color: var(--text); } }
 .tab-chip.tab-add:disabled { opacity: .4; cursor: default; }
 
-/* Réponse à un message précis de l'agent (cf. utils/replyQuote.ts). */
+/* Reply to a specific agent message (see utils/replyQuote.ts). */
 .composer-reply {
   display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0 0 6px; padding: 6px 4px 6px 10px;
   border: 1px solid var(--line); border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent);
@@ -2322,7 +2322,7 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .msg-quote:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); border-left-color: var(--accent); }
 .msg-quote-time { flex: none; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; color: var(--dim); }
 .msg-quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Bouton flottant « Répondre » près d'un passage sélectionné. */
+/* Floating "Reply" button near a selected passage. */
 .sel-reply {
   position: fixed; z-index: 60; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px;
   font: 500 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
@@ -2340,7 +2340,7 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
   100% { background: transparent; box-shadow: 0 0 0 6px transparent; }
 }
 @media (prefers-reduced-motion: reduce) { .msg-flash { animation: none; outline: 1px solid var(--accent); } }
-/* Menu interactif de Claude Code (/resume, /mcp…) : recherche, groupes, entrées. */
+/* Claude Code interactive menu (/resume, /mcp…): search, groups, entries. */
 .choices.choices-menu { max-height: 64%; }
 .choices-eyebrow .menu-kind { margin-left: 8px; color: var(--muted); }
 .menu-search {
@@ -2360,7 +2360,7 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .choices-keys .menu-term { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
 .choices-keys .menu-term .iconify { width: 13px; height: 13px; }
 
-/* Bandeau « Nouvelle version disponible » (app/components/NewVersionBanner.vue). */
+/* "New version available" banner (app/components/NewVersionBanner.vue). */
 .new-version {
   position: fixed; z-index: 60; top: calc(env(safe-area-inset-top) + 8px); left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 32px); padding: 7px 8px 7px 12px;

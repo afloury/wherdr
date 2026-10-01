@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// Menu interactif de Claude Code ouvert (/resume, /mcp, /hooks…) : son titre,
-// sa recherche, ses entrées (celle sous le curseur en évidence) et les touches
-// de sa légende. Un clic sur une entrée y amène le curseur puis appuie sur
-// Entrée ; rien n'est envoyé sans geste. Menu sans entrée reconnue : repli vers
-// le terminal.
+// Claude Code interactive menu open (/resume, /mcp, /hooks…): its title,
+// its search, its entries (the one under the cursor highlighted) and the keys
+// of its legend. A click on an entry moves the cursor there then presses
+// Enter; nothing is sent without a gesture. Menu without a recognized entry: fallback to
+// the terminal.
 import type { InteractiveMenu, WaitAction } from '#shared/types'
 import { clickMovesOnly } from '#shared/menuScreen'
 
@@ -11,15 +11,15 @@ const props = defineProps<{ paneId: string, menu: InteractiveMenu, keys?: boolea
 const emit = defineEmits<{ terminal: [] }>()
 const busy = ref(false)
 const listRef = ref<HTMLElement | null>(null)
-// Entrée sous le curseur visible (liste longue : /model…).
+// Entry under the cursor visible (long list: /model…).
 const showCursor = () => nextTick(() => listRef.value?.querySelector('.cur')?.scrollIntoView({ block: 'nearest' }))
 watch(() => props.menu, () => { busy.value = false; showCursor() })
 onMounted(showCursor)
 
 const disabled = computed(() => busy.value || !eventsOpen.value || offlineView.value)
-// Un clic sur une entrée n'y amène que le curseur (Entrée = « set as default »…).
+// A click on an entry only moves the cursor there (Enter = "set as default"…).
 const moveOnly = computed(() => clickMovesOnly(props.menu))
-// Avec des entrées cliquables qui valident, Entrée fait doublon.
+// With clickable entries that confirm, Enter is redundant.
 const actions = computed(() => props.menu.actions.filter(a => !(a.key === 'enter' && props.menu.cursor !== null && !moveOnly.value)))
 const known = computed(() => props.menu.cursor !== null && props.menu.items.length > 0)
 
@@ -32,7 +32,7 @@ async function press(a: WaitAction) {
   if (!(await menuAction(props.paneId, { op: 'key', key: a.key, label: a.label }))) busy.value = false
 }
 
-// Recherche : le texte part (lettre par lettre, côté serveur) une fois la frappe posée.
+// Search: the text goes out (letter by letter, on the server) once typing settles.
 const query = ref(props.menu.search || '')
 const typing = ref(false)
 watch(() => props.menu.search, (s) => { if (!typing.value) query.value = s || '' })
@@ -50,8 +50,8 @@ async function sendSearch() {
 }
 onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
 
-// Clavier (ordinateur, vue active) : ↑ ↓ Entrée Échap partent au terminal, la
-// carte suit l'écran relu. Entrée seulement si elle valide simplement l'entrée.
+// Keyboard (computer, active view): ↑ ↓ Enter Escape go to the terminal, the
+// card follows the re-read screen. Enter only if it simply confirms the entry.
 const searchRef = ref<HTMLInputElement | null>(null)
 const esc = computed(() => props.menu.actions.some(a => a.key === 'esc'))
 const keyboard = computed(() => Boolean(props.keys && desk.value && known.value && !disabled.value))

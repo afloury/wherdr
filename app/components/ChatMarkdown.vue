@@ -1,10 +1,10 @@
 <script setup lang="ts">
-// Réponse de l'agent en markdown. `typing` = heure de départ du déroulé (effet
-// machine à écrire, utils/typewriter.ts) : le HTML final est rendu tel quel
-// puis ses nœuds texte sont révélés progressivement. Un toucher le termine ;
-// `typing` qui repasse à null aussi (nouveau message, réglage coupé).
-// En mode chiffré, l'écriture et le déchiffrement ont chacun leur front.
-// La bande entre les deux traverse les nœuds Markdown sans réécrire le HTML.
+// Agent reply in markdown. `typing` = start time of the reveal (typewriter
+// effect, utils/typewriter.ts): the final HTML is rendered as is
+// then its text nodes are revealed progressively. A tap finishes it;
+// so does `typing` going back to null (new message, setting turned off).
+// In cipher mode, the writing and the deciphering each have their own front.
+// The band between the two crosses the Markdown nodes without rewriting the HTML.
 import { applyReveal, cipherSegments, finishReveal, GLYPH_MS, planReveal, revealedAt, trailGlyphs, typeDuration, typingFronts } from '~/utils/typewriter'
 import type { RevealNode, RevealPlan } from '~/utils/typewriter'
 
@@ -17,8 +17,8 @@ let raf = 0
 const atomic = (n: RevealNode) => (n as unknown as Element).classList?.contains('code-head')
 const keep = (n: RevealNode) => /^T[DH]$/.test((n as unknown as Element).tagName || '')
 
-// Les boîtes ne changent qu'au déplacement d'un front. Les glyphes se
-// renouvellent à cadence fixe, dans l'unique boucle requestAnimationFrame.
+// The boxes only change when a front moves. The glyphs are
+// renewed at a fixed rate, in the single requestAnimationFrame loop.
 let bands: { box: HTMLElement, cells: HTMLElement[] }[] = []
 let bandKey = ''
 let glyphAt = 0
@@ -78,8 +78,8 @@ function start(at: number) {
   const encrypted = encryptedActive.value
   const step = () => {
     if (plan !== p) return
-    // Heure de départ fixe : un composant recréé (tranche chargée au-dessus)
-    // reprend où il en était.
+    // Fixed start time: a recreated component (slice loaded above)
+    // resumes where it was.
     const elapsed = Date.now() - at
     const fronts = encrypted ? typingFronts(p.total, elapsed, typingSpeed.value) : null
     const written = fronts?.written ?? revealedAt(p.stops, elapsed, duration)
@@ -100,13 +100,13 @@ function onClick() {
   }
 }
 
-// Premier état appliqué avant l'affichage : pas d'éclair du texte complet.
+// First state applied before display: no flash of the full text.
 onMounted(() => { if (props.typing !== null) start(props.typing) })
 watch(() => props.typing, (at) => {
   if (at === null) stop()
   else start(at)
 })
-// Texte remplacé (rare) : le nouveau HTML s'affiche en entier.
+// Text replaced (rare): the new HTML is shown in full.
 watch(() => props.html, () => {
   if (!plan) return
   cancelAnimationFrame(raf)
@@ -122,6 +122,6 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <!-- eslint-disable-next-line vue/no-v-html -- HTML nettoyé par DOMPurify (utils/markdown.ts) -->
+  <!-- eslint-disable-next-line vue/no-v-html -- HTML sanitized by DOMPurify (utils/markdown.ts) -->
   <div ref="el" class="md-body" :class="{ typing: typing !== null }" @click.capture="onClick" v-html="html" />
 </template>

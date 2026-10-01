@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Onglet Herdr : plan (téléphone) ou panes côte à côte (ordinateur).
+// Herdr tab: plan (phone) or panes side by side (computer).
 const route = useRoute()
 const tabId = computed(() => String(route.params.tab || ''))
 </script>

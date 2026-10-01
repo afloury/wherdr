@@ -1,14 +1,14 @@
-// Quotas de l'accueil, répartis entre le haut de la liste et les machines. Pur, sans Vue.
-//  - Un compte commun à toutes les machines en ligne (Codex, ou un seul compte
-//    Claude) : une fois en haut, comme avant.
-//  - Comptes différents (Claude ou Codex) : chaque machine a le tableau de son
-//    compte sous son en-tête (replié avec elle), plus rien de cet agent en haut.
+// Home quotas, split between the top of the list and the machines. Pure, without Vue.
+//  - An account shared by all online machines (Codex, or a single Claude
+//    account): once at the top, as before.
+//  - Different accounts (Claude or Codex): each machine has the table of its
+//    account under its header (collapsed with it), nothing left of that agent at the top.
 import type { ClaudeSetup, Quota, QuotaWindow, Quotas } from '../../shared/types'
 import installer from '../../scripts/install-claude-statusline.sh?raw'
 
 export interface QuotaRow { key: string, agent: 'claude' | 'codex', q: Quota }
 
-// Lignes du haut de l'accueil.
+// Rows at the top of the home screen.
 export function quotaRows(q: Quotas | null, hidden: readonly string[] = []): QuotaRow[] {
   if (!q) return []
   const rows: QuotaRow[] = []
@@ -17,8 +17,8 @@ export function quotaRows(q: Quotas | null, hidden: readonly string[] = []): Quo
   return rows
 }
 
-// Lignes propres à une machine (clé '' = locale) : son compte Claude, son compte
-// Codex, chacun seulement quand les machines n'utilisent pas le même.
+// Rows specific to a machine (key '' = local): its Claude account, its Codex
+// account, each only when the machines do not use the same one.
 export function machineQuotaRows(q: Quotas | null, key: string, hidden: readonly string[] = []): QuotaRow[] {
   if (!q) return []
   const rows: QuotaRow[] = []
@@ -33,29 +33,29 @@ export function machineQuotaRows(q: Quotas | null, key: string, hidden: readonly
   return rows
 }
 
-// Bandeau « quotas Claude non configurés » d'une machine qui a des agents Claude.
+// "Claude quotas not configured" banner of a machine that has Claude agents.
 export function claudeSetupOf(q: Quotas | null, key: string, hasClaude: boolean, hidden: readonly string[] = []): ClaudeSetup | null {
   if (!hasClaude || hidden.includes('claude')) return null
   return q?.claudeSetup?.find(s => s.key === key) || null
 }
 
-// Commande autonome à coller dans un terminal de la machine : le script
-// d'installation (barre d'état comprise) passé à sh, identique partout.
+// Self-contained command to paste into a terminal on the machine: the install
+// script (status line included) passed to sh, identical everywhere.
 export const claudeInstallCommand = `sh <<'WHERDR_INSTALL'\n${installer.trimEnd()}\nWHERDR_INSTALL\n`
 
-// Part restante (%) ; fenêtre déjà réinitialisée depuis la lecture : tout est revenu.
+// Remaining share (%); window already reset since the reading: everything is back.
 export function quotaLeft(w: QuotaWindow, now: number) {
   if (w.resetsAt && w.resetsAt <= now) return 100
   return Math.round(100 - w.used)
 }
-// Réglages → Apparence → Quotas : part restante (défaut, comme Codex) ou part
-// utilisée (comme Claude, 100 % pour une fenêtre épuisée).
+// Settings → Appearance → Quotas: remaining share (default, like Codex) or used
+// share (like Claude, 100 % for an exhausted window).
 export type QuotaDisplay = 'left' | 'used'
 export function readQuotaDisplay(raw: string | null): QuotaDisplay {
   return raw === 'used' ? 'used' : 'left'
 }
-// Pourcentage affiché (chiffre et barre) ; l'alerte (`quotaLevel`) suit
-// toujours ce qui reste.
+// Percentage shown (number and bar); the alert (`quotaLevel`) always follows
+// what remains.
 export function quotaShown(w: QuotaWindow, now: number, display: QuotaDisplay) {
   const l = quotaLeft(w, now)
   return display === 'used' ? 100 - l : l
@@ -65,12 +65,12 @@ export const quotaLevel = (w: QuotaWindow, now: number) => {
   return l <= 15 ? 'hi' : l <= 40 ? 'mid' : 'lo'
 }
 
-// Lecture de plus d'une heure : chiffres à prendre avec prudence.
+// Reading older than an hour: numbers to take with caution.
 export const STALE_MS = 3600000
 
-// Heure de réinitialisation : l'heure seule dans les prochaines 24 h (même le
-// lendemain : « 00:00 » et non « dim. 00:00 », qui ressemble à la semaine),
-// le jour en plus au-delà. `null` : déjà réinitialisée ; '' : inconnue.
+// Reset time: the time alone within the next 24 h (even the
+// next day: "00:00" and not "Sun 00:00", which looks like the weekly one),
+// with the day beyond that. `null`: already reset; '': unknown.
 export function resetText(w: QuotaWindow, now: number, locale: string): string | null {
   if (!w.resetsAt) return ''
   if (w.resetsAt <= now) return null

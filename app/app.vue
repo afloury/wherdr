@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Coquille : liste des agents (barre latérale sur ordinateur) + page courante
-// (agent, réglages), fenêtres, écran de verrouillage, bandeau réseau.
+// Shell: agent list (sidebar on a computer) + current page
+// (agent, settings), windows, lock screen, network banner.
 import { en, fr } from '@nuxt/ui/locale'
 
 setToaster(useToast())
@@ -23,7 +23,7 @@ useHead({
 function onVisibility() {
   pageVisible.value = !document.hidden
   sendViewing()
-  // iOS gèle la page en arrière-plan et coupe les sockets : on se reconnecte au retour.
+  // iOS freezes the page in the background and cuts the sockets: we reconnect on return.
   if (!document.hidden) connectEvents()
   if (!document.hidden && !locked.value && !mayReadOffline(readOfflineAccess())) start()
 }
@@ -35,15 +35,15 @@ function onShortcut(e: KeyboardEvent) {
   }
 }
 
-// Fichier lâché hors d'une zone de dépôt : le navigateur l'ouvrirait à la place
-// de l'app. Les zones (vue agent) le prennent avant ; ici, on refuse le reste.
+// File dropped outside a drop zone: the browser would open it instead
+// of the app. The zones (agent view) take it first; here, we refuse the rest.
 function blockFileDrop(e: DragEvent) {
   if (!carriesFiles(e.dataTransfer) || e.defaultPrevented) return
   e.preventDefault()
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
 }
 
-// Clavier (ordinateur) : Échap ferme la fenêtre ouverte (géré par les modales).
+// Keyboard (computer): Escape closes the open window (handled by the modals).
 onMounted(() => {
   installViewport()
   document.addEventListener('visibilitychange', onVisibility)
@@ -52,7 +52,7 @@ onMounted(() => {
   window.addEventListener('drop', blockFileDrop)
   registerServiceWorker()
   if ('serviceWorker' in navigator) {
-    // Un tap sur une notif alors que l'app est ouverte : le SW nous demande d'y aller.
+    // A tap on a notification while the app is open: the SW asks us to go there.
     navigator.serviceWorker.addEventListener('message', (e) => {
       if (e.data && e.data.type === 'navigate' && e.data.url) {
         const hash = new URL(e.data.url, location.href).hash

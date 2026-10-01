@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Fenêtre de l'app : feuille en bas de l'écran sur téléphone, fenêtre centrée
-// sur ordinateur (≥ 900 px). Échap ou un tap à côté la ferme.
+// App window: sheet at the bottom of the screen on the phone, centered window
+// on a computer (≥ 900 px). Escape or a tap outside closes it.
 const open = defineModel<boolean>('open', { default: false })
 const props = defineProps<{ title?: string, tall?: boolean, wide?: boolean, full?: boolean }>()
 const emit = defineEmits<{ closed: [] }>()

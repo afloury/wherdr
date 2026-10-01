@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// Barre de saisie (UChatPrompt) : champ au-dessus, + · modèle et envoi dessous,
-// comme Claude.ai. Agent au travail et champ vide : l'envoi devient « Stop » (Échap),
-// via UChatPromptSubmit (état « streaming »).
-// Photos réduites dans le navigateur (2048 px, JPEG) puis déposées sur le serveur ;
-// leur chemin part avec le message.
+// Input bar (UChatPrompt): field on top, + · model and send below,
+// like Claude.ai. Agent working and field empty: send becomes "Stop" (Escape),
+// via UChatPromptSubmit ("streaming" state).
+// Photos shrunk in the browser (2048 px, JPEG) then stored on the server;
+// their path goes with the message.
 import type { Pane, QueuedMessage, SlashCommand } from '#shared/types'
 import type { DraftAtt } from '~/composables/useDraft'
 import { withReply } from '#shared/replyQuote'
@@ -12,8 +12,8 @@ import { isAgentCommand } from '#shared/commandScreen'
 const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void> }>()
 const emit = defineEmits<{ sent: [queued: QueuedMessage | null], showTerminal: [] }>()
 
-// Mise à jour de Claude Code installée : la ligne de statut redémarre l'agent.
-// Statut d'erreur de Claude Code (« Auto-update failed… ») : en rouge, comme dans le terminal.
+// Claude Code update installed: the status line restarts the agent.
+// Claude Code error status ("Auto-update failed…"): in red, like in the terminal.
 const noticeIsError = computed(() => /\b(failed|error)\b/i.test(props.pane?.claudeNotice || ''))
 const updateReady = computed(() => Boolean(props.pane?.claudeNotice && /Restart to update/i.test(props.pane.claudeNotice) && canRestart(props.pane)))
 const restartLabel = computed(() => {
@@ -23,28 +23,28 @@ const restartLabel = computed(() => {
   return r.phase === 'stopping' ? tl(`Arrêt de ${who}…`, `Stopping ${who}…`) : tl(`Relance de ${who} sur la même conversation…`, `Restarting ${who} on the same conversation…`)
 })
 
-// Brouillon de la conversation (texte + photos), gardé en changeant de conversation.
+// Conversation draft (text + photos), kept when switching conversations.
 const draft = useDraft(props.paneId)
 const text = toRef(draft, 'text')
 const promptRef = ref<{ textareaRef?: HTMLTextAreaElement } | null>(null)
 const ta = computed(() => promptRef.value?.textareaRef || null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const sending = ref(false)
-// Sur un clavier tactile, Entrée ajoute une ligne ; le bouton sous le champ envoie.
+// On a touch keyboard, Enter adds a line; the button below the field sends.
 const touchKeyboard = import.meta.client && matchMedia('(pointer: coarse)').matches
 const enterSends = computed(() => desk.value && !isIOS && !touchKeyboard)
 
 type Att = DraftAtt
 const attachments = toRef(draft, 'atts')
-// Réponse à un message précis de l'agent : encadré au-dessus du champ, repère court à l'envoi.
+// Reply to a specific agent message: box above the field, short marker on send.
 const replyTo = toRef(draft, 'reply')
 
 const canSend = computed(() => Boolean(text.value.trim() || attachments.value.length))
 const readOnly = computed(() => !eventsOpen.value || offlineView.value || paneStale(props.pane))
-// Hors ligne, pas de Stop : UChatPromptSubmit ignore `disabled` en mode « streaming ».
+// Offline, no Stop: UChatPromptSubmit ignores `disabled` in "streaming" mode.
 const stopMode = computed(() => Boolean(!readOnly.value && props.pane && props.pane.agent && props.pane.status === 'working' && !canSend.value))
-// Suggestion grisée de Claude Code (cf. parseClaudeSuggestion) : placeholder du
-// champ vide ; Tab (ou la puce, sur un écran tactile) la met dans le champ, sans l'envoyer.
+// Claude Code's grayed-out suggestion (see parseClaudeSuggestion): placeholder of the
+// empty field; Tab (or the chip, on a touch screen) puts it in the field, without sending it.
 const suggestion = computed(() => (!readOnly.value && !canSend.value && props.pane?.claudeSuggestion) || null)
 function useSuggestion() {
   const s = suggestion.value
@@ -61,8 +61,8 @@ const placeholder = computed(() => {
   return t('Commande…')
 })
 
-// Entrée : UChatPrompt n'envoie que du texte ; photo seule, ou champ vide
-// pendant que l'agent travaille (Stop), passent par ici.
+// Enter: UChatPrompt only sends text; a photo alone, or an empty field
+// while the agent is working (Stop), go through here.
 function onKeydown(e: KeyboardEvent) {
   if (slashOpen.value && !e.isComposing) {
     const n = slashMatches.value.length
@@ -86,10 +86,10 @@ function onKeydown(e: KeyboardEvent) {
     submit()
   }
 }
-// Le bouton gère lui-même Envoyer et Stop (un clic = une action, sans
-// repasser par le formulaire). En mode Stop (status « streaming »),
-// UChatPromptSubmit remplace notre @click par son événement « stop » :
-// c'est @stop qui déclenche l'interruption.
+// The button handles Send and Stop itself (one click = one action, without
+// going back through the form). In Stop mode ("streaming" status),
+// UChatPromptSubmit replaces our @click with its "stop" event:
+// @stop is what triggers the interruption.
 function onSubmitClick(e: MouseEvent) {
   e.preventDefault()
   submit()
@@ -100,11 +100,11 @@ async function submit() {
   if (readOnly.value) return toast(t('Envoi indisponible hors ligne'), true)
   if (stopMode.value) return interrupt()
   if (attachments.value.some(a => !a.path)) return toast(t('Photo en cours d’envoi…'))
-  // Les photos partent comme des chemins de fichiers : Claude Code et Codex
-  // les ouvrent eux-mêmes.
+  // Photos go as file paths: Claude Code and Codex
+  // open them themselves.
   const paths = attachments.value.map(a => a.path!)
   const body = [text.value.trim(), ...paths].filter(Boolean).join('\n')
-  // Pas de repère devant une commande « / » ou « ! » : l'agent ne la lirait plus comme telle.
+  // No marker before a "/" or "!" command: the agent would no longer read it as such.
   const reply = /^[/!]/.test(body) ? null : replyTo.value
   const msg = withReply(reply, body, language)
   if (!msg || sending.value) return
@@ -117,8 +117,8 @@ async function submit() {
     if (reply) replyTo.value = null
     haptic()
     emit('sent', queued)
-    // Commande « / » : son résultat (écran du terminal), comme depuis le menu +.
-    // Un skill ou une commande personnalisée fait répondre l'agent : pas de panneau.
+    // "/" command: its result (terminal screen), as from the + menu.
+    // A skill or custom command makes the agent reply: no panel.
     const cmd = msg.split(/\s/)[0]!
     const listed = slashCache.get(props.paneId)?.list || slashList.value
     if (p && p.agent && !paths.length && /^\/\S+$/.test(cmd) && !msg.includes('\n') && !isAgentCommand(cmd, listed)) {
@@ -132,9 +132,9 @@ async function submit() {
 }
 
 // ------------------------------------------------------------ Stop
-// Le serveur envoie Échap, le renvoie si l'agent travaille encore, arrête les
-// tâches de fond de Claude (cf. server/utils/interruptSeq.ts) puis dit si l'agent
-// s'est arrêté. Sinon : message durable avec un accès au terminal.
+// The server sends Escape, sends it again if the agent is still working, stops
+// Claude's background tasks (see server/utils/interruptSeq.ts) then says whether the agent
+// stopped. Otherwise: lasting message with access to the terminal.
 const interrupting = ref<'running' | 'failed' | null>(null)
 async function interrupt() {
   if (interrupting.value === 'running') return
@@ -149,7 +149,7 @@ async function interrupt() {
     toast((err as Error).message, true)
   }
 }
-// L'agent finit par s'arrêter (ou l'utilisateur agit dans le terminal) : le message s'efface.
+// The agent eventually stops (or the user acts in the terminal): the message goes away.
 watch(() => props.pane?.status, s => { if (interrupting.value === 'failed' && s !== 'working') interrupting.value = null })
 
 // ------------------------------------------------------------ photos
@@ -157,8 +157,8 @@ function clearAttachments() {
   for (const a of attachments.value) URL.revokeObjectURL(a.url)
   attachments.value = []
 }
-// Aperçu en grand (même visionneuse que la conversation), y compris pendant
-// l'envoi : l'URL locale (blob) suffit.
+// Large preview (same viewer as the conversation), including while
+// sending: the local URL (blob) is enough.
 function viewAtt(a: Att) { lightboxSrc.value = a.url }
 function removeAtt(i: number) {
   const [a] = attachments.value.splice(i, 1)
@@ -180,14 +180,14 @@ async function shrink(file: Blob): Promise<Blob> {
     c.width = Math.round(img.naturalWidth * k)
     c.height = Math.round(img.naturalHeight * k)
     const g = c.getContext('2d')!
-    // JPEG sans transparence : fond blanc, sinon les zones transparentes
-    // (captures d'écran PNG) deviennent noires.
+    // JPEG without transparency: white background, otherwise transparent areas
+    // (PNG screenshots) turn black.
     g.fillStyle = '#fff'
     g.fillRect(0, 0, c.width, c.height)
     g.drawImage(img, 0, 0, c.width, c.height)
     const blob = await new Promise<Blob | null>(res => c.toBlob(res, 'image/jpeg', 0.86))
     if (blob) return blob
-  } catch { /* image illisible : envoyée telle quelle */ }
+  } catch { /* unreadable image: sent as is */ }
   finally { URL.revokeObjectURL(url) }
   return file
 }
@@ -217,8 +217,8 @@ function onFiles(e: Event) {
   addImages(files)
 }
 
-// Coller une image : directement dans le champ (Mac, iPad, et iPhone quand
-// Safari la propose)…
+// Paste an image: straight into the field (Mac, iPad, and iPhone when
+// Safari offers it)…
 function onPaste(e: ClipboardEvent) {
   const files = [...((e.clipboardData && e.clipboardData.items) || [])]
     .filter(i => i.kind === 'file' && i.type.startsWith('image/'))
@@ -229,8 +229,8 @@ function onPaste(e: ClipboardEvent) {
   haptic()
 }
 
-// …ou via le menu +, qui lit le presse-papiers (Safari demande une
-// confirmation « Coller »).
+// …or via the + menu, which reads the clipboard (Safari asks for a
+// "Paste" confirmation).
 async function pasteFromClipboard() {
   if (!navigator.clipboard || !navigator.clipboard.read) return toast(t('Presse-papiers inaccessible ici — colle dans le champ de message.'), true)
   try {
@@ -247,10 +247,10 @@ async function pasteFromClipboard() {
   }
 }
 
-// ------------------------------------------------------------ commandes « / »
-// « / » en premier caractère : les commandes de l'agent, comme le menu du
-// terminal (intégrées + skills et commandes de la machine), filtrées au fil de
-// la frappe. Toucher une commande la place dans le champ ; Entrée l'envoie.
+// ------------------------------------------------------------ "/" commands
+// "/" as the first character: the agent's commands, like the terminal's
+// menu (built-in + the machine's skills and commands), filtered as you
+// type. Tapping a command puts it in the field; Enter sends it.
 const slashCache = new Map<string, { at: number, list: SlashCommand[] }>()
 const slashList = ref<SlashCommand[]>([])
 const slashSel = ref(0)
@@ -292,16 +292,16 @@ const slashMatches = computed(() => {
 })
 const slashOpen = computed(() => slashQuery.value !== null && !slashDismissed.value && slashMatches.value.length > 0
   && !(slashMatches.value.length === 1 && slashMatches.value[0]!.name.toLowerCase() === slashQuery.value))
-// Survol : seulement si la souris a vraiment bougé. Quand la liste défile au
-// clavier sous un pointeur immobile, le navigateur émet aussi des survols, qui
-// voleraient la sélection.
+// Hover: only if the mouse really moved. When the list scrolls with the
+// keyboard under a still pointer, the browser also emits hovers, which
+// would steal the selection.
 let lastPointer = ''
 function hoverSlash(e: MouseEvent, i: number) {
   const at = `${e.screenX},${e.screenY}`
   const kb = lastPointer === 'kb'
   if (at === lastPointer) return
   lastPointer = at
-  // Juste après une flèche : la première position vue est celle du pointeur immobile.
+  // Right after an arrow: the first position seen is that of the still pointer.
   if (kb) return
   slashSel.value = i
 }
@@ -322,7 +322,7 @@ const SLASH: Record<string, [string, string][]> = {
   codex: [['/compact', 'Résumer le contexte'], ['/new', 'Nouvelle conversation'], ['/status', 'État de la session'],
     ['/model', 'Changer de modèle'], ['/review', 'Revue de code'], ['/diff', 'Voir le diff']],
 }
-// Images d'abord, puis interruption et commandes de l'agent.
+// Images first, then interruption and the agent's commands.
 function openPlus() {
   const p = props.pane
   if (!p) return
@@ -348,9 +348,9 @@ async function runSlash(cmd: string) {
   showCommandResult(props.paneId, cmd)
 }
 
-// Focus, curseur à la fin (texte posé de l'extérieur : « Problème » du panneau
-// Projet). Le focus est donné tout de suite, dans le geste, pour que l'iPhone
-// ouvre le clavier ; le curseur est placé une fois le texte rendu.
+// Focus, cursor at the end (text set from outside: "Problem" of the Project
+// panel). The focus is given right away, within the gesture, so that the iPhone
+// opens the keyboard; the cursor is placed once the text is rendered.
 function focusEnd() {
   ta.value?.focus()
   nextTick(() => {
@@ -459,7 +459,7 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
         />
       </template>
     </UChatPrompt>
-    <!-- omp : sa ligne d'état, comme au bas du terminal. -->
+    <!-- omp: its status line, as at the bottom of the terminal. -->
     <div v-if="pane?.ompStatus" class="composer-status" :title="[pane.ompStatus.line, pane.ompStatus.meters].filter(Boolean).join('\n')">
       <span class="composer-status-line">{{ pane.ompStatus.line }}</span>
       <span v-if="pane.ompStatus.meters" class="composer-status-meters">{{ pane.ompStatus.meters }}</span>

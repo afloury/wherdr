@@ -1,12 +1,12 @@
-// Menu contextuel des en-têtes (clic droit sur ordinateur, appui long au
-// doigt) : où il ne doit pas s'ouvrir. Pur (testé).
+// Context menu of headers (right click on a computer, long press with a
+// finger): where it must not open. Pure (tested).
 type El = { closest?: (sel: string) => unknown } | null | undefined
 
-// Zones qui gardent le menu natif du navigateur (champ de saisie, terminal,
-// texte de la conversation) même si elles se trouvent dans un en-tête.
+// Areas that keep the browser's native menu (input field, terminal,
+// conversation text) even if they are inside a header.
 export const NATIVE_MENU = 'input, textarea, select, [contenteditable=""], [contenteditable="true"], .xterm, .term, .chat-list, .msg'
-// Appui long : ignoré sur les boutons, liens, onglets et la poignée de
-// déplacement (ils ont leur propre geste).
+// Long press: ignored on buttons, links, tabs and the move
+// handle (they have their own gesture).
 export const PRESS_SKIP = `button, a, [role="tab"], [role="button"]:not(.plan-cell), .cell-grip, ${NATIVE_MENU}`
 
 export function keepsNativeMenu(target: El): boolean {

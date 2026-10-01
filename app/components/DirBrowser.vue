@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Navigateur de dossiers d'une machine, sous son HOME : parent, sous-dossiers
-// (dépôts Git marqués), puis « Choisir ce dossier » (`choose`) ou `cancel`.
-// En haut, le chemin courant est modifiable : coller/taper un chemin + Entrée l'ouvre.
+// Folder browser of a machine, under its HOME: parent, subfolders
+// (Git repositories marked), then "Choose this folder" (`choose`) or `cancel`.
+// At the top, the current path is editable: paste/type a path + Enter opens it.
 import type { DirListing } from '#shared/types'
 import { normalizeDirInput } from '~/utils/dirInput'
 
@@ -29,8 +29,8 @@ async function browse(p: string | null) {
 }
 browse(props.start)
 
-// Chemin saisi : la liste affichée reste en place tant que le nouveau dossier
-// n'est pas ouvert ; une erreur s'affiche sous le champ, la feuille reste ouverte.
+// Typed path: the displayed list stays in place as long as the new folder
+// is not open; an error shows below the field, the sheet stays open.
 const going = ref(false)
 async function go() {
   const raw = pathInput.value.trim()

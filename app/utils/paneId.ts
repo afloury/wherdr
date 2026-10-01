@@ -1,10 +1,10 @@
 import { splitId } from '../../shared/ids'
 
-// ID d'un pane tel que Herdr le connaît sur sa machine (w1:p2) : sans le
-// préfixe « <machine>~ » que wherdr ajoute aux panes des machines distantes.
+// ID of a pane as Herdr knows it on its machine (w1:p2): without the
+// "<machine>~" prefix that wherdr adds to the panes of remote machines.
 export const herdrPaneId = (id: string) => splitId(id).local
 
-// Ligne affichée sous « Copier l'ID du pane » : l'ID, et la machine si distante.
+// Line shown under "Copy pane ID": the ID, and the machine if remote.
 export function paneIdLine(id: string, machineLabel?: string | null): string {
   const { machine, local } = splitId(id)
   return machine && machineLabel ? `${local} · ${machineLabel}` : local

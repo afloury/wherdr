@@ -1,8 +1,8 @@
-// Position de lecture d'une conversation, gardée le temps de la session de
-// l'app : revenir des Réglages (ou d'une autre vue) rouvre la conversation au
-// même endroit. Mesurée depuis le bas : au retour, seule la fin de la
-// conversation est rechargée (les tranches plus anciennes reviennent en
-// remontant). En bas de la conversation, on reste collé en bas.
+// Reading position of a conversation, kept for the duration of the app
+// session: coming back from Settings (or another view) reopens the conversation at
+// the same place. Measured from the bottom: on return, only the end of the
+// conversation is reloaded (older slices come back when
+// scrolling up). At the bottom of the conversation, we stay stuck to the bottom.
 
 interface ReadingPosition { file: string, fromBottom: number }
 
@@ -17,7 +17,7 @@ export function saveReadingPosition(paneId: string, file: string | null, box: { 
   if (positions.size > MAX_KEPT) positions.delete(positions.keys().next().value!)
 }
 
-// Défilement à rétablir, ou null (rien de gardé, autre session : on va en bas).
+// Scroll to restore, or null (nothing kept, other session: we go to the bottom).
 export function restoredScrollTop(paneId: string, file: string | null, scrollHeight: number): number | null {
   const p = positions.get(paneId)
   if (!p || p.file !== file) return null

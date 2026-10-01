@@ -1,12 +1,12 @@
-// Effet machine à écrire des nouvelles réponses de l'agent (Conversation).
-// Claude Code et Codex n'écrivent une réponse qu'une fois finie : on la
-// déroule côté app. Pour garder un markdown toujours correct, on ne tronque
-// jamais le source : on rend le HTML final (utils/markdown.ts), puis on révèle
-// ses nœuds texte dans l'ordre du document. Un élément dont le texte n'a pas
-// commencé est masqué (`hidden`) ; les balises ne peuvent donc pas être
-// cassées, et blocs de code ou tableaux se remplissent dans leur cadre final.
-// Les fonctions travaillent sur une interface minimale de nœud (DOM réel dans
-// l'app, objets simples dans les tests).
+// Typewriter effect for the agent's new replies (Conversation).
+// Claude Code and Codex only write a reply once it is finished: we
+// reveal it on the app side. To keep the markdown always valid, we never
+// truncate the source: we render the final HTML (utils/markdown.ts), then reveal
+// its text nodes in document order. An element whose text has not
+// started is hidden (`hidden`); tags therefore cannot be
+// broken, and code blocks or tables fill up in their final frame.
+// The functions work on a minimal node interface (real DOM in
+// the app, plain objects in the tests).
 
 export interface RevealNode {
   nodeType: number
@@ -26,8 +26,8 @@ export interface RevealPlan {
   written: number
 }
 
-// Paramètres du déroulé : cadence d'écriture, distance entre les deux fronts,
-// durée du rattrapage et vitesse de changement des glyphes.
+// Reveal parameters: writing rate, distance between the two fronts,
+// catch-up duration and glyph change speed.
 export const TYPE_MIN_MS = 500
 export const TYPE_MAX_MS = 2000
 export type TypingSpeed = 'off' | 'fast' | 'medium' | 'slow'
@@ -52,8 +52,8 @@ export function typingFronts(total: number, elapsed: number, speed: TypingSpeed)
   return { written, decrypted, done: elapsed >= duration + CATCHUP_MS[speed] }
 }
 
-// Points d'arrêt : fin de chaque mot (espaces compris) ; un mot très long
-// (URL, chemin, ligne de code) avance par groupes de 8 caractères.
+// Stop points: end of each word (spaces included); a very long word
+// (URL, path, line of code) advances in groups of 8 characters.
 export function wordStops(text: string, maxWord = 8): number[] {
   const stops: number[] = []
   const re = /\s*\S+\s*/g
@@ -67,7 +67,7 @@ export function wordStops(text: string, maxWord = 8): number[] {
   return stops
 }
 
-// Caractères visibles après `elapsed` ms.
+// Characters visible after `elapsed` ms.
 export function revealedAt(stops: number[], elapsed: number, duration: number): number {
   if (!stops.length) return 0
   if (elapsed >= duration) return stops[stops.length - 1]!
@@ -75,11 +75,11 @@ export function revealedAt(stops: number[], elapsed: number, duration: number): 
   return i <= 0 ? 0 : stops[Math.min(i, stops.length) - 1]!
 }
 
-// Relevé du contenu : nœuds texte (hors blancs de mise en page) avec leur
-// position dans le texte révélé, éléments avec la position de leur début.
-// `atomic(el)` : élément montré d'un bloc (en-tête des blocs de code) ;
-// `keep(el)` : jamais masqué, seulement vide (cellules : la ligne d'un tableau
-// garde ses colonnes).
+// Survey of the content: text nodes (excluding layout whitespace) with their
+// position in the revealed text, elements with the position of their start.
+// `atomic(el)`: element shown as a block (code block header);
+// `keep(el)`: never hidden, only emptied (cells: a table row
+// keeps its columns).
 export interface PlanOptions { atomic?: (n: RevealNode) => boolean, keep?: (n: RevealNode) => boolean }
 export function planReveal(root: RevealNode, { atomic = () => false, keep = () => false }: PlanOptions = {}): RevealPlan {
   const texts: TextEntry[] = []
@@ -106,11 +106,11 @@ export function planReveal(root: RevealNode, { atomic = () => false, keep = () =
   return { texts, elems, total: pos, stops: wordStops(flat), shown: -1, written: -1 }
 }
 
-// Montre les `n` premiers caractères. Élément avec du texte : masqué tant que
-// ce texte n'a pas commencé ; sans texte (image, trait, en-tête atomique) :
-// montré dès que ce qui le précède est écrit. `trail` : la traîne chiffrée
-// suit (mode Terminal) ; l'élément qui commence juste à `n` est alors montré
-// pour la porter (nouveau paragraphe qui s'ouvre sur des glyphes).
+// Shows the first `n` characters. Element with text: hidden while
+// that text has not started; without text (image, rule, atomic header):
+// shown as soon as what precedes it is written. `trail`: the cipher trail
+// follows (Terminal mode); the element starting right at `n` is then shown
+// to carry it (new paragraph opening on glyphs).
 export function applyReveal(plan: RevealPlan, n: number, trail = false, written = n) {
   if (n === plan.shown && written === plan.written) return
   plan.shown = n
@@ -126,13 +126,13 @@ export function applyReveal(plan: RevealPlan, n: number, trail = false, written 
   }
 }
 
-// ------------------------------------------------------------ bande chiffrée
-// Chaque portion conserve ses vrais caractères dans le flux, sous les glyphes
-// peints en CSS. Une bande peut traverser plusieurs nœuds Markdown.
+// ------------------------------------------------------------ cipher band
+// Each portion keeps its real characters in the flow, under the glyphs
+// painted in CSS. A band may cross several Markdown nodes.
 export const TRAIL_GLYPHS = '#%@&$*+=-/\\|<>01{}[]~^:;_!?'
 
-// Les anciens choix retrouvent leur cadence d'origine. Un nouvel appareil
-// commence en Moyenne, avec le texte chiffré activé.
+// Old choices get their original rate back. A new device
+// starts at Medium, with cipher text enabled.
 export function parseTypingSettings(speed: string | null, encrypted: string | null, oldMode: string | null, oldSwitch: string | null): { speed: TypingSpeed, encrypted: boolean } {
   const migrated = oldMode === 'off' || oldSwitch === '0' ? 'off' : oldMode === 'plain' || oldMode === 'terminal' ? 'fast' : 'medium'
   return {
@@ -156,8 +156,8 @@ export function cipherSegments(plan: RevealPlan, decrypted: number, written: num
   return segments
 }
 
-// Un glyphe par caractère ; les blancs restent des blancs (coupures de ligne
-// et indentation des blocs de code intactes).
+// One glyph per character; whitespace stays whitespace (line breaks
+// and code block indentation intact).
 export function trailGlyphs(text: string, rand: () => number = Math.random): string[] {
   return Array.from(text, c => (/\s/.test(c) ? c : TRAIL_GLYPHS[Math.floor(rand() * TRAIL_GLYPHS.length)]!))
 }
@@ -167,14 +167,14 @@ export function finishReveal(plan: RevealPlan) {
   applyReveal(plan, plan.total)
 }
 
-// Identité d'une réponse, stable quand des tranches plus anciennes s'ajoutent
-// au-dessus (la clé de bloc, elle, contient la position dans la liste).
+// Identity of a reply, stable when older slices are added
+// above (the block key, for its part, contains the position in the list).
 export const replyId = (it: { ts: string | null, text: string }) => `${it.ts || ''}|${it.text.length}|${it.text.slice(0, 64)}`
 
-// Réponse à dérouler après une relecture : seulement la dernière réponse
-// inconnue, et seulement si la conversation était déjà affichée et suivie en
-// direct (pas au premier chargement, au retour dans l'app ni hors ligne).
-// Toutes les réponses reçues deviennent connues.
+// Reply to reveal after a re-read: only the last unknown
+// reply, and only if the conversation was already shown and followed
+// live (not on first load, on return to the app nor offline).
+// All received replies become known.
 export function pickTyping(known: Set<string>, replies: string[], live: boolean): string | null {
   let pick: string | null = null
   for (const id of replies) {

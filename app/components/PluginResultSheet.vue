@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { doctorLevel } from '#shared/projectsActions'
 
-// Résultat d'une action de plugin qui doit rester lisible : « Check setup »
-// (ce que wherdr utilise, puis la sortie de doctor) et « Configure ».
+// Result of a plugin action that must stay readable: "Check setup"
+// (what wherdr uses, then the doctor output) and "Configure".
 const open = computed({ get: () => pluginResultState.open, set: (v) => { pluginResultState.open = v } })
 const r = computed(() => pluginResultState.result)
 const setupLabel = (key: string) => ({

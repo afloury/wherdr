@@ -1,6 +1,6 @@
-// Quotas de l'accueil (/api/quotas) : chargés par HomeView toutes les minutes
-// quand ils sont affichés et la page visible, gardés hors ligne ; lus par les tableaux du haut
-// et des machines (QuotaStrip) et par les bandeaux d'installation.
+// Home quotas (/api/quotas): loaded by HomeView every minute
+// when shown and the page is visible, kept offline; read by the top tables
+// and the machine ones (QuotaStrip) and by the install banners.
 import type { Quotas } from '#shared/types'
 import { readOffline, saveQuotas } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
@@ -13,7 +13,7 @@ export async function reloadQuotas() {
     homeQuotas.value = q
     if (mayReadOffline(readOfflineAccess())) saveQuotas(q)
   }
-  catch { /* réessai au prochain tour */ }
+  catch { /* retry on the next round */ }
   quotaNow.value = Date.now()
 }
 

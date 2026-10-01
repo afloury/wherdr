@@ -1,5 +1,5 @@
-// Le serveur reste autorité. Ce témoin ne sert qu'à masquer le cache quand
-// le serveur est absent ; aucun contenu privé n'y est enregistré.
+// The server stays the authority. This marker only serves to hide the cache when
+// the server is absent; no private content is stored in it.
 export interface OfflineAccess { enabled: boolean, expiresAt: number }
 export const ACCESS_KEY = 'wherdr-offline-access'
 export function mayReadOffline(access: OfflineAccess | null, now = Date.now()): boolean {
@@ -15,5 +15,5 @@ export function setOfflineAccess(access: OfflineAccess | null) {
   try {
     if (access) localStorage.setItem(ACCESS_KEY, JSON.stringify(access))
     else localStorage.removeItem(ACCESS_KEY)
-  } catch { /* accès indisponible : le cache reste fermé */ }
+  } catch { /* access unavailable: the cache stays closed */ }
 }

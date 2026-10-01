@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// Conversation : la transcription de l'agent (sans toucher au terminal, donc
-// sans redimensionner le pane que l'ordinateur regarde), relue toutes les 1,5 s (le serveur
-// répond « inchangé » tant que le fichier n'a pas grossi).
-// Affiché = pages plus anciennes chargées à la demande (`older`, jusqu'à
-// l'octet `olderCursor`) + bas relu en continu depuis l'octet `tailStart`.
+// Conversation: the agent's transcript (without touching the terminal, so
+// without resizing the pane the computer is looking at), re-read every 1.5 s (the server
+// replies "unchanged" as long as the file has not grown).
+// Shown = older pages loaded on demand (`older`, up to
+// byte `olderCursor`) + bottom re-read continuously from byte `tailStart`.
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, Pane, QueuedMessage } from '#shared/types'
 import { readOffline, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
@@ -37,7 +37,7 @@ const chat = shallowRef<ChatData>(fresh())
 const items = computed(() => chat.value.older.concat(chat.value.tail))
 const unavailable = ref<'not_found' | 'unsupported' | null>(null)
 const loadError = ref<string | null>(null)
-const misses = shallowRef<ChatMisses>(noMisses()) // sondages ratés, vue gardée
+const misses = shallowRef<ChatMisses>(noMisses()) // missed polls, view kept
 const rendered = ref(false)
 const olderBusy = ref(false)
 const savedAt = ref<number | null>(null)
@@ -53,7 +53,7 @@ async function restoreChat() {
   touchChat(props.pane.id)
 }
 
-// ------------------------------------------------------------ défilement
+// ------------------------------------------------------------ scrolling
 const nearEnd = (px: number) => {
   const b = box.value
   return !b || b.scrollHeight - b.scrollTop - b.clientHeight < px
@@ -66,16 +66,16 @@ function scrollToEnd(force: boolean) {
     requestAnimationFrame(() => { b.scrollTop = b.scrollHeight })
   }
 }
-// Met à jour la conversation en gardant la lecture en cours : collé en bas si
-// on y était (ou au premier affichage), sinon à la même place.
+// Updates the conversation while keeping the current reading position: stuck to the bottom if
+// we were there (or on first display), otherwise at the same place.
 async function apply(update: () => void, keepScroll = false) {
   const wasNear = stick || nearEnd(120)
   const first = !rendered.value
   update()
   await nextTick()
   rendered.value = true
-  // Retour à une conversation déjà lue : même position (cf. readingPosition.ts),
-  // une fois sa session connue.
+  // Back to a conversation already read: same position (see readingPosition.ts),
+  // once its session is known.
   let restoreTop: number | null = null
   if (restoring && chat.value.file && box.value) {
     restoring = false
@@ -88,10 +88,10 @@ async function apply(update: () => void, keepScroll = false) {
   }
   else if (!keepScroll && (wasNear || first)) scrollToEnd(true)
 }
-// Ouverte sur un résultat de recherche : c'est lui qu'on montre.
+// Opened on a search result: that is what we show.
 let restoring = typeof route.query.hit !== 'string'
-// Collé en bas : la conversation y reste quand la zone rétrécit (question de
-// l'agent, clavier, photos jointes) ou que du contenu arrive.
+// Stuck to the bottom: the conversation stays there when the area shrinks (agent
+// question, keyboard, attached photos) or when content arrives.
 let stick = true
 let ro: ResizeObserver | null = null
 onMounted(() => {
@@ -100,7 +100,7 @@ onMounted(() => {
     if (b && stick) b.scrollTop = b.scrollHeight
   })
   if (box.value) ro.observe(box.value)
-  // Contenu qui grandit après coup (images chargées, blocs dépliés).
+  // Content that grows afterwards (images loaded, blocks expanded).
   if (listEl.value) ro.observe(listEl.value)
 })
 onBeforeUnmount(() => {
@@ -111,17 +111,17 @@ function onScroll() {
   const b = box.value
   if (!b) return
   stick = b.scrollHeight - b.scrollTop - b.clientHeight < 120
-  if (b.scrollTop < 400 && rendered.value) loadOlder() // défilement infini vers le haut
+  if (b.scrollTop < 400 && rendered.value) loadOlder() // infinite scrolling upwards
 }
 
-// ------------------------------------------------------------ machine à écrire
-// Seule une réponse arrivée pendant qu'on suit la conversation se déroule
-// (ChatMarkdown) : jamais au premier chargement, au retour dans l'app ou après
-// le hors-ligne, ni pour les tranches plus anciennes.
+// ------------------------------------------------------------ typewriter
+// Only a reply that arrives while following the conversation is revealed
+// (ChatMarkdown): never on first load, on return to the app or after
+// being offline, nor for older slices.
 const knownReplies = new Set<string>()
 const typing = ref<{ id: string, at: number } | null>(null)
-let synced = false // premier chargement depuis le serveur fait
-let away = false // app en arrière-plan ou hors ligne depuis la dernière relecture
+let synced = false // first load from the server done
+let away = false // app in the background or offline since the last re-read
 watch(pageVisible, (v) => { if (!v) away = true })
 watch(offlineView, (v) => { if (v) away = true })
 function noteReplies(list: ChatItem[]) {
@@ -152,7 +152,7 @@ async function loadChat(): Promise<void> {
       if (!m.clear) return
       chat.value = fresh()
       unavailable.value = r.reason || 'unsupported'
-      // Conversation ouverte avant sa première réponse : celle-ci est nouvelle.
+      // Conversation opened before its first reply: that reply is new.
       synced = true
       return
     }
@@ -161,8 +161,8 @@ async function loadChat(): Promise<void> {
     if (misses.value.misses || misses.value.errors) misses.value = noMisses()
     if (r.unchanged) return
     savedAt.value = null
-    // Nouvelle session (/clear, nouvel agent) : les octets de l'ancienne ne
-    // veulent plus rien dire, on repart du bas.
+    // New session (/clear, new agent): the old one's bytes no
+    // longer mean anything, we start again from the bottom.
     if (chat.value.file && r.file !== chat.value.file) {
       chat.value = fresh()
       synced = false
@@ -190,7 +190,7 @@ async function loadChat(): Promise<void> {
   } finally { busy = false }
 }
 
-// Tranche plus ancienne, en gardant à l'écran ce qu'on était en train de lire.
+// Older slice, keeping on screen what we were reading.
 async function loadOlder() {
   if (olderBusy.value || !(chat.value.olderCursor > 0)) return
   olderBusy.value = true
@@ -206,7 +206,7 @@ async function loadOlder() {
       chat.value = {
         ...chat.value,
         older: (r.items || []).concat(chat.value.older),
-        // pas d'avancée : on s'arrête là
+        // no progress: stop there
         olderCursor: (r.start ?? 0) < before ? (r.start ?? 0) : 0,
       }
     }, true)
@@ -240,11 +240,11 @@ const TOOL_ICON: Record<string, string> = {
   WebFetch: 'i-lucide-globe', WebSearch: 'i-lucide-search', Task: 'i-lucide-bot', Agent: 'i-lucide-bot',
   TodoWrite: 'i-lucide-list-todo', AskUserQuestion: 'i-lucide-message-circle-question',
 }
-// « exec » de Codex lance du code : une commande shell, ou un autre outil (write_stdin…).
+// Codex "exec" runs code: a shell command, or another tool (write_stdin…).
 const isOtherTool = (tool: ChatItem) => tool.name === 'exec' && /^\w+$/.test(tool.text || '')
 const toolLabel = (tool: ChatItem) => t(isOtherTool(tool) ? 'Outil' : TOOL_LABEL[tool.name || ''] || tool.name || '')
 const toolIcon = (tool: ChatItem) => (tool.error ? 'i-lucide-circle-x' : isOtherTool(tool) ? 'i-lucide-wrench' : TOOL_ICON[tool.name || ''] || 'i-lucide-wrench')
-// Notes d'omp (custom_message affichés) : [libellé, icône] par type.
+// omp notes (custom_message shown): [label, icon] per kind.
 const NOTICE: Record<string, [string, string]> = {
   'advisor': ['Conseiller', 'i-lucide-lightbulb'],
   'async-result': ['Tâche de fond terminée', 'i-lucide-circle-check'],
@@ -274,8 +274,8 @@ const blocks = computed<Block[]>(() => {
   const list = items.value
   const c = chat.value
   let tools: ChatItem[] = []
-  // Clé stable d'un bloc d'actions (garde son état déplié quand des pages
-  // plus anciennes s'ajoutent au-dessus).
+  // Stable key of an action block (keeps its expanded state when older
+  // pages are added above).
   const seen = new Map<string, number>()
   const flush = () => {
     if (!tools.length) return
@@ -286,13 +286,13 @@ const blocks = computed<Block[]>(() => {
     out.push({ k: 'tools', key: `${base}#${n}`, list: tools, live: false })
     tools = []
   }
-  // Un « tour » = un message de l'utilisateur et tout ce que l'agent fait
-  // ensuite. À sa fin : « ✓ 2 min 5 s · 7 actions », comme « Worked for… ».
+  // A "turn" = a user message and everything the agent does
+  // afterwards. At its end: "✓ 2 min 5 s · 7 actions", like "Worked for…".
   let turn: { start: string | null, end: string | null, tools: number, replies: number } | null = null
   let lastDay = ''
-  // Nom de l'agent en tête de chacune de ses réponses (une fois par tour).
+  // Agent name at the top of each of its replies (once per turn).
   let needWho = true
-  // Dernière réponse d'un tour : copiable depuis la ligne de fin de tour.
+  // Last reply of a turn: copyable from the end-of-turn line.
   let lastReply: string | null = null
   let lastReplyBlock: (Block & { k: 'assistant' }) | null = null
   const replies: { key: string, time: string | null, text: string }[] = []
@@ -300,7 +300,7 @@ const blocks = computed<Block[]>(() => {
     if (turn && turn.end && turn.start && (turn.tools || turn.replies)) {
       const s = Math.max(0, Math.round((Date.parse(turn.end) - Date.parse(turn.start)) / 1000))
       const acts = turn.tools ? ` · ${turn.tools} ${t(turn.tools > 1 ? 'actions' : 'action')}` : ''
-      // « Répondre » de la dernière réponse : à côté de « Copier », sur la ligne de fin de tour.
+      // "Reply" of the last reply: next to "Copy", on the end-of-turn line.
       if (lastReplyBlock) lastReplyBlock.endsTurn = true
       out.push({ k: 'turn', key: `e:${out.length}`, text: `✓ ${fmtDuration(s)}${acts}`, copy: lastReply, reply: lastReplyBlock?.key || null })
     }
@@ -324,10 +324,10 @@ const blocks = computed<Block[]>(() => {
       flush()
       closeTurn()
       needWho = true
-      // La sortie d'une commande « ! » part aussi à l'agent, qui peut y répondre.
+      // The output of a "!" command also goes to the agent, which may reply to it.
       if (it.role !== 'cmd') turn = { start: it.ts, end: null, tools: 0, replies: 0 }
     } else if (turn && it.ts && it.role !== 'notice') {
-      // Une note (tâche de fond finie après coup…) ne prolonge pas le tour.
+      // A note (background task finished afterwards…) does not extend the turn.
       turn.end = it.ts
       if (it.role === 'tool') turn.tools++
       else if (it.role === 'assistant') turn.replies++
@@ -345,8 +345,8 @@ const blocks = computed<Block[]>(() => {
     if (it.role === 'user') {
       const uploads = it.text.match(UPLOAD_RE) || []
       const text = it.text.replace(/^.*\/\.cache\/herdr-web\/uploads\/\S+\s*$/gm, '').trim()
-      // Images relues dans la transcription (ref = position du message dans le
-      // fichier), ou photos déposées sur le serveur dont le chemin est resté en texte.
+      // Images re-read from the transcript (ref = position of the message in the
+      // file), or photos stored on the server whose path stayed as text.
       const srcs: string[] = []
       if (it.ref && it.images && c.file) {
         for (let k = 0; k < Math.min(it.images, 6); k++) {
@@ -354,7 +354,7 @@ const blocks = computed<Block[]>(() => {
         }
       }
       for (const u of uploads) srcs.push(`/uploads/${encodeURIComponent(u.split('/').pop()!)}`)
-      // Réponse à un message précis : le repère devient une citation qui renvoie à l'original.
+      // Reply to a specific message: the marker becomes a quote linking to the original.
       const parsed = parseReply(text)
       const origin = parsed ? findReplyOrigin(replies, parsed.reply)?.key || null : null
       out.push({ k: 'user', key, text: parsed ? parsed.body : text, srcs, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null, reply: parsed?.reply || null, origin })
@@ -374,36 +374,36 @@ const blocks = computed<Block[]>(() => {
       out.push({ k: 'notice', key, label: t(label), icon, html: md(it.text), long: it.text.split('\n').length > SHELL_LINES || it.text.length > 1200 })
     } else {
       const effort = it.role === 'system' ? it.text.match(/^Effort : (low|medium|high|xhigh|max|ultracode) \(cette session\)$/) : null
-      // Commande locale « / » : séparateur système d'une ligne (« /cost → … »).
+      // Local "/" command: one-line system separator ("/cost → …").
       out.push({ k: 'system', key, text: effort
         ? tl(`Effort : ${effort[1]} (cette session)`, `Effort: ${effort[1]} (this session)`)
         : it.role === 'system' ? t(it.text) : it.text })
     }
   })
   flush()
-  // Dernier tour : résumé seulement s'il est fini (l'agent ne travaille plus).
+  // Last turn: summary only if it is finished (the agent is no longer working).
   if (!working.value && !props.pane.pendingPrompt) closeTurn()
   else {
-    // En cours : la dernière action est celle qui tourne.
+    // In progress: the last action is the one running.
     const last = out[out.length - 1]
     if (last && last.k === 'tools' && working.value) last.live = true
   }
   return out
 })
 
-// Sortie d'une commande : repliée au-delà de quelques lignes.
+// Command output: collapsed beyond a few lines.
 const SHELL_LINES = 12
-// Bloc d'actions : trois ou moins, une ligne chacune ; au-delà, repliées
-// derrière « N actions · dernière action ».
+// Action block: three or fewer, one line each; beyond that, collapsed
+// behind "N actions · last action".
 const isOpen = (key: string) => openTools.has(key)
 function setOpen(key: string, v: boolean) {
   if (v) openTools.add(key)
   else openTools.delete(key)
 }
 
-// « Répondre » sous un message : répond au message entier. Un passage
-// sélectionné dans un message de l'agent fait apparaître un bouton flottant
-// « Répondre » juste après lui, une fois la sélection terminée (cf. utils/selectionReply.ts).
+// "Reply" under a message: replies to the whole message. A passage
+// selected in an agent message brings up a floating "Reply"
+// button right after it, once the selection is done (see utils/selectionReply.ts).
 const msgEl = (key: string) => [...(listEl.value?.querySelectorAll<HTMLElement>('[data-hit-key]') || [])].find(el => el.dataset.hitKey === key) || null
 function replyTo(key: string, selection = '') {
   const b = blocks.value.find(x => x.key === key)
@@ -417,12 +417,12 @@ function replyTo(key: string, selection = '') {
 const selReply = ref<{ key: string, text: string, sig: string, top: number, left: number } | null>(null)
 const selBtn = ref<HTMLElement | null>(null)
 const isTouch = () => window.matchMedia('(pointer: coarse)').matches
-// Sélection courante dans un message de l'agent : texte, fin (dernière ligne) et signature.
+// Current selection in an agent message: text, end (last line) and signature.
 function currentSelection() {
   const sel = window.getSelection()
   const range = sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : null
   const start = range ? (range.startContainer.nodeType === 1 ? range.startContainer as Element : range.startContainer.parentElement) : null
-  // Message du début de la sélection ; la plage est rognée à son contenu (cf. clampRange).
+  // Message at the start of the selection; the range is trimmed to its content (see clampRange).
   const host = start?.closest<HTMLElement>('.msg-ai[data-hit-key]')
   if (!range || !host || readOnly.value || !listEl.value?.contains(host)) return null
   const clamped = clampRange(range, host.querySelector('.md') || host)
@@ -460,7 +460,7 @@ onUnmounted(() => {
   window.removeEventListener('scroll', onSelScroll, true)
   window.removeEventListener('resize', onSelScroll)
 })
-// Citation touchée : défile jusqu'au message d'origine et le met en évidence.
+// Quote tapped: scrolls to the original message and highlights it.
 function gotoOrigin(key: string | null) {
   const el = key ? msgEl(key) : null
   if (!el) return toast(t('Message d’origine introuvable (plus haut dans la conversation ?)'), true)
@@ -477,10 +477,10 @@ async function copyText(text: string) {
     toast(t('Copié'))
   } catch { toast(t('Copie impossible'), true) }
 }
-// Blocs de code du markdown : bouton « Copier » (délégation d'événement,
-// le HTML vient de v-html).
+// Markdown code blocks: "Copy" button (event delegation,
+// the HTML comes from v-html).
 function onListClick(e: MouseEvent) {
-  // Image dans une réponse de l'agent (markdown) : aperçu en grand, comme les nôtres.
+  // Image in an agent reply (markdown): large preview, like ours.
   const img = (e.target as HTMLElement).closest?.('.md-body img') as HTMLImageElement | null
   if (img && img.src) { e.preventDefault(); openImage(img.src); return }
   const btn = (e.target as HTMLElement).closest?.('.code-copy') as HTMLElement | null
@@ -497,17 +497,17 @@ function onListClick(e: MouseEvent) {
   }).catch(() => toast(t('Copie impossible'), true))
 }
 
-// ------------------------------------------------------------ en attente
-// Messages envoyés mais pas encore pris par l'agent : bulles en pointillés
-// sous la conversation, jusqu'à ce qu'ils apparaissent dans sa transcription.
-// Nos envois pas encore pris + la file propre à Claude (messages tapés sur
-// l'ordinateur pendant qu'il travaillait), sans doublons.
-// Écran de Claude au travail (lu par le serveur) : la transcription n'a une
-// commande « ! » qu'à la fin ; l'écran dit déjà qu'elle tourne, et quels
-// messages sont partis ou encore dans sa file (cf. shared/queuedPhase.ts).
+// ------------------------------------------------------------ queued
+// Messages sent but not yet taken by the agent: dotted bubbles
+// below the conversation, until they appear in its transcript.
+// Our sends not yet taken + Claude's own queue (messages typed on
+// the computer while it was working), without duplicates.
+// Screen of a working Claude (read by the server): the transcript only has a
+// "!" command at the end; the screen already says it is running, and which
+// messages were sent or are still in its queue (see shared/queuedPhase.ts).
 const screen = computed(() => (!readOnly.value && props.pane.agent === 'claude' && props.pane.status === 'working' ? props.pane.claudeScreen || null : null))
 const liveShell = computed(() => (screen.value && screen.value.shell) || null)
-// Durée de la commande en cours, à la seconde.
+// Duration of the running command, to the second.
 const nowTick = ref(Date.now())
 let tick: ReturnType<typeof setInterval> | undefined
 watch(liveShell, (sh) => {
@@ -525,8 +525,8 @@ const normText = (s: string) => dropReplyMarker(String(s || '').replace(/\s+/g, 
 const isUploadLine = (l: string) => l.includes('/.cache/herdr-web/uploads/')
 const queuedList = computed(() => {
   const p = props.pane
-  // Déjà dans la conversation (le serveur ne l'a pas encore constaté) : on n'en
-  // montre pas deux exemplaires. « ! cmd » y figure comme commande sans « ! ».
+  // Already in the conversation (the server has not noticed yet): we do not
+  // show two copies. "! cmd" appears there as a command without "!".
   const inChat = (q: QueuedMessage) => {
     const n = normText(q.text.split('\n').filter(l => !isUploadLine(l)).join(' ')).slice(0, 60)
     const nb = normText(q.text.replace(/^\s*!\s*/, '')).slice(0, 60)
@@ -535,7 +535,7 @@ const queuedList = computed(() => {
   }
   const mine = readOnly.value ? [] : [...(p.queued || [])]
   for (const q of props.localQueued) if (!mine.some(x => x.id === q.id)) mine.push(q)
-  // Ordre d'envoi, quelle que soit la source (serveur ou envoi local).
+  // Sending order, whatever the source (server or local send).
   mine.sort((a, b) => (a.at && b.at ? a.at - b.at : 0))
   const list: QueuedMessage[] = mine.filter(q => !inChat(q))
   for (const q of chat.value.queue || []) {
@@ -561,8 +561,8 @@ const queuedList = computed(() => {
     }
   })
 })
-// « Annuler » : le message sort de la file de l'agent et revient dans le champ
-// de saisie. Déjà lu entre-temps : le serveur refuse, on le dit.
+// "Cancel": the message leaves the agent's queue and comes back into the input
+// field. Already read in the meantime: the server refuses, we say so.
 const canCancel = computed(() => !readOnly.value && canCancelQueued(props.pane))
 const cancelling = ref<string | null>(null)
 async function cancelQueued(q: { id: string, raw: string, mine: boolean }) {
@@ -591,9 +591,9 @@ const queuedWhy = computed(() => {
 watch(() => queuedList.value.map(q => `${q.id}:${q.phase}`).join(','), () => nextTick(() => scrollToEnd(false)))
 watch(() => liveShell.value && liveShell.value.lines.join('\n'), () => nextTick(() => scrollToEnd(false)))
 
-// Pas encore de conversation mais un écran d'attente (légende de touches) :
-// l'agent attend une action. Écran reconnu : détail et boutons dans le panneau
-// « À toi » en bas ; sinon aperçu des dernières lignes, à faire dans le terminal.
+// No conversation yet but a waiting screen (key legend):
+// the agent is waiting for an action. Recognized screen: details and buttons in the
+// "Your turn" panel at the bottom; otherwise preview of the last lines, to do in the terminal.
 const waiting = computed(() => {
   const p = props.pane
   if (unavailable.value !== 'not_found' || !p.screen || p.status === 'working' || readOnly.value) return null
@@ -609,8 +609,8 @@ const status = computed(() => {
   if (p.pendingPrompt && p.status !== 'working') {
     return { typing: true, text: tl(`Ton premier message partira dès que ${kindLabel(p.agent)} sera prêt`, `Your first message will be sent when ${kindLabel(p.agent)} is ready`) }
   }
-  // Claude : son verbe du moment (« ✻ Orbiting… »), lu à l'écran par le serveur ;
-  // l'étoile qui tourne devant est animée côté app (ClaudeSpinner).
+  // Claude: its current verb ("✻ Orbiting…"), read from the screen by the server;
+  // the spinning star in front is animated on the app side (ClaudeSpinner).
   if (liveShell.value) return { typing: true, text: tl('Commande en cours…', 'Command running…') }
   if (p.status === 'working' && p.agent === 'claude' && p.activity) return { typing: true, verb: true, text: `${p.activity}…` }
   if (p.status === 'working') return { typing: true, text: `${kindLabel(p.agent)} ${tl('travaille…', 'is working…')}` }
@@ -619,10 +619,10 @@ const status = computed(() => {
 })
 watch(() => props.pane.status, () => nextTick(() => scrollToEnd(false)))
 
-// ------------------------------------------------------------ recherche
-// Charge toute la conversation, puis surligne les occurrences (CSS Custom
-// Highlight API : rien n'est modifié dans le DOM rendu par Vue) et permet de
-// les parcourir.
+// ------------------------------------------------------------ search
+// Loads the whole conversation, then highlights the matches (CSS Custom
+// Highlight API: nothing is modified in the DOM rendered by Vue) and lets
+// you step through them.
 const search = reactive({ q: '', hits: [] as Range[], cur: -1, loading: false })
 let jumping = false
 const searchInput = ref<{ inputRef?: HTMLInputElement } | null>(null)
@@ -641,8 +641,8 @@ function applySearchMarks(jumpToLast: boolean, target?: HTMLElement | null) {
   if (!searchOpen.value || search.q.length < 2 || !listEl.value) return
   const q = fold(search.q)
   const walker = document.createTreeWalker(listEl.value, NodeFilter.SHOW_TEXT)
-  // fold() garde la même longueur que le texte d'origine pour les lettres
-  // accentuées usuelles (NFD puis retrait des accents).
+  // fold() keeps the same length as the original text for the usual
+  // accented letters (NFD then accents removed).
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     const f = fold(n.nodeValue || '')
     let i = 0
@@ -720,7 +720,7 @@ async function jumpToResult() {
   search.loading = true
   jumping = true
   try {
-    // Chaque chargement remonte d'une tranche jusqu'à celle du message visé.
+    // Each load goes up one slice until the one of the target message.
     while (chat.value.olderCursor > offset && !readOnly.value) {
       const before = chat.value.olderCursor
       await loadOlder()
@@ -928,7 +928,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
           </button>
         </Teleport>
         <div v-if="queuedList.length || liveShell" class="queued-list">
-          <!-- Déjà partis (visibles comme envoyés à l'écran), pas encore dans la transcription. -->
+          <!-- Already sent (visible as sent on screen), not yet in the transcript. -->
           <div v-for="q in queuedList.filter(x => x.phase === 'sent')" :key="q.id" class="msg-user-wrap">
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Voir le message d’origine')" @click="gotoOrigin(q.origin)">
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
@@ -938,7 +938,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
             </div>
             <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ t('Envoyé · lu par l’agent') }}</span></div>
           </div>
-          <!-- Commande « ! » en cours : sortie en direct lue à l'écran. -->
+          <!-- "!" command running: live output read from the screen. -->
           <div v-if="liveShell" class="msg-user-wrap">
             <div class="msg-shell bash running">
               <div class="msg-shell-cmd">
@@ -972,7 +972,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
         </div>
 
         <div v-if="status" class="chat-status" :class="{ typing: status.typing, waiting: !status.typing }">
-          <!-- Le verbe de Claude a son étoile animée : pas de point d'état en plus. -->
+          <!-- Claude's verb has its animated star: no extra state dot. -->
           <span v-if="'verb' in status" class="claude-verb-line"><ClaudeSpinner /><UChatShimmer :text="status.text" :duration="2.4" class="claude-verb" /></span>
           <template v-else>
             <i class="status-dot" />

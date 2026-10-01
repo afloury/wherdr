@@ -1,14 +1,14 @@
 <script setup lang="ts">
-// Aperçu en direct de la machine à écrire (Réglages) : exemple de réponse
-// déroulé par ChatMarkdown, comme dans la conversation. Rejoué à chaque
-// changement de vitesse ou de texte chiffré, et par le bouton ↻.
+// Live preview of the typewriter (Settings): sample reply
+// revealed by ChatMarkdown, as in the conversation. Replayed on each
+// change of speed or cipher text, and by the ↻ button.
 import { previewStart, typingSample } from '~/utils/typingPreview'
 
 const html = md(typingSample(language))
 const typing = ref<number | null>(null)
 const box = ref<HTMLElement | null>(null)
-// Hauteur finale réservée (mesurée avant le premier déroulé, texte entier) :
-// la carte ne grandit pas pendant l'écriture.
+// Final height reserved (measured before the first reveal, full text):
+// the card does not grow while writing.
 const height = ref('')
 const replay = () => { typing.value = previewStart(typingSpeed.value, Date.now()) }
 onMounted(() => {

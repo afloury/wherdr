@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Barre « hors ligne » dans le flux de la vue (jamais par-dessus l'en-tête) :
-// dernier état connu ou lecture hors ligne, sinon connexion perdue, avec
-// « Réessayer » tant que le serveur est injoignable.
+// "Offline" bar in the view's flow (never over the header):
+// last known state or offline reading, otherwise connection lost, with
+// "Retry" while the server is unreachable.
 const props = defineProps<{ label?: string, at?: number | null, dateStyle?: 'short' | 'medium' }>()
 const text = computed(() => {
   if (props.label) return props.at ? `${props.label} · ${new Date(props.at).toLocaleString(language, { dateStyle: props.dateStyle || 'short', timeStyle: 'short' })}` : props.label

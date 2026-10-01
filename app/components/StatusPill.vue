@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// État d'un agent, à la manière de la liste « agents » de herdr.dev :
-// point de couleur + ligne mono « working · claude » (+ « · opus 5.5 » avec `model`).
+// State of an agent, in the style of herdr.dev's "agents" list:
+// colored dot + mono "working · claude" line (+ "· opus 5.5" with `model`).
 import type { Pane } from '#shared/types'
 
 defineProps<{ pane: Pane | null | undefined, kind?: boolean, model?: boolean }>()

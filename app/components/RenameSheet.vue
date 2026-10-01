@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Renommer : le nom va dans Herdr (pane.rename, tab.rename, workspace.rename),
-// donc visible partout. Un pane peut revenir à son nom automatique ; un espace
-// ou un onglet garde toujours un nom.
+// Rename: the name goes into Herdr (pane.rename, tab.rename, workspace.rename),
+// so it is visible everywhere. A pane can go back to its automatic name; a space
+// or a tab always keeps a name.
 const open = computed({
   get: () => Boolean(renameTarget.value || renameSpace.value),
   set: (v) => {

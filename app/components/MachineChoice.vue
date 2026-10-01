@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Choix de la machine (feuilles « Nouvel agent » et « New project ») : un
-// bouton par machine, pastille d'état ; une machine hors ligne est grisée.
+// Machine choice ("New agent" and "New project" sheets): one
+// button per machine, state dot; an offline machine is grayed out.
 import type { MachineConfig } from '#shared/types'
 
 const props = defineProps<{ machines: MachineConfig[], modelValue: string }>()

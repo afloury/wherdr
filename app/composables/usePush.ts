@@ -1,4 +1,4 @@
-// Notifications Web Push : abonnement de l'appareil, test, langue des notifs.
+// Web Push notifications: device subscription, test, notification language.
 import type { NotifyScope } from '../../server/utils/notificationPolicy'
 import { type Quiet, type QuietScope, quietActive } from '../../shared/quiet'
 
@@ -53,8 +53,8 @@ export async function enablePush() {
     const reg = await navigator.serviceWorker.ready
     const key = urlB64ToUint8(appConfig.value.push.key)
     let sub = await reg.pushManager.getSubscription()
-    // Ancien endpoint (abonnement courant, sinon le dernier connu si le
-    // navigateur l'a déjà perdu) : le serveur le remplace et garde son silence.
+    // Old endpoint (current subscription, otherwise the last known one if the
+    // browser has already lost it): the server replaces it and keeps its quiet setting.
     const previous = sub?.endpoint || readLastEndpoint()
     if (sub) await sub.unsubscribe().catch(() => {})
     sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key })
@@ -73,14 +73,14 @@ export async function testPush() {
   } catch (err) { toast((err as Error).message, true) }
 }
 
-// ------------------------------------------------------------ mode silence
-// État lu sur le serveur (le filtre s'applique là-bas, avant l'envoi). `now`
-// avance chaque minute : un silence expiré disparaît de l'interface tout seul.
+// ------------------------------------------------------------ quiet mode
+// State read from the server (the filter applies there, before sending). `now`
+// advances every minute: an expired quiet period disappears from the UI on its own.
 export const quietState = ref<{ global: Quiet | null, device: Quiet | null }>({ global: null, device: null })
 export const quietNow = ref(Date.now())
 if (import.meta.client) setInterval(() => { quietNow.value = Date.now() }, 30000)
 
-// Silence en cours vu par cet appareil : le sien d'abord, sinon celui de tous.
+// Current quiet period seen by this device: its own first, otherwise the global one.
 export const quietCurrent = computed<{ scope: QuietScope, quiet: Quiet } | null>(() => {
   const { global, device } = quietState.value
   if (quietActive(device, quietNow.value)) return { scope: 'device', quiet: device! }
@@ -100,7 +100,7 @@ export async function refreshQuiet() {
   try {
     quietState.value = await api('/api/push/quiet', { endpoint: await pushEndpoint() })
     quietNow.value = Date.now()
-  } catch { /* on garde le dernier état connu */ }
+  } catch { /* keep the last known state */ }
 }
 
 export async function setQuiet(scope: QuietScope, on: boolean, until: number | null = null) {
@@ -108,7 +108,7 @@ export async function setQuiet(scope: QuietScope, on: boolean, until: number | n
   quietNow.value = Date.now()
 }
 
-// Indicateur de l'accueil : coupe tous les silences qui touchent cet appareil.
+// Home indicator: turns off all quiet periods affecting this device.
 export async function endQuiet() {
   try {
     const { global, device } = quietState.value

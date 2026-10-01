@@ -1,21 +1,21 @@
 <script lang="ts">
-// Vue qui a posé `curPane` en dernier (partagé par toutes les instances).
+// View that set `curPane` last (shared by all instances).
 let curPaneOwner: symbol | null = null
 </script>
 
 <script setup lang="ts">
-// Vue d'un agent : onglets du space, en-tête, puis le pane (sélecteur
-// Conversation / Terminal, invite bloquante, barre de touches, barre de saisie).
-// Téléphone : pas de sélecteur, des icônes d'en-tête (terminal `>_`, Projet)
-// basculent la présentation du pane. Ordinateur : petit sélecteur dans
-// l'en-tête (ou dans celui de la case, côte à côte).
-// Pane d'un onglet de plusieurs panes : mini-carte de l'onglet dans l'en-tête
-// (retour au plan, ou vue côte à côte sur ordinateur) et, sur téléphone,
-// balayage gauche / droite vers les voisins (ordre de lecture de Herdr).
-// `cell` : case de la vue côte à côte (ordinateur). Toutes les cases sont
-// vivantes : la conversation, ou le miroir du terminal (MirrorView, sans jamais
-// redimensionner le vrai pane). Seule la case active (`active`, un clic dans
-// une case l'active) a le champ de saisie, et son miroir reçoit les frappes.
+// Agent view: space tabs, header, then the pane (Conversation / Terminal
+// selector, blocking prompt, key bar, input bar).
+// Phone: no selector, header icons (terminal `>_`, Project)
+// toggle the pane's presentation. Computer: small selector in
+// the header (or in the cell's, side by side).
+// Pane of a tab with several panes: mini-map of the tab in the header
+// (back to the plan, or side-by-side view on a computer) and, on the phone,
+// left / right swipe to the neighbours (Herdr's reading order).
+// `cell`: cell of the side-by-side view (computer). All cells are
+// live: the conversation, or the terminal mirror (MirrorView, without ever
+// resizing the real pane). Only the active cell (`active`, a click in
+// a cell activates it) has the input field, and its mirror receives the keystrokes.
 import type { QueuedMessage } from '#shared/types'
 import type { PaneViewMode } from '~/composables/useHerdr'
 import { neighborPane } from '#shared/layout'
@@ -29,9 +29,9 @@ const emit = defineEmits<{ activate: [] }>()
 const route = useRoute()
 const router = useRouter()
 
-// Pane regardé (pas de notification pour lui, lu dès qu'il est fini) : la case
-// active. La vue qui l'a posé est seule à l'effacer (la vue suivante du même pane
-// peut se monter avant que la précédente ne se démonte).
+// Pane being viewed (no notification for it, read as soon as it finishes): the active
+// cell. Only the view that set it clears it (the next view of the same pane
+// may mount before the previous one unmounts).
 const live = computed(() => !props.cell || Boolean(props.active))
 const me = Symbol('vue agent')
 watch(live, (on) => {
@@ -45,8 +45,8 @@ onUnmounted(() => {
 
 const pane = computed(() => herdrState.value.panes.find(p => p.id === props.paneId))
 const workspace = computed(() => herdrState.value.workspaces.find(w => w.id === pane.value?.workspace))
-// Plusieurs panes dans l'onglet (case ou plein écran) : chaque pane porte son
-// propre nom ; le nom du space reste dans l'en-tête de l'onglet.
+// Several panes in the tab (cell or full screen): each pane carries its
+// own name; the space name stays in the tab header.
 const ownTitle = computed(() => Boolean(props.cell || (tabEnt.value && tabEnt.value.panes.length > 1)))
 const headTitle = computed(() => (pane.value ? (ownTitle.value ? paneTitle(pane.value) : spaceTitle(pane.value, workspace.value)) : '—'))
 const subtitle = computed(() => {
@@ -55,26 +55,26 @@ const subtitle = computed(() => {
 })
 const command = computed(() => (pane.value?.command && pane.value.command !== headTitle.value && pane.value.command !== subtitle.value ? pane.value.command : ''))
 const tabName = computed(() => pane.value && herdrState.value.tabs?.filter(x => x.workspace === pane.value?.workspace).length! > 1 ? pane.value.tabLabel : '')
-// Onglet de ce pane (chaque conversation garde le sien).
+// Tab of this pane (each conversation keeps its own).
 const viewMode = computed<PaneViewMode>({
   get: () => paneViewMode(props.paneId),
   set: m => setPaneViewMode(props.paneId, m),
 })
-// État pas encore reçu (ouverture depuis une notification) : on attend de
-// savoir si c'est un agent, pour ne pas ouvrir le terminal pour rien.
-// Case : le mode mémorisé du pane (conversation ou miroir du terminal), que la
-// case ait le focus ou non ; le focus ne change que la bordure et la saisie.
+// State not received yet (opened from a notification): we wait to
+// know whether it is an agent, so as not to open the terminal for nothing.
+// Cell: the pane's remembered mode (conversation or terminal mirror), whether the
+// cell has the focus or not; the focus only changes the border and the input.
 const mode = computed<PaneViewMode | 'mirror' | null>(() => {
   const p = pane.value
   if (!p) return null
   if (props.cell) return cellMode({ chat: hasChat(p), viewMode: viewMode.value })
-  // Projet : onglet du téléphone seulement (colonne à droite sur ordinateur).
+  // Project: phone tab only (right-hand column on a computer).
   if (viewMode.value === 'project') return projectTab.value ? 'project' : hasChat(p) ? 'chat' : 'term'
   return hasChat(p) ? viewMode.value : 'term'
 })
 
-// Panneau « Projet » (coordinateur herdr-projects) : onglet sur téléphone,
-// colonne repliable à droite sur ordinateur. Rien sans herdr-projects.
+// "Project" panel (herdr-projects coordinator): tab on the phone,
+// collapsible right-hand column on a computer. Nothing without herdr-projects.
 const sideOpen = ref(readSideOpen())
 function readSideOpen() {
   try { return localStorage.getItem('projectSide') !== '0' }
@@ -86,9 +86,9 @@ function setSideOpen(v: boolean) {
   catch { /* stockage indisponible */ }
   haptic()
 }
-// Largeur de la colonne : poignée sur son bord gauche (glisser ; double-clic =
-// largeur par défaut), bornée (260 px, moitié de la zone), gardée sur l'appareil.
-// La largeur enregistrée est aussi bornée en CSS : la fenêtre peut rétrécir.
+// Column width: handle on its left edge (drag; double-click =
+// default width), clamped (260 px, half the area), kept on the device.
+// The saved width is also clamped in CSS: the window may shrink.
 const sideWidth = ref(readSideWidth())
 const sideDrag = ref(false)
 const sideStyle = computed(() => (sideWidth.value ? { width: `${sideWidth.value}px` } : undefined))
@@ -136,8 +136,8 @@ const composer = ref<{ focus: () => void, focusEnd: () => void, blur: () => void
 const mirror = ref<{ focus: () => void } | null>(null)
 const searchOpen = ref(typeof route.query.q === 'string' && typeof route.query.hit === 'string')
 
-// Pane fermé pendant qu'on le regarde. Un pane tout juste créé peut manquer
-// au premier état reçu : on ne conclut qu'après l'avoir vu, ou après 4 s.
+// Pane closed while being viewed. A pane just created may be missing
+// from the first state received: we only conclude after seeing it, or after 4 s.
 const seen = ref(Boolean(pane.value))
 const graceOver = ref(false)
 const graceTimer = setTimeout(() => { graceOver.value = true }, 4000)
@@ -168,8 +168,8 @@ function setMode(m: PaneViewMode) {
   if (desk.value && m === 'term') nextTick(() => (props.cell ? mirror.value : ctl)?.focus())
   haptic()
 }
-// Icônes d'en-tête (téléphone) : un toucher montre le terminal (ou le panneau
-// Projet), un second revient à la conversation.
+// Header icons (phone): one tap shows the terminal (or the Project
+// panel), a second one goes back to the conversation.
 function toggleMode(m: 'term' | 'project') {
   setMode(toggleViewMode(mode.value, m))
 }
@@ -181,9 +181,9 @@ function toggleSearch() {
   }
 }
 
-// « Problème » ou « Question » d'une tâche à tester (panneau Projet) : le début du message va
-// dans le champ de saisie, curseur à la fin ; sur téléphone, retour à la
-// conversation. Focus donné dans le geste : l'iPhone ouvre le clavier.
+// "Problem" or "Question" on a task to test (Project panel): the message start goes
+// into the input field, cursor at the end; on the phone, back to the
+// conversation. Focus given within the gesture: the iPhone opens the keyboard.
 const draft = useDraft(props.paneId)
 function onPrefill(prefix: string) {
   draft.text = prefillDraft(draft.text, prefix)
@@ -191,14 +191,14 @@ function onPrefill(prefix: string) {
   composer.value?.focusEnd()
 }
 
-// Messages envoyés à l'instant, affichés sans attendre le prochain état.
+// Messages just sent, shown without waiting for the next state.
 const localQueued = ref<QueuedMessage[]>([])
 function onSent(q: QueuedMessage | null) {
   if (q) localQueued.value = [...localQueued.value, q]
   chatRef.value?.scrollToEnd(true)
   chatRef.value?.reload()
 }
-// Dès que le serveur les connaît (ou après 10 s), l'état du serveur fait foi.
+// As soon as the server knows them (or after 10 s), the server state wins.
 watch(pane, (p) => {
   if (!localQueued.value.length) return
   const known = new Set((p?.queued || []).map(q => q.id))
@@ -215,15 +215,15 @@ const where = computed(() => {
   const p = pane.value
   return p ? shortPath(p.cwd) : ''
 })
-// Plusieurs machines : celle de l'agent, dans ses métadonnées.
+// Several machines: the agent's, in its metadata.
 const machine = computed(() => (multiMachine.value && pane.value ? machineInfo(pane.value.machine) : undefined))
 const machineDown = computed(() => Boolean(machine.value && machine.value.status !== 'online'))
 const changesOpen = ref(false)
 const attachInput = ref<HTMLInputElement | null>(null)
-// Menu interactif ouvert (vue conversation) : ce qui serait tapé irait dans sa
-// recherche ; la carte du menu a son propre champ.
-// Terminal affiché (vue terminal ou miroir) : l'invite, l'écran d'attente ou le
-// menu y sont déjà, et la barre de touches y répond ; pas de carte « À toi » en double.
+// Interactive menu open (conversation view): what would be typed would go into its
+// search; the menu card has its own field.
+// Terminal shown (terminal view or mirror): the prompt, waiting screen or
+// menu are already there, and the key bar answers them; no duplicate "Your turn" card.
 const termShown = computed(() => mode.value === 'term' || mode.value === 'mirror')
 const composerShown = computed(() => showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) }) && !(menu.value && mode.value !== 'term'))
 const canAttachTerminal = computed(() => terminalAttachment({
@@ -253,10 +253,10 @@ async function sendFiles(files: File[]) {
   }
 }
 
-// Fichiers glissés depuis le Finder / l'explorateur : conversation → photos du
-// champ (même chemin que le « + ») ; terminal → même envoi que « Joindre un
-// fichier… ». Ailleurs (panneau Projet, hors ligne), rien : app.vue empêche
-// seulement le navigateur d'ouvrir le fichier.
+// Files dragged from the Finder / file explorer: conversation → photos of the
+// field (same path as the "+"); terminal → same send as "Attach a
+// file…". Elsewhere (Project panel, offline), nothing: app.vue only stops
+// the browser from opening the file.
 const dropTarget = computed<'chat' | 'term' | null>(() => {
   if (canAttachTerminal.value) return 'term'
   if (composerShown.value && mode.value !== 'project' && !offlineView.value) return 'chat'
@@ -285,17 +285,17 @@ function onDrop(e: DragEvent) {
   }
 }
 
-// Menu de l'agent : feuille sur téléphone, menu déroulant sur ordinateur.
+// Agent menu: sheet on the phone, dropdown menu on a computer.
 const agentMenu = computed<MenuItem[]>(() => {
   const p = pane.value
   const items: MenuItem[] = []
   if (canAttachTerminal.value) items.push({ label: t('Joindre un fichier…'), icon: 'i-lucide-paperclip', run: () => attachInput.value?.click() })
   if (p) items.push({ label: t('Voir les changements'), icon: 'i-lucide-file-diff', run: () => { changesOpen.value = true } })
   if (p) items.push({ label: t('Renommer le pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } })
-  // Diviser, déplacer vers un autre onglet (jamais de zoom ni de redimensionnement).
+  // Split, move to another tab (never zoom or resize).
   if (p) items.push(...paneSpaceItems(p))
   if (p) items.push(copyPaneIdItem(p))
-  // Actions des plugins Herdr de sa machine qui portent sur un workspace / pane.
+  // Herdr plugin actions of its machine that apply to a workspace / pane.
   if (p && agentPluginActions(p.machine).length) {
     items.push({ label: t('Actions des plugins'), icon: 'i-lucide-puzzle', run: () => openPluginMenu({ pane: p }) })
   }
@@ -303,14 +303,14 @@ const agentMenu = computed<MenuItem[]>(() => {
     label: t('Prendre la main sur ce terminal'), icon: 'i-lucide-arrow-left-right',
     run: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => ctl.connect(true)) },
   })
-  // Relancer Claude / Codex dans ce pane, sur la même conversation.
+  // Relaunch Claude / Codex in this pane, on the same conversation.
   if (p && canRestart(p) && !p.restart) items.push({ label: t('Redémarrer l’agent'), icon: 'i-lucide-rotate-cw', run: () => restartAgent(p) })
   items.push({
     label: t('Reconnecter'), icon: 'i-lucide-refresh-cw',
     run: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => { ctl.reset(); ctl.connect(false) }) },
   })
-  // Onglet et espace : appui long (clic droit) sur l'onglet, la carte du space
-  // ou son titre ; nouvel onglet : le « + » de l'en-tête ou des onglets.
+  // Tab and space: long press (right click) on the tab, the space card
+  // or its title; new tab: the "+" of the header or of the tabs.
   if (!props.cell) items.push(...settingsMenuItems())
   if (p) {
     items.push({ kind: 'separator' })
@@ -318,7 +318,7 @@ const agentMenu = computed<MenuItem[]>(() => {
       label: p.agent ? tl(`Fermer ce pane (arrête ${kindLabel(p.agent)})`, `Close this pane (stops ${kindLabel(p.agent)})`) : t('Fermer ce terminal'),
       icon: 'i-lucide-trash-2', danger: true, run: () => closePane(p),
     })
-    // Pane dans un worktree : supprimer le checkout (et fermer son workspace).
+    // Pane in a worktree: remove the checkout (and close its workspace).
     const ws = herdrState.value.workspaces.find(w => w.id === p.workspace)
     if (ws && ws.worktree) {
       items.push({ label: t('Supprimer ce worktree'), icon: 'i-lucide-git-branch', danger: true, run: () => removeWorktreeOf(p.workspace) })
@@ -336,8 +336,8 @@ const dropdownItems = computed(() => toDropdown(agentMenu.value))
 function openAgentMenu() { openMenu(agentMenu.value) }
 watch(() => pane.value && (pane.value.machine || ''), (m) => { if (m !== undefined) loadPluginActions(m) }, { immediate: true })
 
-// Sélecteur Conversation / Terminal (ordinateur) : dans l'en-tête du pane
-// ou de la case côte à côte. Le panneau Projet y est une colonne.
+// Conversation / Terminal selector (computer): in the pane header
+// or in the side-by-side cell's. The Project panel is a column there.
 const tabs = computed(() => [
   { label: t('Conversation'), value: 'chat' },
   { label: t('Terminal'), value: 'term' },
@@ -363,16 +363,16 @@ function openPlan() {
   if (desk.value) navigateTo({ path: tabPath(tabEnt.value.tab.id), query: { pane: props.paneId } })
   else backToTab(tabEnt.value.tab.id)
 }
-// Retour : au plan de l'onglet si on en vient, sinon à la liste.
+// Back: to the tab's plan if we came from it, otherwise to the list.
 function goBack() {
   const back = (history.state as { back?: string } | null)?.back
   if (tabEnt.value && back === tabPath(tabEnt.value.tab.id)) router.back()
   else navigateTo('/')
 }
 
-// Balayage (téléphone, conversation) : la conversation suit le doigt, amortie,
-// freinée au bord ; assez loin ou assez vite, le voisin la remplace (même
-// entrée d'historique : le retour ramène au plan).
+// Swipe (phone, conversation): the conversation follows the finger, damped,
+// braked at the edge; far or fast enough, the neighbour replaces it (same
+// history entry: back returns to the plan).
 const enter = swipeDir.value
 swipeDir.value = 0
 const drag = ref(0)
@@ -382,15 +382,15 @@ let sy = 0
 let st = 0
 let axis: 'x' | 'y' | null | 'off' = 'off'
 const neighbor = (step: 1 | -1) => (tabEnt.value ? neighborPane(tabEnt.value.layout, props.paneId, step) : null)
-// Bloc qui défile lui-même de côté (code, tableau) : le geste lui revient.
+// Block that scrolls sideways itself (code, table): the gesture belongs to it.
 function scrollsSideways(el: EventTarget | null, root: HTMLElement) {
   for (let n = el as HTMLElement | null; n && n !== root; n = n.parentElement) {
     if (n.scrollWidth > n.clientWidth + 1 && /(auto|scroll)/.test(getComputedStyle(n).overflowX)) return true
   }
   return false
 }
-// Geste pris sur la conversation, la question de l'agent ou le terminal (qui
-// ne défile que verticalement) ; pas sur la barre de touches ni le champ de saisie.
+// Gesture taken on the conversation, the agent's question or the terminal (which
+// only scrolls vertically); not on the key bar or the input field.
 function onSwipeStart(e: TouchEvent) {
   axis = 'off'
   if (desk.value || !inTab.value || e.touches.length !== 1) return
@@ -430,16 +430,16 @@ const swipeStyle = computed(() => (inTab.value && !desk.value
   ? { transform: drag.value ? `translateX(${drag.value}px)` : undefined, transition: dragging.value ? 'none' : 'transform .18s ease' }
   : {}))
 
-// Ordinateur : donner le clavier à la vue interactive à l'ouverture.
+// Computer: give the keyboard to the interactive view on opening.
 onMounted(() => {
   if (desk.value && live.value) setTimeout(() => (mode.value === 'term' ? ctl : mode.value === 'mirror' ? mirror.value : composer.value)?.focus(), 50)
 })
-// Case tout juste activée d'un clic ailleurs que dans son contenu : on lui donne le clavier.
+// Cell just activated by a click outside its content: we give it the keyboard.
 watch(() => props.active, (a, was) => {
   if (a && !was && props.cell) setTimeout(() => { if (!document.activeElement?.closest('.cell-view.active')) (mode.value === 'mirror' ? mirror.value : composer.value)?.focus() }, 50)
 })
 
-// Clavier ouvert (iPhone) : la vue se cale sur la partie visible.
+// Keyboard open (iPhone): the view fits the visible part.
 const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`, top: `${vvTop.value}px` } : {}))
 </script>
 

@@ -1,6 +1,6 @@
 <script lang="ts">
-// Tâches « À tester » confirmées, par pane : gardées en changeant d'onglet,
-// jusqu'à ce que le coordinateur les retire de TASKS.md.
+// Confirmed "To test" tasks, per pane: kept when switching tabs,
+// until the coordinator removes them from TASKS.md.
 const confirmedByPane = new Map<string, Set<string>>()
 const launchedByPane = new Map<string, Set<string>>()
 const unblockedByPane = new Map<string, Set<string>>()
@@ -8,23 +8,23 @@ const reviewedByPane = new Map<string, Set<string>>()
 </script>
 
 <script setup lang="ts">
-// Panneau « Projet » du coordinateur herdr-projects, en lecture seule : les
-// listes de TASKS.md dans leur ordre (noms connus avec une icône), les threads
-// ouverts dans « En cours » (état donné par herdr-projects, relu quand un agent
-// du projet change d'état), les threads clôturés dans « Fait » (20 plus récents,
-// section repliée, « tout voir »). Toucher un thread ouvert ouvre son agent ;
-// toucher un rapport l'affiche.
-// « À tester » : chaque tâche a Confirmer (message « ✓ Testé : … » envoyé au
-// coordinateur), Problème (« ✗ Problème : … — ») et Question (« ? Question : … — »),
-// ces deux-là mis dans son champ de saisie (émis vers la vue de l'agent).
-// « À décider » : Question et Répondre préparent aussi un brouillon.
-// « À relire » : Relu envoie « ✓ Relu : … », Commenter prépare « ↳ Retour sur
-// … : » (le lien de la PR : badge-lien ou URL du texte, posés par le coordinateur).
-// Seules décorations des tâches : les badges [b:couleur(texte)](cible) du
-// coordinateur ; les URL du texte sont des liens simples.
-// « Backlog » : Lancer envoie le message ; Préciser prépare un brouillon.
-// Le fichier n'est jamais écrit d'ici.
-// `side` : colonne à droite de la conversation (ordinateur), repliable.
+// "Project" panel of the herdr-projects coordinator, read-only: the
+// TASKS.md lists in their order (known names with an icon), the threads
+// open in "In progress" (state given by herdr-projects, re-read when an agent
+// of the project changes state), the closed threads in "Done" (20 most recent,
+// section collapsed, "see all"). Tapping an open thread opens its agent;
+// tapping a report shows it.
+// "To test": each task has Confirm (message "✓ Testé : …" sent to the
+// coordinator), Problem ("✗ Problème : … — ") and Question ("? Question : … — "),
+// the latter two put into its input field (emitted to the agent view).
+// "To decide": Question and Answer also prepare a draft.
+// "To review": Reviewed sends "✓ Relu : …", Comment prepares "↳ Retour sur
+// … :" (the PR link: link badge or URL in the text, set by the coordinator).
+// The only task decorations: the coordinator's [b:color(text)](target)
+// badges; URLs in the text are plain links.
+// "Backlog": Launch sends the message; Detail prepares a draft.
+// The file is never written from here.
+// `side`: column to the right of the conversation (computer), collapsible.
 import type { Pane, QueuedMessage } from '#shared/types'
 import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, type TaskBadge, boardSections, visibleSections, decisionPrefix, detailPrefix, launchMessage, missingLists, problemPrefix, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, textParts, unblockMessage } from '#shared/projectBoard'
 import { md } from '~/utils/markdown'
@@ -47,7 +47,7 @@ const ICONS: Record<ListKind, string> = {
 }
 const icon = (k: ListKind | null) => (k ? ICONS[k] : 'i-lucide-list')
 
-// Sections repliées : « Fait » par défaut, le reste ouvert.
+// Collapsed sections: "Done" by default, the rest open.
 const folded = ref<Record<string, boolean>>({})
 const isOpen = (s: BoardSection) => !(folded.value[s.key] ?? s.kind === 'done')
 function toggle(s: BoardSection) {
@@ -57,7 +57,7 @@ function toggle(s: BoardSection) {
 const count = (s: BoardSection) => s.tasks.filter(x => !x.done).length + s.threads.length
 
 // ------------------------------------------------------------ threads
-// Agent d'un thread dans wherdr (même nom de pane), s'il tourne encore.
+// Agent of a thread in wherdr (same pane name), if it is still running.
 function paneOf(th: ProjectThread): Pane | undefined {
   return th.agentName ? herdrState.value.panes.find(p => p.name === th.agentName) : undefined
 }
@@ -90,8 +90,8 @@ function openThread(th: ProjectThread) {
   else toast(t('Agent de ce thread introuvable'), true)
 }
 
-// Badges [b:couleur(texte)](cible) : palette (suit le thème) ou hex validé ;
-// cible URL (nouvel onglet) ou thread (ouvre son onglet s'il existe).
+// [b:color(text)](target) badges: palette (follows the theme) or validated hex;
+// target URL (new tab) or thread (opens its tab if it exists).
 const BADGE_MAX = 24
 const badgeShort = (b: TaskBadge) => (b.text.length > BADGE_MAX ? `${b.text.slice(0, BADGE_MAX - 1)}…` : b.text)
 const badgeClass = (b: TaskBadge) => [b.color?.startsWith('#') ? 'hex' : b.color ? `c-${b.color}` : '', { link: Boolean(b.href || b.thread) }]
@@ -114,7 +114,7 @@ function openBadgeThread(id: string) {
   else toast(badgeTitle({ text: id, color: null, thread: id })!, true)
 }
 
-// Texte d'une tâche (URL → lien simple) et ses badges, rendus en ligne.
+// Text of a task (URL → plain link) and its badges, rendered inline.
 const TaskText = (p: { text: string }) => textParts(p.text).map(x => (x.href
   ? h('a', { class: 'pp-tlink', href: x.href, target: '_blank', rel: 'noopener noreferrer', onClick: (e: Event) => e.stopPropagation() }, x.text)
   : x.text))
@@ -153,7 +153,7 @@ function openReportAgent() {
   navigateTo(panePath(p.id))
 }
 
-// ------------------------------------------------------------ à tester
+// ------------------------------------------------------------ to test
 const lang = () => (language === 'en' ? 'en' : 'fr')
 const confirmed = ref(new Set(confirmedByPane.get(props.paneId) || []))
 const confirming = ref<string | null>(null)
@@ -163,7 +163,7 @@ const unblocked = ref(new Set(unblockedByPane.get(props.paneId) || []))
 const unblocking = ref<string | null>(null)
 const reviewed = ref(new Set(reviewedByPane.get(props.paneId) || []))
 const reviewing = ref<string | null>(null)
-// Tâche retirée de « À tester » par le coordinateur : on l'oublie.
+// Task removed from "To test" by the coordinator: we forget it.
 watch(() => props.board, (b) => {
   if (!b) return
   const left = new Set(b.lists.filter(l => l.kind === 'test').flatMap(l => l.tasks.map(x => x.text)))
@@ -261,8 +261,8 @@ function prefill(task: ProjectTask, kind: 'problem' | 'question' | 'decision' | 
 }
 
 // ------------------------------------------------------------ suggestion
-// « À tester » ou « À décider » absents de TASKS.md : une ligne discrète renvoie
-// vers Réglages › Plugins (masquée pour de bon une fois fermée).
+// "To test" or "To decide" missing from TASKS.md: a discreet line points
+// to Settings › Plugins (hidden for good once closed).
 const HINT_KEY = 'hw-project-hint-off'
 const hintOff = ref(false)
 onMounted(() => { try { hintOff.value = localStorage.getItem(HINT_KEY) === '1' } catch {} })
@@ -311,7 +311,7 @@ function hideHint() {
             <UIcon name="i-lucide-chevron-down" class="pp-chev" />
           </button>
           <ul v-if="isOpen(s)" class="pp-list">
-            <!-- Threads : ouverts (En cours) ou clôturés (Fait, 20 plus récents). -->
+            <!-- Threads: open (In progress) or closed (Done, 20 most recent). -->
             <li v-for="th in (s.kind === 'done' ? s.threads.slice(0, DONE_SHOWN) : s.threads)" :key="th.id" class="pp-row">
               <div class="pp-card" :class="{ resolved: th.resolved }">
                 <button type="button" class="pp-thread" @click="th.resolved ? openReport(th) : openThread(th)">

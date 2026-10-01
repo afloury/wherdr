@@ -15,14 +15,14 @@ watch(open, (v) => {
 const f = pluginFormState
 const nameBad = computed(() => isName.value && Boolean(f.name.trim()) && !projectNameOk(f.name))
 
-// « New project » : machine du dépôt (choix seulement pour un projet de la
-// machine locale : herdr-projects y vise une autre machine par son id), puis
-// dossier comme dans « Nouvel agent » (navigateur, récents de cette machine).
+// "New project": machine of the repository (choice only for a project on the
+// local machine: herdr-projects targets another machine there by its id), then
+// folder as in "New agent" (browser, recent ones of this machine).
 const projectMachine = computed(() => pluginTargetMachine(f.target))
 const repoMachines = computed(() => (machineInfo(projectMachine.value)?.local ? machineChoices.value : null))
 const repoCfg = computed(() => machineChoices.value?.find(m => m.key === f.machine))
 const repoHome = computed(() => (repoCfg.value ? repoCfg.value.home : appConfig.value.home))
-// Récents de la machine, sans le HOME (jamais un dépôt de projet).
+// Recent folders of the machine, without HOME (never a project repository).
 const recents = computed(() => ((repoCfg.value ? repoCfg.value.dirs : appConfig.value.dirs) || [])
   .filter(d => d !== repoHome.value && shortPath(d) !== '~').slice(0, 6))
 const repo = computed({ get: () => f.repo, set: (v) => { f.repo = v || ''; checkPluginRepo() } })

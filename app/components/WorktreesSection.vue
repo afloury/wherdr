@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Réglages : les worktrees Git des agents, à supprimer quand ils ne servent plus.
+// Settings: the agents' Git worktrees, to remove when no longer needed.
 import type { WorktreeInfo } from '#shared/types'
 
 onMounted(loadWorktrees)

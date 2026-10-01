@@ -1,12 +1,12 @@
 <script setup lang="ts">
-// Tableau des quotas restants (fenêtre de 5 h et semaine), une ligne par compte :
-// en haut de l'accueil (comptes communs à toutes les machines) et sous l'en-tête
-// d'une machine (son compte Claude, quand les comptes diffèrent). Même grille à
-// traits fins que les compteurs ; la barre montre ce qui reste, comme une batterie,
-// ou ce qui est utilisé (Réglages → Apparence → Quotas). La couleur suit l'urgence.
-// Lecture de plus d'une heure : âge en ocre, chiffres atténués ; fenêtre
-// réinitialisée depuis la lecture : « réinitialisé », 100 % supposés ; fenêtre (5 h ou
-// semaine) absente de la lecture de Claude (elle vient de repartir) : « fenêtre neuve ».
+// Table of remaining quotas (5-hour window and week), one row per account:
+// at the top of the home screen (accounts shared by all machines) and under the header
+// of a machine (its Claude account, when accounts differ). Same thin-line
+// grid as the counters; the bar shows what remains, like a battery,
+// or what is used (Settings → Appearance → Quotas). The color follows urgency.
+// Reading older than an hour: age in ochre, numbers dimmed; window
+// reset since the reading: "reset", 100 % assumed; window (5 h or
+// week) missing from Claude's reading (it just restarted): "fresh window".
 import type { QuotaWindow } from '#shared/types'
 import { type QuotaRow, quotaLevel, quotaShown, resetText, STALE_MS } from '~/utils/quotas'
 
@@ -21,7 +21,7 @@ function resetLabel(w: QuotaWindow) {
   const s = resetText(w, now.value, language)
   return s === null ? t('réinitialisé') : s || '—'
 }
-// Ancienneté courte de la lecture, sous le logo de chaque ligne (« 3 min », « 2 h »).
+// Short age of the reading, under each row's logo ("3 min", "2 h").
 function agoShort(at: number) {
   const m = Math.round((now.value - at) / 60000)
   if (m < 1) return '< 1 min'

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Mini-carte d'un onglet : ses panes aux proportions de Herdr. La case courante
-// est pleine ; un agent qui attend est teinté (rose), un agent au travail marqué.
+// Mini-map of a tab: its panes in Herdr's proportions. The current cell
+// is filled; a waiting agent is tinted (pink), a working agent marked.
 import type { Pane } from '#shared/types'
 import { type TabLayout, paneBoxes } from '#shared/layout'
 

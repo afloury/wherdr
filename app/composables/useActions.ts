@@ -1,8 +1,8 @@
-// Actions sur les agents partagées entre la liste et la vue agent.
+// Agent actions shared between the list and the agent view.
 import type { Pane, QueuedMessage, WaitAction } from '#shared/types'
 import { type RestartPreview, RESTARTABLE, restartNotice } from '#shared/restart'
 
-// Choisir une option d'une invite bloquante (le serveur revérifie l'écran).
+// Choose an option of a blocking prompt (the server re-checks the screen).
 export async function choose(paneId: string, index: number, label: string): Promise<boolean> {
   haptic()
   try {
@@ -15,7 +15,7 @@ export async function choose(paneId: string, index: number, label: string): Prom
   }
 }
 
-// Appuyer sur une touche de la légende d'un écran d'attente (le serveur revérifie l'écran).
+// Press a key from the legend of a waiting screen (the server re-checks the screen).
 export async function pressScreenKey(paneId: string, a: WaitAction): Promise<boolean> {
   haptic()
   try {
@@ -28,9 +28,9 @@ export async function pressScreenKey(paneId: string, a: WaitAction): Promise<boo
   }
 }
 
-// Menu interactif de Claude Code (/resume…) : choisir une entrée, appuyer sur
-// une touche de sa légende, remplacer le texte de sa recherche. Le serveur
-// relit l'écran avant chaque touche.
+// Claude Code interactive menu (/resume…): choose an entry, press
+// a key from its legend, replace the text of its search. The server
+// re-reads the screen before each key.
 export async function menuAction(paneId: string, body: { op: 'select', index: number, label: string } | { op: 'key', key: string, label: string } | { op: 'search', text: string }): Promise<boolean> {
   haptic()
   try {
@@ -43,9 +43,9 @@ export async function menuAction(paneId: string, body: { op: 'select', index: nu
   }
 }
 
-// Clavier de l'ordinateur sur une carte « À toi » : une vraie touche au
-// terminal (le serveur vérifie qu'un menu ou une invite est encore affiché).
-// Touches envoyées l'une après l'autre, dans l'ordre de frappe.
+// Computer keyboard on a "Your turn" card: a real key to the
+// terminal (the server checks that a menu or prompt is still shown).
+// Keys sent one after the other, in typing order.
 let navChain: Promise<unknown> = Promise.resolve()
 export function navKey(paneId: string, key: 'up' | 'down' | 'enter' | 'esc'): Promise<boolean> {
   const run = navChain.then(async () => {
@@ -61,10 +61,10 @@ export function navKey(paneId: string, key: 'up' | 'down' | 'enter' | 'esc'): Pr
   return run
 }
 
-// Envoyer un message à un agent (champ de saisie, panneau Projet). Agent bloqué :
-// l'invite attend une saisie libre (« Type something… »), agent.prompt la
-// refuserait : on tape le texte tel quel. Agent au travail : le serveur met le
-// message en file (renvoyé dans `queued`).
+// Send a message to an agent (input field, Project panel). Blocked agent:
+// the prompt is waiting for free input ("Type something…"), agent.prompt
+// would refuse it: we type the text as is. Working agent: the server
+// queues the message (returned in `queued`).
 export async function sendMessage(p: Pane | undefined, paneId: string, text: string): Promise<QueuedMessage | null> {
   const r = p && p.agent && p.status !== 'blocked'
     ? await api<{ queued?: QueuedMessage }>('/api/prompt', { pane_id: paneId, text })
@@ -91,10 +91,10 @@ export function statusLabel(p: Pane) {
   return t((STATUS[s] || STATUS.unknown!).label)
 }
 
-// Redémarrer l'agent dans son pane (mise à jour installée…) en reprenant sa
-// conversation. Confirmation seulement s'il y a quelque chose à dire : agent
-// au travail ou en attente, options de lancement non retrouvées, conversation
-// vide. Le suivi s'affiche ensuite au-dessus du champ (pane.restart).
+// Restart the agent in its pane (update installed…) while resuming its
+// conversation. Confirmation only if there is something to say: agent
+// working or waiting, launch options not found, empty
+// conversation. The progress then shows above the field (pane.restart).
 export async function restartAgent(p: Pane) {
   if (!p.agent || !canRestart(p)) return
   const who = kindLabel(p.agent)
@@ -134,8 +134,8 @@ export async function closePane(p: Pane) {
     t('Fermer le pane'),
   )
   if (!plan) return
-  // Fermé depuis sa vue : son onglet s'il y reste des panes, sinon l'onglet
-  // voisin, sinon la liste. Fermé depuis le plan : on y reste.
+  // Closed from its view: its tab if panes remain there, otherwise the neighbouring
+  // tab, otherwise the list. Closed from the plan: we stay there.
   const done = prepareClose(plan.group ? { workspace: p.workspace } : { pane: p.id }, plan.group ? plan.workspaces.map(w => w.id) : [])
   try {
     await api('/api/close', { pane_id: p.id, close_group: plan.group })

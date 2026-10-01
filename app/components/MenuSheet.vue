@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Menu en feuille : actions (renommer, fermer…), commandes de l'agent.
+// Menu as a sheet: actions (rename, close…), agent commands.
 function run(item: MenuItem) {
   menuState.open = false
   item.run?.()

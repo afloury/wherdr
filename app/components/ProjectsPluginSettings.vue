@@ -9,7 +9,7 @@ const states = ref<Record<string, PluginState>>({})
 const errors = ref<Record<string, string>>({})
 const loading = ref<Record<string, boolean>>({})
 const busy = ref<Record<string, boolean>>({})
-// Installé depuis wherdr : rappel de recharger la config du client Herdr, jusqu'au prochain chargement.
+// Installed from wherdr: reminder to reload the Herdr client config, until the next load.
 const justInstalled = ref<Record<string, boolean>>({})
 
 async function refresh(machine: MachineConfig) {
@@ -51,8 +51,8 @@ async function copy(machine: MachineConfig) {
   } catch { toast(t('Copie impossible'), true) }
 }
 
-// Tableau du projet : listes reconnues dans TASKS.md (synonymes de KINDS,
-// shared/projectBoard.ts) et textes à copier.
+// Project board: lists recognized in TASKS.md (synonyms of KINDS,
+// shared/projectBoard.ts) and texts to copy.
 const boardLists = computed(() => [
   { icon: 'i-lucide-flask-conical', name: tl('À tester', 'To test'), also: 'To test, Testing, À vérifier', what: tl('Ce que tu dois vérifier : Confirmer, Problème, Question.', 'What you must check: Confirm, Problem, Question.') },
   { icon: 'i-lucide-circle-help', name: tl('À décider', 'To decide'), also: 'To decide, Décisions, Questions', what: tl('Questions pour toi : Répondre.', 'Questions for you: Answer.') },
