@@ -1,5 +1,5 @@
-# Image Docker publiée sur ghcr.io à chaque tag de version (vX.Y.Z), ou à la main :
-#   ghcr.io/<owner>/wherdr:<version>, :<majeur>.<mineur> et :latest — linux/arm64 + linux/amd64.
+# Docker image published on ghcr.io for each version tag (vX.Y.Z), or manually:
+#   ghcr.io/<owner>/wherdr:<version>, :<major>.<minor> and :latest — linux/arm64 + linux/amd64.
 name: release
 
 on:

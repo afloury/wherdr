@@ -1,7 +1,7 @@
-# Instance de test : 127.0.0.1:7684, session Herdr isolée `hwtest`, données de
-# test (copie de data/ sans les abonnements push). Ne touche jamais la prod.
-# Lit le même `.env` (HOST_HOME…) ; le docker-compose.override.yml n'est pas appliqué.
-#   herdr --session hwtest server   (dans un autre terminal, variables HERDR_* retirées)
+# Test instance: 127.0.0.1:7684, isolated Herdr session `hwtest`, test
+# data (copy of data/ without push subscriptions). Never touches production.
+# Reads the same `.env` (HOST_HOME…); docker-compose.override.yml is not applied.
+#   herdr --session hwtest server   (in another terminal, HERDR_* variables removed)
 #   cp -a data test-data && echo '{ "subs": [] }' > test-data/push.json
 #   docker compose -f docker-compose.test.yml up -d --build
 services:
@@ -20,7 +20,7 @@ services:
       - DATA_DIR=/data
       - HERDR_BIN=${HERDR_BIN:-${HOST_HOME:-${HOME}}/.local/bin/herdr}
       - HERDR_WEB_SESSION=hwtest
-      # Machines distantes : session `hwtest` aussi (jamais celle du profil, `default`).
+      # Remote machines: `hwtest` session too (never the profile's, `default`).
       - HERDR_WEB_REMOTE_SESSION=${HERDR_WEB_REMOTE_SESSION:-hwtest}
       - HERDR_WEB_MACHINES=${HERDR_WEB_MACHINES:-on}
       - HERDR_WEB_SELF_HOSTS=${HERDR_WEB_SELF_HOSTS:-}
@@ -30,8 +30,8 @@ services:
       - HOST_LABEL=${HOST_LABEL:-}
       - PASSKEY_USER=${PASSKEY_USER:-wherdr}
       - TZ=${TZ:-UTC}
-    # Noms courts du tailnet (`ssh laptop`) : musl ne tente le domaine de
-    # recherche (MagicDNS) que si le nom a moins de `ndots` points ; Docker met 0.
+    # Short tailnet names (`ssh laptop`): musl only tries the search domain
+    # (MagicDNS) if the name has fewer than `ndots` dots; Docker sets 0.
     dns_opt:
       - ndots:1
     ports:

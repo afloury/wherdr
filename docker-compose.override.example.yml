@@ -1,12 +1,12 @@
-# Icônes personnelles, sans toucher au code : copier ce fichier en
-# `docker-compose.override.yml` (non suivi par git, lu automatiquement par
-# `docker compose`) et déposer ses icônes dans `branding/` (non suivi), avec la
-# même arborescence que server/assets/branding :
+# Custom icons, without touching the code: copy this file to
+# `docker-compose.override.yml` (not tracked by git, read automatically by
+# `docker compose`) and put your icons in `branding/` (not tracked), with the
+# same layout as server/assets/branding:
 #   branding/icons/  apple-touch-icon.png (180), favicon-32.png, icon-192.png,
 #                    icon-512.png, icon-512-maskable.png
 #   branding/favicon.ico
-# Le serveur les sert à la place de celles du dépôt (une icône absente retombe
-# sur celle du dépôt). Après un changement d'icônes : `docker compose up -d`.
+# The server serves them instead of the repository's (a missing icon falls back
+# to the repository's). After changing icons: `docker compose up -d`.
 services:
   herdr-web:
     environment:

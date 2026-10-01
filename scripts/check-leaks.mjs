@@ -1,15 +1,15 @@
 #!/usr/bin/env node
-// Contrôle anti-fuite : gitleaks (s'il est installé) + motifs interdits lus dans un fichier local
-// non suivi (.leak-patterns). Scanne le contenu de l'index git (fichiers suivis ou indexés) ;
-// `--staged` ne scanne que les fichiers indexés (hook pre-commit).
-// Dans un worktree lié (`git worktree add`), .leak-patterns (ignoré par git) n'existe souvent
-// que dans le checkout principal : on se rabat alors sur celui-ci.
+// Leak check: gitleaks (if installed) + forbidden patterns read from a local, untracked
+// file (.leak-patterns). Scans the content of the git index (tracked or staged files);
+// `--staged` only scans staged files (pre-commit hook).
+// In a linked worktree (`git worktree add`), .leak-patterns (ignored by git) often only
+// exists in the main checkout: we then fall back to that one.
 //
-// Format de .leak-patterns (voir .leak-patterns.example) :
-//   # commentaire
-//   <regex>                        motif interdit (insensible à la casse)
-//   <regex>  !! LICENSE, docs/*.md motif toléré dans ces fichiers
-//   ! <glob>                       fichier jamais scanné par les motifs
+// .leak-patterns format (see .leak-patterns.example):
+//   # comment
+//   <regex>                        forbidden pattern (case-insensitive)
+//   <regex>  !! LICENSE, docs/*.md pattern allowed in these files
+//   ! <glob>                       file never scanned by the patterns
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 export const PATTERNS_FILE = '.leak-patterns'
 const ALWAYS_SKIPPED = ['.leak-patterns', '.leak-patterns.example', 'package-lock.json']
 
-/** Glob simple : `*` = tout sauf `/`, `**` = tout, `?` = un caractère. */
+/** Simple glob: `*` = anything but `/`, `**` = anything, `?` = one character. */
 export function globToRegExp(glob) {
   let re = ''
   for (let i = 0; i < glob.length; i++) {
@@ -34,7 +34,7 @@ export function globToRegExp(glob) {
 
 const matchesAny = (file, globs) => globs.some((g) => g.test(file))
 
-/** Analyse le texte du fichier de motifs. Lève une erreur lisible sur une regex invalide. */
+/** Parses the pattern file text. Throws a readable error on an invalid regex. */
 export function parsePatterns(text) {
   const rules = []
   const skip = []
@@ -55,7 +55,7 @@ export function parsePatterns(text) {
   return { rules, skip }
 }
 
-/** Lit le fichier de motifs ; `null` s'il n'existe pas. */
+/** Reads the pattern file; `null` if it does not exist. */
 export function loadPatterns(file) {
   if (!existsSync(file)) return null
   return parsePatterns(readFileSync(file, 'utf8'))
@@ -63,21 +63,21 @@ export function loadPatterns(file) {
 
 const git = (args, cwd) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 << 20 })
 
-/** Racine du checkout principal quand `root` est un worktree lié ; `null` sinon. */
+/** Root of the main checkout when `root` is a linked worktree; `null` otherwise. */
 export function mainCheckoutRoot(root) {
   let common
   try { common = git(['rev-parse', '--git-common-dir'], root).trim() }
   catch { return null }
   common = path.resolve(root, common)
-  // Dépôt nu ou sous-module : pas de checkout principal à côté du dossier .git commun.
+  // Bare repository or submodule: no main checkout next to the common .git folder.
   if (path.basename(common) !== '.git') return null
   const main = path.dirname(common)
   return path.resolve(main) === path.resolve(root) ? null : main
 }
 
 /**
- * Fichier de motifs à utiliser : celui du checkout courant, sinon celui du checkout principal.
- * Renvoie `{ file, from: 'checkout' | 'main' }`, ou `{ file: null, tried }` si aucun n'existe.
+ * Pattern file to use: the current checkout's, otherwise the main checkout's.
+ * Returns `{ file, from: 'checkout' | 'main' }`, or `{ file: null, tried }` if none exists.
  */
 export function findPatternsFile(root) {
   const own = path.join(root, PATTERNS_FILE)
@@ -92,13 +92,13 @@ export function findPatternsFile(root) {
   return { file: null, tried }
 }
 
-/** Montre assez pour retrouver la valeur sans l'afficher en entier. */
+/** Shows enough to find the value without displaying it in full. */
 export function redact(value) {
   if (value.length <= 4) return `${value[0] ?? ''}…`
   return `${value.slice(0, Math.min(4, Math.floor(value.length / 3)))}…(${value.length} chars)`
 }
 
-/** Cherche les motifs dans le contenu d'un fichier. */
+/** Looks for the patterns in a file's content. */
 export function scanText(file, text, patterns) {
   if (ALWAYS_SKIPPED.includes(path.basename(file)) || matchesAny(file, patterns.skip)) return []
   const hits = []
@@ -115,7 +115,7 @@ export function scanText(file, text, patterns) {
   return hits
 }
 
-/** Copie le contenu de l'index (tous les fichiers ou seulement les indexés) dans un dossier temporaire. */
+/** Copies the index content (all files or only staged ones) into a temporary folder. */
 function exportIndex(root, staged) {
   const list = staged
     ? git(['diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z'], root)

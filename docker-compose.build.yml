@@ -1,8 +1,8 @@
-# Construire l'image à partir des sources (développement, modifications locales)
-# au lieu de télécharger celle publiée sur ghcr.io :
+# Build the image from source (development, local changes)
+# instead of pulling the one published on ghcr.io:
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-# Mise à jour : git pull, puis la même commande. (Avec un docker-compose.override.yml,
-# l'ajouter aussi : -f docker-compose.override.yml.)
+# Update: git pull, then the same command. (With a docker-compose.override.yml,
+# add it too: -f docker-compose.override.yml.)
 services:
   herdr-web:
     build:
@@ -10,5 +10,5 @@ services:
     image: wherdr:local
     pull_policy: build
     environment:
-      # Commande de mise à jour proposée dans l'app.
+      # Update command offered in the app.
       - WHERDR_INSTALL=docker-build

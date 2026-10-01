@@ -1,7 +1,7 @@
 #!/bin/sh
-# Image générique : l'utilisateur du conteneur est créé au démarrage avec l'UID/GID
-# (PUID/PGID) et le dossier personnel (HOME) de l'utilisateur de l'hôte. ssh lit
-# ~/.ssh dans /etc/passwd (pas dans $HOME), d'où cette entrée plutôt qu'un simple `user:`.
+# Generic image: the container user is created at startup with the UID/GID
+# (PUID/PGID) and home directory (HOME) of the host user. ssh reads
+# ~/.ssh from /etc/passwd (not from $HOME), hence this entry rather than a plain `user:`.
 set -e
 if [ "$(id -u)" = 0 ]; then
   PUID=${PUID:-1000}
@@ -12,13 +12,13 @@ if [ "$(id -u)" = 0 ]; then
   delgroup wherdr 2>/dev/null || true
   group=$(getent group "$PGID" | cut -d: -f1)
   if [ -z "$group" ]; then addgroup -g "$PGID" wherdr; group=wherdr; fi
-  # Un compte de l'image qui aurait déjà cet UID (ex. 1000) : retiré.
+  # An image account that already has this UID (e.g. 1000): removed.
   other=$(getent passwd "$PUID" | cut -d: -f1)
   [ -n "$other" ] && deluser "$other" 2>/dev/null || true
-  # -H : le dossier personnel est celui de l'hôte, monté (en lecture seule).
+  # -H: the home directory is the host's, mounted (read-only).
   adduser -D -H -u "$PUID" -G "$group" -h "$HOME" -s /bin/sh wherdr
   export HOME
   exec su-exec wherdr "$@"
 fi
-# Déjà lancé sous un autre utilisateur (`user:` dans compose) : tel quel.
+# Already started as another user (`user:` in compose): run as is.
 exec "$@"

@@ -1,34 +1,34 @@
 #!/bin/sh
-# wherdr : installe la barre d'état invisible de Claude Code (quotas + empreinte
-# du compte) pour l'utilisateur courant. Autonome (la barre d'état est incluse
-# plus bas) : wherdr l'exécute tel quel sur une machine (bouton « Installer ») ou
-# le donne à coller (« Copier la commande »). Sans danger à relancer :
-#  - écrit la barre d'état dans ~/.claude/wherdr-statusline.sh (mise à jour) ;
-#  - aucune `statusLine` dans ~/.claude/settings.json : ajoute la nôtre ;
-#  - une autre `statusLine` (commande) : l'enchaîne derrière la nôtre, son
-#    affichage reste le même ; copie de sauvegarde settings.json.bak-wherdr.
-# Les quotas apparaissent après le prochain échange avec un Claude.
+# wherdr: installs Claude Code's invisible status line (quotas + account
+# fingerprint) for the current user. Self-contained (the status line is included
+# below): wherdr runs it as is on a machine ("Install" button) or
+# hands it out to paste ("Copy command"). Safe to run again:
+#  - writes the status line to ~/.claude/wherdr-statusline.sh (update);
+#  - no `statusLine` in ~/.claude/settings.json: adds ours;
+#  - another `statusLine` (command): chains it behind ours, its
+#    output stays the same; backup copy settings.json.bak-wherdr.
+# Quotas show up after the next exchange with a Claude.
 set -e
 dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 mkdir -p "$dir"
-# ---- barre d'état (n'affiche rien) ----
+# ---- status line (prints nothing) ----
 cat > "$dir/wherdr-statusline.sh.tmp" <<'WHERDR_STATUSLINE'
 #!/bin/sh
-# wherdr : barre d'état invisible de Claude Code (n'affiche rien). Elle garde
-# seulement les quotas du compte (rate_limits, que Claude Code transmet à sa
-# barre d'état après chaque échange) pour l'accueil de wherdr, et une empreinte
-# du compte (hash tronqué de son identifiant, jamais l'identifiant ni l'email)
-# pour distinguer les machines qui n'utilisent pas le même compte.
-# Installée par install-claude-statusline.sh (dépôt herdr-web, README, « Quotas
-# sur l'accueil »). Barre d'état existante : passée en argument, elle reçoit les
-# mêmes données et son affichage est conservé (sh wherdr-statusline.sh 'cmd').
+# wherdr: Claude Code's invisible status line (prints nothing). It only keeps
+# the account quotas (rate_limits, which Claude Code passes to its
+# status line after each exchange) for the wherdr home screen, and an account
+# fingerprint (truncated hash of its ID, never the ID or the email)
+# to tell apart machines that do not use the same account.
+# Installed by install-claude-statusline.sh (wherdr repository, README, "Quotas
+# on the home screen"). Existing status line: passed as an argument, it receives the
+# same data and its output is kept (sh wherdr-statusline.sh 'cmd').
 d=$(cat)
 case "$d" in
   *'"rate_limits"'*)
     dir="$HOME/.cache/herdr-web"
     f="$dir/claude-status.json"
     mkdir -p "$dir" && printf '%s' "$d" > "$f.tmp" && mv "$f.tmp" "$f"
-    # Empreinte : recalculée au plus toutes les 10 min (changement de compte).
+    # Fingerprint: recomputed at most every 10 min (account change).
     a="$dir/claude-account"
     if [ -z "$(find "$a" -mmin -10 2>/dev/null)" ]; then
       c="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
