@@ -79,7 +79,7 @@ const REFS = /\s*\[\s*t-\d{4,}(?:\s*[,;\s]\s*t-\d{4,})*\s*\]/gi
 // Badges : `[b:#fff(texte)]`, `[b:green(texte)]`, `[b:(texte)]`, suivis ou non
 // de `(cible)`, où que ce soit dans la ligne. Le texte va jusqu'au premier « )] ».
 export const BADGE_COLORS = ['red', 'orange', 'amber', 'green', 'teal', 'blue', 'violet', 'pink', 'gray'] as const
-const BADGE = /\[b:\s*([#\w-]*)\s*\((.*?)\)\](?:\(\s*([^\s()]*)\s*\))?/gi
+const BADGE = /\[b:\s*([#\w-]*)\s*\((.*?)\)\](?:\(\s*((?:[^\s()]|\([^\s()]*\))*)\s*\))?/gi
 export function badgeColor(raw: string): string | null {
   const c = raw.trim().toLowerCase()
   if ((BADGE_COLORS as readonly string[]).includes(c)) return c

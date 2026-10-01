@@ -149,6 +149,7 @@ describe('badges [b:couleur(texte)](cible)', () => {
     for (const bad of ['javascript:alert(1)', 'data:text/html,x', 'ftp://example.test', '//example.test', 'mailto:a@example.test', 'https://']) {
       const r = takeBadges(`A [b:red(x)](${bad}) B`)
       expect(r.badges).toEqual([{ text: 'x', color: 'red' }])
+      expect(r.text).toBe('A B')
       expect(badgeTarget(bad)).toBeNull()
     }
   })
