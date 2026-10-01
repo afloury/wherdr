@@ -7,6 +7,8 @@
 // it, and the text goes with the choice (the server opens omp's field and types
 // it there). omp's field already open (`typing`): ours too, and Cancel closes
 // it in the terminal (Escape).
+// Claude's AskUserQuestion: "Type something." is its free answer (typed in
+// place by the server), checkboxes are toggled one by one then sent by Submit.
 // omp "Ask" box with several questions: its tabs above the question
 // (questions then Submit), to go back to one like ←/→ in the terminal.
 import type { Choices, WaitAction, WaitScreen } from '#shared/types'
@@ -35,6 +37,9 @@ async function next() {
   busy.value = true
   if (!(await navKey(props.paneId, 'enter'))) busy.value = false
 }
+// Claude's checkboxes come with their own Submit (an option without a box):
+// no Continue button then.
+const ownSubmit = computed(() => Boolean(props.prompt && props.prompt.options.some(o => o.checked === undefined)))
 const tabs = computed(() => (props.prompt && props.prompt.tabs && props.prompt.tab !== undefined && !props.prompt.typing ? props.prompt.tabs : null))
 async function goTab(i: number) {
   const p = props.prompt
@@ -131,7 +136,7 @@ useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.opt
           :aria-expanded="o.free ? freeAt === i : undefined"
           :disabled="disabled" @click="o.free ? (editing = prompt.typing || editing === i ? null : i) : pick(i, o.label)"
         >
-          <span v-if="prompt.multi" class="n"><UIcon :name="o.checked ? 'i-lucide-square-check' : 'i-lucide-square'" /></span>
+          <span v-if="prompt.multi && o.checked !== undefined" class="n"><UIcon :name="o.checked ? 'i-lucide-square-check' : 'i-lucide-square'" /></span>
           <span v-else class="n">{{ i + 1 }}</span>
           <span class="l">{{ o.label }}<small v-if="o.hint">{{ o.hint }}</small></span>
           <UIcon v-if="o.free" name="i-lucide-pencil-line" class="choices-free-icon" />
@@ -147,7 +152,7 @@ useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.opt
           </div>
         </form>
       </template>
-      <button v-if="prompt.multi" type="button" class="choices-next" :disabled="disabled" @click="next">
+      <button v-if="prompt.multi && !ownSubmit" type="button" class="choices-next" :disabled="disabled" @click="next">
         {{ t('Continue') }}<kbd>{{ screenKeyName('enter') }}</kbd>
       </button>
     </div>

@@ -13,7 +13,7 @@ import { isProjectThread, paneTitle } from '../../shared/paneTitle'
 import { foregroundCommand, reduceSnapshot } from './snapshot'
 import { DATA_DIR, HERDR_SESSION, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
 import { HerdrError, agentPrompt, herdr, herdrOn, sleep } from './herdr'
-import { completeOmpAsk, ompActiveTab, parseChoices, parseOmpAsk } from './choices'
+import { completeClaudeAsk, completeOmpAsk, ompActiveTab, parseChoices, parseOmpAsk } from './choices'
 import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseWaitScreen } from './waitScreen'
 import { parseMenu, TOP } from '../../shared/menuScreen'
@@ -45,6 +45,7 @@ export const transcripts = {
   locate: (p: TranscriptPane) => trFor(p).locate(p),
   pendingTool: (p: TranscriptPane) => trFor(p).pendingTool(p),
   pendingAsk: (p: TranscriptPane) => trFor(p).pendingAsk(p),
+  pendingClaudeQuestions: (p: TranscriptPane) => trFor(p).pendingClaudeQuestions(p),
   forget: (id: string) => machineOfPane(id)?.transcripts.forget(id),
 }
 
@@ -123,6 +124,8 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
     const menu = p.agent !== 'omp' && framed && (strict || !choices || !parseChoices(text, { strict: true })) ? await readMenu(p.id) : null
     if (menu) choices = null
     if (choices && p.agent === 'omp') choices = await withOmpTab(p.id, completeOmpAsk(choices, await transcripts.pendingAsk(p).catch(() => [])))
+    // Claude's AskUserQuestion: full question and options from the call.
+    if (choices && p.agent === 'claude') choices = completeClaudeAsk(choices, await transcripts.pendingClaudeQuestions(p).catch(() => []))
     out = { choices, screen: menu ? null : parseWaitScreen(text, { choices: Boolean(choices) }), menu }
     noteScreen(p.id, p.agent, text) // Codex: model from its status line
     if (choices && (choices.detail || isPermissionQuestion(choices.question))) {

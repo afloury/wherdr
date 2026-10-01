@@ -1,0 +1,13 @@
+←  ☒ Colour preference  ☒ Pet preferences  ✔ Submit  →
+
+Review your answers
+
+ ● What is your favourite colour?
+   → Green
+ ● Which pets do you like?
+   → Cat, Dog, Fish
+
+Ready to submit your answers?
+
+❯ 1. Submit answers
+  2. Cancel

@@ -10,18 +10,19 @@
 // Nothing is typed until the open field is seen empty on screen. One answer at
 // a time per pane: a second one would empty the field while the first types.
 import type { Choices } from '../../shared/types'
-import { keysFor, parseOmpField } from './choices'
+import { keysFor, parseChoices, parseOmpField } from './choices'
 import { HerdrError } from './herdr'
 import type { RestartDeps } from './restartSeq'
 
 const OPEN_MS = 3000
 const answering = new Set<string>()
 
-export async function answerFree(d: RestartDeps, paneId: string, choices: Choices, index: number, answer: string): Promise<void> {
+export async function answerFree(d: RestartDeps, paneId: string, choices: Choices, index: number, answer: string, agent?: string | null): Promise<void> {
   if (answering.has(paneId)) throw new HerdrError('busy', 'An answer is already being sent.')
   answering.add(paneId)
   try {
-    await typeAnswer(d, paneId, choices, index, answer)
+    if (agent === 'claude') await typeClaudeAnswer(d, paneId, choices, index, answer)
+    else await typeAnswer(d, paneId, choices, index, answer)
   } finally {
     answering.delete(paneId)
   }
@@ -64,5 +65,46 @@ async function typeAnswer(d: RestartDeps, paneId: string, choices: Choices, inde
     f = await field()
   }
   if (!f || !f.value) throw closed
+  await keys(['enter'])
+}
+
+// Claude's AskUserQuestion: "Type something." is typed in place, as soon as
+// the cursor is on it (observed with Claude Code 2.1, Herdr test session):
+// the text replaces the option's label, Ctrl+U empties it, Enter submits it.
+// One line only: the answer's line breaks become spaces.
+const squash = (s: string) => s.replace(/\s+/g, '')
+async function typeClaudeAnswer(d: RestartDeps, paneId: string, choices: Choices, index: number, answer: string) {
+  const keys = (k: string[]) => d.call('pane.send_input', { pane_id: paneId, keys: k })
+  // The free option under the cursor, re-read: its text (null: another option, or the box closed).
+  const field = async () => {
+    const c = parseChoices((await d.call('pane.read', { pane_id: paneId, source: 'detection' }, 4000))?.read?.text)
+    const o = c && c.options[c.cursor]
+    return o && o.free ? { value: o.hint || '' } : null
+  }
+  const moves = keysFor(choices, index).slice(0, -1)
+  if (moves.length) await keys(moves)
+  let f = await field()
+  for (const end = d.now() + OPEN_MS; !f && d.now() < end;) {
+    await d.sleep(100)
+    f = await field()
+  }
+  if (!f) throw new HerdrError('stale', 'Claude’s answer field could not be reached — check the current screen.')
+  if (f.value) {
+    await keys(['ctrl+u'])
+    await d.sleep(150)
+    f = await field()
+    if (!f || f.value) throw new HerdrError('stale', 'Claude’s answer field could not be cleared — check the current screen.')
+  }
+  const text = answer.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '').replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim()
+  await d.call('pane.send_input', { pane_id: paneId, text })
+  // Enter only once the text shows in place of the label (its start: a long
+  // one wraps).
+  const want = squash(text).slice(0, 24)
+  f = await field()
+  for (const end = d.now() + OPEN_MS; f && !squash(f.value).startsWith(want) && d.now() < end;) {
+    await d.sleep(100)
+    f = await field()
+  }
+  if (!f || !squash(f.value).startsWith(want)) throw new HerdrError('stale', 'Claude’s answer field closed — answer not submitted, check the current screen.')
   await keys(['enter'])
 }

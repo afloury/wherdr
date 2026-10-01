@@ -1,0 +1,15 @@
+←  ☐ Colour preference  ☐ Pet preferences  ✔ Submit  →
+
+What is your favourite colour?
+
+❯ 1. Red
+     Warm, energetic, and vibrant
+  2. Green
+     Natural, calming, and refreshing
+  3. Blue
+     Cool, peaceful, and trustworthy
+  4. Type something.
+────────────────────────────────────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · Tab/Arrow keys to navigate · Esc to cancel

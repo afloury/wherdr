@@ -16,7 +16,7 @@
 import path from 'node:path'
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail } from '../../shared/types'
 import { pendingClaudeTool, pendingCodexTool } from './promptDetail'
-import { type OmpAsked, pendingOmpAsk } from './choices'
+import { type ClaudeAsked, type OmpAsked, pendingClaudeAsk, pendingOmpAsk } from './choices'
 import { cleanModelName, lastModel } from './models'
 import { type MachineFs, localFs } from './fsx'
 import { searchFile } from './conversationSearch'
@@ -999,15 +999,34 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     return asked
   }
 
+  // Claude: the AskUserQuestion call still unanswered (see pendingClaudeAsk).
+  const claudeAskCache = new Map<string, { file: string, size: number, asked: ClaudeAsked[] }>()
+  async function pendingClaudeQuestions(pane: TranscriptPane): Promise<ClaudeAsked[]> {
+    if (pane.agent !== 'claude') return []
+    const loc = await locate(pane)
+    if (!loc) return []
+    let size: number
+    try { size = (await fs.stat(loc.file)).size }
+    catch { return [] }
+    const c = claudeAskCache.get(pane.id)
+    if (c && c.file === loc.file && c.size === size) return c.asked
+    let asked: ClaudeAsked[] = []
+    try { asked = pendingClaudeAsk((await readRange(loc.file, Math.max(0, size - PENDING_WINDOW), size)).text.split('\n').map(stripBlobs)) }
+    catch { asked = [] }
+    claudeAskCache.set(pane.id, { file: loc.file, size, asked })
+    return asked
+  }
+
   function forget(paneId: string) {
     locCache.delete(paneId)
     lastLoc.delete(paneId)
     modelCache.delete(paneId)
     pendingCache.delete(paneId)
     askCache.delete(paneId)
+    claudeAskCache.delete(paneId)
   }
 
-  return { chat, preview, image, forget, locate, model, observe, search, pendingTool, pendingAsk }
+  return { chat, preview, image, forget, locate, model, observe, search, pendingTool, pendingAsk, pendingClaudeQuestions }
 }
 
 export type Transcripts = ReturnType<typeof createTranscripts>
