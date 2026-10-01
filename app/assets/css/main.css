@@ -1037,6 +1037,8 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .queued-tag.sent .iconify { color: var(--accent); }
 .queued-tag.running { color: var(--text-2); letter-spacing: .08em; text-transform: uppercase; font-size: 10.5px; }
 .queued-tag.running .iconify { color: var(--accent); }
+.queued-tag.failed { color: var(--danger); }
+.queued-tag.failed .iconify { color: var(--danger); }
 .queued-tag .spin { animation: spin .8s linear infinite; }
 .msg-shell.running { border-color: var(--accent); }
 .msg-shell.running .msg-shell-cmd { padding-right: 12px; }

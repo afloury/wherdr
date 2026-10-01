@@ -101,7 +101,7 @@ const EN: Record<string, string> = {
   'Message déjà lu par l’agent': 'Already read by the agent', 'Le champ de saisie de l’agent n’est pas vide': 'The agent’s input field is not empty',
   'Champ de saisie de l’agent introuvable': 'Agent input field not found', 'Champ de l’agent pas vidé : vérifie son terminal': 'Agent input not cleared: check its terminal',
   'Annulation impossible pour cet agent': 'This agent can’t cancel queued messages', 'Annulation déjà en cours': 'Already cancelling', 'sera lu à la prochaine étape de l’agent': 'will be read at the agent’s next step',
-  'après ta réponse à la question': 'after you answer the question', 'envoi…': 'sending…',
+  'après ta réponse à la question': 'after you answer the question', 'envoi…': 'sending…', 'Non envoyé': 'Not sent', 'partira quand le menu sera fermé': 'will be sent when the menu closes',
   '⏸ En attente de ta réponse — détail dans l’onglet Terminal': '⏸ Waiting for your reply — details in the Terminal tab',
   'Photo en cours d’envoi…': 'Photo is uploading…', 'Retirer': 'Remove',
   'Photo non envoyée': 'Photo upload failed',
