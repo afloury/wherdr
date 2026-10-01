@@ -1,5 +1,5 @@
-// Demandes de permission : ce qui est demandé, lu dans la transcription (appel
-// d'outil sans résultat) ou à l'écran. Contenu entièrement fictif.
+// Permission requests: what is requested, read from the transcript (tool call
+// without a result) or from the screen. Entirely fictional content.
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { parseChoices } from '../server/utils/choices'
@@ -13,8 +13,8 @@ const user = (text: string) => JSON.stringify({ type: 'user', message: { role: '
 const toolUse = (id: string, name: string, input: object) => JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name, input }] } })
 const toolResult = (id: string) => JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }] } })
 
-describe('transcription Claude : appel d’outil en attente', () => {
-  it('Bash : commande entière et description', () => {
+describe('Claude transcript: pending tool call', () => {
+  it('Bash: full command and description', () => {
     const cmd = 'npm run build \\\n  && npm test -- --reporter dot'
     const d = pendingClaudeTool([
       user('Lance les tests'),
@@ -25,7 +25,7 @@ describe('transcription Claude : appel d’outil en attente', () => {
     expect(d).toEqual({ tool: 'Bash', description: 'Build then run the tests', command: cmd })
   })
 
-  it('Edit : fichier raccourci en ~, résumé et diff', () => {
+  it('Edit: file shortened with ~, summary and diff', () => {
     const d = pendingClaudeTool([
       user('Corrige le titre'),
       toolUse('t1', 'Edit', { file_path: `${HOME}/code/demo/app/title.ts`, old_string: 'const a = 1\nconst title = "Old"', new_string: 'const a = 1\nconst title = "New"\nexport default title' }),
@@ -39,7 +39,7 @@ describe('transcription Claude : appel d’outil en attente', () => {
     expect(d.command!.split('\n')[0]).toBe('  const a = 1')
   })
 
-  it('outil MCP : serveur · outil et entrée en JSON', () => {
+  it('MCP tool: server · tool and input as JSON', () => {
     const d = pendingClaudeTool([
       user('Crée le ticket'),
       toolUse('t1', 'mcp__tracker__create_issue', { title: 'Broken button', priority: 2 }),
@@ -48,14 +48,14 @@ describe('transcription Claude : appel d’outil en attente', () => {
     expect(JSON.parse(d.command!)).toEqual({ title: 'Broken button', priority: 2 })
   })
 
-  it('rien en attente : outil terminé, nouveau message, question ou sous-agent', () => {
+  it('nothing pending: tool finished, new message, question or subagent', () => {
     expect(pendingClaudeTool([toolUse('t1', 'Bash', { command: 'ls' }), toolResult('t1')])).toBeNull()
     expect(pendingClaudeTool([toolUse('t1', 'Bash', { command: 'ls' }), user('Autre chose')])).toBeNull()
     expect(pendingClaudeTool([toolUse('t1', 'AskUserQuestion', { questions: [] })])).toBeNull()
     expect(pendingClaudeTool([toolUse('t1', 'Task', { prompt: 'x' })])).toBeNull()
   })
 
-  it('prend le premier appel en attente d’un lot parallèle', () => {
+  it('takes the first pending call of a parallel batch', () => {
     const d = pendingClaudeTool([
       toolUse('a', 'Bash', { command: 'echo one' }),
       toolUse('b', 'Bash', { command: 'echo two' }),
@@ -63,7 +63,7 @@ describe('transcription Claude : appel d’outil en attente', () => {
     expect(d.command).toBe('echo one')
   })
 
-  it('commande très longue : coupée et signalée', () => {
+  it('very long command: cut and flagged', () => {
     const d = pendingClaudeTool([toolUse('t1', 'Bash', { command: 'x'.repeat(30000) })])!
     expect(d.command!.length).toBe(20000)
     expect(d.truncated).toBe(true)
@@ -88,7 +88,7 @@ describe('rollout Codex : appel en attente', () => {
     expect(d.removed).toBe(1)
   })
 
-  it('appel déjà exécuté : rien', () => {
+  it('call already executed: nothing', () => {
     expect(pendingCodexTool([
       item({ type: 'function_call', name: 'exec_command', call_id: 'c1', arguments: '{"cmd":"ls"}' }),
       item({ type: 'function_call_output', call_id: 'c1', output: 'ok' }),
@@ -96,7 +96,7 @@ describe('rollout Codex : appel en attente', () => {
   })
 })
 
-describe('écran : bloc au-dessus de la question', () => {
+describe('screen: block above the question', () => {
   const rule = '─'.repeat(60)
 
   it('Claude, Bash : outil, commande, description', () => {
@@ -116,12 +116,12 @@ describe('écran : bloc au-dessus de la question', () => {
     expect(c.detail).toEqual({ tool: 'Bash command', description: 'Push the demo branch', command: 'git push origin demo' })
   })
 
-  it('Claude, panneau diff à droite : ignoré', () => {
+  it('Claude, diff panel on the right: ignored', () => {
     const c = parseChoices(`${rule}\n${fx('claude-permission-diff.txt')}`, { strict: true })!
     expect(c.detail).toEqual({ tool: 'Bash command', description: 'Run the unit tests', command: 'npm test' })
   })
 
-  it('Claude, Edit : fichier et résumé du diff', () => {
+  it('Claude, Edit: file and diff summary', () => {
     const c = parseChoices([
       rule,
       ' Edit file',
@@ -142,7 +142,7 @@ describe('écran : bloc au-dessus de la question', () => {
     expect(c.detail!.removed).toBe(1)
   })
 
-  it('Codex : raison et commande entre la question et les options', () => {
+  it('Codex: reason and command between the question and the options', () => {
     const c = parseChoices([
       '  Would you like to run the following command?',
       '',
@@ -158,7 +158,7 @@ describe('écran : bloc au-dessus de la question', () => {
     expect(c.detail).toEqual({ tool: 'shell', description: 'Needs network access', command: 'curl -fsSL https://example.com/install.sh' })
   })
 
-  it('pas de détail pour une question ordinaire ou la confiance du dossier', () => {
+  it('no detail for an ordinary question or folder trust', () => {
     expect(parseChoices(fx('claude-ask.txt'))!.detail).toBeUndefined()
     expect(parseChoices(fx('claude-trust.txt'))!.detail).toBeUndefined()
     expect(parseChoices(fx('codex-trust.txt'), { strict: true })!.detail).toBeUndefined()
@@ -166,7 +166,7 @@ describe('écran : bloc au-dessus de la question', () => {
 })
 
 describe('outils', () => {
-  it('reconnaît les questions de permission', () => {
+  it('recognizes permission questions', () => {
     expect(isPermissionQuestion('Do you want to proceed?')).toBe(true)
     expect(isPermissionQuestion('Do you want to make this edit to a.ts?')).toBe(true)
     expect(isPermissionQuestion('Would you like to run the following command?')).toBe(true)
@@ -174,17 +174,17 @@ describe('outils', () => {
     expect(isPermissionQuestion('Do you trust the files in this folder?')).toBe(false)
   })
 
-  it('compte les lignes ajoutées et retirées', () => {
+  it('counts added and removed lines', () => {
     expect(lineStats('a\nb\nc', 'a\nB\nc\nd')).toEqual({ added: 2, removed: 1 })
   })
 
-  it('la transcription l’emporte, l’écran complète la description', () => {
+  it('the transcript wins, the screen completes the description', () => {
     expect(mergeDetail({ tool: 'Bash', command: 'ls -la' }, { tool: 'Bash command', command: 'ls', description: 'List files' }))
       .toEqual({ tool: 'Bash', command: 'ls -la', description: 'List files' })
     expect(mergeDetail(null, { tool: 'x' })).toEqual({ tool: 'x' })
   })
 
-  it('résumé en une ligne pour les cartes', () => {
+  it('one-line summary for the cards', () => {
     expect(detailLine({ tool: 'Bash', command: '\nnpm test\nnpm run lint' })).toBe('$ npm test')
     expect(detailLine({ tool: 'Bash', command: 'docker run --rm \\\n  -v x:/app \\\n  node:22' })).toBe('$ docker run --rm -v x:/app node:22')
     expect(detailLine({ tool: 'Edit', file: '~/code/app/a.ts', added: 3, removed: 1 })).toBe('a.ts  +3 −1')

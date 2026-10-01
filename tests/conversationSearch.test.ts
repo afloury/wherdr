@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest'
 import { excerpt, foldSearch, hitsInLine, matchAt, searchFile, SEARCH_BYTES_PER_AGENT } from '../server/utils/conversationSearch'
 import { localFs, type MachineFs } from '../server/utils/fsx'
 
-describe('recherche dans les transcriptions', () => {
-  it('extrait les vrais messages Claude et Codex, sans les appels d’outils', () => {
+describe('search in transcripts', () => {
+  it('extracts the real Claude and Codex messages, without tool calls', () => {
     const claude = JSON.stringify({ type: 'assistant', timestamp: '2026-09-26T10:00:00Z', message: { content: [{ type: 'text', text: 'La réponse est Éléphant.' }, { type: 'tool_use', name: 'Bash', input: { command: 'éléphant' } }] } })
     const codex = JSON.stringify({ type: 'response_item', timestamp: '2026-09-26T11:00:00Z', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'éléphant bleu' }] } })
     expect(hitsInLine(claude, 'claude', 123, 'elephant')).toMatchObject([{ role: 'assistant', offset: 123, ts: '2026-09-26T10:00:00Z' }])
@@ -21,7 +21,7 @@ describe('recherche dans les transcriptions', () => {
     expect(excerpt('abc éléphant xyz', 4, 12)).toContain('éléphant')
   })
 
-  it('borne les octets et le nombre de résultats, en parcourant les plus récents', async () => {
+  it('bounds the bytes and the number of results, going through the most recent', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'hw-search-'))
     const file = path.join(dir, 'conversation.jsonl')
     const line = JSON.stringify({ type: 'response_item', timestamp: '2026-09-26T11:00:00Z', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'éléphant ' + 'x'.repeat(200) }] } }) + '\n'

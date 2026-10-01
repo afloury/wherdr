@@ -19,27 +19,27 @@ const AGENTS = (sel: number, hint: string) => [
   `${sel === 1 ? '❯' : ' '} ◯ general-purpose  Write a story                                   9s · ↑ 1.2k tokens`,
 ].join('\n')
 
-describe('lecture des tâches de fond', () => {
-  it('shells signalés dans le pied', () => {
+describe('reading background tasks', () => {
+  it('shells reported in the footer', () => {
     const s = parseBackground(idle('  ⏸ manual mode on · 2 shells · ← for agents'))
     expect(s).toMatchObject({ shells: 2, agents: 0, panel: null, canStop: false })
     expect(nextBackgroundKey(s, 0)).toBe('down')
     expect(nextBackgroundKey(s, 2)).toBe(null)
   })
-  it('rien en fond : rien à faire', () => {
+  it('nothing in the background: nothing to do', () => {
     expect(nextBackgroundKey(parseBackground(idle()), 0)).toBe(null)
   })
-  it('liste des shells : x, puis Esc quand elle est vide', () => {
+  it('shell list: x, then Esc when it is empty', () => {
     const s = parseBackground(SHELLS_LIST(2))
     expect(s).toMatchObject({ panel: 'shells', canStop: true })
     expect(nextBackgroundKey(s, 1)).toBe('x')
     expect(nextBackgroundKey(parseBackground(NO_TASKS), 1)).toBe('esc')
   })
-  it('détail d’un shell en cours : x', () => {
+  it('detail of a running shell: x', () => {
     const s = parseBackground(['  Shell details', '  Status:   running', '  Runtime:  7s', '  Output:', '  │ 1 │'].join('\n'))
     expect(s).toMatchObject({ panel: 'shell', canStop: true })
   })
-  it('sous-agent de fond : descendre sur sa ligne, x, puis refermer', () => {
+  it('background subagent: move down to its line, x, then close', () => {
     expect(parseBackground(AGENTS(-1, '⏸ manual mode on · ← for agents')).agents).toBe(1)
     const top = parseBackground(AGENTS(0, '↑/↓ to select'))
     expect(top).toMatchObject({ panel: 'agents', selected: 0, rows: 2 })
@@ -47,13 +47,13 @@ describe('lecture des tâches de fond', () => {
     expect(nextBackgroundKey(parseBackground(AGENTS(1, 'Enter to view · x to stop')), 1)).toBe('x')
     expect(nextBackgroundKey(parseBackground(AGENTS(1, 'Enter to view · x to clear')), 1)).toBe('esc')
   })
-  it('ancienne ligne « Waiting for… » plus haut dans l’écran : ignorée', () => {
+  it('old "Waiting for…" line higher up on the screen: ignored', () => {
     const text = ['✻ Waiting for 1 background agent to finish', ...Array.from({ length: 10 }, (_, i) => `ligne ${i}`), RULE, '❯ ', RULE, '  ⏸ manual mode on'].join('\n')
     expect(parseBackground(text).agents).toBe(0)
   })
 })
 
-// Agent simulé : réagit aux touches comme Claude Code dans les cas observés.
+// Simulated agent: reacts to keys like Claude Code in the observed cases.
 function fake(o: { kind?: string, escNeeded?: number, shells?: number, bgAgent?: boolean }) {
   let status = 'working'
   let escs = 0
@@ -98,41 +98,41 @@ function fake(o: { kind?: string, escNeeded?: number, shells?: number, bgAgent?:
   return { d, sent, p: { id: 'w1:p1', agent: o.kind || 'claude', status: 'working' as const } }
 }
 
-describe('séquence d’interruption', () => {
-  it('un Échap suffit : un seul envoyé', async () => {
+describe('interrupt sequence', () => {
+  it('one Escape is enough: only one sent', async () => {
     const f = fake({})
     expect(await interruptAgent(f.d, f.p)).toEqual({ stopped: true, esc: 1, background: 0 })
     expect(f.sent).toEqual(['esc'])
   })
-  it('l’agent travaille encore après le premier Échap : un second', async () => {
+  it('the agent is still working after the first Escape: a second one', async () => {
     const f = fake({ escNeeded: 2 })
     expect(await interruptAgent(f.d, f.p)).toMatchObject({ stopped: true, esc: 2 })
     expect(f.sent).toEqual(['esc', 'esc'])
   })
-  it('jamais plus de deux Échap, ni Ctrl+C : l’agent qui résiste est signalé', async () => {
+  it('never more than two Escapes, nor Ctrl+C: the resisting agent is reported', async () => {
     const f = fake({ escNeeded: 9 })
     expect(await interruptAgent(f.d, f.p)).toMatchObject({ stopped: false, esc: 2 })
     expect(f.sent.every(k => k === 'esc')).toBe(true)
   })
-  it('shells de fond : liste ouverte, chacun arrêté, liste refermée', async () => {
+  it('background shells: list opened, each stopped, list closed', async () => {
     const f = fake({ shells: 2 })
     expect(await interruptAgent(f.d, f.p)).toMatchObject({ stopped: true, background: 2 })
     expect(f.sent).toEqual(['esc', 'down', 'enter', 'x', 'x', 'esc'])
   })
-  it('sous-agent de fond : pas de second Échap inutile, agent arrêté depuis sa liste', async () => {
+  it('background subagent: no useless second Escape, agent stopped from its list', async () => {
     const f = fake({ bgAgent: true })
     expect(await interruptAgent(f.d, f.p)).toMatchObject({ stopped: true, esc: 1, background: 1 })
     expect(f.sent).toEqual(['esc', 'down', 'down', 'x', 'esc'])
   })
-  it('Codex : Échap seulement, pas de panneau de fond', async () => {
+  it('Codex: Escape only, no background panel', async () => {
     const f = fake({ kind: 'codex', escNeeded: 2, shells: 1 })
     await interruptAgent(f.d, f.p)
     expect(f.sent).toEqual(['esc', 'esc'])
   })
 })
 
-describe('sous-agent déjà arrêté encore listé', () => {
-  it('agent au repos : on ne rouvre pas la liste', async () => {
+describe('subagent already stopped but still listed', () => {
+  it('idle agent: we do not reopen the list', async () => {
     const calls: string[] = []
     let t = 0
     const d: RestartDeps = {

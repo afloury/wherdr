@@ -7,7 +7,7 @@ import { closeConfirm } from '../app/utils/spaceConfirm'
 const R = 'abcd1234'
 
 describe('spaceCall', () => {
-  it('nouvel onglet : jamais de focus, libellé nettoyé', () => {
+  it('new tab: never any focus, cleaned label', () => {
     expect(spaceCall({ op: 'tab.create', workspace_id: 'w1', label: '  dev   api ' })).toEqual({
       machine: '', method: 'tab.create', params: { workspace_id: 'w1', label: 'dev api', focus: false },
     })
@@ -17,18 +17,18 @@ describe('spaceCall', () => {
     expect(spaceCall({ op: 'tab.create', workspace_id: 'w2', cwd: '~/dev' }).params).toEqual({ workspace_id: 'w2', focus: false })
   })
 
-  it('part vers la machine de l’objet, avec des IDs locaux', () => {
+  it('goes to the object\'s machine, with local IDs', () => {
     expect(spaceCall({ op: 'tab.close', tab_id: `${R}~w3:t2` })).toEqual({ machine: R, method: 'tab.close', params: { tab_id: 'w3:t2' } })
     expect(spaceCall({ op: 'workspace.close', workspace_id: `${R}~w3` })).toEqual({ machine: R, method: 'workspace.close', params: { workspace_id: 'w3' } })
   })
 
-  it('renommer : espace ou onglet, nom obligatoire et borné', () => {
+  it('rename: space or tab, name required and bounded', () => {
     expect(spaceCall({ op: 'workspace.rename', workspace_id: 'w1', label: 'api' }).params).toEqual({ workspace_id: 'w1', label: 'api' })
     expect(spaceCall({ op: 'tab.rename', tab_id: 'w1:t2', label: 'x'.repeat(80) }).params).toEqual({ tab_id: 'w1:t2', label: 'x'.repeat(60) })
     expect(() => spaceCall({ op: 'tab.rename', tab_id: 'w1:t2', label: '   ' })).toThrow(/empty name/)
   })
 
-  it('diviser : à droite ou en bas, sans focus', () => {
+  it('split: right or down, without focus', () => {
     expect(spaceCall({ op: 'pane.split', pane_id: `${R}~w1:p2`, direction: 'down' })).toEqual({
       machine: R, method: 'pane.split', params: { target_pane_id: 'w1:p2', direction: 'down', focus: false },
     })
@@ -38,7 +38,7 @@ describe('spaceCall', () => {
     expect(spaceCall({ op: 'pane.split', pane_id: 'w1:p2', direction: 'right', cwd: 'app' }).params).toEqual({ target_pane_id: 'w1:p2', direction: 'right', focus: false })
   })
 
-  it('réordonner : avant un autre espace de la même machine, ou à la fin, sans focus', () => {
+  it('reorder: before another space of the same machine, or at the end, without focus', () => {
     expect(spaceCall({ op: 'workspace.move', workspace_id: `${R}~w3`, before_workspace_id: `${R}~w1` })).toEqual({
       machine: R, method: 'workspace.move_block', params: { workspace_ids: ['w3'], before_workspace_id: 'w1' },
     })
@@ -50,7 +50,7 @@ describe('spaceCall', () => {
     expect(() => spaceCall({ op: 'workspace.move', workspace_id: 'w2:p1', before_workspace_id: null })).toThrow(/invalid workspace/)
   })
 
-  it('déplacer : vers un onglet, un nouvel onglet de son espace, un nouvel espace', () => {
+  it('move: to a tab, a new tab of its space, a new space', () => {
     expect(spaceCall({ op: 'pane.move', pane_id: 'w1:p2', to: { tab_id: 'w2:t1' } }).params).toEqual({
       pane_id: 'w1:p2', destination: { type: 'tab', tab_id: 'w2:t1', split: 'right' }, focus: false,
     })
@@ -60,7 +60,7 @@ describe('spaceCall', () => {
     expect(spaceCall({ op: 'pane.move', pane_id: 'w1:p2', to: 'new_workspace' }).params.destination).toEqual({ type: 'new_workspace' })
   })
 
-  it('refuse un onglet d’une autre machine, des IDs ou actions inconnus', () => {
+  it('refuses a tab of another machine, unknown IDs or actions', () => {
     expect(() => spaceCall({ op: 'pane.move', pane_id: 'w1:p2', to: { tab_id: `${R}~w1:t1` } })).toThrow(/another machine/)
     expect(() => spaceCall({ op: 'pane.move', pane_id: 'w1:p2', to: 'ailleurs' })).toThrow(/destination/)
     expect(() => spaceCall({ op: 'tab.close', tab_id: 'w1' })).toThrow(/invalid tab/)
@@ -71,7 +71,7 @@ describe('spaceCall', () => {
 })
 
 describe('spaceResult', () => {
-  it('rend les IDs créés ou déplacés, préfixés pour une machine distante', () => {
+  it('returns the created or moved IDs, prefixed for a remote machine', () => {
     const split = spaceCall({ op: 'pane.split', pane_id: `${R}~w1:p1`, direction: 'right' })
     expect(spaceResult(split, { type: 'pane_info', pane: { pane_id: 'w1:p2', tab_id: 'w1:t1' } })).toEqual({ pane_id: `${R}~w1:p2`, tab_id: `${R}~w1:t1` })
     const tab = spaceCall({ op: 'tab.create', workspace_id: 'w1' })
@@ -89,7 +89,7 @@ const panes = [pane('w1:p1', 'w1:t1', 'claude'), pane('w1:p2', 'w1:t1', 'codex')
 const state = reduceSnapshot({ ...layouts, panes })
 
 describe('closeSummary', () => {
-  it('compte les agents qu’une fermeture arrêterait', () => {
+  it('counts the agents a close would stop', () => {
     const s = closeSummary(state.panes.filter(p => p.tab === 'w1:t1'))
     expect(s.agents.map(p => p.agent)).toEqual(['claude', 'codex'])
     expect(s.shells).toBe(1)
@@ -98,7 +98,7 @@ describe('closeSummary', () => {
 })
 
 describe('moveTargets', () => {
-  it('les autres onglets de la machine, ceux de son espace d’abord', () => {
+  it('the other tabs of the machine, those of its space first', () => {
     const t = moveTargets(state, 'w2:p1')
     expect(t.map(x => [x.tab_id, x.sameWorkspace])).toEqual([['w1:t1', false], ['w1:t2', false], ['w3:t1', false]])
     const u = moveTargets(state, 'w1:p4')
@@ -106,7 +106,7 @@ describe('moveTargets', () => {
     expect(u[0]).toMatchObject({ label: 'dev', workspaceLabel: 'herdr-web', sameWorkspace: true, panes: 3 })
   })
 
-  it('jamais vers une autre machine', () => {
+  it('never to another machine', () => {
     const remote = reduceSnapshot({ ...layouts, panes }, R)
     const both = { workspaces: [...state.workspaces, ...remote.workspaces], tabs: [...state.tabs!, ...remote.tabs!], panes: [...state.panes, ...remote.panes] }
     expect(moveTargets(both, `${R}~w1:p4`).every(x => x.tab_id.startsWith(`${R}~`))).toBe(true)
@@ -116,21 +116,21 @@ describe('moveTargets', () => {
 })
 
 describe('paneSpaceEntries', () => {
-  it('nouvel onglet depuis tout pane, même seul dans son espace', () => {
-    // w3 : un seul onglet, un seul pane (carte d'agent, vue agent directe).
+  it('new tab from any pane, even alone in its space', () => {
+    // w3: a single tab, a single pane (agent card, direct agent view).
     expect(paneSpaceEntries(state, 'w3:p1')).toEqual(['tab.create', 'workspace.rename'])
   })
 
-  it('onglets renommables et fermables quand l’espace en a plusieurs', () => {
+  it('tabs renamable and closable when the space has several', () => {
     expect(paneSpaceEntries(state, 'w1:p4')).toEqual(['tab.create', 'tab.rename', 'tab.close', 'workspace.rename', 'workspace.close'])
   })
 
-  it('un seul onglet de plusieurs panes : l’espace se ferme, pas l’onglet', () => {
+  it('a single tab with several panes: the space closes, not the tab', () => {
     expect(paneSpaceEntries(state, 'w2:p2')).toEqual(['tab.create', 'workspace.rename', 'workspace.close'])
     expect(paneSpaceEntries(state, 'w9:p9')).toEqual([])
   })
 
-  it('chaque action une seule fois (« Renommer l’espace » n’est pas en double)', () => {
+  it('each action only once ("Rename space" is not duplicated)', () => {
     for (const p of state.panes) {
       const e = paneSpaceEntries(state, p.id)
       expect(new Set(e).size).toBe(e.length)
@@ -140,12 +140,12 @@ describe('paneSpaceEntries', () => {
 })
 
 describe('closeConfirm', () => {
-  // Espaces insécables du français (« », : ?) : comparées comme des espaces.
+  // French non-breaking spaces (« », : ?): compared as spaces.
   const fr = (_: string, b: string) => b.replace(/\u00a0/g, ' ')
   const en = (a: string) => a
   const tab = state.panes.filter(p => p.tab === 'w1:t1')
 
-  it('nomme les agents qui seront arrêtés', () => {
+  it('names the agents that will be stopped', () => {
     const c = closeConfirm({ kind: 'tab', label: 'dev', panes: tab }, fr)
     expect(closeConfirm({ kind: 'tab', label: 'dev', panes: tab }, (_: string, b: string) => b).message).toContain('«\u00a0dev\u00a0»\u00a0?')
     expect(c.message).toBe('Fermer l’onglet « dev » ? 2 agents y tournent : Claude « Claude », Codex « Codex ». Ils seront arrêtés. Son terminal sera fermé aussi.')
@@ -153,13 +153,13 @@ describe('closeConfirm', () => {
     expect(closeConfirm({ kind: 'tab', label: 'dev', panes: tab }, en).action).toBe('Close and stop 2 agents')
   })
 
-  it('prévient quand le dernier onglet emporte son espace', () => {
+  it('warns when the last tab takes its space with it', () => {
     const c = closeConfirm({ kind: 'tab', label: '1', panes: state.panes.filter(p => p.workspace === 'w3'), lastTab: true, workspaceLabel: 'notes' }, fr)
     expect(c.message).toBe('Fermer l’onglet « 1 » ? C’est son dernier onglet : l’espace « notes » sera fermé aussi. Son terminal sera fermé.')
     expect(c.action).toBe('Fermer l’onglet')
   })
 
-  it('espace sans agent, ou avec beaucoup d’agents', () => {
+  it('space without agents, or with many agents', () => {
     expect(closeConfirm({ kind: 'workspace', label: 'api', panes: state.panes.filter(p => p.workspace === 'w2') }, en))
       .toEqual({ message: 'Close space “api”? Its 2 terminals will close.', action: 'Close space' })
     const many = ['claude', 'codex', 'claude', 'claude', 'codex'].map((a, i) => ({ ...tab[0]!, id: `w1:p${i}`, agent: a, name: `a${i}` }))

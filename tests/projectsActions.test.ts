@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { cleanProjectInput, conversationEmpty, doctorLevel, goalWithTask, projectCommandArgs, setupHeader } from '../shared/projectsActions'
 
 describe('herdr-projects : saisies et arguments', () => {
-  it('exige un nom, l’objectif restant facultatif, pour l’adoption et « New project »', () => {
+  it('requires a name, the goal staying optional, for adoption and "New project"', () => {
     expect(cleanProjectInput('adopt-workspace', { name: 'Demo', goal: '' })).toEqual({ name: 'Demo' })
     expect(cleanProjectInput('adopt-workspace', { name: 'Demo', goal: '  ', task: ' fix  Y ' })).toEqual({ name: 'Demo', task: 'fix Y' })
     expect(cleanProjectInput('new', { name: 'Demo' })).toEqual({ name: 'Demo' })
@@ -17,7 +17,7 @@ describe('herdr-projects : saisies et arguments', () => {
     expect(cleanProjectInput('delete', { slug: 'demo' })).toBeNull()
   })
 
-  it('refuse un nom ou un slug lu comme une option, et un nom refusé par le formulaire', () => {
+  it('refuses a name or slug read as an option, and a name refused by the form', () => {
     expect(cleanProjectInput('new', { name: '--help' })).toBeNull()
     expect(cleanProjectInput('adopt-workspace', { name: '-x' })).toBeNull()
     expect(cleanProjectInput('open', { slug: '--session=autre' })).toBeNull()
@@ -26,7 +26,7 @@ describe('herdr-projects : saisies et arguments', () => {
     expect(cleanProjectInput('new', { name: 'Demo-2' })).toEqual({ name: 'Demo-2' })
   })
 
-  it('construit adopt-workspace avec l’objectif, la tâche en cours et la session', () => {
+  it('builds adopt-workspace with the goal, the current task and the session', () => {
     const input = cleanProjectInput('adopt-workspace', { name: 'Demo', goal: 'Faire X', task: 'corriger Y' })!
     expect(projectCommandArgs('adopt-workspace', input, { pane: 'w1:p2', cwd: '/tmp/demo', session: 'hwtest', lang: 'fr' })).toEqual([
       'adopt-workspace', '--name', 'Demo', '--pane', 'w1:p2', '--workspace-cwd', '/tmp/demo',
@@ -37,7 +37,7 @@ describe('herdr-projects : saisies et arguments', () => {
     expect(() => projectCommandArgs('adopt-workspace', { name: 'Demo', goal: 'g' }, { session: 'default' })).toThrow()
   })
 
-  it('adopt-workspace sans objectif : pas de --goal, ou la tâche seule', () => {
+  it('adopt-workspace without a goal: no --goal, or the task alone', () => {
     const ctx = { pane: 'w1:p2', cwd: '/tmp/demo', session: 'default', lang: 'fr' as const }
     expect(projectCommandArgs('adopt-workspace', { name: 'Demo' }, ctx))
       .toEqual(['adopt-workspace', '--name', 'Demo', '--pane', 'w1:p2', '--workspace-cwd', '/tmp/demo'])
@@ -45,14 +45,14 @@ describe('herdr-projects : saisies et arguments', () => {
       .toEqual(['adopt-workspace', '--name', 'Demo', '--pane', 'w1:p2', '--workspace-cwd', '/tmp/demo', '--goal', 'corriger Y'])
   })
 
-  it('ajoute la tâche à l’objectif sans doubler la ponctuation', () => {
+  it('appends the task to the goal without doubling punctuation', () => {
     expect(goalWithTask('Do X', '')).toBe('Do X')
     expect(goalWithTask('Do X!', 'fix Y')).toBe('Do X! Current task: fix Y')
     expect(goalWithTask('', 'fix Y')).toBe('fix Y')
     expect(goalWithTask('', '')).toBe('')
   })
 
-  it('construit new avec --repo seulement s’il est donné', () => {
+  it('builds new with --repo only if given', () => {
     expect(projectCommandArgs('new', { name: 'Demo', goal: 'g', repo: '/tmp/repo' }, { session: 'hwtest' }))
       .toEqual(['new', 'Demo', '--goal', 'g', '--repo', '/tmp/repo'])
     expect(projectCommandArgs('new', { name: 'Demo', goal: 'g' }, { session: 'default' })).toEqual(['new', 'Demo', '--goal', 'g'])
@@ -71,7 +71,7 @@ describe('conversation vide avant adoption', () => {
     expect(conversationEmpty({ available: true, items: [item('system'), item('cmd'), item('user', '  ')] })).toBe(true)
     expect(conversationEmpty({ available: false, reason: 'not_found' })).toBe(true)
   })
-  it('non vide dès un message ; inconnue si l’agent n’est pas lisible', () => {
+  it('non-empty from one message; unknown if the agent is not readable', () => {
     expect(conversationEmpty({ available: true, items: [item('user')] })).toBe(false)
     expect(conversationEmpty({ available: true, items: [item('assistant')] })).toBe(false)
     expect(conversationEmpty({ available: false, reason: 'unsupported' })).toBeNull()
@@ -91,7 +91,7 @@ describe('Check setup', () => {
     expect(other.find(l => l.key === 'binary')!.warn).toBe(true)
     expect(other.find(l => l.key === 'version')).toEqual({ key: 'version', value: '?', warn: true })
   })
-  it('reconnaît les niveaux des lignes de doctor', () => {
+  it('recognizes the levels of doctor lines', () => {
     expect(doctorLevel('[ok  ] git: 2.50')).toBe('ok')
     expect(doctorLevel('[warn] ticker: not running')).toBe('warn')
     expect(doctorLevel('[FAIL] session: none')).toBe('fail')

@@ -39,7 +39,7 @@ describe('drag ownership', () => {
 })
 
 describe('edge auto-scroll', () => {
-  // Zone de 100 à 500 px, lignes de 20 px.
+  // Area from 100 to 500 px, 20 px lines.
   it('does not scroll inside the area', () => {
     expect(edgeScrollSpeed(300, 100, 500, 20)).toBe(0)
     expect(edgeScrollSpeed(121, 100, 500, 20)).toBe(0)
@@ -64,7 +64,7 @@ describe('edge auto-scroll', () => {
     expect(edgeLines(10, 50, 0, 20)).toEqual({ lines: 0, rest: 0.5 })
     expect(edgeLines(10, 50, 0.5, 20)).toEqual({ lines: 1, rest: 0 })
     expect(edgeLines(-40, 50, 0, 20)).toEqual({ lines: -2, rest: 0 })
-    // Plafonné à moins d'un écran par pas : le décalage reste mesurable.
+    // Capped at less than one screen per step: the offset stays measurable.
     expect(edgeLines(EDGE_MAX_SPEED, 1000, 0, 20)).toEqual({ lines: 20, rest: 0 })
   })
 })
@@ -87,7 +87,7 @@ describe('scroll measurement', () => {
 
   it('finds how far the text moved', () => {
     expect(findShift(screen(10), screen(10))).toBe(0)
-    expect(findShift(screen(10), screen(7))).toBe(3) // vers le haut de l'historique
+    expect(findShift(screen(10), screen(7))).toBe(3) // towards the top of the history
     expect(findShift(screen(10), screen(12))).toBe(-2)
   })
 

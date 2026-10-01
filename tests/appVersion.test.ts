@@ -1,4 +1,4 @@
-// Nouvelle version après un déploiement : détection et garde anti-boucle.
+// New version after a deployment: detection and anti-loop guard.
 import { describe, expect, it } from 'vitest'
 import { CHUNK_RELOAD_GUARD_MS, isChunkLoadError, isNewBuild, mayReloadForChunk } from '../app/utils/appVersion'
 
@@ -8,10 +8,10 @@ function memStorage() {
 }
 
 describe('isNewBuild', () => {
-  it('détecte un autre build', () => {
+  it('detects another build', () => {
     expect(isNewBuild('aaa', { id: 'bbb', timestamp: 1 })).toBe(true)
   })
-  it('ignore le même build et les réponses illisibles', () => {
+  it('ignores the same build and unreadable responses', () => {
     expect(isNewBuild('aaa', { id: 'aaa' })).toBe(false)
     expect(isNewBuild('aaa', null)).toBe(false)
     expect(isNewBuild('aaa', '<html>')).toBe(false)
@@ -21,7 +21,7 @@ describe('isNewBuild', () => {
 })
 
 describe('isChunkLoadError', () => {
-  it('reconnaît les messages des navigateurs', () => {
+  it('recognizes the browsers\' messages', () => {
     expect(isChunkLoadError(new TypeError('Failed to fetch dynamically imported module: /_nuxt/x.js'))).toBe(true)
     expect(isChunkLoadError(new TypeError('Importing a module script failed.'))).toBe(true)
     expect(isChunkLoadError(new Error('error loading dynamically imported module'))).toBe(true)
@@ -33,13 +33,13 @@ describe('isChunkLoadError', () => {
 })
 
 describe('mayReloadForChunk', () => {
-  it('recharge une fois puis s’arrête (pas de boucle)', () => {
+  it('reloads once then stops (no loop)', () => {
     const s = memStorage()
     expect(mayReloadForChunk(s, 1000)).toBe(true)
     expect(mayReloadForChunk(s, 2000)).toBe(false)
     expect(mayReloadForChunk(s, 1000 + CHUNK_RELOAD_GUARD_MS - 1)).toBe(false)
   })
-  it('autorise de nouveau après le délai', () => {
+  it('allows it again after the delay', () => {
     const s = memStorage()
     expect(mayReloadForChunk(s, 1000)).toBe(true)
     expect(mayReloadForChunk(s, 1000 + CHUNK_RELOAD_GUARD_MS)).toBe(true)

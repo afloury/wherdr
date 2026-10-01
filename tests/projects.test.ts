@@ -14,8 +14,8 @@ const coord = (slug: string, o: Partial<Pane> = {}) => pane({ cwd: `/home/user/.
 const thread = (slug: string, num: string, o: Partial<Pane> = {}) =>
   pane({ name: `hp-${slug}-t-${num}-sujet`, cwd: `/home/user/.herdr/worktrees/repo/hp-${slug}-t-${num}-sujet`, ...o })
 
-describe('projet d’un pane', () => {
-  it('préfère le jeton de Herdr, puis le nom, puis le dossier', () => {
+describe('project of a pane', () => {
+  it('prefers the Herdr token, then the name, then the folder', () => {
     expect(projectOf(pane({ project: 'wherdr', cwd: '/tmp' }))).toBe('wherdr')
     expect(projectOf(pane({ name: 'hp-mon-app-t-0003-x' }))).toBe('mon-app')
     expect(projectOf(pane({ cwd: '/Users/a/.herdr/worktrees/herdr-web/hp-wherdr-t-0018-regroupement' }))).toBe('wherdr')
@@ -24,7 +24,7 @@ describe('projet d’un pane', () => {
     expect(projectOf(pane({ cwd: '/home/user/code/app', name: 'claude' }))).toBeNull()
   })
 
-  it('numérote les threads, pas le coordinateur', () => {
+  it('numbers threads, not the coordinator', () => {
     expect(threadNumber(thread('wherdr', '0018'))).toBe(18)
     expect(threadNumber(pane({ cwd: '/Users/a/.herdr/worktrees/r/hp-wherdr-t-0007' }))).toBe(7)
     expect(threadNumber(coord('wherdr'))).toBeNull()
@@ -32,7 +32,7 @@ describe('projet d’un pane', () => {
 })
 
 describe('regroupement par projet', () => {
-  it('met le coordinateur en premier, puis les threads par numéro', () => {
+  it('puts the coordinator first, then threads by number', () => {
     const t12 = thread('wherdr', '0012', { status: 'working' })
     const c = coord('wherdr')
     const t5 = thread('wherdr', '0005', { status: 'blocked' })
@@ -47,7 +47,7 @@ describe('regroupement par projet', () => {
     expect(others).toEqual([other])
   })
 
-  it('sépare les projets, triés par nom, et garde l’ordre des agents hors projet', () => {
+  it('separates projects, sorted by name, and keeps the order of agents outside projects', () => {
     const a = pane({ title: 'A' })
     const b = pane({ title: 'B' })
     const { projects, others } = groupByProject([thread('zeta', '0001'), a, coord('alpha'), b, pane({ project: 'Zeta' })])
@@ -57,20 +57,20 @@ describe('regroupement par projet', () => {
     expect(others).toEqual([a, b])
   })
 
-  it('accepte un projet sans coordinateur visible (threads d’une autre machine)', () => {
+  it('accepts a project without a visible coordinator (threads of another machine)', () => {
     const { projects } = groupByProject([thread('wherdr', '0018')])
     expect(projects[0]!.coordinator).toBeNull()
     expect(projects[0]!.panes).toHaveLength(1)
   })
 
-  it('ne regroupe rien sans projet', () => {
+  it('groups nothing without a project', () => {
     const list = [pane(), pane({ agent: 'codex' })]
     expect(groupByProject(list)).toEqual({ projects: [], others: list })
   })
 })
 
-describe('sous-groupes de dépôt', () => {
-  it('place le coordinateur, chaque dépôt et les autres spaces séparément, triés par urgence', () => {
+describe('repository subgroups', () => {
+  it('places the coordinator, each repository and the other spaces separately, sorted by urgency', () => {
     const c = coord('wherdr', { status: 'idle' })
     const aReady = thread('wherdr', '0001', { workspace: 'a1', status: 'idle' })
     const aBlocked = thread('wherdr', '0002', { workspace: 'a2', status: 'blocked' })
@@ -88,7 +88,7 @@ describe('sous-groupes de dépôt', () => {
     expect(group.blocked).toBe(2)
   })
 
-  it('laisse les spaces hors worktree après les dépôts', () => {
+  it('leaves spaces outside worktrees after the repositories', () => {
     const c = coord('demo')
     const other = pane({ project: 'demo', cwd: '/home/user/.herdr-projects/demo/docs' })
     const group = groupByProject([c, other]).projects[0]!
@@ -104,11 +104,11 @@ describe('jetons de herdr-projects', () => {
     expect(projectToken(undefined)).toBeUndefined()
   })
 
-  it('ignore la valeur technique d’un pane détaché (« ~!0003 ») et tout nom non conforme', () => {
+  it('ignores the technical value of a detached pane ("~!0003") and any non-conforming name', () => {
     expect(projectToken({ hp_group: '~!0003' })).toBeUndefined()
     expect(projectToken({ hp_project: '~!0006', hp_group: 'wherdr' })).toBe('wherdr')
     expect(projectToken({ hp_project: 'mon projet' })).toBeUndefined()
-    // Thread clôturé resté ouvert : retombe sur son nom ou son worktree.
+    // Closed thread left open: falls back on its name or worktree.
     expect(projectOf(pane({ project: '~!0003', name: 'hp-wherdr-t-0003-sujet' }))).toBe('wherdr')
     expect(projectOf(pane({ project: '~!0006', cwd: '/Users/a/.herdr/worktrees/herdr-web/hp-wherdr-t-0006-x' }))).toBe('wherdr')
     const { projects } = groupByProject([pane({ project: '~!0003', name: 'hp-wherdr-t-0003-sujet' })])

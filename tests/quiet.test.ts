@@ -4,7 +4,7 @@ import { nextMorning, parseQuiet, quietActive, quietUntil, silenced } from '../s
 const now = new Date(2026, 0, 15, 14, 30).getTime()
 
 describe('mode silence', () => {
-  it('actif jusqu’à la fin, puis retour automatique', () => {
+  it('active until the end, then automatic return', () => {
     expect(quietActive(null, now)).toBe(false)
     expect(quietActive({ until: null }, now)).toBe(true)
     expect(quietActive({ until: now + 1000 }, now)).toBe(true)
@@ -12,7 +12,7 @@ describe('mode silence', () => {
     expect(quietActive({ until: now - 1 }, now)).toBe(false)
   })
 
-  it('coupe un appareil par son abonnement ou tous par le réglage global', () => {
+  it('mutes one device by its subscription or all by the global setting', () => {
     expect(silenced(null, null, now)).toBe(false)
     expect(silenced(null, { until: null }, now)).toBe(true)
     expect(silenced({ until: now + 60000 }, null, now)).toBe(true)
@@ -28,7 +28,7 @@ describe('mode silence', () => {
     expect(nextMorning(new Date(2026, 0, 15, 8))).toBe(new Date(2026, 0, 16, 8).getTime())
   })
 
-  it('valide le corps de requête', () => {
+  it('validates the request body', () => {
     expect(parseQuiet(false, 123, now)).toBeNull()
     expect(parseQuiet(true, null, now)).toEqual({ until: null })
     expect(parseQuiet(true, now + 1000, now)).toEqual({ until: now + 1000 })

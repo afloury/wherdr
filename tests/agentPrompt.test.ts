@@ -5,9 +5,9 @@ import path from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { agentPrompt, setSocketResolver } from '../server/utils/herdr'
 
-// Faux serveur Herdr 0.9 : agent lancé par agent.start, déjà idle à l'écran,
-// mais encore « en démarrage » (launch_pending) tant qu'un agent.get ne l'a pas
-// revalidé après le délai de 3 s (`settled`).
+// Fake Herdr 0.9 server: agent launched by agent.start, already idle on screen,
+// but still "starting" (launch_pending) until an agent.get has
+// re-checked it after the 3 s delay (`settled`).
 const herdr = { settled: true, ready: false, getError: null as string | null, methods: [] as string[], delivered: [] as string[] }
 let server: net.Server
 let dir: string
@@ -44,20 +44,20 @@ afterAll(() => {
 })
 beforeEach(() => Object.assign(herdr, { settled: true, ready: false, getError: null, methods: [], delivered: [] }))
 
-describe('agentPrompt : agent neuf que Herdr tient pour « en démarrage »', () => {
-  it('fait revalider le démarrage par agent.get puis envoie le message une fois', async () => {
+describe('agentPrompt: new agent that Herdr considers "starting"', () => {
+  it('has agent.get re-check the startup, then sends the message once', async () => {
     await agentPrompt('w1:p1', 'premier message')
     expect(herdr.methods).toEqual(['agent.prompt', 'agent.get', 'agent.prompt'])
     expect(herdr.delivered).toEqual(['premier message'])
   })
 
-  it('moins de 3 s après le lancement : le refus agent_not_ready remonte (message mis en attente)', async () => {
+  it('less than 3 s after launch: the agent_not_ready refusal goes up (message queued)', async () => {
     herdr.settled = false
     await expect(agentPrompt('w1:p1', 'trop tôt')).rejects.toMatchObject({ code: 'agent_not_ready' })
     expect(herdr.delivered).toEqual([])
   })
 
-  it('agent.get en échec : le refus d’origine remonte, pas l’erreur d’agent.get', async () => {
+  it('agent.get failing: the original refusal goes up, not the agent.get error', async () => {
     herdr.getError = 'agent_not_found'
     await expect(agentPrompt('w1:p1', 'x')).rejects.toMatchObject({ code: 'agent_not_ready' })
     expect(herdr.methods).toEqual(['agent.prompt', 'agent.get'])

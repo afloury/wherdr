@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseMeters } from '../app/utils/meters'
 
-describe('jauges d’utilisation', () => {
+describe('usage gauges', () => {
   it('lit le /usage de Claude Code', () => {
     const screen = `   Settings  Status   Config   Usage   Stats
    Session
@@ -29,7 +29,7 @@ describe('jauges d’utilisation', () => {
     expect(r.rest).not.toContain('Esc to cancel')
   })
 
-  it('lit le /status de Codex (encadré, réinitialisation à la ligne)', async () => {
+  it('reads Codex\'s /status (box, reset on its own line)', async () => {
     const { unbox } = await import('../app/utils/meters')
     const screen = `╭──────────────────────────────────────╮
 │  Account:              Plus          │
@@ -49,9 +49,9 @@ describe('jauges d’utilisation', () => {
   })
 })
 
-describe('onglet actif du panneau de réglages', async () => {
+describe('active tab of the settings panel', async () => {
   const { activeTab } = await import('../server/utils/settingstabs')
-  it('repère le mot sur fond coloré', () => {
+  it('spots the word on a colored background', () => {
     const l = '\x1b[0m\x1b[1m\x1b[38;2;177;185;249mSettings\x1b[0m  Status   Config   Usage  \x1b[0m\x1b[1m\x1b[38;2;0;0;0m\x1b[48;2;177;185;249m Stats \x1b[0m\r'
     expect(activeTab(l)).toBe('Stats')
     expect(activeTab('Settings  Status  Config')).toBeNull()

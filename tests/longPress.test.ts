@@ -7,7 +7,7 @@ describe('appui long', () => {
   beforeEach(() => { vi.useFakeTimers() })
   afterEach(() => { vi.useRealTimers() })
 
-  it('se déclenche après 450 ms au doigt immobile, et avale le clic qui suit', () => {
+  it('fires after 450 ms with a still finger, and swallows the following click', () => {
     const onPress = vi.fn()
     const lp = longPress({ onPress })
     lp.down(at(10))
@@ -21,7 +21,7 @@ describe('appui long', () => {
     expect(lp.swallowClick()).toBe(false)
   })
 
-  it('toucher simple, défilement ou souris : rien', () => {
+  it('simple tap, scroll or mouse: nothing', () => {
     const onPress = vi.fn()
     const lp = longPress({ onPress })
     lp.down(at(10))
@@ -35,14 +35,14 @@ describe('appui long', () => {
     expect(lp.swallowClick()).toBe(false)
   })
 
-  it('avale le clic iPhone après un glisser long relâché sur un autre pane', () => {
+  it('swallows the iPhone click after a long drag released on another pane', () => {
     const lp = longPress({ onPress: vi.fn() })
     lp.down(at(10))
     vi.advanceTimersByTime(450)
     lp.move(at(180))
     vi.advanceTimersByTime(1200)
     expect(lp.swallowClick()).toBe(false)
-    lp.suppressClick() // pointerup du glisser, avant le clic synthétique
+    lp.suppressClick() // pointerup of the drag, before the synthetic click
     expect(lp.swallowClick()).toBe(true)
     vi.advanceTimersByTime(801)
     expect(lp.swallowClick()).toBe(false)

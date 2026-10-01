@@ -3,8 +3,8 @@ import { excerpt, highlightParts, matchAt, matchRange, stripMarkdown } from '../
 
 const around = (text: string, q: string, width = 120) => excerpt(text, matchAt(text, q), width, q)
 
-describe('nettoyage du markdown des extraits', () => {
-  it('retire gras, italique, code, liens et barré', () => {
+describe('cleaning excerpt markdown', () => {
+  it('removes bold, italics, code, links and strikethrough', () => {
     expect(stripMarkdown('- **Affichage** : `docker compose` et *vite* ~~non~~'))
       .toBe('Affichage : docker compose et vite non')
     expect(stripMarkdown('Voir [la doc](https://herdr.dev/docs(v2)) et ![logo](a.png)')).toBe('Voir la doc et logo')
@@ -16,11 +16,11 @@ describe('nettoyage du markdown des extraits', () => {
     expect(stripMarkdown(md)).toBe('Titre citation un deux const a = 1 A · B x · y fin')
   })
 
-  it('laisse intacts les identifiants et les opérations', () => {
+  it('leaves identifiers and operations intact', () => {
     expect(stripMarkdown('snake_case_name et 2 * 3 * 4 et __init__.py')).toBe('snake_case_name et 2 * 3 * 4 et __init__.py')
   })
 
-  it('efface les restes d’un markdown coupé', () => {
+  it('erases the leftovers of cut markdown', () => {
     expect(stripMarkdown('ts passent. - **Affich')).toBe('ts passent. - Affich')
     expect(stripMarkdown('a ` b')).toBe('a b')
   })
@@ -30,7 +30,7 @@ describe('coupe des extraits', () => {
   const long = 'Les tests passent ; un 143e est sauté dans Docker, faute de python3 dans l’image de test. '
     + '- **Affichage** : Codex, comme Claude, garde son modèle et son effort dans la barre de saisie après un redémarrage complet.'
 
-  it('coupe sur des limites de mots, avec des points de suspension', () => {
+  it('cuts on word boundaries, with ellipses', () => {
     const e = around('prefixe '.repeat(20) + long, 'docker', 100)
     expect(e.startsWith('…')).toBe(true)
     expect(e.endsWith('…')).toBe(true)
@@ -43,34 +43,34 @@ describe('coupe des extraits', () => {
     expect(e).not.toMatch(/\*\*|`/)
   })
 
-  it('ne colle pas de points de suspension après une phrase finie', () => {
+  it('does not stick an ellipsis after a finished sentence', () => {
     expect(around('aaa docker bbb. ccccccccc dddd', 'docker', 16)).toBe('aaa docker bbb.')
   })
 
-  it('ne met pas de points de suspension quand le texte tient', () => {
+  it('adds no ellipsis when the text fits', () => {
     expect(around('Un **éléphant** bleu', 'elephant')).toBe('Un éléphant bleu')
   })
 
-  it('garde l’occurrence même après le retrait du markdown qui la précède', () => {
+  it('keeps the match even after removing the markdown before it', () => {
     const text = '**'.repeat(200) + ' ' + '`code` '.repeat(60) + 'le mot cherché éléphant ici'
     expect(around(text, 'elephant', 60)).toContain('éléphant')
   })
 
-  it('coupe net un mot démesuré plutôt que de perdre l’occurrence', () => {
+  it('cuts an oversized word sharply rather than losing the match', () => {
     const text = 'x'.repeat(400) + 'docker' + 'y'.repeat(400)
     const e = around(text, 'docker', 60)
     expect(e).toContain('docker')
     expect(e.length).toBeLessThanOrEqual(62)
   })
 
-  it('reste lisible quand l’occurrence est dans une adresse de lien', () => {
+  it('stays readable when the match is in a link address', () => {
     const e = around('Voir [la page](https://exemple.fr/docker) pour la suite.', 'docker')
     expect(e).toBe('Voir la page pour la suite.')
   })
 })
 
 describe('surlignage', () => {
-  it('trouve l’occurrence sans tenir compte des accents ni de la casse', () => {
+  it('finds the match ignoring accents and case', () => {
     expect(matchRange('Un Éléphant', 'elephant')).toEqual([3, 11])
     expect(matchRange('éle', 'éle')).toEqual([0, 4])
     expect(highlightParts('Un Éléphant bleu', 'elephant')).toEqual([

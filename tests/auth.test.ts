@@ -1,4 +1,4 @@
-// Verrouillage : cookie de session signé, génération, format de data/auth.json.
+// Lock: signed session cookie, generation, data/auth.json format.
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -8,13 +8,13 @@ import { createAuth } from '../server/utils/auth'
 const dir = () => mkdtempSync(path.join(tmpdir(), 'hw-auth-'))
 const req = (cookie?: string, origin = 'http://localhost:7684') => ({ headers: { cookie, origin } })
 const cookieValue = (setCookie: string) => setCookie.split(';')[0]!
-// Une clé factice suffit : isUnlocked ne regarde que leur nombre.
+// A fake key is enough: isUnlocked only looks at their count.
 const withKey = (a: ReturnType<typeof createAuth>) => {
   a._db().credentials.push({ id: 'k1', publicKey: 'x', counter: 0, transports: [], name: 'iPhone', createdAt: '2026-01-01T00:00:00.000Z' })
 }
 
 describe('auth', () => {
-  it('crée data/auth.json (secret, génération 0, aucune clé) au premier démarrage', () => {
+  it('creates data/auth.json (secret, generation 0, no key) on first startup', () => {
     const d = dir()
     createAuth({ dataDir: d })
     const db = JSON.parse(readFileSync(path.join(d, 'auth.json'), 'utf8'))
@@ -23,13 +23,13 @@ describe('auth', () => {
     expect(db.credentials).toEqual([])
   })
 
-  it('reste ouvert tant qu’aucune clé n’est enregistrée', () => {
+  it('stays open as long as no key is registered', () => {
     const a = createAuth({ dataDir: dir() })
     expect(a.isUnlocked(req())).toBe(true)
     expect(a.status(req())).toEqual({ enabled: false, unlocked: true, devices: [] })
   })
 
-  it('exige un cookie signé valide dès qu’une clé existe', () => {
+  it('requires a valid signed cookie as soon as a key exists', () => {
     const a = createAuth({ dataDir: dir() })
     withKey(a)
     expect(a.isUnlocked(req())).toBe(false)
@@ -40,7 +40,7 @@ describe('auth', () => {
     expect(a.status(req(cookieValue(c))).expiresAt).toBe(Number(cookieValue(c).split('=')[1]?.split('.')[0]))
   })
 
-  it('refuse un cookie modifié ou expiré', () => {
+  it('refuses a modified or expired cookie', () => {
     const a = createAuth({ dataDir: dir() })
     withKey(a)
     const v = cookieValue(a._sessionCookie(req()))
@@ -51,7 +51,7 @@ describe('auth', () => {
     expect(a.isUnlocked(req(old))).toBe(false)
   })
 
-  it('désactiver invalide toutes les sessions (génération suivante)', () => {
+  it('disabling invalidates all sessions (next generation)', () => {
     const d = dir()
     const a = createAuth({ dataDir: d })
     withKey(a)
@@ -69,7 +69,7 @@ describe('auth', () => {
     expect(a.lock(req(undefined, 'https://herdr.example.ts.net:8103')).__cookie).toMatch(/; Secure$/)
   })
 
-  it('relit un data/auth.json existant (format de la version précédente)', () => {
+  it('re-reads an existing data/auth.json (previous version format)', () => {
     const d = dir()
     writeFileSync(path.join(d, 'auth.json'), JSON.stringify({ secret: 'ab'.repeat(32), generation: 3, credentials: [{ id: 'k', publicKey: 'x', counter: 5, transports: ['internal'], name: 'Laptop', createdAt: '2026-09-25T10:00:00.000Z' }] }))
     const a = createAuth({ dataDir: d })
@@ -79,15 +79,15 @@ describe('auth', () => {
     expect(a.isUnlocked(req(v))).toBe(true)
   })
 
-  it('refuse d’ajouter une clé sans être déverrouillé', async () => {
+  it('refuses to add a key without being unlocked', async () => {
     const a = createAuth({ dataDir: dir() })
     withKey(a)
     await expect(a.registerOptions(req())).rejects.toMatchObject({ code: 'locked' })
   })
 })
 
-describe('auth : cookie abîmé', () => {
-  it('reste verrouillé sans lever d’erreur', () => {
+describe('auth: damaged cookie', () => {
+  it('stays locked without throwing', () => {
     const a = createAuth({ dataDir: dir() })
     withKey(a)
     expect(a.isUnlocked(req('hw_session=%E0%A4%A'))).toBe(false)

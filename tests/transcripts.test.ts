@@ -1,5 +1,5 @@
-// Transcriptions : Claude (lignes réelles d'une session de test + quelques lignes
-// synthétiques) et Codex (rollout de test réduit + appels d'outils synthétiques).
+// Transcripts: Claude (real lines from a test session + a few synthetic
+// lines) and Codex (reduced test rollout + synthetic tool calls).
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -13,13 +13,13 @@ describe('Claude', () => {
   const items = parseLines(fx('claude-session.jsonl'), 'claude', 0, HOME)
   const texts = items.map(i => `${i.role}:${i.text}`)
 
-  it('garde les messages de l’utilisateur et les réponses', () => {
+  it('keeps user messages and replies', () => {
     expect(texts).toContain('user:Réponds seulement par le mot : pong')
     expect(texts).toContain('assistant:pong')
     expect(texts).toContain('assistant:ok')
   })
 
-  it('résume les outils (chemins raccourcis en ~) et marque les erreurs', () => {
+  it('summarizes tools (paths shortened with ~) and marks errors', () => {
     const write = items.find(i => i.role === 'tool' && i.name === 'Write')!
     expect(write.text).toBe('~/dev/sandbox/hello.txt')
     const sleep = items.find(i => i.role === 'tool' && i.name === 'Bash' && i.text === 'Wait 25 seconds')!
@@ -32,18 +32,18 @@ describe('Claude', () => {
     expect(texts).toContain('user:Ensuite, réponds aussi : encore')
   })
 
-  it('suit la file d’attente de Claude (enqueue, remove, dequeue)', () => {
+  it('follows Claude\'s queue (enqueue, remove, dequeue)', () => {
     expect(items.queue).toEqual([{ text: 'Encore une chose', ts: '2026-09-25T11:40:05.000Z' }])
   })
 
-  it('compte les images et garde la position de la ligne', () => {
+  it('counts images and keeps the line position', () => {
     const img = items.find(i => i.role === 'user' && i.images)!
     expect(img.images).toBe(1)
     expect(img.text).toBe('Regarde cette image et décris-la en 3 mots maximum.')
     expect(img.ref).toMatch(/^\d+:\d+$/)
   })
 
-  it('traduit compactage, interruption et commandes ; ignore le bruit et les sous-agents', () => {
+  it('translates compaction, interruption and commands; ignores noise and subagents', () => {
     expect(texts).toContain('system:Conversation compacted')
     expect(texts).toContain('system:Interrupted')
     expect(texts).toContain('cmd:/compact garde le plan')
@@ -54,7 +54,7 @@ describe('Claude', () => {
     expect(texts.some(t => t.includes('task-notification'))).toBe(false)
   })
 
-  it('vide les images base64 des très longues lignes avant JSON.parse', () => {
+  it('empties base64 images of very long lines before JSON.parse', () => {
     const big = JSON.stringify({ type: 'user', message: { content: [{ type: 'image', source: { data: 'A'.repeat(60000) } }] } })
     const s = stripBlobs(big)
     expect(s.length).toBeLessThan(200)
@@ -64,13 +64,13 @@ describe('Claude', () => {
 
 describe('Codex', () => {
   const items = parseLines(fx('codex-rollout.jsonl'), 'codex')
-  it('garde les vrais messages (pas le contexte d’environnement)', () => {
+  it('keeps the real messages (not the environment context)', () => {
     const msgs = items.filter(i => i.role !== 'tool').map(i => `${i.role}:${i.text}`)
     expect(msgs[0]).toBe('user:Réponds juste : pong')
     expect(msgs[1]).toBe('assistant:pong')
     expect(msgs.some(m => m.includes('environment_context'))).toBe(false)
   })
-  it('résume les appels d’outils', () => {
+  it('summarizes tool calls', () => {
     const tools = items.filter(i => i.role === 'tool').map(i => `${i.name}:${i.text}`)
     expect(tools).toEqual(['shell:bash -lc ls -la', 'exec:git status --short', 'exec:write_stdin', 'shell:npm test'])
   })
@@ -83,13 +83,13 @@ describe('Codex', () => {
 
 describe('extractImage', () => {
   const b64 = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>').toString('base64')
-  it('ne sert jamais une image SVG (ou un type inconnu) comme telle', () => {
+  it('never serves an SVG image (or an unknown type) as such', () => {
     const codex = { payload: { content: [{ type: 'input_image', image_url: `data:image/svg+xml;base64,${b64}` }] } }
     expect(extractImage(codex, 0)!.type).toBe('application/octet-stream')
     const claude = { message: { content: [{ type: 'image', source: { media_type: 'text/html', data: b64 } }] } }
     expect(extractImage(claude, 0)!.type).toBe('application/octet-stream')
   })
-  it('garde les types d’images courants', () => {
+  it('keeps common image types', () => {
     const d = { message: { content: [{ type: 'image', source: { media_type: 'image/PNG', data: b64 } }] } }
     expect(extractImage(d, 0)!.type).toBe('image/png')
     expect(extractImage(d, 1)).toBeNull()
@@ -97,7 +97,7 @@ describe('extractImage', () => {
 })
 
 describe('createTranscripts', () => {
-  // Un $HOME temporaire avec une transcription Claude et une rollout Codex.
+  // A temporary $HOME with a Claude transcript and a Codex rollout.
   const home = mkdtempSync(path.join(tmpdir(), 'hw-home-'))
   const claudeDir = path.join(home, '.claude/projects/-home-x')
   mkdirSync(claudeDir, { recursive: true })
@@ -109,7 +109,7 @@ describe('createTranscripts', () => {
   const t = createTranscripts({ home, herdr })
   const claude = { id: 'w1:p1', agent: 'claude', cwd: '/home/x', agentSession: 'abc-123' }
 
-  it('retrouve la transcription par l’identifiant de session et répond « inchangé »', async () => {
+  it('finds the transcript by session id and replies "unchanged"', async () => {
     const r = await t.chat(claude, {})
     expect(r.available).toBe(true)
     expect(r.file).toBe('abc-123.jsonl')
@@ -118,7 +118,7 @@ describe('createTranscripts', () => {
     expect(again.unchanged).toBe(true)
   })
 
-  it('relit une tranche plus ancienne (before) et le bas depuis un octet (from)', async () => {
+  it('re-reads an older slice (before) and the bottom from a byte (from)', async () => {
     const size = Buffer.byteLength(fx('claude-session.jsonl'))
     const older = await t.chat(claude, { before: Math.floor(size / 2) })
     expect(older.older).toBe(true)
@@ -127,21 +127,21 @@ describe('createTranscripts', () => {
     expect(tail.items!.length).toBeLessThan((await t.chat(claude, {})).items!.length)
   })
 
-  it('donne l’aperçu de la dernière réponse', async () => {
+  it('gives the preview of the last reply', async () => {
     expect(await t.preview(claude)).toBe('fini encore') // markdown et sauts de ligne aplatis
   })
 
-  it('relit une image par sa position', async () => {
+  it('re-reads an image by its position', async () => {
     const r = await t.chat(claude, {})
     const it2 = r.items!.find(i => i.images)!
     const img = await t.image(claude, r.file!, it2.ref!, 0)
-    // Photo réduite en JPEG par le navigateur avant l'envoi.
+    // Photo shrunk to JPEG by the browser before sending.
     expect(img!.type).toBe('image/jpeg')
     expect([...img!.body.subarray(0, 2)]).toEqual([0xFF, 0xD8])
     expect(await t.image(claude, 'autre.jsonl', it2.ref!, 0)).toBeNull()
   })
 
-  it('retrouve une rollout Codex par son identifiant', async () => {
+  it('finds a Codex rollout by its id', async () => {
     const codex = { id: 'w2:p1', agent: 'codex', cwd: '/x', agentSession: '00000000-0000-4000-8000-00000000c0de' }
     const r = await t.chat(codex, {})
     expect(r.available).toBe(true)
@@ -151,7 +151,7 @@ describe('createTranscripts', () => {
     expect(img!.type).toBe('image/png')
   })
 
-  it('refuse un agent non géré', async () => {
+  it('refuses an unsupported agent', async () => {
     expect(await t.chat({ id: 'w3:p1', agent: null, cwd: null }, {})).toEqual({ available: false, reason: 'unsupported' })
   })
 })
@@ -183,7 +183,7 @@ describe('omp', () => {
     msg({ role: 'assistant', content: [{ type: 'text', text: '**Fini**' }] }, '2026-01-01T00:00:09Z'),
   ].join('\n') + '\n'
 
-  it('garde les messages de l’utilisateur, les réponses et les outils ; ignore les injections de l’agent', () => {
+  it('keeps user messages, replies and tools; ignores agent injections', () => {
     const items = parseLines(lines, 'omp', 0, HOME)
     expect(items.map(i => `${i.role}:${i.name ? i.name + ' ' : ''}${i.text}${i.error ? ' !' : ''}`)).toEqual([
       'user:Regarde ça',
@@ -202,7 +202,7 @@ describe('omp', () => {
     expect(items[0]!.ref).toMatch(/^\d+:\d+$/)
   })
 
-  it('remet « /nom args » à la place du texte d’une commande-fichier', () => {
+  it('puts "/name args" back instead of a file command\'s text', () => {
     const body = '# Aside\n\nRéponds vite, puis reprends la tâche.'
     const long = `Revue complète du code. ${'Vérifie chaque fichier modifié. '.repeat(8)}`
     const said = (text: string) => msg({ role: 'user', content: [{ type: 'text', text }], attribution: 'user' }, '2026-01-01T00:00:10Z')
@@ -211,7 +211,7 @@ describe('omp', () => {
     expect(items.map(i => i.text)).toEqual(['/aside quelle heure ?', '/aside', '/review', '# Aside mais autre chose'])
   })
 
-  it('lit la session rapportée par l’intégration (chemin) et relit ses images dans ~/.omp/agent/blobs', async () => {
+  it('reads the session reported by the integration (path) and re-reads its images in ~/.omp/agent/blobs', async () => {
     const home = mkdtempSync(path.join(tmpdir(), 'hw-omp-'))
     const dir = path.join(home, '.omp/agent/sessions/-x')
     mkdirSync(dir, { recursive: true })
@@ -230,12 +230,12 @@ describe('omp', () => {
     expect(img!.body.toString()).toBe('RIFF0000WEBP')
     expect((await t.search(omp, 'regarde', Date.now() + 5000)).hits.map(h => h.text)).toEqual(['Regarde ça'])
     expect(await t.chat({ ...omp, id: 'wO:p2', agentSession: path.join(dir, 'absent.jsonl') }, {})).toEqual({ available: false, reason: 'not_found' })
-    // Un autre .jsonl lisible, hors des sessions d'omp : jamais servi.
+    // Another readable .jsonl, outside omp's sessions: never served.
     const other = path.join(home, 'autre.jsonl')
     writeFileSync(other, lines)
     expect(await t.chat({ ...omp, id: 'wO:p3', agentSession: other }, {})).toEqual({ available: false, reason: 'not_found' })
     expect(await t.chat({ ...omp, id: 'wO:p4', agentSession: `${dir}/../../../../autre.jsonl` }, {})).toEqual({ available: false, reason: 'not_found' })
-    // Commande-fichier de ~/.omp/agent/commands : la conversation montre « /nom args ».
+    // File command from ~/.omp/agent/commands: the conversation shows "/name args".
     mkdirSync(path.join(home, '.omp/agent/commands'), { recursive: true })
     writeFileSync(path.join(home, '.omp/agent/commands/aside.md'), '---\ndescription: Aparté\n---\n# Aside\n\nRéponds vite.\n')
     const withCmd = path.join(dir, '2026-01-02T00-00-00-000Z_s2.jsonl')
@@ -245,9 +245,9 @@ describe('omp', () => {
   })
 })
 
-describe('Codex à démon partagé (hook de session rapporté au mauvais pane)', () => {
-  // Trois Codex dans le même dossier ; le démon app-server, lancé par le premier,
-  // rapporte la session du troisième au premier pane.
+describe('Codex with a shared daemon (session hook reported to the wrong pane)', () => {
+  // Three Codex in the same folder; the app-server daemon, started by the first,
+  // reports the third one's session to the first pane.
   const home = mkdtempSync(path.join(tmpdir(), 'hw-codex-'))
   const now = new Date()
   const dir = path.join(home, '.codex/sessions', String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0'))
@@ -260,7 +260,7 @@ describe('Codex à démon partagé (hook de session rapporté au mauvais pane)',
   roll('ra', born.a + 4000)
   roll('rb', born.b + 1000)
   roll('rc', born.c + 1000)
-  roll('guardian', born.c + 1200) // pas une conversation principale : jamais choisie
+  roll('guardian', born.c + 1200) // not a main conversation: never chosen
   writeFileSync(path.join(dir, 'rollout-x-guardian.jsonl'), JSON.stringify({
     type: 'session_meta', payload: { id: 'guardian', parent_thread_id: 'rc', timestamp: new Date(born.c + 1200).toISOString(), cwd: '/repo', thread_source: 'guardian_review' },
   }) + '\n')
@@ -270,13 +270,13 @@ describe('Codex à démon partagé (hook de session rapporté au mauvais pane)',
   const c = { id: 'wC:p1', agent: 'codex', cwd: '/repo', agentSession: null, bornAt: born.c }
   t.observe([a, b, c])
 
-  it('rattache chaque Codex à la conversation née avec lui', async () => {
+  it('attaches each Codex to the conversation born with it', async () => {
     expect((await t.locate(a))?.session).toBe('ra')
     expect((await t.locate(b))?.session).toBe('rb')
     expect((await t.locate(c))?.session).toBe('rc')
   })
 
-  it('suit une session rapportée qui n’appartient à aucun autre pane (/new, reprise)', async () => {
+  it('follows a reported session that belongs to no other pane (/new, resume)', async () => {
     roll('rnew', born.c + 600000)
     t.forget(a.id)
     expect((await t.locate({ ...a, agentSession: 'rnew' }))?.session).toBe('rnew')
@@ -286,7 +286,7 @@ describe('Codex à démon partagé (hook de session rapporté au mauvais pane)',
 describe('/clear', () => {
   const j = (o: object) => JSON.stringify(o)
   const u = (content: string, ts: string) => j({ type: 'user', timestamp: ts, message: { role: 'user', content } })
-  it('séparateur « Conversation effacée », sans sortie rattachée', () => {
+  it('"Conversation effacée" separator, without attached output', () => {
     const items = parseLines([
       u('<command-name>/clear</command-name>\n<command-message>clear</command-message>\n<command-args></command-args>', '2026-01-01T00:00:00Z'),
       u('<local-command-stdout>✔ Update installed · Restart to update</local-command-stdout>', '2026-01-01T00:00:01Z'),
@@ -300,14 +300,14 @@ describe('/clear', () => {
   })
 })
 
-describe('commandes « / »', () => {
+describe('"/" commands', () => {
   const j = (o: object) => JSON.stringify(o)
   const u = (content: unknown, ts: string, extra = {}) => j({ type: 'user', timestamp: ts, message: { role: 'user', content }, ...extra })
   const a = (text: string, ts: string) => j({ type: 'assistant', timestamp: ts, message: { role: 'assistant', content: [{ type: 'text', text }] } })
   const cmd = (name: string, args = '') => `<command-message>${name.slice(1)}</command-message>\n<command-name>${name}</command-name>\n<command-args>${args}</command-args>`
   const run = (lines: string[]) => parseLines(lines.join('\n'), 'claude').map(i => `${i.role}:${i.text}${i.out ? `|${i.out}` : ''}`)
 
-  it('skill suivi d’une réponse : message utilisateur normal, sans sortie d’écran', () => {
+  it('skill followed by a reply: normal user message, without screen output', () => {
     expect(run([
       u(cmd('/daily-log', 'hier'), '2026-01-01T00:00:00Z'),
       u('<local-command-stdout>Running 1 shell command…\n* Working… (1s · ↓ 113 tokens · thinking)\nTip: use /help</local-command-stdout>', '2026-01-01T00:00:01Z'),
@@ -316,7 +316,7 @@ describe('commandes « / »', () => {
     ])).toEqual(['user:/daily-log hier', 'assistant:Voici le journal.'])
   })
 
-  it('commande locale : ligne système avec la sortie utile seulement', () => {
+  it('local command: system line with the useful output only', () => {
     expect(run([
       u(cmd('/cost'), '2026-01-01T00:00:00Z'),
       u('<local-command-stdout>Total cost: $0.12\nTotal duration: 3m</local-command-stdout>', '2026-01-01T00:00:01Z'),
@@ -326,7 +326,7 @@ describe('commandes « / »', () => {
     ])).toEqual(['cmd:/cost → Total cost: $0.12', 'user:/status', 'assistant:Rien à voir.'])
   })
 
-  it('commande « ! » : garde son bloc et sa vraie sortie', () => {
+  it('"!" command: keeps its block and its real output', () => {
     expect(run([
       u('<bash-input>ls</bash-input>', '2026-01-01T00:00:00Z'),
       u('<bash-stdout>a.txt</bash-stdout><bash-stderr></bash-stderr>', '2026-01-01T00:00:01Z'),

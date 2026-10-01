@@ -9,24 +9,24 @@ import { cspForHtml } from '../server/utils/csp'
 const req = (cookie = '') => ({ headers: { origin: 'http://localhost:7683', cookie } })
 const auth = (log = () => {}) => createAuth({ dataDir: mkdtempSync(path.join(tmpdir(), 'hw-release-')), log })
 
-describe('hôtes autorisés', () => {
+describe('allowed hosts', () => {
   const names = allowedHosts('https://phone.example.ts.net:7683/', 'server.lan,192.0.2.9', {
     eth0: [{ address: '10.0.0.4', family: 'IPv4', internal: false, netmask: '', cidr: null, mac: '', scopeid: 0 }],
   })
-  it('accepte les noms locaux, APP_URL, les interfaces et la configuration', () => {
+  it('accepts local names, APP_URL, interfaces and the configuration', () => {
     for (const host of ['localhost:7683', '127.0.0.1:7683', '[::1]:7683', 'phone.example.ts.net:7683', 'server.lan', '10.0.0.4', '192.0.2.9']) {
       expect(hostAllowed(host, names)).toBe(true)
     }
   })
-  it('refuse une origine DNS rebinding ou un Host malformé', () => {
+  it('refuses a DNS rebinding origin or a malformed Host', () => {
     for (const host of ['evil.example:7683', 'evil.example@localhost', 'localhost/path', '', 'localhost:bad']) {
       expect(hostAllowed(host, names)).toBe(false)
     }
   })
 })
 
-describe('première clé et défis', () => {
-  it('journalise un jeton au démarrage et le vérifie avant le défi', async () => {
+describe('first key and challenges', () => {
+  it('logs a token at startup and checks it before the challenge', async () => {
     const lines: string[] = []
     const a = auth((...parts) => lines.push(parts.join(' ')))
     const token = a._bootstrapToken()
@@ -38,7 +38,7 @@ describe('première clé et défis', () => {
     expect(options.__cookie).toMatch(/^hw_challenge=/)
   })
 
-  it('lie chaque défi à un cookie client et ne permet pas à un autre client de l’écraser', async () => {
+  it('binds each challenge to a client cookie and does not let another client overwrite it', async () => {
     const a = auth()
     const first = await a.loginOptions(req())
     const second = await a.loginOptions(req())
@@ -51,7 +51,7 @@ describe('première clé et défis', () => {
   })
 })
 
-it('autorise uniquement les scripts inline exacts du HTML Nuxt', () => {
+it('only allows the exact inline scripts of the Nuxt HTML', () => {
   const policy = cspForHtml('<html><script type="importmap">{"imports":{}}</script><script>window.__NUXT__={}</script><script type="application/json">{}</script></html>', 'localhost:7690')
   expect(policy).toContain("script-src 'self' 'sha256-")
   expect(policy.match(/'sha256-/g)).toHaveLength(2)
@@ -61,11 +61,11 @@ it('autorise uniquement les scripts inline exacts du HTML Nuxt', () => {
 })
 
 describe('crossSiteRequest', () => {
-  it('refuse une requête d’API lancée depuis un autre site, même localhost sur un autre port', () => {
+  it('refuses an API request made from another site, even localhost on another port', () => {
     expect(crossSiteRequest({ 'sec-fetch-site': 'cross-site' })).toBe(true)
     expect(crossSiteRequest({ 'sec-fetch-site': 'same-site' })).toBe(true)
   })
-  it('accepte l’app elle-même, une adresse tapée et les clients sans l’en-tête', () => {
+  it('accepts the app itself, a typed address and clients without the header', () => {
     expect(crossSiteRequest({ 'sec-fetch-site': 'same-origin' })).toBe(false)
     expect(crossSiteRequest({ 'sec-fetch-site': 'none' })).toBe(false)
     expect(crossSiteRequest({})).toBe(false)
