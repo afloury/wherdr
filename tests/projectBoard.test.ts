@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { boardSections, visibleSections, missingLists as missingListsOf, coordinatorRules, decisionPrefix, classifyLink, extractLinks, prLabel, reviewCommentPrefix, reviewedMessage, detailPrefix, launchMessage, listKind, normalizeThreads, ownerIsMe, parseTaskLine, parseTasks, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage, unblockMessage } from '../shared/projectBoard'
+import { boardSections, visibleSections, missingLists as missingListsOf, coordinatorRules, decisionPrefix, classifyLink, extractLinks, prLabel, reviewCommentPrefix, reviewedMessage, detailPrefix, launchMessage, listKind, normalizeThreads, ownerIsMe, parseTaskLine, parseTasks, takeBadges, badgeColor, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage, unblockMessage } from '../shared/projectBoard'
 import { pluginBinary } from '../server/utils/projectBoard'
 import { isCoordinator } from '../shared/projects'
 import type { Pane } from '../shared/types'
@@ -106,6 +106,70 @@ describe('TASKS.md', () => {
       .toEqual({ text: 'Bandeau PR', done: false, owner: null, thread: null, links: ['https://github.com/owner/repo/pull/12'] })
     expect(parseTaskLine('- [ ] Bandeau [PR](https://github.com/owner/repo/pull/12) (me)', 'review')?.owner).toBe('me')
     expect(parseTaskLine('- [ ] Case [x] (me)')?.owner).toBe('me')
+  })
+})
+
+describe('threads liés [t-NNNN]', () => {
+  it('ID seul, retiré du texte', () => {
+    expect(parseTaskLine('- [ ] Bouton Stop [t-0140]')).toEqual({ text: 'Bouton Stop', done: false, owner: null, thread: null, refs: ['t-0140'] })
+  })
+  it('plusieurs IDs, en minuscules et sans doublon', () => {
+    expect(parseTaskLine('- [ ] Terminal [T-0140, t-0141; t-0140] (agent)')?.refs).toEqual(['t-0140', 't-0141'])
+  })
+  it('ID avant ou après le responsable', () => {
+    const a = parseTaskLine('- [ ] Bouton Stop vraiment [t-0140] (me)')!
+    const b = parseTaskLine('- [ ] Bouton Stop vraiment (me) [t-0140]')!
+    for (const x of [a, b]) {
+      expect(x.text).toBe('Bouton Stop vraiment')
+      expect(x.owner).toBe('me')
+      expect(x.refs).toEqual(['t-0140'])
+    }
+  })
+  it('parenthèses dans le texte : le responsable est le dernier groupe', () => {
+    const line = '- [ ] Bouton Stop (clic) pendant une commande : « Interruption… » puis l’agent s’arrête (me)'
+    expect(parseTaskLine(line)?.owner).toBe('me')
+    expect(parseTaskLine(line)?.text).toBe('Bouton Stop (clic) pendant une commande : « Interruption… » puis l’agent s’arrête')
+    const withRef = parseTaskLine(line.replace(' (me)', ' [t-0140] (me)'))!
+    expect(withRef.owner).toBe('me')
+    expect(withRef.refs).toEqual(['t-0140'])
+  })
+  it('pas d’ID : pas de refs ; crochets ordinaires gardés', () => {
+    expect(parseTaskLine('- [ ] Rien à lier (me)')).not.toHaveProperty('refs')
+    expect(parseTaskLine('- [ ] Tableau [beta] (me)')?.text).toBe('Tableau [beta]')
+    expect(parseTaskLine('- [ ] [t-0140]')?.text).toBe('[t-0140]')
+  })
+})
+
+describe('badges libres [b:couleur(texte)]', () => {
+  it('hex court ou long, normalisé', () => {
+    expect(takeBadges('A [b:#fA0(urgent)]').badges).toEqual([{ text: 'urgent', color: '#ffaa00' }])
+    expect(takeBadges('A [b:#12abEF(x)]').badges[0]!.color).toBe('#12abef')
+  })
+  it('nom de palette, sans couleur, couleur invalide', () => {
+    expect(takeBadges('[b:green(ok)] A').badges[0]).toEqual({ text: 'ok', color: 'green' })
+    expect(takeBadges('A [b:(neutre)]').badges[0]!.color).toBeNull()
+    for (const c of ['#12', 'fuchsia', '#ggg', 'url(x)']) expect(badgeColor(c)).toBeNull()
+  })
+  it('plusieurs badges n’importe où, dans l’ordre, avec ID et responsable', () => {
+    const t = parseTaskLine('- [ ] [b:red(bug)] Bouton Stop [b:blue(iOS)] vraiment [t-0140] (me) [b:(v1.2)]')!
+    expect(t.text).toBe('Bouton Stop vraiment')
+    expect(t.owner).toBe('me')
+    expect(t.refs).toEqual(['t-0140'])
+    expect(t.badges!.map(b => b.text)).toEqual(['bug', 'iOS', 'v1.2'])
+  })
+  it('parenthèses et crochets dans le texte ; [b:…(t-0001)] reste un badge', () => {
+    expect(takeBadges('A [b:(a (b) [c])]').badges[0]!.text).toBe('a (b) [c]')
+    const t = parseTaskLine('- [ ] A [b:(t-0001)] (me)')!
+    expect(t.badges![0]!.text).toBe('t-0001')
+    expect(t).not.toHaveProperty('refs')
+  })
+  it('HTML gardé en texte brut ; texte long gardé entier (tronqué à l’affichage)', () => {
+    expect(takeBadges('A [b:(<img src=x onerror=alert(1)>)]').badges[0]!.text).toBe('<img src=x onerror=alert(1)>')
+    const long = 'x'.repeat(40)
+    expect(takeBadges(`A [b:(${long})]`).badges[0]!.text).toBe(long)
+  })
+  it('pas de badge : ligne inchangée', () => {
+    expect(parseTaskLine('- [ ] A [b:()] (me)')).not.toHaveProperty('badges')
   })
 })
 

@@ -4,7 +4,8 @@
 //
 // TASKS.md (écrit par le coordinateur) : des listes `## Titre` libres, une
 // tâche par ligne `- [ ] <titre> (<responsable>)`, le responsable étant `me`,
-// `agent`, un nom, ou `agent → t-0031`.
+// `agent`, un nom, ou `agent → t-0031`. Threads liés : `[t-0140]` ou
+// `[t-0140, t-0141]` en fin de ligne, avant ou après le responsable.
 
 export type ListKind = 'test' | 'decide' | 'review' | 'blocked' | 'doing' | 'backlog' | 'done'
 
@@ -15,7 +16,12 @@ export interface ProjectTask {
   thread: string | null // t-0031 (responsable « agent → t-0031 »)
   reason?: string // cause d'une tâche dans la liste Bloqué
   links?: string[] // URL https retirées du texte (liens de PR)
+  refs?: string[] // threads liés, `[t-0140, t-0141]` retiré du texte
+  badges?: TaskBadge[] // badges libres `[b:couleur(texte)]`, dans l'ordre
 }
+// Badge libre écrit par le coordinateur : couleur = nom de la palette, hex
+// normalisé (#rrggbb) ou null (neutre). Le texte est brut (rendu échappé).
+export interface TaskBadge { text: string, color: string | null }
 export interface ProjectList { title: string, kind: ListKind | null, tasks: ProjectTask[] }
 
 export interface ProjectThread {
@@ -67,11 +73,45 @@ const THREAD_ID = /\bt-\d{4,}\b/i
 const TASK_LINE = /^[-*+]\s+(?:\[([ xX])\](?:\s+|$))?(.*)$/
 // Responsable : dernière parenthèse de la ligne, courte, sans parenthèse imbriquée.
 const OWNER = /\s*\(([^()]{1,48})\)\s*$/
+// Threads liés : jetons t-NNNN entre crochets en fin de ligne.
+const REFS = /\s*\[\s*(t-\d{4,}(?:\s*[,;\s]\s*t-\d{4,})*)\s*\]\s*$/i
+// Badges libres : `[b:#fff(texte)]`, `[b:green(texte)]`, `[b:(texte)]`, où
+// que ce soit dans la ligne. Le texte va jusqu'au premier « )] ».
+export const BADGE_COLORS = ['red', 'orange', 'amber', 'green', 'teal', 'blue', 'violet', 'pink', 'gray'] as const
+const BADGE = /\[b:\s*([#\w-]*)\s*\((.*?)\)\]/gi
+export function badgeColor(raw: string): string | null {
+  const c = raw.trim().toLowerCase()
+  if ((BADGE_COLORS as readonly string[]).includes(c)) return c
+  if (c === 'grey') return 'gray'
+  const h = /^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(c)
+  if (!h) return null
+  const x = h[1]!
+  return '#' + (x.length === 3 ? [...x].map(d => d + d).join('') : x)
+}
+export function takeBadges(input: string): { text: string, badges: TaskBadge[] } {
+  const badges: TaskBadge[] = []
+  const text = input.replace(BADGE, (all, color: string, label: string) => {
+    const t = label.replace(/\s+/g, ' ').trim()
+    if (!t) return all
+    badges.push({ text: t, color: badgeColor(color) })
+    return ' '
+  })
+  return badges.length ? { text: text.replace(/\s{2,}/g, ' ').trim(), badges } : { text: input, badges }
+}
+
+function takeRefs(text: string, refs: string[]): string {
+  const r = REFS.exec(text)
+  if (!r || r.index === 0) return text
+  for (const id of r[1]!.toLowerCase().match(/t-\d+/g)!) if (!refs.includes(id)) refs.push(id)
+  return text.slice(0, r.index).trim()
+}
 
 export function parseTaskLine(line: string, kind: ListKind | null = null): ProjectTask | null {
   const m = TASK_LINE.exec(line.trim())
   if (!m) return null
-  let text = m[2]!.trim()
+  const refs: string[] = []
+  const free = takeBadges(m[2]!.trim())
+  let text = takeRefs(free.text, refs)
   let owner: string | null = null
   const o = OWNER.exec(text)
   // « [PR](https://…) » en fin de ligne : un lien Markdown, pas un responsable.
@@ -79,6 +119,7 @@ export function parseTaskLine(line: string, kind: ListKind | null = null): Proje
     owner = o[1]!.trim()
     text = text.slice(0, o.index).trim()
   }
+  text = takeRefs(text, refs)
   let reason: string | undefined
   if (kind === 'blocked') {
     const cause = /\s+—\s*(?:bloqu[eé]e? par|blocked by)\s*:\s*(.+)$/i.exec(text)
@@ -91,7 +132,7 @@ export function parseTaskLine(line: string, kind: ListKind | null = null): Proje
   text = found.text || found.links.map(prLabel).join(', ')
   if (!text) return null
   const ref = owner && THREAD_ID.exec(owner)
-  return { text, done: m[1] === 'x' || m[1] === 'X', owner, thread: ref ? ref[0].toLowerCase() : null, ...(reason ? { reason } : {}), ...(found.links.length ? { links: found.links } : {}) }
+  return { text, done: m[1] === 'x' || m[1] === 'X', owner, thread: ref ? ref[0].toLowerCase() : null, ...(reason ? { reason } : {}), ...(found.links.length ? { links: found.links } : {}), ...(refs.length ? { refs } : {}), ...(free.badges.length ? { badges: free.badges } : {}) }
 }
 
 // Liens d'une tâche : les URL https (nues, entre <…> ou en lien Markdown
@@ -373,7 +414,7 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
   const lines = en
     ? [
         'wherdr Project panel: TASKS.md conventions and messages.',
-        'Lists: "## To test" (what I must check after a deploy), "## To decide" (questions for me), "## To review" (pull requests for me to review, with their https link), "## Blocked" (waiting for something external), "## In progress" (threads), "## Backlog". One task per line: "- [ ] title (owner)"; blocked tasks may add "— blocked by: reason" before the owner.',
+        'Lists: "## To test" (what I must check after a deploy), "## To decide" (questions for me), "## To review" (pull requests for me to review, with their https link), "## Blocked" (waiting for something external), "## In progress" (threads), "## Backlog". One task per line: "- [ ] title (owner)"; blocked tasks may add "— blocked by: reason" before the owner; a task tied to threads ends with "[t-0140]" or "[t-0140, t-0141]" before the owner; free badges "[b:color(text)]" (color: red, orange, amber, green, teal, blue, violet, pink, gray, #hex, or none) go anywhere in the line, e.g. "- [ ] Stop button [b:red(bug)] [t-0140] (me)".',
         `"${testedMessage('…', lang)}" → remove the line from To test.`,
         `"${m(problemPrefix)}" → treat it as a bug: fix it (new thread).`,
         `"${m(questionPrefix)}" → answer: explain what to test and how.`,
@@ -388,7 +429,7 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
       ]
     : [
         'Panneau Projet de wherdr : conventions de TASKS.md et messages.',
-        'Listes : « ## À tester » (ce que je dois vérifier après un déploiement), « ## À décider » (questions pour moi), « ## À relire » (PR que je dois relire, avec leur lien https), « ## Bloqué » (attente extérieure), « ## En cours » (threads), « ## Backlog ». Une tâche par ligne : « - [ ] titre (responsable) » ; une tâche bloquée peut ajouter « — bloqué par : raison » avant le responsable.',
+        'Listes : « ## À tester » (ce que je dois vérifier après un déploiement), « ## À décider » (questions pour moi), « ## À relire » (PR que je dois relire, avec leur lien https), « ## Bloqué » (attente extérieure), « ## En cours » (threads), « ## Backlog ». Une tâche par ligne : « - [ ] titre (responsable) » ; une tâche bloquée peut ajouter « — bloqué par : raison » avant le responsable ; une tâche liée à des threads finit par « [t-0140] » ou « [t-0140, t-0141] » avant le responsable ; des badges libres « [b:couleur(texte)] » (couleur : red, orange, amber, green, teal, blue, violet, pink, gray, #hex, ou rien) se placent n’importe où, ex. « - [ ] Bouton Stop [b:red(bug)] [t-0140] (me) ».',
         `« ${testedMessage('…', lang)} » → retirer la ligne d’À tester.`,
         `« ${m(problemPrefix)} » → c’est un bug : le corriger (nouveau thread).`,
         `« ${m(questionPrefix)} » → répondre : expliquer quoi tester et comment.`,

@@ -24,7 +24,7 @@ const reviewedByPane = new Map<string, Set<string>>()
 // Le fichier n'est jamais écrit d'ici.
 // `side` : colonne à droite de la conversation (ordinateur), repliable.
 import type { Pane, QueuedMessage } from '#shared/types'
-import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, boardSections, visibleSections, decisionPrefix, detailPrefix, launchMessage, classifyLink, missingLists, ownerIsMe, problemPrefix, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, unblockMessage } from '#shared/projectBoard'
+import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, type TaskBadge, boardSections, visibleSections, decisionPrefix, detailPrefix, launchMessage, classifyLink, missingLists, ownerIsMe, problemPrefix, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, unblockMessage } from '#shared/projectBoard'
 import { md } from '~/utils/markdown'
 
 const props = defineProps<{ paneId: string, board: ProjectBoard | null, loading: boolean, error: string, side?: boolean }>()
@@ -87,6 +87,26 @@ function openThread(th: ProjectThread) {
   } else if (th.report) openReport(th)
   else toast(t('Agent de ce thread introuvable'), true)
 }
+
+// Badge [t-NNNN] d'une tâche : thread connu (état en couleur, clic ouvre son
+// agent s'il tourne encore) ou simple ID.
+function refThread(id: string): ProjectThread | undefined {
+  return props.board?.open.find(x => x.id === id) || props.board?.resolved.find(x => x.id === id)
+}
+function refTitle(id: string) {
+  const th = refThread(id)
+  return th ? `${id.toUpperCase()} · ${th.title} · ${groupLabel(th)}` : id.toUpperCase()
+}
+function openRef(id: string) {
+  const th = refThread(id)
+  if (th && paneOf(th)) openThread(th)
+}
+
+// Badges libres [b:couleur(texte)] : palette (suit le thème) ou hex validé.
+const BADGE_MAX = 24
+const badgeShort = (b: TaskBadge) => (b.text.length > BADGE_MAX ? `${b.text.slice(0, BADGE_MAX - 1)}…` : b.text)
+const badgeClass = (b: TaskBadge) => (b.color?.startsWith('#') ? 'hex' : b.color ? `c-${b.color}` : '')
+const badgeStyle = (b: TaskBadge) => (b.color?.startsWith('#') ? { '--bc': b.color } : undefined)
 
 const allOpen = ref(false)
 
@@ -308,7 +328,18 @@ function ownerLabel(task: ProjectTask) {
               <template v-if="!actionable(s, task)">
                 <span v-if="task.reason" class="pp-task-body"><span class="pp-task-text">{{ task.text }}</span><span class="pp-reason">{{ task.reason }}</span></span>
                 <span v-else class="pp-task-text">{{ task.text }}</span>
-                <span v-if="task.owner" class="pp-owner">{{ ownerLabel(task) }}</span>
+                <span v-if="task.owner || task.refs || task.badges" class="pp-tags">
+                  <span v-if="task.owner" class="pp-owner">{{ ownerLabel(task) }}</span>
+                  <button
+                  v-for="id in task.refs || []" :key="id" type="button" class="pp-ref"
+                  :class="[refThread(id) ? groupClass(refThread(id)!) : 'unknown', { live: refThread(id) && paneOf(refThread(id)!) }]"
+                  :title="refTitle(id)" :aria-label="refTitle(id)" @click="openRef(id)"
+                ><i />{{ id }}</button>
+                  <span
+                  v-for="(b, j) in task.badges || []" :key="`b${j}`" class="pp-badge" :class="badgeClass(b)" :style="badgeStyle(b)"
+                  :title="b.text.length > BADGE_MAX ? b.text : undefined"
+                >{{ badgeShort(b) }}</span>
+                </span>
               </template>
               <!-- À tester / À décider / Backlog : texte sur toute la largeur ; dessous,
                    le responsable et les actions de la section. -->
@@ -320,7 +351,16 @@ function ownerLabel(task: ProjectTask) {
                   <span v-else-if="launchable(s, task) && launched.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
                   <span v-else-if="unblockable(s, task) && unblocked.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
                   <span v-else-if="reviewable(s, task) && reviewed.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
-                  <span v-else-if="task.owner" class="pp-owner">{{ ownerLabel(task) }}</span>
+                  <span v-if="task.owner" class="pp-owner">{{ ownerLabel(task) }}</span>
+                  <button
+                    v-for="id in task.refs || []" :key="id" type="button" class="pp-ref"
+                    :class="[refThread(id) ? groupClass(refThread(id)!) : 'unknown', { live: refThread(id) && paneOf(refThread(id)!) }]"
+                    :title="refTitle(id)" :aria-label="refTitle(id)" @click="openRef(id)"
+                  ><i />{{ id }}</button>
+                  <span
+                    v-for="(b, j) in task.badges || []" :key="`b${j}`" class="pp-badge" :class="badgeClass(b)" :style="badgeStyle(b)"
+                    :title="b.text.length > BADGE_MAX ? b.text : undefined"
+                  >{{ badgeShort(b) }}</span>
                   <span v-if="task.links?.length" class="pp-links">
                     <a
                       v-for="url in task.links" :key="url" class="pp-link" :class="{ web: !classifyLink(url).pr }" :href="url" target="_blank" rel="noopener noreferrer"
