@@ -10,7 +10,7 @@
 import path from 'node:path'
 import type { EffortList, ModelInfo, ModelList, ModelOption, Pane } from '../../shared/types'
 import { log } from './env'
-import { HerdrError, herdr, sleep } from './herdr'
+import { HerdrError, agentPrompt, herdr, sleep } from './herdr'
 import { closePanel } from './actions'
 import { READY, findPane, poll, transcripts } from './state'
 import { machineOfPane } from './machines'
@@ -149,7 +149,7 @@ async function closeMenu(paneId: string) {
 async function openMenu(p: Pane): Promise<ModelMenu> {
   await closeMenu(p.id)
   await closePanel(p.id).catch(() => false)
-  await herdr('agent.prompt', { target: p.id, text: '/model' })
+  await agentPrompt(p.id, '/model')
   const m = await waitMenu(p.id, x => x.kind === 'model')
   if (!m) {
     await closeMenu(p.id)
@@ -327,7 +327,7 @@ async function closeEffortSlider(paneId: string) {
 async function openEffortSlider(p: Pane): Promise<ClaudeEffortSlider> {
   await closeEffortSlider(p.id)
   await closePanel(p.id).catch(() => false)
-  await herdr('agent.prompt', { target: p.id, text: '/effort' })
+  await agentPrompt(p.id, '/effort')
   const s = await waitSlider(p.id, () => true, 4000)
   if (!s) {
     // Écran inconnu : on referme quand même (Échap unique, le curseur ne se lit peut-être plus).

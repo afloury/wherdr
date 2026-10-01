@@ -24,7 +24,8 @@ First public release.
   state counters, remembered per device.
 - Terminal view (xterm.js, WebGL or DOM renderer) with a phone key bar and take-over.
 - Composer with queued messages (cancellable), photos, paste, slash commands and their output.
-  A message sent to an agent Herdr hasn't finished starting waits and goes out once it's ready.
+  A message sent to an agent that is still starting waits and goes out as soon as it's ready,
+  including an omp agent already waiting at its prompt that Herdr still counts as starting.
 - Per-session model and effort pickers for Claude Code and Codex.
 - New agent: installed agents or terminal, folder browser, Git worktree and branch, resume the
   last conversation, queued first message.

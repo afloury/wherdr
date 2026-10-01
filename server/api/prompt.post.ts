@@ -4,10 +4,10 @@ export default defineApi(async (event, b) => {
   if (!text.trim()) throw new HerdrError('empty', 'message vide')
   if (await closePanel(b.pane_id).catch(() => false)) log(`panneau refermé avant envoi sur ${b.pane_id}`)
   try {
-    await herdr('agent.prompt', { target: b.pane_id, text })
+    await agentPrompt(b.pane_id, text)
   } catch (e) {
-    // Agent neuf dont Herdr n'a pas fini le démarrage (jusqu'au délai d'agent.start,
-    // même s'il attend déjà à l'écran) : le message part dès que Herdr l'accepte,
+    // Agent lancé il y a moins de 3 s, que Herdr tient encore pour « en
+    // démarrage » (cf. agentPrompt) : le message part dès que Herdr l'accepte,
     // comme le premier message donné à la création. Pas pour une commande, ni
     // par-dessus un autre message déjà en attente.
     if (!(e instanceof HerdrError) || e.code !== 'agent_not_ready' || text.trim().startsWith('/') || pendingPrompts.has(b.pane_id)) throw e

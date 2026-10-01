@@ -12,7 +12,7 @@ import { LOCAL, joinId, machineOf } from '../../shared/ids'
 import { isProjectThread, paneTitle } from '../../shared/paneTitle'
 import { foregroundCommand, reduceSnapshot } from './snapshot'
 import { DATA_DIR, HERDR_SESSION, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
-import { HerdrError, herdr, herdrOn, sleep } from './herdr'
+import { HerdrError, agentPrompt, herdr, herdrOn, sleep } from './herdr'
 import { completeOmpAsk, parseChoices, parseOmpAsk } from './choices'
 import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseWaitScreen } from './waitScreen'
@@ -274,7 +274,7 @@ export async function cancelQueued(paneId: string, text: string, id?: string): P
         const r = await transcripts.chat(p, {})
         return { queue: r.queue || [], items: r.items || [] }
       },
-      prompt: async (t) => { await herdr('agent.prompt', { target: p.id, text: t }) },
+      prompt: t => agentPrompt(p.id, t),
       sleep,
       original: t => (own.find(q => q !== mine && sameMsg(t, msgText(q.text))) || { text: t }).text,
     }, text)
@@ -308,7 +308,7 @@ function flushPending(p: Pane) {
   }
   if (!p.agent || !READY.has(p.status || '')) return
   pendingBusy.add(p.id)
-  herdr('agent.prompt', { target: p.id, text: pend.text })
+  agentPrompt(p.id, pend.text)
     .then(() => {
       pendingPrompts.delete(p.id)
       log(`prompt initial ${p.id} envoyé`)
