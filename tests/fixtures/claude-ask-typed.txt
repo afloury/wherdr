@@ -1,0 +1,15 @@
+
+↑ 2. File-Based Storage
+     Persist data to files on disk in formats like JSON, CSV, or plain text. Offers
+     a good balance between simplicity and data persistence. Suitable for small to
+     medium datasets. Slower than in-memory but data survives restarts.
+  3. Database
+     Use a SQL or NoSQL database for data storage. Provides robust persistence,
+     advanced querying capabilities, transaction support, and excellent scalability.
+     More complex setup but handles large datasets and concurrent access reliably.
+     Production-grade approach.
+❯ 4. Mixed approach
+────────────────────────────────────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · ↑/↓ to navigate · ctrl+g to edit in Vim · Esc to cancel

@@ -1,0 +1,11 @@
+│ implementation, scalability requirements, and maintenance overhead. Which approach
+│ best aligns with your project's needs and constraints?
+
+❯ 1. In-Memory Storage
+     Data stored entirely in application memory. Fast access and performance, but no
+     persistence between restarts. Ideal for caching, temporary session data, or
+     development/testing environments. Simple implementation with minimal overhead.
+────────────────────────────────────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel

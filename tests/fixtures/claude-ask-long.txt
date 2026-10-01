@@ -1,0 +1,25 @@
+● I have two ways to set this up. Let me ask which one you prefer.
+
+● User answered Claude's questions:
+  ⎿  · Earlier question? → Yes
+
+────────────────────────────────────────────────────────────────────────────────
+ ☐ Next
+
+Which of these approaches should the next thread take for the storage layer, given
+that the cache already holds most of the data and the sync job runs every five
+minutes?
+
+❯ 1. Keep the current cache (Recommended)
+     Smallest change: the cache stays the single source of truth and the sync job
+     only fills the gaps it finds.
+  2. Move everything to the database
+     Simpler to reason about, but every read goes through the database and the
+     phone view gets slower on a weak connection.
+  3. Split by data type
+     Settings in the database, transcripts in the cache.
+  4. Type something.
+────────────────────────────────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel

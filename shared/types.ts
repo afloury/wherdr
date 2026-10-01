@@ -6,7 +6,8 @@ export type AgentStatus = 'working' | 'blocked' | 'done' | 'idle' | 'unknown'
 // `checked`: box of a multiple-choice list (Choices.multi), checked on screen.
 // `free`: free-text answer (omp's "Other"): chosen with a text, which the server
 // types into the field the option opens (server/utils/freeAnswer.ts).
-export interface ChoiceOption { label: string, hint: string | null, checked?: boolean, free?: boolean }
+// `n`: number shown before the option (numbered lists).
+export interface ChoiceOption { label: string, hint: string | null, checked?: boolean, free?: boolean, n?: number }
 // What a permission request allows: the tool, its description, and the
 // full command (or tool input), or the file touched.
 export interface PromptDetail {

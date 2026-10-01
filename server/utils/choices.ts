@@ -13,6 +13,30 @@
 //
 // The ❯ cursor marks the selected option. We answer by moving the
 // cursor (↑/↓) then Enter, which works for both forms.
+//
+// Claude Code's AskUserQuestion box (v2.1.x), with a "│" bar before the
+// question and descriptions wrapped over several lines:
+//
+//   ☐ Storage                                  tab header (☐ A  ☐ B  ✔ Submit
+//                                              with several questions)
+//   │ Which approach should the next thread take for the storage layer,
+//   │ given that the cache already holds most of the data?
+//
+//   ❯ 1. Keep the current cache (Recommended)
+//        Smallest change: the cache stays the single source of truth and
+//        the sync job only fills the gaps.
+//     2. Move everything to the database
+//        …
+//     3. Type something.                        free answer: typed in place
+//   ──────────────────────────────────────
+//     4. Chat about this
+//
+//   Enter to select · ↑/↓ to navigate · Esc to cancel
+//
+// In a short pane only a window of the options is shown, with ↑/↓ before the
+// first/last one when more are hidden ("↑ 2.", "↓ 3."), the numbering then has
+// gaps ("❯ 1." … "5. Chat about this"). The full question and options come
+// from the transcript (pendingClaudeAsk, completeClaudeAsk).
 import type { ChoiceOption, Choices } from '../../shared/types'
 import { isPermissionQuestion, screenDetail } from './promptDetail'
 
@@ -22,7 +46,7 @@ type Json = any
 // ❯ in Claude Code, › in Codex; > on Codex's login screen, only taken
 // before a numbered option (otherwise a "> …" quote would count).
 const CURSOR = /^(\s*)(?:[❯›]|>(?=\s+\d{1,2}\.\s))\s+(\S.*?)\s*$/
-const NUMBERED = /^(\s*)(?:[❯›>]\s+)?(\d{1,2})\.\s+(\S.*?)\s*$/
+const NUMBERED = /^(\s*)(?:[❯›>↑↓]\s+)?(\d{1,2})\.\s+(\S.*?)\s*$/
 const RULE = /^[\s─━═—-]+$/
 // Start of a neighbouring column: at least 3 spaces or a vertical bar │.
 const GAP = /\S(?: {3,}| *│ *)(?=\S)/g
@@ -66,11 +90,18 @@ function dropSidePanel(lines: string[], c: number): string[] {
 
 // Column (in characters) where the text of an option line starts.
 function textColumn(line: string): number {
-  const m = line.match(/^(\s*)(?:(?:[❯›]|>(?=\s+\d))\s+)?/)
+  const m = line.match(/^(\s*)(?:(?:[❯›]|[>↑↓](?=\s+\d))\s+)?/)
   return m ? m[0].length : 0
 }
 
-interface RawOption { n: number | null, label: string, hint: string | null, line: number }
+interface RawOption { n: number | null, label: string, hint: string | null, line: number, end: number }
+// Claude's AskUserQuestion: free answer typed in place of its label, and the
+// option below the separator.
+export const CLAUDE_FREE = 'Type something.'
+export const CLAUDE_CHAT = 'Chat about this'
+// Claude's multiSelect questions: "[ ] Cat", "[✔] Dog", then Submit.
+const CHECKBOX = /^\[([ ✔✓x×])\]\s+/
+const SUBMIT = 'Submit'
 
 // `strict`: only accept numbered lists. Used when Herdr does not see
 // the agent as blocked (Codex's trust screen passes for "idle"):
@@ -88,15 +119,22 @@ export function parseChoices(text: string | null | undefined, { strict = false }
   lines = dropSidePanel(lines, c)
 
   const cursorLine = lines[c]!
-  const col = textColumn(cursorLine)
   const cursorText = cursorLine.match(CURSOR)![2]!
+  // Cursor on the "Submit" line of Claude's checkboxes: the list is read from
+  // the numbered option just above.
+  let anchor = c
+  if (cursorText === SUBMIT) {
+    for (let i = c - 1; i >= Math.max(0, c - 40) && anchor === c; i--) if (NUMBERED.test(lines[i]!)) anchor = i
+  }
+  const col = textColumn(lines[anchor]!)
   const options: RawOption[] = []
+  let submit: RawOption | null = null
 
-  if (/^\d{1,2}\.\s/.test(cursorText)) {
+  if (/^\d{1,2}\.\s/.test(cursorText) || anchor !== c) {
     // Numbered options: we take all those aligned on the same column,
     // on both sides of the cursor (a ─── separator may cut them).
-    let first = c
-    for (let i = c - 1; i >= Math.max(0, c - 40); i--) {
+    let first = anchor
+    for (let i = anchor - 1; i >= Math.max(0, anchor - 40); i--) {
       const m = lines[i]!.match(NUMBERED)
       if (m && textColumn(lines[i]!) === col) first = i
     }
@@ -104,15 +142,37 @@ export function parseChoices(text: string | null | undefined, { strict = false }
       const line = lines[i]!
       const m = line.match(NUMBERED)
       if (m && textColumn(line) === col) {
-        options.push({ n: Number(m[2]), label: m[3]!, hint: null, line: i })
+        options.push({ n: Number(m[2]), label: m[3]!, hint: null, line: i, end: i })
+      } else if (options.length && !submit && /^\s*(?:❯\s+)?Submit$/.test(line) && textColumn(line) > col) {
+        // Claude's checkboxes: "Submit" below them, unnumbered.
+        submit = { n: null, label: SUBMIT, hint: null, line: i, end: i }
       } else if (options.length && line.trim() && !RULE.test(line) && textColumn(line) > col) {
-        // More indented line just below an option: its description.
+        // More indented lines just below an option: its description.
         const o = options[options.length - 1]!
-        if (!o.hint && i === o.line + 1) o.hint = line.trim()
+        if (i === o.end + 1) {
+          o.hint = o.hint ? `${o.hint} ${line.trim()}` : line.trim()
+          o.end = i
+        }
       }
     }
-    // Safeguard: a real list is numbered 1, 2, 3… without gaps.
-    for (let i = 0; i < options.length; i++) if (options[i]!.n !== i + 1) return null
+    // Safeguard: a real list is numbered 1, 2, 3… without gaps. A window on a
+    // longer list (short pane) skips some: then a ↑/↓ marker shows, or the jump
+    // crosses the separator above "Chat about this".
+    const windowed = options.some(o => /^\s*[↑↓]/.test(lines[o.line]!))
+    if (submit && !options.some(o => CHECKBOX.test(o.label))) {
+      // Not a list of checkboxes after all: a description.
+      const o = [...options].reverse().find(x => x.line < submit!.line)
+      if (o && o.end === submit.line - 1 && !o.hint) o.hint = SUBMIT
+      submit = null
+    }
+    for (let i = 0; i < options.length; i++) {
+      const o = options[i]!
+      const prev = i ? options[i - 1]! : null
+      const want = prev ? prev.n! + 1 : 1
+      if (o.n === want) continue
+      const crossed = prev && lines.slice(prev.end + 1, o.line).some(l => RULE.test(l) && l.trim())
+      if (o.n! < want || !(windowed || crossed)) return null
+    }
   } else {
     if (strict) return null
     // Unnumbered options: lines adjacent to the cursor, same text column.
@@ -123,10 +183,19 @@ export function parseChoices(text: string | null | undefined, { strict = false }
     while (last + 1 < lines.length && sameCol(lines[last + 1]!)) last++
     for (let i = first; i <= last; i++) {
       const label = i === c ? cursorText : lines[i]!.trim()
-      options.push({ n: null, label, hint: null, line: i })
+      options.push({ n: null, label, hint: null, line: i, end: i })
     }
   }
 
+  // Checkboxes: Submit takes its place in the order of the list (↑/↓ go
+  // through it), the options below it one place further.
+  if (submit) {
+    const at = options.findIndex(o => o.line > submit!.line)
+    const before = at < 0 ? options[options.length - 1]! : options[at - 1]!
+    submit.n = before.n! + 1
+    for (const o of at < 0 ? [] : options.slice(at)) o.n = o.n! + 1
+    options.splice(at < 0 ? options.length : at, 0, submit)
+  }
   if (options.length < 2 || options.length > 12) return null
   const cursor = options.findIndex(o => o.line === c)
   if (cursor < 0) return null
@@ -148,9 +217,27 @@ export function parseChoices(text: string | null | undefined, { strict = false }
   question = question || asks || nearest
 
   const out: Choices = {
-    question: question ? question.t.replace(/^[☐☒✔●◆▸•\s]+/, '').slice(0, 300) : null,
+    question: question ? (/\?\s*$/.test(question.t) ? joinQuestion(lines, question.i) : question.t).replace(/^[☐☒✔●◆▸•│\s]+/, '').slice(0, 300) : null,
     cursor,
-    options: options.map(o => ({ label: o.label.slice(0, 200), hint: o.hint ? o.hint.slice(0, 200) : null })),
+    options: options.map(o => ({
+      label: o.label.slice(0, 200),
+      hint: o.hint ? o.hint.slice(0, 300) : null,
+      ...(o.n !== null ? { n: o.n } : {}),
+    })),
+  }
+  if (out.options.some(o => CHECKBOX.test(o.label))) {
+    out.multi = true
+    out.options = out.options.map((o) => {
+      const m = o.label.match(CHECKBOX)
+      return m ? { ...o, label: o.label.slice(m[0].length), checked: m[1] !== ' ' } : o
+    })
+  } else markClaudeFree(out.options)
+  // Last step of several questions ("Review your answers", "● question",
+  // "→ answer", then "Ready to submit your answers?"): the answers under Submit.
+  const review = lastMatch(lines.slice(0, top), /^\s*Review your answers\s*$/)
+  if (review >= 0 && out.options[0] && /^Submit answers$/.test(out.options[0].label)) {
+    const answers = lines.slice(review + 1, top).map(l => l.match(/^\s*→\s+(.+?)\s*$/)).filter(Boolean).map(m => m![1]!)
+    if (answers.length) out.options[0] = { ...out.options[0], hint: answers.join(' · ').slice(0, 300) }
   }
   // Permission request: what is requested (tool, command, file).
   if (question && isPermissionQuestion(out.question)) {
@@ -160,13 +247,47 @@ export function parseChoices(text: string | null | undefined, { strict = false }
   return out
 }
 
-// Keys to send to choose option `index` when the cursor is on `cursor`.
-// Checkboxes: Space checks or unchecks, without confirming.
+// Question wrapped over several lines: the lines just above in the same
+// paragraph, with the same indentation (Claude's "│" bar included), that do not
+// end a sentence ("Bash command" above "Do you want to proceed?" stays apart).
+const BAR = /^(\s*)(│ ?)?/
+function joinQuestion(lines: string[], at: number): string {
+  const lead = (l: string) => l.match(BAR)![0]
+  const text = (l: string) => l.slice(lead(l).length).trim()
+  const parts = [text(lines[at]!)]
+  for (let i = at - 1; i >= Math.max(0, at - 6); i--) {
+    const l = lines[i]!
+    const t = text(l)
+    if (!t || RULE.test(l) || lead(l) !== lead(lines[at]!) || /[.?!:)]$/.test(t)) break
+    parts.unshift(t)
+  }
+  return parts.join(' ')
+}
+
+// AskUserQuestion: "Type something." (or the text already typed there, which
+// replaces its label) is the free answer, just above "Chat about this".
+function markClaudeFree(options: ChoiceOption[]) {
+  const chat = options.findIndex(o => o.label === CLAUDE_CHAT && o.n)
+  for (let i = 0; i < options.length; i++) {
+    const o = options[i]!
+    if (!o.n) continue
+    const typed = chat >= 0 && o.n === options[chat]!.n! - 1
+    if (o.label !== CLAUDE_FREE && !typed) continue
+    options[i] = { ...o, label: CLAUDE_FREE, hint: o.label === CLAUDE_FREE ? null : [o.label, o.hint].filter(Boolean).join(' '), free: true }
+  }
+}
+
+// Keys to send to choose option `index` when the cursor is on `cursor`
+// (counted on their numbers when the list shown is only a window on it).
+// Checkboxes: Space checks or unchecks, without confirming; among them, an
+// option without a box (Claude's Submit, Chat about this) is confirmed by Enter.
 export function keysFor(choices: Choices, index: number): string[] {
-  const d = index - choices.cursor
+  const from = choices.options[choices.cursor]?.n
+  const to = choices.options[index]?.n
+  const d = from && to ? to - from : index - choices.cursor
   const keys: string[] = []
   for (let i = 0; i < Math.abs(d); i++) keys.push(d > 0 ? 'down' : 'up')
-  keys.push(choices.multi ? 'space' : 'enter')
+  keys.push(choices.multi && choices.options[index]?.checked !== undefined ? 'space' : 'enter')
   return keys
 }
 
@@ -413,6 +534,68 @@ export function completeOmpAsk(choices: Choices, asked: OmpAsked[]): Choices {
   }
 }
 
+// Claude's AskUserQuestion call still unanswered (JSON lines of its
+// transcript): its questions, in full, with every option. The box may show
+// only a window of the options (short pane) and wraps the question.
+export interface ClaudeAsked extends OmpAsked { multi: boolean }
+export function pendingClaudeAsk(lines: string[]): ClaudeAsked[] {
+  const pending = new Map<string, ClaudeAsked[]>()
+  for (const line of lines) {
+    if (!line || !line.includes('"type"')) continue
+    let d: Json
+    try { d = JSON.parse(line) }
+    catch { continue }
+    if (!d || d.isSidechain) continue
+    const content = d.message && d.message.content
+    if (d.type === 'user') {
+      if (typeof content === 'string') { pending.clear(); continue }
+      if (Array.isArray(content)) for (const part of content) if (part && part.type === 'tool_result') pending.delete(part.tool_use_id)
+    } else if (d.type === 'assistant' && Array.isArray(content)) {
+      for (const part of content) {
+        if (!part || part.type !== 'tool_use' || part.name !== 'AskUserQuestion' || !part.id) continue
+        const qs: Json[] = part.input && Array.isArray(part.input.questions) ? part.input.questions : []
+        pending.set(part.id, qs.filter(q => q && typeof q.question === 'string').map(q => ({
+          question: q.question.trim(),
+          multi: Boolean(q.multiSelect),
+          options: (Array.isArray(q.options) ? q.options : []).filter((o: Json) => o && typeof o.label === 'string')
+            .map((o: Json) => ({ label: o.label, description: typeof o.description === 'string' && o.description.trim() ? o.description.trim() : null })),
+        })))
+      }
+    }
+  }
+  return [...pending.values()].pop() || []
+}
+
+// On-screen AskUserQuestion box completed by the call: full question, every
+// option with its whole description, then "Type something." and "Chat about
+// this". Only when the options shown are those of one of its questions (a
+// single-choice one: checkboxes are left as read).
+const sameLabel = (shown: string, full: string) => {
+  const a = shown.replace(/\s+/g, '')
+  const b = full.replace(/\s+/g, '')
+  return a === b || b.startsWith(a)
+}
+export function completeClaudeAsk(choices: Choices, asked: ClaudeAsked[]): Choices {
+  if (!asked.length || choices.multi || choices.options.some(o => !o.n)) return choices
+  const cur = choices.options[choices.cursor]!
+  const fits = (q: ClaudeAsked) => {
+    const k = q.options.length
+    return !q.multi && k > 0 && choices.options.every(o => (o.n! <= k
+      ? !o.free && sameLabel(o.label, q.options[o.n! - 1]!.label)
+      : o.n === k + 1 ? Boolean(o.free) : o.n === k + 2 && o.label === CLAUDE_CHAT))
+  }
+  const q = asked.find(a => sameQuestion(choices.question, a.question) && fits(a)) || asked.find(fits)
+  if (!q) return choices
+  const k = q.options.length
+  const free = choices.options.find(o => o.free)
+  const options: ChoiceOption[] = [
+    ...q.options.map((o, i) => ({ label: o.label.slice(0, 200), hint: o.description ? o.description.slice(0, 600) : null, n: i + 1 })),
+    { label: CLAUDE_FREE, hint: free ? free.hint : null, free: true, n: k + 1 },
+    { label: CLAUDE_CHAT, hint: null, n: k + 2 },
+  ]
+  return { ...choices, question: q.question, cursor: cur.n! - 1, options }
+}
+
 // Same question on the re-read screen and on the phone: either one may be
 // cut, or completed from the transcript (completeOmpAsk).
 export function sameQuestion(a: string | null | undefined, b: string | null | undefined): boolean {
@@ -422,9 +605,12 @@ export function sameQuestion(a: string | null | undefined, b: string | null | un
 }
 
 // On-screen prompt of a pane, re-read before answering it (choose, nav): the
-// "Ask" box for omp, otherwise a numbered or unnumbered list.
-export function screenChoices(text: string | null | undefined, agent: string | null | undefined): Choices | null {
-  return agent === 'omp' ? parseOmpAsk(text) : parseChoices(text) || parseChoices(text, { strict: true })
+// "Ask" box for omp, otherwise a numbered or unnumbered list (Claude's
+// AskUserQuestion completed by its pending call, `asked`).
+export function screenChoices(text: string | null | undefined, agent: string | null | undefined, asked: ClaudeAsked[] = []): Choices | null {
+  if (agent === 'omp') return parseOmpAsk(text)
+  const c = parseChoices(text) || parseChoices(text, { strict: true })
+  return c && agent === 'claude' ? completeClaudeAsk(c, asked) : c
 }
 
 // Visible input field = a "❯" (Claude) or "›" (Codex) line at the bottom of

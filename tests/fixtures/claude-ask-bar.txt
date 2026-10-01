@@ -1,0 +1,25 @@
+❯ Use the AskUserQuestion tool to ask me which storage approach I prefer. Make the question long (about 40 words).
+  Give 3 options, each with a description of about 30 words. Then reply with my choice only.
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ☐ Storage approach
+
+│ How would you prefer to store and manage your data in your project? Consider factors like data persistence,
+│ performance characteristics, ease of implementation, scalability requirements, and maintenance overhead. Which
+│ approach best aligns with your project's needs and constraints?
+
+❯ 1. In-Memory Storage
+     Data stored entirely in application memory. Fast access and performance, but no persistence between restarts.
+     Ideal for caching, temporary session data, or development/testing environments. Simple implementation with minimal
+     overhead.
+  2. File-Based Storage
+     Persist data to files on disk in formats like JSON, CSV, or plain text. Offers a good balance between simplicity
+     and data persistence. Suitable for small to medium datasets. Slower than in-memory but data survives restarts.
+  3. Database
+     Use a SQL or NoSQL database for data storage. Provides robust persistence, advanced querying capabilities,
+     transaction support, and excellent scalability. More complex setup but handles large datasets and concurrent
+     access reliably. Production-grade approach.
+  4. Type something.
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel

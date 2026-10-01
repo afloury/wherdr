@@ -207,6 +207,9 @@ const FR: Record<string, string> = {
   'omp’s answer field did not open — check the current screen.': 'Le champ de réponse d’omp ne s’est pas ouvert — regarde l’écran à jour.',
   'omp’s answer field could not be cleared — check the current screen.': 'Le champ de réponse d’omp ne se vide pas — regarde l’écran à jour.',
   'omp’s answer field closed — answer not submitted, check the current screen.': 'Le champ de réponse d’omp s’est refermé — réponse non validée, regarde l’écran à jour.',
+  'Claude’s answer field could not be reached — check the current screen.': 'Impossible d’atteindre le champ de réponse de Claude — regarde l’écran à jour.',
+  'Claude’s answer field could not be cleared — check the current screen.': 'Le champ de réponse de Claude ne se vide pas — regarde l’écran à jour.',
+  'Claude’s answer field closed — answer not submitted, check the current screen.': 'Le champ de réponse de Claude s’est refermé — réponse non validée, regarde l’écran à jour.',
   // omp "Ask" box: free answer, question tabs
   'Your answer…': 'Ta réponse…', 'Questions': 'Questions',
   'Web Push is not configured': 'Web Push non configuré',

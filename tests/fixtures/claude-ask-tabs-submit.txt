@@ -1,0 +1,16 @@
+←  ☒ Colour preference  ☒ Pet preferences  ✔ Submit  →
+
+Which pets do you like?
+
+  1. [✔] Cat
+         Independent, affectionate, and low-maintenance
+  2. [✔] Dog
+         Loyal, playful, and social
+  3. [ ] Fish
+         Serene, low-effort, and meditative
+  4. [ ] Type something
+❯    Submit
+────────────────────────────────────────────────────────────────────────────────────
+  5. Chat about this
+
+Enter to select · Tab/Arrow keys to navigate · ctrl+g to edit in Vim · Esc to cancel
