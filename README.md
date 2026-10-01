@@ -78,7 +78,7 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - **Live agent list**, one line per Herdr space, grouped by state (your turn, working, ready),
   with a preview of each agent's last answer. When an agent asks for permission or asks a
   question, the options show on its card: **answer in one tap** without opening it.
-- **Conversation view**: the agent's real transcript (Claude Code and Codex), rendered as
+- **Conversation view**: the agent's real transcript (Claude Code, Codex and omp), rendered as
   Markdown, with grouped tool calls, images, timestamps, search and infinite scroll back to the
   first message. Reading a conversation never touches the terminal, so it never resizes a pane.
 - **Terminal view**: the real terminal (xterm.js, WebGL or DOM renderer) with take-over.
@@ -104,6 +104,8 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - **Rearrange the layout**: drag a pane onto another to move it, drag a divider to resize
   (arrow keys work on a focused divider); changes go to Herdr itself.
 - **Spaces and tabs**: sidebar with every space, tabs at the top, active tab remembered per space.
+  The sidebar can be resized, or collapsed to a narrow rail (search, new agent, settings and
+  state counters) with the button next to Settings; the choice is kept on the device.
 - **Keyboard shortcuts**: `Ctrl/⌘+K` global search across agents and conversations,
   `Alt+Shift+arrows` to swap the current pane with its neighbour,
   `Ctrl/⌘+Alt+arrows` to move focus to the neighbouring pane in a side-by-side tab, `Esc` to close dialogs,
@@ -134,7 +136,7 @@ phone / laptop ──private network──> HTTPS (tailscale serve, private prox
                                ├─ Herdr API socket     ~/.config/herdr/herdr.sock
                                ├─ Herdr client socket  (notifications, passive client)
                                ├─ herdr terminal session control <pane>   (terminal view)
-                               ├─ transcripts          ~/.claude, ~/.codex (read only)
+                               ├─ transcripts          ~/.claude, ~/.codex, ~/.omp (read only)
                                └─ ssh -M <machine>     (other machines, optional)
 ```
 
@@ -148,7 +150,8 @@ Web Push, lock) runs in Nitro.
 ## Requirements
 
 - **Herdr ≥ 0.9.1** running on the server (`herdr` or `herdr server`), with its Claude Code /
-  Codex integrations installed if you use them (`herdr integration install claude|codex`).
+  Codex / omp integrations installed if you use them (`herdr integration install claude|codex|omp`).
+  omp's conversation is only found through its integration, which reports the session file.
 - **Linux or macOS** server with either **Docker** (Compose v2) or **Node.js 22**.
   The Docker image is for Linux servers (tested on a Raspberry Pi too). **On macOS, run without
   Docker**: Docker Desktop cannot reach Herdr's Unix socket on the host.
@@ -534,8 +537,8 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability.
 - **"The Herdr server is not responding"**: start Herdr on the server (`herdr` or
   `herdr server`). With Docker, check that `HOST_HOME` and `PUID` match your user.
 - **No conversation, only the terminal**: the agent was started before the Herdr integration
-  was installed, or it is not Claude Code / Codex. Install the integration
-  (`herdr integration install claude|codex`) and start a new agent.
+  was installed, or it is not Claude Code / Codex / omp. Install the integration
+  (`herdr integration install claude|codex|omp`) and start a new agent.
 - **Passkeys or notifications unavailable**: the page must be served over HTTPS (or
   `localhost`). On iPhone, notifications need the app installed on the home screen.
 - **HTTP 403 when opening the app through another name**: add that private hostname or IP

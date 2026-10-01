@@ -1,0 +1,58 @@
+│     </div>                                                                                                                                                                                                         │
+│ """),                                                                                                                                                                                                              │
+│ ])                                                                                                                                                                                                                 │
+│ EOF                                                                                                                                                                                                                │
+│ sed -n 1176,1190p app/assets/css/main.css                                                                                                                                                                          │
+├─── Output ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ … (5 earlier lines, showing 10 of 15) ⟦⌃O: Expand⟧                                                                                                                                                                 │
+│ .composer-status-line { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }                                                                                                                 │
+│ .composer-status-meters { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }                                                                                            │
+│ /* Ligne cliquable (« Redémarrer pour mettre à jour ») et suivi du redémarrage. */                                                                                                                                 │
+│ .composer-notice:has(.notice-btn), .composer-notice.restart {                                                                                                                                                      │
+│   display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0;                                                                                                                           │
+│ }                                                                                                                                                                                                                  │
+│ .composer-notice .restart-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }                                                                                                                        │
+│ .composer-notice .notice-btn {                                                                                                                                                                                     │
+│   flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px;                                                                                                                               │
+│   font: 500 10.5px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .04em;                                                                                                                              │
+│ ⟦Wall: 0.04s | Timeout: 300s⟧                                                                                                                                                                                      │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+ 2026-10-01 00:06:24  ⤵ 2.2K  ⤴ 1.6K  💾 524K  ⏱ 3.3s  ⚡ 112.2/s
+
+ Now a test with a real capture of the idle footer plus the Ask-box fixture.
+
+╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ $ herdr pane read w3B:p1 --source detection > tests/fixtures/omp-idle-footer.txt; grep -v '^\s*$' tests/fixtures/omp-idle-footer.txt | tail -4 | cut -c1-60                                                        │
+│ cat > tests/ompScreen.test.ts <<'EOF'                                                                                                                                                                              │
+│ // Ligne d'état d'omp, sur des écrans réels (champ de saisie, boîte « Ask » ouverte).                                                                                                                              │
+│ import { readFileSync } from 'node:fs'                                                                                                                                                                             │
+│ import { describe, expect, it } from 'vitest'                                                                                                                                                                      │
+│ import { parseOmpStatus } from '../server/utils/ompScreen'                                                                                                                                                         │
+│                                                                                                                                                                                                                    │
+│ const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')                                                                                                                  │
+│                                                                                                                                                                                                                    │
+│ describe('parseOmpStatus', () => {                                                                                                                                                                                 │
+│   it('lit la ligne d’état et les jauges incrustées dans le trait du champ', () => {                                                                                                                                │
+│     const s = parseOmpStatus(fx('omp-idle-footer.txt'))!                                                                                                                                                           │
+│     expect(s.line).toMatch(/^◒ Opus 5\.5 .* · 📁 ~\/wherdr · ⑂ /)                                                                                                                                                  │
+│     expect(s.meters).toMatch(/^◫ [\d.]+%\/1M .* · ⏱ 5h \d+% /)                                                                                                                                                     │
+│   })                                                                                                                                                                                                               │
+│   it('boîte « Ask » ouverte : la ligne d’état sous la boîte, sans jauges visibles', () => {                                                                                                                        │
+│     expect(parseOmpStatus(fx('omp-ask-single.txt'))).toEqual({ line: '◒ Opus 5.5 👁 · 🗑 /tmp ↳ xero-app-service · ⑂ detached', meters: null })                                                                      │
+│   })                                                                                                                                                                                                               │
+│   it('rien sans trait juste au-dessus de la dernière ligne (écran de Claude, panneau)', () => {                                                                                                                    │
+│     expect(parseOmpStatus(fx('claude-idle.txt'))).toBeNull()                                                                                                                                                       │
+│     expect(parseOmpStatus('Usage\n████ 40%\n\nEsc to close')).toBeNull()                                                                                                                                           │
+│   })                                                                                                                                                                                                               │
+│ })                                                                                                                                                                                                                 │
+│ EOF                                                                                                                                                                                                                │
+│ npx vitest run tests/ompScreen.test.ts 2>&1 | grep -E '×|Tests |Expected|Received' | head                                                                                                                          │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+  ⎋ Capturing fixture and testing parser
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── ◫ 52.7%/1M ⟲ · ⏱ 5h 44% (2h 6m) · 7d 71% (3d 10h) ─
+❯
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ◒ Opus 5.5 👁 · 📁 ~/wherdr · ⑂ omp-support *24 ?4

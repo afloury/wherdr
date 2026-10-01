@@ -72,4 +72,24 @@ export function herdrSock<T = any>(path: string, method: string, params: Record<
   })
 }
 
+// Message à un agent. Un agent lancé par agent.start reste « en démarrage »
+// (launch_pending, agent.prompt refusé avec agent_not_ready) tant que Herdr n'a
+// pas revalidé son démarrage, ce qu'il ne fait qu'à un changement d'état de
+// l'agent ou à un agent.get (Herdr 0.9 ; son CLI attend en appelant agent.get).
+// omp, dont l'état vient de ses hooks, passe idle une seule fois, pendant le
+// délai de 3 s qu'impose Herdr : sans autre appel, il refuserait tout message
+// jusqu'à son premier tour tapé dans le terminal. Sur ce refus, agent.get fait
+// la revalidation et on renvoie une fois ; encore trop tôt (moins de 3 s), le
+// refus d'origine remonte à l'appelant.
+export async function agentPrompt(target: string, text: string): Promise<void> {
+  try {
+    await herdr('agent.prompt', { target, text })
+  } catch (e) {
+    if (!(e instanceof HerdrError) || e.code !== 'agent_not_ready') throw e
+    try { await herdr('agent.get', { target }) }
+    catch { throw e }
+    await herdr('agent.prompt', { target, text })
+  }
+}
+
 export const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))

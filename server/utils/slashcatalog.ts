@@ -1,7 +1,8 @@
-// Commandes « / » intégrées à Claude Code et à Codex, relevées dans leur menu
-// du terminal (Claude Code de septembre 2026, Codex 0.157). Les skills et
-// commandes personnelles (~/.claude/skills, ~/.claude/commands, dossier du
-// projet, ~/.codex/prompts) sont lus sur la machine, cf. slash.ts.
+// Commandes « / » intégrées à Claude Code, à Codex et à omp, relevées dans
+// leur menu du terminal (Claude Code de septembre 2026, Codex 0.157, omp 18.4).
+// Les skills et commandes personnelles (~/.claude/skills, ~/.claude/commands,
+// dossier du projet, ~/.codex/prompts, ~/.omp/agent/commands…) sont lus sur la
+// machine, cf. slash.ts.
 // [nom, description, arguments ?]
 export type SlashEntry = [string, string, string?]
 
@@ -167,4 +168,78 @@ export const CODEX_BUILTIN: SlashEntry[] = [
   ["stop", "stop all background terminals"],
   ["clear", "clear the terminal and start a new chat"],
   ["subagents", "switch between this session's subagents"],
+]
+
+// omp 18.4 (BUILTIN_SLASH_COMMAND_DEFS de pi-coding-agent), sans les alias.
+export const OMP_BUILTIN: SlashEntry[] = [
+  ["security", "Plan, run, inspect, import, and compare OMP-native security scans"],
+  ["settings", "Open settings menu"],
+  ["setup", "Open provider setup"],
+  ["plan", "Toggle plan mode (agent plans before executing)", "[prompt]"],
+  ["plan-review", "Re-open the plan review for the latest plan (plan mode only)"],
+  ["vibe", "Toggle vibe mode (direct persistent fast/good worker sessions; read-only toolset)", "[prompt]"],
+  ["goal", "Toggle goal mode (persistent autonomous objective for this session)", "[objective]"],
+  ["guided-goal", "Have the agent interview you in chat, then set up goal mode", "[rough objective]"],
+  ["loop", "Toggle loop mode. While enabled, the next prompt you send re-submits after every yield. Esc cancels the current iteration; /loop again to disable.", "[count|duration] [prompt]"],
+  ["queue", "Queue a message for after the agent yields", "<message>"],
+  ["model", "Switch model for this session"],
+  ["switch", "Switch model for this session (same as alt+p)"],
+  ["fast", "Toggle priority service tier (OpenAI service_tier=priority, Anthropic speed=fast)"],
+  ["computer", "Toggle the native computer-use tool for this session"],
+  ["vision", "Control the inspect_image vision-delegation tool for this session"],
+  ["prewalk", "Switch to a fast/cheap model at the next action (works even without --prewalk)"],
+  ["advisor", "Toggle the advisor (a second model that reviews each turn and injects notes)"],
+  ["export", "Export session to HTML file", "[--themes] [path]"],
+  ["dump", "Copy session transcript to clipboard (and write LLM request JSON to tmp)"],
+  ["share", "Share session via an encrypted link (share server or secret gist)"],
+  ["collab", "Share this session live via a relay", "[start|view|stop|status] [relayUrl]"],
+  ["join", "Join a shared collab session", "<link>"],
+  ["leave", "Leave the collab session"],
+  ["browser", "Toggle browser headless vs visible mode"],
+  ["copy", "Pick text or code from the conversation to copy"],
+  ["todo", "View or modify the agent's todo list"],
+  ["session", "Session management commands"],
+  ["jobs", "Show async background jobs status"],
+  ["usage", "Show provider usage and limits"],
+  ["stats", "Launch the local stats dashboard", "[--port <port>] [--host <host>]"],
+  ["changelog", "Show changelog entries"],
+  ["hotkeys", "Show all keyboard shortcuts"],
+  ["tools", "Show tools currently visible to the agent"],
+  ["context", "Show estimated context usage breakdown"],
+  ["extensions", "Open Extension Control Center dashboard"],
+  ["agents", "Open the agents hub (per-agent model, prewalk, and advisor)"],
+  ["branch", "Create a new branch from a previous message"],
+  ["fork", "Create a new fork from a previous message"],
+  ["tree", "Navigate session tree (switch branches)"],
+  ["login", "Login with OAuth provider", "[provider|redirect URL]"],
+  ["logout", "Logout from OAuth provider", "[provider]"],
+  ["mcp", "Manage MCP servers (add, list, remove, test)", "<subcommand>"],
+  ["ssh", "Manage SSH hosts (add, list, remove)", "<subcommand>"],
+  ["new", "Start a new session"],
+  ["fresh", "Reset provider stream state without changing the local transcript"],
+  ["clear", "Clear the conversation context in place, keeping the session"],
+  ["drop", "Delete the current session and start a new one"],
+  ["compact", "Manually compact the session context"],
+  ["shake", "Drop heavy content from context (tool results, large blocks)"],
+  ["handoff", "Hand off session context to a new session", "[focus instructions]"],
+  ["resume", "Resume a different session", "[session id|@claude|@codex]"],
+  ["btw", "Ask an ephemeral side question using the current session context", "<question>"],
+  ["tan", "Run a full background agent on tangential work", "<work>"],
+  ["omfg", "Forge a TTSR rule from a complaint to stop a recurring behavior", "<complaint>"],
+  ["retry", "Retry the last failed agent turn"],
+  ["debug", "Open debug tools selector"],
+  ["memory", "Inspect and operate memory maintenance"],
+  ["rename", "Rename the current session", "<title>"],
+  ["move", "Move the current session to a different directory", "[<path>]"],
+  ["add-dir", "Add a workspace directory to this session (multi-root)", "<path>"],
+  ["remove-dir", "Remove a workspace directory from this session", "<path>"],
+  ["dirs", "List this session's workspace directories"],
+  ["exit", "Exit the application"],
+  ["marketplace", "Manage marketplace plugin sources and installed plugins"],
+  ["plugins", "View and manage installed plugins"],
+  ["reload-plugins", "Reload all plugins (skills, commands, hooks, tools, agents, MCP)"],
+  ["force", "Force next turn to use a specific tool", "<tool-name> [prompt]"],
+  ["live", "Start Codex-backed realtime voice mode"],
+  ["pause", "Freeze all agents (main, subagents, advisor) until resumed"],
+  ["quit", "Quit the application"],
 ]

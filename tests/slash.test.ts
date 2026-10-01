@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { frontmatter, mergeCommands, slashCommands } from '../server/utils/slash'
+import { frontmatter, mergeCommands, ompSkillDirs, slashCommands } from '../server/utils/slash'
 import { localFs } from '../server/utils/fsx'
 
 describe('commandes « / »', () => {
@@ -34,5 +34,25 @@ describe('commandes « / »', () => {
     expect(cl.find(c => c.name === 'deploy')!.desc).toBe('Déployer le site')
     const cx = await slashCommands({ key: 't1', fs: localFs, home, kind: 'codex', cwd: null })
     expect(cx.map(c => c.name)).toEqual(expect.arrayContaining(['prompts:fix', 'new', 'model']))
+  })
+
+  it('omp : intégrées, commandes (omp, projet, Claude) et skills en /skill:<nom>, dossiers de la config compris', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-slash-omp-'))
+    const w = (f: string, t: string) => { mkdirSync(path.dirname(path.join(home, f)), { recursive: true }); writeFileSync(path.join(home, f), t) }
+    w('.omp/agent/commands/review.md', '---\ndescription: Relire\n---\n')
+    w('.claude/commands/deploy.md', '# Déployer\n')
+    w('proj/.omp/commands/local.md', 'Commande du projet\n')
+    w('.agents/skills/pdf/SKILL.md', '---\nname: pdf\ndescription: PDF\n---\n')
+    w('extra-skills/tidy/SKILL.md', '---\nname: tidy\ndescription: Ranger\n---\n')
+    w('.omp/agent/config.yml', 'theme: dark\nskills:\n  enabled: true\n  customDirectories:\n    - ~/extra-skills\n  other: x\nextensions:\n  - ~/nope\n')
+    const names = (await slashCommands({ key: 't1', fs: localFs, home, kind: 'omp', cwd: path.join(home, 'proj') })).map(c => c.name)
+    expect(names).toEqual(expect.arrayContaining(['review', 'deploy', 'local', 'init', 'skill:pdf', 'skill:tidy', 'session', 'compact', 'model']))
+    expect(names).not.toContain('pdf')
+  })
+
+  it('lit skills.customDirectories dans la config YAML d’omp', () => {
+    const cfg = 'skills:\n  customDirectories:\n    - ~/a\n    - "/abs/b"\n    - rel\n  enableSkillCommands: true\nother:\n  customDirectories:\n    - ~/no\n'
+    expect(ompSkillDirs(cfg, '/h')).toEqual(['/h/a', '/abs/b', '/h/rel'])
+    expect(ompSkillDirs('theme: x\n', '/h')).toEqual([])
   })
 })

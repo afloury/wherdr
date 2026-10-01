@@ -58,3 +58,19 @@ export function saveListWidth(w: number | null) {
     else localStorage.setItem(LIST_KEY, String(w))
   } catch { /* stockage indisponible */ }
 }
+
+// Liste réduite à une étroite colonne (bouton de la barre latérale), gardée sur l'appareil.
+export const LIST_RAIL = 56
+const RAIL_KEY = 'listCollapsed'
+
+export function readListCollapsed(): boolean {
+  try { return localStorage.getItem(RAIL_KEY) === '1' }
+  catch { return false }
+}
+
+export function saveListCollapsed(collapsed: boolean) {
+  try {
+    if (collapsed) localStorage.setItem(RAIL_KEY, '1')
+    else localStorage.removeItem(RAIL_KEY)
+  } catch { /* stockage indisponible */ }
+}

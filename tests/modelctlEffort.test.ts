@@ -13,12 +13,8 @@ vi.mock('../server/utils/state', () => ({
   poll: () => {},
   transcripts: { model: async () => ({ id: 'claude-opus-5-5', label: 'Opus 5.5', effort: 'medium', at: null }) },
 }))
-vi.mock('../server/utils/herdr', () => ({
-  HerdrError: class HerdrError extends Error {
-    constructor(public code: string, message: string) { super(message) }
-  },
-  sleep: async () => {},
-  herdr: async (method: string, params: Record<string, unknown>) => {
+vi.mock('../server/utils/herdr', () => {
+  const herdr = async (method: string, params: Record<string, unknown>) => {
     calls.sent.push({ method, params })
     if (method === 'agent.prompt') calls.screen = fx('claude-effort-medium.txt')
     if (method === 'pane.send_input') {
@@ -26,8 +22,16 @@ vi.mock('../server/utils/herdr', () => ({
       if ((params.keys as string[]).includes('s')) calls.screen = ''
     }
     return method === 'pane.read' ? { read: { text: calls.screen } } : {}
-  },
-}))
+  }
+  return {
+    HerdrError: class HerdrError extends Error {
+      constructor(public code: string, message: string) { super(message) }
+    },
+    sleep: async () => {},
+    herdr,
+    agentPrompt: async (target: string, text: string) => { await herdr('agent.prompt', { target, text }) },
+  }
+})
 
 import { listEfforts, setEffort } from '../server/utils/modelctl'
 

@@ -99,9 +99,13 @@ async function readCommandResult(pane: string, cmd: string, tries = 5, seq = res
       // Menu interactif (/resume, /model…) : pas une sortie, il se pilote dans la conversation.
       // Skill, commande personnalisée, /compact… : l'agent travaille, la
       // conversation le montre ; Échap l'interromprait.
-      if (parseMenu(text) || agentAnswering(text, cmd)) { closeCommandResult(false); return }
+      // omp ne dessine pas d'activité reconnaissable sous la commande : son état fait foi.
+      const p = herdrState.value.panes.find(x => x.id === pane)
+      const working = p?.agent === 'omp' && p.status === 'working'
+      if (parseMenu(text) || agentAnswering(text, cmd) || working) { closeCommandResult(false); return }
       const shown = extractResult(text, cmd)
-      const loading = /\bLoading\b/.test(shown)
+      // « Loading… » (jauges de /usage), « ⏳ Waiting for response… » (/btw d'omp).
+      const loading = /\bLoading\b|Waiting for response/.test(shown)
       if (loading && i < tries - 1) { await new Promise(r => setTimeout(r, 1200)); continue }
       commandResult.tab = tab
       commandResult.text = shown || t('Rien d’affiché — regarde l’onglet Terminal.')
@@ -116,7 +120,8 @@ async function readCommandResult(pane: string, cmd: string, tries = 5, seq = res
 }
 
 // Le résultat dans l'écran : sous la ligne de la commande, ou le panneau de
-// réglages de Claude Code en entier (il remplace la ligne de commande), sinon
+// réglages de Claude Code en entier (il remplace la ligne de commande), ou le
+// dernier encadré titré d'omp (« ╭─ Session Info ─ », « ╭─ /btw … ─ »), sinon
 // le bas de l'écran.
 export function extractResult(text: string, cmd: string) {
   const lines = text.replace(/\s+$/, '').split('\n')
@@ -129,12 +134,16 @@ export function extractResult(text: string, cmd: string) {
     }
   }
   if (start < 0) start = lines.findIndex(l => /^\s*Settings\s+Status\s+Config\b/.test(l))
+  if (start < 0) start = lines.findLastIndex(l => /^\s*╭─+ \S/.test(l))
   let out = start >= 0 ? lines.slice(start) : lines.slice(-30)
-  // Encadré juste sous la commande (Codex) : son contenu, sans ce qui suit.
+  // Encadré juste sous la commande (Codex) ou panneau d'omp : son contenu,
+  // sans ce qui suit, ni son titre, ses séparateurs et ses raccourcis (« ⎋ to close »).
   const top = out.findIndex(l => l.trim())
   if (top >= 0 && /^\s*[╭┌]/.test(out[top]!)) {
     const end = out.findIndex((l, i) => i > top && /^\s*[╰└]/.test(l))
-    out = unbox(out.slice(top, end > 0 ? end + 1 : undefined))
+    out = unbox(out.slice(top, end > 0 ? end + 1 : undefined).filter(l => !/^\s*[╭├]─+ \S/.test(l)))
+      .filter(l => !/⎋/.test(l))
+      .map(l => (/^\s*[├┝][─━]+[┤┥]?\s*$/.test(l) ? '' : l))
   }
   const rule = out.findIndex(l => /^[\s─━]{20,}$/.test(l))
   if (rule > 0) out = out.slice(0, rule)

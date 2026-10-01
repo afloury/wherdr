@@ -4,7 +4,7 @@
 // (claude-trust, claude-security-guide, codex-trust : la machine fait déjà confiance à ~).
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { inputVisible, keysFor, parseChoices } from '../server/utils/choices'
+import { completeOmpAsk, inputVisible, keysFor, parseChoices, parseOmpAsk, pendingOmpAsk, screenChoices } from '../server/utils/choices'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 
@@ -104,5 +104,96 @@ describe('inputVisible', () => {
   })
   it('ne le voit pas quand un panneau le cache', () => {
     expect(inputVisible('  Usage\n  ████ 40%\n\n  Esc to close')).toBe(false)
+  })
+})
+
+describe('parseOmpAsk', () => {
+  // Écrans réels de l'outil ask d'omp (deux questions : choix unique, cases à cocher, puis Submit).
+  it('lit une question à choix unique, sans les onglets ni « Other »', () => {
+    const c = parseOmpAsk(fx('omp-ask-single.txt'))!
+    expect(c.question).toBe('Favourite colour?')
+    expect(c.options).toEqual([{ label: 'Red', hint: 'warm' }, { label: 'Green', hint: 'calm' }, { label: 'Blue', hint: 'cool' }])
+    expect(c.cursor).toBe(0)
+    expect(c.multi).toBeUndefined()
+    expect(keysFor(c, 2)).toEqual(['down', 'down', 'enter'])
+  })
+
+  it('lit des cases à cocher : état coché, Espace pour cocher sans valider', () => {
+    const c = parseOmpAsk(fx('omp-ask-multi.txt'))!
+    expect(c.question).toBe('Pick sizes')
+    expect(c.multi).toBe(true)
+    expect(c.options.map(o => [o.label, o.checked])).toEqual([['Small', true], ['Medium', false], ['Large', true]])
+    expect(c.cursor).toBe(2)
+    expect(keysFor(c, 1)).toEqual(['up', 'space'])
+  })
+
+  it('dernière étape : Submit, avec les réponses', () => {
+    const c = parseOmpAsk(fx('omp-ask-review.txt'))!
+    expect(c.question).toBe('Review answers')
+    expect(c.options).toEqual([{ label: 'Submit', hint: 'color: Red · size: Small, Large' }])
+    expect(keysFor(c, 0)).toEqual(['enter'])
+  })
+
+  it('rien sans boîte Ask ; screenChoices choisit le lecteur selon l’agent', () => {
+    expect(parseOmpAsk(fx('claude-ask.txt'))).toBeNull()
+    expect(screenChoices(fx('omp-ask-single.txt'), 'claude')).toBeNull()
+    expect(screenChoices(fx('omp-ask-single.txt'), 'omp')!.options).toHaveLength(3)
+  })
+})
+
+describe('parseOmpAsk, jeu de symboles ascii', () => {
+  it('lit la même boîte dessinée en ascii (curseur >, (o) / [x], bords + - |)', () => {
+    const box = [
+      '+- Ask -------------------------+',
+      '| a    b    Submit              |',
+      '| Pick sizes                    |',
+      '+-------------------------------+',
+      '|   [x] Small                   |',
+      '| > [ ] Medium                  |',
+      '|   [ ] Other (type your own)   |',
+      '+-------------------------------+',
+      '| space toggle · enter next     |',
+      '+-------------------------------+',
+    ].join('\n')
+    const c = parseOmpAsk(box)!
+    expect(c).toEqual({ question: 'Pick sizes', cursor: 1, multi: true, options: [{ label: 'Small', hint: null, checked: true }, { label: 'Medium', hint: null, checked: false }] })
+  })
+})
+
+describe('completeOmpAsk', () => {
+  // La boîte replie une longue question (« … ») et colle ses lignes ; la
+  // transcription a le texte entier de l'appel « ask » encore sans réponse.
+  const question = 'Plan for titles. Approve?\n\n1. Service: trims the title and writes a system_event.\n2. HTTP: PATCH /title.'
+  const call = (id: string, q: string) => JSON.stringify({ type: 'message', message: { role: 'assistant', content: [{ type: 'toolCall', id, name: 'ask', arguments: { questions: [
+    { id: 'other', question: 'Email subject?', options: [{ label: 'Keep' }] },
+    { id: 'plan', question: q, options: [{ label: 'Approve' }, { label: 'Revise', description: 'Tell me what to change,\nline by line.' }] },
+  ] } }] } })
+  const box = [
+    '╭─ Ask ─────────────────────────────────────╮',
+    '│  other    plan    Submit                  │',
+    '│ Plan for titles. Approve?1. Service: trims │',
+    '│ the title and writes a syst…              │',
+    '├───────────────────────────────────────────┤',
+    '│ ❯ ○ Approve (Recommended)                 │',
+    '│   ○ Revise                                │',
+    '│       Tell me what to change,             │',
+    '│   ○ Other (type your own)                 │',
+    '├───────────────────────────────────────────┤',
+    '│ ⏎ select · ↑/↓ move · ⎋ cancel            │',
+    '╰───────────────────────────────────────────╯',
+  ].join('\n')
+
+  it('reprend la question et les descriptions entières de l’appel en attente', () => {
+    const c = completeOmpAsk(parseOmpAsk(box)!, pendingOmpAsk([call('old', 'Stale?'), call('t1', question)]))
+    expect(c.question).toBe(question)
+    expect(c.options).toEqual([{ label: 'Approve (Recommended)', hint: null }, { label: 'Revise', hint: 'Tell me what to change,\nline by line.' }])
+    expect(c.cursor).toBe(0)
+  })
+
+  it('garde l’écran si l’appel a déjà sa réponse ou porte une autre question', () => {
+    const shown = parseOmpAsk(box)!
+    const answered = JSON.stringify({ type: 'message', message: { role: 'toolResult', toolCallId: 't1', toolName: 'ask' } })
+    expect(pendingOmpAsk([call('t1', question), answered])).toEqual([])
+    expect(completeOmpAsk(shown, pendingOmpAsk([call('t2', 'Something else entirely?')]))).toEqual(shown)
   })
 })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyMove, readyLists, reorderTarget, reorderWorkspaces } from '../shared/spaces'
+import { applyMove, readyLists, reorderTarget, reorderWorkspaces, sortReady } from '../shared/spaces'
 import type { Row } from '../shared/spaces'
 
 // Ordre Herdr de la machine : w1..w6. Groupe affiché « Prêts » : w2, w4, w5
@@ -91,5 +91,25 @@ describe('reorderWorkspaces', () => {
     expect(out.map(w => [w.id, w.number])).toEqual([['w1', 2], ['w2', 3], ['w3', 1], [`${R}~w1`, 1], [`${R}~w2`, 2]])
     expect(reorderWorkspaces(list, `${R}~w1`, null).filter(w => w.machine).map(w => w.number)).toEqual([2, 1])
     expect(reorderWorkspaces(list, 'w9', null)).toBe(list)
+  })
+})
+
+describe('sortReady', () => {
+  const r = (key: string, seq?: number): Row => ({ kind: 'pane', key, pane: { id: key, agent: 'claude', status: 'idle', stateSeq: seq } as Row['lead'], lead: { id: key, agent: 'claude', status: 'idle', stateSeq: seq } as Row['lead'] })
+  const rows = [r('b', 10), r('a10', 30), r('shell'), r('a2', 20)]
+  const keys = (l: Row[]) => l.map(x => x.key)
+
+  it('garde l’ordre de Herdr par défaut', () => {
+    expect(keys(sortReady(rows, 'herdr', x => x.key))).toEqual(['b', 'a10', 'shell', 'a2'])
+  })
+  it('activité récente d’abord ; sans numéro (terminal) à la fin', () => {
+    expect(keys(sortReady(rows, 'recent', x => x.key))).toEqual(['a10', 'a2', 'b', 'shell'])
+  })
+  it('un space prend le changement le plus récent de ses panes', () => {
+    const space = { kind: 'space', key: 'sp', lead: r('x', 1).lead, panes: [r('x', 1).lead, r('y', 99).lead] } as Row
+    expect(keys(sortReady([...rows, space], 'recent', x => x.key))[0]).toBe('sp')
+  })
+  it('nom : sans casse, chiffres dans l’ordre naturel', () => {
+    expect(keys(sortReady(rows, 'name', x => x.key))).toEqual(['a2', 'a10', 'b', 'shell'])
   })
 })

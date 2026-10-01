@@ -4,7 +4,8 @@
 //
 // Retrouver le fichier d'un pane :
 //  - identifiant de session transmis par l'intégration Herdr de l'agent
-//    (`herdr integration install claude|codex`) : exact, suit /clear.
+//    (`herdr integration install claude|codex|omp`) : exact, suit /clear. omp
+//    rapporte directement le chemin de sa session.
 //  - Claude Code sans intégration : Herdr donne le PID du processus `claude` du
 //    pane, et Claude tient ~/.claude/sessions/<pid>.json -> { sessionId, cwd }.
 //    Le fichier est ~/.claude/projects/<cwd encodé>/<sessionId>.jsonl.
@@ -15,10 +16,12 @@
 import path from 'node:path'
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail } from '../../shared/types'
 import { pendingClaudeTool, pendingCodexTool } from './promptDetail'
+import { type OmpAsked, pendingOmpAsk } from './choices'
 import { cleanModelName, lastModel } from './models'
 import { type MachineFs, localFs } from './fsx'
 import { searchFile } from './conversationSearch'
-import { transcriptKind } from '../../shared/agentKind'
+import { hasTranscript, transcriptKind } from '../../shared/agentKind'
+import { type CommandTemplate, ompCommandTemplates } from './slash'
 
 // Lecture à rebours par fenêtres jusqu'à avoir assez de messages : les
 // transcriptions de Claude embarquent les images en base64, quelques captures
@@ -56,7 +59,8 @@ const firstLine = (s: unknown) => String(s || '').split('\n').find(l => l.trim()
 // Messages « techniques » injectés dans le fil (rappels système, sorties de
 // commandes locales…) : pas des vrais messages de l'utilisateur.
 const isNoise = (t: string) => /^\s*<(?!command-name)[a-z_-]+[\s>]/i.test(t) || /^\s*Caveat:/.test(t)
-const stripImageTags = (t: unknown) => String(t || '').replace(/\[Image #\d+\]\s*/g, '').trim()
+// « [Image #1] » (Claude Code), « [Image #1, 756x477] » (omp).
+const stripImageTags = (t: unknown) => String(t || '').replace(/\[Image #\d+(?:, \d+x\d+)?\]\s*/g, '').trim()
 // Texte collé (un envoi multi-lignes de wherdr en est un) : Claude Code
 // l'enveloppe dans <pasted_content id="…">…</pasted_content id="…">. C'est un
 // vrai message de l'utilisateur : on garde le texte, sans les balises.
@@ -406,10 +410,105 @@ export function parseCodex(lines: Lines): Parsed {
   return items
 }
 
+// Noms des outils d'omp rapprochés de ceux de Claude Code (libellés, icônes).
+const OMP_TOOLS: Record<string, string> = {
+  bash: 'Bash', read: 'Read', write: 'Write', edit: 'Edit', ast_edit: 'Edit', grep: 'Grep',
+  glob: 'Glob', find: 'Glob', web_search: 'WebSearch', fetch: 'WebFetch', task: 'Task', todo: 'TodoWrite',
+}
+function ompToolSummary(args: Json, home: string): string {
+  const a = args && typeof args === 'object' ? args : {}
+  // `i` : l'intention que l'agent donne à chaque appel (« Reading model settings »).
+  for (const k of ['i', 'title', 'description']) if (typeof a[k] === 'string' && a[k].trim()) return firstLine(a[k])
+  if (typeof a.path === 'string') return home ? a.path.replace(home, '~') : a.path
+  for (const k of ['command', 'pattern', 'query']) if (typeof a[k] === 'string') return firstLine(a[k])
+  return firstLine(Object.values(a).find(x => typeof x === 'string') || '')
+}
+
+// omp (oh-my-pi) : ~/.omp/agent/sessions/<cwd encodé>/<date>_<id>.jsonl, une
+// entrée par ligne. `message` porte un message (user, assistant, toolResult ;
+// developer et fileMention sont des injections de l'agent) ; `custom_message`
+// « skill-prompt » attribué à l'utilisateur est un skill qu'il a invoqué.
+// Messages de l'utilisateur injectés par l'agent (rappels, consignes des
+// sous-agents) : `synthetic` ou `attribution: 'agent'`. Les images sont
+// rangées à part (`data: "blob:sha256:<hash>"`, cf. extractImage). `templates` :
+// commandes-fichiers d'omp, dont il envoie le texte à la place de « /nom args ».
+export function parseOmp(lines: Lines, home = '', templates: readonly CommandTemplate[] = []): Parsed {
+  const items: Parsed = []
+  const tools = new Map<string, ChatItem>()
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li]
+    const ref = lines.refs ? lines.refs[li] : undefined
+    if (!line) continue
+    let d: Json
+    try { d = JSON.parse(line) }
+    catch { continue }
+    if (!d || typeof d !== 'object') continue
+    const ts: string | null = typeof d.timestamp === 'string' ? d.timestamp : null
+    if (d.type === 'compaction') {
+      items.push({ role: 'system', text: 'Conversation compactée', ts })
+      continue
+    }
+    if (d.type === 'custom_message') {
+      const s = d.details
+      if (d.customType === 'skill-prompt') {
+        if (d.attribution === 'user' && s && typeof s.name === 'string') items.push({ role: 'user', text: clip(stripImageTags(`/skill:${s.name}${s.args ? ` ${s.args}` : ''}`)), ts })
+      } else if (d.display && typeof d.customType === 'string') {
+        // Ce que le terminal affiche lui aussi (conseiller, tâche de fond terminée,
+        // message IRC, diagnostics tardifs…), sans l'enveloppe destinée au modèle.
+        const notes: Json[] = d.customType === 'advisor' && s && Array.isArray(s.notes) ? s.notes : []
+        const text = notes.length
+          ? notes.filter(n => n && typeof n.note === 'string').map(n => (n.severity ? `**${n.severity}** — ${n.note}` : n.note)).join('\n\n')
+          : String(d.content || '').replace(/^\s*<([\w:-]+)(?:\s[^>]*)?>\n?([\s\S]*?)\n?<\/\1>\s*$/, '$2').trim()
+        if (text) items.push({ role: 'notice', name: d.customType, text: clip(text), ts })
+      }
+      continue
+    }
+    if (d.type !== 'message' || !d.message) continue
+    const m = d.message
+    if (m.role === 'user') {
+      if (m.synthetic || m.attribution === 'agent') continue
+      const parts: Json[] = typeof m.content === 'string' ? [{ type: 'text', text: m.content }] : Array.isArray(m.content) ? m.content : []
+      const text = ompCommandText(stripImageTags(parts.filter(p => p && p.type === 'text' && typeof p.text === 'string').map(p => p.text).join('\n')), templates)
+      const images = parts.filter(p => p && p.type === 'image').length
+      if (text || images) items.push({ role: 'user', text: clip(text), images, ref: images ? ref : undefined, ts })
+    } else if (m.role === 'assistant') {
+      for (const part of Array.isArray(m.content) ? m.content : []) {
+        if (!part) continue
+        if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) {
+          items.push({ role: 'assistant', text: clip(part.text), ts })
+        } else if (part.type === 'toolCall') {
+          const name = String(part.name || '').trim()
+          const t: ChatItem = { role: 'tool', name: OMP_TOOLS[name] || name, text: clip(ompToolSummary(part.arguments, home), 300), ts }
+          if (part.id) tools.set(part.id, t)
+          items.push(t)
+        }
+      }
+      if (m.stopReason === 'aborted' && /interrupt/i.test(String(m.errorMessage || ''))) items.push({ role: 'system', text: 'Interrompu', ts })
+    } else if (m.role === 'toolResult' && m.isError) {
+      const t = tools.get(m.toolCallId)
+      if (t) t.error = true
+    }
+  }
+  return items
+}
+
+// Texte d'une commande-fichier d'omp : « /nom args ». omp ajoute les arguments
+// après le texte, sauf si la commande les place elle-même ($1, {{args}}…) : le
+// texte ne commence alors que comme la commande, et ses arguments sont perdus.
+function ompCommandText(text: string, templates: readonly CommandTemplate[]): string {
+  for (const t of templates) {
+    if (text === t.body) return `/${t.name}`
+    if (text.startsWith(`${t.body}\n\n`)) return `/${t.name} ${text.slice(t.body.length + 2).trim()}`
+    const head = t.body.slice(0, 160)
+    if (head.length === 160 && !/[$]|\{\{/.test(head) && text.startsWith(head)) return `/${t.name}`
+  }
+  return text
+}
+
 // `base` : position (en octets) de `text` dans le fichier. Chaque ligne garde
 // sa position « début:longueur » (lines.refs) : les messages avec images la
 // portent, pour relire l'image à la demande (cf. image()).
-export function parseLines(text: string, kind: string | null, base = 0, home = ''): Parsed {
+export function parseLines(text: string, kind: string | null, base = 0, home = '', templates?: readonly CommandTemplate[]): Parsed {
   const raw = text.split('\n')
   const refs: string[] = []
   let off = base
@@ -420,6 +519,7 @@ export function parseLines(text: string, kind: string | null, base = 0, home = '
   }
   const lines: Lines = raw.map(stripBlobs)
   lines.refs = refs
+  if (kind === 'omp') return parseOmp(lines, home, templates)
   return kind === 'codex' ? parseCodex(lines) : parseClaude(lines, home)
 }
 
@@ -427,13 +527,19 @@ export function parseLines(text: string, kind: string | null, base = 0, home = '
 // transcription) ouverte depuis wherdr exécuterait ses scripts sur son origine.
 const IMAGE_TYPES = /^image\/(?:png|jpeg|gif|webp)$/
 
-// Première image n° `index` d'une ligne JSON de transcription (Claude ou Codex).
-export function extractImage(d: Json, index: number): { type: string, body: Buffer } | null {
-  const found: { type: string, data: string }[] = []
+// Image n° `index` d'une ligne JSON de transcription (Claude, Codex, omp). omp
+// range ses images à part : `blob` est alors l'empreinte à relire dans
+// ~/.omp/agent/blobs (cf. image()).
+export type TranscriptImage = { type: string, body: Buffer } | { type: string, blob: string }
+export function extractImage(d: Json, index: number): TranscriptImage | null {
+  const found: ({ type: string, data: string } | { type: string, blob: string })[] = []
   const visit = (parts: Json[] | null) => {
     for (const p of parts || []) {
       if (p && p.type === 'image' && p.source && p.source.data) found.push({ type: p.source.media_type || 'image/png', data: p.source.data })
-      else if (p && p.type === 'input_image') {
+      else if (p && p.type === 'image' && typeof p.data === 'string') {
+        const blob = /^blob:sha256:([a-f0-9]{64})$/.exec(p.data)
+        found.push(blob ? { type: p.mimeType || 'image/png', blob: blob[1]! } : { type: p.mimeType || 'image/png', data: p.data })
+      } else if (p && p.type === 'input_image') {
         const u = typeof p.image_url === 'string' ? p.image_url : p.image_url && p.image_url.url
         const mm = /^data:(image\/[\w.+-]+);base64,(.+)$/.exec(u || '')
         if (mm) found.push({ type: mm[1]!, data: mm[2]! })
@@ -445,8 +551,9 @@ export function extractImage(d: Json, index: number): { type: string, body: Buff
   visit(d.payload && Array.isArray(d.payload.content) ? d.payload.content : null)
   const img = found[index]
   if (!img) return null
-  const type = String(img.type).toLowerCase()
-  return { type: IMAGE_TYPES.test(type) ? type : 'application/octet-stream', body: Buffer.from(img.data, 'base64') }
+  const lower = String(img.type).toLowerCase()
+  const type = IMAGE_TYPES.test(lower) ? lower : 'application/octet-stream'
+  return 'blob' in img ? { type, blob: img.blob } : { type, body: Buffer.from(img.data, 'base64') }
 }
 
 // `fs` : disque de la machine où tournent les agents (local, ou distant par SSH).
@@ -465,6 +572,12 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
   const lastLoc = new Map<string, Loc>() // dernier fichier trouvé, repli si une recherche échoue
   const parseCache = new Map<string, { size: number, r: TailResult }>()
   const metaCache = new Map<string, Json>()
+  // Commandes-fichiers d'omp de cette machine (cf. parseOmp), relues toutes les 5 min.
+  let ompTemplates: { at: number, list: CommandTemplate[] } = { at: 0, list: [] }
+  async function refreshOmpTemplates() {
+    if (Date.now() - ompTemplates.at < 5 * 60 * 1000) return
+    ompTemplates = { at: Date.now(), list: await ompCommandTemplates(fs, home).catch(() => ompTemplates.list) }
+  }
 
   // ------------------------------------------------------------ localisation
   async function paneProcess(paneId: string, kind: string) {
@@ -616,6 +729,11 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     } else if (kind === 'claude') {
       const root = path.join(home, '.claude/projects')
       found = await firstExisting((await listDir(root)).map(d => path.join(root, d, `${id}.jsonl`)))
+    } else if (kind === 'omp') {
+      // L'intégration Herdr d'omp rapporte le chemin de la session, pas un
+      // identifiant : seulement une session d'omp (~/.omp/agent/sessions).
+      const f = path.normalize(id)
+      if (path.isAbsolute(f) && f.endsWith('.jsonl') && transcriptKind(f) === 'omp' && await exists(f)) found = f
     }
     if (found) bySession.set(id, found)
     return found
@@ -680,7 +798,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
       if (r.start === start) break // ligne géante au-delà du plafond : on s'arrête là
       // Chaque fenêtre est analysée seule (un résultat d'outil en erreur dont
       // l'appel est dans la fenêtre précédente perd juste sa marque rouge).
-      const parsed = parseLines(r.text, kind, r.start, home)
+      const parsed = parseLines(r.text, kind, r.start, home, ompTemplates.list)
       if (!queue) queue = parsed.queue || [] // la file vit dans la fenêtre la plus récente
       items = parsed.concat(items)
       start = r.start
@@ -699,7 +817,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     let r: TailResult
     if (from !== null && from <= size && size - from <= MAX_READ_BYTES) {
       const x = await readRange(file, from, size)
-      const items = parseLines(x.text, kind, x.start, home)
+      const items = parseLines(x.text, kind, x.start, home, ompTemplates.list)
       r = { start: from, items, queue: items.queue || [] }
     } else {
       r = await readBackwards(file, size, kind)
@@ -711,7 +829,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
 
   // ------------------------------------------------------------ API
   async function search(pane: TranscriptPane, query: string, deadline: number) {
-    if (pane.agent !== 'claude' && pane.agent !== 'codex') return { hits: [], limited: false, kind: null }
+    if (!hasTranscript(pane.agent)) return { hits: [], limited: false, kind: null }
     const loc = await locate(pane)
     if (!loc || Date.now() >= deadline) return { hits: [], limited: Date.now() >= deadline, kind: null }
     // Le chemin de la transcription dit le vrai type (agent fermé mal étiqueté).
@@ -723,7 +841,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
   // opts.from   : relire le bas depuis cet octet (continuité avec les pages plus anciennes)
   // opts.before : charger la tranche plus ancienne qui se termine à cet octet
   async function chat(pane: TranscriptPane, opts: { since?: string, from?: number | null, before?: number | null } = {}): Promise<ChatResponse> {
-    if (!pane.agent || !['claude', 'codex'].includes(pane.agent)) return { available: false, reason: 'unsupported' }
+    if (!hasTranscript(pane.agent)) return { available: false, reason: 'unsupported' }
     const loc = await locate(pane)
     if (!loc) return { available: false, reason: 'not_found' }
     let st
@@ -737,6 +855,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     }
     const fileId = path.basename(loc.file)
     const base = { available: true, file: fileId, session: loc.session, guessed: Boolean(loc.guessed) }
+    if (pane.agent === 'omp') await refreshOmpTemplates()
     if (opts.before !== null && opts.before !== undefined) {
       const r = await readBackwards(loc.file, Math.min(opts.before, st.size), pane.agent)
       return { ...base, older: true, items: r.items, start: r.start }
@@ -776,7 +895,13 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     let d: Json
     try { d = JSON.parse((await fs.read(loc.file, off, len)).toString('utf8')) }
     catch { return null }
-    return extractImage(d, index)
+    const img = extractImage(d, index)
+    if (!img || !('blob' in img)) return img
+    const blob = path.join(home, '.omp/agent/blobs', img.blob)
+    try {
+      const { size } = await fs.stat(blob)
+      return size > 60 * 1024 * 1024 ? null : { type: img.type, body: await fs.read(blob, 0, size) }
+    } catch { return null }
   }
 
   // Dernier modèle écrit dans la transcription. Lecture à rebours par fenêtres
@@ -845,14 +970,33 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     return detail
   }
 
+  // omp : l'appel « ask » encore sans réponse (cf. pendingOmpAsk).
+  const askCache = new Map<string, { file: string, size: number, asked: OmpAsked[] }>()
+  async function pendingAsk(pane: TranscriptPane): Promise<OmpAsked[]> {
+    if (pane.agent !== 'omp') return []
+    const loc = await locate(pane)
+    if (!loc) return []
+    let size: number
+    try { size = (await fs.stat(loc.file)).size }
+    catch { return [] }
+    const c = askCache.get(pane.id)
+    if (c && c.file === loc.file && c.size === size) return c.asked
+    let asked: OmpAsked[] = []
+    try { asked = pendingOmpAsk((await readRange(loc.file, Math.max(0, size - PENDING_WINDOW), size)).text.split('\n').map(stripBlobs)) }
+    catch { asked = [] }
+    askCache.set(pane.id, { file: loc.file, size, asked })
+    return asked
+  }
+
   function forget(paneId: string) {
     locCache.delete(paneId)
     lastLoc.delete(paneId)
     modelCache.delete(paneId)
     pendingCache.delete(paneId)
+    askCache.delete(paneId)
   }
 
-  return { chat, preview, image, forget, locate, model, observe, search, pendingTool }
+  return { chat, preview, image, forget, locate, model, observe, search, pendingTool, pendingAsk }
 }
 
 export type Transcripts = ReturnType<typeof createTranscripts>

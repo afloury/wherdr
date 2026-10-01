@@ -5,10 +5,14 @@
 //    synchronisés depuis le compte), commandes (~/.claude/commands/**.md), et
 //    les mêmes dans <dossier du projet>/.claude/.
 //  - Codex : invites personnelles ~/.codex/prompts/*.md -> /prompts:<nom>.
+//  - omp : commandes (~/.omp/agent/commands, et celles de Claude Code, Codex et
+//    ~/.agents qu'il découvre aussi), skills -> /skill:<nom> (mêmes dossiers,
+//    plus `skills.customDirectories` de ~/.omp/agent/config.yml), et les mêmes
+//    dans le dossier du projet.
 import path from 'node:path'
 import type { SlashCommand } from '../../shared/types'
 import type { MachineFs } from './fsx'
-import { CLAUDE_BUILTIN, CODEX_BUILTIN } from './slashcatalog'
+import { CLAUDE_BUILTIN, CODEX_BUILTIN, OMP_BUILTIN } from './slashcatalog'
 
 const TTL = 5 * 60 * 1000
 const cache = new Map<string, { at: number, list: SlashCommand[] }>()
@@ -42,7 +46,7 @@ async function read(fs: MachineFs, f: string) {
 }
 
 // skills/<nom>/SKILL.md, et un niveau de plus (skills/synced/<compte>/<nom>/).
-async function claudeSkills(fs: MachineFs, root: string, out: SlashCommand[]) {
+async function readSkills(fs: MachineFs, root: string, out: SlashCommand[], prefix = '') {
   const dirs: string[] = []
   for (const a of await ls(fs, root)) {
     dirs.push(path.join(root, a))
@@ -60,12 +64,12 @@ async function claudeSkills(fs: MachineFs, root: string, out: SlashCommand[]) {
     if (text === null) continue
     const fm = frontmatter(text)
     if (fm['user-invocable'] === 'false') continue
-    out.push({ name: fm.name || path.basename(dirs[i]!), desc: fm.description || '', hint: fm['argument-hint'] || undefined, source: 'skill' })
+    out.push({ name: prefix + (fm.name || path.basename(dirs[i]!)), desc: fm.description || '', hint: fm['argument-hint'] || undefined, source: 'skill' })
   }
 }
 
 // commands/**.md : les sous-dossiers donnent des noms « dossier:commande ».
-async function claudeCommands(fs: MachineFs, root: string, out: SlashCommand[], prefix = '', depth = 0) {
+async function readCommands(fs: MachineFs, root: string, out: SlashCommand[], prefix = '', depth = 0) {
   for (const n of await ls(fs, root)) {
     const f = path.join(root, n)
     if (n.endsWith('.md')) {
@@ -74,9 +78,32 @@ async function claudeCommands(fs: MachineFs, root: string, out: SlashCommand[], 
       const fm = frontmatter(text)
       out.push({ name: prefix + n.slice(0, -3), desc: fm.description || firstLine(text), hint: fm['argument-hint'] || undefined, source: 'command' })
     } else if (depth < 2 && !n.includes('.')) {
-      await claudeCommands(fs, f, out, `${prefix}${n}:`, depth + 1)
+      await readCommands(fs, f, out, `${prefix}${n}:`, depth + 1)
     }
   }
+}
+
+// `skills.customDirectories` de la config d'omp (YAML : liste sous la clé).
+export function ompSkillDirs(config: string, home: string): string[] {
+  const out: string[] = []
+  let inSkills = false
+  let inList = false
+  for (const line of config.split(/\r?\n/)) {
+    if (!line.trim() || /^\s*#/.test(line)) continue
+    const indent = line.length - line.trimStart().length
+    if (indent === 0) {
+      inSkills = /^skills:\s*$/.test(line)
+      inList = false
+    } else if (inSkills && /^\s+customDirectories:\s*$/.test(line)) {
+      inList = true
+    } else if (inList) {
+      const item = /^\s+-\s+(.+?)\s*$/.exec(line)
+      if (!item) { inList = false; continue }
+      const dir = item[1]!.replace(/^(["'])(.*)\1$/, '$2')
+      out.push(dir === '~' || dir.startsWith('~/') ? path.join(home, dir.slice(1)) : path.resolve(home, dir))
+    }
+  }
+  return out
 }
 
 export function mergeCommands(builtin: [string, string, string?][], extra: SlashCommand[]): SlashCommand[] {
@@ -97,7 +124,7 @@ export function mergeCommands(builtin: [string, string, string?][], extra: Slash
 }
 
 export function builtinCommands(kind: string) {
-  return mergeCommands(kind === 'claude' ? CLAUDE_BUILTIN : kind === 'codex' ? CODEX_BUILTIN : [], [])
+  return mergeCommands(kind === 'claude' ? CLAUDE_BUILTIN : kind === 'codex' ? CODEX_BUILTIN : kind === 'omp' ? OMP_BUILTIN : [], [])
 }
 
 export async function slashCommands(opts: { key: string, fs: MachineFs, home: string, kind: string, cwd: string | null }) {
@@ -110,11 +137,11 @@ export async function slashCommands(opts: { key: string, fs: MachineFs, home: st
   if (kind === 'claude') {
     builtin = CLAUDE_BUILTIN
     if (cwd && cwd !== home) {
-      await claudeSkills(fs, path.join(cwd, '.claude/skills'), extra)
-      await claudeCommands(fs, path.join(cwd, '.claude/commands'), extra)
+      await readSkills(fs, path.join(cwd, '.claude/skills'), extra)
+      await readCommands(fs, path.join(cwd, '.claude/commands'), extra)
     }
-    await claudeSkills(fs, path.join(home, '.claude/skills'), extra)
-    await claudeCommands(fs, path.join(home, '.claude/commands'), extra)
+    await readSkills(fs, path.join(home, '.claude/skills'), extra)
+    await readCommands(fs, path.join(home, '.claude/commands'), extra)
   } else if (kind === 'codex') {
     builtin = CODEX_BUILTIN
     for (const n of await ls(fs, path.join(home, '.codex/prompts'))) {
@@ -124,8 +151,42 @@ export async function slashCommands(opts: { key: string, fs: MachineFs, home: st
       const fm = frontmatter(text)
       extra.push({ name: `prompts:${n.slice(0, -3)}`, desc: fm.description || firstLine(text), hint: fm['argument-hint'] || undefined, source: 'command' })
     }
+  } else if (kind === 'omp') {
+    builtin = OMP_BUILTIN
+    const dirs = ompConfigDirs(home, cwd)
+    for (const d of dirs) await readCommands(fs, path.join(d, 'commands'), extra)
+    // Commande livrée avec omp (task/commands).
+    extra.push({ name: 'init', desc: 'Generate AGENTS.md for current codebase', source: 'command' })
+    for (const d of dirs) await readSkills(fs, path.join(d, 'skills'), extra, 'skill:')
+    const config = await read(fs, path.join(home, '.omp/agent/config.yml'))
+    for (const d of config ? ompSkillDirs(config, home) : []) await readSkills(fs, d, extra, 'skill:')
   }
   const list = mergeCommands(builtin, extra)
   cache.set(id, { at: Date.now(), list })
   return list
+}
+
+// Dossiers de config d'omp (projet puis utilisateur, ~/.omp/agent pour omp
+// lui-même), du plus prioritaire au moins : le premier nom trouvé l'emporte
+// (mergeCommands).
+function ompConfigDirs(home: string, cwd: string | null) {
+  const bases = [...(cwd && cwd !== home ? [cwd] : []), home]
+  return bases.flatMap(b => ['.omp', '.agents', '.agent', '.claude', '.codex'].map(r => path.join(b, b === home && r === '.omp' ? '.omp/agent' : r)))
+}
+
+// Texte des commandes-fichiers d'omp (sans frontmatter), celles de l'utilisateur :
+// omp l'envoie à la place de « /nom args », la conversation remet la commande
+// (cf. parseOmp).
+export interface CommandTemplate { name: string, body: string }
+export async function ompCommandTemplates(fs: MachineFs, home: string): Promise<CommandTemplate[]> {
+  const out: CommandTemplate[] = []
+  for (const d of ompConfigDirs(home, null)) {
+    for (const n of await ls(fs, path.join(d, 'commands'))) {
+      if (!n.endsWith('.md')) continue
+      const text = await read(fs, path.join(d, 'commands', n))
+      const body = text && text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim()
+      if (body) out.push({ name: n.slice(0, -3), body })
+    }
+  }
+  return out
 }

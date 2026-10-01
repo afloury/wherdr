@@ -14,9 +14,11 @@ const appVersion = pkg.version
 const router = useRouter()
 // Sections : barre latérale sur ordinateur (une section affichée), liste façon
 // Réglages iOS sur téléphone (un appui ouvre la section, Retour revient à la liste).
-// `?section=plugins` (lien du panneau Projet) ouvre directement une section.
+// La section vit dans l'URL (`?section=plugins`, aussi le lien du panneau Projet) :
+// sur téléphone, l'ouvrir ajoute une entrée d'historique, que le bouton Retour du
+// système dépile comme celui de l'en-tête ; sur ordinateur, elle remplace l'entrée.
 const route = useRoute()
-const section = ref<SettingsSection | null>((SETTINGS_SECTIONS as readonly string[]).includes(String(route.query.section)) ? route.query.section as SettingsSection : null)
+const section = computed<SettingsSection | null>(() => (SETTINGS_SECTIONS as readonly string[]).includes(String(route.query.section)) ? route.query.section as SettingsSection : null)
 const sectionIcons: Record<SettingsSection, string> = {
   appearance: 'i-lucide-palette', conversation: 'i-lucide-message-square', terminal: 'i-lucide-square-terminal',
   agents: 'i-lucide-bot', plugins: 'i-lucide-puzzle', notifications: 'i-lucide-bell', security: 'i-lucide-lock', desktop: 'i-lucide-monitor', about: 'i-lucide-info',
@@ -34,16 +36,28 @@ const activeSection = computed<SettingsSection | null>(() => {
 })
 const activeLabel = computed(() => sections.value.find(s => s.id === activeSection.value)?.label || t('Réglages'))
 const body = ref<HTMLElement | null>(null)
+watch(section, () => nextTick(() => { if (body.value) body.value.scrollTop = 0 }))
 function openSection(id: SettingsSection) {
-  section.value = id
-  nextTick(() => { if (body.value) body.value.scrollTop = 0 })
+  if (id === section.value) return
+  const to = { path: '/settings', query: { section: id } }
+  if (desk.value) router.replace(to)
+  else router.push(to)
 }
 function back() {
   const to = settingsBack({ desk: desk.value, section: section.value, historyBack: (history.state as { back?: unknown } | null)?.back })
-  if (to === 'list') section.value = null
+  if (to === 'list') router.replace('/settings')
   else if (to === 'history') router.back()
-  else navigateTo('/')
+  else navigateTo('/', { replace: true })
 }
+// Téléphone, Réglages ouverts en premier (app lancée, lien, rechargement) : rien
+// dessous, le bouton Retour du système fermerait l'app. On glisse l'accueil
+// dessous, comme si on venait de la liste des agents.
+onMounted(async () => {
+  if (desk.value || typeof (history.state as { back?: unknown } | null)?.back === 'string') return
+  const here = route.fullPath
+  await router.replace('/')
+  await router.push(here)
+})
 const lang = ref<Lang>(language)
 watch(lang, (l) => {
   if (l === language) return

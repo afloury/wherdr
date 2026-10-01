@@ -3,7 +3,8 @@ import type { TabLayout } from './layout'
 
 export type AgentStatus = 'working' | 'blocked' | 'done' | 'idle' | 'unknown'
 
-export interface ChoiceOption { label: string, hint: string | null }
+// `checked` : case d'une liste à choix multiples (Choices.multi), cochée à l'écran.
+export interface ChoiceOption { label: string, hint: string | null, checked?: boolean }
 // Ce qu'une demande de permission autorise : l'outil, sa description, et la
 // commande (ou l'entrée de l'outil) en entier, ou le fichier touché.
 export interface PromptDetail {
@@ -16,7 +17,8 @@ export interface PromptDetail {
   // Commande coupée côté serveur (très longue) : l'app le dit.
   truncated?: boolean
 }
-export interface Choices { question: string | null, cursor: number, options: ChoiceOption[], detail?: PromptDetail }
+// `multi` : cases à cocher (omp) ; un choix coche ou décoche, Entrée passe à la suite.
+export interface Choices { question: string | null, cursor: number, options: ChoiceOption[], detail?: PromptDetail, multi?: boolean }
 
 // Écran d'attente d'un agent (Codex au démarrage : hooks, confiance du dossier,
 // connexion…), cf. server/utils/waitScreen.ts. `other` : écran non reconnu,
@@ -105,6 +107,9 @@ export interface Pane {
   // Projet herdr-projects (jeton `hp_project` / `hp_group` du pane), cf. shared/projects.ts.
   project?: string
   bornAt?: number
+  // Numéro du dernier changement d'état de l'agent (`state_change_seq` de Herdr,
+  // croissant sur une machine) : tri « récents » des Prêts.
+  stateSeq?: number
   pendingPrompt?: boolean
   queued?: QueuedMessage[]
   prompt?: Choices
@@ -124,7 +129,10 @@ export interface Pane {
   restart?: { phase: 'stopping' | 'starting' | 'failed', agent: string, error?: string }
   // Suggestion de prochain message grisée dans le champ de Claude Code (Tab l'accepte).
   claudeSuggestion?: string
+  // omp affiché : sa ligne d'état (modèle, dossier, branche) et ses jauges (contexte, quotas).
+  ompStatus?: OmpStatus
 }
+export interface OmpStatus { line: string, meters: string | null }
 
 export interface ChangeLine { kind: 'add' | 'del' | 'context' | 'hunk' | 'meta', text: string }
 export interface ChangeFile {
@@ -193,7 +201,9 @@ export interface HerdrState {
 }
 
 // 'bash' : commande « ! » de Claude Code (mode bash), 'cmd' : commande locale « / ».
-export type ChatRole = 'user' | 'assistant' | 'tool' | 'cmd' | 'bash' | 'system'
+// 'notice' : note affichée par l'agent hors de ses réponses (conseiller d'omp,
+// tâche de fond terminée, message IRC…) ; `name` en donne le type.
+export type ChatRole = 'user' | 'assistant' | 'tool' | 'cmd' | 'bash' | 'system' | 'notice'
 export interface ChatItem {
   role: ChatRole
   text: string

@@ -59,6 +59,7 @@ export function reduceSnapshot(s: Json, machine = LOCAL, session = 'default'): H
       agentSession: p.agent_session && p.agent_session.value ? p.agent_session.value : null,
       // Jetons posés par le plugin herdr-projects sur ses panes.
       ...(projectToken(p.tokens) ? { project: projectToken(p.tokens) } : {}),
+      ...(Number.isFinite(p.state_change_seq) ? { stateSeq: Number(p.state_change_seq) } : {}),
     }
   })
   return { ok: true, version: s.version, session: machine ? undefined : session, workspaces, tabs, panes }

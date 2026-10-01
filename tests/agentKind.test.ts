@@ -37,6 +37,7 @@ describe('transcriptKind', () => {
   it('reconnaît le type au chemin', () => {
     expect(transcriptKind('/home/user/.claude/projects/-home-user-x/abc.jsonl')).toBe('claude')
     expect(transcriptKind('/Users/a/.codex/sessions/2026/09/26/rollout-x.jsonl')).toBe('codex')
+    expect(transcriptKind('/Users/a/.omp/agent/sessions/-x/2026-09-30_abc.jsonl')).toBe('omp')
     expect(transcriptKind('/tmp/x.jsonl')).toBeNull()
   })
 })

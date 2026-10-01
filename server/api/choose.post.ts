@@ -5,7 +5,7 @@ export default defineApi(async (event, b) => {
   if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'pane invalide')
   const r = await herdr('pane.read', { pane_id: b.pane_id, source: 'detection' }, 4000)
   const text = r.read && r.read.text
-  const choices = parseChoices(text) || parseChoices(text, { strict: true })
+  const choices = screenChoices(text, findPane(b.pane_id)?.agent)
   const i = Number(b.index)
   if (!choices || !choices.options[i] || choices.options[i]!.label !== b.label) {
     throw new HerdrError('stale', 'La question a changé entre-temps — regarde l’écran à jour.')

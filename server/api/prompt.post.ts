@@ -3,7 +3,17 @@ export default defineApi(async (event, b) => {
   const text = String(b.text || '')
   if (!text.trim()) throw new HerdrError('empty', 'message vide')
   if (await closePanel(b.pane_id).catch(() => false)) log(`panneau refermé avant envoi sur ${b.pane_id}`)
-  await herdr('agent.prompt', { target: b.pane_id, text })
+  try {
+    await agentPrompt(b.pane_id, text)
+  } catch (e) {
+    // Agent lancé il y a moins de 3 s, que Herdr tient encore pour « en
+    // démarrage » (cf. agentPrompt) : le message part dès que Herdr l'accepte,
+    // comme le premier message donné à la création. Pas pour une commande, ni
+    // par-dessus un autre message déjà en attente.
+    if (!(e instanceof HerdrError) || e.code !== 'agent_not_ready' || text.trim().startsWith('/') || pendingPrompts.has(b.pane_id)) throw e
+    pendingPrompts.set(b.pane_id, { text, at: Date.now() })
+    log(`prompt ${b.pane_id} : agent pas encore prêt pour Herdr, mis en attente`)
+  }
   // Les commandes (/compact…) ne sont pas des messages : pas de bulle.
   // Un menu interactif (/resume, /model…) peut s'ouvrir : écran surveillé.
   if (text.trim().startsWith('/')) {
