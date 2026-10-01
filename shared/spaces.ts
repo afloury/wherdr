@@ -129,6 +129,21 @@ export function readyLists(rows: Row[], automatic: boolean): Row[][] {
   return [unread, read].filter(list => list.length)
 }
 
+// Tri des Prêts, dans chaque sous-groupe : ordre de Herdr (réordonnable à la
+// main), activité la plus récente d'abord (dernier changement d'état d'un de
+// ses panes), ou nom. `title` : le titre affiché de la ligne.
+export const READY_SORTS = ['herdr', 'recent', 'name'] as const
+export type ReadySort = typeof READY_SORTS[number]
+export function sortReady(rows: Row[], sort: ReadySort, title: (r: Row) => string): Row[] {
+  if (sort === 'herdr') return rows
+  const seq = (r: Row) => Math.max(-1, ...(r.kind === 'space' ? r.panes : [r.pane]).map(p => p.stateSeq ?? -1))
+  const key = new Map(rows.map(r => [r, sort === 'recent' ? seq(r) : title(r)]))
+  // Tri stable : à égalité (shells sans agent…), l'ordre de Herdr reste.
+  return [...rows].sort((a, b) => sort === 'recent'
+    ? (key.get(b) as number) - (key.get(a) as number)
+    : (key.get(a) as string).localeCompare(key.get(b) as string, undefined, { sensitivity: 'base', numeric: true }))
+}
+
 // ------------------------------------------------------------ onglet mémorisé
 // Dernier onglet ouvert de chaque space (workspace -> onglet).
 export type TabMemory = Record<string, string>

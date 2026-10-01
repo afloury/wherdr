@@ -14,11 +14,12 @@ export default defineApi(async (event, b) => {
   if (!KEYS.has(key)) throw new HerdrError('bad_request', 'touche invalide')
   const r = await herdr('pane.read', { pane_id: pane, source: 'detection' }, 4000)
   const text = r.read && r.read.text
-  const framed = String(text || '').split('\n').some((l: string) => TOP.test(l))
+  const agent = findPane(pane)?.agent
+  const framed = agent !== 'omp' && String(text || '').split('\n').some((l: string) => TOP.test(l))
   const menu = framed ? await readMenu(pane) : null
   if (menu) {
     if (key === 'enter' && clickMovesOnly(menu)) throw new HerdrError('stale', 'Entrée ne se valide pas d’ici — utilise les boutons.')
-  } else if (!parseChoices(text) && !parseChoices(text, { strict: true })) {
+  } else if (!screenChoices(text, agent)) {
     throw new HerdrError('stale', 'L’écran a changé entre-temps — regarde l’écran à jour.')
   }
   await herdr('pane.send_input', { pane_id: pane, keys: [key] })

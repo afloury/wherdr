@@ -104,6 +104,8 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - **Rearrange the layout**: drag a pane onto another to move it, drag a divider to resize
   (arrow keys work on a focused divider); changes go to Herdr itself.
 - **Spaces and tabs**: sidebar with every space, tabs at the top, active tab remembered per space.
+  The sidebar can be resized, or collapsed to a narrow rail (search, new agent, settings and
+  state counters) with the button next to Settings; the choice is kept on the device.
 - **Keyboard shortcuts**: `Ctrl/⌘+K` global search across agents and conversations,
   `Alt+Shift+arrows` to swap the current pane with its neighbour,
   `Ctrl/⌘+Alt+arrows` to move focus to the neighbouring pane in a side-by-side tab, `Esc` to close dialogs,

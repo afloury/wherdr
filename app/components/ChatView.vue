@@ -244,6 +244,15 @@ const TOOL_ICON: Record<string, string> = {
 const isOtherTool = (tool: ChatItem) => tool.name === 'exec' && /^\w+$/.test(tool.text || '')
 const toolLabel = (tool: ChatItem) => t(isOtherTool(tool) ? 'Outil' : TOOL_LABEL[tool.name || ''] || tool.name || '')
 const toolIcon = (tool: ChatItem) => (tool.error ? 'i-lucide-circle-x' : isOtherTool(tool) ? 'i-lucide-wrench' : TOOL_ICON[tool.name || ''] || 'i-lucide-wrench')
+// Notes d'omp (custom_message affichés) : [libellé, icône] par type.
+const NOTICE: Record<string, [string, string]> = {
+  'advisor': ['Conseiller', 'i-lucide-lightbulb'],
+  'async-result': ['Tâche de fond terminée', 'i-lucide-circle-check'],
+  'irc:incoming': ['Message d’un agent', 'i-lucide-message-square'],
+  'launch-completion': ['Processus', 'i-lucide-cpu'],
+  'lsp-late-diagnostic': ['Diagnostics', 'i-lucide-triangle-alert'],
+  'background-tan-dispatch': ['Tâche en arrière-plan', 'i-lucide-bot'],
+}
 
 const UPLOAD_RE = /\/\.cache\/herdr-web\/uploads\/\S+/g
 type Block =
@@ -252,6 +261,7 @@ type Block =
   | { k: 'user', key: string, text: string, srcs: string[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null }
   | { k: 'assistant', key: string, id: string, text: string, html: string, time: string | null, endsTurn: boolean }
   | { k: 'system', key: string, text: string }
+  | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean }
   | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean }
   | { k: 'tools', key: string, list: ChatItem[], live: boolean }
   | { k: 'turn', key: string, text: string, copy: string | null, reply: string | null }
@@ -316,7 +326,8 @@ const blocks = computed<Block[]>(() => {
       needWho = true
       // La sortie d'une commande « ! » part aussi à l'agent, qui peut y répondre.
       if (it.role !== 'cmd') turn = { start: it.ts, end: null, tools: 0, replies: 0 }
-    } else if (turn && it.ts) {
+    } else if (turn && it.ts && it.role !== 'notice') {
+      // Une note (tâche de fond finie après coup…) ne prolonge pas le tour.
       turn.end = it.ts
       if (it.role === 'tool') turn.tools++
       else if (it.role === 'assistant') turn.replies++
@@ -358,6 +369,9 @@ const blocks = computed<Block[]>(() => {
       const e = it.err || ''
       const lines = (o ? o.split('\n').length : 0) + (e ? e.split('\n').length : 0)
       out.push({ k: 'shell', key: `s:${it.ts}:${it.text.slice(0, 40)}`, bash: it.role === 'bash', text: it.text, out: o, err: e, lines, long: lines > SHELL_LINES || o.length + e.length > 1500 })
+    } else if (it.role === 'notice') {
+      const [label, icon] = NOTICE[it.name || ''] || [it.name || 'Note', 'i-lucide-info']
+      out.push({ k: 'notice', key, label: t(label), icon, html: md(it.text), long: it.text.split('\n').length > SHELL_LINES || it.text.length > 1200 })
     } else {
       const effort = it.role === 'system' ? it.text.match(/^Effort : (low|medium|high|xhigh|max|ultracode) \(cette session\)$/) : null
       // Commande locale « / » : séparateur système d'une ligne (« /cost → … »).
@@ -857,6 +871,14 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
                 </button>
               </div>
               <div v-else-if="b.k === 'system'" class="msg-system"><span>{{ b.text }}</span></div>
+              <div v-else-if="b.k === 'notice'" class="msg-notice" :class="{ long: b.long, open: isOpen(b.key) }">
+                <div class="msg-notice-head"><UIcon :name="b.icon" /><span>{{ b.label }}</span></div>
+                <ChatMarkdown class="msg-notice-body md" :html="b.html" :typing="null" />
+                <button v-if="b.long" type="button" class="msg-shell-more" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
+                  <UIcon :name="isOpen(b.key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" />
+                  <span>{{ isOpen(b.key) ? t('Réduire') : t('Tout afficher') }}</span>
+                </button>
+              </div>
               <div v-else-if="b.k === 'turn'" class="turn-end">
                 <UTooltip v-if="b.copy" :text="t('Copier la réponse')" :disabled="!desk">
                   <UButton icon="i-lucide-copy" color="neutral" variant="ghost" size="xs" class="turn-copy" :aria-label="t('Copier la réponse')" @click="copyText(b.copy)" />

@@ -17,3 +17,15 @@ describe('Retour depuis les Réglages', () => {
     expect(settingsBack({ desk: true, section: null, historyBack: 'https://ailleurs.example/' })).toBe('home')
   })
 })
+
+describe('Retour depuis une section (téléphone)', () => {
+  // La section est une entrée d'historique (?section=…) : Retour la dépile,
+  // comme le bouton Retour d'Android, au lieu de la fermer sans toucher à l'historique.
+  it('revient à la liste en dépilant l’entrée de la section', () => {
+    expect(settingsBack({ desk: false, section: 'terminal', historyBack: '/settings' })).toBe('history')
+  })
+  it('section ouverte directement (lien) : remplace par la liste, sans quitter les Réglages', () => {
+    expect(settingsBack({ desk: false, section: 'plugins', historyBack: '/a/w1:p1' })).toBe('list')
+    expect(settingsBack({ desk: false, section: 'plugins', historyBack: null })).toBe('list')
+  })
+})

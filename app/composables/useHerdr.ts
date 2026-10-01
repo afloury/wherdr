@@ -7,6 +7,7 @@ import { mayReadOffline, readOfflineAccess, setOfflineAccess } from '~/utils/off
 import { activeTerminalRenderer, parseTerminalRenderer } from '~/utils/terminalRenderer'
 import type { ActiveTerminalRenderer } from '~/utils/terminalRenderer'
 import { settleState } from '#shared/stateReady'
+import { READY_SORTS, type ReadySort } from '#shared/spaces'
 import { readSessionSelection, selectSessions, writeSessionSelection } from '~/utils/sessionSelection'
 import { effectiveTypingSpeed, encryptedTextActive, parseTypingSettings } from '~/utils/typewriter'
 import { readHiddenAgents } from '~/utils/agentChoices'
@@ -97,6 +98,9 @@ export const showQuotas = ref(ls.get('showQuotas') !== '0')
 watch(showQuotas, v => ls.set('showQuotas', v ? '1' : '0'))
 export const autoReorderReady = ref(ls.get('autoReorderReady') !== '0')
 watch(autoReorderReady, v => ls.set('autoReorderReady', v ? '1' : '0'))
+// Tri des Prêts (cf. shared/spaces.ts sortReady), propre à l'appareil.
+export const readySort = ref<ReadySort>((READY_SORTS as readonly string[]).includes(ls.get('readySort') || '') ? ls.get('readySort') as ReadySort : 'herdr')
+watch(readySort, v => ls.set('readySort', v))
 // Panneau Projet : masquer les listes sans élément (réglage propre à l'appareil).
 export const projectHideEmpty = ref(ls.get('projectHideEmpty') === '1')
 watch(projectHideEmpty, v => ls.set('projectHideEmpty', v ? '1' : '0'))

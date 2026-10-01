@@ -24,6 +24,11 @@ async function press(a: WaitAction) {
   busy.value = true
   if (!(await pressScreenKey(props.paneId, a))) busy.value = false
 }
+// Cases à cocher (omp) : Entrée passe à la question suivante.
+async function next() {
+  busy.value = true
+  if (!(await navKey(props.paneId, 'enter'))) busy.value = false
+}
 
 // Clavier (ordinateur, vue active) sur une invite à options : ↑ ↓ Entrée Échap
 // partent au terminal (la carte suit l'écran relu), 1-9 choisit l'option.
@@ -45,12 +50,18 @@ useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.opt
     <p v-if="question" class="choices-q">{{ question }}</p>
     <p v-if="note" class="choices-note">{{ note }}</p>
     <pre v-if="screen && screen.lines.length && !prompt?.detail" class="choices-screen-text" :class="{ wrap: !tabular }">{{ screen.lines.join('\n') }}</pre>
-    <div v-if="prompt" class="choices-list">
+    <div v-if="prompt" class="choices-list" :class="{ multi: prompt.multi }">
       <button
-        v-for="(o, i) in prompt.options" :key="i" type="button" :class="{ cur: i === prompt.cursor }"
+        v-for="(o, i) in prompt.options" :key="i" type="button" :class="{ cur: i === prompt.cursor, on: o.checked }"
+        :aria-pressed="prompt.multi ? Boolean(o.checked) : undefined"
         :disabled="busy || !eventsOpen || offlineView" @click="pick(i, o.label)"
       >
-        <span class="n">{{ i + 1 }}</span><span class="l">{{ o.label }}<small v-if="o.hint">{{ o.hint }}</small></span>
+        <span v-if="prompt.multi" class="n"><UIcon :name="o.checked ? 'i-lucide-square-check' : 'i-lucide-square'" /></span>
+        <span v-else class="n">{{ i + 1 }}</span>
+        <span class="l">{{ o.label }}<small v-if="o.hint">{{ o.hint }}</small></span>
+      </button>
+      <button v-if="prompt.multi" type="button" class="choices-next" :disabled="busy || !eventsOpen || offlineView" @click="next">
+        {{ t('Continuer') }}<kbd>{{ screenKeyName('enter') }}</kbd>
       </button>
     </div>
     <div v-if="actions.length || keyboard" class="choices-keys">

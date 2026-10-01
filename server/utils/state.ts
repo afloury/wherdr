@@ -6,13 +6,14 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import type { Choices, ClaudeScreen, HerdrState, InteractiveMenu, WaitScreen, MachineInfo, ModelInfo, Pane, QueuedMessage } from '../../shared/types'
+import type { Choices, ClaudeScreen, HerdrState, InteractiveMenu, WaitScreen, MachineInfo, ModelInfo, OmpStatus, Pane, QueuedMessage } from '../../shared/types'
+import { parseOmpStatus } from './ompScreen'
 import { LOCAL, joinId, machineOf } from '../../shared/ids'
 import { isProjectThread, paneTitle } from '../../shared/paneTitle'
 import { foregroundCommand, reduceSnapshot } from './snapshot'
 import { DATA_DIR, HERDR_SESSION, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
 import { HerdrError, herdr, herdrOn, sleep } from './herdr'
-import { parseChoices } from './choices'
+import { parseChoices, parseOmpAsk } from './choices'
 import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseWaitScreen } from './waitScreen'
 import { parseMenu, TOP } from '../../shared/menuScreen'
@@ -105,8 +106,9 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
     // bloquants (/hooks, /mcp) : une vraie question (liste numérotée) garde alors
     // la priorité ; une simple liste à curseur y est lue comme menu.
     const framed = String(text || '').split('\n').some((l: string) => TOP.test(l))
-    let choices = parseChoices(text, { strict })
-    const menu = framed && (strict || !choices || !parseChoices(text, { strict: true })) ? await readMenu(p.id) : null
+    // omp : sa boîte « Ask » seule (encadrée, elle passerait pour un menu).
+    let choices = p.agent === 'omp' ? parseOmpAsk(text) : parseChoices(text, { strict })
+    const menu = p.agent !== 'omp' && framed && (strict || !choices || !parseChoices(text, { strict: true })) ? await readMenu(p.id) : null
     if (menu) choices = null
     out = { choices, screen: menu ? null : parseWaitScreen(text, { choices: Boolean(choices) }), menu }
     noteScreen(p.id, p.agent, text) // Codex : modèle de sa ligne d'état
@@ -175,6 +177,23 @@ function refreshActivity(p: Pane) {
       if ((old2?.notice ?? null) !== notice || (old2?.suggestion ?? null) !== (working ? null : suggestion)) setTimeout(poll, 0)
     })
     .finally(() => activityBusy.delete(p.id))
+}
+
+// Ligne d'état d'omp (cf. ompScreen.ts) : relue seulement pour un omp affiché.
+const OMP_STATUS_MS = 3000
+const ompStatuses = new Map<string, { status: OmpStatus | null, at: number }>()
+const ompStatusBusy = new Set<string>()
+function refreshOmpStatus(p: Pane) {
+  if (ompStatusBusy.has(p.id)) return
+  ompStatusBusy.add(p.id)
+  herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
+    .then(r => parseOmpStatus(r.read && r.read.text), () => ompStatuses.get(p.id)?.status ?? null)
+    .then((status) => {
+      const old = ompStatuses.get(p.id)?.status
+      ompStatuses.set(p.id, { status, at: Date.now() })
+      if (JSON.stringify(old ?? null) !== JSON.stringify(status)) setTimeout(poll, 0)
+    })
+    .finally(() => ompStatusBusy.delete(p.id))
 }
 
 // Modèle de l'agent : même principe que l'aperçu (tâche de fond). Relu quand
@@ -463,6 +482,11 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       if (a && a.notice) p.claudeNotice = a.notice
       if (a && a.suggestion && !working && p.status !== 'blocked') p.claudeSuggestion = a.suggestion
     } else activities.delete(p.id)
+    if (p.agent === 'omp' && isViewed(p.id)) {
+      const o = ompStatuses.get(p.id)
+      if (!o || Date.now() - o.at >= OMP_STATUS_MS) refreshOmpStatus(p)
+      if (o && o.status) p.ompStatus = o.status
+    } else ompStatuses.delete(p.id)
   }
   // Nettoyage des panes disparus… de cette machine seulement.
   const alive = (id: string) => machineOf(id) !== machine || next.panes.some(p => p.id === id)

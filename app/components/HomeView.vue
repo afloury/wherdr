@@ -16,9 +16,10 @@
 // projet devient un petit en-tête au-dessus de ses threads.
 import type { MachineInfo, NamedSession, Pane } from '#shared/types'
 import { groupByProject, remoteCoordinator } from '#shared/projects'
-import { type Row, projectRoots, readyLists, repoRoots, rowGroup, spaceRows } from '#shared/spaces'
+import { type ReadySort, type Row, projectRoots, readyLists, repoRoots, rowGroup, sortReady, spaceRows } from '#shared/spaces'
+import { spaceTitle } from '#shared/displayTitles'
 import { claudeSetupOf, machineQuotaRows, quotaRows } from '~/utils/quotas'
-import { LIST_DEFAULT, LIST_MAX, LIST_MIN, clampListWidth, listWidthCss, readListWidth, saveListWidth } from '~/utils/sideWidth'
+import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
 import { dropMachineKey, shiftMachineKey, sortMachines } from '#shared/machineOrder'
 import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
 const emit = defineEmits<{ search: [] }>()
@@ -48,14 +49,27 @@ const stats = computed(() => ([
 ] as [string, number, string][]).map(([s, n, label]) => ({ s, n, label })))
 
 // L'ordre Herdr reste celui de chaque liste de dépôt. Le groupe Prêts peut
-// afficher les non lus avant les lus, chacun réordonnable séparément.
+// afficher les non lus avant les lus, et se trier autrement (readySort).
 function groupsOf(list: Row[]) {
   return ([
     { key: 'blocked', title: t('À toi'), list: list.filter(r => rowGroup(r) === 'blocked') },
     { key: 'working', title: t('Au travail'), list: list.filter(r => rowGroup(r) === 'working') },
     { key: 'ready', title: t('Prêts'), list: list.filter(r => rowGroup(r) === 'ready') },
-  ] as const).filter(g => g.list.length).map(g => ({ ...g, lists: g.key === 'ready' ? readyLists(g.list, autoReorderReady.value) : [g.list] }))
+  ] as const).filter(g => g.list.length).map(g => ({ ...g, lists: g.key === 'ready' ? readyLists(g.list, autoReorderReady.value).map(l => sortReady(l, readySort.value, rowTitle)) : [g.list] }))
 }
+const rowTitle = (r: Row) => spaceTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
+// Menu de tri du groupe Prêts ; trié autrement que dans l'ordre de Herdr, la
+// liste ne se réordonne plus à la main.
+const READY_SORT_LABELS: Record<ReadySort, [string, string]> = {
+  herdr: ['Ordre de Herdr', 'i-lucide-grip-vertical'], recent: ['Activité récente', 'i-lucide-clock'], name: ['Nom', 'i-lucide-arrow-down-a-z'],
+}
+const readySortItems = computed(() => [[
+  { type: 'label' as const, label: t('Trier les prêts') },
+  ...(Object.keys(READY_SORT_LABELS) as ReadySort[]).map(s => ({
+    label: t(READY_SORT_LABELS[s][0]), icon: READY_SORT_LABELS[s][1], type: 'checkbox' as const,
+    checked: readySort.value === s, onUpdateChecked: () => { readySort.value = s },
+  })),
+]])
 // Lignes d'une machine (`machine` absent : une seule machine) : projets
 // (leurs lignes retrouvées par pane représentatif, le terminal racine de leur
 // dépôt), puis les groupes d'état des autres spaces, shells compris, dans
@@ -324,14 +338,28 @@ function openSearch() { emit('search') }
 // Largeur de la barre latérale (ordinateur) : poignée sur son bord droit
 // (glisser, flèches du clavier ; double-clic = largeur par défaut), bornée,
 // gardée sur l'appareil. Elle règle --side, que suivent les vues de droite.
+// Réduite, la liste laisse une colonne étroite : l'afficher, chercher, lancer
+// un agent et les compteurs d'état.
 const listWidth = ref<number | null>(null)
 const listDrag = ref(false)
-onMounted(() => { listWidth.value = readListWidth() })
-watch(listWidth, (w) => {
+const listCollapsed = ref(false)
+const rail = computed(() => desk.value && listCollapsed.value)
+onMounted(() => {
+  listWidth.value = readListWidth()
+  listCollapsed.value = readListCollapsed()
+})
+watch([listWidth, rail], ([w, r]) => {
   const root = document.documentElement.style
-  if (w === null) root.removeProperty('--side')
+  if (r) root.setProperty('--side', `${LIST_RAIL}px`)
+  else if (w === null) root.removeProperty('--side')
   else root.setProperty('--side', listWidthCss(w))
 })
+// Le bouton d'origine disparaît avec sa colonne : le focus passe à celui d'en face.
+function setListCollapsed(collapsed: boolean) {
+  listCollapsed.value = collapsed
+  saveListCollapsed(collapsed)
+  nextTick(() => document.querySelector<HTMLElement>(`#home ${collapsed ? '.home-rail' : '.home-top'} .rail-toggle`)?.focus())
+}
 function listNow() { return document.getElementById('home')?.getBoundingClientRect().width || LIST_DEFAULT }
 function onListGrab(e: PointerEvent) {
   if (e.button !== 0) return
@@ -369,7 +397,31 @@ function resetListWidth() {
 </script>
 
 <template>
-  <section id="home" class="view" :class="{ resizing: listDrag }">
+  <section id="home" class="view" :class="{ resizing: listDrag, rail }">
+    <!-- Liste réduite (ordinateur) : colonne étroite, le reste de la liste est masqué. -->
+    <nav v-if="rail" class="home-rail" :aria-label="t('Agents')">
+      <AppLogo class="home-logo" :class="conn.idle ? '' : conn.ok ? 'ok' : 'bad'" :title="conn.text" />
+      <UTooltip :text="t('Afficher la liste')" :content="{ side: 'right' }">
+        <UButton icon="i-lucide-panel-left-open" color="neutral" variant="ghost" size="lg" class="icon-btn rail-toggle" :aria-label="t('Afficher la liste')" aria-expanded="false" aria-controls="home" @click="setListCollapsed(false)" />
+      </UTooltip>
+      <UTooltip :text="tl('Rechercher agents et conversations', 'Search agents and conversations')" :content="{ side: 'right' }">
+        <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Rechercher agents et conversations', 'Search agents and conversations')" @click="openSearch" />
+      </UTooltip>
+      <UTooltip :text="t('Nouveau')" :content="{ side: 'right' }">
+        <UButton icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Nouveau')" :disabled="!eventsOpen || offlineView" @click="newAgent" />
+      </UTooltip>
+      <UTooltip v-if="quietCurrent" :text="quietLabel" :content="{ side: 'right' }">
+        <UButton icon="i-lucide-bell-off" color="neutral" variant="ghost" size="lg" class="icon-btn quiet-on" :aria-label="quietLabel" @click="endQuiet" />
+      </UTooltip>
+      <UTooltip :text="t('Réglages')" :content="{ side: 'right' }">
+        <UButton icon="i-lucide-settings-2" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Réglages')" to="/settings" />
+      </UTooltip>
+      <ul v-if="agents.length" class="rail-stats">
+        <li v-for="c in stats" :key="c.s" class="rail-stat" :class="[c.s, { zero: !c.n }]" :title="`${c.n} ${c.label}`">
+          <i aria-hidden="true" /><b>{{ c.n }}</b><span class="sr-only">{{ c.label }}</span>
+        </li>
+      </ul>
+    </nav>
     <header class="home-top">
       <p class="eyebrow">
         <AppLogo class="home-logo" :class="conn.idle ? '' : conn.ok ? 'ok' : 'bad'" /><span>{{ conn.text }}</span>
@@ -391,6 +443,9 @@ function resetListWidth() {
               icon="i-lucide-settings-2" color="neutral" variant="ghost" size="lg" class="icon-btn"
               :aria-label="t('Réglages')" to="/settings"
             />
+          </UTooltip>
+          <UTooltip v-if="desk" :text="t('Réduire la liste')">
+            <UButton icon="i-lucide-panel-left-close" color="neutral" variant="ghost" size="lg" class="icon-btn rail-toggle" :aria-label="t('Réduire la liste')" aria-expanded="true" aria-controls="home" @click="setListCollapsed(true)" />
           </UTooltip>
         </div>
       </div>
@@ -423,10 +478,13 @@ function resetListWidth() {
       <template v-if="!sections">
         <ProjectGroup v-for="x in solo.projects" :key="x.g.key" :group="x.g" :row-of="solo.rowOf" :roots="x.roots" />
         <section v-for="g in solo.groups" :key="g.key" class="agent-group" :class="g.key">
-          <h2 class="group-title"><span>{{ g.title }}</span><span class="count">{{ g.list.length }}</span></h2>
+          <h2 class="group-title"><span>{{ g.title }}</span><span class="count">{{ g.list.length }}</span>
+            <UDropdownMenu v-if="g.key === 'ready'" :items="readySortItems" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }">
+              <UButton :icon="READY_SORT_LABELS[readySort][1]" color="neutral" variant="ghost" size="xs" class="group-sort" :aria-label="`${t('Trier les prêts')} : ${t(READY_SORT_LABELS[readySort][0])}`" />
+            </UDropdownMenu></h2>
           <template v-for="(cards, i) in g.lists" :key="i">
             <p v-if="g.key === 'ready' && g.lists.length > 1" class="ready-subgroup-label">{{ t(i === 0 ? 'Non lus' : 'Lus') }}</p>
-            <ReorderList :disabled="!canReorder('')">
+            <ReorderList :disabled="!canReorder('') || (g.key === 'ready' && readySort !== 'herdr')">
               <AgentCard v-for="r in cards" :key="r.key" :pane="r.lead" :row="r" />
             </ReorderList>
           </template>
@@ -485,10 +543,13 @@ function resetListWidth() {
             <ClaudeSetupBanner v-if="s.setup" :setup="s.setup" :name="s.name" />
             <ProjectGroup v-for="x in s.projects" :key="x.g.key" :group="x.g" :machine="s.m.key" :row-of="s.rowOf" :remote="x.remote" :roots="x.roots" />
             <section v-for="g in s.groups" :key="g.key" class="agent-group" :class="g.key">
-              <h2 class="group-title"><span>{{ g.title }}</span><span class="count">{{ g.list.length }}</span></h2>
+              <h2 class="group-title"><span>{{ g.title }}</span><span class="count">{{ g.list.length }}</span>
+            <UDropdownMenu v-if="g.key === 'ready'" :items="readySortItems" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }">
+              <UButton :icon="READY_SORT_LABELS[readySort][1]" color="neutral" variant="ghost" size="xs" class="group-sort" :aria-label="`${t('Trier les prêts')} : ${t(READY_SORT_LABELS[readySort][0])}`" />
+            </UDropdownMenu></h2>
               <template v-for="(cards, i) in g.lists" :key="i">
                 <p v-if="g.key === 'ready' && g.lists.length > 1" class="ready-subgroup-label">{{ t(i === 0 ? 'Non lus' : 'Lus') }}</p>
-                <ReorderList :disabled="!canReorder(s.m.key)">
+                <ReorderList :disabled="!canReorder(s.m.key) || (g.key === 'ready' && readySort !== 'herdr')">
                   <AgentCard v-for="r in cards" :key="r.key" :pane="r.lead" :row="r" />
                 </ReorderList>
               </template>
@@ -548,7 +609,7 @@ function resetListWidth() {
     </AppSheet>
     <Teleport to="body">
       <div
-        v-if="desk" class="list-handle" :class="{ dragging: listDrag }" role="separator" aria-orientation="vertical" tabindex="0"
+        v-if="desk && !rail" class="list-handle" :class="{ dragging: listDrag }" role="separator" aria-orientation="vertical" tabindex="0"
         :aria-label="t('Largeur de la liste')" :aria-valuenow="listWidth ?? LIST_DEFAULT" :aria-valuemin="LIST_MIN" :aria-valuemax="LIST_MAX"
         :title="t('Glisser pour élargir · double-clic : largeur par défaut')"
         @pointerdown="onListGrab" @dblclick="resetListWidth" @keydown="onListKey"

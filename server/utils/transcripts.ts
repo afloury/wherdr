@@ -449,8 +449,16 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
     }
     if (d.type === 'custom_message') {
       const s = d.details
-      if (d.customType === 'skill-prompt' && d.attribution === 'user' && s && typeof s.name === 'string') {
-        items.push({ role: 'user', text: clip(stripImageTags(`/skill:${s.name}${s.args ? ` ${s.args}` : ''}`)), ts })
+      if (d.customType === 'skill-prompt') {
+        if (d.attribution === 'user' && s && typeof s.name === 'string') items.push({ role: 'user', text: clip(stripImageTags(`/skill:${s.name}${s.args ? ` ${s.args}` : ''}`)), ts })
+      } else if (d.display && typeof d.customType === 'string') {
+        // Ce que le terminal affiche lui aussi (conseiller, tâche de fond terminée,
+        // message IRC, diagnostics tardifs…), sans l'enveloppe destinée au modèle.
+        const notes: Json[] = d.customType === 'advisor' && s && Array.isArray(s.notes) ? s.notes : []
+        const text = notes.length
+          ? notes.filter(n => n && typeof n.note === 'string').map(n => (n.severity ? `**${n.severity}** — ${n.note}` : n.note)).join('\n\n')
+          : String(d.content || '').replace(/^\s*<([\w:-]+)(?:\s[^>]*)?>\n?([\s\S]*?)\n?<\/\1>\s*$/, '$2').trim()
+        if (text) items.push({ role: 'notice', name: d.customType, text: clip(text), ts })
       }
       continue
     }
