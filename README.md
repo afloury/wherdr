@@ -447,14 +447,18 @@ worktree. It is optional; with it installed, wherdr adds:
   report) and resolved threads under Done. Each list has its buttons, which send a ready-made
   message to the coordinator: **Confirm** / **Problem** / **Question** on things to test, **Question** / **Answer** on
   decisions, **Launch** or **Clarify** on backlog items, **Unblock** on blocked ones.
-- **Badges** on task lines, written by the coordinator: `[t-0140]` (or `[t-0140, t-0141]`) links
-  the task to its threads (state color, click opens the thread), and free badges
-  `[b:color(text)]` go anywhere in the line — color is `red`, `orange`, `amber`, `green`, `teal`,
+- **Badges**, the only decoration on task lines, chosen by the coordinator (wherdr adds none
+  on its own): `[b:color(text)]`, or `[b:color(text)](target)` for a clickable badge with a small ↗.
+  The target is an `https://` / `http://` link (new tab) or a thread ID such as `t-0140` (opens
+  its tab); any other scheme is ignored. Color is `red`, `orange`, `amber`, `green`, `teal`,
   `blue`, `violet`, `pink`, `gray` (theme-aware), a `#rgb` / `#rrggbb` hex, or empty for neutral;
-  at most 24 characters are shown. Example to give a coordinator:
+  at most 24 characters are shown. A bare URL in the text shows as a plain link, and the owner
+  `(me)` / `(agent)` is read but not shown. The coordinator rules (Settings) tell the coordinator
+  to use badges on its own when they help (status, thread, PR, device, priority…), sparingly,
+  and to follow your preferences. Example:
 
   ```markdown
-  - [ ] Stop button on iPhone [b:red(bug)] [b:#3b82f6(iOS)] [t-0140] (me)
+  - [ ] Stop button on iPhone [b:red(bug)] [b:gray(t-0140)](t-0140) [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me)
   ```
 - **Settings → Plugins → herdr-projects**: install status per machine, the `TASKS.md` convention,
   a template and the coordinator rules to copy.
