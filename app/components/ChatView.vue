@@ -784,7 +784,13 @@ function onSearchKey(e: KeyboardEvent) {
 
 function openImage(src: string) { openLightbox([src]) }
 
-defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
+// Mod+F with the search already open: back to its field, text selected.
+function focusSearch() {
+  const el = searchInput.value?.inputRef
+  el?.focus()
+  el?.select()
+}
+defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch })
 </script>
 
 <template>

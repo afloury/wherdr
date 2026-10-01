@@ -404,16 +404,16 @@ function resetListWidth() {
       <UTooltip :text="t('Show list')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-panel-left-open" color="neutral" variant="ghost" size="lg" class="icon-btn rail-toggle" :aria-label="t('Show list')" aria-expanded="false" aria-controls="home" @click="setListCollapsed(false)" />
       </UTooltip>
-      <UTooltip :text="tl('Search agents and conversations', 'Rechercher agents et conversations')" :content="{ side: 'right' }">
+      <UTooltip :text="tl('Search agents and conversations', 'Rechercher agents et conversations')" :kbds="shortcutKbds('search-all')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" @click="openSearch" />
       </UTooltip>
-      <UTooltip :text="t('New')" :content="{ side: 'right' }">
+      <UTooltip :text="t('New')" :kbds="shortcutKbds('new-space')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('New')" :disabled="!eventsOpen || offlineView" @click="newAgent" />
       </UTooltip>
       <UTooltip v-if="quietCurrent" :text="quietLabel" :content="{ side: 'right' }">
         <UButton icon="i-lucide-bell-off" color="neutral" variant="ghost" size="lg" class="icon-btn quiet-on" :aria-label="quietLabel" @click="endQuiet" />
       </UTooltip>
-      <UTooltip :text="t('Settings')" :content="{ side: 'right' }">
+      <UTooltip :text="t('Settings')" :kbds="shortcutKbds('settings')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-settings-2" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Settings')" to="/settings" />
       </UTooltip>
       <ul v-if="agents.length" class="rail-stats">
@@ -432,13 +432,13 @@ function resetListWidth() {
           <UTooltip v-if="soloPlugins" :text="t('Plugin actions')" :disabled="!desk">
             <UButton icon="i-lucide-puzzle" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Plugin actions')" @click="openSoloPlugins" />
           </UTooltip>
-          <UTooltip :text="tl('Search agents and conversations', 'Rechercher agents et conversations')" :disabled="!desk">
+          <UTooltip :text="tl('Search agents and conversations', 'Rechercher agents et conversations')" :kbds="shortcutKbds('search-all')" :disabled="!desk">
             <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" @click="openSearch" />
           </UTooltip>
           <UTooltip v-if="quietCurrent" :text="quietLabel" :disabled="!desk">
             <UButton icon="i-lucide-bell-off" color="neutral" variant="ghost" size="lg" class="icon-btn quiet-on" :aria-label="quietLabel" @click="endQuiet" />
           </UTooltip>
-          <UTooltip :text="t('Settings')" :disabled="!desk">
+          <UTooltip :text="t('Settings')" :kbds="shortcutKbds('settings')" :disabled="!desk">
             <UButton
               icon="i-lucide-settings-2" color="neutral" variant="ghost" size="lg" class="icon-btn"
               :aria-label="t('Settings')" to="/settings"

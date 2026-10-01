@@ -9,7 +9,8 @@ import type { DraftAtt } from '~/composables/useDraft'
 import { withReply } from '#shared/replyQuote'
 import { isAgentCommand } from '#shared/commandScreen'
 
-const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void> }>()
+// `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
+const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void>, escStops?: boolean }>()
 const emit = defineEmits<{ sent: [queued: QueuedMessage | null], showTerminal: [] }>()
 
 // Claude Code update installed: the status line restarts the agent.
@@ -156,6 +157,14 @@ async function interrupt() {
 }
 // The agent eventually stops (or the user acts in the terminal): the message goes away.
 watch(() => props.pane?.status, s => { if (interrupting.value === 'failed' && s !== 'working') interrupting.value = null })
+// Escape (composables/useShortcuts.ts): the Stop button, only while it is shown and
+// clickable. The field blurs itself on Escape: it gets the focus back for what comes next.
+function stop() {
+  if (!props.escStops || !stopMode.value || sending.value || interrupting.value === 'running') return false
+  interrupt()
+  ta.value?.focus()
+  return true
+}
 
 // ------------------------------------------------------------ photos
 function clearAttachments() {
@@ -367,7 +376,7 @@ function focusEnd() {
   })
 }
 
-defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.blur(), addImages })
+defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.blur(), addImages, stop })
 </script>
 
 <template>
@@ -456,6 +465,7 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
         <ModelPicker v-if="pane && (pane.agent === 'claude' || pane.agent === 'codex')" :pane="pane" />
         <span v-if="hint && suggestion" class="prompt-hint"><UKbd value="tab" size="sm" /> {{ t('suggestion') }} <span class="sep">·</span> <UKbd value="enter" size="sm" /> {{ t('send') }}</span>
         <span v-else-if="hint" class="prompt-hint"><UKbd value="enter" size="sm" /> {{ t('send') }} <span class="sep">·</span> <UKbd value="shift" size="sm" /><UKbd value="enter" size="sm" /> {{ t('new line') }}</span>
+        <span v-else-if="desk && escStops && stopMode && interrupting !== 'running'" class="prompt-hint"><UKbd value="escape" size="sm" /> {{ tl('stop', 'arrêter') }}</span>
         <UChatPromptSubmit
           :status="stopMode ? 'streaming' : 'ready'" :disabled="readOnly || (!canSend && !stopMode) || sending || interrupting === 'running'"
           color="primary" variant="solid" streaming-color="neutral" streaming-variant="solid" streaming-icon="i-herdr-stop" size="sm"

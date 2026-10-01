@@ -95,7 +95,8 @@ function startDrag(pane: string, e: PointerEvent, started: boolean) {
   window.addEventListener('pointermove', onDragMove)
   window.addEventListener('pointerup', onDragEnd)
   window.addEventListener('pointercancel', onDragCancel)
-  window.addEventListener('keydown', onDragKey)
+  // Capture: Escape cancels the drag before anything else reads it (Stop: useShortcuts).
+  window.addEventListener('keydown', onDragKey, true)
 }
 function onDragMove(e: PointerEvent) {
   const d = drag.value
@@ -120,7 +121,7 @@ function stopDrag() {
   window.removeEventListener('pointermove', onDragMove)
   window.removeEventListener('pointerup', onDragEnd)
   window.removeEventListener('pointercancel', onDragCancel)
-  window.removeEventListener('keydown', onDragKey)
+  window.removeEventListener('keydown', onDragKey, true)
 }
 function onDragEnd(e: PointerEvent) {
   const d = drag.value
