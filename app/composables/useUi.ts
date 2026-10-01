@@ -43,6 +43,12 @@ export const commandResult = reactive<{ open: boolean, pane: string | null, cmd:
 export const SETTINGS_TABS = ['Status', 'Config', 'Usage', 'Stats']
 
 export const lightboxSrc = ref<string | null>(null)
+// Images of the same message, browsable in the viewer (← →, swipe).
+export const lightboxSet = ref<string[]>([])
+export function openLightbox(srcs: string[], index = 0) {
+  lightboxSet.value = srcs
+  lightboxSrc.value = srcs[index] ?? null
+}
 
 // `tone`: red action button (destructive, the default) or accent.
 export const confirmState = reactive<{ open: boolean, message: string, action: string, tone: 'error' | 'primary', resolve: ((ok: boolean) => void) | null }>({

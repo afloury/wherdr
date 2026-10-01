@@ -353,7 +353,7 @@ const blocks = computed<Block[]>(() => {
       // file), or photos stored on the server whose path stayed as text.
       const srcs: string[] = []
       if (it.ref && it.images && c.file) {
-        for (let k = 0; k < Math.min(it.images, 6); k++) {
+        for (let k = 0; k < it.images; k++) {
           srcs.push(`/api/chat/image?pane=${encodeURIComponent(props.pane.id)}&file=${encodeURIComponent(c.file)}&ref=${it.ref}&i=${k}`)
         }
       }
@@ -782,7 +782,7 @@ function onSearchKey(e: KeyboardEvent) {
   }
 }
 
-function openImage(src: string) { lightboxSrc.value = src }
+function openImage(src: string) { openLightbox([src]) }
 
 defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
 </script>
@@ -847,7 +847,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
                   :ui="{ root: 'msg msg-user', container: 'msg-c', content: 'msg-bubble', header: 'msg-files' }"
                 >
                   <template #files>
-                    <span class="thumbs" :class="{ one: b.srcs.length === 1 }"><span v-for="src in b.srcs" :key="src"><span v-if="readOnly" class="offline-image">{{ t('Image unavailable offline') }}</span><img v-else class="msg-img" :src="src" alt="" loading="lazy" decoding="async" @click="openImage(src)"></span></span>
+                    <MsgThumbs :srcs="b.srcs" :offline="readOnly" />
                   </template>
                   <template #content>{{ b.text }}</template>
                 </UChatMessage>
@@ -954,7 +954,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
             </button>
             <div class="msg-bubble sent">
-              <span v-if="q.photos.length" class="thumbs" :class="{ one: q.photos.length === 1 }"><img v-for="src in q.photos" :key="src" class="msg-img" :src="src" alt="" @click="openImage(src)"></span>{{ q.body }}
+              <MsgThumbs v-if="q.photos.length" :srcs="q.photos" />{{ q.body }}
             </div>
             <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ t('Sent · read by the agent') }}</span></div>
           </div>
@@ -980,7 +980,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
             </button>
             <div class="msg-bubble queued">
-              <span v-if="q.photos.length" class="thumbs" :class="{ one: q.photos.length === 1 }"><img v-for="src in q.photos" :key="src" class="msg-img" :src="src" alt="" @click="openImage(src)"></span>{{ q.body }}
+              <MsgThumbs v-if="q.photos.length" :srcs="q.photos" />{{ q.body }}
             </div>
             <div v-if="q.state === 'failed'" class="queued-tag failed" role="alert">
               <UIcon name="i-lucide-circle-alert" /><span>{{ t('Not sent') }}</span>
