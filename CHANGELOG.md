@@ -11,7 +11,8 @@ First public release.
 ### Added
 
 - Live agent list grouped by state, with answer previews and one-tap answers to permission
-  prompts and questions (including omp's ask questions, multi-select and the final Submit).
+  prompts and questions (including omp's ask questions, shown in full even when the terminal
+  folds them, multi-select and the final Submit).
   Ready agents can be sorted by Herdr order (drag to reorder), recent activity or name.
 - Conversation view for Claude Code, Codex and omp transcripts (Markdown, tool calls, images,
   search, infinite scroll), typing effect with optional encrypted-text reveal. For omp it also
@@ -23,6 +24,7 @@ First public release.
   state counters, remembered per device.
 - Terminal view (xterm.js, WebGL or DOM renderer) with a phone key bar and take-over.
 - Composer with queued messages (cancellable), photos, paste, slash commands and their output.
+  A message sent to an agent Herdr hasn't finished starting waits and goes out once it's ready.
 - Per-session model and effort pickers for Claude Code and Codex.
 - New agent: installed agents or terminal, folder browser, Git worktree and branch, resume the
   last conversation, queued first message.

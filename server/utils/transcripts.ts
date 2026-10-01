@@ -16,6 +16,7 @@
 import path from 'node:path'
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail } from '../../shared/types'
 import { pendingClaudeTool, pendingCodexTool } from './promptDetail'
+import { type OmpAsked, pendingOmpAsk } from './choices'
 import { cleanModelName, lastModel } from './models'
 import { type MachineFs, localFs } from './fsx'
 import { searchFile } from './conversationSearch'
@@ -969,14 +970,33 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     return detail
   }
 
+  // omp : l'appel « ask » encore sans réponse (cf. pendingOmpAsk).
+  const askCache = new Map<string, { file: string, size: number, asked: OmpAsked[] }>()
+  async function pendingAsk(pane: TranscriptPane): Promise<OmpAsked[]> {
+    if (pane.agent !== 'omp') return []
+    const loc = await locate(pane)
+    if (!loc) return []
+    let size: number
+    try { size = (await fs.stat(loc.file)).size }
+    catch { return [] }
+    const c = askCache.get(pane.id)
+    if (c && c.file === loc.file && c.size === size) return c.asked
+    let asked: OmpAsked[] = []
+    try { asked = pendingOmpAsk((await readRange(loc.file, Math.max(0, size - PENDING_WINDOW), size)).text.split('\n').map(stripBlobs)) }
+    catch { asked = [] }
+    askCache.set(pane.id, { file: loc.file, size, asked })
+    return asked
+  }
+
   function forget(paneId: string) {
     locCache.delete(paneId)
     lastLoc.delete(paneId)
     modelCache.delete(paneId)
     pendingCache.delete(paneId)
+    askCache.delete(paneId)
   }
 
-  return { chat, preview, image, forget, locate, model, observe, search, pendingTool }
+  return { chat, preview, image, forget, locate, model, observe, search, pendingTool, pendingAsk }
 }
 
 export type Transcripts = ReturnType<typeof createTranscripts>

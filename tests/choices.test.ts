@@ -4,7 +4,7 @@
 // (claude-trust, claude-security-guide, codex-trust : la machine fait déjà confiance à ~).
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { inputVisible, keysFor, parseChoices, parseOmpAsk, screenChoices } from '../server/utils/choices'
+import { completeOmpAsk, inputVisible, keysFor, parseChoices, parseOmpAsk, pendingOmpAsk, screenChoices } from '../server/utils/choices'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 
@@ -157,5 +157,43 @@ describe('parseOmpAsk, jeu de symboles ascii', () => {
     ].join('\n')
     const c = parseOmpAsk(box)!
     expect(c).toEqual({ question: 'Pick sizes', cursor: 1, multi: true, options: [{ label: 'Small', hint: null, checked: true }, { label: 'Medium', hint: null, checked: false }] })
+  })
+})
+
+describe('completeOmpAsk', () => {
+  // La boîte replie une longue question (« … ») et colle ses lignes ; la
+  // transcription a le texte entier de l'appel « ask » encore sans réponse.
+  const question = 'Plan for titles. Approve?\n\n1. Service: trims the title and writes a system_event.\n2. HTTP: PATCH /title.'
+  const call = (id: string, q: string) => JSON.stringify({ type: 'message', message: { role: 'assistant', content: [{ type: 'toolCall', id, name: 'ask', arguments: { questions: [
+    { id: 'other', question: 'Email subject?', options: [{ label: 'Keep' }] },
+    { id: 'plan', question: q, options: [{ label: 'Approve' }, { label: 'Revise', description: 'Tell me what to change,\nline by line.' }] },
+  ] } }] } })
+  const box = [
+    '╭─ Ask ─────────────────────────────────────╮',
+    '│  other    plan    Submit                  │',
+    '│ Plan for titles. Approve?1. Service: trims │',
+    '│ the title and writes a syst…              │',
+    '├───────────────────────────────────────────┤',
+    '│ ❯ ○ Approve (Recommended)                 │',
+    '│   ○ Revise                                │',
+    '│       Tell me what to change,             │',
+    '│   ○ Other (type your own)                 │',
+    '├───────────────────────────────────────────┤',
+    '│ ⏎ select · ↑/↓ move · ⎋ cancel            │',
+    '╰───────────────────────────────────────────╯',
+  ].join('\n')
+
+  it('reprend la question et les descriptions entières de l’appel en attente', () => {
+    const c = completeOmpAsk(parseOmpAsk(box)!, pendingOmpAsk([call('old', 'Stale?'), call('t1', question)]))
+    expect(c.question).toBe(question)
+    expect(c.options).toEqual([{ label: 'Approve (Recommended)', hint: null }, { label: 'Revise', hint: 'Tell me what to change,\nline by line.' }])
+    expect(c.cursor).toBe(0)
+  })
+
+  it('garde l’écran si l’appel a déjà sa réponse ou porte une autre question', () => {
+    const shown = parseOmpAsk(box)!
+    const answered = JSON.stringify({ type: 'message', message: { role: 'toolResult', toolCallId: 't1', toolName: 'ask' } })
+    expect(pendingOmpAsk([call('t1', question), answered])).toEqual([])
+    expect(completeOmpAsk(shown, pendingOmpAsk([call('t2', 'Something else entirely?')]))).toEqual(shown)
   })
 })

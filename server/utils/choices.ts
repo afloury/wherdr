@@ -16,6 +16,9 @@
 import type { ChoiceOption, Choices } from '../../shared/types'
 import { isPermissionQuestion, screenDetail } from './promptDetail'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Json = any
+
 // ❯ chez Claude Code, › chez Codex ; > sur l'écran de connexion de Codex, pris
 // seulement devant une option numérotée (sinon une citation « > … » compterait).
 const CURSOR = /^(\s*)(?:[❯›]|>(?=\s+\d{1,2}\.\s))\s+(\S.*?)\s*$/
@@ -241,6 +244,53 @@ export function parseOmpAsk(text: string | null | undefined): Choices | null {
   // option, les index des autres ne bougent pas ; `cursor` peut la désigner).
   const shown = options.filter(o => !o.other).map(({ other: _, ...o }) => (multi ? { ...o, checked: Boolean(o.checked) } : o))
   return { question, cursor, options: shown, ...(multi ? { multi: true } : {}) }
+}
+
+// L'appel « ask » d'omp encore sans réponse (lignes JSON de sa transcription) :
+// ses questions et descriptions entières. La boîte replie une longue question
+// (« … », ^O pour déplier) et on n'y lit que la 1re ligne d'une description.
+export interface OmpAsked { question: string, options: { label: string, description: string | null }[] }
+export function pendingOmpAsk(lines: string[]): OmpAsked[] {
+  const pending = new Map<string, OmpAsked[]>()
+  for (const line of lines) {
+    if (!line || !line.includes('"message"')) continue
+    let d: Json
+    try { d = JSON.parse(line) }
+    catch { continue }
+    const m = d && d.type === 'message' && d.message
+    if (!m) continue
+    if (m.role === 'toolResult') pending.delete(m.toolCallId)
+    else if (m.role === 'assistant' && Array.isArray(m.content)) {
+      for (const part of m.content) {
+        if (!part || part.type !== 'toolCall' || part.name !== 'ask' || !part.id) continue
+        const qs: Json[] = part.arguments && Array.isArray(part.arguments.questions) ? part.arguments.questions : []
+        pending.set(part.id, qs.filter(q => q && typeof q.question === 'string').map(q => ({
+          question: q.question.trim(),
+          options: (Array.isArray(q.options) ? q.options : []).filter((o: Json) => o && typeof o.label === 'string')
+            .map((o: Json) => ({ label: o.label, description: typeof o.description === 'string' && o.description.trim() ? o.description.trim() : null })),
+        })))
+      }
+    }
+  }
+  return [...pending.values()].pop() || []
+}
+
+// Question à l'écran complétée par l'appel : reconnue à son début, sans les
+// blancs (omp colle les lignes de la question à l'affichage).
+export function completeOmpAsk(choices: Choices, asked: OmpAsked[]): Choices {
+  const key = (s: string) => s.replace(/\s+/g, '')
+  const shown = key((choices.question || '').replace(/…$/, ''))
+  const q = shown && asked.find(a => key(a.question).startsWith(shown))
+  if (!q) return choices
+  const desc = new Map(q.options.map(o => [o.label, o.description]))
+  return {
+    ...choices,
+    question: q.question,
+    options: choices.options.map((o) => {
+      const d = desc.get(o.label.replace(/ \(Recommended\)$/, ''))
+      return d ? { ...o, hint: d } : o
+    }),
+  }
 }
 
 // Invite à l'écran d'un pane, relue avant d'y répondre (choose, nav) : la boîte

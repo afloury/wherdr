@@ -13,7 +13,7 @@ import { isProjectThread, paneTitle } from '../../shared/paneTitle'
 import { foregroundCommand, reduceSnapshot } from './snapshot'
 import { DATA_DIR, HERDR_SESSION, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
 import { HerdrError, herdr, herdrOn, sleep } from './herdr'
-import { parseChoices, parseOmpAsk } from './choices'
+import { completeOmpAsk, parseChoices, parseOmpAsk } from './choices'
 import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseWaitScreen } from './waitScreen'
 import { parseMenu, TOP } from '../../shared/menuScreen'
@@ -43,6 +43,7 @@ export const transcripts = {
   model: (p: TranscriptPane) => trFor(p).model(p),
   locate: (p: TranscriptPane) => trFor(p).locate(p),
   pendingTool: (p: TranscriptPane) => trFor(p).pendingTool(p),
+  pendingAsk: (p: TranscriptPane) => trFor(p).pendingAsk(p),
   forget: (id: string) => machineOfPane(id)?.transcripts.forget(id),
 }
 
@@ -110,6 +111,7 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
     let choices = p.agent === 'omp' ? parseOmpAsk(text) : parseChoices(text, { strict })
     const menu = p.agent !== 'omp' && framed && (strict || !choices || !parseChoices(text, { strict: true })) ? await readMenu(p.id) : null
     if (menu) choices = null
+    if (choices && p.agent === 'omp') choices = completeOmpAsk(choices, await transcripts.pendingAsk(p).catch(() => []))
     out = { choices, screen: menu ? null : parseWaitScreen(text, { choices: Boolean(choices) }), menu }
     noteScreen(p.id, p.agent, text) // Codex : modèle de sa ligne d'état
     if (choices && (choices.detail || isPermissionQuestion(choices.question))) {
@@ -288,7 +290,8 @@ export async function cancelQueued(paneId: string, text: string, id?: string): P
   }
 }
 
-// Premiers messages en attente d'un agent prêt (cf. createAgent).
+// Messages en attente d'un agent prêt : le premier donné à la création (cf.
+// createAgent), ou un envoi refusé par Herdr pendant le démarrage (cf. prompt.post).
 export const pendingPrompts = new Map<string, { text: string, at: number }>()
 const PENDING_TTL_MS = 15 * 60 * 1000
 const pendingBusy = new Set<string>()
@@ -680,7 +683,7 @@ async function notifyPane(p: Pane) {
   if (p.status === 'blocked') {
     title = `${on}${agentLabel(p.agent)} attend ta réponse`
     titleEn = `${on}${agentLabel(p.agent)} needs your input`
-    const q = p.prompt && p.prompt.question
+    const q = p.prompt && p.prompt.question && (p.prompt.question.length > 300 ? `${p.prompt.question.slice(0, 299)}…` : p.prompt.question)
     const opts = p.prompt && p.prompt.options ? p.prompt.options.slice(0, 4).map(o => o.label).join(' · ') : ''
     body = [q, opts, where].filter(Boolean).join('\n') || p.id
   } else {
