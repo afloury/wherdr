@@ -1348,13 +1348,40 @@ body.kb .composer { padding-bottom: 8px; }
   body.kb .hw-sheet:not(.full) { max-height: calc(var(--vv-h) - var(--safe-top) - 8px); padding-bottom: 12px; }
   body.kb .hw-sheet.tall { height: calc(var(--vv-h) - var(--safe-top) - 8px); }
 }
-.hw-sheet > * { border-top: 0 !important; }
+.hw-sheet > * { border-top: 0 !important; border-bottom: 0 !important; }
 .hw-sheet > [data-slot="header"] { padding: 4px 0 10px; min-height: 0; border: 0; order: 1; display: flex; align-items: center; justify-content: space-between; }
 .hw-sheet > [data-slot="body"] { padding: 0; order: 2; overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; scroll-padding-bottom: 16px; }
 .hw-sheet-title { font: 850 24px/1 var(--display); letter-spacing: -.035em; word-spacing: .06em; color: var(--text); }
 .hw-sheet [data-slot="close"] { position: static; inset: auto; }
 /* Handle (decorative) at the top of the sheet, on the phone. */
 .hw-sheet::before { content: ''; order: 0; width: 36px; height: 4px; background: var(--line); margin: 0 auto 10px; flex: none; }
+/* Footer pinned under the scrolling content (e.g. Launch). */
+.hw-sheet > [data-slot="footer"] { order: 3; padding: 0; border: 0; flex: none; display: block; }
+.hw-sheet > [data-slot="footer"]:empty { display: none; }
+.hw-sheet-foot .sheet-form { padding: 0; }
+.hw-sheet-foot .launch-btn { margin-top: 16px; }
+.hw-sheet-foot .form-error { margin: 0 2px 12px; }
+/* Full-screen view on the phone (`screen`): covers the whole screen, in the
+   page color (same as html/body and the theme-color meta), so no other color
+   can show around it, even below a page shortened by iOS. It is laid out
+   like the agent view: whole layout viewport, then the visible area above
+   the keyboard. Safe areas are padded, not left empty. */
+@media (max-width: 899px) {
+  .hw-scrim.screen { background: var(--bg); }
+  body .hw-sheet.screen {
+    top: 0; bottom: auto; height: 100%; max-height: none;
+    background: var(--bg); border-top: 0;
+    box-shadow: 0 160px 0 var(--bg);
+    padding: calc(var(--safe-top) + 6px) 16px calc(var(--safe-bottom) + 12px);
+  }
+  body.kb .hw-sheet.screen { top: var(--vv-top, 0px); height: var(--vv-h, 100%); max-height: none; padding-bottom: 10px; }
+  .hw-sheet.screen::before { display: none; }
+  .hw-sheet.screen > [data-slot="header"] { padding: 6px 0 12px; margin: 0 -16px; padding-left: 16px; padding-right: 8px; border-bottom: 1px solid var(--line-soft) !important; }
+  .hw-sheet.screen > [data-slot="body"] { padding-top: 4px; }
+  .hw-sheet.screen .hw-sheet-foot .sheet-form { margin: 0 -16px; padding: 12px 16px 0; border-top: 1px solid var(--line-soft); }
+  .hw-sheet.screen .hw-sheet-foot .launch-btn { margin-top: 0; }
+  .hw-sheet.screen[data-state="open"] { animation: rise .26s cubic-bezier(.2, .8, .2, 1); }
+}
 @keyframes rise { from { transform: translateY(100%); } }
 @keyframes sink { to { transform: translateY(100%); } }
 @keyframes fade { from { opacity: 0; } }
