@@ -6,6 +6,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { terminalPixelWidth } from '~/utils/terminalSize'
 import { bindTerminalSelection, type TerminalSelection } from '~/utils/terminalSelection'
+import { bindShiftEnter } from '~/utils/terminalKeys'
 import { terminalClosedText, terminalUnavailableText } from '~/utils/terminalClosed'
 
 const TERM_FONT = '"Wherdr Symbols", "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace'
@@ -81,6 +82,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     // Molette : xterm n'en fait rien (il enverrait ↑/↓ à l'agent, cf.
     // utils/terminalWheel.ts) ; TerminalView la convertit en terminal.scroll.
     term.attachCustomWheelEventHandler(() => false)
+    bindShiftEnter(term, key => sendKeys([key]))
     term.onData(d => sendTerm({ type: 'terminal.input', text: d }))
     term.onBinary((d) => {
       const bytes = Uint8Array.from(d, c => c.charCodeAt(0) & 0xff)
