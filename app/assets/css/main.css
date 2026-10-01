@@ -1090,6 +1090,16 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 }
 .choices-eyebrow { color: var(--rose); margin: 0 2px 8px; }
 .choices-eyebrow i { width: 7px; height: 7px; background: var(--rose); animation: pulse .9s ease-in-out infinite; }
+/* Tabs of omp's "Ask" box (several questions, then Submit). */
+.choices-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.choices-tabs button {
+  font: 500 12px/1 var(--mono); padding: 8px 10px; min-height: 32px;
+  background: var(--bg-2); border: 1px solid var(--line); color: var(--muted);
+}
+.choices-tabs button:hover { background: var(--surface-2); color: var(--text); }
+.choices-tabs button.on { color: var(--text); border-color: color-mix(in srgb, var(--rose) 60%, transparent); background: color-mix(in srgb, var(--rose) 10%, var(--bg-2)); }
+.choices-tabs button:disabled { opacity: .5; }
+@media (pointer: coarse) { .choices-tabs button { min-height: 36px; } }
 /* Permission request: tool, description, file, full command or diff. */
 .choices:has(.prompt-detail) { max-height: 62%; }
 .prompt-detail { margin: 0 0 12px; border: 1px solid var(--line); border-left: 2px solid var(--rose); background: var(--bg-2); }
@@ -1120,22 +1130,30 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .prompt-detail-more .iconify { width: 13px; height: 13px; }
 .choices-q { font-size: 14.5px; font-weight: 600; color: var(--text); margin: 0 2px 10px; line-height: 1.4; white-space: pre-line; overflow-wrap: anywhere; }
 .choices-list { display: flex; flex-direction: column; }
-.choices-list button {
+.choices-list > button {
   text-align: left; padding: 11px 12px;
   background: var(--bg-2); border: 1px solid var(--line); margin-top: -1px;
   display: flex; gap: 12px; align-items: flex-start;
   position: relative;
 }
-.choices-list button:first-child { margin-top: 0; }
-.choices-list button.cur { border-color: color-mix(in srgb, var(--rose) 60%, transparent); z-index: 1; }
-.choices-list button:hover { background: var(--surface-2); }
-.choices-list button:active { background: var(--surface-3); }
-.choices-list button:disabled { opacity: .5; }
+.choices-list > button:first-child { margin-top: 0; }
+.choices-list > button.cur { border-color: color-mix(in srgb, var(--rose) 60%, transparent); z-index: 1; }
+.choices-list > button:hover { background: var(--surface-2); }
+.choices-list > button:active { background: var(--surface-3); }
+.choices-list > button:disabled { opacity: .5; }
 .choices-list .n { font: 600 12px/1.55 var(--mono); color: var(--rose); flex: none; min-width: 14px; }
 .choices-list .l { font-size: 15px; font-weight: 500; line-height: 1.4; }
 .choices-list small { display: block; font-size: 12.5px; color: var(--muted); font-weight: 400; margin-top: 2px; white-space: pre-line; overflow-wrap: anywhere; }
 .choices-list .n .iconify { width: 16px; height: 16px; vertical-align: -3px; }
-.choices-list.multi button:not(.on) .n { color: var(--dim); }
+.choices-list.multi > button:not(.on) .n { color: var(--dim); }
+/* Free answer (omp's "Other"): the option opens a field right below it. */
+.choices-list .choices-free-icon { flex: none; margin-left: auto; width: 15px; height: 15px; color: var(--muted); align-self: center; }
+.choices-list > button[aria-expanded="true"] { border-color: color-mix(in srgb, var(--rose) 60%, transparent); z-index: 1; }
+.choices-free {
+  display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; margin-top: -1px;
+  background: var(--bg-2); border: 1px solid color-mix(in srgb, var(--rose) 60%, transparent); border-top-color: var(--line);
+}
+.choices-free-actions { display: flex; justify-content: flex-end; gap: 6px; }
 .choices-list .choices-next { margin-top: 8px; justify-content: space-between; align-items: center; font-weight: 600; border-color: color-mix(in srgb, var(--rose) 60%, var(--line)); }
 .choices-list .choices-next kbd { font: 500 11px/1 var(--mono); color: var(--muted); }
 /* Waiting screen (Codex hooks, login…): explanation, box text, keys. */

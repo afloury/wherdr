@@ -2,10 +2,11 @@
 // prompt): ↑ ↓ Enter Escape sent as is to the terminal, like the key
 // bar. The screen is re-read first: without a menu or prompt, we refuse. Enter
 // is never sent to a menu where it is not a simple choice (/model:
-// "set as default"). The state is broadcast again right after (screen re-read).
+// "set as default"). ← →: only between the tabs of omp's "Ask" box. The
+// state is broadcast again right after (screen re-read).
 import { TOP, clickMovesOnly } from '../../shared/menuScreen'
 
-const KEYS = new Set(['up', 'down', 'enter', 'esc'])
+const KEYS = new Set(['up', 'down', 'enter', 'esc', 'left', 'right'])
 
 export default defineApi(async (event, b) => {
   if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'Invalid pane')
@@ -19,8 +20,12 @@ export default defineApi(async (event, b) => {
   const menu = framed ? await readMenu(pane) : null
   if (menu) {
     if (key === 'enter' && clickMovesOnly(menu)) throw new HerdrError('stale', 'Entrée ne se valide pas d’ici — utilise les boutons.')
-  } else if (!screenChoices(text, agent)) {
-    throw new HerdrError('stale', 'L’écran a changé entre-temps — regarde l’écran à jour.')
+    if (key === 'left' || key === 'right') throw new HerdrError('stale', 'The screen has changed — check the current screen.')
+  } else {
+    const choices = screenChoices(text, agent)
+    if (!choices || ((key === 'left' || key === 'right') && !(choices.tabs && !choices.typing))) {
+      throw new HerdrError('stale', 'The screen has changed — check the current screen.')
+    }
   }
   await herdr('pane.send_input', { pane_id: pane, keys: [key] })
   watchScreen(pane, 30000)

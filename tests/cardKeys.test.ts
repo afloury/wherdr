@@ -47,4 +47,12 @@ describe('cardKey', () => {
     expect(cardKey({ key: 'Escape' }, own, opts)).toBeNull()
     expect(cardKey({ key: '1' }, { ...field(''), own: true }, opts)).toBeNull()
   })
+  it('←/→: only on a card with tabs, and never on text being typed', () => {
+    const tabs = { ...opts, tabs: true }
+    expect(cardKey({ key: 'ArrowLeft' }, body, opts)).toBeNull()
+    expect(cardKey({ key: 'ArrowRight' }, field(''), tabs)).toEqual({ kind: 'tab', dir: 1 })
+    expect(cardKey({ key: 'ArrowLeft' }, body, tabs)).toEqual({ kind: 'tab', dir: -1 })
+    expect(cardKey({ key: 'ArrowLeft' }, field('bonjour'), tabs)).toBeNull()
+    expect(cardKey({ key: 'ArrowRight', shiftKey: true }, body, tabs)).toBeNull()
+  })
 })

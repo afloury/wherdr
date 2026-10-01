@@ -43,6 +43,7 @@ const where = computed(() => {
   return [subtitle.value, branch.value || shortPath(p.cwd)].filter(Boolean).join(' · ')
 })
 const prompt = computed(() => (props.pane.status === 'blocked' ? props.pane.prompt : undefined))
+const quick = computed(() => quickChoices(prompt.value, 4))
 // Recognized waiting screen (Codex hooks…): its title says better what is expected.
 const screen = computed(() => knownScreen(props.pane))
 const preview = computed(() => (screen.value && screenSummary(screen.value)) || (props.pane.menu && props.pane.status !== 'working' && menuSummary(props.pane.menu)) || (prompt.value ? prompt.value.question : props.pane.preview))
@@ -134,12 +135,12 @@ watch(() => props.pane.prompt, () => { busy.value = false })
         <span class="card-detail-tool">{{ prompt.detail.tool }}</span><code>{{ detailLine(prompt.detail) }}</code>
       </div>
       <div v-if="preview" class="card-preview">{{ preview }}</div>
-      <div v-if="prompt && prompt.options" class="card-choices">
+      <div v-if="quick.length" class="card-choices">
         <button
-          v-for="(o, i) in prompt.options.slice(0, 4)" :key="i" type="button" :disabled="busy || !eventsOpen || offlineView || paneStale(pane)"
-          @click.stop="pick(i, o.label)"
+          v-for="o in quick" :key="o.i" type="button" :disabled="busy || !eventsOpen || offlineView || paneStale(pane)"
+          @click.stop="pick(o.i, o.label)"
         >
-          <span class="n">{{ i + 1 }}</span><span class="l">{{ o.label }}</span>
+          <span class="n">{{ o.i + 1 }}</span><span class="l">{{ o.label }}</span>
         </button>
       </div>
     </div>

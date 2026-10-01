@@ -31,7 +31,6 @@ const ta = computed(() => promptRef.value?.textareaRef || null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const sending = ref(false)
 // On a touch keyboard, Enter adds a line; the button below the field sends.
-const touchKeyboard = import.meta.client && matchMedia('(pointer: coarse)').matches
 const enterSends = computed(() => desk.value && !isIOS && !touchKeyboard)
 
 type Att = DraftAtt
@@ -111,7 +110,13 @@ async function submit() {
   const p = props.pane
   sending.value = true
   try {
-    const queued = await sendMessage(p, props.paneId, msg)
+    // omp question with "Other": the message is its free answer.
+    const prompt = p && p.status === 'blocked' ? p.prompt : null
+    const free = prompt ? prompt.options.findIndex(o => o.free) : -1
+    let queued: QueuedMessage | null = null
+    if (prompt && free >= 0) {
+      if (!(await choose(props.paneId, free, prompt.options[free]!.label, { text: msg, question: prompt.question }))) return
+    } else queued = await sendMessage(p, props.paneId, msg)
     text.value = ''
     clearAttachments()
     if (reply) replyTo.value = null
@@ -121,7 +126,7 @@ async function submit() {
     // A skill or custom command makes the agent reply: no panel.
     const cmd = msg.split(/\s/)[0]!
     const listed = slashCache.get(props.paneId)?.list || slashList.value
-    if (p && p.agent && !paths.length && /^\/\S+$/.test(cmd) && !msg.includes('\n') && !isAgentCommand(cmd, listed)) {
+    if (free < 0 && p && p.agent && !paths.length && /^\/\S+$/.test(cmd) && !msg.includes('\n') && !isAgentCommand(cmd, listed)) {
       showCommandResult(props.paneId, cmd, listed.some(c => c.source === 'builtin' && `/${c.name}` === cmd))
     }
   } catch (err) {

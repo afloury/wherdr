@@ -13,6 +13,10 @@ First public release.
 - Live agent list grouped by state, with answer previews and one-tap answers to permission
   prompts and questions (including omp's ask questions, shown in full even when the terminal
   folds them, multi-select and the final Submit).
+  In the conversation view, omp's "Other (type your own)" opens a text field under the
+  question (multi-line, replaces an earlier custom answer); a reply typed in the composer
+  while omp asks is sent as that custom answer. A multi-question omp ask shows its question
+  tabs (and Submit) above the question, to go back and change an answer (←/→ on a computer).
   Ready agents can be sorted by Herdr order (drag to reorder), recent activity or name.
 - Conversation view for Claude Code, Codex and omp transcripts (Markdown, tool calls, images,
   search, infinite scroll), typing effect with optional encrypted-text reveal. For omp it also

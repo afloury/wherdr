@@ -4,7 +4,9 @@ import type { TabLayout } from './layout'
 export type AgentStatus = 'working' | 'blocked' | 'done' | 'idle' | 'unknown'
 
 // `checked`: box of a multiple-choice list (Choices.multi), checked on screen.
-export interface ChoiceOption { label: string, hint: string | null, checked?: boolean }
+// `free`: free-text answer (omp's "Other"): chosen with a text, which the server
+// types into the field the option opens (server/utils/freeAnswer.ts).
+export interface ChoiceOption { label: string, hint: string | null, checked?: boolean, free?: boolean }
 // What a permission request allows: the tool, its description, and the
 // full command (or tool input), or the file touched.
 export interface PromptDetail {
@@ -18,7 +20,10 @@ export interface PromptDetail {
   truncated?: boolean
 }
 // `multi`: checkboxes (omp); a choice checks or unchecks, Enter moves on.
-export interface Choices { question: string | null, cursor: number, options: ChoiceOption[], detail?: PromptDetail, multi?: boolean }
+// `typing`: omp's free-text answer field is open (single option: `free`).
+// `tabs`: tabs of omp's multi-question "Ask" box (the last one is Submit),
+// `tab` the one shown; ←/→ move between them.
+export interface Choices { question: string | null, cursor: number, options: ChoiceOption[], detail?: PromptDetail, multi?: boolean, typing?: boolean, tabs?: string[], tab?: number }
 
 // Waiting screen of an agent (Codex at startup: hooks, folder trust,
 // login…), see server/utils/waitScreen.ts. `other`: unrecognized screen,

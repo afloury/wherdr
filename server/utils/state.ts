@@ -13,7 +13,7 @@ import { isProjectThread, paneTitle } from '../../shared/paneTitle'
 import { foregroundCommand, reduceSnapshot } from './snapshot'
 import { DATA_DIR, HERDR_SESSION, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
 import { HerdrError, agentPrompt, herdr, herdrOn, sleep } from './herdr'
-import { completeOmpAsk, parseChoices, parseOmpAsk } from './choices'
+import { completeOmpAsk, ompActiveTab, parseChoices, parseOmpAsk } from './choices'
 import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseWaitScreen } from './waitScreen'
 import { parseMenu, TOP } from '../../shared/menuScreen'
@@ -74,6 +74,16 @@ export async function readMenu(paneId: string): Promise<InteractiveMenu | null> 
   const r = await herdr('pane.read', { pane_id: paneId, source: 'visible', format: 'ansi' }, 4000)
   return parseMenu(r.read && r.read.text)
 }
+// omp "Ask" box with tabs: the tab shown, re-read in ANSI. Not found: no tabs
+// (we could not tell how many ←/→ to send).
+export async function withOmpTab(paneId: string, c: Choices): Promise<Choices> {
+  if (!c.tabs || c.tab !== undefined) return c
+  const r = await herdr('pane.read', { pane_id: paneId, source: 'visible', format: 'ansi' }, 4000)
+  const tab = ompActiveTab(r.read && r.read.text, c.tabs)
+  if (tab !== null) return { ...c, tab }
+  const { tabs: _, ...rest } = c
+  return rest
+}
 
 // Blocking prompts: re-read only when the pane's screen has changed
 // (Herdr's `revision`), and forgotten as soon as the agent is no longer blocked.
@@ -112,7 +122,7 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
     let choices = p.agent === 'omp' ? parseOmpAsk(text) : parseChoices(text, { strict })
     const menu = p.agent !== 'omp' && framed && (strict || !choices || !parseChoices(text, { strict: true })) ? await readMenu(p.id) : null
     if (menu) choices = null
-    if (choices && p.agent === 'omp') choices = completeOmpAsk(choices, await transcripts.pendingAsk(p).catch(() => []))
+    if (choices && p.agent === 'omp') choices = await withOmpTab(p.id, completeOmpAsk(choices, await transcripts.pendingAsk(p).catch(() => [])))
     out = { choices, screen: menu ? null : parseWaitScreen(text, { choices: Boolean(choices) }), menu }
     noteScreen(p.id, p.agent, text) // Codex: model from its status line
     if (choices && (choices.detail || isPermissionQuestion(choices.question))) {
@@ -732,7 +742,7 @@ async function notifyPane(p: Pane) {
     title = `${on}${agentLabel(p.agent)} attend ta réponse`
     titleEn = `${on}${agentLabel(p.agent)} needs your input`
     const q = p.prompt && p.prompt.question && (p.prompt.question.length > 300 ? `${p.prompt.question.slice(0, 299)}…` : p.prompt.question)
-    const opts = p.prompt && p.prompt.options ? p.prompt.options.slice(0, 4).map(o => o.label).join(' · ') : ''
+    const opts = p.prompt && p.prompt.options ? p.prompt.options.filter(o => !o.free).slice(0, 4).map(o => o.label).join(' · ') : ''
     body = [q, opts, where].filter(Boolean).join('\n') || p.id
   } else {
     title = `${on}${agentLabel(p.agent)} a terminé`

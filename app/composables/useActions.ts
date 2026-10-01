@@ -3,11 +3,26 @@ import type { Pane, QueuedMessage, WaitAction } from '#shared/types'
 import { type RestartPreview, RESTARTABLE, restartNotice } from '#shared/restart'
 
 // Choose an option of a blocking prompt (the server re-checks the screen).
-export async function choose(paneId: string, index: number, label: string): Promise<boolean> {
+// Free-answer option (`free`): with its text, typed by the server, and the
+// question shown ("Other" has the same label for every question).
+export async function choose(paneId: string, index: number, label: string, free?: { text: string, question: string | null }): Promise<boolean> {
   haptic()
   try {
-    await api('/api/choose', { pane_id: paneId, index, label })
-    toast(`✓ ${label}`)
+    await api('/api/choose', { pane_id: paneId, index, label, ...free })
+    const said = free && free.text.replace(/\s+/g, ' ').slice(0, 60)
+    toast(`✓ ${said ? tl(`“${said}”`, `« ${said} »`) : label}`)
+    return true
+  } catch (err) {
+    toast((err as Error).message, true)
+    return false
+  }
+}
+
+// omp "Ask" box with tabs: show question `index` (or Submit).
+export async function askTab(paneId: string, index: number, label: string): Promise<boolean> {
+  haptic()
+  try {
+    await api('/api/ask-tab', { pane_id: paneId, index, label })
     return true
   } catch (err) {
     toast((err as Error).message, true)
@@ -44,10 +59,11 @@ export async function menuAction(paneId: string, body: { op: 'select', index: nu
 }
 
 // Computer keyboard on a "Your turn" card: a real key to the
-// terminal (the server checks that a menu or prompt is still shown).
+// terminal (the server checks that a menu or prompt is still shown; ← → only
+// on omp's "Ask" box with tabs).
 // Keys sent one after the other, in typing order.
 let navChain: Promise<unknown> = Promise.resolve()
-export function navKey(paneId: string, key: 'up' | 'down' | 'enter' | 'esc'): Promise<boolean> {
+export function navKey(paneId: string, key: 'up' | 'down' | 'enter' | 'esc' | 'left' | 'right'): Promise<boolean> {
   const run = navChain.then(async () => {
     try {
       await api('/api/nav', { pane_id: paneId, key })

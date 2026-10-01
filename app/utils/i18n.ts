@@ -200,6 +200,14 @@ const FR: Record<string, string> = {
   'Empty message': 'message vide',
   'Invalid pane': 'pane invalide', 'Pane not found': 'pane introuvable',
   'The question has changed — check the current screen.': 'La question a changé entre-temps — regarde l’écran à jour.',
+  'The screen has changed — check the current screen.': 'L’écran a changé entre-temps — regarde l’écran à jour.',
+  'Write your answer before sending it.': 'Écris ta réponse avant de l’envoyer.',
+  'An answer is already being sent.': 'Une réponse est déjà en cours d’envoi.',
+  'omp’s answer field did not open — check the current screen.': 'Le champ de réponse d’omp ne s’est pas ouvert — regarde l’écran à jour.',
+  'omp’s answer field could not be cleared — check the current screen.': 'Le champ de réponse d’omp ne se vide pas — regarde l’écran à jour.',
+  'omp’s answer field closed — answer not submitted, check the current screen.': 'Le champ de réponse d’omp s’est refermé — réponse non validée, regarde l’écran à jour.',
+  // omp "Ask" box: free answer, question tabs
+  'Your answer…': 'Ta réponse…', 'Questions': 'Questions',
   'Web Push is not configured': 'Web Push non configuré',
   'Invalid subscription': 'abonnement invalide',
   // Labels without emoji (Lucide icons replace them in the new interface)

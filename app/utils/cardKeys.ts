@@ -1,6 +1,7 @@
 // Keyboard (computer) on a "Your turn" card with choices (interactive menu,
 // permission, numbered question): ↑/↓/Enter/Escape go to the terminal as
-// real keys, digits 1-9 choose a numbered option.
+// real keys, digits 1-9 choose a numbered option, ←/→ change tabs on a card
+// that has some (`tabs`: omp's "Ask" box).
 // Capture rule: the card is shown in the active view, no window
 // (modal, dropdown menu) is open, and the focus is not in an input
 // field that contains text. The message field, focused by default on a
@@ -8,7 +9,7 @@
 // and digits through (as in the terminal, where a digit picks the option);
 // as soon as a letter has been typed there, nothing is taken any more.
 // Focus on a button: Enter / Space keep their native effect (the click).
-export type CardKey = { kind: 'nav', key: 'up' | 'down' | 'enter' | 'esc' } | { kind: 'digit', n: number }
+export type CardKey = { kind: 'nav', key: 'up' | 'down' | 'enter' | 'esc' } | { kind: 'digit', n: number } | { kind: 'tab', dir: 1 | -1 }
 
 export interface FocusInfo {
   // Champ de saisie (input texte, textarea, contenteditable).
@@ -28,12 +29,13 @@ export interface KeyInfo { key: string, ctrlKey?: boolean, metaKey?: boolean, al
 
 const NAV: Record<string, 'up' | 'down' | 'enter' | 'esc'> = { ArrowUp: 'up', ArrowDown: 'down', Enter: 'enter', Escape: 'esc' }
 
-export function cardKey(e: KeyInfo, f: FocusInfo, opts: { digits: number, enter: boolean }): CardKey | null {
+export function cardKey(e: KeyInfo, f: FocusInfo, opts: { digits: number, enter: boolean, tabs?: boolean }): CardKey | null {
   if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey || f.overlay) return null
   const nav = NAV[e.key]
   if (f.own && (nav === 'up' || nav === 'down') && !e.shiftKey) return { kind: 'nav', key: nav }
   if (f.own && nav === 'enter') return null
   if (f.editable && !f.empty) return null
+  if (opts.tabs && !f.own && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return { kind: 'tab', dir: e.key === 'ArrowRight' ? 1 : -1 }
   if (nav) {
     if (e.shiftKey) return null
     if (nav === 'enter' && (f.control || !opts.enter)) return null
@@ -65,7 +67,7 @@ export function describeFocus(el: Element | null): FocusInfo {
 
 // Listens to the keyboard while `active()`: a single card at a time (the active
 // view; side by side, the active cell).
-export function useCardKeys(active: () => boolean, opts: () => { digits: number, enter: boolean, own?: Element | null }, run: (k: CardKey) => void) {
+export function useCardKeys(active: () => boolean, opts: () => { digits: number, enter: boolean, tabs?: boolean, own?: Element | null }, run: (k: CardKey) => void) {
   function onKey(e: KeyboardEvent) {
     if (!active()) return
     const o = opts()

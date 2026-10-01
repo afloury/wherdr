@@ -178,7 +178,8 @@ export function keysFor(choices: Choices, index: number): string[] {
 //   ├─────────────────────────────────┤
 //   │ ❯ ○ Red                         │   ○ ◉ single choice, ☐ ☑ checkboxes
 //   │       warm                      │   description
-//   │   ○ Other (type your own)       │   free answer: left to the terminal
+//   │   ○ Other (type your own)       │   free answer (always the last one)
+//   │       Teal                      │   … and the text already given
 //   ├─────────────────────────────────┤
 //   │ ⏎ select · ↑/↓ move · ⎋ cancel  │
 //   ╰─────────────────────────────────╯
@@ -193,6 +194,19 @@ const OMP_CHECK = ['☐', '☑', '\uf096', '\uf14a', '[ ]', '[x]']
 const OMP_CHECKED = new Set(['☑', '\uf14a', '[x]'])
 const OMP_OPTION = new RegExp(`^(?:(${OMP_CURSOR.join('|').replace(/[>]/g, '\\$&')}) | {2})(${[...OMP_RADIO, ...OMP_CHECK].map(g => g.replace(/[()[\]]/g, '\\$&')).join('|')}) (.+)$`)
 const OMP_RULE = /^\s*[├╰+][─-]{3,}/
+const OMP_ASK = /^\s*[╭+][─-]+ Ask\b/
+const OMP_OTHER = 'Other (type your own)'
+// Enter on "Other" replaces the box with the free-answer field:
+//
+//   ╭─ Custom answer: Favourite colour? ────────╮
+//   │                                            │
+//   │ > Teal                                     │   typed text, continued with a 2-space indent
+//   │   with a hint of grey                      │
+//   │                                            │
+//   │ ⏎ or ⌃Q submit  ⎋ cancel  ⌃G external editor │
+//   │                                            │
+//   ╰────────────────────────────────────────────╯
+const OMP_FIELD = /^\s*[╭+][─-]+ Custom answer: (.*?)\s*[─-]*[╮+]\s*$/
 // Content of a box line, without its borders ("│ text   │").
 function ompBoxText(line: string): string | null {
   let s = line.trimStart()
@@ -201,11 +215,53 @@ function ompBoxText(line: string): string | null {
   if (s.endsWith('│') || s.endsWith('|')) s = s.slice(0, -1).trimEnd()
   return s
 }
+const lastMatch = (lines: string[], re: RegExp) => {
+  for (let i = lines.length - 1; i >= 0; i--) if (re.test(lines[i]!)) return i
+  return -1
+}
+
+// Free-answer field on screen (below any "Ask" box: the ones in the
+// conversation are higher up): its question, its text, its rows on screen
+// (wrapping included). Empty: `value` === ''.
+export interface OmpField { question: string | null, value: string, rows: number }
+function readOmpField(lines: string[]): OmpField | null {
+  const top = lastMatch(lines, OMP_FIELD)
+  if (top < 0 || top < lastMatch(lines, OMP_ASK)) return null
+  const body: string[] = []
+  for (const line of lines.slice(top + 1)) {
+    const s = ompBoxText(line)
+    if (s === null) break
+    body.push(s)
+  }
+  const start = body.findIndex(l => /^>(?: |$)/.test(l))
+  if (start < 0) return null
+  // From the bottom: margin, legend (⏎ submit · ⎋ cancel, on two rows in a
+  // narrow pane), a blank row, then the text, blank lines included.
+  let end = body.length
+  while (end > start && !body[end - 1]!.trim()) end--
+  const legend = end
+  while (end > start && body[end - 1]!.trim()) end--
+  if (end === legend || end - 1 <= start) return null
+  const rows = body.slice(start, end - 1)
+  return {
+    question: lines[top]!.match(OMP_FIELD)![1]!.trim() || null,
+    value: rows.map((l, i) => (i ? l.replace(/^ {2}/, '') : l.replace(/^> ?/, ''))).join('\n'),
+    rows: rows.length,
+  }
+}
+export function parseOmpField(text: string | null | undefined): OmpField | null {
+  return text ? readOmpField(text.replace(/\s+$/, '').split('\n')) : null
+}
+
 export function parseOmpAsk(text: string | null | undefined): Choices | null {
   if (!text) return null
   const lines = text.replace(/\s+$/, '').split('\n')
-  let top = -1
-  for (let i = lines.length - 1; i >= 0 && top < 0; i--) if (/^\s*[╭+][─-]+ Ask\b/.test(lines[i]!)) top = i
+  const field = readOmpField(lines)
+  if (field) {
+    const hint = field.value.replace(/\s+/g, ' ').trim().slice(0, 200) || null
+    return { question: field.question, cursor: 0, options: [{ label: OMP_OTHER, hint, free: true }], typing: true }
+  }
+  const top = lastMatch(lines, OMP_ASK)
   if (top < 0) return null
   // Header, options, legend: separated by rules (the last one closes the box).
   const sections: string[][] = [[]]
@@ -217,10 +273,13 @@ export function parseOmpAsk(text: string | null | undefined): Choices | null {
   }
   if (sections.length < 3) return null
   const header = sections[0]!.filter(l => l.trim())
-  if (header.length && /\S {2,}Submit$/.test(header[0]!.trim())) header.shift()
+  // Tabs (several questions, or checkboxes): "color    size    Submit", on
+  // several rows in a narrow pane, always ending with Submit.
+  const bar = header.slice(0, 3).findIndex(l => /(?:^| {2,})Submit$/.test(l.trim()))
+  const tabs = bar >= 0 ? header.splice(0, bar + 1).join('  ').trim().split(/ {2,}/) : null
   const question = header.map(l => l.trim()).join(' ').slice(0, 300) || null
   const list = sections[1]!
-  const options: (ChoiceOption & { other?: boolean })[] = []
+  const options: ChoiceOption[] = []
   let cursor = -1
   let multi = false
   for (const line of list) {
@@ -228,7 +287,7 @@ export function parseOmpAsk(text: string | null | undefined): Choices | null {
     if (m) {
       if (m[1]) cursor = options.length
       multi ||= OMP_CHECK.includes(m[2]!)
-      options.push({ label: m[3]!.slice(0, 200), hint: null, ...(OMP_CHECKED.has(m[2]!) ? { checked: true } : {}), ...(m[3] === 'Other (type your own)' ? { other: true } : {}) })
+      options.push({ label: m[3]!.slice(0, 200), hint: null, ...(OMP_CHECKED.has(m[2]!) ? { checked: true } : {}), ...(m[3] === OMP_OTHER ? { free: true } : {}) })
     } else if (options.length && line.trim() && !options[options.length - 1]!.hint) {
       options[options.length - 1]!.hint = line.trim().replace(/^↳\s*/, '').slice(0, 200)
     }
@@ -237,13 +296,72 @@ export function parseOmpAsk(text: string | null | undefined): Choices | null {
     // "Review answers" step: the answers as Submit's description.
     if (!list.some(l => OMP_CURSOR.some(c => l.trim() === `${c} Submit`))) return null
     const answers = list.map(l => l.trim()).filter(l => /^\d+\.\s/.test(l)).map(l => l.replace(/^\d+\.\s+/, ''))
-    return { question, cursor: 0, options: [{ label: 'Submit', hint: answers.join(' · ').slice(0, 200) || null }] }
+    return { question, cursor: 0, options: [{ label: 'Submit', hint: answers.join(' · ').slice(0, 200) || null }], ...(tabs ? { tabs, tab: tabs.length - 1 } : {}) }
   }
   if (cursor < 0) return null
-  // "Other" opens an omp text field: not a button (always the last
-  // option, the others' indexes do not move; `cursor` may point to it).
-  const shown = options.filter(o => !o.other).map(({ other: _, ...o }) => (multi ? { ...o, checked: Boolean(o.checked) } : o))
-  return { question, cursor, options: shown, ...(multi ? { multi: true } : {}) }
+  const shown = multi ? options.map(o => ({ ...o, checked: Boolean(o.checked) })) : options
+  // Tab shown: only the ANSI screen tells (see ompActiveTab).
+  return { question, cursor, options: shown, ...(multi ? { multi: true } : {}), ...(tabs ? { tabs } : {}) }
+}
+
+// Tab shown in the "Ask" box (ANSI screen): the only one of the bar on a
+// different background from the box border (or in reverse video). null if the
+// bar does not have exactly these tabs, or without a single highlighted tab.
+export function ompActiveTab(ansi: string | null | undefined, tabs: string[]): number | null {
+  const rows = String(ansi || '').split('\n').map(ansiCells)
+  const top = lastMatch(rows.map(r => r.text), OMP_ASK)
+  if (top < 0) return null
+  const end = rows.slice(top + 1, top + 4).findIndex(r => /(?:^| {2,})Submit$/.test((ompBoxText(r.text) || '').trim()))
+  const bar = rows.slice(top + 1, top + 2 + end)
+  if (end < 0 || bar.map(r => ompBoxText(r.text)).join('  ').trim().split(/ {2,}/).join('\n') !== tabs.join('\n')) return null
+  const lit: number[] = []
+  let k = 0
+  for (const row of bar) {
+    for (let at = 0; k < tabs.length; k++) {
+      const i = row.text.indexOf(tabs[k]!, at)
+      if (i < 0) break
+      if (row.marks[i] !== row.marks[0]) lit.push(k)
+      at = i + tabs[k]!.length
+    }
+  }
+  return lit.length === 1 ? lit[0]! : null
+}
+
+// Text of an ANSI line and, for each character (UTF-16 unit), its background:
+// a color (SGR 40-47, 100-107, 48;5;n, 48;2;r;g;b) or "inv" (SGR 7).
+function ansiCells(line: string): { text: string, marks: string[] } {
+  let text = ''
+  const marks: string[] = []
+  let bg = ''
+  let inv = false
+  let last = 0
+  // eslint-disable-next-line no-control-regex
+  const re = /\x1b\[([0-9;:]*)m|\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])|\r/g
+  const plain = (s: string) => {
+    text += s
+    for (let i = 0; i < s.length; i++) marks.push(inv ? 'inv' : bg)
+  }
+  for (let m = re.exec(line); m; m = re.exec(line)) {
+    plain(line.slice(last, m.index))
+    last = re.lastIndex
+    if (m[1] === undefined) continue
+    const p = m[1] ? m[1].split(/[;:]/).map(Number) : [0]
+    for (let i = 0; i < p.length; i++) {
+      const n = p[i]!
+      if (n === 0) { bg = ''; inv = false }
+      else if (n === 7) inv = true
+      else if (n === 27) inv = false
+      else if (n === 49) bg = ''
+      else if ((n >= 40 && n <= 47) || (n >= 100 && n <= 107)) bg = String(n)
+      else if (n === 38 || n === 48) {
+        const len = p[i + 1] === 5 ? 2 : p[i + 1] === 2 ? 4 : 0
+        if (n === 48) bg = p.slice(i + 1, i + 1 + len).join(';')
+        i += len
+      }
+    }
+  }
+  plain(line.slice(last))
+  return { text, marks }
 }
 
 // omp's "ask" call still unanswered (JSON lines of its transcript):
@@ -275,12 +393,14 @@ export function pendingOmpAsk(lines: string[]): OmpAsked[] {
   return [...pending.values()].pop() || []
 }
 
-// On-screen question completed by the call: recognized by its start, ignoring
-// whitespace (omp joins the question's lines on display).
+// Question recognized by its start, ignoring whitespace: omp joins the
+// question's lines on display, and cuts a long question ("…").
+const questionKey = (s: string | null | undefined) => (s || '').replace(/…$/, '').replace(/\s+/g, '')
+
+// On-screen question completed by the call.
 export function completeOmpAsk(choices: Choices, asked: OmpAsked[]): Choices {
-  const key = (s: string) => s.replace(/\s+/g, '')
-  const shown = key((choices.question || '').replace(/…$/, ''))
-  const q = shown && asked.find(a => key(a.question).startsWith(shown))
+  const shown = questionKey(choices.question)
+  const q = shown && asked.find(a => questionKey(a.question).startsWith(shown))
   if (!q) return choices
   const desc = new Map(q.options.map(o => [o.label, o.description]))
   return {
@@ -291,6 +411,14 @@ export function completeOmpAsk(choices: Choices, asked: OmpAsked[]): Choices {
       return d ? { ...o, hint: d } : o
     }),
   }
+}
+
+// Same question on the re-read screen and on the phone: either one may be
+// cut, or completed from the transcript (completeOmpAsk).
+export function sameQuestion(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = questionKey(a)
+  const y = questionKey(b)
+  return x && y ? x.startsWith(y) || y.startsWith(x) : x === y
 }
 
 // On-screen prompt of a pane, re-read before answering it (choose, nav): the

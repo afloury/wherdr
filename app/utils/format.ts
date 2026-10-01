@@ -77,6 +77,8 @@ export const haptic = () => {
 
 export const isIOS = import.meta.client && (/iPad|iPhone|iPod/.test(navigator.userAgent)
   || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+// Touch keyboard: Enter adds a line there, a button below the field sends.
+export const touchKeyboard = import.meta.client && matchMedia('(pointer: coarse)').matches
 export const standalone = import.meta.client && (matchMedia('(display-mode: standalone)').matches
   || (navigator as Navigator & { standalone?: boolean }).standalone === true)
 

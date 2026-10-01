@@ -7,6 +7,7 @@ const props = defineProps<{ pane: Pane, focused?: boolean, fresh?: boolean }>()
 const emit = defineEmits<{ open: [] }>()
 const busy = ref(false)
 const prompt = computed(() => (props.pane.status === 'blocked' && props.pane.prompt?.options?.length ? props.pane.prompt : null))
+const quick = computed(() => quickChoices(prompt.value, 3))
 const screen = computed(() => knownScreen(props.pane))
 const line = computed(() => ((screen.value && screenSummary(screen.value)) || (prompt.value ? prompt.value.question : props.pane.preview)) || (props.pane.agent ? '' : shortPath(props.pane.cwd)))
 async function pick(i: number, label: string) {
@@ -33,12 +34,12 @@ watch(() => props.pane.prompt, () => { busy.value = false })
     <StatusPill :pane="pane" model />
     <code v-if="prompt?.detail" class="plan-cell-detail">{{ detailLine(prompt.detail) }}</code>
     <p v-if="line" class="plan-cell-line">{{ line }}</p>
-    <div v-if="prompt" class="plan-cell-choices">
+    <div v-if="quick.length" class="plan-cell-choices">
       <button
-        v-for="(o, i) in prompt.options.slice(0, 3)" :key="i" type="button"
-        :disabled="busy || !eventsOpen || offlineView || paneStale(pane)" @click.stop="pick(i, o.label)"
+        v-for="o in quick" :key="o.i" type="button"
+        :disabled="busy || !eventsOpen || offlineView || paneStale(pane)" @click.stop="pick(o.i, o.label)"
       >
-        <span class="n">{{ i + 1 }}</span><span class="l">{{ o.label }}</span>
+        <span class="n">{{ o.i + 1 }}</span><span class="l">{{ o.label }}</span>
       </button>
     </div>
   </div>
