@@ -53,7 +53,7 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
   const child: ChildProcessWithoutNullStreams = machine.spawnHerdr(args)
   const sess: TermView = { pane, visible: true }
   termSessions.add(sess)
-  log(`term ${pane} ouvert ${cols}x${rows}${args.includes('--takeover') ? ' (takeover)' : ''}${machine.local ? '' : ` sur ${machine.label}`}`)
+  log(`term ${pane} opened ${cols}x${rows}${args.includes('--takeover') ? ' (takeover)' : ''}${machine.local ? '' : ` on ${machine.label}`}`)
 
   readline.createInterface({ input: child.stdout }).on('line', (line) => {
     if (ws.isOpen()) ws.send(line)

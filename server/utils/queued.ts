@@ -9,10 +9,10 @@ const norm = (t: unknown) => String(t || '').replace(/\s+/g, ' ').trim().toLower
 // "! cmd": Claude Code switches to bash mode and only writes "cmd" (<bash-input>).
 export const bashText = (t: string) => String(t || '').replace(/^\s*!\s*/, '')
 
-// Pris par l'agent = un message utilisateur de la transcription, écrit après
-// l'envoi, qui contient le début du texte (Claude peut regrouper plusieurs
-// messages en attente en un seul tour). Texte modifié par l'agent : au repos,
-// un message de l'utilisateur écrit après l'envoi puis une réponse suffisent.
+// Taken by the agent = a user message in the transcript, written after
+// sending, that contains the start of the text (Claude may group several
+// queued messages into a single turn). Text modified by the agent: when idle,
+// a user message written after sending followed by a reply is enough.
 export function queuedDone(q: { text: string, at: number }, items: ChatItem[], idle: boolean, now: number): boolean {
   if (now - q.at > QUEUED_TTL_MS) return true
   const users = items.filter(i => i.role === 'user' || i.role === 'cmd' || i.role === 'bash')
@@ -36,7 +36,7 @@ export function queuedDone(q: { text: string, at: number }, items: ChatItem[], i
 export const HOLD_TTL_MS = 10 * 60 * 1000
 export const LOST_MS = 60 * 1000
 export const HOLD_AGENTS = new Set(['claude', 'codex'])
-// Agent at rest, whose input field may be checked on screen (cf. closePanel).
+// Agent at rest, whose input field may be checked on screen (see closePanel).
 export const INPUT_STATES = new Set(['idle', 'done', 'unknown'])
 
 export interface QueueEntry {

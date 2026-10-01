@@ -66,7 +66,7 @@ async function projectsCommand(m: Machine, args: string[], lang: 'fr' | 'en' = '
     const error = r.stderr || r.stdout || `code ${r.code}`
     // Read-only HOME (Docker): say what to mount rather than the raw error.
     const readOnly = readOnlyMessage(error, { docker: m.local && IN_DOCKER, lang })
-    if (readOnly) log(`herdr-projects ${args[0]} : ${error}`)
+    if (readOnly) log(`herdr-projects ${args[0]}: ${error}`)
     throw new HerdrError(readOnly ? 'read_only' : 'plugin_failed', readOnly || error)
   }
   return r.stdout
@@ -88,7 +88,7 @@ async function withoutContainerTicker<T>(m: Machine, run: () => Promise<T>): Pro
       const after = await runProjects(m, bin, ['ticker', 'status']).catch(() => null)
       if (after && tickerRunning(after.stdout)) {
         log('herdr-projects: ticker started in the container, stop requested (it will restart on the host)')
-        runProjects(m, bin, ['ticker', 'stop']).then(r => r.code && log(`herdr-projects ticker stop : ${r.stderr || r.code}`))
+        runProjects(m, bin, ['ticker', 'stop']).then(r => r.code && log(`herdr-projects ticker stop: ${r.stderr || r.code}`))
       }
     }
   }
@@ -130,7 +130,7 @@ export async function invokePluginAction(body: { machine?: unknown, pane_id?: un
     throw new HerdrError('popup_unavailable', 'Le panneau Projects est disponible dans le client Herdr ; ses saisies ne sont pas accessibles par l’API Herdr.')
   }
   if (plugin === 'herdr-projects' && action === 'doctor') {
-    log(`plugin ${plugin}.${action}${m.local ? '' : ` sur ${m.label}`} (commande)`)
+    log(`plugin ${plugin}.${action}${m.local ? '' : ` on ${m.label}`} (command)`)
     return projectsDoctor(m)
   }
   const fields = pluginInputFields(plugin, action)
@@ -183,6 +183,6 @@ export async function invokePluginAction(body: { machine?: unknown, pane_id?: un
     last = (l && l.logs || []).find(x => x.log_id === logId) || last
   }
   const res = logResult(last)
-  log(`plugin ${plugin}.${action} : ${res.status}${res.exitCode !== null ? ` (${res.exitCode})` : ''}`)
+  log(`plugin ${plugin}.${action}: ${res.status}${res.exitCode !== null ? ` (${res.exitCode})` : ''}`)
   return res
 }

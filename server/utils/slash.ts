@@ -176,7 +176,7 @@ function ompConfigDirs(home: string, cwd: string | null) {
 
 // Text of omp's file commands (without frontmatter), the user's ones:
 // omp sends it instead of "/name args", the conversation puts the command back
-// (cf. parseOmp).
+// (see parseOmp).
 export interface CommandTemplate { name: string, body: string }
 export async function ompCommandTemplates(fs: MachineFs, home: string): Promise<CommandTemplate[]> {
   const out: CommandTemplate[] = []

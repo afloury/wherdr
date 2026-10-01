@@ -98,7 +98,7 @@ export function spaceCall(body: any): HerdrCall {
       else if (to === 'new_workspace') destination = { type: 'new_workspace' }
       else if (to && typeof to === 'object') {
         const x = idOf(to.tab_id, TAB_RE, 'tab')
-        // Un pane ne passe pas d'une machine à l'autre.
+        // A pane does not move from one machine to another.
         if (x.machine !== p.machine) fail('bad_machine', 'tab on another machine')
         destination = { type: 'tab', tab_id: x.local, split: 'right' }
       } else return fail('bad_destination', 'invalid destination')
@@ -121,8 +121,8 @@ export function spaceCall(body: any): HerdrCall {
       return { machine: p.machine, method: op, params: { pane_id: p.local, target_pane_id: x.local, side } }
     }
     case 'layout.ratio': {
-      // Trait de séparation glissé : ratio du split désigné par son chemin
-      // dans l'arbre (cf. splitPath), sans toucher au focus.
+      // Dragged divider: ratio of the split designated by its path
+      // in the tree (see splitPath), without touching the focus.
       const x = idOf(b.tab_id, TAB_RE, 'tab')
       const path = String(b.path ?? '')
       if (!/^[01]{0,32}$/.test(path)) fail('bad_path', 'invalid split')

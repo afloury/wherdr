@@ -292,7 +292,7 @@ const agentMenu = computed<MenuItem[]>(() => {
   if (canAttachTerminal.value) items.push({ label: t('Attach a file…'), icon: 'i-lucide-paperclip', run: () => attachInput.value?.click() })
   if (p) items.push({ label: t('View changes'), icon: 'i-lucide-file-diff', run: () => { changesOpen.value = true } })
   if (p) items.push({ label: t('Rename pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } })
-  // Diviser, déplacer vers un autre onglet (jamais de zoom ni de redimensionnement).
+  // Split, move to another tab (never zoom or resize).
   if (p) items.push(...paneSpaceItems(p))
   if (p) items.push(copyPaneIdItem(p))
   // Herdr plugin actions of its machine that apply to a workspace / pane.
@@ -303,7 +303,7 @@ const agentMenu = computed<MenuItem[]>(() => {
     label: t('Take control of this terminal'), icon: 'i-lucide-arrow-left-right',
     run: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => ctl.connect(true)) },
   })
-  // Relancer Claude / Codex dans ce pane, sur la même conversation.
+  // Relaunch Claude / Codex in this pane, on the same conversation.
   if (p && canRestart(p) && !p.restart) items.push({ label: t('Restart agent'), icon: 'i-lucide-rotate-cw', run: () => restartAgent(p) })
   items.push({
     label: t('Reconnect'), icon: 'i-lucide-refresh-cw',

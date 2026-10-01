@@ -72,14 +72,14 @@ class NoticeListener {
     s.on('data', (chunk: Buffer) => {
       let list: Buffer[]
       try { list = frames.push(chunk) }
-      catch (e) { log(`notifications herdr (${this.name()}) : ${(e as Error).message}`); s.destroy(); return }
+      catch (e) { log(`herdr notifications (${this.name()}): ${(e as Error).message}`); s.destroy(); return }
       for (const f of list) {
         let msg
         try { msg = decodeServerFrame(f) }
         catch { continue } // frame of a type we do not read in full
         if (msg.type === 'control' && msg.kind === 'endpoint.welcome.v1') {
           let err: { message?: string } | null = null
-          try { err = JSON.parse(msg.data).error || null } catch { /* rien */ }
+          try { err = JSON.parse(msg.data).error || null } catch { /* nothing */ }
           if (err) {
             rejected = true
             log(`herdr notifications (${this.name()}) refused: ${err.message || 'handshake'}`)
@@ -90,7 +90,7 @@ class NoticeListener {
           this.fails = 0
           log(`herdr notifications (${this.name()}): listening`)
         } else if (msg.type === 'notification') {
-          onNotice(this.machine, msg.notification).catch(e => log('notif herdr :', (e as Error).message))
+          onNotice(this.machine, msg.notification).catch(e => log('herdr notification:', (e as Error).message))
         } else if (msg.type === 'shutdown') {
           s.destroy()
         }

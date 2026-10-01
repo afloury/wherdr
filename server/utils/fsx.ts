@@ -14,7 +14,7 @@ export interface MachineFs {
   statMany: (ps: string[]) => Promise<(FsStat | null)[]>
   readdir: (p: string) => Promise<string[]>
   readFile: (p: string) => Promise<string>
-  // `len` octets depuis `start` (moins en fin de fichier).
+  // `len` bytes from `start` (fewer at the end of the file).
   read: (p: string, start: number, len: number, timeoutMs?: number) => Promise<Buffer>
 }
 

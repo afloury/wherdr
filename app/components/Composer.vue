@@ -100,8 +100,8 @@ async function submit() {
   if (readOnly.value) return toast(t('Sending unavailable offline'), true)
   if (stopMode.value) return interrupt()
   if (attachments.value.some(a => !a.path)) return toast(t('Photo is uploading…'))
-  // Les photos partent comme des chemins de fichiers : Claude Code et Codex
-  // les ouvrent eux-mêmes.
+  // Photos go as file paths: Claude Code and Codex
+  // open them themselves.
   const paths = attachments.value.map(a => a.path!)
   const body = [text.value.trim(), ...paths].filter(Boolean).join('\n')
   // No marker before a "/" or "!" command: the agent would no longer read it as such.
@@ -268,7 +268,7 @@ async function loadSlash() {
     const r = await api<{ commands: SlashCommand[] }>(`/api/commands?pane=${encodeURIComponent(key)}`)
     slashCache.set(key, { at: Date.now(), list: r.commands })
     if (key === props.paneId) slashList.value = r.commands
-  } catch { /* pas de suggestions */ }
+  } catch { /* no suggestions */ }
 }
 watch(slashQuery, (q, old) => {
   if (q === null) { slashDismissed.value = false; return }

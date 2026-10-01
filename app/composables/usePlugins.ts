@@ -155,14 +155,14 @@ async function prepareForm(target: Target, action: string) {
     }
   }
 }
-// Nom de la machine ; une seule : HOST_LABEL.
+// Machine name; a single one: HOST_LABEL.
 const machineLabelOf = (key: string) => machineName(key) || hostLabel.value || t('this machine')
 
 async function runPluginAction(a: PluginAction, target: Target) {
   const where = 'pane' in target
     ? tl(`for “${paneTitle(target.pane)}”`, `pour « ${paneTitle(target.pane)} »`)
     : tl(`on ${machineLabelOf(target.machine)}`, `sur ${machineLabelOf(target.machine)}`)
-  // Toasts : « Projects · Pause project » (le libellé seul ne dit pas quel plugin).
+  // Toasts: "Projects · Pause project" (the label alone does not say which plugin).
   const name = a.label === a.title ? a.title : `${a.pluginName} · ${a.label}`
   // Input first: the sheet, with its Run button, counts as confirmation.
   if (a.plugin === 'herdr-projects' && ['new', 'adopt-workspace', 'open', 'pause', 'resume'].includes(a.id)) {

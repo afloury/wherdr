@@ -218,9 +218,9 @@ export function refreshModel(p: Pane) {
     .finally(() => modelBusy.delete(p.id))
 }
 
-// Messages envoyés depuis le téléphone mais pas encore pris par l'agent (il
-// travaille, ou démarre) : affichés « en attente » jusqu'à ce qu'ils
-// apparaissent dans sa transcription, comme dans Claude desktop / Codex.
+// Messages sent from the phone but not yet taken by the agent (it is
+// working, or starting): shown as "queued" until they
+// appear in its transcript, as in Claude desktop / Codex.
 const queued = new Map<string, QueueEntry[]>()
 export function addQueued(paneId: string, text: string, opts: { held?: boolean } = {}): QueuedMessage {
   const e: QueueEntry = { id: crypto.randomBytes(4).toString('hex'), text: String(text).slice(0, 4000), at: Date.now(), ...(opts.held ? { held: true } : {}) }
@@ -229,7 +229,7 @@ export function addQueued(paneId: string, text: string, opts: { held?: boolean }
 }
 export const hasHeld = (paneId: string) => (queued.get(paneId) || []).some(q => q.held && !q.failed)
 
-// Held messages (cf. queued.ts): typed one at a time, oldest first, once the
+// Held messages (see queued.ts): typed one at a time, oldest first, once the
 // agent rests with its input field on screen. Re-checked on every poll.
 const deliverBusy = new Set<string>()
 function deliverHeld(p: Pane) {
@@ -244,11 +244,11 @@ function deliverHeld(p: Pane) {
       await agentPrompt(p.id, q.text)
       q.held = false
       q.at = Date.now()
-      log(`message retenu envoyé sur ${p.id}`)
+      log(`held message sent on ${p.id}`)
       setTimeout(poll, 50)
     })
     .catch((e) => {
-      if (!/not an active|not_ready|blocked/i.test(`${e.code} ${e.message}`)) { q.failed = true; log(`message retenu ${p.id} : ${e.message}`) }
+      if (!/not an active|not_ready|blocked/i.test(`${e.code} ${e.message}`)) { q.failed = true; log(`held message ${p.id}: ${e.message}`) }
     })
     .finally(() => deliverBusy.delete(p.id))
 }
@@ -363,7 +363,7 @@ function flushPending(p: Pane) {
       // Not recognized as an agent yet: we will retry on the next round.
       if (!/not an active|not_ready|not_found|blocked/i.test(`${e.code} ${e.message}`)) {
         pendingPrompts.delete(p.id)
-        log(`prompt initial ${p.id} : ${e.message}`)
+        log(`initial prompt ${p.id}: ${e.message}`)
       }
     })
     .finally(() => pendingBusy.delete(p.id))
@@ -484,7 +484,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
     if (queued.has(p.id)) {
       reconcileQueued(p)
       const list = queued.get(p.id)
-      if (list && checkQueue(list, p.status, Date.now())) log(`message non envoyé sur ${p.id}`)
+      if (list && checkQueue(list, p.status, Date.now())) log(`message not sent on ${p.id}`)
       if (list) deliverHeld(p)
       if (list && list.length) p.queued = list.map(publicEntry)
     }
@@ -700,7 +700,7 @@ function watchTransitions(prev: HerdrState, next: HerdrState) {
         const now = findPane(p.id)
         if (!now) return
         const same = target === 'blocked' ? now.status === 'blocked' : READY.has(now.status || '')
-        if (same) notifyPane(now).catch(e => log('notif:', e.message))
+        if (same) notifyPane(now).catch(e => log('notification:', e.message))
       }, NOTIFY_SETTLE_MS))
     } else if (p.status === 'working') {
       clearTimeout(notifyTimers.get(p.id))

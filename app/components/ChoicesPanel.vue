@@ -45,7 +45,7 @@ useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.opt
 <template>
   <div class="choices" :class="{ 'choices-screen': screen }">
     <p class="eyebrow choices-eyebrow"><i />{{ t('Your turn') }}</p>
-    <!-- Demande de permission : ce qui est demandé, à la place du texte brut de la boîte. -->
+    <!-- Permission request: what is requested, instead of the raw box text. -->
     <PromptDetailBlock v-if="prompt?.detail" :detail="prompt.detail" />
     <p v-if="question" class="choices-q">{{ question }}</p>
     <p v-if="note" class="choices-note">{{ note }}</p>

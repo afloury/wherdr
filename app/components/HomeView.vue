@@ -113,7 +113,7 @@ async function loadMachineOrder() {
     const { order } = await api<{ order: string[] }>('/api/machine/order')
     if (request === orderLoad) machineOrder.value = order
   }
-  catch { /* L'ordre de Herdr reste disponible hors ligne. */ }
+  catch { /* Herdr's order stays available offline. */ }
 }
 onMounted(loadMachineOrder)
 watch(() => machines.value.map(m => m.baseKey ?? m.key).join('|'), loadMachineOrder)
@@ -299,7 +299,7 @@ function machineMenu(m: MachineInfo) {
 // Plugin actions of each online machine (a single one: the local one).
 const onlineKeys = computed(() => JSON.stringify(multiMachine.value ? machines.value.filter(m => m.status === 'online').map(m => m.key) : (st.value.ok ? [''] : [])))
 watch(onlineKeys, (keys) => { for (const k of JSON.parse(keys) as string[]) loadPluginActions(k) }, { immediate: true })
-// Mode silence actif : cloche barrée à côté des réglages ; l'appui le coupe.
+// Quiet mode active: crossed-out bell next to the settings; tapping it turns it off.
 const quietLabel = computed(() => tl('Do not disturb is on — tap to turn notifications back on', 'Silence actif — toucher pour réactiver les notifications'))
 const onQuietVisible = () => { if (document.visibilityState === 'visible') refreshQuiet() }
 onMounted(() => { refreshQuiet(); document.addEventListener('visibilitychange', onQuietVisible) })
@@ -499,7 +499,7 @@ function resetListWidth() {
         </div>
       </template>
 
-      <!-- Plusieurs machines : une section par machine. -->
+      <!-- Several machines: one section per machine. -->
       <template v-else>
         <section
           v-for="s in sections" :key="s.m.key" class="machine" :class="[s.m.status, { collapsed: s.collapsed, 'machine-drop-before': dropMachine === baseKeyOf(s.m) && !dropAfter, 'machine-drop-after': dropMachine === baseKeyOf(s.m) && dropAfter }]"

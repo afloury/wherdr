@@ -87,7 +87,7 @@ export interface Tab {
 }
 
 export interface Pane {
-  // w1:p1 (local) ou <machine>~w1:p1 (distant, cf. shared/ids.ts).
+  // w1:p1 (local) ou <machine>~w1:p1 (distant, see shared/ids.ts).
   id: string
   // Remote machine (short key); missing for the local machine.
   machine?: string
@@ -105,7 +105,7 @@ export interface Pane {
   title: string | null
   cwd: string | null
   agentSession: string | null
-  // Projet herdr-projects (jeton `hp_project` / `hp_group` du pane), cf. shared/projects.ts.
+  // Projet herdr-projects (jeton `hp_project` / `hp_group` du pane), see shared/projects.ts.
   project?: string
   bornAt?: number
   // Number of the agent's last state change (Herdr's `state_change_seq`,
@@ -327,7 +327,7 @@ export interface WorktreeInfo {
   workspace: string | null // open workspace (app ID), otherwise closed
   agents: number
   panes: number
-  prunable: boolean // dossier disparu
+  prunable: boolean // folder gone
 }
 
 // Action of a Herdr plugin (`[[actions]]` of herdr-plugin.toml), as

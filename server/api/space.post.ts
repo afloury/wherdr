@@ -15,7 +15,7 @@ export default defineApi(async (_event, body) => {
   }
   if (call.method === 'pane.swap') {
     await swapPanes(call.machine, String(call.params.pane_id), call.params.direction as string)
-    log(`espace : pane.swap${call.machine ? ` (${call.machine})` : ''}`)
+    log(`space: pane.swap${call.machine ? ` (${call.machine})` : ''}`)
     poll()
     return { ok: true }
   }
@@ -23,12 +23,12 @@ export default defineApi(async (_event, body) => {
     const { pane_id: pane, target_pane_id: target, side } = call.params as { pane_id: string, target_pane_id: string, side: DropSide }
     const snap = await herdrOn(call.machine, 'session.snapshot', {}, 5000)
     await runSteps(call.machine, stepsOf(() => dropSteps(snap?.snapshot || snap, pane, target, side)))
-    log(`espace : pane.drop ${side}${call.machine ? ` (${call.machine})` : ''}`)
+    log(`space: pane.drop ${side}${call.machine ? ` (${call.machine})` : ''}`)
     poll()
     return { ok: true }
   }
   const r = await herdrOn(call.machine, call.method, call.params)
-  log(`espace : ${call.method}${call.machine ? ` (${call.machine})` : ''}`)
+  log(`space: ${call.method}${call.machine ? ` (${call.machine})` : ''}`)
   poll()
   return { ok: true, ...spaceResult(call, r) }
 })

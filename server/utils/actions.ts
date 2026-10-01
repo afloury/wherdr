@@ -256,7 +256,7 @@ export async function cleanUploads() {
       const st = await fsp.stat(f)
       if (Date.now() - st.mtimeMs > UPLOAD_TTL_MS) await fsp.unlink(f)
     }
-  } catch { /* dossier absent */ }
+  } catch { /* folder missing */ }
 }
 // Photo already stored, re-read by its name (never outside the store).
 export async function readUpload(name: string) {

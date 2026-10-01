@@ -7,7 +7,7 @@ export { spaceTitle, conversationSubtitle } from '#shared/displayTitles'
 export const KIND_LABEL: Record<string, string> = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini CLI', opencode: 'OpenCode', kimi: 'Kimi', qodercli: 'Qoder CLI', mastracode: 'Mastra Code', copilot: 'Copilot', qwen: 'Qwen Code', pi: 'Pi', omp: 'omp' }
 export const kindLabel = (k: string | null | undefined) => (k && KIND_LABEL[k]) || (k ? k[0]!.toUpperCase() + k.slice(1) : 'Shell')
 export { cleanTitle }
-// Dossier personnel -> ~ (Linux /home/<user>, macOS /Users/<user>).
+// Home folder -> ~ (Linux /home/<user>, macOS /Users/<user>).
 export const shortPath = (p: string | null | undefined) => (p || '').replace(/^\/(?:home|Users)\/[^/]+/, '~') || '~'
 // Path displayed right to left (the end is visible): LTR marks around it.
 export const ltr = (s: string) => `‎${s}‎`

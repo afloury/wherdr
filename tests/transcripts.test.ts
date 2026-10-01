@@ -128,7 +128,7 @@ describe('createTranscripts', () => {
   })
 
   it('gives the preview of the last reply', async () => {
-    expect(await t.preview(claude)).toBe('fini encore') // markdown et sauts de ligne aplatis
+    expect(await t.preview(claude)).toBe('fini encore') // markdown and line breaks flattened
   })
 
   it('re-reads an image by its position', async () => {

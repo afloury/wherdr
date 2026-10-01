@@ -162,7 +162,7 @@ export function trailGlyphs(text: string, rand: () => number = Math.random): str
   return Array.from(text, c => (/\s/.test(c) ? c : TRAIL_GLYPHS[Math.floor(rand() * TRAIL_GLYPHS.length)]!))
 }
 
-// Remet tout le contenu (fin, ou toucher le message).
+// Restores all the content (end, or tapping the message).
 export function finishReveal(plan: RevealPlan) {
   applyReveal(plan, plan.total)
 }

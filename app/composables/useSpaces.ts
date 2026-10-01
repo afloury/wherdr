@@ -117,7 +117,7 @@ async function doMove(p: Pane, to: MoveDestination) {
   const r = await spaceApi({ op: 'pane.move', pane_id: p.id, to })
   if (!r) return
   toast(t('Pane moved'))
-  // Déplacé vers un autre espace, le pane change d'ID : la vue le suit.
+  // Moved to another space, the pane changes ID: the view follows it.
   const route = useRouter().currentRoute.value
   if (r.pane_id && r.pane_id !== p.id && route.path === panePath(p.id)) navigateTo(panePath(r.pane_id), { replace: true })
 }
@@ -204,9 +204,9 @@ export function swapShortcut(e: KeyboardEvent): boolean {
   return true
 }
 
-// Entrées des menus.
+// Menu entries.
 export const newTabItem = (workspaceId: string): MenuItem => ({ label: t('New tab'), icon: 'i-lucide-plus', run: () => newTab(workspaceId) })
-// Copier l'ID Herdr du pane (celui de sa machine, sans préfixe wherdr).
+// Copy the pane's Herdr ID (its machine's, without the wherdr prefix).
 export function copyPaneIdItem(p: Pane): MenuItem {
   const id = herdrPaneId(p.id)
   return {

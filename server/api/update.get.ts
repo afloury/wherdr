@@ -1,2 +1,2 @@
-// Nouvelle version de wherdr disponible ? (cf. utils/updates.ts)
+// Nouvelle version de wherdr disponible ? (see utils/updates.ts)
 export default defineApi(() => checkUpdate())

@@ -31,7 +31,7 @@ function entryOf(tab: Tab, all: Pane[]): TabEntry {
   return { tab, layout, panes: readingOrder(layout).map(p => byId.get(p.pane)!) }
 }
 
-// `machine` : seulement cette machine ('' = locale) ; absent = toutes.
+// `machine`: only this machine ('' = local); missing = all.
 export function workspaceTree(s: State, machine?: string): WorkspaceEntry[] {
   const mineM = (x: { machine?: string }) => machine === undefined || (x.machine || '') === machine
   const tabs = tabsOf(s).filter(mineM)

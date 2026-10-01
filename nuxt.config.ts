@@ -84,7 +84,7 @@ export default defineNuxtConfig({
     injectManifest: {
       rollupFormat: 'iife',
       minify: false,
-      // Polices comprises (≈ 400 Ko) : l'app garde sa typo hors ligne.
+      // Fonts included (≈ 400 KB): the app keeps its typography offline.
       globPatterns: ['**/*.{js,css,png,svg,webmanifest,woff2}'],
       globIgnores: ['**/node_modules/**'],
     },

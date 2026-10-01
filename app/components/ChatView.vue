@@ -627,8 +627,8 @@ const status = computed(() => {
   if (p.pendingPrompt && p.status !== 'working') {
     return { typing: true, text: tl(`Your first message will be sent when ${kindLabel(p.agent)} is ready`, `Ton premier message partira dès que ${kindLabel(p.agent)} sera prêt`) }
   }
-  // Claude : son verbe du moment (« ✻ Orbiting… »), lu à l'écran par le serveur ;
-  // l'étoile qui tourne devant est animée côté app (ClaudeSpinner).
+  // Claude: its current verb ("✻ Orbiting…"), read from the screen by the server;
+  // the spinning star in front is animated on the app side (ClaudeSpinner).
   if (liveShell.value) return { typing: true, text: tl('Command running…', 'Commande en cours…') }
   if (p.status === 'working' && p.agent === 'claude' && p.activity) return { typing: true, verb: true, text: `${p.activity}…` }
   if (p.status === 'working') return { typing: true, text: `${kindLabel(p.agent)} ${tl('is working…', 'travaille…')}` }

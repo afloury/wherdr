@@ -59,7 +59,7 @@ export interface Machine {
   transcripts: Transcripts
   exec: ShellExec | null // commandes shell (machines distantes)
   sock: () => string | null
-  // Socket des clients Herdr (notifications, cf. herdrNotify.ts).
+  // Herdr client socket (notifications, see herdrNotify.ts).
   clientSock: () => string | null
   // `herdr <args>` on the machine (terminal), stdin/stdout connected.
   spawnHerdr: (args: string[]) => ChildProcessWithoutNullStreams
@@ -103,7 +103,7 @@ export function localMachineId(): string {
     try {
       fs.mkdirSync(path.dirname(ID_FILE), { recursive: true })
       fs.writeFileSync(ID_FILE, selfId + '\n', { mode: 0o644 })
-    } catch (e) { log(`machine-id : ${(e as Error).message}`) }
+    } catch (e) { log(`machine-id: ${(e as Error).message}`) }
   }
   return selfId
 }
@@ -261,7 +261,7 @@ export class RemoteMachine implements Machine {
     if (this.status === status && this.error === error) return
     this.status = status
     this.error = error
-    log(`machine ${this.label} (${this.target}) : ${status}${error ? ` — ${error}` : ''}`)
+    log(`machine ${this.label} (${this.target}): ${status}${error ? ` — ${error}` : ''}`)
     this.onChange()
   }
 
@@ -282,7 +282,7 @@ export class RemoteMachine implements Machine {
   // Restarts the connection (target or session changed, silent remote server…).
   restart(reason: string) {
     if (this.stopped) return
-    log(`machine ${this.label} : reconnexion (${reason})`)
+    log(`machine ${this.label}: reconnecting (${reason})`)
     this.killMaster()
     this.fail(reason)
   }
@@ -389,7 +389,7 @@ export class RemoteMachine implements Machine {
       const clientSock = path.posix.join(path.posix.dirname(sock), 'herdr-client.sock')
       const fwdc = await runFile(SSH_BIN, ['-S', this.ctl, '-O', 'forward', '-L', `${this.fwdClient}:${clientSock}`, '--', this.target], 10000)
       this.clientFwd = fwdc.code === 0
-      if (!this.clientFwd) log(`machine ${this.label} : notifications herdr indisponibles (${lastLine(fwdc.stderr) || fwdc.code})`)
+      if (!this.clientFwd) log(`machine ${this.label}: herdr notifications unavailable (${lastLine(fwdc.stderr) || fwdc.code})`)
       if (this.master !== child || child.exitCode !== null) throw new Error('connexion SSH fermée')
       this.fails = 0
       this.pollFails = 0
@@ -520,7 +520,7 @@ export async function refreshMachines() {
 async function readMachines() {
   const r = await runFile(HERDR_BIN, ['machine', 'list', '--json'], 10000)
   if (r.code !== 0) {
-    log(`herdr machine list : ${lastLine(r.stderr) || r.code}`)
+    log(`herdr machine list: ${lastLine(r.stderr) || r.code}`)
     return
   }
   // This machine's profiles only; those pointing at itself are dropped.
@@ -596,8 +596,8 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null
 export function startMachines() {
   if (!MACHINES_ENABLED) return
   localMachineId()
-  refreshMachines().catch(e => log('machines :', e.message))
-  refreshTimer = setInterval(() => refreshMachines().catch(e => log('machines :', e.message)), MACHINES_REFRESH_MS)
+  refreshMachines().catch(e => log('machines:', e.message))
+  refreshTimer = setInterval(() => refreshMachines().catch(e => log('machines:', e.message)), MACHINES_REFRESH_MS)
 }
 export function stopMachines() {
   if (refreshTimer) clearInterval(refreshTimer)

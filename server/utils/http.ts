@@ -77,7 +77,7 @@ export function defineApi<T>(
       const err = e as Error & { code?: string }
       const known = e instanceof HerdrError || (url.pathname.startsWith('/api/auth/') && Boolean(err.code))
       const code = known ? err.code : 'internal'
-      if (!known) log('erreur', event.method, url.pathname, e)
+      if (!known) log('error', event.method, url.pathname, e)
       const status = err.code === 'unreachable' ? 503 : err.code === 'locked' ? 401 : 400
       return sendError(event, status, { error: err.message, code })
     }

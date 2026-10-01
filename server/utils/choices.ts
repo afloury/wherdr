@@ -4,12 +4,12 @@
 //
 // Two forms seen in Claude Code:
 //
-//   Quelle est ta couleur préférée ?          Security guide
+//   What is your favourite colour?            Security guide
 //
-//   ❯ 1. Rouge                                ❯ No, exit
-//        La couleur rouge                       Yes, I trust this folder
-//     2. Vert
-//        La couleur verte                     Enter to confirm · Esc to cancel
+//   ❯ 1. Red                                  ❯ No, exit
+//        The colour red                         Yes, I trust this folder
+//     2. Green
+//        The colour green                     Enter to confirm · Esc to cancel
 //
 // The ❯ cursor marks the selected option. We answer by moving the
 // cursor (↑/↓) then Enter, which works for both forms.
@@ -299,9 +299,9 @@ export function screenChoices(text: string | null | undefined, agent: string | n
   return agent === 'omp' ? parseOmpAsk(text) : parseChoices(text) || parseChoices(text, { strict: true })
 }
 
-// Champ de saisie visible = une ligne « ❯ » (Claude) ou « › » (Codex) en bas de
-// l'écran. Certaines commandes (/usage, /context all…) ouvrent un panneau plein
-// écran qui le cache tant qu'on n'appuie pas sur Échap.
+// Visible input field = a "❯" (Claude) or "›" (Codex) line at the bottom of
+// the screen. Some commands (/usage, /context all…) open a full-screen
+// panel that hides it until Escape is pressed.
 // Full-screen panel (/usage…) hiding the input, closed by Esc before a send:
 // no prompt line at all. A menu's cursor line keeps it open (the user may be
 // going through it, e.g. an /mcp authentication).
@@ -311,7 +311,7 @@ export function panelOpen(text: string | null | undefined): boolean {
 }
 
 // Claude's input line sits right under a ─── rule: a menu's cursor line
-// (« ❯ 1. Yes, proceed », /mcp, /hooks…) is not its input field.
+// ("❯ 1. Yes, proceed", /mcp, /hooks…) is not its input field.
 export function inputVisible(text: string | null | undefined): boolean {
   const lines = String(text || '').replace(/\s+$/, '').split('\n').slice(-12)
   return lines.some((l, i) => /^\s*›(\s|$)/.test(l)

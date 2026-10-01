@@ -244,12 +244,12 @@ export async function setModel(paneId: string, wanted: string): Promise<ModelInf
         effort = m.effort
         await herdr('pane.send_input', { pane_id: p.id, keys: ['s'] })
       } else {
-        // Codex : Entrée ne fait que passer au choix de l'effort (« enter select »).
+        // Codex: Enter only moves on to the effort choice ("enter select").
         if (!m.enterSelects) throw new HerdrError('unsafe', 'Unexpected /model menu — nothing was changed.')
         await herdr('pane.send_input', { pane_id: p.id, keys: ['enter'] })
         const e = await waitMenu(p.id, x => x.kind === 'effort', 4000)
         if (!e || !e.sessionKey) throw new HerdrError('unsafe', 'Unexpected effort menu — nothing was changed.')
-        // On garde l'effort courant s'il existe pour ce modèle, sinon celui proposé.
+        // Keep the current effort if it exists for this model, otherwise the one offered.
         const keep = e.options.find(o => effortMatches(o.label, before && before.effort))
         const at = keep && keep.n !== e.cursor ? await pick(p.id, e, keep.n, keep.label, 'effort') : e
         effort = (at.options.find(o => o.n === at.cursor)?.label || '').toLowerCase().replace(/\s+/g, '') || null

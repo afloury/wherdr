@@ -1,5 +1,5 @@
 // WS /ws/mirror?pane=…: live mirror of a pane, without attaching to it
-// (`herdr terminal session observe`, cf. server/utils/mirror.ts).
+// (`herdr terminal session observe`, see server/utils/mirror.ts).
 const sessions = new Map<string, TermSession>()
 
 export default defineWebSocketHandler({

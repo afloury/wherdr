@@ -98,7 +98,7 @@ export function goalWithTask(goal: string, task: string | undefined, lang: 'fr' 
 
 export interface ProjectContext {
   pane?: string // identifiant local du pane (w1:p1)
-  cwd?: string // dossier du pane
+  cwd?: string // pane folder
   session: string // session Herdr de la machine
   lang?: 'fr' | 'en'
 }

@@ -216,7 +216,7 @@ const sec = ref<AuthStatus | null>(null)
 const supported = import.meta.client && Boolean(window.PublicKeyCredential)
 async function refreshSecurity() {
   try { sec.value = await api<AuthStatus>('/api/auth/status') }
-  catch { /* hors ligne */ }
+  catch { /* offline */ }
 }
 // Readable device name, for the key list.
 function deviceName() {
@@ -294,7 +294,7 @@ onMounted(() => {
         <div v-show="activeSection === 'appearance'" class="settings-section">
           <div class="settings-group">
             <h3>{{ t('Theme') }}</h3>
-            <!-- Replié par défaut : on voit le thème courant, un appui déplie la liste. -->
+            <!-- Collapsed by default: the current theme shows, a tap expands the list. -->
             <button type="button" class="theme-opt theme-current" :aria-expanded="themesOpen" @click="themesOpen = !themesOpen">
               <span class="theme-sw"><i v-for="(c, i) in currentTheme ? swatches(currentTheme) : []" :key="i" :style="{ background: c }" /></span>
               <span class="theme-name">{{ currentLabel }}<small>{{ t(themesOpen ? 'Hide themes' : 'Change theme') }}</small></span>

@@ -29,7 +29,7 @@ export async function restartPlanFor(p: Pane, d: RestartDeps = defaultDeps): Pro
     // In front of a question, the field (and its mode) is not shown.
     if (p.status !== 'blocked') {
       try { current.permissionMode = claudeFooterMode((await d.call('pane.read', { pane_id: p.id, source: 'visible' }, 4000))?.read?.text) }
-      catch { /* mode inconnu : celui de la ligne de commande */ }
+      catch { /* unknown mode: the command line's */ }
     }
   }
   return planRestart({ kind: p.agent, argv, session, hadSession: Boolean(p.agentSession), current })

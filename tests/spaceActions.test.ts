@@ -12,7 +12,7 @@ describe('spaceCall', () => {
       machine: '', method: 'tab.create', params: { workspace_id: 'w1', label: 'dev api', focus: false },
     })
     expect(spaceCall({ op: 'tab.create', workspace_id: 'w2' }).params).toEqual({ workspace_id: 'w2', focus: false })
-    // Dossier du nouvel onglet : chemin absolu seulement.
+    // Folder of the new tab: absolute path only.
     expect(spaceCall({ op: 'tab.create', workspace_id: 'w2', cwd: '/home/user/dev' }).params).toEqual({ workspace_id: 'w2', cwd: '/home/user/dev', focus: false })
     expect(spaceCall({ op: 'tab.create', workspace_id: 'w2', cwd: '~/dev' }).params).toEqual({ workspace_id: 'w2', focus: false })
   })
@@ -33,7 +33,7 @@ describe('spaceCall', () => {
       machine: R, method: 'pane.split', params: { target_pane_id: 'w1:p2', direction: 'down', focus: false },
     })
     expect(() => spaceCall({ op: 'pane.split', pane_id: 'w1:p2', direction: 'left' })).toThrow(/direction/)
-    // Dossier du nouveau pane : absolu seulement.
+    // Folder of the new pane: absolute only.
     expect(spaceCall({ op: 'pane.split', pane_id: 'w1:p2', direction: 'right', cwd: '/srv/app' }).params).toEqual({ target_pane_id: 'w1:p2', direction: 'right', cwd: '/srv/app', focus: false })
     expect(spaceCall({ op: 'pane.split', pane_id: 'w1:p2', direction: 'right', cwd: 'app' }).params).toEqual({ target_pane_id: 'w1:p2', direction: 'right', focus: false })
   })

@@ -230,7 +230,7 @@ export async function readCodex(fs: MachineFs, home: string): Promise<CodexAccou
         const hit = lastCodexLimits((await fs.read(f, s!.size - len, len)).toString('utf8'))
         const q = hit && codexQuota(hit.rl, hit.at || s!.mtimeMs)
         if (q) return { q, stamp: hit!.at, account: codexAccount(await readHead(fs, f, s!.size).catch(() => '')) }
-      } catch { return null /* fichier illisible */ }
+      } catch { return null /* unreadable file */ }
       if (len === s!.size) break
     }
     return null

@@ -67,7 +67,7 @@ export function openMirror(ws: WsLike, url: URL): TermSession | null {
     readline.createInterface({ input: c.stdout }).on('line', (line) => {
       if (child === c && ws.isOpen()) ws.send(line)
     })
-    readline.createInterface({ input: c.stderr }).on('line', line => log(`miroir ${pane} stderr: ${line}`))
+    readline.createInterface({ input: c.stderr }).on('line', line => log(`mirror ${pane} stderr: ${line}`))
     c.on('error', () => {})
     c.on('exit', () => {
       if (child === c && !closed) ws.close(4000, 'observe ended')
@@ -79,7 +79,7 @@ export function openMirror(ws: WsLike, url: URL): TermSession | null {
     const next = await probe(pane).catch(() => null)
     if (closed) return
     if (next && (next.cols !== size.cols || next.rows !== size.rows)) {
-      log(`miroir ${pane} : ${size.cols}x${size.rows} -> ${next.cols}x${next.rows}`)
+      log(`mirror ${pane}: ${size.cols}x${size.rows} -> ${next.cols}x${next.rows}`)
       start(next)
     }
     timer = setTimeout(recheck, RECHECK_MS)

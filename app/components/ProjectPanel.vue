@@ -338,8 +338,8 @@ function hideHint() {
                   <TaskBadges :badges="task.badges" />
                 </span>
               </template>
-              <!-- À tester / À décider / Backlog : texte sur toute la largeur ; dessous,
-                   le responsable et les actions de la section. -->
+              <!-- To test / To decide / Backlog: text across the full width; below,
+                   the owner and the section's actions. -->
               <span v-else class="pp-task-body">
                 <span class="pp-task-text"><TaskText :text="task.text" /></span>
                 <span v-if="task.reason" class="pp-reason">{{ task.reason }}</span>
