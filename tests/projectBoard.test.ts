@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { boardSections, visibleSections, missingLists as missingListsOf, coordinatorRules, decisionPrefix, classifyLink, extractLinks, prLabel, reviewCommentPrefix, reviewedMessage, detailPrefix, launchMessage, listKind, normalizeThreads, ownerIsMe, parseTaskLine, parseTasks, takeBadges, badgeColor, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage, unblockMessage } from '../shared/projectBoard'
+import { boardSections, visibleSections, missingLists as missingListsOf, coordinatorRules, decisionPrefix, reviewCommentPrefix, reviewedMessage, detailPrefix, launchMessage, listKind, normalizeThreads, parseTaskLine, parseTasks, takeBadges, badgeColor, badgeTarget, textParts, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage, unblockMessage } from '../shared/projectBoard'
 import { pluginBinary } from '../server/utils/projectBoard'
 import { isCoordinator } from '../shared/projects'
 import type { Pane } from '../shared/types'
@@ -96,80 +96,96 @@ describe('TASKS.md', () => {
     expect(parseTaskLine('- [ ] (me)')?.text).toBe('(me)')
     expect(parseTaskLine('texte libre')).toBeNull()
     expect(parseTaskLine('- [X] Fini')?.done).toBe(true)
-    expect(ownerIsMe('me')).toBe(true)
-    expect(ownerIsMe('Moi')).toBe(true)
-    expect(ownerIsMe('agent')).toBe(false)
-    expect(ownerIsMe(null)).toBe(false)
   })
   it('un lien Markdown en fin de ligne reste un lien, pas le responsable', () => {
     expect(parseTaskLine('- [ ] Bandeau [PR](https://github.com/owner/repo/pull/12)', 'review'))
-      .toEqual({ text: 'Bandeau PR', done: false, owner: null, thread: null, links: ['https://github.com/owner/repo/pull/12'] })
+      .toEqual({ text: 'Bandeau [PR](https://github.com/owner/repo/pull/12)', done: false, owner: null, thread: null })
     expect(parseTaskLine('- [ ] Bandeau [PR](https://github.com/owner/repo/pull/12) (me)', 'review')?.owner).toBe('me')
     expect(parseTaskLine('- [ ] Case [x] (me)')?.owner).toBe('me')
   })
 })
 
-describe('threads liés [t-NNNN]', () => {
-  it('ID seul, retiré du texte', () => {
-    expect(parseTaskLine('- [ ] Bouton Stop [t-0140]')).toEqual({ text: 'Bouton Stop', done: false, owner: null, thread: null, refs: ['t-0140'] })
+describe('anciennes lignes : [t-NNNN] et (me)', () => {
+  it('[t-NNNN] nu retiré du texte, sans badge', () => {
+    expect(parseTaskLine('- [ ] Bouton Stop [t-0140]')).toEqual({ text: 'Bouton Stop', done: false, owner: null, thread: null })
+    expect(parseTaskLine('- [ ] Terminal [T-0140, t-0141; t-0140] (agent)')).toEqual({ text: 'Terminal', done: false, owner: 'agent', thread: null })
   })
-  it('plusieurs IDs, en minuscules et sans doublon', () => {
-    expect(parseTaskLine('- [ ] Terminal [T-0140, t-0141; t-0140] (agent)')?.refs).toEqual(['t-0140', 't-0141'])
-  })
-  it('ID avant ou après le responsable', () => {
-    const a = parseTaskLine('- [ ] Bouton Stop vraiment [t-0140] (me)')!
-    const b = parseTaskLine('- [ ] Bouton Stop vraiment (me) [t-0140]')!
-    for (const x of [a, b]) {
+  it('ID avant ou après le responsable ; responsable lu mais hors du texte', () => {
+    for (const line of ['- [ ] Bouton Stop vraiment [t-0140] (me)', '- [ ] Bouton Stop vraiment (me) [t-0140]']) {
+      const x = parseTaskLine(line)!
       expect(x.text).toBe('Bouton Stop vraiment')
       expect(x.owner).toBe('me')
-      expect(x.refs).toEqual(['t-0140'])
     }
   })
   it('parenthèses dans le texte : le responsable est le dernier groupe', () => {
-    const line = '- [ ] Bouton Stop (clic) pendant une commande : « Interruption… » puis l’agent s’arrête (me)'
-    expect(parseTaskLine(line)?.owner).toBe('me')
-    expect(parseTaskLine(line)?.text).toBe('Bouton Stop (clic) pendant une commande : « Interruption… » puis l’agent s’arrête')
-    const withRef = parseTaskLine(line.replace(' (me)', ' [t-0140] (me)'))!
-    expect(withRef.owner).toBe('me')
-    expect(withRef.refs).toEqual(['t-0140'])
+    const line = '- [ ] Bouton Stop (clic) pendant une commande (me)'
+    expect(parseTaskLine(line)).toMatchObject({ owner: 'me', text: 'Bouton Stop (clic) pendant une commande' })
   })
-  it('pas d’ID : pas de refs ; crochets ordinaires gardés', () => {
-    expect(parseTaskLine('- [ ] Rien à lier (me)')).not.toHaveProperty('refs')
+  it('crochets ordinaires gardés', () => {
     expect(parseTaskLine('- [ ] Tableau [beta] (me)')?.text).toBe('Tableau [beta]')
-    expect(parseTaskLine('- [ ] [t-0140]')?.text).toBe('[t-0140]')
   })
 })
 
-describe('badges libres [b:couleur(texte)]', () => {
-  it('hex court ou long, normalisé', () => {
+describe('badges [b:couleur(texte)](cible)', () => {
+  it('badge simple : hex court ou long normalisé, palette, neutre', () => {
     expect(takeBadges('A [b:#fA0(urgent)]').badges).toEqual([{ text: 'urgent', color: '#ffaa00' }])
     expect(takeBadges('A [b:#12abEF(x)]').badges[0]!.color).toBe('#12abef')
-  })
-  it('nom de palette, sans couleur, couleur invalide', () => {
     expect(takeBadges('[b:green(ok)] A').badges[0]).toEqual({ text: 'ok', color: 'green' })
     expect(takeBadges('A [b:(neutre)]').badges[0]!.color).toBeNull()
-    for (const c of ['#12', 'fuchsia', '#ggg', 'url(x)']) expect(badgeColor(c)).toBeNull()
   })
-  it('plusieurs badges n’importe où, dans l’ordre, avec ID et responsable', () => {
-    const t = parseTaskLine('- [ ] [b:red(bug)] Bouton Stop [b:blue(iOS)] vraiment [t-0140] (me) [b:(v1.2)]')!
+  it('couleur invalide : badge neutre', () => {
+    for (const c of ['#12', 'fuchsia', '#ggg', 'url(x)']) expect(badgeColor(c)).toBeNull()
+    expect(takeBadges('A [b:fuchsia(x)]').badges[0]).toEqual({ text: 'x', color: null })
+  })
+  it('badge-lien URL', () => {
+    const t = parseTaskLine('- [ ] Bandeau [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me)')!
+    expect(t).toEqual({ text: 'Bandeau', done: false, owner: 'me', thread: null, badges: [{ text: 'PR #12', color: 'blue', href: 'https://github.com/owner/repo/pull/12' }] })
+    expect(takeBadges('A [b:(doc)](http://example.test/a)').badges[0]!.href).toBe('http://example.test/a')
+  })
+  it('badge-lien thread', () => {
+    expect(takeBadges('A [b:gray(t-0140)](T-0140)').badges[0]).toEqual({ text: 't-0140', color: 'gray', thread: 't-0140' })
+  })
+  it('schéma interdit : badge non cliquable, cible retirée du texte', () => {
+    for (const bad of ['javascript:alert(1)', 'data:text/html,x', 'ftp://example.test', '//example.test', 'mailto:a@example.test', 'https://']) {
+      const r = takeBadges(`A [b:red(x)](${bad}) B`)
+      expect(r.badges).toEqual([{ text: 'x', color: 'red' }])
+      expect(badgeTarget(bad)).toBeNull()
+    }
+  })
+  it('plusieurs badges n’importe où, dans l’ordre', () => {
+    const t = parseTaskLine('- [ ] [b:red(bug)] Bouton Stop [b:blue(iOS)](https://example.test/ios) vraiment [t-0140] (me) [b:(v1.2)]')!
     expect(t.text).toBe('Bouton Stop vraiment')
     expect(t.owner).toBe('me')
-    expect(t.refs).toEqual(['t-0140'])
     expect(t.badges!.map(b => b.text)).toEqual(['bug', 'iOS', 'v1.2'])
+    expect(t.badges![1]!.href).toBe('https://example.test/ios')
   })
-  it('parenthèses et crochets dans le texte ; [b:…(t-0001)] reste un badge', () => {
+  it('parenthèses et crochets dans le texte ; HTML gardé brut', () => {
     expect(takeBadges('A [b:(a (b) [c])]').badges[0]!.text).toBe('a (b) [c]')
-    const t = parseTaskLine('- [ ] A [b:(t-0001)] (me)')!
-    expect(t.badges![0]!.text).toBe('t-0001')
-    expect(t).not.toHaveProperty('refs')
-  })
-  it('HTML gardé en texte brut ; texte long gardé entier (tronqué à l’affichage)', () => {
     expect(takeBadges('A [b:(<img src=x onerror=alert(1)>)]').badges[0]!.text).toBe('<img src=x onerror=alert(1)>')
     const long = 'x'.repeat(40)
     expect(takeBadges(`A [b:(${long})]`).badges[0]!.text).toBe(long)
   })
+  it('ligne faite seulement de badges : leur texte sert de titre', () => {
+    expect(parseTaskLine('- [ ] [b:blue(PR #3)](https://example.test/pr/3)')?.text).toBe('PR #3')
+  })
   it('pas de badge : ligne inchangée', () => {
     expect(parseTaskLine('- [ ] A [b:()] (me)')).not.toHaveProperty('badges')
+  })
+})
+
+describe('URL brutes dans le texte', () => {
+  it('rendues en liens simples, texte autour gardé', () => {
+    expect(textParts('Bandeau https://github.com/o/r/pull/7, merci')).toEqual([
+      { text: 'Bandeau ' }, { text: 'https://github.com/o/r/pull/7', href: 'https://github.com/o/r/pull/7' }, { text: ', merci' },
+    ])
+    expect(textParts('Voir <http://example.test/a>.')).toEqual([{ text: 'Voir ' }, { text: 'http://example.test/a', href: 'http://example.test/a' }, { text: '.' }])
+  })
+  it('lien Markdown : libellé lié', () => {
+    expect(textParts('Voir [la PR](https://example.test/pr/3) ici')).toEqual([{ text: 'Voir ' }, { text: 'la PR', href: 'https://example.test/pr/3' }, { text: ' ici' }])
+  })
+  it('autres schémas : texte', () => {
+    expect(textParts('javascript:alert(1) et data:x')).toEqual([{ text: 'javascript:alert(1) et data:x' }])
+    expect(textParts('[x](javascript:alert(1))')).toEqual([{ text: '[x](javascript:alert(1))' }])
   })
 })
 
@@ -371,6 +387,11 @@ describe('aide du tableau (Réglages › Plugins)', () => {
     expect(fr).toContain(m.launchMessage('…', 'fr'))
     expect(fr).toContain(m.unblockMessage('…', 'fr'))
     expect(fr).toContain('Déplacer une tâche en Bloqué')
+    // Une seule syntaxe de badges, à utiliser de manière autonome.
+    expect(fr).toContain('[b:couleur(texte)](cible)')
+    expect(fr).toContain('de toi-même')
+    expect(m.coordinatorRules('en')).toContain('on your own')
+    expect(fr).not.toContain('[t-0140, t-0141]')
     expect(m.coordinatorRules('en')).toContain(m.launchMessage('…', 'en'))
     expect(m.coordinatorRules('en')).toContain(m.unblockMessage('…', 'en'))
     for (const p of [m.problemPrefix, m.questionPrefix, m.decisionPrefix, m.detailPrefix]) {
@@ -386,18 +407,10 @@ describe('liste À relire', () => {
       expect(listKind(h)).toBe('review')
     expect(listKind('Previews')).toBeNull()
   })
-  it('retire les liens https du texte', () => {
-    expect(extractLinks('Bandeau hors ligne https://github.com/owner/repo/pull/12')).toEqual({ text: 'Bandeau hors ligne', links: ['https://github.com/owner/repo/pull/12'] })
-    expect(extractLinks('Voir [la PR](https://gitlab.com/g/p/-/merge_requests/3), merci')).toEqual({ text: 'Voir la PR, merci', links: ['https://gitlab.com/g/p/-/merge_requests/3'] })
-    expect(extractLinks('Ancien http://example.test/x et <https://example.test/a>.')).toEqual({ text: 'Ancien http://example.test/x et.', links: ['https://example.test/a'] })
-    expect(extractLinks('javascript:alert(1)').links).toEqual([])
-  })
-  it('lit la liste et garde le responsable', () => {
-    const [l] = parseTasks('## À relire\n- [ ] Bandeau — https://github.com/o/r/pull/7 (me)\n- [ ] https://git.example.test/o/r/pull-requests/4')
+  it('lit la liste et garde le responsable ; l’URL reste dans le texte', () => {
+    const [l] = parseTasks('## À relire\n- [ ] Bandeau — https://github.com/o/r/pull/7 (me)')
     expect(l!.kind).toBe('review')
-    expect(l!.tasks[0]).toMatchObject({ text: 'Bandeau', owner: 'me', links: ['https://github.com/o/r/pull/7'] })
-    expect(l!.tasks[1]!.text).toBe('r#4')
-    expect(prLabel('https://example.test/doc')).toBe('example.test')
+    expect(l!.tasks[0]).toEqual({ text: 'Bandeau — https://github.com/o/r/pull/7', done: false, owner: 'me', thread: null })
   })
   it('messages Relu et Commenter', () => {
     expect(reviewedMessage(' Bandeau ')).toBe('✓ Relu : Bandeau')
@@ -426,23 +439,5 @@ describe('Masquer les listes vides', () => {
   })
   it('une liste vide masquée ne déclenche pas la suggestion', () => {
     expect(missingListsOf(lists)).toEqual([])
-  })
-})
-
-describe('classifyLink', () => {
-  it('reconnaît les vrais liens de PR/MR', () => {
-    expect(classifyLink('https://github.com/o/r/pull/12')).toEqual({ pr: true, label: 'r#12', repo: 'r', number: 12 })
-    expect(classifyLink('https://github.com/o/r/pull/12/files')).toMatchObject({ pr: true, label: 'r#12' })
-    expect(classifyLink('https://gitlab.example.com/g/sub/app/-/merge_requests/3')).toMatchObject({ pr: true, label: 'app#3' })
-    expect(classifyLink('https://bitbucket.org/ws/lib/pull-requests/45/overview')).toMatchObject({ pr: true, label: 'lib#45' })
-    expect(classifyLink('https://dev.azure.com/org/proj/_git/svc/pullrequest/9')).toMatchObject({ pr: true, label: 'svc#9' })
-  })
-  it('laisse les autres liens ordinaires', () => {
-    expect(classifyLink('https://github.com/o/r')).toEqual({ pr: false, label: 'github.com/o/r' })
-    expect(classifyLink('https://github.com/o/r/issues/5')).toMatchObject({ pr: false })
-    expect(classifyLink('https://github.com/o/r/pull/abc')).toMatchObject({ pr: false })
-    expect(classifyLink('https://app.example.com/')).toEqual({ pr: false, label: 'app.example.com' })
-    expect(classifyLink('https://www.example.com/docs/a/very/long/path/here')).toEqual({ pr: false, label: 'example.com/docs/a/very/long/path/…' })
-    expect(classifyLink('pas une url')).toEqual({ pr: false, label: 'pas une url' })
   })
 })

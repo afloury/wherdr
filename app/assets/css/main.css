@@ -2001,19 +2001,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .pp-task.done .pp-box { background: var(--line-strong); }
 .pp-task-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .pp-task.done .pp-task-text { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--dim); }
-.pp-owner { flex: none; max-width: 38%; margin-top: 1px; padding: 3px 5px; border: 1px solid var(--line); font: 500 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pp-task.mine .pp-owner { color: var(--mauve); }
 .pp-tags { flex: none; max-width: 45%; margin-top: 1px; display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
-.pp-tags .pp-owner { max-width: 100%; margin-top: 0; }
-/* Thread lié [t-NNNN] : même hauteur que le responsable, carré d'état discret. */
-.pp-ref { display: inline-flex; align-items: center; gap: 5px; padding: 3px 5px; border: 1px solid var(--line); background: none; font: 500 10px/1 var(--mono); letter-spacing: .04em; color: var(--muted); white-space: nowrap; cursor: default; }
-.pp-ref i { width: 5px; height: 5px; flex: none; background: var(--dim); }
-.pp-ref.working i { background: var(--working); }
-.pp-ref.blocked i { background: var(--blocked); }
-.pp-ref.done i { background: var(--done); }
-.pp-ref.idle i { background: var(--idle); }
-.pp-ref.live { cursor: pointer; color: var(--text); }
-@media (hover: hover) { .pp-ref.live:hover { border-color: var(--line-strong); } }
 /* Badge libre [b:couleur(texte)] : texte coloré, bordure et fond très légers. */
 .pp-badge { --bc: var(--muted); display: inline-flex; align-items: center; max-width: 100%; padding: 3px 5px; border: 1px solid color-mix(in srgb, var(--bc) 45%, transparent); background: color-mix(in srgb, var(--bc) 9%, transparent); font: 500 10px/1 var(--mono); letter-spacing: .04em; color: var(--bc); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Hex libre : mêlé à la couleur du texte pour rester lisible dans les deux thèmes. */
@@ -2027,17 +2015,18 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .pp-badge.c-violet { --bc: var(--lav); }
 .pp-badge.c-pink { --bc: var(--mauve); }
 .pp-badge.c-gray { --bc: var(--muted); }
+/* Badge-lien (URL ou thread) : petite flèche, contour plus net au survol. */
+button.pp-badge { font: 500 10px/1 var(--mono); }
+.pp-badge.link { gap: 4px; cursor: pointer; text-decoration: none; }
+.pp-badge-go { font-style: normal; opacity: .6; }
+@media (hover: hover) { .pp-badge.link:hover { border-color: var(--bc); } }
+.pp-badge.link:focus-visible { outline: 1px solid var(--bc); outline-offset: 1px; }
+/* URL dans le texte d'une tâche : lien texte simple. */
+.pp-tlink { color: var(--accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); text-underline-offset: 2px; overflow-wrap: anywhere; }
 .pp-task-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
 .pp-task-body .pp-task-text { flex: none; }
 .pp-reason { font: 11px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
-.pp-task-body .pp-owner { max-width: 100%; margin-top: 0; }
 .pp-task-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 26px; }
-.pp-links { display: inline-flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
-.pp-link { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 0 7px; border: 1px solid var(--line); color: var(--accent); font: 600 10px/1 var(--mono); letter-spacing: .04em; text-transform: uppercase; text-decoration: none; white-space: nowrap; }
-.pp-link:hover, .pp-link:focus-visible { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
-.pp-link .iconify { width: 12px; height: 12px; flex: none; }
-.pp-link.web { color: var(--muted); text-transform: none; letter-spacing: 0; font-weight: 500; }
-.pp-link.web:hover, .pp-link.web:focus-visible { color: var(--text); border-color: var(--muted); background: color-mix(in srgb, var(--text) 6%, transparent); }
 /* Confirmer / Problème / Question : carrés teintés de 26 px, dans une zone
    de toucher invisible d'au moins 40 px. */
 .pp-verdict { flex: none; display: flex; margin-left: auto; margin-right: -6px; }

@@ -18,13 +18,15 @@ const reviewedByPane = new Map<string, Set<string>>()
 // coordinateur), Problème (« ✗ Problème : … — ») et Question (« ? Question : … — »),
 // ces deux-là mis dans son champ de saisie (émis vers la vue de l'agent).
 // « À décider » : Question et Répondre préparent aussi un brouillon.
-// « À relire » : les liens https de la ligne deviennent « Ouvrir la PR » ; Relu
-// envoie « ✓ Relu : … », Commenter prépare « ↳ Retour sur … : ».
+// « À relire » : Relu envoie « ✓ Relu : … », Commenter prépare « ↳ Retour sur
+// … : » (le lien de la PR : badge-lien ou URL du texte, posés par le coordinateur).
+// Seules décorations des tâches : les badges [b:couleur(texte)](cible) du
+// coordinateur ; les URL du texte sont des liens simples.
 // « Backlog » : Lancer envoie le message ; Préciser prépare un brouillon.
 // Le fichier n'est jamais écrit d'ici.
 // `side` : colonne à droite de la conversation (ordinateur), repliable.
 import type { Pane, QueuedMessage } from '#shared/types'
-import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, type TaskBadge, boardSections, visibleSections, decisionPrefix, detailPrefix, launchMessage, classifyLink, missingLists, ownerIsMe, problemPrefix, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, unblockMessage } from '#shared/projectBoard'
+import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, type TaskBadge, boardSections, visibleSections, decisionPrefix, detailPrefix, launchMessage, missingLists, problemPrefix, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, textParts, unblockMessage } from '#shared/projectBoard'
 import { md } from '~/utils/markdown'
 
 const props = defineProps<{ paneId: string, board: ProjectBoard | null, loading: boolean, error: string, side?: boolean }>()
@@ -88,25 +90,43 @@ function openThread(th: ProjectThread) {
   else toast(t('Agent de ce thread introuvable'), true)
 }
 
-// Badge [t-NNNN] d'une tâche : thread connu (état en couleur, clic ouvre son
-// agent s'il tourne encore) ou simple ID.
+// Badges [b:couleur(texte)](cible) : palette (suit le thème) ou hex validé ;
+// cible URL (nouvel onglet) ou thread (ouvre son onglet s'il existe).
+const BADGE_MAX = 24
+const badgeShort = (b: TaskBadge) => (b.text.length > BADGE_MAX ? `${b.text.slice(0, BADGE_MAX - 1)}…` : b.text)
+const badgeClass = (b: TaskBadge) => [b.color?.startsWith('#') ? 'hex' : b.color ? `c-${b.color}` : '', { link: Boolean(b.href || b.thread) }]
+const badgeStyle = (b: TaskBadge) => (b.color?.startsWith('#') ? { '--bc': b.color } : undefined)
 function refThread(id: string): ProjectThread | undefined {
   return props.board?.open.find(x => x.id === id) || props.board?.resolved.find(x => x.id === id)
 }
-function refTitle(id: string) {
-  const th = refThread(id)
-  return th ? `${id.toUpperCase()} · ${th.title} · ${groupLabel(th)}` : id.toUpperCase()
+function badgeTitle(b: TaskBadge) {
+  if (b.href) return b.href
+  if (b.thread) {
+    const th = refThread(b.thread)
+    if (!th) return tl(`${b.thread} : thread inconnu`, `${b.thread}: unknown thread`)
+    return `${b.thread} · ${th.title} · ${groupLabel(th)}${paneOf(th) ? '' : tl(' · pas d’onglet ouvert', ' · no open tab')}`
+  }
+  return b.text.length > BADGE_MAX ? b.text : undefined
 }
-function openRef(id: string) {
+function openBadgeThread(id: string) {
   const th = refThread(id)
   if (th && paneOf(th)) openThread(th)
+  else toast(badgeTitle({ text: id, color: null, thread: id })!, true)
 }
 
-// Badges libres [b:couleur(texte)] : palette (suit le thème) ou hex validé.
-const BADGE_MAX = 24
-const badgeShort = (b: TaskBadge) => (b.text.length > BADGE_MAX ? `${b.text.slice(0, BADGE_MAX - 1)}…` : b.text)
-const badgeClass = (b: TaskBadge) => (b.color?.startsWith('#') ? 'hex' : b.color ? `c-${b.color}` : '')
-const badgeStyle = (b: TaskBadge) => (b.color?.startsWith('#') ? { '--bc': b.color } : undefined)
+// Texte d'une tâche (URL → lien simple) et ses badges, rendus en ligne.
+const TaskText = (p: { text: string }) => textParts(p.text).map(x => (x.href
+  ? h('a', { class: 'pp-tlink', href: x.href, target: '_blank', rel: 'noopener noreferrer', onClick: (e: Event) => e.stopPropagation() }, x.text)
+  : x.text))
+TaskText.props = ['text']
+const TaskBadges = (p: { badges: TaskBadge[] }) => p.badges.map((b, j) => {
+  const inner = [badgeShort(b), b.href || b.thread ? h('i', { 'class': 'pp-badge-go', 'aria-hidden': 'true' }, '↗') : null]
+  const common = { key: `b${j}`, class: ['pp-badge', ...badgeClass(b)], style: badgeStyle(b), title: badgeTitle(b) }
+  if (b.href) return h('a', { ...common, href: b.href, target: '_blank', rel: 'noopener noreferrer', onClick: () => haptic() }, inner)
+  if (b.thread) { const id = b.thread; return h('button', { ...common, type: 'button', onClick: () => openBadgeThread(id) }, inner) }
+  return h('span', common, inner)
+})
+TaskBadges.props = ['badges']
 
 const allOpen = ref(false)
 
@@ -177,7 +197,7 @@ const decidable = (s: BoardSection, task: ProjectTask) => s.kind === 'decide' &&
 const launchable = (s: BoardSection, task: ProjectTask) => s.kind === 'backlog' && !task.done
 const unblockable = (s: BoardSection, task: ProjectTask) => s.kind === 'blocked' && !task.done
 const reviewable = (s: BoardSection, task: ProjectTask) => s.kind === 'review' && !task.done
-const actionable = (s: BoardSection, task: ProjectTask) => testable(s, task) || decidable(s, task) || launchable(s, task) || unblockable(s, task) || reviewable(s, task) || Boolean(task.links?.length)
+const actionable = (s: BoardSection, task: ProjectTask) => testable(s, task) || decidable(s, task) || launchable(s, task) || unblockable(s, task) || reviewable(s, task)
 async function reviewTask(task: ProjectTask) {
   if (reviewing.value || reviewed.value.has(task.text)) return
   const pane = herdrState.value.panes.find(p => p.id === props.paneId)
@@ -191,13 +211,6 @@ async function reviewTask(task: ProjectTask) {
     emit('sent', queued)
   } catch (e) { toast((e as Error).message, true) }
   finally { reviewing.value = null }
-}
-// Libellé d'un lien : PR → « Ouvrir la PR » (plusieurs PR : « repo#N ») ;
-// lien ordinaire → hôte et chemin court.
-const linkLabel = (task: ProjectTask, url: string) => {
-  const l = classifyLink(url)
-  if (!l.pr) return l.label
-  return (task.links || []).filter(u => classifyLink(u).pr).length > 1 ? l.label : tl('Ouvrir la PR', 'Open PR')
 }
 async function confirmTask(task: ProjectTask) {
   if (confirming.value || confirmed.value.has(task.text)) return
@@ -263,13 +276,6 @@ function hideHint() {
   try { localStorage.setItem(HINT_KEY, '1') } catch {}
 }
 
-// ------------------------------------------------------------ tâches
-function ownerLabel(task: ProjectTask) {
-  if (!task.owner) return ''
-  if (ownerIsMe(task.owner)) return t('toi')
-  if (task.thread) return task.thread
-  return task.owner
-}
 </script>
 
 <template>
@@ -322,51 +328,27 @@ function ownerLabel(task: ProjectTask) {
             </li>
             <li
               v-for="(task, i) in s.tasks" :key="`t${i}`" class="pp-row pp-task"
-              :class="{ done: task.done, mine: ownerIsMe(task.owner), testable: testable(s, task), decidable: decidable(s, task), launchable: launchable(s, task), unblockable: unblockable(s, task), reviewable: reviewable(s, task), sent: (reviewable(s, task) && reviewed.has(task.text)) || (testable(s, task) && confirmed.has(task.text)) || (launchable(s, task) && launched.has(task.text)) || (unblockable(s, task) && unblocked.has(task.text)) }"
+              :class="{ done: task.done, testable: testable(s, task), decidable: decidable(s, task), launchable: launchable(s, task), unblockable: unblockable(s, task), reviewable: reviewable(s, task), sent: (reviewable(s, task) && reviewed.has(task.text)) || (testable(s, task) && confirmed.has(task.text)) || (launchable(s, task) && launched.has(task.text)) || (unblockable(s, task) && unblocked.has(task.text)) }"
             >
               <span class="pp-box" aria-hidden="true" />
               <template v-if="!actionable(s, task)">
-                <span v-if="task.reason" class="pp-task-body"><span class="pp-task-text">{{ task.text }}</span><span class="pp-reason">{{ task.reason }}</span></span>
-                <span v-else class="pp-task-text">{{ task.text }}</span>
-                <span v-if="task.owner || task.refs || task.badges" class="pp-tags">
-                  <span v-if="task.owner" class="pp-owner">{{ ownerLabel(task) }}</span>
-                  <button
-                  v-for="id in task.refs || []" :key="id" type="button" class="pp-ref"
-                  :class="[refThread(id) ? groupClass(refThread(id)!) : 'unknown', { live: refThread(id) && paneOf(refThread(id)!) }]"
-                  :title="refTitle(id)" :aria-label="refTitle(id)" @click="openRef(id)"
-                ><i />{{ id }}</button>
-                  <span
-                  v-for="(b, j) in task.badges || []" :key="`b${j}`" class="pp-badge" :class="badgeClass(b)" :style="badgeStyle(b)"
-                  :title="b.text.length > BADGE_MAX ? b.text : undefined"
-                >{{ badgeShort(b) }}</span>
+                <span v-if="task.reason" class="pp-task-body"><span class="pp-task-text"><TaskText :text="task.text" /></span><span class="pp-reason">{{ task.reason }}</span></span>
+                <span v-else class="pp-task-text"><TaskText :text="task.text" /></span>
+                <span v-if="task.badges" class="pp-tags">
+                  <TaskBadges :badges="task.badges" />
                 </span>
               </template>
               <!-- À tester / À décider / Backlog : texte sur toute la largeur ; dessous,
                    le responsable et les actions de la section. -->
               <span v-else class="pp-task-body">
-                <span class="pp-task-text">{{ task.text }}</span>
+                <span class="pp-task-text"><TaskText :text="task.text" /></span>
                 <span v-if="task.reason" class="pp-reason">{{ task.reason }}</span>
                 <span class="pp-task-foot">
                   <span v-if="testable(s, task) && confirmed.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
                   <span v-else-if="launchable(s, task) && launched.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
                   <span v-else-if="unblockable(s, task) && unblocked.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
                   <span v-else-if="reviewable(s, task) && reviewed.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
-                  <span v-if="task.owner" class="pp-owner">{{ ownerLabel(task) }}</span>
-                  <button
-                    v-for="id in task.refs || []" :key="id" type="button" class="pp-ref"
-                    :class="[refThread(id) ? groupClass(refThread(id)!) : 'unknown', { live: refThread(id) && paneOf(refThread(id)!) }]"
-                    :title="refTitle(id)" :aria-label="refTitle(id)" @click="openRef(id)"
-                  ><i />{{ id }}</button>
-                  <span
-                    v-for="(b, j) in task.badges || []" :key="`b${j}`" class="pp-badge" :class="badgeClass(b)" :style="badgeStyle(b)"
-                    :title="b.text.length > BADGE_MAX ? b.text : undefined"
-                  >{{ badgeShort(b) }}</span>
-                  <span v-if="task.links?.length" class="pp-links">
-                    <a
-                      v-for="url in task.links" :key="url" class="pp-link" :class="{ web: !classifyLink(url).pr }" :href="url" target="_blank" rel="noopener noreferrer"
-                      :title="url" @click="haptic()"
-                    ><UIcon :name="classifyLink(url).pr ? 'i-lucide-git-pull-request' : 'i-lucide-globe'" /><span>{{ linkLabel(task, url) }}</span><UIcon name="i-lucide-arrow-up-right" /></a>
-                  </span>
+                  <TaskBadges v-if="task.badges" :badges="task.badges" />
                   <span v-if="decidable(s, task) || launchable(s, task) || unblockable(s, task) || (reviewable(s, task) && !reviewed.has(task.text)) || (testable(s, task) && !confirmed.has(task.text))" class="pp-verdict">
                     <UTooltip v-if="reviewable(s, task)" :text="tl('Relu : prévenir le coordinateur', 'Reviewed: tell the coordinator')" :disabled="!desk">
                       <button type="button" class="pp-vbtn backlog-action reviewed" :disabled="reviewing !== null" :aria-label="tl(`Relu : ${task.text}`, `Reviewed: ${task.text}`)" @click="reviewTask(task)">
