@@ -5,13 +5,13 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CONTROL_SCRIPT, STATUS_SCRIPT, parseAwakeStatus, parseControl } from '../server/utils/awake'
 
-// Les vrais scripts, exécutés avec un faux caffeinate (journal start/stop) et un
-// faux uname (Darwin) dans un HOME temporaire.
+// The real scripts, run with a fake caffeinate (start/stop log) and a
+// fake uname (Darwin) in a temporary HOME.
 let root: string, home: string, bin: string, log: string
 const pidFile = () => join(home, '.cache/herdr-web/awake.pid')
 let extra: Record<string, string> = {}
 const env = () => ({ PATH: `${bin}:/usr/bin:/bin`, HOME: home, ...extra })
-// Chaque inhibiteur lancé est noté, pour l'arrêter (et l'attendre) après le test.
+// Each inhibitor started is recorded, to stop it (and wait for it) after the test.
 let spawned: number[] = []
 function control(mode: string, lid = '0') {
   const out = execFileSync('sh', ['-c', CONTROL_SCRIPT, 'sh', mode, lid], { env: env(), encoding: 'utf8' })
@@ -20,7 +20,7 @@ function control(mode: string, lid = '0') {
   return out
 }
 const status = () => parseAwakeStatus(execFileSync('sh', ['-c', STATUS_SCRIPT], { env: env(), encoding: 'utf8' }))
-// Un zombie (orphelin non récolté, ex. Docker sans --init) compte comme mort.
+// A zombie (unreaped orphan, e.g. Docker without --init) counts as dead.
 function alive(pid: number) {
   try { process.kill(pid, 0) }
   catch { return false }
@@ -31,10 +31,10 @@ async function gone(pid: number) {
   for (let i = 0; i < 50 && alive(pid); i++) await new Promise(r => setTimeout(r, 100))
   return !alive(pid)
 }
-// Les scripts lisent /proc (Linux) ou `ps -p` (macOS) : sans l'un ni l'autre, on ignore.
+// The scripts read /proc (Linux) or `ps -p` (macOS): without either, we skip.
 const canInspect = existsSync(`/proc/${process.pid}/stat`)
   || Boolean(spawnSync('ps', ['-p', String(process.pid), '-o', 'args='], { encoding: 'utf8' }).stdout?.trim())
-// État lisible d'un PID, pour que l'échec dise pourquoi (hors de ce Mac/Docker).
+// Readable state of a PID, so a failure says why (outside this Mac/Docker).
 function why(pid: number) {
   const read = (f: string) => { try { return readFileSync(f, 'utf8').replaceAll('\0', ' ').trim() } catch { return '-' } }
   return `pid ${pid} stat=[${read(`/proc/${pid}/stat`)}] cmdline=[${read(`/proc/${pid}/cmdline`)}] pidfile=[${read(pidFile())}] events=[${read(log)}]`
@@ -44,8 +44,8 @@ function fakeCaffeinate(body: string) {
   writeFileSync(join(bin, 'caffeinate'), `#!/bin/sh\n${body}\n`)
   chmodSync(join(bin, 'caffeinate'), 0o755)
 }
-// Le script n'est jamais réécrit pendant qu'un caffeinate l'exécute (sh relit
-// son script au fil de l'eau) : l'échec de lancement passe par un fichier témoin.
+// The script is never rewritten while a caffeinate runs it (sh re-reads
+// its script as it goes): the launch failure goes through a marker file.
 const LIVE = `[ ! -f "${'$'}FAIL" ] || exit 1; echo "start $$" >> "${'$'}LOG"; trap 'echo "stop $$" >> "${'$'}LOG"; kill $! 2>/dev/null; exit 0' TERM; sleep 30 & wait`
 
 describe.skipIf(process.platform === 'win32' || !canInspect)('keep-awake control script', { timeout: 20000 }, () => {
@@ -56,8 +56,8 @@ describe.skipIf(process.platform === 'win32' || !canInspect)('keep-awake control
     writeFileSync(join(bin, 'uname'), '#!/bin/sh\necho Darwin\n'); chmodSync(join(bin, 'uname'), 0o755)
     fakeCaffeinate(LIVE.replaceAll('$LOG', log).replaceAll('$FAIL', join(root, 'fail')))
   })
-  // Un caffeinate arrêté écrit encore « stop » dans le journal : l'attendre
-  // avant de supprimer le dossier (sinon ENOTEMPTY sur machine chargée).
+  // A stopped caffeinate still writes "stop" to the log: wait for it
+  // before deleting the folder (otherwise ENOTEMPTY on a loaded machine).
   afterEach(async () => {
     for (const pid of spawned) if (alive(pid)) process.kill(pid)
     for (const pid of spawned) await gone(pid)
@@ -74,7 +74,7 @@ describe.skipIf(process.platform === 'win32' || !canInspect)('keep-awake control
     const b = (second as { started: number }).started
     expect(b).not.toBe(a)
     expect(alive(b)).toBe(true)
-    // Aucun instant sans assertion : B démarre, puis A s'arrête.
+    // No moment without an assertion: B starts, then A stops.
     await gone(a)
     expect(events()).toEqual([`start ${a}`, `start ${b}`, `stop ${a}`])
     const s = status()
@@ -125,7 +125,7 @@ describe.skipIf(process.platform === 'win32' || !canInspect)('keep-awake control
     const a = (parseControl(control('hour')) as { started: number }).started
     writeFileSync(pidFile(), `${a}|0|0|Thu Jan  1 00:00:00 2026\n`)
     expect(status().active, why(a)).toBe(false)
-    // Et « off » ne tue pas un processus qui n'est pas le nôtre.
+    // And "off" does not kill a process that is not ours.
     writeFileSync(pidFile(), `${a}|0|0|Thu Jan  1 00:00:00 2026\n`)
     control('off')
     expect(alive(a), why(a)).toBe(true)
@@ -141,14 +141,14 @@ describe.skipIf(process.platform === 'win32' || !canInspect)('keep-awake control
   })
 })
 
-// Sorties réelles de `ps -p <pid> -o lstart=` relevées sur macOS (BSD ps) :
-// le format suit LANG/LC_ALL et l'heure suit TZ, espaces de fin compris.
+// Real outputs of `ps -p <pid> -o lstart=` captured on macOS (BSD ps):
+// the format follows LANG/LC_ALL and the time follows TZ, trailing spaces included.
 const MAC_LSTART = {
   cUtc: 'Tue Sep 29 17:58:41 2026    ',
   cParis: 'Tue Sep 29 19:58:41 2026    ',
   frParis: 'mar. 29 sept. 19:58:41 2026 ',
 }
-// Faux ps BSD : args lus dans /proc (processus réel), lstart selon locale et fuseau.
+// Fake BSD ps: args read from /proc (real process), lstart according to locale and time zone.
 const FAKE_MAC_PS = `#!/bin/sh
 pid=$2; field=$4
 [ -r "/proc/$pid/cmdline" ] || exit 1
@@ -171,7 +171,7 @@ describe.skipIf(process.platform !== 'linux' || !existsSync(`/proc/${process.pid
     writeFileSync(join(bin, 'uname'), '#!/bin/sh\necho Darwin\n'); chmodSync(join(bin, 'uname'), 0o755)
     writeFileSync(join(bin, 'ps'), FAKE_MAC_PS); chmodSync(join(bin, 'ps'), 0o755)
     fakeCaffeinate(LIVE.replaceAll('$LOG', log).replaceAll('$FAIL', join(root, 'fail')))
-    // Pas de /proc pour les scripts : ils passent par ps, comme sur macOS.
+    // No /proc for the scripts: they go through ps, as on macOS.
     extra = { AWAKE_PROC: join(root, 'no-proc'), LANG: 'fr_FR.UTF-8', TZ: 'Europe/Paris' }
   })
   afterEach(async () => {

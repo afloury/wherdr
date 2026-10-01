@@ -1,6 +1,6 @@
-// Écran de Claude Code au travail : ce que la transcription ne dit pas encore.
-// Une commande « ! » n'y est écrite qu'à la fin ; pendant qu'elle tourne,
-// l'écran montre déjà la commande, sa sortie et un compteur (Claude Code 2.1.x) :
+// Claude Code's screen while working: what the transcript does not say yet.
+// A "!" command is only written there at the end; while it runs,
+// the screen already shows the command, its output and a counter (Claude Code 2.1.x):
 //
 //   ! ./build.sh
 //     ⎿  step 16 of 60
@@ -8,16 +8,16 @@
 //        +15 lines (19s)
 //        (ctrl+b to run in background)
 //
-//   ❯ un message en file
+//   ❯ a queued message
 //     ctrl+enter to send now
 //
 //   ────────────────────────
 //   ❯ Press up to edit queued messages
 //   ────────────────────────
 //
-// Sans sortie encore : « ⎿  Running… (7s) ». Les messages en file sont les
-// lignes « ❯ » juste au-dessus du cadre du champ de saisie ; plus haut, les
-// lignes « ❯ » / « ! » en colonne 0 sont les messages déjà partis.
+// No output yet: "⎿  Running… (7s)". Queued messages are the
+// "❯" lines just above the input field frame; further up, the
+// "❯" / "!" lines at column 0 are messages already sent.
 import type { ClaudeScreen, ShellRun } from '../../shared/types'
 
 const RULE_RE = /^\s*[─━]{8,}\s*$/
@@ -26,16 +26,16 @@ const RUNNING = /^Running…(?:\s*\(([^)]*)\))?$/
 const MORE = /^\+(\d+) lines?(?:\s*\(([^)]*)\))?$/
 const BACKGROUND = /^\(ctrl\+b to run in background\)$/i
 
-// « 1m 14s » → ms.
+// "1m 14s" → ms.
 export function elapsedMs(s: string | null | undefined): number | null {
   const m = /^(?:(\d+)h\s*)?(?:(\d+)m\s*)?(\d+)s$/.exec(String(s || '').trim())
   if (!m) return null
   return ((Number(m[1] || 0) * 60 + Number(m[2] || 0)) * 60 + Number(m[3])) * 1000
 }
 
-// Entrée « ❯ texte » ou « ! commande » et ses lignes de suite (indentées de 2).
+// "❯ text" or "! command" entry and its continuation lines (indented by 2).
 function entryAt(lines: string[], i: number): { text: string, next: number } {
-  // « !  cmd » : envoyé comme « ! cmd », Claude garde l'espace après le « ! ».
+  // "!  cmd": sent as "! cmd", Claude keeps the space after the "!".
   const out = [lines[i]!.slice(2).trimStart()]
   let j = i + 1
   for (; j < lines.length; j++) {
@@ -49,12 +49,12 @@ function entryAt(lines: string[], i: number): { text: string, next: number } {
 export function parseClaudeScreen(text: string | null | undefined, now = Date.now()): ClaudeScreen | null {
   if (!text) return null
   const lines = text.split('\n').map(l => l.replace(/\s+$/, ''))
-  // Cadre du champ de saisie : on ne lit que ce qui est au-dessus.
+  // Input field frame: we only read what is above it.
   const rules: number[] = []
   for (let i = lines.length - 1; i >= 0 && rules.length < 2; i--) if (RULE_RE.test(lines[i]!)) rules.push(i)
   const end = rules.length === 2 ? rules[1]! : lines.length
 
-  // File : bloc de lignes « ❯ » (et leurs suites, l'astuce « ctrl+enter ») collé au cadre.
+  // Queue: block of "❯" lines (and their continuations, the "ctrl+enter" hint) right against the frame.
   let top = end
   for (let i = end - 1; i >= 0; i--) {
     const l = lines[i]!
@@ -81,7 +81,7 @@ export function parseClaudeScreen(text: string | null | undefined, now = Date.no
 
   let shell: ShellRun | null = null
   if (bash) {
-    // Sortie : « ⎿  » puis lignes indentées, jusqu'à la première ligne en colonne 0.
+    // Output: "⎿  " then indented lines, up to the first line at column 0.
     const out: string[] = []
     let running = false
     let hidden = 0
@@ -89,7 +89,7 @@ export function parseClaudeScreen(text: string | null | undefined, now = Date.no
     for (let j = entry.next; j < top; j++) {
       const l = lines[j]!
       if (l && !l.startsWith(' ')) break
-      // Sortie en colonne 5 (« ··⎿··texte », puis 5 espaces) : son indentation propre reste.
+      // Output at column 5 ("··⎿··text", then 5 spaces): its own indentation is kept.
       const t = /^ {2}⎿|^ {5}/.test(l) ? l.slice(5) : l.trim()
       const s = t.trim()
       let m: RegExpExecArray | null
@@ -108,10 +108,10 @@ export function parseClaudeScreen(text: string | null | undefined, now = Date.no
   return { shell, sent, queued }
 }
 
-// Statut de Claude Code à côté du champ de saisie (« ✔ Update installed ·
-// Restart to update »…), aligné à droite dans les dernières lignes. Seuls des
-// statuts connus sont retenus : le reste de ces lignes (astuces, raccourcis,
-// barre d'état) n'est pas fiable.
+// Claude Code status next to the input field ("✔ Update installed ·
+// Restart to update"…), right-aligned in the last lines. Only
+// known statuses are kept: the rest of these lines (tips, shortcuts,
+// status bar) is not reliable.
 const NOTICES = [
   /✔?\s*Update installed\s*·\s*Restart to update\b/,
   /Update available!?\s*(?:·\s*)?Run[^\n]*?update\b/i,
@@ -134,15 +134,15 @@ export function parseClaudeNotice(text: string | null | undefined): string | nul
   return null
 }
 
-// Suggestion de prochain message de Claude Code : texte grisé (SGR 2) seul dans
-// son champ de saisie, que Tab accepte. Lue dans l'écran ANSI :
+// Claude Code's next-message suggestion: grayed-out text (SGR 2) alone in
+// its input field, which Tab accepts. Read from the ANSI screen:
 //
 //   ────────────────────────
-//   ❯  ESC[0mESC[2mOui, pousse la brancheESC[0m
+//   ❯  ESC[0mESC[2mYes, push the branchESC[0m
 //   ────────────────────────
 //
-// Un texte tapé n'est pas grisé ; l'aide « Press up to edit queued messages »
-// l'est aussi, mais ce n'est pas une suggestion. null : pas de suggestion.
+// Typed text is not grayed out; the "Press up to edit queued messages" hint
+// is too, but it is not a suggestion. null: no suggestion.
 // eslint-disable-next-line no-control-regex
 const SGR_ANY = /\x1b\[[0-9;?]*[ -/]*[@-~]/g
 const HINTS = /^Press up to edit queued messages$|^Try "|^Type your message/i
@@ -150,13 +150,13 @@ export function parseClaudeSuggestion(ansi: string | null | undefined): string |
   if (!ansi) return null
   const lines = String(ansi).split('\n').map(l => l.replace(/\r$/, ''))
   const plain = lines.map(l => l.replace(SGR_ANY, '').trimEnd())
-  // Dernier cadre du champ : ligne « ❯ » (espace insécable) entre deux traits.
+  // Last frame of the field: "❯" line (non-breaking space) between two rules.
   let at = -1
   for (let i = plain.length - 1; i > 0; i--) {
     if (plain[i]!.startsWith('❯ ')) { at = i; break }
   }
   if (at < 1 || !RULE_RE.test(plain[at - 1]!) || !RULE_RE.test(plain[at + 1] || '')) return null
-  // Tout le contenu après l'invite doit être grisé : un seul segment SGR 2.
+  // All content after the prompt must be grayed out: a single SGR 2 segment.
   const rest = lines[at]!.slice(lines[at]!.indexOf('❯') + 2)
   const m = /^\s*(?:\x1b\[0m)*\x1b\[2m([^\x1b]*)(?:\x1b\[0m)?\s*$/.exec(rest) // eslint-disable-line no-control-regex
   if (!m) return null

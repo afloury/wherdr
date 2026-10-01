@@ -5,23 +5,23 @@ import { type RestartDeps, startAgent, stopAgent } from '../server/utils/restart
 const ID = '00000000-0000-4000-8000-000000000001'
 
 describe('options de lancement', () => {
-  it('garde les options connues de Claude, écarte le choix de conversation et le message initial', () => {
+  it('keeps Claude\'s known options, drops the conversation choice and the initial message', () => {
     const r = launchOptions('claude', ['claude', '--model', 'sonnet', '--resume', 'abc', '--permission-mode', 'plan', '--dangerously-skip-permissions', '--tmux', 'bonjour'])
-    // --tmux : propre au premier lancement, signalé ; --resume : remplacé, sans bruit.
+    // --tmux: specific to the first launch, reported; --resume: replaced, silently.
     expect(r.kept.flat()).toEqual(['--model', 'sonnet', '--permission-mode', 'plan', '--dangerously-skip-permissions'])
     expect(r.dropped.flat()).toEqual(['--tmux'])
   })
-  it('options à valeurs multiples et forme --option=valeur', () => {
+  it('multi-value options and --option=value form', () => {
     const r = launchOptions('claude', ['/usr/bin/claude', '--add-dir', '/a', '/b', '--effort=high', '-c'])
     expect(r.kept.flat()).toEqual(['--add-dir', '/a', '/b', '--effort=high'])
     expect(r.dropped.flat()).toEqual([])
   })
-  it('option inconnue écartée avec sa valeur', () => {
+  it('unknown option dropped with its value', () => {
     const r = launchOptions('claude', ['claude', '--mystere', 'x', '--verbose'])
     expect(r.kept.flat()).toEqual(['--verbose'])
     expect(r.dropped.flat()).toEqual(['--mystere', 'x'])
   })
-  it('Codex lancé par node, sous-commande resume ignorée', () => {
+  it('Codex launched by node, resume subcommand ignored', () => {
     const r = launchOptions('codex', ['node', '/opt/lib/codex.js', 'resume', '--last', '-m', 'gpt-x', '-s', 'workspace-write', '--yolo'])
     expect(r.kept.flat()).toEqual(['-m', 'gpt-x', '-s', 'workspace-write', '--yolo'])
     expect(r.dropped.flat()).toEqual([])
@@ -29,24 +29,24 @@ describe('options de lancement', () => {
 })
 
 describe('commande de relance', () => {
-  it('Claude : reprend la conversation par son id, sans le modèle d’origine (restauré par --resume)', () => {
+  it('Claude: resumes the conversation by its id, without the original model (restored by --resume)', () => {
     const p = planRestart({ kind: 'claude', argv: ['claude', '--model', 'haiku', '--effort', 'low'], session: ID, hadSession: true })
     expect(p.mode).toBe('resume')
     expect(p.args).toEqual(['--effort', 'low', '--resume', ID])
   })
-  it('Claude : effort et mode de permission lus à l’écran remplacent ceux d’origine', () => {
+  it('Claude: effort and permission mode read on screen replace the original ones', () => {
     const p = planRestart({ kind: 'claude', argv: ['claude', '--effort', 'low', '--permission-mode', 'plan'], session: ID, hadSession: true, current: { effort: 'High', permissionMode: 'acceptEdits' } })
     expect(p.args).toEqual(['--effort', 'high', '--permission-mode', 'acceptEdits', '--resume', ID])
   })
-  it('Claude : mode par défaut à l’écran retire le mode d’origine ; effort inconnu ignoré', () => {
+  it('Claude: default mode on screen removes the original mode; unknown effort ignored', () => {
     const p = planRestart({ kind: 'claude', argv: ['claude', '--permission-mode', 'plan'], session: ID, hadSession: true, current: { effort: 'turbo', permissionMode: 'default' } })
     expect(p.args).toEqual(['--resume', ID])
   })
-  it('Claude sans id de session : --continue, avec les options d’origine', () => {
+  it('Claude without a session id: --continue, with the original options', () => {
     const p = planRestart({ kind: 'claude', argv: ['claude', '--model', 'haiku'], session: null, hadSession: false })
     expect(p).toMatchObject({ mode: 'continue', args: ['--model', 'haiku', '--continue'] })
   })
-  it('conversation vide (id sans transcription) : relance neuve, rien à reprendre', () => {
+  it('empty conversation (id without a transcript): fresh relaunch, nothing to resume', () => {
     const p = planRestart({ kind: 'claude', argv: ['claude'], session: null, hadSession: true })
     expect(p).toMatchObject({ mode: 'fresh', args: [] })
   })
@@ -54,14 +54,14 @@ describe('commande de relance', () => {
     expect(planRestart({ kind: 'codex', argv: ['codex', '-m', 'gpt-x'], session: ID, hadSession: true }).args).toEqual(['resume', '-m', 'gpt-x', ID])
     expect(planRestart({ kind: 'codex', argv: ['codex'], session: null, hadSession: false }).args).toEqual(['resume', '--last'])
   })
-  it('ligne de commande introuvable : signalée', () => {
+  it('command line not found: reported', () => {
     expect(planRestart({ kind: 'claude', argv: null, session: ID, hadSession: true }).unknownArgs).toBe(true)
   })
 })
 
 describe('confirmation', () => {
   const quiet = { mode: 'resume' as const, kept: [], dropped: [], unknownArgs: false }
-  it('agent au repos, tout retrouvé : pas de modale', () => {
+  it('idle agent, everything found: no modal', () => {
     expect(restartNotice('idle', quiet).confirm).toBe(false)
     expect(restartNotice('done', quiet).confirm).toBe(false)
   })
@@ -69,14 +69,14 @@ describe('confirmation', () => {
     expect(restartNotice('working', quiet)).toMatchObject({ confirm: true, busy: true })
     expect(restartNotice('blocked', quiet)).toMatchObject({ confirm: true, busy: true })
   })
-  it('options perdues ou conversation vide : modale même au repos', () => {
+  it('options lost or empty conversation: modal even when idle', () => {
     expect(restartNotice('idle', { ...quiet, unknownArgs: true })).toMatchObject({ confirm: true, defaults: true })
     expect(restartNotice('idle', { ...quiet, dropped: ['--mystere'] }).confirm).toBe(true)
     expect(restartNotice('idle', { ...quiet, mode: 'fresh' }).confirm).toBe(true)
   })
 })
 
-describe('mode de permission à l’écran', () => {
+describe('permission mode on screen', () => {
   const screen = (footer: string) => ['● Réponse', '', '─'.repeat(40), '❯ ', '─'.repeat(40), footer].join('\n')
   it('lit le mode sous le champ', () => {
     expect(claudeFooterMode(screen('  ⏸ plan mode on (shift+tab to cycle)'))).toBe('plan')
@@ -90,7 +90,7 @@ describe('mode de permission à l’écran', () => {
   })
 })
 
-// Faux Herdr : le pane repasse au shell après `trigger` (touche ou texte).
+// Fake Herdr: the pane goes back to the shell after `trigger` (key or text).
 function fakeHerdr(o: { exitOn: string | null, status?: string }) {
   const calls: string[] = []
   let atShell = false
@@ -118,27 +118,27 @@ function fakeHerdr(o: { exitOn: string | null, status?: string }) {
   return { d, calls }
 }
 
-describe('séquence d’arrêt et de relance', () => {
-  it('au repos : /exit puis Entrée suffit', async () => {
+describe('stop and relaunch sequence', () => {
+  it('idle: /exit then Enter is enough', async () => {
     const { d, calls } = fakeHerdr({ exitOn: 'keys:enter' })
     expect(await stopAgent(d, { id: 'w1:p1', agent: 'claude', status: 'idle' })).toBe('exit')
     expect(calls).toEqual(['text:/exit', 'keys:enter'])
   })
-  it('au travail : un seul Échap (l’agent s’arrête), puis /exit', async () => {
+  it('working: a single Escape (the agent stops), then /exit', async () => {
     const { d, calls } = fakeHerdr({ exitOn: 'keys:enter', status: 'working' })
     await stopAgent(d, { id: 'w1:p1', agent: 'claude', status: 'working' })
     expect(calls).toEqual(['keys:esc', 'text:/exit', 'keys:enter'])
   })
-  it('/exit sans effet : Ctrl+C deux fois', async () => {
+  it('/exit without effect: Ctrl+C twice', async () => {
     const { d, calls } = fakeHerdr({ exitOn: 'keys:ctrl+c' })
     expect(await stopAgent(d, { id: 'w1:p1', agent: 'claude', status: 'idle' })).toBe('ctrl-c')
     expect(calls).toEqual(['text:/exit', 'keys:enter', 'keys:ctrl+c', 'keys:ctrl+c'])
   })
-  it('agent qui ne s’arrête pas : erreur claire', async () => {
+  it('agent that does not stop: clear error', async () => {
     const { d } = fakeHerdr({ exitOn: null })
     await expect(stopAgent(d, { id: 'w1:p1', agent: 'claude', status: 'idle' })).rejects.toThrow('did not stop')
   })
-  it('relance avec les arguments du plan, sous le même nom', async () => {
+  it('relaunches with the plan\'s arguments, under the same name', async () => {
     const { d, calls } = fakeHerdr({ exitOn: null })
     const plan = planRestart({ kind: 'claude', argv: ['claude'], session: ID, hadSession: true })
     await startAgent(d, { id: 'w1:p1', agent: 'claude', name: 'claude-ab12' }, plan)

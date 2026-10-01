@@ -28,11 +28,11 @@ const sub = (endpoint: string): import('../server/utils/push').PushSub =>
   ({ endpoint, keys: { p256dh: 'k', auth: 'a' }, lang: 'fr', addedAt: '2026-01-01T00:00:00.000Z' })
 
 describe('envoi Web Push', () => {
-  it('garde un abonnement enregistré pendant les envois en retirant les appareils morts', async () => {
+  it('keeps a subscription saved during sending while removing dead devices', async () => {
     await push.writeSubs([sub('https://push.example/dead'), sub('https://push.example/live')])
     sendNotification.mockImplementation(async (s: { endpoint: string }) => {
       if (s.endpoint.endsWith('/dead')) {
-        // Un nouvel appareil s'abonne pendant que les envois sont en cours.
+        // A new device subscribes while sending is in progress.
         await push.writeSubs([...await push.readSubs(), sub('https://push.example/new')])
         throw Object.assign(new Error('gone'), { statusCode: 410 })
       }

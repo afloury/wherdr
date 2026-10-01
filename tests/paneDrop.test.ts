@@ -7,8 +7,8 @@ import snap from './fixtures/snapshot-layouts.json'
 
 const R = 'abcd1234'
 const rect = (x: number, y: number, width: number, height: number) => ({ x, y, width, height })
-// Disposition relevée dans une session de test (Herdr 0.9.1) : p1 à gauche
-// (65 %), p2 en haut à droite, p3 | p4 en bas à droite (30 %).
+// Layout captured in a test session (Herdr 0.9.1): p1 on the left
+// (65 %), p2 top right, p3 | p4 bottom right (30 %).
 const raw = {
   tab_id: 'w1:t1', workspace_id: 'w1', zoomed: false, focused_pane_id: 'w1:p1', area: rect(0, 0, 120, 40),
   panes: [
@@ -25,17 +25,17 @@ const L = reduceLayout(raw)!
 const order = (l: TabLayout | null) => l?.panes.map(p => `${p.pane} ${p.rect.x},${p.rect.y} ${p.rect.width}x${p.rect.height}`)
 
 describe('arbre des splits', () => {
-  it('chemin tiré de l’id de Herdr', () => {
+  it('path taken from the Herdr id', () => {
     expect(splitPath('split_0_root')).toBe('')
     expect(splitPath('split_1_0')).toBe('0')
     expect(splitPath('split_2_11')).toBe('11')
-    // Le nombre est le rang du split (parcours de l'arbre), pas sa profondeur.
+    // The number is the split's rank (tree walk), not its depth.
     expect(splitPath('split_2_1')).toBe('1')
     expect(splitPath('split_2_')).toBeNull()
     expect(splitPath('nope')).toBeNull()
   })
 
-  it('lit les splits du snapshot (et de la fixture)', () => {
+  it('reads the splits of the snapshot (and of the fixture)', () => {
     expect(L.splits!.map(s => [s.path, s.direction, s.ratio])).toEqual([['', 'right', 0.65], ['1', 'down', 0.5], ['11', 'right', 0.3]])
     expect(reduceLayout(snap.layouts[0])!.splits).toHaveLength(2)
     expect(reduceLayout({ ...raw, splits: undefined })!.splits).toBeUndefined()
@@ -49,7 +49,7 @@ describe('arbre des splits', () => {
     expect(treeLayout(fix, layoutTree(fix)!).panes).toEqual(fix.panes)
   })
 
-  it('grille 2×2 relevée dans Herdr (split_1_0, split_2_1)', () => {
+  it('2×2 grid captured in Herdr (split_1_0, split_2_1)', () => {
     const g = reduceLayout({
       ...raw,
       panes: [
@@ -66,54 +66,54 @@ describe('arbre des splits', () => {
     expect(treeLayout(g, layoutTree(g)!).panes).toEqual(g.panes)
   })
 
-  it('pas d’arbre sans splits ou s’ils ne collent pas aux panes', () => {
+  it('no tree without splits or if they do not match the panes', () => {
     expect(layoutTree({ ...L, splits: undefined })).toBeNull()
     expect(layoutTree({ ...L, splits: L.splits!.slice(0, 1) })).toBeNull()
   })
 })
 
-describe('zone de dépôt', () => {
+describe('drop zone', () => {
   const box = { left: 50, top: 0, width: 50, height: 100 }
-  it('centre = échanger, bord le plus proche = placer à côté', () => {
+  it('center = swap, nearest edge = place beside', () => {
     expect(dropZone(box, 75, 50)).toBe('center')
     expect(dropZone(box, 52, 50)).toBe('left')
     expect(dropZone(box, 98, 50)).toBe('right')
     expect(dropZone(box, 75, 5)).toBe('up')
     expect(dropZone(box, 75, 95)).toBe('down')
-    // Coin : le bord le plus proche l'emporte.
+    // Corner: the nearest edge wins.
     expect(dropZone(box, 51, 10)).toBe('left')
   })
-  it('hors de la case : rien', () => {
+  it('outside the cell: nothing', () => {
     expect(dropZone(box, 40, 50)).toBeNull()
     expect(dropZone({ ...box, width: 0 }, 50, 50)).toBeNull()
   })
 })
 
-describe('aperçu d’un dépôt', () => {
-  it('échange au centre', () => {
+describe('drop preview', () => {
+  it('swap in the center', () => {
     expect(order(dropPreview(L, 'w1:p1', 'w1:p4', 'center'))![0]).toBe('w1:p4 0,0 78x40')
   })
 
-  it('p4 posé à gauche de p1 : colonne coupée en deux, p3 prend toute la rangée', () => {
+  it('p4 dropped left of p1: column split in two, p3 takes the whole row', () => {
     expect(order(dropPreview(L, 'w1:p4', 'w1:p1', 'left'))).toEqual([
       'w1:p4 0,0 39x40', 'w1:p1 39,0 39x40', 'w1:p2 78,0 42x20', 'w1:p3 78,20 42x20',
     ])
   })
 
-  it('p1 posé sous p2 : la colonne de droite prend tout l’onglet', () => {
+  it('p1 dropped below p2: the right column takes the whole tab', () => {
     expect(order(dropPreview(L, 'w1:p1', 'w1:p2', 'down'))).toEqual([
       'w1:p2 0,0 120x10', 'w1:p1 0,10 120x10', 'w1:p3 0,20 36x20', 'w1:p4 36,20 84x20',
     ])
   })
 
-  it('bord qui ne change rien : null (p4 est déjà à droite de p3)', () => {
+  it('edge that changes nothing: null (p4 is already right of p3)', () => {
     expect(dropPreview(L, 'w1:p4', 'w1:p3', 'right')).toBeNull()
     expect(dropPreview(L, 'w1:p3', 'w1:p4', 'left')).toBeNull()
-    // Mais l'inverse les échange de place.
+    // But the reverse swaps their places.
     expect(dropPreview(L, 'w1:p3', 'w1:p4', 'right')).not.toBeNull()
   })
 
-  it('refusé : même pane, pane inconnu, onglet agrandi, sans arbre', () => {
+  it('refused: same pane, unknown pane, zoomed tab, no tree', () => {
     expect(dropPreview(L, 'w1:p1', 'w1:p1', 'left')).toBeNull()
     expect(dropPreview(L, 'w1:p9', 'w1:p1', 'left')).toBeNull()
     expect(dropPreview({ ...L, zoomed: true }, 'w1:p1', 'w1:p2', 'center')).toBeNull()
@@ -121,8 +121,8 @@ describe('aperçu d’un dépôt', () => {
   })
 })
 
-describe('traits de séparation', () => {
-  it('position et étendue en pourcentages', () => {
+describe('dividers', () => {
+  it('position and extent as percentages', () => {
     const [root, right, bottom] = dividers(L)
     expect(root).toMatchObject({ path: '', direction: 'right', at: 65, from: 0, span: 100, start: 0, size: 100 })
     expect(right).toMatchObject({ path: '1', direction: 'down', at: 50, from: 65, span: 35 })
@@ -131,18 +131,18 @@ describe('traits de séparation', () => {
     expect(dividers({ ...L, splits: undefined })).toEqual([])
   })
 
-  it('déplacement du pointeur -> ratio, borné', () => {
+  it('pointer movement -> ratio, clamped', () => {
     const [root, , bottom] = dividers(L)
     expect(ratioAt(L, root!, 40)).toBe(0.4)
-    // 8 cellules au moins de chaque côté : 8 / 120.
+    // At least 8 cells on each side: 8 / 120.
     expect(ratioAt(L, root!, 1)).toBe(0.067)
     expect(ratioAt(L, root!, 99)).toBe(0.933)
-    // Split de 42 cellules : pointeur à 70 % de l'onglet -> (70 - 65) / 35.
+    // 42-cell split: pointer at 70 % of the tab -> (70 - 65) / 35.
     expect(ratioAt(L, bottom!, 70)).toBe(0.19)
     expect(ratioAt(L, bottom!, 65)).toBe(0.19)
   })
 
-  it('aperçu redimensionné, comme Herdr l’arrondit', () => {
+  it('resized preview, rounded as Herdr does', () => {
     expect(order(resizePreview(L, '', 0.5))).toEqual([
       'w1:p1 0,0 60x40', 'w1:p2 60,0 60x20', 'w1:p3 60,20 18x20', 'w1:p4 78,20 42x20',
     ])
@@ -151,7 +151,7 @@ describe('traits de séparation', () => {
 })
 
 describe('appels', () => {
-  it('pane.drop : même machine, côté contrôlé', () => {
+  it('pane.drop: same machine, side checked', () => {
     expect(spaceCall({ op: 'pane.drop', pane_id: `${R}~w1:p4`, target_pane_id: `${R}~w1:p1`, side: 'left' })).toEqual({
       machine: R, method: 'pane.drop', params: { pane_id: 'w1:p4', target_pane_id: 'w1:p1', side: 'left' },
     })
@@ -160,7 +160,7 @@ describe('appels', () => {
     expect(() => spaceCall({ op: 'pane.drop', pane_id: 'w1:p4', target_pane_id: 'w1:p1', side: 'middle' })).toThrow(/direction/)
   })
 
-  it('layout.ratio -> layout.set_split_ratio avec le chemin en booléens', () => {
+  it('layout.ratio -> layout.set_split_ratio with the path as booleans', () => {
     expect(spaceCall({ op: 'layout.ratio', tab_id: `${R}~w1:t1`, path: '11', ratio: 0.3 })).toEqual({
       machine: R, method: 'layout.set_split_ratio', params: { tab_id: 'w1:t1', path: [true, true], ratio: 0.3 },
     })
@@ -176,7 +176,7 @@ describe('appels', () => {
     layouts: [{ tab_id: 'w1:t1', workspace_id: 'w1', focused_pane_id: tabFocus, panes: [{ pane_id: 'w1:p1' }, { pane_id: 'w1:p2' }, { pane_id: 'w1:p3' }] }],
   })
 
-  it('bord droit / bas : onglet temporaire puis retour à côté de la cible', () => {
+  it('right / bottom edge: temporary tab then back beside the target', () => {
     expect(dropSteps(s(), 'w1:p3', 'w1:p1', 'down')).toEqual([
       { method: 'pane.move', params: { pane_id: 'w1:p3', destination: { type: 'new_tab', workspace_id: 'w1' }, focus: false } },
       { method: 'pane.move', params: { pane_id: 'w1:p3', destination: { type: 'tab', tab_id: 'w1:t1', split: 'down', target_pane_id: 'w1:p1' }, focus: false } },
@@ -184,18 +184,18 @@ describe('appels', () => {
     ])
   })
 
-  it('bord gauche / haut : puis échange avec la cible, focus rendu', () => {
+  it('left / top edge: then swap with the target, focus restored', () => {
     const steps = dropSteps(s(), 'w1:p3', 'w1:p2', 'left')
     expect(steps[1]!.params.destination).toMatchObject({ split: 'right', target_pane_id: 'w1:p2' })
     expect(steps.slice(2)).toEqual([
       { method: 'pane.swap', params: { source_pane_id: 'w1:p3', target_pane_id: 'w1:p2' } },
       { method: 'pane.focus', params: { pane_id: 'w1:p1' } },
     ])
-    // Le pane déplacé était le pane actif : rien à rendre après l'échange.
+    // The moved pane was the active pane: nothing to restore after the swap.
     expect(dropSteps({ ...s('w1:p3'), focused_pane_id: 'w1:p3' }, 'w1:p3', 'w1:p2', 'up').at(-1)!.method).toBe('pane.swap')
   })
 
-  it('centre : échange ; refusé hors de l’onglet ou agrandi', () => {
+  it('center: swap; refused outside the tab or zoomed', () => {
     expect(dropSteps(s(), 'w1:p3', 'w1:p2', 'center')[0]).toEqual({ method: 'pane.swap', params: { source_pane_id: 'w1:p3', target_pane_id: 'w1:p2' } })
     expect(() => dropSteps(s(), 'w1:p3', 'w1:p9', 'left')).toThrow(/another tab/)
     expect(() => dropSteps(s(), 'w1:p3', 'w1:p3', 'left')).toThrow(/same pane/)

@@ -1,5 +1,5 @@
-// Onglet actif d'une barre d'onglets ANSI (« Settings  Status  Config  Usage  Stats ») :
-// le seul mot écrit sur un fond coloré (SGR 48;…).
+// Active tab of an ANSI tab bar ("Settings  Status  Config  Usage  Stats"):
+// the only word written on a colored background (SGR 48;…).
 // eslint-disable-next-line no-control-regex
 const SGR = /\x1b\[([\d;]*)m/g
 export function activeTab(line: string): string | null {

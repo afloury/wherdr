@@ -1,5 +1,5 @@
-// Worktrees Git des agents : liste (réglages) et suppression avec confirmation
-// (agents arrêtés, modifications non commitées -> « Forcer »). La branche reste.
+// Agents' Git worktrees: list (settings) and removal with confirmation
+// (agents stopped, uncommitted changes -> "Force"). The branch stays.
 import type { WorktreeInfo } from '#shared/types'
 
 export const worktrees = ref<WorktreeInfo[] | null>(null)

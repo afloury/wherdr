@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Case du plan d'un onglet (téléphone) : agent, état, dernière ligne, et
-// réponse en un tap si l'agent attend. Toucher la case ouvre le pane en plein écran.
+// Cell of a tab's plan (phone): agent, state, last line, and
+// one-tap answer if the agent is waiting. Tapping the cell opens the pane full screen.
 import type { Pane } from '#shared/types'
 
 const props = defineProps<{ pane: Pane, focused?: boolean, fresh?: boolean }>()
@@ -21,7 +21,7 @@ watch(() => props.pane.prompt, () => { busy.value = false })
     class="plan-cell" :class="[statusKey(pane), { stale: paneStale(pane), fresh }]" role="button" tabindex="0" :data-pane="pane.id"
     @click="emit('open')" @keydown.enter.self="emit('open')"
   >
-    <!-- Appui long sur l'en-tête : géré par le plan (TabView), avec le glisser. -->
+    <!-- Long press on the header: handled by the plan (TabView), along with dragging. -->
     <HeaderMenu :items="() => paneItems(pane)" :title="paneTitle(pane)" manual-press>
       <div class="plan-cell-head">
         <AgentAvatar :agent="pane.agent" />

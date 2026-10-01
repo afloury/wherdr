@@ -1,11 +1,11 @@
-// `herdr notification show` -> Web Push sur l'iPhone.
+// `herdr notification show` -> Web Push on the iPhone.
 //
-// Herdr ne publie ces notifications que vers ses clients shell (cf.
-// herdrEndpoint.ts) : on garde une connexion passive au socket client de chaque
-// machine en ligne (local : herdr-client.sock à côté de herdr.sock ; distante :
-// socket transféré par la connexion SSH maîtresse, cf. machines.ts), et chaque
-// notification « custom » part en push, filtrée (réglage « Notifier pour »,
-// doublons) par notificationPolicy.ts.
+// Herdr only publishes these notifications to its shell clients (see
+// herdrEndpoint.ts): we keep a passive connection to the client socket of each
+// online machine (local: herdr-client.sock next to herdr.sock; remote:
+// socket forwarded by the SSH master connection, see machines.ts), and each
+// "custom" notification goes out as push, filtered ("Notify for" setting,
+// duplicates) by notificationPolicy.ts.
 import net from 'node:net'
 import crypto from 'node:crypto'
 import { NOTICES_ENABLED, log } from './env'
@@ -16,7 +16,7 @@ import { getState, isViewed } from './state'
 import { pushSend, subWatchesSession } from './push'
 
 const BACKOFF_MS = [2000, 5000, 10000, 30000, 60000]
-// Serveur qui refuse la poignée de main (version incompatible) : on réessaie rarement.
+// Server refusing the handshake (incompatible version): we retry rarely.
 const REJECTED_RETRY_MS = 10 * 60000
 
 class NoticeListener {
@@ -29,7 +29,7 @@ class NoticeListener {
 
   constructor(readonly machine: Machine) {}
 
-  // (Re)connecte si le socket a changé ou si la connexion est tombée.
+  // (Re)connects if the socket changed or the connection dropped.
   ensure() {
     if (this.stopped) return
     const p = this.machine.clientSock()
@@ -72,25 +72,25 @@ class NoticeListener {
     s.on('data', (chunk: Buffer) => {
       let list: Buffer[]
       try { list = frames.push(chunk) }
-      catch (e) { log(`notifications herdr (${this.name()}) : ${(e as Error).message}`); s.destroy(); return }
+      catch (e) { log(`herdr notifications (${this.name()}): ${(e as Error).message}`); s.destroy(); return }
       for (const f of list) {
         let msg
         try { msg = decodeServerFrame(f) }
-        catch { continue } // trame d'un type qu'on ne lit pas en entier
+        catch { continue } // frame of a type we do not read in full
         if (msg.type === 'control' && msg.kind === 'endpoint.welcome.v1') {
           let err: { message?: string } | null = null
-          try { err = JSON.parse(msg.data).error || null } catch { /* rien */ }
+          try { err = JSON.parse(msg.data).error || null } catch { /* nothing */ }
           if (err) {
             rejected = true
-            log(`notifications herdr (${this.name()}) refusées : ${err.message || 'poignée de main'}`)
+            log(`herdr notifications (${this.name()}) refused: ${err.message || 'handshake'}`)
             s.destroy()
             return
           }
           this.welcomed = true
           this.fails = 0
-          log(`notifications herdr (${this.name()}) : à l'écoute`)
+          log(`herdr notifications (${this.name()}): listening`)
         } else if (msg.type === 'notification') {
-          onNotice(this.machine, msg.notification).catch(e => log('notif herdr :', (e as Error).message))
+          onNotice(this.machine, msg.notification).catch(e => log('herdr notification:', (e as Error).message))
         } else if (msg.type === 'shutdown') {
           s.destroy()
         }
@@ -101,7 +101,7 @@ class NoticeListener {
       if (this.sock !== s) return
       this.sock = null
       this.path = null
-      if (this.welcomed) log(`notifications herdr (${this.name()}) : connexion fermée`)
+      if (this.welcomed) log(`herdr notifications (${this.name()}): connection closed`)
       this.retry(rejected ? REJECTED_RETRY_MS : undefined)
     })
   }
@@ -114,14 +114,14 @@ const dedupe = new NoticeDeduper()
 
 async function onNotice(m: Machine, n: HerdrNotification) {
   if (!forwardableNotice(n) || !dedupe.fresh(`${m.key}:${noticeKey(n)}`)) return
-  // Notification d'un thread herdr-projects : lien vers son pane s'il est unique.
+  // Notification from a herdr-projects thread: link to its pane if it is unique.
   const thread = projectThreadOfNotice(n.title)
   const panes = getState().panes.filter(p => (p.machine || '') === m.key)
   const pane = thread ? findThreadPane(panes, thread.project, thread.thread) : null
   if (pane && isViewed(pane.id)) return
   const on = multiMachine() ? `${m.label || (m.local ? 'local' : m.key)} · ` : ''
   const title = `${on}${n.title}`
-  // Une notif par pane (remplace celle de son état), sinon une par titre.
+  // One notification per pane (replaces the one for its state), otherwise one per title.
   const tag = pane ? `pane-${pane.id}` : `herdr-${crypto.createHash('sha1').update(`${m.key}\n${n.title}`).digest('hex').slice(0, 12)}`
   const sent = await pushSend(
     { title, body: n.body || '', tag, url: pane ? `/#/a/${encodeURIComponent(pane.id)}` : '/#/' },
@@ -129,7 +129,7 @@ async function onNotice(m: Machine, n: HerdrNotification) {
       subWatchesSession(sub, m.info().baseKey ?? m.key, m.session,
         allMachines().find(base => base.key === (m.info().baseKey ?? m.key))?.session || 'default'),
   )
-  log(`notif herdr « ${title} »${pane ? ` (${pane.id})` : ''} -> ${sent} appareil(s)`)
+  log(`herdr notification "${title}"${pane ? ` (${pane.id})` : ''} -> ${sent} device(s)`)
 }
 
 export function syncNoticeListeners() {
@@ -150,7 +150,7 @@ export function startNotices() {
   if (!NOTICES_ENABLED) return
   onMachinesChange(syncNoticeListeners)
   syncNoticeListeners()
-  // Serveur Herdr redémarré, machine revenue en ligne : on se reconnecte.
+  // Herdr server restarted, machine back online: we reconnect.
   timer = setInterval(syncNoticeListeners, 15000)
 }
 export function stopNotices() {

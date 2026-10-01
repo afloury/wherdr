@@ -1,5 +1,5 @@
-// Photo envoyée depuis le téléphone (déjà réduite en JPEG par le navigateur).
-// `pane` : l'agent destinataire (sa machine reçoit une copie de la photo).
+// Photo sent from the phone (already shrunk to JPEG by the browser).
+// `pane`: the recipient agent (its machine receives a copy of the photo).
 export default defineApi((event, b) => {
   const pane = String(getQuery(event).pane || '')
   return saveUpload(b.data, b.ctype, PANE_RE.test(pane) ? pane : null)

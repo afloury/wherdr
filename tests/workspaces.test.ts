@@ -11,7 +11,7 @@ const panes = [pane('w1:p1', 'w1:t1', 'claude', 'blocked'), pane('w1:p2', 'w1:t1
 const state = reduceSnapshot({ ...layouts, panes })
 
 describe('workspaceTree', () => {
-  it('workspaces → onglets → panes dans l’ordre de lecture', () => {
+  it('workspaces → tabs → panes in reading order', () => {
     const tree = workspaceTree(state)
     expect(tree.map(w => [w.workspace.label, w.tabs.map(t => t.tab.label)])).toEqual([
       ['herdr-web', ['dev', 'serveur']], ['api', ['1']], ['notes', ['1']],
@@ -30,21 +30,21 @@ describe('workspaceTree', () => {
     expect(workspaceTree(both)).toHaveLength(6)
   })
 
-  it('disposition périmée (pane pas encore dans les panes) : panes empilés', () => {
+  it('stale layout (pane not yet among the panes): stacked panes', () => {
     const s = { ...state, panes: state.panes.filter(p => p.id !== 'w1:p3') }
     const dev = tabEntry(s, 'w1:t1')!
     expect(dev.panes.map(p => p.id)).toEqual(['w1:p1', 'w1:p2'])
     expect(dev.layout.panes.map(p => p.rect.y)).toEqual([0, 40])
   })
 
-  it('état sans onglets (ancien cache hors ligne) : onglets tirés des panes', () => {
+  it('state without tabs (old offline cache): tabs taken from the panes', () => {
     const { tabs: _tabs, ...old } = state
     const tree = workspaceTree(old)
     expect(tree[0]!.tabs.map(t => [t.tab.id, t.tab.label, t.panes.length])).toEqual([['w1:t1', 'dev', 3], ['w1:t2', 'serveur', 1]])
     expect(tabEntry(old, 'w9:t9')).toBeNull()
   })
 
-  it('compteurs d’un onglet', () => {
+  it('counters of a tab', () => {
     expect(tabSummary(tabEntry(state, 'w1:t1')!.panes as Pane[])).toEqual({ blocked: 1, working: 1, done: 0, agents: 2 })
   })
 })

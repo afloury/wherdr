@@ -1,9 +1,9 @@
-// Panneau « Projet » d'un coordinateur herdr-projects : état du projet (TASKS.md
-// et threads), lu à l'ouverture, puis :
-//  - sondage léger toutes les 15 s tant que le panneau est visible (le serveur
-//    compare seulement la date de TASKS.md et du dossier des threads) ;
-//  - relecture complète quand un agent du projet change d'état.
-// Rien n'apparaît sans herdr-projects sur la machine (`available: false`).
+// "Project" panel of a herdr-projects coordinator: project state (TASKS.md
+// and threads), read on opening, then:
+//  - light poll every 15 s while the panel is visible (the server
+//    only compares the dates of TASKS.md and of the threads folder);
+//  - full re-read when an agent of the project changes state.
+// Nothing shows without herdr-projects on the machine (`available: false`).
 import type { Pane } from '#shared/types'
 import type { ProjectBoard } from '#shared/projectBoard'
 import { isCoordinator, projectOf } from '#shared/projects'
@@ -11,7 +11,7 @@ import { isCoordinator, projectOf } from '#shared/projects'
 type Reply = ProjectBoard | { same: true, version: string } | { available: false }
 
 const POLL_MS = 15000
-// Dernier état connu par pane : pas de clignotement de l'onglet en rouvrant la vue.
+// Last known state per pane: no flicker of the tab when reopening the view.
 const known = new Map<string, ProjectBoard | false>()
 
 export function useProjectBoard(paneId: () => string, visible: () => boolean) {
@@ -45,15 +45,15 @@ export function useProjectBoard(paneId: () => string, visible: () => boolean) {
     } catch (e) {
       if (id !== seq) return
       error.value = (e as Error).message
-      // Première lecture ratée (serveur qui démarre, pane pas encore connu de
-      // lui) : nouvel essai rapide au lieu d'attendre le prochain sondage.
+      // First read failed (server starting, pane not yet known to
+      // it): quick retry instead of waiting for the next poll.
       if (available.value === null && !retry) retry = setTimeout(() => { retry = null; load() }, 3000)
     } finally {
       if (id === seq) loading.value = false
     }
   }
 
-  // Agents du projet : leur état change (thread qui finit, qui attend) -> relecture.
+  // Project agents: their state changes (thread finishing, waiting) -> re-read.
   const projectStates = computed(() => {
     const slug = pane.value && projectOf(pane.value)?.toLowerCase()
     if (!slug) return ''
@@ -65,7 +65,7 @@ export function useProjectBoard(paneId: () => string, visible: () => boolean) {
   watch(projectStates, (now, before) => {
     if (!before || !available.value) return
     if (stateTimer) clearTimeout(stateTimer)
-    // herdr-projects voit le nouvel état à son prochain passage : on lui laisse un instant.
+    // herdr-projects sees the new state on its next pass: we give it a moment.
     stateTimer = setTimeout(() => { if (visible()) load(true) }, 2500)
   })
 
@@ -77,8 +77,8 @@ export function useProjectBoard(paneId: () => string, visible: () => boolean) {
     poll = null
     retry = null
   }
-  // Décision réévaluée à chaque arrivée d'état (pane connu, passage du hors
-  // ligne au direct, panneau montré) : jamais figée au montage.
+  // Decision re-evaluated on each state arrival (pane known, switch from offline
+  // to live, panel shown): never frozen at mount.
   const mode = computed(() => refreshMode({
     coordinator: coordinator.value,
     offline: offlineView.value,
@@ -102,7 +102,7 @@ export function useProjectBoard(paneId: () => string, visible: () => boolean) {
   return { board, available, loading, error, reload: () => load(true), coordinator }
 }
 
-// Rapport d'un thread (Markdown), lu à la demande.
+// Report of a thread (Markdown), read on demand.
 export function fetchThreadReport(paneId: string, id: string) {
   return api<{ id: string, text: string, truncated: boolean }>(`/api/project/report?pane=${encodeURIComponent(paneId)}&id=${encodeURIComponent(id)}`)
 }

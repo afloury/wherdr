@@ -1,6 +1,6 @@
-// Fenêtres de l'app (feuilles en bas sur téléphone, fenêtres centrées sur
-// ordinateur) : menus, nouvel agent, renommer, résultat de commande, aperçu
-// d'image, confirmation.
+// App windows (sheets at the bottom on the phone, centered windows on a
+// computer): menus, new agent, rename, command result, image
+// preview, confirmation.
 import { parseMenu } from '../../shared/menuScreen'
 import { agentAnswering } from '../../shared/commandScreen'
 
@@ -10,11 +10,11 @@ export interface MenuItem {
   icon?: string
   danger?: boolean
   cmd?: string
-  // Commande : sa description ; action : ligne sous le libellé.
+  // Command: its description; action: line under the label.
   desc?: string
-  // Ligne sous le libellé en police mono (un ID…).
+  // Line under the label in mono font (an ID…).
   mono?: boolean
-  // Raccourci clavier (menus déroulants de l'ordinateur), touches Nuxt UI.
+  // Keyboard shortcut (computer dropdown menus), Nuxt UI keys.
   kbds?: string[]
   run?: () => void
 }
@@ -25,8 +25,8 @@ export function openMenu(items: MenuItem[], title?: string) {
   menuState.title = title
   menuState.open = true
 }
-// Téléphone : accès aux Réglages depuis le menu d'une vue (sur ordinateur, la
-// barre latérale les propose déjà). Le retour ramène à cette vue.
+// Phone: access to Settings from a view's menu (on a computer, the
+// sidebar already offers them). Back returns to that view.
 export function settingsMenuItems(): MenuItem[] {
   if (desk.value) return []
   return [{ kind: 'separator' }, { label: t('Settings'), icon: 'i-lucide-settings-2', run: () => navigateTo('/settings') }]
@@ -35,16 +35,16 @@ export function settingsMenuItems(): MenuItem[] {
 export const newAgentOpen = ref(false)
 export const renameTarget = ref<string | null>(null)
 
-// Résultat d'une commande locale (/context…), lu sur l'écran du terminal.
+// Result of a local command (/context…), read from the terminal screen.
 export const commandResult = reactive<{ open: boolean, pane: string | null, cmd: string, text: string | null, tab: string | null }>({
   open: false, pane: null, cmd: '', text: null, tab: null,
 })
-// Onglets du panneau de réglages de Claude Code (/usage, /status, /config, /stats).
+// Tabs of Claude Code's settings panel (/usage, /status, /config, /stats).
 export const SETTINGS_TABS = ['Status', 'Config', 'Usage', 'Stats']
 
 export const lightboxSrc = ref<string | null>(null)
 
-// `tone` : bouton d'action rouge (destructrice, par défaut) ou d'accent.
+// `tone`: red action button (destructive, the default) or accent.
 export const confirmState = reactive<{ open: boolean, message: string, action: string, tone: 'error' | 'primary', resolve: ((ok: boolean) => void) | null }>({
   open: false, message: '', action: '', tone: 'error', resolve: null,
 })
@@ -65,15 +65,15 @@ export function answerConfirm(ok: boolean) {
   r?.(ok)
 }
 
-// Une fenêtre est ouverte : Échap la ferme au lieu d'agir ailleurs.
+// A window is open: Escape closes it instead of acting elsewhere.
 export const anySheetOpen = computed(() => menuState.open || newAgentOpen.value || Boolean(renameTarget.value) || Boolean(renameSpace.value)
   || commandResult.open || confirmState.open || pluginFormState.open || Boolean(lightboxSrc.value))
 
-// Les commandes locales ne laissent pas de trace dans la transcription : on
-// montre ce qu'elles ont affiché, extrait de l'écran du terminal.
-// `builtin` : commande intégrée de l'agent, panneau ouvert tout de suite (il
-// charge) ; sinon (commande inconnue du catalogue) il ne s'ouvre qu'une fois
-// l'écran lu, si ce n'est ni un menu ni l'agent au travail.
+// Local commands leave no trace in the transcript: we
+// show what they displayed, extracted from the terminal screen.
+// `builtin`: built-in agent command, panel opened right away (it
+// loads); otherwise (command unknown to the catalog) it only opens once
+// the screen is read, if it is neither a menu nor the agent working.
 let resultSeq = 0
 export async function showCommandResult(pane: string, cmd: string, builtin = true) {
   const seq = ++resultSeq
@@ -87,8 +87,8 @@ export async function showCommandResult(pane: string, cmd: string, builtin = tru
   await readCommandResult(pane, cmd, 5, seq)
 }
 
-// Lit l'écran et en extrait le résultat ; relit tant que le panneau charge
-// (« Loading… » : les jauges de /usage arrivent après un instant).
+// Reads the screen and extracts the result; re-reads while the panel loads
+// ("Loading…": the /usage gauges arrive after a moment).
 async function readCommandResult(pane: string, cmd: string, tries = 5, seq = resultSeq) {
   const current = () => seq === resultSeq && commandResult.pane === pane && commandResult.cmd === cmd
     && (commandResult.open || commandResult.text === null)
@@ -96,15 +96,15 @@ async function readCommandResult(pane: string, cmd: string, tries = 5, seq = res
     try {
       const { text, tab } = await api<{ text: string, tab: string | null }>(`/api/screen?pane=${encodeURIComponent(pane)}`)
       if (!current()) return
-      // Menu interactif (/resume, /model…) : pas une sortie, il se pilote dans la conversation.
-      // Skill, commande personnalisée, /compact… : l'agent travaille, la
-      // conversation le montre ; Échap l'interromprait.
-      // omp ne dessine pas d'activité reconnaissable sous la commande : son état fait foi.
+      // Interactive menu (/resume, /model…): not an output, it is driven in the conversation.
+      // Skill, custom command, /compact…: the agent is working, the
+      // conversation shows it; Escape would interrupt it.
+      // omp draws no recognizable activity under the command: its state wins.
       const p = herdrState.value.panes.find(x => x.id === pane)
       const working = p?.agent === 'omp' && p.status === 'working'
       if (parseMenu(text) || agentAnswering(text, cmd) || working) { closeCommandResult(false); return }
       const shown = extractResult(text, cmd)
-      // « Loading… » (jauges de /usage), « ⏳ Waiting for response… » (/btw d'omp).
+      // "Loading…" (/usage gauges), "⏳ Waiting for response…" (omp's /btw).
       const loading = /\bLoading\b|Waiting for response/.test(shown)
       if (loading && i < tries - 1) { await new Promise(r => setTimeout(r, 1200)); continue }
       commandResult.tab = tab
@@ -119,15 +119,15 @@ async function readCommandResult(pane: string, cmd: string, tries = 5, seq = res
   }
 }
 
-// Le résultat dans l'écran : sous la ligne de la commande, ou le panneau de
-// réglages de Claude Code en entier (il remplace la ligne de commande), ou le
-// dernier encadré titré d'omp (« ╭─ Session Info ─ », « ╭─ /btw … ─ »), sinon
-// le bas de l'écran.
+// The result on screen: below the command line, or Claude Code's whole settings
+// panel (it replaces the command line), or omp's
+// last titled box ("╭─ Session Info ─", "╭─ /btw … ─"), otherwise
+// the bottom of the screen.
 export function extractResult(text: string, cmd: string) {
   const lines = text.replace(/\s+$/, '').split('\n')
   let start = -1
   for (let i = lines.length - 1; i >= 0; i--) {
-    // « ❯ /usage » (Claude), ou la commande seule sur sa ligne (Codex).
+    // "❯ /usage" (Claude), or the command alone on its line (Codex).
     if (lines[i]!.includes(cmd) && (/^\s*[❯›>]/.test(lines[i]!) || lines[i]!.trim() === cmd)) {
       start = i + 1
       break
@@ -136,8 +136,8 @@ export function extractResult(text: string, cmd: string) {
   if (start < 0) start = lines.findIndex(l => /^\s*Settings\s+Status\s+Config\b/.test(l))
   if (start < 0) start = lines.findLastIndex(l => /^\s*╭─+ \S/.test(l))
   let out = start >= 0 ? lines.slice(start) : lines.slice(-30)
-  // Encadré juste sous la commande (Codex) ou panneau d'omp : son contenu,
-  // sans ce qui suit, ni son titre, ses séparateurs et ses raccourcis (« ⎋ to close »).
+  // Box just below the command (Codex) or omp panel: its content,
+  // without what follows, nor its title, separators and shortcuts ("⎋ to close").
   const top = out.findIndex(l => l.trim())
   if (top >= 0 && /^\s*[╭┌]/.test(out[top]!)) {
     const end = out.findIndex((l, i) => i > top && /^\s*[╰└]/.test(l))
@@ -147,12 +147,12 @@ export function extractResult(text: string, cmd: string) {
   }
   const rule = out.findIndex(l => /^[\s─━]{20,}$/.test(l))
   if (rule > 0) out = out.slice(0, rule)
-  // Indicateur de défilement du panneau (« ↓ », « ↓ stats ») en bout de ligne.
+  // Scroll indicator of the panel ("↓", "↓ stats") at the end of the line.
   out = out.map(l => l.replace(/\s{2,}↓(\s+\w+)?\s*$/, ''))
   return out.join('\n').replace(/^\s*⎿\s?/m, '').replace(/\n{3,}/g, '\n\n').trim()
 }
 
-// Changer d'onglet dans le panneau : flèches ← → dans le terminal, puis relecture.
+// Switch tabs in the panel: ← → arrows in the terminal, then re-read.
 export async function switchCommandTab(target: string) {
   const pane = commandResult.pane
   const from = SETTINGS_TABS.indexOf(commandResult.tab || '')
@@ -170,10 +170,10 @@ export async function switchCommandTab(target: string) {
   await new Promise(r => setTimeout(r, 900))
   await readCommandResult(pane, commandResult.cmd, 8)
 }
-// En refermant le résultat, on referme aussi le panneau côté agent (/usage…),
-// sinon il reste ouvert et avale les messages suivants.
-// `dismiss` : Échap envoyé au terminal pour fermer le panneau de la commande ;
-// jamais pour un menu interactif (Échap l'annulerait).
+// When closing the result, we also close the panel on the agent side (/usage…),
+// otherwise it stays open and swallows the following messages.
+// `dismiss`: Escape sent to the terminal to close the command's panel;
+// never for an interactive menu (Escape would cancel it).
 export function closeCommandResult(dismiss = true) {
   resultSeq++
   if (!commandResult.open) return
@@ -182,8 +182,8 @@ export function closeCommandResult(dismiss = true) {
   if (pane && dismiss) api('/api/dismiss', { pane_id: pane }).catch(() => {})
 }
 
-// Mêmes entrées en menu déroulant (ordinateur) : groupes séparés, actions
-// destructrices en rouge, notes ignorées.
+// Same entries as a dropdown menu (computer): separate groups, destructive
+// actions in red, notes ignored.
 export function toDropdown(items: MenuItem[]) {
   const groups: { label?: string, description?: string, icon?: string, color?: 'error', kbds?: string[], ui?: { itemDescription: string }, onSelect: () => void }[][] = [[]]
   for (const it of items) {

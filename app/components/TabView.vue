@@ -1,13 +1,13 @@
 <script setup lang="ts">
-// Onglet d'un workspace Herdr, à ses proportions réelles. Téléphone : plan de
-// cartes résumées ; toucher une case ouvre le pane en plein écran (mini-carte et
-// balayage vers les voisins). Ordinateur : les panes côte à côte, conversation
-// en direct dans chaque case ; la case active (clic) a le champ de saisie et
-// peut montrer le terminal. Rien n'est changé côté Herdr (focus, zoom) sans
-// geste explicite : la disposition est partagée avec le client attaché, et la
-// case active de wherdr n'est pas le focus de Herdr. Gestes explicites :
-// glisser un pane (poignée de l'en-tête, appui long au téléphone) sur un
-// autre, et glisser un trait de séparation pour redimensionner.
+// Tab of a Herdr workspace, in its real proportions. Phone: plan of
+// summary cards; tapping a cell opens the pane full screen (mini-map and
+// swipe to the neighbours). Computer: the panes side by side, live
+// conversation in each cell; the active cell (click) has the input field and
+// can show the terminal. Nothing is changed on the Herdr side (focus, zoom) without
+// an explicit gesture: the layout is shared with the attached client, and
+// wherdr's active cell is not Herdr's focus. Explicit gestures:
+// dragging a pane (header handle, long press on the phone) onto
+// another, and dragging a divider to resize.
 import { type Divider, type DropSide, type TabLayout, dividers, dropPreview, dropZone, neighborPane, paneBoxes, ratioAt, resizePreview } from '#shared/layout'
 import { longPress } from '~/utils/longPress'
 import { skipsPress } from '~/utils/headerMenu'
@@ -16,14 +16,14 @@ import { cellFocusStep } from '~/utils/viewMode'
 const props = defineProps<{ tabId: string }>()
 const route = useRoute()
 const router = useRouter()
-// Plan (téléphone) : aucun pane regardé. Côte à côte : la case active s'en charge.
+// Plan (phone): no pane viewed. Side by side: the active cell handles it.
 onMounted(() => { if (!desk.value) curPane.value = null })
 
 const entry = computed(() => tabOf(props.tabId))
 const headerAdd = computed(() => entry.value && spaceTabControls(spaceTabs(entry.value.tab.workspace).length).headerAdd)
 const ws = computed(() => (entry.value ? herdrState.value.workspaces.find(w => w.id === entry.value!.tab.workspace) : undefined))
 const byId = computed(() => new Map((entry.value?.panes || []).map(p => [p.id, p])))
-// Aperçu pendant qu'on glisse un trait de séparation.
+// Preview while dragging a divider.
 const preview = ref<TabLayout | null>(null)
 const layout = computed(() => preview.value || entry.value?.layout || null)
 const boxes = computed(() => (layout.value ? paneBoxes(layout.value).filter(b => byId.value.has(b.pane)) : []))
@@ -32,7 +32,7 @@ const divs = computed(() => (draggable.value && layout.value ? dividers(layout.v
 const machine = computed(() => (multiMachine.value && entry.value ? machineInfo(entry.value.tab.machine) : undefined))
 const tabLabel = (label: string, n: number) => label || String(n)
 
-// Onglet fermé pendant qu'on le regarde (même délai de grâce que la vue agent).
+// Tab closed while being viewed (same grace period as the agent view).
 const seen = ref(Boolean(entry.value))
 const graceOver = ref(false)
 const graceTimer = setTimeout(() => { graceOver.value = true }, 4000)
@@ -40,9 +40,9 @@ onUnmounted(() => clearTimeout(graceTimer))
 watch(entry, (e) => { if (e) seen.value = true })
 const closed = computed(() => !entry.value && herdrState.value.ok && (seen.value || graceOver.value) && !isClosing(props.tabId))
 
-// Case active (ordinateur) : celle demandée (?pane=, venue de la vue agent ou
-// d'une division, appliquée dès que le pane apparaît dans l'état), sinon le
-// pane actif dans Herdr, sinon le premier ; gardée si elle existe encore.
+// Active cell (computer): the requested one (?pane=, coming from the agent view or
+// from a split, applied as soon as the pane appears in the state), otherwise the
+// active pane in Herdr, otherwise the first; kept if it still exists.
 const active = ref<string | null>(null)
 const asked = computed(() => String(route.query.pane || ''))
 watch([entry, asked], ([e, want], old) => {
@@ -60,7 +60,7 @@ function activate(paneId: string) {
   active.value = paneId
   router.replace({ query: { pane: paneId } })
 }
-// Clavier : Ctrl/⌘ + Alt + flèche, case voisine (capté avant le terminal).
+// Keyboard: Ctrl/⌘ + Alt + arrow, neighbouring cell (caught before the terminal).
 function onFocusKey(e: KeyboardEvent) {
   const step = desk.value && entry.value && active.value ? cellFocusStep(e) : 0
   const next = step ? neighborPane(entry.value!.layout, active.value!, step) : null
@@ -72,14 +72,14 @@ function onFocusKey(e: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', onFocusKey, true))
 onUnmounted(() => window.removeEventListener('keydown', onFocusKey, true))
 
-// En-tête (clic droit, appui long) et bouton « … » : l'onglet puis son space.
+// Header (right click, long press) and "…" button: the tab then its space.
 const tabMenu = () => [...tabPlanItems(props.tabId), ...settingsMenuItems()]
 const tabMenuTitle = computed(() => entry.value ? `${t('Tab')} ${tabLabel(entry.value.tab.label, entry.value.tab.number)}` : undefined)
 
-// ---------- Glisser un pane sur un autre ----------
-// Ordinateur : poignée de l'en-tête de la case (souris ou doigt). Téléphone :
-// appui long sur la case du plan. Zones de dépôt : centre = échanger, bords =
-// placer à côté (seulement si ça change la disposition).
+// ---------- Drag a pane onto another ----------
+// Computer: handle of the cell header (mouse or finger). Phone:
+// long press on the plan cell. Drop zones: center = swap, edges =
+// place beside (only if it changes the layout).
 const area = ref<HTMLElement | null>(null)
 interface Drag { pane: string, pointer: number, touch: boolean, x0: number, y0: number, x: number, y: number, started: boolean, over: string | null, side: DropSide | null }
 const drag = ref<Drag | null>(null)
@@ -108,7 +108,7 @@ function onDragMove(e: PointerEvent) {
   const at = inArea(d.x, d.y)
   const b = at && boxes.value.find(x => x.pane !== d.pane && at.px >= x.left && at.px <= x.left + x.width && at.py >= x.top && at.py <= x.top + x.height)
   const side = b && at ? dropZone(b, at.px, at.py) : null
-  // Bord qui ne changerait rien (déjà à cette place) : pas de zone.
+  // Edge that would change nothing (already in that place): no zone.
   const ok = b && side && entry.value && dropPreview(entry.value.layout, d.pane, b.pane, side)
   if ((ok ? b.pane : null) !== d.over || (ok ? side : null) !== d.side) {
     d.over = ok ? b.pane : null
@@ -128,7 +128,7 @@ function onDragEnd(e: PointerEvent) {
   const p = byId.value.get(d.pane)
   if (d.touch) planPress.suppressClick()
   stopDrag()
-  // Doigt levé sans avoir bougé depuis l'appui long sur l'en-tête : menu.
+  // Finger lifted without moving since the long press on the header: menu.
   if (d.touch && pressHead && Math.hypot(d.x - d.x0, d.y - d.y0) <= 5) return paneMenu(d.pane)
   if (d.started && p && d.over && d.side) dropPane(p, d.over, d.side)
 }
@@ -147,7 +147,7 @@ onUnmounted(() => {
   stopDrag()
   stopResize()
 })
-// Case survolée et zone : le rectangle surligné (moitié de la case pour un bord).
+// Hovered cell and zone: the highlighted rectangle (half the cell for an edge).
 const dropBox = computed(() => {
   const d = drag.value
   const b = d?.started && d.over && d.side ? boxes.value.find(x => x.pane === d.over) : null
@@ -159,23 +159,23 @@ const dropBox = computed(() => {
 const ghost = computed(() => {
   const d = drag.value
   const p = d?.started ? byId.value.get(d.pane) : null
-  // Au doigt : au-dessus du doigt, qui cacherait l'étiquette.
+  // With a finger: above the finger, which would hide the label.
   if (!p || !d) return null
   const x = Math.max(4, Math.min(d.touch ? d.x - 20 : d.x + 12, window.innerWidth - 250))
   const y = Math.max(4, d.touch ? d.y - 56 : d.y + 14)
   return { title: paneTitle(p), style: { transform: `translate(${x}px, ${y}px)` } }
 })
 
-// Ordinateur : la poignée de l'en-tête d'une case.
+// Computer: the handle of a cell's header.
 function gripDown(pane: string, e: PointerEvent) {
   if (e.button !== 0 || !(e.target as Element | null)?.closest?.('.cell-grip')) return
   e.preventDefault()
   startDrag(pane, e, false)
 }
-// Téléphone : appui long sur une case du plan, puis le doigt la déplace.
+// Phone: long press on a plan cell, then the finger moves it.
 let pressEv: PointerEvent | null = null
 let pressPane = ''
-// Appui long sur l'en-tête de la case, doigt levé sans bouger : menu du pane.
+// Long press on the cell header, finger lifted without moving: pane menu.
 let pressHead = false
 function paneMenu(paneId: string) {
   const p = byId.value.get(paneId)
@@ -201,8 +201,8 @@ function planMove(e: PointerEvent) {
   planPress.move(e)
 }
 
-// ---------- Trait de séparation ----------
-// Glissé : aperçu en direct, un seul appel à Herdr au relâché.
+// ---------- Divider ----------
+// Dragged: live preview, a single call to Herdr on release.
 let resizing: { d: Divider, pointer: number, ratio: number, el: HTMLElement } | null = null
 const resizingPath = ref<string | null>(null)
 function resizeDown(d: Divider, e: PointerEvent) {
@@ -240,7 +240,7 @@ function stopResize() {
   r.el.removeEventListener('pointerup', resizeUp)
   r.el.removeEventListener('pointercancel', stopResize)
 }
-// Clavier : flèches sur le trait (5 % par appui).
+// Keyboard: arrows on the divider (5 % per press).
 function resizeKey(d: Divider, e: KeyboardEvent) {
   const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key]
   if (!step || !entry.value || (d.direction === 'right') !== (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return

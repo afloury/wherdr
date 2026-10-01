@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Recherche dans toutes les conversations (loupe de l'accueil, ⌘K) : plein
-// écran sur téléphone, fenêtre carrée sur ordinateur. Résultats groupés par
-// agent (en-tête façon carte d'agent), ↑/↓ et Entrée au clavier.
+// Search across all conversations (home magnifier, ⌘K): full
+// screen on the phone, square window on a computer. Results grouped by
+// agent (agent-card-style header), ↑/↓ and Enter on the keyboard.
 import type { ConversationHit, ConversationSearchResponse, Pane } from '#shared/types'
 import { machineOf } from '#shared/ids'
 import { highlightParts } from '#shared/searchText'

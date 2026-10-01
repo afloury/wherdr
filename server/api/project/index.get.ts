@@ -1,5 +1,5 @@
-// Panneau « Projet » d'un coordinateur herdr-projects (`?pane=<id>`), lecture seule.
-// `since=<version>` : réponse `{ same: true }` si TASKS.md et les threads n'ont pas bougé.
+// "Project" panel of a herdr-projects coordinator (`?pane=<id>`), read-only.
+// `since=<version>`: replies `{ same: true }` if TASKS.md and the threads have not changed.
 import { readProjectBoard } from '../../utils/projectBoard'
 
 export default defineApi(async (event) => {

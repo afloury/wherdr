@@ -1,5 +1,5 @@
-// Actions sur les espaces, onglets et panes (nouvel onglet, diviser, renommer,
-// fermer, déplacer, réordonner) : l'appel part vers la machine de l'objet visé.
+// Actions on spaces, tabs and panes (new tab, split, rename,
+// close, move, reorder): the call goes to the machine of the target object.
 import { type HerdrStep, SpaceActionError, dropSteps, spaceCall, spaceResult, swapSteps } from '../../shared/spaceActions'
 import type { DropSide } from '../../shared/layout'
 import { HerdrError, herdrOn } from '../utils/herdr'
@@ -15,7 +15,7 @@ export default defineApi(async (_event, body) => {
   }
   if (call.method === 'pane.swap') {
     await swapPanes(call.machine, String(call.params.pane_id), call.params.direction as string)
-    log(`espace : pane.swap${call.machine ? ` (${call.machine})` : ''}`)
+    log(`space: pane.swap${call.machine ? ` (${call.machine})` : ''}`)
     poll()
     return { ok: true }
   }
@@ -23,17 +23,17 @@ export default defineApi(async (_event, body) => {
     const { pane_id: pane, target_pane_id: target, side } = call.params as { pane_id: string, target_pane_id: string, side: DropSide }
     const snap = await herdrOn(call.machine, 'session.snapshot', {}, 5000)
     await runSteps(call.machine, stepsOf(() => dropSteps(snap?.snapshot || snap, pane, target, side)))
-    log(`espace : pane.drop ${side}${call.machine ? ` (${call.machine})` : ''}`)
+    log(`space: pane.drop ${side}${call.machine ? ` (${call.machine})` : ''}`)
     poll()
     return { ok: true }
   }
   const r = await herdrOn(call.machine, call.method, call.params)
-  log(`espace : ${call.method}${call.machine ? ` (${call.machine})` : ''}`)
+  log(`space: ${call.method}${call.machine ? ` (${call.machine})` : ''}`)
   poll()
   return { ok: true, ...spaceResult(call, r) }
 })
 
-// Échange avec le voisin que Herdr désigne, puis focus rendu (swapSteps).
+// Swap with the neighbour Herdr designates, then focus restored (swapSteps).
 async function swapPanes(machine: string, pane: string, direction: string) {
   const [snap, nb] = await Promise.all([
     herdrOn(machine, 'session.snapshot', {}, 5000),
@@ -50,8 +50,8 @@ function stepsOf(f: () => HerdrStep[]) {
   }
 }
 
-// Étapes l'une après l'autre. Un pane.move peut rendre un nouvel ID (autre
-// espace) : les étapes suivantes suivent le pane.
+// Steps one after the other. A pane.move may return a new ID (other
+// space): the following steps follow the pane.
 async function runSteps(machine: string, steps: HerdrStep[]) {
   const renamed = new Map<string, string>()
   const fix = (v: unknown): unknown => (typeof v === 'string' ? renamed.get(v) ?? v

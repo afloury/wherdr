@@ -9,29 +9,29 @@ export function shouldNotify(scope: NotifyScope | undefined, p: Pick<Pane, 'name
 }
 
 // ---------------------------------------------------------------- herdr notification
-// Notifications de `herdr notification show` (plugins, scripts), reçues par
-// herdrNotify.ts. Seules les notifications « custom » partent en push : les
-// autres (needs attention, finished) sont les changements d'état des agents,
-// déjà notifiés par wherdr (state.ts) — les relayer ferait doublon.
+// Notifications from `herdr notification show` (plugins, scripts), received by
+// herdrNotify.ts. Only "custom" notifications go out as push: the
+// others (needs attention, finished) are agent state changes,
+// already notified by wherdr (state.ts) — relaying them would duplicate.
 export interface NoticeLike { kind: string, title: string, body: string | null }
 export const forwardableNotice = (n: NoticeLike) => n.kind === 'custom' && Boolean(n.title.trim())
 
-// herdr-projects titre ses notifications « <Projet> · <sujet> » ; le sujet est
-// l'identifiant du thread (t-0015) quand elle parle d'un thread.
+// herdr-projects titles its notifications "<Project> · <topic>"; the topic is
+// the thread identifier (t-0015) when it is about a thread.
 const THREAD_NOTICE = /^(.+?) · (t-\d{4,})$/
 export function projectThreadOfNotice(title: string): { project: string, thread: string } | null {
   const m = THREAD_NOTICE.exec(title.trim())
   return m ? { project: m[1]!.trim(), thread: m[2]! } : null
 }
 
-// Même règle que pour les agents : un thread herdr-projects ne notifie que les
-// appareils réglés sur « Tous les agents ».
+// Same rule as for agents: a herdr-projects thread only notifies the
+// devices set to "All agents".
 export function shouldNotifyNotice(scope: NotifyScope | undefined, title: string): boolean {
   return scope === 'all' || !projectThreadOfNotice(title)
 }
 
-// Pane du thread (lien de la notification) : nom ou dossier `hp-<projet>-t-0015…`
-// (herdr-projects affiche « Wherdr » pour le projet « wherdr »).
+// Pane of the thread (notification link): name or folder `hp-<project>-t-0015…`
+// (herdr-projects shows "Wherdr" for the "wherdr" project).
 export function findThreadPane<P extends Pick<Pane, 'id' | 'name' | 'cwd'>>(panes: P[], project: string, thread: string): P | null {
   const slug = project.toLowerCase().trim().replace(/\s+/g, '-')
   const mark = new RegExp(`(^|/)hp-${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-${thread}(?:-|/|$)`, 'i')
@@ -39,8 +39,8 @@ export function findThreadPane<P extends Pick<Pane, 'id' | 'name' | 'cwd'>>(pane
   return hits.length === 1 ? hits[0]! : null
 }
 
-// Même notification reçue deux fois (deux profils vers la même machine,
-// reconnexion, plugin qui répète) : une seule push par fenêtre.
+// Same notification received twice (two profiles to the same machine,
+// reconnection, repeating plugin): a single push per window.
 export class NoticeDeduper {
   private seen = new Map<string, number>()
   constructor(private windowMs = 60000) {}
@@ -51,5 +51,5 @@ export class NoticeDeduper {
     return true
   }
 }
-// Sans la machine : un même message venu par deux chemins ne sonne qu'une fois.
+// Without the machine: the same message coming by two paths only rings once.
 export const noticeKey = (n: NoticeLike) => `${n.title.trim()}\n${(n.body || '').trim()}`

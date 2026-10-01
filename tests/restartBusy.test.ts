@@ -17,15 +17,15 @@ vi.mock('../server/utils/herdr', () => ({
   herdr: async (method: string) => {
     calls.methods.push(method)
     await new Promise(r => setTimeout(r, 5))
-    // Le shell est au premier plan : l'agent est considéré comme arrêté.
+    // The shell is in the foreground: the agent is considered stopped.
     return method === 'pane.process_info' ? { process_info: { foreground_processes: [], shell_pid: 1, foreground_process_group_id: 1 } } : {}
   },
 }))
 
 import { restartAgent } from '../server/utils/restart'
 
-describe('redémarrage : double toucher', () => {
-  it('une seule séquence quand deux demandes arrivent pendant la lecture du plan', async () => {
+describe('restart: double tap', () => {
+  it('a single sequence when two requests arrive while the plan is being read', async () => {
     const [a, b] = await Promise.allSettled([restartAgent('w1:p1'), restartAgent('w1:p1')])
     expect(a.status).toBe('fulfilled')
     expect(b.status).toBe('rejected')

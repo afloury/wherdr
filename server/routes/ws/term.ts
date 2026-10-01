@@ -1,5 +1,5 @@
-// WS /ws/term?pane=…&cols=…&rows=…[&takeover=1] : flux terminal du pane,
-// `herdr terminal session control` relayé tel quel.
+// WS /ws/term?pane=…&cols=…&rows=…[&takeover=1]: terminal stream of the pane,
+// `herdr terminal session control` relayed as is.
 const sessions = new Map<string, TermSession>()
 
 export default defineWebSocketHandler({

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Bandeau « Nouvelle version disponible » après un redéploiement : l'app
-// continue de marcher, l'utilisateur recharge quand il veut.
-// (L'avis de nouvelle image publiée est UpdateBanner, distinct.)
+// "New version available" banner after a redeployment: the app
+// keeps working, the user reloads whenever they want.
+// (The notice of a newly published image is UpdateBanner, separate.)
 const busy = ref(false)
 function reload() {
   haptic()

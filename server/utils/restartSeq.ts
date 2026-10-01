@@ -1,5 +1,5 @@
-// Séquence de redémarrage d'un agent (arrêt puis relance dans le même pane),
-// sans dépendance à l'état du serveur : appels Herdr injectés (tests).
+// Restart sequence of an agent (stop then relaunch in the same pane),
+// independent of the server state: Herdr calls injected (tests).
 import crypto from 'node:crypto'
 import type { Pane } from '../../shared/types'
 import type { RestartPlan } from '../../shared/restart'
@@ -15,13 +15,13 @@ export interface RestartDeps {
 
 const base = (s: string) => s.replace(/^.*\//, '').replace(/\.(c?js|mjs)$/, '')
 
-// Processus au premier plan du pane : le shell (à son invite) ou l'agent.
+// Foreground process of the pane: the shell (at its prompt) or the agent.
 export async function paneForeground(d: RestartDeps, paneId: string, kind: string) {
   const r = await d.call('pane.process_info', { pane_id: paneId }, 4000)
   const info = (r && r.process_info) || {}
   const procs: Json[] = info.foreground_processes || []
   const agent = procs.find(p => p.name === kind || (p.argv || []).some((a: string) => base(a) === kind)) || null
-  // Groupe au premier plan = celui du shell : plus rien ne tourne par-dessus.
+  // Foreground group = the shell's: nothing runs on top of it any more.
   const atShell = !agent && Boolean(info.shell_pid) && info.foreground_process_group_id === info.shell_pid
   return { agent, atShell, argv: agent && Array.isArray(agent.argv) ? agent.argv.map(String) as string[] : null }
 }
@@ -43,10 +43,10 @@ const busy = async (d: RestartDeps, paneId: string) => {
   return s === 'working' || s === 'blocked'
 }
 
-// Quitter l'agent. Au travail ou devant une question : Échap d'abord (interrompt
-// le tour, refuse la permission), sinon `/exit` serait tapé dans la réponse. Un
-// seul Échap à la fois : deux de suite sur un champ vide ouvrent le retour en
-// arrière de Claude.
+// Quit the agent. Working or in front of a question: Escape first (interrupts
+// the turn, denies the permission), otherwise `/exit` would be typed into the answer. A
+// single Escape at a time: two in a row on an empty field open Claude's
+// rewind.
 export async function stopAgent(d: RestartDeps, p: Pick<Pane, 'id' | 'agent' | 'status'>) {
   const kind = p.agent!
   const key = (k: string) => d.call('pane.send_input', { pane_id: p.id, keys: [k] })
@@ -67,7 +67,7 @@ export async function stopAgent(d: RestartDeps, p: Pick<Pane, 'id' | 'agent' | '
   throw new HerdrError('restart_stop', 'the agent did not stop')
 }
 
-// Relancer l'agent (le shell peut mettre un instant à afficher son invite).
+// Relaunch the agent (the shell may take a moment to show its prompt).
 export async function startAgent(d: RestartDeps, p: Pick<Pane, 'id' | 'agent' | 'name'>, plan: RestartPlan) {
   const name = p.name || `${p.agent}-${crypto.randomBytes(2).toString('hex')}`
   let last: HerdrError | null = null
@@ -77,7 +77,7 @@ export async function startAgent(d: RestartDeps, p: Pick<Pane, 'id' | 'agent' | 
       return
     } catch (e) {
       last = e as HerdrError
-      if (last.code === 'agent_not_ready') return // démarré, arrêté sur une invite
+      if (last.code === 'agent_not_ready') return // started, stopped on a prompt
       if (last.code === 'timeout' || last.code === 'unreachable') break
       await d.sleep(500)
     }

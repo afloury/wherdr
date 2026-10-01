@@ -1,6 +1,6 @@
-// Raison de fermeture d'un terminal envoyée par le serveur : les cas connus
-// (machine injoignable ou inconnue) arrivent avec un code, traduit ici ; les
-// messages de Herdr restent tels quels (bannières « déjà ouvert ailleurs »…).
+// Reason a terminal was closed, sent by the server: the known cases
+// (machine unreachable or unknown) come with a code, translated here; Herdr's
+// messages stay as they are ("already open elsewhere" banners…).
 import { t, tl } from './i18n'
 
 export function terminalClosedText(m: { reason?: string, code?: string, machine?: string }): string {

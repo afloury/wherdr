@@ -1,12 +1,12 @@
-// Ligne d'activité de Claude Code, lue à l'écran pendant qu'il travaille :
+// Claude Code's activity line, read from the screen while it works:
 //   ✢ Boondoggling… (1m 14s · ↓ 4.6k tokens · thinking)
-// Glyphe animé (· ✢ ✳ ✶ ✻ ✽, * sous Linux), verbe fantaisiste, « … », puis entre
-// parenthèses durée, jetons et état de réflexion (Claude Code 2.1.x). Le verbe
-// n'est pas dans la transcription : seul l'écran le donne.
+// Animated glyph (· ✢ ✳ ✶ ✻ ✽, * on Linux), whimsical verb, "…", then in
+// parentheses duration, tokens and thinking state (Claude Code 2.1.x). The verb
+// is not in the transcript: only the screen gives it.
 //
-// La ligne commence en colonne 0 (les messages de Claude sont précédés de ⏺ et
-// leurs suites indentées, ceux de l'utilisateur de ❯) et se trouve au-dessus du
-// cadre du champ de saisie : on cherche de bas en haut, au-dessus de ce cadre.
+// The line starts at column 0 (Claude's messages are preceded by ⏺ and
+// their continuations indented, the user's by ❯) and sits above the
+// input field frame: we search bottom-up, above that frame.
 
 export interface ClaudeActivity {
   glyph: string
@@ -36,13 +36,13 @@ export function parseClaudeActivityLine(line: string): ClaudeActivity | null {
 export function parseClaudeActivity(screen: string | null | undefined): ClaudeActivity | null {
   if (!screen) return null
   const lines = screen.split('\n')
-  // Cadre du champ de saisie : deux traits horizontaux ; la ligne d'activité
-  // est au-dessus du premier. Sans cadre (panneau ouvert…), le bas de l’écran.
+  // Input field frame: two horizontal rules; the activity line
+  // is above the first one. Without a frame (panel open…), the bottom of the screen.
   let end = lines.length
   const rules: number[] = []
   for (let i = lines.length - 1; i >= 0 && rules.length < 2; i--) if (RULE_RE.test(lines[i]!)) rules.push(i)
   if (rules.length === 2) end = rules[1]!
-  // Au plus 20 lignes au-dessus (liste de tâches, astuce « ⎿ Tip: … » entre les deux).
+  // At most 20 lines above (task list, "⎿ Tip: …" hint in between).
   for (let i = end - 1; i >= Math.max(0, end - 20); i--) {
     const a = parseClaudeActivityLine(lines[i]!)
     if (a) return a

@@ -10,13 +10,13 @@ describe('largeur du terminal en pixels → colonnes', () => {
     [1920, 'wide', 1100, 108],
     [1920, 'full', 1532, 151],
   ] as const)('%i px de fenêtre, %s : %i px et %i colonnes', (windowWidth, preference, pixels, cols) => {
-    const panelWidth = windowWidth - 340 // largeur réelle de la liste ordinateur
+    const panelWidth = windowWidth - 340 // real width of the computer list
     const width = terminalPixelWidth(panelWidth, preference)
     expect(width).toBe(pixels)
     expect(columnsForWidth(width, 10)).toBe(cols)
   })
 
-  it('reste dans un pane étroit et garde au moins une colonne', () => {
+  it('stays inside a narrow pane and keeps at least one column', () => {
     expect(terminalPixelWidth(390, 'normal', false)).toBe(390)
     expect(terminalPixelWidth(400, 'wide')).toBe(352)
     expect(columnsForWidth(12, 10)).toBe(1)

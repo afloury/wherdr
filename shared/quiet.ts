@@ -1,12 +1,12 @@
-// Mode silence : aucune notification push tant qu'il est actif, pour un
-// appareil (son abonnement) ou pour tous. `until` : fin en ms (epoch), ou null
-// pour « jusqu'à réactivation ». Un silence expiré ne compte plus : le retour à
-// la normale est automatique, sans tâche planifiée.
+// Quiet mode: no push notification while it is active, for one
+// device (its subscription) or for all. `until`: end in ms (epoch), or null
+// for "until turned back on". An expired quiet period no longer counts: back to
+// normal is automatic, without a scheduled task.
 export interface Quiet { until: number | null }
 export type QuietScope = 'device' | 'all'
 export type QuietDuration = 'hour' | 'morning' | 'manual'
 
-// Borne des durées acceptées (un silence plus long = « jusqu'à réactivation »).
+// Bound on accepted durations (a longer quiet period = "until turned back on").
 export const QUIET_MAX_MS = 7 * 24 * 3600 * 1000
 
 export function quietActive(q: Quiet | null | undefined, now = Date.now()): boolean {
@@ -17,8 +17,8 @@ export function silenced(global: Quiet | null | undefined, device: Quiet | null 
   return quietActive(global, now) || quietActive(device, now)
 }
 
-// Prochain 8 h (heure locale) strictement après `now` : demain matin, ou ce
-// matin si l'on coupe au milieu de la nuit.
+// Next 8 am (local time) strictly after `now`: tomorrow morning, or this
+// morning if muted in the middle of the night.
 export function nextMorning(now: Date, hour = 8): number {
   const d = new Date(now)
   d.setHours(hour, 0, 0, 0)
@@ -32,7 +32,7 @@ export function quietUntil(duration: QuietDuration, now = new Date()): number | 
   return null
 }
 
-// Corps de requête -> silence valide, `null` pour l'arrêt, `undefined` si refusé.
+// Request body -> valid quiet period, `null` to stop, `undefined` if rejected.
 export function parseQuiet(on: unknown, until: unknown, now = Date.now()): Quiet | null | undefined {
   if (on === false) return null
   if (on !== true) return undefined

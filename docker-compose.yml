@@ -1,42 +1,42 @@
-# wherdr — PWA pour piloter depuis le téléphone les agents de code (Claude Code,
-# Codex) qui tournent dans Herdr (Nuxt 4 + Nuxt UI 4 ; passerelle Herdr dans Nitro).
+# wherdr — PWA to drive, from your phone, the coding agents (Claude Code,
+# Codex) running in Herdr (Nuxt 4 + Nuxt UI 4; Herdr gateway in Nitro).
 #
-# Réglages propres à l'installation : fichier `.env` (non suivi par git), à créer
-# depuis `.env.example`. Icônes personnelles : cf. docker-compose.override.example.yml.
+# Installation-specific settings: `.env` file (not tracked by git), to create
+# from `.env.example`. Custom icons: see docker-compose.override.example.yml.
 #
-# ⚠ C'est un shell sur la machine (lancer/piloter des agents = exécuter des
-# commandes en tant que l'utilisateur de l'hôte). L'isolation Docker est
-# symbolique : le conteneur parle au socket de Herdr qui tourne sur l'hôte.
-# D'où : écoute sur 127.0.0.1 uniquement, publié sur le tailnet seulement par
+# ⚠ This is a shell on the machine (launching/driving agents = running
+# commands as the host user). Docker isolation is
+# symbolic: the container talks to the Herdr socket running on the host.
+# Hence: listens on 127.0.0.1 only, published on the tailnet only via
 #   tailscale serve --bg --https=${PORT} http://127.0.0.1:${PORT}
-# -> https://<hôte>.<tailnet>.ts.net:<port>. Jamais de route publique (Caddy, Cloudflare…).
+# -> https://<host>.<tailnet>.ts.net:<port>. Never a public route (Caddy, Cloudflare…).
 services:
   herdr-web:
-    # Image publiée à chaque release (arm64 + amd64). Mise à jour :
+    # Image published on each release (arm64 + amd64). Update:
     #   docker compose pull && docker compose up -d
-    # Construire soi-même à partir des sources : cf. docker-compose.build.yml.
+    # Build it yourself from source: see docker-compose.build.yml.
     image: ${WHERDR_IMAGE:-ghcr.io/afloury/wherdr:latest}
     container_name: wherdr
     hostname: ${HOST_LABEL:-wherdr}
-    restart: always  # redémarre aussi après un arrêt manuel du démon ou un reboot
-    # Init minimal en PID 1 : récupère les processus détachés (commandes de plugins).
+    restart: always  # also restarts after a manual daemon stop or a reboot
+    # Minimal init as PID 1: reaps detached processes (plugin commands).
     init: true
     environment:
       - PORT=${PORT:-7683}
-      # Utilisateur du conteneur, créé au démarrage : UID/GID et dossier personnel
-      # de l'hôte (ssh y lit ~/.ssh ; git, Herdr et les fichiers gardent leur propriétaire).
+      # Container user, created at startup: UID/GID and home directory
+      # of the host (ssh reads ~/.ssh there; git, Herdr and files keep their owner).
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       - HOME=${HOST_HOME:-${HOME}}
       - DATA_DIR=/data
-      # Binaire Herdr de l'hôte (statique musl, tourne tel quel sous alpine) :
-      # client et serveur restent à la même version après un `herdr update`.
+      # Host Herdr binary (static musl, runs as is under alpine):
+      # client and server stay on the same version after a `herdr update`.
       - HERDR_BIN=${HERDR_BIN:-${HOST_HOME:-${HOME}}/.local/bin/herdr}
-      # Vide = session par défaut de Herdr. `hwtest` pour les essais.
-      # Surtout pas HERDR_SESSION : Herdr lit cette variable lui-même.
+      # Empty = Herdr's default session. `hwtest` for experiments.
+      # Never HERDR_SESSION: Herdr reads that variable itself.
       - HERDR_WEB_SESSION=${HERDR_WEB_SESSION:-}
       - AGENT_KINDS=${AGENT_KINDS:-pi,claude,codex,gemini,cursor,devin,agy,cline,omp,mastracode,opencode,copilot,kimi,kiro,droid,amp,grok,hermes,kilo,qodercli,qwen,letta,maki,muse}
-      # Machines SSH de Herdr (`herdr machine list`) : `off` pour s'en tenir à celle-ci.
+      # Herdr SSH machines (`herdr machine list`): `off` to stick to this one.
       - HERDR_WEB_MACHINES=${HERDR_WEB_MACHINES:-on}
       - HERDR_WEB_SELF_HOSTS=${HERDR_WEB_SELF_HOSTS:-}
       - APP_URL=${APP_URL:-}
@@ -44,28 +44,28 @@ services:
       - HOST_LABEL=${HOST_LABEL:-}
       - PASSKEY_USER=${PASSKEY_USER:-wherdr}
       - TZ=${TZ:-UTC}
-      # Avis « nouvelle version » (une requête par jour à l'API des releases GitHub) : `off` pour le couper.
+      # "New version" notice (one request per day to the GitHub releases API): `off` to disable it.
       - WHERDR_UPDATE_CHECK=${WHERDR_UPDATE_CHECK:-on}
-    # Noms courts du tailnet (`ssh laptop`) : musl ne tente le domaine de
-    # recherche (MagicDNS) que si le nom a moins de `ndots` points ; Docker met 0.
+    # Short tailnet names (`ssh laptop`): musl only tries the search domain
+    # (MagicDNS) if the name has fewer than `ndots` dots; Docker sets 0.
     dns_opt:
       - ndots:1
     ports:
       - "127.0.0.1:${PORT:-7683}:${PORT:-7683}"
     volumes:
-      # Clés VAPID, abonnements push, clés d'accès, dossiers récents.
+      # VAPID keys, push subscriptions, passkeys, recent folders.
       - ./data:/data
-      # $HOME en lecture seule : sélecteur de dossier, transcriptions, binaire herdr,
-      # au même chemin que sur l'hôte (les cwd que Herdr renvoie sont des chemins de l'hôte).
+      # $HOME read-only: folder picker, transcripts, herdr binary,
+      # at the same path as on the host (the cwds Herdr returns are host paths).
       - ${HOST_HOME:-${HOME}}:${HOST_HOME:-${HOME}}:ro
-      # …sauf la config Herdr, en écriture : sockets de l'API et du client.
+      # …except the Herdr config, writable: API and client sockets.
       - ${HOST_HOME:-${HOME}}/.config/herdr:${HOST_HOME:-${HOME}}/.config/herdr
-      # Le catalogue des profils SSH doit être modifiable pour « Renommer la machine ».
+      # The SSH profile catalog must be writable for "Rename machine".
       - ${HOST_HOME:-${HOME}}/.local/state/herdr/client:${HOST_HOME:-${HOME}}/.local/state/herdr/client
-      # …et le dépôt des photos envoyées depuis le téléphone (purgé après 7 jours),
-      # que les agents lisent par leur chemin.
+      # …and the store of photos sent from the phone (purged after 7 days),
+      # which agents read by their path.
       - ${HOST_HOME:-${HOME}}/.cache/herdr-web:${HOST_HOME:-${HOME}}/.cache/herdr-web
-      # Projets herdr-projects (New project, adopter, ouvrir, pause/reprise depuis
-      # l'app) : leur dossier racine, en écriture. Autre racine (`root` dans
-      # ~/.config/herdr-projects/config.toml) : monter celle-là à la place.
+      # herdr-projects projects (New project, adopt, open, pause/resume from
+      # the app): their root folder, writable. Other root (`root` in
+      # ~/.config/herdr-projects/config.toml): mount that one instead.
       - ${HOST_HOME:-${HOME}}/.herdr-projects:${HOST_HOME:-${HOME}}/.herdr-projects

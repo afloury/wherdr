@@ -4,7 +4,7 @@ import { normalizeDirInput } from '../app/utils/dirInput'
 const HOME = '/home/user'
 
 describe('normalizeDirInput', () => {
-  it('développe ~ et ~/…', () => {
+  it('expands ~ and ~/…', () => {
     expect(normalizeDirInput('~', HOME)).toBe(HOME)
     expect(normalizeDirInput('~/code/app', HOME)).toBe('/home/user/code/app')
     expect(normalizeDirInput('', HOME)).toBe(HOME)
@@ -13,7 +13,7 @@ describe('normalizeDirInput', () => {
     expect(normalizeDirInput('  "/home/user/code/"  ', HOME)).toBe('/home/user/code')
     expect(normalizeDirInput("'~/a/./b/../c//'", HOME)).toBe('/home/user/a/c')
   })
-  it('résout un chemin relatif depuis le HOME', () => {
+  it('resolves a relative path from HOME', () => {
     expect(normalizeDirInput('code', HOME)).toBe('/home/user/code')
   })
   it('refuse un chemin hors du HOME', () => {

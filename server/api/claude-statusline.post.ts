@@ -1,4 +1,4 @@
-// Installe la barre d'état des quotas Claude sur une machine (cf. utils/quotas.ts).
+// Installs the Claude quota status line on a machine (see utils/quotas.ts).
 import { MACHINE_KEY_RE } from '../../shared/ids'
 import { HerdrError } from '../utils/herdr'
 import { getMachine } from '../utils/machines'

@@ -1,6 +1,6 @@
-// Web Push (iOS 16.4+, PWA installée) : la notif est livrée par Apple, donc elle
-// arrive même si Tailscale est coupé sur le téléphone, et un tap rouvre la PWA
-// elle-même (une notif ntfy ouvrirait Safari).
+// Web Push (iOS 16.4+, installed PWA): the notification is delivered by Apple, so it
+// arrives even if Tailscale is off on the phone, and a tap reopens the PWA
+// itself (an ntfy notification would open Safari).
 import fs from 'node:fs'
 import path from 'node:path'
 import webpush from 'web-push'
@@ -40,7 +40,7 @@ export function initVapid() {
   vapid = null
   const config = pushConfig(APP_URL)
   if (!config.enabled) {
-    log(`AVERTISSEMENT : APP_URL n'est pas une URL HTTPS valide ; Web Push est désactivé (sujet VAPID de repli : ${config.subject}). Configure une URL HTTPS privée pour les notifications.`)
+    log(`WARNING: APP_URL is not a valid HTTPS URL; Web Push is disabled (fallback VAPID subject: ${config.subject}). Set a private HTTPS URL for notifications.`)
     return
   }
   try {
@@ -49,13 +49,13 @@ export function initVapid() {
     vapid = webpush.generateVAPIDKeys()
     fs.mkdirSync(DATA_DIR, { recursive: true })
     fs.writeFileSync(VAPID_FILE, JSON.stringify(vapid, null, 2) + '\n', { mode: 0o600 })
-    log('clés VAPID générées')
+    log('VAPID keys generated')
   }
   try {
     webpush.setVapidDetails(config.subject, vapid!.publicKey, vapid!.privateKey)
   } catch (error) {
     vapid = null
-    log(`AVERTISSEMENT : sujet VAPID refusé ; Web Push est désactivé (${String(error)}).`)
+    log(`WARNING: VAPID subject rejected; Web Push is disabled (${String(error)}).`)
   }
 }
 export const pushReady = () => Boolean(vapid)
@@ -72,15 +72,15 @@ export async function writeSubs(subs: PushSub[]) {
   await fsp.writeFile(SUBS_FILE, JSON.stringify({ subs }, null, 2) + '\n', { mode: 0o600 })
 }
 
-// `audience` : le pane concerné (réglage « Notifier pour » de chaque appareil),
-// ou directement le filtre à appliquer au réglage.
+// `audience`: the pane concerned (each device's "Notify for" setting),
+// or directly the filter to apply to the setting.
 export type PushAudience = Pick<Pane, 'name' | 'cwd'> | ((scope: NotifyScope | undefined, sub: PushSub) => boolean)
 
 export function subWatchesSession(sub: PushSub, baseKey: string, session: string, baseSession: string): boolean {
   return (sub.sessions?.[baseKey] || baseSession) === session
 }
 
-// Mode silence pour tous les appareils (DATA_DIR/quiet.json, gardé au redémarrage).
+// Quiet mode for all devices (DATA_DIR/quiet.json, kept across restarts).
 export async function readGlobalQuiet(): Promise<Quiet | null> {
   try {
     const q = JSON.parse(await fsp.readFile(QUIET_FILE, 'utf8')).quiet
@@ -92,7 +92,7 @@ export async function writeGlobalQuiet(quiet: Quiet | null) {
   await fsp.writeFile(QUIET_FILE, JSON.stringify({ quiet }, null, 2) + '\n', { mode: 0o600 })
 }
 
-// `force` : la notification de test passe malgré le silence (geste explicite).
+// `force`: the test notification goes through despite quiet mode (explicit gesture).
 export async function pushSend(payload: PushPayload, audience?: PushAudience, force = false): Promise<number> {
   if (!pushReady()) return 0
   const subs = await readSubs()
@@ -100,7 +100,7 @@ export async function pushSend(payload: PushPayload, audience?: PushAudience, fo
   const dead: string[] = []
   let ok = 0
   for (const sub of subs) {
-    // Filtre avant l'envoi : rien ne part vers un appareil en silence.
+    // Filter before sending: nothing goes to a muted device.
     if (!force && silenced(globalQuiet, sub.quiet)) continue
     if (typeof audience === 'function' ? !audience(sub.notifyScope, sub) : audience && !shouldNotify(sub.notifyScope, audience)) continue
     try {
@@ -118,8 +118,8 @@ export async function pushSend(payload: PushPayload, audience?: PushAudience, fo
       log(`push ${code}: ${String(err.body || err.message).slice(0, 140)}`)
     }
   }
-  // Relire avant d'écrire : les envois ont pris du temps, et un abonnement ou un
-  // silence enregistré entre-temps ne doit pas être écrasé par l'ancienne liste.
+  // Re-read before writing: sending took time, and a subscription or
+  // quiet setting saved in the meantime must not be overwritten by the old list.
   if (dead.length) await writeSubs((await readSubs()).filter(s => !dead.includes(s.endpoint)))
   return ok
 }

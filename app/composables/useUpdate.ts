@@ -1,6 +1,6 @@
-// Avis « nouvelle version de wherdr » (/api/update) : chargé une fois par ouverture
-// de l'app (le serveur ne demande à GitHub qu'une fois par jour). « Masquer »
-// vaut jusqu'à la version suivante, sur cet appareil.
+// "New wherdr version" notice (/api/update): loaded once per opening
+// of the app (the server only asks GitHub once a day). "Hide"
+// lasts until the next version, on this device.
 import type { UpdateInfo } from '#shared/updates'
 
 const DISMISS_KEY = 'wherdr.update.dismissed'
@@ -15,7 +15,7 @@ export function loadUpdate() {
   api<UpdateInfo>('/api/update').then((u) => { updateInfo.value = u }).catch(() => { loaded = false })
 }
 
-// Nouvelle version à signaler sur l'accueil (masquable).
+// New version to announce on the home screen (hideable).
 export const updateBanner = computed(() => {
   const u = updateInfo.value
   return u?.latest && u.latest !== dismissed.value ? u : null

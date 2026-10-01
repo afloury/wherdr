@@ -36,7 +36,7 @@ Quelques mots d'intro hors liste.
 `
 
 describe('TASKS.md', () => {
-  it('lit toutes les listes dans leur ordre, noms connus reconnus', () => {
+  it('reads all lists in their order, known names recognized', () => {
     const lists = parseTasks(TASKS)
     expect(lists.map(l => [l.title, l.kind])).toEqual([
       ['À tester', 'test'],
@@ -51,7 +51,7 @@ describe('TASKS.md', () => {
     ])
   })
 
-  it('reconnaît les responsables, y compris un thread', () => {
+  it('recognizes owners, including a thread', () => {
     const doing = parseTasks(TASKS)[2]!.tasks
     expect(doing.map(t => [t.owner, t.thread])).toEqual([
       ['agent → t-0034', 't-0034'],
@@ -60,11 +60,11 @@ describe('TASKS.md', () => {
     ])
     const ideas = parseTasks(TASKS)[3]!.tasks
     expect(ideas[0]).toEqual({ text: 'Une idée sans case', done: false, owner: 'agent', thread: null })
-    // Parenthèse au milieu : pas un responsable.
+    // Parenthesis in the middle: not an owner.
     expect(ideas[1]).toEqual({ text: 'Parenthèses (au milieu) du titre', done: false, owner: null, thread: null })
   })
 
-  it('ignore le code, les lignes indentées et le texte hors liste', () => {
+  it('ignores code, indented lines and text outside a list', () => {
     const all = parseTasks(TASKS).flatMap(l => l.tasks.map(t => t.text))
     expect(all).not.toContain('pas une tâche')
     expect(all.some(t => t.includes('ignorée'))).toBe(false)
@@ -72,7 +72,7 @@ describe('TASKS.md', () => {
     expect(parseTasks('')).toEqual([])
   })
 
-  it('noms de listes en français et en anglais', () => {
+  it('list names in French and English', () => {
     expect(listKind('To test')).toBe('test')
     expect(listKind('A DÉCIDER')).toBe('decide')
     expect(listKind('In progress')).toBe('doing')
@@ -84,7 +84,7 @@ describe('TASKS.md', () => {
     expect(listKind('Notes')).toBeNull()
   })
 
-  it('lit la raison uniquement dans une liste Bloqué, après le responsable', () => {
+  it('reads the reason only in a Blocked list, after the owner', () => {
     const lists = parseTasks('## Bloqué\n- [ ] Publier le guide — bloqué par : relecture (agent)\n## Backlog\n- [ ] Publier le guide — bloqué par : relecture (agent)')
     expect(lists[0]!.tasks[0]).toEqual({ text: 'Publier le guide', reason: 'relecture', done: false, owner: 'agent', thread: null })
     expect(lists[1]!.tasks[0]!.text).toBe('Publier le guide — bloqué par : relecture')
@@ -97,7 +97,7 @@ describe('TASKS.md', () => {
     expect(parseTaskLine('texte libre')).toBeNull()
     expect(parseTaskLine('- [X] Fini')?.done).toBe(true)
   })
-  it('un lien Markdown en fin de ligne reste un lien, pas le responsable', () => {
+  it('a Markdown link at the end of the line stays a link, not the owner', () => {
     expect(parseTaskLine('- [ ] Bandeau [PR](https://github.com/owner/repo/pull/12)', 'review'))
       .toEqual({ text: 'Bandeau [PR](https://github.com/owner/repo/pull/12)', done: false, owner: null, thread: null })
     expect(parseTaskLine('- [ ] Bandeau [PR](https://github.com/owner/repo/pull/12) (me)', 'review')?.owner).toBe('me')
@@ -106,28 +106,28 @@ describe('TASKS.md', () => {
 })
 
 describe('anciennes lignes : [t-NNNN] et (me)', () => {
-  it('[t-NNNN] nu retiré du texte, sans badge', () => {
+  it('bare [t-NNNN] removed from the text, no badge', () => {
     expect(parseTaskLine('- [ ] Bouton Stop [t-0140]')).toEqual({ text: 'Bouton Stop', done: false, owner: null, thread: null })
     expect(parseTaskLine('- [ ] Terminal [T-0140, t-0141; t-0140] (agent)')).toEqual({ text: 'Terminal', done: false, owner: 'agent', thread: null })
   })
-  it('ID avant ou après le responsable ; responsable lu mais hors du texte', () => {
+  it('ID before or after the owner; owner read but kept out of the text', () => {
     for (const line of ['- [ ] Bouton Stop vraiment [t-0140] (me)', '- [ ] Bouton Stop vraiment (me) [t-0140]']) {
       const x = parseTaskLine(line)!
       expect(x.text).toBe('Bouton Stop vraiment')
       expect(x.owner).toBe('me')
     }
   })
-  it('parenthèses dans le texte : le responsable est le dernier groupe', () => {
+  it('parentheses in the text: the owner is the last group', () => {
     const line = '- [ ] Bouton Stop (clic) pendant une commande (me)'
     expect(parseTaskLine(line)).toMatchObject({ owner: 'me', text: 'Bouton Stop (clic) pendant une commande' })
   })
-  it('crochets ordinaires gardés', () => {
+  it('ordinary brackets kept', () => {
     expect(parseTaskLine('- [ ] Tableau [beta] (me)')?.text).toBe('Tableau [beta]')
   })
 })
 
 describe('badges [b:couleur(texte)](cible)', () => {
-  it('badge simple : hex court ou long normalisé, palette, neutre', () => {
+  it('simple badge: short or long hex normalized, palette, neutral', () => {
     expect(takeBadges('A [b:#fA0(urgent)]').badges).toEqual([{ text: 'urgent', color: '#ffaa00' }])
     expect(takeBadges('A [b:#12abEF(x)]').badges[0]!.color).toBe('#12abef')
     expect(takeBadges('[b:green(ok)] A').badges[0]).toEqual({ text: 'ok', color: 'green' })
@@ -145,7 +145,7 @@ describe('badges [b:couleur(texte)](cible)', () => {
   it('badge-lien thread', () => {
     expect(takeBadges('A [b:gray(t-0140)](T-0140)').badges[0]).toEqual({ text: 't-0140', color: 'gray', thread: 't-0140' })
   })
-  it('schéma interdit : badge non cliquable, cible retirée du texte', () => {
+  it('forbidden scheme: non-clickable badge, target removed from the text', () => {
     for (const bad of ['javascript:alert(1)', 'data:text/html,x', 'ftp://example.test', '//example.test', 'mailto:a@example.test', 'https://']) {
       const r = takeBadges(`A [b:red(x)](${bad}) B`)
       expect(r.badges).toEqual([{ text: 'x', color: 'red' }])
@@ -153,14 +153,14 @@ describe('badges [b:couleur(texte)](cible)', () => {
       expect(badgeTarget(bad)).toBeNull()
     }
   })
-  it('plusieurs badges n’importe où, dans l’ordre', () => {
+  it('several badges anywhere, in order', () => {
     const t = parseTaskLine('- [ ] [b:red(bug)] Bouton Stop [b:blue(iOS)](https://example.test/ios) vraiment [t-0140] (me) [b:(v1.2)]')!
     expect(t.text).toBe('Bouton Stop vraiment')
     expect(t.owner).toBe('me')
     expect(t.badges!.map(b => b.text)).toEqual(['bug', 'iOS', 'v1.2'])
     expect(t.badges![1]!.href).toBe('https://example.test/ios')
   })
-  it('parenthèses et crochets dans le texte ; HTML gardé brut', () => {
+  it('parentheses and brackets in the text; HTML kept raw', () => {
     expect(takeBadges('A [b:(a (b) [c])]').badges[0]!.text).toBe('a (b) [c]')
     expect(takeBadges('A [b:(<img src=x onerror=alert(1)>)]').badges[0]!.text).toBe('<img src=x onerror=alert(1)>')
     const long = 'x'.repeat(40)
@@ -169,35 +169,35 @@ describe('badges [b:couleur(texte)](cible)', () => {
   it('ligne faite seulement de badges : leur texte sert de titre', () => {
     expect(parseTaskLine('- [ ] [b:blue(PR #3)](https://example.test/pr/3)')?.text).toBe('PR #3')
   })
-  it('pas de badge : ligne inchangée', () => {
+  it('no badge: line unchanged', () => {
     expect(parseTaskLine('- [ ] A [b:()] (me)')).not.toHaveProperty('badges')
   })
 })
 
-describe('URL brutes dans le texte', () => {
-  it('rendues en liens simples, texte autour gardé', () => {
+describe('bare URLs in the text', () => {
+  it('rendered as plain links, surrounding text kept', () => {
     expect(textParts('Bandeau https://github.com/o/r/pull/7, merci')).toEqual([
       { text: 'Bandeau ' }, { text: 'https://github.com/o/r/pull/7', href: 'https://github.com/o/r/pull/7' }, { text: ', merci' },
     ])
     expect(textParts('Voir <http://example.test/a>.')).toEqual([{ text: 'Voir ' }, { text: 'http://example.test/a', href: 'http://example.test/a' }, { text: '.' }])
   })
-  it('lien Markdown : libellé lié', () => {
+  it('Markdown link: label linked', () => {
     expect(textParts('Voir [la PR](https://example.test/pr/3) ici')).toEqual([{ text: 'Voir ' }, { text: 'la PR', href: 'https://example.test/pr/3' }, { text: ' ici' }])
   })
-  it('autres schémas : texte', () => {
+  it('other schemes: text', () => {
     expect(textParts('javascript:alert(1) et data:x')).toEqual([{ text: 'javascript:alert(1) et data:x' }])
     expect(textParts('[x](javascript:alert(1))')).toEqual([{ text: '[x](javascript:alert(1))' }])
   })
 })
 
-describe('réponses aux décisions (À décider)', () => {
-  it('prépare une réponse dans la langue choisie avec le texte de la tâche', () => {
+describe('answers to decisions (To decide)', () => {
+  it('prepares an answer in the chosen language with the task text', () => {
     const task = parseTaskLine('- [ ] Publier le dépôt « wherdr » ? (me)')!
     expect(decisionPrefix(task.text)).toBe('↳ Décision : Publier le dépôt « wherdr » ? — ')
     expect(decisionPrefix(' Publish the repository? ', 'en')).toBe('↳ Decision: Publish the repository? — ')
   })
 
-  it('préserve le brouillon et place la réponse à la fin', () => {
+  it('keeps the draft and puts the answer at the end', () => {
     const answer = decisionPrefix('Publier le dépôt ?')
     expect(prefillDraft('', answer)).toBe(answer)
     expect(prefillDraft('Autre réponse', answer)).toBe(`Autre réponse\n${answer}`)
@@ -206,7 +206,7 @@ describe('réponses aux décisions (À décider)', () => {
 })
 
 describe('actions du Backlog', () => {
-  it('compose le message envoyé par Lancer et le brouillon de Préciser sans responsable', () => {
+  it('builds the message sent by Launch and the Detail draft without the owner', () => {
     const task = parseTaskLine('- [ ] Améliorer le panneau Projet (agent)')!
     expect(launchMessage(task.text)).toBe('↳ Lancer : Améliorer le panneau Projet')
     expect(launchMessage(' Improve the project panel ', 'en')).toBe('↳ Launch: Improve the project panel')
@@ -214,7 +214,7 @@ describe('actions du Backlog', () => {
     expect(detailPrefix(' Improve the project panel ', 'en')).toBe('↳ Detail on Improve the project panel — ')
   })
 
-  it('garde le brouillon de Préciser et évite le doublon au second toucher', () => {
+  it('keeps the Detail draft and avoids the duplicate on a second tap', () => {
     const detail = detailPrefix('Améliorer le panneau Projet')
     expect(prefillDraft('', detail)).toBe(detail)
     expect(prefillDraft('Autre demande', detail)).toBe(`Autre demande\n${detail}`)
@@ -222,8 +222,8 @@ describe('actions du Backlog', () => {
   })
 })
 
-describe('actions de Bloqué', () => {
-  it('envoie Débloquer et prépare Préciser sur le titre seul', () => {
+describe('Blocked actions', () => {
+  it('sends Unblock and prepares Detail on the title alone', () => {
     const task = parseTasks('## Bloqué\n- [ ] Publier le guide — bloqué par : relecture (agent)')[0]!.tasks[0]!
     expect(unblockMessage(task.text)).toBe('↳ Débloquer : Publier le guide')
     expect(unblockMessage(' Ship guide ', 'en')).toBe('↳ Unblock: Ship guide')
@@ -245,7 +245,7 @@ describe('threads', () => {
     expect(normalizeThreads([{ id: '../x' }, 'bad', null])).toEqual([])
   })
 
-  it('trie les ouverts par attention puis du plus récent, les faits par date de clôture', () => {
+  it('sorts open threads by attention then most recent, done ones by closing date', () => {
     const list = normalizeThreads([
       raw('t-0001', { status: 'resolved', group: 'Resolved', group_token: 'resolved', rank: 6, updated: '2026-09-26T09:00:00Z' }),
       raw('t-0002', { status: 'resolved', group: 'Resolved', group_token: 'resolved', rank: 6, updated: '2026-09-27T01:00:00Z' }),
@@ -269,33 +269,33 @@ describe('sections du panneau', () => {
     raw('t-0001', { status: 'resolved', group_token: 'resolved', rank: 6 }),
   ]))
 
-  it('met les threads ouverts dans En cours sans doubler les tâches qui y renvoient', () => {
+  it('puts open threads in In progress without duplicating the tasks pointing to them', () => {
     const s = boardSections({ lists: parseTasks(TASKS), ...threads }, labels)
     expect(s.map(x => x.title)).toEqual(['À tester', 'À décider', 'En cours', 'Idées en vrac', 'Backlog', 'Fait'])
     const doing = s[2]!
     expect(doing.threads.map(t => t.id)).toEqual(['t-0040', 't-0034'])
-    // t-0034 est ouvert : montré par son thread ; t-0033 n'est pas dans la liste : reste une tâche.
+    // t-0034 is open: shown through its thread; t-0033 is not in the list: stays a task.
     expect(doing.tasks.map(t => t.thread)).toEqual(['t-0033', null])
     expect(s.at(-1)!.threads.map(t => t.id)).toEqual(['t-0001'])
   })
 
-  it('ajoute En cours et Fait quand TASKS.md ne les a pas', () => {
+  it('adds In progress and Done when TASKS.md does not have them', () => {
     const s = boardSections({ lists: parseTasks('## À tester\n- [ ] a (me)\n## Backlog\n- [ ] b\n## Fait\n- [x] c\n## Notes\n'), ...threads }, labels)
     expect(s.map(x => [x.title, x.kind])).toEqual([
       ['À tester', 'test'], ['En cours', 'doing'], ['Backlog', 'backlog'], ['Notes', null], ['Fait', 'done'],
     ])
     expect(s.at(-1)!.tasks.map(t => t.text)).toEqual(['c'])
-    // Pas de TASKS.md : En cours (si des threads tournent) et Fait.
+    // No TASKS.md: In progress (if threads are running) and Done.
     expect(boardSections({ lists: [], open: [], resolved: [] }, labels).map(x => x.kind)).toEqual(['done'])
   })
 
-  it('place En cours après Bloqué si cette section est absente, tout en respectant le fichier', () => {
+  it('places In progress after Blocked if that section is missing, while respecting the file', () => {
     const lists = parseTasks('## À décider\n## Bloqué\n- [ ] Attendre une revue\n## Backlog')
     expect(boardSections({ lists, ...threads }, labels).map(s => s.kind)).toEqual(['decide', 'blocked', 'doing', 'backlog', 'done'])
     expect(boardSections({ lists: parseTasks('## En cours\n## Bloqué'), ...threads }, labels).map(s => s.kind)).toEqual(['doing', 'blocked', 'done'])
   })
 
-  it('laisse un thread en attente dans En cours, sans le confondre avec la liste Bloqué', () => {
+  it('leaves a waiting thread in In progress, without confusing it with the Blocked list', () => {
     const waiting = normalizeThreads([raw('t-0002', { group: 'Waiting on you', group_token: 'waiting-on-you', rank: 1 })])
     const sections = boardSections({ lists: parseTasks('## Bloqué\n- [ ] Validation externe\n## En cours'), open: waiting, resolved: [] }, labels)
     expect(sections.find(s => s.kind === 'blocked')!.threads).toEqual([])
@@ -303,8 +303,8 @@ describe('sections du panneau', () => {
   })
 })
 
-describe('herdr-projects installé', () => {
-  it('trouve le binaire dans le manifeste du plugin', () => {
+describe('herdr-projects installed', () => {
+  it('finds the binary in the plugin manifest', () => {
     const plugin = {
       plugin_id: 'herdr-projects', enabled: true, plugin_root: '/h/.config/herdr/plugins/github/herdr-projects-abc',
       startup: [{ command: ['target/release/herdr-projects', 'startup'] }],
@@ -317,7 +317,7 @@ describe('herdr-projects installé', () => {
     expect(pluginBinary([])).toBeNull()
   })
 
-  it('reconnaît un coordinateur', () => {
+  it('recognizes a coordinator', () => {
     const base: Pane = { id: 'w1:p1', workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent: 'claude', name: null, label: null, status: 'idle', title: null, cwd: '/home/u/.herdr-projects/demo', agentSession: null }
     expect(isCoordinator(base)).toBe(true)
     expect(isCoordinator({ ...base, agent: null })).toBe(false)
@@ -326,44 +326,44 @@ describe('herdr-projects installé', () => {
   })
 })
 
-describe('retours de test (À tester)', () => {
-  it('Confirmer : message avec le texte exact de la tâche', () => {
+describe('test feedback (To test)', () => {
+  it('Confirm: message with the exact task text', () => {
     expect(testedMessage('Réglages › Agents : décocher Kimi')).toBe('✓ Testé : Réglages › Agents : décocher Kimi')
     expect(testedMessage('  Étoile animée ')).toBe('✓ Testé : Étoile animée')
     expect(testedMessage('Star', 'en')).toBe('✓ Tested: Star')
   })
-  it('texte de tâche tiré de TASKS.md (sans le responsable)', () => {
+  it('task text taken from TASKS.md (without the owner)', () => {
     const task = parseTaskLine('- [ ] Panneau « Projet » (au milieu) : ok ? (me)')!
     expect(testedMessage(task.text)).toBe('✓ Testé : Panneau « Projet » (au milieu) : ok ?')
   })
-  it('Problème : début de message, curseur après le tiret', () => {
+  it('Problem: message start, cursor after the dash', () => {
     expect(problemPrefix('Étoile animée')).toBe('✗ Problème : Étoile animée — ')
     expect(problemPrefix('Star', 'en')).toBe('✗ Problem: Star — ')
   })
-  it('Question : début de message, curseur après le tiret', () => {
+  it('Question: message start, cursor after the dash', () => {
     expect(questionPrefix('Étoile animée')).toBe('? Question : Étoile animée — ')
     expect(questionPrefix(' Star ', 'en')).toBe('? Question: Star — ')
     const q = questionPrefix('Étoile animée')
     expect(prefillDraft('', q)).toBe(q)
     expect(prefillDraft(q, q)).toBe(q)
-    // Après un problème sur la même tâche : la question vient à la ligne.
+    // After a problem on the same task: the question goes on a new line.
     const pb = problemPrefix('Étoile animée')
     expect(prefillDraft(`${pb}elle ne tourne pas`, q)).toBe(`${pb}elle ne tourne pas\n${q}`)
   })
-  it('préremplissage : champ vide, brouillon gardé, double toucher', () => {
+  it('prefill: empty field, draft kept, double tap', () => {
     const pre = problemPrefix('Étoile animée')
     expect(prefillDraft('', pre)).toBe(pre)
     expect(prefillDraft('  \n', pre)).toBe(pre)
     expect(prefillDraft('Autre chose', pre)).toBe(`Autre chose\n${pre}`)
     expect(prefillDraft(pre, pre)).toBe(pre)
     expect(prefillDraft(`Autre chose\n${pre}`, pre)).toBe(`Autre chose\n${pre}`)
-    // Explication déjà commencée : un nouveau signalement vient à la suite.
+    // Explanation already started: a new report follows it.
     expect(prefillDraft(`${pre}elle ne tourne pas`, pre)).toBe(`${pre}elle ne tourne pas\n${pre}`)
   })
 })
 
-describe('aide du tableau (Réglages › Plugins)', () => {
-  it('le modèle TASKS.md se relit avec les listes reconnues', async () => {
+describe('board help (Settings › Plugins)', () => {
+  it('the TASKS.md template reads back with the recognized lists', async () => {
     const { tasksTemplate, parseTasks } = await import('../shared/projectBoard')
     for (const lang of ['fr', 'en'] as const) {
       const md = tasksTemplate(lang)
@@ -375,20 +375,20 @@ describe('aide du tableau (Réglages › Plugins)', () => {
     expect(parseTasks(tasksTemplate('fr'))[0]!.title).toBe('À tester')
     expect(parseTasks(tasksTemplate('en'))[1]!.title).toBe('To decide')
   })
-  it('détecte les listes À tester / À décider manquantes', async () => {
+  it('detects missing To test / To decide lists', async () => {
     const { missingLists, parseTasks } = await import('../shared/projectBoard')
     expect(missingLists(parseTasks('## Backlog\n- [ ] a'))).toEqual(['test', 'decide'])
     expect(missingLists(parseTasks('## To verify\n## Questions'))).toEqual([])
     expect(missingLists(parseTasks('## À tester\n## Idées'))).toEqual(['decide'])
   })
-  it('les règles reprennent les messages envoyés par le panneau', async () => {
+  it('the rules repeat the messages sent by the panel', async () => {
     const m = await import('../shared/projectBoard')
     const fr = m.coordinatorRules('fr')
     expect(fr).toContain(m.testedMessage('…'))
     expect(fr).toContain(m.launchMessage('…', 'fr'))
     expect(fr).toContain(m.unblockMessage('…', 'fr'))
     expect(fr).toContain('Déplacer une tâche en Bloqué')
-    // Une seule syntaxe de badges, à utiliser de manière autonome.
+    // A single badge syntax, to be used autonomously.
     expect(fr).toContain('[b:couleur(texte)](cible)')
     expect(fr).toContain('de toi-même')
     expect(m.coordinatorRules('en')).toContain('on your own')
@@ -402,13 +402,13 @@ describe('aide du tableau (Réglages › Plugins)', () => {
   })
 })
 
-describe('liste À relire', () => {
-  it('reconnaît les titres et synonymes', () => {
+describe('To review list', () => {
+  it('recognizes titles and synonyms', () => {
     for (const h of ['À relire', 'To review', 'a relire', 'Relire', 'Review', 'Reviews', 'PR', 'PRs', 'Pull requests', 'À valider'])
       expect(listKind(h)).toBe('review')
     expect(listKind('Previews')).toBeNull()
   })
-  it('lit la liste et garde le responsable ; l’URL reste dans le texte', () => {
+  it('reads the list and keeps the owner; the URL stays in the text', () => {
     const [l] = parseTasks('## À relire\n- [ ] Bandeau — https://github.com/o/r/pull/7 (me)')
     expect(l!.kind).toBe('review')
     expect(l!.tasks[0]).toEqual({ text: 'Bandeau — https://github.com/o/r/pull/7', done: false, owner: 'me', thread: null })
@@ -419,7 +419,7 @@ describe('liste À relire', () => {
     expect(reviewCommentPrefix('Bandeau')).toBe('↳ Retour sur Bandeau : ')
     expect(coordinatorRules()).toContain('✓ Relu : …')
   })
-  it('En cours se place après À relire', () => {
+  it('In progress goes after To review', () => {
     const lists = parseTasks('## À relire\n- [ ] a\n## Backlog')
     const open = [{ id: 't-0001' }] as never
     expect(boardSections({ lists, open, resolved: [] }, { doing: 'En cours', done: 'Fait' }).map(s => s.kind)).toEqual(['review', 'doing', 'backlog', 'done'])
@@ -430,15 +430,15 @@ describe('Masquer les listes vides', () => {
   const lists = parseTasks('## À tester\n## À décider\n- [ ] Choix (me)\n## En cours\n## Backlog')
   const labels = { doing: 'En cours', done: 'Fait' }
   const all = boardSections({ lists, open: [], resolved: [] }, labels)
-  it('réglage coupé : toutes les listes', () => {
+  it('setting off: all lists', () => {
     expect(visibleSections(all, false).map(s => s.kind)).toEqual(['test', 'decide', 'doing', 'backlog', 'done'])
   })
-  it('réglage actif : seulement les listes avec des éléments, En cours et Fait compris', () => {
+  it('setting on: only lists with items, In progress and Done included', () => {
     expect(visibleSections(all, true).map(s => s.kind)).toEqual(['decide'])
     const open = normalizeThreads([{ id: 't-0002', status: 'open' }])
     expect(visibleSections(boardSections({ lists, open, resolved: [] }, labels), true).map(s => s.kind)).toEqual(['decide', 'doing'])
   })
-  it('une liste vide masquée ne déclenche pas la suggestion', () => {
+  it('a hidden empty list does not trigger the suggestion', () => {
     expect(missingListsOf(lists)).toEqual([])
   })
 })

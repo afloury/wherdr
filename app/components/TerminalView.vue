@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Terminal brut du pane : xterm.js + calque tactile (défilement au doigt ou à
-// la molette -> terminal.scroll, l'historique vit dans Herdr ; jamais de ↑/↓
-// envoyées à l'agent ; clic = clavier au terminal).
+// Raw terminal of the pane: xterm.js + touch layer (scrolling with a finger or
+// the wheel -> terminal.scroll, the history lives in Herdr; never ↑/↓
+// sent to the agent; click = keyboard to the terminal).
 import '@xterm/xterm/css/xterm.css'
 
 const props = defineProps<{ ctl: TerminalCtl }>()
@@ -62,12 +62,12 @@ function onTouchEnd() {
     ;(document.activeElement as HTMLElement | null)?.blur?.()
   }
 }
-// Le calque ne reçoit la souris que sur écran tactile (main.css) : sur
-// ordinateur, xterm la reçoit directement (sélection, mode souris).
+// The layer only receives the mouse on a touch screen (main.css): on a
+// computer, xterm receives it directly (selection, mouse mode).
 function onMouseDown() { props.ctl.focus() }
-// Écouté sur tout le bloc, avant xterm : sur ordinateur la souris atteint
-// xterm (sélection), qui enverrait sinon la molette au programme en mode
-// souris. Herdr applique lui-même le mode souris de l'application.
+// Listened on the whole block, before xterm: on a computer the mouse reaches
+// xterm (selection), which would otherwise send the wheel to the program in mouse
+// mode. Herdr applies the application's mouse mode itself.
 function onWheel(e: WheelEvent) {
   e.preventDefault()
   e.stopPropagation()

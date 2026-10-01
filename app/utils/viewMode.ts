@@ -1,13 +1,13 @@
-// Présentation d'un pane (conversation, terminal, panneau Projet) : quelles
-// commandes la vue agent montre, et ce que fait un toucher sur une bascule.
+// Presentation of a pane (conversation, terminal, Project panel): which
+// controls the agent view shows, and what a tap on a toggle does.
 
 type Mode = 'chat' | 'term' | 'project'
 
-// Téléphone : icônes d'en-tête (terminal `>_`, Projet) ; ordinateur : petit
-// sélecteur Conversation / Terminal dans l'en-tête (`header`) ou dans
-// l'en-tête de la case côte à côte (`cell`). Rien pour un agent sans
-// conversation (shell, Kimi…) : il reste sur le terminal. Côte à côte, chaque
-// case garde son sélecteur, focalisée ou non.
+// Phone: header icons (terminal `>_`, Project); computer: small
+// Conversation / Terminal selector in the header (`header`) or in
+// the side-by-side cell header (`cell`). Nothing for an agent without
+// conversation (shell, Kimi…): it stays on the terminal. Side by side, each
+// cell keeps its selector, focused or not.
 export function viewControls(o: { desk: boolean, cell: boolean, chat: boolean, live: boolean, project: boolean }) {
   const on = o.chat && (o.live || (o.desk && o.cell))
   return {
@@ -17,16 +17,16 @@ export function viewControls(o: { desk: boolean, cell: boolean, chat: boolean, l
   }
 }
 
-// Le terminal se saisit directement sur ordinateur, y compris dans une case
-// côte à côte. Le champ reste utile sur téléphone et dans la conversation ;
-// une case côte à côte le garde même sans le focus (rien ne bouge au clic).
+// The terminal takes input directly on a computer, including in a side-by-side
+// cell. The field stays useful on the phone and in the conversation;
+// a side-by-side cell keeps it even without the focus (nothing moves on click).
 export function showComposer(o: { desk: boolean, live: boolean, mode: Mode | 'mirror' | null, cell?: boolean }) {
   return (o.live || Boolean(o.desk && o.cell)) && (!o.desk || (o.mode !== 'term' && o.mode !== 'mirror'))
 }
 
-// Case côte à côte : le mode choisi pour ce pane, qu'elle ait le focus ou non.
-// Conversation (le panneau Projet n'existe pas en case) ou miroir du terminal ;
-// sans conversation, toujours le miroir.
+// Side-by-side cell: the mode chosen for this pane, whether it has the focus or not.
+// Conversation (the Project panel does not exist in a cell) or terminal mirror;
+// without a conversation, always the mirror.
 export function cellMode(o: { chat: boolean, viewMode: Mode }): 'chat' | 'mirror' {
   return o.chat && o.viewMode !== 'term' ? 'chat' : 'mirror'
 }
@@ -35,20 +35,20 @@ export function terminalAttachment(o: { desk: boolean, live: boolean, mode: Mode
   return o.desk && o.live && o.available && (o.mode === 'term' || o.mode === 'mirror')
 }
 
-// Un seul onglet : le bouton « + » tient dans l'en-tête. Dès le deuxième,
-// la rangée d'onglets précède l'en-tête et porte elle-même le bouton.
+// A single tab: the "+" button fits in the header. From the second one,
+// the row of tabs precedes the header and carries the button itself.
 export function spaceTabControls(count: number) {
   return { row: count > 1, headerAdd: count === 1 }
 }
 
-// Un toucher sur une bascule l'affiche ; un second revient à la conversation.
+// A tap on a toggle shows it; a second one goes back to the conversation.
 export function toggleViewMode(current: Mode | 'mirror' | null, target: Exclude<Mode, 'chat'>): Mode {
   return current === target ? 'chat' : target
 }
 
-// Côte à côte : Ctrl/⌘ + Alt + flèche donne le focus à la case voisine (ordre
-// de lecture de Herdr : gauche / haut = précédente, droite / bas = suivante).
-// Capté avant le terminal, où Tab et les flèches partent au pane.
+// Side by side: Ctrl/⌘ + Alt + arrow gives focus to the neighbouring cell (Herdr's
+// reading order: left / up = previous, right / down = next).
+// Caught before the terminal, where Tab and the arrows go to the pane.
 export function cellFocusStep(e: { key: string, altKey: boolean, ctrlKey: boolean, metaKey: boolean, shiftKey: boolean }): 1 | -1 | 0 {
   if (!e.altKey || !(e.ctrlKey || e.metaKey) || e.shiftKey) return 0
   return ({ ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 } as const)[e.key as 'ArrowLeft'] ?? 0

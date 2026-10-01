@@ -1,10 +1,10 @@
-// Espaces de travail : ouverture d'un space depuis la liste (onglet mémorisé),
-// onglets en haut d'un space, plan d'un onglet (téléphone), vue côte à côte
-// (ordinateur), balayage entre les panes d'un onglet.
+// Workspaces: opening a space from the list (remembered tab),
+// tabs at the top of a space, plan of a tab (phone), side-by-side view
+// (computer), swiping between the panes of a tab.
 import { tabEntry, workspaceTree } from '#shared/workspaces'
 import { type Closing, type Landing, type TabMemory, type Viewed, afterClose, neighborTab, rememberTab, spaceTab } from '#shared/spaces'
 
-// Dernier onglet ouvert de chaque space, gardé sur l'appareil.
+// Last opened tab of each space, kept on the device.
 const tabMemory = ref<TabMemory>({})
 if (import.meta.client) {
   try { tabMemory.value = JSON.parse(localStorage.getItem('spaceTabs') || '{}') || {} }
@@ -15,21 +15,21 @@ function saveMemory(m: TabMemory) {
   try { localStorage.setItem('spaceTabs', JSON.stringify(m)) }
   catch { /* stockage indisponible */ }
 }
-// Onglet regardé (vue d'onglet, ou pane seul dans son onglet) : mémorisé pour son space.
+// Tab being viewed (tab view, or pane alone in its tab): remembered for its space.
 export function noteTab(tabId: string) {
   const e = tabOf(tabId)
   if (!e || tabMemory.value[e.tab.workspace] === tabId) return
   const open = herdrState.value.ok ? herdrState.value.workspaces.map(w => w.id) : undefined
   saveMemory(rememberTab(tabMemory.value, e.tab.workspace, tabId, open))
 }
-// Onglet tout juste créé (pas encore dans l'état de Herdr) : mémorisé d'office.
+// Tab just created (not yet in Herdr's state): remembered right away.
 export function rememberNewTab(workspaceId: string, tabId: string) {
   saveMemory(rememberTab(tabMemory.value, workspaceId, tabId))
 }
 
-// Panes tout juste fermés depuis l'app, cachés jusqu'à ce que l'état de Herdr
-// les retire (un onglet dont tous les panes sont partis disparaît avec eux) :
-// pas d'onglet ni de case fantôme entre la fermeture et l'état suivant.
+// Panes just closed from the app, hidden until Herdr's state
+// removes them (a tab whose panes are all gone disappears with them):
+// no ghost tab or cell between the close and the next state.
 const gone = shallowRef<Set<string>>(new Set())
 watch(herdrState, (s) => {
   if (!gone.value.size) return
@@ -42,15 +42,15 @@ const liveState = computed(() => {
   return gone.value.size ? { ...s, panes: s.panes.filter(p => !gone.value.has(p.id)) } : s
 })
 
-// Onglets d'un space (ceux qui ont des panes), dans l'ordre de Herdr.
+// Tabs of a space (those that have panes), in Herdr's order.
 export function spaceTabs(workspaceId: string) {
   const ws = liveState.value.workspaces.find(w => w.id === workspaceId)
   if (!ws) return []
   return workspaceTree(liveState.value, ws.machine || '').find(w => w.workspace.id === workspaceId)?.tabs.filter(e => e.panes.length) || []
 }
 
-// Sens du dernier balayage (+1 suivant, -1 précédent) : le pane qui arrive glisse
-// depuis ce côté-là.
+// Direction of the last swipe (+1 next, -1 previous): the incoming pane slides
+// in from that side.
 export const swipeDir = ref<0 | 1 | -1>(0)
 
 export const tabOf = (tabId: string | null | undefined) => (tabId ? tabEntry(liveState.value, tabId) : null)
@@ -58,8 +58,8 @@ export const tabOf = (tabId: string | null | undefined) => (tabId ? tabEntry(liv
 export const tabPath = (tabId: string) => `/t/${encodeURIComponent(tabId)}`
 export const panePath = (paneId: string) => `/a/${encodeURIComponent(paneId)}`
 
-// Chemin d'un onglet : un seul pane, directement ce pane ; sinon son plan
-// (téléphone) ou ses panes côte à côte (ordinateur).
+// Path of a tab: a single pane, that pane directly; otherwise its plan
+// (phone) or its panes side by side (computer).
 export function tabTarget(tabId: string) {
   const e = tabOf(tabId)
   return e && e.panes.length === 1 ? panePath(e.panes[0]!.id) : tabPath(tabId)
@@ -68,21 +68,21 @@ export function openTab(tabId: string) {
   haptic()
   return navigateTo(tabTarget(tabId))
 }
-// Ouvrir un space depuis la liste : son dernier onglet, sinon celui de son
-// pane le plus urgent.
+// Open a space from the list: its last tab, otherwise that of its
+// most urgent pane.
 export function openSpace(workspaceId: string) {
   const tab = spaceTab(spaceTabs(workspaceId), tabMemory.value, workspaceId)
   if (tab) return openTab(tab)
 }
-// Changer d'onglet dans un space (onglets en haut) : même entrée d'historique.
+// Switch tabs in a space (tabs at the top): same history entry.
 export function switchSpaceTab(tabId: string) {
   haptic()
   noteTab(tabId)
   return navigateTo(tabTarget(tabId), { replace: true })
 }
 
-// Revenir au plan de l'onglet : un retour arrière si on en vient (le balayage
-// remplace l'entrée d'historique), sinon on y va.
+// Back to the tab's plan: a history back if we came from it (swiping
+// replaces the history entry), otherwise we go there.
 export function backToTab(tabId: string) {
   haptic()
   const back = (history.state as { back?: string } | null)?.back
@@ -90,20 +90,20 @@ export function backToTab(tabId: string) {
   return navigateTo(tabPath(tabId))
 }
 
-// ------------------------------------------------------------ fermeture
-// Panes et onglets en cours de fermeture depuis l'app : leur vue n'affiche pas
-// « fermé » pendant qu'elle cède la place à la destination.
+// ------------------------------------------------------------ closing
+// Panes and tabs being closed from the app: their view does not show
+// "closed" while it makes way for the destination.
 const closingIds = shallowRef<Set<string>>(new Set())
 export const isClosing = (id: string) => closingIds.value.has(id)
-// Vue ouverte (onglet ou pane), sinon null.
+// Open view (tab or pane), otherwise null.
 function viewedNow(): Viewed | null {
   const route = useRouter().currentRoute.value
   if (route.path.startsWith('/t/')) return { tab: String(route.params.tab || '') }
   if (route.path.startsWith('/a/')) return { pane: String(route.params.pane || '') }
   return null
 }
-// Aller à la destination d'une fermeture : un retour arrière si on en vient,
-// sinon à la place de la vue fermée (pas d'entrée morte dans l'historique).
+// Go to the destination of a close: a history back if we came from it,
+// otherwise in place of the closed view (no dead entry in the history).
 function land(l: Landing) {
   if (!l) return
   const path = l === 'home' ? '/' : 'tab' in l ? tabPath(l.tab) : panePath(l.pane)
@@ -111,10 +111,10 @@ function land(l: Landing) {
   if (back === path) return useRouter().back()
   return navigateTo(path, { replace: true })
 }
-// Fermeture confirmée, avant l'appel à Herdr : destination décidée sur l'état
-// connu (fermer un onglet montre son voisin, comme Herdr ; la liste seulement
-// quand le space n'a plus rien). Renvoie la suite, appelée avec le résultat de
-// l'appel : réussi, cacher ce qui part, mémoriser l'onglet voisin, y aller.
+// Close confirmed, before the call to Herdr: destination decided on the known
+// state (closing a tab shows its neighbour, like Herdr; the list only
+// when the space has nothing left). Returns the continuation, called with the result of
+// the call: on success, hide what is leaving, remember the neighbouring tab, go there.
 export function prepareClose(closing: Closing, groupWorkspaces: string[] = []) {
   const s = liveState.value
   const viewed = viewedNow()
@@ -124,8 +124,8 @@ export function prepareClose(closing: Closing, groupWorkspaces: string[] = []) {
     ? 'home' : afterClose(s, closing, viewed)
   const panes = s.panes.filter(p => groupWorkspaces.length ? groupWorkspaces.includes(p.workspace)
     : 'tab' in closing ? p.tab === closing.tab : 'pane' in closing ? p.id === closing.pane : p.workspace === closing.workspace)
-  // Onglet qui disparaît (fermé, ou son dernier pane) : son voisin devient
-  // l'onglet mémorisé du space s'il l'était.
+  // Tab disappearing (closed, or its last pane): its neighbour becomes
+  // the space's remembered tab if it was.
   const p0 = panes[0]
   const tab = groupWorkspaces.length ? null : 'tab' in closing ? closing.tab : 'pane' in closing && p0 && s.panes.filter(p => p.tab === p0.tab).length === 1 ? p0.tab : null
   const ws = p0?.workspace
@@ -134,7 +134,7 @@ export function prepareClose(closing: Closing, groupWorkspaces: string[] = []) {
   closingIds.value = new Set([...closingIds.value, ...ids])
   const release = () => { closingIds.value = new Set([...closingIds.value].filter(id => !ids.includes(id))) }
   return (ok: boolean) => {
-    // La vue fermée a le temps de partir avant d'annoncer « fermé ».
+    // The closed view has time to leave before announcing "closed".
     if (!ok) return release()
     setTimeout(release, 1500)
     gone.value = new Set([...gone.value, ...panes.map(p => p.id)])

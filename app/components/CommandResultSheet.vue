@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { Meter } from '~/utils/meters'
-// Résultat d'une commande locale de l'agent (/context, /usage…). Panneau de
-// réglages de Claude Code : ses onglets (pilotés par ← → dans le terminal) et
-// les jauges d'utilisation en barres.
+// Result of a local agent command (/context, /usage…). Claude Code
+// settings panel: its tabs (driven by ← → in the terminal) and
+// the usage gauges as bars.
 const open = computed({
   get: () => commandResult.open,
   set: (v) => { if (!v) closeCommandResult() },

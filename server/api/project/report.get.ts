@@ -1,4 +1,4 @@
-// Rapport d'un thread du projet d'un coordinateur (`?pane=<id>&id=t-NNNN`), lecture seule.
+// Report of a thread of a coordinator's project (`?pane=<id>&id=t-NNNN`), read-only.
 import { readThreadReport } from '../../utils/projectBoard'
 
 export default defineApi(async (event) => {

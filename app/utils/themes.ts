@@ -1,20 +1,20 @@
 import type { HerdrThemeConfig } from '#shared/types'
 
-// Thèmes de l'app : le design « herdr.dev » (défaut, défini dans main.css) et
-// les thèmes intégrés de Herdr (palettes officielles publiques de chaque
-// thème). Chaque thème donne quelques couleurs de base ; les surfaces, traits
-// et textes secondaires en sont dérivés (color-mix), pour garder la même
-// structure partout. Appliqué par l'attribut data-theme de <html>.
+// App themes: the "herdr.dev" design (default, defined in main.css) and
+// Herdr's built-in themes (official public palettes of each
+// theme). Each theme gives a few base colors; the surfaces, lines
+// and secondary texts are derived from them (color-mix), to keep the same
+// structure everywhere. Applied through the data-theme attribute of <html>.
 
 export interface ThemeColors {
-  bg: string // fond
-  bg2: string // barre latérale, fenêtres
-  surface: string // cartes
-  line: string // traits fins
+  bg: string // background
+  bg2: string // sidebar, windows
+  surface: string // cards
+  line: string // thin lines
   text: string
   muted: string
   dim: string
-  accent: string // l'équivalent du mauve de herdr.dev
+  accent: string // the equivalent of herdr.dev's mauve
   green: string
   coral: string
   ochre: string
@@ -22,9 +22,9 @@ export interface ThemeColors {
   blue: string
   teal: string
   lav?: string
-  onAccent?: string // texte sur l'accent (défaut : le fond)
-  // Réglages fins (sinon dérivés) : bulles de l'utilisateur, contour du champ
-  // de saisie, couleurs d'état (défaut : bleu / rose / teal).
+  onAccent?: string // text on the accent (default: the background)
+  // Fine-tuning (otherwise derived): user bubbles, input field
+  // outline, state colors (default: blue / pink / teal).
   surface2?: string
   inputLine?: string
   working?: string
@@ -36,7 +36,7 @@ export interface ThemeDef {
   label: string
   light?: boolean
   c: ThemeColors
-  // Palette ANSI de xterm : noir, rouge, vert, jaune, bleu, magenta, cyan, blanc, puis les vives.
+  // xterm ANSI palette: black, red, green, yellow, blue, magenta, cyan, white, then the bright ones.
   ansi: string[]
 }
 
@@ -51,14 +51,14 @@ export const THEMES: ThemeDef[] = [
       '#6c7086', '#f5a3b9', '#b9ebb4', '#fbe9c1', '#a4c4fb', '#d9bff9', '#abe9df', '#ffffff'],
   },
   {
-    // Claude Code (v2.1.283, thème sombre), couleurs relevées dans le terminal
-    // (herdr pane read --format ansi) : orange de marque #d77757 (logo,
-    // spinner), texte secondaire #999999, traits du champ de saisie #888888,
-    // bulle de l'utilisateur #373737, permission #b1b9f9 (aussi le code en
-    // ligne), succès #4eba65, avertissement / mode auto #ffc107, erreur
-    // #ff6b80, mode plan #48968c, accept edits #af87ff, mode bash #fd5db1,
-    // diffs +#50c850 / −#dc5a5a, coloration monokai (#66d9ef, #a6e22e,
-    // #e6db74). Fond : celui du terminal, ici un gris sombre neutre.
+    // Claude Code (v2.1.283, dark theme), colors captured in the terminal
+    // (herdr pane read --format ansi): brand orange #d77757 (logo,
+    // spinner), secondary text #999999, input field lines #888888,
+    // user bubble #373737, permission #b1b9f9 (also inline
+    // code), success #4eba65, warning / auto mode #ffc107, error
+    // #ff6b80, plan mode #48968c, accept edits #af87ff, bash mode #fd5db1,
+    // diffs +#50c850 / −#dc5a5a, monokai highlighting (#66d9ef, #a6e22e,
+    // #e6db74). Background: the terminal's, here a neutral dark gray.
     id: 'claude-code', label: 'Claude Code',
     c: {
       bg: '#1a1a1a', bg2: '#151515', surface: '#222222', surface2: '#373737', line: '#3a3a3a', inputLine: '#888888',
@@ -70,14 +70,14 @@ export const THEMES: ThemeDef[] = [
       '#707070', '#ff6b80', '#4eba65', '#ffc107', '#b1b9f9', '#fd5db1', '#66d9ef', '#ffffff'],
   },
   {
-    // Codex CLI (v0.156.1), relevé dans le terminal : Codex s'appuie surtout
-    // sur les attributs (gras, atténué, inversé pour la sélection) et les
-    // couleurs ANSI du terminal (vert = succès et ajouts, rouge = erreurs et
-    // suppressions, cyan = en-têtes de diff) ; en vraies couleurs : bleu
-    // #63a8f8 (liens, commandes, mise à jour), modèle #f6e2b7 et dossier
-    // #abdfa7 sur la ligne d'état, avertissement #c4a767, puce atténuée
-    // #808080, coloration des commandes #89b4fa / #9399b2 / #eba0ac. Fond :
-    // celui du terminal, ici un gris sombre neutre.
+    // Codex CLI (v0.156.1), captured in the terminal: Codex mostly relies
+    // on attributes (bold, dim, inverse for the selection) and the
+    // terminal's ANSI colors (green = success and additions, red = errors and
+    // deletions, cyan = diff headers); in true colors: blue
+    // #63a8f8 (links, commands, update), model #f6e2b7 and folder
+    // #abdfa7 on the status line, warning #c4a767, dimmed bullet
+    // #808080, command highlighting #89b4fa / #9399b2 / #eba0ac. Background:
+    // the terminal's, here a neutral dark gray.
     id: 'codex', label: 'Codex',
     c: {
       bg: '#171717', bg2: '#121212', surface: '#1f1f1f', line: '#3c3c3c',
@@ -98,8 +98,8 @@ export const THEMES: ThemeDef[] = [
       '#585b70', '#f38ba8', '#a6e3a1', '#f9e2af', '#89b4fa', '#f5c2e7', '#94e2d5', '#a6adc8'],
   },
   {
-    // Herdr y reprend les couleurs ANSI du terminal hôte ; ici, un gris neutre
-    // et les couleurs ANSI classiques.
+    // Herdr uses the host terminal's ANSI colors here; here, a neutral gray
+    // and the classic ANSI colors.
     id: 'terminal', label: 'Terminal',
     c: {
       bg: '#161616', bg2: '#1a1a1a', surface: '#1f1f1f', line: '#3a3a3a', text: '#e5e5e5', muted: '#a3a3a3', dim: '#737373',
@@ -205,7 +205,7 @@ export const THEMES: ThemeDef[] = [
 export const DEFAULT_THEME = 'herdr'
 export const themeById = (id: string | null | undefined) => THEMES.find(t => t.id === id)
 
-// Variables CSS d'un thème (le thème herdr.dev garde les valeurs de main.css).
+// CSS variables of a theme (the herdr.dev theme keeps the values of main.css).
 export function themeVars(th: ThemeDef): Record<string, string> {
   const c = th.c
   const mix = (a: string, p: number, b = 'var(--bg)') => `color-mix(in srgb, ${a} ${p}%, ${b})`
@@ -224,8 +224,8 @@ export function themeVars(th: ThemeDef): Record<string, string> {
     '--mauve': c.accent, '--accent': c.accent, '--on-accent': c.onAccent || c.bg,
     '--green': c.green, '--coral': c.coral, '--ochre': c.ochre, '--rose': c.rose, '--blue': c.blue, '--teal': c.teal,
     '--code-bg': th.light ? mix('var(--text)', 5) : 'color-mix(in srgb, #000 22%, var(--bg))',
-    // Couleurs de marque des agents (logos et nom dans la liste), identiques dans tous les thèmes :
-    // orange du crabe Claude Code, bleu-violet de l'icône Codex.
+    // Agents' brand colors (logos and name in the list), identical in all themes:
+    // orange of the Claude Code crab, blue-violet of the Codex icon.
     '--claude': '#d77757', '--codex': '#7a9dff',
     '--selection': `color-mix(in srgb, var(--accent) ${th.light ? 22 : 32}%, transparent)`,
     '--shadow': th.light ? 'rgba(60, 60, 80, .16)' : 'rgba(0, 0, 0, .5)',
@@ -237,14 +237,14 @@ export function themeVars(th: ThemeDef): Record<string, string> {
   }
 }
 
-// Feuille de style de tous les thèmes : [data-theme="…"] { --bg: … }.
+// Stylesheet of all themes: [data-theme="…"] { --bg: … }.
 export function themesCss(): string {
   return THEMES.filter(t => t.id !== DEFAULT_THEME)
     .map(t => `:root[data-theme="${t.id}"]{${Object.entries(themeVars(t)).map(([k, v]) => `${k}:${v}`).join(';')}}`)
     .join('\n')
 }
 
-// Thème xterm : fond et texte du thème, palette ANSI.
+// xterm theme: theme background and text, ANSI palette.
 export function xtermTheme(th: ThemeDef) {
   const a = th.ansi
   const names = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white']
@@ -263,17 +263,17 @@ function hexAlpha(hex: string, alpha: number) {
   return m ? `rgba(${parseInt(m[1]!, 16)},${parseInt(m[2]!, 16)},${parseInt(m[3]!, 16)},${alpha})` : hex
 }
 
-// ------------------------------------------------------------ « Suivre Herdr »
+// ------------------------------------------------------------ "Follow Herdr"
 // ~/.config/herdr/config.toml ([theme] name, auto_switch, dark_name, light_name,
-// [theme.custom], [theme.custom.light|dark]), lu par le serveur.
+// [theme.custom], [theme.custom.light|dark]), read by the server.
 
-// Thème de l'app pour le thème Herdr `name` ; les variantes claires de Herdr
-// qu'on n'a pas (tokyo-night-day, gruvbox-light…) retombent sur Catppuccin Latte.
+// App theme for the Herdr theme `name`; Herdr's light variants
+// that we do not have (tokyo-night-day, gruvbox-light…) fall back to Catppuccin Latte.
 export function mapHerdrTheme(name: string | null | undefined, preferLight: boolean): string {
   const n = String(name || '').trim().toLowerCase()
   if (themeById(n) && n !== DEFAULT_THEME) return n
   if (/-(day|light|dawn|lotus|latte)$/.test(n)) return 'catppuccin-latte'
-  if (!n) return preferLight ? 'catppuccin-latte' : 'catppuccin' // défaut de Herdr
+  if (!n) return preferLight ? 'catppuccin-latte' : 'catppuccin' // Herdr's default
   return preferLight ? 'catppuccin-latte' : 'catppuccin'
 }
 
@@ -285,7 +285,7 @@ export function resolveHerdrTheme(cfg: HerdrThemeConfig | null | undefined, syst
   return { id: mapHerdrTheme(name, light), custom }
 }
 
-// Jetons [theme.custom] de Herdr -> variables CSS de l'app.
+// Herdr's [theme.custom] tokens -> app CSS variables.
 const CUSTOM_VARS: Record<string, string[]> = {
   panel_bg: ['--bg'], sidebar_bg: ['--bg-2'], active_row_bg: ['--surface'], surface_dim: ['--surface-2'],
   selection_bg: ['--selection'], accent: ['--accent', '--mauve'], text: ['--text'],
@@ -297,7 +297,7 @@ export function customVars(custom: Record<string, string>): Record<string, strin
     if (!v || v === 'reset' || !/^(#[0-9a-f]{3,8}|[a-z]+|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\))$/i.test(v)) continue
     for (const cssVar of CUSTOM_VARS[k] || []) out[cssVar] = v
   }
-  // `mauve` seul (sans `accent`) : c'est l'accent.
+  // `mauve` alone (without `accent`): it is the accent.
   if (custom && custom.mauve && !out['--accent'] && /^(#[0-9a-f]{3,8}|[a-z]+)$/i.test(custom.mauve)) out['--accent'] = out['--mauve'] = custom.mauve
   return out
 }

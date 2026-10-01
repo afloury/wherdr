@@ -1,28 +1,28 @@
-// Brouillons du champ de saisie, un par conversation : le texte et les photos
-// jointes restent quand on change de conversation, et même après un
-// rechargement de l'app (localStorage). Les photos sont déjà déposées sur le
-// serveur : on garde leur chemin (envoyé avec le message) et leur nom (aperçu
-// via /uploads/<nom>).
+// Input field drafts, one per conversation: the text and attached photos
+// stay when switching conversations, and even after an
+// app reload (localStorage). The photos are already stored on the
+// server: we keep their path (sent with the message) and their name (preview
+// via /uploads/<name>).
 
 import { effectScope, reactive, watch } from 'vue'
 import type { ReplyTarget } from '../../shared/replyQuote'
 
 export interface DraftAtt {
-  url: string // aperçu : blob local tant que la page vit, sinon /uploads/<nom>
-  path: string | null // null pendant l'envoi de la photo
+  url: string // preview: local blob while the page lives, otherwise /uploads/<name>
+  path: string | null // null while the photo is being sent
   name?: string
 }
-// reply : message de l'agent auquel on répond (cf. utils/replyQuote.ts).
+// reply: the agent message being replied to (see utils/replyQuote.ts).
 interface Draft { text: string, atts: DraftAtt[], reply: ReplyTarget | null }
 
 const KEY = 'draft:'
-// Les photos déposées sont purgées au bout de 7 jours : on les oublie avant.
+// Stored photos are purged after 7 days: we forget them before that.
 const ATT_MAX_AGE = 6 * 86400000
 const drafts = new Map<string, Draft>()
-// Les brouillons survivent au composant : leurs watchers ne lui appartiennent pas.
+// Drafts outlive the component: their watchers do not belong to it.
 const scope = effectScope(true)
 
-// Date de dépôt d'une photo, lue dans son nom (2026-09-26T00-36-39-393Z-4fa305.jpg).
+// Upload date of a photo, read from its name (2026-09-26T00-36-39-393Z-4fa305.jpg).
 export function uploadedAt(name: string) {
   const m = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/.exec(name)
   return m ? Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}.${m[5]}Z`) : 0
@@ -53,8 +53,8 @@ function persist(paneId: string, d: Draft) {
   } catch { /* stockage indisponible */ }
 }
 
-// Brouillon réactif du pane : le même objet tant que la page vit, donc une
-// photo qui finit de s'envoyer après un changement de conversation y arrive.
+// Reactive draft of the pane: the same object while the page lives, so a
+// photo that finishes uploading after a conversation switch lands there.
 export function useDraft(paneId: string): Draft {
   let d = drafts.get(paneId)
   if (!d) {

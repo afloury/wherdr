@@ -4,7 +4,7 @@ export default defineAppConfig({
       primary: 'indigo',
       neutral: 'slate',
     },
-    // Même surface carrée et mêmes couleurs que les cartes et les fenêtres.
+    // Same square surface and same colors as the cards and windows.
     toast: {
       slots: {
         root: 'hw-toast',

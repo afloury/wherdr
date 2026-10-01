@@ -1,7 +1,7 @@
-// Service worker de wherdr : installable + notifications.
-// Tout passe par le réseau d'abord (l'app n'a de sens que connectée au serveur) ;
-// le cache ne sert qu'à afficher la coquille si le réseau est coupé.
-// Jamais de cache pour /api/, /ws/ ni /uploads/.
+// wherdr service worker: installable + notifications.
+// Everything goes network first (the app only makes sense connected to the server);
+// the cache only serves to show the shell if the network is down.
+// Never any cache for /api/, /ws/ or /uploads/.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 interface SwGlobal {
@@ -22,18 +22,18 @@ interface SwGlobal {
 const sw = self as unknown as SwGlobal
 
 const CACHE = 'wherdr-v1'
-// Fichiers de l'app construite (empreintes dans le nom) + la page.
-// (écrit tel quel : workbox cherche « self.__WB_MANIFEST » pour y injecter la liste)
+// Files of the built app (hashes in the name) + the page.
+// (written as is: workbox looks for "self.__WB_MANIFEST" to inject the list there)
 const WB_MANIFEST = self.__WB_MANIFEST
 const PRECACHE = ['/', ...WB_MANIFEST.map(e => '/' + (typeof e === 'string' ? e : e.url).replace(/^\//, ''))]
 
 sw.addEventListener('install', (e) => {
   e.waitUntil((async () => {
     const c = await caches.open(CACHE)
-    // Un fichier manquant ne doit pas empêcher l'installation.
+    // A missing file must not prevent installation.
     await Promise.all(PRECACHE.map(u => c.add(new Request(u, { cache: 'no-cache' })).catch(() => {})))
-    // Pas de skipWaiting ici : une nouvelle version attend que l'utilisateur
-    // clique « Recharger » (bandeau de l'app), jamais de bascule en plein usage.
+    // No skipWaiting here: a new version waits for the user
+    // to click "Reload" (app banner), never a switch in the middle of use.
   })())
 })
 
@@ -55,8 +55,8 @@ sw.addEventListener('fetch', (e) => {
     || url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws/') || url.pathname.startsWith('/uploads/')) return
   e.respondWith((async () => {
     try {
-      // no-cache : toujours revalider auprès du serveur, jamais servir une vieille
-      // version depuis le cache HTTP du téléphone.
+      // no-cache: always revalidate with the server, never serve an old
+      // version from the phone's HTTP cache.
       const res = await fetch(req, { cache: 'no-cache' })
       if (res.ok) {
         const c = await caches.open(CACHE)
@@ -76,7 +76,7 @@ sw.addEventListener('push', (e) => {
   e.waitUntil((async () => {
     await sw.registration.showNotification(d.title || 'wherdr', {
       body: d.body || '',
-      tag: d.tag || 'herdr', // une notif par pane, remplacée à chaque changement
+      tag: d.tag || 'herdr', // one notification per pane, replaced on each change
       renotify: true,
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
@@ -84,7 +84,7 @@ sw.addEventListener('push', (e) => {
     })
     try {
       if (typeof d.badge === 'number' && sw.navigator.setAppBadge) await sw.navigator.setAppBadge(d.badge)
-    } catch { /* non géré */ }
+    } catch { /* not supported */ }
   })())
 })
 

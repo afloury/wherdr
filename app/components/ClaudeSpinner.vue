@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Étoile de Claude qui tourne (utils/spinner.ts). La minuterie ne vit que tant
-// que le composant est affiché, et ne démarre pas si le système demande moins
-// d'animations (glyphe fixe « ✻ »).
+// Claude's spinning star (utils/spinner.ts). The timer only lives while
+// the component is shown, and does not start if the system asks for reduced
+// motion (fixed "✻" glyph).
 import { spinnerGlyph, SPINNER_MS } from '~/utils/spinner'
 
 const elapsed = ref(0)

@@ -9,8 +9,8 @@ const TOTAL_BYTES = 320 * 1024
 const MAX_FILES = 100
 const MAX_DIFFS = 40
 
-// Le format -z garde les espaces, tabulations et retours à la ligne des noms.
-// Une entrée renommée porte deux noms : le nouveau, puis l'ancien.
+// The -z format keeps spaces, tabs and newlines in names.
+// A renamed entry carries two names: the new one, then the old one.
 export function parseStatus(raw: string): { path: string, previousPath?: string, status: string }[] {
   const parts = raw.split('\0')
   const files: { path: string, previousPath?: string, status: string }[] = []
@@ -78,14 +78,14 @@ const git = 'git --no-optional-locks -c core.fsmonitor=false -c core.hooksPath=/
 const generated = /(^|\/)(?:dist|build|generated|coverage|node_modules|\.nuxt)\/|(^|\/)(?:package-lock\.json|pnpm-lock\.yaml|yarn\.lock|Cargo\.lock|composer\.lock|Gemfile\.lock|.*\.min\.(?:js|css)|.*\.map|.*\.generated\.[^/]+)$/i
 const emptySet = (): ChangeSet => ({ files: [], truncated: false, count: 0 })
 
-// Racine du dépôt Git qui contient `cwd` (vide hors dépôt), mêmes options en lecture seule.
+// Root of the Git repository containing `cwd` (empty outside a repository), same read-only options.
 export async function gitToplevel(m: Machine, cwd: string): Promise<string> {
   const out = await runner(m)(`cd "$1" 2>/dev/null && ${git} rev-parse --show-toplevel 2>/dev/null || true`, [cwd]).catch(() => Buffer.alloc(0))
   return out.toString('utf8').trim()
 }
 
-// État léger pour la confirmation de fermeture : mêmes options Git en lecture
-// seule que la vue Changements, sans calculer les diffs fichier par fichier.
+// Light status for the close confirmation: same read-only Git options
+// as the Changes view, without computing per-file diffs.
 export async function readChangeStatus(m: Machine, cwd: string) {
   const run = runner(m)
   const root = (await run(`cd "$1" 2>/dev/null && ${git} rev-parse --show-toplevel 2>/dev/null || true`, [cwd])).toString('utf8').trim()
@@ -158,7 +158,7 @@ function file(path: string, status: string, previousPath?: string): ChangeFile {
 
 export async function readChanges(m: Machine, cwd: string, includeCommits = false): Promise<ChangesResponse> {
   const run = runner(m)
-  // Le cwd vient du pane serveur, jamais d'un paramètre de chemin du client.
+  // The cwd comes from the server-side pane, never from a client path parameter.
   const rootResult = await run(`cd "$1" 2>/dev/null && ${git} rev-parse --show-toplevel 2>/dev/null || true`, [cwd])
   const root = rootResult.toString('utf8').trim()
   if (!root) return { git: false }
@@ -176,8 +176,8 @@ export async function readChanges(m: Machine, cwd: string, includeCommits = fals
 
   const result: ChangesResponse = { git: true, root, branch, working }
   if (!includeCommits) return result
-  // Amont de la branche. Pour un worktree sans amont, comparer à main/master
-  // local ou distant, sans contact réseau et sans modifier de référence.
+  // Upstream of the branch. For a worktree without upstream, compare with local or
+  // remote main/master, without network access and without changing any ref.
   const base = (await run(`cd "$1" && (
     ${git} rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null ||
     { test -f .git && for ref in refs/heads/main refs/heads/master refs/remotes/origin/main refs/remotes/origin/master; do

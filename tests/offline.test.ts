@@ -14,7 +14,7 @@ const state = (ids: string[], remoteOnline = true): HerdrState => ({
 const snapshot = (ids: string[]): Snapshot => ({ home: null, chats: ids.map((id, used) => ({ id, used, at: 1, items: [item(id)] })) })
 
 describe('cache hors ligne', () => {
-  it('borne messages, octets par conversation et nombre de conversations selon LRU', () => {
+  it('bounds messages, bytes per conversation and number of conversations with LRU', () => {
     expect(trimChat(Array.from({ length: 300 }, (_, i) => item(String(i))))).toHaveLength(MAX_MESSAGES)
     expect(trimChat([item('x'.repeat(200_000)), item('fin')])).toEqual([item('fin')])
     const s = pruneSnapshot(snapshot(Array.from({ length: 20 }, (_, i) => `w1:p${i}`)))
@@ -25,7 +25,7 @@ describe('cache hors ligne', () => {
     expect(JSON.stringify(pruneSnapshot(huge)).length * 2).toBeLessThanOrEqual(MAX_BYTES)
   })
 
-  it('purge les panes fermés sur les machines joignables et conserve ceux de l’ordinateur hors ligne', () => {
+  it('purges closed panes on reachable machines and keeps those of the offline computer', () => {
     const s = snapshot(['w1:p1', 'w1:p2', 'abcd1234~w1:p1', 'abcd1234~w1:p2'])
     expect(pruneSnapshot(s, state(['w1:p1', 'abcd1234~w1:p1'], false)).chats.map(c => c.id).sort())
       .toEqual(['abcd1234~w1:p1', 'abcd1234~w1:p2', 'w1:p1'])
@@ -33,7 +33,7 @@ describe('cache hors ligne', () => {
       .toEqual(['abcd1234~w1:p1', 'w1:p1'])
   })
 
-  it('expire la lecture au bout de 12 h et refuse une échéance absente', () => {
+  it('expires reading after 12 h and refuses a missing deadline', () => {
     const now = 10_000
     expect(mayReadOffline({ enabled: true, expiresAt: now + 1 }, now)).toBe(true)
     expect(mayReadOffline({ enabled: true, expiresAt: now }, now)).toBe(false)

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Barre de touches : touches logiques, encodées par Herdr selon le mode du
-// terminal (curseur applicatif, etc.). Ne vole pas le focus au champ de saisie.
+// Key bar: logical keys, encoded by Herdr according to the terminal
+// mode (application cursor, etc.). Does not steal the focus from the input field.
 const props = defineProps<{ ctl: TerminalCtl }>()
 
 const KEYS: { key: string, label: string, cls?: string }[] = [

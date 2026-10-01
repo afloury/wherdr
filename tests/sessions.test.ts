@@ -9,8 +9,8 @@ const raw = JSON.stringify({ sessions: [
   { name: 'archive', running: false },
 ] })
 
-describe('sessions nommées', () => {
-  it('lit les états et réserve la clé historique pour la session courante', () => {
+describe('named sessions', () => {
+  it('reads the states and reserves the historical key for the current session', () => {
     expect(parseSessionList(raw, '', 'default')).toEqual([
       { name: 'default', running: true, key: '' },
       { name: 'archive', running: false, key: sessionKey('', 'archive') },
@@ -20,7 +20,7 @@ describe('sessions nommées', () => {
     expect(parseSessionList('{', '', 'default')).toEqual([])
   })
 
-  it('isole le choix de chaque appareil et revient au défaut si la session disparaît', () => {
+  it('isolates each device\'s choice and falls back to the default if the session disappears', () => {
     const alt = sessionKey('', 'hwtest')
     const state: HerdrState = {
       ok: true, workspaces: [
@@ -43,7 +43,7 @@ describe('sessions nommées', () => {
     expect(selectSessions(state, { '': 'hwtest' }).session).toBe('hwtest')
   })
 
-  it('mémorise le choix par machine sur l’appareil et ignore les valeurs invalides', () => {
+  it('remembers the choice per machine on the device and ignores invalid values', () => {
     const names = { '': 'hwtest', f27df2ea: 'travail' }
     expect(readSessionSelection(writeSessionSelection(names))).toEqual(names)
     expect(readSessionSelection('{')).toEqual({})

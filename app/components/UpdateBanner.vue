@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Bandeau « wherdr X.Y.Z est disponible » : lien vers les notes de version et
-// commande de mise à jour selon le mode d'installation (Docker, build local, sans Docker).
+// "wherdr X.Y.Z is available" banner: link to the release notes and
+// update command depending on the installation mode (Docker, local build, without Docker).
 import type { UpdateInfo } from '#shared/updates'
 
 const props = defineProps<{ info: UpdateInfo, dismissible?: boolean }>()

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import { REMOTE_PROJECTS_SCRIPT, actionContext, logResult, needsConfirm, normalizeActions, outputTail, shortLabel } from '../server/utils/pluginPolicy'
 
-// Réponses réelles de Herdr 0.9.1 (plugin.action.list / plugin.list), dont les
-// actions du plugin herdr-projects.
+// Real Herdr 0.9.1 responses (plugin.action.list / plugin.list), including the
+// actions of the herdr-projects plugin.
 const hp = (id: string, title: string, contexts: string[]) => ({ plugin_id: 'herdr-projects', action_id: id, title, contexts, command: ['x'] })
 const ACTIONS = [
   { plugin_id: 'wherdr.test', action_id: 'hello', title: 'Say hello', description: 'Affiche le contexte reçu', contexts: ['workspace', 'pane'] },
@@ -21,7 +21,7 @@ const PLUGINS = [
 ]
 
 describe('actions des plugins', () => {
-  it('vise le space affiché, même si Herdr est focalisé ailleurs, sur chaque machine', () => {
+  it('targets the space shown, even if Herdr is focused elsewhere, on each machine', () => {
     const pane = { id: 'abcd1234~w2:p1', tab: 'abcd1234~w2:t1', workspace: 'abcd1234~w2', cwd: '/tmp/project-b' }
     const spaces = [{ id: 'w1', label: 'Autre space' }, { id: 'abcd1234~w2', label: 'Nouveau space' }]
     expect(actionContext(pane as never, spaces as never)).toMatchObject({
@@ -29,20 +29,20 @@ describe('actions des plugins', () => {
       workspace_label: 'Nouveau space', workspace_cwd: '/tmp/project-b', focused_pane_cwd: '/tmp/project-b',
     })
   })
-  it('répartit les actions entre le menu de l’agent et celui de la machine', () => {
+  it('splits actions between the agent\'s menu and the machine\'s', () => {
     const list = normalizeActions(ACTIONS, PLUGINS)
     const pick = (id: string) => list.find(a => a.id === id)!
     expect(pick('hello')).toMatchObject({ agent: true, machine: false, pluginName: 'Wherdr Test', description: 'Affiche le contexte reçu' })
     expect(pick('status')).toMatchObject({ agent: false, machine: true })
-    // Aucun contexte déclaré : action globale.
+    // No declared context: global action.
     expect(pick('nocontext')).toMatchObject({ agent: false, machine: true })
-    // Global et workspace : dans les deux menus.
+    // Global and workspace: in both menus.
     expect(pick('open-popup')).toMatchObject({ agent: true, machine: true })
-    // Il faut une sélection de texte : écartée.
+    // Needs a text selection: dropped.
     expect(list.find(a => a.id === 'copy')).toBeUndefined()
   })
 
-  it('groupe par plugin, libellés par ordre alphabétique', () => {
+  it('groups by plugin, labels in alphabetical order', () => {
     const list = normalizeActions(ACTIONS, PLUGINS)
     expect(list.map(a => `${a.pluginName}/${a.label}`)).toEqual([
       'Projects/Check setup', 'Projects/Pause project', 'Projects/Projects',
@@ -51,7 +51,7 @@ describe('actions des plugins', () => {
     ])
   })
 
-  it('raccourcit les libellés sous l’en-tête du plugin', () => {
+  it('shortens labels under the plugin header', () => {
     expect(shortLabel('Projects: pause project', 'Projects')).toBe('Pause project')
     expect(shortLabel('Projects', 'Projects')).toBe('Projects')
     expect(shortLabel('Say hello', 'Wherdr Test')).toBe('Say hello')
@@ -59,7 +59,7 @@ describe('actions des plugins', () => {
     expect(normalizeActions(ACTIONS, PLUGINS).find(a => a.id === 'doctor')).toMatchObject({ title: 'Projects: check setup', label: 'Check setup' })
   })
 
-  it('écarte les plugins désactivés et les identifiants douteux', () => {
+  it('drops disabled plugins and dubious identifiers', () => {
     const list = normalizeActions([
       ...ACTIONS,
       { plugin_id: 'x; rm -rf ~', action_id: 'a', title: 'bad' },
@@ -68,7 +68,7 @@ describe('actions des plugins', () => {
     expect(list.every(a => a.plugin === 'wherdr.test')).toBe(true)
   })
 
-  it('demande confirmation sauf pour ce qui ne fait que montrer ou vérifier', () => {
+  it('asks for confirmation except for what only shows or checks', () => {
     const list = normalizeActions(ACTIONS, PLUGINS)
     const confirm = Object.fromEntries(list.map(a => [a.id, a.confirm]))
     expect(confirm).toMatchObject({ 'doctor': false, 'status': false, 'pause': true, 'configure': true, 'open-popup': true, 'hello': true })
@@ -77,7 +77,7 @@ describe('actions des plugins', () => {
     expect(needsConfirm({ id: 'x', title: 'Afficher l’état' })).toBe(false)
   })
 
-  it('résume la sortie pour un toast', () => {
+  it('summarizes the output for a toast', () => {
     expect(outputTail('\x1b[32mok\x1b[0m\n\nfini\n')).toBe('ok\nfini')
     expect(outputTail('a'.repeat(500), 20)).toBe('…' + 'a'.repeat(19))
     expect(outputTail(['l1', 'l2', 'l3'].join('\n'), 5)).toBe('l2\nl3')
@@ -92,7 +92,7 @@ describe('actions des plugins', () => {
 
 describe('REMOTE_PROJECTS_SCRIPT', () => {
   it('exporte HERDR_BIN_PATH vers le binaire du plugin et garde ses arguments', () => {
-    // `sh -c 'echo …'` joue le binaire du plugin : il ne voit que l'environnement exporté.
+    // `sh -c 'echo …'` plays the plugin binary: it only sees the exported environment.
     const out = execFileSync('sh', ['-c', REMOTE_PROJECTS_SCRIPT, 'sh', '/opt/herdr', 'sh', '-c', 'printf "%s|%s" "$HERDR_BIN_PATH" "$1"', 'x', 'a b'], { encoding: 'utf8', env: { PATH: process.env.PATH } })
     expect(out).toBe('/opt/herdr|a b')
   })

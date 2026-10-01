@@ -1,8 +1,8 @@
-// Actions des plugins Herdr : liste et exécution, sur la machine concernée.
-// Tout passe par le socket API de Herdr (local, ou socket distant transféré par
-// SSH, cf. machines.ts) en JSON : aucun shell, aucune interpolation. Herdr lance
-// lui-même la commande argv du manifeste, en tâche de fond ; on suit son journal
-// (plugin.log.list) quelques secondes pour donner le résultat.
+// Herdr plugin actions: listing and running, on the relevant machine.
+// Everything goes through Herdr's API socket (local, or remote socket forwarded over
+// SSH, see machines.ts) as JSON: no shell, no interpolation. Herdr runs
+// the manifest's argv command itself, in the background; we follow its log
+// (plugin.log.list) for a few seconds to give the result.
 import type { PluginAction, PluginActionResult } from '../../shared/types'
 import { splitId } from '../../shared/ids'
 import { HERDR_BIN, HERDR_CHILD_ENV, HOME, IN_DOCKER, log } from './env'
@@ -15,7 +15,7 @@ import { isGitRepo, machineFor, underHome } from './actions'
 import { ACTION_ID_RE, PLUGIN_ID_RE, REMOTE_PROJECTS_SCRIPT, type RawPlugin, type RawPluginAction, type RawPluginLog, actionContext, logResult, normalizeActions, outputTail, stripAnsi } from './pluginPolicy'
 import { PROJECT_INPUTS, cleanProjectInput, projectCommandArgs, readOnlyMessage, repoArgument, setupHeader, tickerRunning } from '../../shared/projectsActions'
 
-// Liste gardée quelques secondes par machine (le menu la redemande à chaque ouverture).
+// List kept for a few seconds per machine (the menu asks again on every opening).
 const CACHE_MS = 10000
 const cache = new Map<string, { at: number, actions: PluginAction[] }>()
 
@@ -38,8 +38,8 @@ export function pluginInputFields(plugin: string, action: string): string[] {
   return plugin === 'herdr-projects' ? PROJECT_INPUTS[action] || [] : []
 }
 
-// Une commande du plugin plutôt que sa popup : Herdr ne publie aucun flux de
-// lecture ou de saisie pour les popups. argv et machine sont toujours explicites.
+// A plugin command rather than its popup: Herdr publishes no read or input
+// stream for popups. argv and machine are always explicit.
 type Machine = ReturnType<typeof machineFor>
 async function runProjects(m: Machine, bin: string, args: string[]): Promise<{ code: number, stdout: string, stderr: string }> {
   if (m.exec) {
@@ -64,20 +64,20 @@ async function projectsCommand(m: Machine, args: string[], lang: 'fr' | 'en' = '
   const r = await runProjects(m, await projectsBin(m), args)
   if (r.code !== 0) {
     const error = r.stderr || r.stdout || `code ${r.code}`
-    // HOME en lecture seule (Docker) : dire quoi monter plutôt que l'erreur brute.
+    // Read-only HOME (Docker): say what to mount rather than the raw error.
     const readOnly = readOnlyMessage(error, { docker: m.local && IN_DOCKER, lang })
-    if (readOnly) log(`herdr-projects ${args[0]} : ${error}`)
+    if (readOnly) log(`herdr-projects ${args[0]}: ${error}`)
     throw new HerdrError(readOnly ? 'read_only' : 'plugin_failed', readOnly || error)
   }
   return r.stdout
 }
 
-// En Docker, `open` et `adopt-workspace` lancent le ticker de herdr-projects
-// s'il ne tourne pas : il tournerait alors dans le conteneur (sans gh, HOME en
-// lecture seule, routines hors de l'environnement de l'hôte) et, de même
-// version, l'hôte ne le remplacerait pas. On l'arrête aussitôt : le prochain
-// `herdr-projects` lancé sur l'hôte (`thread start` du coordinateur, démarrage
-// de Herdr) en relance un au bon endroit.
+// In Docker, `open` and `adopt-workspace` start the herdr-projects ticker
+// if it is not running: it would then run in the container (without gh, read-only
+// HOME, routines outside the host environment) and, being the same
+// version, the host would not replace it. We stop it right away: the next
+// `herdr-projects` run on the host (coordinator's `thread start`, Herdr
+// startup) starts one again in the right place.
 async function withoutContainerTicker<T>(m: Machine, run: () => Promise<T>): Promise<T> {
   if (!m.local || !IN_DOCKER) return run()
   const bin = await projectsBin(m)
@@ -87,16 +87,16 @@ async function withoutContainerTicker<T>(m: Machine, run: () => Promise<T>): Pro
     if (before && before.code === 0 && !tickerRunning(before.stdout)) {
       const after = await runProjects(m, bin, ['ticker', 'status']).catch(() => null)
       if (after && tickerRunning(after.stdout)) {
-        log('herdr-projects : ticker lancé dans le conteneur, arrêt demandé (il repartira sur l’hôte)')
-        runProjects(m, bin, ['ticker', 'stop']).then(r => r.code && log(`herdr-projects ticker stop : ${r.stderr || r.code}`))
+        log('herdr-projects: ticker started in the container, stop requested (it will restart on the host)')
+        runProjects(m, bin, ['ticker', 'stop']).then(r => r.code && log(`herdr-projects ticker stop: ${r.stderr || r.code}`))
       }
     }
   }
 }
 
-// « Check setup » : `doctor` lancé comme les autres commandes de wherdr, avec en
-// tête la version du binaire, le HOME et la config Herdr qu'il voit. Lecture seule
-// (jamais --fix) ; code non nul = des contrôles ont échoué, la sortie reste utile.
+// "Check setup": `doctor` run like wherdr's other commands, with the
+// binary version, HOME and Herdr config it sees at the top. Read-only
+// (never --fix); non-zero code = some checks failed, the output stays useful.
 async function projectsDoctor(m: Machine): Promise<PluginActionResult> {
   const bin = await projectsBin(m)
   const [version, doctor] = await Promise.all([
@@ -116,12 +116,12 @@ export async function invokePluginAction(body: { machine?: unknown, pane_id?: un
   const plugin = String(body.plugin || '')
   const action = String(body.action || '')
   if (!PLUGIN_ID_RE.test(plugin) || !ACTION_ID_RE.test(action)) throw new HerdrError('bad_action', 'action invalide')
-  // Machine : celle du pane s'il y en a un (menu d'un agent), sinon celle demandée.
+  // Machine: the pane's if there is one (an agent's menu), otherwise the requested one.
   const paneId = body.pane_id ? String(body.pane_id) : ''
   const pane = paneId ? findPane(paneId) : null
   if (paneId && !pane) throw new HerdrError('bad_pane', 'Pane not found')
   const m = machineFor(pane ? splitId(pane.id).machine : body.machine)
-  // Seulement une action que Herdr annonce, à l'endroit prévu.
+  // Only an action that Herdr announces, at the expected place.
   const known = (await listPluginActions(m.key, true)).find(a => a.plugin === plugin && a.id === action)
   if (!known) throw new HerdrError('plugin_action_not_found', 'action introuvable sur cette machine')
   if (pane ? !known.agent : !known.machine) throw new HerdrError('bad_context', 'action non disponible ici')
@@ -130,7 +130,7 @@ export async function invokePluginAction(body: { machine?: unknown, pane_id?: un
     throw new HerdrError('popup_unavailable', 'Le panneau Projects est disponible dans le client Herdr ; ses saisies ne sont pas accessibles par l’API Herdr.')
   }
   if (plugin === 'herdr-projects' && action === 'doctor') {
-    log(`plugin ${plugin}.${action}${m.local ? '' : ` sur ${m.label}`} (commande)`)
+    log(`plugin ${plugin}.${action}${m.local ? '' : ` on ${m.label}`} (command)`)
     return projectsDoctor(m)
   }
   const fields = pluginInputFields(plugin, action)
@@ -140,8 +140,8 @@ export async function invokePluginAction(body: { machine?: unknown, pane_id?: un
     if (action === 'adopt-workspace' && (!pane || !pane.agent || !pane.cwd)) {
       throw new HerdrError('bad_context', 'un agent et son dossier sont nécessaires dans ce space')
     }
-    // Dépôt de « New project » : un dossier Git sous le HOME de sa machine (celle
-    // du projet par défaut), passé en `chemin@<id Herdr>` s'il est sur une autre.
+    // "New project" repository: a Git folder under its machine's HOME (the
+    // project's by default), passed as `path@<Herdr id>` if it is on another one.
     if (input.repo) {
       const rm = input.machine ? machineFor(input.machine) : m
       const repo = underHome(input.repo, rm.home)
@@ -155,8 +155,8 @@ export async function invokePluginAction(body: { machine?: unknown, pane_id?: un
     const args = projectCommandArgs(action, input, { pane: pane ? splitId(pane.id).local : undefined, cwd: pane?.cwd || undefined, session: m.session, lang })
     const exec = async (): Promise<PluginActionResult> => {
       const output = await projectsCommand(m, args, lang)
-      // Le panneau « New project » ouvre ensuite le projet. Garder la création
-      // visible même si l’ouverture échoue : l’utilisateur peut la retenter.
+      // The "New project" panel then opens the project. Keep the creation
+      // visible even if opening fails: the user can retry it.
       if (action === 'new') {
         const slug = /created `([^`]+)`/.exec(output)?.[1]
         if (slug) {
@@ -169,12 +169,12 @@ export async function invokePluginAction(body: { machine?: unknown, pane_id?: un
     return ['new', 'open', 'adopt-workspace'].includes(action) ? withoutContainerTicker(m, exec) : exec()
   }
 
-  // Contexte explicite : sans lui, Herdr prendrait le pane actif du terminal
-  // attaché (celui que l'ordinateur regarde), pas celui de l'agent.
+  // Explicit context: without it, Herdr would take the active pane of the attached
+  // terminal (the one the computer is looking at), not the agent's.
   const context = actionContext(pane || null, getState().workspaces)
   const r = await herdrOn<{ log?: RawPluginLog }>(m.key, 'plugin.action.invoke', { plugin_id: plugin, action_id: action, context }, 10000)
   const logId = r.log && r.log.log_id
-  log(`plugin ${plugin}.${action}${pane ? ` (${pane.id})` : ''}${m.local ? '' : ` sur ${m.label}`} lancé`)
+  log(`plugin ${plugin}.${action}${pane ? ` (${pane.id})` : ''}${m.local ? '' : ` on ${m.label}`} started`)
   let last: RawPluginLog | null | undefined = r.log
   const until = Date.now() + WAIT_MS
   while (logId && logResult(last).status === 'running' && Date.now() < until) {
@@ -183,6 +183,6 @@ export async function invokePluginAction(body: { machine?: unknown, pane_id?: un
     last = (l && l.logs || []).find(x => x.log_id === logId) || last
   }
   const res = logResult(last)
-  log(`plugin ${plugin}.${action} : ${res.status}${res.exitCode !== null ? ` (${res.exitCode})` : ''}`)
+  log(`plugin ${plugin}.${action}: ${res.status}${res.exitCode !== null ? ` (${res.exitCode})` : ''}`)
   return res
 }

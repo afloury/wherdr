@@ -1,5 +1,5 @@
-// Les agents masqués sont mémorisés plutôt qu'une liste autorisée : un nouvel
-// agent installé reste coché par défaut sur chaque appareil.
+// Hidden agents are remembered rather than an allow list: a newly
+// installed agent stays checked by default on each device.
 export function readHiddenAgents(raw: string | null): string[] {
   try {
     const value: unknown = JSON.parse(raw || '[]')

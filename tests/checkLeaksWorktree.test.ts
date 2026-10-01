@@ -1,20 +1,20 @@
-// Contrôle anti-fuite dans un worktree lié : motifs du checkout principal, avertissement sinon.
+// Leak check in a linked worktree: patterns of the main checkout, warning otherwise.
 import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-// @ts-expect-error module JS sans déclarations
+// @ts-expect-error JS module without declarations
 import { findPatternsFile, mainCheckoutRoot } from '../scripts/check-leaks.mjs'
 
 const script = path.resolve('scripts/check-leaks.mjs')
 const dirs: string[] = []
-// Sans les variables GIT_* d'un éventuel hook parent, qui viseraient le vrai dépôt.
+// Without the GIT_* variables of a possible parent hook, which would target the real repository.
 const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')))
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, env, encoding: 'utf8' })
 
-/** Dépôt jetable avec un commit et un worktree lié ; renvoie les deux racines. */
+/** Throwaway repository with a commit and a linked worktree; returns both roots. */
 function repoWithWorktree() {
   const base = realpathSync(mkdtempSync(path.join(tmpdir(), 'leaks-wt-')))
   dirs.push(base)
@@ -37,17 +37,17 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })
 })
 
-// Ces tests créent de vrais dépôts : ignorés là où git n'est pas installé (image node:22-alpine).
+// These tests create real repositories: skipped where git is not installed (node:22-alpine image).
 const hasGit = spawnSync('git', ['--version']).status === 0
 
-describe.skipIf(!hasGit)('check-leaks dans un worktree', () => {
-  it('trouve le checkout principal depuis un worktree lié, pas depuis le principal', () => {
+describe.skipIf(!hasGit)('check-leaks in a worktree', () => {
+  it('finds the main checkout from a linked worktree, not from the main one', () => {
     const { main, wt } = repoWithWorktree()
     expect(realpathSync(mainCheckoutRoot(wt))).toBe(main)
     expect(mainCheckoutRoot(main)).toBeNull()
   })
 
-  it('utilise le .leak-patterns du checkout principal quand le worktree n\'en a pas', () => {
+  it('uses the main checkout\'s .leak-patterns when the worktree has none', () => {
     const { main, wt } = repoWithWorktree()
     writeFileSync(path.join(main, '.leak-patterns'), 'forbidden-word\n')
     const found = findPatternsFile(wt)
@@ -60,14 +60,14 @@ describe.skipIf(!hasGit)('check-leaks dans un worktree', () => {
     expect(r.status).toBe(1)
   })
 
-  it('préfère le fichier du worktree quand il existe', () => {
+  it('prefers the worktree\'s file when it exists', () => {
     const { main, wt } = repoWithWorktree()
     writeFileSync(path.join(main, '.leak-patterns'), 'forbidden-word\n')
     writeFileSync(path.join(wt, '.leak-patterns'), 'other-word\n')
     expect(findPatternsFile(wt)).toEqual({ file: path.join(wt, '.leak-patterns'), from: 'checkout' })
   })
 
-  it('avertit clairement quand aucun fichier de motifs n\'existe', () => {
+  it('warns clearly when no pattern file exists', () => {
     const { main, wt } = repoWithWorktree()
     const found = findPatternsFile(wt)
     expect(found.file).toBeNull()
@@ -78,7 +78,7 @@ describe.skipIf(!hasGit)('check-leaks dans un worktree', () => {
     expect(r.stderr).toContain(path.join(main, '.leak-patterns'))
   })
 
-  it('avertit quand le fichier de motifs ne contient aucun motif actif', () => {
+  it('warns when the pattern file contains no active pattern', () => {
     const { main, wt } = repoWithWorktree()
     writeFileSync(path.join(main, '.leak-patterns'), '# only comments\n\n')
     expect(run(wt).stderr).toContain('has no active pattern')

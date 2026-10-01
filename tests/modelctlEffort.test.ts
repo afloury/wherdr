@@ -35,10 +35,10 @@ vi.mock('../server/utils/herdr', () => {
 
 import { listEfforts, setEffort } from '../server/utils/modelctl'
 
-describe('séquence /effort de Claude', () => {
+describe('Claude /effort sequence', () => {
   beforeEach(() => { calls.sent = []; calls.screen = '' })
 
-  it('liste sans ouvrir le curseur, puis envoie un seul /effort validé pour la session', async () => {
+  it('lists without opening the slider, then sends a single /effort confirmed for the session', async () => {
     expect(await listEfforts('w1:p1')).toEqual({
       levels: ['low', 'medium', 'high', 'xhigh', 'max', 'ultracode'], current: 'medium',
     })

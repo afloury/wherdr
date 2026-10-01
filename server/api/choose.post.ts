@@ -1,6 +1,6 @@
-// Choisir une option d'une invite bloquante. On relit l'écran juste avant :
-// si la question a changé depuis l'affichage sur le téléphone, on refuse
-// plutôt que de valider la mauvaise chose.
+// Choose an option of a blocking prompt. The screen is re-read just before:
+// if the question changed since it was shown on the phone, we refuse
+// rather than confirm the wrong thing.
 export default defineApi(async (event, b) => {
   if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'Invalid pane')
   const r = await herdr('pane.read', { pane_id: b.pane_id, source: 'detection' }, 4000)

@@ -1,7 +1,7 @@
-// Appui long au doigt (téléphone) : `onPress` après `delay` ms si le doigt n'a
-// pas bougé de plus de `slop` px (sinon c'est un défilement) ni quitté l'écran.
-// Le toucher qui l'a déclenché ne compte pas comme un toucher simple :
-// `swallowClick()` le dit au gestionnaire de clic. Pur (testé).
+// Long press with a finger (phone): `onPress` after `delay` ms if the finger has
+// not moved more than `slop` px (otherwise it is a scroll) nor left the screen.
+// The tap that triggered it does not count as a simple tap:
+// `swallowClick()` tells the click handler. Pure (tested).
 export interface LongPressOptions { delay?: number, slop?: number, onPress: () => void }
 type Point = { pointerType: string, clientX: number, clientY: number }
 
@@ -10,8 +10,8 @@ export function longPress({ delay = 450, slop = 8, onPress }: LongPressOptions) 
   let x = 0
   let y = 0
   let firedAt = 0
-  // iOS lance parfois « tout sélectionner » sur un appui long, même sur un
-  // élément non sélectionnable : on bloque toute sélection pendant l'appui.
+  // iOS sometimes triggers "select all" on a long press, even on a
+  // non-selectable element: we block any selection during the press.
   const noSelect = (ev: Event) => ev.preventDefault()
   const doc = typeof document === 'undefined' ? null : document
   const release = () => {
@@ -42,10 +42,10 @@ export function longPress({ delay = 450, slop = 8, onPress }: LongPressOptions) 
       if (timer && Math.hypot(e.clientX - x, e.clientY - y) > slop) cancel()
     },
     cancel,
-    // Un glisser peut durer bien plus de 800 ms après l'appui long.
-    // Repartir du relâchement pour ignorer le clic synthétique d'iOS.
+    // A drag may last well over 800 ms after the long press.
+    // Restart from the release to ignore iOS's synthetic click.
     suppressClick: () => { firedAt = Date.now() },
-    // Le clic qui suit l'appui long (doigt levé) : à ignorer.
+    // The click following the long press (finger lifted): to ignore.
     swallowClick: () => Date.now() - firedAt < 800,
   }
 }

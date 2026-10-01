@@ -1,12 +1,12 @@
-// Ce qu'une demande de permission autorise, pour l'afficher au-dessus de la
-// question : l'outil, sa description, la commande en entier, ou le fichier.
+// What a permission request allows, to show it above the
+// question: the tool, its description, the full command, or the file.
 //
-// Deux sources :
-//  - la transcription : le dernier appel d'outil encore sans résultat est
-//    celui qui attend la permission (commande complète, jamais coupée par la
-//    largeur du terminal) ;
-//  - l'écran, à défaut : chez Claude Code, le bloc entre le trait ─── et la
-//    question ; chez Codex, les lignes entre la question et les options :
+// Two sources:
+//  - the transcript: the last tool call still without a result is
+//    the one waiting for permission (full command, never cut by the
+//    terminal width);
+//  - the screen, failing that: in Claude Code, the block between the ─── rule and the
+//    question; in Codex, the lines between the question and the options:
 //
 //   ──────────────────────────────            Would you like to run the following command?
 //    Bash command                               Reason: needs network access
@@ -23,8 +23,8 @@ const MAX_BODY = 20000
 const RULE = /^\s*[─━═]{8,}\s*$/
 const DASHED = /^\s*[╌┄┈╍┅┉-]{8,}\s*$/
 
-// Question d'une demande de permission (et pas d'AskUserQuestion, de l'écran
-// de confiance du dossier, d'un menu…).
+// Question of a permission request (and not of AskUserQuestion, the folder
+// trust screen, a menu…).
 export function isPermissionQuestion(q: string | null | undefined): boolean {
   return /\b(?:proceed|allow|approve|make (?:this|these|the following) edits?|want to (?:make|create|run|edit|write|fetch|use|delete)|like to (?:run|make|apply|allow))\b/i.test(String(q || ''))
 }
@@ -39,8 +39,8 @@ const shortPath = (p: unknown, home: string) => {
   return home.length > 1 && (s === home || s.startsWith(home + '/')) ? '~' + s.slice(home.length) : s
 }
 
-// Lignes retirées / ajoutées entre deux textes (comptage par multiensemble :
-// un résumé, pas un vrai diff).
+// Lines removed / added between two texts (multiset count:
+// a summary, not a real diff).
 export function lineStats(before: string, after: string): { added: number, removed: number } {
   const count = (s: string) => {
     const m = new Map<string, number>()
@@ -56,7 +56,7 @@ export function lineStats(before: string, after: string): { added: number, remov
   return { added, removed }
 }
 
-// Lignes communes au début et à la fin gardées en contexte, le milieu en -/+.
+// Common lines at the start and end kept as context, the middle as -/+.
 function diffText(before: string, after: string): string {
   const a = before ? before.split('\n') : []
   const b = after ? after.split('\n') : []
@@ -76,7 +76,7 @@ function diffText(before: string, after: string): string {
 export function claudeToolDetail(name: string, input: Json, home = ''): PromptDetail | null {
   const i = input || {}
   switch (name) {
-    // Pas des permissions : la question est à l'écran, ou elle vient d'un sous-agent.
+    // Not permissions: the question is on screen, or it comes from a subagent.
     case 'AskUserQuestion': case 'Task': case 'Agent': return null
     case 'Bash': case 'PowerShell':
       return { tool: name, description: i.description || undefined, ...body(String(i.command || '')) }
@@ -111,7 +111,7 @@ export function claudeToolDetail(name: string, input: Json, home = ''): PromptDe
     case 'ExitPlanMode':
       return { tool: name, ...body(String(i.plan || '')) }
     default: {
-      // Outil MCP (mcp__serveur__outil) ou autre : son entrée en JSON lisible.
+      // MCP tool (mcp__server__tool) or other: its input as readable JSON.
       const m = name.match(/^mcp__(.+?)__(.+)$/)
       const json = Object.keys(i).length ? JSON.stringify(i, null, 2) : ''
       return { tool: m ? `${m[1]} · ${m[2]}` : name, ...(json ? body(json) : {}) }
@@ -119,8 +119,8 @@ export function claudeToolDetail(name: string, input: Json, home = ''): PromptDe
   }
 }
 
-// Premier appel d'outil sans résultat depuis le dernier message de
-// l'utilisateur (lignes JSON d'une transcription Claude Code).
+// First tool call without a result since the user's last
+// message (JSON lines of a Claude Code transcript).
 export function pendingClaudeTool(lines: string[], home = ''): PromptDetail | null {
   const pending = new Map<string, { name: string, input: Json }>()
   for (const line of lines) {
@@ -146,7 +146,7 @@ export function pendingClaudeTool(lines: string[], home = ''): PromptDetail | nu
 }
 
 // ------------------------------------------------------------ Codex
-// `["bash", "-lc", "script"]` → le script ; sinon les arguments joints.
+// `["bash", "-lc", "script"]` → the script; otherwise the arguments joined.
 function shellText(cmd: unknown): string {
   if (Array.isArray(cmd)) {
     const a = cmd.map(String)
@@ -197,7 +197,7 @@ export function pendingCodexTool(lines: string[]): PromptDetail | null {
   return { tool: p.name || 'shell', description: a.justification || undefined, ...body(cmd) }
 }
 
-// ------------------------------------------------------------ écran
+// ------------------------------------------------------------ screen
 function dedent(lines: string[]): string[] {
   const ind = Math.min(...lines.filter(l => l.trim()).map(l => l.match(/^\s*/)![0].length))
   return lines.map(l => l.slice(Number.isFinite(ind) ? ind : 0).replace(/\s+$/, ''))
@@ -209,10 +209,10 @@ function trimBlank(lines: string[]): string[] {
   while (b > a && !lines[b - 1]!.trim()) b--
   return lines.slice(a, b)
 }
-// Une phrase (la description) plutôt qu'une ligne de commande.
+// A sentence (the description) rather than a command line.
 const prose = (l: string) => /^[A-Z][^$|&;<>`=\\{}[\]]*$/.test(l.trim()) && /\s/.test(l.trim())
 
-// Codex : « Reason: … » et « $ commande » entre la question et les options.
+// Codex: "Reason: …" and "$ command" between the question and the options.
 function codexScreen(between: string[]): PromptDetail | null {
   const lines = trimBlank(dedent(between))
   let description: string | undefined
@@ -241,7 +241,7 @@ function claudeScreen(lines: string[], q: number): PromptDetail | null {
   if (title.length > 60) return null
   const rest = trimBlank(block.slice(1))
   if (rest.some(l => DASHED.test(l)) || /\bfile\b/i.test(title)) {
-    // Fichier : chemin puis extrait du diff (numéros de ligne, +/-).
+    // File: path then diff excerpt (line numbers, +/-).
     const content = rest.filter(l => !DASHED.test(l))
     const fi = content.findIndex(l => l.trim() && !/\s{2}/.test(l.trim()) && !/^\s*\d+\s/.test(l))
     const file = fi >= 0 ? content[fi]!.trim() : undefined
@@ -250,7 +250,7 @@ function claudeScreen(lines: string[], q: number): PromptDetail | null {
     const removed = diff.filter(l => /^\s*\d+\s*-/.test(l)).length
     return { tool: title, file, ...(added || removed ? { added, removed } : {}), ...(diff.length ? body(diff.join('\n')) : {}) }
   }
-  // Commande : premier paragraphe (commande, puis sa description s'il y en a une).
+  // Command: first paragraph (command, then its description if there is one).
   const blank = rest.findIndex(l => !l.trim())
   const first = trimBlank(dedent(blank < 0 ? rest : rest.slice(0, blank)))
   if (!first.length) return { tool: title }
@@ -259,14 +259,14 @@ function claudeScreen(lines: string[], q: number): PromptDetail | null {
   return { tool: title, description, ...body(first.join('\n')) }
 }
 
-// `q` : ligne de la question, `top` : première option (écran déjà débarrassé
-// d'un éventuel panneau voisin).
+// `q`: question line, `top`: first option (screen already rid
+// of any neighbouring panel).
 export function screenDetail(lines: string[], q: number, top: number): PromptDetail | null {
   if (q < 0) return null
   return codexScreen(lines.slice(q + 1, top)) || claudeScreen(lines, q)
 }
 
-// La transcription donne la commande entière ; l'écran complète ce qui manque.
+// The transcript gives the full command; the screen fills in what is missing.
 export function mergeDetail(tr: PromptDetail | null, screen: PromptDetail | null): PromptDetail | null {
   if (!tr) return screen
   if (!screen) return tr

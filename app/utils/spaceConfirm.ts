@@ -1,6 +1,6 @@
-// Texte de confirmation avant de fermer un onglet ou un espace : ce qui sera
-// arrêté (agents nommés, terminaux), et l'espace qui part avec son dernier
-// onglet. Pur (testé) : la langue arrive avec `tl`.
+// Confirmation text before closing a tab or a space: what will be
+// stopped (named agents, terminals), and the space that goes with its last
+// tab. Pure (tested): the language comes with `tl`.
 import type { Pane } from '../../shared/types'
 import { closeSummary } from '../../shared/spaceActions'
 import { paneTitle } from '../../shared/paneTitle'
@@ -13,7 +13,7 @@ export interface CloseTarget {
   kind: 'tab' | 'workspace'
   label: string
   panes: Pane[]
-  // Onglet : dernier de son espace (Herdr ferme alors l'espace aussi).
+  // Tab: last of its space (Herdr then closes the space too).
   lastTab?: boolean
   workspaceLabel?: string
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Logo de l'app (bélier pixel, même grille que les icônes de
-// server/assets/branding), en currentColor pour suivre le thème.
+// App logo (pixel ram, same grid as the icons in
+// server/assets/branding), in currentColor to follow the theme.
 const G = [
   '.###........###.',
   '#...#.####.#...#',

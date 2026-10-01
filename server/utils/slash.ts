@@ -1,14 +1,14 @@
-// Commandes « / » proposées par le champ de saisie, comme le menu du terminal :
-// les commandes intégrées de l'agent (slashcatalog.ts) + celles lues sur la
-// machine du pane (disque local, ou SSH) :
-//  - Claude Code : skills (~/.claude/skills/**/SKILL.md, y compris ceux
-//    synchronisés depuis le compte), commandes (~/.claude/commands/**.md), et
-//    les mêmes dans <dossier du projet>/.claude/.
-//  - Codex : invites personnelles ~/.codex/prompts/*.md -> /prompts:<nom>.
-//  - omp : commandes (~/.omp/agent/commands, et celles de Claude Code, Codex et
-//    ~/.agents qu'il découvre aussi), skills -> /skill:<nom> (mêmes dossiers,
-//    plus `skills.customDirectories` de ~/.omp/agent/config.yml), et les mêmes
-//    dans le dossier du projet.
+// "/" commands offered by the input field, like the terminal's menu:
+// the agent's built-in commands (slashcatalog.ts) + those read on the
+// pane's machine (local disk, or SSH):
+//  - Claude Code: skills (~/.claude/skills/**/SKILL.md, including those
+//    synced from the account), commands (~/.claude/commands/**.md), and
+//    the same in <project folder>/.claude/.
+//  - Codex: personal prompts ~/.codex/prompts/*.md -> /prompts:<name>.
+//  - omp: commands (~/.omp/agent/commands, and those of Claude Code, Codex and
+//    ~/.agents that it also discovers), skills -> /skill:<name> (same folders,
+//    plus `skills.customDirectories` of ~/.omp/agent/config.yml), and the same
+//    in the project folder.
 import path from 'node:path'
 import type { SlashCommand } from '../../shared/types'
 import type { MachineFs } from './fsx'
@@ -17,7 +17,7 @@ import { CLAUDE_BUILTIN, CODEX_BUILTIN, OMP_BUILTIN } from './slashcatalog'
 const TTL = 5 * 60 * 1000
 const cache = new Map<string, { at: number, list: SlashCommand[] }>()
 
-// Frontmatter YAML minimal (clés simples sur une ligne).
+// Minimal YAML frontmatter (simple one-line keys).
 export function frontmatter(text: string): Record<string, string> {
   const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)
   const out: Record<string, string> = {}
@@ -29,7 +29,7 @@ export function frontmatter(text: string): Record<string, string> {
   return out
 }
 
-// Première phrase utile d'un fichier de commande sans description.
+// First useful sentence of a command file without a description.
 function firstLine(text: string) {
   const body = text.replace(/^---[\s\S]*?\n---\r?\n?/, '')
   const l = body.split('\n').map(s => s.replace(/^#+\s*/, '').trim()).find(Boolean)
@@ -68,7 +68,7 @@ async function readSkills(fs: MachineFs, root: string, out: SlashCommand[], pref
   }
 }
 
-// commands/**.md : les sous-dossiers donnent des noms « dossier:commande ».
+// commands/**.md: subfolders give "folder:command" names.
 async function readCommands(fs: MachineFs, root: string, out: SlashCommand[], prefix = '', depth = 0) {
   for (const n of await ls(fs, root)) {
     const f = path.join(root, n)
@@ -83,7 +83,7 @@ async function readCommands(fs: MachineFs, root: string, out: SlashCommand[], pr
   }
 }
 
-// `skills.customDirectories` de la config d'omp (YAML : liste sous la clé).
+// `skills.customDirectories` of omp's config (YAML: list under the key).
 export function ompSkillDirs(config: string, home: string): string[] {
   const out: string[] = []
   let inSkills = false
@@ -109,7 +109,7 @@ export function ompSkillDirs(config: string, home: string): string[] {
 export function mergeCommands(builtin: [string, string, string?][], extra: SlashCommand[]): SlashCommand[] {
   const out: SlashCommand[] = []
   const seen = new Set<string>()
-  // Les commandes personnelles d'abord : elles masquent une intégrée du même nom.
+  // Personal commands first: they hide a built-in one with the same name.
   for (const c of extra) {
     if (!c.name || seen.has(c.name)) continue
     seen.add(c.name)
@@ -155,7 +155,7 @@ export async function slashCommands(opts: { key: string, fs: MachineFs, home: st
     builtin = OMP_BUILTIN
     const dirs = ompConfigDirs(home, cwd)
     for (const d of dirs) await readCommands(fs, path.join(d, 'commands'), extra)
-    // Commande livrée avec omp (task/commands).
+    // Command shipped with omp (task/commands).
     extra.push({ name: 'init', desc: 'Generate AGENTS.md for current codebase', source: 'command' })
     for (const d of dirs) await readSkills(fs, path.join(d, 'skills'), extra, 'skill:')
     const config = await read(fs, path.join(home, '.omp/agent/config.yml'))
@@ -166,17 +166,17 @@ export async function slashCommands(opts: { key: string, fs: MachineFs, home: st
   return list
 }
 
-// Dossiers de config d'omp (projet puis utilisateur, ~/.omp/agent pour omp
-// lui-même), du plus prioritaire au moins : le premier nom trouvé l'emporte
+// omp config folders (project then user, ~/.omp/agent for omp
+// itself), from highest to lowest priority: the first name found wins
 // (mergeCommands).
 function ompConfigDirs(home: string, cwd: string | null) {
   const bases = [...(cwd && cwd !== home ? [cwd] : []), home]
   return bases.flatMap(b => ['.omp', '.agents', '.agent', '.claude', '.codex'].map(r => path.join(b, b === home && r === '.omp' ? '.omp/agent' : r)))
 }
 
-// Texte des commandes-fichiers d'omp (sans frontmatter), celles de l'utilisateur :
-// omp l'envoie à la place de « /nom args », la conversation remet la commande
-// (cf. parseOmp).
+// Text of omp's file commands (without frontmatter), the user's ones:
+// omp sends it instead of "/name args", the conversation puts the command back
+// (see parseOmp).
 export interface CommandTemplate { name: string, body: string }
 export async function ompCommandTemplates(fs: MachineFs, home: string): Promise<CommandTemplate[]> {
   const out: CommandTemplate[] = []

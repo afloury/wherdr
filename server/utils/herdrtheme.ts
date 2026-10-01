@@ -1,12 +1,12 @@
-// Thème de Herdr, pour l'option « Suivre Herdr » : section [theme] de
-// ~/.config/herdr/config.toml, lue en lecture seule (sous-ensemble de TOML :
-// tables, `clé = "texte"` ou booléen, commentaires).
+// Herdr theme, for the "Follow Herdr" option: [theme] section of
+// ~/.config/herdr/config.toml, read-only (TOML subset:
+// tables, `key = "text"` or boolean, comments).
 import fs from 'node:fs'
 import path from 'node:path'
 import type { HerdrThemeConfig } from '../../shared/types'
 import { HOME } from './env'
 
-// Valeur de couleur acceptée par Herdr ET sans risque en CSS.
+// Color value accepted by Herdr AND safe in CSS.
 const COLOR = /^(#[0-9a-f]{3,8}|[a-z]{3,20}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\))$/i
 const NAME = /^[a-z0-9][a-z0-9-]{0,39}$/i
 

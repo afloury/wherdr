@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// Sélecteur de modèle, dans le pied de la barre de saisie (comme les exemples
-// Nuxt UI de UChatPrompt). Affiche le modèle courant de l'agent ; les options
-// viennent du vrai menu /model de l'agent (lu par le serveur, puis en cache).
-// Le changement ne vaut que pour cette session de l'agent. Indisponible quand
-// l'agent travaille ou attend une réponse.
+// Model selector, in the footer of the input bar (like the Nuxt UI
+// UChatPrompt examples). Shows the agent's current model; the options
+// come from the agent's real /model menu (read by the server, then cached).
+// The change only applies to this agent session. Unavailable when
+// the agent is working or waiting for an answer.
 import type { EffortList, ModelInfo, ModelList, ModelOption, Pane } from '#shared/types'
 import { currentModelOption } from '~/utils/modelSelection'
 
@@ -16,7 +16,7 @@ const effortsLoading = ref(false)
 const switching = ref(false)
 const list = ref<ModelList | null>(null)
 const efforts = ref<EffortList | null>(null)
-// Choix qui vient d'être fait : affiché tant que l'état du serveur ne l'a pas repris.
+// Choice just made: shown until the server state has picked it up.
 const chosen = ref<{ info: ModelInfo, at: number } | null>(null)
 
 const baseName = (s: string | null | undefined) => String(s || '').trim().toLowerCase()
@@ -136,8 +136,8 @@ const effortItems = computed(() => {
 const showEffort = computed(() => ['claude', 'codex'].includes(props.pane.agent || '') &&
   Boolean(efforts.value?.levels.length || (model.value?.effort && !efforts.value)))
 
-// Sélecteur indisponible : le menu ne s'ouvre pas, on explique (sur téléphone,
-// pas d'infobulle). Le bouton n'est pas `disabled` pour recevoir le toucher.
+// Selector unavailable: the menu does not open, we explain (on the phone,
+// no tooltip). The button is not `disabled` so it receives the tap.
 function setOpen(which: 'model' | 'effort', v: boolean) {
   if (v && locked.value) {
     if (why.value) toast(why.value, true)

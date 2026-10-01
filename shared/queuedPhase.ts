@@ -1,19 +1,19 @@
-// Message « en attente » de wherdr face à l'écran de Claude (ClaudeScreen) :
-// encore dans sa file, déjà parti (tour en cours), ou commande « ! » en cours
-// d'exécution. La transcription ne le dit qu'après coup (une commande « ! »
-// n'y est écrite qu'à la fin), l'écran tout de suite.
+// wherdr's "queued" message against Claude's screen (ClaudeScreen):
+// still in its queue, already sent (turn in progress), or "!" command
+// running. The transcript only tells afterwards (a "!" command
+// is only written there at the end), the screen right away.
 import type { ClaudeScreen } from './types'
 import { dropReplyMarker } from './replyQuote'
 
 export type QueuedPhase = 'queued' | 'sent' | 'running'
 
 const UPLOAD = '/.cache/herdr-web/uploads/'
-// L'écran remplace les photos par « [Image #1] » et coupe les longues lignes.
+// The screen replaces photos with "[Image #1]" and cuts long lines.
 const norm = (t: string) => dropReplyMarker(String(t || '').replace(/\[Image #\d+\]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase())
 const msgNorm = (t: string) => norm(String(t || '').split('\n').filter(l => !l.includes(UPLOAD)).join('\n'))
 
-// Même message (80 premiers caractères) ; ou l'un commence par l'autre, assez
-// long pour ne pas confondre « ok » et « ok, vas-y » (écran coupé).
+// Same message (first 80 characters); or one starts with the other, long
+// enough not to confuse "ok" with "ok, go ahead" (cut screen).
 function same(a: string, b: string): boolean {
   const x = a.slice(0, 80)
   const y = b.slice(0, 80)
@@ -36,13 +36,13 @@ export function queuedPhase(text: string, s: ClaudeScreen | null | undefined): Q
   return s.sent && !isBash(s.sent) && same(n, norm(s.sent)) ? 'sent' : 'queued'
 }
 
-// Phases d'une file dans l'ordre d'envoi. L'écran ne garde que le dernier
-// message parti : quand Claude prend deux messages de sa file d'un coup, seul
-// le second y est reconnu, et il s'afficherait « envoyé » avant le premier.
-// Règle : un message n'est envoyé que si tous les plus anciens le sont. Un
-// message plus récent déjà parti prouve que les plus anciens hors de la file
-// de l'écran sont partis aussi ; un plus ancien encore dans cette file retient
-// les suivants.
+// Phases of a queue in sending order. The screen only keeps the last
+// message sent: when Claude takes two messages from its queue at once, only
+// the second is recognized there, and it would show as "sent" before the first.
+// Rule: a message is only sent if all older ones are. A
+// more recent message already sent proves that the older ones outside the
+// screen's queue were sent too; an older one still in that queue holds back
+// the following ones.
 export function queuedPhases(texts: string[], s: ClaudeScreen | null | undefined): QueuedPhase[] {
   const raw = texts.map(t => queuedPhase(t, s))
   const inQueue = texts.map(t => Boolean(s && s.queued.some(q => same(msgNorm(t), norm(q)))))

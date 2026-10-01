@@ -1,7 +1,7 @@
-// Balayage horizontal entre les panes d'un onglet (téléphone), pur.
+// Horizontal swipe between the panes of a tab (phone), pure.
 
-// Axe du geste, décidé une fois le doigt parti de quelques pixels : horizontal
-// seulement s'il domine nettement (sinon c'est un défilement de la conversation).
+// Axis of the gesture, decided once the finger has moved a few pixels: horizontal
+// only if it clearly dominates (otherwise it is a conversation scroll).
 export function swipeAxis(dx: number, dy: number): 'x' | 'y' | null {
   const ax = Math.abs(dx)
   const ay = Math.abs(dy)
@@ -9,8 +9,8 @@ export function swipeAxis(dx: number, dy: number): 'x' | 'y' | null {
   return ax > ay * 1.3 ? 'x' : 'y'
 }
 
-// Fin du geste : +1 = pane suivant (doigt vers la gauche), -1 = précédent, 0 = rien.
-// Assez loin (un quart d'écran), ou un coup rapide.
+// End of the gesture: +1 = next pane (finger to the left), -1 = previous, 0 = nothing.
+// Far enough (a quarter of the screen), or a quick flick.
 export function swipeStep(dx: number, ms: number, width: number): 1 | -1 | 0 {
   const ax = Math.abs(dx)
   const far = ax >= Math.max(60, width * 0.25)
@@ -19,7 +19,7 @@ export function swipeStep(dx: number, ms: number, width: number): 1 | -1 | 0 {
   return dx < 0 ? 1 : -1
 }
 
-// Décalage affiché pendant le geste : amorti, et freiné au bord (pas de voisin).
+// Offset shown during the gesture: damped, and braked at the edge (no neighbour).
 export function swipeOffset(dx: number, canGo: boolean): number {
   return Math.round(canGo ? dx * 0.55 : dx * 0.18)
 }

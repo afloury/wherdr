@@ -11,19 +11,19 @@ export interface AwakeState {
   until: number | null
   lid: boolean
   battery: { percent: number, source: 'ac' | 'battery' } | null
-  // Heure de la machine ≥ 20 h : « jusqu'à ce soir » n'a plus de sens.
+  // Machine time ≥ 8 pm: "until this evening" no longer makes sense.
   eveningPast: boolean
 }
 export interface SleepAssertion { name: string, kind: string, seconds: number, ours: boolean }
 
-// Reconnaît notre inhibiteur : PID + commande exacte + heure de démarrage
-// enregistrée (un PID recyclé par un autre caffeinate n'est pas le nôtre).
-// Portable : /proc sous Linux (procps comme busybox, dont le ps n'a pas -p),
-// ps -p sur macOS. Un zombie a un cmdline vide : pas le nôtre.
-// Sur macOS, lstart dépend de la locale et du fuseau de la session SSH
-// (LANG transmis ou non) : on le fige en C/UTC, sinon une autre session voit
-// une autre date et efface le fichier d'un caffeinate bien vivant. Un fichier
-// écrit avant ce correctif (lstart brut) reste reconnu.
+// Recognizes our inhibitor: PID + exact command + recorded start time
+// (a PID recycled by another caffeinate is not ours).
+// Portable: /proc on Linux (procps as well as busybox, whose ps has no -p),
+// ps -p on macOS. A zombie has an empty cmdline: not ours.
+// On macOS, lstart depends on the locale and time zone of the SSH session
+// (LANG forwarded or not): we pin it to C/UTC, otherwise another session sees
+// another date and deletes the file of a caffeinate that is alive. A file
+// written before this fix (raw lstart) is still recognized.
 const OURS = `cmdline() {
   if [ -r "\${AWAKE_PROC:-/proc}/$1/cmdline" ]; then tr '\\000' ' ' < "\${AWAKE_PROC:-/proc}/$1/cmdline"
   else ps -p "$1" -o args= 2>/dev/null; fi
@@ -64,11 +64,11 @@ if [ -f "$d" ]; then
   else rm -f "$d"; fi
 fi`
 
-// Remplacement sans trou : le nouvel inhibiteur est lancé et vérifié vivant
-// AVANT d'arrêter l'ancien. Tuer d'abord laissait le Mac sans assertion un
-// instant ; inactif depuis longtemps, il partait aussitôt en veille.
-// stdout/stderr du processus restent fermés pour que le mux SSH rende la main.
-// Erreurs attendues : ligne « error=<code> » (sortie 0).
+// Gapless replacement: the new inhibitor is started and checked alive
+// BEFORE stopping the old one. Killing first left the Mac without an assertion for a
+// moment; idle for a long time, it went to sleep right away.
+// The process's stdout/stderr stay closed so the SSH mux returns.
+// Expected errors: "error=<code>" line (exit 0).
 export const CONTROL_SCRIPT = `set -u
 ${OURS}
 mode=$1; lid=$2
@@ -105,12 +105,12 @@ elif [ "$platform" = Linux ]; then
   else nohup systemd-inhibit --what=idle:sleep sleep "$seconds" </dev/null >/dev/null 2>&1 & fi
 else fail no_tool; fi
 pid=$!
-# Machine chargée : attendre que nohup ait lancé l'outil (5 s max), puis 1 s
-# pour qu'un échec immédiat ait le temps de se voir.
+# Loaded machine: wait for nohup to have started the tool (5 s max), then 1 s
+# so an immediate failure has time to show.
 i=0
 while [ "$i" -lt 50 ] && running "$pid" && ! ours "$pid"; do sleep 0.1; i=$((i + 1)); done
 sleep 1
-# Échec : l'ancien inhibiteur (s'il y en a un) continue, fichier intact.
+# Failure: the old inhibitor (if any) keeps running, file untouched.
 ours "$pid" || fail start_failed
 start=$(started "$pid")
 printf '%s|%s|%s|%s\\n' "$pid" "$until" "$lid" "$start" > "$d.tmp" && mv "$d.tmp" "$d"
@@ -155,7 +155,7 @@ async function run(machine: Machine, script: string, args: string[] = []) {
   return result.stdout.toString('utf8')
 }
 export async function awakeStatus(machine: Machine) { return parseAwakeStatus(await run(machine, STATUS_SCRIPT)) }
-// Codes « error=… » du script de contrôle -> message (traduit côté client).
+// "error=…" codes of the control script -> message (translated on the client).
 export const CONTROL_ERRORS: Record<string, string> = {
   no_tool: 'Sleep control is not available on this machine',
   lid_mac_only: 'Closed lid is only available on a Mac',
@@ -183,7 +183,7 @@ export async function setAwake(machine: Machine, mode: AwakeMode | 'off', lid: b
   const result = parseControl(await run(machine, CONTROL_SCRIPT, [mode, lid ? '1' : '0']))
   if ('error' in result) throw new HerdrError(`awake_${result.error}`, CONTROL_ERRORS[result.error] || 'Keep-awake command failed')
   const after = await awakeStatus(machine)
-  // L'état renvoyé est celui du processus réel : s'il n'est pas là, c'est un échec.
+  // The returned state is that of the real process: if it is not there, it is a failure.
   if (mode !== 'off' && !after.active) throw new HerdrError('awake_start_failed', CONTROL_ERRORS.start_failed!)
   return after
 }

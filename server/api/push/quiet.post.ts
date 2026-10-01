@@ -1,5 +1,5 @@
-// Mode silence : lecture (sans `scope`) ou réglage, pour cet appareil
-// (abonnement `endpoint`) ou pour tous. Réponse : les deux silences en cours.
+// Quiet mode: read (without `scope`) or set, for this device
+// (`endpoint` subscription) or for all. Reply: both current quiet periods.
 import { parseQuiet, quietActive } from '../../../shared/quiet'
 
 export default defineApi(async (event, b) => {
@@ -16,7 +16,7 @@ export default defineApi(async (event, b) => {
       else delete sub.quiet
       await writeSubs(subs)
     }
-    log(`push : silence ${b.scope === 'all' ? 'tous les appareils' : 'un appareil'} ${quiet ? (quiet.until ? `jusqu'à ${new Date(quiet.until).toISOString()}` : 'jusqu’à réactivation') : 'coupé'}`)
+    log(`push: quiet ${b.scope === 'all' ? 'all devices' : 'one device'} ${quiet ? (quiet.until ? `until ${new Date(quiet.until).toISOString()}` : 'until turned back on') : 'off'}`)
   }
   const device = endpoint ? (await readSubs()).find(s => s.endpoint === endpoint)?.quiet : undefined
   return { global: await readGlobalQuiet(), device: device && quietActive(device) ? device : null }

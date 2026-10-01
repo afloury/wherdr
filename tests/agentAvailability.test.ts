@@ -3,7 +3,7 @@ import { installedAgentKinds } from '../server/utils/agentAvailability'
 import type { Machine } from '../server/utils/machines'
 
 describe('installedAgentKinds', () => {
-  it('lit les exécutables de la machine distante et sépare les inventaires', async () => {
+  it('reads the remote machine executables and keeps the inventories separate', async () => {
     const machine = (key: string, output: string) => ({
       key, local: false, status: 'online',
       exec: async () => ({ code: 0, stdout: Buffer.from(output), stderr: '' }),

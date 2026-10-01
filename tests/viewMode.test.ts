@@ -4,13 +4,13 @@ import { cellFocusStep, cellMode, showComposer, spaceTabControls, terminalAttach
 const base = { desk: false, cell: false, chat: true, live: true, project: false }
 
 describe('viewControls', () => {
-  it('téléphone : bascule terminal dans l’en-tête, pas de sélecteur', () => {
+  it('phone: terminal toggle in the header, no selector', () => {
     expect(viewControls(base)).toEqual({ selector: null, term: true, project: false })
   })
-  it('téléphone, coordinateur : bascule Projet en plus', () => {
+  it('phone, coordinator: Project toggle as well', () => {
     expect(viewControls({ ...base, project: true })).toEqual({ selector: null, term: true, project: true })
   })
-  it('ordinateur : sélecteur dans l’en-tête, ou dans l’en-tête de la case', () => {
+  it('computer: selector in the header, or in the cell header', () => {
     expect(viewControls({ ...base, desk: true, project: true })).toEqual({ selector: 'header', term: false, project: false })
     expect(viewControls({ ...base, desk: true, cell: true })).toEqual({ selector: 'cell', term: false, project: false })
   })
@@ -20,29 +20,29 @@ describe('viewControls', () => {
     expect(viewControls({ ...base, desk: true, chat: false })).toEqual(none)
     expect(viewControls({ ...base, desk: true, cell: true, chat: false, live: false })).toEqual(none)
   })
-  it('case sans le focus : garde son sélecteur', () => {
+  it('cell without the focus: keeps its selector', () => {
     expect(viewControls({ ...base, desk: true, cell: true, live: false })).toEqual({ selector: 'cell', term: false, project: false })
   })
 })
 
 describe('saisie du pane', () => {
-  it.each(['term', 'mirror'] as const)('retire le champ sur ordinateur en mode %s', mode => {
+  it.each(['term', 'mirror'] as const)('removes the field on a computer in %s mode', mode => {
     expect(showComposer({ desk: true, live: true, mode })).toBe(false)
     expect(terminalAttachment({ desk: true, live: true, mode, available: true })).toBe(true)
     expect(showComposer({ desk: false, live: true, mode })).toBe(true)
     expect(terminalAttachment({ desk: false, live: true, mode, available: true })).toBe(false)
   })
-  it('garde le champ dans la conversation sur les deux appareils', () => {
+  it('keeps the field in the conversation on both devices', () => {
     expect(showComposer({ desk: true, live: true, mode: 'chat' })).toBe(true)
     expect(showComposer({ desk: false, live: true, mode: 'chat' })).toBe(true)
     expect(terminalAttachment({ desk: true, live: true, mode: 'chat', available: true })).toBe(false)
   })
-  it('garde le champ d’une case conversation sans le focus', () => {
+  it('keeps the field of a conversation cell without the focus', () => {
     expect(showComposer({ desk: true, live: false, mode: 'chat', cell: true })).toBe(true)
     expect(showComposer({ desk: true, live: false, mode: 'mirror', cell: true })).toBe(false)
     expect(showComposer({ desk: true, live: false, mode: 'chat' })).toBe(false)
   })
-  it('ne propose rien dans une case inactive ou hors ligne', () => {
+  it('offers nothing in an inactive or offline cell', () => {
     expect(showComposer({ desk: true, live: false, mode: 'mirror' })).toBe(false)
     expect(terminalAttachment({ desk: true, live: false, mode: 'mirror', available: true })).toBe(false)
     expect(terminalAttachment({ desk: true, live: true, mode: 'term', available: false })).toBe(false)
@@ -50,20 +50,20 @@ describe('saisie du pane', () => {
 })
 
 describe('spaceTabControls', () => {
-  it('place le + dans l’en-tête pour un seul onglet', () => {
+  it('puts the + in the header for a single tab', () => {
     expect(spaceTabControls(1)).toEqual({ row: false, headerAdd: true })
   })
-  it('place la rangée et son + avant l’en-tête pour plusieurs onglets', () => {
+  it('puts the row and its + before the header for several tabs', () => {
     expect(spaceTabControls(2)).toEqual({ row: true, headerAdd: false })
     expect(spaceTabControls(3)).toEqual({ row: true, headerAdd: false })
   })
-  it('attend l’état du space avant de montrer des commandes', () => {
+  it('waits for the space state before showing controls', () => {
     expect(spaceTabControls(0)).toEqual({ row: false, headerAdd: false })
   })
 })
 
 describe('toggleViewMode', () => {
-  it('affiche la cible, puis revient à la conversation', () => {
+  it('shows the target, then goes back to the conversation', () => {
     expect(toggleViewMode('chat', 'term')).toBe('term')
     expect(toggleViewMode('term', 'term')).toBe('chat')
     expect(toggleViewMode('project', 'term')).toBe('term')
@@ -73,15 +73,15 @@ describe('toggleViewMode', () => {
 })
 
 describe('cellMode', () => {
-  it('garde le mode mémorisé du pane, focus ou non', () => {
+  it('keeps the pane\'s remembered mode, focused or not', () => {
     expect(cellMode({ chat: true, viewMode: 'term' })).toBe('mirror')
     expect(cellMode({ chat: true, viewMode: 'chat' })).toBe('chat')
     expect(cellMode({ chat: true, viewMode: 'project' })).toBe('chat')
   })
-  it('sans conversation : toujours le miroir', () => {
+  it('without a conversation: always the mirror', () => {
     expect(cellMode({ chat: false, viewMode: 'chat' })).toBe('mirror')
   })
-  it('changer le focus ne change le mode d’aucune case', () => {
+  it('changing the focus changes no cell\'s mode', () => {
     const modes: Record<string, 'chat' | 'term'> = { a: 'term', b: 'term', c: 'chat' }
     const show = () => Object.fromEntries(Object.entries(modes).map(([k, m]) => [k, cellMode({ chat: true, viewMode: m })]))
     const before = show()
@@ -93,13 +93,13 @@ describe('cellMode', () => {
 describe('cellFocusStep', () => {
   const k = (key: string, o: Partial<{ altKey: boolean, ctrlKey: boolean, metaKey: boolean, shiftKey: boolean }> = {}) =>
     cellFocusStep({ key, altKey: true, ctrlKey: true, metaKey: false, shiftKey: false, ...o })
-  it('Ctrl/⌘ + Alt + flèche : case précédente ou suivante', () => {
+  it('Ctrl/⌘ + Alt + arrow: previous or next cell', () => {
     expect(k('ArrowLeft')).toBe(-1)
     expect(k('ArrowUp')).toBe(-1)
     expect(k('ArrowRight')).toBe(1)
     expect(k('ArrowDown', { ctrlKey: false, metaKey: true })).toBe(1)
   })
-  it('ignore les autres combinaisons (Alt + Maj + flèche échange les panes)', () => {
+  it('ignores the other combinations (Alt + Shift + arrow swaps panes)', () => {
     expect(k('ArrowLeft', { shiftKey: true })).toBe(0)
     expect(k('ArrowLeft', { ctrlKey: false })).toBe(0)
     expect(k('ArrowLeft', { altKey: false })).toBe(0)

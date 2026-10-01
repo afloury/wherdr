@@ -1,14 +1,14 @@
-// Actions des plugins Herdr : ce que wherdr en garde et où il les propose
-// (fonctions pures, testées dans tests/plugins.test.ts).
+// Herdr plugin actions: what wherdr keeps of them and where it offers them
+// (pure functions, tested in tests/plugins.test.ts).
 //
-// Herdr (plugin.action.list) donne pour chaque action ses contextes :
-//  - workspace / tab / pane : l'action porte sur l'endroit d'où on la lance ;
-//    wherdr la met dans le menu « … » d'un agent et lui passe son pane, son
-//    onglet et son workspace ;
-//  - global (ou aucun contexte déclaré) : l'action vaut pour toute la machine ;
-//    wherdr la met dans le menu de la machine (accueil) ;
-//  - selection seulement : il faut du texte sélectionné dans le terminal, ce
-//    que wherdr n'a pas : écartée.
+// Herdr (plugin.action.list) gives the contexts of each action:
+//  - workspace / tab / pane: the action applies to where it is launched from;
+//    wherdr puts it in an agent's "…" menu and passes it its pane, its
+//    tab and its workspace;
+//  - global (or no declared context): the action applies to the whole machine;
+//    wherdr puts it in the machine's menu (home);
+//  - selection only: it needs text selected in the terminal, which
+//    wherdr does not have: dropped.
 import type { PluginAction, PluginActionResult } from '../../shared/types'
 import type { Pane, Workspace } from '../../shared/types'
 
@@ -29,12 +29,12 @@ export interface RawPluginLog {
   error?: string | null
 }
 
-// Identifiants acceptés par Herdr (cf. doc des plugins) : on ne relaie rien d'autre.
+// Identifiers accepted by Herdr (see the plugin docs): we relay nothing else.
 export const PLUGIN_ID_RE = /^[A-Za-z0-9.:_-]{1,100}$/
 export const ACTION_ID_RE = /^[A-Za-z0-9:_-]{1,100}$/
 
-// Binaire herdr-projects sur une machine distante : `$1` = binaire herdr (à
-// exporter, sinon le plugin ne le voit pas), `$2` = binaire du plugin, puis ses arguments.
+// herdr-projects binary on a remote machine: `$1` = herdr binary (to
+// export, otherwise the plugin does not see it), `$2` = plugin binary, then its arguments.
 export const REMOTE_PROJECTS_SCRIPT = 'export HERDR_BIN_PATH="$1"; shift; bin="$1"; shift; exec "$bin" "$@"'
 
 export function actionContext(pane: Pane | null, workspaces: Workspace[] = []): Record<string, string> {
@@ -51,15 +51,15 @@ export function actionContext(pane: Pane | null, workspaces: Workspace[] = []): 
 
 const AGENT_CONTEXTS = ['workspace', 'tab', 'pane']
 
-// Actions qui ne font que montrer ou vérifier : pas de confirmation. Toutes les
-// autres (un plugin exécute ce qu'il veut) en demandent une.
+// Actions that only show or check: no confirmation. All the
+// others (a plugin runs whatever it wants) ask for one.
 const READ_ONLY = /\b(list|lists|show|status|view|info|doctor|check|help|preview|inspect|lister|liste|voir|afficher|état|etat|vérifier|verifier|aide)\b/i
 export function needsConfirm(a: { id: string, title: string }): boolean {
   return !(READ_ONLY.test(a.id.replace(/[_:]/g, '-')) || READ_ONLY.test(a.title))
 }
 
-// Libellé sous l'en-tête du plugin : sans son nom en préfixe (« Projects: pause
-// project » -> « Pause project »), le titre entier s'il ne reste rien.
+// Label under the plugin header: without its name as prefix ("Projects: pause
+// project" -> "Pause project"), the whole title if nothing is left.
 export function shortLabel(title: string, pluginName: string): string {
   const esc = pluginName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const rest = title.replace(new RegExp(`^${esc}\\s*[:·—–-]\\s*`, 'i'), '').trim()
@@ -87,13 +87,13 @@ export function normalizeActions(actions: RawPluginAction[], plugins: RawPlugin[
       agent, machine, confirm: needsConfirm({ id, title }),
     })
   }
-  // Groupés par plugin, par ordre alphabétique des libellés (Herdr ne donne pas
-  // l'ordre du manifeste : plugin.list et plugin.action.list trient par identifiant).
+  // Grouped by plugin, in alphabetical order of labels (Herdr does not give
+  // the manifest order: plugin.list and plugin.action.list sort by identifier).
   return out.sort((x, y) => x.pluginName.localeCompare(y.pluginName) || x.label.localeCompare(y.label))
 }
 
-// Fin de sortie lisible dans un toast : dernières lignes non vides, sans
-// séquences ANSI ni caractères de contrôle.
+// End of output readable in a toast: last non-empty lines, without
+// ANSI sequences or control characters.
 const ANSI = /\x1B(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1B]*(?:\x07|\x1B\\)|[@-Z\\-_])/g
 export function stripAnsi(text: string | null | undefined): string {
   return String(text || '')

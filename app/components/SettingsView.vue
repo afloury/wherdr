@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Réglages, en sections : apparence, conversation, terminal, agents,
-// notifications, sécurité (clé d'accès), ordinateur, à propos.
+// Settings, in sections: appearance, conversation, terminal, agents,
+// notifications, security (passkey), computer, about.
 import { startRegistration } from '@simplewebauthn/browser'
 import type { AuthStatus } from '#shared/types'
 import type { ThemeDef } from '~/utils/themes'
@@ -12,11 +12,11 @@ import { type QuietDuration, type QuietScope, quietUntil } from '#shared/quiet'
 
 const appVersion = pkg.version
 const router = useRouter()
-// Sections : barre latérale sur ordinateur (une section affichée), liste façon
-// Réglages iOS sur téléphone (un appui ouvre la section, Retour revient à la liste).
-// La section vit dans l'URL (`?section=plugins`, aussi le lien du panneau Projet) :
-// sur téléphone, l'ouvrir ajoute une entrée d'historique, que le bouton Retour du
-// système dépile comme celui de l'en-tête ; sur ordinateur, elle remplace l'entrée.
+// Sections: sidebar on a computer (one section shown), iOS Settings-style
+// list on the phone (a tap opens the section, Back returns to the list).
+// The section lives in the URL (`?section=plugins`, also the Project panel's link):
+// on the phone, opening it adds a history entry, which the system Back button
+// pops like the header's; on a computer, it replaces the entry.
 const route = useRoute()
 const section = computed<SettingsSection | null>(() => (SETTINGS_SECTIONS as readonly string[]).includes(String(route.query.section)) ? route.query.section as SettingsSection : null)
 const sectionIcons: Record<SettingsSection, string> = {
@@ -49,9 +49,9 @@ function back() {
   else if (to === 'history') router.back()
   else navigateTo('/', { replace: true })
 }
-// Téléphone, Réglages ouverts en premier (app lancée, lien, rechargement) : rien
-// dessous, le bouton Retour du système fermerait l'app. On glisse l'accueil
-// dessous, comme si on venait de la liste des agents.
+// Phone, Settings opened first (app launched, link, reload): nothing
+// underneath, the system Back button would close the app. We slip the home screen
+// underneath, as if we came from the agent list.
 onMounted(async () => {
   if (desk.value || typeof (history.state as { back?: unknown } | null)?.back === 'string') return
   const here = route.fullPath
@@ -64,13 +64,13 @@ watch(lang, (l) => {
   setLanguage(l)
   location.reload()
 })
-// Refs globales liées dans le gabarit : alias locaux (assignables).
+// Global refs bound in the template: local (assignable) aliases.
 const shellsOn = showShells
 const countersOn = showCounters
 const quotasOn = showQuotas
 const autoReorderOn = autoReorderReady
 const encryptedOn = encryptedText
-// Coupée d'office si le système réduit les animations : montrée désactivée.
+// Forced off if the system reduces motion: shown disabled.
 const typewriter = computed({ get: () => typingSpeed.value, set: (v: TypingSpeed) => { typewriterSpeed.value = v } })
 const typingItems = computed(() => [
   { label: t('Off'), description: t('The reply appears at once.'), value: 'off' },
@@ -92,7 +92,7 @@ const quotaItems = computed(() => [
 ])
 const langItems = [{ label: 'English', value: 'en' }, { label: 'Français', value: 'fr' }]
 
-// Inventaire des machines joignables ; les préférences restent propres à cet appareil.
+// Inventory of the reachable machines; the preferences stay specific to this device.
 const agentMachines = computed(() => {
   const configured = appConfig.value.machines
   return configured?.filter(m => m.local || (Boolean(m.home) && (machineInfo(m.key)?.status === 'online' || (!machineInfo(m.key) && m.online))))
@@ -123,8 +123,8 @@ const selectedScope = computed({
 })
 async function refreshPush() { subscribed.value = await pushSubscribed() }
 
-// Mode silence : portée (cet appareil = son abonnement, ou tous) et durée.
-// Le serveur garde le réglage et filtre avant l'envoi (shared/quiet.ts).
+// Quiet mode: scope (this device = its subscription, or all) and duration.
+// The server keeps the setting and filters before sending (shared/quiet.ts).
 const quietScope = ref<QuietScope>('all')
 const quietDuration = ref<QuietDuration>('manual')
 const quietScopeItems = computed(() => [
@@ -146,7 +146,7 @@ async function applyQuiet(on: boolean) {
   try {
     const previous = quietCurrent.value?.scope
     if (on) await setQuiet(quietScope.value, true, quietUntil(quietDuration.value))
-    // Changement de portée : l'ancien silence s'arrête.
+    // Scope change: the old quiet period stops.
     if (previous && (!on || previous !== quietScope.value)) await setQuiet(previous, false)
   } catch (err) { toast((err as Error).message, true) }
 }
@@ -179,8 +179,8 @@ const pushNote = computed(() => t(subscribed.value
     ? 'On iPhone, add the app to your Home Screen (Share → Add to Home Screen) to receive notifications.'
     : 'Enable notifications to know when an agent needs your input.'))
 
-// ------------------------------------------------------------ thème
-// Aperçu : fond, surface, trait, texte, accent, états (travaille, attend, fini).
+// ------------------------------------------------------------ theme
+// Preview: background, surface, line, text, accent, states (working, waiting, done).
 const swatches = (th: ThemeDef) => [th.c.bg, th.c.surface, th.c.line, th.c.text, th.c.accent, th.c.blue, th.c.rose, th.c.teal]
 const herdrName = computed(() => {
   const h = appConfig.value.herdrTheme
@@ -211,14 +211,14 @@ const rendererStatus = computed(() => terminalRenderStatus.value === 'html-fallb
     : t('Active rendering: WebGL'))
 watch(renderer, refreshTerminalRenderStatus)
 
-// ------------------------------------------------------------ sécurité
+// ------------------------------------------------------------ security
 const sec = ref<AuthStatus | null>(null)
 const supported = import.meta.client && Boolean(window.PublicKeyCredential)
 async function refreshSecurity() {
   try { sec.value = await api<AuthStatus>('/api/auth/status') }
-  catch { /* hors ligne */ }
+  catch { /* offline */ }
 }
-// Nom lisible de l'appareil, pour la liste des clés.
+// Readable device name, for the key list.
 function deviceName() {
   const ua = navigator.userAgent
   if (/iPhone/.test(ua)) return 'iPhone'
@@ -266,7 +266,7 @@ async function disableLock() {
 onMounted(loadUpdate)
 onMounted(() => {
   refreshTerminalRenderStatus()
-  loadConfig() // thème de Herdr à jour pour « Suivre Herdr »
+  loadConfig() // Herdr theme up to date for "Follow Herdr"
   refreshPush().then(refreshQuiet)
   refreshSecurity()
 })
@@ -294,7 +294,7 @@ onMounted(() => {
         <div v-show="activeSection === 'appearance'" class="settings-section">
           <div class="settings-group">
             <h3>{{ t('Theme') }}</h3>
-            <!-- Replié par défaut : on voit le thème courant, un appui déplie la liste. -->
+            <!-- Collapsed by default: the current theme shows, a tap expands the list. -->
             <button type="button" class="theme-opt theme-current" :aria-expanded="themesOpen" @click="themesOpen = !themesOpen">
               <span class="theme-sw"><i v-for="(c, i) in currentTheme ? swatches(currentTheme) : []" :key="i" :style="{ background: c }" /></span>
               <span class="theme-name">{{ currentLabel }}<small>{{ t(themesOpen ? 'Hide themes' : 'Change theme') }}</small></span>
@@ -463,7 +463,7 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- Mise en page ordinateur seulement (même seuil que l'app : 900 px). -->
+        <!-- Computer layout only (same threshold as the app: 900 px). -->
         <div v-if="desk" v-show="activeSection === 'desktop'" class="settings-section">
           <div class="settings-group settings-width">
             <h3>{{ t('Content width') }}</h3>

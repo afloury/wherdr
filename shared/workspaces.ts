@@ -1,5 +1,5 @@
-// Espaces de travail pour l'app : workspaces → onglets → panes (ordre de
-// lecture), avec la disposition à afficher. Pur (testé).
+// Workspaces for the app: workspaces → tabs → panes (reading
+// order), with the layout to show. Pure (tested).
 import type { HerdrState, Pane, Tab, Workspace } from './types'
 import { type TabLayout, readingOrder, tabLayout } from './layout'
 
@@ -9,7 +9,7 @@ type State = Pick<HerdrState, 'workspaces' | 'panes'> & Partial<Pick<HerdrState,
 
 const byNumber = (a: { number: number }, b: { number: number }) => a.number - b.number
 
-// Onglets connus : ceux de l'état, sinon (ancien état hors ligne) ceux des panes.
+// Known tabs: those of the state, otherwise (old offline state) those of the panes.
 function tabsOf(s: State): Tab[] {
   if (s.tabs) return s.tabs
   const out = new Map<string, Tab>()
@@ -19,8 +19,8 @@ function tabsOf(s: State): Tab[] {
   return [...out.values()]
 }
 
-// Disposition de Herdr seulement si elle montre exactement les panes connus
-// (un pane tout juste créé ou fermé entre deux lectures) ; sinon, empilés.
+// Herdr's layout only if it shows exactly the known panes
+// (a pane just created or closed between two reads); otherwise, stacked.
 function entryOf(tab: Tab, all: Pane[]): TabEntry {
   const mine = all.filter(p => p.tab === tab.id)
   const ids = new Set(mine.map(p => p.id))
@@ -31,7 +31,7 @@ function entryOf(tab: Tab, all: Pane[]): TabEntry {
   return { tab, layout, panes: readingOrder(layout).map(p => byId.get(p.pane)!) }
 }
 
-// `machine` : seulement cette machine ('' = locale) ; absent = toutes.
+// `machine`: only this machine ('' = local); missing = all.
 export function workspaceTree(s: State, machine?: string): WorkspaceEntry[] {
   const mineM = (x: { machine?: string }) => machine === undefined || (x.machine || '') === machine
   const tabs = tabsOf(s).filter(mineM)
@@ -46,7 +46,7 @@ export function tabEntry(s: State, tabId: string): TabEntry | null {
   return tab ? entryOf(tab, s.panes) : null
 }
 
-// Compteurs d'état d'un onglet (agents seulement ; `done` = prêt non lu).
+// State counters of a tab (agents only; `done` = ready unread).
 export function tabSummary(panes: Pane[]) {
   const n = (st: string) => panes.filter(p => p.agent && p.status === st).length
   return { blocked: n('blocked'), working: n('working'), done: n('done'), agents: panes.filter(p => p.agent).length }

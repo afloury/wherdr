@@ -1,12 +1,12 @@
-// Types partagés entre le serveur (Nitro) et l'app (Vue).
+// Types shared between the server (Nitro) and the app (Vue).
 import type { TabLayout } from './layout'
 
 export type AgentStatus = 'working' | 'blocked' | 'done' | 'idle' | 'unknown'
 
-// `checked` : case d'une liste à choix multiples (Choices.multi), cochée à l'écran.
+// `checked`: box of a multiple-choice list (Choices.multi), checked on screen.
 export interface ChoiceOption { label: string, hint: string | null, checked?: boolean }
-// Ce qu'une demande de permission autorise : l'outil, sa description, et la
-// commande (ou l'entrée de l'outil) en entier, ou le fichier touché.
+// What a permission request allows: the tool, its description, and the
+// full command (or tool input), or the file touched.
 export interface PromptDetail {
   tool: string
   description?: string
@@ -14,23 +14,23 @@ export interface PromptDetail {
   file?: string
   added?: number
   removed?: number
-  // Commande coupée côté serveur (très longue) : l'app le dit.
+  // Command cut on the server side (very long): the app says so.
   truncated?: boolean
 }
-// `multi` : cases à cocher (omp) ; un choix coche ou décoche, Entrée passe à la suite.
+// `multi`: checkboxes (omp); a choice checks or unchecks, Enter moves on.
 export interface Choices { question: string | null, cursor: number, options: ChoiceOption[], detail?: PromptDetail, multi?: boolean }
 
-// Écran d'attente d'un agent (Codex au démarrage : hooks, confiance du dossier,
-// connexion…), cf. server/utils/waitScreen.ts. `other` : écran non reconnu,
-// montré seulement tant qu'il n'y a pas de conversation.
+// Waiting screen of an agent (Codex at startup: hooks, folder trust,
+// login…), see server/utils/waitScreen.ts. `other`: unrecognized screen,
+// only shown while there is no conversation.
 export type WaitKind = 'hooks' | 'trust' | 'login' | 'update' | 'other'
-// Touche de la légende de l'écran (« t trust all » → { key: 't', label: 'trust all' }).
+// Key from the screen's legend ("t trust all" → { key: 't', label: 'trust all' }).
 export interface WaitAction { key: string, label: string }
 export interface WaitScreen { kind: WaitKind, title: string | null, lines: string[], actions: WaitAction[] }
 
-// Menu interactif plein écran de Claude Code (/resume, /model, /mcp…), cf.
-// shared/menuScreen.ts. `header` : en-tête de groupe, pas une entrée ; `search` :
-// texte du champ de recherche (null : pas de recherche) ; `more` : « 19 more below ».
+// Claude Code's full-screen interactive menu (/resume, /model, /mcp…), see
+// shared/menuScreen.ts. `header`: group header, not an entry; `search`:
+// text of the search field (null: no search); `more`: "19 more below".
 export interface MenuEntry { label: string, hint: string | null, header?: boolean, cursor?: boolean }
 export interface InteractiveMenu {
   title: string | null
@@ -45,36 +45,36 @@ export interface InteractiveMenu {
 // state: held until a menu closes (server side), or failed to send.
 export interface QueuedMessage { id: string, text: string, at?: number, state?: 'held' | 'failed' }
 
-// Écran de Claude Code au travail (cf. server/utils/claudeScreen.ts) : la
-// commande « ! » en cours d'exécution, le dernier message parti, les messages
-// encore dans sa file. La transcription n'a la commande « ! » qu'à la fin.
+// Claude Code's screen while working (see server/utils/claudeScreen.ts): the
+// "!" command running, the last message sent, the messages
+// still in its queue. The transcript only has the "!" command at the end.
 export interface ShellRun {
   command: string
-  // Dernières lignes de sortie affichées (Claude n'en montre que quelques-unes).
+  // Last output lines shown (Claude only shows a few).
   lines: string[]
-  // Lignes masquées au-dessus (« +12 lines »).
+  // Hidden lines above ("+12 lines").
   hidden: number
-  // Début de l'exécution (ms), déduit du compteur « (37s) ».
+  // Start of the execution (ms), deduced from the "(37s)" counter.
   since: number | null
 }
 export interface ClaudeScreen { shell: ShellRun | null, sent: string | null, queued: string[] }
 
 export interface Workspace {
   id: string
-  // Machine distante (clé courte) ; absent pour la machine locale.
+  // Remote machine (short key); missing for the local machine.
   machine?: string
   label: string
   number: number
   status: string | null
   worktree: boolean
-  // Dépôt Git du workspace (Herdr : `worktree.repo_key` / `repo_name`), commun
-  // au checkout principal et à ses worktrees ; absent hors dépôt.
+  // Git repository of the workspace (Herdr: `worktree.repo_key` / `repo_name`), shared
+  // by the main checkout and its worktrees; missing outside a repository.
   repo?: string
   repoName?: string
   branch?: string
 }
 
-// Onglet d'un workspace Herdr et sa disposition (splits réels, cf. shared/layout.ts).
+// Tab of a Herdr workspace and its layout (real splits, see shared/layout.ts).
 export interface Tab {
   // w1:t1 (local) ou <machine>~w1:t1 (distant).
   id: string
@@ -82,14 +82,14 @@ export interface Tab {
   workspace: string
   label: string
   number: number
-  // Absente si Herdr ne l'a pas donnée : l'app empile alors les panes.
+  // Missing if Herdr did not give it: the app then stacks the panes.
   layout: TabLayout | null
 }
 
 export interface Pane {
-  // w1:p1 (local) ou <machine>~w1:p1 (distant, cf. shared/ids.ts).
+  // w1:p1 (local) ou <machine>~w1:p1 (distant, see shared/ids.ts).
   id: string
-  // Machine distante (clé courte) ; absent pour la machine locale.
+  // Remote machine (short key); missing for the local machine.
   machine?: string
   workspace: string
   tab: string
@@ -97,19 +97,19 @@ export interface Pane {
   agent: string | null
   name: string | null
   label: string | null
-  // Nom d'agent affiché par Herdr (`display_agent`), s'il dit plus que le type d'agent.
+  // Agent name shown by Herdr (`display_agent`), if it says more than the agent kind.
   displayAgent?: string
-  // Pane sans agent : commande au premier plan (« pnpm dev »), absente au prompt du shell.
+  // Pane without an agent: foreground command ("pnpm dev"), missing at the shell prompt.
   command?: string
   status: AgentStatus | null
   title: string | null
   cwd: string | null
   agentSession: string | null
-  // Projet herdr-projects (jeton `hp_project` / `hp_group` du pane), cf. shared/projects.ts.
+  // Projet herdr-projects (jeton `hp_project` / `hp_group` du pane), see shared/projects.ts.
   project?: string
   bornAt?: number
-  // Numéro du dernier changement d'état de l'agent (`state_change_seq` de Herdr,
-  // croissant sur une machine) : tri « récents » des Prêts.
+  // Number of the agent's last state change (Herdr's `state_change_seq`,
+  // increasing on a machine): "recent" sort of Ready.
   stateSeq?: number
   pendingPrompt?: boolean
   queued?: QueuedMessage[]
@@ -119,18 +119,18 @@ export interface Pane {
   menu?: InteractiveMenu
   preview?: string
   model?: ModelInfo
-  // Claude au travail, conversation affichée : verbe de sa ligne d'activité (« Orbiting »).
+  // Claude working, conversation shown: verb of its activity line ("Orbiting").
   activity?: string
-  // Claude au travail, conversation affichée : ce que montre son écran.
+  // Claude working, conversation shown: what its screen shows.
   claudeScreen?: ClaudeScreen
-  // Statut de Claude Code près du champ de saisie (« ✔ Update installed · Restart to update »).
+  // Claude Code status near the input field ("✔ Update installed · Restart to update").
   claudeNotice?: string
-  // Redémarrage demandé depuis wherdr (cf. server/utils/restart.ts) : l'agent
-  // quitte puis revient, le pane passe un instant sans agent.
+  // Restart requested from wherdr (see server/utils/restart.ts): the agent
+  // quits then comes back, the pane is briefly without an agent.
   restart?: { phase: 'stopping' | 'starting' | 'failed', agent: string, error?: string }
-  // Suggestion de prochain message grisée dans le champ de Claude Code (Tab l'accepte).
+  // Grayed-out next-message suggestion in Claude Code's field (Tab accepts it).
   claudeSuggestion?: string
-  // omp affiché : sa ligne d'état (modèle, dossier, branche) et ses jauges (contexte, quotas).
+  // omp shown: its status line (model, folder, branch) and its gauges (context, quotas).
   ompStatus?: OmpStatus
 }
 export interface OmpStatus { line: string, meters: string | null }
@@ -158,23 +158,23 @@ export interface ChangesResponse {
   commits?: number | null
 }
 
-// Modèle d'un agent : libellé lisible (« Opus 5.5 », « GPT-6-Sol ») et identifiant
-// brut quand on le connaît (`claude-opus-5-5`, `gpt-6-sol`).
+// Model of an agent: readable label ("Opus 5.5", "GPT-6-Sol") and raw
+// identifier when known (`claude-opus-5-5`, `gpt-6-sol`).
 export interface ModelInfo {
   id: string | null
   label: string
   effort?: string | null
   at?: string | null
 }
-// Option du menu /model d'un agent.
+// Option of an agent's /model menu.
 export interface ModelOption { label: string, hint: string | null, current?: boolean, isDefault?: boolean }
 export interface ModelList { agent: string, options: ModelOption[], at: number }
 export interface EffortList { levels: string[], current: string | null }
 
-// Une machine (locale, ou profil SSH de Herdr) et l'état de sa connexion.
+// A machine (local, or Herdr SSH profile) and the state of its connection.
 export interface MachineInfo {
-  key: string // '' = locale
-  baseKey?: string // machine d'origine pour une session nommée
+  key: string // '' = local
+  baseKey?: string // original machine for a named session
   session?: string
   label: string
   local: boolean
@@ -188,29 +188,29 @@ export interface NamedSession { name: string, running: boolean, key: string }
 
 export interface HerdrState {
   ok: boolean
-  // false : serveur tout juste (re)démarré, état encore partiel (shared/stateReady.ts).
+  // false: server just (re)started, state still partial (shared/stateReady.ts).
   ready?: boolean
   error?: string
   version?: string
   session?: string
   workspaces: Workspace[]
   panes: Pane[]
-  // Onglets et dispositions (absents d'un état ancien gardé hors ligne).
+  // Tabs and layouts (missing from an old state kept offline).
   tabs?: Tab[]
-  // Présent seulement quand il y a des machines distantes.
+  // Only present when there are remote machines.
   machines?: MachineInfo[]
 }
 
-// 'bash' : commande « ! » de Claude Code (mode bash), 'cmd' : commande locale « / ».
-// 'notice' : note affichée par l'agent hors de ses réponses (conseiller d'omp,
-// tâche de fond terminée, message IRC…) ; `name` en donne le type.
+// 'bash': Claude Code "!" command (bash mode), 'cmd': local "/" command.
+// 'notice': note shown by the agent outside its replies (omp advisor,
+// finished background task, IRC message…); `name` gives its kind.
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'cmd' | 'bash' | 'system' | 'notice'
 export interface ChatItem {
   role: ChatRole
   text: string
   ts: string | null
   name?: string
-  // Sortie d'une commande 'bash' ou 'cmd' (stdout / stderr).
+  // Output of a 'bash' or 'cmd' command (stdout / stderr).
   out?: string
   err?: string
   images?: number
@@ -246,7 +246,7 @@ export interface ConversationHit {
 }
 export interface ConversationSearchResponse { hits: ConversationHit[], limited: boolean }
 
-// Thème de Herdr (~/.config/herdr/config.toml, section [theme]), pour « Suivre Herdr ».
+// Herdr theme (~/.config/herdr/config.toml, [theme] section), for "Follow Herdr".
 export interface HerdrThemeConfig {
   name: string | null
   autoSwitch: boolean
@@ -257,7 +257,7 @@ export interface HerdrThemeConfig {
   customDark: Record<string, string>
 }
 
-// Machine proposée dans la feuille « Nouveau » : dossier personnel et récents.
+// Machine offered in the "New" sheet: home folder and recent ones.
 export interface MachineConfig { key: string, label: string, local: boolean, home: string, dirs: string[], online: boolean, kinds: string[] }
 
 export interface AppConfig {
@@ -281,76 +281,76 @@ export interface AuthStatus {
   devices: { name: string, createdAt: string, lastUsed: string | null }[]
 }
 
-// Commande « / » d'un agent (menu du champ de saisie).
+// "/" command of an agent (input field menu).
 export interface SlashCommand {
-  name: string // sans la barre oblique
+  name: string // without the slash
   desc: string
   hint?: string
   source: 'builtin' | 'skill' | 'command'
 }
 
-// Quotas d'utilisation d'un compte (Claude ou Codex) : fenêtre de 5 h et semaine.
+// Usage quotas of an account (Claude or Codex): 5-hour window and week.
 export interface QuotaWindow {
-  used: number // % utilisé
+  used: number // % used
   resetsAt: number | null // ms
-  minutes: number // durée de la fenêtre
-  fresh?: boolean // fenêtre qui vient de repartir, absente de la lecture : rien d'utilisé
+  minutes: number // window duration
+  fresh?: boolean // window that just restarted, missing from the reading: nothing used
 }
 export interface Quota { five: QuotaWindow | null, week: QuotaWindow | null, at: number }
-// Quotas d'un compte et machines qui l'utilisent (clé '' = locale, nom affiché).
+// Quotas of an account and machines using it (key '' = local, displayed name).
 export interface AccountQuota extends Quota { machines: { key: string, label: string }[] }
 export interface Quotas {
-  // Lecture la plus récente, toutes machines confondues.
+  // Most recent reading, across all machines.
   claude: Quota | null
   codex: Quota | null
-  // Présent seulement quand les machines en ligne n'utilisent pas le même compte
-  // Claude : un bloc par compte (au moins deux).
+  // Only present when the online machines do not use the same account
+  // Claude: one block per account (at least two).
   claudeAccounts?: AccountQuota[]
-  // Idem pour Codex (empreinte tirée de ses conversations).
+  // Same for Codex (fingerprint taken from its conversations).
   codexAccounts?: AccountQuota[]
-  // Machines en ligne dont la barre d'état de wherdr n'est pas en place
-  // (absent : toutes configurées).
+  // Online machines where wherdr's status line is not set up
+  // (missing: all configured).
   claudeSetup?: ClaudeSetup[]
 }
-// Barre d'état des quotas Claude d'une machine : `missing` = à installer,
-// `pending` = installée, en attente du prochain échange avec un Claude.
-// `installable` : le serveur peut l'installer lui-même (sinon, commande à copier).
+// Claude quota status line of a machine: `missing` = to install,
+// `pending` = installed, waiting for the next exchange with a Claude.
+// `installable`: the server can install it itself (otherwise, a command to copy).
 export interface ClaudeSetup { key: string, state: 'missing' | 'pending', installable: boolean }
 
-// Worktree Git lié à un dépôt (Herdr), pour la liste de nettoyage.
+// Git worktree linked to a repository (Herdr), for the cleanup list.
 export interface WorktreeInfo {
-  machine: string // clé de la machine ('' = locale)
+  machine: string // machine key ('' = local)
   repo: string
   repoRoot: string
   path: string
   branch: string | null
-  workspace: string | null // workspace ouvert (ID de l'app), sinon fermé
+  workspace: string | null // open workspace (app ID), otherwise closed
   agents: number
   panes: number
-  prunable: boolean // dossier disparu
+  prunable: boolean // folder gone
 }
 
-// Action d'un plugin Herdr (`[[actions]]` de herdr-plugin.toml), telle que
-// wherdr la propose : dans le menu d'un agent (contextes workspace/tab/pane,
-// lancée avec le pane de l'agent) ou dans celui de sa machine (contexte global).
+// Action of a Herdr plugin (`[[actions]]` of herdr-plugin.toml), as
+// wherdr offers it: in an agent's menu (workspace/tab/pane contexts,
+// run with the agent's pane) or in its machine's menu (global context).
 export interface PluginAction {
   plugin: string // plugin_id
   pluginName: string
   id: string // action_id (local au plugin)
   title: string
-  label: string // titre sans le nom du plugin en préfixe (menu groupé par plugin)
+  label: string // title without the plugin name as prefix (menu grouped by plugin)
   description: string | null
-  agent: boolean // proposée dans le menu d'un agent
-  machine: boolean // proposée dans le menu de la machine
-  confirm: boolean // demande une confirmation (peut modifier quelque chose)
+  agent: boolean // offered in an agent's menu
+  machine: boolean // offered in the machine's menu
+  confirm: boolean // asks for confirmation (may change something)
 }
 export interface PluginActionList { actions: PluginAction[] }
-// Résultat d'une action : Herdr la lance en tâche de fond, on attend sa fin un moment.
+// Result of an action: Herdr runs it in the background, we wait a while for it to finish.
 export interface PluginActionResult {
   status: 'succeeded' | 'failed' | 'running'
   exitCode: number | null
-  output: string // fin de la sortie (stdout, sinon stderr), courte
-  // « Check setup » de herdr-projects : ce que wherdr utilise, puis la sortie entière.
+  output: string // end of the output (stdout, otherwise stderr), short
+  // herdr-projects "Check setup": what wherdr uses, then the full output.
   setup?: { key: 'version' | 'binary' | 'home' | 'config', value: string, warn?: boolean }[]
   full?: string
 }

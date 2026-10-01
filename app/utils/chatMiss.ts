@@ -1,16 +1,16 @@
-// Une conversation déjà affichée ne se vide pas sur un seul sondage raté :
-// transcription distante momentanément introuvable, agent absent d'un
-// instantané, lecture SSH en échec. On garde la dernière version et on ne
-// conclut à la disparition qu'après plusieurs réponses « indisponible » de suite.
-export const CHAT_MISS_LIMIT = 3 // trois sondages de suite, quelques secondes
-// Au-delà, une petite note « reconnexion » dit que la vue n'est plus à jour.
+// A conversation already shown is not emptied on a single missed poll:
+// remote transcript temporarily not found, agent missing from a
+// snapshot, SSH read failing. We keep the last version and only
+// conclude it has disappeared after several "unavailable" replies in a row.
+export const CHAT_MISS_LIMIT = 3 // three polls in a row, a few seconds
+// Beyond that, a small "reconnecting" note says the view is no longer up to date.
 export const CHAT_STALE_AFTER = 2
 
 export interface ChatMisses { misses: number, errors: number }
 
 export const noMisses = (): ChatMisses => ({ misses: 0, errors: 0 })
 
-// Réponse « indisponible » : faut-il vider la vue maintenant ?
+// "Unavailable" reply: should the view be emptied now?
 export function onUnavailable(s: ChatMisses, shown: boolean): { next: ChatMisses, clear: boolean } {
   if (!shown) return { next: noMisses(), clear: true }
   const misses = s.misses + 1
@@ -20,5 +20,5 @@ export function onUnavailable(s: ChatMisses, shown: boolean): { next: ChatMisses
 
 export const onError = (s: ChatMisses): ChatMisses => ({ ...s, errors: s.errors + 1 })
 
-// Vue gardée mais plus rafraîchie depuis quelques sondages.
+// View kept but no longer refreshed for a few polls.
 export const isStale = (s: ChatMisses) => s.misses + s.errors >= CHAT_STALE_AFTER

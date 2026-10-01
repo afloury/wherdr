@@ -5,7 +5,7 @@ import { tabLayout } from '../shared/layout'
 import type { HerdrState } from '../shared/types'
 import layouts from './fixtures/snapshot-layouts.json'
 
-// Snapshot réel (hwtest) : 3 workspaces, 4 onglets ; on y ajoute les panes.
+// Real snapshot (hwtest): 3 workspaces, 4 tabs; panes are added to it.
 const pane = (id: string, tab: string, agent: string | null = null) => ({
   pane_id: id, workspace_id: tab.split(':')[0], tab_id: tab, agent, agent_status: agent ? 'idle' : 'unknown', cwd: '/home/user/app',
 })
@@ -16,11 +16,11 @@ const snap = {
 }
 
 describe('reduceSnapshot', () => {
-  it('conserve la branche fournie par Herdr pour un worktree', () => {
+  it('keeps the branch given by Herdr for a worktree', () => {
     const withBranch = { ...snap, workspaces: [{ ...snap.workspaces[0], worktree: { is_linked_worktree: true, branch: 'develop', repo_key: 'demo', repo_name: 'demo' } }] }
     expect(reduceSnapshot(withBranch).workspaces[0]).toMatchObject({ label: 'herdr-web', worktree: true, branch: 'develop' })
   })
-  it('garde les onglets et leur disposition', () => {
+  it('keeps the tabs and their layout', () => {
     const s = reduceSnapshot(snap)
     expect(s.session).toBe('default')
     expect(s.tabs!.map(t => [t.id, t.workspace, t.label, t.number])).toEqual([
@@ -32,7 +32,7 @@ describe('reduceSnapshot', () => {
     expect(s.panes.find(p => p.id === 'w1:p4')!.tabLabel).toBe('serveur')
   })
 
-  it('préfixe onglets, dispositions et panes d’une machine distante', () => {
+  it('prefixes tabs, layouts and panes of a remote machine', () => {
     const s = reduceSnapshot(snap, 'abcd1234')
     expect(s.session).toBeUndefined()
     const t = s.tabs![0]!
@@ -43,7 +43,7 @@ describe('reduceSnapshot', () => {
     expect(s.panes[0]!.tab).toBe('abcd1234~w1:t1')
   })
 
-  it('onglet sans disposition : panes empilés', () => {
+  it('tab without a layout: stacked panes', () => {
     const s = reduceSnapshot({ ...snap, layouts: [] })
     expect(s.tabs![0]!.layout).toBeNull()
     const l = tabLayout(s.tabs![0]!, ['w1:p1', 'w1:p2'])
@@ -58,8 +58,8 @@ describe('reduceSnapshot', () => {
   })
 })
 
-describe('sessions affichées', () => {
-  it('ne garde que les onglets des sessions choisies', () => {
+describe('displayed sessions', () => {
+  it('only keeps the tabs of the chosen sessions', () => {
     const local = reduceSnapshot(snap)
     const other = reduceSnapshot(snap, 'abcd1234')
     const named = reduceSnapshot(snap, 'beef0001')
@@ -81,9 +81,9 @@ describe('sessions affichées', () => {
   })
 })
 
-describe('commande au premier plan d’un pane', () => {
+describe('foreground command of a pane', () => {
   const info = (procs: object[]) => ({ shell_pid: 10, foreground_processes: procs })
-  it('donne la commande lancée depuis le shell', () => {
+  it('gives the command launched from the shell', () => {
     expect(foregroundCommand(info([{ pid: 12, argv: ['/usr/local/bin/pnpm', 'dev'], name: 'pnpm' }]))).toBe('pnpm dev')
     expect(foregroundCommand(info([{ pid: 12, cmdline: 'npm run build', name: 'npm' }]))).toBe('npm run build')
   })

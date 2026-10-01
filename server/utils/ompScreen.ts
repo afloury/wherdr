@@ -1,13 +1,13 @@
-// Ligne d'état d'omp, lue au bas de son écran (texte « detection » de Herdr) :
+// omp's status line, read at the bottom of its screen (Herdr's "detection" text):
 //
-//   ──────────────────────────── ◫ 51.7%/1M ⟲ · ⏱ 5h 44% (2h 6m) · 7d 71% ─   jauges
-//   ❯ texte en cours de saisie
+//   ──────────────────────────── ◫ 51.7%/1M ⟲ · ⏱ 5h 44% (2h 6m) · 7d 71% ─   gauges
+//   ❯ text being typed
 //   ────────────────────────────────────────────────────────────────────────
-//    ◒ Opus 5.5 👁 · 📁 ~/wherdr · ⑂ omp-support *23 ?3                      ligne d'état
+//    ◒ Opus 5.5 👁 · 📁 ~/wherdr · ⑂ omp-support *23 ?3                      status line
 //
-// La ligne d'état est la dernière ligne de l'écran, juste sous un trait (le
-// bas du champ, ou d'une boîte « Ask » ouverte). Les jauges sont incrustées
-// dans le trait du haut du champ, quand il est visible.
+// The status line is the last line of the screen, just below a rule (the
+// bottom of the field, or of an open "Ask" box). The gauges are embedded
+// in the top rule of the field, when it is visible.
 import type { OmpStatus } from '../../shared/types'
 
 const RULE = /^\s*[─━╰][─━╯\s]{9,}\S?\s*$/

@@ -1,11 +1,11 @@
-// Bouton Stop : interrompre le tour de l'agent, et vérifier qu'il s'arrête.
-// Constats (Claude Code 2.1, session Herdr de test) :
-// - réflexion, outil, commande Bash au premier plan : un Échap suffit ;
-// - commande lancée en arrière-plan : Échap ne la touche pas, l'agent passe
-//   « idle » puis reprend tout seul quand elle se termine ;
-// - sous-agent en arrière-plan : Échap ne fait rien, l'agent reste « working ».
-// Les tâches de fond s'arrêtent depuis le panneau ouvert par ↓ (« x to stop »).
-// Jamais de Ctrl+C : au deuxième, Claude Code quitte.
+// Stop button: interrupt the agent's turn, and check that it stops.
+// Findings (Claude Code 2.1, Herdr test session):
+// - thinking, tool, foreground Bash command: one Escape is enough;
+// - command started in the background: Escape does not touch it, the agent goes
+//   "idle" then resumes on its own when it finishes;
+// - background subagent: Escape does nothing, the agent stays "working".
+// Background tasks are stopped from the panel opened by ↓ ("x to stop").
+// Never Ctrl+C: on the second one, Claude Code quits.
 import type { Pane } from '../../shared/types'
 import { nextBackgroundKey, parseBackground } from '../../shared/interrupt'
 import type { RestartDeps } from './restartSeq'
@@ -36,17 +36,17 @@ async function settle(d: RestartDeps, paneId: string, ms: number) {
 export async function interruptAgent(d: RestartDeps, p: Pick<Pane, 'id' | 'agent' | 'status'>): Promise<InterruptResult> {
   const key = (k: string) => d.call('pane.send_input', { pane_id: p.id, keys: [k] })
   const res: InterruptResult = { stopped: false, esc: 0, background: 0 }
-  // 1. Échap, puis un second si l'agent travaille encore (Claude Code et Codex
-  //    interrompent au premier ou au second selon l'état). Pas de second Échap
-  //    sur un agent déjà arrêté : sur un champ vide, il ouvrirait le retour en arrière.
+  // 1. Escape, then a second one if the agent is still working (Claude Code and Codex
+  //    interrupt on the first or second depending on the state). No second Escape
+  //    on an agent already stopped: on an empty field, it would open rewind.
   for (let i = 0; i < 2; i++) {
     await key('esc')
     res.esc++
     if (await settle(d, p.id, 2500)) break
-    // Seul un sous-agent de fond tient l'agent au travail : Échap n'y peut rien.
+    // Only a background subagent keeps the agent working: Escape cannot help.
     if (p.agent === 'claude' && (await screen(d, p.id).catch(() => null))?.agents) break
   }
-  // 2. Claude : arrêter shells et sous-agents de fond depuis leur panneau.
+  // 2. Claude: stop background shells and subagents from their panel.
   if (p.agent === 'claude') {
     let opened = 0
     for (let step = 0; step < 16; step++) {
@@ -55,20 +55,20 @@ export async function interruptAgent(d: RestartDeps, p: Pick<Pane, 'id' | 'agent
       const k = nextBackgroundKey(s, opened)
       if (!k) break
       if (k === 'down' && !s.panel) {
-        // Un sous-agent déjà arrêté reste listé sous le pied : on n'ouvre la liste
-        // que pour des shells, ou si l'agent travaille encore.
+        // A subagent already stopped stays listed below the footer: we only open the list
+        // for shells, or if the agent is still working.
         if (!s.shells && (await status(d, p.id).catch(() => 'working')) !== 'working') break
         opened++
         await key('down')
         await d.sleep(700)
-        // Shells : ↓ sélectionne le pied (« 2 shells »), Entrée ouvre la liste.
+        // Shells: ↓ selects the footer ("2 shells"), Enter opens the list.
         const after = await screen(d, p.id).catch(() => null)
         if (after && !after.panel) { await key('enter'); await d.sleep(700) }
         continue
       }
       await key(k)
       if (k === 'x') res.background++
-      // « x » enchaîné trop vite est ignoré par Claude Code.
+      // An "x" chained too fast is ignored by Claude Code.
       await d.sleep(k === 'x' ? 1200 : 500)
       if (k === 'esc') break
     }

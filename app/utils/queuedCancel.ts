@@ -1,23 +1,23 @@
-// Bouton « Annuler » des messages en attente : quand l'afficher, et comment
-// remettre le message dans le champ de saisie (texte + photos jointes).
+// "Cancel" button of queued messages: when to show it, and how to
+// put the message back into the input field (text + attached photos).
 import type { Pane } from '../../shared/types'
 import type { DraftAtt } from '../composables/useDraft'
 import { parseReply, type ReplyTarget } from '../../shared/replyQuote'
 
 const UPLOAD = '/.cache/herdr-web/uploads/'
 
-// Pas encore parti (agent qui démarre) : toujours. Sinon seulement chez Claude
-// au travail : sa file se rappelle par ↑ ; celle de Codex n'a pas de rappel
-// vérifié. Hors travail, le message est déjà lu (ou sur le point de l'être).
+// Not sent yet (agent starting): always. Otherwise only for a working
+// Claude: its queue is recalled with ↑; Codex's has no verified
+// recall. When not working, the message is already read (or about to be).
 export function canCancelQueued(p: Pane | undefined): boolean {
   if (!p || !p.agent) return false
   return Boolean(p.pendingPrompt) || (p.agent === 'claude' && p.status === 'working')
 }
 
-// Remet un message annulé dans le brouillon, comme s'il n'avait jamais été
-// envoyé : son texte avant ce qui était déjà tapé, ses photos jointes.
+// Puts a cancelled message back into the draft, as if it had never been
+// sent: its text before what was already typed, its attached photos.
 export function restoreDraft(draft: { text: string, atts: DraftAtt[], reply?: ReplyTarget | null }, message: string) {
-  // Réponse à un message précis : le repère redevient l'encadré « En réponse à ».
+  // Reply to a specific message: the marker becomes the "Replying to" box again.
   const parsed = parseReply(message)
   if (parsed && 'reply' in draft) {
     draft.reply = parsed.reply

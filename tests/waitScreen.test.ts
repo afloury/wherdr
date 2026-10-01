@@ -1,5 +1,5 @@
-// Écrans d'attente de Codex au démarrage (captures réelles de Codex 0.158 dans
-// une session Herdr de test, HOME jetable) et écrans synthétiques.
+// Codex waiting screens at startup (real captures of Codex 0.158 in
+// a Herdr test session, throwaway HOME) and synthetic screens.
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { parseChoices } from '../server/utils/choices'
@@ -11,7 +11,7 @@ const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.m
 const screenOf = (text: string) => parseWaitScreen(text, { choices: Boolean(parseChoices(text, { strict: true })) })
 
 describe('parseLegend', () => {
-  it('lit les légendes de Codex et de Claude', () => {
+  it('reads the Codex and Claude legends', () => {
     expect(parseLegend('  t trust all · enter review · esc close')).toEqual([
       { key: 't', label: 'trust all' }, { key: 'enter', label: 'review' }, { key: 'esc', label: 'close' },
     ])
@@ -20,7 +20,7 @@ describe('parseLegend', () => {
     expect(parseLegend('  ↑/↓ to navigate · enter select')).toEqual([{ key: 'enter', label: 'select' }])
   })
 
-  it('refuse les lignes ordinaires et les barres d’état', () => {
+  it('refuses ordinary lines and status bars', () => {
     expect(parseLegend('  ? for shortcuts')).toBeNull()
     expect(parseLegend('  GPT-6-Sol medium · ~/dev/sandbox · Réponds juste pong')).toBeNull()
     expect(parseLegend('a new version is available')).toBeNull()
@@ -30,12 +30,12 @@ describe('parseLegend', () => {
 })
 
 describe('parseWaitScreen', () => {
-  it('reconnaît la boîte Hooks de Codex et ses touches', () => {
+  it('recognizes Codex\'s Hooks box and its keys', () => {
     const s = screenOf(fx('codex-hooks-box.txt'))!
     expect(parseChoices(fx('codex-hooks-box.txt'), { strict: true })).toBeNull()
     expect(s.kind).toBe('hooks')
     expect(s.title).toBe('Hooks')
-    // Le curseur › en colonne 0 garde l'alignement du tableau : 2 espaces devant le texte.
+    // The › cursor at column 0 keeps the table aligned: 2 spaces before the text.
     expect(s.lines[0]).toBe('  Lifecycle hooks from config and enabled plugins.')
     expect(s.lines).toContain('  ⚠ 4 hooks need review before they can run.')
     expect(s.lines.some(l => l.startsWith('› PreToolUse'))).toBe(true)
@@ -44,7 +44,7 @@ describe('parseWaitScreen', () => {
     expect(s.actions).toEqual([{ key: 't', label: 'trust all' }, { key: 'enter', label: 'review' }, { key: 'esc', label: 'close' }])
   })
 
-  it('reconnaît « Hooks need review » : options à part, touche Échap en plus', () => {
+  it('recognizes "Hooks need review": separate options, extra Escape key', () => {
     const text = fx('codex-hooks-need-review.txt')
     const c = parseChoices(text, { strict: true })!
     expect(c.options.map(o => o.label)).toEqual(['Review hooks', 'Trust all and continue', 'Continue without trusting (hooks won\'t run)'])
@@ -55,7 +55,7 @@ describe('parseWaitScreen', () => {
     expect(s.actions).toEqual([{ key: 'enter', label: 'confirm' }, { key: 'esc', label: 'skip' }])
   })
 
-  it('reconnaît la confiance du dossier de Codex 0.158', () => {
+  it('recognizes Codex 0.158\'s folder trust', () => {
     const text = fx('codex-trust-folder.txt')
     expect(parseChoices(text, { strict: true })!.options.map(o => o.label)).toEqual(['Trust and continue', 'Back to Agent Command Center'])
     const s = screenOf(text)!
@@ -65,7 +65,7 @@ describe('parseWaitScreen', () => {
     expect(s.lines.join(' ')).not.toContain('Trust and continue')
   })
 
-  it('reconnaît la connexion de Codex (curseur >) et ses options', () => {
+  it('recognizes Codex\'s login (> cursor) and its options', () => {
     const text = fx('codex-login.txt')
     const c = parseChoices(text, { strict: true })!
     expect(c.cursor).toBe(0)
@@ -76,11 +76,11 @@ describe('parseWaitScreen', () => {
     expect(s.actions).toEqual([{ key: 'enter', label: 'continue' }])
   })
 
-  it('reconnaît l’écran de confiance de Claude', () => {
+  it('recognizes Claude\'s trust screen', () => {
     expect(screenOf(fx('claude-trust.txt'))!.kind).toBe('trust')
   })
 
-  it('écran inconnu avec une légende : « other », dernières lignes en aperçu', () => {
+  it('unknown screen with a legend: "other", last lines as preview', () => {
     const s = parseWaitScreen([
       '  >_ OpenAI Codex (v9.9.9)',
       '',
@@ -96,7 +96,7 @@ describe('parseWaitScreen', () => {
     expect(s.actions.map(a => a.key)).toEqual(['enter', 'esc'])
   })
 
-  it('rien au repos (Codex, Claude) ni sans légende', () => {
+  it('nothing when idle (Codex, Claude) nor without a legend', () => {
     expect(parseWaitScreen(fx('codex-idle.txt'))).toBeNull()
     expect(parseWaitScreen(fx('claude-idle.txt'))).toBeNull()
     expect(parseWaitScreen(fx('claude-done.txt'))).toBeNull()
@@ -105,8 +105,8 @@ describe('parseWaitScreen', () => {
   })
 })
 
-describe('libellés de l’app', () => {
-  it('traduit les touches et les actions connues', () => {
+describe('app labels', () => {
+  it('translates the known keys and actions', () => {
     expect(screenActionLabel({ key: 't', label: 'trust all' }, false)).toBe('Tout approuver (t)')
     expect(screenActionLabel({ key: 'enter', label: 'review' }, false)).toBe('Revoir (Entrée)')
     expect(screenActionLabel({ key: 'esc', label: 'close' }, false)).toBe('Fermer (Échap)')
@@ -114,7 +114,7 @@ describe('libellés de l’app', () => {
     expect(screenActionLabel({ key: 'x', label: 'toggle plugins' }, false)).toBe('Toggle plugins (x)')
   })
 
-  it('knownScreen : seulement un écran reconnu, hors travail', () => {
+  it('knownScreen: only a recognized screen, when not working', () => {
     const screen = { kind: 'hooks' as const, title: 'Hooks', lines: [], actions: [] }
     const pane = { id: 'w1:p1', status: 'idle', screen } as unknown as Pane
     expect(knownScreen(pane)).toBe(screen)

@@ -1,11 +1,11 @@
-// Écrans d'attente des agents (cf. server/utils/waitScreen.ts) : ce que l'app
-// en montre. Les touches ne partent que sur un bouton de l'utilisateur.
+// Agents' waiting screens (see server/utils/waitScreen.ts): what the app
+// shows of them. Keys are only sent on a user's button press.
 import type { InteractiveMenu, Pane, WaitAction, WaitKind, WaitScreen } from '../../shared/types'
 import { language } from './i18n'
 
-// Écran reconnu (hooks, confiance, connexion, mise à jour) : l'agent attend
-// l'utilisateur, même si Herdr le voit « idle ». Un écran inconnu (`other`)
-// n'est montré que tant qu'il n'y a pas de conversation (ChatView).
+// Recognized screen (hooks, trust, login, update): the agent is waiting for
+// the user, even if Herdr sees it as "idle". An unknown screen (`other`)
+// is only shown while there is no conversation (ChatView).
 export function knownScreen(p: Pane | null | undefined): WaitScreen | null {
   return p && p.screen && p.screen.kind !== 'other' && p.status !== 'working' ? p.screen : null
 }
@@ -13,7 +13,7 @@ export function knownScreen(p: Pane | null | undefined): WaitScreen | null {
 const KEYS: Record<string, [string, string]> = {
   enter: ['Entrée', 'Enter'], esc: ['Échap', 'Esc'], tab: ['Tab', 'Tab'], space: ['Espace', 'Space'], left: ['←', '←'], right: ['→', '→'],
 }
-// Libellés anglais des légendes de Codex / Claude Code.
+// English labels of the Codex / Claude Code legends.
 const LABELS: Record<string, [string, string]> = {
   'trust all': ['Tout approuver', 'Trust all'],
   'review': ['Revoir', 'Review'],
@@ -45,28 +45,28 @@ const pick = (pair: [string, string], en: boolean) => pair[en ? 1 : 0]
 
 export function screenKeyName(key: string, en = language === 'en'): string {
   if (KEYS[key]) return pick(KEYS[key]!, en)
-  // « ctrl+a » → « Ctrl+A ».
+  // "ctrl+a" → "Ctrl+A".
   const m = key.match(/^ctrl\+(\w)$/)
   return m ? `Ctrl+${m[1]!.toUpperCase()}` : key
 }
 
-// Résumé d'un menu interactif ouvert pour la carte de l'accueil.
+// Summary of an open interactive menu for the home card.
 export function menuSummary(m: InteractiveMenu, en = language === 'en'): string {
   return m.title ? `${pick(['Menu', 'Menu'], en)} · ${m.title}` : pick(['Menu ouvert', 'Menu open'], en)
 }
 
-// « Tout approuver », « Revoir » ; libellé inconnu : tel quel, capitalisé.
+// "Tout approuver", "Revoir"; unknown label: as is, capitalized.
 export function screenActionText(a: WaitAction, en = language === 'en'): string {
   const l = LABELS[a.label.toLowerCase()]
   return l ? pick(l, en) : a.label[0]!.toUpperCase() + a.label.slice(1)
 }
 
-// « Tout approuver (t) », « Revoir (Entrée) ».
+// "Tout approuver (t)", "Revoir (Entrée)".
 export function screenActionLabel(a: WaitAction, en = language === 'en'): string {
   return `${screenActionText(a, en)} (${screenKeyName(a.key, en)})`
 }
 
-// Résumé pour la carte de l'accueil et le plan d'un onglet.
+// Summary for the home card and a tab's plan.
 export function screenSummary(s: WaitScreen, en = language === 'en'): string | null {
   const sums: Partial<Record<WaitKind, [string, string]>> = {
     hooks: ['Hooks à approuver', 'Hooks to review'],
@@ -78,7 +78,7 @@ export function screenSummary(s: WaitScreen, en = language === 'en'): string | n
   return sum ? pick(sum, en) : s.title
 }
 
-// Une ligne d'explication par écran reconnu.
+// One line of explanation per recognized screen.
 export function screenNote(kind: WaitKind, en = language === 'en'): string | null {
   const notes: Partial<Record<WaitKind, [string, string]>> = {
     hooks: [

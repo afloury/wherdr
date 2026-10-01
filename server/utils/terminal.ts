@@ -1,13 +1,13 @@
-// Terminal : relais de `herdr terminal session control`.
-// Le CLI parle JSON par ligne sur stdin/stdout :
-//   sortie : {"type":"terminal.frame","encoding":"ansi","full":bool,"width","height","seq","bytes":<b64>}
+// Terminal: relay of `herdr terminal session control`.
+// The CLI speaks line-delimited JSON on stdin/stdout:
+//   output: {"type":"terminal.frame","encoding":"ansi","full":bool,"width","height","seq","bytes":<b64>}
 //            {"type":"terminal.closed","reason":…}
-//   entrée : terminal.input {text|bytes}, terminal.resize {cols,rows},
+//   input: terminal.input {text|bytes}, terminal.resize {cols,rows},
 //            terminal.scroll {direction:up|down,lines}, terminal.release
-// Un seul client « attaché » par terminal : sans --takeover, la connexion est
-// refusée si quelqu'un d'autre l'est déjà ; avec, l'autre est détaché.
-// Pane d'une machine distante : le même CLI, lancé sur cette machine par la
-// connexion SSH multiplexée (stdin/stdout relayés tels quels).
+// Only one "attached" client per terminal: without --takeover, the connection is
+// refused if someone else already is; with it, the other one is detached.
+// Pane of a remote machine: the same CLI, launched on that machine over the
+// multiplexed SSH connection (stdin/stdout relayed as is).
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import readline from 'node:readline'
 import { PANE_RE, log } from './env'
@@ -21,7 +21,7 @@ export const clampInt = (v: unknown, lo: number, hi: number, dflt: number) => {
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt
 }
 
-// Ce dont le relais a besoin d'une WebSocket (crossws ou autre).
+// What the relay needs from a WebSocket (crossws or other).
 export interface WsLike {
   send: (data: string) => void
   close: (code?: number, reason?: string) => void
@@ -53,7 +53,7 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
   const child: ChildProcessWithoutNullStreams = machine.spawnHerdr(args)
   const sess: TermView = { pane, visible: true }
   termSessions.add(sess)
-  log(`term ${pane} ouvert ${cols}x${rows}${args.includes('--takeover') ? ' (takeover)' : ''}${machine.local ? '' : ` sur ${machine.label}`}`)
+  log(`term ${pane} opened ${cols}x${rows}${args.includes('--takeover') ? ' (takeover)' : ''}${machine.local ? '' : ` on ${machine.label}`}`)
 
   readline.createInterface({ input: child.stdout }).on('line', (line) => {
     if (ws.isOpen()) ws.send(line)
@@ -70,7 +70,7 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
     termSessions.delete(sess)
     if (ws.isOpen()) ws.close(4000, `herdr exit ${code}`)
   })
-  // Pas de plantage si le CLI se ferme pendant qu'on lui écrit.
+  // No crash if the CLI closes while we write to it.
   child.stdin.on('error', () => {})
 
   const toChild = (obj: unknown) => {
@@ -96,7 +96,7 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
             toChild({ type: 'terminal.scroll', direction: m.direction, lines: clampInt(m.lines, 1, 500, 3) })
           }
           break
-        case 'keys': // touches logiques encodées par Herdr selon le mode du terminal
+        case 'keys': // logical keys encoded by Herdr according to the terminal mode
           if (Array.isArray(m.keys) && m.keys.length <= 32 && m.keys.every((k: unknown) => typeof k === 'string' && k.length <= 24)) {
             herdr('pane.send_input', { pane_id: pane, keys: m.keys }).catch(e =>
               ws.isOpen() && ws.send(JSON.stringify({ type: 'web.error', code: e.code, message: e.message })))
@@ -109,7 +109,7 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
     },
     onClose() {
       termSessions.delete(sess)
-      // On rend la main proprement (la taille du pane repasse aux autres clients).
+      // Hand control back cleanly (the pane size goes back to the other clients).
       toChild({ type: 'terminal.release' })
       child.stdin.end()
       setTimeout(() => {

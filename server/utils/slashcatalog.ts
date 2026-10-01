@@ -1,9 +1,9 @@
-// Commandes « / » intégrées à Claude Code, à Codex et à omp, relevées dans
-// leur menu du terminal (Claude Code de septembre 2026, Codex 0.157, omp 18.4).
-// Les skills et commandes personnelles (~/.claude/skills, ~/.claude/commands,
-// dossier du projet, ~/.codex/prompts, ~/.omp/agent/commands…) sont lus sur la
-// machine, cf. slash.ts.
-// [nom, description, arguments ?]
+// "/" commands built into Claude Code, Codex and omp, captured from
+// their terminal menu (Claude Code from September 2026, Codex 0.157, omp 18.4).
+// Personal skills and commands (~/.claude/skills, ~/.claude/commands,
+// project folder, ~/.codex/prompts, ~/.omp/agent/commands…) are read on the
+// machine, see slash.ts.
+// [name, description, arguments?]
 export type SlashEntry = [string, string, string?]
 
 export const CLAUDE_BUILTIN: SlashEntry[] = [
@@ -170,7 +170,7 @@ export const CODEX_BUILTIN: SlashEntry[] = [
   ["subagents", "switch between this session's subagents"],
 ]
 
-// omp 18.4 (BUILTIN_SLASH_COMMAND_DEFS de pi-coding-agent), sans les alias.
+// omp 18.4 (BUILTIN_SLASH_COMMAND_DEFS of pi-coding-agent), without aliases.
 export const OMP_BUILTIN: SlashEntry[] = [
   ["security", "Plan, run, inspect, import, and compare OMP-native security scans"],
   ["settings", "Open settings menu"],

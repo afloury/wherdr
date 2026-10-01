@@ -5,9 +5,9 @@ export default defineApi(async (): Promise<AppConfig> => ({
   kinds: await installedAgentKinds(localMachine),
   home: HOME,
   dirs: await recentDirs(),
-  // Plusieurs machines : chacune avec son dossier personnel et ses récents.
+  // Several machines: each with its home folder and recent folders.
   machines: await machineConfigs(),
   push: { enabled: pushReady(), key: vapidPublicKey(), devices: (await readSubs()).length },
-  // Thème de Herdr (lecture seule), pour « Suivre Herdr ».
+  // Herdr theme (read-only), for "Follow Herdr".
   herdrTheme: await readHerdrTheme(),
 }))

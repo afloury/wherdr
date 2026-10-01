@@ -1,5 +1,5 @@
-// Supprime un worktree (le checkout, jamais la branche) ; `force` s'il reste
-// des modifications non commitées.
+// Removes a worktree (the checkout, never the branch); `force` if
+// uncommitted changes remain.
 export default defineApi(async (event, b) => {
   if (typeof b.path !== 'string' || !b.path.startsWith('/')) throw new HerdrError('bad_path', 'chemin invalide')
   return removeWorktree(String(b.machine || ''), b.path, b.force === true)

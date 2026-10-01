@@ -1,42 +1,42 @@
-// Menus interactifs plein écran de Claude Code (/resume, /model, /mcp, /hooks,
-// /permissions…) : un panneau ouvert sous une ligne « ▔▔▔ », qui finit par une
-// légende de touches (parfois sur deux lignes) :
+// Claude Code's full-screen interactive menus (/resume, /model, /mcp, /hooks,
+// /permissions…): a panel opened below a "▔▔▔" line, ending with a
+// key legend (sometimes on two lines):
 //
 //   ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
 //      Resume session
 //      ╭─────────────────────────────────────────────────────────╮
 //      │ ⌕ Search…                                               │
 //      ╰─────────────────────────────────────────────────────────╯
-//        demo                                    ← en-tête (gris)
-//      ❯ Beta                                    ← curseur
+//        demo                                    ← header (gray)
+//      ❯ Beta                                    ← cursor
 //        3 seconds ago · HEAD · 244.3KB          ← description (gris)
 //        Alpha
 //        19 seconds ago · HEAD · 245.7KB
 //        Ctrl+A to show all projects · Space to preview · Type
 //        to search · Esc to cancel
 //
-// Libellés et descriptions sont à la même colonne : seule la couleur les
-// distingue. Le texte lu peut donc être en ANSI : une ligne entièrement dans la
-// couleur de la légende (gris) ou en SGR 2 est une description (ou un en-tête
-// si aucune entrée ne la précède), une ligne entièrement en gras un en-tête.
-// Sans ANSI, toutes les lignes alignées sur le curseur sont des entrées.
+// Labels and descriptions are in the same column: only the color tells
+// them apart. The text read may therefore be ANSI: a line entirely in the
+// legend color (gray) or in SGR 2 is a description (or a header
+// if no entry precedes it), a line entirely in bold is a header.
+// Without ANSI, all lines aligned with the cursor are entries.
 import type { InteractiveMenu, MenuEntry, WaitAction } from './types'
 
 // eslint-disable-next-line no-control-regex
 const SGR = /\x1b\[([0-9;]*)m/g
 // eslint-disable-next-line no-control-regex
 const OTHER_ESC = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g
-// La ligne peut porter un avis (« ▔▔▔ You've used 80% of your weekly limit… ▔ »).
+// The line may carry a notice ("▔▔▔ You've used 80% of your weekly limit… ▔").
 export const TOP = /^\s*▔{3,}(?:.*▔)?\s*$/
 const BOX = /^\s*[╭╰│]/
 const MORE = /^(?:[↑↓]\s*)?\d+\s+more\b.*$|^…\s*\+?\d+/
-// Segment de légende : « Ctrl+A to show all projects », « Esc to cancel »,
-// « ↑/↓ to navigate », « s to use this session only », « Type to search ».
+// Legend segment: "Ctrl+A to show all projects", "Esc to cancel",
+// "↑/↓ to navigate", "s to use this session only", "Type to search".
 const SEG = /^(ctrl\+\w|shift\+tab|esc|escape|enter|return|space|tab|type|[a-z0-9]|[↑↓←→](?:\s*\/\s*[↑↓←→])*)\s+to\s+(\S.*)$/i
 
 interface Styled { text: string, dim: boolean[], bold: boolean[], fg: (string | null)[] }
 
-// Ligne ANSI → texte et style de chaque caractère.
+// ANSI line → text and style of each character.
 function styled(raw: string): Styled {
   const s = raw.replace(OTHER_ESC, m => (m.endsWith('m') && m.startsWith('\x1b[') ? m : ''))
   const out: Styled = { text: '', dim: [], bold: [], fg: [] }
@@ -75,12 +75,12 @@ function styled(raw: string): Styled {
   return out
 }
 
-// Colonne où commence le texte, après le curseur « ❯ » ou une flèche de défilement.
+// Column where the text starts, after the "❯" cursor or a scroll arrow.
 function textColumn(t: string): number {
   return t.match(/^\s*(?:[❯↑↓]\s+)?/)![0].length
 }
 
-// Tous les caractères visibles à partir de `from` ont le style testé.
+// All visible characters from `from` on have the tested style.
 function all(l: Styled, from: number, test: (i: number) => boolean): boolean {
   let any = false
   for (let i = from; i < l.text.length; i++) {
@@ -91,7 +91,7 @@ function all(l: Styled, from: number, test: (i: number) => boolean): boolean {
   return any
 }
 
-// « Ctrl+A » → « ctrl+a », « Esc » → « esc »… ; null : pas une touche à proposer.
+// "Ctrl+A" → "ctrl+a", "Esc" → "esc"…; null: not a key to offer.
 function keyName(k: string): string | null {
   const s = k.toLowerCase().replace(/\s+/g, '')
   if (s === 'escape') return 'esc'
@@ -100,7 +100,7 @@ function keyName(k: string): string | null {
   return null
 }
 
-// Légende (lignes jointes) → actions ; null si ce n'en est pas une.
+// Legend (joined lines) → actions; null if it is not one.
 function parseLegend(text: string): { actions: WaitAction[], search: boolean } | null {
   const segs = text.trim().split(/\s+·\s+/).filter(Boolean)
   if (!segs.length) return null
@@ -117,7 +117,7 @@ function parseLegend(text: string): { actions: WaitAction[], search: boolean } |
       continue
     }
     const key = keyName(k)
-    // Renommer ouvre un champ dans la liste : à faire dans le terminal.
+    // Rename opens a field in the list: to be done in the terminal.
     if (!key || /\brename\b/i.test(label)) continue
     actions.push({ key, label })
   }
@@ -134,7 +134,7 @@ export function parseMenu(text: string | null | undefined): InteractiveMenu | nu
   while (region.length && !region[region.length - 1]!.text.trim()) region.pop()
   if (!region.length) return null
 
-  // Légende : dernière ligne, et celles d'au-dessus tant que l'ensemble en est une (légende repliée).
+  // Legend: last line, and those above as long as the whole is one (wrapped legend).
   const joined = (from: number) => parseLegend(region.slice(from).map(r => r.text.trim()).join(' '))
   let legendAt = -1
   let legend: ReturnType<typeof parseLegend> = null
@@ -143,12 +143,12 @@ export function parseMenu(text: string | null | undefined): InteractiveMenu | nu
     if (l) { legend = l; legendAt = i } else if (legend) break
   }
   if (!legend) return null
-  // Un menu se ferme avec Échap ; sans cela (écran d'attente, invite), ce n'est pas un menu.
+  // A menu closes with Escape; without it (waiting screen, prompt), it is not a menu.
   if (!/(?:^|·\s*)(?:esc|escape)\s+to\b/i.test(region.slice(legendAt).map(r => r.text.trim()).join(' '))) return null
   const legendRow = region[legendAt]!
   const hintFg = legendRow.fg[textColumn(legendRow.text)] ?? null
   const isDim = (l: Styled, from: number) => all(l, from, i => l.dim[i]! || (hintFg !== null && l.fg[i] === hintFg))
-  // En-tête de groupe en gras, éventuellement suivi d'un complément gris (« User MCPs (~/.x.json) »).
+  // Bold group header, possibly followed by a gray suffix ("User MCPs (~/.x.json)").
   const isBold = (l: Styled, from: number) => Boolean(l.bold[from]) && all(l, from, i => l.bold[i]! || l.dim[i]! || (hintFg !== null && l.fg[i] === hintFg))
 
   const body = region.slice(0, legendAt)
@@ -156,7 +156,7 @@ export function parseMenu(text: string | null | undefined): InteractiveMenu | nu
   const titleRow = first >= 0 ? body[first]!.text.trim() : ''
   const title = titleRow ? titleRow.split(/\s{2,}/)[0]!.slice(0, 120) : null
 
-  // Champ de recherche : « │ ⌕ Search… │ » (vide) ou « │ ⌕ texte │ ».
+  // Search field: "│ ⌕ Search… │" (empty) or "│ ⌕ text │".
   let search: string | null = null
   let afterBox = first + 1
   let boxAt = -1
@@ -192,7 +192,7 @@ export function parseMenu(text: string | null | undefined): InteractiveMenu | nu
       if (c !== col) continue
       const cursor = i === cursorRow
       if (!cursor && isDim(r, c)) {
-        // Description de l'entrée juste au-dessus, sinon en-tête de groupe.
+        // Description of the entry just above, otherwise a group header.
         if (prev && !prev.header && prev.row === i - 1) {
           prev.hint = [prev.hint, content.trim()].filter(Boolean).join(' · ')
           prev.row = i
@@ -200,20 +200,20 @@ export function parseMenu(text: string | null | undefined): InteractiveMenu | nu
         continue
       }
       if (!cursor && isBold(r, c)) { items.push({ label: content.trim(), hint: null, header: true, row: i, start: i }); continue }
-      // « 5.  Haiku 4.5 ✔            Fastest for quick answers » : numéro retiré, colonnes en description.
+      // "5.  Haiku 4.5 ✔            Fastest for quick answers": number removed, columns as description.
       const parts = content.replace(/^\d{1,2}\.\s+/, '').split(/\s{2,}/)
       items.push({ label: parts[0]!.trim(), hint: parts.slice(1).join(' · ').trim() || null, row: i, start: i, ...(cursor ? { cursor: true } : {}) })
     }
   }
-  // Lignes d'explication entre le titre et la liste (repliées par le terminal) : une seule ligne.
+  // Explanation lines between the title and the list (wrapped by the terminal): a single line.
   const listTop = Math.min(boxAt >= 0 ? boxAt : body.length, items.length ? items[0]!.start : body.length)
   const intro: string[] = []
   for (let i = first + 1; i < listTop; i++) {
     const t = body[i]!.text.trim()
     if (t && !BOX.test(body[i]!.text) && intro.length < 4) intro.push(t)
   }
-  // Sans curseur (recherche en cours, « No sessions match… ») : le texte sous la
-  // recherche, tel quel, pour que la carte dise ce que montre le terminal.
+  // No cursor (search in progress, "No sessions match…"): the text below the
+  // search, as is, so the card says what the terminal shows.
   const rest: string[] = []
   if (cursorRow < 0 && boxAt >= 0) {
     for (let i = Math.max(afterBox, first + 1); i < body.length && rest.length < 8; i++) {
@@ -233,22 +233,22 @@ export function parseMenu(text: string | null | undefined): InteractiveMenu | nu
   }
 }
 
-// Touches pour aller de l'entrée `from` à l'entrée `to` : une flèche à la fois,
-// l'écran relu entre deux (les en-têtes ne prennent pas le curseur).
+// Keys to go from entry `from` to entry `to`: one arrow at a time,
+// the screen re-read in between (headers do not take the cursor).
 export function stepToward(menu: InteractiveMenu, to: number): 'up' | 'down' | 'enter' | null {
   if (menu.cursor === null || !menu.items[to] || menu.items[to]!.header) return null
   if (to === menu.cursor) return 'enter'
   return to > menu.cursor ? 'down' : 'up'
 }
 
-// Retrouve une entrée par son libellé (et son rang parmi les homonymes).
+// Finds an entry by its label (and its rank among entries with the same label).
 export function findEntry(menu: InteractiveMenu, index: number, label: string): number {
   if (menu.items[index]?.label === label) return index
   return menu.items.findIndex(it => !it.header && it.label === label)
 }
 
-// Touches pour taper `text` dans le champ de recherche (à envoyer une par une : un
-// collage n'y est pas pris), après avoir effacé `current`.
+// Keys to type `text` in the search field (to send one by one: a
+// paste is not taken there), after erasing `current`.
 export function searchKeys(current: string, text: string): string[] {
   const keys: string[] = []
   for (let i = 0; i < [...current].length; i++) keys.push('backspace')
@@ -256,9 +256,9 @@ export function searchKeys(current: string, text: string): string[] {
   return keys
 }
 
-// Entrée n'est pas un simple choix (« Enter to set as default » de /model, qui
-// change le modèle par défaut du compte) : un clic sur une entrée n'y amène que
-// le curseur, et l'action d'Entrée reste un bouton explicite.
+// Enter is not a simple choice ("Enter to set as default" in /model, which
+// changes the account's default model): a click on an entry only moves
+// the cursor there, and the Enter action stays an explicit button.
 export function clickMovesOnly(menu: InteractiveMenu): boolean {
   const enter = menu.actions.find(a => a.key === 'enter')
   return Boolean(enter && !/^(?:select|confirm|choose|open|resume|continue)$/i.test(enter.label.trim()))

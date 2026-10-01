@@ -1,4 +1,4 @@
-// Actions des plugins Herdr d'une machine (`?machine=<clé>`, vide = locale).
+// Herdr plugin actions of a machine (`?machine=<key>`, empty = local).
 import type { PluginActionList } from '../../../shared/types'
 
 export default defineApi(async (event): Promise<PluginActionList> => {

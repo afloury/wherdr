@@ -1,12 +1,12 @@
 <script setup lang="ts">
-// Nouvel agent (Claude, Codex) ou nouveau terminal : dossier (navigateur +
-// récents), worktree séparé si c'est un dépôt Git, reprise de conversation,
-// premier message (mis en attente côté serveur jusqu'à ce que l'agent soit prêt).
-// Plusieurs machines : choix de la machine, dossiers et récents de celle-ci.
-// « Diviser » (`newSplit`) ou « Nouvel onglet » (`newTabSpace`) : l'agent
-// démarre dans un pane qui n'existe pas encore, créé seulement au clic sur
-// « Lancer », sur la machine du pane divisé ou de l'espace ; ni choix de
-// machine ni worktree.
+// New agent (Claude, Codex) or new terminal: folder (browser +
+// recent ones), separate worktree if it is a Git repository, conversation resume,
+// first message (queued on the server until the agent is ready).
+// Several machines: choice of the machine, its folders and recent ones.
+// "Split" (`newSplit`) or "New tab" (`newTabSpace`): the agent
+// starts in a pane that does not exist yet, only created on clicking
+// "Launch", on the machine of the split pane or of the space; no choice of
+// machine nor worktree.
 import type { MachineConfig } from '#shared/types'
 import { machineOf } from '#shared/ids'
 import { splitPreview } from '#shared/layout'
@@ -30,30 +30,30 @@ const kinds = computed(() => visibleAgentKinds(machineCfg.value?.kinds || appCon
 const shell = computed(() => kind.value === 'shell')
 const canResume = computed(() => kind.value === 'claude' || kind.value === 'codex')
 
-// ------------------------------------------------------------ pane à créer
-// Pane à diviser (il existe), son onglet et son espace.
+// ------------------------------------------------------------ pane to create
+// Pane to split (it exists), its tab and its space.
 const target = computed(() => (newSplit.value ? herdrState.value.panes.find(p => p.id === newSplit.value!.paneId) : undefined))
 const targetTab = computed(() => (target.value ? tabOf(target.value.tab) : null))
 const targetWs = computed(() => {
   const id = target.value ? target.value.workspace : newTabSpace.value
   return id ? herdrState.value.workspaces.find(w => w.id === id) : undefined
 })
-// Pane ou onglet à créer : machine imposée, pas de worktree.
+// Pane or tab to create: machine imposed, no worktree.
 const fixedMachine = computed(() => newSplit.value?.paneId || newTabSpace.value)
-// Aperçu de la division : le nouveau pane à sa place future, en plein.
+// Preview of the split: the new pane in its future place, filled.
 const NEW_PANE = '+new'
 const splitMap = computed(() => (newSplit.value && targetTab.value
   ? splitPreview(targetTab.value.layout, newSplit.value.paneId, newSplit.value.direction, NEW_PANE)
   : null))
 const tabTitle = (e: { tab: { label: string, number: number } }) => e.tab.label || String(e.tab.number)
-// Nom du nouvel onglet, donné à sa création. Vide : le nom par défaut de
-// Herdr (son numéro), annoncé en indication.
+// Name of the new tab, given at its creation. Empty: Herdr's default
+// name (its number), shown as a hint.
 const tabName = ref('')
 const nextTabNumber = computed(() => {
   const n = (herdrState.value.tabs || []).filter(x => x.workspace === newTabSpace.value).map(x => x.number)
   return String(n.length ? Math.max(...n) + 1 : 1)
 })
-// Dossier proposé pour le nouvel onglet : celui d'un pane de son espace.
+// Folder suggested for the new tab: that of a pane of its space.
 const spaceCwd = (ws: string) => herdrState.value.panes.find(p => p.workspace === ws && p.cwd)?.cwd || null
 watch(newAgentOpen, (o) => {
   if (o) return
@@ -63,7 +63,7 @@ watch(newAgentOpen, (o) => {
 })
 
 // ------------------------------------------------------------ machine
-// `machines` n'existe qu'avec plusieurs machines ; sinon tout est local, comme avant.
+// `machines` only exists with several machines; otherwise everything is local, as before.
 const machineList = machineChoices
 const machine = ref('')
 const machineCfg = computed(() => (machineList.value ? machineList.value.find(m => m.key === machine.value) : undefined))
@@ -108,7 +108,7 @@ watch(newAgentOpen, async (open) => {
   await loadConfig()
   syncKind()
 })
-// Une machine se (re)connecte pendant que la feuille est ouverte : son dossier personnel.
+// A machine (re)connects while the sheet is open: its home folder.
 watch(() => machines.value.map(m => `${m.key}:${m.status}`).join(','), async () => {
   if (!newAgentOpen.value || !machineList.value) return
   await loadConfig()
@@ -120,7 +120,7 @@ function pickKind(k: string) {
   lastKind.value = k
 }
 
-// L'option worktree n'apparaît que pour un dépôt Git.
+// The worktree option only appears for a Git repository.
 let gitFor: string | null = null
 watch(dir, async (d) => {
   if (!d) return
@@ -129,7 +129,7 @@ watch(dir, async (d) => {
   try {
     const r = await api<{ git: boolean }>(`/api/isgit?path=${encodeURIComponent(d)}${qMachine()}`)
     if (gitFor === d) isGit.value = r.git
-  } catch { /* pas de dépôt */ }
+  } catch { /* no repository */ }
   if (!isGit.value) {
     worktree.value = false
   }
@@ -146,16 +146,16 @@ function chooseDir(d: string) {
 function resetForm() {
   worktree.value = false
   branch.value = ''
-  // Un terminal créé ici doit rester visible dans la liste.
+  // A terminal created here must stay visible in the list.
   if (shell.value) showShells.value = true
   resume.value = false
   name.value = ''
   prompt.value = ''
 }
 
-// Nouvel onglet ou division : créé maintenant (dossier choisi), puis l'agent
-// dans le nouveau pane. Création refusée : on reste sur la feuille. Agent
-// refusé : le pane reste avec son terminal, on y va quand même.
+// New tab or split: created now (chosen folder), then the agent
+// in the new pane. Creation refused: we stay on the sheet. Agent
+// refused: the pane stays with its terminal, we go there anyway.
 async function launchNew(place: NewPanePlace) {
   const r = await launchInNewPane({
     space: body => api('/api/space', body),
@@ -181,7 +181,7 @@ async function launchNew(place: NewPanePlace) {
       : tl(`${what}, but ${kindLabel(kind.value)} did not start: ${r.error}`, `${what}, mais ${kindLabel(kind.value)} n’a pas démarré : ${r.error}`), true)
   } else haptic()
   if (r.paneId) {
-    // Division : l'onglet (plan ou côte à côte), case active = le nouveau pane.
+    // Split: the tab (plan or side by side), active cell = the new pane.
     const tab = isTab ? null : r.tabId || splitTab
     if (tab) {
       const path = tabPath(tab)

@@ -5,20 +5,20 @@ import { availableAgentKinds } from '../shared/launchableAgents'
 const session = (agent: string) => ({ agent_session: { agent, kind: 'id', source: `herdr:${agent}`, value: 'x' } })
 
 describe('paneAgentKind', () => {
-  it('le processus détecté par Herdr fait foi', () => {
+  it('the process detected by Herdr wins', () => {
     expect(paneAgentKind({ agent: 'claude', ...session('claude') }, { agent: 'claude' })).toBe('claude')
     expect(paneAgentKind({ agent: 'codex' }, { agent: 'claude', ...session('claude') })).toBe('codex')
   })
-  it('agent fermé : la session rapportée plutôt que le type de lancement', () => {
+  it('closed agent: the reported session rather than the launch kind', () => {
     expect(paneAgentKind({ agent_status: 'unknown' }, { agent: 'codex', ...session('claude') })).toBe('claude')
     expect(paneAgentKind({ ...session('claude') }, { agent: 'codex' })).toBe('claude')
   })
-  it('sans session : l’entrée agents, sinon rien', () => {
+  it('without a session: the agents entry, otherwise nothing', () => {
     expect(paneAgentKind({}, { agent: 'codex' })).toBe('codex')
     expect(paneAgentKind({}, null)).toBeNull()
     expect(paneAgentKind({})).toBeNull()
   })
-  it('garde le type Herdr des autres agents', () => {
+  it('keeps the Herdr kind of other agents', () => {
     expect(paneAgentKind({ agent: 'gemini', agent_status: 'working' }, { agent: 'codex' })).toBe('gemini')
     expect(paneAgentKind({ ...session('opencode') }, { agent: 'claude' })).toBe('opencode')
     expect(paneAgentKind({}, { agent: 'kimi' })).toBe('kimi')
@@ -26,7 +26,7 @@ describe('paneAgentKind', () => {
 })
 
 describe('availableAgentKinds', () => {
-  it('ne propose que les agents Herdr installés et autorisés, dans un ordre stable', () => {
+  it('only offers installed and allowed Herdr agents, in a stable order', () => {
     expect(availableAgentKinds(['kimi', 'claude', 'unknown', 'opencode', 'gemini'], ['claude', 'kimi', 'gemini']))
       .toEqual(['claude', 'gemini', 'kimi'])
     expect(availableAgentKinds([], ['claude'])).toEqual([])
@@ -34,7 +34,7 @@ describe('availableAgentKinds', () => {
 })
 
 describe('transcriptKind', () => {
-  it('reconnaît le type au chemin', () => {
+  it('recognizes the kind from the path', () => {
     expect(transcriptKind('/home/user/.claude/projects/-home-user-x/abc.jsonl')).toBe('claude')
     expect(transcriptKind('/Users/a/.codex/sessions/2026/09/26/rollout-x.jsonl')).toBe('codex')
     expect(transcriptKind('/Users/a/.omp/agent/sessions/-x/2026-09-30_abc.jsonl')).toBe('omp')

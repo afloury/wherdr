@@ -8,9 +8,9 @@ export default defineApi(async (event) => {
   const num = (k: string) => (q[k] !== undefined ? Math.max(0, Number(q[k]) || 0) : null)
   const r = await transcripts.chat(p, {
     since: String(q.since || ''),
-    from: num('from'), // relire depuis cet octet (bas de conversation déjà affiché)
-    before: num('before'), // tranche plus ancienne, qui se termine à cet octet
+    from: num('from'), // re-read from this byte (bottom of the conversation already shown)
+    before: num('before'), // older slice, ending at this byte
   })
-  // Modèle courant (« Opus 5.5 », « GPT-6-Sol ») : mis en cache par taille de fichier.
+  // Current model ("Opus 5.5", "GPT-6-Sol"): cached by file size.
   return r.available ? { ...r, model: await currentModel(p).catch(() => null) } : r
 })

@@ -1,8 +1,8 @@
-// Jauges d'utilisation lues dans l'écran d'une commande (/usage de Claude
-// Code, /status de Codex), pour les afficher en barres natives :
-//   Claude :  « Current session » / « ████   8% used » / « Resets 2pm (…) »
-//   Codex  :  « 5h limit: [████░░░░] 43% left » / « (resets 15:08) »
-// `kind` garde le sens affiché par l'agent : « used » (Claude) ou « left » (Codex).
+// Usage gauges read from a command's screen (Claude Code's /usage,
+// Codex's /status), to show them as native bars:
+//   Claude:  "Current session" / "████   8% used" / "Resets 2pm (…)"
+//   Codex :  "5h limit: [████░░░░] 43% left" / "(resets 15:08)"
+// `kind` keeps the direction shown by the agent: "used" (Claude) or "left" (Codex).
 export interface Meter { label: string, pct: number, kind: 'used' | 'left', reset: string | null }
 
 const BAR = /[█▉▊▋▌▍▎▏░▒▓■□]/
@@ -10,7 +10,7 @@ const CLAUDE_PCT = /^\s*[█▉▊▋▌▍▎▏░▒▓\s]*?\s*(\d{1,3})%\s+(
 const INLINE = /^\s*(.+?):\s*\[?[█▉▊▋▌▍▎▏░▒▓■□\s]*\]?\s*(\d{1,3})%\s+(used|left)\s*(?:\((?:resets\s+)?(.+?)\))?\s*$/i
 const RESET_LINE = /^\s*\(resets\s+(.+?)\)\s*$/i
 
-// Part utilisée (0-100), quel que soit le sens affiché.
+// Share used (0-100), whatever the direction shown.
 export const usedOf = (m: Meter) => (m.kind === 'left' ? 100 - m.pct : m.pct)
 
 export function parseMeters(text: string): { meters: Meter[], rest: string } {
@@ -38,13 +38,13 @@ export function parseMeters(text: string): { meters: Meter[], rest: string } {
     }
   }
   const rest = lines.filter((_, i) => !drop.has(i))
-    // Onglets du panneau de réglages et aide clavier : sans objet ici.
+    // Settings panel tabs and keyboard help: not relevant here.
     .filter(l => !/^\s*Settings\s+Status\s+Config\b/.test(l) && !/^\s*Esc to (cancel|close)\s*$/i.test(l))
     .join('\n').replace(/\n{3,}/g, '\n\n').trim()
   return { meters, rest }
 }
 
-// Encadré dessiné par l'agent (╭─╮ │ … │ ╰─╯, Codex) : on garde le contenu.
+// Box drawn by the agent (╭─╮ │ … │ ╰─╯, Codex): we keep the content.
 export function unbox(lines: string[]): string[] {
   const out: string[] = []
   for (const l of lines) {

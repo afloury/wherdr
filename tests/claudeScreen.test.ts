@@ -1,5 +1,5 @@
-// Commande « ! » longue : la transcription ne l'a qu'à la fin, l'écran de
-// Claude Code la montre en cours (bug t-0106 : wherdr affichait « En attente »).
+// Long "!" command: the transcript only has it at the end, Claude Code's
+// screen shows it running (bug t-0106: wherdr showed "En attente").
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { elapsedMs, parseClaudeNotice, parseClaudeScreen } from '../server/utils/claudeScreen'
@@ -8,8 +8,8 @@ import { queuedPhase } from '../shared/queuedPhase'
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 const NOW = 1_000_000
 
-describe('écran de Claude Code', () => {
-  it('commande « ! » en cours : commande, sortie, lignes masquées, début', () => {
+describe('Claude Code screen', () => {
+  it('"!" command running: command, output, hidden lines, start', () => {
     const s = parseClaudeScreen(fx('claude-bash-running.txt'), NOW)!
     expect(s.shell).toEqual({
       command: './scripts/build.sh --all',
@@ -21,39 +21,39 @@ describe('écran de Claude Code', () => {
     expect(s.queued).toEqual(['Résume la sortie du build'])
   })
 
-  it('commande sans sortie encore : « Running… (7s) »', () => {
+  it('command without output yet: "Running… (7s)"', () => {
     const s = parseClaudeScreen(fx('claude-bash-starting.txt'), NOW)!
     expect(s.shell).toEqual({ command: 'sleep 12; echo fini', lines: [], hidden: 0, since: NOW - 7000 })
     expect(s.queued).toEqual([])
   })
 
-  it('« ! cmd » envoyé depuis wherdr : Claude affiche « !  cmd » (deux espaces)', () => {
+  it('"! cmd" sent from wherdr: Claude shows "!  cmd" (two spaces)', () => {
     const s = parseClaudeScreen(fx('claude-bash-starting.txt').replace('! sleep', '!  sleep'), NOW)!
     expect(s.shell && s.shell.command).toBe('sleep 12; echo fini')
     expect(queuedPhase('! sleep 12; echo fini', s)).toBe('running')
   })
 
-  it('commande terminée : plus en cours, mais partie', () => {
+  it('command finished: no longer running, but sent', () => {
     const s = parseClaudeScreen(fx('claude-bash-finished.txt'), NOW)!
     expect(s.shell).toBeNull()
     expect(s.sent).toBe('!./scripts/build.sh --all')
   })
 
-  it('tour normal : message parti (sur deux lignes) et deux messages en file', () => {
+  it('normal turn: message sent (on two lines) and two queued messages', () => {
     const s = parseClaudeScreen(fx('claude-queued-turn.txt'), NOW)!
     expect(s.shell).toBeNull()
     expect(s.sent).toBe('Corrige le titre de la page\nd\'accueil, puis relance les tests')
     expect(s.queued).toEqual(['Ajoute aussi un test', 'Et mets à jour le changelog'])
   })
 
-  it('écran existant sans commande ni file', () => {
+  it('existing screen without command or queue', () => {
     const s = parseClaudeScreen(fx('claude-working.txt'), NOW)!
     expect(s.shell).toBeNull()
     expect(s.queued).toEqual([])
     expect(parseClaudeScreen('', NOW)).toBeNull()
   })
 
-  it('durées du compteur', () => {
+  it('counter durations', () => {
     expect(elapsedMs('7s')).toBe(7000)
     expect(elapsedMs('1m 14s')).toBe(74000)
     expect(elapsedMs('1h 2m 3s')).toBe(3723000)
@@ -61,29 +61,29 @@ describe('écran de Claude Code', () => {
   })
 })
 
-describe('message en attente face à l’écran', () => {
+describe('queued message against the screen', () => {
   const running = parseClaudeScreen(fx('claude-bash-running.txt'), NOW)
   const turn = parseClaudeScreen(fx('claude-queued-turn.txt'), NOW)
   const done = parseClaudeScreen(fx('claude-bash-finished.txt'), NOW)
 
-  it('la commande « ! » envoyée est en cours d’exécution, plus en file', () => {
+  it('the "!" command sent is running, no longer queued', () => {
     expect(queuedPhase('! ./scripts/build.sh --all', running)).toBe('running')
     expect(queuedPhase('!./scripts/build.sh   --all', running)).toBe('running')
   })
 
-  it('un message encore dans la file de Claude reste en attente', () => {
+  it('a message still in Claude\'s queue stays queued', () => {
     expect(queuedPhase('Résume la sortie du build', running)).toBe('queued')
     expect(queuedPhase('Ajoute aussi un test', turn)).toBe('queued')
     expect(queuedPhase('Et mets à jour le changelog', turn)).toBe('queued')
   })
 
-  it('un message visible comme envoyé n’est plus « en attente »', () => {
+  it('a message visible as sent is no longer "queued"', () => {
     expect(queuedPhase('Corrige le titre de la page d\'accueil, puis relance les tests', turn)).toBe('sent')
-    // Commande terminée, pas encore dans la transcription.
+    // Command finished, not yet in the transcript.
     expect(queuedPhase('! ./scripts/build.sh --all', done)).toBe('sent')
   })
 
-  it('pas de confusion : autre texte, début trop court, commande ≠ message', () => {
+  it('no confusion: other text, start too short, command ≠ message', () => {
     expect(queuedPhase('Corrige', turn)).toBe('queued')
     expect(queuedPhase('! ./scripts/deploy.sh', running)).toBe('queued')
     expect(queuedPhase('./scripts/build.sh --all', running)).toBe('queued')
@@ -91,7 +91,7 @@ describe('message en attente face à l’écran', () => {
     expect(queuedPhase('Lance les tests', null)).toBe('queued')
   })
 
-  it('photos : les chemins envoyés ne comptent pas, « [Image #1] » non plus', () => {
+  it('photos: the paths sent do not count, nor does "[Image #1]"', () => {
     const s = { shell: null, sent: '[Image #1] Que vois-tu sur cette capture ?', queued: [] }
     expect(queuedPhase('/home/user/.cache/herdr-web/uploads/a.png\nQue vois-tu sur cette capture ?', s)).toBe('sent')
   })
@@ -108,7 +108,7 @@ describe('parseClaudeNotice', () => {
     '─'.repeat(40),
     foot,
   ].join('\n')
-  it('lit « Update installed » à droite du pied', () => {
+  it('reads "Update installed" on the right of the footer', () => {
     expect(parseClaudeNotice(screen('  ? for shortcuts                 ✔ Update installed · Restart to update'))).toBe('✔ Update installed · Restart to update')
   })
   it('lit le statut au-dessus du cadre', () => {

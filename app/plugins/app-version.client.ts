@@ -1,7 +1,7 @@
-// Nouvelle version après un déploiement (remplace les rechargements
-// automatiques de Nuxt, coupés dans nuxt.config.ts) : vérification toutes les
-// 5 min, au retour sur la page et à chaque reconnexion au serveur ; morceau de code manquant pendant une
-// navigation → un seul rechargement vers la vue demandée, sinon le bandeau.
+// New version after a deployment (replaces Nuxt's automatic
+// reloads, turned off in nuxt.config.ts): check every
+// 5 min, on returning to the page and on each reconnection to the server; missing code chunk during a
+// navigation → a single reload to the requested view, otherwise the banner.
 import { isChunkLoadError, mayReloadForChunk } from '../utils/appVersion'
 
 const CHECK_EVERY_MS = 5 * 60000

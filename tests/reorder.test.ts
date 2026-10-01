@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { applyMove, readyLists, reorderTarget, reorderWorkspaces, sortReady } from '../shared/spaces'
 import type { Row } from '../shared/spaces'
 
-// Ordre Herdr de la machine : w1..w6. Groupe affiché « Prêts » : w2, w4, w5
-// (w1, w3, w6 sont dans d'autres groupes).
+// Herdr order of the machine: w1..w6. Group shown as "Ready": w2, w4, w5
+// (w1, w3, w6 are in other groups).
 const ORDER = ['w1', 'w2', 'w3', 'w4', 'w5', 'w6']
 const GROUP = ['w2', 'w4', 'w5']
 
@@ -15,27 +15,27 @@ const row = (key: string, status: 'done' | 'idle'): Row => ({
 describe('readyLists', () => {
   const rows = [row('w2', 'idle'), row('w4', 'done'), row('w5', 'idle'), row('w6', 'done')]
 
-  it('place les non lus en tête, en conservant l’ordre Herdr dans chaque sous-groupe', () => {
+  it('puts unread first, keeping Herdr\'s order in each subgroup', () => {
     expect(readyLists(rows, true).map(list => list.map(r => r.key))).toEqual([['w4', 'w6'], ['w2', 'w5']])
   })
 
-  it('laisse l’ordre Herdr quand le réglage est désactivé', () => {
+  it('leaves Herdr\'s order when the setting is off', () => {
     expect(readyLists(rows, false).map(list => list.map(r => r.key))).toEqual([['w2', 'w4', 'w5', 'w6']])
   })
 
-  it('considère non lu un space contenant un pane terminé', () => {
+  it('considers a space containing a finished pane unread', () => {
     const space = { kind: 'space', key: 'space', lead: row('lead', 'idle').lead,
       panes: [row('read', 'idle').lead, row('unread', 'done').lead] } as Row
     expect(readyLists([rows[0]!, space], true).map(list => list.map(r => r.key))).toEqual([['space'], ['w2']])
   })
 
-  it('ne crée pas de sous-groupe vide', () => {
+  it('creates no empty subgroup', () => {
     expect(readyLists([row('w2', 'idle')], true).map(list => list.map(r => r.key))).toEqual([['w2']])
   })
 })
 
 describe('applyMove', () => {
-  it('place avant un espace, ou à la fin', () => {
+  it('places before a space, or at the end', () => {
     expect(applyMove(ORDER, 'w5', 'w2')).toEqual(['w1', 'w5', 'w2', 'w3', 'w4', 'w6'])
     expect(applyMove(ORDER, 'w1', null)).toEqual(['w2', 'w3', 'w4', 'w5', 'w6', 'w1'])
     expect(applyMove(ORDER, 'w1', 'w9')).toEqual(['w2', 'w3', 'w4', 'w5', 'w6', 'w1'])
@@ -43,7 +43,7 @@ describe('applyMove', () => {
 })
 
 describe('reorderTarget', () => {
-  it('borne le dépôt au sous-groupe actif et applique le placement Herdr habituel', () => {
+  it('bounds the drop to the active subgroup and applies the usual Herdr placement', () => {
     const order = ['w1', 'w2', 'w3', 'w4', 'w5', 'w6']
     const unread = ['w2', 'w4']
     const read = ['w3', 'w5']
@@ -51,7 +51,7 @@ describe('reorderTarget', () => {
     expect(reorderTarget(order, read, 'w3', 2)).toEqual({ before: 'w6' })
     expect(reorderTarget(order, unread, 'w3', 1)).toBeNull()
   })
-  it('en tête du groupe : juste avant la première carte', () => {
+  it('at the top of the group: just before the first card', () => {
     expect(reorderTarget(ORDER, GROUP, 'w5', 0)).toEqual({ before: 'w2' })
   })
 
@@ -60,19 +60,19 @@ describe('reorderTarget', () => {
     expect(reorderTarget(ORDER, GROUP, 'w5', 1)).toEqual({ before: 'w4' })
   })
 
-  it('en bas du groupe : juste après la dernière (avant l’espace qui la suit dans Herdr)', () => {
+  it('at the bottom of the group: just after the last one (before the space that follows it in Herdr)', () => {
     expect(reorderTarget(ORDER, GROUP, 'w2', 3)).toEqual({ before: 'w6' })
     expect(reorderTarget(ORDER, ['w2', 'w6'], 'w2', 2)).toEqual({ before: null })
   })
 
-  it('rien quand la carte reste à sa place', () => {
+  it('nothing when the card stays in place', () => {
     expect(reorderTarget(ORDER, GROUP, 'w4', 1)).toBeNull()
     expect(reorderTarget(ORDER, GROUP, 'w4', 2)).toBeNull()
     expect(reorderTarget(ORDER, ['w2'], 'w2', 0)).toBeNull()
     expect(reorderTarget(ORDER, GROUP, 'w9', 0)).toBeNull()
   })
 
-  it('les espaces des autres groupes gardent leur ordre relatif', () => {
+  it('spaces of the other groups keep their relative order', () => {
     const t = reorderTarget(ORDER, GROUP, 'w5', 0)!
     const next = applyMove(ORDER, 'w5', t.before)
     expect(next.filter(id => !GROUP.includes(id))).toEqual(['w1', 'w3', 'w6'])
@@ -81,7 +81,7 @@ describe('reorderTarget', () => {
 })
 
 describe('reorderWorkspaces', () => {
-  it('renumérote la machine de l’espace seulement', () => {
+  it('renumbers only the space\'s machine', () => {
     const R = 'abcd1234'
     const list = [
       { id: 'w1', number: 1 }, { id: 'w2', number: 2 }, { id: 'w3', number: 3 },
@@ -99,17 +99,17 @@ describe('sortReady', () => {
   const rows = [r('b', 10), r('a10', 30), r('shell'), r('a2', 20)]
   const keys = (l: Row[]) => l.map(x => x.key)
 
-  it('garde l’ordre de Herdr par défaut', () => {
+  it('keeps Herdr\'s order by default', () => {
     expect(keys(sortReady(rows, 'herdr', x => x.key))).toEqual(['b', 'a10', 'shell', 'a2'])
   })
-  it('activité récente d’abord ; sans numéro (terminal) à la fin', () => {
+  it('recent activity first; without a number (terminal) at the end', () => {
     expect(keys(sortReady(rows, 'recent', x => x.key))).toEqual(['a10', 'a2', 'b', 'shell'])
   })
-  it('un space prend le changement le plus récent de ses panes', () => {
+  it('a space takes the most recent change of its panes', () => {
     const space = { kind: 'space', key: 'sp', lead: r('x', 1).lead, panes: [r('x', 1).lead, r('y', 99).lead] } as Row
     expect(keys(sortReady([...rows, space], 'recent', x => x.key))[0]).toBe('sp')
   })
-  it('nom : sans casse, chiffres dans l’ordre naturel', () => {
+  it('name: case-insensitive, digits in natural order', () => {
     expect(keys(sortReady(rows, 'name', x => x.key))).toEqual(['a2', 'a10', 'b', 'shell'])
   })
 })

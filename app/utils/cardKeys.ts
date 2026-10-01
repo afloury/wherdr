@@ -1,13 +1,13 @@
-// Clavier (ordinateur) sur une carte « À toi » à choix (menu interactif,
-// permission, question numérotée) : ↑/↓/Entrée/Échap partent au terminal comme
-// de vraies touches, les chiffres 1-9 choisissent une option numérotée.
-// Règle de capture : la carte est affichée dans la vue active, aucune fenêtre
-// (modale, menu déroulant) n'est ouverte, et le focus n'est pas dans un champ
-// de saisie qui contient du texte. Le champ du message, focalisé d'office sur
-// ordinateur, est vide la plupart du temps : il laisse passer ↑/↓/Entrée/Échap
-// et les chiffres (comme dans le terminal, où un chiffre choisit l'option) ;
-// dès qu'on y a tapé une lettre, plus rien n'est pris.
-// Focus sur un bouton : Entrée / Espace gardent leur effet natif (le clic).
+// Keyboard (computer) on a "Your turn" card with choices (interactive menu,
+// permission, numbered question): ↑/↓/Enter/Escape go to the terminal as
+// real keys, digits 1-9 choose a numbered option.
+// Capture rule: the card is shown in the active view, no window
+// (modal, dropdown menu) is open, and the focus is not in an input
+// field that contains text. The message field, focused by default on a
+// computer, is empty most of the time: it lets ↑/↓/Enter/Escape
+// and digits through (as in the terminal, where a digit picks the option);
+// as soon as a letter has been typed there, nothing is taken any more.
+// Focus on a button: Enter / Space keep their native effect (the click).
 export type CardKey = { kind: 'nav', key: 'up' | 'down' | 'enter' | 'esc' } | { kind: 'digit', n: number }
 
 export interface FocusInfo {
@@ -15,12 +15,12 @@ export interface FocusInfo {
   editable: boolean
   // … et vide.
   empty: boolean
-  // Bouton, lien, case : Entrée l'active.
+  // Button, link, checkbox: Enter activates it.
   control: boolean
-  // Dans une fenêtre ouverte par-dessus (dialogue, menu, liste déroulante).
+  // In a window opened on top (dialog, menu, dropdown list).
   overlay: boolean
-  // Champ de recherche de la carte elle-même : ↑/↓ y restent pris (une seule
-  // ligne, rien à y déplacer), Entrée y lance la recherche.
+  // The card's own search field: ↑/↓ stay captured there (a single
+  // line, nothing to move), Enter starts the search there.
   own?: boolean
 }
 
@@ -63,8 +63,8 @@ export function describeFocus(el: Element | null): FocusInfo {
   return out
 }
 
-// Écoute le clavier tant que `active()` : une seule carte à la fois (la vue
-// active ; en côte à côte, la case active).
+// Listens to the keyboard while `active()`: a single card at a time (the active
+// view; side by side, the active cell).
 export function useCardKeys(active: () => boolean, opts: () => { digits: number, enter: boolean, own?: Element | null }, run: (k: CardKey) => void) {
   function onKey(e: KeyboardEvent) {
     if (!active()) return

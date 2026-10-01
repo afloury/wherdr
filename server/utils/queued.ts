@@ -1,22 +1,22 @@
-// Messages envoyés depuis le téléphone et affichés « en attente » : quand
-// l'agent les a-t-il pris ?
+// Messages sent from the phone and shown as "queued": when
+// did the agent take them?
 import type { ChatItem, QueuedMessage } from '../../shared/types'
 
 export const QUEUED_TTL_MS = 60 * 60 * 1000
-// Photo envoyée (ligne « <home>/.cache/herdr-web/uploads/<nom> » d'un message).
+// Sent photo ("<home>/.cache/herdr-web/uploads/<name>" line of a message).
 export const isUploadLine = (l: string) => l.includes('/.cache/herdr-web/uploads/')
 const norm = (t: unknown) => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase()
-// « ! cmd » : Claude Code passe en mode bash et n'écrit que « cmd » (<bash-input>).
+// "! cmd": Claude Code switches to bash mode and only writes "cmd" (<bash-input>).
 export const bashText = (t: string) => String(t || '').replace(/^\s*!\s*/, '')
 
-// Pris par l'agent = un message utilisateur de la transcription, écrit après
-// l'envoi, qui contient le début du texte (Claude peut regrouper plusieurs
-// messages en attente en un seul tour). Texte modifié par l'agent : au repos,
-// un message de l'utilisateur écrit après l'envoi puis une réponse suffisent.
+// Taken by the agent = a user message in the transcript, written after
+// sending, that contains the start of the text (Claude may group several
+// queued messages into a single turn). Text modified by the agent: when idle,
+// a user message written after sending followed by a reply is enough.
 export function queuedDone(q: { text: string, at: number }, items: ChatItem[], idle: boolean, now: number): boolean {
   if (now - q.at > QUEUED_TTL_MS) return true
   const users = items.filter(i => i.role === 'user' || i.role === 'cmd' || i.role === 'bash')
-  // Les chemins de photos deviennent des images dans la transcription.
+  // Photo paths become images in the transcript.
   const needle = norm(q.text.split('\n').filter(l => !isUploadLine(l)).join(' ')).slice(0, 80)
   const bashNeedle = norm(bashText(q.text)).slice(0, 80)
   if (users.some(u => (!u.ts || Date.parse(u.ts) >= q.at - 10000)
@@ -36,7 +36,7 @@ export function queuedDone(q: { text: string, at: number }, items: ChatItem[], i
 export const HOLD_TTL_MS = 10 * 60 * 1000
 export const LOST_MS = 60 * 1000
 export const HOLD_AGENTS = new Set(['claude', 'codex'])
-// Agent at rest, whose input field may be checked on screen (cf. closePanel).
+// Agent at rest, whose input field may be checked on screen (see closePanel).
 export const INPUT_STATES = new Set(['idle', 'done', 'unknown'])
 
 export interface QueueEntry {

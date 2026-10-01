@@ -1,34 +1,34 @@
-// Panneau « Projet » du coordinateur herdr-projects : lecture de TASKS.md et
-// des threads (`herdr-projects thread list --json`). Fonctions pures, testées
-// dans tests/projectBoard.test.ts.
+// "Project" panel of the herdr-projects coordinator: reads TASKS.md and
+// the threads (`herdr-projects thread list --json`). Pure functions, tested
+// in tests/projectBoard.test.ts.
 //
-// TASKS.md (écrit par le coordinateur) : des listes `## Titre` libres, une
-// tâche par ligne `- [ ] <titre> (<responsable>)`, le responsable étant `me`,
-// `agent`, un nom, ou `agent → t-0031` (lu, jamais affiché). Seule décoration :
-// les badges `[b:couleur(texte)]` et `[b:couleur(texte)](cible)` que le
-// coordinateur place quand c'est utile (aucun badge automatique).
+// TASKS.md (written by the coordinator): free `## Title` lists, one
+// task per line `- [ ] <title> (<owner>)`, the owner being `me`,
+// `agent`, a name, or `agent → t-0031` (read, never shown). Only decoration:
+// the `[b:color(text)]` and `[b:color(text)](target)` badges that the
+// coordinator adds when useful (no automatic badge).
 
 export type ListKind = 'test' | 'decide' | 'review' | 'blocked' | 'doing' | 'backlog' | 'done'
 
 export interface ProjectTask {
   text: string
   done: boolean
-  owner: string | null // tel qu'écrit : « me », « agent », « Alice »…
-  thread: string | null // t-0031 (responsable « agent → t-0031 »)
-  reason?: string // cause d'une tâche dans la liste Bloqué
-  badges?: TaskBadge[] // badges `[b:couleur(texte)](cible)`, dans l'ordre
+  owner: string | null // as written: "me", "agent", "Alice"…
+  thread: string | null // t-0031 (owner "agent → t-0031")
+  reason?: string // cause of a task in the Blocked list
+  badges?: TaskBadge[] // `[b:color(text)](target)` badges, in order
 }
-// Badge écrit par le coordinateur : couleur = nom de la palette, hex
-// normalisé (#rrggbb) ou null (neutre). Le texte est brut (rendu échappé).
-// Cible facultative : URL http(s) (`href`) ou ID de thread (`thread`) ; tout
-// autre schéma est ignoré (badge non cliquable).
+// Badge written by the coordinator: color = palette name, normalized
+// hex (#rrggbb) or null (neutral). The text is raw (rendered escaped).
+// Optional target: http(s) URL (`href`) or thread ID (`thread`); any
+// other scheme is ignored (badge not clickable).
 export interface TaskBadge { text: string, color: string | null, href?: string, thread?: string }
 export interface ProjectList { title: string, kind: ListKind | null, tasks: ProjectTask[] }
 
 export interface ProjectThread {
   id: string // t-0034
   title: string
-  group: string // libellé de herdr-projects (« Ready for review »)
+  group: string // herdr-projects label ("Ready for review")
   token: string // ready-for-review, working, waiting-on-you, landing, idle, resolved
   rank: number // 1 (Waiting on you) … 6 (Resolved)
   resolved: boolean
@@ -48,7 +48,7 @@ export interface ProjectBoard {
   open: ProjectThread[]
   resolved: ProjectThread[]
   version: string
-  // TASKS.md absent, ou threads illisibles : le panneau le dit sans casser.
+  // TASKS.md missing, or unreadable threads: the panel says so without breaking.
   tasksMissing?: boolean
   threadsError?: string
 }
@@ -72,12 +72,12 @@ export function listKind(title: string): ListKind | null {
 
 const THREAD_ID = /\bt-\d{4,}\b/i
 const TASK_LINE = /^[-*+]\s+(?:\[([ xX])\](?:\s+|$))?(.*)$/
-// Responsable : dernière parenthèse de la ligne, courte, sans parenthèse imbriquée.
+// Owner: last parenthesis of the line, short, without nested parentheses.
 const OWNER = /\s*\(([^()]{1,48})\)\s*$/
-// Ancienne syntaxe `[t-0140]` / `[t-0140, t-0141]` : retirée du texte, sans badge.
+// Old `[t-0140]` / `[t-0140, t-0141]` syntax: removed from the text, no badge.
 const REFS = /\s*\[\s*t-\d{4,}(?:\s*[,;\s]\s*t-\d{4,})*\s*\]/gi
-// Badges : `[b:#fff(texte)]`, `[b:green(texte)]`, `[b:(texte)]`, suivis ou non
-// de `(cible)`, où que ce soit dans la ligne. Le texte va jusqu'au premier « )] ».
+// Badges: `[b:#fff(text)]`, `[b:green(text)]`, `[b:(text)]`, optionally followed
+// by `(target)`, anywhere in the line. The text runs up to the first ")]".
 export const BADGE_COLORS = ['red', 'orange', 'amber', 'green', 'teal', 'blue', 'violet', 'pink', 'gray'] as const
 const BADGE = /\[b:\s*([#\w-]*)\s*\((.*?)\)\](?:\(\s*((?:[^\s()]|\([^\s()]*\))*)\s*\))?/gi
 export function badgeColor(raw: string): string | null {
@@ -89,7 +89,7 @@ export function badgeColor(raw: string): string | null {
   const x = h[1]!
   return '#' + (x.length === 3 ? [...x].map(d => d + d).join('') : x)
 }
-// Cible d'un badge : URL http(s) valide, ou ID de thread ; sinon rien.
+// Badge target: valid http(s) URL, or thread ID; otherwise nothing.
 export function badgeTarget(raw: string | undefined): { href: string } | { thread: string } | null {
   const v = (raw || '').trim()
   if (/^t-\d{4,}$/i.test(v)) return { thread: v.toLowerCase() }
@@ -117,7 +117,7 @@ export function parseTaskLine(line: string, kind: ListKind | null = null): Proje
   let text = free.text.replace(REFS, '').trim()
   let owner: string | null = null
   const o = OWNER.exec(text)
-  // « [PR](https://…) » en fin de ligne : un lien Markdown, pas un responsable.
+  // "[PR](https://…)" at the end of the line: a Markdown link, not an owner.
   if (o && o.index > 0 && !(text[o.index] === '(' && text[o.index - 1] === ']')) {
     owner = o[1]!.trim()
     text = text.slice(0, o.index).trim()
@@ -136,9 +136,9 @@ export function parseTaskLine(line: string, kind: ListKind | null = null): Proje
   return { text, done: m[1] === 'x' || m[1] === 'X', owner, thread: ref ? ref[0].toLowerCase() : null, ...(reason ? { reason } : {}), ...(free.badges.length ? { badges: free.badges } : {}) }
 }
 
-// Texte d'une tâche découpé pour l'affichage : les URL http(s) nues (ou entre
-// <…>) et les liens Markdown [libellé](url) deviennent des liens texte
-// simples ; le reste est du texte. Les autres schémas restent du texte.
+// Task text split for display: bare http(s) URLs (or in
+// <…>) and Markdown links [label](url) become simple text
+// links; the rest is text. Other schemes stay text.
 export interface TextPart { text: string, href?: string }
 const LINKISH = /\[([^\]]+)\]\((https?:\/\/[^\s()]+)\)|<?(https?:\/\/[^\s<>]+?)>?(?=[\s,;]|[.)!?]*(?:\s|$))/gi
 export function textParts(input: string): TextPart[] {
@@ -162,9 +162,9 @@ export function textParts(input: string): TextPart[] {
   return parts
 }
 
-// Toutes les listes `##`, dans l'ordre du fichier (vides comprises). Les lignes
-// hors d'une liste, les sous-titres plus profonds et les lignes indentées
-// (détails d'une tâche) sont ignorés.
+// All `##` lists, in file order (empty ones included). Lines
+// outside a list, deeper subheadings and indented lines
+// (task details) are ignored.
 export function parseTasks(md: string): ProjectList[] {
   const lists: ProjectList[] = []
   let cur: ProjectList | null = null
@@ -226,8 +226,8 @@ const time = (iso: string) => {
   return Number.isFinite(t) ? t : 0
 }
 
-// Threads ouverts : ce qui t'attend d'abord (rang de herdr-projects), puis les
-// plus récents. Threads faits : le dernier mis à jour (clôture) en premier.
+// Open threads: what is waiting on you first (herdr-projects rank), then the
+// most recent. Done threads: the last updated (closing) first.
 export function sortOpen(list: ProjectThread[]): ProjectThread[] {
   return [...list].sort((a, b) => a.rank - b.rank || num(b.id) - num(a.id))
 }
@@ -244,17 +244,17 @@ export function splitThreads(list: ProjectThread[]): { open: ProjectThread[], re
 // ---------------------------------------------------------------- sections
 export interface BoardSection {
   key: string
-  title: string // titre de la liste, ou libellé par défaut (null : à traduire côté app)
+  title: string // list title, or default label (null: translated on the app side)
   kind: ListKind | null
   tasks: ProjectTask[]
   threads: ProjectThread[] // ouverts (En cours) ou faits (Fait)
 }
 
-// Sections affichées : les listes de TASKS.md dans leur ordre ; « En cours »
-// reçoit les threads ouverts (une tâche qui renvoie à un thread ouvert est
-// montrée par le thread, en direct) ; « Fait » reçoit les threads clôturés.
-// Une section manquante est ajoutée : En cours avant la première liste qui
-// n'est ni « à tester » ni « à décider », Fait à la fin.
+// Sections shown: the TASKS.md lists in their order; "In progress"
+// receives the open threads (a task pointing to an open thread is
+// shown through the thread, live); "Done" receives the closed threads.
+// A missing section is added: In progress before the first list that
+// is neither "to test" nor "to decide", Done at the end.
 export function boardSections(board: Pick<ProjectBoard, 'lists' | 'open' | 'resolved'>, labels: { doing: string, done: string }): BoardSection[] {
   const openIds = new Set(board.open.map(t => t.id))
   const sections: BoardSection[] = board.lists.map((l, i) => ({
@@ -276,7 +276,7 @@ export function boardSections(board: Pick<ProjectBoard, 'lists' | 'open' | 'reso
     done = { key: 'done', title: labels.done, kind: 'done', tasks: [], threads: [] }
     sections.push(done)
   } else {
-    // La liste « Fait » va en dernier, avec les threads clôturés.
+    // The "Done" list goes last, with the closed threads.
     sections.splice(sections.indexOf(done), 1)
     sections.push(done)
   }
@@ -284,15 +284,15 @@ export function boardSections(board: Pick<ProjectBoard, 'lists' | 'open' | 'reso
   return sections
 }
 
-// Réglage « Masquer les listes vides » : une section sans tâche ni thread
-// n'est pas affichée (En cours et Fait compris). La suggestion des listes
-// absentes (missingLists) lit TASKS.md, pas cet affichage.
+// "Hide empty lists" setting: a section with no task and no thread
+// is not shown (In progress and Done included). The suggestion of missing
+// lists (missingLists) reads TASKS.md, not this display.
 export function visibleSections(sections: BoardSection[], hideEmpty: boolean): BoardSection[] {
   return hideEmpty ? sections.filter(s => s.tasks.length > 0 || s.threads.length > 0) : sections
 }
 
-// ---------------------------------------------------------------- retours du panneau Projet
-// Confirmer envoie un message ; les autres actions préparent le début du message.
+// ---------------------------------------------------------------- Project panel feedback
+// Confirm sends a message; the other actions prepare the start of the message.
 export type TestLang = 'fr' | 'en'
 
 export function testedMessage(task: string, lang: TestLang = 'fr'): string {
@@ -311,10 +311,10 @@ export function decisionPrefix(task: string, lang: TestLang = 'fr'): string {
   return `${lang === 'en' ? '↳ Decision: ' : '↳ Décision : '}${task.trim()} — `
 }
 
-// Champ de saisie après une action du panneau : le brouillon déjà tapé
-// est gardé, le début du message vient à la suite sur une nouvelle ligne
-// (curseur à la fin). Déjà présent en fin de brouillon (double toucher) : rien
-// ne change.
+// Input field after a panel action: the draft already typed
+// is kept, the message start follows on a new line
+// (cursor at the end). Already present at the end of the draft (double tap): nothing
+// changes.
 export function prefillDraft(draft: string, prefix: string): string {
   const kept = draft.replace(/\s+$/, '')
   if (!kept) return prefix
@@ -322,7 +322,7 @@ export function prefillDraft(draft: string, prefix: string): string {
   return `${kept}\n${prefix}`
 }
 
-// « Lancer » est envoyé immédiatement ; « Préciser » prépare un brouillon.
+// "Launch" is sent immediately; "Detail" prepares a draft.
 export function launchMessage(task: string, lang: TestLang = 'fr'): string {
   return `${lang === 'en' ? '↳ Launch: ' : '↳ Lancer : '}${task.trim()}`
 }
@@ -343,10 +343,10 @@ export function unblockMessage(task: string, lang: TestLang = 'fr'): string {
   return `${lang === 'en' ? '↳ Unblock: ' : '↳ Débloquer : '}${task.trim()}`
 }
 
-// ---------------------------------------------------------------- aide (Réglages › Plugins)
-// Listes recommandées de TASKS.md, dans l'ordre du modèle. herdr-projects
-// n'impose que des listes `##` ; « À tester » et « À décider » sont une
-// convention de wherdr, lue par le panneau Projet.
+// ---------------------------------------------------------------- help (Settings › Plugins)
+// Recommended TASKS.md lists, in the template's order. herdr-projects
+// only requires `##` lists; "To test" and "To decide" are a
+// wherdr convention, read by the Project panel.
 const TEMPLATE_LISTS: { kind: ListKind, fr: string, en: string }[] = [
   { kind: 'test', fr: 'À tester', en: 'To test' },
   { kind: 'decide', fr: 'À décider', en: 'To decide' },
@@ -375,7 +375,7 @@ export function missingLists(lists: Pick<ProjectList, 'kind'>[]): ListKind[] {
   return (['test', 'decide'] as ListKind[]).filter(k => !lists.some(l => l.kind === k))
 }
 
-// Texte à coller au coordinateur : ce que signifient les messages du panneau.
+// Text to paste to the coordinator: what the panel's messages mean.
 export function coordinatorRules(lang: TestLang = 'fr'): string {
   const en = lang === 'en'
   const m = (prefix: (task: string, lang: TestLang) => string) => `${prefix('…', lang)}…`

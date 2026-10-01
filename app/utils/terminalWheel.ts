@@ -1,9 +1,9 @@
-// Molette et glissé dans le terminal -> lignes de terminal.scroll pour Herdr.
-// xterm.js ne voit que les images redessinées par Herdr (jamais les modes souris
-// de l'application) : laissé à lui, il convertit la molette en ↑/↓ (« alternate
-// scroll ») et Claude Code parcourt l'historique de ses messages. Herdr, lui,
-// connaît le vrai mode : il fait défiler l'historique du pane, ou transmet la
-// molette en événements souris si l'application suit la souris.
+// Wheel and drag in the terminal -> terminal.scroll lines for Herdr.
+// xterm.js only sees the frames redrawn by Herdr (never the application's
+// mouse modes): left to itself, it converts the wheel into ↑/↓ ("alternate
+// scroll") and Claude Code browses its message history. Herdr, for its part,
+// knows the real mode: it scrolls the pane's history, or passes the
+// wheel on as mouse events if the application tracks the mouse.
 
 // WheelEvent.deltaMode : 0 = pixels, 1 = lignes (Firefox), 2 = pages.
 export function wheelPixels(deltaY: number, deltaMode: number, rowHeight: number, pageRows: number): number {
@@ -12,8 +12,8 @@ export function wheelPixels(deltaY: number, deltaMode: number, rowHeight: number
   return deltaY
 }
 
-// Déplacement cumulé en pixels (positif = vers le haut de l'historique) ->
-// lignes entières à faire défiler et reste gardé pour le prochain événement.
+// Accumulated movement in pixels (positive = towards the top of the history) ->
+// whole lines to scroll and remainder kept for the next event.
 export function takeLines(acc: number, rowHeight: number): { lines: number, rest: number } {
   const h = rowHeight > 0 ? rowHeight : 16
   const lines = Math.trunc(acc / h)

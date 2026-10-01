@@ -2,8 +2,8 @@ import crypto from 'node:crypto'
 
 export const CSP_BASE = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; manifest-src 'self'"
 
-// Nuxt écrit un importmap et sa configuration dans le HTML. Leurs empreintes
-// changent avec le buildId ; seules ces deux chaînes exactes sont autorisées.
+// Nuxt writes an importmap and its configuration into the HTML. Their hashes
+// change with the buildId; only these two exact strings are allowed.
 export function cspForHtml(html: string, host: string): string {
   const hashes = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
     .filter(([, attrs, content]) => content && !/type=["']application\/json["']/i.test(attrs || ''))

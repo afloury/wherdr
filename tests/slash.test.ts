@@ -5,18 +5,18 @@ import { describe, expect, it } from 'vitest'
 import { frontmatter, mergeCommands, ompSkillDirs, slashCommands } from '../server/utils/slash'
 import { localFs } from '../server/utils/fsx'
 
-describe('commandes « / »', () => {
+describe('"/" commands', () => {
   it('lit le frontmatter', () => {
     expect(frontmatter('---\nname: pdf\ndescription: "Lire des PDF"\nuser-invocable: false\n---\ncorps')).toEqual({ name: 'pdf', description: 'Lire des PDF', 'user-invocable': 'false' })
     expect(frontmatter('pas de frontmatter')).toEqual({})
   })
 
-  it('fusionne, les personnelles masquant les intégrées, triées', () => {
+  it('merges, personal ones hiding built-in ones, sorted', () => {
     const r = mergeCommands([['model', 'intégrée'], ['clear', 'x']], [{ name: 'model', desc: 'perso', source: 'command' }])
     expect(r.map(c => [c.name, c.desc])).toEqual([['clear', 'x'], ['model', 'perso']])
   })
 
-  it('trouve skills (y compris synchronisés), commandes et invites Codex', async () => {
+  it('finds skills (including synced ones), commands and Codex prompts', async () => {
     const home = mkdtempSync(path.join(tmpdir(), 'hw-slash-'))
     const w = (f: string, t: string) => { mkdirSync(path.dirname(path.join(home, f)), { recursive: true }); writeFileSync(path.join(home, f), t) }
     w('.claude/skills/mine/SKILL.md', '---\nname: mine\ndescription: Mon skill\n---\n')
@@ -36,7 +36,7 @@ describe('commandes « / »', () => {
     expect(cx.map(c => c.name)).toEqual(expect.arrayContaining(['prompts:fix', 'new', 'model']))
   })
 
-  it('omp : intégrées, commandes (omp, projet, Claude) et skills en /skill:<nom>, dossiers de la config compris', async () => {
+  it('omp: built-in, commands (omp, project, Claude) and skills as /skill:<name>, config folders included', async () => {
     const home = mkdtempSync(path.join(tmpdir(), 'hw-slash-omp-'))
     const w = (f: string, t: string) => { mkdirSync(path.dirname(path.join(home, f)), { recursive: true }); writeFileSync(path.join(home, f), t) }
     w('.omp/agent/commands/review.md', '---\ndescription: Relire\n---\n')
@@ -50,7 +50,7 @@ describe('commandes « / »', () => {
     expect(names).not.toContain('pdf')
   })
 
-  it('lit skills.customDirectories dans la config YAML d’omp', () => {
+  it('reads skills.customDirectories in omp\'s YAML config', () => {
     const cfg = 'skills:\n  customDirectories:\n    - ~/a\n    - "/abs/b"\n    - rel\n  enableSkillCommands: true\nother:\n  customDirectories:\n    - ~/no\n'
     expect(ompSkillDirs(cfg, '/h')).toEqual(['/h/a', '/abs/b', '/h/rel'])
     expect(ompSkillDirs('theme: x\n', '/h')).toEqual([])

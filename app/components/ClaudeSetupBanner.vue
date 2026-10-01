@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// Bandeau discret d'une machine qui a des agents Claude sans la barre d'état des
-// quotas de wherdr : « Installer » (le serveur l'installe sur la machine) et
-// « Copier la commande » (commande autonome à coller là-bas). Installée mais pas
-// encore de lecture : simple note, les quotas viennent au prochain échange.
+// Discreet banner for a machine that has Claude agents without wherdr's quota
+// status line: "Install" (the server installs it on the machine) and
+// "Copy command" (self-contained command to paste over there). Installed but no
+// reading yet: simple note, the quotas come with the next exchange.
 import type { ClaudeSetup } from '#shared/types'
 import { claudeInstallCommand } from '~/utils/quotas'
 

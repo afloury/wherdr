@@ -1,18 +1,18 @@
 <script setup lang="ts">
-// Invite bloquante de l'agent ouvert : question + options en gros boutons.
-// Écran d'attente reconnu (`screen` : hooks de Codex, confiance, connexion…) :
-// son titre, une ligne d'explication, le texte de la boîte, et les touches de sa
-// légende en boutons (« Tout approuver (t) »). Rien n'est envoyé sans un clic.
+// Blocking prompt of the open agent: question + options as big buttons.
+// Recognized waiting screen (`screen`: Codex hooks, trust, login…):
+// its title, a line of explanation, the box text, and the keys of its
+// legend as buttons ("Trust all (t)"). Nothing is sent without a click.
 import type { Choices, WaitAction, WaitScreen } from '#shared/types'
 
 const props = defineProps<{ paneId: string, prompt?: Choices | null, screen?: WaitScreen | null, keys?: boolean }>()
 const busy = ref(false)
 watch(() => [props.prompt, props.screen], () => { busy.value = false })
 
-// Avec des options, Entrée les valide déjà : on ne garde que les autres touches (Échap…).
+// With options, Enter already confirms them: we only keep the other keys (Escape…).
 const actions = computed(() => (props.screen ? props.screen.actions.filter(a => !(props.prompt && a.key === 'enter')) : []))
 const note = computed(() => (props.screen ? screenNote(props.screen.kind) : null))
-// Colonnes alignées (tableau des hooks) : pas de retour à la ligne ; texte courant : si.
+// Aligned columns (hooks table): no wrapping; running text: wrapping.
 const tabular = computed(() => Boolean(props.screen && props.screen.lines.some(l => /\S {3,}\S/.test(l))))
 const question = computed(() => (props.screen && props.screen.title) || (props.prompt && props.prompt.question))
 
@@ -24,14 +24,14 @@ async function press(a: WaitAction) {
   busy.value = true
   if (!(await pressScreenKey(props.paneId, a))) busy.value = false
 }
-// Cases à cocher (omp) : Entrée passe à la question suivante.
+// Checkboxes (omp): Enter moves to the next question.
 async function next() {
   busy.value = true
   if (!(await navKey(props.paneId, 'enter'))) busy.value = false
 }
 
-// Clavier (ordinateur, vue active) sur une invite à options : ↑ ↓ Entrée Échap
-// partent au terminal (la carte suit l'écran relu), 1-9 choisit l'option.
+// Keyboard (computer, active view) on a prompt with options: ↑ ↓ Enter Escape
+// go to the terminal (the card follows the re-read screen), 1-9 picks the option.
 const disabled = computed(() => busy.value || !eventsOpen.value || offlineView.value)
 const keyboard = computed(() => Boolean(props.keys && desk.value && props.prompt && props.prompt.options.length && !disabled.value))
 useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.options.length || 0), enter: true }), (k) => {
@@ -45,7 +45,7 @@ useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.opt
 <template>
   <div class="choices" :class="{ 'choices-screen': screen }">
     <p class="eyebrow choices-eyebrow"><i />{{ t('Your turn') }}</p>
-    <!-- Demande de permission : ce qui est demandé, à la place du texte brut de la boîte. -->
+    <!-- Permission request: what is requested, instead of the raw box text. -->
     <PromptDetailBlock v-if="prompt?.detail" :detail="prompt.detail" />
     <p v-if="question" class="choices-q">{{ question }}</p>
     <p v-if="note" class="choices-note">{{ note }}</p>

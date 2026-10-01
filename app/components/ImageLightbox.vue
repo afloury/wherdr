@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Image de la conversation en grand ; un tap (ou Échap) la referme.
+// Conversation image enlarged; a tap (or Escape) closes it.
 function close() { lightboxSrc.value = null }
 function onKey(e: KeyboardEvent) { if (e.key === 'Escape' && lightboxSrc.value) close() }
 onMounted(() => document.addEventListener('keydown', onKey))

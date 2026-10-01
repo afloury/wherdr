@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Champ dossier : bouton qui ouvre le navigateur (`browse`), puces des dossiers
-// récents ; `clearable` ajoute une croix qui vide le champ (valeur '').
+// Folder field: button opening the browser (`browse`), chips of recent
+// folders; `clearable` adds a cross that empties the field (value '').
 const model = defineModel<string | null>({ required: true })
 defineProps<{ recents: string[], placeholder?: string, clearable?: boolean }>()
 const emit = defineEmits<{ browse: [] }>()

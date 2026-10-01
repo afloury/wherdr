@@ -1,4 +1,4 @@
-// Petits outils d'affichage (titres, chemins, dates, durées).
+// Small display helpers (titles, paths, dates, durations).
 import type { HerdrState, Pane } from '#shared/types'
 import { cleanTitle, paneTitle as sharedPaneTitle } from '#shared/paneTitle'
 import { hasTranscript } from '#shared/agentKind'
@@ -7,9 +7,9 @@ export { spaceTitle, conversationSubtitle } from '#shared/displayTitles'
 export const KIND_LABEL: Record<string, string> = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini CLI', opencode: 'OpenCode', kimi: 'Kimi', qodercli: 'Qoder CLI', mastracode: 'Mastra Code', copilot: 'Copilot', qwen: 'Qwen Code', pi: 'Pi', omp: 'omp' }
 export const kindLabel = (k: string | null | undefined) => (k && KIND_LABEL[k]) || (k ? k[0]!.toUpperCase() + k.slice(1) : 'Shell')
 export { cleanTitle }
-// Dossier personnel -> ~ (Linux /home/<user>, macOS /Users/<user>).
+// Home folder -> ~ (Linux /home/<user>, macOS /Users/<user>).
 export const shortPath = (p: string | null | undefined) => (p || '').replace(/^\/(?:home|Users)\/[^/]+/, '~') || '~'
-// Chemin affiché de droite à gauche (on voit la fin) : marques LTR autour.
+// Path displayed right to left (the end is visible): LTR marks around it.
 export const ltr = (s: string) => `‎${s}‎`
 export const hasChat = (p: Pane | null | undefined) => hasTranscript(p?.agent)
 
@@ -28,7 +28,7 @@ export function fmtTime(ts: string | number) {
   return new Date(ts).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })
 }
 
-// Date et heure complètes (infobulle de l'heure d'un message).
+// Full date and time (tooltip of a message's time).
 export function fmtDateTime(ts: string | number) {
   return new Date(ts).toLocaleString(locale(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
@@ -43,8 +43,8 @@ export function dayLabel(ts: string) {
   return d.toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
-// Moment court d'un message (résultats de recherche) : « il y a 5 min »,
-// « 18:15 », « hier 18:15 », « lun. 18:15 », « 26 sept. », « 26 sept. 2025 ».
+// Short moment of a message (search results): "il y a 5 min",
+// "18:15", "hier 18:15", "lun. 18:15", "26 sept.", "26 sept. 2025".
 export function fmtWhen(ts: string, now = Date.now()) {
   const d = new Date(ts)
   if (Number.isNaN(d.getTime())) return ''

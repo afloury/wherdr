@@ -1,33 +1,33 @@
-// Lecture des invites bloquantes des agents (validation d'outil, AskUserQuestion,
-// confiance du dossier…) à partir du texte « detection » de Herdr, pour les
-// proposer en boutons sur le téléphone.
+// Reading agents' blocking prompts (tool approval, AskUserQuestion,
+// folder trust…) from Herdr's "detection" text, to offer them
+// as buttons on the phone.
 //
-// Deux formes rencontrées chez Claude Code :
+// Two forms seen in Claude Code:
 //
-//   Quelle est ta couleur préférée ?          Security guide
+//   What is your favourite colour?            Security guide
 //
-//   ❯ 1. Rouge                                ❯ No, exit
-//        La couleur rouge                       Yes, I trust this folder
-//     2. Vert
-//        La couleur verte                     Enter to confirm · Esc to cancel
+//   ❯ 1. Red                                  ❯ No, exit
+//        The colour red                         Yes, I trust this folder
+//     2. Green
+//        The colour green                     Enter to confirm · Esc to cancel
 //
-// Le curseur ❯ marque l'option sélectionnée. On y répond en déplaçant le
-// curseur (↑/↓) puis Entrée, ce qui marche pour les deux formes.
+// The ❯ cursor marks the selected option. We answer by moving the
+// cursor (↑/↓) then Enter, which works for both forms.
 import type { ChoiceOption, Choices } from '../../shared/types'
 import { isPermissionQuestion, screenDetail } from './promptDetail'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
 
-// ❯ chez Claude Code, › chez Codex ; > sur l'écran de connexion de Codex, pris
-// seulement devant une option numérotée (sinon une citation « > … » compterait).
+// ❯ in Claude Code, › in Codex; > on Codex's login screen, only taken
+// before a numbered option (otherwise a "> …" quote would count).
 const CURSOR = /^(\s*)(?:[❯›]|>(?=\s+\d{1,2}\.\s))\s+(\S.*?)\s*$/
 const NUMBERED = /^(\s*)(?:[❯›>]\s+)?(\d{1,2})\.\s+(\S.*?)\s*$/
 const RULE = /^[\s─━═—-]+$/
-// Début d'une colonne voisine : au moins 3 espaces ou un trait vertical │.
+// Start of a neighbouring column: at least 3 spaces or a vertical bar │.
 const GAP = /\S(?: {3,}| *│ *)(?=\S)/g
 
-// Colonnes où reprend du texte après un écart, sur une ligne.
+// Columns where text resumes after a gap, on a line.
 function gapColumns(line: string): number[] {
   const cols: number[] = []
   for (const m of line.matchAll(GAP)) {
@@ -37,18 +37,18 @@ function gapColumns(line: string): number[] {
   return cols
 }
 
-// Claude Code peut afficher un panneau à droite de la boîte de dialogue (vue
-// diff « N files changed ») : chaque ligne de l'écran porte alors les deux
-// colonnes. La colonne voisine se reconnaît à un écart sur une ligne de texte
-// hors options (la question), à la même position qu'un blanc suivi de texte
-// sur la ligne du curseur ; les descriptions alignées d'une liste (/model)
-// n'apparaissent que sur les lignes d'options. On coupe alors l'écran à cette
-// colonne.
+// Claude Code may show a panel to the right of the dialog box (diff
+// view "N files changed"): each screen line then carries both
+// columns. The neighbouring column is recognized by a gap on a text line
+// outside the options (the question), at the same position as a blank followed by text
+// on the cursor line; the aligned descriptions of a list (/model)
+// only appear on option lines. We then cut the screen at that
+// column.
 function dropSidePanel(lines: string[], c: number): string[] {
   const cursor = lines[c]!
   const splitsCursor = (x: number) => x < cursor.length && /[\s│]/.test(cursor[x - 1]!) && /\S/.test(cursor[x]!)
-  // Seules les deux lignes de texte juste au-dessus des options comptent :
-  // plus haut, un en-tête encadré (Codex) peut s'aligner par hasard.
+  // Only the two text lines just above the options count:
+  // further up, a boxed header (Codex) may line up by chance.
   let split = -1
   let seen = 0
   for (let i = c - 1; i >= Math.max(0, c - 40) && split < 0 && seen < 2; i--) {
@@ -64,7 +64,7 @@ function dropSidePanel(lines: string[], c: number): string[] {
   })
 }
 
-// Colonne (en caractères) où commence le texte d'une ligne d'option.
+// Column (in characters) where the text of an option line starts.
 function textColumn(line: string): number {
   const m = line.match(/^(\s*)(?:(?:[❯›]|>(?=\s+\d))\s+)?/)
   return m ? m[0].length : 0
@@ -72,16 +72,16 @@ function textColumn(line: string): number {
 
 interface RawOption { n: number | null, label: string, hint: string | null, line: number }
 
-// `strict` : n'accepter que les listes numérotées. Utilisé quand Herdr ne voit
-// pas l'agent comme bloqué (l'écran de confiance de Codex passe pour « idle ») :
-// une liste non numérotée pourrait alors n'être que le champ de saisie
-// (« › Ask Codex… » suivi de la ligne du modèle, alignée pareil).
+// `strict`: only accept numbered lists. Used when Herdr does not see
+// the agent as blocked (Codex's trust screen passes for "idle"):
+// an unnumbered list could then just be the input field
+// ("› Ask Codex…" followed by the model line, aligned the same way).
 export function parseChoices(text: string | null | undefined, { strict = false }: { strict?: boolean } = {}): Choices | null {
   if (!text) return null
   let lines = text.replace(/\s+$/, '').split('\n').slice(-60)
 
-  // Le dernier ❯ de l'écran : les précédents sont l'historique (prompts
-  // envoyés), l'invite active est toujours en bas.
+  // The last ❯ on screen: the previous ones are history (prompts
+  // sent), the active prompt is always at the bottom.
   let c = -1
   for (let i = lines.length - 1; i >= 0; i--) if (CURSOR.test(lines[i]!)) { c = i; break }
   if (c < 0) return null
@@ -93,8 +93,8 @@ export function parseChoices(text: string | null | undefined, { strict = false }
   const options: RawOption[] = []
 
   if (/^\d{1,2}\.\s/.test(cursorText)) {
-    // Options numérotées : on prend toutes celles alignées sur la même colonne,
-    // de part et d'autre du curseur (un séparateur ─── peut les couper).
+    // Numbered options: we take all those aligned on the same column,
+    // on both sides of the cursor (a ─── separator may cut them).
     let first = c
     for (let i = c - 1; i >= Math.max(0, c - 40); i--) {
       const m = lines[i]!.match(NUMBERED)
@@ -106,16 +106,16 @@ export function parseChoices(text: string | null | undefined, { strict = false }
       if (m && textColumn(line) === col) {
         options.push({ n: Number(m[2]), label: m[3]!, hint: null, line: i })
       } else if (options.length && line.trim() && !RULE.test(line) && textColumn(line) > col) {
-        // Ligne plus indentée juste sous une option : sa description.
+        // More indented line just below an option: its description.
         const o = options[options.length - 1]!
         if (!o.hint && i === o.line + 1) o.hint = line.trim()
       }
     }
-    // Garde-fou : une vraie liste est numérotée 1, 2, 3… sans trou.
+    // Safeguard: a real list is numbered 1, 2, 3… without gaps.
     for (let i = 0; i < options.length; i++) if (options[i]!.n !== i + 1) return null
   } else {
     if (strict) return null
-    // Options sans numéro : lignes contiguës au curseur, même colonne de texte.
+    // Unnumbered options: lines adjacent to the cursor, same text column.
     const sameCol = (l: string) => Boolean(l.trim()) && !RULE.test(l) && !/^\s*[❯›]/.test(l) && textColumn(l) === col
     let first = c
     while (first - 1 >= 0 && sameCol(lines[first - 1]!)) first--
@@ -131,9 +131,9 @@ export function parseChoices(text: string | null | undefined, { strict = false }
   const cursor = options.findIndex(o => o.line === c)
   if (cursor < 0) return null
 
-  // La question : la ligne non vide la plus proche au-dessus des options,
-  // de préférence celle qui se termine par « ? ».
-  // À défaut, une ligne qui contient un « ? », puis la plus proche.
+  // The question: the closest non-empty line above the options,
+  // preferably one ending with "?".
+  // Failing that, a line containing a "?", then the closest one.
   let question: { t: string, i: number } | null = null
   let asks: { t: string, i: number } | null = null
   let nearest: { t: string, i: number } | null = null
@@ -152,7 +152,7 @@ export function parseChoices(text: string | null | undefined, { strict = false }
     cursor,
     options: options.map(o => ({ label: o.label.slice(0, 200), hint: o.hint ? o.hint.slice(0, 200) : null })),
   }
-  // Demande de permission : ce qui est demandé (outil, commande, fichier).
+  // Permission request: what is requested (tool, command, file).
   if (question && isPermissionQuestion(out.question)) {
     const detail = screenDetail(lines, question.i, top)
     if (detail) out.detail = detail
@@ -160,8 +160,8 @@ export function parseChoices(text: string | null | undefined, { strict = false }
   return out
 }
 
-// Touches à envoyer pour choisir l'option `index` quand le curseur est sur `cursor`.
-// Cases à cocher : Espace coche ou décoche, sans valider.
+// Keys to send to choose option `index` when the cursor is on `cursor`.
+// Checkboxes: Space checks or unchecks, without confirming.
 export function keysFor(choices: Choices, index: number): string[] {
   const d = index - choices.cursor
   const keys: string[] = []
@@ -170,30 +170,30 @@ export function keysFor(choices: Choices, index: number): string[] {
   return keys
 }
 
-// Boîte « Ask » d'omp (outil ask), une question à la fois :
+// omp "Ask" box (ask tool), one question at a time:
 //
 //   ╭─ Ask ───────────────────────────╮
-//   │  color    size    Submit        │   onglets (plusieurs questions seulement)
+//   │  color    size    Submit        │   tabs (several questions only)
 //   │ Favourite colour?               │
 //   ├─────────────────────────────────┤
-//   │ ❯ ○ Red                         │   ○ ◉ choix unique, ☐ ☑ cases à cocher
+//   │ ❯ ○ Red                         │   ○ ◉ single choice, ☐ ☑ checkboxes
 //   │       warm                      │   description
-//   │   ○ Other (type your own)       │   réponse libre : laissée au terminal
+//   │   ○ Other (type your own)       │   free answer: left to the terminal
 //   ├─────────────────────────────────┤
 //   │ ⏎ select · ↑/↓ move · ⎋ cancel  │
 //   ╰─────────────────────────────────╯
 //
-// Dernière étape à plusieurs questions : « Review answers », les réponses
-// numérotées puis « ❯ Submit ».
-// Glyphes des trois jeux de symboles d'omp (modes/theme/symbols.ts : unicode,
-// nerd font, ascii) : curseur, boutons radio, cases, bords de la boîte.
+// Last step with several questions: "Review answers", the numbered
+// answers then "❯ Submit".
+// Glyphs of omp's three symbol sets (modes/theme/symbols.ts: unicode,
+// nerd font, ascii): cursor, radio buttons, checkboxes, box borders.
 const OMP_CURSOR = ['❯', '\uf054', '>']
 const OMP_RADIO = ['○', '◉', '\uf10c', '\uf192', '( )', '(o)']
 const OMP_CHECK = ['☐', '☑', '\uf096', '\uf14a', '[ ]', '[x]']
 const OMP_CHECKED = new Set(['☑', '\uf14a', '[x]'])
 const OMP_OPTION = new RegExp(`^(?:(${OMP_CURSOR.join('|').replace(/[>]/g, '\\$&')}) | {2})(${[...OMP_RADIO, ...OMP_CHECK].map(g => g.replace(/[()[\]]/g, '\\$&')).join('|')}) (.+)$`)
 const OMP_RULE = /^\s*[├╰+][─-]{3,}/
-// Contenu d'une ligne de la boîte, sans ses bords (« │ texte   │ »).
+// Content of a box line, without its borders ("│ text   │").
 function ompBoxText(line: string): string | null {
   let s = line.trimStart()
   if (s[0] !== '│' && s[0] !== '|') return null
@@ -207,7 +207,7 @@ export function parseOmpAsk(text: string | null | undefined): Choices | null {
   let top = -1
   for (let i = lines.length - 1; i >= 0 && top < 0; i--) if (/^\s*[╭+][─-]+ Ask\b/.test(lines[i]!)) top = i
   if (top < 0) return null
-  // En-tête, options, légende : séparés par des traits (le dernier ferme la boîte).
+  // Header, options, legend: separated by rules (the last one closes the box).
   const sections: string[][] = [[]]
   for (const line of lines.slice(top + 1)) {
     if (OMP_RULE.test(line)) { sections.push([]); continue }
@@ -234,21 +234,21 @@ export function parseOmpAsk(text: string | null | undefined): Choices | null {
     }
   }
   if (!options.length) {
-    // Étape « Review answers » : les réponses en description de Submit.
+    // "Review answers" step: the answers as Submit's description.
     if (!list.some(l => OMP_CURSOR.some(c => l.trim() === `${c} Submit`))) return null
     const answers = list.map(l => l.trim()).filter(l => /^\d+\.\s/.test(l)).map(l => l.replace(/^\d+\.\s+/, ''))
     return { question, cursor: 0, options: [{ label: 'Submit', hint: answers.join(' · ').slice(0, 200) || null }] }
   }
   if (cursor < 0) return null
-  // « Other » ouvre un champ de texte d'omp : pas un bouton (toujours la dernière
-  // option, les index des autres ne bougent pas ; `cursor` peut la désigner).
+  // "Other" opens an omp text field: not a button (always the last
+  // option, the others' indexes do not move; `cursor` may point to it).
   const shown = options.filter(o => !o.other).map(({ other: _, ...o }) => (multi ? { ...o, checked: Boolean(o.checked) } : o))
   return { question, cursor, options: shown, ...(multi ? { multi: true } : {}) }
 }
 
-// L'appel « ask » d'omp encore sans réponse (lignes JSON de sa transcription) :
-// ses questions et descriptions entières. La boîte replie une longue question
-// (« … », ^O pour déplier) et on n'y lit que la 1re ligne d'une description.
+// omp's "ask" call still unanswered (JSON lines of its transcript):
+// its full questions and descriptions. The box folds a long question
+// ("…", ^O to unfold) and only the 1st line of a description can be read there.
 export interface OmpAsked { question: string, options: { label: string, description: string | null }[] }
 export function pendingOmpAsk(lines: string[]): OmpAsked[] {
   const pending = new Map<string, OmpAsked[]>()
@@ -275,8 +275,8 @@ export function pendingOmpAsk(lines: string[]): OmpAsked[] {
   return [...pending.values()].pop() || []
 }
 
-// Question à l'écran complétée par l'appel : reconnue à son début, sans les
-// blancs (omp colle les lignes de la question à l'affichage).
+// On-screen question completed by the call: recognized by its start, ignoring
+// whitespace (omp joins the question's lines on display).
 export function completeOmpAsk(choices: Choices, asked: OmpAsked[]): Choices {
   const key = (s: string) => s.replace(/\s+/g, '')
   const shown = key((choices.question || '').replace(/…$/, ''))
@@ -293,15 +293,15 @@ export function completeOmpAsk(choices: Choices, asked: OmpAsked[]): Choices {
   }
 }
 
-// Invite à l'écran d'un pane, relue avant d'y répondre (choose, nav) : la boîte
-// « Ask » pour omp, sinon une liste numérotée ou non.
+// On-screen prompt of a pane, re-read before answering it (choose, nav): the
+// "Ask" box for omp, otherwise a numbered or unnumbered list.
 export function screenChoices(text: string | null | undefined, agent: string | null | undefined): Choices | null {
   return agent === 'omp' ? parseOmpAsk(text) : parseChoices(text) || parseChoices(text, { strict: true })
 }
 
-// Champ de saisie visible = une ligne « ❯ » (Claude) ou « › » (Codex) en bas de
-// l'écran. Certaines commandes (/usage, /context all…) ouvrent un panneau plein
-// écran qui le cache tant qu'on n'appuie pas sur Échap.
+// Visible input field = a "❯" (Claude) or "›" (Codex) line at the bottom of
+// the screen. Some commands (/usage, /context all…) open a full-screen
+// panel that hides it until Escape is pressed.
 // Full-screen panel (/usage…) hiding the input, closed by Esc before a send:
 // no prompt line at all. A menu's cursor line keeps it open (the user may be
 // going through it, e.g. an /mcp authentication).
@@ -311,7 +311,7 @@ export function panelOpen(text: string | null | undefined): boolean {
 }
 
 // Claude's input line sits right under a ─── rule: a menu's cursor line
-// (« ❯ 1. Yes, proceed », /mcp, /hooks…) is not its input field.
+// ("❯ 1. Yes, proceed", /mcp, /hooks…) is not its input field.
 export function inputVisible(text: string | null | undefined): boolean {
   const lines = String(text || '').replace(/\s+$/, '').split('\n').slice(-12)
   return lines.some((l, i) => /^\s*›(\s|$)/.test(l)

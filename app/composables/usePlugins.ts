@@ -1,6 +1,6 @@
-// Actions des plugins Herdr (herdr-plugin.toml) : menu d'un agent (actions
-// workspace / tab / pane, lancées avec le pane de l'agent) et menu de la machine
-// (actions globales). Liste gardée par machine, relue au plus toutes les 30 s.
+// Herdr plugin actions (herdr-plugin.toml): an agent's menu (workspace /
+// tab / pane actions, run with the agent's pane) and the machine's menu
+// (global actions). List kept per machine, re-read at most every 30 s.
 import type { ChatResponse, Pane, PluginAction, PluginActionList, PluginActionResult } from '#shared/types'
 import { PROJECT_REQUIRED, type RepoState, conversationEmpty, projectNameOk, repoState, suggestedProjectName } from '#shared/projectsActions'
 
@@ -20,7 +20,7 @@ export function loadPluginActions(machine: string, force = false): Promise<void>
       pluginActions.value = { ...pluginActions.value, [key]: r.actions || [] }
       loadedAt.set(key, Date.now())
     })
-    .catch(() => { /* Herdr injoignable : pas d'entrée de menu */ })
+    .catch(() => { /* Herdr unreachable: no menu entry */ })
     .finally(() => loading.delete(key))
   loading.set(key, p)
   return p
@@ -35,22 +35,22 @@ type Target = { pane: Pane } | { machine: string }
 export const pluginFormState = reactive<{
   open: boolean, action: PluginAction | null, target: Target | null,
   name: string, goal: string, task: string, slug: string, repo: string,
-  // « New project » : machine du dépôt (clé wherdr) ; nom encore proposé par
-  // l'app (suit le dépôt tant que l'utilisateur ne l'a pas tapé) ; état du
-  // dépôt choisi d'après /api/gitroot, et sa racine Git.
+  // "New project": machine of the repository (wherdr key); name still suggested by
+  // the app (follows the repository as long as the user has not typed it); state of the
+  // chosen repository according to /api/gitroot, and its Git root.
   machine: string, nameAuto: boolean, repoState: 'idle' | 'checking' | RepoState, repoRoot: string,
-  // Adoption : conversation du pane sans message (true), avec (false), inconnue (null).
+  // Adoption: pane conversation without a message (true), with (false), unknown (null).
   empty: boolean | null, busy: boolean,
 }>({
   open: false, action: null, target: null, name: '', goal: '', task: '', slug: '', repo: '',
   machine: '', nameAuto: true, repoState: 'idle', repoRoot: '', empty: null, busy: false,
 })
 export function closePluginForm() { if (!pluginFormState.busy) pluginFormState.open = false }
-// Machine où tourne la commande herdr-projects (celle du projet).
+// Machine where the herdr-projects command runs (the project's).
 export const pluginTargetMachine = (target: Target | null) => (!target ? '' : 'pane' in target ? target.pane.machine || '' : target.machine)
 
-// Champs à remplir avant « Exécuter » ; nom de projet valide ; dépôt choisi
-// vérifié (un dépôt Git, pas un sous-dossier ni le HOME).
+// Fields to fill in before "Run"; valid project name; chosen repository
+// checked (a Git repository, not a subfolder nor HOME).
 export function pluginFormValid(): boolean {
   const f = pluginFormState
   const id = f.action?.id || ''
@@ -61,8 +61,8 @@ export function pluginFormValid(): boolean {
   return id !== 'new' || !f.repo.trim() || f.repoState === 'repo'
 }
 
-// Dossier du dépôt de « New project » : vérifié par /api/gitroot sur sa machine ;
-// le nom proposé suit le dépôt tant que l'utilisateur ne l'a pas tapé.
+// Repository folder of "New project": checked by /api/gitroot on its machine;
+// the suggested name follows the repository as long as the user has not typed it.
 let repoCheck = 0
 export async function checkPluginRepo() {
   const f = pluginFormState
@@ -78,12 +78,12 @@ export async function checkPluginRepo() {
   if (n !== repoCheck) return
   f.repoRoot = r?.root || ''
   f.repoState = repoState(repo, r?.root)
-  // Sous-dossier : le nom du dépôt (sa racine), pas celui du sous-dossier.
+  // Subfolder: the repository's name (its root), not the subfolder's.
   if (f.nameAuto) f.name = suggestedProjectName('new', { repo: f.repoState === 'none' ? '' : f.repoRoot })
 }
 export function setPluginFormName(v: string) {
   pluginFormState.name = v
-  // Champ vidé : l'app propose de nouveau le nom du dépôt.
+  // Field emptied: the app suggests the repository name again.
   pluginFormState.nameAuto = !v.trim()
 }
 export function setPluginRepoMachine(key: string) {
@@ -106,7 +106,7 @@ export async function submitPluginForm() {
   finally { pluginFormState.busy = false }
 }
 
-// Conversation vide : proposer « New project » à la place de l'adoption.
+// Empty conversation: offer "New project" instead of adoption.
 export function newProjectAction(): PluginAction | null {
   const t = pluginFormState.target
   if (!t || !('pane' in t)) return null
@@ -117,15 +117,15 @@ export function switchToNewProject() {
   if (!a || pluginFormState.busy) return
   pluginFormState.action = a
   pluginFormState.empty = null
-  // Même feuille que « New project » ouvert depuis le menu : dépôt proposé,
-  // nom tiré du dépôt tant que l'utilisateur n'en a pas tapé un.
+  // Same sheet as "New project" opened from the menu: suggested repository,
+  // name taken from the repository as long as the user has not typed one.
   loadConfig()
   checkPluginRepo()
   if (pluginFormState.target) prepareForm(pluginFormState.target, 'new')
 }
 
-// Résultat qui reste à l'écran : « Check setup » (en-tête et sortie entière) et
-// « Configure » (rappel de recharger la config du client Herdr).
+// Result that stays on screen: "Check setup" (header and full output) and
+// "Configure" (reminder to reload the Herdr client config).
 export const pluginResultState = reactive<{
   open: boolean, title: string, result: PluginActionResult | null, reload: boolean,
 }>({ open: false, title: '', result: null, reload: false })
@@ -142,9 +142,9 @@ async function prepareForm(target: Target, action: string) {
     if (toRaw(pluginFormState.target) === target) pluginFormState.empty = conversationEmpty(r)
   }
   if (action === 'new') {
-    // Racine du dépôt Git du space courant, proposée pour « New project » ;
-    // rien hors d'un dépôt (ni pour le HOME lui-même, filtré par le serveur).
-    // Jamais le dossier du space tel quel : seulement ce que /api/gitroot rend.
+    // Git repository root of the current space, suggested for "New project";
+    // nothing outside a repository (nor for HOME itself, filtered by the server).
+    // Never the space folder as is: only what /api/gitroot returns.
     if (!pane.cwd) return
     const machine = pane.machine || ''
     const r = await api<{ root: string | null }>(`/api/gitroot?machine=${encodeURIComponent(machine)}&path=${encodeURIComponent(pane.cwd)}`).catch(() => null)
@@ -155,19 +155,19 @@ async function prepareForm(target: Target, action: string) {
     }
   }
 }
-// Nom de la machine ; une seule : HOST_LABEL.
+// Machine name; a single one: HOST_LABEL.
 const machineLabelOf = (key: string) => machineName(key) || hostLabel.value || t('this machine')
 
 async function runPluginAction(a: PluginAction, target: Target) {
   const where = 'pane' in target
     ? tl(`for “${paneTitle(target.pane)}”`, `pour « ${paneTitle(target.pane)} »`)
     : tl(`on ${machineLabelOf(target.machine)}`, `sur ${machineLabelOf(target.machine)}`)
-  // Toasts : « Projects · Pause project » (le libellé seul ne dit pas quel plugin).
+  // Toasts: "Projects · Pause project" (the label alone does not say which plugin).
   const name = a.label === a.title ? a.title : `${a.pluginName} · ${a.label}`
-  // Saisie d'abord : la feuille, avec son bouton Exécuter, vaut confirmation.
+  // Input first: the sheet, with its Run button, counts as confirmation.
   if (a.plugin === 'herdr-projects' && ['new', 'adopt-workspace', 'open', 'pause', 'resume'].includes(a.id)) {
-    // Nom proposé : le libellé du space pour l'adoption s'il fait un nom valide
-    // (pas « ~ » ni un chemin) ; pour « New project », celui du dépôt choisi.
+    // Suggested name: the space label for adoption if it makes a valid name
+    // (not "~" nor a path); for "New project", that of the chosen repository.
     const space = 'pane' in target ? herdrState.value.workspaces.find(w => w.id === target.pane.workspace)?.label || '' : ''
     Object.assign(pluginFormState, {
       action: a, target,
@@ -206,7 +206,7 @@ async function executePluginAction(a: PluginAction, target: Target, input?: Reco
       showPluginResult(a.label, r)
       return r.status !== 'running'
     }
-    // Le client Herdr ne relit pas sa config tout seul : rappel qui reste affiché.
+    // The Herdr client does not re-read its config on its own: reminder that stays shown.
     if (a.plugin === 'herdr-projects' && a.id === 'configure' && r.status !== 'failed') {
       showPluginResult(a.label, r, true)
       return true
@@ -224,7 +224,7 @@ async function executePluginAction(a: PluginAction, target: Target, input?: Reco
   } catch (err) { toast((err as Error).message, true); return false }
 }
 
-// Menu des actions : groupes par plugin, description sous le libellé.
+// Action menu: groups per plugin, description under the label.
 export function openPluginMenu(target: Target) {
   const machine = 'pane' in target ? target.pane.machine || '' : target.machine
   const list = 'pane' in target ? agentPluginActions(machine) : machinePluginActions(machine)

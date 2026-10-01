@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Accueil : sur téléphone, la liste (dans app.vue) ; sur ordinateur, un
-// panneau d'invite à droite de la liste.
+// Home: on the phone, the list (in app.vue); on a computer, a
+// prompt panel to the right of the list.
 onMounted(() => { curPane.value = null })
 </script>
 

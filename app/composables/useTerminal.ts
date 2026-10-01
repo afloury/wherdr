@@ -1,6 +1,6 @@
-// Terminal d'un pane : xterm.js relié à /ws/term (frames ANSI de Herdr).
-// Herdr garde l'historique : pas de scrollback local, le défilement est
-// demandé au serveur (terminal.scroll).
+// Terminal of a pane: xterm.js connected to /ws/term (Herdr's ANSI frames).
+// Herdr keeps the history: no local scrollback, scrolling is
+// requested from the server (terminal.scroll).
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -38,29 +38,29 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     term = new Terminal({
       fontFamily: TERM_FONT,
       fontSize: fontSize.value,
-      // Interligne 1 : les caractères de bloc (logo de Claude Code) et les
-      // traits box-drawing doivent se toucher d'une ligne à l'autre.
+      // Line height 1: block characters (Claude Code logo) and
+      // box-drawing lines must touch from one line to the next.
       lineHeight: 1,
-      scrollback: 0, // Herdr garde l'historique ; on fait défiler côté serveur
+      scrollback: 0, // Herdr keeps the history; scrolling happens on the server
       cursorBlink: false,
       allowProposedApi: true,
       macOptionIsMeta: true,
       macOptionClickForcesSelection: true,
-      // Palette du thème de l'app (Réglages → Thème), mise à jour à chaud.
+      // Palette of the app theme (Settings → Theme), updated live.
       theme: terminalTheme.value,
     })
     fit = new FitAddon()
     term.loadAddon(fit)
     term.open(host)
-    // Glisser près du bord : Herdr fait défiler ; copie au relâchement.
+    // Dragging near the edge: Herdr scrolls; copy on release.
     selection = bindTerminalSelection(term, {
       scroll: lines => scroll(lines),
       focus: () => focus(),
       copied: ok => toast(ok ? t('Copied') : t('Copy failed'), false, ok ? undefined : t('The browser denied clipboard access.')),
     })
-    // Le choix de l'appareil peut changer pendant que le terminal reste monté.
+    // The device's choice may change while the terminal stays mounted.
     setRenderer(terminalRenderer.value)
-    // JetBrains Mono (embarquée) : une fois chargée, xterm remesure ses cellules.
+    // JetBrains Mono (bundled): once loaded, xterm re-measures its cells.
     const t0 = term
     Promise.all([
       document.fonts?.load(`${fontSize.value}px "JetBrains Mono Variable"`),
@@ -79,8 +79,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       ta.addEventListener('blur', () => { kbdOn.value = false })
       ta.addEventListener('focus', () => { kbdOn.value = true })
     }
-    // Molette : xterm n'en fait rien (il enverrait ↑/↓ à l'agent, cf.
-    // utils/terminalWheel.ts) ; TerminalView la convertit en terminal.scroll.
+    // Wheel: xterm does nothing with it (it would send ↑/↓ to the agent, see
+    // utils/terminalWheel.ts); TerminalView converts it to terminal.scroll.
     term.attachCustomWheelEventHandler(() => false)
     bindShiftEnter(term, key => sendKeys([key]))
     term.onData(d => sendTerm({ type: 'terminal.input', text: d }))
@@ -98,8 +98,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     return false
   }
 
-  // Touches logiques (esc, up, shift+tab…), encodées par Herdr selon le mode du
-  // terminal : par la WebSocket si elle est ouverte, sinon par l'API.
+  // Logical keys (esc, up, shift+tab…), encoded by Herdr according to the terminal
+  // mode: through the WebSocket if it is open, otherwise through the API.
   async function sendKeys(keys: string[]) {
     if (sendTerm({ type: 'keys', keys })) return
     try {
@@ -110,8 +110,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
 
   function fitNow(send: boolean) {
     if (!term || !fit || !el || !el.parentElement) return
-    // FitAddon mesure le parent de .xterm (#term), pas .xterm elle-même.
-    // Sur téléphone, l'inset de #term définit déjà sa largeur.
+    // FitAddon measures the parent of .xterm (#term), not .xterm itself.
+    // On the phone, the inset of #term already defines its width.
     const desktop = matchMedia('(min-width: 900px)').matches
     el.style.width = desktop ? `${terminalPixelWidth(el.parentElement.clientWidth, contentWidth.value)}px` : ''
     const p = fit.proposeDimensions()
@@ -123,9 +123,9 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     }
   }
 
-  // Changement de thème pendant que le terminal est affiché.
+  // Theme change while the terminal is shown.
   watch(terminalTheme, (th) => { if (term) term.options.theme = th })
-  // La préférence change la largeur en pixels, puis FitAddon remesure.
+  // The preference changes the width in pixels, then FitAddon re-measures.
   watch(contentWidth, () => nextTick(() => fitNow(true)))
 
   function setRenderer(renderer: 'webgl' | 'html') {
@@ -151,15 +151,15 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         webgl = addon
         reportTerminalRenderer('webgl')
       } catch {
-        try { addon?.dispose() } catch { /* addon incomplètement activé */ }
-        // WebGL indisponible : xterm garde le rendu HTML.
+        try { addon?.dispose() } catch { /* addon partially activated */ }
+        // WebGL unavailable: xterm keeps the HTML renderer.
         reportTerminalRenderer('html-fallback')
       }
     } else {
       reportTerminalRenderer('html')
     }
-    // La taille des cellules peut changer avec le moteur de rendu. La molette et
-    // la taille du pane restent gérées par fitNow / TerminalView.
+    // The cell size may change with the renderer. The wheel and
+    // the pane size stay handled by fitNow / TerminalView.
     fitNow(true)
   }
   watch(terminalRenderer, setRenderer)
@@ -176,7 +176,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     if (tws) {
       tws.onclose = null
       try { tws.close(1000) }
-      catch { /* déjà fermée */ }
+      catch { /* already closed */ }
     }
     fitNow(false)
     const q = new URLSearchParams({ pane: paneId, cols: String(term.cols), rows: String(term.rows) })
@@ -229,10 +229,10 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       if (closedReason && /taken over/.test(closedReason)) {
         return opts.setBanner({ text: t('Another client took control.'), btn: t('Take back control'), fn: () => { opts.setBanner(null); connect(true) } })
       }
-      if (!currentPane.value && herdrState.value.ok) return // pane fermé : la bannière est déjà là
-      if (document.hidden) return // on se reconnectera au retour
-      // Échecs répétés sans une seule image : on arrête et on montre l'erreur
-      // plutôt que de boucler.
+      if (!currentPane.value && herdrState.value.ok) return // pane closed: the banner is already there
+      if (document.hidden) return // we will reconnect on return
+      // Repeated failures without a single frame: we stop and show the error
+      // rather than loop.
       if (!gotFrame && twsRetry >= 3) {
         twsRetry = 0
         const why = lastErr || closedReason
@@ -249,7 +249,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       const ws = tws
       tws = null
       try { ws.close(1000) }
-      catch { /* déjà fermée */ }
+      catch { /* already closed */ }
     }
   }
   const isConnected = () => Boolean(tws && tws.readyState <= 1)
@@ -263,14 +263,14 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   const hasFocus = () => Boolean(term && document.activeElement === term.textarea)
   const rowHeight = () => (term && term.rows && el ? el.clientHeight / term.rows : 16)
   const pageRows = () => term?.rows || 24
-  // Défilement demandé à Herdr (l'historique vit chez lui).
+  // Scrolling requested from Herdr (the history lives there).
   function scroll(lines: number): boolean {
     return sendTerm({ type: 'terminal.scroll', direction: lines > 0 ? 'up' : 'down', lines: Math.abs(lines) })
   }
 
   function setVisible(visible: boolean) {
     sendTerm({ type: 'visibility', visible })
-    // Un autre client peut avoir redimensionné le pane pendant notre absence.
+    // Another client may have resized the pane while we were away.
     if (visible) nextTick(() => fitNow(true))
   }
 
@@ -279,7 +279,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     disconnect()
     selection?.dispose()
     selection = null
-    webgl = null // term.dispose() détruit ses addons
+    webgl = null // term.dispose() destroys its addons
     term?.dispose()
     term = null
   }

@@ -1,5 +1,5 @@
-// WebSockets (crossws via Nitro) : mêmes vérifications que les écritures HTTP
-// (Origin identique à l'hôte) + verrouillage, avant d'accepter la connexion.
+// WebSockets (crossws via Nitro): same checks as HTTP writes
+// (Origin identical to the host) + lock, before accepting the connection.
 import type { Peer } from 'crossws'
 import { auth } from './http'
 import { sameOrigin } from './http'
@@ -7,14 +7,14 @@ import { hostAllowed } from './hosts'
 
 const WS_MAX = 256 * 1024
 
-// En-têtes d'une demande d'upgrade (Headers web) -> objet simple.
+// Headers of an upgrade request (web Headers) -> plain object.
 export function headersOf(h: Headers): Record<string, string | undefined> {
   const out: Record<string, string | undefined> = {}
   h.forEach((v, k) => { out[k] = v })
   return out
 }
 
-// Refus de l'upgrade : réponse HTTP brute, comme l'ancien serveur.
+// Upgrade refusal: raw HTTP response, like the old server.
 export function checkUpgrade(request: { headers: Headers }): Response | void {
   const headers = headersOf(request.headers)
   if (!hostAllowed(headers.host)) return new Response(null, { status: 403, statusText: 'Host not allowed' })
@@ -22,14 +22,14 @@ export function checkUpgrade(request: { headers: Headers }): Response | void {
   if (!auth.isUnlocked({ headers })) return new Response(null, { status: 401, statusText: 'Unauthorized' })
 }
 
-// La WebSocket brute de `ws` derrière un pair crossws (adaptateur Node).
+// The raw `ws` WebSocket behind a crossws peer (Node adapter).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RawWs = { readyState: number, ping: () => void, terminate: () => void, on: (e: string, f: (...a: any[]) => void) => void }
 export const rawWs = (peer: Peer): RawWs | null => (peer as unknown as { _internal?: { ws?: RawWs } })._internal?.ws || null
 export const isOpen = (peer: Peer) => (rawWs(peer)?.readyState ?? 1) === 1
 
-// Ping régulier : garde la WebSocket ouverte à travers tailscale serve et
-// nettoie celles d'un iPhone passé en veille.
+// Regular ping: keeps the WebSocket open through tailscale serve and
+// cleans up those of an iPhone gone to sleep.
 const alive = new Map<Peer, boolean>()
 export function watchPeer(peer: Peer) {
   const ws = rawWs(peer)
@@ -48,11 +48,11 @@ setInterval(() => {
     }
     alive.set(peer, false)
     try { ws.ping() }
-    catch { /* déjà fermée */ }
+    catch { /* already closed */ }
   }
 }, 25000).unref?.()
 
-// Texte d'un message, refusé au-delà de 256 Ko (comme maxPayload avant).
+// Message text, refused beyond 256 KB (like maxPayload before).
 export function messageText(message: { text: () => string, rawData?: unknown }): string | null {
   const t = message.text()
   return t.length > WS_MAX ? null : t

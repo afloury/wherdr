@@ -1,12 +1,12 @@
 <script setup lang="ts">
-// Projet herdr-projects dans la liste : en-tête repliable (nom, nombre
-// d'agents, état résumé), puis le coordinateur et ses threads (une carte de
-// space quand le thread a plusieurs onglets ou panes, `rowOf`).
-// Coordinateur sur une autre machine (`remote`) : les threads restent sous la
-// leur, l'en-tête dit d'où le projet est coordonné et y mène.
-// Terminal racine du dépôt des threads (`roots`) : petit en-tête « Dépôt <nom> ·
-// N worktrees » au-dessus d'eux : un clic le replie, son menu (clic droit sur
-// ordinateur, appui long sur téléphone) ouvre ce terminal.
+// herdr-projects project in the list: collapsible header (name, number
+// of agents, summarized state), then the coordinator and its threads (a space
+// card when the thread has several tabs or panes, `rowOf`).
+// Coordinator on another machine (`remote`): the threads stay under
+// their own, the header says where the project is coordinated from and links there.
+// Root terminal of the threads' repository (`roots`): small "Repository <name> ·
+// N worktrees" header above them: a click collapses it, its menu (right click on
+// a computer, long press on the phone) opens that terminal.
 import type { Pane } from '#shared/types'
 import type { ProjectGroup } from '#shared/projects'
 import type { RepoRoot, Row } from '#shared/spaces'
@@ -21,7 +21,7 @@ function openRoot(r: RepoRoot) {
   if (!showShells.value) return
   openSpace(r.row.lead.workspace)
 }
-// Son terminal est ouvert (ordinateur : vue à droite de la liste).
+// Its terminal is open (computer: view to the right of the list).
 const isOpen = (r: RepoRoot) => (r.row.kind === 'space' ? r.row.panes : [r.row.pane]).some(p => p.id === curPane.value)
 const headerState = (r?: RepoRoot | null) => repoHeaderState(showShells.value, !!r && isOpen(r), !!r)
 function repoItems(r?: RepoRoot | null): MenuItem[] {
@@ -38,7 +38,7 @@ const lp = longPress({
     openMenu(items, repoMenuTitle(pressed.name))
   },
 })
-// Téléphone seulement : sur ordinateur, le menu contextuel s'en charge.
+// Phone only: on a computer, the context menu handles it.
 function repoDown(e: PointerEvent, root: RepoRoot | null | undefined, name: string) {
   if (desk.value) return
   pressed = { root, name }

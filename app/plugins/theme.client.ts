@@ -1,7 +1,7 @@
-// Thème appliqué avant le premier rendu (pas de flash du thème par défaut).
+// Theme applied before the first render (no flash of the default theme).
 export default defineNuxtPlugin(() => {
   installTheme()
-  // iOS n'applique :active aux boutons que si la page écoute touchstart :
-  // l'état appuyé des boutons principaux (fond d'accent) en dépend.
+  // iOS only applies :active to buttons if the page listens to touchstart:
+  // the pressed state of the main buttons (accent background) depends on it.
   document.addEventListener('touchstart', () => {}, { passive: true })
 })

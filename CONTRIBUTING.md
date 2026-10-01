@@ -43,6 +43,15 @@ session `hwtest`, also used on remote machines through `HERDR_WEB_REMOTE_SESSION
 Do not test model changes with `/model <name>` or Enter in the `/model` menu of a real agent:
 both change the account's default model. wherdr itself only uses "this session" choices.
 
+## Language
+
+- **English everywhere developers look**: code, identifiers, comments, test names, server
+  logs, commit messages, pull requests, issues and docs (README, CHANGELOG, CONTRIBUTING).
+- **The interface is bilingual (English / French)**: keys are written in English and the
+  French text lives in the `FR` dictionary of `app/utils/i18n.ts` (see Conventions below).
+- French only appears as data: translations, regular expressions matching French screens,
+  and test fixtures reproducing real French text.
+
 ## Conventions
 
 - **Interface text** goes through `t()` / `tl()` (`app/utils/i18n.ts`). Write the English

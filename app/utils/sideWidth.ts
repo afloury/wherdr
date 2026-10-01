@@ -1,11 +1,11 @@
-// Largeur de la colonne « Projet » (ordinateur), réglée à la poignée et gardée
-// sur l'appareil. null : largeur par défaut (CSS).
+// Width of the "Project" column (computer), set with the handle and kept
+// on the device. null: default width (CSS).
 export const SIDE_MIN = 260
 export const SIDE_MAX_RATIO = 0.5
 const KEY = 'projectSideWidth'
 
-// Bornes : 260 px au moins, la moitié de la zone au plus (la conversation garde
-// l'autre moitié) ; zone trop étroite pour les deux : le minimum l'emporte.
+// Bounds: at least 260 px, at most half the area (the conversation keeps
+// the other half); area too narrow for both: the minimum wins.
 export function clampSideWidth(w: number, area: number): number {
   const max = Math.max(SIDE_MIN, Math.floor(area * SIDE_MAX_RATIO))
   return Math.round(Math.min(max, Math.max(SIDE_MIN, w)))
@@ -25,22 +25,22 @@ export function saveSideWidth(w: number | null) {
   } catch { /* stockage indisponible */ }
 }
 
-// Largeur de la barre latérale gauche (liste des agents, ordinateur), réglée à
-// la poignée de son bord droit et gardée sur l'appareil. null : 340 px (CSS).
+// Width of the left sidebar (agent list, computer), set with
+// the handle on its right edge and kept on the device. null: 340 px (CSS).
 export const LIST_DEFAULT = 340
 export const LIST_MIN = 280
 export const LIST_MAX = 560
 export const LIST_MAX_RATIO = 0.45
 const LIST_KEY = 'listWidth'
 
-// Bornes : 280 à 560 px, et 45 % de la fenêtre au plus (l'agent garde le reste) ;
-// fenêtre trop étroite : le minimum l'emporte.
+// Bounds: 280 to 560 px, and at most 45 % of the window (the agent keeps the rest);
+// window too narrow: the minimum wins.
 export function clampListWidth(w: number, viewport: number): number {
   const max = Math.max(LIST_MIN, Math.min(LIST_MAX, Math.floor(viewport * LIST_MAX_RATIO)))
   return Math.round(Math.min(max, Math.max(LIST_MIN, w)))
 }
 
-// Valeur CSS de --side : bornée aussi en CSS, la fenêtre peut rétrécir ensuite.
+// CSS value of --side: also clamped in CSS, the window may shrink later.
 export function listWidthCss(w: number): string {
   return `clamp(${LIST_MIN}px, ${w}px, ${LIST_MAX_RATIO * 100}vw)`
 }
@@ -59,7 +59,7 @@ export function saveListWidth(w: number | null) {
   } catch { /* stockage indisponible */ }
 }
 
-// Liste réduite à une étroite colonne (bouton de la barre latérale), gardée sur l'appareil.
+// List collapsed to a narrow column (sidebar button), kept on the device.
 export const LIST_RAIL = 56
 const RAIL_KEY = 'listCollapsed'
 

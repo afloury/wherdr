@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Bouton « … » d'un espace, d'un onglet ou d'un pane : menu déroulant sur
-// ordinateur, feuille sur téléphone. Les entrées sont calculées à l'ouverture.
+// "…" button of a space, tab or pane: dropdown menu on a
+// computer, sheet on the phone. The entries are computed on opening.
 const props = defineProps<{ items: () => MenuItem[], title?: string, label?: string, size?: 'sm' | 'md' | 'lg' }>()
 const dropdown = ref<ReturnType<typeof toDropdown>>([])
 function onOpen(o: boolean) {

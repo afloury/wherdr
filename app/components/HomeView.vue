@@ -1,19 +1,19 @@
 <script setup lang="ts">
-// Liste des agents, groupés par état ; barre latérale sur ordinateur.
-// Plusieurs machines : une section par machine (comme la barre latérale de
-// Herdr), repliable, avec son état de connexion ; les groupes d'état à
-// l'intérieur. Une seule machine : la liste d'avant, sans en-tête.
-// Projets herdr-projects (coordinateur + threads) : un bloc repliable par projet,
-// avant les groupes d'état des autres agents ; sous chaque machine.
-// Quotas : ceux communs à toutes les machines en haut ; le compte Claude propre
-// à une machine (comptes différents) et son bandeau d'installation sous son en-tête.
-// Une ligne par space Herdr (shared/spaces.ts) : un space d'un seul onglet et
-// d'un seul pane garde la carte de son agent ; sinon une carte de space, rangée
-// d'après son pane le plus urgent. Les threads d'un projet restent sous leur
-// machine ; coordonnés depuis une autre, leur bloc le dit et y mène.
-// Terminaux : un space de shell est une ligne comme une autre, rangée dans
-// Prêts (réglage « Afficher les terminaux ») ; le terminal racine du dépôt d'un
-// projet devient un petit en-tête au-dessus de ses threads.
+// Agent list, grouped by state; sidebar on a computer.
+// Several machines: one section per machine (like Herdr's sidebar),
+// collapsible, with its connection state; the state groups
+// inside. A single machine: the previous list, without a header.
+// herdr-projects projects (coordinator + threads): one collapsible block per project,
+// before the state groups of the other agents; under each machine.
+// Quotas: those shared by all machines at the top; the Claude account specific
+// to a machine (different accounts) and its install banner under its header.
+// One row per Herdr space (shared/spaces.ts): a space with a single tab and
+// a single pane keeps its agent's card; otherwise a space card, sorted
+// by its most urgent pane. A project's threads stay under their
+// machine; coordinated from another one, their block says so and links there.
+// Terminals: a shell space is a row like any other, sorted in
+// Ready ("Show terminals" setting); the root terminal of a project's repository
+// becomes a small header above its threads.
 import type { MachineInfo, NamedSession, Pane } from '#shared/types'
 import { groupByProject, remoteCoordinator } from '#shared/projects'
 import { type ReadySort, type Row, projectRoots, readyLists, repoRoots, rowGroup, sortReady, spaceRows } from '#shared/spaces'
@@ -41,15 +41,15 @@ const conn = computed(() => {
   return { ok: true, text: `wherdr · herdr ${st.value.version || ''}`.trim(), idle: false }
 })
 
-// Compteurs façon « tableau de bord » : toujours les trois, les zéros en retrait.
+// "Dashboard"-style counters: always all three, zeros dimmed.
 const stats = computed(() => ([
   ['blocked', count('blocked'), t('your turn')],
   ['working', count('working'), t('working')],
   ['done', count('done') + count('idle'), t('ready')],
 ] as [string, number, string][]).map(([s, n, label]) => ({ s, n, label })))
 
-// L'ordre Herdr reste celui de chaque liste de dépôt. Le groupe Prêts peut
-// afficher les non lus avant les lus, et se trier autrement (readySort).
+// Herdr's order stays that of each repository list. The Ready group may
+// show unread before read, and be sorted differently (readySort).
 function groupsOf(list: Row[]) {
   return ([
     { key: 'blocked', title: t('Your turn'), list: list.filter(r => rowGroup(r) === 'blocked') },
@@ -58,8 +58,8 @@ function groupsOf(list: Row[]) {
   ] as const).filter(g => g.list.length).map(g => ({ ...g, lists: g.key === 'ready' ? readyLists(g.list, autoReorderReady.value).map(l => sortReady(l, readySort.value, rowTitle)) : [g.list] }))
 }
 const rowTitle = (r: Row) => spaceTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
-// Menu de tri du groupe Prêts ; trié autrement que dans l'ordre de Herdr, la
-// liste ne se réordonne plus à la main.
+// Sort menu of the Ready group; sorted other than in Herdr's order, the
+// list can no longer be reordered manually.
 const READY_SORT_LABELS: Record<ReadySort, [string, string]> = {
   herdr: ['Herdr order', 'i-lucide-grip-vertical'], recent: ['Recent activity', 'i-lucide-clock'], name: ['Name', 'i-lucide-arrow-down-a-z'],
 }
@@ -70,10 +70,10 @@ const readySortItems = computed(() => [[
     checked: readySort.value === s, onUpdateChecked: () => { readySort.value = s },
   })),
 ]])
-// Lignes d'une machine (`machine` absent : une seule machine) : projets
-// (leurs lignes retrouvées par pane représentatif, le terminal racine de leur
-// dépôt), puis les groupes d'état des autres spaces, shells compris, dans
-// l'ordre de Herdr.
+// Rows of a machine (`machine` missing: a single machine): projects
+// (their rows found through the representative pane, the root terminal of their
+// repository), then the state groups of the other spaces, shells included, in
+// Herdr's order.
 function listOf(rows: Row[], machine?: string) {
   const agentRows = rows.filter(r => r.lead.agent)
   const byLead = new Map(agentRows.map(r => [r.lead.id, r]))
@@ -113,7 +113,7 @@ async function loadMachineOrder() {
     const { order } = await api<{ order: string[] }>('/api/machine/order')
     if (request === orderLoad) machineOrder.value = order
   }
-  catch { /* L'ordre de Herdr reste disponible hors ligne. */ }
+  catch { /* Herdr's order stays available offline. */ }
 }
 onMounted(loadMachineOrder)
 watch(() => machines.value.map(m => m.baseKey ?? m.key).join('|'), loadMachineOrder)
@@ -130,7 +130,7 @@ function shiftMachine(key: string, direction: -1 | 1) {
   haptic()
   saveMachineOrder(next)
 }
-// La machine locale a pour clé '' : on compare draggingMachine à null.
+// The local machine's key is '': we compare draggingMachine with null.
 function onMachineDrop(key: string, event: DragEvent) {
   event.preventDefault()
   const next = dropMachineKey(visibleKeys.value, draggingMachine.value, key, dropAfter.value)
@@ -147,7 +147,7 @@ function onMachineDragOver(key: string, event: DragEvent) {
 }
 function onMachineDragStart(key: string, event: DragEvent) {
   draggingMachine.value = key
-  // Une donnée vide peut annuler le glisser selon le navigateur.
+  // Empty data may cancel the drag depending on the browser.
   event.dataTransfer?.setData('text/plain', key || 'local')
   if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
 }
@@ -191,7 +191,7 @@ const awakeUrl = (key: string, diagnostic = false) => `/api/machine/awake?key=${
 async function refreshAwake(m: MachineInfo) {
   if (m.status !== 'online') return
   try { awakeByMachine.value[m.key] = await api<AwakeState>(awakeUrl(m.key)) }
-  catch { /* machine peut disparaître entre deux sondages */ }
+  catch { /* the machine may disappear between two polls */ }
 }
 let awakeTimer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { awakeTimer = setInterval(() => { if (document.visibilityState === 'visible') for (const m of awakeMachines()) refreshAwake(m) }, 30000) })
@@ -245,7 +245,7 @@ const soloMachine = computed<MachineInfo>(() => machines.value[0] || {
   key: '', label: hostLabel.value || 'herdr', local: true, status: st.value.ok ? 'online' : 'offline',
   error: null, session: st.value.session || 'default',
 })
-// Une seule machine : l'état ne liste pas de machines, on sonde la machine seule.
+// A single machine: the state lists no machines, we probe the machine alone.
 const awakeMachines = () => machines.value.length ? machines.value : [soloMachine.value]
 watch(() => awakeMachines().map(m => `${m.key}:${m.status}`).join('|'), () => {
   for (const m of awakeMachines()) refreshAwake(m)
@@ -290,16 +290,16 @@ function machineMenu(m: MachineInfo) {
     items.push({ label: t('Keep awake'), icon: 'i-lucide-sun', run: () => openAwake(m) })
     if (awakeByMachine.value[m.key]?.platform === 'mac') items.push({ label: t('What prevents sleep'), icon: 'i-lucide-list-filter', run: () => openDiagnostic(m) })
   }
-  // Actions globales des plugins Herdr de cette machine.
+  // Global actions of this machine's Herdr plugins.
   if (m.status === 'online' && machinePluginActions(m.key).length) {
     items.push({ label: t('Plugin actions'), icon: 'i-lucide-puzzle', run: () => openPluginMenu({ machine: m.key }) })
   }
   return toDropdown(items)
 }
-// Actions des plugins de chaque machine en ligne (une seule : la locale).
+// Plugin actions of each online machine (a single one: the local one).
 const onlineKeys = computed(() => JSON.stringify(multiMachine.value ? machines.value.filter(m => m.status === 'online').map(m => m.key) : (st.value.ok ? [''] : [])))
 watch(onlineKeys, (keys) => { for (const k of JSON.parse(keys) as string[]) loadPluginActions(k) }, { immediate: true })
-// Mode silence actif : cloche barrée à côté des réglages ; l'appui le coupe.
+// Quiet mode active: crossed-out bell next to the settings; tapping it turns it off.
 const quietLabel = computed(() => tl('Do not disturb is on — tap to turn notifications back on', 'Silence actif — toucher pour réactiver les notifications'))
 const onQuietVisible = () => { if (document.visibilityState === 'visible') refreshQuiet() }
 onMounted(() => { refreshQuiet(); document.addEventListener('visibilitychange', onQuietVisible) })
@@ -323,7 +323,7 @@ async function saveMachine() {
   finally { savingMachine.value = false }
 }
 
-// Réordonner : connecté, et la machine en ligne.
+// Reorder: connected, and the machine online.
 function canReorder(machine: string) {
   if (offlineView.value || !eventsOpen.value || !st.value.ok) return false
   return !multiMachine.value || machines.value.some(m => m.key === machine && m.status === 'online')
@@ -335,11 +335,11 @@ function newAgent() {
 }
 function openSearch() { emit('search') }
 
-// Largeur de la barre latérale (ordinateur) : poignée sur son bord droit
-// (glisser, flèches du clavier ; double-clic = largeur par défaut), bornée,
-// gardée sur l'appareil. Elle règle --side, que suivent les vues de droite.
-// Réduite, la liste laisse une colonne étroite : l'afficher, chercher, lancer
-// un agent et les compteurs d'état.
+// Sidebar width (computer): handle on its right edge
+// (drag, keyboard arrows; double-click = default width), clamped,
+// kept on the device. It sets --side, which the right-hand views follow.
+// Collapsed, the list leaves a narrow column: show it, search, launch
+// an agent and the state counters.
 const listWidth = ref<number | null>(null)
 const listDrag = ref(false)
 const listCollapsed = ref(false)
@@ -354,7 +354,7 @@ watch([listWidth, rail], ([w, r]) => {
   else if (w === null) root.removeProperty('--side')
   else root.setProperty('--side', listWidthCss(w))
 })
-// Le bouton d'origine disparaît avec sa colonne : le focus passe à celui d'en face.
+// The original button disappears with its column: the focus goes to the opposite one.
 function setListCollapsed(collapsed: boolean) {
   listCollapsed.value = collapsed
   saveListCollapsed(collapsed)
@@ -398,7 +398,7 @@ function resetListWidth() {
 
 <template>
   <section id="home" class="view" :class="{ resizing: listDrag, rail }">
-    <!-- Liste réduite (ordinateur) : colonne étroite, le reste de la liste est masqué. -->
+    <!-- Collapsed list (computer): narrow column, the rest of the list is hidden. -->
     <nav v-if="rail" class="home-rail" :aria-label="t('Agents')">
       <AppLogo class="home-logo" :class="conn.idle ? '' : conn.ok ? 'ok' : 'bad'" :title="conn.text" />
       <UTooltip :text="t('Show list')" :content="{ side: 'right' }">
@@ -474,7 +474,7 @@ function resetListWidth() {
       <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />
       <ClaudeSetupBanner v-if="!sections && localSetup" :setup="localSetup" :name="machineName('') || t('this machine')" class="solo" />
 
-      <!-- Une seule machine : la liste d'avant. -->
+      <!-- A single machine: the previous list. -->
       <template v-if="!sections">
         <ProjectGroup v-for="x in solo.projects" :key="x.g.key" :group="x.g" :row-of="solo.rowOf" :roots="x.roots" />
         <section v-for="g in solo.groups" :key="g.key" class="agent-group" :class="g.key">
@@ -499,7 +499,7 @@ function resetListWidth() {
         </div>
       </template>
 
-      <!-- Plusieurs machines : une section par machine. -->
+      <!-- Several machines: one section per machine. -->
       <template v-else>
         <section
           v-for="s in sections" :key="s.m.key" class="machine" :class="[s.m.status, { collapsed: s.collapsed, 'machine-drop-before': dropMachine === baseKeyOf(s.m) && !dropAfter, 'machine-drop-after': dropMachine === baseKeyOf(s.m) && dropAfter }]"

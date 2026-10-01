@@ -1,7 +1,7 @@
-// Invites bloquantes lues sur l'écran « detection » de Herdr.
-// Fixtures : écrans réels capturés dans la session de test (claude-ask, claude-idle,
-// codex-idle) ; écrans de confiance reconstitués d'après leur forme connue
-// (claude-trust, claude-security-guide, codex-trust : la machine fait déjà confiance à ~).
+// Blocking prompts read from Herdr's "detection" screen.
+// Fixtures: real screens captured in the test session (claude-ask, claude-idle,
+// codex-idle); trust screens rebuilt from their known shape
+// (claude-trust, claude-security-guide, codex-trust: the machine already trusts ~).
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { completeOmpAsk, inputVisible, panelOpen, keysFor, parseChoices, parseOmpAsk, pendingOmpAsk, screenChoices } from '../server/utils/choices'
@@ -9,7 +9,7 @@ import { completeOmpAsk, inputVisible, panelOpen, keysFor, parseChoices, parseOm
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 
 describe('parseChoices', () => {
-  it('lit une question AskUserQuestion de Claude (options numérotées, descriptions, séparateur)', () => {
+  it('reads a Claude AskUserQuestion question (numbered options, descriptions, separator)', () => {
     const c = parseChoices(fx('claude-ask.txt'))
     expect(c).not.toBeNull()
     expect(c!.question).toBe('Quel fruit préfères-tu ?')
@@ -19,36 +19,36 @@ describe('parseChoices', () => {
     expect(c!.options[3]!.hint).toBeNull()
   })
 
-  it('ignore le champ de saisie de Claude au repos (mode strict, utilisé hors blocage)', () => {
+  it('ignores Claude\'s input field when idle (strict mode, used outside blocking)', () => {
     expect(parseChoices(fx('claude-idle.txt'), { strict: true })).toBeNull()
   })
 
-  it('lit l’écran de confiance du dossier de Claude', () => {
+  it('reads Claude\'s folder trust screen', () => {
     const c = parseChoices(fx('claude-trust.txt'))!
     expect(c.question).toBe('Do you trust the files in this folder?')
     expect(c.options.map(o => o.label)).toEqual(['Yes, proceed', 'No, exit'])
   })
 
-  it('lit une liste sans numéros (curseur ❯), mais pas en mode strict', () => {
+  it('reads an unnumbered list (❯ cursor), but not in strict mode', () => {
     const c = parseChoices(fx('claude-security-guide.txt'))!
     expect(c.question).toBe('Security guide')
     expect(c.options.map(o => o.label)).toEqual(['No, exit', 'Yes, I trust this folder'])
     expect(parseChoices(fx('claude-security-guide.txt'), { strict: true })).toBeNull()
   })
 
-  it('lit l’écran de confiance de Codex (curseur ›) même en mode strict', () => {
+  it('reads Codex\'s trust screen (› cursor) even in strict mode', () => {
     const c = parseChoices(fx('codex-trust.txt'), { strict: true })!
     expect(c.question).toMatch(/^Do you trust the contents of this directory\?/)
     expect(c.options.map(o => o.label)).toEqual(['Yes, continue', 'No, quit'])
     expect(c.cursor).toBe(0)
   })
 
-  it('ne prend pas le champ « › Ask Codex… » pour une question', () => {
+  it('does not take the "› Ask Codex…" field for a question', () => {
     expect(parseChoices(fx('codex-idle.txt'), { strict: true })).toBeNull()
     expect(parseChoices(fx('codex-idle.txt'))).toBeNull()
   })
 
-  it('ignore le panneau diff affiché à droite d’une demande de permission', () => {
+  it('ignores the diff panel shown to the right of a permission request', () => {
     const c = parseChoices(fx('claude-permission-diff.txt'), { strict: true })!
     expect(c.question).toBe('Do you want to proceed?')
     expect(c.options.map(o => o.label)).toEqual([
@@ -60,7 +60,7 @@ describe('parseChoices', () => {
     expect(c.cursor).toBe(0)
   })
 
-  it('coupe au trait vertical d’un panneau voisin, même collé aux options', () => {
+  it('cuts at the vertical bar of a neighbouring panel, even right against the options', () => {
     const screen = [
       ' Do you want to proceed? │ 12 + <div v-if="ok">',
       ' ❯ 1. Yes                │ 13 +   label="Name"',
@@ -72,12 +72,12 @@ describe('parseChoices', () => {
     expect(c.options.map(o => o.label)).toEqual(['Yes', 'No'])
   })
 
-  it('garde les descriptions alignées d’une liste sans panneau voisin', () => {
+  it('keeps the aligned descriptions of a list without a neighbouring panel', () => {
     const c = parseChoices('  Pick a size\n\n❯ 1. Small     Quick\n  2. Large     Slow')!
     expect(c.options.map(o => o.label)).toEqual(['Small     Quick', 'Large     Slow'])
   })
 
-  it('refuse une liste numérotée avec un trou', () => {
+  it('refuses a numbered list with a gap', () => {
     expect(parseChoices('Choix ?\n❯ 1. A\n  3. C')).toBeNull()
   })
 
@@ -102,7 +102,7 @@ describe('inputVisible', () => {
     expect(inputVisible(fx('claude-idle.txt'))).toBe(true)
     expect(inputVisible(fx('codex-idle.txt'))).toBe(true)
   })
-  it('ne le voit pas quand un panneau le cache', () => {
+  it('does not see it when a panel hides it', () => {
     expect(inputVisible('  Usage\n  ████ 40%\n\n  Esc to close')).toBe(false)
   })
   it('does not mistake a menu cursor for the input field', () => {
@@ -121,8 +121,8 @@ describe('panelOpen', () => {
 })
 
 describe('parseOmpAsk', () => {
-  // Écrans réels de l'outil ask d'omp (deux questions : choix unique, cases à cocher, puis Submit).
-  it('lit une question à choix unique, sans les onglets ni « Other »', () => {
+  // Real screens of omp's ask tool (two questions: single choice, checkboxes, then Submit).
+  it('reads a single-choice question, without the tabs or "Other"', () => {
     const c = parseOmpAsk(fx('omp-ask-single.txt'))!
     expect(c.question).toBe('Favourite colour?')
     expect(c.options).toEqual([{ label: 'Red', hint: 'warm' }, { label: 'Green', hint: 'calm' }, { label: 'Blue', hint: 'cool' }])
@@ -131,7 +131,7 @@ describe('parseOmpAsk', () => {
     expect(keysFor(c, 2)).toEqual(['down', 'down', 'enter'])
   })
 
-  it('lit des cases à cocher : état coché, Espace pour cocher sans valider', () => {
+  it('reads checkboxes: checked state, Space to check without confirming', () => {
     const c = parseOmpAsk(fx('omp-ask-multi.txt'))!
     expect(c.question).toBe('Pick sizes')
     expect(c.multi).toBe(true)
@@ -140,14 +140,14 @@ describe('parseOmpAsk', () => {
     expect(keysFor(c, 1)).toEqual(['up', 'space'])
   })
 
-  it('dernière étape : Submit, avec les réponses', () => {
+  it('last step: Submit, with the answers', () => {
     const c = parseOmpAsk(fx('omp-ask-review.txt'))!
     expect(c.question).toBe('Review answers')
     expect(c.options).toEqual([{ label: 'Submit', hint: 'color: Red · size: Small, Large' }])
     expect(keysFor(c, 0)).toEqual(['enter'])
   })
 
-  it('rien sans boîte Ask ; screenChoices choisit le lecteur selon l’agent', () => {
+  it('nothing without an Ask box; screenChoices picks the reader per agent', () => {
     expect(parseOmpAsk(fx('claude-ask.txt'))).toBeNull()
     expect(screenChoices(fx('omp-ask-single.txt'), 'claude')).toBeNull()
     expect(screenChoices(fx('omp-ask-single.txt'), 'omp')!.options).toHaveLength(3)
@@ -155,7 +155,7 @@ describe('parseOmpAsk', () => {
 })
 
 describe('parseOmpAsk, jeu de symboles ascii', () => {
-  it('lit la même boîte dessinée en ascii (curseur >, (o) / [x], bords + - |)', () => {
+  it('reads the same box drawn in ascii (> cursor, (o) / [x], + - | borders)', () => {
     const box = [
       '+- Ask -------------------------+',
       '| a    b    Submit              |',
@@ -174,8 +174,8 @@ describe('parseOmpAsk, jeu de symboles ascii', () => {
 })
 
 describe('completeOmpAsk', () => {
-  // La boîte replie une longue question (« … ») et colle ses lignes ; la
-  // transcription a le texte entier de l'appel « ask » encore sans réponse.
+  // The box folds a long question ("…") and joins its lines; the
+  // transcript has the full text of the "ask" call still unanswered.
   const question = 'Plan for titles. Approve?\n\n1. Service: trims the title and writes a system_event.\n2. HTTP: PATCH /title.'
   const call = (id: string, q: string) => JSON.stringify({ type: 'message', message: { role: 'assistant', content: [{ type: 'toolCall', id, name: 'ask', arguments: { questions: [
     { id: 'other', question: 'Email subject?', options: [{ label: 'Keep' }] },
@@ -196,14 +196,14 @@ describe('completeOmpAsk', () => {
     '╰───────────────────────────────────────────╯',
   ].join('\n')
 
-  it('reprend la question et les descriptions entières de l’appel en attente', () => {
+  it('takes the full question and descriptions from the pending call', () => {
     const c = completeOmpAsk(parseOmpAsk(box)!, pendingOmpAsk([call('old', 'Stale?'), call('t1', question)]))
     expect(c.question).toBe(question)
     expect(c.options).toEqual([{ label: 'Approve (Recommended)', hint: null }, { label: 'Revise', hint: 'Tell me what to change,\nline by line.' }])
     expect(c.cursor).toBe(0)
   })
 
-  it('garde l’écran si l’appel a déjà sa réponse ou porte une autre question', () => {
+  it('keeps the screen if the call already has its answer or carries another question', () => {
     const shown = parseOmpAsk(box)!
     const answered = JSON.stringify({ type: 'message', message: { role: 'toolResult', toolCallId: 't1', toolName: 'ask' } })
     expect(pendingOmpAsk([call('t1', question), answered])).toEqual([])

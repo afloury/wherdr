@@ -1,17 +1,17 @@
-// Quotas d'utilisation des comptes Claude et Codex, pour l'accueil. Lecture
-// passive, sans rien taper dans les agents :
-//  - Codex écrit ses limites dans ses conversations (événement token_count,
-//    `rate_limits` : fenêtre de 5 h et semaine) ;
-//  - Claude Code les donne à sa barre d'état ; une barre d'état invisible
-//    (installée par scripts/install-claude-statusline.sh, cf. installClaudeStatusline)
-//    les garde dans ~/.cache/herdr-web/claude-status.json.
-// Les quotas valent pour tout le compte : sur plusieurs machines, on garde la
-// lecture la plus récente de chaque compte. Claude : la barre d'état garde aussi
-// une empreinte du compte (claude-account, hash tronqué de son identifiant, jamais
-// l'identifiant lui-même) ; des machines sur des comptes différents ont alors
-// chacune leur bloc (claudeAccounts), affiché sous leur machine par l'app.
-// Codex : même principe (codexAccounts), empreinte tirée de `creator_account_id`
-// de l'en-tête (session_meta) de ses conversations, jamais de auth.json.
+// Usage quotas of the Claude and Codex accounts, for the home screen. Passive
+// reading, without typing anything into the agents:
+//  - Codex writes its limits into its conversations (token_count event,
+//    `rate_limits`: 5-hour window and week);
+//  - Claude Code gives them to its status line; an invisible status line
+//    (installed by scripts/install-claude-statusline.sh, see installClaudeStatusline)
+//    keeps them in ~/.cache/herdr-web/claude-status.json.
+// Quotas apply to the whole account: across several machines, we keep the
+// most recent reading of each account. Claude: the status line also keeps
+// an account fingerprint (claude-account, truncated hash of its identifier, never
+// the identifier itself); machines on different accounts then each get
+// their own block (claudeAccounts), shown under their machine by the app.
+// Codex: same principle (codexAccounts), fingerprint taken from `creator_account_id`
+// in the header (session_meta) of its conversations, never from auth.json.
 import { spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -32,9 +32,9 @@ const win = (used: unknown, resets: unknown, minutes: number): QuotaWindow | nul
   return { used: Math.max(0, Math.min(100, u)), resetsAt: Number(resets) ? Number(resets) * 1000 : null, minutes }
 }
 
-// Heure de réinitialisation impossible (plus loin que la durée de la fenêtre
-// après la lecture, à 10 min près : mauvais champ, horloge) : inconnue plutôt
-// qu'une date trompeuse.
+// Impossible reset time (further than the window duration
+// after the reading, give or take 10 min: wrong field, clock): unknown rather
+// than a misleading date.
 function plausible(w: QuotaWindow | null, at: number): QuotaWindow | null {
   if (!w || !w.resetsAt || !w.minutes || !at) return w
   return w.resetsAt > at + (w.minutes + 10) * 60000 ? { ...w, resetsAt: null } : w
@@ -45,8 +45,8 @@ const quota = (five: QuotaWindow | null, week: QuotaWindow | null, at: number): 
 export function claudeQuota(status: Json, at: number): Quota | null {
   const r = status && status.rate_limits
   if (!r) return null
-  // Juste après la fin d'une fenêtre (5 h ou semaine), Claude ne transmet que
-  // l'autre : une nouvelle fenêtre commence, rien n'y est encore utilisé.
+  // Right after a window ends (5 h or week), Claude only passes
+  // the other one: a new window starts, nothing is used in it yet.
   const five = r.five_hour ? win(r.five_hour.used_percentage, r.five_hour.resets_at, 300) : null
   const week = r.seven_day ? win(r.seven_day.used_percentage, r.seven_day.resets_at, 10080) : null
   const fresh = (minutes: number): QuotaWindow => ({ used: 0, resetsAt: null, minutes, fresh: true })
@@ -55,19 +55,19 @@ export function claudeQuota(status: Json, at: number): Quota | null {
   return quota(five, week, at)
 }
 
-// Codex, lui, n'omet pas une fenêtre qui repart (il la donne à 0 %) : une fenêtre
-// absente est absente du forfait (Plus : semaine seule ; gratuit : 30 jours).
+// Codex, for its part, does not omit a restarting window (it gives it at 0 %): a missing
+// window is not part of the plan (Plus: week only; free: 30 days).
 export function codexQuota(rl: Json, at: number): Quota | null {
   if (!rl) return null
   const pick = (w: Json | null | undefined) => (w ? win(w.used_percent, w.resets_at, Number(w.window_minutes) || 0) : null)
-  // primary = fenêtre courte (5 h), secondary = semaine ; on s'appuie sur la durée.
+  // primary = short window (5 h), secondary = week; we rely on the duration.
   const ws = [pick(rl.primary), pick(rl.secondary)].filter(Boolean) as QuotaWindow[]
   const five = ws.find(w => w.minutes && w.minutes < 1440) || null
   const week = ws.find(w => w.minutes >= 1440) || null
   return quota(five, week, at)
 }
 
-// Dernière ligne `rate_limits` d'une conversation Codex (lue par la fin).
+// Last `rate_limits` line of a Codex conversation (read from the end).
 export function lastCodexLimits(text: string): { rl: Json, at: number } | null {
   const lines = text.split('\n')
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -77,7 +77,7 @@ export function lastCodexLimits(text: string): { rl: Json, at: number } | null {
       const d = JSON.parse(l)
       const rl = d.payload && d.payload.rate_limits
       if (rl && (rl.primary || rl.secondary)) return { rl, at: Date.parse(d.timestamp) || 0 }
-    } catch { /* ligne coupée */ }
+    } catch { /* cut line */ }
   }
   return null
 }
@@ -87,17 +87,17 @@ async function ls(fs: MachineFs, d: string) {
   catch { return [] }
 }
 
-// Lecture Claude d'une machine, avec l'empreinte de son compte si connue.
+// Claude reading of a machine, with its account fingerprint if known.
 export type ClaudeReading = Quota & { account: string | null }
 
-// Barre d'état de wherdr en place sur une machine ? `ok` : lecture complète
-// (quotas + empreinte), ou un compte sans quotas (clé d'API : rien à montrer).
-// Sinon, `pending` si la barre d'état à jour (avec empreinte) est branchée dans
-// settings.json — les quotas viendront au prochain échange —, `missing` sinon.
+// wherdr's status line set up on a machine? `ok`: complete reading
+// (quotas + fingerprint), or an account without quotas (API key: nothing to show).
+// Otherwise, `pending` if the up-to-date status line (with fingerprint) is wired in
+// settings.json — the quotas will come with the next exchange —, `missing` otherwise.
 export function claudeSetupState(f: { status: Json | null, account: boolean, statusline: string | null, settings: string | null }): 'ok' | ClaudeSetup['state'] {
   if (f.status && (!f.status.rate_limits || f.account)) return 'ok'
   const installed = Boolean(f.statusline?.includes('claude-account') && f.settings?.includes('wherdr-statusline.sh'))
-  if (installed) return f.status ? 'ok' : 'pending' // à jour, mais pas d'empreinte lisible : rien de plus à faire
+  if (installed) return f.status ? 'ok' : 'pending' // up to date, but no readable fingerprint: nothing more to do
   return 'missing'
 }
 
@@ -124,10 +124,10 @@ async function readClaude(fs: MachineFs, home: string): Promise<{ q: ClaudeReadi
   return { q: q ? { ...q, account } : null, setup }
 }
 
-// Même compte ? Les empreintes si les deux machines en ont une ; sinon l'heure de
-// réinitialisation hebdomadaire, fixe pour un compte (comparée modulo une
-// semaine, une lecture ancienne pouvant dater d'une semaine précédente) ; sans
-// rien de comparable, on suppose le même compte (affichage d'avant).
+// Same account? The fingerprints if both machines have one; otherwise the weekly
+// reset time, fixed for an account (compared modulo one
+// week, as an old reading may date from a previous week); with
+// nothing comparable, we assume the same account (previous display).
 const WEEK_MS = 7 * 86400000
 export function sameAccount(a: ClaudeReading, b: ClaudeReading): boolean {
   if (a.account && b.account) return a.account === b.account
@@ -138,9 +138,9 @@ export function sameAccount(a: ClaudeReading, b: ClaudeReading): boolean {
   return Math.min(d, WEEK_MS - d) <= 5 * 60000
 }
 
-// Regroupe les lectures par compte : la plus récente de chaque compte, avec ses
-// machines dans l'ordre reçu. Le groupe est comparé à sa première lecture qui a
-// une empreinte (à défaut, sa première lecture).
+// Groups the readings by account: the most recent of each account, with its
+// machines in the order received. The group is compared with its first reading that has
+// a fingerprint (failing that, its first reading).
 export function groupAccounts(list: { key: string, label: string, q: ClaudeReading }[], same = sameAccount): AccountQuota[] {
   const groups: { rep: ClaudeReading, best: ClaudeReading, machines: { key: string, label: string }[] }[] = []
   for (const { key, label, q } of list) {
@@ -153,11 +153,11 @@ export function groupAccounts(list: { key: string, label: string, q: ClaudeReadi
   return groups.map(({ best: { account: _, ...q }, machines }) => ({ ...q, machines }))
 }
 
-// Plusieurs conversations Codex écrivent les limites du même compte : un vieux
-// fichier encore modifié peut porter une valeur ancienne. On garde, par fenêtre,
-// la lecture la plus récente (horodatage de la ligne, 0 s'il manque) ; dans la
-// même fenêtre (même heure de réinitialisation, à quelques minutes près : elle
-// est recalculée à chaque réponse), l'usage ne peut que croître : le plus élevé.
+// Several Codex conversations write the limits of the same account: an old
+// file still being modified may carry an old value. We keep, per window,
+// the most recent reading (line timestamp, 0 if missing); within the
+// same window (same reset time, give or take a few minutes: it
+// is recomputed on each reply), usage can only grow: the highest.
 export type CodexReading = { q: Quota, stamp: number, account?: string | null }
 const SAME_WINDOW = 10 * 60000
 function latestWindow(list: { w: QuotaWindow, stamp: number }[]): QuotaWindow | null {
@@ -178,8 +178,8 @@ export function latestCodexQuota(readings: CodexReading[]): Quota | null {
   return quota(pick('five'), pick('week'), Math.max(...readings.map(r => r.q.at)))
 }
 
-// Empreinte du compte Codex d'une conversation : `creator_account_id` de sa
-// première ligne (session_meta). Seul un hash tronqué en sort, jamais la valeur.
+// Codex account fingerprint of a conversation: `creator_account_id` of its
+// first line (session_meta). Only a truncated hash comes out, never the value.
 export function codexAccount(head: string): string | null {
   const first = head.split('\n', 1)[0] || ''
   if (!first.includes('"session_meta"')) return null
@@ -187,8 +187,8 @@ export function codexAccount(head: string): string | null {
   return m ? crypto.createHash('sha256').update(`wherdr:${m[1]}`).digest('hex').slice(0, 16) : null
 }
 
-// Quota Codex d'une machine : celui du compte de la conversation la plus récente
-// (lectures sans empreinte comprises : ancien Codex).
+// Codex quota of a machine: that of the account of the most recent conversation
+// (readings without a fingerprint included: old Codex).
 export function machineCodexQuota(readings: CodexReading[]): CodexAccountReading | null {
   if (!readings.length) return null
   const newest = readings.reduce((a, b) => (b.stamp > a.stamp ? b : a))
@@ -221,8 +221,8 @@ export async function readCodex(fs: MachineFs, home: string): Promise<CodexAccou
   const st = await fs.statMany(files)
   const recent = files.map((f, i) => ({ f, s: st[i] })).filter(x => x.s && x.s.isFile)
     .sort((a, b) => b.s!.mtimeMs - a.s!.mtimeMs).slice(0, 6)
-  // Fin de chaque fichier : 64 Kio suffisent d'ordinaire (un token_count par
-  // réponse), 512 Kio au plus si rien n'y est.
+  // End of each file: 64 KiB is usually enough (one token_count per
+  // reply), 512 KiB at most if nothing is there.
   const readings = await Promise.all(recent.map(async ({ f, s }) => {
     for (const max of [64 * 1024, 512 * 1024]) {
       const len = Math.min(s!.size, max)
@@ -230,7 +230,7 @@ export async function readCodex(fs: MachineFs, home: string): Promise<CodexAccou
         const hit = lastCodexLimits((await fs.read(f, s!.size - len, len)).toString('utf8'))
         const q = hit && codexQuota(hit.rl, hit.at || s!.mtimeMs)
         if (q) return { q, stamp: hit!.at, account: codexAccount(await readHead(fs, f, s!.size).catch(() => '')) }
-      } catch { return null /* fichier illisible */ }
+      } catch { return null /* unreadable file */ }
       if (len === s!.size) break
     }
     return null
@@ -240,11 +240,11 @@ export async function readCodex(fs: MachineFs, home: string): Promise<CodexAccou
 
 const fresher = (a: Quota | null, b: Quota | null) => (!a ? b : !b ? a : b.at > a.at ? b : a)
 
-// Codex : seules les empreintes séparent les comptes (sans empreinte, même
-// compte : affichage d'avant, la lecture la plus récente l'emporte).
+// Codex: only fingerprints separate accounts (without a fingerprint, same
+// account: previous display, the most recent reading wins).
 export const sameCodexAccount = (a: ClaudeReading, b: ClaudeReading) => !a.account || !b.account || a.account === b.account
 
-// Assemble les lectures des machines en ligne (dans l'ordre des machines).
+// Assembles the readings of the online machines (in machine order).
 export function mergeQuotas(readings: { key: string, label: string, claude: ClaudeReading | null, codex: (Quota & { account?: string | null }) | null, setup?: ClaudeSetup | null }[]): Quotas {
   let codex: Quota | null = null
   for (const r of readings) {
@@ -263,8 +263,8 @@ export function mergeQuotas(readings: { key: string, label: string, claude: Clau
   return out
 }
 
-// Le serveur peut-il écrire dans ~/.claude ? Distante : oui (SSH). Locale : pas
-// dans le conteneur, où $HOME est en lecture seule (commande à copier).
+// Can the server write to ~/.claude? Remote: yes (SSH). Local: not
+// in the container, where $HOME is read-only (command to copy).
 async function canInstall(m: Machine): Promise<boolean> {
   if (!m.local) return Boolean(m.exec)
   for (const d of [path.join(m.home, '.claude'), m.home]) {
@@ -291,9 +291,9 @@ export async function readQuotas(force = false): Promise<Quotas> {
 }
 
 // ---------------------------------------------------------------- installation
-// Script d'installation (autonome, barre d'état comprise), embarqué au build
-// depuis scripts/ (nitro.serverAssets). Passé sur l'entrée standard de `sh -s` :
-// jamais recopié dans une ligne de commande.
+// Install script (self-contained, status line included), bundled at build time
+// from scripts/ (nitro.serverAssets). Passed on the standard input of `sh -s`:
+// never copied into a command line.
 async function installerScript(): Promise<string> {
   const raw = await useStorage('assets:scripts').getItemRaw('install-claude-statusline.sh')
   const s = raw ? (typeof raw === 'string' ? raw : Buffer.from(raw as ArrayBuffer).toString('utf8')) : ''
@@ -316,8 +316,8 @@ function runLocal(input: string, home: string): Promise<ExecResult> {
   })
 }
 
-// Installe (ou met à jour) la barre d'état sur une machine en ligne ; renvoie la
-// dernière ligne du script (« barre d'état ajoutée : … », « déjà installée : … »).
+// Installs (or updates) the status line on an online machine; returns the
+// last line of the script ("barre d'état ajoutée : …", "déjà installée : …").
 export async function installClaudeStatusline(m: Machine): Promise<string> {
   if (!m.local && m.status !== 'online') throw new HerdrError('unreachable', `${m.label} injoignable`)
   if (!(await canInstall(m))) throw new HerdrError('read_only', `dossier personnel en lecture seule ici : copie la commande et colle-la dans un terminal de ${m.label}`)

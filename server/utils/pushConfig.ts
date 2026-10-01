@@ -1,5 +1,5 @@
-// Seule une adresse HTTPS peut servir de contact VAPID pour cette app.
-// En local ou avec une configuration invalide, le push reste indisponible.
+// Only an HTTPS address can serve as the VAPID contact for this app.
+// Locally or with an invalid configuration, push stays unavailable.
 export const FALLBACK_VAPID_SUBJECT = 'mailto:wherdr@localhost'
 
 export function pushConfig(appUrl: string): { enabled: boolean, subject: string } {
@@ -12,8 +12,8 @@ export function pushConfig(appUrl: string): { enabled: boolean, subject: string 
   return { enabled: false, subject: FALLBACK_VAPID_SUBJECT }
 }
 
-// Abonnement envoyé par le navigateur : le serveur postera ensuite vers
-// `endpoint`, donc seulement une adresse HTTPS (service push), avec ses clés.
+// Subscription sent by the browser: the server will then post to
+// `endpoint`, so only an HTTPS address (push service), with its keys.
 export function validPushSubscription(b: unknown): boolean {
   if (!b || typeof b !== 'object') return false
   const { endpoint, keys } = b as { endpoint?: unknown, keys?: { p256dh?: unknown, auth?: unknown } }
@@ -27,9 +27,9 @@ export function validPushSubscription(b: unknown): boolean {
     && typeof keys.auth === 'string' && keys.auth.length > 0 && keys.auth.length <= 256)
 }
 
-// Nouvel abonnement d'un appareil : remplace son entrée (même endpoint) et,
-// après une coupure puis une réactivation (le navigateur change d'endpoint),
-// l'ancienne entrée `previous`, dont le silence encore actif est repris.
+// New subscription of a device: replaces its entry (same endpoint) and,
+// after being turned off then on again (the browser changes endpoint),
+// the old `previous` entry, whose still-active quiet setting is carried over.
 export function replaceSubscription<T extends { endpoint: string, quiet?: Q }, Q>(
   all: T[], next: T, previous: unknown, active: (quiet: Q) => boolean): T[] {
   const old = typeof previous === 'string' && previous !== next.endpoint ? previous : null

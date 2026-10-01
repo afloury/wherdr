@@ -1,6 +1,6 @@
-// Indice « Shift + glisser » : tant que le programme a pris la souris, sur un
-// écran à souris, jusqu'à ce qu'on le masque (une fois pour toutes). Herdr ne
-// transmet pas le mode souris (mouse_capture: false) : garde-fou si cela change.
+// "Shift + drag" hint: while the program has taken the mouse, on a
+// mouse screen, until it is hidden (once and for all). Herdr does not
+// pass the mouse mode on (mouse_capture: false): a safeguard if that changes.
 import type { Terminal } from '@xterm/xterm'
 
 const HINT_KEY = 'wherdr.mouse-selection-hint.dismissed'

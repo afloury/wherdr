@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Confirmation d'une action (fermer un pane, désactiver le verrouillage, installer…).
+// Confirmation of an action (close a pane, disable the lock, install…).
 const open = computed({
   get: () => confirmState.open,
   set: (v) => { if (!v) answerConfirm(false) },

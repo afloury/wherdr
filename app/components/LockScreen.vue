@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Verrouillage par clé d'accès (WebAuthn, cf. server/utils/auth.ts).
+// Passkey lock (WebAuthn, see server/utils/auth.ts).
 import { startAuthentication } from '@simplewebauthn/browser'
 
 const busy = ref(false)

@@ -17,7 +17,7 @@ const state: HerdrState = {
 const tl = (_en: string, fr: string) => fr
 
 describe('confirmation de fermeture du groupe', () => {
-  it('ferme le groupe quand le dernier pane ou onglet du dépôt principal part', () => {
+  it('closes the group when the last pane or tab of the main repository goes', () => {
     for (const [kind, id] of [['pane', 'w1:p1'], ['tab', 'w1:t1'], ['workspace', 'w1']] as const) {
       const plan = planClose(state, kind, id)
       expect(plan.group).toBe(true)
@@ -31,13 +31,13 @@ describe('confirmation de fermeture du groupe', () => {
     })
   })
 
-  it('garde la fermeture ordinaire pour un checkout lié ou un pane non dernier', () => {
+  it('keeps the ordinary close for a linked checkout or a pane that is not the last', () => {
     expect(planClose(state, 'pane', 'w2:p1').group).toBe(false)
     const more = { ...state, panes: [...state.panes, pane('w1:p2', 'w1')] }
     expect(planClose(more, 'pane', 'w1:p1').group).toBe(false)
   })
 
-  it('annonce les fichiers conservés et les états propre et modifié', () => {
+  it('announces the kept files and the clean and modified states', () => {
     const clean = checkoutMessage([{ label: 'main', modified: 0, untracked: 0 }], false, tl)
     expect(clean).toContain('aucune modification')
     expect(clean).toContain('branches et les dossiers')
