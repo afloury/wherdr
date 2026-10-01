@@ -25,7 +25,7 @@ describe('spaceCall', () => {
   it('renommer : espace ou onglet, nom obligatoire et borné', () => {
     expect(spaceCall({ op: 'workspace.rename', workspace_id: 'w1', label: 'api' }).params).toEqual({ workspace_id: 'w1', label: 'api' })
     expect(spaceCall({ op: 'tab.rename', tab_id: 'w1:t2', label: 'x'.repeat(80) }).params).toEqual({ tab_id: 'w1:t2', label: 'x'.repeat(60) })
-    expect(() => spaceCall({ op: 'tab.rename', tab_id: 'w1:t2', label: '   ' })).toThrow(/nom vide/)
+    expect(() => spaceCall({ op: 'tab.rename', tab_id: 'w1:t2', label: '   ' })).toThrow(/empty name/)
   })
 
   it('diviser : à droite ou en bas, sans focus', () => {
@@ -45,9 +45,9 @@ describe('spaceCall', () => {
     expect(spaceCall({ op: 'workspace.move', workspace_id: 'w2', before_workspace_id: null })).toEqual({
       machine: '', method: 'workspace.move_block', params: { workspace_ids: ['w2'], before_workspace_id: null },
     })
-    expect(() => spaceCall({ op: 'workspace.move', workspace_id: 'w2', before_workspace_id: `${R}~w1` })).toThrow(/autre machine/)
+    expect(() => spaceCall({ op: 'workspace.move', workspace_id: 'w2', before_workspace_id: `${R}~w1` })).toThrow(/another machine/)
     expect(() => spaceCall({ op: 'workspace.move', workspace_id: 'w2', before_workspace_id: 'w2' })).toThrow(/destination/)
-    expect(() => spaceCall({ op: 'workspace.move', workspace_id: 'w2:p1', before_workspace_id: null })).toThrow(/workspace invalide/)
+    expect(() => spaceCall({ op: 'workspace.move', workspace_id: 'w2:p1', before_workspace_id: null })).toThrow(/invalid workspace/)
   })
 
   it('déplacer : vers un onglet, un nouvel onglet de son espace, un nouvel espace', () => {
@@ -61,12 +61,12 @@ describe('spaceCall', () => {
   })
 
   it('refuse un onglet d’une autre machine, des IDs ou actions inconnus', () => {
-    expect(() => spaceCall({ op: 'pane.move', pane_id: 'w1:p2', to: { tab_id: `${R}~w1:t1` } })).toThrow(/autre machine/)
+    expect(() => spaceCall({ op: 'pane.move', pane_id: 'w1:p2', to: { tab_id: `${R}~w1:t1` } })).toThrow(/another machine/)
     expect(() => spaceCall({ op: 'pane.move', pane_id: 'w1:p2', to: 'ailleurs' })).toThrow(/destination/)
-    expect(() => spaceCall({ op: 'tab.close', tab_id: 'w1' })).toThrow(/onglet invalide/)
-    expect(() => spaceCall({ op: 'workspace.close', workspace_id: '-oProxy' })).toThrow(/workspace invalide/)
-    expect(() => spaceCall({ op: 'pane.zoom', pane_id: 'w1:p1' })).toThrow(/action inconnue/)
-    expect(() => spaceCall(null)).toThrow(/action inconnue/)
+    expect(() => spaceCall({ op: 'tab.close', tab_id: 'w1' })).toThrow(/invalid tab/)
+    expect(() => spaceCall({ op: 'workspace.close', workspace_id: '-oProxy' })).toThrow(/invalid workspace/)
+    expect(() => spaceCall({ op: 'pane.zoom', pane_id: 'w1:p1' })).toThrow(/unknown action/)
+    expect(() => spaceCall(null)).toThrow(/unknown action/)
   })
 })
 
@@ -141,13 +141,13 @@ describe('paneSpaceEntries', () => {
 
 describe('closeConfirm', () => {
   // Espaces insécables du français (« », : ?) : comparées comme des espaces.
-  const fr = (a: string) => a.replace(/\u00a0/g, ' ')
-  const en = (_: string, b: string) => b
+  const fr = (_: string, b: string) => b.replace(/\u00a0/g, ' ')
+  const en = (a: string) => a
   const tab = state.panes.filter(p => p.tab === 'w1:t1')
 
   it('nomme les agents qui seront arrêtés', () => {
     const c = closeConfirm({ kind: 'tab', label: 'dev', panes: tab }, fr)
-    expect(closeConfirm({ kind: 'tab', label: 'dev', panes: tab }, a => a).message).toContain('«\u00a0dev\u00a0»\u00a0?')
+    expect(closeConfirm({ kind: 'tab', label: 'dev', panes: tab }, (_: string, b: string) => b).message).toContain('«\u00a0dev\u00a0»\u00a0?')
     expect(c.message).toBe('Fermer l’onglet « dev » ? 2 agents y tournent : Claude « Claude », Codex « Codex ». Ils seront arrêtés. Son terminal sera fermé aussi.')
     expect(c.action).toBe('Fermer et arrêter 2 agents')
     expect(closeConfirm({ kind: 'tab', label: 'dev', panes: tab }, en).action).toBe('Close and stop 2 agents')

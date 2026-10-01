@@ -38,8 +38,8 @@ export function dayLabel(ts: string) {
   const today = new Date()
   const y = new Date()
   y.setDate(today.getDate() - 1)
-  if (d.toDateString() === today.toDateString()) return t('Aujourd’hui')
-  if (d.toDateString() === y.toDateString()) return t('Hier')
+  if (d.toDateString() === today.toDateString()) return t('Today')
+  if (d.toDateString() === y.toDateString()) return t('Yesterday')
   return d.toLocaleDateString(locale(), { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
@@ -49,12 +49,12 @@ export function fmtWhen(ts: string, now = Date.now()) {
   const d = new Date(ts)
   if (Number.isNaN(d.getTime())) return ''
   const m = Math.floor((now - d.getTime()) / 60000)
-  if (m >= 0 && m < 1) return t('à l’instant')
-  if (m >= 0 && m < 60) return tl(`il y a ${m} min`, `${m} min ago`)
+  if (m >= 0 && m < 1) return t('just now')
+  if (m >= 0 && m < 60) return tl(`${m} min ago`, `il y a ${m} min`)
   const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
   const days = Math.round((day(new Date(now)) - day(d)) / 86400000)
   if (days === 0) return fmtTime(ts)
-  if (days === 1) return `${t('hier')} ${fmtTime(ts)}`
+  if (days === 1) return `${t('yesterday')} ${fmtTime(ts)}`
   if (days > 1 && days < 7) return `${d.toLocaleDateString(locale(), { weekday: 'short' })} ${fmtTime(ts)}`
   return d.toLocaleDateString(locale(), {
     day: 'numeric', month: 'short', ...(d.getFullYear() === new Date(now).getFullYear() ? {} : { year: 'numeric' }),

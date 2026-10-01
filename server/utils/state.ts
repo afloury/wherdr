@@ -33,7 +33,7 @@ const fsp = fs.promises
 // Transcriptions : celles de la machine du pane (disque local, ou SSH).
 function trFor(p: { id: string }) {
   const m = machineOfPane(p.id)
-  if (!m) throw new HerdrError('unreachable', 'machine inconnue')
+  if (!m) throw new HerdrError('unreachable', 'unknown machine')
   return m.transcripts
 }
 export const transcripts = {
@@ -247,7 +247,7 @@ function reconcileQueued(p: Pane) {
 const unqueueBusy = new Set<string>()
 export async function cancelQueued(paneId: string, text: string, id?: string): Promise<{ text: string }> {
   const p = findPane(paneId)
-  if (!p || !p.agent) throw new HerdrError('not_found', 'agent introuvable')
+  if (!p || !p.agent) throw new HerdrError('not_found', 'agent not found')
   const mine = (queued.get(p.id) || []).find(q => (id && q.id === id) || sameMsg(msgText(q.text), msgText(text)))
   const drop = () => {
     const left = (queued.get(p.id) || []).filter(q => q !== mine)
@@ -261,9 +261,9 @@ export async function cancelQueued(paneId: string, text: string, id?: string): P
     setTimeout(poll, 50)
     return { text: pend.text }
   }
-  if (p.agent !== 'claude') throw new HerdrError('unsupported', 'Annulation impossible pour cet agent')
-  if (p.status !== 'working') throw new HerdrError('already_read', 'Message déjà lu par l’agent')
-  if (unqueueBusy.has(p.id)) throw new HerdrError('busy', 'Annulation déjà en cours')
+  if (p.agent !== 'claude') throw new HerdrError('unsupported', 'This agent can’t cancel queued messages')
+  if (p.status !== 'working') throw new HerdrError('already_read', 'Already read by the agent')
+  if (unqueueBusy.has(p.id)) throw new HerdrError('busy', 'Already cancelling')
   unqueueBusy.add(p.id)
   try {
     const own = [...(queued.get(p.id) || [])]
@@ -379,7 +379,7 @@ function applySeen(p: Pane, prevStatus: string | undefined) {
 // Marquer lu / non lu depuis l'app (menu contextuel).
 export function markSeen(paneId: string, read: boolean) {
   const p = findPane(paneId)
-  if (!p || !p.agent) throw new HerdrError('bad_pane', 'pane introuvable')
+  if (!p || !p.agent) throw new HerdrError('bad_pane', 'Pane not found')
   const e = seen.get(paneId) || { readyAt: 0, seenAt: 0 }
   if (read) e.seenAt = Date.now()
   else { e.readyAt = Math.max(e.readyAt, 1); e.seenAt = 0 }

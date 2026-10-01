@@ -34,12 +34,12 @@ async function probe(pane: string) {
 export function openMirror(ws: WsLike, url: URL): TermSession | null {
   const pane = url.searchParams.get('pane') || ''
   if (!PANE_RE.test(pane)) {
-    ws.close(4400, 'pane invalide')
+    ws.close(4400, 'Invalid pane')
     return null
   }
   const machine = machineOfPane(pane)
   if (!machine || !machine.sock()) {
-    ws.send(JSON.stringify({ type: 'terminal.closed', reason: machine ? `${machine.label} injoignable` : 'machine inconnue', code: machine ? 'unreachable' : 'unknown_machine', machine: machine?.label }))
+    ws.send(JSON.stringify({ type: 'terminal.closed', reason: machine ? `${machine.label} injoignable` : 'unknown machine', code: machine ? 'unreachable' : 'unknown_machine', machine: machine?.label }))
     ws.close(4503, 'machine injoignable')
     return null
   }

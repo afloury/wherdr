@@ -12,16 +12,16 @@ const busy = ref(false)
 async function install() {
   haptic()
   const ok = await askConfirm(
-    tl(`Installer la barre d’état des quotas Claude sur ${props.name} ? Elle n’affiche rien et garde une barre d’état existante (~/.claude/settings.json, copie de sauvegarde).`,
-      `Install the Claude quota status line on ${props.name}? It displays nothing and keeps any existing status line (~/.claude/settings.json, backup copy).`),
-    t('Installer'), 'primary',
+    tl(`Install the Claude quota status line on ${props.name}? It displays nothing and keeps any existing status line (~/.claude/settings.json, backup copy).`,
+      `Installer la barre d’état des quotas Claude sur ${props.name} ? Elle n’affiche rien et garde une barre d’état existante (~/.claude/settings.json, copie de sauvegarde).`),
+    t('Install'), 'primary',
   )
   if (!ok) return
   busy.value = true
   try {
     await api('/api/claude-statusline', { key: props.setup.key })
-    toast(tl(`Installé sur ${props.name}. Les quotas apparaîtront après le prochain échange avec un Claude.`,
-      `Installed on ${props.name}. Quotas will show after the next exchange with a Claude.`))
+    toast(tl(`Installed on ${props.name}. Quotas will show after the next exchange with a Claude.`,
+      `Installé sur ${props.name}. Les quotas apparaîtront après le prochain échange avec un Claude.`))
     await reloadQuotas()
   } catch (err) { toast((err as Error).message, true) }
   finally { busy.value = false }
@@ -31,8 +31,8 @@ async function copy() {
   haptic()
   try {
     await navigator.clipboard.writeText(claudeInstallCommand)
-    toast(tl(`Commande copiée : colle-la dans un terminal de ${props.name}.`, `Command copied: paste it into a terminal on ${props.name}.`))
-  } catch { toast(t('Copie impossible'), true) }
+    toast(tl(`Command copied: paste it into a terminal on ${props.name}.`, `Commande copiée : colle-la dans un terminal de ${props.name}.`))
+  } catch { toast(t('Copy failed'), true) }
 }
 </script>
 
@@ -40,16 +40,16 @@ async function copy() {
   <div class="claude-setup" :class="setup.state">
     <UIcon :name="setup.state === 'pending' ? 'i-lucide-clock' : 'i-lucide-gauge'" class="claude-setup-icon" />
     <p v-if="setup.state === 'pending'">
-      {{ tl(`Quotas Claude installés sur ${name}`, `Claude quotas installed on ${name}`) }}
-      <small>{{ t('Ils apparaîtront après le prochain échange avec un Claude.') }}</small>
+      {{ tl(`Claude quotas installed on ${name}`, `Quotas Claude installés sur ${name}`) }}
+      <small>{{ t('They will show after the next exchange with a Claude.') }}</small>
     </p>
     <template v-else>
-      <p>{{ tl(`Quotas Claude non configurés sur ${name}`, `Claude quotas not set up on ${name}`) }}</p>
+      <p>{{ tl(`Claude quotas not set up on ${name}`, `Quotas Claude non configurés sur ${name}`) }}</p>
       <div class="claude-setup-actions">
         <UButton v-if="setup.installable" size="sm" color="primary" variant="solid" class="hw-cta" icon="i-lucide-download" :loading="busy" @click="install">
-          {{ t('Installer') }}
+          {{ t('Install') }}
         </UButton>
-        <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-copy" @click="copy">{{ t('Copier la commande') }}</UButton>
+        <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-copy" @click="copy">{{ t('Copy command') }}</UButton>
       </div>
     </template>
   </div>

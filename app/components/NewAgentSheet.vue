@@ -167,7 +167,7 @@ async function launchNew(place: NewPanePlace) {
   const isTab = place.kind === 'tab'
   if (r.stage === 'create') {
     error.value = r.error
-    toast(isTab ? tl(`Onglet non créé : ${r.error}`, `Tab not created: ${r.error}`) : tl(`Pane non créé : ${r.error}`, `Pane not created: ${r.error}`), true)
+    toast(isTab ? tl(`Tab not created: ${r.error}`, `Onglet non créé : ${r.error}`) : tl(`Pane not created: ${r.error}`, `Pane non créé : ${r.error}`), true)
     return
   }
   if (isTab && r.tabId) rememberNewTab(place.workspaceId, r.tabId)
@@ -175,10 +175,10 @@ async function launchNew(place: NewPanePlace) {
   resetForm()
   newAgentOpen.value = false
   if (r.stage === 'agent') {
-    const what = isTab ? tl('Onglet créé', 'Tab created') : tl('Pane créé', 'Pane created')
+    const what = isTab ? tl('Tab created', 'Onglet créé') : tl('Pane created', 'Pane créé')
     toast(shell.value || !kind.value
-      ? tl(`${what}, mais la commande n’a pas démarré : ${r.error}`, `${what}, but the command did not start: ${r.error}`)
-      : tl(`${what}, mais ${kindLabel(kind.value)} n’a pas démarré : ${r.error}`, `${what}, but ${kindLabel(kind.value)} did not start: ${r.error}`), true)
+      ? tl(`${what}, but the command did not start: ${r.error}`, `${what}, mais la commande n’a pas démarré : ${r.error}`)
+      : tl(`${what}, but ${kindLabel(kind.value)} did not start: ${r.error}`, `${what}, mais ${kindLabel(kind.value)} n’a pas démarré : ${r.error}`), true)
   } else haptic()
   if (r.paneId) {
     // Division : l'onglet (plan ou côte à côte), case active = le nouveau pane.
@@ -221,18 +221,18 @@ async function launch() {
 </script>
 
 <template>
-  <AppSheet v-model:open="open" :title="newTabSpace ? t('Lancer dans un nouvel onglet') : newSplit ? t('Lancer dans un nouveau pane') : t(shell ? 'Nouveau terminal' : 'Nouvel agent')" tall>
+  <AppSheet v-model:open="open" :title="newTabSpace ? t('Start in a new tab') : newSplit ? t('Start in a new pane') : t(shell ? 'New terminal' : 'New agent')" tall>
     <div v-if="!browsing" class="sheet-form">
       <div v-if="newSplit || newTabSpace" class="into-pane">
         <TabMap v-if="splitMap && targetTab" :layout="splitMap" :panes="targetTab.panes" :current="NEW_PANE" />
         <span v-else class="tabmap" aria-hidden="true"><i class="cur" style="inset: 0" /></span>
         <span>
-          <b>{{ newTabSpace ? t('Nouvel onglet') : [t('Nouveau pane'), targetTab ? `${t('Onglet')} ${tabTitle(targetTab)}` : null].filter(Boolean).join(' · ') }}</b>
-          <small>{{ [targetWs?.label, newSplit ? t(newSplit.direction === 'right' ? 'Division à droite' : 'Division en bas') : null, machineList ? machineName(machine) : null].filter(Boolean).join(' · ') }}</small>
+          <b>{{ newTabSpace ? t('New tab') : [t('New pane'), targetTab ? `${t('Tab')} ${tabTitle(targetTab)}` : null].filter(Boolean).join(' · ') }}</b>
+          <small>{{ [targetWs?.label, newSplit ? (newSplit.direction === 'right' ? tl('Split right', 'Division à droite') : tl('Split down', 'Division en bas')) : null, machineList ? machineName(machine) : null].filter(Boolean).join(' · ') }}</small>
         </span>
       </div>
       <template v-if="newTabSpace">
-        <label class="field-label" for="newTabName">{{ t('Nom de l’onglet') }} <span class="muted">{{ t('(optionnel)') }}</span></label>
+        <label class="field-label" for="newTabName">{{ t('Tab name') }} <span class="muted">{{ t('(optional)') }}</span></label>
         <UInput
           id="newTabName" v-model="tabName" size="xl" class="w-full" autocapitalize="none" autocorrect="off" enterkeyhint="done"
           :spellcheck="false" :placeholder="nextTabNumber" maxlength="60"
@@ -251,15 +251,15 @@ async function launch() {
         </button>
       </div>
 
-      <label class="field-label">{{ t('Dossier') }}</label>
+      <label class="field-label">{{ t('Folder') }}</label>
       <DirField v-model="dir" :recents="recents" @browse="browsing = true" />
 
       <label v-if="isGit && !fixedMachine" class="toggle-row">
-        <span><b>{{ t('Worktree séparé') }}</b><small>{{ t('nouvelle branche, sans toucher au dossier d’origine') }}</small></span>
+        <span><b>{{ t('Separate worktree') }}</b><small>{{ t('new branch, leaves the original folder untouched') }}</small></span>
         <USwitch v-model="worktree" color="success" size="xl" />
       </label>
       <div v-if="isGit && worktree && !fixedMachine">
-        <label class="field-label" for="newBranch">{{ t('Branche') }} <span class="muted">{{ t('(optionnel)') }}</span></label>
+        <label class="field-label" for="newBranch">{{ t('Branch') }} <span class="muted">{{ t('(optional)') }}</span></label>
         <UInput
           id="newBranch" ref="branchInput" v-model="branch" size="xl" class="w-full mono" autocapitalize="none" autocorrect="off"
           :spellcheck="false" placeholder="claude-a1b2" maxlength="80"
@@ -267,18 +267,18 @@ async function launch() {
       </div>
 
       <label v-if="canResume" class="toggle-row">
-        <span><b>{{ t('Reprendre la dernière conversation') }}</b><small>{{ t('de cet agent dans ce dossier') }}</small></span>
+        <span><b>{{ t('Resume the last conversation') }}</b><small>{{ t('for this agent in this folder') }}</small></span>
         <USwitch v-model="resume" color="success" size="xl" />
       </label>
 
-      <label class="field-label" for="newPrompt">{{ t(shell ? 'Commande à lancer' : 'Premier message') }} <span class="muted">{{ t('(optionnel)') }}</span></label>
+      <label class="field-label" for="newPrompt">{{ t(shell ? 'Command to run' : 'First message') }} <span class="muted">{{ t('(optional)') }}</span></label>
       <UTextarea
         id="newPrompt" v-model="prompt" :rows="2" autoresize size="xl" class="w-full" :class="{ mono: shell }"
-        :placeholder="t(shell ? 'Ex. : npm run dev' : 'Ex. : Fais le point sur les TODO du projet')"
+        :placeholder="t(shell ? 'E.g. npm run dev' : 'E.g. Summarize the project TODOs')"
       />
 
       <template v-if="!shell">
-        <label class="field-label" for="newName">{{ t('Nom') }} <span class="muted">{{ t('(optionnel)') }}</span></label>
+        <label class="field-label" for="newName">{{ t('Name') }} <span class="muted">{{ t('(optional)') }}</span></label>
         <UInput
           id="newName" v-model="name" size="xl" class="w-full" autocapitalize="none" autocorrect="off"
           :spellcheck="false" placeholder="reviewer" maxlength="32"
@@ -287,7 +287,7 @@ async function launch() {
 
       <p v-if="error" class="form-error">{{ error }}</p>
       <UButton block size="xl" color="primary" variant="solid" class="launch-btn hw-cta" icon="i-lucide-play" :loading="launching" :disabled="!kind" @click="launch">
-        {{ launching ? t('Démarrage…') : t('Lancer') }}
+        {{ launching ? t('Starting…') : t('Launch') }}
       </UButton>
     </div>
 

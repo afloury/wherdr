@@ -44,7 +44,7 @@ useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.opt
 
 <template>
   <div class="choices" :class="{ 'choices-screen': screen }">
-    <p class="eyebrow choices-eyebrow"><i />{{ t('À toi') }}</p>
+    <p class="eyebrow choices-eyebrow"><i />{{ t('Your turn') }}</p>
     <!-- Demande de permission : ce qui est demandé, à la place du texte brut de la boîte. -->
     <PromptDetailBlock v-if="prompt?.detail" :detail="prompt.detail" />
     <p v-if="question" class="choices-q">{{ question }}</p>
@@ -61,7 +61,7 @@ useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.opt
         <span class="l">{{ o.label }}<small v-if="o.hint">{{ o.hint }}</small></span>
       </button>
       <button v-if="prompt.multi" type="button" class="choices-next" :disabled="busy || !eventsOpen || offlineView" @click="next">
-        {{ t('Continuer') }}<kbd>{{ screenKeyName('enter') }}</kbd>
+        {{ t('Continue') }}<kbd>{{ screenKeyName('enter') }}</kbd>
       </button>
     </div>
     <div v-if="actions.length || keyboard" class="choices-keys">

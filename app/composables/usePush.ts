@@ -42,14 +42,14 @@ function readLastEndpoint() {
 export async function enablePush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
     return toast(t(isIOS && !standalone
-      ? 'Ajoute d’abord l’app à l’écran d’accueil (Partager → Sur l’écran d’accueil), puis ouvre-la depuis l’icône.'
-      : 'Notifications non disponibles dans ce navigateur.'), true)
+      ? 'Add the app to your Home Screen (Share → Add to Home Screen), then open it from the icon.'
+      : 'Notifications are unavailable in this browser.'), true)
   }
   try {
     const perm = await Notification.requestPermission()
-    if (perm !== 'granted') return toast(t('Notifications refusées — réactive-les dans Réglages.'), true)
+    if (perm !== 'granted') return toast(t('Notifications denied — enable them in system settings.'), true)
     await loadConfig()
-    if (!appConfig.value.push || !appConfig.value.push.key) return toast(t('Web Push non configuré sur le serveur'), true)
+    if (!appConfig.value.push || !appConfig.value.push.key) return toast(t('Web Push is not configured on the server'), true)
     const reg = await navigator.serviceWorker.ready
     const key = urlB64ToUint8(appConfig.value.push.key)
     let sub = await reg.pushManager.getSubscription()
@@ -60,16 +60,16 @@ export async function enablePush() {
     sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key })
     await api('/api/push/subscribe', { ...sub.toJSON(), previous, lang: language, notifyScope: notifyScope.value, sessions: machineSessions.value })
     try { localStorage.setItem(LAST_ENDPOINT, sub.endpoint) } catch { /* stockage indisponible */ }
-    toast(t('Notifications activées ✓'))
+    toast(t('Notifications enabled ✓'))
   } catch (err) {
-    toast(`${t('Échec')} : ${(err as Error).message}`, true)
+    toast(`${t('Failed')} : ${(err as Error).message}`, true)
   }
 }
 
 export async function testPush() {
   try {
     const r = await api<{ sent: number }>('/api/push/test', {})
-    toast(t(r.sent ? 'Notification envoyée' : 'Aucun appareil n’a accepté la notification'), !r.sent)
+    toast(t(r.sent ? 'Notification sent' : 'No device accepted the notification'), !r.sent)
   } catch (err) { toast((err as Error).message, true) }
 }
 
@@ -114,6 +114,6 @@ export async function endQuiet() {
     const { global, device } = quietState.value
     if (quietActive(device)) await setQuiet('device', false)
     if (quietActive(global)) await setQuiet('all', false)
-    toast(tl('Notifications réactivées', 'Notifications back on'))
+    toast(tl('Notifications back on', 'Notifications réactivées'))
   } catch (err) { toast((err as Error).message, true) }
 }

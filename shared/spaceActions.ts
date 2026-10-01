@@ -47,7 +47,7 @@ export const cleanLabel = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').t
 
 function idOf(v: unknown, re: RegExp, what: string) {
   const s = String(v ?? '')
-  if (!re.test(s)) fail('bad_id', `${what} invalide`)
+  if (!re.test(s)) fail('bad_id', `invalid ${what}`)
   return splitId(s)
 }
 
@@ -69,9 +69,9 @@ export function spaceCall(body: any): HerdrCall {
     case 'workspace.rename':
     case 'tab.rename': {
       const isTab = op === 'tab.rename'
-      const x = isTab ? idOf(b.tab_id, TAB_RE, 'onglet') : idOf(b.workspace_id, WORKSPACE_RE, 'workspace')
+      const x = isTab ? idOf(b.tab_id, TAB_RE, 'tab') : idOf(b.workspace_id, WORKSPACE_RE, 'workspace')
       const label = cleanLabel(b.label)
-      if (!label) fail('bad_label', 'nom vide')
+      if (!label) fail('bad_label', 'empty name')
       return { machine: x.machine, method: op, params: { [isTab ? 'tab_id' : 'workspace_id']: x.local, label } }
     }
     case 'workspace.close': {
@@ -79,14 +79,14 @@ export function spaceCall(body: any): HerdrCall {
       return { machine: w.machine, method: op, params: { workspace_id: w.local, ...(b.close_group === true ? { close_group: true } : {}) } }
     }
     case 'tab.close': {
-      const x = idOf(b.tab_id, TAB_RE, 'onglet')
+      const x = idOf(b.tab_id, TAB_RE, 'tab')
       if (b.close_group === true) return { machine: x.machine, method: 'workspace.close', params: { workspace_id: x.local.split(':')[0], close_group: true } }
       return { machine: x.machine, method: op, params: { tab_id: x.local } }
     }
     case 'pane.split': {
       const p = idOf(b.pane_id, PANE_RE, 'pane')
       const direction = b.direction
-      if (direction !== 'right' && direction !== 'down') fail('bad_direction', 'direction invalide')
+      if (direction !== 'right' && direction !== 'down') fail('bad_direction', 'invalid direction')
       const cwd = cleanCwd(b.cwd)
       return { machine: p.machine, method: op, params: { target_pane_id: p.local, direction, ...(cwd ? { cwd } : {}), focus: false } }
     }
@@ -97,37 +97,37 @@ export function spaceCall(body: any): HerdrCall {
       if (to === 'new_tab') destination = { type: 'new_tab', workspace_id: p.local.split(':')[0] }
       else if (to === 'new_workspace') destination = { type: 'new_workspace' }
       else if (to && typeof to === 'object') {
-        const x = idOf(to.tab_id, TAB_RE, 'onglet')
+        const x = idOf(to.tab_id, TAB_RE, 'tab')
         // Un pane ne passe pas d'une machine à l'autre.
-        if (x.machine !== p.machine) fail('bad_machine', 'onglet d’une autre machine')
+        if (x.machine !== p.machine) fail('bad_machine', 'tab on another machine')
         destination = { type: 'tab', tab_id: x.local, split: 'right' }
-      } else return fail('bad_destination', 'destination invalide')
+      } else return fail('bad_destination', 'invalid destination')
       return { machine: p.machine, method: op, params: { pane_id: p.local, destination, focus: false } }
     }
     case 'pane.swap': {
       // Le voisin est choisi par Herdr (pane.neighbor), puis swapSteps.
       const p = idOf(b.pane_id, PANE_RE, 'pane')
       const direction = b.direction
-      if (!PANE_DIRECTIONS.includes(direction)) fail('bad_direction', 'direction invalide')
+      if (!PANE_DIRECTIONS.includes(direction)) fail('bad_direction', 'invalid direction')
       return { machine: p.machine, method: op, params: { pane_id: p.local, direction } }
     }
     case 'pane.drop': {
       // Glisser-déposer dans l'onglet : suite d'appels calculée par dropSteps.
       const p = idOf(b.pane_id, PANE_RE, 'pane')
       const x = idOf(b.target_pane_id, PANE_RE, 'pane')
-      if (x.machine !== p.machine) fail('bad_machine', 'pane d’une autre machine')
+      if (x.machine !== p.machine) fail('bad_machine', 'pane on another machine')
       const side = b.side
-      if (side !== 'center' && !PANE_DIRECTIONS.includes(side)) fail('bad_direction', 'direction invalide')
+      if (side !== 'center' && !PANE_DIRECTIONS.includes(side)) fail('bad_direction', 'invalid direction')
       return { machine: p.machine, method: op, params: { pane_id: p.local, target_pane_id: x.local, side } }
     }
     case 'layout.ratio': {
       // Trait de séparation glissé : ratio du split désigné par son chemin
       // dans l'arbre (cf. splitPath), sans toucher au focus.
-      const x = idOf(b.tab_id, TAB_RE, 'onglet')
+      const x = idOf(b.tab_id, TAB_RE, 'tab')
       const path = String(b.path ?? '')
-      if (!/^[01]{0,32}$/.test(path)) fail('bad_path', 'split invalide')
+      if (!/^[01]{0,32}$/.test(path)) fail('bad_path', 'invalid split')
       const ratio = Number(b.ratio)
-      if (!Number.isFinite(ratio) || ratio <= 0 || ratio >= 1) fail('bad_ratio', 'ratio invalide')
+      if (!Number.isFinite(ratio) || ratio <= 0 || ratio >= 1) fail('bad_ratio', 'invalid ratio')
       return {
         machine: x.machine, method: 'layout.set_split_ratio',
         params: { tab_id: x.local, path: [...path].map(c => c === '1'), ratio: Math.round(Math.min(0.95, Math.max(0.05, ratio)) * 1000) / 1000 },
@@ -142,14 +142,14 @@ export function spaceCall(body: any): HerdrCall {
       let before: string | null = null
       if (b.before_workspace_id != null) {
         const x = idOf(b.before_workspace_id, WORKSPACE_RE, 'workspace')
-        if (x.machine !== w.machine) fail('bad_machine', 'espace d’une autre machine')
-        if (x.local === w.local) fail('bad_destination', 'destination invalide')
+        if (x.machine !== w.machine) fail('bad_machine', 'space on another machine')
+        if (x.local === w.local) fail('bad_destination', 'invalid destination')
         before = x.local
       }
       return { machine: w.machine, method: 'workspace.move_block', params: { workspace_ids: [w.local], before_workspace_id: before } }
     }
     default:
-      return fail('bad_op', `action inconnue : ${op}`)
+      return fail('bad_op', `unknown action: ${op}`)
   }
 }
 
@@ -177,11 +177,11 @@ export function spaceResult(call: HerdrCall, r: any): { pane_id?: string, tab_id
 export interface HerdrStep { method: string, params: Record<string, unknown> }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function swapSteps(snap: any, pane: string, target: string | null): HerdrStep[] {
-  if (!target || target === pane) fail('no_neighbor', 'aucun pane de ce côté')
+  if (!target || target === pane) fail('no_neighbor', 'no pane on that side')
   const layouts: { tab_id: string, workspace_id: string, zoomed?: boolean, focused_pane_id?: string | null, panes: { pane_id: string }[] }[] = Array.isArray(snap?.layouts) ? snap.layouts : []
   const tab = layouts.find(l => l.panes?.some(p => p.pane_id === pane))
-  if (!tab || !tab.panes.some(p => p.pane_id === target)) fail('no_neighbor', 'aucun pane de ce côté')
-  if (tab!.zoomed) fail('zoomed', 'un pane est agrandi dans cet onglet')
+  if (!tab || !tab.panes.some(p => p.pane_id === target)) fail('no_neighbor', 'no pane on that side')
+  if (tab!.zoomed) fail('zoomed', 'a pane is zoomed in this tab')
   const tabFocus = tab!.focused_pane_id || null
   const [source, other] = tabFocus === target ? [target!, pane] : [pane, target!]
   return [{ method: 'pane.swap', params: { source_pane_id: source, target_pane_id: other } }, ...refocus(snap, tab!, source)]
@@ -213,11 +213,11 @@ function refocus(snap: any, tab: SnapTab, cur: string | null): HerdrStep[] {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function dropSteps(snap: any, pane: string, target: string, side: DropSide): HerdrStep[] {
   if (side === 'center') return swapSteps(snap, pane, target)
-  if (!target || target === pane) fail('no_neighbor', 'même pane')
+  if (!target || target === pane) fail('no_neighbor', 'same pane')
   const layouts: SnapTab[] = Array.isArray(snap?.layouts) ? snap.layouts : []
   const tab = layouts.find(l => l.panes?.some(p => p.pane_id === pane))
-  if (!tab || !tab.panes.some(p => p.pane_id === target)) fail('no_neighbor', 'pane d’un autre onglet')
-  if (tab!.zoomed) fail('zoomed', 'un pane est agrandi dans cet onglet')
+  if (!tab || !tab.panes.some(p => p.pane_id === target)) fail('no_neighbor', 'pane in another tab')
+  if (tab!.zoomed) fail('zoomed', 'a pane is zoomed in this tab')
   const before = side === 'left' || side === 'up'
   const steps: HerdrStep[] = [
     { method: 'pane.move', params: { pane_id: pane, destination: { type: 'new_tab', workspace_id: tab!.workspace_id }, focus: false } },

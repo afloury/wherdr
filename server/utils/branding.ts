@@ -11,7 +11,7 @@ const BRANDING_DIR = process.env.BRANDING_DIR || ''
 const TYPES: Record<string, string> = { png: 'image/png', svg: 'image/svg+xml', ico: 'image/x-icon' }
 
 export async function serveBranding(event: H3Event, rel: string) {
-  if (!/^(icons\/[\w.-]+\.(png|svg)|favicon\.ico)$/.test(rel)) return sendError(event, 404, { error: 'introuvable' })
+  if (!/^(icons\/[\w.-]+\.(png|svg)|favicon\.ico)$/.test(rel)) return sendError(event, 404, { error: 'Not found' })
   let body: Buffer | null = null
   if (BRANDING_DIR) {
     try { body = await fs.promises.readFile(path.join(BRANDING_DIR, rel)) }
@@ -21,7 +21,7 @@ export async function serveBranding(event: H3Event, rel: string) {
     const raw = await useStorage('assets:server').getItemRaw(`branding/${rel}`)
     body = raw ? Buffer.from(raw as ArrayBuffer) : null
   }
-  if (!body) return sendError(event, 404, { error: 'introuvable' })
+  if (!body) return sendError(event, 404, { error: 'Not found' })
   setResponseHeader(event, 'content-type', TYPES[rel.split('.').pop()!]!)
   setResponseHeader(event, 'cache-control', 'public, max-age=86400')
   return body

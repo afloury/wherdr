@@ -26,9 +26,9 @@ const isOpen = (r: RepoRoot) => (r.row.kind === 'space' ? r.row.panes : [r.row.p
 const headerState = (r?: RepoRoot | null) => repoHeaderState(showShells.value, !!r && isOpen(r), !!r)
 function repoItems(r?: RepoRoot | null): MenuItem[] {
   if (!r || !headerState(r).menu) return []
-  return [{ label: tl('Ouvrir le terminal', 'Open terminal'), icon: 'i-lucide-square-terminal', run: () => openRoot(r) }]
+  return [{ label: tl('Open terminal', 'Ouvrir le terminal'), icon: 'i-lucide-square-terminal', run: () => openRoot(r) }]
 }
-const repoMenuTitle = (name: string) => `${tl('Dépôt', 'Repo')} ${name}`
+const repoMenuTitle = (name: string) => `${tl('Repo', 'Dépôt')} ${name}`
 let pressed: { root?: RepoRoot | null, name: string } | null = null
 const lp = longPress({
   onPress: () => {
@@ -76,7 +76,7 @@ const projectTitle = computed(() => {
   return p ? spaceTitle(p, herdrState.value.workspaces.find(w => w.id === p.workspace)) : props.group.name
 })
 const tag = (p: Pane) => {
-  if (p === props.group.coordinator) return t('coordinateur')
+  if (p === props.group.coordinator) return t('coordinator')
   const n = threadNumber(p)
   return n == null ? null : `t-${String(n).padStart(4, '0')}`
 }
@@ -89,15 +89,15 @@ const tag = (p: Pane) => {
       <span class="project-name">{{ projectTitle }}</span>
       <span class="count">{{ group.panes.length }}</span>
       <span class="project-sum">
-        <span v-if="group.blocked" class="blocked"><i />{{ group.blocked }}<span class="project-sum-l">{{ t('à toi') }}</span></span>
-        <span v-if="group.working" class="working"><i />{{ group.working }}<span class="project-sum-l">{{ t('au travail') }}</span></span>
-        <span v-if="ready && (collapsed || !group.blocked && !group.working)" class="ready"><i />{{ ready }}<span class="project-sum-l">{{ t('prêts') }}</span></span>
+        <span v-if="group.blocked" class="blocked"><i />{{ group.blocked }}<span class="project-sum-l">{{ t('your turn') }}</span></span>
+        <span v-if="group.working" class="working"><i />{{ group.working }}<span class="project-sum-l">{{ t('working') }}</span></span>
+        <span v-if="ready && (collapsed || !group.blocked && !group.working)" class="ready"><i />{{ ready }}<span class="project-sum-l">{{ t('ready') }}</span></span>
       </span>
     </button>
     <button v-if="remote" type="button" class="project-remote" @click="openCoordinator">
       <UIcon name="i-lucide-radio-tower" class="project-remote-icon" />
-      <span>{{ tl('Coordonné depuis', 'Coordinated from') }} <b>{{ machineName(remote.machine) }}</b></span>
-      <span class="project-remote-go">{{ t('coordinateur') }}<UIcon name="i-lucide-arrow-up-right" /></span>
+      <span>{{ tl('Coordinated from', 'Coordonné depuis') }} <b>{{ machineName(remote.machine) }}</b></span>
+      <span class="project-remote-go">{{ t('coordinator') }}<UIcon name="i-lucide-arrow-up-right" /></span>
     </button>
     <template v-if="!collapsed">
       <div v-if="sections.coordinator" class="card-list project-coordinator">
@@ -113,7 +113,7 @@ const tag = (p: Pane) => {
             @contextmenu="!desk && $event.preventDefault()" @click="repoClick(repo.key)">
             <UIcon name="i-lucide-chevron-down" class="project-repo-chev" />
             <UIcon name="i-lucide-git-fork" class="project-repo-icon" />
-            <span class="project-repo-l">{{ tl('Dépôt', 'Repo') }}</span>
+            <span class="project-repo-l">{{ tl('Repo', 'Dépôt') }}</span>
             <b>{{ repo.name }}</b>
             <span class="project-repo-n">· {{ worktreeCount(repo.worktrees) }}</span>
             <span v-if="repoCollapsed(repo.key)" class="project-repo-summary" :class="repo.blocked ? 'blocked' : repo.working ? 'working' : 'ready'"

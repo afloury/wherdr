@@ -10,9 +10,9 @@ export async function confirmClose(kind: CloseKind, id: string, message: string,
     for (const w of plan.workspaces) {
       if (!w.repo && !w.worktree) continue
       const pane = herdrState.value.panes.find(p => p.workspace === w.id && p.cwd)
-      if (!pane) throw new Error(tl(`État Git indisponible pour « ${w.label} ».`, `Git status unavailable for “${w.label}”.`))
+      if (!pane) throw new Error(tl(`Git status unavailable for “${w.label}”.`, `État Git indisponible pour « ${w.label} ».`))
       const changes = await api<CloseStatus>(`/api/close/status?pane=${encodeURIComponent(pane.id)}`)
-      if (!changes.git) throw new Error(tl(`État Git indisponible pour « ${w.label} ».`, `Git status unavailable for “${w.label}”.`))
+      if (!changes.git) throw new Error(tl(`Git status unavailable for “${w.label}”.`, `État Git indisponible pour « ${w.label} ».`))
       statuses.push({
         label: w.label,
         modified: changes.modified || 0,
@@ -26,8 +26,8 @@ export async function confirmClose(kind: CloseKind, id: string, message: string,
   }
   const details = statuses.length || plan.group ? `\n${checkoutMessage(statuses, plan.group, tl)}` : ''
   const processes = plan.group
-    ? tl(` ${plan.panes.length} panes et leurs processus seront fermés.`, ` ${plan.panes.length} panes and their processes will close.`)
+    ? tl(` ${plan.panes.length} panes and their processes will close.`, ` ${plan.panes.length} panes et leurs processus seront fermés.`)
     : ''
-  const groupAction = plan.group ? tl('Fermer le groupe', 'Close group') : action
+  const groupAction = plan.group ? tl('Close group', 'Fermer le groupe') : action
   return await askConfirm(`${message}${processes}${details}`, groupAction) ? plan : null
 }

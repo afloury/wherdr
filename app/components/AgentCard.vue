@@ -30,7 +30,7 @@ const selected = computed(() => {
 const counts = computed(() => {
   const s = space.value
   if (!s) return ''
-  const tabs = s.tabs.length > 1 ? tl(`${s.tabs.length} onglets`, `${s.tabs.length} tabs`) : ''
+  const tabs = s.tabs.length > 1 ? tl(`${s.tabs.length} tabs`, `${s.tabs.length} onglets`) : ''
   return [tabs, tl(`${s.panes.length} panes`, `${s.panes.length} panes`)].filter(Boolean).join(' · ')
 })
 const where = computed(() => {
@@ -38,7 +38,7 @@ const where = computed(() => {
   // Space : le pane dont viennent l'état et l'aperçu (et son onglet s'il y en a plusieurs).
   if (space.value) {
     const s = space.value
-    return [s.tabs.length > 1 ? `${t('Onglet')} ${s.leadTab.tab.label || s.leadTab.tab.number}` : '', subtitle.value].filter(Boolean).join(' · ')
+    return [s.tabs.length > 1 ? `${t('Tab')} ${s.leadTab.tab.label || s.leadTab.tab.number}` : '', subtitle.value].filter(Boolean).join(' · ')
   }
   return [subtitle.value, branch.value || shortPath(p.cwd)].filter(Boolean).join(' · ')
 })
@@ -49,12 +49,12 @@ const preview = computed(() => (screen.value && screenSummary(screen.value)) || 
 // Lu / non lu : seulement pour un agent qui a fini (prêt).
 const unread = computed(() => (space.value ? space.value.panes.filter(p => p.agent && p.status === 'done') : []))
 const readItem = computed(() => {
-  if (space.value) return unread.value.length ? { label: t('Marquer comme lu'), icon: 'i-lucide-mail-open', run: () => readAll() } : null
+  if (space.value) return unread.value.length ? { label: t('Mark as read'), icon: 'i-lucide-mail-open', run: () => readAll() } : null
   const p = props.pane
   if (!p.agent || (p.status !== 'done' && p.status !== 'idle')) return null
   return p.status === 'done'
-    ? { label: t('Marquer comme lu'), icon: 'i-lucide-mail-open', run: () => setRead(true) }
-    : { label: t('Marquer comme non lu'), icon: 'i-lucide-mail', run: () => setRead(false) }
+    ? { label: t('Mark as read'), icon: 'i-lucide-mail-open', run: () => setRead(true) }
+    : { label: t('Mark as unread'), icon: 'i-lucide-mail', run: () => setRead(false) }
 })
 async function readAll() {
   try {
@@ -83,8 +83,8 @@ const contextItems = computed(() => toDropdown(space.value ? [
   { kind: 'separator' },
   {
     label: props.pane.agent
-      ? tl(`Fermer ce pane (arrête ${kindLabel(props.pane.agent)})`, `Close this pane (stops ${kindLabel(props.pane.agent)})`)
-      : t('Fermer ce terminal'),
+      ? tl(`Close this pane (stops ${kindLabel(props.pane.agent)})`, `Fermer ce pane (arrête ${kindLabel(props.pane.agent)})`)
+      : t('Close this terminal'),
     icon: 'i-lucide-trash-2', danger: true, run: () => closePane(props.pane),
   },
 ]))

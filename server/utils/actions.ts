@@ -19,7 +19,7 @@ const px = path.posix
 // Machine visée par une requête (`machine` : clé courte, vide = locale), prête.
 export function machineFor(key: unknown): Machine {
   const m = getMachine(String(key || ''))
-  if (!m) throw new HerdrError('bad_machine', 'machine inconnue')
+  if (!m) throw new HerdrError('bad_machine', 'unknown machine')
   if (!m.local && (m.status !== 'online' || !m.home)) throw new HerdrError('unreachable', `${m.label} injoignable${m.error ? ` : ${m.error}` : ''}`)
   return m
 }
@@ -55,7 +55,7 @@ export async function createAgent(body: Json) {
     target = findPane(String(body.pane_id))
   }
   if (body.pane_id) {
-    if (!PANE_RE.test(String(body.pane_id)) || !target) throw new HerdrError('bad_pane', 'pane introuvable')
+    if (!PANE_RE.test(String(body.pane_id)) || !target) throw new HerdrError('bad_pane', 'Pane not found')
     if (target.agent) throw new HerdrError('busy_pane', 'un agent tourne déjà dans ce pane')
     if (body.worktree) throw new HerdrError('bad_worktree', 'pas de worktree dans un pane existant')
   }
@@ -237,7 +237,7 @@ export async function saveUpload(data: Buffer, ctype: string, paneId?: string | 
   const file = path.join(UPLOAD_DIR, name)
   if (!data.length) throw new HerdrError('empty', 'fichier vide')
   const m = paneId ? machineOfPane(paneId) : null
-  if (paneId && !m) throw new HerdrError('bad_pane', 'pane introuvable')
+  if (paneId && !m) throw new HerdrError('bad_pane', 'Pane not found')
   await fsp.mkdir(UPLOAD_DIR, { recursive: true })
   await fsp.writeFile(file, data, { mode: 0o600 })
   if (m instanceof RemoteMachine) {

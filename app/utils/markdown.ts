@@ -20,7 +20,7 @@ export function md(text: string): string {
         code({ text, lang }) {
           const l = escHtml((lang || '').split(/\s/)[0] || '')
           return `<div class="code-block"><div class="code-head"><span>${l || 'code'}</span>`
-            + `<button type="button" class="code-copy">${escHtml(t('Copier'))}</button></div>`
+            + `<button type="button" class="code-copy">${escHtml(t('Copy'))}</button></div>`
             + `<pre><code${l ? ` class="language-${l}"` : ''}>${escHtml(text)}</code></pre></div>`
         },
       },

@@ -37,7 +37,7 @@ async function go() {
   const home = listing.value?.home
   const target = home ? normalizeDirInput(raw, home) : raw
   if (target === null) {
-    pathError.value = tl(`Ce dossier est hors du dossier personnel (${shortPath(home)}) de cette machine.`, `This folder is outside this machine’s home folder (${shortPath(home)}).`)
+    pathError.value = tl(`This folder is outside this machine’s home folder (${shortPath(home)}).`, `Ce dossier est hors du dossier personnel (${shortPath(home)}) de cette machine.`)
     return
   }
   going.value = true
@@ -45,7 +45,7 @@ async function go() {
   catch (err) {
     const e = err as ApiError
     pathError.value = e.code === 'bad_path'
-      ? tl('Dossier introuvable ou illisible sur cette machine.', 'Folder not found or unreadable on this machine.')
+      ? tl('Folder not found or unreadable on this machine.', 'Dossier introuvable ou illisible sur cette machine.')
       : e.message
   }
   finally { going.value = false }
@@ -69,12 +69,12 @@ function choose() {
         <input
           v-model="pathInput" class="dir-input" type="text" inputmode="url" enterkeyhint="go"
           autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
-          :aria-label="tl('Chemin du dossier', 'Folder path')" placeholder="~/…"
+          :aria-label="tl('Folder path', 'Chemin du dossier')" placeholder="~/…"
           :aria-invalid="!!pathError" @input="pathError = null"
         >
         <UButton
           type="submit" size="sm" color="neutral" variant="outline" icon="i-lucide-arrow-right"
-          :loading="going" :aria-label="tl('Aller', 'Go')" :title="tl('Aller', 'Go')"
+          :loading="going" :aria-label="tl('Go', 'Aller')" :title="tl('Go', 'Aller')"
         />
       </form>
     </div>
@@ -86,12 +86,12 @@ function choose() {
         <button v-for="d in listing.dirs" :key="d.path" type="button" @click="browse(d.path)">
           <UIcon name="i-lucide-folder" /><span>{{ d.name }}</span><span v-if="d.git" class="git">git</span>
         </button>
-        <p v-if="!listing.dirs.length" class="muted" style="padding:16px 8px">{{ t('Aucun sous-dossier.') }}</p>
+        <p v-if="!listing.dirs.length" class="muted" style="padding:16px 8px">{{ t('No subfolders.') }}</p>
       </template>
     </div>
     <div class="dir-actions">
-      <UButton color="neutral" variant="ghost" size="lg" block @click="emit('cancel')">{{ t('Annuler') }}</UButton>
-      <UButton color="primary" variant="solid" size="lg" block class="hw-cta" @click="choose">{{ t('Choisir ce dossier') }}</UButton>
+      <UButton color="neutral" variant="ghost" size="lg" block @click="emit('cancel')">{{ t('Cancel') }}</UButton>
+      <UButton color="primary" variant="solid" size="lg" block class="hw-cta" @click="choose">{{ t('Choose this folder') }}</UButton>
     </div>
   </div>
 </template>

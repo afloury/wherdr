@@ -156,7 +156,7 @@ describe('appels', () => {
       machine: R, method: 'pane.drop', params: { pane_id: 'w1:p4', target_pane_id: 'w1:p1', side: 'left' },
     })
     expect(spaceCall({ op: 'pane.drop', pane_id: 'w1:p4', target_pane_id: 'w1:p1', side: 'center' }).params.side).toBe('center')
-    expect(() => spaceCall({ op: 'pane.drop', pane_id: 'w1:p4', target_pane_id: `${R}~w1:p1`, side: 'left' })).toThrow(/autre machine/)
+    expect(() => spaceCall({ op: 'pane.drop', pane_id: 'w1:p4', target_pane_id: `${R}~w1:p1`, side: 'left' })).toThrow(/another machine/)
     expect(() => spaceCall({ op: 'pane.drop', pane_id: 'w1:p4', target_pane_id: 'w1:p1', side: 'middle' })).toThrow(/direction/)
   })
 
@@ -197,10 +197,10 @@ describe('appels', () => {
 
   it('centre : échange ; refusé hors de l’onglet ou agrandi', () => {
     expect(dropSteps(s(), 'w1:p3', 'w1:p2', 'center')[0]).toEqual({ method: 'pane.swap', params: { source_pane_id: 'w1:p3', target_pane_id: 'w1:p2' } })
-    expect(() => dropSteps(s(), 'w1:p3', 'w1:p9', 'left')).toThrow(/autre onglet/)
-    expect(() => dropSteps(s(), 'w1:p3', 'w1:p3', 'left')).toThrow(/même pane/)
+    expect(() => dropSteps(s(), 'w1:p3', 'w1:p9', 'left')).toThrow(/another tab/)
+    expect(() => dropSteps(s(), 'w1:p3', 'w1:p3', 'left')).toThrow(/same pane/)
     const z = s()
     z.layouts[0] = { ...z.layouts[0]!, zoomed: true } as typeof z.layouts[0]
-    expect(() => dropSteps(z, 'w1:p3', 'w1:p2', 'right')).toThrow(/agrandi/)
+    expect(() => dropSteps(z, 'w1:p3', 'w1:p2', 'right')).toThrow(/zoomed/)
   })
 })

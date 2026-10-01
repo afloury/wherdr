@@ -72,7 +72,7 @@ async function checkSelectedSessions() {
         setSessionNames(next)
         syncPushLanguage().catch(() => {})
         if (lastMachine.value && !fullState.machines?.some(m => m.key === lastMachine.value && !m.baseKey)) lastMachine.value = baseKey
-        toast(t('Session indisponible : retour à la session par défaut'))
+        toast(t('Session unavailable: back to the default session'))
       }
     } catch { /* machine momentanément inaccessible */ }
   }
@@ -232,7 +232,7 @@ export const machineOnline = (m: MachineConfig) => m.local || (machineInfo(m.key
 export const machineStateOf = (m: MachineConfig) => (m.local ? 'online' : machineInfo(m.key)?.status || 'offline')
 export const machineName = (key: string | null | undefined) => {
   const m = machineInfo(key)
-  return m ? m.label || t('Cette machine') : ''
+  return m ? m.label || t('This machine') : ''
 }
 // Pane d'une machine injoignable : son dernier état, grisé.
 export const paneStale = (p: Pane | null | undefined) => {
@@ -298,7 +298,7 @@ export async function api<T = Record<string, unknown>>(path: string, body?: unkn
   // Session expirée (12 h) ou app verrouillée : on repasse par la clé d'accès.
   if (r.status === 401 && data.code === 'locked' && !path.startsWith('/api/auth/')) showLock()
   // Erreurs de Herdr transmises telles quelles (en anglais) : message traduit par code.
-  const known = data.code === 'agent_not_ready' ? 'L’agent n’est pas prêt dans ce pane (arrêté ou en cours de démarrage).' : null
+  const known = data.code === 'agent_not_ready' ? 'The agent isn’t ready in this pane (stopped or still starting).' : null
   if (!r.ok) throw new ApiError(t(known || data.error || `HTTP ${r.status}`), r.status, data.code)
   return data as T
 }
