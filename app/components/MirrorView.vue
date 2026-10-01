@@ -9,6 +9,7 @@ import { Terminal } from '@xterm/xterm'
 import { mirrorInput } from '#shared/spaces'
 import { mirrorTop } from '~/utils/mirrorViewport'
 import { bindTerminalSelection, type TerminalSelection } from '~/utils/terminalSelection'
+import { bindShiftEnter } from '~/utils/terminalKeys'
 
 const props = defineProps<{ paneId: string, interactive?: boolean }>()
 const box = ref<HTMLElement | null>(null)
@@ -110,6 +111,7 @@ onMounted(() => {
     copied: ok => toast(ok ? t('Copié') : t('Copie impossible'), false, ok ? undefined : t('Le navigateur refuse l’accès au presse-papiers.')),
   })
   term.attachCustomWheelEventHandler(() => false)
+  bindShiftEnter(term, (key) => { if (props.interactive) send({ keys: [key] }) })
   term.onData((d) => {
     if (!props.interactive) return
     for (const x of mirrorInput(d)) send(x)
