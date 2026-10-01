@@ -51,7 +51,7 @@ describe('appel pane.swap', () => {
     })
     expect(spaceCall({ op: 'pane.swap', pane_id: 'w1:p1', direction: 'down' }).machine).toBe('')
     expect(() => spaceCall({ op: 'pane.swap', pane_id: 'w1:p1', direction: 'north' })).toThrow(/direction/)
-    expect(() => spaceCall({ op: 'pane.swap', pane_id: 'w1', direction: 'up' })).toThrow(/pane invalide/)
+    expect(() => spaceCall({ op: 'pane.swap', pane_id: 'w1', direction: 'up' })).toThrow(/invalid pane/)
   })
 
   // session.snapshot minimal : deux espaces, le client attaché sur w2.
@@ -88,8 +88,8 @@ describe('appel pane.swap', () => {
   })
 
   it('refusé sans voisin, hors de l’onglet ou onglet agrandi', () => {
-    expect(() => swapSteps(snap(), 'w1:p4', null)).toThrow(/aucun pane/)
-    expect(() => swapSteps(snap(), 'w1:p4', 'w1:p9')).toThrow(/aucun pane/)
-    expect(() => swapSteps(snap({ zoomed: true }), 'w1:p4', 'w1:p3')).toThrow(/agrandi/)
+    expect(() => swapSteps(snap(), 'w1:p4', null)).toThrow(/no pane/)
+    expect(() => swapSteps(snap(), 'w1:p4', 'w1:p9')).toThrow(/no pane/)
+    expect(() => swapSteps(snap({ zoomed: true }), 'w1:p4', 'w1:p3')).toThrow(/zoomed/)
   })
 })

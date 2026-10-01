@@ -142,7 +142,7 @@ const seen = ref(Boolean(pane.value))
 const graceOver = ref(false)
 const graceTimer = setTimeout(() => { graceOver.value = true }, 4000)
 onUnmounted(() => clearTimeout(graceTimer))
-const closedBanner: Banner = { text: t('Ce pane a été fermé.'), btn: t('Retour'), fn: () => navigateTo('/') }
+const closedBanner: Banner = { text: t('This pane has been closed.'), btn: t('Back'), fn: () => navigateTo('/') }
 const closed = computed(() => !pane.value && herdrState.value.ok && (seen.value || graceOver.value) && !isClosing(props.paneId))
 watch(pane, (p) => {
   if (!p) return
@@ -249,7 +249,7 @@ async function sendFiles(files: File[]) {
       if (!r.ok) throw new Error(t(data.error || `HTTP ${r.status}`))
       onSent(await sendMessage(pane.value, props.paneId, data.path))
       haptic()
-    } catch (err) { toast(`${t('Fichier non envoyé')} : ${(err as Error).message}`, true) }
+    } catch (err) { toast(`${t('File upload failed')} : ${(err as Error).message}`, true) }
   }
 }
 
@@ -277,7 +277,7 @@ function onDrop(e: DragEvent) {
   if (!files.length) return
   if (dropTarget.value === 'term') return sendFiles(files)
   const { images, refused } = splitDropped(files)
-  if (refused.length) toast(tl(`Seules les images se joignent au message : ${refused.map(f => f.name).join(', ')}`, `Only images can be attached to a message: ${refused.map(f => f.name).join(', ')}`), true)
+  if (refused.length) toast(tl(`Only images can be attached to a message: ${refused.map(f => f.name).join(', ')}`, `Seules les images se joignent au message : ${refused.map(f => f.name).join(', ')}`), true)
   if (images.length) {
     composer.value?.addImages(images)
     composer.value?.focus()
@@ -289,24 +289,24 @@ function onDrop(e: DragEvent) {
 const agentMenu = computed<MenuItem[]>(() => {
   const p = pane.value
   const items: MenuItem[] = []
-  if (canAttachTerminal.value) items.push({ label: t('Joindre un fichier…'), icon: 'i-lucide-paperclip', run: () => attachInput.value?.click() })
-  if (p) items.push({ label: t('Voir les changements'), icon: 'i-lucide-file-diff', run: () => { changesOpen.value = true } })
-  if (p) items.push({ label: t('Renommer le pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } })
-  // Split, move to another tab (never zoom or resize).
+  if (canAttachTerminal.value) items.push({ label: t('Attach a file…'), icon: 'i-lucide-paperclip', run: () => attachInput.value?.click() })
+  if (p) items.push({ label: t('View changes'), icon: 'i-lucide-file-diff', run: () => { changesOpen.value = true } })
+  if (p) items.push({ label: t('Rename pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } })
+  // Diviser, déplacer vers un autre onglet (jamais de zoom ni de redimensionnement).
   if (p) items.push(...paneSpaceItems(p))
   if (p) items.push(copyPaneIdItem(p))
   // Herdr plugin actions of its machine that apply to a workspace / pane.
   if (p && agentPluginActions(p.machine).length) {
-    items.push({ label: t('Actions des plugins'), icon: 'i-lucide-puzzle', run: () => openPluginMenu({ pane: p }) })
+    items.push({ label: t('Plugin actions'), icon: 'i-lucide-puzzle', run: () => openPluginMenu({ pane: p }) })
   }
   items.push({
-    label: t('Prendre la main sur ce terminal'), icon: 'i-lucide-arrow-left-right',
+    label: t('Take control of this terminal'), icon: 'i-lucide-arrow-left-right',
     run: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => ctl.connect(true)) },
   })
-  // Relaunch Claude / Codex in this pane, on the same conversation.
-  if (p && canRestart(p) && !p.restart) items.push({ label: t('Redémarrer l’agent'), icon: 'i-lucide-rotate-cw', run: () => restartAgent(p) })
+  // Relancer Claude / Codex dans ce pane, sur la même conversation.
+  if (p && canRestart(p) && !p.restart) items.push({ label: t('Restart agent'), icon: 'i-lucide-rotate-cw', run: () => restartAgent(p) })
   items.push({
-    label: t('Reconnecter'), icon: 'i-lucide-refresh-cw',
+    label: t('Reconnect'), icon: 'i-lucide-refresh-cw',
     run: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => { ctl.reset(); ctl.connect(false) }) },
   })
   // Tab and space: long press (right click) on the tab, the space card
@@ -315,13 +315,13 @@ const agentMenu = computed<MenuItem[]>(() => {
   if (p) {
     items.push({ kind: 'separator' })
     items.push({
-      label: p.agent ? tl(`Fermer ce pane (arrête ${kindLabel(p.agent)})`, `Close this pane (stops ${kindLabel(p.agent)})`) : t('Fermer ce terminal'),
+      label: p.agent ? tl(`Close this pane (stops ${kindLabel(p.agent)})`, `Fermer ce pane (arrête ${kindLabel(p.agent)})`) : t('Close this terminal'),
       icon: 'i-lucide-trash-2', danger: true, run: () => closePane(p),
     })
     // Pane in a worktree: remove the checkout (and close its workspace).
     const ws = herdrState.value.workspaces.find(w => w.id === p.workspace)
     if (ws && ws.worktree) {
-      items.push({ label: t('Supprimer ce worktree'), icon: 'i-lucide-git-branch', danger: true, run: () => removeWorktreeOf(p.workspace) })
+      items.push({ label: t('Delete this worktree'), icon: 'i-lucide-git-branch', danger: true, run: () => removeWorktreeOf(p.workspace) })
     }
   }
   return items
@@ -329,7 +329,7 @@ const agentMenu = computed<MenuItem[]>(() => {
 async function removeWorktreeOf(workspace: string) {
   await loadWorktrees()
   const w = (worktrees.value || []).find(x => x.workspace === workspace)
-  if (!w) return toast(t('Worktree introuvable'), true)
+  if (!w) return toast(t('Worktree not found'), true)
   if (await removeWorktreeFlow(w)) navigateTo('/')
 }
 const dropdownItems = computed(() => toDropdown(agentMenu.value))
@@ -452,18 +452,18 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
   >
     <div v-if="dropDepth && dropTarget" class="file-drop" aria-hidden="true">
       <UIcon :name="dropTarget === 'term' ? 'i-lucide-paperclip' : 'i-lucide-image-plus'" class="file-drop-icon" />
-      <span class="file-drop-label">{{ t('Déposer pour joindre') }}</span>
-      <small>{{ dropTarget === 'term' ? t('Le chemin du fichier part dans le terminal') : t('Images · réduites avant l’envoi') }}</small>
+      <span class="file-drop-label">{{ t('Drop to attach') }}</span>
+      <small>{{ dropTarget === 'term' ? t('The file path is sent to the terminal') : t('Images · resized before upload') }}</small>
     </div>
     <SpaceTabs v-if="!cell && pane" :workspace="pane.workspace" :current="pane.tab" />
     <HeaderMenu :items="() => agentMenu" :disabled="!pane">
       <header class="top bar agent-top">
-        <span v-if="cell && grip" class="cell-grip" role="button" :aria-label="t('Glisser pour déplacer le pane')" :title="t('Glisser pour déplacer le pane')">
+        <span v-if="cell && grip" class="cell-grip" role="button" :aria-label="t('Drag to move the pane')" :title="t('Drag to move the pane')">
           <UIcon name="i-lucide-grip-vertical" />
         </span>
         <UButton
           v-if="!cell" id="btnBack" icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn back"
-          :aria-label="t('Retour')" @click="goBack"
+          :aria-label="t('Back')" @click="goBack"
         />
         <div class="agent-head">
           <div class="agent-title">{{ headTitle }}</div>
@@ -489,29 +489,29 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
           />
           <UButton
             v-if="headerAdd && pane" icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn"
-            :aria-label="t('Nouvel onglet')" :title="t('Nouvel onglet')" :disabled="offlineView" @click="newTab(pane.workspace)"
+            :aria-label="t('New tab')" :title="t('New tab')" :disabled="offlineView" @click="newTab(pane.workspace)"
           />
-          <UTooltip v-if="cell" :text="t('Ouvrir seul')">
-            <UButton icon="i-lucide-maximize-2" color="neutral" variant="ghost" size="md" class="icon-btn" :aria-label="t('Ouvrir seul')" :to="panePath(paneId)" />
+          <UTooltip v-if="cell" :text="t('Open alone')">
+            <UButton icon="i-lucide-maximize-2" color="neutral" variant="ghost" size="md" class="icon-btn" :aria-label="t('Open alone')" :to="panePath(paneId)" />
           </UTooltip>
-          <UTooltip v-else-if="inTab && tabEnt" :text="t('Côte à côte')" :disabled="!desk">
-            <button type="button" class="map-btn" :aria-label="desk ? t('Côte à côte') : t('Plan de l’onglet')" @click="openPlan">
+          <UTooltip v-else-if="inTab && tabEnt" :text="t('Side by side')" :disabled="!desk">
+            <button type="button" class="map-btn" :aria-label="desk ? t('Side by side') : t('Tab overview')" @click="openPlan">
               <TabMap :layout="tabEnt.layout" :panes="tabEnt.panes" :current="paneId" />
             </button>
           </UTooltip>
-          <UTooltip v-if="projectSide && !sideOpen" :text="t('Afficher le panneau Projet')">
-            <UButton icon="i-lucide-panel-right-open" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Afficher le panneau Projet')" @click="setSideOpen(true)" />
+          <UTooltip v-if="projectSide && !sideOpen" :text="t('Show the Project panel')">
+            <UButton icon="i-lucide-panel-right-open" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Show the Project panel')" @click="setSideOpen(true)" />
           </UTooltip>
           <UButton
             v-if="controls.project" icon="i-lucide-folder-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn mode-btn"
-            :class="{ on: mode === 'project' }" :aria-label="t('Projet')" :aria-pressed="mode === 'project'" @click="toggleMode('project')"
+            :class="{ on: mode === 'project' }" :aria-label="t('Project')" :aria-pressed="mode === 'project'" @click="toggleMode('project')"
           />
           <UButton
             v-if="controls.term" icon="i-lucide-square-terminal" color="neutral" variant="ghost" size="lg" class="icon-btn mode-btn"
             :class="{ on: mode === 'term' }" :aria-label="t('Terminal')" :aria-pressed="mode === 'term'" @click="toggleMode('term')"
           />
-          <UTooltip v-if="hasChat(pane) && (live || cell)" :text="t('Rechercher')" :disabled="!desk">
-            <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :class="{ on: searchOpen }" :aria-label="t('Rechercher')" @click="toggleSearch" />
+          <UTooltip v-if="hasChat(pane) && (live || cell)" :text="t('Search')" :disabled="!desk">
+            <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :class="{ on: searchOpen }" :aria-label="t('Search')" @click="toggleSearch" />
           </UTooltip>
           <UDropdownMenu v-if="desk" :items="dropdownItems" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
             <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Options')" />
@@ -525,7 +525,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <div class="agent-main">
     <div v-if="machineDown && machine" class="term-banner machine-banner">
       <UIcon name="i-lucide-unplug" class="term-banner-icon" />
-      <span>{{ machine.status === 'connecting' ? tl(`${machineName(machine.key)} injoignable — reconnexion…`, `${machineName(machine.key)} unreachable — reconnecting…`) : tl(`${machineName(machine.key)} hors ligne`, `${machineName(machine.key)} offline`) }}<small v-if="machine.error">{{ machine.error }}</small></span>
+      <span>{{ machine.status === 'connecting' ? tl(`${machineName(machine.key)} unreachable — reconnecting…`, `${machineName(machine.key)} injoignable — reconnexion…`) : tl(`${machineName(machine.key)} offline`, `${machineName(machine.key)} hors ligne`) }}<small v-if="machine.error">{{ machine.error }}</small></span>
     </div>
     <div v-if="banner" class="term-banner">
       <UIcon name="i-lucide-triangle-alert" class="term-banner-icon" />
@@ -541,7 +541,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         @goto-term="setMode('term')" @restored="composer?.focus()" @reply="composer?.focus()"
       />
     </div>
-    <div v-else-if="(mode === 'term' || mode === 'mirror') && (!eventsOpen || offlineView || machineDown)" class="chat-empty offline-terminal"><UIcon name="i-lucide-wifi-off" class="chat-empty-icon" /><p>{{ t('Terminal indisponible hors ligne') }}</p></div>
+    <div v-else-if="(mode === 'term' || mode === 'mirror') && (!eventsOpen || offlineView || machineDown)" class="chat-empty offline-terminal"><UIcon name="i-lucide-wifi-off" class="chat-empty-icon" /><p>{{ t('Terminal unavailable offline') }}</p></div>
     <TerminalView
       v-else-if="mode === 'term'" :ctl="ctl" :class="enter ? (enter > 0 ? 'enter-next' : 'enter-prev') : undefined" :style="swipeStyle"
     />
@@ -551,7 +551,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
       @reload="project.reload()" @sent="onSent" @prefill="onPrefill"
     />
     <div v-else class="chat" />
-    <p v-if="pane?.agent && !hasChat(pane) && mode === 'term'" class="terminal-transcript-note">{{ tl('Conversation non disponible pour cet agent · suivi dans le terminal', 'Conversation unavailable for this agent · follow it in the terminal') }}</p>
+    <p v-if="pane?.agent && !hasChat(pane) && mode === 'term'" class="terminal-transcript-note">{{ tl('Conversation unavailable for this agent · follow it in the terminal', 'Conversation non disponible pour cet agent · suivi dans le terminal') }}</p>
 
     <ChoicesPanel v-if="(prompt || screen) && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :screen="screen" :keys="live" />
     <MenuPanel v-else-if="menu && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :menu="menu" :keys="live" @terminal="setMode('term')" />
@@ -560,7 +560,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     </div>
     <div
       v-if="projectSide && sideOpen" class="side-handle" :class="{ dragging: sideDrag }" role="separator" aria-orientation="vertical"
-      :aria-label="t('Largeur du panneau Projet')" :title="t('Glisser pour élargir · double-clic : largeur par défaut')"
+      :aria-label="t('Project panel width')" :title="t('Drag to resize · double-click: default width')"
       @pointerdown="onSideGrab" @dblclick="resetSideWidth"
     />
     <ProjectPanel
@@ -568,7 +568,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
       @reload="project.reload()" @collapse="setSideOpen(false)" @sent="onSent" @prefill="onPrefill"
     />
     </div>
-    <AppSheet v-model:open="changesOpen" :title="t('Changements')" wide full>
+    <AppSheet v-model:open="changesOpen" :title="t('Changes')" wide full>
       <ChangesView v-if="changesOpen && pane" :pane-id="paneId" />
     </AppSheet>
     <input ref="attachInput" type="file" multiple hidden @change="attachFile">

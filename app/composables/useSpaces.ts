@@ -57,7 +57,7 @@ export async function saveSpaceName(label: string) {
   const r = await spaceApi(x.kind === 'tab' ? { op: 'tab.rename', tab_id: x.id, label } : { op: 'workspace.rename', workspace_id: x.id, label })
   if (!r) return
   renameSpace.value = null
-  toast(t('Renommé'))
+  toast(t('Renamed'))
 }
 
 export async function closeTab(id: string) {
@@ -73,7 +73,7 @@ export async function closeTab(id: string) {
   if (!plan) return
   const done = prepareClose(plan.group ? { workspace: e.tab.workspace } : { tab: id }, plan.group ? plan.workspaces.map(w => w.id) : [])
   if (!(await spaceApi({ op: 'tab.close', tab_id: id, close_group: plan.group }))) return done(false)
-  toast(plan.group ? tl('Groupe fermé', 'Group closed') : t('Onglet fermé'))
+  toast(plan.group ? tl('Group closed', 'Groupe fermé') : t('Tab closed'))
   done(true)
 }
 
@@ -86,7 +86,7 @@ export async function closeWorkspace(id: string) {
   if (!plan) return
   const done = prepareClose({ workspace: id }, plan.group ? plan.workspaces.map(w => w.id) : [])
   if (!(await spaceApi({ op: 'workspace.close', workspace_id: id, close_group: plan.group }))) return done(false)
-  toast(plan.group ? tl('Groupe fermé', 'Group closed') : t('Espace fermé'))
+  toast(plan.group ? tl('Group closed', 'Groupe fermé') : t('Space closed'))
   done(true)
 }
 
@@ -96,28 +96,28 @@ export function movePane(p: Pane) {
   const targets = moveTargets(herdrState.value, p.id)
   const go = (to: MoveDestination) => () => doMove(p, to)
   const items: MenuItem[] = [
-    { label: t('Nouvel onglet'), icon: 'i-lucide-plus', desc: t('dans le même espace'), run: go('new_tab') },
-    { label: t('Nouvel espace'), icon: 'i-lucide-square-plus', run: go('new_workspace') },
+    { label: t('New tab'), icon: 'i-lucide-plus', desc: t('in the same space'), run: go('new_tab') },
+    { label: t('New space'), icon: 'i-lucide-square-plus', run: go('new_workspace') },
   ]
   let ws: string | null = null
   for (const x of targets) {
     if (x.workspace !== ws) {
       ws = x.workspace
-      items.push({ kind: 'group', label: x.sameWorkspace ? t('Cet espace') : x.workspaceLabel })
+      items.push({ kind: 'group', label: x.sameWorkspace ? t('This space') : x.workspaceLabel })
     }
     items.push({
-      label: `${t('Onglet')} ${x.label}`, icon: 'i-lucide-panels-top-left',
+      label: `${t('Tab')} ${x.label}`, icon: 'i-lucide-panels-top-left',
       desc: tl(`${x.panes} pane${x.panes > 1 ? 's' : ''}`, `${x.panes} pane${x.panes > 1 ? 's' : ''}`),
       run: go({ tab_id: x.tab_id }),
     })
   }
-  openMenu(items, tl(`Déplacer « ${paneTitle(p)} »`, `Move “${paneTitle(p)}”`))
+  openMenu(items, tl(`Move “${paneTitle(p)}”`, `Déplacer « ${paneTitle(p)} »`))
 }
 async function doMove(p: Pane, to: MoveDestination) {
   const r = await spaceApi({ op: 'pane.move', pane_id: p.id, to })
   if (!r) return
-  toast(t('Pane déplacé'))
-  // Moved to another space, the pane changes ID: the view follows it.
+  toast(t('Pane moved'))
+  // Déplacé vers un autre espace, le pane change d'ID : la vue le suit.
   const route = useRouter().currentRoute.value
   if (r.pane_id && r.pane_id !== p.id && route.path === panePath(p.id)) navigateTo(panePath(r.pane_id), { replace: true })
 }
@@ -178,10 +178,10 @@ export async function resizeSplit(tabId: string, path: string, ratio: number) {
   await withLayout(tabId, resizePreview(e.layout, path, ratio), { op: 'layout.ratio', tab_id: tabId, path, ratio })
 }
 const SWAP: Record<PaneDirection, { label: string, icon: string, key: string, arrow: string }> = {
-  left: { label: 'Échanger avec le pane de gauche', icon: 'i-lucide-arrow-left', key: 'H', arrow: 'arrowleft' },
-  right: { label: 'Échanger avec le pane de droite', icon: 'i-lucide-arrow-right', key: 'L', arrow: 'arrowright' },
-  up: { label: 'Échanger avec le pane du dessus', icon: 'i-lucide-arrow-up', key: 'K', arrow: 'arrowup' },
-  down: { label: 'Échanger avec le pane du dessous', icon: 'i-lucide-arrow-down', key: 'J', arrow: 'arrowdown' },
+  left: { label: 'Swap with the pane on the left', icon: 'i-lucide-arrow-left', key: 'H', arrow: 'arrowleft' },
+  right: { label: 'Swap with the pane on the right', icon: 'i-lucide-arrow-right', key: 'L', arrow: 'arrowright' },
+  up: { label: 'Swap with the pane above', icon: 'i-lucide-arrow-up', key: 'K', arrow: 'arrowup' },
+  down: { label: 'Swap with the pane below', icon: 'i-lucide-arrow-down', key: 'J', arrow: 'arrowdown' },
 }
 export const paneSwapItems = (p: Pane): MenuItem[] => paneSwapDirections(p).map(d => ({
   label: t(SWAP[d].label), icon: SWAP[d].icon, kbds: ['alt', 'shift', SWAP[d].arrow], run: () => swapPane(p, d),
@@ -204,27 +204,27 @@ export function swapShortcut(e: KeyboardEvent): boolean {
   return true
 }
 
-// Menu entries.
-export const newTabItem = (workspaceId: string): MenuItem => ({ label: t('Nouvel onglet'), icon: 'i-lucide-plus', run: () => newTab(workspaceId) })
-// Copy the pane's Herdr ID (its machine's, without the wherdr prefix).
+// Entrées des menus.
+export const newTabItem = (workspaceId: string): MenuItem => ({ label: t('New tab'), icon: 'i-lucide-plus', run: () => newTab(workspaceId) })
+// Copier l'ID Herdr du pane (celui de sa machine, sans préfixe wherdr).
 export function copyPaneIdItem(p: Pane): MenuItem {
   const id = herdrPaneId(p.id)
   return {
-    label: t('Copier l’ID du pane'), icon: 'i-lucide-copy', mono: true,
+    label: t('Copy pane ID'), icon: 'i-lucide-copy', mono: true,
     desc: paneIdLine(p.id, machineName(p.machine)),
     run: async () => {
       try {
         await navigator.clipboard.writeText(id)
-        toast(`${t('Copié')} : ${id}`)
-      } catch { toast(t('Copie impossible'), true) }
+        toast(`${t('Copied')} : ${id}`)
+      } catch { toast(t('Copy failed'), true) }
     },
   }
 }
 export function paneSpaceItems(p: Pane): MenuItem[] {
   return [
-    { label: t('Diviser à droite'), icon: 'i-lucide-columns-2', run: () => splitPane(p, 'right') },
-    { label: t('Diviser en bas'), icon: 'i-lucide-rows-2', run: () => splitPane(p, 'down') },
-    { label: t('Déplacer vers…'), icon: 'i-lucide-move', run: () => movePane(p) },
+    { label: t('Split right'), icon: 'i-lucide-columns-2', run: () => splitPane(p, 'right') },
+    { label: t('Split down'), icon: 'i-lucide-rows-2', run: () => splitPane(p, 'down') },
+    { label: t('Move to…'), icon: 'i-lucide-move', run: () => movePane(p) },
     ...paneSwapItems(p),
   ]
 }
@@ -232,16 +232,16 @@ export function tabItems(tabId: string): MenuItem[] {
   const e = tabOf(tabId)
   if (!e) return []
   return [
-    { label: t('Renommer l’onglet'), icon: 'i-lucide-pencil', run: () => renameTab(tabId) },
+    { label: t('Rename tab'), icon: 'i-lucide-pencil', run: () => renameTab(tabId) },
     newTabItem(e.tab.workspace),
-    { label: t('Fermer l’onglet'), icon: 'i-lucide-x', danger: true, run: () => closeTab(tabId) },
+    { label: t('Close tab'), icon: 'i-lucide-x', danger: true, run: () => closeTab(tabId) },
   ]
 }
 export function workspaceItems(id: string): MenuItem[] {
   return [
-    { label: t('Renommer l’espace'), icon: 'i-lucide-pencil', run: () => renameWorkspace(id) },
+    { label: t('Rename space'), icon: 'i-lucide-pencil', run: () => renameWorkspace(id) },
     newTabItem(id),
-    { label: t('Fermer l’espace'), icon: 'i-lucide-trash-2', danger: true, run: () => closeWorkspace(id) },
+    { label: t('Close space'), icon: 'i-lucide-trash-2', danger: true, run: () => closeWorkspace(id) },
   ]
 }
 // Space and tab of a pane (agent view, long press on its card): "Space"
@@ -252,22 +252,22 @@ export function paneWorkspaceItems(p: Pane): MenuItem[] {
   if (!ws || !entries.length) return []
   const item: Record<SpaceEntry, MenuItem> = {
     'tab.create': newTabItem(ws.id),
-    'tab.rename': { label: t('Renommer l’onglet'), icon: 'i-lucide-pencil', run: () => renameTab(p.tab) },
-    'tab.close': { label: t('Fermer l’onglet'), icon: 'i-lucide-x', danger: true, run: () => closeTab(p.tab) },
-    'workspace.rename': { label: t('Renommer l’espace'), icon: 'i-lucide-pencil', run: () => renameWorkspace(ws.id) },
-    'workspace.close': { label: t('Fermer l’espace'), icon: 'i-lucide-trash-2', danger: true, run: () => closeWorkspace(ws.id) },
+    'tab.rename': { label: t('Rename tab'), icon: 'i-lucide-pencil', run: () => renameTab(p.tab) },
+    'tab.close': { label: t('Close tab'), icon: 'i-lucide-x', danger: true, run: () => closeTab(p.tab) },
+    'workspace.rename': { label: t('Rename space'), icon: 'i-lucide-pencil', run: () => renameWorkspace(ws.id) },
+    'workspace.close': { label: t('Close space'), icon: 'i-lucide-trash-2', danger: true, run: () => closeWorkspace(ws.id) },
   }
-  return [{ kind: 'group', label: tl(`Espace « ${ws.label} »`, `Space “${ws.label}”`) }, ...entries.map(e => item[e])]
+  return [{ kind: 'group', label: tl(`Space “${ws.label}”`, `Espace « ${ws.label} »`) }, ...entries.map(e => item[e])]
 }
 
 // Full menu of a plan pane: rename, split, move, close.
 export function paneItems(p: Pane): MenuItem[] {
   return [
-    { label: t('Renommer le pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } },
+    { label: t('Rename pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } },
     ...paneSpaceItems(p),
     { kind: 'separator' },
     {
-      label: p.agent ? tl(`Fermer ce pane (arrête ${kindLabel(p.agent)})`, `Close this pane (stops ${kindLabel(p.agent)})`) : t('Fermer ce terminal'),
+      label: p.agent ? tl(`Close this pane (stops ${kindLabel(p.agent)})`, `Fermer ce pane (arrête ${kindLabel(p.agent)})`) : t('Close this terminal'),
       icon: 'i-lucide-trash-2', danger: true, run: () => closePane(p),
     },
   ]
@@ -278,10 +278,10 @@ export function tabPlanItems(tabId: string): MenuItem[] {
   if (!e) return []
   const ws = herdrState.value.workspaces.find(w => w.id === e.tab.workspace)
   return [
-    { kind: 'group', label: t('Onglet') },
+    { kind: 'group', label: t('Tab') },
     ...tabItems(tabId),
-    { kind: 'group', label: ws ? tl(`Espace « ${ws.label} »`, `Space “${ws.label}”`) : t('Espace') },
-    ...workspaceItems(e.tab.workspace).filter(x => x.label !== t('Nouvel onglet')),
+    { kind: 'group', label: ws ? tl(`Space “${ws.label}”`, `Espace « ${ws.label} »`) : t('Space') },
+    ...workspaceItems(e.tab.workspace).filter(x => x.label !== t('New tab')),
   ]
 }
 

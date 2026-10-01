@@ -14,7 +14,7 @@ const state: HerdrState = {
   ],
   panes: [pane('w1:p1', 'w1'), pane('w2:p1', 'w2')],
 }
-const tl = (fr: string) => fr
+const tl = (_en: string, fr: string) => fr
 
 describe('confirmation de fermeture du groupe', () => {
   it('ferme le groupe quand le dernier pane ou onglet du dépôt principal part', () => {

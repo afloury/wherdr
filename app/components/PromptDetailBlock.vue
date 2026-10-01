@@ -28,11 +28,11 @@ const stats = computed(() => detailStats(props.detail))
       v-for="(l, i) in lines" :key="i" :class="diffKind(l, Boolean(detail.file))"
     >{{ l }}</span></code></pre>
     <p v-if="detail.truncated" class="prompt-detail-note">
-      {{ t('Trop long : seul le début est affiché. Le terminal montre la suite.') }}
+      {{ t('Too long: only the beginning is shown. The terminal shows the rest.') }}
     </p>
     <button v-if="long" type="button" class="prompt-detail-more" @click="open = !open">
       <UIcon :name="open ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" />
-      {{ open ? t('Réduire') : tl(`Tout afficher (${lines.length} lignes)`, `Show all (${lines.length} lines)`) }}
+      {{ open ? t('Collapse') : tl(`Show all (${lines.length} lines)`, `Tout afficher (${lines.length} lignes)`) }}
     </button>
   </div>
 </template>

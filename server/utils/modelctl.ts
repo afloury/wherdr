@@ -110,12 +110,12 @@ const busy = new Set<string>()
 
 async function withPane<T>(paneId: string, fn: (p: Pane) => Promise<T>): Promise<T> {
   const p = findPane(paneId)
-  if (!p) throw new HerdrError('bad_pane', 'pane introuvable')
-  if (!p.agent || !['claude', 'codex'].includes(p.agent)) throw new HerdrError('unsupported', 'pas un agent Claude ou Codex')
+  if (!p) throw new HerdrError('bad_pane', 'Pane not found')
+  if (!p.agent || !['claude', 'codex'].includes(p.agent)) throw new HerdrError('unsupported', 'Not a Claude or Codex agent')
   if (!READY.has(p.status || '')) {
-    throw new HerdrError('busy', p.status === 'blocked' ? 'L’agent attend une réponse — réponds-lui d’abord.' : 'L’agent travaille — change de modèle quand il a fini.')
+    throw new HerdrError('busy', p.status === 'blocked' ? 'The agent is waiting for an answer — reply first.' : 'The agent is working — change the model once it’s done.')
   }
-  if (busy.has(paneId)) throw new HerdrError('busy', 'Changement de modèle déjà en cours')
+  if (busy.has(paneId)) throw new HerdrError('busy', 'Model change already in progress')
   busy.add(paneId)
   try { return await fn(p) }
   finally { busy.delete(paneId) }
@@ -153,7 +153,7 @@ async function openMenu(p: Pane): Promise<ModelMenu> {
   const m = await waitMenu(p.id, x => x.kind === 'model')
   if (!m) {
     await closeMenu(p.id)
-    throw new HerdrError('no_menu', 'Le menu /model ne s’est pas affiché')
+    throw new HerdrError('no_menu', 'The /model menu did not show up')
   }
   return m
 }
@@ -170,7 +170,7 @@ async function readAllOptions(paneId: string, first: ModelMenu) {
   if (m.options[0]!.n > 1) {
     await herdr('pane.send_input', { pane_id: paneId, keys: moveKeys(m.cursor, 1) })
     const top = await waitMenu(paneId, x => x.kind === 'model' && x.cursor === 1, 3000)
-    if (!top) throw new HerdrError('stale', 'Le menu /model a changé — réessaie.')
+    if (!top) throw new HerdrError('stale', 'The /model menu changed — try again.')
     for (const o of top.options) if (!all.has(o.n)) all.set(o.n, o)
     m = top
   }
@@ -193,7 +193,7 @@ const toOption = ({ label, hint, isDefault }: ModelOption): ModelOption => ({ la
 
 export async function listModels(paneId: string, refresh = false): Promise<ModelList> {
   const p0 = findPane(paneId)
-  if (!p0 || !p0.agent) throw new HerdrError('bad_pane', 'pane introuvable')
+  if (!p0 || !p0.agent) throw new HerdrError('bad_pane', 'Pane not found')
   const hit = listCache.get(listKey(p0.id, p0.agent))
   if (hit && !refresh && Date.now() - hit.at < LIST_TTL_MS) return hit
   return withPane(paneId, async (p) => {
@@ -214,7 +214,7 @@ async function pick(paneId: string, m: ModelMenu, n: number, label: string, kind
   if (keys.length) await herdr('pane.send_input', { pane_id: paneId, keys })
   const at = await waitMenu(paneId, x => x.kind === kind && x.cursor === n, 3000)
   const o = at && at.options.find(x => x.n === n)
-  if (!at || !o || o.label !== label) throw new HerdrError('stale', 'Le menu /model a changé — réessaie.')
+  if (!at || !o || o.label !== label) throw new HerdrError('stale', 'The /model menu changed — try again.')
   return at
 }
 
@@ -240,16 +240,16 @@ export async function setModel(paneId: string, wanted: string): Promise<ModelInf
 
       let effort: string | null = null
       if (p.agent === 'claude') {
-        if (!m.sessionKey) throw new HerdrError('unsafe', 'Validation « cette session seulement » introuvable — rien n’a été changé.')
+        if (!m.sessionKey) throw new HerdrError('unsafe', '“This session only” option not found — nothing was changed.')
         effort = m.effort
         await herdr('pane.send_input', { pane_id: p.id, keys: ['s'] })
       } else {
-        // Codex: Enter only moves on to the effort choice ("enter select").
-        if (!m.enterSelects) throw new HerdrError('unsafe', 'Menu /model inattendu — rien n’a été changé.')
+        // Codex : Entrée ne fait que passer au choix de l'effort (« enter select »).
+        if (!m.enterSelects) throw new HerdrError('unsafe', 'Unexpected /model menu — nothing was changed.')
         await herdr('pane.send_input', { pane_id: p.id, keys: ['enter'] })
         const e = await waitMenu(p.id, x => x.kind === 'effort', 4000)
-        if (!e || !e.sessionKey) throw new HerdrError('unsafe', 'Choix de l’effort inattendu — rien n’a été changé.')
-        // Keep the current effort if it exists for this model, otherwise the one offered.
+        if (!e || !e.sessionKey) throw new HerdrError('unsafe', 'Unexpected effort menu — nothing was changed.')
+        // On garde l'effort courant s'il existe pour ce modèle, sinon celui proposé.
         const keep = e.options.find(o => effortMatches(o.label, before && before.effort))
         const at = keep && keep.n !== e.cursor ? await pick(p.id, e, keep.n, keep.label, 'effort') : e
         effort = (at.options.find(o => o.n === at.cursor)?.label || '').toLowerCase().replace(/\s+/g, '') || null
@@ -268,7 +268,7 @@ export async function setModel(paneId: string, wanted: string): Promise<ModelInf
         clear = confirm || parseModelMenu(text) ? 0 : clear + 1
         await sleep(confirm ? 400 : 250)
       }
-      if (clear < 2) throw new HerdrError('stale', 'Le menu /model a changé — réessaie.')
+      if (clear < 2) throw new HerdrError('stale', 'The /model menu changed — try again.')
       const info: ModelInfo = { id: null, label: confirmAs, effort, at: new Date(started).toISOString() }
       overrides.set(p.id, { ...info, ms: started })
       if (effort) observedEfforts.set(p.id, { label: confirmAs, effort })
@@ -284,13 +284,13 @@ export async function setModel(paneId: string, wanted: string): Promise<ModelInf
 
 async function codexEffortMenu(p: Pane, model: ModelInfo): Promise<ModelMenu> {
   const m = await openMenu(p)
-  if (!m.enterSelects) throw new HerdrError('unsafe', 'Menu /model inattendu — rien n’a été changé.')
+  if (!m.enterSelects) throw new HerdrError('unsafe', 'Unexpected /model menu — nothing was changed.')
   const current = m.options.find(o => o.current || sameModel(o.label, model.label))
-  if (!current) throw new HerdrError('stale', 'Le menu /model a changé — réessaie.')
+  if (!current) throw new HerdrError('stale', 'The /model menu changed — try again.')
   await pick(p.id, m, current.n, current.label, 'model')
   await herdr('pane.send_input', { pane_id: p.id, keys: ['enter'] })
   const e = await waitMenu(p.id, x => x.kind === 'effort', 4000)
-  if (!e || !e.sessionKey) throw new HerdrError('unsafe', 'Choix de l’effort inattendu — rien n’a été changé.')
+  if (!e || !e.sessionKey) throw new HerdrError('unsafe', 'Unexpected effort menu — nothing was changed.')
   return e
 }
 
@@ -369,12 +369,12 @@ export async function setEffort(paneId: string, level: string): Promise<ModelInf
     if (!before) throw new HerdrError('bad_model', 'modèle inconnu')
     const started = Date.now()
     if (p.agent === 'claude') {
-      if (!claudeEffortCommand(level, before.label)) throw new HerdrError('bad_effort', 'Niveau d’effort indisponible pour ce modèle')
+      if (!claudeEffortCommand(level, before.label)) throw new HerdrError('bad_effort', 'Effort level unavailable for this model')
       const slider = await openEffortSlider(p)
       try {
         const levels = slider.levels.length ? slider.levels : claudeEffortLevels(before.label)
         if (!levels.includes(slider.current)) throw new HerdrError('unsafe', 'Curseur d’effort inattendu — rien n’a été changé.')
-        if (!levels.includes(level)) throw new HerdrError('bad_effort', 'Niveau d’effort indisponible pour ce modèle')
+        if (!levels.includes(level)) throw new HerdrError('bad_effort', 'Effort level unavailable for this model')
         const delta = levels.indexOf(level) - levels.indexOf(slider.current)
         if (delta) await herdr('pane.send_input', { pane_id: p.id, keys: Array.from({ length: Math.abs(delta) }, () => delta > 0 ? 'right' : 'left') })
         const at = await waitSlider(p.id, x => x.current === level, 3000)
@@ -393,15 +393,15 @@ export async function setEffort(paneId: string, level: string): Promise<ModelInf
         let option = menu.options.find(o => effortMatches(o.label, level))
         if (!option) {
           const more = menu.options.find(o => /more reasoning/i.test(o.label))
-          if (!more) throw new HerdrError('bad_effort', 'Niveau d’effort indisponible pour ce modèle')
+          if (!more) throw new HerdrError('bad_effort', 'Effort level unavailable for this model')
           await pick(p.id, menu, more.n, more.label, 'effort')
           await herdr('pane.send_input', { pane_id: p.id, keys: ['enter'] })
           const next = await waitMenu(p.id, x => x.kind === 'effort' && x.options.some(o => effortMatches(o.label, level)), 4000)
-          if (!next || !next.sessionKey) throw new HerdrError('bad_effort', 'Niveau d’effort indisponible pour ce modèle')
+          if (!next || !next.sessionKey) throw new HerdrError('bad_effort', 'Effort level unavailable for this model')
           menu = next
           option = menu.options.find(o => effortMatches(o.label, level))
         }
-        if (!option) throw new HerdrError('bad_effort', 'Niveau d’effort indisponible pour ce modèle')
+        if (!option) throw new HerdrError('bad_effort', 'Effort level unavailable for this model')
         await pick(p.id, menu, option.n, option.label, 'effort')
         await herdr('pane.send_input', { pane_id: p.id, keys: ['s'] })
         const until = Date.now() + 5000
@@ -410,7 +410,7 @@ export async function setEffort(paneId: string, level: string): Promise<ModelInf
           clear = parseModelMenu(await screen(p.id)) ? 0 : clear + 1
           await sleep(250)
         }
-        if (clear < 2) throw new HerdrError('stale', 'Le menu /model a changé — réessaie.')
+        if (clear < 2) throw new HerdrError('stale', 'The /model menu changed — try again.')
       } catch (e) {
         await closeMenu(p.id).catch(() => {})
         throw e

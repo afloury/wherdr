@@ -45,8 +45,12 @@ both change the account's default model. wherdr itself only uses "this session" 
 
 ## Conventions
 
-- **Interface text** goes through `t()` / `tl()` (`app/utils/i18n.ts`): French is the key,
-  English the default language. Every new string needs both.
+- **Interface text** goes through `t()` / `tl()` (`app/utils/i18n.ts`). Write the English
+  text as the key, `t('Rename pane')`, and add its French translation to the `FR` dictionary
+  in the same file: it is required, `tests/i18n.test.ts` fails on a `t()` key without a French
+  entry and on an entry nothing uses. Text with variable parts uses `tl(en, fr)`, both written
+  in full: ``tl(`${n} agents`, `${n} agents`)``. A missing translation shows English, never
+  another language. Error messages the server sends to the UI are English keys too.
 - **Design**: square corners, 1 px lines, Archivo / Inter / JetBrains Mono, uppercase mono
   labels; colors come from the theme variables (`app/assets/css/main.css`,
   `app/utils/themes.ts`). Check the phone layout (iPhone size) and the desktop layout.

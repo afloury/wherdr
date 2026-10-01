@@ -4,7 +4,7 @@
 // its colored background in the ANSI version of the screen.
 export default defineApi(async (event) => {
   const pane = String(getQuery(event).pane || '')
-  if (!PANE_RE.test(pane)) throw new HerdrError('bad_pane', 'pane invalide')
+  if (!PANE_RE.test(pane)) throw new HerdrError('bad_pane', 'Invalid pane')
   const r = await herdr('pane.read', { pane_id: pane, source: 'visible' }, 4000)
   const text: string = (r.read && r.read.text) || ''
   let tab: string | null = null

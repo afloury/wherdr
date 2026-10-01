@@ -1,8 +1,8 @@
 import { quietActive } from '../../../shared/quiet'
 import { replaceSubscription, validPushSubscription } from '../../utils/pushConfig'
 export default defineApi(async (event, b) => {
-  if (!pushReady()) throw new HerdrError('push_off', 'Web Push non configuré')
-  if (!validPushSubscription(b)) throw new HerdrError('bad_sub', 'abonnement invalide')
+  if (!pushReady()) throw new HerdrError('push_off', 'Web Push is not configured')
+  if (!validPushSubscription(b)) throw new HerdrError('bad_sub', 'Invalid subscription')
   const all = await readSubs()
   const sessions: Record<string, string> = {}
   if (b.sessions && typeof b.sessions === 'object' && !Array.isArray(b.sessions)) {

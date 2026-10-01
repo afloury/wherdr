@@ -23,6 +23,7 @@ First public release.
 - Collapsible agent sidebar on a computer: a narrow rail with search, new agent, settings and
   state counters, remembered per device.
 - Terminal view (xterm.js, WebGL or DOM renderer) with a phone key bar and take-over.
+  Shift+Enter inserts a newline in agents, as in a native terminal.
 - Composer with queued messages (cancellable), photos, paste, slash commands and their output.
   A message sent to an agent that is still starting waits and goes out as soon as it's ready,
   including an omp agent already waiting at its prompt that Herdr still counts as starting.

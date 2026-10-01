@@ -35,36 +35,36 @@ const agents = computed(() => st.value.panes.filter(p => p.agent))
 const count = (s: string) => agents.value.filter(p => p.status === s && !paneStale(p)).length
 
 const conn = computed(() => {
-  if (offlineView.value) return { ok: false, text: t('hors ligne'), idle: false }
-  if (!eventsOpen.value) return { ok: false, text: everOpen.value ? t('hors ligne — reconnexion…') : t('connexion…'), idle: !everOpen.value }
-  if (!st.value.ok) return { ok: false, text: t('Herdr injoignable'), idle: false }
+  if (offlineView.value) return { ok: false, text: t('offline'), idle: false }
+  if (!eventsOpen.value) return { ok: false, text: everOpen.value ? t('offline — reconnecting…') : t('connecting…'), idle: !everOpen.value }
+  if (!st.value.ok) return { ok: false, text: t('Herdr unavailable'), idle: false }
   return { ok: true, text: `wherdr · herdr ${st.value.version || ''}`.trim(), idle: false }
 })
 
 // "Dashboard"-style counters: always all three, zeros dimmed.
 const stats = computed(() => ([
-  ['blocked', count('blocked'), t('à toi')],
-  ['working', count('working'), t('au travail')],
-  ['done', count('done') + count('idle'), t('prêts')],
+  ['blocked', count('blocked'), t('your turn')],
+  ['working', count('working'), t('working')],
+  ['done', count('done') + count('idle'), t('ready')],
 ] as [string, number, string][]).map(([s, n, label]) => ({ s, n, label })))
 
 // Herdr's order stays that of each repository list. The Ready group may
 // show unread before read, and be sorted differently (readySort).
 function groupsOf(list: Row[]) {
   return ([
-    { key: 'blocked', title: t('À toi'), list: list.filter(r => rowGroup(r) === 'blocked') },
-    { key: 'working', title: t('Au travail'), list: list.filter(r => rowGroup(r) === 'working') },
-    { key: 'ready', title: t('Prêts'), list: list.filter(r => rowGroup(r) === 'ready') },
+    { key: 'blocked', title: t('Your turn'), list: list.filter(r => rowGroup(r) === 'blocked') },
+    { key: 'working', title: t('Working'), list: list.filter(r => rowGroup(r) === 'working') },
+    { key: 'ready', title: tl('Ready', 'Prêts'), list: list.filter(r => rowGroup(r) === 'ready') },
   ] as const).filter(g => g.list.length).map(g => ({ ...g, lists: g.key === 'ready' ? readyLists(g.list, autoReorderReady.value).map(l => sortReady(l, readySort.value, rowTitle)) : [g.list] }))
 }
 const rowTitle = (r: Row) => spaceTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
 // Sort menu of the Ready group; sorted other than in Herdr's order, the
 // list can no longer be reordered manually.
 const READY_SORT_LABELS: Record<ReadySort, [string, string]> = {
-  herdr: ['Ordre de Herdr', 'i-lucide-grip-vertical'], recent: ['Activité récente', 'i-lucide-clock'], name: ['Nom', 'i-lucide-arrow-down-a-z'],
+  herdr: ['Herdr order', 'i-lucide-grip-vertical'], recent: ['Recent activity', 'i-lucide-clock'], name: ['Name', 'i-lucide-arrow-down-a-z'],
 }
 const readySortItems = computed(() => [[
-  { type: 'label' as const, label: t('Trier les prêts') },
+  { type: 'label' as const, label: t('Sort ready') },
   ...(Object.keys(READY_SORT_LABELS) as ReadySort[]).map(s => ({
     label: t(READY_SORT_LABELS[s][0]), icon: READY_SORT_LABELS[s][1], type: 'checkbox' as const,
     checked: readySort.value === s, onUpdateChecked: () => { readySort.value = s },
@@ -99,7 +99,7 @@ const hasClaude = (list: Pane[]) => list.some(p => p.agent === 'claude')
 const localSetup = computed(() => (showQuotas.value ? claudeSetupOf(homeQuotas.value, '', hasClaude(agents.value), hiddenAgents.value) : null))
 
 // ------------------------------------------------------------ machines
-const STATE_LABEL: Record<MachineInfo['status'], string> = { online: 'en ligne', connecting: 'reconnexion…', offline: 'hors ligne' }
+const STATE_LABEL: Record<MachineInfo['status'], string> = { online: 'online', connecting: 'reconnecting…', offline: 'offline' }
 const machineOrder = ref<string[]>([])
 const orderedMachines = computed(() => sortMachines(machines.value, machineOrder.value))
 const visibleKeys = computed(() => [...new Set(orderedMachines.value.map(m => m.baseKey ?? m.key))])
@@ -223,18 +223,18 @@ async function openDiagnostic(m: MachineInfo) {
   finally { diagnosticBusy.value = false }
 }
 function durationLabel(seconds: number) {
-  if (seconds < 60) return tl('moins d’une minute', 'less than a minute')
+  if (seconds < 60) return tl('less than a minute', 'moins d’une minute')
   if (seconds < 3600) return `${Math.floor(seconds / 60)} min`
   return `${Math.floor(seconds / 3600)} h ${Math.floor(seconds % 3600 / 60)} min`
 }
 function extendLabel(state?: AwakeState) {
   if (!state?.until) return ''
   const at = new Date(Math.max(state.until, Date.now()) + 3600000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  return tl(`Jusqu’à ${at}`, `Until ${at}`)
+  return tl(`Until ${at}`, `Jusqu’à ${at}`)
 }
 function awakeLabel(state?: AwakeState) {
   if (!state?.active) return ''
-  return state.until ? tl(`Éveillé jusqu’à ${fmtTime(state.until)}`, `Awake until ${fmtTime(state.until)}`) : tl('Éveillé jusqu’à désactivation', 'Awake until turned off')
+  return state.until ? tl(`Awake until ${fmtTime(state.until)}`, `Éveillé jusqu’à ${fmtTime(state.until)}`) : tl('Awake until turned off', 'Éveillé jusqu’à désactivation')
 }
 const savingMachine = ref(false)
 const sessionTarget = ref<MachineInfo | null>(null)
@@ -275,32 +275,32 @@ const renameMachineOpen = computed({
   set: (open: boolean) => { if (!open) renamingMachine.value = null },
 })
 function machineMenu(m: MachineInfo) {
-  const items: MenuItem[] = [{ label: t('Sessions Herdr'), icon: 'i-lucide-layers', run: () => openSessions(m) }, { label: t('Renommer'), icon: 'i-lucide-pencil', run: () => {
+  const items: MenuItem[] = [{ label: t('Herdr sessions'), icon: 'i-lucide-layers', run: () => openSessions(m) }, { label: t('Rename'), icon: 'i-lucide-pencil', run: () => {
     renamingMachine.value = m
     machineLabel.value = m.label
   } }]
   if (multiMachine.value) {
     const key = baseKeyOf(m)
     const at = visibleKeys.value.indexOf(key)
-    if (at > 0) items.push({ label: t('Monter'), icon: 'i-lucide-arrow-up', run: () => shiftMachine(key, -1) })
-    if (at >= 0 && at < visibleKeys.value.length - 1) items.push({ label: t('Descendre'), icon: 'i-lucide-arrow-down', run: () => shiftMachine(key, 1) })
-    if (machineOrder.value.length) items.push({ label: t('Réinitialiser l’ordre'), icon: 'i-lucide-rotate-ccw', run: () => saveMachineOrder([]) })
+    if (at > 0) items.push({ label: t('Move up'), icon: 'i-lucide-arrow-up', run: () => shiftMachine(key, -1) })
+    if (at >= 0 && at < visibleKeys.value.length - 1) items.push({ label: t('Move down'), icon: 'i-lucide-arrow-down', run: () => shiftMachine(key, 1) })
+    if (machineOrder.value.length) items.push({ label: t('Reset order'), icon: 'i-lucide-rotate-ccw', run: () => saveMachineOrder([]) })
   }
   if (m.status === 'online' && awakeByMachine.value[m.key]?.supported) {
-    items.push({ label: t('Garder éveillé'), icon: 'i-lucide-sun', run: () => openAwake(m) })
-    if (awakeByMachine.value[m.key]?.platform === 'mac') items.push({ label: t('Ce qui empêche la veille'), icon: 'i-lucide-list-filter', run: () => openDiagnostic(m) })
+    items.push({ label: t('Keep awake'), icon: 'i-lucide-sun', run: () => openAwake(m) })
+    if (awakeByMachine.value[m.key]?.platform === 'mac') items.push({ label: t('What prevents sleep'), icon: 'i-lucide-list-filter', run: () => openDiagnostic(m) })
   }
   // Global actions of this machine's Herdr plugins.
   if (m.status === 'online' && machinePluginActions(m.key).length) {
-    items.push({ label: t('Actions des plugins'), icon: 'i-lucide-puzzle', run: () => openPluginMenu({ machine: m.key }) })
+    items.push({ label: t('Plugin actions'), icon: 'i-lucide-puzzle', run: () => openPluginMenu({ machine: m.key }) })
   }
   return toDropdown(items)
 }
 // Plugin actions of each online machine (a single one: the local one).
 const onlineKeys = computed(() => JSON.stringify(multiMachine.value ? machines.value.filter(m => m.status === 'online').map(m => m.key) : (st.value.ok ? [''] : [])))
 watch(onlineKeys, (keys) => { for (const k of JSON.parse(keys) as string[]) loadPluginActions(k) }, { immediate: true })
-// Quiet mode active: crossed-out bell next to the settings; tapping it turns it off.
-const quietLabel = computed(() => tl('Silence actif — toucher pour réactiver les notifications', 'Do not disturb is on — tap to turn notifications back on'))
+// Mode silence actif : cloche barrée à côté des réglages ; l'appui le coupe.
+const quietLabel = computed(() => tl('Do not disturb is on — tap to turn notifications back on', 'Silence actif — toucher pour réactiver les notifications'))
 const onQuietVisible = () => { if (document.visibilityState === 'visible') refreshQuiet() }
 onMounted(() => { refreshQuiet(); document.addEventListener('visibilitychange', onQuietVisible) })
 onBeforeUnmount(() => document.removeEventListener('visibilitychange', onQuietVisible))
@@ -318,7 +318,7 @@ async function saveMachine() {
     await api('/api/machine/rename', { key: baseKeyOf(renamingMachine.value), label })
     renamingMachine.value = null
     await loadConfig()
-    toast(t('Machine renommée'))
+    toast(t('Machine renamed'))
   } catch (err) { toast((err as Error).message, true) }
   finally { savingMachine.value = false }
 }
@@ -401,20 +401,20 @@ function resetListWidth() {
     <!-- Collapsed list (computer): narrow column, the rest of the list is hidden. -->
     <nav v-if="rail" class="home-rail" :aria-label="t('Agents')">
       <AppLogo class="home-logo" :class="conn.idle ? '' : conn.ok ? 'ok' : 'bad'" :title="conn.text" />
-      <UTooltip :text="t('Afficher la liste')" :content="{ side: 'right' }">
-        <UButton icon="i-lucide-panel-left-open" color="neutral" variant="ghost" size="lg" class="icon-btn rail-toggle" :aria-label="t('Afficher la liste')" aria-expanded="false" aria-controls="home" @click="setListCollapsed(false)" />
+      <UTooltip :text="t('Show list')" :content="{ side: 'right' }">
+        <UButton icon="i-lucide-panel-left-open" color="neutral" variant="ghost" size="lg" class="icon-btn rail-toggle" :aria-label="t('Show list')" aria-expanded="false" aria-controls="home" @click="setListCollapsed(false)" />
       </UTooltip>
-      <UTooltip :text="tl('Rechercher agents et conversations', 'Search agents and conversations')" :content="{ side: 'right' }">
-        <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Rechercher agents et conversations', 'Search agents and conversations')" @click="openSearch" />
+      <UTooltip :text="tl('Search agents and conversations', 'Rechercher agents et conversations')" :content="{ side: 'right' }">
+        <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" @click="openSearch" />
       </UTooltip>
-      <UTooltip :text="t('Nouveau')" :content="{ side: 'right' }">
-        <UButton icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Nouveau')" :disabled="!eventsOpen || offlineView" @click="newAgent" />
+      <UTooltip :text="t('New')" :content="{ side: 'right' }">
+        <UButton icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('New')" :disabled="!eventsOpen || offlineView" @click="newAgent" />
       </UTooltip>
       <UTooltip v-if="quietCurrent" :text="quietLabel" :content="{ side: 'right' }">
         <UButton icon="i-lucide-bell-off" color="neutral" variant="ghost" size="lg" class="icon-btn quiet-on" :aria-label="quietLabel" @click="endQuiet" />
       </UTooltip>
-      <UTooltip :text="t('Réglages')" :content="{ side: 'right' }">
-        <UButton icon="i-lucide-settings-2" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Réglages')" to="/settings" />
+      <UTooltip :text="t('Settings')" :content="{ side: 'right' }">
+        <UButton icon="i-lucide-settings-2" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Settings')" to="/settings" />
       </UTooltip>
       <ul v-if="agents.length" class="rail-stats">
         <li v-for="c in stats" :key="c.s" class="rail-stat" :class="[c.s, { zero: !c.n }]" :title="`${c.n} ${c.label}`">
@@ -429,35 +429,35 @@ function resetListWidth() {
       <div class="home-title-row">
         <h1 class="display">{{ t('Agents') }}</h1>
         <div class="home-actions">
-          <UTooltip v-if="soloPlugins" :text="t('Actions des plugins')" :disabled="!desk">
-            <UButton icon="i-lucide-puzzle" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Actions des plugins')" @click="openSoloPlugins" />
+          <UTooltip v-if="soloPlugins" :text="t('Plugin actions')" :disabled="!desk">
+            <UButton icon="i-lucide-puzzle" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Plugin actions')" @click="openSoloPlugins" />
           </UTooltip>
-          <UTooltip :text="tl('Rechercher agents et conversations', 'Search agents and conversations')" :disabled="!desk">
-            <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Rechercher agents et conversations', 'Search agents and conversations')" @click="openSearch" />
+          <UTooltip :text="tl('Search agents and conversations', 'Rechercher agents et conversations')" :disabled="!desk">
+            <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" @click="openSearch" />
           </UTooltip>
           <UTooltip v-if="quietCurrent" :text="quietLabel" :disabled="!desk">
             <UButton icon="i-lucide-bell-off" color="neutral" variant="ghost" size="lg" class="icon-btn quiet-on" :aria-label="quietLabel" @click="endQuiet" />
           </UTooltip>
-          <UTooltip :text="t('Réglages')" :disabled="!desk">
+          <UTooltip :text="t('Settings')" :disabled="!desk">
             <UButton
               icon="i-lucide-settings-2" color="neutral" variant="ghost" size="lg" class="icon-btn"
-              :aria-label="t('Réglages')" to="/settings"
+              :aria-label="t('Settings')" to="/settings"
             />
           </UTooltip>
-          <UTooltip v-if="desk" :text="t('Réduire la liste')">
-            <UButton icon="i-lucide-panel-left-close" color="neutral" variant="ghost" size="lg" class="icon-btn rail-toggle" :aria-label="t('Réduire la liste')" aria-expanded="true" aria-controls="home" @click="setListCollapsed(true)" />
+          <UTooltip v-if="desk" :text="t('Collapse list')">
+            <UButton icon="i-lucide-panel-left-close" color="neutral" variant="ghost" size="lg" class="icon-btn rail-toggle" :aria-label="t('Collapse list')" aria-expanded="true" aria-controls="home" @click="setListCollapsed(true)" />
           </UTooltip>
         </div>
       </div>
     </header>
 
     <div class="scroll">
-      <OfflineNote v-if="(offlineView && cachedAt) || netDown" class="home-offline" :label="offlineView && cachedAt ? t('Dernier état connu') : undefined" :at="cachedAt" date-style="medium" />
+      <OfflineNote v-if="(offlineView && cachedAt) || netDown" class="home-offline" :label="offlineView && cachedAt ? t('Last known state') : undefined" :at="cachedAt" date-style="medium" />
       <div v-if="eventsOpen && !st.ok" class="notice">
-        {{ t('Le serveur Herdr ne répond pas') }}{{ st.error ? ` : ${st.error}` : '' }}.<br>
-        {{ hostLabel ? tl(`Lance herdr sur ${hostLabel} pour le démarrer.`, `Run herdr on ${hostLabel} to start it.`) : tl('Lance herdr sur le serveur pour le démarrer.', 'Run herdr on the server to start it.') }}
+        {{ t('The Herdr server is not responding') }}{{ st.error ? ` : ${st.error}` : '' }}.<br>
+        {{ hostLabel ? tl(`Run herdr on ${hostLabel} to start it.`, `Lance herdr sur ${hostLabel} pour le démarrer.`) : tl('Run herdr on the server to start it.', 'Lance herdr sur le serveur pour le démarrer.') }}
       </div>
-      <div v-if="!multiMachine" class="solo-machine-row"><button type="button" class="solo-session-row" :aria-label="t('Sessions Herdr')" @click="openSessions(soloMachine)">
+      <div v-if="!multiMachine" class="solo-machine-row"><button type="button" class="solo-session-row" :aria-label="t('Herdr sessions')" @click="openSessions(soloMachine)">
         <span><UIcon name="i-lucide-layers" />{{ soloMachine.label }}</span>
         <b>{{ soloMachine.session || 'default' }}<UIcon name="i-lucide-chevron-right" /></b>
       </button><UDropdownMenu v-if="awakeByMachine[soloMachine.key]?.supported" :items="machineMenu(soloMachine)" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :aria-label="t('Options')" /></UDropdownMenu></div>
@@ -472,7 +472,7 @@ function resetListWidth() {
       <QuotaStrip :rows="topQuotas" :class="{ 'after-stats': showCounters && agents.length }" />
 
       <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />
-      <ClaudeSetupBanner v-if="!sections && localSetup" :setup="localSetup" :name="machineName('') || t('cette machine')" class="solo" />
+      <ClaudeSetupBanner v-if="!sections && localSetup" :setup="localSetup" :name="machineName('') || t('this machine')" class="solo" />
 
       <!-- A single machine: the previous list. -->
       <template v-if="!sections">
@@ -480,10 +480,10 @@ function resetListWidth() {
         <section v-for="g in solo.groups" :key="g.key" class="agent-group" :class="g.key">
           <h2 class="group-title"><span>{{ g.title }}</span><span class="count">{{ g.list.length }}</span>
             <UDropdownMenu v-if="g.key === 'ready'" :items="readySortItems" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }">
-              <UButton :icon="READY_SORT_LABELS[readySort][1]" color="neutral" variant="ghost" size="xs" class="group-sort" :aria-label="`${t('Trier les prêts')} : ${t(READY_SORT_LABELS[readySort][0])}`" />
+              <UButton :icon="READY_SORT_LABELS[readySort][1]" color="neutral" variant="ghost" size="xs" class="group-sort" :aria-label="`${t('Sort ready')} : ${t(READY_SORT_LABELS[readySort][0])}`" />
             </UDropdownMenu></h2>
           <template v-for="(cards, i) in g.lists" :key="i">
-            <p v-if="g.key === 'ready' && g.lists.length > 1" class="ready-subgroup-label">{{ t(i === 0 ? 'Non lus' : 'Lus') }}</p>
+            <p v-if="g.key === 'ready' && g.lists.length > 1" class="ready-subgroup-label">{{ t(i === 0 ? 'Unread' : 'Read') }}</p>
             <ReorderList :disabled="!canReorder('') || (g.key === 'ready' && readySort !== 'herdr')">
               <AgentCard v-for="r in cards" :key="r.key" :pane="r.lead" :row="r" />
             </ReorderList>
@@ -493,8 +493,8 @@ function resetListWidth() {
         <div v-if="st.ok && !agents.length" class="empty hw-grid">
           <div class="empty-box">
             <div class="empty-art">&gt;_</div>
-            <p>{{ t('Aucun agent pour l’instant.') }}</p>
-            <p class="muted">{{ t('Lance-en un ici, ou depuis') }} <code>herdr</code> {{ t('dans un terminal.') }}</p>
+            <p>{{ t('No agents yet.') }}</p>
+            <p class="muted">{{ t('Start one here, or from') }} <code>herdr</code> {{ t('in a terminal.') }}</p>
           </div>
         </div>
       </template>
@@ -510,8 +510,8 @@ function resetListWidth() {
         >
           <div class="machine-row">
             <button v-if="desk" type="button" class="machine-grip" draggable="true"
-              :aria-label="tl(`Déplacer ${s.name} — flèches haut et bas`, `Move ${s.name} — up and down arrows`)"
-              :title="t('Glisser pour réordonner')"
+              :aria-label="tl(`Move ${s.name} — up and down arrows`, `Déplacer ${s.name} — flèches haut et bas`)"
+              :title="t('Drag to reorder')"
               @dragstart="onMachineDragStart(baseKeyOf(s.m), $event)" @dragend="onMachineDragEnd"
               @keydown.up.prevent="shiftMachine(baseKeyOf(s.m), -1)" @keydown.down.prevent="shiftMachine(baseKeyOf(s.m), 1)"
             ><UIcon name="i-lucide-grip-vertical" /></button>
@@ -545,10 +545,10 @@ function resetListWidth() {
             <section v-for="g in s.groups" :key="g.key" class="agent-group" :class="g.key">
               <h2 class="group-title"><span>{{ g.title }}</span><span class="count">{{ g.list.length }}</span>
             <UDropdownMenu v-if="g.key === 'ready'" :items="readySortItems" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }">
-              <UButton :icon="READY_SORT_LABELS[readySort][1]" color="neutral" variant="ghost" size="xs" class="group-sort" :aria-label="`${t('Trier les prêts')} : ${t(READY_SORT_LABELS[readySort][0])}`" />
+              <UButton :icon="READY_SORT_LABELS[readySort][1]" color="neutral" variant="ghost" size="xs" class="group-sort" :aria-label="`${t('Sort ready')} : ${t(READY_SORT_LABELS[readySort][0])}`" />
             </UDropdownMenu></h2>
               <template v-for="(cards, i) in g.lists" :key="i">
-                <p v-if="g.key === 'ready' && g.lists.length > 1" class="ready-subgroup-label">{{ t(i === 0 ? 'Non lus' : 'Lus') }}</p>
+                <p v-if="g.key === 'ready' && g.lists.length > 1" class="ready-subgroup-label">{{ t(i === 0 ? 'Unread' : 'Read') }}</p>
                 <ReorderList :disabled="!canReorder(s.m.key) || (g.key === 'ready' && readySort !== 'herdr')">
                   <AgentCard v-for="r in cards" :key="r.key" :pane="r.lead" :row="r" />
                 </ReorderList>
@@ -556,7 +556,7 @@ function resetListWidth() {
             </section>
 
             <p v-if="!s.agents.length && !s.groups.length" class="machine-empty">
-              {{ s.m.status === 'online' ? t('Aucun agent sur cette machine.') : t('Aucun agent connu.') }}
+              {{ s.m.status === 'online' ? t('No agents on this machine.') : t('No known agents.') }}
             </p>
           </div>
         </section>
@@ -565,53 +565,53 @@ function resetListWidth() {
 
     <div class="fab-wrap">
       <UButton class="fab hw-cta" icon="i-lucide-plus" color="primary" variant="solid" size="xl" :disabled="!eventsOpen || offlineView" @click="newAgent">
-        {{ t('Nouveau') }}
+        {{ t('New') }}
       </UButton>
     </div>
-    <AppSheet v-model:open="renameMachineOpen" :title="t('Renommer la machine')">
+    <AppSheet v-model:open="renameMachineOpen" :title="t('Rename machine')">
       <form class="rename" @submit.prevent="saveMachine">
-        <UInput v-model="machineLabel" maxlength="40" size="xl" class="w-full" :placeholder="t('Nom de la machine')" autofocus />
+        <UInput v-model="machineLabel" maxlength="40" size="xl" class="w-full" :placeholder="t('Machine name')" autofocus />
         <div class="rename-actions">
-          <UButton color="neutral" variant="ghost" class="sheet-btn" @click="renameMachineOpen = false">{{ t('Annuler') }}</UButton>
-          <UButton type="submit" color="primary" variant="solid" class="sheet-btn hw-cta" :loading="savingMachine" :disabled="!machineLabel.trim()">{{ t('Enregistrer') }}</UButton>
+          <UButton color="neutral" variant="ghost" class="sheet-btn" @click="renameMachineOpen = false">{{ t('Cancel') }}</UButton>
+          <UButton type="submit" color="primary" variant="solid" class="sheet-btn hw-cta" :loading="savingMachine" :disabled="!machineLabel.trim()">{{ t('Save') }}</UButton>
         </div>
       </form>
     </AppSheet>
-    <AppSheet v-model:open="sessionOpen" :title="t('Sessions Herdr')">
-      <p class="session-intro">{{ t('Session affichée sur cet appareil') }} · {{ sessionTarget?.label }}</p>
-      <p v-if="sessionsLoading" class="session-intro">{{ t('Chargement…') }}</p>
+    <AppSheet v-model:open="sessionOpen" :title="t('Herdr sessions')">
+      <p class="session-intro">{{ t('Session shown on this device') }} · {{ sessionTarget?.label }}</p>
+      <p v-if="sessionsLoading" class="session-intro">{{ t('Loading…') }}</p>
       <div v-else class="session-list">
         <button v-for="s in sessionRows" :key="s.name" type="button" class="session-choice" :disabled="!s.running"
           :aria-current="sessionTarget?.session === s.name ? 'true' : undefined" @click="selectSession(s)">
-          <span><b>{{ s.name }}</b><small>{{ t(s.running ? 'en cours' : 'arrêtée') }}</small></span>
+          <span><b>{{ s.name }}</b><small>{{ t(s.running ? 'running' : 'stopped') }}</small></span>
           <UIcon v-if="sessionTarget?.session === s.name" name="i-lucide-check" />
         </button>
-        <p v-if="!sessionRows.length" class="session-intro">{{ t('Aucune session trouvée.') }}</p>
+        <p v-if="!sessionRows.length" class="session-intro">{{ t('No sessions found.') }}</p>
       </div>
     </AppSheet>
-    <AppSheet v-model:open="awakeOpen" :title="t('Garder éveillé')">
-      <p class="session-intro">{{ awakeTarget?.label }} · {{ awakeLabel(awakeTarget ? awakeByMachine[awakeTarget.key] : undefined) || t('Veille normale') }}</p>
-      <p v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.battery" class="session-intro"><UIcon name="i-lucide-battery" /> {{ awakeByMachine[awakeTarget.key]?.battery?.percent }} % · {{ awakeByMachine[awakeTarget.key]?.battery?.source === 'ac' ? t('Secteur') : t('Batterie') }}</p>
-      <label v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.platform === 'mac'" class="awake-lid"><input v-model="awakeLid" type="checkbox" :disabled="awakeByMachine[awakeTarget.key]?.battery?.source !== 'ac'"> {{ t('Capot fermé (sur secteur uniquement)') }}</label>
+    <AppSheet v-model:open="awakeOpen" :title="t('Keep awake')">
+      <p class="session-intro">{{ awakeTarget?.label }} · {{ awakeLabel(awakeTarget ? awakeByMachine[awakeTarget.key] : undefined) || t('Normal sleep') }}</p>
+      <p v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.battery" class="session-intro"><UIcon name="i-lucide-battery" /> {{ awakeByMachine[awakeTarget.key]?.battery?.percent }} % · {{ awakeByMachine[awakeTarget.key]?.battery?.source === 'ac' ? t('Power adapter') : t('Battery') }}</p>
+      <label v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.platform === 'mac'" class="awake-lid"><input v-model="awakeLid" type="checkbox" :disabled="awakeByMachine[awakeTarget.key]?.battery?.source !== 'ac'"> {{ t('Closed lid (power adapter only)') }}</label>
       <div class="session-list">
-        <button v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.active && awakeByMachine[awakeTarget.key]?.until" class="session-choice" type="button" :disabled="awakeBusy" @click="chooseAwake('extend')"><span><b>{{ t('Prolonger d’une heure') }}</b><small>{{ extendLabel(awakeByMachine[awakeTarget.key]) }}</small></span><UIcon name="i-lucide-plus" /></button>
-        <button v-for="choice in [{ mode: 'hour', label: t('1 heure') }, { mode: 'fourHours', label: t('4 heures') }, { mode: 'evening', label: t('Jusqu’à ce soir (20 h)') }, { mode: 'untilOff', label: t('Jusqu’à désactivation') }]" :key="choice.mode" class="session-choice" type="button" :disabled="awakeBusy || (choice.mode === 'evening' && eveningPast)" @click="chooseAwake(choice.mode as AwakeMode)"><span><b>{{ choice.label }}</b><small v-if="choice.mode === 'evening' && eveningPast">{{ t('Il est déjà plus de 20 h sur cette machine') }}</small></span><UIcon name="i-lucide-chevron-right" /></button>
-        <button v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.active" class="session-choice" type="button" :disabled="awakeBusy" @click="chooseAwake('off')"><b>{{ t('Désactiver') }}</b><UIcon name="i-lucide-x" /></button>
+        <button v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.active && awakeByMachine[awakeTarget.key]?.until" class="session-choice" type="button" :disabled="awakeBusy" @click="chooseAwake('extend')"><span><b>{{ t('Extend by one hour') }}</b><small>{{ extendLabel(awakeByMachine[awakeTarget.key]) }}</small></span><UIcon name="i-lucide-plus" /></button>
+        <button v-for="choice in [{ mode: 'hour', label: t('1 hour') }, { mode: 'fourHours', label: t('4 hours') }, { mode: 'evening', label: t('Until tonight (8 pm)') }, { mode: 'untilOff', label: t('Until turned off') }]" :key="choice.mode" class="session-choice" type="button" :disabled="awakeBusy || (choice.mode === 'evening' && eveningPast)" @click="chooseAwake(choice.mode as AwakeMode)"><span><b>{{ choice.label }}</b><small v-if="choice.mode === 'evening' && eveningPast">{{ t('It is already past 8 pm on this machine') }}</small></span><UIcon name="i-lucide-chevron-right" /></button>
+        <button v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.active" class="session-choice" type="button" :disabled="awakeBusy" @click="chooseAwake('off')"><b>{{ t('Turn off') }}</b><UIcon name="i-lucide-x" /></button>
       </div>
-      <p class="awake-note">{{ tl('Sur batterie, fermer le capot met le Mac en veille. Une machine endormie ne peut pas être réveillée à distance.', 'Closing a Mac lid on battery puts it to sleep. A sleeping machine cannot be woken remotely.') }}</p>
+      <p class="awake-note">{{ tl('Closing a Mac lid on battery puts it to sleep. A sleeping machine cannot be woken remotely.', 'Sur batterie, fermer le capot met le Mac en veille. Une machine endormie ne peut pas être réveillée à distance.') }}</p>
     </AppSheet>
-    <AppSheet v-model:open="diagnosticOpen" :title="t('Ce qui empêche la veille')">
-      <p v-if="diagnosticBusy" class="session-intro">{{ t('Chargement…') }}</p>
+    <AppSheet v-model:open="diagnosticOpen" :title="t('What prevents sleep')">
+      <p v-if="diagnosticBusy" class="session-intro">{{ t('Loading…') }}</p>
       <div v-else class="session-list">
-        <div v-for="(a, i) in assertions" :key="i" class="session-choice awake-assertion"><span><b>{{ a.ours ? t('wherdr · Garder éveillé') : a.name }}</b><small>{{ a.kind }} · {{ durationLabel(a.seconds) }}</small></span></div>
-        <p v-if="!assertions.length" class="session-intro awake-empty">{{ t('Aucune app ne bloque la veille.') }}</p>
+        <div v-for="(a, i) in assertions" :key="i" class="session-choice awake-assertion"><span><b>{{ a.ours ? t('wherdr · Keep awake') : a.name }}</b><small>{{ a.kind }} · {{ durationLabel(a.seconds) }}</small></span></div>
+        <p v-if="!assertions.length" class="session-intro awake-empty">{{ t('No app is preventing sleep.') }}</p>
       </div>
     </AppSheet>
     <Teleport to="body">
       <div
         v-if="desk && !rail" class="list-handle" :class="{ dragging: listDrag }" role="separator" aria-orientation="vertical" tabindex="0"
-        :aria-label="t('Largeur de la liste')" :aria-valuenow="listWidth ?? LIST_DEFAULT" :aria-valuemin="LIST_MIN" :aria-valuemax="LIST_MAX"
-        :title="t('Glisser pour élargir · double-clic : largeur par défaut')"
+        :aria-label="t('List width')" :aria-valuenow="listWidth ?? LIST_DEFAULT" :aria-valuemin="LIST_MIN" :aria-valuemax="LIST_MAX"
+        :title="t('Drag to resize · double-click: default width')"
         @pointerdown="onListGrab" @dblclick="resetListWidth" @keydown="onListKey"
       />
     </Teleport>

@@ -63,14 +63,14 @@ useCardKeys(() => keyboard.value, () => ({ digits: 0, enter: !moveOnly.value, ow
 
 <template>
   <div class="choices choices-menu">
-    <p class="eyebrow choices-eyebrow"><i />{{ t('À toi') }}<span class="menu-kind">{{ t('Menu interactif') }}</span></p>
+    <p class="eyebrow choices-eyebrow"><i />{{ t('Your turn') }}<span class="menu-kind">{{ t('Interactive menu') }}</span></p>
     <p v-if="menu.title" class="choices-q">{{ menu.title }}</p>
     <p v-if="known && menu.lines.length" class="choices-note">{{ menu.lines[0] }}</p>
-    <p v-if="known && moveOnly" class="choices-note">{{ tl('Toucher une entrée y place le curseur ; valide ensuite avec un bouton ci-dessous.', 'Tap an entry to move the cursor there, then confirm with a button below.') }}</p>
+    <p v-if="known && moveOnly" class="choices-note">{{ tl('Tap an entry to move the cursor there, then confirm with a button below.', 'Toucher une entrée y place le curseur ; valide ensuite avec un bouton ci-dessous.') }}</p>
     <form v-if="menu.search !== null" class="menu-search" @submit.prevent="sendSearch">
       <UIcon name="i-lucide-search" aria-hidden="true" />
       <input
-        ref="searchRef" v-model="query" type="search" :placeholder="t('Rechercher…')" :aria-label="t('Rechercher dans le menu')"
+        ref="searchRef" v-model="query" type="search" :placeholder="t('Search…')" :aria-label="t('Search the menu')"
         enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" :disabled="!eventsOpen || offlineView" @input="onInput"
       >
     </form>
@@ -85,7 +85,7 @@ useCardKeys(() => keyboard.value, () => ({ digits: 0, enter: !moveOnly.value, ow
     </div>
     <template v-else>
       <pre v-if="menu.lines.length" class="choices-screen-text wrap">{{ menu.lines.join('\n') }}</pre>
-      <p class="choices-note">{{ tl('Menu interactif en cours : ses entrées se choisissent dans le terminal.', 'Interactive menu open: pick its entries in the terminal.') }}</p>
+      <p class="choices-note">{{ tl('Interactive menu open: pick its entries in the terminal.', 'Menu interactif en cours : ses entrées se choisissent dans le terminal.') }}</p>
     </template>
     <div class="choices-keys">
       <button v-for="a in actions" :key="a.key + a.label" type="button" :disabled="disabled" @click="press(a)">
@@ -93,7 +93,7 @@ useCardKeys(() => keyboard.value, () => ({ digits: 0, enter: !moveOnly.value, ow
       </button>
       <span v-if="keyboard" class="card-kbd" aria-hidden="true"><kbd>↑↓</kbd><kbd v-if="!moveOnly">{{ screenKeyName('enter') }}</kbd></span>
       <button type="button" class="menu-term" @click="emit('terminal')">
-        <UIcon name="i-lucide-square-terminal" aria-hidden="true" />{{ t('Voir le terminal') }}
+        <UIcon name="i-lucide-square-terminal" aria-hidden="true" />{{ t('View terminal') }}
       </button>
     </div>
   </div>

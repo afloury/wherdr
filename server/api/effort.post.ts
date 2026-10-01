@@ -1,5 +1,5 @@
 export default defineApi(async (event, b) => {
-  if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'pane invalide')
+  if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'Invalid pane')
   const model = await setEffort(b.pane_id, String(b.level || ''))
   const p = findPane(b.pane_id)
   if (p) refreshModel(p)

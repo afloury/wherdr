@@ -2,7 +2,7 @@
 // commands), for the input field suggestions.
 export default defineApi(async (event) => {
   const p = findPane(String(getQuery(event).pane || ''))
-  if (!p) throw new HerdrError('bad_pane', 'pane introuvable')
+  if (!p) throw new HerdrError('bad_pane', 'Pane not found')
   const m = machineOfPane(p.id)
   if (!p.agent || !m || !m.home) return { commands: [] }
   // Remote machine unreachable: built-in commands only (no cache).

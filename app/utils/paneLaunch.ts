@@ -47,7 +47,7 @@ export async function launchInNewPane(deps: NewPaneDeps, req: NewPaneRequest): P
   catch (e) { return { stage: 'create', error: message(e) } }
   const tabId = created.tab_id
   const paneId = created.pane_id
-  if (!paneId) return { stage: 'agent', tabId, error: 'pane introuvable' }
+  if (!paneId) return { stage: 'agent', tabId, error: 'Pane not found' }
   try {
     const r = await deps.agents({ ...req.agent, pane_id: paneId, cwd: req.cwd, worktree: false })
     return { stage: 'done', tabId, paneId: r.pane_id || paneId }

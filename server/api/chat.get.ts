@@ -1,7 +1,7 @@
 export default defineApi(async (event) => {
   const q = getQuery(event)
   const p = findPane(String(q.pane || ''))
-  if (!p) throw new HerdrError('bad_pane', 'pane introuvable')
+  if (!p) throw new HerdrError('bad_pane', 'Pane not found')
   // Machine distante injoignable : ses transcriptions aussi (lues par SSH).
   const m = machineOfPane(p.id)
   if (m && !m.local && m.status !== 'online') throw new HerdrError('unreachable', `${m.label} injoignable`)

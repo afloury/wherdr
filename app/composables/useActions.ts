@@ -66,18 +66,21 @@ export function navKey(paneId: string, key: 'up' | 'down' | 'enter' | 'esc'): Pr
 // would refuse it: we type the text as is. Working agent: the server
 // queues the message (returned in `queued`).
 export async function sendMessage(p: Pane | undefined, paneId: string, text: string): Promise<QueuedMessage | null> {
-  const r = p && p.agent && p.status !== 'blocked'
+  // Blocked on a question: the text is its typed answer. Blocked on a menu or
+  // a screen with no question (/mcp…): typed now it would be lost in it; the
+  // server holds it until the input field is back.
+  const r = p && p.agent && (p.status !== 'blocked' || (!p.prompt && ['claude', 'codex'].includes(p.agent)))
     ? await api<{ queued?: QueuedMessage }>('/api/prompt', { pane_id: paneId, text })
     : await api<{ queued?: QueuedMessage }>('/api/input', { pane_id: paneId, text, keys: ['enter'] })
   return r.queued || null
 }
 
 export const STATUS: Record<string, { label: string, order: number }> = {
-  blocked: { label: 'À toi', order: 0 },
-  done: { label: 'Terminé', order: 1 },
-  working: { label: 'Au travail', order: 2 },
-  idle: { label: 'Prêt', order: 3 },
-  unknown: { label: 'Inconnu', order: 4 },
+  blocked: { label: 'Your turn', order: 0 },
+  done: { label: 'Done', order: 1 },
+  working: { label: 'Working', order: 2 },
+  idle: { label: 'Ready', order: 3 },
+  unknown: { label: 'Unknown', order: 4 },
 }
 
 export function statusKey(p: Pane) {
@@ -86,8 +89,8 @@ export function statusKey(p: Pane) {
 export function statusLabel(p: Pane) {
   const s = statusKey(p)
   if (!p.agent) return 'Shell'
-  if (p.restart && p.restart.phase !== 'failed') return t('Redémarrage')
-  if (s === 'unknown' && p.pendingPrompt) return t('Démarrage')
+  if (p.restart && p.restart.phase !== 'failed') return t('Restarting')
+  if (s === 'unknown' && p.pendingPrompt) return t('Starting')
   return t((STATUS[s] || STATUS.unknown!).label)
 }
 
@@ -105,12 +108,12 @@ export async function restartAgent(p: Pane) {
   const n = restartNotice(p.status, pv)
   if (n.confirm) {
     const lines: string[] = []
-    if (n.busy) lines.push(tl(`${who} est en train de travailler : le redémarrer interrompra son travail en cours.`, `${who} is working: restarting it will interrupt what it is doing.`))
-    else lines.push(tl(`Redémarrer ${who} ? Il reprendra la même conversation.`, `Restart ${who}? It will resume the same conversation.`))
-    if (n.fresh) lines.push(tl('Cette conversation est encore vide : l’agent repartira sur une conversation neuve.', 'This conversation is still empty: the agent will start a new one.'))
-    if (n.defaults) lines.push(tl('Options de lancement introuvables : l’agent repartira avec tes réglages par défaut (modèle, effort, permissions).', 'Launch options not found: the agent will restart with your default settings (model, effort, permissions).'))
-    else if (n.dropped.length) lines.push(tl(`Options non reprises, l’agent repartira avec tes réglages par défaut pour : ${n.dropped.join(' ')}`, `Options not kept, the agent will use your defaults for: ${n.dropped.join(' ')}`))
-    const ok = await askConfirm(lines.join('\n\n'), n.busy ? t('Redémarrer quand même') : t('Redémarrer'), n.busy ? 'error' : 'primary')
+    if (n.busy) lines.push(tl(`${who} is working: restarting it will interrupt what it is doing.`, `${who} est en train de travailler : le redémarrer interrompra son travail en cours.`))
+    else lines.push(tl(`Restart ${who}? It will resume the same conversation.`, `Redémarrer ${who} ? Il reprendra la même conversation.`))
+    if (n.fresh) lines.push(tl('This conversation is still empty: the agent will start a new one.', 'Cette conversation est encore vide : l’agent repartira sur une conversation neuve.'))
+    if (n.defaults) lines.push(tl('Launch options not found: the agent will restart with your default settings (model, effort, permissions).', 'Options de lancement introuvables : l’agent repartira avec tes réglages par défaut (modèle, effort, permissions).'))
+    else if (n.dropped.length) lines.push(tl(`Options not kept, the agent will use your defaults for: ${n.dropped.join(' ')}`, `Options non reprises, l’agent repartira avec tes réglages par défaut pour : ${n.dropped.join(' ')}`))
+    const ok = await askConfirm(lines.join('\n\n'), n.busy ? t('Restart anyway') : t('Restart'), n.busy ? 'error' : 'primary')
     if (!ok) return
   }
   haptic()
@@ -127,11 +130,11 @@ export async function dismissRestart(paneId: string) {
 export async function closePane(p: Pane) {
   const workspace = herdrState.value.workspaces.find(w => w.id === p.workspace)
   const what = p.agent
-    ? tl(`${kindLabel(p.agent)} « ${paneTitle(p)} »`, `${kindLabel(p.agent)} “${paneTitle(p)}”`)
-    : tl(`le terminal de l’espace « ${workspace?.label || paneTitle(p)} »`, `the terminal in space “${workspace?.label || paneTitle(p)}”`)
+    ? tl(`${kindLabel(p.agent)} “${paneTitle(p)}”`, `${kindLabel(p.agent)} « ${paneTitle(p)} »`)
+    : tl(`the terminal in space “${workspace?.label || paneTitle(p)}”`, `le terminal de l’espace « ${workspace?.label || paneTitle(p)} »`)
   const plan = await confirmClose('pane', p.id,
-    tl(`Fermer ${what} ? Le processus sera arrêté.`, `Close ${what}? The process will be stopped.`),
-    t('Fermer le pane'),
+    tl(`Close ${what}? The process will be stopped.`, `Fermer ${what} ? Le processus sera arrêté.`),
+    t('Close pane'),
   )
   if (!plan) return
   // Closed from its view: its tab if panes remain there, otherwise the neighbouring
@@ -139,7 +142,7 @@ export async function closePane(p: Pane) {
   const done = prepareClose(plan.group ? { workspace: p.workspace } : { pane: p.id }, plan.group ? plan.workspaces.map(w => w.id) : [])
   try {
     await api('/api/close', { pane_id: p.id, close_group: plan.group })
-    toast(plan.group ? tl('Groupe fermé', 'Group closed') : t('Pane fermé'))
+    toast(plan.group ? tl('Group closed', 'Groupe fermé') : t('Pane closed'))
     done(true)
   } catch (err) {
     done(false)

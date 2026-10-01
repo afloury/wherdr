@@ -456,7 +456,7 @@ export const multiMachine = () => remotes.size > 0 || sessions.size > 0
 
 export async function listSessions(baseKey: string): Promise<NamedSession[]> {
   const m = baseMachines().find(x => x.key === baseKey)
-  if (!m) throw new HerdrError('bad_machine', 'machine inconnue')
+  if (!m) throw new HerdrError('bad_machine', 'unknown machine')
   let r: ExecResult
   if (m.local) r = await runFile(HERDR_BIN, ['session', 'list', '--json'], 10000)
   else {
@@ -583,7 +583,7 @@ export async function renameMachine(key: string, label: string) {
     return
   }
   const m = remotes.get(key)
-  if (!m) throw new HerdrError('bad_machine', 'machine inconnue')
+  if (!m) throw new HerdrError('bad_machine', 'unknown machine')
   const r = await runFile(HERDR_BIN, ['machine', 'rename', m.profileId, '--label', label], 10000)
   if (r.code !== 0) throw new HerdrError('machine_rename', lastLine(r.stderr) || 'renommage impossible')
   m.label = label

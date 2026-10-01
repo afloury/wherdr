@@ -64,7 +64,7 @@ export async function stopAgent(d: RestartDeps, p: Pick<Pane, 'id' | 'agent' | '
   await d.sleep(400)
   await key('ctrl+c')
   if (await waitShell(d, p.id, kind, 6000)) return 'ctrl-c'
-  throw new HerdrError('restart_stop', 'l’agent ne s’est pas arrêté')
+  throw new HerdrError('restart_stop', 'the agent did not stop')
 }
 
 // Relaunch the agent (the shell may take a moment to show its prompt).
@@ -82,5 +82,5 @@ export async function startAgent(d: RestartDeps, p: Pick<Pane, 'id' | 'agent' | 
       await d.sleep(500)
     }
   }
-  throw last || new HerdrError('restart_start', 'l’agent n’a pas redémarré')
+  throw last || new HerdrError('restart_start', 'the agent did not restart')
 }

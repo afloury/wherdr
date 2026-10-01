@@ -4,7 +4,7 @@ import { dismissRestart, restartAgent } from '../utils/restart'
 // server/utils/restart.ts). Returns right away: progress goes through
 // `pane.restart` in the state. `dismiss` clears a displayed failure.
 export default defineApi(async (event, b) => {
-  if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'pane invalide')
+  if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'Invalid pane')
   if (b.dismiss === true) {
     dismissRestart(b.pane_id)
     return { ok: true }

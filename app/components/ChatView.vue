@@ -228,10 +228,12 @@ onUnmounted(() => clearInterval(timer))
 watch(pageVisible, (v) => { if (v) loadChat() })
 
 // ------------------------------------------------------------ rendu
+// Short tool nouns: written as pairs because "Read" or "Search" mean something else elsewhere.
+const TOOL_COMMAND = tl('Command', 'Commande'), TOOL_EDIT = tl('Edit', 'Modif'), TOOL_SUBAGENT = tl('Subagent', 'Sous-agent')
 const TOOL_LABEL: Record<string, string> = {
-  Bash: 'Commande', Read: 'Lecture', Write: 'Écriture', Edit: 'Modif', MultiEdit: 'Modif', Grep: 'Recherche',
-  Glob: 'Fichiers', WebFetch: 'Web', WebSearch: 'Recherche web', Task: 'Sous-agent', Agent: 'Sous-agent',
-  TodoWrite: 'Tâches', exec: 'Commande', shell: 'Commande', apply_patch: 'Modif',
+  Bash: TOOL_COMMAND, Read: tl('Read', 'Lecture'), Write: tl('Write', 'Écriture'), Edit: TOOL_EDIT, MultiEdit: TOOL_EDIT, Grep: tl('Search', 'Recherche'),
+  Glob: tl('Files', 'Fichiers'), WebFetch: 'Web', WebSearch: tl('Web search', 'Recherche web'), Task: TOOL_SUBAGENT, Agent: TOOL_SUBAGENT,
+  TodoWrite: tl('Tasks', 'Tâches'), exec: TOOL_COMMAND, shell: TOOL_COMMAND, apply_patch: TOOL_EDIT,
 }
 const TOOL_ICON: Record<string, string> = {
   Bash: 'i-lucide-terminal', exec: 'i-lucide-terminal', shell: 'i-lucide-terminal',
@@ -242,16 +244,16 @@ const TOOL_ICON: Record<string, string> = {
 }
 // Codex "exec" runs code: a shell command, or another tool (write_stdin…).
 const isOtherTool = (tool: ChatItem) => tool.name === 'exec' && /^\w+$/.test(tool.text || '')
-const toolLabel = (tool: ChatItem) => t(isOtherTool(tool) ? 'Outil' : TOOL_LABEL[tool.name || ''] || tool.name || '')
+const toolLabel = (tool: ChatItem) => isOtherTool(tool) ? t('Tool') : TOOL_LABEL[tool.name || ''] || tool.name || ''
 const toolIcon = (tool: ChatItem) => (tool.error ? 'i-lucide-circle-x' : isOtherTool(tool) ? 'i-lucide-wrench' : TOOL_ICON[tool.name || ''] || 'i-lucide-wrench')
 // omp notes (custom_message shown): [label, icon] per kind.
 const NOTICE: Record<string, [string, string]> = {
-  'advisor': ['Conseiller', 'i-lucide-lightbulb'],
-  'async-result': ['Tâche de fond terminée', 'i-lucide-circle-check'],
-  'irc:incoming': ['Message d’un agent', 'i-lucide-message-square'],
-  'launch-completion': ['Processus', 'i-lucide-cpu'],
+  'advisor': ['Advisor', 'i-lucide-lightbulb'],
+  'async-result': ['Background job done', 'i-lucide-circle-check'],
+  'irc:incoming': ['Agent message', 'i-lucide-message-square'],
+  'launch-completion': ['Process', 'i-lucide-cpu'],
   'lsp-late-diagnostic': ['Diagnostics', 'i-lucide-triangle-alert'],
-  'background-tan-dispatch': ['Tâche en arrière-plan', 'i-lucide-bot'],
+  'background-tan-dispatch': ['Background task', 'i-lucide-bot'],
 }
 
 const UPLOAD_RE = /\/\.cache\/herdr-web\/uploads\/\S+/g
@@ -376,7 +378,7 @@ const blocks = computed<Block[]>(() => {
       const effort = it.role === 'system' ? it.text.match(/^Effort : (low|medium|high|xhigh|max|ultracode) \(cette session\)$/) : null
       // Local "/" command: one-line system separator ("/cost → …").
       out.push({ k: 'system', key, text: effort
-        ? tl(`Effort : ${effort[1]} (cette session)`, `Effort: ${effort[1]} (this session)`)
+        ? tl(`Effort: ${effort[1]} (this session)`, `Effort : ${effort[1]} (cette session)`)
         : it.role === 'system' ? t(it.text) : it.text })
     }
   })
@@ -463,7 +465,7 @@ onUnmounted(() => {
 // Quote tapped: scrolls to the original message and highlights it.
 function gotoOrigin(key: string | null) {
   const el = key ? msgEl(key) : null
-  if (!el) return toast(t('Message d’origine introuvable (plus haut dans la conversation ?)'), true)
+  if (!el) return toast(t('Original message not found (further up the conversation?)'), true)
   el.scrollIntoView({ block: 'center', behavior: 'smooth' })
   el.classList.remove('msg-flash')
   void el.offsetWidth
@@ -474,8 +476,8 @@ function gotoOrigin(key: string | null) {
 async function copyText(text: string) {
   try {
     await navigator.clipboard.writeText(text)
-    toast(t('Copié'))
-  } catch { toast(t('Copie impossible'), true) }
+    toast(t('Copied'))
+  } catch { toast(t('Copy failed'), true) }
 }
 // Markdown code blocks: "Copy" button (event delegation,
 // the HTML comes from v-html).
@@ -488,13 +490,13 @@ function onListClick(e: MouseEvent) {
   const code = btn.closest('.code-block')?.querySelector('pre')
   if (!code) return
   navigator.clipboard.writeText(code.textContent || '').then(() => {
-    btn.textContent = t('Copié')
+    btn.textContent = t('Copied')
     btn.classList.add('done')
     setTimeout(() => {
-      btn.textContent = t('Copier')
+      btn.textContent = t('Copy')
       btn.classList.remove('done')
     }, 1400)
-  }).catch(() => toast(t('Copie impossible'), true))
+  }).catch(() => toast(t('Copy failed'), true))
 }
 
 // ------------------------------------------------------------ queued
@@ -552,7 +554,9 @@ const queuedList = computed(() => {
       id: q.id,
       raw: q.text,
       mine: !q.id.startsWith('cc-'),
-      phase: phases[i]!,
+      // Held or failed on the server: never typed yet, so never "sent".
+      phase: q.state ? 'queued' : phases[i]!,
+      state: q.state || null,
       photos: lines.filter(isUploadLine).map(l => `/uploads/${encodeURIComponent(l.trim().split('/').pop()!)}`),
       text,
       body: parsed ? parsed.body : text,
@@ -573,7 +577,7 @@ async function cancelQueued(q: { id: string, raw: string, mine: boolean }) {
     const r = await api<{ text: string }>('/api/unqueue', { pane_id: props.pane.id, text: q.raw, id: q.mine ? q.id : undefined })
     restoreDraft(useDraft(props.pane.id), r.text || q.raw)
     emit('restored')
-    toast(t('Message retiré de la file'))
+    toast(t('Removed from the queue'))
     setTimeout(loadChat, 400)
   } catch (err) {
     toast((err as Error).message, true)
@@ -581,12 +585,26 @@ async function cancelQueued(q: { id: string, raw: string, mine: boolean }) {
     cancelling.value = null
   }
 }
+// "Retry" on a message that could not be sent: held again by the server.
+const retrying = ref<string | null>(null)
+async function retryQueued(q: { id: string }) {
+  if (retrying.value) return
+  retrying.value = q.id
+  haptic()
+  try {
+    await api('/api/requeue', { pane_id: props.pane.id, id: q.id })
+  } catch (err) {
+    toast((err as Error).message, true)
+  } finally {
+    retrying.value = null
+  }
+}
 const queuedWhy = computed(() => {
   const p = props.pane
-  if (p.pendingPrompt) return tl(`partira dès que ${kindLabel(p.agent)} sera prêt`, `will be sent when ${kindLabel(p.agent)} is ready`)
-  if (p.status === 'working') return t('sera lu à la prochaine étape de l’agent')
-  if (p.status === 'blocked') return t('après ta réponse à la question')
-  return t('envoi…')
+  if (p.pendingPrompt) return tl(`will be sent when ${kindLabel(p.agent)} is ready`, `partira dès que ${kindLabel(p.agent)} sera prêt`)
+  if (p.status === 'working') return t('will be read at the agent’s next step')
+  if (p.status === 'blocked') return t('after you answer the question')
+  return t('sending…')
 })
 watch(() => queuedList.value.map(q => `${q.id}:${q.phase}`).join(','), () => nextTick(() => scrollToEnd(false)))
 watch(() => liveShell.value && liveShell.value.lines.join('\n'), () => nextTick(() => scrollToEnd(false)))
@@ -599,22 +617,22 @@ const waiting = computed(() => {
   if (unavailable.value !== 'not_found' || !p.screen || p.status === 'working' || readOnly.value) return null
   const who = kindLabel(p.agent)
   return knownScreen(p)
-    ? { text: tl(`${who} attend ta réponse, ci-dessous ou dans le terminal.`, `${who} is waiting for your answer, below or in the terminal.`), lines: [] }
-    : { text: tl(`${who} attend une action dans le terminal.`, `${who} is waiting for an action in the terminal.`), lines: p.screen.lines }
+    ? { text: tl(`${who} is waiting for your answer, below or in the terminal.`, `${who} attend ta réponse, ci-dessous ou dans le terminal.`), lines: [] }
+    : { text: tl(`${who} is waiting for an action in the terminal.`, `${who} attend une action dans le terminal.`), lines: p.screen.lines }
 })
 
 const status = computed(() => {
   if (readOnly.value) return null
   const p = props.pane
   if (p.pendingPrompt && p.status !== 'working') {
-    return { typing: true, text: tl(`Ton premier message partira dès que ${kindLabel(p.agent)} sera prêt`, `Your first message will be sent when ${kindLabel(p.agent)} is ready`) }
+    return { typing: true, text: tl(`Your first message will be sent when ${kindLabel(p.agent)} is ready`, `Ton premier message partira dès que ${kindLabel(p.agent)} sera prêt`) }
   }
-  // Claude: its current verb ("✻ Orbiting…"), read from the screen by the server;
-  // the spinning star in front is animated on the app side (ClaudeSpinner).
-  if (liveShell.value) return { typing: true, text: tl('Commande en cours…', 'Command running…') }
+  // Claude : son verbe du moment (« ✻ Orbiting… »), lu à l'écran par le serveur ;
+  // l'étoile qui tourne devant est animée côté app (ClaudeSpinner).
+  if (liveShell.value) return { typing: true, text: tl('Command running…', 'Commande en cours…') }
   if (p.status === 'working' && p.agent === 'claude' && p.activity) return { typing: true, verb: true, text: `${p.activity}…` }
-  if (p.status === 'working') return { typing: true, text: `${kindLabel(p.agent)} ${tl('travaille…', 'is working…')}` }
-  if (p.status === 'blocked' && !(p.prompt && p.prompt.options) && !knownScreen(p)) return { typing: false, text: t('En attente de ta réponse — détail dans l’onglet Terminal') }
+  if (p.status === 'working') return { typing: true, text: `${kindLabel(p.agent)} ${tl('is working…', 'travaille…')}` }
+  if (p.status === 'blocked' && !(p.prompt && p.prompt.options) && !knownScreen(p)) return { typing: false, text: t('Waiting for your reply — details in the Terminal tab') }
   return null
 })
 watch(() => props.pane.status, () => nextTick(() => scrollToEnd(false)))
@@ -677,8 +695,8 @@ function focusHit() {
   }
 }
 const searchCount = computed(() => search.loading
-  ? t('chargement…')
-  : search.q.length < 2 ? '' : search.hits.length ? `${search.cur + 1}/${search.hits.length}` : t('aucun résultat'))
+  ? t('loading…')
+  : search.q.length < 2 ? '' : search.hits.length ? `${search.cur + 1}/${search.hits.length}` : t('no results'))
 function stepSearch(d: number) {
   if (!search.hits.length) return
   search.cur = (search.cur + d + search.hits.length) % search.hits.length
@@ -771,18 +789,18 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
   <div v-if="searchOpen" class="search-bar">
     <UInput
       ref="searchInput" v-model="search.q" type="search" enterkeyhint="search" autocomplete="off"
-      icon="i-lucide-search" variant="none" :placeholder="t('Rechercher dans la conversation')" class="flex-1 min-w-0"
+      icon="i-lucide-search" variant="none" :placeholder="t('Search the conversation')" class="flex-1 min-w-0"
       @update:model-value="onSearchInput" @keydown="onSearchKey"
     />
     <span class="search-count">{{ searchCount }}</span>
-    <UButton icon="i-lucide-chevron-up" color="neutral" variant="ghost" size="sm" :aria-label="t('Précédent')" @click="stepSearch(-1)" />
-    <UButton icon="i-lucide-chevron-down" color="neutral" variant="ghost" size="sm" :aria-label="t('Suivant')" @click="stepSearch(1)" />
-    <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" :aria-label="t('Fermer')" @click="closeSearch" />
+    <UButton icon="i-lucide-chevron-up" color="neutral" variant="ghost" size="sm" :aria-label="t('Previous')" @click="stepSearch(-1)" />
+    <UButton icon="i-lucide-chevron-down" color="neutral" variant="ghost" size="sm" :aria-label="t('Next')" @click="stepSearch(1)" />
+    <UButton icon="i-lucide-x" color="neutral" variant="ghost" size="sm" :aria-label="t('Close')" @click="closeSearch" />
   </div>
 
   <div class="chat-wrap">
-    <OfflineNote v-if="readOnly || netDown" :label="readOnly ? t('Lecture hors ligne') : undefined" :at="savedAt" />
-    <OfflineNote v-else-if="isStale(misses)" :label="t('Conversation non à jour — reconnexion…')" />
+    <OfflineNote v-if="readOnly || netDown" :label="readOnly ? t('Offline reading') : undefined" :at="savedAt" />
+    <OfflineNote v-else-if="isStale(misses)" :label="t('Conversation not up to date — reconnecting…')" />
     <div ref="box" class="chat" @scroll.passive="onScroll">
       <UChatMessages
         :status="working ? 'streaming' : 'ready'" :should-auto-scroll="false"
@@ -795,20 +813,20 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
             <UIcon name="i-lucide-square-terminal" class="chat-empty-icon" />
             <p>{{ waiting.text }}</p>
             <pre v-if="waiting.lines.length" class="choices-screen-text">{{ waiting.lines.join('\n') }}</pre>
-            <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('Voir le terminal') }}</UButton>
+            <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('View terminal') }}</UButton>
           </div>
           <div v-else-if="unavailable" class="chat-empty">
             <UIcon name="i-lucide-message-square-dashed" class="chat-empty-icon" />
-            <p>{{ unavailable === 'not_found' ? t('Pas encore de conversation pour cet agent.') : t('Conversation indisponible pour cet agent.') }}</p>
-            <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('Voir le terminal') }}</UButton>
+            <p>{{ unavailable === 'not_found' ? t('No conversation for this agent yet.') : t('Conversation unavailable for this agent.') }}</p>
+            <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('View terminal') }}</UButton>
           </div>
           <template v-else>
             <div v-if="chat.olderCursor > 0" class="chat-more">
               <UButton size="xs" color="neutral" variant="outline" class="mono-btn" :loading="olderBusy" icon="i-lucide-arrow-up" @click="loadOlder">
-                {{ t('Charger plus haut') }}
+                {{ t('Load earlier messages') }}
               </UButton>
             </div>
-            <div v-else-if="chat.older.length" class="chat-note">{{ t('Début de la conversation') }}</div>
+            <div v-else-if="chat.older.length" class="chat-note">{{ t('Start of conversation') }}</div>
 
             <template v-for="b in blocks" :key="b.key">
               <div v-if="b.k === 'day'" class="day-sep"><span>{{ b.label }}</span></div>
@@ -818,7 +836,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
               </div>
 
               <div v-else-if="b.k === 'user'" class="msg-user-wrap" :data-hit-key="b.key">
-                <button v-if="b.reply" type="button" class="msg-quote" :aria-label="t('Voir le message d’origine')" @click="gotoOrigin(b.origin)">
+                <button v-if="b.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(b.origin)">
                   <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ b.reply.time }}</span><span class="msg-quote-text">{{ b.reply.excerpt }}</span>
                 </button>
                 <UChatMessage
@@ -827,7 +845,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
                   :ui="{ root: 'msg msg-user', container: 'msg-c', content: 'msg-bubble', header: 'msg-files' }"
                 >
                   <template #files>
-                    <span class="thumbs" :class="{ one: b.srcs.length === 1 }"><span v-for="src in b.srcs" :key="src"><span v-if="readOnly" class="offline-image">{{ t('Image non disponible hors ligne') }}</span><img v-else class="msg-img" :src="src" alt="" loading="lazy" decoding="async" @click="openImage(src)"></span></span>
+                    <span class="thumbs" :class="{ one: b.srcs.length === 1 }"><span v-for="src in b.srcs" :key="src"><span v-if="readOnly" class="offline-image">{{ t('Image unavailable offline') }}</span><img v-else class="msg-img" :src="src" alt="" loading="lazy" decoding="async" @click="openImage(src)"></span></span>
                   </template>
                   <template #content>{{ b.text }}</template>
                 </UChatMessage>
@@ -847,7 +865,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
                 </UChatMessage>
                 <div v-if="!b.endsTurn && !readOnly" class="msg-actions">
                   <button type="button" class="msg-reply" @click="replyTo(b.key)">
-                    <UIcon name="i-lucide-reply" /><span>{{ t('Répondre') }}</span>
+                    <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
                   </button>
                 </div>
               </template>
@@ -856,18 +874,18 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
                 <div class="msg-shell-cmd">
                   <span class="msg-shell-sign" aria-hidden="true">{{ b.bash ? '!' : '❯' }}</span>
                   <code>{{ b.text }}</code>
-                  <UTooltip :text="t('Copier la commande')" :disabled="!desk">
-                    <UButton icon="i-lucide-copy" color="neutral" variant="ghost" size="xs" class="msg-shell-copy" :aria-label="t('Copier la commande')" @click="copyText(b.bash ? `!${b.text}` : b.text)" />
+                  <UTooltip :text="t('Copy command')" :disabled="!desk">
+                    <UButton icon="i-lucide-copy" color="neutral" variant="ghost" size="xs" class="msg-shell-copy" :aria-label="t('Copy command')" @click="copyText(b.bash ? `!${b.text}` : b.text)" />
                   </UTooltip>
                 </div>
                 <div v-if="b.out || b.err" class="msg-shell-body">
                   <pre v-if="b.out" class="msg-shell-out">{{ b.out }}</pre>
                   <pre v-if="b.err" class="msg-shell-out err">{{ b.err }}</pre>
                 </div>
-                <div v-else-if="b.bash" class="msg-shell-empty">{{ t('Aucune sortie') }}</div>
+                <div v-else-if="b.bash" class="msg-shell-empty">{{ t('No output') }}</div>
                 <button v-if="b.long" type="button" class="msg-shell-more" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
                   <UIcon :name="isOpen(b.key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" />
-                  <span>{{ isOpen(b.key) ? t('Réduire') : tl(`Tout afficher · ${b.lines} lignes`, `Show all · ${b.lines} lines`) }}</span>
+                  <span>{{ isOpen(b.key) ? t('Collapse') : tl(`Show all · ${b.lines} lines`, `Tout afficher · ${b.lines} lignes`) }}</span>
                 </button>
               </div>
               <div v-else-if="b.k === 'system'" class="msg-system"><span>{{ b.text }}</span></div>
@@ -876,15 +894,15 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
                 <ChatMarkdown class="msg-notice-body md" :html="b.html" :typing="null" />
                 <button v-if="b.long" type="button" class="msg-shell-more" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
                   <UIcon :name="isOpen(b.key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" />
-                  <span>{{ isOpen(b.key) ? t('Réduire') : t('Tout afficher') }}</span>
+                  <span>{{ isOpen(b.key) ? t('Collapse') : t('Show all') }}</span>
                 </button>
               </div>
               <div v-else-if="b.k === 'turn'" class="turn-end">
-                <UTooltip v-if="b.copy" :text="t('Copier la réponse')" :disabled="!desk">
-                  <UButton icon="i-lucide-copy" color="neutral" variant="ghost" size="xs" class="turn-copy" :aria-label="t('Copier la réponse')" @click="copyText(b.copy)" />
+                <UTooltip v-if="b.copy" :text="t('Copy reply')" :disabled="!desk">
+                  <UButton icon="i-lucide-copy" color="neutral" variant="ghost" size="xs" class="turn-copy" :aria-label="t('Copy reply')" @click="copyText(b.copy)" />
                 </UTooltip>
                 <button v-if="b.reply && !readOnly" type="button" class="msg-reply" @click="replyTo(b.reply)">
-                  <UIcon name="i-lucide-reply" /><span>{{ t('Répondre') }}</span>
+                  <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
                 </button>
                 <span>{{ b.text }}</span>
               </div>
@@ -913,7 +931,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
             </template>
             <div v-if="rendered && !items.length && !loadError" class="chat-empty">
               <UIcon name="i-lucide-message-square-dashed" class="chat-empty-icon" />
-              <p>{{ t('Conversation vide pour l’instant.') }}</p>
+              <p>{{ t('No messages yet.') }}</p>
             </div>
             <div v-if="loadError" class="chat-empty"><p>{{ loadError }}</p></div>
           </template>
@@ -922,21 +940,21 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
         <Teleport to="body">
           <button
             v-if="selReply" ref="selBtn" type="button" class="sel-reply" :style="{ top: `${selReply.top}px`, left: `${selReply.left}px` }"
-            :aria-label="t('Répondre à ce passage')" @pointerdown.prevent @mousedown.prevent @click="replyTo(selReply.key, selReply.text)"
+            :aria-label="t('Reply to this passage')" @pointerdown.prevent @mousedown.prevent @click="replyTo(selReply.key, selReply.text)"
           >
-            <UIcon name="i-lucide-reply" /><span>{{ t('Répondre') }}</span>
+            <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
           </button>
         </Teleport>
         <div v-if="queuedList.length || liveShell" class="queued-list">
           <!-- Already sent (visible as sent on screen), not yet in the transcript. -->
           <div v-for="q in queuedList.filter(x => x.phase === 'sent')" :key="q.id" class="msg-user-wrap">
-            <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Voir le message d’origine')" @click="gotoOrigin(q.origin)">
+            <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
             </button>
             <div class="msg-bubble sent">
               <span v-if="q.photos.length" class="thumbs" :class="{ one: q.photos.length === 1 }"><img v-for="src in q.photos" :key="src" class="msg-img" :src="src" alt="" @click="openImage(src)"></span>{{ q.body }}
             </div>
-            <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ t('Envoyé · lu par l’agent') }}</span></div>
+            <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ t('Sent · read by the agent') }}</span></div>
           </div>
           <!-- "!" command running: live output read from the screen. -->
           <div v-if="liveShell" class="msg-user-wrap">
@@ -946,26 +964,35 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
                 <code>{{ liveShell.command }}</code>
               </div>
               <div v-if="liveShell.lines.length" class="msg-shell-body">
-                <div v-if="liveShell.hidden" class="msg-shell-hidden">{{ tl(`+ ${liveShell.hidden} lignes au-dessus`, `+ ${liveShell.hidden} lines above`) }}</div>
+                <div v-if="liveShell.hidden" class="msg-shell-hidden">{{ tl(`+ ${liveShell.hidden} lines above`, `+ ${liveShell.hidden} lignes au-dessus`) }}</div>
                 <pre class="msg-shell-out">{{ liveShell.lines.join('\n') }}</pre>
               </div>
-              <div v-else class="msg-shell-empty">{{ t('Pas encore de sortie') }}</div>
+              <div v-else class="msg-shell-empty">{{ t('No output yet') }}</div>
             </div>
             <div class="queued-tag running">
-              <UIcon name="i-lucide-loader-circle" class="spin" /><span>{{ t('En cours d’exécution') }}<template v-if="shellDuration"> · {{ shellDuration }}</template></span>
+              <UIcon name="i-lucide-loader-circle" class="spin" /><span>{{ t('Running') }}<template v-if="shellDuration"> · {{ shellDuration }}</template></span>
             </div>
           </div>
           <div v-for="q in queuedList.filter(x => x.phase === 'queued')" :key="q.id" class="msg-user-wrap">
-            <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Voir le message d’origine')" @click="gotoOrigin(q.origin)">
+            <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
             </button>
             <div class="msg-bubble queued">
               <span v-if="q.photos.length" class="thumbs" :class="{ one: q.photos.length === 1 }"><img v-for="src in q.photos" :key="src" class="msg-img" :src="src" alt="" @click="openImage(src)"></span>{{ q.body }}
             </div>
-            <div class="queued-tag">
-              <UIcon name="i-lucide-clock" /><span>{{ t('En attente · ') }}{{ queuedWhy }}</span>
-              <button v-if="canCancel" type="button" class="queued-cancel" :disabled="Boolean(cancelling)" @click="cancelQueued(q)">
-                <UIcon :name="cancelling === q.id ? 'i-lucide-loader-circle' : 'i-lucide-undo-2'" :class="{ spin: cancelling === q.id }" />{{ t('Annuler') }}
+            <div v-if="q.state === 'failed'" class="queued-tag failed" role="alert">
+              <UIcon name="i-lucide-circle-alert" /><span>{{ t('Not sent') }}</span>
+              <button type="button" class="queued-cancel" :disabled="Boolean(retrying)" @click="retryQueued(q)">
+                <UIcon :name="retrying === q.id ? 'i-lucide-loader-circle' : 'i-lucide-rotate-cw'" :class="{ spin: retrying === q.id }" />{{ t('Retry') }}
+              </button>
+              <button type="button" class="queued-cancel" :disabled="Boolean(cancelling)" @click="cancelQueued(q)">
+                <UIcon :name="cancelling === q.id ? 'i-lucide-loader-circle' : 'i-lucide-undo-2'" :class="{ spin: cancelling === q.id }" />{{ t('Cancel') }}
+              </button>
+            </div>
+            <div v-else class="queued-tag">
+              <UIcon name="i-lucide-clock" /><span>{{ t('Queued · ') }}{{ q.state === 'held' ? t('will be sent when the menu closes') : queuedWhy }}</span>
+              <button v-if="canCancel || q.state" type="button" class="queued-cancel" :disabled="Boolean(cancelling)" @click="cancelQueued(q)">
+                <UIcon :name="cancelling === q.id ? 'i-lucide-loader-circle' : 'i-lucide-undo-2'" :class="{ spin: cancelling === q.id }" />{{ t('Cancel') }}
               </button>
             </div>
           </div>

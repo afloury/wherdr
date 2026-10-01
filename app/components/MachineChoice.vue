@@ -19,7 +19,7 @@ function pick(m: MachineConfig) {
       :disabled="!machineOnline(m)" :data-machine="m.key || 'local'" @click="pick(m)"
     >
       <UIcon :name="m.local ? 'i-lucide-server' : 'i-lucide-laptop'" class="seg-icon" />
-      <span class="machine-choice-name">{{ m.label || t('Cette machine') }}</span>
+      <span class="machine-choice-name">{{ m.label || t('This machine') }}</span>
       <MachineLocalBadge v-if="m.local" />
       <i class="seg-dot" />
     </button>

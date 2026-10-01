@@ -163,7 +163,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
       publicKey: Buffer.from(credential.publicKey).toString('base64url'),
       counter: credential.counter,
       transports: credential.transports || [],
-      name: String(body.name || 'Appareil').slice(0, 40),
+      name: String(body.name || 'Device').slice(0, 40),
       createdAt: new Date().toISOString(),
     })
     save()

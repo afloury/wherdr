@@ -19,7 +19,8 @@ import { parseWaitScreen } from './waitScreen'
 import { parseMenu, TOP } from '../../shared/menuScreen'
 import { parseClaudeActivity } from './activity'
 import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './claudeScreen'
-import { isUploadLine, queuedDone } from './queued'
+import { type QueueEntry, INPUT_STATES, checkQueue, isUploadLine, nextHeld, publicEntry, queuedDone } from './queued'
+import { inputVisible } from './choices'
 import { msgText, unqueueClaude } from './unqueue'
 import { type TranscriptPane, sameMsg } from './transcripts'
 import { pushSend, subWatchesSession } from './push'
@@ -33,7 +34,7 @@ const fsp = fs.promises
 // Transcriptions : celles de la machine du pane (disque local, ou SSH).
 function trFor(p: { id: string }) {
   const m = machineOfPane(p.id)
-  if (!m) throw new HerdrError('unreachable', 'machine inconnue')
+  if (!m) throw new HerdrError('unreachable', 'unknown machine')
   return m.transcripts
 }
 export const transcripts = {
@@ -217,14 +218,52 @@ export function refreshModel(p: Pane) {
     .finally(() => modelBusy.delete(p.id))
 }
 
-// Messages sent from the phone but not yet taken by the agent (it is
-// working, or starting): shown as "queued" until they
-// appear in its transcript, as in Claude desktop / Codex.
-const queued = new Map<string, Required<QueuedMessage>[]>()
-export function addQueued(paneId: string, text: string): Required<QueuedMessage> {
-  const e = { id: crypto.randomBytes(4).toString('hex'), text: String(text).slice(0, 4000), at: Date.now() }
+// Messages envoyés depuis le téléphone mais pas encore pris par l'agent (il
+// travaille, ou démarre) : affichés « en attente » jusqu'à ce qu'ils
+// apparaissent dans sa transcription, comme dans Claude desktop / Codex.
+const queued = new Map<string, QueueEntry[]>()
+export function addQueued(paneId: string, text: string, opts: { held?: boolean } = {}): QueuedMessage {
+  const e: QueueEntry = { id: crypto.randomBytes(4).toString('hex'), text: String(text).slice(0, 4000), at: Date.now(), ...(opts.held ? { held: true } : {}) }
   queued.set(paneId, [...(queued.get(paneId) || []), e])
-  return e
+  return publicEntry(e)
+}
+export const hasHeld = (paneId: string) => (queued.get(paneId) || []).some(q => q.held && !q.failed)
+
+// Held messages (cf. queued.ts): typed one at a time, oldest first, once the
+// agent rests with its input field on screen. Re-checked on every poll.
+const deliverBusy = new Set<string>()
+function deliverHeld(p: Pane) {
+  const q = nextHeld(queued.get(p.id) || [])
+  if (!q || deliverBusy.has(p.id) || !p.agent || !INPUT_STATES.has(p.status || '')) return
+  deliverBusy.add(p.id)
+  herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
+    .then(async (r) => {
+      if (!inputVisible(r.read && r.read.text) || !q.held || q.failed) return
+      // Removed (Cancel) meanwhile: nothing to send.
+      if (!(queued.get(p.id) || []).includes(q)) return
+      await agentPrompt(p.id, q.text)
+      q.held = false
+      q.at = Date.now()
+      log(`message retenu envoyé sur ${p.id}`)
+      setTimeout(poll, 50)
+    })
+    .catch((e) => {
+      if (!/not an active|not_ready|blocked/i.test(`${e.code} ${e.message}`)) { q.failed = true; log(`message retenu ${p.id} : ${e.message}`) }
+    })
+    .finally(() => deliverBusy.delete(p.id))
+}
+
+// "Retry" on a failed message: held again, delivered by the next polls.
+export function retryQueued(paneId: string, id: string): QueuedMessage {
+  const q = (queued.get(paneId) || []).find(x => x.id === id)
+  if (!q) throw new HerdrError('not_found', 'message introuvable')
+  if (!q.failed) throw new HerdrError('busy', 'message already being sent')
+  q.failed = false
+  q.held = true
+  q.at = Date.now()
+  delete q.readySince
+  setTimeout(poll, 50)
+  return publicEntry(q)
 }
 const reconcileBusy = new Set<string>()
 function reconcileQueued(p: Pane) {
@@ -233,7 +272,8 @@ function reconcileQueued(p: Pane) {
   reconcileBusy.add(p.id)
   transcripts.chat(p, {})
     .then((r) => {
-      const left = (queued.get(p.id) || []).filter(q => !queuedDone(q, r.items || [], READY.has(p.status || ''), Date.now()))
+      // A held message was not typed yet: only the agent's own transcript can't take it.
+      const left = (queued.get(p.id) || []).filter(q => q.held || !queuedDone(q, r.items || [], READY.has(p.status || ''), Date.now()))
       if (left.length) queued.set(p.id, left)
       else queued.delete(p.id)
     })
@@ -247,12 +287,18 @@ function reconcileQueued(p: Pane) {
 const unqueueBusy = new Set<string>()
 export async function cancelQueued(paneId: string, text: string, id?: string): Promise<{ text: string }> {
   const p = findPane(paneId)
-  if (!p || !p.agent) throw new HerdrError('not_found', 'agent introuvable')
+  if (!p || !p.agent) throw new HerdrError('not_found', 'agent not found')
   const mine = (queued.get(p.id) || []).find(q => (id && q.id === id) || sameMsg(msgText(q.text), msgText(text)))
   const drop = () => {
     const left = (queued.get(p.id) || []).filter(q => q !== mine)
     if (left.length) queued.set(p.id, left)
     else queued.delete(p.id)
+  }
+  // Not typed yet (held) or failed: simply forgotten.
+  if (mine && (mine.held || mine.failed) && !deliverBusy.has(p.id)) {
+    drop()
+    setTimeout(poll, 50)
+    return { text: mine.text }
   }
   const pend = pendingPrompts.get(p.id)
   if (pend && !pendingBusy.has(p.id) && sameMsg(msgText(pend.text), msgText(text))) {
@@ -261,9 +307,9 @@ export async function cancelQueued(paneId: string, text: string, id?: string): P
     setTimeout(poll, 50)
     return { text: pend.text }
   }
-  if (p.agent !== 'claude') throw new HerdrError('unsupported', 'Annulation impossible pour cet agent')
-  if (p.status !== 'working') throw new HerdrError('already_read', 'Message déjà lu par l’agent')
-  if (unqueueBusy.has(p.id)) throw new HerdrError('busy', 'Annulation déjà en cours')
+  if (p.agent !== 'claude') throw new HerdrError('unsupported', 'This agent can’t cancel queued messages')
+  if (p.status !== 'working') throw new HerdrError('already_read', 'Already read by the agent')
+  if (unqueueBusy.has(p.id)) throw new HerdrError('busy', 'Already cancelling')
   unqueueBusy.add(p.id)
   try {
     const own = [...(queued.get(p.id) || [])]
@@ -379,7 +425,7 @@ function applySeen(p: Pane, prevStatus: string | undefined) {
 // Mark read / unread from the app (context menu).
 export function markSeen(paneId: string, read: boolean) {
   const p = findPane(paneId)
-  if (!p || !p.agent) throw new HerdrError('bad_pane', 'pane introuvable')
+  if (!p || !p.agent) throw new HerdrError('bad_pane', 'Pane not found')
   const e = seen.get(paneId) || { readyAt: 0, seenAt: 0 }
   if (read) e.seenAt = Date.now()
   else { e.readyAt = Math.max(e.readyAt, 1); e.seenAt = 0 }
@@ -438,7 +484,9 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
     if (queued.has(p.id)) {
       reconcileQueued(p)
       const list = queued.get(p.id)
-      if (list && list.length) p.queued = list.map(({ id, text, at }) => ({ id, text, at }))
+      if (list && checkQueue(list, p.status, Date.now())) log(`message non envoyé sur ${p.id}`)
+      if (list) deliverHeld(p)
+      if (list && list.length) p.queued = list.map(publicEntry)
     }
     const rs = restarts.get(p.id)
     // Relaunch failure then agent relaunched manually, or old failure: nothing left to report.

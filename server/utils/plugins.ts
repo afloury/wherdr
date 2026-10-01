@@ -119,7 +119,7 @@ export async function invokePluginAction(body: { machine?: unknown, pane_id?: un
   // Machine: the pane's if there is one (an agent's menu), otherwise the requested one.
   const paneId = body.pane_id ? String(body.pane_id) : ''
   const pane = paneId ? findPane(paneId) : null
-  if (paneId && !pane) throw new HerdrError('bad_pane', 'pane introuvable')
+  if (paneId && !pane) throw new HerdrError('bad_pane', 'Pane not found')
   const m = machineFor(pane ? splitId(pane.id).machine : body.machine)
   // Only an action that Herdr announces, at the expected place.
   const known = (await listPluginActions(m.key, true)).find(a => a.plugin === plugin && a.id === action)

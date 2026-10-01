@@ -105,11 +105,11 @@ async function fillDiffs(run: Run, root: string, set: ChangeSet, committedRef?: 
   for (let i = 0; i < set.files.length; i++) {
     const file = set.files[i]!
     if (i >= MAX_DIFFS || total >= TOTAL_BYTES) {
-      file.truncated = true; file.summary = 'Diff non chargé (limite de taille)'; set.truncated = true; continue
+      file.truncated = true; file.summary = 'Diff not loaded (size limit)'; set.truncated = true; continue
     }
-    if (file.binary) { file.summary = 'Fichier binaire'; continue }
+    if (file.binary) { file.summary = 'Binary file'; continue }
     if (generated.test(file.path)) {
-      file.summary = 'Fichier généré ou verrouillage de dépendances'; continue
+      file.summary = 'Generated file or dependency lockfile'; continue
     }
     const cap = Math.min(FILE_BYTES, TOTAL_BYTES - total)
     const isNew = file.status === '??' || !hasHead
@@ -129,8 +129,8 @@ async function fillDiffs(run: Run, root: string, set: ChangeSet, committedRef?: 
     if (file.deleted === null) file.deleted = parsed.binary ? null : parsed.deleted
     file.binary = parsed.binary
     file.truncated = cut
-    if (parsed.binary) { file.lines = []; file.summary = 'Fichier binaire' }
-    if (cut) { file.summary = 'Diff tronqué'; set.truncated = true }
+    if (parsed.binary) { file.lines = []; file.summary = 'Binary file' }
+    if (cut) { file.summary = 'Diff truncated'; set.truncated = true }
     total += Math.min(out.length, cap)
   }
 }

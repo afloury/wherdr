@@ -26,8 +26,8 @@ watch(() => props.pane.prompt, () => { busy.value = false })
       <div class="plan-cell-head">
         <AgentAvatar :agent="pane.agent" />
         <span class="plan-cell-title">{{ paneTitle(pane) }}</span>
-        <span v-if="focused" class="plan-cell-focus" :title="t('Pane actif dans Herdr')" />
-        <SpaceMenu :items="() => paneItems(pane)" :title="paneTitle(pane)" size="sm" :label="t('Options du pane')" />
+        <span v-if="focused" class="plan-cell-focus" :title="t('Active pane in Herdr')" />
+        <SpaceMenu :items="() => paneItems(pane)" :title="paneTitle(pane)" size="sm" :label="t('Pane options')" />
       </div>
     </HeaderMenu>
     <StatusPill :pane="pane" model />

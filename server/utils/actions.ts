@@ -4,7 +4,7 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { AGENT_KINDS, DATA_DIR, HOME, RESUME_ARGS, UPLOAD_DIR, UPLOAD_TTL_MS, log } from './env'
 import { HerdrError, herdr, herdrOn, sleep } from './herdr'
-import { inputVisible } from './choices'
+import { panelOpen } from './choices'
 import { addQueued, findPane, pendingPrompts, poll } from './state'
 import { type Machine, RemoteMachine, allMachines, getMachine, machineOfPane } from './machines'
 import { LIST_DIRS_SCRIPT, listDirsLocal, parseDirList } from './fsx'
@@ -19,7 +19,7 @@ const px = path.posix
 // Machine targeted by a request (`machine`: short key, empty = local), ready.
 export function machineFor(key: unknown): Machine {
   const m = getMachine(String(key || ''))
-  if (!m) throw new HerdrError('bad_machine', 'machine inconnue')
+  if (!m) throw new HerdrError('bad_machine', 'unknown machine')
   if (!m.local && (m.status !== 'online' || !m.home)) throw new HerdrError('unreachable', `${m.label} injoignable${m.error ? ` : ${m.error}` : ''}`)
   return m
 }
@@ -55,7 +55,7 @@ export async function createAgent(body: Json) {
     target = findPane(String(body.pane_id))
   }
   if (body.pane_id) {
-    if (!PANE_RE.test(String(body.pane_id)) || !target) throw new HerdrError('bad_pane', 'pane introuvable')
+    if (!PANE_RE.test(String(body.pane_id)) || !target) throw new HerdrError('bad_pane', 'Pane not found')
     if (target.agent) throw new HerdrError('busy_pane', 'un agent tourne déjà dans ce pane')
     if (body.worktree) throw new HerdrError('bad_worktree', 'pas de worktree dans un pane existant')
   }
@@ -219,7 +219,7 @@ export async function closePanel(paneId: string) {
   let sent = false
   for (let i = 0; i < 2; i++) {
     const r = await herdr('pane.read', { pane_id: paneId, source: 'detection' }, 4000)
-    if (inputVisible(r.read && r.read.text)) return sent
+    if (!panelOpen(r.read && r.read.text)) return sent
     await herdr('pane.send_input', { pane_id: paneId, keys: ['esc'] })
     sent = true
     await sleep(400)
@@ -237,7 +237,7 @@ export async function saveUpload(data: Buffer, ctype: string, paneId?: string | 
   const file = path.join(UPLOAD_DIR, name)
   if (!data.length) throw new HerdrError('empty', 'fichier vide')
   const m = paneId ? machineOfPane(paneId) : null
-  if (paneId && !m) throw new HerdrError('bad_pane', 'pane introuvable')
+  if (paneId && !m) throw new HerdrError('bad_pane', 'Pane not found')
   await fsp.mkdir(UPLOAD_DIR, { recursive: true })
   await fsp.writeFile(file, data, { mode: 0o600 })
   if (m instanceof RemoteMachine) {

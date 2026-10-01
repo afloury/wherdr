@@ -9,6 +9,7 @@ import { Terminal } from '@xterm/xterm'
 import { mirrorInput } from '#shared/spaces'
 import { mirrorTop } from '~/utils/mirrorViewport'
 import { bindTerminalSelection, type TerminalSelection } from '~/utils/terminalSelection'
+import { bindShiftEnter } from '~/utils/terminalKeys'
 
 const props = defineProps<{ paneId: string, interactive?: boolean }>()
 const box = ref<HTMLElement | null>(null)
@@ -107,9 +108,10 @@ onMounted(() => {
   // The mirror has no history to browse: no scrolling at the edge.
   selection = bindTerminalSelection(term, {
     focus: focusIf,
-    copied: ok => toast(ok ? t('Copié') : t('Copie impossible'), false, ok ? undefined : t('Le navigateur refuse l’accès au presse-papiers.')),
+    copied: ok => toast(ok ? t('Copied') : t('Copy failed'), false, ok ? undefined : t('The browser denied clipboard access.')),
   })
   term.attachCustomWheelEventHandler(() => false)
+  bindShiftEnter(term, (key) => { if (props.interactive) send({ keys: [key] }) })
   term.onData((d) => {
     if (!props.interactive) return
     for (const x of mirrorInput(d)) send(x)
@@ -162,12 +164,12 @@ defineExpose({ focus: () => term?.focus() })
     <div ref="host" class="mirror-screen" :style="{ top: `${top}px` }" />
     <div v-if="!ready && !failed" class="term-loading"><span class="spinner" /></div>
     <button v-if="failed" type="button" class="mirror-failed" @click="retryNow">
-      <UIcon name="i-lucide-refresh-cw" />{{ t('Miroir indisponible · réessayer') }}
+      <UIcon name="i-lucide-refresh-cw" />{{ t('Mirror unavailable · retry') }}
     </button>
-    <span class="mirror-tag">{{ interactive ? t('Saisie directe') : t('Miroir') }}</span>
+    <span class="mirror-tag">{{ interactive ? t('Live input') : t('Mirror') }}</span>
     <div v-if="selectionHint.visible.value" class="terminal-selection-hint">
-      {{ tl('Shift + glisser pour sélectionner', 'Shift + drag to select') }}
-      <button type="button" :aria-label="t('Masquer')" @click="selectionHint.dismiss()">×</button>
+      {{ tl('Shift + drag to select', 'Shift + glisser pour sélectionner') }}
+      <button type="button" :aria-label="t('Hide')" @click="selectionHint.dismiss()">×</button>
     </div>
   </div>
 </template>

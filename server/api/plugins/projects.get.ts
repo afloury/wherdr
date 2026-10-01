@@ -5,8 +5,8 @@ import { projectsPluginState } from '../../utils/projectsPlugin'
 
 export default defineApi(async (event) => {
   const key = getQuery(event).machine
-  if (typeof key !== 'string' || (key !== '' && !MACHINE_KEY_RE.test(key))) throw new HerdrError('bad_machine', 'machine inconnue')
+  if (typeof key !== 'string' || (key !== '' && !MACHINE_KEY_RE.test(key))) throw new HerdrError('bad_machine', 'unknown machine')
   const machine = getMachine(key)
-  if (!machine) throw new HerdrError('bad_machine', 'machine inconnue')
+  if (!machine) throw new HerdrError('bad_machine', 'unknown machine')
   return projectsPluginState(machine)
 })

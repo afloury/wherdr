@@ -15,7 +15,7 @@ const defaultDeps: RestartDeps = { call: (m, params, t) => herdr(m, params, t), 
 
 // Relaunch plan of a pane: original command line and conversation.
 export async function restartPlanFor(p: Pane, d: RestartDeps = defaultDeps): Promise<RestartPlan> {
-  if (!p.agent || !RESTARTABLE.has(p.agent)) throw new HerdrError('restart_unsupported', 'agent non pris en charge')
+  if (!p.agent || !RESTARTABLE.has(p.agent)) throw new HerdrError('restart_unsupported', 'agent not supported')
   let argv: string[] | null = null
   try { argv = (await paneForeground(d, p.id, p.agent)).argv }
   catch { argv = null }
@@ -42,9 +42,9 @@ const planning = new Set<string>()
 // Starts the restart in the background; the state is published in `pane.restart`.
 export async function restartAgent(paneId: string) {
   const p = findPane(paneId)
-  if (!p || !p.agent) throw new HerdrError('bad_pane', 'agent introuvable')
+  if (!p || !p.agent) throw new HerdrError('bad_pane', 'agent not found')
   const cur = restarts.get(paneId)
-  if (planning.has(paneId) || (cur && cur.phase !== 'failed')) throw new HerdrError('restart_busy', 'redémarrage déjà en cours')
+  if (planning.has(paneId) || (cur && cur.phase !== 'failed')) throw new HerdrError('restart_busy', 'restart already in progress')
   planning.add(paneId)
   let plan: RestartPlan
   try { plan = await restartPlanFor(p) }

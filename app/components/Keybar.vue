@@ -21,9 +21,9 @@ function toggleKbd() {
 </script>
 
 <template>
-  <div class="keybar" role="toolbar" :aria-label="t('Touches')">
+  <div class="keybar" role="toolbar" :aria-label="t('Keys')">
     <button v-for="k in KEYS" :key="k.key" type="button" :class="k.cls" @pointerdown.prevent @click="press(k.key)">{{ k.label }}</button>
-    <button type="button" class="kbd" :class="{ on: ctl.kbdOn.value }" :aria-label="t('Taper dans le terminal')" @pointerdown.prevent @click="toggleKbd">
+    <button type="button" class="kbd" :class="{ on: ctl.kbdOn.value }" :aria-label="t('Type in terminal')" @pointerdown.prevent @click="toggleKbd">
       <UIcon name="i-lucide-keyboard" />
     </button>
   </div>

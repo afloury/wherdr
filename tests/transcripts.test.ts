@@ -44,8 +44,8 @@ describe('Claude', () => {
   })
 
   it('traduit compactage, interruption et commandes ; ignore le bruit et les sous-agents', () => {
-    expect(texts).toContain('system:Conversation compactée')
-    expect(texts).toContain('system:Interrompu')
+    expect(texts).toContain('system:Conversation compacted')
+    expect(texts).toContain('system:Interrupted')
     expect(texts).toContain('cmd:/compact garde le plan')
     expect(texts.some(t => t.startsWith('cmd:/context'))).toBe(true)
     expect(texts.some(t => t.includes('bruit'))).toBe(false)
@@ -193,8 +193,8 @@ describe('omp', () => {
       'user:/skill:plan la suite',
       'notice:advisor **concern** — Vérifie `a < b`.\n\nSinon ok.',
       'notice:irc:incoming Incoming IRC message from agent `Main`:\n\nSalut',
-      'system:Interrompu',
-      'system:Conversation compactée',
+      'system:Interrupted',
+      'system:Conversation compacted',
       'user:Continue',
       'assistant:**Fini**',
     ])
@@ -295,7 +295,7 @@ describe('/clear', () => {
       u('<command-name>/compact</command-name><command-args></command-args>', '2026-01-01T00:00:04Z'),
       u('<local-command-stdout>Compacted</local-command-stdout>', '2026-01-01T00:00:05Z'),
     ].join('\n'), 'claude')
-    expect(items.map(i => `${i.role}:${i.text}`)).toEqual(['system:Conversation effacée', 'system:Conversation effacée', 'cmd:/compact'])
+    expect(items.map(i => `${i.role}:${i.text}`)).toEqual(['system:Conversation cleared', 'system:Conversation cleared', 'cmd:/compact'])
     expect(items.some(i => i.out)).toBe(false)
   })
 })

@@ -13,8 +13,8 @@ const open = computed({
 const pane = computed(() => herdrState.value.panes.find(p => p.id === renameTarget.value))
 const value = ref('')
 const input = ref<{ inputRef?: HTMLInputElement } | null>(null)
-const title = computed(() => (renameSpace.value ? (renameSpace.value.kind === 'tab' ? t('Renommer l’onglet') : t('Renommer l’espace')) : t('Renommer le pane')))
-const placeholder = computed(() => (renameSpace.value ? (renameSpace.value.kind === 'tab' ? t('Nom de l’onglet') : t('Nom de l’espace')) : t('Nom du pane (vide = nom automatique)')))
+const title = computed(() => (renameSpace.value ? (renameSpace.value.kind === 'tab' ? t('Rename tab') : t('Rename space')) : t('Rename pane')))
+const placeholder = computed(() => (renameSpace.value ? (renameSpace.value.kind === 'tab' ? t('Tab name') : t('Space name')) : t('Pane name (empty = automatic name)')))
 function focusInput() {
   setTimeout(() => {
     input.value?.inputRef?.focus()
@@ -42,7 +42,7 @@ async function save(label: string) {
   try {
     await api('/api/rename', { pane_id: id, label })
     renameTarget.value = null
-    toast(label ? t('Renommé') : t('Nom automatique rétabli'))
+    toast(label ? t('Renamed') : t('Automatic name restored'))
   } catch (err) { toast((err as Error).message, true) }
 }
 </script>
@@ -52,8 +52,8 @@ async function save(label: string) {
     <form class="rename" @submit.prevent="save(value.trim())">
       <UInput ref="input" v-model="value" maxlength="60" size="xl" class="w-full" :placeholder="placeholder" />
       <div class="rename-actions">
-        <UButton v-if="!renameSpace && pane && pane.label" color="neutral" variant="ghost" class="sheet-btn" @click="save('')">{{ t('Réinitialiser') }}</UButton>
-        <UButton type="submit" color="primary" variant="solid" class="sheet-btn hw-cta" :disabled="Boolean(renameSpace) && !value.trim()">{{ t('Enregistrer') }}</UButton>
+        <UButton v-if="!renameSpace && pane && pane.label" color="neutral" variant="ghost" class="sheet-btn" @click="save('')">{{ t('Reset') }}</UButton>
+        <UButton type="submit" color="primary" variant="solid" class="sheet-btn hw-cta" :disabled="Boolean(renameSpace) && !value.trim()">{{ t('Save') }}</UButton>
       </div>
     </form>
   </AppSheet>

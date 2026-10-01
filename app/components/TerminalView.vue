@@ -118,8 +118,8 @@ onUnmounted(() => {
     />
     <div v-if="ctl.loading.value" class="term-loading"><span class="spinner" /></div>
     <div v-if="ctl.selectionHint.visible.value" class="terminal-selection-hint">
-      {{ tl('Shift + glisser pour sélectionner', 'Shift + drag to select') }}
-      <button type="button" :aria-label="t('Masquer')" @click="ctl.selectionHint.dismiss()">×</button>
+      {{ tl('Shift + drag to select', 'Shift + glisser pour sélectionner') }}
+      <button type="button" :aria-label="t('Hide')" @click="ctl.selectionHint.dismiss()">×</button>
     </div>
   </div>
 </template>

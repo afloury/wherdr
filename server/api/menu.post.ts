@@ -14,7 +14,7 @@ const at = (m: InteractiveMenu | null) => (m && m.cursor !== null ? `${m.cursor}
 const send = (pane: string, keys: string[]) => herdr('pane.send_input', { pane_id: pane, keys })
 
 export default defineApi(async (event, b) => {
-  if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'pane invalide')
+  if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'Invalid pane')
   const pane: string = b.pane_id
   let menu = await readMenu(pane)
   if (!menu) throw new HerdrError('stale', STALE)

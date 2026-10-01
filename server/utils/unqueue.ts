@@ -54,7 +54,7 @@ export interface UnqueueDeps {
   original?: (text: string) => string
 }
 
-const already = () => new HerdrError('already_read', 'Message déjà lu par l’agent')
+const already = () => new HerdrError('already_read', 'Already read by the agent')
 
 // Removes the message `text` from Claude's queue. Returns the messages queued again.
 export async function unqueueClaude(d: UnqueueDeps, text: string): Promise<{ requeued: string[] }> {
@@ -63,8 +63,8 @@ export async function unqueueClaude(d: UnqueueDeps, text: string): Promise<{ req
   const before = await d.chat()
   if (!wanted || !before.queue.some(isIt)) throw already()
   const box0 = inputBox(await d.screen())
-  if (box0 === null) throw new HerdrError('no_input', 'Champ de saisie de l’agent introuvable')
-  if (box0) throw new HerdrError('input_busy', 'Le champ de saisie de l’agent n’est pas vide')
+  if (box0 === null) throw new HerdrError('no_input', 'Agent input field not found')
+  if (box0) throw new HerdrError('input_busy', 'The agent’s input field is not empty')
 
   await d.keys(['up'])
   let box = ''
@@ -97,7 +97,7 @@ export async function unqueueClaude(d: UnqueueDeps, text: string): Promise<{ req
     box = inputBox(await d.screen()) || ''
     if (!box) break
   }
-  if (box) throw new HerdrError('clear_failed', 'Champ de l’agent pas vidé : vérifie son terminal')
+  if (box) throw new HerdrError('clear_failed', 'Agent input not cleared: check its terminal')
   if (read) throw already()
 
   const requeued: string[] = []

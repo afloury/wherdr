@@ -1,2 +1,2 @@
-// Unknown API route (or wrong method): 404 in the old server's format.
-export default defineEventHandler(event => sendError(event, 404, { error: 'introuvable' }))
+// Route d'API inconnue (ou mauvaise méthode) : 404 au format de l'ancien serveur.
+export default defineEventHandler(event => sendError(event, 404, { error: 'Not found' }))

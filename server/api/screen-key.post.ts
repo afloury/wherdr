@@ -2,7 +2,7 @@
 // "esc close"…), at the user's request only. The screen is re-read
 // just before: if the legend changed, we refuse rather than press blindly.
 export default defineApi(async (event, b) => {
-  if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'pane invalide')
+  if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'Invalid pane')
   const r = await herdr('pane.read', { pane_id: b.pane_id, source: 'detection' }, 4000)
   const text = r.read && r.read.text
   const screen = parseWaitScreen(text, { choices: Boolean(parseChoices(text, { strict: true })) })

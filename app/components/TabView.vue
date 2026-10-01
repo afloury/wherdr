@@ -74,7 +74,7 @@ onUnmounted(() => window.removeEventListener('keydown', onFocusKey, true))
 
 // Header (right click, long press) and "…" button: the tab then its space.
 const tabMenu = () => [...tabPlanItems(props.tabId), ...settingsMenuItems()]
-const tabMenuTitle = computed(() => entry.value ? `${t('Onglet')} ${tabLabel(entry.value.tab.label, entry.value.tab.number)}` : undefined)
+const tabMenuTitle = computed(() => entry.value ? `${t('Tab')} ${tabLabel(entry.value.tab.label, entry.value.tab.number)}` : undefined)
 
 // ---------- Drag a pane onto another ----------
 // Computer: handle of the cell header (mouse or finger). Phone:
@@ -83,8 +83,8 @@ const tabMenuTitle = computed(() => entry.value ? `${t('Onglet')} ${tabLabel(ent
 const area = ref<HTMLElement | null>(null)
 interface Drag { pane: string, pointer: number, touch: boolean, x0: number, y0: number, x: number, y: number, started: boolean, over: string | null, side: DropSide | null }
 const drag = ref<Drag | null>(null)
-const ZONE_LABEL: Record<DropSide, string> = { center: 'Échanger', left: 'Placer à gauche', right: 'Placer à droite', up: 'Placer au-dessus', down: 'Placer en dessous' }
-// Pointer position as a percentage of the tab.
+const ZONE_LABEL: Record<DropSide, string> = { center: 'Swap', left: 'Place left', right: 'Place right', up: 'Place above', down: 'Place below' }
+// Position du pointeur en pourcentage de l'onglet.
 function inArea(x: number, y: number) {
   const r = area.value?.getBoundingClientRect()
   return r && r.width > 0 && r.height > 0 ? { px: ((x - r.left) / r.width) * 100, py: ((y - r.top) / r.height) * 100 } : null
@@ -264,31 +264,31 @@ function open(paneId: string) {
     <SpaceTabs v-if="entry" :workspace="entry.tab.workspace" :current="tabId" />
     <HeaderMenu :items="tabMenu" :title="tabMenuTitle" :disabled="!entry">
       <header class="top bar tab-top">
-        <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn back tab-back" :aria-label="t('Retour')" to="/" />
+        <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn back tab-back" :aria-label="t('Back')" to="/" />
         <div class="tab-head">
           <div class="tab-title">
             <UIcon v-if="ws?.worktree" name="i-lucide-git-branch" class="tab-title-branch" />{{ ws?.label || '—' }}
           </div>
           <div class="tab-meta">
-            <span class="tab-meta-tab">{{ t('Onglet') }} {{ entry ? tabLabel(entry.tab.label, entry.tab.number) : '' }}</span>
+            <span class="tab-meta-tab">{{ t('Tab') }} {{ entry ? tabLabel(entry.tab.label, entry.tab.number) : '' }}</span>
             <span v-if="entry">{{ `${entry.panes.length} pane${entry.panes.length > 1 ? 's' : ''}` }}</span>
-            <span v-if="entry?.layout.zoomed" class="tab-meta-zoom" :title="t('Un pane est agrandi dans Herdr')">zoom</span>
+            <span v-if="entry?.layout.zoomed" class="tab-meta-zoom" :title="t('A pane is zoomed in Herdr')">zoom</span>
             <span v-if="machine" class="tab-meta-machine" :class="machine.status"><UIcon :name="machine.local ? 'i-lucide-server' : 'i-lucide-laptop'" /><span class="machine-inline-name">{{ machineName(machine.key) }}</span><MachineLocalBadge v-if="machine.local" /></span>
           </div>
         </div>
         <UButton
           v-if="headerAdd && entry" icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn"
-          :aria-label="t('Nouvel onglet')" :title="t('Nouvel onglet')" :disabled="offlineView" @click="newTab(entry.tab.workspace)"
+          :aria-label="t('New tab')" :title="t('New tab')" :disabled="offlineView" @click="newTab(entry.tab.workspace)"
         />
-        <SpaceMenu v-if="entry" :items="tabMenu" size="lg" :title="tabMenuTitle" :label="t('Options de l’onglet')" />
+        <SpaceMenu v-if="entry" :items="tabMenu" size="lg" :title="tabMenuTitle" :label="t('Tab options')" />
       </header>
     </HeaderMenu>
 
-    <OfflineNote v-if="!desk && (netDown || offlineView)" :label="offlineView ? t('Dernier état connu') : undefined" :at="cachedAt" />
+    <OfflineNote v-if="!desk && (netDown || offlineView)" :label="offlineView ? t('Last known state') : undefined" :at="cachedAt" />
     <div v-if="closed" class="chat-empty">
       <UIcon name="i-lucide-layout-panel-left" class="chat-empty-icon" />
-      <p>{{ t('Cet onglet a été fermé.') }}</p>
-      <UButton color="neutral" variant="outline" to="/">{{ t('Retour') }}</UButton>
+      <p>{{ t('This tab was closed.') }}</p>
+      <UButton color="neutral" variant="outline" to="/">{{ t('Back') }}</UButton>
     </div>
     <div v-else-if="entry && desk" ref="area" class="split" :class="{ dragging: drag?.started, resizing: resizingPath != null }">
       <div
@@ -301,7 +301,7 @@ function open(paneId: string) {
       <div v-if="dropBox" class="drop-zone" :class="dropBox.side" :style="dropBox.style"><span>{{ dropBox.label }}</span></div>
       <div
         v-for="d in divs" :key="d.path" class="divider" :class="[d.direction, { on: resizingPath === d.path }]" :style="divStyle(d)"
-        role="separator" tabindex="0" :aria-orientation="d.direction === 'right' ? 'vertical' : 'horizontal'" :aria-label="t('Redimensionner')"
+        role="separator" tabindex="0" :aria-orientation="d.direction === 'right' ? 'vertical' : 'horizontal'" :aria-label="t('Resize')"
         :aria-valuenow="Math.round(d.ratio * 100)" aria-valuemin="5" aria-valuemax="95"
         @pointerdown="resizeDown(d, $event)" @keydown="resizeKey(d, $event)"
       />
@@ -318,7 +318,7 @@ function open(paneId: string) {
         <div v-if="dropBox" class="drop-zone" :class="dropBox.side" :style="dropBox.style"><span>{{ dropBox.label }}</span></div>
         <div
           v-for="d in divs" :key="d.path" class="divider" :class="[d.direction, { on: resizingPath === d.path }]" :style="divStyle(d)"
-          role="separator" :aria-orientation="d.direction === 'right' ? 'vertical' : 'horizontal'" :aria-label="t('Redimensionner')"
+          role="separator" :aria-orientation="d.direction === 'right' ? 'vertical' : 'horizontal'" :aria-label="t('Resize')"
           @pointerdown="resizeDown(d, $event)"
         />
       </div>
