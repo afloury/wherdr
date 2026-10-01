@@ -19,7 +19,7 @@ const tabs = computed(() => spaceTabs(props.workspace).map((e) => {
 }))
 watch(() => props.current, (id) => { if (id) noteTab(id) }, { immediate: true })
 
-const menuTitle = (label: string) => `${t('Onglet')} ${label}`
+const menuTitle = (label: string) => `${t('Tab')} ${label}`
 let pressed: { id: string, label: string } | null = null
 const lp = longPress({
   onPress: () => {
@@ -41,7 +41,7 @@ function pick(id: string) {
 </script>
 
 <template>
-  <nav v-if="spaceTabControls(tabs.length).row" class="tab-chips space-tabs" :aria-label="t('Onglets')">
+  <nav v-if="spaceTabControls(tabs.length).row" class="tab-chips space-tabs" :aria-label="t('Tabs')">
     <UContextMenu v-for="e in tabs" :key="e.tab.id" :disabled="!desk" :items="desk ? toDropdown(tabItems(e.tab.id)) : []" :ui="{ content: 'hw-dropdown' }">
       <button
         type="button" class="tab-chip" :class="e.tone" :title="e.title" :data-tab="e.tab.id"
@@ -54,7 +54,7 @@ function pick(id: string) {
         <span class="tab-chip-label">{{ e.label }}</span>
       </button>
     </UContextMenu>
-    <button type="button" class="tab-chip tab-add" :title="t('Nouvel onglet')" :aria-label="t('Nouvel onglet')" :disabled="offlineView" @click="newTab(workspace)">
+    <button type="button" class="tab-chip tab-add" :title="t('New tab')" :aria-label="t('New tab')" :disabled="offlineView" @click="newTab(workspace)">
       <UIcon name="i-lucide-plus" />
     </button>
   </nav>

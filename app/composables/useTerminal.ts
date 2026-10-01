@@ -56,7 +56,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     selection = bindTerminalSelection(term, {
       scroll: lines => scroll(lines),
       focus: () => focus(),
-      copied: ok => toast(ok ? t('Copié') : t('Copie impossible'), false, ok ? undefined : t('Le navigateur refuse l’accès au presse-papiers.')),
+      copied: ok => toast(ok ? t('Copied') : t('Copy failed'), false, ok ? undefined : t('The browser denied clipboard access.')),
     })
     // Le choix de l'appareil peut changer pendant que le terminal reste monté.
     setRenderer(terminalRenderer.value)
@@ -224,10 +224,10 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       loading.value = false
       if (!twsIntent || disposed) return
       if (closedReason && /already has an attached client/.test(closedReason)) {
-        return opts.setBanner({ text: t('Ce terminal est déjà ouvert ailleurs.'), btn: t('Prendre la main'), fn: () => { opts.setBanner(null); connect(true) } })
+        return opts.setBanner({ text: t('This terminal is already open elsewhere.'), btn: t('Take control'), fn: () => { opts.setBanner(null); connect(true) } })
       }
       if (closedReason && /taken over/.test(closedReason)) {
-        return opts.setBanner({ text: t('Un autre client a pris la main.'), btn: t('Reprendre'), fn: () => { opts.setBanner(null); connect(true) } })
+        return opts.setBanner({ text: t('Another client took control.'), btn: t('Take back control'), fn: () => { opts.setBanner(null); connect(true) } })
       }
       if (!currentPane.value && herdrState.value.ok) return // pane fermé : la bannière est déjà là
       if (document.hidden) return // on se reconnectera au retour
@@ -236,7 +236,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       if (!gotFrame && twsRetry >= 3) {
         twsRetry = 0
         const why = lastErr || closedReason
-        return opts.setBanner({ text: terminalUnavailableText(why), btn: t('Réessayer'), fn: () => { opts.setBanner(null); connect(false) } })
+        return opts.setBanner({ text: terminalUnavailableText(why), btn: t('Retry'), fn: () => { opts.setBanner(null); connect(false) } })
       }
       twsTimer = setTimeout(() => connect(false), Math.min(6000, 400 * 2 ** twsRetry++))
     }

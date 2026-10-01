@@ -34,7 +34,7 @@ const emit = defineEmits<{ reload: [], collapse: [], sent: [queued: QueuedMessag
 
 const DONE_SHOWN = 20
 
-const sections = computed<BoardSection[]>(() => (props.board ? visibleSections(boardSections(props.board, { doing: t('En cours'), done: t('Fait') }), projectHideEmpty.value) : []))
+const sections = computed<BoardSection[]>(() => (props.board ? visibleSections(boardSections(props.board, { doing: t('In progress'), done: tl('Done', 'Fait') }), projectHideEmpty.value) : []))
 
 const ICONS: Record<ListKind, string> = {
   test: 'i-lucide-flask-conical',
@@ -62,15 +62,15 @@ function paneOf(th: ProjectThread): Pane | undefined {
   return th.agentName ? herdrState.value.panes.find(p => p.name === th.agentName) : undefined
 }
 const GROUPS: Record<string, [string, string]> = {
-  'waiting-on-you': ['blocked', t('À toi')],
-  'ready-for-review': ['done', t('À relire')],
-  'landing': ['working', t('Atterrissage')],
-  'working': ['working', t('Au travail')],
-  'idle': ['idle', t('Inactif')],
-  'resolved': ['idle', t('Fait')],
+  'waiting-on-you': ['blocked', t('Your turn')],
+  'ready-for-review': ['done', t('Ready for review')],
+  'landing': ['working', t('Landing')],
+  'working': ['working', t('Working')],
+  'idle': ['idle', t('Idle')],
+  'resolved': ['idle', tl('Done', 'Fait')],
 }
 const groupClass = (th: ProjectThread) => GROUPS[th.token]?.[0] || 'unknown'
-const groupLabel = (th: ProjectThread) => GROUPS[th.token]?.[1] || th.group || t('Inconnu')
+const groupLabel = (th: ProjectThread) => GROUPS[th.token]?.[1] || th.group || t('Unknown')
 function threadMeta(th: ProjectThread) {
   const bits = [th.id.toUpperCase()]
   if (th.machine) bits.push(th.machine)
@@ -87,7 +87,7 @@ function openThread(th: ProjectThread) {
     haptic()
     navigateTo(panePath(p.id))
   } else if (th.report) openReport(th)
-  else toast(t('Agent de ce thread introuvable'), true)
+  else toast(t('This thread’s agent was not found'), true)
 }
 
 // Badges [b:couleur(texte)](cible) : palette (suit le thème) ou hex validé ;
@@ -103,8 +103,8 @@ function badgeTitle(b: TaskBadge) {
   if (b.href) return b.href
   if (b.thread) {
     const th = refThread(b.thread)
-    if (!th) return tl(`${b.thread} : thread inconnu`, `${b.thread}: unknown thread`)
-    return `${b.thread} · ${th.title} · ${groupLabel(th)}${paneOf(th) ? '' : tl(' · pas d’onglet ouvert', ' · no open tab')}`
+    if (!th) return tl(`${b.thread}: unknown thread`, `${b.thread} : thread inconnu`)
+    return `${b.thread} · ${th.title} · ${groupLabel(th)}${paneOf(th) ? '' : tl(' · no open tab', ' · pas d’onglet ouvert')}`
   }
   return b.text.length > BADGE_MAX ? b.text : undefined
 }
@@ -135,7 +135,7 @@ const report = ref<{ th: ProjectThread, html: string, truncated: boolean } | nul
 const reportOpen = ref(false)
 const reportLoading = ref<string | null>(null)
 async function openReport(th: ProjectThread) {
-  if (!th.report) return toast(t('Pas de rapport pour ce thread'), true)
+  if (!th.report) return toast(t('No report for this thread'), true)
   reportLoading.value = th.id
   try {
     const r = await fetchThreadReport(props.paneId, th.id)
@@ -201,7 +201,7 @@ const actionable = (s: BoardSection, task: ProjectTask) => testable(s, task) || 
 async function reviewTask(task: ProjectTask) {
   if (reviewing.value || reviewed.value.has(task.text)) return
   const pane = herdrState.value.panes.find(p => p.id === props.paneId)
-  if (!eventsOpen.value || offlineView.value || paneStale(pane)) return toast(t('Envoi indisponible hors ligne'), true)
+  if (!eventsOpen.value || offlineView.value || paneStale(pane)) return toast(t('Sending unavailable offline'), true)
   reviewing.value = task.text
   haptic()
   try {
@@ -215,7 +215,7 @@ async function reviewTask(task: ProjectTask) {
 async function confirmTask(task: ProjectTask) {
   if (confirming.value || confirmed.value.has(task.text)) return
   const pane = herdrState.value.panes.find(p => p.id === props.paneId)
-  if (!eventsOpen.value || offlineView.value || paneStale(pane)) return toast(t('Envoi indisponible hors ligne'), true)
+  if (!eventsOpen.value || offlineView.value || paneStale(pane)) return toast(t('Sending unavailable offline'), true)
   confirming.value = task.text
   haptic()
   try {
@@ -229,7 +229,7 @@ async function confirmTask(task: ProjectTask) {
 async function launchTask(task: ProjectTask) {
   if (launching.value || launched.value.has(task.text)) return
   const pane = herdrState.value.panes.find(p => p.id === props.paneId)
-  if (!eventsOpen.value || offlineView.value || paneStale(pane)) return toast(t('Envoi indisponible hors ligne'), true)
+  if (!eventsOpen.value || offlineView.value || paneStale(pane)) return toast(t('Sending unavailable offline'), true)
   launching.value = task.text
   haptic()
   try {
@@ -243,7 +243,7 @@ async function launchTask(task: ProjectTask) {
 async function unblockTask(task: ProjectTask) {
   if (unblocking.value || unblocked.value.has(task.text)) return
   const pane = herdrState.value.panes.find(p => p.id === props.paneId)
-  if (!eventsOpen.value || offlineView.value || paneStale(pane)) return toast(t('Envoi indisponible hors ligne'), true)
+  if (!eventsOpen.value || offlineView.value || paneStale(pane)) return toast(t('Sending unavailable offline'), true)
   unblocking.value = task.text
   haptic()
   try {
@@ -268,8 +268,8 @@ const hintOff = ref(false)
 onMounted(() => { try { hintOff.value = localStorage.getItem(HINT_KEY) === '1' } catch {} })
 const missing = computed(() => (props.board && !props.board.tasksMissing ? missingLists(props.board.lists) : []))
 const hintText = computed(() => {
-  const names = missing.value.map(k => (k === 'test' ? tl('« À tester »', '“To test”') : tl('« À décider »', '“To decide”')))
-  return tl(`Pas de liste ${names.join(' ni ')} dans TASKS.md.`, `No ${names.join(' or ')} list in TASKS.md.`)
+  const names = missing.value.map(k => (k === 'test' ? tl('“To test”', '« À tester »') : tl('“To decide”', '« À décider »')))
+  return tl(`No ${names.join(' or ')} list in TASKS.md.`, `Pas de liste ${names.join(' ni ')} dans TASKS.md.`)
 })
 function hideHint() {
   hintOff.value = true
@@ -279,29 +279,29 @@ function hideHint() {
 </script>
 
 <template>
-  <aside class="project-panel" :class="{ side }" :aria-label="t('Projet')">
+  <aside class="project-panel" :class="{ side }" :aria-label="t('Project')">
     <header class="pp-head">
-      <span class="pp-kicker">{{ t('Projet') }}</span>
+      <span class="pp-kicker">{{ t('Project') }}</span>
       <span v-if="board" class="pp-slug">{{ board.slug }}</span>
       <span class="pp-grow" />
-      <UTooltip :text="t('Rafraîchir')" :disabled="!desk">
-        <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="sm" class="icon-btn pp-btn" :class="{ spinning: loading }" :aria-label="t('Rafraîchir')" @click="emit('reload')" />
+      <UTooltip :text="t('Refresh')" :disabled="!desk">
+        <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="sm" class="icon-btn pp-btn" :class="{ spinning: loading }" :aria-label="t('Refresh')" @click="emit('reload')" />
       </UTooltip>
-      <UTooltip v-if="side" :text="t('Replier le panneau')">
-        <UButton icon="i-lucide-panel-right-close" color="neutral" variant="ghost" size="sm" class="icon-btn pp-btn" :aria-label="t('Replier le panneau')" @click="emit('collapse')" />
+      <UTooltip v-if="side" :text="t('Collapse the panel')">
+        <UButton icon="i-lucide-panel-right-close" color="neutral" variant="ghost" size="sm" class="icon-btn pp-btn" :aria-label="t('Collapse the panel')" @click="emit('collapse')" />
       </UTooltip>
     </header>
 
     <div class="pp-scroll">
       <p v-if="error" class="pp-notice error" role="alert">{{ error }}</p>
-      <p v-if="!board && loading" class="pp-notice"><span class="spinner" /> {{ t('Lecture du projet…') }}</p>
+      <p v-if="!board && loading" class="pp-notice"><span class="spinner" /> {{ t('Reading the project…') }}</p>
       <template v-if="board">
-        <p v-if="board.tasksMissing" class="pp-notice">{{ t('Pas encore de TASKS.md dans ce projet.') }}</p>
+        <p v-if="board.tasksMissing" class="pp-notice">{{ t('No TASKS.md in this project yet.') }}</p>
         <p v-if="missing.length && !hintOff" class="pp-hint">
-          <span>{{ hintText }} <NuxtLink to="/settings?section=plugins">{{ tl('Voir la convention', 'See the convention') }}</NuxtLink></span>
-          <button type="button" class="pp-hint-x" :aria-label="tl('Masquer la suggestion', 'Hide the suggestion')" @click="hideHint"><UIcon name="i-lucide-x" /></button>
+          <span>{{ hintText }} <NuxtLink to="/settings?section=plugins">{{ tl('See the convention', 'Voir la convention') }}</NuxtLink></span>
+          <button type="button" class="pp-hint-x" :aria-label="tl('Hide the suggestion', 'Masquer la suggestion')" @click="hideHint"><UIcon name="i-lucide-x" /></button>
         </p>
-        <p v-if="board.threadsError" class="pp-notice error">{{ t('Threads illisibles') }} · <code>{{ board.threadsError }}</code></p>
+        <p v-if="board.threadsError" class="pp-notice error">{{ t('Threads unavailable') }} · <code>{{ board.threadsError }}</code></p>
 
         <section v-for="s in sections" :key="s.key" class="pp-sec" :class="[s.kind, { folded: !isOpen(s) }]">
           <button type="button" class="pp-sec-head" :aria-expanded="isOpen(s)" @click="toggle(s)">
@@ -321,7 +321,7 @@ function hideHint() {
                 </button>
                 <UButton
                   v-if="th.report && !th.resolved" icon="i-lucide-file-text" color="neutral" variant="ghost" size="sm" class="icon-btn pp-btn"
-                  :loading="reportLoading === th.id" :aria-label="t('Voir le rapport')" @click="openReport(th)"
+                  :loading="reportLoading === th.id" :aria-label="t('View report')" @click="openReport(th)"
                 />
                 <span v-else-if="reportLoading === th.id" class="spinner pp-spin" />
               </div>
@@ -344,74 +344,74 @@ function hideHint() {
                 <span class="pp-task-text"><TaskText :text="task.text" /></span>
                 <span v-if="task.reason" class="pp-reason">{{ task.reason }}</span>
                 <span class="pp-task-foot">
-                  <span v-if="testable(s, task) && confirmed.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
-                  <span v-else-if="launchable(s, task) && launched.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
-                  <span v-else-if="unblockable(s, task) && unblocked.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
-                  <span v-else-if="reviewable(s, task) && reviewed.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Envoyé au coordinateur') }}</span>
+                  <span v-if="testable(s, task) && confirmed.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Sent to the coordinator') }}</span>
+                  <span v-else-if="launchable(s, task) && launched.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Sent to the coordinator') }}</span>
+                  <span v-else-if="unblockable(s, task) && unblocked.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Sent to the coordinator') }}</span>
+                  <span v-else-if="reviewable(s, task) && reviewed.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Sent to the coordinator') }}</span>
                   <TaskBadges v-if="task.badges" :badges="task.badges" />
                   <span v-if="decidable(s, task) || launchable(s, task) || unblockable(s, task) || (reviewable(s, task) && !reviewed.has(task.text)) || (testable(s, task) && !confirmed.has(task.text))" class="pp-verdict">
-                    <UTooltip v-if="reviewable(s, task)" :text="tl('Relu : prévenir le coordinateur', 'Reviewed: tell the coordinator')" :disabled="!desk">
-                      <button type="button" class="pp-vbtn backlog-action reviewed" :disabled="reviewing !== null" :aria-label="tl(`Relu : ${task.text}`, `Reviewed: ${task.text}`)" @click="reviewTask(task)">
-                        <span v-if="reviewing === task.text" class="spinner" /><UIcon v-else name="i-lucide-check" /><span>{{ tl('Relu', 'Reviewed') }}</span>
+                    <UTooltip v-if="reviewable(s, task)" :text="tl('Reviewed: tell the coordinator', 'Relu : prévenir le coordinateur')" :disabled="!desk">
+                      <button type="button" class="pp-vbtn backlog-action reviewed" :disabled="reviewing !== null" :aria-label="tl(`Reviewed: ${task.text}`, `Relu : ${task.text}`)" @click="reviewTask(task)">
+                        <span v-if="reviewing === task.text" class="spinner" /><UIcon v-else name="i-lucide-check" /><span>{{ tl('Reviewed', 'Relu') }}</span>
                       </button>
                     </UTooltip>
-                    <UTooltip v-if="reviewable(s, task)" :text="tl('Préparer un retour de relecture', 'Draft review feedback')" :disabled="!desk">
-                      <button type="button" class="pp-vbtn backlog-action clarify" :aria-label="tl(`Commenter : ${task.text}`, `Comment: ${task.text}`)" @click="prefill(task, 'comment')">
-                        <UIcon name="i-lucide-message-square" /><span>{{ tl('Commenter', 'Comment') }}</span>
+                    <UTooltip v-if="reviewable(s, task)" :text="tl('Draft review feedback', 'Préparer un retour de relecture')" :disabled="!desk">
+                      <button type="button" class="pp-vbtn backlog-action clarify" :aria-label="tl(`Comment: ${task.text}`, `Commenter : ${task.text}`)" @click="prefill(task, 'comment')">
+                        <UIcon name="i-lucide-message-square" /><span>{{ tl('Comment', 'Commenter') }}</span>
                       </button>
                     </UTooltip>
-                    <UTooltip v-if="testable(s, task)" :text="t('Confirmer : testé, ça marche')" :disabled="!desk">
+                    <UTooltip v-if="testable(s, task)" :text="t('Confirm: tested, it works')" :disabled="!desk">
                       <button
                         type="button" class="pp-vbtn ok" :disabled="confirming !== null"
-                        :aria-label="tl(`Confirmer : ${task.text}`, `Confirm: ${task.text}`)" @click="confirmTask(task)"
+                        :aria-label="tl(`Confirm: ${task.text}`, `Confirmer : ${task.text}`)" @click="confirmTask(task)"
                       >
                         <span v-if="confirming === task.text" class="spinner" /><UIcon v-else name="i-lucide-check" />
                       </button>
                     </UTooltip>
-                    <UTooltip v-if="testable(s, task)" :text="t('Signaler un problème')" :disabled="!desk">
-                      <button type="button" class="pp-vbtn ko" :aria-label="tl(`Problème : ${task.text}`, `Problem: ${task.text}`)" @click="prefill(task, 'problem')">
+                    <UTooltip v-if="testable(s, task)" :text="t('Report a problem')" :disabled="!desk">
+                      <button type="button" class="pp-vbtn ko" :aria-label="tl(`Problem: ${task.text}`, `Problème : ${task.text}`)" @click="prefill(task, 'problem')">
                         <UIcon name="i-lucide-x" />
                       </button>
                     </UTooltip>
-                    <UTooltip v-if="testable(s, task) || decidable(s, task)" :text="t('Poser une question')" :disabled="!desk">
-                      <button type="button" class="pp-vbtn ask" :aria-label="tl(`Question : ${task.text}`, `Question: ${task.text}`)" @click="prefill(task, 'question')">
+                    <UTooltip v-if="testable(s, task) || decidable(s, task)" :text="t('Ask a question')" :disabled="!desk">
+                      <button type="button" class="pp-vbtn ask" :aria-label="tl(`Question: ${task.text}`, `Question : ${task.text}`)" @click="prefill(task, 'question')">
                         <UIcon name="i-lucide-circle-help" />
                       </button>
                     </UTooltip>
-                    <UTooltip v-if="decidable(s, task)" :text="tl('Répondre à cette décision', 'Answer this decision')" :disabled="!desk">
-                      <button type="button" class="pp-vbtn decide" :aria-label="tl(`Répondre : ${task.text}`, `Answer: ${task.text}`)" @click="prefill(task, 'decision')">
+                    <UTooltip v-if="decidable(s, task)" :text="tl('Answer this decision', 'Répondre à cette décision')" :disabled="!desk">
+                      <button type="button" class="pp-vbtn decide" :aria-label="tl(`Answer: ${task.text}`, `Répondre : ${task.text}`)" @click="prefill(task, 'decision')">
                         <UIcon name="i-lucide-reply" />
                       </button>
                     </UTooltip>
-                    <UTooltip v-if="launchable(s, task) && !launched.has(task.text)" :text="tl('Envoyer au coordinateur', 'Send to coordinator')" :disabled="!desk">
-                      <button type="button" class="pp-vbtn backlog-action launch" :disabled="launching !== null" :aria-label="tl(`Lancer : ${task.text}`, `Launch: ${task.text}`)" @click="launchTask(task)">
-                        <span v-if="launching === task.text" class="spinner" /><UIcon v-else name="i-lucide-play" /><span>{{ t('Lancer') }}</span>
+                    <UTooltip v-if="launchable(s, task) && !launched.has(task.text)" :text="tl('Send to coordinator', 'Envoyer au coordinateur')" :disabled="!desk">
+                      <button type="button" class="pp-vbtn backlog-action launch" :disabled="launching !== null" :aria-label="tl(`Launch: ${task.text}`, `Lancer : ${task.text}`)" @click="launchTask(task)">
+                        <span v-if="launching === task.text" class="spinner" /><UIcon v-else name="i-lucide-play" /><span>{{ t('Launch') }}</span>
                       </button>
                     </UTooltip>
-                    <UTooltip v-if="unblockable(s, task) && !unblocked.has(task.text)" :text="tl('Demander de débloquer cette tâche', 'Ask to unblock this task')" :disabled="!desk">
-                      <button type="button" class="pp-vbtn backlog-action unblock" :disabled="unblocking !== null" :aria-label="tl(`Débloquer : ${task.text}`, `Unblock: ${task.text}`)" @click="unblockTask(task)">
-                        <span v-if="unblocking === task.text" class="spinner" /><UIcon v-else name="i-lucide-lock-keyhole-open" /><span>{{ tl('Débloquer', 'Unblock') }}</span>
+                    <UTooltip v-if="unblockable(s, task) && !unblocked.has(task.text)" :text="tl('Ask to unblock this task', 'Demander de débloquer cette tâche')" :disabled="!desk">
+                      <button type="button" class="pp-vbtn backlog-action unblock" :disabled="unblocking !== null" :aria-label="tl(`Unblock: ${task.text}`, `Débloquer : ${task.text}`)" @click="unblockTask(task)">
+                        <span v-if="unblocking === task.text" class="spinner" /><UIcon v-else name="i-lucide-lock-keyhole-open" /><span>{{ tl('Unblock', 'Débloquer') }}</span>
                       </button>
                     </UTooltip>
-                    <UTooltip v-if="launchable(s, task) || unblockable(s, task)" :text="tl('Préciser cette tâche', 'Clarify this task')" :disabled="!desk">
-                      <button type="button" class="pp-vbtn backlog-action clarify" :aria-label="tl(`Préciser : ${task.text}`, `Clarify: ${task.text}`)" @click="prefill(task, 'detail')">
-                        <UIcon name="i-lucide-pencil" /><span>{{ t('Préciser') }}</span>
+                    <UTooltip v-if="launchable(s, task) || unblockable(s, task)" :text="tl('Clarify this task', 'Préciser cette tâche')" :disabled="!desk">
+                      <button type="button" class="pp-vbtn backlog-action clarify" :aria-label="tl(`Clarify: ${task.text}`, `Préciser : ${task.text}`)" @click="prefill(task, 'detail')">
+                        <UIcon name="i-lucide-pencil" /><span>{{ t('Clarify') }}</span>
                       </button>
                     </UTooltip>
                   </span>
                 </span>
               </span>
             </li>
-            <li v-if="!s.tasks.length && !s.threads.length" class="pp-empty">{{ t('Rien pour l’instant') }}</li>
+            <li v-if="!s.tasks.length && !s.threads.length" class="pp-empty">{{ t('Nothing yet') }}</li>
           </ul>
           <button v-if="isOpen(s) && s.kind === 'done' && s.threads.length > DONE_SHOWN" type="button" class="pp-more" @click="allOpen = true">
-            {{ tl(`Tout voir (${s.threads.length})`, `See all (${s.threads.length})`) }}
+            {{ tl(`See all (${s.threads.length})`, `Tout voir (${s.threads.length})`) }}
           </button>
         </section>
       </template>
     </div>
 
-    <AppSheet v-model:open="allOpen" :title="tl(`Fait · ${board?.resolved.length || 0} threads`, `Done · ${board?.resolved.length || 0} threads`)" wide>
+    <AppSheet v-model:open="allOpen" :title="tl(`Done · ${board?.resolved.length || 0} threads`, `Fait · ${board?.resolved.length || 0} threads`)" wide>
       <ul class="pp-list pp-all">
         <li v-for="th in board?.resolved || []" :key="th.id" class="pp-row">
           <div class="pp-card resolved">
@@ -428,11 +428,11 @@ function hideHint() {
     <AppSheet v-model:open="reportOpen" :title="report ? `${report.th.id.toUpperCase()} · ${report.th.title}` : ''" wide tall>
       <div v-if="report" class="pp-report">
         <div class="pp-report-actions">
-          <UButton v-if="reportPane" icon="i-lucide-message-square" color="neutral" variant="outline" size="sm" @click="openReportAgent">{{ t('Ouvrir l’agent') }}</UButton>
+          <UButton v-if="reportPane" icon="i-lucide-message-square" color="neutral" variant="outline" size="sm" @click="openReportAgent">{{ t('Open agent') }}</UButton>
           <UButton v-if="report.th.pr" icon="i-lucide-git-pull-request" color="neutral" variant="outline" size="sm" :to="report.th.pr" target="_blank" rel="noopener">{{ t('Pull request') }}</UButton>
         </div>
         <div class="md"><ChatMarkdown :html="report.html" :typing="null" /></div>
-        <p v-if="report.truncated" class="pp-notice">{{ t('Rapport tronqué (trop long).') }}</p>
+        <p v-if="report.truncated" class="pp-notice">{{ t('Report truncated (too long).') }}</p>
       </div>
     </AppSheet>
   </aside>

@@ -136,7 +136,7 @@ describe('séquence d’arrêt et de relance', () => {
   })
   it('agent qui ne s’arrête pas : erreur claire', async () => {
     const { d } = fakeHerdr({ exitOn: null })
-    await expect(stopAgent(d, { id: 'w1:p1', agent: 'claude', status: 'idle' })).rejects.toThrow('ne s’est pas arrêté')
+    await expect(stopAgent(d, { id: 'w1:p1', agent: 'claude', status: 'idle' })).rejects.toThrow('did not stop')
   })
   it('relance avec les arguments du plan, sous le même nom', async () => {
     const { d, calls } = fakeHerdr({ exitOn: null })

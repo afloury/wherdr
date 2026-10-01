@@ -29,7 +29,7 @@ export function openMenu(items: MenuItem[], title?: string) {
 // barre latérale les propose déjà). Le retour ramène à cette vue.
 export function settingsMenuItems(): MenuItem[] {
   if (desk.value) return []
-  return [{ kind: 'separator' }, { label: t('Réglages'), icon: 'i-lucide-settings-2', run: () => navigateTo('/settings') }]
+  return [{ kind: 'separator' }, { label: t('Settings'), icon: 'i-lucide-settings-2', run: () => navigateTo('/settings') }]
 }
 
 export const newAgentOpen = ref(false)
@@ -108,7 +108,7 @@ async function readCommandResult(pane: string, cmd: string, tries = 5, seq = res
       const loading = /\bLoading\b|Waiting for response/.test(shown)
       if (loading && i < tries - 1) { await new Promise(r => setTimeout(r, 1200)); continue }
       commandResult.tab = tab
-      commandResult.text = shown || t('Rien d’affiché — regarde l’onglet Terminal.')
+      commandResult.text = shown || t('Nothing displayed — check the Terminal tab.')
       commandResult.open = true
       return
     } catch (err) {

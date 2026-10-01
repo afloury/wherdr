@@ -6,8 +6,8 @@ const props = defineProps<{ label?: string, at?: number | null, dateStyle?: 'sho
 const text = computed(() => {
   if (props.label) return props.at ? `${props.label} · ${new Date(props.at).toLocaleString(language, { dateStyle: props.dateStyle || 'short', timeStyle: 'short' })}` : props.label
   return hostLabel.value
-    ? tl(`Connexion à ${hostLabel.value} perdue — reconnexion…`, `Lost connection to ${hostLabel.value} — reconnecting…`)
-    : tl('Connexion au serveur perdue — reconnexion…', 'Lost connection to the server — reconnecting…')
+    ? tl(`Lost connection to ${hostLabel.value} — reconnecting…`, `Connexion à ${hostLabel.value} perdue — reconnexion…`)
+    : tl('Lost connection to the server — reconnecting…', 'Connexion au serveur perdue — reconnexion…')
 })
 </script>
 
@@ -15,6 +15,6 @@ const text = computed(() => {
   <div class="offline-note" role="status">
     <UIcon name="i-lucide-wifi-off" />
     <span class="offline-note-text">{{ text }}</span>
-    <button v-if="netDown && !locked" type="button" class="offline-retry" @click="retryEvents">{{ t('Réessayer') }}</button>
+    <button v-if="netDown && !locked" type="button" class="offline-retry" @click="retryEvents">{{ t('Retry') }}</button>
   </div>
 </template>

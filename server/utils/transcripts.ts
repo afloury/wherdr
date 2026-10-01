@@ -210,7 +210,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
   }
   // /clear… : séparateur, et la sortie qui suit est avalée (item sans rendu).
   const swallow = (ts: string | null) => {
-    items.push({ role: 'system', text: 'Conversation effacée', ts })
+    items.push({ role: 'system', text: 'Conversation cleared', ts })
     pendingCmd = null
     open = { role: 'system', text: '', ts }
   }
@@ -264,7 +264,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       continue
     }
     if (d.type === 'system' && d.subtype === 'compact_boundary') {
-      items.push({ role: 'system', text: 'Conversation compactée', ts })
+      items.push({ role: 'system', text: 'Conversation compacted', ts })
       continue
     }
     // Commande locale (/context, /usage…) : les versions récentes de Claude Code
@@ -306,7 +306,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
         } else if (special(content, ts)) {
           continue
         } else if (/^\[Request interrupted/.test(content)) {
-          items.push({ role: 'system', text: 'Interrompu', ts })
+          items.push({ role: 'system', text: 'Interrupted', ts })
         } else {
           const text = humanText(content)
           if (text) {
@@ -328,7 +328,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
           if (special(String(part.text || ''), ts)) continue
           const t = humanText(part.text)
           if (t === null) continue
-          if (/^\[Request interrupted/.test(t)) items.push({ role: 'system', text: 'Interrompu', ts })
+          if (/^\[Request interrupted/.test(t)) items.push({ role: 'system', text: 'Interrupted', ts })
           else text += (text ? '\n' : '') + unwrapPasted(t.replace(/\[Image #\d+\]\s*/g, ''))
         } else if (part.type === 'image') images++
       }
@@ -445,7 +445,7 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
     if (!d || typeof d !== 'object') continue
     const ts: string | null = typeof d.timestamp === 'string' ? d.timestamp : null
     if (d.type === 'compaction') {
-      items.push({ role: 'system', text: 'Conversation compactée', ts })
+      items.push({ role: 'system', text: 'Conversation compacted', ts })
       continue
     }
     if (d.type === 'custom_message') {
@@ -483,7 +483,7 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
           items.push(t)
         }
       }
-      if (m.stopReason === 'aborted' && /interrupt/i.test(String(m.errorMessage || ''))) items.push({ role: 'system', text: 'Interrompu', ts })
+      if (m.stopReason === 'aborted' && /interrupt/i.test(String(m.errorMessage || ''))) items.push({ role: 'system', text: 'Interrupted', ts })
     } else if (m.role === 'toolResult' && m.isError) {
       const t = tools.get(m.toolCallId)
       if (t) t.error = true

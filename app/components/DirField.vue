@@ -13,7 +13,7 @@ const emit = defineEmits<{ browse: [] }>()
       <span>{{ model ? ltr(shortPath(model)) : placeholder }}</span>
       <UIcon name="i-lucide-chevron-right" class="chev" />
     </button>
-    <button v-if="clearable && model" type="button" class="dir-clear" :aria-label="tl('Vider', 'Clear')" :title="tl('Vider', 'Clear')" @click="model = ''">
+    <button v-if="clearable && model" type="button" class="dir-clear" :aria-label="tl('Clear', 'Vider')" :title="tl('Clear', 'Vider')" @click="model = ''">
       <UIcon name="i-lucide-x" />
     </button>
   </div>

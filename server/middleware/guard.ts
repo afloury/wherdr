@@ -11,9 +11,9 @@ export default defineEventHandler((event) => {
   }
   const path = event.path.split('?')[0]!
   if (path.startsWith('/api/') && crossSiteRequest(event.node.req.headers)) {
-    return sendError(event, 403, { error: 'origine refusée', code: 'origin' })
+    return sendError(event, 403, { error: 'Origin refused', code: 'origin' })
   }
   if (needsUnlock(path) && !auth.isUnlocked(reqOf(event))) {
-    return sendError(event, 401, { error: 'app verrouillée', code: 'locked' })
+    return sendError(event, 401, { error: 'App is locked', code: 'locked' })
   }
 })

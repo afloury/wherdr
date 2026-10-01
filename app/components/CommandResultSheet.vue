@@ -27,10 +27,10 @@ const level = (m: Meter) => { const u = usedOf(m); return u >= 85 ? 'hi' : u >= 
         <div v-for="m in parsed.meters" :key="m.label" class="meter" :class="level(m)">
           <div class="meter-top">
             <span class="meter-label">{{ m.label }}</span>
-            <b>{{ m.pct }}<small>% {{ m.kind === 'left' ? t('restant') : t('utilisé') }}</small></b>
+            <b>{{ m.pct }}<small>% {{ m.kind === 'left' ? t('left') : t('used') }}</small></b>
           </div>
           <div class="meter-bar"><i :style="{ width: `${m.pct}%` }" /></div>
-          <div v-if="m.reset" class="meter-reset">{{ t('Réinitialisation') }} · {{ m.reset }}</div>
+          <div v-if="m.reset" class="meter-reset">{{ t('Resets') }} · {{ m.reset }}</div>
         </div>
       </div>
       <pre v-if="!parsed || parsed.rest" class="screen"><span v-if="!parsed" class="spinner" /><template v-else>{{ parsed.rest }}</template></pre>

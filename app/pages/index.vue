@@ -8,8 +8,8 @@ onMounted(() => { curPane.value = null })
   <section v-if="desk" id="placeholder" class="view placeholder hw-grid">
     <div class="empty-box">
       <div class="empty-art">&gt;_</div>
-      <p>{{ t('Choisis un agent dans la liste') }}</p>
-      <p class="muted">{{ t('ou lances-en un nouveau.') }}</p>
+      <p>{{ t('Choose an agent from the list') }}</p>
+      <p class="muted">{{ t('or start a new one.') }}</p>
     </div>
   </section>
 </template>

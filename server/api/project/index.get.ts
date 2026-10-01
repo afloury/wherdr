@@ -5,6 +5,6 @@ import { readProjectBoard } from '../../utils/projectBoard'
 export default defineApi(async (event) => {
   const q = getQuery(event)
   const p = findPane(String(q.pane || ''))
-  if (!p) throw new HerdrError('bad_pane', 'pane introuvable')
+  if (!p) throw new HerdrError('bad_pane', 'Pane not found')
   return readProjectBoard(p, typeof q.since === 'string' ? q.since.slice(0, 200) : undefined)
 })

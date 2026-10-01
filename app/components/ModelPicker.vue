@@ -33,10 +33,10 @@ watch(() => [props.pane.model?.label, props.pane.model?.effort], () => {
 })
 
 const why = computed(() => {
-  if (!eventsOpen.value || offlineView.value || paneStale(props.pane)) return t('Modification indisponible hors ligne')
+  if (!eventsOpen.value || offlineView.value || paneStale(props.pane)) return t('Changes unavailable offline')
   const s = props.pane.status
-  if (s === 'working') return t('L’agent travaille — change de modèle quand il a fini.')
-  if (s === 'blocked') return t('L’agent attend une réponse — réponds-lui d’abord.')
+  if (s === 'working') return t('The agent is working — change the model once it’s done.')
+  if (s === 'blocked') return t('The agent is waiting for an answer — reply first.')
   return null
 })
 const locked = computed(() => Boolean(why.value) || switching.value)
@@ -75,7 +75,7 @@ watch(() => props.pane.id, () => { list.value = null; efforts.value = null; chos
 
 const selectedModelIndex = computed(() => currentModelOption(list.value?.options || [], model.value))
 const isCurrent = (o: ModelOption) => list.value?.options.indexOf(o) === selectedModelIndex.value
-const displayModelOption = (o: ModelOption) => /^default \(recommended\)$/i.test(o.label) ? t('Par défaut (recommandé)') : o.label
+const displayModelOption = (o: ModelOption) => /^default \(recommended\)$/i.test(o.label) ? t('Default (recommended)') : o.label
 
 async function choose(o: ModelOption) {
   if (isCurrent(o) || locked.value) return
@@ -85,7 +85,7 @@ async function choose(o: ModelOption) {
     const r = await api<{ model: ModelInfo }>('/api/model', { pane_id: props.pane.id, label: o.label })
     chosen.value = { info: r.model, at: Date.now() }
     efforts.value = null
-    toast(tl(`Modèle : ${r.model.label} (cette session)`, `Model: ${r.model.label} (this session)`))
+    toast(tl(`Model: ${r.model.label} (this session)`, `Modèle : ${r.model.label} (cette session)`))
   } catch (err) {
     toast((err as Error).message, true)
   } finally {
@@ -102,15 +102,15 @@ async function chooseEffort(level: string) {
     const r = await api<{ model: ModelInfo }>('/api/effort', { pane_id: props.pane.id, level })
     chosen.value = { info: r.model, at: Date.now() }
     if (efforts.value) efforts.value.current = level
-    toast(tl(`Effort : ${level} (cette session)`, `Effort: ${level} (this session)`))
+    toast(tl(`Effort: ${level} (this session)`, `Effort : ${level} (cette session)`))
   } catch (err) { toast((err as Error).message, true) }
   finally { switching.value = false }
 }
 
 const modelItems = computed(() => {
-  const head = [{ type: 'label' as const, label: t('Pour cette session seulement') }]
+  const head = [{ type: 'label' as const, label: t('For this session only') }]
   if (modelsLoading.value || !list.value) {
-    return [head, [{ label: t('Lecture des modèles…'), icon: 'i-lucide-loader-circle', disabled: true, class: 'model-loading' }]]
+    return [head, [{ label: t('Reading models…'), icon: 'i-lucide-loader-circle', disabled: true, class: 'model-loading' }]]
   }
   const opts = list.value.options.map(o => ({
     type: 'checkbox' as const,
@@ -120,14 +120,14 @@ const modelItems = computed(() => {
     onSelect: () => choose(o),
   }))
   const tail = [{
-    label: t('Relire la liste'), icon: 'i-lucide-refresh-cw',
+    label: t('Reload list'), icon: 'i-lucide-refresh-cw',
     onSelect: (e: Event) => { e.preventDefault(); loadModels(true) },
   }]
   return [head, opts, tail]
 })
 const effortItems = computed(() => {
-  const head = [{ type: 'label' as const, label: t('Pour cette session seulement') }]
-  if (effortsLoading.value || !efforts.value) return [head, [{ label: t('Lecture des efforts…'), icon: 'i-lucide-loader-circle', disabled: true }]]
+  const head = [{ type: 'label' as const, label: t('For this session only') }]
+  if (effortsLoading.value || !efforts.value) return [head, [{ label: t('Reading effort levels…'), icon: 'i-lucide-loader-circle', disabled: true }]]
   return [head, efforts.value.levels.map(level => ({
     type: 'checkbox' as const, label: level, checked: model.value?.effort === level,
     onSelect: () => chooseEffort(level),
@@ -150,7 +150,7 @@ watch(locked, (l) => { if (l) { modelOpen.value = false; effortOpen.value = fals
 </script>
 
 <template>
-  <UTooltip :text="why || t('Changer de modèle')" :disabled="!desk || (!why && modelOpen)" :content="{ side: 'top' }">
+  <UTooltip :text="why || t('Change model')" :disabled="!desk || (!why && modelOpen)" :content="{ side: 'top' }">
     <span class="model-pick-wrap">
       <UDropdownMenu
         :open="modelOpen" :items="modelItems" :modal="false"
@@ -160,16 +160,16 @@ watch(locked, (l) => { if (l) { modelOpen.value = false; effortOpen.value = fals
       >
         <UButton
           color="neutral" variant="ghost" size="xs" class="model-pick" :class="{ off: locked }"
-          :aria-disabled="locked" :aria-label="`${t('Modèle')} : ${model ? model.label : t('Modèle inconnu')}`"
+          :aria-disabled="locked" :aria-label="`${t('Model')} : ${model ? model.label : t('Unknown model')}`"
           :trailing-icon="switching ? 'i-lucide-loader-circle' : 'i-lucide-chevron-down'"
           :ui="{ trailingIcon: switching ? 'animate-spin model-caret' : 'model-caret' }"
         >
-          <span class="model-name">{{ model ? model.label : t('Modèle') }}</span>
+          <span class="model-name">{{ model ? model.label : t('Model') }}</span>
         </UButton>
       </UDropdownMenu>
     </span>
   </UTooltip>
-  <UTooltip v-if="showEffort" :text="why || t('Changer d’effort')" :disabled="!desk || (!why && effortOpen)" :content="{ side: 'top' }">
+  <UTooltip v-if="showEffort" :text="why || t('Change effort')" :disabled="!desk || (!why && effortOpen)" :content="{ side: 'top' }">
     <span class="model-pick-wrap">
       <UDropdownMenu
         :open="effortOpen" :items="effortItems" :modal="false"
@@ -179,7 +179,7 @@ watch(locked, (l) => { if (l) { modelOpen.value = false; effortOpen.value = fals
       >
         <UButton
           color="neutral" variant="ghost" size="xs" class="model-pick effort-pick" :class="{ off: locked }"
-          :aria-disabled="locked" :aria-label="`${t('Effort')} : ${model?.effort || t('Effort inconnu')}`"
+          :aria-disabled="locked" :aria-label="`${t('Effort')} : ${model?.effort || t('Unknown effort')}`"
           :trailing-icon="switching ? 'i-lucide-loader-circle' : 'i-lucide-chevron-down'"
           :ui="{ trailingIcon: switching ? 'animate-spin model-caret' : 'model-caret' }"
         >{{ model?.effort || t('Effort') }}</UButton>

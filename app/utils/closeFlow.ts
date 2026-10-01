@@ -30,16 +30,16 @@ export function planClose(state: HerdrState, kind: CloseKind, id: string): Close
 }
 
 export interface CheckoutStatus { label: string, modified: number, untracked: number, truncated?: boolean }
-export function checkoutMessage(statuses: CheckoutStatus[], group: boolean, tl: (fr: string, en: string) => string): string {
+export function checkoutMessage(statuses: CheckoutStatus[], group: boolean, tl: (en: string, fr: string) => string): string {
   const parts: string[] = []
-  if (group) parts.push(tl('Le groupe de worktrees et tous ses espaces ouverts seront fermés.', 'The worktree group and all its open spaces will close.'))
-  parts.push(tl('Les fichiers, les branches et les dossiers de checkout/worktree seront conservés.', 'Files, branches and checkout/worktree directories will be kept.'))
+  if (group) parts.push(tl('The worktree group and all its open spaces will close.', 'Le groupe de worktrees et tous ses espaces ouverts seront fermés.'))
+  parts.push(tl('Files, branches and checkout/worktree directories will be kept.', 'Les fichiers, les branches et les dossiers de checkout/worktree seront conservés.'))
   for (const s of statuses) {
     const count = s.modified + s.untracked
-    const prefix = s.truncated ? tl('Au moins ', 'At least ') : ''
+    const prefix = s.truncated ? tl('At least ', 'Au moins ') : ''
     parts.push(count
-      ? tl(`⚠ ${s.label} : ${prefix}${s.modified} fichier(s) modifié(s), ${s.untracked} non suivi(s) — modifications non commitées conservées.`, `⚠ ${s.label}: ${prefix}${s.modified} modified, ${s.untracked} untracked file(s) — uncommitted changes will be kept.`)
-      : tl(`${s.label} : aucune modification non commitée.`, `${s.label}: no uncommitted changes.`))
+      ? tl(`⚠ ${s.label}: ${prefix}${s.modified} modified, ${s.untracked} untracked file(s) — uncommitted changes will be kept.`, `⚠ ${s.label} : ${prefix}${s.modified} fichier(s) modifié(s), ${s.untracked} non suivi(s) — modifications non commitées conservées.`)
+      : tl(`${s.label}: no uncommitted changes.`, `${s.label} : aucune modification non commitée.`))
   }
   return parts.join('\n')
 }

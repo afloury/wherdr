@@ -20,7 +20,7 @@ const restartLabel = computed(() => {
   const r = props.pane?.restart
   if (!r) return ''
   const who = kindLabel(r.agent)
-  return r.phase === 'stopping' ? tl(`Arrêt de ${who}…`, `Stopping ${who}…`) : tl(`Relance de ${who} sur la même conversation…`, `Restarting ${who} on the same conversation…`)
+  return r.phase === 'stopping' ? tl(`Stopping ${who}…`, `Arrêt de ${who}…`) : tl(`Restarting ${who} on the same conversation…`, `Relance de ${who} sur la même conversation…`)
 })
 
 // Brouillon de la conversation (texte + photos), gardé en changeant de conversation.
@@ -54,11 +54,11 @@ function useSuggestion() {
 }
 const placeholder = computed(() => {
   const p = props.pane
-  if (!p) return t('Message à l’agent…')
-  if (p.status === 'blocked') return t('Réponse libre…')
+  if (!p) return t('Message to agent…')
+  if (p.status === 'blocked') return t('Type a reply…')
   if (suggestion.value) return suggestion.value
-  if (p.agent) return tl(`Message à ${kindLabel(p.agent)}…`, `Message to ${kindLabel(p.agent)}…`)
-  return t('Commande…')
+  if (p.agent) return tl(`Message to ${kindLabel(p.agent)}…`, `Message à ${kindLabel(p.agent)}…`)
+  return t('Command…')
 })
 
 // Entrée : UChatPrompt n'envoie que du texte ; photo seule, ou champ vide
@@ -97,9 +97,9 @@ function onSubmitClick(e: MouseEvent) {
 const hint = computed(() => desk.value && !stopMode.value)
 
 async function submit() {
-  if (readOnly.value) return toast(t('Envoi indisponible hors ligne'), true)
+  if (readOnly.value) return toast(t('Sending unavailable offline'), true)
   if (stopMode.value) return interrupt()
-  if (attachments.value.some(a => !a.path)) return toast(t('Photo en cours d’envoi…'))
+  if (attachments.value.some(a => !a.path)) return toast(t('Photo is uploading…'))
   // Les photos partent comme des chemins de fichiers : Claude Code et Codex
   // les ouvrent eux-mêmes.
   const paths = attachments.value.map(a => a.path!)
@@ -143,7 +143,7 @@ async function interrupt() {
   try {
     const r = await api<{ stopped: boolean, background: number }>('/api/interrupt', { pane_id: props.paneId })
     interrupting.value = r.stopped ? null : 'failed'
-    if (r.stopped) toast(r.background ? tl(`Agent arrêté (${r.background} tâche${r.background > 1 ? 's' : ''} de fond arrêtée${r.background > 1 ? 's' : ''})`, `Agent stopped (${r.background} background task${r.background > 1 ? 's' : ''} stopped)`) : t('Agent arrêté'))
+    if (r.stopped) toast(r.background ? tl(`Agent stopped (${r.background} background task${r.background > 1 ? 's' : ''} stopped)`, `Agent arrêté (${r.background} tâche${r.background > 1 ? 's' : ''} de fond arrêtée${r.background > 1 ? 's' : ''})`) : t('Agent stopped'))
   } catch (err) {
     interrupting.value = null
     toast((err as Error).message, true)
@@ -204,7 +204,7 @@ async function addImages(files: File[]) {
       a.path = d.path
       a.name = d.name
     } catch (err) {
-      toast(`${t('Photo non envoyée')} : ${(err as Error).message}`, true)
+      toast(`${t('Photo upload failed')} : ${(err as Error).message}`, true)
       attachments.value = attachments.value.filter(x => x !== a)
       URL.revokeObjectURL(a.url)
     }
@@ -232,18 +232,18 @@ function onPaste(e: ClipboardEvent) {
 // …ou via le menu +, qui lit le presse-papiers (Safari demande une
 // confirmation « Coller »).
 async function pasteFromClipboard() {
-  if (!navigator.clipboard || !navigator.clipboard.read) return toast(t('Presse-papiers inaccessible ici — colle dans le champ de message.'), true)
+  if (!navigator.clipboard || !navigator.clipboard.read) return toast(t('Clipboard unavailable here — paste into the message field.'), true)
   try {
     const found: File[] = []
     for (const item of await navigator.clipboard.read()) {
       const type = item.types.find(x => x.startsWith('image/'))
       if (type) found.push(new File([await item.getType(type)], `presse-papiers.${type.split('/')[1]}`, { type }))
     }
-    if (!found.length) return toast(t('Pas d’image dans le presse-papiers'), true)
+    if (!found.length) return toast(t('No image in the clipboard'), true)
     addImages(found)
   } catch (err) {
     const e = err as Error
-    toast(e.name === 'NotAllowedError' ? t('Collage refusé') : `${t('Collage impossible')} : ${e.message}`, true)
+    toast(e.name === 'NotAllowedError' ? t('Paste denied') : `${t('Paste failed')} : ${e.message}`, true)
   }
 }
 
@@ -317,26 +317,26 @@ watch(slashSel, i => nextTick(() => {
 
 // ------------------------------------------------------------ menu +
 const SLASH: Record<string, [string, string][]> = {
-  claude: [['/compact', 'Résumer le contexte'], ['/clear', 'Nouvelle conversation'], ['/context', 'Occupation du contexte'],
-    ['/usage', 'Consommation du forfait'], ['/model', 'Changer de modèle'], ['/review', 'Revue de code']],
-  codex: [['/compact', 'Résumer le contexte'], ['/new', 'Nouvelle conversation'], ['/status', 'État de la session'],
-    ['/model', 'Changer de modèle'], ['/review', 'Revue de code'], ['/diff', 'Voir le diff']],
+  claude: [['/compact', 'Summarize context'], ['/clear', 'New conversation'], ['/context', 'Context usage'],
+    ['/usage', 'Plan usage'], ['/model', 'Change model'], ['/review', 'Code review']],
+  codex: [['/compact', 'Summarize context'], ['/new', 'New conversation'], ['/status', 'Session status'],
+    ['/model', 'Change model'], ['/review', 'Code review'], ['/diff', 'View diff']],
 }
 // Images d'abord, puis interruption et commandes de l'agent.
 function openPlus() {
   const p = props.pane
   if (!p) return
   const items: MenuItem[] = [
-    { label: t('Photo ou capture d’écran'), icon: 'i-lucide-image', run: () => fileInput.value?.click() },
-    { label: t('Coller l’image copiée'), icon: 'i-lucide-clipboard-paste', run: pasteFromClipboard },
+    { label: t('Photo or screenshot'), icon: 'i-lucide-image', run: () => fileInput.value?.click() },
+    { label: t('Paste copied image'), icon: 'i-lucide-clipboard-paste', run: pasteFromClipboard },
   ]
   if (p.agent) {
     items.push({ kind: 'separator' })
-    items.push({ kind: 'command', cmd: 'esc', desc: t('Interrompre l’agent'), run: () => props.sendKeys(['esc']) })
+    items.push({ kind: 'command', cmd: 'esc', desc: t('Interrupt agent'), run: () => props.sendKeys(['esc']) })
     for (const [cmd, desc] of SLASH[p.agent] || []) {
       items.push({ kind: 'command', cmd, desc: t(desc), run: () => runSlash(cmd) })
     }
-    items.push({ kind: 'note', label: t('Les commandes qui ouvrent un menu (modèle…) se pilotent ensuite dans l’onglet Terminal.') })
+    items.push({ kind: 'note', label: t('Commands that open a menu (model…) can then be controlled in the Terminal tab.') })
   }
   openMenu(items)
 }
@@ -369,20 +369,20 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
   <div class="composer">
     <div v-if="interrupting" class="composer-notice restart" :class="{ failed: interrupting === 'failed' }" role="status">
       <template v-if="interrupting === 'failed'">
-        <span class="restart-text">{{ t('L’agent travaille encore.') }}</span>
-        <button type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('Voir le terminal') }}</button>
-        <button type="button" class="notice-btn" @click="interrupting = null">{{ t('Masquer') }}</button>
+        <span class="restart-text">{{ t('The agent is still working.') }}</span>
+        <button type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('View terminal') }}</button>
+        <button type="button" class="notice-btn" @click="interrupting = null">{{ t('Hide') }}</button>
       </template>
       <template v-else>
         <span class="notice-spin" aria-hidden="true" />
-        <span class="restart-text">{{ t('Interruption…') }}</span>
+        <span class="restart-text">{{ t('Stopping…') }}</span>
       </template>
     </div>
     <div v-else-if="pane?.restart" class="composer-notice restart" :class="pane.restart.phase" role="status">
       <template v-if="pane.restart.phase === 'failed'">
-        <span class="restart-text">{{ t('Redémarrage échoué') }}{{ tl(' : ', ': ') }}{{ t(pane.restart.error || '') }}</span>
-        <button type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('Voir le terminal') }}</button>
-        <button type="button" class="notice-btn" @click="dismissRestart(paneId)">{{ t('Masquer') }}</button>
+        <span class="restart-text">{{ t('Restart failed') }}{{ tl(': ', ' : ') }}{{ t(pane.restart.error || '') }}</span>
+        <button type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('View terminal') }}</button>
+        <button type="button" class="notice-btn" @click="dismissRestart(paneId)">{{ t('Hide') }}</button>
       </template>
       <template v-else>
         <span class="notice-spin" aria-hidden="true" />
@@ -393,7 +393,7 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
       <template v-if="updateReady">
         <span class="restart-text">{{ pane.claudeNotice.replace(/\s*·\s*Restart to update\b.*$/, '') }} ·</span>
         <button type="button" class="notice-btn" :disabled="readOnly" @click="restartAgent(pane)">
-          <UIcon name="i-lucide-rotate-cw" />{{ t('Redémarrer pour mettre à jour') }}
+          <UIcon name="i-lucide-rotate-cw" />{{ t('Restart to update') }}
         </button>
       </template>
       <template v-else>{{ noticeIsError && !/^[✗✘]/.test(pane.claudeNotice) ? `✘ ${pane.claudeNotice}` : pane.claudeNotice }}</template>
@@ -401,9 +401,9 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
     <button
       v-if="suggestion && !enterSends" type="button" class="composer-suggest" @mousedown.prevent @click="useSuggestion"
     >
-      <UIcon name="i-lucide-corner-down-left" /> {{ t('Utiliser la suggestion') }}
+      <UIcon name="i-lucide-corner-down-left" /> {{ t('Use suggestion') }}
     </button>
-    <div v-if="slashOpen" class="slash-menu" role="listbox" :aria-label="t('Commandes')">
+    <div v-if="slashOpen" class="slash-menu" role="listbox" :aria-label="t('Commands')">
       <div ref="slashListEl" class="slash-list">
         <button
           v-for="(c, i) in slashMatches" :key="c.name" type="button" role="option" class="slash-item"
@@ -417,14 +417,14 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
     </div>
     <div v-if="replyTo" class="composer-reply" role="status">
       <UIcon name="i-lucide-reply" class="composer-reply-icon" />
-      <span class="composer-reply-label">{{ replyTo.part ? t('En réponse à un passage') : t('En réponse au message') }} · {{ replyTo.time }}</span>
+      <span class="composer-reply-label">{{ replyTo.part ? t('Replying to a passage') : t('Replying to the message') }} · {{ replyTo.time }}</span>
       <span class="composer-reply-text">{{ replyTo.excerpt }}</span>
-      <button type="button" class="composer-reply-x" :aria-label="t('Annuler la réponse')" @mousedown.prevent @click="replyTo = null">
+      <button type="button" class="composer-reply-x" :aria-label="t('Cancel reply')" @mousedown.prevent @click="replyTo = null">
         <UIcon name="i-lucide-x" />
       </button>
     </div>
     <UChatPrompt
-      ref="promptRef" v-model="text" :placeholder="readOnly ? t('Brouillon conservé — envoi indisponible hors ligne') : placeholder" variant="outline" color="neutral"
+      ref="promptRef" v-model="text" :placeholder="readOnly ? t('Draft saved — sending unavailable offline') : placeholder" variant="outline" color="neutral"
       :rows="1" :maxrows="7" :autofocus="false" :submit-on-enter="enterSends && !slashOpen"
       :enterkeyhint="enterSends ? 'send' : 'enter'" autocapitalize="sentences"
       class="prompt" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"
@@ -434,27 +434,27 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
         <div class="attachments">
           <div
             v-for="(a, i) in attachments" :key="a.url" class="att" :class="{ up: !a.path }"
-            role="button" tabindex="0" :aria-label="t('Voir l’image')" @click="viewAtt(a)" @keydown.enter.self="viewAtt(a)"
+            role="button" tabindex="0" :aria-label="t('View image')" @click="viewAtt(a)" @keydown.enter.self="viewAtt(a)"
           >
             <img :src="a.url" alt="">
             <span v-if="!a.path" class="spinner" />
-            <button type="button" :aria-label="t('Retirer')" @click.stop="removeAtt(i)"><UIcon name="i-lucide-x" /></button>
+            <button type="button" :aria-label="t('Remove')" @click.stop="removeAtt(i)"><UIcon name="i-lucide-x" /></button>
           </div>
         </div>
       </template>
       <template #footer>
         <UButton
           icon="i-lucide-plus" color="neutral" variant="outline" size="sm" class="prompt-plus" :disabled="readOnly"
-          :aria-label="t('Photo, collage, commandes')" @click="openPlus"
+          :aria-label="t('Photo, paste, commands')" @click="openPlus"
         />
         <input ref="fileInput" type="file" accept="image/*" multiple hidden @change="onFiles">
         <ModelPicker v-if="pane && (pane.agent === 'claude' || pane.agent === 'codex')" :pane="pane" />
-        <span v-if="hint && suggestion" class="prompt-hint"><UKbd value="tab" size="sm" /> {{ t('suggestion') }} <span class="sep">·</span> <UKbd value="enter" size="sm" /> {{ t('envoyer') }}</span>
-        <span v-else-if="hint" class="prompt-hint"><UKbd value="enter" size="sm" /> {{ t('envoyer') }} <span class="sep">·</span> <UKbd value="shift" size="sm" /><UKbd value="enter" size="sm" /> {{ t('nouvelle ligne') }}</span>
+        <span v-if="hint && suggestion" class="prompt-hint"><UKbd value="tab" size="sm" /> {{ t('suggestion') }} <span class="sep">·</span> <UKbd value="enter" size="sm" /> {{ t('send') }}</span>
+        <span v-else-if="hint" class="prompt-hint"><UKbd value="enter" size="sm" /> {{ t('send') }} <span class="sep">·</span> <UKbd value="shift" size="sm" /><UKbd value="enter" size="sm" /> {{ t('new line') }}</span>
         <UChatPromptSubmit
           :status="stopMode ? 'streaming' : 'ready'" :disabled="readOnly || (!canSend && !stopMode) || sending || interrupting === 'running'"
           color="primary" variant="solid" streaming-color="neutral" streaming-variant="solid" streaming-icon="i-herdr-stop" size="sm"
-          class="prompt-send" :class="{ stop: stopMode }" :aria-label="t(stopMode ? 'Arrêter l’agent' : 'Envoyer')"
+          class="prompt-send" :class="{ stop: stopMode }" :aria-label="t(stopMode ? 'Stop the agent' : 'Send')"
           @mousedown.prevent @click="onSubmitClick" @stop="interrupt"
         />
       </template>

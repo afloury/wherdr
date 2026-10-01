@@ -21,9 +21,9 @@ watch([typingSpeed, encryptedActive], replay)
 <template>
   <figure class="typing-preview">
     <figcaption>
-      <span>{{ t('Aperçu') }}</span>
-      <UTooltip :text="t('Rejouer')">
-        <button type="button" class="typing-replay" :aria-label="t('Rejouer')" :disabled="!typewriterActive" @click="replay">
+      <span>{{ t('Preview') }}</span>
+      <UTooltip :text="t('Replay')">
+        <button type="button" class="typing-replay" :aria-label="t('Replay')" :disabled="!typewriterActive" @click="replay">
           <UIcon name="i-lucide-rotate-ccw" />
         </button>
       </UTooltip>

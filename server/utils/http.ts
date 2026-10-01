@@ -51,17 +51,17 @@ export function defineApi<T>(
         // Types non « simples » (JSON, image/*) : un autre site ne peut pas les
         // envoyer sans preflight CORS, qu'on ne satisfait jamais.
         const typeOk = opts.raw ? opts.raw.test(ctype) : ctype.startsWith('application/json')
-        if (!sameOrigin(headers) || !typeOk) return sendError(event, 403, { error: 'origine refusée' })
+        if (!sameOrigin(headers) || !typeOk) return sendError(event, 403, { error: 'Origin refused' })
         const max = opts.raw ? 20 * 1024 * 1024 : BODY_MAX
         if (Number(headers['content-length'] || 0) > max) {
-          throw new HerdrError('too_large', opts.raw ? 'image trop lourde (20 Mo max)' : 'requête trop grosse')
+          throw new HerdrError('too_large', opts.raw ? 'Image too large (20 MB max)' : 'Request too large')
         }
         const raw = await readRawBody(event, false)
-        if (raw && raw.length > max) throw new HerdrError('too_large', opts.raw ? 'image trop lourde (20 Mo max)' : 'requête trop grosse')
+        if (raw && raw.length > max) throw new HerdrError('too_large', opts.raw ? 'Image too large (20 MB max)' : 'Request too large')
         if (opts.raw) body = { data: raw || Buffer.alloc(0), ctype }
         else {
           try { body = raw && raw.length ? JSON.parse(raw.toString('utf8')) : {} }
-          catch { throw new HerdrError('bad_json', 'JSON invalide') }
+          catch { throw new HerdrError('bad_json', 'Invalid JSON') }
         }
       }
       const out = await fn(event, body)

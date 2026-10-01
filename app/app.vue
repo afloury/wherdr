@@ -13,7 +13,7 @@ function openSearch() { searchOpen.value = true }
 useHead({
   htmlAttrs: { lang: language, class: computed(() => (activeTheme.value.def.light ? 'light' : 'dark')) },
   meta: [
-    { name: 'description', content: tl('Piloter ses agents de code Herdr', 'Control your Herdr code agents') },
+    { name: 'description', content: tl('Control your Herdr code agents', 'Piloter ses agents de code Herdr') },
     { key: 'theme-color', name: 'theme-color', content: themeColor },
     { key: 'color-scheme', name: 'color-scheme', content: computed(() => (activeTheme.value.def.light ? 'light' : 'dark')) },
   ],

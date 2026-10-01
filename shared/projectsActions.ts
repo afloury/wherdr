@@ -109,7 +109,7 @@ export function projectCommandArgs(action: string, input: ProjectInput, ctx: Pro
   // --goal seulement s'il y a quelque chose à écrire (défaut du plugin : vide).
   const goalArg = (g: string) => g ? ['--goal', g] : []
   if (action === 'adopt-workspace') {
-    if (!ctx.pane || !ctx.cwd) throw new Error('pane et dossier nécessaires')
+    if (!ctx.pane || !ctx.cwd) throw new Error('pane and folder required')
     return ['adopt-workspace', '--name', input.name!, '--pane', ctx.pane, '--workspace-cwd', ctx.cwd,
       ...goalArg(goalWithTask(input.goal || '', input.task, ctx.lang)), ...session]
   }

@@ -4,9 +4,9 @@ export default defineEventHandler(async (event) => {
   try {
     const p = findPane(String(q.pane || ''))
     const img = p ? await transcripts.image(p, String(q.file || ''), String(q.ref || ''), Number(q.i) || 0) : null
-    if (!img) return sendError(event, 404, { error: 'image introuvable' })
+    if (!img) return sendError(event, 404, { error: 'Image not found' })
     return sendImage(event, img)
   } catch {
-    return sendError(event, 404, { error: 'image introuvable' })
+    return sendError(event, 404, { error: 'Image not found' })
   }
 })

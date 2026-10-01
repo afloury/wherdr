@@ -5,8 +5,8 @@ import { installProjectsPlugin } from '../../utils/projectsPlugin'
 
 export default defineApi(async (_event, body) => {
   const key = body.machine
-  if (typeof key !== 'string' || (key !== '' && !MACHINE_KEY_RE.test(key))) throw new HerdrError('bad_machine', 'machine inconnue')
+  if (typeof key !== 'string' || (key !== '' && !MACHINE_KEY_RE.test(key))) throw new HerdrError('bad_machine', 'unknown machine')
   const machine = getMachine(key)
-  if (!machine) throw new HerdrError('bad_machine', 'machine inconnue')
+  if (!machine) throw new HerdrError('bad_machine', 'unknown machine')
   return { output: await installProjectsPlugin(machine) }
 })

@@ -17,8 +17,8 @@ function later() {
 <template>
   <div v-if="newVersionReady && !newVersionDismissed" class="new-version" role="status">
     <UIcon name="i-lucide-refresh-cw" />
-    <span class="new-version-text">{{ tl('Nouvelle version disponible', 'New version available') }}</span>
-    <button type="button" class="new-version-btn primary" :disabled="busy" @click="reload">{{ tl('Recharger', 'Reload') }}</button>
-    <button type="button" class="new-version-btn" @click="later">{{ tl('Plus tard', 'Later') }}</button>
+    <span class="new-version-text">{{ tl('New version available', 'Nouvelle version disponible') }}</span>
+    <button type="button" class="new-version-btn primary" :disabled="busy" @click="reload">{{ tl('Reload', 'Recharger') }}</button>
+    <button type="button" class="new-version-btn" @click="later">{{ tl('Later', 'Plus tard') }}</button>
   </div>
 </template>

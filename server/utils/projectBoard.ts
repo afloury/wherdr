@@ -93,7 +93,7 @@ function threadList(t: Target): Promise<string> {
     return remote('HERDR_BIN_PATH="$1" HERDR_SESSION="$2" exec "$3" --root "$4" thread list "$5" --json', [herdrBin, session, t.bin, root, t.slug], { timeoutMs: 15000 })
       .then((r) => {
         if (r.code !== 0) throw new Error(r.stderr.trim().split('\n').pop() || `code ${r.code}`)
-        if (r.stdout.length > THREADS_BYTES) throw new Error('liste des threads trop longue')
+        if (r.stdout.length > THREADS_BYTES) throw new Error('thread list too long')
         return r.stdout.toString('utf8')
       })
   }
@@ -128,12 +128,12 @@ export async function readProjectBoard(pane: Pane, since?: string): Promise<Boar
 
 // Rapport d'un thread : copie gardée par herdr-projects dans threads/t-NNNN.md.
 export async function readThreadReport(pane: Pane, id: string): Promise<{ id: string, text: string, truncated: boolean }> {
-  if (!/^t-\d{4,}$/.test(id)) throw new HerdrError('bad_thread', 'thread invalide')
+  if (!/^t-\d{4,}$/.test(id)) throw new HerdrError('bad_thread', 'invalid thread')
   const t = await target(pane)
-  if (!t) throw new HerdrError('no_project', 'projet introuvable')
+  if (!t) throw new HerdrError('no_project', 'project not found')
   const file = `${t.dir}/threads/${id}.md`
   const st = await t.m.fs.stat(file).catch(() => null)
-  if (!st || !st.isFile) throw new HerdrError('no_report', 'pas de rapport pour ce thread')
+  if (!st || !st.isFile) throw new HerdrError('no_report', 'no report for this thread')
   const len = Math.min(st.size, REPORT_BYTES)
   const text = (await t.m.fs.read(file, 0, len)).toString('utf8')
   return { id, text, truncated: st.size > REPORT_BYTES }

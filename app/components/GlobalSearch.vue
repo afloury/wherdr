@@ -43,7 +43,7 @@ const groups = computed(() => {
   })
 })
 const hitId = (i: number) => `global-search-hit-${i}`
-const roleLabel = (hit: ConversationHit) => (hit.role === 'user' ? t('Toi') : kindLabel(hit.agent))
+const roleLabel = (hit: ConversationHit) => (hit.role === 'user' ? t('You') : kindLabel(hit.agent))
 async function run() {
   controller?.abort()
   const q = query.value.trim()
@@ -54,7 +54,7 @@ async function run() {
   error.value = ''
   try {
     const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: controller.signal })
-    if (!r.ok) throw new Error(t('Recherche indisponible'))
+    if (!r.ok) throw new Error(t('Search unavailable'))
     const data = await r.json() as ConversationSearchResponse
     if (n !== sequence) return
     hits.value = data.hits
@@ -110,10 +110,10 @@ async function choose(hit: ConversationHit) {
 
 <template>
   <div v-if="open" class="global-search-backdrop" @click.self="close" @keydown.esc.stop.prevent="close">
-    <section class="global-search" role="dialog" aria-modal="true" :aria-label="tl('Rechercher agents et conversations', 'Search agents and conversations')">
+    <section class="global-search" role="dialog" aria-modal="true" :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')">
       <header class="global-search-head">
-        <div class="eyebrow"><span>{{ tl('Agents et conversations', 'Agents and conversations') }}</span></div>
-        <button type="button" class="global-search-cancel mono-btn" @click="close">{{ desk ? t('Échap') : t('Annuler') }}</button>
+        <div class="eyebrow"><span>{{ tl('Agents and conversations', 'Agents et conversations') }}</span></div>
+        <button type="button" class="global-search-cancel mono-btn" @click="close">{{ desk ? t('Esc') : t('Cancel') }}</button>
       </header>
       <div class="global-search-input">
         <UIcon name="i-lucide-search" />
@@ -121,16 +121,16 @@ async function choose(hit: ConversationHit) {
           ref="input" v-model="query" type="text" role="combobox" inputmode="search" enterkeyhint="search"
           aria-autocomplete="list" aria-controls="global-search-results" :aria-expanded="hits.length + agentMatches.length > 0"
           :aria-activedescendant="hits.length + agentMatches.length ? hitId(active) : undefined"
-          :aria-label="tl('Rechercher agents et conversations', 'Search agents and conversations')" :placeholder="tl('Rechercher agents et conversations', 'Search agents and conversations')"
+          :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" :placeholder="tl('Search agents and conversations', 'Rechercher agents et conversations')"
           autocomplete="off" autocorrect="off" spellcheck="false" @keydown="onKey"
         >
-        <button v-if="query" type="button" class="global-search-clear" :aria-label="t('Effacer la recherche')" @click="clearQuery"><UIcon name="i-lucide-x" /></button>
+        <button v-if="query" type="button" class="global-search-clear" :aria-label="t('Clear search')" @click="clearQuery"><UIcon name="i-lucide-x" /></button>
       </div>
-      <div id="global-search-results" ref="list" class="global-search-list" role="listbox" :aria-label="t('Résultats')">
-        <p v-if="query.trim().length < 2" class="global-search-note">{{ t('Saisis au moins deux caractères.') }}</p>
-        <p v-else-if="busy && !hits.length && !agentMatches.length" class="global-search-note"><i class="global-search-pulse" />{{ t('Recherche en cours…') }}</p>
+      <div id="global-search-results" ref="list" class="global-search-list" role="listbox" :aria-label="t('Results')">
+        <p v-if="query.trim().length < 2" class="global-search-note">{{ t('Enter at least two characters.') }}</p>
+        <p v-else-if="busy && !hits.length && !agentMatches.length" class="global-search-note"><i class="global-search-pulse" />{{ t('Searching…') }}</p>
         <p v-else-if="error && !agentMatches.length" class="global-search-note bad">{{ error }}</p>
-        <p v-else-if="!busy && !hits.length && !agentMatches.length" class="global-search-note">{{ t('Aucun résultat') }}</p>
+        <p v-else-if="!busy && !hits.length && !agentMatches.length" class="global-search-note">{{ t('No results') }}</p>
         <button v-for="(p, index) in agentMatches" :id="hitId(index)" :key="p.id" type="button" role="option" tabindex="-1" :aria-selected="index === active" class="global-search-agent-match" :class="{ active: index === active }" @mousemove="active = index" @click="chooseAgent(p)">
           <AgentAvatar :agent="p.agent" />
           <span class="global-search-agent-main"><span class="global-search-agent-title">{{ spaceTitle(p, herdrState.workspaces.find(w => w.id === p.workspace)) }}</span><span class="global-search-agent-meta"><StatusPill :pane="p" kind /><span v-if="conversationSubtitle(p, herdrState.workspaces.find(w => w.id === p.workspace))">{{ conversationSubtitle(p, herdrState.workspaces.find(w => w.id === p.workspace)) }}</span></span></span>
@@ -162,12 +162,12 @@ async function choose(hit: ConversationHit) {
             </span>
           </button>
         </section>
-        <p v-if="limited && !busy" class="global-search-foot">{{ t('Résultats limités. Affine ta recherche.') }}</p>
+        <p v-if="limited && !busy" class="global-search-foot">{{ t('Results limited. Refine your search.') }}</p>
       </div>
       <footer v-if="desk" class="global-search-keys">
-        <span><kbd>↑</kbd><kbd>↓</kbd>{{ t('naviguer') }}</span>
-        <span><kbd>↵</kbd>{{ t('ouvrir') }}</span>
-        <span><kbd>esc</kbd>{{ t('fermer') }}</span>
+        <span><kbd>↑</kbd><kbd>↓</kbd>{{ t('navigate') }}</span>
+        <span><kbd>↵</kbd>{{ t('open') }}</span>
+        <span><kbd>esc</kbd>{{ t('close') }}</span>
       </footer>
     </section>
   </div>

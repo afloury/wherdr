@@ -68,7 +68,7 @@ export function herdrSock<T = any>(path: string, method: string, params: Record<
       else finish(null, msg.result)
     })
     sock.on('error', (e: NodeJS.ErrnoException) => finish(new HerdrError('unreachable', `serveur Herdr injoignable (${e.code || e.message})`)))
-    sock.on('close', () => finish(new HerdrError('closed', 'connexion Herdr fermée sans réponse')))
+    sock.on('close', () => finish(new HerdrError('closed', 'Herdr connection closed without a response')))
   })
 }
 

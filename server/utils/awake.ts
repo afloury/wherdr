@@ -151,18 +151,18 @@ function localExec(script: string, args: string[]): Promise<ExecResult> {
 }
 async function run(machine: Machine, script: string, args: string[] = []) {
   const result = machine.exec ? await machine.exec(script, args, { timeoutMs: 10000 }) : await localExec(script, args)
-  if (result.code !== 0) throw new HerdrError('awake_command_failed', result.stderr.trim() || 'Commande de veille impossible')
+  if (result.code !== 0) throw new HerdrError('awake_command_failed', result.stderr.trim() || 'Keep-awake command failed')
   return result.stdout.toString('utf8')
 }
 export async function awakeStatus(machine: Machine) { return parseAwakeStatus(await run(machine, STATUS_SCRIPT)) }
 // Codes « error=… » du script de contrôle -> message (traduit côté client).
 export const CONTROL_ERRORS: Record<string, string> = {
-  no_tool: 'Contrôle de veille indisponible sur cette machine',
-  lid_mac_only: 'Capot fermé disponible uniquement sur Mac',
-  evening_past: 'Il est déjà plus de 20 h sur cette machine : choisis une durée',
-  not_active: 'Aucun éveil en cours à prolonger',
-  bad_mode: 'option de veille invalide',
-  start_failed: 'Le maintien éveillé n’a pas démarré ; l’état précédent est conservé',
+  no_tool: 'Sleep control is not available on this machine',
+  lid_mac_only: 'Closed lid is only available on a Mac',
+  evening_past: 'It is already past 8 pm on this machine: pick a duration',
+  not_active: 'Nothing to extend: the machine is not being kept awake',
+  bad_mode: 'Invalid keep-awake option',
+  start_failed: 'Keep awake did not start; the previous state is kept',
 }
 export function parseControl(raw: string): { error: string } | { started: number | null } {
   const error = /^error=(\w+)$/m.exec(raw)?.[1]
@@ -179,9 +179,9 @@ export async function setAwake(machine: Machine, mode: AwakeMode | 'off', lid: b
   }
   if (mode === 'evening' && status.eveningPast) throw new HerdrError('awake_evening_past', CONTROL_ERRORS.evening_past!)
   if (lid && status.platform !== 'mac') throw new HerdrError('awake_lid', CONTROL_ERRORS.lid_mac_only!)
-  if (lid && status.battery?.source !== 'ac') throw new HerdrError('awake_lid', 'Le capot fermé nécessite le secteur')
+  if (lid && status.battery?.source !== 'ac') throw new HerdrError('awake_lid', 'Closed lid requires the power adapter')
   const result = parseControl(await run(machine, CONTROL_SCRIPT, [mode, lid ? '1' : '0']))
-  if ('error' in result) throw new HerdrError(`awake_${result.error}`, CONTROL_ERRORS[result.error] || 'Commande de veille impossible')
+  if ('error' in result) throw new HerdrError(`awake_${result.error}`, CONTROL_ERRORS[result.error] || 'Keep-awake command failed')
   const after = await awakeStatus(machine)
   // L'état renvoyé est celui du processus réel : s'il n'est pas là, c'est un échec.
   if (mode !== 'off' && !after.active) throw new HerdrError('awake_start_failed', CONTROL_ERRORS.start_failed!)
