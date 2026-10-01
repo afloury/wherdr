@@ -4,7 +4,7 @@
 // (claude-trust, claude-security-guide, codex-trust : la machine fait déjà confiance à ~).
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { completeOmpAsk, inputVisible, keysFor, parseChoices, parseOmpAsk, pendingOmpAsk, screenChoices } from '../server/utils/choices'
+import { completeOmpAsk, inputVisible, panelOpen, keysFor, parseChoices, parseOmpAsk, pendingOmpAsk, screenChoices } from '../server/utils/choices'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 
@@ -104,6 +104,19 @@ describe('inputVisible', () => {
   })
   it('ne le voit pas quand un panneau le cache', () => {
     expect(inputVisible('  Usage\n  ████ 40%\n\n  Esc to close')).toBe(false)
+  })
+  it('does not mistake a menu cursor for the input field', () => {
+    expect(inputVisible(fx('claude-trust.txt'))).toBe(false)
+    expect(inputVisible(fx('claude-model-1.txt'))).toBe(false)
+    expect(inputVisible(' Manage MCP servers\n\n ❯ 1. demo-server · authenticate\n   2. other-server\n\n Esc to cancel')).toBe(false)
+  })
+})
+
+describe('panelOpen', () => {
+  it('closes a full-screen panel but leaves a menu the user may be using', () => {
+    expect(panelOpen('  Usage\n  ████ 40%\n\n  Esc to close')).toBe(true)
+    expect(panelOpen(fx('claude-trust.txt'))).toBe(false)
+    expect(panelOpen(fx('claude-idle.txt'))).toBe(false)
   })
 })
 

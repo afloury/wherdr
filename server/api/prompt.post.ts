@@ -10,7 +10,8 @@ export default defineApi(async (event, b) => {
   if (p && !text.trim().startsWith('/')) {
     const earlier = hasHeld(b.pane_id)
     const input = earlier || !INPUT_STATES.has(p.status || '') ? true
-      : inputVisible((await herdr('pane.read', { pane_id: b.pane_id, source: 'detection' }, 4000).catch(() => null))?.read?.text ?? '❯')
+      : await herdr('pane.read', { pane_id: b.pane_id, source: 'detection' }, 4000)
+        .then(r => inputVisible(r.read && r.read.text), () => true)
     if (shouldHold(p.agent, p.status, input, earlier)) {
       const q = addQueued(b.pane_id, text, { held: true })
       log(`prompt ${b.pane_id} : champ de saisie caché, message retenu`)
@@ -25,6 +26,14 @@ export default defineApi(async (event, b) => {
     // démarrage » (cf. agentPrompt) : le message part dès que Herdr l'accepte,
     // comme le premier message donné à la création. Pas pour une commande, ni
     // par-dessus un autre message déjà en attente.
+    // Herdr sees the open menu as blocked and refuses the prompt: held too,
+    // delivered once the menu is answered or closed.
+    if (e instanceof HerdrError && e.code === 'agent_blocked' && p && p.agent && HOLD_AGENTS.has(p.agent) && !text.trim().startsWith('/')) {
+      const q = addQueued(b.pane_id, text, { held: true })
+      log(`prompt ${b.pane_id} : agent bloqué, message retenu`)
+      setTimeout(poll, 50)
+      return { ok: true, queued: q }
+    }
     if (!(e instanceof HerdrError) || e.code !== 'agent_not_ready' || text.trim().startsWith('/') || pendingPrompts.has(b.pane_id)) throw e
     pendingPrompts.set(b.pane_id, { text, at: Date.now() })
     log(`prompt ${b.pane_id} : agent pas encore prêt pour Herdr, mis en attente`)
