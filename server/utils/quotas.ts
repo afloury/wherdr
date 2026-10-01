@@ -20,6 +20,7 @@ import type { AccountQuota, ClaudeSetup, Quota, QuotaWindow, Quotas } from '../.
 import type { ExecResult, MachineFs } from './fsx'
 import { HerdrError } from './herdr'
 import { allMachines, type Machine } from './machines'
+import { fmt } from '../../shared/message'
 
 const TTL = 30000
 let cache: { at: number, q: Quotas } | null = null
@@ -297,7 +298,7 @@ export async function readQuotas(force = false): Promise<Quotas> {
 async function installerScript(): Promise<string> {
   const raw = await useStorage('assets:scripts').getItemRaw('install-claude-statusline.sh')
   const s = raw ? (typeof raw === 'string' ? raw : Buffer.from(raw as ArrayBuffer).toString('utf8')) : ''
-  if (!s.startsWith('#!/bin/sh')) throw new HerdrError('no_script', 'script d’installation introuvable')
+  if (!s.startsWith('#!/bin/sh')) throw new HerdrError('no_script', 'Install script not found')
   return s
 }
 
@@ -317,14 +318,14 @@ function runLocal(input: string, home: string): Promise<ExecResult> {
 }
 
 // Installs (or updates) the status line on an online machine; returns the
-// last line of the script ("barre d'état ajoutée : …", "déjà installée : …").
+// last line of the script ("status line added: …", "already installed: …").
 export async function installClaudeStatusline(m: Machine): Promise<string> {
-  if (!m.local && m.status !== 'online') throw new HerdrError('unreachable', `${m.label} injoignable`)
-  if (!(await canInstall(m))) throw new HerdrError('read_only', `dossier personnel en lecture seule ici : copie la commande et colle-la dans un terminal de ${m.label}`)
+  if (!m.local && m.status !== 'online') throw new HerdrError('unreachable', fmt('{machine} is unreachable', { machine: m.label }))
+  if (!(await canInstall(m))) throw new HerdrError('read_only', fmt('Home folder is read-only here: copy the command and paste it into a terminal on {machine}', { machine: m.label }))
   const script = await installerScript()
   const r = m.local ? await runLocal(script, m.home) : await m.exec!('exec sh -s', [], { input: Buffer.from(script), timeoutMs: 60000 })
   const last = (s: string) => (s.trim().split('\n').filter(Boolean).pop() || '').slice(0, 300)
-  if (r.code !== 0) throw new HerdrError('install_failed', `installation impossible sur ${m.label} : ${last(r.stderr) || `code ${r.code}`}`)
+  if (r.code !== 0) throw new HerdrError('install_failed', fmt('Install failed on {machine}: {reason}', { machine: m.label, reason: last(r.stderr) || `code ${r.code}` }))
   cache = null
   return last(r.stdout.toString('utf8'))
 }

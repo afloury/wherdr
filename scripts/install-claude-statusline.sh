@@ -47,7 +47,7 @@ exit 0
 WHERDR_STATUSLINE
 chmod 755 "$dir/wherdr-statusline.sh.tmp"
 mv "$dir/wherdr-statusline.sh.tmp" "$dir/wherdr-statusline.sh"
-echo "barre d'état écrite : $dir/wherdr-statusline.sh"
+echo "status line written: $dir/wherdr-statusline.sh"
 # ---- settings.json ----
 [ -f "$dir/settings.json" ] || echo '{}' > "$dir/settings.json"
 cp "$dir/settings.json" "$dir/settings.json.bak-wherdr"
@@ -58,16 +58,16 @@ d = json.load(open(path))
 ours = 'sh ' + shlex.quote(script)
 cur = d.get('statusLine')
 if isinstance(cur, dict) and 'wherdr-statusline.sh' in str(cur.get('command', '')):
-    print('déjà installée :', cur['command'])
+    print('already installed:', cur['command'])
     sys.exit(0)
 if cur is None:
     d['statusLine'] = {'type': 'command', 'command': ours}
-    print('barre d\'état ajoutée :', ours)
+    print('status line added:', ours)
 elif isinstance(cur, dict) and cur.get('type') == 'command' and cur.get('command'):
     d['statusLine'] = {**cur, 'command': ours + ' ' + shlex.quote(cur['command'])}
-    print('barre d\'état existante enchaînée :', d['statusLine']['command'])
+    print('existing status line chained:', d['statusLine']['command'])
 else:
-    print('statusLine inconnue, rien changé :', json.dumps(cur), file=sys.stderr)
+    print('unknown statusLine, nothing changed:', json.dumps(cur), file=sys.stderr)
     sys.exit(1)
 with open(path, 'w') as f:
     json.dump(d, f, indent=2, ensure_ascii=False)

@@ -23,7 +23,7 @@ import { type QueueEntry, INPUT_STATES, checkQueue, isUploadLine, nextHeld, publ
 import { inputVisible } from './choices'
 import { msgText, unqueueClaude } from './unqueue'
 import { type TranscriptPane, sameMsg } from './transcripts'
-import { pushSend, subWatchesSession } from './push'
+import { agentNotificationTitle, pushSend, subWatchesSession } from './push'
 import { shouldNotify } from './notificationPolicy'
 import { currentModel, forgetModel, noteScreen } from './modelctl'
 import { type Machine, RemoteMachine, allMachines, getMachine, machineOfPane, machinesListed, multiMachine, onMachinesChange, remoteMachines } from './machines'
@@ -61,7 +61,7 @@ export const termSessions = new Set<TermView>()
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
 
-let state: HerdrState = { ok: false, error: 'démarrage…', workspaces: [], panes: [] }
+let state: HerdrState = { ok: false, error: 'starting…', workspaces: [], panes: [] }
 // Last state of each machine (an offline machine's stays shown, grayed out).
 const mstates = new Map<string, HerdrState>()
 let stateJson = JSON.stringify(state)
@@ -266,7 +266,7 @@ function deliverHeld(p: Pane) {
 // "Retry" on a failed message: held again, delivered by the next polls.
 export function retryQueued(paneId: string, id: string): QueuedMessage {
   const q = (queued.get(paneId) || []).find(x => x.id === id)
-  if (!q) throw new HerdrError('not_found', 'message introuvable')
+  if (!q) throw new HerdrError('not_found', 'Message not found')
   if (!q.failed) throw new HerdrError('busy', 'message already being sent')
   q.failed = false
   q.held = true
@@ -576,7 +576,7 @@ function broadcastState() {
 function rebuild() {
   const machines = allMachines()
   for (const k of mstates.keys()) if (!getMachine(k)) mstates.delete(k)
-  const loc = mstates.get(LOCAL) || { ok: false, error: 'démarrage…', workspaces: [], panes: [] }
+  const loc = mstates.get(LOCAL) || { ok: false, error: 'starting…', workspaces: [], panes: [] }
   const next: HerdrState = { ...loc, workspaces: [...loc.workspaces], tabs: [...(loc.tabs || [])], panes: [...loc.panes] }
   if (multiMachine()) {
     for (const m of machines) {
@@ -734,28 +734,25 @@ async function notifyPane(p: Pane) {
   const where = isProjectThread(p)
     ? paneTitle(p, ws?.label)
     : [ws && ws.label, notificationTitle(p.title)].filter(Boolean).join(' · ')
-  let title: string, titleEn: string, body: string
-  // Several machines: the title says which one ("laptop · Claude a terminé").
+  let body: string
+  // Several machines: the title says which one ("laptop · Claude has finished").
   const m = multiMachine() ? machineOfPane(p.id) : null
   const on = m ? `${m.label || (m.local ? 'local' : m.key)} · ` : ''
   if (p.status === 'blocked') {
-    title = `${on}${agentLabel(p.agent)} attend ta réponse`
-    titleEn = `${on}${agentLabel(p.agent)} needs your input`
     const q = p.prompt && p.prompt.question && (p.prompt.question.length > 300 ? `${p.prompt.question.slice(0, 299)}…` : p.prompt.question)
     const opts = p.prompt && p.prompt.options ? p.prompt.options.filter(o => !o.free).slice(0, 4).map(o => o.label).join(' · ') : ''
     body = [q, opts, where].filter(Boolean).join('\n') || p.id
   } else {
-    title = `${on}${agentLabel(p.agent)} a terminé`
-    titleEn = `${on}${agentLabel(p.agent)} has finished`
     const last = await transcripts.preview(p).catch(() => null)
     body = [last, where].filter(Boolean).join('\n') || p.id
   }
+  const { title, titleFr } = agentNotificationTitle(p.status === 'blocked' ? 'blocked' : 'done', `${on}${agentLabel(p.agent)}`)
   const badge = state.panes.filter(x => x.status === 'blocked' || x.status === 'done').length
   const source = machineOfPane(p.id)
   const baseKey = source?.info().baseKey ?? source?.key ?? ''
   const baseSession = getMachine(baseKey)?.session || 'default'
   const session = source?.session || baseSession
-  const sent = await pushSend({ title, titleEn, body, tag: `pane-${p.id}`, url: `/#/a/${encodeURIComponent(p.id)}`, badge },
+  const sent = await pushSend({ title, titleFr, body, tag: `pane-${p.id}`, url: `/#/a/${encodeURIComponent(p.id)}`, badge },
     (scope, sub) => shouldNotify(scope, p) && subWatchesSession(sub, baseKey, session, baseSession))
   log(`notification ${p.id} ${p.status} "${title}" -> ${sent} device(s)`)
 }

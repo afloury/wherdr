@@ -7,7 +7,7 @@ const needsUnlock = (p: string) => (p.startsWith('/api/') && !p.startsWith('/api
 
 export default defineEventHandler((event) => {
   if (!hostAllowed(event.node.req.headers.host)) {
-    return sendError(event, 403, { error: 'hôte refusé', code: 'host' })
+    return sendError(event, 403, { error: 'Host not allowed', code: 'host' })
   }
   const path = event.path.split('?')[0]!
   if (path.startsWith('/api/') && crossSiteRequest(event.node.req.headers)) {

@@ -6,7 +6,7 @@ import { t, tl } from './i18n'
 export function terminalClosedText(m: { reason?: string, code?: string, machine?: string }): string {
   if (m.code === 'unreachable') return tl(`${m.machine || 'Machine'} unreachable`, `${m.machine || 'Machine'} injoignable`)
   if (m.code === 'unknown_machine') return tl('unknown machine', 'machine inconnue')
-  return m.reason || ''
+  return t(m.reason || '')
 }
 
 export function terminalUnavailableText(why: string | null): string {

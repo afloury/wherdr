@@ -454,7 +454,7 @@ function resetListWidth() {
     <div class="scroll">
       <OfflineNote v-if="(offlineView && cachedAt) || netDown" class="home-offline" :label="offlineView && cachedAt ? t('Last known state') : undefined" :at="cachedAt" date-style="medium" />
       <div v-if="eventsOpen && !st.ok" class="notice">
-        {{ t('The Herdr server is not responding') }}{{ st.error ? ` : ${st.error}` : '' }}.<br>
+        {{ t('The Herdr server is not responding') }}{{ st.error ? tl(`: ${t(st.error)}`, ` : ${t(st.error)}`) : '' }}.<br>
         {{ hostLabel ? tl(`Run herdr on ${hostLabel} to start it.`, `Lance herdr sur ${hostLabel} pour le démarrer.`) : tl('Run herdr on the server to start it.', 'Lance herdr sur le serveur pour le démarrer.') }}
       </div>
       <div v-if="!multiMachine" class="solo-machine-row"><button type="button" class="solo-session-row" :aria-label="t('Herdr sessions')" @click="openSessions(soloMachine)">
@@ -536,7 +536,7 @@ function resetListWidth() {
               <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="machine-options icon-btn" :aria-label="`${t('Options')} : ${s.name}`" />
             </UDropdownMenu>
           </div>
-          <p v-if="s.m.status !== 'online' && s.m.error" class="machine-error">{{ s.m.error }}</p>
+          <p v-if="s.m.status !== 'online' && s.m.error" class="machine-error">{{ t(s.m.error) }}</p>
 
           <div v-if="!s.collapsed" class="machine-body">
             <QuotaStrip :rows="s.quotas" class="machine-quotas" />

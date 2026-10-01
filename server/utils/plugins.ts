@@ -14,6 +14,7 @@ import { findPane } from './state'
 import { isGitRepo, machineFor, underHome } from './actions'
 import { ACTION_ID_RE, PLUGIN_ID_RE, REMOTE_PROJECTS_SCRIPT, type RawPlugin, type RawPluginAction, type RawPluginLog, actionContext, logResult, normalizeActions, outputTail, stripAnsi } from './pluginPolicy'
 import { PROJECT_INPUTS, cleanProjectInput, projectCommandArgs, readOnlyMessage, repoArgument, setupHeader, tickerRunning } from '../../shared/projectsActions'
+import { fmt } from '../../shared/message'
 
 // List kept for a few seconds per machine (the menu asks again on every opening).
 const CACHE_MS = 10000
@@ -56,7 +57,7 @@ async function runProjects(m: Machine, bin: string, args: string[]): Promise<{ c
 
 async function projectsBin(m: Machine): Promise<string> {
   const bin = await binaryOn(m)
-  if (!bin) throw new HerdrError('plugin_unavailable', 'binaire Projects introuvable')
+  if (!bin) throw new HerdrError('plugin_unavailable', 'Projects binary not found')
   return bin
 }
 
@@ -65,7 +66,7 @@ async function projectsCommand(m: Machine, args: string[], lang: 'fr' | 'en' = '
   if (r.code !== 0) {
     const error = r.stderr || r.stdout || `code ${r.code}`
     // Read-only HOME (Docker): say what to mount rather than the raw error.
-    const readOnly = readOnlyMessage(error, { docker: m.local && IN_DOCKER, lang })
+    const readOnly = readOnlyMessage(error, { docker: m.local && IN_DOCKER })
     if (readOnly) log(`herdr-projects ${args[0]}: ${error}`)
     throw new HerdrError(readOnly ? 'read_only' : 'plugin_failed', readOnly || error)
   }
@@ -115,7 +116,7 @@ async function projectsDoctor(m: Machine): Promise<PluginActionResult> {
 export async function invokePluginAction(body: { machine?: unknown, pane_id?: unknown, plugin?: unknown, action?: unknown, input?: unknown, lang?: unknown }): Promise<PluginActionResult> {
   const plugin = String(body.plugin || '')
   const action = String(body.action || '')
-  if (!PLUGIN_ID_RE.test(plugin) || !ACTION_ID_RE.test(action)) throw new HerdrError('bad_action', 'action invalide')
+  if (!PLUGIN_ID_RE.test(plugin) || !ACTION_ID_RE.test(action)) throw new HerdrError('bad_action', 'Invalid action')
   // Machine: the pane's if there is one (an agent's menu), otherwise the requested one.
   const paneId = body.pane_id ? String(body.pane_id) : ''
   const pane = paneId ? findPane(paneId) : null
@@ -123,11 +124,11 @@ export async function invokePluginAction(body: { machine?: unknown, pane_id?: un
   const m = machineFor(pane ? splitId(pane.id).machine : body.machine)
   // Only an action that Herdr announces, at the expected place.
   const known = (await listPluginActions(m.key, true)).find(a => a.plugin === plugin && a.id === action)
-  if (!known) throw new HerdrError('plugin_action_not_found', 'action introuvable sur cette machine')
-  if (pane ? !known.agent : !known.machine) throw new HerdrError('bad_context', 'action non disponible ici')
+  if (!known) throw new HerdrError('plugin_action_not_found', 'Action not found on this machine')
+  if (pane ? !known.agent : !known.machine) throw new HerdrError('bad_context', 'Action not available here')
 
   if (plugin === 'herdr-projects' && action === 'open-popup') {
-    throw new HerdrError('popup_unavailable', 'Le panneau Projects est disponible dans le client Herdr ; ses saisies ne sont pas accessibles par l’API Herdr.')
+    throw new HerdrError('popup_unavailable', 'The Projects panel is available in the Herdr client; its inputs are not reachable through the Herdr API.')
   }
   if (plugin === 'herdr-projects' && action === 'doctor') {
     log(`plugin ${plugin}.${action}${m.local ? '' : ` on ${m.label}`} (command)`)
@@ -136,18 +137,18 @@ export async function invokePluginAction(body: { machine?: unknown, pane_id?: un
   const fields = pluginInputFields(plugin, action)
   if (fields.length) {
     const input = cleanProjectInput(action, body.input)
-    if (!input) throw new HerdrError('bad_input', 'saisie du plugin invalide')
+    if (!input) throw new HerdrError('bad_input', 'Invalid plugin input')
     if (action === 'adopt-workspace' && (!pane || !pane.agent || !pane.cwd)) {
-      throw new HerdrError('bad_context', 'un agent et son dossier sont nécessaires dans ce space')
+      throw new HerdrError('bad_context', 'This space needs an agent and its folder')
     }
     // "New project" repository: a Git folder under its machine's HOME (the
     // project's by default), passed as `path@<Herdr id>` if it is on another one.
     if (input.repo) {
       const rm = input.machine ? machineFor(input.machine) : m
       const repo = underHome(input.repo, rm.home)
-      if (!repo || !(await isGitRepo(repo, rm))) throw new HerdrError('bad_input', `pas un dépôt Git : ${input.repo}`)
+      if (!repo || !(await isGitRepo(repo, rm))) throw new HerdrError('bad_input', fmt('Not a Git repository: {path}', { path: input.repo }))
       const arg = repoArgument(repo, rm, m)
-      if (!arg) throw new HerdrError('bad_input', `dépôt inutilisable depuis ${m.label} : ${repo}${rm === m ? '' : ` (${rm.label})`}`)
+      if (!arg) throw new HerdrError('bad_input', fmt('Repository unusable from {machine}: {path}', { machine: m.label, path: `${repo}${rm === m ? '' : ` (${rm.label})`}` }))
       input.repo = arg
     }
     delete input.machine

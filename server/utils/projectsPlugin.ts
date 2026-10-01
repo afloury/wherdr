@@ -3,6 +3,7 @@ import path from 'node:path'
 import type { Machine } from './machines'
 import { HerdrError, herdrOn } from './herdr'
 import { PROJECTS_INSTALL_ARGS } from '../../shared/projectsPlugin'
+import { fmt } from '../../shared/message'
 
 export interface ProjectsPluginState {
   installed: boolean
@@ -28,15 +29,15 @@ async function canInstall(m: Machine): Promise<boolean> {
 }
 
 export async function projectsPluginState(m: Machine): Promise<ProjectsPluginState> {
-  if (m.status !== 'online') throw new HerdrError('unreachable', `${m.label} injoignable`)
+  if (m.status !== 'online') throw new HerdrError('unreachable', fmt('{machine} is unreachable', { machine: m.label }))
   const r = await herdrOn<{ plugins?: { plugin_id?: string, enabled?: boolean, version?: string }[] }>(m.key, 'plugin.list', {}, 8000)
   return { ...projectsPluginFromList(r.plugins || []), installable: await canInstall(m) }
 }
 
 export async function installProjectsPlugin(m: Machine): Promise<string> {
-  if (m.status !== 'online') throw new HerdrError('unreachable', `${m.label} injoignable`)
-  if ((await projectsPluginState(m)).installed) throw new HerdrError('already_installed', 'herdr-projects est déjà installé')
-  if (!(await canInstall(m))) throw new HerdrError('read_only', `dossier Herdr en lecture seule sur ${m.label}`)
+  if (m.status !== 'online') throw new HerdrError('unreachable', fmt('{machine} is unreachable', { machine: m.label }))
+  if ((await projectsPluginState(m)).installed) throw new HerdrError('already_installed', 'herdr-projects is already installed')
+  if (!(await canInstall(m))) throw new HerdrError('read_only', fmt('Herdr folder is read-only on {machine}', { machine: m.label }))
   const child = m.spawnHerdr([...PROJECTS_INSTALL_ARGS])
   return await new Promise<string>((resolve, reject) => {
     let output = ''
@@ -47,7 +48,7 @@ export async function installProjectsPlugin(m: Machine): Promise<string> {
     child.on('error', e => { clearTimeout(timer); reject(new HerdrError('install_failed', e.message)) })
     child.on('close', code => {
       clearTimeout(timer)
-      if (code !== 0) reject(new HerdrError('install_failed', output.trim().slice(-300) || `installation : code ${code}`))
+      if (code !== 0) reject(new HerdrError('install_failed', output.trim().slice(-300) || fmt('Install failed (code {code})', { code })))
       else resolve(output.trim().slice(-300))
     })
   })

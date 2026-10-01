@@ -34,6 +34,7 @@ import {
 import { HerdrError, herdr, setSocketResolver } from './herdr'
 import { type ExecResult, type MachineFs, type ShellExec, createShellFs, localFs, shq } from './fsx'
 import { type Transcripts, createTranscripts } from './transcripts'
+import { fmt } from '../../shared/message'
 
 const fsp = fs.promises
 const LOCAL_LABEL_FILE = path.join(DATA_DIR, 'machine-label.txt')
@@ -123,7 +124,7 @@ for c in "$HOME/.local/bin/herdr" /opt/homebrew/bin/herdr /usr/local/bin/herdr; 
   if [ -x "$c" ]; then b=$c; break; fi
 done
 [ -n "$b" ] || b=$(command -v herdr 2>/dev/null)
-if [ -z "$b" ]; then echo "error=herdr introuvable"; exit 0; fi
+if [ -z "$b" ]; then echo "error=herdr not found"; exit 0; fi
 echo "bin=$b"
 if [ -n "$1" ]; then "$b" --session "$1" status server 2>&1; else "$b" status server 2>&1; fi`
 
@@ -216,7 +217,7 @@ export class RemoteMachine implements Machine {
 
   private run(script: string, args: string[], opts: { input?: Buffer, timeoutMs?: number }): Promise<ExecResult> {
     if (this.status !== 'online' && !this.connecting) {
-      return Promise.resolve({ code: 255, stdout: Buffer.alloc(0), stderr: `${this.label} injoignable` })
+      return Promise.resolve({ code: 255, stdout: Buffer.alloc(0), stderr: fmt('{machine} is unreachable', { machine: this.label }) })
     }
     const cmd = `sh -c ${shq(script)} sh ${args.map(shq).join(' ')}`
     return new Promise((resolve) => {
@@ -231,7 +232,8 @@ export class RemoteMachine implements Machine {
         resolve({ code, stdout: Buffer.concat(out), stderr: err })
       }
       const timer = setTimeout(() => {
-        err += '\ndélai dépassé'
+        err += '\n'
+        err += 'timed out'
         child.kill('SIGKILL')
         finish(124)
       }, opts.timeoutMs || 15000)
@@ -253,7 +255,7 @@ export class RemoteMachine implements Machine {
   async putUpload(name: string, data: Buffer): Promise<string> {
     const r = await this.exec(UPLOAD_SCRIPT, [name], { input: data, timeoutMs: 60000 })
     const p = r.stdout.toString('utf8').trim()
-    if (r.code !== 0 || !p) throw new Error(`copie sur ${this.label} impossible : ${lastLine(r.stderr) || r.code}`)
+    if (r.code !== 0 || !p) throw new Error(fmt('Copy to {machine} failed: {reason}', { machine: this.label, reason: lastLine(r.stderr) || r.code }))
     return p
   }
 
@@ -313,7 +315,7 @@ export class RemoteMachine implements Machine {
     if (this.status !== 'online') return
     if (++this.pollFails >= 3) {
       this.pollFails = 0
-      this.restart(error || 'serveur Herdr muet')
+      this.restart(error || 'Herdr server not responding')
     }
   }
 
@@ -358,39 +360,39 @@ export class RemoteMachine implements Machine {
       child.on('exit', (code) => {
         if (this.master !== child) return
         this.master = null
-        const why = this.masterErr.filter(l => !/^Warning: Permanently added/.test(l)).pop() || `connexion SSH fermée (code ${code})`
+        const why = this.masterErr.filter(l => !/^Warning: Permanently added/.test(l)).pop() || fmt('SSH connection closed (code {code})', { code })
         if (!this.connecting) this.fail(why)
       })
 
       if (!(await this.waitControl(child, 20000))) {
-        throw new Error(this.masterErr.filter(l => !/^Warning:/.test(l)).pop() || 'connexion SSH impossible (délai dépassé)')
+        throw new Error(this.masterErr.filter(l => !/^Warning:/.test(l)).pop() || 'SSH connection failed (timed out)')
       }
       // Probe (over the multiplexed connection).
       const probe = await this.exec(PROBE_SCRIPT, [this.session === 'default' ? '' : this.session], { timeoutMs: 15000 })
       const out = probe.stdout.toString('utf8')
       const kv = (k: string) => (new RegExp(`^${k}=(.*)$`, 'm').exec(out) || [])[1] || ''
-      if (probe.code !== 0) throw new Error(lastLine(probe.stderr) || `sonde : code ${probe.code}`)
-      if (kv('self') && kv('self') === localMachineId()) throw new SkipMachine('cette machine elle-même')
-      if (kv('error')) throw new Error(`${kv('error')} sur ${this.label}`)
+      if (probe.code !== 0) throw new Error(lastLine(probe.stderr) || fmt('Probe failed (code {code})', { code: probe.code }))
+      if (kv('self') && kv('self') === localMachineId()) throw new SkipMachine('this machine itself')
+      if (kv('error')) throw new Error(fmt('{reason} on {machine}', { reason: kv('error'), machine: this.label }))
       this.home = kv('home')
       this.bin = kv('bin')
       const running = /^\s*status:\s*running\s*$/m.test(out)
       const sock = parseStatusSocket(out)
       if (!running || !sock) {
-        throw new Error(`serveur Herdr arrêté sur ${this.label}${this.session !== 'default' ? ` (session ${this.session})` : ''}`)
+        throw new Error(this.session !== 'default' ? fmt('Herdr server stopped on {machine} (session {session})', { machine: this.label, session: this.session }) : fmt('Herdr server stopped on {machine}', { machine: this.label }))
       }
       this.remoteSock = sock
       this.ident = `${kv('host').toLowerCase()}|${sock}`
       this.transcripts = createTranscripts({ home: this.home, herdr, fs: this.fs })
       // Transfert du socket Unix distant vers RUNTIME_DIR/<machine>.sock.
       const fwd = await runFile(SSH_BIN, ['-S', this.ctl, '-O', 'forward', '-L', `${this.fwd}:${sock}`, '--', this.target], 10000)
-      if (fwd.code !== 0) throw new Error(`transfert du socket Herdr : ${lastLine(fwd.stderr) || fwd.code}`)
+      if (fwd.code !== 0) throw new Error(fmt('Herdr socket forwarding failed: {reason}', { reason: lastLine(fwd.stderr) || fwd.code }))
       // Client socket (notifications): optional, the machine stays usable without it.
       const clientSock = path.posix.join(path.posix.dirname(sock), 'herdr-client.sock')
       const fwdc = await runFile(SSH_BIN, ['-S', this.ctl, '-O', 'forward', '-L', `${this.fwdClient}:${clientSock}`, '--', this.target], 10000)
       this.clientFwd = fwdc.code === 0
       if (!this.clientFwd) log(`machine ${this.label}: herdr notifications unavailable (${lastLine(fwdc.stderr) || fwdc.code})`)
-      if (this.master !== child || child.exitCode !== null) throw new Error('connexion SSH fermée')
+      if (this.master !== child || child.exitCode !== null) throw new Error('SSH connection closed')
       this.fails = 0
       this.pollFails = 0
       this.connecting = false
@@ -439,7 +441,7 @@ function skip(m: RemoteMachine, reason: string) {
 function checkDuplicate(m: RemoteMachine) {
   for (const o of remotes.values()) {
     if (o === m || !o.ident || o.ident !== m.ident) continue
-    return skip(m, `même machine que ${o.label}`)
+    return skip(m, `same machine as ${o.label}`)
   }
 }
 const listeners = new Set<() => void>()
@@ -461,17 +463,17 @@ export async function listSessions(baseKey: string): Promise<NamedSession[]> {
   if (m.local) r = await runFile(HERDR_BIN, ['session', 'list', '--json'], 10000)
   else {
     const remote = m as RemoteMachine
-    if (remote.status !== 'online') throw new HerdrError('unreachable', `${m.label} injoignable`)
+    if (remote.status !== 'online') throw new HerdrError('unreachable', fmt('{machine} is unreachable', { machine: m.label }))
     r = await remote.exec('"$1" session list --json', [remote.bin], { timeoutMs: 10000 })
   }
-  if (r.code !== 0) throw new HerdrError('session_list', lastLine(r.stderr) || 'liste des sessions indisponible')
+  if (r.code !== 0) throw new HerdrError('session_list', lastLine(r.stderr) || 'Session list unavailable')
   return parseSessionList(r.stdout.toString('utf8'), baseKey, m.session)
 }
 
 export async function openSession(baseKey: string, name: string): Promise<NamedSession> {
-  if (!validSession(name)) throw new HerdrError('bad_session', 'session invalide')
+  if (!validSession(name)) throw new HerdrError('bad_session', 'Invalid session')
   const found = (await listSessions(baseKey)).find(s => s.name === name)
-  if (!found || !found.running) throw new HerdrError('session_stopped', 'session absente ou arrêtée')
+  if (!found || !found.running) throw new HerdrError('session_stopped', 'Session missing or stopped')
   if (found.key === baseKey) return found
   if (sessions.has(found.key)) return found
   const base = baseMachines().find(m => m.key === baseKey)!
@@ -501,9 +503,9 @@ export async function openSession(baseKey: string, name: string): Promise<NamedS
 
 setSocketResolver((key) => {
   const m = getMachine(key)
-  if (!m) return { sock: null, error: `machine inconnue (${key})` }
+  if (!m) return { sock: null, error: fmt('Unknown machine: {machine}', { machine: key }) }
   const sock = m.sock()
-  return sock ? { sock } : { sock: null, error: `${m.label} injoignable${m.error ? ` : ${m.error}` : ''}` }
+  return sock ? { sock } : { sock: null, error: m.error ? fmt('{machine} is unreachable: {reason}', { machine: m.label, reason: m.error }) : fmt('{machine} is unreachable', { machine: m.label }) }
 })
 
 // Re-reads Herdr's profiles: adds, removes, renames without restarting.
@@ -556,10 +558,10 @@ async function readMachines() {
     if (m.target !== p.target || m.profileSession !== p.session) {
       m.target = p.target
       m.profileSession = p.session
-      m.restart('profil modifié')
+      m.restart('profile changed')
       for (const sm of sessions.values()) if (sm instanceof RemoteMachine && sm.baseKey === m.key) {
         sm.target = p.target
-        sm.restart('profil modifié')
+        sm.restart('profile changed')
       }
       dirty = true
     }
@@ -573,7 +575,7 @@ async function readMachines() {
 }
 
 export async function renameMachine(key: string, label: string) {
-  if (!label) throw new HerdrError('bad_label', 'nom de machine vide')
+  if (!label) throw new HerdrError('bad_label', 'Empty machine name')
   if (key === LOCAL) {
     await fsp.mkdir(DATA_DIR, { recursive: true })
     await fsp.writeFile(LOCAL_LABEL_FILE, `${label}\n`, 'utf8')
@@ -585,7 +587,7 @@ export async function renameMachine(key: string, label: string) {
   const m = remotes.get(key)
   if (!m) throw new HerdrError('bad_machine', 'unknown machine')
   const r = await runFile(HERDR_BIN, ['machine', 'rename', m.profileId, '--label', label], 10000)
-  if (r.code !== 0) throw new HerdrError('machine_rename', lastLine(r.stderr) || 'renommage impossible')
+  if (r.code !== 0) throw new HerdrError('machine_rename', lastLine(r.stderr) || 'Rename failed')
   m.label = label
   for (const other of sessions.values()) if (other instanceof RemoteMachine && other.baseKey === key) other.label = label
   changed()

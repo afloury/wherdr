@@ -22,6 +22,7 @@ import { type MachineFs, localFs } from './fsx'
 import { searchFile } from './conversationSearch'
 import { hasTranscript, transcriptKind } from '../../shared/agentKind'
 import { type CommandTemplate, ompCommandTemplates } from './slash'
+import { fmt } from '../../shared/message'
 
 // Backward reading by windows until there are enough messages: Claude's
 // transcripts embed images in base64, a few screenshots
@@ -99,7 +100,7 @@ export function toolSummary(name: string, input: Json, home = ''): string {
     case 'WebFetch': return i.url || ''
     case 'WebSearch': return i.query || ''
     case 'Task': case 'Agent': return i.description || firstLine(i.prompt)
-    case 'TodoWrite': return `${(i.todos || []).length} tâches`
+    case 'TodoWrite': return fmt('{count} tasks', { count: (i.todos || []).length })
     case 'AskUserQuestion': return firstLine((i.questions && i.questions[0] && i.questions[0].question) || '')
     default: {
       const v = Object.values(i).find(x => typeof x === 'string')

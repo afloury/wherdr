@@ -24,11 +24,13 @@ export interface PushSub {
   sessions?: Record<string, string>
   quiet?: Quiet // mode silence de cet appareil
 }
+// Text in English, with the French version for devices subscribed in French
+// (the language is stored with the subscription; English by default).
 export interface PushPayload {
   title: string
-  titleEn?: string
+  titleFr?: string
   body: string
-  bodyEn?: string
+  bodyFr?: string
   tag: string
   url: string
   badge?: number
@@ -93,6 +95,13 @@ export async function writeGlobalQuiet(quiet: Quiet | null) {
 }
 
 // `force`: the test notification goes through despite quiet mode (explicit gesture).
+// Title of an agent notification ("laptop · Claude needs your input"), in both languages.
+export function agentNotificationTitle(kind: 'blocked' | 'done', who: string): { title: string, titleFr: string } {
+  return kind === 'blocked'
+    ? { title: `${who} needs your input`, titleFr: `${who} attend ta réponse` }
+    : { title: `${who} has finished`, titleFr: `${who} a terminé` }
+}
+
 export async function pushSend(payload: PushPayload, audience?: PushAudience, force = false): Promise<number> {
   if (!pushReady()) return 0
   const subs = await readSubs()
@@ -104,10 +113,10 @@ export async function pushSend(payload: PushPayload, audience?: PushAudience, fo
     if (!force && silenced(globalQuiet, sub.quiet)) continue
     if (typeof audience === 'function' ? !audience(sub.notifyScope, sub) : audience && !shouldNotify(sub.notifyScope, audience)) continue
     try {
-      const { titleEn, bodyEn, ...message } = payload
-      if (sub.lang === 'en') {
-        message.title = titleEn || message.title
-        message.body = bodyEn || message.body
+      const { titleFr, bodyFr, ...message } = payload
+      if (sub.lang === 'fr') {
+        message.title = titleFr || message.title
+        message.body = bodyFr || message.body
       }
       await webpush.sendNotification(sub, JSON.stringify(message), { TTL: 3600, urgency: 'high' })
       ok++

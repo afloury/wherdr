@@ -15,6 +15,7 @@ import { herdr } from './herdr'
 import { termSessions, type TermView } from './state'
 import { machineOfPane } from './machines'
 import { splitId } from '../../shared/ids'
+import { fmt } from '../../shared/message'
 
 export const clampInt = (v: unknown, lo: number, hi: number, dflt: number) => {
   const n = parseInt(String(v), 10)
@@ -41,8 +42,8 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
   }
   const machine = machineOfPane(pane)
   if (!machine || !machine.sock()) {
-    ws.send(JSON.stringify({ type: 'terminal.closed', reason: machine ? `${machine.label} injoignable` : 'unknown machine', code: machine ? 'unreachable' : 'unknown_machine', machine: machine?.label }))
-    ws.close(4503, 'machine injoignable')
+    ws.send(JSON.stringify({ type: 'terminal.closed', reason: machine ? fmt('{machine} is unreachable', { machine: machine.label }) : 'unknown machine', code: machine ? 'unreachable' : 'unknown_machine', machine: machine?.label }))
+    ws.close(4503, 'machine unreachable')
     return null
   }
   const cols = clampInt(url.searchParams.get('cols'), 10, 400, 80)

@@ -7,6 +7,7 @@
 //    machine from `herdr machine list`, letters, digits, "- _ ." only);
 //  - open / pause / resume <slug>, doctor --session.
 import type { ChatResponse } from './types'
+import { fmt } from './message'
 
 export const PROJECT_INPUTS: Record<string, string[]> = {
   new: ['name'], 'adopt-workspace': ['name'], open: ['slug'], pause: ['slug'], resume: ['slug'],
@@ -164,16 +165,14 @@ export function tickerRunning(status: string | null | undefined): boolean {
 // Write refused by a read-only file system (EROFS), as
 // herdr-projects reports it: "could not create <path>: Read-only file
 // system (os error 30)". A clear message instead, or null for another error.
-export function readOnlyMessage(error: string, o: { docker: boolean, lang?: 'fr' | 'en' }): string | null {
+// English, translated by the client (shared/message.ts).
+export function readOnlyMessage(error: string, o: { docker: boolean }): string | null {
   if (!/read-only file system|os error 30\b|EROFS/i.test(error)) return null
   const path = /(\/[^:\n]*?):\s*Read-only file system/i.exec(error)?.[1] || ''
-  const fr = o.lang === 'fr'
   if (o.docker) {
-    return fr
-      ? `wherdr tourne en Docker avec le HOME en lecture seule : herdr-projects ne peut pas écrire${path ? ` dans ${path}` : ''}. Montez son dossier de projets (~/.herdr-projects par défaut) en écriture dans docker-compose.yml (cf. README, « Herdr plugins »), puis relancez le conteneur.`
-      : `wherdr runs in Docker with your home folder read-only: herdr-projects cannot write${path ? ` to ${path}` : ''}. Mount its projects folder (~/.herdr-projects by default) read-write in docker-compose.yml (see README, “Herdr plugins”), then restart the container.`
+    return path
+      ? fmt('wherdr runs in Docker with your home folder read-only: herdr-projects cannot write to {path}. Mount its projects folder (~/.herdr-projects by default) read-write in docker-compose.yml (see README, “Herdr plugins”), then restart the container.', { path })
+      : 'wherdr runs in Docker with your home folder read-only: herdr-projects cannot write. Mount its projects folder (~/.herdr-projects by default) read-write in docker-compose.yml (see README, “Herdr plugins”), then restart the container.'
   }
-  return fr
-    ? `herdr-projects ne peut pas écrire${path ? ` dans ${path}` : ''} : système de fichiers en lecture seule.`
-    : `herdr-projects cannot write${path ? ` to ${path}` : ''}: read-only file system.`
+  return path ? fmt('herdr-projects cannot write to {path}: read-only file system.', { path }) : 'herdr-projects cannot write: read-only file system.'
 }
