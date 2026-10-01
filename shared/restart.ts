@@ -1,32 +1,32 @@
-// Redémarrer un agent dans son pane (mise à jour de Claude Code…) en gardant
-// sa conversation. Logique pure, partagée par le serveur et les tests :
-// - quelles options de lancement d'origine reprendre (argv du processus lu par
-//   `pane.process_info`) ;
-// - quelle commande de relance (`claude --resume <id>`, `codex resume <id>`…).
+// Restart an agent in its pane (Claude Code update…) while keeping
+// its conversation. Pure logic, shared by the server and the tests:
+// - which original launch options to carry over (process argv read by
+//   `pane.process_info`);
+// - which relaunch command (`claude --resume <id>`, `codex resume <id>`…).
 //
-// Vérifié avec Claude Code 2.1 : `claude --resume <id>` restaure le modèle,
-// mais ni l'effort ni le mode de permission (plan -> mode par défaut) : les
-// options d'origine sont donc rejouées. Une session sans aucun message n'a pas
-// de transcription et `--resume` échoue (« No conversation found ») : l'agent
-// repart alors neuf, avec ses options.
+// Checked with Claude Code 2.1: `claude --resume <id>` restores the model,
+// but neither the effort nor the permission mode (plan -> default mode): the
+// original options are therefore replayed. A session without any message has no
+// transcript and `--resume` fails ("No conversation found"): the agent
+// then starts fresh, with its options.
 
 export type RestartMode = 'resume' | 'continue' | 'fresh'
 export type RestartPhase = 'stopping' | 'starting' | 'failed'
 
 export interface RestartPlan {
-  // Arguments passés à `agent.start` (après l'exécutable).
+  // Arguments passed to `agent.start` (after the executable).
   args: string[]
   mode: RestartMode
-  // Options d'origine reprises telles quelles (affichées dans la confirmation).
+  // Original options carried over as is (shown in the confirmation).
   kept: string[]
-  // Options d'origine non reprises (inconnues ou propres au premier lancement).
+  // Original options not carried over (unknown or specific to the first launch).
   dropped: string[]
-  // Ligne de commande d'origine introuvable : relance avec les réglages par défaut.
+  // Original command line not found: relaunch with default settings.
   unknownArgs: boolean
 }
 
-// Nombre de valeurs d'une option : 1 = une valeur, '*' = une ou plusieurs
-// (jusqu'à l'option suivante), '?' = valeur facultative.
+// Number of values of an option: 1 = one value, '*' = one or more
+// (up to the next option), '?' = optional value.
 type Arity = 0 | 1 | '*' | '?'
 interface FlagSpec { keep: Record<string, Arity>, drop: Record<string, Arity> }
 
@@ -42,7 +42,7 @@ const CLAUDE: FlagSpec = {
     '--verbose': 0, '--ide': 0, '--chrome': 0, '--no-chrome': 0, '--strict-mcp-config': 0,
     '--bare': 0, '--brief': 0, '--disable-slash-commands': 0, '--safe-mode': 0, '--restricted': 0,
   },
-  // Choix de conversation, lancement unique ou déjà fait (worktree créé).
+  // Conversation choice, one-off launch or already done (worktree created).
   drop: {
     '-c': 0, '--continue': 0, '-r': '?', '--resume': '?', '--session-id': 1, '--fork-session': 0,
     '-w': '?', '--worktree': '?', '--tmux': 0, '--from-pr': '?', '--teleport': '?',
@@ -68,21 +68,21 @@ const SILENT = new Set(['-c', '--continue', '-r', '--resume', '--session-id', '-
 
 const SPECS: Record<string, FlagSpec> = { claude: CLAUDE, codex: CODEX }
 
-// Agents que wherdr sait relancer sur leur conversation.
+// Agents that wherdr can relaunch on their conversation.
 export const RESTARTABLE = new Set(Object.keys(SPECS))
 
 const base = (s: string) => s.replace(/^.*\//, '').replace(/\.(c?js|mjs)$/, '')
 
-// Options de la ligne de commande d'origine : celles à reprendre et celles
-// laissées de côté. Les arguments positionnels (message initial, id de
-// session, sous-commande `resume` de Codex) ne sont jamais repris.
-// Chaque option est un groupe [option, valeurs…].
+// Options of the original command line: those to carry over and those
+// left aside. Positional arguments (initial message, session
+// id, Codex `resume` subcommand) are never carried over.
+// Each option is a group [option, values…].
 export function launchOptions(kind: string, argv: string[]): { kept: string[][], dropped: string[][] } {
   const spec = SPECS[kind]
   const kept: string[][] = []
   const dropped: string[][] = []
   if (!spec) return { kept, dropped }
-  // L'exécutable peut être lancé par node (`node …/codex.js`) : on part de lui.
+  // The executable may be launched by node (`node …/codex.js`): we start from it.
   let i = argv.findIndex(a => base(a) === kind)
   i = i < 0 ? 1 : i + 1
   for (; i < argv.length; i++) {
@@ -94,11 +94,11 @@ export function launchOptions(kind: string, argv: string[]): { kept: string[][],
     const keep = flag in spec.keep
     const arity: Arity | undefined = keep ? spec.keep[flag] : spec.drop[flag]
     const out = [a]
-    // Choix de conversation : remplacé par la reprise, rien à signaler.
+    // Conversation choice: replaced by the resume, nothing to report.
     if (keep) kept.push(out)
     else if (!SILENT.has(flag)) dropped.push(out)
-    // Option inconnue : on ne sait pas si elle prend une valeur, on l'écarte
-    // avec la valeur éventuelle qui la suit.
+    // Unknown option: we do not know whether it takes a value, we drop it
+    // with the value that may follow it.
     if (arity === undefined) {
       if (eq < 0 && argv[i + 1] !== undefined && !argv[i + 1]!.startsWith('-')) out.push(argv[++i]!)
       continue
@@ -108,7 +108,7 @@ export function launchOptions(kind: string, argv: string[]): { kept: string[][],
       if (argv[i + 1] !== undefined) out.push(argv[++i]!)
       continue
     }
-    // Valeur facultative ou multiple : tout ce qui ne ressemble pas à une option.
+    // Optional or multiple value: anything that does not look like an option.
     while (argv[i + 1] !== undefined && !argv[i + 1]!.startsWith('-')) {
       out.push(argv[++i]!)
       if (arity === '?') break
@@ -117,12 +117,12 @@ export function launchOptions(kind: string, argv: string[]): { kept: string[][],
   return { kept, dropped }
 }
 
-// Commande de relance. `session` : conversation en cours dont la transcription
-// existe ; `hadSession` : l'agent avait un id de session (sans transcription :
-// conversation vide, rien à reprendre).
-// `current` : réglages en service lus à l'écran de Claude (effort, mode de
-// permission), qui l'emportent sur la ligne de commande : `--resume` ne les
-// restaure pas, et ils ont pu changer en cours de session (/effort, Maj+Tab).
+// Relaunch command. `session`: current conversation whose transcript
+// exists; `hadSession`: the agent had a session id (without a transcript:
+// empty conversation, nothing to resume).
+// `current`: settings in effect read from Claude's screen (effort, permission
+// mode), which win over the command line: `--resume` does not restore
+// them, and they may have changed during the session (/effort, Shift+Tab).
 export interface CurrentSettings { effort?: string | null, permissionMode?: string | null }
 const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
 export function planRestart(o: { kind: string, argv: string[] | null, session: string | null, hadSession: boolean, current?: CurrentSettings }): RestartPlan {
@@ -132,8 +132,8 @@ export function planRestart(o: { kind: string, argv: string[] | null, session: s
   if (o.kind === 'claude') {
     const cur = o.current || {}
     const without = (...flags: string[]) => { groups = groups.filter(g => !flags.includes(g[0]!.split('=')[0]!)) }
-    // `--resume` restaure le dernier modèle de la conversation (éventuellement
-    // changé en cours de session) : l'option d'origine l'écraserait.
+    // `--resume` restores the conversation's last model (possibly
+    // changed during the session): the original option would override it.
     if (mode === 'resume') without('--model')
     const effort = String(cur.effort || '').toLowerCase()
     if (EFFORTS.has(effort)) {
@@ -156,9 +156,9 @@ export function planRestart(o: { kind: string, argv: string[] | null, session: s
   return { args, mode, kept, dropped, unknownArgs: !o.argv }
 }
 
-// Mode de permission affiché sous le champ de saisie de Claude
-// (« ⏸ plan mode on (shift+tab to cycle) »). Champ visible sans mention :
-// mode par défaut. Champ introuvable (menu ouvert…) : null, inconnu.
+// Permission mode shown below Claude's input field
+// ("⏸ plan mode on (shift+tab to cycle)"). Field visible without a mention:
+// default mode. Field not found (menu open…): null, unknown.
 const FOOTER_MODES: [RegExp, string][] = [
   [/\bplan mode on\b/i, 'plan'], [/\baccept edits on\b/i, 'acceptEdits'],
   [/\bauto mode on\b/i, 'auto'], [/\bbypass permissions on\b/i, 'bypassPermissions'],
@@ -168,7 +168,7 @@ export function claudeFooterMode(text: string | null | undefined): string | null
   const lines = String(text || '').split('\n')
   let rule = -1
   for (let i = lines.length - 1; i >= 0 && rule < 0; i--) if (/^\s*─{20,}\s*$/.test(lines[i]!)) rule = i
-  // Le cadre du bas du champ, juste sous sa ligne « ❯ » (pas un dialogue).
+  // The bottom border of the field, just below its "❯" line (not a dialog).
   if (rule < 1 || !lines.slice(Math.max(0, rule - 6), rule).some(l => /^\s*❯/.test(l))) return null
   for (const l of lines.slice(rule + 1)) {
     for (const [re, mode] of FOOTER_MODES) if (re.test(l)) return mode
@@ -176,15 +176,15 @@ export function claudeFooterMode(text: string | null | undefined): string | null
   return 'default'
 }
 
-// Agent en plein travail ou qui attend une réponse : le redémarrer interrompt
-// ce qu'il fait, on demande confirmation.
+// Agent busy working or waiting for an answer: restarting it interrupts
+// what it is doing, so we ask for confirmation.
 export function restartNeedsWarning(status: string | null | undefined): boolean {
   return status === 'working' || status === 'blocked'
 }
 
 export type RestartPreview = Pick<RestartPlan, 'mode' | 'kept' | 'dropped' | 'unknownArgs'>
-// Ce que la confirmation doit dire. Rien à signaler (agent au repos, options
-// retrouvées, conversation reprise) : redémarrage direct, sans modale.
+// What the confirmation must say. Nothing to report (agent idle, options
+// found, conversation resumed): direct restart, no modal.
 export function restartNotice(status: string | null | undefined, pv: RestartPreview) {
   const busy = restartNeedsWarning(status)
   const defaults = pv.unknownArgs

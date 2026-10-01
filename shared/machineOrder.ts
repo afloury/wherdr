@@ -1,6 +1,6 @@
-// L'ordre concerne seulement la liste de l'accueil. Les sessions d'une même
-// machine suivent leur machine d'origine ; les nouvelles arrivent après celles
-// que l'utilisateur a placées.
+// The order only applies to the home list. Sessions of the same
+// machine follow their original machine; new ones come after those
+// the user has placed.
 export function sortMachines<T extends { key: string, baseKey?: string }>(machines: T[], order: string[]): T[] {
   const rank = new Map(order.map((key, index) => [key, index]))
   return machines.map((machine, index) => ({ machine, index }))
@@ -16,8 +16,8 @@ export function moveMachine(order: string[], key: string, before: string | null)
   return next
 }
 
-// La machine locale a pour clé la chaîne vide : toujours comparer à null,
-// jamais tester la clé comme un booléen.
+// The local machine's key is the empty string: always compare with null,
+// never test the key as a boolean.
 export function shiftMachineKey(keys: string[], key: string, direction: -1 | 1): string[] | null {
   const at = keys.indexOf(key)
   const other = at + direction
@@ -34,8 +34,8 @@ export function dropMachineKey(keys: string[], from: string | null, target: stri
   return next.every((k, i) => k === keys[i]) ? null : next
 }
 
-// Ordre lu sur disque : chaînes connues, sans doublon. '' (machine locale) est
-// une clé valide comme les autres.
+// Order read from disk: known strings, no duplicates. '' (local machine) is
+// a valid key like the others.
 export function cleanMachineOrder(value: unknown, known: string[]): string[] {
   if (!Array.isArray(value)) return []
   const ok = new Set(known)

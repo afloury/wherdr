@@ -1,11 +1,11 @@
-// Disposition d'un onglet Herdr (session.snapshot → `layouts[]`) : rectangles des
-// panes en cellules du client attaché (120×40 sans client), à reproduire en
-// pourcentages quelle que soit la taille de l'écran.
+// Layout of a Herdr tab (session.snapshot → `layouts[]`): pane rectangles
+// in cells of the attached client (120×40 without a client), to reproduce as
+// percentages whatever the screen size.
 
 export interface CellRect { x: number, y: number, width: number, height: number }
-// Split de l'arbre de Herdr : `path` = chemin depuis la racine ('' pour elle,
-// '0' premier enfant, '1' second…), tiré de son id (`split_2_11`) ; `right` =
-// côte à côte (premier à gauche), `down` = empilés (premier en haut).
+// Split of Herdr's tree: `path` = path from the root ('' for the root,
+// '0' first child, '1' second…), taken from its id (`split_2_11`); `right` =
+// side by side (first on the left), `down` = stacked (first on top).
 export interface LayoutSplit { path: string, direction: 'right' | 'down', ratio: number, rect: CellRect }
 export interface TabLayout {
   tab: string
@@ -14,10 +14,10 @@ export interface TabLayout {
   focused: string | null
   area: CellRect
   panes: { pane: string, rect: CellRect }[]
-  // Absent : disposition reconstituée ou ancien état (ni glisser ni redimensionner).
+  // Missing: rebuilt layout or old state (no dragging or resizing).
   splits?: LayoutSplit[]
 }
-// Position d'un pane en pourcentage de l'onglet (0 à 100).
+// Position of a pane as a percentage of the tab (0 to 100).
 export interface PaneBox { pane: string, left: number, top: number, width: number, height: number }
 
 const pct = (v: number, total: number) => (total > 0 ? Math.round((v / total) * 10000) / 100 : 0)
@@ -33,15 +33,15 @@ export function paneBoxes(layout: TabLayout): PaneBox[] {
   }))
 }
 
-// Ordre de lecture : celui de Herdr, qui parcourt l'arbre des splits (moitié
-// gauche avant la droite, haut avant bas) : la colonne de gauche d'abord quand
-// elle couvre plusieurs rangées, rangée par rangée pour une grille coupée en
-// rangées. Sert au balayage sur téléphone.
+// Reading order: Herdr's, which walks the split tree (left half
+// before right, top before bottom): the left column first when
+// it spans several rows, row by row for a grid split into
+// rows. Used for swiping on the phone.
 export function readingOrder(layout: TabLayout) {
   return layout.panes
 }
 
-// Pane voisin dans l'ordre de lecture (balayage gauche / droite), sans boucler.
+// Neighbouring pane in reading order (swipe left / right), without wrapping.
 export function neighborPane(layout: TabLayout, pane: string, step: 1 | -1): string | null {
   const order = readingOrder(layout).map(p => p.pane)
   const i = order.indexOf(pane)
@@ -72,16 +72,16 @@ export function reduceLayout(raw: any, id: (x: string) => string = x => x): TabL
   }
 }
 
-// `split_0_root` -> '', `split_2_11` -> '11' (Herdr 0.9.1 : rang du split
-// dans le parcours de l'arbre, puis son chemin) ; null si inconnu.
+// `split_0_root` -> '', `split_2_11` -> '11' (Herdr 0.9.1: rank of the split
+// in the tree walk, then its path); null if unknown.
 export function splitPath(id: unknown): string | null {
   if (id === 'split_0_root') return ''
   const m = /^split_\d+_([01]+)$/.exec(String(id ?? ''))
   return m ? m[1]! : null
 }
 
-// Disposition à afficher pour un onglet : celle de Herdr, sinon ses panes
-// empilés à parts égales (état sans `layouts`, ancien état gardé hors ligne).
+// Layout to show for a tab: Herdr's, otherwise its panes
+// stacked in equal parts (state without `layouts`, old state kept offline).
 export function tabLayout(tab: { id: string, workspace: string, layout: TabLayout | null }, panes: string[]): TabLayout {
   if (tab.layout && tab.layout.panes.length) return tab.layout
   const n = Math.max(1, panes.length)
@@ -96,9 +96,9 @@ export function tabLayout(tab: { id: string, workspace: string, layout: TabLayou
   }
 }
 
-// Aperçu d'une division pas encore faite (feuille « Nouveau pane ») : le pane
-// coupé en deux, à parts égales comme le fait Herdr par défaut, le nouveau
-// (`newId`) à droite ou en bas. Disposition inchangée si le pane n'y est pas.
+// Preview of a split not made yet ("New pane" sheet): the pane
+// cut in two, in equal parts as Herdr does by default, the new one
+// (`newId`) on the right or at the bottom. Layout unchanged if the pane is not in it.
 export function splitPreview(layout: TabLayout, pane: string, direction: 'right' | 'down', newId: string): TabLayout {
   const i = layout.panes.findIndex(p => p.pane === pane)
   if (i < 0) return layout
@@ -111,10 +111,10 @@ export function splitPreview(layout: TabLayout, pane: string, direction: 'right'
   return { ...layout, zoomed: false, panes }
 }
 
-// Voisin géométrique d'un pane dans une direction (échanger avec lui, comme
-// Ctrl+B puis Shift+H/J/K/L dans Herdr) : un pane collé à ce bord, celui qui le
-// longe le plus (à égalité, le plus haut / le plus à gauche). Les rectangles
-// de Herdr se touchent sans espace. Null au bord de l'onglet.
+// Geometric neighbour of a pane in a direction (swap with it, like
+// Ctrl+B then Shift+H/J/K/L in Herdr): a pane touching that edge, the one that
+// runs along it the most (on a tie, the topmost / leftmost). Herdr's rectangles
+// touch without a gap. Null at the tab edge.
 export type PaneDirection = 'left' | 'right' | 'up' | 'down'
 export const PANE_DIRECTIONS: PaneDirection[] = ['left', 'right', 'up', 'down']
 
@@ -138,26 +138,26 @@ export function directionNeighbor(layout: TabLayout, pane: string, dir: PaneDire
   return best?.pane ?? null
 }
 
-// Directions où un échange est possible : pas dans un onglet agrandi (Herdr
-// ne montre alors qu'un pane).
+// Directions where a swap is possible: none in a zoomed tab (Herdr
+// then shows only one pane).
 export function swapDirections(layout: TabLayout, pane: string): PaneDirection[] {
   if (layout.zoomed) return []
   return PANE_DIRECTIONS.filter(d => directionNeighbor(layout, pane, d))
 }
 
-// Disposition après l'échange de deux panes (affichée avant la confirmation de Herdr).
+// Layout after swapping two panes (shown before Herdr confirms).
 export function swapInLayout(layout: TabLayout, a: string, b: string): TabLayout {
   const ra = layout.panes.find(p => p.pane === a)?.rect
   const rb = layout.panes.find(p => p.pane === b)?.rect
   if (!ra || !rb || a === b) return layout
-  // Le pane actif de Herdr reste le même (wherdr le rétablit après l'échange).
+  // Herdr's active pane stays the same (wherdr restores it after the swap).
   return { ...layout, panes: layout.panes.map(p => (p.pane === a ? { pane: b, rect: ra } : p.pane === b ? { pane: a, rect: rb } : p)) }
 }
 
-// ---------- Arbre des splits : glisser-déposer et redimensionnement ----------
-// L'arbre est reconstitué depuis `splits` (chemins) et les rectangles des
-// panes ; on en recalcule les rectangles comme Herdr (premier enfant =
-// arrondi de taille × ratio) pour montrer le résultat avant sa confirmation.
+// ---------- Split tree: drag and drop and resizing ----------
+// The tree is rebuilt from `splits` (paths) and the pane rectangles;
+// we recompute the rectangles like Herdr does (first child =
+// rounded size × ratio) to show the result before it is confirmed.
 export type LayoutNode = { pane: string } | { direction: 'right' | 'down', ratio: number, first: LayoutNode, second: LayoutNode }
 
 export function layoutTree(layout: TabLayout): LayoutNode | null {
@@ -176,7 +176,7 @@ export function layoutTree(layout: TabLayout): LayoutNode | null {
   return build('', layout.panes)
 }
 
-// Rectangles des panes et des splits d'un arbre posé dans `area`.
+// Rectangles of the panes and splits of a tree laid out in `area`.
 export function treeLayout(base: TabLayout, tree: LayoutNode): TabLayout {
   const panes: TabLayout['panes'] = []
   const splits: LayoutSplit[] = []
@@ -195,12 +195,12 @@ export function treeLayout(base: TabLayout, tree: LayoutNode): TabLayout {
   return { ...base, panes, splits }
 }
 
-// Forme de l'arbre (sans les ratios) : pour savoir si un dépôt change quelque chose.
+// Shape of the tree (without ratios): to know whether a drop changes anything.
 const shape = (n: LayoutNode): string => ('pane' in n ? n.pane : `${n.direction}(${shape(n.first)},${shape(n.second)})`)
 
-// Zone de dépôt sous le pointeur, sur la case d'un autre pane : centre =
-// échanger, bord le plus proche = placer à côté. `edge` : largeur de la
-// bande des bords, en fraction de la case.
+// Drop zone under the pointer, on another pane's cell: center =
+// swap, nearest edge = place beside. `edge`: width of the
+// edge band, as a fraction of the cell.
 export type DropSide = 'center' | PaneDirection
 export function dropZone(box: { left: number, top: number, width: number, height: number }, x: number, y: number, edge = 0.28): DropSide | null {
   if (box.width <= 0 || box.height <= 0) return null
@@ -212,9 +212,9 @@ export function dropZone(box: { left: number, top: number, width: number, height
   return dist < edge ? side : 'center'
 }
 
-// Disposition après avoir déposé `pane` sur `target` : échange (centre) ou
-// pane retiré de sa place puis posé à côté de la cible, moitié-moitié comme
-// Herdr. Null si rien ne change, dans un onglet agrandi ou sans arbre fiable.
+// Layout after dropping `pane` on `target`: swap (center) or
+// pane removed from its place then put beside the target, half and half like
+// Herdr. Null if nothing changes, in a zoomed tab or without a reliable tree.
 export function dropPreview(layout: TabLayout, pane: string, target: string, side: DropSide): TabLayout | null {
   if (layout.zoomed || pane === target) return null
   const ids = layout.panes.map(p => p.pane)
@@ -244,9 +244,9 @@ export function dropPreview(layout: TabLayout, pane: string, target: string, sid
   return treeLayout(layout, next)
 }
 
-// Traits de séparation déplaçables, en pourcentages de l'onglet : `at` =
-// position du trait (x pour `right`, y pour `down`), `from`/`span` = son
-// étendue sur l'autre axe ; `start`/`size` = le split sur l'axe du trait.
+// Movable dividers, as percentages of the tab: `at` =
+// position of the divider (x for `right`, y for `down`), `from`/`span` = its
+// extent on the other axis; `start`/`size` = the split on the divider's axis.
 export interface Divider { path: string, direction: 'right' | 'down', ratio: number, at: number, from: number, span: number, start: number, size: number }
 export function dividers(layout: TabLayout): Divider[] {
   if (layout.zoomed || !layout.splits || !layoutTree(layout)) return []
@@ -263,8 +263,8 @@ export function dividers(layout: TabLayout): Divider[] {
   })
 }
 
-// Ratio d'un split pour un trait amené à `at` (même repère que Divider),
-// borné pour laisser au moins `minCells` cellules (et 5 %) de chaque côté.
+// Ratio of a split for a divider moved to `at` (same frame as Divider),
+// clamped to leave at least `minCells` cells (and 5 %) on each side.
 export function ratioAt(layout: TabLayout, d: Divider, at: number, minCells = 8): number {
   const cells = d.size / 100 * (d.direction === 'right' ? layout.area.width : layout.area.height)
   const min = Math.min(0.45, Math.max(0.05, cells > 0 ? minCells / cells : 0.5))
@@ -272,7 +272,7 @@ export function ratioAt(layout: TabLayout, d: Divider, at: number, minCells = 8)
   return Math.round(Math.min(1 - min, Math.max(min, r)) * 1000) / 1000
 }
 
-// Disposition avec un split redimensionné (aperçu pendant le glissé).
+// Layout with a resized split (preview while dragging).
 export function resizePreview(layout: TabLayout, path: string, ratio: number): TabLayout {
   const tree = layoutTree(layout)
   if (!tree) return layout

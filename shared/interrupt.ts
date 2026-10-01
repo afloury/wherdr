@@ -1,17 +1,17 @@
-// Lecture de l'écran de Claude Code pour le bouton Stop : tâches de fond
-// (shells lancés en arrière-plan, sous-agents) qu'un Échap n'arrête pas, et
-// panneau de gestion ouvert par ↓ (« Background » / liste des agents).
+// Reading Claude Code's screen for the Stop button: background tasks
+// (shells started in the background, subagents) that Escape does not stop, and
+// the management panel opened by ↓ ("Background" / agent list).
 
 export interface BackgroundScreen {
-  // Shells de fond signalés dans le pied (« · 2 shells »).
+  // Background shells reported in the footer ("· 2 shells").
   shells: number
-  // Sous-agents de fond (« Waiting for 1 background agent », lignes ◯ du panneau).
+  // Background subagents ("Waiting for 1 background agent", ◯ lines of the panel).
   agents: number
-  // Panneau ouvert : liste des shells, détail d'un shell, liste des agents.
+  // Panel open: shell list, shell detail, agent list.
   panel: 'shells' | 'shell' | 'agents' | null
-  // La ligne sélectionnée du panneau peut être arrêtée (« x to stop »).
+  // The selected line of the panel can be stopped ("x to stop").
   canStop: boolean
-  // Panneau des agents : rang de la ligne sélectionnée et nombre de lignes.
+  // Agent panel: index of the selected line and number of lines.
   selected: number
   rows: number
 }
@@ -21,7 +21,7 @@ export function parseBackground(text: string | null | undefined): BackgroundScre
   const all = lines.join('\n')
   const tail = lines.filter(l => l.trim()).slice(-8).join('\n')
   const shellsM = /·\s*(\d+)\s+shells?\b/.exec(tail) || /·\s*(\d+)\s+shells?\s+still running/.exec(all)
-  // Bas de l'écran seulement : plus haut, ce sont des lignes d'un tour passé.
+  // Bottom of the screen only: further up are lines from a past turn.
   const waitM = /Waiting for (\d+) background agents?/.exec(tail)
   const agentRows = tail.split('\n').filter(l => /^\s*(❯\s*)?[◯●]\s+\S/.test(l) && !/^\s*(❯\s*)?●\s+main\s*$/.test(l) && /\s{3,}\S/.test(l.trim()))
   const listIdx = lines.findIndex(l => /^\s*(❯\s*)?●\s+main\s*$/.test(l))
@@ -40,19 +40,19 @@ export function parseBackground(text: string | null | undefined): BackgroundScre
     shells: shellsM ? Number(shellsM[1]) : 0,
     agents: Math.max(waitM ? Number(waitM[1]) : 0, agentRows.filter(l => /◯/.test(l)).length),
     panel,
-    // Détail d'un shell : la légende peut sortir de l'écran, « x » l'arrête.
+    // Shell detail: the legend may scroll off screen, "x" stops it.
     canStop: /x to stop/.test(tail) || (panel === 'shell' && /Status:\s+running/.test(all)),
     selected,
     rows,
   }
 }
 
-// Prochaine touche pour arrêter les tâches de fond, ou null quand c'est fini.
-// `opened` : nombre de fois où l'on a déjà tenté d'ouvrir le panneau.
+// Next key to stop the background tasks, or null when done.
+// `opened`: number of times we already tried to open the panel.
 export function nextBackgroundKey(s: BackgroundScreen, opened: number): 'x' | 'down' | 'enter' | 'esc' | null {
   if (s.canStop) return 'x'
   if (s.panel === 'agents') {
-    // Descendre jusqu'à une ligne encore en cours ; en bas de liste, refermer.
+    // Move down to a line still running; at the bottom of the list, close.
     if (s.selected < s.rows - 1) return 'down'
     return 'esc'
   }

@@ -2,20 +2,20 @@ import type { Pane } from './types'
 import { isProjectThread } from './paneTitle'
 import { urgency, type RepoRoot } from './spaces'
 
-// Projets herdr-projects : un coordinateur (cwd ~/.herdr-projects/<slug>) et ses
-// threads (pane `hp-<slug>-t-NNNN`, worktree du même nom). Le projet vient
-// d'abord des jetons que le plugin pose sur ses panes (`hp_project`, sinon
-// `hp_group`, repris dans Pane.project par le serveur), puis du nom ou du dossier.
+// herdr-projects projects: a coordinator (cwd ~/.herdr-projects/<slug>) and its
+// threads (pane `hp-<slug>-t-NNNN`, worktree of the same name). The project comes
+// first from the tokens the plugin puts on its panes (`hp_project`, otherwise
+// `hp_group`, copied into Pane.project by the server), then from the name or folder.
 
-// Nom de projet utilisable : un slug. herdr-projects met dans `hp_group` une
-// valeur technique commençant par « ~ » (« ~!0003 ») pour un pane détaché de son
-// projet (thread clôturé resté ouvert) : on l'ignore et on retombe sur le nom ou
-// le dossier du pane.
+// Usable project name: a slug. herdr-projects puts in `hp_group` a
+// technical value starting with "~" ("~!0003") for a pane detached from its
+// project (closed thread left open): we ignore it and fall back on the pane's
+// name or folder.
 const SLUG = /^[a-z0-9][a-z0-9._-]*$/i
 const validProject = (v: unknown): string | undefined =>
   typeof v === 'string' && SLUG.test(v.trim()) ? v.trim() : undefined
 
-// Jetons du pane dans le snapshot de Herdr (`tokens: { hp_project, hp_rank }`).
+// Pane tokens in Herdr's snapshot (`tokens: { hp_project, hp_rank }`).
 export function projectToken(tokens: unknown): string | undefined {
   const t = tokens && typeof tokens === 'object' ? tokens as Record<string, unknown> : {}
   return validProject(t.hp_project) || validProject(t.hp_group)
@@ -37,7 +37,7 @@ export function projectOf(p: ProjectPane): string | null {
   return THREAD_DIR.exec(cwd)?.[1] || PROJECT_DIR.exec(cwd)?.[1] || null
 }
 
-// Numéro du thread (t-0018 -> 18), pour un ordre stable ; null : coordinateur.
+// Thread number (t-0018 -> 18), for a stable order; null: coordinator.
 export function threadNumber(p: ProjectPane): number | null {
   if (!isProjectThread(p)) return null
   const m = (p.name && THREAD.exec(p.name)) || THREAD_DIR.exec(norm(p.cwd)) || /\/threads\/t-(\d{4,})/.exec(norm(p.cwd))
@@ -48,13 +48,13 @@ export interface ProjectGroup<P> {
   key: string // slug, en minuscules
   name: string
   coordinator: P | null
-  panes: P[] // coordinateur d'abord, puis les threads
+  panes: P[] // coordinator first, then the threads
   blocked: number
   working: number
 }
 
-// Agents regroupés par projet (ordre alphabétique des projets) ; les autres
-// gardent leur ordre d'origine.
+// Agents grouped by project (alphabetical order of projects); the others
+// keep their original order.
 export function groupByProject<P extends ProjectPane & Pick<Pane, 'status'>>(list: P[]): { projects: ProjectGroup<P>[], others: P[] } {
   const byKey = new Map<string, { name: string, coord: P[], threads: P[] }>()
   const others: P[] = []
@@ -88,15 +88,15 @@ export function groupByProject<P extends ProjectPane & Pick<Pane, 'status'>>(lis
   return { projects, others }
 }
 
-// Coordinateur d'un projet : un agent rattaché à un projet sans être un de ses
-// threads (le serveur vérifie en plus que son dossier est celui du projet).
+// Coordinator of a project: an agent attached to a project without being one of its
+// threads (the server also checks that its folder is the project's).
 export function isCoordinator(p: ProjectPane & Pick<Pane, 'agent'>): boolean {
   return Boolean(p.agent && projectOf(p) && !isProjectThread(p))
 }
 
-// Coordinateur d'un projet sur une autre machine (les threads restent sous la
-// leur) : le bloc projet de cette machine dit d'où il est coordonné et y mène.
-// `all` : les agents de toutes les machines ; `machine` : celle du bloc.
+// Coordinator of a project on another machine (threads stay under
+// their own): this machine's project block says where it is coordinated from and links there.
+// `all`: agents of all machines; `machine`: the block's machine.
 export function remoteCoordinator<P extends ProjectPane & Pick<Pane, 'agent'> & Partial<Pick<Pane, 'machine'>>>(
   group: Pick<ProjectGroup<P>, 'key' | 'coordinator'>, all: P[], machine: string,
 ): P | null {
@@ -114,8 +114,8 @@ export interface ProjectRepo<P> {
   working: number
 }
 
-// Le dépôt d'un thread vient d'abord du workspace rattaché au shell racine.
-// Sans shell visible, le chemin du worktree donne encore un groupe repliable.
+// A thread's repository comes first from the workspace attached to the root shell.
+// Without a visible shell, the worktree path still gives a collapsible group.
 export function projectSections<P extends ProjectPane & Pick<Pane, 'workspace' | 'agent' | 'status'>>(
   group: ProjectGroup<P>, roots: RepoRoot[],
 ): { coordinator: P | null, repos: ProjectRepo<P>[], others: P[] } {

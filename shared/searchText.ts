@@ -1,11 +1,11 @@
-// Texte de la recherche globale, partagé par le serveur (extraits) et l'app
-// (surlignage) : repli des accents, position d'une occurrence, markdown retiré
-// et extrait coupé sur des limites de mots.
+// Global search text, shared by the server (excerpts) and the app
+// (highlighting): accent folding, position of a match, markdown removed
+// and excerpt cut on word boundaries.
 
 export const foldSearch = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase()
 
-// Début et fin (positions dans `text`) de la première occurrence de `query`,
-// accents et casse ignorés, même quand un caractère se décompose en NFD.
+// Start and end (positions in `text`) of the first match of `query`,
+// ignoring accents and case, even when a character decomposes in NFD.
 export function matchRange(text: string, query: string): [number, number] | null {
   const needle = foldSearch(query)
   if (!needle) return null
@@ -28,9 +28,9 @@ export function matchAt(text: string, query: string): number {
   return range ? range[0] : -1
 }
 
-// Markdown -> texte lisible sur une ligne : gras (**), italique, code, liens,
-// titres, listes, citations et tableaux retirés, espaces resserrés. Le gras
-// « __x__ » est laissé : il abîmerait __init__.py, bien plus fréquent ici.
+// Markdown -> readable one-line text: bold (**), italics, code, links,
+// headings, lists, quotes and tables removed, spaces collapsed. The bold
+// "__x__" is left alone: it would damage __init__.py, far more common here.
 export function stripMarkdown(md: string): string {
   return md
     .replace(/^[ \t]*(`{3,}|~{3,}).*$/gm, '')
@@ -48,18 +48,18 @@ export function stripMarkdown(md: string): string {
     .replace(/~~(?=\S)([^\n]*?\S)~~/g, '$1')
     .replace(/(^|[^\w*])\*(?=\S)([^*\n]*?\S)\*(?![\w*])/g, '$1$2')
     .replace(/(^|[^\w])_(?=\S)([^_\n]*?\S)_(?!\w)/g, '$1$2')
-    // Restes d'un bout de markdown coupé (« **Affich », backtick seul).
+    // Leftovers of a cut piece of markdown ("**Displ", lone backtick).
     .replace(/\*\*|`/g, '')
     .replace(/\s+/g, ' ')
     .trim()
 }
 
-// Extrait d'environ `width` caractères autour de l'occurrence, sans markdown,
-// coupé entre deux mots (« …» aux bouts coupés). Un mot plus long que
-// `slack` caractères est coupé net plutôt que de trop décaler l'extrait.
+// Excerpt of about `width` characters around the match, without markdown,
+// cut between two words ("…" at cut ends). A word longer than
+// `slack` characters is cut sharply rather than shifting the excerpt too much.
 export function excerpt(text: string, at: number, width = 120, query = '', slack = 24) {
-  // Fenêtre large autour de l'occurrence, nettoyée, puis occurrence retrouvée
-  // dans le texte nettoyé (le markdown décale les positions).
+  // Wide window around the match, cleaned, then the match found again
+  // in the cleaned text (markdown shifts the positions).
   const from = Math.max(0, at - width * 2)
   const to = Math.min(text.length, at + width * 3)
   const clean = stripMarkdown(text.slice(from, to))
@@ -67,7 +67,7 @@ export function excerpt(text: string, at: number, width = 120, query = '', slack
   const cutTail = to < text.length
   let pos = query ? matchAt(clean, query) : -1
   if (pos < 0) {
-    // Occurrence dans une partie retirée (adresse d'un lien…) : même proportion.
+    // Match in a removed part (link address…): same proportion.
     const ratio = to > from ? (at - from) / (to - from) : 0
     pos = Math.round(clean.length * ratio)
   }
@@ -76,7 +76,7 @@ export function excerpt(text: string, at: number, width = 120, query = '', slack
   let end = Math.min(clean.length, Math.max(start + width, pos + len))
   if (end - start > width && end === clean.length) start = Math.max(0, Math.min(start, end - width))
   if (start > 0 || cutHead) {
-    // Recule au début du mot, ou avance au mot suivant s'il est trop loin.
+    // Back to the start of the word, or forward to the next word if it is too far.
     const back = clean.lastIndexOf(' ', start)
     if (back >= 0 && start - back <= slack) start = back + 1
     else {
@@ -93,12 +93,12 @@ export function excerpt(text: string, at: number, width = 120, query = '', slack
     }
   }
   const body = clean.slice(start, end).replace(/[\s,;:·–—-]+$/, '').replace(/^[\s,;:·–—-]+/, '')
-  // Phrase finie : pas de points de suspension collés au point.
+  // Finished sentence: no ellipsis stuck to the period.
   const more = (end < clean.length || cutTail) && !/[.!?…]$/.test(body)
   return `${start > 0 || cutHead ? '…' : ''}${body}${more ? '…' : ''}`
 }
 
-// Morceaux d'un extrait pour l'affichage, l'occurrence marquée.
+// Pieces of an excerpt for display, with the match marked.
 export function highlightParts(text: string, query: string): { text: string, hit: boolean }[] {
   const range = query.trim() ? matchRange(text, query.trim()) : null
   if (!range) return [{ text, hit: false }]

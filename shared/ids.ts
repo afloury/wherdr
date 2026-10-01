@@ -1,11 +1,11 @@
-// Identifiants multi-machines. Les IDs de Herdr (w1, w1:p2, w1:t1…) ne sont
-// uniques que sur un serveur : ceux d'une machine distante reçoivent un préfixe
-// « <machine>~ » (8 premiers caractères hexadécimaux de son profil Herdr).
-// La machine locale n'a pas de préfixe : ses IDs restent ceux d'avant
-// (les liens des notifications déjà envoyées, /#/a/w1:p1, restent valables).
+// Multi-machine identifiers. Herdr IDs (w1, w1:p2, w1:t1…) are only
+// unique on one server: those of a remote machine get a
+// "<machine>~" prefix (first 8 hex characters of its Herdr profile).
+// The local machine has no prefix: its IDs stay the same as before
+// (links in notifications already sent, /#/a/w1:p1, stay valid).
 
 export const LOCAL = ''
-// Clé courte d'une machine : les 8 premiers caractères de l'ID de profil Herdr.
+// Short key of a machine: the first 8 characters of the Herdr profile ID.
 export const MACHINE_KEY_RE = /^[0-9a-f]{4,32}$/
 export const SEP = '~'
 // Pane : w1:p1 (local) ou f27df2ea~w1:p1 (distant).
@@ -24,8 +24,8 @@ export const joinId = (machine: string, local: string) => (machine ? `${machine}
 
 export const machineOf = (id: string | null | undefined) => splitId(String(id || '')).machine
 
-// Paramètres d'un appel Herdr qui désignent un objet d'une machine : le routage
-// se fait sur le premier trouvé, et les IDs sont rendus locaux.
+// Parameters of a Herdr call that designate an object of a machine: routing
+// uses the first one found, and the IDs are made local.
 const ROUTED = ['pane_id', 'target', 'workspace_id', 'tab_id'] as const
 
 export function routeParams(params: Record<string, unknown>): { machine: string | null, params: Record<string, unknown> } {
@@ -36,18 +36,18 @@ export function routeParams(params: Record<string, unknown>): { machine: string 
     if (typeof v !== 'string') continue
     const s = splitId(v)
     if (machine === null) machine = s.machine
-    else if (machine !== s.machine) throw new Error(`IDs de machines différentes : ${k}`)
+    else if (machine !== s.machine) throw new Error(`IDs from different machines: ${k}`)
     out[k] = s.local
   }
   return { machine, params: out }
 }
 
-// Profils de `herdr machine list --json` -> machines distantes activées.
+// Profiles from `herdr machine list --json` -> enabled remote machines.
 export interface MachineProfile { key: string, id: string, label: string, target: string, session: string }
 
-// Hôte d'une cible SSH (« user@hote:port », « [::1]:22 ») : minuscules, sans
-// utilisateur ni port ni point final ; premier label pour un nom (host-a ==
-// host-a.example.ts.net), l'adresse entière pour une IP.
+// Host of an SSH target ("user@host:port", "[::1]:22"): lowercase, without
+// user, port or trailing dot; first label for a name (host-a ==
+// host-a.example.ts.net), the whole address for an IP.
 export function targetHost(target: string): string {
   let h = String(target || '').trim().toLowerCase()
   h = h.slice(h.lastIndexOf('@') + 1)
@@ -59,8 +59,8 @@ export function targetHost(target: string): string {
   return h.split('.')[0] || h
 }
 
-// Cible qui désigne la machine locale elle-même (l'ordinateur a souvent le serveur
-// dans ses machines, et inversement) : jamais affichée deux fois.
+// Target that designates the local machine itself (the computer often has the server
+// among its machines, and vice versa): never shown twice.
 export function isSelfTarget(target: string, selfNames: string[]): boolean {
   const h = targetHost(target)
   if (!h) return false
@@ -68,8 +68,8 @@ export function isSelfTarget(target: string, selfNames: string[]): boolean {
   return selfNames.map(n => targetHost(n)).filter(Boolean).includes(h)
 }
 
-// `selfNames` : noms et adresses de la machine locale (profils ignorés).
-// Profils visant le même hôte et la même session : seul le premier est gardé.
+// `selfNames`: names and addresses of the local machine (profiles ignored).
+// Profiles pointing at the same host and session: only the first is kept.
 export function parseMachineList(raw: string, selfNames: string[] = []): MachineProfile[] {
   let list: unknown
   try { list = JSON.parse(raw) }
@@ -83,7 +83,7 @@ export function parseMachineList(raw: string, selfNames: string[] = []): Machine
     const id = String(m.id || '')
     const target = String(m.target || '').trim()
     const key = machineKey(id)
-    // Cible SSH : pas d'option déguisée (« -oProxyCommand=… »).
+    // SSH target: no disguised option ("-oProxyCommand=…").
     if (key.length < 4 || !target || target.startsWith('-') || /\s/.test(target) || seen.has(key)) continue
     if (isSelfTarget(target, selfNames)) continue
     const rawSession = String(m.session || 'default').trim() || 'default'
@@ -103,12 +103,12 @@ export function parseMachineList(raw: string, selfNames: string[] = []): Machine
   return out
 }
 
-// Chemin du socket dans la sortie de `herdr status server` (« socket: /…/herdr.sock »).
+// Socket path in the output of `herdr status server` ("socket: /…/herdr.sock").
 export function parseStatusSocket(out: string): string | null {
   const m = /^\s*socket:\s*(\S.*?)\s*$/m.exec(String(out || ''))
   return m ? m[1]! : null
 }
 
-// Nom d'un agent lancé depuis l'app (normalisé en minuscules).
+// Name of an agent launched from the app (normalized to lowercase).
 export const AGENT_NAME_RE = /^[a-z][a-z0-9_-]{0,31}$/
 export const AGENT_NAME_HINT = 'nom : minuscules, chiffres, - et _ (32 max), commence par une lettre'

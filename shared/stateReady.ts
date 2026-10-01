@@ -1,10 +1,10 @@
-// Redémarrage du serveur (redéploiement) : son premier état peut être partiel.
-// Le serveur ne se dit « prêt » qu'une fois la liste des machines lue, la
-// machine locale sondée et chaque machine distante soit sondée, soit déclarée
-// hors ligne (ou au bout de READY_MAX_MS, pour ne jamais rester bloqué).
-// L'app garde son dernier état tant que le serveur n'est pas prêt, puis, juste
-// après une reconnexion, garde les panes des machines qui se reconnectent :
-// la vue ouverte ne se démonte jamais pour une raison passagère.
+// Server restart (redeployment): its first state may be partial.
+// The server only says it is "ready" once the machine list is read, the
+// local machine probed and each remote machine either probed or declared
+// offline (or after READY_MAX_MS, so it never stays stuck).
+// The app keeps its last state while the server is not ready, then, right
+// after a reconnection, keeps the panes of machines that are reconnecting:
+// the open view never unmounts for a transient reason.
 import type { HerdrState, MachineInfo } from './types'
 import { LOCAL, machineOf } from './ids'
 
@@ -22,14 +22,14 @@ export function serverReady(i: ReadyInput): boolean {
   return i.machinesListed && i.localPolled && i.remotes.every(r => r.polled || r.status === 'offline')
 }
 
-// État à afficher : null = garder l'état actuel. `settling` : reconnexion
-// récente (le serveur a pu redémarrer).
+// State to show: null = keep the current state. `settling`: recent
+// reconnection (the server may have restarted).
 export function settleState(prev: HerdrState | null, next: HerdrState, settling: boolean): HerdrState | null {
   if (!prev || !prev.ok) return next
   if (next.ready === false) return null
   if (!settling || !next.ok) return next
-  // Panes de machines distantes absentes de l'état reçu, ou pas encore en ligne :
-  // on garde leur dernier état (grisé comme une machine hors ligne).
+  // Panes of remote machines missing from the received state, or not online yet:
+  // we keep their last state (grayed out like an offline machine).
   const online = new Set([LOCAL, ...(next.machines || []).filter(m => m.status === 'online').map(m => m.key)])
   const present = new Set(next.panes.map(p => machineOf(p.id)))
   const keep = (id: string) => {

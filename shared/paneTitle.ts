@@ -1,7 +1,7 @@
 import type { Pane } from './types'
 
-// Les threads herdr-projects portent leur sujet dans le workspace, alors que
-// le titre du terminal reprend souvent la consigne générique du premier message.
+// herdr-projects threads carry their topic in the workspace, while
+// the terminal title often repeats the generic instruction of the first message.
 const THREAD_NAME = /^hp-.+-t-\d{4,}(?:-.+)?$/i
 
 export function isProjectThread(p: Pick<Pane, 'name' | 'cwd'>): boolean {
@@ -23,8 +23,8 @@ const GENERIC_AGENTS = new Set(['claude', 'claude code', 'codex', 'gemini', 'gem
 const baseName = (dir: string | null | undefined) =>
   (dir || '').replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop() || ''
 
-// Titre que le programme a posé et qui dit quelque chose : pas le prompt du
-// shell (« user@host: ~/dir »), pas le nom du shell, pas un chemin ni le dossier.
+// Title the program set and that says something: not the shell
+// prompt ("user@host: ~/dir"), not the shell name, not a path nor the folder.
 export function meaningfulTitle(p: Pick<Pane, 'title' | 'cwd' | 'agent'>): string {
   const title = cleanTitle(p.title).replace(/\s*\|\s*\S+$/, '').trim()
   if (!title || /^\S+@\S+:/.test(title)) return ''
@@ -39,9 +39,9 @@ export function meaningfulTitle(p: Pick<Pane, 'title' | 'cwd' | 'agent'>): strin
   return title
 }
 
-// Nom d'un pane, indépendant du nom de son space : nom choisi (pane.rename),
-// nom de l'agent, titre du terminal s'il est parlant, commande au premier
-// plan, et en dernier recours le dossier.
+// Name of a pane, independent of its space's name: chosen name (pane.rename),
+// agent name, terminal title if meaningful, foreground
+// command, and as a last resort the folder.
 export function paneTitle(p: Pane, workspaceTitle?: string | null): string {
   if (p.label) return p.label
   if (p.agent && isProjectThread(p) && workspaceTitle?.trim()) return workspaceTitle.trim()

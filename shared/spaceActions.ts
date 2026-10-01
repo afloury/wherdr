@@ -1,8 +1,8 @@
-// Actions sur les espaces (workspaces), onglets et panes : construction des
-// appels Herdr à partir d'une demande de l'app, et ce que l'app en montre
-// (confirmation de fermeture, destinations d'un déplacement). Pur (testé).
-// Jamais de zoom, de focus ni de redimensionnement : la disposition est
-// partagée avec le client attaché, on ne la change que sur un geste explicite.
+// Actions on spaces (workspaces), tabs and panes: building the
+// Herdr calls from an app request, and what the app shows of them
+// (close confirmation, move destinations). Pure (tested).
+// Never zoom, focus or resize: the layout is
+// shared with the attached client, we only change it on an explicit gesture.
 import type { HerdrState, Pane } from './types'
 import { PANE_RE, splitId } from './ids'
 import { workspaceTree } from './workspaces'
@@ -30,7 +30,7 @@ export type SpaceAction =
 
 export const SPACE_OPS = ['tab.create', 'workspace.rename', 'tab.rename', 'workspace.close', 'tab.close', 'pane.split', 'pane.move', 'pane.swap', 'pane.drop', 'layout.ratio', 'workspace.move'] as const
 
-// Appel Herdr prêt à partir : machine visée ('' = locale) et IDs locaux à celle-ci.
+// Herdr call ready to go: target machine ('' = local) and IDs local to it.
 export interface HerdrCall { machine: string, method: string, params: Record<string, unknown> }
 
 export class SpaceActionError extends Error {
@@ -42,7 +42,7 @@ export class SpaceActionError extends Error {
 }
 const fail = (code: string, message: string): never => { throw new SpaceActionError(code, message) }
 
-// Libellé propre : espaces réduits, 60 caractères max.
+// Clean label: collapsed spaces, 60 characters max.
 export const cleanLabel = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, LABEL_MAX)
 
 function idOf(v: unknown, re: RegExp, what: string) {
@@ -51,10 +51,10 @@ function idOf(v: unknown, re: RegExp, what: string) {
   return splitId(s)
 }
 
-// Dossier du shell d'un nouveau pane (chemin absolu), sinon celui de Herdr.
+// Shell folder of a new pane (absolute path), otherwise Herdr's.
 const cleanCwd = (x: unknown) => (typeof x === 'string' && x.startsWith('/') && x.length <= 4096 && !x.includes('\0') ? x : null)
 
-// Demande de l'app (corps JSON, non fiable) -> appel Herdr.
+// App request (JSON body, untrusted) -> Herdr call.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function spaceCall(body: any): HerdrCall {
   const b = body && typeof body === 'object' ? body : {}
@@ -98,21 +98,21 @@ export function spaceCall(body: any): HerdrCall {
       else if (to === 'new_workspace') destination = { type: 'new_workspace' }
       else if (to && typeof to === 'object') {
         const x = idOf(to.tab_id, TAB_RE, 'onglet')
-        // Un pane ne passe pas d'une machine à l'autre.
+        // A pane does not move from one machine to another.
         if (x.machine !== p.machine) fail('bad_machine', 'onglet d’une autre machine')
         destination = { type: 'tab', tab_id: x.local, split: 'right' }
       } else return fail('bad_destination', 'destination invalide')
       return { machine: p.machine, method: op, params: { pane_id: p.local, destination, focus: false } }
     }
     case 'pane.swap': {
-      // Le voisin est choisi par Herdr (pane.neighbor), puis swapSteps.
+      // The neighbour is chosen by Herdr (pane.neighbor), then swapSteps.
       const p = idOf(b.pane_id, PANE_RE, 'pane')
       const direction = b.direction
       if (!PANE_DIRECTIONS.includes(direction)) fail('bad_direction', 'direction invalide')
       return { machine: p.machine, method: op, params: { pane_id: p.local, direction } }
     }
     case 'pane.drop': {
-      // Glisser-déposer dans l'onglet : suite d'appels calculée par dropSteps.
+      // Drag and drop within the tab: sequence of calls computed by dropSteps.
       const p = idOf(b.pane_id, PANE_RE, 'pane')
       const x = idOf(b.target_pane_id, PANE_RE, 'pane')
       if (x.machine !== p.machine) fail('bad_machine', 'pane d’une autre machine')
@@ -121,8 +121,8 @@ export function spaceCall(body: any): HerdrCall {
       return { machine: p.machine, method: op, params: { pane_id: p.local, target_pane_id: x.local, side } }
     }
     case 'layout.ratio': {
-      // Trait de séparation glissé : ratio du split désigné par son chemin
-      // dans l'arbre (cf. splitPath), sans toucher au focus.
+      // Dragged divider: ratio of the split designated by its path
+      // in the tree (see splitPath), without touching the focus.
       const x = idOf(b.tab_id, TAB_RE, 'onglet')
       const path = String(b.path ?? '')
       if (!/^[01]{0,32}$/.test(path)) fail('bad_path', 'split invalide')
@@ -134,10 +134,10 @@ export function spaceCall(body: any): HerdrCall {
       }
     }
     case 'workspace.move': {
-      // Réordonner les espaces (glisser-déposer de la liste) : placé juste avant
-      // un autre espace de la même machine, ou à la fin (null). Par ID plutôt
-      // que par position : juste même si l'ordre a changé entre-temps. Herdr
-      // renumérote ses espaces, les IDs et le focus ne changent pas.
+      // Reorder spaces (drag and drop in the list): placed just before
+      // another space of the same machine, or at the end (null). By ID rather
+      // than by position: correct even if the order changed in the meantime. Herdr
+      // renumbers its spaces, the IDs and the focus do not change.
       const w = idOf(b.workspace_id, WORKSPACE_RE, 'workspace')
       let before: string | null = null
       if (b.before_workspace_id != null) {
@@ -153,8 +153,8 @@ export function spaceCall(body: any): HerdrCall {
   }
 }
 
-// Ce que l'app retient de la réponse de Herdr : le pane / l'onglet créé ou
-// déplacé (IDs de l'app, préfixés pour une machine distante).
+// What the app keeps from Herdr's response: the pane / tab created or
+// moved (app IDs, prefixed for a remote machine).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function spaceResult(call: HerdrCall, r: any): { pane_id?: string, tab_id?: string } {
   const id = (x: unknown) => (x == null ? undefined : call.machine ? `${call.machine}~${x}` : String(x))
@@ -168,12 +168,12 @@ export function spaceResult(call: HerdrCall, r: any): { pane_id?: string, tab_id
   return {}
 }
 
-// Échanger deux panes voisins sans rien changer d'autre côté Herdr : pane.swap
-// donne le focus au pane source et amène le client attaché sur son onglet.
-// Source = le pane actif de l'onglet s'il est de l'échange (focus inchangé) ;
-// sinon on rend ensuite le focus, dans l'ordre : pane actif de l'onglet, onglet
-// actif de l'espace, pane actif de la session. `snap` : session.snapshot de la
-// machine, IDs locaux. Refusé dans un onglet agrandi (Herdr n'y montre qu'un pane).
+// Swap two neighbouring panes without changing anything else on the Herdr side: pane.swap
+// gives focus to the source pane and brings the attached client to its tab.
+// Source = the tab's active pane if it is part of the swap (focus unchanged);
+// otherwise the focus is given back afterwards, in order: tab's active pane, space's
+// active tab, session's active pane. `snap`: the machine's session.snapshot,
+// local IDs. Refused in a zoomed tab (Herdr only shows one pane there).
 export interface HerdrStep { method: string, params: Record<string, unknown> }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function swapSteps(snap: any, pane: string, target: string | null): HerdrStep[] {
@@ -188,9 +188,9 @@ export function swapSteps(snap: any, pane: string, target: string | null): Herdr
 }
 
 type SnapTab = { tab_id: string, workspace_id: string, zoomed?: boolean, focused_pane_id?: string | null, panes: { pane_id: string }[] }
-// Focus rendu tel qu'avant, dans l'ordre : pane actif de l'onglet, onglet
-// actif de l'espace, pane actif de la session. `cur` : pane qui a le focus
-// après les étapes précédentes (null : inconnu).
+// Focus restored as before, in order: tab's active pane, space's
+// active tab, session's active pane. `cur`: pane that has the focus
+// after the previous steps (null: unknown).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function refocus(snap: any, tab: SnapTab, cur: string | null): HerdrStep[] {
   const layouts: SnapTab[] = Array.isArray(snap?.layouts) ? snap.layouts : []
@@ -205,11 +205,11 @@ function refocus(snap: any, tab: SnapTab, cur: string | null): HerdrStep[] {
   return steps
 }
 
-// Glisser-déposer `pane` sur `target` (même onglet). Centre : échange.
-// Bord : Herdr refuse un pane.move dans son propre onglet (same_tab), donc le
-// pane passe par un onglet temporaire de son espace (même ID, même processus)
-// puis revient à droite / en dessous de la cible ; à gauche / au-dessus, un
-// échange avec la cible finit le travail. Focus rendu ensuite.
+// Drag and drop `pane` onto `target` (same tab). Center: swap.
+// Edge: Herdr refuses a pane.move within its own tab (same_tab), so the
+// pane goes through a temporary tab of its space (same ID, same process)
+// then comes back to the right of / below the target; for left / above, a
+// swap with the target finishes the job. Focus restored afterwards.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function dropSteps(snap: any, pane: string, target: string, side: DropSide): HerdrStep[] {
   if (side === 'center') return swapSteps(snap, pane, target)
@@ -227,7 +227,7 @@ export function dropSteps(snap: any, pane: string, target: string, side: DropSid
   return [...steps, ...refocus(snap, tab!, before ? pane : null)]
 }
 
-// Ce qui tourne dans les panes qu'une fermeture arrêterait.
+// What runs in the panes that a close would stop.
 export interface CloseSummary { agents: Pane[], shells: number }
 export function closeSummary(panes: Pane[]): CloseSummary {
   return { agents: panes.filter(p => p.agent), shells: panes.filter(p => !p.agent).length }
@@ -235,8 +235,8 @@ export function closeSummary(panes: Pane[]): CloseSummary {
 
 type State = Pick<HerdrState, 'workspaces' | 'panes'> & Partial<Pick<HerdrState, 'tabs'>>
 
-// Destinations d'un déplacement : les autres onglets de la même machine,
-// ceux de son espace d'abord.
+// Destinations of a move: the other tabs of the same machine,
+// those of its space first.
 export interface MoveTarget { tab_id: string, label: string, workspace: string, workspaceLabel: string, sameWorkspace: boolean, panes: number }
 export function moveTargets(s: State, paneId: string): MoveTarget[] {
   const p = s.panes.find(x => x.id === paneId)
@@ -259,10 +259,10 @@ export function moveTargets(s: State, paneId: string): MoveTarget[] {
   return [...out.filter(x => x.sameWorkspace), ...out.filter(x => !x.sameWorkspace)]
 }
 
-// Actions d'espace et d'onglet proposées depuis un pane (vue agent, appui long
-// de sa carte), après celles du pane lui-même. Nouvel onglet toujours ; les
-// onglets se renomment et se ferment seulement s'il y en a plusieurs (sinon
-// c'est l'espace) ; un espace réduit à ce seul pane se ferme avec le pane.
+// Space and tab actions offered from a pane (agent view, long press
+// on its card), after the pane's own. New tab always; tabs
+// are only renamed and closed if there are several (otherwise
+// it is the space); a space reduced to this single pane closes with the pane.
 export type SpaceEntry = 'tab.create' | 'tab.rename' | 'tab.close' | 'workspace.rename' | 'workspace.close'
 export function paneSpaceEntries(s: State, paneId: string): SpaceEntry[] {
   const p = s.panes.find(x => x.id === paneId)

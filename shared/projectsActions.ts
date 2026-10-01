@@ -1,21 +1,21 @@
-// Actions de herdr-projects lancées depuis wherdr en ligne de commande : saisies
-// attendues et argv (fonctions pures, testées dans tests/projectsActions.test.ts).
-// Options vérifiées sur herdr-projects 0.2.30 (`<commande> --help`) :
-//  - adopt-workspace --name --pane --workspace-cwd --goal --session (pas d'option
-//    pour la tâche en cours : elle rejoint l'objectif) ;
-//  - new <nom> --goal --repo <PATH[@MACHINE]> (MACHINE : id ou libellé d'une
-//    machine de `herdr machine list`, lettres, chiffres, « - _ . » seulement) ;
+// herdr-projects actions run from wherdr on the command line: expected
+// inputs and argv (pure functions, tested in tests/projectsActions.test.ts).
+// Options checked against herdr-projects 0.2.30 (`<command> --help`):
+//  - adopt-workspace --name --pane --workspace-cwd --goal --session (no option
+//    for the current task: it joins the goal);
+//  - new <name> --goal --repo <PATH[@MACHINE]> (MACHINE: id or label of a
+//    machine from `herdr machine list`, letters, digits, "- _ ." only);
 //  - open / pause / resume <slug>, doctor --session.
 import type { ChatResponse } from './types'
 
 export const PROJECT_INPUTS: Record<string, string[]> = {
   new: ['name'], 'adopt-workspace': ['name'], open: ['slug'], pause: ['slug'], resume: ['slug'],
 }
-// Saisies facultatives, en plus des champs ci-dessus. L'objectif l'est aussi :
-// herdr-projects ne l'exige pas et un projet continu n'a pas de cap figé.
-// `machine` : clé wherdr de la machine du dépôt (absente = celle du projet).
+// Optional inputs, on top of the fields above. The goal is optional too:
+// herdr-projects does not require it and an ongoing project has no fixed course.
+// `machine`: wherdr key of the repository's machine (missing = the project's).
 export const PROJECT_OPTIONAL: Record<string, string[]> = { new: ['goal', 'repo', 'machine'], 'adopt-workspace': ['goal', 'task'] }
-// Champs à remplir : nom (ou slug).
+// Fields to fill in: name (or slug).
 export const PROJECT_REQUIRED: Record<string, string[]> = {
   new: ['name'], 'adopt-workspace': ['name'], open: ['slug'], pause: ['slug'], resume: ['slug'],
 }
@@ -23,7 +23,7 @@ export const INPUT_MAX: Record<string, number> = { name: 120, slug: 120, goal: 4
 
 export type ProjectInput = Partial<Record<'name' | 'goal' | 'task' | 'slug' | 'repo' | 'machine', string>>
 
-// Saisie nettoyée, ou null si un champ manque ou déborde.
+// Cleaned input, or null if a field is missing or too long.
 export function cleanProjectInput(action: string, raw: unknown): ProjectInput | null {
   const fields = PROJECT_INPUTS[action]
   if (!fields) return null
@@ -35,25 +35,25 @@ export function cleanProjectInput(action: string, raw: unknown): ProjectInput | 
     if (typeof v !== 'string') return null
     const s = v.replace(/\s+/g, ' ').trim()
     if (s.length > (INPUT_MAX[key] || 120)) return null
-    // Nom ou slug passés en argument : « -… » serait lu comme une option.
+    // Name or slug passed as an argument: "-…" would be read as an option.
     if ((key === 'name' || key === 'slug') && s.startsWith('-')) return null
     if (s) out[key as keyof ProjectInput] = s
   }
-  // Le serveur applique la même règle de nom que le formulaire.
+  // The server applies the same name rule as the form.
   if (out.name && !projectNameOk(out.name)) return null
   return (PROJECT_REQUIRED[action] || []).every(k => out[k as keyof ProjectInput]) ? out : null
 }
 
-// Nom de projet accepté par herdr-projects (`slug_from_name`) : ni « / », ni
-// « \ », ni « .. », et au moins une lettre ou un chiffre ASCII pour le slug.
-// « ~ » (libellé d'un space ouvert dans le HOME) ou un chemin n'en sont pas.
+// Project name accepted by herdr-projects (`slug_from_name`): no "/",
+// "\" or "..", and at least one ASCII letter or digit for the slug.
+// "~" (label of a space opened in HOME) or a path are not valid names.
 export function projectNameOk(name: string | null | undefined): boolean {
   const s = (name || '').trim()
   return Boolean(s) && !/[/\\]|\.\./.test(s) && /[a-z0-9]/i.test(s)
 }
 
-// Nom proposé : « New project » prend le nom du dossier du dépôt choisi (rien
-// sans dépôt) ; l'adoption, le libellé du space. Jamais un nom refusé.
+// Suggested name: "New project" takes the folder name of the chosen repository (nothing
+// without a repository); adoption, the space label. Never a rejected name.
 export function suggestedProjectName(action: string, o: { repo?: string | null, space?: string | null }): string {
   const name = action === 'new'
     ? (o.repo || '').replace(/\/+$/, '').split('/').pop() || ''
@@ -61,9 +61,9 @@ export function suggestedProjectName(action: string, o: { repo?: string | null, 
   return projectNameOk(name) ? name : ''
 }
 
-// Où en est le dossier choisi comme dépôt, d'après /api/gitroot (racine Git
-// proposée, ou null) : le dépôt lui-même, un sous-dossier du dépôt `root`, ou
-// rien d'utilisable (hors dépôt, ou le HOME).
+// State of the folder chosen as repository, according to /api/gitroot (suggested Git
+// root, or null): the repository itself, a subfolder of the `root` repository, or
+// nothing usable (outside a repository, or HOME).
 export type RepoState = 'repo' | 'inside' | 'none'
 export function repoState(dir: string, root: string | null | undefined): RepoState {
   const d = dir.trim().replace(/\/+$/, '')
@@ -72,11 +72,11 @@ export function repoState(dir: string, root: string | null | undefined): RepoSta
   return r === d ? 'repo' : d.startsWith(`${r}/`) ? 'inside' : 'none'
 }
 
-// Valeur de `--repo` : le chemin seul si le dépôt est sur la machine où tourne
-// herdr-projects, sinon `chemin@<id Herdr de la machine>`. Seul un projet de la
-// machine locale peut viser une machine distante (les ids viennent de son
-// `herdr machine list`) ; autre cas : null. Un chemin seul qui finit par
-// « @nom » serait lu comme une machine par herdr-projects : refusé aussi.
+// `--repo` value: the path alone if the repository is on the machine running
+// herdr-projects, otherwise `path@<Herdr id of the machine>`. Only a project on the
+// local machine can target a remote machine (the ids come from its
+// `herdr machine list`); other cases: null. A bare path ending with
+// "@name" would be read as a machine by herdr-projects: rejected too.
 export interface RepoMachine { local: boolean, profileId: string | null }
 export function repoArgument(path: string, repo: RepoMachine, project: RepoMachine): string | null {
   const same = repo.local ? project.local : !project.local && repo.profileId === project.profileId
@@ -85,9 +85,9 @@ export function repoArgument(path: string, repo: RepoMachine, project: RepoMachi
   return `${path}@${repo.profileId}`
 }
 
-// Tâche en cours d'un workspace adopté : ajoutée à l'objectif, que le plugin
-// écrit dans PROJECT.md (adopt-workspace n'a pas d'option dédiée). Sans
-// objectif, la tâche seule en tient lieu.
+// Current task of an adopted workspace: appended to the goal, which the plugin
+// writes into PROJECT.md (adopt-workspace has no dedicated option). Without
+// a goal, the task alone stands in for it.
 export function goalWithTask(goal: string, task: string | undefined, lang: 'fr' | 'en' = 'en'): string {
   const t = (task || '').trim()
   if (!t) return goal
@@ -103,10 +103,10 @@ export interface ProjectContext {
   lang?: 'fr' | 'en'
 }
 
-// argv de la commande herdr-projects ; jamais de shell, chaque valeur est un argument.
+// argv of the herdr-projects command; never a shell, each value is one argument.
 export function projectCommandArgs(action: string, input: ProjectInput, ctx: ProjectContext): string[] {
   const session = ctx.session && ctx.session !== 'default' ? ['--session', ctx.session] : []
-  // --goal seulement s'il y a quelque chose à écrire (défaut du plugin : vide).
+  // --goal only if there is something to write (plugin default: empty).
   const goalArg = (g: string) => g ? ['--goal', g] : []
   if (action === 'adopt-workspace') {
     if (!ctx.pane || !ctx.cwd) throw new Error('pane et dossier nécessaires')
@@ -119,16 +119,16 @@ export function projectCommandArgs(action: string, input: ProjectInput, ctx: Pro
   return [action, input.slug!]
 }
 
-// Conversation sans aucun message (agent tout juste lancé) : l'adopter n'apporte
-// rien, mieux vaut un nouveau projet. Agent non lisible par wherdr : inconnu (null).
+// Conversation without any message (agent just launched): adopting it brings
+// nothing, a new project is better. Agent not readable by wherdr: unknown (null).
 export function conversationEmpty(r: Pick<ChatResponse, 'available' | 'reason' | 'items'> | null | undefined): boolean | null {
   if (!r) return null
   if (!r.available) return r.reason === 'not_found' ? true : null
   return !(r.items || []).some(i => (i.role === 'user' || i.role === 'assistant') && i.text.trim())
 }
 
-// En-tête de « Check setup » : ce que wherdr utilise sur la machine, pour
-// repérer un décalage avec le client Herdr (autre HOME, autre binaire).
+// "Check setup" header: what wherdr uses on the machine, to
+// spot a mismatch with the Herdr client (other HOME, other binary).
 export interface SetupLine { key: 'version' | 'binary' | 'home' | 'config', value: string, warn?: boolean }
 export function setupHeader(o: { version: string | null, binary: string, home: string }): SetupLine[] {
   const home = o.home.replace(/\/+$/, '')
@@ -141,29 +141,29 @@ export function setupHeader(o: { version: string | null, binary: string, home: s
   ]
 }
 
-// Lignes de `doctor` : « [ok  ] … », « [warn] … », « [FAIL] … ».
+// `doctor` lines: "[ok  ] …", "[warn] …", "[FAIL] …".
 export function doctorLevel(line: string): 'ok' | 'warn' | 'fail' | null {
   const m = /^\[(ok|warn|fail)\s*\]/i.exec(line.trim())
   return m ? m[1]!.toLowerCase() as 'ok' | 'warn' | 'fail' : null
 }
 
-// Dépôt proposé pour « New project » : la racine Git du dossier du space
-// (`git rev-parse --show-toplevel`), sous le HOME de la machine. Jamais le HOME
-// lui-même (un dépôt de dotfiles n'est pas le dépôt d'un projet) ; sinon rien.
+// Repository suggested for "New project": the Git root of the space's folder
+// (`git rev-parse --show-toplevel`), under the machine's HOME. Never HOME
+// itself (a dotfiles repository is not a project's repository); otherwise nothing.
 export function proposedRepo(root: string | null | undefined, home: string): string {
   const r = (root || '').trim().replace(/\/+$/, '')
   const h = home.replace(/\/+$/, '')
   return r.startsWith('/') && h && r.startsWith(`${h}/`) ? r : ''
 }
 
-// `herdr-projects ticker status` : « ticker: running » ou « ticker: not running ».
+// `herdr-projects ticker status`: "ticker: running" or "ticker: not running".
 export function tickerRunning(status: string | null | undefined): boolean {
   return /^ticker: running\b/m.test(status || '')
 }
 
-// Écriture refusée par un système de fichiers en lecture seule (EROFS), telle
-// que herdr-projects la rapporte : « could not create <chemin>: Read-only file
-// system (os error 30) ». Message clair à la place, ou null pour une autre erreur.
+// Write refused by a read-only file system (EROFS), as
+// herdr-projects reports it: "could not create <path>: Read-only file
+// system (os error 30)". A clear message instead, or null for another error.
 export function readOnlyMessage(error: string, o: { docker: boolean, lang?: 'fr' | 'en' }): string | null {
   if (!/read-only file system|os error 30\b|EROFS/i.test(error)) return null
   const path = /(\/[^:\n]*?):\s*Read-only file system/i.exec(error)?.[1] || ''
