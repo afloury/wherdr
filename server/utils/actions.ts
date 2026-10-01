@@ -4,7 +4,7 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { AGENT_KINDS, DATA_DIR, HOME, RESUME_ARGS, UPLOAD_DIR, UPLOAD_TTL_MS, log } from './env'
 import { HerdrError, herdr, herdrOn, sleep } from './herdr'
-import { inputVisible } from './choices'
+import { panelOpen } from './choices'
 import { addQueued, findPane, pendingPrompts, poll } from './state'
 import { type Machine, RemoteMachine, allMachines, getMachine, machineOfPane } from './machines'
 import { LIST_DIRS_SCRIPT, listDirsLocal, parseDirList } from './fsx'
@@ -219,7 +219,7 @@ export async function closePanel(paneId: string) {
   let sent = false
   for (let i = 0; i < 2; i++) {
     const r = await herdr('pane.read', { pane_id: paneId, source: 'detection' }, 4000)
-    if (inputVisible(r.read && r.read.text)) return sent
+    if (!panelOpen(r.read && r.read.text)) return sent
     await herdr('pane.send_input', { pane_id: paneId, keys: ['esc'] })
     sent = true
     await sleep(400)

@@ -42,7 +42,8 @@ export interface InteractiveMenu {
   more: string | null
 }
 
-export interface QueuedMessage { id: string, text: string, at?: number }
+// state: held until a menu closes (server side), or failed to send.
+export interface QueuedMessage { id: string, text: string, at?: number, state?: 'held' | 'failed' }
 
 // Écran de Claude Code au travail (cf. server/utils/claudeScreen.ts) : la
 // commande « ! » en cours d'exécution, le dernier message parti, les messages

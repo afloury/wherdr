@@ -66,7 +66,10 @@ export function navKey(paneId: string, key: 'up' | 'down' | 'enter' | 'esc'): Pr
 // refuserait : on tape le texte tel quel. Agent au travail : le serveur met le
 // message en file (renvoyé dans `queued`).
 export async function sendMessage(p: Pane | undefined, paneId: string, text: string): Promise<QueuedMessage | null> {
-  const r = p && p.agent && p.status !== 'blocked'
+  // Blocked on a question: the text is its typed answer. Blocked on a menu or
+  // a screen with no question (/mcp…): typed now it would be lost in it; the
+  // server holds it until the input field is back.
+  const r = p && p.agent && (p.status !== 'blocked' || (!p.prompt && ['claude', 'codex'].includes(p.agent)))
     ? await api<{ queued?: QueuedMessage }>('/api/prompt', { pane_id: paneId, text })
     : await api<{ queued?: QueuedMessage }>('/api/input', { pane_id: paneId, text, keys: ['enter'] })
   return r.queued || null
