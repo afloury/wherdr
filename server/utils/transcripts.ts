@@ -164,6 +164,15 @@ export function usefulOutput(out: string | undefined, err: string | undefined): 
   return null
 }
 
+// Text Claude Code shows with ● in the terminal. Recent models (Claude
+// Code 2.1.28x) also write the short narration between tool calls as a
+// signed `thinking` block (after an empty one) rather than a `text` block;
+// the terminal displays it like a reply, so the conversation does too.
+function assistantText(part: Json): string | null {
+  const t = part && (part.type === 'text' ? part.text : part.type === 'thinking' ? part.thinking : null)
+  return typeof t === 'string' && t.trim() ? t : null
+}
+
 export function parseClaude(lines: Lines, home = ''): Parsed {
   const items: Parsed = []
   const tools = new Map<string, ChatItem>()
@@ -284,7 +293,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     }
     if (d.type !== 'user' && d.type !== 'assistant') continue
     const content = d.message && d.message.content
-    if (d.type === 'assistant' && pendingCmd && Array.isArray(content) && content.some((c: Json) => c.type === 'tool_use' || (c.type === 'text' && String(c.text || '').trim()))) {
+    if (d.type === 'assistant' && pendingCmd && Array.isArray(content) && content.some((c: Json) => c.type === 'tool_use' || assistantText(c))) {
       const c: ChatItem = pendingCmd
       c.role = 'user'
       delete c.out
@@ -340,8 +349,9 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       }
     } else if (Array.isArray(content)) {
       for (const part of content) {
-        if (part.type === 'text' && part.text.trim()) {
-          items.push({ role: 'assistant', text: clip(part.text), ts })
+        const reply = assistantText(part)
+        if (reply) {
+          items.push({ role: 'assistant', text: clip(reply), ts })
         } else if (part.type === 'tool_use') {
           const t: ChatItem = { role: 'tool', name: part.name, text: clip(toolSummary(part.name, part.input, home), 300), ts }
           tools.set(part.id, t)
