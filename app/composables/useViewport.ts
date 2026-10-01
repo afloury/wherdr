@@ -32,6 +32,7 @@ export function layout() {
   const sheet = sheetViewport(window.innerHeight, top, h)
   const root = document.documentElement.style
   root.setProperty('--vv-h', `${sheet.height}px`)
+  root.setProperty('--vv-top', `${sheet.top}px`)
   root.setProperty('--vv-bottom', `${sheet.bottom}px`)
   layoutTick.value++
 }

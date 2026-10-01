@@ -7,6 +7,7 @@
 // starts in a pane that does not exist yet, only created on clicking
 // "Launch", on the machine of the split pane or of the space; no choice of
 // machine nor worktree.
+// On the phone it opens full screen, Launch pinned at the bottom.
 import type { MachineConfig } from '#shared/types'
 import { machineOf } from '#shared/ids'
 import { splitPreview } from '#shared/layout'
@@ -222,7 +223,7 @@ async function launch() {
 </script>
 
 <template>
-  <AppSheet v-model:open="open" :title="newTabSpace ? t('Start in a new tab') : newSplit ? t('Start in a new pane') : t(shell ? 'New terminal' : 'New agent')" tall>
+  <AppSheet v-model:open="open" :title="newTabSpace ? t('Start in a new tab') : newSplit ? t('Start in a new pane') : t(shell ? 'New terminal' : 'New agent')" tall screen>
     <div v-if="!browsing" class="sheet-form">
       <div v-if="newSplit || newTabSpace" class="into-pane">
         <TabMap v-if="splitMap && targetTab" :layout="splitMap" :panes="targetTab.panes" :current="NEW_PANE" />
@@ -285,13 +286,17 @@ async function launch() {
           :spellcheck="false" placeholder="reviewer" maxlength="32"
         />
       </template>
-
-      <p v-if="error" class="form-error">{{ t(error) }}</p>
-      <UButton block size="xl" color="primary" variant="solid" class="launch-btn hw-cta" icon="i-lucide-play" :loading="launching" :disabled="!kind" @click="launch">
-        {{ launching ? t('Starting…') : t('Launch') }}
-      </UButton>
     </div>
 
     <DirBrowser v-else :start="dir" :machine="machine" @choose="chooseDir" @cancel="browsing = false" />
+
+    <template #footer>
+      <div v-if="!browsing" class="sheet-form">
+        <p v-if="error" class="form-error">{{ t(error) }}</p>
+        <UButton block size="xl" color="primary" variant="solid" class="launch-btn hw-cta" icon="i-lucide-play" :loading="launching" :disabled="!kind" @click="launch">
+          {{ launching ? t('Starting…') : t('Launch') }}
+        </UButton>
+      </div>
+    </template>
   </AppSheet>
 </template>
