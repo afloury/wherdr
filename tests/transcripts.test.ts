@@ -333,3 +333,30 @@ describe('"/" commands', () => {
     ])).toEqual(['bash:ls|a.txt'])
   })
 })
+
+describe('Claude narration stored in a thinking block', () => {
+  const line = (o: object) => JSON.stringify(o)
+  const lines = [
+    line({ type: 'user', timestamp: '2026-01-01T00:00:00Z', message: { role: 'user', content: 'Is the cache size fine?' } }),
+    line({ type: 'assistant', timestamp: '2026-01-01T00:00:01Z', message: { id: 'm1', role: 'assistant', content: [
+      { type: 'thinking', thinking: '' },
+      { type: 'thinking', thinking: 'Checked: the cache keeps files as they are.' },
+      { type: 'tool_use', id: 'tu1', name: 'Bash', input: { command: 'du -sh cache', description: 'Measure cache' } },
+    ] } }),
+    line({ type: 'user', timestamp: '2026-01-01T00:00:02Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu1', content: '12M cache' }] } }),
+    line({ type: 'assistant', timestamp: '2026-01-01T00:00:03Z', message: { id: 'm2', role: 'assistant', content: [{ type: 'text', text: 'The cache is 12 MB.' }] } }),
+  ].join('\n') + '\n'
+
+  it('shows the narration in order and hides empty thinking', () => {
+    const items = parseLines(lines, 'claude', 0, HOME)
+    const seq = items.map(i => i.role)
+    expect(seq.filter(r => r === 'assistant')).toHaveLength(2)
+    const texts = items.filter(i => i.role === 'assistant').map(i => i.text)
+    expect(texts).toEqual(['Checked: the cache keeps files as they are.', 'The cache is 12 MB.'])
+    const user = seq.indexOf('user')
+    const narration = items.findIndex(i => i.text === 'Checked: the cache keeps files as they are.')
+    const tool = seq.indexOf('tool')
+    expect(user).toBeLessThan(narration)
+    expect(narration).toBeLessThan(tool)
+  })
+})
