@@ -243,6 +243,8 @@ const TOOL_ICON: Record<string, string> = {
   TodoWrite: 'i-lucide-list-todo', AskUserQuestion: 'i-lucide-message-circle-question',
 }
 // Codex "exec" runs code: a shell command, or another tool (write_stdin…).
+// Tool summary: the task count comes from the server in English ("3 tasks").
+const toolText = (tool: ChatItem) => (tool.name === 'TodoWrite' ? t(tool.text || '') : tool.text)
 const isOtherTool = (tool: ChatItem) => tool.name === 'exec' && /^\w+$/.test(tool.text || '')
 const toolLabel = (tool: ChatItem) => isOtherTool(tool) ? t('Tool') : TOOL_LABEL[tool.name || ''] || tool.name || ''
 const toolIcon = (tool: ChatItem) => (tool.error ? 'i-lucide-circle-x' : isOtherTool(tool) ? 'i-lucide-wrench' : TOOL_ICON[tool.name || ''] || 'i-lucide-wrench')
@@ -910,7 +912,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
               <div v-else-if="b.k === 'tools'" class="tools" :class="{ live: b.live }">
                 <template v-if="b.list.length <= 3">
                   <UChatTool
-                    v-for="(tool, j) in b.list" :key="j" :text="toolLabel(tool)" :suffix="tool.text" :icon="toolIcon(tool)"
+                    v-for="(tool, j) in b.list" :key="j" :text="toolLabel(tool)" :suffix="toolText(tool)" :icon="toolIcon(tool)"
                     :loading="b.live && j === b.list.length - 1" :streaming="b.live && j === b.list.length - 1"
                     :ui="{ root: 'tool', trigger: 'tool-trigger', label: 'tool-label', suffix: 'tool-suffix', leading: 'tool-leading' }"
                     :class="{ err: tool.error }"
@@ -924,7 +926,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
                   @update:open="setOpen(b.key, $event)"
                 >
                   <div v-for="(tool, j) in b.list" :key="j" class="tool-row" :class="{ err: tool.error }">
-                    <UIcon :name="toolIcon(tool)" /><b>{{ toolLabel(tool) }}</b><span>{{ tool.text }}</span>
+                    <UIcon :name="toolIcon(tool)" /><b>{{ toolLabel(tool) }}</b><span>{{ toolText(tool) }}</span>
                   </div>
                 </UChatTool>
               </div>

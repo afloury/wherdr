@@ -6,12 +6,12 @@ export default defineApi(async (event, b) => {
   const endpoint = typeof b.endpoint === 'string' ? b.endpoint : ''
   if (b.scope !== undefined) {
     const quiet = parseQuiet(b.on, b.until)
-    if (quiet === undefined || (b.scope !== 'device' && b.scope !== 'all')) throw new HerdrError('bad_quiet', 'réglage de silence invalide')
+    if (quiet === undefined || (b.scope !== 'device' && b.scope !== 'all')) throw new HerdrError('bad_quiet', 'Invalid quiet setting')
     if (b.scope === 'all') await writeGlobalQuiet(quiet)
     else {
       const subs = await readSubs()
       const sub = subs.find(s => s.endpoint === endpoint)
-      if (!sub) throw new HerdrError('no_sub', 'notifications non activées sur cet appareil')
+      if (!sub) throw new HerdrError('no_sub', 'Notifications are not enabled on this device')
       if (quiet) sub.quiet = quiet
       else delete sub.quiet
       await writeSubs(subs)

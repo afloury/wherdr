@@ -15,6 +15,7 @@ import { machineOfPane } from './machines'
 import type { TermSession, WsLike } from './terminal'
 import { splitId } from '../../shared/ids'
 import { mirrorSize } from '../../shared/spaces'
+import { fmt } from '../../shared/message'
 
 const RECHECK_MS = 8000
 // Borne : quelques miroirs par onglet, quelques onglets ouverts.
@@ -39,8 +40,8 @@ export function openMirror(ws: WsLike, url: URL): TermSession | null {
   }
   const machine = machineOfPane(pane)
   if (!machine || !machine.sock()) {
-    ws.send(JSON.stringify({ type: 'terminal.closed', reason: machine ? `${machine.label} injoignable` : 'unknown machine', code: machine ? 'unreachable' : 'unknown_machine', machine: machine?.label }))
-    ws.close(4503, 'machine injoignable')
+    ws.send(JSON.stringify({ type: 'terminal.closed', reason: machine ? fmt('{machine} is unreachable', { machine: machine.label }) : 'unknown machine', code: machine ? 'unreachable' : 'unknown_machine', machine: machine?.label }))
+    ws.close(4503, 'machine unreachable')
     return null
   }
   if (open >= MAX_MIRRORS) {

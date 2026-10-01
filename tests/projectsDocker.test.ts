@@ -4,6 +4,7 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { afterAll, describe, expect, it } from 'vitest'
 import { proposedRepo, readOnlyMessage, tickerRunning } from '../shared/projectsActions'
+import { french } from '../app/utils/i18n'
 import { gitToplevel } from '../server/utils/changes'
 import type { Machine } from '../server/utils/machines'
 
@@ -45,24 +46,23 @@ describe('herdr-projects en Docker : HOME en lecture seule', () => {
   const raw = 'herdr-projects: could not create /home/demo/.herdr-projects/test: Read-only file system (os error 30)'
 
   it('explains what to mount when wherdr runs in Docker', () => {
-    const fr = readOnlyMessage(raw, { docker: true, lang: 'fr' })!
-    expect(fr).toMatch(/^wherdr tourne en Docker avec le HOME en lecture seule/)
-    expect(fr).toContain('/home/demo/.herdr-projects/test')
-    expect(fr).toContain('docker-compose.yml')
-    const en = readOnlyMessage(raw, { docker: true, lang: 'en' })!
+    const en = readOnlyMessage(raw, { docker: true })!
     expect(en).toMatch(/^wherdr runs in Docker with your home folder read-only/)
     expect(en).toContain('/home/demo/.herdr-projects/test')
-    expect(readOnlyMessage(raw, { docker: true })).toBe(en)
+    expect(en).toContain('docker-compose.yml')
+    expect(french(en)).toMatch(/^wherdr tourne en Docker avec le HOME en lecture seule/)
+    expect(french(en)).toContain('/home/demo/.herdr-projects/test')
   })
 
   it('stays plain outside Docker and without a recognizable path', () => {
-    expect(readOnlyMessage(raw, { docker: false, lang: 'fr' }))
-      .toBe('herdr-projects ne peut pas écrire dans /home/demo/.herdr-projects/test : système de fichiers en lecture seule.')
-    expect(readOnlyMessage('EROFS: read-only file system', { docker: false, lang: 'en' }))
+    expect(readOnlyMessage(raw, { docker: false }))
+      .toBe('herdr-projects cannot write to /home/demo/.herdr-projects/test: read-only file system.')
+    expect(readOnlyMessage('EROFS: read-only file system', { docker: false }))
       .toBe('herdr-projects cannot write: read-only file system.')
+    expect(french(readOnlyMessage('EROFS: read-only file system', { docker: true })!)).toMatch(/ne peut pas écrire\. Monte/)
   })
 
-  it('laisse passer les autres erreurs', () => {
+  it('lets other errors through', () => {
     expect(readOnlyMessage('herdr-projects: a project named `demo` already exists', { docker: true })).toBeNull()
     expect(readOnlyMessage('Permission denied (os error 13)', { docker: true })).toBeNull()
     expect(readOnlyMessage('', { docker: true })).toBeNull()

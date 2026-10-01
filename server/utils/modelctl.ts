@@ -15,6 +15,7 @@ import { closePanel } from './actions'
 import { READY, findPane, poll, transcripts } from './state'
 import { machineOfPane } from './machines'
 import { type ClaudeEffortSlider, type ModelMenu, claudeEffortCommand, claudeEffortLevels, cleanModelName, codexCachedEfforts, codexConfigModel, claudeScreenEffort, claudeScreenModel, codexFooterModel, effortMatches, effortValue, parseClaudeEffortScreen, parseModelMenu, sameModel, switchConfirmKeys } from './models'
+import { fmt } from '../../shared/message'
 
 // ---------------------------------------------------------------- current model
 // Choice made from the phone: shown right away, until the
@@ -220,7 +221,7 @@ async function pick(paneId: string, m: ModelMenu, n: number, label: string, kind
 
 export async function setModel(paneId: string, wanted: string): Promise<ModelInfo> {
   const label = cleanModelName(wanted)
-  if (!label) throw new HerdrError('bad_model', 'modèle manquant')
+  if (!label) throw new HerdrError('bad_model', 'Missing model')
   return withPane(paneId, async (p) => {
     const before = await currentModel(p)
     const started = Date.now()
@@ -232,7 +233,7 @@ export async function setModel(paneId: string, wanted: string): Promise<ModelInf
         n = (await readAllOptions(p.id, m)).find(o => o.label === label)?.n
         m = (await waitMenu(p.id, x => x.kind === 'model', 2000)) || m // cursor moved
       }
-      if (!n) throw new HerdrError('bad_model', `Modèle introuvable dans /model : ${label}`)
+      if (!n) throw new HerdrError('bad_model', fmt('Model not found in /model: {model}', { model: label }))
       m = await pick(p.id, m, n, label, 'model')
       // "Default (recommended)": Claude will confirm with the default model's name.
       const picked = m.options.find(o => o.n === n)
@@ -332,7 +333,7 @@ async function openEffortSlider(p: Pane): Promise<ClaudeEffortSlider> {
   if (!s) {
     // Unknown screen: close anyway (single Escape, the slider may no longer be readable).
     await herdr('pane.send_input', { pane_id: p.id, keys: ['esc'] }).catch(() => {})
-    throw new HerdrError('no_menu', 'Curseur d’effort de Claude illisible — refermé, rien n’a été changé.')
+    throw new HerdrError('no_menu', 'Claude’s effort slider could not be read — closed, nothing was changed.')
   }
   return s
 }
@@ -366,22 +367,22 @@ export async function listEfforts(paneId: string): Promise<EffortList> {
 export async function setEffort(paneId: string, level: string): Promise<ModelInfo> {
   return withPane(paneId, async p => {
     const before = await currentModel(p)
-    if (!before) throw new HerdrError('bad_model', 'modèle inconnu')
+    if (!before) throw new HerdrError('bad_model', 'Unknown model')
     const started = Date.now()
     if (p.agent === 'claude') {
       if (!claudeEffortCommand(level, before.label)) throw new HerdrError('bad_effort', 'Effort level unavailable for this model')
       const slider = await openEffortSlider(p)
       try {
         const levels = slider.levels.length ? slider.levels : claudeEffortLevels(before.label)
-        if (!levels.includes(slider.current)) throw new HerdrError('unsafe', 'Curseur d’effort inattendu — rien n’a été changé.')
+        if (!levels.includes(slider.current)) throw new HerdrError('unsafe', 'Unexpected effort slider — nothing was changed.')
         if (!levels.includes(level)) throw new HerdrError('bad_effort', 'Effort level unavailable for this model')
         const delta = levels.indexOf(level) - levels.indexOf(slider.current)
         if (delta) await herdr('pane.send_input', { pane_id: p.id, keys: Array.from({ length: Math.abs(delta) }, () => delta > 0 ? 'right' : 'left') })
         const at = await waitSlider(p.id, x => x.current === level, 3000)
-        if (!at) throw new HerdrError('stale', 'Le curseur d’effort n’a pas suivi — rien n’a été changé.')
+        if (!at) throw new HerdrError('stale', 'The effort slider did not follow — nothing was changed.')
         // "s" = this session only. Never Enter: it saves the default.
         await herdr('pane.send_input', { pane_id: p.id, keys: ['s'] })
-        if (!await sliderGone(p.id)) throw new HerdrError('stale', 'Le curseur d’effort est resté ouvert — rien n’a été changé.')
+        if (!await sliderGone(p.id)) throw new HerdrError('stale', 'The effort slider stayed open — nothing was changed.')
       } catch (e) {
         await closeEffortSlider(p.id)
         throw e

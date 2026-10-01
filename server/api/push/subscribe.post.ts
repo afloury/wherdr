@@ -12,7 +12,7 @@ export default defineApi(async (event, b) => {
   }
   // Resubscription (language, scope…) or new endpoint after reactivation
   // (`previous`): the old entry goes away, the device's quiet setting stays.
-  const subs = replaceSubscription(all, { endpoint: b.endpoint, keys: { p256dh: b.keys.p256dh, auth: b.keys.auth }, lang: b.lang === 'en' ? 'en' : 'fr',
+  const subs = replaceSubscription(all, { endpoint: b.endpoint, keys: { p256dh: b.keys.p256dh, auth: b.keys.auth }, lang: b.lang === 'fr' ? 'fr' : 'en',
     notifyScope: b.notifyScope === 'all' ? 'all' : 'project_leads', sessions, addedAt: new Date().toISOString() }, b.previous, quietActive)
   await writeSubs(subs)
   log(`push: subscription saved (${subs.length} device(s))`)

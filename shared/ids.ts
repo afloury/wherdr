@@ -111,4 +111,4 @@ export function parseStatusSocket(out: string): string | null {
 
 // Name of an agent launched from the app (normalized to lowercase).
 export const AGENT_NAME_RE = /^[a-z][a-z0-9_-]{0,31}$/
-export const AGENT_NAME_HINT = 'nom : minuscules, chiffres, - et _ (32 max), commence par une lettre'
+export const AGENT_NAME_HINT = 'Name: lowercase letters, digits, - and _ (32 max), starting with a letter'

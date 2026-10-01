@@ -7,7 +7,7 @@ export default defineApi(async (event, b) => {
   const text = r.read && r.read.text
   const screen = parseWaitScreen(text, { choices: Boolean(parseChoices(text, { strict: true })) })
   const a = screen && screen.actions.find(x => x.key === b.key && x.label === b.label)
-  if (!a) throw new HerdrError('stale', 'L’écran a changé entre-temps — regarde l’écran à jour.')
+  if (!a) throw new HerdrError('stale', 'The screen has changed — check the current screen.')
   // Always as a key, letters included: sent as text (paste), Codex ignores "t".
   await herdr('pane.send_input', { pane_id: b.pane_id, keys: [a.key] })
   choicesCache.delete(b.pane_id)

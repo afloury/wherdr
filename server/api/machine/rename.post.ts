@@ -8,7 +8,7 @@ export default defineApi(async (_event, body) => {
     throw new HerdrError('bad_machine', 'unknown machine')
   }
   const label = typeof body.label === 'string' ? body.label.replace(/\s+/g, ' ').trim() : ''
-  if (!label || label.length > 40) throw new HerdrError('bad_label', 'nom de machine invalide (40 caractères maximum)')
+  if (!label || label.length > 40) throw new HerdrError('bad_label', 'Invalid machine name (40 characters max)')
   await renameMachine(key, label)
   return { ok: true, label }
 })

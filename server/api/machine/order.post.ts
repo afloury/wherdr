@@ -4,7 +4,7 @@ import { currentMachineKeys, writeMachineOrder } from '../../utils/machineOrder'
 
 export default defineApi(async (_event, body) => {
   const order: unknown = body.order
-  if (!validMachineOrder(order, currentMachineKeys())) throw new HerdrError('bad_machine_order', 'ordre des machines invalide')
+  if (!validMachineOrder(order, currentMachineKeys())) throw new HerdrError('bad_machine_order', 'Invalid machine order')
   await writeMachineOrder(order)
   return { order }
 })

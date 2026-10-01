@@ -525,7 +525,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <div class="agent-main">
     <div v-if="machineDown && machine" class="term-banner machine-banner">
       <UIcon name="i-lucide-unplug" class="term-banner-icon" />
-      <span>{{ machine.status === 'connecting' ? tl(`${machineName(machine.key)} unreachable — reconnecting…`, `${machineName(machine.key)} injoignable — reconnexion…`) : tl(`${machineName(machine.key)} offline`, `${machineName(machine.key)} hors ligne`) }}<small v-if="machine.error">{{ machine.error }}</small></span>
+      <span>{{ machine.status === 'connecting' ? tl(`${machineName(machine.key)} unreachable — reconnecting…`, `${machineName(machine.key)} injoignable — reconnexion…`) : tl(`${machineName(machine.key)} offline`, `${machineName(machine.key)} hors ligne`) }}<small v-if="machine.error">{{ t(machine.error) }}</small></span>
     </div>
     <div v-if="banner" class="term-banner">
       <UIcon name="i-lucide-triangle-alert" class="term-banner-icon" />

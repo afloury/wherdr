@@ -166,8 +166,9 @@ async function launchNew(place: NewPanePlace) {
   })
   const isTab = place.kind === 'tab'
   if (r.stage === 'create') {
-    error.value = r.error
-    toast(isTab ? tl(`Tab not created: ${r.error}`, `Onglet non créé : ${r.error}`) : tl(`Pane not created: ${r.error}`, `Pane non créé : ${r.error}`), true)
+    const why = t(r.error)
+    error.value = why
+    toast(isTab ? tl(`Tab not created: ${why}`, `Onglet non créé : ${why}`) : tl(`Pane not created: ${why}`, `Pane non créé : ${why}`), true)
     return
   }
   if (isTab && r.tabId) rememberNewTab(place.workspaceId, r.tabId)
@@ -177,7 +178,7 @@ async function launchNew(place: NewPanePlace) {
   if (r.stage === 'agent') {
     const what = isTab ? tl('Tab created', 'Onglet créé') : tl('Pane created', 'Pane créé')
     toast(shell.value || !kind.value
-      ? tl(`${what}, but the command did not start: ${r.error}`, `${what}, mais la commande n’a pas démarré : ${r.error}`)
+      ? tl(`${what}, but the command did not start: ${t(r.error)}`, `${what}, mais la commande n’a pas démarré : ${t(r.error)}`)
       : tl(`${what}, but ${kindLabel(kind.value)} did not start: ${r.error}`, `${what}, mais ${kindLabel(kind.value)} n’a pas démarré : ${r.error}`), true)
   } else haptic()
   if (r.paneId) {
@@ -285,7 +286,7 @@ async function launch() {
         />
       </template>
 
-      <p v-if="error" class="form-error">{{ error }}</p>
+      <p v-if="error" class="form-error">{{ t(error) }}</p>
       <UButton block size="xl" color="primary" variant="solid" class="launch-btn hw-cta" icon="i-lucide-play" :loading="launching" :disabled="!kind" @click="launch">
         {{ launching ? t('Starting…') : t('Launch') }}
       </UButton>

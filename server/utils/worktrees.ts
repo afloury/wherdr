@@ -62,9 +62,9 @@ export async function listWorktrees(): Promise<WorktreeInfo[]> {
 // changes left: `dirty` code, to ask again with `force`.
 export async function removeWorktree(machine: string, path: string, force: boolean) {
   const m = getMachine(machine)
-  if (!m || (!m.local && m.status !== 'online')) throw new HerdrError('unreachable', 'machine injoignable')
+  if (!m || (!m.local && m.status !== 'online')) throw new HerdrError('unreachable', 'Machine unreachable')
   const wt = (await machineWorktrees(m)).find(w => w.path === path)
-  if (!wt) throw new HerdrError('not_found', 'worktree introuvable')
+  if (!wt) throw new HerdrError('not_found', 'Worktree not found')
   let ws = wt.workspace ? splitId(wt.workspace).local : null
   let reopened = false
   if (!ws) {
@@ -77,7 +77,7 @@ export async function removeWorktree(machine: string, path: string, force: boole
   } catch (e) {
     // Reopened only to remove it: we close it again.
     if (reopened) await herdrOn(m.key, 'workspace.close', { workspace_id: ws }).catch(() => {})
-    if ((e as HerdrError).code === 'dirty_worktree_requires_force') throw new HerdrError('dirty', 'modifications non commitées dans ce worktree')
+    if ((e as HerdrError).code === 'dirty_worktree_requires_force') throw new HerdrError('dirty', 'Uncommitted changes in this worktree')
     throw e
   }
   poll()

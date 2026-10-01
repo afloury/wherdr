@@ -5,8 +5,9 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { FR_DICTIONARY, t, tl } from '../app/utils/i18n'
 
-// Messages that come from Herdr itself (forwarded as-is, then translated).
-const EXTERNAL = new Set(['timed out waiting for agent startup'])
+// Messages that come from Herdr itself or from a remote shell probe
+// (forwarded as-is, then translated).
+const EXTERNAL = new Set(['timed out waiting for agent startup', 'herdr not found'])
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((f) => {

@@ -40,4 +40,20 @@ describe('envoi Web Push', () => {
     expect(await push.pushSend({ title: 't', body: 'b', tag: 'x', url: '/' })).toBe(1)
     expect((await push.readSubs()).map(s => s.endpoint)).toEqual(['https://push.example/live', 'https://push.example/new'])
   })
+
+  it('sends each device its language, English by default', async () => {
+    const en = { ...sub('https://push.example/en'), lang: 'en' as const }
+    const old = { ...sub('https://push.example/old'), lang: undefined as unknown as 'en' }
+    await push.writeSubs([sub('https://push.example/fr'), en, old])
+    const got: Record<string, { title: string, body: string, titleFr?: string }> = {}
+    sendNotification.mockReset()
+    sendNotification.mockImplementation(async (s: { endpoint: string }, body: string) => { got[s.endpoint.split('/').pop()!] = JSON.parse(body) })
+    const { title, titleFr } = push.agentNotificationTitle('blocked', 'Claude')
+    expect(await push.pushSend({ title, titleFr, body: 'Run it?', tag: 'x', url: '/' })).toBe(3)
+    expect(got.fr!.title).toBe('Claude attend ta réponse')
+    expect(got.en!.title).toBe('Claude needs your input')
+    expect(got.old!.title).toBe('Claude needs your input')
+    expect(got.en!.body).toBe('Run it?')
+    expect(got.fr!.titleFr).toBeUndefined()
+  })
 })

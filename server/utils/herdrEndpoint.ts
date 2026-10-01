@@ -95,7 +95,7 @@ class Reader {
     if (f === 251) { this.need(2); const v = this.b.readUInt16LE(this.o); this.o += 2; return v }
     if (f === 252) { this.need(4); const v = this.b.readUInt32LE(this.o); this.o += 4; return v }
     if (f === 253) { this.need(8); const v = Number(this.b.readBigUInt64LE(this.o)); this.o += 8; return v }
-    throw new RangeError('varint invalide')
+    throw new RangeError('invalid varint')
   }
   string() {
     const n = this.varint()

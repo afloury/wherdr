@@ -12,6 +12,7 @@ import { AGENT_NAME_HINT, AGENT_NAME_RE, PANE_RE, joinId } from '../../shared/id
 import { safeUploadExtension } from '../../shared/uploadName'
 import type { DirListing, MachineConfig } from '../../shared/types'
 import { installedAgentKinds } from './agentAvailability'
+import { fmt } from '../../shared/message'
 
 const fsp = fs.promises
 const px = path.posix
@@ -20,7 +21,7 @@ const px = path.posix
 export function machineFor(key: unknown): Machine {
   const m = getMachine(String(key || ''))
   if (!m) throw new HerdrError('bad_machine', 'unknown machine')
-  if (!m.local && (m.status !== 'online' || !m.home)) throw new HerdrError('unreachable', `${m.label} injoignable${m.error ? ` : ${m.error}` : ''}`)
+  if (!m.local && (m.status !== 'online' || !m.home)) throw new HerdrError('unreachable', m.error ? fmt('{machine} is unreachable: {reason}', { machine: m.label, reason: m.error }) : fmt('{machine} is unreachable', { machine: m.label }))
   return m
 }
 
@@ -45,7 +46,7 @@ export const shellQuote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 export async function createAgent(body: Json) {
   const kind = String(body.kind || '')
   // `shell`: a plain terminal, without an agent.
-  if (kind !== 'shell' && !AGENT_KINDS.includes(kind)) throw new HerdrError('bad_kind', `agent inconnu : ${kind}`)
+  if (kind !== 'shell' && !AGENT_KINDS.includes(kind)) throw new HerdrError('bad_kind', fmt('Unknown agent: {kind}', { kind }))
   // Existing pane (terminal just created by "Split"): the agent starts there,
   // on its machine and in its folder, without a new workspace.
   let target = body.pane_id ? findPane(String(body.pane_id)) : null
@@ -56,19 +57,19 @@ export async function createAgent(body: Json) {
   }
   if (body.pane_id) {
     if (!PANE_RE.test(String(body.pane_id)) || !target) throw new HerdrError('bad_pane', 'Pane not found')
-    if (target.agent) throw new HerdrError('busy_pane', 'un agent tourne déjà dans ce pane')
-    if (body.worktree) throw new HerdrError('bad_worktree', 'pas de worktree dans un pane existant')
+    if (target.agent) throw new HerdrError('busy_pane', 'An agent is already running in this pane')
+    if (body.worktree) throw new HerdrError('bad_worktree', 'No worktree in an existing pane')
   }
   // Machine where the agent is launched (local by default).
   const m = machineFor(target ? target.machine || '' : body.machine)
-  if (kind !== 'shell' && !(await installedAgentKinds(m)).includes(kind)) throw new HerdrError('not_installed', `${kind} non installé sur ${m.label}`)
+  if (kind !== 'shell' && !(await installedAgentKinds(m)).includes(kind)) throw new HerdrError('not_installed', fmt('{kind} is not installed on {machine}', { kind, machine: m.label }))
   const hx = <T = Json>(method: string, params: Record<string, unknown>, timeoutMs?: number) => herdrOn<T>(m.key, method, params, timeoutMs)
   const gid = (id: string) => joinId(m.key, id)
   const cwd = underHome(body.cwd || (target && target.cwd) || m.home, m.home)
-  if (!cwd) throw new HerdrError('bad_cwd', 'le dossier doit être sous ' + m.home)
+  if (!cwd) throw new HerdrError('bad_cwd', fmt('The folder must be under {home}', { home: m.home }))
   try {
     if (!(await m.fs.stat(cwd)).isDir) throw new Error()
-  } catch { throw new HerdrError('bad_cwd', `dossier introuvable : ${cwd}`) }
+  } catch { throw new HerdrError('bad_cwd', fmt('Folder not found: {path}', { path: cwd })) }
 
   let name = String(body.name || '').trim().toLowerCase()
   if (name && !AGENT_NAME_RE.test(name)) throw new HerdrError('bad_name', AGENT_NAME_HINT)
@@ -80,9 +81,9 @@ export async function createAgent(body: Json) {
   // Herdr also opens the original repository if it is not open, and groups both.
   let created: Json
   if (body.worktree) {
-    if (!(await isGitRepo(cwd, m))) throw new HerdrError('not_git', `pas un dépôt Git : ${cwd}`)
+    if (!(await isGitRepo(cwd, m))) throw new HerdrError('not_git', fmt('Not a Git repository: {path}', { path: cwd }))
     let branch = String(body.branch || '').trim()
-    if (branch && !/^[\w][\w./-]{0,79}$/.test(branch)) throw new HerdrError('bad_branch', 'nom de branche invalide')
+    if (branch && !/^[\w][\w./-]{0,79}$/.test(branch)) throw new HerdrError('bad_branch', 'Invalid branch name')
     if (!branch) branch = `${kind === 'shell' ? 'shell' : kind}-${crypto.randomBytes(2).toString('hex')}`
     const params = { cwd, branch, label: String(body.label || '').trim() || branch, focus: false, trust_repository: true }
     try {
@@ -192,15 +193,15 @@ export async function listDirs(p: string | null, machine: unknown = ''): Promise
   const m = machineFor(machine)
   const home = m.home
   const dir = underHome(p || home, home)
-  if (!dir) throw new HerdrError('bad_path', 'hors de ' + home)
+  if (!dir) throw new HerdrError('bad_path', fmt('Outside {home}', { home }))
   let raw
   if (m instanceof RemoteMachine) {
     const r = await m.exec(LIST_DIRS_SCRIPT, [dir], { timeoutMs: 15000 })
-    if (r.code !== 0) throw new HerdrError('bad_path', `dossier illisible : ${dir}`)
+    if (r.code !== 0) throw new HerdrError('bad_path', fmt('Folder unreadable: {path}', { path: dir }))
     raw = parseDirList(r.stdout.toString('utf8'))
   } else {
     try { raw = await listDirsLocal(dir) }
-    catch { throw new HerdrError('bad_path', `dossier illisible : ${dir}`) }
+    catch { throw new HerdrError('bad_path', fmt('Folder unreadable: {path}', { path: dir })) }
   }
   const out = raw.map(e => ({ name: e.name, path: px.join(dir, e.name), git: e.git }))
   out.sort((a, b) => (Number(b.git) - Number(a.git)) || a.name.localeCompare(b.name))
@@ -235,13 +236,13 @@ export async function saveUpload(data: Buffer, ctype: string, paneId?: string | 
   const ext = requestedExtension === undefined ? UPLOAD_TYPES[ctype] : safeUploadExtension(requestedExtension)
   const name = `${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomBytes(3).toString('hex')}.${ext}`
   const file = path.join(UPLOAD_DIR, name)
-  if (!data.length) throw new HerdrError('empty', 'fichier vide')
+  if (!data.length) throw new HerdrError('empty', 'Empty file')
   const m = paneId ? machineOfPane(paneId) : null
   if (paneId && !m) throw new HerdrError('bad_pane', 'Pane not found')
   await fsp.mkdir(UPLOAD_DIR, { recursive: true })
   await fsp.writeFile(file, data, { mode: 0o600 })
   if (m instanceof RemoteMachine) {
-    if (m.status !== 'online') throw new HerdrError('unreachable', `${m.label} injoignable`)
+    if (m.status !== 'online') throw new HerdrError('unreachable', fmt('{machine} is unreachable', { machine: m.label }))
     const remote = await m.putUpload(name, data)
     log(`photo received ${name} (${Math.round(data.length / 1024)} KB) -> ${m.label}`)
     return { path: remote, name }

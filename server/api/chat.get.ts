@@ -1,10 +1,11 @@
+import { fmt } from '../../shared/message'
 export default defineApi(async (event) => {
   const q = getQuery(event)
   const p = findPane(String(q.pane || ''))
   if (!p) throw new HerdrError('bad_pane', 'Pane not found')
   // Machine distante injoignable : ses transcriptions aussi (lues par SSH).
   const m = machineOfPane(p.id)
-  if (m && !m.local && m.status !== 'online') throw new HerdrError('unreachable', `${m.label} injoignable`)
+  if (m && !m.local && m.status !== 'online') throw new HerdrError('unreachable', fmt('{machine} is unreachable', { machine: m.label }))
   const num = (k: string) => (q[k] !== undefined ? Math.max(0, Number(q[k]) || 0) : null)
   const r = await transcripts.chat(p, {
     since: String(q.since || ''),

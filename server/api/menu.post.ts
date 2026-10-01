@@ -8,7 +8,7 @@
 import type { InteractiveMenu } from '../../shared/types'
 import { clickMovesOnly, findEntry, searchKeys, stepToward } from '../../shared/menuScreen'
 
-const STALE = 'Le menu a changé entre-temps — regarde l’écran à jour.'
+const STALE = 'The menu changed in the meantime — check the current screen.'
 // Cursor position: rank and label (a scrolling list keeps the rank).
 const at = (m: InteractiveMenu | null) => (m && m.cursor !== null ? `${m.cursor}:${m.items[m.cursor]!.label}` : null)
 const send = (pane: string, keys: string[]) => herdr('pane.send_input', { pane_id: pane, keys })
@@ -36,7 +36,7 @@ export default defineApi(async (event, b) => {
     for (let n = 0; n < 60; n++) {
       if (target < 0) throw new HerdrError('stale', STALE)
       const step = stepToward(menu, target)
-      if (!step) throw new HerdrError('stale', 'Cette entrée ne se choisit pas — regarde le terminal.')
+      if (!step) throw new HerdrError('stale', 'This entry can’t be chosen here — check the terminal.')
       // Enter that is not a simple choice (/model: "set as default"): never on an entry click.
       if (step === 'enter' && (b.move || clickMovesOnly(menu))) break
       await send(pane, [step])
@@ -46,10 +46,10 @@ export default defineApi(async (event, b) => {
       menu = await readMenu(pane)
       // The cursor did not move: re-read once, then give up.
       if (at(menu) === before) { await sleep(250); menu = await readMenu(pane) }
-      if (!menu || at(menu) === before) throw new HerdrError('stale', 'Le curseur ne bouge pas — termine dans le terminal.')
+      if (!menu || at(menu) === before) throw new HerdrError('stale', 'The cursor doesn’t move — finish in the terminal.')
       target = findEntry(menu, -1, label)
     }
-  } else throw new HerdrError('bad_request', 'op invalide')
+  } else throw new HerdrError('bad_request', 'Invalid operation')
 
   watchScreen(pane, 30000)
   // /resume: the resumed conversation replaces the old one; the transcript

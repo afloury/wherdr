@@ -300,6 +300,92 @@ const FR: Record<string, string> = {
   'Report truncated (too long).': 'Rapport tronqué (trop long).', 'This thread’s agent was not found': 'Agent de ce thread introuvable',
   'No report for this thread': 'Pas de rapport pour ce thread', 'no report for this thread': 'pas de rapport pour ce thread',
   'invalid thread': 'thread invalide', 'project not found': 'projet introuvable', 'thread list too long': 'liste des threads trop longue',
+  // Server messages (shared/message.ts: {name} = value filled in by the server)
+  '{machine} is unreachable: {reason}': '{machine} injoignable : {reason}',
+  '{machine} is unreachable': '{machine} injoignable',
+  'Unknown agent: {kind}': 'Agent inconnu : {kind}',
+  'An agent is already running in this pane': 'Un agent tourne déjà dans ce pane',
+  'No worktree in an existing pane': 'Pas de worktree dans un pane existant',
+  '{kind} is not installed on {machine}': '{kind} non installé sur {machine}',
+  'The folder must be under {home}': 'Le dossier doit être sous {home}',
+  'Folder not found: {path}': 'Dossier introuvable : {path}',
+  'Not a Git repository: {path}': 'Pas un dépôt Git : {path}',
+  'Invalid branch name': 'Nom de branche invalide',
+  'Outside {home}': 'Hors de {home}',
+  'Folder unreadable: {path}': 'Dossier illisible : {path}',
+  'Empty file': 'Fichier vide',
+  'Unknown machine: {machine}': 'Machine inconnue : {machine}',
+  'Machine unreachable': 'Machine injoignable',
+  'Herdr server unreachable ({reason})': 'Serveur Herdr injoignable ({reason})',
+  'Missing model': 'Modèle manquant',
+  'Model not found in /model: {model}': 'Modèle introuvable dans /model : {model}',
+  'Claude’s effort slider could not be read — closed, nothing was changed.': 'Curseur d’effort de Claude illisible — refermé, rien n’a été changé.',
+  'Unexpected effort slider — nothing was changed.': 'Curseur d’effort inattendu — rien n’a été changé.',
+  'The effort slider did not follow — nothing was changed.': 'Le curseur d’effort n’a pas suivi — rien n’a été changé.',
+  'The effort slider stayed open — nothing was changed.': 'Le curseur d’effort est resté ouvert — rien n’a été changé.',
+  'herdr not found': 'herdr introuvable',
+  'timed out': 'délai dépassé',
+  'Copy to {machine} failed: {reason}': 'Copie sur {machine} impossible : {reason}',
+  'Herdr server not responding': 'Serveur Herdr muet',
+  'SSH connection closed (code {code})': 'Connexion SSH fermée (code {code})',
+  'SSH connection failed (timed out)': 'Connexion SSH impossible (délai dépassé)',
+  'Probe failed (code {code})': 'Sonde échouée (code {code})',
+  '{reason} on {machine}': '{reason} sur {machine}',
+  'Herdr server stopped on {machine} (session {session})': 'Serveur Herdr arrêté sur {machine} (session {session})',
+  'Herdr server stopped on {machine}': 'Serveur Herdr arrêté sur {machine}',
+  'Herdr socket forwarding failed: {reason}': 'Transfert du socket Herdr impossible : {reason}',
+  'SSH connection closed': 'Connexion SSH fermée',
+  'profile changed': 'profil modifié',
+  'Session list unavailable': 'Liste des sessions indisponible',
+  'Invalid session': 'Session invalide',
+  'Session missing or stopped': 'Session absente ou arrêtée',
+  'Empty machine name': 'Nom de machine vide',
+  'Rename failed': 'Renommage impossible',
+  'herdr-projects is already installed': 'herdr-projects est déjà installé',
+  'Herdr folder is read-only on {machine}': 'Dossier Herdr en lecture seule sur {machine}',
+  'Install failed (code {code})': 'Installation impossible (code {code})',
+  'Message not found': 'Message introuvable',
+  'starting…': 'démarrage…',
+  'Install script not found': 'Script d’installation introuvable',
+  'Home folder is read-only here: copy the command and paste it into a terminal on {machine}': 'Dossier personnel en lecture seule ici : copie la commande et colle-la dans un terminal de {machine}',
+  'Install failed on {machine}: {reason}': 'Installation impossible sur {machine} : {reason}',
+  'Projects binary not found': 'Binaire Projects introuvable',
+  'Invalid action': 'Action invalide',
+  'Action not found on this machine': 'Action introuvable sur cette machine',
+  'Action not available here': 'Action non disponible ici',
+  'The Projects panel is available in the Herdr client; its inputs are not reachable through the Herdr API.': 'Le panneau Projects est disponible dans le client Herdr ; ses saisies ne sont pas accessibles par l’API Herdr.',
+  'Invalid plugin input': 'Saisie du plugin invalide',
+  'This space needs an agent and its folder': 'Un agent et son dossier sont nécessaires dans ce space',
+  'Repository unusable from {machine}: {path}': 'Dépôt inutilisable depuis {machine} : {path}',
+  'Invalid bootstrap token (see the server logs)': 'Jeton d’amorçage invalide (voir les journaux du serveur)',
+  'Challenge expired, try again': 'Défi expiré, recommence',
+  'Unlock first': 'Déverrouille d’abord',
+  'Key rejected': 'Clé refusée',
+  'Key unknown on this server': 'Clé inconnue sur ce serveur',
+  'Unlock rejected': 'Déverrouillage refusé',
+  'Host not allowed': 'Hôte refusé',
+  '{count} tasks': '{count} tâches',
+  'The menu changed in the meantime — check the current screen.': 'Le menu a changé entre-temps — regarde l’écran à jour.',
+  'This entry can’t be chosen here — check the terminal.': 'Cette entrée ne se choisit pas — regarde le terminal.',
+  'The cursor doesn’t move — finish in the terminal.': 'Le curseur ne bouge pas — termine dans le terminal.',
+  'Invalid operation': 'Opération invalide',
+  'Invalid key': 'Touche invalide',
+  'Enter doesn’t confirm from here — use the buttons.': 'Entrée ne se valide pas d’ici — utilise les boutons.',
+  'Invalid message': 'Message invalide',
+  'No agent in this pane': 'Pas d’agent dans ce pane',
+  'This agent’s folder is unknown': 'Dossier de cet agent inconnu',
+  'Name: lowercase letters, digits, - and _ (32 max), starting with a letter': 'Nom : minuscules, chiffres, - et _ (32 max), commence par une lettre',
+  'wherdr runs in Docker with your home folder read-only: herdr-projects cannot write to {path}. Mount its projects folder (~/.herdr-projects by default) read-write in docker-compose.yml (see README, “Herdr plugins”), then restart the container.': 'wherdr tourne en Docker avec le HOME en lecture seule : herdr-projects ne peut pas écrire dans {path}. Monte son dossier de projets (~/.herdr-projects par défaut) en écriture dans docker-compose.yml (cf. README, « Herdr plugins »), puis relance le conteneur.',
+  'wherdr runs in Docker with your home folder read-only: herdr-projects cannot write. Mount its projects folder (~/.herdr-projects by default) read-write in docker-compose.yml (see README, “Herdr plugins”), then restart the container.': 'wherdr tourne en Docker avec le HOME en lecture seule : herdr-projects ne peut pas écrire. Monte son dossier de projets (~/.herdr-projects par défaut) en écriture dans docker-compose.yml (cf. README, « Herdr plugins »), puis relance le conteneur.',
+  'herdr-projects cannot write to {path}: read-only file system.': 'herdr-projects ne peut pas écrire dans {path} : système de fichiers en lecture seule.',
+  'herdr-projects cannot write: read-only file system.': 'herdr-projects ne peut pas écrire : système de fichiers en lecture seule.',
+  'Uncommitted changes in this worktree': 'Modifications non commitées dans ce worktree',
+  'This pane’s folder is unknown': 'Dossier de ce pane inconnu',
+  'Invalid machine order': 'Ordre des machines invalide',
+  'Invalid machine name (40 characters max)': 'Nom de machine invalide (40 caractères maximum)',
+  'Invalid quiet setting': 'Réglage de silence invalide',
+  'Notifications are not enabled on this device': 'Notifications non activées sur cet appareil',
+  'Invalid path': 'Chemin invalide',
   // Space action errors (shared/spaceActions.ts)
   'empty name': 'nom vide', 'invalid direction': 'direction invalide', 'invalid destination': 'destination invalide',
   'tab on another machine': 'onglet d’une autre machine', 'pane on another machine': 'pane d’une autre machine',
@@ -325,9 +411,35 @@ function readLang(): Lang {
 // Changing the language reloads the app: no reactivity needed.
 export const language: Lang = import.meta.client ? readLang() : 'en'
 
+// Keys with {name} placeholders (server messages built with fmt(), shared/message.ts),
+// compiled once into patterns that recover the values from the filled English text.
+const TEMPLATES = Object.keys(FR).filter(k => /\{\w+\}/.test(k)).map((k) => {
+  const names: string[] = []
+  const source = k.split(/(\{\w+\})/).map((part) => {
+    const m = /^\{(\w+)\}$/.exec(part)
+    if (!m) return part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    names.push(m[1]!)
+    return '([\\s\\S]+?)'
+  }).join('')
+  return { key: k, names, re: new RegExp(`^${source}$`), fixed: k.replace(/\{\w+\}/g, '').length }
+}).sort((a, b) => b.fixed - a.fixed) // most specific first
+
+// French for an English text: exact entry, or a template whose filled values are
+// translated in turn (a reason inside a message). Undefined when there is none.
+export function french(en: string): string | undefined {
+  if (FR[en]) return FR[en]
+  for (const { key, names, re } of TEMPLATES) {
+    const m = re.exec(en)
+    if (!m) continue
+    const values = Object.fromEntries(names.map((n, i) => [n, french(m[i + 1]!) ?? m[i + 1]!]))
+    return FR[key]!.replace(/\{(\w+)\}/g, (all, n: string) => values[n] ?? all)
+  }
+  return undefined
+}
+
 // English text in, the current language's text out.
 export function t(en: string): string {
-  return language === 'fr' ? (FR[en] || en) : en
+  return language === 'fr' ? (french(en) ?? en) : en
 }
 
 // Sentence with variable parts: both versions written in full, English first.

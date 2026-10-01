@@ -6,6 +6,7 @@
 import net from 'node:net'
 import { HERDR_SOCK } from './env'
 import { LOCAL, routeParams } from '../../shared/ids'
+import { fmt } from '../../shared/message'
 
 export class HerdrError extends Error {
   code: string
@@ -17,7 +18,7 @@ export class HerdrError extends Error {
 
 // Socket of a machine (null: unreachable for now, with the reason).
 export type SocketResolver = (machine: string) => { sock: string | null, error?: string }
-let resolveSocket: SocketResolver = m => (m === LOCAL ? { sock: HERDR_SOCK } : { sock: null, error: `machine inconnue : ${m}` })
+let resolveSocket: SocketResolver = m => (m === LOCAL ? { sock: HERDR_SOCK } : { sock: null, error: fmt('Unknown machine: {machine}', { machine: m }) })
 export function setSocketResolver(fn: SocketResolver) { resolveSocket = fn }
 
 // Routed call: the machine is that of the targeted pane / workspace (local otherwise).
@@ -33,7 +34,7 @@ export function herdr<T = any>(method: string, params: Record<string, unknown> =
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function herdrOn<T = any>(machine: string, method: string, params: Record<string, unknown> = {}, timeoutMs = 15000): Promise<T> {
   const r = resolveSocket(machine)
-  if (!r.sock) return Promise.reject(new HerdrError('unreachable', r.error || 'machine injoignable'))
+  if (!r.sock) return Promise.reject(new HerdrError('unreachable', r.error || 'Machine unreachable'))
   return herdrSock<T>(r.sock, method, params, timeoutMs)
 }
 
@@ -67,7 +68,7 @@ export function herdrSock<T = any>(path: string, method: string, params: Record<
       if (msg.error) finish(new HerdrError(msg.error.code, msg.error.message))
       else finish(null, msg.result)
     })
-    sock.on('error', (e: NodeJS.ErrnoException) => finish(new HerdrError('unreachable', `serveur Herdr injoignable (${e.code || e.message})`)))
+    sock.on('error', (e: NodeJS.ErrnoException) => finish(new HerdrError('unreachable', fmt('Herdr server unreachable ({reason})', { reason: e.code || e.message }))))
     sock.on('close', () => finish(new HerdrError('closed', 'Herdr connection closed without a response')))
   })
 }

@@ -85,7 +85,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   }
   const checkBootstrap = (body: Json) => {
     if (!enabled() && !safeEq(String(body?.bootstrapToken || ''), bootstrapToken)) {
-      throw new AuthError('bootstrap', 'jeton d’amorçage invalide (voir les journaux du serveur)')
+      throw new AuthError('bootstrap', 'Invalid bootstrap token (see the server logs)')
     }
   }
 
@@ -131,12 +131,12 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
     const key = challengeKey(kind, client || '')
     const c = challenges.get(key)
     challenges.delete(key)
-    if (!c || c.exp < Date.now()) throw new AuthError('challenge', 'défi expiré, recommence')
+    if (!c || c.exp < Date.now()) throw new AuthError('challenge', 'Challenge expired, try again')
     return c.value
   }
 
   async function registerOptions(req: ReqLike, body: Json = {}) {
-    if (enabled() && !isUnlocked(req)) throw new AuthError('locked', 'déverrouille d’abord')
+    if (enabled() && !isUnlocked(req)) throw new AuthError('locked', 'Unlock first')
     checkBootstrap(body)
     const { rpID } = relying(req)
     const opts = await generateRegistrationOptions({
@@ -149,14 +149,14 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   }
 
   async function registerVerify(req: ReqLike, body: Json) {
-    if (enabled() && !isUnlocked(req)) throw new AuthError('locked', 'déverrouille d’abord')
+    if (enabled() && !isUnlocked(req)) throw new AuthError('locked', 'Unlock first')
     checkBootstrap(body)
     const { origin, rpID } = relying(req)
     const v = await verifyRegistrationResponse({
       response: body.response, expectedChallenge: takeChallenge(req, 'reg'),
       expectedOrigin: origin, expectedRPID: rpID, requireUserVerification: true,
     })
-    if (!v.verified || !v.registrationInfo) throw new AuthError('rejected', 'clé refusée')
+    if (!v.verified || !v.registrationInfo) throw new AuthError('rejected', 'Key rejected')
     const { credential } = v.registrationInfo
     db.credentials.push({
       id: credential.id,
@@ -183,13 +183,13 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   async function loginVerify(req: ReqLike, body: Json) {
     const { origin, rpID } = relying(req)
     const cred = db.credentials.find(c => c.id === (body.response && body.response.id))
-    if (!cred) throw new AuthError('unknown_key', 'clé inconnue sur ce Pi')
+    if (!cred) throw new AuthError('unknown_key', 'Key unknown on this server')
     const v = await verifyAuthenticationResponse({
       response: body.response, expectedChallenge: takeChallenge(req, 'auth'),
       expectedOrigin: origin, expectedRPID: rpID, requireUserVerification: true,
       credential: { id: cred.id, publicKey: Buffer.from(cred.publicKey, 'base64url'), counter: cred.counter, transports: cred.transports },
     })
-    if (!v.verified) throw new AuthError('rejected', 'déverrouillage refusé')
+    if (!v.verified) throw new AuthError('rejected', 'Unlock rejected')
     cred.counter = v.authenticationInfo.newCounter
     cred.lastUsed = new Date().toISOString()
     save()
@@ -197,7 +197,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   }
 
   function disable(req: ReqLike) {
-    if (!isUnlocked(req)) throw new AuthError('locked', 'déverrouille d’abord')
+    if (!isUnlocked(req)) throw new AuthError('locked', 'Unlock first')
     db.credentials = []
     db.generation += 1
     save()

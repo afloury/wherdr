@@ -104,7 +104,7 @@ export function createShellFs(exec: ShellExec, opts: { statTtlMs?: number } = {}
   return {
     async stat(p) {
       const [s] = await statMany([p])
-      if (!s) throw new FsError('ENOENT', `introuvable : ${p}`)
+      if (!s) throw new FsError('ENOENT', `not found: ${p}`)
       return s
     },
     statMany,
