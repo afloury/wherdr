@@ -1,4 +1,5 @@
 {
+  "id": "wherdr",
   "name": "wherdr",
   "short_name": "wherdr",
   "description": "Control code agents (Claude Code, Codex) running in Herdr.",

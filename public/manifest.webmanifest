@@ -1,4 +1,5 @@
 {
+  "id": "wherdr",
   "name": "wherdr",
   "short_name": "wherdr",
   "description": "Piloter les agents de code (Claude Code, Codex) qui tournent dans Herdr.",
