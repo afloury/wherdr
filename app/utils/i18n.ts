@@ -297,6 +297,8 @@ const FR: Record<string, string> = {
   'tab on another machine': 'onglet d’une autre machine', 'pane on another machine': 'pane d’une autre machine',
   'space on another machine': 'espace d’une autre machine', 'invalid split': 'split invalide', 'invalid ratio': 'ratio invalide',
   'no pane on that side': 'aucun pane de ce côté', 'a pane is zoomed in this tab': 'un pane est agrandi dans cet onglet',
+  'Not sent': 'Non envoyé', 'will be sent when the menu closes': 'partira quand le menu sera fermé',
+  'message already being sent': 'message déjà en cours d’envoi',
   'same pane': 'même pane', 'pane in another tab': 'pane d’un autre onglet', 'pane and folder required': 'pane et dossier nécessaires',
 }
 

@@ -554,7 +554,9 @@ const queuedList = computed(() => {
       id: q.id,
       raw: q.text,
       mine: !q.id.startsWith('cc-'),
-      phase: phases[i]!,
+      // Held or failed on the server: never typed yet, so never "sent".
+      phase: q.state ? 'queued' : phases[i]!,
+      state: q.state || null,
       photos: lines.filter(isUploadLine).map(l => `/uploads/${encodeURIComponent(l.trim().split('/').pop()!)}`),
       text,
       body: parsed ? parsed.body : text,
@@ -581,6 +583,20 @@ async function cancelQueued(q: { id: string, raw: string, mine: boolean }) {
     toast((err as Error).message, true)
   } finally {
     cancelling.value = null
+  }
+}
+// "Retry" on a message that could not be sent: held again by the server.
+const retrying = ref<string | null>(null)
+async function retryQueued(q: { id: string }) {
+  if (retrying.value) return
+  retrying.value = q.id
+  haptic()
+  try {
+    await api('/api/requeue', { pane_id: props.pane.id, id: q.id })
+  } catch (err) {
+    toast((err as Error).message, true)
+  } finally {
+    retrying.value = null
   }
 }
 const queuedWhy = computed(() => {
@@ -964,9 +980,18 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400) })
             <div class="msg-bubble queued">
               <span v-if="q.photos.length" class="thumbs" :class="{ one: q.photos.length === 1 }"><img v-for="src in q.photos" :key="src" class="msg-img" :src="src" alt="" @click="openImage(src)"></span>{{ q.body }}
             </div>
-            <div class="queued-tag">
-              <UIcon name="i-lucide-clock" /><span>{{ t('Queued · ') }}{{ queuedWhy }}</span>
-              <button v-if="canCancel" type="button" class="queued-cancel" :disabled="Boolean(cancelling)" @click="cancelQueued(q)">
+            <div v-if="q.state === 'failed'" class="queued-tag failed" role="alert">
+              <UIcon name="i-lucide-circle-alert" /><span>{{ t('Not sent') }}</span>
+              <button type="button" class="queued-cancel" :disabled="Boolean(retrying)" @click="retryQueued(q)">
+                <UIcon :name="retrying === q.id ? 'i-lucide-loader-circle' : 'i-lucide-rotate-cw'" :class="{ spin: retrying === q.id }" />{{ t('Retry') }}
+              </button>
+              <button type="button" class="queued-cancel" :disabled="Boolean(cancelling)" @click="cancelQueued(q)">
+                <UIcon :name="cancelling === q.id ? 'i-lucide-loader-circle' : 'i-lucide-undo-2'" :class="{ spin: cancelling === q.id }" />{{ t('Cancel') }}
+              </button>
+            </div>
+            <div v-else class="queued-tag">
+              <UIcon name="i-lucide-clock" /><span>{{ t('Queued · ') }}{{ q.state === 'held' ? t('will be sent when the menu closes') : queuedWhy }}</span>
+              <button v-if="canCancel || q.state" type="button" class="queued-cancel" :disabled="Boolean(cancelling)" @click="cancelQueued(q)">
                 <UIcon :name="cancelling === q.id ? 'i-lucide-loader-circle' : 'i-lucide-undo-2'" :class="{ spin: cancelling === q.id }" />{{ t('Cancel') }}
               </button>
             </div>
