@@ -25,7 +25,7 @@ export interface FocusInfo {
   own?: boolean
 }
 
-export interface KeyInfo { key: string, ctrlKey?: boolean, metaKey?: boolean, altKey?: boolean, shiftKey?: boolean, isComposing?: boolean, defaultPrevented?: boolean }
+export interface KeyInfo { key: string, code?: string, ctrlKey?: boolean, metaKey?: boolean, altKey?: boolean, shiftKey?: boolean, isComposing?: boolean, defaultPrevented?: boolean }
 
 const NAV: Record<string, 'up' | 'down' | 'enter' | 'esc'> = { ArrowUp: 'up', ArrowDown: 'down', Enter: 'enter', Escape: 'esc' }
 
@@ -41,8 +41,12 @@ export function cardKey(e: KeyInfo, f: FocusInfo, opts: { digits: number, enter:
     if (nav === 'enter' && (f.control || !opts.enter)) return null
     return { kind: 'nav', key: nav }
   }
-  if (/^[1-9]$/.test(e.key) && !f.own) {
-    const n = Number(e.key)
+  // By name, or by position outside a text field without Shift: AZERTY's top row types
+  // & é " ' ( … there, letters a reply may start with (Shift+digit works everywhere), and
+  // QWERTY's Shift+1 is "!".
+  const digit = /^[1-9]$/.test(e.key) ? e.key : !e.shiftKey && !f.editable ? /^Digit([1-9])$/.exec(e.code || '')?.[1] : undefined
+  if (digit && !f.own) {
+    const n = Number(digit)
     return n <= opts.digits ? { kind: 'digit', n } : null
   }
   return null

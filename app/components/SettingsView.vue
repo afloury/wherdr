@@ -12,6 +12,8 @@ import { type QuietDuration, type QuietScope, quietUntil } from '#shared/quiet'
 
 const appVersion = pkg.version
 const router = useRouter()
+// Computer section: opens the keyboard shortcuts (ShortcutsSheet).
+const shortcuts = shortcutsOpen
 // Sections: sidebar on a computer (one section shown), iOS Settings-style
 // list on the phone (a tap opens the section, Back returns to the list).
 // The section lives in the URL (`?section=plugins`, also the Project panel's link):
@@ -469,6 +471,13 @@ onMounted(() => {
             <h3>{{ t('Content width') }}</h3>
             <URadioGroup v-model="width" :items="widthItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
             <p class="muted settings-hint">{{ t('Conversation, terminal, settings and other content. Saved on this device.') }}</p>
+          </div>
+          <div class="settings-group">
+            <h3>{{ tl('Keyboard shortcuts', 'Raccourcis clavier') }}</h3>
+            <button type="button" class="settings-action solo" @click="shortcuts = true">
+              <UIcon name="i-lucide-keyboard" />{{ tl('Show keyboard shortcuts', 'Voir les raccourcis clavier') }}
+              <span class="settings-action-keys"><UKbd v-for="k in shortcutKbds('help')" :key="k" :value="k" /></span>
+            </button>
           </div>
         </div>
 

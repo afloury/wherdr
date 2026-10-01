@@ -27,13 +27,8 @@ function onVisibility() {
   if (!document.hidden) connectEvents()
   if (!document.hidden && !locked.value && !mayReadOffline(readOfflineAccess())) start()
 }
-function onShortcut(e: KeyboardEvent) {
-  if (!locked.value && swapShortcut(e)) return
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-    e.preventDefault()
-    if (!locked.value) searchOpen.value = !searchOpen.value
-  }
-}
+// Keyboard shortcuts (computer): utils/shortcuts.ts, composables/useShortcuts.ts.
+useShortcuts(searchOpen)
 
 // File dropped outside a drop zone: the browser would open it instead
 // of the app. The zones (agent view) take it first; here, we refuse the rest.
@@ -47,7 +42,6 @@ function blockFileDrop(e: DragEvent) {
 onMounted(() => {
   installViewport()
   document.addEventListener('visibilitychange', onVisibility)
-  document.addEventListener('keydown', onShortcut)
   window.addEventListener('dragover', blockFileDrop)
   window.addEventListener('drop', blockFileDrop)
   registerServiceWorker()
@@ -69,7 +63,6 @@ onMounted(() => {
 let leaseTimer: ReturnType<typeof setInterval> | undefined
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibility)
-  document.removeEventListener('keydown', onShortcut)
   window.removeEventListener('dragover', blockFileDrop)
   window.removeEventListener('drop', blockFileDrop)
   clearInterval(leaseTimer)
@@ -89,6 +82,7 @@ onUnmounted(() => {
     <PluginInputSheet />
     <PluginResultSheet />
     <ImageLightbox />
+    <ShortcutsSheet />
     <NewVersionBanner v-if="!locked" />
     <LockScreen v-if="locked" />
   </UApp>

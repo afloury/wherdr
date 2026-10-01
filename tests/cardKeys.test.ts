@@ -25,6 +25,15 @@ describe('cardKey', () => {
     expect(cardKey({ key: '4' }, body, opts)).toBeNull()
     expect(cardKey({ key: '1' }, body, { digits: 0, enter: true })).toBeNull()
   })
+  it('digits by position on AZERTY outside a field, never a character being typed', () => {
+    expect(cardKey({ key: '&', code: 'Digit1' }, body, opts)).toEqual({ kind: 'digit', n: 1 })
+    expect(cardKey({ key: 'é', code: 'Digit2' }, { ...body, control: true }, opts)).toEqual({ kind: 'digit', n: 2 })
+    // Empty message field: é, ', ( start a reply; Shift+digit still picks.
+    expect(cardKey({ key: 'é', code: 'Digit2' }, field(''), opts)).toBeNull()
+    expect(cardKey({ key: '1', code: 'Digit1', shiftKey: true }, field(''), opts)).toEqual({ kind: 'digit', n: 1 })
+    expect(cardKey({ key: '!', code: 'Digit1', shiftKey: true }, body, opts)).toBeNull()
+    expect(cardKey({ key: '\'', code: 'Digit4' }, body, opts)).toBeNull()
+  })
   it('modifiers, composition, open window: ignored', () => {
     expect(cardKey({ key: 'ArrowUp', metaKey: true }, body, opts)).toBeNull()
     expect(cardKey({ key: 'ArrowUp', shiftKey: true }, body, opts)).toBeNull()

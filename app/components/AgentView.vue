@@ -131,8 +131,8 @@ const ctl = createTerminal(props.paneId, {
   setBanner: (b) => { banner.value = b },
   hasBanner: () => Boolean(banner.value),
 })
-const chatRef = ref<{ scrollToEnd: (force: boolean) => void, reload: () => void } | null>(null)
-const composer = ref<{ focus: () => void, focusEnd: () => void, blur: () => void, addImages: (files: File[]) => Promise<void> } | null>(null)
+const chatRef = ref<{ scrollToEnd: (force: boolean) => void, reload: () => void, focusSearch: () => void } | null>(null)
+const composer = ref<{ focus: () => void, focusEnd: () => void, blur: () => void, addImages: (files: File[]) => Promise<void>, stop: () => boolean } | null>(null)
 const mirror = ref<{ focus: () => void } | null>(null)
 const searchOpen = ref(typeof route.query.q === 'string' && typeof route.query.hit === 'string')
 
@@ -180,6 +180,25 @@ function toggleSearch() {
     if (mode.value !== 'chat') viewMode.value = 'chat'
   }
 }
+// Keyboard (computer, composables/useShortcuts.ts). Mod+F: in the conversation only
+// (the browser keeps its search in the terminal). Ctrl+`: the Conversation / Terminal
+// selector. Escape: the Stop button, not while searching.
+usePaneShortcuts(() => props.paneId, () => live.value, {
+  searchChat() {
+    if (!pane.value || !hasChat(pane.value) || mode.value !== 'chat') return false
+    if (searchOpen.value) chatRef.value?.focusSearch()
+    else searchOpen.value = true
+    return true
+  },
+  toggleTerm() {
+    if (!pane.value || !hasChat(pane.value) || !mode.value) return false
+    const back = mode.value !== 'chat'
+    setMode(back ? 'chat' : 'term')
+    if (back) nextTick(() => composer.value?.focus())
+    return true
+  },
+  stop: () => mode.value === 'chat' && Boolean(composer.value?.stop()),
+})
 
 // "Problem" or "Question" on a task to test (Project panel): the message start goes
 // into the input field, cursor at the end; on the phone, back to the
@@ -316,7 +335,7 @@ const agentMenu = computed<MenuItem[]>(() => {
     items.push({ kind: 'separator' })
     items.push({
       label: p.agent ? tl(`Close this pane (stops ${kindLabel(p.agent)})`, `Fermer ce pane (arrête ${kindLabel(p.agent)})`) : t('Close this terminal'),
-      icon: 'i-lucide-trash-2', danger: true, run: () => closePane(p),
+      icon: 'i-lucide-trash-2', danger: true, kbds: live.value ? shortcutKbds('close-pane') : undefined, run: () => closePane(p),
     })
     // Pane in a worktree: remove the checkout (and close its workspace).
     const ws = herdrState.value.workspaces.find(w => w.id === p.workspace)
@@ -510,7 +529,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
             v-if="controls.term" icon="i-lucide-square-terminal" color="neutral" variant="ghost" size="lg" class="icon-btn mode-btn"
             :class="{ on: mode === 'term' }" :aria-label="t('Terminal')" :aria-pressed="mode === 'term'" @click="toggleMode('term')"
           />
-          <UTooltip v-if="hasChat(pane) && (live || cell)" :text="t('Search')" :disabled="!desk">
+          <UTooltip v-if="hasChat(pane) && (live || cell)" :text="t('Search')" :kbds="mode === 'chat' ? shortcutKbds('search-chat') : undefined" :disabled="!desk">
             <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :class="{ on: searchOpen }" :aria-label="t('Search')" @click="toggleSearch" />
           </UTooltip>
           <UDropdownMenu v-if="desk" :items="dropdownItems" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
@@ -556,7 +575,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <ChoicesPanel v-if="(prompt || screen) && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :screen="screen" :keys="live" />
     <MenuPanel v-else-if="menu && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :menu="menu" :keys="live" @terminal="setMode('term')" />
     <Keybar v-if="mode === 'term' && eventsOpen && !offlineView && !machineDown" :ctl="ctl" />
-    <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" @sent="onSent" @show-terminal="setMode('term')" />
+    <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :esc-stops="!searchOpen" @sent="onSent" @show-terminal="setMode('term')" />
     </div>
     <div
       v-if="projectSide && sideOpen" class="side-handle" :class="{ dragging: sideDrag }" role="separator" aria-orientation="vertical"

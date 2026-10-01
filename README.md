@@ -106,10 +106,18 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - **Spaces and tabs**: sidebar with every space, tabs at the top, active tab remembered per space.
   The sidebar can be resized, or collapsed to a narrow rail (search, new agent, settings and
   state counters) with the button next to Settings; the choice is kept on the device.
-- **Keyboard shortcuts**: `Ctrl/⌘+K` global search across agents and conversations,
-  `Alt+Shift+arrows` to swap the current pane with its neighbour,
-  `Ctrl/⌘+Alt+arrows` to move focus to the neighbouring pane in a side-by-side tab, `Esc` to close dialogs,
-  `Enter` to send and `Shift+Enter` for a new line.
+- **Keyboard shortcuts** (`Mod` is ⌘ on macOS, Ctrl elsewhere; `Mod+/` or `?` lists them all,
+  also in Settings › Computer):
+  - `Ctrl/⌘+K` global search across agents and conversations, `Alt+↑/↓` previous / next agent
+    in the list, `Mod+,` settings.
+  - `Mod+Alt+N` new agent in a new space, `Mod+Alt+T` new tab in the current space,
+    `Mod+Alt+W` close the current pane (after confirmation). They work from the terminal too.
+  - In an agent: `Mod+F` searches the conversation, ``Ctrl+` `` switches between conversation
+    and terminal, and `Esc` stops a working agent when the message field is empty.
+  - `Alt+Shift+arrows` swaps the current pane with its neighbour, `Ctrl/⌘+Alt+arrows` moves
+    focus to the neighbouring pane in a side-by-side tab, `Esc` closes dialogs, `Enter` sends
+    and `Shift+Enter` adds a new line. On a "Your turn" card, `1`–`9` pick an option (on AZERTY
+    without Shift too, outside the message field).
 - **Project board** for [herdr-projects](#works-great-with-herdr-projects): coordinator and threads grouped
   under their project, and a side panel with the project's task lists (to test, to decide,
   blocked, in progress, backlog) and one-click replies to the coordinator.

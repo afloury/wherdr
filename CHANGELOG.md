@@ -26,6 +26,11 @@ First public release.
   suggestions; file commands show as `/name args` in the conversation.
 - Collapsible agent sidebar on a computer: a narrow rail with search, new agent, settings and
   state counters, remembered per device.
+- Keyboard shortcuts on a computer: previous / next agent (`Alt+↑/↓`), new space, new tab and
+  close pane (`Mod+Alt+N/T/W`, also from the terminal), conversation search (`Mod+F`),
+  conversation / terminal (``Ctrl+` ``), stop a working agent (`Esc`, empty field), settings
+  (`Mod+,`) and a shortcut list (`Mod+/` or `?`, Settings › Computer). Tooltips and menus show
+  the keys. The "Your turn" card's digits also work on AZERTY without Shift, outside the message field.
 - Terminal view (xterm.js, WebGL or DOM renderer) with a phone key bar and take-over.
   Shift+Enter inserts a newline in agents, as in a native terminal.
 - Composer with queued messages (cancellable), photos, paste, slash commands and their output.
