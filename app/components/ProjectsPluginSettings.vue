@@ -112,7 +112,7 @@ const copyRules = () => copyText(coordinatorRules(lang()), tl('Règles copiées 
   <div class="settings-group projects-plugin-settings">
     <h3>{{ tl('Réglages herdr-projects', 'herdr-projects settings') }}</h3>
     <h4 id="project-board" class="projects-board-title">{{ tl('Tableau du projet', 'Project board') }}</h4>
-    <p class="projects-plugin-intro">{{ tl('Le panneau Projet lit TASKS.md : une liste par titre ##, une tâche par ligne « - [ ] titre (responsable) ». herdr-projects n’impose que le Backlog ; « À tester », « À décider », « À relire » et « Bloqué » sont une convention de wherdr, avec leurs boutons.', 'The Project panel reads TASKS.md: one list per ## heading, one task per line “- [ ] title (owner)”. herdr-projects only requires the Backlog; “To test”, “To decide”, “To review” and “Blocked” are a wherdr convention, with their own buttons.') }}</p>
+    <p class="projects-plugin-intro">{{ tl('Le panneau Projet lit TASKS.md : une liste par titre ##, une tâche par ligne « - [ ] titre [t-0140] (responsable) », l’ID de thread entre crochets étant facultatif (badge cliquable). herdr-projects n’impose que le Backlog ; « À tester », « À décider », « À relire » et « Bloqué » sont une convention de wherdr, avec leurs boutons.', 'The Project panel reads TASKS.md: one list per ## heading, one task per line “- [ ] title [t-0140] (owner)”, the bracketed thread ID being optional (clickable badge). herdr-projects only requires the Backlog; “To test”, “To decide”, “To review” and “Blocked” are a wherdr convention, with their own buttons.') }}</p>
     <ul class="projects-board-lists">
       <li v-for="l in boardLists" :key="l.name">
         <UIcon :name="l.icon" />

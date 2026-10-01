@@ -2002,6 +2002,17 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .pp-task.done .pp-task-text { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--dim); }
 .pp-owner { flex: none; max-width: 38%; margin-top: 1px; padding: 3px 5px; border: 1px solid var(--line); font: 500 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pp-task.mine .pp-owner { color: var(--mauve); }
+.pp-tags { flex: none; max-width: 45%; margin-top: 1px; display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.pp-tags .pp-owner { max-width: 100%; margin-top: 0; }
+/* Thread lié [t-NNNN] : même hauteur que le responsable, carré d'état discret. */
+.pp-ref { display: inline-flex; align-items: center; gap: 5px; padding: 3px 5px; border: 1px solid var(--line); background: none; font: 500 10px/1 var(--mono); letter-spacing: .04em; color: var(--muted); white-space: nowrap; cursor: default; }
+.pp-ref i { width: 5px; height: 5px; flex: none; background: var(--dim); }
+.pp-ref.working i { background: var(--working); }
+.pp-ref.blocked i { background: var(--blocked); }
+.pp-ref.done i { background: var(--done); }
+.pp-ref.idle i { background: var(--idle); }
+.pp-ref.live { cursor: pointer; color: var(--text); }
+@media (hover: hover) { .pp-ref.live:hover { border-color: var(--line-strong); } }
 .pp-task-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
 .pp-task-body .pp-task-text { flex: none; }
 .pp-reason { font: 11px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }

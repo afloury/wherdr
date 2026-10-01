@@ -109,6 +109,37 @@ describe('TASKS.md', () => {
   })
 })
 
+describe('threads liés [t-NNNN]', () => {
+  it('ID seul, retiré du texte', () => {
+    expect(parseTaskLine('- [ ] Bouton Stop [t-0140]')).toEqual({ text: 'Bouton Stop', done: false, owner: null, thread: null, refs: ['t-0140'] })
+  })
+  it('plusieurs IDs, en minuscules et sans doublon', () => {
+    expect(parseTaskLine('- [ ] Terminal [T-0140, t-0141; t-0140] (agent)')?.refs).toEqual(['t-0140', 't-0141'])
+  })
+  it('ID avant ou après le responsable', () => {
+    const a = parseTaskLine('- [ ] Bouton Stop vraiment [t-0140] (me)')!
+    const b = parseTaskLine('- [ ] Bouton Stop vraiment (me) [t-0140]')!
+    for (const x of [a, b]) {
+      expect(x.text).toBe('Bouton Stop vraiment')
+      expect(x.owner).toBe('me')
+      expect(x.refs).toEqual(['t-0140'])
+    }
+  })
+  it('parenthèses dans le texte : le responsable est le dernier groupe', () => {
+    const line = '- [ ] Bouton Stop (clic) pendant une commande : « Interruption… » puis l’agent s’arrête (me)'
+    expect(parseTaskLine(line)?.owner).toBe('me')
+    expect(parseTaskLine(line)?.text).toBe('Bouton Stop (clic) pendant une commande : « Interruption… » puis l’agent s’arrête')
+    const withRef = parseTaskLine(line.replace(' (me)', ' [t-0140] (me)'))!
+    expect(withRef.owner).toBe('me')
+    expect(withRef.refs).toEqual(['t-0140'])
+  })
+  it('pas d’ID : pas de refs ; crochets ordinaires gardés', () => {
+    expect(parseTaskLine('- [ ] Rien à lier (me)')).not.toHaveProperty('refs')
+    expect(parseTaskLine('- [ ] Tableau [beta] (me)')?.text).toBe('Tableau [beta]')
+    expect(parseTaskLine('- [ ] [t-0140]')?.text).toBe('[t-0140]')
+  })
+})
+
 describe('réponses aux décisions (À décider)', () => {
   it('prépare une réponse dans la langue choisie avec le texte de la tâche', () => {
     const task = parseTaskLine('- [ ] Publier le dépôt « wherdr » ? (me)')!
