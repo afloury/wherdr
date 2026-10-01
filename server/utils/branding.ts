@@ -1,8 +1,8 @@
-// Icônes de l'app (/icons/*, /favicon.ico), servies par le serveur et non comme
-// fichiers statiques : une installation peut les remplacer sans reconstruire
-// l'image, en montant ses propres icônes dans BRANDING_DIR (même arborescence :
-// icons/<nom>.png, favicon.ico ; cf. docker-compose.override.example.yml).
-// À défaut, celles du dépôt (server/assets/branding, embarquées au build).
+// App icons (/icons/*, /favicon.ico), served by the server and not as
+// static files: an installation can replace them without rebuilding
+// the image, by mounting its own icons in BRANDING_DIR (same layout:
+// icons/<name>.png, favicon.ico; see docker-compose.override.example.yml).
+// Otherwise, the repository's (server/assets/branding, bundled at build time).
 import fs from 'node:fs'
 import path from 'node:path'
 import type { H3Event } from 'h3'

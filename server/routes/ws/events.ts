@@ -1,5 +1,5 @@
-// WS /ws/events : l'état des agents, poussé à chaque changement. L'app dit
-// quel agent est à l'écran : pas de notif pour celui-là.
+// WS /ws/events: the agents' state, pushed on every change. The app says
+// which agent is on screen: no notification for that one.
 export default defineWebSocketHandler({
   upgrade: request => checkUpgrade(request),
   open(peer) {

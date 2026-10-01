@@ -1,5 +1,5 @@
-// Modèles proposés par le menu /model de l'agent (lu une fois par type d'agent,
-// puis gardé en cache ; `refresh=1` pour relire).
+// Models offered by the agent's /model menu (read once per agent kind,
+// then cached; `refresh=1` to re-read).
 export default defineApi(async (event) => {
   const q = getQuery(event)
   const pane = String(q.pane || '')

@@ -1,25 +1,25 @@
-// « Annuler » un message en attente : il sort de la file de Claude Code et son
-// texte revient dans le champ de saisie de wherdr.
+// "Cancel" a queued message: it leaves Claude Code's queue and its
+// text comes back into wherdr's input field.
 //
-// Séquence vérifiée sur un vrai Claude Code (2.1.283) : pendant un tour, ↑
-// ramène TOUTE la file dans son champ de saisie (une opération `popAll` par
-// entrée dans la transcription). On vide alors le champ (Ctrl+U efface une
-// ligne, Retour arrière recolle la précédente) et on remet en file les autres
-// messages. Pièges : Échap et Ctrl+C interrompent le tour ; `agent.prompt`
-// ajoute au texte déjà présent dans le champ, d'où la vérification qu'il est
-// vide avant et après.
+// Sequence checked on a real Claude Code (2.1.283): during a turn, ↑
+// brings the WHOLE queue back into its input field (one `popAll` operation per
+// entry in the transcript). We then empty the field (Ctrl+U erases a
+// line, Backspace joins the previous one) and queue the other
+// messages again. Traps: Escape and Ctrl+C interrupt the turn; `agent.prompt`
+// appends to the text already in the field, hence the check that it is
+// empty before and after.
 import type { ChatItem, ClaudeQueueEntry } from '../../shared/types'
 import { HerdrError } from './herdr'
 import { isUploadLine } from './queued'
 import { sameMsg } from './transcripts'
 
-// Texte du message sans les chemins de photos (devenues des images chez Claude).
+// Message text without photo paths (which became images in Claude).
 export const msgText = (t: string) => String(t || '').split('\n').filter(l => !isUploadLine(l)).join('\n').trim()
 
-// Contenu du champ de saisie de Claude Code, lu dans l'écran ANSI : la ligne
-// « ❯ » suivie d'une espace insécable (les messages en file ont une espace
-// normale), puis ses lignes de suite jusqu'au trait. Le texte d'aide grisé
-// (« Press up to edit queued messages ») ne compte pas. null : champ introuvable.
+// Content of Claude Code's input field, read from the ANSI screen: the
+// "❯" line followed by a non-breaking space (queued messages have a normal
+// space), then its continuation lines up to the rule. The grayed-out help text
+// ("Press up to edit queued messages") does not count. null: field not found.
 const ESC = String.fromCharCode(27)
 const DIM = new RegExp(`${ESC}\\[2m[^${ESC}]*`, 'g')
 const SGR = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, 'g')
@@ -37,7 +37,7 @@ export function inputBox(ansi: string): string | null {
   return out.join('\n').trim()
 }
 
-// Touches qui vident un champ de `lines` lignes.
+// Keys that empty a field of `lines` lines.
 export function clearKeys(lines: number): string[] {
   const keys: string[] = []
   for (let i = 0; i < Math.min(Math.max(lines, 1) + 2, 200); i++) keys.push('ctrl+u', 'backspace')
@@ -45,18 +45,18 @@ export function clearKeys(lines: number): string[] {
 }
 
 export interface UnqueueDeps {
-  screen: () => Promise<string> // écran visible, en ANSI
+  screen: () => Promise<string> // visible screen, in ANSI
   keys: (keys: string[]) => Promise<void>
   chat: () => Promise<{ queue: ClaudeQueueEntry[], items: ChatItem[] }>
   prompt: (text: string) => Promise<void> // agent.prompt
   sleep: (ms: number) => Promise<void>
-  // Texte d'origine (avec chemins de photos) d'une entrée remise en file.
+  // Original text (with photo paths) of an entry queued again.
   original?: (text: string) => string
 }
 
 const already = () => new HerdrError('already_read', 'Message déjà lu par l’agent')
 
-// Retire de la file de Claude le message `text`. Rend les messages remis en file.
+// Removes the message `text` from Claude's queue. Returns the messages queued again.
 export async function unqueueClaude(d: UnqueueDeps, text: string): Promise<{ requeued: string[] }> {
   const wanted = msgText(text)
   const isIt = (q: ClaudeQueueEntry) => sameMsg(q.text, wanted) || sameMsg(wanted, q.text)
@@ -72,10 +72,10 @@ export async function unqueueClaude(d: UnqueueDeps, text: string): Promise<{ req
     await d.sleep(150)
     box = inputBox(await d.screen()) || ''
   }
-  if (!box) throw already() // file déjà vidée : ↑ n'a rien ramené
+  if (!box) throw already() // queue already emptied: ↑ brought nothing back
 
-  // ↑ ramène toute la file. Mais si le tour l'a prise entre-temps, c'est
-  // l'historique qui revient : notre message est alors dans la conversation.
+  // ↑ brings back the whole queue. But if the turn took it in the meantime, it is
+  // the history that comes back: our message is then in the conversation.
   const saidCount = (items: ChatItem[], q: string) => items.filter(i => (i.role === 'user' || i.role === 'bash') && sameMsg(q, i.text)).length
   const saidNew = (a: ChatItem[], q: string) => saidCount(a, q) > saidCount(before.items, q)
   let after = before
@@ -89,7 +89,7 @@ export async function unqueueClaude(d: UnqueueDeps, text: string): Promise<{ req
     ? before.queue.filter(q => !after.queue.some(a => a.text === q.text) && !saidNew(after.items, q.text))
     : before.queue
 
-  // Vider le champ, vérifié (deux essais).
+  // Empty the field, checked (two attempts).
   const lines = box.split('\n').length + popped.reduce((s, q) => s + q.text.split('\n').length, 0)
   for (let i = 0; i < 2; i++) {
     await d.keys(clearKeys(lines))

@@ -16,7 +16,7 @@ import { installedAgentKinds } from './agentAvailability'
 const fsp = fs.promises
 const px = path.posix
 
-// Machine visée par une requête (`machine` : clé courte, vide = locale), prête.
+// Machine targeted by a request (`machine`: short key, empty = local), ready.
 export function machineFor(key: unknown): Machine {
   const m = getMachine(String(key || ''))
   if (!m) throw new HerdrError('bad_machine', 'machine inconnue')
@@ -39,17 +39,17 @@ export async function isGitRepo(dir: string, m: Machine = getMachine('')!) {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
 
-// Chemin passé au shell du pane, entre apostrophes.
+// Path passed to the pane's shell, in single quotes.
 export const shellQuote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 
 export async function createAgent(body: Json) {
   const kind = String(body.kind || '')
-  // `shell` : un simple terminal, sans agent.
+  // `shell`: a plain terminal, without an agent.
   if (kind !== 'shell' && !AGENT_KINDS.includes(kind)) throw new HerdrError('bad_kind', `agent inconnu : ${kind}`)
-  // Pane existant (terminal tout juste créé par « Diviser ») : l'agent y démarre,
-  // sur sa machine et dans son dossier, sans nouveau workspace.
+  // Existing pane (terminal just created by "Split"): the agent starts there,
+  // on its machine and in its folder, without a new workspace.
   let target = body.pane_id ? findPane(String(body.pane_id)) : null
-  // Pane d'un onglet créé à l'instant (« Nouvel onglet ») : pas encore dans l'état.
+  // Pane of a tab just created ("New tab"): not in the state yet.
   if (body.pane_id && !target && PANE_RE.test(String(body.pane_id))) {
     await poll()
     target = findPane(String(body.pane_id))
@@ -59,7 +59,7 @@ export async function createAgent(body: Json) {
     if (target.agent) throw new HerdrError('busy_pane', 'un agent tourne déjà dans ce pane')
     if (body.worktree) throw new HerdrError('bad_worktree', 'pas de worktree dans un pane existant')
   }
-  // Machine où lancer l'agent (locale par défaut).
+  // Machine where the agent is launched (local by default).
   const m = machineFor(target ? target.machine || '' : body.machine)
   if (kind !== 'shell' && !(await installedAgentKinds(m)).includes(kind)) throw new HerdrError('not_installed', `${kind} non installé sur ${m.label}`)
   const hx = <T = Json>(method: string, params: Record<string, unknown>, timeoutMs?: number) => herdrOn<T>(m.key, method, params, timeoutMs)
@@ -75,9 +75,9 @@ export async function createAgent(body: Json) {
   if (!name) name = `${kind}-${crypto.randomBytes(2).toString('hex')}`
   const label = String(body.label || '').trim().slice(0, 40) || px.basename(cwd) || '~'
 
-  // Worktree : l'agent travaille sur sa propre branche, dans un dossier à part
-  // (~/.herdr/worktrees/<dépôt>/<branche>), sans toucher au dossier d'origine.
-  // Herdr ouvre aussi le dépôt d'origine s'il ne l'est pas, et regroupe les deux.
+  // Worktree: the agent works on its own branch, in a separate folder
+  // (~/.herdr/worktrees/<repo>/<branch>), without touching the original folder.
+  // Herdr also opens the original repository if it is not open, and groups both.
   let created: Json
   if (body.worktree) {
     if (!(await isGitRepo(cwd, m))) throw new HerdrError('not_git', `pas un dépôt Git : ${cwd}`)
@@ -88,7 +88,7 @@ export async function createAgent(body: Json) {
     try {
       created = await hx('worktree.create', params, 30000)
     } catch (e) {
-      // Vu une fois juste après un démarrage de Herdr : dépôt pas encore reconnu.
+      // Seen once right after Herdr started: repository not recognized yet.
       if ((e as HerdrError).code !== 'not_git_worktree') throw e
       await sleep(1000)
       created = await hx('worktree.create', params, 30000)
@@ -96,17 +96,17 @@ export async function createAgent(body: Json) {
   } else if (!target) {
     created = await hx('workspace.create', { cwd, label, focus: false })
   }
-  // IDs locaux à la machine -> IDs de l'app (préfixés pour une machine distante).
+  // IDs local to the machine -> app IDs (prefixed for a remote machine).
   const paneId: string = target ? target.id : gid(created.root_pane.pane_id)
   const wsId: string = target ? target.workspace : gid(created.workspace.workspace_id)
-  // Pane existant dans un autre dossier que celui choisi : on s'y place d'abord.
+  // Existing pane in a folder other than the chosen one: cd there first.
   if (target && cwd !== target.cwd) {
     await herdr('pane.send_input', { pane_id: paneId, text: `cd ${shellQuote(cwd)}` })
     await herdr('pane.send_input', { pane_id: paneId, keys: ['enter'] })
   }
   if (kind === 'shell') {
-    // Commande de départ : tapée tout de suite, le terminal la garde en tampon
-    // jusqu'à ce que le shell affiche son prompt.
+    // Start command: typed right away, the terminal buffers it
+    // until the shell shows its prompt.
     const cmd = String(body.prompt || '').trim()
     if (cmd) {
       await herdr('pane.send_input', { pane_id: paneId, text: cmd })
@@ -116,15 +116,15 @@ export async function createAgent(body: Json) {
     poll()
     return { pane_id: paneId, workspace_id: wsId, name: null }
   }
-  // Le serveur Herdr peut avoir un PATH minimal (service, session SSH). Les
-  // exécutables détectés dans les dossiers usuels doivent aussi être visibles
-  // dans le shell du pane neuf, avant `agent.start`.
+  // The Herdr server may have a minimal PATH (service, SSH session). The
+  // executables detected in the usual folders must also be visible
+  // in the new pane's shell, before `agent.start`.
   const pathSetup = 'export PATH="$HOME/.local/bin:$HOME/.kimi-code/bin:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"'
   await herdr('pane.send_input', { pane_id: paneId, text: pathSetup })
   await herdr('pane.send_input', { pane_id: paneId, keys: ['enter'] })
   await sleep(400)
-  // Le shell du pane tout neuf n'est pas forcément déjà à son prompt :
-  // agent.start refuse tant qu'il ne l'est pas, on réessaie quelques secondes.
+  // The brand new pane's shell is not necessarily at its prompt yet:
+  // agent.start refuses until it is, so we retry for a few seconds.
   let lastErr: HerdrError | null = null
   for (let i = 0; i < 16; i++) {
     try {
@@ -134,19 +134,19 @@ export async function createAgent(body: Json) {
       break
     } catch (e) {
       lastErr = e as HerdrError
-      if (lastErr.code === 'agent_not_ready') { lastErr = null; break } // démarré mais bloqué (ex. confiance du dossier)
+      if (lastErr.code === 'agent_not_ready') { lastErr = null; break } // started but blocked (e.g. folder trust)
       if (lastErr.code === 'timeout' || lastErr.code === 'unreachable' || /name/i.test(lastErr.code)) break
       await sleep(500)
     }
   }
   if (lastErr) {
-    // Le pane existant reste là, en simple terminal.
+    // The existing pane stays, as a plain terminal.
     if (!target) await herdr('workspace.close', { workspace_id: wsId }).catch(() => {})
     throw lastErr
   }
-  // agent.start rend la main avant que l'agent soit prêt (launch_pending), et il
-  // peut encore s'arrêter sur une invite (confiance du dossier). Le premier
-  // message attend donc son tour : il part au premier état idle.
+  // agent.start returns before the agent is ready (launch_pending), and it
+  // may still stop on a prompt (folder trust). The first
+  // message therefore waits its turn: it goes out on the first idle state.
   if (body.prompt && String(body.prompt).trim()) {
     pendingPrompts.set(paneId, { text: String(body.prompt), at: Date.now() })
     addQueued(paneId, body.prompt)
@@ -156,8 +156,8 @@ export async function createAgent(body: Json) {
   return { pane_id: paneId, workspace_id: wsId, name }
 }
 
-// Dossiers récents : `dirs` pour la machine locale (format d'avant), et
-// `machines[<id de profil>]` pour les autres.
+// Recent folders: `dirs` for the local machine (old format), and
+// `machines[<profile id>]` for the others.
 const DIRS_FILE = path.join(DATA_DIR, 'dirs.json')
 async function readDirsFile(): Promise<{ dirs?: string[], machines?: Record<string, string[]> }> {
   try { return JSON.parse(await fsp.readFile(DIRS_FILE, 'utf8')) || {} }
@@ -177,7 +177,7 @@ async function rememberDir(d: string, m: Machine) {
   await fsp.writeFile(DIRS_FILE, JSON.stringify(f, null, 2) + '\n')
 }
 
-// Machines proposées dans la feuille « Nouveau » (présent seulement s'il y en a plusieurs).
+// Machines offered in the "New" sheet (only present if there are several).
 export async function machineConfigs(): Promise<MachineConfig[] | undefined> {
   const ms = allMachines()
   if (ms.length < 2) return undefined
@@ -207,12 +207,12 @@ export async function listDirs(p: string | null, machine: unknown = ''): Promise
   return { path: dir, parent: dir === home ? null : px.dirname(dir), home, dirs: out }
 }
 
-// --- Panneaux ouverts ------------------------------------------------------
-// Certaines commandes (/usage, /context all…) ouvrent un panneau plein écran
-// qui cache le champ de saisie tant qu'on n'appuie pas sur Échap : un message
-// envoyé pendant ce temps est perdu.
-// Referme un éventuel panneau d'un agent au repos (jamais pendant qu'il
-// travaille : Échap l'interromprait). Renvoie true si un Échap a été envoyé.
+// --- Open panels ------------------------------------------------------------
+// Some commands (/usage, /context all…) open a full-screen panel
+// that hides the input field until Escape is pressed: a message
+// sent meanwhile is lost.
+// Closes any panel of an idle agent (never while it is
+// working: Escape would interrupt it). Returns true if an Escape was sent.
 export async function closePanel(paneId: string) {
   const p = findPane(paneId)
   if (!p || !p.agent || !['idle', 'done', 'unknown'].includes(p.status || '')) return false
@@ -229,8 +229,8 @@ export async function closePanel(paneId: string) {
 
 // --- Photos ----------------------------------------------------------------
 export const UPLOAD_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/heic': 'heic' }
-// Photo pour un agent d'une machine distante : gardée ici (miniatures de
-// l'app, /uploads/<nom>) et copiée sur sa machine, dont on renvoie le chemin.
+// Photo for an agent on a remote machine: kept here (app
+// thumbnails, /uploads/<name>) and copied to its machine, whose path is returned.
 export async function saveUpload(data: Buffer, ctype: string, paneId?: string | null, requestedExtension?: string) {
   const ext = requestedExtension === undefined ? UPLOAD_TYPES[ctype] : safeUploadExtension(requestedExtension)
   const name = `${new Date().toISOString().replace(/[:.]/g, '-')}-${crypto.randomBytes(3).toString('hex')}.${ext}`
@@ -243,10 +243,10 @@ export async function saveUpload(data: Buffer, ctype: string, paneId?: string | 
   if (m instanceof RemoteMachine) {
     if (m.status !== 'online') throw new HerdrError('unreachable', `${m.label} injoignable`)
     const remote = await m.putUpload(name, data)
-    log(`photo reçue ${name} (${Math.round(data.length / 1024)} Ko) -> ${m.label}`)
+    log(`photo received ${name} (${Math.round(data.length / 1024)} KB) -> ${m.label}`)
     return { path: remote, name }
   }
-  log(`photo reçue ${name} (${Math.round(data.length / 1024)} Ko)`)
+  log(`photo received ${name} (${Math.round(data.length / 1024)} KB)`)
   return { path: file, name }
 }
 export async function cleanUploads() {
@@ -258,7 +258,7 @@ export async function cleanUploads() {
     }
   } catch { /* dossier absent */ }
 }
-// Photo déjà déposée, relue par son nom (jamais hors du dépôt).
+// Photo already stored, re-read by its name (never outside the store).
 export async function readUpload(name: string) {
   if (!/^[\w.-]+\.(jpg|png|webp|gif|heic)$/.test(name)) return null
   const ext = name.split('.').pop()!

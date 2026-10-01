@@ -1,7 +1,7 @@
 import { restartPlanFor } from '../utils/restart'
 
-// Aperçu du redémarrage d'un agent (confirmation) : conversation reprise et
-// options de lancement d'origine retrouvées, sans rien toucher.
+// Preview of an agent restart (confirmation): resumed conversation and
+// original launch options found, without touching anything.
 export default defineApi(async (event) => {
   const pane = String(getQuery(event).pane || '')
   if (!PANE_RE.test(pane)) throw new HerdrError('bad_pane', 'pane invalide')

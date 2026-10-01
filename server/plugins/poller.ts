@@ -1,5 +1,5 @@
-// Tâches de fond : sondage de Herdr (session.snapshot chaque seconde), clés
-// VAPID, notifications de `herdr notification show`, purge des photos de plus de 7 jours.
+// Background tasks: Herdr polling (session.snapshot every second), VAPID
+// keys, notifications from `herdr notification show`, purge of photos older than 7 days.
 export default defineNitroPlugin((nitroApp) => {
   initVapid()
   startMachines()

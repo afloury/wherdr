@@ -1,25 +1,25 @@
-// Protocole d'endpoint de Herdr (clients « shell » : herdr --remote, bureau…),
-// réduit à ce qu'il faut pour recevoir les notifications. Fonctions pures,
-// testées dans tests/herdrEndpoint.test.ts.
+// Herdr endpoint protocol ("shell" clients: herdr --remote, desktop…),
+// reduced to what is needed to receive notifications. Pure functions,
+// tested in tests/herdrEndpoint.test.ts.
 //
-// Pourquoi : `herdr notification show` (plugins, scripts, agents) n'émet aucun
-// événement sur le socket API, n'écrit ni son titre ni son corps dans le
-// journal, et Herdr ne garde aucun historique. Le serveur l'envoie seulement
-// aux clients shell connectés (ServerMessage::SemanticNotification). wherdr
-// s'y connecte donc comme un client shell PASSIF : `surface_active: false`
-// (il ne devient pas le client au premier plan, ne prend la géométrie d'aucun
-// onglet, ne redimensionne aucun pane) et n'envoie rien après la poignée de main.
+// Why: `herdr notification show` (plugins, scripts, agents) emits no
+// event on the API socket, writes neither its title nor its body to the
+// log, and Herdr keeps no history. The server only sends it
+// to connected shell clients (ServerMessage::SemanticNotification). wherdr
+// therefore connects as a PASSIVE shell client: `surface_active: false`
+// (it does not become the foreground client, takes no tab's
+// geometry, resizes no pane) and sends nothing after the handshake.
 //
-// Contrat (Herdr 0.9.1, src/protocol/wire.rs et endpoint.rs) : « generation 1 »
-// de l'endpoint stable, dont l'ordre des variantes est figé :
-//  - trame : [u32 LE longueur][charge bincode 2, config standard] ;
-//    bincode standard : entiers en varint (< 251 : 1 octet ; 251 : u16 ; 252 :
-//    u32 ; 253 : u64), chaînes = varint longueur + UTF-8, Option = 0 | 1 + valeur,
-//    variante d'énumération = varint de son rang ;
-//  - client -> serveur : ClientMessage::EndpointControl (rang 20)
-//    { kind: "endpoint.hello.v1", data: JSON du EndpointClientHello } ;
-//  - serveur -> client : EndpointControl (rang 20, « endpoint.welcome.v1 »,
-//    instantané…), SemanticNotification (rang 14) ; le reste est ignoré.
+// Contract (Herdr 0.9.1, src/protocol/wire.rs and endpoint.rs): "generation 1"
+// of the stable endpoint, whose variant order is frozen:
+//  - frame: [u32 LE length][bincode 2 payload, standard config];
+//    standard bincode: varint integers (< 251: 1 byte; 251: u16; 252:
+//    u32; 253: u64), strings = varint length + UTF-8, Option = 0 | 1 + value,
+//    enum variant = varint of its index;
+//  - client -> server: ClientMessage::EndpointControl (index 20)
+//    { kind: "endpoint.hello.v1", data: JSON of the EndpointClientHello };
+//  - server -> client: EndpointControl (index 20, "endpoint.welcome.v1",
+//    snapshot…), SemanticNotification (index 14); the rest is ignored.
 
 export const CLIENT_ENDPOINT_CONTROL = 20
 export const SERVER_SEMANTIC_NOTIFICATION = 14
@@ -62,7 +62,7 @@ export function frame(payload: Buffer): Buffer {
   return Buffer.concat([len, payload])
 }
 
-// Poignée de main : client shell passif, sans surface active.
+// Handshake: passive shell client, without an active surface.
 export function helloFrame(): Buffer {
   const hello = {
     generation: 1,
@@ -87,7 +87,7 @@ export function helloFrame(): Buffer {
 class Reader {
   o = 0
   constructor(private b: Buffer) {}
-  private need(n: number) { if (this.o + n > this.b.length) throw new RangeError('trame tronquée') }
+  private need(n: number) { if (this.o + n > this.b.length) throw new RangeError('truncated frame') }
   u8() { this.need(1); return this.b[this.o++]! }
   varint(): number {
     const f = this.u8()
@@ -135,7 +135,7 @@ export function decodeServerFrame(payload: Buffer): ServerFrame {
   return { type: 'other', tag }
 }
 
-// Découpe le flux en trames (les morceaux reçus peuvent couper n'importe où).
+// Splits the stream into frames (received chunks may cut anywhere).
 export class FrameSplitter {
   private buf: Buffer = Buffer.alloc(0)
   push(chunk: Buffer): Buffer[] {

@@ -1,7 +1,7 @@
-// Verrouillage : tout ce qui touche aux agents (API, images, photos) exige une
-// session déverrouillée dès qu'une clé d'accès est enregistrée. Les fichiers de
-// l'app restent servis pour pouvoir afficher l'écran de verrouillage.
-// (Les WebSockets font la même vérification dans leur `upgrade`.)
+// Lock: everything touching agents (API, images, photos) requires an
+// unlocked session as soon as a passkey is registered. The app's files
+// are still served so the lock screen can be shown.
+// (WebSockets do the same check in their `upgrade`.)
 import { crossSiteRequest, hostAllowed } from '../utils/hosts'
 const needsUnlock = (p: string) => (p.startsWith('/api/') && !p.startsWith('/api/auth/')) || p.startsWith('/uploads/')
 

@@ -1,12 +1,12 @@
-// Modèle des agents, côté pilotage : modèle courant (transcription, choix fait
-// depuis le téléphone, défaut), liste des modèles lue dans le menu /model, et
-// changement de modèle en pilotant ce menu.
+// Agent models, control side: current model (transcript, choice made
+// from the phone, default), list of models read from the /model menu, and
+// model change by driving that menu.
 //
-// ⚠ On valide toujours avec « s » (cette session seulement), jamais avec
-// Entrée ni `/model <nom>` : ceux-là enregistrent le modèle comme défaut
-// global de l'utilisateur (~/.claude/settings.json, ~/.codex/config.toml).
-// Chez Codex, Entrée sur le premier menu ne fait que passer au choix de
-// l'effort (« enter select »), qu'on valide ensuite avec « s ».
+// ⚠ We always confirm with "s" (this session only), never with
+// Enter nor `/model <name>`: those save the model as the user's global
+// default (~/.claude/settings.json, ~/.codex/config.toml).
+// In Codex, Enter on the first menu only moves on to the effort
+// choice ("enter select"), which we then confirm with "s".
 import path from 'node:path'
 import type { EffortList, ModelInfo, ModelList, ModelOption, Pane } from '../../shared/types'
 import { log } from './env'
@@ -16,22 +16,22 @@ import { READY, findPane, poll, transcripts } from './state'
 import { machineOfPane } from './machines'
 import { type ClaudeEffortSlider, type ModelMenu, claudeEffortCommand, claudeEffortLevels, cleanModelName, codexCachedEfforts, codexConfigModel, claudeScreenEffort, claudeScreenModel, codexFooterModel, effortMatches, effortValue, parseClaudeEffortScreen, parseModelMenu, sameModel, switchConfirmKeys } from './models'
 
-// ---------------------------------------------------------------- modèle courant
-// Choix fait depuis le téléphone : affiché tout de suite, jusqu'à ce que la
-// transcription dise plus récent (Codex n'écrit le modèle qu'au tour suivant).
+// ---------------------------------------------------------------- current model
+// Choice made from the phone: shown right away, until the
+// transcript says something newer (Codex only writes the model on the next turn).
 const overrides = new Map<string, ModelInfo & { ms: number }>()
 const observedEfforts = new Map<string, { label: string, effort: string }>()
 
 async function fallbackModel(p: Pane): Promise<ModelInfo | null> {
   const m = machineOfPane(p.id)
   if (p.agent === 'codex') {
-    // Config de Codex sur la machine de l'agent.
+    // Codex config on the agent's machine.
     if (!m || !m.home) return null
     try { return codexConfigModel(await m.fs.readFile(path.posix.join(m.home, '.codex/config.toml'))) }
     catch { return null }
   }
-  // Claude sans réponse encore : le modèle par défaut, tel que l'annonce le menu
-  // (« Default (recommended)  Sonnet 5 · … »), s'il a déjà été lu.
+  // Claude without a reply yet: the default model, as the menu announces it
+  // ("Default (recommended)  Sonnet 5 · …"), if it has already been read.
   const def = listCache.get(listKey(p.id, 'claude'))?.options[0]
   if (def && /^default\b/i.test(def.label) && def.hint) {
     const label = cleanModelName(def.hint.split('·')[0]!)
@@ -40,12 +40,12 @@ async function fallbackModel(p: Pane): Promise<ModelInfo | null> {
   return null
 }
 
-// Codex : modèle lu sur sa ligne d'état (écran relu par state.ts hors travail).
+// Codex: model read from its status line (screen re-read by state.ts when not working).
 const footers = new Map<string, { info: ModelInfo, ms: number }>()
-// Claude : effort annoncé à l'écran (bannière, retour de /effort), plus fiable
-// que la transcription qui garde l'effort par défaut.
+// Claude: effort announced on screen (banner, /effort output), more reliable
+// than the transcript, which keeps the default effort.
 const screenEfforts = new Map<string, { effort: string, ms: number }>()
-// Claude : modèle de l'en-tête (ou d'un /model tapé), repli tant qu'il n'y a pas de transcription.
+// Claude: model from the header (or from a typed /model), fallback while there is no transcript.
 const screenModels = new Map<string, ModelInfo>()
 export function noteScreen(paneId: string, agent: string | null, text: string | null | undefined) {
   if (agent === 'claude') {
@@ -73,7 +73,7 @@ export async function currentModel(p: Pane): Promise<ModelInfo | null> {
   let fromFile = await transcripts.model(p).catch(() => null)
   const f = footers.get(p.id)
   if (f && (!fromFile || !sameModel(fromFile.label, f.info.label) || fromFile.effort !== f.info.effort)) {
-    // La ligne d'état fait foi sur une rollout en retard (changement pas encore suivi d'un tour).
+    // The status line wins over a lagging rollout (change not yet followed by a turn).
     const fileAt = fromFile && fromFile.at ? Date.parse(fromFile.at) : 0
     if (fileAt < f.ms) fromFile = { ...f.info, id: fromFile && sameModel(fromFile.label, f.info.label) ? fromFile.id : null, at: new Date(f.ms).toISOString() }
   }
@@ -82,7 +82,7 @@ export async function currentModel(p: Pane): Promise<ModelInfo | null> {
     const fileAt = fromFile && fromFile.at ? Date.parse(fromFile.at) : 0
     if (!fromFile || fileAt < o.ms) {
       const { ms: _ms, ...info } = o
-      // Même modèle que la transcription : on garde son identifiant brut.
+      // Same model as the transcript: we keep its raw identifier.
       return fromFile && sameModel(fromFile.label, info.label) ? { ...info, id: fromFile.id } : info
     }
     overrides.delete(p.id)
@@ -94,7 +94,7 @@ export async function currentModel(p: Pane): Promise<ModelInfo | null> {
     return { ...fromFile, effort: observed.effort }
   }
   if (!fromFile && p.agent === 'claude') {
-    // Agent neuf : l'en-tête de Claude Code dit déjà modèle et effort.
+    // New agent: Claude Code's header already gives model and effort.
     const sm = screenModels.get(p.id)
     if (sm) return { ...sm, effort: seen ? seen.effort : sm.effort }
   }
@@ -103,7 +103,7 @@ export async function currentModel(p: Pane): Promise<ModelInfo | null> {
 
 // ---------------------------------------------------------------- menu /model
 const LIST_TTL_MS = 12 * 3600 * 1000
-// Par machine et type d'agent (les versions de Claude / Codex peuvent différer).
+// Per machine and agent kind (Claude / Codex versions may differ).
 const listCache = new Map<string, ModelList>()
 const listKey = (paneId: string, agent: string) => `${machineOfPane(paneId)?.key || ''}|${agent}`
 const busy = new Set<string>()
@@ -136,8 +136,8 @@ async function waitMenu(paneId: string, ok: (m: ModelMenu) => boolean, timeoutMs
   }
 }
 
-// Referme le menu (Échap) tant qu'il est à l'écran. Jamais d'Échap sans menu :
-// chez Codex, Échap Échap au repos ouvre l'édition du message précédent.
+// Closes the menu (Escape) while it is on screen. Never Escape without a menu:
+// in Codex, Escape Escape when idle opens editing of the previous message.
 async function closeMenu(paneId: string) {
   for (let i = 0; i < 3; i++) {
     if (!parseModelMenu(await screen(paneId))) return
@@ -160,13 +160,13 @@ async function openMenu(p: Pane): Promise<ModelMenu> {
 
 const moveKeys = (from: number, to: number) => Array.from({ length: Math.abs(to - from) }, () => (to > from ? 'down' : 'up'))
 
-// Toutes les options : Claude n'en montre que 10 (↑/↓ devant le numéro), on
-// remonte au début puis on descend page par page (la liste reboucle en haut
-// après la dernière).
+// All options: Claude only shows 10 (↑/↓ before the number), we
+// go back to the top then down page by page (the list wraps to the top
+// after the last one).
 async function readAllOptions(paneId: string, first: ModelMenu) {
   const all = new Map(first.options.map(o => [o.n, o]))
   let m = first
-  // Page ouverte plus bas (modèle courant en fin de liste) : on remonte d'abord au n° 1.
+  // Page opened further down (current model at the end of the list): go back up to no. 1 first.
   if (m.options[0]!.n > 1) {
     await herdr('pane.send_input', { pane_id: paneId, keys: moveKeys(m.cursor, 1) })
     const top = await waitMenu(paneId, x => x.kind === 'model' && x.cursor === 1, 3000)
@@ -179,7 +179,7 @@ async function readAllOptions(paneId: string, first: ModelMenu) {
     await herdr('pane.send_input', { pane_id: paneId, keys: moveKeys(m.cursor, last + 1) })
     await sleep(350)
     const next = await waitMenu(paneId, x => x.kind === 'model', 2000)
-    if (!next || next.cursor <= last) break // rebouclé : fin de liste
+    if (!next || next.cursor <= last) break // wrapped: end of list
     const before = all.size
     for (const o of next.options) if (!all.has(o.n)) all.set(o.n, o)
     if (all.size === before) break
@@ -188,7 +188,7 @@ async function readAllOptions(paneId: string, first: ModelMenu) {
   return [...all.values()].sort((a, b) => a.n - b.n)
 }
 
-// « current » n'est pas gardé : la liste est partagée par tous les agents du même type.
+// "current" is not kept: the list is shared by all agents of the same kind.
 const toOption = ({ label, hint, isDefault }: ModelOption): ModelOption => ({ label, hint, isDefault: Boolean(isDefault) })
 
 export async function listModels(paneId: string, refresh = false): Promise<ModelList> {
@@ -203,12 +203,12 @@ export async function listModels(paneId: string, refresh = false): Promise<Model
     finally { await closeMenu(p.id) }
     const list: ModelList = { agent: p.agent!, options, at: Date.now() }
     listCache.set(listKey(p.id, p.agent!), list)
-    log(`modèles ${p.agent} : ${options.map(o => o.label).join(', ')}`)
+    log(`models ${p.agent}: ${options.map(o => o.label).join(', ')}`)
     return list
   })
 }
 
-// Déplace le curseur sur l'option `n` et vérifie qu'il y est bien.
+// Moves the cursor to option `n` and checks that it is really there.
 async function pick(paneId: string, m: ModelMenu, n: number, label: string, kind: ModelMenu['kind']) {
   const keys = moveKeys(m.cursor, n)
   if (keys.length) await herdr('pane.send_input', { pane_id: paneId, keys })
@@ -226,15 +226,15 @@ export async function setModel(paneId: string, wanted: string): Promise<ModelInf
     const started = Date.now()
     let m = await openMenu(p)
     try {
-      // Numéro de l'option : dans la liste lue (le menu ne montre qu'une page).
+      // Option number: in the list read (the menu only shows one page).
       let n = m.options.find(o => o.label === label)?.n
       if (!n) {
         n = (await readAllOptions(p.id, m)).find(o => o.label === label)?.n
-        m = (await waitMenu(p.id, x => x.kind === 'model', 2000)) || m // curseur déplacé
+        m = (await waitMenu(p.id, x => x.kind === 'model', 2000)) || m // cursor moved
       }
       if (!n) throw new HerdrError('bad_model', `Modèle introuvable dans /model : ${label}`)
       m = await pick(p.id, m, n, label, 'model')
-      // « Default (recommended) » : Claude confirmera avec le nom du modèle par défaut.
+      // "Default (recommended)": Claude will confirm with the default model's name.
       const picked = m.options.find(o => o.n === n)
       const confirmAs = /^default\b/i.test(label) && picked && picked.hint ? cleanModelName(picked.hint.split('·')[0]!) : label
 
@@ -244,21 +244,21 @@ export async function setModel(paneId: string, wanted: string): Promise<ModelInf
         effort = m.effort
         await herdr('pane.send_input', { pane_id: p.id, keys: ['s'] })
       } else {
-        // Codex : Entrée ne fait que passer au choix de l'effort (« enter select »).
+        // Codex: Enter only moves on to the effort choice ("enter select").
         if (!m.enterSelects) throw new HerdrError('unsafe', 'Menu /model inattendu — rien n’a été changé.')
         await herdr('pane.send_input', { pane_id: p.id, keys: ['enter'] })
         const e = await waitMenu(p.id, x => x.kind === 'effort', 4000)
         if (!e || !e.sessionKey) throw new HerdrError('unsafe', 'Choix de l’effort inattendu — rien n’a été changé.')
-        // On garde l'effort courant s'il existe pour ce modèle, sinon celui proposé.
+        // Keep the current effort if it exists for this model, otherwise the one offered.
         const keep = e.options.find(o => effortMatches(o.label, before && before.effort))
         const at = keep && keep.n !== e.cursor ? await pick(p.id, e, keep.n, keep.label, 'effort') : e
         effort = (at.options.find(o => o.n === at.cursor)?.label || '').toLowerCase().replace(/\s+/g, '') || null
         if (effort === 'extrahigh') effort = 'xhigh'
         await herdr('pane.send_input', { pane_id: p.id, keys: ['s'] })
       }
-      // Menu refermé = choix pris. Claude peut d'abord demander confirmation
-      // (conversation en cache pour l'ancien modèle) : on confirme ce modèle-là.
-      // Fini quand ni menu ni confirmation n'est vu deux fois de suite.
+      // Menu closed = choice taken. Claude may first ask for confirmation
+      // (conversation cached for the old model): we confirm this model.
+      // Done when neither menu nor confirmation is seen twice in a row.
       const until = Date.now() + 5000
       let clear = 0
       while (clear < 2 && Date.now() < until) {
@@ -272,7 +272,7 @@ export async function setModel(paneId: string, wanted: string): Promise<ModelInf
       const info: ModelInfo = { id: null, label: confirmAs, effort, at: new Date(started).toISOString() }
       overrides.set(p.id, { ...info, ms: started })
       if (effort) observedEfforts.set(p.id, { label: confirmAs, effort })
-      log(`modèle ${p.id} (${p.agent}) -> ${confirmAs}${effort ? ' ' + effort : ''} (cette session)`)
+      log(`model ${p.id} (${p.agent}) -> ${confirmAs}${effort ? ' ' + effort : ''} (this session)`)
       setTimeout(poll, 100)
       return (await currentModel(p)) || info
     } catch (e) {
@@ -315,7 +315,7 @@ async function sliderGone(paneId: string, timeoutMs = 3000) {
   return clear >= 2
 }
 
-// Échap tant que le curseur est à l'écran : il ne doit jamais rester ouvert.
+// Escape while the slider is on screen: it must never stay open.
 async function closeEffortSlider(paneId: string) {
   for (let i = 0; i < 3; i++) {
     if (!parseClaudeEffortScreen(await screen(paneId).catch(() => ''))) return
@@ -330,7 +330,7 @@ async function openEffortSlider(p: Pane): Promise<ClaudeEffortSlider> {
   await agentPrompt(p.id, '/effort')
   const s = await waitSlider(p.id, () => true, 4000)
   if (!s) {
-    // Écran inconnu : on referme quand même (Échap unique, le curseur ne se lit peut-être plus).
+    // Unknown screen: close anyway (single Escape, the slider may no longer be readable).
     await herdr('pane.send_input', { pane_id: p.id, keys: ['esc'] }).catch(() => {})
     throw new HerdrError('no_menu', 'Curseur d’effort de Claude illisible — refermé, rien n’a été changé.')
   }
@@ -343,9 +343,9 @@ export async function listEfforts(paneId: string): Promise<EffortList> {
     if (!model) return { levels: [], current: null }
     if (p.agent === 'claude') {
       const fallback = claudeEffortLevels(model.label)
-      // Lire la liste ne doit pas envoyer /effort : Claude inscrit même une
-      // ouverture annulée dans la transcription. Le choix vérifie les niveaux
-      // réellement proposés dans le curseur avant de modifier quoi que ce soit.
+      // Reading the list must not send /effort: Claude records even a
+      // cancelled opening in the transcript. The choice checks the levels
+      // actually offered by the slider before changing anything.
       return { levels: fallback, current: model.effort || null }
     }
     const machine = machineOfPane(p.id)
@@ -379,7 +379,7 @@ export async function setEffort(paneId: string, level: string): Promise<ModelInf
         if (delta) await herdr('pane.send_input', { pane_id: p.id, keys: Array.from({ length: Math.abs(delta) }, () => delta > 0 ? 'right' : 'left') })
         const at = await waitSlider(p.id, x => x.current === level, 3000)
         if (!at) throw new HerdrError('stale', 'Le curseur d’effort n’a pas suivi — rien n’a été changé.')
-        // « s » = cette session seulement. Jamais Entrée : elle enregistre le défaut.
+        // "s" = this session only. Never Enter: it saves the default.
         await herdr('pane.send_input', { pane_id: p.id, keys: ['s'] })
         if (!await sliderGone(p.id)) throw new HerdrError('stale', 'Le curseur d’effort est resté ouvert — rien n’a été changé.')
       } catch (e) {

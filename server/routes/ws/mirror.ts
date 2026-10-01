@@ -1,4 +1,4 @@
-// WS /ws/mirror?pane=… : miroir en direct d'un pane, sans s'y attacher
+// WS /ws/mirror?pane=…: live mirror of a pane, without attaching to it
 // (`herdr terminal session observe`, cf. server/utils/mirror.ts).
 const sessions = new Map<string, TermSession>()
 

@@ -1,8 +1,8 @@
-// État des agents : `session.snapshot` de Herdr réduit, enrichi (questions à
-// l'écran, aperçus, messages en attente) et diffusé à chaque changement.
-// Plusieurs machines : chaque machine est sondée à part (une machine lente ou
-// en panne ne retarde pas les autres) ; l'état diffusé est leur réunion, avec
-// les IDs des machines distantes préfixés (cf. shared/ids.ts).
+// Agent state: Herdr's `session.snapshot` reduced, enriched (on-screen
+// questions, previews, queued messages) and broadcast on every change.
+// Several machines: each machine is polled separately (a slow or
+// broken machine does not delay the others); the broadcast state is their union, with
+// remote machine IDs prefixed (see shared/ids.ts).
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -50,7 +50,7 @@ export const transcripts = {
 export { isUploadLine }
 
 // ---------------------------------------------------------------- clients
-// Ce que chaque appareil regarde (pas de notif pour l'agent affiché à l'écran).
+// What each device is looking at (no notification for the agent shown on screen).
 export interface EventClient { send: (data: string) => void, pane: string | null, visible: boolean }
 export const eventClients = new Map<string, EventClient>()
 export interface TermView { pane: string, visible: boolean }
@@ -61,31 +61,31 @@ export const termSessions = new Set<TermView>()
 type Json = any
 
 let state: HerdrState = { ok: false, error: 'démarrage…', workspaces: [], panes: [] }
-// Dernier état de chaque machine (celui d'une machine hors ligne reste affiché, grisé).
+// Last state of each machine (an offline machine's stays shown, grayed out).
 const mstates = new Map<string, HerdrState>()
 let stateJson = JSON.stringify(state)
 export const getStateJson = () => stateJson
 export const getState = () => state
 export const findPane = (id: string | null | undefined) => state.panes.find(p => p.id === id)
 
-// Écran visible en ANSI → menu interactif (null s'il n'y en a pas).
+// Visible screen in ANSI → interactive menu (null if there is none).
 export async function readMenu(paneId: string): Promise<InteractiveMenu | null> {
   const r = await herdr('pane.read', { pane_id: paneId, source: 'visible', format: 'ansi' }, 4000)
   return parseMenu(r.read && r.read.text)
 }
 
-// Invites bloquantes : relues seulement quand l'écran du pane a changé
-// (`revision` de Herdr), et oubliées dès que l'agent n'est plus bloqué.
-// L'écran d'attente (légende de touches, cf. waitScreen.ts) est lu en même temps.
-// `watch` : la `revision` de Herdr ne bouge pas quand l'écran d'un agent au repos
-// change (Codex qui démarre, boîte fermée depuis le terminal) ; on relit alors
-// toutes les SCREEN_MS tant qu'une invite est affichée ou que l'agent n'a pas de conversation.
-// Demande de permission : la commande ou le fichier demandé vient de
-// préférence de la transcription (entière), sinon de l'écran.
+// Blocking prompts: re-read only when the pane's screen has changed
+// (Herdr's `revision`), and forgotten as soon as the agent is no longer blocked.
+// The waiting screen (key legend, see waitScreen.ts) is read at the same time.
+// `watch`: Herdr's `revision` does not move when the screen of an idle agent
+// changes (Codex starting, box closed from the terminal); we then re-read
+// every SCREEN_MS while a prompt is shown or the agent has no conversation.
+// Permission request: the requested command or file preferably comes from
+// the transcript (in full), otherwise from the screen.
 const SCREEN_MS = 3000
 type OnScreen = { choices: Choices | null, screen: WaitScreen | null, menu: InteractiveMenu | null }
-// Écran à relire pendant un moment même sans nouvelle `revision` (commande « / »
-// envoyée : un menu interactif peut s'ouvrir), cf. watchScreen().
+// Screen to re-read for a while even without a new `revision` ("/" command
+// sent: an interactive menu may open), see watchScreen().
 const screenWatch = new Map<string, number>()
 export function watchScreen(paneId: string, ms = 60000) {
   screenWatch.set(paneId, Date.now() + ms)
@@ -102,18 +102,18 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
   try {
     const r = await herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
     const text = r.read && r.read.text
-    // Menu interactif de Claude Code (/resume, /model…) : relu en ANSI (les
-    // descriptions grises s'y distinguent des entrées). Herdr en croit certains
-    // bloquants (/hooks, /mcp) : une vraie question (liste numérotée) garde alors
-    // la priorité ; une simple liste à curseur y est lue comme menu.
+    // Claude Code interactive menu (/resume, /model…): re-read in ANSI (the
+    // gray descriptions stand out from the entries there). Herdr considers some of them
+    // blocking (/hooks, /mcp): a real question (numbered list) then keeps
+    // priority; a simple cursor list there is read as a menu.
     const framed = String(text || '').split('\n').some((l: string) => TOP.test(l))
-    // omp : sa boîte « Ask » seule (encadrée, elle passerait pour un menu).
+    // omp: its "Ask" box only (boxed, it would pass for a menu).
     let choices = p.agent === 'omp' ? parseOmpAsk(text) : parseChoices(text, { strict })
     const menu = p.agent !== 'omp' && framed && (strict || !choices || !parseChoices(text, { strict: true })) ? await readMenu(p.id) : null
     if (menu) choices = null
     if (choices && p.agent === 'omp') choices = completeOmpAsk(choices, await transcripts.pendingAsk(p).catch(() => []))
     out = { choices, screen: menu ? null : parseWaitScreen(text, { choices: Boolean(choices) }), menu }
-    noteScreen(p.id, p.agent, text) // Codex : modèle de sa ligne d'état
+    noteScreen(p.id, p.agent, text) // Codex: model from its status line
     if (choices && (choices.detail || isPermissionQuestion(choices.question))) {
       const tr = await transcripts.pendingTool(p).catch(() => null)
       const detail = mergeDetail(tr, choices.detail || null)
@@ -124,8 +124,8 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
   return out
 }
 
-// Aperçu (dernière réponse de l'agent) : rafraîchi en tâche de fond, sans
-// retarder la diffusion de l'état.
+// Preview (agent's last reply): refreshed in the background, without
+// delaying the state broadcast.
 const previews = new Map<string, { text: string | null, status: string | null, at: number }>()
 const previewBusy = new Set<string>()
 function refreshPreview(p: Pane) {
@@ -137,17 +137,17 @@ function refreshPreview(p: Pane) {
     .finally(() => previewBusy.delete(p.id))
 }
 
-// Verbe animé de Claude (« ✢ Orbiting… ») : lu à l'écran, seulement pour un
-// Claude au travail dont la conversation est affichée sur un appareil, au plus
-// toutes les ACTIVITY_MS ; oublié dès qu'il ne travaille plus. Seul le verbe est
-// diffusé (la durée et les jetons changeraient l'état à chaque seconde).
-// La même lecture donne la commande « ! » en cours, sa sortie, et les messages
-// partis ou encore en file (cf. claudeScreen.ts) ; le début de la commande est
-// gardé d'une lecture à l'autre (le compteur ne fait pas bouger l'état).
+// Claude's animated verb ("✢ Orbiting…"): read from the screen, only for a
+// working Claude whose conversation is shown on a device, at most
+// every ACTIVITY_MS; forgotten as soon as it stops working. Only the verb is
+// broadcast (the duration and tokens would change the state every second).
+// The same reading gives the running "!" command, its output, and the messages
+// sent or still queued (see claudeScreen.ts); the start of the command is
+// kept from one reading to the next (the counter does not change the state).
 const ACTIVITY_MS = 1500
 const NOTICE_MS = 5000
-// Au repos, l'écran est lu en ANSI pour la suggestion grisée de Claude
-// (cf. parseClaudeSuggestion) ; elle n'est gardée que hors travail.
+// When idle, the screen is read in ANSI for Claude's grayed-out suggestion
+// (see parseClaudeSuggestion); it is only kept when not working.
 const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g // eslint-disable-line no-control-regex
 type Activity = { verb: string | null, screen: ClaudeScreen | null, notice: string | null, suggestion: string | null, at: number }
 const activities = new Map<string, Activity>()
@@ -171,8 +171,8 @@ function refreshActivity(p: Pane) {
       const old = activities.get(p.id)?.screen?.shell
       const sh = screen && screen.shell
       if (sh && old && old.command === sh.command && old.since && (!sh.since || Math.abs(sh.since - old.since) < 5000)) sh.since = old.since
-      // Lecture finie après la fin du tour : pas de verbe périmé au tour suivant.
-      // Hors travail, seuls le statut près du champ de saisie et la suggestion sont gardés.
+      // Reading finished after the end of the turn: no stale verb on the next turn.
+      // When not working, only the status near the input field and the suggestion are kept.
       const working = findPane(p.id)?.status === 'working'
       const old2 = activities.get(p.id)
       activities.set(p.id, working ? { verb, screen, notice, suggestion: null, at: Date.now() } : { verb: null, screen: null, notice, suggestion, at: Date.now() })
@@ -181,7 +181,7 @@ function refreshActivity(p: Pane) {
     .finally(() => activityBusy.delete(p.id))
 }
 
-// Ligne d'état d'omp (cf. ompScreen.ts) : relue seulement pour un omp affiché.
+// omp status line (see ompScreen.ts): re-read only for an omp on screen.
 const OMP_STATUS_MS = 3000
 const ompStatuses = new Map<string, { status: OmpStatus | null, at: number }>()
 const ompStatusBusy = new Set<string>()
@@ -198,9 +198,9 @@ function refreshOmpStatus(p: Pane) {
     .finally(() => ompStatusBusy.delete(p.id))
 }
 
-// Modèle de l'agent : même principe que l'aperçu (tâche de fond). Relu quand
-// l'état change, et toutes les 5 s (un simple stat si la transcription n'a
-// pas bougé).
+// Agent model: same principle as the preview (background task). Re-read when
+// the state changes, and every 5 s (a simple stat if the transcript has
+// not changed).
 const models = new Map<string, { info: ModelInfo | null, status: string | null, at: number }>()
 const modelBusy = new Set<string>()
 export function refreshModel(p: Pane) {
@@ -210,16 +210,16 @@ export function refreshModel(p: Pane) {
     .then((info) => {
       const old = models.get(p.id)
       models.set(p.id, { info, status: p.status, at: Date.now() })
-      // Changement vu hors d'un sondage (choix depuis le téléphone) : on rediffuse.
+      // Change seen outside a poll (choice from the phone): broadcast again.
       if (JSON.stringify(old && old.info) !== JSON.stringify(info)) setTimeout(poll, 0)
     })
     .catch(() => {})
     .finally(() => modelBusy.delete(p.id))
 }
 
-// Messages envoyés depuis le téléphone mais pas encore pris par l'agent (il
-// travaille, ou démarre) : affichés « en attente » jusqu'à ce qu'ils
-// apparaissent dans sa transcription, comme dans Claude desktop / Codex.
+// Messages sent from the phone but not yet taken by the agent (it is
+// working, or starting): shown as "queued" until they
+// appear in its transcript, as in Claude desktop / Codex.
 const queued = new Map<string, Required<QueuedMessage>[]>()
 export function addQueued(paneId: string, text: string): Required<QueuedMessage> {
   const e = { id: crypto.randomBytes(4).toString('hex'), text: String(text).slice(0, 4000), at: Date.now() }
@@ -241,9 +241,9 @@ function reconcileQueued(p: Pane) {
     .finally(() => reconcileBusy.delete(p.id))
 }
 
-// « Annuler » un message en attente (bouton de la bulle) : pas encore parti
-// (agent qui démarre) on l'oublie ; chez Claude au travail, on le retire de sa
-// file (cf. unqueue.ts). Rend le texte à remettre dans le champ de wherdr.
+// "Cancel" a queued message (bubble button): not sent yet
+// (agent starting), we forget it; for a working Claude, we remove it from its
+// queue (see unqueue.ts). Returns the text to put back into wherdr's field.
 const unqueueBusy = new Set<string>()
 export async function cancelQueued(paneId: string, text: string, id?: string): Promise<{ text: string }> {
   const p = findPane(paneId)
@@ -279,7 +279,7 @@ export async function cancelQueued(paneId: string, text: string, id?: string): P
       original: t => (own.find(q => q !== mine && sameMsg(t, msgText(q.text))) || { text: t }).text,
     }, text)
     drop()
-    log(`message en attente annulé sur ${p.id}`)
+    log(`queued message cancelled on ${p.id}`)
     return { text: mine ? mine.text : text }
   } catch (e) {
     if ((e as HerdrError).code === 'already_read') drop()
@@ -290,20 +290,20 @@ export async function cancelQueued(paneId: string, text: string, id?: string): P
   }
 }
 
-// Messages en attente d'un agent prêt : le premier donné à la création (cf.
-// createAgent), ou un envoi refusé par Herdr pendant le démarrage (cf. prompt.post).
+// Queued messages of an agent that is ready: the first given at creation (see
+// createAgent), or a send refused by Herdr during startup (see prompt.post).
 export const pendingPrompts = new Map<string, { text: string, at: number }>()
 const PENDING_TTL_MS = 15 * 60 * 1000
 const pendingBusy = new Set<string>()
 export const READY = new Set(['done', 'idle'])
-// Redémarrages en cours ou échoués, par pane (cf. restart.ts).
+// Restarts in progress or failed, per pane (see restart.ts).
 export const restarts = new Map<string, NonNullable<Pane['restart']> & { at: number, session?: string | null, stopped?: boolean, started?: boolean }>()
 function flushPending(p: Pane) {
   const pend = pendingPrompts.get(p.id)
   if (!pend || pendingBusy.has(p.id)) return
   if (Date.now() - pend.at > PENDING_TTL_MS) {
     pendingPrompts.delete(p.id)
-    log(`prompt initial ${p.id} abandonné (délai dépassé)`)
+    log(`initial prompt ${p.id} dropped (timed out)`)
     return
   }
   if (!p.agent || !READY.has(p.status || '')) return
@@ -311,10 +311,10 @@ function flushPending(p: Pane) {
   agentPrompt(p.id, pend.text)
     .then(() => {
       pendingPrompts.delete(p.id)
-      log(`prompt initial ${p.id} envoyé`)
+      log(`initial prompt ${p.id} sent`)
     })
     .catch((e) => {
-      // Pas encore reconnu comme agent : on réessaiera au prochain tour.
+      // Not recognized as an agent yet: we will retry on the next round.
       if (!/not an active|not_ready|not_found|blocked/i.test(`${e.code} ${e.message}`)) {
         pendingPrompts.delete(p.id)
         log(`prompt initial ${p.id} : ${e.message}`)
@@ -323,16 +323,16 @@ function flushPending(p: Pane) {
     .finally(() => pendingBusy.delete(p.id))
 }
 
-// Moment où chaque agent est apparu (pour ne pas lui attribuer une
-// conversation plus ancienne que lui). Les agents déjà là au démarrage du
-// service n'ont pas de date : on ne sait pas quand ils sont nés.
-// Gardé dans data/ pour survivre aux redémarrages du service.
+// Moment each agent appeared (so as not to assign it a
+// conversation older than itself). Agents already there when the
+// service started have no date: we do not know when they were born.
+// Kept in data/ to survive service restarts.
 const BORN_FILE = path.join(DATA_DIR, 'born.json')
 const agentBorn = new Map<string, { agent: string, at: number | null }>()
 try {
   for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(BORN_FILE, 'utf8')))) agentBorn.set(k, v as { agent: string, at: number | null })
-} catch { /* pas encore de fichier */ }
-// Machines dont on a déjà vu un état (les agents du premier n'ont pas de date).
+} catch { /* no file yet */ }
+// Machines whose state we have already seen (agents of the first one have no date).
 const seenMachines = new Set<string>()
 let bornDirty = false
 function saveBorn() {
@@ -341,28 +341,28 @@ function saveBorn() {
   fsp.writeFile(BORN_FILE, JSON.stringify(Object.fromEntries(agentBorn)) + '\n').catch(() => {})
 }
 
-// ---------------------------------------------------------------- lu / non lu
-// « Vu » propre à wherdr (chaque client Herdr tient le sien, et le seul moyen
-// côté API, agent.focus, fait sauter l'écran des clients attachés). Par pane :
-// fin du dernier tour (`readyAt`) et dernière lecture (`seenAt`). Prêt et non lu
-// = `done`, lu = `idle`, pour toute l'app (listes, compteurs, pastille).
-// Lu : conversation ouverte et visible sur un appareil, ou marqué à la main.
+// ---------------------------------------------------------------- read / unread
+// wherdr's own "seen" (each Herdr client keeps its own, and the only means
+// on the API side, agent.focus, makes the attached clients' screens jump). Per pane:
+// end of the last turn (`readyAt`) and last read (`seenAt`). Ready and unread
+// = `done`, read = `idle`, for the whole app (lists, counters, badge).
+// Read: conversation open and visible on a device, or marked manually.
 const SEEN_FILE = path.join(DATA_DIR, 'seen.json')
 const seen = new Map<string, { readyAt: number, seenAt: number }>()
 try {
   for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(SEEN_FILE, 'utf8')))) seen.set(k, v as { readyAt: number, seenAt: number })
-} catch { /* premier démarrage */ }
+} catch { /* first startup */ }
 let seenDirty = false
 function saveSeen() {
   if (!seenDirty) return
   seenDirty = false
   fsp.writeFile(SEEN_FILE, JSON.stringify(Object.fromEntries(seen)) + '\n').catch(() => {})
 }
-// Statut Herdr d'un agent prêt -> `done` (non lu) ou `idle` (lu), pour wherdr.
+// Herdr status of a ready agent -> `done` (unread) or `idle` (read), for wherdr.
 function applySeen(p: Pane, prevStatus: string | undefined) {
   let e = seen.get(p.id)
   if (!e) {
-    // Inconnu : on reprend l'avis de Herdr (done = pas encore vu).
+    // Unknown: we take Herdr's view (done = not seen yet).
     e = p.status === 'done' ? { readyAt: Date.now(), seenAt: 0 } : { readyAt: 0, seenAt: 0 }
     seen.set(p.id, e)
     seenDirty = true
@@ -376,7 +376,7 @@ function applySeen(p: Pane, prevStatus: string | undefined) {
   }
   p.status = e.readyAt > e.seenAt ? 'done' : 'idle'
 }
-// Marquer lu / non lu depuis l'app (menu contextuel).
+// Mark read / unread from the app (context menu).
 export function markSeen(paneId: string, read: boolean) {
   const p = findPane(paneId)
   if (!p || !p.agent) throw new HerdrError('bad_pane', 'pane introuvable')
@@ -390,8 +390,8 @@ export function markSeen(paneId: string, read: boolean) {
   return { ok: true }
 }
 
-// Commande au premier plan des panes sans agent (titre de leur carte) : lue
-// hors du sondage, au plus toutes les 3 s par pane ; le sondage suivant la reprend.
+// Foreground command of panes without an agent (title of their card): read
+// outside the poll, at most every 3 s per pane; the next poll picks it up.
 const COMMAND_TTL_MS = 3000
 const commands = new Map<string, { cmd: string, at: number, busy?: boolean }>()
 function paneCommand(id: string): string {
@@ -423,7 +423,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
     if (!b || b.agent !== p.agent) {
       agentBorn.set(p.id, { agent: p.agent, at: firstSnapshot ? null : Date.now() })
       bornDirty = true
-      // Nouvel agent dans ce pane : son « lu » repart de zéro.
+      // New agent in this pane: its "read" starts from scratch.
       if (b && seen.delete(p.id)) seenDirty = true
     }
     if (READY.has(p.status || '')) applySeen(p, prevStatus.get(p.id))
@@ -441,14 +441,14 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       if (list && list.length) p.queued = list.map(({ id, text, at }) => ({ id, text, at }))
     }
     const rs = restarts.get(p.id)
-    // Échec à la relance puis agent relancé à la main, ou échec ancien : plus rien à signaler.
+    // Relaunch failure then agent relaunched manually, or old failure: nothing left to report.
     if (rs && rs.phase === 'failed' && ((p.agent && rs.stopped) || Date.now() - rs.at > 600000)) restarts.delete(p.id)
-    // Relancé : terminé dès que Herdr voit l'agent (ou au bout de 15 s).
+    // Relaunched: done as soon as Herdr sees the agent (or after 15 s).
     else if (rs && rs.started && (p.agent || Date.now() - rs.at > 15000)) restarts.delete(p.id)
     else if (rs) {
       p.restart = { phase: rs.phase, agent: rs.agent, ...(rs.error ? { error: rs.error } : {}) }
-      // Entre l'arrêt et la relance (ou après une relance ratée), le pane n'a
-      // plus d'agent : on garde sa conversation affichée, avec le suivi.
+      // Between the stop and the relaunch (or after a failed relaunch), the pane has
+      // no agent: we keep its conversation shown, with the progress.
       if (!p.agent) {
         p.agent = rs.agent
         p.agentSession = rs.session || null
@@ -457,11 +457,11 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       }
     }
     if (!p.agent) continue
-    // Hors `working`, on cherche aussi une question : certaines (confiance du
-    // dossier chez Codex) ne font pas passer l'agent en `blocked` pour Herdr.
+    // Outside `working`, we also look for a question: some (Codex's folder
+    // trust) do not make the agent `blocked` for Herdr.
     if (p.status !== 'working') {
-      // Agent sans conversation ou né il y a moins de 2 min (Codex rapporte parfois
-      // la session d'un autre pane, cf. transcripts.ts) : écran surveillé.
+      // Agent without a conversation or born less than 2 min ago (Codex sometimes reports
+      // another pane's session, see transcripts.ts): screen watched.
       const young = !p.agentSession || (p.bornAt && Date.now() - p.bornAt < 120000)
       const c = await choicesFor(p, revs.get(p.id), p.status !== 'blocked', Boolean(young))
       if (c.choices) p.prompt = c.choices
@@ -474,8 +474,8 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
     const md = models.get(p.id)
     if (!md || md.status !== p.status || Date.now() - md.at > 5000) refreshModel(p)
     if (md && md.info) p.model = md.info
-    // Claude affiché : écran relu (vite au travail, plus lentement sinon, pour
-    // son statut près du champ de saisie).
+    // Claude on screen: screen re-read (fast while working, more slowly otherwise, for
+    // its status near the input field).
     if (p.agent === 'claude' && isViewed(p.id)) {
       const a = activities.get(p.id)
       const working = p.status === 'working'
@@ -491,7 +491,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       if (o && o.status) p.ompStatus = o.status
     } else ompStatuses.delete(p.id)
   }
-  // Nettoyage des panes disparus… de cette machine seulement.
+  // Cleanup of vanished panes… of this machine only.
   const alive = (id: string) => machineOf(id) !== machine || next.panes.some(p => p.id === id)
   for (const id of choicesCache.keys()) if (!alive(id)) choicesCache.delete(id)
   for (const id of pendingPrompts.keys()) if (!alive(id)) pendingPrompts.delete(id)
@@ -513,8 +513,8 @@ function broadcastState() {
   }
 }
 
-// Réunion des états des machines -> état diffusé. Avec une seule machine, il
-// est identique à celui d'avant (pas de champ `machines`, IDs inchangés).
+// Union of the machines' states -> broadcast state. With a single machine, it
+// is identical to the previous one (no `machines` field, unchanged IDs).
 function rebuild() {
   const machines = allMachines()
   for (const k of mstates.keys()) if (!getMachine(k)) mstates.delete(k)
@@ -532,7 +532,7 @@ function rebuild() {
     next.machines = machines.map((m): MachineInfo => {
       const ms = mstates.get(m.key)
       const info = m.info()
-      // Machine connectée mais serveur Herdr muet : « attention ».
+      // Machine connected but Herdr server silent: "attention".
       if (info.status === 'online' && ms && !ms.ok) return { ...info, status: 'offline', error: ms.error || null, version: ms.version }
       return { ...info, version: ms && ms.version }
     })
@@ -546,11 +546,11 @@ function rebuild() {
 }
 onMachinesChange(() => {
   rebuild()
-  // Machine tout juste connectée : son état sans attendre le prochain tour.
+  // Machine just connected: its state without waiting for the next round.
   setTimeout(poll, 0)
 })
 
-// « Prêt » (cf. shared/stateReady.ts) : une fois atteint, on n'y revient plus.
+// "Ready" (see shared/stateReady.ts): once reached, we never go back.
 const startedAt = Date.now()
 let ready = false
 function isReady() {
@@ -576,17 +576,17 @@ async function pollMachine(m: Machine) {
   } catch (e) {
     const error = (e as Error).message
     if (m instanceof RemoteMachine) m.reportPoll(false, error)
-    // Machine distante : son dernier état reste affiché (grisé).
+    // Remote machine: its last state stays shown (grayed out).
     next = m.local || !prev ? { ok: false, error, workspaces: [], panes: [] } : { ...prev, ok: false, error }
   }
-  if (!getMachine(m.key)) return // retirée entre-temps
+  if (!getMachine(m.key)) return // removed in the meantime
   mstates.set(m.key, next)
   if (prev && prev.ok && next.ok) watchTransitions(prev, next)
   rebuild()
 }
 
-// Un sondage à la fois par machine ; une demande pendant un sondage en relance
-// un juste après.
+// One poll at a time per machine; a request during a poll triggers
+// another one right after.
 const inflight = new Map<string, Promise<void>>()
 const again = new Set<string>()
 function pollOne(m: Machine): Promise<void> {
@@ -600,8 +600,8 @@ function pollOne(m: Machine): Promise<void> {
   return run
 }
 
-// Machines hors ligne : pas de sondage (leur connexion se reprend toute seule),
-// mais leur état est republié avec le bon statut.
+// Offline machines: no polling (their connection recovers on its own),
+// but their state is republished with the right status.
 export async function poll() {
   const ms = allMachines()
   for (const m of ms) {
@@ -615,8 +615,8 @@ let pollTimer: ReturnType<typeof setTimeout> | null = null
 let stopped = false
 export function startPolling() {
   stopped = false
-  // La boucle n'attend que la machine locale : une machine distante lente se
-  // sonde à son rythme (pollOne ne relance pas un sondage déjà en cours).
+  // The loop only waits for the local machine: a slow remote machine is
+  // polled at its own pace (pollOne does not restart a poll already in progress).
   const loop = () => {
     const ms = allMachines()
     for (const m of ms) if (m.key !== LOCAL && m.status === 'online' && !inflight.has(m.key)) pollOne(m)
@@ -633,13 +633,13 @@ export function stopPolling() {
 }
 
 // ---------------------------------------------------------------- notifications
-// On notifie quand un agent QUITTE `working` pour `blocked` (il attend une
-// validation) ou `done`/`idle` (il a fini). Sauf si un appareil a justement ce
-// pane ouvert à l'écran.
+// We notify when an agent LEAVES `working` for `blocked` (it is waiting for an
+// approval) or `done`/`idle` (it has finished). Unless a device has that very
+// pane open on screen.
 const notifyTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 function watchTransitions(prev: HerdrState, next: HerdrState) {
-  // (états d'une même machine)
+  // (states of the same machine)
   const before = new Map(prev.panes.map(p => [p.id, p.status]))
   for (const p of next.panes) {
     const was = before.get(p.id)
@@ -677,7 +677,7 @@ async function notifyPane(p: Pane) {
     ? paneTitle(p, ws?.label)
     : [ws && ws.label, notificationTitle(p.title)].filter(Boolean).join(' · ')
   let title: string, titleEn: string, body: string
-  // Plusieurs machines : le titre dit laquelle (« laptop · Claude a terminé »).
+  // Several machines: the title says which one ("laptop · Claude a terminé").
   const m = multiMachine() ? machineOfPane(p.id) : null
   const on = m ? `${m.label || (m.local ? 'local' : m.key)} · ` : ''
   if (p.status === 'blocked') {
@@ -699,5 +699,5 @@ async function notifyPane(p: Pane) {
   const session = source?.session || baseSession
   const sent = await pushSend({ title, titleEn, body, tag: `pane-${p.id}`, url: `/#/a/${encodeURIComponent(p.id)}`, badge },
     (scope, sub) => shouldNotify(scope, p) && subWatchesSession(sub, baseKey, session, baseSession))
-  log(`notif ${p.id} ${p.status} « ${title} » -> ${sent} appareil(s)`)
+  log(`notification ${p.id} ${p.status} "${title}" -> ${sent} device(s)`)
 }

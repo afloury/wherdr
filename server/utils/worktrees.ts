@@ -1,9 +1,9 @@
-// Worktrees Git des agents (créés par Herdr, souvent depuis « Nouveau » avec
-// « worktree séparé ») : liste et suppression, pour ne pas les laisser
-// s'accumuler. Herdr ne liste les worktrees que dépôt par dépôt : on
-// interroge les dépôts des panes ouverts et des dossiers récents de chaque
-// machine. `worktree.remove` ne vise qu'un worktree ouvert en workspace : un
-// worktree fermé est d'abord rouvert (sans focus). La branche est gardée.
+// Agents' Git worktrees (created by Herdr, often from "New" with
+// "separate worktree"): listing and removal, so they do not
+// pile up. Herdr only lists worktrees repository by repository: we
+// query the repositories of the open panes and recent folders of each
+// machine. `worktree.remove` only targets a worktree open as a workspace: a
+// closed worktree is reopened first (without focus). The branch is kept.
 import type { WorktreeInfo } from '../../shared/types'
 import { joinId, splitId } from '../../shared/ids'
 import { HerdrError, herdrOn } from './herdr'
@@ -23,7 +23,7 @@ async function machineWorktrees(m: Machine): Promise<WorktreeInfo[]> {
   for (const cwd of cwds.slice(0, 30)) {
     let r: Json
     try { r = await herdrOn(m.key, 'worktree.list', { cwd, ...opts }, 8000) }
-    catch { continue } // pas un dépôt Git, ou dossier disparu
+    catch { continue } // not a Git repository, or folder gone
     const src = r.source || {}
     const key = String(src.repo_key || src.repo_root || cwd)
     if (repos.has(key)) continue
@@ -58,8 +58,8 @@ export async function listWorktrees(): Promise<WorktreeInfo[]> {
   return all.sort((a, b) => a.repo.localeCompare(b.repo) || String(a.branch).localeCompare(String(b.branch)))
 }
 
-// Supprime le checkout `path` (jamais la branche). Refus de Git s'il reste des
-// modifications : code `dirty`, à redemander avec `force`.
+// Removes the `path` checkout (never the branch). Git refuses if there are
+// changes left: `dirty` code, to ask again with `force`.
 export async function removeWorktree(machine: string, path: string, force: boolean) {
   const m = getMachine(machine)
   if (!m || (!m.local && m.status !== 'online')) throw new HerdrError('unreachable', 'machine injoignable')
@@ -75,7 +75,7 @@ export async function removeWorktree(machine: string, path: string, force: boole
   try {
     await herdrOn(m.key, 'worktree.remove', { workspace_id: ws, force, ...opts }, 30000)
   } catch (e) {
-    // Rouvert seulement pour le supprimer : on le referme.
+    // Reopened only to remove it: we close it again.
     if (reopened) await herdrOn(m.key, 'workspace.close', { workspace_id: ws }).catch(() => {})
     if ((e as HerdrError).code === 'dirty_worktree_requires_force') throw new HerdrError('dirty', 'modifications non commitées dans ce worktree')
     throw e

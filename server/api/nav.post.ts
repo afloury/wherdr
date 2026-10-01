@@ -1,8 +1,8 @@
-// Clavier de l'ordinateur sur une carte « À toi » (menu interactif, invite à
-// choix) : ↑ ↓ Entrée Échap envoyées telles quelles au terminal, comme la barre
-// de touches. L'écran est relu avant : sans menu ni invite, on refuse. Entrée
-// n'est jamais envoyée à un menu où elle n'est pas un simple choix (/model :
-// « set as default »). L'état est rediffusé tout de suite après (écran relu).
+// Computer keyboard on a "Your turn" card (interactive menu, choice
+// prompt): ↑ ↓ Enter Escape sent as is to the terminal, like the key
+// bar. The screen is re-read first: without a menu or prompt, we refuse. Enter
+// is never sent to a menu where it is not a simple choice (/model:
+// "set as default"). The state is broadcast again right after (screen re-read).
 import { TOP, clickMovesOnly } from '../../shared/menuScreen'
 
 const KEYS = new Set(['up', 'down', 'enter', 'esc'])
@@ -24,7 +24,7 @@ export default defineApi(async (event, b) => {
   }
   await herdr('pane.send_input', { pane_id: pane, keys: [key] })
   watchScreen(pane, 30000)
-  // Relecture rapide : la nouvelle sélection s'affiche sans attendre le sondage.
+  // Quick re-read: the new selection shows without waiting for the poll.
   for (const ms of [50, 150, 400]) setTimeout(() => { choicesCache.delete(pane); poll() }, ms)
   return { ok: true }
 })

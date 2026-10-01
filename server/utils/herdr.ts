@@ -1,8 +1,8 @@
-// Socket API Herdr : JSON par ligne, une connexion par requête.
-//   {"id","method","params"}\n -> {"id","result"} ou {"id","error":{code,message}}
-// Plusieurs machines : chaque serveur Herdr a son socket (local, ou socket
-// distant transféré par SSH, cf. machines.ts). Les appels sont routés d'après
-// l'ID du pane / workspace qu'ils visent (préfixe « <machine>~ », cf. shared/ids.ts).
+// Herdr API socket: line-delimited JSON, one connection per request.
+//   {"id","method","params"}\n -> {"id","result"} or {"id","error":{code,message}}
+// Several machines: each Herdr server has its socket (local, or remote
+// socket forwarded over SSH, see machines.ts). Calls are routed according to
+// the ID of the pane / workspace they target ("<machine>~" prefix, see shared/ids.ts).
 import net from 'node:net'
 import { HERDR_SOCK } from './env'
 import { LOCAL, routeParams } from '../../shared/ids'
@@ -15,12 +15,12 @@ export class HerdrError extends Error {
   }
 }
 
-// Socket d'une machine (null : injoignable pour l'instant, avec la raison).
+// Socket of a machine (null: unreachable for now, with the reason).
 export type SocketResolver = (machine: string) => { sock: string | null, error?: string }
 let resolveSocket: SocketResolver = m => (m === LOCAL ? { sock: HERDR_SOCK } : { sock: null, error: `machine inconnue : ${m}` })
 export function setSocketResolver(fn: SocketResolver) { resolveSocket = fn }
 
-// Appel routé : la machine est celle du pane / workspace visé (locale sinon).
+// Routed call: the machine is that of the targeted pane / workspace (local otherwise).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function herdr<T = any>(method: string, params: Record<string, unknown> = {}, timeoutMs = 15000): Promise<T> {
   let routed
@@ -29,7 +29,7 @@ export function herdr<T = any>(method: string, params: Record<string, unknown> =
   return herdrOn<T>(routed.machine ?? LOCAL, method, routed.params, timeoutMs)
 }
 
-// Appel sur une machine donnée (IDs déjà locaux à cette machine).
+// Call on a given machine (IDs already local to that machine).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function herdrOn<T = any>(machine: string, method: string, params: Record<string, unknown> = {}, timeoutMs = 15000): Promise<T> {
   const r = resolveSocket(machine)
@@ -72,15 +72,15 @@ export function herdrSock<T = any>(path: string, method: string, params: Record<
   })
 }
 
-// Message à un agent. Un agent lancé par agent.start reste « en démarrage »
-// (launch_pending, agent.prompt refusé avec agent_not_ready) tant que Herdr n'a
-// pas revalidé son démarrage, ce qu'il ne fait qu'à un changement d'état de
-// l'agent ou à un agent.get (Herdr 0.9 ; son CLI attend en appelant agent.get).
-// omp, dont l'état vient de ses hooks, passe idle une seule fois, pendant le
-// délai de 3 s qu'impose Herdr : sans autre appel, il refuserait tout message
-// jusqu'à son premier tour tapé dans le terminal. Sur ce refus, agent.get fait
-// la revalidation et on renvoie une fois ; encore trop tôt (moins de 3 s), le
-// refus d'origine remonte à l'appelant.
+// Message to an agent. An agent launched by agent.start stays "starting"
+// (launch_pending, agent.prompt refused with agent_not_ready) until Herdr has
+// re-checked its startup, which it only does on a state change of
+// the agent or on an agent.get (Herdr 0.9; its CLI waits by calling agent.get).
+// omp, whose state comes from its hooks, goes idle only once, during the
+// 3 s delay Herdr imposes: without another call, it would refuse every message
+// until its first turn typed in the terminal. On that refusal, agent.get does
+// the re-check and we resend once; still too early (less than 3 s), the
+// original refusal goes back to the caller.
 export async function agentPrompt(target: string, text: string): Promise<void> {
   try {
     await herdr('agent.prompt', { target, text })

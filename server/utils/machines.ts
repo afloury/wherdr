@@ -1,24 +1,24 @@
-// Plusieurs machines, comme la barre latérale du client Herdr : la machine
-// locale (socket ~/.config/herdr/herdr.sock) et les machines SSH enregistrées
-// dans Herdr (`herdr machine add`, lues par `herdr machine list --json`).
+// Several machines, like the Herdr client's sidebar: the local
+// machine (socket ~/.config/herdr/herdr.sock) and the SSH machines registered
+// in Herdr (`herdr machine add`, read with `herdr machine list --json`).
 //
-// Le multi-machines de Herdr est côté client : le serveur local n'agrège pas
-// les autres. On se connecte donc nous-mêmes à chacune :
-//  - une connexion SSH maîtresse par machine (ControlMaster, socket de contrôle
-//    dans RUNTIME_DIR), qui transfère le socket Unix du serveur Herdr distant
-//    vers RUNTIME_DIR/<machine>.sock. Le client JSON-par-ligne (herdr.ts) s'en
-//    sert tel quel : snapshot chaque seconde, prompt, send_input, pane.read…
-//  - les lectures de fichiers (transcriptions, dossiers) et le terminal passent
-//    par des sessions multiplexées sur cette même connexion (aucune nouvelle
-//    authentification, ~quelques dizaines de ms par aller-retour).
-//  - connexion perdue : reconnexion avec délai croissant borné ; une machine en
-//    panne ne bloque jamais les autres (boucles et sockets séparés).
+// Herdr's multi-machine support is client-side: the local server does not aggregate
+// the others. So we connect to each one ourselves:
+//  - one SSH master connection per machine (ControlMaster, control socket
+//    in RUNTIME_DIR), which forwards the remote Herdr server's Unix socket
+//    to RUNTIME_DIR/<machine>.sock. The line-delimited JSON client (herdr.ts) uses
+//    it as is: snapshot every second, prompt, send_input, pane.read…
+//  - file reads (transcripts, folders) and the terminal go
+//    through sessions multiplexed over that same connection (no new
+//    authentication, ~a few tens of ms per round trip).
+//  - connection lost: reconnection with a bounded growing delay; a broken
+//    machine never blocks the others (separate loops and sockets).
 //
-// Garde-fous : on ne lit que `herdr machine list` de CETTE machine (jamais celle
-// d'une machine distante : pas de récursion) ; un profil qui vise cette machine
-// elle-même (nom, localhost, ou même identifiant ~/.cache/herdr-web/machine-id
-// vu à distance) est ignoré ; deux profils vers le même hôte et la même session
-// n'en font qu'un.
+// Safeguards: we only read THIS machine's `herdr machine list` (never that
+// of a remote machine: no recursion); a profile pointing at this machine
+// itself (name, localhost, or same ~/.cache/herdr-web/machine-id identifier
+// seen remotely) is ignored; two profiles to the same host and session
+// count as one.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -46,7 +46,7 @@ export const localMachineLabel = () => localMachine.label
 export type MachineStatus = MachineInfo['status']
 
 export interface Machine {
-  key: string // '' = locale ; sinon 8 caractères hexadécimaux du profil Herdr
+  key: string // '' = local; otherwise 8 hex characters of the Herdr profile
   profileId: string | null
   label: string
   local: boolean
@@ -61,9 +61,9 @@ export interface Machine {
   sock: () => string | null
   // Socket des clients Herdr (notifications, cf. herdrNotify.ts).
   clientSock: () => string | null
-  // `herdr <args>` sur la machine (terminal), stdin/stdout reliés.
+  // `herdr <args>` on the machine (terminal), stdin/stdout connected.
   spawnHerdr: (args: string[]) => ChildProcessWithoutNullStreams
-  // Dépôt des photos envoyées aux agents de cette machine.
+  // Store for photos sent to this machine's agents.
   uploadDir: () => string
   info: () => MachineInfo
 }
@@ -89,15 +89,15 @@ export const localMachine: Machine = {
   info: () => ({ key: LOCAL, session: localMachine.session, label: localMachine.label, local: true, status: 'online', error: null }),
 }
 
-// ---------------------------------------------------------------- identité
-// Identifiant aléatoire de cette machine, dans le dossier de wherdr : une machine
-// distante qui a le même est cette machine-ci (profil qui boucle sur nous).
+// ---------------------------------------------------------------- identity
+// Random identifier of this machine, in wherdr's folder: a remote machine
+// that has the same one is this very machine (profile looping back to us).
 const ID_FILE = path.join(HOME, '.cache/herdr-web/machine-id')
 let selfId: string | null = null
 export function localMachineId(): string {
   if (selfId) return selfId
   try { selfId = fs.readFileSync(ID_FILE, 'utf8').trim() || null }
-  catch { /* pas encore créé */ }
+  catch { /* not created yet */ }
   if (!selfId) {
     selfId = crypto.randomBytes(16).toString('hex')
     try {
@@ -107,14 +107,14 @@ export function localMachineId(): string {
   }
   return selfId
 }
-// Noms de cette machine (profils à ignorer) : HOST_LABEL, nom d'hôte, HERDR_WEB_SELF_HOSTS.
+// Names of this machine (profiles to ignore): HOST_LABEL, host name, HERDR_WEB_SELF_HOSTS.
 export const selfNames = () => [HOST_LABEL, os.hostname(), ...SELF_HOSTS].filter(Boolean)
 
 export class SkipMachine extends Error {}
 
-// ---------------------------------------------------------------- machines SSH
-// Sonde : $HOME, binaire herdr (pas forcément dans le PATH d'un ssh non
-// interactif), puis `herdr [--session S] status server` (socket, état).
+// ---------------------------------------------------------------- SSH machines
+// Probe: $HOME, herdr binary (not necessarily on the PATH of a non-interactive
+// ssh), then `herdr [--session S] status server` (socket, state).
 const PROBE_SCRIPT = `echo "home=$HOME"
 echo "host=$(uname -n 2>/dev/null)"
 echo "self=$(cat "$HOME/.cache/herdr-web/machine-id" 2>/dev/null)"
@@ -134,9 +134,9 @@ mkdir -p "$d" && cat > "$d/$1" && echo "$d/$1"`
 const PURGE_SCRIPT = `d="$HOME/${REMOTE_UPLOAD_SUBDIR}"
 [ -d "$d" ] && find "$d" -type f -mtime +${Math.round(UPLOAD_TTL_MS / 86400000)} -exec rm -f {} + ; exit 0`
 
-// Délais de reconnexion (bornés), puis toutes les 30 s.
+// Reconnection delays (bounded), then every 30 s.
 const BACKOFF_MS = [1000, 2000, 5000, 10000, 20000, 30000]
-// Au-delà de ce nombre d'échecs de suite, la machine passe « hors ligne ».
+// Beyond this number of consecutive failures, the machine goes "offline".
 const FAILS_BEFORE_OFFLINE = 2
 
 function runFile(bin: string, args: string[], timeoutMs: number): Promise<ExecResult> {
@@ -179,7 +179,7 @@ export class RemoteMachine implements Machine {
   private stopped = false
   private connecting = false
   private pollFails = 0
-  // Identité vue à la connexion (nom d'hôte + socket distant) : doublons.
+  // Identity seen at connection (host name + remote socket): duplicates.
   ident = ''
   private onChange: () => void
   onSkip: (m: RemoteMachine, reason: string) => void = () => {}
@@ -208,8 +208,8 @@ export class RemoteMachine implements Machine {
     return { key: this.key, baseKey: this.baseKey, session: this.session, label: this.label, local: false, status: this.status, error: this.error, target: this.target }
   }
 
-  // Options communes des sessions multiplexées : jamais de nouvelle connexion
-  // (ProxyCommand=false si le maître est absent), jamais de question.
+  // Common options of multiplexed sessions: never a new connection
+  // (ProxyCommand=false if the master is missing), never a question.
   private muxArgs() {
     return ['-S', this.ctl, '-o', 'ControlMaster=no', '-o', 'BatchMode=yes', '-o', 'ProxyCommand=/bin/false', '-T']
   }
@@ -279,7 +279,7 @@ export class RemoteMachine implements Machine {
     this.killMaster()
   }
 
-  // Redémarre la connexion (cible ou session changée, serveur distant muet…).
+  // Restarts the connection (target or session changed, silent remote server…).
   restart(reason: string) {
     if (this.stopped) return
     log(`machine ${this.label} : reconnexion (${reason})`)
@@ -290,7 +290,7 @@ export class RemoteMachine implements Machine {
   private killMaster() {
     const m = this.master
     this.master = null
-    // Arrêt par PID exact : le processus ssh maître que nous avons lancé.
+    // Stop by exact PID: the ssh master process we started.
     if (m && m.exitCode === null) m.kill('SIGTERM')
     this.clientFwd = false
     fsp.unlink(this.fwd).catch(() => {})
@@ -306,8 +306,8 @@ export class RemoteMachine implements Machine {
     this.timer = setTimeout(() => this.connect(), delay)
   }
 
-  // Sondage de l'état (state.ts) : le serveur distant peut s'arrêter alors que
-  // la connexion SSH tient. Trois échecs de suite : on reprend depuis le début.
+  // State polling (state.ts): the remote server may stop while
+  // the SSH connection holds. Three consecutive failures: start over.
   reportPoll(ok: boolean, error?: string) {
     if (ok) { this.pollFails = 0; return }
     if (this.status !== 'online') return
@@ -365,7 +365,7 @@ export class RemoteMachine implements Machine {
       if (!(await this.waitControl(child, 20000))) {
         throw new Error(this.masterErr.filter(l => !/^Warning:/.test(l)).pop() || 'connexion SSH impossible (délai dépassé)')
       }
-      // Sonde (sur la connexion multiplexée).
+      // Probe (over the multiplexed connection).
       const probe = await this.exec(PROBE_SCRIPT, [this.session === 'default' ? '' : this.session], { timeoutMs: 15000 })
       const out = probe.stdout.toString('utf8')
       const kv = (k: string) => (new RegExp(`^${k}=(.*)$`, 'm').exec(out) || [])[1] || ''
@@ -385,7 +385,7 @@ export class RemoteMachine implements Machine {
       // Transfert du socket Unix distant vers RUNTIME_DIR/<machine>.sock.
       const fwd = await runFile(SSH_BIN, ['-S', this.ctl, '-O', 'forward', '-L', `${this.fwd}:${sock}`, '--', this.target], 10000)
       if (fwd.code !== 0) throw new Error(`transfert du socket Herdr : ${lastLine(fwd.stderr) || fwd.code}`)
-      // Socket des clients (notifications) : facultatif, la machine reste utilisable sans.
+      // Client socket (notifications): optional, the machine stays usable without it.
       const clientSock = path.posix.join(path.posix.dirname(sock), 'herdr-client.sock')
       const fwdc = await runFile(SSH_BIN, ['-S', this.ctl, '-O', 'forward', '-L', `${this.fwdClient}:${clientSock}`, '--', this.target], 10000)
       this.clientFwd = fwdc.code === 0
@@ -421,7 +421,7 @@ export class RemoteMachine implements Machine {
 // ---------------------------------------------------------------- registre
 const remotes = new Map<string, RemoteMachine>()
 const sessions = new Map<string, Machine>()
-// Profils écartés après connexion (cette machine, ou doublon) : clé -> cible|session.
+// Profiles dropped after connection (this machine, or duplicate): key -> target|session.
 const skipped = new Map<string, string>()
 const sig = (p: { target: string, profileSession?: string, session?: string }) => `${p.target}|${p.profileSession ?? p.session}`
 function skip(m: RemoteMachine, reason: string) {
@@ -432,10 +432,10 @@ function skip(m: RemoteMachine, reason: string) {
   }
   skipped.set(m.key, sig(m))
   if (remotes.get(m.key) === m) remotes.delete(m.key)
-  log(`machine ${m.label} (${m.target}) ignorée : ${reason}`)
+  log(`machine ${m.label} (${m.target}) ignored: ${reason}`)
   changed()
 }
-// Même hôte et même socket qu'une machine déjà connectée (autre nom, IP…) : doublon.
+// Same host and same socket as an already connected machine (other name, IP…): duplicate.
 function checkDuplicate(m: RemoteMachine) {
   for (const o of remotes.values()) {
     if (o === m || !o.ident || o.ident !== m.ident) continue
@@ -506,8 +506,8 @@ setSocketResolver((key) => {
   return sock ? { sock } : { sock: null, error: `${m.label} injoignable${m.error ? ` : ${m.error}` : ''}` }
 })
 
-// Relit les profils de Herdr : ajoute, retire, renomme sans redémarrer.
-// Première lecture des profils faite (réussie ou non) : l'état peut se dire prêt.
+// Re-reads Herdr's profiles: adds, removes, renames without restarting.
+// First read of the profiles done (successful or not): the state can say it is ready.
 let listed = false
 export const machinesListed = () => listed || !MACHINES_ENABLED
 export async function refreshMachines() {
@@ -523,7 +523,7 @@ async function readMachines() {
     log(`herdr machine list : ${lastLine(r.stderr) || r.code}`)
     return
   }
-  // Profils de cette machine seulement ; ceux qui la visent elle-même sont écartés.
+  // This machine's profiles only; those pointing at itself are dropped.
   const profiles = parseMachineList(r.stdout.toString('utf8'), selfNames())
     .filter(p => skipped.get(p.key) !== sig(p))
   let dirty = false
@@ -533,7 +533,7 @@ async function readMachines() {
     m.stop()
     remotes.delete(k)
     for (const [sk, sm] of sessions) if (sm instanceof RemoteMachine && sm.baseKey === k) { sm.stop(); sessions.delete(sk) }
-    log(`machine ${m.label} retirée`)
+    log(`machine ${m.label} removed`)
     dirty = true
   }
   for (const p of profiles) {
@@ -543,7 +543,7 @@ async function readMachines() {
       nm.onSkip = skip
       nm.onOnline = checkDuplicate
       remotes.set(p.key, nm)
-      log(`machine ${p.label} (${p.target}, session ${REMOTE_SESSION || p.session}) ajoutée`)
+      log(`machine ${p.label} (${p.target}, session ${REMOTE_SESSION || p.session}) added`)
       nm.start()
       dirty = true
       continue

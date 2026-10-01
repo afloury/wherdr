@@ -1,5 +1,5 @@
-// Bouton Stop du champ de saisie : interrompre l'agent et vérifier qu'il s'arrête
-// (cf. interruptSeq.ts). Répond { stopped: false } si l'agent travaille encore.
+// Stop button of the input field: interrupt the agent and check that it stops
+// (see interruptSeq.ts). Replies { stopped: false } if the agent is still working.
 import { interruptAgent } from '../utils/interruptSeq'
 
 export default defineApi(async (event, b) => {

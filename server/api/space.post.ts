@@ -1,5 +1,5 @@
-// Actions sur les espaces, onglets et panes (nouvel onglet, diviser, renommer,
-// fermer, déplacer, réordonner) : l'appel part vers la machine de l'objet visé.
+// Actions on spaces, tabs and panes (new tab, split, rename,
+// close, move, reorder): the call goes to the machine of the target object.
 import { type HerdrStep, SpaceActionError, dropSteps, spaceCall, spaceResult, swapSteps } from '../../shared/spaceActions'
 import type { DropSide } from '../../shared/layout'
 import { HerdrError, herdrOn } from '../utils/herdr'
@@ -33,7 +33,7 @@ export default defineApi(async (_event, body) => {
   return { ok: true, ...spaceResult(call, r) }
 })
 
-// Échange avec le voisin que Herdr désigne, puis focus rendu (swapSteps).
+// Swap with the neighbour Herdr designates, then focus restored (swapSteps).
 async function swapPanes(machine: string, pane: string, direction: string) {
   const [snap, nb] = await Promise.all([
     herdrOn(machine, 'session.snapshot', {}, 5000),
@@ -50,8 +50,8 @@ function stepsOf(f: () => HerdrStep[]) {
   }
 }
 
-// Étapes l'une après l'autre. Un pane.move peut rendre un nouvel ID (autre
-// espace) : les étapes suivantes suivent le pane.
+// Steps one after the other. A pane.move may return a new ID (other
+// space): the following steps follow the pane.
 async function runSteps(machine: string, steps: HerdrStep[]) {
   const renamed = new Map<string, string>()
   const fix = (v: unknown): unknown => (typeof v === 'string' ? renamed.get(v) ?? v

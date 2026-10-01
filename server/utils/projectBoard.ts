@@ -1,10 +1,10 @@
-// Panneau « Projet » d'un coordinateur herdr-projects, en lecture seule :
-// TASKS.md du dossier du projet et `herdr-projects thread list --json`, sur la
-// machine du coordinateur (locale, ou distante par la connexion SSH).
+// "Project" panel of a herdr-projects coordinator, read-only:
+// TASKS.md of the project folder and `herdr-projects thread list --json`, on the
+// coordinator's machine (local, or remote over the SSH connection).
 //
-// Rien n'est écrit en dur : le binaire vient du plugin tel que Herdr le déclare
-// (`plugin.list` : plugin_root + commande du manifeste), le dossier du projet est
-// celui du coordinateur (`<root>/<slug>`), la racine est son parent.
+// Nothing is hard-coded: the binary comes from the plugin as Herdr declares it
+// (`plugin.list`: plugin_root + manifest command), the project folder is
+// the coordinator's (`<root>/<slug>`), the root is its parent.
 import { execFile } from 'node:child_process'
 import path from 'node:path'
 import type { Pane } from '../../shared/types'
@@ -32,7 +32,7 @@ interface RawPluginFull {
   panes?: RawCommand[]
 }
 
-// Binaire de herdr-projects d'après le manifeste : chemin relatif à plugin_root.
+// herdr-projects binary according to the manifest: path relative to plugin_root.
 export function pluginBinary(plugins: RawPluginFull[]): string | null {
   const p = (plugins || []).find(x => x && x.plugin_id === PLUGIN_ID && x.enabled !== false)
   if (!p || typeof p.plugin_root !== 'string' || !path.posix.isAbsolute(p.plugin_root)) return null
@@ -56,8 +56,8 @@ export function binaryOn(m: Machine): Promise<string | null> {
   return bin
 }
 
-// Dossier du projet d'un coordinateur : son dossier de travail, nommé comme le
-// projet, avec les fichiers de herdr-projects.
+// Project folder of a coordinator: its working folder, named like the
+// project, with the herdr-projects files.
 async function projectDir(m: Machine, p: Pane): Promise<{ dir: string, slug: string } | null> {
   const slug = projectOf(p)
   const cwd = (p.cwd || '').replace(/\/+$/, '')
@@ -77,8 +77,8 @@ async function target(pane: Pane): Promise<Target | null> {
   return where ? { m, bin, ...where } : null
 }
 
-// Version légère : TASKS.md (taille, date) et le dossier des threads, que
-// herdr-projects réécrit (écritures atomiques) à chaque changement d'un thread.
+// Light version: TASKS.md (size, date) and the threads folder, which
+// herdr-projects rewrites (atomic writes) on every thread change.
 async function version(t: Target): Promise<{ v: string, tasks: { size: number } | null }> {
   const [tasks, threads] = await t.m.fs.statMany([`${t.dir}/TASKS.md`, `${t.dir}/threads`])
   return { v: `${tasks ? `${tasks.size}.${tasks.mtimeMs}` : '-'}|${threads ? threads.mtimeMs : '-'}`, tasks: tasks || null }
@@ -126,7 +126,7 @@ export async function readProjectBoard(pane: Pane, since?: string): Promise<Boar
   return board
 }
 
-// Rapport d'un thread : copie gardée par herdr-projects dans threads/t-NNNN.md.
+// Report of a thread: copy kept by herdr-projects in threads/t-NNNN.md.
 export async function readThreadReport(pane: Pane, id: string): Promise<{ id: string, text: string, truncated: boolean }> {
   if (!/^t-\d{4,}$/.test(id)) throw new HerdrError('bad_thread', 'thread invalide')
   const t = await target(pane)

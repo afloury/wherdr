@@ -1,12 +1,12 @@
-// Verrouillage par clé d'accès (WebAuthn : Face ID sur iPhone, Touch ID sur
-// Mac). Tant qu'aucune clé n'est enregistrée, l'app reste ouverte (le tailnet
-// est la seule porte). Dès la première, tout l'accès aux agents exige une
-// session déverrouillée : cookie signé, valable 12 h.
+// Passkey lock (WebAuthn: Face ID on iPhone, Touch ID on
+// Mac). As long as no key is registered, the app stays open (the tailnet
+// is the only door). From the first one on, all access to agents requires an
+// unlocked session: signed cookie, valid for 12 h.
 //
-// data/auth.json : secret de signature, clés enregistrées (clé publique +
-// compteur), numéro de génération (incrémenté quand on désactive : toutes les
-// sessions en cours deviennent invalides).
-// Clé perdue : supprimer data/auth.json sur le serveur rouvre l'app.
+// data/auth.json: signing secret, registered keys (public key +
+// counter), generation number (incremented when disabling: all
+// current sessions become invalid).
+// Lost key: deleting data/auth.json on the server reopens the app.
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -22,7 +22,7 @@ const CHALLENGE_MS = 5 * 60 * 1000
 export const AUTH_COOKIE = 'hw_session'
 const CHALLENGE_COOKIE = 'hw_challenge'
 
-// Les en-têtes utiles d'une requête HTTP ou d'une demande de WebSocket.
+// The useful headers of an HTTP request or a WebSocket upgrade request.
 export interface ReqLike { headers: Record<string, string | undefined> }
 
 interface Credential {
@@ -51,7 +51,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   const FILE = path.join(dataDir, 'auth.json')
   let db: AuthDb = { secret: null, generation: 0, credentials: [] }
   try { db = { ...db, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) } }
-  catch { /* pas encore de fichier */ }
+  catch { /* no file yet */ }
   const save = () => {
     fs.mkdirSync(dataDir, { recursive: true })
     fs.writeFileSync(FILE, JSON.stringify(db, null, 2) + '\n', { mode: 0o600 })
@@ -61,9 +61,9 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
     save()
   }
 
-  // Jeton temporaire, renouvelé à chaque démarrage et visible uniquement dans les journaux.
+  // Temporary token, renewed at each startup and only visible in the logs.
   const bootstrapToken = crypto.randomBytes(24).toString('base64url')
-  if (!db.credentials.length) log(`Première clé d'accès : jeton d'amorçage ${bootstrapToken}`)
+  if (!db.credentials.length) log(`First passkey: bootstrap token ${bootstrapToken}`)
 
   const enabled = () => db.credentials.length > 0
   const sign = (v: string) => crypto.createHmac('sha256', db.secret!).update(v).digest('base64url')
@@ -75,7 +75,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   const readCookie = (req: ReqLike) => {
     const c = String(req.headers.cookie || '').split(/;\s*/).find(s => s.startsWith(`${AUTH_COOKIE}=`))
     if (!c) return null
-    // Cookie abîmé (« %E0 »…) : simplement pas de session, jamais une erreur 500.
+    // Damaged cookie ("%E0"…): simply no session, never a 500 error.
     try { return decodeURIComponent(c.slice(AUTH_COOKIE.length + 1)) }
     catch { return null }
   }
@@ -98,8 +98,8 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
     return safeEq(mac, sign(`${exp}.${gen}`))
   }
 
-  // Secure seulement en HTTPS (tailscale serve) : les tests en http://localhost
-  // doivent aussi pouvoir poser le cookie.
+  // Secure only over HTTPS (tailscale serve): tests on http://localhost
+  // must also be able to set the cookie.
   const secure = (req: ReqLike) => (req.headers['x-forwarded-proto'] === 'https'
     || String(req.headers.origin || '').startsWith('https://')
     ? '; Secure'
@@ -111,7 +111,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   }
   const clearCookie = (req: ReqLike) => `${AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure(req)}`
 
-  // Partie relais (rpID) = le nom d'hôte de la page (ex. <hôte>.ts.net).
+  // Relying party (rpID) = the page's host name (e.g. <host>.ts.net).
   function relying(req: ReqLike) {
     const origin = String(req.headers.origin || '')
     const { hostname } = new URL(origin)
@@ -167,7 +167,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
       createdAt: new Date().toISOString(),
     })
     save()
-    log(`verrouillage : clé enregistrée (${db.credentials.length})`)
+    log(`lock: key registered (${db.credentials.length})`)
     return { ok: true, __cookie: sessionCookie(req) }
   }
 
@@ -201,7 +201,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
     db.credentials = []
     db.generation += 1
     save()
-    log('verrouillage désactivé')
+    log('lock disabled')
     return { ok: true, __cookie: clearCookie(req) }
   }
 
@@ -215,7 +215,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   return {
     isUnlocked, status, registerOptions, registerVerify, loginOptions, loginVerify, disable,
     lock: (req: ReqLike) => ({ ok: true, __cookie: clearCookie(req) }),
-    // Pour les tests.
+    // For tests.
     _sessionCookie: sessionCookie,
     _db: () => db,
     _bootstrapToken: () => bootstrapToken,

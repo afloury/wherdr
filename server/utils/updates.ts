@@ -1,11 +1,11 @@
-// Dernière release de wherdr sur GitHub, vérifiée au plus une fois par jour
-// (API publique sans jeton, rien n'est envoyé). WHERDR_UPDATE_CHECK=off coupe l'appel.
+// Latest wherdr release on GitHub, checked at most once a day
+// (public API without a token, nothing is sent). WHERDR_UPDATE_CHECK=off disables the call.
 import pkg from '../../package.json'
 import { compareVersions, installMode, updateCommand, type UpdateInfo } from '../../shared/updates'
 
 export const RELEASES_URL = 'https://api.github.com/repos/afloury/wherdr/releases/latest'
 const DAY_MS = 24 * 60 * 60 * 1000
-// Échec (hors ligne, limite de l'API) : nouvel essai dans une heure.
+// Failure (offline, API limit): new attempt in an hour.
 const RETRY_MS = 60 * 60 * 1000
 
 interface Release { version: string, url: string }

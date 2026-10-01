@@ -10,11 +10,11 @@ export default defineApi(async (event, b) => {
       if ((key === '' || /^[0-9a-f]{4,32}$/.test(key)) && typeof name === 'string' && /^[\w.-]{1,64}$/.test(name)) sessions[key] = name
     }
   }
-  // Réabonnement (langue, portée…) ou nouvel endpoint après réactivation
-  // (`previous`) : l'ancienne entrée disparaît, le silence de l'appareil reste.
+  // Resubscription (language, scope…) or new endpoint after reactivation
+  // (`previous`): the old entry goes away, the device's quiet setting stays.
   const subs = replaceSubscription(all, { endpoint: b.endpoint, keys: { p256dh: b.keys.p256dh, auth: b.keys.auth }, lang: b.lang === 'en' ? 'en' : 'fr',
     notifyScope: b.notifyScope === 'all' ? 'all' : 'project_leads', sessions, addedAt: new Date().toISOString() }, b.previous, quietActive)
   await writeSubs(subs)
-  log(`push : abonnement enregistré (${subs.length} appareil(s))`)
+  log(`push: subscription saved (${subs.length} device(s))`)
   return { ok: true, devices: subs.length }
 })

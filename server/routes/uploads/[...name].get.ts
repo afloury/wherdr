@@ -1,4 +1,4 @@
-// Photos envoyées depuis le téléphone (dépôt ~/.cache/herdr-web/uploads).
+// Photos sent from the phone (store ~/.cache/herdr-web/uploads).
 export default defineEventHandler(async (event) => {
   try {
     const name = decodeURIComponent(getRouterParam(event, 'name') || '')

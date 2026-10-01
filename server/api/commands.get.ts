@@ -1,11 +1,11 @@
-// Commandes « / » de l'agent d'un pane (intégrées + skills et commandes de la
-// machine), pour les suggestions du champ de saisie.
+// "/" commands of a pane's agent (built-in + the machine's skills and
+// commands), for the input field suggestions.
 export default defineApi(async (event) => {
   const p = findPane(String(getQuery(event).pane || ''))
   if (!p) throw new HerdrError('bad_pane', 'pane introuvable')
   const m = machineOfPane(p.id)
   if (!p.agent || !m || !m.home) return { commands: [] }
-  // Machine distante injoignable : commandes intégrées seules (pas de cache).
+  // Remote machine unreachable: built-in commands only (no cache).
   if (!m.local && m.status !== 'online') return { commands: builtinCommands(p.agent) }
   return { commands: await slashCommands({ key: m.key, fs: m.fs, home: m.home, kind: p.agent, cwd: p.cwd }) }
 })

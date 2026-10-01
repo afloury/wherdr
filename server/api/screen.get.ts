@@ -1,7 +1,7 @@
-// Écran courant du pane, en texte : résultat des commandes locales (/context,
-// /status…) que les agents n'écrivent pas dans leur transcription. Panneau de
-// réglages de Claude Code (/usage, /status…) : `tab` = l'onglet actif, repéré à
-// son fond coloré dans la version ANSI de l'écran.
+// Current screen of the pane, as text: output of local commands (/context,
+// /status…) that agents do not write to their transcript. Claude Code
+// settings panel (/usage, /status…): `tab` = the active tab, spotted by
+// its colored background in the ANSI version of the screen.
 export default defineApi(async (event) => {
   const pane = String(getQuery(event).pane || '')
   if (!PANE_RE.test(pane)) throw new HerdrError('bad_pane', 'pane invalide')

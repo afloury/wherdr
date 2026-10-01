@@ -1,18 +1,18 @@
-// Transcriptions des agents, pour la vue « Conversation » : la vraie
-// conversation, en texte réagencé à la largeur du téléphone, sans toucher au
-// terminal (donc sans redimensionner le pane que l'ordinateur regarde).
+// Agent transcripts, for the "Conversation" view: the real
+// conversation, as text reflowed to the phone's width, without touching the
+// terminal (so without resizing the pane the computer is looking at).
 //
-// Retrouver le fichier d'un pane :
-//  - identifiant de session transmis par l'intégration Herdr de l'agent
-//    (`herdr integration install claude|codex|omp`) : exact, suit /clear. omp
-//    rapporte directement le chemin de sa session.
-//  - Claude Code sans intégration : Herdr donne le PID du processus `claude` du
-//    pane, et Claude tient ~/.claude/sessions/<pid>.json -> { sessionId, cwd }.
-//    Le fichier est ~/.claude/projects/<cwd encodé>/<sessionId>.jsonl.
-//  - Codex sans intégration : pas de table PID -> session lisible depuis le
-//    conteneur (/proc de l'hôte est fermé par AppArmor). On prend la rollout
-//    principale (thread_source "user", sans parent) du même cwd, modifiée en
-//    dernier. Ambigu seulement si deux Codex tournent dans le même dossier.
+// Finding a pane's file:
+//  - session identifier passed by the agent's Herdr integration
+//    (`herdr integration install claude|codex|omp`): exact, follows /clear. omp
+//    reports the path of its session directly.
+//  - Claude Code without integration: Herdr gives the PID of the pane's `claude`
+//    process, and Claude keeps ~/.claude/sessions/<pid>.json -> { sessionId, cwd }.
+//    The file is ~/.claude/projects/<encoded cwd>/<sessionId>.jsonl.
+//  - Codex without integration: no PID -> session table readable from the
+//    container (the host's /proc is closed by AppArmor). We take the main
+//    rollout (thread_source "user", no parent) of the same cwd, modified
+//    last. Ambiguous only if two Codex run in the same folder.
 import path from 'node:path'
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail } from '../../shared/types'
 import { pendingClaudeTool, pendingCodexTool } from './promptDetail'
@@ -23,11 +23,11 @@ import { searchFile } from './conversationSearch'
 import { hasTranscript, transcriptKind } from '../../shared/agentKind'
 import { type CommandTemplate, ompCommandTemplates } from './slash'
 
-// Lecture à rebours par fenêtres jusqu'à avoir assez de messages : les
-// transcriptions de Claude embarquent les images en base64, quelques captures
-// pèsent plusieurs Mo pour trois lignes de conversation.
+// Backward reading by windows until there are enough messages: Claude's
+// transcripts embed images in base64, a few screenshots
+// weigh several MB for three lines of conversation.
 const WINDOW_BYTES = 2 * 1024 * 1024
-const MAX_READ_BYTES = 24 * 1024 * 1024 // par requête
+const MAX_READ_BYTES = 24 * 1024 * 1024 // per request
 const PAGE_ITEMS = 120
 const MAX_TEXT = 20000
 
@@ -41,7 +41,7 @@ export interface TranscriptPane {
 
 interface Loc { file: string, session: string, guessed?: boolean }
 interface CodexRollout { file: string, id: string, ts: number, mtimeMs: number }
-// Fenêtre où la conversation d'un Codex est créée autour de son apparition.
+// Window in which a Codex's conversation is created around its appearance.
 const CODEX_BIRTH_BEFORE = 5000
 const CODEX_BIRTH_AFTER = 120000
 type Lines = string[] & { refs?: string[] }
@@ -56,33 +56,33 @@ type Json = any
 const clip = (s: string, n = MAX_TEXT) => (s.length > n ? s.slice(0, n) + '…' : s)
 const firstLine = (s: unknown) => String(s || '').split('\n').find(l => l.trim()) || ''
 
-// Messages « techniques » injectés dans le fil (rappels système, sorties de
-// commandes locales…) : pas des vrais messages de l'utilisateur.
+// "Technical" messages injected into the thread (system reminders, outputs of
+// local commands…): not real user messages.
 const isNoise = (t: string) => /^\s*<(?!command-name)[a-z_-]+[\s>]/i.test(t) || /^\s*Caveat:/.test(t)
-// « [Image #1] » (Claude Code), « [Image #1, 756x477] » (omp).
+// "[Image #1]" (Claude Code), "[Image #1, 756x477]" (omp).
 const stripImageTags = (t: unknown) => String(t || '').replace(/\[Image #\d+(?:, \d+x\d+)?\]\s*/g, '').trim()
-// Texte collé (un envoi multi-lignes de wherdr en est un) : Claude Code
-// l'enveloppe dans <pasted_content id="…">…</pasted_content id="…">. C'est un
-// vrai message de l'utilisateur : on garde le texte, sans les balises.
+// Pasted text (a multi-line send from wherdr is one): Claude Code
+// wraps it in <pasted_content id="…">…</pasted_content id="…">. It is a
+// real user message: we keep the text, without the tags.
 const PASTED = /<pasted_content(?:\s[^>]*)?>\n?|\n?<\/pasted_content(?:\s[^>]*)?>/g
 export const unwrapPasted = (t: string) => (t.includes('<pasted_content') ? t.replace(PASTED, '').trim() : t)
-// Un message écrit par l'utilisateur (après retrait des enveloppes de collage).
+// A message written by the user (after removing the paste wrappers).
 function humanText(t: unknown): string | null {
   const s = String(t || '')
   const u = unwrapPasted(s)
   if (u !== s) return u
   return isNoise(s) ? null : s
 }
-// Même message ? (espaces, casse et images ignorés ; Claude peut en regrouper
-// plusieurs en un tour, d'où une inclusion plutôt qu'une égalité).
+// Same message? (spaces, case and images ignored; Claude may group
+// several into one turn, hence inclusion rather than equality).
 const normMsg = (t: string) => stripImageTags(t).replace(/\s+/g, ' ').trim().toLowerCase()
 export function sameMsg(queued: string, said: string): boolean {
   const q = normMsg(queued).slice(0, 60)
   return Boolean(q) && normMsg(said).includes(q)
 }
 
-// Les images en base64 (Claude : source.data, Codex : data:image/…) : on
-// les vide avant JSON.parse, seul leur nombre nous intéresse.
+// Base64 images (Claude: source.data, Codex: data:image/…): we
+// empty them before JSON.parse, only their count matters to us.
 export const stripBlobs = (line: string) => (line.length > 50000
   ? line.replace(/"data":"[A-Za-z0-9+/=]{500,}"/g, '"data":""').replace(/"data:image\/[^"]{500,}"/g, '""')
   : line)
@@ -108,14 +108,14 @@ export function toolSummary(name: string, input: Json, home = ''): string {
   }
 }
 
-// Les menus /model et /effort peuvent être ouverts puis annulés pour lire leur
-// contenu. On ne montre que les confirmations d'un vrai changement, sous forme
-// de ligne système. « Kept model as … » et « Cancelled » restent invisibles.
+// The /model and /effort menus may be opened then cancelled to read their
+// content. We only show confirmations of a real change, as a
+// system line. "Kept model as …" and "Cancelled" stay invisible.
 const isPickerCmd = (name: string) => /^\/(?:model|effort)$/.test(name.trim())
-// /clear, /new, /reset : séparateur « Conversation effacée », sans sortie (ce que
-// Claude Code écrit après n'est pas une sortie de la commande, souvent un statut
-// comme « Update installed »). /compact garde sa ligne (ses consignes), sans
-// sortie non plus : son séparateur vient de compact_boundary.
+// /clear, /new, /reset: "Conversation cleared" separator, without output (what
+// Claude Code writes afterwards is not an output of the command, often a status
+// like "Update installed"). /compact keeps its line (its instructions), without
+// output either: its separator comes from compact_boundary.
 const isResetCmd = (name: string) => /^\/(?:clear|new|reset)$/.test(name.trim())
 function modelChange(text: unknown): string | null {
   const m = String(text || '').match(/<local-command-stdout>\s*Set model to\s+`([^`]+)`/)
@@ -129,9 +129,9 @@ function effortChange(text: unknown): string | null {
     : m[1]!.trim()
 }
 
-// Commandes « ! » (mode bash de Claude Code) : <bash-input>cmd</bash-input>,
-// puis un message <bash-stdout>…</bash-stdout><bash-stderr>…</bash-stderr>.
-// Sorties des commandes locales : <local-command-stdout|stderr>.
+// "!" commands (Claude Code bash mode): <bash-input>cmd</bash-input>,
+// then a <bash-stdout>…</bash-stdout><bash-stderr>…</bash-stderr> message.
+// Outputs of local commands: <local-command-stdout|stderr>.
 const MAX_OUT = 8000
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g
 const tagText = (s: string, tag: string) => {
@@ -151,9 +151,9 @@ export function commandOutput(text: string): { out: string, err: string } | null
   return { out: cleanOut(out), err: cleanOut(err) }
 }
 
-// Sortie d'une commande locale réduite à une ligne utile : jamais le texte de
-// l'écran que Claude Code y recopie parfois (spinner, « Running N shell
-// command… », astuces, statuts de mise à jour).
+// Output of a local command reduced to one useful line: never the screen
+// text that Claude Code sometimes copies there (spinner, "Running N shell
+// command…", tips, update statuses).
 const SCREEN_JUNK = /^(?:[*✢✳✶✻✽·⏺●◯○]\s*\S+…|Running \d+ (?:shell )?commands?…?|Tip:|Context Usage$|\(no content\)$|✔?\s*Update installed|Restart to update|.*\besc to interrupt\b|.*\bctrl\+\w+ to\b|⎿)/i
 export function usefulOutput(out: string | undefined, err: string | undefined): string | null {
   for (const raw of `${err || ''}\n${out || ''}`.split('\n')) {
@@ -166,13 +166,13 @@ export function usefulOutput(out: string | undefined, err: string | undefined): 
 export function parseClaude(lines: Lines, home = ''): Parsed {
   const items: Parsed = []
   const tools = new Map<string, ChatItem>()
-  // File d'attente de Claude lui-même (messages tapés pendant qu'il travaille,
-  // depuis le téléphone ou l'ordinateur) : enqueue, puis dequeue (pris en fin de
-  // tour) ou remove « absorbed_mid_turn » (pris en cours de tour).
+  // Claude's own queue (messages typed while it works,
+  // from the phone or the computer): enqueue, then dequeue (taken at the end of
+  // the turn) or remove "absorbed_mid_turn" (taken during the turn).
   const queue: ClaudeQueueEntry[] = []
   let started: ClaudeQueueEntry | null = null
-  // Un message de l'utilisateur apparaît : il sort de la file, même sans
-  // dequeue ; sinon, la tête de file est peut-être ce message, modifié.
+  // A user message appears: it leaves the queue, even without
+  // dequeue; otherwise, the head of the queue may be this message, modified.
   const said = (text: string, ts: string | null) => {
     const before = queue.length
     for (let i = queue.length - 1; i >= 0; i--) {
@@ -182,10 +182,10 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     const head = queue.find(q => !isNoise(q.text))
     if (queue.length === before && head && (!head.ts || !ts || head.ts <= ts)) started = head
   }
-  // Commande (« ! » ou « / ») qui attend sa sortie : le message suivant.
+  // Command ("!" or "/") waiting for its output: the next message.
   let open: ChatItem | null = null
-  // Commande « / » suivie d'une réponse de l'agent (skill, commande perso,
-  // /review…) : c'est un message de l'utilisateur, pas un bloc de commande.
+  // "/" command followed by an agent reply (skill, custom command,
+  // /review…): it is a user message, not a command block.
   let pendingCmd: ChatItem | null = null
   const pushCmd = (it: ChatItem) => {
     if (/^\/compact\b/.test(it.text)) it.out = ''
@@ -193,7 +193,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     open = it
     pendingCmd = it.role === 'cmd' ? it : null
   }
-  // Sortie de la commande juste avant ; ailleurs (menus /model, /effort…) ignorée.
+  // Output of the command just before; elsewhere (/model, /effort menus…) ignored.
   const output = (text: string) => {
     const o = commandOutput(text)
     if (!o) return false
@@ -208,13 +208,13 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     open = null
     return true
   }
-  // /clear… : séparateur, et la sortie qui suit est avalée (item sans rendu).
+  // /clear…: separator, and the following output is swallowed (item without rendering).
   const swallow = (ts: string | null) => {
     items.push({ role: 'system', text: 'Conversation effacée', ts })
     pendingCmd = null
     open = { role: 'system', text: '', ts }
   }
-  // Message texte « spécial » (commande, sortie) : traité ici.
+  // "Special" text message (command, output): handled here.
   const special = (text: string, ts: string | null) => {
     const bash = bashInput(text)
     if (bash !== null) {
@@ -241,8 +241,8 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       }
       continue
     }
-    // Fin de tour : l'entrée de tête prise par ce tour sans trace dans la file
-    // (pas de dequeue, texte modifié) a été traitée.
+    // End of turn: the head entry taken by this turn without a trace in the queue
+    // (no dequeue, modified text) has been handled.
     if (d.type === 'system' && d.subtype === 'turn_duration') {
       if (started) queue.splice(queue.indexOf(started), 1)
       started = null
@@ -250,7 +250,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     }
     if (d.isSidechain || d.isMeta) continue
     const ts: string | null = d.timestamp || null
-    // Message pris en cours de tour : écrit comme pièce jointe, pas comme message.
+    // Message taken during the turn: written as an attachment, not as a message.
     if (d.type === 'attachment' && d.attachment && d.attachment.type === 'queued_command'
       && d.attachment.commandMode === 'prompt' && (d.attachment.origin || {}).kind === 'human') {
       const parts: Json[] = Array.isArray(d.attachment.prompt) ? d.attachment.prompt : [{ type: 'text', text: String(d.attachment.prompt || '') }]
@@ -267,8 +267,8 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       items.push({ role: 'system', text: 'Conversation compactée', ts })
       continue
     }
-    // Commande locale (/context, /usage…) : les versions récentes de Claude Code
-    // l'écrivent comme message système, sans sa sortie (lue à l'écran).
+    // Local command (/context, /usage…): recent versions of Claude Code
+    // write it as a system message, without its output (read from the screen).
     if (d.type === 'system' && d.subtype === 'local_command' && typeof d.content === 'string') {
       const cmd = d.content.match(/<command-name>([^<]*)<\/command-name>/)
       const changed = effortChange(d.content) || modelChange(d.content)
@@ -349,7 +349,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       }
     }
   }
-  // Commandes locales : une ligne « /cmd → sortie utile », sans bloc.
+  // Local commands: one "/cmd → useful output" line, without a block.
   for (const it of items) {
     if (it.role !== 'cmd') continue
     const line = usefulOutput(it.out, it.err)
@@ -357,7 +357,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     delete it.out
     delete it.err
   }
-  // Notifications de tâches en file : pas des messages de l'utilisateur.
+  // Queued task notifications: not user messages.
   items.queue = queue.filter(q => !isNoise(q.text))
   return items
 }
@@ -369,7 +369,7 @@ export function codexCommand(input: unknown): string {
     try { return JSON.parse(`"${m[1]}"`) }
     catch { return m[1]! }
   }
-  // Script sans commande shell : on nomme l'outil appelé (write_stdin, apply_patch…).
+  // Script without a shell command: we name the tool called (write_stdin, apply_patch…).
   const t = s.match(/\btools\.(\w+)\s*\(/)
   if (t) return t[1]!
   return firstLine(s)
@@ -410,28 +410,28 @@ export function parseCodex(lines: Lines): Parsed {
   return items
 }
 
-// Noms des outils d'omp rapprochés de ceux de Claude Code (libellés, icônes).
+// omp tool names mapped to Claude Code's (labels, icons).
 const OMP_TOOLS: Record<string, string> = {
   bash: 'Bash', read: 'Read', write: 'Write', edit: 'Edit', ast_edit: 'Edit', grep: 'Grep',
   glob: 'Glob', find: 'Glob', web_search: 'WebSearch', fetch: 'WebFetch', task: 'Task', todo: 'TodoWrite',
 }
 function ompToolSummary(args: Json, home: string): string {
   const a = args && typeof args === 'object' ? args : {}
-  // `i` : l'intention que l'agent donne à chaque appel (« Reading model settings »).
+  // `i`: the intent the agent gives for each call ("Reading model settings").
   for (const k of ['i', 'title', 'description']) if (typeof a[k] === 'string' && a[k].trim()) return firstLine(a[k])
   if (typeof a.path === 'string') return home ? a.path.replace(home, '~') : a.path
   for (const k of ['command', 'pattern', 'query']) if (typeof a[k] === 'string') return firstLine(a[k])
   return firstLine(Object.values(a).find(x => typeof x === 'string') || '')
 }
 
-// omp (oh-my-pi) : ~/.omp/agent/sessions/<cwd encodé>/<date>_<id>.jsonl, une
-// entrée par ligne. `message` porte un message (user, assistant, toolResult ;
-// developer et fileMention sont des injections de l'agent) ; `custom_message`
-// « skill-prompt » attribué à l'utilisateur est un skill qu'il a invoqué.
-// Messages de l'utilisateur injectés par l'agent (rappels, consignes des
-// sous-agents) : `synthetic` ou `attribution: 'agent'`. Les images sont
-// rangées à part (`data: "blob:sha256:<hash>"`, cf. extractImage). `templates` :
-// commandes-fichiers d'omp, dont il envoie le texte à la place de « /nom args ».
+// omp (oh-my-pi): ~/.omp/agent/sessions/<encoded cwd>/<date>_<id>.jsonl, one
+// entry per line. `message` carries a message (user, assistant, toolResult;
+// developer and fileMention are agent injections); a `custom_message`
+// "skill-prompt" attributed to the user is a skill they invoked.
+// User messages injected by the agent (reminders, subagent
+// instructions): `synthetic` or `attribution: 'agent'`. Images are
+// stored separately (`data: "blob:sha256:<hash>"`, see extractImage). `templates`:
+// omp's file commands, whose text it sends instead of "/name args".
 export function parseOmp(lines: Lines, home = '', templates: readonly CommandTemplate[] = []): Parsed {
   const items: Parsed = []
   const tools = new Map<string, ChatItem>()
@@ -453,8 +453,8 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
       if (d.customType === 'skill-prompt') {
         if (d.attribution === 'user' && s && typeof s.name === 'string') items.push({ role: 'user', text: clip(stripImageTags(`/skill:${s.name}${s.args ? ` ${s.args}` : ''}`)), ts })
       } else if (d.display && typeof d.customType === 'string') {
-        // Ce que le terminal affiche lui aussi (conseiller, tâche de fond terminée,
-        // message IRC, diagnostics tardifs…), sans l'enveloppe destinée au modèle.
+        // What the terminal also shows (advisor, finished background task,
+        // IRC message, late diagnostics…), without the wrapper meant for the model.
         const notes: Json[] = d.customType === 'advisor' && s && Array.isArray(s.notes) ? s.notes : []
         const text = notes.length
           ? notes.filter(n => n && typeof n.note === 'string').map(n => (n.severity ? `**${n.severity}** — ${n.note}` : n.note)).join('\n\n')
@@ -492,9 +492,9 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
   return items
 }
 
-// Texte d'une commande-fichier d'omp : « /nom args ». omp ajoute les arguments
-// après le texte, sauf si la commande les place elle-même ($1, {{args}}…) : le
-// texte ne commence alors que comme la commande, et ses arguments sont perdus.
+// Text of an omp file command: "/name args". omp appends the arguments
+// after the text, unless the command places them itself ($1, {{args}}…): the
+// text then only starts like the command, and its arguments are lost.
 function ompCommandText(text: string, templates: readonly CommandTemplate[]): string {
   for (const t of templates) {
     if (text === t.body) return `/${t.name}`
@@ -505,9 +505,9 @@ function ompCommandText(text: string, templates: readonly CommandTemplate[]): st
   return text
 }
 
-// `base` : position (en octets) de `text` dans le fichier. Chaque ligne garde
-// sa position « début:longueur » (lines.refs) : les messages avec images la
-// portent, pour relire l'image à la demande (cf. image()).
+// `base`: position (in bytes) of `text` in the file. Each line keeps
+// its "start:length" position (lines.refs): messages with images
+// carry it, to re-read the image on demand (see image()).
 export function parseLines(text: string, kind: string | null, base = 0, home = '', templates?: readonly CommandTemplate[]): Parsed {
   const raw = text.split('\n')
   const refs: string[] = []
@@ -523,13 +523,13 @@ export function parseLines(text: string, kind: string | null, base = 0, home = '
   return kind === 'codex' ? parseCodex(lines) : parseClaude(lines, home)
 }
 
-// Types servis tels quels : une image SVG (ou un type quelconque écrit dans la
-// transcription) ouverte depuis wherdr exécuterait ses scripts sur son origine.
+// Types served as is: an SVG image (or any type written in the
+// transcript) opened from wherdr would run its scripts on its origin.
 const IMAGE_TYPES = /^image\/(?:png|jpeg|gif|webp)$/
 
-// Image n° `index` d'une ligne JSON de transcription (Claude, Codex, omp). omp
-// range ses images à part : `blob` est alors l'empreinte à relire dans
-// ~/.omp/agent/blobs (cf. image()).
+// Image no. `index` of a JSON transcript line (Claude, Codex, omp). omp
+// stores its images separately: `blob` is then the hash to re-read in
+// ~/.omp/agent/blobs (see image()).
 export type TranscriptImage = { type: string, body: Buffer } | { type: string, blob: string }
 export function extractImage(d: Json, index: number): TranscriptImage | null {
   const found: ({ type: string, data: string } | { type: string, blob: string })[] = []
@@ -556,10 +556,10 @@ export function extractImage(d: Json, index: number): TranscriptImage | null {
   return 'blob' in img ? { type, blob: img.blob } : { type, body: Buffer.from(img.data, 'base64') }
 }
 
-// `fs` : disque de la machine où tournent les agents (local, ou distant par SSH).
-// Fichier vraiment absent, par opposition à une lecture ratée (SSH coupé,
-// délai dépassé) : seule l'absence dit « pas de conversation ». À distance,
-// `cat`/`ls` ne rendent que leur message d'erreur.
+// `fs`: disk of the machine where the agents run (local, or remote over SSH).
+// File really missing, as opposed to a failed read (SSH cut,
+// timeout): only absence means "no conversation". Remotely,
+// `cat`/`ls` only return their error message.
 export function isMissing(e: unknown): boolean {
   const err = e as { code?: string, message?: string } | null
   if (!err) return false
@@ -569,10 +569,10 @@ export function isMissing(e: unknown): boolean {
 
 export function createTranscripts({ home, herdr, fs = localFs }: { home: string, herdr: HerdrCall, fs?: MachineFs }) {
   const locCache = new Map<string, { at: number, loc: Loc | null, session?: string | null }>()
-  const lastLoc = new Map<string, Loc>() // dernier fichier trouvé, repli si une recherche échoue
+  const lastLoc = new Map<string, Loc>() // last file found, fallback if a lookup fails
   const parseCache = new Map<string, { size: number, r: TailResult }>()
   const metaCache = new Map<string, Json>()
-  // Commandes-fichiers d'omp de cette machine (cf. parseOmp), relues toutes les 5 min.
+  // omp file commands of this machine (see parseOmp), re-read every 5 min.
   let ompTemplates: { at: number, list: CommandTemplate[] } = { at: 0, list: [] }
   async function refreshOmpTemplates() {
     if (Date.now() - ompTemplates.at < 5 * 60 * 1000) return
@@ -596,7 +596,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
       throw e
     }
   }
-  // Premier fichier existant parmi `files` (un seul aller-retour à distance).
+  // First existing file among `files` (a single round trip remotely).
   async function firstExisting(files: string[]) {
     if (!files.length) return null
     const st = await fs.statMany(files)
@@ -621,7 +621,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     if (!sess.sessionId) return null
     const direct = path.join(home, '.claude/projects', encodeCwd(sess.cwd || ''), `${sess.sessionId}.jsonl`)
     if (await exists(direct)) return { file: direct, session: sess.sessionId }
-    // Encodage du dossier différent de celui supposé : on cherche le fichier.
+    // Folder encoding different from the assumed one: we look for the file.
     const root = path.join(home, '.claude/projects')
     const f = await firstExisting((await listDir(root)).map(d => path.join(root, d, `${sess.sessionId}.jsonl`)))
     return f ? { file: f, session: sess.sessionId } : null
@@ -635,13 +635,13 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
       const d = JSON.parse(first)
       if (d.type === 'session_meta') meta = d.payload
     } catch { meta = null }
-    // Une ligne incomplète (fichier tout neuf) : on réessaiera plus tard.
+    // An incomplete line (brand new file): we will retry later.
     if (meta) metaCache.set(file, meta)
     return meta
   }
 
-  // Conversations Codex principales (thread_source « user », sans parent) des
-  // trois derniers jours dans `cwd`.
+  // Main Codex conversations (thread_source "user", no parent) of the
+  // last three days in `cwd`.
   async function codexRollouts(cwd: string | null) {
     const root = path.join(home, '.codex/sessions')
     const files: string[] = []
@@ -664,12 +664,12 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     return out
   }
 
-  // Codex récent (app-server partagé, « managed daemon ») : le hook de session
-  // de l'intégration Herdr tourne dans le démon, avec l'environnement du premier
-  // Codex qui l'a lancé ; la session d'un nouveau Codex est alors rapportée au
-  // pane de ce premier Codex. On ne s'y fie donc pas aveuglément : chaque Codex
-  // réclame la conversation créée juste après son apparition (`bornAt`), et une
-  // session rapportée qui est la « naissance » d'un autre pane est ignorée.
+  // Recent Codex (shared app-server, "managed daemon"): the session hook
+  // of the Herdr integration runs in the daemon, with the environment of the first
+  // Codex that started it; a new Codex's session is then reported to the
+  // pane of that first Codex. So we do not trust it blindly: each Codex
+  // claims the conversation created right after it appeared (`bornAt`), and a
+  // reported session that is another pane's "birth" is ignored.
   async function locateCodexPane(pane: TranscriptPane): Promise<Loc | null> {
     const rolls = await codexRollouts(pane.cwd)
     const birth = (p: TranscriptPane) => {
@@ -696,14 +696,14 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     return best && { file: best.file, session: best.id, guessed: true }
   }
 
-  // Panes Codex de la machine (tenu à jour par l'état) : pour les réclamations.
+  // Codex panes of the machine (kept up to date by the state): for the claims.
   const codexPeers = new Map<string, TranscriptPane>()
   function observe(panes: TranscriptPane[]) {
     codexPeers.clear()
     for (const p of panes) if (p.agent === 'codex') codexPeers.set(p.id, p)
   }
 
-  // Fichier d'une session connue par son identifiant (intégration Herdr).
+  // File of a session known by its identifier (Herdr integration).
   const bySession = new Map<string, string>()
   async function findSessionFile(kind: string | null, id: string) {
     const known = bySession.get(id)
@@ -713,7 +713,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     }
     let found: string | null = null
     if (kind === 'codex') {
-      // ~/.codex/sessions/AAAA/MM/JJ/rollout-<date>-<id>.jsonl, du plus récent au plus ancien.
+      // ~/.codex/sessions/YYYY/MM/DD/rollout-<date>-<id>.jsonl, from newest to oldest.
       const root = path.join(home, '.codex/sessions')
       const sortDesc = async (d: string) => (await listDir(d)).sort().reverse()
       outer:
@@ -730,8 +730,8 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
       const root = path.join(home, '.claude/projects')
       found = await firstExisting((await listDir(root)).map(d => path.join(root, d, `${id}.jsonl`)))
     } else if (kind === 'omp') {
-      // L'intégration Herdr d'omp rapporte le chemin de la session, pas un
-      // identifiant : seulement une session d'omp (~/.omp/agent/sessions).
+      // omp's Herdr integration reports the session path, not an
+      // identifier: only an omp session (~/.omp/agent/sessions).
       const f = path.normalize(id)
       if (path.isAbsolute(f) && f.endsWith('.jsonl') && transcriptKind(f) === 'omp' && await exists(f)) found = f
     }
@@ -755,8 +755,8 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
         if (proc) loc = await locateClaude(proc)
       }
     } catch { failed = true }
-    // Lecture ratée (SSH, délai) : on garde le dernier fichier connu plutôt
-    // que de conclure « pas de conversation » (la vue se viderait une seconde).
+    // Failed read (SSH, timeout): we keep the last known file rather
+    // than conclude "no conversation" (the view would empty for a second).
     if (failed) {
       const last = lastLoc.get(pane.id)
       return last && (!pane.agentSession || last.session === pane.agentSession) ? last : null
@@ -766,9 +766,9 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     return loc
   }
 
-  // ------------------------------------------------------------ lecture
-  // Lit les octets [start, end) du fichier. Si `start` tombe au milieu d'une
-  // ligne, on la saute : `start` renvoyé est toujours un début de ligne.
+  // ------------------------------------------------------------ reading
+  // Reads bytes [start, end) of the file. If `start` falls in the middle of a
+  // line, it is skipped: the returned `start` is always a line start.
   async function readRange(file: string, start: number, end: number) {
     const buf = await fs.read(file, start, end - start)
     let off = 0
@@ -779,14 +779,14 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     return { start: start + off, text: buf.subarray(off).toString('utf8') }
   }
 
-  // Remonte depuis `end` par fenêtres jusqu'à PAGE_ITEMS messages (ou le début).
+  // Goes back from `end` by windows up to PAGE_ITEMS messages (or the start).
   async function readBackwards(file: string, end: number, kind: string | null): Promise<TailResult> {
     let start = end
     let items: ChatItem[] = []
     let queue: ClaudeQueueEntry[] | null = null
     while (start > 0 && end - start < MAX_READ_BYTES) {
-      // Fenêtre élargie tant qu'elle ne contient pas de début de ligne (une
-      // ligne de plusieurs Mo : message avec images), dans la limite du plafond.
+      // Window widened as long as it contains no line start (a
+      // multi-MB line: message with images), within the cap.
       let w = WINDOW_BYTES
       let r: { start: number, text: string }
       for (;;) {
@@ -795,11 +795,11 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
         if (r.start < start || s0 === 0 || w >= MAX_READ_BYTES) break
         w *= 2
       }
-      if (r.start === start) break // ligne géante au-delà du plafond : on s'arrête là
-      // Chaque fenêtre est analysée seule (un résultat d'outil en erreur dont
-      // l'appel est dans la fenêtre précédente perd juste sa marque rouge).
+      if (r.start === start) break // giant line beyond the cap: stop there
+      // Each window is parsed alone (a tool result in error whose
+      // call is in the previous window just loses its red mark).
       const parsed = parseLines(r.text, kind, r.start, home, ompTemplates.list)
-      if (!queue) queue = parsed.queue || [] // la file vit dans la fenêtre la plus récente
+      if (!queue) queue = parsed.queue || [] // the queue lives in the most recent window
       items = parsed.concat(items)
       start = r.start
       if (items.length >= PAGE_ITEMS) break
@@ -807,9 +807,9 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     return { start, items, queue: queue || [] }
   }
 
-  // Bas de conversation : depuis `from` (déjà affiché côté téléphone) ou,
-  // au premier chargement, les PAGE_ITEMS derniers messages. Mis en cache par
-  // (fichier, taille, from).
+  // Bottom of the conversation: from `from` (already shown on the phone) or,
+  // on first load, the last PAGE_ITEMS messages. Cached by
+  // (file, size, from).
   async function tail(file: string, kind: string | null, size: number, from: number | null): Promise<TailResult> {
     const key = `${file}|${from}`
     const c = parseCache.get(key)
@@ -832,14 +832,14 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     if (!hasTranscript(pane.agent)) return { hits: [], limited: false, kind: null }
     const loc = await locate(pane)
     if (!loc || Date.now() >= deadline) return { hits: [], limited: Date.now() >= deadline, kind: null }
-    // Le chemin de la transcription dit le vrai type (agent fermé mal étiqueté).
+    // The transcript path tells the real kind (closed agent mislabeled).
     const kind = transcriptKind(loc.file) || pane.agent
     return { ...await searchFile(fs, loc.file, kind, home, query, deadline), kind }
   }
 
-  // opts.since : jeton du dernier état vu (réponse « inchangé » s'il n'a pas bougé)
-  // opts.from   : relire le bas depuis cet octet (continuité avec les pages plus anciennes)
-  // opts.before : charger la tranche plus ancienne qui se termine à cet octet
+  // opts.since : token of the last state seen ("unchanged" reply if it has not moved)
+  // opts.from  : re-read the bottom from this byte (continuity with older pages)
+  // opts.before: load the older slice ending at this byte
   async function chat(pane: TranscriptPane, opts: { since?: string, from?: number | null, before?: number | null } = {}): Promise<ChatResponse> {
     if (!hasTranscript(pane.agent)) return { available: false, reason: 'unsupported' }
     const loc = await locate(pane)
@@ -847,7 +847,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     let st
     try { st = await fs.stat(loc.file) }
     catch (e) {
-      // Lecture ratée : une erreur (le client garde ce qu'il affiche), pas un vide.
+      // Failed read: an error (the client keeps what it shows), not an empty result.
       if (!isMissing(e)) throw e
       locCache.delete(pane.id)
       lastLoc.delete(pane.id)
@@ -867,7 +867,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     return { ...base, token, items: r.items, start: r.start, queue: r.queue || [] }
   }
 
-  // Dernière réponse de l'agent, pour les cartes et les notifications.
+  // Agent's last reply, for cards and notifications.
   async function preview(pane: TranscriptPane): Promise<string | null> {
     try {
       const r = await chat(pane, {})
@@ -878,12 +878,12 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
           return it.text.replace(/```[\s\S]*?```/g, ' ').replace(/[#*_`>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 180)
         }
       }
-    } catch { /* pas d'aperçu */ }
+    } catch { /* no preview */ }
     return null
   }
 
-  // Image n° `index` du message situé à `ref` (« début:longueur ») : on relit
-  // cette seule ligne et on décode l'image qu'elle contient (base64).
+  // Image no. `index` of the message at `ref` ("start:length"): we re-read
+  // that single line and decode the image it contains (base64).
   async function image(pane: TranscriptPane, fileId: string | null, ref: string | null, index: number) {
     const loc = await locate(pane)
     if (!loc || path.basename(loc.file) !== fileId) return null
@@ -904,8 +904,8 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     } catch { return null }
   }
 
-  // Dernier modèle écrit dans la transcription. Lecture à rebours par fenêtres
-  // (jusqu'à MODEL_MAX_BYTES), puis seulement la partie ajoutée depuis.
+  // Last model written in the transcript. Backward reading by windows
+  // (up to MODEL_MAX_BYTES), then only the part added since.
   const MODEL_WINDOW = 512 * 1024
   const MODEL_MAX_BYTES = 16 * 1024 * 1024
   const modelCache = new Map<string, { file: string, size: number, info: ModelInfo | null }>()
@@ -919,11 +919,11 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     const c = modelCache.get(pane.id)
     if (c && c.file === loc.file && c.size === size) return c.info
     let info: ModelInfo | null = null
-    let done = size // fin de la dernière ligne complète (une ligne en cours d'écriture sera relue)
+    let done = size // end of the last complete line (a line being written will be re-read)
     try {
-      // Déjà lu jusqu'à c.size : seule la suite peut apporter du nouveau. On
-      // part de l'octet d'avant (le saut de ligne) : readRange saute la ligne
-      // entamée au début de la fenêtre.
+      // Already read up to c.size: only what follows can bring something new. We
+      // start from the byte before (the newline): readRange skips the line
+      // started at the beginning of the window.
       const floor = c && c.file === loc.file && c.size < size ? c.size : 0
       let end = size
       let w = MODEL_WINDOW
@@ -931,7 +931,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
         const s0 = Math.max(floor ? floor - 1 : 0, end - w)
         const r = await readRange(loc.file, s0, end)
         if (r.start >= end) {
-          // Aucune ligne entière dans la fenêtre (message avec images) : on l'élargit.
+          // No whole line in the window (message with images): we widen it.
           if (s0 <= Math.max(0, floor - 1) || w >= MODEL_MAX_BYTES) break
           w *= 2
           continue
@@ -947,8 +947,8 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     return info
   }
 
-  // Appel d'outil qui attend une permission : le dernier sans résultat, lu
-  // dans la fin de la transcription (relu seulement si le fichier a grandi).
+  // Tool call waiting for a permission: the last one without a result, read
+  // from the end of the transcript (re-read only if the file has grown).
   const PENDING_WINDOW = 1024 * 1024
   const pendingCache = new Map<string, { file: string, size: number, detail: PromptDetail | null }>()
   async function pendingTool(pane: TranscriptPane): Promise<PromptDetail | null> {
@@ -970,7 +970,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     return detail
   }
 
-  // omp : l'appel « ask » encore sans réponse (cf. pendingOmpAsk).
+  // omp: the "ask" call still unanswered (see pendingOmpAsk).
   const askCache = new Map<string, { file: string, size: number, asked: OmpAsked[] }>()
   async function pendingAsk(pane: TranscriptPane): Promise<OmpAsked[]> {
     if (pane.agent !== 'omp') return []

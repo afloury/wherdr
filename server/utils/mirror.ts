@@ -1,11 +1,11 @@
-// Miroir d'un pane : `herdr terminal session observe` relayé tel quel. Un
-// observateur ne s'attache pas au terminal : il ne change ni sa taille, ni le
-// focus, ni le client qui a la main. Il faut lui donner la taille du vrai
-// terminal (cf. mirrorSize) ; elle est revérifiée de temps en temps et
-// l'observateur relancé si elle a changé. Frappes (case cliquée) : envoyées
-// par `pane.send_input`, texte ou touches nommées, sans prendre la main.
-//   sortie : les frames de Herdr, précédées de {"type":"mirror.size",cols,rows}
-//   entrée : {"type":"input","text"} | {"type":"input","keys":[…]}
+// Mirror of a pane: `herdr terminal session observe` relayed as is. An
+// observer does not attach to the terminal: it changes neither its size, nor the
+// focus, nor the client in control. It must be given the real
+// terminal's size (see mirrorSize); it is re-checked now and then and
+// the observer restarted if it changed. Keystrokes (clicked cell): sent
+// with `pane.send_input`, text or named keys, without taking control.
+//   output: Herdr's frames, preceded by {"type":"mirror.size",cols,rows}
+//   input: {"type":"input","text"} | {"type":"input","keys":[…]}
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import readline from 'node:readline'
 import { PANE_RE, log } from './env'
@@ -70,7 +70,7 @@ export function openMirror(ws: WsLike, url: URL): TermSession | null {
     readline.createInterface({ input: c.stderr }).on('line', line => log(`miroir ${pane} stderr: ${line}`))
     c.on('error', () => {})
     c.on('exit', () => {
-      if (child === c && !closed) ws.close(4000, 'observe terminé')
+      if (child === c && !closed) ws.close(4000, 'observe ended')
     })
     c.stdin.on('error', () => {})
   }

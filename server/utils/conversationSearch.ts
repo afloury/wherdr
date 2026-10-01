@@ -29,9 +29,9 @@ export async function searchFile(fs: MachineFs, file: string, kind: string, home
     const start = Math.max(0, end - Math.min(SEARCH_WINDOW, SEARCH_BYTES_PER_AGENT - read))
     const buf = await fs.read(file, start, end - start, Math.max(100, deadline - Date.now()))
     read += buf.length
-    // Une fenêtre commençant au milieu d'une ligne saute cette ligne. La
-    // fenêtre précédente la reprendra depuis son début ; une ligne géante est
-    // ignorée sous le plafond d'octets.
+    // A window starting in the middle of a line skips that line. The
+    // previous window will pick it up from its start; a giant line is
+    // ignored under the byte cap.
     const first = start ? buf.indexOf(10) + 1 : 0
     if (start && first === 0) { end = start; continue }
     const body = buf.subarray(first).toString('utf8')
@@ -45,7 +45,7 @@ export async function searchFile(fs: MachineFs, file: string, kind: string, home
     }
     hits.push(...found.reverse().slice(0, maxHits - hits.length))
     end = start + first
-    // Rend la main entre deux fenêtres, même sur un disque local rapide.
+    // Yields between two windows, even on a fast local disk.
     await new Promise<void>(resolve => setImmediate(resolve))
   }
   return { hits, limited: limited || (end > 0 && (read >= SEARCH_BYTES_PER_AGENT || hits.length >= maxHits)) }

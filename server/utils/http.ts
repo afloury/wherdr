@@ -1,5 +1,5 @@
-// Outils HTTP communs aux routes : garde anti-CSRF, lecture du corps, format
-// d'erreur identique à l'ancien server.js ({ error, code } + 400/401/403/503).
+// HTTP helpers shared by the routes: anti-CSRF guard, body reading, error
+// format identical to the old server.js ({ error, code } + 400/401/403/503).
 import type { H3Event, EventHandlerRequest } from 'h3'
 import { defineEventHandler, getRequestHeaders, readRawBody, setResponseHeader, setResponseStatus, getRequestURL } from 'h3'
 import { createAuth, type ReqLike } from './auth'
@@ -10,8 +10,8 @@ export const auth = createAuth({ dataDir: DATA_DIR, log, passkeyUser: PASSKEY_US
 
 export const reqOf = (event: H3Event): ReqLike => ({ headers: getRequestHeaders(event) as Record<string, string | undefined> })
 
-// Anti-CSRF : les écritures exigent du JSON (donc un preflight CORS qu'on ne
-// satisfait jamais) et une Origin identique à l'hôte.
+// Anti-CSRF: writes require JSON (hence a CORS preflight we never
+// satisfy) and an Origin identical to the host.
 export function sameOrigin(headers: { origin?: string | null, host?: string | null }) {
   const o = headers.origin
   if (!o) return false
@@ -24,7 +24,7 @@ const BODY_MAX = 256 * 1024
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
 
-// Réponse d'erreur, au format de l'ancien serveur.
+// Error response, in the old server's format.
 export function sendError(event: H3Event, status: number, body: Record<string, unknown>) {
   setResponseStatus(event, status)
   setResponseHeader(event, 'cache-control', 'no-store')
@@ -32,11 +32,11 @@ export function sendError(event: H3Event, status: number, body: Record<string, u
 }
 
 interface ApiOptions {
-  // Corps binaire accepté (photos) : type MIME vérifié par l'expression.
+  // Binary body accepted (photos): MIME type checked by the expression.
   raw?: RegExp
 }
 
-// Une route d'API : vérifs d'écriture, corps JSON, erreurs connues -> { error, code }.
+// An API route: write checks, JSON body, known errors -> { error, code }.
 export function defineApi<T>(
   fn: (event: H3Event<EventHandlerRequest>, body: Json) => Promise<T> | T,
   opts: ApiOptions = {},
@@ -48,8 +48,8 @@ export function defineApi<T>(
       if (event.method === 'POST') {
         const headers = getRequestHeaders(event)
         const ctype = String(headers['content-type'] || '')
-        // Types non « simples » (JSON, image/*) : un autre site ne peut pas les
-        // envoyer sans preflight CORS, qu'on ne satisfait jamais.
+        // Non-"simple" types (JSON, image/*): another site cannot send them
+        // without a CORS preflight, which we never satisfy.
         const typeOk = opts.raw ? opts.raw.test(ctype) : ctype.startsWith('application/json')
         if (!sameOrigin(headers) || !typeOk) return sendError(event, 403, { error: 'origine refusée' })
         const max = opts.raw ? 20 * 1024 * 1024 : BODY_MAX
@@ -66,7 +66,7 @@ export function defineApi<T>(
       }
       const out = await fn(event, body)
       setResponseHeader(event, 'cache-control', 'no-store')
-      // Les routes de verrouillage posent ou effacent le cookie de session.
+      // The lock routes set or clear the session cookie.
       if (out && typeof out === 'object' && '__cookie' in out) {
         const o = out as Record<string, unknown>
         setResponseHeader(event, 'set-cookie', String(o.__cookie))
@@ -84,12 +84,12 @@ export function defineApi<T>(
   })
 }
 
-// Image binaire (conversation ou photo envoyée).
+// Binary image (conversation or sent photo).
 export function sendImage(event: H3Event, img: { type: string, body: Buffer }) {
   setResponseHeader(event, 'content-type', img.type)
   setResponseHeader(event, 'cache-control', 'private, max-age=86400')
   setResponseHeader(event, 'x-content-type-options', 'nosniff')
-  // Ouverte seule dans un onglet, l'image n'exécute rien.
+  // Opened alone in a tab, the image runs nothing.
   setResponseHeader(event, 'content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox")
   return img.body
 }

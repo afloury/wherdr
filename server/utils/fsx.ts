@@ -1,7 +1,7 @@
-// Accès aux fichiers d'une machine (transcriptions, dossiers, photos) : le disque
-// local, ou celui d'une machine distante par des commandes shell passées sur la
-// connexion SSH multiplexée (cf. machines.ts). Mêmes opérations des deux côtés,
-// en POSIX sh + stat BSD (macOS) ou GNU (Linux).
+// File access on a machine (transcripts, folders, photos): the local
+// disk, or a remote machine's through shell commands passed over the
+// multiplexed SSH connection (see machines.ts). Same operations on both sides,
+// in POSIX sh + BSD (macOS) or GNU (Linux) stat.
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -38,7 +38,7 @@ export const localFs: MachineFs = {
 
 // ---------------------------------------------------------------- shell distant
 export interface ExecResult { code: number | null, stdout: Buffer, stderr: string }
-// Exécute `script` (sh) avec ses arguments positionnels ($1, $2…) sur la machine.
+// Runs `script` (sh) with its positional arguments ($1, $2…) on the machine.
 export type ShellExec = (script: string, args?: string[], opts?: { input?: Buffer, timeoutMs?: number }) => Promise<ExecResult>
 
 export class FsError extends Error {
@@ -49,10 +49,10 @@ export class FsError extends Error {
   }
 }
 
-// Citation shell (arguments passés tels quels, jamais interprétés).
+// Shell quoting (arguments passed as is, never interpreted).
 export const shq = (s: string) => `'${String(s).replace(/'/g, `'\\''`)}'`
 
-// `stat` BSD (macOS) ou GNU : une ligne « taille mtime type » par fichier, « x » si absent.
+// BSD (macOS) or GNU `stat`: one "size mtime type" line per file, "x" if missing.
 export const STAT_SCRIPT = `if stat -f %z / >/dev/null 2>&1; then bsd=1; else bsd=; fi
 for f; do
   if [ ! -e "$f" ]; then echo x
@@ -69,13 +69,13 @@ export function parseStatLine(line: string): FsStat | null {
 
 export function createShellFs(exec: ShellExec, opts: { statTtlMs?: number } = {}): MachineFs {
   const ttl = opts.statTtlMs ?? 700
-  // Petit cache (et regroupement des demandes simultanées) : les aperçus, le
-  // modèle et la conversation ouverte font chacun leur `stat` chaque seconde.
+  // Small cache (and grouping of simultaneous requests): the previews, the
+  // model and the open conversation each run their `stat` every second.
   const statCache = new Map<string, { at: number, v: Promise<FsStat | null> }>()
 
   async function run(script: string, args: string[], timeoutMs = 15000, input?: Buffer) {
     const r = await exec(script, args, { timeoutMs, input })
-    if (r.code !== 0) throw new FsError('remote', (r.stderr || `code ${r.code}`).trim().split('\n').pop() || 'échec')
+    if (r.code !== 0) throw new FsError('remote', (r.stderr || `code ${r.code}`).trim().split('\n').pop() || 'failed')
     return r.stdout
   }
 
@@ -117,7 +117,7 @@ export function createShellFs(exec: ShellExec, opts: { statTtlMs?: number } = {}
     },
     async read(p, start, len, timeoutMs) {
       if (len <= 0) return Buffer.alloc(0)
-      // tail -c +N saute directement à l'octet N (fichier ordinaire) ; head coupe.
+      // tail -c +N jumps straight to byte N (regular file); head cuts.
       return run('tail -c +"$2" "$1" | head -c "$3"', [p, String(start + 1), String(len)], timeoutMs || 60000)
     },
   }
@@ -126,7 +126,7 @@ export function createShellFs(exec: ShellExec, opts: { statTtlMs?: number } = {}
 // ---------------------------------------------------------------- dossiers
 export interface DirEntryRaw { name: string, git: boolean }
 
-// Sous-dossiers visibles d'un dossier, avec « est un dépôt Git ».
+// Visible subfolders of a folder, with "is a Git repository".
 export const LIST_DIRS_SCRIPT = `cd "$1" || exit 1
 for d in * ; do
   [ -d "$d" ] || continue
@@ -147,7 +147,7 @@ export async function listDirsLocal(dir: string): Promise<DirEntryRaw[]> {
     try {
       await fsp.access(path.join(dir, e.name, '.git'))
       git = true
-    } catch { /* pas un dépôt */ }
+    } catch { /* not a repository */ }
     out.push({ name: e.name, git })
   }
   return out

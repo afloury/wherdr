@@ -1,4 +1,4 @@
-// Image d'un message de la conversation, relue dans la transcription.
+// Image of a conversation message, re-read from the transcript.
 export default defineEventHandler(async (event) => {
   const q = getQuery(event)
   try {
