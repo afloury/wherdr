@@ -1320,19 +1320,28 @@ body.kb .composer { padding-bottom: 8px; }
 .hw-sheet {
   z-index: 21; background: var(--bg-2); color: var(--text);
   top: auto; bottom: 0; left: 0; right: 0; translate: 0 0;
-  width: 100%; max-width: none; max-height: 88%;
+  bottom: var(--vv-bottom, 0px);
+  width: 100%; max-width: none; max-height: calc(var(--vv-h, 100dvh) * .88);
   border-radius: 0; border-top: 1px solid var(--line);
-  box-shadow: 0 -20px 50px var(--shadow); --tw-ring-shadow: 0 0 #0000;
+  /* Second shadow: the sheet's background carries on below its edge, so no
+     strip of scrim shows under it if iOS paints past the visible area. */
+  box-shadow: 0 -20px 50px var(--shadow), 0 160px 0 var(--bg-2); --tw-ring-shadow: 0 0 #0000;
   padding: 8px 16px calc(var(--safe-bottom) + 16px);
   display: flex; flex-direction: column; gap: 0;
 }
 .hw-sheet[data-state="open"] { animation: rise .24s cubic-bezier(.2, .8, .2, 1); }
 .hw-sheet[data-state="closed"] { animation: sink .16s ease-in; }
-.hw-sheet.tall { height: 88%; }
-.hw-sheet.full { height: 100dvh; max-height: 100dvh; padding-top: calc(var(--safe-top) + 12px); }
+.hw-sheet.tall { height: calc(var(--vv-h, 100dvh) * .88); }
+.hw-sheet.full { height: var(--vv-h, 100dvh); max-height: var(--vv-h, 100dvh); padding-top: calc(var(--safe-top) + 12px); }
+/* Keyboard open: the sheet takes the space above it (no home bar to clear)
+   and its content scrolls. */
+@media (max-width: 899px) {
+  body.kb .hw-sheet:not(.full) { max-height: calc(var(--vv-h) - var(--safe-top) - 8px); padding-bottom: 12px; }
+  body.kb .hw-sheet.tall { height: calc(var(--vv-h) - var(--safe-top) - 8px); }
+}
 .hw-sheet > * { border-top: 0 !important; }
 .hw-sheet > [data-slot="header"] { padding: 4px 0 10px; min-height: 0; border: 0; order: 1; display: flex; align-items: center; justify-content: space-between; }
-.hw-sheet > [data-slot="body"] { padding: 0; order: 2; overflow-y: auto; flex: 1; min-height: 0; }
+.hw-sheet > [data-slot="body"] { padding: 0; order: 2; overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; scroll-padding-bottom: 16px; }
 .hw-sheet-title { font: 850 24px/1 var(--display); letter-spacing: -.035em; word-spacing: .06em; color: var(--text); }
 .hw-sheet [data-slot="close"] { position: static; inset: auto; }
 /* Handle (decorative) at the top of the sheet, on the phone. */
@@ -2267,7 +2276,7 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 
   .hw-sheet {
     top: 50%; left: 50%; right: auto; bottom: auto; translate: -50% -50%;
-    width: 540px; max-height: 84vh; border: 1px solid var(--line);
+    width: 540px; max-height: 84vh; height: auto; border: 1px solid var(--line);
     padding: 20px 22px 22px; box-shadow: 0 30px 80px var(--shadow);
   }
   .hw-sheet.wide { width: 680px; }

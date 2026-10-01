@@ -1,4 +1,5 @@
 // Dimensions on iPhone: keyboard, home bar, shortened page (iOS 26).
+import { sheetViewport } from '~/utils/sheetViewport'
 
 // Clavier ouvert : hauteur et position de la zone visible au-dessus.
 export const kbOpen = ref(false)
@@ -27,6 +28,11 @@ export function layout() {
   vvHeight.value = h
   vvTop.value = top
   document.body.classList.toggle('kb', kb)
+  // Bottom sheets follow the visible area (keyboard, iOS scroll offset).
+  const sheet = sheetViewport(window.innerHeight, top, h)
+  const root = document.documentElement.style
+  root.setProperty('--vv-h', `${sheet.height}px`)
+  root.setProperty('--vv-bottom', `${sheet.bottom}px`)
   layoutTick.value++
 }
 
