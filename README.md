@@ -447,6 +447,15 @@ worktree. It is optional; with it installed, wherdr adds:
   report) and resolved threads under Done. Each list has its buttons, which send a ready-made
   message to the coordinator: **Confirm** / **Problem** / **Question** on things to test, **Question** / **Answer** on
   decisions, **Launch** or **Clarify** on backlog items, **Unblock** on blocked ones.
+- **Badges** on task lines, written by the coordinator: `[t-0140]` (or `[t-0140, t-0141]`) links
+  the task to its threads (state color, click opens the thread), and free badges
+  `[b:color(text)]` go anywhere in the line — color is `red`, `orange`, `amber`, `green`, `teal`,
+  `blue`, `violet`, `pink`, `gray` (theme-aware), a `#rgb` / `#rrggbb` hex, or empty for neutral;
+  at most 24 characters are shown. Example to give a coordinator:
+
+  ```markdown
+  - [ ] Stop button on iPhone [b:red(bug)] [b:#3b82f6(iOS)] [t-0140] (me)
+  ```
 - **Settings → Plugins → herdr-projects**: install status per machine, the `TASKS.md` convention,
   a template and the coordinator rules to copy.
 - **New project** from the plugin actions of an agent's menu, with the same machine and folder

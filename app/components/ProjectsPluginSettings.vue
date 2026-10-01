@@ -123,6 +123,8 @@ const copyRules = () => copyText(coordinatorRules(lang()), tl('Règles copiées 
         </div>
       </li>
     </ul>
+    <p class="projects-plugin-note">{{ tl('Badges libres, n’importe où dans la ligne : « [b:couleur(texte)] ». Couleur : red, orange, amber, green, teal, blue, violet, pink, gray (suivent le thème), un hex #rgb / #rrggbb, ou rien pour un badge neutre ; 24 caractères affichés au plus.', 'Free badges, anywhere in the line: “[b:color(text)]”. Color: red, orange, amber, green, teal, blue, violet, pink, gray (theme-aware), a #rgb / #rrggbb hex, or nothing for a neutral badge; at most 24 characters shown.') }}</p>
+    <pre class="projects-board-example"><code>- [ ] {{ tl('Bouton Stop sur iPhone', 'Stop button on iPhone') }} [b:red(bug)] [b:#3b82f6(iOS)] [t-0140] (me)</code></pre>
     <p class="projects-plugin-note">{{ tl('Toute autre liste ## s’affiche aussi, en style neutre.', 'Any other ## list is shown too, in a neutral style.') }}</p>
     <p class="projects-plugin-note">{{ tl('Les listes présentes dans TASKS.md sont les listes actives : pour en ajouter ou en retirer une, demande-le au coordinateur (pas de réglage dans wherdr).', 'The lists in TASKS.md are the active lists: to add or remove one, ask the coordinator (there is no setting in wherdr).') }}</p>
     <label class="settings-toggle">
