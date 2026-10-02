@@ -241,6 +241,15 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     }
     return output(text)
   }
+  // Last user message typed by the user, with its place in the message tree.
+  // Stop before any reply puts the prompt back into Claude's field: the next
+  // message is then written as its sibling (same parent), and the cancelled
+  // one drops out of the conversation, as in Claude (see interruptRestore.ts).
+  let lastSaid = null as { item: ChatItem, parent: string, uuid: string } | null
+  const noteSaid = (d: Json) => {
+    const item = items[items.length - 1]
+    lastSaid = item && item.role === 'user' && d.parentUuid ? { item, parent: d.parentUuid, uuid: d.uuid } : null
+  }
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li]
     const ref = lines.refs ? lines.refs[li] : undefined
@@ -248,6 +257,11 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     let d: Json
     try { d = JSON.parse(line) }
     catch { continue }
+    if (lastSaid && d.type === 'user' && !d.isSidechain && d.parentUuid === lastSaid.parent && d.uuid !== lastSaid.uuid) {
+      const i = items.indexOf(lastSaid.item)
+      if (i >= 0 && !items.slice(i + 1).some(x => x.role === 'assistant' || x.role === 'tool')) items.splice(i, 1)
+      lastSaid = null
+    }
     if (d.type === 'queue-operation') {
       const raw = unwrapPasted(String(d.content || ''))
       const text = stripImageTags(raw)
@@ -332,6 +346,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
             items.push({ role: 'user', text: clip(text), ts })
             pendingCmd = null
             said(text, ts)
+            noteSaid(d)
           }
         }
         continue
@@ -355,6 +370,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
         items.push({ role: 'user', text: clip(text.trim()), images, ref: images ? ref : undefined, ts })
         pendingCmd = null
         said(text, ts, images)
+        noteSaid(d)
       }
     } else if (Array.isArray(content)) {
       for (const part of content) {

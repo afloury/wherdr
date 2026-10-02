@@ -12,9 +12,12 @@ import { isAgentCommand } from '#shared/commandScreen'
 import { isSlashCommand } from '#shared/queuedMatch'
 import type { AttachKind } from '#shared/attachments'
 import { refusalText, sortForAgent } from '~/utils/fileDrop'
+import { restoreDraft } from '~/utils/queuedCancel'
 
 // `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
-const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void>, escStops?: boolean }>()
+// `takeBack`: conversation view; a prompt Claude puts back into its field on Stop
+// comes back here instead (never in the terminal view, where the user sees Claude's field).
+const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void>, escStops?: boolean, takeBack?: boolean }>()
 const emit = defineEmits<{ sent: [queued: QueuedMessage | null], showTerminal: [] }>()
 
 // Claude Code update installed: the status line restarts the agent.
@@ -153,9 +156,14 @@ async function interrupt() {
   haptic()
   interrupting.value = 'running'
   try {
-    const r = await api<{ stopped: boolean, background: number }>('/api/interrupt', { pane_id: props.paneId })
+    const r = await api<{ stopped: boolean, background: number, restored?: string }>('/api/interrupt', { pane_id: props.paneId, restore: Boolean(props.takeBack) })
     interrupting.value = r.stopped ? null : 'failed'
-    if (r.stopped) toast(r.background ? tl(`Agent stopped (${r.background} background task${r.background > 1 ? 's' : ''} stopped)`, `Agent arrêté (${r.background} tâche${r.background > 1 ? 's' : ''} de fond arrêtée${r.background > 1 ? 's' : ''})`) : t('Agent stopped'))
+    // Stopped before any reply: like Claude, the message comes back into the field.
+    if (r.restored !== undefined) {
+      restoreDraft(draft, r.restored)
+      focusEnd()
+      toast(tl('Stopped: your message is back in the field', 'Arrêté : ton message est revenu dans le champ'))
+    } else if (r.stopped) toast(r.background ? tl(`Agent stopped (${r.background} background task${r.background > 1 ? 's' : ''} stopped)`, `Agent arrêté (${r.background} tâche${r.background > 1 ? 's' : ''} de fond arrêtée${r.background > 1 ? 's' : ''})`) : t('Agent stopped'))
   } catch (err) {
     interrupting.value = null
     toast((err as Error).message, true)
@@ -185,6 +193,12 @@ function removeAtt(i: number) {
   if (a && a.url) URL.revokeObjectURL(a.url)
 }
 watch(() => attachments.value.length, () => nextTick(layout))
+// Long text: keep the caret in view once the field reaches its max height.
+watch(text, () => nextTick(() => {
+  const el = ta.value
+  if (!el || el.scrollHeight <= el.clientHeight || document.activeElement !== el) return
+  if (el.selectionEnd >= el.value.length - 1) el.scrollTop = el.scrollHeight
+}))
 
 async function shrink(file: Blob): Promise<Blob> {
   const url = URL.createObjectURL(file)
