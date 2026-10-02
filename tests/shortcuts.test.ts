@@ -27,10 +27,16 @@ describe('matchShortcut', () => {
     expect(match({ key: 'Dead', code: 'KeyN', metaKey: true, altKey: true }, body, cap)).toBe('new-space')
     expect(match({ key: '†', code: 'KeyT', metaKey: true, altKey: true }, body, cap)).toBe('new-tab')
     expect(match({ key: '∑', code: 'KeyW', metaKey: true, altKey: true }, body, cap)).toBe('close-pane')
+    expect(match({ key: 'ø', code: 'KeyO', metaKey: true, altKey: true }, body, cap)).toBe('open-editor')
+    expect(match({ key: 'o', code: 'KeyO', metaKey: true, altKey: true }, body, cap)).toBe('open-editor')
     const win = { ...linux, phase: 'capture' as const }
     expect(match({ key: 'n', code: 'KeyN', ctrlKey: true, altKey: true }, body, win)).toBe('new-space')
+    expect(match({ key: 'o', code: 'KeyO', ctrlKey: true, altKey: true }, term, win)).toBe('open-editor')
     // Polish layout: AltGr+N types ń, a letter for the field.
     expect(match({ key: 'ń', code: 'KeyN', ctrlKey: true, altKey: true }, field('dzie'), win)).toBeNull()
+    // Windows: Ctrl+O alone stays with the browser (⌘O: no Mod+Alt on macOS).
+    expect(match({ key: 'o', ctrlKey: true }, term, win)).toBeNull()
+    expect(match({ key: 'o', metaKey: true }, term)).toBeNull()
   })
 
   it('a layout other than QWERTY: the printed letter on a Mac, the position for Cyrillic', () => {

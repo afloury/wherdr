@@ -516,7 +516,7 @@ const pathMenu = reactive({ open: false, x: 0, y: 0, w: 0, h: 0 })
 const pathItems = ref<ReturnType<typeof toDropdown>>([])
 function pathMenuItems(p: string): MenuItem[] {
   const items: MenuItem[] = []
-  if (machineOs(props.pane.machine) === 'Darwin' && !offlineView.value) {
+  if (canOpenOnMachine(props.pane) && !offlineView.value) {
     items.push(
       { label: t('Reveal in Finder'), icon: 'i-lucide-folder-search', run: () => revealOnMachine(p, 'reveal') },
       { label: t('Open'), icon: 'i-lucide-external-link', run: () => revealOnMachine(p, 'open') },
@@ -550,7 +550,7 @@ async function revealOnMachine(p: string, mode: 'reveal' | 'open') {
     const r = await api<{ machine: string }>('/api/reveal', { pane_id: props.pane.id, path: p, mode })
     toast(mode === 'reveal'
       ? tl(`Shown in Finder on ${r.machine}`, `Affiché dans le Finder sur ${r.machine}`)
-      : tl(`Opened on ${r.machine}`, `Ouvert sur ${r.machine}`))
+      : tl(`Opened in the editor on ${r.machine}`, `Ouvert dans l’éditeur sur ${r.machine}`))
   } catch (err) {
     toast((err as Error).message, true)
   }

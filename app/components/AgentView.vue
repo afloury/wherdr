@@ -315,6 +315,13 @@ const agentMenu = computed<MenuItem[]>(() => {
   const items: MenuItem[] = []
   if (canAttachTerminal.value) items.push({ label: t('Attach a file…'), icon: 'i-lucide-paperclip', run: () => attachInput.value?.click() })
   if (p) items.push({ label: t('View changes'), icon: 'i-lucide-file-diff', run: () => { changesOpen.value = true } })
+  // Current agent folder in its default editor, on the agent's Mac (Mod+Alt+O).
+  if (p && canOpenOnMachine(p)) {
+    items.push({
+      label: t('Open in editor'), icon: 'i-lucide-external-link',
+      kbds: live.value ? shortcutKbds('open-editor') : undefined, run: () => openFolderOnMachine(p),
+    })
+  }
   if (p) items.push({ label: t('Rename pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } })
   // Split, move to another tab (never zoom or resize).
   if (p) items.push(...paneSpaceItems(p))

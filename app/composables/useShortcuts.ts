@@ -6,6 +6,7 @@
 // conversation / terminal, Stop (usePaneShortcuts, AgentView).
 import type { Ref } from 'vue'
 import { type ShortcutContext, type ShortcutFocus, type ShortcutId, matchShortcut } from '~/utils/shortcuts'
+import { openFolderOnMachine } from './useHerdr'
 import { describeFocus } from '~/utils/cardKeys'
 
 export interface PaneShortcuts {
@@ -62,6 +63,14 @@ function run(id: Exclude<ShortcutId, 'search-all'>, overlay: boolean): boolean {
       if (!writable || !p || paneStale(p)) return false
       closePane(p)
       return true
+    case 'open-editor': {
+      // The agent's folder in its default editor, on the agent's machine: menu
+      // entry "Open" with the folder path (openFolderOnMachine toasts errors).
+      if (!p || !canOpenOnMachine(p)) return false
+      haptic()
+      openFolderOnMachine(p)
+      return true
+    }
     case 'settings':
       navigateTo('/settings')
       return true

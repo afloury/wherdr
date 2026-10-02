@@ -73,4 +73,16 @@ export const RUNTIME_DIR = env.WHERDR_RUNTIME_DIR || '/tmp/wherdr'
 // Photo store on remote machines, relative to their $HOME.
 export const REMOTE_UPLOAD_SUBDIR = '.cache/herdr-web/uploads'
 
+// "Reveal in Finder" / "Open" / "Open in editor" on a Mac that runs wherdr in a Linux
+// container (Docker on macOS): `open` does not exist there, so the reveal script is run
+// on the host through this SSH target (e.g. `host.docker.internal`, the OrbStack bridge
+// user). Wherdr connects with its own key pair (HOST_OPEN_KEY, mounted read-write so a
+// host-side setup script can install the public half), and the Mac side decides what the
+// key may run: a forced command in authorized_keys (scripts/wherdr-open.sh, installed by
+// scripts/install-host-open.sh) only opens paths under the Mac user's home. Empty
+// (default): no host route, a non-Mac local machine reports "not a Mac" as before.
+export const HOST_OPEN_TARGET = (env.HERDR_WEB_HOST_OPEN_TARGET || '').trim()
+export const HOST_OPEN_USER = (env.HERDR_WEB_HOST_OPEN_USER || '').trim()
+export const HOST_OPEN_KEY = (env.HERDR_WEB_HOST_OPEN_KEY || path.join(DATA_DIR, 'host-open-key')).trim()
+
 export const log = (...a: unknown[]) => console.log(new Date().toISOString(), ...a)

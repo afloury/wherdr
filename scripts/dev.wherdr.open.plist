@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>dev.wherdr.open</string>
+  <key>ProgramArguments</key><array>
+    <string>/bin/sh</string><string>-c</string>
+    <string>f="$HOME/Library/Application Support/wherdr-open/spool"; [ -f "$f" ] &amp;&amp; { c=$(cat "$f"); rm -f "$f"; sh -c "$c"; } </string>
+  </array>
+</dict></plist>

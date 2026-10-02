@@ -2,7 +2,7 @@
 // here through the same two shells as over SSH, with a fake `open` and `uname`
 // that record what they were given (nothing is ever opened).
 import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -125,5 +125,89 @@ describe('SSH command line', () => {
   it('quotes every part of the command', () => {
     expect(remoteCommand('echo "$1"', ["it's"])).toBe(`sh -c 'echo "$1"' sh 'it'\\''s'`)
     expect(REVEAL_SCRIPT).toContain('open -R "$r"')
+  })
+})
+
+describe('host open (wherdr in a container on a Mac)', () => {
+  it('REVEAL_SCRIPT is the checks part of scripts/reveal.sh verbatim', () => {
+    // The file adds a header comment above the checks; the script body must match.
+    const body = readFileSync('scripts/reveal.sh', 'utf8').replace(/^#.*\n/gm, '').replace(/^\n+/, '').replace(/\n$/, '')
+    expect(REVEAL_SCRIPT).toBe(body)
+  })
+
+  it('the wrapper accepts only open <mode> <base64> and install <name> <data>', () => {
+    // The forced command whitelist, replayed without SSH: SSH_ORIGINAL_COMMAND.
+    const run = (orig: string, keyFile = 'missing') => {
+      const r = spawnSync('/bin/sh', [path.join('scripts', 'wherdr-open.sh')], {
+        env: { ...process.env, HOME: home, SSH_ORIGINAL_COMMAND: orig, WH_OPEN_REVEAL: keyFile },
+      })
+      return r.status
+    }
+    const mode = 'open'
+    const p64 = Buffer.from('/tmp/x').toString('base64')
+    // Missing reveal.sh (WH_OPEN_REVEAL points nowhere): refused before anything runs.
+    expect(run(`open ${mode} ${p64}`)).toBe(126)
+    expect(run('rm -rf /')).toBe(126)
+    expect(run('open evil-notbase64!!')).toBe(126)
+    expect(run('open reveal')).toBe(126)
+    expect(run(`open bake ${p64}`)).toBe(126)
+    expect(run('')).toBe(126)
+    // install: only the two known file names; the content arrives on stdin.
+    const target = path.join(home, '.local/share/wherdr/reveal.sh')
+    mkdirSync(path.dirname(target), { recursive: true })
+    const runWithStdin = (orig: string, stdin: string, keyFile = 'missing') => {
+      const r = spawnSync('/bin/sh', [path.join('scripts', 'wherdr-open.sh')], {
+        input: stdin,
+        env: { ...process.env, HOME: home, SSH_ORIGINAL_COMMAND: orig, WH_OPEN_REVEAL: keyFile },
+      })
+      return r.status
+    }
+    expect(runWithStdin('install reveal.sh', '#!/bin/sh\ncontent\n')).toBe(0)
+    expect(readFileSync(target, 'utf8')).toBe('#!/bin/sh\ncontent\n')
+    expect(run('install ../evil')).toBe(126)
+    expect(run('install not-a-file')).toBe(126)
+    expect(run('install')).toBe(126)
+  })
+
+  it('the wrapper runs reveal.sh with the decoded path', () => {
+    // reveal.sh stub: records mode and path, "opens" into calls.log.
+    const stub = path.join(root, 'stub-reveal.sh')
+    writeFileSync(stub, `#!/bin/sh\nprintf '%s %s|' "$1" "$2" >> "${calls}"\necho >> "${calls}"\n`)
+    const run = (orig: string) => {
+      const r = spawnSync('/bin/sh', [path.join('scripts', 'wherdr-open.sh')], {
+        env: { ...process.env, SSH_ORIGINAL_COMMAND: orig, WH_OPEN_REVEAL: stub },
+      })
+      return r.status
+    }
+    const withSpaces = `${home}/project/My Notes.md`
+    expect(run(`open open ${Buffer.from(withSpaces).toString('base64')}`)).toBe(0)
+    expect(run(`open reveal ${Buffer.from(home).toString('base64')}`)).toBe(0)
+    expect(opened()).toEqual([`open ${withSpaces}|`, `reveal ${home}|`])
+  })
+
+  it('reveal.sh opens a folder with the configured editor, files with open', () => {
+    // Fake `open` records its arguments; the editor name is pre-written to the
+    // file the script reads (~/.local/share/wherdr/editor under $HOME).
+    const bin = path.join(root, 'bin2')
+    mkdirSync(bin, { recursive: true })
+    writeFileSync(path.join(bin, 'open'), `#!/bin/sh\nfor a; do printf '%s|' "$a"; done >> "${calls}"\necho >> "${calls}"\n`)
+    writeFileSync(path.join(bin, 'uname'), '#!/bin/sh\necho Darwin\n')
+    chmodSync(path.join(bin, 'open'), 0o755)
+    chmodSync(path.join(bin, 'uname'), 0o755)
+    mkdirSync(path.join(home, '.local/share/wherdr'), { recursive: true })
+    writeFileSync(path.join(home, '.local/share/wherdr/editor'), 'Zed\n')
+    const run = (mode: string, p: string) => spawnSync('/bin/sh', ['scripts/reveal.sh', mode, p], {
+      env: { PATH: `${bin}:${process.env.PATH}`, HOME: home },
+    })
+    const dir = path.join(home, 'project')
+    const r1 = run('open', dir)
+    expect(r1.status).toBe(0)
+    const real = realpathSync(dir)
+    expect(r1.stdout.toString().trim()).toBe(real)
+    expect(opened().at(-1)).toBe(`-a|Zed|${real}|`)
+    const r2 = run('open', path.join(home, 'project/My Notes.md'))
+    expect(r2.status).toBe(0)
+    const realFile = realpathSync(path.join(home, 'project/My Notes.md'))
+    expect(opened().at(-1)).toBe(`${realFile}|`)
   })
 })

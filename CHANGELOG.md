@@ -53,10 +53,17 @@ First public release.
 - Collapsible agent sidebar on a computer: a narrow rail with search, new agent, settings and
   state counters, remembered per device.
 - Keyboard shortcuts on a computer: previous / next agent (`Alt+↑/↓`), new space, new tab and
-  close pane (`Mod+Alt+N/T/W`, also from the terminal), conversation search (`Mod+F`),
+  close pane (`Mod+Alt+N/T/W`, also from the terminal), open the agent folder in the editor
+  (`Mod+Alt+O`), conversation search (`Mod+F`),
   conversation / terminal (``Ctrl+` ``), stop a working agent (`Esc`, empty field), settings
   (`Mod+,`) and a shortcut list (`Mod+/` or `?`, Settings › Computer). Tooltips and menus show
   the keys. The "Your turn" card's digits also work on AZERTY without Shift, outside the message field.
+- The agent's current folder in its default editor on the agent's Mac: Mod+Alt+O, also in the
+  agent menu ("Open in editor"). Same safeguarded action as a folder path in a conversation
+  (Reveal in Finder / Open); the folder is never opened as an app or script. In Docker on a
+  Mac, an optional SSH route to the host (`scripts/install-host-open.sh`) enables it too.
+- First bound the folder shortcut to Mod+Alt+E; moved to O the same day — Firefox and Zen own
+  ⌘⌥E (Network Monitor) on macOS, Zen also uses Ctrl+Alt+E for workspaces.
 - Terminal view (xterm.js, WebGL or DOM renderer) with a phone key bar and take-over.
   Shift+Enter inserts a newline in agents, as in a native terminal.
 - Composer with queued messages (cancellable), photos, paste, slash commands and their output.

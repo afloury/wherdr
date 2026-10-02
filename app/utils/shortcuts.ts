@@ -5,7 +5,7 @@
 // lightbox, dividers) stay with that component.
 
 export type ShortcutId = 'search-all' | 'search-chat' | 'toggle-term' | 'stop' | 'prev-agent' | 'next-agent'
-  | 'new-space' | 'new-tab' | 'close-pane' | 'settings' | 'help'
+  | 'new-space' | 'new-tab' | 'close-pane' | 'open-editor' | 'settings' | 'help'
 
 type Mod = 'mod' | 'ctrl' | 'alt' | 'shift'
 
@@ -50,6 +50,13 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'new-space', mods: ['mod', 'alt'], key: 'n', fields: 'any', terminal: true, capture: true, kbds: ['meta', 'alt', 'N'] },
   { id: 'new-tab', mods: ['mod', 'alt'], key: 't', fields: 'any', terminal: true, capture: true, kbds: ['meta', 'alt', 'T'] },
   { id: 'close-pane', mods: ['mod', 'alt'], key: 'w', fields: 'any', terminal: true, capture: true, kbds: ['meta', 'alt', 'W'] },
+  // Current agent folder in its default editor: like the other machine actions, Mod+Alt
+  // (chromium.org never lets pages see Mod+N, T or W). O, not E: Firefox and Zen bind
+  // ⌘⌥E to the Network Monitor on macOS (Ctrl+Shift+E elsewhere), Zen also uses
+  // Ctrl+Alt+E for "Forward workspace"; Mod+Alt+O is free in Firefox, Chromium and Safari
+  // (⌘O "Open File" needs no Alt). Caught before the terminal: on Linux Ctrl+Alt+letter
+  // would be ESC + the control byte.
+  { id: 'open-editor', mods: ['mod', 'alt'], key: 'o', fields: 'any', terminal: true, capture: true, kbds: ['meta', 'alt', 'O'] },
   { id: 'settings', mods: ['mod'], key: ',', fields: 'any', terminal: true, kbds: ['meta', ','] },
   { id: 'help', mods: ['mod'], anyShift: true, key: '/', fields: 'any', terminal: true, overlay: true, kbds: ['meta', '/'] },
   { id: 'help', mods: [], anyShift: true, key: '?', fields: 'none', terminal: false, overlay: true, kbds: ['?'] },

@@ -58,6 +58,7 @@ const FR: Record<string, string> = {
   'Not found on {machine}: {path}': 'Introuvable sur {machine} : {path}',
   'Only files in your home folder can be shown': 'Seuls les fichiers de ton dossier personnel peuvent être affichés',
   '{machine} is not a Mac': '{machine} n’est pas un Mac',
+  'Open in editor': 'Ouvrir dans l’éditeur',
   'Apps and scripts are not opened from wherdr: use Reveal in Finder': 'wherdr n’ouvre pas les apps ni les scripts : utilise Afficher dans le Finder',
   'Could not open on {machine}: {reason}': 'Ouverture impossible sur {machine} : {reason}',
   // Rename, search

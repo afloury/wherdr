@@ -5,6 +5,12 @@ Status: **implemented** (2026-10-01). Code: `app/utils/shortcuts.ts` (table and 
 (help sheet). Tests: `tests/shortcuts.test.ts`, `tests/cardKeys.test.ts`.
 `[INFERENCE]` marks claims nobody has tested on a device yet.
 
+> 2026-10-02: Mod+Alt+O (current agent folder in the default editor, via the existing
+> /api/reveal "Open" action on the folder path) added since; action in
+> `app/composables/useHerdr.ts` (`openFolderOnMachine`). First bound to E, moved to O the
+> same day: Firefox and Zen own ⌘⌥E (Network Monitor) on macOS, Zen also Ctrl+Alt+E
+> ("Forward workspace").
+
 ## Capability
 
 Someone using wherdr on a computer (≥ 900 px wide, hardware keyboard) can do the everyday loop
@@ -25,6 +31,7 @@ promise that wherdr "can replace the Herdr terminal client day to day".
 | New agent in a new space: the "New agent" sheet, which creates the space (`workspace.create`) | Mod+Alt+N | Computer, online | Yes (caught before the terminal) |
 | New tab in the current pane's space: the "Start in a new tab" sheet | Mod+Alt+T | Computer, online, a pane being viewed | Yes (caught before the terminal) |
 | Close the current pane, through the same confirmation as the menu | Mod+Alt+W | Computer, online, a pane being viewed | Yes (caught before the terminal) |
+| The current agent's folder in its default editor, on the agent's machine | Mod+Alt+O | Computer, a pane with a folder, on a Mac (`machineOs`) — or a local pane when wherdr runs in Docker on a Mac with the host-open route (`/api/config` `hostOpen`) | Yes (caught before the terminal) |
 | Search this conversation; if search is already open, focus and select its field | Mod+F | Agent in conversation mode | No: the browser keeps its Find there |
 | Switch between conversation and terminal | Ctrl+`` ` `` on every platform, by position (`Backquote`; on macOS also `IntlBackslash`, the key left of 1 on ISO keyboards) | Agent with a conversation, or the active cell | Yes (xterm sends nothing for it) |
 | Stop the working agent, same as the Stop button | Esc | Conversation mode, Stop shown, empty field, no conversation search open | No (Esc goes to the program) |
@@ -44,6 +51,7 @@ Where the keys are shown:
 
 - Tooltips: global search, new agent (rail) and settings in the sidebar; search in the agent header.
 - The agent menu's "Close this pane" entry shows Mod+Alt+W.
+- The agent menu's "Open in editor" entry shows Mod+Alt+O (on the agent's Mac).
 - The composer shows `Esc stop` while Stop is visible.
 - The help sheet lists everything.
 
@@ -157,6 +165,23 @@ The composer blurs itself on Esc. After a stop it gets the focus back.
 - **Q3.** Alt+↑/↓ to move between agents: yes. "Next agent waiting on you" was not requested.
 - **Q4.** Mod+Alt+N opens "New agent". Because that sheet creates a new space, it is also the
   "new workspace" shortcut. Mod+Alt+T (new tab) and Mod+Alt+W (close pane) follow the same pattern.
+- **Q8.** Mod+Alt+O opens the agent's current folder in its default editor on the agent's Mac
+  (same `/api/reveal` "Open" action as a path in the conversation: never apps or scripts, the
+  folder is opened as a folder). First bound to E: Firefox and Zen take ⌘⌥E on macOS (Network
+  Monitor), Zen also Ctrl+Alt+E (Forward workspace) — the shortcut never reached wherdr. O is
+  free in Firefox, Zen, Chromium and Safari (⌘O "Open File" needs no Alt). The agent menu gets
+  an "Open in editor" entry, the help sheet a row.
+- **Q9.** wherdr in Docker on a Mac: the container is Linux with no `open`, so the folder
+  shortcut and Reveal/Open were dead there. `/api/reveal` gains an "open on the host" route:
+  with `HERDR_WEB_HOST_OPEN_TARGET` set, a local pane's checks run on the Mac over SSH, behind
+  a forced-command key (scripts/wherdr-open.sh, installed by scripts/install-host-open.sh).
+  Two macOS quirks shape it: (a) plain `open <folder>` gives the file manager, so a folder with
+  a configured editor app runs `open -a <editor>` (`~/.local/share/wherdr/editor`); (b) apps
+  can only be *launched* from the GUI session, and `open` from an SSH session starts nothing —
+  the wrapper hands the command to a per-user LaunchAgent (`dev.wherdr.open`, spool file +
+  kickstart) that lives in the GUI session and runs `open` there. The client gates on
+  `/api/config` `hostOpen` (`canOpenOnMachine`), not on the OS alone. Without the variable,
+  behaviour is unchanged.
 - **Q5.** Sidebar toggle: not now.
 
 ## Still open

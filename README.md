@@ -58,7 +58,8 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - [Requirements](#requirements)
 - [Installation](#installation): [which setup?](#which-setup) ·
   [always-on server + Tailscale](#recommended-always-on-server--tailscale) ·
-  [one computer, no Docker](#simple-one-computer-no-docker)
+  [one computer, no Docker](#simple-one-computer-no-docker) ·
+  [Docker on a Mac: Reveal/Open](#wherdr-in-docker-on-a-mac-reveal-in-finder-open-and-modalto)
 - [Updating](#updating)
 - [Install the app on your phone](#install-the-app-on-your-phone)
 - [Configuration](#configuration)
@@ -307,6 +308,42 @@ usual service manager (systemd user unit, launchd, tmux…).
 With `APP_URL` empty or `http://localhost:7683/`, wherdr starts normally but disables Web Push
 and logs a warning.
 
+### wherdr in Docker on a Mac: Reveal in Finder, Open and Mod+Alt+O
+
+The container is Linux: it has no `open` command, so "Reveal in Finder" / "Open" on file paths
+and `Mod+Alt+O` (the agent's folder in your editor) do nothing by default — the app reports
+"not a Mac". wherdr can ask your Mac to run them over SSH:
+
+```sh
+sh scripts/install-host-open.sh          # on the Mac; --user/--target/--port optional
+```
+
+This creates a dedicated key pair in `data/` (`host-open-key`), installs
+`~/.local/share/wherdr/{reveal.sh,wherdr-open.sh}` on the Mac, loads a small LaunchAgent
+(`dev.wherdr.open`, in `~/Library/LaunchAgents`) that launches GUI apps on behalf of the SSH
+session, and adds one `authorized_keys` line whose forced command only ever runs the reveal
+checks on a path wherdr passes (existing, under your home folder, never an app or a script —
+the same rules as a native install).
+
+Then add to `docker-compose.override.yml` and restart the container:
+
+```yaml
+services:
+  herdr-web:
+    environment:
+      - HERDR_WEB_HOST_OPEN_TARGET=host.docker.internal   # the Mac as the container sees it
+      - HERDR_WEB_HOST_OPEN_USER=<your mac user>
+```
+
+Without these variables nothing changes: a non-Mac server refuses with "not a Mac" as before.
+
+The installer picks the editor that opens folders (first of Zed, Visual Studio Code, Cursor,
+Sublime Text, TextMate). Change it any time:
+
+```sh
+printf %s "Visual Studio Code" > ~/.local/share/wherdr/editor
+```
+
 ## Updating
 
 wherdr checks the latest GitHub release at most once a day (an anonymous request to
@@ -368,6 +405,9 @@ All settings are environment variables (`.env` with Docker).
 | `DATA_DIR` | `./data` | VAPID keys, push subscriptions, passkeys, recent folders. |
 | `HERDR_BIN` | `~/.local/bin/herdr`, else `herdr` in `PATH` | Herdr binary. |
 | `HERDR_WEB_SESSION` | *(default session)* | Named Herdr session to drive. Not `HERDR_SESSION`, which Herdr reads itself. |
+| `HERDR_WEB_HOST_OPEN_TARGET` | *(unset)* | Docker on a Mac: SSH host that runs Reveal/Open for local panes (see [Docker on a Mac](#wherdr-in-docker-on-a-mac-reveal-in-finder-open-and-modalto)). |
+| `HERDR_WEB_HOST_OPEN_USER` | `root` | SSH user for `HERDR_WEB_HOST_OPEN_TARGET` (your Mac user). |
+| `HERDR_WEB_HOST_OPEN_KEY` | `data/host-open-key` | SSH private key for the host-open route. |
 | `AGENT_KINDS` | all known agents | Agents offered in **New** (only installed ones are shown). |
 | `HERDR_WEB_MACHINES` | `on` | `off` to ignore the SSH machines registered in Herdr. |
 | `HERDR_WEB_SELF_HOSTS` | | Other names / IPs of this machine, comma-separated (profiles pointing to it are ignored). |

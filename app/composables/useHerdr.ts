@@ -241,6 +241,15 @@ export const multiMachine = computed(() => machines.value.length > 1 || Boolean(
 export const machineInfo = (key: string | null | undefined) => machines.value.find(m => m.key === (key || ''))
 // `uname -s` of a pane's machine ('Darwin' = macOS); the local one from the config.
 export const machineOs = (key: string | null | undefined) => machineInfo(key)?.os || (key ? undefined : appConfig.value.os)
+// "Reveal in Finder" / "Open" / Mod+Alt+O apply to a pane: its machine is a
+// Mac, or wherdr runs in a container on a Mac with the "open on the host"
+// route set up (server: /api/config hostOpen — local panes only).
+export const canOpenOnMachine = (p: Pane | null | undefined) => {
+  if (!p || !p.cwd) return false
+  if (machineOs(p.machine) === 'Darwin') return true
+  // Local machine: its key is '' (missing from the state, like `machine` itself).
+  return Boolean(!(p.machine || '').trim() && appConfig.value.hostOpen)
+}
 // Machines offered by the "New agent" and "New project" sheets (null
 // with a single machine); online according to the live state (the config may
 // have been read before the connection).
@@ -320,6 +329,18 @@ export async function api<T = Record<string, unknown>>(path: string, body?: unkn
   const known = data.code === 'agent_not_ready' ? 'The agent isn’t ready in this pane (stopped or still starting).' : null
   if (!r.ok) throw new ApiError(t(known || data.error || `HTTP ${r.status}`), r.status, data.code)
   return data as T
+}
+
+// Current agent folder in its default editor, on the agent's machine (the
+// "Open" action of /api/reveal with the folder path; macOS only, checked
+// server-side). Shared by ChatView's "Open" menu and the Mod+Alt+O shortcut.
+export async function openFolderOnMachine(pane: Pane) {
+  try {
+    const r = await api<{ machine: string }>('/api/reveal', { pane_id: pane.id, path: pane.cwd, mode: 'open' })
+    toast(tl(`Opened in the editor on ${r.machine}`, `Ouvert dans l’éditeur sur ${r.machine}`))
+  } catch (err) {
+    toast((err as Error).message, true)
+  }
 }
 
 export async function loadConfig() {

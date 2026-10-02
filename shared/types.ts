@@ -278,6 +278,9 @@ export interface AppConfig {
   kinds: string[]
   home: string
   os?: string // local machine, `uname -s` names
+  // wherdr in a container on a Mac with the "open on the host" SSH route set
+  // up: Reveal in Finder / Open / Mod+Alt+O work on local panes.
+  hostOpen?: boolean
   dirs: string[]
   push: { enabled: boolean, key: string | null, devices: number }
 }
