@@ -36,6 +36,19 @@ const weeklyReset = computed(() => {
   return resetText({ used: 100 - w.left, resetsAt: w.resetsAt, minutes: 10080 }, quotaNow.value, language) || ''
 })
 
+const availableText = computed(() => {
+  const u = update.value
+  if (!u) return ''
+  const head = tl(`Codex ${u.latest} available`, `Codex ${u.latest} disponible`)
+  return u.current ? `${head} ${tl(`(you have ${u.current})`, `(tu as la ${u.current})`)}` : head
+})
+const weeklyText = computed(() => {
+  const w = weekly.value
+  if (!w) return ''
+  const head = tl(`Weekly limit: ${w.left}% left`, `Limite hebdo : ${w.left} % restants`)
+  return weeklyReset.value ? `${head} · ${tl(`resets ${weeklyReset.value}`, `remise à zéro ${weeklyReset.value}`)}` : head
+})
+
 function hide() {
   const v = update.value?.latest
   if (!v) return
@@ -104,10 +117,10 @@ async function status() {
     </button>
   </div>
   <div v-else-if="update" class="composer-notice codex-update" role="status">
-    <span class="restart-text" :title="update.command || ''">
-      {{ tl(`Codex ${update.latest} available`, `Codex ${update.latest} disponible`) }}<template v-if="update.current"> {{ tl(`(you have ${update.current})`, `(tu as la ${update.current})`) }}</template> ·
-    </span>
-    <a class="notice-btn" :href="update.notes" target="_blank" rel="noopener noreferrer"><UIcon name="i-lucide-external-link" />{{ t('Release notes') }}</a>
+    <span class="restart-text" :title="availableText">{{ tl(`Codex ${update.latest} available`, `Codex ${update.latest} disponible`) }}<span v-if="update.current" class="notice-extra">{{ ' ' }}{{ tl(`(you have ${update.current})`, `(tu as la ${update.current})`) }}</span> ·</span>
+    <a class="notice-btn" :href="update.notes" target="_blank" rel="noopener noreferrer" :aria-label="t('Release notes')" :title="t('Release notes')">
+      <UIcon name="i-lucide-external-link" /><span class="notice-label">{{ t('Release notes') }}</span>
+    </a>
     <button v-if="update.runnable" type="button" class="notice-btn" :disabled="readOnly" @click="runUpdate">
       <UIcon name="i-lucide-circle-arrow-up" />{{ t('Update') }}
     </button>
@@ -118,9 +131,7 @@ async function status() {
   </div>
   <div v-if="weekly" class="composer-notice codex-weekly" :class="{ low: weekly.left <= 10 }" role="status">
     <UIcon name="i-lucide-triangle-alert" class="notice-icon" />
-    <span class="restart-text">
-      {{ tl(`Weekly limit: ${weekly.left}% left`, `Limite hebdo : ${weekly.left} % restants`) }}<template v-if="weeklyReset"> · {{ tl(`resets ${weeklyReset}`, `remise à zéro ${weeklyReset}`) }}</template>
-    </span>
+    <span class="restart-text" :title="weeklyText">{{ tl(`Weekly limit: ${weekly.left}% left`, `Limite hebdo : ${weekly.left} % restants`) }}<template v-if="weeklyReset">{{ ' · ' }}<span class="notice-extra">{{ tl('resets ', 'remise à zéro ') }}</span>{{ weeklyReset }}</template></span>
     <button type="button" class="notice-btn" :disabled="readOnly" :title="t('Show Codex’s usage breakdown')" @click="status">/status</button>
   </div>
 </template>
