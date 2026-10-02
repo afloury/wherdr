@@ -36,9 +36,9 @@ function useRoot() {
 </script>
 
 <template>
-  <AppSheet v-model:open="open" :title="pluginFormState.action?.label || t('Plugin actions')" :tall="browsing">
+  <AppSheet v-model:open="open" :title="pluginFormState.action?.label || t('Plugin actions')" :tall="browsing" screen>
     <DirBrowser v-if="browsing" :start="f.repo || null" :machine="f.machine" @choose="chooseRepo" @cancel="browsing = false" />
-    <form v-else class="rename plugin-input" @submit.prevent="submitPluginForm">
+    <form v-else id="plugin-input-form" class="rename plugin-input" @submit.prevent="submitPluginForm">
       <template v-if="action === 'adopt-workspace'">
         <div class="plugin-input-note">
           <UIcon name="i-lucide-git-branch-plus" />
@@ -91,11 +91,13 @@ function useRoot() {
         <p v-else-if="f.repo && f.repoState === 'none'" class="repo-state none"><UIcon name="i-lucide-triangle-alert" />{{ tl('Not a Git repository: choose one, or clear the field.', 'Pas un dépôt Git : choisissez-en un, ou videz le champ.') }}</p>
         <p v-if="!f.repo || f.repoState === 'repo'" class="plugin-input-hint">{{ f.repo ? tl('The project’s threads will work in worktrees of this repository.', 'Les threads du projet travailleront dans des worktrees de ce dépôt.') : tl('Without a repository, each thread runs in a tab of the project.', 'Sans dépôt, chaque thread travaille dans un onglet du projet.') }}</p>
       </template>
-
-      <div class="rename-actions">
-        <UButton color="neutral" variant="ghost" class="sheet-btn" :disabled="pluginFormState.busy" @click="closePluginForm">{{ t('Cancel') }}</UButton>
-        <UButton type="submit" color="primary" variant="solid" class="sheet-btn hw-cta" :loading="pluginFormState.busy" :disabled="!valid">{{ t('Run') }}</UButton>
-      </div>
     </form>
+
+    <template #footer>
+      <div v-if="!browsing" class="rename-actions">
+        <UButton color="neutral" variant="ghost" class="sheet-btn" :disabled="pluginFormState.busy" @click="closePluginForm">{{ t('Cancel') }}</UButton>
+        <UButton type="submit" form="plugin-input-form" color="primary" variant="solid" class="sheet-btn hw-cta" :loading="pluginFormState.busy" :disabled="!valid">{{ t('Run') }}</UButton>
+      </div>
+    </template>
   </AppSheet>
 </template>

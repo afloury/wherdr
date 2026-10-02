@@ -37,7 +37,7 @@ const groups: { title: string, rows: { label: string, keys: string[][] }[] }[] =
 </script>
 
 <template>
-  <AppSheet v-model:open="open" :title="tl('Keyboard shortcuts', 'Raccourcis clavier')" tall>
+  <AppSheet v-model:open="open" :title="tl('Keyboard shortcuts', 'Raccourcis clavier')" tall screen>
     <section v-for="g in groups" :key="g.title" class="settings-group shortcuts-group">
       <h3>{{ g.title }}</h3>
       <dl>
