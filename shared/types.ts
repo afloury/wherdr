@@ -1,5 +1,6 @@
 // Types shared between the server (Nitro) and the app (Vue).
 import type { TabLayout } from './layout'
+import type { CodexStatus } from './codexStatus'
 
 export type AgentStatus = 'working' | 'blocked' | 'done' | 'idle' | 'unknown'
 
@@ -136,6 +137,8 @@ export interface Pane {
   restart?: { phase: 'stopping' | 'starting' | 'failed', agent: string, error?: string }
   // Grayed-out next-message suggestion in Claude Code's field (Tab accepts it).
   claudeSuggestion?: string
+  // Codex shown: update available and weekly-limit warning (see shared/codexStatus.ts).
+  codexStatus?: CodexStatus
   // omp shown: its status line (model, folder, branch) and its gauges (context, quotas).
   ompStatus?: OmpStatus
 }

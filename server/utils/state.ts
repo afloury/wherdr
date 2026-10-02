@@ -30,6 +30,8 @@ import { shouldNotify } from './notificationPolicy'
 import { currentModel, forgetModel, noteScreen } from './modelctl'
 import { type Machine, RemoteMachine, allMachines, getMachine, machineOfPane, machinesListed, multiMachine, onMachinesChange, remoteMachines } from './machines'
 import { READY_MAX_MS, serverReady } from '../../shared/stateReady'
+import { createCodexStatus, dirWritable } from './codexStatus'
+import { runLocal } from './quotas'
 
 const fsp = fs.promises
 
@@ -218,6 +220,26 @@ function refreshOmpStatus(p: Pane) {
     })
     .finally(() => ompStatusBusy.delete(p.id))
 }
+
+// Codex on screen: update notice and weekly-limit warning (see codexStatus.ts).
+export const codexStatus = createCodexStatus({
+  machineOf: (id) => {
+    const m = machineOfPane(id)
+    if (!m || !m.home) return null
+    const exec = m.exec
+    return {
+      key: m.info().baseKey || m.key, label: m.label, local: m.local, home: m.home, fs: m.fs,
+      online: m.local || m.status === 'online',
+      exec: exec ? (script, input, timeoutMs) => exec(script, [], { input, timeoutMs }) : null,
+    }
+  },
+  readScreen: id => herdr('pane.read', { pane_id: id, source: 'recent-unwrapped', lines: 300 }, 4000).then(r => String((r.read && r.read.text) || '')),
+  rolloutOf: async p => (await transcripts.locate(p))?.file || null,
+  runLocal,
+  writable: dirWritable,
+  onChange: () => poll(),
+  log,
+})
 
 // Agent model: same principle as the preview (background task). Re-read when
 // the state changes, and every 5 s (a simple stat if the transcript has
@@ -598,6 +620,10 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       if (!o || Date.now() - o.at >= OMP_STATUS_MS) refreshOmpStatus(p)
       if (o && o.status) p.ompStatus = o.status
     } else ompStatuses.delete(p.id)
+    if (p.agent === 'codex' && isViewed(p.id)) {
+      const c = codexStatus.statusOf(p)
+      if (c) p.codexStatus = c
+    } else codexStatus.forget(p.id)
   }
   // Cleanup of vanished panes… of this machine only.
   const alive = (id: string) => machineOf(id) !== machine || next.panes.some(p => p.id === id)

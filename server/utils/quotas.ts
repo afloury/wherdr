@@ -302,12 +302,12 @@ async function installerScript(): Promise<string> {
   return s
 }
 
-function runLocal(input: string, home: string): Promise<ExecResult> {
+export function runLocal(input: string, home: string, timeoutMs = 60000): Promise<ExecResult> {
   return new Promise((resolve) => {
     const child = spawn('sh', ['-s'], { env: { ...process.env, HOME: home }, stdio: ['pipe', 'pipe', 'pipe'] })
     const out: Buffer[] = []
     let err = ''
-    const timer = setTimeout(() => child.kill('SIGKILL'), 60000)
+    const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs)
     child.stdout.on('data', (b: Buffer) => out.push(b))
     child.stderr.on('data', (b: Buffer) => { if (err.length < 4000) err += b.toString('utf8') })
     child.on('error', (e) => { err += e.message })
