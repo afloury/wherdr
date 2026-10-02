@@ -4,7 +4,7 @@
 // is only written there at the end), the screen right away.
 import type { ClaudeScreen } from './types'
 import { dropReplyMarker } from './replyQuote'
-import { onlyImageTags, photosOnly } from './queuedMatch'
+import { imageTagCount, onlyImageTags, photosOnly, uploadNames } from './queuedMatch'
 
 export type QueuedPhase = 'queued' | 'sent' | 'running'
 
@@ -22,13 +22,15 @@ function same(a: string, b: string): boolean {
   return x === y || (Math.min(x.length, y.length) >= 24 && (x.startsWith(y) || y.startsWith(x)))
 }
 
+// Photos alone: "[Image #1] [Image #2]" alone on the screen, as many as its photos.
+const samePhotos = (text: string, shown: string) => onlyImageTags(shown) && imageTagCount(shown) === uploadNames(text).length
+
 const isBash = (t: string) => /^\s*!/.test(t)
 const bashNorm = (t: string) => norm(String(t || '').replace(/^\s*!\s*/, ''))
 
 export function queuedPhase(text: string, s: ClaudeScreen | null | undefined): QueuedPhase {
   if (!s) return 'queued'
-  // Photos alone: shown as "[Image #1]" alone on the screen.
-  if (photosOnly(text)) return s.queued.some(onlyImageTags) || !s.sent || !onlyImageTags(s.sent) ? 'queued' : 'sent'
+  if (photosOnly(text)) return s.queued.some(q => samePhotos(text, q)) || !s.sent || !samePhotos(text, s.sent) ? 'queued' : 'sent'
   const n = msgNorm(text)
   if (!n) return 'queued'
   if (s.queued.some(q => same(n, norm(q)))) return 'queued'
@@ -48,7 +50,7 @@ export function queuedPhase(text: string, s: ClaudeScreen | null | undefined): Q
 // the following ones.
 export function queuedPhases(texts: string[], s: ClaudeScreen | null | undefined): QueuedPhase[] {
   const raw = texts.map(t => queuedPhase(t, s))
-  const inQueue = texts.map(t => Boolean(s && s.queued.some(q => (photosOnly(t) ? onlyImageTags(q) : same(msgNorm(t), norm(q))))))
+  const inQueue = texts.map(t => Boolean(s && s.queued.some(q => (photosOnly(t) ? samePhotos(t, q) : same(msgNorm(t), norm(q))))))
   const lastGone = raw.reduce((acc, p, i) => (p !== 'queued' ? i : acc), -1)
   return raw.map((p, i) => {
     if (i > lastGone) return p

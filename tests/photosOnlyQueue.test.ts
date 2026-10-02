@@ -88,6 +88,11 @@ describe('phase on Claude\'s screen', () => {
     expect(queuedPhase(photos, screen({ sent: 'some text' }))).toBe('queued')
     expect(queuedPhase(photos, null)).toBe('queued')
   })
+  it('several photos-only messages: told apart by their number of photos', () => {
+    const s = screen({ sent: '[Image #1] [Image #2]', queued: ['[Image #3]'] })
+    expect(queuedPhase(photos, s)).toBe('sent')
+    expect(queuedPhase(A, s)).toBe('queued')
+  })
 })
 
 describe('app: queued bubbles', () => {
@@ -124,6 +129,15 @@ describe('app: queued bubbles', () => {
     const withText = rememberSent('w1:p8', [mine({ text: `Look at this\n${A}` })])
     const t = pendingQueue({ ...base, mine: [], claude: [{ text: 'Look at this', ts: iso(T0 + 500), images: 1 }], memory: withText })
     expect(t[0]).toMatchObject({ raw: `Look at this\n${A}`, photos: uploadNames(A), missing: 0 })
+  })
+  it('one sent, one queued, one typed on the computer: three bubbles, right phases', () => {
+    const r = pendingQueue({
+      ...base,
+      mine: [mine(), mine({ id: 'm2', text: A, at: T0 + 1000 })],
+      claude: [{ text: '', ts: iso(T0 + 1500), images: 1 }, { text: '', ts: iso(T0 + 3000), images: 1 }],
+      screen: screen({ sent: '[Image #1] [Image #2]', queued: ['[Image #3]', '[Image #4]'] }),
+    })
+    expect(r.map(q => [q.id, q.phase, q.photos.length, q.missing])).toEqual([['m1', 'sent', 2, 0], ['m2', 'queued', 1, 0], [`cc-${iso(T0 + 3000)}`, 'queued', 0, 1]])
   })
   it('photos never seen by wherdr (typed on the computer): placeholders, no Cancel text', () => {
     const r = pendingQueue({ ...base, mine: [], claude: [{ text: '', ts: iso(T0), images: 1 }] })

@@ -60,8 +60,10 @@ export function pendingQueue(o: {
   const mine = [...o.mine].sort((a, b) => (a.at && b.at ? a.at - b.at : 0))
   const list: (QueuedMessage & { missing?: number })[] = mine.filter(q => !inChat(q))
   // Claude's entries: one of wherdr's records (listed, or already in the
-  // conversation) is the same message. Photos alone: one record per entry.
-  let ownPhotos = mine.filter(q => photosOnly(q.text) && !q.state).length
+  // conversation) is the same message. Photos alone: one entry per record
+  // still waiting in Claude's queue (not held here, not already sent).
+  const minePhases = queuedPhases(list.map(q => q.text), o.screen)
+  let ownPhotos = list.filter((q, i) => photosOnly(q.text) && !q.state && minePhases[i] === 'queued').length
   const memPhotos = (o.memory || []).filter(m => photosOnly(m.text) && !mine.some(q => q.id === m.id))
   for (const q of o.claude) {
     const images = q.images || 0
