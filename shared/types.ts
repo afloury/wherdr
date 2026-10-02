@@ -224,7 +224,8 @@ export interface ChatItem {
   ref?: string
   error?: boolean
 }
-export interface ClaudeQueueEntry { text: string, ts: string | null }
+// `images`: photos of the entry ("[Image #1]" tags, removed from `text`).
+export interface ClaudeQueueEntry { text: string, ts: string | null, images?: number }
 
 export interface ChatResponse {
   available: boolean

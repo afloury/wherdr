@@ -9,6 +9,7 @@ import type { Pane, QueuedMessage, SlashCommand } from '#shared/types'
 import type { DraftAtt } from '~/composables/useDraft'
 import { withReply } from '#shared/replyQuote'
 import { isAgentCommand } from '#shared/commandScreen'
+import { isSlashCommand } from '#shared/queuedMatch'
 import type { AttachKind } from '#shared/attachments'
 import { refusalText, sortForAgent } from '~/utils/fileDrop'
 
@@ -108,8 +109,9 @@ async function submit() {
   // Claude): Claude Code and Codex open them themselves.
   const paths = attachments.value.map(a => a.ref || a.path!)
   const body = [text.value.trim(), ...paths].filter(Boolean).join('\n')
-  // No marker before a "/" or "!" command: the agent would no longer read it as such.
-  const reply = /^[/!]/.test(body) ? null : replyTo.value
+  // No marker before a "/" or "!" command: the agent would no longer read it as such
+  // (a photo sent alone starts with its path: not a command).
+  const reply = isSlashCommand(body) || body.startsWith('!') ? null : replyTo.value
   const msg = withReply(reply, body, language)
   if (!msg || sending.value) return
   const p = props.pane
