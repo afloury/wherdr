@@ -38,7 +38,9 @@ First public release.
   including an omp agent already waiting at its prompt that Herdr still counts as starting.
 - Per-session model and effort pickers for Claude Code and Codex.
 - New agent: installed agents or terminal, folder browser, Git worktree and branch, resume the
-  last conversation, queued first message.
+  last conversation, queued first message. The last 30 folders used on each machine are kept:
+  6 show as chips, `+N` shows the rest, and a field filters them by name (Enter takes the
+  first match). The folder browser filters long subfolder lists by name the same way.
 - Git changes view and worktree management; global search.
 - herdr-projects grouping (coordinator and threads).
 - Several machines through the SSH machines registered in Herdr; named Herdr sessions.

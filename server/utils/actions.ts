@@ -157,8 +157,8 @@ export async function createAgent(body: Json) {
   return { pane_id: paneId, workspace_id: wsId, name }
 }
 
-// Recent folders: `dirs` for the local machine (old format), and
-// `machines[<profile id>]` for the others.
+// Recent folders (the 30 last, most recent first): `dirs` for the local
+// machine (old format), and `machines[<profile id>]` for the others.
 const DIRS_FILE = path.join(DATA_DIR, 'dirs.json')
 async function readDirsFile(): Promise<{ dirs?: string[], machines?: Record<string, string[]> }> {
   try { return JSON.parse(await fsp.readFile(DIRS_FILE, 'utf8')) || {} }
@@ -171,7 +171,7 @@ export async function recentDirs(m: Machine = getMachine('')!): Promise<string[]
 }
 async function rememberDir(d: string, m: Machine) {
   const f = await readDirsFile()
-  const dirs = [d, ...(await recentDirs(m)).filter(x => x !== d)].slice(0, 12)
+  const dirs = [d, ...(await recentDirs(m)).filter(x => x !== d)].slice(0, 30)
   if (m.local) f.dirs = dirs
   else f.machines = { ...(f.machines || {}), [dirsKey(m)]: dirs }
   await fsp.mkdir(DATA_DIR, { recursive: true })

@@ -1490,6 +1490,28 @@ body.kb .composer { padding-bottom: 8px; }
   background: transparent; border: 1px solid var(--line); color: var(--muted);
 }
 .chips button.on { color: var(--text); border-color: var(--mauve); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.chips .chips-more { display: inline-flex; align-items: center; color: var(--text-2); border-style: dashed; }
+.chips .chips-more .iconify { width: 14px; height: 14px; }
+.chips-none { padding: 6px 0; font-size: 12.5px; color: var(--muted); }
+/* Name filter of a folder list: recent folders (chips) and browser subfolders. */
+.name-filter {
+  display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 0 0 10px;
+  background: var(--bg); border: 1px solid var(--line); color: var(--muted);
+}
+.name-filter:focus-within { border-color: var(--text-strong); }
+.name-filter > .iconify { width: 15px; height: 15px; flex: none; }
+.name-filter input {
+  flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent;
+  color: var(--text-strong); font: 16px/1 var(--mono); outline: none;
+}
+.name-filter input::placeholder { color: var(--muted); font-size: 13.5px; }
+.name-filter button { flex: none; width: 34px; height: 100%; display: grid; place-items: center; color: var(--muted); }
+.name-filter button:hover { color: var(--text); }
+.name-filter button .iconify { width: 15px; height: 15px; }
+@media (pointer: coarse) { .name-filter button { width: 44px; } }
+.recent-filter { margin-top: 8px; }
+.plugin-input .recent-filter { margin-top: -2px; }
+.dir-filter { margin-bottom: 10px; }
 
 .into-pane {
   display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 4px;

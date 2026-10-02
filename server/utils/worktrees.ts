@@ -17,7 +17,8 @@ const opts = { trust_repository: true }
 async function machineWorktrees(m: Machine): Promise<WorktreeInfo[]> {
   const st = getState()
   const mine = st.panes.filter(p => splitId(p.id).machine === m.key)
-  const cwds = [...new Set([...mine.map(p => p.cwd), ...(await recentDirs(m))].filter((c): c is string => Boolean(c && c.startsWith('/'))))]
+  // Pane folders, then the 12 most recent ones (each scan is a Herdr call, slow over SSH).
+  const cwds = [...new Set([...mine.map(p => p.cwd), ...(await recentDirs(m)).slice(0, 12)].filter((c): c is string => Boolean(c && c.startsWith('/'))))]
   const repos = new Set<string>()
   const out: WorktreeInfo[] = []
   for (const cwd of cwds.slice(0, 30)) {

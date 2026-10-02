@@ -70,7 +70,7 @@ const machine = ref('')
 const machineCfg = computed(() => (machineList.value ? machineList.value.find(m => m.key === machine.value) : undefined))
 const online = machineOnline
 const home = computed(() => (machineCfg.value ? machineCfg.value.home : appConfig.value.home))
-const recents = computed(() => ((machineCfg.value ? machineCfg.value.dirs : appConfig.value.dirs) || []).slice(0, 6))
+const recents = computed(() => (machineCfg.value ? machineCfg.value.dirs : appConfig.value.dirs) || [])
 const qMachine = () => (machine.value ? `&machine=${encodeURIComponent(machine.value)}` : '')
 
 function syncKind() {
@@ -254,7 +254,7 @@ async function launch() {
       </div>
 
       <label class="field-label">{{ t('Folder') }}</label>
-      <DirField v-model="dir" :recents="recents" @browse="browsing = true" />
+      <DirField :key="machine" v-model="dir" :recents="recents" @browse="browsing = true" />
 
       <label v-if="isGit && !fixedMachine" class="toggle-row">
         <span><b>{{ t('Separate worktree') }}</b><small>{{ t('new branch, leaves the original folder untouched') }}</small></span>
