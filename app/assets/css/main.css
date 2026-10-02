@@ -1360,7 +1360,7 @@ body.kb .composer { padding-bottom: 8px; }
 .hw-sheet > * { border-top: 0 !important; border-bottom: 0 !important; }
 .hw-sheet > [data-slot="header"] { padding: 4px 0 10px; min-height: 0; border: 0; order: 1; display: flex; align-items: center; justify-content: space-between; }
 .hw-sheet > [data-slot="body"] { padding: 0; order: 2; overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; scroll-padding-bottom: 16px; }
-.hw-sheet-title { font: 850 24px/1 var(--display); letter-spacing: -.035em; word-spacing: .06em; color: var(--text); }
+.hw-sheet-title { font: 850 24px/1 var(--display); letter-spacing: -.035em; word-spacing: .06em; color: var(--text); overflow-wrap: anywhere; }
 .hw-sheet [data-slot="close"] { position: static; inset: auto; }
 /* Handle (decorative) at the top of the sheet, on the phone. */
 .hw-sheet::before { content: ''; order: 0; width: 36px; height: 4px; background: var(--line); margin: 0 auto 10px; flex: none; }
@@ -1410,7 +1410,7 @@ body.kb .composer { padding-bottom: 8px; }
 .menu button .desc { color: var(--text-3); font-size: 14.5px; }
 /* Action with a description (plugin actions): label, then the description below. */
 .menu button .menu-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.menu button .menu-sub { color: var(--text-3); font-size: 13px; line-height: 1.35; }
+.menu button .menu-sub { color: var(--text-3); font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
 .menu .menu-group {
   display: flex; align-items: center; gap: 8px; padding: 14px 8px 6px;
   font: 600 10.5px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted);

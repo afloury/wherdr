@@ -518,7 +518,7 @@ function pathMenuItems(p: string): MenuItem[] {
       { label: t('Open'), icon: 'i-lucide-external-link', run: () => revealOnMachine(p, 'open') },
     )
   }
-  items.push({ label: t('Copy path'), icon: 'i-lucide-copy', run: () => copyText(p) })
+  items.push({ label: t('Copy path'), icon: 'i-lucide-copy', desc: p, mono: true, run: () => copyText(p) })
   return items
 }
 function openPathMenu(el: HTMLElement) {
@@ -526,7 +526,7 @@ function openPathMenu(el: HTMLElement) {
   if (!p) return
   if (!desk.value) {
     haptic()
-    openMenu(pathMenuItems(p), p)
+    openMenu(pathMenuItems(p), p.replace(/\/+$/, '').split('/').pop() || p)
     return
   }
   const r = el.getBoundingClientRect()
