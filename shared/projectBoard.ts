@@ -8,7 +8,7 @@
 // the `[b:color(text)]` and `[b:color(text)](target)` badges that the
 // coordinator adds when useful (no automatic badge).
 
-export type ListKind = 'test' | 'decide' | 'review' | 'blocked' | 'doing' | 'backlog' | 'done'
+export type ListKind = 'test' | 'decide' | 'review' | 'doing' | 'queue' | 'blocked' | 'todo' | 'backlog' | 'done'
 
 export interface ProjectTask {
   text: string
@@ -48,6 +48,9 @@ export interface ProjectBoard {
   open: ProjectThread[]
   resolved: ProjectThread[]
   version: string
+  // Thread slots (PROJECT.md `max_parallel_threads`, open threads): shown on
+  // the "In queue" list. Missing when unknown.
+  slots?: { used: number, max: number }
   // TASKS.md missing, or unreadable threads: the panel says so without breaking.
   tasksMissing?: boolean
   threadsError?: string
@@ -62,7 +65,9 @@ const KINDS: [ListKind, RegExp][] = [
   ['review', /^(a relire|relire|relecture|to review|review|reviews|code review|pr|prs|pull requests?|a valider|to validate)$/],
   ['blocked', /^(bloque(?:e|es|s)?|blocked|on hold|en attente|waiting|stuck)$/],
   ['doing', /^(en cours|in progress|doing|ongoing|wip|active)$/],
-  ['backlog', /^(backlog|a faire|todo|to do|next|later|plus tard|idees|ideas)$/],
+  ['queue', /^(en file|en file d attente|file d attente|file|in queue|queue|queued|up next)$/],
+  ['todo', /^(a faire|todo|to do|to dos|todos|next|prochainement|soon)$/],
+  ['backlog', /^(backlog|later|plus tard|idees|ideas|someday|un jour)$/],
   ['done', /^(fait|faits|done|termine|terminees?|finished|completed?)$/],
 ]
 export function listKind(title: string): ListKind | null {
@@ -250,11 +255,15 @@ export interface BoardSection {
   threads: ProjectThread[] // ouverts (En cours) ou faits (Fait)
 }
 
-// Sections shown: the TASKS.md lists in their order; "In progress"
+// Display order, whatever the file order: lists of the same kind (and
+// unknown lists, after Backlog) keep their file order.
+export const LIST_ORDER: ListKind[] = ['test', 'decide', 'review', 'doing', 'queue', 'blocked', 'todo', 'backlog', 'done']
+const rank = (k: ListKind | null) => (k === null ? LIST_ORDER.indexOf('backlog') + 0.5 : LIST_ORDER.indexOf(k))
+
+// Sections shown: the TASKS.md lists in the canonical order; "In progress"
 // receives the open threads (a task pointing to an open thread is
 // shown through the thread, live); "Done" receives the closed threads.
-// A missing section is added: In progress before the first list that
-// is neither "to test" nor "to decide", Done at the end.
+// A missing In progress (with open threads) or Done section is added.
 export function boardSections(board: Pick<ProjectBoard, 'lists' | 'open' | 'resolved'>, labels: { doing: string, done: string }): BoardSection[] {
   const openIds = new Set(board.open.map(t => t.id))
   const sections: BoardSection[] = board.lists.map((l, i) => ({
@@ -267,21 +276,41 @@ export function boardSections(board: Pick<ProjectBoard, 'lists' | 'open' | 'reso
   let doing = sections.find(s => s.kind === 'doing')
   if (!doing && board.open.length) {
     doing = { key: 'doing', title: labels.doing, kind: 'doing', tasks: [], threads: [] }
-    const at = sections.findIndex(s => s.kind !== 'test' && s.kind !== 'decide' && s.kind !== 'review' && s.kind !== 'blocked')
-    sections.splice(at < 0 ? sections.length : at, 0, doing)
+    sections.push(doing)
   }
   if (doing) doing.threads = board.open
   let done = sections.find(s => s.kind === 'done')
   if (!done) {
     done = { key: 'done', title: labels.done, kind: 'done', tasks: [], threads: [] }
     sections.push(done)
-  } else {
-    // The "Done" list goes last, with the closed threads.
-    sections.splice(sections.indexOf(done), 1)
-    sections.push(done)
   }
   done.threads = board.resolved
-  return sections
+  // Array.prototype.sort is stable: same rank keeps the file order.
+  return sections.sort((a, b) => rank(a.kind) - rank(b.kind))
+}
+
+// Slot status of the "In queue" list: "2 of 3 thread slots in use · next: …".
+export function queueStatus(slots: ProjectBoard['slots'], next: string | undefined, lang: TestLang = 'fr'): string | null {
+  if (!slots || !(slots.max > 0)) return null
+  const head = lang === 'en'
+    ? `${slots.used} of ${slots.max} thread slot${slots.max === 1 ? '' : 's'} in use`
+    : `${slots.used} place${slots.used > 1 ? 's' : ''} de thread sur ${slots.max} occupée${slots.used > 1 ? 's' : ''}`
+  const n = next?.trim()
+  if (!n) return head
+  return lang === 'en' ? `${head} · next: ${n}` : `${head} · ensuite : ${n}`
+}
+
+// `max_parallel_threads` from the TOML front matter of PROJECT.md (between
+// `+++` lines); herdr-projects defaults to 10 when the key is absent.
+export function maxParallelThreads(projectMd: string): number | null {
+  const m = /^\+\+\+\r?\n([\s\S]*?)\r?\n\+\+\+/.exec(String(projectMd || ''))
+  if (!m) return null
+  // Top-level keys only: stop at the first table (`[[repos]]`).
+  const top = m[1]!.split(/^\s*\[/m)[0]!
+  const v = /^\s*max_parallel_threads\s*=\s*(\d+)\s*(?:#.*)?$/m.exec(top)
+  if (!v) return 10
+  const n = Number(v[1])
+  return n >= 1 ? n : null
 }
 
 // "Hide empty lists" setting: a section with no task and no thread
@@ -343,16 +372,33 @@ export function unblockMessage(task: string, lang: TestLang = 'fr'): string {
   return `${lang === 'en' ? '↳ Unblock: ' : '↳ Débloquer : '}${task.trim()}`
 }
 
+// "To do" and "In queue": sent immediately, the coordinator edits TASKS.md.
+export type MoveAction = 'up' | 'down' | 'queue' | 'now' | 'unqueue' | 'backlog'
+const MOVES: Record<MoveAction, [en: string, fr: string]> = {
+  up: ['↳ Move up: ', '↳ Monter : '],
+  down: ['↳ Move down: ', '↳ Descendre : '],
+  queue: ['↳ Queue: ', '↳ Mettre en file : '],
+  now: ['↳ Launch now: ', '↳ Lancer maintenant : '],
+  unqueue: ['↳ Remove from queue: ', '↳ Retirer de la file : '],
+  backlog: ['↳ Back to backlog: ', '↳ Remettre au backlog : '],
+}
+export function moveMessage(action: MoveAction, task: string, lang: TestLang = 'fr'): string {
+  return `${MOVES[action][lang === 'en' ? 0 : 1]}${task.trim()}`
+}
+
 // ---------------------------------------------------------------- help (Settings › Plugins)
 // Recommended TASKS.md lists, in the template's order. herdr-projects
 // only requires `##` lists; "To test" and "To decide" are a
 // wherdr convention, read by the Project panel.
+// Every list is optional: a project keeps the ones it uses.
 const TEMPLATE_LISTS: { kind: ListKind, fr: string, en: string }[] = [
   { kind: 'test', fr: 'À tester', en: 'To test' },
   { kind: 'decide', fr: 'À décider', en: 'To decide' },
   { kind: 'review', fr: 'À relire', en: 'To review' },
-  { kind: 'blocked', fr: 'Bloqué', en: 'Blocked' },
   { kind: 'doing', fr: 'En cours', en: 'In progress' },
+  { kind: 'queue', fr: 'En file', en: 'In queue' },
+  { kind: 'blocked', fr: 'Bloqué', en: 'Blocked' },
+  { kind: 'todo', fr: 'À faire', en: 'To do' },
   { kind: 'backlog', fr: 'Backlog', en: 'Backlog' },
 ]
 
@@ -364,8 +410,8 @@ export function listTitle(kind: ListKind, lang: TestLang = 'fr'): string {
 
 export function tasksTemplate(lang: TestLang = 'fr'): string {
   const ex = lang === 'en'
-    ? { test: '- [ ] Check the new settings page (me)', decide: '- [ ] Keep the old layout? (me)', review: '- [ ] Offline banner [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me)', blocked: '- [ ] Publish the guide — blocked by: review (agent)', doing: '- [ ] Fix the offline banner [b:gray(t-0001)](t-0001) (agent → t-0001)', backlog: '- [ ] Dark mode for charts (agent)' }
-    : { test: '- [ ] Vérifier la nouvelle page Réglages (me)', decide: '- [ ] Garder l’ancienne disposition ? (me)', review: '- [ ] Bandeau hors ligne [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me)', blocked: '- [ ] Publier le guide — bloqué par : relecture (agent)', doing: '- [ ] Corriger le bandeau hors ligne [b:gray(t-0001)](t-0001) (agent → t-0001)', backlog: '- [ ] Mode sombre des graphiques (agent)' }
+    ? { test: '- [ ] Check the new settings page (me)', decide: '- [ ] Keep the old layout? (me)', review: '- [ ] Offline banner [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me)', blocked: '- [ ] Publish the guide — blocked by: review (agent)', doing: '- [ ] Fix the offline banner [b:gray(t-0001)](t-0001) (agent → t-0001)', queue: '- [ ] Export to CSV (agent)', todo: '- [ ] Keyboard shortcuts help (agent)', backlog: '- [ ] Dark mode for charts (agent)' }
+    : { test: '- [ ] Vérifier la nouvelle page Réglages (me)', decide: '- [ ] Garder l’ancienne disposition ? (me)', review: '- [ ] Bandeau hors ligne [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me)', blocked: '- [ ] Publier le guide — bloqué par : relecture (agent)', doing: '- [ ] Corriger le bandeau hors ligne [b:gray(t-0001)](t-0001) (agent → t-0001)', queue: '- [ ] Export CSV (agent)', todo: '- [ ] Aide des raccourcis clavier (agent)', backlog: '- [ ] Mode sombre des graphiques (agent)' }
   const blocks = TEMPLATE_LISTS.map(l => `## ${lang === 'en' ? l.en : l.fr}\n\n${ex[l.kind as keyof typeof ex]}`)
   return `# Tasks\n\n${blocks.join('\n\n')}\n`
 }
@@ -382,9 +428,10 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
   const lines = en
     ? [
         'wherdr Project panel: TASKS.md conventions and messages.',
-        'Lists: "## To test" (what I must check after a deploy), "## To decide" (questions for me), "## To review" (pull requests for me to review), "## Blocked" (waiting for something external), "## In progress" (threads), "## Backlog". One task per line: "- [ ] title (owner)", owner = me, agent or "agent → t-0140" (not shown); blocked tasks may add "— blocked by: reason" before the owner.',
+        'Lists, all optional: we choose together which ones this project uses (a small project may only need Backlog, In progress and Done). wherdr shows the ## lists present in TASKS.md, in this order: "## To test" (what I must check after a deploy), "## To decide" (questions for me), "## To review" (pull requests for me to review), "## In progress" (what a thread is really doing), "## In queue" (decided: you launch the first one as soon as a thread slot frees, in list order), "## Blocked" (waiting for someone or something external), "## To do" (to do soon, in my priority order; never launched on your own), "## Backlog" (everything else), "## Done".',
+        'One task per line: "- [ ] title (owner)", owner = me, agent or "agent → t-0140" (not shown); blocked tasks may add "— blocked by: reason" before the owner.',
         'Badges (the only decoration wherdr shows): "[b:color(text)]", or "[b:color(text)](target)" for a clickable badge. Color: red, orange, amber, green, teal, blue, violet, pink, gray, #hex, or nothing (neutral). Target: an https:// link (opens a new tab) or a thread ID like t-0140 (opens its tab). Short text (24 characters max). E.g. "- [ ] Stop button [b:red(bug)] [b:gray(t-0140)](t-0140) [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me)".',
-        'Use badges on your own whenever they help me (status, owner, thread, PR, device, priority…), and follow the badge preferences I give you. Stay sparse: two or three badges per line at most. A bare URL in a task shows as a plain link.',
+        'Badges are free-form: use them on your own whenever they help me (status, owner, thread, PR, device, priority…), and follow the badge preferences I give you. Stay sparse: two or three badges per line at most. A bare URL in a task shows as a plain link.',
         `"${testedMessage('…', lang)}" → remove the line from To test.`,
         `"${m(problemPrefix)}" → treat it as a bug: fix it (new thread).`,
         `"${m(questionPrefix)}" → answer: explain what to test and how.`,
@@ -394,14 +441,20 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
         `"${unblockMessage('…', lang)}" → restart the task or ask what is missing. Move a task to Blocked when it waits for something external.`,
         `"${launchMessage('…', lang)}" → launch a thread for this Backlog task.`,
         `"${m(detailPrefix)}" → add the detail to the task.`,
+        `"${moveMessage('up', '…', lang)}" / "${moveMessage('down', '…', lang)}" → move the line one place up or down in its list (To do or In queue).`,
+        `"${moveMessage('queue', '…', lang)}" → move the line from To do to the end of In queue.`,
+        `"${moveMessage('now', '…', lang)}" → start a thread now if a slot is free (beyond max_parallel_threads only if I say so), otherwise put it first in In queue.`,
+        `"${moveMessage('unqueue', '…', lang)}" → move the line from In queue back to the top of To do. "${moveMessage('backlog', '…', lang)}" → move the line from To do to Backlog.`,
+        'In queue contract: whenever a thread slot frees (a thread is resolved), launch the first In queue task and move it to In progress. Never launch To do or Backlog tasks without being asked.',
         'After each deploy, add to To test what I must check. Put in To review each pull request I must review, with its link (link badge).',
         'The ## lists in TASKS.md are the active lists: I ask you when one must be added or removed.',
       ]
     : [
         'Panneau Projet de wherdr : conventions de TASKS.md et messages.',
-        'Listes : « ## À tester » (ce que je dois vérifier après un déploiement), « ## À décider » (questions pour moi), « ## À relire » (PR que je dois relire), « ## Bloqué » (attente extérieure), « ## En cours » (threads), « ## Backlog ». Une tâche par ligne : « - [ ] titre (responsable) », responsable = me, agent ou « agent → t-0140 » (non affiché) ; une tâche bloquée peut ajouter « — bloqué par : raison » avant le responsable.',
+        'Listes, toutes facultatives : on choisit ensemble celles que ce projet utilise (un petit projet peut se contenter de Backlog, En cours et Fait). wherdr affiche les listes ## présentes dans TASKS.md, dans cet ordre : « ## À tester » (ce que je dois vérifier après un déploiement), « ## À décider » (questions pour moi), « ## À relire » (PR que je dois relire), « ## En cours » (ce qu’un thread fait vraiment), « ## En file » (décidé : tu lances la première dès qu’une place de thread se libère, dans l’ordre de la liste), « ## Bloqué » (attente de quelqu’un ou de quelque chose d’extérieur), « ## À faire » (à faire bientôt, dans mon ordre de priorité ; jamais lancé de toi-même), « ## Backlog » (tout le reste), « ## Fait ».',
+        'Une tâche par ligne : « - [ ] titre (responsable) », responsable = me, agent ou « agent → t-0140 » (non affiché) ; une tâche bloquée peut ajouter « — bloqué par : raison » avant le responsable.',
         'Badges (seule décoration affichée par wherdr) : « [b:couleur(texte)] », ou « [b:couleur(texte)](cible) » pour un badge cliquable. Couleur : red, orange, amber, green, teal, blue, violet, pink, gray, #hex, ou rien (neutre). Cible : un lien https:// (nouvel onglet) ou un ID de thread comme t-0140 (ouvre son onglet). Texte court (24 caractères au plus). Ex. « - [ ] Bouton Stop [b:red(bug)] [b:gray(t-0140)](t-0140) [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me) ».',
-        'Utilise les badges de toi-même quand ils me sont utiles (statut, responsable, thread, PR, appareil, priorité…), et suis les préférences de badges que je te donne. Reste sobre : deux ou trois badges par ligne au plus. Une URL brute dans une tâche s’affiche en lien simple.',
+        'Les badges sont libres : utilise-les de toi-même quand ils me sont utiles (statut, responsable, thread, PR, appareil, priorité…), et suis les préférences de badges que je te donne. Reste sobre : deux ou trois badges par ligne au plus. Une URL brute dans une tâche s’affiche en lien simple.',
         `« ${testedMessage('…', lang)} » → retirer la ligne d’À tester.`,
         `« ${m(problemPrefix)} » → c’est un bug : le corriger (nouveau thread).`,
         `« ${m(questionPrefix)} » → répondre : expliquer quoi tester et comment.`,
@@ -411,6 +464,11 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
         `« ${unblockMessage('…', lang)} » → relancer la tâche ou demander ce qui manque. Déplacer une tâche en Bloqué quand elle attend quelque chose d’extérieur.`,
         `« ${launchMessage('…', lang)} » → lancer un thread pour cette tâche du Backlog.`,
         `« ${m(detailPrefix)} » → compléter la tâche avec cette précision.`,
+        `« ${moveMessage('up', '…', lang)} » / « ${moveMessage('down', '…', lang)} » → monter ou descendre la ligne d’un cran dans sa liste (À faire ou En file).`,
+        `« ${moveMessage('queue', '…', lang)} » → déplacer la ligne d’À faire à la fin d’En file.`,
+        `« ${moveMessage('now', '…', lang)} » → lancer un thread tout de suite si une place est libre (au-delà de max_parallel_threads seulement si je le dis), sinon la mettre en tête d’En file.`,
+        `« ${moveMessage('unqueue', '…', lang)} » → remettre la ligne d’En file en tête d’À faire. « ${moveMessage('backlog', '…', lang)} » → déplacer la ligne d’À faire vers Backlog.`,
+        'Contrat d’En file : dès qu’une place de thread se libère (thread clôturé), lancer la première tâche d’En file et la passer dans En cours. Ne jamais lancer une tâche d’À faire ou du Backlog sans qu’on te le demande.',
         'Après chaque déploiement, ajouter à À tester ce que je dois vérifier. Mettre dans À relire chaque PR que je dois relire, avec son lien (badge-lien).',
         'Les listes ## de TASKS.md sont les listes actives : je te demande d’en ajouter ou d’en retirer une.',
       ]

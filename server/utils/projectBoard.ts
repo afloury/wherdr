@@ -8,7 +8,7 @@
 import { execFile } from 'node:child_process'
 import path from 'node:path'
 import type { Pane } from '../../shared/types'
-import { type ProjectBoard, normalizeThreads, parseTasks, splitThreads } from '../../shared/projectBoard'
+import { type ProjectBoard, maxParallelThreads, normalizeThreads, parseTasks, splitThreads } from '../../shared/projectBoard'
 import { projectOf } from '../../shared/projects'
 import { isProjectThread } from '../../shared/paneTitle'
 import { HERDR_BIN, HERDR_CHILD_ENV } from './env'
@@ -17,6 +17,7 @@ import type { Machine } from './machines'
 import { machineFor } from './actions'
 
 const TASKS_BYTES = 256 * 1024
+const PROJECT_HEAD_BYTES = 16 * 1024
 const REPORT_BYTES = 512 * 1024
 const THREADS_BYTES = 8 * 1024 * 1024
 const BIN_TTL_MS = 60000
@@ -77,11 +78,13 @@ async function target(pane: Pane): Promise<Target | null> {
   return where ? { m, bin, ...where } : null
 }
 
-// Light version: TASKS.md (size, date) and the threads folder, which
-// herdr-projects rewrites (atomic writes) on every thread change.
-async function version(t: Target): Promise<{ v: string, tasks: { size: number } | null }> {
-  const [tasks, threads] = await t.m.fs.statMany([`${t.dir}/TASKS.md`, `${t.dir}/threads`])
-  return { v: `${tasks ? `${tasks.size}.${tasks.mtimeMs}` : '-'}|${threads ? threads.mtimeMs : '-'}`, tasks: tasks || null }
+// Light version: TASKS.md (size, date), PROJECT.md (thread slots) and the
+// threads folder, which herdr-projects rewrites (atomic writes) on every
+// thread change.
+async function version(t: Target): Promise<{ v: string, tasks: { size: number } | null, project: { size: number } | null }> {
+  const [tasks, threads, project] = await t.m.fs.statMany([`${t.dir}/TASKS.md`, `${t.dir}/threads`, `${t.dir}/PROJECT.md`])
+  const v = `${tasks ? `${tasks.size}.${tasks.mtimeMs}` : '-'}|${threads ? threads.mtimeMs : '-'}|${project ? project.mtimeMs : '-'}`
+  return { v, tasks: tasks?.isFile ? tasks : null, project: project?.isFile ? project : null }
 }
 
 function threadList(t: Target): Promise<string> {
@@ -114,8 +117,9 @@ export async function readProjectBoard(pane: Pane, since?: string): Promise<Boar
   if (!t) return { available: false }
   const ver = await version(t)
   if (since && since === ver.v) return { same: true, version: ver.v }
-  const [tasksText, threads] = await Promise.all([
+  const [tasksText, projectText, threads] = await Promise.all([
     ver.tasks ? t.m.fs.read(`${t.dir}/TASKS.md`, 0, Math.min(ver.tasks.size, TASKS_BYTES)).then(b => b.toString('utf8')) : Promise.resolve(null),
+    ver.project ? t.m.fs.read(`${t.dir}/PROJECT.md`, 0, Math.min(ver.project.size, PROJECT_HEAD_BYTES)).then(b => b.toString('utf8')).catch(() => '') : Promise.resolve(''),
     threadList(t).then(out => ({ list: normalizeThreads(JSON.parse(out)), error: undefined as string | undefined }))
       .catch((e: Error) => ({ list: [], error: e.message || 'threads illisibles' })),
   ])
@@ -123,6 +127,9 @@ export async function readProjectBoard(pane: Pane, since?: string): Promise<Boar
   const board: ProjectBoard = { slug: t.slug, lists: parseTasks(tasksText || ''), open, resolved, version: ver.v }
   if (tasksText === null) board.tasksMissing = true
   if (threads.error) board.threadsError = threads.error
+  // herdr-projects counts every open thread against max_parallel_threads.
+  const max = maxParallelThreads(projectText)
+  if (max && !threads.error) board.slots = { used: open.length, max }
   return board
 }
 
