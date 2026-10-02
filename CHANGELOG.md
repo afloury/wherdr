@@ -15,7 +15,8 @@ First public release.
   folds them, multi-select and the final Submit).
   Claude Code's AskUserQuestion is a card too, completed from the transcript when a short pane
   shows only part of it: checkboxes (ticks kept for the options scrolled out of view),
-  "Type something" typed in place, Submit and the review step.
+  "Type something" typed in place, Submit and the review step. A numbered list in the agent's
+  previous reply, still on screen above the box in a tall pane, no longer hides the card.
   In the conversation view, omp's "Other (type your own)" opens a text field under the
   question (multi-line, replaces an earlier custom answer); a reply typed in the composer
   while omp asks is sent as that custom answer. A multi-question omp ask shows its question
