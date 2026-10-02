@@ -46,7 +46,11 @@ describe('champ de saisie de Claude Code', () => {
 // into the field (popAll); `take` simulates the end of turn that takes the queue.
 function fakeClaude(queue: string[], opts: { take?: boolean, lagChat?: number, stuck?: boolean, typed?: string[] } = {}) {
   const st = { queue: [...queue], input: [...(opts.typed || [])] as string[], items: [] as ChatItem[], sent: [] as string[], keys: [] as string[], lag: opts.lagChat || 0 }
-  const q = (): ClaudeQueueEntry[] => st.queue.map(text => ({ text, ts: null }))
+  // "[Image #1]" in a queued text: a photo (Claude's entry keeps its count, not its tag).
+  const q = (): ClaudeQueueEntry[] => st.queue.map((text) => {
+    const images = (text.match(/\[Image #\d+\]/g) || []).length
+    return { text: text.replace(/\[Image #\d+\]/g, '').trim(), ts: null, ...(images ? { images } : {}) }
+  })
   let shown = q()
   const deps = {
     screen: async () => screen(st.queue, st.input),
@@ -96,10 +100,25 @@ describe('annuler un message en file de Claude', () => {
 
   it('several: the others are requeued, in order, original text', async () => {
     const { st, deps } = fakeClaude(['Premier', 'Collé\nsur\ntrois lignes', 'Troisième'])
-    const r = await unqueueClaude({ ...deps, original: t => (t === 'Premier' ? 'Premier\n/home/n/.cache/herdr-web/uploads/p.jpg' : t) }, 'Collé\nsur\ntrois lignes')
+    const r = await unqueueClaude({ ...deps, original: e => (e.text === 'Premier' ? 'Premier\n/home/n/.cache/herdr-web/uploads/p.jpg' : e.text) }, 'Collé\nsur\ntrois lignes')
     expect(r.requeued).toEqual(['Premier\n/home/n/.cache/herdr-web/uploads/p.jpg', 'Troisième'])
     expect(st.queue).toEqual(['Premier\n/home/n/.cache/herdr-web/uploads/p.jpg', 'Troisième'])
     expect(st.input).toEqual([])
+  })
+
+  it('photos alone: its entry (images, no text) leaves the queue, the others are requeued with their photos', async () => {
+    const mine = '/home/user/.cache/herdr-web/uploads/a.jpg'
+    const other = '/home/user/.cache/herdr-web/uploads/b.jpg'
+    const { st, deps } = fakeClaude(['Premier', '[Image #1]', '[Image #2]'])
+    const r = await unqueueClaude({ ...deps, original: e => (e.text ? e.text : other) }, mine)
+    expect(r.requeued).toEqual(['Premier', other])
+    expect(st.input).toEqual([])
+  })
+
+  it('photos alone already taken: refused without touching the terminal', async () => {
+    const { st, deps } = fakeClaude(['Texte'])
+    await expect(unqueueClaude(deps, '/home/user/.cache/herdr-web/uploads/a.jpg')).rejects.toMatchObject({ code: 'already_read' })
+    expect(st.keys).toEqual([])
   })
 
   it('lagging transcript: ↑ brought back the whole queue, nothing is lost', async () => {

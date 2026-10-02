@@ -20,8 +20,9 @@ import { parseWaitScreen } from './waitScreen'
 import { parseMenu, TOP } from '../../shared/menuScreen'
 import { parseClaudeActivity } from './activity'
 import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './claudeScreen'
-import { type QueueEntry, INPUT_STATES, checkQueue, isUploadLine, nextHeld, publicEntry, queuedDone } from './queued'
+import { type QueueEntry, INPUT_STATES, checkQueue, isUploadLine, loadQueued, nextHeld, publicEntry, queuedDone } from './queued'
 import { inputVisible } from './choices'
+import { photosOnly } from '../../shared/queuedMatch'
 import { msgText, unqueueClaude } from './unqueue'
 import { type TranscriptPane, sameMsg } from './transcripts'
 import { agentNotificationTitle, pushSend, subWatchesSession } from './push'
@@ -240,7 +241,20 @@ export function refreshModel(p: Pane) {
 // Messages sent from the phone but not yet taken by the agent (it is
 // working, or starting): shown as "queued" until they
 // appear in its transcript, as in Claude desktop / Codex.
-const queued = new Map<string, QueueEntry[]>()
+// Kept in data/ to survive a service restart: Claude's own queue only has the
+// text ("[Image #1]" for a photo), wherdr's record keeps the photos.
+const QUEUED_FILE = path.join(DATA_DIR, 'queued.json')
+const queued = new Map<string, QueueEntry[]>(loadQueued(readQueuedFile(), Date.now()))
+function readQueuedFile(): unknown {
+  try { return JSON.parse(fs.readFileSync(QUEUED_FILE, 'utf8')) } catch { return null }
+}
+let queuedSaved = JSON.stringify(Object.fromEntries(queued))
+function saveQueued() {
+  const s = JSON.stringify(Object.fromEntries(queued))
+  if (s === queuedSaved) return
+  queuedSaved = s
+  fsp.writeFile(QUEUED_FILE, s + '\n', { mode: 0o600 }).catch(() => {})
+}
 export function addQueued(paneId: string, text: string, opts: { held?: boolean } = {}): QueuedMessage {
   const e: QueueEntry = { id: crypto.randomBytes(4).toString('hex'), text: String(text).slice(0, 4000), at: Date.now(), ...(opts.held ? { held: true } : {}) }
   queued.set(paneId, [...(queued.get(paneId) || []), e])
@@ -351,6 +365,9 @@ export async function cancelQueued(paneId: string, text: string, id?: string): P
   unqueueBusy.add(p.id)
   try {
     const own = [...(queued.get(p.id) || [])]
+    // Photos alone have no text to match: wherdr's records of photos alone,
+    // in sending order, give back the photos of the entries typed again.
+    const ownPhotos = own.filter(q => q !== mine && photosOnly(q.text))
     await unqueueClaude({
       screen: async () => String(((await herdr('pane.read', { pane_id: p.id, source: 'visible', format: 'ansi' }, 4000)).read || {}).text || ''),
       keys: async (keys) => { await herdr('pane.send_input', { pane_id: p.id, keys }) },
@@ -360,7 +377,9 @@ export async function cancelQueued(paneId: string, text: string, id?: string): P
       },
       prompt: t => agentPrompt(p.id, t),
       sleep,
-      original: t => (own.find(q => q !== mine && sameMsg(t, msgText(q.text))) || { text: t }).text,
+      original: e => (!e.text && e.images
+        ? ownPhotos.shift()?.text || null
+        : (own.find(q => q !== mine && sameMsg(e.text, msgText(q.text))) || { text: e.text }).text),
     }, text)
     drop()
     log(`queued message cancelled on ${p.id}`)
@@ -592,6 +611,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
   saveBorn()
   for (const id of seen.keys()) if (!alive(id)) { seen.delete(id); seenDirty = true }
   saveSeen()
+  saveQueued()
   for (const id of previews.keys()) if (!alive(id)) { previews.delete(id); transcripts.forget(id) }
   for (const id of models.keys()) if (!alive(id)) { models.delete(id); forgetModel(id) }
   for (const id of activities.keys()) if (!alive(id)) activities.delete(id)

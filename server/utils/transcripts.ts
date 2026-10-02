@@ -14,6 +14,7 @@
 //    rollout (thread_source "user", no parent) of the same cwd, modified
 //    last. Ambiguous only if two Codex run in the same folder.
 import path from 'node:path'
+import { imageTagCount } from '../../shared/queuedMatch'
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail } from '../../shared/types'
 import { pendingClaudeTool, pendingCodexTool } from './promptDetail'
 import { type ClaudeAsked, type OmpAsked, pendingClaudeAsk, pendingOmpAsk } from './choices'
@@ -183,11 +184,17 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
   let started: ClaudeQueueEntry | null = null
   // A user message appears: it leaves the queue, even without
   // dequeue; otherwise, the head of the queue may be this message, modified.
-  const said = (text: string, ts: string | null) => {
+  // Photos alone have no text: the oldest photos-only entry leaves the queue
+  // when a message with images and no text appears.
+  const said = (text: string, ts: string | null, images = 0) => {
     const before = queue.length
     for (let i = queue.length - 1; i >= 0; i--) {
       const q = queue[i]!
       if ((!q.ts || !ts || q.ts <= ts) && sameMsg(q.text, text)) queue.splice(i, 1)
+    }
+    if (images && !stripImageTags(text)) {
+      const i = queue.findIndex(q => !q.text && (q.images || 0) > 0 && (!q.ts || !ts || q.ts <= ts))
+      if (i >= 0) queue.splice(i, 1)
     }
     const head = queue.find(q => !isNoise(q.text))
     if (queue.length === before && head && (!head.ts || !ts || head.ts <= ts)) started = head
@@ -256,8 +263,10 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       lastSaid = null
     }
     if (d.type === 'queue-operation') {
-      const text = stripImageTags(unwrapPasted(String(d.content || '')))
-      if (d.operation === 'enqueue') queue.push({ text, ts: d.timestamp || null })
+      const raw = unwrapPasted(String(d.content || ''))
+      const text = stripImageTags(raw)
+      const images = imageTagCount(raw)
+      if (d.operation === 'enqueue') queue.push({ text, ts: d.timestamp || null, ...(images ? { images } : {}) })
       else {
         const i = queue.findIndex(q => q.text === text)
         queue.splice(i >= 0 ? i : 0, 1)
@@ -283,7 +292,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       if (text || images) {
         items.push({ role: 'user', text: clip(text), images, ref: images ? ref : undefined, ts: d.attachment.timestamp || ts })
         pendingCmd = null
-        said(text, d.attachment.timestamp || ts)
+        said(text, d.attachment.timestamp || ts, images)
       }
       continue
     }
@@ -360,7 +369,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       if (text.trim() || images) {
         items.push({ role: 'user', text: clip(text.trim()), images, ref: images ? ref : undefined, ts })
         pendingCmd = null
-        said(text, ts)
+        said(text, ts, images)
         noteSaid(d)
       }
     } else if (Array.isArray(content)) {

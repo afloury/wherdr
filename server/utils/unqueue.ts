@@ -12,6 +12,7 @@ import type { ChatItem, ClaudeQueueEntry } from '../../shared/types'
 import { HerdrError } from './herdr'
 import { isUploadLine } from './queued'
 import { sameMsg } from './transcripts'
+import { photosLanded, photosOnly } from '../../shared/queuedMatch'
 
 // Message text without photo paths (which became images in Claude).
 export const msgText = (t: string) => String(t || '').split('\n').filter(l => !isUploadLine(l)).join('\n').trim()
@@ -50,8 +51,9 @@ export interface UnqueueDeps {
   chat: () => Promise<{ queue: ClaudeQueueEntry[], items: ChatItem[] }>
   prompt: (text: string) => Promise<void> // agent.prompt
   sleep: (ms: number) => Promise<void>
-  // Original text (with photo paths) of an entry queued again.
-  original?: (text: string) => string
+  // Original text (with photo paths) of an entry queued again; null when
+  // unknown for photos alone (nothing to type back).
+  original?: (entry: ClaudeQueueEntry) => string | null
 }
 
 const already = () => new HerdrError('already_read', 'Already read by the agent')
@@ -59,9 +61,11 @@ const already = () => new HerdrError('already_read', 'Already read by the agent'
 // Removes the message `text` from Claude's queue. Returns the messages queued again.
 export async function unqueueClaude(d: UnqueueDeps, text: string): Promise<{ requeued: string[] }> {
   const wanted = msgText(text)
-  const isIt = (q: ClaudeQueueEntry) => sameMsg(q.text, wanted) || sameMsg(wanted, q.text)
+  // Photos alone: Claude's entry has no text, only images (see shared/queuedMatch.ts).
+  const photos = photosOnly(text)
+  const isIt = (q: ClaudeQueueEntry) => (photos ? !q.text && (q.images || 0) > 0 : sameMsg(q.text, wanted) || sameMsg(wanted, q.text))
   const before = await d.chat()
-  if (!wanted || !before.queue.some(isIt)) throw already()
+  if ((!wanted && !photos) || !before.queue.some(isIt)) throw already()
   const box0 = inputBox(await d.screen())
   if (box0 === null) throw new HerdrError('no_input', 'Agent input field not found')
   if (box0) throw new HerdrError('input_busy', 'The agent’s input field is not empty')
@@ -78,13 +82,15 @@ export async function unqueueClaude(d: UnqueueDeps, text: string): Promise<{ req
   // the history that comes back: our message is then in the conversation.
   const saidCount = (items: ChatItem[], q: string) => items.filter(i => (i.role === 'user' || i.role === 'bash') && sameMsg(q, i.text)).length
   const saidNew = (a: ChatItem[], q: string) => saidCount(a, q) > saidCount(before.items, q)
+  const photosSaid = (items: ChatItem[]) => items.filter(i => photosLanded(text, i)).length
+  const wantedSaid = (a: ChatItem[]) => (photos ? photosSaid(a) > photosSaid(before.items) : saidNew(a, wanted))
   let after = before
   for (let i = 0; i < 15; i++) {
     after = await d.chat()
-    if (!after.queue.some(isIt) || saidNew(after.items, wanted)) break
+    if (!after.queue.some(isIt) || wantedSaid(after.items)) break
     await d.sleep(200)
   }
-  const read = saidNew(after.items, wanted)
+  const read = wantedSaid(after.items)
   const popped = read
     ? before.queue.filter(q => !after.queue.some(a => a.text === q.text) && !saidNew(after.items, q.text))
     : before.queue
@@ -101,9 +107,11 @@ export async function unqueueClaude(d: UnqueueDeps, text: string): Promise<{ req
   if (read) throw already()
 
   const requeued: string[] = []
+  let skipped = false
   for (const q of popped) {
-    if (isIt(q)) continue
-    const t = d.original ? d.original(q.text) : q.text
+    if (!skipped && isIt(q)) { skipped = true; continue }
+    const t = d.original ? d.original(q) : q.text
+    if (!t) continue
     await d.prompt(t)
     requeued.push(t)
   }

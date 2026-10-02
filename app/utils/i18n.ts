@@ -71,6 +71,7 @@ const FR: Record<string, string> = {
   'Stop the agent': 'Arrêter l’agent', 'Send': 'Envoyer', 'Stopping…': 'Interruption…', 'Agent stopped': 'Agent arrêté', 'The agent is still working.': 'L’agent travaille encore.',
   'Last known state': 'Dernier état connu', 'Offline reading': 'Lecture hors ligne',
   'Image unavailable offline': 'Image non disponible hors ligne',
+  'Image': 'Image',
   'Previous image': 'Image précédente', 'Next image': 'Image suivante',
   'Terminal unavailable offline': 'Terminal indisponible hors ligne',
   'Sending unavailable offline': 'Envoi indisponible hors ligne',

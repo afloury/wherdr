@@ -1,10 +1,11 @@
 // Messages sent from the phone and shown as "queued": when
 // did the agent take them?
 import type { ChatItem, QueuedMessage } from '../../shared/types'
+import { isUploadLine, photosLanded, photosOnly } from '../../shared/queuedMatch'
 
 export const QUEUED_TTL_MS = 60 * 60 * 1000
 // Sent photo ("<home>/.cache/herdr-web/uploads/<name>" line of a message).
-export const isUploadLine = (l: string) => l.includes('/.cache/herdr-web/uploads/')
+export { isUploadLine }
 const norm = (t: unknown) => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase()
 // "! cmd": Claude Code switches to bash mode and only writes "cmd" (<bash-input>).
 export const bashText = (t: string) => String(t || '').replace(/^\s*!\s*/, '')
@@ -16,12 +17,14 @@ export const bashText = (t: string) => String(t || '').replace(/^\s*!\s*/, '')
 export function queuedDone(q: { text: string, at: number }, items: ChatItem[], idle: boolean, now: number): boolean {
   if (now - q.at > QUEUED_TTL_MS) return true
   const users = items.filter(i => i.role === 'user' || i.role === 'cmd' || i.role === 'bash')
-  // Photo paths become images in the transcript.
+  // Photo paths become images in the transcript; photos alone are matched by
+  // their photos (see shared/queuedMatch.ts).
   const needle = norm(q.text.split('\n').filter(l => !isUploadLine(l)).join(' ')).slice(0, 80)
   const bashNeedle = norm(bashText(q.text)).slice(0, 80)
+  const photos = photosOnly(q.text)
   if (users.some(u => (!u.ts || Date.parse(u.ts) >= q.at - 10000)
     && (u.role === 'bash' ? Boolean(bashNeedle) && norm(u.text).includes(bashNeedle)
-      : needle ? norm(u.text).includes(needle) : (u.images || 0) > 0))) return true
+      : needle ? norm(u.text).includes(needle) : photos ? photosLanded(q.text, u) : (u.images || 0) > 0))) return true
   if (!idle) return false
   const i = items.findIndex(u => u.role === 'user' && u.ts && Date.parse(u.ts) > q.at)
   return i >= 0 && items.slice(i + 1).some(a => a.role === 'assistant')
@@ -86,3 +89,18 @@ export const publicEntry = (q: QueueEntry): QueuedMessage => ({
   ...(q.held && !q.failed ? { state: 'held' as const } : {}),
   ...(q.failed ? { state: 'failed' as const } : {}),
 })
+
+// Records read back from data/queued.json at startup: well-formed, recent
+// ones only (a delivery interrupted by the restart is held again).
+export function loadQueued(raw: unknown, now: number): [string, QueueEntry[]][] {
+  if (!raw || typeof raw !== 'object') return []
+  const out: [string, QueueEntry[]][] = []
+  for (const [pane, list] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Array.isArray(list)) continue
+    const ok = list.filter((q): q is QueueEntry => Boolean(q) && typeof q.id === 'string' && typeof q.text === 'string' && typeof q.at === 'number'
+      && now - q.at < QUEUED_TTL_MS)
+      .map(q => ({ id: q.id, text: q.text, at: q.at, ...(q.held ? { held: true } : {}), ...(q.failed ? { failed: true } : {}) }))
+    if (ok.length) out.push([pane, ok])
+  }
+  return out
+}

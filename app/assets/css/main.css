@@ -1034,8 +1034,13 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 
 /* Messages sent, not yet taken by the agent. */
 .queued-list { display: flex; flex-direction: column; gap: 12px; padding: 4px 16px 10px; }
-.msg-bubble.queued { max-width: 88%; background: transparent; border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); color: var(--text-2); }
-.msg-bubble.queued .msg-img { opacity: .75; }
+.msg-bubble.queued { background: transparent; border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); color: var(--text-2); }
+.msg-pending.queued .msg-img { opacity: .75; }
+/* Photo counted by Claude's queue whose file wherdr does not know. */
+.thumb-missing { display: grid; place-items: center; width: 92px; height: 92px; border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); color: var(--muted); background: var(--surface-2); }
+.thumb-missing .iconify { width: 22px; height: 22px; }
+.msg-files:has(.thumb-missing) { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+@media (max-width: 700px) { .thumb-missing { width: 72px; height: 72px; } }
 .queued-tag { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; font: 400 11px/1.3 var(--mono); color: var(--muted); text-align: right; }
 .queued-tag .iconify { width: 12px; height: 12px; flex: none; color: var(--mauve); }
 .queued-cancel { display: inline-flex; align-items: center; gap: 5px; margin-left: 4px; flex: none; padding: 5px 9px; border: 1px solid var(--line); border-radius: 0; min-height: 28px; background: transparent; color: var(--text-2); font: 500 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
@@ -1044,7 +1049,6 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .queued-cancel:disabled { opacity: .55; cursor: default; }
 .queued-cancel .spin { animation: spin .8s linear infinite; }
 /* Sent but not yet in the transcript; "!" command running. */
-.msg-bubble.sent { max-width: 88%; }
 .queued-tag.sent .iconify { color: var(--accent); }
 .queued-tag.running { color: var(--text-2); letter-spacing: .08em; text-transform: uppercase; font-size: 10.5px; }
 .queued-tag.running .iconify { color: var(--accent); }

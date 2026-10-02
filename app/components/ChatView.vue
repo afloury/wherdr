@@ -8,12 +8,13 @@ import type { ChatItem, ChatResponse, ClaudeQueueEntry, Pane, QueuedMessage } fr
 import { readOffline, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { canCancelQueued, restoreDraft } from '~/utils/queuedCancel'
-import { queuedPhases } from '#shared/queuedPhase'
+import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
+import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 import { isStale, noMisses, onError, onUnavailable, type ChatMisses } from '~/utils/chatMiss'
-import { dropReplyMarker, findReplyOrigin, parseReply, replyTarget, type ReplyTarget } from '#shared/replyQuote'
+import { findReplyOrigin, parseReply, replyTarget, type ReplyTarget } from '#shared/replyQuote'
 import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
 
 const props = defineProps<{ pane: Pane, localQueued: QueuedMessage[] }>()
@@ -579,41 +580,19 @@ const shellDuration = computed(() => {
   const s = Math.max(0, Math.round((nowTick.value - since) / 1000))
   return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, '0')} s`
 })
-const normText = (s: string) => dropReplyMarker(String(s || '').replace(/\s+/g, ' ').trim().toLowerCase())
-const isUploadLine = (l: string) => l.includes('/.cache/herdr-web/uploads/')
 const queuedList = computed(() => {
   const p = props.pane
-  // Already in the conversation (the server has not noticed yet): we do not
-  // show two copies. "! cmd" appears there as a command without "!".
-  const inChat = (q: QueuedMessage) => {
-    const n = normText(q.text.split('\n').filter(l => !isUploadLine(l)).join(' ')).slice(0, 60)
-    const nb = normText(q.text.replace(/^\s*!\s*/, '')).slice(0, 60)
-    return Boolean(n) && items.value.some(i => (!q.at || !i.ts || Date.parse(i.ts) >= q.at - 10000)
-      && (i.role === 'user' ? normText(i.text).includes(n) : i.role === 'bash' && Boolean(nb) && normText(i.text).includes(nb)))
-  }
   const mine = readOnly.value ? [] : [...(p.queued || [])]
   for (const q of props.localQueued) if (!mine.some(x => x.id === q.id)) mine.push(q)
-  // Sending order, whatever the source (server or local send).
-  mine.sort((a, b) => (a.at && b.at ? a.at - b.at : 0))
-  const list: QueuedMessage[] = mine.filter(q => !inChat(q))
-  for (const q of chat.value.queue || []) {
-    const n = normText(q.text).slice(0, 60)
-    if (n && !list.some(x => normText(x.text).includes(n))) list.push({ id: `cc-${q.ts}`, text: q.text })
-  }
-  const phases = queuedPhases(list.map(q => q.text), screen.value)
+  const memory = rememberSent(p.id, mine)
   const replies = blocks.value.filter(b => b.k === 'assistant')
-  return list.map((q, i) => {
-    const lines = q.text.split('\n')
+  return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory }).map((q) => {
+    const lines = q.raw.split('\n')
     const text = lines.filter(l => !isUploadLine(l) && !isAttachmentLine(l)).join('\n').trim()
     const parsed = parseReply(text)
     return {
-      id: q.id,
-      raw: q.text,
-      mine: !q.id.startsWith('cc-'),
-      // Held or failed on the server: never typed yet, so never "sent".
-      phase: q.state ? 'queued' : phases[i]!,
-      state: q.state || null,
-      photos: lines.filter(isUploadLine).map(l => `/uploads/${encodeURIComponent(l.trim().split('/').pop()!)}`),
+      ...q,
+      srcs: q.photos.map(uploadSrc),
       files: lines.map(parseAttachmentLine).filter((f): f is { path: string, name: string } => Boolean(f)),
       text,
       body: parsed ? parsed.body : text,
@@ -622,6 +601,13 @@ const queuedList = computed(() => {
     }
   })
 })
+// Same parts as a message in the conversation: thumbnails above the bubble,
+// so nothing moves when it lands.
+const pendingParts = (q: { srcs: string[], missing: number, body: string, files: unknown[] }) => [
+  ...q.srcs.map(url => ({ type: 'file' as const, mediaType: 'image/jpeg', url })),
+  ...Array.from({ length: q.missing }, () => ({ type: 'file' as const, mediaType: 'image/jpeg', url: '' })),
+  ...(q.body || q.files.length ? [{ type: 'text' as const, text: q.body || ' ' }] : []),
+]
 // "Cancel": the message leaves the agent's queue and comes back into the input
 // field. Already read in the meantime: the server refuses, we say so.
 const canCancel = computed(() => !readOnly.value && canCancelQueued(props.pane))
@@ -1018,11 +1004,20 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
             </button>
-            <div class="msg-bubble sent">
-              <MsgThumbs v-if="q.photos.length" :srcs="q.photos" /><span v-if="q.files.length" class="msg-file-chips">
-                <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
-              </span>{{ q.body }}
-            </div>
+            <UChatMessage
+              :id="`q:${q.id}`" role="user" side="right" variant="soft"
+              :parts="pendingParts(q)"
+              :ui="{ root: `msg msg-user msg-pending sent${q.body || q.files.length ? '' : ' msg-no-text'}`, container: 'msg-c', content: 'msg-bubble', header: 'msg-files' }"
+            >
+              <template #files>
+                <MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span>
+              </template>
+              <template #content>
+                <span v-if="q.files.length" class="msg-file-chips">
+                  <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
+                </span>{{ q.body }}
+              </template>
+            </UChatMessage>
             <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ t('Sent · read by the agent') }}</span></div>
           </div>
           <!-- "!" command running: live output read from the screen. -->
@@ -1046,11 +1041,20 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
             </button>
-            <div class="msg-bubble queued">
-              <MsgThumbs v-if="q.photos.length" :srcs="q.photos" /><span v-if="q.files.length" class="msg-file-chips">
-                <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
-              </span>{{ q.body }}
-            </div>
+            <UChatMessage
+              :id="`q:${q.id}`" role="user" side="right" variant="soft"
+              :parts="pendingParts(q)"
+              :ui="{ root: `msg msg-user msg-pending queued${q.body || q.files.length ? '' : ' msg-no-text'}`, container: 'msg-c', content: 'msg-bubble queued', header: 'msg-files' }"
+            >
+              <template #files>
+                <MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span>
+              </template>
+              <template #content>
+                <span v-if="q.files.length" class="msg-file-chips">
+                  <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
+                </span>{{ q.body }}
+              </template>
+            </UChatMessage>
             <div v-if="q.state === 'failed'" class="queued-tag failed" role="alert">
               <UIcon name="i-lucide-circle-alert" /><span>{{ t('Not sent') }}</span>
               <button type="button" class="queued-cancel" :disabled="Boolean(retrying)" @click="retryQueued(q)">
@@ -1062,7 +1066,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             </div>
             <div v-else class="queued-tag">
               <UIcon name="i-lucide-clock" /><span>{{ t('Queued · ') }}{{ q.state === 'held' ? t('will be sent when the menu closes') : queuedWhy }}</span>
-              <button v-if="canCancel || q.state" type="button" class="queued-cancel" :disabled="Boolean(cancelling)" @click="cancelQueued(q)">
+              <button v-if="(canCancel || q.state) && q.raw" type="button" class="queued-cancel" :disabled="Boolean(cancelling)" @click="cancelQueued(q)">
                 <UIcon :name="cancelling === q.id ? 'i-lucide-loader-circle' : 'i-lucide-undo-2'" :class="{ spin: cancelling === q.id }" />{{ t('Cancel') }}
               </button>
             </div>

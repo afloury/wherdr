@@ -33,7 +33,7 @@ describe('Claude', () => {
   })
 
   it('follows Claude\'s queue (enqueue, remove, dequeue)', () => {
-    expect(items.queue).toEqual([{ text: 'Encore une chose', ts: '2026-09-25T11:40:05.000Z' }])
+    expect(items.queue).toEqual([{ text: 'Encore une chose', ts: '2026-09-25T11:40:05.000Z', images: 1 }])
   })
 
   it('counts images and keeps the line position', () => {
