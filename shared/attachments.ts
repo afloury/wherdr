@@ -159,3 +159,10 @@ export function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
   return `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`
 }
+
+// A message ending with "@<path>" leaves Claude Code's path suggestions open:
+// the Enter that should send it picks a suggestion instead and the message
+// stays in the input (checked on Claude Code 2.1). A trailing space closes them.
+export function closeTrailingMention(text: string): string {
+  return /(^|\n)@\S+$/.test(text) ? `${text} ` : text
+}

@@ -10,6 +10,14 @@ First public release.
 
 ### Added
 
+- Attach files, not only photos: drop, paste or pick (+ › File) the files the agent can read.
+  Claude Code gets PDFs, Jupyter notebooks and text or code of any extension (text goes as
+  `@<path>`, so its content is in the conversation without a permission prompt); Codex and
+  other agents get notebooks, text and code. Archives, videos, audio, Office documents and
+  binaries are refused with the reason. Files are stored on the agent's machine
+  (`~/.cache/herdr-web/files`, local or over SSH, mode 600, safe names, deleted after 7 days;
+  10 MB for text, 20 MB for notebooks, 30 MB for PDFs). The composer and the sent message show
+  a file chip; in a sent message it opens the path menu (Reveal in Finder, Open, Copy path).
 - Live agent list grouped by state, with answer previews and one-tap answers to permission
   prompts and questions (including omp's ask questions, shown in full even when the terminal
   folds them, multi-select and the final Submit).

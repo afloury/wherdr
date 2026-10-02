@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ATTACH_LIMITS, agentReads, attachmentDisplayName, attachmentIcon, attachmentPath, attachmentRef, checkAttachment,
+  ATTACH_LIMITS, agentReads, closeTrailingMention, attachmentDisplayName, attachmentIcon, attachmentPath, attachmentRef, checkAttachment,
   classifyAttachment, isStoredAttachmentName, looksLikeText, parseAttachmentLine, safeAttachmentName, storedAttachmentName,
 } from '../shared/attachments'
 
@@ -136,5 +136,15 @@ describe('cancelled message back into the draft', () => {
     restoreDraft(d, `Look at this\n@${p}`)
     expect(d.text).toBe('Look at this')
     expect(d.atts).toEqual([{ url: '', path: p, name: p.split('/').pop(), file: { label: 'notes.md', size: 0, kind: 'text' }, ref: `@${p}` }])
+  })
+})
+
+describe('message ending with an @ reference', () => {
+  it('gets a trailing space so Enter sends it', () => {
+    expect(closeTrailingMention('Read this\n@/home/dev/.cache/herdr-web/files/x-a.md')).toBe('Read this\n@/home/dev/.cache/herdr-web/files/x-a.md ')
+    expect(closeTrailingMention('@/home/dev/.cache/herdr-web/files/x-a.md')).toBe('@/home/dev/.cache/herdr-web/files/x-a.md ')
+    expect(closeTrailingMention('@/a.md\n/home/dev/.cache/herdr-web/files/x-b.pdf')).toBe('@/a.md\n/home/dev/.cache/herdr-web/files/x-b.pdf')
+    expect(closeTrailingMention('ping @alice')).toBe('ping @alice')
+    expect(closeTrailingMention('hello')).toBe('hello')
   })
 })

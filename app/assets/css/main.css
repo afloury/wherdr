@@ -1350,6 +1350,7 @@ body.kb .composer { padding-bottom: 8px; }
 .file-chip-x:hover { color: var(--text); background: var(--surface-3); }
 .file-chip-x .iconify { width: 13px; height: 13px; }
 .attachments .file-chip { height: 60px; }
+@media (max-width: 700px) { .attachments .file-chip { max-width: 190px; } }
 .msg-file-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; white-space: normal; }
 .msg-file-chips:last-child { margin-bottom: 2px; }
 .msg-file-chips .file-chip { background: var(--bg-2); max-width: min(100%, 260px); }
