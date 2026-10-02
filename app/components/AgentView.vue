@@ -590,7 +590,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
       @reload="project.reload()" @collapse="setSideOpen(false)" @sent="onSent" @prefill="onPrefill"
     />
     </div>
-    <AppSheet v-model:open="changesOpen" :title="t('Changes')" wide full>
+    <AppSheet v-model:open="changesOpen" :title="t('Changes')" wide full screen>
       <ChangesView v-if="changesOpen && pane" :pane-id="paneId" />
     </AppSheet>
     <input ref="attachInput" type="file" multiple hidden @change="attachFile">

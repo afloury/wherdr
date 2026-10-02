@@ -411,7 +411,7 @@ function hideHint() {
       </template>
     </div>
 
-    <AppSheet v-model:open="allOpen" :title="tl(`Done · ${board?.resolved.length || 0} threads`, `Fait · ${board?.resolved.length || 0} threads`)" wide>
+    <AppSheet v-model:open="allOpen" :title="tl(`Done · ${board?.resolved.length || 0} threads`, `Fait · ${board?.resolved.length || 0} threads`)" wide screen>
       <ul class="pp-list pp-all">
         <li v-for="th in board?.resolved || []" :key="th.id" class="pp-row">
           <div class="pp-card resolved">
@@ -425,7 +425,7 @@ function hideHint() {
       </ul>
     </AppSheet>
 
-    <AppSheet v-model:open="reportOpen" :title="report ? `${report.th.id.toUpperCase()} · ${report.th.title}` : ''" wide tall>
+    <AppSheet v-model:open="reportOpen" :title="report ? `${report.th.id.toUpperCase()} · ${report.th.title}` : ''" wide tall screen>
       <div v-if="report" class="pp-report">
         <div class="pp-report-actions">
           <UButton v-if="reportPane" icon="i-lucide-message-square" color="neutral" variant="outline" size="sm" @click="openReportAgent">{{ t('Open agent') }}</UButton>

@@ -47,10 +47,11 @@ const status = computed(() => {
       </p>
       <pre v-if="lines.some(l => l.text)" class="plugin-result-out"><span v-for="(l, i) in lines" :key="i" :class="l.level">{{ l.text }}
 </span></pre>
-
+    </div>
+    <template #footer>
       <div class="rename-actions">
         <UButton color="primary" variant="solid" class="sheet-btn hw-cta" @click="open = false">{{ tl('Close', 'Fermer') }}</UButton>
       </div>
-    </div>
+    </template>
   </AppSheet>
 </template>

@@ -1351,11 +1351,18 @@ body.kb .composer { padding-bottom: 8px; }
 .hw-sheet[data-state="closed"] { animation: sink .16s ease-in; }
 .hw-sheet.tall { height: calc(var(--vv-h, 100dvh) * .88); }
 .hw-sheet.full { height: var(--vv-h, 100dvh); max-height: var(--vv-h, 100dvh); padding-top: calc(var(--safe-top) + 12px); }
-/* Keyboard open: the sheet takes the space above it (no home bar to clear)
-   and its content scrolls. */
+/* Compact sheet on the phone (menus, confirmations, results): placed like the
+   agent view, on the whole layout viewport, so its bottom edge is the page's
+   (no strip of scrim under it, nothing cut). In the page color, the same as
+   html/body and the theme-color meta, so whatever iOS paints past the edge
+   matches. Keyboard open: it sits on the visible area above the keyboard and
+   its content scrolls. */
 @media (max-width: 899px) {
-  body.kb .hw-sheet:not(.full) { max-height: calc(var(--vv-h) - var(--safe-top) - 8px); padding-bottom: 12px; }
-  body.kb .hw-sheet.tall { height: calc(var(--vv-h) - var(--safe-top) - 8px); }
+  .hw-sheet:not(.screen) {
+    bottom: 0; max-height: calc(100% - var(--safe-top) - 24px);
+    background: var(--bg); box-shadow: 0 -20px 50px var(--shadow), 0 160px 0 var(--bg);
+  }
+  body.kb .hw-sheet:not(.screen) { bottom: var(--vv-bottom, 0px); max-height: calc(var(--vv-h) - var(--safe-top) - 8px); padding-bottom: 12px; }
 }
 .hw-sheet > * { border-top: 0 !important; border-bottom: 0 !important; }
 .hw-sheet > [data-slot="header"] { padding: 4px 0 10px; min-height: 0; border: 0; order: 1; display: flex; align-items: center; justify-content: space-between; }
@@ -1387,8 +1394,10 @@ body.kb .composer { padding-bottom: 8px; }
   .hw-sheet.screen::before { display: none; }
   .hw-sheet.screen > [data-slot="header"] { padding: 6px 0 12px; margin: 0 -16px; padding-left: 16px; padding-right: 8px; border-bottom: 1px solid var(--line-soft) !important; }
   .hw-sheet.screen > [data-slot="body"] { padding-top: 4px; }
-  .hw-sheet.screen .hw-sheet-foot .sheet-form { margin: 0 -16px; padding: 12px 16px 0; border-top: 1px solid var(--line-soft); }
+  .hw-sheet.screen .hw-sheet-foot > * { margin: 0 -16px; padding: 12px 16px 0; border-top: 1px solid var(--line-soft); }
   .hw-sheet.screen .hw-sheet-foot .launch-btn { margin-top: 0; }
+  /* Form actions (Cancel / Save): side by side across the width, in thumb reach. */
+  .hw-sheet.screen .hw-sheet-foot .rename-actions > * { flex: 1; justify-content: center; padding-top: 14px; padding-bottom: 14px; }
   .hw-sheet.screen[data-state="open"] { animation: rise .26s cubic-bezier(.2, .8, .2, 1); }
 }
 @keyframes rise { from { transform: translateY(100%); } }
@@ -1442,7 +1451,9 @@ body.kb .composer { padding-bottom: 8px; }
   background: var(--bg); padding: 12px 14px; font-size: 16px;
   --tw-ring-shadow: 0 0 #0000; box-shadow: inset 0 0 0 1px var(--line);
 }
-.sheet-form :is(input, textarea)[data-slot="base"]:focus, .rename input[data-slot="base"]:focus { box-shadow: inset 0 0 0 1px var(--mauve); }
+/* The mauve line marks the focus: no outline, which the scrolling sheet body
+   would clip into stray bars above and below the field. */
+.sheet-form :is(input, textarea)[data-slot="base"]:focus, .rename input[data-slot="base"]:focus { box-shadow: inset 0 0 0 1px var(--mauve); outline: none; }
 .mono textarea, .mono input, textarea.mono, input.mono { font-family: var(--mono); font-size: 15px; }
 .form-error { color: var(--rose); font-size: 14px; margin: 14px 2px 0; }
 

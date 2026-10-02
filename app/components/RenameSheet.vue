@@ -48,13 +48,15 @@ async function save(label: string) {
 </script>
 
 <template>
-  <AppSheet v-model:open="open" :title="title">
-    <form class="rename" @submit.prevent="save(value.trim())">
+  <AppSheet v-model:open="open" :title="title" screen>
+    <form id="rename-form" class="rename" @submit.prevent="save(value.trim())">
       <UInput ref="input" v-model="value" maxlength="60" size="xl" class="w-full" :placeholder="placeholder" />
+    </form>
+    <template #footer>
       <div class="rename-actions">
         <UButton v-if="!renameSpace && pane && pane.label" color="neutral" variant="ghost" class="sheet-btn" @click="save('')">{{ t('Reset') }}</UButton>
-        <UButton type="submit" color="primary" variant="solid" class="sheet-btn hw-cta" :disabled="Boolean(renameSpace) && !value.trim()">{{ t('Save') }}</UButton>
+        <UButton type="submit" form="rename-form" color="primary" variant="solid" class="sheet-btn hw-cta" :disabled="Boolean(renameSpace) && !value.trim()">{{ t('Save') }}</UButton>
       </div>
-    </form>
+    </template>
   </AppSheet>
 </template>

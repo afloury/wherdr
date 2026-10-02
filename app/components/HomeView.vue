@@ -568,16 +568,18 @@ function resetListWidth() {
         {{ t('New') }}
       </UButton>
     </div>
-    <AppSheet v-model:open="renameMachineOpen" :title="t('Rename machine')">
-      <form class="rename" @submit.prevent="saveMachine">
+    <AppSheet v-model:open="renameMachineOpen" :title="t('Rename machine')" screen>
+      <form id="rename-machine-form" class="rename" @submit.prevent="saveMachine">
         <UInput v-model="machineLabel" maxlength="40" size="xl" class="w-full" :placeholder="t('Machine name')" autofocus />
+      </form>
+      <template #footer>
         <div class="rename-actions">
           <UButton color="neutral" variant="ghost" class="sheet-btn" @click="renameMachineOpen = false">{{ t('Cancel') }}</UButton>
-          <UButton type="submit" color="primary" variant="solid" class="sheet-btn hw-cta" :loading="savingMachine" :disabled="!machineLabel.trim()">{{ t('Save') }}</UButton>
+          <UButton type="submit" form="rename-machine-form" color="primary" variant="solid" class="sheet-btn hw-cta" :loading="savingMachine" :disabled="!machineLabel.trim()">{{ t('Save') }}</UButton>
         </div>
-      </form>
+      </template>
     </AppSheet>
-    <AppSheet v-model:open="sessionOpen" :title="t('Herdr sessions')">
+    <AppSheet v-model:open="sessionOpen" :title="t('Herdr sessions')" screen>
       <p class="session-intro">{{ t('Session shown on this device') }} · {{ sessionTarget?.label }}</p>
       <p v-if="sessionsLoading" class="session-intro">{{ t('Loading…') }}</p>
       <div v-else class="session-list">
@@ -589,7 +591,7 @@ function resetListWidth() {
         <p v-if="!sessionRows.length" class="session-intro">{{ t('No sessions found.') }}</p>
       </div>
     </AppSheet>
-    <AppSheet v-model:open="awakeOpen" :title="t('Keep awake')">
+    <AppSheet v-model:open="awakeOpen" :title="t('Keep awake')" screen>
       <p class="session-intro">{{ awakeTarget?.label }} · {{ awakeLabel(awakeTarget ? awakeByMachine[awakeTarget.key] : undefined) || t('Normal sleep') }}</p>
       <p v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.battery" class="session-intro"><UIcon name="i-lucide-battery" /> {{ awakeByMachine[awakeTarget.key]?.battery?.percent }} % · {{ awakeByMachine[awakeTarget.key]?.battery?.source === 'ac' ? t('Power adapter') : t('Battery') }}</p>
       <label v-if="awakeTarget && awakeByMachine[awakeTarget.key]?.platform === 'mac'" class="awake-lid"><input v-model="awakeLid" type="checkbox" :disabled="awakeByMachine[awakeTarget.key]?.battery?.source !== 'ac'"> {{ t('Closed lid (power adapter only)') }}</label>
@@ -600,7 +602,7 @@ function resetListWidth() {
       </div>
       <p class="awake-note">{{ tl('Closing a Mac lid on battery puts it to sleep. A sleeping machine cannot be woken remotely.', 'Sur batterie, fermer le capot met le Mac en veille. Une machine endormie ne peut pas être réveillée à distance.') }}</p>
     </AppSheet>
-    <AppSheet v-model:open="diagnosticOpen" :title="t('What prevents sleep')">
+    <AppSheet v-model:open="diagnosticOpen" :title="t('What prevents sleep')" screen>
       <p v-if="diagnosticBusy" class="session-intro">{{ t('Loading…') }}</p>
       <div v-else class="session-list">
         <div v-for="(a, i) in assertions" :key="i" class="session-choice awake-assertion"><span><b>{{ a.ours ? t('wherdr · Keep awake') : a.name }}</b><small>{{ a.kind }} · {{ durationLabel(a.seconds) }}</small></span></div>
