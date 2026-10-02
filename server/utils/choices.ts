@@ -102,6 +102,8 @@ export const CLAUDE_CHAT = 'Chat about this'
 // Claude's multiSelect questions: "[ ] Cat", "[✔] Dog", then Submit.
 const CHECKBOX = /^\[([ ✔✓x×])\]\s+/
 const SUBMIT = 'Submit'
+// Free answer among checkboxes: no final dot there.
+const CLAUDE_FREE_BOX = 'Type something'
 
 // `strict`: only accept numbered lists. Used when Herdr does not see
 // the agent as blocked (Codex's trust screen passes for "idle"):
@@ -189,10 +191,12 @@ export function parseChoices(text: string | null | undefined, { strict = false }
 
   // Checkboxes: Submit takes its place in the order of the list (↑/↓ go
   // through it), the options below it one place further.
+  // In a window (short pane) the options hidden above Submit leave a gap: it
+  // then takes the number of the option shown below it (Chat about this).
   if (submit) {
     const at = options.findIndex(o => o.line > submit!.line)
     const before = at < 0 ? options[options.length - 1]! : options[at - 1]!
-    submit.n = before.n! + 1
+    submit.n = at < 0 ? before.n! + 1 : options[at]!.n!
     for (const o of at < 0 ? [] : options.slice(at)) o.n = o.n! + 1
     options.splice(at < 0 ? options.length : at, 0, submit)
   }
@@ -227,9 +231,16 @@ export function parseChoices(text: string | null | undefined, { strict = false }
   }
   if (out.options.some(o => CHECKBOX.test(o.label))) {
     out.multi = true
+    // The last box, just above Submit, is "Type something" (or the text typed
+    // in its place, which ticks it).
+    const free = submit ? submit.n! - 1 : 0
     out.options = out.options.map((o) => {
       const m = o.label.match(CHECKBOX)
-      return m ? { ...o, label: o.label.slice(m[0].length), checked: m[1] !== ' ' } : o
+      if (!m) return o
+      const label = o.label.slice(m[0].length)
+      if (o.n !== free) return { ...o, label, checked: m[1] !== ' ' }
+      const typed = label === CLAUDE_FREE_BOX ? null : [label, o.hint].filter(Boolean).join(' ')
+      return { ...o, label: CLAUDE_FREE, hint: typed, checked: m[1] !== ' ', free: true }
     })
   } else markClaudeFree(out.options)
   // Last step of several questions ("Review your answers", "● question",
@@ -568,30 +579,51 @@ export function pendingClaudeAsk(lines: string[]): ClaudeAsked[] {
 
 // On-screen AskUserQuestion box completed by the call: full question, every
 // option with its whole description, then "Type something." and "Chat about
-// this". Only when the options shown are those of one of its questions (a
-// single-choice one: checkboxes are left as read).
+// this" (checkboxes: "Type something", Submit, then "Chat about this"). Only
+// when the options shown are those of one of its questions.
 const sameLabel = (shown: string, full: string) => {
   const a = shown.replace(/\s+/g, '')
   const b = full.replace(/\s+/g, '')
   return a === b || b.startsWith(a)
 }
-export function completeClaudeAsk(choices: Choices, asked: ClaudeAsked[]): Choices {
-  if (!asked.length || choices.multi || choices.options.some(o => !o.n)) return choices
+// Boxes of a checkbox question last seen ticked, by question then label: a
+// window (short pane) hides some of them. Kept by the caller per pane, and
+// forgotten when the question goes away.
+export type AskChecks = Map<string, { checked: boolean, hint: string | null }>
+export function completeClaudeAsk(choices: Choices, asked: ClaudeAsked[], checks?: AskChecks): Choices {
+  if (!asked.length || choices.options.some(o => !o.n)) return choices
   const cur = choices.options[choices.cursor]!
+  const multi = Boolean(choices.multi)
   const fits = (q: ClaudeAsked) => {
     const k = q.options.length
-    return !q.multi && k > 0 && choices.options.every(o => (o.n! <= k
+    if (q.multi !== multi || !k) return false
+    const tail = multi ? [SUBMIT, CLAUDE_CHAT] : [CLAUDE_CHAT]
+    return choices.options.every(o => (o.n! <= k
       ? !o.free && sameLabel(o.label, q.options[o.n! - 1]!.label)
-      : o.n === k + 1 ? Boolean(o.free) : o.n === k + 2 && o.label === CLAUDE_CHAT))
+      : o.n === k + 1 ? Boolean(o.free) : o.label === tail[o.n! - k - 2] && !o.free && o.checked === undefined))
   }
   const q = asked.find(a => sameQuestion(choices.question, a.question) && fits(a)) || asked.find(fits)
   if (!q) return choices
   const k = q.options.length
   const free = choices.options.find(o => o.free)
+  if (!multi) {
+    const options: ChoiceOption[] = [
+      ...q.options.map((o, i) => ({ label: o.label.slice(0, 200), hint: o.description ? o.description.slice(0, 600) : null, n: i + 1 })),
+      { label: CLAUDE_FREE, hint: free ? free.hint : null, free: true, n: k + 1 },
+      { label: CLAUDE_CHAT, hint: null, n: k + 2 },
+    ]
+    return { ...choices, question: q.question, cursor: cur.n! - 1, options }
+  }
+  // Checkboxes: those on screen as read (and remembered), the hidden ones as last seen.
+  const key = (label: string) => `${q.question}\n${label}`
+  for (const o of choices.options) if (o.checked !== undefined) checks?.set(key(o.label), { checked: o.checked, hint: o.free ? o.hint : null })
+  const seen = (label: string) => checks?.get(key(label))
+  const box = (label: string) => Boolean(choices.options.find(o => o.label === label && o.checked !== undefined)?.checked ?? seen(label)?.checked)
   const options: ChoiceOption[] = [
-    ...q.options.map((o, i) => ({ label: o.label.slice(0, 200), hint: o.description ? o.description.slice(0, 600) : null, n: i + 1 })),
-    { label: CLAUDE_FREE, hint: free ? free.hint : null, free: true, n: k + 1 },
-    { label: CLAUDE_CHAT, hint: null, n: k + 2 },
+    ...q.options.map((o, i) => ({ label: o.label.slice(0, 200), hint: o.description ? o.description.slice(0, 600) : null, n: i + 1, checked: box(choices.options.find(s => s.n === i + 1)?.label ?? o.label) })),
+    { label: CLAUDE_FREE, hint: free ? free.hint : seen(CLAUDE_FREE)?.hint ?? null, free: true, n: k + 1, checked: free ? Boolean(free.checked) : Boolean(seen(CLAUDE_FREE)?.checked) },
+    { label: SUBMIT, hint: null, n: k + 2 },
+    { label: CLAUDE_CHAT, hint: null, n: k + 3 },
   ]
   return { ...choices, question: q.question, cursor: cur.n! - 1, options }
 }

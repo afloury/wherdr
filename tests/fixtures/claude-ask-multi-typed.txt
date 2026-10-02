@@ -1,0 +1,20 @@
+─────────────────────────────────────────────────────────────
+←  ☒ Snacks  ✔ Submit  →
+
+Which snacks should we bring?
+
+  1. [ ] Chips
+         Salty and crunchy
+  2. [ ] Nuts
+         Rich in protein
+  3. [ ] Fruit
+         Light and fresh
+  4. [ ] Cookies
+         Sweet treat
+❯ 5. [✔] Pretzels
+     Submit
+─────────────────────────────────────────────────────────────
+  6. Chat about this
+
+Enter to select · ↑/↓ to navigate · ctrl+g to edit in Vim ·
+Esc to cancel

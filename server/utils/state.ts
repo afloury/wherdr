@@ -13,7 +13,8 @@ import { isProjectThread, paneTitle } from '../../shared/paneTitle'
 import { foregroundCommand, reduceSnapshot } from './snapshot'
 import { DATA_DIR, HERDR_SESSION, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
 import { HerdrError, agentPrompt, herdr, herdrOn, sleep } from './herdr'
-import { completeClaudeAsk, completeOmpAsk, ompActiveTab, parseChoices, parseOmpAsk } from './choices'
+import { keepReading } from './screenCache'
+import { type AskChecks, completeClaudeAsk, completeOmpAsk, ompActiveTab, parseChoices, parseOmpAsk } from './choices'
 import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseWaitScreen } from './waitScreen'
 import { parseMenu, TOP } from '../../shared/menuScreen'
@@ -91,10 +92,10 @@ export async function withOmpTab(paneId: string, c: Choices): Promise<Choices> {
 // The waiting screen (key legend, see waitScreen.ts) is read at the same time.
 // `watch`: Herdr's `revision` does not move when the screen of an idle agent
 // changes (Codex starting, box closed from the terminal); we then re-read
-// every SCREEN_MS while a prompt is shown or the agent has no conversation.
+// every SCREEN_MS while a prompt is shown, the agent is blocked or has no
+// conversation (see screenCache.ts).
 // Permission request: the requested command or file preferably comes from
 // the transcript (in full), otherwise from the screen.
-const SCREEN_MS = 3000
 type OnScreen = { choices: Choices | null, screen: WaitScreen | null, menu: InteractiveMenu | null }
 // Screen to re-read for a while even without a new `revision` ("/" command
 // sent: an interactive menu may open), see watchScreen().
@@ -104,12 +105,13 @@ export function watchScreen(paneId: string, ms = 60000) {
   choicesCache.delete(paneId)
 }
 export const choicesCache = new Map<string, { rev: unknown, strict: boolean, at: number } & OnScreen>()
+// Claude's checkboxes last seen ticked, per pane (see completeClaudeAsk).
+const askChecks = new Map<string, AskChecks>()
 async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false): Promise<OnScreen> {
   const c = choicesCache.get(p.id)
   const watched = (screenWatch.get(p.id) || 0) > Date.now()
   if (!watched) screenWatch.delete(p.id)
-  const recheck = c && (watch || watched || c.choices || c.screen || c.menu) && Date.now() - c.at >= SCREEN_MS
-  if (c && c.rev === rev && c.strict === strict && !recheck) return c
+  if (c && keepReading(c, rev, strict, watch || watched, Date.now())) return c
   let out: OnScreen
   try {
     const r = await herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
@@ -125,7 +127,11 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
     if (menu) choices = null
     if (choices && p.agent === 'omp') choices = await withOmpTab(p.id, completeOmpAsk(choices, await transcripts.pendingAsk(p).catch(() => [])))
     // Claude's AskUserQuestion: full question and options from the call.
-    if (choices && p.agent === 'claude') choices = completeClaudeAsk(choices, await transcripts.pendingClaudeQuestions(p).catch(() => []))
+    if (choices && p.agent === 'claude') {
+      const checks = askChecks.get(p.id) || new Map()
+      askChecks.set(p.id, checks)
+      choices = completeClaudeAsk(choices, await transcripts.pendingClaudeQuestions(p).catch(() => []), checks)
+    } else if (!choices) askChecks.delete(p.id)
     out = { choices, screen: menu ? null : parseWaitScreen(text, { choices: Boolean(choices) }), menu }
     noteScreen(p.id, p.agent, text) // Codex: model from its status line
     if (choices && (choices.detail || isPermissionQuestion(choices.question))) {
@@ -528,7 +534,10 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       if (c.choices) p.prompt = c.choices
       if (c.screen) p.screen = c.screen
       if (c.menu) p.menu = c.menu
-    } else choicesCache.delete(p.id)
+    } else {
+      choicesCache.delete(p.id)
+      askChecks.delete(p.id)
+    }
     const pv = previews.get(p.id)
     if (!pv || pv.status !== p.status || (p.status === 'working' && Date.now() - pv.at > 10000)) refreshPreview(p)
     if (pv && pv.text) p.preview = pv.text
@@ -555,6 +564,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
   // Cleanup of vanished panes… of this machine only.
   const alive = (id: string) => machineOf(id) !== machine || next.panes.some(p => p.id === id)
   for (const id of choicesCache.keys()) if (!alive(id)) choicesCache.delete(id)
+  for (const id of askChecks.keys()) if (!alive(id)) askChecks.delete(id)
   for (const id of pendingPrompts.keys()) if (!alive(id)) pendingPrompts.delete(id)
   for (const id of queued.keys()) if (!alive(id)) queued.delete(id)
   for (const id of restarts.keys()) if (!alive(id)) restarts.delete(id)

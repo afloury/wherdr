@@ -157,10 +157,9 @@ describe('AskUserQuestion with several questions', () => {
     expect(c.multi).toBe(true)
     expect(c.question).toBe('Which pets do you like?')
     expect(c.options.map(o => [o.label, o.checked, o.n])).toEqual([
-      ['Cat', false, 1], ['Dog', false, 2], ['Fish', false, 3], ['Type something', false, 4], ['Submit', undefined, 5], [CLAUDE_CHAT, undefined, 6],
+      ['Cat', false, 1], ['Dog', false, 2], ['Fish', false, 3], [CLAUDE_FREE, false, 4], ['Submit', undefined, 5], [CLAUDE_CHAT, undefined, 6],
     ])
-    expect(c.options[3]!.hint).toBeNull()
-    expect(c.options.some(o => o.free)).toBe(false)
+    expect(c.options[3]).toMatchObject({ hint: null, free: true })
     // A box is toggled with Space, Submit and Chat are confirmed with Enter.
     expect(keysFor(c, 1)).toEqual(['down', 'space'])
     expect(keysFor(c, 4)).toEqual(['down', 'down', 'down', 'down', 'enter'])
@@ -187,5 +186,99 @@ describe('AskUserQuestion review step', () => {
     expect(c.question).toBe('Ready to submit your answers?')
     expect(c.options.map(o => o.label)).toEqual(['Submit answers', 'Cancel'])
     expect(c.options[0]!.hint).toBe('Green · Cat, Dog, Fish')
+  })
+})
+
+// One multiSelect question alone (the reported case): real screens of Claude
+// Code 2.1.287 (Herdr test session, made-up content), a normal pane, a short one,
+// a free answer typed in place, and claude-ask-multi.jsonl behind them.
+describe('AskUserQuestion with a single multiSelect question', () => {
+  const fruits = () => pendingClaudeAsk(fx('claude-ask-multi.jsonl').split('\n'))
+
+  it('reads the whole box: boxes, free answer, Submit, Chat about this', () => {
+    const c = parseChoices(fx('claude-ask-multi.txt'))!
+    expect(c.multi).toBe(true)
+    expect(c.question).toBe('Which fruits should go in the salad?')
+    expect(c.options.map(o => [o.n, o.label, o.checked])).toEqual([
+      [1, 'Apple', false], [2, 'Banana', false], [3, 'Mango', false], [4, 'Kiwi', false],
+      [5, CLAUDE_FREE, false], [6, 'Submit', undefined], [7, CLAUDE_CHAT, undefined],
+    ])
+    expect(c.options[0]!.hint).toBe('Crisp and sweet')
+    expect(c.options[4]!.free).toBe(true)
+    expect(parseChoices(fx('claude-ask-multi.txt'), { strict: true })).toEqual(c)
+    expect(keysFor(c, 2)).toEqual(['down', 'down', 'space'])
+    expect(keysFor(c, 5)).toEqual(['down', 'down', 'down', 'down', 'down', 'enter'])
+  })
+
+  it('numbers Submit after the options hidden by a window (short pane)', () => {
+    const c = parseChoices(fx('claude-ask-multi-window.txt'))!
+    expect(c.options.map(o => [o.n, o.label])).toEqual([[1, 'Apple'], [2, 'Banana'], [6, 'Submit'], [7, CLAUDE_CHAT]])
+    expect(keysFor(c, 2)).toEqual(['down', 'down', 'down', 'down', 'down', 'enter'])
+  })
+
+  it('completes a window from the pending call, keeping ticks seen earlier', () => {
+    const checks = new Map()
+    const full = parseChoices(fx('claude-ask-multi.txt'))!
+    // Mango ticked while it was on screen…
+    completeClaudeAsk({ ...full, options: full.options.map(o => (o.label === 'Mango' ? { ...o, checked: true } : o)) }, fruits(), checks)
+    // …then the pane got short: Mango is hidden.
+    const c = completeClaudeAsk(parseChoices(fx('claude-ask-multi-window.txt'))!, fruits(), checks)
+    expect(c.multi).toBe(true)
+    expect(c.options.map(o => [o.n, o.label, o.checked])).toEqual([
+      [1, 'Apple', false], [2, 'Banana', false], [3, 'Mango', true], [4, 'Kiwi', false],
+      [5, CLAUDE_FREE, false], [6, 'Submit', undefined], [7, CLAUDE_CHAT, undefined],
+    ])
+    expect(c.options[3]!.hint).toBe('Tangy and bright')
+    expect(c.options[4]!.free).toBe(true)
+    expect(c.cursor).toBe(0)
+    expect(keysFor(c, 3)).toEqual(['down', 'down', 'down', 'space'])
+  })
+
+  it('completes a window with the cursor on the free answer', () => {
+    const c = completeClaudeAsk(parseChoices(fx('claude-ask-multi-window-free.txt'))!, fruits())
+    expect(c.options).toHaveLength(7)
+    expect(c.cursor).toBe(4)
+    expect(c.options[c.cursor]).toMatchObject({ label: CLAUDE_FREE, free: true, checked: false })
+  })
+
+  it('reads the text typed in place of "Type something", ticked', () => {
+    const c = parseChoices(fx('claude-ask-multi-typed.txt'))!
+    expect(c.options[c.cursor]).toMatchObject({ n: 5, label: CLAUDE_FREE, hint: 'Pretzels', checked: true, free: true })
+  })
+
+  it('shows the answers of the review step', () => {
+    const c = parseChoices(fx('claude-ask-multi-review.txt'))!
+    expect(c.options.map(o => o.label)).toEqual(['Submit answers', 'Cancel'])
+    expect(c.options[0]!.hint).toBe('Chips, Lemonade')
+  })
+
+  it('types a free answer among checkboxes without Enter (it would untick it)', async () => {
+    const s = { cursor: 0, typed: '' }
+    const sent: unknown[] = []
+    const screen = () => [
+      'Which fruits should go in the salad?',
+      '',
+      ...['Apple', 'Banana'].map((l, i) => `${i === s.cursor ? '❯' : ' '} ${i + 1}. [ ] ${l}`),
+      `${s.cursor === 2 ? '❯' : ' '} 3. [${s.typed ? '✔' : ' '}] ${s.typed || 'Type something'}`,
+      `${s.cursor === 3 ? '❯' : ' '}    Submit`,
+      '─'.repeat(40),
+      `${s.cursor === 4 ? '❯' : ' '} 4. ${CLAUDE_CHAT}`,
+    ].join('\n')
+    let t = 0
+    const d = {
+      call: async (method: string, p: Record<string, unknown>) => {
+        if (method === 'pane.read') return { read: { text: screen() } }
+        sent.push(p.keys || { text: p.text })
+        for (const k of (p.keys as string[] | undefined) || []) if (k === 'down') s.cursor++
+        if (typeof p.text === 'string' && s.cursor === 2) s.typed += p.text
+        return {}
+      },
+      sleep: async () => { t += 100 },
+      now: () => t,
+    }
+    const c = parseChoices(screen())!
+    expect(c.options[2]).toMatchObject({ free: true, checked: false })
+    await answerFree(d, 'w1:p1', c, 2, 'Pear', 'claude')
+    expect(sent).toEqual([['down', 'down'], { text: 'Pear' }])
   })
 })
