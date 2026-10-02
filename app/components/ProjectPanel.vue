@@ -5,6 +5,8 @@ const confirmedByPane = new Map<string, Set<string>>()
 const launchedByPane = new Map<string, Set<string>>()
 const unblockedByPane = new Map<string, Set<string>>()
 const reviewedByPane = new Map<string, Set<string>>()
+// "To do" / "In queue" moves sent (`kind|action|task`), until the task leaves that list.
+const movedByPane = new Map<string, Set<string>>()
 </script>
 
 <script setup lang="ts">
@@ -23,10 +25,13 @@ const reviewedByPane = new Map<string, Set<string>>()
 // The only task decorations: the coordinator's [b:color(text)](target)
 // badges; URLs in the text are plain links.
 // "Backlog": Launch sends the message; Detail prepares a draft.
+// "To do" / "In queue": Move up / Move down, Queue it, Launch now, Back to
+// backlog / Remove from queue are sent as is; the coordinator edits TASKS.md.
+// The "In queue" header shows the thread slots in use (PROJECT.md).
 // The file is never written from here.
 // `side`: column to the right of the conversation (computer), collapsible.
 import type { Pane, QueuedMessage } from '#shared/types'
-import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, type TaskBadge, boardSections, visibleSections, decisionPrefix, detailPrefix, launchMessage, missingLists, problemPrefix, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, textParts, unblockMessage } from '#shared/projectBoard'
+import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, type TaskBadge, boardSections, visibleSections, decisionPrefix, detailPrefix, launchMessage, missingLists, moveMessage, type MoveAction, problemPrefix, queueStatus, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, textParts, unblockMessage } from '#shared/projectBoard'
 import { md } from '~/utils/markdown'
 
 const props = defineProps<{ paneId: string, board: ProjectBoard | null, loading: boolean, error: string, side?: boolean }>()
@@ -42,7 +47,9 @@ const ICONS: Record<ListKind, string> = {
   review: 'i-lucide-git-pull-request',
   blocked: 'i-lucide-octagon-alert',
   doing: 'i-lucide-activity',
-  backlog: 'i-lucide-list-todo',
+  queue: 'i-lucide-list-ordered',
+  todo: 'i-lucide-list-todo',
+  backlog: 'i-lucide-archive',
   done: 'i-lucide-circle-check',
 }
 const icon = (k: ListKind | null) => (k ? ICONS[k] : 'i-lucide-list')
@@ -190,6 +197,14 @@ watch(() => props.board, (b) => {
     reviewed.value = keptReviews
     reviewedByPane.set(props.paneId, keptReviews)
   }
+  const keptMoves = new Set([...moved.value].filter((key) => {
+    const [kind, , ...text] = key.split('|')
+    return b.lists.some(l => l.kind === kind && l.tasks.some(x => x.text === text.join('|')))
+  }))
+  if (keptMoves.size !== moved.value.size) {
+    moved.value = keptMoves
+    movedByPane.set(props.paneId, keptMoves)
+  }
 }, { immediate: true })
 
 const testable = (s: BoardSection, task: ProjectTask) => s.kind === 'test' && !task.done
@@ -197,7 +212,38 @@ const decidable = (s: BoardSection, task: ProjectTask) => s.kind === 'decide' &&
 const launchable = (s: BoardSection, task: ProjectTask) => s.kind === 'backlog' && !task.done
 const unblockable = (s: BoardSection, task: ProjectTask) => s.kind === 'blocked' && !task.done
 const reviewable = (s: BoardSection, task: ProjectTask) => s.kind === 'review' && !task.done
-const actionable = (s: BoardSection, task: ProjectTask) => testable(s, task) || decidable(s, task) || launchable(s, task) || unblockable(s, task) || reviewable(s, task)
+const orderable = (s: BoardSection, task: ProjectTask) => (s.kind === 'todo' || s.kind === 'queue') && !task.done
+const actionable = (s: BoardSection, task: ProjectTask) => testable(s, task) || decidable(s, task) || launchable(s, task) || unblockable(s, task) || reviewable(s, task) || orderable(s, task)
+
+// ------------------------------------------------------------ to do / in queue
+const moved = ref(new Set(movedByPane.get(props.paneId) || []))
+const moving = ref<string | null>(null)
+const moveKey = (s: BoardSection, action: MoveAction, task: ProjectTask) => `${s.kind}|${action}|${task.text}`
+// A task already queued, launched or sent back: its actions give way to "Sent".
+const movedAway = (s: BoardSection, task: ProjectTask) => (['queue', 'now', 'unqueue', 'backlog'] as MoveAction[]).some(a => moved.value.has(moveKey(s, a, task)))
+const pending = (s: BoardSection) => s.tasks.filter(x => !x.done)
+const isFirst = (s: BoardSection, task: ProjectTask) => pending(s)[0] === task
+const isLast = (s: BoardSection, task: ProjectTask) => pending(s).at(-1) === task
+async function moveTask(s: BoardSection, task: ProjectTask, action: MoveAction) {
+  const key = moveKey(s, action, task)
+  if (moving.value || moved.value.has(key)) return
+  const pane = herdrState.value.panes.find(p => p.id === props.paneId)
+  if (!eventsOpen.value || offlineView.value || paneStale(pane)) return toast(t('Sending unavailable offline'), true)
+  moving.value = key
+  haptic()
+  try {
+    const queued = await sendMessage(pane, props.paneId, moveMessage(action, task.text, lang()))
+    // Up / Down can be repeated; the others are sent once.
+    if (action !== 'up' && action !== 'down') {
+      moved.value = new Set([...moved.value, key])
+      movedByPane.set(props.paneId, moved.value)
+    }
+    emit('sent', queued)
+  } catch (e) { toast((e as Error).message, true) }
+  finally { moving.value = null }
+}
+// "In queue" header: thread slots in use and the next task.
+const slotLine = (s: BoardSection) => (s.kind === 'queue' ? queueStatus(props.board?.slots, pending(s)[0]?.text, lang()) : null)
 async function reviewTask(task: ProjectTask) {
   if (reviewing.value || reviewed.value.has(task.text)) return
   const pane = herdrState.value.panes.find(p => p.id === props.paneId)
@@ -310,6 +356,7 @@ function hideHint() {
             <span class="pp-count">{{ count(s) }}</span>
             <UIcon name="i-lucide-chevron-down" class="pp-chev" />
           </button>
+          <p v-if="isOpen(s) && slotLine(s)" class="pp-slots">{{ slotLine(s) }}</p>
           <ul v-if="isOpen(s)" class="pp-list">
             <!-- Threads: open (In progress) or closed (Done, 20 most recent). -->
             <li v-for="th in (s.kind === 'done' ? s.threads.slice(0, DONE_SHOWN) : s.threads)" :key="th.id" class="pp-row">
@@ -328,7 +375,7 @@ function hideHint() {
             </li>
             <li
               v-for="(task, i) in s.tasks" :key="`t${i}`" class="pp-row pp-task"
-              :class="{ done: task.done, testable: testable(s, task), decidable: decidable(s, task), launchable: launchable(s, task), unblockable: unblockable(s, task), reviewable: reviewable(s, task), sent: (reviewable(s, task) && reviewed.has(task.text)) || (testable(s, task) && confirmed.has(task.text)) || (launchable(s, task) && launched.has(task.text)) || (unblockable(s, task) && unblocked.has(task.text)) }"
+              :class="{ done: task.done, testable: testable(s, task), decidable: decidable(s, task), launchable: launchable(s, task), unblockable: unblockable(s, task), reviewable: reviewable(s, task), sent: (reviewable(s, task) && reviewed.has(task.text)) || (testable(s, task) && confirmed.has(task.text)) || (launchable(s, task) && launched.has(task.text)) || (unblockable(s, task) && unblocked.has(task.text)) || (orderable(s, task) && movedAway(s, task)), orderable: orderable(s, task) }"
             >
               <span class="pp-box" aria-hidden="true" />
               <template v-if="!actionable(s, task)">
@@ -348,8 +395,46 @@ function hideHint() {
                   <span v-else-if="launchable(s, task) && launched.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Sent to the coordinator') }}</span>
                   <span v-else-if="unblockable(s, task) && unblocked.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Sent to the coordinator') }}</span>
                   <span v-else-if="reviewable(s, task) && reviewed.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Sent to the coordinator') }}</span>
+                  <span v-else-if="orderable(s, task) && movedAway(s, task)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Sent to the coordinator') }}</span>
                   <TaskBadges v-if="task.badges" :badges="task.badges" />
-                  <span v-if="decidable(s, task) || launchable(s, task) || unblockable(s, task) || (reviewable(s, task) && !reviewed.has(task.text)) || (testable(s, task) && !confirmed.has(task.text))" class="pp-verdict">
+                  <span v-if="decidable(s, task) || launchable(s, task) || unblockable(s, task) || (reviewable(s, task) && !reviewed.has(task.text)) || (testable(s, task) && !confirmed.has(task.text)) || (orderable(s, task) && !movedAway(s, task))" class="pp-verdict" :class="{ wrap: orderable(s, task) }">
+                    <template v-if="orderable(s, task)">
+                      <UTooltip :text="tl('Move up', 'Monter')" :disabled="!desk">
+                        <button type="button" class="pp-vbtn move" :disabled="moving !== null || isFirst(s, task)" :aria-label="tl(`Move up: ${task.text}`, `Monter : ${task.text}`)" @click="moveTask(s, task, 'up')">
+                          <span v-if="moving === moveKey(s, 'up', task)" class="spinner" /><UIcon v-else name="i-lucide-arrow-up" />
+                        </button>
+                      </UTooltip>
+                      <UTooltip :text="tl('Move down', 'Descendre')" :disabled="!desk">
+                        <button type="button" class="pp-vbtn move" :disabled="moving !== null || isLast(s, task)" :aria-label="tl(`Move down: ${task.text}`, `Descendre : ${task.text}`)" @click="moveTask(s, task, 'down')">
+                          <span v-if="moving === moveKey(s, 'down', task)" class="spinner" /><UIcon v-else name="i-lucide-arrow-down" />
+                        </button>
+                      </UTooltip>
+                      <UTooltip v-if="s.kind === 'todo'" :text="tl('Queue it: launched automatically when a thread slot frees', 'Mettre en file : lancé automatiquement dès qu’une place de thread se libère')" :disabled="!desk">
+                        <button type="button" class="pp-vbtn backlog-action queue" :disabled="moving !== null" :aria-label="tl(`Queue it: ${task.text}`, `Mettre en file : ${task.text}`)" @click="moveTask(s, task, 'queue')">
+                          <span v-if="moving === moveKey(s, 'queue', task)" class="spinner" /><UIcon v-else name="i-lucide-list-plus" /><span>{{ tl('Queue', 'En file') }}</span>
+                        </button>
+                      </UTooltip>
+                      <UTooltip :text="s.kind === 'queue' ? tl('Launch now, ahead of the queue', 'Lancer maintenant, avant la file') : tl('Launch now if a thread slot is free, otherwise first in the queue', 'Lancer maintenant si une place de thread est libre, sinon en tête de file')" :disabled="!desk">
+                        <button type="button" class="pp-vbtn backlog-action launch" :disabled="moving !== null" :aria-label="tl(`Launch now: ${task.text}`, `Lancer maintenant : ${task.text}`)" @click="moveTask(s, task, 'now')">
+                          <span v-if="moving === moveKey(s, 'now', task)" class="spinner" /><UIcon v-else name="i-lucide-play" /><span>{{ tl('Launch', 'Lancer') }}</span>
+                        </button>
+                      </UTooltip>
+                      <UTooltip :text="tl('Clarify this task', 'Préciser cette tâche')" :disabled="!desk">
+                        <button type="button" class="pp-vbtn clarify" :aria-label="tl(`Clarify: ${task.text}`, `Préciser : ${task.text}`)" @click="prefill(task, 'detail')">
+                          <UIcon name="i-lucide-pencil" />
+                        </button>
+                      </UTooltip>
+                      <UTooltip v-if="s.kind === 'todo'" :text="tl('Back to backlog', 'Remettre au backlog')" :disabled="!desk">
+                        <button type="button" class="pp-vbtn park" :disabled="moving !== null" :aria-label="tl(`Back to backlog: ${task.text}`, `Remettre au backlog : ${task.text}`)" @click="moveTask(s, task, 'backlog')">
+                          <span v-if="moving === moveKey(s, 'backlog', task)" class="spinner" /><UIcon v-else name="i-lucide-archive" />
+                        </button>
+                      </UTooltip>
+                      <UTooltip v-else :text="tl('Remove from queue (back to To do)', 'Retirer de la file (retour en À faire)')" :disabled="!desk">
+                        <button type="button" class="pp-vbtn park" :disabled="moving !== null" :aria-label="tl(`Remove from queue: ${task.text}`, `Retirer de la file : ${task.text}`)" @click="moveTask(s, task, 'unqueue')">
+                          <span v-if="moving === moveKey(s, 'unqueue', task)" class="spinner" /><UIcon v-else name="i-lucide-list-x" />
+                        </button>
+                      </UTooltip>
+                    </template>
                     <UTooltip v-if="reviewable(s, task)" :text="tl('Reviewed: tell the coordinator', 'Relu : prévenir le coordinateur')" :disabled="!desk">
                       <button type="button" class="pp-vbtn backlog-action reviewed" :disabled="reviewing !== null" :aria-label="tl(`Reviewed: ${task.text}`, `Relu : ${task.text}`)" @click="reviewTask(task)">
                         <span v-if="reviewing === task.text" class="spinner" /><UIcon v-else name="i-lucide-check" /><span>{{ tl('Reviewed', 'Relu') }}</span>

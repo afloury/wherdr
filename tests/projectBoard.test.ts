@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { boardSections, visibleSections, missingLists as missingListsOf, coordinatorRules, decisionPrefix, reviewCommentPrefix, reviewedMessage, detailPrefix, launchMessage, listKind, normalizeThreads, parseTaskLine, parseTasks, takeBadges, badgeColor, badgeTarget, textParts, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage, unblockMessage } from '../shared/projectBoard'
+import { boardSections, visibleSections, maxParallelThreads, moveMessage, queueStatus, missingLists as missingListsOf, coordinatorRules, decisionPrefix, reviewCommentPrefix, reviewedMessage, detailPrefix, launchMessage, listKind, normalizeThreads, parseTaskLine, parseTasks, takeBadges, badgeColor, badgeTarget, textParts, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage, unblockMessage } from '../shared/projectBoard'
 import { pluginBinary } from '../server/utils/projectBoard'
 import { isCoordinator } from '../shared/projects'
 import type { Pane } from '../shared/types'
@@ -76,7 +76,8 @@ describe('TASKS.md', () => {
     expect(listKind('To test')).toBe('test')
     expect(listKind('A DÉCIDER')).toBe('decide')
     expect(listKind('In progress')).toBe('doing')
-    expect(listKind('À faire')).toBe('backlog')
+    expect(listKind('À faire')).toBe('todo')
+    expect(listKind('Plus tard')).toBe('backlog')
     expect(listKind('Done')).toBe('done')
     for (const heading of ['Bloqué', 'Bloque', 'Bloquée', 'Bloquées', 'Blocked', 'On hold', 'En attente', 'Waiting', 'Stuck']) {
       expect(listKind(heading)).toBe('blocked')
@@ -271,7 +272,7 @@ describe('sections du panneau', () => {
 
   it('puts open threads in In progress without duplicating the tasks pointing to them', () => {
     const s = boardSections({ lists: parseTasks(TASKS), ...threads }, labels)
-    expect(s.map(x => x.title)).toEqual(['À tester', 'À décider', 'En cours', 'Idées en vrac', 'Backlog', 'Fait'])
+    expect(s.map(x => x.title)).toEqual(['À tester', 'À décider', 'En cours', 'Backlog', 'Idées en vrac', 'Fait'])
     const doing = s[2]!
     expect(doing.threads.map(t => t.id)).toEqual(['t-0040', 't-0034'])
     // t-0034 is open: shown through its thread; t-0033 is not in the list: stays a task.
@@ -289,9 +290,9 @@ describe('sections du panneau', () => {
     expect(boardSections({ lists: [], open: [], resolved: [] }, labels).map(x => x.kind)).toEqual(['done'])
   })
 
-  it('places In progress after Blocked if that section is missing, while respecting the file', () => {
+  it('places a missing In progress at its canonical place, before Blocked', () => {
     const lists = parseTasks('## À décider\n## Bloqué\n- [ ] Attendre une revue\n## Backlog')
-    expect(boardSections({ lists, ...threads }, labels).map(s => s.kind)).toEqual(['decide', 'blocked', 'doing', 'backlog', 'done'])
+    expect(boardSections({ lists, ...threads }, labels).map(s => s.kind)).toEqual(['decide', 'doing', 'blocked', 'backlog', 'done'])
     expect(boardSections({ lists: parseTasks('## En cours\n## Bloqué'), ...threads }, labels).map(s => s.kind)).toEqual(['doing', 'blocked', 'done'])
   })
 
@@ -369,7 +370,7 @@ describe('board help (Settings › Plugins)', () => {
       const md = tasksTemplate(lang)
       expect(md.startsWith('# Tasks\n')).toBe(true)
       const lists = parseTasks(md)
-      expect(lists.map(l => l.kind)).toEqual(['test', 'decide', 'review', 'blocked', 'doing', 'backlog'])
+      expect(lists.map(l => l.kind)).toEqual(['test', 'decide', 'review', 'doing', 'queue', 'blocked', 'todo', 'backlog'])
       expect(lists.every(l => l.tasks.length === 1)).toBe(true)
     }
     expect(parseTasks(tasksTemplate('fr'))[0]!.title).toBe('À tester')
@@ -388,6 +389,15 @@ describe('board help (Settings › Plugins)', () => {
     expect(fr).toContain(m.launchMessage('…', 'fr'))
     expect(fr).toContain(m.unblockMessage('…', 'fr'))
     expect(fr).toContain('Déplacer une tâche en Bloqué')
+    for (const a of ['up', 'down', 'queue', 'now', 'unqueue', 'backlog'] as const) {
+      expect(fr).toContain(m.moveMessage(a, '…', 'fr'))
+      expect(m.coordinatorRules('en')).toContain(m.moveMessage(a, '…', 'en'))
+    }
+    // Lists are optional, In queue is the auto-launch contract, badges are free-form.
+    expect(fr).toContain('toutes facultatives')
+    expect(m.coordinatorRules('en')).toContain('all optional')
+    expect(m.coordinatorRules('en')).toContain('In queue contract')
+    expect(m.coordinatorRules('en')).toContain('Badges are free-form')
     // A single badge syntax, to be used autonomously.
     expect(fr).toContain('[b:couleur(texte)](cible)')
     expect(fr).toContain('de toi-même')
@@ -440,5 +450,64 @@ describe('Masquer les listes vides', () => {
   })
   it('a hidden empty list does not trigger the suggestion', () => {
     expect(missingListsOf(lists)).toEqual([])
+  })
+})
+
+describe('In queue and To do lists', () => {
+  it('recognizes titles and synonyms; To do is no longer Backlog', () => {
+    for (const h of ['En file', 'En file d’attente', 'File d’attente', 'In queue', 'Queue', 'Queued', 'Up next'])
+      expect(listKind(h)).toBe('queue')
+    for (const h of ['À faire', 'A faire', 'To do', 'Todo', 'TODO', 'Next', 'Soon', 'Prochainement'])
+      expect(listKind(h)).toBe('todo')
+    for (const h of ['Backlog', 'Later', 'Plus tard', 'Idées', 'Ideas', 'Someday'])
+      expect(listKind(h)).toBe('backlog')
+  })
+
+  it('shows lists in the canonical order whatever the file order; unknown lists after Backlog', () => {
+    const md = ['Fait', 'Backlog', 'Notes', 'À faire', 'Bloqué', 'En file', 'En cours', 'À relire', 'À décider', 'Idées en vrac', 'À tester']
+      .map(t => `## ${t}\n- [ ] ${t} (me)`).join('\n')
+    const s = boardSections({ lists: parseTasks(md), open: [], resolved: [] }, { doing: 'En cours', done: 'Fait' })
+    expect(s.map(x => x.title)).toEqual(['À tester', 'À décider', 'À relire', 'En cours', 'En file', 'Bloqué', 'À faire', 'Backlog', 'Notes', 'Idées en vrac', 'Fait'])
+    expect(s.map(x => x.kind)).toEqual(['test', 'decide', 'review', 'doing', 'queue', 'blocked', 'todo', 'backlog', null, null, 'done'])
+  })
+
+  it('keeps the file order between lists of the same kind', () => {
+    const s = boardSections({ lists: parseTasks('## Plus tard\n## Backlog\n## Next\n## À faire'), open: [], resolved: [] }, { doing: 'En cours', done: 'Fait' })
+    expect(s.map(x => x.title)).toEqual(['Next', 'À faire', 'Plus tard', 'Backlog', 'Fait'])
+  })
+
+  it('move messages, in French and English', () => {
+    expect(moveMessage('up', ' Export CSV ')).toBe('↳ Monter : Export CSV')
+    expect(moveMessage('down', 'Export CSV')).toBe('↳ Descendre : Export CSV')
+    expect(moveMessage('queue', 'Export CSV')).toBe('↳ Mettre en file : Export CSV')
+    expect(moveMessage('now', 'Export CSV')).toBe('↳ Lancer maintenant : Export CSV')
+    expect(moveMessage('unqueue', 'Export CSV')).toBe('↳ Retirer de la file : Export CSV')
+    expect(moveMessage('backlog', 'Export CSV')).toBe('↳ Remettre au backlog : Export CSV')
+    expect(moveMessage('up', 'Export', 'en')).toBe('↳ Move up: Export')
+    expect(moveMessage('down', 'Export', 'en')).toBe('↳ Move down: Export')
+    expect(moveMessage('queue', 'Export', 'en')).toBe('↳ Queue: Export')
+    expect(moveMessage('now', 'Export', 'en')).toBe('↳ Launch now: Export')
+    expect(moveMessage('unqueue', 'Export', 'en')).toBe('↳ Remove from queue: Export')
+    expect(moveMessage('backlog', 'Export', 'en')).toBe('↳ Back to backlog: Export')
+  })
+
+  it('slot status line of the In queue header', () => {
+    expect(queueStatus({ used: 2, max: 3 }, 'Export CSV', 'en')).toBe('2 of 3 thread slots in use · next: Export CSV')
+    expect(queueStatus({ used: 1, max: 1 }, undefined, 'en')).toBe('1 of 1 thread slot in use')
+    expect(queueStatus({ used: 2, max: 2 }, 'Export CSV', 'fr')).toBe('2 places de thread sur 2 occupées · ensuite : Export CSV')
+    expect(queueStatus({ used: 0, max: 2 }, '', 'fr')).toBe('0 place de thread sur 2 occupée')
+    // No data: no line.
+    expect(queueStatus(undefined, 'Export CSV')).toBeNull()
+  })
+
+  it('reads max_parallel_threads from the PROJECT.md front matter', () => {
+    const head = (body: string) => `+++\nname = "Demo"\n${body}\n[[repos]]\npath = "/srv/app"\n+++\n\n# Instructions\nmax_parallel_threads = 99\n`
+    expect(maxParallelThreads(head('max_parallel_threads = 2'))).toBe(2)
+    expect(maxParallelThreads(head('max_parallel_threads = 4 # cap'))).toBe(4)
+    // Absent: herdr-projects' default.
+    expect(maxParallelThreads(head(''))).toBe(10)
+    expect(maxParallelThreads(head('max_parallel_threads = 0'))).toBeNull()
+    expect(maxParallelThreads('# No front matter\nmax_parallel_threads = 3')).toBeNull()
+    expect(maxParallelThreads('')).toBeNull()
   })
 })

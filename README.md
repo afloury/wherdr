@@ -122,7 +122,8 @@ Claude Code, Codex and other product names are trademarks of their respective ow
     without Shift too, outside the message field).
 - **Project board** for [herdr-projects](#works-great-with-herdr-projects): coordinator and threads grouped
   under their project, and a side panel with the project's task lists (to test, to decide,
-  blocked, in progress, backlog) and one-click replies to the coordinator.
+  to review, in progress, in queue, blocked, to do, backlog — each optional) and one-click
+  replies to the coordinator.
 - **Settings** in a sidebar, with desktop-only options such as the content width.
 
 ### On a phone
@@ -456,11 +457,27 @@ worktree. It is optional; with it installed, wherdr adds:
 - **Project groups** in the agent list: the coordinator first, its threads indented under it,
   grouped by repository (`Repo web-shop · 2 worktrees`), with their thread number and state.
 - **Project panel** next to the coordinator (a side panel on a computer, a tab on a phone). It
-  reads the project's `TASKS.md` and shows its lists — **To test**, **To decide**, **Blocked**,
-  **In progress**, **Backlog** and **Done** — with the open threads live (state, progress,
-  report) and resolved threads under Done. Each list has its buttons, which send a ready-made
-  message to the coordinator: **Confirm** / **Problem** / **Question** on things to test, **Question** / **Answer** on
-  decisions, **Launch** or **Clarify** on backlog items, **Unblock** on blocked ones.
+  reads the project's `TASKS.md` and shows the lists it has, always in this order, with the open
+  threads live (state, progress, report) and resolved threads under Done:
+
+  | List | Meaning | Buttons |
+  | --- | --- | --- |
+  | **To test** | You confirm the work | Confirm, Problem, Question |
+  | **To decide** | Only you can unblock it | Question, Answer |
+  | **To review** | Pull requests for you | Reviewed, Comment |
+  | **In progress** | What threads are really doing | (live threads) |
+  | **In queue** | Decided: the coordinator launches the first one as soon as a thread slot frees | Move up / down, Launch now, Clarify, Remove from queue |
+  | **Blocked** | Waiting for someone or something external | Unblock, Clarify |
+  | **To do** | To do soon, in your priority order; never launched on its own | Move up / down, Queue it, Launch now, Clarify, Back to backlog |
+  | **Backlog** | Everything else | Launch, Clarify |
+  | **Done** | Resolved threads | |
+
+  Every list is **optional**: you and your coordinator pick the ones a project uses (a small
+  project may only need Backlog, In progress and Done); any other `##` list shows in a neutral
+  style after Backlog. French titles and common synonyms are recognized (À tester, En file,
+  À faire, Plus tard…). Every button sends a ready-made message to the coordinator, which edits
+  `TASKS.md` (wherdr never writes it). The In queue header shows the thread slots in use
+  (`max_parallel_threads` in `PROJECT.md`) and the next task.
 - **Badges**, the only decoration on task lines, chosen by the coordinator (wherdr adds none
   on its own): `[b:color(text)]`, or `[b:color(text)](target)` for a clickable badge with a small ↗.
   The target is an `https://` / `http://` link (new tab) or a thread ID such as `t-0140` (opens

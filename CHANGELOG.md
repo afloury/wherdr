@@ -76,3 +76,7 @@ First public release.
 - Context menus (long press, right click, "…" buttons) on cards, headers, tabs and paths open
   at the pointer with a mouse on a computer, and as the bottom sheet on phones, tablets and
   narrow windows; long press then move still drags a card.
+- Project panel: new optional **In queue** (launched automatically by the coordinator as soon as
+  a thread slot frees, with the slots in use) and **To do** (prioritized, never auto-launched)
+  lists with Move up / down, Queue it, Launch now and Back to backlog / Remove from queue; lists
+  always show in a fixed order, and the coordinator rules describe each list.

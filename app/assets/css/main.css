@@ -2155,12 +2155,15 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .pp-sec.review .pp-sec-icon { color: var(--accent); }
 .pp-sec.blocked .pp-sec-icon { color: var(--coral); }
 .pp-sec.doing .pp-sec-icon { color: var(--working); }
+.pp-sec.queue .pp-sec-icon { color: var(--green); }
+.pp-sec.todo .pp-sec-icon { color: var(--lav); }
 .pp-sec.done .pp-sec-icon { color: var(--done); }
 .pp-sec-title { flex: 1; min-width: 0; font: 600 11px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pp-count { flex: none; min-width: 22px; padding: 3px 5px; border: 1px solid var(--line); font: 500 10.5px/1 var(--mono); color: var(--muted); text-align: center; }
 .pp-chev { width: 14px; height: 14px; flex: none; color: var(--dim); transition: transform .15s ease; }
 .pp-sec.folded .pp-chev { transform: rotate(-90deg); }
 .pp-sec.folded .pp-sec-head { padding-bottom: 14px; }
+.pp-slots { margin: -4px 14px 8px 39px; font: 400 10.5px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 .pp-list { list-style: none; margin: 0; padding: 0 0 12px; }
 .pp-row { display: flex; align-items: flex-start; gap: 8px; padding: 0 12px 0 16px; }
 .pp-task { gap: 10px; padding-top: 6px; padding-bottom: 6px; font-size: 13.5px; line-height: 1.4; color: var(--text); }
@@ -2171,6 +2174,8 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .pp-sec.review .pp-box { background: var(--accent); }
 .pp-sec.blocked .pp-box { background: var(--coral); }
 .pp-sec.doing .pp-box { background: var(--working); }
+.pp-sec.queue .pp-box { background: var(--green); }
+.pp-sec.todo .pp-box { background: var(--lav); }
 .pp-task.done .pp-box { background: var(--line-strong); }
 .pp-task-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .pp-task.done .pp-task-text { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--dim); }
@@ -2212,6 +2217,11 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .pp-vbtn.unblock { color: var(--coral); }
 .pp-vbtn.reviewed { color: var(--green); }
 .pp-vbtn.clarify { color: var(--accent); }
+.pp-vbtn.move { color: var(--text-2); }
+.pp-vbtn.queue { color: var(--lav); }
+.pp-vbtn.park { color: var(--muted); }
+/* To do / In queue: six actions, wrapped under the text on narrow panels. */
+.pp-verdict.wrap { flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; }
 .pp-vbtn.backlog-action { width: auto; min-width: 78px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font: 600 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .04em; }
 .pp-vbtn.backlog-action::after { width: auto; inset: 0; }
 .pp-vbtn.backlog-action span { position: relative; z-index: 1; }
