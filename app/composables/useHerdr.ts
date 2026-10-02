@@ -271,16 +271,18 @@ let toaster: Toaster | null = null
 export function setToaster(t: Toaster) { toaster = t }
 // `detail`: an extra, smaller line (output of a plugin action…).
 export function clearToast() { toaster?.clear() }
-export function toast(msg: string, err = false, detail?: string) {
+// `action`: a button in the toast (its click is a fresh user gesture).
+export function toast(msg: string, err = false, detail?: string, action?: { label: string, run: () => void }) {
   if (!toaster) return
   toaster.clear()
   toaster.add({
     title: msg,
     description: detail || undefined,
+    actions: action ? [{ label: action.label, color: 'neutral', variant: 'outline', size: 'xs', onClick: action.run }] : undefined,
     color: err ? 'error' : 'neutral',
     class: err ? 'hw-toast-error' : undefined,
     icon: err ? 'i-lucide-circle-alert' : undefined,
-    duration: (err ? 4200 : 2600) + (detail ? 2400 : 0),
+    duration: (err ? 4200 : 2600) + (detail ? 2400 : 0) + (action ? 3000 : 0),
     close: false,
   })
 }

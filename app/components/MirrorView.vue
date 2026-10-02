@@ -108,7 +108,7 @@ onMounted(() => {
   // The mirror has no history to browse: no scrolling at the edge.
   selection = bindTerminalSelection(term, {
     focus: focusIf,
-    copied: ok => toast(ok ? t('Copied') : t('Copy failed'), false, ok ? undefined : t('The browser denied clipboard access.')),
+    ...useTerminalCopyFeedback(),
   })
   term.attachCustomWheelEventHandler(() => false)
   bindShiftEnter(term, (key) => { if (props.interactive) send({ keys: [key] }) })
