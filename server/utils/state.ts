@@ -272,6 +272,25 @@ function deliverHeld(p: Pane) {
     .finally(() => deliverBusy.delete(p.id))
 }
 
+// Messages taken back after a Stop (see interruptRestore.ts): hidden from the
+// conversation, by text and time, until Claude's transcript drops them itself
+// (next message written as their sibling). Our "queued" copy goes too.
+const takenBack = new Map<string, { text: string, ts: string | null }[]>()
+let takenBackSeq = 0
+export const takenBackOf = (paneId: string) => ({ hidden: takenBack.get(paneId) || [], seq: takenBackSeq })
+export function takeBack(paneId: string, item: { text: string, ts?: string | null }): string {
+  takenBackSeq++
+  takenBack.set(paneId, [...takenBackOf(paneId).hidden, { text: item.text, ts: item.ts || null }].slice(-20))
+  const list = queued.get(paneId) || []
+  const mine = list.find(q => sameMsg(msgText(q.text), item.text) || sameMsg(item.text, msgText(q.text)))
+  const left = list.filter(q => q !== mine)
+  if (left.length) queued.set(paneId, left)
+  else queued.delete(paneId)
+  setTimeout(poll, 50)
+  // The original text, photo paths included, goes back into wherdr's field.
+  return mine ? mine.text : item.text
+}
+
 // "Retry" on a failed message: held again, delivered by the next polls.
 export function retryQueued(paneId: string, id: string): QueuedMessage {
   const q = (queued.get(paneId) || []).find(x => x.id === id)
@@ -567,6 +586,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
   for (const id of askChecks.keys()) if (!alive(id)) askChecks.delete(id)
   for (const id of pendingPrompts.keys()) if (!alive(id)) pendingPrompts.delete(id)
   for (const id of queued.keys()) if (!alive(id)) queued.delete(id)
+  for (const id of takenBack.keys()) if (!alive(id)) takenBack.delete(id)
   for (const id of restarts.keys()) if (!alive(id)) restarts.delete(id)
   for (const id of agentBorn.keys()) if (!alive(id)) { agentBorn.delete(id); bornDirty = true }
   saveBorn()
