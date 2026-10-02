@@ -34,6 +34,9 @@ export function sendError(event: H3Event, status: number, body: Record<string, u
 interface ApiOptions {
   // Binary body accepted (photos): MIME type checked by the expression.
   raw?: RegExp
+  // Largest binary body (default 20 MB) and the error given beyond it.
+  max?: number
+  tooLarge?: string
 }
 
 // An API route: write checks, JSON body, known errors -> { error, code }.
@@ -52,12 +55,11 @@ export function defineApi<T>(
         // without a CORS preflight, which we never satisfy.
         const typeOk = opts.raw ? opts.raw.test(ctype) : ctype.startsWith('application/json')
         if (!sameOrigin(headers) || !typeOk) return sendError(event, 403, { error: 'Origin refused' })
-        const max = opts.raw ? 20 * 1024 * 1024 : BODY_MAX
-        if (Number(headers['content-length'] || 0) > max) {
-          throw new HerdrError('too_large', opts.raw ? 'Image too large (20 MB max)' : 'Request too large')
-        }
+        const max = opts.raw ? opts.max || 20 * 1024 * 1024 : BODY_MAX
+        const tooLarge = opts.raw ? opts.tooLarge || 'Image too large (20 MB max)' : 'Request too large'
+        if (Number(headers['content-length'] || 0) > max) throw new HerdrError('too_large', tooLarge)
         const raw = await readRawBody(event, false)
-        if (raw && raw.length > max) throw new HerdrError('too_large', opts.raw ? 'Image too large (20 MB max)' : 'Request too large')
+        if (raw && raw.length > max) throw new HerdrError('too_large', tooLarge)
         if (opts.raw) body = { data: raw || Buffer.alloc(0), ctype }
         else {
           try { body = raw && raw.length ? JSON.parse(raw.toString('utf8')) : {} }

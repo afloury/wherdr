@@ -1331,6 +1331,29 @@ body.kb .composer { padding-bottom: 8px; }
 }
 .attachments .att button .iconify { width: 13px; height: 13px; }
 
+/* Attached file (PDF, text, code…): square chip, icon, name, type and size. */
+.file-chip {
+  position: relative; display: inline-flex; align-items: center; gap: 8px; flex: none;
+  max-width: 240px; height: 44px; padding: 0 10px 0 8px; text-align: left;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--text);
+}
+.file-chip.clickable { cursor: pointer; }
+.file-chip.clickable:hover, .file-chip.clickable:focus-visible { border-color: var(--accent); outline: none; }
+.file-chip-icon { display: grid; place-items: center; width: 26px; height: 26px; flex: none; border: 1px solid var(--line); background: var(--bg-2); color: var(--text-2); }
+.file-chip-icon .iconify { width: 15px; height: 15px; }
+.file-chip-icon .spinner { width: 14px; height: 14px; }
+.file-chip-body { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.file-chip-name { font-size: 13px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-chip-meta { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); white-space: nowrap; }
+.file-chip.up { opacity: .7; }
+.file-chip-x { display: grid; place-items: center; width: 22px; height: 22px; margin-left: 2px; flex: none; color: var(--text-2); }
+.file-chip-x:hover { color: var(--text); background: var(--surface-3); }
+.file-chip-x .iconify { width: 13px; height: 13px; }
+.attachments .file-chip { height: 60px; }
+.msg-file-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; white-space: normal; }
+.msg-file-chips:last-child { margin-bottom: 2px; }
+.msg-file-chips .file-chip { background: var(--bg-2); max-width: min(100%, 260px); }
+
 /* ================================================================
    Windows (UModal): bottom sheet on the phone, centered on a computer
    ================================================================ */

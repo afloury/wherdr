@@ -35,6 +35,7 @@ import { HerdrError, herdr, setSocketResolver } from './herdr'
 import { type ExecResult, type MachineFs, type ShellExec, createShellFs, localFs, remoteCommand, shq } from './fsx'
 import { type Transcripts, createTranscripts } from './transcripts'
 import { fmt } from '../../shared/message'
+import { ATTACH_SUBDIR } from '../../shared/attachments'
 
 const fsp = fs.promises
 const LOCAL_LABEL_FILE = path.join(DATA_DIR, 'machine-label.txt')
@@ -141,8 +142,14 @@ const UPLOAD_SCRIPT = `umask 077
 d="$HOME/${REMOTE_UPLOAD_SUBDIR}"
 mkdir -p "$d" && cat > "$d/$1" && echo "$d/$1"`
 
-const PURGE_SCRIPT = `d="$HOME/${REMOTE_UPLOAD_SUBDIR}"
-[ -d "$d" ] && find "$d" -type f -mtime +${Math.round(UPLOAD_TTL_MS / 86400000)} -exec rm -f {} + ; exit 0`
+// Attached files (PDF, text…): mode 600 (umask), never executable.
+const ATTACH_SCRIPT = `umask 077
+d="$HOME/${ATTACH_SUBDIR}"
+mkdir -p "$d" && cat > "$d/$1" && chmod 600 "$d/$1" && echo "$d/$1"`
+
+const PURGE_SCRIPT = `for d in "$HOME/${REMOTE_UPLOAD_SUBDIR}" "$HOME/${ATTACH_SUBDIR}"; do
+  [ -d "$d" ] && find "$d" -type f -mtime +${Math.round(UPLOAD_TTL_MS / 86400000)} -exec rm -f {} +
+done; exit 0`
 
 // Reconnection delays (bounded), then every 30 s.
 const BACKOFF_MS = [1000, 2000, 5000, 10000, 20000, 30000]
@@ -262,8 +269,8 @@ export class RemoteMachine implements Machine {
     return spawn(SSH_BIN, [...this.muxArgs(), '--', this.target, cmd], { stdio: ['pipe', 'pipe', 'pipe'] })
   }
 
-  async putUpload(name: string, data: Buffer): Promise<string> {
-    const r = await this.exec(UPLOAD_SCRIPT, [name], { input: data, timeoutMs: 60000 })
+  async putUpload(name: string, data: Buffer, kind: 'photo' | 'file' = 'photo'): Promise<string> {
+    const r = await this.exec(kind === 'file' ? ATTACH_SCRIPT : UPLOAD_SCRIPT, [name], { input: data, timeoutMs: 120000 })
     const p = r.stdout.toString('utf8').trim()
     if (r.code !== 0 || !p) throw new Error(fmt('Copy to {machine} failed: {reason}', { machine: this.label, reason: lastLine(r.stderr) || r.code }))
     return p
