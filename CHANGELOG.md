@@ -36,7 +36,10 @@ First public release.
 - Composer with queued messages (cancellable), photos, paste, slash commands and their output.
   A message sent to an agent that is still starting waits and goes out as soon as it's ready,
   including an omp agent already waiting at its prompt that Herdr still counts as starting.
-- Per-session model and effort pickers for Claude Code and Codex.
+- Per-session model and effort pickers for Claude Code, Codex and omp. omp uses its own
+  "Switch Model" selector (`/switch`, `/model` or alt+p), read and driven on screen: the
+  picker lists the models omp offers, Enter applies for the session only (never the
+  default), and the conversation shows the switch as a "/model → …" line.
 - New agent: installed agents or terminal, folder browser, Git worktree and branch, resume the
   last conversation, queued first message. The last 30 folders used on each machine are kept:
   6 show as chips, `+N` shows the rest, and a field filters them by name (Enter takes the

@@ -14,7 +14,7 @@ import { HerdrError, agentPrompt, herdr, sleep } from './herdr'
 import { closePanel } from './actions'
 import { READY, findPane, poll, transcripts } from './state'
 import { machineOfPane } from './machines'
-import { type ClaudeEffortSlider, type ModelMenu, claudeEffortCommand, claudeEffortLevels, cleanModelName, codexCachedEfforts, codexConfigModel, claudeScreenEffort, claudeScreenModel, codexFooterModel, effortMatches, effortValue, parseClaudeEffortScreen, parseModelMenu, sameModel, switchConfirmKeys } from './models'
+import { type ClaudeEffortSlider, type ModelMenu, type OmpSelector, claudeEffortCommand, claudeEffortLevels, cleanModelName, codexCachedEfforts, codexConfigModel, claudeScreenEffort, claudeScreenModel, codexFooterModel, effortMatches, effortValue, ompModelLabel, ompSelectorCaption, parseClaudeEffortScreen, parseModelMenu, parseOmpSelector, sameModel, switchConfirmKeys } from './models'
 import { fmt } from '../../shared/message'
 
 // ---------------------------------------------------------------- current model
@@ -70,7 +70,7 @@ export function forgetModel(paneId: string) {
 }
 
 export async function currentModel(p: Pane): Promise<ModelInfo | null> {
-  if (!p.agent || !['claude', 'codex'].includes(p.agent)) return null
+  if (!p.agent || !['claude', 'codex', 'omp'].includes(p.agent)) return null
   let fromFile = await transcripts.model(p).catch(() => null)
   const f = footers.get(p.id)
   if (f && (!fromFile || !sameModel(fromFile.label, f.info.label) || fromFile.effort !== f.info.effort)) {
@@ -112,7 +112,7 @@ const busy = new Set<string>()
 async function withPane<T>(paneId: string, fn: (p: Pane) => Promise<T>): Promise<T> {
   const p = findPane(paneId)
   if (!p) throw new HerdrError('bad_pane', 'Pane not found')
-  if (!p.agent || !['claude', 'codex'].includes(p.agent)) throw new HerdrError('unsupported', 'Not a Claude or Codex agent')
+  if (!p.agent || !['claude', 'codex', 'omp'].includes(p.agent)) throw new HerdrError('unsupported', 'Not a Claude, Codex or omp agent')
   if (!READY.has(p.status || '')) {
     throw new HerdrError('busy', p.status === 'blocked' ? 'The agent is waiting for an answer — reply first.' : 'The agent is working — change the model once it’s done.')
   }
@@ -195,6 +195,7 @@ const toOption = ({ label, hint, isDefault }: ModelOption): ModelOption => ({ la
 export async function listModels(paneId: string, refresh = false): Promise<ModelList> {
   const p0 = findPane(paneId)
   if (!p0 || !p0.agent) throw new HerdrError('bad_pane', 'Pane not found')
+  if (p0.agent === 'omp') return ompListModels(p0, refresh)
   const hit = listCache.get(listKey(p0.id, p0.agent))
   if (hit && !refresh && Date.now() - hit.at < LIST_TTL_MS) return hit
   return withPane(paneId, async (p) => {
@@ -220,6 +221,8 @@ async function pick(paneId: string, m: ModelMenu, n: number, label: string, kind
 }
 
 export async function setModel(paneId: string, wanted: string): Promise<ModelInfo> {
+  const p0 = findPane(paneId)
+  if (p0?.agent === 'omp') return ompSetModel(paneId, String(wanted || '').trim())
   const label = cleanModelName(wanted)
   if (!label) throw new HerdrError('bad_model', 'Missing model')
   return withPane(paneId, async (p) => {
@@ -283,6 +286,130 @@ export async function setModel(paneId: string, wanted: string): Promise<ModelInf
   })
 }
 
+// ---------------------------------------------------------------- omp (alt+p selector)
+// omp's "Switch Model" selector opens on alt+p (or /switch, /model in the
+// input): a boxed list where Enter applies for this session only ("use for
+// this session") — never a global default. Rows have no numbers: the cursor
+// moves one "down"/"up" per model, re-reading the screen between steps.
+const ompSelector = async (paneId: string) => parseOmpSelector(await screen(paneId))
+
+async function waitOmpSelector(paneId: string, ok: (s: OmpSelector) => boolean, timeoutMs = 6000): Promise<OmpSelector | null> {
+  const until = Date.now() + timeoutMs
+  for (;;) {
+    const s = await ompSelector(paneId).catch(() => null)
+    if (s && ok(s)) return s
+    if (Date.now() > until) return null
+    await sleep(250)
+  }
+}
+
+// Escape while the selector is on screen: it must never stay open.
+async function closeOmpSelector(paneId: string) {
+  for (let i = 0; i < 3; i++) {
+    if (!(await ompSelector(paneId).catch(() => null))) return
+    await herdr('pane.send_input', { pane_id: paneId, keys: ['esc'] })
+    await sleep(400)
+  }
+}
+
+async function openOmpSelector(p: Pane): Promise<OmpSelector> {
+  await closeOmpSelector(p.id)
+  await closePanel(p.id).catch(() => false)
+  await herdr('pane.send_input', { pane_id: p.id, keys: ['alt+p'] })
+  const s = await waitOmpSelector(p.id, () => true)
+  if (!s) {
+    await closeOmpSelector(p.id)
+    throw new HerdrError('no_menu', 'omp’s model selector did not show up')
+  }
+  return s
+}
+
+// omp's own transcript writes the change ("model_change" …, "role":
+// "temporary"); wait for it so currentModel() is right away.
+async function waitOmpModel(p: Pane, id: string, since: number): Promise<boolean> {
+  const until = Date.now() + 4000
+  for (;;) {
+    const info = await transcripts.model(p).catch(() => null)
+    if (info && info.id === id && info.at && Date.parse(info.at) >= since - 1500) return true
+    if (Date.now() > until) return false
+    await sleep(300)
+  }
+}
+
+async function ompSetModel(paneId: string, wanted: string): Promise<ModelInfo> {
+  const id = String(wanted || '').trim()
+  if (!id) throw new HerdrError('bad_model', 'Missing model')
+  return withPane(paneId, async (p) => {
+    const started = Date.now()
+    let s = await openOmpSelector(p)
+    try {
+      const rank = (sel: OmpSelector) => sel.options.findIndex(o => o.label === id)
+      let at = rank(s)
+      // Search narrows the list ("glm" → …): type enough of the id's last
+      // segment to make it visible, one key at a time (the field takes them).
+      if (at < 0) {
+        const tail = id.split('/').pop()!.toLowerCase()
+        const heads = s.options.map(o => o.label.split('/').pop()!.toLowerCase())
+        let typed = ''
+        for (const ch of tail) {
+          typed += ch
+          if (heads.some(h => h === typed)) break
+        }
+        for (const ch of typed) {
+          await herdr('pane.send_input', { pane_id: p.id, keys: [ch === ' ' ? 'space' : ch] })
+          await sleep(80)
+        }
+        s = (await waitOmpSelector(p.id, x => x.search.length > 0, 3000)) || s
+        at = rank(s)
+      }
+      if (at < 0) throw new HerdrError('bad_model', fmt('Model not found in omp’s selector: {model}', { model: id }))
+      // One "down"/"up" per row; the list can change under the cursor
+      // (search, scrollbar), so each step re-reads and recomputes.
+      for (let n = 0; n < 80; n++) {
+        s = (await ompSelector(p.id)) || s
+        const delta = at - s.cursor
+        if (delta === 0) break
+        await herdr('pane.send_input', { pane_id: p.id, keys: [delta > 0 ? 'down' : 'up'] })
+        await sleep(120)
+        if (n === 79) throw new HerdrError('stale', 'The model selector did not follow — nothing was changed.')
+      }
+      s = (await waitOmpSelector(p.id, x => x.cursor === at && x.options[at]!.label === id, 3000))
+        ?? (await ompSelector(p.id)) ?? s
+      if (s.cursor !== at || s.options[at]!.label !== id) throw new HerdrError('stale', 'The model selector changed — try again.')
+      await herdr('pane.send_input', { pane_id: p.id, keys: ['enter'] })
+      await waitOmpModel(p, id, started)
+    } catch (e) {
+      await closeOmpSelector(p.id).catch(() => {})
+      throw e
+    }
+    const caption = ompSelectorCaption(await screen(p.id).catch(() => ''), id)
+    const info: ModelInfo = { id, label: caption?.name || ompModelLabel(id), effort: null, at: new Date(started).toISOString() }
+    overrides.set(p.id, { ...info, ms: started })
+    log(`model ${p.id} (omp) -> ${id} (this session)`)
+    setTimeout(poll, 100)
+    return (await currentModel(p)) || info
+  })
+}
+
+// omp models offered by the selector, read live ("Search…" empty). The list
+// depends on the machine's providers (~/.omp config), not on the agent kind:
+// cached per machine, and re-read on demand (refresh).
+async function ompListModels(p: Pane, refresh: boolean): Promise<ModelList> {
+  const key = `omp|${machineOfPane(p.id)?.key || ''}`
+  const hit = listCache.get(key)
+  if (hit && !refresh && Date.now() - hit.at < LIST_TTL_MS) return hit
+  let s: OmpSelector
+  try { s = await openOmpSelector(p) }
+  catch (e) { await closeOmpSelector(p.id).catch(() => {}); throw e }
+  try {
+    const options = s.options.map(o => ({ label: o.label, hint: o.hint, current: o.current, isDefault: false }))
+    const list: ModelList = { agent: 'omp', options, at: Date.now() }
+    listCache.set(key, list)
+    log(`models omp: ${options.map(o => o.label).join(', ')}`)
+    return list
+  } finally { await closeOmpSelector(p.id).catch(() => {}) }
+}
+
 async function codexEffortMenu(p: Pane, model: ModelInfo): Promise<ModelMenu> {
   const m = await openMenu(p)
   if (!m.enterSelects) throw new HerdrError('unsafe', 'Unexpected /model menu — nothing was changed.')
@@ -342,6 +469,9 @@ export async function listEfforts(paneId: string): Promise<EffortList> {
   return withPane(paneId, async p => {
     const model = await currentModel(p)
     if (!model) return { levels: [], current: null }
+    // omp: no /effort command; its thinking level is part of the model
+    // switch (the selector applies it). Nothing to choose here.
+    if (p.agent === 'omp') return { levels: [], current: model.effort || null }
     if (p.agent === 'claude') {
       const fallback = claudeEffortLevels(model.label)
       // Reading the list must not send /effort: Claude records even a
@@ -368,6 +498,7 @@ export async function setEffort(paneId: string, level: string): Promise<ModelInf
   return withPane(paneId, async p => {
     const before = await currentModel(p)
     if (!before) throw new HerdrError('bad_model', 'Unknown model')
+    if (p.agent === 'omp') throw new HerdrError('bad_effort', 'Effort level unavailable for this model')
     const started = Date.now()
     if (p.agent === 'claude') {
       if (!claudeEffortCommand(level, before.label)) throw new HerdrError('bad_effort', 'Effort level unavailable for this model')

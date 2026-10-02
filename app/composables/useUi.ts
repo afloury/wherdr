@@ -2,7 +2,7 @@
 // computer): menus, new agent, rename, command result, image
 // preview, confirmation.
 import { parseMenu } from '../../shared/menuScreen'
-import { agentAnswering } from '../../shared/commandScreen'
+import { agentAnswering, ompSelectorOnScreen } from '../../shared/commandScreen'
 
 export interface MenuItem {
   kind?: 'action' | 'command' | 'separator' | 'note' | 'group'
@@ -108,7 +108,7 @@ async function readCommandResult(pane: string, cmd: string, tries = 5, seq = res
       // omp draws no recognizable activity under the command: its state wins.
       const p = herdrState.value.panes.find(x => x.id === pane)
       const working = p?.agent === 'omp' && p.status === 'working'
-      if (parseMenu(text) || agentAnswering(text, cmd) || working) { closeCommandResult(false); return }
+      if (parseMenu(text) || ompSelectorOnScreen(text) || agentAnswering(text, cmd) || working) { closeCommandResult(false); return }
       const shown = extractResult(text, cmd)
       // "Loading…" (/usage gauges), "⏳ Waiting for response…" (omp's /btw).
       const loading = /\bLoading\b|Waiting for response/.test(shown)

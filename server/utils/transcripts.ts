@@ -17,7 +17,7 @@ import path from 'node:path'
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail } from '../../shared/types'
 import { pendingClaudeTool, pendingCodexTool } from './promptDetail'
 import { type ClaudeAsked, type OmpAsked, pendingClaudeAsk, pendingOmpAsk } from './choices'
-import { cleanModelName, lastModel } from './models'
+import { cleanModelName, lastModel, ompModelLabel } from './models'
 import { type MachineFs, localFs } from './fsx'
 import { searchFile } from './conversationSearch'
 import { hasTranscript, transcriptKind } from '../../shared/agentKind'
@@ -457,6 +457,13 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
     const ts: string | null = typeof d.timestamp === 'string' ? d.timestamp : null
     if (d.type === 'compaction') {
       items.push({ role: 'system', text: 'Conversation compacted', ts })
+      continue
+    }
+    // Model switch (the selector, alt+p or /switch): shown like Claude's
+    // "/model → …" line. "role": "temporary" only: a "default" change was
+    // made from the provider settings panel, not from the conversation.
+    if (d.type === 'model_change' && typeof d.model === 'string' && d.model && d.role === 'temporary') {
+      items.push({ role: 'system', text: `/model → ${ompModelLabel(d.model)}`, ts })
       continue
     }
     if (d.type === 'custom_message') {
@@ -921,7 +928,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
   const MODEL_MAX_BYTES = 16 * 1024 * 1024
   const modelCache = new Map<string, { file: string, size: number, info: ModelInfo | null }>()
   async function model(pane: TranscriptPane): Promise<ModelInfo | null> {
-    if (!pane.agent || !['claude', 'codex'].includes(pane.agent)) return null
+    if (!pane.agent || !['claude', 'codex', 'omp'].includes(pane.agent)) return null
     const loc = await locate(pane)
     if (!loc) return null
     let size: number

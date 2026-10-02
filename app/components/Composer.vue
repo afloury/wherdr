@@ -335,6 +335,8 @@ const SLASH: Record<string, [string, string][]> = {
     ['/usage', 'Plan usage'], ['/model', 'Change model'], ['/review', 'Code review']],
   codex: [['/compact', 'Summarize context'], ['/new', 'New conversation'], ['/status', 'Session status'],
     ['/model', 'Change model'], ['/review', 'Code review'], ['/diff', 'View diff']],
+  omp: [['/compact', 'Summarize context'], ['/new', 'New conversation'], ['/plan', 'Plan mode'],
+    ['/model', 'Change model'], ['/fast', 'Priority service tier']],
 }
 // Images first, then interruption and the agent's commands.
 function openPlus() {
@@ -462,7 +464,7 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
           :aria-label="t('Photo, paste, commands')" @click="openPlus"
         />
         <input ref="fileInput" type="file" accept="image/*" multiple hidden @change="onFiles">
-        <ModelPicker v-if="pane && (pane.agent === 'claude' || pane.agent === 'codex')" :pane="pane" />
+        <ModelPicker v-if="pane && (pane.agent === 'claude' || pane.agent === 'codex' || pane.agent === 'omp')" :pane="pane" />
         <span v-if="hint && suggestion" class="prompt-hint"><UKbd value="tab" size="sm" /> {{ t('suggestion') }} <span class="sep">·</span> <UKbd value="enter" size="sm" /> {{ t('send') }}</span>
         <span v-else-if="hint" class="prompt-hint"><UKbd value="enter" size="sm" /> {{ t('send') }} <span class="sep">·</span> <UKbd value="shift" size="sm" /><UKbd value="enter" size="sm" /> {{ t('new line') }}</span>
         <span v-else-if="desk && escStops && stopMode && interrupting !== 'running'" class="prompt-hint"><UKbd value="escape" size="sm" /> {{ tl('stop', 'arrêter') }}</span>

@@ -16,8 +16,26 @@
 // ↑/↓ before a number: the list scrolls (Claude shows 10 at a time).
 // Enter saves the choice as the global default (~/.claude/settings.json,
 // ~/.codex/config.toml): we always confirm with `s` (this session only).
+//
+// omp (18.4) opens a boxed "Switch Model" selector (alt+p, /switch, /model):
+//
+//   ╭─ Switch Model ────────────────────────────────╮
+//   │  Session-only switch — role models stay unch… │   title line
+//   │  🔍 >                                         │   search field (reverse video)
+//   │ ❯ anthropic/claude-opus-5-5 ●                 │   cursor · "provider/model" · roles
+//   │   anthropic/claude-haiku-4-5 ⦸ context>200k   │   rows (⦸ over-context warning)
+//   │   Claude Haiku 4.5 · 200k ctx · …             │   caption of the model under the cursor
+//   │   ● current · ● default ◕ · ● slow ◒ …        │   roles of that model (● = has it)
+//   │ ↑/↓ models · ⏎ use for this session · … ⎋ cl… │   legend (Enter = session only)
+//   ╰───────────────────────────────────────────────╯
+//
+// Enter always applies for the session ("use for this session", "Task
+// subagents" variant); the picker opened from /model with an argument applies
+// through the same dialog. "omp/provider/model" → readable label
+// "Model" (ompModelLabel), never Claude's.
 import type { ModelInfo, ModelOption } from '../../shared/types'
 import { keysFor, parseChoices } from './choices'
+import { ompSelectorOnScreen } from '../../shared/commandScreen'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
@@ -44,7 +62,24 @@ export function codexModelLabel(id: string): string {
   return m.split('-').map((x, i) => (i === 0 ? 'GPT' : cap(x))).join('-')
 }
 
-export const modelLabel = (kind: string | null, id: string) => (kind === 'codex' ? codexModelLabel(id) : claudeModelLabel(id))
+// omp id ("provider/model", sometimes "provider/vendor/model") → readable
+// label: Claude's own naming for "claude-*" ids ("Opus 5.5"), otherwise
+// family from the letters before the first digit then the version
+// ("openrouter/z-ai/glm-5.3-flash" → "Glm 5.3 flash", "web/exa" → "exa").
+export function ompModelLabel(id: string): string {
+  const parts = String(id || '').trim().split('/').filter(Boolean)
+  if (!parts.length) return String(id || '')
+  const name = parts[parts.length - 1]!
+  if (/^claude-/i.test(name)) return claudeModelLabel(name)
+  const at = name.search(/\d/)
+  if (at <= 0) return name
+  const family = cap(name.slice(0, at).replace(/[-_]+$/, '').replace(/-/g, ' '))
+  const ver = name.slice(at).replace(/[-_]+/g, ' ').trim()
+  return ver ? `${family} ${ver}` : family
+}
+
+export const modelLabel = (kind: string | null, id: string) =>
+  kind === 'omp' ? ompModelLabel(id) : kind === 'codex' ? codexModelLabel(id) : claudeModelLabel(id)
 
 // Label from a /model menu or output: "Opus 5 (1M context) (default)" → "Opus 5 (1M)".
 export function cleanModelName(s: string): string {
@@ -67,9 +102,34 @@ export const sameModel = (a: string | null | undefined, b: string | null | undef
 // "Set model to `Opus 5 (1M context) (default)` and saved as…", "Kept model as `Opus 5.5`".
 const SET_RE = /(?:Set model to|Kept model as)\s+`([^`]+)`/
 
+// omp transcript (~/.omp/agent/sessions/…jsonl): the model in effect comes
+// from, in order, "model_change" ("role": "temporary" = session-only switch,
+// "default" = the picker's role choice) and "thinking_level_change" entries;
+// else the "model" of the last assistant message (with provider, without
+// thinking level). The lowest (most recent) wins.
+export function ompModelFromLine(line: string): ModelInfo | null {
+  if (!line.includes('"model"') && !line.includes('"thinkingLevel"')) return null
+  let d: Json
+  try { d = JSON.parse(line) }
+  catch { return null }
+  if (d.type === 'model_change' && typeof d.model === 'string' && d.model) {
+    return { id: d.model, label: ompModelLabel(d.model), effort: null, at: d.timestamp || null }
+  }
+  if (d.type === 'thinking_level_change' && typeof d.thinkingLevel === 'string' && d.thinkingLevel) {
+    return { id: null, label: '', effort: d.thinkingLevel, at: d.timestamp || null }
+  }
+  if (d.type === 'message' && d.message && d.message.role === 'assistant') {
+    const id = d.message.model
+    if (typeof id !== 'string' || !id) return null
+    return { id, label: ompModelLabel(id), effort: null, at: d.timestamp || null }
+  }
+  return null
+}
+
 // Model carried by a transcript line (null if it says nothing about it).
 export function modelFromLine(line: string, kind: string | null): ModelInfo | null {
   if (!line) return null
+  if (kind === 'omp') return ompModelFromLine(line)
   if (kind === 'codex') {
     if (!line.includes('"turn_context"')) return null
     let d: Json
@@ -106,6 +166,15 @@ export function modelFromLine(line: string, kind: string | null): ModelInfo | nu
 export function lastModel(lines: string[], kind: string | null): ModelInfo | null {
   for (let i = lines.length - 1; i >= 0; i--) {
     const r = modelFromLine(lines[i]!, kind)
+    // omp: a "thinking_level_change" alone carries no model; merge it with
+    // the model found just before (the level change follows the switch).
+    if (r && kind === 'omp' && !r.label) {
+      for (let k = i - 1; k >= 0; k--) {
+        const m = modelFromLine(lines[k]!, kind)
+        if (m && m.label) return { ...m, effort: r.effort ?? m.effort ?? null }
+      }
+      continue
+    }
     if (r) return r
   }
   return null
@@ -171,6 +240,105 @@ export function parseModelMenu(text: string | null | undefined): ModelMenu | nul
     enterSelects: /enter select/i.test(footer),
     effort,
   }
+}
+
+// ---------------------------------------------------------------- omp selector
+// omp's "Switch Model" selector (alt+p, /switch, /model): a boxed list of
+// provider/model ids with a search field, parsed from the plain screen.
+// Task-model variant ("Switch Task Model"): Enter applies to Task subagents,
+// not to the session. "omp/models" panel (typed `/model`): the providers'
+// picker, its Enter reads "⏎/→ models" — read-only, entries chosen there go
+// through the same session dialog afterwards.
+export interface OmpSelector {
+  options: ModelOption[] // "provider/model" ids; hint carries ⦸ warnings
+  cursor: number // index in options
+  search: string // text typed in the search field
+  separator: number | null // rank of a "────" row (the matched block separator)
+  task: boolean // "Switch Task Model": Enter applies to Task subagents
+}
+
+const OMP_FRAME_TOP = /^╭─\s*(?:Switch (?:Task )?Model)/
+// Row: left border, content, right border; a scrollbar column adds a second
+// one ("…$4/20│ │").
+const OMP_ROW = /^│(.*?)│(?:\s*│)?\s*$/
+const OMP_MODEL = /^(?:[a-z0-9][\w.-]*(?:\/[\w.-]+)+)/
+const OMP_OVERCTX = /⦸\s*(context>[^\s]+|context \d+[kKmM]?[^\s]*|[^\s].{0,60})$/
+
+export function parseOmpSelector(text: string | null | undefined): OmpSelector | null {
+  if (!ompSelectorOnScreen(text)) return null
+  const lines = String(text).replace(/\s+$/, '').split('\n')
+  let top = -1
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (/^╭─\s*(?:Switch (?:Task )?Model)/.test(lines[i]!)) { top = i; break }
+  }
+  if (top < 0) return null
+  const body: string[] = []
+  for (const line of lines.slice(top + 1)) {
+    if (/╰/.test(line)) break
+    const m = line.match(OMP_ROW)
+    if (!m) return null // not the bottom of the box: history above it
+    body.push(m[1]!.replace(/\s+$/, ''))
+  }
+  const task = /Switch Task Model/.test(lines[top]!)
+  const options: ModelOption[] = []
+  let cursor = 0
+  let search = ''
+  let separator: number | null = null
+  for (const row of body) {
+    const raw = row.trim()
+    const q = raw.match(/^🔍\s*>\s*(.*)$/)
+    if (q) { search = q[1]!.trim(); continue }
+    // A model row: the dim perf/context/cost columns sit far right, after
+    // 3+ spaces from the id and its marks — everything from there is noise.
+    const cut = raw.search(/\s{3,}/)
+    const t = (cut < 0 ? raw : raw.slice(0, cut)).trim()
+    const cur = /^❯\s*/.exec(t)
+    const model = (cur ? t.slice(cur[0].length) : t).trim()
+    if (cur) {
+      const hit = model.match(OMP_MODEL)
+      if (hit) {
+        cursor = options.length
+        const warn = model.slice(hit[0].length).trim().match(OMP_OVERCTX)
+        options.push({ label: hit[0], hint: warn ? warn[1]!.trim() : null, current: /●\s*$/.test(model) })
+        continue
+      }
+    }
+    if (OMP_MODEL.test(t)) {
+      const hit = t.match(OMP_MODEL)!
+      const warn = t.slice(hit[0].length).trim().match(OMP_OVERCTX)
+      options.push({ label: hit[0], hint: warn ? warn[1]!.trim() : null })
+      continue
+    }
+    if (/^─{3,}/.test(t) && options.length) separator = options.length
+  }
+  return { options, cursor, search, separator, task }
+}
+
+// Caption of the model under the cursor: "Claude Opus 5.5 · 200k ctx · …" —
+// the readable name omp itself gives, and the roles line below ("● current ·
+// ● default ◕ …"). The caption is found from the id: the derived label, then
+// the id's last segment (omp sometimes writes it differently, "GLM 5.3
+// Flash"). null: no caption on screen (list scrolled, short box).
+export function ompSelectorCaption(text: string | null | undefined, id: string): { name: string, roles: string[] } | null {
+  if (!text || !id) return null
+  const lines = String(text).replace(/\s+$/, '').split('\n')
+  const name = id.split('/').filter(Boolean).pop()!
+  const candidates = [ompModelLabel(id), name.startsWith('claude-') ? `Claude ${ompModelLabel(id)}` : '', name]
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!
+    if (!/^│\s*\S/.test(line)) continue
+    const body = line.replace(/^│\s*/, '')
+    const hit = candidates.find(c => body.toLowerCase().startsWith(`${c.toLowerCase()} ·`))
+    if (!hit) continue
+    const roles: string[] = []
+    for (let k = i + 1; k < Math.min(i + 3, lines.length); k++) {
+      const r = lines[k]!.replace(/^│\s*/, '').trim()
+      if (!/^●/.test(r)) break
+      roles.push(...r.split('·').map(s => s.replace(/●/g, '').replace(/\s*[◕◒◍○○◕◒][\s\S]*$/, '').trim()).filter(Boolean))
+    }
+    return { name: body.split('·')[0]!.trim(), roles }
+  }
+  return null
 }
 
 // Claude, in the middle of a conversation: after "s", it asks for confirmation

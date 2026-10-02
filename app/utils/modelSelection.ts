@@ -10,6 +10,9 @@ const key = (value: string) => value.toLowerCase()
 
 export function modelOptionCurrent(option: ModelOption, model: ModelInfo | null | undefined): boolean {
   if (!model) return false
+  // omp: the options are the raw ids ("anthropic/claude-opus-5-5"), the
+  // state carries the same id — compare it before the labels.
+  if (model.id && option.label.includes('/')) return option.label === model.id
   const wanted = key(model.label)
   if (key(option.label) === wanted) return true
   const hintName = option.hint?.split('·')[0]?.trim() || ''

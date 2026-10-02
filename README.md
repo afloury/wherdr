@@ -85,8 +85,9 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - **Composer**: send messages while the agent works (queued, cancellable), attach or paste
   photos, run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
   of local commands. Stop button while the agent works.
-- **Model and effort pickers** for Claude Code and Codex. Changes apply **to the current
-  session only**; wherdr never changes your default model.
+- **Model and effort pickers** for Claude Code, Codex and omp (omp: its
+  "Switch Model" selector, `/switch` or `/model`). Changes apply **to the
+  current session only**; wherdr never changes your default model.
 - **New agent**: pick an installed agent (or a plain terminal), a folder, optionally a separate
   Git **worktree** and branch, resume the last conversation, and queue a first message.
 - **Changes view**: Git status and diff of an agent's working folder; worktree management.

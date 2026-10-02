@@ -31,3 +31,12 @@ export function agentAnswering(screen: string, cmd: string): boolean {
   if (start < 0) return false
   return lines.slice(start).some(l => ACTIVITY.test(l) || REPLY.test(l) || INTERRUPT.test(l))
 }
+
+// omp's model selector (alt+p, /switch, /model): a boxed list, not a
+// result. Its parsing and control live server-side (models.ts, modelctl.ts);
+// here we only recognize it to keep the "❯ /model" panel closed.
+export const OMP_SELECTOR_OPEN = /╭─\s*Switch (?:Task )?Model\b/
+
+export function ompSelectorOnScreen(text: string | null | undefined): boolean {
+  return Boolean(text) && OMP_SELECTOR_OPEN.test(String(text)) && /⏎\s*use for (?:this session|Task subagents)/.test(String(text))
+}
