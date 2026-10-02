@@ -2221,7 +2221,7 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .pp-vbtn.queue { color: var(--lav); }
 .pp-vbtn.park { color: var(--muted); }
 /* To do / In queue: six actions, wrapped under the text on narrow panels. */
-.pp-verdict.wrap { flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; }
+.pp-verdict.wrap { flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; gap: 6px 4px; }
 .pp-vbtn.backlog-action { width: auto; min-width: 78px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font: 600 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .04em; }
 .pp-vbtn.backlog-action::after { width: auto; inset: 0; }
 .pp-vbtn.backlog-action span { position: relative; z-index: 1; }

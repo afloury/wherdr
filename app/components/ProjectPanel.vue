@@ -233,8 +233,9 @@ async function moveTask(s: BoardSection, task: ProjectTask, action: MoveAction) 
   haptic()
   try {
     const queued = await sendMessage(pane, props.paneId, moveMessage(action, task.text, lang()))
-    // Up / Down can be repeated; the others are sent once.
-    if (action !== 'up' && action !== 'down') {
+    // Up / Down can be repeated (the row stays, so a toast confirms); the others are sent once.
+    if (action === 'up' || action === 'down') toast(t('Sent to the coordinator'))
+    else {
       moved.value = new Set([...moved.value, key])
       movedByPane.set(props.paneId, moved.value)
     }
