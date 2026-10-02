@@ -528,7 +528,7 @@ function pathMenuItems(p: string): MenuItem[] {
 function openPathMenu(el: HTMLElement, path?: string) {
   const p = path || (el.textContent || '').trim()
   if (!p) return
-  if (!desk.value) {
+  if (sheetMenus.value) {
     haptic()
     openMenu(pathMenuItems(p), p.replace(/\/+$/, '').split('/').pop() || p)
     return
@@ -1084,7 +1084,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         </div>
       </UChatMessages>
     </div>
-    <UDropdownMenu v-if="desk" v-model:open="pathMenu.open" :items="pathItems" :content="{ align: 'start', side: 'bottom', sideOffset: 4 }" :ui="{ content: 'hw-dropdown' }">
+    <UDropdownMenu v-if="!sheetMenus" v-model:open="pathMenu.open" :items="pathItems" :content="{ align: 'start', side: 'bottom', sideOffset: 4 }" :ui="{ content: 'hw-dropdown' }">
       <span class="path-anchor" :style="{ left: `${pathMenu.x}px`, top: `${pathMenu.y}px`, width: `${pathMenu.w}px`, height: `${pathMenu.h}px` }" aria-hidden="true" />
     </UDropdownMenu>
   </div>

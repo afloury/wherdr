@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Header (space, tab, pane cell): right click (computer) or long
-// press (phone) = the same menu as its "…" button, at the pointer. The menu
+// press (phone, tablet) = the same menu as its "…" button: at the pointer with a
+// mouse, as the bottom sheet on a touch or narrow screen (`sheetMenus`). The menu
 // stays on screen and closes with Escape, an outside click or scrolling. The
 // fields, the terminal and the text keep the browser's native menu.
 import { longPress } from '~/utils/longPress'
@@ -20,10 +21,15 @@ function onOpen(o: boolean) {
   } else window.removeEventListener('scroll', onScroll, { capture: true })
 }
 onUnmounted(() => window.removeEventListener('scroll', onScroll, { capture: true }))
+let pointerType = ''
 // Native menu kept: we stop the event before Reka's trigger.
 function onContext(e: MouseEvent) {
   if (keepsNativeMenu(e.target as Element | null)) e.stopPropagation()
-  else if (!desk.value) e.preventDefault()
+  else if (sheetMenus.value) {
+    e.preventDefault()
+    // Right click with a mouse (narrow window, tablet trackpad): the sheet.
+    if (pointerType === 'mouse' && !props.disabled) openMenu(props.items(), props.title)
+  }
 }
 
 const lp = longPress({
@@ -33,14 +39,15 @@ const lp = longPress({
   },
 })
 function down(e: PointerEvent) {
+  pointerType = e.pointerType
   // `manualPress`: the parent handles the long press (plan drag and drop).
-  if (desk.value || props.disabled || props.manualPress || skipsPress(e.target as Element | null)) return
+  if (!sheetMenus.value || props.disabled || props.manualPress || skipsPress(e.target as Element | null)) return
   lp.down(e)
 }
 </script>
 
 <template>
-  <UContextMenu :disabled="!desk || disabled" :items="dropdown" :ui="{ content: 'hw-dropdown' }" @update:open="onOpen">
+  <UContextMenu :disabled="sheetMenus || disabled" :items="dropdown" :ui="{ content: 'hw-dropdown' }" @update:open="onOpen">
     <div
       class="header-menu" @contextmenu.capture="onContext" @pointerdown="down" @pointermove="lp.move"
       @pointerup="lp.cancel" @pointercancel="lp.cancel"

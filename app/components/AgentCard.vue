@@ -8,11 +8,14 @@
 // answers of its most urgent pane (`pane`). Tapping it opens the space.
 import type { Pane } from '#shared/types'
 import type { Row } from '#shared/spaces'
+import type { MenuItem } from '~/composables/useUi'
+import { longPress } from '~/utils/longPress'
 
 // `tag`: role in a herdr-projects project (coordinator, t-0018).
 const props = defineProps<{ pane: Pane, tag?: string | null, row?: Row | null }>()
 const space = computed(() => (props.row && props.row.kind === 'space' ? props.row : null))
 const busy = ref(false)
+const card = ref<HTMLElement | null>(null)
 let pointerType = ''
 let touchMenuOpenedAt = 0
 
@@ -72,7 +75,7 @@ async function setRead(read: boolean) {
     if (!read && curPane.value === props.pane.id) navigateTo('/')
   } catch (err) { toast((err as Error).message, true) }
 }
-const contextItems = computed(() => toDropdown(space.value ? [
+const menuItems = computed<MenuItem[]>(() => space.value ? [
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
   ...workspaceItems(space.value.workspace.id),
 ] : [
@@ -88,12 +91,36 @@ const contextItems = computed(() => toDropdown(space.value ? [
       : t('Close this terminal'),
     icon: 'i-lucide-trash-2', danger: true, run: () => closePane(props.pane),
   },
-]))
+])
+const contextItems = computed(() => (sheetMenus.value ? [] : toDropdown(menuItems.value)))
+
+// Touch or narrow screen: a still long press opens the card's menu as the
+// bottom sheet (ReorderList arms its drag at 300 ms: moving then drags).
+const lp = longPress({
+  delay: 700,
+  onPress: () => {
+    if (card.value?.classList.contains('reorder-source')) return
+    haptic()
+    openMenu(menuItems.value, title.value)
+  },
+})
+function down(e: PointerEvent) {
+  pointerType = e.pointerType
+  if (!sheetMenus.value || (e.target as Element | null)?.closest?.('button, a')) return
+  lp.down(e)
+}
+// Right click with a mouse (narrow window, tablet trackpad): the same sheet. A
+// finger's contextmenu (Android long press) is left to the long press.
+function onContext(e: MouseEvent) {
+  if (!sheetMenus.value) return
+  e.preventDefault()
+  if (pointerType === 'mouse') openMenu(menuItems.value, title.value)
+}
 
 function onContextOpen(open: boolean) {
   if (open && (pointerType === 'touch' || pointerType === 'pen')) touchMenuOpenedAt = Date.now()
 }
-function recentTouchMenu() { return Date.now() - touchMenuOpenedAt < 1000 }
+function recentTouchMenu() { return Date.now() - touchMenuOpenedAt < 1000 || lp.swallowClick() }
 function open() {
   if (recentTouchMenu()) return
   if (space.value) return openSpace(space.value.workspace.id)
@@ -111,10 +138,11 @@ watch(() => props.pane.prompt, () => { busy.value = false })
 </script>
 
 <template>
-  <UContextMenu :items="contextItems" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="onContextOpen">
+  <UContextMenu :disabled="sheetMenus" :items="contextItems" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="onContextOpen">
     <div
-      class="card" :class="[statusKey(pane), { sel: selected, stale: paneStale(pane), 'space-card': space }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
-      role="button" tabindex="0" @pointerdown="pointerType = $event.pointerType" @selectstart.prevent @click="open" @keydown.enter.self="open"
+      ref="card" class="card" :class="[statusKey(pane), { sel: selected, stale: paneStale(pane), 'space-card': space }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
+      role="button" tabindex="0" @pointerdown="down" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
+      @contextmenu="onContext" @selectstart.prevent @click="open" @keydown.enter.self="open"
     >
       <span v-if="space" class="space-avatar" :title="counts"><TabMap :layout="space.leadTab.layout" :panes="space.leadTab.panes" :current="pane.id" /></span>
       <AgentAvatar v-else :agent="pane.agent" />

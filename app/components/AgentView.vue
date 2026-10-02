@@ -537,7 +537,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
           <UTooltip v-if="hasChat(pane) && (live || cell)" :text="t('Search')" :kbds="mode === 'chat' ? shortcutKbds('search-chat') : undefined" :disabled="!desk">
             <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :class="{ on: searchOpen }" :aria-label="t('Search')" @click="toggleSearch" />
           </UTooltip>
-          <UDropdownMenu v-if="desk" :items="dropdownItems" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
+          <UDropdownMenu v-if="!sheetMenus" :items="dropdownItems" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
             <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Options')" />
           </UDropdownMenu>
           <UButton v-else icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Options')" @click="openAgentMenu" />

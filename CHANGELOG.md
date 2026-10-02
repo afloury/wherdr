@@ -73,3 +73,6 @@ First public release.
 - Offline reading of the last known state and recent conversations.
 - Passkey lock (WebAuthn).
 - herdr.dev and Herdr themes, English and French interface, phone and desktop layouts.
+- Context menus (long press, right click, "…" buttons) on cards, headers, tabs and paths open
+  at the pointer with a mouse on a computer, and as the bottom sheet on phones, tablets and
+  narrow windows; long press then move still drags a card.
