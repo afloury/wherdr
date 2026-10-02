@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { createEdgeScroller, EDGE_MAX_SPEED, edgeLines, edgeScrollSpeed, findShift, isTerminalCopyKey, ownsDrag, selectionText, trackDrag, visibleRange, type DragEnd } from '../app/utils/terminalSelection'
+import { describe, expect, it, vi } from 'vitest'
+import { copyOnRelease, createEdgeScroller, EDGE_MAX_SPEED, edgeLines, edgeScrollSpeed, findShift, isPendingCopyKey, isTerminalCopyKey, ownsDrag, selectionText, startEarlyCopy, trackDrag, visibleRange, type DragEnd, type EarlyCopy } from '../app/utils/terminalSelection'
 
 const key = (mods: Partial<Parameters<typeof isTerminalCopyKey>[0]>) => ({
   key: 'c', metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...mods,
@@ -263,5 +263,117 @@ describe('drag lifecycle', () => {
     d.win.dispatchEvent(ev('pointerup'))
     expect(d.ends).toEqual([])
     expect(d.captured.has(1)).toBe(false)
+  })
+})
+
+describe('pending copy shortcut', () => {
+  it('takes plain Ctrl+C only', () => {
+    expect(isPendingCopyKey(key({ ctrlKey: true }))).toBe(true)
+    expect(isPendingCopyKey(key({ key: 'C', ctrlKey: true }))).toBe(true)
+    expect(isPendingCopyKey(key({ ctrlKey: true, shiftKey: true }))).toBe(false)
+    expect(isPendingCopyKey(key({ ctrlKey: true, altKey: true }))).toBe(false)
+    expect(isPendingCopyKey(key({ metaKey: true }))).toBe(false)
+    expect(isPendingCopyKey(key({ key: 'v', ctrlKey: true }))).toBe(false)
+  })
+})
+
+describe('early clipboard write', () => {
+  // A clipboard that waits for the item's promise, like Chromium, and can refuse.
+  const fakeClipboard = (refuse: 'never' | 'now' | 'later' = 'never') => {
+    const written: string[] = []
+    const calls: number[] = []
+    class Item {
+      constructor(public data: Record<string, Promise<Blob>>) {}
+    }
+    const clipboard = {
+      write: (items: ClipboardItem[]) => {
+        calls.push(Date.now())
+        if (refuse === 'now') return Promise.reject(new Error('NotAllowedError'))
+        const blob = (items[0] as unknown as Item).data['text/plain']!
+        return blob.then(async (b) => {
+          if (refuse === 'later') throw new Error('NotAllowedError')
+          written.push(await b.text())
+        })
+      },
+    }
+    return { clipboard, Item: Item as unknown as new (d: Record<string, Promise<Blob>>) => ClipboardItem, written, calls }
+  }
+
+  it('starts the write at once and writes the text given later', async () => {
+    const f = fakeClipboard()
+    const early = startEarlyCopy(f.clipboard, f.Item)!
+    expect(f.calls).toHaveLength(1)
+    expect(f.written).toEqual([])
+    await expect(early.resolve('line 1\nline 2')).resolves.toBe(true)
+    expect(f.written).toEqual(['line 1\nline 2'])
+  })
+
+  it('writes nothing when cancelled', async () => {
+    const f = fakeClipboard()
+    const early = startEarlyCopy(f.clipboard, f.Item)!
+    early.cancel()
+    await new Promise(r => setTimeout(r))
+    expect(f.written).toEqual([])
+    await expect(early.resolve('late')).resolves.toBe(false)
+  })
+
+  it('reports a write refused before the text is known', async () => {
+    const f = fakeClipboard('now')
+    const early = startEarlyCopy(f.clipboard, f.Item)!
+    await new Promise(r => setTimeout(r))
+    expect(early.failed()).toBe(true)
+  })
+
+  it('is unavailable without ClipboardItem or clipboard.write', () => {
+    expect(startEarlyCopy(fakeClipboard().clipboard, undefined)).toBeNull()
+    expect(startEarlyCopy({}, fakeClipboard().Item)).toBeNull()
+    expect(startEarlyCopy(undefined, fakeClipboard().Item)).toBeNull()
+  })
+})
+
+describe('copy on release', () => {
+  const early = (state: { failed?: boolean, ok?: boolean }) => {
+    const log: string[] = []
+    const e: EarlyCopy = {
+      failed: () => !!state.failed,
+      resolve: (t) => {
+        log.push(`early:${t}`)
+        return Promise.resolve(!!state.ok)
+      },
+      cancel: () => { log.push('cancel') },
+    }
+    return { e, log }
+  }
+
+  it('uses the early write when it is alive', async () => {
+    const { e, log } = early({ ok: true })
+    const copy = vi.fn(async () => true)
+    await expect(copyOnRelease('abc', e, copy)).resolves.toBe(true)
+    expect(log).toEqual(['early:abc'])
+    expect(copy).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the regular copy when the early write fails', async () => {
+    const { e, log } = early({ ok: false })
+    const copy = vi.fn(async () => true)
+    await expect(copyOnRelease('abc', e, copy)).resolves.toBe(true)
+    expect(log).toEqual(['early:abc'])
+    expect(copy).toHaveBeenCalledWith('abc')
+  })
+
+  it('copies synchronously, inside the release, when the early write was already refused', () => {
+    const { e, log } = early({ failed: true })
+    const copy = vi.fn(async () => false)
+    void copyOnRelease('abc', e, copy)
+    // Called before any await: still inside the release gesture.
+    expect(copy).toHaveBeenCalledWith('abc')
+    expect(log).toEqual(['cancel'])
+  })
+
+  it('copies synchronously without an early write, and reports a refusal', async () => {
+    const copy = vi.fn(async () => false)
+    const done = copyOnRelease('abc', null, copy)
+    expect(copy).toHaveBeenCalledWith('abc')
+    await expect(done).resolves.toBe(false)
   })
 })

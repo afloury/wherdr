@@ -56,7 +56,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     selection = bindTerminalSelection(term, {
       scroll: lines => scroll(lines),
       focus: () => focus(),
-      copied: ok => toast(ok ? t('Copied') : t('Copy failed'), false, ok ? undefined : t('The browser denied clipboard access.')),
+      ...useTerminalCopyFeedback(),
     })
     // The device's choice may change while the terminal stays mounted.
     setRenderer(terminalRenderer.value)

@@ -262,7 +262,15 @@ export function trackDrag(
   return () => stop(null)
 }
 
+// Plain Ctrl+C while a selection is waiting to be copied (the copy on release
+// was refused): copies it, like Windows Terminal. Otherwise it stays with the program.
+export function isPendingCopyKey(e: Keys): boolean {
+  return e.key.toLowerCase() === 'c' && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey
+}
+
 // Copy: clipboard API, otherwise execCommand (insecure context).
+// The clipboard API is called synchronously, before the first await, so it
+// stays inside the caller's user gesture.
 export async function copyText(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard?.writeText) {
@@ -270,6 +278,10 @@ export async function copyText(text: string): Promise<boolean> {
       return true
     }
   } catch { /* refused: we try the old method */ }
+  return execCopy(text)
+}
+
+function execCopy(text: string): boolean {
   try {
     const active = document.activeElement as HTMLElement | null
     const ta = document.createElement('textarea')
@@ -283,6 +295,73 @@ export async function copyText(text: string): Promise<boolean> {
     active?.focus?.({ preventScroll: true })
     return ok
   } catch { return false }
+}
+
+// --- Early copy -------------------------------------------------------------
+// Browsers only allow a clipboard write during a transient user activation:
+// in Chromium, the mousedown that starts the drag grants it for about 5 s, and
+// a mouse release grants none. A long drag (edge scrolling) ends after it has
+// expired, so writeText on release is refused. The write is therefore started
+// while the activation is still fresh (first move of the drag), with the text
+// as a promise (ClipboardItem) resolved on release.
+export interface EarlyCopy {
+  // The write was refused before the text was even given (Safari outside a gesture).
+  failed: () => boolean
+  // Gives the final text; true once it is in the clipboard.
+  resolve: (text: string) => Promise<boolean>
+  // Drag cancelled: nothing is written.
+  cancel: () => void
+}
+
+interface ClipboardLike { write?: (items: ClipboardItem[]) => Promise<void> }
+type ClipboardItemCtor = new (items: Record<string, Promise<Blob>>) => ClipboardItem
+
+export function startEarlyCopy(
+  clipboard: ClipboardLike | undefined = globalThis.navigator?.clipboard,
+  Item: ClipboardItemCtor | undefined = (globalThis as { ClipboardItem?: ClipboardItemCtor }).ClipboardItem,
+): EarlyCopy | null {
+  if (!clipboard?.write || !Item) return null
+  let give!: (text: string) => void
+  let drop!: (err: Error) => void
+  const text = new Promise<string>((resolve, reject) => {
+    give = resolve
+    drop = reject
+  })
+  const blob = text.then(t => new Blob([t], { type: 'text/plain' }))
+  blob.catch(() => {}) // cancelled: not an unhandled rejection
+  let refused = false
+  let result: Promise<boolean>
+  try {
+    result = clipboard.write([new Item({ 'text/plain': blob })]).then(() => true, () => {
+      refused = true
+      return false
+    })
+  } catch { return null }
+  let settled = false
+  return {
+    failed: () => refused,
+    resolve(t) {
+      if (!settled) give(t)
+      settled = true
+      return result
+    },
+    cancel() {
+      if (!settled) drop(new Error('cancelled'))
+      settled = true
+    },
+  }
+}
+
+// Copy on release: the early write if it is still alive, otherwise (or if it
+// fails) the clipboard API then execCommand, started synchronously so a
+// release that still carries an activation (Safari) can use it.
+export async function copyOnRelease(text: string, early: EarlyCopy | null, copy: (t: string) => Promise<boolean> = copyText): Promise<boolean> {
+  if (early && !early.failed()) {
+    if (await early.resolve(text)) return true
+    return copy(text)
+  }
+  early?.cancel()
+  return copy(text)
 }
 
 function screenLines(term: Terminal): string[] {
@@ -300,6 +379,10 @@ export interface SelectionOptions {
   focus?: () => void
   // Discreet feedback after copying on release or with the shortcut.
   copied?: (ok: boolean) => void
+  // The copy on release was refused (activation expired, release outside the
+  // window): the selection stays, Ctrl+C / ⌘C or `copy` (call it from a
+  // click, a fresh gesture) copies it. Without it, `copied(false)`.
+  ready?: (copy: () => void) => void
 }
 
 export interface TerminalSelection {
@@ -332,6 +415,8 @@ export function bindTerminalSelection(term: Terminal, opts: SelectionOptions = {
   let untrack: (() => void) | null = null
   let pointerId: number | null = null
   let rendering = false
+  let early: EarlyCopy | null = null // clipboard write started during the drag
+  let waiting = false // selection whose copy was refused: plain Ctrl+C copies it
 
   const screenRect = () => (root.querySelector('.xterm-screen') as HTMLElement | null ?? root).getBoundingClientRect()
   const cellAt = (x: number, y: number): Cell => {
@@ -362,7 +447,11 @@ export function bindTerminalSelection(term: Terminal, opts: SelectionOptions = {
   const extend = () => {
     if (!drag) return
     drag.focus = cellAt(drag.x, drag.y)
-    if (drag.focus.row !== drag.anchor.row || drag.focus.col !== drag.anchor.col) drag.moved = true
+    if (!drag.moved && (drag.focus.row !== drag.anchor.row || drag.focus.col !== drag.anchor.col)) {
+      drag.moved = true
+      // Still within the mousedown's activation: start the write now.
+      if (active) early = startEarlyCopy()
+    }
     render()
   }
 
@@ -372,9 +461,20 @@ export function bindTerminalSelection(term: Terminal, opts: SelectionOptions = {
     edge.tick(performance.now(), edgeScrollSpeed(drag.y, r.top, r.bottom, r.height / term.rows), Math.max(1, term.rows - 2))
   }
 
+  const dropEarly = () => {
+    early?.cancel()
+    early = null
+  }
+  const copyNow = (t: string) => {
+    void copyText(t).then((ok) => {
+      if (ok) waiting = false
+      opts.copied?.(ok)
+    })
+  }
   const clear = () => {
     drag = null
     text = ''
+    waiting = false
     rendering = true
     try { term.clearSelection() } finally { rendering = false }
   }
@@ -384,9 +484,27 @@ export function bindTerminalSelection(term: Terminal, opts: SelectionOptions = {
     timer = undefined
     if (!active) return
     active = false
-    if (how === 'escape' || (drag && !drag.moved)) return clear()
+    if (how === 'escape' || (drag && !drag.moved)) {
+      dropEarly()
+      return clear()
+    }
+    const pending = early
+    early = null
+    if (!text) return pending?.cancel()
     // Pointer lost (window left, cancelled): the selection stays, ⌘C copies it.
-    if (how === 'release' && text) void copyText(text).then(ok => opts.copied?.(ok))
+    if (how !== 'release') {
+      pending?.cancel()
+      waiting = true
+      return
+    }
+    const t = text
+    void copyOnRelease(t, pending).then((ok) => {
+      if (ok || !opts.ready) return opts.copied?.(ok)
+      // Refused: no error, the selection is ready for the shortcut or a click.
+      // Ctrl+C only while this selection is still the current one.
+      if (text === t) waiting = true
+      opts.ready(() => copyNow(t))
+    })
   }
   // pointerdown comes just before mousedown: its id is used for the capture.
   const onPointerDown = (e: PointerEvent) => { pointerId = e.pointerId }
@@ -406,6 +524,8 @@ export function bindTerminalSelection(term: Terminal, opts: SelectionOptions = {
     e.stopImmediatePropagation()
     opts.focus?.()
     last = screenLines(term)
+    dropEarly()
+    waiting = false
     drag = { anchor: { row: 0, col: 0 }, focus: { row: 0, col: 0 }, moved: false, offset: 0, lines: new Map(), x: e.clientX, y: e.clientY }
     remember(last)
     drag.anchor = cellAt(e.clientX, e.clientY)
@@ -428,18 +548,20 @@ export function bindTerminalSelection(term: Terminal, opts: SelectionOptions = {
     })
   }
   const onKey = (e: KeyboardEvent) => {
-    if (!isTerminalCopyKey(e)) return
+    const pendingKey = waiting && !active && !!text && isPendingCopyKey(e)
+    if (!isTerminalCopyKey(e) && !pendingKey) return
     const t = (drag && text) || term.getSelection()
     if (!t) return
     e.preventDefault()
     e.stopPropagation()
-    void copyText(t).then(ok => opts.copied?.(ok))
+    copyNow(t)
   }
   // New selection by xterm (double click, keyboard): ours is over.
   const sub = term.onSelectionChange(() => {
     if (rendering || active) return
     drag = null
     text = ''
+    waiting = false
   })
 
   root.addEventListener('keydown', onKey, true)
