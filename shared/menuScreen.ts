@@ -124,10 +124,13 @@ function parseLegend(text: string): { actions: WaitAction[], search: boolean } |
   return { actions, search }
 }
 
-// "34 seconds ago · main · 2.6MB ·" + "/srv/demo" (path wrapped by the terminal).
+// "34 seconds ago · main · 2.6MB ·" + "/srv/demo" (path moved to the next line);
+// a long path is also cut by the terminal (at a "-", "/"…): glued back.
 function joinHint(hint: string | null, more: string): string {
   if (!hint) return more
-  return /·$/.test(hint) ? `${hint} ${more}` : `${hint} · ${more}`
+  if (/·$/.test(hint)) return `${hint} ${more}`
+  if (/(?:^|·\s)[~/]\S*$/.test(hint) && !more.includes(' · ')) return hint + more
+  return `${hint} · ${more}`
 }
 
 // Keys of a picker whose legend is below the pane. /resume (Claude Code):

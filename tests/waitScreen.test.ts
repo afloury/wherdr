@@ -112,6 +112,9 @@ describe('app labels', () => {
     expect(screenActionLabel({ key: 'esc', label: 'close' }, false)).toBe('Fermer (Échap)')
     expect(screenActionLabel({ key: 'esc', label: 'close' }, true)).toBe('Close (Esc)')
     expect(screenActionLabel({ key: 'x', label: 'toggle plugins' }, false)).toBe('Toggle plugins (x)')
+    // /resume toggles, in both directions.
+    expect(screenActionLabel({ key: 'ctrl+a', label: 'only show current repo' }, false)).toBe('Projet courant seulement (Ctrl+A)')
+    expect(screenActionLabel({ key: 'ctrl+b', label: 'show all branches' }, true)).toBe('All branches (Ctrl+B)')
   })
 
   it('knownScreen: only a recognized screen, when not working', () => {

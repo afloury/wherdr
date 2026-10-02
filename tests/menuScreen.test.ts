@@ -138,6 +138,25 @@ describe('parseMenu', () => {
     expect(clickMovesOnly(m)).toBe(false)
   })
 
+  it('/resume with every project: a folder cut by the terminal is glued back', () => {
+    // Claude wraps a long path at a "-" well before the edge of the pane.
+    const path = '/srv/demo/worktrees/a-very-long-folder-name-that-does-not-fit-on-one-line'
+    const cut = path.indexOf('-that')
+    const m = parseMenu([
+      TOP,
+      '   Resume session (1 of 3)',
+      `   ╭${'─'.repeat(50)}╮`,
+      `   │ ${G('⌕ Search…')}${' '.repeat(30)}│`,
+      `   ╰${'─'.repeat(50)}╯`,
+      '',
+      `   ${A('❯ Dashboard redesign')}`,
+      `     ${G('1 minute ago · HEAD · 46MB · ')}`,
+      `     ${G(path.slice(0, cut))}`,
+      `     ${G(path.slice(cut))}`,
+    ].join('\n'))!
+    expect(m.items).toEqual([{ label: 'Dashboard redesign', hint: `1 minute ago · HEAD · 46MB · ${path}`, cursor: true }])
+  })
+
   it('/resume of the current project with a clipped legend: Ctrl+A shows every project', () => {
     const m = parseMenu(resumeAll({ paths: false }))!
     expect(m.items[0]).toEqual({ label: 'Dashboard redesign', hint: '1 minute ago · HEAD · 46MB', cursor: true })
