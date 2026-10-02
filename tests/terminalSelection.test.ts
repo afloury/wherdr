@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { EDGE_MAX_SPEED, edgeLines, edgeScrollSpeed, findShift, isTerminalCopyKey, ownsDrag, selectionText, visibleRange } from '../app/utils/terminalSelection'
+import { createEdgeScroller, EDGE_MAX_SPEED, edgeLines, edgeScrollSpeed, findShift, isTerminalCopyKey, ownsDrag, selectionText, trackDrag, visibleRange, type DragEnd } from '../app/utils/terminalSelection'
 
 const key = (mods: Partial<Parameters<typeof isTerminalCopyKey>[0]>) => ({
   key: 'c', metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...mods,
@@ -111,4 +111,135 @@ describe('scroll measurement', () => {
     expect(visibleRange({ ...sel, startY: 6, endY: 7 }, 10, 6)).toBeNull()
   })
 
+})
+
+describe('auto-scroll with the pointer beyond the edge', () => {
+  // Terminal from 100 to 500 px, 20 px lines; pointer 100 px above / below.
+  const above = edgeScrollSpeed(0, 100, 500, 20)
+  const below = edgeScrollSpeed(600, 100, 500, 20)
+
+  it('keeps scrolling, faster than inside the edge zone, capped', () => {
+    expect(above).toBeGreaterThan(edgeScrollSpeed(110, 100, 500, 20))
+    expect(above).toBeLessThanOrEqual(EDGE_MAX_SPEED)
+    expect(below).toBeLessThan(edgeScrollSpeed(490, 100, 500, 20))
+    expect(below).toBeGreaterThanOrEqual(-EDGE_MAX_SPEED)
+  })
+
+  const run = (speed: number, frames: (sent: number[], t: number) => number | undefined, ms = 2000) => {
+    const sent: number[] = []
+    const edge = createEdgeScroller((n) => { sent.push(n); return true }, 350)
+    edge.reset(0)
+    for (let t = 50; t <= ms; t += 50) {
+      edge.tick(t, speed, 20)
+      const k = frames(sent, t)
+      if (k !== undefined) edge.seen(k)
+    }
+    return sent
+  }
+
+  it('requests lines on every tick while Herdr answers, with the pointer held still', () => {
+    // Herdr answers each request on the next tick.
+    const sent = run(above, s => s.at(-1))
+    expect(sent.length).toBeGreaterThan(30)
+    expect(sent.every(n => n > 0)).toBe(true)
+  })
+
+  it('is not stopped by frames that do not move the text (spinner)', () => {
+    // A spinner frame (shift 0) lands on the tick after each request,
+    // the scroll frame on the tick after that.
+    let answered = 0
+    let spun = false
+    const sent = run(above, (s) => {
+      if (s.length === answered) return undefined
+      if (!spun) { spun = true; return 0 }
+      spun = false
+      answered = s.length
+      return s.at(-1)
+    })
+    expect(sent.length).toBeGreaterThan(10)
+  })
+
+  it('stops when Herdr has nothing more in that direction, resumes the other way', () => {
+    const sent: number[] = []
+    const edge = createEdgeScroller((n) => { sent.push(n); return true }, 350)
+    edge.reset(0)
+    for (let t = 50; t <= 2000; t += 50) {
+      edge.tick(t, below, 20)
+      edge.seen(0) // only spinner frames: the bottom is reached
+    }
+    expect(sent.length).toBe(1)
+    edge.tick(2050, above, 20)
+    edge.tick(2100, above, 20)
+    expect(sent.at(-1)).toBeGreaterThan(0)
+  })
+})
+
+describe('drag lifecycle', () => {
+  const ev = (type: string, init: Record<string, unknown> = {}) => Object.assign(new Event(type, { cancelable: true }), { pointerId: 1, ...init })
+  const setup = () => {
+    const win = new EventTarget()
+    const captured = new Set<number>()
+    const el = Object.assign(new EventTarget(), {
+      setPointerCapture: (id: number) => { captured.add(id) },
+      releasePointerCapture: (id: number) => { captured.delete(id) },
+      hasPointerCapture: (id: number) => captured.has(id),
+    })
+    const moves: [number, number][] = []
+    const ends: DragEnd[] = []
+    const untrack = trackDrag(win, el, 1, { move: (x, y) => moves.push([x, y]), end: how => ends.push(how) })
+    return { win, el, captured, moves, ends, untrack }
+  }
+
+  it('captures the pointer and follows it outside the terminal', () => {
+    const d = setup()
+    expect(d.captured.has(1)).toBe(true)
+    d.win.dispatchEvent(ev('pointermove', { clientX: 50, clientY: -100 }))
+    expect(d.moves).toEqual([[50, -100]])
+  })
+
+  it('ends on release anywhere, once, and stops listening', () => {
+    const d = setup()
+    d.win.dispatchEvent(ev('pointerup', { clientX: 10, clientY: 900 }))
+    expect(d.ends).toEqual(['release'])
+    expect(d.moves.at(-1)).toEqual([10, 900])
+    expect(d.captured.has(1)).toBe(false)
+    d.win.dispatchEvent(ev('pointermove', { clientX: 1, clientY: 1 }))
+    d.win.dispatchEvent(ev('pointerup'))
+    d.el.dispatchEvent(ev('lostpointercapture'))
+    expect(d.ends).toEqual(['release'])
+    expect(d.moves).toHaveLength(1)
+  })
+
+  it.each(['pointercancel', 'blur'])('stops when the pointer is lost (%s)', (type) => {
+    const d = setup()
+    d.win.dispatchEvent(ev(type))
+    expect(d.ends).toEqual(['lost'])
+  })
+
+  it('stops when the capture is lost', () => {
+    const d = setup()
+    d.el.dispatchEvent(ev('lostpointercapture'))
+    expect(d.ends).toEqual(['lost'])
+  })
+
+  it('cancels on Esc without letting the program see the key', () => {
+    const d = setup()
+    const other = ev('keydown', { key: 'a' })
+    d.win.dispatchEvent(other)
+    expect(d.ends).toEqual([])
+    const esc = ev('keydown', { key: 'Escape' })
+    d.win.dispatchEvent(esc)
+    expect(esc.defaultPrevented).toBe(true)
+    expect(d.ends).toEqual(['escape'])
+  })
+
+  it('ignores other pointers and ends silently when disposed', () => {
+    const d = setup()
+    d.win.dispatchEvent(ev('pointerup', { pointerId: 7 }))
+    expect(d.ends).toEqual([])
+    d.untrack()
+    d.win.dispatchEvent(ev('pointerup'))
+    expect(d.ends).toEqual([])
+    expect(d.captured.has(1)).toBe(false)
+  })
 })

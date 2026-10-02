@@ -110,6 +110,141 @@ export function selectionText(lines: Map<number, string>, a: Cell, b: Cell): str
   return out.join('\n')
 }
 
+// --- Edge scroll driver ----------------------------------------------------
+// Asks Herdr for lines at the pointer's speed, one request in flight at a
+// time. A frame that does not move the text (spinner, status line, cursor)
+// is not the answer: the request stays pending. Only the absence of a moving
+// frame for `wait` ms means Herdr is at the end in that direction.
+export interface EdgeScroller {
+  // Every timer tick, with the current speed (edgeScrollSpeed).
+  tick: (now: number, speed: number, maxLines: number) => void
+  // Lines requested and not seen yet (hint for findShift).
+  pending: () => number
+  // Shift measured on a new frame.
+  seen: (shift: number) => void
+  reset: (now: number) => void
+}
+
+export function createEdgeScroller(send: (lines: number) => boolean, wait = 350): EdgeScroller {
+  let pending = 0
+  let pendingAt = 0
+  let exhausted = 0 // direction where Herdr has nothing left (1 up, -1 down)
+  let acc = 0
+  let lastTick = 0
+  return {
+    tick(now, speed, maxLines) {
+      const dt = Math.min(200, now - lastTick)
+      lastTick = now
+      if (!speed) {
+        acc = 0
+        exhausted = 0
+        return
+      }
+      if (Math.sign(speed) !== exhausted) exhausted = 0
+      if (exhausted) return
+      if (pending) {
+        if (now - pendingAt > wait) {
+          exhausted = Math.sign(pending)
+          pending = 0
+          acc = 0
+        }
+        return
+      }
+      const step = edgeLines(speed, dt, acc, maxLines)
+      acc = step.rest
+      if (step.lines && send(step.lines)) {
+        pending = step.lines
+        pendingAt = now
+      }
+    },
+    pending: () => pending,
+    seen(shift) {
+      if (shift) pending = 0
+    },
+    reset(now) {
+      pending = 0
+      exhausted = 0
+      acc = 0
+      lastTick = now
+    },
+  }
+}
+
+// --- Drag lifecycle ---------------------------------------------------------
+// Once the button is down in the terminal, the drag follows the pointer
+// everywhere: outside the terminal, outside the window (pointer capture).
+// Release anywhere ends it; Esc cancels it; losing the pointer (cancel,
+// capture lost, window blurred) stops it so nothing keeps scrolling.
+export type DragEnd = 'release' | 'escape' | 'lost'
+
+interface Capturable extends EventTarget {
+  setPointerCapture?: (id: number) => void
+  releasePointerCapture?: (id: number) => void
+  hasPointerCapture?: (id: number) => boolean
+}
+
+export function trackDrag(
+  win: EventTarget,
+  el: Capturable,
+  pointerId: number | null,
+  h: { move: (x: number, y: number) => void, end: (how: DragEnd) => void },
+): () => void {
+  // Object form: some EventTarget implementations mismatch a boolean on removal.
+  const CAPTURE = { capture: true }
+  let done = false
+  const stop = (how: DragEnd | null) => {
+    if (done) return
+    done = true
+    win.removeEventListener('pointermove', onMove, CAPTURE)
+    win.removeEventListener('pointerup', onUp, CAPTURE)
+    win.removeEventListener('pointercancel', onLost, CAPTURE)
+    win.removeEventListener('blur', onLost)
+    win.removeEventListener('keydown', onKey, CAPTURE)
+    el.removeEventListener('lostpointercapture', onLost)
+    if (pointerId !== null) {
+      try {
+        if (el.hasPointerCapture?.(pointerId)) el.releasePointerCapture?.(pointerId)
+      } catch { /* pointer already gone */ }
+    }
+    if (how) h.end(how)
+  }
+  const mine = (e: Event) => pointerId === null || (e as PointerEvent).pointerId === undefined || (e as PointerEvent).pointerId === pointerId
+  const onMove = (e: Event) => {
+    if (!mine(e)) return
+    const p = e as PointerEvent
+    h.move(p.clientX, p.clientY)
+  }
+  const onUp = (e: Event) => {
+    if (!mine(e)) return
+    const p = e as PointerEvent
+    h.move(p.clientX, p.clientY)
+    stop('release')
+  }
+  const onLost = (e: Event) => {
+    if (e.type !== 'blur' && !mine(e)) return
+    stop('lost')
+  }
+  const onKey = (e: Event) => {
+    if ((e as KeyboardEvent).key !== 'Escape') return
+    // The running program must not receive this Esc (it would interrupt an agent).
+    e.preventDefault()
+    e.stopImmediatePropagation()
+    stop('escape')
+  }
+  win.addEventListener('pointermove', onMove, CAPTURE)
+  win.addEventListener('pointerup', onUp, CAPTURE)
+  win.addEventListener('pointercancel', onLost, CAPTURE)
+  win.addEventListener('blur', onLost)
+  win.addEventListener('keydown', onKey, CAPTURE)
+  if (pointerId !== null) {
+    try {
+      el.setPointerCapture?.(pointerId)
+      el.addEventListener('lostpointercapture', onLost)
+    } catch { /* pointer no longer active: window listeners still follow it */ }
+  }
+  return () => stop(null)
+}
+
 // Copy: clipboard API, otherwise execCommand (insecure context).
 export async function copyText(text: string): Promise<boolean> {
   try {
@@ -175,12 +310,10 @@ export function bindTerminalSelection(term: Terminal, opts: SelectionOptions = {
   } | null = null
   let active = false // button still pressed
   let text = '' // text of the selection made by dragging
-  let pending = 0 // lines requested, not seen yet
-  let pendingAt = 0
-  let exhausted = 0 // direction where Herdr has nothing left (1 up, -1 down)
-  let acc = 0
+  const edge = createEdgeScroller(lines => opts.scroll?.(lines) ?? false, SCROLL_WAIT)
   let timer: ReturnType<typeof setInterval> | undefined
-  let lastTick = 0
+  let untrack: (() => void) | null = null
+  let pointerId: number | null = null
   let rendering = false
 
   const screenRect = () => (root.querySelector('.xterm-screen') as HTMLElement | null ?? root).getBoundingClientRect()
@@ -217,58 +350,29 @@ export function bindTerminalSelection(term: Terminal, opts: SelectionOptions = {
   }
 
   const tick = () => {
-    const now = performance.now()
-    const dt = Math.min(200, now - lastTick)
-    lastTick = now
     if (!drag || !active || !opts.scroll) return
     const r = screenRect()
-    const speed = edgeScrollSpeed(drag.y, r.top, r.bottom, r.height / term.rows)
-    if (!speed) {
-      acc = 0
-      exhausted = 0
-      return
-    }
-    if (Math.sign(speed) !== exhausted) exhausted = 0
-    if (exhausted) return
-    if (pending) {
-      // No frame: Herdr is at the end in that direction.
-      if (now - pendingAt > SCROLL_WAIT) {
-        exhausted = Math.sign(pending)
-        pending = 0
-        acc = 0
-      }
-      return
-    }
-    const step = edgeLines(speed, dt, acc, Math.max(1, term.rows - 2))
-    acc = step.rest
-    if (!step.lines) return
-    if (opts.scroll(step.lines)) {
-      pending = step.lines
-      pendingAt = now
-    }
+    edge.tick(performance.now(), edgeScrollSpeed(drag.y, r.top, r.bottom, r.height / term.rows), Math.max(1, term.rows - 2))
   }
 
-  const onMove = (e: MouseEvent) => {
-    if (!drag || !active) return
-    drag.x = e.clientX
-    drag.y = e.clientY
-    extend()
+  const clear = () => {
+    drag = null
+    text = ''
+    rendering = true
+    try { term.clearSelection() } finally { rendering = false }
   }
-  const onUp = () => {
-    window.removeEventListener('mousemove', onMove, true)
-    window.removeEventListener('mouseup', onUp, true)
+  const finish = (how: DragEnd | null) => {
+    untrack = null
     clearInterval(timer)
     timer = undefined
     if (!active) return
     active = false
-    if (drag && !drag.moved) {
-      drag = null
-      text = ''
-      term.clearSelection()
-      return
-    }
-    if (text) void copyText(text).then(ok => opts.copied?.(ok))
+    if (how === 'escape' || (drag && !drag.moved)) return clear()
+    // Pointer lost (window left, cancelled): the selection stays, ⌘C copies it.
+    if (how === 'release' && text) void copyText(text).then(ok => opts.copied?.(ok))
   }
+  // pointerdown comes just before mousedown: its id is used for the capture.
+  const onPointerDown = (e: PointerEvent) => { pointerId = e.pointerId }
   const onDown = (e: MouseEvent) => {
     if (!ownsDrag(e, term.modes.mouseTrackingMode !== 'none')) {
       // Double or triple click: xterm selects; we copy on release.
@@ -292,14 +396,19 @@ export function bindTerminalSelection(term: Terminal, opts: SelectionOptions = {
     text = ''
     active = true
     term.clearSelection()
-    pending = 0
-    exhausted = 0
-    acc = 0
-    lastTick = performance.now()
+    edge.reset(performance.now())
     clearInterval(timer)
     timer = setInterval(tick, TICK)
-    window.addEventListener('mousemove', onMove, true)
-    window.addEventListener('mouseup', onUp, true)
+    untrack?.()
+    untrack = trackDrag(window, root, pointerId, {
+      move: (x, y) => {
+        if (!drag || !active) return
+        drag.x = x
+        drag.y = y
+        extend()
+      },
+      end: finish,
+    })
   }
   const onKey = (e: KeyboardEvent) => {
     if (!isTerminalCopyKey(e)) return
@@ -317,6 +426,7 @@ export function bindTerminalSelection(term: Terminal, opts: SelectionOptions = {
   })
 
   root.addEventListener('keydown', onKey, true)
+  root.addEventListener('pointerdown', onPointerDown, true)
   root.addEventListener('mousedown', onDown, true)
 
   return {
@@ -327,38 +437,32 @@ export function bindTerminalSelection(term: Terminal, opts: SelectionOptions = {
       if (!drag) return
       if (now.length !== before.length) {
         // Resized: the coordinates no longer make sense.
-        drag = null
-        text = ''
-        pending = 0
-        rendering = true
-        try { term.clearSelection() } finally { rendering = false }
+        edge.reset(performance.now())
+        clear()
         return
       }
       if (!active) {
         // Selection finished: like a native terminal, it clears when
         // the text under it moves (scrolling, new output).
-        if (now.some((l, i) => l !== before[i])) {
-          drag = null
-          text = ''
-          rendering = true
-          try { term.clearSelection() } finally { rendering = false }
-        }
+        if (now.some((l, i) => l !== before[i])) clear()
         return
       }
-      const hint = pending
-      pending = 0
+      const hint = edge.pending()
       let k = findShift(before, now, hint)
       // Big jump (screens without a common line): we trust the requested lines.
       if (k === null) k = hint
-      if (hint && k === 0) exhausted = Math.sign(hint)
+      // k = 0: an unrelated frame (spinner…), the scroll is still awaited.
+      edge.seen(k)
       drag.offset += k
       remember(now)
       extend()
     },
     dispose() {
-      onUp()
+      untrack?.()
+      finish(null)
       sub.dispose()
       root.removeEventListener('keydown', onKey, true)
+      root.removeEventListener('pointerdown', onPointerDown, true)
       root.removeEventListener('mousedown', onDown, true)
     },
   }
