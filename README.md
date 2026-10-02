@@ -86,6 +86,10 @@ Claude Code, Codex and other product names are trademarks of their respective ow
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
   of local commands. Stop button while the agent works.
+- **Codex updates and limits**: in a Codex conversation, a new Codex version shows above the
+  field with an **Update** button (runs Codex's official update command on that machine, after
+  confirmation), then **Restart to update** on the same conversation; a warning shows when 25 %
+  or less of the weekly limit is left.
 - **Model and effort pickers** for Claude Code, Codex and omp (omp: its
   "Switch Model" selector, `/switch` or `/model`). Changes apply **to the
   current session only**; wherdr never changes your default model.

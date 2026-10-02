@@ -1240,6 +1240,15 @@ body.kb .composer { padding-bottom: 8px; }
 .composer-notice.failed { color: var(--rose); flex-wrap: wrap; justify-content: flex-start; row-gap: 4px; }
 .composer-notice.failed .restart-text { flex: 1 1 100%; white-space: normal; text-align: left; }
 .composer-notice.failed .notice-btn { color: var(--rose); }
+/* Codex: update available (link and buttons) and weekly-limit warning. */
+.composer-notice a.notice-btn { text-decoration: none; }
+.composer-notice .notice-x { padding: 1px 3px; border-color: transparent; color: var(--muted); }
+.composer-notice .notice-icon { flex: none; width: 12px; height: 12px; }
+.composer-notice.codex-weekly { color: var(--ochre); }
+/* Phone: "Release notes" as an icon and secondary words hidden (full text in the tooltip). */
+@media (max-width: 600px) { .composer-notice .notice-label, .composer-notice .notice-extra { display: none; } }
+.composer-notice.codex-weekly .notice-btn { color: var(--ochre); text-transform: none; }
+.composer-notice.codex-weekly.low, .composer-notice.codex-weekly.low .notice-btn { color: var(--rose); }
 .notice-spin {
   flex: none; width: 9px; height: 9px; border: 1px solid currentColor; border-right-color: transparent;
   border-radius: 50%; animation: notice-spin .8s linear infinite;

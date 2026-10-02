@@ -16,6 +16,12 @@ const FR: Record<string, string> = {
   'It is already past 8 pm on this machine': 'Il est déjà plus de 20 h sur cette machine',
   'Keep awake did not start; the previous state is kept': 'Le maintien éveillé n’a pas démarré ; l’état précédent est conservé',
   'Closed lid requires the power adapter': 'Le capot fermé nécessite le secteur',
+  // Codex update and weekly limit (CodexNotices.vue)
+  'Update': 'Mettre à jour', 'Codex update failed': 'Échec de la mise à jour de Codex',
+  'Show Codex’s usage breakdown': 'Voir le détail de l’utilisation Codex',
+  'Codex update already in progress': 'Mise à jour de Codex déjà en cours',
+  'No Codex update to install': 'Aucune mise à jour de Codex à installer',
+  'This update cannot be run from wherdr: copy the command': 'Cette mise à jour ne peut pas être lancée depuis wherdr : copie la commande',
   // Agent restart
   'Restart agent': 'Redémarrer l’agent', 'Restart': 'Redémarrer', 'Restart anyway': 'Redémarrer quand même',
   'Restart to update': 'Redémarrer pour mettre à jour', 'Restarting': 'Redémarrage',
