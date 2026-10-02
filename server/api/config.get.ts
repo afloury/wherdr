@@ -4,6 +4,7 @@ export default defineApi(async (): Promise<AppConfig> => ({
   hostLabel: localMachineLabel(),
   kinds: await installedAgentKinds(localMachine),
   home: HOME,
+  os: localMachine.os,
   dirs: await recentDirs(),
   // Several machines: each with its home folder and recent folders.
   machines: await machineConfigs(),

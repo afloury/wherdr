@@ -895,6 +895,15 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
   font-size: .84em; padding: .1em .34em; overflow-wrap: anywhere;
   background: var(--surface-2); color: var(--lav);
 }
+/* File path in a conversation (ChatView.vue): dotted underline, menu on click or tap. */
+.chat-list .md-body .md-path {
+  cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--lav) 55%, transparent);
+  -webkit-tap-highlight-color: transparent;
+}
+.chat-list .md-body .md-path:hover { text-decoration-style: solid; text-decoration-color: var(--lav); background: color-mix(in srgb, var(--lav) 14%, var(--surface-2)); }
+.chat-list .md-body .md-path:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.path-anchor { position: fixed; pointer-events: none; }
 .md-body pre { margin: 0; padding: 12px 14px; overflow-x: auto; font: 12.5px/1.55 var(--mono); color: var(--text-2); }
 .md-body pre code { background: none; border: 0; padding: 0; font-size: inherit; color: inherit; overflow-wrap: normal; white-space: pre; }
 .md-body .code-block { margin: 0 0 .9em; border: 1px solid var(--line); background: var(--code-bg); }

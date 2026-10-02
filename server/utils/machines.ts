@@ -32,7 +32,7 @@ import {
   REMOTE_SESSION, REMOTE_UPLOAD_SUBDIR, RUNTIME_DIR, SELF_HOSTS, SESSION_ARGS, SSH_BIN, UPLOAD_TTL_MS, log,
 } from './env'
 import { HerdrError, herdr, setSocketResolver } from './herdr'
-import { type ExecResult, type MachineFs, type ShellExec, createShellFs, localFs, shq } from './fsx'
+import { type ExecResult, type MachineFs, type ShellExec, createShellFs, localFs, remoteCommand, shq } from './fsx'
 import { type Transcripts, createTranscripts } from './transcripts'
 import { fmt } from '../../shared/message'
 
@@ -43,6 +43,11 @@ function readLocalLabel() {
   catch { return HOST_LABEL }
 }
 export const localMachineLabel = () => localMachine.label
+// Same names as `uname -s` (in Docker, the container's: Linux).
+export function localOs() {
+  const p = os.platform()
+  return p === 'darwin' ? 'Darwin' : p === 'linux' ? 'Linux' : p
+}
 
 export type MachineStatus = MachineInfo['status']
 
@@ -56,6 +61,8 @@ export interface Machine {
   status: MachineStatus
   error: string | null
   home: string
+  // `uname -s` of the machine: 'Darwin' (macOS), 'Linux'… ('' until known).
+  os: string
   fs: MachineFs
   transcripts: Transcripts
   exec: ShellExec | null // commandes shell (machines distantes)
@@ -80,6 +87,7 @@ export const localMachine: Machine = {
   status: 'online',
   error: null,
   home: HOME,
+  os: localOs(),
   fs: localFs,
   transcripts: createTranscripts({ home: HOME, herdr }),
   exec: null,
@@ -87,7 +95,7 @@ export const localMachine: Machine = {
   clientSock: () => HERDR_CLIENT_SOCK,
   spawnHerdr: args => spawn(HERDR_BIN, [...SESSION_ARGS, ...args], { stdio: ['pipe', 'pipe', 'pipe'], env: HERDR_CHILD_ENV }),
   uploadDir: () => path.join(HOME, '.cache/herdr-web/uploads'),
-  info: () => ({ key: LOCAL, session: localMachine.session, label: localMachine.label, local: true, status: 'online', error: null }),
+  info: () => ({ key: LOCAL, session: localMachine.session, label: localMachine.label, local: true, status: 'online', error: null, os: localMachine.os }),
 }
 
 // ---------------------------------------------------------------- identity
@@ -118,6 +126,7 @@ export class SkipMachine extends Error {}
 // ssh), then `herdr [--session S] status server` (socket, state).
 const PROBE_SCRIPT = `echo "home=$HOME"
 echo "host=$(uname -n 2>/dev/null)"
+echo "os=$(uname -s 2>/dev/null)"
 echo "self=$(cat "$HOME/.cache/herdr-web/machine-id" 2>/dev/null)"
 b=
 for c in "$HOME/.local/bin/herdr" /opt/homebrew/bin/herdr /usr/local/bin/herdr; do
@@ -163,6 +172,7 @@ export class RemoteMachine implements Machine {
   status: MachineStatus = 'connecting'
   error: string | null = null
   home = ''
+  os = ''
   bin = ''
   remoteSock = ''
   readonly ctl: string
@@ -206,7 +216,7 @@ export class RemoteMachine implements Machine {
   clientSock() { return this.status === 'online' && this.clientFwd ? this.fwdClient : null }
   uploadDir() { return path.posix.join(this.home || '~', REMOTE_UPLOAD_SUBDIR) }
   info(): MachineInfo {
-    return { key: this.key, baseKey: this.baseKey, session: this.session, label: this.label, local: false, status: this.status, error: this.error, target: this.target }
+    return { key: this.key, baseKey: this.baseKey, session: this.session, label: this.label, local: false, status: this.status, error: this.error, target: this.target, os: this.os || undefined }
   }
 
   // Common options of multiplexed sessions: never a new connection
@@ -219,7 +229,7 @@ export class RemoteMachine implements Machine {
     if (this.status !== 'online' && !this.connecting) {
       return Promise.resolve({ code: 255, stdout: Buffer.alloc(0), stderr: fmt('{machine} is unreachable', { machine: this.label }) })
     }
-    const cmd = `sh -c ${shq(script)} sh ${args.map(shq).join(' ')}`
+    const cmd = remoteCommand(script, args)
     return new Promise((resolve) => {
       const child = spawn(SSH_BIN, [...this.muxArgs(), '--', this.target, cmd], { stdio: ['pipe', 'pipe', 'pipe'] })
       const out: Buffer[] = []
@@ -375,6 +385,7 @@ export class RemoteMachine implements Machine {
       if (kv('self') && kv('self') === localMachineId()) throw new SkipMachine('this machine itself')
       if (kv('error')) throw new Error(fmt('{reason} on {machine}', { reason: kv('error'), machine: this.label }))
       this.home = kv('home')
+      this.os = kv('os')
       this.bin = kv('bin')
       const running = /^\s*status:\s*running\s*$/m.test(out)
       const sock = parseStatusSocket(out)
@@ -485,7 +496,7 @@ export async function openSession(baseKey: string, name: string): Promise<NamedS
       clientSock: () => path.join(sockDir, 'herdr-client.sock'),
       spawnHerdr: args => spawn(HERDR_BIN, ['--session', name, ...args], { stdio: ['pipe', 'pipe', 'pipe'], env: HERDR_CHILD_ENV }),
       transcripts: createTranscripts({ home: HOME, herdr }),
-      info: () => ({ key: found.key, baseKey, session: name, label: localMachine.label, local: true, status: 'online', error: null }),
+      info: () => ({ key: found.key, baseKey, session: name, label: localMachine.label, local: true, status: 'online', error: null, os: localMachine.os }),
     }
     sessions.set(found.key, machine)
   } else {
