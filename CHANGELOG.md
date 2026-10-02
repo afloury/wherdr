@@ -50,6 +50,8 @@ First public release.
 - Terminal view (xterm.js, WebGL or DOM renderer) with a phone key bar and take-over.
   Shift+Enter inserts a newline in agents, as in a native terminal.
 - Composer with queued messages (cancellable), photos, paste, slash commands and their output.
+  A queued message looks like the sent one (photos above the text bubble), photos sent without
+  text included, and keeps its photos until it lands, even across a server restart.
   A message sent to an agent that is still starting waits and goes out as soon as it's ready,
   including an omp agent already waiting at its prompt that Herdr still counts as starting.
 - Per-session model and effort pickers for Claude Code, Codex and omp. omp uses its own
