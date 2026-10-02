@@ -905,7 +905,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <UChatMessage
                   :id="b.key" role="user" side="right" variant="soft"
                   :parts="[...b.srcs.map(url => ({ type: 'file' as const, mediaType: 'image/jpeg', url })), ...(b.text || b.files.length ? [{ type: 'text' as const, text: b.text || ' ' }] : [])]"
-                  :ui="{ root: 'msg msg-user', container: 'msg-c', content: 'msg-bubble', header: 'msg-files' }"
+                  :ui="{ root: b.text.trim() || b.files.length ? 'msg msg-user' : 'msg msg-user msg-no-text', container: 'msg-c', content: 'msg-bubble', header: 'msg-files' }"
                 >
                   <template #files>
                     <MsgThumbs :srcs="b.srcs" :offline="readOnly" />

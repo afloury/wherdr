@@ -854,6 +854,8 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 /* User message: square block on the right. */
 .msg-user-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; margin-top: 6px; }
 .msg-user .msg-c { max-width: 88%; }
+/* Images-only message: no empty bubble under the thumbnails. */
+.msg-no-text .msg-bubble { display: none; }
 .msg-bubble {
   min-height: 0; padding: 10px 14px;
   background: var(--surface-2); color: var(--text); border: 1px solid var(--line);
