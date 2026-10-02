@@ -113,22 +113,28 @@ export function selectionText(lines: Map<number, string>, a: Cell, b: Cell): str
 // --- Edge scroll driver ----------------------------------------------------
 // Asks Herdr for lines at the pointer's speed, one request in flight at a
 // time. A frame that does not move the text (spinner, status line, cursor)
-// is not the answer: the request stays pending. Only the absence of a moving
-// frame for `wait` ms means Herdr is at the end in that direction.
+// is not the answer: the request stays pending. No moving frame within the
+// wait (at least `wait` ms, more on a slow link) means Herdr is probably at
+// the end in that direction: requests pause, then retry every `retry` ms
+// while the pointer stays past the edge, so a late frame never stops the
+// scrolling for good.
 export interface EdgeScroller {
   // Every timer tick, with the current speed (edgeScrollSpeed).
   tick: (now: number, speed: number, maxLines: number) => void
   // Lines requested and not seen yet (hint for findShift).
   pending: () => number
   // Shift measured on a new frame.
-  seen: (shift: number) => void
+  seen: (shift: number, now: number) => void
   reset: (now: number) => void
 }
 
-export function createEdgeScroller(send: (lines: number) => boolean, wait = 350): EdgeScroller {
+export function createEdgeScroller(send: (lines: number) => boolean, wait = 350, retry = 1000): EdgeScroller {
   let pending = 0
   let pendingAt = 0
   let exhausted = 0 // direction where Herdr has nothing left (1 up, -1 down)
+  let exhaustedAt = 0
+  let late = 0 // when the last timed-out request was sent
+  let rtt = 0 // smoothed request -> moving frame delay
   let acc = 0
   let lastTick = 0
   return {
@@ -140,11 +146,13 @@ export function createEdgeScroller(send: (lines: number) => boolean, wait = 350)
         exhausted = 0
         return
       }
-      if (Math.sign(speed) !== exhausted) exhausted = 0
+      if (Math.sign(speed) !== exhausted || now - exhaustedAt >= retry) exhausted = 0
       if (exhausted) return
       if (pending) {
-        if (now - pendingAt > wait) {
+        if (now - pendingAt > Math.min(2000, Math.max(wait, 3 * rtt))) {
           exhausted = Math.sign(pending)
+          exhaustedAt = now
+          late = pendingAt
           pending = 0
           acc = 0
         }
@@ -158,11 +166,20 @@ export function createEdgeScroller(send: (lines: number) => boolean, wait = 350)
       }
     },
     pending: () => pending,
-    seen(shift) {
-      if (shift) pending = 0
+    seen(shift, now) {
+      if (!shift) return
+      // Answer to the pending request, or a late one: Herdr was not at the end.
+      const at = pending ? pendingAt : late
+      if (!at) return
+      const d = now - at
+      rtt = rtt ? rtt * 0.7 + d * 0.3 : d
+      pending = 0
+      late = 0
+      exhausted = 0
     },
     reset(now) {
       pending = 0
+      late = 0
       exhausted = 0
       acc = 0
       lastTick = now
@@ -452,7 +469,7 @@ export function bindTerminalSelection(term: Terminal, opts: SelectionOptions = {
       // Big jump (screens without a common line): we trust the requested lines.
       if (k === null) k = hint
       // k = 0: an unrelated frame (spinner…), the scroll is still awaited.
-      edge.seen(k)
+      edge.seen(k, performance.now())
       drag.offset += k
       remember(now)
       extend()

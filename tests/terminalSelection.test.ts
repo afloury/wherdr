@@ -132,7 +132,7 @@ describe('auto-scroll with the pointer beyond the edge', () => {
     for (let t = 50; t <= ms; t += 50) {
       edge.tick(t, speed, 20)
       const k = frames(sent, t)
-      if (k !== undefined) edge.seen(k)
+      if (k !== undefined) edge.seen(k, t)
     }
     return sent
   }
@@ -159,18 +159,40 @@ describe('auto-scroll with the pointer beyond the edge', () => {
     expect(sent.length).toBeGreaterThan(10)
   })
 
-  it('stops when Herdr has nothing more in that direction, resumes the other way', () => {
+  it('pauses when Herdr has nothing more in that direction, retries, resumes the other way', () => {
     const sent: number[] = []
-    const edge = createEdgeScroller((n) => { sent.push(n); return true }, 350)
+    const edge = createEdgeScroller((n) => { sent.push(n); return true }, 350, 1000)
     edge.reset(0)
-    for (let t = 50; t <= 2000; t += 50) {
+    for (let t = 50; t <= 900; t += 50) {
       edge.tick(t, below, 20)
-      edge.seen(0) // only spinner frames: the bottom is reached
+      edge.seen(0, t) // only spinner frames: the bottom is reached
     }
-    expect(sent.length).toBe(1)
-    edge.tick(2050, above, 20)
-    edge.tick(2100, above, 20)
+    expect(sent).toHaveLength(1)
+    // Still held past the edge: one new try per second, not a request per tick.
+    for (let t = 950; t <= 3000; t += 50) edge.tick(t, below, 20)
+    expect(sent.length).toBeGreaterThan(1)
+    expect(sent.length).toBeLessThanOrEqual(4)
+    // The other way (once the last unanswered request has timed out).
+    for (let t = 3050; t <= 3500; t += 50) edge.tick(t, above, 20)
     expect(sent.at(-1)).toBeGreaterThan(0)
+  })
+
+  it('keeps scrolling on a slow link (frames 600 ms after each request)', () => {
+    const sent: number[] = []
+    const edge = createEdgeScroller((n) => { sent.push(n); return true }, 350, 1000)
+    edge.reset(0)
+    const due: [number, number][] = []
+    let count = 0
+    for (let t = 50; t <= 10000; t += 50) {
+      edge.tick(t, above, 20)
+      if (sent.length > count) {
+        count = sent.length
+        due.push([t + 600, sent.at(-1)!])
+      }
+      while (due.length && due[0]![0] <= t) edge.seen(due.shift()![1], t)
+    }
+    // After the first late frame, the wait follows the link: about one request per 600 ms.
+    expect(sent.length).toBeGreaterThan(12)
   })
 })
 
