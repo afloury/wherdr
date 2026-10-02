@@ -52,6 +52,10 @@ export class FsError extends Error {
 // Shell quoting (arguments passed as is, never interpreted).
 export const shq = (s: string) => `'${String(s).replace(/'/g, `'\\''`)}'`
 
+// Command line run by the remote login shell for `script` and its arguments:
+// every part quoted, so a path is never interpreted by either shell.
+export const remoteCommand = (script: string, args: string[] = []) => `sh -c ${shq(script)} sh ${args.map(shq).join(' ')}`.trimEnd()
+
 // BSD (macOS) or GNU `stat`: one "size mtime type" line per file, "x" if missing.
 export const STAT_SCRIPT = `if stat -f %z / >/dev/null 2>&1; then bsd=1; else bsd=; fi
 for f; do

@@ -110,6 +110,7 @@ onUnmounted(() => ro?.disconnect())
 function onScroll() {
   const b = box.value
   if (!b) return
+  pathMenu.open = false
   stick = b.scrollHeight - b.scrollTop - b.clientHeight < 120
   if (b.scrollTop < 400 && rendered.value) loadOlder() // infinite scrolling upwards
 }
@@ -484,6 +485,8 @@ async function copyText(text: string) {
 // Markdown code blocks: "Copy" button (event delegation,
 // the HTML comes from v-html).
 function onListClick(e: MouseEvent) {
+  const pathEl = (e.target as HTMLElement).closest?.('.md-body .md-path') as HTMLElement | null
+  if (pathEl) { e.preventDefault(); openPathMenu(pathEl); return }
   // Image in an agent reply (markdown): large preview, like ours.
   const img = (e.target as HTMLElement).closest?.('.md-body img') as HTMLImageElement | null
   if (img && img.src) { e.preventDefault(); openImage(img.src); return }
@@ -499,6 +502,54 @@ function onListClick(e: MouseEvent) {
       btn.classList.remove('done')
     }, 1400)
   }).catch(() => toast(t('Copy failed'), true))
+}
+
+// ------------------------------------------------------------ file paths
+// Inline code that looks like a path (utils/markdown.ts): Reveal in Finder and
+// Open on the agent's machine when it is a Mac, Copy path everywhere.
+// Dropdown at the path on a computer, sheet on the phone.
+const pathMenu = reactive({ open: false, x: 0, y: 0, w: 0, h: 0 })
+const pathItems = ref<ReturnType<typeof toDropdown>>([])
+function pathMenuItems(p: string): MenuItem[] {
+  const items: MenuItem[] = []
+  if (machineOs(props.pane.machine) === 'Darwin' && !offlineView.value) {
+    items.push(
+      { label: t('Reveal in Finder'), icon: 'i-lucide-folder-search', run: () => revealOnMachine(p, 'reveal') },
+      { label: t('Open'), icon: 'i-lucide-external-link', run: () => revealOnMachine(p, 'open') },
+    )
+  }
+  items.push({ label: t('Copy path'), icon: 'i-lucide-copy', desc: p, mono: true, run: () => copyText(p) })
+  return items
+}
+function openPathMenu(el: HTMLElement) {
+  const p = (el.textContent || '').trim()
+  if (!p) return
+  if (!desk.value) {
+    haptic()
+    openMenu(pathMenuItems(p), p.replace(/\/+$/, '').split('/').pop() || p)
+    return
+  }
+  const r = el.getBoundingClientRect()
+  Object.assign(pathMenu, { x: r.left, y: r.top, w: r.width, h: r.height })
+  pathItems.value = toDropdown(pathMenuItems(p))
+  pathMenu.open = true
+}
+function onListKey(e: KeyboardEvent) {
+  if (e.key !== 'Enter' && e.key !== ' ') return
+  const el = (e.target as HTMLElement).closest?.('.md-body .md-path') as HTMLElement | null
+  if (!el) return
+  e.preventDefault()
+  openPathMenu(el)
+}
+async function revealOnMachine(p: string, mode: 'reveal' | 'open') {
+  try {
+    const r = await api<{ machine: string }>('/api/reveal', { pane_id: props.pane.id, path: p, mode })
+    toast(mode === 'reveal'
+      ? tl(`Shown in Finder on ${r.machine}`, `Affiché dans le Finder sur ${r.machine}`)
+      : tl(`Opened on ${r.machine}`, `Ouvert sur ${r.machine}`))
+  } catch (err) {
+    toast((err as Error).message, true)
+  }
 }
 
 // ------------------------------------------------------------ queued
@@ -816,7 +867,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         auto-scroll-icon="i-lucide-arrow-down"
         :ui="{ root: 'chat-msgs', viewport: 'hw-jump-vp', autoScroll: 'hw-jump' }"
       >
-        <div ref="listEl" class="chat-list" @click="onListClick">
+        <div ref="listEl" class="chat-list" @click="onListClick" @keydown="onListKey">
           <div v-if="unavailable && waiting" class="chat-empty waiting">
             <UIcon name="i-lucide-square-terminal" class="chat-empty-icon" />
             <p>{{ waiting.text }}</p>
@@ -1017,5 +1068,8 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         </div>
       </UChatMessages>
     </div>
+    <UDropdownMenu v-if="desk" v-model:open="pathMenu.open" :items="pathItems" :content="{ align: 'start', side: 'bottom', sideOffset: 4 }" :ui="{ content: 'hw-dropdown' }">
+      <span class="path-anchor" :style="{ left: `${pathMenu.x}px`, top: `${pathMenu.y}px`, width: `${pathMenu.w}px`, height: `${pathMenu.h}px` }" aria-hidden="true" />
+    </UDropdownMenu>
   </div>
 </template>

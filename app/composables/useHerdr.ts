@@ -224,6 +224,8 @@ export const currentPane = computed<Pane | undefined>(() => herdrState.value.pan
 export const machines = computed<MachineInfo[]>(() => herdrState.value.machines || [])
 export const multiMachine = computed(() => machines.value.length > 1 || Boolean(machines.value[0]?.baseKey))
 export const machineInfo = (key: string | null | undefined) => machines.value.find(m => m.key === (key || ''))
+// `uname -s` of a pane's machine ('Darwin' = macOS); the local one from the config.
+export const machineOs = (key: string | null | undefined) => machineInfo(key)?.os || (key ? undefined : appConfig.value.os)
 // Machines offered by the "New agent" and "New project" sheets (null
 // with a single machine); online according to the live state (the config may
 // have been read before the connection).
