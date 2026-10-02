@@ -55,7 +55,10 @@ const subtitle = computed(() => {
 })
 const command = computed(() => (pane.value?.command && pane.value.command !== headTitle.value && pane.value.command !== subtitle.value ? pane.value.command : ''))
 const tabName = computed(() => pane.value && herdrState.value.tabs?.filter(x => x.workspace === pane.value?.workspace).length! > 1 ? pane.value.tabLabel : '')
-// Tab of this pane (each conversation keeps its own).
+// Tab of this pane (each conversation keeps its own): the pane's remembered
+// mode if there is one, otherwise the device default on a computer, the
+// conversation on the phone. A change of the default applies at once to the
+// panes without an explicit choice.
 const viewMode = computed<PaneViewMode>({
   get: () => paneViewMode(props.paneId),
   set: m => setPaneViewMode(props.paneId, m),

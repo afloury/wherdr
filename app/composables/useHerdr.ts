@@ -15,6 +15,7 @@ import { checkNewVersion } from './useAppVersion'
 import { migrateContentWidth } from '~/utils/contentWidth'
 import { readQuotaDisplay } from '~/utils/quotas'
 import { readShowShells } from '~/utils/terminalVisibility'
+import { paneFallback } from '~/utils/viewMode'
 import type { QuotaDisplay } from '~/utils/quotas'
 import type { ContentWidth } from '~/utils/contentWidth'
 
@@ -175,21 +176,25 @@ if (import.meta.client) {
     }
   })
 }
-// Tab remembered per pane: each conversation keeps its own.
-// Conversation is the default; Terminal and Project (coordinator) are remembered.
+// Presentation mode per pane: only an explicit choice is remembered (the
+// selector, Ctrl+`, the phone icons — 'chat' included, so switching back
+// sticks); a pane without one follows the device default on a computer
+// (defaultViewMode, chosen in Settings › Desktop), the conversation on the
+// phone. A change of the default applies at once to the panes without one.
 export type PaneViewMode = 'chat' | 'term' | 'project'
-function loadViewModes(): Record<string, 'term' | 'project'> {
+function loadViewModes(): Record<string, PaneViewMode> {
   try {
     const v = JSON.parse(ls.get('viewModes') || '{}')
     return v && typeof v === 'object' ? v : {}
   } catch { return {} }
 }
 const viewModes = reactive(loadViewModes())
+export const defaultViewMode = ref<'chat' | 'term'>(ls.get('defaultViewMode') === 'term' ? 'term' : 'chat')
+watch(defaultViewMode, v => ls.set('defaultViewMode', v))
 export const paneViewMode = (id: string): PaneViewMode =>
-  (viewModes[id] === 'term' || viewModes[id] === 'project' ? viewModes[id] : 'chat')
+  (viewModes[id] === 'term' || viewModes[id] === 'project' || viewModes[id] === 'chat' ? viewModes[id] : paneFallback({ desk: desk.value, defaultMode: defaultViewMode.value }))
 export function setPaneViewMode(id: string, m: PaneViewMode) {
-  if (m !== 'chat') viewModes[id] = m
-  else delete viewModes[id]
+  viewModes[id] = m
   ls.set('viewModes', JSON.stringify(viewModes))
 }
 // Vanished panes: we forget their tab, but only for online
