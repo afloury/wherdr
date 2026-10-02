@@ -28,9 +28,9 @@ const lp = longPress({
     openMenu(tabItems(pressed.id), menuTitle(pressed.label))
   },
 })
-// Phone only: on a computer, the context menu handles it.
+// Touch or narrow screen only: otherwise the floating context menu handles it.
 function down(e: PointerEvent, id: string, label: string) {
-  if (desk.value) return
+  if (!sheetMenus.value) return
   pressed = { id, label }
   lp.down(e)
 }
@@ -42,12 +42,12 @@ function pick(id: string) {
 
 <template>
   <nav v-if="spaceTabControls(tabs.length).row" class="tab-chips space-tabs" :aria-label="t('Tabs')">
-    <UContextMenu v-for="e in tabs" :key="e.tab.id" :disabled="!desk" :items="desk ? toDropdown(tabItems(e.tab.id)) : []" :ui="{ content: 'hw-dropdown' }">
+    <UContextMenu v-for="e in tabs" :key="e.tab.id" :disabled="sheetMenus" :items="sheetMenus ? [] : toDropdown(tabItems(e.tab.id))" :ui="{ content: 'hw-dropdown' }">
       <button
         type="button" class="tab-chip" :class="e.tone" :title="e.title" :data-tab="e.tab.id"
         :aria-current="e.tab.id === current ? 'page' : undefined"
         @pointerdown="down($event, e.tab.id, e.label)" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
-        @contextmenu="!desk && $event.preventDefault()" @click="pick(e.tab.id)"
+        @contextmenu="sheetMenus && $event.preventDefault()" @click="pick(e.tab.id)"
       >
         <TabMap v-if="e.panes.length > 1" :layout="e.layout" :panes="e.panes" />
         <i v-else class="tab-chip-dot" />

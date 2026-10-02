@@ -39,7 +39,8 @@ interface Drag {
 let d: Drag | null = null
 
 const cards = () => (list.value ? [...list.value.querySelectorAll<HTMLElement>(':scope > .card[data-ws]')] : [])
-const menuOpen = () => Boolean(document.querySelector('[role="menu"][data-state="open"]'))
+// Floating menu (computer) or bottom sheet (touch / narrow screen).
+const menuOpen = () => menuState.open || Boolean(document.querySelector('[role="menu"][data-state="open"]'))
 
 function onDown(e: PointerEvent) {
   if (props.disabled || d || !e.isPrimary) return

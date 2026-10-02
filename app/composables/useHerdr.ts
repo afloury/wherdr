@@ -16,6 +16,7 @@ import { migrateContentWidth } from '~/utils/contentWidth'
 import { readQuotaDisplay } from '~/utils/quotas'
 import { readShowShells } from '~/utils/terminalVisibility'
 import { paneFallback } from '~/utils/viewMode'
+import { menuAsSheet } from '~/utils/menuRoute'
 import type { QuotaDisplay } from '~/utils/quotas'
 import type { ContentWidth } from '~/utils/contentWidth'
 
@@ -220,6 +221,15 @@ if (import.meta.client) {
   desk.value = mq.matches
   mq.addEventListener('change', () => { desk.value = mq.matches })
 }
+// Touch screen (phone, tablet): menus open as the bottom sheet, even on a
+// computer layout (utils/menuRoute.ts).
+export const coarse = ref(false)
+if (import.meta.client) {
+  const mq = matchMedia('(pointer: coarse)')
+  coarse.value = mq.matches
+  mq.addEventListener('change', () => { coarse.value = mq.matches })
+}
+export const sheetMenus = computed(() => menuAsSheet({ desk: desk.value, coarse: coarse.value }))
 
 export const currentPane = computed<Pane | undefined>(() => herdrState.value.panes.find(p => p.id === curPane.value))
 

@@ -38,9 +38,9 @@ const lp = longPress({
     openMenu(items, repoMenuTitle(pressed.name))
   },
 })
-// Phone only: on a computer, the context menu handles it.
+// Touch or narrow screen only: otherwise the floating context menu handles it.
 function repoDown(e: PointerEvent, root: RepoRoot | null | undefined, name: string) {
-  if (desk.value) return
+  if (!sheetMenus.value) return
   pressed = { root, name }
   lp.down(e)
 }
@@ -104,13 +104,13 @@ const tag = (p: Pane) => {
         <AgentCard :pane="sections.coordinator" :tag="tag(sections.coordinator)" :row="rowOf?.(sections.coordinator)" />
       </div>
       <div v-for="repo in sections.repos" :key="repo.key" class="project-repo-group" :class="{ folded: repoCollapsed(repo.key) }">
-        <UContextMenu :disabled="!desk || !repoItems(repo.root).length" :items="desk ? toDropdown(repoItems(repo.root)) : []" :ui="{ content: 'hw-dropdown' }">
+        <UContextMenu :disabled="sheetMenus || !repoItems(repo.root).length" :items="sheetMenus ? [] : toDropdown(repoItems(repo.root))" :ui="{ content: 'hw-dropdown' }">
           <button type="button" class="project-repo" :class="{ sel: headerState(repo.root).selected }"
             :aria-expanded="!repoCollapsed(repo.key)"
             :aria-current="headerState(repo.root).selected ? 'page' : undefined"
             :title="repo.root?.row.lead.cwd || undefined"
             @pointerdown="repoDown($event, repo.root, repo.name)" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
-            @contextmenu="!desk && $event.preventDefault()" @click="repoClick(repo.key)">
+            @contextmenu="sheetMenus && $event.preventDefault()" @click="repoClick(repo.key)">
             <UIcon name="i-lucide-chevron-down" class="project-repo-chev" />
             <UIcon name="i-lucide-git-fork" class="project-repo-icon" />
             <span class="project-repo-l">{{ tl('Repo', 'Dépôt') }}</span>
