@@ -61,6 +61,30 @@ const mcp = [
   `   ${I('↑/↓ to navigate · Enter to confirm · Esc to cancel')}`,
 ].join('\n')
 
+// /resume with every project: the list fills the pane and pushes the legend
+// below it; each description ends with the folder, sometimes wrapped.
+const resumeAll = (opts: { cursor?: boolean, search?: string, paths?: boolean } = {}) => {
+  const { cursor = true, search = '', paths = true } = opts
+  const entry = (label: string, meta: string, path: string, cur = false) => [
+    cur ? `   ${A(`❯ ${label}`)}` : `     ${label}`,
+    ...(!paths ? [`     ${G(meta)}`] : path.length > 20 ? [`     ${G(`${meta} · `)}`, `     ${G(path)}`] : [`     ${G(`${meta} · ${path}`)}`]),
+    '',
+  ]
+  return [
+    ...HISTORY,
+    TOP,
+    `   ${B(A(cursor ? 'Resume session (1 of 50)' : 'Resume session'))}`,
+    `   ${A(`╭${'─'.repeat(50)}╮`)}`,
+    `   ${A('│')} ${A('⌕ ')}${search ? search : G('Search…')}${' '.repeat(30)}${A('│')}`,
+    `   ${A(`╰${'─'.repeat(50)}╯`)}`,
+    '',
+    ...entry('Dashboard redesign', '1 minute ago · HEAD · 46MB', '/srv/demo/project', cursor),
+    ...entry('Fix the flaky tests', '2 minutes ago · feature/x · 3.1MB', '/srv/demo/worktrees/feature-x-long-name'),
+    ...entry('Write the release notes', '1 hour ago · main · 812KB', '/srv/demo/docs'),
+    `   ↓ Translate the settings page`,
+  ].join('\n')
+}
+
 describe('parseMenu', () => {
   it('reads the /resume picker: title, search, header, entries and gray descriptions, wrapped legend', () => {
     const m = parseMenu(resume())!
@@ -91,6 +115,49 @@ describe('parseMenu', () => {
     expect(m.cursor).toBeNull()
     expect(m.lines).toEqual(['No sessions match "zzz".'])
     expect(m.actions).toEqual([{ key: 'enter', label: 'select' }, { key: 'esc', label: 'clear' }])
+  })
+
+  it('/resume with every project: legend pushed below the pane, still a menu with its keys', () => {
+    const m = parseMenu(resumeAll())!
+    expect(m.title).toBe('Resume session (1 of 50)')
+    expect(m.search).toBe('')
+    expect(m.items).toEqual([
+      { label: 'Dashboard redesign', hint: '1 minute ago · HEAD · 46MB · /srv/demo/project', cursor: true },
+      { label: 'Fix the flaky tests', hint: '2 minutes ago · feature/x · 3.1MB · /srv/demo/worktrees/feature-x-long-name' },
+      { label: 'Write the release notes', hint: '1 hour ago · main · 812KB · /srv/demo/docs' },
+      { label: 'Translate the settings page', hint: null },
+    ])
+    expect(m.cursor).toBe(0)
+    expect(m.actions).toEqual([
+      { key: 'ctrl+a', label: 'only show current repo' },
+      { key: 'space', label: 'preview' },
+      { key: 'esc', label: 'cancel' },
+    ])
+    expect(stepToward(m, 2)).toBe('down')
+    expect(stepToward(m, 0)).toBe('enter')
+    expect(clickMovesOnly(m)).toBe(false)
+  })
+
+  it('/resume of the current project with a clipped legend: Ctrl+A shows every project', () => {
+    const m = parseMenu(resumeAll({ paths: false }))!
+    expect(m.items[0]).toEqual({ label: 'Dashboard redesign', hint: '1 minute ago · HEAD · 46MB', cursor: true })
+    expect(m.actions[0]).toEqual({ key: 'ctrl+a', label: 'show all projects' })
+  })
+
+  it('/resume with every project while a search is typed: entries listed without a cursor, ↓ first', () => {
+    const m = parseMenu(resumeAll({ cursor: false, search: 'notes' }))!
+    expect(m.title).toBe('Resume session')
+    expect(m.search).toBe('notes')
+    expect(m.cursor).toBeNull()
+    expect(m.items.map(i => i.label)).toEqual(['Dashboard redesign', 'Fix the flaky tests', 'Write the release notes', 'Translate the settings page'])
+    expect(m.items[2]!.hint).toBe('1 hour ago · main · 812KB · /srv/demo/docs')
+    expect(m.lines).toEqual([])
+    expect(m.actions).toEqual([{ key: 'enter', label: 'select' }, { key: 'esc', label: 'clear' }])
+    expect(stepToward(m, 2)).toBe('down')
+  })
+
+  it('without a legend nor a search box, a framed screen is not a menu', () => {
+    expect(parseMenu([TOP, '   Resume session', '', `   ${A('❯ Dashboard redesign')}`, `     ${G('1 minute ago · HEAD · 46MB')}`].join('\n'))).toBeNull()
   })
 
   it('reads /model: numbers removed, columns as description, scroll arrow, "+2 models"', () => {

@@ -124,6 +124,27 @@ function parseLegend(text: string): { actions: WaitAction[], search: boolean } |
   return { actions, search }
 }
 
+// "34 seconds ago · main · 2.6MB ·" + "/srv/demo" (path wrapped by the terminal).
+function joinHint(hint: string | null, more: string): string {
+  if (!hint) return more
+  return /·$/.test(hint) ? `${hint} ${more}` : `${hint} · ${more}`
+}
+
+// Keys of a picker whose legend is below the pane. /resume (Claude Code):
+// Ctrl+A switches between the current project and every project; the
+// sessions of every project show their folder in their description.
+// While a search is typed (no cursor), its legend is Claude's search one.
+function clippedLegend(title: string | null, items: MenuEntry[], cursor: boolean): WaitAction[] {
+  if (!cursor) return [{ key: 'enter', label: 'select' }, { key: 'esc', label: 'clear' }]
+  const actions: WaitAction[] = []
+  if (title && /^Resume session\b/.test(title)) {
+    const all = items.some(it => it.hint && /(?:^|·\s*)[~/]/.test(it.hint))
+    actions.push({ key: 'ctrl+a', label: all ? 'only show current repo' : 'show all projects' }, { key: 'space', label: 'preview' })
+  }
+  actions.push({ key: 'esc', label: 'cancel' })
+  return actions
+}
+
 export function parseMenu(text: string | null | undefined): InteractiveMenu | null {
   if (!text) return null
   const rows = String(text).replace(/\s+$/, '').split('\n').slice(-80).map(styled)
@@ -142,11 +163,30 @@ export function parseMenu(text: string | null | undefined): InteractiveMenu | nu
     const l = joined(i)
     if (l) { legend = l; legendAt = i } else if (legend) break
   }
-  if (!legend) return null
-  // A menu closes with Escape; without it (waiting screen, prompt), it is not a menu.
-  if (!/(?:^|·\s*)(?:esc|escape)\s+to\b/i.test(region.slice(legendAt).map(r => r.text.trim()).join(' '))) return null
-  const legendRow = region[legendAt]!
-  const hintFg = legendRow.fg[textColumn(legendRow.text)] ?? null
+  // The legend is drawn last: a long list (/resume showing every project)
+  // pushes it below the pane. A search picker is still recognized by its
+  // search box; its keys are then guessed (see clippedLegend).
+  let hintFg: string | null = null
+  let clipped = false
+  if (legend) {
+    // A menu closes with Escape; without it (waiting screen, prompt), it is not a menu.
+    if (!/(?:^|·\s*)(?:esc|escape)\s+to\b/i.test(region.slice(legendAt).map(r => r.text.trim()).join(' '))) return null
+    const legendRow = region[legendAt]!
+    hintFg = legendRow.fg[textColumn(legendRow.text)] ?? null
+  } else {
+    const box = region.findIndex(r => /^\s*│\s*⌕/.test(r.text))
+    if (box < 1) return null
+    legendAt = region.length
+    legend = { actions: [], search: true }
+    clipped = true
+    // Gray of the "Search…" placeholder, otherwise of the description below
+    // the entry under the cursor (or the first entry, while typing a search).
+    const ph = region[box]!.text.indexOf('Search…')
+    let entry = region.findIndex((r, i) => i > box && /^\s*❯\s/.test(r.text))
+    if (entry < 0) entry = region.findIndex((r, i) => i > box + 1 && r.text.trim() && !BOX.test(r.text))
+    const below = entry >= 0 ? region[entry + 1] : undefined
+    hintFg = ph >= 0 ? region[box]!.fg[ph] ?? null : below ? below.fg[textColumn(below.text)] ?? null : null
+  }
   const isDim = (l: Styled, from: number) => all(l, from, i => l.dim[i]! || (hintFg !== null && l.fg[i] === hintFg))
   // Bold group header, possibly followed by a gray suffix ("User MCPs (~/.x.json)").
   const isBold = (l: Styled, from: number) => Boolean(l.bold[from]) && all(l, from, i => l.bold[i]! || l.dim[i]! || (hintFg !== null && l.fg[i] === hintFg))
@@ -172,10 +212,17 @@ export function parseMenu(text: string | null | undefined): InteractiveMenu | nu
   let cursorRow = -1
   for (let i = body.length - 1; i > first; i--) if (/^\s*❯\s/.test(body[i]!.text)) { cursorRow = i; break }
 
-  const items: (MenuEntry & { row: number, start: number })[] = []
+  // While a search is typed, Claude hides the cursor: the entries are then
+  // in the column of the first line below the search box.
+  let col = -1
+  if (cursorRow >= 0) col = textColumn(body[cursorRow]!.text)
+  else if (boxAt >= 0) {
+    const r = body.find((r, i) => i >= afterBox && r.text.trim() && !BOX.test(r.text))
+    if (r) col = textColumn(r.text)
+  }
+  let items: (MenuEntry & { row: number, start: number })[] = []
   let more: string | null = null
-  if (cursorRow >= 0) {
-    const col = textColumn(body[cursorRow]!.text)
+  if (col >= 0) {
     for (let i = afterBox; i < body.length; i++) {
       const r = body[i]!
       const t = r.text.trim()
@@ -185,7 +232,7 @@ export function parseMenu(text: string | null | undefined): InteractiveMenu | nu
       if (MORE.test(content.trim())) { more = content.trim().replace(/^[↑↓]\s*/, ''); continue }
       const prev = items[items.length - 1]
       if (c > col && prev && prev.row === i - 1 && !prev.header) {
-        prev.hint = [prev.hint, content.trim()].filter(Boolean).join(' · ')
+        prev.hint = joinHint(prev.hint, content.trim())
         prev.row = i
         continue
       }
@@ -194,7 +241,7 @@ export function parseMenu(text: string | null | undefined): InteractiveMenu | nu
       if (!cursor && isDim(r, c)) {
         // Description of the entry just above, otherwise a group header.
         if (prev && !prev.header && prev.row === i - 1) {
-          prev.hint = [prev.hint, content.trim()].filter(Boolean).join(' · ')
+          prev.hint = joinHint(prev.hint, content.trim())
           prev.row = i
         } else items.push({ label: content.trim(), hint: null, header: true, row: i, start: i })
         continue
@@ -205,6 +252,9 @@ export function parseMenu(text: string | null | undefined): InteractiveMenu | nu
       items.push({ label: parts[0]!.trim(), hint: parts.slice(1).join(' · ').trim() || null, row: i, start: i, ...(cursor ? { cursor: true } : {}) })
     }
   }
+  // Without a cursor, only a list of sessions (label + description) is one,
+  // not "No sessions match…".
+  if (cursorRow < 0 && !items.some(it => it.hint)) items = []
   // Explanation lines between the title and the list (wrapped by the terminal): a single line.
   const listTop = Math.min(boxAt >= 0 ? boxAt : body.length, items.length ? items[0]!.start : body.length)
   const intro: string[] = []
@@ -215,7 +265,7 @@ export function parseMenu(text: string | null | undefined): InteractiveMenu | nu
   // No cursor (search in progress, "No sessions match…"): the text below the
   // search, as is, so the card says what the terminal shows.
   const rest: string[] = []
-  if (cursorRow < 0 && boxAt >= 0) {
+  if (cursorRow < 0 && boxAt >= 0 && !items.length) {
     for (let i = Math.max(afterBox, first + 1); i < body.length && rest.length < 8; i++) {
       const t = body[i]!.text.trim()
       if (t && !BOX.test(body[i]!.text)) rest.push(t.slice(0, 200))
@@ -228,7 +278,7 @@ export function parseMenu(text: string | null | undefined): InteractiveMenu | nu
     items: items.slice(0, 40).map(({ row: _row, start: _start, ...it }) => ({ ...it, label: it.label.slice(0, 200), hint: it.hint ? it.hint.slice(0, 200) : null })),
     cursor: first >= 0 && first < 40 ? first : null,
     search,
-    actions: legend.actions,
+    actions: clipped ? clippedLegend(title, items, cursorRow >= 0) : legend.actions,
     more,
   }
 }
@@ -236,7 +286,9 @@ export function parseMenu(text: string | null | undefined): InteractiveMenu | nu
 // Keys to go from entry `from` to entry `to`: one arrow at a time,
 // the screen re-read in between (headers do not take the cursor).
 export function stepToward(menu: InteractiveMenu, to: number): 'up' | 'down' | 'enter' | null {
-  if (menu.cursor === null || !menu.items[to] || menu.items[to]!.header) return null
+  if (!menu.items[to] || menu.items[to]!.header) return null
+  // Search being typed: ↓ moves into the list (the cursor shows up again).
+  if (menu.cursor === null) return 'down'
   if (to === menu.cursor) return 'enter'
   return to > menu.cursor ? 'down' : 'up'
 }

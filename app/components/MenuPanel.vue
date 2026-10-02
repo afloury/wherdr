@@ -21,7 +21,8 @@ const disabled = computed(() => busy.value || !eventsOpen.value || offlineView.v
 const moveOnly = computed(() => clickMovesOnly(props.menu))
 // With clickable entries that confirm, Enter is redundant.
 const actions = computed(() => props.menu.actions.filter(a => !(a.key === 'enter' && props.menu.cursor !== null && !moveOnly.value)))
-const known = computed(() => props.menu.cursor !== null && props.menu.items.length > 0)
+// No cursor while a search is typed: the entries stay listed (a click goes ↓ first).
+const known = computed(() => props.menu.items.length > 0)
 
 async function pick(i: number, label: string) {
   busy.value = true
