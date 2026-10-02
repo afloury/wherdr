@@ -1275,6 +1275,8 @@ body.kb .composer { padding-bottom: 8px; }
 .prompt-input {
   padding: 8px 6px 4px; font-size: 16px; line-height: 1.45; color: var(--text);
   min-height: 38px; max-height: 40vh;
+  /* Past the max height the field scrolls (autoresize sets overflow: hidden). */
+  overflow-y: auto !important;
 }
 .prompt-input::placeholder { color: var(--dim); }
 .prompt-foot { gap: 8px; }

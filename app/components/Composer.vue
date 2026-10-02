@@ -191,6 +191,12 @@ function removeAtt(i: number) {
   if (a && a.url) URL.revokeObjectURL(a.url)
 }
 watch(() => attachments.value.length, () => nextTick(layout))
+// Long text: keep the caret in view once the field reaches its max height.
+watch(text, () => nextTick(() => {
+  const el = ta.value
+  if (!el || el.scrollHeight <= el.clientHeight || document.activeElement !== el) return
+  if (el.selectionEnd >= el.value.length - 1) el.scrollTop = el.scrollHeight
+}))
 
 async function shrink(file: Blob): Promise<Blob> {
   const url = URL.createObjectURL(file)
