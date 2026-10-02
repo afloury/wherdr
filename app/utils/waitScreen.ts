@@ -33,6 +33,10 @@ const LABELS: Record<string, [string, string]> = {
   // Menus de Claude Code (/resume, /model…).
   'show all projects': ['Tous les projets', 'All projects'],
   'only show current branch': ['Branche courante seulement', 'Current branch only'],
+  'only show current repo': ['Projet courant seulement', 'Current project only'],
+  'show all branches': ['Toutes les branches', 'All branches'],
+  'only show current worktree': ['Worktree courant seulement', 'Current worktree only'],
+  'show all worktrees': ['Tous les worktrees', 'All worktrees'],
   'preview': ['Aperçu', 'Preview'],
   'set as default': ['Définir par défaut', 'Set as default'],
   'use this session only': ['Cette session seulement', 'This session only'],
