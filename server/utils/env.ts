@@ -46,6 +46,8 @@ export const NOTIFY_SETTLE_MS = Number(env.NOTIFY_SETTLE_MS || 4000)
 export const UPLOAD_DIR = env.UPLOAD_DIR || path.join(HOME, '.cache/herdr-web/uploads')
 export const UPLOAD_MAX = 20 * 1024 * 1024
 export const UPLOAD_TTL_MS = 7 * 86400000
+// Other files attached to a message (PDF, text, code…): same 7-day purge.
+export const ATTACH_DIR = env.ATTACH_DIR || path.join(HOME, '.cache/herdr-web/files')
 // Arguments to "resume the last conversation" at launch.
 export const RESUME_ARGS: Record<string, string[]> = { claude: ['--continue'], codex: ['resume', '--last'] }
 

@@ -1,6 +1,9 @@
+import { closeTrailingMention } from '../../shared/attachments'
+
 export default defineApi(async (event, b) => {
   if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'Invalid pane')
-  const text = String(b.text || '')
+  // Attached text file last (`@<path>`): see closeTrailingMention.
+  const text = closeTrailingMention(String(b.text || ''))
   if (!text.trim()) throw new HerdrError('empty', 'Empty message')
   if (await closePanel(b.pane_id).catch(() => false)) log(`panel closed before sending on ${b.pane_id}`)
   // A menu or panel still hides the input field (interactive /mcp flow…), or an

@@ -14,6 +14,7 @@ import { pickTyping, replyId } from '~/utils/typewriter'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 import { isStale, noMisses, onError, onUnavailable, type ChatMisses } from '~/utils/chatMiss'
 import { dropReplyMarker, findReplyOrigin, parseReply, replyTarget, type ReplyTarget } from '#shared/replyQuote'
+import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
 
 const props = defineProps<{ pane: Pane, localQueued: QueuedMessage[] }>()
 const route = useRoute()
@@ -263,7 +264,7 @@ const UPLOAD_RE = /\/\.cache\/herdr-web\/uploads\/\S+/g
 type Block =
   | { k: 'day', key: string, label: string }
   | { k: 'who', key: string }
-  | { k: 'user', key: string, text: string, srcs: string[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null }
+  | { k: 'user', key: string, text: string, srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null }
   | { k: 'assistant', key: string, id: string, text: string, html: string, time: string | null, endsTurn: boolean }
   | { k: 'system', key: string, text: string }
   | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean }
@@ -349,7 +350,9 @@ const blocks = computed<Block[]>(() => {
     const key = `${it.role}:${it.ts}:${i}`
     if (it.role === 'user') {
       const uploads = it.text.match(UPLOAD_RE) || []
-      const text = it.text.replace(/^.*\/\.cache\/herdr-web\/uploads\/\S+\s*$/gm, '').trim()
+      // Attached files (PDF, text…): a chip each, their line leaves the text.
+      const files = it.text.split('\n').map(parseAttachmentLine).filter((f): f is { path: string, name: string } => Boolean(f))
+      const text = it.text.replace(/^.*\/\.cache\/herdr-web\/uploads\/\S+\s*$/gm, '').split('\n').filter(l => !isAttachmentLine(l)).join('\n').trim()
       // Images re-read from the transcript (ref = position of the message in the
       // file), or photos stored on the server whose path stayed as text.
       const srcs: string[] = []
@@ -362,7 +365,7 @@ const blocks = computed<Block[]>(() => {
       // Reply to a specific message: the marker becomes a quote linking to the original.
       const parsed = parseReply(text)
       const origin = parsed ? findReplyOrigin(replies, parsed.reply)?.key || null : null
-      out.push({ k: 'user', key, text: parsed ? parsed.body : text, srcs, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null, reply: parsed?.reply || null, origin })
+      out.push({ k: 'user', key, text: parsed ? parsed.body : text, srcs, files, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null, reply: parsed?.reply || null, origin })
     } else if (it.role === 'assistant') {
       lastReply = it.text
       const time = it.ts ? fmtTime(it.ts) : null
@@ -521,8 +524,8 @@ function pathMenuItems(p: string): MenuItem[] {
   items.push({ label: t('Copy path'), icon: 'i-lucide-copy', desc: p, mono: true, run: () => copyText(p) })
   return items
 }
-function openPathMenu(el: HTMLElement) {
-  const p = (el.textContent || '').trim()
+function openPathMenu(el: HTMLElement, path?: string) {
+  const p = path || (el.textContent || '').trim()
   if (!p) return
   if (!desk.value) {
     haptic()
@@ -601,7 +604,7 @@ const queuedList = computed(() => {
   const replies = blocks.value.filter(b => b.k === 'assistant')
   return list.map((q, i) => {
     const lines = q.text.split('\n')
-    const text = lines.filter(l => !isUploadLine(l)).join('\n').trim()
+    const text = lines.filter(l => !isUploadLine(l) && !isAttachmentLine(l)).join('\n').trim()
     const parsed = parseReply(text)
     return {
       id: q.id,
@@ -611,6 +614,7 @@ const queuedList = computed(() => {
       phase: q.state ? 'queued' : phases[i]!,
       state: q.state || null,
       photos: lines.filter(isUploadLine).map(l => `/uploads/${encodeURIComponent(l.trim().split('/').pop()!)}`),
+      files: lines.map(parseAttachmentLine).filter((f): f is { path: string, name: string } => Boolean(f)),
       text,
       body: parsed ? parsed.body : text,
       reply: parsed?.reply || null,
@@ -900,13 +904,17 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 </button>
                 <UChatMessage
                   :id="b.key" role="user" side="right" variant="soft"
-                  :parts="[...b.srcs.map(url => ({ type: 'file' as const, mediaType: 'image/jpeg', url })), ...(b.text ? [{ type: 'text' as const, text: b.text }] : [])]"
-                  :ui="{ root: b.text.trim() ? 'msg msg-user' : 'msg msg-user msg-no-text', container: 'msg-c', content: 'msg-bubble', header: 'msg-files' }"
+                  :parts="[...b.srcs.map(url => ({ type: 'file' as const, mediaType: 'image/jpeg', url })), ...(b.text || b.files.length ? [{ type: 'text' as const, text: b.text || ' ' }] : [])]"
+                  :ui="{ root: b.text.trim() || b.files.length ? 'msg msg-user' : 'msg msg-user msg-no-text', container: 'msg-c', content: 'msg-bubble', header: 'msg-files' }"
                 >
                   <template #files>
                     <MsgThumbs :srcs="b.srcs" :offline="readOnly" />
                   </template>
-                  <template #content>{{ b.text }}</template>
+                  <template #content>
+                    <span v-if="b.files.length" class="msg-file-chips">
+                      <FileChip v-for="f in b.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
+                    </span>{{ b.text }}
+                  </template>
                 </UChatMessage>
                 <div v-if="b.time" class="msg-time" :title="b.at || undefined">{{ b.time }}</div>
               </div>
@@ -1011,7 +1019,9 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
             </button>
             <div class="msg-bubble sent">
-              <MsgThumbs v-if="q.photos.length" :srcs="q.photos" />{{ q.body }}
+              <MsgThumbs v-if="q.photos.length" :srcs="q.photos" /><span v-if="q.files.length" class="msg-file-chips">
+                <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
+              </span>{{ q.body }}
             </div>
             <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ t('Sent · read by the agent') }}</span></div>
           </div>
@@ -1037,7 +1047,9 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
             </button>
             <div class="msg-bubble queued">
-              <MsgThumbs v-if="q.photos.length" :srcs="q.photos" />{{ q.body }}
+              <MsgThumbs v-if="q.photos.length" :srcs="q.photos" /><span v-if="q.files.length" class="msg-file-chips">
+                <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
+              </span>{{ q.body }}
             </div>
             <div v-if="q.state === 'failed'" class="queued-tag failed" role="alert">
               <UIcon name="i-lucide-circle-alert" /><span>{{ t('Not sent') }}</span>

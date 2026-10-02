@@ -3,6 +3,7 @@
 import type { Pane } from '../../shared/types'
 import type { DraftAtt } from '../composables/useDraft'
 import { parseReply, type ReplyTarget } from '../../shared/replyQuote'
+import { extensionOf, parseAttachmentLine } from '../../shared/attachments'
 
 const UPLOAD = '/.cache/herdr-web/uploads/'
 
@@ -25,11 +26,20 @@ export function restoreDraft(draft: { text: string, atts: DraftAtt[], reply?: Re
   }
   const lines = String(message || '').split('\n')
   const photos = lines.filter(l => l.includes(UPLOAD)).map(l => l.trim())
-  const text = lines.filter(l => !l.includes(UPLOAD)).join('\n').trim()
+  const files = lines.filter(l => parseAttachmentLine(l))
+  const text = lines.filter(l => !l.includes(UPLOAD) && !parseAttachmentLine(l)).join('\n').trim()
   draft.text = [text, draft.text.trim()].filter(Boolean).join('\n')
   for (const path of photos) {
     if (draft.atts.some(a => a.path === path)) continue
     const name = path.split('/').pop()!
     draft.atts.push({ url: `/uploads/${encodeURIComponent(name)}`, path, name })
+  }
+  // Attached files (size unknown here: the chip shows the name only).
+  for (const line of files) {
+    const f = parseAttachmentLine(line)!
+    if (draft.atts.some(a => a.path === f.path)) continue
+    const ext = extensionOf(f.name)
+    const kind = ext === 'pdf' ? 'pdf' : ext === 'ipynb' ? 'notebook' : 'text'
+    draft.atts.push({ url: '', path: f.path, name: f.path.split('/').pop()!, file: { label: f.name, size: 0, kind }, ref: line.trim() })
   }
 }
