@@ -3,11 +3,14 @@
 // like Claude.ai. Agent working and field empty: send becomes "Stop" (Escape),
 // via UChatPromptSubmit ("streaming" state).
 // Photos shrunk in the browser (2048 px, JPEG) then stored on the server;
-// their path goes with the message.
+// their path goes with the message. Other files the agent can read (PDF,
+// text, code, notebooks) are stored on its machine as they are (/api/attach).
 import type { Pane, QueuedMessage, SlashCommand } from '#shared/types'
 import type { DraftAtt } from '~/composables/useDraft'
 import { withReply } from '#shared/replyQuote'
 import { isAgentCommand } from '#shared/commandScreen'
+import type { AttachKind } from '#shared/attachments'
+import { refusalText, sortForAgent } from '~/utils/fileDrop'
 import { restoreDraft } from '~/utils/queuedCancel'
 
 // `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
@@ -33,6 +36,7 @@ const text = toRef(draft, 'text')
 const promptRef = ref<{ textareaRef?: HTMLTextAreaElement } | null>(null)
 const ta = computed(() => promptRef.value?.textareaRef || null)
 const fileInput = ref<HTMLInputElement | null>(null)
+const anyFileInput = ref<HTMLInputElement | null>(null)
 const sending = ref(false)
 // On a touch keyboard, Enter adds a line; the button below the field sends.
 const enterSends = computed(() => desk.value && !isIOS && !touchKeyboard)
@@ -102,10 +106,10 @@ const hint = computed(() => desk.value && !stopMode.value)
 async function submit() {
   if (readOnly.value) return toast(t('Sending unavailable offline'), true)
   if (stopMode.value) return interrupt()
-  if (attachments.value.some(a => !a.path)) return toast(t('Photo is uploading…'))
-  // Photos go as file paths: Claude Code and Codex
-  // open them themselves.
-  const paths = attachments.value.map(a => a.path!)
+  if (attachments.value.some(a => !a.path)) return toast(t(attachments.value.some(a => !a.path && a.file) ? 'File is uploading…' : 'Photo is uploading…'))
+  // Photos and files go as file paths (`@<path>` for a text file given to
+  // Claude): Claude Code and Codex open them themselves.
+  const paths = attachments.value.map(a => a.ref || a.path!)
   const body = [text.value.trim(), ...paths].filter(Boolean).join('\n')
   // No marker before a "/" or "!" command: the agent would no longer read it as such.
   const reply = /^[/!]/.test(body) ? null : replyTo.value
@@ -176,7 +180,7 @@ function stop() {
 
 // ------------------------------------------------------------ photos
 function clearAttachments() {
-  for (const a of attachments.value) URL.revokeObjectURL(a.url)
+  for (const a of attachments.value) if (a.url) URL.revokeObjectURL(a.url)
   attachments.value = []
 }
 // Large preview (same viewer as the conversation), including while
@@ -184,7 +188,7 @@ function clearAttachments() {
 function viewAtt(a: Att) { lightboxSrc.value = a.url }
 function removeAtt(i: number) {
   const [a] = attachments.value.splice(i, 1)
-  if (a) URL.revokeObjectURL(a.url)
+  if (a && a.url) URL.revokeObjectURL(a.url)
 }
 watch(() => attachments.value.length, () => nextTick(layout))
 
@@ -232,22 +236,54 @@ async function addImages(files: File[]) {
     }
   }
 }
+// Any file (drop, +, paste): images take the photo path, files the agent
+// reads are attached, the others are refused with the reason.
+async function addFiles(files: File[]) {
+  const p = props.pane
+  const { images, files: readable, refused } = await sortForAgent(files, p?.agent)
+  if (refused.length) {
+    const who = kindLabel(p?.agent)
+    const names = refused.map(r => r.file.name).join(', ')
+    const why = [...new Set(refused.map(r => refusalText(r.reason, who, r.kind)))]
+    toast(tl(`Not attached: ${names}`, `Non joint : ${names}`), true, why.join(' · '))
+  }
+  if (images.length) addImages(images)
+  for (const r of readable) uploadFile(r.file, r.kind)
+  return images.length + readable.length
+}
+async function uploadFile(f: File, kind: AttachKind) {
+  const a = reactive<Att>({ url: '', path: null, file: { label: f.name, size: f.size, kind } })
+  attachments.value.push(a)
+  try {
+    const r = await fetch(`/api/attach?pane=${encodeURIComponent(props.paneId)}&name=${encodeURIComponent(f.name)}`, {
+      method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: f,
+    })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok) throw new Error(t(d.error || `HTTP ${r.status}`))
+    a.path = d.path
+    a.name = d.name
+    a.ref = d.ref
+  } catch (err) {
+    toast(`${f.name} : ${t('File upload failed')} — ${(err as Error).message}`, true)
+    attachments.value = attachments.value.filter(x => x !== a)
+  }
+}
 function onFiles(e: Event) {
   const input = e.target as HTMLInputElement
   const files = [...(input.files || [])]
   input.value = ''
-  addImages(files)
+  addFiles(files)
 }
 
 // Paste an image: straight into the field (Mac, iPad, and iPhone when
 // Safari offers it)…
 function onPaste(e: ClipboardEvent) {
   const files = [...((e.clipboardData && e.clipboardData.items) || [])]
-    .filter(i => i.kind === 'file' && i.type.startsWith('image/'))
+    .filter(i => i.kind === 'file')
     .map(i => i.getAsFile()).filter((f): f is File => Boolean(f))
-  if (!files.length) return // du texte : collage normal
+  if (!files.length) return // text: normal paste
   e.preventDefault()
-  addImages(files)
+  addFiles(files)
   haptic()
 }
 
@@ -352,6 +388,7 @@ function openPlus() {
   if (!p) return
   const items: MenuItem[] = [
     { label: t('Photo or screenshot'), icon: 'i-lucide-image', run: () => fileInput.value?.click() },
+    { label: p.agent === 'claude' ? t('File (PDF, text, code)') : t('File (text, code)'), icon: 'i-lucide-paperclip', run: () => anyFileInput.value?.click() },
     { label: t('Paste copied image'), icon: 'i-lucide-clipboard-paste', run: pasteFromClipboard },
   ]
   if (p.agent) {
@@ -386,7 +423,7 @@ function focusEnd() {
   })
 }
 
-defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.blur(), addImages, stop })
+defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.blur(), addImages, addFiles, stop })
 </script>
 
 <template>
@@ -456,22 +493,29 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
     >
       <template v-if="attachments.length" #header>
         <div class="attachments">
-          <div
-            v-for="(a, i) in attachments" :key="a.url" class="att" :class="{ up: !a.path }"
-            role="button" tabindex="0" :aria-label="t('View image')" @click="viewAtt(a)" @keydown.enter.self="viewAtt(a)"
-          >
-            <img :src="a.url" alt="">
-            <span v-if="!a.path" class="spinner" />
-            <button type="button" :aria-label="t('Remove')" @click.stop="removeAtt(i)"><UIcon name="i-lucide-x" /></button>
-          </div>
+          <template v-for="(a, i) in attachments" :key="a.url || a.path || a.file?.label">
+            <FileChip
+              v-if="a.file" :name="a.file.label" :size="a.file.size" :kind="a.file.kind" :uploading="!a.path" removable
+              @remove="removeAtt(i)"
+            />
+            <div
+              v-else class="att" :class="{ up: !a.path }"
+              role="button" tabindex="0" :aria-label="t('View image')" @click="viewAtt(a)" @keydown.enter.self="viewAtt(a)"
+            >
+              <img :src="a.url" alt="">
+              <span v-if="!a.path" class="spinner" />
+              <button type="button" :aria-label="t('Remove')" @click.stop="removeAtt(i)"><UIcon name="i-lucide-x" /></button>
+            </div>
+          </template>
         </div>
       </template>
       <template #footer>
         <UButton
           icon="i-lucide-plus" color="neutral" variant="outline" size="sm" class="prompt-plus" :disabled="readOnly"
-          :aria-label="t('Photo, paste, commands')" @click="openPlus"
+          :aria-label="t('Photo, file, paste, commands')" @click="openPlus"
         />
         <input ref="fileInput" type="file" accept="image/*" multiple hidden @change="onFiles">
+        <input ref="anyFileInput" type="file" multiple hidden data-testid="attach-any" @change="onFiles">
         <ModelPicker v-if="pane && (pane.agent === 'claude' || pane.agent === 'codex' || pane.agent === 'omp')" :pane="pane" />
         <span v-if="hint && suggestion" class="prompt-hint"><UKbd value="tab" size="sm" /> {{ t('suggestion') }} <span class="sep">·</span> <UKbd value="enter" size="sm" /> {{ t('send') }}</span>
         <span v-else-if="hint" class="prompt-hint"><UKbd value="enter" size="sm" /> {{ t('send') }} <span class="sep">·</span> <UKbd value="shift" size="sm" /><UKbd value="enter" size="sm" /> {{ t('new line') }}</span>

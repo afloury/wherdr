@@ -22,7 +22,7 @@ import { neighborPane } from '#shared/layout'
 import { prefillDraft } from '#shared/projectBoard'
 import { swipeAxis, swipeOffset, swipeStep } from '~/utils/swipe'
 import { cellMode, showComposer, terminalAttachment } from '~/utils/viewMode'
-import { carriesFiles, dragDepth, splitDropped } from '~/utils/fileDrop'
+import { carriesFiles, dragDepth } from '~/utils/fileDrop'
 
 const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, grip?: boolean }>()
 const emit = defineEmits<{ activate: [] }>()
@@ -135,7 +135,7 @@ const ctl = createTerminal(props.paneId, {
   hasBanner: () => Boolean(banner.value),
 })
 const chatRef = ref<{ scrollToEnd: (force: boolean) => void, reload: () => void, focusSearch: () => void } | null>(null)
-const composer = ref<{ focus: () => void, focusEnd: () => void, blur: () => void, addImages: (files: File[]) => Promise<void>, stop: () => boolean } | null>(null)
+const composer = ref<{ focus: () => void, focusEnd: () => void, blur: () => void, addImages: (files: File[]) => Promise<void>, addFiles: (files: File[]) => Promise<number>, stop: () => boolean } | null>(null)
 const mirror = ref<{ focus: () => void } | null>(null)
 const searchOpen = ref(typeof route.query.q === 'string' && typeof route.query.hit === 'string')
 
@@ -298,14 +298,16 @@ function onDrop(e: DragEvent) {
   const files = [...(e.dataTransfer?.files || [])]
   if (!files.length) return
   if (dropTarget.value === 'term') return sendFiles(files)
-  const { images, refused } = splitDropped(files)
-  if (refused.length) toast(tl(`Only images can be attached to a message: ${refused.map(f => f.name).join(', ')}`, `Seules les images se joignent au message : ${refused.map(f => f.name).join(', ')}`), true)
-  if (images.length) {
-    composer.value?.addImages(images)
+  composer.value?.addFiles(files).then((n) => {
+    if (!n) return
     composer.value?.focus()
     haptic()
-  }
+  })
 }
+// What the message field accepts for this agent (drop overlay).
+const dropHint = computed(() => pane.value?.agent === 'claude'
+  ? t('Images, PDFs, text and code files')
+  : t('Images, text and code files'))
 
 // Agent menu: sheet on the phone, dropdown menu on a computer.
 const agentMenu = computed<MenuItem[]>(() => {
@@ -473,9 +475,9 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     @dragenter="onDrag" @dragover="onDrag" @dragleave="onDrag" @drop="onDrop"
   >
     <div v-if="dropDepth && dropTarget" class="file-drop" aria-hidden="true">
-      <UIcon :name="dropTarget === 'term' ? 'i-lucide-paperclip' : 'i-lucide-image-plus'" class="file-drop-icon" />
+      <UIcon :name="dropTarget === 'term' ? 'i-lucide-paperclip' : 'i-lucide-file-plus'" class="file-drop-icon" />
       <span class="file-drop-label">{{ t('Drop to attach') }}</span>
-      <small>{{ dropTarget === 'term' ? t('The file path is sent to the terminal') : t('Images · resized before upload') }}</small>
+      <small>{{ dropTarget === 'term' ? t('The file path is sent to the terminal') : dropHint }}</small>
     </div>
     <SpaceTabs v-if="!cell && pane" :workspace="pane.workspace" :current="pane.tab" />
     <HeaderMenu :items="() => agentMenu" :disabled="!pane">

@@ -83,7 +83,8 @@ Claude Code, Codex and other product names are trademarks of their respective ow
   first message. Reading a conversation never touches the terminal, so it never resizes a pane.
 - **Terminal view**: the real terminal (xterm.js, WebGL or DOM renderer) with take-over.
 - **Composer**: send messages while the agent works (queued, cancellable), attach or paste
-  photos, run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
+  photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
+  extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
   of local commands. Stop button while the agent works.
 - **Model and effort pickers** for Claude Code, Codex and omp (omp: its
   "Switch Model" selector, `/switch` or `/model`). Changes apply **to the
@@ -223,7 +224,7 @@ docker compose logs -f        # optional: follow the logs and find the first-pas
 
 The container runs as your user and mounts your home folder **read-only**, except
 `~/.config/herdr` (Herdr sockets), `~/.local/state/herdr/client` (machine names),
-`~/.cache/herdr-web` (uploaded photos, quotas) and `~/.herdr-projects` (herdr-projects
+`~/.cache/herdr-web` (uploaded photos and files, quotas) and `~/.herdr-projects` (herdr-projects
 projects, see [Works great with herdr-projects](#works-great-with-herdr-projects)). It uses the
 server's own `herdr` binary, so the client and the server always stay on the same version.
 
@@ -368,6 +369,7 @@ All settings are environment variables (`.env` with Docker).
 | `HERDR_WEB_REMOTE_SESSION` | | Herdr session to use on every remote machine instead of the profile's. |
 | `HERDR_WEB_HERDR_NOTIFICATIONS` | `on` | `off` to stop relaying `herdr notification show` as push. |
 | `UPLOAD_DIR` | `~/.cache/herdr-web/uploads` | Where photos sent to agents are stored (deleted after 7 days). |
+| `ATTACH_DIR` | `~/.cache/herdr-web/files` | Where other files attached to messages are stored, on the agent's machine (mode 600, deleted after 7 days). |
 | `TZ` | `UTC` | Time zone. |
 
 In the app, **Settings** holds per-device preferences: language, theme, notifications, terminal
@@ -530,7 +532,7 @@ container talks to the Herdr server running on the host.
   server; the app is open again to whoever can reach it.
 - Without a passkey, **anyone who can reach the address can control your agents**: every device
   on your tailnet, and every user of your tailnet if you share it.
-- Writes require `Content-Type: application/json` (or `image/*` for photos) and an `Origin`
+- Writes require `Content-Type: application/json` (or `image/*` for photos, `application/octet-stream` for attached files) and an `Origin`
   matching the host, WebSockets included. API reads sent from another site (links, images,
   `no-cors` fetches, reported by the browser's `Sec-Fetch-Site`) are refused too.
 - A strict Content Security Policy limits scripts to the app's own origin and hashed inline

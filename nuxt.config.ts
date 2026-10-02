@@ -37,6 +37,8 @@ export default defineNuxtConfig({
         'lucide:server', 'lucide:laptop', 'lucide:unplug',
         // Space menus (app/composables/useSpaces.ts: composables are not scanned).
         'lucide:columns-2', 'lucide:rows-2', 'lucide:move', 'lucide:square-plus', 'lucide:panels-top-left',
+        // Attached file chips (shared/attachments.ts attachmentIcon: not scanned).
+        'lucide:file-text', 'lucide:notebook-pen', 'lucide:file-image', 'lucide:file-json', 'lucide:file-type', 'lucide:file-code',
       ],
     },
   },

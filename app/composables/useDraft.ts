@@ -6,11 +6,24 @@
 
 import { effectScope, reactive, watch } from 'vue'
 import type { ReplyTarget } from '../../shared/replyQuote'
+import type { AttachKind } from '../../shared/attachments'
 
 export interface DraftAtt {
-  url: string // preview: local blob while the page lives, otherwise /uploads/<name>
+  url: string // preview: local blob while the page lives, otherwise /uploads/<name> ('' for a file)
   path: string | null // null while the photo is being sent
   name?: string
+  // Attached file (PDF, text…): shown as a chip; `ref` is what the message
+  // carries (`@<path>` for Claude, the path otherwise).
+  file?: { label: string, size: number, kind: AttachKind }
+  ref?: string
+}
+type StoredAtt = { path: string, name?: string, file?: DraftAtt['file'], ref?: string }
+
+// A stored attachment back into the draft.
+export function restoreAtt(a: StoredAtt): DraftAtt {
+  return a.file
+    ? { url: '', path: a.path, name: a.name, file: a.file, ref: a.ref || a.path }
+    : { url: `/uploads/${encodeURIComponent(a.name!)}`, path: a.path, name: a.name }
 }
 // reply: the agent message being replied to (see utils/replyQuote.ts).
 interface Draft { text: string, atts: DraftAtt[], reply: ReplyTarget | null }
@@ -32,12 +45,12 @@ function load(paneId: string): Draft {
   try {
     const raw = localStorage.getItem(KEY + paneId)
     if (raw) {
-      const d = JSON.parse(raw) as { text?: string, atts?: { path: string, name?: string }[], reply?: ReplyTarget }
+      const d = JSON.parse(raw) as { text?: string, atts?: StoredAtt[], reply?: ReplyTarget }
       return {
         text: d.text || '',
         atts: (d.atts || [])
           .filter(a => a.path && a.name && Date.now() - uploadedAt(a.name) < ATT_MAX_AGE)
-          .map(a => ({ url: `/uploads/${encodeURIComponent(a.name!)}`, path: a.path, name: a.name })),
+          .map(restoreAtt),
         reply: d.reply && typeof d.reply.time === 'string' && typeof d.reply.excerpt === 'string' ? { time: d.reply.time, excerpt: d.reply.excerpt, ...(d.reply.part ? { part: true } : {}) } : null,
       }
     }
@@ -46,7 +59,7 @@ function load(paneId: string): Draft {
 }
 
 function persist(paneId: string, d: Draft) {
-  const atts = d.atts.filter(a => a.path && a.name).map(a => ({ path: a.path, name: a.name }))
+  const atts = d.atts.filter(a => a.path && a.name).map(a => (a.file ? { path: a.path, name: a.name, file: a.file, ref: a.ref } : { path: a.path, name: a.name }))
   try {
     if (!d.text && !atts.length && !d.reply) localStorage.removeItem(KEY + paneId)
     else localStorage.setItem(KEY + paneId, JSON.stringify({ text: d.text, atts, reply: d.reply || undefined }))

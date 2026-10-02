@@ -10,12 +10,21 @@ First public release.
 
 ### Added
 
+- Attach files, not only photos: drop, paste or pick (+ › File) the files the agent can read.
+  Claude Code gets PDFs, Jupyter notebooks and text or code of any extension (text goes as
+  `@<path>`, so its content is in the conversation without a permission prompt); Codex and
+  other agents get notebooks, text and code. Archives, videos, audio, Office documents and
+  binaries are refused with the reason. Files are stored on the agent's machine
+  (`~/.cache/herdr-web/files`, local or over SSH, mode 600, safe names, deleted after 7 days;
+  10 MB for text, 20 MB for notebooks, 30 MB for PDFs). The composer and the sent message show
+  a file chip; in a sent message it opens the path menu (Reveal in Finder, Open, Copy path).
 - Live agent list grouped by state, with answer previews and one-tap answers to permission
   prompts and questions (including omp's ask questions, shown in full even when the terminal
   folds them, multi-select and the final Submit).
   Claude Code's AskUserQuestion is a card too, completed from the transcript when a short pane
   shows only part of it: checkboxes (ticks kept for the options scrolled out of view),
-  "Type something" typed in place, Submit and the review step.
+  "Type something" typed in place, Submit and the review step. A numbered list in the agent's
+  previous reply, still on screen above the box in a tall pane, no longer hides the card.
   In the conversation view, omp's "Other (type your own)" opens a text field under the
   question (multi-line, replaces an earlier custom answer); a reply typed in the composer
   while omp asks is sent as that custom answer. A multi-question omp ask shows its question

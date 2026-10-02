@@ -8,6 +8,8 @@ import type { ChatItem } from '../shared/types'
 import { boxHolds, takeBackInterrupted, unansweredLast, withoutTakenBack } from '../server/utils/interruptRestore'
 import { inputBox } from '../server/utils/unqueue'
 import { parseClaude } from '../server/utils/transcripts'
+import { restoreDraft } from '../app/utils/queuedCancel'
+import type { DraftAtt } from '../app/composables/useDraft'
 
 const fixture = (f: string) => fs.readFileSync(path.join(__dirname, 'fixtures', f), 'utf8')
 const RESTORED = fixture('claude-interrupt-restored.ansi')
@@ -137,5 +139,20 @@ describe('withoutTakenBack', () => {
     ]
     expect(withoutTakenBack(items, [{ text: 'same', ts: '2' }])).toEqual([items[0], items[2]])
     expect(withoutTakenBack(items, [])).toBe(items)
+  })
+})
+
+describe('taken back with an attached file', () => {
+  const FILE = '/home/user/.cache/herdr-web/files/2026-01-01T00-00-00-000Z-abc123-notes.md'
+  const msg = `fictional question about the notes\n@${FILE}`
+  it('matches Claude’s field holding the text and the file line, then restores the file chip', async () => {
+    const p = pane(msg, [{ role: 'user', text: msg, ts: '1' }])
+    const item = await takeBackInterrupted(p.deps)
+    expect(item?.text).toBe(msg)
+    const draft = { text: '', atts: [] as DraftAtt[], reply: null }
+    restoreDraft(draft, item!.text)
+    expect(draft.text).toBe('fictional question about the notes')
+    expect(draft.atts).toHaveLength(1)
+    expect(draft.atts[0]).toMatchObject({ path: FILE, name: '2026-01-01T00-00-00-000Z-abc123-notes.md', ref: `@${FILE}` })
   })
 })

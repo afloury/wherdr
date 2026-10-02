@@ -1,0 +1,44 @@
+❯ Run 'echo ok'. Then write a short reply (in plain text, not a tool) with a numbered list of 3 steps
+  for planting tomatoes, each step one line. Then call AskUserQuestion with the same two questions as
+  before (Simple / Multiple). Nothing after.
+
+  Ran 2 shell commands
+
+● 1. Pick a sunny spot and loosen the soil, mixing in compost.
+  2. Dig a deep hole and set the seedling in, burying the stem up to its first leaves.
+  3. Water well, then add a stake or cage for support.
+
+● User declined to answer questions
+  ⎿  · Test 1 (single choice): which colour do you prefer? Also try « Type something » for a free answer.
+     (Blue / Green / Red)
+     · Test 2 (multiple choice): which fruits do you like? (Apple / Banana / Mango / Kiwi)
+
+✻ Cooked for 8s · done 12:24 AM · 1 shell still running
+
+❯ Write a short reply with a numbered list of 3 steps for brewing tea, each one line, introduced by one
+  sentence. Then call AskUserQuestion with one multiSelect question 'Which fruits do you like?' (header
+  'Fruits') with options Apple/Banana/Mango/Kiwi and descriptions 'Test option 1..4'. Nothing after.
+
+  Ran 1 shell command
+
+● I've laid out a quick three-step method for brewing tea: heating water to the right temperature,
+  steeping the leaves, and finishing with optional milk, honey, or lemon.
+─────────────────────────────────────────────────────────────────────────────────────────────────────────
+←  ☐ Fruits  ✔ Submit  →
+
+Which fruits do you like?
+
+❯ 1. [ ] Apple
+         Test option 1
+  2. [ ] Banana
+         Test option 2
+  3. [ ] Mango
+         Test option 3
+  4. [ ] Kiwi
+         Test option 4
+  5. [ ] Type something
+     Submit
+─────────────────────────────────────────────────────────────────────────────────────────────────────────
+  6. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel

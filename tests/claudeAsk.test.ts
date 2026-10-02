@@ -282,3 +282,37 @@ describe('AskUserQuestion with a single multiSelect question', () => {
     expect(sent).toEqual([['down', 'down'], { text: 'Pear' }])
   })
 })
+
+// A tall pane (herdr-projects coordinator, 77 rows) keeps the agent's previous
+// replies on screen above the box: a numbered list there, at the column of the
+// options, used to be taken for options and the whole box was rejected.
+// Real Claude Code 2.1.287 screens at 105 columns, made-up content.
+describe('AskUserQuestion below a numbered list in an earlier reply', () => {
+  it('reads only the box of the first question tab', () => {
+    const c = parseChoices(fx('claude-ask-history-tabs.txt'))!
+    expect(c.question).toBe('Test 1 (single choice): which colour do you prefer? Also try « Type something » for a free answer.')
+    expect(c.options.map(o => [o.n, o.label])).toEqual([[1, 'Blue'], [2, 'Green'], [3, 'Red'], [4, CLAUDE_FREE], [5, CLAUDE_CHAT]])
+    expect(c.options[0]!.hint).toBe('Test option A')
+    expect(parseChoices(fx('claude-ask-history-tabs.txt'), { strict: true })).toEqual(c)
+  })
+
+  it('reads a single multiSelect box with the list further up', () => {
+    const c = parseChoices(fx('claude-ask-history-multi.txt'))!
+    expect(c.multi).toBe(true)
+    expect(c.question).toBe('Which fruits do you like?')
+    expect(c.options.map(o => [o.n, o.label])).toEqual([
+      [1, 'Apple'], [2, 'Banana'], [3, 'Mango'], [4, 'Kiwi'], [5, CLAUDE_FREE], [6, 'Submit'], [7, CLAUDE_CHAT],
+    ])
+  })
+
+  it('ignores a list introduced by a sentence, every item at the option column', () => {
+    const text = fx('claude-ask-history-tabs.txt').replace('● 1. Pick', '● Plan for the garden:\n  1. Pick')
+    const c = parseChoices(text)!
+    expect(c.options.map(o => o.label)).toEqual(['Blue', 'Green', 'Red', CLAUDE_FREE, CLAUDE_CHAT])
+  })
+
+  it('still reads a list right under its question', () => {
+    const text = 'Pick one\n\n  1. Alpha\n❯ 2. Beta\n  3. Gamma\n\nEnter to select · ↑/↓ to navigate · Esc to cancel'
+    expect(parseChoices(text)!.options.map(o => o.label)).toEqual(['Alpha', 'Beta', 'Gamma'])
+  })
+})

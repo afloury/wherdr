@@ -135,10 +135,14 @@ export function parseChoices(text: string | null | undefined, { strict = false }
   if (/^\d{1,2}\.\s/.test(cursorText) || anchor !== c) {
     // Numbered options: we take all those aligned on the same column,
     // on both sides of the cursor (a ─── separator may cut them).
+    // Upwards, the list ends at the first line that cannot be part of it
+    // (the question, a tab header, the agent's previous reply): a numbered
+    // list in that reply, at the same column, is not one of the options.
     let first = anchor
     for (let i = anchor - 1; i >= Math.max(0, anchor - 40); i--) {
-      const m = lines[i]!.match(NUMBERED)
-      if (m && textColumn(lines[i]!) === col) first = i
+      const line = lines[i]!
+      if (NUMBERED.test(line) && textColumn(line) === col) first = i
+      else if (line.trim() && !RULE.test(line) && textColumn(line) <= col) break
     }
     for (let i = first; i < lines.length; i++) {
       const line = lines[i]!
