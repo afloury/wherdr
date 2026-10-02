@@ -188,6 +188,7 @@ export interface MachineInfo {
   error: string | null
   target?: string
   version?: string
+  os?: string // `uname -s`: 'Darwin' (macOS), 'Linux'…
 }
 
 export interface NamedSession { name: string, running: boolean, key: string }
@@ -272,6 +273,7 @@ export interface AppConfig {
   herdrTheme?: HerdrThemeConfig | null
   kinds: string[]
   home: string
+  os?: string // local machine, `uname -s` names
   dirs: string[]
   push: { enabled: boolean, key: string | null, devices: number }
 }

@@ -48,6 +48,9 @@ First public release.
   last conversation, queued first message. The last 30 folders used on each machine are kept:
   6 show as chips, `+N` shows the rest, and a field filters them by name (Enter takes the
   first match). The folder browser filters long subfolder lists by name the same way.
+- File and folder paths in agent replies (`~/project/app.ts`, `src/app.ts:42`) are clickable:
+  Reveal in Finder and Open on the agent's Mac (local or over SSH), Copy path everywhere. Only
+  existing paths under the machine's home; apps and scripts are never opened.
 - Git changes view and worktree management; global search.
 - herdr-projects grouping (coordinator and threads).
 - Several machines through the SSH machines registered in Herdr; named Herdr sessions.

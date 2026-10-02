@@ -5,36 +5,36 @@ const id = (s: string) => s
 
 describe('filterByName', () => {
   it('keeps every item, in order, for an empty or blank query', () => {
-    const dirs = ['wherdr', 'sniip', 'app']
+    const dirs = ['wherdr', 'acme', 'app']
     expect(filterByName(dirs, '', id)).toEqual(dirs)
     expect(filterByName(dirs, '   ', id)).toEqual(dirs)
   })
 
   it('matches anywhere in the name, ignoring case and accents', () => {
-    expect(filterByName(['Été-notes', 'wherdr', 'sniip-portal'], 'ETE', id)).toEqual(['Été-notes'])
-    expect(filterByName(['Été-notes', 'wherdr', 'sniip-portal'], 'portal', id)).toEqual(['sniip-portal'])
+    expect(filterByName(['Été-notes', 'wherdr', 'acme-portal'], 'ETE', id)).toEqual(['Été-notes'])
+    expect(filterByName(['Été-notes', 'wherdr', 'acme-portal'], 'portal', id)).toEqual(['acme-portal'])
     expect(filterByName(['wherdr'], 'xyz', id)).toEqual([])
   })
 
   it('puts names starting with the query first, each group in its original order', () => {
-    const recents = ['identity-sass-service', 'sniip-portal', 'mortgagepedia', 'sniip', 'portal-sniip']
-    expect(filterByName(recents, 'sniip', id)).toEqual(['sniip-portal', 'sniip', 'portal-sniip'])
-    expect(filterByName(recents, 'port', id)).toEqual(['portal-sniip', 'sniip-portal'])
+    const recents = ['identity-sass-service', 'acme-portal', 'mortgagepedia', 'acme', 'portal-acme']
+    expect(filterByName(recents, 'acme', id)).toEqual(['acme-portal', 'acme', 'portal-acme'])
+    expect(filterByName(recents, 'port', id)).toEqual(['portal-acme', 'acme-portal'])
   })
 
   it('matches on the name only, not the rest of the item', () => {
-    const dirs = [{ name: 'app', path: '/home/demo/sniip/app' }, { name: 'sniip', path: '/home/demo/sniip' }]
-    expect(filterByName(dirs, 'sniip', d => d.name)).toEqual([dirs[1]])
+    const dirs = [{ name: 'app', path: '/home/demo/acme/app' }, { name: 'acme', path: '/home/demo/acme' }]
+    expect(filterByName(dirs, 'acme', d => d.name)).toEqual([dirs[1]])
   })
 })
 
 describe('folderLabels', () => {
   it('names a folder by its last segment, home as ~', () => {
-    expect(folderLabels(['~/Projects/sniip/sniip-portal', '~/wherdr', '~'])).toEqual(['sniip-portal', 'wherdr', '~'])
+    expect(folderLabels(['~/Projects/acme/acme-portal', '~/wherdr', '~'])).toEqual(['acme-portal', 'wherdr', '~'])
   })
 
   it('adds the parent folder to names shared by several folders', () => {
-    const dirs = ['~/Projects/sniip/kyc-service', '~/wherdr', '~/Projects/sniip-cap3-worktrees/kyc-service']
-    expect(folderLabels(dirs)).toEqual(['sniip/kyc-service', 'wherdr', 'sniip-cap3-worktrees/kyc-service'])
+    const dirs = ['~/Projects/acme/kyc-service', '~/wherdr', '~/Projects/acme-cap3-worktrees/kyc-service']
+    expect(folderLabels(dirs)).toEqual(['acme/kyc-service', 'wherdr', 'acme-cap3-worktrees/kyc-service'])
   })
 })
