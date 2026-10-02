@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cellFocusStep, cellMode, showComposer, spaceTabControls, terminalAttachment, toggleViewMode, viewControls } from '../app/utils/viewMode'
+import { cellFocusStep, cellMode, paneFallback, showComposer, spaceTabControls, terminalAttachment, toggleViewMode, viewControls } from '../app/utils/viewMode'
 
 const base = { desk: false, cell: false, chat: true, live: true, project: false }
 
@@ -87,6 +87,18 @@ describe('cellMode', () => {
     const before = show()
     for (const _focus of ['a', 'b', 'c', 'a']) expect(show()).toEqual(before)
     expect(before).toEqual({ a: 'mirror', b: 'mirror', c: 'chat' })
+  })
+})
+
+describe('paneFallback', () => {
+  // A pane without an explicit choice: the device default on a computer,
+  // the conversation on the phone.
+  it('computer: the device default is used', () => {
+    expect(paneFallback({ defaultMode: 'term', desk: true })).toBe('term')
+    expect(paneFallback({ defaultMode: 'chat', desk: true })).toBe('chat')
+  })
+  it('phone: always the conversation', () => {
+    expect(paneFallback({ defaultMode: 'term', desk: false })).toBe('chat')
   })
 })
 

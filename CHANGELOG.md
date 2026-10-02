@@ -22,6 +22,10 @@ First public release.
   search, infinite scroll), typing effect with optional encrypted-text reveal. For omp it also
   shows the notes the terminal shows (advisor, finished background jobs, agent messages), and
   omp's status line (model, folder, branch, context and quota meters) under the composer.
+- Default pane view on a computer (Settings › Desktop): a pane without an explicit choice opens
+  on the Conversation or on the Terminal, as chosen; the phone always opens the conversation.
+  An explicit switch (selector, Ctrl+`, phone icons) is remembered per pane, switching back to
+  the Conversation included; changing the default applies at once to the panes without one.
 - omp slash commands in the composer: built-in commands, file commands and `/skill:<name>`
   suggestions; file commands show as `/name args` in the conversation.
 - Collapsible agent sidebar on a computer: a narrow rail with search, new agent, settings and

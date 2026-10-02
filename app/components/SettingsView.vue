@@ -87,6 +87,12 @@ const widthItems = computed(() => [
   { label: t('Wide'), description: t('Up to 1100 px · terminal fitted to width.'), value: 'wide' },
   { label: t('Full width'), description: t('The whole width, terminal included.'), value: 'full' },
 ])
+// What an agent pane opens on (computer): the Conversation, or the Terminal.
+const defaultPane = defaultViewMode
+const defaultPaneItems = [
+  { label: t('Conversation'), description: t('Read the transcript first.'), value: 'chat' },
+  { label: t('Terminal'), description: t('Type straight into the pane.'), value: 'term' },
+]
 const quotaMode = quotaDisplay
 const quotaItems = computed(() => [
   { label: t('Remaining'), description: t('What is left in each window, like Codex.'), value: 'left' },
@@ -471,6 +477,11 @@ onMounted(() => {
             <h3>{{ t('Content width') }}</h3>
             <URadioGroup v-model="width" :items="widthItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
             <p class="muted settings-hint">{{ t('Conversation, terminal, settings and other content. Saved on this device.') }}</p>
+          </div>
+          <div class="settings-group">
+            <h3>{{ t('Default pane view') }}</h3>
+            <URadioGroup v-model="defaultPane" :items="defaultPaneItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <p class="muted settings-hint">{{ t('What an agent pane opens on. A pane you switched to Terminal stays there. Saved on this device.') }}</p>
           </div>
           <div class="settings-group">
             <h3>{{ tl('Keyboard shortcuts', 'Raccourcis clavier') }}</h3>

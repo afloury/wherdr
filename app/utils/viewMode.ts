@@ -31,6 +31,14 @@ export function cellMode(o: { chat: boolean, viewMode: Mode }): 'chat' | 'mirror
   return o.chat && o.viewMode !== 'term' ? 'chat' : 'mirror'
 }
 
+// A pane without an explicit choice follows the device default on a computer,
+// the conversation on the phone (see paneViewMode in useHerdr, which calls
+// this; without a conversation AgentView always shows the terminal, on both
+// devices).
+export function paneFallback(o: { desk: boolean, defaultMode: 'chat' | 'term' }): 'chat' | 'term' {
+  return o.desk ? o.defaultMode : 'chat'
+}
+
 export function terminalAttachment(o: { desk: boolean, live: boolean, mode: Mode | 'mirror' | null, available: boolean }) {
   return o.desk && o.live && o.available && (o.mode === 'term' || o.mode === 'mirror')
 }
