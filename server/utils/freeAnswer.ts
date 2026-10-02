@@ -72,6 +72,8 @@ async function typeAnswer(d: RestartDeps, paneId: string, choices: Choices, inde
 // the cursor is on it (observed with Claude Code 2.1, Herdr test session):
 // the text replaces the option's label, Ctrl+U empties it, Enter submits it.
 // One line only: the answer's line breaks become spaces.
+// Among checkboxes, typing ticks the box and Enter would untick it: the text
+// stays there, ticked, until Submit.
 const squash = (s: string) => s.replace(/\s+/g, '')
 async function typeClaudeAnswer(d: RestartDeps, paneId: string, choices: Choices, index: number, answer: string) {
   const keys = (k: string[]) => d.call('pane.send_input', { pane_id: paneId, keys: k })
@@ -79,7 +81,7 @@ async function typeClaudeAnswer(d: RestartDeps, paneId: string, choices: Choices
   const field = async () => {
     const c = parseChoices((await d.call('pane.read', { pane_id: paneId, source: 'detection' }, 4000))?.read?.text)
     const o = c && c.options[c.cursor]
-    return o && o.free ? { value: o.hint || '' } : null
+    return o && o.free ? { value: o.hint || '', checked: o.checked } : null
   }
   const moves = keysFor(choices, index).slice(0, -1)
   if (moves.length) await keys(moves)
@@ -106,5 +108,5 @@ async function typeClaudeAnswer(d: RestartDeps, paneId: string, choices: Choices
     f = await field()
   }
   if (!f || !squash(f.value).startsWith(want)) throw new HerdrError('stale', 'Claude’s answer field closed — answer not submitted, check the current screen.')
-  await keys(['enter'])
+  if (f.checked === undefined || f.checked === false) await keys(['enter'])
 }

@@ -13,6 +13,9 @@ First public release.
 - Live agent list grouped by state, with answer previews and one-tap answers to permission
   prompts and questions (including omp's ask questions, shown in full even when the terminal
   folds them, multi-select and the final Submit).
+  Claude Code's AskUserQuestion is a card too, completed from the transcript when a short pane
+  shows only part of it: checkboxes (ticks kept for the options scrolled out of view),
+  "Type something" typed in place, Submit and the review step.
   In the conversation view, omp's "Other (type your own)" opens a text field under the
   question (multi-line, replaces an earlier custom answer); a reply typed in the composer
   while omp asks is sent as that custom answer. A multi-question omp ask shows its question

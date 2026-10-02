@@ -1,0 +1,12 @@
+─────────────────────────────────────────────────────────────
+←  ☒ Snacks  ✔ Submit  →
+
+Review your answers
+
+ ● Which snacks should we bring?
+   → Chips, Lemonade
+
+Ready to submit your answers?
+
+❯ 1. Submit answers
+  2. Cancel

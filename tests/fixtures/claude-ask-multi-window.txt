@@ -1,0 +1,12 @@
+
+Which fruits should go in the salad?
+
+❯ 1. [ ] Apple
+         Crisp and sweet
+↓ 2. [ ] Banana
+         Soft and creamy
+     Submit
+─────────────────────────────────────────────────────────────
+  6. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel
