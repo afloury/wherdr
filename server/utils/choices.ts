@@ -657,13 +657,19 @@ export function screenChoices(text: string | null | undefined, agent: string | n
 // going through it, e.g. an /mcp authentication).
 export function panelOpen(text: string | null | undefined): boolean {
   const lines = String(text || '').replace(/\s+$/, '').split('\n').slice(-12)
-  return !lines.some(l => /^\s*[❯›](\s|$)/.test(l))
+  return !lines.some((l, i) => /^\s*[❯›](\s|$)/.test(l) || bashInput(l, lines[i - 1]))
 }
+
+// Claude's input field in bash mode (a "!" typed first): "!" prompt right
+// under the (pink) rule, "! for shell mode" below. Not a panel or a menu:
+// Escape there would throw away what the field holds.
+const bashInput = (line: string, above: string | undefined) => /^!(\s|$)/.test(line) && /^\s*─{3,}/.test(above || '')
 
 // Claude's input line sits right under a ─── rule: a menu's cursor line
 // ("❯ 1. Yes, proceed", /mcp, /hooks…) is not its input field.
 export function inputVisible(text: string | null | undefined): boolean {
   const lines = String(text || '').replace(/\s+$/, '').split('\n').slice(-12)
   return lines.some((l, i) => /^\s*›(\s|$)/.test(l)
-    || (/^\s*❯(\s|$)/.test(l) && /^\s*─{3,}/.test(lines[i - 1] || '')))
+    || (/^\s*❯(\s|$)/.test(l) && /^\s*─{3,}/.test(lines[i - 1] || ''))
+    || bashInput(l, lines[i - 1]))
 }

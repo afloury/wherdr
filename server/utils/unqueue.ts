@@ -21,21 +21,33 @@ export const msgText = (t: string) => String(t || '').split('\n').filter(l => !i
 // "❯" line followed by a non-breaking space (queued messages have a normal
 // space), then its continuation lines up to the rule. The grayed-out help text
 // ("Press up to edit queued messages") does not count. null: field not found.
+// A "!" typed first switches Claude to bash mode (Claude Code 2.1.288): the
+// "!" leaves the field and becomes its prompt ("!" + non-breaking space, pink
+// rules, "! for shell mode" below). The field then reads as the message that
+// was typed, "!" first: "! cmd" typed shows "!\u00a0 cmd" and reads "! cmd";
+// bash mode left empty reads "!" (not free: Enter there would not send ours).
 const ESC = String.fromCharCode(27)
 const DIM = new RegExp(`${ESC}\\[2m[^${ESC}]*`, 'g')
 const SGR = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, 'g')
+const RULE = /^\s*─{3,}/
 export function inputBox(ansi: string): string | null {
   const lines = String(ansi || '').split('\n').map(l => l.replace(/\r$/, ''))
   let at = -1
-  for (let i = lines.length - 1; i >= 0; i--) if (lines[i]!.replace(SGR, '').startsWith('❯\u00a0')) { at = i; break }
+  let bash = false
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const plain = lines[i]!.replace(SGR, '')
+    if (plain.startsWith('❯\u00a0')) { at = i; break }
+    if (plain.startsWith('!\u00a0') && RULE.test((lines[i - 1] || '').replace(SGR, ''))) { at = i; bash = true; break }
+  }
   if (at < 0) return null
   const out: string[] = []
   for (let i = at; i < lines.length; i++) {
     const plain = lines[i]!.replace(DIM, '').replace(SGR, '')
-    if (i > at && /^\s*─{3,}/.test(plain)) break
+    if (i > at && RULE.test(plain)) break
     out.push((i === at ? plain.slice(2) : plain.replace(/^ {1,2}/, '')).replace(/\u00a0/g, ' ').trimEnd())
   }
-  return out.join('\n').trim()
+  const box = out.join('\n').trim()
+  return bash ? `!${box && ' '}${box}` : box
 }
 
 // Keys that empty a field of `lines` lines.

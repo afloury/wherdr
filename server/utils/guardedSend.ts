@@ -23,6 +23,8 @@
 // - after Enter, the field must empty (Claude took the message). Still our
 //   text alone: Enter is pressed once more. Our text with foreign text: our
 //   Enter was lost, same repair as above.
+// A "!" command switches Claude to bash mode: the field then reads "!" first
+// (see inputBox), so "! cmd" is checked like any other message.
 // Text the field shows in a way we cannot split exactly (a foreign paste
 // shown as "[Pasted text #2]"…) is never cleared: sent as it is, logged.
 import { HerdrError } from './herdr'
