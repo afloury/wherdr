@@ -16,10 +16,13 @@ First public release.
   agent's machine (over SSH, or locally when `~/.codex` is writable) — only a known command
   (standalone installer from `chatgpt.com/codex/install.sh`, npm, bun, Homebrew), never text
   read from the screen; otherwise the command is offered to copy. Once installed, **Restart to
-  update** restarts the agent on the same conversation (`codex resume`). Versions come from
-  Codex's files (`~/.codex/version.json`, the standalone package, the conversation's
-  `cli_version`), the screen only fills the gaps. When 25 % or less of the weekly limit is
-  left, a warning line shows what is left and when it resets, with a `/status` button.
+  update** restarts the agent on the same conversation (`codex resume`). The latest and
+  installed versions come from Codex's files (`~/.codex/version.json`, the standalone package);
+  the running one from the TUI's own header on screen, the conversation's `cli_version` (written
+  by Codex's shared background server, maybe another version) only without it. When 25 % or
+  less of the weekly limit is left, a warning line shows what is left and when it resets, with a
+  `/status` button; it uses the freshest reading (any conversation of the machine, or `/status`
+  on screen after an early reset) and disappears once the window has reset.
 - Attach files, not only photos: drop, paste or pick (+ › File) the files the agent can read.
   Claude Code gets PDFs, Jupyter notebooks and text or code of any extension (text goes as
   `@<path>`, so its content is in the conversation without a permission prompt); Codex and
