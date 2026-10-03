@@ -37,6 +37,9 @@ export function queuedDone(q: { text: string, at: number }, items: ChatItem[], i
 // agent sits ready is reported as failed, with Retry / Cancel, instead of
 // staying "sending…" forever.
 export const HOLD_TTL_MS = 10 * 60 * 1000
+// Held because the agent's input field holds someone else's text (see
+// guardedSend.ts): reported as not sent sooner, the field may stay so.
+export const BUSY_TTL_MS = 2 * 60 * 1000
 export const LOST_MS = 60 * 1000
 export const HOLD_AGENTS = new Set(['claude', 'codex'])
 // Agent at rest, whose input field may be checked on screen (see closePanel).
@@ -48,6 +51,8 @@ export interface QueueEntry {
   at: number
   held?: boolean
   failed?: boolean
+  // Held (or failed) because the agent's input field was not empty.
+  busy?: boolean
   // Since when the agent has been ready with this message delivered.
   readySince?: number
 }
@@ -73,7 +78,7 @@ export function checkQueue(list: QueueEntry[], status: string | null | undefined
   for (const q of list) {
     if (q.failed) continue
     if (q.held) {
-      if (now - q.at > HOLD_TTL_MS) { q.failed = true; changed = true }
+      if (now - q.at > (q.busy ? BUSY_TTL_MS : HOLD_TTL_MS)) { q.failed = true; changed = true }
       continue
     }
     if (!ready) { delete q.readySince; continue }
@@ -88,6 +93,7 @@ export const publicEntry = (q: QueueEntry): QueuedMessage => ({
   id: q.id, text: q.text, at: q.at,
   ...(q.held && !q.failed ? { state: 'held' as const } : {}),
   ...(q.failed ? { state: 'failed' as const } : {}),
+  ...((q.held || q.failed) && q.busy ? { reason: 'busy' as const } : {}),
 })
 
 // Records read back from data/queued.json at startup: well-formed, recent
@@ -99,7 +105,7 @@ export function loadQueued(raw: unknown, now: number): [string, QueueEntry[]][] 
     if (!Array.isArray(list)) continue
     const ok = list.filter((q): q is QueueEntry => Boolean(q) && typeof q.id === 'string' && typeof q.text === 'string' && typeof q.at === 'number'
       && now - q.at < QUEUED_TTL_MS)
-      .map(q => ({ id: q.id, text: q.text, at: q.at, ...(q.held ? { held: true } : {}), ...(q.failed ? { failed: true } : {}) }))
+      .map(q => ({ id: q.id, text: q.text, at: q.at, ...(q.held ? { held: true } : {}), ...(q.failed ? { failed: true } : {}), ...(q.busy ? { busy: true } : {}) }))
     if (ok.length) out.push([pane, ok])
   }
   return out

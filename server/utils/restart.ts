@@ -10,6 +10,7 @@ import { HerdrError, herdr, sleep } from './herdr'
 import { findPane, poll, restarts, transcripts } from './state'
 import { type RestartDeps, paneForeground, startAgent, stopAgent } from './restartSeq'
 import { checkTerminalUpdate, updateInTerminal } from './codexTermUpdate'
+import { withPaneLock } from './guardedSend'
 import { log } from './env'
 
 const defaultDeps: RestartDeps = { call: (m, params, t) => herdr(m, params, t), sleep, now: Date.now }
@@ -54,7 +55,9 @@ export async function restartAgent(paneId: string) {
   const session = p.agentSession
   restarts.set(paneId, { phase: 'stopping', agent: p.agent, session, at: Date.now() })
   poll()
-  void (async () => {
+  // Under the pane's send lock (guardedSend.ts): no message of wherdr's is
+  // typed between /exit and the new agent.
+  void withPaneLock(paneId, async () => {
     let stopped = false
     try {
       await stopAgent(defaultDeps, snap)
@@ -71,7 +74,7 @@ export async function restartAgent(paneId: string) {
       log(`restart of ${paneId} failed: ${(e as Error).message}`)
     }
     poll()
-  })()
+  })
   return plan
 }
 
@@ -99,13 +102,14 @@ export async function updateCodexInPane(paneId: string, command: string): Promis
   set('stopping')
   log(`codex update in ${paneId}: ${command}`)
   let stopped = false
-  const done = updateInTerminal({
+  // Under the pane's send lock, like a restart: nothing typed into the shell.
+  const done = withPaneLock(paneId, () => updateInTerminal({
     ...defaultDeps,
     phase: (ph) => {
       if (ph !== 'stopping') stopped = true
       set(ph)
     },
-  }, snap, plan, command).then(() => {
+  }, snap, plan, command)).then(() => {
     set('starting', { started: true })
     log(`codex updated and restarted (${plan.mode}) in ${paneId}`)
   }, (e: Error) => {
