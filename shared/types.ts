@@ -148,8 +148,12 @@ export interface Pane {
   codexStatus?: CodexStatus
   // omp shown: its status line (model, folder, branch) and its gauges (context, quotas).
   ompStatus?: OmpStatus
+  // omp working, conversation shown: the running step ("Finding Fixed section",
+  // null before the first tool) and when the turn started (ms, null if unknown).
+  ompActivity?: OmpActivity
 }
 export interface OmpStatus { line: string, meters: string | null }
+export interface OmpActivity { step: string | null, since: number | null }
 
 export interface ChangeLine { kind: 'add' | 'del' | 'context' | 'hunk' | 'meta', text: string }
 export interface ChangeFile {

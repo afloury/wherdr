@@ -1074,6 +1074,12 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .chat-status .claude-verb-line { display: inline-flex; align-items: baseline; min-width: 0; font-family: var(--font-mono); font-size: 13px; }
 .chat-status .claude-verb { --ui-text-muted: var(--claude); --ui-text-highlighted: color-mix(in srgb, var(--claude) 45%, var(--text)); }
 .chat-status .claude-spinner { display: inline-block; flex: none; width: 1.6em; margin-left: -.3em; text-align: center; color: var(--claude); overflow: hidden; }
+/* omp's running step: braille spinner, shimmering step, elapsed time. Agent
+   color when the theme defines one, otherwise the accent. */
+.chat-status .omp-step-line { --omp-color: var(--omp, var(--accent)); display: inline-flex; align-items: baseline; min-width: 0; font-family: var(--font-mono); font-size: 13px; }
+.chat-status .omp-step { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; --ui-text-muted: var(--muted); --ui-text-highlighted: color-mix(in srgb, var(--omp-color) 55%, var(--text)); }
+.chat-status .omp-spinner { display: inline-block; flex: none; width: 1.6em; margin-left: -.3em; text-align: center; color: var(--omp-color); }
+.chat-status .omp-elapsed { flex: none; margin-left: .75em; padding-left: .75em; border-left: 1px solid var(--line); color: var(--dim); font-variant-numeric: tabular-nums; }
 
 /* UChatMessages "scroll to bottom" button. */
 .hw-jump-vp { top: auto; bottom: 14px; pointer-events: none; z-index: 2; }
