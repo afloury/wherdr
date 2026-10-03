@@ -7,19 +7,23 @@
 // shell prompt of the agent's pane once Codex has quit (codexTermUpdate.ts);
 // never text typed into the Codex TUI nor a command read from the screen.
 // The weekly reading of the screens (`/status`) also feeds the home gauge
-// (screenWeek, server/utils/quotas.ts): every Codex pane of the machine is
+// (knownWeek, server/utils/quotas.ts): every Codex pane of the machine is
 // read for it, at most every SCREEN_MS, shown on a device or not.
+// Every weekly reading (rollouts, screens) updates the latest window known
+// for the machine (rememberWeek), saved through `saveWeeks` (data/): the
+// warning and the gauge both check against it, so that a `/status` read
+// before Codex or wherdr restarts still makes the older window stale.
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Pane } from '../../shared/types'
 import {
-  type CodexScreenInfo, type CodexScreenWeekly, type CodexStatus, type CodexUpdateJob,
-  type WeekReading, codexUpdateState, codexWeekly, latestScreenWeek, parseCliVersion, parseCodexScreen, parsePackageVersion,
-  parseVersionFile, rolloutCliVersion, runningVersion, updateScript,
+  type CodexScreenInfo, type CodexScreenWeekly, type CodexStatus, type CodexUpdateJob, type KnownWeek,
+  type WeekReading, codexUpdateState, codexWeekly, loadKnownWeeks, parseCliVersion, parseCodexScreen, parsePackageVersion,
+  parseVersionFile, rememberWeek, rolloutCliVersion, runningVersion, updateScript, weekFromReading, weekFromScreen,
 } from '../../shared/codexStatus'
 import type { ExecResult, MachineFs } from './fsx'
 import { HerdrError } from './herdr'
-import { codexQuota, lastCodexLimits, readCodex } from './quotas'
+import { codexAccount, codexQuota, lastCodexLimits, readCodex } from './quotas'
 
 const STATUS_MS = 10000
 const FILES_MS = 60000
@@ -49,10 +53,13 @@ export interface CodexStatusDeps {
   onChange: () => void
   log: (msg: string) => void
   now?: () => number
+  // Known weekly windows per machine key, read once at start and saved on change.
+  loadWeeks?: () => unknown
+  saveWeeks?: (weeks: Record<string, KnownWeek>) => void
 }
 
 interface MachineFiles { latest: string | null, dismissed: string | null, installed: string | null, week: WeekReading | null, standalone: boolean, canRun: boolean, at: number }
-interface RolloutInfo { size: number, version: string | null, week: WeekReading | null }
+interface RolloutInfo { size: number, version: string | null, account: string | null, week: WeekReading | null }
 type Job = CodexUpdateJob & { started: number }
 
 export function createCodexStatus(d: CodexStatusDeps) {
@@ -66,6 +73,22 @@ export function createCodexStatus(d: CodexStatusDeps) {
   const jobs = new Map<string, Job>()
   // Last weekly reading on each Codex screen (pane id), for the home gauge.
   const screens = new Map<string, { key: string, weekly?: CodexScreenWeekly, at: number }>()
+  // Latest weekly window known per machine key (see rememberWeek).
+  const weeks = new Map<string, KnownWeek>(loadKnownWeeks(d.loadWeeks?.(), now()))
+
+  function note(key: string, ...readings: (KnownWeek | null)[]): KnownWeek | null {
+    const old = weeks.get(key) ?? null
+    let k = old
+    for (const r of readings) k = rememberWeek(k, r, now())
+    if (k) weeks.set(key, k)
+    else weeks.delete(key)
+    if (JSON.stringify(k) !== JSON.stringify(old)) {
+      const t = now()
+      for (const [id, w] of weeks) if (w.resetsAt <= t) weeks.delete(id)
+      d.saveWeeks?.(Object.fromEntries(weeks))
+    }
+    return k
+  }
 
   async function machineFiles(m: CodexMachine): Promise<MachineFiles> {
     const old = files.get(m.key)
@@ -78,7 +101,7 @@ export function createCodexStatus(d: CodexStatusDeps) {
     const [vf, pkg, q] = await Promise.all([read('version.json'), read(pkgFile), readCodex(m.fs, m.home).catch(() => null)])
     const { latest, dismissed } = parseVersionFile(vf)
     const installed = parsePackageVersion(pkg)
-    const week = q?.week ? { used: q.week.used, resetsAt: q.week.resetsAt, at: q.at } : null
+    const week = q?.week ? { used: q.week.used, resetsAt: q.week.resetsAt, at: q.at, account: q.account } : null
     // Remote: over SSH. Local: only if ~/.codex can be written (not in the
     // container, whose home is read-only: the command is then copied).
     const canRun = m.local ? await d.writable(codex) : Boolean(m.exec && m.online)
@@ -96,11 +119,12 @@ export function createCodexStatus(d: CodexStatusDeps) {
     const old = rollouts.get(file)
     if (old && old.size === size) return old
     let version = old?.version ?? null
+    let account = old?.account ?? null
     if (!version) {
       for (const max of [64 * 1024, 512 * 1024]) {
         const len = Math.min(size, max)
         const head = (await m.fs.read(file, 0, len).catch(() => Buffer.alloc(0))).toString('utf8')
-        if (head.includes('\n') || len === size) { version = rolloutCliVersion(head); break }
+        if (head.includes('\n') || len === size) { version = rolloutCliVersion(head); account = codexAccount(head); break }
       }
     }
     let week: RolloutInfo['week'] = null
@@ -108,8 +132,8 @@ export function createCodexStatus(d: CodexStatusDeps) {
     const tail = (await m.fs.read(file, size - len, len).catch(() => Buffer.alloc(0))).toString('utf8')
     const hit = lastCodexLimits(tail)
     const q = hit && codexQuota(hit.rl, hit.at)
-    if (q && q.week) week = { used: q.week.used, resetsAt: q.week.resetsAt, at: q.at }
-    const info = { size, version, week }
+    if (q && q.week) week = { used: q.week.used, resetsAt: q.week.resetsAt, at: q.at, account }
+    const info = { size, version, account, week }
     rollouts.set(file, info)
     return info
   }
@@ -140,13 +164,15 @@ export function createCodexStatus(d: CodexStatusDeps) {
     const job = publicJob(jobOf(m.key))
     const running = runningVersion({ rollout: ro?.version ?? null, screen })
     const update = codexUpdateState({ running, latest: mf.latest, dismissed: mf.dismissed, installed: mf.installed, standalone: mf.standalone, screen, canRun: mf.canRun, job })
-    const weekly = codexWeekly({ week: ro?.week ?? null, machine: mf.week, screen: screen.weekly, now: now() })
+    const known = note(m.key, weekFromReading(ro?.week), weekFromReading(mf.week), weekFromScreen(screen.weekly, now(), ro?.account ?? mf.week?.account ?? null))
+    const weekly = codexWeekly({ week: ro?.week ?? null, machine: mf.week, screen: screen.weekly, known, now: now() })
     const pct = (w: WeekReading | null | undefined) => (w ? `${Math.round(100 - w.used)}%@${new Date(w.at).toISOString()}` : '-')
     const line = [
       `running=${running ?? '?'} (screen ${screenError ? `unreadable: ${screenError}` : screen.version ?? screen.update?.current ?? '-'}, rollout ${ro?.version ?? '-'})`,
       `installed=${mf.installed ?? '-'} latest=${mf.latest ?? '-'}${mf.dismissed ? ` dismissed=${mf.dismissed}` : ''}`,
       `-> ${update ? update.state : 'no update'}`,
-      `weekly left: rollout ${pct(ro?.week)} machine ${pct(mf.week)} screen ${screen.weekly ? `${screen.weekly.left}%${screen.weekly.resets ? ` resets ${screen.weekly.resets}` : ''}` : '-'}`,
+      `weekly left: rollout ${pct(ro?.week)} machine ${pct(mf.week)} screen ${screen.weekly ? `${screen.weekly.left}%${screen.weekly.resets ? ` resets ${screen.weekly.resets}` : ''}` : '-'}`
+      + ` known ${known ? `${Math.round(100 - known.used)}% (${known.source}) resets ${new Date(known.resetsAt).toISOString()}` : '-'}`,
       `-> ${weekly ? `${weekly.left}% (${weekly.source})` : 'no warning'}`,
     ].join(' ')
     if (why.get(p.id) !== line) { why.set(p.id, line); d.log(`codex status ${p.id}: ${line}`) }
@@ -250,10 +276,11 @@ export function createCodexStatus(d: CodexStatusDeps) {
     d.onChange()
   }
 
-  // Latest `/status` weekly reading on the Codex screens of a machine (key),
-  // among `panes` (all the panes known: those of other machines and other
-  // agents are skipped). Screens not read for SCREEN_MS are read again.
-  async function screenWeek(key: string, panes: Pane[]): Promise<CodexScreenWeekly | null> {
+  // Latest weekly window known for a machine (key), after reading its Codex
+  // screens among `panes` (all the panes known: those of other machines and
+  // other agents are skipped; screens not read for SCREEN_MS are read again)
+  // and `rolled`, the machine's newest conversation reading.
+  async function knownWeek(key: string, panes: Pane[], rolled: WeekReading | null = null): Promise<KnownWeek | null> {
     const mine = panes.filter(p => p.agent === 'codex' && d.machineOf(p.id)?.key === key).slice(0, SCREEN_MAX)
     const ids = new Set(mine.map(p => p.id))
     for (const [id, s] of screens) if (s.key === key && !ids.has(id)) screens.delete(id)
@@ -263,10 +290,12 @@ export function createCodexStatus(d: CodexStatusDeps) {
       try { screens.set(p.id, { key, weekly: parseCodexScreen(await d.readScreen(p.id)).weekly, at: now() }) }
       catch { /* unreadable: keep the previous reading */ }
     }))
-    return latestScreenWeek([...screens.values()].filter(s => s.key === key), now())?.weekly ?? null
+    const account = rolled?.account ?? null
+    const seen = [...screens.values()].filter(s => s.key === key).map(s => weekFromScreen(s.weekly, now(), account))
+    return note(key, weekFromReading(rolled), ...seen)
   }
 
-  return { statusOf, forget, startUpdate, dismiss, compute, screenWeek }
+  return { statusOf, forget, startUpdate, dismiss, compute, knownWeek }
 }
 
 export type CodexStatusService = ReturnType<typeof createCodexStatus>

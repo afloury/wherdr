@@ -208,7 +208,8 @@ export function codexUpdateState(o: {
   return null
 }
 
-export interface WeekReading { used: number, resetsAt: number | null, at: number }
+// `account`: fingerprint of the Codex account (see codexAccount, quotas.ts), if known.
+export interface WeekReading { used: number, resetsAt: number | null, at: number, account?: string | null }
 
 // Two weekly resets further apart than this are two different windows
 // (the screen's time is the Codex machine's local time, maybe not ours).
@@ -248,50 +249,91 @@ export function parseResetTime(text: string | null | undefined, now: number): nu
 //  - `/status` on screen, with its reset: a later window than the structured
 //    one means a reset since (early, or no turn since): the screen wins; the
 //    same window: the higher usage (it only grows); an earlier window: stale.
+//  - `known`: the latest window remembered for the machine (rememberWeek),
+//    kept across agent and wherdr restarts, same rule as the screen: once a
+//    later window has been seen, an older one is stale even if its reset is
+//    still to come (the `/status` read before Codex restarted is gone from
+//    the new screen, its rollouts still carry the old window).
 //  - a gauge without reset, or the startup heads-up, only without structured data.
 // Null: nothing current (no reading, or an expired one nothing replaces).
 // Used by the conversation warning (codexWeekly) and the home gauge (quotas.ts).
-export function codexWeekWindow(o: { week: WeekReading | null, machine?: WeekReading | null, screen?: CodexScreenWeekly, now: number }): CodexWeekly | null {
+export interface WeekInputs { week: WeekReading | null, machine?: WeekReading | null, screen?: CodexScreenWeekly, known?: KnownWeek | null, now: number }
+export function codexWeekWindow(o: WeekInputs): CodexWeekly | null {
   const s = [o.week, o.machine].reduce<WeekReading | null>((a, b) => (!b ? a : !a || b.at > a.at ? b : a), null)
   let out: CodexWeekly | null = null
   const expired = Boolean(s?.resetsAt && s.resetsAt <= o.now)
   if (s && !expired) out = { left: Math.round(Math.max(0, 100 - s.used)), resetsAt: s.resetsAt, source: 'rollout' }
+  const later = (left: number, resetsAt: number, source: CodexWeekly['source']) => {
+    if (!s || expired || !out || !out.resetsAt || resetsAt - out.resetsAt > SAME_WINDOW_MS) out = { left, resetsAt, source }
+    else if (Math.abs(resetsAt - out.resetsAt) <= SAME_WINDOW_MS && left < out.left) out = { ...out, left }
+  }
   const sc = o.screen
-  const fromScreen = (left: number, resetsAt: number | null = null): CodexWeekly => ({ left, resetsAt, source: 'screen' })
-  if (!s) {
-    if (sc) out = fromScreen(sc.left)
-  } else if (sc?.exact && sc.resets) {
+  if (!s && sc) out = { left: sc.left, resetsAt: null, source: 'screen' }
+  if (sc?.exact && sc.resets) {
     const r = parseResetTime(sc.resets, o.now)
-    if (r && r > o.now) {
-      if (expired) out = fromScreen(sc.left, r)
-      else if (out && out.resetsAt) {
-        if (r - out.resetsAt > SAME_WINDOW_MS) out = fromScreen(sc.left, r)
-        else if (Math.abs(r - out.resetsAt) <= SAME_WINDOW_MS && sc.left < out.left) out = { ...out, left: sc.left }
-      }
-    }
+    if (r && r > o.now) later(sc.left, r, 'screen')
+  }
+  // Another account's window says nothing about this one.
+  const k = o.known
+  if (k && k.resetsAt > o.now && !(k.account && s?.account && k.account !== s.account)) {
+    later(Math.round(Math.max(0, 100 - k.used)), k.resetsAt, k.source)
   }
   return out
 }
 
 // Weekly-limit warning (≤ 25 % left) of a conversation, see codexWeekWindow.
-export function codexWeekly(o: { week: WeekReading | null, machine?: WeekReading | null, screen?: CodexScreenWeekly, now: number }): CodexWeekly | null {
+export function codexWeekly(o: WeekInputs): CodexWeekly | null {
   const out = codexWeekWindow(o)
   return out && out.left <= WEEKLY_WARN_LEFT ? out : null
 }
 
-// `/status` readings of several Codex screens of a machine: the one of the
-// latest window still running (a reset since makes the older ones stale),
-// and within that window the lowest share left (usage only grows).
-// Only gauges with a readable reset count (a footer gauge cannot be dated).
-export function latestScreenWeek<T extends { weekly?: CodexScreenWeekly }>(list: T[], now: number): T | null {
-  let best: { s: T, r: number } | null = null
-  for (const s of list) {
-    const w = s.weekly
-    const r = w?.exact && w.resets ? parseResetTime(w.resets, now) : null
-    if (!r || r <= now) continue
-    if (!best || r - best.r > SAME_WINDOW_MS || (Math.abs(r - best.r) <= SAME_WINDOW_MS && w!.left < best.s.weekly!.left)) best = { s, r }
+// Latest weekly window seen for a machine, from any source (rollout or
+// `/status` on screen): its reset, usage and when it was observed. Kept in
+// data/ (server/utils/codexStatus.ts) so that a restart of Codex (the
+// `/status` read leaves its screen) or of wherdr does not bring back an older
+// window whose rollouts still say "12 % left".
+export interface KnownWeek { used: number, resetsAt: number, at: number, source: CodexWeekly['source'], account?: string | null }
+
+// `known` updated with a reading: a later window replaces it, an earlier one
+// is stale and ignored; the same window keeps the higher usage (it only
+// grows). An expired window is forgotten; a reading without a future reset
+// teaches nothing. Another account (both fingerprints known): replaced.
+export function rememberWeek(known: KnownWeek | null | undefined, r: KnownWeek | null | undefined, now: number): KnownWeek | null {
+  const k = known && known.resetsAt > now ? known : null
+  if (!r || !(r.resetsAt > now) || !Number.isFinite(r.used)) return k
+  if (!k || (r.account && k.account && r.account !== k.account) || r.resetsAt - k.resetsAt > SAME_WINDOW_MS) return { ...r }
+  if (k.resetsAt - r.resetsAt > SAME_WINDOW_MS) return k
+  const base = r.at >= k.at ? r : k
+  return { ...base, used: Math.max(k.used, r.used), at: Math.max(k.at, r.at), account: base.account ?? k.account ?? r.account ?? null }
+}
+
+// A structured reading as a known window (null without a reset).
+export function weekFromReading(w: WeekReading | null | undefined): KnownWeek | null {
+  return w && w.resetsAt ? { used: w.used, resetsAt: w.resetsAt, at: w.at, source: 'rollout', account: w.account ?? null } : null
+}
+
+// A `/status` gauge on screen as a known window. Only a dated reset is kept:
+// a bare time ("03:46") whose hour has already passed today is an old
+// `/status` still in the scrollback, not tomorrow's reset.
+export function weekFromScreen(w: CodexScreenWeekly | null | undefined, now: number, account: string | null = null): KnownWeek | null {
+  if (!w?.exact || !w.resets) return null
+  const r = parseResetTime(w.resets, now)
+  if (!r || r <= now) return null
+  if (!/\son\s/i.test(w.resets) && new Date(r).getDate() !== new Date(now).getDate()) return null
+  return { used: 100 - w.left, resetsAt: r, at: now, source: 'screen', account }
+}
+
+// Known windows read back from data/ at startup: well-formed, still running.
+export function loadKnownWeeks(raw: unknown, now: number): [string, KnownWeek][] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return []
+  const out: [string, KnownWeek][] = []
+  for (const [key, v] of Object.entries(raw as Record<string, unknown>)) {
+    const k = v as Partial<KnownWeek> | null
+    if (!k || typeof k !== 'object' || typeof k.used !== 'number' || typeof k.resetsAt !== 'number' || typeof k.at !== 'number') continue
+    if (k.resetsAt <= now || (k.source !== 'rollout' && k.source !== 'screen')) continue
+    out.push([key, { used: Math.max(0, Math.min(100, k.used)), resetsAt: k.resetsAt, at: k.at, source: k.source, account: typeof k.account === 'string' ? k.account : null }])
   }
-  return best ? best.s : null
+  return out
 }
 
 // Shell script of an update: the known command, then the new version.
