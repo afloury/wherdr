@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// Time since `since`, written like omp ("47s", "2m 5s"), once a second.
+// Time since `since`, written like omp's activity line ("47s", "2m 5s"),
+// updated once a second.
 import { ompElapsed } from '~/utils/ompSpinner'
 
 const props = defineProps<{ since: number }>()
@@ -10,5 +11,5 @@ onBeforeUnmount(() => { if (timer) clearInterval(timer) })
 </script>
 
 <template>
-  <span class="omp-elapsed-time">{{ ompElapsed(props.since, now) }}</span>
+  <span>{{ ompElapsed(props.since, now) }}</span>
 </template>

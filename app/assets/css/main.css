@@ -976,168 +976,56 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .tool-row span { font: 400 12px/1.2 var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .tool-row.err b, .tool-row.err .iconify { color: var(--rose); }
 
-/* omp's tool calls, drawn after its terminal (OmpTool.vue): "$ command" for
-   bash, its title and target for the others, wall time on the right. */
-.omp-tool { --omp-color: var(--omp, var(--accent)); min-width: 0; }
-.omp-tool-head {
-  display: flex; align-items: flex-start; gap: 8px; width: 100%; min-width: 0; padding: 3px 0;
-  text-align: left; font-size: 13px; line-height: 18px; color: var(--text-3);
+/* omp's tool calls: each group is a console (ChatView, OmpTool.vue) in the
+   vocabulary of omp's activity line — braille spinner, │ rules, mono, omp's
+   color. Header "OMP · N ACTIONS · Σ time", then "❯ command  0.11s" and
+   "# intent → counts" per call; the output unfolds in a │ gutter. */
+.tools.omp-console {
+  --omp-color: var(--omp, var(--accent));
+  margin: 2px 0 4px; padding: 0 0 5px; gap: 0; border: 1px solid var(--line); background: var(--code-bg);
 }
+.tools.omp-console.live { border-color: color-mix(in srgb, var(--omp-color) 55%, var(--line)); }
+.omp-console-head {
+  display: flex; gap: 12px; align-items: baseline; padding: 4px 10px; border-bottom: 1px solid var(--line-soft);
+  font: 500 10px/1.6 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); white-space: nowrap;
+}
+.omp-console-title { font-weight: 700; color: var(--omp-color); }
+.omp-console-total { margin-left: auto; letter-spacing: .02em; text-transform: none; font-variant-numeric: tabular-nums; }
+.omp-console-more { display: block; width: 100%; padding: 5px 10px 0; text-align: left; font: 400 11px/18px var(--mono); color: var(--dim); cursor: pointer; }
+.omp-console-more:hover { color: var(--text); }
+.omp-tool { --tool-color: var(--omp-color); min-width: 0; padding: 0 10px; }
+.omp-tool.err { --tool-color: var(--rose); }
+.omp-tool-head { display: flex; flex-direction: column; align-items: stretch; width: 100%; min-width: 0; padding: 5px 0 1px; text-align: left; }
 button.omp-tool-head { cursor: pointer; }
-button.omp-tool-head:hover { color: var(--text); }
-.omp-tool-mark { flex: none; width: 15px; text-align: center; font: 400 11px/18px var(--mono); color: color-mix(in srgb, var(--omp-color) 70%, var(--dim)); }
-.omp-tool.live .omp-tool-mark { color: var(--omp-color); }
-.omp-tool-mark .omp-spinner { display: inline-block; width: 15px; font-size: 13px; }
-.omp-tool-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.omp-tool-line { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; min-width: 0; }
-.omp-tool-title { flex: none; font: 500 10.5px/18px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); }
-.omp-tool-target, .omp-tool-cmd { flex: 0 1 auto; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12px/18px var(--mono); font-variant-ligatures: none; color: var(--text-2); }
-.omp-tool-cmd { color: var(--text); }
-.omp-tool-sign { flex: none; font: 700 12px/18px var(--mono); color: var(--omp-color); }
-.omp-tool-meta { flex: none; font: 400 11px/18px var(--mono); color: var(--dim); white-space: nowrap; }
-.omp-tool-meta::before { content: '·'; margin-right: 8px; }
-.omp-tool-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 17px; color: var(--dim); }
-.omp-tool-wall { flex: none; margin-left: auto; font: 400 11px/18px var(--mono); font-variant-numeric: tabular-nums; color: var(--dim); }
-.omp-tool-chev { flex: none; width: 14px; height: 18px; color: var(--dim); }
-/* Unfolded: the whole command, then the output in a 1 px frame. */
-.omp-tool.open .omp-tool-cmd, .omp-tool.open .omp-tool-target { white-space: pre-wrap; overflow-wrap: anywhere; }
-.omp-tool-out { margin: 2px 0 6px 23px; border: 1px solid var(--line-soft); background: var(--code-bg); }
+button.omp-tool-head:hover .omp-tool-cmd { color: var(--text-strong); }
+.omp-tool-line { display: flex; align-items: baseline; min-width: 0; font: 400 12.5px/19px var(--mono); }
+.omp-tool-glyph { flex: none; width: 1.6em; color: var(--tool-color); }
+.omp-tool-glyph .omp-spinner { display: inline-block; color: var(--omp-color); }
+.omp-tool-cmd { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-variant-ligatures: none; color: var(--text); }
+.omp-tool.open .omp-tool-cmd { white-space: pre-wrap; overflow-wrap: anywhere; }
+.omp-tool-wall { flex: none; margin-left: auto; padding-left: 12px; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--dim); white-space: nowrap; }
+.omp-tool.live .omp-tool-wall { color: var(--omp-color); }
+.omp-tool-sub { display: flex; flex-wrap: wrap; column-gap: 12px; min-width: 0; padding-left: 20px; font: 400 11.5px/17px var(--mono); color: var(--dim); }
+.omp-tool-intent { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.omp-tool.live .omp-tool-intent { --ui-text-muted: var(--muted); --ui-text-highlighted: color-mix(in srgb, var(--omp-color) 55%, var(--text)); }
+.omp-tool-result { white-space: nowrap; color: var(--muted); }
+.omp-tool-exit { color: var(--rose); }
+/* Unfolded output, in a │ gutter under "OUTPUT … N earlier lines   exit · wall" (one line). */
+.omp-tool-out { margin: 4px 0 4px 20px; border-left: 1px solid var(--line); }
+.omp-tool.err .omp-tool-out { border-left-color: color-mix(in srgb, var(--rose) 55%, var(--line)); }
+.omp-tool-out-head { display: flex; gap: 10px; align-items: baseline; min-width: 0; padding: 0 10px; font: 400 10.5px/1.6 var(--mono); color: var(--dim); white-space: nowrap; }
+.omp-tool-out-label { flex: none; font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--tool-color); }
+.omp-tool-out-earlier { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.omp-tool-out-right { flex: none; display: flex; gap: 8px; margin-left: auto; font-variant-numeric: tabular-nums; }
+.omp-tool-out-right > * + * { padding-left: 8px; border-left: 1px solid var(--line); }
 .omp-tool-out pre {
-  margin: 0; padding: 7px 10px; max-height: min(50vh, 360px); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4;
+  margin: 0; padding: 2px 10px 4px; max-height: min(50vh, 360px); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4;
   font: 400 11.5px/1.55 var(--mono); font-variant-ligatures: none; color: var(--text-2);
 }
 .omp-tool-out .add { color: var(--green); }
 .omp-tool-out .del { color: var(--rose); }
-.omp-tool-earlier { padding: 6px 10px 0; font: 400 11px/1.3 var(--mono); color: var(--dim); }
-.omp-tool.err .omp-tool-mark, .omp-tool.err .omp-tool-title, .omp-tool.err .omp-tool-sign { color: var(--rose); }
-.omp-tool.err .omp-tool-out { border-color: color-mix(in srgb, var(--rose) 45%, var(--line-soft)); }
 .omp-tool.err .omp-tool-out pre { color: var(--danger); }
-@media (pointer: coarse) { button.omp-tool-head { min-height: 32px; padding: 6px 0; } }
-
-/* TEMPORARY (design proposals a–d, OmpTool.vue, ?ompv=a…d): omp's tool calls
-   in the vocabulary of its activity line — braille, │ rules, mono segments,
-   omp's color. One of them will replace the block above. */
-.omp-tools { --omp-color: var(--omp, var(--accent)); }
-.tools.omp-tools.live { border-left-color: color-mix(in srgb, var(--omp-color) 55%, transparent); }
-.ot { --ot-c: var(--omp-color); min-width: 0; }
-.ot.err { --ot-c: var(--rose); }
-.ot-head { display: flex; align-items: baseline; width: 100%; min-width: 0; text-align: left; color: var(--text-2); }
-button.ot-head { cursor: pointer; }
-button.ot-head:hover .ot-intent, button.ot-head:hover .ot-cmd { color: var(--text); }
-.ot code { font-family: var(--mono); font-variant-ligatures: none; }
-.ot .omp-spinner { display: inline-block; text-align: center; color: var(--omp-color); }
-.ot.live .ot-intent { --ui-text-muted: var(--muted); --ui-text-highlighted: color-mix(in srgb, var(--omp-color) 55%, var(--text)); }
-.ot-wall { flex: none; margin-left: auto; font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--dim); white-space: nowrap; }
-.ot.live .ot-wall { color: var(--omp-color); }
-.ot-exit { color: var(--rose); }
-.ot.open .ot-target, .ot.open .ot-cmd { white-space: pre-wrap; overflow-wrap: anywhere; }
-/* Unfolded output: 1 px frame, omp-like header (OUTPUT · … earlier lines · exit · [wall]). */
-.ot-out { margin: 4px 0 8px; border: 1px solid var(--line); background: var(--code-bg); }
-.ot-out-head { display: flex; gap: 12px; align-items: baseline; padding: 4px 10px; border-bottom: 1px solid var(--line-soft); font: 500 10px/1.5 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
-.ot-out-head > :first-child { color: var(--ot-c); font-weight: 700; }
-.ot-out-right { display: flex; gap: 10px; margin-left: auto; letter-spacing: .02em; text-transform: none; font-variant-numeric: tabular-nums; }
-.ot-out pre {
-  margin: 0; padding: 7px 10px; max-height: min(50vh, 360px); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4;
-  font: 400 11.5px/1.55 var(--mono); font-variant-ligatures: none; color: var(--text-2);
-}
-.ot-out .add { color: var(--green); }
-.ot-out .del { color: var(--rose); }
-.ot.err .ot-out { border-color: color-mix(in srgb, var(--rose) 45%, var(--line)); }
-.ot.err .ot-out pre { color: var(--danger); }
-@media (pointer: coarse) { button.ot-head { min-height: 30px; } }
-
-/* a — activity line: "⠿ Intent │ $ command │ counts │ 0.11s". */
-.ot-a .ot-head { padding: 2px 0; font: 400 12.5px/20px var(--mono); }
-.ot-a .ot-glyph { flex: none; width: 1.6em; margin-left: -.3em; text-align: center; color: color-mix(in srgb, var(--ot-c) 60%, var(--dim)); }
-.ot-a.live .ot-glyph, .ot-a.err .ot-glyph { color: var(--ot-c); }
-.ot-a .ot-intent { flex: 0 1 auto; min-width: 8ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
-.ot-a .ot-seg { flex: none; margin-left: .75em; padding-left: .75em; border-left: 1px solid var(--line); font-size: 11.5px; color: var(--dim); white-space: nowrap; }
-.ot-a .ot-target { flex: 0 20 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
-.ot-a .ot-sign { color: var(--ot-c); }
-.ot-a .ot-wall { margin-left: auto; font-size: 11px; }
-.ot-a .ot-out { margin-left: calc(1.6em - .3em); }
-.ot-a .ot-tail { display: contents; }
-/* Phone: "⠿ Intent ……… 0.11s", then the target and its counts underneath. */
-@media (max-width: 640px) {
-  .ot-a .ot-head { flex-wrap: wrap; }
-  .ot-a .ot-intent { flex: 1 1 0; }
-  .ot-a .ot-tail { display: flex; order: 10; flex: 1 0 100%; min-width: 0; padding-left: calc(1.6em - .3em); line-height: 17px; }
-  .ot-a .ot-tail > :first-child { margin-left: 0; padding-left: 0; border-left: 0; }
-}
-
-/* b — tree: ├─ └─ connectors, [BASH] badge, intent; "⎿ target │ counts". */
-.tools.omp-v-b { border-left: 0; padding-left: 0; gap: 0; }
-.ot-b { position: relative; padding-left: 22px; }
-.ot-b::before { content: ''; position: absolute; left: 5px; top: 0; bottom: 0; border-left: 1px solid var(--line); }
-.ot-b:last-child::before { bottom: auto; height: 14px; }
-.ot-b::after { content: ''; position: absolute; left: 5px; top: 14px; width: 11px; border-top: 1px solid var(--line); }
-.ot-b.live::after, .ot-b.live::before { border-color: color-mix(in srgb, var(--omp-color) 60%, var(--line)); }
-.ot-b .ot-head { padding: 4px 0; }
-.ot-b .ot-main { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-.ot-b .ot-line1 { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
-.ot-b .ot-badge {
-  flex: none; display: inline-flex; gap: 5px; padding: 0 6px; border: 1px solid color-mix(in srgb, var(--ot-c) 40%, transparent);
-  font: 600 9.5px/17px var(--mono); letter-spacing: .12em; color: color-mix(in srgb, var(--ot-c) 80%, var(--muted));
-}
-.ot-b.live .ot-badge { border-color: var(--omp-color); background: color-mix(in srgb, var(--omp-color) 14%, transparent); color: var(--omp-color); }
-.ot-b.err .ot-badge { border-color: color-mix(in srgb, var(--rose) 60%, transparent); background: color-mix(in srgb, var(--rose) 10%, transparent); color: var(--rose); }
-.ot-b .ot-badge .omp-spinner { color: inherit; }
-.ot-b .ot-intent { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; line-height: 20px; color: var(--text-2); }
-.ot-b .ot-wall { line-height: 20px; }
-.ot-b .ot-line2 { display: flex; align-items: baseline; min-width: 0; font: 400 11.5px/18px var(--mono); color: var(--dim); }
-.ot-b .ot-elbow { flex: none; width: 1.7em; padding-left: 3px; color: var(--line-strong); }
-.ot-b .ot-target { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
-.ot-b .ot-sign { color: var(--ot-c); }
-.ot-b .ot-count { flex: none; margin-left: .75em; padding-left: .75em; border-left: 1px solid var(--line); white-space: nowrap; }
-
-/* c — segments: a 1 px strip "▶ BASH │ intent │ target │ counts │ 0.11s ✓". */
-.tools.omp-v-c { border-left: 0; padding-left: 0; gap: 4px; }
-.ot-c .ot-head { flex-wrap: wrap; align-items: stretch; border: 1px solid var(--line); background: var(--bg-2); font: 400 12px/24px var(--mono); }
-.ot-c .ot-head > *, .ot-c .ot-tail > * { min-width: 0; padding: 0 9px; border-left: 1px solid var(--line); white-space: nowrap; }
-.ot-c .ot-head > .ot-tail { display: contents; }
-.ot-c .ot-head > :first-child { border-left: 0; }
-.ot-c .ot-kind { flex: none; font-size: 10px; font-weight: 700; letter-spacing: .12em; color: var(--ot-c); background: color-mix(in srgb, var(--ot-c) 13%, transparent); }
-.ot-c.live .ot-kind { color: var(--on-accent); background: var(--omp-color); }
-.ot-c.live .ot-kind .omp-spinner { color: inherit; }
-.ot-c .ot-intent { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; font-family: var(--sans); font-size: 13px; color: var(--text-2); }
-.ot-c .ot-target { flex: 1 1 0; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; color: var(--muted); }
-.ot-c .ot-sign { color: var(--ot-c); }
-.ot-c .ot-count { flex: none; font-size: 11px; color: var(--dim); }
-.ot-c .ot-wall { line-height: 24px; }
-.ot-c .ot-ok { margin-left: 4px; color: var(--green); }
-.ot-c.err .ot-ok { color: var(--rose); }
-.ot-c.live .ot-head { border-color: color-mix(in srgb, var(--omp-color) 60%, var(--line)); }
-.ot-c.err .ot-head { border-color: color-mix(in srgb, var(--rose) 45%, var(--line)); }
-.ot-c button.ot-head:hover { background: var(--surface); }
-.ot-c .ot-out { margin-top: 0; border-top: 0; }
-@media (max-width: 640px) {
-  .ot-c .ot-intent { flex: 1 1 0; }
-  .ot-c .ot-head > .ot-tail { display: flex; order: 10; flex: 1 0 100%; padding: 0; border-left: 0; border-top: 1px solid var(--line-soft); }
-  .ot-c .ot-tail > :first-child { border-left: 0; }
-  .ot-c .ot-target { flex: 0 1 auto; }
-}
-
-/* d — terminal frame: the group is a console, "❯ command  0.11s", "# intent  ⎿ counts". */
-.tools.omp-v-d { margin: 2px 0 4px; padding: 0 0 5px; gap: 0; border: 1px solid var(--line); background: var(--code-bg); }
-.tools.omp-v-d.live { border-color: color-mix(in srgb, var(--omp-color) 55%, var(--line)); }
-.otd-head { display: flex; gap: 12px; align-items: baseline; padding: 4px 10px; border-bottom: 1px solid var(--line-soft); font: 500 10px/1.6 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
-.otd-title { font-weight: 700; color: var(--omp-color); }
-.otd-total { margin-left: auto; letter-spacing: .02em; text-transform: none; font-variant-numeric: tabular-nums; }
-.otd-more { display: block; width: 100%; padding: 4px 10px 0; text-align: left; font: 400 11px/18px var(--mono); color: var(--dim); cursor: pointer; }
-.otd-more:hover { color: var(--text); }
-.ot-d { padding: 0 10px; }
-.ot-d .ot-head { flex-direction: column; align-items: stretch; padding: 5px 0 1px; }
-.ot-d .ot-line1 { display: flex; align-items: baseline; min-width: 0; font: 400 12.5px/19px var(--mono); }
-.ot-d .ot-glyph { flex: none; width: 1.6em; color: var(--ot-c); }
-.ot-d .ot-cmd { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-.ot-d .ot-wall { padding-left: 12px; }
-.ot-d .ot-line2 { display: flex; flex-wrap: wrap; column-gap: 12px; min-width: 0; padding-left: 20px; font: 400 11.5px/17px var(--mono); color: var(--dim); }
-.ot-d .ot-intent { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ot-d .ot-result { white-space: nowrap; color: var(--muted); }
-.ot-d .ot-out { margin: 4px 0 4px 20px; border: 0; border-left: 1px solid var(--line); background: transparent; }
-.ot-d.err .ot-out { border-left-color: color-mix(in srgb, var(--rose) 55%, var(--line)); }
-.ot-d .ot-out-head { padding: 0 10px; border-bottom: 0; }
-.ot-d .ot-out pre { padding: 2px 10px 4px; }
+@media (pointer: coarse) { button.omp-tool-head { min-height: 32px; } }
 
 /* "!" command (bash mode) and its output. */
 .msg-shell {

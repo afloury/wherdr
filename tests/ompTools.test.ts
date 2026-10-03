@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { parseLines } from '../server/utils/transcripts'
 import { ompPath, ompToolCall } from '../server/utils/ompTools'
-import { ompEarlier, ompToolGlyph, ompToolMeta, ompWall } from '../app/utils/ompTool'
+import { OMP_CONSOLE_SHOWN, isOmpGroup, ompCommandLine, ompConsoleRows, ompEarlier, ompOutHead, ompToolMeta, ompTotalMs, ompWall } from '../app/utils/ompTool'
 
 const HOME = '/home/user'
 const text = readFileSync(new URL('./fixtures/omp-tools.jsonl', import.meta.url), 'utf8')
@@ -110,14 +110,58 @@ describe('omp tool text', () => {
     expect(ompToolMeta({ title: 'Glob', files: 2 })).toEqual(['2 files'])
     expect(ompToolMeta({ title: 'Edit', added: 3, removed: 2 })).toEqual(['+3/-2'])
     expect(ompToolMeta({ title: 'Bash', job: 'bg_2' })).toEqual(['Backgrounded: bg_2'])
-    expect(ompToolMeta({ title: 'Bash', exit: 2 })).toEqual(['Exit: 2'])
+    // The exit code is shown on its own (red), not among the counts.
+    expect(ompToolMeta({ title: 'Bash', exit: 2 })).toEqual([])
   })
 
-  it('lines cut above the excerpt, and the glyph', () => {
+  it('lines cut above the excerpt', () => {
     expect(ompEarlier({ title: 'Bash', out: 'a\nb', outLines: 25 })).toBe(23)
     expect(ompEarlier({ title: 'Bash', out: 'a', outLines: 1 })).toBe(0)
-    expect(ompToolGlyph({ title: 'Edit' }, false)).toBe('✎')
-    expect(ompToolGlyph({ title: 'Read' }, true)).toBe('⚠')
-    expect(ompToolGlyph({ title: 'Read' }, false)).toBe('●')
+  })
+
+  it('console line of a call', () => {
+    expect(ompCommandLine({ title: 'Bash', target: 'git status --short' })).toBe('git status --short')
+    expect(ompCommandLine({ title: 'Bash' })).toBe('bash')
+    expect(ompCommandLine({ title: 'Read', target: 'TASKS.md:5-20' })).toBe('read TASKS.md:5-20')
+    expect(ompCommandLine({ title: 'Web Search', target: 'oh-my-pi logo' })).toBe('web_search oh-my-pi logo')
+    expect(ompCommandLine({ title: 'Wait' })).toBe('wait')
+  })
+
+  it('header of an unfolded output, short enough for one phone line', () => {
+    expect(ompOutHead({ title: 'Bash', out: 'a\nb', outLines: 5 }, false)).toEqual({ label: 'Output', earlier: '… 3 earlier lines' })
+    expect(ompOutHead({ title: 'Bash', out: 'a\nb', outLines: 3 }, true)).toEqual({ label: 'Error', earlier: '… 1 earlier line' })
+    expect(ompOutHead({ title: 'Edit', out: '+1|x', diff: true }, false)).toEqual({ label: 'Diff', earlier: '' })
+  })
+
+  it('from the fixture: the failing bash call', () => {
+    const fail = tools.find(t => t.omp && t.omp.exit === 1)!
+    expect(fail.error).toBe(true)
+    expect(ompCommandLine(fail.omp!)).toBe('npx vitest run\n  --reporter dot')
+    expect(ompOutHead(fail.omp!, true).label).toBe('Error')
+  })
+})
+
+describe('omp console (a group of calls)', () => {
+  const call = (ms?: number) => ({ role: 'tool' as const, text: '', ts: null, omp: { title: 'Bash', ms } })
+
+  it('only groups made of omp calls', () => {
+    expect(isOmpGroup([call(), call()])).toBe(true)
+    expect(isOmpGroup([call(), { role: 'tool', text: 'ls', ts: null, name: 'Bash' }])).toBe(false)
+    expect(isOmpGroup([])).toBe(false)
+    expect(isOmpGroup(tools)).toBe(true)
+  })
+
+  it('total wall time of the group (calls without one count 0)', () => {
+    expect(ompTotalMs([call(30), call(2840), call()])).toBe(2870)
+    expect(ompTotalMs([call()])).toBe(0)
+  })
+
+  it('shows the last calls, the earlier ones folded until opened', () => {
+    const list = [1, 2, 3, 4, 5]
+    expect(OMP_CONSOLE_SHOWN).toBe(3)
+    expect(ompConsoleRows(list, false)).toEqual({ hidden: 2, rows: [3, 4, 5] })
+    expect(ompConsoleRows(list, true)).toEqual({ hidden: 0, rows: list })
+    expect(ompConsoleRows([1, 2, 3], false)).toEqual({ hidden: 0, rows: [1, 2, 3] })
+    expect(ompConsoleRows([], false)).toEqual({ hidden: 0, rows: [] })
   })
 })
