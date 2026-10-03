@@ -130,7 +130,9 @@ export function parseCliVersion(out: string | null | undefined): string | null {
   return m ? m[1]! : null
 }
 
-export type CodexUpdateJob = { phase: 'running' } | { phase: 'done', version: string | null, at: number } | { phase: 'failed', error: string }
+export type CodexUpdateMethod = 'direct' | 'terminal'
+
+export type CodexUpdateJob = { phase: 'running', pane?: string } | { phase: 'done', version: string | null, at: number } | { phase: 'failed', error: string }
 
 export interface CodexUpdate {
   // `available`: newer version to install; `installed`: already installed
@@ -141,8 +143,14 @@ export interface CodexUpdate {
   current: string | null
   // Command to update: the known official one, or the screen's text to copy.
   command: string | null
-  // The server may run `command` on the agent's machine (known command, writable home).
+  // The server may run `command` (a known official command) from wherdr.
   runnable: boolean
+  // How Update runs it (null: copy only). `direct`: on the machine over SSH,
+  // or locally when its home is writable, while the agents keep running
+  // (then Restart to update). `terminal`: in the agent's own pane: Codex
+  // exits, the pane's shell runs the command, `codex resume` restarts it on
+  // the same conversation (wherdr in Docker, whose home is read-only).
+  method: CodexUpdateMethod | null
   notes: string
   job?: CodexUpdateJob
 }
@@ -164,7 +172,8 @@ export function runningVersion(o: { rollout: string | null, screen: CodexScreenI
 }
 
 // Update notice of a Codex agent, or null. `canRun`: the server can run a
-// command on the agent's machine (remote over SSH, or a writable local home).
+// command on the agent's machine (remote over SSH, or a writable local home);
+// otherwise a known command is typed into the agent's own terminal.
 export function codexUpdateState(o: {
   running: string | null
   latest: string | null
@@ -187,13 +196,14 @@ export function codexUpdateState(o: {
     // Standalone install (seen on disk): its command, whatever the screen says.
     const known = o.standalone ? CODEX_STANDALONE_COMMAND : knownUpdateCommand(o.screen.command)
     const command = known || (o.screen.command ? norm(o.screen.command) : null)
-    return { state: 'available', latest, current: have, command, runnable: Boolean(known && o.canRun), ...base }
+    const method: CodexUpdateMethod | null = known ? (o.canRun ? 'direct' : 'terminal') : null
+    return { state: 'available', latest, current: have, command, runnable: Boolean(method), method, ...base }
   }
   if (installed && running && compareVersions(installed, running) > 0) {
-    return { state: 'installed', latest: installed, current: running, command: null, runnable: false, ...base }
+    return { state: 'installed', latest: installed, current: running, command: null, runnable: false, method: null, ...base }
   }
   // Update running or failed with nothing else to say: its progress or error stays shown.
-  if (job && job.phase !== 'done') return { state: 'available', latest: latest || '', current: running, command: null, runnable: false, ...base }
+  if (job && job.phase !== 'done') return { state: 'available', latest: latest || '', current: running, command: null, runnable: false, method: null, ...base }
   return null
 }
 
@@ -272,4 +282,48 @@ export function updateScript(command: string): string {
     'codex --version 2>/dev/null || true',
     '',
   ].join('\n')
+}
+
+// Update typed into the agent's terminal (method `terminal`): the known
+// official command, then an end marker carrying its exit status, so the
+// server knows when and how it ended. The marker as typed ("…_$?__") never
+// matches its own pattern: only the shell's output does. POSIX shells and
+// fish (`$status`); any other shell: null (copy the command instead).
+export const DONE_MARK = '__WHERDR_DONE_'
+const POSIX_SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'mksh', 'ash', 'busybox'])
+export function terminalUpdateLine(command: string, nonce: string, shell: string | null | undefined): string | null {
+  const known = knownUpdateCommand(command)
+  if (!known) throw new Error('unknown update command')
+  if (!/^[a-z0-9]{4,16}$/.test(nonce)) throw new Error('bad marker')
+  const name = String(shell || '').replace(/^.*\//, '').replace(/^-/, '')
+  const status = POSIX_SHELLS.has(name) ? '$?' : name === 'fish' ? '$status' : null
+  if (!status) return null
+  return `${known}; echo ${DONE_MARK}${nonce}_${status}"__"`
+}
+
+// End of a terminal update on screen: its exit status and the last line it
+// printed (the error to show), or null while it runs.
+export function terminalUpdateDone(text: string | null | undefined, nonce: string): { code: number, last: string | null } | null {
+  const lines = String(text || '').split('\n')
+  const re = new RegExp(`${DONE_MARK}${nonce}_(\\d{1,3})__`)
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = re.exec(lines[i]!)
+    if (!m) continue
+    let last: string | null = null
+    for (let j = i - 1; j >= 0 && !last; j--) {
+      const l = lines[j]!.trim()
+      if (l.includes(DONE_MARK)) break // the typed command line: nothing printed
+      if (l) last = l.slice(0, 300)
+    }
+    return { code: Number(m[1]), last }
+  }
+  return null
+}
+
+// Codex shows a selection menu (startup update prompt, folder trust,
+// approval…) rather than its input field: typing `/exit` would pick an
+// option, the update waits until it is answered.
+export function codexMenuOpen(text: string | null | undefined): boolean {
+  const lines = String(text || '').split('\n').map(l => l.trim()).filter(Boolean).slice(-12)
+  return lines.some(l => /^›\s*1\.\s/.test(l)) && lines.some(l => /\benter\b.*·.*\besc\b/i.test(l))
 }

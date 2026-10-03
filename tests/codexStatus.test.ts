@@ -147,8 +147,9 @@ describe('codexUpdateState', () => {
     expect(codexUpdateState(base)).toMatchObject({ state: 'available', latest: '0.160.0', current: '0.159.1', command: CODEX_STANDALONE_COMMAND, runnable: true })
   })
 
-  it('only offers to copy when the server cannot run it', () => {
-    expect(codexUpdateState({ ...base, canRun: false })).toMatchObject({ runnable: false, command: CODEX_STANDALONE_COMMAND })
+  it('types it into the agent terminal when the server cannot run it', () => {
+    expect(codexUpdateState(base)).toMatchObject({ method: 'direct' })
+    expect(codexUpdateState({ ...base, canRun: false })).toMatchObject({ runnable: true, method: 'terminal', command: CODEX_STANDALONE_COMMAND })
   })
 
   it('shows an unknown screen command to copy, never to run', () => {
@@ -316,11 +317,26 @@ describe('Codex status service', () => {
     await vi.waitFor(async () => expect((await svc.compute(pane))?.update?.job).toEqual({ phase: 'failed', error: 'curl: (6) Could not resolve host' }))
   })
 
-  it('refuses to run locally when the home is read-only (container)', async () => {
+  it('read-only home (container): never runs locally, types it into the agent pane', async () => {
     const { svc, pane, runLocal } = setup({ local: true, writable: false })
-    expect((await svc.compute(pane))?.update).toMatchObject({ runnable: false, command: CODEX_STANDALONE_COMMAND })
+    expect((await svc.compute(pane))?.update).toMatchObject({ runnable: true, method: 'terminal', command: CODEX_STANDALONE_COMMAND })
     await expect(svc.startUpdate(pane)).rejects.toThrow(/cannot be run/)
+    let finish!: () => void
+    const inPane = vi.fn(async () => ({ done: new Promise<void>((r) => { finish = r }) }))
+    expect(await svc.startUpdate(pane, inPane)).toEqual({ command: CODEX_STANDALONE_COMMAND, method: 'terminal' })
+    expect(inPane).toHaveBeenCalledWith(CODEX_STANDALONE_COMMAND)
     expect(runLocal).not.toHaveBeenCalled()
+    // Other Codex of the machine see it running; a second one is refused.
+    await expect(svc.startUpdate(pane, inPane)).rejects.toThrow(/already in progress/)
+    finish()
+    await vi.waitFor(async () => expect(await svc.startUpdate(pane, inPane)).toMatchObject({ method: 'terminal' }))
+  })
+
+  it('a refusal from the pane (agent busy) starts nothing', async () => {
+    const { svc, pane } = setup({ local: true, writable: false })
+    const inPane = vi.fn(async () => { throw new Error('Codex is working or waiting for an answer') })
+    await expect(svc.startUpdate(pane, inPane)).rejects.toThrow(/working/)
+    await expect(svc.startUpdate(pane, inPane)).rejects.toThrow(/working/) // not "already in progress"
   })
 
   it('refuses a second update while one runs', async () => {

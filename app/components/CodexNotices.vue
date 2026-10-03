@@ -66,10 +66,25 @@ async function copy() {
   } catch { toast(t('Copy failed'), true) }
 }
 
+// Update typed into this pane's terminal: Codex must be idle at its field
+// (the server checks it too, see server/utils/codexTermUpdate.ts).
+const busyReason = computed(() => {
+  if (update.value?.method !== 'terminal') return ''
+  const s = props.pane.status
+  if (s === 'working') return tl('Codex is working: update it once it is done', 'Codex travaille : mets-le à jour quand il a fini')
+  if (s === 'blocked') return tl('Codex is waiting for an answer: answer it first', 'Codex attend une réponse : réponds-lui d’abord')
+  return ''
+})
+
 async function runUpdate() {
   const u = update.value
-  if (!u || !u.runnable || !u.command) return
-  const ok = await askConfirm([
+  if (!u || !u.runnable || !u.command || busyReason.value) return
+  const ok = u.method === 'terminal' ? await askConfirm([
+    tl(`Update Codex to ${u.latest} on ${machine.value}?`, `Mettre à jour Codex en ${u.latest} sur ${machine.value} ?`),
+    tl('wherdr will exit Codex in this pane, type Codex’s official update command in its terminal:', 'wherdr va quitter Codex dans ce panneau et taper dans son terminal la commande de mise à jour officielle de Codex :'),
+    u.command,
+    tl('then restart Codex on this conversation (codex resume). If the update fails, the pane stays at its shell.', 'puis relancer Codex sur cette conversation (codex resume). Si la mise à jour échoue, le panneau reste sur son shell.'),
+  ].join('\n\n'), t('Update'), 'primary') : await askConfirm([
     tl(`Update Codex to ${u.latest} on ${machine.value}?`, `Mettre à jour Codex en ${u.latest} sur ${machine.value} ?`),
     tl('wherdr will run Codex’s official update command there:', 'wherdr y lancera la commande de mise à jour officielle de Codex :'),
     u.command,
@@ -121,9 +136,14 @@ async function status() {
     <a class="notice-btn" :href="update.notes" target="_blank" rel="noopener noreferrer" :aria-label="t('Release notes')" :title="t('Release notes')">
       <UIcon name="i-lucide-external-link" /><span class="notice-label">{{ t('Release notes') }}</span>
     </a>
-    <button v-if="update.runnable" type="button" class="notice-btn" :disabled="readOnly" @click="runUpdate">
+    <button
+      v-if="update.runnable" type="button" class="notice-btn" :disabled="readOnly || Boolean(busyReason)"
+      :title="busyReason || (update.method === 'terminal' ? tl('Exits Codex, updates it in this pane’s terminal, then resumes this conversation', 'Quitte Codex, le met à jour dans le terminal de ce panneau, puis reprend cette conversation') : undefined)"
+      @click="runUpdate"
+    >
       <UIcon name="i-lucide-circle-arrow-up" />{{ t('Update') }}
     </button>
+    <span v-if="busyReason" class="notice-reason">{{ pane.status === 'blocked' ? tl('answer first', 'réponds d’abord') : tl('after this turn', 'après ce tour') }}</span>
     <button v-else-if="update.command" type="button" class="notice-btn" @click="copy"><UIcon name="i-lucide-copy" />{{ t('Copy command') }}</button>
     <button type="button" class="notice-btn notice-x" :aria-label="t('Hide until the next version')" :title="t('Hide until the next version')" @click="hide">
       <UIcon name="i-lucide-x" />

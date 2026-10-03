@@ -133,8 +133,9 @@ export interface Pane {
   // Claude Code status near the input field ("✔ Update installed · Restart to update").
   claudeNotice?: string
   // Restart requested from wherdr (see server/utils/restart.ts): the agent
-  // quits then comes back, the pane is briefly without an agent.
-  restart?: { phase: 'stopping' | 'starting' | 'failed', agent: string, error?: string }
+  // quits then comes back, the pane is briefly without an agent. `update`:
+  // Codex update typed into its terminal between the two (the command).
+  restart?: { phase: 'stopping' | 'updating' | 'starting' | 'failed', agent: string, error?: string, update?: string }
   // Grayed-out next-message suggestion in Claude Code's field (Tab accepts it).
   claudeSuggestion?: string
   // Codex shown: update available and weekly-limit warning (see shared/codexStatus.ts).

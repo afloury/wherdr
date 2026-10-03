@@ -573,7 +573,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
     // Relaunched: done as soon as Herdr sees the agent (or after 15 s).
     else if (rs && rs.started && (p.agent || Date.now() - rs.at > 15000)) restarts.delete(p.id)
     else if (rs) {
-      p.restart = { phase: rs.phase, agent: rs.agent, ...(rs.error ? { error: rs.error } : {}) }
+      p.restart = { phase: rs.phase, agent: rs.agent, ...(rs.error ? { error: rs.error } : {}), ...(rs.update ? { update: rs.update } : {}) }
       // Between the stop and the relaunch (or after a failed relaunch), the pane has
       // no agent: we keep its conversation shown, with the progress.
       if (!p.agent) {

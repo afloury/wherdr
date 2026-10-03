@@ -3,8 +3,9 @@
 // Read in the background for a Codex shown on a device, at most every
 // STATUS_MS; Codex's own files are re-read at most every FILES_MS per machine.
 // The update runs Codex's known official command on the agent's machine
-// (`sh -s` over SSH, or locally when its home is writable), never text typed
-// into the Codex TUI nor a command read from the screen.
+// (`sh -s` over SSH, or locally when its home is writable), otherwise at the
+// shell prompt of the agent's pane once Codex has quit (codexTermUpdate.ts);
+// never text typed into the Codex TUI nor a command read from the screen.
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Pane } from '../../shared/types'
@@ -178,7 +179,9 @@ export function createCodexStatus(d: CodexStatusDeps) {
 
   // Runs the update on the agent's machine; returns right away, the progress
   // goes through `codexStatus.update.job` of the machine's Codex panes.
-  async function startUpdate(p: Pane) {
+  // Method `terminal`: `inPane` types it into the agent's pane (restart.ts),
+  // its progress shows in that pane's `restart`.
+  async function startUpdate(p: Pane, inPane?: (command: string) => Promise<{ done: Promise<void> }>) {
     const m = d.machineOf(p.id)
     if (!m) throw new HerdrError('bad_pane', 'agent not found')
     if (jobOf(m.key)?.phase === 'running') throw new HerdrError('update_busy', 'Codex update already in progress')
@@ -186,7 +189,24 @@ export function createCodexStatus(d: CodexStatusDeps) {
     const st = await compute(p)
     const u = st?.update
     if (!u || u.state !== 'available' || !u.command) throw new HerdrError('update_unavailable', 'No Codex update to install')
-    if (!u.runnable) throw new HerdrError('update_manual', 'This update cannot be run from wherdr: copy the command')
+    if (!u.runnable || !u.method || (u.method === 'terminal' && !inPane)) throw new HerdrError('update_manual', 'This update cannot be run from wherdr: copy the command')
+    if (u.method === 'terminal') {
+      const { done } = await inPane!(u.command)
+      jobs.set(m.key, { phase: 'running', pane: p.id, started: now() })
+      d.onChange()
+      done.then(() => {
+        // The installed version: on screen once Codex is back (its header).
+        jobs.set(m.key, { phase: 'done', version: null, at: now(), started: now() })
+      }, () => {
+        // The error is shown in the pane, left at its shell.
+        jobs.delete(m.key)
+      }).finally(() => {
+        files.delete(m.key)
+        stale(m.key)
+        d.onChange()
+      })
+      return { command: u.command, method: u.method }
+    }
     const script = updateScript(u.command)
     jobs.set(m.key, { phase: 'running', started: now() })
     d.onChange()
@@ -210,7 +230,7 @@ export function createCodexStatus(d: CodexStatusDeps) {
       d.log(`codex update on ${m.label || m.key}: ${job.phase}${job.phase === 'failed' ? ` (${job.error})` : ''}`)
       d.onChange()
     })()
-    return { command: u.command }
+    return { command: u.command, method: u.method }
   }
 
   // Hides a failed update.

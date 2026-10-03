@@ -11,7 +11,7 @@
 // then starts fresh, with its options.
 
 export type RestartMode = 'resume' | 'continue' | 'fresh'
-export type RestartPhase = 'stopping' | 'starting' | 'failed'
+export type RestartPhase = 'stopping' | 'updating' | 'starting' | 'failed'
 
 export interface RestartPlan {
   // Arguments passed to `agent.start` (after the executable).
