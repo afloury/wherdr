@@ -111,7 +111,7 @@ export const limitsSignature = (f: LimitsFile) => JSON.stringify({ ...f, updated
 
 // ---------------------------------------------------------------- display
 // Line of the "In queue" header for the coordinator's machine:
-// "2 of 2 thread slots in use on Nani Pi (all projects) · full".
+// "2 of 2 thread slots in use on Server (all projects) · full".
 export function machineSlotsLine(s: Pick<MachineSlots, 'label' | 'open' | 'max'> | null | undefined, lang: TestLang = 'fr'): string | null {
   if (!s || !(s.max && s.max > 0)) return null
   const full = s.open >= s.max
