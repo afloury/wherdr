@@ -41,6 +41,11 @@ export const HOLD_TTL_MS = 10 * 60 * 1000
 // guardedSend.ts): reported as not sent sooner, the field may stay so.
 export const BUSY_TTL_MS = 2 * 60 * 1000
 export const LOST_MS = 60 * 1000
+// Held while the agent is ready and no menu, question or panel is recognized
+// on its screen: nothing will close, the input field is just not found
+// (unknown screen). Reported as not sent, with that reason, instead of
+// waiting "until the menu closes" for nothing.
+export const NO_INPUT_MS = 30 * 1000
 export const HOLD_AGENTS = new Set(['claude', 'codex'])
 // Agent at rest, whose input field may be checked on screen (see closePanel).
 export const INPUT_STATES = new Set(['idle', 'done', 'unknown'])
@@ -55,6 +60,10 @@ export interface QueueEntry {
   busy?: boolean
   // Since when the agent has been ready with this message delivered.
   readySince?: number
+  // Held: since when the agent has been ready with no menu recognized.
+  stuckSince?: number
+  // Failed because the input field was not found on an unknown screen.
+  noInput?: boolean
 }
 
 // Hold a new message instead of typing it now?
@@ -72,13 +81,18 @@ export function nextHeld(list: QueueEntry[]): QueueEntry | null {
 }
 
 // Updates timers in place on each poll; true when an entry just failed.
-export function checkQueue(list: QueueEntry[], status: string | null | undefined, now: number): boolean {
+// `menu`: a menu, question or panel recognized on the agent's screen (or a
+// restart running): something a held message legitimately waits for.
+export function checkQueue(list: QueueEntry[], status: string | null | undefined, now: number, menu = true): boolean {
   let changed = false
   const ready = status === 'idle' || status === 'done'
   for (const q of list) {
     if (q.failed) continue
     if (q.held) {
-      if (now - q.at > (q.busy ? BUSY_TTL_MS : HOLD_TTL_MS)) { q.failed = true; changed = true }
+      if (now - q.at > (q.busy ? BUSY_TTL_MS : HOLD_TTL_MS)) { q.failed = true; changed = true; continue }
+      if (q.busy || !ready || menu) { delete q.stuckSince; continue }
+      q.stuckSince ??= now
+      if (now - q.stuckSince > NO_INPUT_MS) { q.failed = true; q.noInput = true; changed = true }
       continue
     }
     if (!ready) { delete q.readySince; continue }
@@ -93,7 +107,7 @@ export const publicEntry = (q: QueueEntry): QueuedMessage => ({
   id: q.id, text: q.text, at: q.at,
   ...(q.held && !q.failed ? { state: 'held' as const } : {}),
   ...(q.failed ? { state: 'failed' as const } : {}),
-  ...((q.held || q.failed) && q.busy ? { reason: 'busy' as const } : {}),
+  ...((q.held || q.failed) && q.busy ? { reason: 'busy' as const } : q.failed && q.noInput ? { reason: 'no_input' as const } : {}),
 })
 
 // Records read back from data/queued.json at startup: well-formed, recent

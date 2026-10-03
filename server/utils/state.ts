@@ -408,6 +408,8 @@ export function retryQueued(paneId: string, id: string): QueuedMessage {
   q.at = Date.now()
   delete q.busy
   delete q.readySince
+  delete q.stuckSince
+  delete q.noInput
   setTimeout(poll, 50)
   return publicEntry(q)
 }
@@ -635,7 +637,10 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
     if (queued.has(p.id)) {
       reconcileQueued(p)
       const list = queued.get(p.id)
-      if (list && checkQueue(list, p.status, Date.now())) log(`message not sent on ${p.id}`)
+      // Menu, question or panel seen on the previous poll (computed below).
+      const before = findPane(p.id)
+      const menu = Boolean(before && (before.menu || before.prompt || before.screen)) || restarting(p.id)
+      if (list && checkQueue(list, p.status, Date.now(), menu)) log(`message not sent on ${p.id}`)
       if (list) deliverHeld(p)
       if (list && list.length) p.queued = list.map(publicEntry)
     }

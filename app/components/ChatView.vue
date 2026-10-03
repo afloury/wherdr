@@ -1056,7 +1056,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               </template>
             </UChatMessage>
             <div v-if="q.state === 'failed'" class="queued-tag failed" role="alert">
-              <UIcon name="i-lucide-circle-alert" /><span>{{ q.reason === 'busy' ? t('Not sent — the agent’s input contains text') : t('Not sent') }}</span>
+              <UIcon name="i-lucide-circle-alert" /><span>{{ q.reason === 'busy' ? t('Not sent — the agent’s input contains text') : q.reason === 'no_input' ? t('Not sent — the agent’s input field was not found on its screen') : t('Not sent') }}</span>
               <button type="button" class="queued-cancel" :disabled="Boolean(retrying)" @click="retryQueued(q)">
                 <UIcon :name="retrying === q.id ? 'i-lucide-loader-circle' : 'i-lucide-rotate-cw'" :class="{ spin: retrying === q.id }" />{{ t('Retry') }}
               </button>

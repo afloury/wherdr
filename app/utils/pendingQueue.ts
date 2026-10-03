@@ -21,7 +21,7 @@ export interface PendingMessage {
   phase: QueuedPhase
   state: 'held' | 'failed' | null
   // 'busy': waiting because the agent's input field holds other text.
-  reason?: 'busy'
+  reason?: 'busy' | 'no_input'
   // Stored names of its photos.
   photos: string[]
   // Photos Claude's queue counts but whose files are unknown.

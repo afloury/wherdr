@@ -45,7 +45,7 @@ export default defineApi(async (event, b) => {
     }
     // Typed but not confirmed as taken (see guardedSend.ts): kept, shown as
     // not sent with Retry / Cancel, never silently dropped.
-    if (e instanceof HerdrError && ['not_shown', 'not_submitted', 'clear_failed', 'input_contended'].includes(e.code) && !isSlashCommand(text)) {
+    if (e instanceof HerdrError && ['not_shown', 'not_submitted', 'clear_failed', 'input_contended', 'bash_mode'].includes(e.code) && !isSlashCommand(text)) {
       const q = addQueued(b.pane_id, text, { failed: true })
       log(`prompt ${b.pane_id}: ${e.message}, message kept as not sent`)
       setTimeout(poll, 50)
