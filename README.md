@@ -535,8 +535,10 @@ worktree. It is optional; with it installed, wherdr adds:
 - **Max threads per machine**, across all projects: herdr-projects only limits threads per
   project, so three coordinators could still start a dozen threads on one small machine. Set a
   limit per machine in **Settings → Plugins → herdr-projects** (empty `—` = no global limit;
-  saved on the server, in `data/thread-limits.json`). wherdr counts the open threads of every
-  project from the live panes (herdr-projects marks each open thread's pane) and writes
+  saved on the server, in `data/thread-limits.json`). wherdr counts the active threads of every
+  project from the live panes (herdr-projects marks each open thread's pane): a thread whose agent
+  has finished (idle or done, waiting for review or for you) gives its slot back right away; one
+  started less than 3 minutes ago still counts while it waits for its brief. wherdr writes
   `.wherdr-limits.json` in each herdr-projects folder where a coordinator runs, refreshed on
   every change:
 
