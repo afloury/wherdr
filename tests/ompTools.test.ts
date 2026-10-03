@@ -39,8 +39,9 @@ describe('omp tools', () => {
   it('bash in error: marked, with the end of its output', () => {
     const t = byTarget('vitest')
     expect(t.error).toBe(true)
-    expect(t.omp).toMatchObject({ target: 'npx vitest run\n  --reporter dot', ms: 9876, outLines: 4 })
-    expect(t.omp!.out).toContain('Command exited with code 1')
+    expect(t.omp).toMatchObject({ target: 'npx vitest run\n  --reporter dot', ms: 9876, exit: 1, outLines: 2 })
+    // omp's own notes ("Wall time", "Command exited") go to the footer, not the output.
+    expect(t.omp!.out).toBe('FAIL tests/a.test.ts\nexpected 1 to be 2')
   })
 
   it('paths relative to the session folder, else under ~; line ranges kept', () => {
@@ -108,6 +109,7 @@ describe('omp tool text', () => {
     expect(ompToolMeta({ title: 'Glob', files: 2 })).toEqual(['2 files'])
     expect(ompToolMeta({ title: 'Edit', added: 3, removed: 2 })).toEqual(['+3/-2'])
     expect(ompToolMeta({ title: 'Bash', job: 'bg_2' })).toEqual(['Backgrounded: bg_2'])
+    expect(ompToolMeta({ title: 'Bash', exit: 2 })).toEqual(['Exit: 2'])
   })
 
   it('lines cut above the excerpt, and the glyph', () => {

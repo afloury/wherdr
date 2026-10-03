@@ -65,6 +65,10 @@ export function ompToolCall(name: string, args: Json, cwd = '', home = ''): OmpT
   return v
 }
 
+// omp appends its own notes to bash's output; it shows them in the frame's
+// footer instead ("⟦Wall: 0.09s | Exit: 2⟧").
+const BASH_NOTES = /(?:\s*\n)?(?:Wall time: [\d.]+ seconds|Command exited with code -?\d+)\s*$/
+
 const resultText = (m: Json) => (Array.isArray(m.content) ? m.content : [])
   .filter((c: Json) => c && c.type === 'text' && typeof c.text === 'string').map((c: Json) => c.text).join('\n')
 
@@ -81,7 +85,15 @@ function excerpt(text: string, n: number, from: 'end' | 'start') {
 // carrying the call was written (ms), for tools without their own wall time.
 export function ompToolResult(v: OmpToolView, name: string, m: Json, startedAt: number | null, cwd = '', home = ''): void {
   const d = m && m.details && typeof m.details === 'object' ? m.details : {}
-  const text = resultText(m)
+  let text = resultText(m)
+  if (name === 'bash') {
+    for (let prev = ''; prev !== text;) {
+      prev = text
+      text = text.replace(BASH_NOTES, '')
+    }
+    const code = typeof d.exitCode === 'number' ? d.exitCode : null
+    if (code) v.exit = code
+  }
   if (typeof d.wallTimeMs === 'number') v.ms = Math.round(d.wallTimeMs)
   else if (typeof m.timestamp === 'number' && startedAt && m.timestamp >= startedAt) v.ms = m.timestamp - startedAt
   if (d.async && typeof d.async.jobId === 'string') {

@@ -25,6 +25,7 @@ export function ompToolMeta(v: OmpToolView): string[] {
   if (v.scope) out.push(`${tl('in', 'dans')} ${v.scope}`)
   if (typeof v.added === 'number' || typeof v.removed === 'number') out.push(`+${v.added || 0}/-${v.removed || 0}`)
   if (v.job) out.push(`${tl('Backgrounded', 'En arrière-plan')}: ${v.job}`)
+  if (v.exit) out.push(`Exit: ${v.exit}`)
   return out
 }
 

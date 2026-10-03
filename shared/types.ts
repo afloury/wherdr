@@ -253,6 +253,7 @@ export interface OmpToolView {
   added?: number
   removed?: number
   job?: string
+  exit?: number
   ms?: number
   out?: string
   outLines?: number
