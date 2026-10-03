@@ -4,7 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Quota } from '../shared/types'
 import { localFs } from '../server/utils/fsx'
-import { claudeQuota, claudeSetupState, codexAccount, codexQuota, machineCodexQuota, lastCodexLimits, latestCodexQuota, mergeQuotas, readCodex, sameAccount } from '../server/utils/quotas'
+import { applyCodexScreen, claudeQuota, claudeSetupState, codexAccount, codexQuota, machineCodexQuota, lastCodexLimits, latestCodexQuota, mergeQuotas, readCodex, sameAccount } from '../server/utils/quotas'
 
 describe('quotas', () => {
   it('reads the quotas from Claude Code\'s status line', () => {
@@ -238,5 +238,36 @@ describe('quotas Codex par compte', () => {
     expect(q.account).toBe('bbbbbbbbbbbbbbbb')
     expect(q.five!.used).toBe(7)
     expect(machineCodexQuota([])).toBeNull()
+  })
+})
+
+describe('Codex week checked against /status', () => {
+  const now = new Date(2026, 9, 3, 10, 37).getTime()
+  const H = 3600000
+  // Last conversation: 10 h old, 88 % of the week used, reset in 17 h.
+  const stale: Quota = { five: { used: 30, resetsAt: now - 5 * H, minutes: 300 }, week: { used: 88, resetsAt: now + 17 * H, minutes: 10080 }, at: now - 10 * H }
+  it('regression: stale rollout + /status at 100 % after an early reset: the screen wins', () => {
+    const q = applyCodexScreen(stale, { left: 100, exact: true, resets: '10:33 on 10 Oct' }, now)
+    expect(q.week).toEqual({ used: 0, resetsAt: new Date(2026, 9, 10, 10, 33).getTime(), minutes: 10080 })
+    expect(q.five).toBe(stale.five)
+    expect(q.at).toBe(stale.at) // age of the conversations kept
+  })
+  it('same window: the higher usage wins', () => {
+    const at = new Date(now + 17 * H)
+    const resets = `${at.getHours()}:${String(at.getMinutes()).padStart(2, '0')} on ${at.getDate()} Oct`
+    expect(applyCodexScreen(stale, { left: 5, exact: true, resets }, now).week).toMatchObject({ used: 95, resetsAt: stale.week!.resetsAt })
+    expect(applyCodexScreen(stale, { left: 40, exact: true, resets }, now)).toBe(stale)
+  })
+  it('expired window: left as is (shown renewed), unless /status gives the new one', () => {
+    const expired = { ...stale, week: { ...stale.week!, resetsAt: now - H } }
+    expect(applyCodexScreen(expired, null, now)).toBe(expired)
+    expect(applyCodexScreen(expired, { left: 12, exact: true }, now)).toBe(expired)
+    expect(applyCodexScreen(expired, { left: 97, exact: true, resets: '10:33 on 10 Oct' }, now).week).toMatchObject({ used: 3 })
+  })
+  it('normal case unchanged: no screen, footer gauge, older /status', () => {
+    expect(applyCodexScreen(stale, null, now)).toBe(stale)
+    expect(applyCodexScreen(stale, { left: 60, exact: true }, now)).toBe(stale)
+    expect(applyCodexScreen(stale, { left: 20, exact: false }, now)).toBe(stale)
+    expect(applyCodexScreen(stale, { left: 90, exact: true, resets: '10:33 on 26 Sep' }, now)).toBe(stale)
   })
 })

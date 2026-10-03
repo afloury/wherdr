@@ -5,12 +5,15 @@
 // The update runs Codex's known official command on the agent's machine
 // (`sh -s` over SSH, or locally when its home is writable), never text typed
 // into the Codex TUI nor a command read from the screen.
+// The weekly reading of the screens (`/status`) also feeds the home gauge
+// (screenWeek, server/utils/quotas.ts): every Codex pane of the machine is
+// read for it, at most every SCREEN_MS, shown on a device or not.
 import fs from 'node:fs'
 import path from 'node:path'
 import type { Pane } from '../../shared/types'
 import {
-  type CodexScreenInfo, type CodexStatus, type CodexUpdateJob,
-  type WeekReading, codexUpdateState, codexWeekly, parseCliVersion, parseCodexScreen, parsePackageVersion,
+  type CodexScreenInfo, type CodexScreenWeekly, type CodexStatus, type CodexUpdateJob,
+  type WeekReading, codexUpdateState, codexWeekly, latestScreenWeek, parseCliVersion, parseCodexScreen, parsePackageVersion,
   parseVersionFile, rolloutCliVersion, runningVersion, updateScript,
 } from '../../shared/codexStatus'
 import type { ExecResult, MachineFs } from './fsx'
@@ -19,6 +22,9 @@ import { codexQuota, lastCodexLimits, readCodex } from './quotas'
 
 const STATUS_MS = 10000
 const FILES_MS = 60000
+const SCREEN_MS = 30000
+// Codex panes read per machine for the home gauge.
+const SCREEN_MAX = 8
 const UPDATE_TIMEOUT_MS = 5 * 60000
 // A finished update stays known this long (installed version, failure shown).
 const JOB_TTL_MS = 6 * 3600000
@@ -57,6 +63,8 @@ export function createCodexStatus(d: CodexStatusDeps) {
   const why = new Map<string, string>()
   const rollouts = new Map<string, RolloutInfo>()
   const jobs = new Map<string, Job>()
+  // Last weekly reading on each Codex screen (pane id), for the home gauge.
+  const screens = new Map<string, { key: string, weekly?: CodexScreenWeekly, at: number }>()
 
   async function machineFiles(m: CodexMachine): Promise<MachineFiles> {
     const old = files.get(m.key)
@@ -126,6 +134,7 @@ export function createCodexStatus(d: CodexStatusDeps) {
       d.rolloutOf(p).catch(() => null),
     ])
     const screen: CodexScreenInfo = parseCodexScreen(screenText)
+    if (!screenError) screens.set(p.id, { key: m.key, weekly: screen.weekly, at: now() })
     const ro = await rolloutInfo(m, file)
     const job = publicJob(jobOf(m.key))
     const running = runningVersion({ rollout: ro?.version ?? null, screen })
@@ -221,7 +230,23 @@ export function createCodexStatus(d: CodexStatusDeps) {
     d.onChange()
   }
 
-  return { statusOf, forget, startUpdate, dismiss, compute }
+  // Latest `/status` weekly reading on the Codex screens of a machine (key),
+  // among `panes` (all the panes known: those of other machines and other
+  // agents are skipped). Screens not read for SCREEN_MS are read again.
+  async function screenWeek(key: string, panes: Pane[]): Promise<CodexScreenWeekly | null> {
+    const mine = panes.filter(p => p.agent === 'codex' && d.machineOf(p.id)?.key === key).slice(0, SCREEN_MAX)
+    const ids = new Set(mine.map(p => p.id))
+    for (const [id, s] of screens) if (s.key === key && !ids.has(id)) screens.delete(id)
+    await Promise.all(mine.map(async (p) => {
+      const old = screens.get(p.id)
+      if (old && now() - old.at < SCREEN_MS) return
+      try { screens.set(p.id, { key, weekly: parseCodexScreen(await d.readScreen(p.id)).weekly, at: now() }) }
+      catch { /* unreadable: keep the previous reading */ }
+    }))
+    return latestScreenWeek([...screens.values()].filter(s => s.key === key), now())?.weekly ?? null
+  }
+
+  return { statusOf, forget, startUpdate, dismiss, compute, screenWeek }
 }
 
 export type CodexStatusService = ReturnType<typeof createCodexStatus>
