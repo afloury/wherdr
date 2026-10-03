@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterByName, folderLabels } from '../app/utils/dirFilter'
+import { filterByName, folderLabels, projectFolderHint } from '../app/utils/dirFilter'
 
 const id = (s: string) => s
 
@@ -36,5 +36,32 @@ describe('folderLabels', () => {
   it('adds the parent folder to names shared by several folders', () => {
     const dirs = ['~/Projects/acme/kyc-service', '~/wherdr', '~/Projects/acme-cap3-worktrees/kyc-service']
     expect(folderLabels(dirs)).toEqual(['acme/kyc-service', 'wherdr', 'acme-cap3-worktrees/kyc-service'])
+  })
+
+  it('suffixes a herdr-projects project folder that shares its name with its repository', () => {
+    const dirs = ['~/.herdr-projects/acme', '~/code/acme', '~/notes']
+    expect(folderLabels(dirs, ['project', undefined, undefined])).toEqual(['acme · project', 'acme', 'notes'])
+    expect(folderLabels(dirs, ['project'], ' · projet')[0]).toBe('acme · projet')
+  })
+
+  it('leaves a project folder with a unique name as is', () => {
+    expect(folderLabels(['~/.herdr-projects/acme', '~/code/portal'], ['project'])).toEqual(['acme', 'portal'])
+  })
+
+  it('still adds the parent within each group of same-named folders', () => {
+    const dirs = ['~/.herdr-projects/acme', '~/code/acme', '~/wt/acme', '~/other-root/acme']
+    expect(folderLabels(dirs, ['project', undefined, undefined, 'project']))
+      .toEqual(['.herdr-projects/acme · project', 'code/acme', 'wt/acme', 'other-root/acme · project'])
+  })
+
+  it('does not suffix thread folders', () => {
+    expect(folderLabels(['~/.herdr-projects/acme/threads/t-0001', '~/x/t-0001'], ['thread'])).toEqual(['threads/t-0001', 'x/t-0001'])
+  })
+})
+
+describe('projectFolderHint', () => {
+  it('says the folder is not the repository', () => {
+    expect(projectFolderHint('project')).toMatch(/project folder \(coordinator\) — not the repository|pas le dépôt/)
+    expect(projectFolderHint('thread')).toMatch(/thread folder — not the repository|pas le dépôt/)
   })
 })

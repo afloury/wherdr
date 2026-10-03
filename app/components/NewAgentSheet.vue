@@ -9,6 +9,7 @@
 // machine nor worktree.
 // On the phone it opens full screen, Launch pinned at the bottom.
 import type { MachineConfig } from '#shared/types'
+import type { ProjectFolderKind } from '#shared/projectFolders'
 import { machineOf } from '#shared/ids'
 import { splitPreview } from '#shared/layout'
 import { selectedAgentKind, visibleAgentKinds } from '~/utils/agentChoices'
@@ -71,6 +72,12 @@ const machineCfg = computed(() => (machineList.value ? machineList.value.find(m 
 const online = machineOnline
 const home = computed(() => (machineCfg.value ? machineCfg.value.home : appConfig.value.home))
 const recents = computed(() => (machineCfg.value ? machineCfg.value.dirs : appConfig.value.dirs) || [])
+// herdr-projects folders: those among the recent ones, plus the chosen folder (/api/isgit).
+const dirKind = ref<{ dir: string, kind: ProjectFolderKind } | null>(null)
+const dirKinds = computed(() => {
+  const known = (machineCfg.value ? machineCfg.value.projectDirs : appConfig.value.projectDirs) || {}
+  return dirKind.value ? { ...known, [dirKind.value.dir]: dirKind.value.kind } : known
+})
 const qMachine = () => (machine.value ? `&machine=${encodeURIComponent(machine.value)}` : '')
 
 function syncKind() {
@@ -128,8 +135,11 @@ watch(dir, async (d) => {
   gitFor = d
   isGit.value = false
   try {
-    const r = await api<{ git: boolean }>(`/api/isgit?path=${encodeURIComponent(d)}${qMachine()}`)
-    if (gitFor === d) isGit.value = r.git
+    const r = await api<{ git: boolean, project?: ProjectFolderKind }>(`/api/isgit?path=${encodeURIComponent(d)}${qMachine()}`)
+    if (gitFor === d) {
+      isGit.value = r.git
+      dirKind.value = r.project ? { dir: d, kind: r.project } : null
+    }
   } catch { /* no repository */ }
   if (!isGit.value) {
     worktree.value = false
@@ -254,7 +264,7 @@ async function launch() {
       </div>
 
       <label class="field-label">{{ t('Folder') }}</label>
-      <DirField :key="machine" v-model="dir" :recents="recents" @browse="browsing = true" />
+      <DirField :key="machine" v-model="dir" :recents="recents" :kinds="dirKinds" @browse="browsing = true" />
 
       <label v-if="isGit && !fixedMachine" class="toggle-row">
         <span><b>{{ t('Separate worktree') }}</b><small>{{ t('new branch, leaves the original folder untouched') }}</small></span>

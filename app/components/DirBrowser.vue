@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Folder browser of a machine, under its HOME: parent, subfolders
-// (Git repositories marked), then "Choose this folder" (`choose`) or `cancel`.
+// (Git repositories and herdr-projects folders marked), then "Choose this folder" (`choose`) or `cancel`.
 // At the top, the current path is editable: paste/type a path + Enter opens it.
 // Past 8 subfolders, a field filters them by name; Enter opens the first match.
 import type { DirListing } from '#shared/types'
@@ -95,7 +95,8 @@ function openFirst() {
       <p v-else-if="listError" class="form-error">{{ listError }}</p>
       <template v-else-if="listing">
         <button v-for="d in subdirs" :key="d.path" type="button" @click="browse(d.path)">
-          <UIcon name="i-lucide-folder" /><span>{{ d.name }}</span><span v-if="d.git" class="git">git</span>
+          <UIcon :name="d.project ? 'i-lucide-folder-kanban' : 'i-lucide-folder'" /><span>{{ d.name }}</span>
+          <ProjectFolderMark v-if="d.project" :kind="d.project" /><span v-if="d.git" class="git">git</span>
         </button>
         <p v-if="!listing.dirs.length" class="muted" style="padding:16px 8px">{{ t('No subfolders.') }}</p>
         <p v-else-if="!subdirs.length" class="muted" role="status" style="padding:16px 8px">{{ tl('No matching subfolder.', 'Aucun sous-dossier correspondant.') }}</p>
