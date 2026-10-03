@@ -96,8 +96,9 @@ Claude Code, Codex and other product names are trademarks of their respective ow
   field with an **Update** button (runs Codex's official update command on that machine, after
   confirmation), then **Restart to update** on the same conversation. When wherdr cannot run it
   (Docker, read-only home), Update exits Codex, runs the command in the agent's own terminal and
-  resumes the same conversation (only while Codex is idle). A warning shows when 25 % or less of
-  the weekly limit is left.
+  resumes the same conversation (only while Codex is idle). Codex's own weekly-limit warning
+  (its footer gauge, or its startup heads-up) is repeated above the field, with its values, while
+  Codex shows it.
 - **Model and effort pickers** for Claude Code, Codex and omp (omp: its
   "Switch Model" selector, `/switch` or `/model`). Changes apply **to the
   current session only**; wherdr never changes your default model.

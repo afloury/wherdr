@@ -3,7 +3,7 @@
 // machine (the real installer never runs here).
 import { describe, expect, it, vi } from 'vitest'
 import {
-  CODEX_STANDALONE_COMMAND, type KnownWeek, codexUpdateState, codexWeekWindow, codexWeekly, knownUpdateCommand, loadKnownWeeks,
+  CODEX_STANDALONE_COMMAND, type KnownWeek, codexUpdateState, codexWeekWindow, codexWeeklyWarning, knownUpdateCommand, loadKnownWeeks,
   parseCliVersion, parseCodexScreen, parsePackageVersion, parseResetTime, parseVersionFile, rememberWeek, rolloutCliVersion, runningVersion,
   updateScript, weekFromScreen,
 } from '../shared/codexStatus'
@@ -193,37 +193,40 @@ describe('parseResetTime', () => {
   })
 })
 
-describe('codexWeekly', () => {
-  const now = new Date(2026, 9, 3, 10, 37).getTime()
-  const H = 3600000
-  const old = { used: 88, resetsAt: now + 17 * H, at: now - 10 * H }
-  it('warns at 25 % left or less, from the structured reading first', () => {
-    expect(codexWeekly({ week: old, screen: { left: 30, exact: false }, now })).toEqual({ left: 12, resetsAt: old.resetsAt, source: 'rollout' })
-    expect(codexWeekly({ week: { ...old, used: 60 }, screen: { left: 12, exact: true }, now })).toBeNull()
+describe('codexWeeklyWarning (mirrors the screen)', () => {
+  it("copies the footer gauge's value verbatim", () => {
+    expect(codexWeeklyWarning(SCREEN)).toEqual({ left: 12, lessThan: false })
+    expect(codexWeeklyWarning('› Ask Codex to do anything\n\n   ⚠ weekly limit: 3% left · /status\n  gpt-5.5 medium · ~/demo')).toEqual({ left: 3, lessThan: false })
   })
-  it('uses the screen only without structured reading', () => {
-    expect(codexWeekly({ week: null, screen: { left: 20, exact: false }, now })).toEqual({ left: 20, resetsAt: null, source: 'screen' })
+  it('copies the heads-up bound verbatim when no gauge is shown', () => {
+    const s = `  >_ OpenAI Codex (v0.159.1)
+⚠ Heads up, you have less than 10% of your weekly limit left. Run /status for a breakdown.
+› Ask Codex to do anything`
+    expect(codexWeeklyWarning(s)).toEqual({ left: 10, lessThan: true })
   })
-  it('hides an expired reading, even with the startup heads-up still on screen', () => {
-    expect(codexWeekly({ week: { ...old, resetsAt: now - 1 }, screen: { left: 25, exact: false }, now })).toBeNull()
+  it('nothing on screen: no warning, whatever was shown before', () => {
+    expect(codexWeeklyWarning('› Ask Codex to do anything\n  gpt-5.5 medium · ~/demo')).toBeNull()
+    expect(codexWeeklyWarning('')).toBeNull()
+    expect(codexWeeklyWarning(null)).toBeNull()
   })
-  it('regression: /status shows a later window (early reset): hidden', () => {
-    const screen = parseCodexScreen(STATUS_SCREEN).weekly
-    expect(codexWeekly({ week: old, screen, now })).toBeNull()
+  it('regression: a heads-up from before a restart or a /status is not current', () => {
+    // Heads-up printed at the previous start, then Codex restarted (new header).
+    const restarted = `⚠ Heads up, you have less than 25% of your weekly limit left. Run /status for a breakdown.
+› hello
+  >_ OpenAI Codex (v0.160.0)
+› Ask Codex to do anything`
+    expect(codexWeeklyWarning(restarted)).toBeNull()
+    // /status after the heads-up shows the up-to-date usage (100 % left).
+    expect(codexWeeklyWarning(STATUS_SCREEN)).toBeNull()
   })
-  it('keeps the rollout over a /status from an earlier window', () => {
-    const screen = { left: 90, exact: true, resets: '10:33 on 26 Sep' }
-    expect(codexWeekly({ week: old, screen, now })).toMatchObject({ left: 12, source: 'rollout' })
+  it("a /status card's bar is a reading, not a warning", () => {
+    expect(codexWeeklyWarning(`/status
+  Weekly limit:        [██░░░░░░░░░░░░░░░░░░] 12% left (resets 10:33 on 10 Oct)
+› Ask Codex to do anything`)).toBeNull()
   })
-  it('same window: the higher usage wins', () => {
-    const at = new Date(now + 17 * H)
-    const resets = `${at.getHours()}:${String(at.getMinutes()).padStart(2, '0')} on ${at.getDate()} Oct`
-    expect(codexWeekly({ week: { ...old, used: 70 }, screen: { left: 8, exact: true, resets }, now })).toMatchObject({ left: 8, source: 'rollout', resetsAt: old.resetsAt })
-  })
-  it('takes the freshest structured reading of the machine', () => {
-    const fresh = { used: 0, resetsAt: now + 160 * H, at: now - H }
-    expect(codexWeekly({ week: old, machine: fresh, now })).toBeNull()
-    expect(codexWeekly({ week: { ...old, at: now }, machine: fresh, now })).toMatchObject({ left: 12 })
+  it('a gauge text far above the footer (scrollback) is not the footer', () => {
+    const lines = ['• weekly limit: 12% left', ...Array.from({ length: 10 }, (_, i) => `• line ${i}`), '› Ask Codex to do anything']
+    expect(codexWeeklyWarning(lines.join('\n'))).toBeNull()
   })
 })
 
@@ -251,24 +254,22 @@ describe('known weekly window (survives restarts)', () => {
   // `/status` read before Codex restarted: early reset, 100 % left until 10 Oct.
   const fresh: KnownWeek = { used: 0, resetsAt: new Date(2026, 9, 10, 10, 33).getTime(), at: now - H, source: 'screen' }
 
-  it('regression: stale rollout + remembered /status window: no alert after the restart', () => {
-    // The new Codex screen has no /status any more, only its footer gauge.
-    expect(codexWeekly({ week: stale, screen: { left: 12, exact: true }, known: fresh, now })).toBeNull()
+  it('regression: stale rollout + remembered /status window: the gauge stays full after the restart', () => {
     expect(codexWeekWindow({ week: stale, known: fresh, now })).toEqual({ left: 100, resetsAt: fresh.resetsAt, source: 'screen' })
   })
-  it('a genuinely new low reading in the known window still warns', () => {
+  it('a genuinely new low reading in the known window is kept', () => {
     const low = { used: 81, resetsAt: fresh.resetsAt + 2 * 60000, at: now }
-    expect(codexWeekly({ week: low, known: fresh, now })).toEqual({ left: 19, resetsAt: low.resetsAt, source: 'rollout' })
+    expect(codexWeekWindow({ week: low, known: fresh, now })).toEqual({ left: 19, resetsAt: low.resetsAt, source: 'rollout' })
     // Same window remembered with more usage than the rollout: the higher usage.
-    expect(codexWeekly({ week: { ...low, used: 40 }, known: { ...fresh, used: 85 }, now })).toMatchObject({ left: 15, source: 'rollout' })
+    expect(codexWeekWindow({ week: { ...low, used: 40 }, known: { ...fresh, used: 85 }, now })).toMatchObject({ left: 15, source: 'rollout' })
   })
   it('a later structured window beats an older remembered one', () => {
     const next = { used: 90, resetsAt: fresh.resetsAt + 7 * 24 * H, at: now }
-    expect(codexWeekly({ week: next, known: fresh, now })).toMatchObject({ left: 10, source: 'rollout' })
+    expect(codexWeekWindow({ week: next, known: fresh, now })).toMatchObject({ left: 10, source: 'rollout' })
   })
   it("ignores another account's window and an expired one", () => {
-    expect(codexWeekly({ week: { ...stale, account: 'aaaa' }, known: { ...fresh, account: 'bbbb' }, now })).toMatchObject({ left: 12 })
-    expect(codexWeekly({ week: stale, known: { ...fresh, resetsAt: now - 1 }, now })).toMatchObject({ left: 12 })
+    expect(codexWeekWindow({ week: { ...stale, account: 'aaaa' }, known: { ...fresh, account: 'bbbb' }, now })).toMatchObject({ left: 12 })
+    expect(codexWeekWindow({ week: stale, known: { ...fresh, resetsAt: now - 1 }, now })).toMatchObject({ left: 12 })
   })
 
   it('rememberWeek keeps the latest window, and the higher usage within it', () => {
@@ -366,7 +367,8 @@ describe('Codex status service', () => {
     const { svc, pane } = setup()
     const st = await svc.compute(pane)
     expect(st?.update).toMatchObject({ state: 'available', latest: '0.160.0', current: '0.159.1', runnable: true })
-    expect(st?.weekly).toMatchObject({ left: 10, source: 'rollout' })
+    // The screen's 12 %, not the rollout's 10 %.
+    expect(st?.weekly).toEqual({ left: 12, lessThan: false })
   })
 
   it('regression: banner for a 0.159.1 TUI behind a 0.160.0 daemon, no stale weekly alert', async () => {
@@ -375,7 +377,7 @@ describe('Codex status service', () => {
     expect(st?.update).toMatchObject({ state: 'available', latest: '0.160.0', current: '0.159.1' })
     expect(st?.weekly).toBeUndefined()
     expect(log).toHaveBeenCalledOnce()
-    expect(log.mock.calls[0]![0]).toMatch(/running=0\.159\.1 \(screen 0\.159\.1, rollout 0\.160\.0\).*-> available.*-> no warning/)
+    expect(log.mock.calls[0]![0]).toMatch(/running=0\.159\.1 \(screen 0\.159\.1, rollout 0\.160\.0\).*-> available.*-> no weekly warning on screen/)
     await svc.compute(pane)
     expect(log).toHaveBeenCalledOnce() // only logged when the decision changes
   })
@@ -425,7 +427,8 @@ describe('Codex status service', () => {
   })
 
   it('reads every Codex screen of the machine for the home gauge', async () => {
-    const o = { screen: RESET_SCREEN as string }
+    const saved: Record<string, KnownWeek>[] = []
+    const o = { screen: RESET_SCREEN as string, saveWeeks: (w: Record<string, KnownWeek>) => { saved.push(w) } }
     const { svc, pane, tick } = setup(o)
     const other = { id: 'w1:p2', agent: 'claude', status: 'idle' } as Pane
     expect(await svc.knownWeek('mac', [pane, other])).toMatchObject({ used: 0, resetsAt: RESET_AT, source: 'screen' })
@@ -435,37 +438,30 @@ describe('Codex status service', () => {
     tick(60000)
     const rolled = { used: 90, resetsAt: Date.parse('2026-01-02T10:00:00Z'), at: Date.parse('2026-01-01T10:00:00Z') }
     expect(await svc.knownWeek('mac', [], rolled)).toMatchObject({ used: 0, resetsAt: RESET_AT })
+    // Saved to data/ and read back after a wherdr restart.
+    expect(saved.at(-1)).toEqual({ mac: expect.objectContaining({ used: 0, resetsAt: RESET_AT, source: 'screen' }) })
+    const after = setup({ screen: SCREEN, loadWeeks: () => JSON.parse(JSON.stringify(saved.at(-1))) })
+    after.tick(120000)
+    expect(await after.svc.knownWeek('mac', [], rolled)).toMatchObject({ used: 0, resetsAt: RESET_AT })
   })
 
-  it('regression: no stale weekly alert after Codex or wherdr restarts', async () => {
-    const saved: Record<string, KnownWeek>[] = []
-    const o = { screen: RESET_SCREEN as string, saveWeeks: (w: Record<string, KnownWeek>) => { saved.push(w) } }
+  it('the warning follows the screen: shown, gone, back as Codex shows it', async () => {
+    const o: { screen: string | Error } = { screen: SCREEN }
     const { svc, pane, tick } = setup(o)
-    expect((await svc.compute(pane))?.weekly).toBeUndefined()
-    expect(saved.at(-1)).toEqual({ mac: expect.objectContaining({ used: 0, resetsAt: RESET_AT, source: 'screen' }) })
-    // Codex restarted (update + resume): the new screen only has the footer gauge.
-    o.screen = SCREEN
+    expect((await svc.compute(pane))?.weekly).toEqual({ left: 12, lessThan: false })
+    // Codex no longer shows it (here: /status after an early reset), even
+    // though the rollout still says 10 % left.
+    o.screen = RESET_SCREEN
     tick(60000)
     expect((await svc.compute(pane))?.weekly).toBeUndefined()
-    // wherdr restarted: the window is read back from data/.
-    const file = JSON.parse(JSON.stringify(saved.at(-1)))
-    const after = setup({ screen: SCREEN, loadWeeks: () => file })
-    after.tick(120000)
-    expect((await after.svc.compute(after.pane))?.weekly).toBeUndefined()
-    // Without that memory, the stale rollout would warn.
-    const blank = setup({ screen: SCREEN })
-    expect((await blank.svc.compute(blank.pane))?.weekly).toMatchObject({ left: 10, source: 'rollout' })
-  })
-
-  it('a genuinely new low reading in the known window still warns', async () => {
-    const o = { screen: RESET_SCREEN as string }
-    const { svc, pane, files, tick } = setup(o)
-    await svc.compute(pane)
-    o.screen = SCREEN
-    tick(3600000)
-    const ts = '2026-01-01T11:00:00Z'
-    files[ROLLOUT] += `{"timestamp":"${ts}","type":"event_msg","payload":{"type":"token_count","rate_limits":{"secondary":{"used_percent":82,"window_minutes":10080,"resets_at":${RESET_AT / 1000 + 60}}}}}\n`
-    expect((await svc.compute(pane))?.weekly).toMatchObject({ left: 18, source: 'rollout' })
+    // Codex restarted: only its startup heads-up.
+    o.screen = '  >_ OpenAI Codex (v0.160.0)\n⚠ Heads up, you have less than 5% of your weekly limit left. Run /status for a breakdown.\n› Ask Codex to do anything'
+    tick(60000)
+    expect((await svc.compute(pane))?.weekly).toEqual({ left: 5, lessThan: true })
+    // A screen that cannot be read for a moment keeps the last warning.
+    o.screen = new Error('timeout')
+    tick(60000)
+    expect((await svc.compute(pane))?.weekly).toEqual({ left: 5, lessThan: true })
   })
 
   it('refuses a second update while one runs', async () => {

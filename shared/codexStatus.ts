@@ -8,12 +8,11 @@
 //    daily check, `dismissed_version` when the user skipped it in Codex);
 //  - installed version: ~/.codex/packages/standalone/current/codex-package.json
 //    (standalone installer), or the result of an update run by wherdr;
-//  - weekly limit: the most recent `rate_limits` (agent's rollout or another
-//    conversation of the machine), checked against `/status` on screen; the
-//    home gauge (server/utils/quotas.ts) uses the same rule.
-// The screen otherwise only fills the gaps (the update command it suggests,
-// the warning line). A command read from the screen is
-// never run as is: only the known official commands below can be run.
+//  - weekly-limit warning: only what Codex's screen shows right now
+//    (codexWeeklyWarning), nothing computed from its files.
+// The screen otherwise only fills the gaps (the update command it suggests).
+// A command read from the screen is never run as is: only the known official
+// commands below can be run.
 import { compareVersions, parseVersion } from './updates'
 
 export const CODEX_RELEASE_NOTES = 'https://github.com/openai/codex/releases/latest'
@@ -29,9 +28,6 @@ const KNOWN_COMMANDS = [
   'brew upgrade --cask codex',
   'brew upgrade codex',
 ]
-// Warning threshold of Codex itself ("less than 25% of your weekly limit left").
-export const WEEKLY_WARN_LEFT = 25
-
 const norm = (s: string) => s.trim().replace(/\s+/g, ' ')
 
 // The known command `text` is (spacing aside), or null: anything else
@@ -100,6 +96,37 @@ export function parseCodexScreen(text: string | null | undefined): CodexScreenIn
 }
 const clampPct = (n: number) => Math.max(0, Math.min(100, n))
 
+// Lines from the bottom of the screen that hold Codex's footer.
+const FOOTER_LINES = 6
+const FOOTER_GAUGE_RE = /weekly limit:?\s*(\d{1,3})\s*%\s*left/i
+
+// Weekly-limit warning Codex shows right now, with its own values, or null:
+//  - the footer gauge ("⚠ weekly limit: 12% left · /status"), in the last
+//    lines of the screen (Codex redraws its footer there; not the bar of a
+//    `/status` card, which is a reading, not a warning);
+//  - the heads-up ("Heads up, you have less than 25% of your weekly limit
+//    left"), only after the last "OpenAI Codex (v…)" header: one is printed
+//    when Codex starts (a heads-up above it is from before a restart) and by
+//    `/status` (which shows the up-to-date usage instead).
+// The gauge wins over the heads-up. Nothing on screen: no warning.
+export function codexWeeklyWarning(text: string | null | undefined): CodexWeekly | null {
+  if (!text) return null
+  const lines = text.split('\n').map(l => l.replace(/^[\s│┃]+|[\s│┃]+$/g, ''))
+  const filled = lines.filter(Boolean)
+  for (const l of filled.slice(-FOOTER_LINES).reverse()) {
+    if (l.includes('[') || /\(resets\b/i.test(l)) continue
+    const g = FOOTER_GAUGE_RE.exec(l)
+    if (g) return { left: clampPct(Number(g[1])), lessThan: false }
+  }
+  let start = 0
+  lines.forEach((l, i) => { if (HEADER_RE.test(l)) start = i + 1 })
+  for (let i = lines.length - 1; i >= start; i--) {
+    const hu = WEEK_LESS_RE.exec(lines[i]!)
+    if (hu) return { left: clampPct(Number(hu[1])), lessThan: true }
+  }
+  return null
+}
+
 // ~/.codex/version.json: { latest_version, last_checked_at, dismissed_version }.
 export function parseVersionFile(text: string | null | undefined): { latest: string | null, dismissed: string | null } {
   try {
@@ -156,7 +183,9 @@ export interface CodexUpdate {
   job?: CodexUpdateJob
 }
 
-export interface CodexWeekly { left: number, resetsAt: number | null, source: 'rollout' | 'screen' }
+// Weekly-limit warning, as Codex shows it: "weekly limit: 12% left" (footer
+// gauge) or "less than 25% of your weekly limit left" (heads-up, `lessThan`).
+export interface CodexWeekly { left: number, lessThan: boolean }
 export interface CodexStatus { update?: CodexUpdate, weekly?: CodexWeekly }
 
 const newest = (...vs: (string | null | undefined)[]) =>
@@ -243,7 +272,8 @@ export function parseResetTime(text: string | null | undefined, now: number): nu
   return t
 }
 
-// Current weekly window, from the most recent reading (whatever is left):
+// Current weekly window for the home gauge (server/utils/quotas.ts), from
+// the most recent reading (whatever is left):
 //  - structured: the freshest `rate_limits` (agent's rollout or the machine's
 //    newest conversation); a window whose reset is past has been renewed;
 //  - `/status` on screen, with its reset: a later window than the structured
@@ -256,14 +286,14 @@ export function parseResetTime(text: string | null | undefined, now: number): nu
 //    the new screen, its rollouts still carry the old window).
 //  - a gauge without reset, or the startup heads-up, only without structured data.
 // Null: nothing current (no reading, or an expired one nothing replaces).
-// Used by the conversation warning (codexWeekly) and the home gauge (quotas.ts).
+export interface WeekWindow { left: number, resetsAt: number | null, source: 'rollout' | 'screen' }
 export interface WeekInputs { week: WeekReading | null, machine?: WeekReading | null, screen?: CodexScreenWeekly, known?: KnownWeek | null, now: number }
-export function codexWeekWindow(o: WeekInputs): CodexWeekly | null {
+export function codexWeekWindow(o: WeekInputs): WeekWindow | null {
   const s = [o.week, o.machine].reduce<WeekReading | null>((a, b) => (!b ? a : !a || b.at > a.at ? b : a), null)
-  let out: CodexWeekly | null = null
+  let out: WeekWindow | null = null
   const expired = Boolean(s?.resetsAt && s.resetsAt <= o.now)
   if (s && !expired) out = { left: Math.round(Math.max(0, 100 - s.used)), resetsAt: s.resetsAt, source: 'rollout' }
-  const later = (left: number, resetsAt: number, source: CodexWeekly['source']) => {
+  const later = (left: number, resetsAt: number, source: WeekWindow['source']) => {
     if (!s || expired || !out || !out.resetsAt || resetsAt - out.resetsAt > SAME_WINDOW_MS) out = { left, resetsAt, source }
     else if (Math.abs(resetsAt - out.resetsAt) <= SAME_WINDOW_MS && left < out.left) out = { ...out, left }
   }
@@ -281,18 +311,12 @@ export function codexWeekWindow(o: WeekInputs): CodexWeekly | null {
   return out
 }
 
-// Weekly-limit warning (≤ 25 % left) of a conversation, see codexWeekWindow.
-export function codexWeekly(o: WeekInputs): CodexWeekly | null {
-  const out = codexWeekWindow(o)
-  return out && out.left <= WEEKLY_WARN_LEFT ? out : null
-}
-
 // Latest weekly window seen for a machine, from any source (rollout or
 // `/status` on screen): its reset, usage and when it was observed. Kept in
 // data/ (server/utils/codexStatus.ts) so that a restart of Codex (the
 // `/status` read leaves its screen) or of wherdr does not bring back an older
 // window whose rollouts still say "12 % left".
-export interface KnownWeek { used: number, resetsAt: number, at: number, source: CodexWeekly['source'], account?: string | null }
+export interface KnownWeek { used: number, resetsAt: number, at: number, source: WeekWindow['source'], account?: string | null }
 
 // `known` updated with a reading: a later window replaces it, an earlier one
 // is stale and ignored; the same window keeps the higher usage (it only
