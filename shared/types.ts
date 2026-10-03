@@ -52,7 +52,9 @@ export interface InteractiveMenu {
 
 // state: held until a menu closes (server side), or failed to send.
 // reason 'busy': held or not sent because the agent's input field held other text.
-export interface QueuedMessage { id: string, text: string, at?: number, state?: 'held' | 'failed', reason?: 'busy' }
+// 'no_input': not sent because the input field was not found on a screen
+// showing no recognized menu (see queued.ts NO_INPUT_MS).
+export interface QueuedMessage { id: string, text: string, at?: number, state?: 'held' | 'failed', reason?: 'busy' | 'no_input' }
 
 // Claude Code's screen while working (see server/utils/claudeScreen.ts): the
 // "!" command running, the last message sent, the messages

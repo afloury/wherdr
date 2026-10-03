@@ -24,7 +24,11 @@
 //   text alone: Enter is pressed once more. Our text with foreign text: our
 //   Enter was lost, same repair as above.
 // A "!" command switches Claude to bash mode: the field then reads "!" first
-// (see inputBox), so "! cmd" is checked like any other message.
+// (see inputBox), so "! cmd" is checked like any other message. Claude may
+// stay in bash mode, field empty ("!"), after a command ran: that field is
+// free. A "!" message is typed there without its "!"; any other message
+// first leaves bash mode with Backspace (checked on Claude Code 2.1.288; Esc
+// would interrupt a turn), the field must read empty, then it is typed.
 // Text the field shows in a way we cannot split exactly (a foreign paste
 // shown as "[Pasted text #2]"…) is never cleared: sent as it is, logged.
 import { HerdrError } from './herdr'
@@ -73,6 +77,9 @@ const MAX_FOREIGN = 5
 const PLACEHOLDER = /\[(?:Pasted text|Image) #\d+[^\]]*\]/g
 const PASTE_ONLY = /^\[Pasted text #\d+[^\]]*\]$/
 const compact = (s: string) => s.replace(/\s+/g, '')
+// Bash mode with nothing typed in it (see inputBox).
+export const BASH_EMPTY = '!'
+const isFree = (box: string) => !box || box === BASH_EMPTY
 const tidy = (s: string) => s.replace(/\s+/g, ' ').trim()
 
 export type BoxState =
@@ -130,7 +137,7 @@ async function settled(d: GuardDeps, o: Required<GuardOptions>): Promise<string 
 // `agent.prompt` shows its text ~200 ms after it starts, and Claude takes a
 // submitted message ~200 ms after its Enter; typing in either moment glues.
 // Text that stays longer than `freeWaitMs` (a draft) refuses the send.
-async function waitFree(d: GuardDeps, o: Required<GuardOptions>): Promise<void> {
+async function waitFree(d: GuardDeps, o: Required<GuardOptions>): Promise<string> {
   const now = d.now || Date.now
   const start = now()
   let emptySince: number | null = null
@@ -138,8 +145,8 @@ async function waitFree(d: GuardDeps, o: Required<GuardOptions>): Promise<void> 
     const box = await d.box()
     if (box === null) throw new HerdrError('no_input', 'Agent input field not found')
     const t = now()
-    emptySince = box ? null : emptySince ?? t
-    if (emptySince !== null && t - emptySince >= o.quietMs) return
+    emptySince = isFree(box) ? emptySince ?? t : null
+    if (emptySince !== null && t - emptySince >= o.quietMs) return box
     if (box && t - start >= o.freeWaitMs) throw new HerdrError('input_busy', 'The agent’s input contains text')
     await d.sleep(o.pollMs)
   }
@@ -147,18 +154,37 @@ async function waitFree(d: GuardDeps, o: Required<GuardOptions>): Promise<void> 
 
 // Empties the field and checks it stays empty. Text that shows up after the
 // clear is one more foreign message (kept when readable).
-async function clearField(d: GuardDeps, o: Required<GuardOptions>, lines: number, foreign: string[]): Promise<void> {
+async function clearField(d: GuardDeps, o: Required<GuardOptions>, lines: number, foreign: string[]): Promise<string> {
   for (let i = 0; i < MAX_ATTEMPTS; i++) {
     await d.keys(clearKeys(lines))
     await d.sleep(o.pollMs)
     const box = await settled(d, o)
     if (box === null) throw new HerdrError('no_input', 'Agent input field not found')
-    if (!box) return
+    if (isFree(box)) return box
     if (new RegExp(PLACEHOLDER.source).test(box)) throw new HerdrError('clear_failed', 'Agent input not cleared: check its terminal')
     foreign.push(tidy(box))
     lines = box.split('\n').length
   }
   throw new HerdrError('clear_failed', 'Agent input not cleared: check its terminal')
+}
+
+// What to type into a free field, ready for it: in an empty bash mode, a
+// "!" message without its "!"; any other message once bash mode is left.
+async function bashReady(d: GuardDeps, o: Required<GuardOptions>, text: string, field: string): Promise<string> {
+  if (field !== BASH_EMPTY) return text
+  let box: string | null
+  if (text.startsWith('!')) return text.slice(1)
+  d.log?.('input field left in bash mode: Backspace before typing')
+  await d.keys(['backspace'])
+  const start = (d.now || Date.now)()
+  while ((d.now || Date.now)() - start < o.showWaitMs) {
+    await d.sleep(o.pollMs)
+    box = await d.box()
+    if (box === '') return text
+    if (box === null) throw new HerdrError('no_input', 'Agent input field not found')
+    if (box !== BASH_EMPTY) throw new HerdrError('input_busy', 'The agent’s input contains text')
+  }
+  throw new HerdrError('bash_mode', 'The agent’s input stays in shell mode (!)')
 }
 
 // One message, typed and submitted alone. Foreign texts removed from the
@@ -177,21 +203,23 @@ async function sendOne(d: GuardDeps, text: string, o: Required<GuardOptions>, fo
     const o = compact(text)
     return (await d.sentSince(start).catch(() => [])).find(m => compact(m).includes(o)) ?? null
   }
+  // Free field as last read (empty, or bash mode left empty).
+  let field = ''
   // Foreign text separated, field cleared: unless another writer's Enter beat
   // us to it, in which case the glued message is out and nothing is typed again.
   const separate = async (box: string, parts: string[]): Promise<boolean> => {
     const before = foreign.length
     foreign.push(...parts)
-    await clearField(d, o, lines(box), foreign)
+    field = await clearField(d, o, lines(box), foreign)
     const m = await recorded()
     if (m === null) return false
     foreign.splice(before)
     log(`another writer submitted the field before it could be separated: ${JSON.stringify(m)}`)
     return true
   }
-  await waitFree(d, o)
+  field = await waitFree(d, o)
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    await d.type(text)
+    await d.type(await bashReady(d, o, text, field))
     // 1. Our text shown, alone.
     let state: BoxState = { kind: 'empty' }
     let box: string | null = ''
@@ -226,7 +254,7 @@ async function sendOne(d: GuardDeps, text: string, o: Required<GuardOptions>, fo
       await d.sleep(o.pollMs)
       box = await d.box()
       // Field gone (a menu, Claude redrawing) or emptied: taken.
-      if (!box) return
+      if (!box || box === BASH_EMPTY) return
       // What we submitted is still there as it was: not taken yet.
       const same = box === sent || (state.kind === 'exact' && classifyBox(box, text).kind === 'exact')
       if (!same) {

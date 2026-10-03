@@ -25,7 +25,7 @@ export const msgText = (t: string) => String(t || '').split('\n').filter(l => !i
 // "!" leaves the field and becomes its prompt ("!" + non-breaking space, pink
 // rules, "! for shell mode" below). The field then reads as the message that
 // was typed, "!" first: "! cmd" typed shows "!\u00a0 cmd" and reads "! cmd";
-// bash mode left empty reads "!" (not free: Enter there would not send ours).
+// bash mode left empty reads "!" (guardedSend.ts leaves it before a normal message).
 const ESC = String.fromCharCode(27)
 const DIM = new RegExp(`${ESC}\\[2m[^${ESC}]*`, 'g')
 const SGR = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, 'g')
