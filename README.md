@@ -124,7 +124,8 @@ Claude Code, Codex and other product names are trademarks of their respective ow
   - `Alt+Shift+arrows` swaps the current pane with its neighbour, `Ctrl/⌘+Alt+arrows` moves
     focus to the neighbouring pane in a side-by-side tab, `Esc` closes dialogs, `Enter` sends
     and `Shift+Enter` adds a new line. On a "Your turn" card, `1`–`9` pick an option (on AZERTY
-    without Shift too, outside the message field).
+    without Shift too, outside the message field); on the `/resume` card, `Ctrl+A` switches
+    between every project and the current one (`⌘A` still selects all on macOS).
 - **Project board** for [herdr-projects](#works-great-with-herdr-projects): coordinator and threads grouped
   under their project, and a side panel with the project's task lists (to test, to decide,
   to review, in progress, in queue, blocked, to do, backlog — each optional) and one-click

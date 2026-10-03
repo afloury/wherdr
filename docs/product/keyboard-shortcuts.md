@@ -45,6 +45,10 @@ These existing shortcuts are unchanged and listed in the help sheet:
 - In the composer: Enter, Shift+Enter, Tab and the slash menu keys.
 - In the terminal: Shift+Enter and the copy keys.
 - On a "Your turn" card: ↑ ↓ Enter Esc, 1–9 and ← →.
+- On an interactive menu card, the Ctrl+letters of its legend (/resume: Ctrl+A, all projects or
+  the current one) press the matching button. Ctrl on every platform, as in the terminal; ⌘A
+  keeps "select all" on macOS. Not taken in a field with text (select all), in the terminal
+  (it sends the key itself), or for Ctrl+W/N/T (the browser keeps them).
 - In the lightbox, conversation search and global search: their own keys.
 
 Where the keys are shown:
