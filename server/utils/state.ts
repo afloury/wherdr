@@ -32,7 +32,7 @@ import { currentModel, forgetModel, noteScreen } from './modelctl'
 import { type Machine, RemoteMachine, allMachines, getMachine, machineOfPane, machinesListed, multiMachine, onMachinesChange, remoteMachines } from './machines'
 import { READY_MAX_MS, serverReady } from '../../shared/stateReady'
 import { createCodexStatus, dirWritable } from './codexStatus'
-import { runLocal, setCodexScreenWeek } from './quotas'
+import { runLocal, setCodexKnownWeek } from './quotas'
 
 const fsp = fs.promises
 
@@ -223,6 +223,8 @@ function refreshOmpStatus(p: Pane) {
 }
 
 // Codex on screen: update notice and weekly-limit warning (see codexStatus.ts).
+const CODEX_WEEK_FILE = path.join(DATA_DIR, 'codex-week.json')
+let codexWeekWrite: Promise<unknown> = Promise.resolve()
 export const codexStatus = createCodexStatus({
   machineOf: (id) => {
     const m = machineOfPane(id)
@@ -240,8 +242,20 @@ export const codexStatus = createCodexStatus({
   writable: dirWritable,
   onChange: () => poll(),
   log,
+  // Latest Codex weekly window per machine, kept across restarts.
+  loadWeeks: () => {
+    try { return JSON.parse(fs.readFileSync(CODEX_WEEK_FILE, 'utf8')) } catch { return null }
+  },
+  saveWeeks: (weeks) => {
+    const text = JSON.stringify(weeks) + '\n'
+    // One write at a time, in order: the last one wins.
+    codexWeekWrite = codexWeekWrite
+      .then(() => fsp.mkdir(DATA_DIR, { recursive: true }))
+      .then(() => fsp.writeFile(CODEX_WEEK_FILE, text, { mode: 0o600 }))
+      .catch(() => {})
+  },
 })
-setCodexScreenWeek(key => codexStatus.screenWeek(key, state.panes))
+setCodexKnownWeek((key, rolled) => codexStatus.knownWeek(key, state.panes, rolled))
 
 // Agent model: same principle as the preview (background task). Re-read when
 // the state changes, and every 5 s (a simple stat if the transcript has

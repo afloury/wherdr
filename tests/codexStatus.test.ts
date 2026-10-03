@@ -3,8 +3,9 @@
 // machine (the real installer never runs here).
 import { describe, expect, it, vi } from 'vitest'
 import {
-  CODEX_STANDALONE_COMMAND, codexUpdateState, codexWeekWindow, codexWeekly, knownUpdateCommand, latestScreenWeek, parseCliVersion,
-  parseCodexScreen, parsePackageVersion, parseResetTime, parseVersionFile, rolloutCliVersion, runningVersion, updateScript,
+  CODEX_STANDALONE_COMMAND, type KnownWeek, codexUpdateState, codexWeekWindow, codexWeekly, knownUpdateCommand, loadKnownWeeks,
+  parseCliVersion, parseCodexScreen, parsePackageVersion, parseResetTime, parseVersionFile, rememberWeek, rolloutCliVersion, runningVersion,
+  updateScript, weekFromScreen,
 } from '../shared/codexStatus'
 import { type CodexMachine, createCodexStatus } from '../server/utils/codexStatus'
 import type { MachineFs } from '../server/utils/fsx'
@@ -242,27 +243,70 @@ describe('codexWeekWindow (home gauge)', () => {
   })
 })
 
-describe('latestScreenWeek', () => {
+describe('known weekly window (survives restarts)', () => {
   const now = new Date(2026, 9, 3, 10, 37).getTime()
-  it('takes the latest window, then the lowest share left in it', () => {
-    const a = { id: 'a', weekly: { left: 12, exact: true, resets: '9:00 on 5 Oct' } }
-    const b = { id: 'b', weekly: { left: 100, exact: true, resets: '10:33 on 10 Oct' } }
-    const c = { id: 'c', weekly: { left: 97, exact: true, resets: '10:34 on 10 Oct' } }
-    expect(latestScreenWeek([a, b], now)?.id).toBe('b')
-    expect(latestScreenWeek([b, a, c], now)?.id).toBe('c')
+  const H = 3600000
+  // Stale rollout: 12 % left, its window resets tomorrow at 03:46 (still to come).
+  const stale = { used: 88, resetsAt: new Date(2026, 9, 4, 3, 46).getTime(), at: now - 10 * H }
+  // `/status` read before Codex restarted: early reset, 100 % left until 10 Oct.
+  const fresh: KnownWeek = { used: 0, resetsAt: new Date(2026, 9, 10, 10, 33).getTime(), at: now - H, source: 'screen' }
+
+  it('regression: stale rollout + remembered /status window: no alert after the restart', () => {
+    // The new Codex screen has no /status any more, only its footer gauge.
+    expect(codexWeekly({ week: stale, screen: { left: 12, exact: true }, known: fresh, now })).toBeNull()
+    expect(codexWeekWindow({ week: stale, known: fresh, now })).toEqual({ left: 100, resetsAt: fresh.resetsAt, source: 'screen' })
   })
-  it('ignores footer gauges, heads-ups and past resets', () => {
-    const list = [
-      { weekly: { left: 12, exact: true } },
-      { weekly: { left: 20, exact: false } },
-      { weekly: { left: 90, exact: true, resets: '10:33 on 26 Sep' } },
-      {},
-    ]
-    expect(latestScreenWeek(list, now)).toBeNull()
+  it('a genuinely new low reading in the known window still warns', () => {
+    const low = { used: 81, resetsAt: fresh.resetsAt + 2 * 60000, at: now }
+    expect(codexWeekly({ week: low, known: fresh, now })).toEqual({ left: 19, resetsAt: low.resetsAt, source: 'rollout' })
+    // Same window remembered with more usage than the rollout: the higher usage.
+    expect(codexWeekly({ week: { ...low, used: 40 }, known: { ...fresh, used: 85 }, now })).toMatchObject({ left: 15, source: 'rollout' })
+  })
+  it('a later structured window beats an older remembered one', () => {
+    const next = { used: 90, resetsAt: fresh.resetsAt + 7 * 24 * H, at: now }
+    expect(codexWeekly({ week: next, known: fresh, now })).toMatchObject({ left: 10, source: 'rollout' })
+  })
+  it("ignores another account's window and an expired one", () => {
+    expect(codexWeekly({ week: { ...stale, account: 'aaaa' }, known: { ...fresh, account: 'bbbb' }, now })).toMatchObject({ left: 12 })
+    expect(codexWeekly({ week: stale, known: { ...fresh, resetsAt: now - 1 }, now })).toMatchObject({ left: 12 })
+  })
+
+  it('rememberWeek keeps the latest window, and the higher usage within it', () => {
+    const old = { ...stale, source: 'rollout' as const }
+    expect(rememberWeek(null, old, now)).toEqual(old)
+    expect(rememberWeek(old, fresh, now)).toEqual(fresh)
+    expect(rememberWeek(fresh, old, now)).toEqual(fresh) // stale even though its reset is to come
+    const later = { ...fresh, used: 7, resetsAt: fresh.resetsAt + 60000, at: now, source: 'rollout' as const }
+    expect(rememberWeek(fresh, later, now)).toMatchObject({ used: 7, resetsAt: later.resetsAt, at: now })
+    expect(rememberWeek(later, { ...fresh, at: now + 1 }, now)).toMatchObject({ used: 7, at: now + 1 })
+    expect(rememberWeek({ ...fresh, resetsAt: now - 1 }, null, now)).toBeNull()
+    expect(rememberWeek(fresh, { ...old, account: 'bbbb' }, now)).toEqual(fresh) // no fingerprint on the known one
+    expect(rememberWeek({ ...fresh, account: 'aaaa' }, { ...old, account: 'bbbb' }, now)).toMatchObject({ account: 'bbbb', used: 88 })
+  })
+  it('weekFromScreen: dated /status gauges only, no stale bare time', () => {
+    expect(weekFromScreen({ left: 100, exact: true, resets: '10:33 on 10 Oct' }, now)).toEqual({ ...fresh, at: now, account: null })
+    expect(weekFromScreen({ left: 12, exact: true }, now)).toBeNull()
+    expect(weekFromScreen({ left: 20, exact: false }, now)).toBeNull()
+    expect(weekFromScreen({ left: 50, exact: true, resets: '15:00' }, now)).toMatchObject({ used: 50, resetsAt: new Date(2026, 9, 3, 15, 0).getTime() })
+    // "03:46" read at 10:37: an old /status still in the scrollback.
+    expect(weekFromScreen({ left: 12, exact: true, resets: '03:46' }, now)).toBeNull()
+  })
+  it('loadKnownWeeks keeps well-formed, running windows', () => {
+    const raw = { a: fresh, b: { ...fresh, resetsAt: now - 1 }, c: { used: 'x' }, d: null, e: { ...fresh, source: 'other' } }
+    expect(loadKnownWeeks(raw, now)).toEqual([['a', { ...fresh, account: null }]])
+    expect(loadKnownWeeks(null, now)).toEqual([])
+    expect(loadKnownWeeks([fresh], now)).toEqual([])
   })
 })
 
 // ---------------------------------------------------------------- service
+// `/status` after an early weekly reset, in the service's clock (1 Jan 2026).
+const RESET_AT = new Date(2026, 0, 7, 10, 33).getTime()
+const RESET_SCREEN = `  >_ OpenAI Codex (v0.159.1)
+/status
+  Weekly limit:        [████████████████████] 100% left (resets 10:33 on 7 Jan)
+› Ask Codex to do anything
+`
 const HOME = '/home/demo'
 const ROLLOUT = `${HOME}/.codex/sessions/2026/01/01/rollout-demo.jsonl`
 function fakeFs(files: Record<string, string>): MachineFs {
@@ -279,7 +323,10 @@ function fakeFs(files: Record<string, string>): MachineFs {
   }
 }
 
-function setup(o: { local?: boolean, writable?: boolean, exitCode?: number, hang?: boolean, screen?: string | Error, cliVersion?: string } = {}) {
+function setup(o: {
+  local?: boolean, writable?: boolean, exitCode?: number, hang?: boolean, screen?: string | Error, cliVersion?: string
+  loadWeeks?: () => unknown, saveWeeks?: (w: Record<string, KnownWeek>) => void
+} = {}) {
   const ts = '2026-01-01T10:00:00Z'
   const files = {
     [`${HOME}/.codex/version.json`]: '{"latest_version":"0.160.0","dismissed_version":null}',
@@ -307,9 +354,11 @@ function setup(o: { local?: boolean, writable?: boolean, exitCode?: number, hang
     onChange: () => {},
     log,
     now: () => clock,
+    loadWeeks: o.loadWeeks,
+    saveWeeks: o.saveWeeks,
   })
   const pane = { id: 'w1:p1', agent: 'codex', status: 'idle', bornAt: 500 } as Pane
-  return { svc, pane, exec, runLocal, log, tick: (ms: number) => { clock += ms } }
+  return { svc, pane, exec, runLocal, log, files, tick: (ms: number) => { clock += ms } }
 }
 
 describe('Codex status service', () => {
@@ -376,12 +425,47 @@ describe('Codex status service', () => {
   })
 
   it('reads every Codex screen of the machine for the home gauge', async () => {
-    const { svc, pane, tick } = setup({ screen: STATUS_SCREEN })
+    const o = { screen: RESET_SCREEN as string }
+    const { svc, pane, tick } = setup(o)
     const other = { id: 'w1:p2', agent: 'claude', status: 'idle' } as Pane
-    expect(await svc.screenWeek('mac', [pane, other])).toEqual({ left: 100, exact: true, resets: '10:33 on 10 Oct' })
-    expect(await svc.screenWeek('pi', [pane])).toBeNull()
-    tick(1000)
-    expect(await svc.screenWeek('mac', [])).toBeNull() // pane gone: its reading too
+    expect(await svc.knownWeek('mac', [pane, other])).toMatchObject({ used: 0, resetsAt: RESET_AT, source: 'screen' })
+    expect(await svc.knownWeek('pi', [pane])).toBeNull()
+    // Screen gone (Codex restarted): the window stays known, a stale rollout does not undo it.
+    o.screen = SCREEN
+    tick(60000)
+    const rolled = { used: 90, resetsAt: Date.parse('2026-01-02T10:00:00Z'), at: Date.parse('2026-01-01T10:00:00Z') }
+    expect(await svc.knownWeek('mac', [], rolled)).toMatchObject({ used: 0, resetsAt: RESET_AT })
+  })
+
+  it('regression: no stale weekly alert after Codex or wherdr restarts', async () => {
+    const saved: Record<string, KnownWeek>[] = []
+    const o = { screen: RESET_SCREEN as string, saveWeeks: (w: Record<string, KnownWeek>) => { saved.push(w) } }
+    const { svc, pane, tick } = setup(o)
+    expect((await svc.compute(pane))?.weekly).toBeUndefined()
+    expect(saved.at(-1)).toEqual({ mac: expect.objectContaining({ used: 0, resetsAt: RESET_AT, source: 'screen' }) })
+    // Codex restarted (update + resume): the new screen only has the footer gauge.
+    o.screen = SCREEN
+    tick(60000)
+    expect((await svc.compute(pane))?.weekly).toBeUndefined()
+    // wherdr restarted: the window is read back from data/.
+    const file = JSON.parse(JSON.stringify(saved.at(-1)))
+    const after = setup({ screen: SCREEN, loadWeeks: () => file })
+    after.tick(120000)
+    expect((await after.svc.compute(after.pane))?.weekly).toBeUndefined()
+    // Without that memory, the stale rollout would warn.
+    const blank = setup({ screen: SCREEN })
+    expect((await blank.svc.compute(blank.pane))?.weekly).toMatchObject({ left: 10, source: 'rollout' })
+  })
+
+  it('a genuinely new low reading in the known window still warns', async () => {
+    const o = { screen: RESET_SCREEN as string }
+    const { svc, pane, files, tick } = setup(o)
+    await svc.compute(pane)
+    o.screen = SCREEN
+    tick(3600000)
+    const ts = '2026-01-01T11:00:00Z'
+    files[ROLLOUT] += `{"timestamp":"${ts}","type":"event_msg","payload":{"type":"token_count","rate_limits":{"secondary":{"used_percent":82,"window_minutes":10080,"resets_at":${RESET_AT / 1000 + 60}}}}}\n`
+    expect((await svc.compute(pane))?.weekly).toMatchObject({ left: 18, source: 'rollout' })
   })
 
   it('refuses a second update while one runs', async () => {
