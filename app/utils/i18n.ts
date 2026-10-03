@@ -20,6 +20,11 @@ const FR: Record<string, string> = {
   'Update': 'Mettre à jour', 'Codex update failed': 'Échec de la mise à jour de Codex',
   'Show Codex’s usage breakdown': 'Voir le détail de l’utilisation Codex',
   'Codex update already in progress': 'Mise à jour de Codex déjà en cours',
+  'Codex is working or waiting for an answer: update it once it is done': 'Codex travaille ou attend une réponse : mets-le à jour quand il a fini',
+  'Codex is not running in this pane': 'Codex ne tourne pas dans ce panneau',
+  'Codex was not started from a shell: quitting it would close the pane': 'Codex n’a pas été lancé depuis un shell : le quitter fermerait le panneau',
+  'Codex is showing a menu: answer it first': 'Codex affiche un menu : réponds-y d’abord',
+  'The update did not finish in 10 minutes: see the terminal': 'La mise à jour n’a pas fini en 10 minutes : regarde le terminal',
   'No Codex update to install': 'Aucune mise à jour de Codex à installer',
   'This update cannot be run from wherdr: copy the command': 'Cette mise à jour ne peut pas être lancée depuis wherdr : copie la commande',
   // Agent restart
