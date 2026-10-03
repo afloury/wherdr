@@ -4,6 +4,7 @@
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { pathCandidate } from '../../shared/filePaths'
+import { codeKind } from './codeKind'
 
 let hooked = false
 const cache = new Map<string, string>()
@@ -25,10 +26,13 @@ export function md(text: string): string {
             + `<pre><code${l ? ` class="language-${l}"` : ''}>${escHtml(text)}</code></pre></div>`
         },
         // Inline code that looks like a file path: a menu in the conversation
-        // (Reveal in Finder, Open, Copy path; see ChatView.vue).
+        // (Reveal in Finder, Open, Copy path; see ChatView.vue). Every span
+        // carries its kind (utils/codeKind.ts) for the terminal-style tints.
         codespan({ text }) {
           const code = escHtml(text)
-          return pathCandidate(text) ? `<code class="md-path" role="button" tabindex="0">${code}</code>` : `<code>${code}</code>`
+          const kind = codeKind(text)
+          const k = kind ? ` data-k="${kind}"` : ''
+          return pathCandidate(text) ? `<code class="md-path"${k} role="button" tabindex="0">${code}</code>` : `<code${k}>${code}</code>`
         },
       },
     })
