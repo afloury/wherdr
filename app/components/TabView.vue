@@ -12,6 +12,7 @@ import { type Divider, type DropSide, type TabLayout, dividers, dropPreview, dro
 import { longPress } from '~/utils/longPress'
 import { skipsPress } from '~/utils/headerMenu'
 import { cellFocusStep } from '~/utils/viewMode'
+import { tabRouteStatus } from '~/utils/tabRoute'
 
 const props = defineProps<{ tabId: string }>()
 const route = useRoute()
@@ -38,7 +39,7 @@ const graceOver = ref(false)
 const graceTimer = setTimeout(() => { graceOver.value = true }, 4000)
 onUnmounted(() => clearTimeout(graceTimer))
 watch(entry, (e) => { if (e) seen.value = true })
-const closed = computed(() => !entry.value && herdrState.value.ok && (seen.value || graceOver.value) && !isClosing(props.tabId))
+const closed = computed(() => tabRouteStatus(Boolean(entry.value), herdrState.value.ok, herdrState.value.ready !== false, graceOver.value, seen.value) === 'unavailable' && !isClosing(props.tabId))
 
 // Active cell (computer): the requested one (?pane=, coming from the agent view or
 // from a split, applied as soon as the pane appears in the state), otherwise the
@@ -288,9 +289,10 @@ function open(paneId: string) {
     <OfflineNote v-if="!desk && (netDown || offlineView)" :label="offlineView ? t('Last known state') : undefined" :at="cachedAt" />
     <div v-if="closed" class="chat-empty">
       <UIcon name="i-lucide-layout-panel-left" class="chat-empty-icon" />
-      <p>{{ t('This tab was closed.') }}</p>
+      <p>{{ t('This tab is unavailable.') }}</p>
       <UButton color="neutral" variant="outline" to="/">{{ t('Back') }}</UButton>
     </div>
+    <div v-else-if="!entry" class="chat-empty">{{ t('Loading…') }}</div>
     <div v-else-if="entry && desk" ref="area" class="split" :class="{ dragging: drag?.started, resizing: resizingPath != null }">
       <div
         v-for="b in boxes" :key="b.pane" class="split-box" :class="{ 'drag-src': drag?.started && drag.pane === b.pane }"

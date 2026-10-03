@@ -315,7 +315,8 @@ const FR: Record<string, string> = {
   'running': 'en cours', 'stopped': 'arrêtée', 'No sessions found.': 'Aucune session trouvée.',
   'Session unavailable: back to the default session': 'Session indisponible : retour à la session par défaut',
   // Spaces (workspaces, tabs, side-by-side panes)
-  'Tab': 'Onglet', 'Tabs': 'Onglets', 'This tab was closed.': 'Cet onglet a été fermé.',
+  'Tab': 'Onglet', 'Tabs': 'Onglets',
+  'This tab is unavailable.': 'Cet onglet est indisponible.',
   'Active pane in Herdr': 'Pane actif dans Herdr', 'A pane is zoomed in Herdr': 'Un pane est agrandi dans Herdr',
   'Tab overview': 'Plan de l’onglet', 'Side by side': 'Côte à côte', 'Open alone': 'Ouvrir seul',
   'Mirror': 'Miroir', 'Live input': 'Saisie directe', 'Mirror unavailable · retry': 'Miroir indisponible · réessayer',
