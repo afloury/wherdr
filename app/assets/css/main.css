@@ -91,9 +91,10 @@
   --grid-size: 72px;
   --shadow: rgba(0, 0, 0, .5);
 
-  /* Monochrome agent logos, herdr.dev style (pixel crab / Codex cloud) */
+  /* Monochrome agent logos, herdr.dev style (pixel crab / Codex cloud / omp pixel pi) */
   --claude: #d77757;
   --codex: #7a9dff;
+  --omp: #c467e0;
 
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -276,6 +277,7 @@ body.short-bottom { --safe-bottom: 0px; }
 .global-search-role { letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 .global-search-role.claude { color: var(--claude); }
 .global-search-role.codex { color: var(--codex); }
+.global-search-role.omp { color: var(--omp); }
 .global-search-note { display: flex; align-items: center; gap: 10px; margin: 6px 0 12px; font: 400 12px/1.4 var(--mono); color: var(--muted); }
 .global-search-note.bad { color: var(--rose); }
 .global-search-pulse { width: 7px; height: 7px; flex: none; background: var(--working); animation: pulse 1.3s ease-in-out infinite; }
@@ -675,6 +677,7 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .avatar .iconify { width: 21px; height: 21px; }
 .avatar.claude { color: var(--claude); }
 .avatar.codex { color: var(--codex); }
+.avatar.omp { color: var(--omp); }
 .avatar.gemini { color: var(--blue); }
 .avatar.opencode { color: var(--green); }
 .avatar.kimi { color: var(--mauve); }
@@ -872,6 +875,7 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .msg-who .iconify { width: 14px; height: 14px; }
 .msg-who.claude .iconify { color: var(--claude); }
 .msg-who.codex .iconify { color: var(--codex); }
+.msg-who.omp .iconify { color: var(--omp); }
 
 /* Reply: polished markdown. */
 .md { font-size: 15.5px; line-height: 1.6; color: var(--text); overflow-wrap: anywhere; }
@@ -934,9 +938,10 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
   pointer-events: none;
 }
 .md-body .tw-trail > .tw-front::before { opacity: .4; }
-/* Color of the cipher effect per agent: Claude orange, Codex blue, accent otherwise. */
+/* Color of the cipher effect per agent: Claude orange, Codex blue, omp magenta, accent otherwise. */
 .tw-claude { --tw-color: var(--claude); }
 .tw-codex { --tw-color: var(--codex); }
+.tw-omp { --tw-color: var(--omp); }
 .md-body blockquote { margin: 0 0 .75em; padding: 2px 0 2px 14px; border-left: 2px solid var(--mauve); color: var(--text-3); }
 .md-body table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 13.5px; margin: 0 0 .9em; max-width: 100%; }
 .md-body th, .md-body td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }

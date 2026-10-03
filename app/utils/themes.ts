@@ -225,8 +225,8 @@ export function themeVars(th: ThemeDef): Record<string, string> {
     '--green': c.green, '--coral': c.coral, '--ochre': c.ochre, '--rose': c.rose, '--blue': c.blue, '--teal': c.teal,
     '--code-bg': th.light ? mix('var(--text)', 5) : 'color-mix(in srgb, #000 22%, var(--bg))',
     // Agents' brand colors (logos and name in the list), identical in all themes:
-    // orange of the Claude Code crab, blue-violet of the Codex icon.
-    '--claude': '#d77757', '--codex': '#7a9dff',
+    // orange of the Claude Code crab, blue-violet of the Codex icon, magenta of the omp pi.
+    '--claude': '#d77757', '--codex': '#7a9dff', '--omp': '#c467e0',
     '--selection': `color-mix(in srgb, var(--accent) ${th.light ? 22 : 32}%, transparent)`,
     '--shadow': th.light ? 'rgba(60, 60, 80, .16)' : 'rgba(0, 0, 0, .5)',
     'color-scheme': th.light ? 'light' : 'dark',
