@@ -676,6 +676,12 @@ const status = computed(() => {
   // the spinning star in front is animated on the app side (ClaudeSpinner).
   if (liveShell.value) return { typing: true, text: tl('Command running…', 'Commande en cours…') }
   if (p.status === 'working' && p.agent === 'claude' && p.activity) return { typing: true, verb: true, text: `${p.activity}…` }
+  // omp: its running step ("⠧ Finding Fixed section") and the turn's time, read
+  // from the screen; braille spinner animated on the app side (OmpSpinner).
+  if (p.status === 'working' && p.agent === 'omp' && p.ompActivity) {
+    const a = p.ompActivity
+    return { typing: true, omp: true, since: a.since, text: a.step || `${kindLabel(p.agent)} ${tl('is working…', 'travaille…')}` }
+  }
   if (p.status === 'working') return { typing: true, text: `${kindLabel(p.agent)} ${tl('is working…', 'travaille…')}` }
   if (p.status === 'blocked' && !(p.prompt && p.prompt.options) && !knownScreen(p)) return { typing: false, text: t('Waiting for your reply — details in the Terminal tab') }
   return null
@@ -883,7 +889,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <div v-if="b.k === 'day'" class="day-sep"><span>{{ b.label }}</span></div>
 
               <div v-else-if="b.k === 'who'" class="msg-who" :class="pane.agent || ''">
-                <UIcon :name="pane.agent === 'codex' ? 'i-herdr-codex' : pane.agent === 'claude' ? 'i-herdr-claude-code' : 'i-lucide-bot'" /><span>{{ kindLabel(pane.agent) }}</span>
+                <UIcon :name="agentIcon(pane.agent) || 'i-lucide-bot'" /><span>{{ kindLabel(pane.agent) }}</span>
               </div>
 
               <div v-else-if="b.k === 'user'" class="msg-user-wrap" :data-hit-key="b.key">
@@ -1076,8 +1082,9 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         </div>
 
         <div v-if="status" class="chat-status" :class="{ typing: status.typing, waiting: !status.typing }">
-          <!-- Claude's verb has its animated star: no extra state dot. -->
+          <!-- Claude's verb and omp's step have their own spinner: no extra state dot. -->
           <span v-if="'verb' in status" class="claude-verb-line"><ClaudeSpinner /><UChatShimmer :text="status.text" :duration="2.4" class="claude-verb" /></span>
+          <span v-else-if="'omp' in status" class="omp-step-line"><OmpSpinner :since="status.since"><UChatShimmer :text="status.text" :duration="2.4" class="omp-step" /></OmpSpinner></span>
           <template v-else>
             <i class="status-dot" />
             <UChatShimmer v-if="status.typing" :text="status.text" :duration="2.4" />

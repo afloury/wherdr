@@ -1,0 +1,42 @@
+// omp's activity while it works, on real screens.
+import { readFileSync } from 'node:fs'
+import { describe, expect, it } from 'vitest'
+import { ompActivityOf, parseOmpActivity } from '../server/utils/ompScreen'
+
+const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
+
+describe('parseOmpActivity', () => {
+  it('reads the running step and the elapsed time of the turn', () => {
+    expect(parseOmpActivity(fx('omp-working.txt'))).toEqual({ step: 'Sleeping first time', elapsed: 5 })
+  })
+  it('generic "Working…" before the first tool: no step, but the timer', () => {
+    expect(parseOmpActivity(fx('omp-working-generic.txt'))).toEqual({ step: null, elapsed: 0 })
+  })
+  it('older layout (status line under the field): step without timer', () => {
+    expect(parseOmpActivity(fx('omp-idle-footer.txt'))).toEqual({ step: 'Capturing fixture and testing parser', elapsed: null })
+  })
+  it('nothing once the turn is over', () => {
+    expect(parseOmpActivity(fx('omp-done.txt'))).toBeNull()
+    expect(parseOmpActivity('')).toBeNull()
+    expect(parseOmpActivity(null)).toBeNull()
+  })
+  it('braille spinner in front of the step, minutes and hours in the timer', () => {
+    const screen = '\n  ⠧ Finding Fixed section          My session\n ⠧ 1h 2m 7s > ◒ Opus 5.5 > 📁 ~/demo\n╰─'
+    expect(parseOmpActivity(screen)).toEqual({ step: 'Finding Fixed section', elapsed: 3727 })
+  })
+  it('ignores a step far up in the conversation', () => {
+    const screen = ['  ⎋ Old step', ...Array(20).fill('text'), ' ⠋ 3s > ◒ Opus 5.5'].join('\n')
+    expect(parseOmpActivity(screen)).toEqual({ step: null, elapsed: 3 })
+  })
+})
+
+describe('ompActivityOf', () => {
+  it('turns the elapsed time into a start time, stable from one reading to the next', () => {
+    const a = ompActivityOf({ step: 'A', elapsed: 5 }, null, 10_000)!
+    expect(a).toEqual({ step: 'A', since: 5_000 })
+    expect(ompActivityOf({ step: 'B', elapsed: 6 }, a, 11_600)).toEqual({ step: 'B', since: 5_000 })
+    expect(ompActivityOf({ step: 'B', elapsed: 1 }, a, 60_000)).toEqual({ step: 'B', since: 59_000 })
+    expect(ompActivityOf({ step: 'B', elapsed: null }, a, 60_000)).toEqual({ step: 'B', since: null })
+    expect(ompActivityOf(null, a)).toBeNull()
+  })
+})
