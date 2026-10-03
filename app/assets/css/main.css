@@ -1053,6 +1053,25 @@ button.omp-tool-head:hover .omp-tool-cmd { color: var(--text-strong); }
 .omp-tool.err .omp-tool-out pre { color: var(--danger); }
 @media (pointer: coarse) { button.omp-tool-head { min-height: 32px; } }
 
+/* Reasoning and completed background work use the same omp console grammar. */
+.omp-thinking, .omp-job { --omp-color: var(--omp, var(--accent)); align-self: stretch; max-width: min(100%, 760px); border: 1px solid var(--line); background: var(--code-bg); }
+.omp-thinking.live { border-color: color-mix(in srgb, var(--omp-color) 55%, var(--line)); }
+.omp-thinking-head, .omp-job-head { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 5px 10px; text-align: left; font: 400 11.5px/1.5 var(--mono); color: var(--text-2); }
+.omp-thinking-head:hover, .omp-job-head:hover { color: var(--text); background: var(--surface); }
+.omp-thinking-head > .iconify, .omp-job-head > .iconify { margin-left: auto; flex: none; color: var(--dim); }
+.omp-thinking-mark, .omp-job-glyph { flex: none; width: 1.2em; font-weight: 700; color: var(--omp-color); }
+.omp-thinking-activity { color: var(--omp-color); }
+.omp-thinking-body { padding: 4px 10px 10px 25px; border-top: 1px solid var(--line-soft); font: italic 12px/1.55 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.omp-thinking-body :is(p, li) { font: inherit; color: inherit; }
+.omp-thinking-body code { font: normal 11.5px/1.4 var(--mono); color: var(--omp-color); background: var(--surface); border: 1px solid var(--line); padding: 1px 3px; }
+.omp-job-head { gap: 7px; white-space: nowrap; }
+.omp-job-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.omp-job-head code { flex: none; font: inherit; color: var(--text); }
+.omp-job-wall { margin-left: auto; flex: none; color: var(--dim); font-variant-numeric: tabular-nums; }
+.omp-job.err .omp-job-glyph, .omp-job.err .omp-tool-out-label { color: var(--rose); }
+.omp-job .omp-tool-out { margin: 0 0 5px 20px; }
+@media (pointer: coarse) { .omp-thinking-head, .omp-job-head { min-height: 40px; } }
+
 /* "!" command (bash mode) and its output. */
 .msg-shell {
   align-self: flex-end; width: fit-content; min-width: min(300px, 100%); max-width: min(92%, 760px);
