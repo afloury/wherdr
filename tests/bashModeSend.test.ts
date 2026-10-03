@@ -43,7 +43,7 @@ describe('Claude bash mode input field', () => {
   it('is the input field, not a menu or a panel, typed in or left empty', () => {
     for (const text of [fx('claude-bash-mode.txt'), plain(fx('claude-bash-mode-empty.ansi'))]) {
       expect(inputVisible(text)).toBe(true)
-      expect(panelOpen(text)).toBe(false)
+      expect(panelOpen(text, 'claude')).toBe(false)
       expect(parseChoices(text)).toBeNull()
       expect(parseWaitScreen(text)).toBeNull()
     }
