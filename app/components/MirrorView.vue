@@ -8,7 +8,7 @@ import '@xterm/xterm/css/xterm.css'
 import { Terminal } from '@xterm/xterm'
 import { mirrorInput } from '#shared/spaces'
 import { mirrorTop } from '~/utils/mirrorViewport'
-import { bindTerminalSelection, type TerminalSelection } from '~/utils/terminalSelection'
+import { bindTerminalSelection } from '~/utils/terminalSelection'
 import { bindShiftEnter } from '~/utils/terminalKeys'
 
 const props = defineProps<{ paneId: string, interactive?: boolean }>()
@@ -25,7 +25,7 @@ let retry = 0
 let retryTimer: ReturnType<typeof setTimeout> | undefined
 let ro: ResizeObserver | null = null
 let alive = true
-let selection: TerminalSelection | null = null
+let unbindSelection: (() => void) | null = null
 
 const FONT = '"Wherdr Symbols", "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace'
 
@@ -61,7 +61,6 @@ function connect() {
       const current = term
       current.write(b64ToBytes(m.bytes || ''), () => {
         positionScreen()
-        if (term === current) selection?.frame()
         selectionHint.refresh(current)
       })
       if (!ready.value) {
@@ -105,11 +104,7 @@ onMounted(() => {
     theme: terminalTheme.value, cols: 80, rows: 24,
   })
   term.open(host.value!)
-  // The mirror has no history to browse: no scrolling at the edge.
-  selection = bindTerminalSelection(term, {
-    focus: focusIf,
-    ...useTerminalCopyFeedback(),
-  })
+  unbindSelection = bindTerminalSelection(term, () => toast(t('Copied')))
   term.attachCustomWheelEventHandler(() => false)
   bindShiftEnter(term, (key) => { if (props.interactive) send({ keys: [key] }) })
   term.onData((d) => {
@@ -127,7 +122,7 @@ onUnmounted(() => {
   alive = false
   ro?.disconnect()
   disconnect()
-  selection?.dispose()
+  unbindSelection?.()
   term?.dispose()
   term = null
 })

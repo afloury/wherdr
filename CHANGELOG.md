@@ -113,3 +113,12 @@ First public release.
   a thread slot frees, with the slots in use) and **To do** (prioritized, never auto-launched)
   lists with Move up / down, Queue it, Launch now and Back to backlog / Remove from queue; lists
   always show in a fixed order, and the coordinator rules describe each list.
+
+### Removed
+
+- Terminal drag-select auto-scroll (dragging near or past the top or bottom edge made Herdr
+  scroll and extended the selection through the history), with its early clipboard write and
+  the "Selection ready" toast. Selection in the computer terminal and the mirrors is xterm's own
+  again: only the text on screen, no scrolling when the pointer leaves the terminal. Releasing
+  the button copies it (one clipboard attempt, nothing shown if the browser refuses), and
+  `⌘C` / `Ctrl+Shift+C` copy it too.
