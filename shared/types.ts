@@ -1,5 +1,6 @@
 // Types shared between the server (Nitro) and the app (Vue).
 import type { TabLayout } from './layout'
+import type { ProjectFolderKind } from './projectFolders'
 import type { CodexStatus } from './codexStatus'
 
 export type AgentStatus = 'working' | 'blocked' | 'done' | 'idle' | 'unknown'
@@ -271,7 +272,8 @@ export interface HerdrThemeConfig {
 }
 
 // Machine offered in the "New" sheet: home folder and recent ones.
-export interface MachineConfig { key: string, label: string, local: boolean, home: string, dirs: string[], online: boolean, kinds: string[] }
+// `projectDirs`: herdr-projects folders among `dirs` (shared/projectFolders.ts).
+export interface MachineConfig { key: string, label: string, local: boolean, home: string, dirs: string[], projectDirs?: Record<string, ProjectFolderKind>, online: boolean, kinds: string[] }
 
 export interface AppConfig {
   hostLabel?: string
@@ -284,11 +286,12 @@ export interface AppConfig {
   // up: Reveal in Finder / Open / Mod+Alt+O work on local panes.
   hostOpen?: boolean
   dirs: string[]
+  projectDirs?: Record<string, ProjectFolderKind>
   push: { enabled: boolean, key: string | null, devices: number }
 }
 
-export interface DirEntry { name: string, path: string, git: boolean }
-export interface DirListing { path: string, parent: string | null, home: string, dirs: DirEntry[] }
+export interface DirEntry { name: string, path: string, git: boolean, project?: ProjectFolderKind }
+export interface DirListing { path: string, parent: string | null, home: string, dirs: DirEntry[], project?: ProjectFolderKind }
 
 export interface AuthStatus {
   hostLabel?: string

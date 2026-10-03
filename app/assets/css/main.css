@@ -1556,6 +1556,17 @@ body.kb .composer { padding-bottom: 8px; }
 .chips .chips-more { display: inline-flex; align-items: center; color: var(--text-2); border-style: dashed; }
 .chips .chips-more .iconify { width: 14px; height: 14px; }
 .chips-none { padding: 6px 0; font-size: 12.5px; color: var(--muted); }
+/* herdr-projects folder (project or thread folder, not the repository):
+   icon on its chip, small label in the field and the browser. */
+.chips button.project { display: inline-flex; align-items: center; gap: 5px; }
+.chips .project-mark-icon { width: 13px; height: 13px; flex: none; color: var(--mauve); }
+.project-mark {
+  flex: none; font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+  color: var(--mauve); border: 1px solid color-mix(in srgb, var(--mauve) 35%, transparent); padding: 3px 6px;
+}
+.dir-pick .project-mark { flex: none; direction: ltr; font: 500 10px/1 var(--mono); overflow: visible; }
+.dir-list .project-mark { margin-left: auto; }
+.dir-list .project-mark + .git { margin-left: 0; }
 /* Name filter of a folder list: recent folders (chips) and browser subfolders. */
 .name-filter {
   display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 0 0 10px;

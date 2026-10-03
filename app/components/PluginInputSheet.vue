@@ -25,6 +25,7 @@ const repoHome = computed(() => (repoCfg.value ? repoCfg.value.home : appConfig.
 // Recent folders of the machine, without HOME (never a project repository).
 const recents = computed(() => ((repoCfg.value ? repoCfg.value.dirs : appConfig.value.dirs) || [])
   .filter(d => d !== repoHome.value && shortPath(d) !== '~'))
+const recentKinds = computed(() => (repoCfg.value ? repoCfg.value.projectDirs : appConfig.value.projectDirs))
 const repo = computed({ get: () => f.repo, set: (v) => { f.repo = v || ''; checkPluginRepo() } })
 function chooseRepo(d: string) {
   repo.value = d
@@ -80,7 +81,7 @@ function useRoot() {
           <MachineChoice :machines="repoMachines" :model-value="f.machine" @pick="setPluginRepoMachine($event.key)" />
         </template>
         <label class="plugin-input-label">{{ tl('Repository (optional)', 'Dépôt (facultatif)') }}</label>
-        <DirField :key="f.machine" v-model="repo" :recents="recents" clearable :placeholder="tl('No repository', 'Aucun dépôt')" @browse="browsing = true" />
+        <DirField :key="f.machine" v-model="repo" :recents="recents" :kinds="recentKinds" clearable :placeholder="tl('No repository', 'Aucun dépôt')" @browse="browsing = true" />
         <p v-if="f.repo && f.repoState === 'checking'" class="repo-state"><span class="spinner" />{{ tl('Checking…', 'Vérification…') }}</p>
         <p v-else-if="f.repo && f.repoState === 'repo'" class="repo-state repo"><UIcon name="i-lucide-git-branch" />{{ tl('Git repository', 'Dépôt Git') }}</p>
         <div v-else-if="f.repo && f.repoState === 'inside'" class="repo-state inside">
