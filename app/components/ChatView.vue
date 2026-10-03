@@ -883,7 +883,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <div v-if="b.k === 'day'" class="day-sep"><span>{{ b.label }}</span></div>
 
               <div v-else-if="b.k === 'who'" class="msg-who" :class="pane.agent || ''">
-                <UIcon :name="pane.agent === 'codex' ? 'i-herdr-codex' : pane.agent === 'claude' ? 'i-herdr-claude-code' : 'i-lucide-bot'" /><span>{{ kindLabel(pane.agent) }}</span>
+                <UIcon :name="agentIcon(pane.agent) || 'i-lucide-bot'" /><span>{{ kindLabel(pane.agent) }}</span>
               </div>
 
               <div v-else-if="b.k === 'user'" class="msg-user-wrap" :data-hit-key="b.key">
