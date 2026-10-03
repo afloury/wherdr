@@ -20,6 +20,8 @@ export interface PendingMessage {
   mine: boolean
   phase: QueuedPhase
   state: 'held' | 'failed' | null
+  // 'busy': waiting because the agent's input field holds other text.
+  reason?: 'busy'
   // Stored names of its photos.
   photos: string[]
   // Photos Claude's queue counts but whose files are unknown.
@@ -87,6 +89,7 @@ export function pendingQueue(o: {
     // Held or failed on the server: never typed yet, so never "sent".
     phase: q.state ? 'queued' : phases[i]!,
     state: q.state || null,
+    ...(q.reason ? { reason: q.reason } : {}),
     photos: uploadNames(q.text),
     missing: q.missing || 0,
   }))

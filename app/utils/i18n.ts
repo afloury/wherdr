@@ -429,6 +429,12 @@ const FR: Record<string, string> = {
   'space on another machine': 'espace d’une autre machine', 'invalid split': 'split invalide', 'invalid ratio': 'ratio invalide',
   'no pane on that side': 'aucun pane de ce côté', 'a pane is zoomed in this tab': 'un pane est agrandi dans cet onglet',
   'Not sent': 'Non envoyé', 'will be sent when the menu closes': 'partira quand le menu sera fermé',
+  'will be sent when the agent’s input is free': 'partira quand le champ de l’agent sera libre',
+  'Not sent — the agent’s input contains text': 'Non envoyé — le champ de l’agent contient du texte',
+  'The agent’s input contains text': 'Le champ de l’agent contient du texte',
+  'The message did not show in the agent’s input': 'Le message n’est pas apparu dans le champ de l’agent',
+  'The agent did not take the message': 'L’agent n’a pas pris le message',
+  'Another writer keeps typing into the agent’s input': 'Un autre programme écrit sans arrêt dans le champ de l’agent',
   'message already being sent': 'message déjà en cours d’envoi',
   'same pane': 'même pane', 'pane in another tab': 'pane d’un autre onglet', 'pane and folder required': 'pane et dossier nécessaires',
 }

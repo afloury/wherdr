@@ -25,8 +25,25 @@ export default defineApi(async (event, b) => {
     }
   }
   try {
-    await agentPrompt(b.pane_id, text)
+    if (p) await sendPrompt(p, text)
+    else await agentPrompt(b.pane_id, text)
   } catch (e) {
+    // Claude's input field holds someone else's text (a draft typed in its
+    // terminal…), never cleared: the message waits until it is free.
+    if (isBusyError(e) && !isSlashCommand(text)) {
+      const q = addQueued(b.pane_id, text, { held: true, busy: (e as HerdrError).code === 'input_busy' })
+      log(`prompt ${b.pane_id}: input field not free, message held`)
+      setTimeout(poll, 50)
+      return { ok: true, queued: q }
+    }
+    // Typed but not confirmed as taken (see guardedSend.ts): kept, shown as
+    // not sent with Retry / Cancel, never silently dropped.
+    if (e instanceof HerdrError && ['not_shown', 'not_submitted', 'clear_failed', 'input_contended'].includes(e.code) && !isSlashCommand(text)) {
+      const q = addQueued(b.pane_id, text, { failed: true })
+      log(`prompt ${b.pane_id}: ${e.message}, message kept as not sent`)
+      setTimeout(poll, 50)
+      return { ok: true, queued: q }
+    }
     // Agent launched less than 3 s ago, which Herdr still considers "starting"
     // (see agentPrompt): the message goes out as soon as Herdr accepts it,
     // like the first message given at creation. Not for a command, nor
