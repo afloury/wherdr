@@ -288,6 +288,9 @@ export function addQueued(paneId: string, text: string, opts: { held?: boolean, 
   return publicEntry(e)
 }
 export const hasHeld = (paneId: string) => (queued.get(paneId) || []).some(q => q.held && !q.failed)
+// Restart or Codex update in progress (restart.ts): it holds the pane's send
+// lock for its whole sequence; messages wait as held ones instead.
+export const restarting = (paneId: string) => { const r = restarts.get(paneId); return Boolean(r && r.phase !== 'failed') }
 
 // A message to an agent, one at a time per pane. Claude ready or working: the
 // checked send of guardedSend.ts (never glued to another writer's message).
@@ -334,7 +337,7 @@ export const isBusyError = (e: unknown) => e instanceof HerdrError && (e.code ==
 const deliverBusy = new Set<string>()
 function deliverHeld(p: Pane) {
   const q = nextHeld(queued.get(p.id) || [])
-  if (!q || deliverBusy.has(p.id) || !p.agent || !INPUT_STATES.has(p.status || '')) return
+  if (!q || deliverBusy.has(p.id) || !p.agent || !INPUT_STATES.has(p.status || '') || restarting(p.id)) return
   deliverBusy.add(p.id)
   herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
     .then(async (r) => {
@@ -628,7 +631,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
     // Relaunched: done as soon as Herdr sees the agent (or after 15 s).
     else if (rs && rs.started && (p.agent || Date.now() - rs.at > 15000)) restarts.delete(p.id)
     else if (rs) {
-      p.restart = { phase: rs.phase, agent: rs.agent, ...(rs.error ? { error: rs.error } : {}) }
+      p.restart = { phase: rs.phase, agent: rs.agent, ...(rs.error ? { error: rs.error } : {}), ...(rs.update ? { update: rs.update } : {}) }
       // Between the stop and the relaunch (or after a failed relaunch), the pane has
       // no agent: we keep its conversation shown, with the progress.
       if (!p.agent) {

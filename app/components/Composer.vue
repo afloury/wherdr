@@ -28,8 +28,19 @@ const restartLabel = computed(() => {
   const r = props.pane?.restart
   if (!r) return ''
   const who = kindLabel(r.agent)
+  // Codex update in its terminal: one more step between the stop and the relaunch.
+  if (r.update && r.phase === 'stopping') return tl(`Exiting ${who}…`, `Fermeture de ${who}…`)
+  if (r.phase === 'updating') return tl(`Updating ${who} in its terminal…`, `Mise à jour de ${who} dans son terminal…`)
   return r.phase === 'stopping' ? tl(`Stopping ${who}…`, `Arrêt de ${who}…`) : tl(`Restarting ${who} on the same conversation…`, `Relance de ${who} sur la même conversation…`)
 })
+async function copyUpdate() {
+  const c = props.pane?.restart?.update
+  if (!c) return
+  try {
+    await navigator.clipboard.writeText(c)
+    toast(tl('Command copied: paste it into the terminal of this pane.', 'Commande copiée : colle-la dans le terminal de ce panneau.'))
+  } catch { toast(t('Copy failed'), true) }
+}
 
 // Conversation draft (text + photos), kept when switching conversations.
 const draft = useDraft(props.paneId)
@@ -449,8 +460,9 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
     </div>
     <div v-else-if="pane?.restart" class="composer-notice restart" :class="pane.restart.phase" role="status">
       <template v-if="pane.restart.phase === 'failed'">
-        <span class="restart-text">{{ t('Restart failed') }}{{ tl(': ', ' : ') }}{{ t(pane.restart.error || '') }}</span>
+        <span class="restart-text">{{ pane.restart.update ? t('Codex update failed') : t('Restart failed') }}{{ tl(': ', ' : ') }}{{ t(pane.restart.error || '') }}</span>
         <button type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('View terminal') }}</button>
+        <button v-if="pane.restart.update" type="button" class="notice-btn" @click="copyUpdate"><UIcon name="i-lucide-copy" />{{ t('Copy command') }}</button>
         <button type="button" class="notice-btn" @click="dismissRestart(paneId)">{{ t('Hide') }}</button>
       </template>
       <template v-else>

@@ -43,7 +43,8 @@ These existing shortcuts are unchanged and listed in the help sheet:
 - Alt+Shift+arrows or Alt+Shift+H J K L swap panes (`useSpaces.swapShortcut`).
 - Ctrl/⌘+Alt+arrows move focus between side-by-side cells (`viewMode.cellFocusStep`).
 - In the composer: Enter, Shift+Enter, Tab and the slash menu keys.
-- In the terminal: Shift+Enter and the copy keys.
+- In the terminal: Shift+Enter and the copy keys (⌘C or Ctrl+Shift+C copy the on-screen selection,
+  which releasing the mouse button also copies).
 - On a "Your turn" card: ↑ ↓ Enter Esc, 1–9 and ← →.
 - On an interactive menu card, the Ctrl+letters of its legend (/resume: Ctrl+A, all projects or
   the current one) press the matching button. Ctrl on every platform, as in the terminal; ⌘A

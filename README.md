@@ -82,15 +82,19 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - **Conversation view**: the agent's real transcript (Claude Code, Codex and omp), rendered as
   Markdown, with grouped tool calls, images, timestamps, search and infinite scroll back to the
   first message. Reading a conversation never touches the terminal, so it never resizes a pane.
-- **Terminal view**: the real terminal (xterm.js, WebGL or DOM renderer) with take-over.
+- **Terminal view**: the real terminal (xterm.js, WebGL or DOM renderer) with take-over. On a
+  computer, drag over the text on screen to select it: releasing the button copies it, as do
+  `⌘C` / `Ctrl+Shift+C`. The history is browsed with the wheel, not by dragging past the edge.
 - **Composer**: send messages while the agent works (queued, cancellable), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
   of local commands. Stop button while the agent works.
 - **Codex updates and limits**: in a Codex conversation, a new Codex version shows above the
   field with an **Update** button (runs Codex's official update command on that machine, after
-  confirmation), then **Restart to update** on the same conversation; a warning shows when 25 %
-  or less of the weekly limit is left.
+  confirmation), then **Restart to update** on the same conversation. When wherdr cannot run it
+  (Docker, read-only home), Update exits Codex, runs the command in the agent's own terminal and
+  resumes the same conversation (only while Codex is idle). A warning shows when 25 % or less of
+  the weekly limit is left.
 - **Model and effort pickers** for Claude Code, Codex and omp (omp: its
   "Switch Model" selector, `/switch` or `/model`). Changes apply **to the
   current session only**; wherdr never changes your default model.

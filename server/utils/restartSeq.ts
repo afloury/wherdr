@@ -23,10 +23,13 @@ export async function paneForeground(d: RestartDeps, paneId: string, kind: strin
   const agent = procs.find(p => p.name === kind || (p.argv || []).some((a: string) => base(a) === kind)) || null
   // Foreground group = the shell's: nothing runs on top of it any more.
   const atShell = !agent && Boolean(info.shell_pid) && info.foreground_process_group_id === info.shell_pid
-  return { agent, atShell, argv: agent && Array.isArray(agent.argv) ? agent.argv.map(String) as string[] : null }
+  // The pane's shell (agent typed at its prompt) and its name, known at its prompt.
+  const sh = procs.find(p => info.shell_pid && p.pid === info.shell_pid)
+  const shell = { pid: Number(info.shell_pid) || null, name: sh ? String(sh.name || (sh.argv || [])[0] || '') || null : null }
+  return { agent, atShell, shell, argv: agent && Array.isArray(agent.argv) ? agent.argv.map(String) as string[] : null }
 }
 
-async function waitFor(d: RestartDeps, ms: number, test: () => Promise<boolean>) {
+export async function waitFor(d: RestartDeps, ms: number, test: () => Promise<boolean>) {
   const end = d.now() + ms
   while (d.now() < end) {
     await d.sleep(500)

@@ -9,6 +9,8 @@ import { type CurrentSettings, type RestartPlan, RESTARTABLE, claudeFooterMode, 
 import { HerdrError, herdr, sleep } from './herdr'
 import { findPane, poll, restarts, transcripts } from './state'
 import { type RestartDeps, paneForeground, startAgent, stopAgent } from './restartSeq'
+import { checkTerminalUpdate, updateInTerminal } from './codexTermUpdate'
+import { withPaneLock } from './guardedSend'
 import { log } from './env'
 
 const defaultDeps: RestartDeps = { call: (m, params, t) => herdr(m, params, t), sleep, now: Date.now }
@@ -53,7 +55,9 @@ export async function restartAgent(paneId: string) {
   const session = p.agentSession
   restarts.set(paneId, { phase: 'stopping', agent: p.agent, session, at: Date.now() })
   poll()
-  void (async () => {
+  // Under the pane's send lock (guardedSend.ts): no message of wherdr's is
+  // typed between /exit and the new agent.
+  void withPaneLock(paneId, async () => {
     let stopped = false
     try {
       await stopAgent(defaultDeps, snap)
@@ -70,8 +74,50 @@ export async function restartAgent(paneId: string) {
       log(`restart of ${paneId} failed: ${(e as Error).message}`)
     }
     poll()
-  })()
+  })
   return plan
+}
+
+// Codex update in its own terminal (see codexTermUpdate.ts), shown like a
+// restart with one more step: "Exiting Codex… / Updating… / Restarting…".
+// The checks (Codex idle, at its field, started from a shell) are awaited:
+// a refusal reaches the caller; `done` settles at the end of the sequence.
+export async function updateCodexInPane(paneId: string, command: string): Promise<{ done: Promise<void> }> {
+  const p = findPane(paneId)
+  if (!p || p.agent !== 'codex') throw new HerdrError('bad_pane', 'agent not found')
+  const cur = restarts.get(paneId)
+  if (planning.has(paneId) || (cur && cur.phase !== 'failed')) throw new HerdrError('restart_busy', 'restart already in progress')
+  planning.add(paneId)
+  let plan: RestartPlan
+  try {
+    await checkTerminalUpdate(defaultDeps, p)
+    plan = await restartPlanFor(p)
+  } finally { planning.delete(paneId) }
+  const snap = { id: p.id, agent: p.agent, status: p.status, name: p.name }
+  const session = p.agentSession
+  const set = (phase: NonNullable<Pane['restart']>['phase'], more: { stopped?: boolean, started?: boolean, error?: string } = {}) => {
+    restarts.set(paneId, { phase, agent: 'codex', session, at: Date.now(), update: command, ...more })
+    poll()
+  }
+  set('stopping')
+  log(`codex update in ${paneId}: ${command}`)
+  let stopped = false
+  // Under the pane's send lock, like a restart: nothing typed into the shell.
+  const done = withPaneLock(paneId, () => updateInTerminal({
+    ...defaultDeps,
+    phase: (ph) => {
+      if (ph !== 'stopping') stopped = true
+      set(ph)
+    },
+  }, snap, plan, command)).then(() => {
+    set('starting', { started: true })
+    log(`codex updated and restarted (${plan.mode}) in ${paneId}`)
+  }, (e: Error) => {
+    set('failed', { stopped, error: e.message })
+    log(`codex update in ${paneId} failed: ${e.message}`)
+    throw e
+  })
+  return { done }
 }
 
 export function dismissRestart(paneId: string) {

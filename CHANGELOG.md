@@ -20,6 +20,16 @@ First public release.
   agent's input contains text** with Retry / Cancel after 2 minutes. A message that can't be
   confirmed as taken is shown as not sent, never dropped. wherdr's own sends to a pane go one
   at a time.
+- Codex conversation: **Update** now also works when wherdr cannot run the update itself (in
+  Docker, whose home is read-only): it is typed into the agent's own terminal. Codex exits
+  (`/exit`), the pane's shell runs the known official command followed by an end marker with
+  its exit status, then Codex restarts on the same conversation (`codex resume <id>`, through
+  Herdr's `agent.start`, so Herdr keeps tracking it). The line above the composer follows each
+  step (Exiting Codex… / Updating Codex in its terminal… / Restarting Codex…). The button waits
+  while Codex works or waits for an answer; a Codex menu on screen or a Codex not started from a
+  shell are refused before anything is typed. On failure the pane stays at its shell with the
+  exit code, the last line printed and **Copy command**. Over SSH, or with a writable home, the
+  update still runs directly without stopping the agents, then **Restart to update**.
 - `/resume` card: `Ctrl+A` on the computer keyboard switches between every project and the
   current one, like the card's button (also with the empty message field focused). `⌘A` keeps
   "select all" on macOS; a field with text keeps its own `Ctrl+A`.
@@ -113,3 +123,12 @@ First public release.
   a thread slot frees, with the slots in use) and **To do** (prioritized, never auto-launched)
   lists with Move up / down, Queue it, Launch now and Back to backlog / Remove from queue; lists
   always show in a fixed order, and the coordinator rules describe each list.
+
+### Removed
+
+- Terminal drag-select auto-scroll (dragging near or past the top or bottom edge made Herdr
+  scroll and extended the selection through the history), with its early clipboard write and
+  the "Selection ready" toast. Selection in the computer terminal and the mirrors is xterm's own
+  again: only the text on screen, no scrolling when the pointer leaves the terminal. Releasing
+  the button copies it (one clipboard attempt, nothing shown if the browser refuses), and
+  `⌘C` / `Ctrl+Shift+C` copy it too.

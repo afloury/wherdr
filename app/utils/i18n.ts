@@ -20,6 +20,11 @@ const FR: Record<string, string> = {
   'Update': 'Mettre à jour', 'Codex update failed': 'Échec de la mise à jour de Codex',
   'Show Codex’s usage breakdown': 'Voir le détail de l’utilisation Codex',
   'Codex update already in progress': 'Mise à jour de Codex déjà en cours',
+  'Codex is working or waiting for an answer: update it once it is done': 'Codex travaille ou attend une réponse : mets-le à jour quand il a fini',
+  'Codex is not running in this pane': 'Codex ne tourne pas dans ce panneau',
+  'Codex was not started from a shell: quitting it would close the pane': 'Codex n’a pas été lancé depuis un shell : le quitter fermerait le panneau',
+  'Codex is showing a menu: answer it first': 'Codex affiche un menu : réponds-y d’abord',
+  'The update did not finish in 10 minutes: see the terminal': 'La mise à jour n’a pas fini en 10 minutes : regarde le terminal',
   'No Codex update to install': 'Aucune mise à jour de Codex à installer',
   'This update cannot be run from wherdr: copy the command': 'Cette mise à jour ne peut pas être lancée depuis wherdr : copie la commande',
   // Agent restart
@@ -271,7 +276,7 @@ const FR: Record<string, string> = {
   'Conversation compacted': 'Conversation compactée', 'Conversation cleared': 'Conversation effacée', 'Interrupted': 'Interrompu',
   'App is locked': 'app verrouillée', 'Origin refused': 'origine refusée', 'Not found': 'introuvable',
   'Waiting for your reply — details in the Terminal tab': 'En attente de ta réponse — détail dans l’onglet Terminal',
-  'Copy': 'Copier', 'Reply': 'Répondre', 'Replying to a passage': 'En réponse à un passage', 'Replying to the message': 'En réponse au message', 'Reply to this passage': 'Répondre à ce passage', 'Cancel reply': 'Annuler la réponse', 'Show original message': 'Voir le message d’origine', 'Original message not found (further up the conversation?)': 'Message d’origine introuvable (plus haut dans la conversation ?)', 'Copy reply': 'Copier la réponse', 'No output': 'Aucune sortie', 'Copied': 'Copié', 'Copy pane ID': 'Copier l’ID du pane', 'Copy failed': 'Copie impossible', 'The browser denied clipboard access.': 'Le navigateur refuse l’accès au presse-papiers.', 'Selection ready': 'Sélection prête', 'Press {key} to copy it.': 'Appuie sur {key} pour la copier.',
+  'Copy': 'Copier', 'Reply': 'Répondre', 'Replying to a passage': 'En réponse à un passage', 'Replying to the message': 'En réponse au message', 'Reply to this passage': 'Répondre à ce passage', 'Cancel reply': 'Annuler la réponse', 'Show original message': 'Voir le message d’origine', 'Original message not found (further up the conversation?)': 'Message d’origine introuvable (plus haut dans la conversation ?)', 'Copy reply': 'Copier la réponse', 'No output': 'Aucune sortie', 'Copied': 'Copié', 'Copy pane ID': 'Copier l’ID du pane', 'Copy failed': 'Copie impossible',
   'Enter': 'Entrée', 'send': 'envoyer', 'suggestion': 'suggestion', 'Use suggestion': 'Utiliser la suggestion', 'new line': 'nouvelle ligne',
   'Image not found': 'image introuvable', 'Invalid JSON': 'JSON invalide', 'Request too large': 'requête trop grosse',
   // Model

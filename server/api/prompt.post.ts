@@ -12,6 +12,13 @@ export default defineApi(async (event, b) => {
   // delivered on a later poll once the input is back (see state.ts deliverHeld).
   // Photos sent alone start with their path: a message, not a "/" command.
   const p = findPane(b.pane_id)
+  // Restart / Codex update running: it owns the pane until the agent is back.
+  if (p && p.agent && restarting(p.id) && !isSlashCommand(text)) {
+    const q = addQueued(b.pane_id, text, { held: true })
+    log(`prompt ${b.pane_id}: restart in progress, message held`)
+    setTimeout(poll, 50)
+    return { ok: true, queued: q }
+  }
   if (p && !isSlashCommand(text)) {
     const earlier = hasHeld(b.pane_id)
     const input = earlier || !INPUT_STATES.has(p.status || '') ? true
