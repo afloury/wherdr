@@ -51,6 +51,9 @@ export interface ProjectBoard {
   // Thread slots (PROJECT.md `max_parallel_threads`, open threads): shown on
   // the "In queue" list. Missing when unknown.
   slots?: { used: number, max: number }
+  // Global limit of the coordinator's machine, all projects (Settings ›
+  // Plugins › herdr-projects, shared/threadLimits.ts). Missing when not set.
+  machineSlots?: { label: string, open: number, max: number }
   // TASKS.md missing, or unreadable threads: the panel says so without breaking.
   tasksMissing?: boolean
   threadsError?: string
@@ -443,9 +446,10 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
         `"${m(detailPrefix)}" → add the detail to the task.`,
         `"${moveMessage('up', '…', lang)}" / "${moveMessage('down', '…', lang)}" → move the line one place up or down in its list (To do or In queue).`,
         `"${moveMessage('queue', '…', lang)}" → move the line from To do to the end of In queue.`,
-        `"${moveMessage('now', '…', lang)}" → start a thread now if a slot is free (beyond max_parallel_threads only if I say so), otherwise put it first in In queue.`,
+        `"${moveMessage('now', '…', lang)}" → start a thread now if a slot is free in the project and on the machine (beyond the limits only if I say so), otherwise put it first in In queue.`,
         `"${moveMessage('unqueue', '…', lang)}" → move the line from In queue back to the top of To do. "${moveMessage('backlog', '…', lang)}" → move the line from To do to Backlog.`,
-        'In queue contract: whenever a thread slot frees (a thread is resolved), launch the first In queue task and move it to In progress. Never launch To do or Backlog tasks without being asked.',
+        'In queue contract: whenever a thread slot frees (a thread is resolved), launch the first In queue task and move it to In progress, as long as the machine has a free slot (next rule). Never launch To do or Backlog tasks without being asked.',
+        'Global limit per machine (all projects, set in wherdr): before starting a thread, read .wherdr-limits.json in the herdr-projects folder (the parent of this project\'s folder). machines[this].free = free thread slots on this machine (machines["<machine>"] for a thread started on another machine; max null = no global limit). If free is 0, the machine is full: wait, even if this project still has slots under max_parallel_threads; In queue tasks start when the machine has a free slot. File missing or out of date: count the open threads of every project with "herdr-projects overview".',
         'After each deploy, add to To test what I must check. Put in To review each pull request I must review, with its link (link badge).',
         'The ## lists in TASKS.md are the active lists: I ask you when one must be added or removed.',
       ]
@@ -466,9 +470,10 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
         `« ${m(detailPrefix)} » → compléter la tâche avec cette précision.`,
         `« ${moveMessage('up', '…', lang)} » / « ${moveMessage('down', '…', lang)} » → monter ou descendre la ligne d’un cran dans sa liste (À faire ou En file).`,
         `« ${moveMessage('queue', '…', lang)} » → déplacer la ligne d’À faire à la fin d’En file.`,
-        `« ${moveMessage('now', '…', lang)} » → lancer un thread tout de suite si une place est libre (au-delà de max_parallel_threads seulement si je le dis), sinon la mettre en tête d’En file.`,
+        `« ${moveMessage('now', '…', lang)} » → lancer un thread tout de suite si une place est libre dans le projet et sur la machine (au-delà des limites seulement si je le dis), sinon la mettre en tête d’En file.`,
         `« ${moveMessage('unqueue', '…', lang)} » → remettre la ligne d’En file en tête d’À faire. « ${moveMessage('backlog', '…', lang)} » → déplacer la ligne d’À faire vers Backlog.`,
-        'Contrat d’En file : dès qu’une place de thread se libère (thread clôturé), lancer la première tâche d’En file et la passer dans En cours. Ne jamais lancer une tâche d’À faire ou du Backlog sans qu’on te le demande.',
+        'Contrat d’En file : dès qu’une place de thread se libère (thread clôturé), lancer la première tâche d’En file et la passer dans En cours, si la machine a une place libre (règle suivante). Ne jamais lancer une tâche d’À faire ou du Backlog sans qu’on te le demande.',
+        'Limite globale par machine (tous projets, réglée dans wherdr) : avant de lancer un thread, lire .wherdr-limits.json dans le dossier herdr-projects (le parent du dossier de ce projet). machines[this].free = places de thread libres sur cette machine (machines["<machine>"] pour un thread lancé sur une autre machine ; max null = pas de limite globale). Si free vaut 0, la machine est pleine : attendre, même si ce projet a encore des places sous max_parallel_threads ; les tâches d’En file partent quand la machine a une place libre. Fichier absent ou périmé : compter les threads ouverts de tous les projets avec « herdr-projects overview ».',
         'Après chaque déploiement, ajouter à À tester ce que je dois vérifier. Mettre dans À relire chaque PR que je dois relire, avec son lien (badge-lien).',
         'Les listes ## de TASKS.md sont les listes actives : je te demande d’en ajouter ou d’en retirer une.',
       ]

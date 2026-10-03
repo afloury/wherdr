@@ -10,6 +10,13 @@ First public release.
 
 ### Added
 
+- herdr-projects: max threads per machine, across all projects (Settings → Plugins →
+  herdr-projects; empty = no global limit, saved on the server). wherdr counts the open threads of
+  every project on each machine, shows `2 of 2 thread slots in use on <machine> (all projects)` in
+  the In queue header, and writes `.wherdr-limits.json` (`{ this, machines: { <machine>: { max,
+  open, free, threads } } }`) in each herdr-projects folder where a coordinator runs. The
+  coordinator rules now say to check it before starting a thread and to wait while the machine is
+  full, with `herdr-projects overview` as the fallback.
 - Terminal: clickable links. OSC 8 hyperlinks (such as a login screen's "Open login URL") and
   plain `http(s)://` URLs open in a new tab, without opener, with `⌘`+click on a Mac or
   `Ctrl`+click elsewhere (a plain click still starts a selection; hovering shows the URL), or a

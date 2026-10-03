@@ -529,7 +529,24 @@ worktree. It is optional; with it installed, wherdr adds:
   style after Backlog. French titles and common synonyms are recognized (À tester, En file,
   À faire, Plus tard…). Every button sends a ready-made message to the coordinator, which edits
   `TASKS.md` (wherdr never writes it). The In queue header shows the thread slots in use
-  (`max_parallel_threads` in `PROJECT.md`) and the next task.
+  (`max_parallel_threads` in `PROJECT.md`) and the next task, plus the machine's global limit
+  when one is set (`2 of 2 thread slots in use on <machine> (all projects)`).
+- **Max threads per machine**, across all projects: herdr-projects only limits threads per
+  project, so three coordinators could still start a dozen threads on one small machine. Set a
+  limit per machine in **Settings → Plugins → herdr-projects** (empty `—` = no global limit;
+  saved on the server, in `data/thread-limits.json`). wherdr counts the open threads of every
+  project from the live panes (herdr-projects marks each open thread's pane) and writes
+  `.wherdr-limits.json` in each herdr-projects folder where a coordinator runs, refreshed on
+  every change:
+
+  ```json
+  { "updated": "…", "this": "Server", "machines": { "Server": { "max": 2, "open": 2, "free": 0, "threads": ["shop/t-0012", "docs/t-0003"] } } }
+  ```
+
+  The coordinator rules (Settings) tell the coordinator to read it before starting a thread and
+  to wait while `free` is `0`, even if its project still has slots; In queue tasks start when the
+  machine has a free slot. `herdr-projects overview` is the fallback when the file is missing.
+  The same data is available read-only at `GET /api/plugins/thread-limits`.
 - **Badges**, the only decoration on task lines, chosen by the coordinator (wherdr adds none
   on its own): `[b:color(text)]`, or `[b:color(text)](target)` for a clickable badge with a small ↗.
   The target is an `https://` / `http://` link (new tab) or a thread ID such as `t-0140` (opens
@@ -544,7 +561,7 @@ worktree. It is optional; with it installed, wherdr adds:
   - [ ] Stop button on iPhone [b:red(bug)] [b:gray(t-0140)](t-0140) [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me)
   ```
 - **Settings → Plugins → herdr-projects**: install status per machine, the `TASKS.md` convention,
-  a template and the coordinator rules to copy.
+  a template, the max threads per machine and the coordinator rules to copy.
 - **New project** from the plugin actions of an agent's menu, with the same machine and folder
   picker as **New agent** (see [Herdr plugins](#herdr-plugins)).
 

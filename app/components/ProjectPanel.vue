@@ -27,11 +27,13 @@ const movedByPane = new Map<string, Set<string>>()
 // "Backlog": Launch sends the message; Detail prepares a draft.
 // "To do" / "In queue": Move up / Move down, Queue it, Launch now, Back to
 // backlog / Remove from queue are sent as is; the coordinator edits TASKS.md.
-// The "In queue" header shows the thread slots in use (PROJECT.md).
+// The "In queue" header shows the thread slots in use (PROJECT.md) and the
+// global limit of the coordinator's machine, all projects.
 // The file is never written from here.
 // `side`: column to the right of the conversation (computer), collapsible.
 import type { Pane, QueuedMessage } from '#shared/types'
 import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, type TaskBadge, boardSections, visibleSections, decisionPrefix, detailPrefix, launchMessage, missingLists, moveMessage, type MoveAction, problemPrefix, queueStatus, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, textParts, unblockMessage } from '#shared/projectBoard'
+import { machineSlotsLine } from '#shared/threadLimits'
 import { md } from '~/utils/markdown'
 
 const props = defineProps<{ paneId: string, board: ProjectBoard | null, loading: boolean, error: string, side?: boolean }>()
@@ -245,6 +247,9 @@ async function moveTask(s: BoardSection, task: ProjectTask, action: MoveAction) 
 }
 // "In queue" header: thread slots in use and the next task.
 const slotLine = (s: BoardSection) => (s.kind === 'queue' ? queueStatus(props.board?.slots, pending(s)[0]?.text, lang()) : null)
+// Global limit of the coordinator's machine, all projects (Settings › Plugins).
+const machineLine = (s: BoardSection) => (s.kind === 'queue' ? machineSlotsLine(props.board?.machineSlots, lang()) : null)
+const machineFull = computed(() => Boolean(props.board?.machineSlots && props.board.machineSlots.open >= props.board.machineSlots.max))
 async function reviewTask(task: ProjectTask) {
   if (reviewing.value || reviewed.value.has(task.text)) return
   const pane = herdrState.value.panes.find(p => p.id === props.paneId)
@@ -358,6 +363,7 @@ function hideHint() {
             <UIcon name="i-lucide-chevron-down" class="pp-chev" />
           </button>
           <p v-if="isOpen(s) && slotLine(s)" class="pp-slots">{{ slotLine(s) }}</p>
+          <p v-if="isOpen(s) && machineLine(s)" class="pp-slots machine" :class="{ full: machineFull }">{{ machineLine(s) }}</p>
           <ul v-if="isOpen(s)" class="pp-list">
             <!-- Threads: open (In progress) or closed (Done, 20 most recent). -->
             <li v-for="th in (s.kind === 'done' ? s.threads.slice(0, DONE_SHOWN) : s.threads)" :key="th.id" class="pp-row">
