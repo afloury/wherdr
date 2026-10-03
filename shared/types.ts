@@ -235,7 +235,9 @@ export interface ChatItem {
   error?: boolean
 }
 // `images`: photos of the entry ("[Image #1]" tags, removed from `text`).
-export interface ClaudeQueueEntry { text: string, ts: string | null, images?: number }
+// `sent`: the message as wherdr sent it (photo and file paths included), when
+// the entry is one of wherdr's messages with photos (see server/utils/sentHistory.ts).
+export interface ClaudeQueueEntry { text: string, ts: string | null, images?: number, sent?: string }
 
 export interface ChatResponse {
   available: boolean

@@ -12,7 +12,7 @@ import { isAgentCommand } from '#shared/commandScreen'
 import { isSlashCommand } from '#shared/queuedMatch'
 import type { AttachKind } from '#shared/attachments'
 import { refusalText, sortForAgent } from '~/utils/fileDrop'
-import { restoreDraft } from '~/utils/queuedCancel'
+import { lostPhotosText, restoreDraft } from '~/utils/queuedCancel'
 
 // `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
 // `takeBack`: conversation view; a prompt Claude puts back into its field on Stop
@@ -167,13 +167,15 @@ async function interrupt() {
   haptic()
   interrupting.value = 'running'
   try {
-    const r = await api<{ stopped: boolean, background: number, restored?: string }>('/api/interrupt', { pane_id: props.paneId, restore: Boolean(props.takeBack) })
+    const r = await api<{ stopped: boolean, background: number, restored?: string, lost?: number }>('/api/interrupt', { pane_id: props.paneId, restore: Boolean(props.takeBack) })
     interrupting.value = r.stopped ? null : 'failed'
     // Stopped before any reply: like Claude, the message comes back into the field.
     if (r.restored !== undefined) {
       restoreDraft(draft, r.restored)
       focusEnd()
-      toast(tl('Stopped: your message is back in the field', 'Arrêté : ton message est revenu dans le champ'))
+      const back = tl('Stopped: your message is back in the field', 'Arrêté : ton message est revenu dans le champ')
+      if (r.lost) toast(back, true, lostPhotosText(r.lost))
+      else toast(back)
     } else if (r.stopped) toast(r.background ? tl(`Agent stopped (${r.background} background task${r.background > 1 ? 's' : ''} stopped)`, `Agent arrêté (${r.background} tâche${r.background > 1 ? 's' : ''} de fond arrêtée${r.background > 1 ? 's' : ''})`) : t('Agent stopped'))
   } catch (err) {
     interrupting.value = null

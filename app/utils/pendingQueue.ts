@@ -5,8 +5,8 @@
 //
 // Photos alone have no text: their record is matched by its photos (see
 // shared/queuedMatch.ts). Claude's queue only keeps "[Image #1]": an entry of
-// it gets the photos of wherdr's record of the same message, even one the
-// server no longer lists (remembered here).
+// it gets the photos of wherdr's record of the same message, from the server
+// (`sent`, see server/utils/sentHistory.ts) or remembered here.
 import type { ChatItem, ClaudeQueueEntry, ClaudeScreen, QueuedMessage } from '../../shared/types'
 import { type QueuedPhase, queuedPhases } from '../../shared/queuedPhase'
 import { photosLanded, photosOnly, uploadNames, withoutUploads } from '../../shared/queuedMatch'
@@ -72,14 +72,16 @@ export function pendingQueue(o: {
     if (!q.text) {
       if (!images) continue
       if (ownPhotos > 0) { ownPhotos--; continue }
-      const known = memPhotos.shift()
-      list.push({ id: `cc-${q.ts}`, text: known ? known.text : '', missing: known ? 0 : images })
+      // Remembered ones are taken in order, even when the server knows the entry.
+      const remembered = memPhotos.shift()
+      const known = q.sent || remembered?.text
+      list.push({ id: `cc-${q.ts}`, text: known || '', missing: known ? 0 : images })
       continue
     }
     const n = normText(q.text).slice(0, 60)
     if (!n || mine.some(x => normText(x.text).includes(n))) continue
-    const known = images ? [...(o.memory || [])].reverse().find(m => normText(withoutUploads(m.text)).includes(n)) : null
-    list.push({ id: `cc-${q.ts}`, text: known ? known.text : q.text, missing: known ? 0 : images })
+    const known = images ? q.sent || [...(o.memory || [])].reverse().find(m => normText(withoutUploads(m.text)).includes(n))?.text : null
+    list.push({ id: `cc-${q.ts}`, text: known || q.text, missing: known ? 0 : images })
   }
   const phases = queuedPhases(list.map(q => q.text), o.screen)
   return list.map((q, i) => ({

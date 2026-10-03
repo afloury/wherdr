@@ -7,7 +7,7 @@
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, Pane, QueuedMessage } from '#shared/types'
 import { readOffline, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
-import { canCancelQueued, restoreDraft } from '~/utils/queuedCancel'
+import { canCancelQueued, lostPhotosText, restoreDraft } from '~/utils/queuedCancel'
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
@@ -617,10 +617,12 @@ async function cancelQueued(q: { id: string, raw: string, mine: boolean }) {
   cancelling.value = q.id
   haptic()
   try {
-    const r = await api<{ text: string }>('/api/unqueue', { pane_id: props.pane.id, text: q.raw, id: q.mine ? q.id : undefined })
+    const r = await api<{ text: string, lost?: number }>('/api/unqueue', { pane_id: props.pane.id, text: q.raw, id: q.mine ? q.id : undefined })
     restoreDraft(useDraft(props.pane.id), r.text || q.raw)
     emit('restored')
-    toast(t('Removed from the queue'))
+    // Photos Claude queued itself, whose files wherdr never had: said, not silently dropped.
+    if (r.lost) toast(t('Removed from the queue'), true, lostPhotosText(r.lost))
+    else toast(t('Removed from the queue'))
     setTimeout(loadChat, 400)
   } catch (err) {
     toast((err as Error).message, true)
