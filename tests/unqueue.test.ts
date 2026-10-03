@@ -2,7 +2,7 @@
 // screen, and ↑ / clear / requeue sequence played against a
 // fake Claude imitating the observed one (2.1.283, hwtest session).
 import { describe, expect, it } from 'vitest'
-import { clearKeys, inputBox, msgText, unqueueClaude } from '../server/utils/unqueue'
+import { clearKeys, findQueued, inputBox, msgText, unqueueClaude } from '../server/utils/unqueue'
 import { canCancelQueued, restoreDraft } from '../app/utils/queuedCancel'
 import type { ChatItem, ClaudeQueueEntry, Pane } from '../shared/types'
 
@@ -92,7 +92,7 @@ function fakeClaude(queue: string[], opts: { take?: boolean, lagChat?: number, s
 describe('annuler un message en file de Claude', () => {
   it('the only message: recalled, field cleared, nothing requeued', async () => {
     const { st, deps } = fakeClaude(['Message en file\ndeuxième ligne'])
-    expect(await unqueueClaude(deps, 'Message en file\ndeuxième ligne')).toEqual({ requeued: [] })
+    expect(await unqueueClaude(deps, 'Message en file\ndeuxième ligne')).toEqual({ requeued: [], images: 0, lost: 0 })
     expect(st.keys[0]).toBe('up')
     expect(st.input).toEqual([])
     expect(st.queue).toEqual([])
@@ -147,10 +147,45 @@ describe('annuler un message en file de Claude', () => {
     expect(st.keys).toEqual([])
   })
 
+  it('text and photo: the number of photos of its entry is returned', async () => {
+    const { deps } = fakeClaude(['Avant', '[Image #1]Regarde ça'])
+    const r = await unqueueClaude(deps, 'Regarde ça\n/home/user/.cache/herdr-web/uploads/a.jpg')
+    expect(r).toEqual({ requeued: ['Avant'], images: 1, lost: 0 })
+  })
+
+  it('other entries with photos of unknown path (queued on the computer): counted as lost, never invented', async () => {
+    const { st, deps } = fakeClaude(['[Image #1]Capture', 'Mon message', '[Image #2]'])
+    const r = await unqueueClaude({ ...deps, original: e => (e.text ? e.text : null) }, 'Mon message')
+    expect(r.requeued).toEqual(['Capture'])
+    expect(r.lost).toBe(2)
+    expect(st.queue).toEqual(['Capture'])
+  })
+
+  it('other entries whose photos are known: requeued with them, nothing lost', async () => {
+    const path = '/home/user/.cache/herdr-web/uploads/b.jpg'
+    const { deps } = fakeClaude(['[Image #1]Capture', 'Mon message'])
+    const r = await unqueueClaude({ ...deps, original: e => `${e.text}\n${path}` }, 'Mon message')
+    expect(r).toEqual({ requeued: [`Capture\n${path}`], images: 0, lost: 0 })
+  })
+
   it('field impossible to clear: error, and above all nothing requeued', async () => {
     const { st, deps } = fakeClaude(['A', 'B'], { stuck: true })
     await expect(unqueueClaude(deps, 'B')).rejects.toMatchObject({ code: 'clear_failed' })
     expect(st.sent).toEqual([])
+  })
+})
+
+describe('record of the message to cancel', () => {
+  const list = [
+    { id: 'a', text: 'ok' },
+    { id: 'b', text: 'ok\n/home/user/.cache/herdr-web/uploads/b.jpg' },
+  ]
+  it('by id first: an earlier message starting the same way is not taken instead', () => {
+    expect(findQueued(list, 'ok\n/home/user/.cache/herdr-web/uploads/b.jpg', 'b')).toBe(list[1])
+  })
+  it('by text when the id is unknown (Claude\'s own entry)', () => {
+    expect(findQueued(list, 'ok', undefined)).toBe(list[0])
+    expect(findQueued(list, 'autre chose', 'zz')).toBeUndefined()
   })
 })
 
@@ -171,5 +206,18 @@ describe('bouton et brouillon', () => {
     restoreDraft(d, msg)
     expect(d.text).toBe('Regarde ça\nRegarde ça\ndéjà tapé')
     expect(d.atts).toEqual([{ url: '/uploads/2026-09-26T00-36-39-393Z-4fa305.jpg', path: '/home/user/.cache/herdr-web/uploads/2026-09-26T00-36-39-393Z-4fa305.jpg', name: '2026-09-26T00-36-39-393Z-4fa305.jpg' }])
+  })
+  it('photos only: the photos come back, no text', () => {
+    const d = { text: '', atts: [] as { url: string, path: string | null, name?: string }[] }
+    restoreDraft(d, '/home/user/.cache/herdr-web/uploads/a.jpg\n/home/user/.cache/herdr-web/uploads/b.jpg')
+    expect(d.text).toBe('')
+    expect(d.atts.map(a => a.name)).toEqual(['a.jpg', 'b.jpg'])
+  })
+  it('photos and attached files together, with a reply marker', () => {
+    const d = { text: '', atts: [] as { url: string, path: string | null, name?: string, file?: unknown, ref?: string }[], reply: null as unknown }
+    restoreDraft(d as never, '↳ Replying to your message from 14:22 ("La mer")\n\nRegarde\n/home/user/.cache/herdr-web/uploads/a.jpg\n@/home/user/.cache/herdr-web/files/notes.md')
+    expect(d.text).toBe('Regarde')
+    expect(d.reply).toEqual({ time: '14:22', excerpt: 'La mer' })
+    expect(d.atts.map(a => [a.name, Boolean(a.file)])).toEqual([['a.jpg', false], ['notes.md', true]])
   })
 })

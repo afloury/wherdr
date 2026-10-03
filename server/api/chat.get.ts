@@ -19,6 +19,7 @@ export default defineApi(async (event) => {
   })
   if (r.token) r.token += mark
   if (r.items) r.items = withoutTakenBack(r.items, hidden)
+  if (r.queue && r.queue.length) r.queue = withSentText(p.id, r.queue)
   // Current model ("Opus 5.5", "GPT-6-Sol"): cached by file size.
   return r.available ? { ...r, model: await currentModel(p).catch(() => null) } : r
 })

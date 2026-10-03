@@ -4,6 +4,7 @@ import type { Pane } from '../../shared/types'
 import type { DraftAtt } from '../composables/useDraft'
 import { parseReply, type ReplyTarget } from '../../shared/replyQuote'
 import { extensionOf, parseAttachmentLine } from '../../shared/attachments'
+import { tl } from './i18n'
 
 const UPLOAD = '/.cache/herdr-web/uploads/'
 
@@ -42,4 +43,12 @@ export function restoreDraft(draft: { text: string, atts: DraftAtt[], reply?: Re
     const kind = ext === 'pdf' ? 'pdf' : ext === 'ipynb' ? 'notebook' : 'text'
     draft.atts.push({ url: '', path: f.path, name: f.path.split('/').pop()!, file: { label: f.name, size: 0, kind }, ref: line.trim() })
   }
+}
+
+// Photos that could not come back with a cancelled or stopped message: Claude
+// Code keeps no copy of an image it queued, only "[Image #1]".
+export function lostPhotosText(n: number): string {
+  return n > 1
+    ? tl(`${n} images could not be recovered: Claude keeps no copy of them. Attach them again.`, `${n} images n’ont pas pu être récupérées : Claude n’en garde pas de copie. Joins-les à nouveau.`)
+    : tl('1 image could not be recovered: Claude keeps no copy of it. Attach it again.', '1 image n’a pas pu être récupérée : Claude n’en garde pas de copie. Joins-la à nouveau.')
 }

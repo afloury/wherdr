@@ -6,7 +6,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import type { Choices, ClaudeScreen, HerdrState, InteractiveMenu, WaitScreen, MachineInfo, ModelInfo, OmpStatus, Pane, QueuedMessage } from '../../shared/types'
+import type { Choices, ClaudeQueueEntry, ClaudeScreen, HerdrState, InteractiveMenu, WaitScreen, MachineInfo, ModelInfo, OmpStatus, Pane, QueuedMessage } from '../../shared/types'
 import { parseOmpStatus } from './ompScreen'
 import { LOCAL, joinId, machineOf } from '../../shared/ids'
 import { isProjectThread, paneTitle } from '../../shared/paneTitle'
@@ -23,7 +23,8 @@ import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './c
 import { type QueueEntry, INPUT_STATES, checkQueue, isUploadLine, loadQueued, nextHeld, publicEntry, queuedDone } from './queued'
 import { inputVisible } from './choices'
 import { isSlashCommand, photosOnly } from '../../shared/queuedMatch'
-import { inputBox, msgText, unqueueClaude } from './unqueue'
+import { findQueued, inputBox, msgText, unqueueClaude } from './unqueue'
+import { type SentRecord, addSent, findSent, hasAttachments, lostPhotos } from './sentHistory'
 import { type GuardError, guardedSend, withPaneLock } from './guardedSend'
 import { type TranscriptPane, sameMsg } from './transcripts'
 import { agentNotificationTitle, pushSend, subWatchesSession } from './push'
@@ -299,7 +300,27 @@ export function addQueued(paneId: string, text: string, opts: { held?: boolean, 
     ...(opts.held ? { held: true } : {}), ...(opts.busy ? { busy: true } : {}), ...(opts.failed ? { failed: true } : {}),
   }
   queued.set(paneId, [...(queued.get(paneId) || []), e])
+  sent.set(paneId, addSent(sent.get(paneId) || [], e.text, e.at))
   return publicEntry(e)
+}
+// Sent messages with photos or files (see sentHistory.ts): their paths, once
+// wherdr's record is gone.
+const sent = new Map<string, SentRecord[]>()
+// The sent text (paths included) behind one of Claude's records, or null.
+const sentText = (paneId: string, entry: { text: string, images?: number, ts?: string | null }, taken: SentRecord[] = []) => {
+  const r = findSent(sent.get(paneId) || [], entry, Date.now(), taken)
+  if (r) taken.push(r)
+  return r ? r.text : null
+}
+// Claude's queue as the app shows it: an entry with photos gets the message
+// wherdr sent (`sent`, paths included) when it is known, so its bubble shows
+// the photos and Cancel gives them back, even after the app was reloaded.
+export function withSentText(paneId: string, queue: ClaudeQueueEntry[]): ClaudeQueueEntry[] {
+  const taken: SentRecord[] = []
+  return queue.map((e) => {
+    const t = e.images ? sentText(paneId, e, taken) : null
+    return t ? { ...e, sent: t } : e
+  })
 }
 export const hasHeld = (paneId: string) => (queued.get(paneId) || []).some(q => q.held && !q.failed)
 // Restart or Codex update in progress (restart.ts): it holds the pane's send
@@ -385,7 +406,7 @@ function deliverHeld(p: Pane) {
 const takenBack = new Map<string, { text: string, ts: string | null }[]>()
 let takenBackSeq = 0
 export const takenBackOf = (paneId: string) => ({ hidden: takenBack.get(paneId) || [], seq: takenBackSeq })
-export function takeBack(paneId: string, item: { text: string, ts?: string | null }): string {
+export function takeBack(paneId: string, item: { text: string, ts?: string | null, images?: number }): { text: string, lost: number } {
   takenBackSeq++
   takenBack.set(paneId, [...takenBackOf(paneId).hidden, { text: item.text, ts: item.ts || null }].slice(-20))
   const list = queued.get(paneId) || []
@@ -394,8 +415,11 @@ export function takeBack(paneId: string, item: { text: string, ts?: string | nul
   if (left.length) queued.set(paneId, left)
   else queued.delete(paneId)
   setTimeout(poll, 50)
-  // The original text, photo paths included, goes back into wherdr's field.
-  return mine ? mine.text : item.text
+  // The original text, photo paths included, goes back into wherdr's field:
+  // wherdr's record, usually already gone (the message is in the transcript),
+  // otherwise the sent history.
+  const text = mine ? mine.text : sentText(paneId, item) || item.text
+  return { text, lost: lostPhotos(item.images, text) }
 }
 
 // "Retry" on a failed message: held again, delivered by the next polls.
@@ -431,12 +455,23 @@ function reconcileQueued(p: Pane) {
 
 // "Cancel" a queued message (bubble button): not sent yet
 // (agent starting), we forget it; for a working Claude, we remove it from its
-// queue (see unqueue.ts). Returns the text to put back into wherdr's field.
+// queue (see unqueue.ts). Returns the text to put back into wherdr's field,
+// photo and file paths included, and `lost`: photos whose path is unknown
+// (an entry Claude queued itself keeps none).
 const unqueueBusy = new Set<string>()
-export async function cancelQueued(paneId: string, text: string, id?: string): Promise<{ text: string }> {
+// A held message being typed right now (deliverHeld): Cancel waits for that
+// attempt instead of reading it as already sent.
+async function deliveryDone(paneId: string) {
+  for (let i = 0; i < 60 && deliverBusy.has(paneId); i++) await sleep(100)
+}
+export async function cancelQueued(paneId: string, text: string, id?: string): Promise<{ text: string, lost?: number }> {
   const p = findPane(paneId)
   if (!p || !p.agent) throw new HerdrError('not_found', 'agent not found')
-  const mine = (queued.get(p.id) || []).find(q => (id && q.id === id) || sameMsg(msgText(q.text), msgText(text)))
+  let mine = findQueued(queued.get(p.id) || [], text, id)
+  if (mine && (mine.held || mine.failed) && deliverBusy.has(p.id)) {
+    await deliveryDone(p.id)
+    if (!(queued.get(p.id) || []).includes(mine)) mine = undefined
+  }
   const drop = () => {
     const left = (queued.get(p.id) || []).filter(q => q !== mine)
     if (left.length) queued.set(p.id, left)
@@ -464,7 +499,13 @@ export async function cancelQueued(paneId: string, text: string, id?: string): P
     // Photos alone have no text to match: wherdr's records of photos alone,
     // in sending order, give back the photos of the entries typed again.
     const ownPhotos = own.filter(q => q !== mine && photosOnly(q.text))
-    await withPaneLock(p.id, () => unqueueClaude({
+    // Sent history records already given to an entry (see sentHistory.ts):
+    // first those of wherdr's own records, this message included.
+    const taken: SentRecord[] = (sent.get(p.id) || []).filter(h => h.text === text || own.some(q => q.text === h.text))
+    // An entry Claude queued itself (or whose record is gone): its paths
+    // from the history, if any.
+    const fromHistory = (e: ClaudeQueueEntry) => (e.images ? sentText(p.id, e, taken) : null)
+    const r = await withPaneLock(p.id, () => unqueueClaude({
       screen: async () => String(((await herdr('pane.read', { pane_id: p.id, source: 'visible', format: 'ansi' }, 4000)).read || {}).text || ''),
       keys: async (keys) => { await herdr('pane.send_input', { pane_id: p.id, keys }) },
       chat: async () => {
@@ -474,12 +515,17 @@ export async function cancelQueued(paneId: string, text: string, id?: string): P
       prompt: t => agentPrompt(p.id, t),
       sleep,
       original: e => (!e.text && e.images
-        ? ownPhotos.shift()?.text || null
-        : (own.find(q => q !== mine && sameMsg(e.text, msgText(q.text))) || { text: e.text }).text),
+        ? ownPhotos.shift()?.text || fromHistory(e)
+        : own.find(q => q !== mine && sameMsg(e.text, msgText(q.text)))?.text || fromHistory(e) || e.text),
     }, text))
     drop()
     log(`queued message cancelled on ${p.id}`)
-    return { text: mine ? mine.text : text }
+    // The app only had Claude's record of the message (no paths): the sent
+    // history may still know them.
+    const known = !mine && r.images > 0 && !hasAttachments(text) ? sentText(p.id, { text: msgText(text), images: r.images }, taken) : null
+    const restored = mine ? mine.text : known || text
+    const lost = lostPhotos(r.images, restored) + r.lost
+    return { text: restored, ...(lost ? { lost } : {}) }
   } catch (e) {
     if ((e as HerdrError).code === 'already_read') drop()
     throw e

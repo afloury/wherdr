@@ -13,9 +13,17 @@ import { HerdrError } from './herdr'
 import { isUploadLine } from './queued'
 import { sameMsg } from './transcripts'
 import { photosLanded, photosOnly } from '../../shared/queuedMatch'
+import { lostPhotos } from './sentHistory'
 
 // Message text without photo paths (which became images in Claude).
 export const msgText = (t: string) => String(t || '').split('\n').filter(l => !isUploadLine(l)).join('\n').trim()
+
+// wherdr's record of a message to cancel: by id first (a text match could be
+// an earlier message starting the same way: "ok" before "ok, and this photo"),
+// then by text.
+export function findQueued<T extends { id: string, text: string }>(list: T[], text: string, id?: string): T | undefined {
+  return (id ? list.find(q => q.id === id) : undefined) || list.find(q => sameMsg(msgText(q.text), msgText(text)))
+}
 
 // Content of Claude Code's input field, read from the ANSI screen: the
 // "❯" line followed by a non-breaking space (queued messages have a normal
@@ -70,8 +78,11 @@ export interface UnqueueDeps {
 
 const already = () => new HerdrError('already_read', 'Already read by the agent')
 
-// Removes the message `text` from Claude's queue. Returns the messages queued again.
-export async function unqueueClaude(d: UnqueueDeps, text: string): Promise<{ requeued: string[] }> {
+// Removes the message `text` from Claude's queue. Returns the messages queued
+// again, the number of photos Claude's entry of the message had, and the
+// photos of the other entries that could not be typed back (no path known:
+// Claude keeps none).
+export async function unqueueClaude(d: UnqueueDeps, text: string): Promise<{ requeued: string[], images: number, lost: number }> {
   const wanted = msgText(text)
   // Photos alone: Claude's entry has no text, only images (see shared/queuedMatch.ts).
   const photos = photosOnly(text)
@@ -120,12 +131,15 @@ export async function unqueueClaude(d: UnqueueDeps, text: string): Promise<{ req
 
   const requeued: string[] = []
   let skipped = false
+  let images = 0
+  let lost = 0
   for (const q of popped) {
-    if (!skipped && isIt(q)) { skipped = true; continue }
+    if (!skipped && isIt(q)) { skipped = true; images = q.images || 0; continue }
     const t = d.original ? d.original(q) : q.text
+    lost += lostPhotos(q.images, t)
     if (!t) continue
     await d.prompt(t)
     requeued.push(t)
   }
-  return { requeued }
+  return { requeued, images, lost }
 }

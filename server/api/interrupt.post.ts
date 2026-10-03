@@ -12,6 +12,7 @@ export default defineApi(async (event, b) => {
   if (!p || !p.agent) throw new HerdrError('bad_pane', 'No agent in this pane')
   const r = await interruptAgent({ call: (m, params, t) => herdr(m, params, t), sleep, now: Date.now }, p)
   let restored: string | undefined
+  let lost = 0
   if (r.stopped && b.restore === true && p.agent === 'claude') {
     const item = await takeBackInterrupted({
       screen: async () => String(((await herdr('pane.read', { pane_id: p.id, source: 'visible', format: 'ansi' }, 4000)).read || {}).text || ''),
@@ -20,10 +21,13 @@ export default defineApi(async (event, b) => {
       sleep,
     }).catch(() => null)
     if (item) {
-      restored = takeBack(p.id, item)
+      const back = takeBack(p.id, item)
+      restored = back.text
+      lost = back.lost
       log(`interrupted prompt taken back on ${p.id}`)
     }
   }
   setTimeout(poll, 100)
-  return { ok: true, ...r, ...(restored !== undefined ? { restored } : {}) }
+  // `lost`: photos of that prompt whose path is unknown (Claude keeps no copy).
+  return { ok: true, ...r, ...(restored !== undefined ? { restored } : {}), ...(lost ? { lost } : {}) }
 })
