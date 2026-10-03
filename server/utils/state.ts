@@ -233,7 +233,7 @@ export const codexStatus = createCodexStatus({
       exec: exec ? (script, input, timeoutMs) => exec(script, [], { input, timeoutMs }) : null,
     }
   },
-  readScreen: id => herdr('pane.read', { pane_id: id, source: 'recent-unwrapped', lines: 300 }, 4000).then(r => String((r.read && r.read.text) || '')),
+  readScreen: id => herdr('pane.read', { pane_id: id, source: 'recent_unwrapped', lines: 300 }, 4000).then(r => String((r.read && r.read.text) || '')),
   rolloutOf: async p => (await transcripts.locate(p))?.file || null,
   runLocal,
   writable: dirWritable,

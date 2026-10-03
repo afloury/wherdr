@@ -242,7 +242,7 @@ function fakeFs(files: Record<string, string>): MachineFs {
   }
 }
 
-function setup(o: { local?: boolean, writable?: boolean, exitCode?: number, hang?: boolean, screen?: string, cliVersion?: string } = {}) {
+function setup(o: { local?: boolean, writable?: boolean, exitCode?: number, hang?: boolean, screen?: string | Error, cliVersion?: string } = {}) {
   const ts = '2026-01-01T10:00:00Z'
   const files = {
     [`${HOME}/.codex/version.json`]: '{"latest_version":"0.160.0","dismissed_version":null}',
@@ -260,7 +260,10 @@ function setup(o: { local?: boolean, writable?: boolean, exitCode?: number, hang
   let clock = Date.parse(ts)
   const svc = createCodexStatus({
     machineOf: () => m,
-    readScreen: async () => o.screen ?? SCREEN,
+    readScreen: async () => {
+      if (o.screen instanceof Error) throw o.screen
+      return o.screen ?? SCREEN
+    },
     rolloutOf: async () => ROLLOUT,
     runLocal,
     writable: async () => Boolean(o.writable),
@@ -289,6 +292,12 @@ describe('Codex status service', () => {
     expect(log.mock.calls[0]![0]).toMatch(/running=0\.159\.1 \(screen 0\.159\.1, rollout 0\.160\.0\).*-> available.*-> no warning/)
     await svc.compute(pane)
     expect(log).toHaveBeenCalledOnce() // only logged when the decision changes
+  })
+
+  it('logs why the screen could not be read', async () => {
+    const { svc, pane, log } = setup({ screen: new Error('invalid request'), cliVersion: '0.160.0' })
+    expect((await svc.compute(pane))?.update).toBeUndefined()
+    expect(log.mock.calls[0]![0]).toMatch(/screen unreadable: invalid request, rollout 0\.160\.0/)
   })
 
   it('runs the known command over SSH, then offers the restart', async () => {

@@ -119,9 +119,10 @@ export function createCodexStatus(d: CodexStatusDeps) {
   async function compute(p: Pane): Promise<CodexStatus | null> {
     const m = d.machineOf(p.id)
     if (!m) return null
+    let screenError: string | null = null
     const [mf, screenText, file] = await Promise.all([
       machineFiles(m),
-      d.readScreen(p.id).catch(() => ''),
+      d.readScreen(p.id).catch((e: Error) => { screenError = e.message || 'error'; return '' }),
       d.rolloutOf(p).catch(() => null),
     ])
     const screen: CodexScreenInfo = parseCodexScreen(screenText)
@@ -132,7 +133,7 @@ export function createCodexStatus(d: CodexStatusDeps) {
     const weekly = codexWeekly({ week: ro?.week ?? null, machine: mf.week, screen: screen.weekly, now: now() })
     const pct = (w: WeekReading | null | undefined) => (w ? `${Math.round(100 - w.used)}%@${new Date(w.at).toISOString()}` : '-')
     const line = [
-      `running=${running ?? '?'} (screen ${screen.version ?? screen.update?.current ?? '-'}, rollout ${ro?.version ?? '-'})`,
+      `running=${running ?? '?'} (screen ${screenError ? `unreadable: ${screenError}` : screen.version ?? screen.update?.current ?? '-'}, rollout ${ro?.version ?? '-'})`,
       `installed=${mf.installed ?? '-'} latest=${mf.latest ?? '-'}${mf.dismissed ? ` dismissed=${mf.dismissed}` : ''}`,
       `-> ${update ? update.state : 'no update'}`,
       `weekly left: rollout ${pct(ro?.week)} machine ${pct(mf.week)} screen ${screen.weekly ? `${screen.weekly.left}%${screen.weekly.resets ? ` resets ${screen.weekly.resets}` : ''}` : '-'}`,
