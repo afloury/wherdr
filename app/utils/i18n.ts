@@ -85,6 +85,7 @@ const FR: Record<string, string> = {
   'Image unavailable offline': 'Image non disponible hors ligne',
   'Image': 'Image',
   'Previous image': 'Image précédente', 'Next image': 'Image suivante',
+  'Zoom in': 'Zoomer', 'Zoom out': 'Dézoomer', 'Fit to screen': 'Ajuster à l’écran', 'Actual size': 'Taille réelle',
   'Terminal unavailable offline': 'Terminal indisponible hors ligne',
   'Sending unavailable offline': 'Envoi indisponible hors ligne',
   'Changes unavailable offline': 'Modification indisponible hors ligne',
