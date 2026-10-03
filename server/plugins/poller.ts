@@ -4,6 +4,7 @@ export default defineNitroPlugin((nitroApp) => {
   initVapid()
   startMachines()
   startPolling()
+  startThreadLimits()
   startNotices()
   cleanUploads()
   cleanAttachments()

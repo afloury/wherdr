@@ -15,6 +15,7 @@ import { HERDR_BIN, HERDR_CHILD_ENV } from './env'
 import { HerdrError, herdrOn } from './herdr'
 import type { Machine } from './machines'
 import { machineFor } from './actions'
+import { currentMachineSlots, paneBaseMachine } from './threadLimits'
 
 const TASKS_BYTES = 256 * 1024
 const PROJECT_HEAD_BYTES = 16 * 1024
@@ -116,6 +117,9 @@ export async function readProjectBoard(pane: Pane, since?: string): Promise<Boar
   const t = await target(pane)
   if (!t) return { available: false }
   const ver = await version(t)
+  // Global limit of the machine: other projects' threads change it too.
+  const machine = (await currentMachineSlots().catch(() => [])).find(s => s.key === paneBaseMachine(pane))
+  if (machine?.max) ver.v += `|m${machine.open}/${machine.max}`
   if (since && since === ver.v) return { same: true, version: ver.v }
   const [tasksText, projectText, threads] = await Promise.all([
     ver.tasks ? t.m.fs.read(`${t.dir}/TASKS.md`, 0, Math.min(ver.tasks.size, TASKS_BYTES)).then(b => b.toString('utf8')) : Promise.resolve(null),
@@ -130,6 +134,7 @@ export async function readProjectBoard(pane: Pane, since?: string): Promise<Boar
   // herdr-projects counts every open thread against max_parallel_threads.
   const max = maxParallelThreads(projectText)
   if (max && !threads.error) board.slots = { used: open.length, max }
+  if (machine?.max) board.machineSlots = { label: machine.label, open: machine.open, max: machine.max }
   return board
 }
 

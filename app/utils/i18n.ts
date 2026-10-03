@@ -425,6 +425,8 @@ const FR: Record<string, string> = {
   'Uncommitted changes in this worktree': 'Modifications non commitées dans ce worktree',
   'This pane’s folder is unknown': 'Dossier de ce pane inconnu',
   'Invalid machine order': 'Ordre des machines invalide',
+  'Unknown machine': 'Machine inconnue',
+  'Invalid thread limit': 'Limite de threads invalide',
   'Invalid machine name (40 characters max)': 'Nom de machine invalide (40 caractères maximum)',
   'Invalid quiet setting': 'Réglage de silence invalide',
   'Notifications are not enabled on this device': 'Notifications non activées sur cet appareil',

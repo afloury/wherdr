@@ -715,7 +715,15 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
   for (const id of activities.keys()) if (!alive(id)) activities.delete(id)
 }
 
+// Server-side followers of the merged state (thread limits file…).
+const stateListeners = new Set<(s: HerdrState) => void>()
+export function onStateChange(fn: (s: HerdrState) => void) { stateListeners.add(fn) }
+
 function broadcastState() {
+  for (const fn of stateListeners) {
+    try { fn(state) }
+    catch (e) { log(`state listener: ${(e as Error).message}`) }
+  }
   for (const c of eventClients.values()) {
     try { c.send(stateJson) }
     catch { /* client parti */ }

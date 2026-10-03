@@ -116,6 +116,8 @@ export interface Pane {
   agentSession: string | null
   // Projet herdr-projects (jeton `hp_project` / `hp_group` du pane), see shared/projects.ts.
   project?: string
+  // Open herdr-projects thread shown by this pane ("<slug>/t-NNNN"), see shared/threadLimits.ts.
+  hpThread?: string
   bornAt?: number
   // Number of the agent's last state change (Herdr's `state_change_seq`,
   // increasing on a machine): "recent" sort of Ready.

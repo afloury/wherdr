@@ -1726,6 +1726,14 @@ body.kb .composer { padding-bottom: 8px; }
 .plugin-result-out .fail { color: var(--danger); }
 .projects-plugin-note { margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .projects-plugin-settings { padding-top: 2px; }
+.thread-limits { margin-bottom: 4px; }
+.thread-limit + .thread-limit { border-top: 0; }
+.thread-limit > span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.thread-limit > span b { font-weight: 600; overflow-wrap: anywhere; }
+.thread-limit > span small { color: var(--muted); font: 500 11px/1.4 var(--mono); }
+.thread-limit button:disabled { opacity: .35; cursor: default; background: none; }
+.thread-limit output.full { color: var(--ochre); }
+.projects-board-title.spaced { margin-top: 24px; }
 .settings-typing .encrypted-toggle { margin-top: 14px; }
 .settings-typing .encrypted-toggle.is-disabled { opacity: .48; cursor: not-allowed; }
 /* Typewriter preview: sample reply, replayed on each setting change. */
@@ -2186,6 +2194,8 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .pp-sec.folded .pp-chev { transform: rotate(-90deg); }
 .pp-sec.folded .pp-sec-head { padding-bottom: 14px; }
 .pp-slots { margin: -4px 14px 8px 39px; font: 400 10.5px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.pp-slots + .pp-slots { margin-top: -6px; }
+.pp-slots.machine.full { color: var(--ochre); }
 .pp-list { list-style: none; margin: 0; padding: 0 0 12px; }
 .pp-row { display: flex; align-items: flex-start; gap: 8px; padding: 0 12px 0 16px; }
 .pp-task { gap: 10px; padding-top: 6px; padding-bottom: 6px; font-size: 13.5px; line-height: 1.4; color: var(--text); }

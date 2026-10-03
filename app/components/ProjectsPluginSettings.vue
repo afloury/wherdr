@@ -2,6 +2,7 @@
 import type { MachineConfig } from '#shared/types'
 import { PROJECTS_COMMAND } from '#shared/projectsPlugin'
 import { coordinatorRules, tasksTemplate } from '#shared/projectBoard'
+import { LIMITS_FILE, MAX_THREAD_LIMIT, type MachineSlots } from '#shared/threadLimits'
 
 const props = defineProps<{ machines: MachineConfig[] }>()
 type PluginState = { installed: boolean, enabled: boolean, version: string | null, installable: boolean }
@@ -74,6 +75,35 @@ async function copyText(text: string, done: string) {
 const lang = () => (language === 'en' ? 'en' : 'fr')
 const hideEmptyOn = projectHideEmpty
 const copyTemplate = () => copyText(tasksTemplate(lang()), tl('Template copied: paste it into the project’s TASKS.md.', 'Modèle copié : colle-le dans TASKS.md du projet.'))
+// Global thread limit per machine (all projects), saved on the server.
+const slots = ref<Record<string, MachineSlots>>({})
+const limitError = ref('')
+const pendingLimits = new Map<string, ReturnType<typeof setTimeout>>()
+function takeSlots(list: MachineSlots[]) { slots.value = Object.fromEntries(list.map(m => [m.key, m])) }
+async function loadSlots() {
+  try {
+    takeSlots((await api<{ machines: MachineSlots[] }>('/api/plugins/thread-limits')).machines)
+    limitError.value = ''
+  } catch (e) { limitError.value = (e as Error).message }
+}
+loadSlots()
+// −: down to 1, then no limit; +: from no limit, starts at the open threads (at least 1).
+function stepLimit(machine: MachineConfig, step: -1 | 1) {
+  haptic()
+  const cur = slots.value[machine.key]
+  const max = cur?.max ?? null
+  const next = max === null ? (step > 0 ? Math.max(1, cur?.open || 0) : null) : (max + step < 1 ? null : Math.min(MAX_THREAD_LIMIT, max + step))
+  if (next === max) return
+  const open = cur?.open || 0
+  slots.value = { ...slots.value, [machine.key]: { key: machine.key, label: machine.label, open, threads: cur?.threads || [], max: next, free: next === null ? null : Math.max(0, next - open) } }
+  clearTimeout(pendingLimits.get(machine.key))
+  pendingLimits.set(machine.key, setTimeout(async () => {
+    pendingLimits.delete(machine.key)
+    try { takeSlots((await api<{ machines: MachineSlots[] }>('/api/plugins/thread-limits', { machine: machine.key, max: next })).machines) }
+    catch (e) { toast((e as Error).message, true); loadSlots() }
+  }, 450))
+}
+const openLabel = (n: number) => tl(`${n} open thread${n === 1 ? '' : 's'} · all projects`, `${n} thread${n > 1 ? 's' : ''} ouvert${n > 1 ? 's' : ''} · tous projets`)
 const copyRules = () => copyText(coordinatorRules(lang()), tl('Rules copied: paste them to the coordinator.', 'Règles copiées : colle-les au coordinateur.'))
 </script>
 
@@ -133,6 +163,20 @@ const copyRules = () => copyText(coordinatorRules(lang()), tl('Rules copied: pas
       <span><b>{{ tl('Hide empty lists', 'Masquer les listes vides') }}</b><small>{{ tl('Show a Project panel list only when it has items (In progress and Done included). Setting specific to this device.', 'Afficher une liste du panneau Projet seulement si elle a des éléments (En cours et Fait compris). Réglage propre à cet appareil.') }}</small></span>
       <USwitch v-model="hideEmptyOn" color="success" size="xl" />
     </label>
+    <h4 id="thread-limits" class="projects-board-title spaced">{{ tl('Max threads per machine', 'Threads max par machine') }}</h4>
+    <p class="projects-plugin-intro">{{ tl('herdr-projects limits threads per project (max_parallel_threads in PROJECT.md). This limit counts the open threads of every project on a machine. — = no global limit.', 'herdr-projects limite les threads par projet (max_parallel_threads dans PROJECT.md). Cette limite compte les threads ouverts de tous les projets d’une machine. — = pas de limite globale.') }}</p>
+    <div class="thread-limits">
+      <div v-for="machine in machines" :key="machine.key" class="settings-stepper thread-limit">
+        <span><b>{{ machine.label }}</b><small>{{ openLabel(slots[machine.key]?.open || 0) }}</small></span>
+        <div>
+          <button type="button" :aria-label="tl(`Lower the limit of ${machine.label}`, `Baisser la limite de ${machine.label}`)" :disabled="slots[machine.key]?.max == null" @click="stepLimit(machine, -1)">−</button>
+          <output :class="{ full: slots[machine.key]?.max != null && (slots[machine.key]?.free ?? 1) === 0 }">{{ slots[machine.key]?.max ?? '—' }}</output>
+          <button type="button" :aria-label="tl(`Raise the limit of ${machine.label}`, `Monter la limite de ${machine.label}`)" :disabled="(slots[machine.key]?.max ?? 0) >= MAX_THREAD_LIMIT" @click="stepLimit(machine, 1)">+</button>
+        </div>
+      </div>
+    </div>
+    <p v-if="limitError" class="projects-plugin-note">{{ limitError }}</p>
+    <p class="projects-plugin-note">{{ tl(`wherdr writes ${LIMITS_FILE} in each herdr-projects folder where a coordinator runs, refreshed on every change: the coordinator rules below tell it to check the machine before starting a thread (fallback: herdr-projects overview).`, `wherdr écrit ${LIMITS_FILE} dans chaque dossier herdr-projects où tourne un coordinateur, à chaque changement : les règles du coordinateur ci-dessous lui disent de vérifier la machine avant de lancer un thread (sinon : herdr-projects overview).`) }}</p>
     <div class="projects-plugin-actions">
       <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-file-text" @click="copyTemplate">{{ tl('Copy TASKS.md template', 'Copier le modèle TASKS.md') }}</UButton>
       <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-clipboard-list" @click="copyRules">{{ tl('Copy rules for the coordinator', 'Copier les règles pour le coordinateur') }}</UButton>
