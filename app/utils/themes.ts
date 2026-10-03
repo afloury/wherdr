@@ -27,6 +27,7 @@ export interface ThemeColors {
   // outline, state colors (default: blue / pink / teal).
   surface2?: string
   inputLine?: string
+  selection?: string // base color of the text selection (default: the accent)
   working?: string
   blocked?: string
   done?: string
@@ -87,6 +88,26 @@ export const THEMES: ThemeDef[] = [
     },
     ansi: ['#2a2a2a', '#e5737b', '#8fcf8a', '#e7c787', '#89b4fa', '#c9a0e8', '#63c5d8', '#d4d4d4',
       '#6b6b6b', '#f38b95', '#abdfa7', '#f6e2b7', '#63a8f8', '#d7b4f0', '#8ad6e6', '#ffffff'],
+  },
+  {
+    // omp / oh-my-pi (v18.4.10), built-in dark theme "titanium" (the
+    // default `theme.dark`, packages/tui/src/theme/defaults/titanium.json,
+    // checked with herdr pane read --format ansi): background #151820,
+    // chrome / status line #0f1216, widgets #1c2029, borders #2a3038, text
+    // #e8ecf4, muted #9ca3b0, dim #6b7280, electric blue #00b4ff (spinner,
+    // headings, model), success / diff + #00ff88, error / diff − #ff4757,
+    // warning #ffb347, gold #d4c090. The accent and the selection come from
+    // the logo gradient (welcome.ts GRADIENT_STOPS: pink #f84fcc → violet
+    // #9362f4 → cyan #00dbe4), next to the magenta of the omp pi.
+    id: 'omp', label: 'omp',
+    c: {
+      bg: '#151820', bg2: '#0f1216', surface: '#1c2029', line: '#2a3038',
+      text: '#e8ecf4', muted: '#9ca3b0', dim: '#6b7280',
+      accent: '#f84fcc', green: '#00ff88', coral: '#ff7b86', ochre: '#ffb347', rose: '#ff4757', blue: '#00b4ff', teal: '#13d1cd', lav: '#e69dfc',
+      selection: '#9362f4', working: '#00b4ff', blocked: '#ffb347', done: '#00ff88',
+    },
+    ansi: ['#3b424d', '#ff4757', '#00ff88', '#f0c040', '#00b4ff', '#d06fed', '#13d1cd', '#c3c9d3',
+      '#6b7280', '#ff7b86', '#6bffb0', '#fddb72', '#6ec9ff', '#e69dfc', '#75efea', '#f7f9fc'],
   },
   {
     id: 'catppuccin', label: 'Catppuccin',
@@ -200,6 +221,23 @@ export const THEMES: ThemeDef[] = [
     ansi: ['#5c5f77', '#d20f39', '#40a02b', '#df8e1d', '#1e66f5', '#ea76cb', '#179299', '#acb0be',
       '#6c6f85', '#d20f39', '#40a02b', '#df8e1d', '#1e66f5', '#ea76cb', '#179299', '#bcc0cc'],
   },
+  {
+    // omp (v18.4.10), built-in light theme "light" (the default
+    // `theme.light`, packages/tui/src/theme/light.json): background
+    // #f8f8f8, widgets #ffffff, user messages #e8e8e8, borders #b0b0b0,
+    // text #3b3b3b, muted #6c6c6c, teal #5a8080, blue #547da7, success
+    // #588458, error #aa5555, warning #9a7326. The accent is the violet of
+    // the logo gradient (#9362f4): its pink is too pale on a light background.
+    id: 'omp-light', label: 'omp Light', light: true,
+    c: {
+      bg: '#f8f8f8', bg2: '#efefef', surface: '#ffffff', surface2: '#e8e8e8', line: '#b0b0b0',
+      text: '#3b3b3b', muted: '#6c6c6c', dim: '#767676',
+      accent: '#9362f4', green: '#588458', coral: '#af5f00', ochre: '#9a7326', rose: '#aa5555', blue: '#547da7', teal: '#5a8080', lav: '#7e57c2',
+      onAccent: '#ffffff', working: '#547da7', blocked: '#9a7326', done: '#588458',
+    },
+    ansi: ['#000000', '#cd3131', '#107c10', '#919514', '#0451a5', '#bc05bc', '#0598bc', '#555555',
+      '#666666', '#f14c4c', '#09a60a', '#919516', '#3b8eea', '#ce68ce', '#1a9cba', '#a5a5a5'],
+  },
 ]
 
 export const DEFAULT_THEME = 'herdr'
@@ -227,7 +265,7 @@ export function themeVars(th: ThemeDef): Record<string, string> {
     // Agents' brand colors (logos and name in the list), identical in all themes:
     // orange of the Claude Code crab, blue-violet of the Codex icon, magenta of the omp pi.
     '--claude': '#d77757', '--codex': '#7a9dff', '--omp': '#c467e0',
-    '--selection': `color-mix(in srgb, var(--accent) ${th.light ? 22 : 32}%, transparent)`,
+    '--selection': `color-mix(in srgb, ${c.selection || 'var(--accent)'} ${th.light ? 22 : 32}%, transparent)`,
     '--shadow': th.light ? 'rgba(60, 60, 80, .16)' : 'rgba(0, 0, 0, .5)',
     'color-scheme': th.light ? 'light' : 'dark',
     ...(c.inputLine ? { '--input-line': c.inputLine } : {}),
@@ -250,7 +288,7 @@ export function xtermTheme(th: ThemeDef) {
   const names = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white']
   const out: Record<string, string> = {
     background: th.c.bg, foreground: th.c.text, cursor: th.c.accent, cursorAccent: th.c.bg,
-    selectionBackground: hexAlpha(th.c.accent, th.light ? 0.25 : 0.32),
+    selectionBackground: hexAlpha(th.c.selection || th.c.accent, th.light ? 0.25 : 0.32),
   }
   names.forEach((n, i) => {
     out[n] = a[i]!
