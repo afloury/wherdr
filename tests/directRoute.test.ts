@@ -9,8 +9,10 @@ describe('directRoute', () => {
   it('also accepts a direct pane link', () => {
     expect(directRoute('/a/w1:p1', '', '')).toBe('/#/a/w1:p1')
   })
-  it('does not replace an existing hash route or unrelated path', () => {
-    expect(directRoute('/t/w1:t2', '', '#/a/w1:p1')).toBeNull()
+  it('keeps an existing hash route and drops the deep-link path in front of it', () => {
+    expect(directRoute('/a/m1~w2:p1', '?x=1', '#/a/w1:p1')).toBe('/#/a/w1:p1')
+  })
+  it('leaves unrelated paths alone', () => {
     expect(directRoute('/', '', '')).toBeNull()
     expect(directRoute('/t/', '', '')).toBeNull()
   })
