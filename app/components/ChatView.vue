@@ -251,6 +251,11 @@ const toolText = (tool: ChatItem) => (tool.name === 'TodoWrite' ? t(tool.text ||
 const isOtherTool = (tool: ChatItem) => tool.name === 'exec' && /^\w+$/.test(tool.text || '')
 const toolLabel = (tool: ChatItem) => isOtherTool(tool) ? t('Tool') : TOOL_LABEL[tool.name || ''] || tool.name || ''
 const toolIcon = (tool: ChatItem) => (tool.error ? 'i-lucide-circle-x' : isOtherTool(tool) ? 'i-lucide-wrench' : TOOL_ICON[tool.name || ''] || 'i-lucide-wrench')
+// Collapsed action block: its last action. omp: its own title and the
+// command, or the intent it gave.
+const groupSuffix = (tool: ChatItem) => (tool.omp
+  ? tool.omp.title === 'Bash' && tool.omp.target ? `$ ${tool.omp.target.split('\n')[0]}` : `${tool.omp.title} · ${tool.omp.target || tool.text}`
+  : `${toolLabel(tool)} · ${tool.text}`)
 // omp notes (custom_message shown): [label, icon] per kind.
 const NOTICE: Record<string, [string, string]> = {
   'advisor': ['Advisor', 'i-lucide-lightbulb'],
@@ -970,23 +975,29 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
 
               <div v-else-if="b.k === 'tools'" class="tools" :class="{ live: b.live }">
                 <template v-if="b.list.length <= 3">
-                  <UChatTool
-                    v-for="(tool, j) in b.list" :key="j" :text="toolLabel(tool)" :suffix="toolText(tool)" :icon="toolIcon(tool)"
-                    :loading="b.live && j === b.list.length - 1" :streaming="b.live && j === b.list.length - 1"
-                    :ui="{ root: 'tool', trigger: 'tool-trigger', label: 'tool-label', suffix: 'tool-suffix', leading: 'tool-leading' }"
-                    :class="{ err: tool.error }"
-                  />
+                  <template v-for="(tool, j) in b.list" :key="j">
+                    <OmpTool v-if="tool.omp" :tool="{ ...tool, omp: tool.omp }" :live="b.live && j === b.list.length - 1" />
+                    <UChatTool
+                      v-else :text="toolLabel(tool)" :suffix="toolText(tool)" :icon="toolIcon(tool)"
+                      :loading="b.live && j === b.list.length - 1" :streaming="b.live && j === b.list.length - 1"
+                      :ui="{ root: 'tool', trigger: 'tool-trigger', label: 'tool-label', suffix: 'tool-suffix', leading: 'tool-leading' }"
+                      :class="{ err: tool.error }"
+                    />
+                  </template>
                 </template>
                 <UChatTool
                   v-else :open="isOpen(b.key)" :text="`${b.list.length} ${t('actions')}`"
-                  :suffix="`${toolLabel(b.list[b.list.length - 1]!)} · ${b.list[b.list.length - 1]!.text}`"
+                  :suffix="groupSuffix(b.list[b.list.length - 1]!)"
                   :icon="b.live ? undefined : 'i-lucide-layers'" :loading="b.live" :streaming="b.live" chevron="trailing"
                   :ui="{ root: 'tool group', trigger: 'tool-trigger', label: 'tool-label', suffix: 'tool-suffix', leading: 'tool-leading', body: 'tool-body', trailingIcon: 'tool-chev' }"
                   @update:open="setOpen(b.key, $event)"
                 >
-                  <div v-for="(tool, j) in b.list" :key="j" class="tool-row" :class="{ err: tool.error }">
-                    <UIcon :name="toolIcon(tool)" /><b>{{ toolLabel(tool) }}</b><span>{{ toolText(tool) }}</span>
-                  </div>
+                  <template v-for="(tool, j) in b.list" :key="j">
+                    <OmpTool v-if="tool.omp" :tool="{ ...tool, omp: tool.omp }" :live="b.live && j === b.list.length - 1" />
+                    <div v-else class="tool-row" :class="{ err: tool.error }">
+                      <UIcon :name="toolIcon(tool)" /><b>{{ toolLabel(tool) }}</b><span>{{ toolText(tool) }}</span>
+                    </div>
+                  </template>
                 </UChatTool>
               </div>
             </template>

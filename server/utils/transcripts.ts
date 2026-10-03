@@ -16,6 +16,7 @@
 import path from 'node:path'
 import { imageTagCount } from '../../shared/queuedMatch'
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail } from '../../shared/types'
+import { ompToolCall, ompToolResult } from './ompTools'
 import { pendingClaudeTool, pendingCodexTool } from './promptDetail'
 import { type ClaudeAsked, type OmpAsked, pendingClaudeAsk, pendingOmpAsk } from './choices'
 import { cleanModelName, lastModel, ompModelLabel } from './models'
@@ -468,9 +469,12 @@ function ompToolSummary(args: Json, home: string): string {
 // instructions): `synthetic` or `attribution: 'agent'`. Images are
 // stored separately (`data: "blob:sha256:<hash>"`, see extractImage). `templates`:
 // omp's file commands, whose text it sends instead of "/name args".
-export function parseOmp(lines: Lines, home = '', templates: readonly CommandTemplate[] = []): Parsed {
+export function parseOmp(lines: Lines, home = '', templates: readonly CommandTemplate[] = [], sessionCwd = ''): Parsed {
   const items: Parsed = []
-  const tools = new Map<string, ChatItem>()
+  const tools = new Map<string, { item: ChatItem, name: string, at: number | null }>()
+  // Session folder (the file's first line, or `sessionCwd` for a slice
+  // that does not include it): paths are shown relative to it, like omp does.
+  let cwd = sessionCwd
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li]
     const ref = lines.refs ? lines.refs[li] : undefined
@@ -480,6 +484,10 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
     catch { continue }
     if (!d || typeof d !== 'object') continue
     const ts: string | null = typeof d.timestamp === 'string' ? d.timestamp : null
+    if (d.type === 'session') {
+      if (typeof d.cwd === 'string') cwd = d.cwd.replace(/\/+$/, '')
+      continue
+    }
     if (d.type === 'compaction') {
       items.push({ role: 'system', text: 'Conversation compacted', ts })
       continue
@@ -521,15 +529,17 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
           items.push({ role: 'assistant', text: clip(part.text), ts })
         } else if (part.type === 'toolCall') {
           const name = String(part.name || '').trim()
-          const t: ChatItem = { role: 'tool', name: OMP_TOOLS[name] || name, text: clip(ompToolSummary(part.arguments, home), 300), ts }
-          if (part.id) tools.set(part.id, t)
+          const t: ChatItem = { role: 'tool', name: OMP_TOOLS[name] || name, text: clip(ompToolSummary(part.arguments, home), 300), ts, omp: ompToolCall(name, part.arguments, cwd, home) }
+          if (part.id) tools.set(part.id, { item: t, name, at: ts ? Date.parse(ts) || null : null })
           items.push(t)
         }
       }
       if (m.stopReason === 'aborted' && /interrupt/i.test(String(m.errorMessage || ''))) items.push({ role: 'system', text: 'Interrupted', ts })
-    } else if (m.role === 'toolResult' && m.isError) {
+    } else if (m.role === 'toolResult') {
       const t = tools.get(m.toolCallId)
-      if (t) t.error = true
+      if (!t) continue
+      if (m.isError) t.item.error = true
+      if (t.item.omp) ompToolResult(t.item.omp, t.name, m, t.at, cwd, home)
     }
   }
   return items
@@ -551,7 +561,7 @@ function ompCommandText(text: string, templates: readonly CommandTemplate[]): st
 // `base`: position (in bytes) of `text` in the file. Each line keeps
 // its "start:length" position (lines.refs): messages with images
 // carry it, to re-read the image on demand (see image()).
-export function parseLines(text: string, kind: string | null, base = 0, home = '', templates?: readonly CommandTemplate[]): Parsed {
+export function parseLines(text: string, kind: string | null, base = 0, home = '', templates?: readonly CommandTemplate[], cwd = ''): Parsed {
   const raw = text.split('\n')
   const refs: string[] = []
   let off = base
@@ -562,7 +572,7 @@ export function parseLines(text: string, kind: string | null, base = 0, home = '
   }
   const lines: Lines = raw.map(stripBlobs)
   lines.refs = refs
-  if (kind === 'omp') return parseOmp(lines, home, templates)
+  if (kind === 'omp') return parseOmp(lines, home, templates, cwd)
   return kind === 'codex' ? parseCodex(lines) : parseClaude(lines, home)
 }
 
@@ -824,8 +834,25 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     return { start: start + off, text: buf.subarray(off).toString('utf8') }
   }
 
+  // omp session folder, from the file's first line ("session" entry): the
+  // slices read further down do not contain it.
+  const ompCwds = new Map<string, string>()
+  async function ompCwd(file: string): Promise<string> {
+    const known = ompCwds.get(file)
+    if (known !== undefined) return known
+    let cwd = ''
+    try {
+      const d = JSON.parse((await readRange(file, 0, 4096)).text.split('\n')[0]!)
+      if (d && d.type === 'session' && typeof d.cwd === 'string') cwd = d.cwd.replace(/\/+$/, '')
+    } catch { /* first line longer than 4 KB or unreadable: paths stay under ~ */ }
+    ompCwds.set(file, cwd)
+    if (ompCwds.size > 64) ompCwds.delete(ompCwds.keys().next().value!)
+    return cwd
+  }
+
   // Goes back from `end` by windows up to PAGE_ITEMS messages (or the start).
   async function readBackwards(file: string, end: number, kind: string | null): Promise<TailResult> {
+    const cwd = kind === 'omp' ? await ompCwd(file) : ''
     let start = end
     let items: ChatItem[] = []
     let queue: ClaudeQueueEntry[] | null = null
@@ -843,7 +870,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
       if (r.start === start) break // giant line beyond the cap: stop there
       // Each window is parsed alone (a tool result in error whose
       // call is in the previous window just loses its red mark).
-      const parsed = parseLines(r.text, kind, r.start, home, ompTemplates.list)
+      const parsed = parseLines(r.text, kind, r.start, home, ompTemplates.list, cwd)
       if (!queue) queue = parsed.queue || [] // the queue lives in the most recent window
       items = parsed.concat(items)
       start = r.start
@@ -862,7 +889,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     let r: TailResult
     if (from !== null && from <= size && size - from <= MAX_READ_BYTES) {
       const x = await readRange(file, from, size)
-      const items = parseLines(x.text, kind, x.start, home, ompTemplates.list)
+      const items = parseLines(x.text, kind, x.start, home, ompTemplates.list, kind === 'omp' ? await ompCwd(file) : '')
       r = { start: from, items, queue: items.queue || [] }
     } else {
       r = await readBackwards(file, size, kind)
