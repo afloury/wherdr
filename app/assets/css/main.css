@@ -906,6 +906,8 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
    num, key, err, ok) comes from utils/codeKind.ts. Fragments of a wrapped
    span each keep their frame (box-decoration-break). */
 :root[data-codev] .md-body :not(pre) > code { -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+/* Short tokens (`exit 0`, `5 min`, `Ctrl+C`) never break across lines. */
+:root[data-codev] .md-body :not(pre) > code:is([data-k="num"], [data-k="key"], [data-k="err"], [data-k="ok"], [data-k="id"]) { white-space: nowrap; }
 .md-body code[data-k="path"] { --k: var(--lav); }
 .md-body code[data-k="cmd"] { --k: var(--green); }
 .md-body code[data-k="id"] { --k: var(--accent); }
