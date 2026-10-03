@@ -53,6 +53,19 @@ describe('slots per machine', () => {
     expect(machineSlots(panes, machines, { '': 1 })[0]!.free).toBe(0)
     expect(machineSlots(panes, machines, { aaaa1111: 4 })[1]!.free).toBe(2)
   })
+  it('gives the slot of a finished thread back, but not of one just started', () => {
+    const now = 10 * 60000
+    const slots = machineSlots([
+      { hpThread: 'shop/t-0001', agent: 'claude', status: 'done' }, // ready for review
+      { hpThread: 'shop/t-0002', agent: 'codex', status: 'idle', bornAt: now - 4 * 60000 }, // waiting on the user
+      { hpThread: 'shop/t-0003', agent: 'claude', status: 'idle', bornAt: now - 60000 }, // brief not received yet
+      { hpThread: 'shop/t-0004', agent: 'claude', status: 'working' },
+      { hpThread: 'shop/t-0005', agent: 'omp', status: 'blocked' },
+      { hpThread: 'shop/t-0006', agent: null, status: 'idle' }, // agent not detected yet
+      { hpThread: 'shop/t-0004', agent: null, status: 'idle' }, // shell pane of an active thread
+    ], machines, { '': 3 }, now)
+    expect(slots[0]).toMatchObject({ open: 4, free: 0, threads: ['shop/t-0003', 'shop/t-0004', 'shop/t-0005', 'shop/t-0006'] })
+  })
 })
 
 describe('saved limits', () => {

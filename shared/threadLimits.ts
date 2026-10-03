@@ -65,17 +65,27 @@ export interface MachineSlots {
   threads: string[] // "<slug>/t-NNNN", sorted
 }
 
+// A thread whose agent has finished (idle or done) gives its slot back right
+// away, even while its pane waits for review: only working, blocked or
+// starting agents hold the machine. An agent born less than STARTING_MS ago
+// still counts while idle, waiting for its brief.
+export const STARTING_MS = 3 * 60000
+export interface SlotPane { machine?: string, hpThread?: string, agent?: string | null, status?: string | null, bornAt?: number }
+
 // One entry per machine (named sessions count with their machine): the
-// distinct threads whose pane lives there.
+// distinct active threads whose pane lives there.
 export function machineSlots(
-  panes: { machine?: string, hpThread?: string }[],
+  panes: SlotPane[],
   machines: SlotMachine[],
   limits: ThreadLimits,
+  now = Date.now(),
 ): MachineSlots[] {
   const base = new Map(machines.map(m => [m.key, m.baseKey ?? m.key]))
   const threads = new Map<string, Set<string>>()
   for (const p of panes) {
     if (!p.hpThread) continue
+    const finished = p.agent && (p.status === 'idle' || p.status === 'done') && !(p.bornAt && now - p.bornAt < STARTING_MS)
+    if (finished) continue
     const key = base.get(p.machine || '') ?? (p.machine || '')
     if (!threads.has(key)) threads.set(key, new Set())
     threads.get(key)!.add(p.hpThread)

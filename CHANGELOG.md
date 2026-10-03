@@ -11,8 +11,9 @@ First public release.
 ### Added
 
 - herdr-projects: max threads per machine, across all projects (Settings → Plugins →
-  herdr-projects; empty = no global limit, saved on the server). wherdr counts the open threads of
-  every project on each machine, shows `2 of 2 thread slots in use on <machine> (all projects)` in
+  herdr-projects; empty = no global limit, saved on the server). wherdr counts the active threads
+  of every project on each machine (a finished thread waiting for review gives its slot back right
+  away), shows `2 of 2 thread slots in use on <machine> (all projects)` in
   the In queue header, and writes `.wherdr-limits.json` (`{ this, machines: { <machine>: { max,
   open, free, threads } } }`) in each herdr-projects folder where a coordinator runs. The
   coordinator rules now say to check it before starting a thread and to wait while the machine is
