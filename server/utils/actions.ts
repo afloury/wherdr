@@ -229,7 +229,7 @@ export async function closePanel(paneId: string) {
   let sent = false
   for (let i = 0; i < 2; i++) {
     const r = await herdr('pane.read', { pane_id: paneId, source: 'detection' }, 4000)
-    if (!panelOpen(r.read && r.read.text)) return sent
+    if (!panelOpen(r.read && r.read.text, p.agent)) return sent
     await herdr('pane.send_input', { pane_id: paneId, keys: ['esc'] })
     sent = true
     await sleep(400)

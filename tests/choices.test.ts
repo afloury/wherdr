@@ -114,9 +114,13 @@ describe('inputVisible', () => {
 
 describe('panelOpen', () => {
   it('closes a full-screen panel but leaves a menu the user may be using', () => {
-    expect(panelOpen('  Usage\n  ████ 40%\n\n  Esc to close')).toBe(true)
-    expect(panelOpen(fx('claude-trust.txt'))).toBe(false)
-    expect(panelOpen(fx('claude-idle.txt'))).toBe(false)
+    expect(panelOpen('  Usage\n  ████ 40%\n\n  Esc to close', 'claude')).toBe(true)
+    expect(panelOpen(fx('claude-trust.txt'), 'claude')).toBe(false)
+    expect(panelOpen(fx('claude-idle.txt'), 'claude')).toBe(false)
+  })
+
+  it('never sees a panel on omp: Escape there opens its branch selector', () => {
+    expect(panelOpen(fx('omp-idle-footer.txt'), 'omp')).toBe(false)
   })
 })
 

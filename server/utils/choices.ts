@@ -654,8 +654,11 @@ export function screenChoices(text: string | null | undefined, agent: string | n
 // panel that hides it until Escape is pressed.
 // Full-screen panel (/usage…) hiding the input, closed by Esc before a send:
 // no prompt line at all. A menu's cursor line keeps it open (the user may be
-// going through it, e.g. an /mcp authentication).
-export function panelOpen(text: string | null | undefined): boolean {
+// going through it, e.g. an /mcp authentication). Claude and Codex only: other
+// agents' input has no "❯"/"›" line (omp: "╰─"), and Escape twice on an idle
+// omp opens its branch selector, which then swallows the message.
+export function panelOpen(text: string | null | undefined, agent: string | null | undefined): boolean {
+  if (agent !== 'claude' && agent !== 'codex') return false
   const lines = String(text || '').replace(/\s+$/, '').split('\n').slice(-12)
   return !lines.some((l, i) => /^\s*[❯›](\s|$)/.test(l) || bashInput(l, lines[i - 1]))
 }
