@@ -1,7 +1,7 @@
 // Herdr theme (config.toml) and resolution on the app side.
 import { describe, expect, it } from 'vitest'
 import { parseHerdrTheme } from '../server/utils/herdrtheme'
-import { THEMES, customVars, mapHerdrTheme, resolveHerdrTheme, themeVars } from '../app/utils/themes'
+import { THEMES, customVars, mapHerdrTheme, resolveHerdrTheme, themeVars, xtermTheme } from '../app/utils/themes'
 
 describe('config.toml de Herdr', () => {
   it('lit [theme], [theme.custom] et ses variantes, ignore le reste', () => {
@@ -50,6 +50,14 @@ default_shell = ""
     expect([cc['--accent'], cc['--surface-2'], cc['--input-line'], cc['--rose'], cc['--working'], cc['--blocked']]).toEqual(['#d77757', '#373737', '#888888', '#ff6b80', '#d77757', '#b1b9f9'])
     const cx = themeVars(THEMES.find(t => t.id === 'codex')!)
     expect([cx['--accent'], cx['--done'], cx['--idle']]).toEqual(['#63a8f8', '#abdfa7', '#abdfa7'])
-    expect(THEMES.map(t => t.id)).toEqual(['herdr', 'claude-code', 'codex', 'catppuccin', 'terminal', 'tokyo-night', 'dracula', 'nord', 'gruvbox', 'one-dark', 'solarized', 'kanagawa', 'rose-pine', 'vesper', 'catppuccin-latte'])
+    const omp = THEMES.find(t => t.id === 'omp')!
+    const ov = themeVars(omp)
+    expect([ov['--bg'], ov['--accent'], ov['--green'], ov['--rose'], ov['--working'], ov['--blocked']]).toEqual(['#151820', '#f84fcc', '#00ff88', '#ff4757', '#00b4ff', '#ffb347'])
+    // The selection takes the gradient's violet, not the accent.
+    expect(ov['--selection']).toBe('color-mix(in srgb, #9362f4 32%, transparent)')
+    expect(xtermTheme(omp).selectionBackground).toBe('rgba(147,98,244,0.32)')
+    expect(themeVars(THEMES.find(t => t.id === 'codex')!)['--selection']).toBe('color-mix(in srgb, var(--accent) 32%, transparent)')
+    expect(THEMES.find(t => t.id === 'omp-light')!.light).toBe(true)
+    expect(THEMES.map(t => t.id)).toEqual(['herdr', 'claude-code', 'codex', 'omp', 'catppuccin', 'terminal', 'tokyo-night', 'dracula', 'nord', 'gruvbox', 'one-dark', 'solarized', 'kanagawa', 'rose-pine', 'vesper', 'catppuccin-latte', 'omp-light'])
   })
 })
