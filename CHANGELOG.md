@@ -10,6 +10,16 @@ First public release.
 
 ### Added
 
+- Codex conversation: **Update** now also works when wherdr cannot run the update itself (in
+  Docker, whose home is read-only): it is typed into the agent's own terminal. Codex exits
+  (`/exit`), the pane's shell runs the known official command followed by an end marker with
+  its exit status, then Codex restarts on the same conversation (`codex resume <id>`, through
+  Herdr's `agent.start`, so Herdr keeps tracking it). The line above the composer follows each
+  step (Exiting Codex… / Updating Codex in its terminal… / Restarting Codex…). The button waits
+  while Codex works or waits for an answer; a Codex menu on screen or a Codex not started from a
+  shell are refused before anything is typed. On failure the pane stays at its shell with the
+  exit code, the last line printed and **Copy command**. Over SSH, or with a writable home, the
+  update still runs directly without stopping the agents, then **Restart to update**.
 - `/resume` card: `Ctrl+A` on the computer keyboard switches between every project and the
   current one, like the card's button (also with the empty message field focused). `⌘A` keeps
   "select all" on macOS; a field with text keeps its own `Ctrl+A`.

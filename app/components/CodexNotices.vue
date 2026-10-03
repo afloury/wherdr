@@ -143,8 +143,8 @@ async function status() {
     >
       <UIcon name="i-lucide-circle-arrow-up" />{{ t('Update') }}
     </button>
-    <span v-if="busyReason" class="notice-reason">{{ pane.status === 'blocked' ? tl('answer first', 'réponds d’abord') : tl('after this turn', 'après ce tour') }}</span>
     <button v-else-if="update.command" type="button" class="notice-btn" @click="copy"><UIcon name="i-lucide-copy" />{{ t('Copy command') }}</button>
+    <span v-if="busyReason" class="notice-reason">{{ pane.status === 'blocked' ? tl('answer first', 'réponds d’abord') : tl('after this turn', 'après ce tour') }}</span>
     <button type="button" class="notice-btn notice-x" :aria-label="t('Hide until the next version')" :title="t('Hide until the next version')" @click="hide">
       <UIcon name="i-lucide-x" />
     </button>

@@ -57,7 +57,7 @@ export async function updateInTerminal(d: TermUpdateDeps, p: Agent, plan: Restar
   await waitFor(d, TERM_UPDATE_MS, async () => Boolean(result.end = terminalUpdateDone(await readRecent(d, p.id), nonce)))
   const end = result.end
   if (!end) throw new HerdrError('update_timeout', 'The update did not finish in 10 minutes: see the terminal')
-  if (end.code !== 0) throw new HerdrError('update_failed', `The update command failed (exit ${end.code})${end.last ? `: ${end.last}` : ''}`)
+  if (end.code !== 0) throw new HerdrError('update_failed', `exit code ${end.code}${end.last ? ` · ${end.last}` : ''}`)
   // The marker is printed by the shell itself: its prompt follows.
   await waitFor(d, 5000, async () => (await paneForeground(d, p.id, 'codex')).atShell)
   d.phase('starting')

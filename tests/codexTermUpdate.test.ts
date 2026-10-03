@@ -131,7 +131,7 @@ describe('terminal update sequence', () => {
   })
   it('a failed command leaves the pane at its shell with the error', async () => {
     const { d, calls, phases } = fakePane({ code: 1 })
-    await expect(updateInTerminal(d, agent(), plan, NPM)).rejects.toThrow('The update command failed (exit 1): npm error: fake failure')
+    await expect(updateInTerminal(d, agent(), plan, NPM)).rejects.toThrow('exit code 1 · npm error: fake failure')
     expect(phases).toEqual(['stopping', 'updating'])
     expect(calls.some(c => c.startsWith('start:'))).toBe(false)
   })
