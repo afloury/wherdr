@@ -5,7 +5,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { terminalPixelWidth } from '~/utils/terminalSize'
-import { bindTerminalSelection, type TerminalSelection } from '~/utils/terminalSelection'
+import { bindTerminalSelection } from '~/utils/terminalSelection'
 import { bindShiftEnter } from '~/utils/terminalKeys'
 import { terminalClosedText, terminalUnavailableText } from '~/utils/terminalClosed'
 
@@ -27,7 +27,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   const loading = ref(false)
   const kbdOn = ref(false)
   const selectionHint = useTerminalSelectionHint()
-  let selection: TerminalSelection | null = null
+  let unbindSelection: (() => void) | null = null
 
   const wsBase = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
 
@@ -52,12 +52,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     fit = new FitAddon()
     term.loadAddon(fit)
     term.open(host)
-    // Dragging near the edge: Herdr scrolls; copy on release.
-    selection = bindTerminalSelection(term, {
-      scroll: lines => scroll(lines),
-      focus: () => focus(),
-      ...useTerminalCopyFeedback(),
-    })
+    // Selection of the visible text, copied on release or with ⌘C.
+    unbindSelection = bindTerminalSelection(term, () => toast(t('Copied')))
     // The device's choice may change while the terminal stays mounted.
     setRenderer(terminalRenderer.value)
     // JetBrains Mono (bundled): once loaded, xterm re-measures its cells.
@@ -206,10 +202,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         if (!term) return
         if (m.width && m.height && (m.width !== term.cols || m.height !== term.rows)) term.resize(m.width, m.height)
         const current = term
-        current.write(b64ToBytes(m.bytes || ''), () => {
-          if (term === current) selection?.frame()
-          selectionHint.refresh(current)
-        })
+        current.write(b64ToBytes(m.bytes || ''), () => selectionHint.refresh(current))
       } else if (m.type === 'terminal.closed') {
         closedReason = terminalClosedText(m)
       } else if (m.type === 'herdr.stderr') {
@@ -277,8 +270,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   function dispose() {
     disposed = true
     disconnect()
-    selection?.dispose()
-    selection = null
+    unbindSelection?.()
+    unbindSelection = null
     webgl = null // term.dispose() destroys its addons
     term?.dispose()
     term = null
