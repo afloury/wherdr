@@ -31,7 +31,7 @@ import { currentModel, forgetModel, noteScreen } from './modelctl'
 import { type Machine, RemoteMachine, allMachines, getMachine, machineOfPane, machinesListed, multiMachine, onMachinesChange, remoteMachines } from './machines'
 import { READY_MAX_MS, serverReady } from '../../shared/stateReady'
 import { createCodexStatus, dirWritable } from './codexStatus'
-import { runLocal } from './quotas'
+import { runLocal, setCodexScreenWeek } from './quotas'
 
 const fsp = fs.promises
 
@@ -240,6 +240,7 @@ export const codexStatus = createCodexStatus({
   onChange: () => poll(),
   log,
 })
+setCodexScreenWeek(key => codexStatus.screenWeek(key, state.panes))
 
 // Agent model: same principle as the preview (background task). Re-read when
 // the state changes, and every 5 s (a simple stat if the transcript has
