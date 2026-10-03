@@ -9,7 +9,8 @@
 //  - installed version: ~/.codex/packages/standalone/current/codex-package.json
 //    (standalone installer), or the result of an update run by wherdr;
 //  - weekly limit: the most recent `rate_limits` (agent's rollout or another
-//    conversation of the machine), checked against `/status` on screen.
+//    conversation of the machine), checked against `/status` on screen; the
+//    home gauge (server/utils/quotas.ts) uses the same rule.
 // The screen otherwise only fills the gaps (the update command it suggests,
 // the warning line). A command read from the screen is
 // never run as is: only the known official commands below can be run.
@@ -231,33 +232,56 @@ export function parseResetTime(text: string | null | undefined, now: number): nu
   return t
 }
 
-// Weekly-limit warning (≤ 25 % left), from the most recent reading:
+// Current weekly window, from the most recent reading (whatever is left):
 //  - structured: the freshest `rate_limits` (agent's rollout or the machine's
 //    newest conversation); a window whose reset is past has been renewed;
 //  - `/status` on screen, with its reset: a later window than the structured
 //    one means a reset since (early, or no turn since): the screen wins; the
 //    same window: the higher usage (it only grows); an earlier window: stale.
 //  - a gauge without reset, or the startup heads-up, only without structured data.
-export function codexWeekly(o: { week: WeekReading | null, machine?: WeekReading | null, screen?: CodexScreenWeekly, now: number }): CodexWeekly | null {
+// Null: nothing current (no reading, or an expired one nothing replaces).
+// Used by the conversation warning (codexWeekly) and the home gauge (quotas.ts).
+export function codexWeekWindow(o: { week: WeekReading | null, machine?: WeekReading | null, screen?: CodexScreenWeekly, now: number }): CodexWeekly | null {
   const s = [o.week, o.machine].reduce<WeekReading | null>((a, b) => (!b ? a : !a || b.at > a.at ? b : a), null)
   let out: CodexWeekly | null = null
   const expired = Boolean(s?.resetsAt && s.resetsAt <= o.now)
   if (s && !expired) out = { left: Math.round(Math.max(0, 100 - s.used)), resetsAt: s.resetsAt, source: 'rollout' }
   const sc = o.screen
-  const fromScreen = (left: number): CodexWeekly => ({ left, resetsAt: null, source: 'screen' })
+  const fromScreen = (left: number, resetsAt: number | null = null): CodexWeekly => ({ left, resetsAt, source: 'screen' })
   if (!s) {
     if (sc) out = fromScreen(sc.left)
   } else if (sc?.exact && sc.resets) {
     const r = parseResetTime(sc.resets, o.now)
     if (r && r > o.now) {
-      if (expired) out = fromScreen(sc.left)
+      if (expired) out = fromScreen(sc.left, r)
       else if (out && out.resetsAt) {
-        if (r - out.resetsAt > SAME_WINDOW_MS) out = fromScreen(sc.left)
+        if (r - out.resetsAt > SAME_WINDOW_MS) out = fromScreen(sc.left, r)
         else if (Math.abs(r - out.resetsAt) <= SAME_WINDOW_MS && sc.left < out.left) out = { ...out, left: sc.left }
       }
     }
   }
+  return out
+}
+
+// Weekly-limit warning (≤ 25 % left) of a conversation, see codexWeekWindow.
+export function codexWeekly(o: { week: WeekReading | null, machine?: WeekReading | null, screen?: CodexScreenWeekly, now: number }): CodexWeekly | null {
+  const out = codexWeekWindow(o)
   return out && out.left <= WEEKLY_WARN_LEFT ? out : null
+}
+
+// `/status` readings of several Codex screens of a machine: the one of the
+// latest window still running (a reset since makes the older ones stale),
+// and within that window the lowest share left (usage only grows).
+// Only gauges with a readable reset count (a footer gauge cannot be dated).
+export function latestScreenWeek<T extends { weekly?: CodexScreenWeekly }>(list: T[], now: number): T | null {
+  let best: { s: T, r: number } | null = null
+  for (const s of list) {
+    const w = s.weekly
+    const r = w?.exact && w.resets ? parseResetTime(w.resets, now) : null
+    if (!r || r <= now) continue
+    if (!best || r - best.r > SAME_WINDOW_MS || (Math.abs(r - best.r) <= SAME_WINDOW_MS && w!.left < best.s.weekly!.left)) best = { s, r }
+  }
+  return best ? best.s : null
 }
 
 // Shell script of an update: the known command, then the new version.

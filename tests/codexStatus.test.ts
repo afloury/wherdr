@@ -3,7 +3,7 @@
 // machine (the real installer never runs here).
 import { describe, expect, it, vi } from 'vitest'
 import {
-  CODEX_STANDALONE_COMMAND, codexUpdateState, codexWeekly, knownUpdateCommand, parseCliVersion,
+  CODEX_STANDALONE_COMMAND, codexUpdateState, codexWeekWindow, codexWeekly, knownUpdateCommand, latestScreenWeek, parseCliVersion,
   parseCodexScreen, parsePackageVersion, parseResetTime, parseVersionFile, rolloutCliVersion, runningVersion, updateScript,
 } from '../shared/codexStatus'
 import { type CodexMachine, createCodexStatus } from '../server/utils/codexStatus'
@@ -225,6 +225,42 @@ describe('codexWeekly', () => {
   })
 })
 
+describe('codexWeekWindow (home gauge)', () => {
+  const now = new Date(2026, 9, 3, 10, 37).getTime()
+  const H = 3600000
+  const old = { used: 88, resetsAt: now + 17 * H, at: now - 10 * H }
+  it('gives the current window whatever is left', () => {
+    expect(codexWeekWindow({ week: { ...old, used: 40 }, now })).toEqual({ left: 60, resetsAt: old.resetsAt, source: 'rollout' })
+  })
+  it('regression: /status after an early reset wins, with its reset time', () => {
+    const screen = parseCodexScreen(STATUS_SCREEN).weekly
+    expect(codexWeekWindow({ week: old, screen, now })).toEqual({ left: 100, resetsAt: new Date(2026, 9, 10, 10, 33).getTime(), source: 'screen' })
+  })
+  it('an expired window is not current', () => {
+    expect(codexWeekWindow({ week: { ...old, resetsAt: now - 1 }, now })).toBeNull()
+  })
+})
+
+describe('latestScreenWeek', () => {
+  const now = new Date(2026, 9, 3, 10, 37).getTime()
+  it('takes the latest window, then the lowest share left in it', () => {
+    const a = { id: 'a', weekly: { left: 12, exact: true, resets: '9:00 on 5 Oct' } }
+    const b = { id: 'b', weekly: { left: 100, exact: true, resets: '10:33 on 10 Oct' } }
+    const c = { id: 'c', weekly: { left: 97, exact: true, resets: '10:34 on 10 Oct' } }
+    expect(latestScreenWeek([a, b], now)?.id).toBe('b')
+    expect(latestScreenWeek([b, a, c], now)?.id).toBe('c')
+  })
+  it('ignores footer gauges, heads-ups and past resets', () => {
+    const list = [
+      { weekly: { left: 12, exact: true } },
+      { weekly: { left: 20, exact: false } },
+      { weekly: { left: 90, exact: true, resets: '10:33 on 26 Sep' } },
+      {},
+    ]
+    expect(latestScreenWeek(list, now)).toBeNull()
+  })
+})
+
 // ---------------------------------------------------------------- service
 const HOME = '/home/demo'
 const ROLLOUT = `${HOME}/.codex/sessions/2026/01/01/rollout-demo.jsonl`
@@ -321,6 +357,15 @@ describe('Codex status service', () => {
     expect((await svc.compute(pane))?.update).toMatchObject({ runnable: false, command: CODEX_STANDALONE_COMMAND })
     await expect(svc.startUpdate(pane)).rejects.toThrow(/cannot be run/)
     expect(runLocal).not.toHaveBeenCalled()
+  })
+
+  it('reads every Codex screen of the machine for the home gauge', async () => {
+    const { svc, pane, tick } = setup({ screen: STATUS_SCREEN })
+    const other = { id: 'w1:p2', agent: 'claude', status: 'idle' } as Pane
+    expect(await svc.screenWeek('mac', [pane, other])).toEqual({ left: 100, exact: true, resets: '10:33 on 10 Oct' })
+    expect(await svc.screenWeek('pi', [pane])).toBeNull()
+    tick(1000)
+    expect(await svc.screenWeek('mac', [])).toBeNull() // pane gone: its reading too
   })
 
   it('refuses a second update while one runs', async () => {

@@ -12,6 +12,10 @@
 // their own block (claudeAccounts), shown under their machine by the app.
 // Codex: same principle (codexAccounts), fingerprint taken from `creator_account_id`
 // in the header (session_meta) of its conversations, never from auth.json.
+// Codex's week may be reset early: without a turn since, its conversations
+// still carry the old window; a `/status` read on one of the machine's Codex
+// screens then corrects the gauge (codexWeekWindow, shared with the
+// conversation warning).
 import { spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -21,6 +25,7 @@ import type { ExecResult, MachineFs } from './fsx'
 import { HerdrError } from './herdr'
 import { allMachines, type Machine } from './machines'
 import { fmt } from '../../shared/message'
+import { type CodexScreenWeekly, codexWeekWindow } from '../../shared/codexStatus'
 
 const TTL = 30000
 let cache: { at: number, q: Quotas } | null = null
@@ -239,6 +244,25 @@ export async function readCodex(fs: MachineFs, home: string): Promise<CodexAccou
   return machineCodexQuota(readings.filter(Boolean) as CodexReading[])
 }
 
+// Codex gauge of a machine checked against a `/status` read on one of its
+// screens (see codexWeekWindow): a later window (early reset) replaces the
+// week; the same window keeps the higher usage; an earlier one is ignored.
+// The 5-hour window and the reading's age stay those of the conversations.
+export function applyCodexScreen<Q extends Quota>(q: Q, screen: CodexScreenWeekly | null | undefined, now: number): Q {
+  if (!screen || !q.week) return q
+  const w = codexWeekWindow({ week: { used: q.week.used, resetsAt: q.week.resetsAt, at: q.at }, screen, now })
+  if (!w) return q
+  const used = 100 - w.left
+  if (w.source === 'screen') return { ...q, week: plausible({ used, resetsAt: w.resetsAt, minutes: q.week.minutes }, now) }
+  return used > q.week.used ? { ...q, week: { ...q.week, used } } : q
+}
+
+// Latest `/status` weekly reading on the Codex screens of a machine (key),
+// provided by the state (server/utils/state.ts), which knows the panes.
+type ScreenWeekSource = (key: string) => Promise<CodexScreenWeekly | null>
+let screenWeek: ScreenWeekSource | null = null
+export function setCodexScreenWeek(f: ScreenWeekSource | null) { screenWeek = f }
+
 const fresher = (a: Quota | null, b: Quota | null) => (!a ? b : !b ? a : b.at > a.at ? b : a)
 
 // Codex: only fingerprints separate accounts (without a fingerprint, same
@@ -281,7 +305,12 @@ export async function readQuotas(force = false): Promise<Quotas> {
   if (!force && cache && Date.now() - cache.at < TTL) return cache.q
   const online = allMachines().filter(m => m.home && !m.info().baseKey && (m.local || m.status === 'online'))
   const readings = await Promise.all(online.map(async (m) => {
-    const [claude, codex] = await Promise.all([readClaude(m.fs, m.home).catch(() => null), readCodex(m.fs, m.home).catch(() => null)])
+    const [claude, rolled, screen] = await Promise.all([
+      readClaude(m.fs, m.home).catch(() => null),
+      readCodex(m.fs, m.home).catch(() => null),
+      screenWeek ? screenWeek(m.key).catch(() => null) : null,
+    ])
+    const codex = rolled && applyCodexScreen(rolled, screen, Date.now())
     const state = claude?.setup
     const setup = state === 'missing' || state === 'pending' ? { key: m.key, state, installable: await canInstall(m) } : null
     return { key: m.key, label: m.label, claude: claude?.q || null, codex, setup }
