@@ -3,7 +3,10 @@
 // side), so only what is on screen can be selected, and dragging past the
 // edge does not scroll. xterm keeps the selection internally, even with the
 // WebGL renderer: copying reads getSelection(), not the DOM selection.
+// A line wrapped by the width (see terminalLinks: rows filled up to the last
+// column) is copied in one piece, without the line breaks between its rows.
 import type { Terminal } from '@xterm/xterm'
+import { rowContinues, screenRows } from './terminalLinks'
 
 type Keys = Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey'>
 type Press = Pick<MouseEvent, 'button' | 'shiftKey' | 'altKey'>
@@ -31,6 +34,31 @@ export function trimSelection(text: string): string {
   return text.replace(/[ \t]+$/gm, '')
 }
 
+// `text`: xterm's selection, one line per row; `rows`: the full rows it
+// covers (one character per cell). Rows that go on in the next one are
+// joined without a line break; any other break stays.
+export function joinWrappedRows(text: string, rows: string[], wrapped: (i: number) => boolean = () => false): string {
+  const lines = text.split('\n')
+  if (lines.length !== rows.length) return text
+  return lines.reduce((out, line, i) => {
+    if (i === 0) return line
+    return out + (wrapped(i) || rowContinues(rows[i - 1]!, rows[i]!) ? '' : '\n') + line
+  }, '')
+}
+
+// Selected text, ready for the clipboard.
+export function terminalSelectionText(term: Terminal): string {
+  const text = term.getSelection()
+  const pos = term.getSelectionPosition()
+  if (!pos) return trimSelection(text)
+  // Buffer rows, 0-based; the end comes first when dragging upwards.
+  const top = Math.min(pos.start.y, pos.end.y)
+  const bottom = Math.max(pos.start.y, pos.end.y)
+  const buf = term.buffer.active
+  const rows = screenRows(term).slice(top, bottom + 1)
+  return trimSelection(joinWrappedRows(text, rows, i => !!buf.getLine(top + i)?.isWrapped))
+}
+
 // One clipboard call, made synchronously so it stays inside the caller's user
 // gesture (the copy key, or the release of a drag started by a mousedown).
 // A refusal is not reported: the selection stays, ⌘C copies it.
@@ -49,7 +77,7 @@ export function bindTerminalSelection(term: Terminal, copied?: () => void): () =
   if (!root) return () => {}
   const mac = isMac()
   const copy = () => {
-    if (term.hasSelection()) void copyTerminalText(trimSelection(term.getSelection())).then(ok => ok && copied?.())
+    if (term.hasSelection()) void copyTerminalText(terminalSelectionText(term)).then(ok => ok && copied?.())
   }
   const onKey = (e: KeyboardEvent) => {
     if (!isTerminalCopyKey(e) || !term.hasSelection()) return

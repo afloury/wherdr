@@ -10,6 +10,16 @@ First public release.
 
 ### Added
 
+- Terminal: clickable links. OSC 8 hyperlinks (such as a login screen's "Open login URL") and
+  plain `http(s)://` URLs open in a new tab, without opener, with `⌘`+click on a Mac or
+  `Ctrl`+click elsewhere (a plain click still starts a selection; hovering shows the URL), or a
+  tap on a touch screen; only http and https are opened. A URL wrapped over several rows is one
+  link. Also in the side-by-side mirrors.
+- Terminal: copying a line wrapped by the terminal width (a long URL, for instance) gives it back
+  in one piece, without a line break between its rows; real line breaks stay. Herdr paints each
+  row on its own and TUIs often wrap long lines themselves, so a row filled up to the last column
+  and followed by a row that starts with a character (box-drawing borders excluded) counts as
+  wrapped.
 - Messages to Claude Code are no longer glued to another program's (e.g. a herdr-projects
   `[hp inbox]` notice sent at the same moment). wherdr types the message itself and checks
   Claude's input field on screen: it waits until the field has stayed empty for a moment, and

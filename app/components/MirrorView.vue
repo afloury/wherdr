@@ -9,6 +9,7 @@ import { Terminal } from '@xterm/xterm'
 import { mirrorInput } from '#shared/spaces'
 import { mirrorTop } from '~/utils/mirrorViewport'
 import { bindTerminalSelection } from '~/utils/terminalSelection'
+import { bindTerminalLinks } from '~/utils/terminalLinks'
 import { bindShiftEnter } from '~/utils/terminalKeys'
 
 const props = defineProps<{ paneId: string, interactive?: boolean }>()
@@ -26,6 +27,7 @@ let retryTimer: ReturnType<typeof setTimeout> | undefined
 let ro: ResizeObserver | null = null
 let alive = true
 let unbindSelection: (() => void) | null = null
+let links: ReturnType<typeof bindTerminalLinks> | null = null
 
 const FONT = '"Wherdr Symbols", "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace'
 
@@ -105,6 +107,7 @@ onMounted(() => {
   })
   term.open(host.value!)
   unbindSelection = bindTerminalSelection(term, () => toast(t('Copied')))
+  links = bindTerminalLinks(term, t)
   term.attachCustomWheelEventHandler(() => false)
   bindShiftEnter(term, (key) => { if (props.interactive) send({ keys: [key] }) })
   term.onData((d) => {
@@ -123,6 +126,7 @@ onUnmounted(() => {
   ro?.disconnect()
   disconnect()
   unbindSelection?.()
+  links?.dispose()
   term?.dispose()
   term = null
 })

@@ -53,11 +53,15 @@ function onTouchMove(e: TouchEvent) {
     queue(lines)
   }
 }
-function onTouchEnd() {
+function onTouchEnd(e: TouchEvent) {
+  const t = e.changedTouches[0]
   lastY = null
   lastX = null
-  // Un simple tap referme le clavier : le terminal reste lisible en entier.
+  // A tap on a link opens it; any simple tap closes the keyboard: the
+  // terminal stays readable in full.
   if (!moved) {
+    // No keyboard for a link: cancels the mousedown that follows the tap.
+    if (t && props.ctl.tapLink(t.clientX, t.clientY)) e.preventDefault()
     props.ctl.blur()
     ;(document.activeElement as HTMLElement | null)?.blur?.()
   }

@@ -6,6 +6,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { terminalPixelWidth } from '~/utils/terminalSize'
 import { bindTerminalSelection } from '~/utils/terminalSelection'
+import { bindTerminalLinks, type TerminalLinks } from '~/utils/terminalLinks'
 import { bindShiftEnter } from '~/utils/terminalKeys'
 import { terminalClosedText, terminalUnavailableText } from '~/utils/terminalClosed'
 
@@ -28,6 +29,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   const kbdOn = ref(false)
   const selectionHint = useTerminalSelectionHint()
   let unbindSelection: (() => void) | null = null
+  let links: TerminalLinks | null = null
 
   const wsBase = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
 
@@ -54,6 +56,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     term.open(host)
     // Selection of the visible text, copied on release or with ⌘C.
     unbindSelection = bindTerminalSelection(term, () => toast(t('Copied')))
+    // OSC 8 hyperlinks and http(s) URLs, opened in a new tab.
+    links = bindTerminalLinks(term, t)
     // The device's choice may change while the terminal stays mounted.
     setRenderer(terminalRenderer.value)
     // JetBrains Mono (bundled): once loaded, xterm re-measures its cells.
@@ -253,6 +257,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     kbdOn.value = true
   }
   function blur() { term?.textarea?.blur() }
+  // Tap on the touch layer: opens the link under the finger, if any.
+  const tapLink = (x: number, y: number) => links?.tap(x, y) ?? false
   const hasFocus = () => Boolean(term && document.activeElement === term.textarea)
   const rowHeight = () => (term && term.rows && el ? el.clientHeight / term.rows : 16)
   const pageRows = () => term?.rows || 24
@@ -272,6 +278,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     disconnect()
     unbindSelection?.()
     unbindSelection = null
+    links?.dispose()
+    links = null
     webgl = null // term.dispose() destroys its addons
     term?.dispose()
     term = null
@@ -279,7 +287,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
 
   return {
     mount, connect, disconnect, isConnected, sendTerm, sendKeys, fitNow, setFontSize,
-    reset, scroll, focus, blur, hasFocus, rowHeight, pageRows, setVisible, dispose, loading, kbdOn,
+    reset, scroll, focus, blur, tapLink, hasFocus, rowHeight, pageRows, setVisible, dispose, loading, kbdOn,
     hasBanner: opts.hasBanner, selectionHint,
   }
 }

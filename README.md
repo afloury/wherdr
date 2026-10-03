@@ -85,6 +85,9 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - **Terminal view**: the real terminal (xterm.js, WebGL or DOM renderer) with take-over. On a
   computer, drag over the text on screen to select it: releasing the button copies it, as do
   `⌘C` / `Ctrl+Shift+C`. The history is browsed with the wheel, not by dragging past the edge.
+  Links (OSC 8 hyperlinks and plain `http(s)://` URLs, even wrapped over several rows) open in a
+  new tab with `⌘`+click / `Ctrl`+click, or a tap on a phone; only http and https open. A long
+  line wrapped by the width is copied in one piece, without the breaks between its rows.
 - **Composer**: send messages while the agent works (queued, cancellable), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
