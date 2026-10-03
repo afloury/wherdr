@@ -16,6 +16,7 @@ import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 import { isStale, noMisses, onError, onUnavailable, type ChatMisses } from '~/utils/chatMiss'
 import { findReplyOrigin, parseReply, replyTarget, type ReplyTarget } from '#shared/replyQuote'
 import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
+import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } from '~/utils/ompTool'
 
 const props = defineProps<{ pane: Pane, localQueued: QueuedMessage[] }>()
 const route = useRoute()
@@ -251,11 +252,10 @@ const toolText = (tool: ChatItem) => (tool.name === 'TodoWrite' ? t(tool.text ||
 const isOtherTool = (tool: ChatItem) => tool.name === 'exec' && /^\w+$/.test(tool.text || '')
 const toolLabel = (tool: ChatItem) => isOtherTool(tool) ? t('Tool') : TOOL_LABEL[tool.name || ''] || tool.name || ''
 const toolIcon = (tool: ChatItem) => (tool.error ? 'i-lucide-circle-x' : isOtherTool(tool) ? 'i-lucide-wrench' : TOOL_ICON[tool.name || ''] || 'i-lucide-wrench')
-// Collapsed action block: its last action. omp: its own title and the
-// command, or the intent it gave.
-const groupSuffix = (tool: ChatItem) => (tool.omp
-  ? tool.omp.title === 'Bash' && tool.omp.target ? `$ ${tool.omp.target.split('\n')[0]}` : `${tool.omp.title} · ${tool.omp.target || tool.text}`
-  : `${toolLabel(tool)} · ${tool.text}`)
+// Collapsed action block: its last action.
+const groupSuffix = (tool: ChatItem) => `${toolLabel(tool)} · ${tool.text}`
+// omp's calls: a console of the last ones, the earlier ones unfolded on demand.
+const ompRows = (b: { key: string, list: ChatItem[] }) => ompConsoleRows(b.list, isOpen(b.key))
 // omp notes (custom_message shown): [label, icon] per kind.
 const NOTICE: Record<string, [string, string]> = {
   'advisor': ['Advisor', 'i-lucide-lightbulb'],
@@ -973,12 +973,30 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <span>{{ b.text }}</span>
               </div>
 
+              <!-- omp: a console, "OMP · N ACTIONS · Σ time", one line per call. -->
+              <div v-else-if="b.k === 'tools' && isOmpGroup(b.list)" class="tools omp-console" :class="{ live: b.live }">
+                <div class="omp-console-head">
+                  <span class="omp-console-title">omp</span>
+                  <span>{{ b.list.length }} {{ t('actions') }}</span>
+                  <span v-if="ompTotalMs(b.list)" class="omp-console-total">Σ {{ ompWall(ompTotalMs(b.list)) }}</span>
+                </div>
+                <button
+                  v-if="ompRows(b).hidden || (b.list.length > OMP_CONSOLE_SHOWN && isOpen(b.key))" type="button" class="omp-console-more"
+                  :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))"
+                >
+                  <template v-if="ompRows(b).hidden">⋯ {{ tl(`${ompRows(b).hidden} earlier actions`, `${ompRows(b).hidden} actions avant`) }}</template>
+                  <template v-else>⋯ {{ t('Collapse') }}</template>
+                </button>
+                <OmpTool
+                  v-for="(tool, j) in ompRows(b).rows" :key="`${b.key}:${b.list.length - ompRows(b).rows.length + j}`"
+                  :tool="{ ...tool, omp: tool.omp! }" :live="b.live && tool === b.list[b.list.length - 1]"
+                />
+              </div>
               <div v-else-if="b.k === 'tools'" class="tools" :class="{ live: b.live }">
                 <template v-if="b.list.length <= 3">
                   <template v-for="(tool, j) in b.list" :key="j">
-                    <OmpTool v-if="tool.omp" :tool="{ ...tool, omp: tool.omp }" :live="b.live && j === b.list.length - 1" />
                     <UChatTool
-                      v-else :text="toolLabel(tool)" :suffix="toolText(tool)" :icon="toolIcon(tool)"
+                      :text="toolLabel(tool)" :suffix="toolText(tool)" :icon="toolIcon(tool)"
                       :loading="b.live && j === b.list.length - 1" :streaming="b.live && j === b.list.length - 1"
                       :ui="{ root: 'tool', trigger: 'tool-trigger', label: 'tool-label', suffix: 'tool-suffix', leading: 'tool-leading' }"
                       :class="{ err: tool.error }"
@@ -993,8 +1011,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   @update:open="setOpen(b.key, $event)"
                 >
                   <template v-for="(tool, j) in b.list" :key="j">
-                    <OmpTool v-if="tool.omp" :tool="{ ...tool, omp: tool.omp }" :live="b.live && j === b.list.length - 1" />
-                    <div v-else class="tool-row" :class="{ err: tool.error }">
+                    <div class="tool-row" :class="{ err: tool.error }">
                       <UIcon :name="toolIcon(tool)" /><b>{{ toolLabel(tool) }}</b><span>{{ toolText(tool) }}</span>
                     </div>
                   </template>

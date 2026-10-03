@@ -1,25 +1,27 @@
 <script setup lang="ts">
-// One omp tool call, drawn after omp's own terminal: bash is "$ command" in
-// mono with its intent underneath, the other tools their title and target
-// ("Grep  pattern · 95 matches · in server"). Wall time on the right, ⚠ on
-// an error, and the end of the output (or an edit's diff) unfolds on a tap.
-// While it runs: omp's braille spinner and the intent it gave for the call.
+// One omp tool call, a line of the console ChatView draws for a group of
+// calls: "❯ command" (bash) or "read TASKS.md:5-20" with the wall time on the
+// right, then "# intent → counts" underneath. ✗ and the exit code in red on an
+// error. While it runs: omp's braille spinner, the intent shimmering and the
+// elapsed time, like omp's activity line. The end of the output (or an
+// edit's diff) unfolds on a tap, under omp's header (OUTPUT · … N earlier
+// lines · exit · wall).
 import type { ChatItem, OmpToolView } from '#shared/types'
-import { ompEarlier, ompToolGlyph, ompToolMeta, ompWall } from '~/utils/ompTool'
+import { ompCommandLine, ompOutHead, ompToolMeta, ompWall } from '~/utils/ompTool'
 
 const props = defineProps<{ tool: ChatItem & { omp: OmpToolView }, live?: boolean }>()
 const open = ref(false)
 
 const v = computed(() => props.tool.omp)
-const bash = computed(() => v.value.title === 'Bash')
 const err = computed(() => Boolean(props.tool.error))
-const meta = computed(() => ompToolMeta(v.value))
+const meta = computed(() => ompToolMeta(v.value).join(' · '))
+const exit = computed(() => (v.value.exit ? String(v.value.exit) : ''))
 const wall = computed(() => (props.live || v.value.ms === undefined ? '' : ompWall(v.value.ms)))
-const earlier = computed(() => ompEarlier(v.value))
+// Running call: its start, for the elapsed time on the right.
+const since = computed(() => (props.live && props.tool.ts ? Date.parse(props.tool.ts) || null : null))
+const intent = computed(() => v.value.intent || v.value.title)
 const canOpen = computed(() => Boolean(v.value.out))
-// Under bash's command (or a tool without target): the intent. While a tool
-// runs, omp shows its intent too.
-const sub = computed(() => (bash.value || props.live || !v.value.target ? v.value.intent || '' : ''))
+const head = computed(() => ompOutHead(v.value, err.value))
 const outLines = computed(() => (v.value.out || '').split('\n').map(l => ({
   text: l,
   cls: v.value.diff ? (/^\+\s*\d*\|/.test(l) ? 'add' : /^-\s*\d*\|/.test(l) ? 'del' : '') : '',
@@ -27,31 +29,32 @@ const outLines = computed(() => (v.value.out || '').split('\n').map(l => ({
 </script>
 
 <template>
-  <div class="omp-tool" :class="{ bash, err, live, open, foldable: canOpen }" :title="!bash && v.intent ? v.intent : undefined">
+  <div class="omp-tool" :class="{ err, live, open }">
     <component
       :is="canOpen ? 'button' : 'div'" class="omp-tool-head" :type="canOpen ? 'button' : undefined"
       :aria-expanded="canOpen ? open : undefined" @click="canOpen && (open = !open)"
     >
-      <span class="omp-tool-mark" aria-hidden="true">
-        <OmpSpinner v-if="live" />
-        <template v-else>{{ ompToolGlyph(v, err) }}</template>
+      <span class="omp-tool-line">
+        <span class="omp-tool-glyph" aria-hidden="true"><OmpSpinner v-if="live" /><template v-else>{{ err ? '✗' : '❯' }}</template></span>
+        <code class="omp-tool-cmd">{{ ompCommandLine(v) }}</code>
+        <span v-if="since" class="omp-tool-wall"><OmpElapsed :since="since" /></span>
+        <span v-else-if="wall" class="omp-tool-wall">{{ wall }}</span>
       </span>
-      <span class="omp-tool-main">
-        <span class="omp-tool-line">
-          <template v-if="bash && v.target"><span class="omp-tool-sign" aria-hidden="true">$</span><code class="omp-tool-cmd">{{ v.target }}</code></template>
-          <template v-else>
-            <b class="omp-tool-title">{{ v.title }}</b>
-            <code v-if="v.target" class="omp-tool-target">{{ v.target }}</code>
-          </template>
-          <span v-for="(m, i) in meta" :key="i" class="omp-tool-meta">{{ m }}</span>
-        </span>
-        <span v-if="sub" class="omp-tool-sub">{{ sub }}</span>
+      <span class="omp-tool-sub">
+        <UChatShimmer v-if="live" :text="`# ${intent}`" :duration="2.4" class="omp-tool-intent" />
+        <span v-else-if="v.intent" class="omp-tool-intent"># {{ v.intent }}</span>
+        <span v-if="meta || exit" class="omp-tool-result">→ {{ meta }}<template v-if="exit"><template v-if="meta"> · </template><span class="omp-tool-exit">exit {{ exit }}</span></template></span>
       </span>
-      <span v-if="wall" class="omp-tool-wall">{{ wall }}</span>
-      <UIcon v-if="canOpen" :name="open ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="omp-tool-chev" />
     </component>
     <div v-if="canOpen && open" class="omp-tool-out">
-      <div v-if="earlier" class="omp-tool-earlier">{{ tl(`… (${earlier} earlier lines)`, `… (${earlier} lignes avant)`) }}</div>
+      <div class="omp-tool-out-head">
+        <span class="omp-tool-out-label">{{ head.label }}</span>
+        <span v-if="head.earlier" class="omp-tool-out-earlier">{{ head.earlier }}</span>
+        <span class="omp-tool-out-right">
+          <span v-if="exit" class="omp-tool-exit">exit {{ exit }}</span>
+          <span v-if="wall">{{ wall }}</span>
+        </span>
+      </div>
       <pre><span v-for="(l, i) in outLines" :key="i" :class="l.cls">{{ l.text }}
 </span></pre>
     </div>
