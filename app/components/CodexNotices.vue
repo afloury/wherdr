@@ -4,11 +4,11 @@
 // - new Codex version: release notes, Update (runs Codex's official command
 //   on the agent's machine, after confirmation) or Copy command, then
 //   "Restart to update" (same restart flow as Claude: same conversation);
-// - weekly limit at 25 % or less: what is left, its reset, and /status.
+// - weekly-limit warning, only while Codex's screen shows one, with its own
+//   values ("12% left", "less than 25% left"), and /status.
 // "Hide" lasts until the next version, on this device.
 import type { Pane } from '#shared/types'
 import { machineOf } from '#shared/ids'
-import { resetText } from '~/utils/quotas'
 
 const props = defineProps<{ pane: Pane, paneId: string, readOnly: boolean }>()
 
@@ -30,11 +30,6 @@ const machine = computed(() => {
   const m = herdrState.value.machines?.find(m => m.key === key)
   return (m && m.label) || hostLabel.value || t('This machine')
 })
-const weeklyReset = computed(() => {
-  const w = weekly.value
-  if (!w || !w.resetsAt) return ''
-  return resetText({ used: 100 - w.left, resetsAt: w.resetsAt, minutes: 10080 }, quotaNow.value, language) || ''
-})
 
 const availableText = computed(() => {
   const u = update.value
@@ -45,8 +40,9 @@ const availableText = computed(() => {
 const weeklyText = computed(() => {
   const w = weekly.value
   if (!w) return ''
-  const head = tl(`Weekly limit: ${w.left}% left`, `Limite hebdo : ${w.left} % restants`)
-  return weeklyReset.value ? `${head} · ${tl(`resets ${weeklyReset.value}`, `remise à zéro ${weeklyReset.value}`)}` : head
+  return w.lessThan
+    ? tl(`Weekly limit: less than ${w.left}% left`, `Limite hebdo : moins de ${w.left} % restants`)
+    : tl(`Weekly limit: ${w.left}% left`, `Limite hebdo : ${w.left} % restants`)
 })
 
 function hide() {
@@ -151,7 +147,7 @@ async function status() {
   </div>
   <div v-if="weekly" class="composer-notice codex-weekly" :class="{ low: weekly.left <= 10 }" role="status">
     <UIcon name="i-lucide-triangle-alert" class="notice-icon" />
-    <span class="restart-text" :title="weeklyText">{{ tl(`Weekly limit: ${weekly.left}% left`, `Limite hebdo : ${weekly.left} % restants`) }}<template v-if="weeklyReset">{{ ' · ' }}<span class="notice-extra">{{ tl('resets ', 'remise à zéro ') }}</span>{{ weeklyReset }}</template></span>
+    <span class="restart-text" :title="weeklyText">{{ weeklyText }}</span>
     <button type="button" class="notice-btn" :disabled="readOnly" :title="t('Show Codex’s usage breakdown')" @click="status">/status</button>
   </div>
 </template>

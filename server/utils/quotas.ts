@@ -15,7 +15,7 @@
 // Codex's week may be reset early: without a turn since, its conversations
 // still carry the old window; a `/status` read on one of the machine's Codex
 // screens then corrects the gauge, and stays known after that screen is gone
-// (KnownWeek, codexWeekWindow, shared with the conversation warning).
+// (KnownWeek, codexWeekWindow).
 import { spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
