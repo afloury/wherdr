@@ -1,14 +1,17 @@
 // Codex notices shown in its conversation view: "Update available" (with an
 // Update button) and the weekly-limit warning. Pure logic, shared by the
 // server and the tests. Structured data first:
-//  - running version: `cli_version` in the header of the agent's rollout;
+//  - running version: the TUI's own header on screen ("OpenAI Codex (v…)"),
+//    else `cli_version` in the header of the agent's rollout (written by the
+//    shared app-server daemon, which may run another version than the TUI);
 //  - latest version: `latest_version` in ~/.codex/version.json (Codex's own
 //    daily check, `dismissed_version` when the user skipped it in Codex);
 //  - installed version: ~/.codex/packages/standalone/current/codex-package.json
 //    (standalone installer), or the result of an update run by wherdr;
-//  - weekly limit: the last `rate_limits` of the agent's rollout.
-// The screen only fills the gaps (versions of an older Codex, the update
-// command it suggests, the warning line). A command read from the screen is
+//  - weekly limit: the most recent `rate_limits` (agent's rollout or another
+//    conversation of the machine), checked against `/status` on screen.
+// The screen otherwise only fills the gaps (the update command it suggests,
+// the warning line). A command read from the screen is
 // never run as is: only the known official commands below can be run.
 import { compareVersions, parseVersion } from './updates'
 
@@ -37,18 +40,31 @@ export function knownUpdateCommand(text: string | null | undefined): string | nu
   return KNOWN_COMMANDS.find(c => c === t) ?? null
 }
 
+export interface CodexScreenWeekly {
+  left: number
+  // `exact`: a gauge ("weekly limit: 12% left", `/status`); otherwise the
+  // startup heads-up ("less than 25% of your weekly limit left"), a bound only.
+  exact: boolean
+  // Reset as printed by `/status` ("10:33 on 10 Oct"), machine local time.
+  resets?: string
+}
+
 export interface CodexScreenInfo {
+  // Version in the TUI's header, "OpenAI Codex (v0.159.1)" (last one on screen).
+  version?: string
   // "✨ Update available! 0.159.1 -> 0.160.0"
   update?: { current: string, latest: string }
   // "Run <command> to update." (raw text, not validated)
   command?: string
-  // "weekly limit: 12% left" in the footer, or "less than 25% of your weekly limit left".
-  weeklyLeft?: number
+  // Last weekly reading on screen.
+  weekly?: CodexScreenWeekly
 }
 
 const VERSION = String.raw`v?(\d+\.\d+\.\d+(?:-[\w.]+)?)`
 const UPDATE_RE = new RegExp(String.raw`Update available!?\s*${VERSION}\s*(?:->|→)\s*${VERSION}`, 'i')
-const WEEK_LEFT_RE = /weekly limit:?\s*(\d{1,3})\s*%\s*left/i
+const HEADER_RE = new RegExp(String.raw`OpenAI Codex\s*\(${VERSION}\)`, 'i')
+// Footer gauge, or the `/status` line "Weekly limit: [████] 100% left (resets 10:33 on 10 Oct)".
+const WEEK_LEFT_RE = /weekly limit:?\s*(?:\[[^\]]*\]\s*)?(\d{1,3})\s*%\s*left(?:\s*\(resets\s+([^)]+)\))?/i
 const WEEK_LESS_RE = /less than\s*(\d{1,3})\s*%\s*of your weekly limit left/i
 
 // What Codex's screen says (plain text, as read by `pane.read`). The update
@@ -59,6 +75,8 @@ export function parseCodexScreen(text: string | null | undefined): CodexScreenIn
   const lines = text.split('\n').map(l => l.replace(/^[\s│┃]+|[\s│┃]+$/g, ''))
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i]!
+    const h = HEADER_RE.exec(l)
+    if (h) out.version = h[1]!
     const u = UPDATE_RE.exec(l)
     if (u) out.update = { current: u[1]!, latest: u[2]! }
     const r = /(?:^|\s)Run\s+(.*)$/.exec(l)
@@ -68,12 +86,13 @@ export function parseCodexScreen(text: string | null | undefined): CodexScreenIn
       const m = /^(.*?)\s+to update\.?$/.exec(cmd)
       if (m) out.command = norm(m[1]!)
     }
-    // The footer gauge is the current value: it wins over the heads-up message.
+    // A gauge (footer, `/status`) is a real reading: the last one wins, and
+    // always over the heads-up message, printed once at startup.
     const w = WEEK_LEFT_RE.exec(l)
-    if (w) out.weeklyLeft = clampPct(Number(w[1]))
+    if (w) out.weekly = { left: clampPct(Number(w[1])), exact: true, ...(w[2] ? { resets: norm(w[2]) } : {}) }
     else {
-      const h = WEEK_LESS_RE.exec(l)
-      if (h && out.weeklyLeft === undefined) out.weeklyLeft = clampPct(Number(h[1]))
+      const hu = WEEK_LESS_RE.exec(l)
+      if (hu && !out.weekly?.exact) out.weekly = { left: clampPct(Number(hu[1])), exact: false }
     }
   }
   return out
@@ -134,21 +153,14 @@ export interface CodexStatus { update?: CodexUpdate, weekly?: CodexWeekly }
 const newest = (...vs: (string | null | undefined)[]) =>
   vs.reduce<string | null>((a, b) => (!b ? a : !a || compareVersions(b, a) > 0 ? b : a), null)
 
-// Version the agent runs. What was seen (the rollout's header, the last
-// "Update available! A -> B" on screen) may date from an earlier process of
-// the pane: an agent started after an install runs at least that version.
-export function runningVersion(o: {
-  rollout: string | null
-  screen: CodexScreenInfo
-  bornAt?: number | null
-  installed?: string | null
-  installedAt?: number | null
-  job?: CodexUpdateJob | null
-}): string | null {
-  let v = newest(o.rollout, o.screen.update?.current)
-  if (o.bornAt && o.installed && o.installedAt && o.bornAt > o.installedAt) v = newest(v, o.installed)
-  if (o.bornAt && o.job?.phase === 'done' && o.bornAt > o.job.at) v = newest(v, o.job.version)
-  return v
+// Version the agent runs: the TUI's header on screen first (the process
+// actually running in the pane), then the version of its "Update available"
+// box, then the rollout's `cli_version` (that of the app-server daemon shared
+// by all the Codex of the machine: it may be newer or older than the TUI).
+// No guess from dates: an agent started after an install may still run an
+// older version (another binary, daemon kept), the screen tells.
+export function runningVersion(o: { rollout: string | null, screen: CodexScreenInfo }): string | null {
+  return o.screen.version || o.screen.update?.current || o.rollout || null
 }
 
 // Update notice of a Codex agent, or null. `canRun`: the server can run a
@@ -185,15 +197,67 @@ export function codexUpdateState(o: {
   return null
 }
 
-// Weekly-limit warning (≤ 25 % left): the rollout's last reading first, the
-// screen otherwise. A window already reset is ignored.
-export function codexWeekly(o: { week: { used: number, resetsAt: number | null } | null, screenLeft?: number, now: number }): CodexWeekly | null {
-  if (o.week && (!o.week.resetsAt || o.week.resetsAt > o.now)) {
-    const left = Math.round(Math.max(0, 100 - o.week.used))
-    return left <= WEEKLY_WARN_LEFT ? { left, resetsAt: o.week.resetsAt, source: 'rollout' } : null
+export interface WeekReading { used: number, resetsAt: number | null, at: number }
+
+// Two weekly resets further apart than this are two different windows
+// (the screen's time is the Codex machine's local time, maybe not ours).
+const SAME_WINDOW_MS = 20 * 3600000
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+
+// Reset time printed by `/status`: "10:33", "10:33 on 10 Oct", "3:46 PM on Oct 4".
+// Local time of this server; null if unreadable.
+export function parseResetTime(text: string | null | undefined, now: number): number | null {
+  const m = /^(\d{1,2}):(\d{2})\s*(am|pm)?(?:\s+on\s+(?:(\d{1,2})\s+([a-z]{3})[a-z]*|([a-z]{3})[a-z]*\s+(\d{1,2})))?$/i.exec(norm(String(text || '')))
+  if (!m) return null
+  let h = Number(m[1])
+  const min = Number(m[2])
+  const ap = m[3]?.toLowerCase()
+  if (ap === 'pm' && h < 12) h += 12
+  if (ap === 'am' && h === 12) h = 0
+  if (h > 23 || min > 59) return null
+  const n = new Date(now)
+  const day = m[4] ?? m[7]
+  const mon = (m[5] ?? m[6])?.toLowerCase()
+  if (day && mon) {
+    const mi = MONTHS.indexOf(mon)
+    if (mi < 0) return null
+    let t = new Date(n.getFullYear(), mi, Number(day), h, min).getTime()
+    // "on 2 Jan" read late December is next year's.
+    if (t < now - 180 * 86400000) t = new Date(n.getFullYear() + 1, mi, Number(day), h, min).getTime()
+    return t
   }
-  if (o.screenLeft !== undefined && o.screenLeft <= WEEKLY_WARN_LEFT) return { left: o.screenLeft, resetsAt: null, source: 'screen' }
-  return null
+  let t = new Date(n.getFullYear(), n.getMonth(), n.getDate(), h, min).getTime()
+  if (t < now - 60000) t += 86400000
+  return t
+}
+
+// Weekly-limit warning (≤ 25 % left), from the most recent reading:
+//  - structured: the freshest `rate_limits` (agent's rollout or the machine's
+//    newest conversation); a window whose reset is past has been renewed;
+//  - `/status` on screen, with its reset: a later window than the structured
+//    one means a reset since (early, or no turn since): the screen wins; the
+//    same window: the higher usage (it only grows); an earlier window: stale.
+//  - a gauge without reset, or the startup heads-up, only without structured data.
+export function codexWeekly(o: { week: WeekReading | null, machine?: WeekReading | null, screen?: CodexScreenWeekly, now: number }): CodexWeekly | null {
+  const s = [o.week, o.machine].reduce<WeekReading | null>((a, b) => (!b ? a : !a || b.at > a.at ? b : a), null)
+  let out: CodexWeekly | null = null
+  const expired = Boolean(s?.resetsAt && s.resetsAt <= o.now)
+  if (s && !expired) out = { left: Math.round(Math.max(0, 100 - s.used)), resetsAt: s.resetsAt, source: 'rollout' }
+  const sc = o.screen
+  const fromScreen = (left: number): CodexWeekly => ({ left, resetsAt: null, source: 'screen' })
+  if (!s) {
+    if (sc) out = fromScreen(sc.left)
+  } else if (sc?.exact && sc.resets) {
+    const r = parseResetTime(sc.resets, o.now)
+    if (r && r > o.now) {
+      if (expired) out = fromScreen(sc.left)
+      else if (out && out.resetsAt) {
+        if (r - out.resetsAt > SAME_WINDOW_MS) out = fromScreen(sc.left)
+        else if (Math.abs(r - out.resetsAt) <= SAME_WINDOW_MS && sc.left < out.left) out = { ...out, left: sc.left }
+      }
+    }
+  }
+  return out && out.left <= WEEKLY_WARN_LEFT ? out : null
 }
 
 // Shell script of an update: the known command, then the new version.

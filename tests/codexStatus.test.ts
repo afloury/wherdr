@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   CODEX_STANDALONE_COMMAND, codexUpdateState, codexWeekly, knownUpdateCommand, parseCliVersion,
-  parseCodexScreen, parsePackageVersion, parseVersionFile, rolloutCliVersion, runningVersion, updateScript,
+  parseCodexScreen, parsePackageVersion, parseResetTime, parseVersionFile, rolloutCliVersion, runningVersion, updateScript,
 } from '../shared/codexStatus'
 import { type CodexMachine, createCodexStatus } from '../server/utils/codexStatus'
 import type { MachineFs } from '../server/utils/fsx'
@@ -30,12 +30,33 @@ const SCREEN = `╭────────────────────�
   gpt-5.5 medium · ~/tests                                                   ⚠ 1 warning · f2 to view
 `
 
+// Real situation (fictional values): the TUI runs 0.159.1 while the shared
+// app-server daemon writes `cli_version` 0.160.0 into the rollout; the startup
+// heads-up predates an early weekly reset that `/status` shows.
+const STATUS_SCREEN = `╭──────────────────────────────────────────────────────────────────────╮
+│ ✨ Update available! 0.159.1 -> 0.160.0                              │
+│ Run sh -c 'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh' to │
+│ update.                                                              │
+╰──────────────────────────────────────────────────────────────────────╯
+  >_ OpenAI Codex (v0.159.1)
+     ~/demo
+⚠ Heads up, you have less than 25% of your weekly limit left. Run /status for a breakdown.
+› hello
+• Hello!
+/status
+  >_ OpenAI Codex (v0.159.1)
+  Server:              Local background server
+  5h limit:            [████████████████████] 100% left (resets 15:33)
+  Weekly limit:        [████████████████████] 100% left (resets 10:33 on 10 Oct)
+› Ask Codex to do anything
+`
+
 describe('parseCodexScreen', () => {
   it('reads the update box, its command and the weekly gauge', () => {
     expect(parseCodexScreen(SCREEN)).toEqual({
       update: { current: '0.159.1', latest: '0.160.0' },
       command: CODEX_STANDALONE_COMMAND,
-      weeklyLeft: 12,
+      weekly: { left: 12, exact: true },
     })
   })
 
@@ -47,7 +68,7 @@ describe('parseCodexScreen', () => {
   })
 
   it('uses the heads-up message when the gauge is not shown', () => {
-    expect(parseCodexScreen('⚠ Heads up, you have less than 25% of your weekly limit left. Run /status for a breakdown.')).toEqual({ weeklyLeft: 25 })
+    expect(parseCodexScreen('⚠ Heads up, you have less than 25% of your weekly limit left. Run /status for a breakdown.')).toEqual({ weekly: { left: 25, exact: false } })
   })
 
   it('does not take "Run /status" for an update command', () => {
@@ -57,6 +78,19 @@ describe('parseCodexScreen', () => {
   it('finds nothing on an ordinary screen', () => {
     expect(parseCodexScreen('› Ask Codex to do anything\n  gpt-5.5 medium · ~/demo')).toEqual({})
     expect(parseCodexScreen(null)).toEqual({})
+  })
+
+  it('reads the TUI version and the /status weekly line with its reset', () => {
+    expect(parseCodexScreen(STATUS_SCREEN)).toEqual({
+      version: '0.159.1',
+      update: { current: '0.159.1', latest: '0.160.0' },
+      command: CODEX_STANDALONE_COMMAND,
+      weekly: { left: 100, exact: true, resets: '10:33 on 10 Oct' },
+    })
+  })
+
+  it('keeps the last TUI header (the pane restarted Codex)', () => {
+    expect(parseCodexScreen('>_ OpenAI Codex (v0.158.0)\n…\n>_ OpenAI Codex (v0.160.0)').version).toBe('0.160.0')
   })
 })
 
@@ -98,14 +132,11 @@ describe("Codex's files", () => {
 })
 
 describe('runningVersion', () => {
-  const screen = { update: { current: '0.159.1', latest: '0.160.0' } }
-  it('takes the newest version seen', () => {
-    expect(runningVersion({ rollout: '0.158.0', screen })).toBe('0.159.1')
-  })
-  it('assumes an agent started after an install runs it', () => {
-    expect(runningVersion({ rollout: '0.159.1', screen, bornAt: 2000, installed: '0.160.0', installedAt: 1000 })).toBe('0.160.0')
-    expect(runningVersion({ rollout: '0.159.1', screen, bornAt: 500, installed: '0.160.0', installedAt: 1000 })).toBe('0.159.1')
-    expect(runningVersion({ rollout: '0.159.1', screen: {}, bornAt: 3000, job: { phase: 'done', version: '0.160.0', at: 2000 } })).toBe('0.160.0')
+  it('trusts the TUI header over the rollout (written by the shared daemon)', () => {
+    expect(runningVersion({ rollout: '0.160.0', screen: { version: '0.159.1' } })).toBe('0.159.1')
+    expect(runningVersion({ rollout: '0.160.0', screen: { update: { current: '0.159.1', latest: '0.160.0' } } })).toBe('0.159.1')
+    expect(runningVersion({ rollout: '0.158.0', screen: {} })).toBe('0.158.0')
+    expect(runningVersion({ rollout: null, screen: {} })).toBeNull()
   })
 })
 
@@ -135,6 +166,12 @@ describe('codexUpdateState', () => {
     expect(codexUpdateState({ ...base, job: { phase: 'done', version: '0.160.0', at: 1 } })).toMatchObject({ state: 'installed' })
   })
 
+  it('offers the update to an agent started after the install of an older version', () => {
+    // Regression: 0.159.1 installed and running, 0.160.0 out (version.json).
+    const running = runningVersion({ rollout: '0.160.0', screen: parseCodexScreen(STATUS_SCREEN) })
+    expect(codexUpdateState({ ...base, running })).toMatchObject({ state: 'available', latest: '0.160.0', current: '0.159.1' })
+  })
+
   it('says nothing when up to date or dismissed in Codex', () => {
     expect(codexUpdateState({ ...base, latest: '0.159.1' })).toBeNull()
     expect(codexUpdateState({ ...base, dismissed: '0.160.0' })).toBeNull()
@@ -142,15 +179,49 @@ describe('codexUpdateState', () => {
   })
 })
 
-describe('codexWeekly', () => {
-  const now = 1_000_000
-  it('warns at 25 % left or less, from the rollout first', () => {
-    expect(codexWeekly({ week: { used: 88, resetsAt: now + 5000 }, screenLeft: 30, now })).toEqual({ left: 12, resetsAt: now + 5000, source: 'rollout' })
-    expect(codexWeekly({ week: { used: 60, resetsAt: now + 5000 }, screenLeft: 12, now })).toBeNull()
+describe('parseResetTime', () => {
+  const now = new Date(2026, 9, 3, 10, 37).getTime()
+  it('reads the /status reset formats', () => {
+    expect(parseResetTime('10:33 on 10 Oct', now)).toBe(new Date(2026, 9, 10, 10, 33).getTime())
+    expect(parseResetTime('3:46 PM on Oct 4', now)).toBe(new Date(2026, 9, 4, 15, 46).getTime())
+    expect(parseResetTime('15:33', now)).toBe(new Date(2026, 9, 3, 15, 33).getTime())
+    expect(parseResetTime('09:00', now)).toBe(new Date(2026, 9, 4, 9, 0).getTime())
+    expect(parseResetTime('10:00 on 2 Jan', new Date(2026, 11, 30).getTime())).toBe(new Date(2027, 0, 2, 10, 0).getTime())
+    expect(parseResetTime('soon', now)).toBeNull()
   })
-  it('falls back to the screen once the window has reset or without a reading', () => {
-    expect(codexWeekly({ week: { used: 95, resetsAt: now - 1 }, now })).toBeNull()
-    expect(codexWeekly({ week: null, screenLeft: 20, now })).toEqual({ left: 20, resetsAt: null, source: 'screen' })
+})
+
+describe('codexWeekly', () => {
+  const now = new Date(2026, 9, 3, 10, 37).getTime()
+  const H = 3600000
+  const old = { used: 88, resetsAt: now + 17 * H, at: now - 10 * H }
+  it('warns at 25 % left or less, from the structured reading first', () => {
+    expect(codexWeekly({ week: old, screen: { left: 30, exact: false }, now })).toEqual({ left: 12, resetsAt: old.resetsAt, source: 'rollout' })
+    expect(codexWeekly({ week: { ...old, used: 60 }, screen: { left: 12, exact: true }, now })).toBeNull()
+  })
+  it('uses the screen only without structured reading', () => {
+    expect(codexWeekly({ week: null, screen: { left: 20, exact: false }, now })).toEqual({ left: 20, resetsAt: null, source: 'screen' })
+  })
+  it('hides an expired reading, even with the startup heads-up still on screen', () => {
+    expect(codexWeekly({ week: { ...old, resetsAt: now - 1 }, screen: { left: 25, exact: false }, now })).toBeNull()
+  })
+  it('regression: /status shows a later window (early reset): hidden', () => {
+    const screen = parseCodexScreen(STATUS_SCREEN).weekly
+    expect(codexWeekly({ week: old, screen, now })).toBeNull()
+  })
+  it('keeps the rollout over a /status from an earlier window', () => {
+    const screen = { left: 90, exact: true, resets: '10:33 on 26 Sep' }
+    expect(codexWeekly({ week: old, screen, now })).toMatchObject({ left: 12, source: 'rollout' })
+  })
+  it('same window: the higher usage wins', () => {
+    const at = new Date(now + 17 * H)
+    const resets = `${at.getHours()}:${String(at.getMinutes()).padStart(2, '0')} on ${at.getDate()} Oct`
+    expect(codexWeekly({ week: { ...old, used: 70 }, screen: { left: 8, exact: true, resets }, now })).toMatchObject({ left: 8, source: 'rollout', resetsAt: old.resetsAt })
+  })
+  it('takes the freshest structured reading of the machine', () => {
+    const fresh = { used: 0, resetsAt: now + 160 * H, at: now - H }
+    expect(codexWeekly({ week: old, machine: fresh, now })).toBeNull()
+    expect(codexWeekly({ week: { ...old, at: now }, machine: fresh, now })).toMatchObject({ left: 12 })
   })
 })
 
@@ -171,33 +242,34 @@ function fakeFs(files: Record<string, string>): MachineFs {
   }
 }
 
-function setup(o: { local?: boolean, writable?: boolean, exitCode?: number, hang?: boolean } = {}) {
+function setup(o: { local?: boolean, writable?: boolean, exitCode?: number, hang?: boolean, screen?: string, cliVersion?: string } = {}) {
   const ts = '2026-01-01T10:00:00Z'
   const files = {
     [`${HOME}/.codex/version.json`]: '{"latest_version":"0.160.0","dismissed_version":null}',
     [`${HOME}/.codex/packages/standalone/current/codex-package.json`]: '{"version":"0.159.1"}',
     [ROLLOUT]: [
-      `{"timestamp":"${ts}","type":"session_meta","payload":{"id":"demo","cli_version":"0.159.1"}}`,
+      `{"timestamp":"${ts}","type":"session_meta","payload":{"id":"demo","cli_version":"${o.cliVersion ?? '0.159.1'}"}}`,
       `{"timestamp":"${ts}","type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":10,"window_minutes":300,"resets_at":${Date.parse(ts) / 1000 + 3600}},"secondary":{"used_percent":90,"window_minutes":10080,"resets_at":${Date.parse(ts) / 1000 + 86400}}}}}`,
       '',
     ].join('\n'),
   }
   const exec = vi.fn(async (_script: string, _input: Buffer, _t: number) => o.hang ? new Promise<never>(() => {}) : ({ code: o.exitCode ?? 0, stdout: Buffer.from('installed\ncodex-cli 0.160.0\n'), stderr: o.exitCode ? 'curl: (6) Could not resolve host' : '' }))
+  const log = vi.fn()
   const runLocal = vi.fn(async () => ({ code: 0, stdout: Buffer.from('codex-cli 0.160.0\n'), stderr: '' }))
   const m: CodexMachine = { key: 'mac', label: 'Laptop', local: Boolean(o.local), home: HOME, fs: fakeFs(files), online: true, exec: o.local ? null : exec }
   let clock = Date.parse(ts)
   const svc = createCodexStatus({
     machineOf: () => m,
-    readScreen: async () => SCREEN,
+    readScreen: async () => o.screen ?? SCREEN,
     rolloutOf: async () => ROLLOUT,
     runLocal,
     writable: async () => Boolean(o.writable),
     onChange: () => {},
-    log: () => {},
+    log,
     now: () => clock,
   })
   const pane = { id: 'w1:p1', agent: 'codex', status: 'idle', bornAt: 500 } as Pane
-  return { svc, pane, exec, runLocal, tick: (ms: number) => { clock += ms } }
+  return { svc, pane, exec, runLocal, log, tick: (ms: number) => { clock += ms } }
 }
 
 describe('Codex status service', () => {
@@ -206,6 +278,17 @@ describe('Codex status service', () => {
     const st = await svc.compute(pane)
     expect(st?.update).toMatchObject({ state: 'available', latest: '0.160.0', current: '0.159.1', runnable: true })
     expect(st?.weekly).toMatchObject({ left: 10, source: 'rollout' })
+  })
+
+  it('regression: banner for a 0.159.1 TUI behind a 0.160.0 daemon, no stale weekly alert', async () => {
+    const { svc, pane, log } = setup({ screen: STATUS_SCREEN, cliVersion: '0.160.0' })
+    const st = await svc.compute(pane)
+    expect(st?.update).toMatchObject({ state: 'available', latest: '0.160.0', current: '0.159.1' })
+    expect(st?.weekly).toBeUndefined()
+    expect(log).toHaveBeenCalledOnce()
+    expect(log.mock.calls[0]![0]).toMatch(/running=0\.159\.1 \(screen 0\.159\.1, rollout 0\.160\.0\).*-> available.*-> no warning/)
+    await svc.compute(pane)
+    expect(log).toHaveBeenCalledOnce() // only logged when the decision changes
   })
 
   it('runs the known command over SSH, then offers the restart', async () => {

@@ -10,12 +10,12 @@ import path from 'node:path'
 import type { Pane } from '../../shared/types'
 import {
   type CodexScreenInfo, type CodexStatus, type CodexUpdateJob,
-  codexUpdateState, codexWeekly, parseCliVersion, parseCodexScreen, parsePackageVersion,
+  type WeekReading, codexUpdateState, codexWeekly, parseCliVersion, parseCodexScreen, parsePackageVersion,
   parseVersionFile, rolloutCliVersion, runningVersion, updateScript,
 } from '../../shared/codexStatus'
 import type { ExecResult, MachineFs } from './fsx'
 import { HerdrError } from './herdr'
-import { codexQuota, lastCodexLimits } from './quotas'
+import { codexQuota, lastCodexLimits, readCodex } from './quotas'
 
 const STATUS_MS = 10000
 const FILES_MS = 60000
@@ -44,8 +44,8 @@ export interface CodexStatusDeps {
   now?: () => number
 }
 
-interface MachineFiles { latest: string | null, dismissed: string | null, installed: string | null, installedAt: number | null, standalone: boolean, canRun: boolean, at: number }
-interface RolloutInfo { size: number, version: string | null, week: { used: number, resetsAt: number | null } | null }
+interface MachineFiles { latest: string | null, dismissed: string | null, installed: string | null, week: WeekReading | null, standalone: boolean, canRun: boolean, at: number }
+interface RolloutInfo { size: number, version: string | null, week: WeekReading | null }
 type Job = CodexUpdateJob & { started: number }
 
 export function createCodexStatus(d: CodexStatusDeps) {
@@ -53,6 +53,8 @@ export function createCodexStatus(d: CodexStatusDeps) {
   const statuses = new Map<string, { status: CodexStatus | null, at: number }>()
   const busy = new Set<string>()
   const files = new Map<string, MachineFiles>()
+  // Last decision logged per pane (logged again only when it changes).
+  const why = new Map<string, string>()
   const rollouts = new Map<string, RolloutInfo>()
   const jobs = new Map<string, Job>()
 
@@ -62,18 +64,16 @@ export function createCodexStatus(d: CodexStatusDeps) {
     const codex = path.posix.join(m.home, '.codex')
     const read = (f: string) => m.fs.readFile(path.posix.join(codex, f)).catch(() => null)
     const pkgFile = 'packages/standalone/current/codex-package.json'
-    const [vf, pkg] = await Promise.all([read('version.json'), read(pkgFile)])
+    // Newest weekly reading of the machine's conversations (another Codex may
+    // have talked since this agent's last turn, e.g. after a reset).
+    const [vf, pkg, q] = await Promise.all([read('version.json'), read(pkgFile), readCodex(m.fs, m.home).catch(() => null)])
     const { latest, dismissed } = parseVersionFile(vf)
     const installed = parsePackageVersion(pkg)
-    let installedAt: number | null = null
-    if (installed) {
-      try { installedAt = (await m.fs.stat(path.posix.join(codex, pkgFile))).mtimeMs || null }
-      catch { installedAt = null }
-    }
+    const week = q?.week ? { used: q.week.used, resetsAt: q.week.resetsAt, at: q.at } : null
     // Remote: over SSH. Local: only if ~/.codex can be written (not in the
     // container, whose home is read-only: the command is then copied).
     const canRun = m.local ? await d.writable(codex) : Boolean(m.exec && m.online)
-    const f = { latest, dismissed, installed, installedAt, standalone: Boolean(installed), canRun, at: now() }
+    const f = { latest, dismissed, installed, week, standalone: Boolean(installed), canRun, at: now() }
     files.set(m.key, f)
     return f
   }
@@ -99,7 +99,7 @@ export function createCodexStatus(d: CodexStatusDeps) {
     const tail = (await m.fs.read(file, size - len, len).catch(() => Buffer.alloc(0))).toString('utf8')
     const hit = lastCodexLimits(tail)
     const q = hit && codexQuota(hit.rl, hit.at)
-    if (q && q.week) week = { used: q.week.used, resetsAt: q.week.resetsAt }
+    if (q && q.week) week = { used: q.week.used, resetsAt: q.week.resetsAt, at: q.at }
     const info = { size, version, week }
     rollouts.set(file, info)
     return info
@@ -127,9 +127,18 @@ export function createCodexStatus(d: CodexStatusDeps) {
     const screen: CodexScreenInfo = parseCodexScreen(screenText)
     const ro = await rolloutInfo(m, file)
     const job = publicJob(jobOf(m.key))
-    const running = runningVersion({ rollout: ro?.version ?? null, screen, bornAt: p.bornAt, installed: mf.installed, installedAt: mf.installedAt, job })
+    const running = runningVersion({ rollout: ro?.version ?? null, screen })
     const update = codexUpdateState({ running, latest: mf.latest, dismissed: mf.dismissed, installed: mf.installed, standalone: mf.standalone, screen, canRun: mf.canRun, job })
-    const weekly = codexWeekly({ week: ro?.week ?? null, screenLeft: screen.weeklyLeft, now: now() })
+    const weekly = codexWeekly({ week: ro?.week ?? null, machine: mf.week, screen: screen.weekly, now: now() })
+    const pct = (w: WeekReading | null | undefined) => (w ? `${Math.round(100 - w.used)}%@${new Date(w.at).toISOString()}` : '-')
+    const line = [
+      `running=${running ?? '?'} (screen ${screen.version ?? screen.update?.current ?? '-'}, rollout ${ro?.version ?? '-'})`,
+      `installed=${mf.installed ?? '-'} latest=${mf.latest ?? '-'}${mf.dismissed ? ` dismissed=${mf.dismissed}` : ''}`,
+      `-> ${update ? update.state : 'no update'}`,
+      `weekly left: rollout ${pct(ro?.week)} machine ${pct(mf.week)} screen ${screen.weekly ? `${screen.weekly.left}%${screen.weekly.resets ? ` resets ${screen.weekly.resets}` : ''}` : '-'}`,
+      `-> ${weekly ? `${weekly.left}% (${weekly.source})` : 'no warning'}`,
+    ].join(' ')
+    if (why.get(p.id) !== line) { why.set(p.id, line); d.log(`codex status ${p.id}: ${line}`) }
     const out: CodexStatus = {}
     if (update) out.update = update
     if (weekly) out.weekly = weekly
@@ -164,7 +173,7 @@ export function createCodexStatus(d: CodexStatusDeps) {
     for (const [id, s] of statuses) if (key === null || d.machineOf(id)?.key === key) s.at = 0
   }
 
-  function forget(paneId: string) { statuses.delete(paneId) }
+  function forget(paneId: string) { statuses.delete(paneId); why.delete(paneId) }
 
   // Runs the update on the agent's machine; returns right away, the progress
   // goes through `codexStatus.update.job` of the machine's Codex panes.
