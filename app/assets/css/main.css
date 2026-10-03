@@ -897,17 +897,17 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .md-body ol li::marker { font: 500 .88em var(--mono); color: var(--mauve); }
 .md-body a { color: var(--mauve); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent); text-underline-offset: 3px; }
 .md-body a:hover { text-decoration-color: var(--mauve); }
+/* Inline code, like a prompt in a terminal: a 1 px rule on the left, a faint
+   selection tint and a small glyph tinted by what the code holds (data-k from
+   utils/codeKind.ts: ❯ command, ▸ path, # ID, ✗ failure, ✓ success). Kept
+   quiet so that a sentence full of code stays readable. A wrapped span keeps
+   one rule and one glyph, at its start (box-decoration-break: slice). */
 .md-body code {
-  font-size: .84em; padding: .1em .34em; overflow-wrap: anywhere;
-  background: var(--surface-2); color: var(--lav);
+  font-size: .84em; padding: .05em .34em .05em .3em; overflow-wrap: anywhere;
+  color: color-mix(in srgb, var(--k, var(--text-2)) 45%, var(--text));
+  background: color-mix(in srgb, var(--k, var(--text)) 7%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--k, var(--text)) 50%, transparent);
 }
-/* TEMPORARY (design proposals): inline code behind ?codev=a|b|c
-   (utils/inlineCodeStyle.ts). The kind of each span (data-k: path, cmd, id,
-   num, key, err, ok) comes from utils/codeKind.ts. Fragments of a wrapped
-   span each keep their frame (box-decoration-break). */
-:root[data-codev] .md-body :not(pre) > code { -webkit-box-decoration-break: clone; box-decoration-break: clone; }
-/* Short tokens (`exit 0`, `5 min`, `Ctrl+C`) never break across lines. */
-:root[data-codev] .md-body :not(pre) > code:is([data-k="num"], [data-k="key"], [data-k="err"], [data-k="ok"], [data-k="id"]) { white-space: nowrap; }
 .md-body code[data-k="path"] { --k: var(--lav); }
 .md-body code[data-k="cmd"] { --k: var(--green); }
 .md-body code[data-k="id"] { --k: var(--accent); }
@@ -915,44 +915,18 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .md-body code[data-k="key"] { --k: var(--ochre); }
 .md-body code[data-k="err"] { --k: var(--rose); }
 .md-body code[data-k="ok"] { --k: var(--green); }
-
-/* a, frame: a 1 px frame, no fill; the text takes the kind's color. A key is
-   a keycap (thicker bottom rule), a failure is framed in red. */
-:root[data-codev="a"] .md-body :not(pre) > code {
-  padding: 0 .32em; background: transparent;
-  border: 1px solid color-mix(in srgb, var(--k, var(--text)) 30%, var(--line));
-  color: var(--k, var(--text-2));
-}
-:root[data-codev="a"] .md-body :not(pre) > code[data-k="key"] { color: var(--text-strong); border-color: var(--line-strong); border-bottom-width: 2px; }
-:root[data-codev="a"] .md-body :not(pre) > code[data-k="err"] { border-color: color-mix(in srgb, var(--rose) 60%, var(--line)); }
-
-/* b, prompt: terminal selection tint of the kind, a 1 px rule on the left and
-   a small glyph like a prompt (❯ command, ▸ path, # ID, ✗ failure). */
-:root[data-codev="b"] .md-body :not(pre) > code {
-  padding: .05em .34em .05em .3em; color: var(--text-2);
-  background: color-mix(in srgb, var(--k, var(--text)) 9%, transparent);
-  border-left: 1px solid color-mix(in srgb, var(--k, var(--text)) 70%, transparent);
-}
-:root[data-codev="b"] .md-body :not(pre) > code[data-k] { color: color-mix(in srgb, var(--k) 55%, var(--text)); }
-:root[data-codev="b"] .md-body :not(pre) > code[data-k]::before { color: var(--k); opacity: .85; margin-right: .32em; font-weight: 600; }
-:root[data-codev="b"] .md-body :not(pre) > code[data-k="cmd"]::before { content: "❯"; }
-:root[data-codev="b"] .md-body :not(pre) > code[data-k="path"]::before { content: "▸"; }
-:root[data-codev="b"] .md-body :not(pre) > code[data-k="id"]::before { content: "#"; }
-:root[data-codev="b"] .md-body :not(pre) > code[data-k="err"]::before { content: "✗"; }
-:root[data-codev="b"] .md-body :not(pre) > code[data-k="ok"]::before { content: "✓"; }
-:root[data-codev="b"] .md-body :not(pre) > code[data-k="num"]::before,
-:root[data-codev="b"] .md-body :not(pre) > code[data-k="key"]::before { content: none; }
-:root[data-codev="b"] .md-body :not(pre) > code[data-k="key"] { border-left: 0; border: 1px solid color-mix(in srgb, var(--k) 45%, var(--line)); }
-
-/* c, agent selection: like text selected in the agent's terminal, the fill is
-   the agent's color (Claude orange, Codex blue, omp magenta) with a 1 px
-   underline; no kinds. */
-:root[data-codev="c"] .md-body :not(pre) > code {
-  padding: .05em .3em; color: var(--text-strong);
-  background: color-mix(in srgb, var(--tw-color, var(--accent)) 16%, transparent);
-  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--tw-color, var(--accent)) 75%, transparent);
-}
-:root[data-codev="c"] .chat-list .md-body .md-path { text-decoration-color: color-mix(in srgb, var(--text-strong) 45%, transparent); }
+.md-body code[data-k]::before { margin-right: .32em; color: var(--k); opacity: .7; font-weight: 600; }
+.md-body code[data-k="cmd"]::before { content: "❯"; }
+.md-body code[data-k="path"]::before { content: "▸"; }
+.md-body code[data-k="id"]::before { content: "#"; }
+.md-body code[data-k="err"]::before { content: "✗"; opacity: .9; }
+.md-body code[data-k="ok"]::before { content: "✓"; }
+/* A failure is the one thing to spot: its own color, unmixed. */
+.md-body code[data-k="err"] { color: var(--rose); }
+/* A key is a keycap: framed, no rule. */
+.md-body code[data-k="key"] { border: 1px solid color-mix(in srgb, var(--k) 40%, var(--line)); background: transparent; padding: 0 .3em; }
+/* Short tokens (`exit 0`, `5 min`, `Ctrl+C`) never break across lines. */
+.md-body code:is([data-k="num"], [data-k="key"], [data-k="err"], [data-k="ok"], [data-k="id"]) { white-space: nowrap; }
 /* File path in a conversation (ChatView.vue): dotted underline, menu on click or tap. */
 .chat-list .md-body .md-path {
   cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px;

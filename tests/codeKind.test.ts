@@ -1,7 +1,6 @@
 // Kind of an inline code span in a reply (terminal-style tints in the markdown).
 import { describe, expect, it, vi } from 'vitest'
 import { codeKind } from '../app/utils/codeKind'
-import { pickInlineCodeStyle } from '../app/utils/inlineCodeStyle'
 import { md } from '../app/utils/markdown'
 
 vi.mock('dompurify', () => ({ default: { sanitize: (s: string) => s, addHook: () => {} } }))
@@ -51,13 +50,5 @@ describe('inline code markup', () => {
     expect(html).toContain('<code class="md-path" data-k="path" role="button" tabindex="0">src/a.ts</code>')
     expect(html).toContain('<code data-k="id">t-0001</code>')
     expect(html).toContain('<code>x</code>')
-  })
-})
-
-describe('pickInlineCodeStyle', () => {
-  it('prefers the address, then the stored choice, then the current style', () => {
-    expect(pickInlineCodeStyle('b', 'a')).toBe('b')
-    expect(pickInlineCodeStyle(null, 'c')).toBe('c')
-    expect(pickInlineCodeStyle('zz', 'nope')).toBe('0')
   })
 })
