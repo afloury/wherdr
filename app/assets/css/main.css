@@ -897,10 +897,36 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .md-body ol li::marker { font: 500 .88em var(--mono); color: var(--mauve); }
 .md-body a { color: var(--mauve); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent); text-underline-offset: 3px; }
 .md-body a:hover { text-decoration-color: var(--mauve); }
+/* Inline code, like a prompt in a terminal: a 1 px rule on the left, a faint
+   selection tint and a small glyph tinted by what the code holds (data-k from
+   utils/codeKind.ts: ❯ command, ▸ path, # ID, ✗ failure, ✓ success). Kept
+   quiet so that a sentence full of code stays readable. A wrapped span keeps
+   one rule and one glyph, at its start (box-decoration-break: slice). */
 .md-body code {
-  font-size: .84em; padding: .1em .34em; overflow-wrap: anywhere;
-  background: var(--surface-2); color: var(--lav);
+  font-size: .84em; padding: .05em .34em .05em .3em; overflow-wrap: anywhere;
+  color: color-mix(in srgb, var(--k, var(--text-2)) 45%, var(--text));
+  background: color-mix(in srgb, var(--k, var(--text)) 7%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--k, var(--text)) 50%, transparent);
 }
+.md-body code[data-k="path"] { --k: var(--lav); }
+.md-body code[data-k="cmd"] { --k: var(--green); }
+.md-body code[data-k="id"] { --k: var(--accent); }
+.md-body code[data-k="num"] { --k: var(--teal); }
+.md-body code[data-k="key"] { --k: var(--ochre); }
+.md-body code[data-k="err"] { --k: var(--rose); }
+.md-body code[data-k="ok"] { --k: var(--green); }
+.md-body code[data-k]::before { margin-right: .32em; color: var(--k); opacity: .7; font-weight: 600; }
+.md-body code[data-k="cmd"]::before { content: "❯"; }
+.md-body code[data-k="path"]::before { content: "▸"; }
+.md-body code[data-k="id"]::before { content: "#"; }
+.md-body code[data-k="err"]::before { content: "✗"; opacity: .9; }
+.md-body code[data-k="ok"]::before { content: "✓"; }
+/* A failure is the one thing to spot: its own color, unmixed. */
+.md-body code[data-k="err"] { color: var(--rose); }
+/* A key is a keycap: framed, no rule. */
+.md-body code[data-k="key"] { border: 1px solid color-mix(in srgb, var(--k) 40%, var(--line)); background: transparent; padding: 0 .3em; }
+/* Short tokens (`exit 0`, `5 min`, `Ctrl+C`) never break across lines. */
+.md-body code:is([data-k="num"], [data-k="key"], [data-k="err"], [data-k="ok"], [data-k="id"]) { white-space: nowrap; }
 /* File path in a conversation (ChatView.vue): dotted underline, menu on click or tap. */
 .chat-list .md-body .md-path {
   cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px;

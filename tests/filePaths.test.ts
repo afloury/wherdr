@@ -92,9 +92,9 @@ describe('markdown rendering', () => {
   it('marks path-like inline code as clickable, and only that', async () => {
     const { md } = await import('../app/utils/markdown')
     const html = md('See `~/project/src/app.ts:42` and `console.log`, then `npm test`.')
-    expect(html).toContain('<code class="md-path" role="button" tabindex="0">~/project/src/app.ts:42</code>')
+    expect(html).toContain('<code class="md-path" data-k="path" role="button" tabindex="0">~/project/src/app.ts:42</code>')
     expect(html).toContain('<code>console.log</code>')
-    expect(html).toContain('<code>npm test</code>')
+    expect(html).toContain('<code data-k="cmd">npm test</code>')
   })
 
   it('escapes inline code that is not a path', async () => {
