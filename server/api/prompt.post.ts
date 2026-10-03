@@ -12,6 +12,13 @@ export default defineApi(async (event, b) => {
   // delivered on a later poll once the input is back (see state.ts deliverHeld).
   // Photos sent alone start with their path: a message, not a "/" command.
   const p = findPane(b.pane_id)
+  // Restart / Codex update running: it owns the pane until the agent is back.
+  if (p && p.agent && restarting(p.id) && !isSlashCommand(text)) {
+    const q = addQueued(b.pane_id, text, { held: true })
+    log(`prompt ${b.pane_id}: restart in progress, message held`)
+    setTimeout(poll, 50)
+    return { ok: true, queued: q }
+  }
   if (p && !isSlashCommand(text)) {
     const earlier = hasHeld(b.pane_id)
     const input = earlier || !INPUT_STATES.has(p.status || '') ? true
@@ -25,8 +32,25 @@ export default defineApi(async (event, b) => {
     }
   }
   try {
-    await agentPrompt(b.pane_id, text)
+    if (p) await sendPrompt(p, text)
+    else await agentPrompt(b.pane_id, text)
   } catch (e) {
+    // Claude's input field holds someone else's text (a draft typed in its
+    // terminal…), never cleared: the message waits until it is free.
+    if (isBusyError(e) && !isSlashCommand(text)) {
+      const q = addQueued(b.pane_id, text, { held: true, busy: (e as HerdrError).code === 'input_busy' })
+      log(`prompt ${b.pane_id}: input field not free, message held`)
+      setTimeout(poll, 50)
+      return { ok: true, queued: q }
+    }
+    // Typed but not confirmed as taken (see guardedSend.ts): kept, shown as
+    // not sent with Retry / Cancel, never silently dropped.
+    if (e instanceof HerdrError && ['not_shown', 'not_submitted', 'clear_failed', 'input_contended'].includes(e.code) && !isSlashCommand(text)) {
+      const q = addQueued(b.pane_id, text, { failed: true })
+      log(`prompt ${b.pane_id}: ${e.message}, message kept as not sent`)
+      setTimeout(poll, 50)
+      return { ok: true, queued: q }
+    }
     // Agent launched less than 3 s ago, which Herdr still considers "starting"
     // (see agentPrompt): the message goes out as soon as Herdr accepts it,
     // like the first message given at creation. Not for a command, nor

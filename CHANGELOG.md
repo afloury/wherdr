@@ -10,6 +10,16 @@ First public release.
 
 ### Added
 
+- Messages to Claude Code are no longer glued to another program's (e.g. a herdr-projects
+  `[hp inbox]` notice sent at the same moment). wherdr types the message itself and checks
+  Claude's input field on screen: it waits until the field has stayed empty for a moment, and
+  presses Enter only when the field holds exactly its text. Another writer's text that slips in
+  is separated: the field is cleared, the message typed again, and the other text typed back
+  as its own message right after (logged). A draft already in the field is never cleared: the
+  message waits ("will be sent when the agent's input is free"), then shows **Not sent — the
+  agent's input contains text** with Retry / Cancel after 2 minutes. A message that can't be
+  confirmed as taken is shown as not sent, never dropped. wherdr's own sends to a pane go one
+  at a time.
 - Codex conversation: **Update** now also works when wherdr cannot run the update itself (in
   Docker, whose home is read-only): it is typed into the agent's own terminal. Codex exits
   (`/exit`), the pane's shell runs the known official command followed by an end marker with
