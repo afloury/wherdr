@@ -20,7 +20,7 @@ const plural = (n: number, en: string, ens: string, fr: string, frs: string) => 
 export function ompToolMeta(v: OmpToolView): string[] {
   const out: string[] = []
   if (typeof v.matches === 'number') {
-    out.push(plural(v.matches, 'match', 'matches', 'résultat', 'résultats') + (v.files && v.files > 1 ? ` ${tl(`in ${v.files} files`, `dans ${v.files} fichiers`)}` : ''))
+    out.push(plural(v.matches, 'match', 'matches', 'résultat', 'résultats') + (v.files && v.files > 1 && v.files < v.matches ? ` ${tl(`in ${v.files} files`, `dans ${v.files} fichiers`)}` : ''))
   } else if (typeof v.files === 'number') out.push(plural(v.files, 'file', 'files', 'fichier', 'fichiers'))
   if (v.scope) out.push(`${tl('in', 'dans')} ${v.scope}`)
   if (typeof v.added === 'number' || typeof v.removed === 'number') out.push(`+${v.added || 0}/-${v.removed || 0}`)

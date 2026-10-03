@@ -106,6 +106,7 @@ describe('omp tool text', () => {
   it('counts after the target', () => {
     expect(ompToolMeta({ title: 'Grep', matches: 95, files: 20, scope: 'server' })).toEqual(['95 matches in 20 files', 'in server'])
     expect(ompToolMeta({ title: 'Grep', matches: 1, files: 1 })).toEqual(['1 match'])
+    expect(ompToolMeta({ title: 'Grep', matches: 3, files: 3 })).toEqual(['3 matches'])
     expect(ompToolMeta({ title: 'Glob', files: 2 })).toEqual(['2 files'])
     expect(ompToolMeta({ title: 'Edit', added: 3, removed: 2 })).toEqual(['+3/-2'])
     expect(ompToolMeta({ title: 'Bash', job: 'bg_2' })).toEqual(['Backgrounded: bg_2'])

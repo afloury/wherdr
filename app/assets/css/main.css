@@ -989,9 +989,9 @@ button.omp-tool-head:hover { color: var(--text); }
 .omp-tool.live .omp-tool-mark { color: var(--omp-color); }
 .omp-tool-mark .omp-spinner { display: inline-block; width: 15px; font-size: 13px; }
 .omp-tool-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.omp-tool-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.omp-tool-line { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; min-width: 0; }
 .omp-tool-title { flex: none; font: 500 10.5px/18px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); }
-.omp-tool-target, .omp-tool-cmd { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12px/18px var(--mono); color: var(--text-2); }
+.omp-tool-target, .omp-tool-cmd { flex: 0 1 auto; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12px/18px var(--mono); font-variant-ligatures: none; color: var(--text-2); }
 .omp-tool-cmd { color: var(--text); }
 .omp-tool-sign { flex: none; font: 700 12px/18px var(--mono); color: var(--omp-color); }
 .omp-tool-meta { flex: none; font: 400 11px/18px var(--mono); color: var(--dim); white-space: nowrap; }
@@ -1001,11 +1001,10 @@ button.omp-tool-head:hover { color: var(--text); }
 .omp-tool-chev { flex: none; width: 14px; height: 18px; color: var(--dim); }
 /* Unfolded: the whole command, then the output in a 1 px frame. */
 .omp-tool.open .omp-tool-cmd, .omp-tool.open .omp-tool-target { white-space: pre-wrap; overflow-wrap: anywhere; }
-.omp-tool.open .omp-tool-line { flex-wrap: wrap; row-gap: 0; }
 .omp-tool-out { margin: 2px 0 6px 23px; border: 1px solid var(--line-soft); background: var(--code-bg); }
 .omp-tool-out pre {
-  margin: 0; padding: 7px 10px; max-height: min(50vh, 360px); overflow: auto; white-space: pre; tab-size: 4;
-  font: 400 11.5px/1.55 var(--mono); color: var(--text-2);
+  margin: 0; padding: 7px 10px; max-height: min(50vh, 360px); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4;
+  font: 400 11.5px/1.55 var(--mono); font-variant-ligatures: none; color: var(--text-2);
 }
 .omp-tool-out .add { color: var(--green); }
 .omp-tool-out .del { color: var(--rose); }

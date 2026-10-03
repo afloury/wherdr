@@ -254,7 +254,7 @@ const toolIcon = (tool: ChatItem) => (tool.error ? 'i-lucide-circle-x' : isOther
 // Collapsed action block: its last action. omp: its own title and the
 // command, or the intent it gave.
 const groupSuffix = (tool: ChatItem) => (tool.omp
-  ? `${tool.omp.title} · ${tool.omp.title === 'Bash' ? `$ ${tool.omp.target || ''}` : tool.omp.target || tool.text}`
+  ? tool.omp.title === 'Bash' && tool.omp.target ? `$ ${tool.omp.target.split('\n')[0]}` : `${tool.omp.title} · ${tool.omp.target || tool.text}`
   : `${toolLabel(tool)} · ${tool.text}`)
 // omp notes (custom_message shown): [label, icon] per kind.
 const NOTICE: Record<string, [string, string]> = {
