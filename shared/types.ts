@@ -225,7 +225,7 @@ export interface HerdrState {
 // 'bash': Claude Code "!" command (bash mode), 'cmd': local "/" command.
 // 'notice': note shown by the agent outside its replies (omp advisor,
 // finished background task, IRC message…); `name` gives its kind.
-export type ChatRole = 'user' | 'assistant' | 'tool' | 'cmd' | 'bash' | 'system' | 'notice'
+export type ChatRole = 'user' | 'assistant' | 'thinking' | 'tool' | 'cmd' | 'bash' | 'system' | 'notice' | 'job'
 export interface ChatItem {
   role: ChatRole
   text: string
@@ -237,6 +237,9 @@ export interface ChatItem {
   images?: number
   ref?: string
   error?: boolean
+  // omp reasoning and completed background jobs, read from its transcript.
+  ms?: number
+  job?: { id: string, tool: string, out: string }
   // omp tools: shown the way omp's terminal shows them (see server/utils/ompTools.ts).
   omp?: OmpToolView
 }

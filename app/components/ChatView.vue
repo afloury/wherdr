@@ -123,6 +123,9 @@ function onScroll() {
 // (ChatMarkdown): never on first load, on return to the app or after
 // being offline, nor for older slices.
 const knownReplies = new Set<string>()
+const knownThoughts = new Set<string>()
+const newThoughts = reactive(new Set<string>())
+let thoughtTimer: ReturnType<typeof setTimeout> | undefined
 const typing = ref<{ id: string, at: number } | null>(null)
 let synced = false // first load from the server done
 let away = false // app in the background or offline since the last re-read
@@ -130,6 +133,16 @@ watch(pageVisible, (v) => { if (!v) away = true })
 watch(offlineView, (v) => { if (v) away = true })
 function noteReplies(list: ChatItem[]) {
   const live = synced && !away && typewriterActive.value && !searchOpen.value && !readOnly.value
+  const revealThinking = synced && !away && !readOnly.value
+  for (const it of list.filter(i => i.role === 'thinking')) {
+    const id = replyId(it)
+    if (!knownThoughts.has(id) && revealThinking) {
+      newThoughts.add(id)
+      if (thoughtTimer) clearTimeout(thoughtTimer)
+      thoughtTimer = setTimeout(() => newThoughts.clear(), 2500)
+    }
+    knownThoughts.add(id)
+  }
   away = false
   synced = true
   const id = pickTyping(knownReplies, list.filter(i => i.role === 'assistant').map(replyId), live)
@@ -138,6 +151,7 @@ function noteReplies(list: ChatItem[]) {
 const typingAt = (id: string) => (typing.value && typing.value.id === id ? typing.value.at : null)
 function typingDone(id: string) { if (typing.value?.id === id) typing.value = null }
 watch([typewriterActive, searchOpen], ([on, s]) => { if (!on || s) typing.value = null })
+onUnmounted(() => { if (thoughtTimer) clearTimeout(thoughtTimer) })
 
 // ------------------------------------------------------------ chargement
 let busy = false
@@ -272,6 +286,8 @@ type Block =
   | { k: 'who', key: string }
   | { k: 'user', key: string, text: string, srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null }
   | { k: 'assistant', key: string, id: string, text: string, html: string, time: string | null, endsTurn: boolean }
+  | { k: 'thinking', key: string, html: string, ms: number | undefined, live: boolean, reveal: boolean }
+  | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
   | { k: 'system', key: string, text: string }
   | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean }
   | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean }
@@ -338,13 +354,13 @@ const blocks = computed<Block[]>(() => {
       needWho = true
       // The output of a "!" command also goes to the agent, which may reply to it.
       if (it.role !== 'cmd') turn = { start: it.ts, end: null, tools: 0, replies: 0 }
-    } else if (turn && it.ts && it.role !== 'notice') {
+    } else if (turn && it.ts && it.role !== 'notice' && it.role !== 'job') {
       // A note (background task finished afterwards…) does not extend the turn.
       turn.end = it.ts
       if (it.role === 'tool') turn.tools++
       else if (it.role === 'assistant') turn.replies++
     }
-    if ((it.role === 'tool' || it.role === 'assistant') && needWho) {
+    if ((it.role === 'tool' || it.role === 'assistant' || it.role === 'thinking') && needWho) {
       needWho = false
       out.push({ k: 'who', key: `w:${it.ts}:${i}` })
     }
@@ -378,6 +394,10 @@ const blocks = computed<Block[]>(() => {
       lastReplyBlock = { k: 'assistant', key, id: replyId(it), text: it.text, html: md(it.text), time, endsTurn: false }
       out.push(lastReplyBlock)
       replies.push({ key, time, text: it.text })
+    } else if (it.role === 'thinking') {
+      out.push({ k: 'thinking', key, html: md(it.text), ms: it.ms, live: working.value && i === list.length - 1, reveal: newThoughts.has(replyId(it)) })
+    } else if (it.role === 'job' && it.job) {
+      out.push({ k: 'job', key, id: it.job.id, tool: it.job.tool, out: it.job.out, ms: it.ms, error: Boolean(it.error) })
     } else if (it.role === 'bash') {
       const o = it.out || ''
       const e = it.err || ''
@@ -935,6 +955,30 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   </button>
                 </div>
               </template>
+
+              <div v-else-if="b.k === 'thinking'" class="omp-thinking" :class="{ live: b.live, open: b.live || b.reveal || isOpen(b.key) }">
+                <button type="button" class="omp-thinking-head" :disabled="b.live || b.reveal" :aria-expanded="b.live || b.reveal || isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
+                  <span class="omp-thinking-mark">#</span>
+                  <span v-if="b.live" class="omp-thinking-activity"><OmpSpinner /> {{ tl('reasoning', 'raisonnement') }} │ {{ b.ms === undefined ? '…' : ompWall(b.ms) }}</span>
+                  <span v-else>{{ tl('Reasoning', 'Raisonnement') }}<template v-if="b.ms !== undefined"> · {{ ompWall(b.ms) }}</template></span>
+                  <UIcon :name="b.live || b.reveal || isOpen(b.key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" />
+                </button>
+                <ChatMarkdown v-if="b.live || b.reveal || isOpen(b.key)" class="omp-thinking-body md" :html="b.html" :typing="null" />
+              </div>
+
+              <div v-else-if="b.k === 'job'" class="omp-job" :class="{ err: b.error, open: isOpen(b.key) }">
+                <button type="button" class="omp-job-head" :disabled="!b.out" :aria-expanded="b.out ? isOpen(b.key) : undefined" @click="setOpen(b.key, !isOpen(b.key))">
+                  <span class="omp-job-glyph">{{ b.error ? '✗' : '✓' }}</span>
+                  <span class="omp-job-label">{{ tl('Background job completed', 'Tâche de fond terminée') }}</span>
+                  <code>[{{ b.tool }}] {{ b.id }}</code>
+                  <span v-if="b.ms !== undefined" class="omp-job-wall">{{ ompWall(b.ms) }}</span>
+                  <UIcon v-if="b.out" :name="isOpen(b.key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" />
+                </button>
+                <div v-if="b.out && isOpen(b.key)" class="omp-tool-out">
+                  <div class="omp-tool-out-head"><span class="omp-tool-out-label">{{ b.error ? tl('Error', 'Erreur') : tl('Output', 'Sortie') }}</span><span v-if="b.ms !== undefined" class="omp-tool-out-right">wall {{ ompWall(b.ms) }}</span></div>
+                  <pre>{{ b.out }}</pre>
+                </div>
+              </div>
 
               <div v-else-if="b.k === 'shell'" class="msg-shell" :class="{ bash: b.bash, long: b.long, open: isOpen(b.key) }">
                 <div class="msg-shell-cmd">

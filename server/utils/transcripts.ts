@@ -472,6 +472,7 @@ function ompToolSummary(args: Json, home: string): string {
 export function parseOmp(lines: Lines, home = '', templates: readonly CommandTemplate[] = [], sessionCwd = ''): Parsed {
   const items: Parsed = []
   const tools = new Map<string, { item: ChatItem, name: string, at: number | null }>()
+  let previousTs: string | null = null
   // Session folder (the file's first line, or `sessionCwd` for a slice
   // that does not include it): paths are shown relative to it, like omp does.
   let cwd = sessionCwd
@@ -484,6 +485,8 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
     catch { continue }
     if (!d || typeof d !== 'object') continue
     const ts: string | null = typeof d.timestamp === 'string' ? d.timestamp : null
+    const priorTs = previousTs
+    if (ts) previousTs = ts
     if (d.type === 'session') {
       if (typeof d.cwd === 'string') cwd = d.cwd.replace(/\/+$/, '')
       continue
@@ -510,7 +513,16 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
         const text = notes.length
           ? notes.filter(n => n && typeof n.note === 'string').map(n => (n.severity ? `**${n.severity}** — ${n.note}` : n.note)).join('\n\n')
           : String(d.content || '').replace(/^\s*<([\w:-]+)(?:\s[^>]*)?>\n?([\s\S]*?)\n?<\/\1>\s*$/, '$2').trim()
-        if (text) items.push({ role: 'notice', name: d.customType, text: clip(text), ts })
+        if (d.customType === 'async-result' && Array.isArray(s?.jobs) && s.jobs.length) {
+          for (const job of s.jobs) {
+            if (typeof job.jobId !== 'string' || !/^bg_[\w-]+$/.test(job.jobId)) continue
+            const header = text.match(/^Background job [^\n]+? has (completed|failed)\.[^\n]*\n?/i)
+            const out = cleanOut(text.replace(header?.[0] || '', '').replace(/\n?Wall time: [\d.]+ seconds\s*$/, ''))
+            items.push({ role: 'job', text: '', ts, error: header?.[1]?.toLowerCase() === 'failed',
+              ms: Number.isFinite(job.durationMs) ? job.durationMs : undefined,
+              job: { id: job.jobId, tool: String(job.type || 'job'), out } })
+          }
+        } else if (text) items.push({ role: 'notice', name: d.customType, text: clip(text), ts })
       }
       continue
     }
@@ -525,7 +537,10 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
     } else if (m.role === 'assistant') {
       for (const part of Array.isArray(m.content) ? m.content : []) {
         if (!part) continue
-        if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) {
+        if (part.type === 'thinking' && typeof part.thinking === 'string' && part.thinking.trim()) {
+          const ms = ts && priorTs ? Math.max(0, Date.parse(ts) - Date.parse(priorTs)) : undefined
+          items.push({ role: 'thinking', text: clip(part.thinking), ts, ms: Number.isFinite(ms) ? ms : undefined })
+        } else if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) {
           items.push({ role: 'assistant', text: clip(part.text), ts })
         } else if (part.type === 'toolCall') {
           const name = String(part.name || '').trim()

@@ -200,6 +200,7 @@ describe('omp', () => {
     const items = parseLines(lines, 'omp', 0, HOME)
     expect(items.map(i => `${i.role}:${i.name ? i.name + ' ' : ''}${i.text}${i.error ? ' !' : ''}`)).toEqual([
       'user:Regarde ça',
+      'thinking:réflexion privée',
       'assistant:Je lis.',
       'tool:Read Reading a.ts',
       'tool:Bash false !',
