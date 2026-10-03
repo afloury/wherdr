@@ -53,10 +53,18 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
 
 // Keyboard (computer, active view): ↑ ↓ Enter Escape go to the terminal, the
 // card follows the re-read screen. Enter only if it simply confirms the entry.
+// Ctrl+letters of the legend (/resume: Ctrl+A) press the matching button,
+// even on a list with no entry (a project without conversations).
 const searchRef = ref<HTMLInputElement | null>(null)
 const esc = computed(() => props.menu.actions.some(a => a.key === 'esc'))
+const ctrl = computed(() => props.menu.actions.filter(a => /^ctrl\+[a-z]$/.test(a.key)).map(a => a.key))
 const keyboard = computed(() => Boolean(props.keys && desk.value && known.value && !disabled.value))
-useCardKeys(() => keyboard.value, () => ({ digits: 0, enter: !moveOnly.value, own: searchRef.value }), (k) => {
+useCardKeys(() => Boolean(props.keys && desk.value && !disabled.value && (known.value || ctrl.value.length)), () => ({ digits: 0, enter: !moveOnly.value, own: searchRef.value, ctrl: ctrl.value, nav: keyboard.value }), (k) => {
+  if (k.kind === 'ctrl') {
+    const a = props.menu.actions.find(x => x.key === k.key)
+    if (a) press(a)
+    return
+  }
   if (k.kind !== 'nav' || (k.key === 'esc' && !esc.value)) return
   navKey(props.paneId, k.key)
 })

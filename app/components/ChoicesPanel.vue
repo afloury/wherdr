@@ -108,7 +108,7 @@ useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.opt
   }
   // Like ↑/↓: key by key, in typing order (without waiting for the state).
   if (k.kind === 'tab') return navKey(props.paneId, k.dir > 0 ? 'right' : 'left')
-  navKey(props.paneId, k.key)
+  if (k.kind === 'nav') navKey(props.paneId, k.key)
 })
 </script>
 

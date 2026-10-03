@@ -64,4 +64,33 @@ describe('cardKey', () => {
     expect(cardKey({ key: 'ArrowLeft' }, field('bonjour'), tabs)).toBeNull()
     expect(cardKey({ key: 'ArrowRight', shiftKey: true }, body, tabs)).toBeNull()
   })
+  it('Ctrl+A of a menu legend: captured outside a field with text, ⌘A left alone', () => {
+    const menu = { digits: 0, enter: true, ctrl: ['ctrl+a', 'ctrl+b'] }
+    expect(cardKey({ key: 'a', ctrlKey: true }, body, menu)).toEqual({ kind: 'ctrl', key: 'ctrl+a' })
+    expect(cardKey({ key: 'a', ctrlKey: true }, field(''), menu)).toEqual({ kind: 'ctrl', key: 'ctrl+a' })
+    expect(cardKey({ key: 'a', ctrlKey: true }, { ...body, control: true }, menu)).toEqual({ kind: 'ctrl', key: 'ctrl+a' })
+    // Caps Lock: same key.
+    expect(cardKey({ key: 'A', ctrlKey: true }, body, menu)).toEqual({ kind: 'ctrl', key: 'ctrl+a' })
+    expect(cardKey({ key: 'b', ctrlKey: true }, body, menu)).toEqual({ kind: 'ctrl', key: 'ctrl+b' })
+    // Text in a field (select all), the terminal (sends it itself), a window on top.
+    expect(cardKey({ key: 'a', ctrlKey: true }, field('bonjour'), menu)).toBeNull()
+    expect(cardKey({ key: 'a', ctrlKey: true }, { ...field('abc'), own: true }, menu)).toBeNull()
+    expect(cardKey({ key: 'a', ctrlKey: true }, { ...field(''), terminal: true }, menu)).toBeNull()
+    expect(cardKey({ key: 'a', ctrlKey: true }, { ...body, overlay: true }, menu)).toBeNull()
+    // ⌘A (select all on macOS) and other modifiers.
+    expect(cardKey({ key: 'a', metaKey: true }, body, menu)).toBeNull()
+    expect(cardKey({ key: 'a', ctrlKey: true, metaKey: true }, body, menu)).toBeNull()
+    expect(cardKey({ key: 'a', ctrlKey: true, shiftKey: true }, body, menu)).toBeNull()
+    expect(cardKey({ key: 'a', ctrlKey: true, altKey: true }, body, menu)).toBeNull()
+    // Only the keys the card offers; never a key the browser keeps.
+    expect(cardKey({ key: 'a', ctrlKey: true }, body, opts)).toBeNull()
+    expect(cardKey({ key: 'c', ctrlKey: true }, body, menu)).toBeNull()
+    expect(cardKey({ key: 'w', ctrlKey: true }, body, { ...menu, ctrl: ['ctrl+w'] })).toBeNull()
+    expect(cardKey({ key: 'ArrowUp', ctrlKey: true }, body, menu)).toBeNull()
+  })
+  it('menu with no entry: only its Ctrl+letters are captured', () => {
+    const empty = { digits: 0, enter: true, ctrl: ['ctrl+a'], nav: false }
+    expect(cardKey({ key: 'a', ctrlKey: true }, body, empty)).toEqual({ kind: 'ctrl', key: 'ctrl+a' })
+    for (const key of ['ArrowUp', 'ArrowDown', 'Enter', 'Escape']) expect(cardKey({ key }, body, empty)).toBeNull()
+  })
 })

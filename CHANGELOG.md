@@ -10,6 +10,9 @@ First public release.
 
 ### Added
 
+- `/resume` card: `Ctrl+A` on the computer keyboard switches between every project and the
+  current one, like the card's button (also with the empty message field focused). `⌘A` keeps
+  "select all" on macOS; a field with text keeps its own `Ctrl+A`.
 - Codex conversation: when a newer Codex is out, a line above the composer says so ("Codex
   0.160.0 available (you have 0.159.1)") with the release notes and an **Update** button. After
   a confirmation that shows the command, it runs Codex's own official update command on the
