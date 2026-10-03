@@ -127,6 +127,19 @@ describe('createTranscripts', () => {
     expect(tail.items!.length).toBeLessThan((await t.chat(claude, {})).items!.length)
   })
 
+  it('fresh: looks again for a transcript a brand new Claude just wrote', async () => {
+    // Herdr answering, with no process yet: the "no file" result is cached.
+    const t = createTranscripts({ home, herdr: async () => ({ process_info: { foreground_processes: [] } }) })
+    const pane = { id: 'w9:p1', agent: 'claude', cwd: '/home/x', agentSession: 'new-456' }
+    expect(await t.chat(pane, {})).toEqual({ available: false, reason: 'not_found' })
+    writeFileSync(path.join(claudeDir, 'new-456.jsonl'), fx('claude-session.jsonl'))
+    // "No file" stays cached for a few seconds…
+    expect((await t.chat(pane, {})).available).toBe(false)
+    // …except for a fresh read (Stop or Cancel of the first message).
+    expect((await t.chat(pane, { fresh: true })).available).toBe(true)
+    expect((await t.chat(pane, {})).available).toBe(true)
+  })
+
   it('gives the preview of the last reply', async () => {
     expect(await t.preview(claude)).toBe('fini encore') // markdown and line breaks flattened
   })

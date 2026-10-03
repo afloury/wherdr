@@ -6,7 +6,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import type { Choices, ClaudeQueueEntry, ClaudeScreen, HerdrState, InteractiveMenu, WaitScreen, MachineInfo, ModelInfo, OmpActivity, OmpStatus, Pane, QueuedMessage } from '../../shared/types'
+import type { ChatItem, Choices, ClaudeQueueEntry, ClaudeScreen, HerdrState, InteractiveMenu, WaitScreen, MachineInfo, ModelInfo, OmpActivity, OmpStatus, Pane, QueuedMessage } from '../../shared/types'
 import { ompActivityOf, parseOmpActivity, parseOmpStatus } from './ompScreen'
 import { LOCAL, joinId, machineOf } from '../../shared/ids'
 import { isProjectThread, paneTitle } from '../../shared/paneTitle'
@@ -24,6 +24,8 @@ import { type QueueEntry, INPUT_STATES, checkQueue, isUploadLine, loadQueued, ne
 import { inputVisible } from './choices'
 import { isSlashCommand, photosOnly } from '../../shared/queuedMatch'
 import { findQueued, inputBox, msgText, unqueueClaude } from './unqueue'
+import { takeBackInterrupted, unansweredTurn } from './interruptRestore'
+import { interruptAgent } from './interruptSeq'
 import { type SentRecord, addSent, findSent, hasAttachments, lostPhotos } from './sentHistory'
 import { type GuardError, guardedSend, withPaneLock } from './guardedSend'
 import { type TranscriptPane, sameMsg } from './transcripts'
@@ -433,6 +435,32 @@ export function takeBack(paneId: string, item: { text: string, ts?: string | nul
   return { text, lost: lostPhotos(item.images, text) }
 }
 
+// After an interrupt: the prompt Claude put back into its field, taken out of
+// it (see interruptRestore.ts). The transcript is looked for again: a brand new
+// Claude's first message may be the only thing in it, and only just written.
+export function takeBackFromClaude(p: Pane): Promise<ChatItem | null> {
+  return takeBackInterrupted({
+    screen: async () => String(((await herdr('pane.read', { pane_id: p.id, source: 'visible', format: 'ansi' }, 4000)).read || {}).text || ''),
+    keys: async (keys) => { await herdr('pane.send_input', { pane_id: p.id, keys }) },
+    chat: async () => (await transcripts.chat(p, { fresh: true })).items || [],
+    sleep,
+  }).catch(() => null)
+}
+
+// Cancel of a message Claude already took but has not answered yet (always
+// the case for the first message of a conversation): it is not in its queue,
+// so Cancel does what Stop does, interrupt the turn and take the prompt back.
+// null when it is not that turn, or the prompt did not come back.
+async function cancelTurn(p: Pane, text: string): Promise<{ text: string, lost: number } | null> {
+  if (!unansweredTurn((await transcripts.chat(p, { fresh: true })).items || [], text)) return null
+  const r = await interruptAgent({ call: (m, params, t) => herdr(m, params, t), sleep, now: Date.now }, p)
+  if (!r.stopped) return null
+  const item = await takeBackFromClaude(p)
+  if (!item) return null
+  log(`taken turn cancelled on ${p.id}`)
+  return takeBack(p.id, item)
+}
+
 // "Retry" on a failed message: held again, delivered by the next polls.
 export function retryQueued(paneId: string, id: string): QueuedMessage {
   const q = (queued.get(paneId) || []).find(x => x.id === id)
@@ -528,8 +556,14 @@ export async function cancelQueued(paneId: string, text: string, id?: string): P
       original: e => (!e.text && e.images
         ? ownPhotos.shift()?.text || fromHistory(e)
         : own.find(q => q !== mine && sameMsg(e.text, msgText(q.text)))?.text || fromHistory(e) || e.text),
-    }, text))
+    }, text)).catch(async (e) => {
+      if ((e as HerdrError).code !== 'already_read') throw e
+      const back = await cancelTurn(p, text).catch(() => null)
+      if (!back) throw e
+      return back
+    })
     drop()
+    if (!('requeued' in r)) return { text: r.text, ...(r.lost ? { lost: r.lost } : {}) }
     log(`queued message cancelled on ${p.id}`)
     // The app only had Claude's record of the message (no paths): the sent
     // history may still know them.

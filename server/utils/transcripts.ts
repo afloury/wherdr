@@ -782,9 +782,11 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     return found
   }
 
-  async function locate(pane: TranscriptPane): Promise<Loc | null> {
+  // `fresh`: a cached "no file" is not trusted (a brand new Claude writes its
+  // transcript with its first message, within those 8 s).
+  async function locate(pane: TranscriptPane, fresh = false): Promise<Loc | null> {
     const hit = locCache.get(pane.id)
-    if (hit && Date.now() - hit.at < 8000 && hit.session === pane.agentSession) return hit.loc
+    if (hit && (hit.loc || !fresh) && Date.now() - hit.at < 8000 && hit.session === pane.agentSession) return hit.loc
     let loc: Loc | null = null
     let failed = false
     try {
@@ -883,9 +885,10 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
   // opts.since : token of the last state seen ("unchanged" reply if it has not moved)
   // opts.from  : re-read the bottom from this byte (continuity with older pages)
   // opts.before: load the older slice ending at this byte
-  async function chat(pane: TranscriptPane, opts: { since?: string, from?: number | null, before?: number | null } = {}): Promise<ChatResponse> {
+  // opts.fresh : look for the file again if none was found lately (see locate)
+  async function chat(pane: TranscriptPane, opts: { since?: string, from?: number | null, before?: number | null, fresh?: boolean } = {}): Promise<ChatResponse> {
     if (!hasTranscript(pane.agent)) return { available: false, reason: 'unsupported' }
-    const loc = await locate(pane)
+    const loc = await locate(pane, Boolean(opts.fresh))
     if (!loc) return { available: false, reason: 'not_found' }
     let st
     try { st = await fs.stat(loc.file) }
