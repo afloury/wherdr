@@ -237,6 +237,26 @@ export interface ChatItem {
   images?: number
   ref?: string
   error?: boolean
+  // omp tools: shown the way omp's terminal shows them (see server/utils/ompTools.ts).
+  omp?: OmpToolView
+}
+// An omp tool call: omp's own title ("Bash", "Grep"…), its target (command,
+// path with its line range, pattern, query), counts, wall time, and the end
+// of its output (`outLines`: lines in the whole output, `diff`: an edit's diff).
+export interface OmpToolView {
+  title: string
+  target?: string
+  intent?: string
+  scope?: string
+  matches?: number
+  files?: number
+  added?: number
+  removed?: number
+  job?: string
+  ms?: number
+  out?: string
+  outLines?: number
+  diff?: boolean
 }
 // `images`: photos of the entry ("[Image #1]" tags, removed from `text`).
 // `sent`: the message as wherdr sent it (photo and file paths included), when
