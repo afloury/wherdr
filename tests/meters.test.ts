@@ -8,20 +8,20 @@ describe('usage gauges', () => {
    Total cost:            $0.0000
    Current session
    ████                                               8% used
-   Resets 2pm (Australia/Brisbane)
+   Resets 2pm (America/New_York)
    Current week (all models)
    ███████████████████████████████████                70% used
-   Resets Sep 28, 11pm (Australia/Brisbane)
+   Resets Sep 28, 11pm (America/New_York)
    Current week (Fable)
    ████████████▌                                      25% used
-   Resets Sep 28, 11pm (Australia/Brisbane)
+   Resets Sep 28, 11pm (America/New_York)
    What's contributing to your limits usage?
    Esc to cancel`
     const r = parseMeters(screen)
     expect(r.meters).toEqual([
-      { label: 'Current session', pct: 8, kind: 'used', reset: '2pm (Australia/Brisbane)' },
-      { label: 'Current week (all models)', pct: 70, kind: 'used', reset: 'Sep 28, 11pm (Australia/Brisbane)' },
-      { label: 'Current week (Fable)', pct: 25, kind: 'used', reset: 'Sep 28, 11pm (Australia/Brisbane)' },
+      { label: 'Current session', pct: 8, kind: 'used', reset: '2pm (America/New_York)' },
+      { label: 'Current week (all models)', pct: 70, kind: 'used', reset: 'Sep 28, 11pm (America/New_York)' },
+      { label: 'Current week (Fable)', pct: 25, kind: 'used', reset: 'Sep 28, 11pm (America/New_York)' },
     ])
     expect(r.rest).toContain('Total cost')
     expect(r.rest).toContain("What's contributing")

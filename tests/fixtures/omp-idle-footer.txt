@@ -39,7 +39,7 @@
 │     expect(s.meters).toMatch(/^◫ [\d.]+%\/1M .* · ⏱ 5h \d+% /)                                                                                                                                                     │
 │   })                                                                                                                                                                                                               │
 │   it('boîte « Ask » ouverte : la ligne d’état sous la boîte, sans jauges visibles', () => {                                                                                                                        │
-│     expect(parseOmpStatus(fx('omp-ask-single.txt'))).toEqual({ line: '◒ Opus 5.5 👁 · 🗑 /tmp ↳ xero-app-service · ⑂ detached', meters: null })                                                                      │
+│     expect(parseOmpStatus(fx('omp-ask-single.txt'))).toEqual({ line: '◒ Opus 5.5 👁 · 🗑 /tmp ↳ acme-api-service · ⑂ detached', meters: null })                                                                      │
 │   })                                                                                                                                                                                                               │
 │   it('rien sans trait juste au-dessus de la dernière ligne (écran de Claude, panneau)', () => {                                                                                                                    │
 │     expect(parseOmpStatus(fx('claude-idle.txt'))).toBeNull()                                                                                                                                                       │

@@ -118,7 +118,7 @@ describe('quotas par compte', () => {
   const r = (key: string, label: string, claude: ReturnType<typeof q> | null, codex: Quota | null = null) => ({ key, label, claude, codex })
 
   it('merges the machines of the same account (same fingerprint)', () => {
-    const out = mergeQuotas([r('', 'Server', q(1, 'aaaaaaaaaaaaaaaa', 1790600400000, 20)), r('f27df2ea', 'Laptop', q(2, 'aaaaaaaaaaaaaaaa', 1790600400000, 30))])
+    const out = mergeQuotas([r('', 'Server', q(1, 'aaaaaaaaaaaaaaaa', 1790600400000, 20)), r('0a1b2c3d', 'Laptop', q(2, 'aaaaaaaaaaaaaaaa', 1790600400000, 30))])
     expect(out.claudeAccounts).toBeUndefined()
     expect(out.claude).toEqual({ five: { used: 30, resetsAt: 1790395200000, minutes: 300 }, week: { used: 30, resetsAt: 1790600400000, minutes: 10080 }, at: 2 })
   })
@@ -126,7 +126,7 @@ describe('quotas par compte', () => {
   it('separates accounts and labels each block with its machines', () => {
     const out = mergeQuotas([
       r('', 'Server', q(5, 'aaaaaaaaaaaaaaaa')),
-      r('f27df2ea', 'Laptop', q(3, 'bbbbbbbbbbbbbbbb')),
+      r('0a1b2c3d', 'Laptop', q(3, 'bbbbbbbbbbbbbbbb')),
       r('0c1d2e3f', 'Workstation', q(9, 'aaaaaaaaaaaaaaaa')),
     ])
     expect(out.claudeAccounts!.map(a => [a.machines.map(m => m.label), a.at])).toEqual([[['Server', 'Workstation'], 9], [['Laptop'], 3]])
@@ -148,7 +148,7 @@ describe('quotas par compte', () => {
   })
 
   it('a machine without a reading (offline, unread) creates no block', () => {
-    const out = mergeQuotas([r('', 'Server', q(5, 'aaaaaaaaaaaaaaaa')), r('f27df2ea', 'Laptop', null)])
+    const out = mergeQuotas([r('', 'Server', q(5, 'aaaaaaaaaaaaaaaa')), r('0a1b2c3d', 'Laptop', null)])
     expect(out.claudeAccounts).toBeUndefined()
     expect(out.claude!.at).toBe(5)
     expect(mergeQuotas([])).toEqual({ claude: null, codex: null })
@@ -156,7 +156,7 @@ describe('quotas par compte', () => {
 
   it('Codex: most recent reading, all machines', () => {
     const cx = (at: number) => ({ five: null, week: null, at })
-    expect(mergeQuotas([r('', 'Server', null, cx(1)), r('f27df2ea', 'Laptop', null, cx(4))]).codex!.at).toBe(4)
+    expect(mergeQuotas([r('', 'Server', null, cx(1)), r('0a1b2c3d', 'Laptop', null, cx(4))]).codex!.at).toBe(4)
   })
 })
 
@@ -193,9 +193,9 @@ describe('Claude status line set up?', () => {
   it('mergeQuotas lists the machines to configure', () => {
     const out = mergeQuotas([
       { key: '', label: 'Server', claude: null, codex: null, setup: null },
-      { key: 'f27df2ea', label: 'Laptop', claude: null, codex: null, setup: { key: 'f27df2ea', state: 'missing', installable: true } },
+      { key: '0a1b2c3d', label: 'Laptop', claude: null, codex: null, setup: { key: '0a1b2c3d', state: 'missing', installable: true } },
     ])
-    expect(out.claudeSetup).toEqual([{ key: 'f27df2ea', state: 'missing', installable: true }])
+    expect(out.claudeSetup).toEqual([{ key: '0a1b2c3d', state: 'missing', installable: true }])
     expect(mergeQuotas([{ key: '', label: 'Server', claude: null, codex: null }])).toEqual({ claude: null, codex: null })
   })
 })
@@ -215,20 +215,20 @@ describe('quotas Codex par compte', () => {
   })
 
   it('same account: a single block', () => {
-    const out = mergeQuotas([r('', 'Server', cx(1, 'aaaaaaaaaaaaaaaa')), r('f27df2ea', 'Laptop', cx(2, 'aaaaaaaaaaaaaaaa', 30))])
+    const out = mergeQuotas([r('', 'Server', cx(1, 'aaaaaaaaaaaaaaaa')), r('0a1b2c3d', 'Laptop', cx(2, 'aaaaaaaaaaaaaaaa', 30))])
     expect(out.codexAccounts).toBeUndefined()
     expect(out.codex).toEqual({ five: { used: 30, resetsAt: 1790395200000, minutes: 300 }, week: null, at: 2 })
   })
 
   it('different accounts: one block per machine', () => {
-    const out = mergeQuotas([r('', 'Server', cx(5, 'aaaaaaaaaaaaaaaa')), r('f27df2ea', 'Laptop', cx(3, 'bbbbbbbbbbbbbbbb'))])
+    const out = mergeQuotas([r('', 'Server', cx(5, 'aaaaaaaaaaaaaaaa')), r('0a1b2c3d', 'Laptop', cx(3, 'bbbbbbbbbbbbbbbb'))])
     expect(out.codexAccounts!.map(a => [a.machines.map(m => m.label), a.at])).toEqual([[['Server'], 5], [['Laptop'], 3]])
     expect(out.codexAccounts![0]).not.toHaveProperty('account')
     expect(out.codex).not.toHaveProperty('account')
   })
 
   it('without a fingerprint: previous behaviour (the most recent)', () => {
-    const out = mergeQuotas([r('', 'Server', cx(1, null)), r('f27df2ea', 'Laptop', cx(4))])
+    const out = mergeQuotas([r('', 'Server', cx(1, null)), r('0a1b2c3d', 'Laptop', cx(4))])
     expect(out.codexAccounts).toBeUndefined()
     expect(out.codex!.at).toBe(4)
   })

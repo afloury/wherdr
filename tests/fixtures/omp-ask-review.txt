@@ -5,8 +5,8 @@
 │                          │ Recent sessions                                                       │
 │                          │ • Reply with word pong (24m ago)                                      │
 │                          │ • Set default markdown file opening behavior (50m ago)                │
-│                          │ • Property research for 39 Victory Street Zillmere (21h ago)          │
-│                          │ • Read https://chatcut.io/claude?c=29ff518e-b1b1-47db-a881-0… (1d ago)│
+│                          │ • Plan the demo release notes (21h ago)                               │
+│                          │ • Read https://example.com/docs/getting-started (1d ago)              │
 │                          │                                                                       │
 ╰──────────────────────────┴───────────────────────────────────────────────────────────────────────╯
  Tip: Find out which model you emotionally abuse the most with `omp stats`
@@ -55,4 +55,4 @@
 ├────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │ ⏎ submit · ↑/↓ scroll · ⎋ cancel                                                                                                                                                                                   │
 ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
- ◒ Opus 5.5 👁 · 🗑 /tmp ↳ xero-app-service · ⑂ detached
+ ◒ Opus 5.5 👁 · 🗑 /tmp ↳ acme-api-service · ⑂ detached
