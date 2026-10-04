@@ -10,6 +10,7 @@ import type { DraftAtt } from '~/composables/useDraft'
 import { withReply } from '#shared/replyQuote'
 import { quotesIn, removeQuote } from '~/utils/questionReply'
 import { clearRefs, composeReplies, moveRef, openSheet, removeRef, replyRefs, replyUx, sheet, type SheetItem } from '~/utils/replyUx'
+import { attachQuoteMirror } from '~/utils/quoteMirror'
 import { isAgentCommand } from '#shared/commandScreen'
 import { isSlashCommand } from '#shared/queuedMatch'
 import type { AttachKind } from '#shared/attachments'
@@ -68,6 +69,16 @@ const refs = computed(() => replyRefs(props.paneId))
 const apart = computed(() => replyUx.value === 'a' || replyUx.value === 'c' || replyUx.value === 'd')
 const answered = computed(() => refs.value.filter(r => r.answer.trim()).length)
 const cardsEl = ref<HTMLElement | null>(null)
+// e: the "> " lines of the native field drawn as tokens by a mirror behind it,
+// only while the text holds a quote.
+let mirror: ReturnType<typeof attachQuoteMirror> | null = null
+watch([() => replyUx.value === 'e' && quotes.value.length > 0, ta], ([on, el]) => {
+  if (mirror && (!on || !el)) { mirror.destroy(); mirror = null }
+  if (on && el && !mirror) mirror = attachQuoteMirror(el)
+}, { immediate: true, flush: 'post' })
+// Text set from outside (a quote added, a send): the mirror follows once rendered.
+watch(text, () => nextTick(() => mirror?.render()), { flush: 'post' })
+onBeforeUnmount(() => { mirror?.destroy(); mirror = null })
 // a: one card = the main field is its answer; from two cards on, each has its
 // own field (the answer already typed moves with it, both ways). A new card
 // gets the focus.
@@ -560,7 +571,7 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
         <UIcon name="i-lucide-x" />
       </button>
     </div>
-    <div v-if="quotes.length && replyUx === '0'" class="composer-quotes" role="list" :aria-label="t('Quoted questions')">
+    <div v-if="quotes.length && (replyUx === '0' || replyUx === 'e')" class="composer-quotes" role="list" :aria-label="t('Quoted questions')">
       <span class="composer-quotes-label">↳ {{ quotes.length }}</span>
       <span v-for="q in quotes" :key="q.start" class="composer-quote" role="listitem">
         <span class="composer-quote-text">{{ q.text }}</span>

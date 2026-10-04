@@ -2889,6 +2889,25 @@ li > .rc-slot { margin-left: 0; }
 .rd-point.sub .rd-text { font-size: 13.5px; }
 .rd-general { flex: 1; min-width: 0; border: 1px solid var(--line); padding: 4px 8px; }
 .rd-send { flex: none; border-radius: 0; font: 600 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; height: 36px; }
+/* e: native field, "> " lines drawn as tokens by a mirror behind it
+   (utils/quoteMirror.ts). Nothing here may change a line's size. */
+.qm-host { position: relative; }
+.qm-on {
+  position: relative; z-index: 1; background: transparent !important;
+  color: transparent !important; -webkit-text-fill-color: transparent; caret-color: var(--text);
+}
+.qm-on::selection { background: color-mix(in srgb, var(--accent) 32%, transparent); }
+.qm-mirror { position: absolute; z-index: 0; margin: 0; overflow: hidden; pointer-events: none; color: var(--text); }
+.qm-q {
+  margin: 0 calc(-1 * var(--qm-pr)) 0 calc(-1 * var(--qm-pl)); padding: 0 var(--qm-pr) 0 var(--qm-pl);
+  color: var(--text-2); background: color-mix(in srgb, var(--accent) 9%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.qm-q.first { box-shadow: inset 2px 0 0 var(--accent), inset 0 1px 0 color-mix(in srgb, var(--accent) 22%, transparent); }
+.qm-q.last { box-shadow: inset 2px 0 0 var(--accent), inset 0 -1px 0 color-mix(in srgb, var(--accent) 22%, transparent); }
+.qm-q.first.last { box-shadow: inset 2px 0 0 var(--accent), inset 0 1px 0 color-mix(in srgb, var(--accent) 22%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--accent) 22%, transparent); }
+.qm-p { position: relative; color: transparent; }
+.qm-p::before { content: "↳"; position: absolute; left: 0; top: 0; color: var(--accent); font-family: var(--mono); font-size: .78em; }
 .msg-flash { animation: msg-flash 1.6s ease-out; }
 @keyframes msg-flash {
   0%, 30% { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 16%, transparent); }

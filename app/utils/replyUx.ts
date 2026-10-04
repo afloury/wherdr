@@ -7,12 +7,14 @@
 //   b: one field, quotes as compact non-editable tokens inside it
 //   c: answer in place, under each question in the conversation, plus a drawer
 //   d: "point by point" sheet: the reply split into points, one field each
+//   e: "light b": the native field and text of "0", "> " lines drawn as tokens
+//      by a mirror behind it (utils/quoteMirror.ts)
 // Whatever the concept, the message sent is the same: each quote ("> " lines)
 // above its answer, then the general word (see composeReplies).
 import { reactive, ref } from 'vue'
 import { quoteOf } from './questionReply'
 
-export const REPLY_UXS = ['0', 'a', 'b', 'c', 'd'] as const
+export const REPLY_UXS = ['0', 'a', 'b', 'c', 'd', 'e'] as const
 export type ReplyUx = typeof REPLY_UXS[number]
 
 const valid = (v: unknown): v is ReplyUx => REPLY_UXS.includes(v as ReplyUx)

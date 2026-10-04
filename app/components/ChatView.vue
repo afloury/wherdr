@@ -456,7 +456,7 @@ function quote(text: string, kind: 'question' | 'passage' = 'passage', src: stri
   window.getSelection()?.removeAllRanges()
   haptic()
   const ux = replyUx.value
-  if (ux === '0' || ux === 'b') {
+  if (ux === '0' || ux === 'b' || ux === 'e') {
     const next = addQuote(draft.text, text)
     if (next !== null) draft.text = next
     emit('quote')
@@ -510,7 +510,7 @@ function openPoints(key: string) {
 function syncQuoted() {
   const text = useDraft(props.pane.id).text
   const refs = replyRefs(props.pane.id)
-  const quoted = (q: string) => (replyUx.value === '0' || replyUx.value === 'b' ? isQuoted(text, q) : hasRef(refs, q))
+  const quoted = (q: string) => (['0', 'b', 'e'].includes(replyUx.value) ? isQuoted(text, q) : hasRef(refs, q))
   for (const btn of listEl.value?.querySelectorAll<HTMLElement>('.q-reply') || []) btn.classList.toggle('quoted', quoted(btn.dataset.q || ''))
 }
 watch([() => useDraft(props.pane.id).text, () => replyRefs(props.pane.id).length, blocks], () => nextTick(syncQuoted), { flush: 'post' })
