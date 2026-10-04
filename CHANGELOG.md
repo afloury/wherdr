@@ -45,8 +45,10 @@ First public release.
   from omp's transcript (the level chosen, so `auto` stays `auto` after omp resolves it for a
   turn), else from its status line. Changed with omp's own ⇧⇥ cycle (off → auto → the model's
   levels), for this session only: wherdr presses it until the level is reached, checking each
-  step; a level the model lacks brings it back to where it was. The list starts from the common
-  levels and follows what the presses show.
+  step; a level the model lacks brings it back to where it was. Without a transcript to read, the
+  status line is enough, `auto` included (it shows the glyph of the level it resolved to: wherdr
+  knows a press from `off` lands on it); a cycle that stops on the way leaves the field on the
+  level omp reached. The list starts from the common levels and follows what the presses show.
 - Conversation: run or copy a command an agent proposes. A shell code block (`bash`, `sh`,
   `zsh`, `shell`, `console`, or command lines without a language) gets a **Run** button beside
   Copy (on hover with a mouse, always on a phone), and an inline command (`! gh pr merge 5 …`,
