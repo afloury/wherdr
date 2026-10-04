@@ -25,7 +25,11 @@ function onVisibility() {
   sendViewing()
   // iOS freezes the page in the background and cuts the sockets: we reconnect on return.
   if (!document.hidden) connectEvents()
-  if (!document.hidden && !locked.value && !mayReadOffline(readOfflineAccess())) start()
+  // Back in the foreground: the server may end a session past its maximum duration.
+  if (!document.hidden && !locked.value) {
+    if (mayReadOffline(readOfflineAccess())) confirmLock({ resume: true })
+    else start({ resume: true })
+  }
 }
 // Keyboard shortcuts (computer): utils/shortcuts.ts, composables/useShortcuts.ts.
 useShortcuts(searchOpen)
@@ -54,12 +58,13 @@ onMounted(() => {
       }
     })
   }
-  start()
+  start({ resume: true })
   // Local lease over: ask the server (which slides an active session) rather
-  // than locking on the browser's own clock.
+  // than locking on the browser's own clock. Only the sliding lease counts here:
+  // the maximum duration never locks the app while it is open.
   leaseTimer = setInterval(() => {
     const access = readOfflineAccess()
-    if (access?.enabled && !mayReadOffline(access) && !locked.value) start()
+    if (access?.enabled && !mayReadOffline({ enabled: true, expiresAt: access.expiresAt }) && !locked.value) start()
   }, 30000)
 })
 let leaseTimer: ReturnType<typeof setInterval> | undefined

@@ -3,11 +3,12 @@
 import type { AppConfig, AuthStatus, HerdrState, MachineConfig, MachineInfo, NamedSession, Pane, Quotas } from '#shared/types'
 import { LOCAL, splitId } from '#shared/ids'
 import { clearOffline, readOffline, saveHome } from '~/utils/offlineCache'
-import { leaseFromStatus, mayReadOffline, readOfflineAccess, setOfflineAccess } from '~/utils/offlineAccess'
+import { leaseFromStatus, mayReadOffline, readOfflineAccess, setOfflineAccess, type OfflineAccess } from '~/utils/offlineAccess'
 import { activeTerminalRenderer, parseTerminalRenderer } from '~/utils/terminalRenderer'
 import type { ActiveTerminalRenderer } from '~/utils/terminalRenderer'
 import { settleState } from '#shared/stateReady'
 import { READY_SORTS, type ReadySort } from '#shared/spaces'
+import { DEADLINE_WARNING_MS } from '#shared/sessionLimit'
 import { readSessionSelection, selectSessions, writeSessionSelection } from '~/utils/sessionSelection'
 import { effectiveTypingSpeed, encryptedTextActive, parseTypingSettings } from '~/utils/typewriter'
 import { readHiddenAgents } from '~/utils/agentChoices'
@@ -471,12 +472,25 @@ watch(herdrState, (s) => {
 
 // Shows the lock screen only when the server itself says the session is
 // invalid; a network error or an odd answer leaves the app as it is.
-export async function confirmLock() {
+// resume: the app opens, reloads or comes back to the foreground. Only then does
+// the server end a session past its maximum duration (never in the middle of use).
+export async function confirmLock({ resume = false } = {}) {
   try {
-    const st = await api<AuthStatus>('/api/auth/status')
-    if (st.enabled && !st.unlocked) showLock()
-    else setOfflineAccess(leaseFromStatus(st))
+    const st = await api<AuthStatus>(resume ? '/api/auth/status?resume=1' : '/api/auth/status')
+    if (st.enabled && !st.unlocked) return showLock()
+    const access = leaseFromStatus(st)
+    setOfflineAccess(access)
+    if (resume) warnDeadline(access)
   } catch { /* unreachable: not a reason to lock */ }
+}
+
+// Last hours before the maximum duration: say once that the next opening asks
+// for the passkey again.
+let deadlineWarned = false
+function warnDeadline(access: OfflineAccess) {
+  if (deadlineWarned || !access.deadline || access.deadline - Date.now() > DEADLINE_WARNING_MS) return
+  deadlineWarned = true
+  toast(t('The passkey will be asked again the next time the app opens.'))
 }
 
 // ---------------------------------------------------------------- verrouillage
@@ -512,14 +526,16 @@ export function showLock() {
   booted = false
 }
 
-export async function start() {
+// resume: see confirmLock.
+export async function start({ resume = false } = {}) {
   let access = readOfflineAccess()
   try {
-    const st = await api<AuthStatus>('/api/auth/status')
+    const st = await api<AuthStatus>(resume ? '/api/auth/status?resume=1' : '/api/auth/status')
     if (st.hostLabel !== undefined) hostLabel.value = st.hostLabel
     if (st.enabled && !st.unlocked) return showLock()
     access = leaseFromStatus(st)
     setOfflineAccess(access)
+    if (resume) warnDeadline(access)
   } catch {
     // Server unreachable with an expired lease: hide the cache, unless the live
     // connection is up (a transient HTTP error; the next check retries).

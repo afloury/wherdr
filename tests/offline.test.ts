@@ -52,4 +52,13 @@ describe('cache hors ligne', () => {
     expect(leaseFromStatus({ enabled: true, expiresAt: null, now: server }, client)).toEqual({ enabled: true, expiresAt: 0 })
     expect(leaseFromStatus({ enabled: false }, client)).toEqual({ enabled: false, expiresAt: 0 })
   })
+
+  it('closes the cache past the maximum duration even while the sliding lease runs', () => {
+    const server = 1_000_000_000
+    const client = server + 30_000
+    const lease = leaseFromStatus({ enabled: true, expiresAt: server + 12 * 3600 * 1000, deadline: server + 3600 * 1000, now: server }, client)
+    expect(lease.deadline).toBe(client + 3600 * 1000)
+    expect(mayReadOffline(lease, client + 3599 * 1000)).toBe(true)
+    expect(mayReadOffline(lease, client + 3601 * 1000)).toBe(false)
+  })
 })
