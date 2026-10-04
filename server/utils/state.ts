@@ -6,8 +6,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import type { ChatItem, Choices, ClaudeQueueEntry, ClaudeScreen, HerdrState, InteractiveMenu, WaitScreen, MachineInfo, ModelInfo, OmpActivity, OmpStatus, Pane, QueuedMessage } from '../../shared/types'
-import { ompActivityOf, parseOmpActivity, parseOmpStatus } from './ompScreen'
+import type { ChatItem, Choices, ClaudeQueueEntry, ClaudeScreen, HerdrState, InteractiveMenu, WaitScreen, MachineInfo, ModelInfo, OmpActivity, OmpStatus, Pane, QueuedMessage, ShellRun } from '../../shared/types'
+import { ompActivityOf, parseOmpActivity, parseOmpShell, parseOmpStatus } from './ompScreen'
 import { LOCAL, joinId, machineOf } from '../../shared/ids'
 import { isProjectThread, paneTitle } from '../../shared/paneTitle'
 import { foregroundCommand, reduceSnapshot } from './snapshot'
@@ -212,9 +212,10 @@ function refreshActivity(p: Pane) {
 // While it works, the same reading gives its activity (running step and
 // elapsed time), re-read as often as Claude's verb; nothing is kept when idle.
 // The start of the turn is kept from one reading to the next (the counter
-// does not change the state).
+// does not change the state). It also gives the "!" / "$" command the user
+// runs (omp stays idle meanwhile), whose start is kept the same way.
 const OMP_STATUS_MS = 3000
-type OmpScreenState = { status: OmpStatus | null, activity: OmpActivity | null, at: number }
+type OmpScreenState = { status: OmpStatus | null, activity: OmpActivity | null, shell: ShellRun | null, at: number }
 const ompStatuses = new Map<string, OmpScreenState>()
 const ompStatusBusy = new Set<string>()
 function refreshOmpStatus(p: Pane) {
@@ -224,14 +225,17 @@ function refreshOmpStatus(p: Pane) {
   herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
     .then((r) => {
       const text = r.read && r.read.text
-      return { status: parseOmpStatus(text), activity: findPane(p.id)?.status === 'working' ? ompActivityOf(parseOmpActivity(text), prev?.activity ?? null) : null }
-    }, () => ({ status: prev?.status ?? null, activity: prev?.activity ?? null }))
-    .then(({ status, activity }) => {
+      const shell = parseOmpShell(text)
+      if (shell && prev?.shell && prev.shell.command === shell.command) shell.since = prev.shell.since
+      return { status: parseOmpStatus(text), activity: findPane(p.id)?.status === 'working' ? ompActivityOf(parseOmpActivity(text), prev?.activity ?? null) : null, shell }
+    }, () => ({ status: prev?.status ?? null, activity: prev?.activity ?? null, shell: prev?.shell ?? null }))
+    .then(({ status, activity, shell }) => {
       const old = ompStatuses.get(p.id)
       // Reading finished after the end of the turn: no stale step on the next turn.
       if (findPane(p.id)?.status !== 'working') activity = null
-      ompStatuses.set(p.id, { status, activity, at: Date.now() })
-      if (JSON.stringify(old?.status ?? null) !== JSON.stringify(status) || JSON.stringify(old?.activity ?? null) !== JSON.stringify(activity)) setTimeout(poll, 0)
+      ompStatuses.set(p.id, { status, activity, shell, at: Date.now() })
+      if (JSON.stringify(old?.status ?? null) !== JSON.stringify(status) || JSON.stringify(old?.activity ?? null) !== JSON.stringify(activity)
+        || JSON.stringify(old?.shell ?? null) !== JSON.stringify(shell)) setTimeout(poll, 0)
     })
     .finally(() => ompStatusBusy.delete(p.id))
 }
@@ -735,7 +739,8 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       // Menu, question or panel seen on the previous poll (computed below).
       const before = findPane(p.id)
       const menu = Boolean(before && (before.menu || before.prompt || before.screen)) || restarting(p.id)
-      if (list && checkQueue(list, p.status, Date.now(), menu)) log(`message not sent on ${p.id}`)
+      // omp running the user's "!" command: idle for Herdr, but busy.
+      if (list && checkQueue(list, before?.ompShell ? 'working' : p.status, Date.now(), menu)) log(`message not sent on ${p.id}`)
       if (list) deliverHeld(p)
       if (list && list.length) p.queued = list.map(publicEntry)
     }
@@ -790,9 +795,12 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
     if (p.agent === 'omp' && isViewed(p.id)) {
       const o = ompStatuses.get(p.id)
       const working = p.status === 'working'
-      if (!o || Date.now() - o.at >= (working ? ACTIVITY_MS : OMP_STATUS_MS)) refreshOmpStatus(p)
+      // Fast while it works, runs a command or has a message on its way.
+      const fast = working || Boolean(o?.shell) || queued.has(p.id)
+      if (!o || Date.now() - o.at >= (fast ? ACTIVITY_MS : OMP_STATUS_MS)) refreshOmpStatus(p)
       if (o && o.status) p.ompStatus = o.status
       if (o && o.activity && working) p.ompActivity = o.activity
+      if (o && o.shell) p.ompShell = o.shell
     } else ompStatuses.delete(p.id)
     if (p.agent === 'codex' && isViewed(p.id)) {
       const c = codexStatus.statusOf(p)

@@ -8,7 +8,8 @@ export const QUEUED_TTL_MS = 60 * 60 * 1000
 export { isUploadLine }
 const norm = (t: unknown) => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase()
 // "! cmd": Claude Code switches to bash mode and only writes "cmd" (<bash-input>).
-export const bashText = (t: string) => String(t || '').replace(/^\s*!\s*/, '')
+// omp also has "!!cmd" (kept out of the model's context) and "$ code" / "$$ code" (Python).
+export const bashText = (t: string) => String(t || '').replace(/^\s*(?:!!?|\$\$?)\s*/, '')
 
 // Taken by the agent = a user message in the transcript, written after
 // sending, that contains the start of the text (Claude may group several

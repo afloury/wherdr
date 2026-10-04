@@ -4,7 +4,7 @@
 // replies "unchanged" as long as the file has not grown).
 // Shown = older pages loaded on demand (`older`, up to
 // byte `olderCursor`) + bottom re-read continuously from byte `tailStart`.
-import type { ChatItem, ChatResponse, ClaudeQueueEntry, Pane, QueuedMessage } from '#shared/types'
+import type { ChatItem, ChatResponse, ClaudeQueueEntry, ClaudeScreen, OmpToolView, Pane, QueuedMessage } from '#shared/types'
 import { readOffline, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { canCancelQueued, lostPhotosText, restoreDraft } from '~/utils/queuedCancel'
@@ -290,6 +290,7 @@ type Block =
   | { k: 'system', key: string, text: string }
   | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean }
   | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean }
+  | { k: 'ompRun', key: string, tool: ChatItem & { omp: OmpToolView } }
   | { k: 'tools', key: string, list: ChatItem[], live: boolean }
   | { k: 'turn', key: string, text: string, copy: string | null, reply: string | null }
 
@@ -397,6 +398,8 @@ const blocks = computed<Block[]>(() => {
       out.push({ k: 'thinking', key, id: replyId(it), text: it.text, html: md(it.text), ms: it.ms })
     } else if (it.role === 'job' && it.job) {
       out.push({ k: 'job', key, id: it.job.id, tool: it.job.tool, out: it.job.out, ms: it.ms, error: Boolean(it.error) })
+    } else if (it.role === 'bash' && it.omp) {
+      out.push({ k: 'ompRun', key: `s:${it.ts}:${it.text.slice(0, 40)}`, tool: { ...it, omp: it.omp } })
     } else if (it.role === 'bash') {
       const o = it.out || ''
       const e = it.err || ''
@@ -651,7 +654,13 @@ async function revealOnMachine(p: string, mode: 'reveal' | 'open') {
 // Screen of a working Claude (read by the server): the transcript only has a
 // "!" command at the end; the screen already says it is running, and which
 // messages were sent or are still in its queue (see shared/queuedPhase.ts).
-const screen = computed(() => (!readOnly.value && props.pane.agent === 'claude' && props.pane.status === 'working' ? props.pane.claudeScreen || null : null))
+// omp: only the "!" / "$" command it runs (it stays idle meanwhile).
+const screen = computed<ClaudeScreen | null>(() => {
+  if (readOnly.value) return null
+  const p = props.pane
+  if (p.agent === 'omp') return p.ompShell ? { shell: p.ompShell, sent: null, queued: [] } : null
+  return p.agent === 'claude' && p.status === 'working' ? p.claudeScreen || null : null
+})
 const liveShell = computed(() => (screen.value && screen.value.shell) || null)
 // Duration of the running command, to the second.
 const nowTick = ref(Date.now())
@@ -1062,6 +1071,13 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   <span>{{ isOpen(b.key) ? t('Collapse') : tl(`Show all · ${b.lines} lines`, `Tout afficher · ${b.lines} lignes`) }}</span>
                 </button>
               </div>
+              <div v-else-if="b.k === 'ompRun'" class="tools omp-console omp-run">
+                <div class="omp-console-head">
+                  <span class="omp-console-title">{{ b.tool.omp.title === 'Python' ? '$' : '!' }}</span>
+                  <span>{{ tl('You ran', 'Lancé par toi') }}</span>
+                </div>
+                <OmpTool :tool="b.tool" />
+              </div>
               <div v-else-if="b.k === 'system'" class="msg-system"><span>{{ b.text }}</span></div>
               <div v-else-if="b.k === 'notice'" class="msg-notice" :class="{ long: b.long, open: isOpen(b.key) }">
                 <div class="msg-notice-head"><UIcon :name="b.icon" /><span>{{ b.label }}</span></div>
@@ -1168,7 +1184,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
           <div v-if="liveShell" class="msg-user-wrap">
             <div class="msg-shell bash running">
               <div class="msg-shell-cmd">
-                <span class="msg-shell-sign" aria-hidden="true">!</span>
+                <span class="msg-shell-sign" aria-hidden="true">{{ pane.agent !== 'omp' ? '!' : liveShell.python ? '>>>' : '$' }}</span>
                 <code>{{ liveShell.command }}</code>
               </div>
               <div v-if="liveShell.lines.length" class="msg-shell-body">

@@ -123,3 +123,21 @@ export function ompToolResult(v: OmpToolView, name: string, m: Json, startedAt: 
     if (jobs.length) v.target = clip(jobs.map((j: Json) => `${j.id}${j.label ? ` ${String(j.label).split('\n')[0]}` : ''}`).join(' · '))
   }
 }
+
+// What the user ran in omp's input field: "!cmd" / "!!cmd" (bashExecution)
+// or "$ code" / "$$ code" (pythonExecution). omp writes the entry once the
+// run is over, with no start time: no wall time. A cancelled run's output
+// ends with omp's "[Command cancelled]" note, shown as a flag instead.
+export function ompUserRun(m: Json): OmpToolView | null {
+  const python = m && m.role === 'pythonExecution'
+  if (!m || (m.role !== 'bashExecution' && !python)) return null
+  const target = str(python ? m.code : m.command).trim()
+  if (!target) return null
+  const v: OmpToolView = { title: python ? 'Python' : 'Bash', target: clip(target) }
+  if (typeof m.exitCode === 'number' && m.exitCode) v.exit = m.exitCode
+  if (m.cancelled) v.cancelled = true
+  const ex = excerpt(str(m.output).replace(/(?:^|\n)\[Command cancelled\]\s*$/, ''), OMP_OUT_LINES, 'end')
+  if (ex) Object.assign(v, ex)
+  return v
+}
+

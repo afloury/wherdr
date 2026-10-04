@@ -66,8 +66,10 @@ export interface ShellRun {
   lines: string[]
   // Hidden lines above ("+12 lines").
   hidden: number
-  // Start of the execution (ms), deduced from the "(37s)" counter.
+  // Start of the execution (ms), deduced from the "(37s)" counter (omp: first seen).
   since: number | null
+  // omp's "$ code" (Python) rather than a "!" shell command.
+  python?: boolean
 }
 export interface ClaudeScreen { shell: ShellRun | null, sent: string | null, queued: string[] }
 
@@ -152,6 +154,8 @@ export interface Pane {
   // omp working, conversation shown: the running step ("Finding Fixed section",
   // null before the first tool) and when the turn started (ms, null if unknown).
   ompActivity?: OmpActivity
+  // omp shown: the "!" / "$" command the user is running (omp stays idle meanwhile).
+  ompShell?: ShellRun
 }
 export interface OmpStatus { line: string, meters: string | null }
 export interface OmpActivity { step: string | null, since: number | null }
@@ -258,6 +262,7 @@ export interface OmpToolView {
   removed?: number
   job?: string
   exit?: number
+  cancelled?: boolean
   ms?: number
   out?: string
   outLines?: number

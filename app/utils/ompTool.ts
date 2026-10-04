@@ -27,6 +27,7 @@ export function ompToolMeta(v: OmpToolView): string[] {
   if (v.scope) out.push(`${tl('in', 'dans')} ${v.scope}`)
   if (typeof v.added === 'number' || typeof v.removed === 'number') out.push(`+${v.added || 0}/-${v.removed || 0}`)
   if (v.job) out.push(`${tl('Backgrounded', 'En arrière-plan')}: ${v.job}`)
+  if (v.cancelled) out.push(tl('cancelled', 'annulée'))
   return out
 }
 
@@ -36,10 +37,11 @@ export function ompEarlier(v: OmpToolView): number {
   return Math.max(0, v.outLines - v.out.split('\n').length)
 }
 
-// The call as a console line: bash is its command, the others their name and
-// target ("read TASKS.md:5-20", "web_search oh-my-pi logo").
+// The call as a console line: bash is its command (and the user's "$" Python
+// its code), the others their name and target ("read TASKS.md:5-20",
+// "web_search oh-my-pi logo").
 export function ompCommandLine(v: OmpToolView): string {
-  if (v.title === 'Bash') return v.target || 'bash'
+  if (v.title === 'Bash' || v.title === 'Python') return v.target || v.title.toLowerCase()
   const name = v.title.toLowerCase().replace(/\s+/g, '_')
   return v.target ? `${name} ${v.target}` : name
 }

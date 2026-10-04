@@ -8,7 +8,7 @@
 // The status line is the last line of the screen, just below a rule (the
 // bottom of the field, or of an open "Ask" box). The gauges are embedded
 // in the top rule of the field, when it is visible.
-import type { OmpActivity as OmpActivityState, OmpStatus } from '../../shared/types'
+import type { OmpActivity as OmpActivityState, OmpStatus, ShellRun } from '../../shared/types'
 
 const RULE = /^\s*[─━╰][─━╯\s]{9,}\S?\s*$/
 const METERS = /^\s*[─━]{3,} (.+?) [─━]+\s*$/
@@ -83,4 +83,45 @@ export function ompActivityOf(a: OmpActivity | null, prev: OmpActivityState | nu
   let since = a.elapsed === null ? null : now - a.elapsed * 1000
   if (since !== null && prev?.since != null && Math.abs(since - prev.since) < 3000) since = prev.since
   return { step: a.step, since }
+}
+
+// A "!" / "$" command the user runs from omp's input field, on screen
+// (omp's own status stays idle, the transcript only gets it at the end):
+//
+//   ──────────────────────────────────────────
+//    $ for i in 1 2 3; do echo $i; sleep 1; done      ("$ " shell, ">>> " Python)
+//
+//    1
+//    2
+//    ⠧ Running… (⎋ to cancel)
+//   ──────────────────────────────────────────
+//
+// Its block opens on a rule, the command (wrapped over several rows when long)
+// up to a blank row, then the output omp keeps on screen (its last rows).
+// `since`: when first seen, kept by the caller from one reading to the next.
+const RUNNING_RE = new RegExp(`^ {0,3}[${BRAILLE}] +Running(?:…|\\.\\.\\.) \\(⎋ to cancel\\)$`)
+const RUN_HEAD = /^ ?(\$|>>>) (\S.*)$/
+const SHELL_LINES = 12
+
+export function parseOmpShell(text: string | null | undefined, now = Date.now()): ShellRun | null {
+  if (!text) return null
+  const lines = text.split('\n').map(l => l.trimEnd())
+  let run = -1
+  for (let i = lines.length - 1; i >= Math.max(0, lines.length - 16) && run < 0; i--) if (RUNNING_RE.test(lines[i]!)) run = i
+  if (run < 0) return null
+  let top = -1
+  for (let i = run - 1; i >= 0 && top < 0; i--) if (RULE.test(lines[i]!)) top = i
+  if (top < 0) return null
+  const head = RUN_HEAD.exec(lines[top + 1] || '')
+  if (!head) return null
+  let i = top + 2
+  let command = head[2]!
+  // Wrapped rows are cut at the terminal's width: joined without a space.
+  for (; i < run && lines[i]!.trim(); i++) command += lines[i]!.replace(/^ /, '')
+  const out = lines.slice(i, run)
+  while (out.length && !out[0]!.trim()) out.shift()
+  while (out.length && !out[out.length - 1]!.trim()) out.pop()
+  const shown = out.map(l => l.replace(/^ /, ''))
+  const kept = shown.slice(-SHELL_LINES)
+  return { command: command.trim(), lines: kept, hidden: shown.length - kept.length, since: now, ...(head[1] === '>>>' ? { python: true } : {}) }
 }
