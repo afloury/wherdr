@@ -1076,7 +1076,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   <span class="omp-console-title">{{ b.tool.omp.title === 'Python' ? '$' : '!' }}</span>
                   <span>{{ tl('You ran', 'Lancé par toi') }}</span>
                 </div>
-                <OmpTool :tool="b.tool" />
+                <OmpTool :tool="b.tool" run />
               </div>
               <div v-else-if="b.k === 'system'" class="msg-system"><span>{{ b.text }}</span></div>
               <div v-else-if="b.k === 'notice'" class="msg-notice" :class="{ long: b.long, open: isOpen(b.key) }">

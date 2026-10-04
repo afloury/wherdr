@@ -9,11 +9,14 @@
 import type { Pane } from '../../shared/types'
 import { nextBackgroundKey, parseBackground } from '../../shared/interrupt'
 import type { RestartDeps } from './restartSeq'
+import { parseOmpShell } from './ompScreen'
 
 export interface InterruptResult {
   stopped: boolean
   esc: number
   background: number
+  // omp: the user's "!" / "$" command was cancelled, not the agent's turn.
+  shell?: true
 }
 
 const status = async (d: RestartDeps, paneId: string) => {
@@ -33,7 +36,22 @@ async function settle(d: RestartDeps, paneId: string, ms: number) {
   return false
 }
 
-export async function interruptAgent(d: RestartDeps, p: Pick<Pane, 'id' | 'agent' | 'status'>): Promise<InterruptResult> {
+// omp running the user's "!" / "$" command while idle: Escape ("⎋ to cancel")
+// cancels the command. Exactly one: a second Escape on omp's empty field
+// within a moment opens its session tree. Stopped once the run leaves the screen.
+async function cancelOmpShell(d: RestartDeps, paneId: string): Promise<InterruptResult> {
+  await d.call('pane.send_input', { pane_id: paneId, keys: ['esc'] })
+  const end = d.now() + 3000
+  while (d.now() < end) {
+    await d.sleep(300)
+    try { if (!parseOmpShell((await d.call('pane.read', { pane_id: paneId, source: 'detection' }, 4000))?.read?.text)) return { stopped: true, esc: 1, background: 0, shell: true } }
+    catch { /* pane in transition */ }
+  }
+  return { stopped: false, esc: 1, background: 0, shell: true }
+}
+
+export async function interruptAgent(d: RestartDeps, p: Pick<Pane, 'id' | 'agent' | 'status' | 'ompShell'>): Promise<InterruptResult> {
+  if (p.agent === 'omp' && p.ompShell && p.status !== 'working') return cancelOmpShell(d, p.id)
   const key = (k: string) => d.call('pane.send_input', { pane_id: p.id, keys: [k] })
   const res: InterruptResult = { stopped: false, esc: 0, background: 0 }
   // 1. Escape, then a second one if the agent is still working (Claude Code and Codex

@@ -37,6 +37,14 @@ export function ompEarlier(v: OmpToolView): number {
   return Math.max(0, v.outLines - v.out.split('\n').length)
 }
 
+// Size of a whole output ("15 lines"), for the user's own "!" / "$" run:
+// with no intent nor counts, it tells there is something to unfold.
+export function ompOutSize(v: OmpToolView): string {
+  if (!v.out) return ''
+  const n = Math.max(v.outLines || 0, v.out.split('\n').length)
+  return plural(n, 'line', 'lines', 'ligne', 'lignes')
+}
+
 // The call as a console line: bash is its command (and the user's "$" Python
 // its code), the others their name and target ("read TASKS.md:5-20",
 // "web_search oh-my-pi logo").

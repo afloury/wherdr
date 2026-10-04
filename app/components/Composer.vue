@@ -75,7 +75,9 @@ watch(tokensMode, (on, was) => {
 const canSend = computed(() => Boolean(text.value.trim() || attachments.value.length))
 const readOnly = computed(() => !eventsOpen.value || offlineView.value || paneStale(props.pane))
 // Offline, no Stop: UChatPromptSubmit ignores `disabled` in "streaming" mode.
-const stopMode = computed(() => Boolean(!readOnly.value && props.pane && props.pane.agent && props.pane.status === 'working' && !canSend.value))
+// omp running the user's "!" / "$" command stays idle: Stop cancels the command.
+const shellRun = computed(() => Boolean(props.pane && props.pane.agent === 'omp' && props.pane.ompShell && props.pane.status !== 'working'))
+const stopMode = computed(() => Boolean(!readOnly.value && props.pane && props.pane.agent && (props.pane.status === 'working' || shellRun.value) && !canSend.value))
 // Claude Code's grayed-out suggestion (see parseClaudeSuggestion): placeholder of the
 // empty field; Tab (or the chip, on a touch screen) puts it in the field, without sending it.
 const suggestion = computed(() => (!readOnly.value && !canSend.value && props.pane?.claudeSuggestion) || null)
@@ -188,13 +190,21 @@ async function submit() {
 // Claude's background tasks (see server/utils/interruptSeq.ts) then says whether the agent
 // stopped. Otherwise: lasting message with access to the terminal.
 const interrupting = ref<'running' | 'failed' | null>(null)
+// What the last Stop targeted: the user's omp command, or the agent's turn.
+const stoppingShell = ref(false)
 async function interrupt() {
   if (interrupting.value === 'running') return
   haptic()
   interrupting.value = 'running'
+  stoppingShell.value = shellRun.value
   try {
-    const r = await api<{ stopped: boolean, background: number, restored?: string, lost?: number }>('/api/interrupt', { pane_id: props.paneId, restore: Boolean(props.takeBack) })
+    const r = await api<{ stopped: boolean, background: number, shell?: boolean, restored?: string, lost?: number }>('/api/interrupt', { pane_id: props.paneId, restore: Boolean(props.takeBack) })
     interrupting.value = r.stopped ? null : 'failed'
+    stoppingShell.value = Boolean(r.shell)
+    if (r.shell) {
+      if (r.stopped) toast(tl('Command cancelled', 'Commande annulée'))
+      return
+    }
     // Stopped before any reply: like Claude, the message comes back into the field.
     if (r.restored !== undefined) {
       restoreDraft(draft, r.restored)
@@ -209,7 +219,8 @@ async function interrupt() {
   }
 }
 // The agent eventually stops (or the user acts in the terminal): the message goes away.
-watch(() => props.pane?.status, s => { if (interrupting.value === 'failed' && s !== 'working') interrupting.value = null })
+watch(() => props.pane?.status, s => { if (interrupting.value === 'failed' && !stoppingShell.value && s !== 'working') interrupting.value = null })
+watch(shellRun, on => { if (interrupting.value === 'failed' && stoppingShell.value && !on) interrupting.value = null })
 // Escape (composables/useShortcuts.ts): the Stop button, only while it is shown and
 // clickable. The field blurs itself on Escape: it gets the focus back for what comes next.
 function stop() {
@@ -489,13 +500,13 @@ defineExpose({
   <div class="composer" :data-agent="pane?.agent || undefined">
     <div v-if="interrupting" class="composer-notice restart" :class="{ failed: interrupting === 'failed' }" role="status">
       <template v-if="interrupting === 'failed'">
-        <span class="restart-text">{{ t('The agent is still working.') }}</span>
+        <span class="restart-text">{{ stoppingShell ? tl('The command is still running.', 'La commande tourne encore.') : t('The agent is still working.') }}</span>
         <button type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('View terminal') }}</button>
         <button type="button" class="notice-btn" @click="interrupting = null">{{ t('Hide') }}</button>
       </template>
       <template v-else>
         <span class="notice-spin" aria-hidden="true" />
-        <span class="restart-text">{{ t('Stopping…') }}</span>
+        <span class="restart-text">{{ stoppingShell ? tl('Cancelling the command…', 'Annulation de la commande…') : t('Stopping…') }}</span>
       </template>
     </div>
     <div v-else-if="pane?.restart" class="composer-notice restart" :class="pane.restart.phase" role="status">
@@ -596,7 +607,7 @@ defineExpose({
         <UChatPromptSubmit
           :status="stopMode ? 'streaming' : 'ready'" :disabled="readOnly || (!canSend && !stopMode) || sending || interrupting === 'running'"
           color="primary" variant="solid" streaming-color="neutral" streaming-variant="solid" streaming-icon="i-herdr-stop" size="sm"
-          class="prompt-send" :class="{ stop: stopMode }" :aria-label="t(stopMode ? 'Stop the agent' : 'Send')"
+          class="prompt-send" :class="{ stop: stopMode }" :aria-label="stopMode && shellRun ? tl('Cancel the command', 'Annuler la commande') : t(stopMode ? 'Stop the agent' : 'Send')"
           @mousedown.prevent @click="onSubmitClick" @stop="interrupt"
         />
       </template>
