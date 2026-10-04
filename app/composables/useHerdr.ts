@@ -100,6 +100,9 @@ export const showCounters = ref(ls.get('showCounters') !== '0')
 watch(showCounters, v => ls.set('showCounters', v ? '1' : '0'))
 export const showQuotas = ref(ls.get('showQuotas') !== '0')
 watch(showQuotas, v => ls.set('showQuotas', v ? '1' : '0'))
+// Compact list: one line per card (sidebar on a computer, home list on the phone).
+export const compactList = ref(ls.get('compactList') === '1')
+watch(compactList, v => ls.set('compactList', v ? '1' : '0'))
 export const autoReorderReady = ref(ls.get('autoReorderReady') !== '0')
 watch(autoReorderReady, v => ls.set('autoReorderReady', v ? '1' : '0'))
 // Sorting of Ready (see shared/spaces.ts sortReady), specific to the device.
