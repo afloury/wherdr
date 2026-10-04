@@ -11,6 +11,7 @@ import { canCancelQueued, lostPhotosText, restoreDraft } from '~/utils/queuedCan
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
+import { addQuote, isQuoted, withQuestions } from '~/utils/questionReply'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -21,7 +22,7 @@ import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } fr
 
 const props = defineProps<{ pane: Pane, localQueued: QueuedMessage[] }>()
 const route = useRoute()
-const emit = defineEmits<{ gotoTerm: [], restored: [], reply: [], sent: [queued: QueuedMessage | null] }>()
+const emit = defineEmits<{ gotoTerm: [], restored: [], reply: [], quote: [], sent: [queued: QueuedMessage | null] }>()
 const searchOpen = defineModel<boolean>('search', { default: false })
 
 const box = ref<HTMLElement | null>(null)
@@ -389,7 +390,7 @@ const blocks = computed<Block[]>(() => {
     } else if (it.role === 'assistant') {
       lastReply = it.text
       const time = it.ts ? fmtTime(it.ts) : null
-      lastReplyBlock = { k: 'assistant', key, id: replyId(it), text: it.text, html: md(it.text), time, endsTurn: false }
+      lastReplyBlock = { k: 'assistant', key, id: replyId(it), text: it.text, html: withQuestions(md(it.text), { reply: t('Reply'), quoted: t('Quoted') }), time, endsTurn: false }
       out.push(lastReplyBlock)
       replies.push({ key, time, text: it.text })
     } else if (it.role === 'thinking') {
@@ -435,18 +436,33 @@ function setOpen(key: string, v: boolean) {
 
 // "Reply" under a message: replies to the whole message. A passage
 // selected in an agent message brings up a floating "Reply"
-// button right after it, once the selection is done (see utils/selectionReply.ts).
+// button right after it, once the selection is done (see utils/selectionReply.ts);
+// it quotes the passage in the field, like the "↳ Reply" button of each
+// question (utils/questionReply.ts): several quotes, each with its answer.
 const msgEl = (key: string) => [...(listEl.value?.querySelectorAll<HTMLElement>('[data-hit-key]') || [])].find(el => el.dataset.hitKey === key) || null
-function replyTo(key: string, selection = '') {
+function replyTo(key: string) {
   const b = blocks.value.find(x => x.key === key)
   if (!b || b.k !== 'assistant') return
-  useDraft(props.pane.id).reply = replyTarget(b.text, b.time || '', language === 'en' ? 'en' : 'fr', selection)
-  selReply.value = null
-  window.getSelection()?.removeAllRanges()
+  useDraft(props.pane.id).reply = replyTarget(b.text, b.time || '', language === 'en' ? 'en' : 'fr')
   haptic()
   emit('reply')
 }
-const selReply = ref<{ key: string, text: string, sig: string, top: number, left: number } | null>(null)
+function quote(text: string) {
+  const draft = useDraft(props.pane.id)
+  const next = addQuote(draft.text, text)
+  selReply.value = null
+  window.getSelection()?.removeAllRanges()
+  if (next !== null) draft.text = next
+  haptic()
+  emit('quote')
+}
+// "Quoted" state of the question buttons, read from the draft.
+function syncQuoted() {
+  const text = useDraft(props.pane.id).text
+  for (const btn of listEl.value?.querySelectorAll<HTMLElement>('.q-reply') || []) btn.classList.toggle('quoted', isQuoted(text, btn.dataset.q || ''))
+}
+watch([() => useDraft(props.pane.id).text, blocks], () => nextTick(syncQuoted), { flush: 'post' })
+const selReply = ref<{ text: string, sig: string, top: number, left: number } | null>(null)
 const selBtn = ref<HTMLElement | null>(null)
 const isTouch = () => window.matchMedia('(pointer: coarse)').matches
 // Current selection in an agent message: text, end (last line) and signature.
@@ -468,7 +484,7 @@ function showSelectionReply() {
   if (!cur || !listEl.value) { selReply.value = null; return }
   const view = listEl.value.getBoundingClientRect()
   const pos = selectionReplyPos(cur.end, { width: selBtn.value?.offsetWidth || 104, height: selBtn.value?.offsetHeight || 32 }, { width: window.innerWidth, top: Math.max(0, view.top), bottom: Math.min(window.innerHeight, view.bottom) }, isTouch())
-  selReply.value = pos ? { key: cur.host.dataset.hitKey!, text: cur.text, sig: cur.sig, ...pos } : null
+  selReply.value = pos ? { text: cur.text, sig: cur.sig, ...pos } : null
 }
 const settler = createSelectionSettler({ show: showSelectionReply, hide: () => { selReply.value = null }, touch: isTouch })
 const onSelDown = (e: PointerEvent) => { if (e.button === 0 && !(e.target as Element | null)?.closest?.('.sel-reply')) settler.down() }
@@ -513,6 +529,8 @@ async function copyText(text: string) {
 // their menu (event delegation, the HTML comes from v-html).
 function onListClick(e: MouseEvent) {
   const target = e.target as HTMLElement
+  const question = target.closest?.('.q-reply') as HTMLElement | null
+  if (question?.dataset.q) { e.preventDefault(); quote(question.dataset.q); return }
   const pathEl = target.closest?.('.md-body .md-path') as HTMLElement | null
   if (pathEl) { e.preventDefault(); openPathMenu(pathEl); return }
   const cmdEl = target.closest?.('.md-body .md-cmd') as HTMLElement | null
@@ -934,7 +952,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         auto-scroll-icon="i-lucide-arrow-down"
         :ui="{ root: 'chat-msgs', viewport: 'hw-jump-vp', autoScroll: 'hw-jump' }"
       >
-        <div ref="listEl" class="chat-list" @click="onListClick" @keydown="onListKey">
+        <div ref="listEl" class="chat-list" :class="{ 'no-reply': readOnly }" @click="onListClick" @keydown="onListKey">
           <div v-if="unavailable && waiting" class="chat-empty waiting">
             <UIcon name="i-lucide-square-terminal" class="chat-empty-icon" />
             <p>{{ waiting.text }}</p>
@@ -976,7 +994,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   <template #content>
                     <span v-if="b.files.length" class="msg-file-chips">
                       <FileChip v-for="f in b.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
-                    </span>{{ b.text }}
+                    </span><QuotedText :text="b.text" />
                   </template>
                 </UChatMessage>
                 <div v-if="b.time" class="msg-time" :title="b.at || undefined">{{ b.time }}</div>
@@ -1113,7 +1131,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         <Teleport to="body">
           <button
             v-if="selReply" ref="selBtn" type="button" class="sel-reply" :style="{ top: `${selReply.top}px`, left: `${selReply.left}px` }"
-            :aria-label="t('Reply to this passage')" @pointerdown.prevent @mousedown.prevent @click="replyTo(selReply.key, selReply.text)"
+            :aria-label="t('Reply to this passage')" @pointerdown.prevent @mousedown.prevent @click="quote(selReply.text)"
           >
             <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
           </button>
@@ -1135,7 +1153,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <template #content>
                 <span v-if="q.files.length" class="msg-file-chips">
                   <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
-                </span>{{ q.body }}
+                </span><QuotedText :text="q.body" />
               </template>
             </UChatMessage>
             <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ t('Sent · read by the agent') }}</span></div>
@@ -1172,7 +1190,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <template #content>
                 <span v-if="q.files.length" class="msg-file-chips">
                   <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
-                </span>{{ q.body }}
+                </span><QuotedText :text="q.body" />
               </template>
             </UChatMessage>
             <div v-if="q.state === 'failed'" class="queued-tag failed" role="alert">

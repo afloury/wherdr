@@ -51,7 +51,7 @@ function load(paneId: string): Draft {
         atts: (d.atts || [])
           .filter(a => a.path && a.name && Date.now() - uploadedAt(a.name) < ATT_MAX_AGE)
           .map(restoreAtt),
-        reply: d.reply && typeof d.reply.time === 'string' && typeof d.reply.excerpt === 'string' ? { time: d.reply.time, excerpt: d.reply.excerpt, ...(d.reply.part ? { part: true } : {}) } : null,
+        reply: d.reply && typeof d.reply.time === 'string' && typeof d.reply.excerpt === 'string' ? { time: d.reply.time, excerpt: d.reply.excerpt } : null,
       }
     }
   } catch { /* stockage indisponible ou brouillon illisible */ }
@@ -74,7 +74,7 @@ export function useDraft(paneId: string): Draft {
     d = reactive(load(paneId)) as Draft
     drafts.set(paneId, d)
     const draft = d
-    scope.run(() => watch(() => [draft.text, draft.atts.map(a => a.path).join('|'), draft.reply?.excerpt, draft.reply?.time, draft.reply?.part], () => persist(paneId, draft)))
+    scope.run(() => watch(() => [draft.text, draft.atts.map(a => a.path).join('|'), draft.reply?.excerpt, draft.reply?.time], () => persist(paneId, draft)))
   }
   return d
 }

@@ -21,11 +21,6 @@ describe('reply marker', () => {
     }
   })
 
-  it('prefers the selected passage over the start of the message', () => {
-    const r = replyTarget(LONG, '09:05', 'fr', '  la seconde est plus propre ')
-    expect(r.excerpt).toBe('la seconde est plus propre')
-  })
-
   it('puts the marker before the reply, separated by an empty line', () => {
     const r = replyTarget('Option A ?', '14:32', 'fr')
     expect(withReply(r, 'Oui, A.', 'fr')).toBe('↳ En réponse à ton message de 14:32 (« Option A ? »)\n\nOui, A.')
@@ -57,8 +52,8 @@ describe('displaying a reply', () => {
       { key: 'c', time: '14:32', text: 'Autre chose' },
     ]
     expect(findReplyOrigin(list, replyTarget(LONG, '14:32', 'fr'))?.key).toBe('b')
-    // Passage selected in the middle of the message.
-    expect(findReplyOrigin(list, replyTarget(LONG, '14:32', 'fr', 'La seconde est plus propre'))?.key).toBe('b')
+    // Passage quoted by an older version (middle of the message).
+    expect(findReplyOrigin(list, { time: '14:32', excerpt: 'La seconde est plus propre' })?.key).toBe('b')
     // Different time (other time zone): the excerpt is enough.
     expect(findReplyOrigin(list, { time: '16:32', excerpt: 'Autre chose' })?.key).toBe('c')
     expect(findReplyOrigin(list, { time: '10:00', excerpt: 'introuvable' })).toBeNull()
