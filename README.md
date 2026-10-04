@@ -103,8 +103,9 @@ Claude Code, Codex and other product names are trademarks of their respective ow
   (its footer gauge, or its startup heads-up) is repeated above the field, with its values, while
   Codex shows it.
 - **Model and effort pickers** for Claude Code, Codex and omp (omp: its
-  "Switch Model" selector, `/switch` or `/model`). Changes apply **to the
-  current session only**; wherdr never changes your default model.
+  "Switch Model" selector, `/switch` or `/model`, and its thinking level, changed with its own
+  ⇧⇥ cycle). Changes apply **to the current session only**; wherdr never changes your default
+  model.
 - **New agent**: pick an installed agent (or a plain terminal), a folder, optionally a separate
   Git **worktree** and branch, resume the last conversation, and queue a first message.
 - **Changes view**: Git status and diff of an agent's working folder; worktree management.

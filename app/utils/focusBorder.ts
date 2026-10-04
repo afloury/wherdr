@@ -5,7 +5,7 @@
 // - off: plain 1 px accent border, no animation.
 export const FOCUS_BORDERS = ['border', 'halo', 'off'] as const
 export type FocusBorder = typeof FOCUS_BORDERS[number]
-export const DEFAULT_FOCUS_BORDER: FocusBorder = 'border'
+export const DEFAULT_FOCUS_BORDER: FocusBorder = 'halo'
 
 export function parseFocusBorder(v: unknown): FocusBorder {
   return FOCUS_BORDERS.includes(v as FocusBorder) ? v as FocusBorder : DEFAULT_FOCUS_BORDER

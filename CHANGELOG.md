@@ -17,6 +17,12 @@ First public release.
   selected passage with the floating **Reply** button, stack after it in order. Each quote shows
   as a chip above the field with ✕ to remove it, a question already quoted is marked **✓ Quoted**
   and never added twice, and the sent message shows each quote above its answer.
+- omp: thinking level next to the model in the message field, as for Claude Code and Codex. Read
+  from omp's transcript (the level chosen, so `auto` stays `auto` after omp resolves it for a
+  turn), else from its status line. Changed with omp's own ⇧⇥ cycle (off → auto → the model's
+  levels), for this session only: wherdr presses it until the level is reached, checking each
+  step; a level the model lacks brings it back to where it was. The list starts from the common
+  levels and follows what the presses show.
 - Conversation: run or copy a command an agent proposes. A shell code block (`bash`, `sh`,
   `zsh`, `shell`, `console`, or command lines without a language) gets a **Run** button beside
   Copy (on hover with a mouse, always on a phone), and an inline command (`! gh pr merge 5 …`,
@@ -29,9 +35,11 @@ First public release.
   (Claude, Codex, omp; the theme's accent for a plain terminal) and a second color glides slowly
   around it, one turn every 10 s (`--fx-speed` in `main.css`). With omp in the omp themes, the
   second color is cyan (omp) or blue (omp Light) instead of the accent. Settings → Appearance →
-  Message field border on focus: Border only (default), Halo (the same with a faint glow around
+  Message field border on focus: Border only, Halo (default; the same with a faint glow around
   the field) or None (the plain 1 px border); saved on the device. Frozen with
   `prefers-reduced-motion`; pure CSS, nothing runs while the field does not have the focus.
+  While omp works, its running action console gets the same animated border (border only, no
+  halo), fading back to the plain border when the group ends; None turns it off too.
 - Image viewer: zoom and pan. An image opens fitted to the screen (a very tall one is no longer
   cut at the bottom); pinch, double tap, click on the image, ctrl+wheel (trackpad pinch), the
   wheel on a fitted image, the bottom bar (−, zoom level = back to fit, +, 1:1 actual size) or

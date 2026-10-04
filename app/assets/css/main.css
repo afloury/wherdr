@@ -1445,34 +1445,52 @@ body.kb .composer { padding-bottom: 8px; }
 /* Focused field (Settings › Appearance › Focus border, utils/focusBorder.ts, applied as
    data-focus-border on <html>). "off": the plain 1 px accent border. */
 .prompt:focus-within { border-color: color-mix(in srgb, var(--accent) 60%, transparent); outline: none; }
-/* "border" (default) and "halo": the whole 1 px border takes the agent's color and a second
+/* "border" and "halo" (default): the whole 1 px border takes the agent's color and a second
    color glides slowly around it. A conic gradient whose start angle is the registered
    --fx-a: no JS, and nothing runs while the field does not have the focus. The agent's color
    is toned down a little toward the field's background so that the second color reads on it
    (the herdr mauve on the Claude orange, for instance). */
 @property --fx-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 @keyframes fx-turn { to { --fx-a: 360deg; } }
-.composer {
+.composer, .tools.omp-console {
   --fx-speed: 10s;                /* one full turn */
   --fx-glow: 8px;                 /* depth of the halo */
+  --fx-fill: var(--bg-2);         /* background the agent's color is toned toward */
   --fx-base: var(--accent);       /* plain terminal: accent, with blue gliding */
-  --fx-1: color-mix(in srgb, var(--fx-base) 70%, var(--bg-2));
+  --fx-1: color-mix(in srgb, var(--fx-base) 70%, var(--fx-fill));
   --fx-2: var(--blue);
+}
+/* The ring, declared on the animated elements themselves: --fx-a does not inherit. The second
+   color holds for a sixth of the turn, with a sixth of fade on each side: on a wide box, a
+   conic gradient's arc is short in the middle of the long sides. */
+.prompt, .tools.omp-console::after {
+  --fx-ring: conic-gradient(from var(--fx-a),
+    var(--fx-1) 0deg, var(--fx-2) 60deg, var(--fx-2) 120deg, var(--fx-1) 180deg, var(--fx-1) 360deg);
 }
 .composer[data-agent="claude"] { --fx-base: var(--claude); --fx-2: var(--accent); }
 .composer[data-agent="codex"] { --fx-base: var(--codex); --fx-2: var(--accent); }
-.composer[data-agent="omp"] { --fx-base: var(--omp); --fx-2: var(--accent); }
+.composer[data-agent="omp"], .tools.omp-console { --fx-base: var(--omp); --fx-2: var(--accent); }
 /* omp themes: their accent is the omp magenta's neighbour; glide the cyan / blue instead. */
-:root[data-theme="omp"] .composer[data-agent="omp"] { --fx-2: var(--teal); }
-:root[data-theme="omp-light"] .composer[data-agent="omp"] { --fx-2: var(--blue); }
-/* The second color holds for a sixth of the turn, with a sixth of fade on each side: on a
-   wide field, a conic gradient's arc is short in the middle of the long sides. */
+:root[data-theme="omp"] :is(.composer[data-agent="omp"], .tools.omp-console) { --fx-2: var(--teal); }
+:root[data-theme="omp-light"] :is(.composer[data-agent="omp"], .tools.omp-console) { --fx-2: var(--blue); }
 :root:not([data-focus-border="off"]) .prompt:focus-within {
-  --fx-ring: conic-gradient(from var(--fx-a),
-    var(--fx-1) 0deg, var(--fx-2) 60deg, var(--fx-2) 120deg, var(--fx-1) 180deg, var(--fx-1) 360deg);
   border-color: transparent;
   background: linear-gradient(var(--bg-2), var(--bg-2)) padding-box, var(--fx-ring) border-box;
   animation: fx-turn var(--fx-speed) linear infinite;
+}
+/* omp's console while its last action runs (ChatView `live`, only the last group): the same
+   ring, "border only" whatever the field's setting, and none with "off". On a pseudo-element
+   masked to the 1 px border so that it fades out when the group ends; the animation only
+   runs while the group is live. */
+.tools.omp-console { position: relative; --fx-fill: var(--code-bg); }
+.tools.omp-console::after {
+  content: ''; position: absolute; inset: -1px; padding: 1px; pointer-events: none;
+  background: var(--fx-ring); opacity: 0; transition: opacity .4s ease;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+:root:not([data-focus-border="off"]) .tools.omp-console.live::after {
+  opacity: 1; animation: fx-turn var(--fx-speed) linear infinite;
 }
 /* "halo": the same ring, faint and fading outward, under the field (its opaque background
    hides the inner part). A masked gradient, not a blur filter (cheap on an iPhone). */
@@ -1488,7 +1506,8 @@ body.kb .composer { padding-bottom: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   /* Still colored all around, frozen. */
-  :root:not([data-focus-border="off"]) .prompt:focus-within { animation: none; --fx-a: 135deg; }
+  :root:not([data-focus-border="off"]) .prompt:focus-within,
+  :root:not([data-focus-border="off"]) .tools.omp-console.live::after { animation: none; --fx-a: 135deg; }
 }
 .prompt-body { padding: 0; }
 .prompt-input {
