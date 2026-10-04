@@ -149,3 +149,33 @@ describe('subagent already stopped but still listed', () => {
     expect(calls).toEqual(['esc'])
   })
 })
+
+describe('omp: the user\'s "!" command', () => {
+  const RUNNING = [RULE, ' $ sleep 30', '', ' ⠧ Running… (⎋ to cancel)', RULE].join('\n')
+  const fakeOmp = (cancels: boolean) => {
+    const sent: string[] = []
+    let t = 0
+    const d: RestartDeps = {
+      now: () => t,
+      sleep: async (ms) => { t += ms },
+      call: async (method, params) => {
+        if (method === 'pane.get') return { pane: { agent_status: 'idle' } }
+        if (method === 'pane.read') return { read: { text: cancels && sent.length ? `${RULE}\n >>> ` : RUNNING } }
+        sent.push(...(params.keys as string[]))
+        return {}
+      },
+    }
+    return { d, sent }
+  }
+  const shell = { command: 'sleep 30', lines: [], hidden: 0, since: 0 }
+  it('one Escape cancels the command while omp stays idle', async () => {
+    const f = fakeOmp(true)
+    expect(await interruptAgent(f.d, { id: 'w1:p1', agent: 'omp', status: 'idle', ompShell: shell })).toEqual({ stopped: true, esc: 1, background: 0, shell: true })
+    expect(f.sent).toEqual(['esc'])
+  })
+  it('never a second Escape (it opens omp\'s session tree): a command still running is reported', async () => {
+    const f = fakeOmp(false)
+    expect(await interruptAgent(f.d, { id: 'w1:p1', agent: 'omp', status: 'idle', ompShell: shell })).toMatchObject({ stopped: false, shell: true })
+    expect(f.sent).toEqual(['esc'])
+  })
+})

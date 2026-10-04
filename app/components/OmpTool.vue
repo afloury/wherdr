@@ -6,15 +6,17 @@
 // elapsed time, like omp's activity line. The end of the output (or an
 // edit's diff) unfolds on a tap, under omp's header (OUTPUT · … N earlier
 // lines · exit · wall).
+// `run`: the user's own "!" / "$" command, which has no intent: its output
+// size and a chevron show that it unfolds.
 import type { ChatItem, OmpToolView } from '#shared/types'
-import { ompCommandLine, ompOutHead, ompToolMeta, ompWall } from '~/utils/ompTool'
+import { ompCommandLine, ompOutHead, ompOutSize, ompToolMeta, ompWall } from '~/utils/ompTool'
 
-const props = defineProps<{ tool: ChatItem & { omp: OmpToolView }, live?: boolean }>()
+const props = defineProps<{ tool: ChatItem & { omp: OmpToolView }, live?: boolean, run?: boolean }>()
 const open = ref(false)
 
 const v = computed(() => props.tool.omp)
 const err = computed(() => Boolean(props.tool.error))
-const meta = computed(() => ompToolMeta(v.value).join(' · '))
+const meta = computed(() => ompToolMeta(v.value).concat(props.run ? [ompOutSize(v.value)].filter(Boolean) : []).join(' · '))
 const exit = computed(() => (v.value.exit ? String(v.value.exit) : ''))
 const wall = computed(() => (props.live || v.value.ms === undefined ? '' : ompWall(v.value.ms)))
 // Running call: its start, for the elapsed time on the right.
@@ -39,6 +41,7 @@ const outLines = computed(() => (v.value.out || '').split('\n').map(l => ({
         <code class="omp-tool-cmd">{{ ompCommandLine(v) }}</code>
         <span v-if="since" class="omp-tool-wall"><OmpElapsed :since="since" /></span>
         <span v-else-if="wall" class="omp-tool-wall">{{ wall }}</span>
+        <UIcon v-if="run && canOpen" :name="open ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="omp-tool-chev" aria-hidden="true" />
       </span>
       <span class="omp-tool-sub">
         <UChatShimmer v-if="live" :text="`# ${intent}`" :duration="2.4" class="omp-tool-intent" />

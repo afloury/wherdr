@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { parseLines } from '../server/utils/transcripts'
 import { ompPath, ompToolCall } from '../server/utils/ompTools'
-import { OMP_CONSOLE_SHOWN, isOmpGroup, ompCommandLine, ompConsoleRows, ompEarlier, ompOutHead, ompToolMeta, ompTotalMs, ompWall } from '../app/utils/ompTool'
+import { OMP_CONSOLE_SHOWN, isOmpGroup, ompCommandLine, ompConsoleRows, ompEarlier, ompOutHead, ompOutSize, ompToolMeta, ompTotalMs, ompWall } from '../app/utils/ompTool'
 
 const HOME = '/home/user'
 const text = readFileSync(new URL('./fixtures/omp-tools.jsonl', import.meta.url), 'utf8')
@@ -112,6 +112,13 @@ describe('omp tool text', () => {
     expect(ompToolMeta({ title: 'Bash', job: 'bg_2' })).toEqual(['Backgrounded: bg_2'])
     // The exit code is shown on its own (red), not among the counts.
     expect(ompToolMeta({ title: 'Bash', exit: 2 })).toEqual([])
+  })
+
+  it('whole output size of a user run, cut lines included', () => {
+    expect(ompOutSize({ title: 'Bash', out: 'a\nb\nc' })).toBe('3 lines')
+    expect(ompOutSize({ title: 'Bash', out: 'x', outLines: 40 })).toBe('40 lines')
+    expect(ompOutSize({ title: 'Python', out: '2' })).toBe('1 line')
+    expect(ompOutSize({ title: 'Bash' })).toBe('')
   })
 
   it('lines cut above the excerpt', () => {
