@@ -310,7 +310,7 @@ const FR: Record<string, string> = {
   'Border only': 'Bord seul', 'A second color glides slowly around the border.': 'Une seconde couleur glisse lentement autour du bord.',
   'Halo': 'Halo', 'The same, with a faint glow around the field.': 'Pareil, avec une légère lueur autour du champ.',
   'None': 'Aucune', 'Plain 1 px border, no animation.': 'Bord simple de 1 px, sans animation.',
-  'Frozen when the system asks for reduced motion. Saved on this device.': 'Figée si le système demande moins d’animations. Enregistré sur cet appareil.',
+  'Also on omp’s running actions (border only). Frozen when the system asks for reduced motion. Saved on this device.': 'Aussi sur les actions en cours d’omp (bord seul). Figée si le système demande moins d’animations. Enregistré sur cet appareil.',
   // Machines
   // Herdr plugin actions
   'Plugin actions': 'Actions des plugins', 'Run': 'Exécuter',

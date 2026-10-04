@@ -7,9 +7,9 @@ describe('parseFocusBorder', () => {
     expect(parseFocusBorder('halo')).toBe('halo')
     expect(parseFocusBorder('off')).toBe('off')
   })
-  it('falls back to the animated border when nothing valid is saved', () => {
-    expect(parseFocusBorder(null)).toBe('border')
-    expect(parseFocusBorder('')).toBe('border')
-    expect(parseFocusBorder('c')).toBe('border')
+  it('falls back to the halo when nothing valid is saved', () => {
+    expect(parseFocusBorder(null)).toBe('halo')
+    expect(parseFocusBorder('')).toBe('halo')
+    expect(parseFocusBorder('c')).toBe('halo')
   })
 })
