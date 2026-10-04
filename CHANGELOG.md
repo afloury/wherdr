@@ -10,6 +10,12 @@ First public release.
 
 ### Added
 
+- omp: thinking level next to the model in the message field, as for Claude Code and Codex. Read
+  from omp's transcript (the level chosen, so `auto` stays `auto` after omp resolves it for a
+  turn), else from its status line. Changed with omp's own ⇧⇥ cycle (off → auto → the model's
+  levels), for this session only: wherdr presses it until the level is reached, checking each
+  step; a level the model lacks brings it back to where it was. The list starts from the common
+  levels and follows what the presses show.
 - Conversation: run or copy a command an agent proposes. A shell code block (`bash`, `sh`,
   `zsh`, `shell`, `console`, or command lines without a language) gets a **Run** button beside
   Copy (on hover with a mouse, always on a phone), and an inline command (`! gh pr merge 5 …`,
