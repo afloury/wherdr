@@ -50,14 +50,16 @@ export function openLightbox(srcs: string[], index = 0) {
   lightboxSrc.value = srcs[index] ?? null
 }
 
-// `tone`: red action button (destructive, the default) or accent.
-export const confirmState = reactive<{ open: boolean, message: string, action: string, tone: 'error' | 'primary', resolve: ((ok: boolean) => void) | null }>({
-  open: false, message: '', action: '', tone: 'error', resolve: null,
+// `tone`: red action button (destructive, the default) or accent. `code`:
+// shown in full under the message, in a code box (a command to run).
+export const confirmState = reactive<{ open: boolean, message: string, code: string, action: string, tone: 'error' | 'primary', resolve: ((ok: boolean) => void) | null }>({
+  open: false, message: '', code: '', action: '', tone: 'error', resolve: null,
 })
-export function askConfirm(message: string, action: string, tone: 'error' | 'primary' = 'error'): Promise<boolean> {
+export function askConfirm(message: string, action: string, tone: 'error' | 'primary' = 'error', code = ''): Promise<boolean> {
   confirmState.resolve?.(false)
   return new Promise((resolve) => {
     confirmState.message = message
+    confirmState.code = code
     confirmState.action = action
     confirmState.tone = tone
     confirmState.resolve = resolve

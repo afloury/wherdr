@@ -21,7 +21,7 @@ import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } fr
 
 const props = defineProps<{ pane: Pane, localQueued: QueuedMessage[] }>()
 const route = useRoute()
-const emit = defineEmits<{ gotoTerm: [], restored: [], reply: [] }>()
+const emit = defineEmits<{ gotoTerm: [], restored: [], reply: [], sent: [queued: QueuedMessage | null] }>()
 const searchOpen = defineModel<boolean>('search', { default: false })
 
 const box = ref<HTMLElement | null>(null)
@@ -46,6 +46,9 @@ const rendered = ref(false)
 const olderBusy = ref(false)
 const savedAt = ref<number | null>(null)
 const readOnly = computed(() => offlineView.value || paneStale(props.pane))
+// Commands in the agent's replies can be run in its shell mode (Run buttons,
+// utils/shellCommand.ts); the replies carry `can-run` then.
+const canRun = computed(() => !readOnly.value && eventsOpen.value && canRunCommands(props.pane.agent))
 async function restoreChat() {
   if (!mayReadOffline(readOfflineAccess())) return
   const saved = (await readOffline()).chats.find(c => c.id === props.pane.id)
@@ -114,7 +117,7 @@ onUnmounted(() => ro?.disconnect())
 function onScroll() {
   const b = box.value
   if (!b) return
-  pathMenu.open = false
+  codeMenu.open = false
   stick = b.scrollHeight - b.scrollTop - b.clientHeight < 120
   if (b.scrollTop < 400 && rendered.value) loadOlder() // infinite scrolling upwards
 }
@@ -506,19 +509,27 @@ async function copyText(text: string) {
     toast(t('Copied'))
   } catch { toast(t('Copy failed'), true) }
 }
-// Markdown code blocks: "Copy" button (event delegation,
-// the HTML comes from v-html).
+// Markdown code blocks: "Copy" and "Run" buttons; inline paths and commands:
+// their menu (event delegation, the HTML comes from v-html).
 function onListClick(e: MouseEvent) {
-  const pathEl = (e.target as HTMLElement).closest?.('.md-body .md-path') as HTMLElement | null
+  const target = e.target as HTMLElement
+  const pathEl = target.closest?.('.md-body .md-path') as HTMLElement | null
   if (pathEl) { e.preventDefault(); openPathMenu(pathEl); return }
+  const cmdEl = target.closest?.('.md-body .md-cmd') as HTMLElement | null
+  if (cmdEl) { e.preventDefault(); openCmdMenu(cmdEl); return }
   // Image in an agent reply (markdown): large preview, like ours.
-  const img = (e.target as HTMLElement).closest?.('.md-body img') as HTMLImageElement | null
+  const img = target.closest?.('.md-body img') as HTMLImageElement | null
   if (img && img.src) { e.preventDefault(); openImage(img.src); return }
-  const btn = (e.target as HTMLElement).closest?.('.code-copy') as HTMLElement | null
+  const run = target.closest?.('.can-run .code-run') as HTMLElement | null
+  const runCmd = run?.closest<HTMLElement>('.code-block')?.dataset.cmd
+  if (runCmd) { void runCommand(runCmd); return }
+  const btn = target.closest?.('.code-copy') as HTMLElement | null
   if (!btn) return
-  const code = btn.closest('.code-block')?.querySelector('pre')
-  if (!code) return
-  navigator.clipboard.writeText(code.textContent || '').then(() => {
+  const block = btn.closest<HTMLElement>('.code-block')
+  // A shell command is copied without its prompts ("! ", "$ ") nor output.
+  const text = block?.dataset.cmd ?? block?.querySelector('pre')?.textContent
+  if (text == null) return
+  navigator.clipboard.writeText(text).then(() => {
     btn.textContent = t('Copied')
     btn.classList.add('done')
     setTimeout(() => {
@@ -528,12 +539,58 @@ function onListClick(e: MouseEvent) {
   }).catch(() => toast(t('Copy failed'), true))
 }
 
+// ------------------------------------------------------------ commands
+// A command the agent proposes runs in its own terminal, in its shell mode
+// ("! cmd": Claude Code's bash mode, Codex and omp likewise), only after the
+// user has seen it in full and confirmed. Never from a message of the user's
+// (their messages are not markdown) nor on its own.
+async function runCommand(cmd: string) {
+  const text = runMessage(props.pane.agent, cmd)
+  if (!text || !canRun.value) return
+  // A question on screen would take the command as its typed answer.
+  if (props.pane.status === 'blocked' && props.pane.prompt) return toast(tl('The agent is waiting for your answer: answer it first.', 'L’agent attend ta réponse : réponds-lui d’abord.'), true)
+  haptic()
+  const name = kindLabel(props.pane.agent)
+  const ok = await askConfirm(
+    tl(`Run this command? ${name} runs it in its shell mode (!), in its own folder, and shows the output in the conversation.`,
+      `Lancer cette commande ? ${name} l’exécute dans son mode shell (!), dans son propre dossier, et affiche la sortie dans la conversation.`),
+    tl('Run', 'Lancer'), 'primary', cmd,
+  )
+  if (!ok) return
+  try {
+    emit('sent', await sendMessage(props.pane, props.pane.id, text))
+    haptic()
+  } catch (err) { toast((err as Error).message, true) }
+}
+function cmdMenuItems(cmd: string, runnable: boolean): MenuItem[] {
+  const items: MenuItem[] = []
+  if (runnable) items.push({ label: tl('Run…', 'Lancer…'), icon: 'i-lucide-play', run: () => runCommand(cmd) })
+  items.push({ label: t('Copy command'), icon: 'i-lucide-copy', desc: cmd, mono: true, run: () => copyText(cmd) })
+  return items
+}
+function openCmdMenu(el: HTMLElement) {
+  const cmd = el.dataset.cmd
+  if (!cmd) return
+  openCodeMenu(el, cmdMenuItems(cmd, canRun.value && Boolean(el.closest('.can-run'))), tl('Command', 'Commande'))
+}
+
 // ------------------------------------------------------------ file paths
 // Inline code that looks like a path (utils/markdown.ts): Reveal in Finder and
 // Open on the agent's machine when it is a Mac, Copy path everywhere.
-// Dropdown at the path on a computer, sheet on the phone.
-const pathMenu = reactive({ open: false, x: 0, y: 0, w: 0, h: 0 })
-const pathItems = ref<ReturnType<typeof toDropdown>>([])
+// Paths and commands: dropdown at the code on a computer, sheet on the phone.
+const codeMenu = reactive({ open: false, x: 0, y: 0, w: 0, h: 0 })
+const codeMenuDropdown = ref<ReturnType<typeof toDropdown>>([])
+function openCodeMenu(el: HTMLElement, items: MenuItem[], title: string) {
+  if (sheetMenus.value) {
+    haptic()
+    openMenu(items, title)
+    return
+  }
+  const r = el.getBoundingClientRect()
+  Object.assign(codeMenu, { x: r.left, y: r.top, w: r.width, h: r.height })
+  codeMenuDropdown.value = toDropdown(items)
+  codeMenu.open = true
+}
 function pathMenuItems(p: string): MenuItem[] {
   const items: MenuItem[] = []
   if (canOpenOnMachine(props.pane) && !offlineView.value) {
@@ -547,23 +604,15 @@ function pathMenuItems(p: string): MenuItem[] {
 }
 function openPathMenu(el: HTMLElement, path?: string) {
   const p = path || (el.textContent || '').trim()
-  if (!p) return
-  if (sheetMenus.value) {
-    haptic()
-    openMenu(pathMenuItems(p), p.replace(/\/+$/, '').split('/').pop() || p)
-    return
-  }
-  const r = el.getBoundingClientRect()
-  Object.assign(pathMenu, { x: r.left, y: r.top, w: r.width, h: r.height })
-  pathItems.value = toDropdown(pathMenuItems(p))
-  pathMenu.open = true
+  if (p) openCodeMenu(el, pathMenuItems(p), p.replace(/\/+$/, '').split('/').pop() || p)
 }
 function onListKey(e: KeyboardEvent) {
   if (e.key !== 'Enter' && e.key !== ' ') return
-  const el = (e.target as HTMLElement).closest?.('.md-body .md-path') as HTMLElement | null
+  const el = (e.target as HTMLElement).closest?.('.md-body .md-path, .md-body .md-cmd') as HTMLElement | null
   if (!el) return
   e.preventDefault()
-  openPathMenu(el)
+  if (el.classList.contains('md-cmd')) openCmdMenu(el)
+  else openPathMenu(el)
 }
 async function revealOnMachine(p: string, mode: 'reveal' | 'open') {
   try {
@@ -938,7 +987,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   :id="b.key" role="assistant" side="left" variant="naked"
                   :data-hit-key="b.key"
                   :parts="[{ type: 'text', text: b.text }]"
-                  :ui="{ root: `msg msg-ai tw-${pane.agent || 'agent'}`, container: 'msg-c', content: 'md' }"
+                  :ui="{ root: `msg msg-ai tw-${pane.agent || 'agent'}${canRun ? ' can-run' : ''}`, container: 'msg-c', content: 'md' }"
                 >
                   <template #content>
                     <ChatMarkdown :html="b.html" :typing="typingAt(b.id)" @done="typingDone(b.id)" />
@@ -1156,8 +1205,8 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         </div>
       </UChatMessages>
     </div>
-    <UDropdownMenu v-if="!sheetMenus" v-model:open="pathMenu.open" :items="pathItems" :content="{ align: 'start', side: 'bottom', sideOffset: 4 }" :ui="{ content: 'hw-dropdown' }">
-      <span class="path-anchor" :style="{ left: `${pathMenu.x}px`, top: `${pathMenu.y}px`, width: `${pathMenu.w}px`, height: `${pathMenu.h}px` }" aria-hidden="true" />
+    <UDropdownMenu v-if="!sheetMenus" v-model:open="codeMenu.open" :items="codeMenuDropdown" :content="{ align: 'start', side: 'bottom', sideOffset: 4 }" :ui="{ content: 'hw-dropdown' }">
+      <span class="path-anchor" :style="{ left: `${codeMenu.x}px`, top: `${codeMenu.y}px`, width: `${codeMenu.w}px`, height: `${codeMenu.h}px` }" aria-hidden="true" />
     </UDropdownMenu>
   </div>
 </template>
