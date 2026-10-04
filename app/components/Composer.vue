@@ -448,7 +448,7 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
 </script>
 
 <template>
-  <div class="composer">
+  <div class="composer" :data-agent="pane?.agent || undefined">
     <div v-if="interrupting" class="composer-notice restart" :class="{ failed: interrupting === 'failed' }" role="status">
       <template v-if="interrupting === 'failed'">
         <span class="restart-text">{{ t('The agent is still working.') }}</span>

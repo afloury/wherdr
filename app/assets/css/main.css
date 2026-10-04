@@ -1416,6 +1416,59 @@ body.kb .composer { padding-bottom: 8px; }
   transition: border-color .15s ease;
 }
 .prompt:focus-within { border-color: color-mix(in srgb, var(--accent) 60%, transparent); outline: none; }
+/* TEMPORARY (design proposals): animated border of the focused field, ?focusfx=a|b|c
+   (utils/focusFx.ts). The whole 1 px border is colored at all times (the agent's color);
+   a second color (the theme's accent) glides slowly around it: a conic gradient whose
+   start angle is animated through the registered --fx-a, so nothing runs in JS and
+   nothing runs at all while the field does not have the focus.
+   a: border only; b: + a faint outer glow; c: + a faint inner glow (Halo Search style).
+   Glows are masked gradients, not blur filters (cheap on an iPhone). */
+@property --fx-a { syntax: '<angle>'; inherits: true; initial-value: 0deg; }
+@keyframes fx-turn { to { --fx-a: 360deg; } }
+.composer {
+  --fx-speed: 10s;                /* one full turn */
+  --fx-glow: 8px;                 /* depth of the b / c glow */
+  --fx-1: var(--accent);          /* plain terminal: accent, with blue gliding */
+  --fx-2: var(--blue);
+}
+.composer[data-agent="claude"] { --fx-1: var(--claude); --fx-2: var(--accent); }
+.composer[data-agent="codex"] { --fx-1: var(--codex); --fx-2: var(--accent); }
+.composer[data-agent="omp"] { --fx-1: var(--omp); --fx-2: var(--accent); }
+/* omp themes: their accent is the omp magenta's neighbour; glide the cyan / blue instead. */
+:root[data-theme="omp"] .composer[data-agent="omp"] { --fx-2: var(--teal); }
+:root[data-theme="omp-light"] .composer[data-agent="omp"] { --fx-2: var(--blue); }
+:root:is([data-focusfx="a"], [data-focusfx="b"], [data-focusfx="c"]) .prompt:focus-within {
+  --fx-ring: conic-gradient(from var(--fx-a),
+    var(--fx-1) 0deg, var(--fx-2) 70deg, var(--fx-2) 110deg, var(--fx-1) 180deg, var(--fx-1) 360deg);
+  border-color: transparent;
+  background: linear-gradient(var(--bg-2), var(--bg-2)) padding-box, var(--fx-ring) border-box;
+  animation: fx-turn var(--fx-speed) linear infinite;
+}
+/* b: outer glow, under the field (the field's opaque background hides its inner part). */
+:root[data-focusfx="b"] .composer { isolation: isolate; }
+:root[data-focusfx="b"] .prompt { position: relative; }
+:root[data-focusfx="b"] .prompt:focus-within::before {
+  content: ''; position: absolute; inset: calc(-1px - var(--fx-glow)); z-index: -1; pointer-events: none;
+  background: var(--fx-ring); opacity: .32;
+  --fx-fade-y: linear-gradient(to bottom, transparent, #000 var(--fx-glow), #000 calc(100% - var(--fx-glow)), transparent);
+  --fx-fade-x: linear-gradient(to right, transparent, #000 var(--fx-glow), #000 calc(100% - var(--fx-glow)), transparent);
+  -webkit-mask: var(--fx-fade-y), var(--fx-fade-x); -webkit-mask-composite: source-in;
+  mask: var(--fx-fade-y), var(--fx-fade-x); mask-composite: intersect;
+}
+/* c: inner glow, over the field's background and under its content. */
+:root[data-focusfx="c"] .prompt { position: relative; isolation: isolate; }
+:root[data-focusfx="c"] .prompt:focus-within::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: var(--fx-ring); opacity: .3;
+  --fx-edge-y: linear-gradient(to bottom, #000, transparent var(--fx-glow), transparent calc(100% - var(--fx-glow)), #000);
+  --fx-edge-x: linear-gradient(to right, #000, transparent var(--fx-glow), transparent calc(100% - var(--fx-glow)), #000);
+  -webkit-mask: var(--fx-edge-y), var(--fx-edge-x);
+  mask: var(--fx-edge-y), var(--fx-edge-x);
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Still colored all around, frozen. */
+  .prompt:focus-within { animation: none !important; --fx-a: 135deg; }
+}
 .prompt-body { padding: 0; }
 .prompt-input {
   padding: 8px 6px 4px; font-size: 16px; line-height: 1.45; color: var(--text);
