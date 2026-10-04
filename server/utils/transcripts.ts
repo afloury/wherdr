@@ -19,7 +19,7 @@ import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail 
 import { ompToolCall, ompToolResult } from './ompTools'
 import { pendingClaudeTool, pendingCodexTool } from './promptDetail'
 import { type ClaudeAsked, type OmpAsked, pendingClaudeAsk, pendingOmpAsk } from './choices'
-import { cleanModelName, lastModel, ompModelLabel } from './models'
+import { cleanModelName, lastModel, mergeOmpModel, ompLastModel, ompModelComplete, ompModelLabel, ompModelResult } from './models'
 import { type MachineFs, localFs } from './fsx'
 import { searchFile } from './conversationSearch'
 import { hasTranscript, transcriptKind } from '../../shared/agentKind'
@@ -993,10 +993,12 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
   }
 
   // Last model written in the transcript. Backward reading by windows
-  // (up to MODEL_MAX_BYTES), then only the part added since.
+  // (up to MODEL_MAX_BYTES), then only the part added since. omp writes its
+  // model and its thinking level in separate entries: each is the latest of
+  // its kind, so the reading goes on until both are found (`raw`: partial).
   const MODEL_WINDOW = 512 * 1024
   const MODEL_MAX_BYTES = 16 * 1024 * 1024
-  const modelCache = new Map<string, { file: string, size: number, info: ModelInfo | null }>()
+  const modelCache = new Map<string, { file: string, size: number, raw: ModelInfo | null, info: ModelInfo | null }>()
   async function model(pane: TranscriptPane): Promise<ModelInfo | null> {
     if (!pane.agent || !['claude', 'codex', 'omp'].includes(pane.agent)) return null
     const loc = await locate(pane)
@@ -1006,7 +1008,8 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     catch { return null }
     const c = modelCache.get(pane.id)
     if (c && c.file === loc.file && c.size === size) return c.info
-    let info: ModelInfo | null = null
+    const omp = pane.agent === 'omp'
+    let raw: ModelInfo | null = null
     let done = size // end of the last complete line (a line being written will be re-read)
     try {
       // Already read up to c.size: only what follows can bring something new. We
@@ -1025,13 +1028,15 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
           continue
         }
         if (end === size && !r.text.endsWith('\n')) done = size - Buffer.byteLength(r.text.slice(r.text.lastIndexOf('\n') + 1))
-        info = lastModel(r.text.split('\n').map(stripBlobs), pane.agent)
-        if (info) break
+        const lines = r.text.split('\n').map(stripBlobs)
+        raw = omp ? mergeOmpModel(raw, ompLastModel(lines)) : lastModel(lines, pane.agent)
+        if (omp ? ompModelComplete(raw) : raw) break
         end = r.start
       }
-      if (!info && floor && c) info = c.info
+      if (floor && c) raw = omp ? mergeOmpModel(raw, c.raw) : raw || c.raw
     } catch { return c ? c.info : null }
-    modelCache.set(pane.id, { file: loc.file, size: done, info })
+    const info = omp ? ompModelResult(raw) : raw
+    modelCache.set(pane.id, { file: loc.file, size: done, raw, info })
     return info
   }
 

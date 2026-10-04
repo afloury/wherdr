@@ -11,7 +11,7 @@ const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.m
 const j = (o: unknown) => JSON.stringify(o)
 
 import {
-  lastModel, modelFromLine, ompModelLabel, ompSelectorCaption, parseOmpSelector,
+  lastModel, learnOmpCycle, modelFromLine, ompEffortLevels, ompModelLabel, ompScreenEffort, ompSelectorCaption, parseOmpSelector,
 } from '../server/utils/models'
 import { createTranscripts, type Transcripts } from '../server/utils/transcripts'
 
@@ -74,8 +74,8 @@ describe('model in an omp transcript', () => {
   const modelChange = (model: string, role: string | undefined, ts: string) => j({
     type: 'model_change', id: 'x1', parentId: null, timestamp: ts, model, ...(role ? { role } : {}), resolvedModelIsFallback: false,
   })
-  const level = (lvl: string, ts: string) => j({
-    type: 'thinking_level_change', id: 'x2', parentId: 'x1', timestamp: ts, thinkingLevel: lvl, configured: null,
+  const level = (lvl: string, ts: string, configured: string | null = null) => j({
+    type: 'thinking_level_change', id: 'x2', parentId: 'x1', timestamp: ts, thinkingLevel: lvl, configured,
   })
   const assistant = (model: string, ts: string) => j({
     type: 'message', timestamp: ts, message: { role: 'assistant', provider: 'anthropic', model, content: [{ type: 'text', text: 'ok' }] },
@@ -83,7 +83,18 @@ describe('model in an omp transcript', () => {
 
   it('takes model_change (temporary switch) then merges the thinking level', () => {
     const lines = [modelChange('anthropic/claude-opus-5-5', 'temporary', 't1'), level('max', 't2')]
-    expect(lastModel(lines, 'omp')).toEqual({ id: 'anthropic/claude-opus-5-5', label: 'Opus 5.5', effort: 'max', at: 't1' })
+    expect(lastModel(lines, 'omp')).toEqual({ id: 'anthropic/claude-opus-5-5', label: 'Opus 5.5', effort: 'max', at: 't2' })
+  })
+
+  it('keeps the thinking level across later replies, the configured level ("auto") first', () => {
+    const lines = [
+      modelChange('anthropic/claude-opus-5-5', 'temporary', 't1'),
+      level('medium', 't2', 'auto'),
+      assistant('anthropic/claude-opus-5-5', 't3'),
+    ]
+    expect(lastModel(lines, 'omp')).toEqual({ id: 'anthropic/claude-opus-5-5', label: 'Opus 5.5', effort: 'auto', at: 't3' })
+    // A later explicit choice (⇧⇥) wins, the model stays.
+    expect(lastModel([...lines, level('high', 't4', 'high')], 'omp')).toMatchObject({ label: 'Opus 5.5', effort: 'high', at: 't4' })
   })
 
   it('the assistant message.model works alone (no thinking level)', () => {
@@ -191,5 +202,47 @@ describe('transcripts.model() for omp', () => {
     expect(await tr.model(pane)).toBeNull()
     writeFileSync(file, readFileSync(file, 'utf8') + mc('anthropic/claude-opus-5-5'))
     expect((await tr.model(pane))?.label).toBe('Opus 5.5')
+    // Only new bytes are read: the level then a reply keep both the model and the level.
+    const add = (o: unknown) => writeFileSync(file, readFileSync(file, 'utf8') + j(o) + '\n')
+    add({ type: 'thinking_level_change', timestamp: '2026-10-02T03:03:23.000Z', thinkingLevel: 'medium', configured: 'auto' })
+    add({ type: 'message', timestamp: '2026-10-02T03:04:00.000Z', message: { role: 'assistant', model: 'claude-opus-5-5', content: [] } })
+    expect(await tr.model(pane)).toMatchObject({ label: 'Opus 5.5', effort: 'auto' })
+    add({ type: 'thinking_level_change', timestamp: '2026-10-02T03:05:00.000Z', thinkingLevel: 'xhigh', configured: 'xhigh' })
+    expect(await tr.model(pane)).toMatchObject({ label: 'Opus 5.5', effort: 'xhigh' })
+    // A fresh reader (service restart) finds the level behind the last reply.
+    add({ type: 'message', timestamp: '2026-10-02T03:06:00.000Z', message: { role: 'assistant', model: 'claude-opus-5-5', content: [] } })
+    expect(await createTranscripts({ home, herdr: async () => ({}) }).model(pane)).toMatchObject({ label: 'Opus 5.5', effort: 'xhigh' })
+  })
+})
+
+describe('omp thinking level on screen', () => {
+  it('reads the compact glyph before the model name, in both status line layouts', () => {
+    expect(ompScreenEffort(fx('omp-done.txt'), 'Opus 5.5')).toBe('low')
+    expect(ompScreenEffort(fx('omp-idle-footer.txt'), 'Opus 5.5')).toBe('high')
+    expect(ompScreenEffort(' π > ⟳ Opus 5.5 > 🗑 ~/demo > ▶─1%────', 'Opus 5.5')).toBe('auto')
+    expect(ompScreenEffort(' π > ⦸ Opus 5.5 > 🗑 ~/demo > ▶─1%────', 'Opus 5.5')).toBe('off')
+    expect(ompScreenEffort(' π > [xhi] Opus 5.5 > ~/demo ────', 'Opus 5.5')).toBe('xhigh')
+  })
+
+  it('reads the " · level" suffix when the compact display is off', () => {
+    expect(ompScreenEffort(' π > ⬡ Opus 5.5 · ◑ med > 🗑 ~/demo ────', 'Opus 5.5')).toBe('medium')
+    expect(ompScreenEffort(' π > ⬡ Opus 5.5 · [ ] off > ~/demo ────', 'Opus 5.5')).toBe('off')
+  })
+
+  it('needs the model name next to the glyph: no guess from the conversation or a selector', () => {
+    expect(ompScreenEffort(' ◉ done, see above\n π > ⬡ Opus 5.5 > 🗑 ~/demo ────', 'Opus 5.5')).toBeNull()
+    expect(ompScreenEffort(fx('omp-done.txt'), 'Sonnet 5')).toBeNull()
+    expect(ompScreenEffort(fx('omp-selector.txt'), 'Opus 5.5')).toBeNull()
+  })
+})
+
+describe('omp ⇧⇥ cycle knowledge', () => {
+  it('offers the common levels until presses show the model\'s own', () => {
+    expect(ompEffortLevels(null)).toEqual(['off', 'auto', 'low', 'medium', 'high', 'xhigh', 'max'])
+    // high → off skips xhigh and max; auto → minimal shows an extra level.
+    const known = learnOmpCycle(null, ['high', 'off', 'auto', 'minimal'])
+    expect(ompEffortLevels(known)).toEqual(['off', 'auto', 'minimal', 'low', 'medium', 'high'])
+    // A later press that shows a level again restores it.
+    expect(ompEffortLevels(learnOmpCycle(known, ['high', 'xhigh']))).toContain('xhigh')
   })
 })

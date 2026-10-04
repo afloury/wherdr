@@ -14,7 +14,7 @@ import { HerdrError, agentPrompt, herdr, sleep } from './herdr'
 import { closePanel } from './actions'
 import { READY, findPane, poll, transcripts } from './state'
 import { machineOfPane } from './machines'
-import { type ClaudeEffortSlider, type ModelMenu, type OmpSelector, claudeEffortCommand, claudeEffortLevels, cleanModelName, codexCachedEfforts, codexConfigModel, claudeScreenEffort, claudeScreenModel, codexFooterModel, effortMatches, effortValue, ompModelLabel, ompSelectorCaption, parseClaudeEffortScreen, parseModelMenu, parseOmpSelector, sameModel, switchConfirmKeys } from './models'
+import { type ClaudeEffortSlider, type ModelMenu, type OmpCycleKnowledge, type OmpSelector, OMP_EFFORT_ORDER, claudeEffortCommand, claudeEffortLevels, cleanModelName, codexCachedEfforts, codexConfigModel, claudeScreenEffort, claudeScreenModel, codexFooterModel, effortMatches, effortValue, learnOmpCycle, ompEffortLevels, ompModelLabel, ompScreenEffort, ompSelectorCaption, parseClaudeEffortScreen, parseModelMenu, parseOmpSelector, sameModel, switchConfirmKeys } from './models'
 import { fmt } from '../../shared/message'
 
 // ---------------------------------------------------------------- current model
@@ -48,12 +48,19 @@ const footers = new Map<string, { info: ModelInfo, ms: number }>()
 const screenEfforts = new Map<string, { effort: string, ms: number }>()
 // Claude: model from the header (or from a typed /model), fallback while there is no transcript.
 const screenModels = new Map<string, ModelInfo>()
+// omp: last screen seen (bottom), for the thinking level on its status line —
+// fallback while the transcript has none, read next to the model's name.
+const ompScreens = new Map<string, string>()
 export function noteScreen(paneId: string, agent: string | null, text: string | null | undefined) {
   if (agent === 'claude') {
     const model = claudeScreenModel(text)
     if (model) screenModels.set(paneId, model)
     const effort = claudeScreenEffort(text)
     if (effort && screenEfforts.get(paneId)?.effort !== effort) screenEfforts.set(paneId, { effort, ms: Date.now() })
+    return
+  }
+  if (agent === 'omp') {
+    if (text) ompScreens.set(paneId, text.replace(/\s+$/, '').split('\n').slice(-12).join('\n'))
     return
   }
   if (agent !== 'codex') return
@@ -67,6 +74,7 @@ export function forgetModel(paneId: string) {
   observedEfforts.delete(paneId)
   screenEfforts.delete(paneId)
   screenModels.delete(paneId)
+  ompScreens.delete(paneId)
 }
 
 export async function currentModel(p: Pane): Promise<ModelInfo | null> {
@@ -94,6 +102,8 @@ export async function currentModel(p: Pane): Promise<ModelInfo | null> {
   if (fromFile && !fromFile.effort && observed && sameModel(fromFile.label, observed.label)) {
     return { ...fromFile, effort: observed.effort }
   }
+  const ompSeen = p.agent === 'omp' && fromFile && !fromFile.effort ? ompScreenEffort(ompScreens.get(p.id), fromFile.label) : null
+  if (fromFile && ompSeen) return { ...fromFile, effort: ompSeen }
   if (!fromFile && p.agent === 'claude') {
     // New agent: Claude Code's header already gives model and effort.
     const sm = screenModels.get(p.id)
@@ -465,13 +475,74 @@ async function openEffortSlider(p: Pane): Promise<ClaudeEffortSlider> {
   return s
 }
 
+// ---------------------------------------------------------------- omp thinking level (⇧⇥)
+// Per machine and model: what the ⇧⇥ presses showed of its cycle.
+const ompCycles = new Map<string, OmpCycleKnowledge>()
+const ompCycleKey = (paneId: string, model: ModelInfo) => `${machineOfPane(paneId)?.key || ''}|${cleanModelName(model.label).toLowerCase()}`
+
+// Level after one ⇧⇥ press. With a transcript, its new
+// "thinking_level_change" entry (newer than `sinceAt`) gives the configured
+// level — the status line can show the same glyph for "auto" (resolved) and
+// the next level. Without one (no message yet), the status line once redrawn.
+async function waitOmpEffort(p: Pane, model: string, shown: string, sinceAt: string | null, hasTranscript: boolean) {
+  const until = Date.now() + 3000
+  for (;;) {
+    const tr = await transcripts.model(p).catch(() => null)
+    if (tr && tr.effort && tr.at && (!sinceAt || tr.at > sinceAt)) {
+      return { level: tr.effort, at: tr.at, shown: ompScreenEffort(await screen(p.id).catch(() => ''), model) || shown }
+    }
+    if (!hasTranscript) {
+      const now = ompScreenEffort(await screen(p.id).catch(() => ''), model)
+      if (now && now !== shown) return { level: now, at: sinceAt, shown: now }
+    }
+    if (Date.now() > until) return null
+    await sleep(200)
+  }
+}
+
+// Presses ⇧⇥ until omp shows `level`, re-reading after each press. A full
+// turn back to the starting level means the model does not offer it.
+async function ompCycleTo(p: Pane, before: ModelInfo, level: string) {
+  if (!OMP_EFFORT_ORDER.includes(level)) throw new HerdrError('bad_effort', 'Effort level unavailable for this model')
+  await closePanel(p.id).catch(() => false)
+  let shown = ompScreenEffort(await screen(p.id), before.label)
+  const tr = await transcripts.model(p).catch(() => null)
+  const start = before.effort || shown
+  if (!shown || !start) throw new HerdrError('unsafe', 'omp’s thinking level is not on screen — nothing was changed.')
+  if (start === level) return
+  const key = ompCycleKey(p.id, before)
+  const presses = [start]
+  let at = tr ? tr.at || null : null
+  try {
+    for (let n = 0; n < OMP_EFFORT_ORDER.length; n++) {
+      await herdr('pane.send_input', { pane_id: p.id, keys: ['shift+tab'] })
+      const next = await waitOmpEffort(p, before.label, shown, at, Boolean(tr))
+      if (!next) {
+        throw new HerdrError('stale', presses.length === 1
+          ? 'omp did not change its thinking level — nothing was changed.'
+          : 'omp’s thinking level stopped following — check it in the terminal.')
+      }
+      presses.push(next.level)
+      shown = next.shown
+      at = next.at
+      if (next.level === level) return
+      if (next.level === start) throw new HerdrError('bad_effort', 'Effort level unavailable for this model')
+    }
+    throw new HerdrError('stale', 'omp’s thinking level stopped following — check it in the terminal.')
+  } finally {
+    ompCycles.set(key, learnOmpCycle(ompCycles.get(key) || null, presses))
+  }
+}
+
 export async function listEfforts(paneId: string): Promise<EffortList> {
   return withPane(paneId, async p => {
     const model = await currentModel(p)
     if (!model) return { levels: [], current: null }
-    // omp: no /effort command; its thinking level is part of the model
-    // switch (the selector applies it). Nothing to choose here.
-    if (p.agent === 'omp') return { levels: [], current: model.effort || null }
+    // omp: levels of its ⇧⇥ cycle, as far as the presses have shown them.
+    if (p.agent === 'omp') {
+      const levels = model.effort ? ompEffortLevels(learnOmpCycle(ompCycles.get(ompCycleKey(p.id, model)) || null, [model.effort])) : []
+      return { levels, current: model.effort || null }
+    }
     if (p.agent === 'claude') {
       const fallback = claudeEffortLevels(model.label)
       // Reading the list must not send /effort: Claude records even a
@@ -498,9 +569,10 @@ export async function setEffort(paneId: string, level: string): Promise<ModelInf
   return withPane(paneId, async p => {
     const before = await currentModel(p)
     if (!before) throw new HerdrError('bad_model', 'Unknown model')
-    if (p.agent === 'omp') throw new HerdrError('bad_effort', 'Effort level unavailable for this model')
     const started = Date.now()
-    if (p.agent === 'claude') {
+    if (p.agent === 'omp') {
+      await ompCycleTo(p, before, level)
+    } else if (p.agent === 'claude') {
       if (!claudeEffortCommand(level, before.label)) throw new HerdrError('bad_effort', 'Effort level unavailable for this model')
       const slider = await openEffortSlider(p)
       try {

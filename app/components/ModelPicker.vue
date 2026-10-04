@@ -68,7 +68,7 @@ watch(modelOpen, (o) => {
 })
 watch(effortOpen, (o) => { if (o && !efforts.value) loadEfforts() })
 watch(() => [eventsOpen.value, props.pane.status, props.pane.model?.label, props.pane.model?.effort], () => {
-  if (['claude', 'codex'].includes(props.pane.agent || '') && ['idle', 'done'].includes(props.pane.status || '') &&
+  if (['claude', 'codex', 'omp'].includes(props.pane.agent || '') && ['idle', 'done'].includes(props.pane.status || '') &&
       !props.pane.model?.effort && props.pane.model && !efforts.value && !why.value) loadEfforts()
 }, { immediate: true })
 watch(() => props.pane.id, () => { list.value = null; efforts.value = null; chosen.value = null })
@@ -105,6 +105,8 @@ async function chooseEffort(level: string) {
     toast(tl(`Effort: ${level} (this session)`, `Effort : ${level} (cette session)`))
   } catch (err) { toast((err as Error).message, true) }
   finally { switching.value = false }
+  // omp: each ⇧⇥ press shows more of the model's real levels.
+  if (props.pane.agent === 'omp' && !why.value) await loadEfforts()
 }
 
 const modelItems = computed(() => {
@@ -133,7 +135,7 @@ const effortItems = computed(() => {
     onSelect: () => chooseEffort(level),
   }))]
 })
-const showEffort = computed(() => ['claude', 'codex'].includes(props.pane.agent || '') &&
+const showEffort = computed(() => ['claude', 'codex', 'omp'].includes(props.pane.agent || '') &&
   Boolean(efforts.value?.levels.length || (model.value?.effort && !efforts.value)))
 
 // Selector unavailable: the menu does not open, we explain (on the phone,

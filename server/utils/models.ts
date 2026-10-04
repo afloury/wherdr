@@ -103,28 +103,62 @@ export const sameModel = (a: string | null | undefined, b: string | null | undef
 const SET_RE = /(?:Set model to|Kept model as)\s+`([^`]+)`/
 
 // omp transcript (~/.omp/agent/sessions/…jsonl): the model in effect comes
-// from, in order, "model_change" ("role": "temporary" = session-only switch,
-// "default" = the picker's role choice) and "thinking_level_change" entries;
-// else the "model" of the last assistant message (with provider, without
-// thinking level). The lowest (most recent) wins.
+// from "model_change" entries ("role": "temporary" = session-only switch,
+// "default" = the picker's role choice), else the "model" of the last
+// assistant message (with provider, without thinking level). The thinking
+// level comes from "thinking_level_change" entries, written on every change
+// (⇧⇥ cycle, model switch): "configured" is the level chosen ("auto",
+// "off", "high"…), "thinkingLevel" the one in effect ("auto" resolves it per
+// turn). A model line leaves `effort` undefined: it says nothing about it.
 export function ompModelFromLine(line: string): ModelInfo | null {
   if (!line.includes('"model"') && !line.includes('"thinkingLevel"')) return null
   let d: Json
   try { d = JSON.parse(line) }
   catch { return null }
   if (d.type === 'model_change' && typeof d.model === 'string' && d.model) {
-    return { id: d.model, label: ompModelLabel(d.model), effort: null, at: d.timestamp || null }
+    return { id: d.model, label: ompModelLabel(d.model), at: d.timestamp || null }
   }
-  if (d.type === 'thinking_level_change' && typeof d.thinkingLevel === 'string' && d.thinkingLevel) {
-    return { id: null, label: '', effort: d.thinkingLevel, at: d.timestamp || null }
+  if (d.type === 'thinking_level_change') {
+    const level = typeof d.configured === 'string' && d.configured ? d.configured
+      : typeof d.thinkingLevel === 'string' && d.thinkingLevel ? d.thinkingLevel : null
+    return { id: null, label: '', effort: level, at: d.timestamp || null }
   }
   if (d.type === 'message' && d.message && d.message.role === 'assistant') {
     const id = d.message.model
     if (typeof id !== 'string' || !id) return null
-    return { id, label: ompModelLabel(id), effort: null, at: d.timestamp || null }
+    return { id, label: ompModelLabel(id), at: d.timestamp || null }
   }
   return null
 }
+
+// omp: model and thinking level, merged field by field — the newer one wins
+// for each; `at` is the most recent of both. Partial values: `label` '' = no
+// model seen yet, `effort` undefined = no level seen yet.
+export function mergeOmpModel(newer: ModelInfo | null, older: ModelInfo | null): ModelInfo | null {
+  if (!newer || !older) return newer || older
+  const model = newer.label ? newer : older
+  const [a, b] = [newer.at || null, older.at || null]
+  return {
+    id: model.id,
+    label: model.label,
+    effort: newer.effort !== undefined ? newer.effort : older.effort,
+    at: !a || (b && b > a) ? b : a,
+  }
+}
+
+export const ompModelComplete = (m: ModelInfo | null) => Boolean(m && m.label && m.effort !== undefined)
+
+// Latest model and latest thinking level of a block of omp lines (partial).
+export function ompLastModel(lines: string[]): ModelInfo | null {
+  let acc: ModelInfo | null = null
+  for (let i = lines.length - 1; i >= 0 && !ompModelComplete(acc); i--) {
+    acc = mergeOmpModel(acc, ompModelFromLine(lines[i]!))
+  }
+  return acc
+}
+
+// Partial omp info → what callers get: no model = nothing, no level = null.
+export const ompModelResult = (m: ModelInfo | null): ModelInfo | null => (m && m.label ? { ...m, effort: m.effort ?? null } : null)
 
 // Model carried by a transcript line (null if it says nothing about it).
 export function modelFromLine(line: string, kind: string | null): ModelInfo | null {
@@ -164,17 +198,9 @@ export function modelFromLine(line: string, kind: string | null): ModelInfo | nu
 
 // Last known model of a block of lines (the most recent wins).
 export function lastModel(lines: string[], kind: string | null): ModelInfo | null {
+  if (kind === 'omp') return ompModelResult(ompLastModel(lines))
   for (let i = lines.length - 1; i >= 0; i--) {
     const r = modelFromLine(lines[i]!, kind)
-    // omp: a "thinking_level_change" alone carries no model; merge it with
-    // the model found just before (the level change follows the switch).
-    if (r && kind === 'omp' && !r.label) {
-      for (let k = i - 1; k >= 0; k--) {
-        const m = modelFromLine(lines[k]!, kind)
-        if (m && m.label) return { ...m, effort: r.effort ?? m.effort ?? null }
-      }
-      continue
-    }
     if (r) return r
   }
   return null
@@ -504,4 +530,77 @@ export function codexConfigModel(toml: string): ModelInfo | null {
   if (!m) return null
   const e = top.match(/^\s*model_reasoning_effort\s*=\s*"([^"]+)"/m)
   return { id: m[1]!, label: codexModelLabel(m[1]!), effort: e ? e[1]! : null, at: null }
+}
+
+// ---------------------------------------------------------------- omp thinking level
+// omp changes its thinking level with ⇧⇥ only (no slash command): one press
+// moves to the next level of the cycle off → auto → the model's own levels
+// (catalog order) → off, for this session only (never saved as a default).
+export const OMP_EFFORT_ORDER = ['off', 'auto', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+// Offered until a ⇧⇥ cycle has shown the model's real levels: the set of
+// current reasoning models (Claude 4.7+, GPT-5.6+).
+const OMP_DEFAULT_LEVELS: Record<string, true> = { off: true, auto: true, low: true, medium: true, high: true, xhigh: true, max: true }
+
+// What the presses showed about one model's cycle: levels seen, and levels
+// proven absent (skipped between two consecutive presses).
+export interface OmpCycleKnowledge { seen: string[], absent: string[] }
+
+export function learnOmpCycle(known: OmpCycleKnowledge | null, presses: string[]): OmpCycleKnowledge {
+  const seen = new Set(known ? known.seen : [])
+  const absent = new Set(known ? known.absent : [])
+  const n = OMP_EFFORT_ORDER.length
+  for (let k = 0; k < presses.length; k++) {
+    const level = presses[k]!
+    seen.add(level)
+    absent.delete(level)
+    if (k === 0) continue
+    const from = OMP_EFFORT_ORDER.indexOf(presses[k - 1]!)
+    const to = OMP_EFFORT_ORDER.indexOf(level)
+    if (from < 0 || to < 0) continue
+    for (let j = (from + 1) % n; j !== to; j = (j + 1) % n) {
+      if (!seen.has(OMP_EFFORT_ORDER[j]!)) absent.add(OMP_EFFORT_ORDER[j]!)
+    }
+  }
+  return { seen: [...seen], absent: [...absent] }
+}
+
+export function ompEffortLevels(known: OmpCycleKnowledge | null): string[] {
+  return OMP_EFFORT_ORDER.filter(l => known?.seen.includes(l) || (!known?.absent.includes(l) && OMP_DEFAULT_LEVELS[l]))
+}
+
+// Status line glyphs of the three symbol presets (unicode, nerd font, ascii).
+const OMP_EFFORT_GLYPHS: Record<string, string> = {
+  '○': 'minimal', '◔': 'low', '◑': 'medium', '◒': 'high', '◕': 'xhigh', '◉': 'max', '⟳': 'auto', '⦸': 'off',
+  '\u{F0A9E}': 'minimal', '\u{F0A9F}': 'low', '\u{F0AA1}': 'medium', '\u{F0AA3}': 'high', '\u{F0AA5}': 'xhigh', '\uF06D': 'max', '\uF074': 'auto', '\uF05E': 'off',
+  '[min]': 'minimal', '[low]': 'low', '[med]': 'medium', '[high]': 'high', '[xhi]': 'xhigh', '[max]': 'max', '[~]': 'auto',
+}
+const OMP_EFFORT_WORDS: Record<string, string> = {
+  off: 'off', auto: 'auto', min: 'minimal', minimal: 'minimal', low: 'low', med: 'medium', medium: 'medium',
+  high: 'high', xhi: 'xhigh', xhigh: 'xhigh', max: 'max',
+}
+
+// omp's thinking level on its status line, next to the model name: the top
+// border of the input box (" π > ◔ Opus 5.5 > 🗑 repo > … ───") or, in older
+// layouts, the line under it (" ◒ Opus 5.5 👁 · 📁 ~/repo"). One glyph before
+// the name (compact display, the default), or a " · ◔ low" suffix after it.
+// Until its first turn "auto" shows ⟳, then the level it resolved to — the
+// transcript, when there is one, keeps "auto". The name anchors the reading:
+// the conversation above may hold the same glyphs. null: not on screen, or
+// no thinking level.
+export function ompScreenEffort(text: string | null | undefined, model: string | null | undefined): string | null {
+  const name = cleanModelName(model || '').replace(/\s*\(.*?\)/g, '').toLowerCase()
+  if (!name) return null
+  const lines = String(text || '').replace(/\s+$/, '').split('\n').slice(-12)
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!
+    // Boxed rows (selectors, dialogs) are not the status line.
+    if (/^\s*│/.test(line)) continue
+    const at = line.toLowerCase().indexOf(name)
+    if (at < 0) continue
+    const glyph = OMP_EFFORT_GLYPHS[line.slice(0, at).trimEnd().split(/\s+/).pop() || '']
+    if (glyph) return glyph
+    const suffix = line.slice(at + name.length).match(/^[^·>]*·\s*(?:\S+\s+){0,2}?\[?(off|auto|min|minimal|low|med|medium|high|xhi|xhigh|max)\]?(?=\s|$)/)
+    if (suffix) return OMP_EFFORT_WORDS[suffix[1]!]!
+  }
+  return null
 }
