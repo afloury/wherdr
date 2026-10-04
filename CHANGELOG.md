@@ -10,6 +10,12 @@ First public release.
 
 ### Added
 
+- omp: thinking level next to the model in the message field, as for Claude Code and Codex. Read
+  from omp's transcript (the level chosen, so `auto` stays `auto` after omp resolves it for a
+  turn), else from its status line. Changed with omp's own ⇧⇥ cycle (off → auto → the model's
+  levels), for this session only: wherdr presses it until the level is reached, checking each
+  step; a level the model lacks brings it back to where it was. The list starts from the common
+  levels and follows what the presses show.
 - Message field: animated border on focus. The whole 1 px border takes the agent's color
   (Claude, Codex, omp; the theme's accent for a plain terminal) and a second color glides slowly
   around it, one turn every 10 s (`--fx-speed` in `main.css`). With omp in the omp themes, the
