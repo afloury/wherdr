@@ -53,12 +53,13 @@ export function pendingQueue(o: {
   memory?: OutboxItem[]
 }): PendingMessage[] {
   // Already in the conversation (the server has not noticed yet): we do not
-  // show two copies. "! cmd" appears there as a command without "!".
+  // show two copies. "! cmd" appears there as a command without "!" (omp:
+  // also "!!cmd", "$ code").
   const inChat = (q: OutboxItem) => {
     const after = (i: ChatItem) => !q.at || !i.ts || Date.parse(i.ts) >= q.at - 10000
     if (photosOnly(q.text)) return o.items.some(i => after(i) && photosLanded(q.text, i))
     const n = normText(withoutUploads(q.text)).slice(0, 60)
-    const nb = normText(q.text.replace(/^\s*!\s*/, '')).slice(0, 60)
+    const nb = normText(q.text.replace(/^\s*(?:!!?|\$\$?)\s*/, '')).slice(0, 60)
     return Boolean(n) && o.items.some(i => after(i)
       && (i.role === 'user' ? normText(i.text).includes(n) : i.role === 'bash' && Boolean(nb) && normText(i.text).includes(nb)))
   }

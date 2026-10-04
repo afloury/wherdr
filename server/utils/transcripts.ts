@@ -16,7 +16,7 @@
 import path from 'node:path'
 import { imageTagCount } from '../../shared/queuedMatch'
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail } from '../../shared/types'
-import { ompToolCall, ompToolResult } from './ompTools'
+import { ompToolCall, ompToolResult, ompUserRun } from './ompTools'
 import { pendingClaudeTool, pendingCodexTool } from './promptDetail'
 import { type ClaudeAsked, type OmpAsked, pendingClaudeAsk, pendingOmpAsk } from './choices'
 import { cleanModelName, lastModel, mergeOmpModel, ompLastModel, ompModelComplete, ompModelLabel, ompModelResult } from './models'
@@ -550,6 +550,11 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
         }
       }
       if (m.stopReason === 'aborted' && /interrupt/i.test(String(m.errorMessage || ''))) items.push({ role: 'system', text: 'Interrupted', ts })
+    } else if (m.role === 'bashExecution' || m.role === 'pythonExecution') {
+      // "!cmd" / "$ code" typed in omp's input field: a user action, like
+      // Claude's bash mode, drawn the way omp draws it.
+      const v = ompUserRun(m)
+      if (v) items.push({ role: 'bash', text: v.target!, ts, error: Boolean(v.exit || v.cancelled), omp: v })
     } else if (m.role === 'toolResult') {
       const t = tools.get(m.toolCallId)
       if (!t) continue

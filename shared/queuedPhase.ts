@@ -26,7 +26,7 @@ function same(a: string, b: string): boolean {
 const samePhotos = (text: string, shown: string) => onlyImageTags(shown) && imageTagCount(shown) === uploadNames(text).length
 
 const isBash = (t: string) => /^\s*!/.test(t)
-const bashNorm = (t: string) => norm(String(t || '').replace(/^\s*!\s*/, ''))
+const bashNorm = (t: string) => norm(String(t || '').replace(/^\s*!!?\s*/, ''))
 
 export function queuedPhase(text: string, s: ClaudeScreen | null | undefined): QueuedPhase {
   if (!s) return 'queued'
@@ -34,8 +34,10 @@ export function queuedPhase(text: string, s: ClaudeScreen | null | undefined): Q
   const n = msgNorm(text)
   if (!n) return 'queued'
   if (s.queued.some(q => same(n, norm(q)))) return 'queued'
+  // omp runs "$ code" (Python) too: matched against its running command only.
+  const run = !s.shell ? '' : s.shell.python ? (/^\s*\$/.test(text) ? norm(text.replace(/^\s*\$\$?\s*/, '')) : '') : isBash(text) ? bashNorm(text) : ''
+  if (s.shell && same(run, norm(s.shell.command))) return 'running'
   if (isBash(text)) {
-    if (s.shell && same(bashNorm(text), norm(s.shell.command))) return 'running'
     return s.sent && isBash(s.sent) && same(bashNorm(text), bashNorm(s.sent)) ? 'sent' : 'queued'
   }
   return s.sent && !isBash(s.sent) && same(n, norm(s.sent)) ? 'sent' : 'queued'
