@@ -34,6 +34,91 @@
   font-display: block;
   unicode-range: U+23F5, U+23FA;
 }
+/* Symbols Nerd Font Mono (icons of status bars and prompts: Powerline,
+   Font Awesome, Codicons, Devicons, Octicons, Material Design...), Private
+   Use Area only, narrowed to one 0.600 em cell. One file per icon set:
+   the browser only downloads the sets whose glyphs are on screen.
+   Built by scripts/build-nerd-font.py (same ranges). */
+@font-face {
+  font-family: "Wherdr Nerd Symbols";
+  src: url("../fonts/wherdr-nerd-powerline.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  unicode-range: U+E0A0-E0D7;
+}
+@font-face {
+  font-family: "Wherdr Nerd Symbols";
+  src: url("../fonts/wherdr-nerd-extension.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  unicode-range: U+E200-E3E3;
+}
+@font-face {
+  font-family: "Wherdr Nerd Symbols";
+  src: url("../fonts/wherdr-nerd-devicons.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  unicode-range: U+E5FA-E8EF;
+}
+@font-face {
+  font-family: "Wherdr Nerd Symbols";
+  src: url("../fonts/wherdr-nerd-codicons.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  unicode-range: U+EA60-EC1E;
+}
+@font-face {
+  font-family: "Wherdr Nerd Symbols";
+  src: url("../fonts/wherdr-nerd-awesome.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  unicode-range: U+ED00-F2FF;
+}
+@font-face {
+  font-family: "Wherdr Nerd Symbols";
+  src: url("../fonts/wherdr-nerd-octicons.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  unicode-range: U+F300-F381, U+F400-F533;
+}
+@font-face {
+  font-family: "Wherdr Nerd Symbols";
+  src: url("../fonts/wherdr-nerd-material-1.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  unicode-range: U+F0001-F06FF;
+}
+@font-face {
+  font-family: "Wherdr Nerd Symbols";
+  src: url("../fonts/wherdr-nerd-material-2.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  unicode-range: U+F0700-F0DFF;
+}
+@font-face {
+  font-family: "Wherdr Nerd Symbols";
+  src: url("../fonts/wherdr-nerd-material-3.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  unicode-range: U+F0E00-F14FF;
+}
+@font-face {
+  font-family: "Wherdr Nerd Symbols";
+  src: url("../fonts/wherdr-nerd-material-4.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  unicode-range: U+F1500-F1AF0;
+}
 
 /* Tailwind sources: the app's components. */
 @source "../../components";
@@ -41,7 +126,7 @@
 
 @theme {
   --font-sans: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Wherdr Nerd Symbols", ui-monospace, "SF Mono", Menlo, monospace;
   --font-display: "Archivo Variable", "Archivo", "Inter Variable", system-ui, sans-serif;
 }
 
@@ -98,7 +183,7 @@
 
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --mono: "JetBrains Mono Variable", "JetBrains Mono", "Wherdr Nerd Symbols", ui-monospace, "SF Mono", Menlo, monospace;
   --sans: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --display: "Archivo Variable", "Archivo", "Inter Variable", system-ui, sans-serif;
   --read: 760px;

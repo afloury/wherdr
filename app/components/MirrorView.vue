@@ -11,6 +11,7 @@ import { mirrorTop } from '~/utils/mirrorViewport'
 import { bindTerminalSelection } from '~/utils/terminalSelection'
 import { bindTerminalLinks } from '~/utils/terminalLinks'
 import { bindShiftEnter } from '~/utils/terminalKeys'
+import { TERM_FONT } from '~/utils/terminalFont'
 
 const props = defineProps<{ paneId: string, interactive?: boolean }>()
 const box = ref<HTMLElement | null>(null)
@@ -28,8 +29,6 @@ let ro: ResizeObserver | null = null
 let alive = true
 let unbindSelection: (() => void) | null = null
 let links: ReturnType<typeof bindTerminalLinks> | null = null
-
-const FONT = '"Wherdr Symbols", "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace'
 
 // The PTY stays at the Herdr client's size. Frame on the cursor line
 // if the cell is too short, without shrinking the characters.
@@ -101,7 +100,7 @@ function send(obj: unknown) {
 
 onMounted(() => {
   term = new Terminal({
-    fontFamily: FONT, fontSize: fontSize.value, lineHeight: 1, scrollback: 0, cursorBlink: false,
+    fontFamily: TERM_FONT, fontSize: fontSize.value, lineHeight: 1, scrollback: 0, cursorBlink: false,
     allowProposedApi: true, disableStdin: !props.interactive, macOptionClickForcesSelection: true,
     theme: terminalTheme.value, cols: 80, rows: 24,
   })
