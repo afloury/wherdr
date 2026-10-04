@@ -17,9 +17,10 @@ First public release.
   applies. **Lock all devices** (lost or stolen device) ends every session, this one included,
   and keeps the passkeys. The README explains how a new device gets in (synced passkey or another
   device's passkey through the browser's QR code, then **Add this device**).
-- Projects: a herdr-projects thread opened as a tab of its coordinator's space gets its own
-  thread card (T-NNNN) among the project's threads; the coordinator stays first with its
-  **Coordinator** badge, and each card opens its own tab.
+- Projects: when a herdr-projects thread runs as a tab of its coordinator's space, the space
+  stays a single card, the coordinator's: first in its project with its **Coordinator** badge,
+  name, state and preview, plus its tab count. It opens on the coordinator's tab; the thread is
+  reached through the space's tabs.
 - Conversation: a message shows the instant Send is tapped, as a dotted **Queued · sending…**
   bubble, and the field (photos and files included) empties at once. The bubble becomes the
   normal message when the agent takes it, without a duplicate or a jump (the app's id is kept by

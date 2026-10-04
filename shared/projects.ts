@@ -1,6 +1,6 @@
 import type { Pane } from './types'
 import { isProjectThread } from './paneTitle'
-import { type RepoRoot, type Row, tabsRow, urgency } from './spaces'
+import { type RepoRoot, type Row, urgency } from './spaces'
 
 // herdr-projects projects: a coordinator (cwd ~/.herdr-projects/<slug>) and its
 // threads (pane `hp-<slug>-t-NNNN`, worktree of the same name). The project comes
@@ -95,20 +95,16 @@ export function isCoordinator(p: ProjectPane & Pick<Pane, 'agent'>): boolean {
 }
 
 // herdr-projects can open a thread as a tab of its coordinator's space
-// (`--kind tab`). Such a space is not one card: the coordinator keeps its
-// card (its tabs and those without a thread) and each thread gets its own,
-// made of its tabs. Other multi-tab spaces are left as they are.
-export function splitProjectSpaces(rows: Row[]): Row[] {
-  return rows.flatMap((r) => {
-    if (r.kind !== 'space' || r.tabs.length < 2 || !r.panes.some(isCoordinator)) return [r]
-    const owner = new Map<string, typeof r.tabs>()
-    for (const e of r.tabs) {
-      const thread = e.panes.find(p => p.agent && isProjectThread(p))
-      const key = thread ? `t-${threadNumber(thread) ?? thread.id}` : ''
-      owner.set(key, [...(owner.get(key) || []), e])
-    }
-    if (owner.size < 2 || !owner.has('')) return [r]
-    return [...owner].map(([key, tabs]) => tabsRow(r.workspace, tabs, key ? `${r.workspace.id}|${key}` : r.workspace.id, true))
+// (`--kind tab`). The space stays one card, the coordinator's: it represents
+// the space (name, state, preview, mini-map, tab opened by default) even when
+// a thread tab is more urgent, so the card keeps its place at the top of its
+// project. The thread is only seen in the space's tabs.
+export function leadByCoordinator(rows: Row[]): Row[] {
+  return rows.map((r) => {
+    if (r.kind !== 'space') return r
+    const lead = r.panes.find(isCoordinator)
+    if (!lead || lead === r.lead) return r
+    return { ...r, lead, leadTab: r.tabs.find(e => e.panes.includes(lead))! }
   })
 }
 
