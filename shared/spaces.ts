@@ -31,6 +31,9 @@ export interface SpaceRow {
   // Tab of the representative pane (its mini-map).
   leadTab: TabEntry
   sum: { blocked: number, working: number, done: number, agents: number }
+  // Pane whose state the card shows when it is not `lead` (coordinator
+  // space: a more urgent thread tab, see leadByCoordinator).
+  state?: Pane
 }
 export type Row = PaneRow | SpaceRow
 

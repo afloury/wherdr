@@ -6,14 +6,23 @@
 // Space with several tabs or panes (`row`): a single card, named after the space,
 // with its mini-map, the number of tabs / panes, and the state, preview and
 // answers of its most urgent pane (`pane`). Tapping it opens the space.
+// Coordinator's space (herdr-projects thread opened as a tab): the card stays
+// the coordinator's, but shows the most urgent tab's state ("working · T-0008"),
+// one state dot per tab next to "N TABS", and a tap opens the tab waiting for an answer.
 import type { Pane } from '#shared/types'
 import type { Row } from '#shared/spaces'
+import { isCoordinator, stateSource, tabStates, waitingTab } from '#shared/projects'
 import type { MenuItem } from '~/composables/useUi'
 import { longPress } from '~/utils/longPress'
 
 // `tag`: role in a herdr-projects project (coordinator, t-0018).
 const props = defineProps<{ pane: Pane, tag?: string | null, row?: Row | null }>()
 const space = computed(() => (props.row && props.row.kind === 'space' ? props.row : null))
+// Pane whose state the card shows (a more urgent tab of a coordinator's space).
+const statePane = computed(() => space.value?.state ?? props.pane)
+const source = computed(() => (props.row ? stateSource(props.row) : null))
+// One dot per tab, in order, for a coordinator's space with several tabs.
+const dots = computed(() => (space.value && space.value.tabs.length > 1 && isCoordinator(space.value.lead) ? tabStates(space.value) : []))
 const busy = ref(false)
 const card = ref<HTMLElement | null>(null)
 let pointerType = ''
@@ -123,7 +132,10 @@ function onContextOpen(open: boolean) {
 function recentTouchMenu() { return Date.now() - touchMenuOpenedAt < 1000 || lp.swallowClick() }
 function open() {
   if (recentTouchMenu()) return
-  if (space.value) return openSpace(space.value.workspace.id, space.value.leadTab.tab.id)
+  if (space.value) {
+    const waiting = waitingTab(space.value)
+    return waiting ? openTab(waiting) : openSpace(space.value.workspace.id, space.value.leadTab.tab.id)
+  }
   haptic()
   navigateTo(`/a/${encodeURIComponent(props.pane.id)}`)
 }
@@ -140,7 +152,7 @@ watch(() => props.pane.prompt, () => { busy.value = false })
 <template>
   <UContextMenu :disabled="sheetMenus" :items="contextItems" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="onContextOpen">
     <div
-      ref="card" class="card" :class="[statusKey(pane), { sel: selected, stale: paneStale(pane), 'space-card': space }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
+      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, 'state-from-tab': source }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
       role="button" tabindex="0" @pointerdown="down" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
       @contextmenu="onContext" @selectstart.prevent @click="open" @keydown.enter.self="open"
     >
@@ -152,8 +164,8 @@ watch(() => props.pane.prompt, () => { busy.value = false })
         </div>
         <div class="card-meta">
           <span v-if="tag" class="card-tag">{{ tag }}</span>
-          <span v-if="space" class="card-count">{{ counts }}</span>
-          <StatusPill :pane="pane" model />
+          <span v-if="space" class="card-count">{{ counts }}<span v-if="dots.length" class="card-tab-dots" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in dots" :key="i" :class="d" /></span></span>
+          <StatusPill :pane="statePane" :model="!source" :source="source" />
         </div>
         <div v-if="where" class="card-where">
           <UIcon v-if="space" name="i-lucide-corner-down-right" class="card-where-lead" /><UIcon v-else-if="branch" name="i-lucide-git-branch" />{{ where }}

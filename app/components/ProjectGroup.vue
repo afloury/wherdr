@@ -10,7 +10,7 @@
 import type { Pane } from '#shared/types'
 import type { ProjectGroup } from '#shared/projects'
 import type { RepoRoot, Row } from '#shared/spaces'
-import { projectSections, threadNumber } from '#shared/projects'
+import { projectCounts, projectSections, threadNumber } from '#shared/projects'
 import type { MenuItem } from '~/composables/useUi'
 import { repoHeaderState, threadCountLabel } from '~/utils/terminalVisibility'
 import { longPress } from '~/utils/longPress'
@@ -70,7 +70,9 @@ function toggle() {
   const c = collapsedProjects.value
   collapsedProjects.value = c.includes(id.value) ? c.filter(k => k !== id.value) : [...c, id.value]
 }
-const ready = computed(() => props.group.panes.length - props.group.blocked - props.group.working)
+// A coordinator's space counts each of its tabs (a thread opened as a tab).
+const sum = computed(() => projectCounts(props.group.panes, props.rowOf))
+const ready = computed(() => sum.value.ready)
 const projectTitle = computed(() => {
   const p = props.group.coordinator || props.remote
   return p ? spaceTitle(p, herdrState.value.workspaces.find(w => w.id === p.workspace)) : props.group.name
@@ -83,15 +85,15 @@ const tag = (p: Pane) => {
 </script>
 
 <template>
-  <section class="agent-group project" :class="{ collapsed, blocked: group.blocked > 0 }" :data-project="group.key">
+  <section class="agent-group project" :class="{ collapsed, blocked: sum.blocked > 0 }" :data-project="group.key">
     <button type="button" class="group-title project-head" :aria-expanded="!collapsed" @click="toggle">
       <UIcon name="i-lucide-chevron-down" class="project-chev" />
       <span class="project-name">{{ projectTitle }}</span>
-      <span class="count">{{ group.panes.length }}</span>
+      <span class="count">{{ sum.total }}</span>
       <span class="project-sum">
-        <span v-if="group.blocked" class="blocked"><i />{{ group.blocked }}<span class="project-sum-l">{{ t('your turn') }}</span></span>
-        <span v-if="group.working" class="working"><i />{{ group.working }}<span class="project-sum-l">{{ t('working') }}</span></span>
-        <span v-if="ready && (collapsed || !group.blocked && !group.working)" class="ready"><i />{{ ready }}<span class="project-sum-l">{{ t('ready') }}</span></span>
+        <span v-if="sum.blocked" class="blocked"><i />{{ sum.blocked }}<span class="project-sum-l">{{ t('your turn') }}</span></span>
+        <span v-if="sum.working" class="working"><i />{{ sum.working }}<span class="project-sum-l">{{ t('working') }}</span></span>
+        <span v-if="ready && (collapsed || !sum.blocked && !sum.working)" class="ready"><i />{{ ready }}<span class="project-sum-l">{{ t('ready') }}</span></span>
       </span>
     </button>
     <button v-if="remote" type="button" class="project-remote" @click="openCoordinator">
