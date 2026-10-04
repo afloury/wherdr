@@ -14,6 +14,7 @@ describe('codeKind', () => {
     ['npx vitest run', 'cmd'],
     ['git rebase -i main', 'cmd'],
     ['$ make build', 'cmd'],
+    ['! gh pr merge 5 --merge', 'cmd'],
     ['/model', 'cmd'],
     ['foo --dry-run', 'cmd'],
     ['t-0188', 'id'],
@@ -46,7 +47,7 @@ describe('codeKind', () => {
 describe('inline code markup', () => {
   it('tags each span with its kind and keeps paths clickable', () => {
     const html = md('Run `npm test` on `src/a.ts`, then `t-0001`, then `x`.')
-    expect(html).toContain('<code data-k="cmd">npm test</code>')
+    expect(html).toContain('<code class="md-cmd" data-k="cmd" data-cmd="npm test" role="button" tabindex="0">npm test</code>')
     expect(html).toContain('<code class="md-path" data-k="path" role="button" tabindex="0">src/a.ts</code>')
     expect(html).toContain('<code data-k="id">t-0001</code>')
     expect(html).toContain('<code>x</code>')

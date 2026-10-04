@@ -16,6 +16,14 @@ First public release.
   levels), for this session only: wherdr presses it until the level is reached, checking each
   step; a level the model lacks brings it back to where it was. The list starts from the common
   levels and follows what the presses show.
+- Conversation: run or copy a command an agent proposes. A shell code block (`bash`, `sh`,
+  `zsh`, `shell`, `console`, or command lines without a language) gets a **Run** button beside
+  Copy (on hover with a mouse, always on a phone), and an inline command (`! gh pr merge 5 …`,
+  `$ make`, `npm test`) opens a menu on click or tap with **Run…** and **Copy command**. Run always
+  shows the full command for confirmation, then sends it as `! <command>` to the agent's own shell
+  mode (Claude Code's bash mode, Codex and omp); it is only offered in the agent's replies, while
+  the conversation is live. Copy now takes a shell command without its `!` / `$` prompts, and a
+  `console` block without its output lines.
 - Message field: animated border on focus. The whole 1 px border takes the agent's color
   (Claude, Codex, omp; the theme's accent for a plain terminal) and a second color glides slowly
   around it, one turn every 10 s (`--fx-speed` in `main.css`). With omp in the omp themes, the
