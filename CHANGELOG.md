@@ -10,6 +10,13 @@ First public release.
 
 ### Added
 
+- Passkey lock: a maximum duration since the last passkey unlock, set in Settings → Security for
+  every device (1 day, 7 days by default, 30 days, 90 days, 1 year). Past it, the device asks for
+  the passkey again at the next opening of the app (launch, reload or back in the foreground),
+  never in the middle of use, with a warning in the last hours; the 12-hour idle limit still
+  applies. **Lock all devices** (lost or stolen device) ends every session, this one included,
+  and keeps the passkeys. The README explains how a new device gets in (synced passkey or another
+  device's passkey through the browser's QR code, then **Add this device**).
 - Projects: a herdr-projects thread opened as a tab of its coordinator's space gets its own
   thread card (T-NNNN) among the project's threads; the coordinator stays first with its
   **Coordinator** badge, and each card opens its own tab.

@@ -2,6 +2,7 @@
 import type { TabLayout } from './layout'
 import type { ProjectFolderKind } from './projectFolders'
 import type { CodexStatus } from './codexStatus'
+import type { MaxSessionDays } from './sessionLimit'
 
 export type AgentStatus = 'working' | 'blocked' | 'done' | 'idle' | 'unknown'
 
@@ -334,6 +335,11 @@ export interface AuthStatus {
   expiresAt?: number | null
   // Server clock when answering (the client converts expiresAt to its own clock).
   now?: number
+  // Unlocked: when the maximum duration since the passkey unlock runs out (the
+  // next opening after it asks for the passkey again).
+  deadline?: number
+  // Server setting (lock enabled only).
+  maxSessionDays?: MaxSessionDays
   devices: { name: string, createdAt: string, lastUsed: string | null }[]
 }
 
