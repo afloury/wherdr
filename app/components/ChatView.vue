@@ -12,6 +12,7 @@ import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { pickTyping, replyId } from '~/utils/typewriter'
+import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 import { isStale, noMisses, onError, onUnavailable, type ChatMisses } from '~/utils/chatMiss'
 import { findReplyOrigin, parseReply, replyTarget, type ReplyTarget } from '#shared/replyQuote'
@@ -117,6 +118,7 @@ function onScroll() {
   stick = b.scrollHeight - b.scrollTop - b.clientHeight < 120
   if (b.scrollTop < 400 && rendered.value) loadOlder() // infinite scrolling upwards
 }
+function interruptThought() { activeThought.value = null }
 
 // ------------------------------------------------------------ typewriter
 // Only a reply that arrives while following the conversation is revealed
@@ -124,34 +126,27 @@ function onScroll() {
 // being offline, nor for older slices.
 const knownReplies = new Set<string>()
 const knownThoughts = new Set<string>()
-const newThoughts = reactive(new Set<string>())
-let thoughtTimer: ReturnType<typeof setTimeout> | undefined
+const activeThought = ref<{ id: string, at: number } | null>(null)
 const typing = ref<{ id: string, at: number } | null>(null)
 let synced = false // first load from the server done
 let away = false // app in the background or offline since the last re-read
-watch(pageVisible, (v) => { if (!v) away = true })
-watch(offlineView, (v) => { if (v) away = true })
+watch(pageVisible, (v) => { if (!v) { away = true; interruptThought() } })
+watch(offlineView, (v) => { if (v) { away = true; interruptThought() } })
 function noteReplies(list: ChatItem[]) {
   const live = synced && !away && typewriterActive.value && !searchOpen.value && !readOnly.value
-  const revealThinking = synced && !away && !readOnly.value
-  for (const it of list.filter(i => i.role === 'thinking')) {
-    const id = replyId(it)
-    if (!knownThoughts.has(id) && revealThinking) {
-      newThoughts.add(id)
-      if (thoughtTimer) clearTimeout(thoughtTimer)
-      thoughtTimer = setTimeout(() => newThoughts.clear(), 2500)
-    }
-    knownThoughts.add(id)
-  }
+  const revealThinking = synced && !away && !searchOpen.value && !readOnly.value
+  const thought = newestThought(knownThoughts, list.filter(i => i.role === 'thinking').map(replyId), revealThinking)
+  if (thought) activeThought.value = { id: thought, at: Date.now() }
   away = false
   synced = true
-  const id = pickTyping(knownReplies, list.filter(i => i.role === 'assistant').map(replyId), live)
+  const id = pickTyping(knownReplies, list.filter(i => i.role === 'assistant').map(replyId), live && !thought)
   if (id) typing.value = { id, at: Date.now() }
 }
 const typingAt = (id: string) => (typing.value && typing.value.id === id ? typing.value.at : null)
 function typingDone(id: string) { if (typing.value?.id === id) typing.value = null }
-watch([typewriterActive, searchOpen], ([on, s]) => { if (!on || s) typing.value = null })
-onUnmounted(() => { if (thoughtTimer) clearTimeout(thoughtTimer) })
+watch([typewriterActive, searchOpen], ([on, s]) => { if (!on || s) typing.value = null; if (s) interruptThought() })
+function thoughtTyping(id: string) { return activeThought.value?.id === id ? activeThought.value.at : null }
+function thoughtDone(id: string) { if (activeThought.value?.id === id) interruptThought() }
 
 // ------------------------------------------------------------ chargement
 let busy = false
@@ -286,7 +281,7 @@ type Block =
   | { k: 'who', key: string }
   | { k: 'user', key: string, text: string, srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null }
   | { k: 'assistant', key: string, id: string, text: string, html: string, time: string | null, endsTurn: boolean }
-  | { k: 'thinking', key: string, html: string, ms: number | undefined, live: boolean, reveal: boolean }
+  | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
   | { k: 'system', key: string, text: string }
   | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean }
@@ -395,7 +390,7 @@ const blocks = computed<Block[]>(() => {
       out.push(lastReplyBlock)
       replies.push({ key, time, text: it.text })
     } else if (it.role === 'thinking') {
-      out.push({ k: 'thinking', key, html: md(it.text), ms: it.ms, live: working.value && i === list.length - 1, reveal: newThoughts.has(replyId(it)) })
+      out.push({ k: 'thinking', key, id: replyId(it), text: it.text, html: md(it.text), ms: it.ms })
     } else if (it.role === 'job' && it.job) {
       out.push({ k: 'job', key, id: it.job.id, tool: it.job.tool, out: it.job.out, ms: it.ms, error: Boolean(it.error) })
     } else if (it.role === 'bash') {
@@ -883,7 +878,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
   <div class="chat-wrap">
     <OfflineNote v-if="readOnly || netDown" :label="readOnly ? t('Offline reading') : undefined" :at="savedAt" />
     <OfflineNote v-else-if="isStale(misses)" :label="t('Conversation not up to date — reconnecting…')" />
-    <div ref="box" class="chat" @scroll.passive="onScroll">
+    <div ref="box" class="chat" @scroll.passive="onScroll" @wheel.passive="interruptThought" @touchmove.passive="interruptThought">
       <UChatMessages
         :status="working ? 'streaming' : 'ready'" :should-auto-scroll="false"
         :auto-scroll="{ color: 'neutral', variant: 'outline' }"
@@ -956,15 +951,11 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 </div>
               </template>
 
-              <div v-else-if="b.k === 'thinking'" class="omp-thinking" :class="{ live: b.live, open: b.live || b.reveal || isOpen(b.key) }">
-                <button type="button" class="omp-thinking-head" :disabled="b.live || b.reveal" :aria-expanded="b.live || b.reveal || isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
-                  <span class="omp-thinking-mark">#</span>
-                  <span v-if="b.live" class="omp-thinking-activity"><OmpSpinner /> {{ tl('reasoning', 'raisonnement') }} │ {{ b.ms === undefined ? '…' : ompWall(b.ms) }}</span>
-                  <span v-else>{{ tl('Reasoning', 'Raisonnement') }}<template v-if="b.ms !== undefined"> · {{ ompWall(b.ms) }}</template></span>
-                  <UIcon :name="b.live || b.reveal || isOpen(b.key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" />
-                </button>
-                <ChatMarkdown v-if="b.live || b.reveal || isOpen(b.key)" class="omp-thinking-body md" :html="b.html" :typing="null" />
-              </div>
+              <UChatReasoning v-else-if="b.k === 'thinking'" class="omp-thinking" :text="b.text"
+                :streaming="thoughtTyping(b.id) !== null" :duration="b.ms === undefined ? undefined : Math.max(1, Math.round(b.ms / 1000))"
+                :auto-close-delay="450" :ui="{ root: 'omp-thinking', trigger: 'omp-thinking-head', label: 'omp-thinking-label', content: 'omp-thinking-content', body: 'omp-thinking-body' }">
+                <ChatMarkdown class="md" :html="b.html" :typing="thoughtTyping(b.id)" :speed="reducedMotion ? 'off' : 'fast'" :cipher="false" @done="thoughtDone(b.id)" />
+              </UChatReasoning>
 
               <div v-else-if="b.k === 'job'" class="omp-job" :class="{ err: b.error, open: isOpen(b.key) }">
                 <button type="button" class="omp-job-head" :disabled="!b.out" :aria-expanded="b.out ? isOpen(b.key) : undefined" @click="setOpen(b.key, !isOpen(b.key))">
