@@ -98,6 +98,12 @@ const quotaItems = computed(() => [
   { label: t('Remaining'), description: t('What is left in each window, like Codex.'), value: 'left' },
   { label: t('Used'), description: t('What has been used, like Claude.'), value: 'used' },
 ])
+const focusBorderMode = focusBorder
+const focusBorderItems = computed(() => [
+  { label: t('Border only'), description: t('A second color glides slowly around the border.'), value: 'border' },
+  { label: t('Halo'), description: t('The same, with a faint glow around the field.'), value: 'halo' },
+  { label: t('None'), description: t('Plain 1 px border, no animation.'), value: 'off' },
+])
 const langItems = [{ label: 'English', value: 'en' }, { label: 'Français', value: 'fr' }]
 
 // Inventory of the reachable machines; the preferences stay specific to this device.
@@ -330,6 +336,12 @@ onMounted(() => {
             </div>
           </div>
           <p class="muted settings-hint">{{ t('The theme is saved on this device.') }}</p>
+
+          <div class="settings-group">
+            <h3>{{ t('Message field border on focus') }}</h3>
+            <URadioGroup v-model="focusBorderMode" :items="focusBorderItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <p class="muted settings-hint">{{ t('Frozen when the system asks for reduced motion. Saved on this device.') }}</p>
+          </div>
 
           <div class="settings-group">
             <h3>{{ t('Language') }}</h3>
