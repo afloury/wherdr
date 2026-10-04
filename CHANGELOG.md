@@ -10,6 +10,10 @@ First public release.
 
 ### Added
 
+- Terminal: Nerd Font icons (Powerline separators, Font Awesome, Codicons, Devicons, Octicons,
+  Material Design…) used by status bars and prompts such as omp's "nerd font" symbol set display
+  instead of empty boxes. A bundled subset of Symbols Nerd Font Mono, narrowed to one cell, split
+  per icon set and loaded only when such a glyph is on screen (no network call).
 - Passkey lock: a maximum duration since the last passkey unlock, set in Settings → Security for
   every device (1 day, 7 days by default, 30 days, 90 days, 1 year). Past it, the device asks for
   the passkey again at the next opening of the app (launch, reload or back in the foreground),

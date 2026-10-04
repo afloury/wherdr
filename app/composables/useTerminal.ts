@@ -9,8 +9,7 @@ import { bindTerminalSelection } from '~/utils/terminalSelection'
 import { bindTerminalLinks, type TerminalLinks } from '~/utils/terminalLinks'
 import { bindShiftEnter } from '~/utils/terminalKeys'
 import { terminalClosedText, terminalUnavailableText } from '~/utils/terminalClosed'
-
-const TERM_FONT = '"Wherdr Symbols", "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace'
+import { TERM_FONT, onFontsLoaded } from '~/utils/terminalFont'
 
 export interface Banner { text: string, btn: string, fn: () => void }
 
@@ -29,6 +28,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   const kbdOn = ref(false)
   const selectionHint = useTerminalSelectionHint()
   let unbindSelection: (() => void) | null = null
+  let unbindFonts: (() => void) | null = null
   let links: TerminalLinks | null = null
 
   const wsBase = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`
@@ -71,6 +71,13 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       fitNow(true)
       t0.refresh(0, t0.rows - 1)
     }).catch(() => {})
+    // Nerd Font icons load on first use (unicode-range): the WebGL atlas
+    // may already hold empty boxes for them, redraw once the face arrives.
+    unbindFonts = onFontsLoaded(() => {
+      if (disposed || term !== t0) return
+      t0.clearTextureAtlas()
+      t0.refresh(0, t0.rows - 1)
+    })
     const ta = term.textarea
     if (ta) {
       ta.setAttribute('autocorrect', 'off')
@@ -277,6 +284,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     disposed = true
     disconnect()
     unbindSelection?.()
+    unbindFonts?.()
+    unbindFonts = null
     unbindSelection = null
     links?.dispose()
     links = null
