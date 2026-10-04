@@ -81,15 +81,18 @@ export function navKey(paneId: string, key: 'up' | 'down' | 'enter' | 'esc' | 'l
 // the prompt is waiting for free input ("Type something…"), agent.prompt
 // would refuse it: we type the text as is. Working agent: the server
 // queues the message (returned in `queued`).
-export async function sendMessage(p: Pane | undefined, paneId: string, text: string): Promise<QueuedMessage | null> {
-  // Blocked on a question: the text is its typed answer. Blocked on a menu or
-  // a screen with no question (/mcp…): typed now it would be lost in it; the
-  // server holds it until the input field is back.
-  const r = p && p.agent && (p.status !== 'blocked' || (!p.prompt && ['claude', 'codex'].includes(p.agent)))
-    ? await api<{ queued?: QueuedMessage }>('/api/prompt', { pane_id: paneId, text })
+// `clientId`: id of the bubble already shown for it (see utils/outbox.ts); the
+// server keeps it for its record, so the bubble never changes identity.
+export async function sendMessage(p: Pane | undefined, paneId: string, text: string, clientId?: string): Promise<QueuedMessage | null> {
+  const r = viaPrompt(p)
+    ? await api<{ queued?: QueuedMessage }>('/api/prompt', { pane_id: paneId, text, ...(clientId ? { client_id: clientId } : {}) })
     : await api<{ queued?: QueuedMessage }>('/api/input', { pane_id: paneId, text, keys: ['enter'] })
   return r.queued || null
 }
+// Blocked on a question: the text is its typed answer (/api/input). Blocked on a menu or
+// a screen with no question (/mcp…): typed now it would be lost in it; the
+// server holds it until the input field is back (/api/prompt).
+export const viaPrompt = (p: Pane | undefined) => Boolean(p && p.agent && (p.status !== 'blocked' || (!p.prompt && ['claude', 'codex'].includes(p.agent))))
 
 export const STATUS: Record<string, { label: string, order: number }> = {
   blocked: { label: 'Your turn', order: 0 },
