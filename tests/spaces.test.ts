@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { reduceSnapshot } from '../server/utils/snapshot'
 import { isShellRow, leadPane, mirrorInput, mirrorSize, projectRoots, rememberTab, repoRoots, rowGroup, spaceRows, spaceTab } from '../shared/spaces'
-import { groupByProject, projectSections, remoteCoordinator, splitProjectSpaces } from '../shared/projects'
+import { groupByProject, leadByCoordinator, projectSections, remoteCoordinator } from '../shared/projects'
 import type { Pane } from '../shared/types'
 import layouts from './fixtures/snapshot-layouts.json'
 
@@ -215,37 +215,38 @@ describe('projets et machines', () => {
       { ...pane('w2:p1', 'w2:t1', 'claude', 'working'), cwd: '/home/user/.herdr/worktrees/app/hp-demo-t-0007-fix', tokens: { hp_group: 'demo!1!4!t-0007' } },
       { ...pane('w2:p2', 'w2:t1'), cwd: '/home/user/.herdr/worktrees/app/hp-demo-t-0007-fix' },
     ])
-    return splitProjectSpaces(spaceRows(st))
+    return leadByCoordinator(spaceRows(st))
   }
 
-  it('a thread opened as a tab of the coordinator\'s space gets its own card', () => {
+  it('a thread opened as a tab stays a tab of the coordinator\'s single card', () => {
     const rows = tabbed()
-    expect(rows.map(r => [r.kind, r.key, r.lead.id])).toEqual([['pane', 'w1:p1', 'w1:p1'], ['pane', 'w1:p4', 'w1:p4'], ['space', 'w2', 'w2:p1']])
+    expect(rows.map(r => [r.kind, r.key, r.lead.id])).toEqual([['space', 'w1', 'w1:p1'], ['space', 'w2', 'w2:p1']])
+    const [coord] = rows
+    if (coord?.kind !== 'space') throw new Error('space expected')
+    // All tabs stay in the card; the coordinator's tab represents it, even
+    // though the working thread tab is more urgent.
+    expect([coord.tabs.map(e => e.tab.id), coord.leadTab.tab.id]).toEqual([['w1:t1', 'w1:t2'], 'w1:t1'])
+    expect(rowGroup(coord)).toBe('ready')
     const g = groupByProject(rows.filter(r => r.lead.agent).map(r => r.lead)).projects[0]!
     expect(g.coordinator?.id).toBe('w1:p1')
-    expect(g.panes.map(p => p.id)).toEqual(['w1:p1', 'w2:p1', 'w1:p4'])
+    expect(g.panes.map(p => p.id)).toEqual(['w1:p1', 'w2:p1'])
     const s = projectSections(g, [])
     expect(s.coordinator?.id).toBe('w1:p1')
-    expect([...s.repos.flatMap(r => r.panes), ...s.others].map(p => p.id).sort()).toEqual(['w1:p4', 'w2:p1'])
+    expect([...s.repos.flatMap(r => r.panes), ...s.others].map(p => p.id)).toEqual(['w2:p1'])
+    // Opening the card: the coordinator's tab, unless another one was opened last.
+    expect(spaceTab(coord.tabs, {}, 'w1', coord.leadTab.tab.id)).toBe('w1:t1')
+    expect(spaceTab(coord.tabs, { w1: 'w1:t2' }, 'w1', coord.leadTab.tab.id)).toBe('w1:t2')
   })
 
-  it('split cards keep only their tabs; other multi-tab spaces stay whole', () => {
-    const st = snap([
-      { ...pane('w1:p1', 'w1:t1', 'claude', 'idle'), cwd: '/home/user/.herdr-projects/demo' },
-      { ...pane('w1:p2', 'w1:t1'), cwd: '/home/user/.herdr-projects/demo' },
-      { ...pane('w1:p4', 'w1:t2', 'codex', 'working'), cwd: '/home/user/.herdr-projects/demo', tokens: { hp_group: 'demo!1!2!t-0008' } },
-    ])
-    const [coord, thread] = splitProjectSpaces(spaceRows(st))
-    if (coord?.kind !== 'space') throw new Error('space expected')
-    expect([coord.key, coord.part, coord.lead.id, coord.tabs.map(e => e.tab.id)]).toEqual(['w1', true, 'w1:p1', ['w1:t1']])
-    expect(thread?.key).toBe('w1:p4')
-    // Without a coordinator (plain workspace, worktree thread + shell tab): unchanged.
-    expect(splitProjectSpaces(spaceRows(snap(base))).map(r => r.key)).toEqual(['w1', 'w2', 'w3:p1'])
+  it('spaces without a coordinator keep their most urgent pane as lead', () => {
+    const plain = spaceRows(snap(base))
+    expect(leadByCoordinator(plain)).toEqual(plain)
+    // Worktree thread with a shell tab: the thread represents its space.
     const wt = snap([
-      { ...pane('w1:p1', 'w1:t1', 'claude', 'idle'), name: 'hp-demo-t-0007-fix' },
+      { ...pane('w1:p1', 'w1:t1', 'claude', 'working'), name: 'hp-demo-t-0007-fix' },
       { ...pane('w1:p4', 'w1:t2') },
     ])
-    expect(splitProjectSpaces(spaceRows(wt)).map(r => r.key)).toEqual(['w1'])
+    expect(leadByCoordinator(spaceRows(wt)).map(r => [r.key, r.lead.id])).toEqual([['w1', 'w1:p1']])
   })
 })
 

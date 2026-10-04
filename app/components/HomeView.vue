@@ -15,7 +15,7 @@
 // Ready ("Show terminals" setting); the root terminal of a project's repository
 // becomes a small header above its threads.
 import type { MachineInfo, NamedSession, Pane } from '#shared/types'
-import { groupByProject, remoteCoordinator, splitProjectSpaces } from '#shared/projects'
+import { groupByProject, leadByCoordinator, remoteCoordinator } from '#shared/projects'
 import { type ReadySort, type Row, projectRoots, readyLists, repoRoots, rowGroup, sortReady, spaceRows } from '#shared/spaces'
 import { spaceTitle } from '#shared/displayTitles'
 import { claudeSetupOf, machineQuotaRows, quotaRows } from '~/utils/quotas'
@@ -92,7 +92,7 @@ function listOf(rows: Row[], machine?: string) {
     groups: groupsOf(rows.filter(r => (r.lead.agent ? others.has(r.lead.id) : showShells.value && !inHeader.has(r.key)))),
   }
 }
-const solo = computed(() => listOf(splitProjectSpaces(spaceRows(st.value))))
+const solo = computed(() => listOf(leadByCoordinator(spaceRows(st.value))))
 
 const topQuotas = computed(() => (showQuotas.value ? quotaRows(homeQuotas.value, hiddenAgents.value) : []))
 const hasClaude = (list: Pane[]) => list.some(p => p.agent === 'claude')
@@ -162,7 +162,7 @@ const sections = computed(() => {
       name: machineName(m.key),
       state: t(STATE_LABEL[m.status]),
       agents: a,
-      ...listOf(splitProjectSpaces(spaceRows(st.value, m.key)), m.key),
+      ...listOf(leadByCoordinator(spaceRows(st.value, m.key)), m.key),
       waiting: a.filter(p => p.status === 'blocked').length,
       collapsed: collapsedMachines.value.includes(m.key),
       quotas: showQuotas.value && m.status === 'online' ? machineQuotaRows(homeQuotas.value, m.baseKey ?? m.key, hiddenAgents.value) : [],
