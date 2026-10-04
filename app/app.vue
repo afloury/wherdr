@@ -55,9 +55,11 @@ onMounted(() => {
     })
   }
   start()
+  // Local lease over: ask the server (which slides an active session) rather
+  // than locking on the browser's own clock.
   leaseTimer = setInterval(() => {
     const access = readOfflineAccess()
-    if (access?.enabled && !mayReadOffline(access) && !locked.value) showLock()
+    if (access?.enabled && !mayReadOffline(access) && !locked.value) start()
   }, 30000)
 })
 let leaseTimer: ReturnType<typeof setInterval> | undefined

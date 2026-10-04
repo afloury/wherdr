@@ -332,6 +332,8 @@ export interface AuthStatus {
   enabled: boolean
   unlocked: boolean
   expiresAt?: number | null
+  // Server clock when answering (the client converts expiresAt to its own clock).
+  now?: number
   devices: { name: string, createdAt: string, lastUsed: string | null }[]
 }
 

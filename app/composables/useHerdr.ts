@@ -3,7 +3,7 @@
 import type { AppConfig, AuthStatus, HerdrState, MachineConfig, MachineInfo, NamedSession, Pane, Quotas } from '#shared/types'
 import { LOCAL, splitId } from '#shared/ids'
 import { clearOffline, readOffline, saveHome } from '~/utils/offlineCache'
-import { mayReadOffline, readOfflineAccess, setOfflineAccess } from '~/utils/offlineAccess'
+import { leaseFromStatus, mayReadOffline, readOfflineAccess, setOfflineAccess } from '~/utils/offlineAccess'
 import { activeTerminalRenderer, parseTerminalRenderer } from '~/utils/terminalRenderer'
 import type { ActiveTerminalRenderer } from '~/utils/terminalRenderer'
 import { settleState } from '#shared/stateReady'
@@ -329,8 +329,9 @@ export async function api<T = Record<string, unknown>>(path: string, body?: unkn
     : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
   const r = await fetch(path, opts)
   const data = await r.json().catch(() => ({}))
-  // Session expired (12 h) or app locked: back through the passkey.
-  if (r.status === 401 && data.code === 'locked' && !path.startsWith('/api/auth/')) showLock()
+  // Session expired or app locked: back through the passkey, but only once the
+  // server confirms it (a single 401 is not enough to drop the user's screen).
+  if (r.status === 401 && data.code === 'locked' && !path.startsWith('/api/auth/')) confirmLock()
   // Erreurs de Herdr transmises telles quelles (en anglais) : message traduit par code.
   const known = data.code === 'agent_not_ready' ? 'The agent isn’t ready in this pane (stopped or still starting).' : null
   if (!r.ok) throw new ApiError(t(known || data.error || `HTTP ${r.status}`), r.status, data.code)
@@ -440,9 +441,7 @@ export function connectEvents() {
     eventsOpen.value = false
     if (herdrState.value.ok && lastStateAt) cachedAt.value = lastStateAt
     // Refused because of the lock (session expired) rather than a network cut?
-    api<AuthStatus>('/api/auth/status').then((st) => {
-      if (st.enabled && !st.unlocked) showLock()
-    }).catch(() => {})
+    confirmLock()
     if (locked.value) return
     setNetDown(true)
     evTimer = setTimeout(connectEvents, Math.min(8000, 500 * 2 ** evRetry++))
@@ -469,6 +468,16 @@ watch(herdrState, (s) => {
     else if (nav.clearAppBadge) nav.clearAppBadge().catch(() => {})
   } catch { /* not supported */ }
 })
+
+// Shows the lock screen only when the server itself says the session is
+// invalid; a network error or an odd answer leaves the app as it is.
+export async function confirmLock() {
+  try {
+    const st = await api<AuthStatus>('/api/auth/status')
+    if (st.enabled && !st.unlocked) showLock()
+    else setOfflineAccess(leaseFromStatus(st))
+  } catch { /* unreachable: not a reason to lock */ }
+}
 
 // ---------------------------------------------------------------- verrouillage
 let booted = false
@@ -509,10 +518,12 @@ export async function start() {
     const st = await api<AuthStatus>('/api/auth/status')
     if (st.hostLabel !== undefined) hostLabel.value = st.hostLabel
     if (st.enabled && !st.unlocked) return showLock()
-    access = { enabled: st.enabled, expiresAt: st.enabled ? st.expiresAt || 0 : 0 }
+    access = leaseFromStatus(st)
     setOfflineAccess(access)
   } catch {
-    if (access?.enabled && !mayReadOffline(access)) return showLock()
+    // Server unreachable with an expired lease: hide the cache, unless the live
+    // connection is up (a transient HTTP error; the next check retries).
+    if (access?.enabled && !mayReadOffline(access) && !eventsOpen.value) return showLock()
   }
   if (mayReadOffline(access)) {
     const saved = await readOffline()
