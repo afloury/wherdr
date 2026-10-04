@@ -1,10 +1,10 @@
- ※ recap: I've rebuilt the home page to the hybrid design you approved, and it passes every check. Next, I can commit it, splitting the earlier palette
- change and the home page into separate commits.
+ ※ recap: I've rebuilt the demo landing page to the design you approved, and it passes every check. Next, I can commit it, splitting the earlier palette
+ change and the landing page into separate commits.
 
 ─────────────────────────────────────────────────────────────────────────────────────────────────────── ◫ 49.5%/1M ⟲ · ⏱ 5h 9% (3h 38m) · 7d 100% (2d 6h) ─
 ❯
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ◒ Opus 5.5 🙈 · 📁 mortgagepedia · ⑂ 001-personal-brand-redesign *25 ?1
+ ◒ Opus 5.5 🙈 · 📁 acme-shop · ⑂ feature/redesign *25 ?1
 ╭─ Switch Model ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │  Session-only switch — role models stay unchanged                                                                                                       │
 │  🔍 > glm                                                                                                                                               │

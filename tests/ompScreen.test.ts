@@ -12,7 +12,7 @@ describe('parseOmpStatus', () => {
     expect(s.meters).toMatch(/^◫ [\d.]+%\/1M .* · ⏱ 5h \d+% /)
   })
   it('"Ask" box open: the status line below the box, no visible gauges', () => {
-    expect(parseOmpStatus(fx('omp-ask-single.txt'))).toEqual({ line: '◒ Opus 5.5 👁 · 🗑 /tmp ↳ xero-app-service · ⑂ detached', meters: null })
+    expect(parseOmpStatus(fx('omp-ask-single.txt'))).toEqual({ line: '◒ Opus 5.5 👁 · 🗑 /tmp ↳ acme-api-service · ⑂ detached', meters: null })
   })
   it('nothing without a rule just above the last line (full-screen panel)', () => {
     expect(parseOmpStatus('Usage\n████ 40%\n\nEsc to close')).toBeNull()

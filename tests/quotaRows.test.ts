@@ -27,11 +27,11 @@ describe('quota split (top / machines)', () => {
       codex: { five: five(40), week: null, at: 2 },
       claudeAccounts: [
         { five: five(10), week: null, at: 1, machines: [{ key: '', label: 'host-a' }, { key: '0c1d2e3f', label: 'Workstation' }] },
-        { five: five(30), week: null, at: 3, machines: [{ key: 'f27df2ea', label: 'Laptop' }] },
+        { five: five(30), week: null, at: 3, machines: [{ key: '0a1b2c3d', label: 'Laptop' }] },
       ],
     }
     expect(quotaRows(q).map(r => r.key)).toEqual(['codex'])
-    const mac = machineQuotaRows(q, 'f27df2ea')
+    const mac = machineQuotaRows(q, '0a1b2c3d')
     expect(mac.map(r => [r.agent, r.q.five!.used])).toEqual([['claude', 30]])
     expect(mac[0]!.q).not.toHaveProperty('machines')
     // Same account on two machines out of three: under each of the two.
@@ -39,7 +39,7 @@ describe('quota split (top / machines)', () => {
     expect(machineQuotaRows(q, '0c1d2e3f')[0]!.q.five!.used).toBe(10)
     expect(machineQuotaRows(q, 'deadbeef')).toEqual([])
     expect(quotaRows(q, ['codex'])).toEqual([])
-    expect(machineQuotaRows(q, 'f27df2ea', ['claude'])).toEqual([])
+    expect(machineQuotaRows(q, '0a1b2c3d', ['claude'])).toEqual([])
     expect(machineQuotaRows(q, '', ['codex']).map(r => r.agent)).toEqual(['claude'])
   })
 
@@ -64,14 +64,14 @@ describe('reset time', () => {
 })
 
 describe('Claude quotas not configured', () => {
-  const q: Quotas = { claude: null, codex: null, claudeSetup: [{ key: 'f27df2ea', state: 'missing', installable: true }] }
+  const q: Quotas = { claude: null, codex: null, claudeSetup: [{ key: '0a1b2c3d', state: 'missing', installable: true }] }
   it('only on a listed machine that has Claude agents', () => {
-    expect(claudeSetupOf(q, 'f27df2ea', true)).toEqual({ key: 'f27df2ea', state: 'missing', installable: true })
-    expect(claudeSetupOf(q, 'f27df2ea', false)).toBeNull()
+    expect(claudeSetupOf(q, '0a1b2c3d', true)).toEqual({ key: '0a1b2c3d', state: 'missing', installable: true })
+    expect(claudeSetupOf(q, '0a1b2c3d', false)).toBeNull()
     expect(claudeSetupOf(q, '', true)).toBeNull()
     expect(claudeSetupOf(null, '', true)).toBeNull()
-    expect(claudeSetupOf(q, 'f27df2ea', true, ['claude'])).toBeNull()
-    expect(claudeSetupOf(q, 'f27df2ea', true, ['codex'])).not.toBeNull()
+    expect(claudeSetupOf(q, '0a1b2c3d', true, ['claude'])).toBeNull()
+    expect(claudeSetupOf(q, '0a1b2c3d', true, ['codex'])).not.toBeNull()
   })
 
   it.skipIf(!hasPython)('the command to copy is self-contained: status line written and wired', () => {
@@ -100,11 +100,11 @@ describe('different Codex accounts', () => {
       codex: { five: w(40), week: null, at: 2 },
       codexAccounts: [
         { five: w(40), week: null, at: 2, machines: [{ key: '', label: 'host-a' }] },
-        { five: w(70), week: null, at: 1, machines: [{ key: 'f27df2ea', label: 'Laptop' }] },
+        { five: w(70), week: null, at: 1, machines: [{ key: '0a1b2c3d', label: 'Laptop' }] },
       ],
     }
     expect(quotaRows(q).map(r => r.key)).toEqual(['claude'])
-    expect(machineQuotaRows(q, 'f27df2ea').map(r => [r.key, r.q.five!.used])).toEqual([['codex:f27df2ea', 70]])
+    expect(machineQuotaRows(q, '0a1b2c3d').map(r => [r.key, r.q.five!.used])).toEqual([['codex:0a1b2c3d', 70]])
     expect(machineQuotaRows(q, '', ['codex'])).toEqual([])
   })
 })

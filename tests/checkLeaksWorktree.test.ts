@@ -31,7 +31,7 @@ function repoWithWorktree() {
   return { main, wt }
 }
 
-const run = (cwd: string) => spawnSync(process.execPath, [script], { cwd, env, encoding: 'utf8' })
+const run = (cwd: string) => spawnSync(process.execPath, [script, '--no-gitleaks'], { cwd, env, encoding: 'utf8' })
 
 afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })

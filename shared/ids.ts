@@ -8,7 +8,7 @@ export const LOCAL = ''
 // Short key of a machine: the first 8 characters of the Herdr profile ID.
 export const MACHINE_KEY_RE = /^[0-9a-f]{4,32}$/
 export const SEP = '~'
-// Pane : w1:p1 (local) ou f27df2ea~w1:p1 (distant).
+// Pane : w1:p1 (local) ou 0a1b2c3d~w1:p1 (distant).
 export const PANE_RE = /^(?:[0-9a-f]{4,32}~)?w[0-9a-z]+:p[0-9a-z]+$/i
 
 export const machineKey = (profileId: string) => String(profileId || '').toLowerCase().replace(/[^0-9a-f]/g, '').slice(0, 8)

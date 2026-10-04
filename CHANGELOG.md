@@ -178,6 +178,10 @@ First public release.
   a thread slot frees, with the slots in use) and **To do** (prioritized, never auto-launched)
   lists with Move up / down, Queue it, Launch now and Back to backlog / Remove from queue; lists
   always show in a fixed order, and the coordinator rules describe each list.
+- Leak check: `npm run check:leaks -- --range <revs>` scans every commit of a range (the lines
+  each commit adds and its message), so a private value added then removed before pushing is
+  caught; gitleaks runs from its Docker image when the binary is not installed. Test fixtures
+  and tests no longer contain names captured from real machines.
 
 ### Removed
 

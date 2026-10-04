@@ -23,6 +23,13 @@ Please use GitHub's **private vulnerability reporting** (Security tab → *Repor
 vulnerability*) instead of a public issue. Include the version or commit, your setup (Docker or
 not, how the app is reached) and steps to reproduce. You should get an answer within a week.
 
+## Secrets and private data in the repository
+
+Every commit is checked for secrets (gitleaks) and for the maintainer's private values (a local,
+untracked pattern list), on the files and on each commit pushed, including its message: see
+[Leak check](CONTRIBUTING.md#leak-check). If you still spot a token, a personal path, a host
+name or similar in the code or its history, please report it privately as above.
+
 ## Supported versions
 
 Only the latest release receives fixes.
