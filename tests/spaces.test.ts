@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { reduceSnapshot } from '../server/utils/snapshot'
 import { isShellRow, leadPane, mirrorInput, mirrorSize, projectRoots, rememberTab, repoRoots, rowGroup, spaceRows, spaceTab } from '../shared/spaces'
-import { groupByProject, leadByCoordinator, projectSections, remoteCoordinator } from '../shared/projects'
+import { groupByProject, leadByCoordinator, projectCounts, projectSections, remoteCoordinator, stateSource, tabStates, waitingTab } from '../shared/projects'
 import type { Pane } from '../shared/types'
 import layouts from './fixtures/snapshot-layouts.json'
 
@@ -247,6 +247,49 @@ describe('projets et machines', () => {
       { ...pane('w1:p4', 'w1:t2') },
     ])
     expect(leadByCoordinator(spaceRows(wt)).map(r => [r.key, r.lead.id])).toEqual([['w1', 'w1:p1']])
+  })
+
+  it('the coordinator card shows its most urgent tab\'s state without moving', () => {
+    const rows = tabbed()
+    const coord = rows[0]!
+    if (coord.kind !== 'space') throw new Error('space expected')
+    expect([coord.lead.id, coord.state?.id, stateSource(coord)]).toEqual(['w1:p1', 'w1:p4', 'T-0008'])
+    expect(tabStates(coord)).toEqual(['idle', 'working'])
+    // Still in Ready and first of its project: the state does not move it.
+    expect(rowGroup(coord)).toBe('ready')
+    // Only a tab waiting for the user is opened directly.
+    expect(waitingTab(coord)).toBeNull()
+    const g = groupByProject(rows.filter(r => r.lead.agent).map(r => r.lead)).projects[0]!
+    const rowOf = (p: Pane) => rows.find(r => r.lead.id === p.id)
+    // Coordinator ready + thread tab working + worktree thread working.
+    expect(projectCounts(g.panes, rowOf)).toEqual({ total: 3, blocked: 0, working: 2, ready: 1 })
+    expect(projectCounts(g.panes)).toEqual({ total: 2, blocked: 0, working: 1, ready: 1 })
+  })
+
+  it('a blocked thread tab: your turn on the card, a tap opens that tab', () => {
+    const st = snap([
+      { ...pane('w1:p1', 'w1:t1', 'claude', 'working'), cwd: '/home/user/.herdr-projects/demo', tokens: { hp_group: 'demo!0!w1:p1' } },
+      { ...pane('w1:p4', 'w1:t2', 'codex', 'blocked'), cwd: '/home/user/.herdr-projects/demo' },
+    ])
+    const [coord] = leadByCoordinator(spaceRows(st))
+    if (coord?.kind !== 'space') throw new Error('space expected')
+    expect([coord.lead.id, coord.state?.status, waitingTab(coord)]).toEqual(['w1:p1', 'blocked', 'w1:t2'])
+    // No thread number: the tab's label.
+    expect(stateSource(coord)).toBe(coord.tabs[1]!.tab.label || String(coord.tabs[1]!.tab.number))
+    expect(rowGroup(coord)).toBe('working')
+    const g = groupByProject([coord.lead]).projects[0]!
+    expect(projectCounts(g.panes, () => coord)).toEqual({ total: 2, blocked: 1, working: 1, ready: 0 })
+  })
+
+  it('no state override when the coordinator is the most urgent', () => {
+    const st = snap([
+      { ...pane('w1:p1', 'w1:t1', 'claude', 'blocked'), cwd: '/home/user/.herdr-projects/demo', tokens: { hp_group: 'demo!0!w1:p1' } },
+      { ...pane('w1:p4', 'w1:t2', 'codex', 'working'), cwd: '/home/user/.herdr-projects/demo', tokens: { hp_group: 'demo!1!2!t-0008' } },
+    ])
+    const [coord] = leadByCoordinator(spaceRows(st))
+    if (coord?.kind !== 'space') throw new Error('space expected')
+    expect([coord.lead.id, coord.state, stateSource(coord), waitingTab(coord)]).toEqual(['w1:p1', undefined, null, null])
+    expect(tabStates(coord)).toEqual(['blocked', 'working'])
   })
 })
 

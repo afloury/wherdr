@@ -1,6 +1,6 @@
 import type { Pane } from './types'
 import { isProjectThread } from './paneTitle'
-import { type RepoRoot, type Row, urgency } from './spaces'
+import { type RepoRoot, type Row, leadPane, urgency } from './spaces'
 
 // herdr-projects projects: a coordinator (cwd ~/.herdr-projects/<slug>) and its
 // threads (pane `hp-<slug>-t-NNNN`, worktree of the same name). The project comes
@@ -96,16 +96,65 @@ export function isCoordinator(p: ProjectPane & Pick<Pane, 'agent'>): boolean {
 
 // herdr-projects can open a thread as a tab of its coordinator's space
 // (`--kind tab`). The space stays one card, the coordinator's: it represents
-// the space (name, state, preview, mini-map, tab opened by default) even when
-// a thread tab is more urgent, so the card keeps its place at the top of its
-// project. The thread is only seen in the space's tabs.
+// the space (name, preview, mini-map, tab opened by default) so the card keeps
+// its place at the top of its project (`lead`, which also decides its group).
+// The displayed state is the most urgent tab's (`state`, set only when it is
+// more urgent than the coordinator).
 export function leadByCoordinator(rows: Row[]): Row[] {
   return rows.map((r) => {
     if (r.kind !== 'space') return r
     const lead = r.panes.find(isCoordinator)
     if (!lead || lead === r.lead) return r
-    return { ...r, lead, leadTab: r.tabs.find(e => e.panes.includes(lead))! }
+    const state = urgency(r.lead) < urgency(lead) ? r.lead : undefined
+    return { ...r, lead, leadTab: r.tabs.find(e => e.panes.includes(lead))!, ...(state ? { state } : {}) }
   })
+}
+
+// Label of the tab the displayed state comes from: its thread (T-0008),
+// otherwise the tab's label or number. null: the card's own state.
+export function stateSource(row: Row): string | null {
+  if (row.kind !== 'space' || !row.state) return null
+  const n = threadNumber(row.state)
+  if (n != null) return `T-${String(n).padStart(4, '0')}`
+  const tab = row.tabs.find(e => e.panes.includes(row.state!))?.tab
+  return tab ? tab.label || String(tab.number) : null
+}
+
+// Tab a tap opens directly: the one waiting for the user when the card's
+// state comes from it; otherwise null (the usual remembered tab).
+export function waitingTab(row: Row): string | null {
+  if (row.kind !== 'space' || row.state?.status !== 'blocked') return null
+  return row.tabs.find(e => e.panes.includes(row.state!))?.tab.id ?? null
+}
+
+// State key of each tab of a space, in order (its most urgent pane;
+// 'shell' for a tab without an agent).
+export function tabStates(row: Row): string[] {
+  if (row.kind !== 'space') return []
+  return row.tabs.map((e) => {
+    const p = leadPane(e.panes)
+    return p?.agent ? p.status || 'unknown' : 'shell'
+  })
+}
+
+// A coordinator's space card: one per tab in the counters, not one per card.
+const coordinatorSpace = (r: Row | undefined): r is Extract<Row, { kind: 'space' }> =>
+  r?.kind === 'space' && isCoordinator(r.lead)
+
+// Project header counters: each agent of the project, except that a
+// coordinator's space counts each of its tabs (with an agent) separately.
+export function projectCounts<P extends Pick<Pane, 'id' | 'status'>>(
+  panes: P[], rowOf?: (p: P) => Row | undefined,
+): { total: number, blocked: number, working: number, ready: number } {
+  const states: string[] = []
+  for (const p of panes) {
+    const r = rowOf?.(p)
+    if (coordinatorSpace(r)) states.push(...tabStates(r).filter(s => s !== 'shell'))
+    else states.push(p.status || 'unknown')
+  }
+  const blocked = states.filter(s => s === 'blocked').length
+  const working = states.filter(s => s === 'working').length
+  return { total: states.length, blocked, working, ready: states.length - blocked - working }
 }
 
 // Coordinator of a project on another machine (threads stay under
