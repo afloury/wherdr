@@ -11,6 +11,13 @@ function readChoice() {
 }
 export const themeChoice = ref<string>(import.meta.client ? readChoice() : DEFAULT_THEME)
 
+// Border of the focused message field (utils/focusBorder.ts), kept on the device too.
+function readFocusBorder() {
+  try { return parseFocusBorder(localStorage.getItem('focusBorder')) }
+  catch { return DEFAULT_FOCUS_BORDER }
+}
+export const focusBorder = ref<FocusBorder>(import.meta.client ? readFocusBorder() : DEFAULT_FOCUS_BORDER)
+
 const systemLight = ref(false)
 if (import.meta.client) {
   const mq = matchMedia('(prefers-color-scheme: light)')
@@ -54,6 +61,11 @@ export function installTheme() {
     try { localStorage.setItem('theme', v) }
     catch { /* stockage indisponible */ }
   })
+  watch(focusBorder, (v) => {
+    document.documentElement.dataset.focusBorder = v
+    try { localStorage.setItem('focusBorder', v) }
+    catch { /* storage unavailable */ }
+  }, { immediate: true })
 }
 
 // xterm palette of the theme shown.
