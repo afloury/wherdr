@@ -10,6 +10,12 @@ First public release.
 
 ### Added
 
+- Image viewer: zoom and pan. An image opens fitted to the screen (a very tall one is no longer
+  cut at the bottom); pinch, double tap, click on the image, ctrl+wheel (trackpad pinch), the
+  wheel on a fitted image, the bottom bar (−, zoom level = back to fit, +, 1:1 actual size) or
+  `+` / `-` / `0` zoom it, and a zoomed image pans in every direction with a finger, the mouse or
+  the wheel. New close button; a tap outside the image and Escape still close it, and swiping
+  between the images of a message still works when not zoomed. The page behind never scrolls.
 - herdr-projects: max threads per machine, across all projects (Settings → Plugins →
   herdr-projects; empty = no global limit, saved on the server). wherdr counts the active threads
   of every project on each machine (a finished thread waiting for review gives its slot back right
