@@ -280,7 +280,8 @@ desktop layout can replace the Herdr terminal client for daily work.
 **5. Passkey lock** (recommended, optional): Settings → Security → **Enable passkey lock**. The
 first passkey asks for a bootstrap token, printed in the server logs (`docker compose logs`);
 it changes on each restart and is only needed for that first passkey. Add a passkey on each of
-your devices after that. Without one, every device of your tailnet can control your agents.
+your devices after that (see [New device](#new-device) below). Without one, every device of your
+tailnet can control your agents.
 
 **6. More machines** (optional): register your other computers in Herdr over SSH
 (`herdr machine add`, see [Several machines (SSH)](#several-machines-ssh)). Their agents show
@@ -620,11 +621,26 @@ container talks to the Herdr server running on the host.
   allowed"); add it to `HERDR_WEB_ALLOWED_HOSTS`, then restart wherdr. This host check also
   applies to WebSockets.
 - **Passkey lock** (Settings → Security, recommended): once a passkey is registered, the API,
-  images, photos and WebSockets require an unlocked session (signed HttpOnly cookie). The session
-  slides: it lasts 12 hours after the last use, so the app only locks again after 12 hours without
-  any request (or when you lock it from Settings). A network error or a server restart never
-  locks it. Turning the lock off invalidates every session. Lost passkey: delete `data/auth.json` on the
-  server; the app is open again to whoever can reach it.
+  images, photos and WebSockets require an unlocked session (signed HttpOnly cookie). Two limits
+  apply:
+  - **12 hours without use**: the session slides, so the app only locks again after 12 hours
+    without any request (or when you lock it from Settings).
+  - **Maximum duration** since the last passkey unlock, set in Settings → Security for every
+    device: 1 day, 7 days (default), 30 days, 90 days or 1 year. The unlock time is signed in the
+    cookie and the slide never moves it. Past it, the device asks for the passkey again at the
+    next opening of the app (launch, reload, or back in the foreground), never in the middle of
+    use; the app warns in the last hours. A client that never reopens is cut 12 hours after the
+    deadline. A shorter duration applies to the sessions already open.
+
+  A network error or a server restart never locks the app. **Lock all devices** (Settings →
+  Security, for a lost or stolen device) ends every session, this one included, and keeps the
+  passkeys: each device unlocks again with its own. Turning the lock off removes the passkeys and
+  invalidates every session. Lost passkey: delete `data/auth.json` on the server; the app is open
+  again to whoever can reach it.
+- <a id="new-device"></a>**New device**: it can only get in with an existing passkey. Unlock it
+  with a passkey synced by your password manager (iCloud Keychain, Google Password Manager,
+  1Password…), or with the passkey of another device through the browser's "use a phone or
+  tablet" QR code, then Settings → Security → **Add this device** to give it its own passkey.
 - Without a passkey, **anyone who can reach the address can control your agents**: every device
   on your tailnet, and every user of your tailnet if you share it.
 - Writes require `Content-Type: application/json` (or `image/*` for photos, `application/octet-stream` for attached files) and an `Origin`

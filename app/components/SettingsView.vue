@@ -9,6 +9,7 @@ import pkg from '../../package.json'
 import { SETTINGS_SECTIONS, settingsBack } from '~/utils/settingsNav'
 import type { SettingsSection } from '~/utils/settingsNav'
 import { type QuietDuration, type QuietScope, quietUntil } from '#shared/quiet'
+import { DEFAULT_MAX_SESSION_DAYS, MAX_SESSION_DAYS, type MaxSessionDays } from '#shared/sessionLimit'
 
 const appVersion = pkg.version
 const router = useRouter()
@@ -268,6 +269,13 @@ async function lockNow() {
   await api('/api/auth/lock', {}).catch(() => {})
   showLock()
 }
+async function lockAllDevices() {
+  if (!(await askConfirm(t('Lock every device? Each one, this one included, will need its passkey again. The keys are kept.'), t('Lock all')))) return
+  try {
+    await api('/api/auth/lock-all', {})
+    showLock()
+  } catch (err) { toast((err as Error).message, true) }
+}
 async function disableLock() {
   if (!(await askConfirm(t('Turn off the lock? The app will be open again to anyone who can reach this server.'), t('Turn off')))) return
   try {
@@ -278,6 +286,30 @@ async function disableLock() {
   } catch (err) { toast((err as Error).message, true) }
   refreshSecurity()
 }
+// Maximum duration since the passkey unlock (server setting, every device).
+const maxSessionItems = computed(() => MAX_SESSION_DAYS.map(d => ({
+  label: d === 1 ? t('1 day') : d === 365 ? t('1 year') : tl(`${d} days`, `${d} jours`),
+  value: d,
+})))
+const maxSession = computed({
+  get: () => sec.value?.maxSessionDays ?? DEFAULT_MAX_SESSION_DAYS,
+  set: async (days: MaxSessionDays) => {
+    try {
+      await api('/api/auth/max-session', { days })
+      // Reducing it can move this session's deadline: read it back.
+      await confirmLock()
+    } catch (err) { toast((err as Error).message, true) }
+    refreshSecurity()
+  },
+})
+// When this device must unlock again (client clock), shown under the setting.
+const deadlineText = computed(() => {
+  const st = sec.value
+  if (!st?.deadline) return ''
+  const when = new Date(st.deadline + Date.now() - (st.now ?? Date.now()))
+    .toLocaleString(language === 'fr' ? 'fr-FR' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  return tl(`This device asks for the passkey again at the first opening after ${when}.`, `Cet appareil redemandera la clé d’accès à la première ouverture après le ${when}.`)
+})
 
 onMounted(loadUpdate)
 onMounted(() => {
@@ -492,10 +524,17 @@ onMounted(() => {
                 <p class="muted keys">{{ t('Registered keys:') }} {{ sec.devices.map(d => d.name).join(', ') }}</p>
                 <button type="button" class="settings-action" @click="registerKey"><UIcon name="i-lucide-plus" />{{ t('Add this device') }}</button>
                 <button type="button" class="settings-action" @click="lockNow"><UIcon name="i-lucide-lock" />{{ t('Lock now') }}</button>
+                <button type="button" class="settings-action danger" @click="lockAllDevices"><UIcon name="i-lucide-shield-alert" />{{ t('Lock all devices') }}</button>
                 <button type="button" class="settings-action danger" @click="disableLock"><UIcon name="i-lucide-lock-open" />{{ t('Turn off lock') }}</button>
-                <p class="muted">{{ hostLabel ? tl(`Unlocking lasts 12 h. Lost key: delete data/auth.json on ${hostLabel}.`, `Le déverrouillage dure 12 h. Clé perdue : supprimer data/auth.json sur ${hostLabel}.`) : tl('Unlocking lasts 12 h. Lost key: delete data/auth.json on the server.', 'Le déverrouillage dure 12 h. Clé perdue : supprimer data/auth.json sur le serveur.') }}</p>
+                <p class="muted">{{ hostLabel ? tl(`The app locks after 12 h without use. Lost or stolen device: Lock all devices. Lost key: delete data/auth.json on ${hostLabel}.`, `L’app se verrouille après 12 h sans utilisation. Appareil perdu ou volé : Verrouiller tous les appareils. Clé perdue : supprimer data/auth.json sur ${hostLabel}.`) : tl('The app locks after 12 h without use. Lost or stolen device: Lock all devices. Lost key: delete data/auth.json on the server.', 'L’app se verrouille après 12 h sans utilisation. Appareil perdu ou volé : Verrouiller tous les appareils. Clé perdue : supprimer data/auth.json sur le serveur.') }}</p>
               </template>
             </div>
+          </div>
+          <div v-if="sec?.enabled" class="settings-group">
+            <h3>{{ t('Ask for the passkey again after') }}</h3>
+            <URadioGroup v-model="maxSession" :items="maxSessionItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <p class="muted settings-hint">{{ t('Counted from the last passkey unlock, for every device. Never in the middle of use: at the next opening of the app.') }}</p>
+            <p v-if="deadlineText" class="muted settings-hint">{{ deadlineText }}</p>
           </div>
         </div>
 
