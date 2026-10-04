@@ -307,12 +307,16 @@ function saveQueued() {
   queuedSaved = s
   fsp.writeFile(QUEUED_FILE, s + '\n', { mode: 0o600 }).catch(() => {})
 }
-export function addQueued(paneId: string, text: string, opts: { held?: boolean, busy?: boolean, failed?: boolean } = {}): QueuedMessage {
+// `id`: the app's own id for the bubble it already shows (see app/utils/outbox.ts),
+// kept when well-formed and unused, so the bubble keeps its identity.
+export function addQueued(paneId: string, text: string, opts: { held?: boolean, busy?: boolean, failed?: boolean, id?: string } = {}): QueuedMessage {
+  const list = queued.get(paneId) || []
+  const own = opts.id && /^w-[a-z0-9]{1,32}$/.test(opts.id) && !list.some(q => q.id === opts.id) ? opts.id : null
   const e: QueueEntry = {
-    id: crypto.randomBytes(4).toString('hex'), text: String(text).slice(0, 4000), at: Date.now(),
+    id: own || crypto.randomBytes(4).toString('hex'), text: String(text).slice(0, 4000), at: Date.now(),
     ...(opts.held ? { held: true } : {}), ...(opts.busy ? { busy: true } : {}), ...(opts.failed ? { failed: true } : {}),
   }
-  queued.set(paneId, [...(queued.get(paneId) || []), e])
+  queued.set(paneId, [...list, e])
   sent.set(paneId, addSent(sent.get(paneId) || [], e.text, e.at))
   return publicEntry(e)
 }

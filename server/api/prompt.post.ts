@@ -6,6 +6,8 @@ export default defineApi(async (event, b) => {
   // Attached text file last (`@<path>`): see closeTrailingMention.
   const text = closeTrailingMention(String(b.text || ''))
   if (!text.trim()) throw new HerdrError('empty', 'Empty message')
+  // The app's id for the bubble it shows from the tap (see app/utils/outbox.ts).
+  const id = typeof b.client_id === 'string' ? b.client_id : undefined
   if (await closePanel(b.pane_id).catch(() => false)) log(`panel closed before sending on ${b.pane_id}`)
   // A menu or panel still hides the input field (interactive /mcp flow…), or an
   // earlier message is held: typed now, the message would be lost. Held, it is
@@ -14,7 +16,7 @@ export default defineApi(async (event, b) => {
   const p = findPane(b.pane_id)
   // Restart / Codex update running: it owns the pane until the agent is back.
   if (p && p.agent && restarting(p.id) && !isSlashCommand(text)) {
-    const q = addQueued(b.pane_id, text, { held: true })
+    const q = addQueued(b.pane_id, text, { held: true, id })
     log(`prompt ${b.pane_id}: restart in progress, message held`)
     setTimeout(poll, 50)
     return { ok: true, queued: q }
@@ -25,7 +27,7 @@ export default defineApi(async (event, b) => {
       : await herdr('pane.read', { pane_id: b.pane_id, source: 'detection' }, 4000)
         .then(r => inputVisible(r.read && r.read.text), () => true)
     if (shouldHold(p.agent, p.status, input, earlier)) {
-      const q = addQueued(b.pane_id, text, { held: true })
+      const q = addQueued(b.pane_id, text, { held: true, id })
       log(`prompt ${b.pane_id}: input field hidden, message held`)
       setTimeout(poll, 50)
       return { ok: true, queued: q }
@@ -38,7 +40,7 @@ export default defineApi(async (event, b) => {
     // Claude's input field holds someone else's text (a draft typed in its
     // terminal…), never cleared: the message waits until it is free.
     if (isBusyError(e) && !isSlashCommand(text)) {
-      const q = addQueued(b.pane_id, text, { held: true, busy: (e as HerdrError).code === 'input_busy' })
+      const q = addQueued(b.pane_id, text, { held: true, busy: (e as HerdrError).code === 'input_busy', id })
       log(`prompt ${b.pane_id}: input field not free, message held`)
       setTimeout(poll, 50)
       return { ok: true, queued: q }
@@ -46,7 +48,7 @@ export default defineApi(async (event, b) => {
     // Typed but not confirmed as taken (see guardedSend.ts): kept, shown as
     // not sent with Retry / Cancel, never silently dropped.
     if (e instanceof HerdrError && ['not_shown', 'not_submitted', 'clear_failed', 'input_contended', 'bash_mode'].includes(e.code) && !isSlashCommand(text)) {
-      const q = addQueued(b.pane_id, text, { failed: true })
+      const q = addQueued(b.pane_id, text, { failed: true, id })
       log(`prompt ${b.pane_id}: ${e.message}, message kept as not sent`)
       setTimeout(poll, 50)
       return { ok: true, queued: q }
@@ -58,7 +60,7 @@ export default defineApi(async (event, b) => {
     // Herdr sees the open menu as blocked and refuses the prompt: held too,
     // delivered once the menu is answered or closed.
     if (e instanceof HerdrError && e.code === 'agent_blocked' && p && p.agent && HOLD_AGENTS.has(p.agent) && !isSlashCommand(text)) {
-      const q = addQueued(b.pane_id, text, { held: true })
+      const q = addQueued(b.pane_id, text, { held: true, id })
       log(`prompt ${b.pane_id}: agent blocked, message held`)
       setTimeout(poll, 50)
       return { ok: true, queued: q }
@@ -74,7 +76,7 @@ export default defineApi(async (event, b) => {
     setTimeout(poll, 1500)
     return { ok: true }
   }
-  const q = addQueued(b.pane_id, text)
+  const q = addQueued(b.pane_id, text, { id })
   setTimeout(poll, 50)
   return { ok: true, queued: q }
 })

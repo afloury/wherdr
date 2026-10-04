@@ -7,7 +7,8 @@
 // shared/queuedMatch.ts). Claude's queue only keeps "[Image #1]": an entry of
 // it gets the photos of wherdr's record of the same message, from the server
 // (`sent`, see server/utils/sentHistory.ts) or remembered here.
-import type { ChatItem, ClaudeQueueEntry, ClaudeScreen, QueuedMessage } from '../../shared/types'
+import type { ChatItem, ClaudeQueueEntry, ClaudeScreen } from '../../shared/types'
+import type { OutboxItem } from './outbox'
 import { type QueuedPhase, queuedPhases } from '../../shared/queuedPhase'
 import { photosLanded, photosOnly, uploadNames, withoutUploads } from '../../shared/queuedMatch'
 import { dropReplyMarker } from '../../shared/replyQuote'
@@ -19,7 +20,10 @@ export interface PendingMessage {
   // Sent from wherdr (Claude's own entries have ids "cc-…").
   mine: boolean
   phase: QueuedPhase
-  state: 'held' | 'failed' | null
+  // 'sending': shown from the tap, the server has not answered yet (see outbox.ts).
+  state: 'held' | 'failed' | 'sending' | null
+  // Never reached the server: Retry / Cancel act on the app's copy.
+  local?: boolean
   // 'busy': waiting because the agent's input field holds other text.
   reason?: 'busy' | 'no_input'
   // Stored names of its photos.
@@ -33,8 +37,8 @@ const normText = (s: string) => dropReplyMarker(String(s || '').replace(/\s+/g, 
 // Records with photos seen for a pane (most recent last), to give Claude's
 // entries their photos. Plain memory of this page, outside reactivity.
 const MEMORY = 30
-const memories = new Map<string, QueuedMessage[]>()
-export function rememberSent(paneId: string, list: QueuedMessage[]): QueuedMessage[] {
+const memories = new Map<string, OutboxItem[]>()
+export function rememberSent(paneId: string, list: OutboxItem[]): OutboxItem[] {
   const out = (memories.get(paneId) || []).filter(m => !list.some(q => q.id === m.id))
   out.push(...list.filter(q => uploadNames(q.text).length))
   memories.set(paneId, out.slice(-MEMORY))
@@ -42,15 +46,15 @@ export function rememberSent(paneId: string, list: QueuedMessage[]): QueuedMessa
 }
 
 export function pendingQueue(o: {
-  mine: QueuedMessage[]
+  mine: OutboxItem[]
   claude: ClaudeQueueEntry[]
   items: ChatItem[]
   screen: ClaudeScreen | null
-  memory?: QueuedMessage[]
+  memory?: OutboxItem[]
 }): PendingMessage[] {
   // Already in the conversation (the server has not noticed yet): we do not
   // show two copies. "! cmd" appears there as a command without "!".
-  const inChat = (q: QueuedMessage) => {
+  const inChat = (q: OutboxItem) => {
     const after = (i: ChatItem) => !q.at || !i.ts || Date.parse(i.ts) >= q.at - 10000
     if (photosOnly(q.text)) return o.items.some(i => after(i) && photosLanded(q.text, i))
     const n = normText(withoutUploads(q.text)).slice(0, 60)
@@ -60,7 +64,7 @@ export function pendingQueue(o: {
   }
   // Sending order, whatever the source (server or local send).
   const mine = [...o.mine].sort((a, b) => (a.at && b.at ? a.at - b.at : 0))
-  const list: (QueuedMessage & { missing?: number })[] = mine.filter(q => !inChat(q))
+  const list: (OutboxItem & { missing?: number })[] = mine.filter(q => !inChat(q))
   // Claude's entries: one of wherdr's records (listed, or already in the
   // conversation) is the same message. Photos alone: one entry per record
   // still waiting in Claude's queue (not held here, not already sent).
@@ -91,6 +95,7 @@ export function pendingQueue(o: {
     // Held or failed on the server: never typed yet, so never "sent".
     phase: q.state ? 'queued' : phases[i]!,
     state: q.state || null,
+    ...(q.local ? { local: true } : {}),
     ...(q.reason ? { reason: q.reason } : {}),
     photos: uploadNames(q.text),
     missing: q.missing || 0,
