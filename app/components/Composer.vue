@@ -61,6 +61,16 @@ const replyTo = toRef(draft, 'reply')
 // Questions and passages quoted in the text ("> " lines, see utils/questionReply.ts):
 // one chip each above the field, to remove it.
 const quotes = computed(() => quotesIn(text.value))
+// Quotes as tokens (Settings › Conversation, utils/quoteTokens.ts): the rich
+// field replaces the plain one while the draft holds a quote. Not while the
+// plain field has the focus: a ">" typed there does not swap fields mid-word.
+const tokensRef = ref<{ focus: () => void, focusEnd: () => void, blur: () => void } | null>(null)
+const taFocused = ref(false)
+const tokensMode = computed(() => quoteTokensActive.value && quotes.value.length > 0 && !taFocused.value)
+// Last token removed while typing in the rich field: the caret goes on in the plain one.
+watch(tokensMode, (on, was) => {
+  if (was && !on && document.activeElement?.closest('.rb-field')) nextTick(focusEnd)
+})
 
 const canSend = computed(() => Boolean(text.value.trim() || attachments.value.length))
 const readOnly = computed(() => !eventsOpen.value || offlineView.value || paneStale(props.pane))
@@ -450,8 +460,15 @@ async function runSlash(cmd: string) {
 // panel). The focus is given right away, within the gesture, so that the iPhone
 // opens the keyboard; the cursor is placed once the text is rendered.
 function focusEnd() {
+  if (tokensMode.value) {
+    if (tokensRef.value) tokensRef.value.focusEnd()
+    else nextTick(() => tokensRef.value?.focusEnd())
+    return
+  }
   ta.value?.focus()
   nextTick(() => {
+    // A quote just added: the rich field may have taken over.
+    if (tokensMode.value) return tokensRef.value?.focusEnd()
     const el = ta.value
     if (!el) return
     el.focus()
@@ -460,7 +477,12 @@ function focusEnd() {
   })
 }
 
-defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.blur(), addImages, addFiles, stop })
+defineExpose({
+  focus: () => (tokensMode.value ? tokensRef.value?.focus() : ta.value?.focus()),
+  focusEnd,
+  blur: () => (tokensMode.value ? tokensRef.value?.blur() : ta.value?.blur()),
+  addImages, addFiles, stop,
+})
 </script>
 
 <template>
@@ -523,7 +545,7 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
         <UIcon name="i-lucide-x" />
       </button>
     </div>
-    <div v-if="quotes.length" class="composer-quotes" role="list" :aria-label="t('Quoted questions')">
+    <div v-if="quotes.length && !tokensMode" class="composer-quotes" role="list" :aria-label="t('Quoted questions')">
       <span class="composer-quotes-label">↳ {{ quotes.length }}</span>
       <span v-for="q in quotes" :key="q.start" class="composer-quote" role="listitem">
         <span class="composer-quote-text">{{ q.text }}</span>
@@ -537,8 +559,11 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
       :rows="1" :maxrows="7" :autofocus="false" :submit-on-enter="enterSends && !slashOpen"
       :enterkeyhint="enterSends ? 'send' : 'enter'" autocapitalize="sentences"
       class="prompt" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"
-      @submit="submit" @keydown="onKeydown" @paste="onPaste"
+      @submit="submit" @keydown="onKeydown" @paste="onPaste" @focus="taFocused = true" @blur="taFocused = false"
     >
+      <template v-if="tokensMode" #body>
+        <QuoteTokensField ref="tokensRef" v-model="text" :placeholder="placeholder" :enter-sends="enterSends" @submit="submit" @files="addFiles" />
+      </template>
       <template v-if="attachments.length" #header>
         <div class="attachments">
           <template v-for="(a, i) in attachments" :key="a.url || a.path || a.file?.label">

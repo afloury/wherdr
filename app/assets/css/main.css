@@ -2788,6 +2788,94 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 }
 .composer-quote-x:hover { color: var(--text); }
 .composer-quote-x .iconify, .composer-quote-x svg { width: 12px; height: 12px; }
+/* Field with the quotes as tokens (components/QuoteTokensField.vue): same
+   text metrics as .prompt-input; each quote one compact, non-editable line. */
+.rb-field {
+  min-height: 38px; max-height: 40vh; overflow-y: auto; padding: 8px 6px 4px;
+  font-size: 16px; line-height: 1.45; color: var(--text); outline: none;
+  white-space: pre-wrap; overflow-wrap: anywhere; cursor: text;
+}
+.rb-field:empty::before { content: attr(data-placeholder); color: var(--dim); }
+.rb-token {
+  display: flex; align-items: center; gap: 6px; max-width: 100%; height: 26px; margin: 4px 0 2px; padding: 0 0 0 8px;
+  border: 1px solid var(--line); border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent);
+  -webkit-user-select: none; user-select: none; cursor: default;
+}
+.rb-token:first-child { margin-top: 0; }
+.rb-token-label { flex: none; font: 500 10px/1 var(--mono); color: var(--accent); }
+.rb-token-text { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.3; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rb-token-x { flex: none; width: 26px; height: 24px; font-size: 11px; color: var(--dim); background: none; border: 0; cursor: pointer; }
+.rb-token-x:hover { color: var(--text); }
+/* Settings preview of quoted replies (components/QuoteTokensPreview.vue):
+   one 10 s timeline shared by every piece; the static styles are the composed
+   field (reduced motion). */
+.qt-preview { margin: 14px 0 0; border: 1px solid var(--line); background: var(--bg); --qt-d: 10s; }
+.qt-preview + .settings-toggle { margin-top: 14px; }
+.settings-lead { margin: 0 2px; font-size: 13.5px; line-height: 1.45; }
+.qt-preview figcaption {
+  display: flex; align-items: center; height: 36px; padding: 0 14px; border-bottom: 1px solid var(--line);
+  font: 500 10.5px/1 var(--mono); letter-spacing: .13em; text-transform: uppercase; color: var(--muted);
+}
+.qt-stage { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 16px; font-size: 13.5px; line-height: 1.45; color: var(--text); }
+.qt-conv { display: grid; min-height: 98px; }
+.qt-conv > * { grid-area: 1 / 1; }
+.qt-agent p { margin: 0 0 4px; }
+.qt-tag {
+  display: inline-flex; align-items: center; height: 17px; margin-left: 4px; padding: 0 5px; vertical-align: 1px;
+  font: 500 9px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.qt-sent {
+  align-self: end; justify-self: end; display: flex; flex-direction: column; gap: 1px; max-width: 80%; padding: 7px 10px;
+  background: var(--surface); border: 1px solid var(--line); opacity: 0;
+}
+.qt-sent-q { padding-left: 7px; border-left: 2px solid var(--accent); font-size: 12px; color: var(--text-2); }
+.qt-field { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 92px; padding: 8px 44px 8px 8px; border: 1px solid var(--accent); }
+.qt-ph { position: absolute; left: 9px; top: 8px; color: var(--dim); opacity: 0; }
+.qt-tok {
+  display: flex; align-items: center; gap: 6px; max-width: 100%; height: 22px; padding: 0 6px 0 7px;
+  border: 1px solid var(--line); border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent);
+  font-size: 11.5px; color: var(--text-2); white-space: nowrap; overflow: hidden;
+}
+.qt-tok b { font: 500 9.5px/1 var(--mono); color: var(--accent); }
+.qt-tok i { font-style: normal; font-size: 10px; color: var(--dim); margin-left: 4px; }
+.qt-send {
+  position: absolute; right: 7px; bottom: 7px; display: grid; place-items: center; width: 26px; height: 26px;
+  font: 600 14px/1 var(--mono); color: var(--bg); background: var(--text);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .qt-tag.one { animation: qt-tag-one var(--qt-d) infinite; }
+  .qt-tag.two { animation: qt-tag-two var(--qt-d) infinite; }
+  .qt-tok.one { animation: qt-tok-one var(--qt-d) infinite; }
+  .qt-tok.two { animation: qt-tok-two var(--qt-d) infinite; }
+  .qt-ans.one { animation: qt-ans-one var(--qt-d) infinite; }
+  .qt-ans.two { animation: qt-ans-two var(--qt-d) infinite; }
+  .qt-ph { animation: qt-ph var(--qt-d) infinite; }
+  .qt-send { animation: qt-send var(--qt-d) infinite; }
+  .qt-sent { animation: qt-sent var(--qt-d) infinite; }
+  .qt-agent { animation: qt-agent var(--qt-d) infinite; }
+}
+/* Untouched tag: plain, dim. */
+@keyframes qt-tag-one {
+  0%, 7% { color: var(--dim); border-color: var(--line); background: none; }
+  9% { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+  12%, 70% { color: var(--accent); }
+  74%, 100% { color: var(--dim); border-color: var(--line); background: none; }
+}
+@keyframes qt-tag-two {
+  0%, 32% { color: var(--dim); border-color: var(--line); background: none; }
+  34% { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+  37%, 70% { color: var(--accent); }
+  74%, 100% { color: var(--dim); border-color: var(--line); background: none; }
+}
+@keyframes qt-tok-one { 0%, 9% { opacity: 0; transform: translateY(4px); } 12%, 70% { opacity: 1; transform: none; } 73%, 100% { opacity: 0; } }
+@keyframes qt-tok-two { 0%, 34% { opacity: 0; transform: translateY(4px); } 37%, 70% { opacity: 1; transform: none; } 73%, 100% { opacity: 0; } }
+@keyframes qt-ans-one { 0%, 15% { clip-path: inset(0 100% 0 0); animation-timing-function: steps(5, end); } 24%, 70% { clip-path: inset(0 0 0 0); opacity: 1; } 73%, 100% { opacity: 0; } }
+@keyframes qt-ans-two { 0%, 40% { clip-path: inset(0 100% 0 0); animation-timing-function: steps(6, end); } 52%, 70% { clip-path: inset(0 0 0 0); opacity: 1; } 73%, 100% { opacity: 0; } }
+@keyframes qt-ph { 0%, 8% { opacity: 1; } 10%, 72% { opacity: 0; } 75%, 100% { opacity: 1; } }
+@keyframes qt-send { 0%, 64% { background: var(--text); } 67% { background: var(--accent); transform: scale(.9); } 70%, 100% { background: var(--text); transform: none; } }
+@keyframes qt-sent { 0%, 70% { opacity: 0; transform: translateY(14px); } 75%, 94% { opacity: 1; transform: none; } 98%, 100% { opacity: 0; } }
+@keyframes qt-agent { 0%, 70% { opacity: 1; transform: none; } 75%, 94% { opacity: 0; transform: translateY(-14px); } 98%, 100% { opacity: 1; transform: none; } }
 /* Sent message: each quoted question above its answer. */
 .msg-q {
   display: block; margin: 2px 0; padding: 1px 0 1px 9px; border-left: 2px solid var(--accent);
