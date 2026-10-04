@@ -7,7 +7,7 @@
 // shared/queuedMatch.ts). Claude's queue only keeps "[Image #1]": an entry of
 // it gets the photos of wherdr's record of the same message, from the server
 // (`sent`, see server/utils/sentHistory.ts) or remembered here.
-import type { ChatItem, ClaudeQueueEntry, ClaudeScreen, QueuedMessage } from '../../shared/types'
+import type { ChatItem, ClaudeQueueEntry, ClaudeScreen } from '../../shared/types'
 import type { OutboxItem } from './outbox'
 import { type QueuedPhase, queuedPhases } from '../../shared/queuedPhase'
 import { photosLanded, photosOnly, uploadNames, withoutUploads } from '../../shared/queuedMatch'
@@ -50,7 +50,7 @@ export function pendingQueue(o: {
   claude: ClaudeQueueEntry[]
   items: ChatItem[]
   screen: ClaudeScreen | null
-  memory?: QueuedMessage[]
+  memory?: OutboxItem[]
 }): PendingMessage[] {
   // Already in the conversation (the server has not noticed yet): we do not
   // show two copies. "! cmd" appears there as a command without "!".
