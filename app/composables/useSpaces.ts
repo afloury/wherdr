@@ -234,6 +234,8 @@ export function tabItems(tabId: string): MenuItem[] {
   return [
     { label: t('Rename tab'), icon: 'i-lucide-pencil', run: () => renameTab(tabId) },
     newTabItem(e.tab.workspace),
+    // One entry per pane of the tab (its Herdr ID is shown under each).
+    ...(e.panes.length ? [{ kind: 'separator' as const }, ...e.panes.map(p => copyPaneIdItem(p)), { kind: 'separator' as const }] : []),
     { label: t('Close tab'), icon: 'i-lucide-x', danger: true, run: () => closeTab(tabId) },
   ]
 }
