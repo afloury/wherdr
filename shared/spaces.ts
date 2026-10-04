@@ -31,28 +31,34 @@ export interface SpaceRow {
   // Tab of the representative pane (its mini-map).
   leadTab: TabEntry
   sum: { blocked: number, working: number, done: number, agents: number }
+  // Only some tabs of the space (a project thread opened as a tab of its
+  // coordinator's space gets its own card): opening it stays within them.
+  part?: boolean
 }
 export type Row = PaneRow | SpaceRow
 
+// Row of some tabs of a space (`key`: that of a space card).
+export function tabsRow(workspace: Workspace, tabs: TabEntry[], key: string, part = false): Row {
+  const panes = tabs.flatMap(e => e.panes)
+  const lead = leadPane(panes)!
+  if (tabs.length === 1 && panes.length === 1) return { kind: 'pane', key: lead.id, pane: lead, lead }
+  const n = (st: string) => panes.filter(p => p.agent && p.status === st).length
+  return {
+    kind: 'space',
+    key,
+    workspace,
+    tabs,
+    panes,
+    lead,
+    leadTab: tabs.find(e => e.panes.includes(lead))!,
+    sum: { blocked: n('blocked'), working: n('working'), done: n('done'), agents: panes.filter(p => p.agent).length },
+    ...(part ? { part } : {}),
+  }
+}
+
 // One row per open space (`machine`: only that one, '' = local).
 export function spaceRows(s: State, machine?: string): Row[] {
-  return workspaceTree(s, machine).map((w) => {
-    const tabs = w.tabs.filter(e => e.panes.length)
-    const panes = tabs.flatMap(e => e.panes)
-    const lead = leadPane(panes)!
-    if (tabs.length === 1 && panes.length === 1) return { kind: 'pane', key: lead.id, pane: lead, lead }
-    const n = (st: string) => panes.filter(p => p.agent && p.status === st).length
-    return {
-      kind: 'space',
-      key: w.workspace.id,
-      workspace: w.workspace,
-      tabs,
-      panes,
-      lead,
-      leadTab: tabs.find(e => e.panes.includes(lead))!,
-      sum: { blocked: n('blocked'), working: n('working'), done: n('done'), agents: panes.filter(p => p.agent).length },
-    }
-  })
+  return workspaceTree(s, machine).map(w => tabsRow(w.workspace, w.tabs.filter(e => e.panes.length), w.workspace.id))
 }
 
 // Group in the list: that of its representative pane. A shell space

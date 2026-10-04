@@ -1,6 +1,6 @@
 import type { Pane } from './types'
 import { isProjectThread } from './paneTitle'
-import { urgency, type RepoRoot } from './spaces'
+import { type RepoRoot, type Row, tabsRow, urgency } from './spaces'
 
 // herdr-projects projects: a coordinator (cwd ~/.herdr-projects/<slug>) and its
 // threads (pane `hp-<slug>-t-NNNN`, worktree of the same name). The project comes
@@ -21,7 +21,7 @@ export function projectToken(tokens: unknown): string | undefined {
   return validProject(t.hp_project) || validProject(t.hp_group)
 }
 
-type ProjectPane = Pick<Pane, 'name' | 'cwd'> & Partial<Pick<Pane, 'project'>>
+type ProjectPane = Pick<Pane, 'name' | 'cwd'> & Partial<Pick<Pane, 'project' | 'hpThread'>>
 
 const norm = (cwd: string | null | undefined) => (cwd || '').replace(/\\/g, '/').replace(/\/+$/, '')
 const THREAD = /^hp-(.+?)-t-(\d{4,})(?:-|$)/i
@@ -40,7 +40,7 @@ export function projectOf(p: ProjectPane): string | null {
 // Thread number (t-0018 -> 18), for a stable order; null: coordinator.
 export function threadNumber(p: ProjectPane): number | null {
   if (!isProjectThread(p)) return null
-  const m = (p.name && THREAD.exec(p.name)) || THREAD_DIR.exec(norm(p.cwd)) || /\/threads\/t-(\d{4,})/.exec(norm(p.cwd))
+  const m = (p.hpThread && /\/t-(\d{4,})$/i.exec(p.hpThread)) || (p.name && THREAD.exec(p.name)) || THREAD_DIR.exec(norm(p.cwd)) || /\/threads\/t-(\d{4,})/.exec(norm(p.cwd))
   return m ? Number(m[m.length - 1]) : null
 }
 
@@ -92,6 +92,24 @@ export function groupByProject<P extends ProjectPane & Pick<Pane, 'status'>>(lis
 // threads (the server also checks that its folder is the project's).
 export function isCoordinator(p: ProjectPane & Pick<Pane, 'agent'>): boolean {
   return Boolean(p.agent && projectOf(p) && !isProjectThread(p))
+}
+
+// herdr-projects can open a thread as a tab of its coordinator's space
+// (`--kind tab`). Such a space is not one card: the coordinator keeps its
+// card (its tabs and those without a thread) and each thread gets its own,
+// made of its tabs. Other multi-tab spaces are left as they are.
+export function splitProjectSpaces(rows: Row[]): Row[] {
+  return rows.flatMap((r) => {
+    if (r.kind !== 'space' || r.tabs.length < 2 || !r.panes.some(isCoordinator)) return [r]
+    const owner = new Map<string, typeof r.tabs>()
+    for (const e of r.tabs) {
+      const thread = e.panes.find(p => p.agent && isProjectThread(p))
+      const key = thread ? `t-${threadNumber(thread) ?? thread.id}` : ''
+      owner.set(key, [...(owner.get(key) || []), e])
+    }
+    if (owner.size < 2 || !owner.has('')) return [r]
+    return [...owner].map(([key, tabs]) => tabsRow(r.workspace, tabs, key ? `${r.workspace.id}|${key}` : r.workspace.id, true))
+  })
 }
 
 // Coordinator of a project on another machine (threads stay under
