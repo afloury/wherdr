@@ -9,8 +9,6 @@ import type { Pane, QueuedMessage, SlashCommand } from '#shared/types'
 import type { DraftAtt } from '~/composables/useDraft'
 import { withReply } from '#shared/replyQuote'
 import { quotesIn, removeQuote } from '~/utils/questionReply'
-import { clearRefs, composeReplies, moveRef, openSheet, removeRef, replyRefs, replyUx, sheet, type SheetItem } from '~/utils/replyUx'
-import { attachQuoteMirror } from '~/utils/quoteMirror'
 import { isAgentCommand } from '#shared/commandScreen'
 import { isSlashCommand } from '#shared/queuedMatch'
 import type { AttachKind } from '#shared/attachments'
@@ -63,60 +61,18 @@ const replyTo = toRef(draft, 'reply')
 // Questions and passages quoted in the text ("> " lines, see utils/questionReply.ts):
 // one chip each above the field, to remove it.
 const quotes = computed(() => quotesIn(text.value))
-// TEMPORARY (t-0199 proposals, ?replyux=): references kept apart from the text
-// (concepts a, c and d), each with its own answer; sent as composeReplies.
-const refs = computed(() => replyRefs(props.paneId))
-const apart = computed(() => replyUx.value === 'a' || replyUx.value === 'c' || replyUx.value === 'd')
-const answered = computed(() => refs.value.filter(r => r.answer.trim()).length)
-const cardsEl = ref<HTMLElement | null>(null)
-// e: the "> " lines of the native field drawn as tokens by a mirror behind it,
-// only while the text holds a quote.
-let mirror: ReturnType<typeof attachQuoteMirror> | null = null
-watch([() => replyUx.value === 'e' && quotes.value.length > 0, ta], ([on, el]) => {
-  if (mirror && (!on || !el)) { mirror.destroy(); mirror = null }
-  if (on && el && !mirror) mirror = attachQuoteMirror(el)
-}, { immediate: true, flush: 'post' })
-// Text set from outside (a quote added, a send): the mirror follows once rendered.
-watch(text, () => nextTick(() => mirror?.render()), { flush: 'post' })
-onBeforeUnmount(() => { mirror?.destroy(); mirror = null })
-// a: one card = the main field is its answer; from two cards on, each has its
-// own field (the answer already typed moves with it, both ways). A new card
-// gets the focus.
-watch(() => refs.value.length, (n, old = 0) => {
-  if (replyUx.value !== 'a') return
-  const first = refs.value[0]
-  if (n === 2 && old === 1 && first && !first.answer.trim() && text.value.trim()) {
-    first.answer = text.value.trim()
-    text.value = ''
-  } else if (n === 1 && old > 1 && first?.answer.trim()) {
-    text.value = [first.answer.trim(), text.value.trim()].filter(Boolean).join('\n')
-    first.answer = ''
-  }
-  if (n <= old) return
-  nextTick(() => {
-    const fields = cardsEl.value?.querySelectorAll('textarea')
-    const last = n > 1 && fields?.length ? fields[fields.length - 1] : null
-    if (last) last.focus()
-    else focusEnd()
-  })
+// Quotes as tokens (Settings › Conversation, utils/quoteTokens.ts): the rich
+// field replaces the plain one while the draft holds a quote. Not while the
+// plain field has the focus: a ">" typed there does not swap fields mid-word.
+const tokensRef = ref<{ focus: () => void, focusEnd: () => void, blur: () => void } | null>(null)
+const taFocused = ref(false)
+const tokensMode = computed(() => quoteTokensActive.value && quotes.value.length > 0 && !taFocused.value)
+// Last token removed while typing in the rich field: the caret goes on in the plain one.
+watch(tokensMode, (on, was) => {
+  if (was && !on && document.activeElement?.closest('.rb-field')) nextTick(focusEnd)
 })
-const drawerOpen = ref(false)
-// a, c: tapping a quote goes back to it (c: to its field in the message).
-function gotoRef(src: string | null, id: string) {
-  const el = document.querySelector<HTMLElement>(`.rc-slot[data-ref="${id}"]`) || (src ? document.querySelector<HTMLElement>(`[data-hit-key="${CSS.escape(src)}"]`) : null)
-  el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  el?.querySelector('textarea')?.focus()
-}
-// d: the sheet sends its answered points as references, then its general word.
-function sendSheet(items: SheetItem[], general: string) {
-  const list = replyRefs(props.paneId)
-  list.splice(0, list.length, ...items.filter(i => i.answer.trim()).map(i => ({ id: i.id, kind: i.question ? 'question' as const : 'passage' as const, text: i.text, answer: i.answer, src: null })))
-  text.value = general
-  sheet.value = null
-  submit()
-}
 
-const canSend = computed(() => Boolean(text.value.trim() || attachments.value.length || (apart.value && answered.value)))
+const canSend = computed(() => Boolean(text.value.trim() || attachments.value.length))
 const readOnly = computed(() => !eventsOpen.value || offlineView.value || paneStale(props.pane))
 // Offline, no Stop: UChatPromptSubmit ignores `disabled` in "streaming" mode.
 const stopMode = computed(() => Boolean(!readOnly.value && props.pane && props.pane.agent && props.pane.status === 'working' && !canSend.value))
@@ -132,10 +88,6 @@ function useSuggestion() {
 const placeholder = computed(() => {
   const p = props.pane
   if (!p) return t('Message to agent…')
-  if (apart.value && refs.value.length) {
-    if (refs.value.length === 1 && replyUx.value !== 'c') return tl('Your answer…', 'Ta réponse…')
-    return tl('A general word (optional)…', 'Un mot général (facultatif)…')
-  }
   if (p.status === 'blocked') return t('Type a reply…')
   if (suggestion.value) return suggestion.value
   if (p.agent) return tl(`Message to ${kindLabel(p.agent)}…`, `Message à ${kindLabel(p.agent)}…`)
@@ -184,8 +136,7 @@ async function submit() {
   // Photos and files go as file paths (`@<path>` for a text file given to
   // Claude): Claude Code and Codex open them themselves.
   const paths = attachments.value.map(a => a.ref || a.path!)
-  const composed = apart.value && refs.value.length ? composeReplies(refs.value, text.value) : text.value.trim()
-  const body = [composed, ...paths].filter(Boolean).join('\n')
+  const body = [text.value.trim(), ...paths].filter(Boolean).join('\n')
   // No marker before a "/" or "!" command: the agent would no longer read it as such
   // (a photo sent alone starts with its path: not a command).
   const reply = isSlashCommand(body) || body.startsWith('!') ? null : replyTo.value
@@ -215,7 +166,6 @@ async function submit() {
     } else queued = await sendMessage(p, props.paneId, msg)
     text.value = ''
     clearAttachments()
-    if (apart.value) clearRefs(props.paneId)
     if (reply) replyTo.value = null
     haptic()
     emit('sent', queued)
@@ -510,8 +460,15 @@ async function runSlash(cmd: string) {
 // panel). The focus is given right away, within the gesture, so that the iPhone
 // opens the keyboard; the cursor is placed once the text is rendered.
 function focusEnd() {
+  if (tokensMode.value) {
+    if (tokensRef.value) tokensRef.value.focusEnd()
+    else nextTick(() => tokensRef.value?.focusEnd())
+    return
+  }
   ta.value?.focus()
   nextTick(() => {
+    // A quote just added: the rich field may have taken over.
+    if (tokensMode.value) return tokensRef.value?.focusEnd()
     const el = ta.value
     if (!el) return
     el.focus()
@@ -520,7 +477,12 @@ function focusEnd() {
   })
 }
 
-defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.blur(), addImages, addFiles, stop })
+defineExpose({
+  focus: () => (tokensMode.value ? tokensRef.value?.focus() : ta.value?.focus()),
+  focusEnd,
+  blur: () => (tokensMode.value ? tokensRef.value?.blur() : ta.value?.blur()),
+  addImages, addFiles, stop,
+})
 </script>
 
 <template>
@@ -583,7 +545,7 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
         <UIcon name="i-lucide-x" />
       </button>
     </div>
-    <div v-if="quotes.length && (replyUx === '0' || replyUx === 'e')" class="composer-quotes" role="list" :aria-label="t('Quoted questions')">
+    <div v-if="quotes.length && !tokensMode" class="composer-quotes" role="list" :aria-label="t('Quoted questions')">
       <span class="composer-quotes-label">↳ {{ quotes.length }}</span>
       <span v-for="q in quotes" :key="q.start" class="composer-quote" role="listitem">
         <span class="composer-quote-text">{{ q.text }}</span>
@@ -592,67 +554,15 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
         </button>
       </span>
     </div>
-    <!-- TEMPORARY (t-0199) a: one card per reference; each its own answer field once there are two. -->
-    <div v-if="replyUx === 'a' && refs.length" ref="cardsEl" class="ra-cards" :class="{ single: refs.length === 1 }" role="list" :aria-label="t('Quoted questions')">
-      <div v-if="refs.length > 1" class="ra-head">
-        <span>↳ {{ tl(`${refs.length} answers`, `${refs.length} réponses`) }}</span><span class="ra-head-n">{{ answered }}/{{ refs.length }}</span>
-      </div>
-      <div v-for="(r, i) in refs" :key="r.id" class="ra-card" :class="{ done: r.answer.trim() }" role="listitem">
-        <div class="ra-card-head">
-          <span class="ra-num">{{ refs.length > 1 ? String(i + 1).padStart(2, '0') : (r.kind === 'question' ? tl('Question', 'Question') : tl('Passage', 'Passage')) }}</span>
-          <button type="button" class="ra-quote" :title="r.text" @mousedown.prevent @click="gotoRef(r.src, r.id)">{{ r.text }}</button>
-          <button v-if="refs.length > 1 && i > 0" type="button" class="rc-x" :aria-label="tl('Move up', 'Monter')" @mousedown.prevent @click="moveRef(paneId, r.id, -1)">
-            <UIcon name="i-lucide-arrow-up" />
-          </button>
-          <button type="button" class="rc-x" :aria-label="t('Remove quote')" @mousedown.prevent @click="removeRef(paneId, r.id)">
-            <UIcon name="i-lucide-x" />
-          </button>
-        </div>
-        <UTextarea
-          v-if="refs.length > 1" v-model="r.answer" :rows="1" :maxrows="4" autoresize variant="none" autocapitalize="sentences"
-          :placeholder="tl('Your answer…', 'Ta réponse…')" class="ra-field" :ui="{ base: 'ra-input' }"
-        />
-      </div>
-    </div>
-    <!-- TEMPORARY (t-0199) c: the answers are written in the conversation; the drawer gathers them. -->
-    <div v-if="replyUx === 'c' && refs.length" class="rc-drawer" :class="{ open: drawerOpen }">
-      <button type="button" class="rc-drawer-bar" :aria-expanded="drawerOpen" @mousedown.prevent @click="drawerOpen = !drawerOpen">
-        <span class="rc-drawer-n">↳ {{ answered }}/{{ refs.length }}</span>
-        <span class="rc-drawer-label">{{ answered === refs.length ? tl(`${answered} answer${answered > 1 ? 's' : ''} ready`, `${answered} réponse${answered > 1 ? 's' : ''} prête${answered > 1 ? 's' : ''}`) : tl(`${refs.length - answered} still to answer`, `encore ${refs.length - answered} à répondre`) }}</span>
-        <UIcon :name="drawerOpen ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'" class="rc-drawer-chev" />
-      </button>
-      <ol v-if="drawerOpen" class="rc-drawer-list">
-        <li v-for="r in refs" :key="r.id">
-          <button type="button" class="rc-drawer-item" @click="gotoRef(r.src, r.id)">
-            <span class="rc-drawer-q">{{ r.text }}</span>
-            <span class="rc-drawer-a" :class="{ empty: !r.answer.trim() }">{{ r.answer.trim() || tl('no answer yet', 'pas encore de réponse') }}</span>
-          </button>
-          <button type="button" class="rc-x" :aria-label="t('Remove quote')" @click="removeRef(paneId, r.id)"><UIcon name="i-lucide-x" /></button>
-        </li>
-      </ol>
-    </div>
-    <!-- TEMPORARY (t-0199) d: one passage stays a light quote; more open the point-by-point sheet. -->
-    <div v-if="replyUx === 'd' && refs.length === 1" class="composer-reply" role="status">
-      <UIcon name="i-lucide-reply" class="composer-reply-icon" />
-      <span class="composer-reply-label">{{ refs[0]!.kind === 'question' ? tl('Replying to a question', 'En réponse à une question') : tl('Replying to a passage', 'En réponse à un passage') }}</span>
-      <span class="composer-reply-text">{{ refs[0]!.text }}</span>
-      <button type="button" class="composer-reply-x" :aria-label="t('Remove quote')" @mousedown.prevent @click="removeRef(paneId, refs[0]!.id)">
-        <UIcon name="i-lucide-x" />
-      </button>
-    </div>
-    <button v-else-if="replyUx === 'd' && refs.length > 1" type="button" class="rd-pending" @click="openSheet(paneId, null, '', [])">
-      <UIcon name="i-lucide-list-checks" /><span>{{ tl(`${refs.length} quotes · answer point by point`, `${refs.length} citations · répondre point par point`) }}</span>
-    </button>
-    <ReplySheet v-if="replyUx === 'd'" :pane-id="paneId" @send="sendSheet" />
     <UChatPrompt
       ref="promptRef" v-model="text" :placeholder="readOnly ? t('Draft saved — sending unavailable offline') : placeholder" variant="outline" color="neutral"
       :rows="1" :maxrows="7" :autofocus="false" :submit-on-enter="enterSends && !slashOpen"
       :enterkeyhint="enterSends ? 'send' : 'enter'" autocapitalize="sentences"
       class="prompt" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"
-      @submit="submit" @keydown="onKeydown" @paste="onPaste"
+      @submit="submit" @keydown="onKeydown" @paste="onPaste" @focus="taFocused = true" @blur="taFocused = false"
     >
-      <template v-if="replyUx === 'b' && quotes.length" #body>
-        <ReplyTokens v-model="text" class="prompt-body" :placeholder="tl('Your answer…', 'Ta réponse…')" />
+      <template v-if="tokensMode" #body>
+        <QuoteTokensField ref="tokensRef" v-model="text" :placeholder="placeholder" :enter-sends="enterSends" @submit="submit" @files="addFiles" />
       </template>
       <template v-if="attachments.length" #header>
         <div class="attachments">

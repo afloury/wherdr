@@ -17,6 +17,7 @@ import { readQuotaDisplay } from '~/utils/quotas'
 import { readShowShells } from '~/utils/terminalVisibility'
 import { paneFallback } from '~/utils/viewMode'
 import { menuAsSheet } from '~/utils/menuRoute'
+import { quoteTokensOn } from '~/utils/quoteTokens'
 import type { QuotaDisplay } from '~/utils/quotas'
 import type { ContentWidth } from '~/utils/contentWidth'
 
@@ -140,6 +141,13 @@ if (import.meta.client) {
 export const typingSpeed = computed(() => effectiveTypingSpeed(typewriterSpeed.value, reducedMotion.value))
 export const typewriterActive = computed(() => typingSpeed.value !== 'off')
 export const encryptedActive = computed(() => encryptedTextActive(typewriterSpeed.value, encryptedText.value, reducedMotion.value))
+// Quoted replies as tokens in the field (utils/quoteTokens.ts): one switch
+// for the computer (on by default), one for the phone (off by default).
+export const quoteTokensComputer = ref(ls.get('quoteTokensComputer') !== '0')
+watch(quoteTokensComputer, v => ls.set('quoteTokensComputer', v ? '1' : '0'))
+export const quoteTokensPhone = ref(ls.get('quoteTokensPhone') === '1')
+watch(quoteTokensPhone, v => ls.set('quoteTokensPhone', v ? '1' : '0'))
+export const quoteTokensActive = computed(() => quoteTokensOn({ coarse: coarse.value, onComputer: quoteTokensComputer.value, onPhone: quoteTokensPhone.value }))
 // Account quotas (read by QuotaStrip, also shown in the machine headers).
 export const homeQuotas = ref<Quotas | null>(null)
 export const fontSize = ref(Number(ls.get('fontSize')) || 12)

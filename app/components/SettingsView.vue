@@ -72,6 +72,8 @@ const countersOn = showCounters
 const quotasOn = showQuotas
 const autoReorderOn = autoReorderReady
 const encryptedOn = encryptedText
+const tokensComputerOn = quoteTokensComputer
+const tokensPhoneOn = quoteTokensPhone
 // Forced off if the system reduces motion: shown disabled.
 const typewriter = computed({ get: () => typingSpeed.value, set: (v: TypingSpeed) => { typewriterSpeed.value = v } })
 const typingItems = computed(() => [
@@ -386,6 +388,20 @@ onMounted(() => {
               <USwitch v-model="encryptedOn" :disabled="!typewriterActive" color="success" size="xl" />
             </label>
             <TypingPreview v-if="activeSection === 'conversation'" />
+          </div>
+          <div class="settings-group">
+            <h3>{{ tl('Quoted replies', 'Réponses citées') }}</h3>
+            <p class="muted settings-lead">{{ tl('Answer several questions or passages of an agent in one message: ↳ Reply quotes them in the field, each quote a compact token above its answer.', 'Réponds à plusieurs questions ou passages d’un agent dans un seul message : ↳ Répondre les cite dans le champ, chaque citation en jeton compact au-dessus de sa réponse.') }}</p>
+            <QuoteTokensPreview v-if="activeSection === 'conversation'" />
+            <label class="settings-toggle">
+              <span><b>{{ tl('On a computer', 'Sur ordinateur') }}</b><small>{{ tl('On by default.', 'Activé par défaut.') }}</small></span>
+              <USwitch v-model="tokensComputerOn" color="success" size="xl" />
+            </label>
+            <label class="settings-toggle">
+              <span><b>{{ tl('On a phone', 'Sur téléphone') }}</b><small>{{ tl('Off by default: on iOS, moving the caret around the quotes is unreliable (a known limit of rich fields in Safari). Turn it on knowingly.', 'Désactivé par défaut : sur iOS, déplacer le curseur autour des citations est peu fiable (limite connue des champs riches dans Safari). À activer en connaissance de cause.') }}</small></span>
+              <USwitch v-model="tokensPhoneOn" color="success" size="xl" />
+            </label>
+            <p class="muted settings-hint">{{ tl('Off: the quotes stay “> ” lines in the plain field, with a chip above to remove each. Saved on this device.', 'Désactivé : les citations restent des lignes « > » dans le champ simple, avec une puce au-dessus pour retirer chacune. Enregistré sur cet appareil.') }}</p>
           </div>
         </div>
 

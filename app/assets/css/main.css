@@ -2788,46 +2788,16 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 }
 .composer-quote-x:hover { color: var(--text); }
 .composer-quote-x .iconify, .composer-quote-x svg { width: 12px; height: 12px; }
-/* Sent message: each quoted question above its answer. */
-.msg-q {
-  display: block; margin: 2px 0; padding: 1px 0 1px 9px; border-left: 2px solid var(--accent);
-  font-size: 13.5px; line-height: 1.4; color: var(--text-2);
+/* Field with the quotes as tokens (components/QuoteTokensField.vue): same
+   text metrics as .prompt-input; each quote one compact, non-editable line. */
+.rb-field {
+  min-height: 38px; max-height: 40vh; overflow-y: auto; padding: 8px 6px 4px;
+  font-size: 16px; line-height: 1.45; color: var(--text); outline: none;
+  white-space: pre-wrap; overflow-wrap: anywhere; cursor: text;
 }
-.msg-q:first-child { margin-top: 0; }
-/* TEMPORARY (t-0199 proposals, ?replyux=a|b|c|d, utils/replyUx.ts). */
-.rc-x {
-  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
-  color: var(--dim); background: none; border: 0; border-radius: 0; cursor: pointer;
-}
-.rc-x:hover { color: var(--text); }
-.rc-x .iconify, .rc-x svg { width: 13px; height: 13px; }
-/* a: cards in the composer. */
-.ra-cards { display: flex; flex-direction: column; gap: 0; margin: 0 0 6px; max-height: 42dvh; overflow-y: auto; border: 1px solid var(--line); overscroll-behavior: contain; }
-.ra-cards.single { border: 0; max-height: none; overflow: visible; }
-.ra-head {
-  position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; padding: 6px 10px;
-  font: 500 10px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent);
-  background: var(--bg); border-bottom: 1px solid var(--line);
-}
-.ra-head-n { color: var(--dim); }
-.ra-card { border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 5%, transparent); }
-.ra-card + .ra-card { border-top: 1px solid var(--line); }
-.ra-cards.single .ra-card { border: 1px solid var(--line); border-left: 2px solid var(--accent); }
-.ra-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 2px 2px 0 10px; }
-.ra-num { flex: none; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
-.ra-card.done .ra-num { color: var(--accent); }
-.ra-quote {
-  flex: 1; min-width: 0; padding: 4px 0; text-align: left; font-size: 12.5px; line-height: 1.35; color: var(--text-2);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: none; border: 0; cursor: pointer;
-}
-.ra-quote:hover { color: var(--text); }
-.ra-field { display: block; padding: 0 10px 6px 10px; }
-.ra-input { padding: 2px 0 !important; font-size: 15px; line-height: 1.4; color: var(--text); }
-/* b: one field, quotes as tokens. */
-.rb-field { min-height: 44px; max-height: 40dvh; overflow-y: auto; padding: 10px 12px 4px; font-size: 16px; line-height: 1.45; color: var(--text); outline: none; white-space: pre-wrap; overflow-wrap: anywhere; }
 .rb-field:empty::before { content: attr(data-placeholder); color: var(--dim); }
 .rb-token {
-  display: flex; align-items: center; gap: 6px; max-width: 100%; margin: 4px 0 2px; padding: 0 0 0 8px; height: 26px;
+  display: flex; align-items: center; gap: 6px; max-width: 100%; height: 26px; margin: 4px 0 2px; padding: 0 0 0 8px;
   border: 1px solid var(--line); border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent);
   -webkit-user-select: none; user-select: none; cursor: default;
 }
@@ -2836,78 +2806,82 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .rb-token-text { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.3; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rb-token-x { flex: none; width: 26px; height: 24px; font-size: 11px; color: var(--dim); background: none; border: 0; cursor: pointer; }
 .rb-token-x:hover { color: var(--text); }
-/* c: answer in place, in the message; drawer above the field. */
-.rc-slot { margin: 4px 0 12px; }
-li > .rc-slot { margin-left: 0; }
-.rc-inline { border: 1px solid var(--line); border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 5%, transparent); font-size: 15px; }
-.rc-inline.done { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
-.rc-inline-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 2px 2px 0 10px; }
-.rc-inline-label { flex: none; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
-.rc-inline-quote { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rc-inline-head .rc-x { margin-left: auto; }
-.rc-inline-field { display: block; padding: 0 10px 6px; }
-.rc-inline-input { padding: 2px 0 !important; font-size: 15px; line-height: 1.4; color: var(--text); }
-.rc-drawer { margin: 0 0 6px; border: 1px solid var(--line); border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
-.rc-drawer-bar { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 8px 0 10px; background: none; border: 0; cursor: pointer; text-align: left; }
-.rc-drawer-n { flex: none; font: 600 11px/1 var(--mono); letter-spacing: .04em; color: var(--accent); }
-.rc-drawer-label { flex: 1; min-width: 0; font: 500 10px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
-.rc-drawer-chev { flex: none; width: 14px; height: 14px; color: var(--dim); }
-.rc-drawer-list { max-height: 30dvh; overflow-y: auto; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
-.rc-drawer-list li { display: flex; align-items: center; }
-.rc-drawer-list li + li { border-top: 1px solid var(--line); }
-.rc-drawer-item { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; text-align: left; background: none; border: 0; cursor: pointer; }
-.rc-drawer-q { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rc-drawer-a { font-size: 13.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rc-drawer-a.empty { font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ochre, var(--dim)); }
-/* d: point by point. */
-.rd-open .iconify, .rd-open svg { width: 13px; height: 13px; }
-.rd-pending {
-  display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; margin: 0 0 6px; padding: 0 10px;
-  font: 500 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent);
-  border: 1px solid var(--line); border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); cursor: pointer;
+/* Settings preview of quoted replies (components/QuoteTokensPreview.vue):
+   one 10 s timeline shared by every piece; the static styles are the composed
+   field (reduced motion). */
+.qt-preview { margin: 14px 0 0; border: 1px solid var(--line); background: var(--bg); --qt-d: 10s; }
+.qt-preview + .settings-toggle { margin-top: 14px; }
+.settings-lead { margin: 0 2px; font-size: 13.5px; line-height: 1.45; }
+.qt-preview figcaption {
+  display: flex; align-items: center; height: 36px; padding: 0 14px; border-bottom: 1px solid var(--line);
+  font: 500 10.5px/1 var(--mono); letter-spacing: .13em; text-transform: uppercase; color: var(--muted);
 }
-.rd-pending .iconify, .rd-pending svg { width: 14px; height: 14px; }
-.rd-sheet { display: flex; flex-direction: column; gap: 10px; }
-.rd-meta { display: flex; gap: 6px; margin: 0; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
-.rd-meta .sep { opacity: .6; }
-.rd-meta-n { color: var(--accent); }
-.rd-points { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); }
-.rd-point + .rd-point { border-top: 1px solid var(--line); }
-.rd-point { padding: 8px 10px; }
-.rd-point.open { background: color-mix(in srgb, var(--accent) 4%, transparent); }
-.rd-point-head { display: flex; gap: 10px; }
-.rd-num { flex: none; padding-top: 3px; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; color: var(--dim); }
-.rd-point.q .rd-num, .rd-point.done .rd-num { color: var(--accent); }
-.rd-text { flex: 1; min-width: 0; font-size: 14px; line-height: 1.45; color: var(--text-2); }
-.rd-point.q .rd-text { color: var(--text); }
-.rd-field { display: block; margin: 6px 0 0 26px; border-left: 2px solid var(--accent); padding-left: 8px; }
-.rd-input { padding: 3px 0 !important; font-size: 15px; line-height: 1.4; color: var(--text); }
-.rd-add { margin: 4px 0 0 26px; padding: 2px 0; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--dim); background: none; border: 0; cursor: pointer; }
-.rd-add:hover { color: var(--accent); }
-.rd-foot { flex: 1; min-width: 0; display: flex; align-items: flex-end; gap: 8px; }
-.rd-point.sub { padding-left: 36px; padding-top: 4px; border-top-style: dashed; }
-.rd-point.sub .rd-text { font-size: 13.5px; }
-.rd-general { flex: 1; min-width: 0; border: 1px solid var(--line); padding: 4px 8px; }
-.rd-send { flex: none; border-radius: 0; font: 600 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; height: 36px; }
-/* e: native field, "> " lines drawn as tokens by a mirror behind it
-   (utils/quoteMirror.ts). Nothing here may change a line's size. */
-.qm-host { position: relative; }
-.qm-on {
-  position: relative; z-index: 1; background: transparent !important;
-  color: transparent !important; -webkit-text-fill-color: transparent; caret-color: var(--text);
+.qt-stage { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 16px; font-size: 13.5px; line-height: 1.45; color: var(--text); }
+.qt-conv { display: grid; min-height: 98px; }
+.qt-conv > * { grid-area: 1 / 1; }
+.qt-agent p { margin: 0 0 4px; }
+.qt-tag {
+  display: inline-flex; align-items: center; height: 17px; margin-left: 4px; padding: 0 5px; vertical-align: 1px;
+  font: 500 9px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); background: color-mix(in srgb, var(--accent) 7%, transparent);
 }
-.qm-on::selection { background: color-mix(in srgb, var(--accent) 32%, transparent); }
-.qm-mirror { position: absolute; z-index: 0; margin: 0; overflow: hidden; pointer-events: none; color: var(--text); }
-.qm-q {
-  margin: 0 calc(-1 * var(--qm-pr)) 0 calc(-1 * var(--qm-pl)); padding: 0 var(--qm-pr) 0 var(--qm-pl);
-  color: var(--text-2); background: color-mix(in srgb, var(--accent) 9%, transparent);
-  box-shadow: inset 2px 0 0 var(--accent);
+.qt-sent {
+  align-self: end; justify-self: end; display: flex; flex-direction: column; gap: 1px; max-width: 80%; padding: 7px 10px;
+  background: var(--surface); border: 1px solid var(--line); opacity: 0;
 }
-.qm-q.first { box-shadow: inset 2px 0 0 var(--accent), inset 0 1px 0 color-mix(in srgb, var(--accent) 22%, transparent); }
-.qm-q.last { box-shadow: inset 2px 0 0 var(--accent), inset 0 -1px 0 color-mix(in srgb, var(--accent) 22%, transparent); }
-.qm-q.first.last { box-shadow: inset 2px 0 0 var(--accent), inset 0 1px 0 color-mix(in srgb, var(--accent) 22%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--accent) 22%, transparent); }
-.qm-p { position: relative; color: transparent; }
-.qm-p::before { content: "↳"; position: absolute; left: 0; top: 0; color: var(--accent); font-family: var(--mono); font-size: .78em; }
+.qt-sent-q { padding-left: 7px; border-left: 2px solid var(--accent); font-size: 12px; color: var(--text-2); }
+.qt-field { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 92px; padding: 8px 44px 8px 8px; border: 1px solid var(--accent); }
+.qt-ph { position: absolute; left: 9px; top: 8px; color: var(--dim); opacity: 0; }
+.qt-tok {
+  display: flex; align-items: center; gap: 6px; max-width: 100%; height: 22px; padding: 0 6px 0 7px;
+  border: 1px solid var(--line); border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent);
+  font-size: 11.5px; color: var(--text-2); white-space: nowrap; overflow: hidden;
+}
+.qt-tok b { font: 500 9.5px/1 var(--mono); color: var(--accent); }
+.qt-tok i { font-style: normal; font-size: 10px; color: var(--dim); margin-left: 4px; }
+.qt-send {
+  position: absolute; right: 7px; bottom: 7px; display: grid; place-items: center; width: 26px; height: 26px;
+  font: 600 14px/1 var(--mono); color: var(--bg); background: var(--text);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .qt-tag.one { animation: qt-tag-one var(--qt-d) infinite; }
+  .qt-tag.two { animation: qt-tag-two var(--qt-d) infinite; }
+  .qt-tok.one { animation: qt-tok-one var(--qt-d) infinite; }
+  .qt-tok.two { animation: qt-tok-two var(--qt-d) infinite; }
+  .qt-ans.one { animation: qt-ans-one var(--qt-d) infinite; }
+  .qt-ans.two { animation: qt-ans-two var(--qt-d) infinite; }
+  .qt-ph { animation: qt-ph var(--qt-d) infinite; }
+  .qt-send { animation: qt-send var(--qt-d) infinite; }
+  .qt-sent { animation: qt-sent var(--qt-d) infinite; }
+  .qt-agent { animation: qt-agent var(--qt-d) infinite; }
+}
+/* Untouched tag: plain, dim. */
+@keyframes qt-tag-one {
+  0%, 7% { color: var(--dim); border-color: var(--line); background: none; }
+  9% { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+  12%, 70% { color: var(--accent); }
+  74%, 100% { color: var(--dim); border-color: var(--line); background: none; }
+}
+@keyframes qt-tag-two {
+  0%, 32% { color: var(--dim); border-color: var(--line); background: none; }
+  34% { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+  37%, 70% { color: var(--accent); }
+  74%, 100% { color: var(--dim); border-color: var(--line); background: none; }
+}
+@keyframes qt-tok-one { 0%, 9% { opacity: 0; transform: translateY(4px); } 12%, 70% { opacity: 1; transform: none; } 73%, 100% { opacity: 0; } }
+@keyframes qt-tok-two { 0%, 34% { opacity: 0; transform: translateY(4px); } 37%, 70% { opacity: 1; transform: none; } 73%, 100% { opacity: 0; } }
+@keyframes qt-ans-one { 0%, 15% { clip-path: inset(0 100% 0 0); animation-timing-function: steps(5, end); } 24%, 70% { clip-path: inset(0 0 0 0); opacity: 1; } 73%, 100% { opacity: 0; } }
+@keyframes qt-ans-two { 0%, 40% { clip-path: inset(0 100% 0 0); animation-timing-function: steps(6, end); } 52%, 70% { clip-path: inset(0 0 0 0); opacity: 1; } 73%, 100% { opacity: 0; } }
+@keyframes qt-ph { 0%, 8% { opacity: 1; } 10%, 72% { opacity: 0; } 75%, 100% { opacity: 1; } }
+@keyframes qt-send { 0%, 64% { background: var(--text); } 67% { background: var(--accent); transform: scale(.9); } 70%, 100% { background: var(--text); transform: none; } }
+@keyframes qt-sent { 0%, 70% { opacity: 0; transform: translateY(14px); } 75%, 94% { opacity: 1; transform: none; } 98%, 100% { opacity: 0; } }
+@keyframes qt-agent { 0%, 70% { opacity: 1; transform: none; } 75%, 94% { opacity: 0; transform: translateY(-14px); } 98%, 100% { opacity: 1; transform: none; } }
+/* Sent message: each quoted question above its answer. */
+.msg-q {
+  display: block; margin: 2px 0; padding: 1px 0 1px 9px; border-left: 2px solid var(--accent);
+  font-size: 13.5px; line-height: 1.4; color: var(--text-2);
+}
+.msg-q:first-child { margin-top: 0; }
 .msg-flash { animation: msg-flash 1.6s ease-out; }
 @keyframes msg-flash {
   0%, 30% { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 16%, transparent); }

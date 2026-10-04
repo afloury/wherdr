@@ -23,6 +23,13 @@ First public release.
   selected passage with the floating **Reply** button, stack after it in order. Each quote shows
   as a chip above the field with ✕ to remove it, a question already quoted is marked **✓ Quoted**
   and never added twice, and the sent message shows each quote above its answer.
+- Conversation: quoted replies as tokens. While the draft holds quotes, each one shows in the
+  field as a compact, non-editable token (`↳ quote ✕`) with its answer typed below; the text
+  sent, the draft kept per conversation and on reload, Enter / Shift+Enter, paste (plain text
+  only, images attached), drop, undo / redo and instant sending work as in the plain field.
+  Settings › Conversation › **Quoted replies** shows an animated preview and has one switch per
+  device type: **On a computer** (on by default) and **On a phone** (off by default: on iOS,
+  moving the caret around the tokens is unreliable). Off, the quotes stay `> ` lines with chips.
 - omp: thinking level next to the model in the message field, as for Claude Code and Codex. Read
   from omp's transcript (the level chosen, so `auto` stays `auto` after omp resolves it for a
   turn), else from its status line. Changed with omp's own ⇧⇥ cycle (off → auto → the model's

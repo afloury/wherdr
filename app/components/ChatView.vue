@@ -11,8 +11,7 @@ import { canCancelQueued, lostPhotosText, restoreDraft } from '~/utils/queuedCan
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
-import { addQuote, isQuoted, questionIn, withQuestions } from '~/utils/questionReply'
-import { addRef, hasRef, openSheet, pointsOf, replyRefs, replyUx } from '~/utils/replyUx'
+import { addQuote, isQuoted, withQuestions } from '~/utils/questionReply'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -448,73 +447,22 @@ function replyTo(key: string) {
   haptic()
   emit('reply')
 }
-// TEMPORARY (t-0199 proposals, ?replyux=): where a quote goes depends on the
-// concept; "0" and "b" keep the quotes in the draft text.
-function quote(text: string, kind: 'question' | 'passage' = 'passage', src: string | null = null) {
+function quote(text: string) {
   const draft = useDraft(props.pane.id)
+  const next = addQuote(draft.text, text)
   selReply.value = null
   window.getSelection()?.removeAllRanges()
+  if (next !== null) draft.text = next
   haptic()
-  const ux = replyUx.value
-  if (ux === '0' || ux === 'b' || ux === 'e') {
-    const next = addQuote(draft.text, text)
-    if (next !== null) draft.text = next
-    emit('quote')
-    return
-  }
-  const b = src ? blocks.value.find(x => x.key === src) : null
-  // d: a question opens the point-by-point sheet on it; one passage stays a light
-  // quote above the field, a second one opens the sheet with both.
-  if (ux === 'd' && b?.k === 'assistant' && (kind === 'question' || replyRefs(props.pane.id).length)) {
-    // The light quote's answer is the main field: it goes along into the sheet.
-    const [single, more] = replyRefs(props.pane.id)
-    if (single && !more && !single.answer.trim() && draft.text.trim()) { single.answer = draft.text.trim(); draft.text = '' }
-    if (kind === 'passage') addRef(props.pane.id, text, kind, src)
-    openSheet(props.pane.id, src, b.time || '', kind === 'question' ? pointsOf(b.html, questionIn) : [], text)
-    return
-  }
-  const r = addRef(props.pane.id, text, kind, src)
-  if (ux === 'c' && r) nextTick(() => placeInline(r.id))
-  else emit('quote')
+  emit('quote')
 }
-// Concept c: one answer field under each question / passage, in the message.
-const inlineSlots = reactive<Record<string, HTMLElement>>({})
-const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase()
-function placeInline(focusId?: string) {
-  if (replyUx.value !== 'c') return
-  const refs = replyRefs(props.pane.id)
-  for (const id of Object.keys(inlineSlots)) {
-    if (!refs.some(r => r.id === id) || !inlineSlots[id]!.isConnected) { inlineSlots[id]!.remove(); delete inlineSlots[id] }
-  }
-  for (const r of refs) {
-    if (inlineSlots[r.id] || !r.src) continue
-    const host = msgEl(r.src)
-    const want = norm(r.text)
-    const anchor = [...(host?.querySelectorAll<HTMLElement>('.md-body p, .md-body li') || [])].find(el => norm(el.textContent || '').includes(want))
-    if (!anchor) continue
-    const slot = document.createElement('div')
-    slot.className = 'rc-slot'
-    slot.dataset.ref = r.id
-    anchor.after(slot)
-    inlineSlots[r.id] = slot
-  }
-  if (focusId) nextTick(() => inlineSlots[focusId]?.querySelector('textarea')?.focus())
-}
-watch([() => replyRefs(props.pane.id).length, blocks], () => nextTick(() => placeInline()), { flush: 'post' })
-// Concept d: "Point by point" under a reply opens the sheet with its points.
-function openPoints(key: string) {
-  const b = blocks.value.find(x => x.key === key)
-  if (b?.k === 'assistant') openSheet(props.pane.id, key, b.time || '', pointsOf(b.html, questionIn))
-}
-// "Quoted" state of the question buttons, read from the draft (or the references).
+// "Quoted" state of the question buttons, read from the draft.
 function syncQuoted() {
   const text = useDraft(props.pane.id).text
-  const refs = replyRefs(props.pane.id)
-  const quoted = (q: string) => (['0', 'b', 'e'].includes(replyUx.value) ? isQuoted(text, q) : hasRef(refs, q))
-  for (const btn of listEl.value?.querySelectorAll<HTMLElement>('.q-reply') || []) btn.classList.toggle('quoted', quoted(btn.dataset.q || ''))
+  for (const btn of listEl.value?.querySelectorAll<HTMLElement>('.q-reply') || []) btn.classList.toggle('quoted', isQuoted(text, btn.dataset.q || ''))
 }
-watch([() => useDraft(props.pane.id).text, () => replyRefs(props.pane.id).length, blocks], () => nextTick(syncQuoted), { flush: 'post' })
-const selReply = ref<{ text: string, key: string, sig: string, top: number, left: number } | null>(null)
+watch([() => useDraft(props.pane.id).text, blocks], () => nextTick(syncQuoted), { flush: 'post' })
+const selReply = ref<{ text: string, sig: string, top: number, left: number } | null>(null)
 const selBtn = ref<HTMLElement | null>(null)
 const isTouch = () => window.matchMedia('(pointer: coarse)').matches
 // Current selection in an agent message: text, end (last line) and signature.
@@ -536,7 +484,7 @@ function showSelectionReply() {
   if (!cur || !listEl.value) { selReply.value = null; return }
   const view = listEl.value.getBoundingClientRect()
   const pos = selectionReplyPos(cur.end, { width: selBtn.value?.offsetWidth || 104, height: selBtn.value?.offsetHeight || 32 }, { width: window.innerWidth, top: Math.max(0, view.top), bottom: Math.min(window.innerHeight, view.bottom) }, isTouch())
-  selReply.value = pos ? { text: cur.text, key: cur.host.dataset.hitKey || '', sig: cur.sig, ...pos } : null
+  selReply.value = pos ? { text: cur.text, sig: cur.sig, ...pos } : null
 }
 const settler = createSelectionSettler({ show: showSelectionReply, hide: () => { selReply.value = null }, touch: isTouch })
 const onSelDown = (e: PointerEvent) => { if (e.button === 0 && !(e.target as Element | null)?.closest?.('.sel-reply')) settler.down() }
@@ -582,7 +530,7 @@ async function copyText(text: string) {
 function onListClick(e: MouseEvent) {
   const target = e.target as HTMLElement
   const question = target.closest?.('.q-reply') as HTMLElement | null
-  if (question?.dataset.q) { e.preventDefault(); quote(question.dataset.q, 'question', question.closest<HTMLElement>('[data-hit-key]')?.dataset.hitKey || null); return }
+  if (question?.dataset.q) { e.preventDefault(); quote(question.dataset.q); return }
   const pathEl = target.closest?.('.md-body .md-path') as HTMLElement | null
   if (pathEl) { e.preventDefault(); openPathMenu(pathEl); return }
   const cmdEl = target.closest?.('.md-body .md-cmd') as HTMLElement | null
@@ -1073,9 +1021,6 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   <button type="button" class="msg-reply" @click="replyTo(b.key)">
                     <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
                   </button>
-                  <button v-if="replyUx === 'd'" type="button" class="msg-reply rd-open" @click="openPoints(b.key)">
-                    <UIcon name="i-lucide-list-checks" /><span>{{ tl('Point by point', 'Point par point') }}</span>
-                  </button>
                 </div>
               </template>
 
@@ -1132,9 +1077,6 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 </UTooltip>
                 <button v-if="b.reply && !readOnly" type="button" class="msg-reply" @click="replyTo(b.reply)">
                   <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
-                </button>
-                <button v-if="b.reply && !readOnly && replyUx === 'd'" type="button" class="msg-reply rd-open" @click="openPoints(b.reply)">
-                  <UIcon name="i-lucide-list-checks" /><span>{{ tl('Point by point', 'Point par point') }}</span>
                 </button>
                 <span>{{ b.text }}</span>
               </div>
@@ -1195,16 +1137,11 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         <Teleport to="body">
           <button
             v-if="selReply" ref="selBtn" type="button" class="sel-reply" :style="{ top: `${selReply.top}px`, left: `${selReply.left}px` }"
-            :aria-label="t('Reply to this passage')" @pointerdown.prevent @mousedown.prevent @click="quote(selReply.text, 'passage', selReply.key)"
+            :aria-label="t('Reply to this passage')" @pointerdown.prevent @mousedown.prevent @click="quote(selReply.text)"
           >
             <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
           </button>
         </Teleport>
-        <template v-if="replyUx === 'c'">
-          <Teleport v-for="r in replyRefs(pane.id).filter(x => inlineSlots[x.id])" :key="r.id" :to="inlineSlots[r.id]">
-            <ReplyInline :pane-id="pane.id" :item="r" />
-          </Teleport>
-        </template>
         <div v-if="queuedList.length || liveShell" class="queued-list">
           <!-- Already sent (visible as sent on screen), not yet in the transcript. -->
           <div v-for="q in queuedList.filter(x => x.phase === 'sent')" :key="q.id" class="msg-user-wrap">
