@@ -7,8 +7,8 @@ describe('Herdr ID of a pane', () => {
     expect(paneIdLine('w1Z:p1', 'Pi')).toBe('w1Z:p1')
   })
   it('remote: without the machine prefix, machine shown', () => {
-    expect(herdrPaneId('f27df2ea~w3:p2')).toBe('w3:p2')
-    expect(paneIdLine('f27df2ea~w3:p2', 'Machine B')).toBe('w3:p2 · Machine B')
-    expect(paneIdLine('f27df2ea~w3:p2')).toBe('w3:p2')
+    expect(herdrPaneId('0a1b2c3d~w3:p2')).toBe('w3:p2')
+    expect(paneIdLine('0a1b2c3d~w3:p2', 'Machine B')).toBe('w3:p2 · Machine B')
+    expect(paneIdLine('0a1b2c3d~w3:p2')).toBe('w3:p2')
   })
 })

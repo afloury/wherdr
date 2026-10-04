@@ -192,11 +192,23 @@ async function submit() {
   const msg = withReply(reply, body, language)
   if (!msg || sending.value) return
   const p = props.pane
+  // omp question with "Other": the message is its free answer.
+  const prompt = p && p.status === 'blocked' ? p.prompt : null
+  const free = prompt ? prompt.options.findIndex(o => o.free) : -1
+  // A message for the agent: its bubble at once, the field emptied, the send
+  // after any earlier one still going (see composables/useOutbox.ts). Failed:
+  // the bubble says "Not sent" with Retry / Cancel, nothing is lost.
+  if (free < 0 && viaPrompt(p) && !isSlashCommand(msg)) {
+    text.value = ''
+    clearAttachments()
+    if (reply) replyTo.value = null
+    haptic()
+    emit('sent', null)
+    outboxSend(p, props.paneId, msg).then(() => emit('sent', null), (err: Error) => toast(err.message, true))
+    return
+  }
   sending.value = true
   try {
-    // omp question with "Other": the message is its free answer.
-    const prompt = p && p.status === 'blocked' ? p.prompt : null
-    const free = prompt ? prompt.options.findIndex(o => o.free) : -1
     let queued: QueuedMessage | null = null
     if (prompt && free >= 0) {
       if (!(await choose(props.paneId, free, prompt.options[free]!.label, { text: msg, question: prompt.question }))) return

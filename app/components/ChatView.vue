@@ -21,7 +21,7 @@ import { findReplyOrigin, parseReply, replyTarget, type ReplyTarget } from '#sha
 import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
 import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } from '~/utils/ompTool'
 
-const props = defineProps<{ pane: Pane, localQueued: QueuedMessage[] }>()
+const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
 const route = useRoute()
 const emit = defineEmits<{ gotoTerm: [], restored: [], reply: [], quote: [], sent: [queued: QueuedMessage | null] }>()
 const searchOpen = defineModel<boolean>('search', { default: false })
@@ -721,8 +721,7 @@ const shellDuration = computed(() => {
 })
 const queuedList = computed(() => {
   const p = props.pane
-  const mine = readOnly.value ? [] : [...(p.queued || [])]
-  for (const q of props.localQueued) if (!mine.some(x => x.id === q.id)) mine.push(q)
+  const mine = withOutbox(readOnly.value ? [] : p.queued || [], props.localQueued)
   const memory = rememberSent(p.id, mine)
   const replies = blocks.value.filter(b => b.k === 'assistant')
   return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory }).map((q) => {
@@ -751,8 +750,14 @@ const pendingParts = (q: { srcs: string[], missing: number, body: string, files:
 // field. Already read in the meantime: the server refuses, we say so.
 const canCancel = computed(() => !readOnly.value && canCancelQueued(props.pane))
 const cancelling = ref<string | null>(null)
-async function cancelQueued(q: { id: string, raw: string, mine: boolean }) {
+async function cancelQueued(q: { id: string, raw: string, mine: boolean, local?: boolean }) {
   if (cancelling.value) return
+  // Never reached the server: the app's copy goes back into the field.
+  if (q.local) {
+    restoreDraft(useDraft(props.pane.id), outboxDrop(props.pane.id, q.id) || q.raw)
+    emit('restored')
+    return
+  }
   cancelling.value = q.id
   haptic()
   try {
@@ -771,12 +776,13 @@ async function cancelQueued(q: { id: string, raw: string, mine: boolean }) {
 }
 // "Retry" on a message that could not be sent: held again by the server.
 const retrying = ref<string | null>(null)
-async function retryQueued(q: { id: string }) {
+async function retryQueued(q: { id: string, local?: boolean }) {
   if (retrying.value) return
   retrying.value = q.id
   haptic()
   try {
-    await api('/api/requeue', { pane_id: props.pane.id, id: q.id })
+    if (q.local) await outboxRetry(props.pane, props.pane.id, q.id)
+    else await api('/api/requeue', { pane_id: props.pane.id, id: q.id })
   } catch (err) {
     toast((err as Error).message, true)
   } finally {
@@ -1266,8 +1272,8 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               </button>
             </div>
             <div v-else class="queued-tag">
-              <UIcon name="i-lucide-clock" /><span>{{ t('Queued · ') }}{{ q.state === 'held' ? (q.reason === 'busy' ? t('will be sent when the agent’s input is free') : t('will be sent when the menu closes')) : queuedWhy }}</span>
-              <button v-if="(canCancel || q.state) && q.raw" type="button" class="queued-cancel" :disabled="Boolean(cancelling)" @click="cancelQueued(q)">
+              <UIcon name="i-lucide-clock" /><span>{{ t('Queued · ') }}{{ q.state === 'sending' ? t('sending…') : q.state === 'held' ? (q.reason === 'busy' ? t('will be sent when the agent’s input is free') : t('will be sent when the menu closes')) : queuedWhy }}</span>
+              <button v-if="q.state !== 'sending' && (canCancel || q.state === 'held') && q.raw" type="button" class="queued-cancel" :disabled="Boolean(cancelling)" @click="cancelQueued(q)">
                 <UIcon :name="cancelling === q.id ? 'i-lucide-loader-circle' : 'i-lucide-undo-2'" :class="{ spin: cancelling === q.id }" />{{ t('Cancel') }}
               </button>
             </div>

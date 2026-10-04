@@ -213,19 +213,16 @@ function onPrefill(prefix: string) {
   composer.value?.focusEnd()
 }
 
-// Messages just sent, shown without waiting for the next state.
-const localQueued = ref<QueuedMessage[]>([])
+// Messages just sent (or still sending), shown without waiting for the next
+// state (see composables/useOutbox.ts).
+const localQueued = computed(() => outboxFor(props.paneId))
 function onSent(q: QueuedMessage | null) {
-  if (q) localQueued.value = [...localQueued.value, q]
+  if (q) outboxAdd(props.paneId, q)
   chatRef.value?.scrollToEnd(true)
   chatRef.value?.reload()
 }
-// As soon as the server knows them (or after 10 s), the server state wins.
-watch(pane, (p) => {
-  if (!localQueued.value.length) return
-  const known = new Set((p?.queued || []).map(q => q.id))
-  localQueued.value = localQueued.value.filter(q => !known.has(q.id) && Date.now() - (q.at || 0) < 10000)
-})
+// As soon as the server knows them (or 10 s after its answer), the server state wins.
+watch(pane, p => outboxPrune(props.paneId, p?.queued || []))
 
 const prompt = computed(() => (pane.value && pane.value.status === 'blocked' && pane.value.prompt && pane.value.prompt.options ? pane.value.prompt : null))
 const screen = computed(() => knownScreen(pane.value))

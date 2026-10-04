@@ -10,6 +10,12 @@ First public release.
 
 ### Added
 
+- Conversation: a message shows the instant Send is tapped, as a dotted **Queued · sending…**
+  bubble, and the field (photos and files included) empties at once. The bubble becomes the
+  normal message when the agent takes it, without a duplicate or a jump (the app's id is kept by
+  the server for its record), or shows **Queued** if the agent is busy. A request that fails
+  leaves it as **Not sent** with Retry / Cancel, nothing lost. Messages typed in a row go out one
+  after the other, in order. `/` commands and answers to an omp question still wait for the agent.
 - Conversation: answer several questions of an agent in one message. Each question of a reply
   (a list item or a paragraph ending with `?`, never in code) gets a small **↳ Reply** button
   (on hover with a mouse, faint but always there on a phone). A tap appends the question to the
@@ -178,6 +184,10 @@ First public release.
   a thread slot frees, with the slots in use) and **To do** (prioritized, never auto-launched)
   lists with Move up / down, Queue it, Launch now and Back to backlog / Remove from queue; lists
   always show in a fixed order, and the coordinator rules describe each list.
+- Leak check: `npm run check:leaks -- --range <revs>` scans every commit of a range (the lines
+  each commit adds and its message), so a private value added then removed before pushing is
+  caught; gitleaks runs from its Docker image when the binary is not installed. Test fixtures
+  and tests no longer contain names captured from real machines.
 
 ### Removed
 

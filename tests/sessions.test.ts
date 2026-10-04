@@ -16,7 +16,7 @@ describe('named sessions', () => {
       { name: 'archive', running: false, key: sessionKey('', 'archive') },
       { name: 'hwtest', running: true, key: sessionKey('', 'hwtest') },
     ])
-    expect(parseSessionList(raw, 'f27df2ea', 'hwtest')[0]).toEqual({ name: 'hwtest', running: true, key: 'f27df2ea' })
+    expect(parseSessionList(raw, '0a1b2c3d', 'hwtest')[0]).toEqual({ name: 'hwtest', running: true, key: '0a1b2c3d' })
     expect(parseSessionList('{', '', 'default')).toEqual([])
   })
 
@@ -44,7 +44,7 @@ describe('named sessions', () => {
   })
 
   it('remembers the choice per machine on the device and ignores invalid values', () => {
-    const names = { '': 'hwtest', f27df2ea: 'travail' }
+    const names = { '': 'hwtest', '0a1b2c3d': 'work' }
     expect(readSessionSelection(writeSessionSelection(names))).toEqual(names)
     expect(readSessionSelection('{')).toEqual({})
     expect(readSessionSelection('{"../x":"danger","":"hwtest"}')).toEqual({ '': 'hwtest' })

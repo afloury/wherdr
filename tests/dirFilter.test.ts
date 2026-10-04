@@ -17,7 +17,7 @@ describe('filterByName', () => {
   })
 
   it('puts names starting with the query first, each group in its original order', () => {
-    const recents = ['identity-sass-service', 'acme-portal', 'mortgagepedia', 'acme', 'portal-acme']
+    const recents = ['billing-service', 'acme-portal', 'shop-front', 'acme', 'portal-acme']
     expect(filterByName(recents, 'acme', id)).toEqual(['acme-portal', 'acme', 'portal-acme'])
     expect(filterByName(recents, 'port', id)).toEqual(['portal-acme', 'acme-portal'])
   })
@@ -34,8 +34,8 @@ describe('folderLabels', () => {
   })
 
   it('adds the parent folder to names shared by several folders', () => {
-    const dirs = ['~/Projects/acme/kyc-service', '~/wherdr', '~/Projects/acme-cap3-worktrees/kyc-service']
-    expect(folderLabels(dirs)).toEqual(['acme/kyc-service', 'wherdr', 'acme-cap3-worktrees/kyc-service'])
+    const dirs = ['~/Projects/acme/api', '~/wherdr', '~/Projects/acme-worktrees/api']
+    expect(folderLabels(dirs)).toEqual(['acme/api', 'wherdr', 'acme-worktrees/api'])
   })
 
   it('suffixes a herdr-projects project folder that shares its name with its repository', () => {

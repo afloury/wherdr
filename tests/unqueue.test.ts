@@ -100,9 +100,9 @@ describe('annuler un message en file de Claude', () => {
 
   it('several: the others are requeued, in order, original text', async () => {
     const { st, deps } = fakeClaude(['Premier', 'Collé\nsur\ntrois lignes', 'Troisième'])
-    const r = await unqueueClaude({ ...deps, original: e => (e.text === 'Premier' ? 'Premier\n/home/n/.cache/herdr-web/uploads/p.jpg' : e.text) }, 'Collé\nsur\ntrois lignes')
-    expect(r.requeued).toEqual(['Premier\n/home/n/.cache/herdr-web/uploads/p.jpg', 'Troisième'])
-    expect(st.queue).toEqual(['Premier\n/home/n/.cache/herdr-web/uploads/p.jpg', 'Troisième'])
+    const r = await unqueueClaude({ ...deps, original: e => (e.text === 'Premier' ? 'Premier\n/home/user/.cache/herdr-web/uploads/p.jpg' : e.text) }, 'Collé\nsur\ntrois lignes')
+    expect(r.requeued).toEqual(['Premier\n/home/user/.cache/herdr-web/uploads/p.jpg', 'Troisième'])
+    expect(st.queue).toEqual(['Premier\n/home/user/.cache/herdr-web/uploads/p.jpg', 'Troisième'])
     expect(st.input).toEqual([])
   })
 
