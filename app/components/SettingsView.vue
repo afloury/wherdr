@@ -340,7 +340,7 @@ onMounted(() => {
           <div class="settings-group">
             <h3>{{ t('Message field border on focus') }}</h3>
             <URadioGroup v-model="focusBorderMode" :items="focusBorderItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
-            <p class="muted settings-hint">{{ t('Frozen when the system asks for reduced motion. Saved on this device.') }}</p>
+            <p class="muted settings-hint">{{ t('Also on omp’s running actions (border only). Frozen when the system asks for reduced motion. Saved on this device.') }}</p>
           </div>
 
           <div class="settings-group">
