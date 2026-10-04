@@ -2734,6 +2734,47 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 @media (prefers-reduced-motion: reduce) { .sel-reply { animation: none; } }
 .sel-reply:hover, .sel-reply:focus-visible { border-color: var(--accent); }
 .sel-reply .iconify, .sel-reply svg { width: 13px; height: 13px; color: var(--accent); }
+/* "↳ Reply" after each question of an agent reply (utils/questionReply.ts):
+   a small mono tag with a 1 px rule, like inline code. Faint on the phone,
+   shown on hover of its question on the computer; "✓ Quoted" once in the field.
+   The label comes from data attributes (no text node: the typewriter and the
+   copied text ignore it). */
+.q-reply {
+  display: inline-flex; align-items: center; height: 18px; margin-left: .45em; padding: 0 5px; vertical-align: 1px;
+  font: 500 9.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
+  color: var(--dim); background: none; border: 1px solid var(--line); border-radius: 0; cursor: pointer;
+  -webkit-user-select: none; user-select: none; opacity: .75;
+}
+.q-reply::before { content: "↳ " attr(data-l); }
+.q-reply.quoted { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); background: color-mix(in srgb, var(--accent) 7%, transparent); opacity: 1; }
+.q-reply.quoted::before { content: "✓ " attr(data-lq); }
+.q-reply:hover, .q-reply:focus-visible { color: var(--text); border-color: var(--accent); opacity: 1; }
+@media (hover: hover) and (pointer: fine) {
+  .q-reply:not(.quoted) { opacity: 0; transition: opacity 120ms; }
+  .md-body p:hover > .q-reply, .md-body li:hover > .q-reply, .q-reply:focus-visible { opacity: 1; }
+}
+.no-reply .q-reply { display: none; }
+/* Quotes in the field: one chip each, to remove it; on one scrolling line. */
+.composer-quotes { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0 0 6px; overflow-x: auto; scrollbar-width: none; }
+.composer-quotes::-webkit-scrollbar { display: none; }
+.composer-quotes-label { flex: none; font: 500 10px/1 var(--mono); letter-spacing: .06em; color: var(--accent); }
+.composer-quote {
+  flex: none; display: inline-flex; align-items: center; gap: 2px; max-width: min(70%, 320px); height: 26px; padding-left: 8px;
+  border: 1px solid var(--line); border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.composer-quote-text { min-width: 0; font-size: 12px; line-height: 1.3; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.composer-quote-x {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+  color: var(--dim); background: none; border: 0; border-radius: 0; cursor: pointer;
+}
+.composer-quote-x:hover { color: var(--text); }
+.composer-quote-x .iconify, .composer-quote-x svg { width: 12px; height: 12px; }
+/* Sent message: each quoted question above its answer. */
+.msg-q {
+  display: block; margin: 2px 0; padding: 1px 0 1px 9px; border-left: 2px solid var(--accent);
+  font-size: 13.5px; line-height: 1.4; color: var(--text-2);
+}
+.msg-q:first-child { margin-top: 0; }
 .msg-flash { animation: msg-flash 1.6s ease-out; }
 @keyframes msg-flash {
   0%, 30% { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 16%, transparent); }

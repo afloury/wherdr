@@ -10,6 +10,13 @@ First public release.
 
 ### Added
 
+- Conversation: answer several questions of an agent in one message. Each question of a reply
+  (a list item or a paragraph ending with `?`, never in code) gets a small **↳ Reply** button
+  (on hover with a mouse, faint but always there on a phone). A tap appends the question to the
+  field as a `> ` quote with an empty line below for the answer; further questions, and a
+  selected passage with the floating **Reply** button, stack after it in order. Each quote shows
+  as a chip above the field with ✕ to remove it, a question already quoted is marked **✓ Quoted**
+  and never added twice, and the sent message shows each quote above its answer.
 - Conversation: run or copy a command an agent proposes. A shell code block (`bash`, `sh`,
   `zsh`, `shell`, `console`, or command lines without a language) gets a **Run** button beside
   Copy (on hover with a mouse, always on a phone), and an inline command (`! gh pr merge 5 …`,

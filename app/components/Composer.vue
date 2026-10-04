@@ -8,6 +8,7 @@
 import type { Pane, QueuedMessage, SlashCommand } from '#shared/types'
 import type { DraftAtt } from '~/composables/useDraft'
 import { withReply } from '#shared/replyQuote'
+import { quotesIn, removeQuote } from '~/utils/questionReply'
 import { isAgentCommand } from '#shared/commandScreen'
 import { isSlashCommand } from '#shared/queuedMatch'
 import type { AttachKind } from '#shared/attachments'
@@ -57,6 +58,9 @@ type Att = DraftAtt
 const attachments = toRef(draft, 'atts')
 // Reply to a specific agent message: box above the field, short marker on send.
 const replyTo = toRef(draft, 'reply')
+// Questions and passages quoted in the text ("> " lines, see utils/questionReply.ts):
+// one chip each above the field, to remove it.
+const quotes = computed(() => quotesIn(text.value))
 
 const canSend = computed(() => Boolean(text.value.trim() || attachments.value.length))
 const readOnly = computed(() => !eventsOpen.value || offlineView.value || paneStale(props.pane))
@@ -501,11 +505,20 @@ defineExpose({ focus: () => ta.value?.focus(), focusEnd, blur: () => ta.value?.b
     </div>
     <div v-if="replyTo" class="composer-reply" role="status">
       <UIcon name="i-lucide-reply" class="composer-reply-icon" />
-      <span class="composer-reply-label">{{ replyTo.part ? t('Replying to a passage') : t('Replying to the message') }} · {{ replyTo.time }}</span>
+      <span class="composer-reply-label">{{ t('Replying to the message') }} · {{ replyTo.time }}</span>
       <span class="composer-reply-text">{{ replyTo.excerpt }}</span>
       <button type="button" class="composer-reply-x" :aria-label="t('Cancel reply')" @mousedown.prevent @click="replyTo = null">
         <UIcon name="i-lucide-x" />
       </button>
+    </div>
+    <div v-if="quotes.length" class="composer-quotes" role="list" :aria-label="t('Quoted questions')">
+      <span class="composer-quotes-label">↳ {{ quotes.length }}</span>
+      <span v-for="q in quotes" :key="q.start" class="composer-quote" role="listitem">
+        <span class="composer-quote-text">{{ q.text }}</span>
+        <button type="button" class="composer-quote-x" :aria-label="t('Remove quote')" @mousedown.prevent @click="text = removeQuote(text, q)">
+          <UIcon name="i-lucide-x" />
+        </button>
+      </span>
     </div>
     <UChatPrompt
       ref="promptRef" v-model="text" :placeholder="readOnly ? t('Draft saved — sending unavailable offline') : placeholder" variant="outline" color="neutral"

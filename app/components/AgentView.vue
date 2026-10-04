@@ -569,7 +569,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     >
       <ChatView
         ref="chatRef" v-model:search="searchOpen" :pane="pane" :local-queued="localQueued"
-        @goto-term="setMode('term')" @restored="composer?.focus()" @reply="composer?.focus()" @sent="onSent"
+        @goto-term="setMode('term')" @restored="composer?.focus()" @reply="composer?.focus()" @quote="composer?.focusEnd()" @sent="onSent"
       />
     </div>
     <div v-else-if="(mode === 'term' || mode === 'mirror') && (!eventsOpen || offlineView || machineDown)" class="chat-empty offline-terminal"><UIcon name="i-lucide-wifi-off" class="chat-empty-icon" /><p>{{ t('Terminal unavailable offline') }}</p></div>

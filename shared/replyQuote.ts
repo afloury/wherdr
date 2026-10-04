@@ -1,6 +1,7 @@
-// Reply to a specific agent message: the message sent starts with a
-// short marker (time + start of the message or chosen passage), never with the
+// Reply to a whole agent message: the message sent starts with a
+// short marker (time + start of the message), never with the
 // whole message: the agent already has the whole conversation in its context.
+// (Passages and questions are quoted inline instead, see app/utils/questionReply.ts.)
 //   ↳ En réponse à ton message de 14:32 (« Je propose deux options : … »)
 //   <empty line>
 //   the reply
@@ -9,7 +10,6 @@
 export interface ReplyTarget {
   time: string // displayed time of the original message ("14:32")
   excerpt: string // readable excerpt, already truncated
-  part?: boolean // selected passage rather than the whole message
 }
 
 // Maximum length of the whole marker ("↳ …" line).
@@ -56,13 +56,11 @@ function head(lang: 'fr' | 'en', time: string) {
 const open = (lang: 'fr' | 'en') => (lang === 'en' ? '"' : '« ')
 const close = (lang: 'fr' | 'en') => (lang === 'en' ? '")' : ' »)')
 
-// Target of a reply: chosen passage (start and end if it is too long), otherwise start of the message,
-// short enough for the whole marker to fit in MARKER_MAX.
-export function replyTarget(message: string, time: string, lang: 'fr' | 'en', selection?: string): ReplyTarget {
+// Target of a reply: start of the message, short enough for the whole marker
+// to fit in MARKER_MAX.
+export function replyTarget(message: string, time: string, lang: 'fr' | 'en'): ReplyTarget {
   const room = MARKER_MAX - head(lang, time).length - open(lang).length - close(lang).length
-  const part = Boolean(selection && selection.trim())
-  const src = plainText(part ? selection! : message)
-  return part ? { time, excerpt: truncateMiddle(src, Math.max(20, room)), part } : { time, excerpt: truncate(src, Math.max(20, room)) }
+  return { time, excerpt: truncate(plainText(message), Math.max(20, room)) }
 }
 
 export function replyMarker(r: ReplyTarget, lang: 'fr' | 'en'): string {
