@@ -82,6 +82,9 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - **Conversation view**: the agent's real transcript (Claude Code, Codex and omp), rendered as
   Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan), timestamps, search and infinite scroll back to the
   first message. Reading a conversation never touches the terminal, so it never resizes a pane.
+  A command the agent proposes (shell code block, or inline `! command`) can be copied without
+  its prompt, or run in the agent's shell mode (`!`, Claude Code, Codex and omp) after you
+  confirm the full command.
 - **Terminal view**: the real terminal (xterm.js, WebGL or DOM renderer) with take-over. On a
   computer, drag over the text on screen to select it: releasing the button copies it, as do
   `⌘C` / `Ctrl+Shift+C`. The history is browsed with the wheel, not by dragging past the edge.

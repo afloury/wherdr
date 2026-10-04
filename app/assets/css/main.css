@@ -935,6 +935,15 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 }
 .chat-list .md-body .md-path:hover { text-decoration-style: solid; text-decoration-color: var(--lav); background: color-mix(in srgb, var(--lav) 14%, var(--surface-2)); }
 .chat-list .md-body .md-path:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+/* Command in a reply (utils/shellCommand.ts): the same, in the command's green;
+   its menu copies it and, where the agent can run it, runs it. */
+.chat-list .md-body .md-cmd {
+  cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--green) 45%, transparent);
+  -webkit-tap-highlight-color: transparent;
+}
+.chat-list .md-body .md-cmd:hover { text-decoration-style: solid; text-decoration-color: var(--green); background: color-mix(in srgb, var(--green) 12%, var(--surface-2)); }
+.chat-list .md-body .md-cmd:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
 .path-anchor { position: fixed; pointer-events: none; }
 .md-body pre { margin: 0; padding: 12px 14px; overflow-x: auto; font: 12.5px/1.55 var(--mono); color: var(--text-2); }
 .md-body pre code { background: none; border: 0; padding: 0; font-size: inherit; color: inherit; overflow-wrap: normal; white-space: pre; }
@@ -944,16 +953,29 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
   padding: 0 4px 0 12px; height: 30px; border-bottom: 1px solid var(--line-soft); background: var(--bg-2);
   font: 500 10px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--dim);
 }
-.md-body .code-copy {
+.md-body .code-tools { display: flex; align-items: center; gap: 2px; }
+.md-body .code-copy, .md-body .code-run {
   font: 500 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
   padding: 6px 8px;
 }
 .md-body .code-copy:hover { color: var(--text); background: var(--surface-2); }
 .md-body .code-copy.done { color: var(--green); }
+/* Run: only on a shell command, in a reply of an agent that can run it
+   (ChatView.vue sets `can-run`). With a mouse it shows on hovering the block
+   (its place stays reserved); on touch it is always there. */
+.md-body .code-run { display: none; align-items: center; gap: .55em; color: color-mix(in srgb, var(--green) 65%, var(--muted)); }
+.md-body .code-run::before { content: "▷"; letter-spacing: 0; font-size: 11px; }
+.can-run .md-body .code-run { display: inline-flex; }
+.md-body .code-run:hover { color: var(--green); background: var(--surface-2); }
+.md-body .code-run:focus-visible, .md-body .code-copy:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+@media (hover: hover) and (pointer: fine) {
+  .md-body .code-run { opacity: 0; transition: opacity .12s ease; }
+  .md-body .code-block:hover .code-run, .md-body .code-block:focus-within .code-run { opacity: 1; }
+}
 /* Finger: enlarged touch area without changing the drawing. */
 @media (pointer: coarse) {
-  .md-body .code-copy { position: relative; }
-  .md-body .code-copy::before { content: ''; position: absolute; inset: -8px -4px; }
+  .md-body .code-copy, .md-body .code-run { position: relative; }
+  .md-body .code-copy::after, .md-body .code-run::after { content: ''; position: absolute; inset: -8px -2px; }
 }
 /* Cipher band: the real characters keep their place, transparent;
    the glyphs are painted on top, without changing the text width. */
@@ -1667,6 +1689,12 @@ body.kb .composer { padding-bottom: 8px; }
 .confirm { display: flex; flex-direction: column; min-height: 0; max-height: calc(88dvh - var(--safe-bottom) - 48px); }
 .confirm p { margin: 6px 2px 4px; font-size: 16px; line-height: 1.45; min-height: 0; overflow-y: auto; }
 .confirm .rename-actions { flex: none; }
+/* Command to run, in full (ChatView.vue): as the terminal will receive it. */
+.confirm-code {
+  flex: none; margin: 10px 2px 0; padding: 10px 12px; max-height: 38dvh; overflow: auto;
+  border: 1px solid var(--line); border-left-color: var(--green); background: var(--code-bg);
+  font: 13px/1.5 var(--mono); color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere;
+}
 .rename { padding: 4px 0 4px; }
 .rename-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 

@@ -10,6 +10,14 @@ First public release.
 
 ### Added
 
+- Conversation: run or copy a command an agent proposes. A shell code block (`bash`, `sh`,
+  `zsh`, `shell`, `console`, or command lines without a language) gets a **Run** button beside
+  Copy (on hover with a mouse, always on a phone), and an inline command (`! gh pr merge 5 …`,
+  `$ make`, `npm test`) opens a menu on click or tap with **Run…** and **Copy command**. Run always
+  shows the full command for confirmation, then sends it as `! <command>` to the agent's own shell
+  mode (Claude Code's bash mode, Codex and omp); it is only offered in the agent's replies, while
+  the conversation is live. Copy now takes a shell command without its `!` / `$` prompts, and a
+  `console` block without its output lines.
 - Image viewer: zoom and pan. An image opens fitted to the screen (a very tall one is no longer
   cut at the bottom); pinch, double tap, click on the image, ctrl+wheel (trackpad pinch), the
   wheel on a fitted image, the bottom bar (−, zoom level = back to fit, +, 1:1 actual size) or
