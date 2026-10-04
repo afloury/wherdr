@@ -664,20 +664,8 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
-Every commit is public, so a leak check runs on the files tracked or staged in git:
-
-```sh
-cp .leak-patterns.example .leak-patterns   # git-ignored: list your own names, hosts, e-mails, IPs
-npm run check:leaks                        # gitleaks (if installed) + your forbidden patterns
-npm run hooks:install                      # optional: same check on staged files before each commit
-```
-
-In a linked worktree (`git worktree add`), the check falls back to the main checkout's
-`.leak-patterns`, and the hook runs there too since `core.hooksPath` lives in the shared git config.
-
-Matches are printed as `file:line`, truncated so the secret itself is never shown, and the command
-exits with a non-zero code. Install [gitleaks](https://github.com/gitleaks/gitleaks) to also catch
-tokens and keys.
+Every commit is public: a leak check (gitleaks plus your own forbidden patterns) covers the files
+and the commits about to be pushed; see [Leak check](CONTRIBUTING.md#leak-check).
 
 ## License
 

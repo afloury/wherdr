@@ -1,7 +1,12 @@
 #!/usr/bin/env node
-// Leak check: gitleaks (if installed) + forbidden patterns read from a local, untracked
-// file (.leak-patterns). Scans the content of the git index (tracked or staged files);
-// `--staged` only scans staged files (pre-commit hook).
+// Leak check: gitleaks + forbidden patterns read from a local, untracked file (.leak-patterns).
+//   (default)          scans the content of the git index (tracked or staged files)
+//   --staged           only scans staged files (pre-commit hook)
+//   --range <revs>     scans every commit of a revision range (`origin/main..HEAD`): the lines
+//                      each commit adds and its message, so a leak added then removed is caught
+//   --no-gitleaks      skips gitleaks (patterns only)
+// gitleaks runs from the `gitleaks` binary, otherwise from the `zricethezav/gitleaks` Docker image
+// (read-only mounts), otherwise it is skipped.
 // In a linked worktree (`git worktree add`), .leak-patterns (ignored by git) often only
 // exists in the main checkout: we then fall back to that one.
 //
@@ -98,21 +103,96 @@ export function redact(value) {
   return `${value.slice(0, Math.min(4, Math.floor(value.length / 3)))}…(${value.length} chars)`
 }
 
-/** Looks for the patterns in a file's content. */
-export function scanText(file, text, patterns) {
-  if (ALWAYS_SKIPPED.includes(path.basename(file)) || matchesAny(file, patterns.skip)) return []
+/** Hits of the rules in numbered lines (`[{ n, text }]`), without the file filters. */
+function matchLines(lines, rules) {
   const hits = []
-  const lines = text.split('\n')
-  for (const rule of patterns.rules) {
-    if (matchesAny(file, rule.allow)) continue
-    lines.forEach((line, i) => {
-      for (const m of line.matchAll(rule.regex)) {
+  for (const rule of rules) {
+    for (const { n, text } of lines) {
+      for (const m of text.matchAll(rule.regex)) {
         if (!m[0]) continue
-        hits.push({ file, line: i + 1, pattern: rule.source, excerpt: redact(m[0]) })
+        hits.push({ line: n, pattern: rule.source, excerpt: redact(m[0]) })
       }
-    })
+    }
   }
   return hits
+}
+
+/** Looks for the patterns in some lines of a file, honouring ignored files and exceptions. */
+function scanLines(file, lines, patterns) {
+  if (ALWAYS_SKIPPED.includes(path.basename(file)) || matchesAny(file, patterns.skip)) return []
+  const rules = patterns.rules.filter((rule) => !matchesAny(file, rule.allow))
+  return matchLines(lines, rules).map((h) => ({ file, ...h }))
+}
+
+/** Looks for the patterns in a file's content. */
+export function scanText(file, text, patterns) {
+  return scanLines(file, text.split('\n').map((t, i) => ({ n: i + 1, text: t })), patterns)
+}
+
+/** Unquotes a path as git prints it in a diff header (`"a\303\251.txt"` when quoted). */
+function diffPath(raw) {
+  if (!raw.startsWith('"')) return raw
+  const bytes = []
+  const s = raw.slice(1, -1)
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] !== '\\') { bytes.push(...Buffer.from(s[i])); continue }
+    const c = s[++i]
+    if (/[0-7]/.test(c)) { bytes.push(parseInt(s.slice(i, i + 3), 8)); i += 2 }
+    else bytes.push(({ n: 10, t: 9, '"': 34, '\\': 92 })[c] ?? c.charCodeAt(0))
+  }
+  return Buffer.from(bytes).toString('utf8')
+}
+
+/**
+ * Lines a commit adds, per file, from `git diff-tree -p` output. Merges use the combined
+ * format (`--cc`: one marker column per parent), which only keeps conflict resolutions:
+ * the lines of the merged commits are scanned with those commits.
+ */
+export function addedLines(patch) {
+  const files = new Map()
+  let lines = null
+  let parents = 1
+  let next = 0
+  for (const row of patch.split('\n')) {
+    if (row.startsWith('diff ')) { lines = null; continue }
+    if (row.startsWith('+++ ')) {
+      const target = row.slice(4)
+      if (target === '/dev/null') { lines = null; continue }
+      const file = diffPath(target).replace(/^b\//, '')
+      lines = files.get(file) ?? []
+      files.set(file, lines)
+      continue
+    }
+    const hunk = /^(@@+) .*?\+(\d+)/.exec(row)
+    if (hunk) { parents = hunk[1].length - 1; next = Number(hunk[2]); continue }
+    if (!lines || !next) continue
+    const marks = row.slice(0, parents)
+    if (marks.includes('-')) continue
+    if (marks.includes('+')) lines.push({ n: next, text: row.slice(parents) })
+    next++
+  }
+  return files
+}
+
+/**
+ * Scans each commit of `range` (as `git rev-list` reads it): the lines it adds, with the file
+ * rules, and its message, with every rule. Hits carry the short commit and `file: null` for
+ * the message.
+ */
+export function scanRange(root, range, patterns) {
+  const commits = git(['rev-list', '--reverse', range], root).split('\n').filter(Boolean)
+  const hits = []
+  for (const sha of commits) {
+    const commit = sha.slice(0, 9)
+    const message = git(['log', '-1', '--format=%B', sha], root)
+    const msgLines = message.split('\n').map((t, i) => ({ n: i + 1, text: t }))
+    hits.push(...matchLines(msgLines, patterns.rules).map((h) => ({ commit, file: null, ...h })))
+    const patch = git(['diff-tree', '-p', '--cc', '--root', '-r', '--no-color', '--no-ext-diff', '--no-textconv', '-U0', sha], root)
+    for (const [file, lines] of addedLines(patch)) {
+      hits.push(...scanLines(file, lines, patterns).map((h) => ({ commit, ...h })))
+    }
+  }
+  return { commits: commits.length, hits }
 }
 
 /** Copies the index content (all files or only staged ones) into a temporary folder. */
@@ -128,37 +208,94 @@ function exportIndex(root, staged) {
   return { dir, files }
 }
 
-function runGitleaks(dir) {
-  const probe = spawnSync('gitleaks', ['version'], { encoding: 'utf8' })
-  if (probe.error) {
-    console.log('gitleaks: not installed, skipped (https://github.com/gitleaks/gitleaks). Forbidden patterns still run.')
+const GITLEAKS_IMAGE = 'zricethezav/gitleaks'
+
+/**
+ * gitleaks command line: the binary when installed, otherwise its Docker image with read-only
+ * mounts at the same paths (a linked worktree's `.git` file points into the main repository).
+ * `null` when neither is available.
+ */
+function gitleaksCommand(mounts, args) {
+  if (!spawnSync('gitleaks', ['version'], { encoding: 'utf8' }).error) return ['gitleaks', args]
+  const docker = spawnSync('docker', ['image', 'inspect', GITLEAKS_IMAGE], { encoding: 'utf8' })
+  if (docker.error || docker.status !== 0) return null
+  const user = typeof process.getuid === 'function' ? ['--user', `${process.getuid()}:${process.getgid()}`] : []
+  return ['docker', [
+    'run', '--rm', '--network', 'none', ...user,
+    // Files belong to the host user: let git inside the container read them.
+    '-e', 'GIT_CONFIG_COUNT=1', '-e', 'GIT_CONFIG_KEY_0=safe.directory', '-e', 'GIT_CONFIG_VALUE_0=*',
+    ...[...new Set(mounts)].flatMap((m) => ['-v', `${m}:${m}:ro`]),
+    '-w', mounts[0], GITLEAKS_IMAGE, ...args,
+  ]]
+}
+
+/** Runs gitleaks on a folder (`dir` mode) or on a commit range (`git` mode). */
+function runGitleaks({ dir, root, range }) {
+  const gitDir = range && path.resolve(root, git(['rev-parse', '--git-common-dir'], root).trim())
+  // --verbose lists each finding (commit, file, line, rule); --redact hides the secret itself.
+  const opts = ['--redact', '--verbose', '--no-banner', '--exit-code', '1']
+  const args = range ? ['git', root, `--log-opts=${range}`, ...opts] : ['dir', dir, ...opts]
+  const cmd = gitleaksCommand(range ? [root, gitDir] : [dir], args)
+  if (!cmd) {
+    console.log(`gitleaks: not installed and no ${GITLEAKS_IMAGE} Docker image, skipped (https://github.com/gitleaks/gitleaks). Forbidden patterns still run.`)
     return true
   }
-  const r = spawnSync('gitleaks', ['dir', dir, '--redact', '--no-banner', '--exit-code', '1'], { stdio: 'inherit' })
-  if (r.status === 0) console.log('gitleaks: no secret found.')
+  const r = spawnSync(cmd[0], cmd[1], { stdio: 'inherit' })
+  if (r.status === 0) console.log(`gitleaks${cmd[0] === 'docker' ? ' (Docker)' : ''}: no secret found.`)
+  else if (r.status !== 1) console.error(`gitleaks: failed to run (exit ${r.status ?? r.signal}).`)
   return r.status === 0
+}
+
+/** Loads the pattern file and says which one is used; `null` (with a warning) if none. */
+function patternsFor(root) {
+  const found = findPatternsFile(root)
+  const patterns = found.file && loadPatterns(found.file)
+  if (!patterns) {
+    console.warn([
+      `WARNING: no ${PATTERNS_FILE} file found, forbidden patterns were NOT checked.`,
+      ...found.tried.map((f) => `  looked for: ${f}`),
+      `  Copy ${PATTERNS_FILE}.example to ${PATTERNS_FILE} in the main checkout and fill it.`,
+    ].join('\n'))
+    return null
+  }
+  console.log(`patterns: using ${found.file}${found.from === 'main' ? ' (main checkout)' : ''}`)
+  if (!patterns.rules.length) console.warn(`WARNING: ${found.file} has no active pattern, nothing is forbidden.`)
+  return patterns
+}
+
+function mainRange(root, range, gitleaks) {
+  let ok = gitleaks ? runGitleaks({ root, range }) : true
+  const patterns = patternsFor(root)
+  if (!patterns) return ok ? 0 : 1
+  const { commits, hits } = scanRange(root, range, patterns)
+  for (const h of hits) {
+    console.log(h.file === null
+      ? `${h.commit} message:${h.line}  ${h.excerpt}  [${h.pattern}]`
+      : `${h.commit} ${h.file}:${h.line}  ${h.excerpt}  [${h.pattern}]`)
+  }
+  console.log(hits.length
+    ? `patterns: ${hits.length} forbidden match(es) in ${commits} commit(s) of ${range}.`
+    : `patterns: ${patterns.rules.length} pattern(s), ${commits} commit(s) of ${range}, no match.`)
+  if (hits.length) ok = false
+  return ok ? 0 : 1
 }
 
 function main(argv) {
   const staged = argv.includes('--staged')
+  const gitleaks = !argv.includes('--no-gitleaks')
   const root = git(['rev-parse', '--show-toplevel']).trim()
+  const r = argv.indexOf('--range')
+  if (r !== -1) {
+    const range = argv[r + 1]
+    if (!range || range.startsWith('--')) throw new Error('--range needs a revision range, e.g. origin/main..HEAD')
+    return mainRange(root, range, gitleaks)
+  }
   const { dir, files } = exportIndex(root, staged)
   try {
     if (!files.length) { console.log('check:leaks: nothing to scan.'); return 0 }
-    let ok = runGitleaks(dir)
-
-    const found = findPatternsFile(root)
-    const patterns = found.file && loadPatterns(found.file)
-    if (!patterns) {
-      console.warn([
-        `WARNING: no ${PATTERNS_FILE} file found, forbidden patterns were NOT checked.`,
-        ...found.tried.map((f) => `  looked for: ${f}`),
-        `  Copy ${PATTERNS_FILE}.example to ${PATTERNS_FILE} in the main checkout and fill it.`,
-      ].join('\n'))
-    }
-    else {
-      console.log(`patterns: using ${found.file}${found.from === 'main' ? ' (main checkout)' : ''}`)
-      if (!patterns.rules.length) console.warn(`WARNING: ${found.file} has no active pattern, nothing is forbidden.`)
+    let ok = gitleaks ? runGitleaks({ dir }) : true
+    const patterns = patternsFor(root)
+    if (patterns) {
       const hits = []
       for (const file of files) {
         const buf = readFileSync(path.join(dir, file))
