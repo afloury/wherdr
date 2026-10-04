@@ -69,9 +69,10 @@ export function openTab(tabId: string) {
   return navigateTo(tabTarget(tabId))
 }
 // Open a space from the list: its last tab, otherwise that of its
-// most urgent pane.
-export function openSpace(workspaceId: string) {
-  const tab = spaceTab(spaceTabs(workspaceId), tabMemory.value, workspaceId)
+// most urgent pane. `only`: tabs of a card covering part of the space.
+export function openSpace(workspaceId: string, only?: string[]) {
+  const tabs = spaceTabs(workspaceId).filter(e => !only || only.includes(e.tab.id))
+  const tab = spaceTab(tabs, tabMemory.value, workspaceId)
   if (tab) return openTab(tab)
 }
 // Switch tabs in a space (tabs at the top): same history entry.

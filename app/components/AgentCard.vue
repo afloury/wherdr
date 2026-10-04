@@ -123,7 +123,7 @@ function onContextOpen(open: boolean) {
 function recentTouchMenu() { return Date.now() - touchMenuOpenedAt < 1000 || lp.swallowClick() }
 function open() {
   if (recentTouchMenu()) return
-  if (space.value) return openSpace(space.value.workspace.id)
+  if (space.value) return openSpace(space.value.workspace.id, space.value.part ? space.value.tabs.map(e => e.tab.id) : undefined)
   haptic()
   navigateTo(`/a/${encodeURIComponent(props.pane.id)}`)
 }

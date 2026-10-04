@@ -4,7 +4,10 @@ import type { Pane } from './types'
 // the terminal title often repeats the generic instruction of the first message.
 const THREAD_NAME = /^hp-.+-t-\d{4,}(?:-.+)?$/i
 
-export function isProjectThread(p: Pick<Pane, 'name' | 'cwd'>): boolean {
+// `hpThread`: the herdr-projects token (`hp_group …!1!<rank>!t-NNNN`) wins, for a
+// thread opened as a tab in its coordinator's folder.
+export function isProjectThread(p: Pick<Pane, 'name' | 'cwd'> & Partial<Pick<Pane, 'hpThread'>>): boolean {
+  if (p.hpThread) return true
   if (p.name && THREAD_NAME.test(p.name)) return true
   const cwd = p.cwd?.replace(/\\/g, '/').replace(/\/+$/, '') || ''
   if (/\/\.herdr-projects\/[^/]+$/.test(cwd)) return false
