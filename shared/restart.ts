@@ -64,9 +64,31 @@ const CODEX: FlagSpec = {
   drop: { '--last': 0, '--all': 0, '--include-non-interactive': 0, '-i': '*', '--image': '*', '--worktree': 0 },
 }
 
+// omp (oh-my-pi) 18.4: `omp --resume <session file>` restores the
+// conversation, its model and its thinking level.
+const OMP: FlagSpec = {
+  keep: {
+    '--model': 1, '--smol': 1, '--slow': 1, '--plan': 1, '--prewalk-into': 1, '--plan-yolo-into': 1,
+    '--provider': 1, '--system-prompt': 1, '--system-prompt-template': 1, '--append-system-prompt': 1,
+    '--profile': 1, '--cwd': 1, '--config': 1, '--add-dir': 1, '--session-dir': 1, '--models': 1,
+    '--tools': 1, '--thinking': 1, '--service-tier': 1, '--hook': 1, '-e': 1, '--extension': 1,
+    '--skills': 1, '--approval-mode': 1, '--plugin-dir': 1,
+    '--allow-home': 0, '--prewalk': 0, '--no-prewalk': 0, '--no-tools': 0, '--no-lsp': 0, '--no-pty': 0,
+    '--hide-thinking': 0, '--advisor': 0, '--external-thinking': 0, '--no-extensions': 0, '--no-skills': 0,
+    '--no-rules': 0, '--no-title': 0, '--auto-approve': 0,
+  },
+  // Conversation choice, one-off launch; the API key is never replayed
+  // (it would show in the confirmation).
+  drop: {
+    '-c': 0, '--continue': 0, '-r': '?', '--resume': '?', '-p': 0, '--print': 0, '--plan-yolo': 0,
+    '--from-claude': 0, '--from-codex': 0, '--no-session': 0, '--export': 1, '--mode': 1,
+    '--max-time': 1, '--alias': 1, '--api-key': 1, '--no-ui': 0, '--print-thoughts': 0,
+  },
+}
+
 const SILENT = new Set(['-c', '--continue', '-r', '--resume', '--session-id', '--fork-session', '--last', '--all'])
 
-const SPECS: Record<string, FlagSpec> = { claude: CLAUDE, codex: CODEX }
+const SPECS: Record<string, FlagSpec> = { claude: CLAUDE, codex: CODEX, omp: OMP }
 
 // Agents that wherdr can relaunch on their conversation.
 export const RESTARTABLE = new Set(Object.keys(SPECS))
@@ -129,9 +151,12 @@ export function planRestart(o: { kind: string, argv: string[] | null, session: s
   const opts = o.argv ? launchOptions(o.kind, o.argv) : { kept: [], dropped: [] }
   const mode: RestartMode = o.session ? 'resume' : o.hadSession ? 'fresh' : 'continue'
   let groups = opts.kept
+  const without = (...flags: string[]) => { groups = groups.filter(g => !flags.includes(g[0]!.split('=')[0]!)) }
+  // omp: the session restores its last model and thinking level (possibly
+  // changed during the session): the original options would override them.
+  if (o.kind === 'omp' && mode === 'resume') without('--model', '--thinking')
   if (o.kind === 'claude') {
     const cur = o.current || {}
-    const without = (...flags: string[]) => { groups = groups.filter(g => !flags.includes(g[0]!.split('=')[0]!)) }
     // `--resume` restores the conversation's last model (possibly
     // changed during the session): the original option would override it.
     if (mode === 'resume') without('--model')

@@ -10,6 +10,12 @@ First public release.
 
 ### Added
 
+- **Restart agent** for omp, like Claude Code and Codex: wherdr exits omp (`/exit`, otherwise
+  `Ctrl+C` twice) and relaunches it in the same pane on the same conversation
+  (`omp --resume <session file>`, the path Herdr's omp integration reports; `omp --continue`
+  without one). Launch options read from the running process are replayed, except `--model` and
+  `--thinking` when resuming (omp restores the session's own) and one-off options (`--print`,
+  `--api-key`…). omp's update notice is not acted on: run `omp update` yourself, then restart.
 - Terminal: Nerd Font icons (Powerline separators, Font Awesome, Codicons, Devicons, Octicons,
   Material Design…) used by status bars and prompts such as omp's "nerd font" symbol set display
   instead of empty boxes. A bundled subset of Symbols Nerd Font Mono, narrowed to one cell, split

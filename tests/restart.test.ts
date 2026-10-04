@@ -26,6 +26,11 @@ describe('options de lancement', () => {
     expect(r.kept.flat()).toEqual(['-m', 'gpt-x', '-s', 'workspace-write', '--yolo'])
     expect(r.dropped.flat()).toEqual([])
   })
+  it('omp: keeps its launch options, never replays the API key', () => {
+    const r = launchOptions('omp', ['omp', '--profile', 'work', '--thinking=high', '--api-key', 'k', '-c', '--auto-approve', 'hello'])
+    expect(r.kept.flat()).toEqual(['--profile', 'work', '--thinking=high', '--auto-approve'])
+    expect(r.dropped.flat()).toEqual(['--api-key', 'k'])
+  })
 })
 
 describe('commande de relance', () => {
@@ -53,6 +58,12 @@ describe('commande de relance', () => {
   it('Codex : resume <id>, sinon resume --last', () => {
     expect(planRestart({ kind: 'codex', argv: ['codex', '-m', 'gpt-x'], session: ID, hadSession: true }).args).toEqual(['resume', '-m', 'gpt-x', ID])
     expect(planRestart({ kind: 'codex', argv: ['codex'], session: null, hadSession: false }).args).toEqual(['resume', '--last'])
+  })
+  it('omp: --resume <session file>, model and thinking left to the session; --continue otherwise', () => {
+    const file = '/tmp/sessions/-repo/2026-01-01T00-00-00-000Z_x.jsonl'
+    const argv = ['omp', '--model', 'opus', '--thinking', 'low', '--profile', 'work']
+    expect(planRestart({ kind: 'omp', argv, session: file, hadSession: true }).args).toEqual(['--profile', 'work', '--resume', file])
+    expect(planRestart({ kind: 'omp', argv, session: null, hadSession: false }).args).toEqual(['--model', 'opus', '--thinking', 'low', '--profile', 'work', '--continue'])
   })
   it('command line not found: reported', () => {
     expect(planRestart({ kind: 'claude', argv: null, session: ID, hadSession: true }).unknownArgs).toBe(true)

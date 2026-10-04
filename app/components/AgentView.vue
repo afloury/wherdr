@@ -331,7 +331,7 @@ const agentMenu = computed<MenuItem[]>(() => {
     label: t('Take control of this terminal'), icon: 'i-lucide-arrow-left-right',
     run: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => ctl.connect(true)) },
   })
-  // Relaunch Claude / Codex in this pane, on the same conversation.
+  // Relaunch Claude / Codex / omp in this pane, on the same conversation.
   if (p && canRestart(p) && !p.restart) items.push({ label: t('Restart agent'), icon: 'i-lucide-rotate-cw', run: () => restartAgent(p) })
   items.push({
     label: t('Reconnect'), icon: 'i-lucide-refresh-cw',
