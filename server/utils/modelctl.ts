@@ -480,12 +480,17 @@ async function openEffortSlider(p: Pane): Promise<ClaudeEffortSlider> {
 const ompCycles = new Map<string, OmpCycleKnowledge>()
 const ompCycleKey = (paneId: string, model: ModelInfo) => `${machineOfPane(paneId)?.key || ''}|${cleanModelName(model.label).toLowerCase()}`
 
-// Level after one ⇧⇥ press. With a transcript, its new
+// Level after one ⇧⇥ press from `prev`. With a transcript, its new
 // "thinking_level_change" entry (newer than `sinceAt`) gives the configured
-// level — the status line can show the same glyph for "auto" (resolved) and
-// the next level. Without one (no message yet), the status line once redrawn.
-async function waitOmpEffort(p: Pane, model: string, shown: string, sinceAt: string | null, hasTranscript: boolean) {
-  const until = Date.now() + 3000
+// level. Without one (no message yet, session file not found), only the
+// status line — and after a turn "auto" shows the glyph of the level it
+// resolved to, so the glyph alone cannot tell "auto" from that level. The
+// cycle can: a press from "off" always lands on "auto", and a press from a
+// resolved "auto" may keep the glyph (it lands on the level auto had picked),
+// taken once the status line has had time to redraw.
+const OMP_REDRAW_MS = 1000
+async function waitOmpEffort(p: Pane, model: string, prev: string, shown: string, sinceAt: string | null, hasTranscript: boolean) {
+  const pressed = Date.now()
   for (;;) {
     const tr = await transcripts.model(p).catch(() => null)
     if (tr && tr.effort && tr.at && (!sinceAt || tr.at > sinceAt)) {
@@ -493,21 +498,26 @@ async function waitOmpEffort(p: Pane, model: string, shown: string, sinceAt: str
     }
     if (!hasTranscript) {
       const now = ompScreenEffort(await screen(p.id).catch(() => ''), model)
-      if (now && now !== shown) return { level: now, at: sinceAt, shown: now }
+      if (now && now !== shown) return { level: prev === 'off' ? 'auto' : now, at: sinceAt, shown: now }
+      if (now && prev === 'auto' && shown !== 'auto' && Date.now() - pressed > OMP_REDRAW_MS) return { level: now, at: sinceAt, shown: now }
     }
-    if (Date.now() > until) return null
+    if (Date.now() - pressed > 3000) return null
     await sleep(200)
   }
 }
 
-// Presses ⇧⇥ until omp shows `level`, re-reading after each press. A full
+// Presses ⇧⇥ until omp is on `level`, re-reading after each press. A full
 // turn back to the starting level means the model does not offer it.
 async function ompCycleTo(p: Pane, before: ModelInfo, level: string) {
   if (!OMP_EFFORT_ORDER.includes(level)) throw new HerdrError('bad_effort', 'Effort level unavailable for this model')
   await closePanel(p.id).catch(() => false)
   let shown = ompScreenEffort(await screen(p.id), before.label)
   const tr = await transcripts.model(p).catch(() => null)
-  const start = before.effort || shown
+  // The transcript's level, else the status line: wherdr's own record
+  // (`before`, possibly older than a change made in the terminal) only for
+  // "auto", which the glyph no longer shows after a turn.
+  const start = tr && tr.effort ? tr.effort
+    : shown && before.effort === 'auto' && shown !== 'off' ? 'auto' : shown
   if (!shown || !start) throw new HerdrError('unsafe', 'omp’s thinking level is not on screen — nothing was changed.')
   if (start === level) return
   const key = ompCycleKey(p.id, before)
@@ -516,7 +526,7 @@ async function ompCycleTo(p: Pane, before: ModelInfo, level: string) {
   try {
     for (let n = 0; n < OMP_EFFORT_ORDER.length; n++) {
       await herdr('pane.send_input', { pane_id: p.id, keys: ['shift+tab'] })
-      const next = await waitOmpEffort(p, before.label, shown, at, Boolean(tr))
+      const next = await waitOmpEffort(p, before.label, presses[presses.length - 1]!, shown, at, Boolean(tr))
       if (!next) {
         throw new HerdrError('stale', presses.length === 1
           ? 'omp did not change its thinking level — nothing was changed.'
@@ -531,6 +541,12 @@ async function ompCycleTo(p: Pane, before: ModelInfo, level: string) {
     throw new HerdrError('stale', 'omp’s thinking level stopped following — check it in the terminal.')
   } finally {
     ompCycles.set(key, learnOmpCycle(ompCycles.get(key) || null, presses))
+    // Stopped on the way: the field shows where omp really is.
+    const reached = presses[presses.length - 1]!
+    if (presses.length > 1 && reached !== level) {
+      overrides.set(p.id, { ...before, effort: reached, at: new Date().toISOString(), ms: Date.now() })
+      observedEfforts.set(p.id, { label: before.label, effort: reached })
+    }
   }
 }
 
