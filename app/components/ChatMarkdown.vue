@@ -7,8 +7,9 @@
 // The band between the two crosses the Markdown nodes without rewriting the HTML.
 import { applyReveal, cipherSegments, finishReveal, GLYPH_MS, planReveal, revealedAt, trailGlyphs, typeDuration, typingFronts } from '~/utils/typewriter'
 import type { RevealNode, RevealPlan } from '~/utils/typewriter'
+import type { TypingSpeed } from '~/utils/typewriter'
 
-const props = defineProps<{ html: string, typing: number | null }>()
+const props = defineProps<{ html: string, typing: number | null, speed?: TypingSpeed, cipher?: boolean }>()
 const emit = defineEmits<{ done: [] }>()
 const el = ref<HTMLElement | null>(null)
 
@@ -74,14 +75,15 @@ function start(at: number) {
   if (!el.value) return
   plan = planReveal(el.value as unknown as RevealNode, { atomic, keep })
   const p = plan
-  const duration = typeDuration(p.total, typingSpeed.value)
-  const encrypted = encryptedActive.value
+  const speed = props.speed ?? typingSpeed.value
+  const duration = typeDuration(p.total, speed)
+  const encrypted = props.cipher ?? encryptedActive.value
   const step = () => {
     if (plan !== p) return
     // Fixed start time: a recreated component (slice loaded above)
     // resumes where it was.
     const elapsed = Date.now() - at
-    const fronts = encrypted ? typingFronts(p.total, elapsed, typingSpeed.value) : null
+    const fronts = encrypted ? typingFronts(p.total, elapsed, speed) : null
     const written = fronts?.written ?? revealedAt(p.stops, elapsed, duration)
     const decrypted = fronts?.decrypted ?? written
     applyReveal(p, decrypted, encrypted, written)
