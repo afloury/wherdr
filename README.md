@@ -620,8 +620,10 @@ container talks to the Herdr server running on the host.
   allowed"); add it to `HERDR_WEB_ALLOWED_HOSTS`, then restart wherdr. This host check also
   applies to WebSockets.
 - **Passkey lock** (Settings → Security, recommended): once a passkey is registered, the API,
-  images, photos and WebSockets require an unlocked session (signed HttpOnly cookie, 12 hours).
-  Turning the lock off invalidates every session. Lost passkey: delete `data/auth.json` on the
+  images, photos and WebSockets require an unlocked session (signed HttpOnly cookie). The session
+  slides: it lasts 12 hours after the last use, so the app only locks again after 12 hours without
+  any request (or when you lock it from Settings). A network error or a server restart never
+  locks it. Turning the lock off invalidates every session. Lost passkey: delete `data/auth.json` on the
   server; the app is open again to whoever can reach it.
 - Without a passkey, **anyone who can reach the address can control your agents**: every device
   on your tailnet, and every user of your tailnet if you share it.

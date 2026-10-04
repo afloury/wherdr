@@ -1,7 +1,9 @@
 // Passkey lock (WebAuthn: Face ID on iPhone, Touch ID on
 // Mac). As long as no key is registered, the app stays open (the tailnet
 // is the only door). From the first one on, all access to agents requires an
-// unlocked session: signed cookie, valid for 12 h.
+// unlocked session: signed cookie, valid for 12 h after the last use (sliding:
+// an authenticated request more than RENEW_MS after the cookie was issued
+// gets a fresh 12 h cookie). Only 12 h without any request locks the app.
 //
 // data/auth.json: signing secret, registered keys (public key +
 // counter), generation number (incremented when disabling: all
@@ -18,6 +20,8 @@ import type { AuthenticatorTransportFuture } from '@simplewebauthn/server'
 import type { AuthStatus } from '../../shared/types'
 
 const SESSION_MS = 12 * 3600 * 1000
+// Minimum age of a session cookie before it is re-issued (limits Set-Cookie churn).
+const RENEW_MS = 10 * 60 * 1000
 const CHALLENGE_MS = 5 * 60 * 1000
 export const AUTH_COOKIE = 'hw_session'
 const CHALLENGE_COOKIE = 'hw_challenge'
@@ -89,13 +93,16 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
     }
   }
 
-  function isUnlocked(req: ReqLike): boolean {
-    if (!enabled()) return true
+  // Expiry of a valid session cookie, or null.
+  function sessionExp(req: ReqLike): number | null {
     const v = readCookie(req)
-    if (!v) return false
+    if (!v) return null
     const [exp, gen, mac] = v.split('.')
-    if (!exp || !mac || Number(exp) < Date.now() || gen !== String(db.generation)) return false
-    return safeEq(mac, sign(`${exp}.${gen}`))
+    if (!exp || !mac || Number(exp) < Date.now() || gen !== String(db.generation)) return null
+    return safeEq(mac, sign(`${exp}.${gen}`)) ? Number(exp) : null
+  }
+  function isUnlocked(req: ReqLike): boolean {
+    return !enabled() || sessionExp(req) !== null
   }
 
   // Secure only over HTTPS (tailscale serve): tests on http://localhost
@@ -110,6 +117,15 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
     return `${AUTH_COOKIE}=${v}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_MS / 1000}${secure(req)}`
   }
   const clearCookie = (req: ReqLike) => `${AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure(req)}`
+
+  // Sliding session: a valid cookie issued more than RENEW_MS ago is replaced
+  // by a fresh one. Returns the Set-Cookie value and the new expiry, or null.
+  function renew(req: ReqLike, now = Date.now()): { cookie: string, expiresAt: number } | null {
+    if (!enabled()) return null
+    const exp = sessionExp(req)
+    if (exp === null || exp - now > SESSION_MS - RENEW_MS) return null
+    return { cookie: sessionCookie(req, now), expiresAt: now + SESSION_MS }
+  }
 
   // Relying party (rpID) = the page's host name (e.g. <host>.ts.net).
   function relying(req: ReqLike) {
@@ -208,12 +224,12 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   const status = (req: ReqLike): AuthStatus => ({
     enabled: enabled(),
     unlocked: isUnlocked(req),
-    ...(enabled() ? { expiresAt: isUnlocked(req) ? Number(readCookie(req)?.split('.')[0]) : null } : {}),
+    ...(enabled() ? { expiresAt: sessionExp(req), now: Date.now() } : {}),
     devices: db.credentials.map(c => ({ name: c.name, createdAt: c.createdAt, lastUsed: c.lastUsed || null })),
   })
 
   return {
-    isUnlocked, status, registerOptions, registerVerify, loginOptions, loginVerify, disable,
+    isUnlocked, status, renew, registerOptions, registerVerify, loginOptions, loginVerify, disable,
     lock: (req: ReqLike) => ({ ok: true, __cookie: clearCookie(req) }),
     // For tests.
     _sessionCookie: sessionCookie,

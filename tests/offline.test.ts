@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatItem, HerdrState } from '../shared/types'
 import { MAX_BYTES, MAX_CHATS, MAX_MESSAGES, pruneSnapshot, trimChat, type Snapshot } from '../app/utils/offlineCache'
-import { mayReadOffline } from '../app/utils/offlineAccess'
+import { leaseFromStatus, mayReadOffline } from '../app/utils/offlineAccess'
 
 const item = (text: string): ChatItem => ({ role: 'assistant', text, ts: null })
 const state = (ids: string[], remoteOnline = true): HerdrState => ({
@@ -39,5 +39,17 @@ describe('cache hors ligne', () => {
     expect(mayReadOffline({ enabled: true, expiresAt: now }, now)).toBe(false)
     expect(mayReadOffline({ enabled: true, expiresAt: 0 }, now)).toBe(false)
     expect(mayReadOffline(null, now)).toBe(false)
+  })
+
+  it('puts the lease on the client clock so a lagging browser clock keeps a fresh lease', () => {
+    const server = 1_000_000_000
+    const client = server - 60_000 // browser one minute behind the server
+    const lease = leaseFromStatus({ enabled: true, expiresAt: server + 12 * 3600 * 1000, now: server }, client)
+    expect(lease).toEqual({ enabled: true, expiresAt: client + 12 * 3600 * 1000 })
+    expect(mayReadOffline(lease, client)).toBe(true)
+    // The raw server deadline would have been refused (more than 12 h ahead).
+    expect(mayReadOffline({ enabled: true, expiresAt: server + 12 * 3600 * 1000 }, client)).toBe(false)
+    expect(leaseFromStatus({ enabled: true, expiresAt: null, now: server }, client)).toEqual({ enabled: true, expiresAt: 0 })
+    expect(leaseFromStatus({ enabled: false }, client)).toEqual({ enabled: false, expiresAt: 0 })
   })
 })

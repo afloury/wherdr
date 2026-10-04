@@ -191,6 +191,10 @@ First public release.
   each commit adds and its message), so a private value added then removed before pushing is
   caught; gitleaks runs from its Docker image when the binary is not installed. Test fixtures
   and tests no longer contain names captured from real machines.
+- Passkey lock: the session no longer expires 12 hours after unlocking while the app is in use;
+  it now lasts 12 hours after the last request. The lock screen only appears once the server
+  confirms the session is invalid (not on a single refused request or a network error), and a
+  browser clock running behind the server no longer locks the app right after unlocking.
 
 ### Removed
 

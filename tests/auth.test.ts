@@ -84,6 +84,30 @@ describe('auth', () => {
     withKey(a)
     await expect(a.registerOptions(req())).rejects.toMatchObject({ code: 'locked' })
   })
+
+  it('slides an active session: a cookie older than 10 min is renewed for 12 h', () => {
+    const a = createAuth({ dataDir: dir() })
+    withKey(a)
+    const now = Date.now()
+    const fresh = cookieValue(a._sessionCookie(req(), now - 5 * 60 * 1000))
+    expect(a.renew(req(fresh), now)).toBeNull()
+    // Issued 11 h 59 min ago: still valid, renewed instead of expiring a minute later.
+    const old = cookieValue(a._sessionCookie(req(), now - (12 * 60 - 1) * 60 * 1000))
+    const r = a.renew(req(old), now)
+    expect(r?.expiresAt).toBe(now + 12 * 3600 * 1000)
+    expect(a.isUnlocked(req(cookieValue(r!.cookie)))).toBe(true)
+    // Expired or missing sessions are never renewed.
+    expect(a.renew(req(cookieValue(a._sessionCookie(req(), now - 13 * 3600 * 1000))), now)).toBeNull()
+    expect(a.renew(req(), now)).toBeNull()
+  })
+
+  it('reports the server clock with the expiry', () => {
+    const a = createAuth({ dataDir: dir() })
+    withKey(a)
+    const st = a.status(req(cookieValue(a._sessionCookie(req()))))
+    expect(Math.abs(st.now! - Date.now())).toBeLessThan(1000)
+    expect(a.status(req()).expiresAt).toBeNull()
+  })
 })
 
 describe('auth: damaged cookie', () => {
