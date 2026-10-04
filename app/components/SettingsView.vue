@@ -71,6 +71,7 @@ watch(lang, (l) => {
 const shellsOn = showShells
 const countersOn = showCounters
 const quotasOn = showQuotas
+const compactOn = compactList
 const autoReorderOn = autoReorderReady
 const encryptedOn = encryptedText
 const tokensComputerOn = quoteTokensComputer
@@ -385,6 +386,10 @@ onMounted(() => {
 
           <div class="settings-group">
             <h3>{{ t('Home screen') }}</h3>
+            <label class="settings-toggle">
+              <span><b>{{ t('Compact list') }}</b><small>{{ t('One line per agent or space: no preview, folder or model. Computer and phone. Saved on this device.') }}</small></span>
+              <USwitch v-model="compactOn" color="success" size="xl" />
+            </label>
             <label class="settings-toggle">
               <span><b>{{ t('Reorder automatically') }}</b><small>{{ t('In Ready, show unread agents before read ones. Saved on this device.') }}</small></span>
               <USwitch v-model="autoReorderOn" color="success" size="xl" />

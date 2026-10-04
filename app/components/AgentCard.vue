@@ -23,6 +23,13 @@ const statePane = computed(() => space.value?.state ?? props.pane)
 const source = computed(() => (props.row ? stateSource(props.row) : null))
 // One dot per tab, in order, for a coordinator's space with several tabs.
 const dots = computed(() => (space.value && space.value.tabs.length > 1 && isCoordinator(space.value.lead) ? tabStates(space.value) : []))
+// Compact list: one line (avatar, title, badge, tab dots or pane count, state dot).
+const compact = computed(() => compactMeta({
+  tag: props.tag, coordinator: !!props.tag && isCoordinator(props.pane),
+  tabs: space.value?.tabs.length, panes: space.value?.panes.length,
+}))
+const compactDots = computed(() => (compact.value.dots && space.value ? tabStates(space.value) : []))
+const stateTitle = computed(() => [statusLabel(statePane.value), source.value, counts.value].filter(Boolean).join(' · '))
 const busy = ref(false)
 const card = ref<HTMLElement | null>(null)
 let pointerType = ''
@@ -152,10 +159,19 @@ watch(() => props.pane.prompt, () => { busy.value = false })
 <template>
   <UContextMenu :disabled="sheetMenus" :items="contextItems" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="onContextOpen">
     <div
-      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, 'state-from-tab': source }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
+      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, 'state-from-tab': source, compact: compactList }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
       role="button" tabindex="0" @pointerdown="down" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
       @contextmenu="onContext" @selectstart.prevent @click="open" @keydown.enter.self="open"
     >
+      <template v-if="compactList">
+        <AgentAvatar :agent="pane.agent" />
+        <span class="card-title">{{ title }}</span>
+        <span v-if="compact.badge" class="card-tag">{{ compact.badge }}</span>
+        <span v-if="compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
+        <span v-else-if="compact.panes" class="card-panes" :title="counts">{{ compact.panes }}</span>
+        <span class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
+      </template>
+      <template v-else>
       <span v-if="space" class="space-avatar" :title="counts"><TabMap :layout="space.leadTab.layout" :panes="space.leadTab.panes" :current="pane.id" /></span>
       <AgentAvatar v-else :agent="pane.agent" />
       <div class="card-main">
@@ -183,6 +199,7 @@ watch(() => props.pane.prompt, () => { busy.value = false })
           <span class="n">{{ o.i + 1 }}</span><span class="l">{{ o.label }}</span>
         </button>
       </div>
+      </template>
     </div>
   </UContextMenu>
 </template>
