@@ -129,6 +129,26 @@ export const THEMES: ThemeDef[] = [
       '#5a6779', '#ff7a90', '#c6ff3d', '#ffe57a', '#80bbff', '#d9b3ff', '#8cf3ff', '#f5f9fc'],
   },
   {
+    // wherdr Neon Purple — wherdr Neon's blue-black base with an electric
+    // violet #c45cff as signature: fully saturated and brighter than Herdr's
+    // pastel mauve #cba6f7 and omp's violet #9362f4 (hue 278 vs 260). Its
+    // duo is Neon's volt #c6ff3d, the exact complement (hue 78): the focus
+    // ring flips violet ↔ volt for the strongest neon contrast, and ties the
+    // two variants together. Accent on background 5.7:1, background text on
+    // accent buttons 5.7:1. States stay away from the accent: working cyan,
+    // your turn amber, ready volt. ANSI magenta moves to a pink #ff5fd2 so
+    // terminal magenta never reads as the accent.
+    id: 'wherdr-neon-purple', label: 'wherdr Neon Purple',
+    c: {
+      bg: '#0d1117', bg2: '#090c11', surface: '#141a22', line: '#263040',
+      text: '#e6edf5', muted: '#9aa7b8', dim: '#75839a',
+      accent: '#c45cff', green: '#7dff6b', coral: '#ff8a5c', ochre: '#ff9f1c', rose: '#ff4d6d', blue: '#4d9dff', teal: '#2ee6ff', lav: '#a8b8ff',
+      selection: '#c45cff', ring: '#c6ff3d', working: '#2ee6ff', blocked: '#ff9f1c', done: '#c6ff3d',
+    },
+    ansi: ['#263040', '#ff4d6d', '#7dff6b', '#ffd23d', '#4d9dff', '#ff5fd2', '#2ee6ff', '#c9d3df',
+      '#5a6779', '#ff7a90', '#c6ff3d', '#ffe57a', '#80bbff', '#ff9be6', '#8cf3ff', '#f5f9fc'],
+  },
+  {
     // wherdr Synth — proposal: synthwave dusk. Deep indigo night #120f1c with
     // a sunset amber #ffb020 as signature and a laser magenta-red #ff3d81 as
     // duo (focus ring, your turn). Surfaces #1a1626, lines #2f2942, text
