@@ -9,12 +9,16 @@ function seq(...v: number[]) {
 
 describe('parseBackdrop', () => {
   it('keeps a saved choice', () => {
-    expect(parseBackdrop('grid')).toBe('grid')
-    expect(parseBackdrop('plain')).toBe('plain')
+    expect(parseBackdrop('wherdr')).toBe('wherdr')
+    expect(parseBackdrop('herdr')).toBe('herdr')
   })
-  it('falls back to plain so current users see no change', () => {
-    expect(parseBackdrop(null)).toBe('plain')
-    expect(parseBackdrop('dots')).toBe('plain')
+  it('maps the first version of the setting: "plain" was the flat herdr grid', () => {
+    expect(parseBackdrop('plain')).toBe('herdr')
+    expect(parseBackdrop('grid')).toBe('wherdr')
+  })
+  it('defaults to the wherdr grid', () => {
+    expect(parseBackdrop(null)).toBe('wherdr')
+    expect(parseBackdrop('dots')).toBe('wherdr')
   })
 })
 

@@ -8,8 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- Settings › Appearance › Background: "Grid" shows the website's dotted grid with light packets
-  behind the conversation (in the margins on a computer) and the phone list. "Plain" by default.
+- Settings › Appearance › Desktop (computer only): Background "wherdr grid" (default) shows the
+  website's dotted grid with light packets in the margins of the conversation; "herdr grid" keeps
+  the flat line grid. Content width moved here from Settings › Desktop. Phones show no grid.
 - Component tests (Vue components mounted in a Nuxt environment) and end-to-end tests in
   Chromium and WebKit, at iPhone and desktop sizes, against a fake Herdr server.
 - GitHub Actions CI on pushes and pull requests to `main`: unit, component and end-to-end tests,

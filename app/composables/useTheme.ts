@@ -18,7 +18,7 @@ function readFocusBorder() {
 }
 export const focusBorder = ref<FocusBorder>(import.meta.client ? readFocusBorder() : DEFAULT_FOCUS_BORDER)
 
-// Background behind the conversation and the list (utils/backdrop.ts), kept on the device too.
+// Background in the conversation margins on a computer (utils/backdrop.ts), kept on the device too.
 function readBackdrop() {
   try { return parseBackdrop(localStorage.getItem('backdrop')) }
   catch { return DEFAULT_BACKDROP }
