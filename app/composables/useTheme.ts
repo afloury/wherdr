@@ -29,9 +29,9 @@ if (import.meta.client) {
 export const activeTheme = computed(() => {
   if (themeChoice.value === FOLLOW_HERDR) {
     const r = resolveHerdrTheme(appConfig.value.herdrTheme, systemLight.value)
-    return { def: themeById(r.id) || THEMES[0]!, custom: customVars(r.custom) }
+    return { def: themeById(r.id) || themeById(DEFAULT_THEME)!, custom: customVars(r.custom) }
   }
-  return { def: themeById(themeChoice.value) || THEMES[0]!, custom: {} as Record<string, string> }
+  return { def: themeById(themeChoice.value) || themeById(DEFAULT_THEME)!, custom: {} as Record<string, string> }
 })
 
 // Color of the iOS bar (meta theme-color, set by useHead in app.vue).

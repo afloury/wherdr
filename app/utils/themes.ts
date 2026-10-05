@@ -1,6 +1,6 @@
 import type { HerdrThemeConfig } from '#shared/types'
 
-// App themes: the "herdr.dev" design (default, defined in main.css) and
+// App themes: wherdr Titanium (default, defined in main.css), herdr.dev and
 // Herdr's built-in themes (official public palettes of each
 // theme). Each theme gives a few base colors; the surfaces, lines
 // and secondary texts are derived from them (color-mix), to keep the same
@@ -315,7 +315,7 @@ export const THEMES: ThemeDef[] = [
   },
 ]
 
-export const DEFAULT_THEME = 'herdr'
+export const DEFAULT_THEME = 'wherdr-titanium'
 export const themeById = (id: string | null | undefined) => THEMES.find(t => t.id === id)
 
 // Theme choice read from the device: an id that no longer exists (removed
@@ -323,11 +323,11 @@ export const themeById = (id: string | null | undefined) => THEMES.find(t => t.i
 export const storedThemeChoice = (v: string | null | undefined, follow: string) =>
   v && (v === follow || themeById(v)) ? v : DEFAULT_THEME
 
-// CSS variables of a theme (the herdr.dev theme keeps the values of main.css).
+// CSS variables for the selected palette; main.css holds Titanium's first paint.
 export function themeVars(th: ThemeDef): Record<string, string> {
   const c = th.c
   const mix = (a: string, p: number, b = 'var(--bg)') => `color-mix(in srgb, ${a} ${p}%, ${b})`
-  return {
+  const vars = {
     '--bg': c.bg, '--bg-2': c.bg2, '--surface': c.surface,
     '--surface-2': c.surface2 || mix('var(--text)', th.light ? 9 : 7),
     '--surface-3': mix('var(--text)', th.light ? 14 : 11),
@@ -350,10 +350,18 @@ export function themeVars(th: ThemeDef): Record<string, string> {
     '--shadow': th.light ? 'rgba(60, 60, 80, .16)' : 'rgba(0, 0, 0, .5)',
     'color-scheme': th.light ? 'light' : 'dark',
     ...(c.inputLine ? { '--input-line': c.inputLine } : {}),
-    ...(c.working ? { '--working': c.working } : {}),
-    ...(c.blocked ? { '--blocked': c.blocked } : {}),
-    ...(c.done ? { '--done': c.done, '--idle': c.done } : {}),
+    '--working': c.working || c.blue,
+    '--blocked': c.blocked || c.rose,
+    '--done': c.done || c.teal,
+    '--idle': c.done || c.teal,
   }
+  // Preserve the original herdr.dev palette for devices that explicitly chose it.
+  if (th.id === 'herdr') Object.assign(vars, {
+    '--surface-2': '#26262b', '--surface-3': '#2f2f36', '--line-soft': '#2a2a31',
+    '--line-strong': '#4a4a55', '--text-2': '#cdccd2', '--text-3': '#b0afb6',
+    '--text-strong': '#ffffff', '--code-bg': '#131316',
+  })
+  return vars
 }
 
 // Stylesheet of all themes: [data-theme="…"] { --bg: … }.
@@ -390,7 +398,7 @@ function hexAlpha(hex: string, alpha: number) {
 // that we do not have (tokyo-night-day, gruvbox-light…) fall back to Catppuccin Latte.
 export function mapHerdrTheme(name: string | null | undefined, preferLight: boolean): string {
   const n = String(name || '').trim().toLowerCase()
-  if (themeById(n) && n !== DEFAULT_THEME) return n
+  if (themeById(n) && n !== 'herdr') return n
   if (/-(day|light|dawn|lotus|latte)$/.test(n)) return 'catppuccin-latte'
   if (!n) return preferLight ? 'catppuccin-latte' : 'catppuccin' // Herdr's default
   return preferLight ? 'catppuccin-latte' : 'catppuccin'

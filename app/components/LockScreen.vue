@@ -24,7 +24,7 @@ async function unlock() {
 <template>
   <div class="lock-screen">
     <div class="lock-box">
-      <img :src="'/icons/icon-192.png?v=4'" alt="" class="lock-logo">
+      <img :src="'/icons/icon-192.png?v=5'" alt="" class="lock-logo">
       <p class="eyebrow">{{ brandLabel }}</p>
       <h2>{{ t('wherdr is locked') }}</h2>
       <p class="muted">{{ t('Unlock with your passkey (Face ID, Touch ID, Windows Hello…) to reach your agents.') }}</p>

@@ -113,7 +113,7 @@ Claude Code, Codex and other product names are trademarks of their respective ow
   appear in their own section; everything works the same on a remote agent.
 - **Named Herdr sessions**, **quotas** (remaining Claude and Codex usage limits), **Herdr plugin
   actions** in the menus, **passkey lock** (Face ID, Touch ID, Windows Hello, Android…).
-- **Themes**: herdr.dev (default) and Herdr's built-in themes, or follow your Herdr theme.
+- **Themes**: wherdr Titanium (default), herdr.dev and Herdr's built-in themes, or follow your Herdr theme.
   **English and French** interface.
 
 ### On a computer
