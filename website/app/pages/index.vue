@@ -263,7 +263,7 @@ npm ci && npm run build && npm start   <span class="c"># → http://localhost:76
       <section class="section cta">
         <div class="grid-bg" aria-hidden="true" />
         <div v-reveal class="wrap cta-in">
-          <SiteLogo class="cta-logo" />
+          <PixelMark class="cta-logo" />
           <h2 class="display h2">Follow your agents from anywhere.</h2>
           <p class="lead">Free and open source. Watch the repository to hear about new releases.</p>
           <div class="hero-ctas">
@@ -277,7 +277,7 @@ npm ci && npm run build && npm start   <span class="c"># → http://localhost:76
     <footer class="foot">
       <div class="wrap foot-in">
         <div class="foot-brand">
-          <SiteLogo class="foot-logo" :boot="false" :glow="false" />
+          <PixelMark class="foot-logo" :boot="false" :glow="false" />
           <span>wherdr</span>
         </div>
         <nav class="foot-links" aria-label="Links">

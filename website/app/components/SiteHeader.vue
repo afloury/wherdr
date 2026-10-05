@@ -14,8 +14,8 @@ const open = ref(false)
   <header class="hdr">
     <div class="wrap row">
       <a href="#top" class="brand" aria-label="wherdr, back to top">
-        <SiteLogo class="logo" />
-        <span class="name"><EncryptedText text="wherdr" :delay="450" :duration="700" /></span>
+        <PixelMark class="logo" />
+        <PixelMark class="name" text="wherdr" />
       </a>
       <nav class="nav" aria-label="Sections">
         <a v-for="l in links" :key="l.to" :href="l.to">{{ l.label }}</a>
@@ -44,9 +44,10 @@ const open = ref(false)
   border-bottom: 1px solid var(--line);
 }
 .row { display: flex; align-items: center; gap: 32px; height: 60px; }
-.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: #fff; }
-.logo { width: 34px; height: auto; color: var(--text); }
-.name { font-family: var(--display); font-weight: 800; font-size: 20px; letter-spacing: -0.02em; }
+.brand { display: flex; align-items: center; gap: 9px; flex: none; text-decoration: none; color: var(--text); }
+/* 3 px per pixel for both marks (16 and 35 columns, 7 rows): one drawing, sharp edges. */
+.logo { width: 48px; height: 21px; flex: none; }
+.name { width: 105px; height: 21px; flex: none; }
 .nav { display: flex; gap: 28px; margin-left: auto; }
 .nav a, .mnav a {
   font: 500 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
@@ -67,6 +68,12 @@ const open = ref(false)
   .nav { display: none; }
   .end { margin-left: auto; }
   .burger { display: grid; }
+}
+/* Small phones: icon-only GitHub link (label kept for screen readers). */
+@media (max-width: 480px) {
+  .row { gap: 16px; }
+  .gh { width: 34px; padding: 0; justify-content: center; }
+  .gh span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 @media (min-width: 861px) { .mnav { display: none !important; } }
 </style>
