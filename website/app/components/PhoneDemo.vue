@@ -24,6 +24,7 @@ const state = computed(() => agentState(step.value))
       <div class="agent-actions">
         <span class="icon-btn"><UIcon name="i-lucide-plus" /></span>
         <span class="icon-btn"><UIcon name="i-lucide-square-terminal" /></span>
+        <span class="icon-btn"><UIcon name="i-lucide-search" /></span>
         <span class="icon-btn"><UIcon name="i-lucide-ellipsis" /></span>
       </div>
     </header>

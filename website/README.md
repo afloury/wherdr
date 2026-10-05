@@ -16,10 +16,13 @@ the page makes no request to another site.
 - **Live demos** (`/preview`): the hero phone and desktop and the three feature stories play
   made-up sessions in the app's look. Each is a script of timed steps (`app/utils/heroDemo.ts`,
   `app/utils/storyDemos.ts`) played by `useDemoClock`; views of the same script share one
-  clock (the hero phone and window stay in sync). Pieces of the app (console, "Your turn" card,
-  agent card, message field, desktop shell) live in `components/demo/`. A demo plays only on
-  screen in a visible tab; `prefers-reduced-motion` shows its final step, still. A root test
-  checks every script's timing.
+  clock (the hero phone and window stay in sync). The pieces in `components/demo/` copy the app's
+  own components and CSS (class names, sizes, Titanium tokens, the `.app-ui` block of
+  `assets/css/main.css`) in its default settings: Halo focus ring, medium typing speed with
+  encrypted text (`app/utils/typing.ts`, a copy of the app's `app/utils/typewriter.ts` timing; a
+  root test checks they agree). When the app's look changes, update them to match. A demo plays
+  only on screen in a visible tab; `prefers-reduced-motion` shows its final step, still. A root
+  test checks every script's timing.
 - **Installer**: [`public/install`](public/install) (`curl -fsSL https://wherdr.dev/install | sh`);
   `sh tests/install.test.sh` runs shellcheck and its tests in a throwaway container with stub
   `docker` and `herdr` binaries.

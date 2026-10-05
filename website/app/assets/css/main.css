@@ -227,6 +227,8 @@ code, kbd, pre { font-family: var(--mono); }
   background: var(--bg); color: var(--text);
   font: calc(var(--u) * 16) / 1.5 var(--sans);
   text-align: left; -webkit-user-select: none; user-select: none;
+  /* The app's z-indexes (current answer, halo) stay inside the demo. */
+  isolation: isolate;
 }
 .app-ui * { box-sizing: border-box; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
