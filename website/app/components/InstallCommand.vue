@@ -30,7 +30,7 @@ onBeforeUnmount(() => clearTimeout(timer))
     <code id="install-cmd-text" class="text">{{ command }}</code>
     <button type="button" class="copy" :aria-label="copied ? 'Copied' : 'Copy the install command'" @click="copy">
       <UIcon :name="copied ? 'i-lucide-check' : 'i-lucide-copy'" class="size-4" />
-      <span>{{ copied ? 'Copied' : 'Copy' }}</span>
+      <span class="txt">{{ copied ? 'Copied' : 'Copy' }}</span>
     </button>
     <span class="sr-only" aria-live="polite">{{ copied ? 'Command copied to the clipboard' : '' }}</span>
   </div>
@@ -62,7 +62,7 @@ onBeforeUnmount(() => clearTimeout(timer))
 .copy:hover { color: var(--text); background: var(--surface); }
 @media (max-width: 520px) {
   .cmd { font-size: 13px; }
-  .copy span { display: none; }
+  .copy .txt { display: none; }
   .copy { padding: 0 14px; }
 }
 </style>

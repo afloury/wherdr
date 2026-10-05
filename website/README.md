@@ -8,6 +8,11 @@ the page makes no request to another site.
 - **Build**: `npm run generate` → static files in `.output/public/` (`npm run typecheck` checks the types).
 - **Deploy (private)**: `SITE_BIND=<tailscale-ip> docker compose up -d --build` — nginx on
   `${SITE_BIND:-127.0.0.1}:${SITE_PORT:-8120}`, `/install` served as `text/plain`.
+- **Comparison pages** (not indexed): `/grid/1`…`/grid/4` show the landing page with a variant of
+  the background grid (cursor glow, travelling packets, hero perspective, dotted intersections;
+  `components/GridBackground.vue`); `/preview` adds the live phone demo, the running install and
+  the agents band. `/` stays the reference. If the installer's output changes, update
+  `app/utils/installDemo.ts` (a root test checks its lines against `public/install`).
 - **Installer**: [`public/install`](public/install) (`curl -fsSL https://wherdr.dev/install | sh`);
   `sh tests/install.test.sh` runs shellcheck and its tests in a throwaway container with stub
   `docker` and `herdr` binaries.
