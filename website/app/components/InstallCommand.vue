@@ -1,8 +1,12 @@
 <script setup lang="ts">
-// The one-line install command, copied in one click.
-const props = withDefaults(defineProps<{ command?: string }>(), {
+// A one-line command (or an agent prompt), copied in one click.
+const props = withDefaults(defineProps<{ command?: string, prompt?: string, what?: string, wrap?: boolean }>(), {
   command: 'curl -fsSL https://wherdr.dev/install | sh',
+  prompt: '$',
+  what: 'command',
+  wrap: false,
 })
+const text = useTemplateRef<HTMLElement>('text')
 const copied = ref(false)
 let timer: ReturnType<typeof setTimeout> | undefined
 
@@ -12,7 +16,7 @@ async function copy() {
   } catch {
     // Old browsers / insecure context: select the text instead.
     const sel = window.getSelection()
-    const el = document.getElementById('install-cmd-text')
+    const el = text.value
     if (sel && el) { const r = document.createRange(); r.selectNodeContents(el); sel.removeAllRanges(); sel.addRange(r) }
     return
   }
@@ -24,14 +28,14 @@ onBeforeUnmount(() => clearTimeout(timer))
 </script>
 
 <template>
-  <div class="cmd fx-ring halo">
-    <span class="prompt" aria-hidden="true">$</span>
-    <code id="install-cmd-text" class="text">{{ command }}</code>
-    <button type="button" class="copy" :aria-label="copied ? 'Copied' : 'Copy the install command'" @click="copy">
+  <div class="cmd fx-ring halo" :class="{ wrap }">
+    <span class="prompt" aria-hidden="true">{{ prompt }}</span>
+    <code ref="text" class="text">{{ command }}</code>
+    <button type="button" class="copy" :aria-label="copied ? 'Copied' : `Copy the install ${what}`" @click="copy">
       <UIcon :name="copied ? 'i-lucide-check' : 'i-lucide-copy'" class="size-4" />
       <span class="txt">{{ copied ? 'Copied' : 'Copy' }}</span>
     </button>
-    <span class="sr-only" aria-live="polite">{{ copied ? 'Command copied to the clipboard' : '' }}</span>
+    <span class="sr-only" aria-live="polite">{{ copied ? `${what[0]!.toUpperCase()}${what.slice(1)} copied to the clipboard` : '' }}</span>
   </div>
 </template>
 
@@ -51,6 +55,9 @@ onBeforeUnmount(() => clearTimeout(timer))
   color: var(--text); white-space: nowrap; overflow-x: auto; scrollbar-width: none;
 }
 .text::-webkit-scrollbar { display: none; }
+/* Prose prompts wrap instead of scrolling; the prompt sign stays on the first line. */
+.wrap .text { white-space: normal; overflow-wrap: anywhere; line-height: 1.6; }
+.wrap .prompt { place-items: start center; padding-top: 15px; line-height: 1.6; }
 .copy {
   display: inline-flex; align-items: center; gap: 8px; flex: none;
   padding: 0 18px; border: 0; border-left: 1px solid var(--line);

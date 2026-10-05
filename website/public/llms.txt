@@ -1,0 +1,15 @@
+# wherdr
+
+> Self-hosted web app and phone PWA to follow and drive the coding agents (Claude Code, Codex, omp…) running in Herdr on your machines, over localhost or a private network only. Open source, MIT.
+
+## Docs
+
+- [Setup guide for agents](https://wherdr.dev/agent.md): questions to ask the user, one install path per answer, checks and safety rules
+- [Installer](https://wherdr.dev/install): the `curl -fsSL https://wherdr.dev/install | sh` script (Linux, Docker)
+- [README](https://raw.githubusercontent.com/afloury/wherdr/main/README.md): features, installation, configuration, troubleshooting
+- [Security policy](https://raw.githubusercontent.com/afloury/wherdr/main/SECURITY.md): how to report a vulnerability
+
+## Optional
+
+- [Source code](https://github.com/afloury/wherdr)
+- [Herdr](https://herdr.dev): the terminal workspace for coding agents wherdr builds on

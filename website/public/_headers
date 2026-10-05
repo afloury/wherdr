@@ -12,6 +12,15 @@
   Content-Type: text/plain; charset=utf-8
   Cache-Control: no-cache
 
+# Plain-text guides for coding agents and LLMs (/agent.md, /llms.txt).
+/agent.md
+  Content-Type: text/markdown; charset=utf-8
+  Cache-Control: no-cache
+
+/llms.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: no-cache
+
 # Fingerprinted build output.
 /_nuxt/*
   Cache-Control: public, max-age=31536000, immutable
