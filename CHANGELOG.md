@@ -18,6 +18,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- An omp `!` or `$` command sent while omp is working no longer stays "Queued · sending…" (then
+  "Not sent", inviting a second run): omp runs it at once but records it only when the next prompt
+  starts, so its bubble now goes when that turn ends; the "You ran" block shows once omp records it.
 - Pasting an image (`⌘V` on a Mac) into a terminal, full view or side by side, now reaches the
   agent: it is uploaded to the agent's machine and its path pasted through Herdr, which omp and
   Claude Code attach as an image. Before, the terminal only pasted text and the image was lost.

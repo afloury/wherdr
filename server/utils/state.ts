@@ -316,9 +316,12 @@ function saveQueued() {
 export function addQueued(paneId: string, text: string, opts: { held?: boolean, busy?: boolean, failed?: boolean, id?: string } = {}): QueuedMessage {
   const list = queued.get(paneId) || []
   const own = opts.id && /^w-[a-z0-9]{1,32}$/.test(opts.id) && !list.some(q => q.id === opts.id) ? opts.id : null
+  // Typed during a turn (see isOmpRun).
+  const turn = !opts.held && !opts.failed && TURN.has(findPane(paneId)?.status || '')
   const e: QueueEntry = {
     id: own || crypto.randomBytes(4).toString('hex'), text: String(text).slice(0, 4000), at: Date.now(),
     ...(opts.held ? { held: true } : {}), ...(opts.busy ? { busy: true } : {}), ...(opts.failed ? { failed: true } : {}),
+    ...(turn ? { turnSeen: true } : {}),
   }
   queued.set(paneId, [...list, e])
   sent.set(paneId, addSent(sent.get(paneId) || [], e.text, e.at))
@@ -479,6 +482,7 @@ export function retryQueued(paneId: string, id: string): QueuedMessage {
   q.at = Date.now()
   delete q.busy
   delete q.readySince
+  delete q.turnSeen
   delete q.stuckSince
   delete q.noInput
   setTimeout(poll, 50)
@@ -492,7 +496,7 @@ function reconcileQueued(p: Pane) {
   transcripts.chat(p, {})
     .then((r) => {
       // A held message was not typed yet: only the agent's own transcript can't take it.
-      const left = (queued.get(p.id) || []).filter(q => q.held || !queuedDone(q, r.items || [], READY.has(p.status || ''), Date.now()))
+      const left = (queued.get(p.id) || []).filter(q => q.held || !queuedDone(q, r.items || [], READY.has(p.status || ''), Date.now(), p.agent))
       if (left.length) queued.set(p.id, left)
       else queued.delete(p.id)
     })
@@ -594,6 +598,8 @@ export const pendingPrompts = new Map<string, { text: string, at: number }>()
 const PENDING_TTL_MS = 15 * 60 * 1000
 const pendingBusy = new Set<string>()
 export const READY = new Set(['done', 'idle'])
+// The agent is in a turn (working, or waiting for an answer in the middle of one).
+const TURN = new Set(['working', 'blocked'])
 // Restarts in progress or failed, per pane (see restart.ts).
 export const restarts = new Map<string, NonNullable<Pane['restart']> & { at: number, session?: string | null, stopped?: boolean, started?: boolean }>()
 function flushPending(p: Pane) {
@@ -740,6 +746,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       const before = findPane(p.id)
       const menu = Boolean(before && (before.menu || before.prompt || before.screen)) || restarting(p.id)
       // omp running the user's "!" command: idle for Herdr, but busy.
+      if (list && TURN.has(p.status || '')) for (const q of list) if (!q.held && !q.failed) q.turnSeen = true
       if (list && checkQueue(list, before?.ompShell ? 'working' : p.status, Date.now(), menu)) log(`message not sent on ${p.id}`)
       if (list) deliverHeld(p)
       if (list && list.length) p.queued = list.map(publicEntry)
