@@ -46,7 +46,12 @@ jobs:
       run:
         working-directory: website
     steps:
+      # Only website/, like the Docker build context: the app's root
+      # tsconfig.json (extending an ungenerated .nuxt) breaks the site build.
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: /website/
+          sparse-checkout-cone-mode: false
 
       - uses: actions/setup-node@v4
         with:
