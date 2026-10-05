@@ -4,8 +4,9 @@
 // (https://github.com/unovue/inspira-ui, app/components/inspira/ui/safari-mockup/SafariMockup.vue,
 // MIT License, Copyright (c) 2024-2026 rahulv.dev). Unlike the original, the
 // screenshot is a real <img> (alt text, lazy loading) and the toolbar is HTML
-// so it stays legible on narrow screens.
-defineProps<{ src: string, alt: string, url?: string, width?: number, height?: number, eager?: boolean }>()
+// so it stays legible on narrow screens. Without `src`, the default slot fills
+// the window below the toolbar (a live demo, laid out in `cqw` of its width).
+defineProps<{ src?: string, alt: string, url?: string, width?: number, height?: number, eager?: boolean }>()
 
 // Glyph paths in Inspira's 1202 × 52 toolbar coordinates; `box` is each glyph's viewBox.
 const icons = {
@@ -44,7 +45,8 @@ const icons = {
         <svg :viewBox="icons.tabs.box"><path :d="icons.tabs.d" /></svg>
       </span>
     </div>
-    <img :src="src" :alt="alt" :width="width ?? 1440" :height="height ?? 900" :loading="eager ? 'eager' : 'lazy'" :fetchpriority="eager ? 'high' : undefined" decoding="async">
+    <img v-if="src" :src="src" :alt="alt" :width="width ?? 1440" :height="height ?? 900" :loading="eager ? 'eager' : 'lazy'" :fetchpriority="eager ? 'high' : undefined" decoding="async">
+    <div v-else class="live" role="img" :aria-label="alt" :style="{ aspectRatio: `${width ?? 1440} / ${height ?? 900}` }"><slot /></div>
   </figure>
 </template>
 
@@ -85,6 +87,7 @@ svg { display: block; height: calc(17 * var(--u)); width: auto; fill: currentCol
 .addr .reload { position: absolute; right: calc(9 * var(--u)); height: calc(15 * var(--u)); }
 .url { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 500 max(9px, calc(12 * var(--u)))/1 var(--sans); color: #c9ced8; }
 img { display: block; width: 100%; height: auto; }
+.live { position: relative; width: 100%; overflow: hidden; container-type: inline-size; }
 
 /* Narrow windows: keep traffic lights, address and tabs, like a compact Safari. */
 @container (max-width: 560px) {
