@@ -54,7 +54,9 @@ export default defineNuxtConfig({
       meta: [
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content' },
         { name: 'description', content: 'Control your Herdr code agents' },
-        // theme-color and color-scheme: set by app.vue according to the chosen theme.
+        // Titanium is used before JS loads; app.vue updates these for saved choices.
+        { key: 'theme-color', name: 'theme-color', content: '#12151b' },
+        { key: 'color-scheme', name: 'color-scheme', content: 'dark' },
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
         { name: 'mobile-web-app-capable', content: 'yes' },
         // "black" rather than "black-translucent": with translucent, iOS 26 shortens
@@ -67,9 +69,9 @@ export default defineNuxtConfig({
       link: [
         // App icon (">_" + orange dot). An installation can replace it without
         // touching the code: see docker-compose.override.example.yml (branding/ folder).
-        { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/icons/favicon-32.png?v=4' },
-        { rel: 'icon', type: 'image/png', sizes: '192x192', href: '/icons/icon-192.png?v=4' },
-        { rel: 'apple-touch-icon', href: '/icons/apple-touch-icon.png?v=4' },
+        { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/icons/favicon-32.png?v=5' },
+        { rel: 'icon', type: 'image/png', sizes: '192x192', href: '/icons/icon-192.png?v=5' },
+        { rel: 'apple-touch-icon', href: '/icons/apple-touch-icon.png?v=5' },
       ],
     },
   },

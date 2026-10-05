@@ -130,47 +130,46 @@
   --font-display: "Archivo Variable", "Archivo", "Inter Variable", system-ui, sans-serif;
 }
 
-/* ================================================================
-   Tokens — herdr.dev "INK" look: near-black background, thin lines,
-   mauve accent, Catppuccin-style state colors, square corners.
-   ================================================================ */
+/* Default palette: wherdr Titanium. Keep these values in sync with
+   app/utils/themes.ts so the first paint matches the selected theme. */
 :root {
-  --bg: #17171a;
-  --bg-2: #1b1b1f;
-  --surface: #1f1f24;
-  --surface-2: #26262b;
-  --surface-3: #2f2f36;
-  --line: #35353d;
-  --line-soft: #2a2a31;
+  --bg: #12151b;
+  --bg-2: #0d1015;
+  --surface: #1a1e26;
+  --surface-2: color-mix(in srgb, var(--text) 7%, var(--bg));
+  --surface-3: color-mix(in srgb, var(--text) 11%, var(--bg));
+  --line: #2a3038;
+  --line-soft: color-mix(in srgb, var(--line) 60%, var(--bg));
 
-  --text: #eae8ee;
-  --text-2: #cdccd2;
-  --text-3: #b0afb6;
-  --muted: #9399b2;
-  --dim: #6c7086;
-  --lav: #cdd6f4;
+  --text: #e6eaf2;
+  --text-2: color-mix(in srgb, var(--text) 86%, var(--bg));
+  --text-3: color-mix(in srgb, var(--text) 72%, var(--bg));
+  --muted: #9da5b4;
+  --dim: #828a9a;
+  --lav: #a98bff;
 
-  --mauve: #cba6f7;
-  --green: #a6e3a1;
-  --coral: #d97757;
-  --ochre: #d9b66b;
-  --rose: #f38ba8;
-  --blue: #89b4fa;
-  --teal: #94e2d5;
+  --mauve: #1fb2ff;
+  --green: #00f28a;
+  --coral: #ff7b86;
+  --ochre: #ffb347;
+  --rose: #ff4757;
+  --blue: #1fb2ff;
+  --teal: #00dbe4;
 
-  --working: var(--blue);
-  --blocked: var(--rose);
-  --done: var(--teal);
-  --idle: var(--teal);          /* ready: same family as done, hollow square */
+  --working: #a98bff;
+  --blocked: #ffb347;
+  --done: #00f28a;
+  --idle: #00f28a;          /* ready: same family as done, hollow square */
   --input-line: var(--line);    /* input field outline */
   --unknown: var(--dim);
   --danger: var(--rose);
   --accent: var(--mauve);
-  --on-accent: #17171a;         /* text on top of the accent */
-  --line-strong: #4a4a55;       /* outline of the main buttons (lighter than --line) */
-  --text-strong: #ffffff;       /* markdown headings and bold */
-  --code-bg: #131316;
-  --selection: color-mix(in srgb, var(--accent) 32%, transparent);
+  --on-accent: #12151b;         /* text on top of the accent */
+  --line-strong: color-mix(in srgb, var(--text) 30%, var(--bg));
+  --text-strong: color-mix(in srgb, var(--text) 75%, #fff);
+  --code-bg: color-mix(in srgb, #000 22%, var(--bg));
+  --selection: color-mix(in srgb, #1fb2ff 32%, transparent);
+  --ring-2: var(--accent);
   /* herdr.dev-style grid, around the content only. */
   --grid: color-mix(in srgb, var(--line) 34%, transparent);
   --grid-size: 72px;

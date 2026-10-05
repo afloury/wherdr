@@ -1,7 +1,8 @@
 // Herdr theme (config.toml) and resolution on the app side.
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { parseHerdrTheme } from '../server/utils/herdrtheme'
-import { DEFAULT_THEME, THEMES, customVars, mapHerdrTheme, resolveHerdrTheme, storedThemeChoice, themeVars, xtermTheme } from '../app/utils/themes'
+import { DEFAULT_THEME, THEMES, customVars, mapHerdrTheme, resolveHerdrTheme, storedThemeChoice, themeVars, themesCss, xtermTheme } from '../app/utils/themes'
 
 describe('config.toml de Herdr', () => {
   it('lit [theme], [theme.custom] et ses variantes, ignore le reste', () => {
@@ -36,6 +37,8 @@ default_shell = ""
     expect(resolveHerdrTheme({ ...base, autoSwitch: true }, true).id).toBe('catppuccin-latte')
     expect(mapHerdrTheme('gruvbox-light', false)).toBe('catppuccin-latte')
     expect(mapHerdrTheme(null, false)).toBe('catppuccin')
+    expect(mapHerdrTheme('herdr', false)).toBe('catppuccin')
+    expect(mapHerdrTheme('wherdr-titanium', false)).toBe('wherdr-titanium')
     expect(customVars({ accent: '#f5c2e7', panel_bg: 'reset', red: 'rgb(1,2,3)' })).toEqual({ '--accent': '#f5c2e7', '--mauve': '#f5c2e7', '--rose': 'rgb(1,2,3)' })
   })
 
@@ -65,9 +68,24 @@ default_shell = ""
   })
 
   it('falls back to the default theme for a stored id that no longer exists', () => {
+    expect(DEFAULT_THEME).toBe('wherdr-titanium')
     expect(storedThemeChoice('wherdr-synth', 'follow')).toBe(DEFAULT_THEME)
     expect(storedThemeChoice(null, 'follow')).toBe(DEFAULT_THEME)
     expect(storedThemeChoice('follow', 'follow')).toBe('follow')
+    expect(storedThemeChoice('herdr', 'follow')).toBe('herdr')
     expect(storedThemeChoice('wherdr-graphite', 'follow')).toBe('wherdr-graphite')
+    expect(themesCss()).toContain(':root[data-theme="herdr"]')
+    expect(themesCss()).not.toContain(':root[data-theme="wherdr-titanium"]')
+    expect(themeVars(THEMES[0]!)['--surface-2']).toBe('#26262b')
+  })
+
+  it('uses the Titanium background before the app loads and in both PWA manifests', () => {
+    const background = THEMES.find(t => t.id === DEFAULT_THEME)!.c.bg
+    const css = readFileSync(new URL('../app/assets/css/main.css', import.meta.url), 'utf8')
+    expect(css.match(/:root\s*\{[^}]*--bg:\s*(#[0-9a-f]{6})/i)?.[1]).toBe(background)
+    for (const name of ['manifest.webmanifest', 'manifest-en.webmanifest']) {
+      const manifest = JSON.parse(readFileSync(new URL(`../public/${name}`, import.meta.url), 'utf8'))
+      expect([manifest.background_color, manifest.theme_color]).toEqual([background, background])
+    }
   })
 })
