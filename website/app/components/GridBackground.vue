@@ -9,7 +9,7 @@
 //   3  perspective: in the hero the grid recedes to a horizon and drifts
 //      towards you (flat everywhere else, `flat`);
 //   4  dots at the intersections and a soft vignette;
-//   5  the lamp of 1 with the packets of 2.
+//   5  the dots of 4 with the packets of 2.
 // Cheap by design: CSS layers, one transform animation, timers only while
 // the grid is on screen and the tab is visible. prefers-reduced-motion: a
 // still grid.
@@ -111,11 +111,9 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="root" class="gb" :class="[`v${kind}`, { off: !visible }]" aria-hidden="true">
-    <div v-if="kind !== 3 && kind !== 4" class="grid-bg" />
+    <div v-if="kind === 0 || kind === 1 || kind === 2" class="grid-bg" />
 
-    <div v-if="kind === 1 || kind === 5" class="glow" />
-
-    <div v-if="kind === 2 || kind === 5" ref="packets" class="packets" />
+    <div v-if="kind === 1" class="glow" />
 
     <div v-if="kind === 3" class="persp">
       <div class="sky" />
@@ -123,10 +121,12 @@ onBeforeUnmount(() => {
       <div class="horizon" />
     </div>
 
-    <template v-else-if="kind === 4">
+    <template v-if="kind === 4 || kind === 5">
       <div class="dots-grid" />
       <div class="vignette" />
     </template>
+
+    <div v-if="kind === 2 || kind === 5" ref="packets" class="packets" />
   </div>
 </template>
 

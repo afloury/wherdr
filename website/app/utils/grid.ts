@@ -6,7 +6,7 @@ export const GRID_VARIANTS: { n: Exclude<GridVariant, 0>, name: string }[] = [
   { n: 2, name: 'Travelling packets' },
   { n: 3, name: 'Hero perspective' },
   { n: 4, name: 'Dotted intersections' },
-  { n: 5, name: 'Lamp and packets' },
+  { n: 5, name: 'Dots and packets' },
 ]
 
 // Grid cell, in CSS pixels (same as .grid-bg in main.css).
