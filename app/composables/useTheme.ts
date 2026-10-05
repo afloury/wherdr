@@ -6,7 +6,7 @@
 export const FOLLOW_HERDR = 'follow'
 
 function readChoice() {
-  try { return localStorage.getItem('theme') || DEFAULT_THEME }
+  try { return storedThemeChoice(localStorage.getItem('theme'), FOLLOW_HERDR) }
   catch { return DEFAULT_THEME }
 }
 export const themeChoice = ref<string>(import.meta.client ? readChoice() : DEFAULT_THEME)

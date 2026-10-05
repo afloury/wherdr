@@ -1,7 +1,7 @@
 // Herdr theme (config.toml) and resolution on the app side.
 import { describe, expect, it } from 'vitest'
 import { parseHerdrTheme } from '../server/utils/herdrtheme'
-import { THEMES, customVars, mapHerdrTheme, resolveHerdrTheme, themeVars, xtermTheme } from '../app/utils/themes'
+import { DEFAULT_THEME, THEMES, customVars, mapHerdrTheme, resolveHerdrTheme, storedThemeChoice, themeVars, xtermTheme } from '../app/utils/themes'
 
 describe('config.toml de Herdr', () => {
   it('lit [theme], [theme.custom] et ses variantes, ignore le reste', () => {
@@ -58,9 +58,16 @@ default_shell = ""
     expect(xtermTheme(omp).selectionBackground).toBe('rgba(147,98,244,0.32)')
     expect(themeVars(THEMES.find(t => t.id === 'codex')!)['--selection']).toBe('color-mix(in srgb, var(--accent) 32%, transparent)')
     expect(THEMES.find(t => t.id === 'omp-light')!.light).toBe(true)
-    expect(THEMES.map(t => t.id)).toEqual(['herdr', 'claude-code', 'codex', 'omp', 'wherdr-neon', 'wherdr-neon-purple', 'wherdr-synth', 'wherdr-matrix', 'catppuccin', 'terminal', 'tokyo-night', 'dracula', 'nord', 'gruvbox', 'one-dark', 'solarized', 'kanagawa', 'rose-pine', 'vesper', 'catppuccin-latte', 'omp-light'])
+    expect(THEMES.map(t => t.id)).toEqual(['herdr', 'claude-code', 'codex', 'omp', 'wherdr-neon', 'wherdr-neon-purple', 'wherdr-graphite', 'wherdr-titanium', 'catppuccin', 'terminal', 'tokyo-night', 'dracula', 'nord', 'gruvbox', 'one-dark', 'solarized', 'kanagawa', 'rose-pine', 'vesper', 'catppuccin-latte', 'omp-light'])
     // wherdr themes: the focus ring's second color comes from the theme.
-    expect(themeVars(THEMES.find(t => t.id === 'wherdr-synth')!)['--ring-2']).toBe('#ff3d81')
+    expect(themeVars(THEMES.find(t => t.id === 'wherdr-titanium')!)['--ring-2']).toBe('#f84fcc')
     expect(themeVars(omp)['--ring-2']).toBeUndefined()
+  })
+
+  it('falls back to the default theme for a stored id that no longer exists', () => {
+    expect(storedThemeChoice('wherdr-synth', 'follow')).toBe(DEFAULT_THEME)
+    expect(storedThemeChoice(null, 'follow')).toBe(DEFAULT_THEME)
+    expect(storedThemeChoice('follow', 'follow')).toBe('follow')
+    expect(storedThemeChoice('wherdr-graphite', 'follow')).toBe('wherdr-graphite')
   })
 })
