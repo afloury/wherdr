@@ -404,7 +404,7 @@ npm ci && npm run build && npm start   <span class="c"># → http://localhost:76
   .faq-wrap { grid-template-columns: 1fr; gap: 0; }
   .foot-in { grid-template-columns: minmax(0, 1fr); }
   .foot-links { justify-content: flex-start; }
-  .hv-phone { width: 38%; right: -6px; }
+  .hv-phone { width: 38%; right: 2px; }
   .tab { flex: 1 1 100%; border-right: 0; border-bottom: 1px solid var(--line); }
   .panel { padding: 20px; }
 }
