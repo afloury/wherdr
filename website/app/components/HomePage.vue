@@ -2,7 +2,7 @@
 // The landing page (`/`): dotted background grid with travelling packets,
 // live demos in the hero (phone + desktop on one clock) and next to the
 // feature stories, and an install that types itself.
-import { REPO } from '~/utils/site'
+import { AGENT_PROMPT, REPO } from '~/utils/site'
 
 const stories = [
   {
@@ -49,6 +49,7 @@ const security = [
 
 const installTabs = [
   { id: 'one', label: 'Linux · one command' },
+  { id: 'agent', label: 'Ask your agent' },
   { id: 'docker', label: 'Linux · Docker, by hand' },
   { id: 'mac', label: 'macOS · no Docker' },
 ] as const
@@ -227,6 +228,11 @@ const faq = [
               </ol>
             </div>
 
+            <div v-show="tab === 'agent'" id="panel-agent" role="tabpanel" aria-labelledby="tab-agent" class="panel">
+              <InstallCommand :command="AGENT_PROMPT" prompt="›" what="prompt" wrap />
+              <p class="cell-text">Not sure which setup fits? Paste this into Claude Code, Codex, omp or any coding agent running on the machine that runs Herdr. It reads <a href="/agent.md" target="_blank">our setup guide for agents</a>, asks whether you want your phone, an always-on server or several machines, then installs step by step — asking before Docker, Tailscale or sudo, and never exposing wherdr to the Internet.</p>
+            </div>
+
             <div v-show="tab === 'docker'" id="panel-docker" role="tabpanel" aria-labelledby="tab-docker" class="panel">
               <pre class="code"><code><span class="c"># Linux, Docker Compose v2, Herdr running</span>
 git clone {{ REPO }}.git && cd wherdr
@@ -364,7 +370,7 @@ npm ci && npm run build && npm start   <span class="c"># → http://localhost:76
 .code code { background: none; border: 0; padding: 0; font-size: inherit; }
 .code .c { color: var(--dim); }
 .install-foot { margin: 20px 0 0; color: var(--muted); font-size: 15px; }
-.install-foot a, .section-head a { color: var(--text); text-decoration-color: var(--accent); text-underline-offset: 3px; }
+.install-foot a, .section-head a, .panel .cell-text a { color: var(--text); text-decoration-color: var(--accent); text-underline-offset: 3px; }
 
 /* --------------------------------------------------------------- faq */
 .faq-wrap { display: grid; grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr); gap: 48px; align-items: start; }
