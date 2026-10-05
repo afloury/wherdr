@@ -103,9 +103,9 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
               ws.isOpen() && ws.send(JSON.stringify({ type: 'web.error', code: e.code, message: e.message })))
           }
           break
-        // Pasted text: Herdr brackets it if the program asked for it (wherdr's
-        // xterm only gets frames, not the program's modes). A pasted image path
-        // becomes an image in omp and Claude Code.
+        // Pasted text, as Herdr's pane input: omp receives it as a paste and
+        // turns an image path into an image (typed through wherdr's xterm, which
+        // never learns the program's bracketed paste mode, it stays text).
         case 'paste':
           if (typeof m.text === 'string' && m.text && m.text.length <= 65536) {
             herdr('pane.send_input', { pane_id: pane, text: m.text }).catch(e =>

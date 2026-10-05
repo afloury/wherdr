@@ -106,4 +106,22 @@ describe('image pasted into the terminal', () => {
 
     await vi.waitFor(() => expect(report).toHaveBeenCalledWith('Terminal not connected — image not pasted'))
   })
+
+  it('leaves the paste to xterm while the terminal takes no input, and takes it once it does', async () => {
+    const { host, textarea, xtermPaste } = terminal()
+    let interactive = false
+    const upload = vi.fn(async () => `${uploads}/a.jpg`)
+    const pasted = vi.fn(() => true)
+    bindTerminalImagePaste(host, { upload, paste: pasted, report: vi.fn(), enabled: () => interactive })
+
+    const idle = paste(textarea, { files: [file('shot.png', 'image/png')] })
+    expect(idle.defaultPrevented).toBe(false)
+    expect(xtermPaste).toHaveBeenCalledTimes(1)
+    expect(upload).not.toHaveBeenCalled()
+
+    interactive = true
+    paste(textarea, { files: [file('shot.png', 'image/png')] })
+    await vi.waitFor(() => expect(pasted).toHaveBeenCalledWith(`${uploads}/a.jpg`))
+    expect(xtermPaste).toHaveBeenCalledTimes(1)
+  })
 })

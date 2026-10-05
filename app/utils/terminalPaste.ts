@@ -25,13 +25,15 @@ function pastedImages(data: ClipboardContent | null): File[] {
 // image at a time, as the message field does). `paste` hands the paths that
 // uploaded to the program as one paste, in clipboard order, separated by
 // spaces (a line break would run a plain shell's command); it goes through
-// Herdr, which brackets it (this xterm only draws Herdr's frames and never
-// learns the program's bracketed paste mode). false: not connected. `report`
-// shows what failed.
+// Herdr's pane input, which omp receives as a paste and turns into an image (the
+// same path typed through this xterm stays text: it only draws Herdr's frames
+// and never learns the program's bracketed paste mode). false: not connected.
+// `report` shows what failed. `enabled` false: the paste is left to xterm.
 export function bindTerminalImagePaste(host: HTMLElement, d: {
   upload: (f: File) => Promise<string>
   paste: (text: string) => boolean
   report: (message: string) => void
+  enabled?: () => boolean
 }): () => void {
   async function pasteImages(images: File[]) {
     const paths: string[] = []
@@ -43,7 +45,7 @@ export function bindTerminalImagePaste(host: HTMLElement, d: {
   }
   const onPaste = (e: ClipboardEvent) => {
     const images = pastedImages(e.clipboardData)
-    if (!images.length) return
+    if (!images.length || (d.enabled && !d.enabled())) return
     e.preventDefault()
     e.stopPropagation()
     pasteImages(images)

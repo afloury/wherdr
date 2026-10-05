@@ -119,12 +119,12 @@ onMounted(() => {
     for (const x of mirrorInput(d)) send(x)
   })
   // Pasted image: its path on the agent's machine, sent as text, which Herdr
-  // pastes (see utils/terminalPaste.ts). Only the clicked cell has the
-  // keyboard, so only it receives pastes.
+  // pastes (see utils/terminalPaste.ts). Only the clicked cell takes input.
   unbindPaste = bindTerminalImagePaste(host.value!, {
     upload: async f => (await uploadPhoto(props.paneId, f)).path,
     paste: text => send({ text }),
     report: message => toast(message, true),
+    enabled: () => Boolean(props.interactive),
   })
   document.fonts?.load(`${fontSize.value}px "JetBrains Mono Variable"`).then(() => nextTick(positionScreen)).catch(() => {})
   ro = new ResizeObserver(() => positionScreen())
