@@ -1,8 +1,7 @@
 <script setup lang="ts">
 // The one-line install command, copied in one click.
-const props = withDefaults(defineProps<{ command?: string, halo?: boolean }>(), {
+const props = withDefaults(defineProps<{ command?: string }>(), {
   command: 'curl -fsSL https://wherdr.dev/install | sh',
-  halo: true,
 })
 const copied = ref(false)
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -25,7 +24,7 @@ onBeforeUnmount(() => clearTimeout(timer))
 </script>
 
 <template>
-  <div class="cmd fx-ring" :class="{ halo }">
+  <div class="cmd fx-ring halo">
     <span class="prompt" aria-hidden="true">$</span>
     <code id="install-cmd-text" class="text">{{ command }}</code>
     <button type="button" class="copy" :aria-label="copied ? 'Copied' : 'Copy the install command'" @click="copy">

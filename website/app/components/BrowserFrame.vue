@@ -1,12 +1,11 @@
 <script setup lang="ts">
-// A dark Safari window around a desktop screenshot. Toolbar layout, icon
-// glyphs and proportions are adapted from Inspira UI's SafariMockup
+// A dark Safari window around a live demo. Toolbar layout, icon glyphs and
+// proportions are adapted from Inspira UI's SafariMockup
 // (https://github.com/unovue/inspira-ui, app/components/inspira/ui/safari-mockup/SafariMockup.vue,
 // MIT License, Copyright (c) 2024-2026 rahulv.dev). Unlike the original, the
-// screenshot is a real <img> (alt text, lazy loading) and the toolbar is HTML
-// so it stays legible on narrow screens. Without `src`, the default slot fills
-// the window below the toolbar (a live demo, laid out in `cqw` of its width).
-defineProps<{ src?: string, alt: string, url?: string, width?: number, height?: number, eager?: boolean }>()
+// toolbar is HTML so it stays legible on narrow screens. The default slot
+// fills a 16:10 window below the toolbar (laid out in `cqw` of its width).
+defineProps<{ alt: string, url?: string }>()
 
 // Glyph paths in Inspira's 1202 × 52 toolbar coordinates; `box` is each glyph's viewBox.
 const icons = {
@@ -45,8 +44,7 @@ const icons = {
         <svg :viewBox="icons.tabs.box"><path :d="icons.tabs.d" /></svg>
       </span>
     </div>
-    <img v-if="src" :src="src" :alt="alt" :width="width ?? 1440" :height="height ?? 900" :loading="eager ? 'eager' : 'lazy'" :fetchpriority="eager ? 'high' : undefined" decoding="async">
-    <div v-else class="live" role="img" :aria-label="alt" :style="{ aspectRatio: `${width ?? 1440} / ${height ?? 900}` }"><slot /></div>
+    <div class="live" role="img" :aria-label="alt"><slot /></div>
   </figure>
 </template>
 
@@ -86,8 +84,7 @@ svg { display: block; height: calc(17 * var(--u)); width: auto; fill: currentCol
 .addr .lock { height: calc(13 * var(--u)); flex: none; }
 .addr .reload { position: absolute; right: calc(9 * var(--u)); height: calc(15 * var(--u)); }
 .url { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 500 max(9px, calc(12 * var(--u)))/1 var(--sans); color: #c9ced8; }
-img { display: block; width: 100%; height: auto; }
-.live { position: relative; width: 100%; overflow: hidden; container-type: inline-size; }
+.live { position: relative; width: 100%; aspect-ratio: 16 / 10; overflow: hidden; container-type: inline-size; }
 
 /* Narrow windows: keep traffic lights, address and tabs, like a compact Safari. */
 @container (max-width: 560px) {

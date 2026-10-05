@@ -1,12 +1,8 @@
 <script setup lang="ts">
-// The landing page. `/` renders it as is; /grid/1…5 swap the background grid
-// and /preview adds the recommended live pieces (hero phone + desktop on one
-// clock, live demos next to the feature stories, running install) so both
-// can be compared side by side.
+// The landing page (`/`): dotted background grid with travelling packets,
+// live demos in the hero (phone + desktop on one clock) and next to the
+// feature stories, and an install that types itself.
 import { REPO } from '~/utils/site'
-import type { GridVariant } from '~/utils/grid'
-
-withDefaults(defineProps<{ grid?: GridVariant, preview?: boolean }>(), { grid: 0, preview: false })
 
 const stories = [
   {
@@ -15,7 +11,6 @@ const stories = [
     title: 'The real transcript. The real terminal.',
     text: 'wherdr reads each agent\'s own transcript — Claude Code, Codex, omp — and renders it as clean Markdown with grouped tool calls, images and search. Switch to the live terminal (xterm.js) to take over. Reading never resizes a pane.',
     points: ['Composer with queue, attachments and slash commands', 'Model and effort pickers, for the current session only', 'Copy or run the commands the agent proposes'],
-    shot: { kind: 'desktop', src: '/shots/desktop-chat.webp', alt: 'wherdr on a computer: agent sidebar with states and quotas, a Claude Code conversation and the message field with its gliding blue ring' },
   },
   {
     id: 'phone',
@@ -23,7 +18,6 @@ const stories = [
     title: 'Your turn? Answer in one tap.',
     text: 'Install wherdr on your phone as a PWA. A push tells you when an agent finishes or needs you, with its question and options. Answer right from the agent list, without opening the conversation.',
     points: ['Web Push when an agent is done or blocked, and for herdr notification show', 'Do not disturb, per device or for all', 'Offline reading of recent conversations'],
-    shot: { kind: 'phones', src: '/shots/phone-question.webp', src2: '/shots/phone-home.webp', alt: 'An agent asks which cache lifetime to use, with numbered options', alt2: 'Agent list on a phone: counters, Claude and Codex quotas, a project with its threads' },
   },
   {
     id: 'projects',
@@ -31,7 +25,6 @@ const stories = [
     title: 'A coordinator, its threads, one board.',
     text: 'With the herdr-projects plugin, a coordinator conversation runs parallel threads, each in its own Git worktree. wherdr groups them under their project and shows the project\'s TASKS.md as a live board: to test, to decide, in progress, blocked, backlog — with one-click replies.',
     points: ['Threads live: state, progress, report', 'Thread slots per machine, across projects', 'wherdr never writes TASKS.md: buttons message the coordinator'],
-    shot: { kind: 'desktop', src: '/shots/desktop-project.webp', alt: 'A coordinator conversation with the project panel: to test, to decide, in progress, blocked and backlog lists' },
   },
 ] as const
 
@@ -80,7 +73,7 @@ const faq = [
     <main>
       <!-- ============================================================ HERO -->
       <section class="hero">
-        <GridBackground :key="grid" :variant="grid" />
+        <GridBackground />
         <div class="wrap hero-in">
           <div class="hero-copy">
             <p class="label eyebrow">
@@ -104,15 +97,13 @@ const faq = [
           </div>
 
           <div class="hero-visual">
-            <BrowserFrame v-if="preview" class="hv-desk" alt="wherdr on a computer, on the same session as the phone: agent sidebar with live states, the conversation and the message field" eager>
+            <BrowserFrame class="hv-desk" alt="wherdr on a computer, on the same session as the phone: agent sidebar with live states, the conversation and the message field">
               <DesktopDemo />
             </BrowserFrame>
-            <BrowserFrame v-else class="hv-desk" src="/shots/desktop-chat.webp" alt="wherdr on a computer: agent sidebar with states and quotas, a Claude Code conversation and the message field" :width="2160" :height="1350" eager />
             <div class="hv-phone">
-              <PhoneFrame v-if="preview" alt="wherdr on a phone: a message is sent, the agent works in its console, then asks a question with numbered answers" eager>
+              <PhoneFrame alt="wherdr on a phone: a message is sent, the agent works in its console, then asks a question with numbered answers">
                 <PhoneDemo />
               </PhoneFrame>
-              <PhoneFrame v-else src="/shots/phone-question.webp" alt="wherdr on a phone: an agent asks a question with numbered answers" eager />
             </div>
           </div>
         </div>
@@ -131,7 +122,7 @@ const faq = [
             <p class="lead">Same Herdr session, same agents, nothing copied. On a computer wherdr can replace the terminal client day to day; on a phone it follows your agents while you are away.</p>
           </div>
 
-          <article v-for="(s, i) in stories" :id="s.id" :key="s.id" v-reveal class="story" :class="{ flip: i % 2 === 1, phones: s.shot.kind === 'phones' }">
+          <article v-for="(s, i) in stories" :id="s.id" :key="s.id" v-reveal class="story" :class="{ flip: i % 2 === 1, phones: s.id === 'phone' }">
             <div class="story-copy">
               <p class="label"><span class="k">1.{{ i + 1 }}</span> {{ s.label }}</p>
               <h3 class="display story-title">{{ s.title }}</h3>
@@ -141,27 +132,20 @@ const faq = [
               </ul>
             </div>
             <div class="story-shot">
-              <template v-if="preview">
-                <BrowserFrame v-if="s.id === 'conversation'" alt="wherdr on a computer: grouped tool calls unfold, the effort picker switches to high, the proposed command is copied and run in the live terminal">
-                  <ConversationDemo />
-                </BrowserFrame>
-                <div v-else-if="s.id === 'phone'" class="duo">
-                  <PhoneFrame alt="Lock screen: a wherdr notification says the agent needs you, with its question and options, then that it is done">
-                    <NotifyDemo />
-                  </PhoneFrame>
-                  <PhoneFrame alt="wherdr's agent list on a phone: the question's options are on the agent's card, one tap answers and the agent goes back to work">
-                    <AgentListDemo />
-                  </PhoneFrame>
-                </div>
-                <BrowserFrame v-else alt="A coordinator with the project board: a thread becomes ready for review, is merged and moves to To test; a To decide question is answered from the board">
-                  <ProjectDemo />
-                </BrowserFrame>
-              </template>
-              <BrowserFrame v-else-if="s.shot.kind === 'desktop'" :src="s.shot.src" :alt="s.shot.alt" :width="2160" :height="1350" />
-              <div v-else class="duo">
-                <PhoneFrame :src="s.shot.src" :alt="s.shot.alt" />
-                <PhoneFrame :src="s.shot.src2" :alt="s.shot.alt2" />
+              <BrowserFrame v-if="s.id === 'conversation'" alt="wherdr on a computer: grouped tool calls unfold, the effort picker switches to high, the proposed command is copied and run in the live terminal">
+                <ConversationDemo />
+              </BrowserFrame>
+              <div v-else-if="s.id === 'phone'" class="duo">
+                <PhoneFrame alt="Lock screen: a wherdr notification says the agent needs you, with its question and options, then that it is done">
+                  <NotifyDemo />
+                </PhoneFrame>
+                <PhoneFrame alt="wherdr's agent list on a phone: the question's options are on the agent's card, one tap answers and the agent goes back to work">
+                  <AgentListDemo />
+                </PhoneFrame>
               </div>
+              <BrowserFrame v-else alt="A coordinator with the project board: a thread becomes ready for review, is merged and moves to To test; a To decide question is answered from the board">
+                <ProjectDemo />
+              </BrowserFrame>
             </div>
           </article>
 
@@ -234,8 +218,7 @@ const faq = [
             </div>
 
             <div v-show="tab === 'one'" id="panel-one" role="tabpanel" aria-labelledby="tab-one" class="panel">
-              <InstallTerminal v-if="preview" />
-              <InstallCommand v-else :halo="false" />
+              <InstallTerminal />
               <ol class="steps">
                 <li><b>Run it</b> as the user who runs Herdr. It writes <code>~/wherdr/docker-compose.yml</code> and <code>.env</code>, then <code>docker compose up -d</code>.</li>
                 <li><b>Open</b> <code>http://localhost:7683</code> on that machine.</li>
@@ -281,7 +264,7 @@ npm ci && npm run build && npm start   <span class="c"># → http://localhost:76
 
       <!-- ============================================================== CTA -->
       <section class="section cta">
-        <GridBackground :key="grid" :variant="grid" flat />
+        <GridBackground />
         <div v-reveal class="wrap cta-in">
           <PixelMark class="cta-logo" />
           <h2 class="display h2">Follow your agents from anywhere.</h2>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Story 1.1 on /preview: a Claude Code conversation on a computer. The
+// Story 1.1: a Claude Code conversation on a computer. The
 // grouped tool calls unfold, the effort picker goes from medium to high, the
 // command the agent proposes is copied, then run: the view flips to the live
 // terminal (xterm look), the tests pass, and it flips back. CONVERSATION script.

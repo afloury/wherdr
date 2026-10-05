@@ -1,33 +1,24 @@
 <script setup lang="ts">
-// The herdr.dev background grid of the hero and the closing call to action,
-// in one of its variants (compared on /grid/1…5):
-//   0  flat grid, fading out (the reference, .grid-bg in main.css);
-//   1  lamp: a Titanium-blue copy of the grid shows through a radial mask
-//      centred near the top, breathing slowly;
-//   2  packets: now and then a short glowing dash runs along a grid line and
-//      fades, at irregular intervals, at most three at once;
-//   3  perspective: in the hero the grid recedes to a horizon and drifts
-//      towards you (flat everywhere else, `flat`);
-//   4  dots at the intersections and a soft vignette;
-//   5  the dots of 4 with the packets of 2.
-// Cheap by design: CSS layers, one transform animation, timers only while
-// the grid is on screen and the tab is visible. prefers-reduced-motion: a
-// still grid.
-import { GRID_CELL, type GridVariant } from '~/utils/grid'
+// The herdr.dev background grid of the hero and the closing call to action:
+// dots at the line crossings, a soft vignette, and now and then a short
+// glowing dash running along a grid line, at irregular intervals, at most
+// three at once. Cheap by design: CSS layers, Web Animations, timers only
+// while the grid is on screen and the tab is visible. prefers-reduced-motion:
+// a still grid.
 
-const props = withDefaults(defineProps<{ variant?: GridVariant, flat?: boolean }>(), { variant: 0, flat: false })
+// Grid cell, in CSS pixels (the 64 px tiles of .dots-grid).
+const GRID_CELL = 64
 
 const root = ref<HTMLElement | null>(null)
 const packets = ref<HTMLElement | null>(null)
-const kind = computed<GridVariant>(() => (props.variant === 3 && props.flat ? 0 : props.variant))
-// Off screen or hidden tab: CSS animations paused, no timers.
+// Off screen or hidden tab: no new packets.
 const visible = ref(false)
 
 let io: IntersectionObserver | undefined
 let reduced = false
 const cleanups: (() => void)[] = []
 
-// ------------------------------------------------------------ packets (2)
+// ---------------------------------------------------------------- packets
 const MAX_PACKETS = 3
 let live = 0
 let spawnTimer: ReturnType<typeof setTimeout> | undefined
@@ -101,7 +92,7 @@ onMounted(() => {
     io = new IntersectionObserver(([e]) => { visible.value = !!e?.isIntersecting })
     io.observe(root.value)
   }
-  if (kind.value === 2 || kind.value === 5) setupPackets()
+  setupPackets()
 })
 onBeforeUnmount(() => {
   io?.disconnect()
@@ -110,49 +101,17 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="root" class="gb" :class="[`v${kind}`, { off: !visible }]" aria-hidden="true">
-    <div v-if="kind === 0 || kind === 1 || kind === 2" class="grid-bg" />
-
-    <div v-if="kind === 1" class="glow" />
-
-    <div v-if="kind === 3" class="persp">
-      <div class="sky" />
-      <div class="floor"><div class="floor-lines" /></div>
-      <div class="horizon" />
-    </div>
-
-    <template v-if="kind === 4 || kind === 5">
-      <div class="dots-grid" />
-      <div class="vignette" />
-    </template>
-
-    <div v-if="kind === 2 || kind === 5" ref="packets" class="packets" />
+  <div ref="root" class="gb" aria-hidden="true">
+    <div class="dots-grid" />
+    <div class="vignette" />
+    <div ref="packets" class="packets" />
   </div>
 </template>
 
 <style scoped>
 .gb { position: absolute; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
-.gb.off * { animation-play-state: paused !important; }
 
-/* ---------------------------------------------------------- 1 · lamp */
-@property --gr { syntax: '<length>'; inherits: true; initial-value: 260px; }
-@keyframes breathe { 0%, 100% { --gr: 200px; opacity: .65; } 50% { --gr: 320px; opacity: 1; } }
-.gb { --mx: 50%; --my: 32%; }
-.glow {
-  position: absolute; inset: 0;
-  background-image:
-    linear-gradient(color-mix(in srgb, var(--accent) 75%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--accent) 75%, transparent) 1px, transparent 1px),
-    radial-gradient(circle var(--gr) at var(--mx) var(--my), color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%);
-  background-size: 64px 64px, 64px 64px, 100% 100%;
-  background-position: center top, center top, 0 0;
-  -webkit-mask: radial-gradient(circle var(--gr) at var(--mx) var(--my), #000, rgba(0, 0, 0, .6) 35%, transparent 72%);
-  mask: radial-gradient(circle var(--gr) at var(--mx) var(--my), #000, rgba(0, 0, 0, .6) 35%, transparent 72%);
-  animation: breathe 7s ease-in-out infinite;
-  transition: opacity .6s ease;
-}
-
-/* ----------------------------------------------------- 2 · packets */
+/* ---------------------------------------------------------- packets */
 .packets {
   position: absolute; inset: 0;
   -webkit-mask: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%);
@@ -171,40 +130,7 @@ onBeforeUnmount(() => {
 .packets :deep(.pkt.v)::after { content: ''; position: absolute; left: -2px; bottom: -3px; width: 5px; height: 6px; background: var(--c); box-shadow: 0 0 10px var(--c); }
 .packets :deep(.pkt.v.rev)::after { bottom: auto; top: -3px; }
 
-/* -------------------------------------------------- 3 · perspective */
-.persp { position: absolute; inset: 0; --hz: 46%; }
-/* Above the horizon: the flat grid, fading out before it. */
-.sky {
-  position: absolute; left: 0; right: 0; top: 0; height: var(--hz);
-  background-image:
-    linear-gradient(var(--grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 64px 64px; background-position: center top;
-  -webkit-mask: radial-gradient(ellipse 60% 100% at 50% 0, rgba(0, 0, 0, .7), transparent 80%);
-  mask: radial-gradient(ellipse 60% 100% at 50% 0, rgba(0, 0, 0, .7), transparent 80%);
-}
-.floor {
-  position: absolute; left: -60%; right: -60%; top: var(--hz); height: 120%;
-  overflow: hidden; transform-origin: 50% 0; transform: perspective(520px) rotateX(72deg);
-  -webkit-mask: linear-gradient(to bottom, transparent, #000 22%, #000 60%, transparent 92%);
-  mask: linear-gradient(to bottom, transparent, #000 22%, #000 60%, transparent 92%);
-}
-@keyframes drift { to { transform: translateY(64px); } }
-.floor-lines {
-  position: absolute; left: 0; right: 0; top: -64px; bottom: 0;
-  background-image:
-    linear-gradient(color-mix(in srgb, var(--accent) 34%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--line-strong) 85%, var(--accent)) 1px, transparent 1px);
-  background-size: 64px 64px; background-position: center top;
-  animation: drift 3.2s linear infinite;
-}
-.horizon {
-  position: absolute; left: 8%; right: 8%; top: var(--hz); height: 1px;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 60%, transparent), transparent);
-  box-shadow: 0 0 24px 2px color-mix(in srgb, var(--accent) 22%, transparent);
-}
-
-/* --------------------------------------------- 4 · dots and vignette */
+/* ------------------------------------------------ dots and vignette */
 .dots-grid {
   position: absolute; inset: 0;
   background-image:
@@ -226,14 +152,5 @@ onBeforeUnmount(() => {
   background:
     linear-gradient(to right, var(--bg), transparent 14%, transparent 86%, var(--bg)),
     linear-gradient(to bottom, var(--bg), transparent 18%, transparent 70%, var(--bg));
-}
-
-@media (max-width: 760px) {
-  .persp { --hz: 52%; }
-  .floor { transform: perspective(360px) rotateX(70deg); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .glow { animation: none; }
-  .floor-lines { animation: none; }
 }
 </style>
