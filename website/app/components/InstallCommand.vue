@@ -28,7 +28,7 @@ onBeforeUnmount(() => clearTimeout(timer))
 </script>
 
 <template>
-  <div class="cmd fx-ring halo" :class="{ wrap }">
+  <div class="cmd fx-ring halo" :class="{ multiline: wrap }">
     <span class="prompt" aria-hidden="true">{{ prompt }}</span>
     <code ref="text" class="text">{{ command }}</code>
     <button type="button" class="copy" :aria-label="copied ? 'Copied' : `Copy the install ${what}`" @click="copy">
@@ -56,8 +56,8 @@ onBeforeUnmount(() => clearTimeout(timer))
 }
 .text::-webkit-scrollbar { display: none; }
 /* Prose prompts wrap instead of scrolling; the prompt sign stays on the first line. */
-.wrap .text { white-space: normal; overflow-wrap: anywhere; line-height: 1.6; }
-.wrap .prompt { place-items: start center; padding-top: 15px; line-height: 1.6; }
+.multiline .text { white-space: normal; overflow-wrap: break-word; line-height: 1.6; }
+.multiline .prompt { place-items: start center; padding-top: 15px; line-height: 1.6; }
 .copy {
   display: inline-flex; align-items: center; gap: 8px; flex: none;
   padding: 0 18px; border: 0; border-left: 1px solid var(--line);
