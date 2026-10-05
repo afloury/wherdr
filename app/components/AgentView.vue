@@ -551,7 +551,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
 
     <div class="agent-body">
     <div class="agent-main hw-backdrop-host">
-    <GridBackdrop v-if="backdrop === 'grid' && mode === 'chat'" />
+    <GridBackdrop v-if="desk && backdrop === 'wherdr' && mode === 'chat'" />
     <div v-if="machineDown && machine" class="term-banner machine-banner">
       <UIcon name="i-lucide-unplug" class="term-banner-icon" />
       <span>{{ machine.status === 'connecting' ? tl(`${machineName(machine.key)} unreachable — reconnecting…`, `${machineName(machine.key)} injoignable — reconnexion…`) : tl(`${machineName(machine.key)} offline`, `${machineName(machine.key)} hors ligne`) }}<small v-if="machine.error">{{ t(machine.error) }}</small></span>

@@ -317,10 +317,10 @@ const FR: Record<string, string> = {
   // Focus border of the message field
   'Message field border on focus': 'Bordure du champ au focus',
   'Border only': 'Bord seul', 'A second color glides slowly around the border.': 'Une seconde couleur glisse lentement autour du bord.',
-  'Background': 'Fond', 'Plain': 'Uni', 'Grid': 'Grille',
-  'The solid page background.': 'Le fond uni de la page.',
+  'Background': 'Fond',
   'Dotted grid with light packets, like wherdr.dev.': 'Grille à points parcourue de paquets lumineux, comme wherdr.dev.',
-  'Behind the conversation and, on a phone, the list. Still when the system asks for reduced motion. Saved on this device.': 'Derrière la conversation et, sur téléphone, la liste. Immobile quand le système demande moins d’animations. Réglage propre à cet appareil.',
+  'Flat line grid, like herdr.dev.': 'Grille de lignes plates, comme herdr.dev.',
+  'In the margins of the conversation. Still when the system asks for reduced motion. Saved on this device.': 'Dans les marges de la conversation. Immobile quand le système demande moins d’animations. Réglage propre à cet appareil.',
   'Halo': 'Halo', 'The same, with a faint glow around the field.': 'Pareil, avec une légère lueur autour du champ.',
   'None': 'Aucune', 'Plain 1 px border, no animation.': 'Bord simple de 1 px, sans animation.',
   'Also on omp’s running actions (border only). Frozen when the system asks for reduced motion. Saved on this device.': 'Aussi sur les actions en cours d’omp (bord seul). Figée si le système demande moins d’animations. Enregistré sur cet appareil.',

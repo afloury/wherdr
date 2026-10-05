@@ -110,8 +110,8 @@ const focusBorderItems = computed(() => [
 ])
 const backdropMode = backdrop
 const backdropItems = computed(() => [
-  { label: t('Plain'), description: t('The solid page background.'), value: 'plain' },
-  { label: t('Grid'), description: t('Dotted grid with light packets, like wherdr.dev.'), value: 'grid' },
+  { label: 'wherdr grid', description: t('Dotted grid with light packets, like wherdr.dev.'), value: 'wherdr' },
+  { label: 'herdr grid', description: t('Flat line grid, like herdr.dev.'), value: 'herdr' },
 ])
 const langItems = [{ label: 'English', value: 'en' }, { label: 'Français', value: 'fr' }]
 
@@ -384,12 +384,6 @@ onMounted(() => {
           </div>
 
           <div class="settings-group">
-            <h3>{{ t('Background') }}</h3>
-            <URadioGroup v-model="backdropMode" :items="backdropItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
-            <p class="muted settings-hint">{{ t('Behind the conversation and, on a phone, the list. Still when the system asks for reduced motion. Saved on this device.') }}</p>
-          </div>
-
-          <div class="settings-group">
             <h3>{{ t('Language') }}</h3>
             <URadioGroup v-model="lang" :items="langItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
           </div>
@@ -424,6 +418,21 @@ onMounted(() => {
             <URadioGroup v-model="quotaMode" :items="quotaItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
             <p class="muted settings-hint">{{ t('The color always flags a nearly exhausted quota. Saved on this device.') }}</p>
           </div>
+
+          <!-- Computer layout only (same threshold as the app: 900 px). -->
+          <template v-if="desk">
+            <div class="eyebrow settings-subhead"><span>{{ t('Desktop') }}</span></div>
+            <div class="settings-group">
+              <h3>{{ t('Background') }}</h3>
+              <URadioGroup v-model="backdropMode" :items="backdropItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+              <p class="muted settings-hint">{{ t('In the margins of the conversation. Still when the system asks for reduced motion. Saved on this device.') }}</p>
+            </div>
+            <div class="settings-group settings-width">
+              <h3>{{ t('Content width') }}</h3>
+              <URadioGroup v-model="width" :items="widthItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+              <p class="muted settings-hint">{{ t('Conversation, terminal, settings and other content. Saved on this device.') }}</p>
+            </div>
+          </template>
         </div>
 
         <div v-show="activeSection === 'conversation'" class="settings-section">
@@ -556,11 +565,6 @@ onMounted(() => {
 
         <!-- Computer layout only (same threshold as the app: 900 px). -->
         <div v-if="desk" v-show="activeSection === 'desktop'" class="settings-section">
-          <div class="settings-group settings-width">
-            <h3>{{ t('Content width') }}</h3>
-            <URadioGroup v-model="width" :items="widthItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
-            <p class="muted settings-hint">{{ t('Conversation, terminal, settings and other content. Saved on this device.') }}</p>
-          </div>
           <div class="settings-group">
             <h3>{{ t('Default pane view') }}</h3>
             <URadioGroup v-model="defaultPane" :items="defaultPaneItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
