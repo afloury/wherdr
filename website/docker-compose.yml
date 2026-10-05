@@ -1,0 +1,17 @@
+# wherdr.dev website (static, nginx). Private deployment: published on one
+# address only, e.g. the server's Tailscale IP:
+#   SITE_BIND=100.x.y.z docker compose up -d --build
+# Default: 127.0.0.1 (local only).
+services:
+  wherdr-site:
+    build: .
+    image: wherdr-site:local
+    container_name: wherdr-site
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    ports:
+      - "${SITE_BIND:-127.0.0.1}:${SITE_PORT:-8120}:80"

@@ -1,0 +1,246 @@
+#!/bin/sh
+# wherdr installer — https://wherdr.dev/install
+#
+#   curl -fsSL https://wherdr.dev/install | sh
+#
+# Installs wherdr the way its README recommends on a Linux server: Docker
+# Compose with the prebuilt image (ghcr.io/afloury/wherdr). It:
+#   1. checks the prerequisites (Linux, Docker, Docker Compose v2, Herdr);
+#   2. creates ~/wherdr (or $WHERDR_DIR) with docker-compose.yml and .env;
+#   3. creates the folders Compose mounts, as your own user;
+#   4. pulls the image and starts the container (127.0.0.1 only).
+# It never uses sudo, never touches Herdr or your agents, and asks before
+# replacing a file it did not create. Running it again is safe.
+#
+# On macOS, wherdr runs without Docker: the script prints the steps instead.
+#
+# Settings (environment variables):
+#   WHERDR_DIR    install folder               (default: ~/wherdr)
+#   WHERDR_REF    Git tag or branch to fetch   (default: main)
+#   WHERDR_IMAGE  Docker image                 (default: ghcr.io/afloury/wherdr:latest)
+#   WHERDR_PORT   local port                   (default: 7683)
+#   WHERDR_YES=1  answer yes to every question (non-interactive use)
+#
+# Source: https://github.com/afloury/wherdr/blob/main/website/public/install
+
+# Everything is inside main(), called on the last line: a download cut short
+# runs nothing.
+main() {
+  set -eu
+
+  REPO="afloury/wherdr"
+  REF="${WHERDR_REF:-main}"
+  SOURCE="${WHERDR_SOURCE:-https://raw.githubusercontent.com/$REPO/$REF}"
+  DIR="${WHERDR_DIR:-$HOME/wherdr}"
+  IMAGE="${WHERDR_IMAGE:-ghcr.io/afloury/wherdr:latest}"
+  PORT="${WHERDR_PORT:-7683}"
+  YES="${WHERDR_YES:-0}"
+
+  setup_colors
+  say ""
+  say "${B}wherdr${R} ${D}installer — your Herdr agents, from your phone and your browser${R}"
+  say ""
+
+  # ---------------------------------------------------------------- checks
+  step "Checking the system"
+  case "$(uname -s)" in
+    Linux) ok "Linux $(uname -m)" ;;
+    Darwin) macos_steps; exit 1 ;;
+    *) die "Unsupported system: $(uname -s). wherdr runs on Linux (Docker) or macOS (Node.js)." ;;
+  esac
+
+  if [ "$(id -u)" = "0" ]; then
+    die "Run this script as the user who runs Herdr, not as root.
+     wherdr reads that user's Herdr socket and transcripts."
+  fi
+  [ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "\$HOME is not set or not a folder."
+
+  if command -v curl >/dev/null 2>&1; then
+    FETCH="curl"
+  elif command -v wget >/dev/null 2>&1; then
+    FETCH="wget"
+  else
+    die "curl or wget is required to download docker-compose.yml."
+  fi
+
+  command -v docker >/dev/null 2>&1 \
+    || die "Docker is not installed. Install Docker Engine first: https://docs.docker.com/engine/install/"
+  docker compose version >/dev/null 2>&1 \
+    || die "Docker Compose v2 (\`docker compose\`) is missing. Install the compose plugin: https://docs.docker.com/compose/install/linux/"
+  if ! docker info >/dev/null 2>&1; then
+    die "Cannot talk to the Docker daemon as $(id -un).
+     Start Docker, or let your user use it (then log out and back in):
+       sudo usermod -aG docker $(id -un)
+     This script does not run sudo itself."
+  fi
+  ok "Docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo '?'), $(docker compose version --short 2>/dev/null || echo 'compose v2')"
+
+  HERDR=""
+  if [ -x "$HOME/.local/bin/herdr" ]; then
+    HERDR="$HOME/.local/bin/herdr"
+  elif command -v herdr >/dev/null 2>&1; then
+    HERDR="$(command -v herdr)"
+  fi
+  [ -n "$HERDR" ] || die "Herdr is not installed for $(id -un). Install it first: https://herdr.dev"
+  HERDR_VERSION="$("$HERDR" --version 2>/dev/null | awk '{print $NF}')"
+  if version_lt "${HERDR_VERSION:-0}" "0.9.1"; then
+    die "Herdr ${HERDR_VERSION:-?} found at $HERDR; wherdr needs Herdr 0.9.1 or newer (herdr update)."
+  fi
+  ok "Herdr $HERDR_VERSION ($HERDR)"
+  if [ "$HERDR" != "$HOME/.local/bin/herdr" ]; then
+    warn "The container looks for Herdr in ~/.local/bin/herdr: HERDR_BIN=$HERDR is set in .env."
+  fi
+  if [ ! -S "$HOME/.config/herdr/herdr.sock" ]; then
+    warn "The Herdr server does not seem to run (no ~/.config/herdr/herdr.sock).
+     Start it with \`herdr\` or \`herdr server\`; wherdr waits for it."
+  fi
+
+  # ------------------------------------------------------------- files
+  step "Preparing $DIR"
+  mkdir -p "$DIR"
+  cd "$DIR"
+
+  TMP="$(mktemp)"
+  trap 'rm -f "$TMP"' EXIT INT TERM
+  download "$SOURCE/docker-compose.yml" "$TMP" \
+    || die "Could not download docker-compose.yml from $SOURCE."
+  if [ ! -f docker-compose.yml ]; then
+    mv "$TMP" docker-compose.yml
+    ok "docker-compose.yml ($REF)"
+  elif cmp -s "$TMP" docker-compose.yml; then
+    ok "docker-compose.yml is up to date"
+  elif confirm "docker-compose.yml differs from the $REF version. Replace it (a backup is kept)?"; then
+    cp docker-compose.yml docker-compose.yml.bak
+    mv "$TMP" docker-compose.yml
+    ok "docker-compose.yml replaced (previous one: docker-compose.yml.bak)"
+  else
+    ok "Keeping your docker-compose.yml"
+  fi
+
+  if [ -f .env ]; then
+    ok ".env kept as it is"
+  else
+    {
+      echo "# wherdr settings, read by docker compose (see .env.example in the repository)."
+      echo "HOST_HOME=$HOME"
+      echo "PUID=$(id -u)"
+      echo "PGID=$(id -g)"
+      echo "PORT=$PORT"
+      echo "# Private HTTPS address (tailscale serve), needed for push notifications."
+      echo "APP_URL=http://localhost:$PORT/"
+      echo "HOST_LABEL=$(hostname 2>/dev/null || echo server)"
+      echo "TZ=$(local_tz)"
+      if [ "$HERDR" != "$HOME/.local/bin/herdr" ]; then echo "HERDR_BIN=$HERDR"; fi
+      if [ "$IMAGE" != "ghcr.io/afloury/wherdr:latest" ]; then echo "WHERDR_IMAGE=$IMAGE"; fi
+    } > .env
+    ok ".env created"
+  fi
+
+  # Created as this user before Compose runs: otherwise Docker creates the
+  # missing bind-mount folders as root and the container cannot write them.
+  mkdir -p data "$HOME/.config/herdr" "$HOME/.local/state/herdr/client" \
+    "$HOME/.cache/herdr-web" "$HOME/.herdr-projects"
+  ok "Data folders ready"
+
+  # ------------------------------------------------------------- start
+  step "Starting wherdr"
+  if ! docker compose pull --quiet 2>"$TMP"; then
+    sed 's/^/     /' "$TMP" >&2
+    die "Could not pull the wherdr image ($IMAGE).
+     If it is not published yet, build it from source instead:
+       git clone https://github.com/$REPO.git && cd wherdr
+       docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+     Your $DIR folder and .env are kept: run this script again later."
+  fi
+  ok "Image pulled"
+  docker compose up -d --remove-orphans >/dev/null
+  ok "Container started"
+
+  i=0
+  while [ "$i" -lt 30 ]; do
+    if http_ok "http://127.0.0.1:$PORT/"; then break; fi
+    i=$((i + 1)); sleep 1
+  done
+  if [ "$i" -ge 30 ]; then
+    warn "wherdr does not answer on 127.0.0.1:$PORT yet. Check: cd $DIR && docker compose logs"
+  else
+    ok "wherdr answers on http://localhost:$PORT"
+  fi
+
+  # ------------------------------------------------------------- next
+  say ""
+  say "${G}${B}wherdr is running.${R} Open ${B}http://localhost:$PORT${R} on this machine."
+  say ""
+  say "${B}Next, for your phone${R} (private network only, never the public Internet):"
+  say "  1. Install Tailscale on this server and your phone, with HTTPS certificates enabled."
+  say "  2. ${C}tailscale serve --bg --https=$PORT http://127.0.0.1:$PORT${R}"
+  say "  3. Put the https://<machine>.<tailnet>.ts.net:$PORT/ address in ${C}APP_URL${R} in $DIR/.env,"
+  say "     then ${C}cd $DIR && docker compose up -d${R}"
+  say "  4. Open that address on the phone, add it to the home screen, enable notifications."
+  say "  5. Settings → Security → Enable passkey lock (first token: ${C}docker compose logs${R})."
+  say ""
+  say "${D}Update: cd $DIR && docker compose pull && docker compose up -d${R}"
+  say "${D}Docs:   https://github.com/$REPO#readme${R}"
+}
+
+macos_steps() {
+  say ""
+  warn "On macOS, wherdr runs without Docker: Docker Desktop cannot reach Herdr's Unix socket."
+  say "  With Herdr running, Git and Node.js 22:"
+  say ""
+  say "    ${C}git clone https://github.com/afloury/wherdr.git && cd wherdr${R}"
+  say "    ${C}npm ci && npm run build && npm start${R}    # http://localhost:7683"
+  say ""
+  say "  See https://github.com/afloury/wherdr#simple-one-computer-no-docker"
+}
+
+setup_colors() {
+  if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+    B="$(printf '\033[1m')"; D="$(printf '\033[2m')"; R="$(printf '\033[0m')"
+    G="$(printf '\033[32m')"; Y="$(printf '\033[33m')"; E="$(printf '\033[31m')"; C="$(printf '\033[36m')"
+  else
+    B=""; D=""; R=""; G=""; Y=""; E=""; C=""
+  fi
+}
+say() { printf '%s\n' "$*"; }
+step() { printf '\n%s==>%s %s%s%s\n' "$C" "$R" "$B" "$*" "$R"; }
+ok() { printf '  %s✓%s %s\n' "$G" "$R" "$*"; }
+warn() { printf '  %s!%s %s\n' "$Y" "$R" "$*" >&2; }
+die() { printf '\n  %s✗ %s%s\n\n' "$E" "$*" "$R" >&2; exit 1; }
+
+# Questions read the terminal: stdin is the script itself with `curl … | sh`.
+# No terminal and no WHERDR_YES: the answer is no (nothing is replaced).
+confirm() {
+  if [ "$YES" = "1" ]; then return 0; fi
+  # In a subshell: a failed redirection on a special builtin would exit the script.
+  if ! (exec </dev/tty) 2>/dev/null; then
+    warn "$1 — no terminal to ask, answering no (set WHERDR_YES=1 to accept)."
+    return 1
+  fi
+  printf '  ? %s [y/N] ' "$1" >/dev/tty
+  read -r answer </dev/tty || answer=""
+  case "$answer" in [yY]|[yY][eE][sS]) return 0 ;; *) return 1 ;; esac
+}
+download() {
+  if [ "$FETCH" = "curl" ]; then curl -fsSL "$1" -o "$2"; else wget -q -O "$2" "$1"; fi
+}
+http_ok() {
+  if [ "$FETCH" = "curl" ]; then curl -fs -o /dev/null --max-time 2 "$1"; else wget -q -O /dev/null -T 2 "$1"; fi
+}
+
+# version_lt A B: true when version A < B (numeric dot-separated parts).
+version_lt() {
+  [ "$1" = "$2" ] && return 1
+  lowest="$(printf '%s\n%s\n' "$1" "$2" | sort -t. -k1,1n -k2,2n -k3,3n | head -n 1)"
+  [ "$lowest" = "$1" ]
+}
+
+local_tz() {
+  if [ -n "${TZ:-}" ]; then echo "$TZ"
+  elif [ -r /etc/timezone ]; then head -n 1 /etc/timezone
+  elif [ -L /etc/localtime ]; then readlink /etc/localtime | sed 's#.*/zoneinfo/##'
+  else echo UTC
+  fi
+}
+
+main "$@"
