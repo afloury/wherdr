@@ -12,3 +12,6 @@ test-data-old/
 /branding/
 /docker-compose.override.yml
 .leak-patterns
+test-results/
+playwright-report/
+.e2e-tmp/

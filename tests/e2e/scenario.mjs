@@ -1,0 +1,102 @@
+// The fake session the end-to-end tests run against: its panes, and the
+// neutral transcripts written into the fake HOME. Shared by the launcher and the specs.
+import fs from 'node:fs'
+import path from 'node:path'
+
+export const PORT = Number(process.env.E2E_PORT || 7699)
+export const BASE_URL = `http://127.0.0.1:${PORT}`
+
+// Pane ids (Herdr format <workspace>:<pane>).
+export const CLAUDE_PANE = 'w1:p1'
+export const OMP_LONG_PANE = 'w2:p1'
+export const OMP_CHAT_PANE = 'w3:p1'
+
+// Unique markers of the long omp transcript (asserted on by the specs).
+export const LONG_WORD = `Pneumono${'ultramicroscopicsilicovolcano'.repeat(12)}coniosis`
+export const LONG_URL = `https://example.com/acme-api/releases/${'nested-segment/'.repeat(24)}changelog.html?ref=${'abcdef0123456789'.repeat(6)}`
+export const LONG_END = 'End of the long build report.'
+
+const iso = ts => new Date(ts).toISOString()
+const jsonl = lines => lines.map(l => JSON.stringify(l)).join('\n') + '\n'
+
+function write(file, content) {
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file, content)
+}
+
+// Claude Code: ~/.claude/projects/<cwd with / and . as ->/<session id>.jsonl.
+function claudeTranscript(home, cwd, sid, now) {
+  const enc = cwd.replace(/[/.]/g, '-')
+  const file = path.join(home, '.claude/projects', enc, `${sid}.jsonl`)
+  const base = { isSidechain: false, cwd, sessionId: sid }
+  write(file, jsonl([
+    { ...base, type: 'user', timestamp: iso(now - 60000), message: { role: 'user', content: 'After updating a user, GET /users/:id still returns the old name. Find out why.' } },
+    { ...base, type: 'assistant', timestamp: iso(now - 50000), message: { model: 'claude-opus-4-1', role: 'assistant', content: [{ type: 'text', text: '`getUser` caches users forever and `updateUser` never clears the entry. I will add an expiry and clear it on update.' }] } },
+  ]))
+}
+
+// omp: ~/.omp/agent/sessions/<encoded cwd>/<date>_<id>.jsonl.
+function ompTranscript(home, cwd, id, now, entries) {
+  const enc = `-${cwd.replace(/^\//, '').replace(/[/.]/g, '-')}-`
+  const file = path.join(home, '.omp/agent/sessions', enc, `${iso(now - 120000).replace(/[:.]/g, '-')}_${id}.jsonl`)
+  let t = now - 120000
+  const msg = (message) => {
+    t += 1000
+    return { type: 'message', id: `m${t}`, timestamp: iso(t), message: { ...message, timestamp: t } }
+  }
+  write(file, jsonl([{ type: 'session', version: 3, id, timestamp: iso(now - 120000), cwd }, ...entries(msg)]))
+  return file
+}
+
+function longContent(msg) {
+  const wideCode = `const endpoints = [${Array.from({ length: 14 }, (_, i) => `'/v1/resources/${i}/sub-resources/details'`).join(', ')}]`
+  const head = '| Endpoint | Method | Median latency | p99 latency | Error rate | Owner team | Notes |'
+  const sep = '|---|---|---|---|---|---|---|'
+  const rows = Array.from({ length: 5 }, (_, i) =>
+    `| /v1/resources/${i}/sub-resources/details-with-a-long-name | GET | ${12 + i} ms | ${140 + i} ms | 0.0${i} % | platform-reliability-and-observability | cached-response-without-invalidation-${i} |`)
+  const toolOut = Array.from({ length: 40 }, (_, i) =>
+    `[build] step ${String(i + 1).padStart(2, '0')}/40 ${'compiling-module-with-a-very-long-identifier/'.repeat(6)}index.ts ok`).join('\n')
+  return [
+    msg({ role: 'user', content: [{ type: 'text', text: 'Run the build and summarize the endpoints report.' }], attribution: 'user' }),
+    msg({ role: 'assistant', content: [{ type: 'toolCall', id: 'call-build', name: 'bash', arguments: { i: 'Running the verbose build', command: `npm run build -- --verbose --filter=${'packages/acme-api-'.repeat(8)}core` } }], stopReason: 'toolUse' }),
+    msg({ role: 'toolResult', toolCallId: 'call-build', toolName: 'bash', content: [{ type: 'text', text: `${toolOut}\n\nWall time: 4.20 seconds` }], details: { wallTimeMs: 4200 }, isError: false }),
+    msg({
+      role: 'assistant',
+      stopReason: 'stop',
+      content: [{
+        type: 'text',
+        text: [
+          `The build passes. One unbroken token from the log: ${LONG_WORD}`,
+          `Full report: ${LONG_URL}`,
+          '```js', wideCode, '```',
+          head, sep, ...rows,
+          '',
+          LONG_END,
+        ].join('\n\n').replace(/\n\n(?=\|)/g, '\n'),
+      }],
+    }),
+  ]
+}
+
+// Writes the fake HOME and returns the workspaces served by the fake Herdr.
+export function writeScenario(home) {
+  const now = Date.now()
+  const api = path.join(home, 'projects/acme-api')
+  const docs = path.join(home, 'projects/docs-site')
+  const demo = path.join(home, 'projects/demo')
+  for (const d of [api, docs, demo]) fs.mkdirSync(d, { recursive: true })
+
+  const claudeSid = '00000000-0000-4000-8000-000000000001'
+  claudeTranscript(home, api, claudeSid, now)
+  const longFile = ompTranscript(home, docs, 'e2e-long', now, longContent)
+  const chatFile = ompTranscript(home, demo, 'e2e-chat', now, msg => [
+    msg({ role: 'user', content: [{ type: 'text', text: 'Are you ready?' }], attribution: 'user' }),
+    msg({ role: 'assistant', content: [{ type: 'text', text: 'Ready when you are.' }], stopReason: 'stop' }),
+  ])
+
+  return [
+    { id: 'w1', label: 'acme-api', panes: [{ id: CLAUDE_PANE, agent: 'claude', status: 'idle', cwd: api, session: claudeSid }] },
+    { id: 'w2', label: 'docs-site', panes: [{ id: OMP_LONG_PANE, agent: 'omp', status: 'idle', cwd: docs, session: longFile }] },
+    { id: 'w3', label: 'demo', panes: [{ id: OMP_CHAT_PANE, agent: 'omp', status: 'idle', cwd: demo, session: chatFile, transcript: chatFile, reply: 'Got it.' }] },
+  ]
+}
