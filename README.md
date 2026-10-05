@@ -94,7 +94,9 @@ Claude Code, Codex and other product names are trademarks of their respective ow
   `⌘C` / `Ctrl+Shift+C`. The history is browsed with the wheel, not by dragging past the edge.
   Links (OSC 8 hyperlinks and plain `http(s)://` URLs, even wrapped over several rows) open in a
   new tab with `⌘`+click / `Ctrl`+click, or a tap on a phone; only http and https open. A long
-  line wrapped by the width is copied in one piece, without the breaks between its rows.
+  line wrapped by the width is copied in one piece, without the breaks between its rows. An image
+  pasted with `⌘V` (Mac), here or in a side-by-side terminal, goes to the agent's machine and its
+  path is pasted, which omp and Claude Code attach as an image, as in the conversation.
 - **Composer**: send messages while the agent works (queued, cancellable), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output

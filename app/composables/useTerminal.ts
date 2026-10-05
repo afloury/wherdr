@@ -8,6 +8,8 @@ import { terminalPixelWidth } from '~/utils/terminalSize'
 import { bindTerminalSelection } from '~/utils/terminalSelection'
 import { bindTerminalLinks, type TerminalLinks } from '~/utils/terminalLinks'
 import { bindShiftEnter } from '~/utils/terminalKeys'
+import { bindTerminalImagePaste } from '~/utils/terminalPaste'
+import { uploadPhoto } from '~/utils/photoUpload'
 import { terminalClosedText, terminalUnavailableText } from '~/utils/terminalClosed'
 import { TERM_FONT, onFontsLoaded } from '~/utils/terminalFont'
 
@@ -28,6 +30,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   const kbdOn = ref(false)
   const selectionHint = useTerminalSelectionHint()
   let unbindSelection: (() => void) | null = null
+  let unbindPaste: (() => void) | null = null
   let unbindFonts: (() => void) | null = null
   let links: TerminalLinks | null = null
 
@@ -58,6 +61,13 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     unbindSelection = bindTerminalSelection(term, () => toast(t('Copied')))
     // OSC 8 hyperlinks and http(s) URLs, opened in a new tab.
     links = bindTerminalLinks(term, t)
+    // Pasted image: its path on the agent's machine, pasted through Herdr,
+    // which the agent attaches as an image.
+    unbindPaste = bindTerminalImagePaste(host, {
+      upload: async f => (await uploadPhoto(paneId, f)).path,
+      paste: text => sendTerm({ type: 'paste', text }),
+      report: message => toast(message, true),
+    })
     // The device's choice may change while the terminal stays mounted.
     setRenderer(terminalRenderer.value)
     // JetBrains Mono (bundled): once loaded, xterm re-measures its cells.
@@ -284,9 +294,11 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     disposed = true
     disconnect()
     unbindSelection?.()
+    unbindPaste?.()
     unbindFonts?.()
     unbindFonts = null
     unbindSelection = null
+    unbindPaste = null
     links?.dispose()
     links = null
     webgl = null // term.dispose() destroys its addons

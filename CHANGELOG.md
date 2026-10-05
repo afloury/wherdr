@@ -16,6 +16,12 @@ All notable changes to this project are documented here. The format follows
 - GitHub Actions CI on pushes and pull requests to `main`: unit, component and end-to-end tests,
   type check and leak check.
 
+### Fixed
+
+- Pasting an image (`⌘V` on a Mac) into a terminal, full view or side by side, now reaches the
+  agent: it is uploaded to the agent's machine and its path pasted through Herdr, which omp and
+  Claude Code attach as an image. Before, the terminal only pasted text and the image was lost.
+
 ## [1.2.0] — 2026-10-05
 
 ### Added

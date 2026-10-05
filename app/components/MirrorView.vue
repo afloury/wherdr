@@ -11,6 +11,8 @@ import { mirrorTop } from '~/utils/mirrorViewport'
 import { bindTerminalSelection } from '~/utils/terminalSelection'
 import { bindTerminalLinks } from '~/utils/terminalLinks'
 import { bindShiftEnter } from '~/utils/terminalKeys'
+import { bindTerminalImagePaste } from '~/utils/terminalPaste'
+import { uploadPhoto } from '~/utils/photoUpload'
 import { TERM_FONT } from '~/utils/terminalFont'
 
 const props = defineProps<{ paneId: string, interactive?: boolean }>()
@@ -28,6 +30,7 @@ let retryTimer: ReturnType<typeof setTimeout> | undefined
 let ro: ResizeObserver | null = null
 let alive = true
 let unbindSelection: (() => void) | null = null
+let unbindPaste: (() => void) | null = null
 let links: ReturnType<typeof bindTerminalLinks> | null = null
 
 // The PTY stays at the Herdr client's size. Frame on the cursor line
@@ -94,8 +97,10 @@ function disconnect() {
     catch { /* already closed */ }
   }
 }
-function send(obj: unknown) {
-  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'input', ...obj as object }))
+function send(obj: unknown): boolean {
+  if (!ws || ws.readyState !== 1) return false
+  ws.send(JSON.stringify({ type: 'input', ...obj as object }))
+  return true
 }
 
 onMounted(() => {
@@ -113,6 +118,14 @@ onMounted(() => {
     if (!props.interactive) return
     for (const x of mirrorInput(d)) send(x)
   })
+  // Pasted image: its path on the agent's machine, sent as text, which Herdr
+  // pastes (see utils/terminalPaste.ts). Only the clicked cell has the
+  // keyboard, so only it receives pastes.
+  unbindPaste = bindTerminalImagePaste(host.value!, {
+    upload: async f => (await uploadPhoto(props.paneId, f)).path,
+    paste: text => send({ text }),
+    report: message => toast(message, true),
+  })
   document.fonts?.load(`${fontSize.value}px "JetBrains Mono Variable"`).then(() => nextTick(positionScreen)).catch(() => {})
   ro = new ResizeObserver(() => positionScreen())
   ro.observe(box.value!)
@@ -125,6 +138,7 @@ onUnmounted(() => {
   ro?.disconnect()
   disconnect()
   unbindSelection?.()
+  unbindPaste?.()
   links?.dispose()
   term?.dispose()
   term = null

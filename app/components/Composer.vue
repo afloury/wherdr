@@ -13,6 +13,7 @@ import { isAgentCommand } from '#shared/commandScreen'
 import { isSlashCommand } from '#shared/queuedMatch'
 import type { AttachKind } from '#shared/attachments'
 import { refusalText, sortForAgent } from '~/utils/fileDrop'
+import { uploadPhoto } from '~/utils/photoUpload'
 import { lostPhotosText, restoreDraft } from '~/utils/queuedCancel'
 
 // `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
@@ -250,43 +251,14 @@ watch(text, () => nextTick(() => {
   if (el.selectionEnd >= el.value.length - 1) el.scrollTop = el.scrollHeight
 }))
 
-async function shrink(file: Blob): Promise<Blob> {
-  const url = URL.createObjectURL(file)
-  try {
-    const img = await new Promise<HTMLImageElement>((res, rej) => {
-      const i = new Image()
-      i.onload = () => res(i)
-      i.onerror = rej
-      i.src = url
-    })
-    const k = Math.min(1, 2048 / Math.max(img.naturalWidth, img.naturalHeight))
-    const c = document.createElement('canvas')
-    c.width = Math.round(img.naturalWidth * k)
-    c.height = Math.round(img.naturalHeight * k)
-    const g = c.getContext('2d')!
-    // JPEG without transparency: white background, otherwise transparent areas
-    // (PNG screenshots) turn black.
-    g.fillStyle = '#fff'
-    g.fillRect(0, 0, c.width, c.height)
-    g.drawImage(img, 0, 0, c.width, c.height)
-    const blob = await new Promise<Blob | null>(res => c.toBlob(res, 'image/jpeg', 0.86))
-    if (blob) return blob
-  } catch { /* unreadable image: sent as is */ }
-  finally { URL.revokeObjectURL(url) }
-  return file
-}
-
 async function addImages(files: File[]) {
   for (const f of files) {
     const a = reactive<Att>({ url: URL.createObjectURL(f), path: null })
     attachments.value.push(a)
     try {
-      const blob = await shrink(f)
-      const r = await fetch(`/api/upload?pane=${encodeURIComponent(props.paneId)}`, { method: 'POST', headers: { 'content-type': blob.type || 'image/jpeg' }, body: blob })
-      const d = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(t(d.error || `HTTP ${r.status}`))
-      a.path = d.path
-      a.name = d.name
+      const r = await uploadPhoto(props.paneId, f)
+      a.path = r.path
+      a.name = r.name
     } catch (err) {
       toast(`${t('Photo upload failed')} : ${(err as Error).message}`, true)
       attachments.value = attachments.value.filter(x => x !== a)

@@ -141,7 +141,7 @@ const FR: Record<string, string> = {
   'Images go through the photo upload': 'Les images passent par l’envoi de photos', 'Invalid file name': 'Nom de fichier invalide',
   'Clipboard unavailable here — paste into the message field.': 'Presse-papiers inaccessible ici — colle dans le champ de message.',
   'No image in the clipboard': 'Pas d’image dans le presse-papiers', 'Paste denied': 'Collage refusé',
-  'Paste failed': 'Collage impossible',
+  'Paste failed': 'Collage impossible', 'Terminal not connected — image not pasted': 'Terminal non connecté — image non collée',
   'Summarize context': 'Résumer le contexte', 'New conversation': 'Nouvelle conversation',
   'Plan mode': 'Mode plan', 'Priority service tier': 'Niveau de service prioritaire',
   'Context usage': 'Occupation du contexte', 'Plan usage': 'Consommation du forfait',

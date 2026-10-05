@@ -103,6 +103,15 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
               ws.isOpen() && ws.send(JSON.stringify({ type: 'web.error', code: e.code, message: e.message })))
           }
           break
+        // Pasted text: Herdr brackets it if the program asked for it (wherdr's
+        // xterm only gets frames, not the program's modes). A pasted image path
+        // becomes an image in omp and Claude Code.
+        case 'paste':
+          if (typeof m.text === 'string' && m.text && m.text.length <= 65536) {
+            herdr('pane.send_input', { pane_id: pane, text: m.text }).catch(e =>
+              ws.isOpen() && ws.send(JSON.stringify({ type: 'web.error', code: e.code, message: e.message })))
+          }
+          break
         case 'visibility':
           sess.visible = Boolean(m.visible)
           break
