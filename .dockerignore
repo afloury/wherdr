@@ -13,3 +13,4 @@ tests
 branding
 docker-compose.override*.yml
 .env.example
+website

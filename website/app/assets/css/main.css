@@ -1,0 +1,194 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+/* Bundled fonts, same faces as the app: never loaded from the network. */
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/archivo";
+@import "@fontsource-variable/jetbrains-mono";
+
+@source "../../components";
+@source "../../pages";
+
+@theme {
+  --font-sans: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-display: "Archivo Variable", "Archivo", "Inter Variable", system-ui, sans-serif;
+}
+
+/* ================================================================
+   Tokens — the "wherdr Titanium" palette of the app
+   (app/utils/themes.ts, id wherdr-titanium), herdr.dev brutalist look:
+   square corners, 1 px lines, mono uppercase labels.
+   ================================================================ */
+:root {
+  --bg: #12151b;
+  --bg-2: #0d1015;
+  --surface: #1a1e26;
+  --surface-2: #20252f;
+  --line: #2a3038;
+  --line-strong: #3a424e;
+  --text: #e6eaf2;
+  --muted: #9da5b4;
+  --dim: #828a9a;
+  --accent: #1fb2ff;
+  --on-accent: #0d1015;
+  --violet: #a98bff;
+  --green: #00f28a;
+  --amber: #ffb347;
+  --rose: #ff4757;
+  --coral: #ff7b86;
+  --teal: #00dbe4;
+  --claude: #d77757;
+  --codex: #7a9dff;
+  --omp: #c467e0;
+  --grid: color-mix(in srgb, var(--line) 40%, transparent);
+  --mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --sans: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --display: "Archivo Variable", "Archivo", "Inter Variable", system-ui, sans-serif;
+  --wrap: 1240px;
+  --pad: clamp(20px, 4vw, 40px);
+  color-scheme: dark;
+}
+
+/* Nuxt UI wired to the tokens, square corners everywhere. */
+:root, .dark {
+  --ui-bg: var(--bg);
+  --ui-bg-muted: var(--surface);
+  --ui-bg-elevated: var(--surface);
+  --ui-bg-accented: var(--surface-2);
+  --ui-bg-inverted: var(--text);
+  --ui-text: var(--text);
+  --ui-text-muted: var(--muted);
+  --ui-text-dimmed: var(--dim);
+  --ui-text-toned: var(--muted);
+  --ui-text-highlighted: #fff;
+  --ui-text-inverted: var(--bg);
+  --ui-border: var(--line);
+  --ui-border-muted: var(--line);
+  --ui-border-accented: var(--line-strong);
+  --ui-primary: var(--accent);
+  --ui-radius: 0;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 72px; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); color: #fff; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+img { max-width: 100%; display: block; }
+code, kbd, pre { font-family: var(--mono); }
+
+.wrap { width: 100%; max-width: var(--wrap); margin: 0 auto; padding: 0 var(--pad); }
+
+/* Mono uppercase label, the signature of herdr.dev and the app. */
+.label {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.label .k { color: var(--accent); }
+
+.display {
+  font-family: var(--display);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: .98;
+  color: #fff;
+  margin: 0;
+}
+.h2 { font-size: clamp(34px, 5vw, 60px); }
+.lead { font-size: clamp(17px, 1.6vw, 19px); color: var(--muted); max-width: 62ch; }
+.lead strong, .lead b { color: var(--text); font-weight: 600; }
+
+/* Section frame: 1 px rules, index + label header. */
+.section { position: relative; border-top: 1px solid var(--line); padding: clamp(72px, 10vw, 128px) 0; }
+.section-head { display: grid; gap: 20px; margin-bottom: clamp(40px, 6vw, 64px); max-width: 860px; }
+.section-head .label { display: flex; gap: 14px; align-items: center; }
+.section-head .label::after { content: ''; flex: 0 0 48px; height: 1px; background: var(--line-strong); }
+
+/* herdr.dev-style background grid, fading out. */
+.grid-bg {
+  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 64px 64px;
+  background-position: center top;
+  -webkit-mask: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%);
+  mask: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%);
+}
+
+/* Buttons: square, 1 px. */
+.btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  height: 46px; padding: 0 20px;
+  font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  text-decoration: none; white-space: nowrap;
+  border: 1px solid var(--line-strong); background: var(--bg-2); color: var(--text);
+  transition: border-color .15s, background .15s, color .15s;
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--text); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover { background: #59c6ff; border-color: #59c6ff; }
+
+/* ---------------------------------------------------------------
+   Gliding ring, the same as the app's message field (main.css of the
+   app, "border" / "halo"): a conic gradient whose start angle is the
+   registered --fx-a. No JS; frozen with prefers-reduced-motion.
+   --------------------------------------------------------------- */
+@property --fx-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+@keyframes fx-turn { to { --fx-a: 360deg; } }
+.fx-ring {
+  --fx-speed: 10s;
+  --fx-glow: 14px;
+  --fx-fill: var(--bg-2);
+  --fx-1: color-mix(in srgb, var(--violet) 70%, var(--fx-fill));
+  --fx-2: var(--accent);
+  --fx-ring: conic-gradient(from var(--fx-a),
+    var(--fx-1) 0deg, var(--fx-2) 60deg, var(--fx-2) 120deg, var(--fx-1) 180deg, var(--fx-1) 360deg);
+  position: relative;
+  isolation: isolate;
+  border: 1px solid transparent;
+  background: linear-gradient(var(--fx-fill), var(--fx-fill)) padding-box, var(--fx-ring) border-box;
+  animation: fx-turn var(--fx-speed) linear infinite;
+}
+/* Halo: the same ring, faint, fading outward (masked gradient, no blur filter). */
+.fx-ring.halo::before {
+  content: ''; position: absolute; inset: calc(-1px - var(--fx-glow)); z-index: -1; pointer-events: none;
+  background: var(--fx-ring); opacity: .28;
+  animation: inherit;
+  --fx-fade-y: linear-gradient(to bottom, transparent, #000 var(--fx-glow), #000 calc(100% - var(--fx-glow)), transparent);
+  --fx-fade-x: linear-gradient(to right, transparent, #000 var(--fx-glow), #000 calc(100% - var(--fx-glow)), transparent);
+  -webkit-mask: var(--fx-fade-y), var(--fx-fade-x); -webkit-mask-composite: source-in;
+  mask: var(--fx-fade-y), var(--fx-fade-x); mask-composite: intersect;
+}
+
+/* Blinking block cursor. */
+@keyframes blink { 50% { opacity: 0; } }
+.cursor { display: inline-block; width: .6em; height: 1.1em; vertical-align: -0.18em; background: var(--accent); animation: blink 1.1s steps(1) infinite; }
+
+/* Reveal on scroll (class set by the v-reveal directive; content stays visible without JS). */
+.reveal { opacity: 0; transform: translateY(14px); transition: opacity .7s ease, transform .7s cubic-bezier(.2, .7, .2, 1); }
+.reveal.in { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .fx-ring, .fx-ring.halo::before { animation: none; --fx-a: 135deg; }
+  .cursor { animation: none; }
+  .reveal { opacity: 1; transform: none; transition: none; }
+  *, *::before, *::after { animation-duration: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; }
+}
