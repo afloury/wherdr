@@ -150,7 +150,9 @@ code, kbd, pre { font-family: var(--mono); }
   --fx-speed: 10s;
   --fx-glow: 8px;
   --fx-fill: var(--bg-2);
-  --fx-base: var(--violet);
+  /* Rings with no agent of their own (install command, wherdr node): omp's
+     violet gliding into Titanium blue, as in the app's omp composer. */
+  --fx-base: var(--omp);
   --fx-1: color-mix(in srgb, var(--fx-base) 70%, var(--fx-fill));
   --fx-2: var(--accent);
   --fx-ring: conic-gradient(from var(--fx-a),
