@@ -169,9 +169,8 @@ export const THEMES: ThemeDef[] = [
   {
     // wherdr Titanium — omp's titanium, calmer: background #12151b, surfaces
     // #1a1e26, lines #2a3038, an electric blue #1fb2ff as signature (accent
-    // 7.7:1, background text on accent 7.7:1) and omp's logo pink #f84fcc as
-    // the second color of the gliding focus ring, a reminder of omp's
-    // pink → violet → cyan gradient. Pink stays out of the rest of the UI.
+    // 7.7:1, background text on accent 7.7:1), also the second color of the
+    // gliding focus ring: the agent's color glides to Titanium blue.
     // Text #e6eaf2 (15.2:1), muted #9da5b4 (7.4:1), dim #828a9a (5.3:1).
     // States: working violet #a98bff (the gradient's middle), your turn amber
     // #ffb347, ready green #00f28a.
@@ -180,7 +179,7 @@ export const THEMES: ThemeDef[] = [
       bg: '#12151b', bg2: '#0d1015', surface: '#1a1e26', line: '#2a3038',
       text: '#e6eaf2', muted: '#9da5b4', dim: '#828a9a',
       accent: '#1fb2ff', green: '#00f28a', coral: '#ff7b86', ochre: '#ffb347', rose: '#ff4757', blue: '#1fb2ff', teal: '#00dbe4', lav: '#a98bff',
-      selection: '#1fb2ff', ring: '#f84fcc', working: '#a98bff', blocked: '#ffb347', done: '#00f28a',
+      selection: '#1fb2ff', ring: '#1fb2ff', working: '#a98bff', blocked: '#ffb347', done: '#00f28a',
     },
     ansi: ['#2f3540', '#ff4757', '#00f28a', '#f0c040', '#1fb2ff', '#d06fed', '#00dbe4', '#c3c9d3',
       '#6b7280', '#ff7b86', '#6bffb0', '#fddb72', '#6ec9ff', '#e69dfc', '#75efea', '#f7f9fc'],
