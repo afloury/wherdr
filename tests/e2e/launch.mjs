@@ -56,14 +56,20 @@ const app = spawn(process.execPath, [entry], {
   },
 })
 
+// The app first (it may still write its data dir while stopping), then the
+// fake Herdr and the temp dirs.
 let stopping = false
-function stop(code = 0) {
-  if (stopping) return
-  stopping = true
-  if (app.exitCode === null) app.kill('SIGTERM')
+app.on('exit', (code, signal) => {
   server.close()
   fs.rmSync(sockDir, { recursive: true, force: true })
   fs.rmSync(tmp, { recursive: true, force: true })
-  process.exit(code)
+  process.exit(stopping || signal ? 0 : code ?? 1)
+})
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(sig, () => {
+    if (stopping) return
+    stopping = true
+    app.kill('SIGTERM')
+    setTimeout(() => app.kill('SIGKILL'), 3000).unref()
+  })
 }
-app.on('exit', (code, signal) => stop(signal ? 0 : code ?? 1))
