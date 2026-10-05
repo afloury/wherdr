@@ -60,7 +60,7 @@ default_shell = ""
     expect(THEMES.find(t => t.id === 'omp-light')!.light).toBe(true)
     expect(THEMES.map(t => t.id)).toEqual(['herdr', 'claude-code', 'codex', 'omp', 'wherdr-neon', 'wherdr-neon-purple', 'wherdr-graphite', 'wherdr-titanium', 'catppuccin', 'terminal', 'tokyo-night', 'dracula', 'nord', 'gruvbox', 'one-dark', 'solarized', 'kanagawa', 'rose-pine', 'vesper', 'catppuccin-latte', 'omp-light'])
     // wherdr themes: the focus ring's second color comes from the theme.
-    expect(themeVars(THEMES.find(t => t.id === 'wherdr-titanium')!)['--ring-2']).toBe('#f84fcc')
+    expect(themeVars(THEMES.find(t => t.id === 'wherdr-neon-purple')!)['--ring-2']).toBe('#2ee6ff')
     expect(themeVars(omp)['--ring-2']).toBeUndefined()
   })
 
