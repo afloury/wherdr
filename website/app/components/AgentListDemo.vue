@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Story 1.2 on /preview, right phone: wherdr's agent list. The agent that
+// Story 1.2, right phone: wherdr's agent list. The agent that
 // pushed its question shows the options on its card; one tap answers without
 // opening the conversation, and the agent goes back to work, then is done.
 // Same PHONE clock as NotifyDemo.

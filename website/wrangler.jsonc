@@ -1,0 +1,19 @@
+// wherdr.dev on Cloudflare Workers: static assets only, no Worker script.
+// `npm run generate` writes the site to .output/public, then `npx wrangler deploy`
+// (or .github/workflows/site.yml on push to main) uploads it.
+// Response headers, including the plain-text type of /install: public/_headers.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wherdr-site",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./.output/public",
+    // Unknown paths get the generated 404 page with a 404 status, not the home page.
+    "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash"
+  },
+  // Only the custom domain: no *.workers.dev address, no preview URLs.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "wherdr.dev", "custom_domain": true }]
+}

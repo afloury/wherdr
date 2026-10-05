@@ -1,5 +1,6 @@
-// wherdr.dev — static site (`nuxt generate`), served by nginx (see Dockerfile).
-// Everything is bundled: fonts (@fontsource), icons, screenshots. No request
+// wherdr.dev — static site (`nuxt generate`), served by Cloudflare Workers
+// static assets (wrangler.jsonc) and, privately, by nginx (Dockerfile).
+// Everything is bundled: fonts (@fontsource), icons, images. No request
 // leaves the page: no web fonts service, no CDN, no analytics.
 const title = 'wherdr — your Herdr coding agents, from your phone and your browser'
 const description = 'wherdr is a self-hosted web app and PWA to follow and drive the coding agents (Claude Code, Codex, omp…) running in Herdr on your machines. Private network only, open source, MIT.'
@@ -54,7 +55,7 @@ export default defineNuxtConfig({
   },
 
   nitro: {
-    // /grid/1…5 and /preview: variants of the landing page to compare.
-    prerender: { routes: ['/', '/grid/1', '/grid/2', '/grid/3', '/grid/4', '/grid/5', '/preview'], crawlLinks: false },
+    // One page; /install, /_headers and the images are plain files of public/.
+    prerender: { routes: ['/'], crawlLinks: false },
   },
 })
