@@ -2,6 +2,7 @@
 // The hero's desktop: the same made-up session as PhoneDemo, on the
 // same HERO clock, in wherdr's computer layout (components/demo/Desktop.vue):
 // the agent list on the left follows the demo agent's state and last line.
+// Its field never has the focus: the user acts from the phone.
 import { ACTIONS, AGENT, ANSWER, HERO, MESSAGE, OPTIONS, PICKED, PREVIOUS, QUESTION, actionsAt, agentState } from '~/utils/heroDemo'
 import type { DemoAgent } from '~/utils/demoScript'
 
@@ -33,7 +34,7 @@ const agents = computed<DemoAgent[]>(() => [
       <template #bottom>
         <DemoTurnCard v-if="step >= 9 && step < 11" :question="QUESTION" :options="OPTIONS" :picked="step >= 10 ? PICKED : undefined" />
         <DemoComposer
-          agent="omp" desktop focus :stop="state === 'working'"
+          agent="omp" desktop :stop="state === 'working'"
           :placeholder="state === 'blocked' ? 'Type a reply…' : undefined" model="GPT-5.5" effort="high"
         />
       </template>
