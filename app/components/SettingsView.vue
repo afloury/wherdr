@@ -108,6 +108,11 @@ const focusBorderItems = computed(() => [
   { label: t('Halo'), description: t('The same, with a faint glow around the field.'), value: 'halo' },
   { label: t('None'), description: t('Plain 1 px border, no animation.'), value: 'off' },
 ])
+const backdropMode = backdrop
+const backdropItems = computed(() => [
+  { label: t('Plain'), description: t('The solid page background.'), value: 'plain' },
+  { label: t('Grid'), description: t('Dotted grid with light packets, like wherdr.dev.'), value: 'grid' },
+])
 const langItems = [{ label: 'English', value: 'en' }, { label: 'Français', value: 'fr' }]
 
 // Inventory of the reachable machines; the preferences stay specific to this device.
@@ -376,6 +381,12 @@ onMounted(() => {
             <h3>{{ t('Message field border on focus') }}</h3>
             <URadioGroup v-model="focusBorderMode" :items="focusBorderItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
             <p class="muted settings-hint">{{ t('Also on omp’s running actions (border only). Frozen when the system asks for reduced motion. Saved on this device.') }}</p>
+          </div>
+
+          <div class="settings-group">
+            <h3>{{ t('Background') }}</h3>
+            <URadioGroup v-model="backdropMode" :items="backdropItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <p class="muted settings-hint">{{ t('Behind the conversation and, on a phone, the list. Still when the system asks for reduced motion. Saved on this device.') }}</p>
           </div>
 
           <div class="settings-group">

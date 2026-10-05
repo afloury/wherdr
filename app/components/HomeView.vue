@@ -398,6 +398,7 @@ function resetListWidth() {
 
 <template>
   <section id="home" class="view" :class="{ resizing: listDrag, rail, 'list-compact': compactList }">
+    <GridBackdrop v-if="backdrop === 'grid' && !desk" />
     <!-- Collapsed list (computer): narrow column, the rest of the list is hidden. -->
     <nav v-if="rail" class="home-rail" :aria-label="t('Agents')">
       <AppLogo class="home-logo" :class="conn.idle ? '' : conn.ok ? 'ok' : 'bad'" :title="conn.text" />

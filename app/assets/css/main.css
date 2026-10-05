@@ -2486,6 +2486,14 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
    computer. TASKS.md lists, threads in progress and done. */
 .agent-body { flex: 1; min-height: 0; display: flex; }
 .agent-main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+/* Settings › Appearance › Background "Grid" (components/GridBackdrop.vue): the
+   layer sits at z-index -1 inside these hosts, under their content and above
+   their own background. The conversation is see-through on a phone. */
+.hw-backdrop-host { isolation: isolate; }
+/* Boxes of the phone list stay solid: the grid shows around them, not through. */
+html[data-backdrop='grid'] #home :is(.stats, .quota-row, .solo-session-row, .home-offline) { background-color: var(--bg); }
+/* Phone: the text runs over the grid, keep it fainter there. */
+@media (max-width: 899px) { .agent-main > .grid-backdrop { opacity: .55; } }
 .project-panel { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
 .project-panel.side { flex: none; width: clamp(300px, 27vw, 400px); min-width: 260px; max-width: 50%; border-left: 1px solid var(--line); background: var(--bg-2); }
 /* Width handle: thin line on the column's left edge, 9 px grab
@@ -2726,6 +2734,18 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
     background-attachment: scroll, fixed, fixed;
     background-position: 0 0, -1px -1px, -1px -1px;
     background-repeat: no-repeat, repeat, repeat;
+  }
+  /* Background "Grid": the margins show GridBackdrop instead of the flat grid;
+     the reading column stays solid, nothing behind the text. */
+  html[data-backdrop='grid'] :is(.chat, .composer) {
+    background-color: transparent;
+    background-image:
+      linear-gradient(90deg, transparent calc(var(--col-l) - 1px), var(--line) calc(var(--col-l) - 1px), var(--line) var(--col-l),
+        var(--bg) var(--col-l), var(--bg) var(--col-r), var(--line) var(--col-r), var(--line) calc(var(--col-r) + 1px), transparent calc(var(--col-r) + 1px));
+    background-size: 100% 100%;
+    background-attachment: scroll;
+    background-position: 0 0;
+    background-repeat: no-repeat;
   }
   .composer { padding-bottom: 18px; }
   /* The key separator belongs to the column, not to the gridded margins. */
