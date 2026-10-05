@@ -4,232 +4,85 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [0.1.0] — Unreleased
+## [Unreleased]
+
+## [1.2.0] — 2026-10-05
+
+### Added
+
+- Full omp conversations: transcripts, reasoning, tool actions and results, status line,
+  questions, slash commands, shell commands, model and thinking controls, restart, and branding.
+- wherdr Titanium, Graphite and Neon Purple themes, plus omp themes and a configurable animated
+  composer focus border.
+- Compact home list with one line per agent or space; more desktop shortcuts and a collapsible
+  agent sidebar.
+- Replies to several agent questions or selected passages in one message, with optional quote
+  tokens in the composer.
+- Run or copy shell commands from an agent's reply, with confirmation before running them.
+- File attachments for supported document and code formats, alongside photos.
+- Zoom and pan in the conversation image viewer; clickable links and Nerd Font icons in terminals.
+- Codex update and weekly-limit notices, including an update path through the agent's terminal.
+- Published multi-architecture Docker images and an in-app notice when a new wherdr release is
+  available.
+- Passkey maximum unlock age and **Lock all devices**; per-machine thread limits for
+  herdr-projects.
+
+### Changed
+
+- Sent messages appear in the conversation immediately, with clear queued, sending and failed
+  states; queued messages retain their attachments and send in order.
+- Project cards and task lists better reflect coordinator tabs, thread queues and review status.
+- Context menus open as bottom sheets on touch screens; phone sheets and desktop pane controls
+  are easier to use.
+- Terminal selection uses on-screen xterm selection again; wrapped lines copy without added
+  line breaks.
+- The passkey session's 12-hour timeout now measures inactivity instead of time since unlock.
+
+### Fixed
+
+- Claude Code sends no longer merge with text from another writer, and messages wait while an
+  interactive menu occupies the agent's input.
+- omp startup messages, shell command bubbles and Stop behavior; queued first messages and
+  photos can be recovered when cancelled.
+- Direct links to tabs, remote conversation reads, and pane state during server reconnection.
+- Permission and question cards in short panes, plus keyboard handling for interactive cards.
+- iPhone sheet placement, terminal and console overflow, and image and file display edge cases.
+
+### Security
+
+- Reject API calls initiated from another site and reject unknown or SVG conversation images.
+- Leak checks can scan every commit in a range; test fixtures no longer use captured machine names.
+
+## [1.1.0] — 2026-09-28
+
+### Added
+
+- Reorder machines, identify the local machine and keep a remote machine awake.
+- Silence notifications per device; show a **Blocked** list in the project board.
+- Create herdr-projects projects from wherdr with a clearer setup flow.
+
+### Changed
+
+- Show Herdr space names on cards and the full installed version in the header.
+- Improve project action input, backlog handoff and worktree close confirmation.
+
+### Fixed
+
+- Correct Claude Code effort changes and their displayed value.
+- Keep desktop composer controls clear of terminals and hide internal project markers.
+- Make leak checks work from a Git worktree.
+
+## [1.0.0] — 2026-09-27
 
 First public release.
 
 ### Added
 
-- **Restart agent** for omp, like Claude Code and Codex: wherdr exits omp (`/exit`, otherwise
-  `Ctrl+C` twice) and relaunches it in the same pane on the same conversation
-  (`omp --resume <session file>`, the path Herdr's omp integration reports; `omp --continue`
-  without one). Launch options read from the running process are replayed, except `--model` and
-  `--thinking` when resuming (omp restores the session's own) and one-off options (`--print`,
-  `--api-key`…). omp's update notice is not acted on: run `omp update` yourself, then restart.
-- Terminal: Nerd Font icons (Powerline separators, Font Awesome, Codicons, Devicons, Octicons,
-  Material Design…) used by status bars and prompts such as omp's "nerd font" symbol set display
-  instead of empty boxes. A bundled subset of Symbols Nerd Font Mono, narrowed to one cell, split
-  per icon set and loaded only when such a glyph is on screen (no network call).
-- Passkey lock: a maximum duration since the last passkey unlock, set in Settings → Security for
-  every device (1 day, 7 days by default, 30 days, 90 days, 1 year). Past it, the device asks for
-  the passkey again at the next opening of the app (launch, reload or back in the foreground),
-  never in the middle of use, with a warning in the last hours; the 12-hour idle limit still
-  applies. **Lock all devices** (lost or stolen device) ends every session, this one included,
-  and keeps the passkeys. The README explains how a new device gets in (synced passkey or another
-  device's passkey through the browser's QR code, then **Add this device**).
-- Projects: when a herdr-projects thread runs as a tab of its coordinator's space, the space
-  stays a single card, the coordinator's: first in its project with its **Coordinator** badge,
-  name, state and preview, plus its tab count. It opens on the coordinator's tab; the thread is
-  reached through the space's tabs.
-- Conversation: a message shows the instant Send is tapped, as a dotted **Queued · sending…**
-  bubble, and the field (photos and files included) empties at once. The bubble becomes the
-  normal message when the agent takes it, without a duplicate or a jump (the app's id is kept by
-  the server for its record), or shows **Queued** if the agent is busy. A request that fails
-  leaves it as **Not sent** with Retry / Cancel, nothing lost. Messages typed in a row go out one
-  after the other, in order. `/` commands and answers to an omp question still wait for the agent.
-- Conversation: answer several questions of an agent in one message. Each question of a reply
-  (a list item or a paragraph ending with `?`, never in code) gets a small **↳ Reply** button
-  (on hover with a mouse, faint but always there on a phone). A tap appends the question to the
-  field as a `> ` quote with an empty line below for the answer; further questions, and a
-  selected passage with the floating **Reply** button, stack after it in order. Each quote shows
-  as a chip above the field with ✕ to remove it, a question already quoted is marked **✓ Quoted**
-  and never added twice, and the sent message shows each quote above its answer.
-- Conversation: quoted replies as tokens. While the draft holds quotes, each one shows in the
-  field as a compact, non-editable token (`↳ quote ✕`) with its answer typed below; the text
-  sent, the draft kept per conversation and on reload, Enter / Shift+Enter, paste (plain text
-  only, images attached), drop, undo / redo and instant sending work as in the plain field.
-  Settings › Conversation › **Quoted replies** shows an animated preview and has one switch per
-  device type: **On a computer** (on by default) and **On a phone** (off by default: on iOS,
-  moving the caret around the tokens is unreliable). Off, the quotes stay `> ` lines with chips.
-- omp: thinking level next to the model in the message field, as for Claude Code and Codex. Read
-  from omp's transcript (the level chosen, so `auto` stays `auto` after omp resolves it for a
-  turn), else from its status line. Changed with omp's own ⇧⇥ cycle (off → auto → the model's
-  levels), for this session only: wherdr presses it until the level is reached, checking each
-  step; a level the model lacks brings it back to where it was. Without a transcript to read, the
-  status line is enough, `auto` included (it shows the glyph of the level it resolved to: wherdr
-  knows a press from `off` lands on it); a cycle that stops on the way leaves the field on the
-  level omp reached. The list starts from the common levels and follows what the presses show.
-- Conversation: run or copy a command an agent proposes. A shell code block (`bash`, `sh`,
-  `zsh`, `shell`, `console`, or command lines without a language) gets a **Run** button beside
-  Copy (on hover with a mouse, always on a phone), and an inline command (`! gh pr merge 5 …`,
-  `$ make`, `npm test`) opens a menu on click or tap with **Run…** and **Copy command**. Run always
-  shows the full command for confirmation, then sends it as `! <command>` to the agent's own shell
-  mode (Claude Code's bash mode, Codex and omp); it is only offered in the agent's replies, while
-  the conversation is live. Copy now takes a shell command without its `!` / `$` prompts, and a
-  `console` block without its output lines.
-- Message field: animated border on focus. The whole 1 px border takes the agent's color
-  (Claude, Codex, omp; the theme's accent for a plain terminal) and a second color glides slowly
-  around it, one turn every 10 s (`--fx-speed` in `main.css`). With omp in the omp themes, the
-  second color is cyan (omp) or blue (omp Light) instead of the accent. Settings → Appearance →
-  Message field border on focus: Border only, Halo (default; the same with a faint glow around
-  the field) or None (the plain 1 px border); saved on the device. Frozen with
-  `prefers-reduced-motion`; pure CSS, nothing runs while the field does not have the focus.
-  While omp works, its running action console gets the same animated border (border only, no
-  halo), fading back to the plain border when the group ends; None turns it off too.
-- Image viewer: zoom and pan. An image opens fitted to the screen (a very tall one is no longer
-  cut at the bottom); pinch, double tap, click on the image, ctrl+wheel (trackpad pinch), the
-  wheel on a fitted image, the bottom bar (−, zoom level = back to fit, +, 1:1 actual size) or
-  `+` / `-` / `0` zoom it, and a zoomed image pans in every direction with a finger, the mouse or
-  the wheel. New close button; a tap outside the image and Escape still close it, and swiping
-  between the images of a message still works when not zoomed. The page behind never scrolls.
-- herdr-projects: max threads per machine, across all projects (Settings → Plugins →
-  herdr-projects; empty = no global limit, saved on the server). wherdr counts the active threads
-  of every project on each machine (a finished thread waiting for review gives its slot back right
-  away), shows `2 of 2 thread slots in use on <machine> (all projects)` in
-  the In queue header, and writes `.wherdr-limits.json` (`{ this, machines: { <machine>: { max,
-  open, free, threads } } }`) in each herdr-projects folder where a coordinator runs. The
-  coordinator rules now say to check it before starting a thread and to wait while the machine is
-  full, with `herdr-projects overview` as the fallback.
-- Terminal: clickable links. OSC 8 hyperlinks (such as a login screen's "Open login URL") and
-  plain `http(s)://` URLs open in a new tab, without opener, with `⌘`+click on a Mac or
-  `Ctrl`+click elsewhere (a plain click still starts a selection; hovering shows the URL), or a
-  tap on a touch screen; only http and https are opened. A URL wrapped over several rows is one
-  link. Also in the side-by-side mirrors.
-- Terminal: copying a line wrapped by the terminal width (a long URL, for instance) gives it back
-  in one piece, without a line break between its rows; real line breaks stay. Herdr paints each
-  row on its own and TUIs often wrap long lines themselves, so a row filled up to the last column
-  and followed by a row that starts with a character (box-drawing borders excluded) counts as
-  wrapped.
-- Messages to Claude Code are no longer glued to another program's (e.g. a herdr-projects
-  `[hp inbox]` notice sent at the same moment). wherdr types the message itself and checks
-  Claude's input field on screen: it waits until the field has stayed empty for a moment, and
-  presses Enter only when the field holds exactly its text. Another writer's text that slips in
-  is separated: the field is cleared, the message typed again, and the other text typed back
-  as its own message right after (logged). A draft already in the field is never cleared: the
-  message waits ("will be sent when the agent's input is free"), then shows **Not sent — the
-  agent's input contains text** with Retry / Cancel after 2 minutes. A message that can't be
-  confirmed as taken is shown as not sent, never dropped. wherdr's own sends to a pane go one
-  at a time.
-- Codex conversation: **Update** now also works when wherdr cannot run the update itself (in
-  Docker, whose home is read-only): it is typed into the agent's own terminal. Codex exits
-  (`/exit`), the pane's shell runs the known official command followed by an end marker with
-  its exit status, then Codex restarts on the same conversation (`codex resume <id>`, through
-  Herdr's `agent.start`, so Herdr keeps tracking it). The line above the composer follows each
-  step (Exiting Codex… / Updating Codex in its terminal… / Restarting Codex…). The button waits
-  while Codex works or waits for an answer; a Codex menu on screen or a Codex not started from a
-  shell are refused before anything is typed. On failure the pane stays at its shell with the
-  exit code, the last line printed and **Copy command**. Over SSH, or with a writable home, the
-  update still runs directly without stopping the agents, then **Restart to update**.
-- `/resume` card: `Ctrl+A` on the computer keyboard switches between every project and the
-  current one, like the card's button (also with the empty message field focused). `⌘A` keeps
-  "select all" on macOS; a field with text keeps its own `Ctrl+A`.
-- Codex conversation: when a newer Codex is out, a line above the composer says so ("Codex
-  0.160.0 available (you have 0.159.1)") with the release notes and an **Update** button. After
-  a confirmation that shows the command, it runs Codex's own official update command on the
-  agent's machine (over SSH, or locally when `~/.codex` is writable) — only a known command
-  (standalone installer from `chatgpt.com/codex/install.sh`, npm, bun, Homebrew), never text
-  read from the screen; otherwise the command is offered to copy. Once installed, **Restart to
-  update** restarts the agent on the same conversation (`codex resume`). The latest and
-  installed versions come from Codex's files (`~/.codex/version.json`, the standalone package);
-  the running one from the TUI's own header on screen, the conversation's `cli_version` (written
-  by Codex's shared background server, maybe another version) only without it. While Codex's
-  screen shows a weekly-limit warning (its footer gauge "weekly limit: 12% left", or the startup
-  heads-up "less than 25% of your weekly limit left" of the current session), a warning line
-  repeats it with Codex's own values, with a `/status` button; it disappears as soon as Codex
-  stops showing it.
-- Attach files, not only photos: drop, paste or pick (+ › File) the files the agent can read.
-  Claude Code gets PDFs, Jupyter notebooks and text or code of any extension (text goes as
-  `@<path>`, so its content is in the conversation without a permission prompt); Codex and
-  other agents get notebooks, text and code. Archives, videos, audio, Office documents and
-  binaries are refused with the reason. Files are stored on the agent's machine
-  (`~/.cache/herdr-web/files`, local or over SSH, mode 600, safe names, deleted after 7 days;
-  10 MB for text, 20 MB for notebooks, 30 MB for PDFs). The composer and the sent message show
-  a file chip; in a sent message it opens the path menu (Reveal in Finder, Open, Copy path).
-- Live agent list grouped by state, with answer previews and one-tap answers to permission
-  prompts and questions (including omp's ask questions, shown in full even when the terminal
-  folds them, multi-select and the final Submit).
-  Claude Code's AskUserQuestion is a card too, completed from the transcript when a short pane
-  shows only part of it: checkboxes (ticks kept for the options scrolled out of view),
-  "Type something" typed in place, Submit and the review step. A numbered list in the agent's
-  previous reply, still on screen above the box in a tall pane, no longer hides the card.
-  In the conversation view, omp's "Other (type your own)" opens a text field under the
-  question (multi-line, replaces an earlier custom answer); a reply typed in the composer
-  while omp asks is sent as that custom answer. A multi-question omp ask shows its question
-  tabs (and Submit) above the question, to go back and change an answer (←/→ on a computer).
-  Ready agents can be sorted by Herdr order (drag to reorder), recent activity or name.
-- Conversation view for Claude Code, Codex and omp transcripts (Markdown, tool calls, images,
-  search, infinite scroll), typing effect with optional encrypted-text reveal. For omp it also
-  shows the notes the terminal shows (advisor, finished background jobs, agent messages), and
-  omp's status line (model, folder, branch, context and quota meters) under the composer.
-- Default pane view on a computer (Settings › Desktop): a pane without an explicit choice opens
-  on the Conversation or on the Terminal, as chosen; the phone always opens the conversation.
-  An explicit switch (selector, Ctrl+`, phone icons) is remembered per pane, switching back to
-  the Conversation included; changing the default applies at once to the panes without one.
-- omp slash commands in the composer: built-in commands, file commands and `/skill:<name>`
-  suggestions; file commands show as `/name args` in the conversation.
-- Collapsible agent sidebar on a computer: a narrow rail with search, new agent, settings and
-  state counters, remembered per device.
-- Keyboard shortcuts on a computer: previous / next agent (`Alt+↑/↓`), new space, new tab and
-  close pane (`Mod+Alt+N/T/W`, also from the terminal), open the agent folder in the editor
-  (`Mod+Alt+O`), conversation search (`Mod+F`),
-  conversation / terminal (``Ctrl+` ``), stop a working agent (`Esc`, empty field), settings
-  (`Mod+,`) and a shortcut list (`Mod+/` or `?`, Settings › Computer). Tooltips and menus show
-  the keys. The "Your turn" card's digits also work on AZERTY without Shift, outside the message field.
-- The agent's current folder in its default editor on the agent's Mac: Mod+Alt+O, also in the
-  agent menu ("Open in editor"). Same safeguarded action as a folder path in a conversation
-  (Reveal in Finder / Open); the folder is never opened as an app or script. In Docker on a
-  Mac, an optional SSH route to the host (`scripts/install-host-open.sh`) enables it too.
-- First bound the folder shortcut to Mod+Alt+E; moved to O the same day — Firefox and Zen own
-  ⌘⌥E (Network Monitor) on macOS, Zen also uses Ctrl+Alt+E for workspaces.
-- Terminal view (xterm.js, WebGL or DOM renderer) with a phone key bar and take-over.
-  Shift+Enter inserts a newline in agents, as in a native terminal.
-- Composer with queued messages (cancellable), photos, paste, slash commands and their output.
-  A queued message looks like the sent one (photos above the text bubble), photos sent without
-  text included, and keeps its photos until it lands, even across a server restart.
-  A message sent to an agent that is still starting waits and goes out as soon as it's ready,
-  including an omp agent already waiting at its prompt that Herdr still counts as starting.
-- Per-session model and effort pickers for Claude Code, Codex and omp. omp uses its own
-  "Switch Model" selector (`/switch`, `/model` or alt+p), read and driven on screen: the
-  picker lists the models omp offers, Enter applies for the session only (never the
-  default), and the conversation shows the switch as a "/model → …" line.
-- New agent: installed agents or terminal, folder browser, Git worktree and branch, resume the
-  last conversation, queued first message. The last 30 folders used on each machine are kept:
-  6 show as chips, `+N` shows the rest, and a field filters them by name (Enter takes the
-  first match). The folder browser filters long subfolder lists by name the same way.
-- File and folder paths in agent replies (`~/project/app.ts`, `src/app.ts:42`) are clickable:
-  Reveal in Finder and Open on the agent's Mac (local or over SSH), Copy path everywhere. Only
-  existing paths under the machine's home; apps and scripts are never opened.
-- Git changes view and worktree management; global search.
-- herdr-projects grouping (coordinator and threads).
-- Several machines through the SSH machines registered in Herdr; named Herdr sessions.
-- Claude and Codex quotas on the home screen, with an invisible Claude Code status line.
-- Web Push notifications, including `herdr notification show`; Herdr plugin actions.
-- Offline reading of the last known state and recent conversations.
-- Passkey lock (WebAuthn).
-- herdr.dev and Herdr themes, English and French interface, phone and desktop layouts.
-- Context menus (long press, right click, "…" buttons) on cards, headers, tabs and paths open
-  at the pointer with a mouse on a computer, and as the bottom sheet on phones, tablets and
-  narrow windows; long press then move still drags a card.
-- Project panel: new optional **In queue** (launched automatically by the coordinator as soon as
-  a thread slot frees, with the slots in use) and **To do** (prioritized, never auto-launched)
-  lists with Move up / down, Queue it, Launch now and Back to backlog / Remove from queue; lists
-  always show in a fixed order, and the coordinator rules describe each list.
-- Leak check: `npm run check:leaks -- --range <revs>` scans every commit of a range (the lines
-  each commit adds and its message), so a private value added then removed before pushing is
-  caught; gitleaks runs from its Docker image when the binary is not installed. Test fixtures
-  and tests no longer contain names captured from real machines.
-- Passkey lock: the session no longer expires 12 hours after unlocking while the app is in use;
-  it now lasts 12 hours after the last request. The lock screen only appears once the server
-  confirms the session is invalid (not on a single refused request or a network error), and a
-  browser clock running behind the server no longer locks the app right after unlocking.
-- omp console: a long result line (`→ 22 matches · in <long path>`, a background job ID) now
-  wraps inside the console instead of making the whole conversation scroll sideways on a phone.
-
-### Removed
-
-- Terminal drag-select auto-scroll (dragging near or past the top or bottom edge made Herdr
-  scroll and extended the selection through the history), with its early clipboard write and
-  the "Selection ready" toast. Selection in the computer terminal and the mirrors is xterm's own
-  again: only the text on screen, no scrolling when the pointer leaves the terminal. Releasing
-  the button copies it (one clipboard attempt, nothing shown if the browser refuses), and
-  `⌘C` / `Ctrl+Shift+C` copy it too.
+- Live agent list with answer previews and one-tap replies to permissions and questions.
+- Claude Code and Codex conversations with Markdown, tool calls, images and search; live terminal
+  view with mobile keys; composer with queued messages, photos and slash commands.
+- Per-session model and effort controls; new agents, folder browser, Git worktrees, changes view
+  and global search.
+- Multiple machines and Herdr sessions, herdr-projects grouping, and Claude and Codex quotas.
+- Web Push notifications, offline reading, passkey lock, themes, and English and French layouts
+  for desktop and phone.
