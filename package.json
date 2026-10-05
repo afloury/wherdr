@@ -11,6 +11,7 @@
     "start": "HOST=${HOST:-127.0.0.1} PORT=${PORT:-7683} node .output/server/index.mjs",
     "typecheck": "nuxt typecheck",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "postinstall": "nuxt prepare",
     "check:leaks": "node scripts/check-leaks.mjs",
     "hooks:install": "git config core.hooksPath .githooks"
@@ -35,11 +36,15 @@
   },
   "devDependencies": {
     "@iconify-json/lucide": "^1.2.136",
+    "@nuxt/test-utils": "^4.3.3",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^22.0.0",
     "@types/web-push": "^3.6.4",
     "@vite-pwa/nuxt": "^1.1.1",
+    "@vue/test-utils": "^2.5.1",
+    "happy-dom": "^20.14.5",
     "typescript": "~5.9.3",
-    "vitest": "^3.2.7",
+    "vitest": "^4.1.11",
     "vue-tsc": "^3.0.0"
   }
 }

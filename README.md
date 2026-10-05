@@ -7,6 +7,8 @@
 <p align="center"><b>A complete workspace for the coding agents running in <a href="https://herdr.dev">Herdr</a>, on your
 computer and on your phone.</b></p>
 
+<p align="center"><a href="https://github.com/afloury/wherdr/actions/workflows/ci.yml"><img src="https://github.com/afloury/wherdr/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a></p>
+
 ## Quick start
 
 To try it on one computer, with [Herdr](https://herdr.dev) running and Node.js 22, on macOS or

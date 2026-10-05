@@ -9,14 +9,35 @@ Requirements: Node.js 22 and a Herdr ≥ 0.9.1 server on the same machine.
 ```sh
 npm ci
 npm run dev          # http://localhost:3000, hot reload
-npx vitest run       # unit tests
+npx vitest run       # unit and component tests
 npx nuxt typecheck   # type check (TypeScript stays on 5.x: TS 7 breaks vue-tsc)
 npm run build        # production build in .output/
 ```
 
 Before opening a pull request, make sure `npx vitest run` and `npx nuxt typecheck` pass, and add
-tests for new logic (`tests/`, fixtures in `tests/fixtures/`, **never real conversations or
-personal paths**: use neutral names such as `host-a`, `laptop`, `alice`, `/home/user`).
+tests for new logic (see [Tests](#tests) below; fixtures in `tests/fixtures/`, **never real
+conversations or personal paths**: use neutral names such as `host-a`, `laptop`, `alice`,
+`/home/user`).
+
+## Tests
+
+**A fixed bug comes with a test that fails before the fix and passes after it.** Write the test
+first, watch it fail on the buggy code, then fix. Test what the user sees (a rendered element, a
+sent request, a stored value), not the wiring.
+
+| Kind | Where | Run | What it covers |
+| --- | --- | --- | --- |
+| Unit | `tests/*.test.ts` | `npx vitest run --project unit` | Pure modules of `server/`, `shared/`, `app/utils/`, in Node. |
+| Component | `tests/components/*.test.ts` | `npx vitest run --project components` | Vue components mounted in a Nuxt environment (auto-imports, Nuxt UI) on happy-dom, with `mountSuspended` and `registerEndpoint` from `@nuxt/test-utils/runtime`. |
+| End to end | `tests/e2e/*.spec.ts` | `npm run build && npm run test:e2e` | The built app in Chromium and WebKit (Safari's engine, for iOS bugs), at iPhone and desktop sizes, against a fake Herdr server with neutral data. |
+
+`npx vitest run` runs the unit and component projects together. For the end-to-end tests,
+install the browsers once with `npx playwright install --with-deps chromium webkit`; a single
+project runs with `npm run test:e2e -- --project=webkit-phone` (names in `playwright.config.ts`),
+and `npx playwright show-report` opens the last report. They never touch a real Herdr session.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs all of them, the type check and the leak check
+(gitleaks only: your `.leak-patterns` stays local) on every push and pull request to `main`.
 
 ## Testing without touching your real agents
 
