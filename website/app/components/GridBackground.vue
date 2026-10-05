@@ -218,12 +218,14 @@ onBeforeUnmount(() => {
   -webkit-mask: radial-gradient(ellipse 85% 75% at 50% 35%, #000 25%, rgba(0, 0, 0, .45) 60%, transparent 88%);
   mask: radial-gradient(ellipse 85% 75% at 50% 35%, #000 25%, rgba(0, 0, 0, .45) 60%, transparent 88%);
 }
-/* Edges sink into the page background: depth without a blur. */
+/* Edges sink into the page background: depth without a blur. The top edge
+   fades too, so the grid eases out of the header; above the packets so they
+   fade at the edges like the dots. */
 .vignette {
-  position: absolute; inset: 0;
+  position: absolute; inset: 0; z-index: 1;
   background:
     linear-gradient(to right, var(--bg), transparent 14%, transparent 86%, var(--bg)),
-    linear-gradient(to bottom, transparent 70%, var(--bg));
+    linear-gradient(to bottom, var(--bg), transparent 18%, transparent 70%, var(--bg));
 }
 
 @media (max-width: 760px) {
