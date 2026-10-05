@@ -5,7 +5,7 @@
 // real width (the real text holds the layout, the animated copy sits on top),
 // so the line never jumps and words still wrap. The animated copy is
 // aria-hidden. Nothing moves with prefers-reduced-motion.
-import { GLYPHS } from '~/utils/cipher'
+import { TRAIL_GLYPHS as GLYPHS } from '~/utils/typing'
 
 const props = withDefaults(defineProps<{ text: string, delay?: number, duration?: number }>(), {
   delay: 0,

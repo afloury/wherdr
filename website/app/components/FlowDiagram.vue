@@ -57,7 +57,8 @@ const agents = [
 .zone { position: absolute; top: 18px; left: calc(28px + (100% - 56px) * .27); right: 28px; height: calc(100% - 36px); border: 1px dashed var(--line-strong); pointer-events: none; }
 .zone .label { position: absolute; top: -9px; left: 16px; padding: 0 8px; background: var(--bg-2); font-size: 10px; color: var(--dim); }
 .node { position: relative; z-index: 1; display: grid; align-content: start; gap: 8px; padding: 16px; border: 1px solid var(--line-strong); background: var(--surface); }
-.node.wherdr { --fx-fill: var(--surface); }
+/* z-index auto: a stacking context of its own would paint the halo over its fill. */
+.node.wherdr { z-index: auto; --fx-fill: var(--surface); border-color: transparent; background: linear-gradient(var(--fx-fill), var(--fx-fill)) padding-box, var(--fx-ring) border-box; }
 .node .label { font-size: 10px; }
 .title { font-family: var(--display); font-weight: 800; font-size: 20px; color: #fff; letter-spacing: -0.02em; }
 ul { margin: 0; padding: 0; list-style: none; font: 12px/1.7 var(--mono); color: var(--muted); }

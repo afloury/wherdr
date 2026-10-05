@@ -26,7 +26,7 @@ export default defineNuxtConfig({
     customCollections: [{ prefix: 'herdr', dir: './app/assets/icons' }],
     clientBundle: {
       scan: true,
-      icons: ['lucide:x', 'lucide:check', 'lucide:chevron-down', 'lucide:copy'],
+      icons: ['lucide:x', 'lucide:check', 'lucide:chevron-down', 'lucide:copy', 'lucide:file-text', 'lucide:file-plus', 'lucide:terminal'],
     },
   },
 

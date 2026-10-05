@@ -148,30 +148,37 @@ code, kbd, pre { font-family: var(--mono); }
 .btn.primary:hover { background: #59c6ff; border-color: #59c6ff; }
 
 /* ---------------------------------------------------------------
-   Gliding ring, the same as the app's message field (main.css of the
-   app, "border" / "halo"): a conic gradient whose start angle is the
-   registered --fx-a. No JS; frozen with prefers-reduced-motion.
+   Gliding ring and halo, copied from the app's message field (app
+   main.css, focus border "halo", the default): a conic gradient whose
+   start angle is the registered --fx-a, a base color toned toward the
+   fill with the Titanium blue gliding over it. The halo is the same
+   ring, faint (.32) and 8 px deep, fading outward, drawn UNDER the
+   block: like the app (isolation on the parent, not on the ringed block),
+   the block's opaque fill hides its inner part, so the glow stays on
+   the edge. No JS; frozen with prefers-reduced-motion.
    --------------------------------------------------------------- */
 @property --fx-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 @keyframes fx-turn { to { --fx-a: 360deg; } }
 .fx-ring {
   --fx-speed: 10s;
-  --fx-glow: 14px;
+  --fx-glow: 8px;
   --fx-fill: var(--bg-2);
-  --fx-1: color-mix(in srgb, var(--violet) 70%, var(--fx-fill));
+  --fx-base: var(--violet);
+  --fx-1: color-mix(in srgb, var(--fx-base) 70%, var(--fx-fill));
   --fx-2: var(--accent);
   --fx-ring: conic-gradient(from var(--fx-a),
     var(--fx-1) 0deg, var(--fx-2) 60deg, var(--fx-2) 120deg, var(--fx-1) 180deg, var(--fx-1) 360deg);
   position: relative;
-  isolation: isolate;
   border: 1px solid transparent;
   background: linear-gradient(var(--fx-fill), var(--fx-fill)) padding-box, var(--fx-ring) border-box;
   animation: fx-turn var(--fx-speed) linear infinite;
 }
-/* Halo: the same ring, faint, fading outward (masked gradient, no blur filter). */
+/* The halo's stacking context is the parent: z-index -1 then paints
+   between the parent's background and the block's own fill. */
+:has(> .fx-ring.halo) { isolation: isolate; }
 .fx-ring.halo::before {
   content: ''; position: absolute; inset: calc(-1px - var(--fx-glow)); z-index: -1; pointer-events: none;
-  background: var(--fx-ring); opacity: .28;
+  background: var(--fx-ring); opacity: .32;
   animation: inherit;
   --fx-fade-y: linear-gradient(to bottom, transparent, #000 var(--fx-glow), #000 calc(100% - var(--fx-glow)), transparent);
   --fx-fade-x: linear-gradient(to right, transparent, #000 var(--fx-glow), #000 calc(100% - var(--fx-glow)), transparent);
@@ -188,23 +195,304 @@ code, kbd, pre { font-family: var(--mono); }
 .reveal.in { opacity: 1; transform: none; }
 
 /* ---------------------------------------------------------------
-   Live demos (/preview): the pieces of the app every demo shares.
-   Sizes are in --u, set by each demo root (one point of its screen).
+   Live demos (/preview): wherdr's own UI, copied from the app
+   (app/assets/css/main.css, app/utils/themes.ts) in its defaults:
+   wherdr Titanium theme, "Halo" focus ring, medium typing speed with
+   encrypted text. Class names and sizes are the app's; its px are
+   written in --u, one point of the demo's screen (set by each demo
+   root, with the .app-ui class). .desk = the app's computer layout.
    --------------------------------------------------------------- */
-.demo-sq { display: inline-block; flex: none; width: calc(var(--u) * 8); height: calc(var(--u) * 8); margin-right: calc(var(--u) * 7); background: currentColor; }
-.demo-ready { color: var(--green); }
-.demo-work { color: var(--violet); }
-.demo-turn { color: var(--rose); }
-.demo-dim { color: var(--dim); }
-.demo-mi { width: calc(var(--u) * 14); height: calc(var(--u) * 14); vertical-align: -.15em; }
-@keyframes demo-rise { from { opacity: 0; transform: translateY(calc(var(--u) * 10)); } }
-.demo-rise { animation: demo-rise .35s cubic-bezier(.2, .7, .2, 1) both; }
-@keyframes demo-pulse { 50% { opacity: .25; } }
-.demo-pulse { animation: demo-pulse 1s ease-in-out infinite; }
+.app-ui {
+  /* Tokens the app derives from the Titanium palette (themeVars). */
+  --surface-2: color-mix(in srgb, var(--text) 7%, var(--bg));
+  --surface-3: color-mix(in srgb, var(--text) 11%, var(--bg));
+  --line-soft: color-mix(in srgb, var(--line) 60%, var(--bg));
+  --line-strong: color-mix(in srgb, var(--text) 30%, var(--bg));
+  --text-2: color-mix(in srgb, var(--text) 86%, var(--bg));
+  --text-3: color-mix(in srgb, var(--text) 72%, var(--bg));
+  --text-strong: color-mix(in srgb, var(--text) 75%, #fff);
+  --mauve: var(--accent);
+  --blue: #1fb2ff;
+  --ochre: #ffb347;
+  --lav: #a98bff;
+  --working: #a98bff;
+  --blocked: #ffb347;
+  --done: #00f28a;
+  --idle: #00f28a;
+  --input-line: var(--line);
+  --code-bg: color-mix(in srgb, #000 22%, var(--bg));
+  --ring-2: var(--accent);
+  --ui-text-muted: var(--muted);
+  --ui-text-highlighted: var(--text);
+  background: var(--bg); color: var(--text);
+  font: calc(var(--u) * 16) / 1.5 var(--sans);
+  text-align: left; -webkit-user-select: none; user-select: none;
+}
+.app-ui * { box-sizing: border-box; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+@keyframes demo-rise { from { opacity: 0; transform: translateY(calc(var(--u) * 6)); } }
+.demo-rise { animation: demo-rise .2s ease-out both; }
+
+/* Icon buttons of the headers. */
+.app-ui .icon-btn { width: calc(var(--u) * 40); height: calc(var(--u) * 40); flex: none; display: grid; place-items: center; color: var(--text-2); border: 1px solid transparent; }
+.app-ui .icon-btn .iconify { width: calc(var(--u) * 20); height: calc(var(--u) * 20); }
+.app-ui .icon-btn.on { border-color: var(--mauve); background: color-mix(in srgb, var(--mauve) 14%, transparent); color: var(--mauve); }
+.app-ui .eyebrow { display: flex; align-items: center; gap: calc(var(--u) * 8); min-width: 0; font: 500 calc(var(--u) * 10.5) / 1.2 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--mauve); }
+
+/* State: square + "working · claude · opus 5.5 high" (StatusPill). */
+.app-ui .pill { display: inline-flex; align-items: center; gap: calc(var(--u) * 6); flex: none; min-width: 0; font: 500 calc(var(--u) * 11.5) / 1.2 var(--mono); text-transform: lowercase; color: var(--muted); white-space: nowrap; transition: color .3s; }
+.app-ui .pill i { width: calc(var(--u) * 7); height: calc(var(--u) * 7); background: currentColor; flex: none; }
+.app-ui .pill .sep { color: var(--dim); margin: 0 calc(var(--u) * -1); }
+.app-ui .pill.working { color: var(--working); }
+.app-ui .pill.working i { animation: pulse 1.3s ease-in-out infinite; }
+.app-ui .pill.blocked { color: var(--blocked); }
+.app-ui .pill.blocked i { animation: pulse .9s ease-in-out infinite; }
+.app-ui .pill.done { color: var(--done); }
+.app-ui .pill.idle { color: var(--idle); opacity: .85; }
+.app-ui .pill.idle i { background: transparent; box-shadow: inset 0 0 0 calc(var(--u) * 1.5) currentColor; }
+.app-ui .pill .pill-kind { color: var(--text-2); }
+.app-ui .pill .pill-model { color: var(--muted); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.app-ui .pill .pill-effort { color: var(--dim); margin-left: calc(var(--u) * -2); flex: none; }
+
+/* Agent logos. */
+.app-ui .avatar { width: calc(var(--u) * 38); height: calc(var(--u) * 38); flex: none; display: grid; place-items: center; background: var(--surface); color: var(--text); border: 1px solid var(--line); }
+.app-ui .avatar .iconify { width: calc(var(--u) * 21); height: calc(var(--u) * 21); }
+.app-ui .avatar.claude { color: var(--claude); }
+.app-ui .avatar.codex { color: var(--codex); }
+.app-ui .avatar.codex .iconify { width: calc(var(--u) * 22); height: calc(var(--u) * 22); }
+.app-ui .avatar.omp { color: var(--omp); }
+
+/* Agent list: title row, counters, cards. */
+.app-ui .home-brand { display: flex; align-items: center; gap: calc(var(--u) * 8); }
+.app-ui .home-logo { width: calc(var(--u) * 32); height: auto; color: var(--text); flex: none; margin-right: calc(var(--u) * 2); }
+.app-ui .home-title-row { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 12); min-width: 0; }
+.app-ui .home-title { margin: 0; font: 850 calc(var(--u) * 40) / .95 var(--display); letter-spacing: -.045em; color: var(--text); }
+.app-ui .home-actions { display: flex; align-items: center; gap: calc(var(--u) * 4); margin-right: calc(var(--u) * -6); }
+.app-ui .session-row { display: flex; align-items: center; justify-content: space-between; height: calc(var(--u) * 38); padding: 0 calc(var(--u) * 12); border: 1px solid var(--line); font: 500 calc(var(--u) * 11) / 1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.app-ui .session-row span { display: inline-flex; align-items: center; gap: calc(var(--u) * 8); }
+.app-ui .session-row b { display: inline-flex; align-items: center; gap: calc(var(--u) * 6); font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--accent); }
+.app-ui .session-row .iconify { width: calc(var(--u) * 13); height: calc(var(--u) * 13); }
+.app-ui .stats { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); }
+.app-ui .stat { padding: calc(var(--u) * 12) calc(var(--u) * 12) calc(var(--u) * 11); min-width: 0; }
+.app-ui .stat + .stat { border-left: 1px solid var(--line); }
+.app-ui .stat b { display: block; font: 850 calc(var(--u) * 26) / 1 var(--display); letter-spacing: -.04em; color: var(--text); }
+.app-ui .stat span { display: flex; align-items: center; gap: calc(var(--u) * 6); margin-top: calc(var(--u) * 8); font: 500 calc(var(--u) * 9.5) / 1.2 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-ui .stat span i { width: calc(var(--u) * 6); height: calc(var(--u) * 6); flex: none; }
+.app-ui .stat.blocked span i { background: var(--blocked); }
+.app-ui .stat.working span i { background: var(--working); }
+.app-ui .stat.done span i { background: var(--done); }
+.app-ui .stat.zero b { color: var(--dim); }
+.app-ui .stat.blocked:not(.zero) b { color: var(--rose); }
+.app-ui .card-list { display: flex; flex-direction: column; border: 1px solid var(--line); }
+.app-ui .card { position: relative; width: 100%; display: flex; flex-wrap: wrap; align-items: flex-start; gap: calc(var(--u) * 12); padding: calc(var(--u) * 14) calc(var(--u) * 14) calc(var(--u) * 14) calc(var(--u) * 16); background: var(--bg-2); transition: background .12s ease; }
+.app-ui .card + .card { border-top: 1px solid var(--line-soft); }
+.app-ui .card::before { content: ''; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 2px; background: transparent; }
+.app-ui .card.blocked::before { background: var(--rose); }
+.app-ui .card.done::before { background: var(--done); }
+.app-ui .card.done .card-title { font-weight: 700; }
+.app-ui .card-main { flex: 1; min-width: 0; }
+.app-ui .card-title { font-weight: 600; font-size: calc(var(--u) * 15); line-height: 1.3; color: var(--text); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-ui .card-meta { display: flex; align-items: center; gap: calc(var(--u) * 8); margin-top: calc(var(--u) * 5); min-width: 0; overflow: hidden; }
+.app-ui .card-meta .pill { flex-shrink: 1; }
+.app-ui .card-tag { flex: none; padding: calc(var(--u) * 2) calc(var(--u) * 5); border: 1px solid var(--line); font: 500 calc(var(--u) * 9.5) / 1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.app-ui .card-where { display: block; min-width: 0; margin-top: calc(var(--u) * 4); font: 400 calc(var(--u) * 11.5) / 1.3 var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-ui .card-preview { flex: 0 0 calc(100% - var(--u) * 50); min-width: 0; margin: calc(var(--u) * -2) 0 0 calc(var(--u) * 50); font-size: calc(var(--u) * 13.5); line-height: 1.45; color: var(--text-3); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.app-ui .card.blocked .card-preview { color: var(--text); }
+.app-ui .card-choices { flex: 0 0 calc(100% - var(--u) * 50); min-width: 0; display: flex; flex-direction: column; gap: calc(var(--u) * 6); margin-left: calc(var(--u) * 50); }
+.app-ui .card-choices button { display: flex; align-items: center; gap: calc(var(--u) * 10); text-align: left; padding: calc(var(--u) * 8) calc(var(--u) * 10); font: 500 calc(var(--u) * 13.5) / 1.3 var(--sans); background: color-mix(in srgb, var(--rose) 6%, transparent); color: var(--text); border: 1px solid color-mix(in srgb, var(--rose) 35%, transparent); transition: background .15s; }
+.app-ui .card-choices button.hit { background: color-mix(in srgb, var(--rose) 22%, transparent); }
+.app-ui .card-choices .n { font: 600 calc(var(--u) * 11) / 1 var(--mono); color: var(--rose); flex: none; }
+.app-ui.desk .card.sel { background: var(--surface-2); }
+.app-ui.desk .card.sel::before { background: var(--mauve); }
+.app-ui.desk .card.sel.blocked::before { background: var(--rose); }
+.app-ui.desk .card-title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: calc(var(--u) * 14.5); }
+.app-ui.desk .card-preview { font-size: calc(var(--u) * 13); }
+
+/* Agent header: back, name, state line, actions; Conversation / Terminal tabs. */
+.app-ui .agent-top { flex: none; display: flex; align-items: center; gap: calc(var(--u) * 4); padding: calc(var(--u) * 6) calc(var(--u) * 8); border-bottom: 1px solid var(--line-soft); background: color-mix(in srgb, var(--bg) 94%, transparent); }
+.app-ui .agent-head { flex: 1; min-width: 0; padding: 0 calc(var(--u) * 4); }
+.app-ui .agent-title { font-weight: 600; font-size: calc(var(--u) * 15.5); letter-spacing: -.01em; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-ui .agent-meta { display: flex; align-items: center; gap: calc(var(--u) * 8); margin-top: calc(var(--u) * 3); min-width: 0; overflow: hidden; white-space: nowrap; }
+.app-ui .agent-meta .pill { font-size: calc(var(--u) * 11); }
+.app-ui .agent-meta .agent-subtitle { min-width: 0; font: 400 calc(var(--u) * 11) / 1.2 var(--mono); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; }
+.app-ui .agent-meta .agent-subtitle::before { content: '· '; color: var(--dim); }
+.app-ui .agent-meta .where { flex: 1 1 0; min-width: 6ch; font: 400 calc(var(--u) * 11) / 1.2 var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; }
+.app-ui .agent-meta .where::before { content: '· '; }
+.app-ui .agent-actions { display: flex; align-items: center; gap: calc(var(--u) * 2); flex: none; }
+.app-ui .hw-tabs { display: flex; width: calc(var(--u) * 220); margin-right: calc(var(--u) * 10); border: 1px solid var(--line); }
+.app-ui .hw-tab { flex: 1; text-align: center; padding: calc(var(--u) * 6) calc(var(--u) * 8); font: 500 calc(var(--u) * 10.5) / 1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); transition: background .2s, color .2s; }
+.app-ui .hw-tab.on { background: var(--mauve); color: var(--on-accent); }
+
+/* Conversation. */
+.app-ui .chat-list { display: flex; flex-direction: column; gap: calc(var(--u) * 14); }
+.app-ui .msg-user-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: calc(var(--u) * 5); margin-top: calc(var(--u) * 6); }
+.app-ui .msg-bubble { max-width: 88%; padding: calc(var(--u) * 10) calc(var(--u) * 14); background: var(--surface-2); color: var(--text); border: 1px solid var(--line); font-size: calc(var(--u) * 15); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.app-ui.desk .msg-bubble { max-width: 78%; }
+.app-ui .msg-bubble.queued { background: transparent; border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); color: var(--text-2); }
+.app-ui .msg-time { font: 400 calc(var(--u) * 10.5) / 1 var(--mono); color: var(--dim); letter-spacing: .04em; }
+.app-ui .queued-tag { display: flex; justify-content: flex-end; align-items: center; gap: calc(var(--u) * 6); font: 400 calc(var(--u) * 11) / 1.3 var(--mono); color: var(--muted); }
+.app-ui .queued-tag .iconify { width: calc(var(--u) * 12); height: calc(var(--u) * 12); flex: none; color: var(--mauve); }
+.app-ui .msg-who { display: flex; align-items: center; gap: calc(var(--u) * 7); margin: calc(var(--u) * 10) 0 calc(var(--u) * -4); font: 600 calc(var(--u) * 10.5) / 1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--text-3); }
+.app-ui .msg-who .iconify { width: calc(var(--u) * 14); height: calc(var(--u) * 14); }
+.app-ui .msg-who.claude .iconify { color: var(--claude); }
+.app-ui .msg-who.codex .iconify { color: var(--codex); }
+.app-ui .msg-who.omp .iconify { color: var(--omp); }
+.app-ui .md { font-size: calc(var(--u) * 15.5); line-height: 1.6; color: var(--text); overflow-wrap: anywhere; }
+.app-ui .md p { margin: 0 0 .75em; }
+.app-ui .md > :last-child { margin-bottom: 0; }
+.app-ui .md strong { font-weight: 650; color: var(--text-strong); }
+/* Inline code: rule on the left, tint and glyph by kind (utils/codeKind.ts). */
+.app-ui .md code { font: .84em var(--mono); padding: .05em .34em .05em .3em; color: color-mix(in srgb, var(--k, var(--text-2)) 45%, var(--text)); background: color-mix(in srgb, var(--k, var(--text)) 7%, transparent); border-left: 1px solid color-mix(in srgb, var(--k, var(--text)) 50%, transparent); }
+.app-ui .md code[data-k="path"] { --k: var(--lav); }
+.app-ui .md code[data-k="cmd"] { --k: var(--green); }
+.app-ui .md code[data-k]::before { margin-right: .32em; color: var(--k); opacity: .7; font-weight: 600; }
+.app-ui .md code[data-k="cmd"]::before { content: "❯"; }
+.app-ui .md code[data-k="path"]::before { content: "▸"; }
+.app-ui .md .code-block { margin: 0 0 .9em; border: 1px solid var(--line); background: var(--code-bg); }
+.app-ui .md .code-head { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 10); padding: 0 calc(var(--u) * 4) 0 calc(var(--u) * 12); height: calc(var(--u) * 30); border-bottom: 1px solid var(--line-soft); background: var(--bg-2); font: 500 calc(var(--u) * 10) / 1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+.app-ui .md .code-tools { display: flex; align-items: center; gap: calc(var(--u) * 2); }
+.app-ui .md .code-copy, .app-ui .md .code-run { display: inline-flex; align-items: center; gap: .55em; height: calc(var(--u) * 24); padding: 0 calc(var(--u) * 8); color: var(--dim); transition: background .15s, color .15s; }
+.app-ui .md .code-copy.done { color: var(--green); }
+.app-ui .md .code-run { color: color-mix(in srgb, var(--green) 65%, var(--muted)); }
+.app-ui .md .code-run::before { content: "▷"; letter-spacing: 0; font-size: calc(var(--u) * 11); }
+.app-ui .md .code-run.hit { color: var(--green); background: var(--surface-2); }
+.app-ui .md pre { margin: 0; padding: calc(var(--u) * 12) calc(var(--u) * 14); overflow: hidden; font: calc(var(--u) * 12.5) / 1.55 var(--mono); color: var(--text-2); }
+/* Encrypted text: the glyphs of the cipher band sit over transparent real
+   characters (the text keeps its width), in the agent's color. */
+.app-ui .tw-trail > span { position: relative; color: transparent; }
+.app-ui .tw-trail > span::before { content: attr(data-g); position: absolute; left: 50%; top: 0; transform: translateX(-50%); font-family: var(--mono); font-weight: 400; font-style: normal; color: var(--tw-color, var(--mauve)); opacity: .8; pointer-events: none; }
+.app-ui .tw-trail > .tw-front::before { opacity: .4; }
+.app-ui .tw-claude { --tw-color: var(--claude); }
+.app-ui .tw-codex { --tw-color: var(--codex); }
+.app-ui .tw-omp { --tw-color: var(--omp); }
+/* End of a turn: copy, reply, "✓ 2 min 40 s · 3 actions". */
+.app-ui .turn-end { display: flex; align-items: center; gap: calc(var(--u) * 6); min-height: calc(var(--u) * 28); margin: calc(var(--u) * -6) 0 calc(var(--u) * 6) calc(var(--u) * -6); font: 400 calc(var(--u) * 11) / 1 var(--mono); color: var(--dim); letter-spacing: .04em; }
+.app-ui .turn-end > .t { padding-left: calc(var(--u) * 6); }
+.app-ui .turn-copy { display: grid; place-items: center; width: calc(var(--u) * 24); height: calc(var(--u) * 24); color: var(--dim); }
+.app-ui .turn-copy .iconify { width: calc(var(--u) * 16); height: calc(var(--u) * 16); }
+.app-ui .msg-reply { display: inline-flex; align-items: center; gap: calc(var(--u) * 5); height: calc(var(--u) * 28); padding: 0 calc(var(--u) * 6); margin-left: calc(var(--u) * -4); font: 500 calc(var(--u) * 10) / 1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+.app-ui .msg-reply .iconify { width: calc(var(--u) * 13); height: calc(var(--u) * 13); }
+/* Tool calls (UChatTool), a thin column like a terminal tree. */
+.app-ui .tools { display: flex; flex-direction: column; gap: calc(var(--u) * 2); padding: calc(var(--u) * 2) 0 calc(var(--u) * 2) calc(var(--u) * 12); border-left: 1px solid var(--line); margin-left: 1px; transition: border-color .3s; }
+.app-ui .tools.live { border-left-color: color-mix(in srgb, var(--blue) 50%, transparent); }
+.app-ui .tool { min-width: 0; }
+.app-ui .tool-trigger { gap: calc(var(--u) * 8); padding: calc(var(--u) * 3) 0; color: var(--text-3); font-size: calc(var(--u) * 13.5); }
+.app-ui .tool-leading, .app-ui .tool-leading .iconify { width: calc(var(--u) * 15); height: calc(var(--u) * 15); }
+.app-ui .tool-leading { color: var(--dim); }
+.app-ui .tool-label { font-weight: 500; }
+.app-ui .tool-suffix { font: 400 calc(var(--u) * 12) / 1.2 var(--mono); color: var(--dim); margin-left: calc(var(--u) * 8); }
+.app-ui .tools.live .tool-leading { color: var(--blue); }
+.app-ui .tool-chev { width: calc(var(--u) * 14); height: calc(var(--u) * 14); margin-left: calc(var(--u) * 2); color: var(--dim); }
+.app-ui .tool-body { padding: calc(var(--u) * 4) 0; white-space: normal; }
+.app-ui .tool-row { display: flex; align-items: center; gap: calc(var(--u) * 8); padding: calc(var(--u) * 3) 0; font-size: calc(var(--u) * 13); color: var(--text-3); min-width: 0; }
+.app-ui .tool-row .iconify { width: calc(var(--u) * 14); height: calc(var(--u) * 14); color: var(--dim); flex: none; }
+.app-ui .tool-row b { font-weight: 500; flex: none; }
+.app-ui .tool-row span { font: 400 calc(var(--u) * 12) / 1.2 var(--mono); color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* "Claude is working…" / omp's running step under the conversation. */
+.app-ui .chat-status { display: flex; align-items: center; gap: calc(var(--u) * 10); font-size: calc(var(--u) * 14); color: var(--muted); }
+.app-ui .chat-status .omp-step-line { --omp-color: var(--omp); display: inline-flex; align-items: baseline; min-width: 0; font: calc(var(--u) * 13) var(--mono); }
+.app-ui .chat-status .omp-step { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; --ui-text-muted: var(--muted); --ui-text-highlighted: color-mix(in srgb, var(--omp-color) 55%, var(--text)); }
+.app-ui .chat-status .omp-spinner { display: inline-block; flex: none; width: 1.6em; margin-left: -.3em; text-align: center; color: var(--omp-color); }
+.app-ui .chat-status .omp-elapsed { flex: none; margin-left: .75em; padding-left: .75em; border-left: 1px solid var(--line); color: var(--dim); font-variant-numeric: tabular-nums; }
+
+/* "Your turn": the agent's question and its numbered answers (ChoicesPanel). */
+.app-ui .choices { flex: none; padding: calc(var(--u) * 12) calc(var(--u) * 12) calc(var(--u) * 6); border-top: 1px solid color-mix(in srgb, var(--rose) 45%, transparent); background: linear-gradient(180deg, color-mix(in srgb, var(--rose) 7%, transparent), transparent 80%); }
+.app-ui .choices-eyebrow { color: var(--rose); margin: 0 calc(var(--u) * 2) calc(var(--u) * 8); }
+.app-ui .choices-eyebrow i { width: calc(var(--u) * 7); height: calc(var(--u) * 7); background: var(--rose); animation: pulse .9s ease-in-out infinite; }
+.app-ui .choices-q { font-size: calc(var(--u) * 14.5); font-weight: 600; color: var(--text); margin: 0 calc(var(--u) * 2) calc(var(--u) * 10); line-height: 1.4; }
+.app-ui .choices-list { display: flex; flex-direction: column; }
+.app-ui .choices-list > div { position: relative; display: flex; gap: calc(var(--u) * 12); align-items: flex-start; margin-top: -1px; padding: calc(var(--u) * 11) calc(var(--u) * 12); background: var(--bg-2); border: 1px solid var(--line); transition: background .15s; }
+.app-ui .choices-list > div:first-child { margin-top: 0; }
+.app-ui .choices-list > div.cur { border-color: color-mix(in srgb, var(--rose) 60%, transparent); z-index: 1; }
+.app-ui .choices-list > div.hit { background: var(--surface-3); }
+.app-ui .choices-list .n { font: 600 calc(var(--u) * 12) / 1.55 var(--mono); color: var(--rose); flex: none; min-width: calc(var(--u) * 14); }
+.app-ui .choices-list .l { font-size: calc(var(--u) * 15); font-weight: 500; line-height: 1.4; }
+.app-ui .choices-list small { display: block; font-size: calc(var(--u) * 12.5); color: var(--muted); font-weight: 400; margin-top: calc(var(--u) * 2); }
+
+/* ---- Gliding ring (app main.css, "border" / "halo"): the agent's color
+   toned toward the field, the second color (Titanium blue) gliding around.
+   --fx-a does not inherit: the ring is declared on the animated elements. */
+.app-ui .composer, .app-ui .omp-console {
+  --fx-speed: 10s;
+  --fx-glow: calc(var(--u) * 8);
+  --fx-fill: var(--bg-2);
+  --fx-base: var(--accent);
+  --fx-1: color-mix(in srgb, var(--fx-base) 70%, var(--fx-fill));
+  --fx-2: var(--blue);
+}
+.app-ui .composer[data-agent="claude"] { --fx-base: var(--claude); --fx-2: var(--ring-2); }
+.app-ui .composer[data-agent="codex"] { --fx-base: var(--codex); --fx-2: var(--ring-2); }
+.app-ui .composer[data-agent="omp"], .app-ui .omp-console { --fx-base: var(--omp); --fx-2: var(--ring-2); }
+.app-ui .prompt, .app-ui .omp-console::after {
+  --fx-ring: conic-gradient(from var(--fx-a), var(--fx-1) 0deg, var(--fx-2) 60deg, var(--fx-2) 120deg, var(--fx-1) 180deg, var(--fx-1) 360deg);
+}
+
+/* Message field (Composer / UChatPrompt). */
+.app-ui .composer { position: relative; isolation: isolate; flex: none; background: var(--bg); padding: calc(var(--u) * 6) calc(var(--u) * 12) calc(var(--u) * 10); }
+.app-ui .prompt { position: relative; display: flex; flex-direction: column; gap: calc(var(--u) * 2); padding: calc(var(--u) * 4) calc(var(--u) * 6) calc(var(--u) * 6); background: var(--bg-2); border: 1px solid var(--input-line); }
+.app-ui .prompt.focus { border-color: transparent; background: linear-gradient(var(--bg-2), var(--bg-2)) padding-box, var(--fx-ring) border-box; animation: fx-turn var(--fx-speed) linear infinite; }
+.app-ui .prompt.focus::before {
+  content: ''; position: absolute; inset: calc(-1px - var(--fx-glow)); z-index: -1; pointer-events: none;
+  background: var(--fx-ring); opacity: .32;
+  --fx-fade-y: linear-gradient(to bottom, transparent, #000 var(--fx-glow), #000 calc(100% - var(--fx-glow)), transparent);
+  --fx-fade-x: linear-gradient(to right, transparent, #000 var(--fx-glow), #000 calc(100% - var(--fx-glow)), transparent);
+  -webkit-mask: var(--fx-fade-y), var(--fx-fade-x); -webkit-mask-composite: source-in;
+  mask: var(--fx-fade-y), var(--fx-fade-x); mask-composite: intersect;
+}
+.app-ui .prompt-input { min-height: calc(var(--u) * 38); padding: calc(var(--u) * 8) calc(var(--u) * 6) calc(var(--u) * 4); font-size: calc(var(--u) * 16); line-height: 1.45; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.app-ui .prompt-input .ph { color: var(--dim); }
+.app-ui .prompt-input .caret { display: inline-block; width: 1px; height: 1.15em; margin-left: 1px; vertical-align: -.2em; background: var(--text); }
+.app-ui .prompt-foot { display: flex; align-items: center; gap: calc(var(--u) * 8); }
+.app-ui .prompt-plus { display: grid; place-items: center; width: calc(var(--u) * 32); height: calc(var(--u) * 32); flex: none; color: var(--text-2); border: 1px solid var(--line); }
+.app-ui .prompt-plus .iconify { width: calc(var(--u) * 18); height: calc(var(--u) * 18); }
+.app-ui .model-pick { position: relative; display: inline-flex; align-items: center; gap: calc(var(--u) * 6); height: calc(var(--u) * 32); padding: 0 calc(var(--u) * 8); flex: none; font: 500 calc(var(--u) * 11.5) / 1 var(--mono); color: var(--text-2); transition: background .15s, color .15s; }
+.app-ui .model-pick.open { background: var(--surface-2); color: var(--text); }
+.app-ui .model-pick .model-caret { width: calc(var(--u) * 13); height: calc(var(--u) * 13); color: var(--dim); }
+.app-ui .effort-pick { color: var(--dim); }
+.app-ui .model-menu { position: absolute; left: 0; bottom: calc(100% + var(--u) * 6); z-index: 2; display: flex; flex-direction: column; min-width: calc(var(--u) * 180); padding: calc(var(--u) * 4); border: 1px solid var(--line); background: var(--surface-2); box-shadow: 0 calc(var(--u) * 12) calc(var(--u) * 30) rgba(0, 0, 0, .5); }
+.app-ui .model-menu > span { display: flex; align-items: center; justify-content: space-between; padding: calc(var(--u) * 7) calc(var(--u) * 8); font: calc(var(--u) * 13.5) / 1.2 var(--sans); color: var(--text); }
+.app-ui .model-menu > span.on { color: var(--mauve); }
+.app-ui .model-menu .iconify { width: calc(var(--u) * 15); height: calc(var(--u) * 15); }
+.app-ui .prompt-hint { flex: 1; display: flex; align-items: center; gap: calc(var(--u) * 4); justify-content: flex-end; font: 400 calc(var(--u) * 11) / 1 var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; }
+.app-ui .prompt-hint .sep { margin: 0 calc(var(--u) * 4); }
+/* UKbd, size sm. */
+.app-ui .prompt-hint kbd { display: inline-grid; place-items: center; min-width: calc(var(--u) * 16); height: calc(var(--u) * 16); padding: 0 calc(var(--u) * 3); border: 1px solid var(--line-strong); background: var(--bg); font: 500 calc(var(--u) * 10) / 1 var(--mono); color: var(--text-2); }
+.app-ui .prompt-send { display: grid; place-items: center; width: calc(var(--u) * 32); height: calc(var(--u) * 32); margin-left: auto; flex: none; background: var(--accent); color: var(--on-accent); transition: background .15s, color .15s, opacity .15s; }
+.app-ui .prompt-hint + .prompt-send { margin-left: calc(var(--u) * 6); }
+.app-ui .prompt-send .iconify { width: calc(var(--u) * 18); height: calc(var(--u) * 18); }
+.app-ui .prompt-send.off { opacity: .35; background: var(--surface-3); color: var(--text-2); }
+.app-ui .prompt-send.stop { opacity: 1; background: var(--text); color: var(--bg); }
+
+/* omp console: one box per group of calls, "OMP · N ACTIONS · Σ time"; the
+   ring glides on its border while the last call runs, and fades out after. */
+.app-ui .omp-console { --omp-color: var(--omp); position: relative; margin: calc(var(--u) * 2) 0 calc(var(--u) * 4); padding: 0 0 calc(var(--u) * 5); gap: 0; border: 1px solid var(--line); border-left-width: 1px; background: var(--code-bg); transition: border-color .3s; }
+.app-ui .omp-console.live { border-color: color-mix(in srgb, var(--omp-color) 55%, var(--line)); }
+.app-ui .omp-console::after {
+  content: ''; position: absolute; inset: -1px; padding: 1px; pointer-events: none;
+  background: var(--fx-ring); opacity: 0; transition: opacity .4s ease;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+.app-ui .omp-console.live::after { opacity: 1; animation: fx-turn var(--fx-speed) linear infinite; }
+.app-ui .omp-console-head { display: flex; gap: calc(var(--u) * 12); align-items: baseline; padding: calc(var(--u) * 4) calc(var(--u) * 10); border-bottom: 1px solid var(--line-soft); font: 500 calc(var(--u) * 10) / 1.6 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
+.app-ui .omp-console-title { font-weight: 700; color: var(--omp-color); }
+.app-ui .omp-console-total { margin-left: auto; letter-spacing: .02em; text-transform: none; font-variant-numeric: tabular-nums; }
+.app-ui .omp-console-more { padding: calc(var(--u) * 5) calc(var(--u) * 10) 0; font: 400 calc(var(--u) * 11) / calc(var(--u) * 18) var(--mono); color: var(--dim); }
+.app-ui .omp-tool { min-width: 0; padding: 0 calc(var(--u) * 10); }
+.app-ui .omp-tool-head { display: flex; flex-direction: column; min-width: 0; padding: calc(var(--u) * 5) 0 calc(var(--u) * 1); }
+.app-ui .omp-tool-line { display: flex; align-items: baseline; min-width: 0; font: 400 calc(var(--u) * 12.5) / calc(var(--u) * 19) var(--mono); }
+.app-ui .omp-tool-glyph { flex: none; width: 1.6em; color: var(--omp-color); }
+.app-ui .omp-tool-cmd { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-variant-ligatures: none; color: var(--text); }
+.app-ui .omp-tool-wall { flex: none; margin-left: auto; padding-left: calc(var(--u) * 12); font-size: calc(var(--u) * 11); font-variant-numeric: tabular-nums; color: var(--dim); white-space: nowrap; }
+.app-ui .omp-tool.live .omp-tool-wall { color: var(--omp-color); }
+.app-ui .omp-tool-sub { display: flex; flex-wrap: wrap; column-gap: calc(var(--u) * 12); min-width: 0; padding-left: calc(var(--u) * 20); font: 400 calc(var(--u) * 11.5) / calc(var(--u) * 17) var(--mono); color: var(--dim); }
+.app-ui .omp-tool-intent { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-ui .omp-tool.live .omp-tool-intent { --ui-text-muted: var(--muted); --ui-text-highlighted: color-mix(in srgb, var(--omp-color) 55%, var(--text)); }
+.app-ui .omp-tool-result { min-width: 0; color: var(--muted); }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .fx-ring, .fx-ring.halo::before { animation: none; --fx-a: 135deg; }
+  .fx-ring, .fx-ring.halo::before, .app-ui .prompt.focus, .app-ui .omp-console.live::after { animation: none; --fx-a: 135deg; }
   .cursor { animation: none; }
   .reveal { opacity: 1; transform: none; transition: none; }
   *, *::before, *::after { animation-duration: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; }
