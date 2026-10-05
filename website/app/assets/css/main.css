@@ -70,7 +70,9 @@
 }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; scroll-padding-top: 72px; -webkit-text-size-adjust: 100%; }
+/* iOS Safari ignores overflow-x on body alone: clip on the root too, so no
+   element can widen the page; double-tap zoom is off (pinch zoom still works). */
+html { scroll-behavior: smooth; scroll-padding-top: 72px; -webkit-text-size-adjust: 100%; overflow-x: clip; touch-action: manipulation; }
 body {
   margin: 0;
   background: var(--bg);
@@ -80,7 +82,7 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 ::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); color: #fff; }
 a { color: inherit; }
