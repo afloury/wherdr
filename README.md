@@ -355,8 +355,8 @@ services:
 
 Without these variables nothing changes: a non-Mac server refuses with "not a Mac" as before.
 
-The installer picks the editor that opens folders (first of Zed, Visual Studio Code, Cursor,
-Sublime Text, TextMate). Change it any time:
+The installer picks the editor that opens folders (first of Zed, Trae, Visual Studio Code,
+Cursor, Sublime Text, TextMate). Change it any time:
 
 ```sh
 printf %s "Visual Studio Code" > ~/.local/share/wherdr/editor

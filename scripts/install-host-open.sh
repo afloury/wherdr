@@ -57,7 +57,7 @@ echo "installed $d/{reveal.sh,wherdr-open.sh}"
 # suspects. Override anytime:
 #   printf %s "Visual Studio Code" > ~/.local/share/wherdr/editor
 if [ ! -f "$d/editor" ]; then
-  for e in Zed "Visual Studio Code" Cursor "Sublime Text" TextMate; do
+  for e in Zed Trae "Visual Studio Code" Cursor "Sublime Text" TextMate; do
     if [ -d "/Applications/$e.app" ] || [ -d "$HOME/Applications/$e.app" ]; then
       printf %s "$e" > "$d/editor"
       echo "editor: $e"
