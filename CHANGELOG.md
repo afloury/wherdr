@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Component tests (Vue components mounted in a Nuxt environment) and end-to-end tests in
+  Chromium and WebKit, at iPhone and desktop sizes, against a fake Herdr server.
+- GitHub Actions CI on pushes and pull requests to `main`: unit, component and end-to-end tests,
+  type check and leak check.
+
 ## [1.2.0] — 2026-10-05
 
 ### Added
