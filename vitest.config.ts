@@ -2,20 +2,21 @@ import { defineConfig } from 'vitest/config'
 import { defineVitestProject } from '@nuxt/test-utils/config'
 
 // Two projects:
-// - unit: pure server / shared / app modules, plain Node (fast, no Nuxt).
+// - unit: pure server / shared / app / website modules, plain Node (fast, no Nuxt).
 // - components: Vue components mounted in a Nuxt environment (auto-imports,
 //   Nuxt UI) on happy-dom, files in tests/components/.
 export default defineConfig({
-  // Fixed TS transform options (the ones Nuxt's generated tsconfig sets):
-  // given as a string, Vite does not look up a tsconfig.json per file, so the
-  // suite runs in a fresh clone without any generated .nuxt — including the
-  // website/ modules, whose tsconfig.json extends website/.nuxt.
-  esbuild: {
-    tsconfigRaw: JSON.stringify({ compilerOptions: { target: 'ESNext', verbatimModuleSyntax: true, useDefineForClassFields: true, alwaysStrict: true } }),
-  },
   test: {
     projects: [
       {
+        // Fixed TS transform options (the ones Nuxt's generated tsconfig sets):
+        // given inline, Vite's oxc transform does not look up a tsconfig.json per
+        // file, so the suite runs in a fresh clone without any generated .nuxt —
+        // including the website/ modules, whose tsconfig.json extends website/.nuxt.
+        // (Vite's OxcOptions type omits `tsconfig`, but the transform honours it.)
+        oxc: {
+          tsconfig: { compilerOptions: { target: 'ESNext', verbatimModuleSyntax: true, useDefineForClassFields: true } },
+        } as Record<string, unknown>,
         test: {
           name: 'unit',
           include: ['tests/*.test.ts'],
