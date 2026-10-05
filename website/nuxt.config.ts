@@ -22,6 +22,8 @@ export default defineNuxtConfig({
     provider: 'none',
     fallbackToApi: false,
     serverBundle: false,
+    // Agent logos, copied from the app (app/assets/icons).
+    customCollections: [{ prefix: 'herdr', dir: './app/assets/icons' }],
     clientBundle: {
       scan: true,
       icons: ['lucide:x', 'lucide:check', 'lucide:chevron-down', 'lucide:copy'],
@@ -52,6 +54,7 @@ export default defineNuxtConfig({
   },
 
   nitro: {
-    prerender: { routes: ['/'], crawlLinks: false },
+    // /grid/1…4 and /preview: variants of the landing page to compare.
+    prerender: { routes: ['/', '/grid/1', '/grid/2', '/grid/3', '/grid/4', '/preview'], crawlLinks: false },
   },
 })
