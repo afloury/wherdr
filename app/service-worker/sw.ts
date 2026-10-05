@@ -78,8 +78,8 @@ sw.addEventListener('push', (e) => {
       body: d.body || '',
       tag: d.tag || 'herdr', // one notification per pane, replaced on each change
       renotify: true,
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
+      icon: '/icons/icon-192.png?v=5',
+      badge: '/icons/icon-192.png?v=5',
       data: { url: d.url || '/' },
     })
     try {
