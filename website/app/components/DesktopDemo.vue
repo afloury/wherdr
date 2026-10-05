@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The /preview hero's desktop: the same made-up session as PhoneDemo, on the
+// The hero's desktop: the same made-up session as PhoneDemo, on the
 // same HERO clock, in wherdr's computer layout (components/demo/Desktop.vue):
 // the agent list on the left follows the demo agent's state and last line.
 import { ACTIONS, AGENT, ANSWER, HERO, MESSAGE, OPTIONS, PICKED, PREVIOUS, QUESTION, actionsAt, agentState } from '~/utils/heroDemo'

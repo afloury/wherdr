@@ -1,20 +1,19 @@
 <script setup lang="ts">
-// A dark titanium iPhone (Dynamic Island, side buttons) around a phone
-// screenshot, with the black iOS status bar the installed app uses.
+// A dark titanium iPhone (Dynamic Island, side buttons) around a live demo,
+// with the black iOS status bar the installed app uses.
 // Body, bezel, button and island geometry are adapted from Inspira UI's
 // iPhone15ProMockup (https://github.com/unovue/inspira-ui,
 // app/components/inspira/ui/iphone-mockup/iPhone15ProMockup.vue, MIT License,
 // Copyright (c) 2024-2026 rahulv.dev). The original draws a 433 × 882 phone;
 // here the body is stretched vertically so the screen fits the status bar plus
-// the uncropped 780 × 1688 screenshot, and the screenshot is a real <img>.
-// Without `src`, the default slot fills the screen below the status bar
-// (a live demo, laid out in `cqw` of the screen width).
-defineProps<{ src?: string, alt: string, eager?: boolean }>()
+// a 390 × 844 pt screen. The default slot fills the screen below the status
+// bar (laid out in `cqw` of the screen width).
+defineProps<{ alt: string }>()
 </script>
 
 <template>
   <figure class="pf">
-    <!-- viewBox 433 × 935.3: screen 389.5 × 896.8 = 54 pt status bar + 390 × 844 pt shot, scaled. -->
+    <!-- viewBox 433 × 935.3: screen 389.5 × 896.8 = 54 pt status bar + 390 × 844 pt, scaled. -->
     <svg class="body" viewBox="0 0 433 935.3" aria-hidden="true">
       <defs>
         <linearGradient id="pf-ti" x1="0" y1="0" x2="1" y2="1">
@@ -40,8 +39,7 @@ defineProps<{ src?: string, alt: string, eager?: boolean }>()
         <span class="time">9:41</span>
         <span class="icons"><i class="sig" /><i class="bat" /></span>
       </div>
-      <img v-if="src" :src="src" :alt="alt" width="780" height="1688" :loading="eager ? 'eager' : 'lazy'" :fetchpriority="eager ? 'high' : undefined" decoding="async">
-      <div v-else class="live" role="img" :aria-label="alt"><slot /></div>
+      <div class="live" role="img" :aria-label="alt"><slot /></div>
     </div>
     <svg class="island" viewBox="154 30 124 37" aria-hidden="true">
       <path fill="#000" d="M154 48.5C154 38.28 162.28 30 172.5 30H259.5C269.72 30 278 38.28 278 48.5C278 58.72 269.72 67 259.5 67H172.5C162.28 67 154 58.72 154 48.5Z" />
@@ -69,8 +67,7 @@ defineProps<{ src?: string, alt: string, eager?: boolean }>()
 .icons { display: flex; gap: 1.4cqw; align-items: center; }
 .sig { width: 4.4cqw; height: 2.8cqw; background: #fff; clip-path: polygon(0 70%, 20% 70%, 20% 100%, 0 100%, 0 70%, 27% 45%, 47% 45%, 47% 100%, 27% 100%, 27% 45%, 54% 20%, 74% 20%, 74% 100%, 54% 100%, 54% 20%, 81% 0, 100% 0, 100% 100%, 81% 100%, 81% 0); }
 .bat { width: 6.4cqw; height: 3cqw; border: 1px solid #fff; border-radius: 1cqw; padding: 1px; background: #fff; background-clip: content-box; }
-img { display: block; width: 100%; height: auto; }
-/* Same box as the 390 × 844 pt screenshot. */
+/* A 390 × 844 pt iPhone screen. */
 .live { position: relative; width: 100%; aspect-ratio: 390 / 844; overflow: hidden; }
 /* Island: x 154–278, y 30–67 in viewBox units. */
 .island { position: absolute; left: 35.566%; top: 3.2075%; width: 28.637%; height: auto; }

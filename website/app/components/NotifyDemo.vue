@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Story 1.2 on /preview, left phone: the lock screen. wherdr's Web Push lands
+// Story 1.2, left phone: the lock screen. wherdr's Web Push lands
 // when the agent needs you (its question and options), then when it is done.
 // Same PHONE clock as AgentListDemo, the phone next to it.
 import { OPTIONS, QUESTION } from '~/utils/heroDemo'

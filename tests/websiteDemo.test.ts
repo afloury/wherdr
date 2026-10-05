@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { gridNeighbours, parseGridVariant } from '../website/app/utils/grid'
 import { INSTALL_OUTPUT } from '../website/app/utils/installDemo'
 import { scriptProblems } from '../website/app/utils/demoScript'
 import type { DemoScript } from '../website/app/utils/demoScript'
@@ -8,19 +7,6 @@ import { ANSWER, HERO, actionsAt, agentState } from '../website/app/utils/heroDe
 import { CATCHUP_MS, GLYPH_MS as SITE_GLYPH_MS, TRAIL_GLYPHS as SITE_TRAIL, trailGlyphs as siteGlyphs, typeDuration, typingFronts as siteFronts } from '../website/app/utils/typing'
 import { GLYPH_MS as APP_GLYPH_MS, TRAIL_GLYPHS as APP_TRAIL, trailGlyphs as appGlyphs, typingFronts as appFronts } from '../app/utils/typewriter'
 import { CONVERSATION, DECISION, PHONE, PROJECT, boardAt } from '../website/app/utils/storyDemos'
-
-describe('website grid variants', () => {
-  it('accepts only /grid/1 to /grid/5', () => {
-    expect(['1', '2', '3', '4', '5'].map(parseGridVariant)).toEqual([1, 2, 3, 4, 5])
-    for (const bad of ['0', '6', '01', '1.5', '', 'x', undefined, null, 3]) expect(parseGridVariant(bad)).toBeNull()
-    expect(parseGridVariant(['2', '3'])).toBe(2)
-  })
-
-  it('wraps previous and next around the five variants', () => {
-    expect(gridNeighbours(1)).toEqual({ prev: 5, next: 2 })
-    expect(gridNeighbours(5)).toEqual({ prev: 4, next: 1 })
-  })
-})
 
 describe('install demo', () => {
   // Every step / ok line the site replays must be one the real script prints,

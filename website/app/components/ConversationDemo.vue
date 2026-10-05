@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Story 1.1 on /preview: a Claude Code conversation on a computer, drawn with
+// Story 1.1: a Claude Code conversation on a computer, drawn with
 // the app's pieces. Claude's four calls are grouped ("4 actions", UChatTool
 // as in ChatView.vue) and unfold, the effort picker goes from medium to high,
 // the command block of the reply is copied, then run: the view flips to the

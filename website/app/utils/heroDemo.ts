@@ -1,4 +1,4 @@
-// The made-up wherdr session the /preview hero plays in a loop (~14 s), on the
+// The made-up wherdr session the hero plays in a loop (~14 s), on the
 // phone (PhoneDemo) and in the Safari window (DesktopDemo) on one shared
 // clock, like one wherdr session opened on both devices.
 import type { AgentState, DemoScript } from './demoScript'

@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Settings › Appearance › Background: "Grid" shows the website's dotted grid with light packets
+  behind the conversation (in the margins on a computer) and the phone list. "Plain" by default.
 - Component tests (Vue components mounted in a Nuxt environment) and end-to-end tests in
   Chromium and WebKit, at iPhone and desktop sizes, against a fake Herdr server.
 - GitHub Actions CI on pushes and pull requests to `main`: unit, component and end-to-end tests,

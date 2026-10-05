@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Story 1.3 on /preview: a herdr-projects coordinator on a computer, with the
+// Story 1.3: a herdr-projects coordinator on a computer, with the
 // project's TASKS.md board on the right (ProjectPanel.vue). A thread reports
 // progress and becomes ready for review, the coordinator merges it and the
 // task moves to "To test"; the user answers the "To decide" question from the

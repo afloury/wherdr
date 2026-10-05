@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Story 1.2 on /preview, right phone: wherdr's agent list (HomeView.vue). The
+// Story 1.2, right phone: wherdr's agent list (HomeView.vue). The
 // agent that pushed its question shows the answers on its card; one tap
 // answers without opening the conversation, the agent goes back to work, then
 // is done (unread: green line, bold name). Same PHONE clock as NotifyDemo.

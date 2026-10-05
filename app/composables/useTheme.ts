@@ -18,6 +18,13 @@ function readFocusBorder() {
 }
 export const focusBorder = ref<FocusBorder>(import.meta.client ? readFocusBorder() : DEFAULT_FOCUS_BORDER)
 
+// Background behind the conversation and the list (utils/backdrop.ts), kept on the device too.
+function readBackdrop() {
+  try { return parseBackdrop(localStorage.getItem('backdrop')) }
+  catch { return DEFAULT_BACKDROP }
+}
+export const backdrop = ref<Backdrop>(import.meta.client ? readBackdrop() : DEFAULT_BACKDROP)
+
 const systemLight = ref(false)
 if (import.meta.client) {
   const mq = matchMedia('(prefers-color-scheme: light)')
@@ -64,6 +71,11 @@ export function installTheme() {
   watch(focusBorder, (v) => {
     document.documentElement.dataset.focusBorder = v
     try { localStorage.setItem('focusBorder', v) }
+    catch { /* storage unavailable */ }
+  }, { immediate: true })
+  watch(backdrop, (v) => {
+    document.documentElement.dataset.backdrop = v
+    try { localStorage.setItem('backdrop', v) }
     catch { /* storage unavailable */ }
   }, { immediate: true })
 }

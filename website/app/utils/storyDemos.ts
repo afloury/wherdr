@@ -1,4 +1,4 @@
-// Scripts of the live demos next to the Features stories on /preview, each
+// Scripts of the live demos next to the Features stories, each
 // showing what its text says. Data is made up and neutral.
 import type { DemoScript } from './demoScript'
 

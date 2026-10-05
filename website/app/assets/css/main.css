@@ -40,7 +40,6 @@
   --claude: #d77757;
   --codex: #7a9dff;
   --omp: #c467e0;
-  --grid: color-mix(in srgb, var(--line) 40%, transparent);
   --mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --sans: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --display: "Archivo Variable", "Archivo", "Inter Variable", system-ui, sans-serif;
@@ -121,18 +120,6 @@ code, kbd, pre { font-family: var(--mono); }
 .section-head .label { display: flex; gap: 14px; align-items: center; }
 .section-head .label::after { content: ''; flex: 0 0 48px; height: 1px; background: var(--line-strong); }
 
-/* herdr.dev-style background grid, fading out. */
-.grid-bg {
-  position: absolute; inset: 0; pointer-events: none; z-index: 0;
-  background-image:
-    linear-gradient(var(--grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 64px 64px;
-  background-position: center top;
-  -webkit-mask: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%);
-  mask: radial-gradient(ellipse 70% 60% at 50% 30%, #000 30%, transparent 75%);
-}
-
 /* Buttons: square, 1 px. */
 .btn {
   display: inline-flex; align-items: center; gap: 10px;
@@ -195,7 +182,7 @@ code, kbd, pre { font-family: var(--mono); }
 .reveal.in { opacity: 1; transform: none; }
 
 /* ---------------------------------------------------------------
-   Live demos (/preview): wherdr's own UI, copied from the app
+   Live demos: wherdr's own UI, copied from the app
    (app/assets/css/main.css, app/utils/themes.ts) in its defaults:
    wherdr Titanium theme, "Halo" focus ring, medium typing speed with
    encrypted text. Class names and sizes are the app's; its px are
