@@ -12,7 +12,9 @@ const props = withDefaults(defineProps<{ text: string, delay?: number, duration?
 })
 
 const words = computed(() => props.text.split(' '))
-const frame = ref<string[] | null>(null)
+// Per word, while it plays: the decrypted part (the text's own color) and the
+// still scrambled glyphs (violet).
+const frame = ref<[string, string][] | null>(null)
 let raf = 0
 let timer: ReturnType<typeof setTimeout> | undefined
 
@@ -21,8 +23,18 @@ function play() {
   const start = performance.now()
   const step = (now: number) => {
     const p = Math.min(1, (now - start) / props.duration)
-    frame.value = p < 1 ? scrambleFrame(props.text, p, Math.random).split(' ') : null
-    if (p < 1) raf = requestAnimationFrame(step)
+    if (p < 1) {
+      const full = scrambleFrame(props.text, p, Math.random)
+      const front = Math.floor(p * props.text.length)
+      let at = 0
+      frame.value = words.value.map((w) => {
+        const done = Math.max(0, Math.min(w.length, front - at))
+        const part: [string, string] = [full.slice(at, at + done), full.slice(at + done, at + w.length)]
+        at += w.length + 1
+        return part
+      })
+      raf = requestAnimationFrame(step)
+    } else frame.value = null
   }
   raf = requestAnimationFrame(step)
 }
@@ -32,11 +44,12 @@ onBeforeUnmount(() => { cancelAnimationFrame(raf); clearTimeout(timer) })
 </script>
 
 <template>
-  <span class="enc"><template v-for="(w, i) in words" :key="i"><span class="w"><span :class="{ hide: frame }">{{ w }}</span><span v-if="frame" class="glyphs" aria-hidden="true">{{ frame[i] }}</span></span>{{ i < words.length - 1 ? ' ' : '' }}</template></span>
+  <span class="enc"><template v-for="(w, i) in words" :key="i"><span class="w"><span :class="{ hide: frame }">{{ w }}</span><span v-if="frame" class="glyphs" aria-hidden="true">{{ frame[i]![0] }}<span class="scrambled">{{ frame[i]![1] }}</span></span></span>{{ i < words.length - 1 ? ' ' : '' }}</template></span>
 </template>
 
 <style scoped>
 .w { position: relative; display: inline-block; }
 .hide { visibility: hidden; }
 .glyphs { position: absolute; left: 0; top: 0; white-space: pre; }
+.scrambled { color: var(--violet); }
 </style>
