@@ -13,11 +13,28 @@ export type DemoScript = {
   typing?: { step: number, text: string, ms: number }
 }
 
-/** An agent's state as wherdr shows it: dot colour and label. */
-export type AgentState = 'ready' | 'work' | 'turn'
-export const STATE_LABEL: Record<AgentState, string> = { ready: 'ready', work: 'working', turn: 'your turn' }
-/** An agent in wherdr's list (sidebar, phone home). */
-export type DemoAgent = { name: string, icon: string, state: AgentState, model: string, line: string, tag?: string }
+/** An agent's state, with the app's keys (app/composables/useActions.ts STATUS). */
+export type AgentState = 'blocked' | 'working' | 'done' | 'idle'
+/** The app's state labels, lowercase as its state pill writes them. */
+export const STATE_LABEL: Record<AgentState, string> = { blocked: 'your turn', working: 'working', done: 'done', idle: 'ready' }
+export type AgentKind = 'claude' | 'codex' | 'omp'
+/** Agent logos (app/utils/agentIcons.ts) and names (app/utils/format.ts KIND_LABEL). */
+export const AGENT_ICON: Record<AgentKind, string> = { claude: 'i-herdr-claude-code', codex: 'i-herdr-codex', omp: 'i-herdr-omp' }
+export const KIND_LABEL: Record<AgentKind, string> = { claude: 'Claude', codex: 'Codex', omp: 'omp' }
+/** An agent in wherdr's list (sidebar, phone home): the app's card fields. */
+export type DemoAgent = {
+  name: string
+  agent: AgentKind
+  state: AgentState
+  model: string
+  effort?: string
+  /** Last line of its conversation (card preview). */
+  line: string
+  /** Role in a project: COORDINATOR, T-0001. */
+  tag?: string
+  /** Folder, under the state. */
+  where?: string
+}
 
 /** Problems that would make a script play wrong (empty when it is sound). */
 export function scriptProblems(s: DemoScript): string[] {

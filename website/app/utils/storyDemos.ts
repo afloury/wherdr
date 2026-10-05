@@ -3,9 +3,9 @@
 import type { DemoScript } from './demoScript'
 
 /* -------------------------------------------------- 1.1 Conversation · terminal
-   Grouped tool calls unfold, the effort picker switches medium → high, the
-   proposed command is copied then run: the view flips to the live terminal,
-   the tests run, and it comes back to the conversation. */
+   The grouped tool calls unfold, the effort picker switches medium → high,
+   the proposed command is copied then run: the view flips to the live
+   terminal, the tests run, and it comes back to the conversation. */
 export const CONVERSATION: DemoScript = {
   id: 'conversation',
   // 1 group open · 2 effort menu · 3 high · 4 menu closed · 5 copied · 6 run
@@ -15,10 +15,12 @@ export const CONVERSATION: DemoScript = {
   final: 5,
   typing: { step: 7, text: 'npm test', ms: 600 },
 }
+/** Claude's calls, with the app's labels and icons (ChatView.vue TOOL_LABEL / TOOL_ICON); more than three are grouped. */
 export const CONVERSATION_TOOLS = [
-  { icon: 'i-lucide-file-plus', tool: 'Write', arg: 'src/cart.js' },
-  { icon: 'i-lucide-file-plus', tool: 'Write', arg: 'src/cart.test.js' },
-  { icon: 'i-lucide-square-terminal', tool: 'Command', arg: 'Run the cart tests' },
+  { icon: 'i-lucide-file-text', tool: 'Read', arg: 'package.json' },
+  { icon: 'i-lucide-file-plus', tool: 'Write', arg: '~/projects/web-shop/src/cart.js' },
+  { icon: 'i-lucide-file-plus', tool: 'Write', arg: '~/projects/web-shop/src/cart.test.js' },
+  { icon: 'i-lucide-terminal', tool: 'Command', arg: 'Run the cart tests' },
 ] as const
 export const EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const
 export const TEST_OUTPUT = [
@@ -42,19 +44,21 @@ export const PHONE: DemoScript = {
 /* -------------------------------------------------------------- 1.3 herdr-projects
    A thread reports progress, becomes ready for review; the coordinator merges
    it and the task moves to "To test"; the user answers a "To decide" question
-   from the board, which messages the coordinator. */
+   from the board: its Reply button fills the field with the decision prefix
+   (the app's decisionPrefix), the user types the answer and sends it. */
 export const DECISION = 'Should coupons stack with sale prices?'
-/** What the board's Reply button sends to the coordinator. */
-export const DECISION_REPLY = `↳ Decision: ${DECISION} — No, the best price wins.`
+/** What the board's Reply button puts in the field (shared/projectBoard.ts decisionPrefix). */
+export const DECISION_PREFIX = `↳ Decision: ${DECISION} — `
+export const DECISION_ANSWER = 'No, the best price wins.'
 
 export const PROJECT: DemoScript = {
   id: 'project',
   // 1 progress 80 % · 2 ready for review · 3 coordinator merges · 4 moved to To test
-  // · 5 Reply pressed · 6 decision typed · 7 sent · 8 coordinator answers
+  // · 5 Reply pressed (prefix in the field) · 6 answer typed · 7 sent · 8 coordinator answers
   timeline: [[1000, 1], [2200, 2], [3300, 3], [4700, 4], [6000, 5], [6500, 6], [8300, 7], [9700, 8]],
   loop: 13000,
   final: 8,
-  typing: { step: 6, text: DECISION_REPLY, ms: 1400 },
+  typing: { step: 6, text: DECISION_ANSWER, ms: 1000 },
 }
 
 export type BoardItem = { title: string, note?: string, state?: 'ready' | 'work', fresh?: boolean }
