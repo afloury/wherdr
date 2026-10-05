@@ -28,6 +28,7 @@ export interface ThemeColors {
   surface2?: string
   inputLine?: string
   selection?: string // base color of the text selection (default: the accent)
+  ring?: string // second color gliding around the focused field (default: the accent)
   working?: string
   blocked?: string
   done?: string
@@ -108,6 +109,56 @@ export const THEMES: ThemeDef[] = [
     },
     ansi: ['#3b424d', '#ff4757', '#00ff88', '#f0c040', '#00b4ff', '#d06fed', '#13d1cd', '#c3c9d3',
       '#6b7280', '#ff7b86', '#6bffb0', '#fddb72', '#6ec9ff', '#e69dfc', '#75efea', '#f7f9fc'],
+  },
+  {
+    // wherdr Neon — proposal for wherdr's own identity. A cold blue-black
+    // terminal lit by a "volt" chartreuse #c6ff3d (signature: neither Herdr's
+    // mauve nor omp's pink, and far from Claude orange / Codex blue), paired
+    // with an ion cyan #2ee6ff for activity and the gliding focus ring.
+    // Background #0d1117, surfaces #141a22, lines #263040, text #e6edf5
+    // (16:1), muted #9aa7b8 (7.7:1), dim #75839a (4.9:1). States: working cyan,
+    // your turn amber #ff9f1c, ready volt.
+    id: 'wherdr-neon', label: 'wherdr Neon',
+    c: {
+      bg: '#0d1117', bg2: '#090c11', surface: '#141a22', line: '#263040',
+      text: '#e6edf5', muted: '#9aa7b8', dim: '#75839a',
+      accent: '#c6ff3d', green: '#7dff6b', coral: '#ff8a5c', ochre: '#ff9f1c', rose: '#ff4d6d', blue: '#4d9dff', teal: '#2ee6ff', lav: '#a8b8ff',
+      selection: '#2ee6ff', ring: '#2ee6ff', working: '#2ee6ff', blocked: '#ff9f1c', done: '#c6ff3d',
+    },
+    ansi: ['#263040', '#ff4d6d', '#7dff6b', '#ffd23d', '#4d9dff', '#c38bff', '#2ee6ff', '#c9d3df',
+      '#5a6779', '#ff7a90', '#c6ff3d', '#ffe57a', '#80bbff', '#d9b3ff', '#8cf3ff', '#f5f9fc'],
+  },
+  {
+    // wherdr Synth — proposal: synthwave dusk. Deep indigo night #120f1c with
+    // a sunset amber #ffb020 as signature and a laser magenta-red #ff3d81 as
+    // duo (focus ring, your turn). Surfaces #1a1626, lines #2f2942, text
+    // #efeaf7 (16:1), muted #a9a0bf (7.6:1), dim #8279a0 (4.7:1). States:
+    // working sky #4cc9ff, your turn magenta, ready mint #5cf2b0.
+    id: 'wherdr-synth', label: 'wherdr Synth',
+    c: {
+      bg: '#120f1c', bg2: '#0d0b15', surface: '#1a1626', line: '#2f2942',
+      text: '#efeaf7', muted: '#a9a0bf', dim: '#8279a0',
+      accent: '#ffb020', green: '#5cf2b0', coral: '#ff7a59', ochre: '#ffd166', rose: '#ff3d81', blue: '#4cc9ff', teal: '#3ee6d4', lav: '#b69cff',
+      selection: '#ff3d81', ring: '#ff3d81', working: '#4cc9ff', blocked: '#ff3d81', done: '#5cf2b0',
+    },
+    ansi: ['#2f2942', '#ff3d81', '#5cf2b0', '#ffb020', '#4cc9ff', '#b69cff', '#3ee6d4', '#d6cfe6',
+      '#5f5679', '#ff6fa0', '#8af7c8', '#ffd166', '#82daff', '#cfbcff', '#7ff0e3', '#faf7ff'],
+  },
+  {
+    // wherdr Matrix — proposal: phosphor terminal. Green-black #0a110d, a
+    // phosphor green #3dff8b as signature, a teal #00d9c8 for activity and the
+    // focus ring, amber #ffc640 for your turn. Surfaces #0f1813, lines
+    // #1f3127, text #d8f5e1 (16.4:1), muted #8fb59c (8.4:1), dim #66897a
+    // (4.9:1). The most "terminal", the least colorful.
+    id: 'wherdr-matrix', label: 'wherdr Matrix',
+    c: {
+      bg: '#0a110d', bg2: '#070c09', surface: '#0f1813', line: '#1f3127',
+      text: '#d8f5e1', muted: '#8fb59c', dim: '#66897a',
+      accent: '#3dff8b', green: '#3dff8b', coral: '#ff8f5a', ochre: '#ffc640', rose: '#ff5c6c', blue: '#4fb8ff', teal: '#00d9c8', lav: '#9ee6b8',
+      selection: '#00d9c8', ring: '#00d9c8', working: '#00d9c8', blocked: '#ffc640', done: '#3dff8b',
+    },
+    ansi: ['#1f3127', '#ff5c6c', '#3dff8b', '#ffc640', '#4fb8ff', '#c792ff', '#00d9c8', '#bfe3cb',
+      '#4d6b5a', '#ff8a96', '#8affb9', '#ffdb80', '#85cfff', '#dbb8ff', '#66f0e2', '#effff4'],
   },
   {
     id: 'catppuccin', label: 'Catppuccin',
@@ -266,6 +317,7 @@ export function themeVars(th: ThemeDef): Record<string, string> {
     // orange of the Claude Code crab, blue-violet of the Codex icon, magenta of the omp pi.
     '--claude': '#d77757', '--codex': '#7a9dff', '--omp': '#c467e0',
     '--selection': `color-mix(in srgb, ${c.selection || 'var(--accent)'} ${th.light ? 22 : 32}%, transparent)`,
+    ...(c.ring ? { '--ring-2': c.ring } : {}),
     '--shadow': th.light ? 'rgba(60, 60, 80, .16)' : 'rgba(0, 0, 0, .5)',
     'color-scheme': th.light ? 'light' : 'dark',
     ...(c.inputLine ? { '--input-line': c.inputLine } : {}),
