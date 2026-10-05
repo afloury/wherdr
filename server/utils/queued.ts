@@ -10,13 +10,19 @@ const norm = (t: unknown) => String(t || '').replace(/\s+/g, ' ').trim().toLower
 // "! cmd": Claude Code switches to bash mode and only writes "cmd" (<bash-input>).
 // omp also has "!!cmd" (kept out of the model's context) and "$ code" / "$$ code" (Python).
 export const bashText = (t: string) => String(t || '').replace(/^\s*(?:!!?|\$\$?)\s*/, '')
+// omp runs "!cmd" / "!!cmd" / "$ code" / "$$ code" the moment it is submitted,
+// even during a turn. A run that ends while the agent works is only written
+// to the transcript when the next prompt starts: once that turn is over, the
+// run is taken even though the transcript does not show it yet.
+export const isOmpRun = (agent: string | null | undefined, text: string) => agent === 'omp' && /^\s*(?:!|\$\$?\s)/.test(String(text || ''))
 
 // Taken by the agent = a user message in the transcript, written after
 // sending, that contains the start of the text (Claude may group several
 // queued messages into a single turn). Text modified by the agent: when idle,
 // a user message written after sending followed by a reply is enough.
-export function queuedDone(q: { text: string, at: number }, items: ChatItem[], idle: boolean, now: number): boolean {
+export function queuedDone(q: { text: string, at: number, turnSeen?: boolean }, items: ChatItem[], idle: boolean, now: number, agent?: string | null): boolean {
   if (now - q.at > QUEUED_TTL_MS) return true
+  if (idle && q.turnSeen && isOmpRun(agent, q.text)) return true
   const users = items.filter(i => i.role === 'user' || i.role === 'cmd' || i.role === 'bash')
   // Photo paths become images in the transcript; photos alone are matched by
   // their photos (see shared/queuedMatch.ts).
@@ -61,6 +67,8 @@ export interface QueueEntry {
   busy?: boolean
   // Since when the agent has been ready with this message delivered.
   readySince?: number
+  // The agent worked (a turn) after this message was typed (see isOmpRun).
+  turnSeen?: boolean
   // Held: since when the agent has been ready with no menu recognized.
   stuckSince?: number
   // Failed because the input field was not found on an unknown screen.

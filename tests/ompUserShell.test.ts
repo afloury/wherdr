@@ -72,4 +72,22 @@ describe('the message sent from wherdr', () => {
     const mine = [{ id: 'a', text: '!!ls /nonexistent-dir', at }, { id: 'b', text: '!echo goodbye', at }]
     expect(pendingQueue({ mine, claude: [], items, screen: null }).map(q => q.id)).toEqual(['b'])
   })
+  // omp runs a "!" / "$" typed during a turn at once, but writes it to the
+  // transcript only when the next prompt starts (seen with a multi-line "!"
+  // command left "Queued · sending…" after it ran).
+  it('leaves the queue when the turn it was typed in is over, before omp writes the run', () => {
+    const text = '! herdr-projects profile add work --agent omp \\\n  --arg --config --arg ~/.omp/agent/work.yml \\\n  --description "Work threads: (no push)"'
+    const before = items.filter(i => i.role !== 'bash')
+    expect(queuedDone({ text, at, turnSeen: true }, before, false, at + 5000, 'omp')).toBe(false)
+    expect(queuedDone({ text, at, turnSeen: true }, before, true, at + 5000, 'omp')).toBe(true)
+    expect(queuedDone({ text: '$ print(1)\nprint(2)', at, turnSeen: true }, before, true, at + 5000, 'omp')).toBe(true)
+    // Typed while omp was ready: the run is written as soon as it ends.
+    expect(queuedDone({ text, at }, before, true, at + 5000, 'omp')).toBe(false)
+    // A message, not a run: still waits for the transcript.
+    for (const t of ['note: line one \\\nline two', '$HOME is set']) {
+      expect(queuedDone({ text: t, at, turnSeen: true }, [], true, at + 5000, 'omp')).toBe(false)
+    }
+    // Claude writes its "!" commands at once: no shortcut.
+    expect(queuedDone({ text, at, turnSeen: true }, before, true, at + 5000, 'claude')).toBe(false)
+  })
 })
