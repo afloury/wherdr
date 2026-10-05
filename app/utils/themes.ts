@@ -148,36 +148,42 @@ export const THEMES: ThemeDef[] = [
       '#5a6779', '#ff7a90', '#c6ff3d', '#ffe57a', '#80bbff', '#ff9be6', '#8cf3ff', '#f5f9fc'],
   },
   {
-    // wherdr Synth — proposal: synthwave dusk. Deep indigo night #120f1c with
-    // a sunset amber #ffb020 as signature and a laser magenta-red #ff3d81 as
-    // duo (focus ring, your turn). Surfaces #1a1626, lines #2f2942, text
-    // #efeaf7 (16:1), muted #a9a0bf (7.6:1), dim #8279a0 (4.7:1). States:
-    // working sky #4cc9ff, your turn magenta, ready mint #5cf2b0.
-    id: 'wherdr-synth', label: 'wherdr Synth',
+    // wherdr Graphite — Codex / Terminal's neutral graphite (no blue tint in
+    // the background: #141414, surfaces #1c1c1c, lines #333333) lit by an
+    // electric violet #b65cff, the signature of wherdr Neon Purple, with its
+    // cyan duo #2ee6ff for the gliding focus ring and activity. Sober: the
+    // colors live in the accent, the states and the terminal. Text #ececec
+    // (15.6:1), muted #a3a3a3 (7.3:1), dim #8a8a8a (5.3:1), accent 5.2:1,
+    // background text on accent 5.2:1. States: working cyan, your turn amber
+    // #ffa630, ready mint #5af78e. ANSI magenta is pink #ff5fd2, away from the accent.
+    id: 'wherdr-graphite', label: 'wherdr Graphite',
     c: {
-      bg: '#120f1c', bg2: '#0d0b15', surface: '#1a1626', line: '#2f2942',
-      text: '#efeaf7', muted: '#a9a0bf', dim: '#8279a0',
-      accent: '#ffb020', green: '#5cf2b0', coral: '#ff7a59', ochre: '#ffd166', rose: '#ff3d81', blue: '#4cc9ff', teal: '#3ee6d4', lav: '#b69cff',
-      selection: '#ff3d81', ring: '#ff3d81', working: '#4cc9ff', blocked: '#ff3d81', done: '#5cf2b0',
+      bg: '#141414', bg2: '#0f0f0f', surface: '#1c1c1c', line: '#333333',
+      text: '#ececec', muted: '#a3a3a3', dim: '#8a8a8a',
+      accent: '#b65cff', green: '#5af78e', coral: '#ff8a5c', ochre: '#ffa630', rose: '#ff5370', blue: '#4d9dff', teal: '#2ee6ff', lav: '#c9a8ff',
+      selection: '#b65cff', ring: '#2ee6ff', working: '#2ee6ff', blocked: '#ffa630', done: '#5af78e',
     },
-    ansi: ['#2f2942', '#ff3d81', '#5cf2b0', '#ffb020', '#4cc9ff', '#b69cff', '#3ee6d4', '#d6cfe6',
-      '#5f5679', '#ff6fa0', '#8af7c8', '#ffd166', '#82daff', '#cfbcff', '#7ff0e3', '#faf7ff'],
+    ansi: ['#2e2e2e', '#ff5370', '#5af78e', '#f4d35e', '#4d9dff', '#ff5fd2', '#2ee6ff', '#d4d4d4',
+      '#6b6b6b', '#ff7a90', '#8affb0', '#ffe58a', '#80bbff', '#ff9be6', '#8cf3ff', '#ffffff'],
   },
   {
-    // wherdr Matrix — proposal: phosphor terminal. Green-black #0a110d, a
-    // phosphor green #3dff8b as signature, a teal #00d9c8 for activity and the
-    // focus ring, amber #ffc640 for your turn. Surfaces #0f1813, lines
-    // #1f3127, text #d8f5e1 (16.4:1), muted #8fb59c (8.4:1), dim #66897a
-    // (4.9:1). The most "terminal", the least colorful.
-    id: 'wherdr-matrix', label: 'wherdr Matrix',
+    // wherdr Titanium — omp's titanium, calmer: background #12151b, surfaces
+    // #1a1e26, lines #2a3038, an electric blue #1fb2ff as signature (accent
+    // 7.7:1, background text on accent 7.7:1) and omp's logo pink #f84fcc as
+    // the second color of the gliding focus ring, a reminder of omp's
+    // pink → violet → cyan gradient. Pink stays out of the rest of the UI.
+    // Text #e6eaf2 (15.2:1), muted #9da5b4 (7.4:1), dim #828a9a (5.3:1).
+    // States: working violet #a98bff (the gradient's middle), your turn amber
+    // #ffb347, ready green #00f28a.
+    id: 'wherdr-titanium', label: 'wherdr Titanium',
     c: {
-      bg: '#0a110d', bg2: '#070c09', surface: '#0f1813', line: '#1f3127',
-      text: '#d8f5e1', muted: '#8fb59c', dim: '#66897a',
-      accent: '#3dff8b', green: '#3dff8b', coral: '#ff8f5a', ochre: '#ffc640', rose: '#ff5c6c', blue: '#4fb8ff', teal: '#00d9c8', lav: '#9ee6b8',
-      selection: '#00d9c8', ring: '#00d9c8', working: '#00d9c8', blocked: '#ffc640', done: '#3dff8b',
+      bg: '#12151b', bg2: '#0d1015', surface: '#1a1e26', line: '#2a3038',
+      text: '#e6eaf2', muted: '#9da5b4', dim: '#828a9a',
+      accent: '#1fb2ff', green: '#00f28a', coral: '#ff7b86', ochre: '#ffb347', rose: '#ff4757', blue: '#1fb2ff', teal: '#00dbe4', lav: '#a98bff',
+      selection: '#1fb2ff', ring: '#f84fcc', working: '#a98bff', blocked: '#ffb347', done: '#00f28a',
     },
-    ansi: ['#1f3127', '#ff5c6c', '#3dff8b', '#ffc640', '#4fb8ff', '#c792ff', '#00d9c8', '#bfe3cb',
-      '#4d6b5a', '#ff8a96', '#8affb9', '#ffdb80', '#85cfff', '#dbb8ff', '#66f0e2', '#effff4'],
+    ansi: ['#2f3540', '#ff4757', '#00f28a', '#f0c040', '#1fb2ff', '#d06fed', '#00dbe4', '#c3c9d3',
+      '#6b7280', '#ff7b86', '#6bffb0', '#fddb72', '#6ec9ff', '#e69dfc', '#75efea', '#f7f9fc'],
   },
   {
     id: 'catppuccin', label: 'Catppuccin',
@@ -312,6 +318,11 @@ export const THEMES: ThemeDef[] = [
 
 export const DEFAULT_THEME = 'herdr'
 export const themeById = (id: string | null | undefined) => THEMES.find(t => t.id === id)
+
+// Theme choice read from the device: an id that no longer exists (removed
+// theme) falls back to the default instead of showing a raw id in Settings.
+export const storedThemeChoice = (v: string | null | undefined, follow: string) =>
+  v && (v === follow || themeById(v)) ? v : DEFAULT_THEME
 
 // CSS variables of a theme (the herdr.dev theme keeps the values of main.css).
 export function themeVars(th: ThemeDef): Record<string, string> {
