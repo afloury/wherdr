@@ -18,7 +18,7 @@ const agents = [
     </div>
     <div class="link net">
       <span class="tag">tailnet · HTTPS</span>
-      <i class="pkt" /><i class="pkt rev" />
+      <i class="pkt" style="--d: 3.1s; --o: -0.4s" /><i class="pkt rev" style="--d: 4.7s; --o: -2.9s" />
     </div>
     <div class="node wherdr fx-ring halo">
       <span class="label"><span class="k">02</span> wherdr</span>
@@ -27,7 +27,7 @@ const agents = [
     </div>
     <div class="link">
       <span class="tag">unix socket</span>
-      <i class="pkt" /><i class="pkt rev" />
+      <i class="pkt" style="--d: 3.7s; --o: -1.6s" /><i class="pkt rev" style="--d: 5.3s; --o: -0.9s" />
     </div>
     <div class="node">
       <span class="label"><span class="k">03</span> Herdr</span>
@@ -36,7 +36,7 @@ const agents = [
     </div>
     <div class="link">
       <span class="tag">PTY</span>
-      <i class="pkt" /><i class="pkt rev" />
+      <i class="pkt" style="--d: 4.3s; --o: -3.4s" /><i class="pkt rev" style="--d: 6.1s; --o: -4.2s" />
     </div>
     <div class="node agents">
       <span class="label"><span class="k">04</span> Agents</span>
@@ -66,9 +66,17 @@ ul { margin: 0; padding: 0; list-style: none; font: 12px/1.7 var(--mono); color:
 .link { position: relative; align-self: center; height: 1px; background: var(--line-strong); }
 .link .tag { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); white-space: nowrap; font: 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
 .net { background: repeating-linear-gradient(90deg, var(--accent) 0 6px, transparent 6px 10px); opacity: .9; }
-.pkt { position: absolute; top: -2px; left: 0; width: 6px; height: 5px; background: var(--accent); box-shadow: 0 0 10px var(--accent); animation: go 2.6s linear infinite; }
-.pkt.rev { background: var(--violet); box-shadow: 0 0 10px var(--violet); animation-direction: reverse; animation-delay: -1.3s; }
-@keyframes go { from { left: 0; } to { left: calc(100% - 6px); } }
+/* Each packet has its own period and offset (prime-ish, so they never fall in step), eases in
+   and out, then rests unseen for the second half of its period: an irregular, calm traffic. */
+.pkt { position: absolute; top: -2px; left: 0; width: 6px; height: 5px; background: var(--accent); box-shadow: 0 0 10px var(--accent); opacity: 0; animation: go var(--d, 3.5s) var(--o, 0s) infinite; }
+.pkt.rev { background: var(--violet); box-shadow: 0 0 10px var(--violet); animation-direction: reverse; }
+@keyframes go {
+  0% { left: 0; opacity: 0; animation-timing-function: cubic-bezier(.45, 0, .25, 1); }
+  5% { opacity: 1; }
+  48% { opacity: 1; }
+  54% { left: calc(100% - 6px); opacity: 0; }
+  100% { left: calc(100% - 6px); opacity: 0; }
+}
 @media (max-width: 960px) {
   .flow { grid-template-columns: 1fr; padding: 48px 20px 20px; }
   .zone { display: none; }
@@ -76,6 +84,12 @@ ul { margin: 0; padding: 0; list-style: none; font: 12px/1.7 var(--mono); color:
   .net { background: repeating-linear-gradient(180deg, var(--accent) 0 6px, transparent 6px 10px); }
   .link .tag { bottom: auto; top: 50%; left: 14px; transform: translateY(-50%); }
   .pkt { left: -2px; top: 0; width: 5px; height: 6px; animation-name: down; }
-  @keyframes down { from { top: 0; } to { top: calc(100% - 6px); } }
+  @keyframes down {
+    0% { top: 0; opacity: 0; animation-timing-function: cubic-bezier(.45, 0, .25, 1); }
+    5% { opacity: 1; }
+    48% { opacity: 1; }
+    54% { top: calc(100% - 6px); opacity: 0; }
+    100% { top: calc(100% - 6px); opacity: 0; }
+  }
 }
 </style>
