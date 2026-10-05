@@ -1,18 +1,18 @@
 <script setup lang="ts">
 // The herdr.dev background grid of the hero and the closing call to action,
-// in one of its variants (compared on /grid/1…4):
+// in one of its variants (compared on /grid/1…5):
 //   0  flat grid, fading out (the reference, .grid-bg in main.css);
-//   1  lit by the cursor: a Titanium-blue copy of the grid shows through a
-//      radial mask that follows the pointer; on touch screens it sits near the
-//      top and breathes;
+//   1  lamp: a Titanium-blue copy of the grid shows through a radial mask
+//      centred near the top, breathing slowly;
 //   2  packets: now and then a short glowing dash runs along a grid line and
 //      fades, at irregular intervals, at most three at once;
 //   3  perspective: in the hero the grid recedes to a horizon and drifts
 //      towards you (flat everywhere else, `flat`);
-//   4  dots at the intersections and a soft vignette.
-// Cheap by design: CSS layers, one transform animation, a rAF loop only while
-// the glow catches up with the pointer, timers only while the grid is on
-// screen and the tab is visible. prefers-reduced-motion: a still grid.
+//   4  dots at the intersections and a soft vignette;
+//   5  the lamp of 1 with the packets of 2.
+// Cheap by design: CSS layers, one transform animation, timers only while
+// the grid is on screen and the tab is visible. prefers-reduced-motion: a
+// still grid.
 import { GRID_CELL, type GridVariant } from '~/utils/grid'
 
 const props = withDefaults(defineProps<{ variant?: GridVariant, flat?: boolean }>(), { variant: 0, flat: false })
@@ -22,55 +22,10 @@ const packets = ref<HTMLElement | null>(null)
 const kind = computed<GridVariant>(() => (props.variant === 3 && props.flat ? 0 : props.variant))
 // Off screen or hidden tab: CSS animations paused, no timers.
 const visible = ref(false)
-// Glow: true once a fine pointer has moved (until then it breathes in place).
-const tracking = ref(false)
 
 let io: IntersectionObserver | undefined
 let reduced = false
 const cleanups: (() => void)[] = []
-
-// --------------------------------------------------------------- glow (1)
-let target = { x: 0, y: 0 }
-let pos = { x: 0, y: 0 }
-let raf = 0
-
-function paintGlow() {
-  const el = root.value
-  if (!el) return
-  el.style.setProperty('--mx', `${pos.x}px`)
-  el.style.setProperty('--my', `${pos.y}px`)
-}
-
-function followGlow() {
-  raf = 0
-  const dx = target.x - pos.x
-  const dy = target.y - pos.y
-  // Ease towards the pointer; stop the loop once it has caught up.
-  pos = Math.abs(dx) + Math.abs(dy) < 0.5 ? { ...target } : { x: pos.x + dx * 0.16, y: pos.y + dy * 0.16 }
-  paintGlow()
-  if (pos.x !== target.x || pos.y !== target.y) raf = requestAnimationFrame(followGlow)
-}
-
-function onPointer(e: PointerEvent) {
-  if (e.pointerType !== 'mouse' || !visible.value || !root.value) return
-  const r = root.value.getBoundingClientRect()
-  target = { x: e.clientX - r.left, y: e.clientY - r.top }
-  if (!tracking.value) {
-    // First move: start from where the breathing halo sits, then glide.
-    pos = { x: r.width / 2, y: r.height * 0.32 }
-    tracking.value = true
-  }
-  if (!raf) raf = requestAnimationFrame(followGlow)
-}
-
-function setupGlow() {
-  if (reduced || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return
-  window.addEventListener('pointermove', onPointer, { passive: true })
-  cleanups.push(() => {
-    window.removeEventListener('pointermove', onPointer)
-    cancelAnimationFrame(raf)
-  })
-}
 
 // ------------------------------------------------------------ packets (2)
 const MAX_PACKETS = 3
@@ -146,8 +101,7 @@ onMounted(() => {
     io = new IntersectionObserver(([e]) => { visible.value = !!e?.isIntersecting })
     io.observe(root.value)
   }
-  if (kind.value === 1) setupGlow()
-  if (kind.value === 2) setupPackets()
+  if (kind.value === 2 || kind.value === 5) setupPackets()
 })
 onBeforeUnmount(() => {
   io?.disconnect()
@@ -156,14 +110,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="root" class="gb" :class="[`v${kind}`, { off: !visible, tracking }]" aria-hidden="true">
+  <div ref="root" class="gb" :class="[`v${kind}`, { off: !visible }]" aria-hidden="true">
     <div v-if="kind !== 3 && kind !== 4" class="grid-bg" />
 
-    <div v-if="kind === 1" class="glow" />
+    <div v-if="kind === 1 || kind === 5" class="glow" />
 
-    <div v-else-if="kind === 2" ref="packets" class="packets" />
+    <div v-if="kind === 2 || kind === 5" ref="packets" class="packets" />
 
-    <div v-else-if="kind === 3" class="persp">
+    <div v-if="kind === 3" class="persp">
       <div class="sky" />
       <div class="floor"><div class="floor-lines" /></div>
       <div class="horizon" />
@@ -180,10 +134,10 @@ onBeforeUnmount(() => {
 .gb { position: absolute; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
 .gb.off * { animation-play-state: paused !important; }
 
-/* ------------------------------------------------ 1 · lit by the cursor */
+/* ---------------------------------------------------------- 1 · lamp */
 @property --gr { syntax: '<length>'; inherits: true; initial-value: 260px; }
 @keyframes breathe { 0%, 100% { --gr: 200px; opacity: .65; } 50% { --gr: 320px; opacity: 1; } }
-.v1 { --mx: 50%; --my: 32%; }
+.gb { --mx: 50%; --my: 32%; }
 .glow {
   position: absolute; inset: 0;
   background-image:
@@ -197,8 +151,6 @@ onBeforeUnmount(() => {
   animation: breathe 7s ease-in-out infinite;
   transition: opacity .6s ease;
 }
-/* Following a mouse: a steady, slightly larger halo. */
-.tracking .glow { animation: none; --gr: 300px; opacity: 1; }
 
 /* ----------------------------------------------------- 2 · packets */
 .packets {

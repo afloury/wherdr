@@ -1,18 +1,11 @@
 <script setup lang="ts">
-// The landing page. `/` renders it as is; /grid/1…4 swap the background grid
-// and /preview adds the recommended live pieces (phone demo, running install,
-// agents band) so both can be compared side by side.
+// The landing page. `/` renders it as is; /grid/1…5 swap the background grid
+// and /preview adds the recommended live pieces (phone demo, running install)
+// so both can be compared side by side.
 import { REPO } from '~/utils/site'
 import type { GridVariant } from '~/utils/grid'
 
 withDefaults(defineProps<{ grid?: GridVariant, preview?: boolean }>(), { grid: 0, preview: false })
-
-const agents = [
-  { name: 'Claude Code', color: 'var(--claude)' },
-  { name: 'Codex', color: 'var(--codex)' },
-  { name: 'omp', color: 'var(--omp)' },
-  { name: 'and every agent Herdr recognizes', color: 'var(--dim)' },
-]
 
 const stories = [
   {
@@ -121,11 +114,7 @@ const faq = [
         </div>
 
         <div class="wrap">
-          <AgentMarquee v-if="preview" class="agents-band" />
-          <ul v-else class="agents" aria-label="Works with">
-            <li class="label">Works with</li>
-            <li v-for="a in agents" :key="a.name"><span class="sq" :style="{ background: a.color }" />{{ a.name }}</li>
-          </ul>
+          <WorksWith class="agents-band" />
         </div>
       </section>
 
@@ -321,10 +310,6 @@ npm ci && npm run build && npm start   <span class="c"># → http://localhost:76
 .hero-visual { position: relative; padding-bottom: 40px; }
 .hv-desk { width: 100%; }
 .hv-phone { position: absolute; right: -18px; bottom: 0; width: 34%; max-width: 230px; }
-.agents { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; margin: 56px 0 0; padding: 20px 0 0; border-top: 1px solid var(--line); list-style: none; font: 13px/1 var(--mono); color: var(--text); }
-.agents li { display: flex; align-items: center; gap: 10px; }
-.agents .label { margin-right: 4px; }
-.sq { width: 9px; height: 9px; flex: none; }
 .agents-band { margin-top: 56px; }
 
 /* ----------------------------------------------------------- stories */

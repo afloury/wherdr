@@ -4,15 +4,15 @@ import { gridNeighbours, parseGridVariant } from '../website/app/utils/grid'
 import { INSTALL_OUTPUT } from '../website/app/utils/installDemo'
 
 describe('website grid variants', () => {
-  it('accepts only /grid/1 to /grid/4', () => {
-    expect(['1', '2', '3', '4'].map(parseGridVariant)).toEqual([1, 2, 3, 4])
-    for (const bad of ['0', '5', '01', '1.5', '', 'x', undefined, null, 3]) expect(parseGridVariant(bad)).toBeNull()
+  it('accepts only /grid/1 to /grid/5', () => {
+    expect(['1', '2', '3', '4', '5'].map(parseGridVariant)).toEqual([1, 2, 3, 4, 5])
+    for (const bad of ['0', '6', '01', '1.5', '', 'x', undefined, null, 3]) expect(parseGridVariant(bad)).toBeNull()
     expect(parseGridVariant(['2', '3'])).toBe(2)
   })
 
-  it('wraps previous and next around the four variants', () => {
-    expect(gridNeighbours(1)).toEqual({ prev: 4, next: 2 })
-    expect(gridNeighbours(4)).toEqual({ prev: 3, next: 1 })
+  it('wraps previous and next around the five variants', () => {
+    expect(gridNeighbours(1)).toEqual({ prev: 5, next: 2 })
+    expect(gridNeighbours(5)).toEqual({ prev: 4, next: 1 })
   })
 })
 

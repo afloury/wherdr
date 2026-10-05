@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Thin bar above the header of /grid/1…4: which variant this is, and
+// Thin bar above the header of /grid/1…5: which variant this is, and
 // previous / next (also with the ← → keys).
 import { GRID_VARIANTS, gridNeighbours } from '~/utils/grid'
 
