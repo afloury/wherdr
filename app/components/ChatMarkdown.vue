@@ -9,7 +9,9 @@ import { applyReveal, cipherSegments, finishReveal, GLYPH_MS, planReveal, reveal
 import type { RevealNode, RevealPlan } from '~/utils/typewriter'
 import type { TypingSpeed } from '~/utils/typewriter'
 
-const props = defineProps<{ html: string, typing: number | null, speed?: TypingSpeed, cipher?: boolean }>()
+// `cipher` must default to undefined, not false: Vue casts a missing Boolean
+// prop to false, which would switch the encrypted text off everywhere.
+const props = withDefaults(defineProps<{ html: string, typing: number | null, speed?: TypingSpeed, cipher?: boolean }>(), { speed: undefined, cipher: undefined })
 const emit = defineEmits<{ done: [] }>()
 const el = ref<HTMLElement | null>(null)
 
