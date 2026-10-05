@@ -222,6 +222,8 @@ First public release.
   it now lasts 12 hours after the last request. The lock screen only appears once the server
   confirms the session is invalid (not on a single refused request or a network error), and a
   browser clock running behind the server no longer locks the app right after unlocking.
+- omp console: a long result line (`→ 22 matches · in <long path>`, a background job ID) now
+  wraps inside the console instead of making the whole conversation scroll sideways on a phone.
 
 ### Removed
 
