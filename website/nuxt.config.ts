@@ -54,7 +54,7 @@ export default defineNuxtConfig({
   },
 
   nitro: {
-    // /grid/1…4 and /preview: variants of the landing page to compare.
-    prerender: { routes: ['/', '/grid/1', '/grid/2', '/grid/3', '/grid/4', '/preview'], crawlLinks: false },
+    // /grid/1…5 and /preview: variants of the landing page to compare.
+    prerender: { routes: ['/', '/grid/1', '/grid/2', '/grid/3', '/grid/4', '/grid/5', '/preview'], crawlLinks: false },
   },
 })
