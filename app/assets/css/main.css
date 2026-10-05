@@ -1144,8 +1144,10 @@ button.omp-tool-head:hover .omp-tool-chev { color: var(--text-strong); }
 .omp-tool-sub { display: flex; flex-wrap: wrap; column-gap: 12px; min-width: 0; padding-left: 20px; font: 400 11.5px/17px var(--mono); color: var(--dim); }
 .omp-tool-intent { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .omp-tool.live .omp-tool-intent { --ui-text-muted: var(--muted); --ui-text-highlighted: color-mix(in srgb, var(--omp-color) 55%, var(--text)); }
-.omp-tool-result { white-space: nowrap; color: var(--muted); }
-.omp-tool-exit { color: var(--rose); }
+/* "→ 22 matches · in <path>" wraps (between its pieces first, then inside a
+   long path) instead of widening the whole conversation. */
+.omp-tool-result { min-width: 0; max-width: 100%; overflow-wrap: anywhere; color: var(--muted); }
+.omp-tool-exit { color: var(--rose); white-space: nowrap; }
 /* Unfolded output, in a │ gutter under "OUTPUT … N earlier lines   exit · wall" (one line). */
 .omp-tool-out { margin: 4px 0 4px 20px; border-left: 1px solid var(--line); }
 .omp-tool.err .omp-tool-out { border-left-color: color-mix(in srgb, var(--rose) 55%, var(--line)); }
