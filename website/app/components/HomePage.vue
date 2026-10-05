@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // The landing page. `/` renders it as is; /grid/1…5 swap the background grid
-// and /preview adds the recommended live pieces (phone demo, running install)
-// so both can be compared side by side.
+// and /preview adds the recommended live pieces (hero phone + desktop on one
+// clock, live demos next to the feature stories, running install) so both
+// can be compared side by side.
 import { REPO } from '~/utils/site'
 import type { GridVariant } from '~/utils/grid'
 
@@ -103,7 +104,10 @@ const faq = [
           </div>
 
           <div class="hero-visual">
-            <BrowserFrame class="hv-desk" src="/shots/desktop-chat.webp" alt="wherdr on a computer: agent sidebar with states and quotas, a Claude Code conversation and the message field" :width="2160" :height="1350" eager />
+            <BrowserFrame v-if="preview" class="hv-desk" alt="wherdr on a computer, on the same session as the phone: agent sidebar with live states, the conversation and the message field" eager>
+              <DesktopDemo />
+            </BrowserFrame>
+            <BrowserFrame v-else class="hv-desk" src="/shots/desktop-chat.webp" alt="wherdr on a computer: agent sidebar with states and quotas, a Claude Code conversation and the message field" :width="2160" :height="1350" eager />
             <div class="hv-phone">
               <PhoneFrame v-if="preview" alt="wherdr on a phone: a message is sent, the agent works in its console, then asks a question with numbered answers" eager>
                 <PhoneDemo />
@@ -137,7 +141,23 @@ const faq = [
               </ul>
             </div>
             <div class="story-shot">
-              <BrowserFrame v-if="s.shot.kind === 'desktop'" :src="s.shot.src" :alt="s.shot.alt" :width="2160" :height="1350" />
+              <template v-if="preview">
+                <BrowserFrame v-if="s.id === 'conversation'" alt="wherdr on a computer: grouped tool calls unfold, the effort picker switches to high, the proposed command is copied and run in the live terminal">
+                  <ConversationDemo />
+                </BrowserFrame>
+                <div v-else-if="s.id === 'phone'" class="duo">
+                  <PhoneFrame alt="Lock screen: a wherdr notification says the agent needs you, with its question and options, then that it is done">
+                    <NotifyDemo />
+                  </PhoneFrame>
+                  <PhoneFrame alt="wherdr's agent list on a phone: the question's options are on the agent's card, one tap answers and the agent goes back to work">
+                    <AgentListDemo />
+                  </PhoneFrame>
+                </div>
+                <BrowserFrame v-else alt="A coordinator with the project board: a thread becomes ready for review, is merged and moves to To test; a To decide question is answered from the board">
+                  <ProjectDemo />
+                </BrowserFrame>
+              </template>
+              <BrowserFrame v-else-if="s.shot.kind === 'desktop'" :src="s.shot.src" :alt="s.shot.alt" :width="2160" :height="1350" />
               <div v-else class="duo">
                 <PhoneFrame :src="s.shot.src" :alt="s.shot.alt" />
                 <PhoneFrame :src="s.shot.src2" :alt="s.shot.alt2" />
