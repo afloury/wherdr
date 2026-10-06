@@ -37,7 +37,7 @@
 // first/last one when more are hidden ("↑ 2.", "↓ 3."), the numbering then has
 // gaps ("❯ 1." … "5. Chat about this"). The full question and options come
 // from the transcript (pendingClaudeAsk, completeClaudeAsk).
-import type { ChoiceOption, Choices } from '../../shared/types'
+import type { ChoiceOption, Choices, PromptDetail } from '../../shared/types'
 import { isPermissionQuestion, screenDetail } from './promptDetail'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -440,6 +440,73 @@ export function parseOmpAsk(text: string | null | undefined): Choices | null {
   return { question, cursor, options: shown, ...(multi ? { multi: true } : {}), ...(tabs ? { tabs } : {}) }
 }
 
+// omp's select dialog (tool approval, "Always for this session"…), a box
+// whose title is the question, then the details, then the options:
+//
+//   ╭─ Allow tool: eval ──────────────╮
+//   │                                 │
+//   │ Language: python                │   details (the tool's input), cut by omp
+//   │ Code:                           │   past 2000 characters; a long one scrolls
+//   │ print(6*7)                      │   the title off the top of the screen
+//   │                                 │
+//   │  ❯ Approve                      │   options, cursor on the selected one
+//   │    Deny                         │
+//   │                                 │
+//   │ ↑/↓ navigate  ⏎ select  ⎋ cancel│
+//   ╰─────────────────────────────────╯
+//
+// Answered with ↑/↓ then Enter (keysFor). Never typed into: Enter would pick
+// the selected option (Approve) in the user's place.
+const OMP_SELECT_TOP = /^\s*[╭+][─-] (.+?) [─-]+[╮+]\s*$/
+const OMP_SELECT_LEGEND = /^\s*[│|] ↑\/↓ navigate\b.*\bselect\b/
+const OMP_SELECT_OPTION = new RegExp(`^ (?:(${OMP_CURSOR.join('|').replace(/[>]/g, '\\$&')})|\\s)\\s(\\S.*)$`)
+export function parseOmpSelect(text: string | null | undefined): Choices | null {
+  if (!text) return null
+  const lines = text.replace(/\s+$/, '').split('\n')
+  const legend = lastMatch(lines, OMP_SELECT_LEGEND)
+  if (legend < 0) return null
+  // Only the box's margin and bottom below the legend: the dialog is open.
+  const below = lines.slice(legend + 1).filter(l => l.trim() && ompBoxText(l) !== '').map(l => l.trim())
+  if (!below.length || !/^[╰+]/.test(below[0]!) || below.slice(1).some(l => /^[│|╭]/.test(l))) return null
+  let i = legend - 1
+  while (i >= 0 && ompBoxText(lines[i]!) === '') i--
+  const options: ChoiceOption[] = []
+  let cursor = -1
+  for (; i >= 0; i--) {
+    const s = ompBoxText(lines[i]!)
+    const m = s ? OMP_SELECT_OPTION.exec(s) : null
+    if (!m) break
+    if (m[1]) cursor = options.length
+    options.unshift({ label: m[2]!.trim().slice(0, 200), hint: null })
+  }
+  if (cursor < 0) return null
+  cursor = options.length - 1 - cursor
+  // Details up to the title (or the top of the screen).
+  const body: string[] = []
+  let title: string | null = null
+  for (; i >= 0; i--) {
+    const top = OMP_SELECT_TOP.exec(lines[i]!)
+    if (top) { title = top[1]!.trim(); break }
+    const s = ompBoxText(lines[i]!)
+    if (s === null) break
+    body.unshift(s)
+  }
+  while (body.length && !body[0]!.trim()) body.shift()
+  while (body.length && !body[body.length - 1]!.trim()) body.pop()
+  const tool = title ? /^Allow tool: (\S+)/.exec(title)?.[1] : undefined
+  // Title scrolled off: still a tool approval (omp's only select with details).
+  const detail: PromptDetail | undefined = tool || (!title && body.length)
+    ? { tool: tool || 'tool', ...(body.length ? { command: body.join('\n') } : {}) }
+    : undefined
+  return { question: title, cursor, options, ...(detail ? { detail } : {}) }
+}
+
+// omp's blocking prompt on screen: an open select dialog (its legend is at the
+// bottom of the screen), otherwise its "Ask" box.
+export function parseOmpPrompt(text: string | null | undefined): Choices | null {
+  return parseOmpSelect(text) || parseOmpAsk(text)
+}
+
 // Tab shown in the "Ask" box (ANSI screen): the only one of the bar on a
 // different background from the box border (or in reverse video). null if the
 // bar does not have exactly these tabs, or without a single highlighted tab.
@@ -641,10 +708,10 @@ export function sameQuestion(a: string | null | undefined, b: string | null | un
 }
 
 // On-screen prompt of a pane, re-read before answering it (choose, nav): the
-// "Ask" box for omp, otherwise a numbered or unnumbered list (Claude's
-// AskUserQuestion completed by its pending call, `asked`).
+// select dialog or "Ask" box for omp, otherwise a numbered or unnumbered list
+// (Claude's AskUserQuestion completed by its pending call, `asked`).
 export function screenChoices(text: string | null | undefined, agent: string | null | undefined, asked: ClaudeAsked[] = []): Choices | null {
-  if (agent === 'omp') return parseOmpAsk(text)
+  if (agent === 'omp') return parseOmpPrompt(text)
   const c = parseChoices(text) || parseChoices(text, { strict: true })
   return c && agent === 'claude' ? completeClaudeAsk(c, asked) : c
 }
@@ -669,10 +736,13 @@ export function panelOpen(text: string | null | undefined, agent: string | null 
 const bashInput = (line: string, above: string | undefined) => /^!(\s|$)/.test(line) && /^\s*─{3,}/.test(above || '')
 
 // Claude's input line sits right under a ─── rule: a menu's cursor line
-// ("❯ 1. Yes, proceed", /mcp, /hooks…) is not its input field.
+// ("❯ 1. Yes, proceed", /mcp, /hooks…) is not its input field. omp's field
+// ends with a "╰─" line followed by the text typed, under its status line
+// ("π > Opus > ~/demo ▶─1%────1M─"); a box's bottom is a longer rule.
 export function inputVisible(text: string | null | undefined): boolean {
   const lines = String(text || '').replace(/\s+$/, '').split('\n').slice(-12)
   return lines.some((l, i) => /^\s*›(\s|$)/.test(l)
     || (/^\s*❯(\s|$)/.test(l) && /^\s*─{3,}/.test(lines[i - 1] || ''))
+    || /^╰─(\s|$)/.test(l)
     || bashInput(l, lines[i - 1]))
 }

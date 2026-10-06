@@ -37,9 +37,10 @@ export function queuedDone(q: { text: string, at: number, turnSeen?: boolean }, 
   return i >= 0 && items.slice(i + 1).some(a => a.role === 'assistant')
 }
 
-// Messages sent while a menu or panel hides the agent's input field (an
-// interactive /mcp, /hooks… flow): typed into it, they would be lost. They are
-// held here and delivered, in order, as soon as the input is visible again.
+// Messages sent while a menu, panel or dialog hides the agent's input field (an
+// interactive /mcp, /hooks… flow, omp's tool approval): typed into it, they
+// would be lost, or Enter would answer it. They are held here and delivered,
+// in order, as soon as the input is visible again.
 // A message that was delivered but never shows up in the transcript while the
 // agent sits ready is reported as failed, with Retry / Cancel, instead of
 // staying "sending…" forever.
@@ -53,7 +54,7 @@ export const LOST_MS = 60 * 1000
 // (unknown screen). Reported as not sent, with that reason, instead of
 // waiting "until the menu closes" for nothing.
 export const NO_INPUT_MS = 30 * 1000
-export const HOLD_AGENTS = new Set(['claude', 'codex'])
+export const HOLD_AGENTS = new Set(['claude', 'codex', 'omp'])
 // Agent at rest, whose input field may be checked on screen (see closePanel).
 export const INPUT_STATES = new Set(['idle', 'done', 'unknown'])
 

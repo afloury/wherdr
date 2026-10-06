@@ -145,6 +145,41 @@ export function pendingClaudeTool(lines: string[], home = ''): PromptDetail | nu
   return first ? claudeToolDetail(String(first.name || ''), first.input, home) : null
 }
 
+// ------------------------------------------------------------ omp
+// The call waiting for approval: started (tool_execution_start) with no
+// result yet. Its full input comes from the assistant message's toolCall
+// (omp cuts it on screen, and a long one scrolls the dialog's title away).
+// `tool`: name read in the dialog's title, when shown (calls run in parallel).
+export function pendingOmpTool(lines: string[], tool?: string | null): PromptDetail | null {
+  const calls = new Map<string, { name: string, args: Json, intent?: string }>()
+  const started: string[] = []
+  for (const line of lines) {
+    if (!line || !line.includes('"type"')) continue
+    let d: Json
+    try { d = JSON.parse(line) }
+    catch { continue }
+    const m = d.type === 'message' && d.message
+    if (m && m.role === 'assistant' && Array.isArray(m.content)) {
+      for (const part of m.content) if (part.type === 'toolCall' && part.id) calls.set(part.id, { name: String(part.name || ''), args: part.arguments, intent: part.intent })
+    } else if (m && m.role === 'toolResult' && m.toolCallId) {
+      const i = started.indexOf(m.toolCallId)
+      if (i >= 0) started.splice(i, 1)
+    } else if (m && m.role === 'user') started.length = 0
+    else if (d.type === 'custom' && d.customType === 'tool_execution_start' && d.data && d.data.toolCallId) {
+      started.push(d.data.toolCallId)
+      if (!calls.has(d.data.toolCallId)) calls.set(d.data.toolCallId, { name: String(d.data.toolName || ''), args: d.data.args, intent: d.data.intent })
+    }
+  }
+  const ids = started.filter(id => calls.has(id) && (!tool || calls.get(id)!.name === tool))
+  const call = ids.length ? calls.get(ids[ids.length - 1]!)! : null
+  if (!call) return null
+  const { i: _, ...args } = call.args && typeof call.args === 'object' ? call.args : {} as Json
+  const text = typeof args.command === 'string' ? args.command
+    : typeof args.code === 'string' ? args.code
+      : Object.keys(args).length ? JSON.stringify(args, null, 2) : ''
+  return { tool: call.name || 'tool', ...(call.intent ? { description: String(call.intent) } : {}), ...(text ? body(text) : {}) }
+}
+
 // ------------------------------------------------------------ Codex
 // `["bash", "-lc", "script"]` → the script; otherwise the arguments joined.
 function shellText(cmd: unknown): string {

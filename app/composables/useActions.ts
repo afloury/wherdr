@@ -1,6 +1,7 @@
 // Agent actions shared between the list and the agent view.
 import type { Pane, QueuedMessage, WaitAction } from '#shared/types'
 import { type RestartPreview, RESTARTABLE, restartNotice } from '#shared/restart'
+import { viaPrompt } from '#shared/sendRoute'
 
 // Choose an option of a blocking prompt (the server re-checks the screen).
 // Free-answer option (`free`): with its text, typed by the server, and the
@@ -77,9 +78,9 @@ export function navKey(paneId: string, key: 'up' | 'down' | 'enter' | 'esc' | 'l
   return run
 }
 
-// Send a message to an agent (input field, Project panel). Blocked agent:
-// the prompt is waiting for free input ("Type something…"), agent.prompt
-// would refuse it: we type the text as is. Working agent: the server
+// Send a message to an agent (input field, Project panel): as a message, held
+// by the server while a menu or dialog hides the input field, or typed as the
+// answer to the question on screen (see viaPrompt). Working agent: the server
 // queues the message (returned in `queued`).
 // `clientId`: id of the bubble already shown for it (see utils/outbox.ts); the
 // server keeps it for its record, so the bubble never changes identity.
@@ -89,10 +90,6 @@ export async function sendMessage(p: Pane | undefined, paneId: string, text: str
     : await api<{ queued?: QueuedMessage }>('/api/input', { pane_id: paneId, text, keys: ['enter'] })
   return r.queued || null
 }
-// Blocked on a question: the text is its typed answer (/api/input). Blocked on a menu or
-// a screen with no question (/mcp…): typed now it would be lost in it; the
-// server holds it until the input field is back (/api/prompt).
-export const viaPrompt = (p: Pane | undefined) => Boolean(p && p.agent && (p.status !== 'blocked' || (!p.prompt && ['claude', 'codex'].includes(p.agent))))
 
 export const STATUS: Record<string, { label: string, order: number }> = {
   blocked: { label: 'Your turn', order: 0 },

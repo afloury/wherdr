@@ -14,7 +14,7 @@ import { foregroundCommand, reduceSnapshot } from './snapshot'
 import { DATA_DIR, HERDR_SESSION, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
 import { HerdrError, agentPrompt, herdr, herdrOn, sleep } from './herdr'
 import { keepReading } from './screenCache'
-import { type AskChecks, completeClaudeAsk, completeOmpAsk, ompActiveTab, parseChoices, parseOmpAsk } from './choices'
+import { type AskChecks, completeClaudeAsk, completeOmpAsk, ompActiveTab, parseChoices, parseOmpPrompt } from './choices'
 import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseWaitScreen } from './waitScreen'
 import { parseMenu, TOP } from '../../shared/menuScreen'
@@ -51,7 +51,7 @@ export const transcripts = {
   image: (p: TranscriptPane, file: string | null, ref: string | null, i: number) => trFor(p).image(p, file, ref, i),
   model: (p: TranscriptPane) => trFor(p).model(p),
   locate: (p: TranscriptPane) => trFor(p).locate(p),
-  pendingTool: (p: TranscriptPane) => trFor(p).pendingTool(p),
+  pendingTool: (p: TranscriptPane, tool?: string | null) => trFor(p).pendingTool(p, tool),
   pendingAsk: (p: TranscriptPane) => trFor(p).pendingAsk(p),
   pendingClaudeQuestions: (p: TranscriptPane) => trFor(p).pendingClaudeQuestions(p),
   forget: (id: string) => machineOfPane(id)?.transcripts.forget(id),
@@ -128,11 +128,11 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
     // blocking (/hooks, /mcp): a real question (numbered list) then keeps
     // priority; a simple cursor list there is read as a menu.
     const framed = String(text || '').split('\n').some((l: string) => TOP.test(l))
-    // omp: its "Ask" box only (boxed, it would pass for a menu).
-    let choices = p.agent === 'omp' ? parseOmpAsk(text) : parseChoices(text, { strict })
+    // omp: its select dialog (tool approval) or "Ask" box (boxed, they would pass for a menu).
+    let choices = p.agent === 'omp' ? parseOmpPrompt(text) : parseChoices(text, { strict })
     const menu = p.agent !== 'omp' && framed && (strict || !choices || !parseChoices(text, { strict: true })) ? await readMenu(p.id) : null
     if (menu) choices = null
-    if (choices && p.agent === 'omp') choices = await withOmpTab(p.id, completeOmpAsk(choices, await transcripts.pendingAsk(p).catch(() => [])))
+    if (choices && p.agent === 'omp' && !choices.detail) choices = await withOmpTab(p.id, completeOmpAsk(choices, await transcripts.pendingAsk(p).catch(() => [])))
     // Claude's AskUserQuestion: full question and options from the call.
     if (choices && p.agent === 'claude') {
       const checks = askChecks.get(p.id) || new Map()
@@ -142,9 +142,12 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
     out = { choices, screen: menu ? null : parseWaitScreen(text, { choices: Boolean(choices) }), menu }
     noteScreen(p.id, p.agent, text) // Codex: model from its status line
     if (choices && (choices.detail || isPermissionQuestion(choices.question))) {
-      const tr = await transcripts.pendingTool(p).catch(() => null)
+      // omp: the tool named in its dialog's title (none when scrolled off).
+      const named = p.agent === 'omp' && choices.detail && choices.detail.tool !== 'tool' ? choices.detail.tool : null
+      const tr = await transcripts.pendingTool(p, named).catch(() => null)
       const detail = mergeDetail(tr, choices.detail || null)
       if (detail) choices.detail = detail
+      if (p.agent === 'omp' && !choices.question && tr) choices.question = `Allow tool: ${tr.tool}`
     }
   } catch { out = { choices: c ? c.choices : null, screen: c ? c.screen : null, menu: c ? c.menu : null } }
   choicesCache.set(p.id, { rev, strict, at: Date.now(), ...out })
