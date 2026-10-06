@@ -1,7 +1,11 @@
 // Tool images that repeat an image already shown higher up (shared/imageDupes.ts),
 // from hashes computed by parseLines for omp, Claude and Codex.
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseLines } from '../server/utils/transcripts'
+import { addUploadHashes } from '../server/utils/uploadHashes'
 import { duplicateImages } from '../shared/imageDupes'
 import type { ChatItem } from '../shared/types'
 
@@ -14,6 +18,24 @@ const dupeTools = (items: ChatItem[]) => {
 }
 
 describe('duplicate images', () => {
+  it('omp: a photo sent from wherdr (path line) that the agent reads back, re-encoded, is a mention', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'hw-up-'))
+    writeFileSync(path.join(dir, '2026-01-01T00-00-00-000Z-aaaaaa.jpg'), 'photo bytes')
+    const up = `${HOME}/.cache/herdr-web/uploads/2026-01-01T00-00-00-000Z-aaaaaa.jpg`
+    const msg = (message: object, ts: string) => j({ type: 'message', id: ts, timestamp: ts, message })
+    const read = (id: string, p: string, ts: string) => msg({ role: 'assistant', content: [{ type: 'toolCall', id, name: 'read', arguments: { path: p } }] }, ts)
+    // omp's read returns the photo as WebP: not the bytes that were sent.
+    const result = (id: string, hash: string, ts: string) => msg({ role: 'toolResult', toolCallId: id, content: [{ type: 'image', mimeType: 'image/webp', data: `blob:sha256:${hash}` }] }, ts)
+    const text = [
+      msg({ role: 'user', content: [{ type: 'text', text: `look\n${up}` }], attribution: 'user' }, '1'),
+      read('r1', up, '2'), result('r1', 'ab'.repeat(32), '3'),
+      read('r2', '/x/other.png', '4'), result('r2', 'cd'.repeat(32), '5'),
+    ].join('\n')
+    const items = parseLines(text, 'omp', 0, HOME)
+    await addUploadHashes(items, dir)
+    expect(dupeTools(items)).toEqual([true, false])
+  })
+
   it('omp: the user\'s photo read back and a file read twice become mentions, another image stays', () => {
     const photo = 'ab'.repeat(32)
     const other = 'cd'.repeat(32)
