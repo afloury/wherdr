@@ -16,6 +16,15 @@ import {
 import { createTranscripts, type Transcripts } from '../server/utils/transcripts'
 
 describe('omp selector parsing', () => {
+  it('reads the nerd-font symbol preset (omp 18.6) like the unicode one', () => {
+    const s = parseOmpSelector(fx('omp-selector-nerd.txt'))!
+    expect(s.task).toBe(false)
+    expect(s.search).toBe('')
+    expect(s.options.map(o => o.label)).toContain('anthropic/claude-sonnet-5-5')
+    expect(s.options[s.cursor]).toMatchObject({ label: 'anthropic/claude-opus-5-5', current: true })
+    expect(ompSelectorCaption(fx('omp-selector-nerd.txt'), 'anthropic/claude-opus-5-5')).toEqual({ name: 'Claude Opus 5.5', roles: ['current'] })
+  })
+
   it('reads the models, the cursor, the search and the current mark', () => {
     const s = parseOmpSelector(fx('omp-selector.txt'))!
     expect(s.options.map(o => o.label)).toEqual([

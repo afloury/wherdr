@@ -315,20 +315,20 @@ export function parseOmpSelector(text: string | null | undefined): OmpSelector |
   let separator: number | null = null
   for (const row of body) {
     const raw = row.trim()
-    const q = raw.match(/^🔍\s*>\s*(.*)$/)
+    const q = raw.match(/^(?:🔍|\uF002)\s*>\s*(.*)$/)
     if (q) { search = q[1]!.trim(); continue }
     // A model row: the dim perf/context/cost columns sit far right, after
     // 3+ spaces from the id and its marks — everything from there is noise.
     const cut = raw.search(/\s{3,}/)
     const t = (cut < 0 ? raw : raw.slice(0, cut)).trim()
-    const cur = /^❯\s*/.exec(t)
+    const cur = /^(?:❯|\uF054)\s*/.exec(t)
     const model = (cur ? t.slice(cur[0].length) : t).trim()
     if (cur) {
       const hit = model.match(OMP_MODEL)
       if (hit) {
         cursor = options.length
         const warn = model.slice(hit[0].length).trim().match(OMP_OVERCTX)
-        options.push({ label: hit[0], hint: warn ? warn[1]!.trim() : null, current: /●\s*$/.test(model) })
+        options.push({ label: hit[0], hint: warn ? warn[1]!.trim() : null, current: /(?:●|\uF111)\s*$/.test(model) })
         continue
       }
     }
@@ -361,9 +361,9 @@ export function ompSelectorCaption(text: string | null | undefined, id: string):
     if (!hit) continue
     const roles: string[] = []
     for (let k = i + 1; k < Math.min(i + 3, lines.length); k++) {
-      const r = lines[k]!.replace(/^│\s*/, '').trim()
-      if (!/^●/.test(r)) break
-      roles.push(...r.split('·').map(s => s.replace(/●/g, '').replace(/\s*[◕◒◍○○◕◒][\s\S]*$/, '').trim()).filter(Boolean))
+      const r = lines[k]!.replace(/^│\s*/, '').replace(/\s*│[\s│]*$/, '').trim()
+      if (!/^(?:●|\uF111)/.test(r)) break
+      roles.push(...r.split('·').map(s => s.replace(/●|\uF111/g, '').replace(/\s*[◕◒◍○○◕◒][\s\S]*$/, '').trim()).filter(Boolean))
     }
     return { name: body.split('·')[0]!.trim(), roles }
   }

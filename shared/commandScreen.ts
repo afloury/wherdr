@@ -34,9 +34,10 @@ export function agentAnswering(screen: string, cmd: string): boolean {
 
 // omp's model selector (alt+p, /switch, /model): a boxed list, not a
 // result. Its parsing and control live server-side (models.ts, modelctl.ts);
-// here we only recognize it to keep the "❯ /model" panel closed.
+// here we only recognize it to keep the "❯ /model" panel closed. The Enter
+// mark depends on omp's symbol preset: ⏎ (unicode) or a nerd-font glyph.
 export const OMP_SELECTOR_OPEN = /╭─\s*Switch (?:Task )?Model\b/
 
 export function ompSelectorOnScreen(text: string | null | undefined): boolean {
-  return Boolean(text) && OMP_SELECTOR_OPEN.test(String(text)) && /⏎\s*use for (?:this session|Task subagents)/.test(String(text))
+  return Boolean(text) && OMP_SELECTOR_OPEN.test(String(text)) && /(?:⏎|\u{F0311})\s*use for (?:this session|Task subagents)/u.test(String(text))
 }
