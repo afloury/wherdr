@@ -16,6 +16,11 @@ All notable changes to this project are documented here. The format follows
 - GitHub Actions CI on pushes and pull requests to `main`: unit, component and end-to-end tests,
   type check and leak check.
 
+### Changed
+
+- Quoted replies as tokens in the field are marked experimental and are now off by default on a
+  computer too (Settings › Conversation › Quoted replies).
+
 ### Fixed
 
 - The model and effort under the input field no longer turn into a bare "Model" when reading the

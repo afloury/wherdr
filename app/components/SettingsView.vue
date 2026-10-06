@@ -447,11 +447,11 @@ onMounted(() => {
             <TypingPreview v-if="activeSection === 'conversation'" />
           </div>
           <div class="settings-group">
-            <h3>{{ tl('Quoted replies', 'Réponses citées') }}</h3>
-            <p class="muted settings-lead">{{ tl('Answer several questions or passages of an agent in one message: ↳ Reply quotes them in the field, each quote a compact token above its answer.', 'Réponds à plusieurs questions ou passages d’un agent dans un seul message : ↳ Répondre les cite dans le champ, chaque citation en jeton compact au-dessus de sa réponse.') }}</p>
+            <h3>{{ tl('Quoted replies', 'Réponses citées') }} <span class="exp-tag">{{ tl('Experimental', 'Expérimental') }}</span></h3>
+            <p class="muted settings-lead">{{ tl('Answer several questions or passages of an agent in one message: ↳ Reply quotes them in the field, each quote a compact token above its answer. Still has bugs, so it is off by default.', 'Réponds à plusieurs questions ou passages d’un agent dans un seul message : ↳ Répondre les cite dans le champ, chaque citation en jeton compact au-dessus de sa réponse. Encore buggé, donc désactivé par défaut.') }}</p>
             <QuoteTokensPreview v-if="activeSection === 'conversation'" />
             <label class="settings-toggle">
-              <span><b>{{ tl('On a computer', 'Sur ordinateur') }}</b><small>{{ tl('On by default.', 'Activé par défaut.') }}</small></span>
+              <span><b>{{ tl('On a computer', 'Sur ordinateur') }}</b><small>{{ tl('Off by default.', 'Désactivé par défaut.') }}</small></span>
               <USwitch v-model="tokensComputerOn" color="success" size="xl" />
             </label>
             <label class="settings-toggle">
