@@ -145,9 +145,9 @@ if (import.meta.client) {
 export const typingSpeed = computed(() => effectiveTypingSpeed(typewriterSpeed.value, reducedMotion.value))
 export const typewriterActive = computed(() => typingSpeed.value !== 'off')
 export const encryptedActive = computed(() => encryptedTextActive(typewriterSpeed.value, encryptedText.value, reducedMotion.value))
-// Quoted replies as tokens in the field (utils/quoteTokens.ts): one switch
-// for the computer (on by default), one for the phone (off by default).
-export const quoteTokensComputer = ref(ls.get('quoteTokensComputer') !== '0')
+// Quoted replies as tokens in the field (utils/quoteTokens.ts), experimental:
+// one switch for the computer, one for the phone, both off by default.
+export const quoteTokensComputer = ref(ls.get('quoteTokensComputer') === '1')
 watch(quoteTokensComputer, v => ls.set('quoteTokensComputer', v ? '1' : '0'))
 export const quoteTokensPhone = ref(ls.get('quoteTokensPhone') === '1')
 watch(quoteTokensPhone, v => ls.set('quoteTokensPhone', v ? '1' : '0'))
