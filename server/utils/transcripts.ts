@@ -1008,10 +1008,18 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     if (!pane.agent || !['claude', 'codex', 'omp'].includes(pane.agent)) return null
     const loc = await locate(pane)
     if (!loc) return null
+    // A failed read (SSH dropped, timeout) says nothing about the model: keep
+    // the last value of this file, or let the caller keep its own. Only a
+    // missing file means "no model".
+    const stale = (e: unknown) => {
+      if (c && c.file === loc.file) return c.info
+      if (isMissing(e)) return null
+      throw e
+    }
+    const c = modelCache.get(pane.id)
     let size: number
     try { size = (await fs.stat(loc.file)).size }
-    catch { return null }
-    const c = modelCache.get(pane.id)
+    catch (e) { return stale(e) }
     if (c && c.file === loc.file && c.size === size) return c.info
     const omp = pane.agent === 'omp'
     let raw: ModelInfo | null = null
@@ -1039,7 +1047,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
         end = r.start
       }
       if (floor && c) raw = omp ? mergeOmpModel(raw, c.raw) : raw || c.raw
-    } catch { return c ? c.info : null }
+    } catch (e) { return stale(e) }
     const info = omp ? ompModelResult(raw) : raw
     modelCache.set(pane.id, { file: loc.file, size: done, raw, info })
     return info

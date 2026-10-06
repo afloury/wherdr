@@ -9,6 +9,7 @@ import {
   claudeEffortCommand, claudeEffortLevels, claudeModelLabel, codexCachedEfforts, codexConfigModel, codexFooterModel, codexModelLabel, effortMatches, effortValue, lastModel, modelFromLine, parseClaudeEffortSlider, parseClaudeEffortScreen, claudeScreenEffort, claudeScreenModel, parseModelMenu, sameModel, switchConfirmKeys,
 } from '../server/utils/models'
 import { createTranscripts, parseLines } from '../server/utils/transcripts'
+import { type MachineFs, localFs } from '../server/utils/fsx'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 const j = (o: unknown) => JSON.stringify(o)
@@ -136,6 +137,31 @@ describe('transcripts.model()', () => {
     expect((await tr.model(pane))!.label).toBe('Sonnet 5')
     writeFileSync(file, readFileSync(file, 'utf8') + j({ type: 'user', message: { content: 'rien' } }) + '\n')
     expect((await tr.model(pane))!.label).toBe('Sonnet 5')
+  })
+
+  it('keeps the last model while a remote read fails, and reports the failure without one', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-model-'))
+    const dir = path.join(home, '.claude/projects/-x')
+    mkdirSync(dir, { recursive: true })
+    const file = path.join(dir, 'sess.jsonl')
+    writeFileSync(file, j({ type: 'assistant', timestamp: '2026-09-26T00:00:00Z', message: { model: 'claude-opus-5-5', content: [] }, effort: 'high' }) + '\n')
+    // SSH connection dropped: every file operation fails with a non-"missing" error.
+    let down = false
+    const drop = () => Object.assign(new Error('Connection closed'), { code: 'remote' })
+    const fs: MachineFs = {
+      ...localFs,
+      stat: async p => { if (down) throw drop(); return localFs.stat(p) },
+      read: async (p, s, n) => { if (down) throw drop(); return localFs.read(p, s, n) },
+    }
+    const tr = createTranscripts({ home, herdr: async () => ({}), fs })
+    const pane = { id: 'w1:p1', agent: 'claude', cwd: null, agentSession: 'sess' }
+    expect(await tr.model(pane)).toMatchObject({ label: 'Opus 5.5', effort: 'high' })
+    writeFileSync(file, readFileSync(file, 'utf8') + j({ type: 'user', message: { content: 'x' } }) + '\n')
+    down = true
+    expect(await tr.model(pane)).toMatchObject({ label: 'Opus 5.5', effort: 'high' })
+    // Nothing known yet (file found, then its read fails): the failure is not turned into "no model".
+    const readDown: MachineFs = { ...localFs, read: async () => { throw drop() } }
+    await expect(createTranscripts({ home, herdr: async () => ({}), fs: readDown }).model(pane)).rejects.toThrow('Connection closed')
   })
 })
 
