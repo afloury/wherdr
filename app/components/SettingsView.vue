@@ -83,9 +83,9 @@ const quotePreview = ref<QuoteMode>(quoteMode.value)
 watch(quoteComputer, (m) => { quotePreview.value = m })
 watch(quotePhone, (m) => { quotePreview.value = m })
 const quoteItems = computed(() => [
-  { label: tl('“>” lines', 'Lignes « > »'), description: tl('The plain field: each quote stays “> ” lines, a chip above removes it. Default.', 'Le champ simple : chaque citation reste en lignes « > », une puce au-dessus la retire. Par défaut.'), value: 'lines' },
-  { label: tl('Tokens, native field', 'Jetons, champ natif'), description: tl('The same plain field, each “> ” line drawn as a token. Typing, dictation and autocorrect unchanged.', 'Le même champ simple, chaque ligne « > » dessinée en jeton. Saisie, dictée et correction auto inchangées.'), value: 'native' },
-  { label: tl('Tokens, rich field', 'Jetons, champ riche'), description: tl('A rich field, each quote one compact token with ✕. On iOS, moving the caret around the tokens is unreliable.', 'Un champ riche, chaque citation un jeton compact avec ✕. Sur iOS, déplacer le curseur autour des jetons est peu fiable.'), value: 'rich' },
+  { label: tl('“>” lines', 'Lignes « > »'), description: tl('Plain text: each quote stays “> ” lines, a chip above the field removes it. Default.', 'Texte simple : chaque citation reste en lignes « > », une puce au-dessus du champ la retire. Par défaut.'), value: 'lines', exp: false },
+  { label: tl('Tokens, native field', 'Jetons, champ natif'), description: tl('The same plain field, each “> ” line drawn as a token. Typing, dictation and autocorrect unchanged.', 'Le même champ simple, chaque ligne « > » dessinée en jeton. Saisie, dictée et correction auto inchangées.'), value: 'native', exp: true },
+  { label: tl('Tokens, rich field', 'Jetons, champ riche'), description: tl('A rich field, each quote one compact token with ✕. On iOS, moving the caret around the tokens is unreliable.', 'Un champ riche, chaque citation un jeton compact avec ✕. Sur iOS, déplacer le curseur autour des jetons est peu fiable.'), value: 'rich', exp: true },
 ])
 // Forced off if the system reduces motion: shown disabled.
 const typewriter = computed({ get: () => typingSpeed.value, set: (v: TypingSpeed) => { typewriterSpeed.value = v } })
@@ -458,13 +458,21 @@ onMounted(() => {
             <TypingPreview v-if="activeSection === 'conversation'" />
           </div>
           <div class="settings-group">
-            <h3>{{ tl('Quoted replies', 'Réponses citées') }} <span class="exp-tag">{{ tl('Experimental', 'Expérimental') }}</span></h3>
-            <p class="muted settings-lead">{{ tl('Answer several questions or passages of an agent in one message: ↳ Reply quotes them in the field, each above its answer. Choose how the field shows the quotes; the message sent is the same.', 'Réponds à plusieurs questions ou passages d’un agent dans un seul message : ↳ Répondre les cite dans le champ, chacune au-dessus de sa réponse. Choisis comment le champ affiche les citations ; le message envoyé est le même.') }}</p>
+            <h3>{{ tl('Quoted replies', 'Réponses citées') }}</h3>
+            <p class="muted settings-lead">{{ tl('Answer several questions or passages of an agent in one message: ↳ Reply quotes each in the field, above its answer. Choose how the field shows the quotes; the message sent is the same.', 'Réponds à plusieurs questions ou passages d’un agent dans un seul message : ↳ Répondre cite chacun dans le champ, au-dessus de sa réponse. Choisis comment le champ affiche les citations ; le message envoyé est le même.') }}</p>
             <QuoteTokensPreview v-if="activeSection === 'conversation'" :mode="quotePreview" />
             <h4 class="qt-device">{{ tl('On a computer', 'Sur ordinateur') }}</h4>
-            <URadioGroup v-model="quoteComputer" :items="quoteItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <URadioGroup v-model="quoteComputer" :items="quoteItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio">
+              <template #label="{ item }">
+                {{ item.label }}<span v-if="item.exp" class="exp-tag">{{ tl('Experimental', 'Expérimental') }}</span>
+              </template>
+            </URadioGroup>
             <h4 class="qt-device">{{ tl('On a phone', 'Sur téléphone') }}</h4>
-            <URadioGroup v-model="quotePhone" :items="quoteItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <URadioGroup v-model="quotePhone" :items="quoteItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio">
+              <template #label="{ item }">
+                {{ item.label }}<span v-if="item.exp" class="exp-tag">{{ tl('Experimental', 'Expérimental') }}</span>
+              </template>
+            </URadioGroup>
             <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
           </div>
         </div>

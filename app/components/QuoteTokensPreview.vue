@@ -25,6 +25,10 @@ defineProps<{ mode: QuoteMode }>()
           <span>Lost !</span>
         </div>
       </div>
+      <div v-if="mode === 'lines'" class="qt-chips">
+        <span class="qt-chip one">{{ tl('Tea or coffee?', 'Thé ou café ?') }}<i>✕</i></span>
+        <span class="qt-chip two">{{ tl('And your favorite series?', 'Et ta série préférée ?') }}<i>✕</i></span>
+      </div>
       <div class="qt-field">
         <span class="qt-ph">{{ tl('Message to Claude…', 'Message à Claude…') }}</span>
         <span class="qt-tok one"><b>{{ mode === 'lines' ? '>' : '↳' }}</b>{{ tl('Tea or coffee?', 'Thé ou café ?') }}<i v-if="mode === 'rich'">✕</i></span>
