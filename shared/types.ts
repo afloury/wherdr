@@ -189,6 +189,8 @@ export interface ModelInfo {
   id: string | null
   label: string
   effort?: string | null
+  // omp "auto": the level it resolved to for the current turn ("low"…).
+  effortResolved?: string | null
   at?: string | null
 }
 // Option of an agent's /model menu.

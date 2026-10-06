@@ -14,7 +14,7 @@ import { HerdrError, agentPrompt, herdr, sleep } from './herdr'
 import { closePanel } from './actions'
 import { READY, findPane, poll, transcripts } from './state'
 import { machineOfPane } from './machines'
-import { type ClaudeEffortSlider, type ModelMenu, type OmpCycleKnowledge, type OmpSelector, OMP_EFFORT_ORDER, claudeEffortCommand, claudeEffortLevels, cleanModelName, codexCachedEfforts, codexConfigModel, claudeScreenEffort, claudeScreenModel, codexFooterModel, effortMatches, effortValue, learnOmpCycle, ompEffortLevels, ompModelLabel, ompScreenEffort, ompSelectorCaption, parseClaudeEffortScreen, parseModelMenu, parseOmpSelector, sameModel, switchConfirmKeys } from './models'
+import { type ClaudeEffortSlider, type ModelMenu, type OmpCycleKnowledge, type OmpSelector, OMP_EFFORT_ORDER, claudeEffortCommand, claudeEffortLevels, cleanModelName, codexCachedEfforts, codexConfigModel, claudeScreenEffort, claudeScreenModel, codexFooterModel, effortMatches, effortValue, learnOmpCycle, ompEffortLevels, ompModelLabel, ompScreenEffort, ompScreenModel, ompSelectorCaption, parseClaudeEffortScreen, parseModelMenu, parseOmpSelector, sameModel, switchConfirmKeys } from './models'
 import { fmt } from '../../shared/message'
 
 // ---------------------------------------------------------------- current model
@@ -103,8 +103,21 @@ export async function currentModel(p: Pane): Promise<ModelInfo | null> {
   if (fromFile && !fromFile.effort && observed && sameModel(fromFile.label, observed.label)) {
     return { ...fromFile, effort: observed.effort }
   }
-  const ompSeen = p.agent === 'omp' && fromFile && !fromFile.effort ? ompScreenEffort(ompScreens.get(p.id), fromFile.label) : null
-  if (fromFile && ompSeen) return { ...fromFile, effort: ompSeen }
+  if (p.agent === 'omp') {
+    const text = ompScreens.get(p.id)
+    if (fromFile) {
+      const shown = ompScreenEffort(text, fromFile.label)
+      if (!fromFile.effort && shown) return { ...fromFile, effort: shown }
+      // "auto" shows the glyph of the level it resolved to for this turn.
+      if (fromFile.effort === 'auto') return { ...fromFile, effortResolved: shown && shown !== 'auto' && shown !== 'off' ? shown : fromFile.effortResolved ?? null }
+      return fromFile
+    }
+    // No transcript before the first message: the status line alone, its
+    // name matched to an id of the selector's list when it has been read.
+    const sm = ompScreenModel(text)
+    const hit = sm && listCache.get(`omp|${machineOfPane(p.id)?.key || ''}`)?.options.find(o => sameModel(ompModelLabel(o.label), sm.label))
+    return sm && hit ? { ...sm, id: hit.label } : sm
+  }
   if (!fromFile && p.agent === 'claude') {
     // New agent: Claude Code's header already gives model and effort.
     const sm = screenModels.get(p.id)
@@ -327,7 +340,13 @@ async function openOmpSelector(p: Pane): Promise<OmpSelector> {
   await closeOmpSelector(p.id)
   await closePanel(p.id).catch(() => false)
   await herdr('pane.send_input', { pane_id: p.id, keys: ['alt+p'] })
-  const s = await waitOmpSelector(p.id, () => true)
+  let s = await waitOmpSelector(p.id, () => true)
+  // omp 18.6: alt+p toggles between the session and the Task subagent
+  // selectors; only the session one may be driven.
+  if (s && s.task) {
+    await herdr('pane.send_input', { pane_id: p.id, keys: ['alt+p'] })
+    s = await waitOmpSelector(p.id, x => !x.task)
+  }
   if (!s) {
     await closeOmpSelector(p.id)
     throw new HerdrError('no_menu', 'omp’s model selector did not show up')
@@ -393,8 +412,11 @@ async function ompSetModel(paneId: string, wanted: string): Promise<ModelInfo> {
       await closeOmpSelector(p.id).catch(() => {})
       throw e
     }
-    const caption = ompSelectorCaption(await screen(p.id).catch(() => ''), id)
-    const info: ModelInfo = { id, label: caption?.name || ompModelLabel(id), effort: null, at: new Date(started).toISOString() }
+    const text = await screen(p.id).catch(() => '')
+    const caption = ompSelectorCaption(text, id)
+    // The level stays on the status line (no transcript before the first message).
+    const effort = ompScreenEffort(text, ompModelLabel(id))
+    const info: ModelInfo = { id, label: caption?.name || ompModelLabel(id), effort, at: new Date(started).toISOString() }
     overrides.set(p.id, { ...info, ms: started })
     log(`model ${p.id} (omp) -> ${id} (this session)`)
     setTimeout(poll, 100)

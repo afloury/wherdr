@@ -50,10 +50,13 @@ vi.mock('../server/utils/herdr', () => ({
   },
 }))
 
-import { listEfforts, setEffort } from '../server/utils/modelctl'
+import { currentModel, forgetModel, listEfforts, noteScreen, setEffort } from '../server/utils/modelctl'
+
+const pane = { id: 'w1:p1', agent: 'omp', status: 'idle' } as Parameters<typeof currentModel>[0]
 
 describe('omp thinking level (⇧⇥ cycle)', () => {
   beforeEach(() => {
+    forgetModel('w1:p1')
     Object.assign(fake, {
       sent: [], cycle: ['off', 'auto', 'low', 'medium', 'high'], level: 'medium', resolved: null, tick: 0,
       frozen: false, noTranscript: false, freezeAfter: Infinity,
@@ -124,5 +127,22 @@ describe('omp thinking level (⇧⇥ cycle)', () => {
     await expect(setEffort('w1:p1', 'high')).rejects.toMatchObject({ code: 'stale' })
     expect(fake.level).toBe('medium')
     expect((await listEfforts('w1:p1')).current).toBe('medium')
+  })
+
+  it('a new conversation without a transcript: model and level from the status line, and changeable', async () => {
+    fake.cycle = ['off', 'auto', 'low', 'medium', 'high', 'xhigh', 'max']
+    Object.assign(fake, { level: 'auto', noTranscript: true })
+    noteScreen('w1:p1', 'omp', status())
+    expect(await currentModel(pane)).toMatchObject({ label: 'Opus 5.5', effort: 'auto' })
+    expect((await listEfforts('w1:p1')).current).toBe('auto')
+    await expect(setEffort('w1:p1', 'high')).resolves.toMatchObject({ label: 'Opus 5.5', effort: 'high' })
+    expect(fake.level).toBe('high')
+    expect(fake.sent).toHaveLength(3)
+  })
+
+  it('"auto" after a turn: the configured level, with the one it resolved to', async () => {
+    Object.assign(fake, { level: 'auto', resolved: 'low' })
+    noteScreen('w1:p1', 'omp', status())
+    expect(await currentModel(pane)).toMatchObject({ effort: 'auto', effortResolved: 'low' })
   })
 })

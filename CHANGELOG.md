@@ -42,6 +42,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- omp: a new conversation (no message yet) now shows its model and effort in the field, read
+  from omp's status line, and both can be changed from there. After a turn, "auto" shows the
+  level omp picked ("auto · low", and "This turn: low" in the menu) instead of a bare "auto".
+  The model selector also works with omp's nerd-font symbols and its 18.6 Task-model toggle.
+
 - Messages sent to omp while it shows a tool approval dialog ("Allow tool: eval", bash, MCP…)
   are no longer typed into the dialog and lost (their Enter could even approve the tool): typed
   replies and Project panel buttons (Reviewed, Tested, Launch, Unblock…) are held and delivered

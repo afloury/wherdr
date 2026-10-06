@@ -11,11 +11,20 @@ const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.m
 const j = (o: unknown) => JSON.stringify(o)
 
 import {
-  lastModel, learnOmpCycle, modelFromLine, ompEffortLevels, ompModelLabel, ompScreenEffort, ompSelectorCaption, parseOmpSelector,
+  lastModel, learnOmpCycle, modelFromLine, ompEffortLevels, ompModelLabel, ompScreenEffort, ompScreenModel, ompSelectorCaption, parseOmpSelector,
 } from '../server/utils/models'
 import { createTranscripts, type Transcripts } from '../server/utils/transcripts'
 
 describe('omp selector parsing', () => {
+  it('reads the nerd-font symbol preset (omp 18.6) like the unicode one', () => {
+    const s = parseOmpSelector(fx('omp-selector-nerd.txt'))!
+    expect(s.task).toBe(false)
+    expect(s.search).toBe('')
+    expect(s.options.map(o => o.label)).toContain('anthropic/claude-sonnet-5-5')
+    expect(s.options[s.cursor]).toMatchObject({ label: 'anthropic/claude-opus-5-5', current: true })
+    expect(ompSelectorCaption(fx('omp-selector-nerd.txt'), 'anthropic/claude-opus-5-5')).toEqual({ name: 'Claude Opus 5.5', roles: ['current'] })
+  })
+
   it('reads the models, the cursor, the search and the current mark', () => {
     const s = parseOmpSelector(fx('omp-selector.txt'))!
     expect(s.options.map(o => o.label)).toEqual([
@@ -92,7 +101,7 @@ describe('model in an omp transcript', () => {
       level('medium', 't2', 'auto'),
       assistant('anthropic/claude-opus-5-5', 't3'),
     ]
-    expect(lastModel(lines, 'omp')).toEqual({ id: 'anthropic/claude-opus-5-5', label: 'Opus 5.5', effort: 'auto', at: 't3' })
+    expect(lastModel(lines, 'omp')).toEqual({ id: 'anthropic/claude-opus-5-5', label: 'Opus 5.5', effort: 'auto', effortResolved: 'medium', at: 't3' })
     // A later explicit choice (⇧⇥) wins, the model stays.
     expect(lastModel([...lines, level('high', 't4', 'high')], 'omp')).toMatchObject({ label: 'Opus 5.5', effort: 'high', at: 't4' })
   })
@@ -233,6 +242,31 @@ describe('omp thinking level on screen', () => {
     expect(ompScreenEffort(' ◉ done, see above\n π > ⬡ Opus 5.5 > 🗑 ~/demo ────', 'Opus 5.5')).toBeNull()
     expect(ompScreenEffort(fx('omp-done.txt'), 'Sonnet 5')).toBeNull()
     expect(ompScreenEffort(fx('omp-selector.txt'), 'Opus 5.5')).toBeNull()
+  })
+})
+
+// Before its first message omp has no session file: model and level come
+// from the status line alone.
+describe('omp model on screen, without a transcript', () => {
+  it('reads the model and the level from every status line layout', () => {
+    expect(ompScreenModel(fx('omp-fresh-nerd.txt'))).toEqual({ id: null, label: 'Opus 5.5', effort: 'auto', at: null })
+    expect(ompScreenModel(fx('omp-done.txt'))).toMatchObject({ label: 'Opus 5.5', effort: 'low' })
+    expect(ompScreenModel(fx('omp-idle-footer.txt'))).toMatchObject({ label: 'Opus 5.5', effort: 'high' })
+    expect(ompScreenModel(' π > [xhi] Glm 5.3 flash > ~/demo ────')).toMatchObject({ label: 'Glm 5.3 flash', effort: 'xhigh' })
+  })
+
+  it('ignores glyphs of the conversation, selectors, and a status line without a level', () => {
+    expect(ompScreenModel(' ◉ done, see above\n π > ⬡ Opus 5.5 > 🗑 ~/demo ────')).toBeNull()
+    expect(ompScreenModel(fx('omp-selector.txt'))).toBeNull()
+  })
+})
+
+describe('omp "auto" in the transcript', () => {
+  it('keeps the configured "auto" and the level it resolved to', () => {
+    const line = j({ type: 'thinking_level_change', timestamp: '2026-01-01T00:00:00.000Z', thinkingLevel: 'low', configured: 'auto' })
+    expect(modelFromLine(line, 'omp')).toMatchObject({ effort: 'auto', effortResolved: 'low' })
+    const fixed = j({ type: 'thinking_level_change', timestamp: '2026-01-01T00:00:00.000Z', thinkingLevel: 'low', configured: 'low' })
+    expect(modelFromLine(fixed, 'omp')).toEqual({ id: null, label: '', effort: 'low', at: '2026-01-01T00:00:00.000Z' })
   })
 })
 

@@ -121,7 +121,8 @@ export function ompModelFromLine(line: string): ModelInfo | null {
   if (d.type === 'thinking_level_change') {
     const level = typeof d.configured === 'string' && d.configured ? d.configured
       : typeof d.thinkingLevel === 'string' && d.thinkingLevel ? d.thinkingLevel : null
-    return { id: null, label: '', effort: level, at: d.timestamp || null }
+    const resolved = level === 'auto' && typeof d.thinkingLevel === 'string' && d.thinkingLevel !== 'auto' ? d.thinkingLevel : null
+    return { id: null, label: '', effort: level, ...(resolved ? { effortResolved: resolved } : {}), at: d.timestamp || null }
   }
   if (d.type === 'message' && d.message && d.message.role === 'assistant') {
     const id = d.message.model
@@ -137,11 +138,13 @@ export function ompModelFromLine(line: string): ModelInfo | null {
 export function mergeOmpModel(newer: ModelInfo | null, older: ModelInfo | null): ModelInfo | null {
   if (!newer || !older) return newer || older
   const model = newer.label ? newer : older
+  const level = newer.effort !== undefined ? newer : older
   const [a, b] = [newer.at || null, older.at || null]
   return {
     id: model.id,
     label: model.label,
-    effort: newer.effort !== undefined ? newer.effort : older.effort,
+    effort: level.effort,
+    ...(level.effortResolved ? { effortResolved: level.effortResolved } : {}),
     at: !a || (b && b > a) ? b : a,
   }
 }
@@ -312,20 +315,20 @@ export function parseOmpSelector(text: string | null | undefined): OmpSelector |
   let separator: number | null = null
   for (const row of body) {
     const raw = row.trim()
-    const q = raw.match(/^🔍\s*>\s*(.*)$/)
+    const q = raw.match(/^(?:🔍|\uF002)\s*>\s*(.*)$/)
     if (q) { search = q[1]!.trim(); continue }
     // A model row: the dim perf/context/cost columns sit far right, after
     // 3+ spaces from the id and its marks — everything from there is noise.
     const cut = raw.search(/\s{3,}/)
     const t = (cut < 0 ? raw : raw.slice(0, cut)).trim()
-    const cur = /^❯\s*/.exec(t)
+    const cur = /^(?:❯|\uF054)\s*/.exec(t)
     const model = (cur ? t.slice(cur[0].length) : t).trim()
     if (cur) {
       const hit = model.match(OMP_MODEL)
       if (hit) {
         cursor = options.length
         const warn = model.slice(hit[0].length).trim().match(OMP_OVERCTX)
-        options.push({ label: hit[0], hint: warn ? warn[1]!.trim() : null, current: /●\s*$/.test(model) })
+        options.push({ label: hit[0], hint: warn ? warn[1]!.trim() : null, current: /(?:●|\uF111)\s*$/.test(model) })
         continue
       }
     }
@@ -358,9 +361,9 @@ export function ompSelectorCaption(text: string | null | undefined, id: string):
     if (!hit) continue
     const roles: string[] = []
     for (let k = i + 1; k < Math.min(i + 3, lines.length); k++) {
-      const r = lines[k]!.replace(/^│\s*/, '').trim()
-      if (!/^●/.test(r)) break
-      roles.push(...r.split('·').map(s => s.replace(/●/g, '').replace(/\s*[◕◒◍○○◕◒][\s\S]*$/, '').trim()).filter(Boolean))
+      const r = lines[k]!.replace(/^│\s*/, '').replace(/\s*│[\s│]*$/, '').trim()
+      if (!/^(?:●|\uF111)/.test(r)) break
+      roles.push(...r.split('·').map(s => s.replace(/●|\uF111/g, '').replace(/\s*[◕◒◍○○◕◒][\s\S]*$/, '').trim()).filter(Boolean))
     }
     return { name: body.split('·')[0]!.trim(), roles }
   }
@@ -601,6 +604,34 @@ export function ompScreenEffort(text: string | null | undefined, model: string |
     if (glyph) return glyph
     const suffix = line.slice(at + name.length).match(/^[^·>]*·\s*(?:\S+\s+){0,2}?\[?(off|auto|min|minimal|low|med|medium|high|xhi|xhigh|max)\]?(?=\s|$)/)
     if (suffix) return OMP_EFFORT_WORDS[suffix[1]!]!
+  }
+  return null
+}
+
+// omp's model and thinking level from its status line alone, for a
+// conversation with no transcript yet (omp only writes its session file on
+// the first message). The level glyph sits among the first segments
+// (" π > ⟳ Opus 5.5 > 🗑 ~/demo > ─…", nerd-font separators alike: the glyph
+// right after a segment separator), or opens the older layout's line
+// (" ◒ Opus 5.5 👁 · 📁 ~/repo", with its " · " segments). The name runs until
+// the next segment without letters or digits (separator, icon). A glyph in
+// the conversation above has neither. The model's id is unknown.
+export function ompScreenModel(text: string | null | undefined): ModelInfo | null {
+  const lines = String(text || '').replace(/\s+$/, '').split('\n').slice(-12)
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!
+    if (/^\s*│/.test(line)) continue
+    const tokens = line.trim().split(/\s+/)
+    for (let k = 0; k < Math.min(tokens.length, 5); k++) {
+      const effort = OMP_EFFORT_GLYPHS[tokens[k]!]
+      if (!effort) continue
+      const name: string[] = []
+      let j = k + 1
+      for (; j < tokens.length && /[\p{L}\p{N}]/u.test(tokens[j]!) && !tokens[j]!.includes('─'); j++) name.push(tokens[j]!)
+      const status = k > 0 ? /^(?:[>›〉»]|[\uE0B0-\uE0BF])$/.test(tokens[k - 1]!) : tokens.slice(j).includes('·')
+      const label = name.join(' ')
+      if (status && /\p{L}/u.test(label)) return { id: null, label, effort, at: null }
+    }
   }
   return null
 }

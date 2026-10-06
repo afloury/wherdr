@@ -1634,7 +1634,7 @@ body.kb .composer { padding-bottom: 8px; }
 .model-pick.off:hover { background: transparent; color: var(--text-2); }
 .model-pick .model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-pick .model-effort { color: var(--dim); font-weight: 400; }
-.effort-pick { color: var(--dim); max-width: 100px; }
+.effort-pick { color: var(--dim); max-width: 130px; }
 .effort-pick:hover { color: var(--text); }
 .model-pick .model-caret { width: 13px; height: 13px; color: var(--dim); }
 .model-menu { min-width: 280px; max-height: min(60vh, 460px); }
