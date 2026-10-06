@@ -577,7 +577,8 @@ worktree. It is optional; with it installed, wherdr adds:
 - **Settings → Plugins → herdr-projects**: install status per machine, the `TASKS.md` convention,
   a template, the max threads per machine and the coordinator rules to copy.
 - **New project** from the plugin actions of an agent's menu, with the same machine and folder
-  picker as **New agent** (see [Herdr plugins](#herdr-plugins)).
+  picker as **New agent**, and the agent profiles of its coordinator and threads (see
+  [Herdr plugins](#herdr-plugins)).
 
 <p align="center">
   <img src="docs/screenshots/project-panel.png" alt="A coordinator with the Project panel open, and its project group with threads in the sidebar" width="900">
@@ -602,7 +603,13 @@ picks a folder: the machine (when the project is created from this machine, a re
 SSH machine is passed as `PATH@MACHINE`), a folder browser and recent folders. It suggests the
 root of the current space's Git repository (nothing outside a repository, never your home
 folder itself), offers the root when you pick a subfolder, and names the project after the
-repository.
+repository. It also asks which agent profile runs the **coordinator** and which one the
+**threads** start with: the profiles of the project's machine (`herdr-projects profile list`:
+yours and the signed-in built-ins such as Claude or omp) that the plugin allows for each role,
+with the plugin's defaults for new projects selected (or the first profile listed, when a default
+is not available there). The choice is written to the project's
+`PROJECT.md` (`coordinator_profile`, `thread_profile`); with a herdr-projects without profiles,
+the choice is not shown.
 With Docker, these commands write to the projects folder, so `docker-compose.yml` mounts
 `~/.herdr-projects` read-write. If you set another `root` in
 `~/.config/herdr-projects/config.toml`, mount that folder instead (same path on both sides);

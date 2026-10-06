@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { projectNameOk } from '#shared/projectsActions'
+import { projectNameOk, roleProfiles } from '#shared/projectsActions'
 
 const open = computed({ get: () => pluginFormState.open, set: (v) => { if (!v) closePluginForm() } })
 const action = computed(() => pluginFormState.action?.id || '')
@@ -34,6 +34,14 @@ function chooseRepo(d: string) {
 function useRoot() {
   if (f.repoRoot) repo.value = f.repoRoot
 }
+// Coordinator and threads profiles, among those the plugin allows (none
+// shown while loading, or without profiles: the plugin's defaults then apply).
+const profileRoles = computed(() => f.profiles
+  ? (['coordinator', 'thread'] as const).map(role => ({
+      role, list: roleProfiles(f.profiles!, role).list,
+      label: role === 'coordinator' ? tl('Coordinator', 'Coordinateur') : tl('Threads', 'Threads'),
+    })).filter(r => r.list.length)
+  : [])
 </script>
 
 <template>
@@ -91,6 +99,17 @@ function useRoot() {
         </div>
         <p v-else-if="f.repo && f.repoState === 'none'" class="repo-state none"><UIcon name="i-lucide-triangle-alert" />{{ tl('Not a Git repository: choose one, or clear the field.', 'Pas un dépôt Git : choisissez-en un, ou videz le champ.') }}</p>
         <p v-if="!f.repo || f.repoState === 'repo'" class="plugin-input-hint">{{ f.repo ? tl('The project’s threads will work in worktrees of this repository.', 'Les threads du projet travailleront dans des worktrees de ce dépôt.') : tl('Without a repository, each thread runs in a tab of the project.', 'Sans dépôt, chaque thread travaille dans un onglet du projet.') }}</p>
+        <p v-if="f.profilesLoading" class="repo-state"><span class="spinner" />{{ tl('Reading agent profiles…', 'Lecture des profils d’agent…') }}</p>
+        <template v-for="r in profileRoles" :key="r.role">
+          <label class="plugin-input-label">{{ r.label }}</label>
+          <div class="segmented project-profiles" :data-role="r.role" :style="{ '--segment-count': r.list.length }">
+            <!-- A built-in is named after its harness; a profile of the user's, by its name. -->
+            <button v-for="p in r.list" :key="p.name" type="button" :class="{ on: p.name === f[r.role] }" :data-profile="p.name" :title="`${p.name} · ${p.agent}`" @click="f[r.role] = p.name">
+              <AgentAvatar :agent="p.agent" /><span>{{ p.name === p.agent ? kindLabel(p.agent) : p.name }}</span>
+            </button>
+          </div>
+        </template>
+        <p v-if="profileRoles.length" class="plugin-input-hint">{{ tl('Saved in the project’s PROJECT.md. The coordinator can still start a thread with another allowed profile.', 'Enregistrés dans le PROJECT.md du projet. Le coordinateur peut toujours lancer un thread avec un autre profil autorisé.') }}</p>
       </template>
     </form>
 

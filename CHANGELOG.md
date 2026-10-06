@@ -23,6 +23,10 @@ All notable changes to this project are documented here. The format follows
   Chromium and WebKit, at iPhone and desktop sizes, against a fake Herdr server.
 - GitHub Actions CI on pushes and pull requests to `main`: unit, component and end-to-end tests,
   type check and leak check.
+- herdr-projects New project: choose the agent profile of the coordinator and of the threads
+  (Claude, omp, your own profiles…) among those the plugin allows on the project's machine,
+  with the plugin's defaults for new projects selected, names shown as written. Written to the
+  project's `PROJECT.md`.
 
 ### Changed
 

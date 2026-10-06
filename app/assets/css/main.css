@@ -1850,6 +1850,8 @@ body.kb .composer { padding-bottom: 8px; }
 .segmented.machine-seg button.connecting .seg-dot { background: var(--ochre); animation: pulse 1.2s ease-in-out infinite; }
 .segmented.machine-seg button.offline .seg-dot { background: var(--rose); }
 .segmented.machine-seg button:disabled { opacity: .45; cursor: not-allowed; }
+/* Agent profiles ("New project" sheet): names are identifiers, shown as written. */
+.segmented.project-profiles button { text-transform: none; letter-spacing: .02em; }
 
 .dir-pick {
   width: 100%; display: flex; align-items: center; gap: 10px; text-align: left;

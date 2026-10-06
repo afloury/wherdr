@@ -13,7 +13,7 @@ import { HerdrError, herdrOn, sleep } from './herdr'
 import { findPane } from './state'
 import { isGitRepo, machineFor, underHome } from './actions'
 import { ACTION_ID_RE, PLUGIN_ID_RE, REMOTE_PROJECTS_SCRIPT, type RawPlugin, type RawPluginAction, type RawPluginLog, actionContext, logResult, normalizeActions, outputTail, stripAnsi } from './pluginPolicy'
-import { PROJECT_INPUTS, cleanProjectInput, projectCommandArgs, readOnlyMessage, repoArgument, setupHeader, tickerRunning } from '../../shared/projectsActions'
+import { PROJECT_INPUTS, type ProfileChoices, cleanProjectInput, parseProfileList, projectCommandArgs, readOnlyMessage, repoArgument, setupHeader, tickerRunning } from '../../shared/projectsActions'
 import { fmt } from '../../shared/message'
 
 // List kept for a few seconds per machine (the menu asks again on every opening).
@@ -42,13 +42,14 @@ export function pluginInputFields(plugin: string, action: string): string[] {
 // A plugin command rather than its popup: Herdr publishes no read or input
 // stream for popups. argv and machine are always explicit.
 type Machine = ReturnType<typeof machineFor>
-async function runProjects(m: Machine, bin: string, args: string[]): Promise<{ code: number, stdout: string, stderr: string }> {
+async function runProjects(m: Machine, bin: string, args: string[], timeoutMs = 60000): Promise<{ code: number, stdout: string, stderr: string }> {
   if (m.exec) {
-    const r = await m.exec(REMOTE_PROJECTS_SCRIPT, [(m as { bin?: string }).bin || 'herdr', bin, ...args], { timeoutMs: 60000 })
+    const herdrBin = 'bin' in m && typeof m.bin === 'string' && m.bin ? m.bin : 'herdr'
+    const r = await m.exec(REMOTE_PROJECTS_SCRIPT, [herdrBin, bin, ...args], { timeoutMs })
     return { code: r.code ?? 1, stdout: r.stdout.toString('utf8').trim(), stderr: r.stderr.trim() }
   }
   return new Promise(resolve => execFile(bin, args, {
-    env: { ...HERDR_CHILD_ENV, HERDR_BIN_PATH: HERDR_BIN }, timeout: 60000, maxBuffer: 1024 * 1024,
+    env: { ...HERDR_CHILD_ENV, HERDR_BIN_PATH: HERDR_BIN }, timeout: timeoutMs, maxBuffer: 1024 * 1024,
   }, (err, stdout, stderr) => resolve({
     code: err ? (typeof err.code === 'number' ? err.code : 1) : 0,
     stdout: String(stdout).trim(), stderr: String(stderr || (err && !stdout ? err.message : '')).trim(),
@@ -111,6 +112,15 @@ async function projectsDoctor(m: Machine): Promise<PluginActionResult> {
     output: outputTail(full), full,
     setup: setupHeader({ version: version && version.code === 0 ? version.stdout : null, binary: bin, home }),
   }
+}
+
+// "New project" profile choices on the project's machine (`profile list`),
+// read while the sheet is open: short timeout. null: a plugin without
+// profiles, or an unreadable list.
+export async function projectProfiles(machineKey: unknown): Promise<ProfileChoices | null> {
+  const m = machineFor(machineKey)
+  const r = await runProjects(m, await projectsBin(m), ['profile', 'list'], 10000)
+  return r.code === 0 ? parseProfileList(stripAnsi(r.stdout)) : null
 }
 
 export async function invokePluginAction(body: { machine?: unknown, pane_id?: unknown, plugin?: unknown, action?: unknown, input?: unknown, lang?: unknown }): Promise<PluginActionResult> {

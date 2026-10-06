@@ -2,7 +2,7 @@
 // tab / pane actions, run with the agent's pane) and the machine's menu
 // (global actions). List kept per machine, re-read at most every 30 s.
 import type { ChatResponse, Pane, PluginAction, PluginActionList, PluginActionResult } from '#shared/types'
-import { PROJECT_REQUIRED, type RepoState, conversationEmpty, projectNameOk, repoState, suggestedProjectName } from '#shared/projectsActions'
+import { PROJECT_REQUIRED, type ProfileChoices, type RepoState, conversationEmpty, projectNameOk, repoState, roleProfiles, suggestedProjectName } from '#shared/projectsActions'
 
 const REFRESH_MS = 30000
 export const pluginActions = ref<Record<string, PluginAction[]>>({})
@@ -41,16 +41,21 @@ export const pluginFormState = reactive<{
   machine: string, nameAuto: boolean, repoState: 'idle' | 'checking' | RepoState, repoRoot: string,
   // Adoption: pane conversation without a message (true), with (false), unknown (null).
   empty: boolean | null, busy: boolean,
+  // "New project": agent profiles of the project's machine (null: none to
+  // choose from), being read, and the ones chosen for its coordinator and threads.
+  profiles: ProfileChoices | null, profilesLoading: boolean, coordinator: string, thread: string,
 }>({
   open: false, action: null, target: null, name: '', goal: '', task: '', slug: '', repo: '',
   machine: '', nameAuto: true, repoState: 'idle', repoRoot: '', empty: null, busy: false,
+  profiles: null, profilesLoading: false, coordinator: '', thread: '',
 })
 export function closePluginForm() { if (!pluginFormState.busy) pluginFormState.open = false }
 // Machine where the herdr-projects command runs (the project's).
 export const pluginTargetMachine = (target: Target | null) => (!target ? '' : 'pane' in target ? target.pane.machine || '' : target.machine)
 
 // Fields to fill in before "Run"; valid project name; chosen repository
-// checked (a Git repository, not a subfolder nor HOME).
+// checked (a Git repository, not a subfolder nor HOME); profiles read (Run
+// would otherwise create the project with the plugin's defaults).
 export function pluginFormValid(): boolean {
   const f = pluginFormState
   const id = f.action?.id || ''
@@ -58,6 +63,7 @@ export function pluginFormValid(): boolean {
   const s = f as unknown as Record<string, string>
   if (!need.every(k => String(s[k] || '').trim())) return false
   if ((id === 'new' || id === 'adopt-workspace') && !projectNameOk(f.name)) return false
+  if (id === 'new' && f.profilesLoading) return false
   return id !== 'new' || !f.repo.trim() || f.repoState === 'repo'
 }
 
@@ -97,7 +103,11 @@ export async function submitPluginForm() {
   if (!action || !target || pluginFormState.busy || !pluginFormValid()) return
   const f = pluginFormState
   const input: Record<string, string> = action.id === 'new'
-    ? { name: f.name.trim(), goal: f.goal.trim(), repo: f.repo.trim(), ...(f.repo.trim() ? { machine: f.machine } : {}) }
+    ? {
+        name: f.name.trim(), goal: f.goal.trim(), repo: f.repo.trim(), ...(f.repo.trim() ? { machine: f.machine } : {}),
+        ...(f.profiles && f.coordinator ? { coordinatorProfile: f.coordinator } : {}),
+        ...(f.profiles && f.thread ? { threadProfile: f.thread } : {}),
+      }
     : action.id === 'adopt-workspace'
       ? { name: f.name.trim(), goal: f.goal.trim(), task: f.task.trim() }
       : { slug: f.slug.trim() }
@@ -121,7 +131,29 @@ export function switchToNewProject() {
   // name taken from the repository as long as the user has not typed one.
   loadConfig()
   checkPluginRepo()
-  if (pluginFormState.target) prepareForm(pluginFormState.target, 'new')
+  if (pluginFormState.target) {
+    loadProjectProfiles(pluginFormState.target)
+    prepareForm(pluginFormState.target, 'new')
+  }
+}
+
+// "New project": profiles of the project's machine, the plugin's defaults for
+// new projects chosen. No choice shown if the plugin has none or cannot be read:
+// the project then gets the plugin's defaults.
+let profilesLoad = 0
+async function loadProjectProfiles(target: Target) {
+  const f = pluginFormState
+  const n = ++profilesLoad
+  Object.assign(f, { profiles: null, profilesLoading: true, coordinator: '', thread: '' })
+  const r = await api<{ choices: ProfileChoices | null }>(`/api/plugins/profiles?machine=${encodeURIComponent(pluginTargetMachine(target))}`).catch(() => null)
+  if (n !== profilesLoad) return
+  f.profilesLoading = false
+  if (!r?.choices) return
+  Object.assign(f, {
+    profiles: r.choices,
+    coordinator: roleProfiles(r.choices, 'coordinator').chosen,
+    thread: roleProfiles(r.choices, 'thread').chosen,
+  })
 }
 
 // Result that stays on screen: "Check setup" (header and full output) and
@@ -177,7 +209,10 @@ async function runPluginAction(a: PluginAction, target: Target) {
       slug: 'pane' in target ? target.pane.project || '' : '',
       open: true,
     })
-    if (a.id === 'new') loadConfig()
+    if (a.id === 'new') {
+      loadConfig()
+      loadProjectProfiles(target)
+    }
     prepareForm(target, a.id)
     return
   }

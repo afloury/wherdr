@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanProjectInput, conversationEmpty, doctorLevel, goalWithTask, projectCommandArgs, setupHeader } from '../shared/projectsActions'
+import { cleanProjectInput, conversationEmpty, doctorLevel, goalWithTask, parseProfileList, projectCommandArgs, roleProfiles, setupHeader } from '../shared/projectsActions'
 
 describe('herdr-projects : saisies et arguments', () => {
   it('requires a name, the goal staying optional, for adoption and "New project"', () => {
@@ -61,6 +61,72 @@ describe('herdr-projects : saisies et arguments', () => {
     expect(projectCommandArgs('open', { slug: 'demo' }, { session: 'hwtest' })).toEqual(['open', 'demo', '--session', 'hwtest'])
     expect(projectCommandArgs('pause', { slug: 'demo' }, { session: 'hwtest' })).toEqual(['pause', 'demo'])
     expect(projectCommandArgs('doctor', {}, { session: 'default' })).toEqual(['doctor'])
+  })
+
+  it('passes the chosen profiles to new, and refuses a profile read as an option', () => {
+    const input = cleanProjectInput('new', { name: 'Demo', coordinatorProfile: 'omp', threadProfile: 'codex-fast' })!
+    expect(projectCommandArgs('new', input, { session: 'default' }))
+      .toEqual(['new', 'Demo', '--coordinator-profile', 'omp', '--thread-profile', 'codex-fast'])
+    expect(cleanProjectInput('new', { name: 'Demo', coordinatorProfile: '' })).toEqual({ name: 'Demo' })
+    expect(cleanProjectInput('new', { name: 'Demo', coordinatorProfile: '--yolo' })).toBeNull()
+    expect(cleanProjectInput('new', { name: 'Demo', threadProfile: '.hidden' })).toBeNull()
+    expect(cleanProjectInput('new', { name: 'Demo', threadProfile: 'a/b' })).toBeNull()
+    expect(cleanProjectInput('new', { name: 'Demo', threadProfile: 'x'.repeat(41) })).toBeNull()
+  })
+})
+
+describe('herdr-projects profiles for "New project"', () => {
+  const list = (defaults: string, threads: string, coordinator: string) => [
+    'Profiles (built-ins: the agent CLIs installed and signed in here: claude, omp):',
+    '  luna           omp · default model — Cheap tier',
+    '  a-very-long-profile-name codex · model gpt-5.5 · effort high',
+    '  claude         claude · default model  (built-in)',
+    '  omp            omp · default model  (built-in)',
+    '',
+    `Defaults for new projects: ${defaults}`,
+    `Allowed for threads in projects without their own list: ${threads}`,
+    `Allowed for the coordinator in projects without their own list: ${coordinator}`,
+    '',
+  ].join('\n')
+
+  it('reads the verbatim output of herdr-projects 0.2.34', () => {
+    const real = `Profiles (built-ins: the agent CLIs installed and signed in here: claude, omp, opencode):
+  claude         claude · default model  (built-in)
+  omp            omp · default model  (built-in)
+  opencode       opencode · default model  (built-in)
+
+Defaults for new projects: thread_profile = claude, coordinator_profile = claude
+Allowed for threads in projects without their own list: every profile
+Allowed for the coordinator in projects without their own list: every profile
+`
+    expect(parseProfileList(real)).toEqual({
+      profiles: [{ name: 'claude', agent: 'claude' }, { name: 'omp', agent: 'omp' }, { name: 'opencode', agent: 'opencode' }],
+      defaults: { thread: 'claude', coordinator: 'claude' },
+      allowed: { thread: null, coordinator: null },
+    })
+  })
+
+  it('reads the profiles with their harness, the defaults and the allow-lists', () => {
+    const c = parseProfileList(list('thread_profile = luna, coordinator_profile = claude', 'every profile', 'claude, omp'))!
+    expect(c.profiles).toEqual([
+      { name: 'luna', agent: 'omp' }, { name: 'a-very-long-profile-name', agent: 'codex' },
+      { name: 'claude', agent: 'claude' }, { name: 'omp', agent: 'omp' },
+    ])
+    expect(c.defaults).toEqual({ thread: 'luna', coordinator: 'claude' })
+    expect(c.allowed).toEqual({ thread: null, coordinator: ['claude', 'omp'] })
+    // An empty `[safety.default]` list prints as nothing: no profile allowed.
+    expect(parseProfileList(list('thread_profile = claude, coordinator_profile = claude', '', 'every profile'))!.allowed.thread).toEqual([])
+  })
+
+  it('no choice from a plugin without profiles', () => {
+    expect(parseProfileList('error: unrecognized subcommand \'profile\'\n')).toBeNull()
+    expect(parseProfileList('')).toBeNull()
+  })
+
+  it('offers the allowed profiles, the default chosen only when allowed', () => {
+    const c = parseProfileList(list('thread_profile = luna, coordinator_profile = claude', 'every profile', 'omp, luna'))!
+    expect(roleProfiles(c, 'thread')).toEqual({ list: c.profiles, chosen: 'luna' })
+    expect(roleProfiles(c, 'coordinator')).toEqual({ list: [{ name: 'luna', agent: 'omp' }, { name: 'omp', agent: 'omp' }], chosen: 'luna' })
   })
 })
 

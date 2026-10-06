@@ -1,11 +1,12 @@
 // herdr-projects actions run from wherdr on the command line: expected
 // inputs and argv (pure functions, tested in tests/projectsActions.test.ts).
-// Options checked against herdr-projects 0.2.30 (`<command> --help`):
+// Options checked against herdr-projects 0.2.34 (`<command> --help`):
 //  - adopt-workspace --name --pane --workspace-cwd --goal --session (no option
 //    for the current task: it joins the goal);
 //  - new <name> --goal --repo <PATH[@MACHINE]> (MACHINE: id or label of a
-//    machine from `herdr machine list`, letters, digits, "- _ ." only);
-//  - open / pause / resume <slug>, doctor --session.
+//    machine from `herdr machine list`, letters, digits, "- _ ." only)
+//    --coordinator-profile --thread-profile <NAME>;
+//  - open / pause / resume <slug>, doctor --session, profile list.
 import type { ChatResponse } from './types'
 import { fmt } from './message'
 
@@ -15,14 +16,16 @@ export const PROJECT_INPUTS: Record<string, string[]> = {
 // Optional inputs, on top of the fields above. The goal is optional too:
 // herdr-projects does not require it and an ongoing project has no fixed course.
 // `machine`: wherdr key of the repository's machine (missing = the project's).
-export const PROJECT_OPTIONAL: Record<string, string[]> = { new: ['goal', 'repo', 'machine'], 'adopt-workspace': ['goal', 'task'] }
+// `coordinatorProfile` / `threadProfile`: profiles written into PROJECT.md
+// (missing = the plugin's defaults for new projects).
+export const PROJECT_OPTIONAL: Record<string, string[]> = { new: ['goal', 'repo', 'machine', 'coordinatorProfile', 'threadProfile'], 'adopt-workspace': ['goal', 'task'] }
 // Fields to fill in: name (or slug).
 export const PROJECT_REQUIRED: Record<string, string[]> = {
   new: ['name'], 'adopt-workspace': ['name'], open: ['slug'], pause: ['slug'], resume: ['slug'],
 }
-export const INPUT_MAX: Record<string, number> = { name: 120, slug: 120, goal: 400, task: 400, repo: 1024, machine: 64 }
+export const INPUT_MAX: Record<string, number> = { name: 120, slug: 120, goal: 400, task: 400, repo: 1024, machine: 64, coordinatorProfile: 40, threadProfile: 40 }
 
-export type ProjectInput = Partial<Record<'name' | 'goal' | 'task' | 'slug' | 'repo' | 'machine', string>>
+export type ProjectInput = Partial<Record<'name' | 'goal' | 'task' | 'slug' | 'repo' | 'machine' | 'coordinatorProfile' | 'threadProfile', string>>
 
 // Cleaned input, or null if a field is missing or too long.
 export function cleanProjectInput(action: string, raw: unknown): ProjectInput | null {
@@ -40,8 +43,9 @@ export function cleanProjectInput(action: string, raw: unknown): ProjectInput | 
     if ((key === 'name' || key === 'slug') && s.startsWith('-')) return null
     if (s) out[key as keyof ProjectInput] = s
   }
-  // The server applies the same name rule as the form.
+  // The server applies the same name rules as the form.
   if (out.name && !projectNameOk(out.name)) return null
+  if ((out.coordinatorProfile && !profileNameOk(out.coordinatorProfile)) || (out.threadProfile && !profileNameOk(out.threadProfile))) return null
   return (PROJECT_REQUIRED[action] || []).every(k => out[k as keyof ProjectInput]) ? out : null
 }
 
@@ -51,6 +55,57 @@ export function cleanProjectInput(action: string, raw: unknown): ProjectInput | 
 export function projectNameOk(name: string | null | undefined): boolean {
   const s = (name || '').trim()
   return Boolean(s) && !/[/\\]|\.\./.test(s) && /[a-z0-9]/i.test(s)
+}
+
+// Profile name accepted by herdr-projects (`validate_name`): letters, digits,
+// ".", "_" and "-", at most 40, never starting with "-" (an option) or ".".
+export function profileNameOk(name: string | null | undefined): boolean {
+  return /^(?![-.])[A-Za-z0-9._-]{1,40}$/.test(name || '')
+}
+
+// Agent profiles of a machine, from `herdr-projects profile list`: the ones it
+// can launch (the user's and the signed-in built-ins, each with its harness),
+// the defaults `new` writes into PROJECT.md, and the allow-lists of projects
+// without their own (null: every profile). null: a plugin without profiles.
+export type ProfileRole = 'coordinator' | 'thread'
+export interface ProjectProfile { name: string, agent: string }
+export interface ProfileChoices {
+  profiles: ProjectProfile[]
+  defaults: Record<ProfileRole, string>
+  allowed: Record<ProfileRole, string[] | null>
+}
+export function parseProfileList(text: string): ProfileChoices | null {
+  const lines = text.split('\n')
+  const head = lines.findIndex(l => l.startsWith('Profiles ('))
+  const defaults = /^Defaults for new projects: (.*)$/m.exec(text)?.[1] || ''
+  const thread = /\bthread_profile = ([^\s,]+)/.exec(defaults)?.[1]
+  const coordinator = /\bcoordinator_profile = ([^\s,]+)/.exec(defaults)?.[1]
+  if (head < 0 || !thread || !coordinator) return null
+  const profiles: ProjectProfile[] = []
+  // `  <name padded to 14> <harness> · <model>…`, up to the blank line.
+  for (const line of lines.slice(head + 1)) {
+    const m = /^ {2}(\S+) +(\S+)/.exec(line)
+    if (!m) break
+    if (profileNameOk(m[1])) profiles.push({ name: m[1]!, agent: m[2]! })
+  }
+  const allowed = (who: string): string[] | null => {
+    const v = new RegExp(`^Allowed for ${who} in projects without their own list: (.*)$`, 'm').exec(text)?.[1]?.trim() ?? 'every profile'
+    if (v === 'every profile') return null
+    return v === 'none' ? [] : v.split(',').map(s => s.trim()).filter(Boolean)
+  }
+  return {
+    profiles,
+    defaults: { thread, coordinator },
+    allowed: { thread: allowed('threads'), coordinator: allowed('the coordinator') },
+  }
+}
+
+// A role's choices in "New project": its allowed profiles, with the plugin's
+// default chosen when it is one of them, otherwise the first.
+export function roleProfiles(c: ProfileChoices, role: ProfileRole): { list: ProjectProfile[], chosen: string } {
+  const allow = c.allowed[role]
+  const list = allow ? c.profiles.filter(p => allow.includes(p.name)) : c.profiles
+  return { list, chosen: list.some(p => p.name === c.defaults[role]) ? c.defaults[role] : list[0]?.name || '' }
 }
 
 // Suggested name: "New project" takes the folder name of the chosen repository (nothing
@@ -114,7 +169,11 @@ export function projectCommandArgs(action: string, input: ProjectInput, ctx: Pro
     return ['adopt-workspace', '--name', input.name!, '--pane', ctx.pane, '--workspace-cwd', ctx.cwd,
       ...goalArg(goalWithTask(input.goal || '', input.task, ctx.lang)), ...session]
   }
-  if (action === 'new') return ['new', input.name!, ...goalArg(input.goal || ''), ...(input.repo ? ['--repo', input.repo] : [])]
+  if (action === 'new') {
+    return ['new', input.name!, ...goalArg(input.goal || ''), ...(input.repo ? ['--repo', input.repo] : []),
+      ...(input.coordinatorProfile ? ['--coordinator-profile', input.coordinatorProfile] : []),
+      ...(input.threadProfile ? ['--thread-profile', input.threadProfile] : [])]
+  }
   if (action === 'open') return ['open', input.slug!, ...session]
   if (action === 'doctor') return ['doctor', ...session]
   return [action, input.slug!]
