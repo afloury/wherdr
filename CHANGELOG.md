@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Settings › Conversation › Quoted replies is now a choice of how the field shows the quotes, per
+  device (computer and phone): "“>” lines" (plain text, default), "Tokens, native field" (the
+  plain field, its quote lines drawn as tokens: typing, dictation and autocorrect unchanged) or
+  "Tokens, rich field"; both token options are marked experimental. The preview shows the chosen
+  option; a former switch turned on keeps the rich field.
 - Chat: images an agent's tool returned (omp `read` of a PNG, a screenshot, Claude `Read`,
   Codex `view_image`) show as thumbnails under the action, even when the action block is
   folded, and open in the image viewer.

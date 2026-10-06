@@ -1986,7 +1986,10 @@ body.kb .composer { padding-bottom: 8px; }
   font: 500 10.5px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--muted);
 }
 .settings-group h3::before { content: ''; width: 18px; height: 1px; background: var(--line); }
-.settings-group h3 .exp-tag { padding: 3px 6px; border: 1px solid color-mix(in srgb, var(--ochre) 45%, var(--line)); letter-spacing: .12em; font-size: 9.5px; color: var(--ochre); }
+.exp-tag {
+  display: inline-block; margin-left: 8px; padding: 3px 6px; vertical-align: 1px; border: 1px solid color-mix(in srgb, var(--ochre) 45%, var(--line));
+  font: 500 9.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ochre);
+}
 .settings-hint { font-size: 13px; margin: -20px 2px 30px; }
 .settings-group .settings-hint { margin: 9px 2px 0; }
 /* Sub-section of a settings section shown only on a computer (Appearance › Desktop). */
@@ -2927,11 +2930,30 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .rb-token-text { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.3; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rb-token-x { flex: none; width: 26px; height: 24px; font-size: 11px; color: var(--dim); background: none; border: 0; cursor: pointer; }
 .rb-token-x:hover { color: var(--text); }
+/* "Native" mode (utils/quoteMirror.ts): the native field, its "> " lines drawn
+   as tokens by a mirror behind it. Nothing here may change a line's size. */
+.qm-host { position: relative; }
+.qm-on {
+  position: relative; z-index: 1; background: transparent !important;
+  color: transparent !important; -webkit-text-fill-color: transparent; caret-color: var(--text);
+}
+.qm-on::selection { background: color-mix(in srgb, var(--accent) 32%, transparent); -webkit-text-fill-color: transparent; }
+.qm-mirror { position: absolute; z-index: 0; margin: 0; overflow: hidden; pointer-events: none; color: var(--text); }
+.qm-q {
+  margin: 0 calc(-1 * var(--qm-pr)) 0 calc(-1 * var(--qm-pl)); padding: 0 var(--qm-pr) 0 var(--qm-pl);
+  color: var(--text-2); background: color-mix(in srgb, var(--accent) 9%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.qm-q.first { box-shadow: inset 2px 0 0 var(--accent), inset 0 1px 0 color-mix(in srgb, var(--accent) 22%, transparent); }
+.qm-q.last { box-shadow: inset 2px 0 0 var(--accent), inset 0 -1px 0 color-mix(in srgb, var(--accent) 22%, transparent); }
+.qm-q.first.last { box-shadow: inset 2px 0 0 var(--accent), inset 0 1px 0 color-mix(in srgb, var(--accent) 22%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--accent) 22%, transparent); }
+.qm-p { position: relative; color: transparent; }
+.qm-p::before { content: "↳"; position: absolute; left: 0; top: 0; color: var(--accent); font-family: var(--mono); font-size: .78em; }
+.qt-device { margin: 16px 2px 8px; font: 500 10.5px/1 var(--mono); letter-spacing: .13em; text-transform: uppercase; color: var(--muted); }
 /* Settings preview of quoted replies (components/QuoteTokensPreview.vue):
    one 10 s timeline shared by every piece; the static styles are the composed
    field (reduced motion). */
 .qt-preview { margin: 14px 0 0; border: 1px solid var(--line); background: var(--bg); --qt-d: 10s; }
-.qt-preview + .settings-toggle { margin-top: 14px; }
 .settings-lead { margin: 0 2px; font-size: 13.5px; line-height: 1.45; }
 .qt-preview figcaption {
   display: flex; align-items: center; height: 36px; padding: 0 14px; border-bottom: 1px solid var(--line);
@@ -2960,6 +2982,21 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 }
 .qt-tok b { font: 500 9.5px/1 var(--mono); color: var(--accent); }
 .qt-tok i { font-style: normal; font-size: 10px; color: var(--dim); margin-left: 4px; }
+/* Preview of the "lines" mode: the "> " text as typed, a chip above the field per quote. */
+.qt-preview[data-mode="lines"] .qt-tok { height: auto; padding: 0; border: 0; background: none; font-size: 12.5px; }
+.qt-preview[data-mode="lines"] .qt-tok b { font: inherit; color: var(--dim); }
+.qt-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 22px; margin-bottom: -4px; }
+.qt-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 6px 0 7px;
+  border: 1px solid var(--line); border-left: 2px solid var(--accent); background: var(--surface);
+  font-size: 11.5px; color: var(--text-2); white-space: nowrap;
+}
+.qt-chip i { font-style: normal; font-size: 10px; color: var(--dim); }
+/* Preview of the "native" mode: a band across the field, no ✕. */
+.qt-preview[data-mode="native"] .qt-tok {
+  align-self: stretch; max-width: none; margin: 0 -44px 0 -8px; padding: 0 44px 0 8px; border: 0;
+  background: color-mix(in srgb, var(--accent) 9%, transparent); box-shadow: inset 2px 0 0 var(--accent);
+}
 .qt-send {
   position: absolute; right: 7px; bottom: 7px; display: grid; place-items: center; width: 26px; height: 26px;
   font: 600 14px/1 var(--mono); color: var(--bg); background: var(--text);
@@ -2969,6 +3006,8 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
   .qt-tag.two { animation: qt-tag-two var(--qt-d) infinite; }
   .qt-tok.one { animation: qt-tok-one var(--qt-d) infinite; }
   .qt-tok.two { animation: qt-tok-two var(--qt-d) infinite; }
+  .qt-chip.one { animation: qt-tok-one var(--qt-d) infinite; }
+  .qt-chip.two { animation: qt-tok-two var(--qt-d) infinite; }
   .qt-ans.one { animation: qt-ans-one var(--qt-d) infinite; }
   .qt-ans.two { animation: qt-ans-two var(--qt-d) infinite; }
   .qt-ph { animation: qt-ph var(--qt-d) infinite; }

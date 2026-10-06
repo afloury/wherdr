@@ -18,7 +18,7 @@ import { readQuotaDisplay } from '~/utils/quotas'
 import { readShowShells } from '~/utils/terminalVisibility'
 import { paneFallback } from '~/utils/viewMode'
 import { menuAsSheet } from '~/utils/menuRoute'
-import { quoteTokensOn } from '~/utils/quoteTokens'
+import { readQuoteMode } from '~/utils/quoteTokens'
 import type { QuotaDisplay } from '~/utils/quotas'
 import type { ContentWidth } from '~/utils/contentWidth'
 
@@ -145,13 +145,14 @@ if (import.meta.client) {
 export const typingSpeed = computed(() => effectiveTypingSpeed(typewriterSpeed.value, reducedMotion.value))
 export const typewriterActive = computed(() => typingSpeed.value !== 'off')
 export const encryptedActive = computed(() => encryptedTextActive(typewriterSpeed.value, encryptedText.value, reducedMotion.value))
-// Quoted replies as tokens in the field (utils/quoteTokens.ts), experimental:
-// one switch for the computer, one for the phone, both off by default.
-export const quoteTokensComputer = ref(ls.get('quoteTokensComputer') === '1')
-watch(quoteTokensComputer, v => ls.set('quoteTokensComputer', v ? '1' : '0'))
-export const quoteTokensPhone = ref(ls.get('quoteTokensPhone') === '1')
-watch(quoteTokensPhone, v => ls.set('quoteTokensPhone', v ? '1' : '0'))
-export const quoteTokensActive = computed(() => quoteTokensOn({ coarse: coarse.value, onComputer: quoteTokensComputer.value, onPhone: quoteTokensPhone.value }))
+// Quoted replies (utils/quoteTokens.ts), experimental: one mode for the
+// computer, one for the phone ("phone" = touch screen as main pointer, the
+// criterion of the rest of the app), plain "> " lines by default.
+export const quoteModeComputer = ref(readQuoteMode(ls.get('quoteModeComputer'), ls.get('quoteTokensComputer')))
+watch(quoteModeComputer, v => ls.set('quoteModeComputer', v))
+export const quoteModePhone = ref(readQuoteMode(ls.get('quoteModePhone'), ls.get('quoteTokensPhone')))
+watch(quoteModePhone, v => ls.set('quoteModePhone', v))
+export const quoteMode = computed(() => (coarse.value ? quoteModePhone.value : quoteModeComputer.value))
 // Account quotas (read by QuotaStrip, also shown in the machine headers).
 export const homeQuotas = ref<Quotas | null>(null)
 export const fontSize = ref(Number(ls.get('fontSize')) || 12)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { enterAction, fieldItems, quoteTokensOn, readField, type FieldNode } from '../app/utils/quoteTokens'
+import { enterAction, fieldItems, readField, readQuoteMode, type FieldNode } from '../app/utils/quoteTokens'
 
 // Minimal DOM: elements, text nodes and tokens (data-q).
 type Fake = FieldNode & { q?: string }
@@ -62,11 +62,16 @@ describe('Enter in the token field', () => {
   })
 })
 
-describe('quote tokens on this device', () => {
-  it('follows the computer switch with a mouse, the phone switch on a touch screen', () => {
-    expect(quoteTokensOn({ coarse: false, onComputer: true, onPhone: false })).toBe(true)
-    expect(quoteTokensOn({ coarse: true, onComputer: true, onPhone: false })).toBe(false)
-    expect(quoteTokensOn({ coarse: true, onComputer: false, onPhone: true })).toBe(true)
-    expect(quoteTokensOn({ coarse: false, onComputer: false, onPhone: true })).toBe(false)
+describe('quote mode saved on this device', () => {
+  it('keeps a saved mode', () => {
+    expect(readQuoteMode('native', '1')).toBe('native')
+    expect(readQuoteMode('lines', '1')).toBe('lines')
+    expect(readQuoteMode('rich', null)).toBe('rich')
+  })
+  it('turns the former switch on into the rich field, anything else into "> " lines', () => {
+    expect(readQuoteMode(null, '1')).toBe('rich')
+    expect(readQuoteMode(null, '0')).toBe('lines')
+    expect(readQuoteMode(null, null)).toBe('lines')
+    expect(readQuoteMode('tokens', '0')).toBe('lines')
   })
 })
