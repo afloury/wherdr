@@ -148,6 +148,10 @@ export function writeScenario(home) {
     ]),
     msg({ role: 'assistant', content: [{ type: 'text', text: 'The login button is clipped.' }], stopReason: 'stop' }),
   ])
+  // "/" menu: a project skill and a project command for Claude, a project command for omp.
+  write(path.join(api, '.claude/skills/daily-notes/SKILL.md'), '---\nname: daily-notes\ndescription: Write the daily notes of the project\n---\nSteps.\n')
+  write(path.join(api, '.claude/commands/daily-check.md'), '# Check the daily build\n')
+  write(path.join(demo, '.omp/commands/daily-sync.md'), '---\ndescription: Sync the daily branch\n---\nSync.\n')
 
   return [
     { id: 'w1', label: 'acme-api', panes: [{ id: CLAUDE_PANE, agent: 'claude', status: 'idle', cwd: api, session: claudeSid }] },

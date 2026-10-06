@@ -42,6 +42,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- "/" menu of the input field: on an SSH machine, the skills and commands (user and project)
+  are read in one SSH session instead of one per folder and file, a refused session is retried
+  once, and if they still cannot be read the built-in commands show (asked again on the next
+  "/") instead of no menu at all.
+
 - omp: a new conversation (no message yet) now shows its model and effort in the field, read
   from omp's status line, and both can be changed from there. After a turn, "auto" shows the
   level omp picked ("auto · low", and "This turn: low" in the menu) instead of a bare "auto".
