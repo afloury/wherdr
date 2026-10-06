@@ -5,6 +5,7 @@ import { startRegistration } from '@simplewebauthn/browser'
 import type { AuthStatus } from '#shared/types'
 import type { ThemeDef } from '~/utils/themes'
 import type { TypingSpeed } from '~/utils/typewriter'
+import type { QuoteMode } from '~/utils/quoteTokens'
 import pkg from '../../package.json'
 import { SETTINGS_SECTIONS, settingsBack } from '~/utils/settingsNav'
 import type { SettingsSection } from '~/utils/settingsNav'
@@ -74,8 +75,18 @@ const quotasOn = showQuotas
 const compactOn = compactList
 const autoReorderOn = autoReorderReady
 const encryptedOn = encryptedText
-const tokensComputerOn = quoteTokensComputer
-const tokensPhoneOn = quoteTokensPhone
+// Quoted replies: one mode per device kind; the preview shows the last one
+// picked, at first this device's.
+const quoteComputer = quoteModeComputer
+const quotePhone = quoteModePhone
+const quotePreview = ref<QuoteMode>(quoteMode.value)
+watch(quoteComputer, (m) => { quotePreview.value = m })
+watch(quotePhone, (m) => { quotePreview.value = m })
+const quoteItems = computed(() => [
+  { label: tl('“>” lines', 'Lignes « > »'), description: tl('The plain field: each quote stays “> ” lines, a chip above removes it. Default.', 'Le champ simple : chaque citation reste en lignes « > », une puce au-dessus la retire. Par défaut.'), value: 'lines' },
+  { label: tl('Tokens, native field', 'Jetons, champ natif'), description: tl('The same plain field, each “> ” line drawn as a token. Typing, dictation and autocorrect unchanged.', 'Le même champ simple, chaque ligne « > » dessinée en jeton. Saisie, dictée et correction auto inchangées.'), value: 'native' },
+  { label: tl('Tokens, rich field', 'Jetons, champ riche'), description: tl('A rich field, each quote one compact token with ✕. On iOS, moving the caret around the tokens is unreliable.', 'Un champ riche, chaque citation un jeton compact avec ✕. Sur iOS, déplacer le curseur autour des jetons est peu fiable.'), value: 'rich' },
+])
 // Forced off if the system reduces motion: shown disabled.
 const typewriter = computed({ get: () => typingSpeed.value, set: (v: TypingSpeed) => { typewriterSpeed.value = v } })
 const typingItems = computed(() => [
@@ -448,17 +459,13 @@ onMounted(() => {
           </div>
           <div class="settings-group">
             <h3>{{ tl('Quoted replies', 'Réponses citées') }} <span class="exp-tag">{{ tl('Experimental', 'Expérimental') }}</span></h3>
-            <p class="muted settings-lead">{{ tl('Answer several questions or passages of an agent in one message: ↳ Reply quotes them in the field, each quote a compact token above its answer. Still has bugs, so it is off by default.', 'Réponds à plusieurs questions ou passages d’un agent dans un seul message : ↳ Répondre les cite dans le champ, chaque citation en jeton compact au-dessus de sa réponse. Encore buggé, donc désactivé par défaut.') }}</p>
-            <QuoteTokensPreview v-if="activeSection === 'conversation'" />
-            <label class="settings-toggle">
-              <span><b>{{ tl('On a computer', 'Sur ordinateur') }}</b><small>{{ tl('Off by default.', 'Désactivé par défaut.') }}</small></span>
-              <USwitch v-model="tokensComputerOn" color="success" size="xl" />
-            </label>
-            <label class="settings-toggle">
-              <span><b>{{ tl('On a phone', 'Sur téléphone') }}</b><small>{{ tl('Off by default: on iOS, moving the caret around the quotes is unreliable (a known limit of rich fields in Safari). Turn it on knowingly.', 'Désactivé par défaut : sur iOS, déplacer le curseur autour des citations est peu fiable (limite connue des champs riches dans Safari). À activer en connaissance de cause.') }}</small></span>
-              <USwitch v-model="tokensPhoneOn" color="success" size="xl" />
-            </label>
-            <p class="muted settings-hint">{{ tl('Off: the quotes stay “> ” lines in the plain field, with a chip above to remove each. Saved on this device.', 'Désactivé : les citations restent des lignes « > » dans le champ simple, avec une puce au-dessus pour retirer chacune. Enregistré sur cet appareil.') }}</p>
+            <p class="muted settings-lead">{{ tl('Answer several questions or passages of an agent in one message: ↳ Reply quotes them in the field, each above its answer. Choose how the field shows the quotes; the message sent is the same.', 'Réponds à plusieurs questions ou passages d’un agent dans un seul message : ↳ Répondre les cite dans le champ, chacune au-dessus de sa réponse. Choisis comment le champ affiche les citations ; le message envoyé est le même.') }}</p>
+            <QuoteTokensPreview v-if="activeSection === 'conversation'" :mode="quotePreview" />
+            <h4 class="qt-device">{{ tl('On a computer', 'Sur ordinateur') }}</h4>
+            <URadioGroup v-model="quoteComputer" :items="quoteItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <h4 class="qt-device">{{ tl('On a phone', 'Sur téléphone') }}</h4>
+            <URadioGroup v-model="quotePhone" :items="quoteItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
           </div>
         </div>
 

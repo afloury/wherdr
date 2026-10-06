@@ -9,6 +9,7 @@ import type { Pane, QueuedMessage, SlashCommand } from '#shared/types'
 import type { DraftAtt } from '~/composables/useDraft'
 import { withReply } from '#shared/replyQuote'
 import { quotesIn, removeQuote } from '~/utils/questionReply'
+import { attachQuoteMirror } from '~/utils/quoteMirror'
 import { isAgentCommand } from '#shared/commandScreen'
 import { isSlashCommand } from '#shared/queuedMatch'
 import type { AttachKind } from '#shared/attachments'
@@ -62,16 +63,27 @@ const replyTo = toRef(draft, 'reply')
 // Questions and passages quoted in the text ("> " lines, see utils/questionReply.ts):
 // one chip each above the field, to remove it.
 const quotes = computed(() => quotesIn(text.value))
-// Quotes as tokens (Settings › Conversation, utils/quoteTokens.ts): the rich
-// field replaces the plain one while the draft holds a quote. Not while the
-// plain field has the focus: a ">" typed there does not swap fields mid-word.
+// Quotes as tokens (Settings › Conversation, utils/quoteTokens.ts). "rich":
+// the rich field replaces the plain one while the draft holds a quote. Not
+// while the plain field has the focus: a ">" typed there does not swap fields
+// mid-word.
 const tokensRef = ref<{ focus: () => void, focusEnd: () => void, blur: () => void } | null>(null)
 const taFocused = ref(false)
-const tokensMode = computed(() => quoteTokensActive.value && quotes.value.length > 0 && !taFocused.value)
+const tokensMode = computed(() => quoteMode.value === 'rich' && quotes.value.length > 0 && !taFocused.value)
 // Last token removed while typing in the rich field: the caret goes on in the plain one.
 watch(tokensMode, (on, was) => {
   if (was && !on && document.activeElement?.closest('.rb-field')) nextTick(focusEnd)
 })
+// "native": the "> " lines of the plain field drawn as tokens by a mirror
+// behind it, while the text holds a quote.
+let mirror: ReturnType<typeof attachQuoteMirror> | null = null
+watch([() => quoteMode.value === 'native' && quotes.value.length > 0, ta], ([on, el]) => {
+  if (mirror && (!on || !el)) { mirror.destroy(); mirror = null }
+  if (on && el && !mirror) mirror = attachQuoteMirror(el)
+}, { immediate: true, flush: 'post' })
+// Text set from script (a quote added, a send): no input event, redraw once rendered.
+watch(text, () => nextTick(() => mirror?.render()), { flush: 'post' })
+onBeforeUnmount(() => { mirror?.destroy(); mirror = null })
 
 const canSend = computed(() => Boolean(text.value.trim() || attachments.value.length))
 const readOnly = computed(() => !eventsOpen.value || offlineView.value || paneStale(props.pane))

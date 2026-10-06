@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Settings › Conversation › Quoted replies (experimental) is now a choice per device, computer and
+  phone: "“>” lines" (plain field, default), "Tokens, native field" (the plain field, its quote
+  lines drawn as tokens: typing, dictation and autocorrect unchanged) or "Tokens, rich field".
+  The preview shows the chosen mode; a former switch turned on keeps the rich field.
 - Settings › Appearance › Desktop (computer only): Background "wherdr grid" (default) shows the
   website's dotted grid with light packets in the margins of the conversation; "herdr grid" keeps
   the flat line grid. Content width moved here from Settings › Desktop. Phones show no grid.

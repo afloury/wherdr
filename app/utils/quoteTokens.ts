@@ -1,16 +1,22 @@
-// Quotes as tokens in the message field (Settings › Conversation, "Quoted
-// replies"). The draft text stays the one of utils/questionReply.ts — each
-// quoted question or passage as "> " lines, its answer below — so sending,
-// the draft kept per conversation and the "Quoted" buttons do not change.
-// Only the field differs: a rich field (components/QuoteTokensField.vue)
-// where each run of "> " lines is one compact, non-editable token.
+// Quotes in the message field (Settings › Conversation, "Quoted replies").
+// The draft text stays the one of utils/questionReply.ts — each quoted
+// question or passage as "> " lines, its answer below — so sending, the draft
+// kept per conversation and the "Quoted" buttons do not change. Only the
+// field's drawing differs, by mode:
+//   lines:  the plain field, "> " lines as typed (default);
+//   native: the same native textarea, its "> " lines drawn as tokens by a
+//           mirror behind it (utils/quoteMirror.ts);
+//   rich:   a rich field (components/QuoteTokensField.vue) where each run of
+//           "> " lines is one compact, non-editable token.
 
-// On or off for this device: the computer and the phone have their own
-// switch. "Phone" = touch screen as main pointer (`pointer: coarse`), the
-// criterion of the rest of the app; on iOS, moving the caret around the
-// tokens is unreliable, so the phone's switch is off by default.
-export function quoteTokensOn(o: { coarse: boolean, onComputer: boolean, onPhone: boolean }): boolean {
-  return o.coarse ? o.onPhone : o.onComputer
+export const QUOTE_MODES = ['lines', 'native', 'rich'] as const
+export type QuoteMode = typeof QUOTE_MODES[number]
+
+// The saved mode of one device kind. Before the choice, a switch per device
+// (`legacy`, "1" = on) turned the rich field on: it keeps it.
+export function readQuoteMode(saved: string | null, legacy: string | null): QuoteMode {
+  if (QUOTE_MODES.includes(saved as QuoteMode)) return saved as QuoteMode
+  return legacy === '1' ? 'rich' : 'lines'
 }
 
 // What the field shows for a draft: a line of text, or a token for a run of
