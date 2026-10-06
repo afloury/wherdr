@@ -3,6 +3,7 @@
 // live demos in the hero (phone + desktop on one clock) and next to the
 // feature stories, and an install that types itself.
 import { AGENT_PROMPT, REPO } from '~/utils/site'
+import { DOCKER_COMMANDS, DOCKER_DEMO, INSTALL_COMMAND, MAC_COMMANDS, MAC_DEMO, ONE_COMMAND_DEMO } from '~/utils/installDemo'
 
 const stories = [
   {
@@ -219,9 +220,10 @@ const faq = [
             </div>
 
             <div v-show="tab === 'one'" id="panel-one" role="tabpanel" aria-labelledby="tab-one" class="panel">
-              <InstallTerminal />
+              <InstallCommand :command="INSTALL_COMMAND" />
+              <InstallTerminal :demo="ONE_COMMAND_DEMO" />
               <ol class="steps">
-                <li><b>Run it</b> as the user who runs Herdr. It writes <code>~/wherdr/docker-compose.yml</code> and <code>.env</code>, then <code>docker compose up -d</code>.</li>
+                <li><b>Run it</b> as the user who runs Herdr.</li>
                 <li><b>Open</b> <code>http://localhost:7683</code> on that machine.</li>
                 <li><b>Phone:</b> <code>tailscale serve --bg --https=7683 http://127.0.0.1:7683</code>, put the address in <code>APP_URL</code>, install the app from the browser and enable notifications.</li>
                 <li><b>Lock it:</b> Settings → Security → Enable passkey lock.</li>
@@ -234,20 +236,15 @@ const faq = [
             </div>
 
             <div v-show="tab === 'docker'" id="panel-docker" role="tabpanel" aria-labelledby="tab-docker" class="panel">
-              <pre class="code"><code><span class="c"># Linux, Docker Compose v2, Herdr running</span>
-git clone {{ REPO }}.git && cd wherdr
-cp .env.example .env            <span class="c"># PUID, PGID, APP_URL…</span>
-mkdir -p data "$HOME/.config/herdr" "$HOME/.local/state/herdr/client" \
-  "$HOME/.cache/herdr-web" "$HOME/.herdr-projects"
-docker compose up -d
-tailscale serve --bg --https=7683 http://127.0.0.1:7683</code></pre>
+              <InstallCommand :command="DOCKER_COMMANDS.join('\n')" what="commands" wrap />
+              <InstallTerminal :demo="DOCKER_DEMO" />
+              <p class="cell-text">On Linux, with Docker Compose v2 and Herdr running. Adjust <code>PUID</code>, <code>PGID</code> and <code>APP_URL</code> in <code>.env</code> if needed, then <code>docker compose up -d</code> again.</p>
             </div>
 
             <div v-show="tab === 'mac'" id="panel-mac" role="tabpanel" aria-labelledby="tab-mac" class="panel">
-              <pre class="code"><code><span class="c"># macOS or Linux, Node.js 22, Herdr running</span>
-git clone {{ REPO }}.git && cd wherdr
-npm ci && npm run build && npm start   <span class="c"># → http://localhost:7683</span></code></pre>
-              <p class="cell-text">Docker Desktop cannot reach Herdr's Unix socket on macOS, so wherdr runs natively there. Keep it running with launchd, tmux or your usual service manager.</p>
+              <InstallCommand :command="MAC_COMMANDS.join('\n')" what="commands" wrap />
+              <InstallTerminal :demo="MAC_DEMO" />
+              <p class="cell-text">On macOS (or Linux) with Node.js 22 and Herdr running. Docker Desktop cannot reach Herdr's Unix socket on macOS, so wherdr runs natively there. Keep it running with launchd, tmux or your usual service manager.</p>
             </div>
 
             <p class="install-foot">
@@ -366,9 +363,6 @@ npm ci && npm run build && npm start   <span class="c"># → http://localhost:76
 .steps li { counter-increment: s; position: relative; padding-left: 44px; color: var(--muted); }
 .steps li::before { content: counter(s, decimal-leading-zero); position: absolute; left: 0; top: 1px; font: 600 12px/1.9 var(--mono); color: var(--accent); }
 .steps b { color: var(--text); }
-.code { margin: 0; padding: 20px; overflow-x: auto; background: var(--bg-2); border: 1px solid var(--line); font: 13px/1.8 var(--mono); color: var(--text); }
-.code code { background: none; border: 0; padding: 0; font-size: inherit; }
-.code .c { color: var(--dim); }
 .install-foot { margin: 20px 0 0; color: var(--muted); font-size: 15px; }
 .install-foot a, .section-head a, .panel .cell-text a { color: var(--text); text-decoration-color: var(--accent); text-underline-offset: 3px; }
 

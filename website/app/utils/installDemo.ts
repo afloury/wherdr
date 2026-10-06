@@ -5,8 +5,25 @@ import { REPO } from './site'
 // InstallTerminal. Versions and the home folder are examples. `wait` is the
 // pause before the line shows, in ms (pulling the image takes a while).
 export type InstallLine = { kind: 'blank' | 'title' | 'step' | 'ok' | 'say' | 'strong' | 'dim', text: string, wait: number }
+// A command typed at `prompt`; `fast` types it quicker (ssh, short commands).
+export type CommandLine = { kind: 'cmd', prompt: string, text: string, wait: number, fast?: boolean }
+export type TermLine = InstallLine | CommandLine
+export type TermDemo = { title: string, lines: TermLine[] }
 
 export const INSTALL_COMMAND = 'curl -fsSL https://wherdr.dev/install | sh'
+
+// Commands to copy for the by-hand tabs, run as shown in their terminals.
+export const DOCKER_COMMANDS = [
+  `git clone ${REPO}.git && cd wherdr`,
+  'cp .env.example .env',
+  'mkdir -p data "$HOME/.config/herdr" "$HOME/.local/state/herdr/client" \\\n  "$HOME/.cache/herdr-web" "$HOME/.herdr-projects"',
+  'docker compose up -d',
+  'tailscale serve --bg --https=7683 http://127.0.0.1:7683',
+]
+export const MAC_COMMANDS = [
+  `git clone ${REPO}.git && cd wherdr`,
+  'npm ci && npm run build && npm start',
+]
 
 const HOME = '/home/you'
 const PORT = 7683
@@ -41,3 +58,52 @@ export const INSTALL_OUTPUT: InstallLine[] = [
   { kind: 'dim', text: `Update: cd ${HOME}/wherdr && docker compose pull && docker compose up -d`, wait: 60 },
   { kind: 'dim', text: `Docs:   ${REPO}#readme`, wait: 60 },
 ]
+
+// Linux tabs start from your laptop: a quick ssh, the server's greeting, then
+// the commands. Kept short so the ssh does not lengthen the demo.
+const SERVER = 'you@server:~$'
+const sshIn = (): TermLine[] => [
+  { kind: 'cmd', prompt: '$', text: 'ssh you@server', wait: 300, fast: true },
+  { kind: 'dim', text: 'Welcome to Ubuntu 24.04 LTS (GNU/Linux 6.8.0 aarch64)', wait: 250 },
+  { kind: 'blank', text: '', wait: 40 },
+]
+
+export const ONE_COMMAND_DEMO: TermDemo = {
+  title: 'you@server — ssh',
+  lines: [...sshIn(), { kind: 'cmd', prompt: SERVER, text: INSTALL_COMMAND, wait: 200 }, ...INSTALL_OUTPUT],
+}
+
+export const DOCKER_DEMO: TermDemo = {
+  title: 'you@server — ssh',
+  lines: [
+    ...sshIn(),
+    { kind: 'cmd', prompt: SERVER, text: DOCKER_COMMANDS[0]!, wait: 200 },
+    { kind: 'say', text: 'Cloning into \'wherdr\'...', wait: 300 },
+    { kind: 'cmd', prompt: 'you@server:~/wherdr$', text: DOCKER_COMMANDS[1]!, wait: 900, fast: true },
+    { kind: 'cmd', prompt: 'you@server:~/wherdr$', text: DOCKER_COMMANDS[2]!, wait: 300, fast: true },
+    { kind: 'cmd', prompt: 'you@server:~/wherdr$', text: DOCKER_COMMANDS[3]!, wait: 300, fast: true },
+    { kind: 'say', text: '[+] Running 2/2', wait: 1600 },
+    { kind: 'ok', text: 'Network wherdr_default  Created', wait: 200 },
+    { kind: 'ok', text: 'Container wherdr        Started', wait: 600 },
+    { kind: 'cmd', prompt: 'you@server:~/wherdr$', text: DOCKER_COMMANDS[4]!, wait: 300, fast: true },
+    { kind: 'say', text: 'Available within your tailnet:', wait: 700 },
+    { kind: 'blank', text: '', wait: 40 },
+    { kind: 'strong', text: `https://server.<tailnet>.ts.net:${PORT}/`, wait: 40 },
+    { kind: 'dim', text: `|-- proxy http://127.0.0.1:${PORT}`, wait: 40 },
+  ],
+}
+
+// macOS runs wherdr natively, on the Mac itself: no ssh.
+const MAC = 'you@mac ~ %'
+export const MAC_DEMO: TermDemo = {
+  title: 'you@mac — zsh',
+  lines: [
+    { kind: 'cmd', prompt: MAC, text: MAC_COMMANDS[0]!, wait: 300 },
+    { kind: 'say', text: 'Cloning into \'wherdr\'...', wait: 300 },
+    { kind: 'cmd', prompt: 'you@mac wherdr %', text: MAC_COMMANDS[1]!, wait: 900 },
+    { kind: 'say', text: 'added 812 packages in 41s', wait: 1800 },
+    { kind: 'say', text: '✔ Nuxt build complete', wait: 2000 },
+    { kind: 'blank', text: '', wait: 60 },
+    { kind: 'strong', text: `Listening on http://127.0.0.1:${PORT}`, wait: 500 },
+  ],
+}

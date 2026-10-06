@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// A one-line command (or an agent prompt), copied in one click.
+// A command (one line, or several joined by newlines) or an agent prompt, copied in one click.
 const props = withDefaults(defineProps<{ command?: string, prompt?: string, what?: string, wrap?: boolean }>(), {
   command: 'curl -fsSL https://wherdr.dev/install | sh',
   prompt: '$',
@@ -55,8 +55,8 @@ onBeforeUnmount(() => clearTimeout(timer))
   color: var(--text); white-space: nowrap; overflow-x: auto; scrollbar-width: none;
 }
 .text::-webkit-scrollbar { display: none; }
-/* Prose prompts wrap instead of scrolling; the prompt sign stays on the first line. */
-.multiline .text { white-space: normal; overflow-wrap: break-word; line-height: 1.6; }
+/* Prose prompts and multi-line commands wrap instead of scrolling; the prompt sign stays on the first line. */
+.multiline .text { white-space: pre-wrap; overflow-wrap: break-word; line-height: 1.6; }
 .multiline .prompt { place-items: start center; padding-top: 15px; line-height: 1.6; }
 .copy {
   display: inline-flex; align-items: center; gap: 8px; flex: none;
