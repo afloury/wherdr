@@ -8,6 +8,18 @@ import net from 'node:net'
 // Delay of agent.prompt, so the app's "sending…" state is observable.
 export const PROMPT_DELAY_MS = 1500
 
+// What an agent's pane shows: a real omp at rest has its input field ("╰─"
+// line) on screen, which the app checks before typing a message into it (it
+// holds messages while a dialog hides the field). Other panes: blank.
+const OMP_IDLE_SCREEN = [
+  '',
+  ' Ready when you are.',
+  '',
+  ' π > Opus > demo ▶─1%───────────────────────────────────────────────1M─',
+  '╰─ ',
+].join('\n')
+const screen = p => (p?.agent === 'omp' && p.status === 'idle' ? OMP_IDLE_SCREEN : '')
+
 // `workspaces`: [{ id, label, panes: [{ id, agent, status, cwd, session, transcript, reply }] }]
 // (`session`: the value Herdr's agent integration reports; `transcript`: the file
 // the fake agent appends to when it receives a prompt).
@@ -74,7 +86,7 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       if (!p) throw Object.assign(new Error(`No pane ${params.pane_id}`), { code: 'pane_not_found' })
       return { pane: snapshot().panes.find(x => x.pane_id === p.id) }
     },
-    'pane.read': params => ({ read: { pane_id: params.pane_id, source: params.source || 'visible', text: '' } }),
+    'pane.read': params => ({ read: { pane_id: params.pane_id, source: params.source || 'visible', text: screen(paneById(params.pane_id)) } }),
     'pane.process_info': (params) => {
       const p = paneById(params.pane_id)
       const procs = p?.agent ? [{ pid: 2001, name: p.agent, argv: [p.agent] }] : []

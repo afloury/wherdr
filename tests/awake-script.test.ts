@@ -31,6 +31,11 @@ async function gone(pid: number) {
   for (let i = 0; i < 50 && alive(pid); i++) await new Promise(r => setTimeout(r, 100))
   return !alive(pid)
 }
+// It may exit between the check and the kill (ESRCH): already stopped.
+function stop(pid: number) {
+  try { if (alive(pid)) process.kill(pid) }
+  catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ESRCH') throw e }
+}
 // The scripts read /proc (Linux) or `ps -p` (macOS): without either, we skip.
 const canInspect = existsSync(`/proc/${process.pid}/stat`)
   || Boolean(spawnSync('ps', ['-p', String(process.pid), '-o', 'args='], { encoding: 'utf8' }).stdout?.trim())
@@ -59,7 +64,7 @@ describe.skipIf(process.platform === 'win32' || !canInspect)('keep-awake control
   // A stopped caffeinate still writes "stop" to the log: wait for it
   // before deleting the folder (otherwise ENOTEMPTY on a loaded machine).
   afterEach(async () => {
-    for (const pid of spawned) if (alive(pid)) process.kill(pid)
+    for (const pid of spawned) stop(pid)
     for (const pid of spawned) await gone(pid)
     spawned = []
     extra = {}
@@ -175,7 +180,7 @@ describe.skipIf(process.platform !== 'linux' || !existsSync(`/proc/${process.pid
     extra = { AWAKE_PROC: join(root, 'no-proc'), LANG: 'fr_FR.UTF-8', TZ: 'Europe/Paris' }
   })
   afterEach(async () => {
-    for (const pid of spawned) if (alive(pid)) process.kill(pid)
+    for (const pid of spawned) stop(pid)
     for (const pid of spawned) await gone(pid)
     spawned = []
     extra = {}
