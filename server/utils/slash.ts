@@ -9,9 +9,13 @@
 //    ~/.agents that it also discovers), skills -> /skill:<name> (same folders,
 //    plus `skills.customDirectories` of ~/.omp/agent/config.yml), and the same
 //    in the project folder.
+//
+// On an SSH machine everything is read by one shell script (one session of
+// the shared connection, see machines.ts): one exec per folder and file was
+// slow and a single refused session dropped the whole list.
 import path from 'node:path'
 import type { SlashCommand } from '../../shared/types'
-import type { MachineFs } from './fsx'
+import type { MachineFs, ShellExec } from './fsx'
 import { CLAUDE_BUILTIN, CODEX_BUILTIN, OMP_BUILTIN } from './slashcatalog'
 
 const TTL = 5 * 60 * 1000
@@ -45,42 +49,123 @@ async function read(fs: MachineFs, f: string) {
   catch { return null }
 }
 
-// skills/<nom>/SKILL.md, et un niveau de plus (skills/synced/<compte>/<nom>/).
-async function readSkills(fs: MachineFs, root: string, out: SlashCommand[], prefix = '') {
-  const dirs: string[] = []
-  for (const a of await ls(fs, root)) {
-    dirs.push(path.join(root, a))
-    for (const b of await ls(fs, path.join(root, a))) {
-      if (b === 'SKILL.md') continue
-      dirs.push(path.join(root, a, b))
-      for (const c of await ls(fs, path.join(root, a, b))) if (c !== 'SKILL.md') dirs.push(path.join(root, a, b, c))
+// Where commands come from: `skills` = <dir>/<name>/SKILL.md up to two more
+// levels (skills/synced/<account>/<name>/); `commands` = <dir>/**.md, `depth`
+// subfolder levels giving "folder:command" names; `file` = one file.
+export interface SlashRoot { dir: string, kind: 'skills' | 'commands' | 'file', prefix?: string, depth?: number }
+// A file found under a root: its path relative to it ('' for a `file`) and its start.
+export interface SlashFile { root: number, rel: string, text: string }
+
+const HEAD = 16384
+
+async function collectLocal(fs: MachineFs, roots: SlashRoot[]): Promise<SlashFile[]> {
+  const out: SlashFile[] = []
+  for (let i = 0; i < roots.length; i++) {
+    const r = roots[i]!
+    if (r.kind === 'file') {
+      const text = await read(fs, r.dir)
+      if (text !== null) out.push({ root: i, rel: '', text })
+    } else if (r.kind === 'skills') {
+      const dirs: string[] = []
+      for (const a of await ls(fs, r.dir)) {
+        dirs.push(a)
+        for (const b of await ls(fs, path.join(r.dir, a))) {
+          if (b === 'SKILL.md') continue
+          dirs.push(path.join(a, b))
+          for (const c of await ls(fs, path.join(r.dir, a, b))) if (c !== 'SKILL.md') dirs.push(path.join(a, b, c))
+        }
+      }
+      const rels = dirs.map(d => path.join(d, 'SKILL.md'))
+      const st = rels.length ? await fs.statMany(rels.map(f => path.join(r.dir, f))).catch(() => []) : []
+      for (let j = 0; j < rels.length; j++) {
+        if (!st[j] || !st[j]!.isFile) continue
+        const text = await read(fs, path.join(r.dir, rels[j]!))
+        if (text !== null) out.push({ root: i, rel: rels[j]!, text })
+      }
+    } else {
+      const walk = async (rel: string, depth: number) => {
+        for (const n of await ls(fs, path.join(r.dir, rel))) {
+          const f = rel ? path.join(rel, n) : n
+          if (n.endsWith('.md')) {
+            const text = await read(fs, path.join(r.dir, f))
+            if (text !== null) out.push({ root: i, rel: f, text })
+          } else if (depth < (r.depth ?? 2) && !n.includes('.')) await walk(f, depth + 1)
+        }
+      }
+      await walk('', 0)
     }
   }
-  const files = dirs.map(d => path.join(d, 'SKILL.md'))
-  const st = files.length ? await fs.statMany(files) : []
-  for (let i = 0; i < files.length; i++) {
-    if (!st[i] || !st[i]!.isFile) continue
-    const text = await read(fs, files[i]!)
-    if (text === null) continue
-    const fm = frontmatter(text)
-    if (fm['user-invocable'] === 'false') continue
-    out.push({ name: prefix + (fm.name || path.basename(dirs[i]!)), desc: fm.description || '', hint: fm['argument-hint'] || undefined, source: 'skill' })
-  }
+  return out
 }
 
-// commands/**.md: subfolders give "folder:command" names.
-async function readCommands(fs: MachineFs, root: string, out: SlashCommand[], prefix = '', depth = 0) {
-  for (const n of await ls(fs, root)) {
-    const f = path.join(root, n)
-    if (n.endsWith('.md')) {
-      const text = await read(fs, f)
-      if (text === null) continue
-      const fm = frontmatter(text)
-      out.push({ name: prefix + n.slice(0, -3), desc: fm.description || firstLine(text), hint: fm['argument-hint'] || undefined, source: 'command' })
-    } else if (depth < 2 && !n.includes('.')) {
-      await readCommands(fs, f, out, `${prefix}${n}:`, depth + 1)
+// Arguments: pairs <kind> <dir>. One record per file found:
+// RS <root index> US <relative path> US <first bytes>.
+export const SLASH_SCRIPT = `i=0
+while [ $# -ge 2 ]; do
+  k=$1; d=$2; shift 2
+  case $k in
+    file) if [ -f "$d" ]; then printf '\\036%s\\037\\037' "$i"; head -c ${HEAD} "$d"; fi ;;
+    skills|commands*)
+      if [ "$k" = skills ]; then lo=2; hi=4; name=SKILL.md; else lo=1; hi=$((\${k#commands} + 1)); name='*.md'; fi
+      if [ -d "$d" ]; then
+        find -L "$d" -mindepth $lo -maxdepth $hi -name "$name" -type f 2>/dev/null | sort | while IFS= read -r f; do
+          printf '\\036%s\\037%s\\037' "$i" "\${f#"$d"/}"; head -c ${HEAD} "$f"
+        done
+      fi ;;
+  esac
+  i=$((i + 1))
+done
+exit 0`
+
+export function parseSlashFiles(out: string): SlashFile[] {
+  const files: SlashFile[] = []
+  for (const rec of out.split('\x1E')) {
+    const a = rec.indexOf('\x1F')
+    const b = a < 0 ? -1 : rec.indexOf('\x1F', a + 1)
+    if (b < 0) continue
+    files.push({ root: Number(rec.slice(0, a)), rel: rec.slice(a + 1, b), text: rec.slice(b + 1) })
+  }
+  return files
+}
+
+// One script run; a failed run (a session the connection refused…) is
+// retried once, then thrown: never mistaken for "no commands".
+async function collectRemote(exec: ShellExec, roots: SlashRoot[]): Promise<SlashFile[]> {
+  const args = roots.flatMap(r => [r.kind === 'commands' ? `commands${r.depth ?? 2}` : r.kind, path.posix.normalize(r.dir).replace(/(.)\/+$/, '$1')])
+  let last = ''
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt) {
+      const { promise, resolve } = Promise.withResolvers<void>()
+      setTimeout(resolve, 400)
+      await promise
+    }
+    const r = await exec(SLASH_SCRIPT, args, { timeoutMs: 20000 })
+    if (r.code === 0) return parseSlashFiles(r.stdout.toString('utf8'))
+    last = (r.stderr || `code ${r.code}`).trim().split('\n').pop() || 'failed'
+  }
+  throw new Error(last)
+}
+
+// Commands of the files found, in root then path order.
+export function commandsOf(roots: SlashRoot[], files: SlashFile[]): SlashCommand[] {
+  const out: SlashCommand[] = []
+  const sorted = [...files].sort((a, b) => a.root - b.root || (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0))
+  for (const f of sorted) {
+    const r = roots[f.root]
+    if (!r || r.kind === 'file') continue
+    const parts = f.rel.split('/')
+    const fm = frontmatter(f.text)
+    const hint = fm['argument-hint'] || undefined
+    if (r.kind === 'skills') {
+      if (parts.length < 2 || parts.length > 4 || parts.at(-1) !== 'SKILL.md' || fm['user-invocable'] === 'false') continue
+      out.push({ name: (r.prefix || '') + (fm.name || parts.at(-2)!), desc: fm.description || '', hint, source: 'skill' })
+    } else {
+      const dirs = parts.slice(0, -1)
+      if (!parts.at(-1)!.endsWith('.md') || dirs.length > (r.depth ?? 2) || dirs.some(d => d.includes('.'))) continue
+      out.push({ name: (r.prefix || '') + [...dirs, parts.at(-1)!.slice(0, -3)].join(':'), desc: fm.description || firstLine(f.text), hint, source: 'command' })
     }
   }
+  return out
 }
 
 // `skills.customDirectories` of omp's config (YAML: list under the key).
@@ -127,40 +212,42 @@ export function builtinCommands(kind: string) {
   return mergeCommands(kind === 'claude' ? CLAUDE_BUILTIN : kind === 'codex' ? CODEX_BUILTIN : kind === 'omp' ? OMP_BUILTIN : [], [])
 }
 
-export async function slashCommands(opts: { key: string, fs: MachineFs, home: string, kind: string, cwd: string | null }) {
-  const { fs, home, kind, cwd } = opts
+export async function slashCommands(opts: { key: string, fs: MachineFs, exec?: ShellExec | null, home: string, kind: string, cwd: string | null }) {
+  const { fs, exec, home, kind, cwd } = opts
   const id = `${opts.key}|${kind}|${cwd || ''}`
   const hit = cache.get(id)
   if (hit && Date.now() - hit.at < TTL) return hit.list
-  const extra: SlashCommand[] = []
+  const collect = (roots: SlashRoot[]) => (exec ? collectRemote(exec, roots) : collectLocal(fs, roots))
+  const project = cwd && cwd !== home ? cwd : null
+  let roots: SlashRoot[] = []
   let builtin: [string, string, string?][] = []
+  const extra: SlashCommand[] = []
   if (kind === 'claude') {
     builtin = CLAUDE_BUILTIN
-    if (cwd && cwd !== home) {
-      await readSkills(fs, path.join(cwd, '.claude/skills'), extra)
-      await readCommands(fs, path.join(cwd, '.claude/commands'), extra)
+    for (const b of project ? [project, home] : [home]) {
+      roots.push({ dir: path.join(b, '.claude/skills'), kind: 'skills' }, { dir: path.join(b, '.claude/commands'), kind: 'commands' })
     }
-    await readSkills(fs, path.join(home, '.claude/skills'), extra)
-    await readCommands(fs, path.join(home, '.claude/commands'), extra)
   } else if (kind === 'codex') {
     builtin = CODEX_BUILTIN
-    for (const n of await ls(fs, path.join(home, '.codex/prompts'))) {
-      if (!n.endsWith('.md')) continue
-      const text = await read(fs, path.join(home, '.codex/prompts', n))
-      if (text === null) continue
-      const fm = frontmatter(text)
-      extra.push({ name: `prompts:${n.slice(0, -3)}`, desc: fm.description || firstLine(text), hint: fm['argument-hint'] || undefined, source: 'command' })
-    }
+    roots = [{ dir: path.join(home, '.codex/prompts'), kind: 'commands', depth: 0, prefix: 'prompts:' }]
   } else if (kind === 'omp') {
     builtin = OMP_BUILTIN
     const dirs = ompConfigDirs(home, cwd)
-    for (const d of dirs) await readCommands(fs, path.join(d, 'commands'), extra)
-    // Command shipped with omp (task/commands).
-    extra.push({ name: 'init', desc: 'Generate AGENTS.md for current codebase', source: 'command' })
-    for (const d of dirs) await readSkills(fs, path.join(d, 'skills'), extra, 'skill:')
-    const config = await read(fs, path.join(home, '.omp/agent/config.yml'))
-    for (const d of config ? ompSkillDirs(config, home) : []) await readSkills(fs, d, extra, 'skill:')
+    const config: SlashRoot = { dir: path.join(home, '.omp/agent/config.yml'), kind: 'file' }
+    roots = [...dirs.map(d => ({ dir: path.join(d, 'commands'), kind: 'commands' as const })), config, ...dirs.map(d => ({ dir: path.join(d, 'skills'), kind: 'skills' as const, prefix: 'skill:' }))]
+    const files = await collect(roots)
+    const cfg = files.find(f => roots[f.root] === config)
+    const more = cfg ? ompSkillDirs(cfg.text, home).map(d => ({ dir: d, kind: 'skills' as const, prefix: 'skill:' })) : []
+    const all = [...roots, ...more]
+    const found = more.length ? [...files, ...(await collect(more)).map(f => ({ ...f, root: f.root + roots.length }))] : files
+    const cmds = commandsOf(all, found)
+    // Command shipped with omp (task/commands), after the user's ones, before the skills.
+    const firstSkill = cmds.findIndex(c => c.source === 'skill')
+    cmds.splice(firstSkill < 0 ? cmds.length : firstSkill, 0, { name: 'init', desc: 'Generate AGENTS.md for current codebase', source: 'command' })
+    extra.push(...cmds)
+    roots = []
   }
+  if (roots.length) extra.push(...commandsOf(roots, await collect(roots)))
   const list = mergeCommands(builtin, extra)
   cache.set(id, { at: Date.now(), list })
   return list

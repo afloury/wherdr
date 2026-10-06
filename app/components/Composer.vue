@@ -366,8 +366,9 @@ async function loadSlash() {
   const hit = slashCache.get(key)
   if (hit && Date.now() - hit.at < 60000) { slashList.value = hit.list; return }
   try {
-    const r = await api<{ commands: SlashCommand[] }>(`/api/commands?pane=${encodeURIComponent(key)}`)
-    slashCache.set(key, { at: Date.now(), list: r.commands })
+    const r = await api<{ commands: SlashCommand[], partial?: boolean }>(`/api/commands?pane=${encodeURIComponent(key)}`)
+    // Built-in commands only (machine's skills unreadable): asked again on the next "/".
+    if (!r.partial) slashCache.set(key, { at: Date.now(), list: r.commands })
     if (key === props.paneId) slashList.value = r.commands
   } catch { /* no suggestions */ }
 }

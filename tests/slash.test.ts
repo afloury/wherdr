@@ -1,9 +1,17 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { frontmatter, mergeCommands, ompSkillDirs, slashCommands } from '../server/utils/slash'
-import { localFs } from '../server/utils/fsx'
+import { type ShellExec, localFs } from '../server/utils/fsx'
+
+// A machine reached over SSH: the script run by a local `sh`.
+const shExec: ShellExec = async (script, args = []) => {
+  const r = spawnSync('sh', ['-c', script, 'sh', ...args])
+  return { code: r.status, stdout: r.stdout, stderr: r.stderr.toString() }
+}
+const refused = { code: 255, stdout: Buffer.alloc(0), stderr: 'Connection closed by UNKNOWN port 65535' }
 
 describe('"/" commands', () => {
   it('lit le frontmatter', () => {
@@ -34,6 +42,54 @@ describe('"/" commands', () => {
     expect(cl.find(c => c.name === 'deploy')!.desc).toBe('Déployer le site')
     const cx = await slashCommands({ key: 't1', fs: localFs, home, kind: 'codex', cwd: null })
     expect(cx.map(c => c.name)).toEqual(expect.arrayContaining(['prompts:fix', 'new', 'model']))
+  })
+
+  it('SSH machine: project and user skills, commands and symlinked skills in one session', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-slash-ssh-'))
+    const w = (f: string, t: string) => { mkdirSync(path.dirname(path.join(home, f)), { recursive: true }); writeFileSync(path.join(home, f), t) }
+    w('proj/.claude/skills/daily-notes/SKILL.md', '---\nname: daily-notes\ndescription: Daily notes\n---\n')
+    w('proj/.claude/commands/local.md', 'Project command\n')
+    w('.claude/skills/synced/acct/pdf/SKILL.md', '---\nname: pdf\ndescription: PDF\n---\n')
+    w('.claude/skills/hidden/SKILL.md', '---\nname: hidden\nuser-invocable: false\n---\n')
+    w('.claude/commands/git/sync.md', '---\ndescription: Sync\nargument-hint: <branch>\n---\n')
+    w('.claude/commands/a/b/c/too-deep.md', 'x\n')
+    w('shared/tidy/SKILL.md', '---\ndescription: Tidy up\n---\n')
+    symlinkSync(path.join(home, 'shared/tidy'), path.join(home, '.claude/skills/tidy'))
+    let calls = 0
+    const exec: ShellExec = (s, a, o) => { calls++; return shExec(s, a, o) }
+    const cl = await slashCommands({ key: 'ssh1', fs: localFs, exec, home, kind: 'claude', cwd: path.join(home, 'proj') })
+    const names = cl.map(c => c.name)
+    expect(names).toEqual(expect.arrayContaining(['daily-notes', 'local', 'pdf', 'git:sync', 'tidy', 'model']))
+    expect(names).not.toContain('hidden')
+    expect(names.some(n => n.includes('too-deep'))).toBe(false)
+    expect(cl.find(c => c.name === 'git:sync')).toMatchObject({ desc: 'Sync', hint: '<branch>', source: 'command' })
+    expect(cl.find(c => c.name === 'local')!.desc).toBe('Project command')
+    expect(calls).toBe(1)
+  })
+
+  it('SSH machine: a refused session is retried once; two refusals throw and are not cached', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-slash-retry-'))
+    mkdirSync(path.join(home, '.claude/skills/notes'), { recursive: true })
+    writeFileSync(path.join(home, '.claude/skills/notes/SKILL.md'), '---\nname: notes\n---\n')
+    let fails = 1
+    const flaky: ShellExec = (s, a, o) => (fails-- > 0 ? Promise.resolve(refused) : shExec(s, a, o))
+    const once = await slashCommands({ key: 'ssh2', fs: localFs, exec: flaky, home, kind: 'claude', cwd: null })
+    expect(once.map(c => c.name)).toContain('notes')
+
+    fails = 2
+    await expect(slashCommands({ key: 'ssh3', fs: localFs, exec: flaky, home, kind: 'claude', cwd: null })).rejects.toThrow('Connection closed')
+    const later = await slashCommands({ key: 'ssh3', fs: localFs, exec: flaky, home, kind: 'claude', cwd: null })
+    expect(later.map(c => c.name)).toContain('notes')
+  })
+
+  it('SSH machine: omp reads its config then the custom skill folders', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-slash-omp-ssh-'))
+    const w = (f: string, t: string) => { mkdirSync(path.dirname(path.join(home, f)), { recursive: true }); writeFileSync(path.join(home, f), t) }
+    w('.omp/agent/commands/review.md', '---\ndescription: Review\n---\n')
+    w('extra-skills/tidy/SKILL.md', '---\nname: tidy\n---\n')
+    w('.omp/agent/config.yml', 'skills:\n  customDirectories:\n    - ~/extra-skills\n')
+    const names = (await slashCommands({ key: 'ssh4', fs: localFs, exec: shExec, home, kind: 'omp', cwd: null })).map(c => c.name)
+    expect(names).toEqual(expect.arrayContaining(['review', 'init', 'skill:tidy', 'model']))
   })
 
   it('omp: built-in, commands (omp, project, Claude) and skills as /skill:<name>, config folders included', async () => {
