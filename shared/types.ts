@@ -241,6 +241,9 @@ export interface ChatItem {
   err?: string
   images?: number
   ref?: string
+  // Index of the item's first image on its line (`i` of /api/chat/image),
+  // when the line holds other images before it (Claude tool results).
+  imageAt?: number
   error?: boolean
   // omp reasoning and completed background jobs, read from its transcript.
   ms?: number

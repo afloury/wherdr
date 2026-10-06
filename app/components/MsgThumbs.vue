@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // Thumbnails of a message: wrapping grid, "+N" tile past the cap; a tap opens
 // the viewer on the whole set of the message.
-const props = defineProps<{ srcs: string[], offline?: boolean }>()
-const layout = computed(() => thumbLayout(props.srcs.length))
+const props = defineProps<{ srcs: string[], offline?: boolean, max?: number }>()
+const layout = computed(() => thumbLayout(props.srcs.length, props.max))
 function open(i: number) { openLightbox(props.srcs, i) }
 </script>
 

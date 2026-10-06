@@ -94,6 +94,24 @@ describe('extractImage', () => {
     expect(extractImage(d, 0)!.type).toBe('image/png')
     expect(extractImage(d, 1)).toBeNull()
   })
+  it('finds the images of Claude and Codex tool results', () => {
+    const b64 = Buffer.from('x').toString('base64')
+    const j = (o: object) => JSON.stringify(o)
+    const claude = [
+      j({ type: 'assistant', timestamp: 't', message: { content: [{ type: 'tool_use', id: 'u1', name: 'Read', input: { file_path: '/x/a.png' } }] } }),
+      j({ type: 'user', timestamp: 't', message: { content: [{ type: 'tool_result', tool_use_id: 'u1', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }] }] } }),
+    ].join('\n')
+    const ct = parseLines(claude, 'claude', 0, HOME).find(i => i.role === 'tool')!
+    expect(ct.images).toBe(1)
+    expect(extractImage(JSON.parse(claude.split('\n')[1]!), ct.imageAt || 0)!.type).toBe('image/jpeg')
+    const codex = [
+      j({ type: 'response_item', timestamp: 't', payload: { type: 'function_call', name: 'view_image', call_id: 'c1', arguments: '{"path":"/x/a.png"}' } }),
+      j({ type: 'response_item', timestamp: 't', payload: { type: 'function_call_output', call_id: 'c1', output: [{ type: 'input_image', image_url: `data:image/webp;base64,${b64}` }] } }),
+    ].join('\n')
+    const xt = parseLines(codex, 'codex').find(i => i.role === 'tool')!
+    expect(xt.images).toBe(1)
+    expect(extractImage(JSON.parse(codex.split('\n')[1]!), 0)!.type).toBe('image/webp')
+  })
 })
 
 describe('createTranscripts', () => {
@@ -223,6 +241,25 @@ describe('omp', () => {
     const items = parseLines([said(`${body}\n\nquelle heure ?`), said(body), said(`${long}\n\nfichier : a.ts`), said('# Aside mais autre chose')].join('\n'), 'omp', 0, HOME,
       [{ name: 'aside', body }, { name: 'review', body: `${long}\n\nPlus de consignes : $ARGUMENTS` }])
     expect(items.map(i => i.text)).toEqual(['/aside quelle heure ?', '/aside', '/review', '# Aside mais autre chose'])
+  })
+
+  it('attaches the images a tool returned to its action', () => {
+    const png = 'cd'.repeat(32)
+    const text = [
+      msg({ role: 'assistant', content: [
+        { type: 'toolCall', id: 'r1', name: 'read', arguments: { path: '/x/shot.png' } },
+        { type: 'toolCall', id: 'r2', name: 'bash', arguments: { command: 'ls' } },
+      ] }, '2026-01-01T00:00:01Z'),
+      msg({ role: 'toolResult', toolCallId: 'r2', content: [{ type: 'text', text: 'a' }] }, '2026-01-01T00:00:02Z'),
+      msg({ role: 'toolResult', toolCallId: 'r1', content: [{ type: 'text', text: '' }, { type: 'image', mimeType: 'image/png', data: `blob:sha256:${png}` }] }, '2026-01-01T00:00:03Z'),
+    ].join('\n')
+    const items = parseLines(text, 'omp', 0, HOME)
+    const read = items.find(i => i.name === 'Read')!
+    expect(items.find(i => i.name === 'Bash')!.images).toBeUndefined()
+    expect(read.images).toBe(1)
+    const [start, len] = read.ref!.split(':').map(Number)
+    const line = Buffer.from(text).subarray(start, start! + len!).toString()
+    expect(extractImage(JSON.parse(line), 0)).toEqual({ type: 'image/png', blob: png })
   })
 
   it('reads the session reported by the integration (path) and re-reads its images in ~/.omp/agent/blobs', async () => {

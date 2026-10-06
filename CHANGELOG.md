@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Chat: images an agent's tool returned (omp `read` of a PNG, a screenshot, Claude `Read`,
+  Codex `view_image`) show as thumbnails under the action, even when the action block is
+  folded, and open in the image viewer.
 - Settings › Appearance › Desktop (computer only): Background "wherdr grid" (default) shows the
   website's dotted grid with light packets in the margins of the conversation; "herdr grid" keeps
   the flat line grid. Content width moved here from Settings › Desktop. Phones show no grid.
