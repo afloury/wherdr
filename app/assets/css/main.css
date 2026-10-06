@@ -1308,6 +1308,10 @@ button.omp-tool-head:hover .omp-tool-chev { color: var(--text-strong); }
 /* Images an action returned (read of a PNG, screenshot…): under its row, left-aligned. */
 .thumbs.tool-thumbs { display: flex; justify-content: flex-start; margin: 6px 0 8px 22px; }
 .omp-console .thumbs.tool-thumbs { margin-left: 12px; }
+/* An image already shown higher up: a small link instead of the thumbnail. */
+.thumb-dupe { flex-basis: 100%; padding: 0; text-align: left; font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); cursor: zoom-in; }
+.thumb-dupe:hover:not(:disabled) { color: var(--text-2); text-decoration: underline; }
+.thumb-dupe:disabled { cursor: default; }
 /* Image viewer: the stage is the area left by the safe areas and the bars; the
    image is laid out at its zoom (width/height) and moved with a transform, so
    it may extend past the stage when zoomed. No native scrolling or page zoom. */
