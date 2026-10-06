@@ -18,7 +18,7 @@ import path from 'node:path'
 import { imageTagCount } from '../../shared/queuedMatch'
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail } from '../../shared/types'
 import { ompToolCall, ompToolResult, ompUserRun } from './ompTools'
-import { pendingClaudeTool, pendingCodexTool } from './promptDetail'
+import { pendingClaudeTool, pendingCodexTool, pendingOmpTool } from './promptDetail'
 import { type ClaudeAsked, type OmpAsked, pendingClaudeAsk, pendingOmpAsk } from './choices'
 import { cleanModelName, lastModel, mergeOmpModel, ompLastModel, ompModelComplete, ompModelLabel, ompModelResult } from './models'
 import { type MachineFs, localFs } from './fsx'
@@ -1125,24 +1125,26 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
 
   // Tool call waiting for a permission: the last one without a result, read
   // from the end of the transcript (re-read only if the file has grown).
+  // `tool`: name shown on screen (omp's dialog title), to pick among parallel calls.
   const PENDING_WINDOW = 1024 * 1024
-  const pendingCache = new Map<string, { file: string, size: number, detail: PromptDetail | null }>()
-  async function pendingTool(pane: TranscriptPane): Promise<PromptDetail | null> {
-    if (pane.agent !== 'claude' && pane.agent !== 'codex') return null
+  const pendingCache = new Map<string, { file: string, size: number, tool: string | null, detail: PromptDetail | null }>()
+  async function pendingTool(pane: TranscriptPane, tool: string | null = null): Promise<PromptDetail | null> {
+    if (pane.agent !== 'claude' && pane.agent !== 'codex' && pane.agent !== 'omp') return null
     const loc = await locate(pane)
     if (!loc) return null
     let size: number
     try { size = (await fs.stat(loc.file)).size }
     catch { return null }
     const c = pendingCache.get(pane.id)
-    if (c && c.file === loc.file && c.size === size) return c.detail
+    if (c && c.file === loc.file && c.size === size && c.tool === tool) return c.detail
     let detail: PromptDetail | null = null
     try {
       const r = await readRange(loc.file, Math.max(0, size - PENDING_WINDOW), size)
       const lines = r.text.split('\n').map(stripBlobs)
-      detail = (transcriptKind(loc.file) || pane.agent) === 'codex' ? pendingCodexTool(lines) : pendingClaudeTool(lines, home)
+      const kind = transcriptKind(loc.file) || pane.agent
+      detail = kind === 'codex' ? pendingCodexTool(lines) : kind === 'omp' ? pendingOmpTool(lines, tool) : pendingClaudeTool(lines, home)
     } catch { detail = null }
-    pendingCache.set(pane.id, { file: loc.file, size, detail })
+    pendingCache.set(pane.id, { file: loc.file, size, tool, detail })
     return detail
   }
 

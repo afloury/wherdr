@@ -22,7 +22,7 @@ describe('shouldHold', () => {
     expect(shouldHold('claude', 'working', true, true)).toBe(true)
   })
   it('leaves other agents alone (no known input line)', () => {
-    expect(shouldHold('omp', 'idle', false, false)).toBe(false)
+    expect(shouldHold('gemini', 'idle', false, false)).toBe(false)
     expect(shouldHold(null, 'idle', false, false)).toBe(false)
   })
 })

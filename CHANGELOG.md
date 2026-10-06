@@ -42,6 +42,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Messages sent to omp while it shows a tool approval dialog ("Allow tool: eval", bash, MCP…)
+  are no longer typed into the dialog and lost (their Enter could even approve the tool): typed
+  replies and Project panel buttons (Reviewed, Tested, Launch, Unblock…) are held and delivered
+  once the dialog is answered and omp's input field is back.
+- omp's tool approval now shows in Conversation as a "Your turn" card: the tool, its full input
+  (folded when long) and the dialog's buttons (Approve, Deny…), instead of "details in the
+  Terminal tab".
 - The model and effort under the input field no longer turn into a bare "Model" when reading the
   transcript briefly fails (SSH machine connection dropped, timeout): the last known value stays.
 - An omp `!` or `$` command sent while omp is working no longer stays "Queued · sending…" (then
