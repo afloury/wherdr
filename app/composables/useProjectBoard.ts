@@ -14,6 +14,43 @@ const POLL_MS = 15000
 // Last known state per pane: no flicker of the tab when reopening the view.
 const known = new Map<string, ProjectBoard | false>()
 
+// Project panel on the right of a coordinator (computer): shown or collapsed,
+// for every coordinator, saved on this device.
+export const projectSideOpen = ref(readProjectSide())
+function readProjectSide() {
+  try { return localStorage.getItem('projectSide') !== '0' }
+  catch { return true }
+}
+export function setProjectSideOpen(v: boolean) {
+  projectSideOpen.value = v
+  try { localStorage.setItem('projectSide', v ? '1' : '0') }
+  catch { /* storage unavailable */ }
+  haptic()
+}
+
+// Coordinator of a pane's project: the pane itself, otherwise the project's
+// coordinator on the same machine, otherwise on another one (threads on a
+// machine coordinated from elsewhere). null: not in a project, or no coordinator.
+export function projectCoordinatorOf(p: Pane): Pane | null {
+  if (isCoordinator(p)) return p
+  const slug = projectOf(p)?.toLowerCase()
+  if (!slug) return null
+  const all = herdrState.value.panes.filter(x => isCoordinator(x) && projectOf(x)?.toLowerCase() === slug)
+  return all.find(x => (x.machine || '') === (p.machine || '')) || all[0] || null
+}
+
+// The Project panel of a pane's project: its coordinator, panel shown (right-hand
+// column on a computer, Project tab on the phone). `toggle` (Mod+Alt+P): on the
+// coordinator whose panel is shown, collapse it. False: no coordinator.
+export function openProjectPanel(p: Pane, toggle = false): boolean {
+  const c = projectCoordinatorOf(p)
+  if (!c) return false
+  if (desk.value) setProjectSideOpen(!(toggle && c.id === curPane.value && projectSideOpen.value))
+  else setPaneViewMode(c.id, 'project')
+  if (c.id !== curPane.value) navigateTo(panePath(c.id))
+  return true
+}
+
 export function useProjectBoard(paneId: () => string, visible: () => boolean) {
   const pane = computed<Pane | undefined>(() => herdrState.value.panes.find(p => p.id === paneId()))
   const coordinator = computed(() => Boolean(pane.value && isCoordinator(pane.value)))

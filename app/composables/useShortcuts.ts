@@ -7,6 +7,8 @@
 import type { Ref } from 'vue'
 import { type ShortcutContext, type ShortcutFocus, type ShortcutId, matchShortcut } from '~/utils/shortcuts'
 import { openFolderOnMachine } from './useHerdr'
+import { openProjectPanel } from './useProjectBoard'
+import { startProjectsAction } from './usePlugins'
 import { describeFocus } from '~/utils/cardKeys'
 
 export interface PaneShortcuts {
@@ -71,6 +73,14 @@ function run(id: Exclude<ShortcutId, 'search-all'>, overlay: boolean): boolean {
       openFolderOnMachine(p)
       return true
     }
+    // herdr-projects, on the current agent's machine. The Project panel: shown or
+    // collapsed on a coordinator, its coordinator opened from a thread.
+    case 'project-panel':
+      return p ? openProjectPanel(p, true) : false
+    // New project: the same sheet as the agent menu entry (its Run confirms).
+    case 'new-project':
+      if (!writable || !p || paneStale(p)) return false
+      return startProjectsAction(p, 'new')
     case 'settings':
       navigateTo('/settings')
       return true

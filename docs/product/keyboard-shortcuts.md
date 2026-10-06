@@ -11,6 +11,9 @@ Status: **implemented** (2026-10-01). Code: `app/utils/shortcuts.ts` (table and 
 > same day: Firefox and Zen own ⌘⌥E (Network Monitor) on macOS, Zen also Ctrl+Alt+E
 > ("Forward workspace").
 
+> 2026-10-06: herdr-projects keys, on a machine with the plugin: Mod+Alt+P (the Project panel
+> of the current agent's project) and Mod+Alt+Shift+N (New project). Decision Q10.
+
 ## Capability
 
 Someone using wherdr on a computer (≥ 900 px wide, hardware keyboard) can do the everyday loop
@@ -32,6 +35,8 @@ promise that wherdr "can replace the Herdr terminal client day to day".
 | New tab in the current pane's space: the "Start in a new tab" sheet | Mod+Alt+T | Computer, online, a pane being viewed | Yes (caught before the terminal) |
 | Close the current pane, through the same confirmation as the menu | Mod+Alt+W | Computer, online, a pane being viewed | Yes (caught before the terminal) |
 | The current agent's folder in its default editor, on the agent's machine | Mod+Alt+O | Computer, a pane with a folder, on a Mac (`machineOs`) — or a local pane when wherdr runs in Docker on a Mac with the host-open route (`/api/config` `hostOpen`) | Yes (caught before the terminal) |
+| The Project panel of the current agent's project: shown or collapsed on its coordinator (computer), the coordinator opened from a thread (`openProjectPanel`) | Mod+Alt+P | Computer, a pane in a herdr-projects project with a coordinator | Yes (caught before the terminal) |
+| New project: the "New project" sheet of the current agent's machine, whose Run confirms (`startProjectsAction`) | Mod+Alt+Shift+N | Computer, online, a pane on a machine with herdr-projects | Yes (caught before the terminal) |
 | Search this conversation; if search is already open, focus and select its field | Mod+F | Agent in conversation mode | No: the browser keeps its Find there |
 | Switch between conversation and terminal | Ctrl+`` ` `` on every platform, by position (`Backquote`; on macOS also `IntlBackslash`, the key left of 1 on ISO keyboards) | Agent with a conversation, or the active cell | Yes (xterm sends nothing for it) |
 | Stop the working agent, same as the Stop button | Esc | Conversation mode, Stop shown, empty field, no conversation search open | No (Esc goes to the program) |
@@ -57,6 +62,10 @@ Where the keys are shown:
 - Tooltips: global search, new agent (rail) and settings in the sidebar; search in the agent header.
 - The agent menu's "Close this pane" entry shows Mod+Alt+W.
 - The agent menu's "Open in editor" entry shows Mod+Alt+O (on the agent's Mac).
+- The agent menu's Projects entries show Mod+Alt+P (Project panel) and Mod+Alt+Shift+N (New
+  project); the "Show the Project panel" button's tooltip shows Mod+Alt+P.
+- The help sheet lists the herdr-projects keys in a Projects group, only once the plugin is on
+  a machine.
 - The composer shows `Esc stop` while Stop is visible.
 - The help sheet lists everything.
 
@@ -187,6 +196,14 @@ The composer blurs itself on Esc. After a stop it gets the focus back.
   kickstart) that lives in the GUI session and runs `open` there. The client gates on
   `/api/config` `hostOpen` (`canOpenOnMachine`), not on the OS alone. Without the variable,
   behaviour is unchanged.
+- **Q10.** herdr-projects keys, live only where the plugin is installed. Mod+Alt+P for the
+  Project panel: VS Code's secondary side bar is ⌥⌘B, but Chrome on macOS binds ⌥⌘B to the
+  Bookmark Manager; ⌥⌘P is unbound in Chrome, Firefox and Safari (Finder's path bar only)
+  `[INFERENCE]`, not checked on a device. On a coordinator it toggles the panel (shared state
+  `projectSideOpen`, the same as its collapse button); from a thread it opens the coordinator with
+  the panel shown. New project is Mod+Alt+Shift+N, the Shift sibling of New agent; on Windows,
+  AltGr+Shift+letter typing a non-Latin letter (Polish `Ń`) stays text. Both are caught before
+  the terminal like the other Mod+Alt keys.
 - **Q5.** Sidebar toggle: not now.
 
 ## Still open

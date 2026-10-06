@@ -77,18 +77,9 @@ const mode = computed<PaneViewMode | 'mirror' | null>(() => {
 })
 
 // "Project" panel (herdr-projects coordinator): tab on the phone,
-// collapsible right-hand column on a computer. Nothing without herdr-projects.
-const sideOpen = ref(readSideOpen())
-function readSideOpen() {
-  try { return localStorage.getItem('projectSide') !== '0' }
-  catch { return true }
-}
-function setSideOpen(v: boolean) {
-  sideOpen.value = v
-  try { localStorage.setItem('projectSide', v ? '1' : '0') }
-  catch { /* stockage indisponible */ }
-  haptic()
-}
+// collapsible right-hand column on a computer (projectSideOpen, shared with
+// Mod+Alt+P and the menus). Nothing without herdr-projects.
+//
 // Column width: handle on its left edge (drag; double-click =
 // default width), clamped (260 px, half the area), kept on the device.
 // The saved width is also clamped in CSS: the window may shrink.
@@ -123,7 +114,7 @@ function resetSideWidth() {
   saveSideWidth(null)
 }
 
-const projectShown = () => !props.cell && (desk.value ? sideOpen.value : viewMode.value === 'project')
+const projectShown = () => !props.cell && (desk.value ? projectSideOpen.value : viewMode.value === 'project')
 const project = useProjectBoard(() => props.paneId, projectShown)
 const projectOk = computed(() => !props.cell && project.coordinator.value && project.available.value === true)
 const projectTab = computed(() => projectOk.value && !desk.value)
@@ -323,7 +314,10 @@ const agentMenu = computed<MenuItem[]>(() => {
   // Split, move to another tab (never zoom or resize).
   if (p) items.push(...paneSpaceItems(p))
   if (p) items.push(copyPaneIdItem(p))
-  // Herdr plugin actions of its machine that apply to a workspace / pane.
+  // herdr-projects entries of its own (Project panel, New project…), then the
+  // machine's other Herdr plugin actions that apply to a workspace / pane.
+  const projectItems = p ? projectMenuItems(p, live.value) : []
+  if (projectItems.length) items.push(...projectItems, { kind: 'separator' })
   if (p && agentPluginActions(p.machine).length) {
     items.push({ label: t('Plugin actions'), icon: 'i-lucide-puzzle', run: () => openPluginMenu({ pane: p }) })
   }
@@ -527,8 +521,8 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
               <TabMap :layout="tabEnt.layout" :panes="tabEnt.panes" :current="paneId" />
             </button>
           </UTooltip>
-          <UTooltip v-if="projectSide && !sideOpen" :text="t('Show the Project panel')">
-            <UButton icon="i-lucide-panel-right-open" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Show the Project panel')" @click="setSideOpen(true)" />
+          <UTooltip v-if="projectSide && !projectSideOpen" :text="t('Show the Project panel')" :kbds="live ? shortcutKbds('project-panel') : undefined">
+            <UButton icon="i-lucide-panel-right-open" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Show the Project panel')" @click="setProjectSideOpen(true)" />
           </UTooltip>
           <UButton
             v-if="controls.project" icon="i-lucide-folder-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn mode-btn"
@@ -588,13 +582,13 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :esc-stops="!searchOpen" :take-back="mode === 'chat'" @sent="onSent" @show-terminal="setMode('term')" />
     </div>
     <div
-      v-if="projectSide && sideOpen" class="side-handle" :class="{ dragging: sideDrag }" role="separator" aria-orientation="vertical"
+      v-if="projectSide && projectSideOpen" class="side-handle" :class="{ dragging: sideDrag }" role="separator" aria-orientation="vertical"
       :aria-label="t('Project panel width')" :title="t('Drag to resize · double-click: default width')"
       @pointerdown="onSideGrab" @dblclick="resetSideWidth"
     />
     <ProjectPanel
-      v-if="projectSide && sideOpen" side :style="sideStyle" :class="{ resizing: sideDrag }" :pane-id="paneId" :board="project.board.value" :loading="project.loading.value" :error="project.error.value"
-      @reload="project.reload()" @collapse="setSideOpen(false)" @sent="onSent" @prefill="onPrefill"
+      v-if="projectSide && projectSideOpen" side :style="sideStyle" :class="{ resizing: sideDrag }" :pane-id="paneId" :board="project.board.value" :loading="project.loading.value" :error="project.error.value"
+      @reload="project.reload()" @collapse="setProjectSideOpen(false)" @sent="onSent" @prefill="onPrefill"
     />
     </div>
     <AppSheet v-model:open="changesOpen" :title="t('Changes')" wide full screen>

@@ -66,6 +66,7 @@ function toggleRepo(key: string) {
   collapsedRepos.value = c.includes(id) ? c.filter(k => k !== id) : [...c, id]
 }
 function toggle() {
+  if (headLp.swallowClick()) return
   haptic()
   const c = collapsedProjects.value
   collapsedProjects.value = c.includes(id.value) ? c.filter(k => k !== id.value) : [...c, id.value]
@@ -82,20 +83,38 @@ const tag = (p: Pane) => {
   const n = threadNumber(p)
   return n == null ? null : `t-${String(n).padStart(4, '0')}`
 }
+// The project's own menu (right click on its header on a computer, long press on
+// the phone): Project panel, pause, New project…, through its coordinator, else
+// the coordinating machine's, else its first agent. The title names the project.
+const headItems = computed(() => {
+  const p = props.group.coordinator || props.remote || props.group.panes[0]
+  return p ? projectMenuItems(p).filter(i => i.kind !== 'group') : []
+})
+const headLp = longPress({
+  onPress: () => {
+    if (!headItems.value.length) return
+    haptic()
+    openMenu(headItems.value, projectTitle.value)
+  },
+})
 </script>
 
 <template>
   <section class="agent-group project" :class="{ collapsed, blocked: sum.blocked > 0 }" :data-project="group.key">
-    <button type="button" class="group-title project-head" :aria-expanded="!collapsed" @click="toggle">
-      <UIcon name="i-lucide-chevron-down" class="project-chev" />
-      <span class="project-name">{{ projectTitle }}</span>
-      <span class="count">{{ sum.total }}</span>
-      <span class="project-sum">
-        <span v-if="sum.blocked" class="blocked"><i />{{ sum.blocked }}<span class="project-sum-l">{{ t('your turn') }}</span></span>
-        <span v-if="sum.working" class="working"><i />{{ sum.working }}<span class="project-sum-l">{{ t('working') }}</span></span>
-        <span v-if="ready && (collapsed || !sum.blocked && !sum.working)" class="ready"><i />{{ ready }}<span class="project-sum-l">{{ t('ready') }}</span></span>
-      </span>
-    </button>
+    <UContextMenu :disabled="sheetMenus || !headItems.length" :items="sheetMenus ? [] : toDropdown(headItems)" :ui="{ content: 'hw-dropdown' }">
+      <button type="button" class="group-title project-head" :aria-expanded="!collapsed"
+        @pointerdown="sheetMenus && headLp.down($event)" @pointermove="headLp.move" @pointerup="headLp.cancel" @pointercancel="headLp.cancel"
+        @contextmenu="sheetMenus && $event.preventDefault()" @click="toggle">
+        <UIcon name="i-lucide-chevron-down" class="project-chev" />
+        <span class="project-name">{{ projectTitle }}</span>
+        <span class="count">{{ sum.total }}</span>
+        <span class="project-sum">
+          <span v-if="sum.blocked" class="blocked"><i />{{ sum.blocked }}<span class="project-sum-l">{{ t('your turn') }}</span></span>
+          <span v-if="sum.working" class="working"><i />{{ sum.working }}<span class="project-sum-l">{{ t('working') }}</span></span>
+          <span v-if="ready && (collapsed || !sum.blocked && !sum.working)" class="ready"><i />{{ ready }}<span class="project-sum-l">{{ t('ready') }}</span></span>
+        </span>
+      </button>
+    </UContextMenu>
     <button v-if="remote" type="button" class="project-remote" @click="openCoordinator">
       <UIcon name="i-lucide-radio-tower" class="project-remote-icon" />
       <span>{{ tl('Coordinated from', 'Coordonné depuis') }} <b>{{ machineName(remote.machine) }}</b></span>

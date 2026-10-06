@@ -91,13 +91,17 @@ async function setRead(read: boolean) {
     if (!read && curPane.value === props.pane.id) navigateTo('/')
   } catch (err) { toast((err as Error).message, true) }
 }
+// herdr-projects entries (Project panel, New project…) when the plugin is on the
+// agent's machine; a space card offers those of the pane it represents.
 const menuItems = computed<MenuItem[]>(() => space.value ? [
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
   ...workspaceItems(space.value.workspace.id),
+  ...projectMenuItems(props.pane),
 ] : [
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
   ...paneSpaceItems(props.pane),
   ...paneWorkspaceItems(props.pane),
+  ...projectMenuItems(props.pane),
   { kind: 'separator' },
   copyPaneIdItem(props.pane),
   { kind: 'separator' },

@@ -4,7 +4,8 @@
 const open = shortcutsOpen
 const mac = /Macintosh|Mac OS X|iPhone|iPad/.test(navigator.userAgent)
 const ARROWS = ['arrowleft', 'arrowright', 'arrowup', 'arrowdown']
-const groups: { title: string, rows: { label: string, keys: string[][] }[] }[] = [
+type Group = { title: string, rows: { label: string, keys: string[][] }[] }
+const groups: Group[] = [
   { title: tl('Anywhere', 'Partout'), rows: [
     { label: tl('Search agents and conversations', 'Rechercher agents et conversations'), keys: [shortcutKbds('search-all')] },
     { label: tl('Previous / next agent in the list', 'Agent précédent / suivant de la liste'), keys: [shortcutKbds('prev-agent'), shortcutKbds('next-agent')] },
@@ -36,11 +37,19 @@ const groups: { title: string, rows: { label: string, keys: string[][] }[] }[] =
     { label: tl('New line for the agent', 'Nouvelle ligne pour l’agent'), keys: [['shift', 'enter']] },
   ] },
 ]
+// herdr-projects keys, listed (after Agent) once the plugin is on a machine.
+const projects: Group = { title: tl('Projects', 'Projets'), rows: [
+  { label: tl('Project panel of this agent’s project', 'Panneau Projet du projet de cet agent'), keys: [shortcutKbds('project-panel')] },
+  { label: tl('New project', 'Nouveau projet'), keys: [shortcutKbds('new-project')] },
+] }
+const shown = computed(() => Object.values(pluginActions.value).some(l => l.some(a => a.plugin === 'herdr-projects'))
+  ? [...groups.slice(0, 2), projects, ...groups.slice(2)]
+  : groups)
 </script>
 
 <template>
   <AppSheet v-model:open="open" :title="tl('Keyboard shortcuts', 'Raccourcis clavier')" tall screen>
-    <section v-for="g in groups" :key="g.title" class="settings-group shortcuts-group">
+    <section v-for="g in shown" :key="g.title" class="settings-group shortcuts-group">
       <h3>{{ g.title }}</h3>
       <dl>
         <div v-for="r in g.rows" :key="r.label" class="shortcut-row">

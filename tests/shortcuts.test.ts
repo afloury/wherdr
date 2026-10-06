@@ -56,6 +56,18 @@ describe('matchShortcut', () => {
     expect(match({ key: 'f', metaKey: true }, body, { ...mac, phase: 'capture' })).toBeNull()
   })
 
+  it('herdr-projects: Project panel on P, New project as the Shift sibling of New agent', () => {
+    const cap = { ...mac, phase: 'capture' as const }
+    expect(match({ key: 'π', code: 'KeyP', metaKey: true, altKey: true }, body, cap)).toBe('project-panel')
+    expect(match({ key: 'Dead', code: 'KeyN', metaKey: true, altKey: true, shiftKey: true }, body, cap)).toBe('new-project')
+    expect(match({ key: 'Dead', code: 'KeyN', metaKey: true, altKey: true }, body, cap)).toBe('new-space')
+    const win = { ...linux, phase: 'capture' as const }
+    expect(match({ key: 'N', code: 'KeyN', ctrlKey: true, altKey: true, shiftKey: true }, term, win)).toBe('new-project')
+    expect(match({ key: 'p', code: 'KeyP', ctrlKey: true, altKey: true }, field('draft'), win)).toBe('project-panel')
+    // Polish layout: AltGr+Shift+N types Ń, a letter for the field.
+    expect(match({ key: 'Ń', code: 'KeyN', ctrlKey: true, altKey: true, shiftKey: true }, field('dzie'), win)).toBeNull()
+  })
+
   it('Ctrl+` by position, from the terminal too, with Ctrl on macOS', () => {
     expect(match({ key: '²', code: 'Backquote', ctrlKey: true }, term, linux)).toBe('toggle-term')
     expect(match({ key: '`', code: 'Backquote', ctrlKey: true }, field('draft'))).toBe('toggle-term')

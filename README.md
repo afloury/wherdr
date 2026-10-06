@@ -137,6 +137,9 @@ Claude Code, Codex and other product names are trademarks of their respective ow
     in the list, `Mod+,` settings.
   - `Mod+Alt+N` new agent in a new space, `Mod+Alt+T` new tab in the current space,
     `Mod+Alt+W` close the current pane (after confirmation). They work from the terminal too.
+  - With [herdr-projects](#works-great-with-herdr-projects) on the agent's machine: `Mod+Alt+P`
+    shows or collapses the Project panel of the current agent's project (from a thread, it opens
+    the coordinator), and `Mod+Alt+Shift+N` opens **New project**.
   - In an agent: `Mod+F` searches the conversation, ``Ctrl+` `` switches between conversation
     and terminal, and `Esc` stops a working agent when the message field is empty.
   - `Alt+Shift+arrows` swaps the current pane with its neighbour, `Ctrl/⌘+Alt+arrows` moves
@@ -576,9 +579,14 @@ worktree. It is optional; with it installed, wherdr adds:
   ```
 - **Settings → Plugins → herdr-projects**: install status per machine, the `TASKS.md` convention,
   a template, the max threads per machine and the coordinator rules to copy.
-- **New project** from the plugin actions of an agent's menu, with the same machine and folder
-  picker as **New agent**, and the agent profiles of its coordinator and threads (see
-  [Herdr plugins](#herdr-plugins)).
+- **Projects entries** in the menus when the plugin is on the agent's machine: an agent's menu
+  (`…`) and its card's (right click, long press on the phone) offer the Project panel, **New
+  project…**, **Continue as a project…** (an agent outside a project), **Pause this project…**
+  and **Check herdr-projects setup**; the project's header in the list has its own menu with
+  the same entries. Shortcuts: `Mod+Alt+P` (Project panel) and `Mod+Alt+Shift+N` (New project).
+  The plugin's other actions stay under **Plugin actions**.
+- **New project** with the same machine and folder picker as **New agent**, and the agent
+  profiles of its coordinator and threads (see [Herdr plugins](#herdr-plugins)).
 
 <p align="center">
   <img src="docs/screenshots/project-panel.png" alt="A coordinator with the Project panel open, and its project group with threads in the sidebar" width="900">

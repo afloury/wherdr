@@ -27,6 +27,11 @@ All notable changes to this project are documented here. The format follows
   (Claude, omp, your own profiles…) among those the plugin allows on the project's machine,
   with the plugin's defaults for new projects selected, names shown as written. Written to the
   project's `PROJECT.md`.
+- herdr-projects shortcuts and menu entries, where the plugin is on the agent's machine:
+  `Mod+Alt+P` shows or collapses the Project panel of the current agent's project (opens the
+  coordinator from a thread), `Mod+Alt+Shift+N` opens New project. Agent menus, agent cards and
+  the project's header in the list get a Projects section: the Project panel, New project…,
+  Continue as a project…, Pause this project… and Check herdr-projects setup.
 
 ### Changed
 

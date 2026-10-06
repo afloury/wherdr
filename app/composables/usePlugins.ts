@@ -3,6 +3,7 @@
 // (global actions). List kept per machine, re-read at most every 30 s.
 import type { ChatResponse, Pane, PluginAction, PluginActionList, PluginActionResult } from '#shared/types'
 import { PROJECT_REQUIRED, type ProfileChoices, type RepoState, conversationEmpty, projectNameOk, repoState, roleProfiles, suggestedProjectName } from '#shared/projectsActions'
+import { projectOf } from '#shared/projects'
 
 const REFRESH_MS = 30000
 export const pluginActions = ref<Record<string, PluginAction[]>>({})
@@ -206,7 +207,7 @@ async function runPluginAction(a: PluginAction, target: Target) {
       name: a.id === 'adopt-workspace' ? suggestedProjectName(a.id, { space }) : '',
       nameAuto: true, machine: pluginTargetMachine(target), repoState: 'idle', repoRoot: '',
       goal: '', task: '', repo: '', empty: null,
-      slug: 'pane' in target ? target.pane.project || '' : '',
+      slug: 'pane' in target ? projectOf(target.pane) || '' : '',
       open: true,
     })
     if (a.id === 'new') {
@@ -225,6 +226,45 @@ async function runPluginAction(a: PluginAction, target: Target) {
     if (!ok) return
   }
   await executePluginAction(a, target)
+}
+
+// herdr-projects action on an agent's machine, as from its menu (input sheet for
+// the ones that ask for one). False: not offered there (plugin missing).
+export function startProjectsAction(p: Pane, id: string): boolean {
+  const a = agentPluginActions(p.machine).find(x => x.plugin === 'herdr-projects' && x.id === id)
+  if (!a) return false
+  runPluginAction(a, { pane: p })
+  return true
+}
+
+// Dedicated herdr-projects entries of an agent's menus (its view, its card, its
+// project's header) when the plugin is on its machine; the other actions stay
+// under "Plugin actions". `kbds`: show the shortcuts (menu of the agent being viewed).
+export function projectMenuItems(p: Pane, kbds = false): MenuItem[] {
+  const actions = agentPluginActions(p.machine).filter(a => a.plugin === 'herdr-projects')
+  if (!actions.length) return []
+  const items: MenuItem[] = [{ kind: 'group', label: tl('Projects', 'Projets') }]
+  const coordinator = projectCoordinatorOf(p)
+  if (coordinator) {
+    const shown = desk.value && coordinator.id === curPane.value && projectSideOpen.value
+    items.push({
+      label: shown ? tl('Hide the Project panel', 'Masquer le panneau Projet') : t('Show the Project panel'),
+      icon: shown ? 'i-lucide-panel-right-close' : 'i-lucide-folder-kanban',
+      kbds: kbds ? shortcutKbds('project-panel') : undefined, run: () => openProjectPanel(p, true),
+    })
+  }
+  const slug = projectOf(p)
+  const entries: [id: string, label: string, icon: string, offered: boolean][] = [
+    ['new', tl('New project…', 'Nouveau projet…'), 'i-lucide-folder-plus', true],
+    ['adopt-workspace', tl('Continue as a project…', 'Continuer en projet…'), 'i-lucide-git-branch-plus', Boolean(p.agent && !slug)],
+    ['pause', tl('Pause this project…', 'Mettre ce projet en pause…'), 'i-lucide-pause', Boolean(slug)],
+    ['doctor', tl('Check herdr-projects setup', 'Vérifier l’installation de herdr-projects'), 'i-lucide-stethoscope', true],
+  ]
+  for (const [id, label, icon, offered] of entries) {
+    const a = offered && actions.find(x => x.id === id)
+    if (a) items.push({ label, icon, kbds: kbds && id === 'new' ? shortcutKbds('new-project') : undefined, run: () => runPluginAction(a, { pane: p }) })
+  }
+  return items
 }
 
 async function executePluginAction(a: PluginAction, target: Target, input?: Record<string, string>) {
