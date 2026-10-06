@@ -132,8 +132,18 @@ const effortItems = computed(() => {
   if (effortsLoading.value || !efforts.value) return [head, [{ label: t('Reading effort levels…'), icon: 'i-lucide-loader-circle', disabled: true }]]
   return [head, efforts.value.levels.map(level => ({
     type: 'checkbox' as const, label: level, checked: model.value?.effort === level,
+    // omp "auto": the level it picked for this turn, else what it does.
+    description: level !== 'auto' ? undefined
+      : model.value?.effort === 'auto' && model.value.effortResolved ? tl(`This turn: ${model.value.effortResolved}`, `Ce tour : ${model.value.effortResolved}`)
+        : props.pane.agent === 'omp' ? t('Picks the level each turn') : undefined,
     onSelect: () => chooseEffort(level),
   }))]
+})
+// "auto · low": omp's auto level and what it resolved to this turn.
+const effortText = computed(() => {
+  const m = model.value
+  if (!m?.effort) return null
+  return m.effort === 'auto' && m.effortResolved ? `auto · ${m.effortResolved}` : m.effort
 })
 const showEffort = computed(() => ['claude', 'codex', 'omp'].includes(props.pane.agent || '') &&
   Boolean(efforts.value?.levels.length || (model.value?.effort && !efforts.value)))
@@ -176,15 +186,15 @@ watch(locked, (l) => { if (l) { modelOpen.value = false; effortOpen.value = fals
       <UDropdownMenu
         :open="effortOpen" :items="effortItems" :modal="false"
         :content="{ side: 'top', align: 'start', sideOffset: 6 }"
-        :ui="{ content: 'hw-dropdown model-menu effort-menu', label: 'model-menu-label' }"
+        :ui="{ content: 'hw-dropdown model-menu effort-menu', itemDescription: 'model-hint', label: 'model-menu-label' }"
         @update:open="setOpen('effort', $event)"
       >
         <UButton
           color="neutral" variant="ghost" size="xs" class="model-pick effort-pick" :class="{ off: locked }"
-          :aria-disabled="locked" :aria-label="`${t('Effort')} : ${model?.effort || t('Unknown effort')}`"
+          :aria-disabled="locked" :aria-label="`${t('Effort')} : ${effortText || t('Unknown effort')}`"
           :trailing-icon="switching ? 'i-lucide-loader-circle' : 'i-lucide-chevron-down'"
           :ui="{ trailingIcon: switching ? 'animate-spin model-caret' : 'model-caret' }"
-        >{{ model?.effort || t('Effort') }}</UButton>
+        >{{ effortText || t('Effort') }}</UButton>
       </UDropdownMenu>
     </span>
   </UTooltip>

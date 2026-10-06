@@ -1,0 +1,13 @@
+
+                                            ████████████
+                                               ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                               ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                               ▒▒  ██                  █
+                                                   ██       v18.6.1
+
+                       Tip: Press ← ← to drill into a running or finished agent and inspect its
+                                               tool calls and transcript
+
+
+ 󰵗   Opus 5.5   demo  󰙺 ─1%──────────────────────────────────────────────────────────────󰕝─󰁨───────────1M─
+╰─

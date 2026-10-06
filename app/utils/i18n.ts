@@ -293,6 +293,7 @@ const FR: Record<string, string> = {
   // Model
   'Model': 'Modèle', 'Unknown model': 'Modèle inconnu',
   'Unknown effort': 'Effort inconnu', 'Reading effort levels…': 'Lecture des efforts…',
+  'Picks the level each turn': 'Choisit le niveau à chaque tour',
   'Change effort': 'Changer d’effort', 'Default (recommended)': 'Par défaut (recommandé)',
   'Effort': 'Effort', 'Effort level unavailable for this model': 'Niveau d’effort indisponible pour ce modèle',
   'Reading models…': 'Lecture des modèles…', 'Reload list': 'Relire la liste', 'For this session only': 'Pour cette session seulement',

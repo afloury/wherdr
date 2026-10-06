@@ -14,7 +14,7 @@ import { HerdrError, agentPrompt, herdr, sleep } from './herdr'
 import { closePanel } from './actions'
 import { READY, findPane, poll, transcripts } from './state'
 import { machineOfPane } from './machines'
-import { type ClaudeEffortSlider, type ModelMenu, type OmpCycleKnowledge, type OmpSelector, OMP_EFFORT_ORDER, claudeEffortCommand, claudeEffortLevels, cleanModelName, codexCachedEfforts, codexConfigModel, claudeScreenEffort, claudeScreenModel, codexFooterModel, effortMatches, effortValue, learnOmpCycle, ompEffortLevels, ompModelLabel, ompScreenEffort, ompSelectorCaption, parseClaudeEffortScreen, parseModelMenu, parseOmpSelector, sameModel, switchConfirmKeys } from './models'
+import { type ClaudeEffortSlider, type ModelMenu, type OmpCycleKnowledge, type OmpSelector, OMP_EFFORT_ORDER, claudeEffortCommand, claudeEffortLevels, cleanModelName, codexCachedEfforts, codexConfigModel, claudeScreenEffort, claudeScreenModel, codexFooterModel, effortMatches, effortValue, learnOmpCycle, ompEffortLevels, ompModelLabel, ompScreenEffort, ompScreenModel, ompSelectorCaption, parseClaudeEffortScreen, parseModelMenu, parseOmpSelector, sameModel, switchConfirmKeys } from './models'
 import { fmt } from '../../shared/message'
 
 // ---------------------------------------------------------------- current model
@@ -103,8 +103,18 @@ export async function currentModel(p: Pane): Promise<ModelInfo | null> {
   if (fromFile && !fromFile.effort && observed && sameModel(fromFile.label, observed.label)) {
     return { ...fromFile, effort: observed.effort }
   }
-  const ompSeen = p.agent === 'omp' && fromFile && !fromFile.effort ? ompScreenEffort(ompScreens.get(p.id), fromFile.label) : null
-  if (fromFile && ompSeen) return { ...fromFile, effort: ompSeen }
+  if (p.agent === 'omp') {
+    const text = ompScreens.get(p.id)
+    if (fromFile) {
+      const shown = ompScreenEffort(text, fromFile.label)
+      if (!fromFile.effort && shown) return { ...fromFile, effort: shown }
+      // "auto" shows the glyph of the level it resolved to for this turn.
+      if (fromFile.effort === 'auto') return { ...fromFile, effortResolved: shown && shown !== 'auto' && shown !== 'off' ? shown : fromFile.effortResolved ?? null }
+      return fromFile
+    }
+    // No transcript before the first message: the status line alone.
+    return ompScreenModel(text)
+  }
   if (!fromFile && p.agent === 'claude') {
     // New agent: Claude Code's header already gives model and effort.
     const sm = screenModels.get(p.id)
