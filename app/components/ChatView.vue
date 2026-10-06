@@ -294,13 +294,32 @@ type Block =
   | { k: 'tools', key: string, list: ChatItem[], live: boolean }
   | { k: 'turn', key: string, text: string, copy: string | null, reply: string | null }
 
+// Images of a transcript item (a user message, or what a tool returned),
+// re-read on demand from its line (ref = its position in the file).
+function itemImageSrcs(it: ChatItem): string[] {
+  const file = chat.value.file
+  const srcs: string[] = []
+  if (!it.ref || !it.images || !file) return srcs
+  for (let k = 0; k < it.images; k++) {
+    srcs.push(`/api/chat/image?pane=${encodeURIComponent(props.pane.id)}&file=${encodeURIComponent(file)}&ref=${it.ref}&i=${(it.imageAt || 0) + k}`)
+  }
+  return srcs
+}
+// At most 6 thumbnails under an action ("+N" opens the rest).
+const TOOL_THUMB_MAX = 6
+// Images of actions whose row is not on screen (collapsed block): kept
+// visible under the block.
+function hiddenToolImages(b: Block & { k: 'tools' }): string[][] {
+  const shown: readonly ChatItem[] = isOmpGroup(b.list) ? ompRows(b).rows : b.list.length <= 3 || isOpen(b.key) ? b.list : []
+  return b.list.filter(x => x.images && !shown.includes(x)).map(itemImageSrcs).filter(s => s.length)
+}
+
 const openTools = reactive(new Set<string>())
 const working = computed(() => !readOnly.value && props.pane.status === 'working')
 
 const blocks = computed<Block[]>(() => {
   const out: Block[] = []
   const list = items.value
-  const c = chat.value
   let tools: ChatItem[] = []
   // Stable key of an action block (keeps its expanded state when older
   // pages are added above).
@@ -377,12 +396,7 @@ const blocks = computed<Block[]>(() => {
       const text = it.text.replace(/^.*\/\.cache\/herdr-web\/uploads\/\S+\s*$/gm, '').split('\n').filter(l => !isAttachmentLine(l)).join('\n').trim()
       // Images re-read from the transcript (ref = position of the message in the
       // file), or photos stored on the server whose path stayed as text.
-      const srcs: string[] = []
-      if (it.ref && it.images && c.file) {
-        for (let k = 0; k < it.images; k++) {
-          srcs.push(`/api/chat/image?pane=${encodeURIComponent(props.pane.id)}&file=${encodeURIComponent(c.file)}&ref=${it.ref}&i=${k}`)
-        }
-      }
+      const srcs = itemImageSrcs(it)
       for (const u of uploads) srcs.push(`/uploads/${encodeURIComponent(u.split('/').pop()!)}`)
       // Reply to a specific message: the marker becomes a quote linking to the original.
       const parsed = parseReply(text)
@@ -1111,10 +1125,11 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   <template v-if="ompRows(b).hidden">⋯ {{ tl(`${ompRows(b).hidden} earlier actions`, `${ompRows(b).hidden} actions avant`) }}</template>
                   <template v-else>⋯ {{ t('Collapse') }}</template>
                 </button>
-                <OmpTool
-                  v-for="(tool, j) in ompRows(b).rows" :key="`${b.key}:${b.list.length - ompRows(b).rows.length + j}`"
-                  :tool="{ ...tool, omp: tool.omp! }" :live="b.live && tool === b.list[b.list.length - 1]"
-                />
+                <MsgThumbs v-for="(srcs, j) in hiddenToolImages(b)" :key="`h${j}`" class="tool-thumbs" :srcs="srcs" :max="TOOL_THUMB_MAX" :offline="readOnly" />
+                <template v-for="(tool, j) in ompRows(b).rows" :key="`${b.key}:${b.list.length - ompRows(b).rows.length + j}`">
+                  <OmpTool :tool="{ ...tool, omp: tool.omp! }" :live="b.live && tool === b.list[b.list.length - 1]" />
+                  <MsgThumbs v-if="tool.images" class="tool-thumbs" :srcs="itemImageSrcs(tool)" :max="TOOL_THUMB_MAX" :offline="readOnly" />
+                </template>
               </div>
               <div v-else-if="b.k === 'tools'" class="tools" :class="{ live: b.live }">
                 <template v-if="b.list.length <= 3">
@@ -1125,6 +1140,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                       :ui="{ root: 'tool', trigger: 'tool-trigger', label: 'tool-label', suffix: 'tool-suffix', leading: 'tool-leading' }"
                       :class="{ err: tool.error }"
                     />
+                    <MsgThumbs v-if="tool.images" class="tool-thumbs" :srcs="itemImageSrcs(tool)" :max="TOOL_THUMB_MAX" :offline="readOnly" />
                   </template>
                 </template>
                 <UChatTool
@@ -1138,8 +1154,10 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                     <div class="tool-row" :class="{ err: tool.error }">
                       <UIcon :name="toolIcon(tool)" /><b>{{ toolLabel(tool) }}</b><span>{{ toolText(tool) }}</span>
                     </div>
+                    <MsgThumbs v-if="tool.images" class="tool-thumbs" :srcs="itemImageSrcs(tool)" :max="TOOL_THUMB_MAX" :offline="readOnly" />
                   </template>
                 </UChatTool>
+                <MsgThumbs v-for="(srcs, j) in hiddenToolImages(b)" :key="`h${j}`" class="tool-thumbs" :srcs="srcs" :max="TOOL_THUMB_MAX" :offline="readOnly" />
               </div>
             </template>
             <div v-if="rendered && !items.length && !loadError" class="chat-empty">

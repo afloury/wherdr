@@ -355,10 +355,20 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       if (!Array.isArray(content)) continue
       let text = ''
       let images = 0
+      // Images the line's tool results returned come after the message's
+      // own (see extractImage).
+      let toolImages = content.filter((p: Json) => p && p.type === 'image').length
       for (const part of content) {
         if (part.type === 'tool_result') {
           const t = tools.get(part.tool_use_id)
           if (t && part.is_error) t.error = true
+          const n = Array.isArray(part.content) ? part.content.filter((p: Json) => p && p.type === 'image').length : 0
+          if (t && n && ref) {
+            t.images = n
+            t.ref = ref
+            if (toolImages) t.imageAt = toolImages
+          }
+          toolImages += n
         } else if (part.type === 'text') {
           if (special(String(part.text || ''), ts)) continue
           const t = humanText(part.text)
@@ -414,6 +424,7 @@ export function codexCommand(input: unknown): string {
 
 export function parseCodex(lines: Lines): Parsed {
   const items: Parsed = []
+  const calls = new Map<string, ChatItem>()
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li]
     const ref = lines.refs ? lines.refs[li] : undefined
@@ -441,7 +452,17 @@ export function parseCodex(lines: Lines): Parsed {
           summary = Array.isArray(a.command) ? a.command.join(' ') : a.cmd || a.command || firstLine(p.arguments)
         } catch { summary = firstLine(p.arguments) }
       } else if (p.action && p.action.command) summary = ([] as string[]).concat(p.action.command).join(' ')
-      items.push({ role: 'tool', name: p.name || 'shell', text: clip(String(summary), 300), ts })
+      const t: ChatItem = { role: 'tool', name: p.name || 'shell', text: clip(String(summary), 300), ts }
+      if (typeof p.call_id === 'string') calls.set(p.call_id, t)
+      items.push(t)
+    } else if ((p.type === 'function_call_output' || p.type === 'custom_tool_call_output') && Array.isArray(p.output)) {
+      // Images a tool returned (view_image…), re-read on demand from this line.
+      const t = calls.get(p.call_id)
+      const images = p.output.filter((o: Json) => o && o.type === 'input_image').length
+      if (t && images && ref) {
+        t.images = images
+        t.ref = ref
+      }
     }
   }
   return items
@@ -559,6 +580,13 @@ export function parseOmp(lines: Lines, home = '', templates: readonly CommandTem
       const t = tools.get(m.toolCallId)
       if (!t) continue
       if (m.isError) t.item.error = true
+      // Images the tool returned (read of a PNG, screenshot…): re-read on
+      // demand from this line, like the user's.
+      const images = Array.isArray(m.content) ? m.content.filter((p: Json) => p && p.type === 'image').length : 0
+      if (images && ref) {
+        t.item.images = images
+        t.item.ref = ref
+      }
       if (t.item.omp) ompToolResult(t.item.omp, t.name, m, t.at, cwd, home)
     }
   }
@@ -622,6 +650,12 @@ export function extractImage(d: Json, index: number): TranscriptImage | null {
   visit(d.message && Array.isArray(d.message.content) ? d.message.content : null)
   visit(d.attachment && Array.isArray(d.attachment.prompt) ? d.attachment.prompt : null)
   visit(d.payload && Array.isArray(d.payload.content) ? d.payload.content : null)
+  // Codex: images a tool returned (view_image…).
+  visit(d.payload && Array.isArray(d.payload.output) ? d.payload.output : null)
+  // Claude: images returned by tool results, after the message's own (see parseClaude).
+  if (d.message && Array.isArray(d.message.content)) {
+    for (const p of d.message.content) if (p && p.type === 'tool_result' && Array.isArray(p.content)) visit(p.content)
+  }
   const img = found[index]
   if (!img) return null
   const lower = String(img.type).toLowerCase()

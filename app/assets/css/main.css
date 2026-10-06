@@ -1305,6 +1305,9 @@ button.omp-tool-head:hover .omp-tool-chev { color: var(--text-strong); }
 .thumbs .msg-img { width: 92px; height: 92px; object-fit: cover; cursor: zoom-in; background: var(--surface-2); border: 1px solid var(--line); }
 .thumbs.one .msg-img { width: auto; height: auto; max-width: min(100%, 280px); max-height: 280px; }
 .msg-bubble .thumbs { margin: 2px 0 8px; justify-content: flex-start; }
+/* Images an action returned (read of a PNG, screenshot…): under its row, left-aligned. */
+.thumbs.tool-thumbs { display: flex; justify-content: flex-start; margin: 6px 0 8px 22px; }
+.omp-console .thumbs.tool-thumbs { margin-left: 12px; }
 /* Image viewer: the stage is the area left by the safe areas and the bars; the
    image is laid out at its zoom (width/height) and moved with a transform, so
    it may extend past the stage when zoomed. No native scrolling or page zoom. */
