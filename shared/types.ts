@@ -244,6 +244,9 @@ export interface ChatItem {
   // Index of the item's first image on its line (`i` of /api/chat/image),
   // when the line holds other images before it (Claude tool results).
   imageAt?: number
+  // sha256 of each image's bytes (omp: its blob hash), to spot an image
+  // already shown higher up (see shared/imageDupes.ts).
+  hashes?: string[]
   error?: boolean
   // omp reasoning and completed background jobs, read from its transcript.
   ms?: number

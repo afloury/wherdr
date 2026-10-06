@@ -13,6 +13,7 @@
 //    container (the host's /proc is closed by AppArmor). We take the main
 //    rollout (thread_source "user", no parent) of the same cwd, modified
 //    last. Ambiguous only if two Codex run in the same folder.
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { imageTagCount } from '../../shared/queuedMatch'
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail } from '../../shared/types'
@@ -620,8 +621,38 @@ export function parseLines(text: string, kind: string | null, base = 0, home = '
   }
   const lines: Lines = raw.map(stripBlobs)
   lines.refs = refs
-  if (kind === 'omp') return parseOmp(lines, home, templates, cwd)
-  return kind === 'codex' ? parseCodex(lines) : parseClaude(lines, home)
+  const items = kind === 'omp' ? parseOmp(lines, home, templates, cwd) : kind === 'codex' ? parseCodex(lines) : parseClaude(lines, home)
+  // Content hash of each image, to spot one shown twice (see shared/imageDupes.ts).
+  const byRef = new Map<string, number>()
+  refs.forEach((r, i) => byRef.set(r, i))
+  for (const it of items) {
+    if (!it.images || !it.ref) continue
+    const i = byRef.get(it.ref)
+    if (i === undefined) continue
+    const all = lineImageHashes(raw[i]!)
+    const at = it.imageAt || 0
+    const own = all.slice(at, at + it.images)
+    if (own.length === it.images) it.hashes = own
+  }
+  return items
+}
+
+// Hashes are cached per line: transcripts only grow, a line never changes,
+// and its multi-MB base64 is decoded and hashed once, not at every poll.
+const HASH_CACHE_MAX = 2000
+const hashCache = new Map<string, string[]>()
+export function lineImageHashes(line: string): string[] {
+  if (!line.includes('"type":"image"') && !line.includes('"input_image"')) return []
+  const key = `${line.length}:${line.slice(0, 200)}:${line.slice(-200)}`
+  const hit = hashCache.get(key)
+  if (hit) return hit
+  let hashes: string[] = []
+  try {
+    hashes = lineImages(JSON.parse(line)).map(img => 'blob' in img ? img.blob : createHash('sha256').update(Buffer.from(img.data, 'base64')).digest('hex'))
+  } catch { hashes = [] }
+  if (hashCache.size >= HASH_CACHE_MAX) hashCache.delete(hashCache.keys().next().value!)
+  hashCache.set(key, hashes)
+  return hashes
 }
 
 // Types served as is: an SVG image (or any type written in the
@@ -632,8 +663,10 @@ const IMAGE_TYPES = /^image\/(?:png|jpeg|gif|webp)$/
 // stores its images separately: `blob` is then the hash to re-read in
 // ~/.omp/agent/blobs (see image()).
 export type TranscriptImage = { type: string, body: Buffer } | { type: string, blob: string }
-export function extractImage(d: Json, index: number): TranscriptImage | null {
-  const found: ({ type: string, data: string } | { type: string, blob: string })[] = []
+type LineImage = { type: string, data: string } | { type: string, blob: string }
+// Images of a line, in the order of the `i` of /api/chat/image.
+function lineImages(d: Json): LineImage[] {
+  const found: LineImage[] = []
   const visit = (parts: Json[] | null) => {
     for (const p of parts || []) {
       if (p && p.type === 'image' && p.source && p.source.data) found.push({ type: p.source.media_type || 'image/png', data: p.source.data })
@@ -656,7 +689,10 @@ export function extractImage(d: Json, index: number): TranscriptImage | null {
   if (d.message && Array.isArray(d.message.content)) {
     for (const p of d.message.content) if (p && p.type === 'tool_result' && Array.isArray(p.content)) visit(p.content)
   }
-  const img = found[index]
+  return found
+}
+export function extractImage(d: Json, index: number): TranscriptImage | null {
+  const img = lineImages(d)[index]
   if (!img) return null
   const lower = String(img.type).toLowerCase()
   const type = IMAGE_TYPES.test(lower) ? lower : 'application/octet-stream'

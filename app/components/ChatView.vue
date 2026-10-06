@@ -19,6 +19,7 @@ import { isStale, noMisses, onError, onUnavailable, type ChatMisses } from '~/ut
 import { findReplyOrigin, parseReply, replyTarget, type ReplyTarget } from '#shared/replyQuote'
 import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
 import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } from '~/utils/ompTool'
+import { duplicateImages } from '#shared/imageDupes'
 
 const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
 const route = useRoute()
@@ -305,6 +306,17 @@ function itemImageSrcs(it: ChatItem): string[] {
   }
   return srcs
 }
+// Image srcs of actions that only repeat an image shown higher up.
+const dupeSrcs = computed(() => {
+  const dupes = duplicateImages(items.value)
+  const out = new Set<string>()
+  if (!dupes.size) return out
+  for (const it of items.value) {
+    if (!it.hashes || it.role === 'user') continue
+    itemImageSrcs(it).forEach((src, k) => { if (dupes.has(`${it.ref}:${(it.imageAt || 0) + k}`)) out.add(src) })
+  }
+  return out
+})
 // At most 6 thumbnails under an action ("+N" opens the rest).
 const TOOL_THUMB_MAX = 6
 // Images of actions whose row is not on screen (collapsed block): kept
@@ -1125,10 +1137,10 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   <template v-if="ompRows(b).hidden">⋯ {{ tl(`${ompRows(b).hidden} earlier actions`, `${ompRows(b).hidden} actions avant`) }}</template>
                   <template v-else>⋯ {{ t('Collapse') }}</template>
                 </button>
-                <MsgThumbs v-for="(srcs, j) in hiddenToolImages(b)" :key="`h${j}`" class="tool-thumbs" :srcs="srcs" :max="TOOL_THUMB_MAX" :offline="readOnly" />
+                <MsgThumbs v-for="(srcs, j) in hiddenToolImages(b)" :key="`h${j}`" class="tool-thumbs" :srcs="srcs" :max="TOOL_THUMB_MAX" :offline="readOnly" :dupes="dupeSrcs" />
                 <template v-for="(tool, j) in ompRows(b).rows" :key="`${b.key}:${b.list.length - ompRows(b).rows.length + j}`">
                   <OmpTool :tool="{ ...tool, omp: tool.omp! }" :live="b.live && tool === b.list[b.list.length - 1]" />
-                  <MsgThumbs v-if="tool.images" class="tool-thumbs" :srcs="itemImageSrcs(tool)" :max="TOOL_THUMB_MAX" :offline="readOnly" />
+                  <MsgThumbs v-if="tool.images" class="tool-thumbs" :srcs="itemImageSrcs(tool)" :max="TOOL_THUMB_MAX" :offline="readOnly" :dupes="dupeSrcs" />
                 </template>
               </div>
               <div v-else-if="b.k === 'tools'" class="tools" :class="{ live: b.live }">
@@ -1140,7 +1152,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                       :ui="{ root: 'tool', trigger: 'tool-trigger', label: 'tool-label', suffix: 'tool-suffix', leading: 'tool-leading' }"
                       :class="{ err: tool.error }"
                     />
-                    <MsgThumbs v-if="tool.images" class="tool-thumbs" :srcs="itemImageSrcs(tool)" :max="TOOL_THUMB_MAX" :offline="readOnly" />
+                    <MsgThumbs v-if="tool.images" class="tool-thumbs" :srcs="itemImageSrcs(tool)" :max="TOOL_THUMB_MAX" :offline="readOnly" :dupes="dupeSrcs" />
                   </template>
                 </template>
                 <UChatTool
@@ -1154,10 +1166,10 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                     <div class="tool-row" :class="{ err: tool.error }">
                       <UIcon :name="toolIcon(tool)" /><b>{{ toolLabel(tool) }}</b><span>{{ toolText(tool) }}</span>
                     </div>
-                    <MsgThumbs v-if="tool.images" class="tool-thumbs" :srcs="itemImageSrcs(tool)" :max="TOOL_THUMB_MAX" :offline="readOnly" />
+                    <MsgThumbs v-if="tool.images" class="tool-thumbs" :srcs="itemImageSrcs(tool)" :max="TOOL_THUMB_MAX" :offline="readOnly" :dupes="dupeSrcs" />
                   </template>
                 </UChatTool>
-                <MsgThumbs v-for="(srcs, j) in hiddenToolImages(b)" :key="`h${j}`" class="tool-thumbs" :srcs="srcs" :max="TOOL_THUMB_MAX" :offline="readOnly" />
+                <MsgThumbs v-for="(srcs, j) in hiddenToolImages(b)" :key="`h${j}`" class="tool-thumbs" :srcs="srcs" :max="TOOL_THUMB_MAX" :offline="readOnly" :dupes="dupeSrcs" />
               </div>
             </template>
             <div v-if="rendered && !items.length && !loadError" class="chat-empty">
