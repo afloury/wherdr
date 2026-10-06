@@ -18,6 +18,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- The model and effort under the input field no longer turn into a bare "Model" when reading the
+  transcript briefly fails (SSH machine connection dropped, timeout): the last known value stays.
 - An omp `!` or `$` command sent while omp is working no longer stays "Queued · sending…" (then
   "Not sent", inviting a second run): omp runs it at once but records it only when the next prompt
   starts, so its bubble now goes when that turn ends; the "You ran" block shows once omp records it.
