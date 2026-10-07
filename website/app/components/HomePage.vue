@@ -3,7 +3,7 @@
 // live demos in the hero (phone + desktop on one clock) and next to the
 // feature stories, and an install that types itself.
 import { AGENT_PROMPT, REPO } from '~/utils/site'
-import { DOCKER_COMMANDS, DOCKER_DEMO, INSTALL_COMMAND, MAC_COMMANDS, MAC_DEMO, ONE_COMMAND_DEMO } from '~/utils/installDemo'
+import { DOCKER_COMMANDS, DOCKER_DEMO, INSTALL_COMMAND, MAC_COMMANDS, MAC_DEMO, ONE_COMMAND_DEMO, PLUGIN_COMMAND } from '~/utils/installDemo'
 
 const stories = [
   {
@@ -50,6 +50,7 @@ const security = [
 
 const installTabs = [
   { id: 'one', label: 'Linux · one command' },
+  { id: 'plugin', label: 'Herdr plugin' },
   { id: 'agent', label: 'Ask your agent' },
   { id: 'docker', label: 'Linux · Docker, by hand' },
   { id: 'mac', label: 'macOS · no Docker' },
@@ -209,7 +210,7 @@ const faq = [
           <div v-reveal class="section-head">
             <p class="label"><span class="k">04</span> Install</p>
             <h2 class="display h2">One command on your server.</h2>
-            <p class="lead">With Herdr running, on the always-on Linux machine that hosts your agents (a Raspberry Pi works). The script checks Docker and Herdr, creates <code>~/wherdr</code>, and starts the container on 127.0.0.1. No sudo, and it asks before replacing anything. <a href="/install" target="_blank">Read it first.</a></p>
+            <p class="lead">With Herdr running, on the machine that hosts your agents — ideally an always-on Linux box (a Raspberry Pi works). Use our script, or install it as a Herdr plugin: both check Docker and Herdr, create <code>~/wherdr</code> and listen on 127.0.0.1 only. No sudo, and nothing is replaced without asking. <a href="/install" target="_blank">Read the script first.</a></p>
           </div>
 
           <div v-reveal class="install">
@@ -217,6 +218,16 @@ const faq = [
               <button v-for="t in installTabs" :id="`tab-${t.id}`" :key="t.id" type="button" role="tab" class="tab" :aria-selected="tab === t.id" :aria-controls="`panel-${t.id}`" @click="tab = t.id">
                 {{ t.label }}
               </button>
+            </div>
+
+            <div v-show="tab === 'plugin'" id="panel-plugin" role="tabpanel" aria-labelledby="tab-plugin" class="panel">
+              <InstallCommand :command="PLUGIN_COMMAND" />
+              <ol class="steps">
+                <li><b>Run it</b> on the machine that runs Herdr (≥ 0.9.1), Linux or macOS. Herdr shows the manifest and its commands before installing.</li>
+                <li><b>It picks the setup:</b> Docker on Linux when it is available, Node.js 22 otherwise (always on macOS). Files go to <code>~/wherdr</code>; no sudo.</li>
+                <li><b>It starts with Herdr</b>, unless a wherdr already answers on port 7683 — that one is left alone. Open <code>http://localhost:7683</code>.</li>
+                <li><b>Phone:</b> run the <i>wherdr: phone setup</i> action for the <code>tailscale serve</code> command and a QR code.</li>
+              </ol>
             </div>
 
             <div v-show="tab === 'one'" id="panel-one" role="tabpanel" aria-labelledby="tab-one" class="panel">

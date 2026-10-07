@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Herdr plugin: wherdr installs with `herdr plugin install` (`herdr-plugin.toml` at the root; exact
+  command in the README). It runs the published Docker image on Linux when Docker Compose works, Node.js
+  22 otherwise (always on macOS), from `~/wherdr`; starts wherdr detached with Herdr unless
+  something already answers on its port; and adds Start, Stop, Restart, Status, Open, Update and
+  Phone setup actions. Stop only stops what the plugin started. The website's install section
+  lists it as its second method, after the one-line installer.
 - Settings › Conversation › Quoted replies is now a choice of how the field shows the quotes, per
   device (computer and phone): "“>” lines" (plain text, default), "Tokens, native field" (the
   plain field, its quote lines drawn as tokens: typing, dictation and autocorrect unchanged) or

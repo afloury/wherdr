@@ -15,3 +15,5 @@ test-data-old/
 test-results/
 playwright-report/
 .e2e-tmp/
+# herdr-plugin.sh: folder chosen at plugin install time
+/.wherdr-dir

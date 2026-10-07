@@ -6,6 +6,7 @@
 
 - [Setup guide for agents](https://wherdr.dev/agent.md): questions to ask the user, one install path per answer, checks and safety rules
 - [Installer](https://wherdr.dev/install): the `curl -fsSL https://wherdr.dev/install | sh` script (Linux, Docker)
+- [Herdr plugin](https://raw.githubusercontent.com/afloury/wherdr/main/herdr-plugin.toml): `herdr plugin install afloury/wherdr` (Linux: Docker when available, else Node.js 22; macOS: Node.js 22)
 - [README](https://raw.githubusercontent.com/afloury/wherdr/main/README.md): features, installation, configuration, troubleshooting
 - [Security policy](https://raw.githubusercontent.com/afloury/wherdr/main/SECURITY.md): how to report a vulnerability
 
