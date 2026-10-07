@@ -1,8 +1,6 @@
 <script setup lang="ts">
 // Settings, in sections: appearance, conversation, terminal, agents,
 // notifications, security (passkey), computer, about.
-import { startRegistration } from '@simplewebauthn/browser'
-import type { AuthStatus } from '#shared/types'
 import type { ThemeDef } from '~/utils/themes'
 import type { TypingSpeed } from '~/utils/typewriter'
 import type { QuoteMode } from '~/utils/quoteTokens'
@@ -146,7 +144,7 @@ function agentMachineHint(kind: string) {
 }
 
 // ------------------------------------------------------------ notifications
-const subscribed = ref<boolean | null>(null)
+const subscribed = pushOn
 const scopeItems = [
   { label: t('Project coordinators and agents outside projects'), value: 'project_leads' },
   { label: t('All agents'), value: 'all' },
@@ -155,7 +153,7 @@ const selectedScope = computed({
   get: () => notifyScope.value,
   set: (v: 'project_leads' | 'all') => { setNotifyScope(v).catch(e => toast((e as Error).message, true)) },
 })
-async function refreshPush() { subscribed.value = await pushSubscribed() }
+const refreshPush = refreshPushOn
 
 // Quiet mode: scope (this device = its subscription, or all) and duration.
 // The server keeps the setting and filters before sending (shared/quiet.ts).
@@ -202,16 +200,6 @@ const quietEnd = computed(() => {
     ? tl(`Silenced on ${who} until ${time}.`, `Silence sur ${who} jusqu’à ${time}.`)
     : tl(`Silenced on ${who} until tomorrow ${time}.`, `Silence sur ${who} jusqu’à demain ${time}.`)
 })
-async function pushAction() {
-  if (await pushSubscribed()) await testPush()
-  else await enablePush()
-  refreshPush()
-}
-const pushNote = computed(() => t(subscribed.value
-  ? 'You are notified when an agent needs your input or finishes.'
-  : isIOS && !standalone
-    ? 'On iPhone, add the app to your Home Screen (Share → Add to Home Screen) to receive notifications.'
-    : 'Enable notifications to know when an agent needs your input.'))
 
 // ------------------------------------------------------------ theme
 // Preview: background, surface, line, text, accent, states (working, waiting, done).
@@ -246,63 +234,9 @@ const rendererStatus = computed(() => terminalRenderStatus.value === 'html-fallb
 watch(renderer, refreshTerminalRenderStatus)
 
 // ------------------------------------------------------------ security
-const sec = ref<AuthStatus | null>(null)
-const supported = import.meta.client && Boolean(window.PublicKeyCredential)
-async function refreshSecurity() {
-  try { sec.value = await api<AuthStatus>('/api/auth/status') }
-  catch { /* offline */ }
-}
-// Readable device name, for the key list.
-function deviceName() {
-  const ua = navigator.userAgent
-  if (/iPhone/.test(ua)) return 'iPhone'
-  if (/iPad/.test(ua) || (isIOS && !/iPhone/.test(ua))) return 'iPad'
-  if (/Macintosh/.test(ua)) return 'Mac'
-  if (/Windows/.test(ua)) return 'Windows'
-  if (/Android/.test(ua)) return 'Android'
-  return t('Device')
-}
-async function registerKey() {
-  try {
-    const bootstrapToken = sec.value?.enabled ? undefined : window.prompt(tl(
-      'Bootstrap token (in server logs)',
-      'Jeton d’amorçage (dans les journaux du serveur)',
-    ))
-    if (!sec.value?.enabled && !bootstrapToken) return
-    const opts = await api<Parameters<typeof startRegistration>[0]['optionsJSON']>('/api/auth/register/options', { bootstrapToken })
-    const response = await startRegistration({ optionsJSON: opts })
-    await api('/api/auth/register/verify', { response, name: deviceName(), bootstrapToken })
-    await start()
-    toast(t('Lock enabled on this device ✓'))
-  } catch (err) {
-    const e = err as Error
-    toast(e.name === 'NotAllowedError'
-      ? t('Registration cancelled')
-      : e.name === 'InvalidStateError' ? t('This device is already registered') : e.message, true)
-  }
-  refreshSecurity()
-}
-async function lockNow() {
-  await api('/api/auth/lock', {}).catch(() => {})
-  showLock()
-}
-async function lockAllDevices() {
-  if (!(await askConfirm(t('Lock every device? Each one, this one included, will need its passkey again. The keys are kept.'), t('Lock all')))) return
-  try {
-    await api('/api/auth/lock-all', {})
-    showLock()
-  } catch (err) { toast((err as Error).message, true) }
-}
-async function disableLock() {
-  if (!(await askConfirm(t('Turn off the lock? The app will be open again to anyone who can reach this server.'), t('Turn off')))) return
-  try {
-    await api('/api/auth/disable', {})
-    clearOffline()
-    await start()
-    toast(t('Lock turned off'))
-  } catch (err) { toast((err as Error).message, true) }
-  refreshSecurity()
-}
+// The passkey card (PasskeyCard.vue) shares this state.
+const sec = authStatus
+const refreshSecurity = refreshAuthStatus
 // Maximum duration since the passkey unlock (server setting, every device).
 const maxSessionItems = computed(() => MAX_SESSION_DAYS.map(d => ({
   label: d === 1 ? t('1 day') : d === 365 ? t('1 year') : tl(`${d} days`, `${d} jours`),
@@ -534,12 +468,7 @@ onMounted(() => {
             <p class="muted notify-hint" :class="{ 'quiet-end': quietOn }">{{ quietEnd || tl('Notifications come back on by themselves at the end.', 'Retour automatique à la normale à la fin de la durée choisie.') }}</p>
           </div>
           <div class="settings-group">
-            <div class="settings-card">
-              <button type="button" class="settings-action" @click="pushAction">
-                <UIcon name="i-lucide-bell" />{{ t(subscribed ? 'Send a test notification' : 'Enable notifications') }}
-              </button>
-              <p class="muted">{{ pushNote }}</p>
-            </div>
+            <PushCard />
             <p class="notify-caption">{{ t('Notify for') }}</p>
             <URadioGroup v-model="selectedScope" :items="scopeItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
             <p class="muted notify-hint">{{ t('Project threads remain visible and their unread messages are kept.') }}</p>
@@ -557,22 +486,7 @@ onMounted(() => {
         <div v-show="activeSection === 'security'" class="settings-section">
           <div class="settings-group">
             <h3>{{ t('Passkey') }}</h3>
-            <div class="settings-card">
-              <template v-if="sec && !sec.enabled">
-                <button type="button" class="settings-action" :disabled="!supported" @click="registerKey">
-                  <UIcon name="i-lucide-lock" />{{ t('Enable passkey lock') }}
-                </button>
-                <p class="muted">{{ t(supported ? 'Without a lock, anyone who can reach this server can control your agents. Passkey: Face ID, Touch ID, Windows Hello…' : 'This browser does not support passkeys.') }}</p>
-              </template>
-              <template v-else-if="sec">
-                <p class="muted keys">{{ t('Registered keys:') }} {{ sec.devices.map(d => d.name).join(', ') }}</p>
-                <button type="button" class="settings-action" @click="registerKey"><UIcon name="i-lucide-plus" />{{ t('Add this device') }}</button>
-                <button type="button" class="settings-action" @click="lockNow"><UIcon name="i-lucide-lock" />{{ t('Lock now') }}</button>
-                <button type="button" class="settings-action danger" @click="lockAllDevices"><UIcon name="i-lucide-shield-alert" />{{ t('Lock all devices') }}</button>
-                <button type="button" class="settings-action danger" @click="disableLock"><UIcon name="i-lucide-lock-open" />{{ t('Turn off lock') }}</button>
-                <p class="muted">{{ hostLabel ? tl(`The app locks after 12 h without use. Lost or stolen device: Lock all devices. Lost key: delete data/auth.json on ${hostLabel}.`, `L’app se verrouille après 12 h sans utilisation. Appareil perdu ou volé : Verrouiller tous les appareils. Clé perdue : supprimer data/auth.json sur ${hostLabel}.`) : tl('The app locks after 12 h without use. Lost or stolen device: Lock all devices. Lost key: delete data/auth.json on the server.', 'L’app se verrouille après 12 h sans utilisation. Appareil perdu ou volé : Verrouiller tous les appareils. Clé perdue : supprimer data/auth.json sur le serveur.') }}</p>
-              </template>
-            </div>
+            <PasskeyCard />
           </div>
           <div v-if="sec?.enabled" class="settings-group">
             <h3>{{ t('Ask for the passkey again after') }}</h3>
@@ -605,6 +519,7 @@ onMounted(() => {
             <UpdateBanner v-if="updateInfo?.latest" :info="updateInfo" />
             <p v-else-if="updateInfo?.checked" class="muted settings-hint">{{ t('This is the latest version.') }}</p>
             <button type="button" class="settings-action solo" @click="reloadApp"><UIcon name="i-lucide-refresh-cw" />{{ t('Reload app') }}</button>
+            <button type="button" class="settings-action solo" @click="openOnboarding"><UIcon name="i-lucide-compass" />{{ tl('Setup guide', 'Guide de démarrage') }}</button>
           </div>
         </div>
       </div>

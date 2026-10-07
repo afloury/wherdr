@@ -4,6 +4,7 @@
 // feature stories, and an install that types itself.
 import { AGENT_PROMPT, REPO } from '~/utils/site'
 import { DOCKER_COMMANDS, DOCKER_DEMO, INSTALL_COMMAND, MAC_COMMANDS, MAC_DEMO, ONE_COMMAND_DEMO, PLUGIN_COMMAND, RUNNERS } from '~/utils/installDemo'
+import { type InstallOs, installOs } from '~/utils/recommend'
 
 const stories = [
   {
@@ -59,6 +60,14 @@ const installTabs = [
   { id: 'mac', label: 'macOS · from source' },
 ] as const
 const tab = ref<typeof installTabs[number]['id']>('one')
+// Recommended method for this visitor's system (read after hydration: the page is prerendered).
+const os = ref<InstallOs | null>(null)
+onMounted(() => { os.value = installOs(navigator.userAgent, navigator.maxTouchPoints) })
+const recommended = computed(() => os.value === 'mac'
+  ? { tab: 'plugin' as const, system: 'macOS', method: 'the Herdr plugin', why: 'Installs and starts wherdr natively, then opens its setup guide in your browser. Homebrew is coming soon.', command: PLUGIN_COMMAND }
+  : os.value === 'linux'
+    ? { tab: 'one' as const, system: 'Linux', method: 'the install script', why: 'Docker when it is there, Node.js 22 otherwise, in ~/wherdr. No sudo.', command: INSTALL_COMMAND }
+    : null)
 
 const faq = [
   { label: 'Is wherdr free?', content: 'Yes. It is open source under the MIT license, with no account, no paid plan and no hosted version. You run it on your own machine.' },
@@ -217,6 +226,15 @@ const faq = [
           </div>
 
           <div v-reveal class="install">
+            <div v-if="recommended" class="recommend" aria-live="polite">
+              <p class="label"><span class="k">●</span> Recommended for you · {{ recommended.system }}</p>
+              <p class="recommend-text"><b>Use {{ recommended.method }}.</b> {{ recommended.why }}</p>
+              <InstallCommand :command="recommended.command" />
+              <button v-if="tab !== recommended.tab" type="button" class="recommend-steps" @click="tab = recommended.tab">Show its steps <UIcon name="i-lucide-arrow-down" class="size-3.5" /></button>
+            </div>
+            <p class="prereq">
+              Needs <a href="https://herdr.dev" target="_blank" rel="noopener">Herdr</a> 0.9.1+ on Linux or macOS · your phone needs <a href="https://tailscale.com/download" target="_blank" rel="noopener">Tailscale</a>, free for personal use.
+            </p>
             <div class="tabs" role="tablist" aria-label="Installation method">
               <button v-for="t in installTabs" :id="`tab-${t.id}`" :key="t.id" type="button" role="tab" class="tab" :aria-selected="tab === t.id" :aria-controls="`panel-${t.id}`" @click="tab = t.id">
                 {{ t.label }}
@@ -226,9 +244,9 @@ const faq = [
             <div v-show="tab === 'plugin'" id="panel-plugin" role="tabpanel" aria-labelledby="tab-plugin" class="panel">
               <InstallCommand :command="PLUGIN_COMMAND" />
               <ol class="steps">
-                <li><b>Run it</b> on the machine that runs Herdr (≥ 0.9.1), Linux or macOS. It installs wherdr in <code>~/wherdr</code> (Docker on Linux when available, Node.js 22 otherwise; no sudo) and starts it: <code>http://localhost:7683</code>.</li>
+                <li><b>Run it</b> on the machine that runs Herdr (≥ 0.9.1), Linux or macOS. It installs wherdr in <code>~/wherdr</code> (Docker on Linux when available, Node.js 22 otherwise; no sudo), starts it on <code>http://localhost:7683</code> and, the first time, opens its setup guide in your browser.</li>
                 <li><b>Open the <i>wherdr</i> action</b> in Herdr: one panel with the state, the addresses and a key per command — start, stop, restart, log, update, auto-start at login.</li>
-                <li><b>Phone:</b> press <b>P</b> for the <code>tailscale serve</code> command, then scan the QR code the panel shows.</li>
+                <li><b>Phone:</b> the setup guide (or Settings › Phone, key <b>P</b> of the panel) publishes wherdr on your tailnet, then shows a QR code to scan.</li>
               </ol>
             </div>
 
@@ -377,6 +395,13 @@ const faq = [
 
 /* ----------------------------------------------------------- install */
 .install { max-width: 920px; }
+.recommend { display: grid; gap: 14px; margin: 0 0 18px; padding: 22px 24px; border: 1px solid var(--line-strong); background: var(--surface); box-shadow: inset 2px 0 0 var(--accent); }
+.recommend .label { margin: 0; }
+.recommend-text { margin: 0; color: var(--muted); max-width: 70ch; }
+.recommend-text b { color: var(--text); }
+.recommend-steps { justify-self: start; display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: var(--text); cursor: pointer; font: 600 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 4px; }
+.prereq { margin: 0 0 18px; color: var(--muted); font-size: 14px; }
+.prereq a { color: var(--text); text-decoration-color: var(--accent); text-underline-offset: 3px; }
 .tabs { display: flex; flex-wrap: wrap; border: 1px solid var(--line); border-bottom: 0; }
 .tab { flex: 1 1 auto; padding: 14px 18px; border: 0; border-right: 1px solid var(--line); background: var(--bg-2); color: var(--muted); cursor: pointer; font: 600 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; text-align: left; }
 .tab:last-child { border-right: 0; }

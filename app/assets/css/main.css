@@ -2117,6 +2117,56 @@ body.kb .composer { padding-bottom: 8px; }
   .phone-qr { flex-direction: column; align-items: flex-start; }
   .phone-command, .phone-address { flex-wrap: wrap; }
 }
+/* First-launch setup guide (OnboardingGuide.vue): full screen, grid backdrop like
+   the lock screen; top bar (brand, Skip), step rail, one page, Back / Next. */
+.onboarding {
+  position: fixed; inset: 0; z-index: 45; display: flex; flex-direction: column; background: var(--bg);
+  background-image: linear-gradient(var(--line-soft) 1px, transparent 1px), linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+  background-size: 48px 48px; background-position: center;
+}
+.onboarding-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: calc(var(--safe-top) + 10px) 16px 10px; border-bottom: 1px solid var(--line); background: var(--bg); }
+.onboarding-brand { display: flex; align-items: center; gap: 10px; font: 600 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--text-2); }
+.onboarding-logo { width: 26px; height: 26px; }
+.onboarding-skip { font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; border-radius: 0; }
+.onboarding-steps { display: flex; align-items: center; gap: 16px; padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--bg); }
+.onboarding-count { flex: none; font: 600 11px/1 var(--mono); letter-spacing: .08em; color: var(--mauve); }
+.onboarding-steps ol { flex: 1; display: flex; list-style: none; margin: 0; padding: 0; min-width: 0; }
+.onboarding-steps li { flex: 1; min-width: 0; }
+.onboarding-steps button { display: flex; flex-direction: column; gap: 9px; width: 100%; padding: 12px 0 11px; color: var(--muted); font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; text-align: left; cursor: pointer; }
+.onboarding-steps button i { display: block; height: 2px; background: var(--line); }
+.onboarding-steps li + li button i { margin-left: 4px; }
+.onboarding-steps li + li button span { padding-left: 4px; }
+.onboarding-steps button span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.onboarding-steps li.done button i { background: var(--done); }
+.onboarding-steps li.current button { color: var(--text-strong); }
+.onboarding-steps li.current button i { background: var(--mauve); }
+.onboarding-body { flex: 1; min-height: 0; overflow-y: auto; }
+.onboarding-page { width: 100%; max-width: 680px; margin: 0 auto; padding: 34px 16px 40px; }
+.onboarding-eyebrow { color: var(--mauve); margin-bottom: 14px; }
+.onboarding-title { font: 850 clamp(30px, 6vw, 46px)/1 var(--display); letter-spacing: -.045em; word-spacing: .08em; margin: 0 0 16px; color: var(--text-strong); }
+.onboarding-lead { margin: 0 0 26px; max-width: 58ch; color: var(--text-2); font-size: 15px; line-height: 1.55; }
+.onboarding-facts code { padding: 1px 6px; border: 1px solid var(--line); background: var(--code-bg); font: 12px var(--mono); }
+.onboarding-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.onboarding-kind { display: inline-flex; align-items: center; gap: 7px; padding: 4px 9px 4px 4px; border: 1px solid var(--line); background: var(--bg); font: 500 11px/1 var(--mono); color: var(--text); }
+.onboarding-kind .avatar { width: 20px; height: 20px; font-size: 10px; }
+.onboarding-page .phone-setup > h3 { display: none; }
+.onboarding-why { margin: 0 0 10px; color: var(--text-2); font-size: 13px; line-height: 1.5; }
+.onboarding-title + .settings-group { margin-top: 28px; }
+.onboarding-later { margin: 0; font-size: 12px; line-height: 1.5; }
+.onboarding-install { display: grid; gap: 12px; }
+.settings-card.onboarding-howto { padding: 16px; }
+.onboarding-howto h3 { margin: 0 0 12px; font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.onboarding-howto ol { margin: 0; padding: 0; list-style: none; counter-reset: howto; display: grid; gap: 10px; font-size: 14px; line-height: 1.45; }
+.onboarding-howto li { counter-increment: howto; position: relative; padding-left: 30px; }
+.onboarding-howto li::before { content: counter(howto, decimal-leading-zero); position: absolute; left: 0; top: 2px; font: 600 11px/1.45 var(--mono); color: var(--mauve); }
+.onboarding-howto .iconify { width: 15px; height: 15px; vertical-align: -2px; color: var(--accent); }
+.onboarding-foot { display: flex; justify-content: space-between; gap: 10px; padding: 12px 16px calc(var(--safe-bottom) + 12px); border-top: 1px solid var(--line); background: var(--bg); }
+.onboarding-foot > * { border-radius: 0; }
+.onboarding-next { flex: 0 1 auto; justify-content: center; min-width: 0; }
+@media (max-width: 520px) {
+  .onboarding-next { flex: 1; }
+  .onboarding-steps button span { font-size: 9px; letter-spacing: .08em; }
+}
 .settings-typing .encrypted-toggle.is-disabled { opacity: .48; cursor: not-allowed; }
 /* Typewriter preview: sample reply, replayed on each setting change. */
 .typing-preview { margin: 14px 0 0; border: 1px solid var(--line); background: var(--bg); }

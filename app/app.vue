@@ -59,6 +59,8 @@ onMounted(() => {
     })
   }
   start({ resume: true })
+  // First launch: the setup guide, until finished or skipped (saved by the server).
+  watch(locked, (l) => { if (!l) checkOnboarding() }, { immediate: true })
   // Local lease over: ask the server (which slides an active session) rather
   // than locking on the browser's own clock. Only the sliding lease counts here:
   // the maximum duration never locks the app while it is open.
@@ -90,6 +92,7 @@ onUnmounted(() => {
     <PluginResultSheet />
     <ImageLightbox />
     <ShortcutsSheet />
+    <OnboardingGuide v-if="onboardingOpen && !locked" />
     <NewVersionBanner v-if="!locked" />
     <LockScreen v-if="locked" />
   </UApp>
