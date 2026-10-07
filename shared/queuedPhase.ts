@@ -14,10 +14,12 @@ const norm = (t: string) => dropReplyMarker(String(t || '').replace(/\[Image #\d
 const msgNorm = (t: string) => norm(String(t || '').split('\n').filter(l => !l.includes(UPLOAD)).join('\n'))
 
 // Same message (first 80 characters); or one starts with the other, long
-// enough not to confuse "ok" with "ok, go ahead" (cut screen).
+// enough not to confuse "ok" with "ok, go ahead" (cut screen). Whitespace is
+// ignored: the screen wraps long lines, mid-word when a word (a path) is
+// longer than the line, so a break may stand where the text has none.
 function same(a: string, b: string): boolean {
-  const x = a.slice(0, 80)
-  const y = b.slice(0, 80)
+  const x = a.replace(/\s+/g, '').slice(0, 80)
+  const y = b.replace(/\s+/g, '').slice(0, 80)
   if (!x || !y) return false
   return x === y || (Math.min(x.length, y.length) >= 24 && (x.startsWith(y) || y.startsWith(x)))
 }
