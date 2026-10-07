@@ -15,29 +15,32 @@ command = ["sh", "scripts/herdr-plugin.sh", "build"]
 [[startup]]
 command = ["sh", "scripts/herdr-plugin.sh", "start"]
 
+# Every action but Open shows its readable output in a popup (the [[panes]]
+# below), never the raw JSON of `herdr plugin action invoke`.
+
 [[actions]]
 id = "start"
 title = "Start wherdr"
 contexts = ["global", "workspace"]
-command = ["sh", "scripts/herdr-plugin.sh", "start"]
+command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint start --focus"]
 
 [[actions]]
 id = "stop"
 title = "Stop wherdr"
 contexts = ["global", "workspace"]
-command = ["sh", "scripts/herdr-plugin.sh", "stop"]
+command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint stop --focus"]
 
 [[actions]]
 id = "restart"
 title = "Restart wherdr"
 contexts = ["global", "workspace"]
-command = ["sh", "scripts/herdr-plugin.sh", "restart"]
+command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint restart --focus"]
 
 [[actions]]
 id = "status"
 title = "wherdr status"
 contexts = ["global", "workspace"]
-command = ["sh", "scripts/herdr-plugin.sh", "status"]
+command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint status --focus"]
 
 [[actions]]
 id = "open"
@@ -46,10 +49,22 @@ contexts = ["global", "workspace"]
 command = ["sh", "scripts/herdr-plugin.sh", "open"]
 
 [[actions]]
+id = "logs"
+title = "wherdr logs"
+contexts = ["global", "workspace"]
+command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint logs --focus"]
+
+[[actions]]
+id = "doctor"
+title = "wherdr doctor"
+contexts = ["global", "workspace"]
+command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint doctor --focus"]
+
+[[actions]]
 id = "update"
 title = "Update wherdr"
 contexts = ["global", "workspace"]
-command = ["sh", "scripts/herdr-plugin.sh", "update"]
+command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint update --focus"]
 
 [[actions]]
 id = "phone"
@@ -58,9 +73,65 @@ contexts = ["global", "workspace"]
 command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint phone --focus"]
 
 [[panes]]
+id = "start"
+title = "Start wherdr"
+placement = "popup"
+width = "80%"
+height = "80%"
+command = ["sh", "scripts/herdr-plugin.sh", "pane", "start"]
+
+[[panes]]
+id = "stop"
+title = "Stop wherdr"
+placement = "popup"
+width = "80%"
+height = "80%"
+command = ["sh", "scripts/herdr-plugin.sh", "pane", "stop"]
+
+[[panes]]
+id = "restart"
+title = "Restart wherdr"
+placement = "popup"
+width = "80%"
+height = "80%"
+command = ["sh", "scripts/herdr-plugin.sh", "pane", "restart"]
+
+[[panes]]
+id = "status"
+title = "wherdr status"
+placement = "popup"
+width = "80%"
+height = "80%"
+command = ["sh", "scripts/herdr-plugin.sh", "pane", "status"]
+
+[[panes]]
+id = "logs"
+title = "wherdr logs"
+placement = "popup"
+width = "80%"
+height = "80%"
+command = ["sh", "scripts/herdr-plugin.sh", "pane", "logs"]
+
+[[panes]]
+id = "doctor"
+title = "wherdr doctor"
+placement = "popup"
+width = "80%"
+height = "80%"
+command = ["sh", "scripts/herdr-plugin.sh", "pane", "doctor"]
+
+[[panes]]
+id = "update"
+title = "Update wherdr"
+placement = "popup"
+width = "80%"
+height = "80%"
+command = ["sh", "scripts/herdr-plugin.sh", "pane", "update"]
+
+[[panes]]
 id = "phone"
 title = "wherdr · phone setup"
 placement = "popup"
 width = "80%"
 height = "80%"
-command = ["sh", "scripts/herdr-plugin.sh", "phone"]
+command = ["sh", "scripts/herdr-plugin.sh", "pane", "phone"]

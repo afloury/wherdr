@@ -13,6 +13,12 @@ export type TermDemo = { title: string, lines: TermLine[] }
 export const INSTALL_COMMAND = 'curl -fsSL https://wherdr.dev/install | sh'
 // `herdr plugin install owner/repo` (herdr-plugin.toml at the root of the repository).
 export const PLUGIN_COMMAND = `herdr plugin install ${REPO.replace('https://github.com/', '')}`
+// The npm package `wherdr` (prebuilt): try it with a package runner, keep it with a global install.
+export const RUNNERS = {
+  npx: { run: 'npx wherdr', keep: 'npm install -g wherdr' },
+  bunx: { run: 'bunx wherdr', keep: 'bun add -g wherdr' },
+  pnpm: { run: 'pnpm dlx wherdr', keep: 'pnpm add -g wherdr' },
+} as const
 
 // Commands to copy for the by-hand tabs, run as shown in their terminals.
 export const DOCKER_COMMANDS = [

@@ -20,11 +20,13 @@ describe('update command', () => {
   it('follows the installation mode', () => {
     expect(installMode('docker')).toBe('docker')
     expect(installMode('docker-build')).toBe('docker-build')
+    expect(installMode('npm')).toBe('npm')
     expect(installMode(undefined)).toBe('native')
     expect(installMode('autre')).toBe('native')
     expect(updateCommand('docker')).toBe('docker compose pull && docker compose up -d')
     expect(updateCommand('docker-build')).toContain('docker-compose.build.yml up -d --build')
     expect(updateCommand('native')).toBe('git pull && npm ci && npm run build')
+    expect(updateCommand('npm')).toBe('npx wherdr@latest')
   })
 })
 

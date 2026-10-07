@@ -13,13 +13,14 @@ computer and on your phone.</b></p>
 
 ## Quick start
 
-To try it on one computer, with [Herdr](https://herdr.dev) running and Node.js 22, on macOS or
-Linux (`localhost` only). For phone access, see the [recommended setup](#recommended-always-on-server--tailscale).
+With [Herdr](https://herdr.dev) running and Node.js 22 (or Bun), on macOS or Linux:
 
 ```sh
-git clone https://github.com/afloury/wherdr.git && cd wherdr
-npm ci && npm run build && npm start    # then open http://localhost:7683
+npx wherdr          # or: bunx wherdr, pnpm dlx wherdr — then open http://localhost:7683
 ```
+
+To keep it: `npm install -g wherdr`, then `wherdr service install` starts it at every login, and
+`wherdr phone` walks you through phone access. See [the `wherdr` command](#the-wherdr-command).
 
 wherdr is a small self-hosted web app that talks to the Herdr server on your machine. **On a
 computer**, it can replace the Herdr terminal client day to day: your spaces, tabs and split panes
@@ -62,6 +63,7 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - [Requirements](#requirements)
 - [Installation](#installation): [which setup?](#which-setup) ·
   [always-on server + Tailscale](#recommended-always-on-server--tailscale) ·
+  [the `wherdr` command](#the-wherdr-command) ·
   [one computer, no Docker](#simple-one-computer-no-docker) ·
   [as a Herdr plugin](#install-as-a-herdr-plugin) ·
   [Docker on a Mac: Reveal/Open](#wherdr-in-docker-on-a-mac-reveal-in-finder-open-and-modalto)
@@ -304,6 +306,45 @@ sleeping for an hour, four hours, the evening or until turned off.
 > proxy, no Cloudflare Tunnel or ngrok, no `tailscale funnel`. Use `tailscale serve`, which stays
 > inside your tailnet. See [Security](#security).
 
+### The `wherdr` command
+
+The npm package holds the built app: nothing is compiled on your machine. Try it with
+`npx wherdr` (or `bunx wherdr`, `pnpm dlx wherdr`); to keep it, install it once:
+
+```sh
+npm install -g wherdr       # or: pnpm add -g wherdr, bun add -g wherdr
+wherdr service install      # starts at every login; prints the address
+wherdr phone                # tailnet address, tailscale serve command and a QR code
+```
+
+| Command | What it does |
+| --- | --- |
+| `wherdr` (or `wherdr run`) | Runs in the foreground; Ctrl+C stops it. |
+| `wherdr start` · `stop` · `restart` | Background server, pid and log in `~/wherdr`. `start` says *started* only once the port answers; otherwise it prints the end of the log. With a login service installed, they drive the service. |
+| `wherdr status` | Address, process, service, data folder and log. |
+| `wherdr logs` (`-f` to follow, `-n 100`) | The log, `~/wherdr/wherdr.log`. |
+| `wherdr open` | Opens wherdr in the browser. |
+| `wherdr phone` | Phone setup: local and tailnet addresses, the `tailscale serve` command, a QR code. |
+| `wherdr service install` · `uninstall` | Start at login: a LaunchAgent on macOS (`~/Library/LaunchAgents/dev.wherdr.plist`), a `systemd --user` unit on Linux (`loginctl enable-linger` keeps it running while you are logged out). |
+| `wherdr doctor` | Checks Node/Bun, Herdr and its socket, the port, the service, the data folder and `APP_URL`. |
+
+Options: `--port` (default `7683`), `--host` (default `127.0.0.1`, keep it on loopback),
+`--data-dir` (passkeys, push keys and settings; default `~/wherdr/data`, the folder the Herdr
+plugin and the install script use), `--session` (a named Herdr session). Every
+[environment variable](#configuration) works too, and so do `KEY=VALUE` lines in
+`~/wherdr/wherdr.env` (for example `APP_URL=…`, read at each start); options win, then the
+environment, then that file. `start` and `service install` remember the port and folders for
+the other commands.
+
+The login service records the **absolute path** of the runtime (n, nvm, fnm, Volta or Homebrew
+node), since launchd and systemd do not see your shell's `PATH`. It refuses to point at a
+temporary `npx` / `pnpm dlx` / `bunx` folder: install the package globally first. To update:
+`npm install -g wherdr@latest && wherdr restart` (with `npx`: stop it, then `npx wherdr@latest`).
+
+Bun runs wherdr too (WebSockets, push, passkeys and Herdr's socket work); when Node.js 22 is
+also installed, `bunx wherdr` hands the server to Node, the reference runtime. Set
+`WHERDR_RUNTIME=bun` to keep Bun.
+
 ### Simple: one computer, no Docker
 
 The quickest way to try it, and the way to run wherdr **on macOS**: Docker Desktop cannot reach
@@ -346,12 +387,14 @@ starts it with Herdr from then on. It picks the setup by itself:
 - **Docker** on Linux when Docker Compose v2 works for your user: the published image, from
   `~/wherdr` (`docker-compose.yml`, `.env`), exactly like the [one-line installer](https://wherdr.dev/install).
 - **Node.js 22** everywhere else, and always on macOS (Docker Desktop cannot reach Herdr's
-  socket): the plugin builds wherdr in its own folder and runs it detached, with its pid and
-  log (`wherdr.log`) in `~/wherdr`. Without Node.js 22, the install stops and says so.
+  socket): the plugin downloads the prebuilt npm package of its version (or builds wherdr in its
+  own folder when that fails) and runs it detached, with its pid and log (`wherdr.log`) in
+  `~/wherdr`. Bun works too when Node.js 22 is missing. Without either, the install stops and
+  says so.
 
 Herdr runs the plugin's actions with the environment of its server, whose `PATH` often lacks the
 folders of version managers (n, nvm, fnm, Volta, asdf). The install therefore saves the absolute
-path of node in `~/wherdr/plugin.env` (`WHERDR_RUNTIME=/path/to/node`); if that binary
+path of the runtime in `~/wherdr/plugin.env` (`WHERDR_RUNTIME=/path/to/node`); if that binary
 disappears, **Start** looks in the usual places (`~/.n/bin`, `~/.nvm`, `~/.volta/bin`, fnm,
 `~/.asdf/shims`, Homebrew, `/usr/local/bin`, `~/.bun/bin`) and saves what it finds. Set
 `WHERDR_RUNTIME` there by hand for anything else. **Start** only reports success once the
@@ -365,13 +408,14 @@ installed globally and nothing runs with sudo.
 When something already answers on the port (a wherdr started with Docker, systemd or by hand),
 the plugin starts nothing and never stops it: **Stop** only stops what the plugin started.
 Actions, from Herdr's command palette or wherdr's menus: **Start wherdr**, **Stop wherdr**,
-**Restart wherdr**, **wherdr status**, **Open wherdr in the browser**, **Update wherdr** and
-**wherdr: phone setup** (the `tailscale serve` command, your tailnet address and a QR code when
-`qrencode` is installed). For phone access, follow steps 3 to 5 of the
-[recommended setup](#recommended-always-on-server--tailscale).
+**Restart wherdr**, **wherdr status**, **wherdr logs**, **wherdr doctor**, **Open wherdr in the
+browser**, **Update wherdr** and **wherdr: phone setup** (the `tailscale serve` command, your
+tailnet address and a QR code). Each one opens a popup with its readable output; in native mode
+they run the [`wherdr` command](#the-wherdr-command) of the plugin folder. For phone access,
+follow steps 3 to 5 of the [recommended setup](#recommended-always-on-server--tailscale).
 
-Prefer running the actions from Herdr's interface: `herdr plugin action invoke` prints their
-result as raw JSON. Their readable output is in the plugin logs:
+Run them from Herdr's interface: `herdr plugin action invoke` in a terminal only prints a raw
+JSON result. The output of the startup hook is in the plugin logs:
 `herdr plugin log list --plugin afloury.wherdr`.
 
 ### wherdr in Docker on a Mac: Reveal in Finder, Open and Mod+Alt+O
@@ -423,6 +467,7 @@ installed version is shown in Settings › About.
 | Docker, published image (default) | `docker compose pull && docker compose up -d` |
 | Docker, built from source | `git pull && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` |
 | No Docker | `git pull && npm ci && npm run build`, then restart wherdr |
+| `wherdr` command (npm) | `npm install -g wherdr@latest && wherdr restart` (npx: stop it, then `npx wherdr@latest`) |
 | Herdr plugin, Docker | **Update wherdr** action (pulls the image, restarts the container) |
 | Herdr plugin, Node.js | `herdr plugin install afloury/wherdr --yes`, then the **Restart wherdr** action |
 
