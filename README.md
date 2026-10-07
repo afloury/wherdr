@@ -349,6 +349,14 @@ starts it with Herdr from then on. It picks the setup by itself:
   socket): the plugin builds wherdr in its own folder and runs it detached, with its pid and
   log (`wherdr.log`) in `~/wherdr`. Without Node.js 22, the install stops and says so.
 
+Herdr runs the plugin's actions with the environment of its server, whose `PATH` often lacks the
+folders of version managers (n, nvm, fnm, Volta, asdf). The install therefore saves the absolute
+path of node in `~/wherdr/plugin.env` (`WHERDR_RUNTIME=/path/to/node`); if that binary
+disappears, **Start** looks in the usual places (`~/.n/bin`, `~/.nvm`, `~/.volta/bin`, fnm,
+`~/.asdf/shims`, Homebrew, `/usr/local/bin`, `~/.bun/bin`) and saves what it finds. Set
+`WHERDR_RUNTIME` there by hand for anything else. **Start** only reports success once the
+process is alive and the port answers; otherwise it prints the last lines of `wherdr.log`.
+
 Force a setup with `WHERDR_MODE=native herdr plugin install afloury/wherdr` (or `docker`). The
 choice, the port (`WHERDR_PORT`, default 7683) and, in native mode, `APP_URL` are kept in
 `~/wherdr/plugin.env`; another folder can be set with `WHERDR_DIR` at install time. Nothing is
@@ -361,6 +369,10 @@ Actions, from Herdr's command palette or wherdr's menus: **Start wherdr**, **Sto
 **wherdr: phone setup** (the `tailscale serve` command, your tailnet address and a QR code when
 `qrencode` is installed). For phone access, follow steps 3 to 5 of the
 [recommended setup](#recommended-always-on-server--tailscale).
+
+Prefer running the actions from Herdr's interface: `herdr plugin action invoke` prints their
+result as raw JSON. Their readable output is in the plugin logs:
+`herdr plugin log list --plugin afloury.wherdr`.
 
 ### wherdr in Docker on a Mac: Reveal in Finder, Open and Mod+Alt+O
 

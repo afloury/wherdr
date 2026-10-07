@@ -48,6 +48,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Herdr plugin, native mode (macOS): Start failed when Herdr's server `PATH` did not contain
+  node (n, nvm, fnm, Volta…) yet said “started”. The install now saves the absolute path of node
+  in `~/wherdr/plugin.env` (`WHERDR_RUNTIME`), Start looks in the usual folders when it is gone,
+  and reports success only once the port answers, with the end of the log otherwise.
 - Claude Code's `/config`, `/status` and `/usage` results highlight the active settings tab again:
   the tab Claude Code now draws in reverse video (seen under Herdr 0.9.3) is recognized.
 - Remote (SSH) machines: busy machines no longer show "Connection closed by UNKNOWN port 65535",
