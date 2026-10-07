@@ -328,12 +328,14 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T = Record<string, unknown>>(path: string, body?: unknown): Promise<T> {
+export async function api<T = Record<string, unknown>>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const opts: RequestInit = body === undefined
-    ? {}
-    : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
+    ? { signal }
+    : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal }
   const r = await fetch(path, opts)
-  const data = await r.json().catch(() => ({}))
+  // Aborted mid-body (deadline): a failure, not an empty answer (`{}` from the
+  // status check would read as "lock off").
+  const data = await r.json().catch(() => { signal?.throwIfAborted(); return {} })
   // Session expired or app locked: back through the passkey, but only once the
   // server confirms it (a single 401 is not enough to drop the user's screen).
   if (r.status === 401 && data.code === 'locked' && !path.startsWith('/api/auth/')) confirmLock()
@@ -530,11 +532,19 @@ export function showLock() {
   booted = false
 }
 
+// App opening or back in the foreground: a server that accepts the connection
+// but never answers (phone on a tailnet whose wherdr host is gone) counts as
+// unreachable past this delay, so the last known state shows and the live
+// connection keeps retrying. Unlock and Settings wait for the answer.
+const STATUS_WAIT_MS = 3000
+
 // resume: see confirmLock.
 export async function start({ resume = false } = {}) {
   let access = readOfflineAccess()
   try {
-    const st = await api<AuthStatus>(resume ? '/api/auth/status?resume=1' : '/api/auth/status')
+    const st = resume
+      ? await api<AuthStatus>('/api/auth/status?resume=1', undefined, AbortSignal.timeout(STATUS_WAIT_MS))
+      : await api<AuthStatus>('/api/auth/status')
     if (st.hostLabel !== undefined) hostLabel.value = st.hostLabel
     if (st.enabled && !st.unlocked) return showLock()
     access = leaseFromStatus(st)

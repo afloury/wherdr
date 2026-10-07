@@ -1,7 +1,10 @@
 // wherdr service worker: installable + notifications.
-// Everything goes network first (the app only makes sense connected to the server);
-// the cache only serves to show the shell if the network is down.
+// Network first (the app only makes sense connected to the server): the cache
+// only serves to show the shell if the network is down or silent. Fingerprinted
+// build files, which never change under their name, come from the cache once there.
 // Never any cache for /api/, /ws/ or /uploads/.
+
+import { networkFirst } from './networkFirst'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 interface SwGlobal {
@@ -22,6 +25,8 @@ interface SwGlobal {
 const sw = self as unknown as SwGlobal
 
 const CACHE = 'wherdr-v1'
+// Silent server: the cached copy past this delay (see networkFirst.ts).
+const NETWORK_WAIT_MS = 3000
 // Files of the built app (hashes in the name) + the page.
 // (written as is: workbox looks for "self.__WB_MANIFEST" to inject the list there)
 const WB_MANIFEST = self.__WB_MANIFEST
@@ -48,25 +53,35 @@ sw.addEventListener('activate', (e) => {
   })())
 })
 
+// Copy taken at once (before the page reads the body), stored afterwards.
+async function keep(req: Request, res: Response) {
+  if (!res.ok) return
+  const copy = res.clone()
+  await (await caches.open(CACHE)).put(req, copy)
+}
+
 sw.addEventListener('fetch', (e) => {
   const req: Request = e.request
   const url = new URL(req.url)
   if (req.method !== 'GET' || url.origin !== sw.location.origin
     || url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws/') || url.pathname.startsWith('/uploads/')) return
-  e.respondWith((async () => {
-    try {
-      // no-cache: always revalidate with the server, never serve an old
-      // version from the phone's HTTP cache.
-      const res = await fetch(req, { cache: 'no-cache' })
-      if (res.ok) {
-        const c = await caches.open(CACHE)
-        c.put(req, res.clone())
-      }
-      return res
-    } catch {
-      return (await caches.match(req)) || (req.mode === 'navigate' ? (await caches.match('/')) || Response.error() : Response.error())
-    }
-  })())
+  // Fingerprinted build files never change under their name: once cached, no
+  // round trip (a silent server would otherwise hold up each file of the shell).
+  if (url.pathname.startsWith('/_nuxt/') && !url.pathname.startsWith('/_nuxt/builds/')) {
+    const cached = caches.match(req).catch(() => undefined)
+    const fresh = cached.then(hit => (hit ? undefined : fetch(req)))
+    // Not cached yet: stored before the worker may stop (iOS stops it early).
+    e.waitUntil(fresh.then(res => res && keep(req, res)).catch(() => {}))
+    e.respondWith(cached.then(async hit => hit || (await fresh)!))
+    return
+  }
+  // no-cache: always revalidate with the server, never serve an old
+  // version from the phone's HTTP cache.
+  const network = fetch(req, { cache: 'no-cache' })
+  // Also kept when the answer comes after the cached copy was served.
+  e.waitUntil(network.then(res => keep(req, res)).catch(() => {}))
+  const fromCache = async () => (await caches.match(req)) || (req.mode === 'navigate' ? caches.match('/') : undefined)
+  e.respondWith(networkFirst(network, fromCache, NETWORK_WAIT_MS))
 })
 
 sw.addEventListener('push', (e) => {

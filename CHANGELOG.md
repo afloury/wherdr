@@ -67,6 +67,9 @@ All notable changes to this project are documented here. The format follows
 - Pasting an image (`⌘V` on a Mac) into a terminal, full view or side by side, now reaches the
   agent: it is uploaded to the agent's machine and its path pasted through Herdr, which omp and
   Claude Code attach as an image. Before, the terminal only pasted text and the image was lost.
+- The installed app no longer opens on a blank screen when its server accepts the connection but
+  never answers (a phone on a tailnet whose wherdr host is gone): it shows the app from its cache
+  after 3 s, then the last known state, and goes live once the server answers again.
 
 ## [1.2.0] — 2026-10-05
 
