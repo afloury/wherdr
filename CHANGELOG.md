@@ -42,6 +42,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Claude Code's `/config`, `/status` and `/usage` results highlight the active settings tab again:
+  the tab Claude Code now draws in reverse video (seen under Herdr 0.9.3) is recognized.
 - Remote (SSH) machines: busy machines no longer show "Connection closed by UNKNOWN port 65535",
   "Conversation not up to date" or "Threads unavailable". wherdr keeps its reads under sshd's
   session limit per connection (`MaxSessions`, 10 by default), leaving room for terminals,

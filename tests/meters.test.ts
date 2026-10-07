@@ -56,4 +56,12 @@ describe('active tab of the settings panel', async () => {
     expect(activeTab(l)).toBe('Stats')
     expect(activeTab('Settings  Status  Config')).toBeNull()
   })
+  it('spots the word in reverse video (Claude Code under Herdr 0.9.3)', () => {
+    const l = '   \x1b[0m\x1b[1m\x1b[38;2;177;185;249mSettings\x1b[0m  Status  \x1b[0m\x1b[1m\x1b[7m Config   \x1b[0mUsage   Stats\r'
+    expect(activeTab(l)).toBe('Config')
+  })
+  it('does not take a 7 inside a color for reverse video', () => {
+    expect(activeTab('\x1b[38;2;7;7;7mSettings  Status\x1b[0m  Config')).toBeNull()
+    expect(activeTab('Settings  \x1b[7mStatus\x1b[27m  Config')).toBe('Status')
+  })
 })
