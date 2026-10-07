@@ -1,15 +1,17 @@
 // scripts/herdr-plugin.sh in native mode: Herdr runs the actions with its
 // server's PATH, which may not contain node (n, nvm…). The runtime found at
-// install time must be saved and used by start.
-import { execFileSync, spawnSync } from 'node:child_process'
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+// install time must be saved and used by start. Herdr builds in a temporary
+// folder then moves it: the build starts wherdr from a copy that stays put.
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
+import { once } from 'node:events'
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 const REPO = path.resolve(import.meta.dirname, '..')
-const TOOLS = ['sh', 'dirname', 'basename', 'sed', 'tr', 'head', 'tail', 'cat', 'ps', 'grep', 'curl', 'mkdir', 'touch', 'wc', 'sleep', 'nohup', 'ls', 'sort', 'id', 'uname', 'rm', 'mv', 'mktemp', 'tar', 'printf', 'setsid']
+const TOOLS = ['sh', 'dirname', 'basename', 'sed', 'tr', 'head', 'tail', 'cat', 'ps', 'grep', 'curl', 'mkdir', 'touch', 'wc', 'sleep', 'nohup', 'ls', 'sort', 'id', 'uname', 'rm', 'mv', 'cp', 'mktemp', 'tar', 'printf', 'setsid']
 
 async function freePort() {
   const srv = net.createServer()
@@ -45,6 +47,9 @@ describe.skipIf(process.platform === 'win32' || !which('curl'))('herdr plugin, n
     // node only in a version-manager-like folder; npm stubbed (no real build).
     symlinkSync(process.execPath, path.join(rt, 'node'))
     writeFileSync(path.join(rt, 'npm'), '#!/bin/sh\nexit 0\n'); chmodSync(path.join(rt, 'npm'), 0o755)
+    // Left by npm ci: the panel's QR code package, so nothing is downloaded.
+    mkdirSync(path.join(root, 'node_modules', 'qrcode-terminal'), { recursive: true })
+    writeFileSync(path.join(root, 'node_modules', 'qrcode-terminal', 'package.json'), '{}')
     for (const t of TOOLS) { const p = which(t); if (p) symlinkSync(p, path.join(minbin, t)) }
     port = await freePort()
   })
@@ -61,24 +66,67 @@ describe.skipIf(process.platform === 'win32' || !which('curl'))('herdr plugin, n
     env: { HOME: home, PATH: extraPath ? `${extraPath}:${minbin}` : minbin, WHERDR_MODE: 'native', WHERDR_PORT: String(port) },
   })
 
-  it('saves the runtime at install and starts with it from a PATH without node', () => {
+  const pidOf = () => readFileSync(path.join(home, 'wherdr', 'wherdr.pid'), 'utf8').trim()
+
+  it('installs a copy outside the checkout and starts it at the end of the build, with the saved runtime', () => {
     // Install (fetch of the npm package fails offline or for an unpublished version: stub build).
     const build = run('build', rt)
     expect(build.status, build.stderr).toBe(0)
-    const conf = readFileSync(path.join(home, 'wherdr', 'plugin.env'), 'utf8')
-    expect(conf).toContain(`WHERDR_RUNTIME=${path.join(rt, 'node')}`)
+    expect(build.stdout).toContain(`✓ wherdr is running → http://localhost:${port}`)
+    expect(readFileSync(path.join(home, 'wherdr', 'plugin.env'), 'utf8')).toContain(`WHERDR_RUNTIME=${path.join(rt, 'node')}`)
+    const pid = pidOf()
+    const cmd = existsSync(`/proc/${pid}/cmdline`) ? readFileSync(`/proc/${pid}/cmdline`, 'utf8').replace(/\0/g, ' ') : execFileSync('ps', ['-o', 'args=', '-p', pid], { encoding: 'utf8' })
+    expect(cmd).toContain(`${path.join(rt, 'node')} ${path.join(home, 'wherdr', 'app', '.output', 'server', 'index.mjs')}`)
+    expect(existsSync(path.join(home, 'wherdr', 'app', 'node_modules', 'qrcode-terminal'))).toBe(true)
 
+    // Herdr then moves the checkout: wherdr keeps running, and the moved
+    // plugin, from a PATH without node, still controls it.
+    const moved = path.join(tmp, 'moved')
+    renameSync(root, moved)
+    root = moved
     expect(spawnSync('sh', ['-c', 'command -v node'], { env: { PATH: minbin } }).status).not.toBe(0)
+    expect(run('start').stdout).toContain('nothing to start')
+    expect(run('stop').stdout).toContain(`wherdr stopped (pid ${pid})`)
     const start = run('start')
     expect(start.status, start.stderr).toBe(0)
     expect(start.stdout).toContain('wherdr started')
-    const pid = readFileSync(path.join(home, 'wherdr', 'wherdr.pid'), 'utf8').trim()
-    expect(execFileSync('ps', ['-o', 'args=', '-p', pid], { encoding: 'utf8' })).toContain(path.join(rt, 'node'))
-    expect(run('stop').stdout).toContain('wherdr stopped')
+  })
+
+  it('restarts the wherdr it runs on the new copy when installed again', () => {
+    expect(run('build', rt).status).toBe(0)
+    const first = pidOf()
+    const again = run('build', rt)
+    expect(again.status, again.stderr).toBe(0)
+    expect(again.stdout).toContain('✓ wherdr is running')
+    expect(pidOf()).not.toBe(first)
+    expect(() => process.kill(Number(first), 0)).toThrow()
+  })
+
+  it('keeps the install when wherdr cannot start, and says why', () => {
+    writeFileSync(path.join(root, '.output', 'server', 'index.mjs'), 'console.error("cannot open the Herdr socket"); process.exit(3)\n')
+    const build = run('build', rt)
+    expect(build.status, build.stderr).toBe(0)
+    expect(build.stdout).not.toContain('✓ wherdr is running')
+    expect(build.stdout).toContain('wherdr is installed but did not start')
+    expect(build.stdout).toContain('cannot open the Herdr socket')
+    expect(existsSync(path.join(home, 'wherdr', 'app', 'bin', 'wherdr.mjs'))).toBe(true)
+  })
+
+  it('starts nothing at install when something already answers on the port', async () => {
+    // Another program, in a child: spawnSync blocks this process's event loop.
+    const other = spawn(process.execPath, ['-e', `require('http').createServer((q, s) => s.end('other')).listen(${port}, '127.0.0.1', () => console.log('up'))`])
+    try {
+      await once(other.stdout, 'data')
+      const build = run('build', rt)
+      expect(build.status, build.stderr).toBe(0)
+      expect(build.stdout).toContain('nothing to start')
+      expect(existsSync(path.join(home, 'wherdr', 'wherdr.pid'))).toBe(false)
+    } finally { other.kill() }
   })
 
   it('finds a runtime in the usual folders when the saved one is gone', () => {
     expect(run('build', rt).status).toBe(0)
+    expect(run('stop').status).toBe(0)
     unlinkSync(path.join(rt, 'node'))
     mkdirSync(path.join(home, '.n', 'bin'), { recursive: true })
     symlinkSync(process.execPath, path.join(home, '.n', 'bin', 'node'))
@@ -90,7 +138,8 @@ describe.skipIf(process.platform === 'win32' || !which('curl'))('herdr plugin, n
 
   it('reports a server that exits at startup with the end of its log, never "started"', () => {
     expect(run('build', rt).status).toBe(0)
-    writeFileSync(path.join(root, '.output', 'server', 'index.mjs'), 'console.error("cannot open the Herdr socket"); process.exit(3)\n')
+    expect(run('stop').status).toBe(0)
+    writeFileSync(path.join(home, 'wherdr', 'app', '.output', 'server', 'index.mjs'), 'console.error("cannot open the Herdr socket"); process.exit(3)\n')
     const start = run('start')
     expect(start.status).toBe(1)
     expect(start.stdout).not.toContain('wherdr started')

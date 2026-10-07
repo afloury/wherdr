@@ -226,10 +226,9 @@ const faq = [
             <div v-show="tab === 'plugin'" id="panel-plugin" role="tabpanel" aria-labelledby="tab-plugin" class="panel">
               <InstallCommand :command="PLUGIN_COMMAND" />
               <ol class="steps">
-                <li><b>Run it</b> on the machine that runs Herdr (≥ 0.9.1), Linux or macOS. Herdr shows the manifest and its commands before installing.</li>
-                <li><b>It picks the setup:</b> Docker on Linux when it is available, Node.js 22 otherwise (always on macOS). Files go to <code>~/wherdr</code>; no sudo.</li>
-                <li><b>It starts with Herdr</b>, unless a wherdr already answers on port 7683 — that one is left alone. Open <code>http://localhost:7683</code>.</li>
-                <li><b>Phone:</b> run the <i>wherdr: phone setup</i> action for the <code>tailscale serve</code> command and a QR code.</li>
+                <li><b>Run it</b> on the machine that runs Herdr (≥ 0.9.1), Linux or macOS. It installs wherdr in <code>~/wherdr</code> (Docker on Linux when available, Node.js 22 otherwise; no sudo) and starts it: <code>http://localhost:7683</code>.</li>
+                <li><b>Open the <i>wherdr</i> action</b> in Herdr: one panel with the state, the addresses and a key per command — start, stop, restart, log, update, auto-start at login.</li>
+                <li><b>Phone:</b> press <b>P</b> for the <code>tailscale serve</code> command, then scan the QR code the panel shows.</li>
               </ol>
             </div>
 

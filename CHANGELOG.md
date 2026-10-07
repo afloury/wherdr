@@ -16,8 +16,16 @@ All notable changes to this project are documented here. The format follows
   (macOS LaunchAgent or `systemd --user` unit with the absolute runtime path) and `doctor`.
   Published by `.github/workflows/npm.yml` on each version tag (npm Trusted Publishing). The
   website's install section adds npx, bunx and pnpm dlx tabs.
-- Herdr plugin: its actions open a popup with readable output (start, stop, restart, status,
-  logs, doctor, update, phone setup); in native mode they run the `wherdr` command.
+- Herdr plugin: `herdr plugin install` (exact command in the README) now starts wherdr at the end of the install
+  (`✓ wherdr is running → http://localhost:7683`), or says why it could not without failing the
+  install. One **wherdr** action opens a panel: state, local and tailnet addresses, version, mode,
+  auto-start, the phone QR code, and keys S start, X stop, R restart, O open, L log, U update,
+  A login service on/off, P phone setup, Q quit (also `wherdr panel`). In native mode wherdr runs
+  from `~/wherdr/app`, which outlives Herdr's temporary build folder and plugin updates. The other
+  actions are gone, except **wherdr: open in the browser**. The README and the website give the
+  three-step path and how to uninstall (Herdr has no uninstall hook).
+- `WHERDR_SERVICE_NAME` names the login service (LaunchAgent `dev.<name>`, unit `<name>.service`)
+  for a second wherdr next to the usual one.
 - Herdr plugin: wherdr installs with `herdr plugin install` (`herdr-plugin.toml` at the root; exact
   command in the README). It runs the published Docker image on Linux when Docker Compose works, Node.js
   22 otherwise (always on macOS), from `~/wherdr`; starts wherdr detached with Herdr unless

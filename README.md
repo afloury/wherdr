@@ -375,24 +375,43 @@ and logs a warning.
 
 ### Install as a Herdr plugin
 
-Herdr can also install wherdr itself, on Linux and macOS, with Herdr ≥ 0.9.1:
+Herdr can also install wherdr itself, on Linux and macOS, with Herdr ≥ 0.9.1. In three lines:
 
-```sh
-herdr plugin install afloury/wherdr
-```
+1. Run `herdr plugin install afloury/wherdr`: it installs wherdr and starts it
+   (`✓ wherdr is running → http://localhost:7683`).
+2. In Herdr, run the **wherdr** action: one panel with the state, the addresses, the phone QR
+   code and a key per command.
+3. Scan the QR code with the iPhone (after `tailscale serve`, key **P**), then Share → Add to Home Screen.
 
-Herdr shows the manifest and the commands it will run, then the plugin prepares wherdr and
-starts it with Herdr from then on. It picks the setup by itself:
+Herdr shows the manifest and the commands it will run, then the plugin installs wherdr in
+`~/wherdr` and starts it, unless something already answers on the port. If wherdr cannot start,
+the install still succeeds and says why; press **S** in the panel once it is fixed. It picks the
+setup by itself:
 
 - **Docker** on Linux when Docker Compose v2 works for your user: the published image, from
   `~/wherdr` (`docker-compose.yml`, `.env`), exactly like the [one-line installer](https://wherdr.dev/install).
 - **Node.js 22** everywhere else, and always on macOS (Docker Desktop cannot reach Herdr's
   socket): the plugin downloads the prebuilt npm package of its version (or builds wherdr in its
-  own folder when that fails) and runs it detached, with its pid and log (`wherdr.log`) in
-  `~/wherdr`. Bun works too when Node.js 22 is missing. Without either, the install stops and
-  says so.
+  own folder when that fails), copies it to `~/wherdr/app` and runs it detached from there, with
+  its pid and log (`wherdr.log`) in `~/wherdr`. Herdr builds plugins in a temporary folder and
+  then moves them, so the server never runs from the plugin folder. Bun works too when Node.js 22
+  is missing. Without either, the install stops and says so.
 
-Herdr runs the plugin's actions with the environment of its server, whose `PATH` often lacks the
+The **wherdr** panel (a Herdr popup) shows ● running / ○ stopped, the local address, the tailnet
+address when `tailscale serve` publishes it (with its QR code), the version, the mode and whether
+wherdr starts by itself. Keys: **S** start, **X** stop, **R** restart, **O** open in the browser,
+**L** log (Ctrl+C to go back), **U** update (reinstalls the plugin, or pulls the image in Docker
+mode), **A** auto-start at login on/off, **P** phone setup, **Q** quit. The **wherdr: open in
+the browser** action is the only other one.
+
+Auto-start: the plugin's startup hook starts wherdr each time the Herdr server starts, which is
+all wherdr needs (it drives Herdr). Key **A** adds a login service as well (a LaunchAgent on
+macOS, a `systemd --user` unit on Linux, pointing at `~/wherdr/app` with the absolute path of the
+runtime): wherdr then runs from login and is restarted if it crashes. It is not installed on its
+own because it changes your login session. In Docker mode the container's restart policy does
+this job.
+
+Herdr runs the plugin's commands with the environment of its server, whose `PATH` often lacks the
 folders of version managers (n, nvm, fnm, Volta, asdf). The install therefore saves the absolute
 path of the runtime in `~/wherdr/plugin.env` (`WHERDR_RUNTIME=/path/to/node`); if that binary
 disappears, **Start** looks in the usual places (`~/.n/bin`, `~/.nvm`, `~/.volta/bin`, fnm,
@@ -406,17 +425,14 @@ choice, the port (`WHERDR_PORT`, default 7683) and, in native mode, `APP_URL` ar
 installed globally and nothing runs with sudo.
 
 When something already answers on the port (a wherdr started with Docker, systemd or by hand),
-the plugin starts nothing and never stops it: **Stop** only stops what the plugin started.
-Actions, from Herdr's command palette or wherdr's menus: **Start wherdr**, **Stop wherdr**,
-**Restart wherdr**, **wherdr status**, **wherdr logs**, **wherdr doctor**, **Open wherdr in the
-browser**, **Update wherdr** and **wherdr: phone setup** (the `tailscale serve` command, your
-tailnet address and a QR code). Each one opens a popup with its readable output; in native mode
-they run the [`wherdr` command](#the-wherdr-command) of the plugin folder. For phone access,
-follow steps 3 to 5 of the [recommended setup](#recommended-always-on-server--tailscale).
-
-Run them from Herdr's interface: `herdr plugin action invoke` in a terminal only prints a raw
-JSON result. The output of the startup hook is in the plugin logs:
+the plugin starts nothing and never stops it: **Stop** only stops what the plugin started. The
+output of the install and of the startup hook is in the plugin logs:
 `herdr plugin log list --plugin afloury.wherdr`.
+
+**Uninstall.** Herdr has no uninstall hook, so remove wherdr in this order: in the panel, **A**
+(if the login service is on) and **X**; then
+`herdr plugin uninstall afloury.wherdr && rm -rf ~/wherdr` (`~/wherdr/data` holds your passkeys
+and push keys).
 
 ### wherdr in Docker on a Mac: Reveal in Finder, Open and Mod+Alt+O
 
@@ -468,8 +484,8 @@ installed version is shown in Settings › About.
 | Docker, built from source | `git pull && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` |
 | No Docker | `git pull && npm ci && npm run build`, then restart wherdr |
 | `wherdr` command (npm) | `npm install -g wherdr@latest && wherdr restart` (npx: stop it, then `npx wherdr@latest`) |
-| Herdr plugin, Docker | **Update wherdr** action (pulls the image, restarts the container) |
-| Herdr plugin, Node.js | `herdr plugin install afloury/wherdr --yes`, then the **Restart wherdr** action |
+| Herdr plugin, Docker | **U** in the **wherdr** panel (pulls the image, restarts the container) |
+| Herdr plugin, Node.js | **U** in the **wherdr** panel, or `herdr plugin install afloury/wherdr --yes` (wherdr restarts on the new version) |
 
 Also run `git pull` now and then with the published image: it brings the latest
 `docker-compose.yml` and `.env.example`.

@@ -15,6 +15,7 @@ try { opts = parseArgs(process.argv.slice(2)) } catch (e) { fail(e.message, 2) }
 try {
   if (opts.command === 'help') process.stdout.write(`${commands.HELP}\n`)
   else if (opts.command === 'version') process.stdout.write(`${VERSION}\n`)
+  else if (opts.command === 'panel') await (await import('./lib/panel.mjs')).panel(opts)
   else await commands[opts.command](opts)
 } catch (e) {
   if (e instanceof CliError) fail(e.message, e.code)

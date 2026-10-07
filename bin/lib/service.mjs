@@ -5,8 +5,11 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-export const LABEL = 'dev.wherdr'
-export const UNIT = 'wherdr.service'
+// WHERDR_SERVICE_NAME: another name for a second wherdr (or a test) next to
+// the usual one: LaunchAgent dev.<name>, unit <name>.service.
+const NAME = /^[\w.-]+$/.test(process.env.WHERDR_SERVICE_NAME || '') ? process.env.WHERDR_SERVICE_NAME : 'wherdr'
+export const LABEL = `dev.${NAME}`
+export const UNIT = `${NAME}.service`
 
 export function servicePlatform(platform = process.platform) {
   return platform === 'darwin' ? 'launchd' : platform === 'linux' ? 'systemd' : null

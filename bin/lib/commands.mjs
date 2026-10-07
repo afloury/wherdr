@@ -23,6 +23,7 @@ Commands:
   logs [-f]          Last lines of the log (-n <lines>); -f follows it
   open               Open wherdr in the browser
   phone              Set up your phone: tailnet address, tailscale serve, QR code
+  panel              One screen: state, addresses, phone QR code, a key per command
   service install    Start wherdr at login (macOS LaunchAgent, Linux systemd --user)
   service uninstall  Remove it
   doctor             Check Node/Bun, Herdr and its socket, the port and the service
@@ -277,7 +278,7 @@ export async function open(opts) {
 }
 
 // ----------------------------------------------------------------- phone
-function tailscaleBin() {
+export function tailscaleBin() {
   for (const p of ['/Applications/Tailscale.app/Contents/MacOS/Tailscale', '/opt/homebrew/bin/tailscale', '/usr/local/bin/tailscale', '/usr/bin/tailscale']) {
     if (existsSync(p)) return p
   }
