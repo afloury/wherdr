@@ -36,6 +36,10 @@ jobs:
             if [ "v$pkg" != "$ref" ]; then
               echo "::error::package.json version ($pkg) does not match tag $ref"; exit 1
             fi
+            plugin=$(sed -n 's/^version = "\(.*\)"$/\1/p' herdr-plugin.toml)
+            if [ "v$plugin" != "$ref" ]; then
+              echo "::error::herdr-plugin.toml version ($plugin) does not match tag $ref"; exit 1
+            fi
             echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
             echo "release=true" >> "$GITHUB_OUTPUT"
           else

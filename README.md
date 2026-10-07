@@ -7,7 +7,7 @@
 <p align="center"><b>A complete workspace for the coding agents running in <a href="https://herdr.dev">Herdr</a>, on your
 computer and on your phone.</b></p>
 
-<p align="center"><a href="https://wherdr.dev"><b>wherdr.dev</b></a> · <code>curl -fsSL https://wherdr.dev/install | sh</code></p>
+<p align="center"><a href="https://wherdr.dev"><b>wherdr.dev</b></a> · <code>herdr plugin install afloury/wherdr</code> · <code>curl -fsSL https://wherdr.dev/install | sh</code></p>
 
 <p align="center"><a href="https://github.com/afloury/wherdr/actions/workflows/ci.yml"><img src="https://github.com/afloury/wherdr/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a></p>
 
@@ -60,7 +60,7 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - [Features](#features)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
-- [Installation](#installation): [which setup?](#which-setup) ·
+- [Installation](#installation): [as a Herdr plugin](#install-as-a-herdr-plugin) · [which setup?](#which-setup) ·
   [always-on server + Tailscale](#recommended-always-on-server--tailscale) ·
   [one computer, no Docker](#simple-one-computer-no-docker) ·
   [Docker on a Mac: Reveal/Open](#wherdr-in-docker-on-a-mac-reveal-in-finder-open-and-modalto)
@@ -199,6 +199,36 @@ Web Push, lock) runs in Nitro.
   from your private network** with a valid certificate also works.
 
 ## Installation
+
+### Install as a Herdr plugin
+
+The shortest way, on Linux and macOS, with Herdr ≥ 0.9.1:
+
+```sh
+herdr plugin install afloury/wherdr
+```
+
+Herdr shows the manifest and the commands it will run, then the plugin prepares wherdr and
+starts it with Herdr from then on. It picks the setup by itself:
+
+- **Docker** on Linux when Docker Compose v2 works for your user: the published image, from
+  `~/wherdr` (`docker-compose.yml`, `.env`), exactly like the [one-line installer](https://wherdr.dev/install).
+- **Node.js 22** everywhere else, and always on macOS (Docker Desktop cannot reach Herdr's
+  socket): the plugin builds wherdr in its own folder and runs it detached, with its pid and
+  log (`wherdr.log`) in `~/wherdr`. Without Node.js 22, the install stops and says so.
+
+Force a setup with `WHERDR_MODE=native herdr plugin install afloury/wherdr` (or `docker`). The
+choice, the port (`WHERDR_PORT`, default 7683) and, in native mode, `APP_URL` are kept in
+`~/wherdr/plugin.env`; another folder can be set with `WHERDR_DIR` at install time. Nothing is
+installed globally and nothing runs with sudo.
+
+When something already answers on the port (a wherdr started with Docker, systemd or by hand),
+the plugin starts nothing and never stops it: **Stop** only stops what the plugin started.
+Actions, from Herdr's command palette or wherdr's menus: **Start wherdr**, **Stop wherdr**,
+**Restart wherdr**, **wherdr status**, **Open wherdr in the browser**, **Update wherdr** and
+**wherdr: phone setup** (the `tailscale serve` command, your tailnet address and a QR code when
+`qrencode` is installed). For phone access, follow steps 3 to 5 of the
+[recommended setup](#recommended-always-on-server--tailscale).
 
 ### Which setup?
 
@@ -380,6 +410,8 @@ installed version is shown in Settings › About.
 | Docker, published image (default) | `docker compose pull && docker compose up -d` |
 | Docker, built from source | `git pull && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` |
 | No Docker | `git pull && npm ci && npm run build`, then restart wherdr |
+| Herdr plugin, Docker | **Update wherdr** action (pulls the image, restarts the container) |
+| Herdr plugin, Node.js | `herdr plugin install afloury/wherdr --yes`, then the **Restart wherdr** action |
 
 Also run `git pull` now and then with the published image: it brings the latest
 `docker-compose.yml` and `.env.example`.
