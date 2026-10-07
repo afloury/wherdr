@@ -23,6 +23,7 @@ Commands:
   logs [-f]          Last lines of the log (-n <lines>); -f follows it
   open               Open wherdr in the browser
   phone              Set up your phone: tailnet address, tailscale serve, QR code
+  panel              One screen: state, addresses, phone QR code, a key per command
   service install    Start wherdr at login (macOS LaunchAgent, Linux systemd --user)
   service uninstall  Remove it
   doctor             Check Node/Bun, Herdr and its socket, the port and the service
@@ -277,7 +278,7 @@ export async function open(opts) {
 }
 
 // ----------------------------------------------------------------- phone
-function tailscaleBin() {
+export function tailscaleBin() {
   for (const p of ['/Applications/Tailscale.app/Contents/MacOS/Tailscale', '/opt/homebrew/bin/tailscale', '/usr/local/bin/tailscale', '/usr/bin/tailscale']) {
     if (existsSync(p)) return p
   }
@@ -291,6 +292,22 @@ export function tailnetName(statusJson) {
     const name = JSON.parse(statusJson)?.Self?.DNSName
     return typeof name === 'string' && name ? name.replace(/\.$/, '') : null
   } catch { return null }
+}
+
+// Phone address: the `tailscale serve` entry whose proxy targets wherdr's
+// local port (served on any HTTPS port), else the suggested address on the
+// same port with served: false. Null without a tailnet name.
+export function phoneAddress(name, port, serveJson) {
+  if (!name) return null
+  let web = {}
+  try { web = JSON.parse(serveJson || '{}')?.Web || {} } catch {}
+  const target = new RegExp(`^(https?://)?(127\\.0\\.0\\.1|localhost):${port}/?$`)
+  for (const [hostPort, entry] of Object.entries(web)) {
+    if (!Object.values(entry?.Handlers || {}).some(h => target.test(h?.Proxy || ''))) continue
+    const servedPort = hostPort.slice(hostPort.lastIndexOf(':') + 1)
+    return { url: `https://${name}${servedPort === '443' ? '' : `:${servedPort}`}/`, served: true }
+  }
+  return { url: `https://${name}:${port}/`, served: false }
 }
 
 async function qr(text) {
@@ -313,15 +330,19 @@ export async function phone(opts) {
   say('  Your phone needs a private HTTPS address, never the public Internet.')
   const ts = tailscaleBin()
   const name = ts ? tailnetName(spawnSync(ts, ['status', '--json'], { encoding: 'utf8', timeout: 10_000 }).stdout || '') : null
-  const phoneUrl = name ? `https://${name}:${ctx.port}/` : null
+  const address = name ? phoneAddress(name, ctx.port, spawnSync(ts, ['serve', 'status', '--json'], { encoding: 'utf8', timeout: 10_000 }).stdout || '') : null
+  const phoneUrl = address?.url ?? null
   if (!ts) say(`  1. Install Tailscale on this machine and on your phone: ${c.cyan('https://tailscale.com/download')}`)
   else if (!name) say('  1. Log in to Tailscale on this machine (tailscale up) and on your phone.')
   else say(`  1. ${c.green('✓')} Tailscale on this machine: ${name}`)
-  say(`  2. Publish wherdr on your tailnet (HTTPS certificates enabled in the Tailscale admin):`)
-  say(`       ${c.cyan(`tailscale serve --bg --https=${ctx.port} http://127.0.0.1:${ctx.port}`)}`)
+  if (address?.served) say(`  2. ${c.green('✓')} Published on your tailnet: ${c.cyan(phoneUrl)}`)
+  else {
+    say(`  2. Publish wherdr on your tailnet (HTTPS certificates enabled in the Tailscale admin):`)
+    say(`       ${c.cyan(`tailscale serve --bg --https=${ctx.port} http://127.0.0.1:${ctx.port}`)}`)
+  }
   say(`  3. Tell wherdr its address, for notifications: add to ${settingsFile(ctx.dir)}`)
   say(`       ${c.cyan(`APP_URL=${phoneUrl || `https://<machine>.<tailnet>.ts.net:${ctx.port}/`}`)}`)
-  say('     then run wherdr restart.')
+  say(process.env.WHERDR_CONTROL ? '     then press R in the wherdr panel.' : '     then run wherdr restart.')
   say(`  4. Open ${phoneUrl ? c.cyan(phoneUrl) : 'that address'} on the phone, then Share → Add to Home Screen.`)
   say('  5. In the app: Settings → Enable notifications, then Security → Enable passkey lock.')
   if (ctx.env.APP_URL?.startsWith('https://')) { say(); ok(`APP_URL is set: ${ctx.env.APP_URL}`) }

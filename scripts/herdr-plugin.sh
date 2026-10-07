@@ -1,6 +1,6 @@
 #!/bin/sh
-# wherdr as a Herdr plugin (herdr-plugin.toml): build, start, stop, status,
-# open, update and phone setup.
+# wherdr as a Herdr plugin (herdr-plugin.toml): build (install + first start),
+# the "wherdr" panel, start, stop, status, open, update, service.
 #
 #   herdr plugin install <owner>/wherdr
 #
@@ -11,19 +11,29 @@
 #   native  everywhere else (always on macOS: Docker Desktop cannot reach
 #           Herdr's Unix socket): Node.js 22 (or Bun) runs the prebuilt npm
 #           package of this version (or a build made in the plugin folder),
-#           detached, with its pid and log in $WHERDR_DIR.
+#           copied to $WHERDR_DIR/app and started detached from there, with
+#           its pid and log in $WHERDR_DIR.
+# Herdr builds a plugin in a temporary folder, then moves it: a server started
+# from the checkout during the build would lose its files. $WHERDR_DIR/app
+# stays put, across plugin updates too, so the build can start wherdr and a
+# login service can point at it.
 # WHERDR_MODE=native (or docker) in the environment of `herdr plugin install`
 # forces the choice; edit plugin.env to change it later, then run Update.
 #
 # Safety rules:
 #   - nothing global is installed, no sudo; files are only written to the
 #     plugin folder and $WHERDR_DIR (default ~/wherdr), plus the folders the
-#     Docker setup mounts (~/.config/herdr, ~/.cache/herdr-web…);
-#   - start does nothing when something already answers on the port: a
-#     wherdr started another way (Docker, systemd, by hand) is never touched,
-#     and no second wherdr is started;
-#   - stop only stops what this plugin started (its pid, or the container of
-#     its own compose folder).
+#     Docker setup mounts (~/.config/herdr, ~/.cache/herdr-web…), and the
+#     login service only when asked (key A of the panel);
+#   - the install starts wherdr, and Herdr's startup hook starts it again,
+#     but only when nothing answers on the port: a wherdr started another way
+#     (Docker, systemd, by hand) is never touched, no second wherdr is started;
+#   - stop only stops what this plugin started (its pid, its login service, or
+#     the container of its own compose folder).
+#
+# Uninstall: Herdr has no uninstall hook. Stop wherdr (and remove the login
+# service) from the panel first, then:
+#   herdr plugin uninstall <owner>.wherdr && rm -rf ~/wherdr
 #
 # Settings ($WHERDR_DIR/plugin.env, or the environment):
 #   WHERDR_MODE  docker | native        (default: chosen at install)
@@ -41,6 +51,8 @@ if [ -z "${WHERDR_DIR:-}" ] && [ -f "$ROOT/.wherdr-dir" ]; then
 fi
 DIR="${WHERDR_DIR:-$HOME/wherdr}"
 CONF="$DIR/plugin.env"
+# Native mode: the installed copy of wherdr (bin + built server).
+APP="$DIR/app"
 # GitHub source of this plugin: its manifest id with "/" for "." (owner.wherdr).
 SOURCE="$(sed -n 's/^id = "\(.*\)"$/\1/p' "$ROOT/herdr-plugin.toml" | head -n 1 | tr . /)"
 # container_name of the compose file (wherdr unless you renamed it).
@@ -149,9 +161,22 @@ wait_up() {
   return 1
 }
 
+# The commands of the native mode: the installed copy, or the checkout itself
+# (a linked plugin built by hand, or a plugin installed before $APP existed).
+cli_root() {
+  if [ -f "$APP/bin/wherdr.mjs" ] && [ -f "$APP/.output/server/index.mjs" ]; then echo "$APP"; else echo "$ROOT"; fi
+}
+
+# The person running `herdr plugin install` sees only Herdr's own lines: the
+# output of build commands is captured. Important lines also go to the terminal.
+tell() {
+  printf '%s\n' "$*"
+  { printf '%s\n' "$*" > /dev/tty; } 2>/dev/null || true
+}
+
 # ------------------------------------------------------------------ build
 cmd_build() {
-  say "wherdr plugin: preparing $DIR"
+  tell "wherdr: installing in $DIR"
   mkdir -p "$DIR"
   printf '%s\n' "$DIR" > "$ROOT/.wherdr-dir"
 
@@ -169,7 +194,28 @@ cmd_build() {
   # install from the merged settings (environment over the previous file).
   write_conf
   ok "plugin.env written (mode: $MODE)"
-  say "wherdr plugin ready. It starts with Herdr; or run the \"Start wherdr\" action."
+  build_start
+}
+
+# Last step of the install: start wherdr (or restart the one this plugin
+# runs, on an update). Never fails the install: a wherdr that cannot start is
+# reported with what to do, the plugin stays installed.
+build_start() {
+  set +e
+  out="$( (cmd_start) 2>&1 )"
+  code=$?
+  set -e
+  printf '%s\n' "$out"
+  if [ "$code" -eq 0 ] && answers; then
+    tell ""
+    tell "✓ wherdr is running → $URL"
+    tell "  Phone: open the \"wherdr\" action in Herdr"
+  else
+    tell ""
+    tell "! wherdr is installed but did not start:"
+    printf '%s\n' "$out" | tail -n 8 | while IFS= read -r l; do tell "    $l"; done
+    tell "  Open the \"wherdr\" action in Herdr, then press S to start it or L for its log."
+  fi
 }
 
 write_conf() {
@@ -206,20 +252,69 @@ fetch_prebuilt() {
   return 1
 }
 
+# qrcode-terminal (the panel's QR code), the only package the commands need
+# at runtime, when the folder does not have it yet (no npm ci was run).
+fetch_qr() {
+  [ -f "$1/node_modules/qrcode-terminal/package.json" ] && return 0
+  command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1 || return 0
+  tmp="$(mktemp -d)"
+  if curl -fsSL --max-time 60 https://registry.npmjs.org/qrcode-terminal/-/qrcode-terminal-0.12.0.tgz -o "$tmp/qr.tgz" 2>/dev/null \
+    && tar -xzf "$tmp/qr.tgz" -C "$tmp"; then
+    mkdir -p "$1/node_modules"
+    rm -rf "$1/node_modules/qrcode-terminal"
+    mv "$tmp/package" "$1/node_modules/qrcode-terminal"
+  else
+    warn "No QR code in the panel (qrcode-terminal could not be downloaded)."
+  fi
+  rm -rf "$tmp"
+}
+
 build_native() {
   RUNTIME="$(find_runtime)" || die "$RUNTIME_HELP"
   ok "Runtime: $RUNTIME ($("$RUNTIME" --version 2>/dev/null))"
-  if fetch_prebuilt; then return 0; fi
+  if fetch_prebuilt; then
+    install_app
+    return 0
+  fi
   case "$(basename "$RUNTIME")" in
     bun) die "The prebuilt wherdr package could not be downloaded, and building it needs Node.js 22 with npm.
      Check the network, or install Node.js 22, then install the plugin again." ;;
   esac
   bindir="$(dirname "$RUNTIME")"
   [ -x "$bindir/npm" ] || command -v npm >/dev/null 2>&1 || die "npm is missing (it comes with Node.js)."
-  cd "$ROOT"
-  PATH="$bindir:$PATH" npm ci --no-audit --no-fund
-  PATH="$bindir:$PATH" npm run build
+  tell "wherdr: building (a few minutes the first time)…"
+  (
+    cd "$ROOT"
+    PATH="$bindir:$PATH" npm ci --no-audit --no-fund
+    PATH="$bindir:$PATH" npm run build
+  )
   ok "wherdr built in the plugin folder"
+  install_app
+}
+
+# Copies the commands and the built server to $APP, which outlives this
+# checkout. A wherdr this plugin runs from the previous copy is stopped for
+# the swap; build_start starts the new one.
+install_app() {
+  # Nitro links some packages (tslib) to its own folder: copies, not links.
+  if [ -d "$ROOT/.output/server/node_modules" ]; then "$RUNTIME" "$ROOT/scripts/pack-output.mjs" >/dev/null; fi
+  new="$APP.new"
+  rm -rf "$new"
+  mkdir -p "$new"
+  cp -R "$ROOT/bin" "$ROOT/.output" "$ROOT/package.json" "$new/"
+  if [ -d "$ROOT/node_modules/qrcode-terminal" ]; then
+    mkdir -p "$new/node_modules"
+    cp -R "$ROOT/node_modules/qrcode-terminal" "$new/node_modules/"
+  fi
+  fetch_qr "$new"
+  # The wherdr this plugin runs (from the previous copy, or from an older
+  # plugin checkout): stopped for the swap, started again by build_start.
+  if [ -f "$DIR/wherdr.pid" ] || [ -f "$APP/bin/wherdr.mjs" ]; then cli stop >/dev/null 2>&1 || true; fi
+  rm -rf "$APP.old"
+  if [ -d "$APP" ]; then mv "$APP" "$APP.old"; fi
+  mv "$new" "$APP"
+  rm -rf "$APP.old"
+  ok "wherdr $(sed -n 's/^ *"version": *"\(.*\)",$/\1/p' "$APP/package.json" | head -n 1) installed in $APP"
 }
 
 build_docker() {
@@ -258,6 +353,8 @@ build_docker() {
   fi
   compose pull --quiet || die "Could not pull the wherdr image. Check the network, then install the plugin again."
   ok "Image pulled"
+  # The panel runs from the checkout with node when there is one.
+  fetch_qr "$ROOT"
 }
 
 # ------------------------------------------------------------------ start
@@ -302,15 +399,16 @@ cli() {
     HERDR_BIN="$(herdr_bin)"
     # The runtime's folder first: tools it starts find the same node.
     PATH="$(dirname "$RUNTIME"):$PATH"
-    export PATH WHERDR_DIR="$DIR" WHERDR_RUNTIME="$RUNTIME" HOST=127.0.0.1 PORT HERDR_BIN HERDR_WEB_SESSION="$session"
+    export PATH WHERDR_DIR="$DIR" WHERDR_RUNTIME="$RUNTIME" HOST=127.0.0.1 PORT HERDR_BIN
+    if [ -n "$session" ]; then export HERDR_WEB_SESSION="$session"; fi
     if [ -n "$sock" ]; then export HERDR_SOCK="$sock"; fi
     if [ -n "${APP_URL:-}" ]; then export APP_URL; fi
-    exec "$RUNTIME" "$ROOT/bin/wherdr.mjs" "$@"
+    exec "$RUNTIME" "$(cli_root)/bin/wherdr.mjs" "$@"
   )
 }
 
 start_native() {
-  [ -f "$ROOT/.output/server/index.mjs" ] || die "wherdr is not built in $ROOT: run the Update action."
+  [ -f "$(cli_root)/.output/server/index.mjs" ] || die "wherdr is not built: install the plugin again (herdr plugin install $SOURCE --yes)."
   mkdir -p "$DIR"
   cli start
 }
@@ -403,9 +501,9 @@ cmd_update() {
       fi
       ;;
     native)
-      say "wherdr runs from the plugin folder. To update it:"
-      say "  herdr plugin install $SOURCE --yes"
-      say "then run the \"Restart wherdr\" action."
+      # A new checkout, a new copy in $APP, and wherdr restarted (build_start).
+      say "Updating the wherdr plugin from $SOURCE…"
+      "$(herdr_bin)" plugin install "$SOURCE" --yes
       ;;
     *) die "wherdr plugin is not set up: install it again with herdr plugin install $SOURCE." ;;
   esac
@@ -423,7 +521,7 @@ cmd_phone() {
   say ""
   say "  WHERDR · PHONE SETUP"
   say ""
-  if answers; then say "  ✓ wherdr answers on $URL"; else say "  ! wherdr is not running: run the \"Start wherdr\" action first."; fi
+  if answers; then say "  ✓ wherdr answers on $URL"; else say "  ! wherdr is not running: press S in the wherdr panel first."; fi
   name="$(tailnet_name || true)"
   say ""
   say "  Your phone needs a private HTTPS address (never the public Internet):"
@@ -437,9 +535,9 @@ cmd_phone() {
     say "  3. Open  https://<machine>.<tailnet>.ts.net:$PORT/  on the phone, add it to the home screen."
   fi
   if [ "$MODE" = "docker" ]; then
-    say "  4. Put that address in APP_URL in $DIR/.env, then run the Update action."
+    say "  4. Put that address in APP_URL in $DIR/.env, then press U in the wherdr panel."
   else
-    say "  4. Put that address in APP_URL in $CONF, then run the \"Restart wherdr\" action."
+    say "  4. Put that address in APP_URL in $CONF, then press R in the wherdr panel."
   fi
   say "  5. In the app: Settings → Enable notifications, then Security → Enable passkey lock."
   if [ -n "$phone" ]; then
@@ -454,32 +552,63 @@ cmd_phone() {
   say "  Guide: https://github.com/$SOURCE#install-the-app-on-your-phone"
 }
 
-# Plugin popups (herdr-plugin.toml [[panes]]): readable output instead of the
-# raw JSON `herdr plugin action invoke` prints, kept on screen until Enter.
-cmd_pane() {
-  action="$1"
-  printf '\n'
-  set +e
-  ( "cmd_$action" )
-  code=$?
-  set -e
-  if [ "$code" -ne 0 ] && [ "$action" != "logs" ]; then printf '\n  ✗ %s failed (exit %s).\n' "$action" "$code"; fi
-  if [ -t 0 ]; then
-    printf '\n  Press Enter to close. '
-    read -r _ || true
+# ------------------------------------------------------------------ service
+cmd_service() {
+  case "${1:-}" in install|uninstall) ;; *) die "usage: $0 service install|uninstall" ;; esac
+  if [ "$MODE" = "docker" ]; then
+    say "wherdr runs in Docker: the container already starts with Docker (restart: always)."
+    return 0
   fi
+  cli service "$1"
+  # Without the service, the plugin runs wherdr again (and its startup hook
+  # starts it with Herdr).
+  if [ "$1" = "uninstall" ]; then cmd_start; fi
+}
+
+# ------------------------------------------------------------------ panel
+# The "wherdr" action: one popup with the state, the addresses, the phone QR
+# code and a key per command (bin/lib/panel.mjs), driving this script.
+cmd_panel() {
+  control="$(printf '["sh","%s"]' "$(printf '%s' "$ROOT/scripts/herdr-plugin.sh" | sed 's/[\\"]/\\&/g')")"
+  if [ "$MODE" = "native" ] || { [ -n "$MODE" ] && RUNTIME="$(find_runtime)"; }; then
+    WHERDR_CONTROL="$control" WHERDR_MODE="$MODE" cli panel
+  elif [ -n "$MODE" ]; then
+    sh_panel
+  else
+    die "wherdr plugin is not set up ($CONF is missing): install it again with herdr plugin install $SOURCE --yes."
+  fi
+}
+
+# Docker mode without Node.js: the same keys, without the QR code.
+sh_panel() {
+  saved="$(stty -g)"
+  trap 'stty "$saved"' EXIT
+  while :; do
+    printf '\033[H\033[2J\n  WHERDR\n\n'
+    ( cmd_status ) || true
+    printf '\n  S start  X stop  R restart  O open  L log  U update  P phone  Q quit\n'
+    printf '  Remove: X, then herdr plugin uninstall %s && rm -rf %s\n' "$(printf '%s' "$SOURCE" | tr / .)" "$DIR"
+    stty -icanon -echo min 0 time 50
+    k="$(dd bs=1 count=1 2>/dev/null || true)"
+    stty "$saved"
+    case "$k" in
+      s|S) act=start ;; x|X) act=stop ;; r|R) act=restart ;; o|O) act=open ;;
+      l|L) act=logs ;; u|U) act=update ;; p|P) act=phone ;; q|Q) break ;;
+      *) continue ;;
+    esac
+    printf '\033[H\033[2J\n'
+    ( trap - INT; "cmd_$act" ) || true
+    printf '\n  Press Enter to go back. '
+    read -r _ || true
+  done
 }
 
 cmd_restart() { cmd_stop; cmd_start; }
 
 case "${1:-}" in
   build) cmd_build ;;
+  panel) cmd_panel ;;
   start|stop|restart|status|open|update|phone|logs|doctor) "cmd_$1" ;;
-  pane)
-    case "${2:-}" in
-      start|stop|restart|status|update|phone|logs|doctor) cmd_pane "$2" ;;
-      *) die "usage: $0 pane start|stop|restart|status|update|phone|logs|doctor" ;;
-    esac
-    ;;
-  *) die "usage: $0 build|start|stop|restart|status|open|update|phone|logs|doctor|pane <action>" ;;
+  service) cmd_service "${2:-}" ;;
+  *) die "usage: $0 build|panel|start|stop|restart|status|open|update|phone|logs|doctor|service install|uninstall" ;;
 esac

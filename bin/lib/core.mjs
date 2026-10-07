@@ -12,7 +12,7 @@ export const BIN = path.join(ROOT, 'bin', 'wherdr.mjs')
 export const VERSION = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version
 export const DEFAULT_PORT = '7683'
 
-export const COMMANDS = ['run', 'start', 'stop', 'restart', 'status', 'logs', 'open', 'phone', 'service', 'doctor', 'help', 'version']
+export const COMMANDS = ['run', 'start', 'stop', 'restart', 'status', 'logs', 'open', 'phone', 'panel', 'service', 'doctor', 'help', 'version']
 const VALUE_OPTIONS = { '--port': 'port', '--host': 'host', '--data-dir': 'dataDir', '--session': 'session', '--lines': 'lines', '-n': 'lines' }
 const FLAGS = { '-h': 'help', '--help': 'help', '-v': 'version', '--version': 'version', '-f': 'follow', '--follow': 'follow' }
 

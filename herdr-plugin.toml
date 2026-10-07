@@ -5,8 +5,9 @@ min_herdr_version = "0.9.1"
 description = "Your Herdr agents from your phone and browser: live conversations, real terminals, push notifications and one-tap answers. Self-hosted, private network only."
 platforms = ["linux", "macos"]
 
-# Docker on Linux when usable, otherwise Node.js 22 (always on macOS).
-# Writes only to this folder and ~/wherdr (WHERDR_DIR); starts nothing.
+# Installs wherdr (Docker on Linux when usable, otherwise Node.js 22, always on
+# macOS) in ~/wherdr (WHERDR_DIR), then starts it unless something already
+# answers on its port. A wherdr that cannot start never fails the install.
 [[build]]
 command = ["sh", "scripts/herdr-plugin.sh", "build"]
 
@@ -15,123 +16,24 @@ command = ["sh", "scripts/herdr-plugin.sh", "build"]
 [[startup]]
 command = ["sh", "scripts/herdr-plugin.sh", "start"]
 
-# Every action but Open shows its readable output in a popup (the [[panes]]
-# below), never the raw JSON of `herdr plugin action invoke`.
-
+# The one action: a popup with the state, the addresses, the phone QR code
+# and a key per command (start, stop, restart, open, log, update, auto-start).
 [[actions]]
-id = "start"
-title = "Start wherdr"
+id = "wherdr"
+title = "wherdr"
 contexts = ["global", "workspace"]
-command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint start --focus"]
-
-[[actions]]
-id = "stop"
-title = "Stop wherdr"
-contexts = ["global", "workspace"]
-command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint stop --focus"]
-
-[[actions]]
-id = "restart"
-title = "Restart wherdr"
-contexts = ["global", "workspace"]
-command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint restart --focus"]
-
-[[actions]]
-id = "status"
-title = "wherdr status"
-contexts = ["global", "workspace"]
-command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint status --focus"]
+command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint panel --focus"]
 
 [[actions]]
 id = "open"
-title = "Open wherdr in the browser"
+title = "wherdr: open in the browser"
 contexts = ["global", "workspace"]
 command = ["sh", "scripts/herdr-plugin.sh", "open"]
 
-[[actions]]
-id = "logs"
-title = "wherdr logs"
-contexts = ["global", "workspace"]
-command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint logs --focus"]
-
-[[actions]]
-id = "doctor"
-title = "wherdr doctor"
-contexts = ["global", "workspace"]
-command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint doctor --focus"]
-
-[[actions]]
-id = "update"
-title = "Update wherdr"
-contexts = ["global", "workspace"]
-command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint update --focus"]
-
-[[actions]]
-id = "phone"
-title = "wherdr: phone setup"
-contexts = ["global", "workspace"]
-command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint phone --focus"]
-
 [[panes]]
-id = "start"
-title = "Start wherdr"
+id = "panel"
+title = "wherdr"
 placement = "popup"
 width = "80%"
-height = "80%"
-command = ["sh", "scripts/herdr-plugin.sh", "pane", "start"]
-
-[[panes]]
-id = "stop"
-title = "Stop wherdr"
-placement = "popup"
-width = "80%"
-height = "80%"
-command = ["sh", "scripts/herdr-plugin.sh", "pane", "stop"]
-
-[[panes]]
-id = "restart"
-title = "Restart wherdr"
-placement = "popup"
-width = "80%"
-height = "80%"
-command = ["sh", "scripts/herdr-plugin.sh", "pane", "restart"]
-
-[[panes]]
-id = "status"
-title = "wherdr status"
-placement = "popup"
-width = "80%"
-height = "80%"
-command = ["sh", "scripts/herdr-plugin.sh", "pane", "status"]
-
-[[panes]]
-id = "logs"
-title = "wherdr logs"
-placement = "popup"
-width = "80%"
-height = "80%"
-command = ["sh", "scripts/herdr-plugin.sh", "pane", "logs"]
-
-[[panes]]
-id = "doctor"
-title = "wherdr doctor"
-placement = "popup"
-width = "80%"
-height = "80%"
-command = ["sh", "scripts/herdr-plugin.sh", "pane", "doctor"]
-
-[[panes]]
-id = "update"
-title = "Update wherdr"
-placement = "popup"
-width = "80%"
-height = "80%"
-command = ["sh", "scripts/herdr-plugin.sh", "pane", "update"]
-
-[[panes]]
-id = "phone"
-title = "wherdr · phone setup"
-placement = "popup"
-width = "80%"
-height = "80%"
-command = ["sh", "scripts/herdr-plugin.sh", "pane", "phone"]
+height = "90%"
+command = ["sh", "scripts/herdr-plugin.sh", "panel"]
