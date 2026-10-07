@@ -3,7 +3,7 @@
 // live demos in the hero (phone + desktop on one clock) and next to the
 // feature stories, and an install that types itself.
 import { AGENT_PROMPT, REPO } from '~/utils/site'
-import { DOCKER_COMMANDS, DOCKER_DEMO, INSTALL_COMMAND, MAC_COMMANDS, MAC_DEMO, ONE_COMMAND_DEMO, PLUGIN_COMMAND } from '~/utils/installDemo'
+import { DOCKER_COMMANDS, DOCKER_DEMO, INSTALL_COMMAND, MAC_COMMANDS, MAC_DEMO, ONE_COMMAND_DEMO, PLUGIN_COMMAND, RUNNERS } from '~/utils/installDemo'
 
 const stories = [
   {
@@ -49,11 +49,14 @@ const security = [
 ]
 
 const installTabs = [
-  { id: 'one', label: 'Linux · one command' },
+  { id: 'one', label: 'curl' },
   { id: 'plugin', label: 'Herdr plugin' },
+  { id: 'npx', label: 'npx' },
+  { id: 'bunx', label: 'bunx' },
+  { id: 'pnpm', label: 'pnpm dlx' },
   { id: 'agent', label: 'Ask your agent' },
-  { id: 'docker', label: 'Linux · Docker, by hand' },
-  { id: 'mac', label: 'macOS · no Docker' },
+  { id: 'docker', label: 'Docker, by hand' },
+  { id: 'mac', label: 'macOS · from source' },
 ] as const
 const tab = ref<typeof installTabs[number]['id']>('one')
 
@@ -210,7 +213,7 @@ const faq = [
           <div v-reveal class="section-head">
             <p class="label"><span class="k">04</span> Install</p>
             <h2 class="display h2">One command on your server.</h2>
-            <p class="lead">With Herdr running, on the machine that hosts your agents — ideally an always-on Linux box (a Raspberry Pi works). Use our script, or install it as a Herdr plugin: both check Docker and Herdr, create <code>~/wherdr</code> and listen on 127.0.0.1 only. No sudo, and nothing is replaced without asking. <a href="/install" target="_blank">Read the script first.</a></p>
+            <p class="lead">With Herdr running, on the machine that hosts your agents — ideally an always-on Linux box (a Raspberry Pi works). Use our script, the Herdr plugin or the npm package (<code>npx wherdr</code>): all of them use <code>~/wherdr</code> and listen on 127.0.0.1 only. No sudo, and nothing is replaced without asking. <a href="/install" target="_blank">Read the script first.</a></p>
           </div>
 
           <div v-reveal class="install">
@@ -227,6 +230,16 @@ const faq = [
                 <li><b>It picks the setup:</b> Docker on Linux when it is available, Node.js 22 otherwise (always on macOS). Files go to <code>~/wherdr</code>; no sudo.</li>
                 <li><b>It starts with Herdr</b>, unless a wherdr already answers on port 7683 — that one is left alone. Open <code>http://localhost:7683</code>.</li>
                 <li><b>Phone:</b> run the <i>wherdr: phone setup</i> action for the <code>tailscale serve</code> command and a QR code.</li>
+              </ol>
+            </div>
+
+            <div v-for="(r, id) in RUNNERS" v-show="tab === id" :id="`panel-${id}`" :key="id" role="tabpanel" :aria-labelledby="`tab-${id}`" class="panel">
+              <InstallCommand :command="r.run" />
+              <ol class="steps">
+                <li><b>Try it</b> on the machine that runs Herdr, macOS or Linux, with Node.js 22{{ id === 'bunx' ? ' or Bun' : '' }}. The package is prebuilt: nothing compiles. Open <code>http://localhost:7683</code>.</li>
+                <li><b>Keep it:</b> <code>{{ r.keep }}</code>, then <code>wherdr service install</code> starts it at every login (launchd on macOS, systemd on Linux).</li>
+                <li><b>Phone:</b> <code>wherdr phone</code> prints your tailnet address, the <code>tailscale serve</code> command and a QR code.</li>
+                <li><b>Stuck?</b> <code>wherdr doctor</code> checks Node, Herdr and its socket, the port and the service. Also: <code>wherdr start</code>, <code>stop</code>, <code>status</code>, <code>logs</code>.</li>
               </ol>
             </div>
 

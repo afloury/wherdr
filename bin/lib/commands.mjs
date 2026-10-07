@@ -72,8 +72,13 @@ export function livePid(pidFile) {
   try { pid = Number(readFileSync(pidFile, 'utf8').trim()) } catch { return null }
   if (!pid) return null
   try { process.kill(pid, 0) } catch { return null }
-  const r = spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' })
-  return r.status === 0 && r.stdout.includes('.output/server/index.mjs') ? pid : null
+  // Linux: /proc (busybox ps has no -p); macOS: ps.
+  let cmd = ''
+  try { cmd = readFileSync(`/proc/${pid}/cmdline`, 'utf8').replace(/\0/g, ' ') } catch {
+    const r = spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' })
+    cmd = r.status === 0 ? r.stdout : ''
+  }
+  return cmd.includes('.output/server/index.mjs') ? pid : null
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
@@ -336,6 +341,9 @@ export async function service(opts) {
     return
   }
   if (!servicePlatform()) throw new CliError(`no login service on ${process.platform}: keep wherdr running with your own service manager.`)
+  if (servicePlatform() === 'systemd' && spawnSync('systemctl', ['--user', '--version']).status !== 0) {
+    throw new CliError('systemd --user is not available here: keep wherdr running with your own service manager (or wherdr start).')
+  }
   needServer()
   const bin = realpathSync(BIN)
   if (temporaryInstall(bin)) {

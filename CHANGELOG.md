@@ -8,6 +8,16 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- npm package `wherdr`, prebuilt: `npx wherdr`, `bunx wherdr` or `pnpm dlx wherdr` runs it
+  without cloning or building. Installed globally (`npm install -g wherdr`), the `wherdr` command
+  also has `start` / `stop` / `restart` / `status` (background server, pid and log in `~/wherdr`;
+  *started* only once the port answers, otherwise the end of the log), `logs [-f]`, `open`,
+  `phone` (tailnet address, `tailscale serve` command, QR code), `service install|uninstall`
+  (macOS LaunchAgent or `systemd --user` unit with the absolute runtime path) and `doctor`.
+  Published by `.github/workflows/npm.yml` on each version tag (npm Trusted Publishing). The
+  website's install section adds npx, bunx and pnpm dlx tabs.
+- Herdr plugin: its actions open a popup with readable output (start, stop, restart, status,
+  logs, doctor, update, phone setup); in native mode they run the `wherdr` command.
 - Herdr plugin: wherdr installs with `herdr plugin install` (`herdr-plugin.toml` at the root; exact
   command in the README). It runs the published Docker image on Linux when Docker Compose works, Node.js
   22 otherwise (always on macOS), from `~/wherdr`; starts wherdr detached with Herdr unless
@@ -48,6 +58,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Herdr plugin, native mode (macOS): Start failed when Herdr's server `PATH` did not contain
+  node (n, nvm, fnm, Volta…) yet said “started”. The install now saves the absolute path of node
+  (or Bun) in `~/wherdr/plugin.env` (`WHERDR_RUNTIME`), Start looks in the usual folders when it is
+  gone, and reports success only once the port answers, with the end of the log otherwise. The
+  install downloads the prebuilt npm package of its version when it exists instead of building.
 - Claude Code's `/config`, `/status` and `/usage` results highlight the active settings tab again:
   the tab Claude Code now draws in reverse video (seen under Herdr 0.9.3) is recognized.
 - Remote (SSH) machines: busy machines no longer show "Connection closed by UNKNOWN port 65535",
