@@ -702,6 +702,22 @@ worktree. It is optional; with it installed, wherdr adds:
 </p>
 <p align="center"><sub>A coordinator with its Project panel, on a computer and on a phone (demo data).</sub></p>
 
+### Using wherdr with herdr-projects
+
+The Project panel only works well when the coordinator follows its conventions: which lists
+mean what, the badges, `(agent → t-NNNN)`, and what to do with each message the buttons send
+(`✓ Tested: …`, `✗ Problem: … — …`, `↳ Queue: …`…). They are written once, as an agent skill:
+[`skills/wherdr/SKILL.md`](skills/wherdr/SKILL.md).
+
+- **Herdr plugin**: the install links the skill for every coordinator, whatever its agent:
+  `~/.claude/skills/wherdr` (Claude Code, or `$CLAUDE_CONFIG_DIR/skills`) and
+  `~/.agents/skills/wherdr` (Codex, omp), each only when that agent is installed. Both point to a
+  copy in `~/wherdr/skills/wherdr`, refreshed on each update. An existing `wherdr` skill that is
+  not this link is left alone. Remove the links with `sh scripts/herdr-plugin.sh skill uninstall`
+  in the plugin folder.
+- **Other installs**: link or copy `skills/wherdr` into your agent's skills folder yourself, or
+  paste **Settings → Plugins → herdr-projects → Copy rules for the coordinator** to it.
+
 ## Herdr plugins
 
 Actions declared by the plugins installed on a machine (`herdr plugin install|link`) appear in
