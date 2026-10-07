@@ -22,6 +22,12 @@ npx wherdr          # or: bunx wherdr, pnpm dlx wherdr — then open http://loca
 To keep it: `npm install -g wherdr`, then `wherdr service install` starts it at every login, and
 `wherdr phone` walks you through phone access. See [the `wherdr` command](#the-wherdr-command).
 
+At first launch, wherdr opens a **setup guide**: the Herdr agents it found, your phone
+(Tailscale), then the passkey lock and notifications. Skip it any time; finishing or skipping is
+saved on the server (`data/onboarding.json`), so your other devices do not show it again. Reopen
+it from Settings › About › **Setup guide**. On a phone that already opens wherdr through its
+tailnet address, the phone step becomes Add to Home Screen.
+
 wherdr is a small self-hosted web app that talks to the Herdr server on your machine. **On a
 computer**, it can replace the Herdr terminal client day to day: your spaces, tabs and split panes
 side by side, live conversations and real terminals, drag-and-drop layout, keyboard shortcuts
@@ -380,8 +386,10 @@ and logs a warning.
 
 Herdr can also install wherdr itself, on Linux and macOS, with Herdr ≥ 0.9.1. In three lines:
 
-1. Run `herdr plugin install afloury/wherdr`: it installs wherdr and starts it
-   (`✓ wherdr is running → http://localhost:7683`).
+1. Run `herdr plugin install afloury/wherdr`: it installs wherdr, starts it
+   (`✓ wherdr is running → http://localhost:7683`) and, at the first install on a computer with a
+   screen, opens the setup guide in your browser (`open` on macOS, `xdg-open` on Linux with a
+   display; a headless server just prints `http://localhost:7683/#/setup`). Updates open nothing.
 2. In Herdr, run the **wherdr** action: a panel with the state, **O** Open wherdr and **P** Set
    up my phone.
 3. **P** opens Settings › Phone in the browser: **Make wherdr reachable from my phone** publishes

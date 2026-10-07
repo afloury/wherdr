@@ -61,9 +61,9 @@ describe.skipIf(process.platform === 'win32' || !which('curl'))('herdr plugin, n
   })
 
   // Like Herdr's server: a bare environment whose PATH has no node.
-  const run = (action: string, extraPath = '') => spawnSync('sh', [path.join(root, 'scripts', 'herdr-plugin.sh'), action], {
+  const run = (action: string, extraPath = '', extraEnv: Record<string, string> = {}) => spawnSync('sh', [path.join(root, 'scripts', 'herdr-plugin.sh'), action], {
     cwd: root, encoding: 'utf8', timeout: 60_000,
-    env: { HOME: home, PATH: extraPath ? `${extraPath}:${minbin}` : minbin, WHERDR_MODE: 'native', WHERDR_PORT: String(port) },
+    env: { HOME: home, PATH: extraPath ? `${extraPath}:${minbin}` : minbin, WHERDR_MODE: 'native', WHERDR_PORT: String(port), ...extraEnv },
   })
 
   const pidOf = () => readFileSync(path.join(home, 'wherdr', 'wherdr.pid'), 'utf8').trim()
@@ -145,5 +145,48 @@ describe.skipIf(process.platform === 'win32' || !which('curl'))('herdr plugin, n
     expect(start.stdout).not.toContain('wherdr started')
     expect(start.stderr).toContain('wherdr exited at startup')
     expect(start.stderr).toContain('cannot open the Herdr socket')
+  })
+
+  // Stand-in browser openers: each call is recorded, nothing is opened.
+  function fakeOpeners() {
+    const fake = path.join(tmp, 'fakebin'); const calls = path.join(tmp, 'opened.log')
+    mkdirSync(fake, { recursive: true })
+    for (const cmd of ['open', 'xdg-open']) {
+      writeFileSync(path.join(fake, cmd), `#!/bin/sh\necho "${cmd} $*" >> "${calls}"\n`); chmodSync(path.join(fake, cmd), 0o755)
+    }
+    const opened = () => existsSync(calls) ? readFileSync(calls, 'utf8').trim().split('\n') : []
+    return { fake, opened }
+  }
+
+  it('opens the setup guide in the browser once, at the first install only', () => {
+    const { fake, opened } = fakeOpeners()
+    const first = run('build', `${rt}:${fake}`, { DISPLAY: ':0' })
+    expect(first.status, first.stderr).toBe(0)
+    // xdg-open runs in the background.
+    for (let i = 0; i < 50 && !opened().length; i++) spawnSync('sleep', ['0.1'])
+    expect(opened()).toEqual([`xdg-open http://localhost:${port}/#/setup`])
+    expect(first.stdout).toContain('Setup guide opened in your browser')
+    // An update (plugin.env kept) opens nothing.
+    const update = run('build', `${rt}:${fake}`, { DISPLAY: ':0' })
+    expect(update.status, update.stderr).toBe(0)
+    spawnSync('sleep', ['0.3'])
+    expect(opened()).toHaveLength(1)
+  })
+
+  it('uses open on macOS', () => {
+    const { fake, opened } = fakeOpeners()
+    writeFileSync(path.join(fake, 'uname'), '#!/bin/sh\necho Darwin\n'); chmodSync(path.join(fake, 'uname'), 0o755)
+    const build = run('build', `${fake}:${rt}`)
+    expect(build.status, build.stderr).toBe(0)
+    expect(opened()).toEqual([`open http://localhost:${port}/#/setup`])
+  })
+
+  it('opens no browser on a server without a display, and prints the address', () => {
+    const { fake, opened } = fakeOpeners()
+    const build = run('build', `${rt}:${fake}`)
+    expect(build.status, build.stderr).toBe(0)
+    spawnSync('sleep', ['0.3'])
+    expect(opened()).toEqual([])
+    expect(build.stdout).toContain(`Setup guide: open http://localhost:${port}/#/setup`)
   })
 })

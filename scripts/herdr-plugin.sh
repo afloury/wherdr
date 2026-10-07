@@ -179,6 +179,10 @@ tell() {
 # ------------------------------------------------------------------ build
 cmd_build() {
   tell "wherdr: installing in $DIR"
+  # First install (no plugin.env yet): the browser opens on the setup guide
+  # once wherdr runs. Updates keep plugin.env and open nothing.
+  FIRST_INSTALL=0
+  [ -f "$CONF" ] || FIRST_INSTALL=1
   mkdir -p "$DIR"
   printf '%s\n' "$DIR" > "$ROOT/.wherdr-dir"
 
@@ -253,6 +257,11 @@ build_start() {
   if [ "$code" -eq 0 ] && answers; then
     tell ""
     tell "✓ wherdr is running → $URL"
+    if [ "${FIRST_INSTALL:-0}" = 1 ]; then
+      if open_browser "$URL/#/setup"; then tell "  Setup guide opened in your browser"
+      else tell "  Setup guide: open $URL/#/setup in a browser on this computer"
+      fi
+    fi
     tell "  Phone: open the \"wherdr\" action in Herdr"
   else
     tell ""
@@ -524,10 +533,17 @@ cmd_doctor() {
 }
 
 # ------------------------------------------------------------------- open
-cmd_open() {
-  if command -v open >/dev/null 2>&1 && [ "$(uname -s)" = "Darwin" ]; then open "$URL"
-  elif command -v xdg-open >/dev/null 2>&1 && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then xdg-open "$URL" >/dev/null 2>&1 &
+# The default browser, on a computer with a screen only: `open` on macOS,
+# `xdg-open` on Linux with a display. Fails (opens nothing) on a headless server.
+open_browser() {
+  if [ "$(uname -s)" = "Darwin" ] && command -v open >/dev/null 2>&1; then open "$1"
+  elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open >/dev/null 2>&1; then xdg-open "$1" >/dev/null 2>&1 &
+  else return 1
   fi
+}
+
+cmd_open() {
+  open_browser "$URL" || true
   say "$URL"
 }
 

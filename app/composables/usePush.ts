@@ -28,6 +28,10 @@ export async function pushSubscribed() {
   } catch { return false }
 }
 
+// This device's subscription, shared by Settings › Notifications and the onboarding.
+export const pushOn = ref<boolean | null>(null)
+export async function refreshPushOn() { pushOn.value = await pushSubscribed() }
+
 export async function syncPushLanguage(lang = language) {
   if (!('serviceWorker' in navigator) || !('Notification' in window) || Notification.permission !== 'granted') return
   const reg = await navigator.serviceWorker.ready

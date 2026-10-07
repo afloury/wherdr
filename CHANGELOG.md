@@ -8,6 +8,17 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Setup guide** at first launch, full screen on a computer and a phone: what wherdr is, the
+  Herdr version and the agents found on this machine (or how to start one), the phone
+  (Settings › Phone's Tailscale setup), then the passkey lock and notifications. Skip is always
+  there; finishing or skipping is saved on the server (`data/onboarding.json`, tied to the
+  machine), so other devices do not show it again. Reopen it from Settings › About. A phone
+  already on the tailnet address gets Add to Home Screen (iOS and Android) instead.
+- The Herdr plugin opens the setup guide in the browser at the end of the first
+  `herdr plugin install` (`open` on macOS, `xdg-open` on Linux with a display); updates and
+  headless servers open nothing, the address is printed.
+- wherdr.dev: the Install section recommends a method for the visitor's system (macOS: the Herdr
+  plugin; Linux: the install script) and lists the prerequisites (Herdr, Tailscale for the phone).
 - **Settings › Phone** ("Use it on your phone"): live state of the phone address, checked by the
   server. Native mode: **Make wherdr reachable from my phone** runs `tailscale serve` (asked
   first; private to your tailnet), **Remove from my tailnet** undoes it. Docker: the exact
