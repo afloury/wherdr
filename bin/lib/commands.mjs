@@ -10,6 +10,7 @@ import { pathToFileURL } from 'node:url'
 import { BIN, CliError, SERVER, VERSION, bad, c, localUrl, ok, portTaken, probe, row, say, serverEnv, settingsFile, warn, wherdrDir, withSettings } from './core.mjs'
 import { RUNTIME_HELP, findRuntime, isBun, runtimeOk, runtimeVersion, temporaryInstall } from './runtime.mjs'
 import { controlService, installService, serviceFile, servicePlatform, serviceState, uninstallService } from './service.mjs'
+import { LINKS, inspect, reachable } from './tailnet.mjs'
 
 export const HELP = `${'wherdr'}: your Herdr agents from your phone and browser.
 
@@ -22,8 +23,8 @@ Commands:
   status             Is wherdr running, where, and how
   logs [-f]          Last lines of the log (-n <lines>); -f follows it
   open               Open wherdr in the browser
-  phone              Set up your phone: tailnet address, tailscale serve, QR code
-  panel              One screen: state, addresses, phone QR code, a key per command
+  phone              Phone state, the app's phone setup page, QR code once it answers
+  panel              One screen: state, Open wherdr, Set up my phone, other commands
   service install    Start wherdr at login (macOS LaunchAgent, Linux systemd --user)
   service uninstall  Remove it
   doctor             Check Node/Bun, Herdr and its socket, the port and the service
@@ -278,37 +279,10 @@ export async function open(opts) {
 }
 
 // ----------------------------------------------------------------- phone
-export function tailscaleBin() {
-  for (const p of ['/Applications/Tailscale.app/Contents/MacOS/Tailscale', '/opt/homebrew/bin/tailscale', '/usr/local/bin/tailscale', '/usr/bin/tailscale']) {
-    if (existsSync(p)) return p
-  }
-  const r = spawnSync('sh', ['-c', 'command -v tailscale'], { encoding: 'utf8' })
-  return r.status === 0 ? r.stdout.trim() : null
-}
-
-// This machine's tailnet name (machine.tailnet.ts.net), or null.
-export function tailnetName(statusJson) {
-  try {
-    const name = JSON.parse(statusJson)?.Self?.DNSName
-    return typeof name === 'string' && name ? name.replace(/\.$/, '') : null
-  } catch { return null }
-}
-
-// Phone address: the `tailscale serve` entry whose proxy targets wherdr's
-// local port (served on any HTTPS port), else the suggested address on the
-// same port with served: false. Null without a tailnet name.
-export function phoneAddress(name, port, serveJson) {
-  if (!name) return null
-  let web = {}
-  try { web = JSON.parse(serveJson || '{}')?.Web || {} } catch {}
-  const target = new RegExp(`^(https?://)?(127\\.0\\.0\\.1|localhost):${port}/?$`)
-  for (const [hostPort, entry] of Object.entries(web)) {
-    if (!Object.values(entry?.Handlers || {}).some(h => target.test(h?.Proxy || ''))) continue
-    const servedPort = hostPort.slice(hostPort.lastIndexOf(':') + 1)
-    return { url: `https://${name}${servedPort === '443' ? '' : `:${servedPort}`}/`, served: true }
-  }
-  return { url: `https://${name}:${port}/`, served: false }
-}
+// The phone setup lives in the app (Settings › Phone: publish on the tailnet,
+// live check, APP_URL, QR code). Here: the real state, the link to that page,
+// and the QR code only when the address answers.
+export const phoneSetupUrl = url => `${url}/#/settings?section=phone`
 
 async function qr(text) {
   try {
@@ -321,35 +295,30 @@ async function qr(text) {
 
 export async function phone(opts) {
   const ctx = context(opts)
-  const answer = await probe(ctx.port, ctx.host)
-  say(c.bold('wherdr · phone setup'))
+  const setup = phoneSetupUrl(ctx.url)
+  say(c.bold('wherdr · phone'))
   say()
-  if (answer === 'wherdr') ok(`wherdr answers on ${c.cyan(ctx.url)}`)
+  const local = await probe(ctx.port, ctx.host)
+  if (local === 'wherdr') ok(`wherdr answers on ${c.cyan(ctx.url)}`)
   else warn('wherdr is not running: run `wherdr start` first.')
-  say()
-  say('  Your phone needs a private HTTPS address, never the public Internet.')
-  const ts = tailscaleBin()
-  const name = ts ? tailnetName(spawnSync(ts, ['status', '--json'], { encoding: 'utf8', timeout: 10_000 }).stdout || '') : null
-  const address = name ? phoneAddress(name, ctx.port, spawnSync(ts, ['serve', 'status', '--json'], { encoding: 'utf8', timeout: 10_000 }).stdout || '') : null
-  const phoneUrl = address?.url ?? null
-  if (!ts) say(`  1. Install Tailscale on this machine and on your phone: ${c.cyan('https://tailscale.com/download')}`)
-  else if (!name) say('  1. Log in to Tailscale on this machine (tailscale up) and on your phone.')
-  else say(`  1. ${c.green('✓')} Tailscale on this machine: ${name}`)
-  if (address?.served) say(`  2. ${c.green('✓')} Published on your tailnet: ${c.cyan(phoneUrl)}`)
+  const net = await inspect(ctx.port)
+  let reach = null
+  if (!net.installed) warn(`Tailscale is not installed: ${c.cyan(LINKS.download)}`)
+  else if (!net.connected || !net.phone) warn('Tailscale is not connected on this machine.')
+  else if (!net.phone.served) warn(`${c.bold('Not reachable from your phone yet')}: wherdr is not published on your tailnet.`)
   else {
-    say(`  2. Publish wherdr on your tailnet (HTTPS certificates enabled in the Tailscale admin):`)
-    say(`       ${c.cyan(`tailscale serve --bg --https=${ctx.port} http://127.0.0.1:${ctx.port}`)}`)
+    reach = await reachable(net.phone.url)
+    if (reach === 'ok') ok(`${c.cyan(net.phone.url)} answers`)
+    else warn(`${c.bold('Not reachable from your phone yet')}: ${net.phone.url} is published but ${reach === 'host' ? 'refused (APP_URL)' : 'does not answer'}.`)
   }
-  say(`  3. Tell wherdr its address, for notifications: add to ${settingsFile(ctx.dir)}`)
-  say(`       ${c.cyan(`APP_URL=${phoneUrl || `https://<machine>.<tailnet>.ts.net:${ctx.port}/`}`)}`)
-  say(process.env.WHERDR_CONTROL ? '     then press R in the wherdr panel.' : '     then run wherdr restart.')
-  say(`  4. Open ${phoneUrl ? c.cyan(phoneUrl) : 'that address'} on the phone, then Share → Add to Home Screen.`)
-  say('  5. In the app: Settings → Enable notifications, then Security → Enable passkey lock.')
-  if (ctx.env.APP_URL?.startsWith('https://')) { say(); ok(`APP_URL is set: ${ctx.env.APP_URL}`) }
-  if (phoneUrl) {
-    const code = await qr(phoneUrl)
+  if (reach === 'ok') {
+    const code = await qr(net.phone.url)
     if (code) { say(); say(code.split('\n').map(l => `  ${l}`).join('\n')) }
+    say(`  ${code ? 'Scan it with the iPhone camera' : `Open ${c.cyan(net.phone.url)} on the iPhone`}, then Share → Add to Home Screen.`)
+    say('  In the app: Settings → Enable notifications, then Security → Enable passkey lock.')
   }
+  say()
+  say(`  Set up your phone in the app, on this computer: ${c.cyan(setup)}`)
 }
 
 // --------------------------------------------------------------- service

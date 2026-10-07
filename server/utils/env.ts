@@ -33,7 +33,19 @@ export const HERDR_CHILD_ENV: NodeJS.ProcessEnv = Object.fromEntries(
 )
 export const AGENT_KINDS = (env.AGENT_KINDS || 'pi,claude,codex,gemini,cursor,devin,agy,cline,omp,mastracode,opencode,copilot,kimi,kiro,droid,amp,grok,hermes,kilo,qodercli,qwen,letta,maki,muse').split(',').map(s => s.trim()).filter(Boolean)
 // Public address of the app. Push only uses HTTPS URLs as the VAPID subject.
-export const APP_URL = env.APP_URL || 'mailto:herdr-web@localhost'
+// An HTTPS APP_URL in the environment wins; otherwise the phone address saved
+// by Settings › Phone (DATA_DIR/app-url.json) is used, from startup on.
+// process.env.APP_URL holds the address in use (hosts.ts reads it too).
+export const APP_URL_FILE = path.join(DATA_DIR, 'app-url.json')
+export const ENV_APP_URL = /^https:\/\//i.test(env.APP_URL || '') ? env.APP_URL! : ''
+export function savedAppUrl(): string {
+  try {
+    const url = JSON.parse(fs.readFileSync(APP_URL_FILE, 'utf8'))?.url
+    return typeof url === 'string' && /^https:\/\//i.test(url) ? url : ''
+  } catch { return '' }
+}
+if (!ENV_APP_URL && savedAppUrl()) env.APP_URL = savedAppUrl()
+export const appUrl = () => env.APP_URL || 'mailto:herdr-web@localhost'
 // Machine name shown in the app ("<HOST_LABEL> · herdr"); empty = "herdr".
 export const HOST_LABEL = (env.HOST_LABEL || os.hostname()).trim().slice(0, 40)
 // User name of the passkeys created by the app.

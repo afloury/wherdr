@@ -560,6 +560,8 @@ tailnet_name() {
   tailscale status --json 2>/dev/null | sed -n 's/.*"DNSName": *"\([^"]*\)\.".*/\1/p' | head -n 1
 }
 
+# The phone setup is a page of the app (Settings › Phone); `wherdr phone`
+# prints the state and its link. Docker without Node.js: the steps by hand.
 cmd_phone() {
   if [ "$MODE" = "native" ]; then cli phone; return 0; fi
   say ""
@@ -578,19 +580,20 @@ cmd_phone() {
     phone=""
     say "  3. Open  https://<machine>.<tailnet>.ts.net:$PORT/  on the phone, add it to the home screen."
   fi
-  if [ "$MODE" = "docker" ]; then
-    say "  4. Put that address in APP_URL in $DIR/.env, then press U in the wherdr panel."
-  else
-    say "  4. Put that address in APP_URL in $CONF, then press R in the wherdr panel."
-  fi
+  say "  4. Then open $URL/#/settings?section=phone: wherdr checks the address and sets APP_URL itself."
   say "  5. In the app: Settings → Enable notifications, then Security → Enable passkey lock."
-  if [ -n "$phone" ]; then
+  # The QR code only for an address that answers like wherdr.
+  if [ -n "$phone" ] && command -v curl >/dev/null 2>&1 \
+    && curl -fsS --max-time 8 "${phone}manifest.webmanifest" 2>/dev/null | grep -q wherdr; then
     say ""
     if command -v qrencode >/dev/null 2>&1; then
       qrencode -t ANSIUTF8 -m 2 "$phone"
     else
       say "  (Install qrencode to show a QR code of $phone here.)"
     fi
+  elif [ -n "$phone" ]; then
+    say ""
+    say "  ! Not reachable from your phone yet: $phone does not answer (step 2)."
   fi
   say ""
   say "  Guide: https://github.com/$SOURCE#install-the-app-on-your-phone"
@@ -610,8 +613,9 @@ cmd_service() {
 }
 
 # ------------------------------------------------------------------ panel
-# The "wherdr" action: one popup with the state, the addresses, the phone QR
-# code and a key per command (bin/lib/panel.mjs), driving this script.
+# The "wherdr" action: one popup with the state, Open wherdr, Set up my phone
+# (opens Settings › Phone) and the other commands (bin/lib/panel.mjs),
+# driving this script.
 cmd_panel() {
   control="$(printf '["sh","%s"]' "$(printf '%s' "$ROOT/scripts/herdr-plugin.sh" | sed 's/[\\"]/\\&/g')")"
   if [ "$MODE" = "native" ] || { [ -n "$MODE" ] && RUNTIME="$(find_runtime)"; }; then

@@ -1,25 +1,25 @@
-// `wherdr panel`: one screen for everything (the Herdr plugin's "wherdr"
-// action opens it in a popup). State, addresses, phone QR code, and one key
-// per command; refreshed every few seconds.
+// `wherdr panel`: the Herdr plugin's "wherdr" action opens it in a popup.
+// The state, and two main keys: O opens wherdr, P opens its phone setup
+// (Settings › Phone) in the browser. The other commands stay as a fallback,
+// in a quieter line. Refreshed every few seconds.
 //
 // Commands run through a controller: `wherdr` itself, or the Herdr plugin
 // script when WHERDR_CONTROL holds its argv as JSON (it knows Docker mode).
-import { execFile, spawn } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
-import { promisify } from 'node:util'
 import { BIN, VERSION, c, probe } from './core.mjs'
-import { context, livePid, tailnetName, tailscaleBin } from './commands.mjs'
+import { context, livePid, openUrl, phoneSetupUrl } from './commands.mjs'
 import { serviceFile, serviceState } from './service.mjs'
+import { inspect, reachable } from './tailnet.mjs'
 
-const exec = promisify(execFile)
-
-export const KEYS = [
-  ['s', 'start'], ['x', 'stop'], ['r', 'restart'], ['o', 'open'], ['l', 'log'],
-  ['u', 'update'], ['a', 'auto-start'], ['p', 'phone'], ['q', 'quit'],
+export const MAIN_KEYS = [['o', 'Open wherdr'], ['p', 'Set up my phone']]
+export const OTHER_KEYS = [
+  ['s', 'start'], ['x', 'stop'], ['r', 'restart'], ['l', 'log'], ['u', 'update'], ['a', 'auto-start'], ['q', 'quit'],
 ]
 
-// argv of the controller (`wherdr` or the plugin script) for a panel key.
+// argv of the controller (`wherdr` or the plugin script) for a panel key;
+// P opens the browser itself (see panel()).
 export function keyCommand(key, state, control) {
   const base = control?.length ? control : [process.execPath, BIN]
   const own = !control?.length
@@ -31,54 +31,48 @@ export function keyCommand(key, state, control) {
     case 'l': return [...base, 'logs', ...(own ? ['--follow'] : [])]
     case 'u': return own ? null : [...base, 'update']
     case 'a': return [...base, 'service', state.service.installed ? 'uninstall' : 'install']
-    case 'p': return [...base, 'phone']
     default: return null
   }
 }
 
-// Phone address: the `tailscale serve` entry whose proxy targets wherdr's
-// local port (served on any HTTPS port), else the address `wherdr phone`
-// suggests (same port) with served: false.
-export function phoneAddress(name, port, serveJson) {
-  if (!name) return null
-  let web = {}
-  try { web = JSON.parse(serveJson || '{}')?.Web || {} } catch {}
-  const target = new RegExp(`^(https?://)?(127\\.0\\.0\\.1|localhost):${port}/?$`)
-  for (const [hostPort, entry] of Object.entries(web)) {
-    if (!Object.values(entry?.Handlers || {}).some(h => target.test(h?.Proxy || ''))) continue
-    const servedPort = hostPort.slice(hostPort.lastIndexOf(':') + 1)
-    return { url: `https://${name}${servedPort === '443' ? '' : `:${servedPort}`}/`, served: true }
-  }
-  return { url: `https://${name}:${port}/`, served: false }
-}
-
-async function tailnet(port) {
-  const ts = tailscaleBin()
-  if (!ts) return { installed: false }
-  const run = args => exec(ts, args, { encoding: 'utf8', timeout: 5000 }).then(r => r.stdout, () => '')
-  const name = tailnetName(await run(['status', '--json']))
-  return { installed: true, phone: phoneAddress(name, port, name ? await run(['serve', 'status', '--json']) : '') }
+// Tailscale's state plus whether the phone address really answers like wherdr.
+export async function tailnet(port) {
+  const net = await inspect(port)
+  return net.phone?.served ? { ...net, reach: await reachable(net.phone.url, 5000) } : net
 }
 
 export async function gather(ctx, env = process.env, net = null) {
   const answer = await probe(ctx.port, ctx.host)
+  const mode = env.WHERDR_MODE === 'docker' ? 'docker' : 'native'
   return {
     version: VERSION,
-    mode: env.WHERDR_MODE === 'docker' ? 'docker' : 'native',
+    mode,
     plugin: Boolean(env.WHERDR_CONTROL),
     runtime: process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.versions.node}`,
     url: ctx.url,
     port: ctx.port,
     answer,
     pid: livePid(ctx.files.pid),
-    service: env.WHERDR_MODE === 'docker' ? { installed: false, running: false } : serviceState(),
+    service: mode === 'docker' ? { installed: false, running: false } : serviceState(),
     serviceFile: serviceFile(),
     dir: ctx.dir,
     tailnet: net ?? await tailnet(ctx.port),
   }
 }
 
-const line = (label, value) => `  ${c.dim(label.padEnd(11))}${value}`
+// The phone address only counts once it answers: then the QR code.
+export const phoneReady = state => Boolean(state.tailnet.phone?.served && state.tailnet.reach === 'ok')
+
+const line = (label, value) => `  ${c.dim(label.padEnd(9))}${value}`
+
+function phoneLine(state) {
+  const net = state.tailnet
+  if (phoneReady(state)) return c.cyan(net.phone.url)
+  if (!net.installed) return `${c.yellow('no Tailscale on this machine')} ${c.dim('· P')}`
+  if (!net.connected || !net.phone) return `${c.yellow('Tailscale is not connected')} ${c.dim('· P')}`
+  if (net.phone.served) return `${c.dim(net.phone.url)} ${c.yellow('not answering yet')} ${c.dim('· P')}`
+  return `${c.yellow('Not reachable from your phone yet')} ${c.dim('· P')}`
+}
 
 export function render(state, qrText = '') {
   const out = []
@@ -89,22 +83,17 @@ export function render(state, qrText = '') {
       : `${c.dim('○')} stopped`
   out.push(line('STATUS', status))
   out.push(line('LOCAL', c.cyan(state.url)))
-  const phone = state.tailnet.phone
-  if (phone?.served) out.push(line('TAILNET', c.cyan(phone.url)))
-  else if (phone) out.push(line('TAILNET', `${c.dim(phone.url)} ${c.yellow('not published')} · P`))
-  else out.push(line('TAILNET', c.dim(state.tailnet.installed ? 'Tailscale is not logged in · P' : 'no Tailscale on this machine · P')))
-  out.push(line('MODE', state.mode === 'docker' ? 'Docker' : `native · ${state.runtime}`))
-  out.push(line('AUTOSTART', autostart(state)))
-  if (phone?.served && qrText) {
-    out.push('')
-    out.push(`  ${c.dim('SCAN WITH THE IPHONE CAMERA, THEN SHARE → ADD TO HOME SCREEN')}`)
-    for (const l of qrText.split('\n')) out.push(`  ${l}`)
-  } else if (!phone?.served) {
-    out.push('')
-    out.push(`  ${c.dim('Phone: press P for the tailnet setup; the QR code shows up here.')}`)
-  }
+  out.push(line('PHONE', phoneLine(state)))
   out.push('')
-  out.push(`  ${KEYS.map(([k, label]) => `${c.bold(k.toUpperCase())} ${c.dim(label)}`).join('  ')}`)
+  if (phoneReady(state) && qrText) {
+    out.push(`  ${c.dim('SCAN WITH THE IPHONE CAMERA, THEN SHARE → ADD TO HOME SCREEN')}`)
+    for (const l of qrText.trimEnd().split('\n')) out.push(`  ${l}`)
+    out.push('')
+  }
+  out.push(`  ${MAIN_KEYS.map(([k, label]) => `${c.bold(k.toUpperCase())} ${label}`).join('    ')}`)
+  out.push('')
+  out.push(`  ${c.dim(OTHER_KEYS.map(([k, label]) => `${k.toUpperCase()} ${label}`).join('  '))}`)
+  out.push(`  ${c.dim(`${state.mode === 'docker' ? 'Docker' : `native · ${state.runtime}`} · auto-start ${autostart(state)}`)}`)
   out.push(`  ${c.dim(removeHint(state))}`)
   return out.join('\n')
 }
@@ -136,7 +125,6 @@ async function qr(text) {
 
 export async function panel(opts) {
   if (!process.stdin.isTTY) throw new Error('wherdr panel needs a terminal.')
-  const ctx = context(opts)
   let control = null
   try { control = process.env.WHERDR_CONTROL ? JSON.parse(process.env.WHERDR_CONTROL) : null } catch {}
   let state = null
@@ -148,10 +136,11 @@ export async function panel(opts) {
   let timer = null
 
   const draw = async () => {
-    if (Date.now() - netAt > 30_000) { net = null; netAt = Date.now() }
-    state = await gather(ctx, process.env, net)
+    // A phone address that does not answer yet is checked again sooner.
+    if (Date.now() - netAt > (net && !phoneReady({ tailnet: net }) ? 10_000 : 30_000)) { net = null; netAt = Date.now() }
+    state = await gather(context(opts), process.env, net)
     net = state.tailnet
-    const url = state.tailnet.phone?.served ? state.tailnet.phone.url : ''
+    const url = phoneReady(state) ? state.tailnet.phone.url : ''
     if (url !== qrFor) { qrFor = url; qrText = url ? await qr(url) : '' }
     if (!busy) process.stdout.write(`\x1b[H\x1b[2J${render(state, qrText)}\n`)
   }
@@ -167,7 +156,13 @@ export async function panel(opts) {
     process.stdin.off('data', onKey)
     raw(false)
     process.stdout.write('\x1b[H\x1b[2J\n')
-    if (!argv) {
+    if (key === 'p') {
+      // The phone setup is a page of the app: publish, live check, QR code.
+      const setup = phoneSetupUrl(state.url)
+      if (state.answer !== 'wherdr') process.stdout.write('  wherdr is not running: press S first, then P.\n')
+      else if (openUrl(setup)) process.stdout.write(`  Opened ${setup} in the browser.\n  Set up your phone there: the QR code shows up once the address answers.\n`)
+      else process.stdout.write(`  Open ${setup} in a browser on this computer.\n`)
+    } else if (!argv) {
       process.stdout.write('  Update the wherdr command with your package manager:\n    npm install -g wherdr@latest   (or bun add -g / pnpm add -g)\n')
     } else {
       // Ctrl+C stops the command (the log follower), not the panel.
@@ -177,7 +172,7 @@ export async function panel(opts) {
       await new Promise(resolve => child.on('exit', resolve).on('error', (e) => { process.stdout.write(`  ✗ ${e.message}\n`); resolve() }))
       process.off('SIGINT', ignore)
     }
-    if (key === 'a' || key === 'x' || key === 's' || key === 'r') netAt = 0
+    if (key !== 'l' && key !== 'o') netAt = 0
     process.stdout.write(`\n  ${c.dim('Press any key to go back.')}`)
     raw(true)
     process.stdin.once('data', async () => {
@@ -192,7 +187,7 @@ export async function panel(opts) {
     const key = buf.toString('utf8').toLowerCase()
     if (key === 'q' || key === '\x03' || key === '\x1b') return quit()
     if (busy || !state) return
-    if (KEYS.some(([k]) => k === key)) runKey(key)
+    if ([...MAIN_KEYS, ...OTHER_KEYS].some(([k]) => k === key)) runKey(key)
   }
 
   process.on('SIGTERM', quit)

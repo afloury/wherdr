@@ -25,11 +25,11 @@ const route = useRoute()
 const section = computed<SettingsSection | null>(() => (SETTINGS_SECTIONS as readonly string[]).includes(String(route.query.section)) ? route.query.section as SettingsSection : null)
 const sectionIcons: Record<SettingsSection, string> = {
   appearance: 'i-lucide-palette', conversation: 'i-lucide-message-square', terminal: 'i-lucide-square-terminal',
-  agents: 'i-lucide-bot', plugins: 'i-lucide-puzzle', notifications: 'i-lucide-bell', security: 'i-lucide-lock', desktop: 'i-lucide-monitor', about: 'i-lucide-info',
+  agents: 'i-lucide-bot', plugins: 'i-lucide-puzzle', phone: 'i-lucide-smartphone', notifications: 'i-lucide-bell', security: 'i-lucide-lock', desktop: 'i-lucide-monitor', about: 'i-lucide-info',
 }
 const sectionLabels: Record<SettingsSection, string> = {
   appearance: 'Appearance', conversation: 'Conversation', terminal: 'Terminal', agents: 'Agents',
-  plugins: 'Plugins', notifications: 'Notifications', security: 'Security', desktop: 'Desktop', about: 'About',
+  plugins: 'Plugins', phone: 'Phone', notifications: 'Notifications', security: 'Security', desktop: 'Desktop', about: 'About',
 }
 const sections = computed(() => SETTINGS_SECTIONS
   .filter(id => id !== 'desktop' || desk.value)
@@ -548,6 +548,10 @@ onMounted(() => {
 
         <div v-show="activeSection === 'plugins'" class="settings-section">
           <ProjectsPluginSettings :machines="appConfig.machines || [{ key: '', label: hostLabel || t('This machine'), local: true, home: '', dirs: [], online: true, kinds: [] }]" />
+        </div>
+
+        <div v-show="activeSection === 'phone'" class="settings-section">
+          <PhoneSetup :active="activeSection === 'phone'" />
         </div>
 
         <div v-show="activeSection === 'security'" class="settings-section">
