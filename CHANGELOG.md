@@ -42,6 +42,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Phone: bottom sheets (the "…" menu, confirmations, command and plugin results) close with a
+  tap on their handle or a swipe down from the handle, the title or the list scrolled to its top;
+  they stop at 85 % of the screen height, leaving room above to tap outside.
+
 - "/" menu of the input field: on an SSH machine, the skills and commands (user and project)
   are read in one SSH session instead of one per folder and file, a refused session is retried
   once, and if they still cannot be read the built-in commands show (asked again on the next
