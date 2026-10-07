@@ -107,13 +107,3 @@ export async function setQuiet(scope: QuietScope, on: boolean, until: number | n
   quietState.value = await api('/api/push/quiet', { endpoint: await pushEndpoint(), scope, on, until })
   quietNow.value = Date.now()
 }
-
-// Home indicator: turns off all quiet periods affecting this device.
-export async function endQuiet() {
-  try {
-    const { global, device } = quietState.value
-    if (quietActive(device)) await setQuiet('device', false)
-    if (quietActive(global)) await setQuiet('all', false)
-    toast(tl('Notifications back on', 'Notifications réactivées'))
-  } catch (err) { toast((err as Error).message, true) }
-}
