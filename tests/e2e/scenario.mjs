@@ -13,6 +13,7 @@ export const CLAUDE_PANE = 'w1:p1'
 export const OMP_LONG_PANE = 'w2:p1'
 export const OMP_CHAT_PANE = 'w3:p1'
 export const OMP_IMAGE_PANE = 'w4:p1'
+export const OMP_APPROVAL_PANE = 'w5:p1'
 
 // Unique markers of the long omp transcript (asserted on by the specs).
 export const LONG_WORD = `Pneumono${'ultramicroscopicsilicovolcano'.repeat(12)}coniosis`
@@ -125,7 +126,8 @@ export function writeScenario(home) {
   const docs = path.join(home, 'projects/docs-site')
   const demo = path.join(home, 'projects/demo')
   const screens = path.join(home, 'projects/screens')
-  for (const d of [api, docs, demo, screens]) fs.mkdirSync(d, { recursive: true })
+  const approval = path.join(home, 'projects/approval')
+  for (const d of [api, docs, demo, screens, approval]) fs.mkdirSync(d, { recursive: true })
 
   const claudeSid = '00000000-0000-4000-8000-000000000001'
   claudeTranscript(home, api, claudeSid, now)
@@ -148,6 +150,11 @@ export function writeScenario(home) {
     ]),
     msg({ role: 'assistant', content: [{ type: 'text', text: 'The login button is clipped.' }], stopReason: 'stop' }),
   ])
+  // omp waiting for the approval of its first action (status "blocked").
+  const approvalFile = ompTranscript(home, approval, 'e2e-approval', now, msg => [
+    msg({ role: 'user', content: [{ type: 'text', text: 'Clean the build folder.' }], attribution: 'user' }),
+    msg({ role: 'assistant', content: [{ type: 'toolCall', id: 'call-rm', name: 'bash', arguments: { i: 'Removing the build folder', command: 'rm -rf build' } }], stopReason: 'toolUse' }),
+  ])
   // "/" menu: a project skill and a project command for Claude, a project command for omp.
   write(path.join(api, '.claude/skills/daily-notes/SKILL.md'), '---\nname: daily-notes\ndescription: Write the daily notes of the project\n---\nSteps.\n')
   write(path.join(api, '.claude/commands/daily-check.md'), '# Check the daily build\n')
@@ -158,5 +165,6 @@ export function writeScenario(home) {
     { id: 'w2', label: 'docs-site', panes: [{ id: OMP_LONG_PANE, agent: 'omp', status: 'idle', cwd: docs, session: longFile }] },
     { id: 'w3', label: 'demo', panes: [{ id: OMP_CHAT_PANE, agent: 'omp', status: 'idle', cwd: demo, session: chatFile, transcript: chatFile, reply: 'Got it.' }] },
     { id: 'w4', label: 'screens', panes: [{ id: OMP_IMAGE_PANE, agent: 'omp', status: 'idle', cwd: screens, session: imageFile }] },
+    { id: 'w5', label: 'approval', panes: [{ id: OMP_APPROVAL_PANE, agent: 'omp', status: 'blocked', cwd: approval, session: approvalFile }] },
   ]
 }
