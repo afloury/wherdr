@@ -8,7 +8,7 @@ const SGR = /\x1b\[([\d;]*)m/g
 function highlight(params: string, state: { bg: boolean, inverse: boolean }) {
   const codes = params === '' ? [0] : params.split(';').map(Number)
   for (let i = 0; i < codes.length; i++) {
-    const c = codes[i]
+    const c = codes[i]!
     if (c === 38 || c === 48 || c === 58) {
       if (c === 48) state.bg = true
       i += codes[i + 1] === 5 ? 2 : codes[i + 1] === 2 ? 4 : 0
