@@ -68,9 +68,14 @@ All notable changes to this project are documented here. The format follows
 
 - Quoted replies as tokens in the field are marked experimental and are now off by default on a
   computer too (Settings › Conversation › Quoted replies).
+- The crossed-out bell of the agent list (do not disturb on) now opens Settings › Notifications
+  instead of turning notifications back on at once.
 
 ### Fixed
 
+- Agent list header: with plugin actions and do not disturb on, the last buttons were cut off in
+  a narrow sidebar. The title now shrinks first, then the plugin, settings and bell buttons move
+  into a “…” menu as needed.
 - Herdr plugin, native mode (macOS): Start failed when Herdr's server `PATH` did not contain
   node (n, nvm, fnm, Volta…) yet said “started”. The install now saves the absolute path of node
   (or Bun) in `~/wherdr/plugin.env` (`WHERDR_RUNTIME`), Start looks in the usual folders when it is

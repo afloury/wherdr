@@ -20,6 +20,7 @@ import { type ReadySort, type Row, projectRoots, readyLists, repoRoots, rowGroup
 import { spaceTitle } from '#shared/displayTitles'
 import { claudeSetupOf, machineQuotaRows, quotaRows } from '~/utils/quotas'
 import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
+import { headerFold } from '~/utils/headerFold'
 import { dropMachineKey, shiftMachineKey, sortMachines } from '#shared/machineOrder'
 import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
 const emit = defineEmits<{ search: [] }>()
@@ -299,8 +300,9 @@ function machineMenu(m: MachineInfo) {
 // Plugin actions of each online machine (a single one: the local one).
 const onlineKeys = computed(() => JSON.stringify(multiMachine.value ? machines.value.filter(m => m.status === 'online').map(m => m.key) : (st.value.ok ? [''] : [])))
 watch(onlineKeys, (keys) => { for (const k of JSON.parse(keys) as string[]) loadPluginActions(k) }, { immediate: true })
-// Quiet mode active: crossed-out bell next to the settings; tapping it turns it off.
-const quietLabel = computed(() => tl('Do not disturb is on — tap to turn notifications back on', 'Silence actif — toucher pour réactiver les notifications'))
+// Quiet mode active: crossed-out bell next to the settings; tapping it opens the notification settings.
+const quietLabel = computed(() => tl('Notifications silenced — open settings', 'Notifications en silence — ouvrir les réglages'))
+const quietSettings = '/settings?section=notifications'
 const onQuietVisible = () => { if (document.visibilityState === 'visible') refreshQuiet() }
 onMounted(() => { refreshQuiet(); document.addEventListener('visibilitychange', onQuietVisible) })
 onBeforeUnmount(() => document.removeEventListener('visibilitychange', onQuietVisible))
@@ -308,6 +310,32 @@ const soloPlugins = computed(() => !multiMachine.value && machinePluginActions('
 function openSoloPlugins() {
   haptic()
   openPluginMenu({ machine: '' })
+}
+// Header buttons: when the list is too narrow, the secondary ones move into a "…" menu
+// (plugins first, then settings, then the do-not-disturb bell).
+const titleRow = ref<HTMLElement | null>(null)
+const titleRowWidth = ref(0)
+let titleRowObserver: ResizeObserver | null = null
+onMounted(() => {
+  titleRowObserver = new ResizeObserver(([e]) => { titleRowWidth.value = e?.contentRect.width ?? 0 })
+  if (titleRow.value) titleRowObserver.observe(titleRow.value)
+})
+onBeforeUnmount(() => titleRowObserver?.disconnect())
+const headerFoldable = computed(() => [
+  ...(soloPlugins.value ? ['plugins'] : []), 'settings', ...(quietCurrent.value ? ['quiet'] : []),
+])
+const headerFolded = computed(() => {
+  if (!titleRowWidth.value) return new Set<string>()
+  const total = headerFoldable.value.length + 1 + (desk.value ? 1 : 0)
+  return new Set(headerFoldable.value.slice(0, headerFold(titleRowWidth.value, total, headerFoldable.value.length)))
+})
+function headerMenuItems(): MenuItem[] {
+  const f = headerFolded.value
+  return [
+    ...(f.has('plugins') ? [{ label: t('Plugin actions'), icon: 'i-lucide-puzzle', run: openSoloPlugins }] : []),
+    ...(f.has('quiet') ? [{ label: quietLabel.value, icon: 'i-lucide-bell-off', run: () => navigateTo(quietSettings) }] : []),
+    ...(f.has('settings') ? [{ label: t('Settings'), icon: 'i-lucide-settings-2', run: () => navigateTo('/settings') }] : []),
+  ]
 }
 async function saveMachine() {
   if (!renamingMachine.value || savingMachine.value) return
@@ -411,7 +439,7 @@ function resetListWidth() {
         <UButton icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('New')" :disabled="!eventsOpen || offlineView" @click="newAgent" />
       </UTooltip>
       <UTooltip v-if="quietCurrent" :text="quietLabel" :content="{ side: 'right' }">
-        <UButton icon="i-lucide-bell-off" color="neutral" variant="ghost" size="lg" class="icon-btn quiet-on" :aria-label="quietLabel" @click="endQuiet" />
+        <UButton icon="i-lucide-bell-off" color="neutral" variant="ghost" size="lg" class="icon-btn quiet-on" :aria-label="quietLabel" :to="quietSettings" />
       </UTooltip>
       <UTooltip :text="t('Settings')" :kbds="shortcutKbds('settings')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-settings-2" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Settings')" to="/settings" />
@@ -426,24 +454,25 @@ function resetListWidth() {
       <p class="eyebrow">
         <AppLogo class="home-logo" :class="conn.idle ? '' : conn.ok ? 'ok' : 'bad'" /><span>{{ conn.text }}</span>
       </p>
-      <div class="home-title-row">
+      <div ref="titleRow" class="home-title-row">
         <h1 class="display">{{ t('Agents') }}</h1>
         <div class="home-actions">
-          <UTooltip v-if="soloPlugins" :text="t('Plugin actions')" :disabled="!desk">
+          <UTooltip v-if="soloPlugins && !headerFolded.has('plugins')" :text="t('Plugin actions')" :disabled="!desk">
             <UButton icon="i-lucide-puzzle" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Plugin actions')" @click="openSoloPlugins" />
           </UTooltip>
           <UTooltip :text="tl('Search agents and conversations', 'Rechercher agents et conversations')" :kbds="shortcutKbds('search-all')" :disabled="!desk">
             <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" @click="openSearch" />
           </UTooltip>
-          <UTooltip v-if="quietCurrent" :text="quietLabel" :disabled="!desk">
-            <UButton icon="i-lucide-bell-off" color="neutral" variant="ghost" size="lg" class="icon-btn quiet-on" :aria-label="quietLabel" @click="endQuiet" />
+          <UTooltip v-if="quietCurrent && !headerFolded.has('quiet')" :text="quietLabel" :disabled="!desk">
+            <UButton icon="i-lucide-bell-off" color="neutral" variant="ghost" size="lg" class="icon-btn quiet-on" :aria-label="quietLabel" :to="quietSettings" />
           </UTooltip>
-          <UTooltip :text="t('Settings')" :kbds="shortcutKbds('settings')" :disabled="!desk">
+          <UTooltip v-if="!headerFolded.has('settings')" :text="t('Settings')" :kbds="shortcutKbds('settings')" :disabled="!desk">
             <UButton
               icon="i-lucide-settings-2" color="neutral" variant="ghost" size="lg" class="icon-btn"
               :aria-label="t('Settings')" to="/settings"
             />
           </UTooltip>
+          <SpaceMenu v-if="headerFolded.size" :items="headerMenuItems" size="lg" :label="t('Options')" />
           <UTooltip v-if="desk" :text="t('Collapse list')">
             <UButton icon="i-lucide-panel-left-close" color="neutral" variant="ghost" size="lg" class="icon-btn rail-toggle" :aria-label="t('Collapse list')" aria-expanded="true" aria-controls="home" @click="setListCollapsed(true)" />
           </UTooltip>
