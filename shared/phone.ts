@@ -13,6 +13,8 @@ export type PhoneError = 'operator' | 'https' | 'offline' | 'taken' | 'address' 
 
 export interface PhoneStatus {
   mode: PhoneMode
+  // Server OS (process.platform), for the Tailscale download link.
+  platform: string
   port: string
   // native: Tailscale is up and this machine has a tailnet name.
   connected: boolean

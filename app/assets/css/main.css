@@ -2098,6 +2098,13 @@ body.kb .composer { padding-bottom: 8px; }
 .phone-note p { margin: 0 0 6px; }
 .phone-note.warn { padding: 10px 12px; border: 1px solid var(--ochre); color: var(--text); }
 .phone-detail { margin: 0 0 6px; max-height: 160px; overflow: auto; font: 11.5px/1.5 var(--mono); white-space: pre-wrap; color: var(--text-2); }
+.phone-guide { margin-top: 16px; padding: 16px; border: 1px solid var(--line); background: var(--bg-2); }
+.phone-guide-why { margin: 0 0 14px; font-size: 13px; line-height: 1.5; color: var(--text-2); }
+.phone-guide-steps { margin: 0 0 16px; padding: 0; list-style: none; counter-reset: guide; display: flex; flex-direction: column; gap: 12px; }
+.phone-guide-steps li { counter-increment: guide; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding-left: 30px; position: relative; }
+.phone-guide-steps li::before { content: counter(guide); position: absolute; left: 0; top: 0; width: 20px; height: 20px; display: grid; place-items: center; border: 1px solid var(--line); font: 600 11px var(--mono); color: var(--text); }
+.phone-guide-steps b { font-weight: 500; font-size: 13px; line-height: 1.45; }
+.phone-guide-links { display: flex; gap: 14px; flex-wrap: wrap; }
 .phone-qr { display: flex; gap: 18px; align-items: center; margin-top: 16px; padding: 16px; border: 1px solid var(--line); background: var(--bg-2); }
 .phone-qr svg { width: 168px; height: 168px; flex: none; }
 .phone-qr-text { display: flex; flex-direction: column; gap: 8px; min-width: 0; }

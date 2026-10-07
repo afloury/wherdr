@@ -75,7 +75,7 @@ export async function phoneStatus(): Promise<PhoneStatus> {
   const bin = tailscaleBin()
   const out: PhoneStatus = {
     mode: bin ? 'native' : IN_DOCKER ? 'docker' : 'missing',
-    port: PORT, connected: false, https: false, url: null, served: false, taken: false, suggested: null,
+    platform: process.platform, port: PORT, connected: false, https: false, url: null, served: false, taken: false, suggested: null,
     command: publishCommand(PORT), reach: null, appUrl: '', appUrlFromEnv: Boolean(ENV_APP_URL), qr: null,
   }
   if (bin) {

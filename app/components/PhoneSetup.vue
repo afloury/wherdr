@@ -62,6 +62,16 @@ async function copyCommand() {
   } catch { toast(t('Copy failed'), true) }
 }
 
+// Tailscale missing or disconnected: why it is needed, and three steps.
+const needsTailscale = computed(() => status.value?.mode === 'missing' || (status.value?.mode === 'native' && !status.value.connected))
+const DOWNLOADS: Record<string, string> = { darwin: 'https://tailscale.com/download/mac', win32: 'https://tailscale.com/download/windows', linux: 'https://tailscale.com/download/linux' }
+const downloadUrl = computed(() => DOWNLOADS[status.value?.platform || ''] || 'https://tailscale.com/download')
+const checking = ref(false)
+async function checkAgain() {
+  checking.value = true
+  try { await refresh() } finally { checking.value = false; schedule() }
+}
+
 const reachText = computed(() => {
   const s = status.value
   if (!s?.url) return ''
@@ -97,17 +107,14 @@ const failureText = computed(() => {
         <!-- 1. Tailscale -->
         <li :class="{ done: status.mode === 'docker' || status.connected }">
           <span class="phone-step-label">TAILSCALE</span>
-          <template v-if="status.mode === 'missing'">
-            <p>{{ tl('Install Tailscale on this computer and on your phone, with the same account.', 'Installe Tailscale sur cet ordinateur et sur ton téléphone, avec le même compte.') }}</p>
-            <a class="phone-link" href="https://tailscale.com/download" target="_blank" rel="noopener noreferrer">tailscale.com/download <UIcon name="i-lucide-external-link" /></a>
-          </template>
+          <p v-if="status.mode === 'missing'">{{ tl('Not installed on this computer.', 'Pas installé sur cet ordinateur.') }}</p>
           <p v-else-if="status.mode === 'docker'">{{ tl('wherdr runs in Docker: run the command below on the computer, in a terminal.', 'wherdr tourne dans Docker : lance la commande ci-dessous sur l’ordinateur, dans un terminal.') }}</p>
           <p v-else-if="status.connected">{{ tl('Connected.', 'Connecté.') }}</p>
-          <p v-else>{{ tl('Not connected: open the Tailscale app (or run tailscale up).', 'Pas connecté : ouvre l’app Tailscale (ou lance tailscale up).') }}</p>
+          <p v-else>{{ tl('Installed, but not connected on this computer.', 'Installé, mais pas connecté sur cet ordinateur.') }}</p>
         </li>
 
         <!-- 2. Published -->
-        <li v-if="status.mode === 'native'" :class="{ done: status.served }">
+        <li v-if="status.mode === 'native' && status.connected" :class="{ done: status.served }">
           <span class="phone-step-label">{{ tl('TAILNET', 'TAILNET') }}</span>
           <template v-if="status.served">
             <p class="phone-url">{{ status.url }}</p>
@@ -145,6 +152,28 @@ const failureText = computed(() => {
           <p v-else>{{ tl(`APP_URL is set to ${status.appUrl} in wherdr's environment, which wins: change it there and restart wherdr for notifications to open this address.`, `APP_URL vaut ${status.appUrl} dans l’environnement de wherdr, qui l’emporte : change-le là et redémarre wherdr pour que les notifications ouvrent cette adresse.`) }}</p>
         </li>
       </ol>
+
+      <div v-if="needsTailscale" class="phone-guide">
+        <p class="phone-guide-why">{{ tl('Your phone reaches wherdr through Tailscale: a private, encrypted link between your own devices only. Nothing is exposed on the Internet, and it is free for personal use. It also gives wherdr an HTTPS address, which the installed app, notifications and passkeys require.', 'Ton téléphone joint wherdr par Tailscale : un lien privé et chiffré, seulement entre tes appareils. Rien n’est exposé sur Internet, et c’est gratuit pour un usage perso. Tailscale donne aussi à wherdr une adresse HTTPS, obligatoire pour l’app installée, les notifications et les passkeys.') }}</p>
+        <ol class="phone-guide-steps">
+          <li>
+            <b>{{ status.mode === 'missing' ? tl('Install Tailscale on this computer and sign in.', 'Installe Tailscale sur cet ordinateur et connecte-toi.') : tl('Open Tailscale on this computer and sign in.', 'Ouvre Tailscale sur cet ordinateur et connecte-toi.') }}</b>
+            <a class="phone-link" :href="downloadUrl" target="_blank" rel="noopener noreferrer">{{ downloadUrl.replace('https://', '') }} <UIcon name="i-lucide-external-link" /></a>
+          </li>
+          <li>
+            <b>{{ tl('Install Tailscale on your phone, with the same account.', 'Installe Tailscale sur ton téléphone, avec le même compte.') }}</b>
+            <span class="phone-guide-links">
+              <a class="phone-link" href="https://apps.apple.com/app/tailscale/id1470499037" target="_blank" rel="noopener noreferrer">App Store <UIcon name="i-lucide-external-link" /></a>
+              <a class="phone-link" href="https://play.google.com/store/apps/details?id=com.tailscale.ipn" target="_blank" rel="noopener noreferrer">Google Play <UIcon name="i-lucide-external-link" /></a>
+            </span>
+          </li>
+          <li>
+            <b>{{ tl('Turn on HTTPS for your tailnet in the Tailscale admin console (DNS page, “Enable HTTPS”).', 'Active HTTPS pour ton tailnet dans la console d’administration Tailscale (page DNS, « Enable HTTPS »).') }}</b>
+            <a class="phone-link" href="https://login.tailscale.com/admin/dns" target="_blank" rel="noopener noreferrer">login.tailscale.com/admin/dns <UIcon name="i-lucide-external-link" /></a>
+          </li>
+        </ol>
+        <UButton color="neutral" variant="outline" icon="i-lucide-refresh-cw" :loading="checking" @click="checkAgain">{{ tl('Check again', 'Vérifier à nouveau') }}</UButton>
+      </div>
 
       <div v-if="failure" class="phone-note warn" role="alert">
         <p>{{ failureText }}</p>
