@@ -37,9 +37,11 @@ describe.skipIf(process.platform === 'win32' || !which('curl'))('herdr plugin, n
     for (const d of [path.join(root, 'scripts'), path.join(root, '.output', 'server'), home, rt, minbin]) mkdirSync(d, { recursive: true })
     cpSync(path.join(REPO, 'scripts', 'herdr-plugin.sh'), path.join(root, 'scripts', 'herdr-plugin.sh'))
     cpSync(path.join(REPO, 'herdr-plugin.toml'), path.join(root, 'herdr-plugin.toml'))
-    // Stand-in server: answers on $PORT, like .output/server/index.mjs.
+    cpSync(path.join(REPO, 'package.json'), path.join(root, 'package.json'))
+    cpSync(path.join(REPO, 'bin'), path.join(root, 'bin'), { recursive: true })
+    // Stand-in server: answers on $PORT like wherdr (its manifest names it).
     writeFileSync(path.join(root, '.output', 'server', 'index.mjs'),
-      `import http from 'node:http'\nhttp.createServer((q, s) => s.end('ok')).listen(Number(process.env.PORT), process.env.HOST)\n`)
+      `import http from 'node:http'\nhttp.createServer((q, s) => s.end('{"name":"wherdr"}')).listen(Number(process.env.PORT), process.env.HOST)\n`)
     // node only in a version-manager-like folder; npm stubbed (no real build).
     symlinkSync(process.execPath, path.join(rt, 'node'))
     writeFileSync(path.join(rt, 'npm'), '#!/bin/sh\nexit 0\n'); chmodSync(path.join(rt, 'npm'), 0o755)

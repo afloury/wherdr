@@ -41,8 +41,6 @@ if [ -z "${WHERDR_DIR:-}" ] && [ -f "$ROOT/.wherdr-dir" ]; then
 fi
 DIR="${WHERDR_DIR:-$HOME/wherdr}"
 CONF="$DIR/plugin.env"
-PIDFILE="$DIR/wherdr.pid"
-LOGFILE="$DIR/wherdr.log"
 # GitHub source of this plugin: its manifest id with "/" for "." (owner.wherdr).
 SOURCE="$(sed -n 's/^id = "\(.*\)"$/\1/p' "$ROOT/herdr-plugin.toml" | head -n 1 | tr . /)"
 # container_name of the compose file (wherdr unless you renamed it).
@@ -141,15 +139,6 @@ container_ours() {
 }
 
 compose() { docker compose --project-directory "$DIR" -f "$DIR/docker-compose.yml" "$@"; }
-
-native_pid() {
-  [ -f "$PIDFILE" ] || return 1
-  pid="$(cat "$PIDFILE")"
-  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null || return 1
-  # The pid must still be our server, not a recycled pid.
-  ps -p "$pid" -o command= 2>/dev/null | grep -q '.output/server/index.mjs' || return 1
-  echo "$pid"
-}
 
 wait_up() {
   i=0
@@ -291,63 +280,39 @@ cmd_start() {
   fi
 }
 
-start_native() {
-  [ -f "$ROOT/.output/server/index.mjs" ] || die "wherdr is not built in $ROOT: run the Update action."
-  if pid="$(native_pid)"; then
-    say "wherdr (pid $pid) is starting already."
-    return 0
-  fi
+# Native mode: the wherdr command (bin/wherdr.mjs) does the work, with the
+# runtime saved at install; it says "started" only once the port answers.
+ensure_runtime() {
   if ! runtime_ok "$RUNTIME"; then
     saved="$RUNTIME"
     RUNTIME="$(find_runtime)" || die "${saved:+The saved runtime ($saved) is gone. }$RUNTIME_HELP"
     warn "${saved:+$saved is gone: }using $RUNTIME (saved in $CONF)."
     write_conf
   fi
-  mkdir -p "$DIR/data"
+}
+
+cli() {
+  ensure_runtime
   sock="${HERDR_SOCKET_PATH:-}"
   # A plugin started from a named Herdr session drives that session.
   session=""
   case "$sock" in */sessions/*/herdr.sock) session="$(basename "$(dirname "$sock")")" ;; esac
-  launcher=""
-  if command -v setsid >/dev/null 2>&1; then launcher="setsid"; fi
-  touch "$LOGFILE"
-  logstart="$(wc -l < "$LOGFILE")"
   (
-    cd "$ROOT"
+    cd "$DIR"
     HERDR_BIN="$(herdr_bin)"
     # The runtime's folder first: tools it starts find the same node.
     PATH="$(dirname "$RUNTIME"):$PATH"
-    export PATH HOST=127.0.0.1 PORT DATA_DIR="$DIR/data" HERDR_BIN HERDR_WEB_SESSION="$session"
+    export PATH WHERDR_DIR="$DIR" WHERDR_RUNTIME="$RUNTIME" HOST=127.0.0.1 PORT HERDR_BIN HERDR_WEB_SESSION="$session"
     if [ -n "$sock" ]; then export HERDR_SOCK="$sock"; fi
     if [ -n "${APP_URL:-}" ]; then export APP_URL; fi
-    # Detached: Herdr's startup hook returns at once, the server outlives it.
-    $launcher nohup "$RUNTIME" "$ROOT/.output/server/index.mjs" >>"$LOGFILE" 2>&1 </dev/null &
-    echo $! > "$PIDFILE"
+    exec "$RUNTIME" "$ROOT/bin/wherdr.mjs" "$@"
   )
-  pid="$(cat "$PIDFILE")"
-  # "started" only once the process is alive and the port answers.
-  i=0
-  while [ "$i" -lt 45 ]; do
-    if ! kill -0 "$pid" 2>/dev/null; then
-      rm -f "$PIDFILE"
-      start_failed "wherdr exited at startup ($RUNTIME)."
-    fi
-    if answers; then
-      ok "wherdr started (pid $pid, $RUNTIME, log $LOGFILE)"
-      say "wherdr is running: $URL"
-      return 0
-    fi
-    i=$((i + 1)); sleep 1
-  done
-  start_failed "wherdr (pid $pid) does not answer on port $PORT after 45 s."
 }
 
-start_failed() {
-  {
-    printf '  ✗ %s Last lines of %s:\n' "$1" "$LOGFILE"
-    tail -n "+$((logstart + 1))" "$LOGFILE" | tail -n 15 | sed 's/^/    /'
-  } >&2
-  exit 1
+start_native() {
+  [ -f "$ROOT/.output/server/index.mjs" ] || die "wherdr is not built in $ROOT: run the Update action."
+  mkdir -p "$DIR"
+  cli start
 }
 
 start_docker() {
@@ -363,23 +328,12 @@ start_docker() {
   ok "container started"
 }
 
-log_hint() {
-  if [ "$MODE" = "docker" ]; then echo "cd $DIR && docker compose logs"; else echo "$LOGFILE"; fi
-}
+log_hint() { echo "cd $DIR && docker compose logs"; }
 
 # ------------------------------------------------------------------- stop
 cmd_stop() {
   case "$MODE" in
-    native)
-      if pid="$(native_pid)"; then
-        kill "$pid"
-        i=0
-        while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 10 ]; do i=$((i + 1)); sleep 1; done
-        rm -f "$PIDFILE"
-        say "wherdr stopped (pid $pid)."
-        return 0
-      fi
-      ;;
+    native) cli stop; return 0 ;;
     docker)
       if [ -n "$(container_dir)" ] && container_ours; then
         compose stop
@@ -397,22 +351,34 @@ cmd_stop() {
 
 # ----------------------------------------------------------------- status
 cmd_status() {
+  if [ "$MODE" = "native" ]; then
+    cli status
+    say "  Plugin   native mode, settings in $CONF"
+    return 0
+  fi
   say "Mode:    ${MODE:-not set up}"
   say "Folder:  $DIR"
   if answers; then say "Port:    $PORT answers ($URL)"; else say "Port:    $PORT free"; fi
+  if [ "$MODE" = "docker" ]; then
+    owner="$(container_dir)"
+    if [ -z "$owner" ]; then say "Container: none"
+    elif container_ours; then say "Container: $CONTAINER ($(docker inspect "$CONTAINER" --format '{{.State.Status}}' 2>/dev/null)), managed by the plugin"
+    else say "Container: $CONTAINER, managed from $owner (left alone)"
+    fi
+  fi
+}
+
+# ------------------------------------------------------------- logs, doctor
+cmd_logs() {
   case "$MODE" in
-    native)
-      if pid="$(native_pid)"; then say "Process: pid $pid, started by the plugin"; else say "Process: none started by the plugin"; fi
-      say "Log:     $LOGFILE"
-      ;;
-    docker)
-      owner="$(container_dir)"
-      if [ -z "$owner" ]; then say "Container: none"
-      elif container_ours; then say "Container: $CONTAINER ($(docker inspect "$CONTAINER" --format '{{.State.Status}}' 2>/dev/null)), managed by the plugin"
-      else say "Container: $CONTAINER, managed from $owner (left alone)"
-      fi
-      ;;
+    native) cli logs --follow ;;
+    docker) compose logs --follow --tail 100 ;;
+    *) die "wherdr plugin is not set up: install it again with herdr plugin install $SOURCE." ;;
   esac
+}
+
+cmd_doctor() {
+  if [ "$MODE" = "native" ]; then cli doctor; else cmd_status; fi
 }
 
 # ------------------------------------------------------------------- open
@@ -453,6 +419,7 @@ tailnet_name() {
 }
 
 cmd_phone() {
+  if [ "$MODE" = "native" ]; then cli phone; return 0; fi
   say ""
   say "  WHERDR · PHONE SETUP"
   say ""
@@ -485,21 +452,34 @@ cmd_phone() {
   fi
   say ""
   say "  Guide: https://github.com/$SOURCE#install-the-app-on-your-phone"
-  say ""
+}
+
+# Plugin popups (herdr-plugin.toml [[panes]]): readable output instead of the
+# raw JSON `herdr plugin action invoke` prints, kept on screen until Enter.
+cmd_pane() {
+  action="$1"
+  printf '\n'
+  set +e
+  ( "cmd_$action" )
+  code=$?
+  set -e
+  if [ "$code" -ne 0 ] && [ "$action" != "logs" ]; then printf '\n  ✗ %s failed (exit %s).\n' "$action" "$code"; fi
   if [ -t 0 ]; then
-    printf '  Press Enter to close. '
+    printf '\n  Press Enter to close. '
     read -r _ || true
   fi
 }
 
+cmd_restart() { cmd_stop; cmd_start; }
+
 case "${1:-}" in
   build) cmd_build ;;
-  start) cmd_start ;;
-  stop) cmd_stop ;;
-  restart) cmd_stop; cmd_start ;;
-  status) cmd_status ;;
-  open) cmd_open ;;
-  update) cmd_update ;;
-  phone) cmd_phone ;;
-  *) die "usage: $0 build|start|stop|restart|status|open|update|phone" ;;
+  start|stop|restart|status|open|update|phone|logs|doctor) "cmd_$1" ;;
+  pane)
+    case "${2:-}" in
+      start|stop|restart|status|update|phone|logs|doctor) cmd_pane "$2" ;;
+      *) die "usage: $0 pane start|stop|restart|status|update|phone|logs|doctor" ;;
+    esac
+    ;;
+  *) die "usage: $0 build|start|stop|restart|status|open|update|phone|logs|doctor|pane <action>" ;;
 esac
