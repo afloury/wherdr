@@ -560,7 +560,9 @@ cmd_service() {
     return 0
   fi
   cli service "$1"
-  if [ "$1" = "uninstall" ]; then say "  wherdr still starts with Herdr (plugin startup hook)."; fi
+  # Without the service, the plugin runs wherdr again (and its startup hook
+  # starts it with Herdr).
+  if [ "$1" = "uninstall" ]; then cmd_start; fi
 }
 
 # ------------------------------------------------------------------ panel
