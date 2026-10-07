@@ -42,6 +42,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- A long "!" command sent to Claude Code no longer also stays below as a "Queued" bubble while it
+  runs: the screen wraps it (mid-path), and the wrap no longer hides that it is the same command.
+  Codex "!" commands now show as command blocks with their output, and their bubble goes away.
 - "/" menu of the input field: on an SSH machine, the skills and commands (user and project)
   are read in one SSH session instead of one per folder and file, a refused session is retried
   once, and if they still cannot be read the built-in commands show (asked again on the next
