@@ -33,6 +33,18 @@ describe('Claude Code screen', () => {
     expect(queuedPhase('! sleep 12; echo fini', s)).toBe('running')
   })
 
+  it('long "!" command wrapped mid-word by the screen still matches the message sent (t-0242)', () => {
+    // Real Claude Code 2.1 screen: the paths break at the line's end ("seg" / "ment10").
+    const s = parseClaudeScreen(fx('claude-bash-wrapped.txt'), NOW)!
+    expect(s.shell && s.shell.command).toContain('segment09-seg\nment10')
+    const long = `/tmp/hwt0242/${Array.from({ length: 14 }, (_, i) => `segment${String(i).padStart(2, '0')}`).join('-')}/scripts/update-fork.sh`
+    expect(queuedPhase(`! LOCK=/tmp/x.lock sleep 10; echo ${long} ${long}`, s)).toBe('running')
+    expect(queuedPhase(`! LOCK=/tmp/x.lock sleep 10; echo ${long.replace('segment03', 'segment33')}`, s)).toBe('queued')
+    // Narrow pane: the break falls within the first 80 characters compared.
+    const narrow = parseClaudeScreen(fx('claude-bash-starting.txt').replace('! sleep 12; echo fini', '!  LOCK=/tmp/x.lock sh /work/tr\n  ees/project-a1b2c3/scripts/updat\n  e-fork.sh'), NOW)!
+    expect(queuedPhase('! LOCK=/tmp/x.lock sh /work/trees/project-a1b2c3/scripts/update-fork.sh', narrow)).toBe('running')
+  })
+
   it('command finished: no longer running, but sent', () => {
     const s = parseClaudeScreen(fx('claude-bash-finished.txt'), NOW)!
     expect(s.shell).toBeNull()

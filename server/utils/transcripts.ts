@@ -440,7 +440,15 @@ export function parseCodex(lines: Lines): Parsed {
       let text = ''
       let images = 0
       for (const part of p.content || []) {
-        if ((part.type === 'input_text' || part.type === 'output_text') && part.text && !isNoise(part.text)) text += (text ? '\n' : '') + part.text
+        // "!cmd" typed in Codex: run at once, written as
+        // <user_shell_command><command>…</command><result>Exit code: N … Output:\n…</result>.
+        const run = p.role === 'user' && part.type === 'input_text' ? /^\s*<user_shell_command>\s*<command>\s*([\s\S]*?)\s*<\/command>\s*(?:<result>([\s\S]*?)<\/result>)?/.exec(part.text || '') : null
+        if (run) {
+          const result = run[2] || ''
+          const exit = /Exit code: (-?\d+)/.exec(result)
+          const out = /(?:^|\n)Output:\n?([\s\S]*)$/.exec(result)
+          items.push({ role: 'bash', text: clip(run[1]!, 2000), out: out ? out[1]!.replace(/\s+$/, '').slice(-MAX_OUT) : '', err: '', error: Boolean(exit && exit[1] !== '0'), ts })
+        } else if ((part.type === 'input_text' || part.type === 'output_text') && part.text && !isNoise(part.text)) text += (text ? '\n' : '') + part.text
         else if (part.type === 'input_image') images++
       }
       if (text.trim() || images) items.push({ role: p.role, text: clip(text.trim()), images, ref: images ? ref : undefined, ts })

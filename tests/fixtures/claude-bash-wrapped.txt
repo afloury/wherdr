@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.292
+▝▜██████▀  Opus 5.5 with medium effort · Claude Max
+ ▝▝   ▝▝   /tmp/hwt0242
+
+
+!  LOCK=/tmp/x.lock sleep 10; echo /tmp/hwt0242/segment00-segment01-segment02-segment03-segment04-segment05-segment06-
+  segment07-segment08-segment09-segment10-segment11-segment12-segment13/scripts/update-fork.sh
+  /tmp/hwt0242/segment00-segment01-segment02-segment03-segment04-segment05-segment06-segment07-segment08-segment09-seg
+  ment10-segment11-segment12-segment13/scripts/update-fork.sh
+  ⎿  Running…
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
