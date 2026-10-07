@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `wherdr` agent skill (`skills/wherdr/SKILL.md`) for herdr-projects coordinators: the
+  `TASKS.md` lists and badges the Project panel reads, `(agent → t-NNNN)`, and what to do with
+  each message its buttons send. The Herdr plugin links it into `~/.claude/skills` and
+  `~/.agents/skills` (Codex, omp) when those agents are installed, never over a foreign skill;
+  `herdr-plugin.sh skill uninstall` removes the links.
 - npm package `wherdr`, prebuilt: `npx wherdr`, `bunx wherdr` or `pnpm dlx wherdr` runs it
   without cloning or building. Installed globally (`npm install -g wherdr`), the `wherdr` command
   also has `start` / `stop` / `restart` / `status` (background server, pid and log in `~/wherdr`;

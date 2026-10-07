@@ -24,7 +24,8 @@
 #   - nothing global is installed, no sudo; files are only written to the
 #     plugin folder and $WHERDR_DIR (default ~/wherdr), plus the folders the
 #     Docker setup mounts (~/.config/herdr, ~/.cache/herdr-web…), and the
-#     login service only when asked (key A of the panel);
+#     login service only when asked (key A of the panel), plus a "wherdr"
+#     link in the agents' user skill folders (see cmd_skill);
 #   - the install starts wherdr, and Herdr's startup hook starts it again,
 #     but only when nothing answers on the port: a wherdr started another way
 #     (Docker, systemd, by hand) is never touched, no second wherdr is started;
@@ -33,6 +34,7 @@
 #
 # Uninstall: Herdr has no uninstall hook. Stop wherdr (and remove the login
 # service) from the panel first, then:
+#   sh scripts/herdr-plugin.sh skill uninstall   (in the plugin folder)
 #   herdr plugin uninstall <owner>.wherdr && rm -rf ~/wherdr
 #
 # Settings ($WHERDR_DIR/plugin.env, or the environment):
@@ -194,7 +196,49 @@ cmd_build() {
   # install from the merged settings (environment over the previous file).
   write_conf
   ok "plugin.env written (mode: $MODE)"
+  ( cmd_skill install ) || warn "wherdr skill not linked (optional): run $0 skill install"
   build_start
+}
+
+# ------------------------------------------------------------------ skill
+# The "wherdr" agent skill (skills/wherdr/SKILL.md): the conventions of the
+# Project panel for herdr-projects coordinators. Copied to $DIR/skills/wherdr
+# (the checkout is built in a temporary folder, then moved), then linked into
+# the user skill folders: Claude Code's ${CLAUDE_CONFIG_DIR:-~/.claude}/skills,
+# and ~/.agents/skills, read by Codex and omp. Only links to that copy are
+# ever created or removed: a "wherdr" skill of someone else is left alone.
+SKILL_COPY="$DIR/skills/wherdr"
+
+skill_dirs() {
+  claude="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+  [ -d "$claude" ] && echo "$claude/skills"
+  if [ -d "$HOME/.agents" ] || [ -d "$HOME/.codex" ] || [ -d "$HOME/.omp" ]; then echo "$HOME/.agents/skills"; fi
+  return 0
+}
+
+cmd_skill() {
+  case "${1:-}" in
+    install)
+      mkdir -p "$SKILL_COPY"
+      cp "$ROOT/skills/wherdr/SKILL.md" "$SKILL_COPY/SKILL.md"
+      skill_dirs | while IFS= read -r d; do
+        link="$d/wherdr"
+        if [ -L "$link" ] && [ "$(readlink "$link")" = "$SKILL_COPY" ]; then ok "skill already linked: $link"
+        elif [ -e "$link" ] || [ -L "$link" ]; then warn "skill not linked: $link already exists (left alone)"
+        else mkdir -p "$d" && ln -s "$SKILL_COPY" "$link" && ok "skill linked: $link"
+        fi
+      done
+      ;;
+    uninstall)
+      skill_dirs | while IFS= read -r d; do
+        link="$d/wherdr"
+        if [ -L "$link" ] && [ "$(readlink "$link")" = "$SKILL_COPY" ]; then rm "$link" && ok "skill unlinked: $link"; fi
+      done
+      rm -rf "$SKILL_COPY"
+      rmdir "$DIR/skills" 2>/dev/null || true
+      ;;
+    *) die "usage: $0 skill install|uninstall" ;;
+  esac
 }
 
 # Last step of the install: start wherdr (or restart the one this plugin
@@ -610,5 +654,6 @@ case "${1:-}" in
   panel) cmd_panel ;;
   start|stop|restart|status|open|update|phone|logs|doctor) "cmd_$1" ;;
   service) cmd_service "${2:-}" ;;
-  *) die "usage: $0 build|panel|start|stop|restart|status|open|update|phone|logs|doctor|service install|uninstall" ;;
+  skill) cmd_skill "${2:-}" ;;
+  *) die "usage: $0 build|panel|start|stop|restart|status|open|update|phone|logs|doctor|service install|uninstall|skill install|uninstall" ;;
 esac
