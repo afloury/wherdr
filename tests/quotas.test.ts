@@ -1,11 +1,12 @@
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Quota } from '../shared/types'
 import { type CodexScreenWeekly, weekFromScreen } from '../shared/codexStatus'
-import { localFs } from '../server/utils/fsx'
-import { applyCodexKnown, claudeQuota, claudeSetupState, codexAccount, codexQuota, machineCodexQuota, lastCodexLimits, latestCodexQuota, mergeQuotas, readCodex, sameAccount } from '../server/utils/quotas'
+import { createShellFs, localFs } from '../server/utils/fsx'
+import { applyCodexKnown, claudeQuota, claudeSetupState, codexAccount, codexQuota, machineCodexQuota, lastCodexLimits, latestCodexQuota, mergeQuotas, readClaude, readCodex, sameAccount } from '../server/utils/quotas'
 
 describe('quotas', () => {
   it('reads the quotas from Claude Code\'s status line', () => {
@@ -272,5 +273,32 @@ describe('Codex week checked against /status', () => {
     expect(applyCodexScreen(stale, { left: 60, exact: true })).toBe(stale)
     expect(applyCodexScreen(stale, { left: 20, exact: false })).toBe(stale)
     expect(applyCodexScreen(stale, { left: 90, exact: true, resets: '10:33 on 26 Sep' })).toBe(stale)
+  })
+})
+
+describe('readClaude over SSH', () => {
+  // Remote shell emulated by the local sh; `refuse` plays a full shared connection.
+  const shellFs = (refuse: () => boolean) => createShellFs(async (script, args = []) => {
+    if (refuse()) return { code: 255, stdout: Buffer.alloc(0), stderr: 'mux_client_request_session: session request failed: Session open refused by peer\nConnection closed by UNKNOWN port 65535' }
+    const r = spawnSync('sh', ['-c', script, 'sh', ...args])
+    return { code: r.status, stdout: r.stdout, stderr: r.stderr.toString('utf8') }
+  }, { statTtlMs: 0 })
+
+  it('reports a machine without the status line as missing', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-q-'))
+    await expect(readClaude(shellFs(() => false), home)).resolves.toEqual({ q: null, setup: 'missing' })
+  })
+
+  it('throws on a refused session instead of reporting missing', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-q-'))
+    await expect(readClaude(shellFs(() => true), home)).rejects.toMatchObject({ code: 'unreachable' })
+  })
+
+  it('throws when the session fails after the status file was found', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-q-'))
+    fs.mkdirSync(path.join(home, '.cache/herdr-web'), { recursive: true })
+    fs.writeFileSync(path.join(home, '.cache/herdr-web/claude-status.json'), '{}')
+    let calls = 0
+    await expect(readClaude(shellFs(() => ++calls > 1), home)).rejects.toMatchObject({ code: 'unreachable' })
   })
 })

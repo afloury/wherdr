@@ -42,6 +42,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Remote (SSH) machines: busy machines no longer show "Connection closed by UNKNOWN port 65535",
+  "Conversation not up to date" or "Threads unavailable". wherdr keeps its reads under sshd's
+  session limit per connection (`MaxSessions`, 10 by default), leaving room for terminals,
+  shares identical reads already running and retries a refused session. A quota read that fails
+  no longer shows "not set up / Install": the last reading stays, as do the project's threads.
 - omp with nerd-font or ascii symbols (`symbolPreset`): a running `!` command shows the Stop
   button again, and Stop or Escape cancels it; the working step, the tool approval dialog and the
   model selector are read with every symbol preset.
