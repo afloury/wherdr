@@ -9,8 +9,9 @@
 #   docker  Linux with Docker Compose v2 usable by this user: the published
 #           image, run from $WHERDR_DIR exactly like https://wherdr.dev/install.
 #   native  everywhere else (always on macOS: Docker Desktop cannot reach
-#           Herdr's Unix socket): Node.js 22 runs the build made in the
-#           plugin folder, detached, with its pid and log in $WHERDR_DIR.
+#           Herdr's Unix socket): Node.js 22 (or Bun) runs the prebuilt npm
+#           package of this version (or a build made in the plugin folder),
+#           detached, with its pid and log in $WHERDR_DIR.
 # WHERDR_MODE=native (or docker) in the environment of `herdr plugin install`
 # forces the choice; edit plugin.env to change it later, then run Update.
 #
@@ -28,6 +29,7 @@
 #   WHERDR_MODE  docker | native        (default: chosen at install)
 #   WHERDR_PORT  local port              (default: 7683)
 #   APP_URL      private HTTPS address   (native; Docker reads its .env)
+#   WHERDR_RUNTIME  absolute path of node / bun (native; found at install)
 
 set -eu
 
@@ -47,7 +49,7 @@ SOURCE="$(sed -n 's/^id = "\(.*\)"$/\1/p' "$ROOT/herdr-plugin.toml" | head -n 1 
 CONTAINER="$(sed -n 's/^ *container_name: *//p' "$DIR/docker-compose.yml" 2>/dev/null | head -n 1)"
 CONTAINER="${CONTAINER:-wherdr}"
 # The environment wins over plugin.env.
-ENV_MODE="${WHERDR_MODE:-}" ENV_PORT="${WHERDR_PORT:-}" ENV_APP_URL="${APP_URL:-}"
+ENV_MODE="${WHERDR_MODE:-}" ENV_PORT="${WHERDR_PORT:-}" ENV_APP_URL="${APP_URL:-}" ENV_RUNTIME="${WHERDR_RUNTIME:-}"
 if [ -f "$CONF" ]; then
   # shellcheck disable=SC1090
   . "$CONF"
@@ -55,6 +57,9 @@ fi
 MODE="${ENV_MODE:-${WHERDR_MODE:-}}"
 PORT="${ENV_PORT:-${WHERDR_PORT:-7683}}"
 APP_URL="${ENV_APP_URL:-${APP_URL:-}}"
+# Native mode: absolute path of the node (or bun) that runs the server. Herdr
+# runs actions with its server's PATH, which often lacks nvm / n / fnm folders.
+RUNTIME="${ENV_RUNTIME:-${WHERDR_RUNTIME:-}}"
 URL="http://localhost:$PORT"
 
 say() { printf '%s\n' "$*"; }
@@ -81,10 +86,39 @@ docker_usable() {
   docker info >/dev/null 2>&1
 }
 
+# Major version of a node binary, 0 when it is not one.
 node_major() {
-  command -v node >/dev/null 2>&1 || { echo 0; return; }
-  node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0
+  "$1" -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0
 }
+
+# A usable runtime: Node.js 22 or newer, or Bun (it runs the built server too).
+runtime_ok() {
+  [ -n "$1" ] && [ -x "$1" ] && [ ! -d "$1" ] || return 1
+  case "$(basename "$1")" in
+    bun) "$1" --version >/dev/null 2>&1 ;;
+    *) [ "$(node_major "$1")" -ge 22 ] 2>/dev/null ;;
+  esac
+}
+
+# Absolute path of the runtime: WHERDR_RUNTIME, then node on the PATH, then the
+# usual install folders (n, nvm, Volta, fnm, asdf, Homebrew), then Bun.
+# Prints nothing and fails when none is found.
+find_runtime() {
+  for c in "$RUNTIME" "$(command -v node 2>/dev/null || true)" \
+    "$HOME/.n/bin/node" "${N_PREFIX:+$N_PREFIX/bin/node}" \
+    $(ls -d "$HOME"/.nvm/versions/node/v*/bin/node 2>/dev/null | sort -r -V) \
+    "$HOME/.volta/bin/node" \
+    $(ls -d "$HOME"/.local/share/fnm/node-versions/*/installation/bin/node "$HOME"/.fnm/node-versions/*/installation/bin/node 2>/dev/null | sort -r -V) \
+    "$HOME/.asdf/shims/node" /opt/homebrew/bin/node /usr/local/bin/node /usr/bin/node \
+    "$(command -v bun 2>/dev/null || true)" "$HOME/.bun/bin/bun" /opt/homebrew/bin/bun /usr/local/bin/bun; do
+    if runtime_ok "$c"; then echo "$c"; return 0; fi
+  done
+  return 1
+}
+
+RUNTIME_HELP="Node.js 22 or newer (or Bun) is required to run wherdr without Docker.
+     Install it from https://nodejs.org, or set its absolute path in $CONF:
+       WHERDR_RUNTIME=/path/to/node"
 
 herdr_bin() {
   if [ -n "${HERDR_BIN_PATH:-}" ]; then echo "$HERDR_BIN_PATH"
@@ -144,6 +178,12 @@ cmd_build() {
   if [ "$MODE" = "docker" ]; then build_docker; else build_native; fi
   # Written last: a failed build keeps no half-made choice. Rewritten on each
   # install from the merged settings (environment over the previous file).
+  write_conf
+  ok "plugin.env written (mode: $MODE)"
+  say "wherdr plugin ready. It starts with Herdr; or run the \"Start wherdr\" action."
+}
+
+write_conf() {
   {
     echo "# wherdr Herdr plugin settings (herdr-plugin.sh)."
     echo "# To switch mode, set WHERDR_MODE and run: herdr plugin install $SOURCE"
@@ -151,22 +191,45 @@ cmd_build() {
     echo "WHERDR_PORT=$PORT"
     echo "# Native mode: private HTTPS address (tailscale serve), for push notifications."
     echo "APP_URL=${APP_URL:-}"
+    if [ "$MODE" = "native" ]; then
+      echo "# Native mode: absolute path of the node (22+) or bun that runs wherdr."
+      echo "WHERDR_RUNTIME=$RUNTIME"
+    fi
   } > "$CONF"
-  ok "plugin.env written (mode: $MODE)"
-  say "wherdr plugin ready. It starts with Herdr; or run the \"Start wherdr\" action."
+}
+
+# The published npm package of this exact version holds the built server:
+# download it instead of building (no npm ci). Fails when it is not published.
+fetch_prebuilt() {
+  command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1 || return 1
+  version="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$ROOT/herdr-plugin.toml" | head -n 1)"
+  tmp="$(mktemp -d)"
+  if curl -fsSL --max-time 120 "https://registry.npmjs.org/wherdr/-/wherdr-$version.tgz" -o "$tmp/wherdr.tgz" 2>/dev/null \
+    && tar -xzf "$tmp/wherdr.tgz" -C "$tmp" \
+    && [ -f "$tmp/package/.output/server/index.mjs" ]; then
+    rm -rf "$ROOT/.output"
+    mv "$tmp/package/.output" "$ROOT/.output"
+    rm -rf "$tmp"
+    ok "wherdr $version downloaded (prebuilt npm package)"
+    return 0
+  fi
+  rm -rf "$tmp"
+  return 1
 }
 
 build_native() {
-  major="$(node_major)"
-  if [ "$major" -lt 22 ] 2>/dev/null; then
-    die "Node.js 22 or newer is required to run wherdr without Docker (found: $(node --version 2>/dev/null || echo none)).
-     Install it from https://nodejs.org (or Homebrew: brew install node@22), then install the plugin again."
-  fi
-  command -v npm >/dev/null 2>&1 || die "npm is missing (it comes with Node.js)."
-  ok "Node.js $(node --version)"
+  RUNTIME="$(find_runtime)" || die "$RUNTIME_HELP"
+  ok "Runtime: $RUNTIME ($("$RUNTIME" --version 2>/dev/null))"
+  if fetch_prebuilt; then return 0; fi
+  case "$(basename "$RUNTIME")" in
+    bun) die "The prebuilt wherdr package could not be downloaded, and building it needs Node.js 22 with npm.
+     Check the network, or install Node.js 22, then install the plugin again." ;;
+  esac
+  bindir="$(dirname "$RUNTIME")"
+  [ -x "$bindir/npm" ] || command -v npm >/dev/null 2>&1 || die "npm is missing (it comes with Node.js)."
   cd "$ROOT"
-  npm ci --no-audit --no-fund
-  npm run build
+  PATH="$bindir:$PATH" npm ci --no-audit --no-fund
+  PATH="$bindir:$PATH" npm run build
   ok "wherdr built in the plugin folder"
 }
 
@@ -219,6 +282,7 @@ cmd_start() {
     native) start_native ;;
     *) die "wherdr plugin is not set up ($CONF is missing): install it again with herdr plugin install $SOURCE." ;;
   esac
+  if [ "$MODE" = "native" ]; then return 0; fi
   if wait_up 45; then
     say "wherdr is running: $URL"
   else
@@ -233,6 +297,12 @@ start_native() {
     say "wherdr (pid $pid) is starting already."
     return 0
   fi
+  if ! runtime_ok "$RUNTIME"; then
+    saved="$RUNTIME"
+    RUNTIME="$(find_runtime)" || die "${saved:+The saved runtime ($saved) is gone. }$RUNTIME_HELP"
+    warn "${saved:+$saved is gone: }using $RUNTIME (saved in $CONF)."
+    write_conf
+  fi
   mkdir -p "$DIR/data"
   sock="${HERDR_SOCKET_PATH:-}"
   # A plugin started from a named Herdr session drives that session.
@@ -240,17 +310,44 @@ start_native() {
   case "$sock" in */sessions/*/herdr.sock) session="$(basename "$(dirname "$sock")")" ;; esac
   launcher=""
   if command -v setsid >/dev/null 2>&1; then launcher="setsid"; fi
+  touch "$LOGFILE"
+  logstart="$(wc -l < "$LOGFILE")"
   (
     cd "$ROOT"
     HERDR_BIN="$(herdr_bin)"
-    export HOST=127.0.0.1 PORT DATA_DIR="$DIR/data" HERDR_BIN HERDR_WEB_SESSION="$session"
+    # The runtime's folder first: tools it starts find the same node.
+    PATH="$(dirname "$RUNTIME"):$PATH"
+    export PATH HOST=127.0.0.1 PORT DATA_DIR="$DIR/data" HERDR_BIN HERDR_WEB_SESSION="$session"
     if [ -n "$sock" ]; then export HERDR_SOCK="$sock"; fi
     if [ -n "${APP_URL:-}" ]; then export APP_URL; fi
     # Detached: Herdr's startup hook returns at once, the server outlives it.
-    $launcher nohup node "$ROOT/.output/server/index.mjs" >>"$LOGFILE" 2>&1 </dev/null &
+    $launcher nohup "$RUNTIME" "$ROOT/.output/server/index.mjs" >>"$LOGFILE" 2>&1 </dev/null &
     echo $! > "$PIDFILE"
   )
-  ok "wherdr started (pid $(cat "$PIDFILE"), log $LOGFILE)"
+  pid="$(cat "$PIDFILE")"
+  # "started" only once the process is alive and the port answers.
+  i=0
+  while [ "$i" -lt 45 ]; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      rm -f "$PIDFILE"
+      start_failed "wherdr exited at startup ($RUNTIME)."
+    fi
+    if answers; then
+      ok "wherdr started (pid $pid, $RUNTIME, log $LOGFILE)"
+      say "wherdr is running: $URL"
+      return 0
+    fi
+    i=$((i + 1)); sleep 1
+  done
+  start_failed "wherdr (pid $pid) does not answer on port $PORT after 45 s."
+}
+
+start_failed() {
+  {
+    printf '  ✗ %s Last lines of %s:\n' "$1" "$LOGFILE"
+    tail -n "+$((logstart + 1))" "$LOGFILE" | tail -n 15 | sed 's/^/    /'
+  } >&2
+  exit 1
 }
 
 start_docker() {

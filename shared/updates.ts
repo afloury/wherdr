@@ -1,7 +1,8 @@
 // New version notice: version comparison and update command
 // depending on the installation mode (shared by server / app, no dependency).
 
-export type InstallMode = 'docker' | 'docker-build' | 'native'
+// npm: started from the published package (npx / bunx / pnpm dlx wherdr, bin/wherdr.mjs).
+export type InstallMode = 'docker' | 'docker-build' | 'native' | 'npm'
 
 export interface UpdateInfo {
   current: string
@@ -30,11 +31,12 @@ export function compareVersions(a: string, b: string): number {
 }
 
 export function installMode(env: string | undefined): InstallMode {
-  return env === 'docker' || env === 'docker-build' ? env : 'native'
+  return env === 'docker' || env === 'docker-build' || env === 'npm' ? env : 'native'
 }
 
 export function updateCommand(mode: InstallMode): string {
   if (mode === 'docker') return 'docker compose pull && docker compose up -d'
   if (mode === 'docker-build') return 'git pull && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build'
+  if (mode === 'npm') return 'npx wherdr@latest'
   return 'git pull && npm ci && npm run build'
 }

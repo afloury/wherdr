@@ -21,6 +21,7 @@ async function copy() {
       <p>{{ tl(`wherdr ${info.latest} is available`, `wherdr ${info.latest} est disponible`) }}<small>{{ tl(`Installed: ${info.current}`, `Version installée : ${info.current}`) }}</small></p>
       <code>{{ info.command }}</code>
       <small v-if="info.mode === 'native'">{{ t('Then restart wherdr.') }}</small>
+      <small v-else-if="info.mode === 'npm'">{{ t('Stop wherdr first, then run this command.') }}</small>
     </div>
     <div class="update-banner-actions">
       <UButton v-if="info.url" size="sm" color="neutral" variant="ghost" icon="i-lucide-external-link" :to="info.url" target="_blank" rel="noopener noreferrer">{{ t('Release notes') }}</UButton>
