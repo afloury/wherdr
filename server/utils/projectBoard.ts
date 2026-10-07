@@ -8,7 +8,7 @@
 import { execFile } from 'node:child_process'
 import path from 'node:path'
 import type { Pane } from '../../shared/types'
-import { type ProjectBoard, maxParallelThreads, normalizeThreads, parseTasks, splitThreads } from '../../shared/projectBoard'
+import { type ProjectBoard, type ProjectThread, maxParallelThreads, normalizeThreads, parseTasks, splitThreads } from '../../shared/projectBoard'
 import { projectOf } from '../../shared/projects'
 import { isProjectThread } from '../../shared/paneTitle'
 import { HERDR_BIN, HERDR_CHILD_ENV } from './env'
@@ -113,6 +113,10 @@ function threadList(t: Target): Promise<string> {
 
 export type BoardReply = ProjectBoard | { same: true, version: string } | { available: false }
 
+// Last thread list read for each project: shown again while a read fails
+// (refused SSH session, timeout) instead of an error.
+const lastThreads = new Map<string, ProjectThread[]>()
+
 export async function readProjectBoard(pane: Pane, since?: string): Promise<BoardReply> {
   const t = await target(pane)
   if (!t) return { available: false }
@@ -125,7 +129,11 @@ export async function readProjectBoard(pane: Pane, since?: string): Promise<Boar
     ver.tasks ? t.m.fs.read(`${t.dir}/TASKS.md`, 0, Math.min(ver.tasks.size, TASKS_BYTES)).then(b => b.toString('utf8')) : Promise.resolve(null),
     ver.project ? t.m.fs.read(`${t.dir}/PROJECT.md`, 0, Math.min(ver.project.size, PROJECT_HEAD_BYTES)).then(b => b.toString('utf8')).catch(() => '') : Promise.resolve(''),
     threadList(t).then(out => ({ list: normalizeThreads(JSON.parse(out)), error: undefined as string | undefined }))
-      .catch((e: Error) => ({ list: [], error: e.message || 'threads illisibles' })),
+      .then((r) => { lastThreads.set(`${t.m.key}|${t.dir}`, r.list); return r })
+      .catch((e: Error) => {
+        const last = lastThreads.get(`${t.m.key}|${t.dir}`)
+        return last ? { list: last, error: undefined } : { list: [], error: e.message || 'threads illisibles' }
+      }),
   ])
   const { open, resolved } = splitThreads(threads.list)
   const board: ProjectBoard = { slug: t.slug, lists: parseTasks(tasksText || ''), open, resolved, version: ver.v }

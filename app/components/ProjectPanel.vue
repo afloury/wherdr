@@ -345,7 +345,7 @@ function hideHint() {
     </header>
 
     <div class="pp-scroll">
-      <p v-if="error" class="pp-notice error" role="alert">{{ error }}</p>
+      <p v-if="error && !board" class="pp-notice error" role="alert">{{ error }}</p>
       <p v-if="!board && loading" class="pp-notice"><span class="spinner" /> {{ t('Reading the project…') }}</p>
       <template v-if="board">
         <p v-if="board.tasksMissing" class="pp-notice">{{ t('No TASKS.md in this project yet.') }}</p>

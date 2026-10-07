@@ -695,6 +695,10 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability.
   - `Bad owner or permissions`: `~/.ssh/config` must belong to you and not be group-writable.
 - **Claude says "Not logged in" on a Mac** whose Herdr server was started over SSH: the macOS
   keychain is locked in SSH sessions. Start the Herdr server from a terminal on the Mac.
+- **`Session open refused by peer` / `Connection closed by UNKNOWN port 65535`** in the logs: the
+  shared SSH connection to a remote machine reached sshd's session limit (`MaxSessions`, 10 by
+  default). wherdr stays under it and retries, so this is rare; if it persists (many terminals
+  open at once), raise `MaxSessions` in the remote machine's `sshd_config`.
 - **Quotas missing**: see [Claude and Codex quotas](#claude-and-codex-quotas).
 - **iPhone layout cut at the bottom** after changing the status bar style: reinstall the home
   screen icon (iOS reads this setting at install time).

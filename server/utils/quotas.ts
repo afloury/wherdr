@@ -95,6 +95,7 @@ async function ls(fs: MachineFs, d: string) {
 
 // Claude reading of a machine, with its account fingerprint if known.
 export type ClaudeReading = Quota & { account: string | null }
+export interface ClaudeMachineReading { q: ClaudeReading | null, setup: 'ok' | ClaudeSetup['state'] }
 
 // wherdr's status line set up on a machine? `ok`: complete reading
 // (quotas + fingerprint), or an account without quotas (API key: nothing to show).
@@ -107,16 +108,23 @@ export function claudeSetupState(f: { status: Json | null, account: boolean, sta
   return 'missing'
 }
 
-async function readClaude(fs: MachineFs, home: string): Promise<{ q: ClaudeReading | null, setup: 'ok' | ClaudeSetup['state'] }> {
+// A file that is absent reads as null; any other failure (refused SSH session,
+// timeout) throws, so that an unreadable machine never looks "not set up".
+export async function readClaude(fs: MachineFs, home: string): Promise<ClaudeMachineReading> {
   const dir = path.posix.join(home, '.cache/herdr-web')
   const f = path.posix.join(dir, 'claude-status.json')
-  const text = (p: string) => fs.readFile(p).catch(() => null)
+  const text = (p: string) => fs.readFile(p).catch((e: { code?: string }) => {
+    if (e?.code === 'ENOENT') return null
+    throw e
+  })
   let status: Json | null = null
   let at = 0
-  try {
-    at = (await fs.stat(f)).mtimeMs
-    status = JSON.parse(await fs.readFile(f))
-  } catch { status = null }
+  const st = (await fs.statMany([f]))[0]
+  if (st) {
+    at = st.mtimeMs
+    const raw = await text(f)
+    try { status = raw === null ? null : JSON.parse(raw) } catch { status = null }
+  }
   const acc = (await text(path.posix.join(dir, 'claude-account')))?.trim() || ''
   const account = /^[0-9a-f]{16,64}$/.test(acc) ? acc : null
   const setup = claudeSetupState(status && account
@@ -303,14 +311,21 @@ async function canInstall(m: Machine): Promise<boolean> {
   return false
 }
 
+// Last successful reading of each machine: kept while a read fails (refused
+// SSH session, timeout), so a passing error neither hides the quotas nor
+// shows the setup prompt.
+const lastRead = new Map<string, { claude?: ClaudeMachineReading, codex?: CodexAccountReading | null }>()
+
 export async function readQuotas(force = false): Promise<Quotas> {
   if (!force && cache && Date.now() - cache.at < TTL) return cache.q
   const online = allMachines().filter(m => m.home && !m.info().baseKey && (m.local || m.status === 'online'))
   const readings = await Promise.all(online.map(async (m) => {
+    const last = lastRead.get(m.key) || {}
     const [claude, rolled] = await Promise.all([
-      readClaude(m.fs, m.home).catch(() => null),
-      readCodex(m.fs, m.home).catch(() => null),
+      readClaude(m.fs, m.home).then((r) => { last.claude = r; return r }, () => last.claude ?? null),
+      readCodex(m.fs, m.home).then((r) => { last.codex = r; return r }, () => last.codex ?? null),
     ])
+    lastRead.set(m.key, last)
     const week = rolled?.week ? { used: rolled.week.used, resetsAt: rolled.week.resetsAt, at: rolled.at, account: rolled.account } : null
     const known = knownWeek ? await knownWeek(m.key, week).catch(() => null) : null
     const codex = rolled && applyCodexKnown(rolled, known, Date.now())

@@ -33,6 +33,7 @@ import {
 } from './env'
 import { HerdrError, herdr, setSocketResolver } from './herdr'
 import { type ExecResult, type MachineFs, type ShellExec, createShellFs, localFs, remoteCommand, shq } from './fsx'
+import { SessionGate, isRefused } from './sshgate'
 import { type Transcripts, createTranscripts } from './transcripts'
 import { fmt } from '../../shared/message'
 import { ATTACH_SUBDIR } from '../../shared/attachments'
@@ -202,6 +203,10 @@ export class RemoteMachine implements Machine {
   private onChange: () => void
   onSkip: (m: RemoteMachine, reason: string) => void = () => {}
   onOnline: (m: RemoteMachine) => void = () => {}
+  // Session budget of the shared connection (sshd MaxSessions).
+  readonly gate = new SessionGate({
+    onRefused: (s, attempt) => log(`machine ${this.label}: SSH session refused (attempt ${attempt}; open: ${s.execs} commands + ${s.streams} streams, ${s.queued} queued, peak ${s.peak})`),
+  })
 
   constructor(p: MachineProfile, onChange: () => void) {
     this.key = p.key
@@ -232,11 +237,18 @@ export class RemoteMachine implements Machine {
     return ['-S', this.ctl, '-o', 'ControlMaster=no', '-o', 'BatchMode=yes', '-o', 'ProxyCommand=/bin/false', '-T']
   }
 
+  // Short command over the shared connection, under the session budget;
+  // the same read-only command already running is shared.
   private run(script: string, args: string[], opts: { input?: Buffer, timeoutMs?: number }): Promise<ExecResult> {
     if (this.status !== 'online' && !this.connecting) {
       return Promise.resolve({ code: 255, stdout: Buffer.alloc(0), stderr: fmt('{machine} is unreachable', { machine: this.label }) })
     }
     const cmd = remoteCommand(script, args)
+    const key = opts.input ? undefined : `${opts.timeoutMs || 0}\n${cmd}`
+    return this.gate.run(() => this.runOnce(cmd, opts), r => r.code === 255 && isRefused(r.stderr), key)
+  }
+
+  private runOnce(cmd: string, opts: { input?: Buffer, timeoutMs?: number }): Promise<ExecResult> {
     return new Promise((resolve) => {
       const child = spawn(SSH_BIN, [...this.muxArgs(), '--', this.target, cmd], { stdio: ['pipe', 'pipe', 'pipe'] })
       const out: Buffer[] = []
@@ -263,10 +275,15 @@ export class RemoteMachine implements Machine {
     })
   }
 
+  // Long-lived session (terminal, mirror): counted in the budget, never queued.
   spawnHerdr(args: string[]): ChildProcessWithoutNullStreams {
     const sess = this.session && this.session !== 'default' ? ['--session', this.session] : []
     const cmd = `exec ${[this.bin || 'herdr', ...sess, ...args].map(shq).join(' ')}`
-    return spawn(SSH_BIN, [...this.muxArgs(), '--', this.target, cmd], { stdio: ['pipe', 'pipe', 'pipe'] })
+    const child = spawn(SSH_BIN, [...this.muxArgs(), '--', this.target, cmd], { stdio: ['pipe', 'pipe', 'pipe'] })
+    const close = this.gate.openStream()
+    child.on('close', close)
+    child.on('error', close)
+    return child
   }
 
   async putUpload(name: string, data: Buffer, kind: 'photo' | 'file' = 'photo'): Promise<string> {

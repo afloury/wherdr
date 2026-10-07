@@ -77,9 +77,15 @@ export function createShellFs(exec: ShellExec, opts: { statTtlMs?: number } = {}
   // model and the open conversation each run their `stat` every second.
   const statCache = new Map<string, { at: number, v: Promise<FsStat | null> }>()
 
+  // `ENOENT` for a missing file (as on the local disk), `unreachable` when the
+  // session itself failed (ssh 255, timeout): the file's state is unknown.
   async function run(script: string, args: string[], timeoutMs = 15000, input?: Buffer) {
     const r = await exec(script, args, { timeoutMs, input })
-    if (r.code !== 0) throw new FsError('remote', (r.stderr || `code ${r.code}`).trim().split('\n').pop() || 'failed')
+    if (r.code !== 0) {
+      const reason = (r.stderr || `code ${r.code}`).trim().split('\n').pop() || 'failed'
+      const code = r.code === 255 || r.code === 124 ? 'unreachable' : /no such file/i.test(r.stderr) ? 'ENOENT' : 'remote'
+      throw new FsError(code, reason)
+    }
     return r.stdout
   }
 
