@@ -1721,7 +1721,7 @@ body.kb .composer { padding-bottom: 8px; }
    its content scrolls. */
 @media (max-width: 899px) {
   .hw-sheet:not(.screen) {
-    bottom: 0; max-height: calc(100% - var(--safe-top) - 24px);
+    bottom: 0; max-height: calc((100% - var(--safe-top)) * .85);
     background: var(--bg); box-shadow: 0 -20px 50px var(--shadow), 0 160px 0 var(--bg);
   }
   body.kb .hw-sheet:not(.screen) { bottom: var(--vv-bottom, 0px); max-height: calc(var(--vv-h) - var(--safe-top) - 8px); padding-bottom: 12px; }
@@ -1731,8 +1731,16 @@ body.kb .composer { padding-bottom: 8px; }
 .hw-sheet > [data-slot="body"] { padding: 0; order: 2; overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; scroll-padding-bottom: 16px; }
 .hw-sheet-title { font: 850 24px/1 var(--display); letter-spacing: -.035em; word-spacing: .06em; color: var(--text); overflow-wrap: anywhere; }
 .hw-sheet [data-slot="close"] { position: static; inset: auto; }
-/* Handle (decorative) at the top of the sheet, on the phone. */
-.hw-sheet::before { content: ''; order: 0; width: 36px; height: 4px; background: var(--line); margin: 0 auto 10px; flex: none; }
+/* Handle at the top of the sheet, on the phone: tap or swipe down to close.
+   The bar is drawn small; the button around it is a 44 px touch target. */
+.hw-sheet-handle {
+  order: 0; flex: none; align-self: stretch; height: 44px; margin: -8px -16px -10px;
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: 0; cursor: pointer; touch-action: none; -webkit-tap-highlight-color: transparent;
+}
+.hw-sheet-handle::before { content: ''; width: 36px; height: 4px; background: var(--line); }
+.hw-sheet-handle:active::before, .hw-sheet-handle:focus-visible::before { background: var(--muted); }
+.hw-sheet-head { touch-action: none; }
 /* Footer pinned under the scrolling content (e.g. Launch). */
 .hw-sheet > [data-slot="footer"] { order: 3; padding: 0; border: 0; flex: none; display: block; }
 .hw-sheet > [data-slot="footer"]:empty { display: none; }
@@ -1753,7 +1761,7 @@ body.kb .composer { padding-bottom: 8px; }
     padding: calc(var(--safe-top) + 6px) 16px calc(var(--safe-bottom) + 12px);
   }
   body.kb .hw-sheet.screen { top: var(--vv-top, 0px); height: var(--vv-h, 100%); max-height: none; padding-bottom: 10px; }
-  .hw-sheet.screen::before { display: none; }
+  .hw-sheet.screen .hw-sheet-handle { display: none; }
   .hw-sheet.screen > [data-slot="header"] { padding: 6px 0 12px; margin: 0 -16px; padding-left: 16px; padding-right: 8px; border-bottom: 1px solid var(--line-soft) !important; }
   .hw-sheet.screen > [data-slot="body"] { padding-top: 4px; }
   .hw-sheet.screen .hw-sheet-foot > * { margin: 0 -16px; padding: 12px 16px 0; border-top: 1px solid var(--line-soft); }
@@ -2805,7 +2813,8 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
   :root[data-content-width="full"] .hw-sheet.full { width: calc(100vw - 48px); }
   .hw-sheet[data-state="open"] { animation: pop .16s ease; }
   .hw-sheet[data-state="closed"] { animation: fade .12s ease reverse; }
-  .hw-sheet::before { display: none; }
+  .hw-sheet-handle { display: none; }
+  .hw-sheet-head { touch-action: auto; }
   @keyframes pop { from { opacity: 0; transform: scale(.985); } }
   .menu button:hover, .dir-list button:hover { background: var(--surface-2); }
 

@@ -42,6 +42,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Phone: bottom sheets (the "…" menu, confirmations, command and plugin results) close with a
+  tap on their handle or a swipe down from the handle, the title or the list scrolled to its top;
+  they stop at 85 % of the screen height, leaving room above to tap outside.
+
 - A long "!" command sent to Claude Code no longer also stays below as a "Queued" bubble while it
   runs: the screen wraps it (mid-path), and the wrap no longer hides that it is the same command.
   Codex "!" commands now show as command blocks with their output, and their bubble goes away.
