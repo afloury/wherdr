@@ -36,13 +36,20 @@ export function keyCommand(key, state, control) {
   }
 }
 
-// Phone address: https://<machine>.<tailnet>.ts.net:<port>/ once `tailscale
-// serve` publishes the port; `served` says whether it does.
+// Phone address: the `tailscale serve` entry whose proxy targets wherdr's
+// local port (served on any HTTPS port), else the address `wherdr phone`
+// suggests (same port) with served: false.
 export function phoneAddress(name, port, serveJson) {
   if (!name) return null
-  let served = false
-  try { served = Boolean(JSON.parse(serveJson || '{}')?.TCP?.[String(port)]) } catch {}
-  return { url: `https://${name}:${port}/`, served }
+  let web = {}
+  try { web = JSON.parse(serveJson || '{}')?.Web || {} } catch {}
+  const target = new RegExp(`^(https?://)?(127\\.0\\.0\\.1|localhost):${port}/?$`)
+  for (const [hostPort, entry] of Object.entries(web)) {
+    if (!Object.values(entry?.Handlers || {}).some(h => target.test(h?.Proxy || ''))) continue
+    const servedPort = hostPort.slice(hostPort.lastIndexOf(':') + 1)
+    return { url: `https://${name}${servedPort === '443' ? '' : `:${servedPort}`}/`, served: true }
+  }
+  return { url: `https://${name}:${port}/`, served: false }
 }
 
 async function tailnet(port) {

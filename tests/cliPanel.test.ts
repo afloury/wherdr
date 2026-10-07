@@ -1,7 +1,8 @@
 // `wherdr panel` (the Herdr plugin's "wherdr" action): which command each key
 // runs, and when the phone address and its QR code are shown.
 import { describe, expect, it } from 'vitest'
-import { keyCommand, phoneAddress, render } from '../bin/lib/panel.mjs'
+import { phoneAddress } from '../bin/lib/commands.mjs'
+import { keyCommand, render } from '../bin/lib/panel.mjs'
 
 const state = (over: Record<string, unknown> = {}) => ({
   version: '1.2.0', mode: 'native', plugin: true, runtime: 'node 22.0.0', url: 'http://localhost:7683', port: '7683',
@@ -32,9 +33,16 @@ describe('wherdr panel keys', () => {
 })
 
 describe('wherdr panel phone address', () => {
-  it('is published only when tailscale serve serves the port', () => {
-    expect(phoneAddress('box.example.ts.net', '7683', '{"TCP":{"7683":{"HTTPS":true}}}')).toEqual({ url: 'https://box.example.ts.net:7683/', served: true })
-    expect(phoneAddress('box.example.ts.net', '7683', '{"TCP":{"443":{"HTTPS":true}}}')?.served).toBe(false)
+  const serve = (web: Record<string, string>) => JSON.stringify({ Web: Object.fromEntries(Object.entries(web).map(([k, proxy]) => [k, { Handlers: { '/': { Proxy: proxy } } }])) })
+
+  it('is the tailscale serve entry that proxies to the local port, on whatever HTTPS port', () => {
+    expect(phoneAddress('box.example.ts.net', '7683', serve({ 'box.example.ts.net:7683': 'http://127.0.0.1:7683' }))).toEqual({ url: 'https://box.example.ts.net:7683/', served: true })
+    expect(phoneAddress('box.example.ts.net', '7683', serve({ 'box.example.ts.net:8101': 'http://127.0.0.1:8101', 'box.example.ts.net:8103': 'http://localhost:7683' }))).toEqual({ url: 'https://box.example.ts.net:8103/', served: true })
+    expect(phoneAddress('box.example.ts.net', '7683', serve({ 'box.example.ts.net:443': 'http://127.0.0.1:7683' }))?.url).toBe('https://box.example.ts.net/')
+  })
+
+  it('is not published when no entry proxies to the local port', () => {
+    expect(phoneAddress('box.example.ts.net', '7683', serve({ 'box.example.ts.net:7683': 'http://127.0.0.1:76830' }))?.served).toBe(false)
     expect(phoneAddress('box.example.ts.net', '7683', 'not json')?.served).toBe(false)
     expect(phoneAddress(null, '7683', '')).toBeNull()
   })
