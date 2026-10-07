@@ -39,6 +39,7 @@
 // from the transcript (pendingClaudeAsk, completeClaudeAsk).
 import type { ChoiceOption, Choices, PromptDetail } from '../../shared/types'
 import { isPermissionQuestion, screenDetail } from './promptDetail'
+import { OMP_CURSOR, OMP_UP_DOWN, ompAlt } from '../../shared/ompSymbols'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
@@ -322,13 +323,12 @@ export function keysFor(choices: Choices, index: number): string[] {
 //
 // Last step with several questions: "Review answers", the numbered
 // answers then "❯ Submit".
-// Glyphs of omp's three symbol sets (modes/theme/symbols.ts: unicode,
-// nerd font, ascii): cursor, radio buttons, checkboxes, box borders.
-const OMP_CURSOR = ['❯', '\uf054', '>']
+// Glyphs of omp's three symbol sets (unicode, nerd font, ascii; see
+// shared/ompSymbols.ts): cursor, radio buttons, checkboxes, box borders.
 const OMP_RADIO = ['○', '◉', '\uf10c', '\uf192', '( )', '(o)']
 const OMP_CHECK = ['☐', '☑', '\uf096', '\uf14a', '[ ]', '[x]']
 const OMP_CHECKED = new Set(['☑', '\uf14a', '[x]'])
-const OMP_OPTION = new RegExp(`^(?:(${OMP_CURSOR.join('|').replace(/[>]/g, '\\$&')}) | {2})(${[...OMP_RADIO, ...OMP_CHECK].map(g => g.replace(/[()[\]]/g, '\\$&')).join('|')}) (.+)$`)
+const OMP_OPTION = new RegExp(`^(?:(${ompAlt(OMP_CURSOR)}) | {2})(${ompAlt([...OMP_RADIO, ...OMP_CHECK])}) (.+)$`)
 const OMP_RULE = /^\s*[├╰+][─-]{3,}/
 const OMP_ASK = /^\s*[╭+][─-]+ Ask\b/
 const OMP_OTHER = 'Other (type your own)'
@@ -458,8 +458,8 @@ export function parseOmpAsk(text: string | null | undefined): Choices | null {
 // Answered with ↑/↓ then Enter (keysFor). Never typed into: Enter would pick
 // the selected option (Approve) in the user's place.
 const OMP_SELECT_TOP = /^\s*[╭+][─-] (.+?) [─-]+[╮+]\s*$/
-const OMP_SELECT_LEGEND = /^\s*[│|] ↑\/↓ navigate\b.*\bselect\b/
-const OMP_SELECT_OPTION = new RegExp(`^ (?:(${OMP_CURSOR.join('|').replace(/[>]/g, '\\$&')})|\\s)\\s(\\S.*)$`)
+const OMP_SELECT_LEGEND = new RegExp(`^\\s*[│|] ${ompAlt(OMP_UP_DOWN)} navigate\\b.*\\bselect\\b`)
+const OMP_SELECT_OPTION = new RegExp(`^ (?:(${ompAlt(OMP_CURSOR)})|\\s)\\s(\\S.*)$`)
 export function parseOmpSelect(text: string | null | undefined): Choices | null {
   if (!text) return null
   const lines = text.replace(/\s+$/, '').split('\n')

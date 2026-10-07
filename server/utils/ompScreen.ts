@@ -9,8 +9,10 @@
 // bottom of the field, or of an open "Ask" box). The gauges are embedded
 // in the top rule of the field, when it is visible.
 import type { OmpActivity as OmpActivityState, OmpStatus, ShellRun } from '../../shared/types'
+import { OMP_ASCII_SPINNER, OMP_ESC, OMP_SPINNER, ompAlt } from '../../shared/ompSymbols'
 
-const RULE = /^\s*[─━╰][─━╯\s]{9,}\S?\s*$/
+// A rule: box lines, or dashes with the ascii symbol preset.
+const RULE = /^\s*(?:[─━╰][─━╯\s]{9,}\S?|-{10,})\s*$/
 const METERS = /^\s*[─━]{3,} (.+?) [─━]+\s*$/
 
 export function parseOmpStatus(text: string | null | undefined): OmpStatus | null {
@@ -32,16 +34,19 @@ export function parseOmpStatus(text: string | null | undefined): OmpStatus | nul
 //   ⎋ Sleeping first time                              Run sleep commands     step · session title
 //  ⠹ 5s > ◔ Opus 5.5 > 📁 ~/demo > S0.01 ▶─1%──────────────────────────      spinner, elapsed
 //
-// The step is the label ("intent") of the running tool; "⎋" (Esc interrupts)
+// The step is the label ("intent") of the running tool; "⎋" (Esc interrupts,
+// another glyph per symbol preset, see shared/ompSymbols.ts) or the spinner
 // leads it, the session title is right-aligned after a wide gap. Before the
 // first tool, omp shows a generic "Working…": no step then. The status line
-// (current layout) opens with the braille spinner and the turn's elapsed time;
+// (current layout) opens with the spinner and the turn's elapsed time;
 // older layouts put the status line under the input field, without a timer.
 export interface OmpActivity { step: string | null, elapsed: number | null }
 
-const BRAILLE = '⠁-⣿'
-const STEP_RE = new RegExp(`^ {0,3}[⎋${BRAILLE}] +(\\S.*?)(?: {3,}\\S.*)?$`)
-const ELAPSED_RE = new RegExp(`^ {0,3}[${BRAILLE}] +((?:\\d+h ?)?(?:\\d+m ?)?\\d+s)(?: +>|$)`)
+const ESC = ompAlt(OMP_ESC)
+const STEP_RE = new RegExp(`^ {0,3}(?:${ESC}|[${OMP_SPINNER}]) +(\\S.*?)(?: {3,}\\S.*)?$`)
+// ascii spinner ("- Reading"): only below a status line timer, a markdown bullet otherwise.
+const ASCII_STEP_RE = new RegExp(`^ {0,3}[${OMP_ASCII_SPINNER}] +(\\S.*?)(?: {3,}\\S.*)?$`)
+const ELAPSED_RE = new RegExp(`^ {0,3}(?:[${OMP_SPINNER}] +((?:\\d+h ?)?(?:\\d+m ?)?\\d+s)(?: +>|$)|[${OMP_ASCII_SPINNER}] +((?:\\d+h ?)?(?:\\d+m ?)?\\d+s) +>)`)
 const GENERIC = /^(?:Working|Thinking)(?:…|\.\.\.)?$/i
 
 // "1h 2m 5s" → seconds.
@@ -63,10 +68,10 @@ export function parseOmpActivity(text: string | null | undefined): OmpActivity |
     const line = lines[i]!
     const e = ELAPSED_RE.exec(line)
     if (e) {
-      if (elapsed === null) elapsed = seconds(e[1]!)
+      if (elapsed === null) elapsed = seconds(e[1] ?? e[2]!)
       continue
     }
-    const m = STEP_RE.exec(line)
+    const m = STEP_RE.exec(line) || (elapsed !== null ? ASCII_STEP_RE.exec(line) : null)
     if (m) {
       const label = m[1]!.trim()
       step = GENERIC.test(label) ? null : label.slice(0, 120)
@@ -93,13 +98,13 @@ export function ompActivityOf(a: OmpActivity | null, prev: OmpActivityState | nu
 //
 //    1
 //    2
-//    ⠧ Running… (⎋ to cancel)
+//    ⠧ Running… (⎋ to cancel)                        (spinner and ⎋ per symbol preset)
 //   ──────────────────────────────────────────
 //
 // Its block opens on a rule, the command (wrapped over several rows when long)
 // up to a blank row, then the output omp keeps on screen (its last rows).
 // `since`: when first seen, kept by the caller from one reading to the next.
-const RUNNING_RE = new RegExp(`^ {0,3}[${BRAILLE}] +Running(?:…|\\.\\.\\.) \\(⎋ to cancel\\)$`)
+const RUNNING_RE = new RegExp(`^ {0,3}[${OMP_SPINNER}${OMP_ASCII_SPINNER}] +Running(?:…|\\.\\.\\.) \\(${ESC} to cancel\\)$`)
 const RUN_HEAD = /^ ?(\$|>>>) (\S.*)$/
 const SHELL_LINES = 12
 

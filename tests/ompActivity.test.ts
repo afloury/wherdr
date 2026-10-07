@@ -28,6 +28,13 @@ describe('parseOmpActivity', () => {
     const screen = ['  ⎋ Old step', ...Array(20).fill('text'), ' ⠋ 3s > ◒ Opus 5.5'].join('\n')
     expect(parseOmpActivity(screen)).toEqual({ step: null, elapsed: 3 })
   })
+  it('nerd-font Esc glyph in front of the step; ascii spinner only above a timer', () => {
+    expect(parseOmpActivity('\n  \u{F12B7} Sleeping first time          My session\n ⠹ 5s > Opus 5.5\n╰─')).toEqual({ step: 'Sleeping first time', elapsed: 5 })
+    expect(parseOmpActivity('\n  Esc Sleeping first time          My session\n | 1m 5s > Opus 5.5\n╰─')).toEqual({ step: 'Sleeping first time', elapsed: 65 })
+    expect(parseOmpActivity('\n  - Reading the docs\n / 2s > Opus 5.5\n╰─')).toEqual({ step: 'Reading the docs', elapsed: 2 })
+    // A markdown bullet of the conversation is no ascii spinner.
+    expect(parseOmpActivity('Done:\n- first point\n- second point\n')).toBeNull()
+  })
 })
 
 describe('ompActivityOf', () => {

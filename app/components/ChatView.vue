@@ -443,12 +443,14 @@ const blocks = computed<Block[]>(() => {
     }
   })
   flush()
-  // Last turn: summary only if it is finished (the agent is no longer working).
-  if (!working.value && !props.pane.pendingPrompt) closeTurn()
+  // Last turn: summary only if it is finished (the agent is no longer working,
+  // nor waiting for an approval or an answer in the middle of the turn).
+  const blocked = !readOnly.value && props.pane.status === 'blocked'
+  if (!working.value && !blocked && !props.pane.pendingPrompt) closeTurn()
   else {
-    // In progress: the last action is the one running.
+    // In progress: the last action is the one running (or waiting for its approval).
     const last = out[out.length - 1]
-    if (last && last.k === 'tools' && working.value) last.live = true
+    if (last && last.k === 'tools' && (working.value || blocked)) last.live = true
   }
   return out
 })
