@@ -42,6 +42,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- omp with nerd-font or ascii symbols (`symbolPreset`): a running `!` command shows the Stop
+  button again, and Stop or Escape cancels it; the working step, the tool approval dialog and the
+  model selector are read with every symbol preset.
+- An action waiting for its approval no longer shows the finished-turn line ("✓ 2 s · 1 action"):
+  it stays in progress until it is approved.
 - Phone: bottom sheets (the "…" menu, confirmations, command and plugin results) close with a
   tap on their handle or a swipe down from the handle, the title or the list scrolled to its top;
   they stop at 85 % of the screen height, leaving room above to tap outside.
