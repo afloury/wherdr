@@ -34,10 +34,41 @@ export function findQueued<T extends { id: string, text: string }>(list: T[], te
 // rules, "! for shell mode" below). The field then reads as the message that
 // was typed, "!" first: "! cmd" typed shows "!\u00a0 cmd" and reads "! cmd";
 // bash mode left empty reads "!" (guardedSend.ts leaves it before a normal message).
+// Grayed-out text never counts: Claude Code's placeholder ('Try "fix
+// typecheck errors"' in a fresh session), its next-message suggestion and
+// completions are drawn in SGR 2 (dim), cleared by SGR 0 or 22, possibly
+// inside a combined sequence ("\x1b[2;37m").
+// Without colors (NO_COLOR, TERM=dumb), Claude draws its placeholders as
+// plain text: a field holding one of them alone, on a screen with no SGR at
+// all, reads empty. A next-message suggestion cannot be told from a draft
+// there and still reads as text.
 const ESC = String.fromCharCode(27)
-const DIM = new RegExp(`${ESC}\\[2m[^${ESC}]*`, 'g')
 const SGR = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, 'g')
+const COLOR_SGR = new RegExp(`${ESC}\\[[0-9;:]*m`)
 const RULE = /^\s*─{3,}/
+const PLACEHOLDER_HINT = /^(?:Try ".*"|Press up to edit queued messages)$/
+
+// The line without its dim characters nor escape sequences.
+function undimmed(line: string): string {
+  let out = ''
+  let dim = false
+  let last = 0
+  for (const m of line.matchAll(SGR)) {
+    if (!dim) out += line.slice(last, m.index)
+    last = m.index! + m[0].length
+    if (!m[0].endsWith('m')) continue
+    const codes = m[0].slice(2, -1).split(';')
+    for (let i = 0; i < codes.length; i++) {
+      const c = Number(codes[i] || 0)
+      if (c === 0 || c === 22) dim = false
+      else if (c === 2) dim = true
+      else if (c === 38 || c === 48 || c === 58) i += codes[i + 1] === '5' ? 2 : codes[i + 1] === '2' ? 4 : 0
+    }
+  }
+  if (!dim) out += line.slice(last)
+  return out
+}
+
 export function inputBox(ansi: string): string | null {
   const lines = String(ansi || '').split('\n').map(l => l.replace(/\r$/, ''))
   let at = -1
@@ -50,11 +81,12 @@ export function inputBox(ansi: string): string | null {
   if (at < 0) return null
   const out: string[] = []
   for (let i = at; i < lines.length; i++) {
-    const plain = lines[i]!.replace(DIM, '').replace(SGR, '')
+    const plain = undimmed(lines[i]!)
     if (i > at && RULE.test(plain)) break
     out.push((i === at ? plain.slice(2) : plain.replace(/^ {1,2}/, '')).replace(/\u00a0/g, ' ').trimEnd())
   }
-  const box = out.join('\n').trim()
+  let box = out.join('\n').trim()
+  if (!bash && PLACEHOLDER_HINT.test(box) && !COLOR_SGR.test(ansi)) box = ''
   return bash ? `!${box && ' '}${box}` : box
 }
 
