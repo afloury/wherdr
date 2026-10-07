@@ -49,6 +49,15 @@ describe('parseOmpShell', () => {
   it('nothing once the run is over (no "Running…" line)', () => {
     expect(parseOmpShell(fx('omp-shell-running.txt').replace(/^.*Running….*$/m, ''))).toBeNull()
   })
+  // Real screens of omp 18.6 with `symbolPreset: nerd` (Esc drawn as U+F12B7)
+  // and `ascii` ("Esc", "-\|/" spinner, dashed rules).
+  it('reads the run with the nerd-font and ascii symbol presets', () => {
+    expect(parseOmpShell(fx('omp-shell-nerd.txt'), 0)).toEqual({ command: 'for i in 1 2 3; do echo $i; done; sleep 30', lines: ['1'], hidden: 0, since: 0 })
+    expect(parseOmpShell(fx('omp-shell-ascii.txt'), 0)).toEqual({ command: 'for i in 1 2 3; do echo $i; done; sleep 30', lines: ['1', '2', '3'], hidden: 0, since: 0 })
+  })
+  it('not another "to cancel" hint (a key omp does not draw)', () => {
+    expect(parseOmpShell(fx('omp-shell-nerd.txt').replace('(\u{F12B7} to cancel)', '(Ctrl+C to cancel)'))).toBeNull()
+  })
 })
 
 describe('the message sent from wherdr', () => {

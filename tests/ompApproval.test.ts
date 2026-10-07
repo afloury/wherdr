@@ -32,6 +32,10 @@ describe('omp approval dialog on screen', () => {
     expect(keysFor(c, 0)).toEqual(['up', 'enter'])
     expect(keysFor(parseOmpPrompt(fx('omp-approve-bash.txt'))!, 1)).toEqual(['down', 'enter'])
   })
+  it('the legend of the ascii symbol preset ("Up/Down navigate  Enter select  Esc cancel")', () => {
+    const ascii = fx('omp-approve-bash.txt').replace('↑/↓ navigate  ⏎ select  ⎋ cancel', 'Up/Down navigate  Enter select  Esc cancel').replace('│  ❯ Approve', '│  > Approve')
+    expect(parseOmpPrompt(ascii)).toMatchObject({ cursor: 0, options: [{ label: 'Approve' }, { label: 'Deny' }] })
+  })
   it('long input: title scrolled off, still an approval with the visible input', () => {
     const c = parseOmpPrompt(fx('omp-approve-long.txt'))!
     expect(c.question).toBeNull()

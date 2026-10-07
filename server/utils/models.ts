@@ -36,6 +36,7 @@
 import type { ModelInfo, ModelOption } from '../../shared/types'
 import { keysFor, parseChoices } from './choices'
 import { ompSelectorOnScreen } from '../../shared/commandScreen'
+import { OMP_CURSOR, OMP_SEARCH, ompAlt } from '../../shared/ompSymbols'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
@@ -292,6 +293,8 @@ const OMP_FRAME_TOP = /^╭─\s*(?:Switch (?:Task )?Model)/
 const OMP_ROW = /^│(.*?)│(?:\s*│)?\s*$/
 const OMP_MODEL = /^(?:[a-z0-9][\w.-]*(?:\/[\w.-]+)+)/
 const OMP_OVERCTX = /⦸\s*(context>[^\s]+|context \d+[kKmM]?[^\s]*|[^\s].{0,60})$/
+const OMP_SEARCH_RE = new RegExp(`^${ompAlt(OMP_SEARCH)}\\s*>\\s*(.*)$`)
+const OMP_CURSOR_RE = new RegExp(`^${ompAlt(OMP_CURSOR)}\\s*`)
 
 export function parseOmpSelector(text: string | null | undefined): OmpSelector | null {
   if (!ompSelectorOnScreen(text)) return null
@@ -315,13 +318,13 @@ export function parseOmpSelector(text: string | null | undefined): OmpSelector |
   let separator: number | null = null
   for (const row of body) {
     const raw = row.trim()
-    const q = raw.match(/^(?:🔍|\uF002)\s*>\s*(.*)$/)
+    const q = raw.match(OMP_SEARCH_RE)
     if (q) { search = q[1]!.trim(); continue }
     // A model row: the dim perf/context/cost columns sit far right, after
     // 3+ spaces from the id and its marks — everything from there is noise.
     const cut = raw.search(/\s{3,}/)
     const t = (cut < 0 ? raw : raw.slice(0, cut)).trim()
-    const cur = /^(?:❯|\uF054)\s*/.exec(t)
+    const cur = OMP_CURSOR_RE.exec(t)
     const model = (cur ? t.slice(cur[0].length) : t).trim()
     if (cur) {
       const hit = model.match(OMP_MODEL)
