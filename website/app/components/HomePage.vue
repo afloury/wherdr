@@ -49,13 +49,13 @@ const security = [
 ]
 
 const installTabs = [
-  { id: 'plugin', label: 'Herdr plugin' },
   { id: 'one', label: 'Linux · one command' },
+  { id: 'plugin', label: 'Herdr plugin' },
   { id: 'agent', label: 'Ask your agent' },
   { id: 'docker', label: 'Linux · Docker, by hand' },
   { id: 'mac', label: 'macOS · no Docker' },
 ] as const
-const tab = ref<typeof installTabs[number]['id']>('plugin')
+const tab = ref<typeof installTabs[number]['id']>('one')
 
 const faq = [
   { label: 'Is wherdr free?', content: 'Yes. It is open source under the MIT license, with no account, no paid plan and no hosted version. You run it on your own machine.' },
@@ -210,7 +210,7 @@ const faq = [
           <div v-reveal class="section-head">
             <p class="label"><span class="k">04</span> Install</p>
             <h2 class="display h2">One command on your server.</h2>
-            <p class="lead">With Herdr running, on the machine that hosts your agents — ideally an always-on Linux box (a Raspberry Pi works). Install it as a Herdr plugin, or with our script: both check Docker and Herdr, create <code>~/wherdr</code> and listen on 127.0.0.1 only. No sudo, and nothing is replaced without asking. <a href="/install" target="_blank">Read the script first.</a></p>
+            <p class="lead">With Herdr running, on the machine that hosts your agents — ideally an always-on Linux box (a Raspberry Pi works). Use our script, or install it as a Herdr plugin: both check Docker and Herdr, create <code>~/wherdr</code> and listen on 127.0.0.1 only. No sudo, and nothing is replaced without asking. <a href="/install" target="_blank">Read the script first.</a></p>
           </div>
 
           <div v-reveal class="install">
