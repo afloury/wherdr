@@ -1,11 +1,13 @@
 // "Cancel" a queued message in Claude Code: reading the input field from the
 // screen, and ↑ / clear / requeue sequence played against a
 // fake Claude imitating the observed one (2.1.283, hwtest session).
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { clearKeys, findQueued, inputBox, msgText, unqueueClaude } from '../server/utils/unqueue'
 import { canCancelQueued, restoreDraft } from '../app/utils/queuedCancel'
 import type { ChatItem, ClaudeQueueEntry, Pane } from '../shared/types'
 
+const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 const E = '\x1b'
 const RULE = `${E}[38;2;80;80;80m${'─'.repeat(40)}${E}[0m\r`
 // ANSI screens captured on the real Claude Code (simplified).
@@ -32,6 +34,23 @@ describe('champ de saisie de Claude Code', () => {
   })
   it('not found (menu, other screen)', () => {
     expect(inputBox('Do you trust this folder?\n❯ 1. Yes')).toBeNull()
+  })
+  // Fresh Claude Code 2.1.292 (hwtest session): 'Try "…"' placeholder.
+  it('a fresh session\'s placeholder is not typed text, in color or not', () => {
+    expect(inputBox(fx('claude-field-placeholder.ansi'))).toBe('')
+    expect(inputBox(fx('claude-field-placeholder-nocolor.txt'))).toBe('')
+  })
+  it('a real draft is typed text, even with a grayed-out completion after it', () => {
+    expect(inputBox(fx('claude-field-draft.ansi'))).toBe('draft text')
+    const ghost = fx('claude-field-draft.ansi').replace('draft text', `draft te${E}[0m${E}[2;38;5;244mxt to complete${E}[0m`)
+    expect(inputBox(ghost)).toBe('draft te')
+    // Dim switched off by SGR 22 only: what follows is typed again.
+    expect(inputBox(`❯\u00a0 ${E}[2mhint${E}[22m typed\r`)).toBe('typed')
+  })
+  it('a colored screen keeps a typed "Try …" text', () => {
+    expect(inputBox(fx('claude-field-draft.ansi').replace('draft text', 'Try "this"'))).toBe('Try "this"')
+    const plain = fx('claude-field-placeholder-nocolor.txt')
+    expect(inputBox(plain.replace(/Try "[^"]*"/, 'draft text'))).toBe('draft text')
   })
   it('clearing keys: Ctrl+U then Backspace per line, bounded', () => {
     expect(clearKeys(1)).toEqual(['ctrl+u', 'backspace', 'ctrl+u', 'backspace', 'ctrl+u', 'backspace'])
