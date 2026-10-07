@@ -8,6 +8,18 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Settings › Phone** ("Use it on your phone"): live state of the phone address, checked by the
+  server. Native mode: **Make wherdr reachable from my phone** runs `tailscale serve` (asked
+  first; private to your tailnet), **Remove from my tailnet** undoes it. Docker: the exact
+  command with Copy, then the address it printed, checked through Tailscale's DNS. Once the
+  address answers, wherdr sets `APP_URL` to it (`data/app-url.json`, no restart; an HTTPS
+  `APP_URL` in the environment wins) and only then shows the QR code. Known Tailscale errors
+  (HTTPS certificates off, Linux operator rights, not connected, port used by another service)
+  are explained with a link. Only for this computer (localhost, not through a proxy) or an
+  unlocked session.
+- The Herdr panel is reduced to the state, **O** Open wherdr and **P** Set up my phone (opens
+  Settings › Phone); the other keys stay as a quieter fallback. `wherdr phone` prints the real
+  state and that page's link. The QR code is never shown for an address that does not answer.
 - `wherdr` agent skill (`skills/wherdr/SKILL.md`) for herdr-projects coordinators: the
   `TASKS.md` lists and badges the Project panel reads, `(agent → t-NNNN)`, and what to do with
   each message its buttons send. The Herdr plugin links it into `~/.claude/skills` and

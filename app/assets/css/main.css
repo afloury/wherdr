@@ -2076,6 +2076,38 @@ body.kb .composer { padding-bottom: 8px; }
 .thread-limit output.full { color: var(--ochre); }
 .projects-board-title.spaced { margin-top: 24px; }
 .settings-typing .encrypted-toggle { margin-top: 14px; }
+/* Settings › Phone (PhoneSetup.vue): steps with a mono label, live state, QR code. */
+.phone-intro { margin: 0 0 14px; color: var(--text-2); font-size: 13px; line-height: 1.5; }
+.phone-steps { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); background: var(--bg-2); }
+.phone-steps li { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 14px 16px 14px 122px; }
+.phone-steps li + li { border-top: 1px solid var(--line-soft); }
+.phone-steps li > * { max-width: 100%; }
+.phone-steps p { margin: 0; font-size: 13px; line-height: 1.45; }
+.phone-step-label { position: absolute; left: 16px; top: 17px; display: flex; align-items: center; gap: 7px; font: 600 11px var(--mono); letter-spacing: .08em; color: var(--muted); }
+.phone-step-label::before { content: ''; width: 8px; height: 8px; flex: none; border: 1px solid var(--muted); }
+.phone-steps li.done .phone-step-label { color: var(--text); }
+.phone-steps li.done .phone-step-label::before { background: var(--done); border-color: var(--done); }
+.phone-steps li.bad .phone-step-label::before { background: var(--ochre); border-color: var(--ochre); }
+.phone-url { font-family: var(--mono); font-size: 12.5px !important; overflow-wrap: anywhere; color: var(--text); }
+.phone-link { display: inline-flex; align-items: center; gap: 4px; font: 500 12px var(--mono); color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.phone-command { display: flex; align-items: center; gap: 8px; width: 100%; }
+.phone-command code { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); background: var(--code-bg); font: 12px/1.45 var(--mono); overflow-wrap: anywhere; }
+.phone-address { display: flex; gap: 8px; width: 100%; }
+.phone-address-input { flex: 1; min-width: 0; font-family: var(--mono); }
+.phone-note { margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.phone-note p { margin: 0 0 6px; }
+.phone-note.warn { padding: 10px 12px; border: 1px solid var(--ochre); color: var(--text); }
+.phone-detail { margin: 0 0 6px; max-height: 160px; overflow: auto; font: 11.5px/1.5 var(--mono); white-space: pre-wrap; color: var(--text-2); }
+.phone-qr { display: flex; gap: 18px; align-items: center; margin-top: 16px; padding: 16px; border: 1px solid var(--line); background: var(--bg-2); }
+.phone-qr svg { width: 168px; height: 168px; flex: none; }
+.phone-qr-text { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.phone-qr-text p { margin: 0; font-size: 13px; line-height: 1.45; }
+@media (max-width: 520px) {
+  .phone-steps li { padding-left: 16px; }
+  .phone-step-label { position: static; }
+  .phone-qr { flex-direction: column; align-items: flex-start; }
+  .phone-command, .phone-address { flex-wrap: wrap; }
+}
 .settings-typing .encrypted-toggle.is-disabled { opacity: .48; cursor: not-allowed; }
 /* Typewriter preview: sample reply, replayed on each setting change. */
 .typing-preview { margin: 14px 0 0; border: 1px solid var(--line); background: var(--bg); }

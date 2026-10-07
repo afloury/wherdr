@@ -4,7 +4,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import webpush from 'web-push'
-import { APP_URL, DATA_DIR, log } from './env'
+import { DATA_DIR, appUrl, log } from './env'
 import { pushConfig } from './pushConfig'
 import { shouldNotify, type NotifyScope } from './notificationPolicy'
 import type { Pane } from '../../shared/types'
@@ -40,7 +40,7 @@ let vapid: { publicKey: string, privateKey: string } | null = null
 
 export function initVapid() {
   vapid = null
-  const config = pushConfig(APP_URL)
+  const config = pushConfig(appUrl())
   if (!config.enabled) {
     log(`WARNING: APP_URL is not a valid HTTPS URL; Web Push is disabled (fallback VAPID subject: ${config.subject}). Set a private HTTPS URL for notifications.`)
     return

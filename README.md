@@ -276,8 +276,11 @@ tailscale serve --bg --https=7683 http://127.0.0.1:7683
 ```
 
 Tailscale Serve listens on HTTPS port 7683 of your tailnet name, with a valid certificate, and
-forwards to wherdr's local HTTP port. Only devices of your tailnet can reach it. Put that address
-in `APP_URL` in `.env`, then `docker compose up -d` again.
+forwards to wherdr's local HTTP port. Only devices of your tailnet can reach it. Then open
+**Settings › Phone** in wherdr on the server (`http://localhost:7683/#/settings?section=phone`),
+paste that address: wherdr checks it answers, sets it as `APP_URL` (saved in `data/app-url.json`;
+an HTTPS `APP_URL` in `.env` wins) and shows its QR code. Without Docker, the same page publishes
+wherdr itself: one button, asked first.
 
 **Why HTTPS matters.** Browsers only allow three things on `https://` (or on `localhost` itself):
 
@@ -314,7 +317,7 @@ The npm package holds the built app: nothing is compiled on your machine. Try it
 ```sh
 npm install -g wherdr       # or: pnpm add -g wherdr, bun add -g wherdr
 wherdr service install      # starts at every login; prints the address
-wherdr phone                # tailnet address, tailscale serve command and a QR code
+wherdr phone                # phone state, the app's phone setup page, QR code once it answers
 ```
 
 | Command | What it does |
@@ -324,7 +327,7 @@ wherdr phone                # tailnet address, tailscale serve command and a QR 
 | `wherdr status` | Address, process, service, data folder and log. |
 | `wherdr logs` (`-f` to follow, `-n 100`) | The log, `~/wherdr/wherdr.log`. |
 | `wherdr open` | Opens wherdr in the browser. |
-| `wherdr phone` | Phone setup: local and tailnet addresses, the `tailscale serve` command, a QR code. |
+| `wherdr phone` | Whether your phone can reach wherdr (Tailscale, `tailscale serve`, the address answering), the link to **Settings › Phone** where you publish it in one click, and the QR code once the address answers. |
 | `wherdr service install` · `uninstall` | Start at login: a LaunchAgent on macOS (`~/Library/LaunchAgents/dev.wherdr.plist`), a `systemd --user` unit on Linux (`loginctl enable-linger` keeps it running while you are logged out). |
 | `wherdr doctor` | Checks Node/Bun, Herdr and its socket, the port, the service, the data folder and `APP_URL`. |
 
@@ -379,9 +382,11 @@ Herdr can also install wherdr itself, on Linux and macOS, with Herdr ≥ 0.9.1. 
 
 1. Run `herdr plugin install afloury/wherdr`: it installs wherdr and starts it
    (`✓ wherdr is running → http://localhost:7683`).
-2. In Herdr, run the **wherdr** action: one panel with the state, the addresses, the phone QR
-   code and a key per command.
-3. Scan the QR code with the iPhone (after `tailscale serve`, key **P**), then Share → Add to Home Screen.
+2. In Herdr, run the **wherdr** action: a panel with the state, **O** Open wherdr and **P** Set
+   up my phone.
+3. **P** opens Settings › Phone in the browser: **Make wherdr reachable from my phone** publishes
+   it on your tailnet, then the QR code shows once the address answers. Scan it with the iPhone,
+   then Share → Add to Home Screen.
 
 Herdr shows the manifest and the commands it will run, then the plugin installs wherdr in
 `~/wherdr` and starts it, unless something already answers on the port. If wherdr cannot start,
@@ -397,11 +402,11 @@ setup by itself:
   then moves them, so the server never runs from the plugin folder. Bun works too when Node.js 22
   is missing. Without either, the install stops and says so.
 
-The **wherdr** panel (a Herdr popup) shows ● running / ○ stopped, the local address, the tailnet
-address when `tailscale serve` publishes it (with its QR code), the version, the mode and whether
-wherdr starts by itself. Keys: **S** start, **X** stop, **R** restart, **O** open in the browser,
-**L** log (Ctrl+C to go back), **U** update (reinstalls the plugin, or pulls the image in Docker
-mode), **A** auto-start at login on/off, **P** phone setup, **Q** quit. The **wherdr: open in
+The **wherdr** panel (a Herdr popup) shows ● running / ○ stopped, the local address, the phone
+address (with its QR code once it answers), and two main keys: **O** Open wherdr, **P** Set up my
+phone (Settings › Phone in the browser). The other keys stay as a fallback: **S** start, **X**
+stop, **R** restart, **L** log (Ctrl+C to go back), **U** update (reinstalls the plugin, or pulls
+the image in Docker mode), **A** auto-start at login on/off, **Q** quit. The **wherdr: open in
 the browser** action is the only other one.
 
 Auto-start: the plugin's startup hook starts wherdr each time the Herdr server starts, which is

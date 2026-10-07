@@ -237,7 +237,7 @@ const faq = [
               <ol class="steps">
                 <li><b>Try it</b> on the machine that runs Herdr, macOS or Linux, with Node.js 22{{ id === 'bunx' ? ' or Bun' : '' }}. The package is prebuilt: nothing compiles. Open <code>http://localhost:7683</code>.</li>
                 <li><b>Keep it:</b> <code>{{ r.keep }}</code>, then <code>wherdr service install</code> starts it at every login (launchd on macOS, systemd on Linux).</li>
-                <li><b>Phone:</b> <code>wherdr phone</code> prints your tailnet address, the <code>tailscale serve</code> command and a QR code.</li>
+                <li><b>Phone:</b> open Settings › Phone in wherdr: one click publishes it on your tailnet, then a QR code once the address answers.</li>
                 <li><b>Stuck?</b> <code>wherdr doctor</code> checks Node, Herdr and its socket, the port and the service. Also: <code>wherdr start</code>, <code>stop</code>, <code>status</code>, <code>logs</code>.</li>
               </ol>
             </div>

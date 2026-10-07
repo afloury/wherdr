@@ -188,7 +188,7 @@ const FR: Record<string, string> = {
   'Types shown in New agent. Terminal is always available.': 'Types proposés dans Nouvel agent. Le terminal reste toujours disponible.',
   'No agents installed on online machines.': 'Aucun agent installé sur les machines en ligne.',
   'Choices saved on this device.': 'Choix enregistrés sur cet appareil.',
-  'Notifications': 'Notifications', 'Application': 'Application',
+  'Notifications': 'Notifications', 'Application': 'Application', 'Phone': 'Téléphone',
   'Show terminal spaces in the list, filed under Ready.': 'Montrer les spaces de terminal dans la liste, rangés dans Prêts.',
   'Show counters': 'Afficher les compteurs', 'Show agent counters on the home screen.': 'Afficher les compteurs d’agents sur l’accueil.',
   'Show quotas': 'Afficher les quotas', 'Show Claude and Codex quotas on the home screen.': 'Afficher les quotas Claude et Codex sur l’accueil.',

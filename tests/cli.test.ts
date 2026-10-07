@@ -4,7 +4,7 @@ import type net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { context, tailnetName } from '../bin/lib/commands.mjs'
+import { context } from '../bin/lib/commands.mjs'
 import { parseArgs, parseEnvFile, portTaken, serverEnv } from '../bin/lib/core.mjs'
 import { runtimeCandidates, temporaryInstall } from '../bin/lib/runtime.mjs'
 import { launchdPlist, systemdUnit } from '../bin/lib/service.mjs'
@@ -98,12 +98,6 @@ describe('runtime and install location', () => {
     expect(temporaryInstall('/tmp/bunx-501-wherdr@latest/node_modules/wherdr/bin/wherdr.mjs')).toBe(true)
     expect(temporaryInstall('/opt/homebrew/lib/node_modules/wherdr/bin/wherdr.mjs')).toBe(false)
     expect(temporaryInstall('/usr/local/lib/node_modules/wherdr/bin/wherdr.mjs')).toBe(false)
-  })
-
-  it('reads the tailnet name of this machine from tailscale status', () => {
-    expect(tailnetName(JSON.stringify({ Self: { DNSName: 'box.example.ts.net.' }, Peer: { a: { DNSName: 'phone.example.ts.net.' } } }))).toBe('box.example.ts.net')
-    expect(tailnetName('{}')).toBeNull()
-    expect(tailnetName('not json')).toBeNull()
   })
 })
 
