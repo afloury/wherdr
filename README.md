@@ -119,7 +119,9 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - **Composer**: send messages while the agent works (queued, cancellable), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
-  of local commands. Stop button while the agent works.
+  of local commands. Stop button while the agent works. A long pasted text (log, output) becomes
+  a "Pasted text · N lines" card, sent to the agent as it is and shown the same way in the
+  conversation, where it opens in full with Copy; long typed messages fold with Show more.
 - **Codex updates and limits**: in a Codex conversation, a new Codex version shows above the
   field with an **Update** button (runs Codex's official update command on that machine, after
   confirmation), then **Restart to update** on the same conversation. When wherdr cannot run it

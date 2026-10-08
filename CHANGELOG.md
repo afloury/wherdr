@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Long pasted text as a card**, like Claude Desktop: a pasted log or long text (more than 12
+  lines or 1,500 characters) shows as a "Pasted text · N lines" card under the message, with its
+  first lines. A tap opens the whole text in a scrolling window (a sheet on the phone), in a
+  monospace font for a log, with **Copy**. Pasting such a text into the message field adds the
+  card instead of filling the field; it can be removed, and is sent to the agent as it is.
+  Claude's `<pasted_content>` blocks are recognized; for Codex and omp, the texts pasted from
+  this device are.
+- **Long typed messages fold** after about 12 lines, with a fade and **Show more / Show less**.
+
 ## [1.3.1] — 2026-10-08
 
 ### Added

@@ -243,6 +243,9 @@ export interface ChatItem {
   err?: string
   images?: number
   ref?: string
+  // User message: long pasted texts it holds (Claude's <pasted_content>
+  // blocks), still part of `text`; shown as cards (shared/pastedText.ts).
+  pasted?: string[]
   // Index of the item's first image on its line (`i` of /api/chat/image),
   // when the line holds other images before it (Claude tool results).
   imageAt?: number
