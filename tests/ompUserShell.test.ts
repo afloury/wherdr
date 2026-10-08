@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { parseLines } from '../server/utils/transcripts'
 import { parseOmpShell } from '../server/utils/ompScreen'
-import { queuedDone } from '../server/utils/queued'
+import { ompRunShown, queuedDone } from '../server/utils/queued'
 import { queuedPhases } from '../shared/queuedPhase'
 import { pendingQueue } from '../app/utils/pendingQueue'
 
@@ -98,5 +98,19 @@ describe('the message sent from wherdr', () => {
     }
     // Claude writes its "!" commands at once: no shortcut.
     expect(queuedDone({ text, at, turnSeen: true }, before, true, at + 5000, 'claude')).toBe(false)
+  })
+  // Stop / Escape cancels the run: omp 18.6 writes nothing to the transcript
+  // (no session file at all before the first prompt). Seen running is enough.
+  it('is taken once omp showed it running, matched on the command only', () => {
+    const nerd = parseOmpShell(fx('omp-shell-nerd.txt'))!
+    expect(ompRunShown('omp', '! for i in 1 2 3; do echo $i; done; sleep 30', nerd)).toBe(true)
+    expect(ompRunShown('omp', '!!for i in 1 2 3;\ndo echo $i; done; sleep 30', nerd)).toBe(true)
+    expect(ompRunShown('omp', '! sleep 30', nerd)).toBe(false)
+    expect(ompRunShown('omp', 'for i in 1 2 3; do echo $i; done; sleep 30', nerd)).toBe(false)
+    expect(ompRunShown('claude', '! for i in 1 2 3; do echo $i; done; sleep 30', nerd)).toBe(false)
+    expect(ompRunShown('omp', '! for i in 1 2 3; do echo $i; done; sleep 30', null)).toBe(false)
+    const py = parseOmpShell(fx('omp-python-running.txt'))!
+    expect(ompRunShown('omp', '$ import time; print("py"); time.sleep(6)', py)).toBe(true)
+    expect(ompRunShown('omp', '!import time; print("py"); time.sleep(6)', py)).toBe(false)
   })
 })

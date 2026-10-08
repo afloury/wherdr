@@ -1,8 +1,8 @@
 // Stop button of the input field: interrupt the agent and check that it stops
 // (see interruptSeq.ts). Replies { stopped: false } if the agent is still working.
-// From the conversation view (`restore`), a prompt Claude puts back into its
-// field leaves the conversation and comes back as { restored: text } for
-// wherdr's field (see interruptRestore.ts).
+// From the conversation view (`restore`), a prompt (or a "!" command) Claude
+// puts back into its field leaves the conversation and comes back as
+// { restored: text } for wherdr's field (see interruptRestore.ts).
 import { interruptAgent } from '../utils/interruptSeq'
 
 export default defineApi(async (event, b) => {

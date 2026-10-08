@@ -18,11 +18,20 @@ const OMP_IDLE_SCREEN = [
   ' π > Opus > demo ▶─1%───────────────────────────────────────────────1M─',
   '╰─ ',
 ].join('\n')
-const screen = p => (p?.agent === 'omp' && p.status === 'idle' ? OMP_IDLE_SCREEN : '')
+// omp running the user's "!" command, nerd-font symbols (Escape drawn as
+// U+F12B7), as omp 18.6 shows it; Escape cancels it.
+const OMP_RULE = '─'.repeat(70)
+const ompRunScreen = command => [
+  '', OMP_RULE, ` $ ${command}`, '', ' ⠸ Running… (\u{F12B7} to cancel)', OMP_RULE,
+  ' π > Opus > demo ▶─1%───────────────────────────────────────────────1M─',
+  '╰─ ',
+].join('\n')
+const screen = p => (p?.agent === 'omp' && p.status === 'idle' ? (p.run ? ompRunScreen(p.run) : OMP_IDLE_SCREEN) : '')
 
-// `workspaces`: [{ id, label, panes: [{ id, agent, status, cwd, session, transcript, reply }] }]
+// `workspaces`: [{ id, label, panes: [{ id, agent, status, cwd, session, transcript, reply, shell }] }]
 // (`session`: the value Herdr's agent integration reports; `transcript`: the file
-// the fake agent appends to when it receives a prompt).
+// the fake agent appends to when it receives a prompt; `shell`: a "!" prompt
+// starts a run that lasts until Escape, written nowhere, like a fresh omp).
 export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
   const panes = workspaces.flatMap(w => w.panes.map(p => ({ ...p, workspace: w.id })))
   const paneById = id => panes.find(p => p.id === id)
@@ -62,7 +71,8 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     const p = paneById(params.target)
     if (!p) throw Object.assign(new Error(`No pane ${params.target}`), { code: 'pane_not_found' })
     await new Promise(r => setTimeout(r, PROMPT_DELAY_MS))
-    if (p.agent === 'omp' && p.transcript) {
+    if (p.shell && /^\s*!/.test(String(params.text))) p.run = String(params.text).replace(/^\s*!+\s*/, '')
+    else if (p.agent === 'omp' && p.transcript) {
       const at = Date.now()
       const line = (id, ts, message) => JSON.stringify({ type: 'message', id, timestamp: new Date(ts).toISOString(), message: { ...message, timestamp: ts } })
       fs.appendFileSync(p.transcript, [
@@ -92,7 +102,11 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       const procs = p?.agent ? [{ pid: 2001, name: p.agent, argv: [p.agent] }] : []
       return { process_info: { shell_pid: 2000, foreground_processes: procs } }
     },
-    'pane.send_input': () => ({}),
+    'pane.send_input': (params) => {
+      const p = paneById(params.pane_id)
+      if (p?.run && (params.keys || []).includes('esc')) p.run = null
+      return {}
+    },
     'plugin.list': () => ({ plugins: [] }),
     'plugin.action.list': () => ({ actions: [] }),
   }

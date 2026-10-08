@@ -119,6 +119,27 @@ describe('takeBackInterrupted', () => {
     expect(await takeBackInterrupted(p.deps)).toBeNull()
     expect(p.keys).toHaveLength(2)
   })
+  it('"!" command put back in bash mode (real screen, Claude Code 2.1.294): found among wherdr’s pending messages', async () => {
+    const keys: string[][] = []
+    let screen = fixture('claude-bash-restored.ansi')
+    expect(inputBox(screen)).toBe('! sleep 30')
+    const deps = {
+      // Ctrl+U leaves bash mode empty: the field reads "!".
+      screen: async () => screen,
+      keys: async (k: string[]) => { keys.push(k); screen = screen.replace(' sleep 30', '') },
+      // Claude Code writes no user message for a "!" command.
+      chat: async () => [] as ChatItem[],
+      sleep: async () => {},
+      pending: () => ['an earlier fictional message', '! sleep 30'],
+    }
+    expect(await takeBackInterrupted(deps)).toEqual({ role: 'user', text: '! sleep 30', ts: null })
+    expect(keys).toHaveLength(1)
+  })
+  it('field holding a pending message only in part: left alone', async () => {
+    const p = pane('! sleep 30 && echo done', [])
+    expect(await takeBackInterrupted({ ...p.deps, pending: () => ['! sleep 30'] })).toBeNull()
+    expect(p.keys).toEqual([])
+  })
 })
 
 // Transcript as written by Claude Code 2.1.287 (fictional text): the cancelled
