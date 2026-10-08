@@ -33,3 +33,20 @@ test('Escape closes the setup guide', async ({ page, isMobile }) => {
   await expect(guide(page)).toHaveCount(0)
 })
 
+test('the guide is a centered modal on a computer, full screen on a phone', async ({ page, isMobile }) => {
+  const box = (await guide(page).boundingBox())!
+  const vp = page.viewportSize()!
+  if (isMobile) {
+    expect(box.width).toBe(vp.width)
+  } else {
+    expect(box.width).toBeLessThanOrEqual(720)
+    expect(Math.abs(box.x + box.width / 2 - vp.width / 2)).toBeLessThan(2)
+    expect(box.height).toBeLessThan(vp.height)
+  }
+})
+
+test('Next walks every step, Finish closes the guide', async ({ page }) => {
+  const next = guide(page).getByRole('button', { name: /^(Next|Finish)$/ })
+  for (let i = 0; i < 6 && await guide(page).count(); i++) await next.click()
+  await expect(guide(page)).toHaveCount(0)
+})

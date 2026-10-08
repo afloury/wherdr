@@ -65,7 +65,8 @@ export function servedPorts(serveJson) {
 }
 
 // The command that publishes wherdr's port, as typed by hand (Docker mode).
-export const publishCommand = port => `tailscale serve --bg --https=${port} http://127.0.0.1:${port}`
+// `httpsPort`: the tailnet port, wherdr's own by default.
+export const publishCommand = (port, httpsPort = port) => `tailscale serve --bg --https=${httpsPort} http://127.0.0.1:${port}`
 export const publishArgs = port => ['serve', '--bg', `--https=${port}`, `http://127.0.0.1:${port}`]
 export const unpublishArgs = httpsPort => ['serve', `--https=${httpsPort}`, 'off']
 
@@ -134,23 +135,42 @@ function lookup(host, opts, cb) {
 // Does the phone address answer like wherdr? 'ok'; 'host' (wherdr answers but
 // refuses the address: not in APP_URL yet); 'other' (something else answers:
 // wherdr stopped, wrong port) or 'unreachable'.
-export function reachable(url, timeoutMs = 8000) {
+export async function reachable(url, timeoutMs = 8000) {
+  return (await probe(url, timeoutMs)).reach
+}
+
+// Why a request failed: 'dns' (name not found), 'refused', 'timeout', 'cert'
+// (invalid certificate), 'tls' (no HTTPS on that port), or 'network'.
+export function failureCause(err) {
+  const code = String(err?.code || '')
+  const msg = String(err?.message || '')
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN' || code === 'EAI_NONAME') return 'dns'
+  if (code === 'ECONNREFUSED') return 'refused'
+  if (code === 'ETIMEDOUT' || msg === 'timeout') return 'timeout'
+  if (/CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ALTNAME/.test(code)) return 'cert'
+  if (code === 'EPROTO' || /wrong version number|ssl3_get_record|packet length/i.test(msg)) return 'tls'
+  return 'network'
+}
+
+// reachable() with the details: { reach, cause?, status? }: `cause` when
+// unreachable (failureCause), `status` the HTTP code when something answered.
+export function probe(url, timeoutMs = 8000) {
   const { promise, resolve } = Promise.withResolvers()
   let u
-  try { u = new URL('manifest.webmanifest', url) } catch { return Promise.resolve('unreachable') }
+  try { u = new URL('manifest.webmanifest', url) } catch { return Promise.resolve({ reach: 'unreachable', cause: 'network' }) }
   const req = https.get(u, { lookup, timeout: timeoutMs }, (res) => {
     let text = ''
     res.setEncoding('utf8')
     res.on('data', (c) => { if (text.length < 65536) text += c })
     res.on('end', () => {
-      const code = res.statusCode || 0
-      if (code >= 200 && code < 300) resolve(text.includes('wherdr') ? 'ok' : 'other')
-      else resolve(code === 403 && /"code"\s*:\s*"host"/.test(text) ? 'host' : 'other')
+      const status = res.statusCode || 0
+      if (status >= 200 && status < 300) resolve({ reach: text.includes('wherdr') ? 'ok' : 'other', status })
+      else resolve({ reach: status === 403 && /"code"\s*:\s*"host"/.test(text) ? 'host' : 'other', status })
     })
-    res.on('error', () => resolve('unreachable'))
+    res.on('error', e => resolve({ reach: 'unreachable', cause: failureCause(e) }))
   })
   req.on('timeout', () => req.destroy(new Error('timeout')))
-  req.on('error', () => resolve('unreachable'))
+  req.on('error', e => resolve({ reach: 'unreachable', cause: failureCause(e) }))
   return promise
 }
 

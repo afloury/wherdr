@@ -6,6 +6,9 @@
 export type PhoneMode = 'native' | 'docker' | 'missing'
 // See bin/lib/tailnet.mjs reachable().
 export type PhoneReach = 'ok' | 'host' | 'other' | 'unreachable'
+// Why it is unreachable: name not found, connection refused, timeout,
+// invalid certificate, no HTTPS on that port, other network error.
+export type PhoneReachCause = 'dns' | 'refused' | 'timeout' | 'cert' | 'tls' | 'network'
 // Known failures: Linux operator rights, HTTPS off on the tailnet, Tailscale
 // not connected, the HTTPS port serves something else, a bad typed address,
 // anything else (`detail` holds Tailscale's output).
@@ -31,6 +34,11 @@ export interface PhoneStatus {
   // The command to run by hand (docker).
   command: string
   reach: PhoneReach | null
+  // reach 'unreachable': why; 'other': the HTTP status that answered.
+  reachCause: PhoneReachCause | null
+  reachStatus: number | null
+  // When `reach` was measured (ms since the epoch).
+  checkedAt: number | null
   // APP_URL in use, and whether it comes from the environment (then it wins).
   appUrl: string
   appUrlFromEnv: boolean

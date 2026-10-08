@@ -8,7 +8,7 @@ import type { H3Event } from 'h3'
 import { getRequestHeaders } from 'h3'
 import QRCode from 'qrcode-terminal/vendor/QRCode/index.js'
 import QRErrorCorrectLevel from 'qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel.js'
-import { inspect, publishArgs, publishCommand, reachable, runTailscale, serveError, tailnetDomain, tailnetUrl, tailscaleBin, unpublishArgs } from '../../bin/lib/tailnet.mjs'
+import { inspect, probe, publishArgs, publishCommand, runTailscale, serveError, tailnetDomain, tailnetUrl, tailscaleBin, unpublishArgs } from '../../bin/lib/tailnet.mjs'
 import type { PhoneError, PhoneResult, PhoneStatus } from '../../shared/phone'
 import { APP_URL_FILE, DATA_DIR, ENV_APP_URL, HOST_LABEL, IN_DOCKER, log } from './env'
 import { auth, reqOf } from './http'
@@ -76,7 +76,7 @@ export async function phoneStatus(): Promise<PhoneStatus> {
   const out: PhoneStatus = {
     mode: bin ? 'native' : IN_DOCKER ? 'docker' : 'missing',
     platform: process.platform, port: PORT, connected: false, https: false, url: null, served: false, taken: false, suggested: null,
-    command: publishCommand(PORT), reach: null, appUrl: '', appUrlFromEnv: Boolean(ENV_APP_URL), qr: null,
+    command: publishCommand(PORT), reach: null, reachCause: null, reachStatus: null, checkedAt: null, appUrl: '', appUrlFromEnv: Boolean(ENV_APP_URL), qr: null,
   }
   if (bin) {
     const net = await inspect(PORT, bin)
@@ -93,18 +93,31 @@ export async function phoneStatus(): Promise<PhoneStatus> {
     const machine = HOST_LABEL.toLowerCase().replace(/[^a-z0-9-]/g, '-')
     out.suggested = domain && machine ? `https://${machine}.${domain}:${PORT}/` : null
     out.url = typed || tailnetUrl(process.env.APP_URL)
+    // An address on another HTTPS port (already published that way): the
+    // command shows that port, still pointing at wherdr's own.
+    const httpsPort = httpsPortOf(out.url || out.suggested)
+    if (httpsPort) out.command = publishCommand(PORT, httpsPort)
   }
   if (out.url) {
-    out.reach = await reachable(out.url, 5000)
+    let p = await probe(out.url, 5000)
     // It answers: APP_URL follows, unless the environment sets another one.
-    if ((out.reach === 'ok' || out.reach === 'host') && !ENV_APP_URL) {
+    if ((p.reach === 'ok' || p.reach === 'host') && !ENV_APP_URL) {
       saveAppUrl(out.url)
-      if (out.reach === 'host') out.reach = await reachable(out.url, 5000)
+      if (p.reach === 'host') p = await probe(out.url, 5000)
     }
+    out.reach = p.reach
+    out.reachCause = p.cause ?? null
+    out.reachStatus = p.status ?? null
+    out.checkedAt = Date.now()
   }
   out.appUrl = process.env.APP_URL || ''
   if (out.reach === 'ok' && out.url) out.qr = qrSvg(out.url)
   return out
+}
+
+// The explicit port of an https:// address ('' when it is 443).
+export function httpsPortOf(url: string | null): string {
+  try { return url ? new URL(url).port : '' } catch { return '' }
 }
 
 const fail = async (error: PhoneError, more: { link?: string, detail?: string } = {}): Promise<PhoneResult> =>
