@@ -1,5 +1,7 @@
 # Response headers of the Cloudflare Workers static assets (wrangler.jsonc).
 # Same rules as nginx.conf, the private deployment. Not served itself.
+# The browser demo (/demo/, the app built with VITE_WHERDR_DEMO=1) lives under the
+# same policy: connect-src 'self' keeps it from reaching any other host.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
