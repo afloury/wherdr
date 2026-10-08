@@ -586,6 +586,18 @@ body.short-bottom { --safe-bottom: 0px; }
 .update-banner-body code { display: block; padding: 5px 7px; border: 1px solid var(--line); font: 400 11px/1.45 var(--mono); color: var(--text-2); overflow-wrap: anywhere; user-select: all; }
 .update-banner-actions { display: flex; gap: 6px; margin-left: auto; }
 .update-banner-actions .iconify { width: 14px; height: 14px; }
+/* One-tap update: the Updating screen reuses the lock screen's frame. */
+.lock-screen.self-update { z-index: 61; }
+.self-update-steps { list-style: none; margin: 18px 0 16px; padding: 0; border-top: 1px solid var(--line); }
+.self-update-steps li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); font: 400 12px/1.4 var(--mono); color: var(--dim); }
+.self-update-steps li.done, .self-update-steps li.now { color: var(--text); }
+.self-update-steps li.bad { color: var(--rose); }
+.self-update-steps .iconify, .self-update-steps .spinner { width: 14px; height: 14px; flex: none; }
+.self-update-steps li.done .iconify { color: var(--accent); }
+.self-update-dot { width: 14px; height: 14px; flex: none; display: grid; place-items: center; }
+.self-update-dot::before { content: ''; width: 5px; height: 5px; background: var(--line-strong); }
+.self-update-detail { margin: 0 0 16px; padding: 8px 10px; border: 1px solid var(--line); font: 400 11px/1.5 var(--mono); color: var(--text-2); overflow-wrap: anywhere; }
+.self-update-detail.bad { border-color: color-mix(in srgb, var(--rose) 45%, transparent); }
 .machine-waiting { padding: 3px 5px; background: color-mix(in srgb, var(--rose) 16%, transparent); color: var(--rose); font-weight: 600; }
 .machine-error {
   margin: -6px 0 14px 24px; font: 400 11px/1.45 var(--mono); color: var(--text-3);

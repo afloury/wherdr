@@ -94,6 +94,7 @@ onUnmounted(() => {
     <ShortcutsSheet />
     <OnboardingGuide v-if="onboardingOpen && !locked" />
     <NewVersionBanner v-if="!locked" />
+    <SelfUpdateScreen v-if="selfUpdate.open" />
     <LockScreen v-if="locked" />
   </UApp>
 </template>

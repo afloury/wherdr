@@ -46,10 +46,16 @@ describe('wherdr server environment', () => {
     expect(serverEnv({}, { WHERDR_DIR: '~/w2' }, home).DATA_DIR).toBe('/home/test/w2/data')
   })
 
-  it('offers the Homebrew update command only to a Homebrew install', () => {
+  it('tells each installation apart for the update offered in the app', () => {
     expect(serverEnv({}, {}, home, '/opt/homebrew/Cellar/wherdr/1.3.0/libexec/lib/node_modules/wherdr/bin/wherdr.mjs').WHERDR_INSTALL).toBe('brew')
     expect(serverEnv({}, {}, home, '/home/linuxbrew/.linuxbrew/Cellar/wherdr/1.3.0/libexec/lib/node_modules/wherdr/bin/wherdr.mjs').WHERDR_INSTALL).toBe('brew')
-    expect(serverEnv({}, {}, home, '/opt/homebrew/lib/node_modules/wherdr/bin/wherdr.mjs').WHERDR_INSTALL).toBe('npm')
+    expect(serverEnv({}, {}, home, '/opt/homebrew/lib/node_modules/wherdr/bin/wherdr.mjs').WHERDR_INSTALL).toBe('npm-global')
+    expect(serverEnv({}, {}, home, '/home/test/.npm/_npx/0a1b2c/node_modules/wherdr/bin/wherdr.mjs').WHERDR_INSTALL).toBe('npm')
+    expect(serverEnv({}, {}, home, '/home/test/.npm/_npx/0a1b2c/lib/node_modules/wherdr/bin/wherdr.mjs').WHERDR_INSTALL).toBe('npm')
+    // The copy the Herdr plugin runs, in the wherdr folder (WHERDR_DIR included).
+    expect(serverEnv({}, {}, home, '/home/test/wherdr/app/bin/wherdr.mjs').WHERDR_INSTALL).toBe('plugin')
+    expect(serverEnv({}, { WHERDR_DIR: '/srv/w' }, home, '/srv/w/app/bin/wherdr.mjs')).toMatchObject({ WHERDR_INSTALL: 'plugin', WHERDR_DIR: '/srv/w' })
+    expect(serverEnv({}, { WHERDR_DIR: '/srv/w' }, home, '/home/test/wherdr/app/bin/wherdr.mjs').WHERDR_INSTALL).toBe('npm')
   })
 
   it('lets options win over the environment, and the environment over the defaults', () => {
