@@ -2,9 +2,19 @@
 // Client-only app (no SSR) served by Nitro, which also hosts the whole
 // Herdr gateway (API, WebSockets, Web Push): see server/.
 import { CSP_BASE } from './server/utils/csp'
+
+// Demo build (`VITE_WHERDR_DEMO=1 nuxt generate`, served at wherdr.dev/demo/):
+// the same app, static, with no server at all — app/demo/ answers the API in
+// the browser — and no service worker. See app/demo/shim.ts.
+const demo = process.env.VITE_WHERDR_DEMO === '1'
+
 export default defineNuxtConfig({
   ssr: false,
-  modules: ['@nuxt/ui', '@vite-pwa/nuxt'],
+  modules: demo ? ['@nuxt/ui'] : ['@nuxt/ui', '@vite-pwa/nuxt'],
+  plugins: demo ? ['~/demo/plugin.client'] : [],
+  // No server code in the demo build (nothing to prerender against, nothing that
+  // could run), and none of public/ (the install manifests: the demo is not installable).
+  ...(demo ? { serverDir: 'demo-without-server', dir: { public: 'demo-without-public' } } : {}),
   css: ['~/assets/css/main.css'],
   typescript: { strict: true },
   devtools: { enabled: false },
@@ -48,6 +58,7 @@ export default defineNuxtConfig({
   router: { options: { hashMode: true } },
 
   app: {
+    baseURL: demo ? '/demo/' : '/',
     head: {
       title: 'wherdr',
       htmlAttrs: { lang: 'en', class: 'dark' },
@@ -66,13 +77,16 @@ export default defineNuxtConfig({
         { name: 'robots', content: 'noindex, nofollow' },
       ],
       // The manifest (FR or EN depending on the chosen language) is added by app.vue.
-      link: [
-        // App icon (">_" + orange dot). An installation can replace it without
-        // touching the code: see docker-compose.override.example.yml (branding/ folder).
-        { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/icons/favicon-32.png?v=5' },
-        { rel: 'icon', type: 'image/png', sizes: '192x192', href: '/icons/icon-192.png?v=5' },
-        { rel: 'apple-touch-icon', href: '/icons/apple-touch-icon.png?v=5' },
-      ],
+      link: demo
+        // Demo: the icons of the site that serves it (wherdr.dev).
+        ? [{ rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32.png' }, { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' }]
+        : [
+            // App icon (">_" + orange dot). An installation can replace it without
+            // touching the code: see docker-compose.override.example.yml (branding/ folder).
+            { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/icons/favicon-32.png?v=5' },
+            { rel: 'icon', type: 'image/png', sizes: '192x192', href: '/icons/icon-192.png?v=5' },
+            { rel: 'apple-touch-icon', href: '/icons/apple-touch-icon.png?v=5' },
+          ],
     },
   },
 
@@ -96,13 +110,16 @@ export default defineNuxtConfig({
     devOptions: { enabled: false },
   },
 
-  nitro: {
-    preset: 'node-server',
-    experimental: { websocket: true },
-    // Scripts handed to machines (Claude status line installer):
-    // bundled, the repository is not in the image.
-    serverAssets: [{ baseName: 'scripts', dir: '../scripts' }],
-  },
+  nitro: demo
+    // Its own output folder: `.output` stays the app (npm package, Docker image).
+    ? { preset: 'static', output: { dir: '.output-demo' } }
+    : {
+        preset: 'node-server',
+        experimental: { websocket: true },
+        // Scripts handed to machines (Claude status line installer):
+        // bundled, the repository is not in the image.
+        serverAssets: [{ baseName: 'scripts', dir: '../scripts' }],
+      },
 
   // App code always revalidated (otherwise an iPhone keeps the old version
   // after an update); only fingerprinted files (/_nuxt/) and

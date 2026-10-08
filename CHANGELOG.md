@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Browser demo at [wherdr.dev/demo](https://wherdr.dev/demo/)**: the real app, built with
+  `npm run build:demo` (static, no server), on scripted agents that run in the page — two
+  projects, Claude Code, Codex and omp in different states, a split with a dev server, the Project
+  panel, diffs, terminals. Sending a message gets a scripted answer, sometimes after an
+  Approve / Deny card. Nothing runs: `fetch` and `WebSocket` are answered in the browser and every
+  other request is refused. Linked from the top of the site and of this README.
 - **Long pasted text as a card**, like Claude Desktop: a pasted log or long text (more than 12
   lines or 1,500 characters) shows as a "Pasted text · N lines" card under the message, with its
   first lines. A tap opens the whole text in a scrolling window (a sheet on the phone), in a
@@ -16,6 +22,11 @@ All notable changes to this project are documented here. The format follows
   Claude's `<pasted_content>` blocks are recognized; for Codex and omp, the texts pasted from
   this device are.
 - **Long typed messages fold** after about 12 lines, with a fade and **Show more / Show less**.
+
+### Fixed
+
+- **Project panel**: opening it with the board already loaded (reopening a coordinator) no longer
+  breaks it with "Cannot access … before initialization".
 
 ### Changed
 
