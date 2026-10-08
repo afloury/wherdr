@@ -259,14 +259,17 @@ build_start() {
   set -e
   printf '%s\n' "$out"
   if [ "$code" -eq 0 ] && answers; then
-    tell ""
-    tell "✓ wherdr is running → $URL"
+    # https://wherdr.dev/install prints its own summary (WHERDR_INSTALLER=1).
+    quiet=0
+    [ "${WHERDR_INSTALLER:-0}" = 1 ] && quiet=1
+    [ "$quiet" = 1 ] || tell ""
+    [ "$quiet" = 1 ] || tell "✓ wherdr is running → $URL"
     if [ "${FIRST_INSTALL:-0}" = 1 ]; then
-      if open_browser "$URL/#/setup"; then tell "  Setup guide opened in your browser"
-      else tell "  Setup guide: open $URL/#/setup in a browser on this computer"
+      if open_browser "$URL/#/setup"; then [ "$quiet" = 1 ] || tell "  Setup guide opened in your browser"
+      else [ "$quiet" = 1 ] || tell "  Setup guide: open $URL/#/setup in a browser on this computer"
       fi
     fi
-    tell "  Phone: open the wherdr panel in Herdr (key above, or herdr plugin action invoke panel --plugin $PLUGIN_ID)"
+    [ "$quiet" = 1 ] || tell "  Phone: open the wherdr panel in Herdr (key above, or herdr plugin action invoke panel --plugin $PLUGIN_ID)"
   else
     tell ""
     tell "! wherdr is installed but did not start:"
@@ -538,9 +541,11 @@ cmd_doctor() {
 
 # ------------------------------------------------------------------- open
 # The default browser, on a computer with a screen only: `open` on macOS,
-# `xdg-open` on Linux with a display. Fails (opens nothing) on a headless server.
+# `xdg-open` on Linux with a display. Fails (opens nothing) on a headless server,
+# or with WHERDR_NO_BROWSER=1 (set by https://wherdr.dev/install over SSH).
 open_browser() {
-  if [ "$(uname -s)" = "Darwin" ] && command -v open >/dev/null 2>&1; then open "$1"
+  if [ "${WHERDR_NO_BROWSER:-0}" = "1" ]; then return 1
+  elif [ "$(uname -s)" = "Darwin" ] && command -v open >/dev/null 2>&1; then open "$1"
   elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && command -v xdg-open >/dev/null 2>&1; then xdg-open "$1" >/dev/null 2>&1 &
   else return 1
   fi

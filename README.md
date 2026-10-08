@@ -13,18 +13,22 @@ computer and on your phone.</b></p>
 
 ## Quick start
 
-With [Herdr](https://herdr.dev) running and Node.js 22 (or Bun), on macOS or Linux:
+On the computer that runs [Herdr](https://herdr.dev) (≥ 0.9.1), macOS or Linux, one command:
 
 ```sh
-npx wherdr          # or: bunx wherdr, pnpm dlx wherdr — then open http://localhost:7683
+curl -fsSL https://wherdr.dev/install | sh
 ```
 
-With Homebrew (macOS or Linux): `brew install afloury/tap/wherdr`, then `brew services start wherdr`
-(runs now and at every login), then `wherdr open` (setup guide in your browser, Phone step included).
-The first install also brings Homebrew's Node.js.
+It installs the wherdr [Herdr plugin](#install-as-a-herdr-plugin), starts wherdr on
+`http://localhost:7683` and opens its setup guide in your browser; then **prefix+i** in Herdr opens
+the wherdr panel. Without Herdr, it says where to get it; on a Mac without Node.js 22, it offers
+`brew install node`; on Linux, Docker works too. On a server without a screen (or over SSH), it
+prints the address and the phone steps instead. See [The one command](#the-one-command).
 
-To keep it: `npm install -g wherdr`, then `wherdr service install` starts it at every login, and
-`wherdr phone` walks you through phone access. See [the `wherdr` command](#the-wherdr-command).
+Other ways, after it: `herdr plugin install afloury/wherdr` (the same plugin, without the
+checks), `npx wherdr` (or `bunx wherdr`, `pnpm dlx wherdr`; see
+[the `wherdr` command](#the-wherdr-command)), `brew install afloury/tap/wherdr`, or
+[Docker by hand](#recommended-always-on-server--tailscale).
 
 At first launch, wherdr opens a **setup guide**: the Herdr agents it found, your phone
 (Tailscale), then the passkey lock and notifications. Skip it any time; finishing or skipping is
@@ -71,11 +75,12 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - [Features](#features)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
-- [Installation](#installation): [which setup?](#which-setup) ·
+- [Installation](#installation): [the one command](#the-one-command) ·
+  [which setup?](#which-setup) ·
   [always-on server + Tailscale](#recommended-always-on-server--tailscale) ·
   [other private networks](#other-private-networks) ·
   [the `wherdr` command](#the-wherdr-command) ·
-  [one computer, no Docker](#simple-one-computer-no-docker) ·
+  [from source](#from-source-no-docker) ·
   [as a Herdr plugin](#install-as-a-herdr-plugin) ·
   [Docker on a Mac: Reveal/Open](#wherdr-in-docker-on-a-mac-reveal-in-finder-open-and-modalto)
 - [Updating](#updating)
@@ -215,16 +220,61 @@ Web Push, lock) runs in Nitro.
 
 ## Installation
 
+### The one command
+
+On the computer that runs Herdr, as your user, on macOS or Linux:
+
+```sh
+curl -fsSL https://wherdr.dev/install | sh
+```
+
+The script ([read it first](https://wherdr.dev/install), source in
+[`website/public/install`](website/public/install)) never uses sudo. It:
+
+1. checks **Herdr ≥ 0.9.1**; without it, it stops with the link to [herdr.dev](https://herdr.dev);
+2. leaves alone a wherdr that **already answers** on the port: a Herdr plugin install is offered
+   its update, a Docker install shows its update command, anything else is left as it is. A
+   `wherdr` container managed from another folder is never replaced or stopped;
+3. checks what wherdr runs on: Docker Compose v2 on Linux when your user can use it, otherwise
+   **Node.js 22** or Bun (always on macOS). On a Mac without them, it offers
+   `brew install node` when Homebrew is there; elsewhere it stops with the install links;
+4. runs `herdr plugin install afloury/wherdr --yes`: the [Herdr plugin](#install-as-a-herdr-plugin)
+   installs wherdr in `~/wherdr`, starts it on `http://localhost:7683`, starts it again with Herdr,
+   opens the setup guide in your browser (first install) and binds **prefix+i** to its panel;
+5. on a computer **without a screen** (no `DISPLAY` on Linux, or an SSH session): opens nothing,
+   prints the local address, an `ssh -L` tunnel to reach it from your computer, and the phone
+   steps (`wherdr phone`: Tailscale state, the address, the QR code once it answers).
+
+Settings, as environment variables (`curl -fsSL https://wherdr.dev/install | WHERDR_PORT=7684 sh`):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `WHERDR_DIR` | `~/wherdr` | Install folder (plugin settings, data, log). |
+| `WHERDR_PORT` | `7683` | Local port. |
+| `WHERDR_MODE` | — | `native`: Node.js even when Docker is there. `docker`: no plugin, Docker Compose by hand in `WHERDR_DIR` (Linux; see below). |
+| `WHERDR_YES` | — | `1` answers yes to every question (non-interactive use). |
+| `WHERDR_NO_BROWSER` | — | `1` never opens a browser. |
+| `WHERDR_REF` | latest | Git tag or branch of the plugin (or of `docker-compose.yml` with `WHERDR_MODE=docker`). |
+| `WHERDR_PLUGIN` | `afloury/wherdr` | A local checkout to link and build instead (development, tests). |
+
+**Docker by hand, with the script:** `curl -fsSL https://wherdr.dev/install | WHERDR_MODE=docker sh`
+writes `docker-compose.yml` and `.env` to `~/wherdr`, creates the bind-mount folders, pulls the
+published image and starts it, without the plugin; it asks before replacing a file it did not
+create. The same steps by hand are in the next section.
+
+Update: run the command again (it offers the update), or **U** in the wherdr panel.
+
 ### Which setup?
 
-| | **Always-on server + Tailscale** (recommended) | **One computer, no Docker** |
+| | **Always-on server + Tailscale** (recommended) | **One computer** |
 | --- | --- | --- |
-| Runs on | A machine that never sleeps: Raspberry Pi, mini-PC, home server, private VPS (Linux, Docker) | The computer you work on (macOS or Linux, Node.js 22) |
+| Runs on | A machine that never sleeps: Raspberry Pi, mini-PC, home server, private VPS (Linux) | The computer you work on (macOS or Linux) |
 | Reach it from | Your phone and every computer on your tailnet | That computer only (`http://localhost:7683`) |
 | Installable app, push notifications, passkeys | Yes (private HTTPS from `tailscale serve`) | Desktop browser only; no phone access |
 | Other machines (a Mac, a laptop…) | Added in Herdr over SSH, shown in wherdr | Also possible, but they are only reachable while this computer is awake |
 
-Both setups use the same app. You can start with the second one and move to the first later.
+Both use [the one command](#the-one-command) and the same app. You can start with the second one
+and move to the first later.
 
 ### Recommended: always-on server + Tailscale
 
@@ -235,7 +285,9 @@ wherdr stays on your private network: it is **never published on the Internet**.
 (`herdr` or `herdr server`), with the integrations of the agents you use
 (`herdr integration install claude|codex`).
 
-**2. wherdr with Docker** (Linux, Compose v2):
+**2. wherdr.** Run [the one command](#the-one-command) on the server (over SSH, it prints the
+address and the phone steps instead of opening a browser), then go to step 3. Or set up Docker
+Compose by hand (Linux, Compose v2), as follows:
 
 ```sh
 git clone https://github.com/afloury/wherdr.git
@@ -446,10 +498,11 @@ Bun runs wherdr too (WebSockets, push, passkeys and Herdr's socket work); when N
 also installed, `bunx wherdr` hands the server to Node, the reference runtime. Set
 `WHERDR_RUNTIME=bun` to keep Bun.
 
-### Simple: one computer, no Docker
+### From source, no Docker
 
-The quickest way to try it, and the way to run wherdr **on macOS**: Docker Desktop cannot reach
-Herdr's Unix socket on the host. With Herdr running, Git and Node.js 22 on the same machine:
+For development, or to run a checkout of your own (Docker Desktop cannot reach Herdr's Unix socket
+on macOS, so wherdr always runs natively there). With Herdr running, Git and Node.js 22 on the
+same machine:
 
 ```sh
 git clone https://github.com/afloury/wherdr.git
@@ -476,12 +529,14 @@ and logs a warning.
 
 ### Install as a Herdr plugin
 
-Herdr can also install wherdr itself, on Linux and macOS, with Herdr ≥ 0.9.1. In three lines:
+This is what [the one command](#the-one-command) installs; you can also run it yourself, on Linux
+and macOS, with Herdr ≥ 0.9.1 (no checks for Herdr or Node.js first). In three lines:
 
 1. Run `herdr plugin install afloury/wherdr`: it installs wherdr, starts it
    (`✓ wherdr is running → http://localhost:7683`) and, at the first install on a computer with a
    screen, opens the setup guide in your browser (`open` on macOS, `xdg-open` on Linux with a
-   display; a headless server just prints `http://localhost:7683/#/setup`). Updates open nothing.
+   display; a headless server, or `WHERDR_NO_BROWSER=1` in the environment of the install, just
+   prints `http://localhost:7683/#/setup`). Updates open nothing.
 2. In Herdr, press **prefix+i** (`ctrl+b` then `i` with the default prefix): the **wherdr** panel,
    with the state, **O** Open wherdr and **P** Set up my phone. The install prints the key it
    chose (see [Panel key](#panel-key)).
@@ -495,7 +550,8 @@ the install still succeeds and says why; press **S** in the panel once it is fix
 setup by itself:
 
 - **Docker** on Linux when Docker Compose v2 works for your user: the published image, from
-  `~/wherdr` (`docker-compose.yml`, `.env`), exactly like the [one-line installer](https://wherdr.dev/install).
+  `~/wherdr` (`docker-compose.yml`, `.env`), the same files as `WHERDR_MODE=docker` of
+  [the one command](#the-one-command).
 - **Node.js 22** everywhere else, and always on macOS (Docker Desktop cannot reach Herdr's
   socket): the plugin downloads the prebuilt npm package of its version (or builds wherdr in its
   own folder when that fails), copies it to `~/wherdr/app` and runs it detached from there, with
@@ -624,9 +680,10 @@ installed version is shown in Settings › About.
 | --- | --- |
 | Docker, published image (default) | `docker compose pull && docker compose up -d` |
 | Docker, built from source | `git pull && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` |
-| No Docker | `git pull && npm ci && npm run build`, then restart wherdr |
+| From source | `git pull && npm ci && npm run build`, then restart wherdr |
 | `wherdr` command (npm) | `npm install -g wherdr@latest && wherdr restart` (npx: stop it, then `npx wherdr@latest`) |
 | `wherdr` command (Homebrew) | `brew upgrade wherdr`, then `brew services restart wherdr` |
+| The one command | Run `curl -fsSL https://wherdr.dev/install \| sh` again: it offers the update |
 | Herdr plugin, Docker | **U** in the **wherdr** panel (pulls the image, restarts the container) |
 | Herdr plugin, Node.js | **U** in the **wherdr** panel, or `herdr plugin install afloury/wherdr --yes` (wherdr restarts on the new version) |
 

@@ -8,6 +8,16 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **One install command for macOS and Linux**: `curl -fsSL https://wherdr.dev/install | sh` now
+  checks Herdr (and links https://herdr.dev when it is missing), then installs the wherdr Herdr
+  plugin: wherdr in `~/wherdr`, started now and with Herdr, its setup guide opened in the browser
+  and **prefix+i** for its panel. On a Mac without Node.js 22 it offers `brew install node`; on
+  Linux, Docker works too. A wherdr that already runs is never replaced: the script says so and
+  offers its update; a `wherdr` container managed from another folder is never touched. On a
+  server without a screen (or over SSH) it opens nothing and prints the address, an `ssh -L`
+  tunnel and the phone steps. `WHERDR_MODE=docker` keeps the previous Docker Compose setup.
+- **Herdr plugin**: `WHERDR_NO_BROWSER=1` in the environment of the install opens no browser.
+
 - **Homebrew**: `brew install afloury/tap/wherdr`, then `brew services start wherdr` runs it now
   and at every login, and `wherdr open` opens the setup guide. The first install also brings
   Homebrew's Node.js. A Homebrew install shows `brew upgrade wherdr` in the update notice. Each

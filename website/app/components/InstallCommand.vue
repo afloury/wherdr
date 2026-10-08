@@ -1,10 +1,12 @@
 <script setup lang="ts">
 // A command (one line, or several joined by newlines) or an agent prompt, copied in one click.
-const props = withDefaults(defineProps<{ command?: string, prompt?: string, what?: string, wrap?: boolean }>(), {
+// `big`: a large accent Copy button (the agent prompt card).
+const props = withDefaults(defineProps<{ command?: string, prompt?: string, what?: string, wrap?: boolean, big?: boolean }>(), {
   command: 'curl -fsSL https://wherdr.dev/install | sh',
   prompt: '$',
   what: 'command',
   wrap: false,
+  big: false,
 })
 const text = useTemplateRef<HTMLElement>('text')
 const copied = ref(false)
@@ -28,7 +30,7 @@ onBeforeUnmount(() => clearTimeout(timer))
 </script>
 
 <template>
-  <div class="cmd fx-ring halo" :class="{ multiline: wrap }">
+  <div class="cmd fx-ring halo" :class="{ multiline: wrap, big }">
     <span class="prompt" aria-hidden="true">{{ prompt }}</span>
     <code ref="text" class="text">{{ command }}</code>
     <button type="button" class="copy" :aria-label="copied ? 'Copied' : `Copy the install ${what}`" @click="copy">
@@ -70,5 +72,14 @@ onBeforeUnmount(() => clearTimeout(timer))
   .cmd { font-size: 13px; }
   .copy .txt { display: none; }
   .copy { padding: 0 14px; }
+}
+/* The agent prompt: a large Copy button in the accent colour, always labelled. */
+.big .copy { margin: 10px; padding: 0 26px; border: 0; background: var(--accent); color: var(--bg); font-size: 13px; }
+.big .copy:hover { background: color-mix(in srgb, var(--accent) 85%, #fff); color: var(--bg); }
+@media (max-width: 520px) {
+  .big { flex-wrap: wrap; }
+  .big .text { flex-basis: calc(100% - 40px); }
+  .big .copy { flex: 1 1 calc(100% - 20px); justify-content: center; margin: 0 10px 10px; padding: 14px; }
+  .big .copy .txt { display: inline; }
 }
 </style>

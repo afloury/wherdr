@@ -5,8 +5,8 @@
 ## Docs
 
 - [Setup guide for agents](https://wherdr.dev/agent.md): questions to ask the user, one install path per answer, checks and safety rules
-- [Installer](https://wherdr.dev/install): the `curl -fsSL https://wherdr.dev/install | sh` script (Linux, Docker)
-- [Herdr plugin](https://raw.githubusercontent.com/afloury/wherdr/main/herdr-plugin.toml): `herdr plugin install afloury/wherdr` (Linux: Docker when available, else Node.js 22; macOS: Node.js 22)
+- [Installer](https://wherdr.dev/install): `curl -fsSL https://wherdr.dev/install | sh`, the one install path on macOS and Linux: checks Herdr, installs the wherdr Herdr plugin (Node.js 22, or Docker on Linux), starts wherdr; headless servers get the address and phone steps. `WHERDR_MODE=docker` sets up Docker Compose by hand instead (Linux)
+- [Herdr plugin](https://raw.githubusercontent.com/afloury/wherdr/main/herdr-plugin.toml): what the installer runs, `herdr plugin install afloury/wherdr` (Linux: Docker when available, else Node.js 22; macOS: Node.js 22)
 - [README](https://raw.githubusercontent.com/afloury/wherdr/main/README.md): features, installation, configuration, troubleshooting
 - [Other private networks](https://github.com/afloury/wherdr#other-private-networks): phone access over Headscale, NetBird, ZeroTier, WireGuard or Cloudflare Tunnel + Access instead of Tailscale (HTTPS with a valid certificate, `APP_URL`)
 - [Security policy](https://raw.githubusercontent.com/afloury/wherdr/main/SECURITY.md): how to report a vulnerability

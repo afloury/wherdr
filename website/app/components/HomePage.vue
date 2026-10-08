@@ -3,8 +3,7 @@
 // live demos in the hero (phone + desktop on one clock) and next to the
 // feature stories, and an install that types itself.
 import { AGENT_PROMPT, REPO } from '~/utils/site'
-import { BREW_COMMANDS, DOCKER_COMMANDS, DOCKER_DEMO, INSTALL_COMMAND, MAC_COMMANDS, MAC_DEMO, ONE_COMMAND_DEMO, PLUGIN_COMMAND, RUNNERS } from '~/utils/installDemo'
-import { type InstallOs, installOs } from '~/utils/recommend'
+import { BREW_COMMANDS, DOCKER_COMMANDS, DOCKER_DEMO, DOCKER_INSTALL_COMMAND, INSTALL_COMMAND, ONE_COMMAND_DEMO, PLUGIN_COMMAND, RUNNERS } from '~/utils/installDemo'
 
 const stories = [
   {
@@ -49,34 +48,29 @@ const security = [
   { k: 'CSP', title: 'Strict by default', text: 'Host allow-list, Origin checks on every write and WebSocket, strict Content Security Policy, no framing.' },
 ]
 
+// "Other ways", under the one command and the agent prompt: three tabs at most.
 const installTabs = [
-  { id: 'one', label: 'curl' },
-  { id: 'plugin', label: 'Herdr plugin' },
+  { id: 'pm', label: 'Package managers', short: 'Packages' },
+  { id: 'plugin', label: 'Herdr plugin', short: 'Plugin' },
+  { id: 'docker', label: 'Docker, by hand', short: 'Docker' },
+] as const
+const tab = ref<typeof installTabs[number]['id']>('pm')
+const managers = [
   { id: 'brew', label: 'Homebrew' },
   { id: 'npx', label: 'npx' },
   { id: 'bunx', label: 'bunx' },
   { id: 'pnpm', label: 'pnpm dlx' },
-  { id: 'agent', label: 'Ask your agent' },
-  { id: 'docker', label: 'Docker, by hand' },
-  { id: 'mac', label: 'macOS · from source' },
 ] as const
-const tab = ref<typeof installTabs[number]['id']>('one')
-// Recommended method for this visitor's system (read after hydration: the page is prerendered).
-const os = ref<InstallOs | null>(null)
-onMounted(() => { os.value = installOs(navigator.userAgent, navigator.maxTouchPoints) })
-const recommended = computed(() => os.value === 'mac'
-  ? { tab: 'plugin' as const, system: 'macOS', method: 'the Herdr plugin', why: `Installs and starts wherdr natively, then opens its setup guide in your browser. Prefer Homebrew? ${BREW_COMMANDS[0]}.`, command: PLUGIN_COMMAND }
-  : os.value === 'linux'
-    ? { tab: 'one' as const, system: 'Linux', method: 'the install script', why: 'Docker when it is there, Node.js 22 otherwise, in ~/wherdr. No sudo.', command: INSTALL_COMMAND }
-    : null)
+const pm = ref<typeof managers[number]['id']>('brew')
+const runner = computed(() => pm.value === 'brew' ? null : RUNNERS[pm.value])
 
 const faq = [
   { label: 'Is wherdr free?', content: 'Yes. It is open source under the MIT license, with no account, no paid plan and no hosted version. You run it on your own machine.' },
-  { label: 'What do I need?', content: 'Herdr 0.9.1 or newer running on a Linux or macOS machine, and either Docker (Compose v2, Linux) or Node.js 22. For your phone: a private HTTPS address, which Tailscale Serve gives you in one command.' },
+  { label: 'What do I need?', content: 'Herdr 0.9.1 or newer running on a Mac or a Linux machine, and Node.js 22 (the installer offers brew install node on a Mac without it) or, on Linux, Docker. For your phone: a private HTTPS address, which Tailscale Serve gives you in one command.' },
   { label: 'Can I put it on the Internet?', content: 'No. wherdr is a remote shell on your machine: whoever reaches it can start agents and run commands as your user. Use it on localhost or over a private network such as Tailscale, and enable the passkey lock.' },
   { label: 'Does my code or my conversations leave my machine?', content: 'No. wherdr reads the agents\' transcript files and the Herdr socket locally and serves them to your own devices. Push notifications travel through your browser\'s push service, encrypted as the Web Push standard requires. The only other outgoing request is an optional daily check of the latest GitHub release (WHERDR_UPDATE_CHECK=off disables it).' },
   { label: 'Which agents are supported?', content: 'Every agent Herdr recognizes appears in the list with its terminal. Claude Code, Codex and omp also get the full conversation view, model and effort pickers and one-tap answers.' },
-  { label: 'Does it work on macOS?', content: 'Yes, natively: npm ci, npm run build, npm start. Docker Desktop cannot reach Herdr\'s Unix socket on the host, so the Docker setup is for Linux servers (a Raspberry Pi works).' },
+  { label: 'Does it work on macOS?', content: 'Yes, natively, with the same one command: it installs the wherdr Herdr plugin, which runs wherdr with Node.js. Docker Desktop cannot reach Herdr\'s Unix socket on the host, so Docker is only used on Linux.' },
   { label: 'Will it change my agents\' settings?', content: 'No. Model and effort changes apply to the current session only; wherdr never changes your default model or your agents\' configuration.' },
   { label: 'Is it an official Herdr project?', content: 'No. wherdr is an independent project built on Herdr\'s public socket API. It is not affiliated with Herdr, Anthropic or OpenAI.' },
 ]
@@ -109,7 +103,7 @@ const faq = [
               <a class="btn primary" href="#install">Install guide <UIcon name="i-lucide-arrow-right" class="size-4" /></a>
               <a class="btn" :href="REPO" target="_blank" rel="noopener"><GithubMark /> Star on GitHub</a>
             </div>
-            <p class="hero-note label">Linux + Docker · macOS via Node.js · needs Herdr ≥ 0.9.1</p>
+            <p class="hero-note label">macOS and Linux · needs Herdr ≥ 0.9.1 · phone through Tailscale</p>
           </div>
 
           <div class="hero-visual">
@@ -222,84 +216,78 @@ const faq = [
         <div class="wrap">
           <div v-reveal class="section-head">
             <p class="label"><span class="k">04</span> Install</p>
-            <h2 class="display h2">One command on your server.</h2>
-            <p class="lead">With Herdr running, on the machine that hosts your agents — ideally an always-on Linux box (a Raspberry Pi works). Use our script, the Herdr plugin or the npm package (<code>npx wherdr</code>): all of them use <code>~/wherdr</code> and listen on 127.0.0.1 only. No sudo, and nothing is replaced without asking. <a href="/install" target="_blank">Read the script first.</a></p>
+            <h2 class="display h2">One command.</h2>
+            <p class="lead">On the computer that runs Herdr — your Mac, or an always-on Linux box (a Raspberry Pi works). It installs the wherdr Herdr plugin: wherdr in <code>~/wherdr</code>, listening on 127.0.0.1 only, started now and with Herdr. No sudo, and a wherdr that already runs is never replaced. <a href="/install" target="_blank">Read the script first.</a></p>
           </div>
 
           <div v-reveal class="install">
-            <div v-if="recommended" class="recommend" aria-live="polite">
-              <p class="label"><span class="k">●</span> Recommended for you · {{ recommended.system }}</p>
-              <p class="recommend-text"><b>Use {{ recommended.method }}.</b> {{ recommended.why }}</p>
-              <InstallCommand :command="recommended.command" />
-              <button v-if="tab !== recommended.tab" type="button" class="recommend-steps" @click="tab = recommended.tab">Show its steps <UIcon name="i-lucide-arrow-down" class="size-3.5" /></button>
-            </div>
-            <p class="prereq">
-              Needs <a href="https://herdr.dev" target="_blank" rel="noopener">Herdr</a> 0.9.1+ on Linux or macOS · your phone connects through <a href="https://tailscale.com/download" target="_blank" rel="noopener">Tailscale</a>, free for personal use.
-              <a :href="`${REPO}#other-private-networks`" target="_blank" rel="noopener">Works with any private network that gives you an HTTPS address</a> — Headscale, NetBird, ZeroTier, WireGuard, Cloudflare Tunnel + Access.
-            </p>
-            <div class="tabs" role="tablist" aria-label="Installation method">
-              <button v-for="t in installTabs" :id="`tab-${t.id}`" :key="t.id" type="button" role="tab" class="tab" :aria-selected="tab === t.id" :aria-controls="`panel-${t.id}`" @click="tab = t.id">
-                {{ t.label }}
-              </button>
-            </div>
-
-            <div v-show="tab === 'plugin'" id="panel-plugin" role="tabpanel" aria-labelledby="tab-plugin" class="panel">
-              <InstallCommand :command="PLUGIN_COMMAND" />
-              <ol class="steps">
-                <li><b>Run it</b> on the machine that runs Herdr (≥ 0.9.1), Linux or macOS. It installs wherdr in <code>~/wherdr</code> (Docker on Linux when available, Node.js 22 otherwise; no sudo), starts it on <code>http://localhost:7683</code> and, the first time, opens its setup guide in your browser.</li>
-                <li><b>Open the <i>wherdr</i> action</b> in Herdr: one panel with the state, the addresses and a key per command — start, stop, restart, log, update, auto-start at login.</li>
-                <li><b>Phone:</b> the setup guide (or Settings › Phone, key <b>P</b> of the panel) publishes wherdr on your tailnet, then shows a QR code to scan.</li>
-              </ol>
-            </div>
-
-            <div v-show="tab === 'brew'" id="panel-brew" role="tabpanel" aria-labelledby="tab-brew" class="panel">
-              <InstallCommand :command="BREW_COMMANDS.join('\n')" what="commands" wrap />
-              <ol class="steps">
-                <li><b>Install</b> on the machine that runs Herdr, macOS or Linux. The first install also brings Homebrew's Node.js (heavier than the Herdr plugin if you already have Node.js); the package is prebuilt, nothing compiles.</li>
-                <li><b>Start it:</b> <code>brew services start wherdr</code> runs it now and at every login.</li>
-                <li><b>Open it:</b> <code>wherdr open</code> opens the setup guide in your browser.</li>
-                <li><b>Phone:</b> follow the guide's Phone step: one click publishes wherdr on your tailnet, then a QR code to scan.</li>
-                <li><b>Update:</b> <code>brew upgrade wherdr</code>, then <code>brew services restart wherdr</code>. Stuck? <code>wherdr doctor</code>.</li>
-              </ol>
-            </div>
-
-            <div v-for="(r, id) in RUNNERS" v-show="tab === id" :id="`panel-${id}`" :key="id" role="tabpanel" :aria-labelledby="`tab-${id}`" class="panel">
-              <InstallCommand :command="r.run" />
-              <ol class="steps">
-                <li><b>Try it</b> on the machine that runs Herdr, macOS or Linux, with Node.js 22{{ id === 'bunx' ? ' or Bun' : '' }}. The package is prebuilt: nothing compiles. Open <code>http://localhost:7683</code>.</li>
-                <li><b>Keep it:</b> <code>{{ r.keep }}</code>, then <code>wherdr service install</code> starts it at every login (launchd on macOS, systemd on Linux).</li>
-                <li><b>Phone:</b> open Settings › Phone in wherdr: one click publishes it on your tailnet, then a QR code once the address answers.</li>
-                <li><b>Stuck?</b> <code>wherdr doctor</code> checks Node, Herdr and its socket, the port and the service. Also: <code>wherdr start</code>, <code>stop</code>, <code>status</code>, <code>logs</code>.</li>
-              </ol>
-            </div>
-
-            <div v-show="tab === 'one'" id="panel-one" role="tabpanel" aria-labelledby="tab-one" class="panel">
+            <div class="panel one">
               <InstallCommand :command="INSTALL_COMMAND" />
               <InstallTerminal :demo="ONE_COMMAND_DEMO" />
-              <ol class="steps">
-                <li><b>Run it</b> as the user who runs Herdr.</li>
-                <li><b>Open</b> <code>http://localhost:7683</code> on that machine.</li>
-                <li><b>Phone:</b> <code>tailscale serve --bg --https=7683 http://127.0.0.1:7683</code>, put the address in <code>APP_URL</code>, install the app from the browser and enable notifications.</li>
-                <li><b>Lock it:</b> Settings → Security → Enable passkey lock.</li>
-              </ol>
+              <p class="prereq">
+                Needs <a href="https://herdr.dev" target="_blank" rel="noopener">Herdr</a> 0.9.1+ <span class="sep" aria-hidden="true">·</span> macOS or Linux <span class="sep" aria-hidden="true">·</span> phone through <a href="https://tailscale.com/download" target="_blank" rel="noopener">Tailscale</a>.
+                <a :href="`${REPO}#other-private-networks`" target="_blank" rel="noopener">Other private networks</a>.
+              </p>
             </div>
 
-            <div v-show="tab === 'agent'" id="panel-agent" role="tabpanel" aria-labelledby="tab-agent" class="panel">
-              <InstallCommand :command="AGENT_PROMPT" prompt="›" what="prompt" wrap />
-              <p class="cell-text">Not sure which setup fits? Paste this into Claude Code, Codex, omp or any coding agent running on the machine that runs Herdr. It reads <a href="/agent.md" target="_blank">our setup guide for agents</a>, asks whether you want your phone, an always-on server or several machines, then installs step by step — asking before Docker, Tailscale or sudo, and never exposing wherdr to the Internet.</p>
+            <p class="or" aria-hidden="true"><span>or</span></p>
+
+            <div class="panel agent">
+              <p class="label agent-label"><UIcon name="i-lucide-sparkles" class="size-3.5" /> Ask your AI agent</p>
+              <p class="agent-text">Paste this into Claude Code, Codex or any coding agent: it installs and sets up wherdr for you.</p>
+              <InstallCommand :command="AGENT_PROMPT" prompt="›" what="prompt" wrap big />
+              <p class="agent-note">It follows <a href="/agent.md" target="_blank">our setup guide for agents</a>: asks before installing anything, sets up your phone over Tailscale, never exposes wherdr to the Internet.</p>
             </div>
 
-            <div v-show="tab === 'docker'" id="panel-docker" role="tabpanel" aria-labelledby="tab-docker" class="panel">
-              <InstallCommand :command="DOCKER_COMMANDS.join('\n')" what="commands" wrap />
-              <InstallTerminal :demo="DOCKER_DEMO" />
-              <p class="cell-text">On Linux, with Docker Compose v2 and Herdr running. Adjust <code>PUID</code>, <code>PGID</code> and <code>APP_URL</code> in <code>.env</code> if needed, then <code>docker compose up -d</code> again.</p>
-            </div>
+            <details class="others">
+              <summary>
+                <span class="others-title">Other ways</span>
+                <span class="others-list">Package managers · Herdr plugin · Docker</span>
+                <UIcon name="i-lucide-chevron-down" class="others-chev size-4" />
+              </summary>
+              <div class="tabs" role="tablist" aria-label="Other installation methods">
+                <button v-for="t in installTabs" :id="`tab-${t.id}`" :key="t.id" type="button" role="tab" class="tab" :aria-label="t.label" :aria-selected="tab === t.id" :aria-controls="`panel-${t.id}`" @click="tab = t.id">
+                  <span class="tab-long">{{ t.label }}</span><span class="tab-short" aria-hidden="true">{{ t.short }}</span>
+                </button>
+              </div>
 
-            <div v-show="tab === 'mac'" id="panel-mac" role="tabpanel" aria-labelledby="tab-mac" class="panel">
-              <InstallCommand :command="MAC_COMMANDS.join('\n')" what="commands" wrap />
-              <InstallTerminal :demo="MAC_DEMO" />
-              <p class="cell-text">On macOS (or Linux) with Node.js 22 and Herdr running. Docker Desktop cannot reach Herdr's Unix socket on macOS, so wherdr runs natively there. Keep it running with launchd, tmux or your usual service manager.</p>
-            </div>
+              <div v-show="tab === 'pm'" id="panel-pm" role="tabpanel" aria-labelledby="tab-pm" class="panel">
+                <div class="pills" role="radiogroup" aria-label="Package manager">
+                  <button v-for="p in managers" :key="p.id" type="button" role="radio" class="pill" :aria-checked="pm === p.id" @click="pm = p.id">{{ p.label }}</button>
+                </div>
+                <template v-if="pm === 'brew'">
+                  <InstallCommand :command="BREW_COMMANDS.join('\n')" what="commands" wrap />
+                  <ol class="steps">
+                    <li><b>Install</b> on the machine that runs Herdr, macOS or Linux. The first install also brings Homebrew's Node.js; the package is prebuilt, nothing compiles.</li>
+                    <li><b>Start it:</b> <code>brew services start wherdr</code> runs it now and at every login; <code>wherdr open</code> opens the setup guide.</li>
+                    <li><b>Update:</b> <code>brew upgrade wherdr</code>, then <code>brew services restart wherdr</code>. Stuck? <code>wherdr doctor</code>.</li>
+                  </ol>
+                </template>
+                <template v-if="runner">
+                  <InstallCommand :command="runner.run" />
+                  <ol class="steps">
+                    <li><b>Try it</b> on the machine that runs Herdr, macOS or Linux, with Node.js 22{{ pm === 'bunx' ? ' or Bun' : '' }}. The package is prebuilt: nothing compiles. Open <code>http://localhost:7683</code>.</li>
+                    <li><b>Keep it:</b> <code>{{ runner.keep }}</code>, then <code>wherdr service install</code> starts it at every login.</li>
+                    <li><b>Stuck?</b> <code>wherdr doctor</code> checks Node, Herdr and its socket, the port and the service.</li>
+                  </ol>
+                </template>
+              </div>
+
+              <div v-show="tab === 'plugin'" id="panel-plugin" role="tabpanel" aria-labelledby="tab-plugin" class="panel">
+                <InstallCommand :command="PLUGIN_COMMAND" />
+                <ol class="steps">
+                  <li><b>Run it</b> on the machine that runs Herdr (≥ 0.9.1): what the one command does, minus its checks. It installs wherdr in <code>~/wherdr</code> (Docker on Linux when available, Node.js 22 otherwise; no sudo), starts it and, the first time, opens its setup guide.</li>
+                  <li><b>Press <code>prefix+i</code></b> in Herdr: the wherdr panel — start, stop, log, update, phone.</li>
+                </ol>
+              </div>
+
+              <div v-show="tab === 'docker'" id="panel-docker" role="tabpanel" aria-labelledby="tab-docker" class="panel">
+                <InstallCommand :command="DOCKER_INSTALL_COMMAND" />
+                <p class="cell-text">Linux server, without the plugin: the script writes <code>docker-compose.yml</code> and <code>.env</code> to <code>~/wherdr</code>, pulls the published image and starts it. A <code>wherdr</code> container managed from another folder is never touched. Or entirely by hand:</p>
+                <InstallCommand :command="DOCKER_COMMANDS.join('\n')" what="commands" wrap />
+                <InstallTerminal :demo="DOCKER_DEMO" />
+              </div>
+            </details>
 
             <p class="install-foot">
               Full guide, configuration and troubleshooting in the <a :href="`${REPO}#installation`" target="_blank" rel="noopener">README</a>.
@@ -408,15 +396,34 @@ const faq = [
 
 /* ----------------------------------------------------------- install */
 .install { max-width: 920px; }
-.recommend { display: grid; gap: 14px; margin: 0 0 18px; padding: 22px 24px; border: 1px solid var(--line-strong); background: var(--surface); box-shadow: inset 2px 0 0 var(--accent); }
-.recommend .label { margin: 0; }
-.recommend-text { margin: 0; color: var(--muted); max-width: 70ch; }
-.recommend-text b { color: var(--text); }
-.recommend-steps { justify-self: start; display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: var(--text); cursor: pointer; font: 600 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 4px; }
-.prereq { margin: 0 0 18px; color: var(--muted); font-size: 14px; }
-.prereq a { color: var(--text); text-decoration-color: var(--accent); text-underline-offset: 3px; }
-.tabs { display: flex; flex-wrap: wrap; border: 1px solid var(--line); border-bottom: 0; }
-.tab { flex: 1 1 auto; padding: 14px 18px; border: 0; border-right: 1px solid var(--line); background: var(--bg-2); color: var(--muted); cursor: pointer; font: 600 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; text-align: left; }
+.prereq { margin: 0; color: var(--muted); font-size: 14px; }
+.prereq .sep { color: var(--accent); padding: 0 4px; }
+.prereq a, .steps a, .agent-note a { color: var(--text); text-decoration-color: var(--accent); text-underline-offset: 3px; }
+.or { display: flex; align-items: center; gap: 16px; margin: 28px 0; font: 600 12px/1 var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--dim); }
+.or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.panel.agent { gap: 16px; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: color-mix(in srgb, var(--accent) 5%, var(--surface)); box-shadow: inset 0 2px 0 var(--accent); }
+.agent-label { display: inline-flex; align-items: center; gap: 8px; margin: 0; color: var(--accent); }
+.agent-text { margin: 0; font: 700 clamp(18px, 2.2vw, 22px)/1.35 var(--display); color: #fff; letter-spacing: -0.01em; max-width: 52ch; }
+.agent-note { margin: 0; color: var(--muted); font-size: 14px; }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { padding: 8px 12px; border: 1px solid var(--line); background: var(--bg-2); color: var(--muted); cursor: pointer; font: 600 12px/1 var(--mono); letter-spacing: .06em; }
+.pill:hover { color: var(--text); }
+.pill[aria-checked="true"] { border-color: var(--accent); color: #fff; background: color-mix(in srgb, var(--accent) 12%, var(--bg-2)); }
+.tab-short { display: none; }
+.others { margin-top: 28px; border: 1px solid var(--line); }
+.others > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 16px 20px; cursor: pointer; list-style: none; background: var(--bg-2); }
+.others > summary::-webkit-details-marker { display: none; }
+.others > summary:hover { background: var(--surface); }
+.others > summary:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.others-title { font: 600 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: #fff; }
+.others-list { flex: 1 1 auto; font: 12px/1.4 var(--mono); color: var(--dim); }
+.others-chev { color: var(--muted); transition: transform .2s; }
+.others[open] > summary { border-bottom: 1px solid var(--line); }
+.others[open] .others-chev { transform: rotate(180deg); }
+.others .tabs { border-left: 0; border-right: 0; border-top: 0; border-bottom: 1px solid var(--line); }
+.others .panel { border: 0; }
+.tabs { display: flex; border: 1px solid var(--line); border-bottom: 0; }
+.tab { flex: 1 1 0; min-width: 0; padding: 14px 18px; border: 0; border-right: 1px solid var(--line); background: var(--bg-2); color: var(--muted); cursor: pointer; font: 600 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; text-align: left; white-space: nowrap; }
 .tab:last-child { border-right: 0; }
 .tab[aria-selected="true"] { background: var(--surface); color: #fff; box-shadow: inset 0 2px 0 var(--accent); }
 .panel { padding: 28px; border: 1px solid var(--line); background: var(--surface); display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
@@ -466,7 +473,11 @@ const faq = [
   .foot-in { grid-template-columns: minmax(0, 1fr); }
   .foot-links { justify-content: flex-start; }
   .hv-phone { width: 38%; right: 2px; }
-  .tab { flex: 1 1 100%; border-right: 0; border-bottom: 1px solid var(--line); }
+  .tab { padding: 14px 10px; text-align: center; letter-spacing: .06em; }
+  .tab-long { display: none; }
+  .tab-short { display: inline; }
+  .others-chev { margin-left: auto; }
+  .others-list { order: 3; flex-basis: 100%; }
   .panel { padding: 20px; }
 }
 </style>

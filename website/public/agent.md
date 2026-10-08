@@ -58,12 +58,11 @@ Then pick the path:
 
 | Answers | Path |
 | --- | --- |
-| This computer only, macOS | [A. macOS, no Docker](#a-macos-no-docker) |
-| This computer only, Linux | [B. Linux with Docker](#b-linux-with-docker) (or A if the user prefers Node.js) |
-| Phone, always-on Linux machine | [B](#b-linux-with-docker) on that machine, then [C. Phone over Tailscale](#c-phone-over-tailscale) |
-| Phone, no always-on machine, macOS | [A](#a-macos-no-docker), then [C](#c-phone-over-tailscale) (works only while the Mac is awake) |
-| Phone, no always-on machine, Linux | [B](#b-linux-with-docker), then [C](#c-phone-over-tailscale) (works only while the computer is awake) |
+| This computer only (macOS or Linux) | [A. The one command](#a-the-one-command) |
+| Phone, always-on Linux machine | [A](#a-the-one-command) on that machine, then [C. Phone over Tailscale](#c-phone-over-tailscale) |
+| Phone, no always-on machine | [A](#a-the-one-command), then [C](#c-phone-over-tailscale) (works only while the computer is awake) |
 | Several machines | One of the above on **one** machine (the always-on one if any), then [D. Several machines](#d-several-machines) |
+| The user wants Docker Compose and no Herdr plugin (Linux) | [B. Docker by hand](#b-docker-by-hand) instead of A |
 
 Do not mention Tailscale or phones to a user who only wants this computer: skip C.
 
@@ -78,46 +77,56 @@ Then install the integrations of the agents the user uses, on every machine that
 (`herdr integration install claude|codex|omp`). Without them wherdr shows only the terminal of
 those agents, not the conversation; agents started before need a restart.
 
-## A. macOS, no Docker
+## A. The one command
 
-Docker Desktop cannot reach Herdr's Unix socket on macOS, so wherdr runs natively there (this
-also works on Linux). Needs Git and Node.js 22: check `git --version` and `node --version`. If
-one is missing, ask, then propose the official installer (https://nodejs.org) or Homebrew if the
-user already has it; on macOS, `git` comes with the Xcode command line tools.
-
-```sh
-git clone https://github.com/afloury/wherdr.git && cd wherdr
-npm ci && npm run build && npm start    # then open http://localhost:7683
-```
-
-`npm start` stays in the foreground: wherdr stops when that terminal closes or on Ctrl+C. Fine
-for a first try. To keep it running, ask the user: leave a terminal open, or a background
-service (on macOS a launchd user agent running `npm start` in the clone, on Linux a systemd user
-unit). Write the service file only after they agree, and tell them how to stop it.
-
-**Check:** `curl -fsS http://127.0.0.1:7683` returns HTML; the user opens
-`http://localhost:7683` in a browser on that computer and sees their agents.
-
-Update later: stop wherdr, `git pull && npm ci && npm run build`, then start it again.
-
-## B. Linux with Docker
-
-Needs Docker Engine with Compose v2 (`docker compose version`). If Docker is missing, ask before
-installing it (https://docs.docker.com/engine/install/). If `docker info` fails with a
-permission error, the user's account needs the `docker` group (the installer stops and says so):
-that is a `sudo` command (`sudo usermod -aG docker $(id -un)`), so ask first; then the user must
-log out and back in (or reboot) before running the installer again.
-
-The one-line installer does the whole setup (folder `~/wherdr`, `docker-compose.yml`, `.env`,
-data folders, image pull, start). It never uses sudo and asks before replacing a file:
+On macOS and Linux, one command installs the **wherdr Herdr plugin**
+(`herdr plugin install afloury/wherdr`): wherdr in `~/wherdr`, started now and by Herdr's startup hook, its setup guide
+opened in the browser, and a Herdr key (`prefix+i` unless taken) for its panel. It never uses
+sudo and never stops or replaces a wherdr that already runs:
 
 ```sh
 curl -fsSL https://wherdr.dev/install | sh
 ```
 
-Read it first if the user wants: https://wherdr.dev/install. Settings, as environment variables:
-`WHERDR_DIR` (install folder), `WHERDR_PORT` (port, default 7683), `WHERDR_YES=1` (answer yes
-to every question; only with the user's consent).
+Read it first if the user wants: https://wherdr.dev/install. What it needs, and does when
+something is missing:
+
+- **Herdr ≥ 0.9.1**: without it, the script stops with the link to https://herdr.dev.
+- **Node.js 22 or Bun** (macOS always: Docker Desktop cannot reach Herdr's socket). On a Mac
+  without it, the script offers `brew install node` when Homebrew is there (it asks first);
+  otherwise it stops and links https://nodejs.org. Ask the user before installing Node.js.
+- **Linux**: Docker Compose v2 usable by the user is picked first (the published image), Node.js
+  otherwise. `WHERDR_MODE=native` forces Node.js.
+- **No screen or over SSH**: no browser; it prints the local address, an `ssh -L` tunnel and the
+  phone steps (`wherdr phone`).
+
+Settings, as environment variables: `WHERDR_DIR` (install folder), `WHERDR_PORT` (port, default
+7683), `WHERDR_YES=1` (answer yes to every question; only with the user's consent), e.g.
+`curl -fsSL https://wherdr.dev/install | WHERDR_PORT=7684 sh`.
+
+**Check:** the script ends with `wherdr is running → http://localhost:7683`;
+`curl -fsS http://127.0.0.1:7683` returns HTML; the user opens `http://localhost:7683` in a
+browser on that computer and sees their agents. The panel in Herdr (`prefix+i`) shows the state
+and the log (**L**).
+
+Update later: run the command again (it offers the update), or **U** in the panel.
+
+## B. Docker by hand
+
+Linux only, when the user wants Docker Compose without the Herdr plugin. Needs Docker Engine with
+Compose v2 (`docker compose version`). If Docker is missing, ask before installing it
+(https://docs.docker.com/engine/install/). If `docker info` fails with a permission error, the
+user's account needs the `docker` group (the installer stops and says so): that is a `sudo`
+command (`sudo usermod -aG docker $(id -un)`), so ask first; then the user must log out and back
+in (or reboot) before running the installer again.
+
+The installer does the whole setup (folder `~/wherdr`, `docker-compose.yml`, `.env`, data
+folders, image pull, start). It asks before replacing a file, and never touches a `wherdr`
+container managed from another folder:
+
+```sh
+curl -fsSL https://wherdr.dev/install | WHERDR_MODE=docker sh
+```
 
 By hand instead (same result), from https://github.com/afloury/wherdr#recommended-always-on-server--tailscale:
 
@@ -159,13 +168,15 @@ HTTPS address), then continue at step 4. Headscale does not support `tailscale s
 
    **Check:** `tailscale serve status` shows the `https://<machine>.<tailnet>.ts.net:7683/`
    address. Never use `tailscale funnel` (public).
-3. wherdr is already running with a local `APP_URL`; now switch it to that HTTPS address and
-   restart:
-   - Docker: in `~/wherdr/.env` (or the clone's `.env`), set
+3. wherdr is already running with a local `APP_URL`; now switch it to that HTTPS address:
+   - Installed with the one command (A): open
+     `http://localhost:7683/#/settings?section=phone` on the wherdr machine (the setup guide's
+     Phone step is the same page) and paste the address of step 2: wherdr checks that it
+     answers, saves it as `APP_URL` and shows its QR code. `wherdr phone` (key **P** of the
+     panel) prints the same state in the terminal.
+   - Docker by hand (B): in `~/wherdr/.env` (or the clone's `.env`), set
      `APP_URL=https://<machine>.<tailnet>.ts.net:7683/` with the exact address of step 2, then
      `docker compose up -d`.
-   - No Docker: stop wherdr and start it with
-     `APP_URL=https://<machine>.<tailnet>.ts.net:7683/ npm start` (or set it in the service).
 
    Without an HTTPS `APP_URL`, wherdr runs but push notifications are off (it logs a warning).
 4. On the phone, open the address:
@@ -174,7 +185,8 @@ HTTPS address), then continue at step 4. Headscale does not support `tailscale s
    - **Android**: in **Chrome**, menu → **Install app**, then Settings → **Enable notifications**.
 5. **Passkey lock**, right away: on the phone, Settings → Security → **Enable passkey lock**. The
    first passkey asks for a bootstrap token: find the line "First passkey: bootstrap token …"
-   in the server output (`docker compose logs` with Docker, the `npm start` output otherwise)
+   in the server output (`~/wherdr/wherdr.log` or key **L** of the panel with the one command
+   on Node.js, `docker compose logs` with Docker)
    and give the token to the user. It changes at every restart, so take it from the latest
    start. Then add a passkey on each other device (Settings → Security → **Add this device**).
 
