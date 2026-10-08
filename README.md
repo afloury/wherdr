@@ -466,8 +466,9 @@ Herdr can also install wherdr itself, on Linux and macOS, with Herdr ≥ 0.9.1. 
    (`✓ wherdr is running → http://localhost:7683`) and, at the first install on a computer with a
    screen, opens the setup guide in your browser (`open` on macOS, `xdg-open` on Linux with a
    display; a headless server just prints `http://localhost:7683/#/setup`). Updates open nothing.
-2. In Herdr, run the **wherdr** action: a panel with the state, **O** Open wherdr and **P** Set
-   up my phone.
+2. In Herdr, press **prefix+i** (`ctrl+b` then `i` with the default prefix): the **wherdr** panel,
+   with the state, **O** Open wherdr and **P** Set up my phone. The install prints the key it
+   chose (see [Panel key](#panel-key)).
 3. **P** opens Settings › Phone in the browser: **Make wherdr reachable from my phone** publishes
    it on your tailnet, then the QR code shows once the address answers. Scan it with the iPhone,
    then Share → Add to Home Screen.
@@ -490,8 +491,43 @@ The **wherdr** panel (a Herdr popup) shows ● running / ○ stopped, the local 
 address (with its QR code once it answers), and two main keys: **O** Open wherdr, **P** Set up my
 phone (Settings › Phone in the browser). The other keys stay as a fallback: **S** start, **X**
 stop, **R** restart, **L** log (Ctrl+C to go back), **U** update (reinstalls the plugin, or pulls
-the image in Docker mode), **A** auto-start at login on/off, **Q** quit. The **wherdr: open in
-the browser** action is the only other one.
+the image in Docker mode), **A** auto-start at login on/off, **Q** quit.
+
+#### Panel key
+
+Herdr plugins have no menu of their own: an action runs from a key or from the command line. The
+install therefore appends one marked block to Herdr's `config.toml` (`HERDR_CONFIG_PATH`, or
+`~/.config/herdr/config.toml`):
+
+```toml
+# wherdr: key that opens the wherdr panel (remove this block to unbind it)
+[[keys.command]]
+key = "prefix+i"
+type = "plugin_action"
+command = "afloury.wherdr.panel"
+description = "wherdr"
+# end wherdr
+```
+
+It takes the first key of `prefix+i`, `prefix+u`, `prefix+y`, `prefix+m`, `prefix+alt+w` that
+neither Herdr's default keymap nor your config already binds, and prints
+`Press prefix+i in Herdr to open the wherdr panel.` Your own lines are never changed. Nothing is
+added when a key already runs the panel, when every candidate is taken, or when
+`herdr config check` would reject the result. The install then runs `herdr server reload-config`:
+keys apply without restarting Herdr. Pick another key by editing the block, or bind the panel
+yourself (`command = "afloury.wherdr.panel"`) before installing.
+
+Without a key: `herdr plugin action invoke panel --plugin afloury.wherdr`. The plugin's actions:
+
+| Action | What it does |
+|---|---|
+| `panel` | The **wherdr** panel (a popup) |
+| `open` | Opens wherdr in the browser |
+
+Up to 1.2.0 the panel action was called `wherdr`: change a key bound to `afloury.wherdr.wherdr` to
+`afloury.wherdr.panel` (Herdr has no action aliases; the install warns about such a key and
+leaves it alone). Remove the block with `sh scripts/herdr-plugin.sh key uninstall` in the plugin
+folder (`~/.config/herdr/plugins/github/wherdr-…`), or delete the lines from `# wherdr:` to `# end wherdr`.
 
 Auto-start: the plugin's startup hook starts wherdr each time the Herdr server starts, which is
 all wherdr needs (it drives Herdr). Key **A** adds a login service as well (a LaunchAgent on
@@ -519,7 +555,8 @@ output of the install and of the startup hook is in the plugin logs:
 `herdr plugin log list --plugin afloury.wherdr`.
 
 **Uninstall.** Herdr has no uninstall hook, so remove wherdr in this order: in the panel, **A**
-(if the login service is on) and **X**; then
+(if the login service is on) and **X**; in the plugin folder, `sh scripts/herdr-plugin.sh key
+uninstall` (the panel key) and `sh scripts/herdr-plugin.sh skill uninstall`; then
 `herdr plugin uninstall afloury.wherdr && rm -rf ~/wherdr` (`~/wherdr/data` holds your passkeys
 and push keys).
 

@@ -16,10 +16,13 @@ command = ["sh", "scripts/herdr-plugin.sh", "build"]
 [[startup]]
 command = ["sh", "scripts/herdr-plugin.sh", "start"]
 
-# The one action: a popup with the state, the addresses, the phone QR code
+# The main action: a popup with the state, the addresses, the phone QR code
 # and a key per command (start, stop, restart, open, log, update, auto-start).
+# The install binds it to a free Herdr key (scripts/herdr-plugin.sh key).
+# Named "wherdr" up to 1.2.0: a key bound to afloury.wherdr.wherdr must be
+# changed to afloury.wherdr.panel (Herdr manifests have no action aliases).
 [[actions]]
-id = "wherdr"
+id = "panel"
 title = "wherdr"
 contexts = ["global", "workspace"]
 command = ["sh", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin \"$HERDR_PLUGIN_ID\" --entrypoint panel --focus"]

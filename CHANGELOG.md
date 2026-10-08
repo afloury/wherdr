@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Herdr key for the wherdr panel**: the plugin install appends one marked `[[keys.command]]`
+  block to Herdr's `config.toml` on the first free key of `prefix+i`, `prefix+u`, `prefix+y`,
+  `prefix+m`, `prefix+alt+w` (never one Herdr or your config already binds), reloads Herdr's
+  config and prints `Press prefix+i in Herdr to open the wherdr panel.` The panel shows the key;
+  `sh scripts/herdr-plugin.sh key uninstall` removes the block.
+
 - **Other private networks** (README): wherdr works with any private network that gives it an
   HTTPS address with a valid certificate. Headscale, NetBird, ZeroTier and WireGuard use a
   reverse proxy on the private address (Caddy, certificate from the DNS challenge) and `APP_URL`;
@@ -98,6 +104,9 @@ All notable changes to this project are documented here. The format follows
   Continue as a project…, Pause this project… and Check herdr-projects setup.
 
 ### Changed
+
+- **Plugin action renamed** `wherdr` → `panel` (`afloury.wherdr.panel`). Herdr has no action
+  aliases: change a key bound to `afloury.wherdr.wherdr`; the install warns about one.
 
 - Quoted replies as tokens in the field are marked experimental and are now off by default on a
   computer too (Settings › Conversation › Quoted replies).

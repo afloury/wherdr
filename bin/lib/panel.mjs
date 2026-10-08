@@ -1,4 +1,4 @@
-// `wherdr panel`: the Herdr plugin's "wherdr" action opens it in a popup.
+// `wherdr panel`: the Herdr plugin's "panel" action opens it in a popup.
 // The state, and two main keys: O opens wherdr, P opens its phone setup
 // (Settings › Phone) in the browser. The other commands stay as a fallback,
 // in a quieter line. Refreshed every few seconds.
@@ -48,6 +48,8 @@ export async function gather(ctx, env = process.env, net = null) {
     version: VERSION,
     mode,
     plugin: Boolean(env.WHERDR_CONTROL),
+    // The Herdr key bound to this panel (scripts/herdr-plugin.sh key), if any.
+    hotkey: env.WHERDR_HOTKEY || '',
     runtime: process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.versions.node}`,
     url: ctx.url,
     port: ctx.port,
@@ -94,6 +96,7 @@ export function render(state, qrText = '') {
   out.push('')
   out.push(`  ${c.dim(OTHER_KEYS.map(([k, label]) => `${k.toUpperCase()} ${label}`).join('  '))}`)
   out.push(`  ${c.dim(`${state.mode === 'docker' ? 'Docker' : `native · ${state.runtime}`} · auto-start ${autostart(state)}`)}`)
+  if (state.hotkey) out.push(`  ${c.dim(`Herdr key ${state.hotkey} opens this panel`)}`)
   out.push(`  ${c.dim(removeHint(state))}`)
   return out.join('\n')
 }
@@ -109,9 +112,12 @@ export function removeHint(state) {
   if (!state.plugin) return 'Remove: wherdr service uninstall, then npm rm -g wherdr'
   const dir = state.dir === path.join(os.homedir(), 'wherdr') ? '~/wherdr' : state.dir
   const id = process.env.HERDR_PLUGIN_ID || 'wherdr'
+  let control = []
+  try { control = JSON.parse(process.env.WHERDR_CONTROL || '[]') } catch {}
+  const key = state.hotkey && control.length ? `${control.join(' ')} key uninstall, then ` : ''
   return state.service.installed
-    ? `Remove: A (login service), X, then herdr plugin uninstall ${id} && rm -rf ${dir}`
-    : `Remove: X, then herdr plugin uninstall ${id} && rm -rf ${dir}`
+    ? `Remove: A (login service), X, then ${key}herdr plugin uninstall ${id} && rm -rf ${dir}`
+    : `Remove: X, then ${key}herdr plugin uninstall ${id} && rm -rf ${dir}`
 }
 
 async function qr(text) {
