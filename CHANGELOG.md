@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-10-08
+
 ### Added
 
 - **One install command for macOS and Linux**: `curl -fsSL https://wherdr.dev/install | sh` now
@@ -31,7 +33,7 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 
 - The agent list header shows the wherdr server version next to Herdr's
-  (`WHERDR 1.3.0 · HERDR 0.9.3`); a tap opens Settings › About.
+  (`WHERDR 1.3.1 · HERDR 0.9.3`); a tap opens Settings › About.
 - The plugin button left the agent list header: with a single machine, plugin actions are in the
   **…** menu of the machine's session row. wherdr's own plugin actions are no longer listed, and
   actions that open a pane or popup in Herdr say **Opens in Herdr**.
