@@ -16,9 +16,21 @@ All notable changes to this project are documented here. The format follows
   Claude's `<pasted_content>` blocks are recognized; for Codex and omp, the texts pasted from
   this device are.
 - **Long typed messages fold** after about 12 lines, with a fade and **Show more / Show less**.
+- **Continue on the tailnet address**: a passkey only works on the address it was created on.
+  When wherdr's tailnet address is published and answers, the setup guide opened on `localhost`
+  shows a **Continue on <machine>.<tailnet>.ts.net** button that reopens it at the same step
+  there (`#/setup?step=…`), and the passkey card (guide and Settings › Security) sends the lock
+  to that address. No automatic redirect. The Herdr plugin (first install, **Open**),
+  `wherdr open` and the installer's summary use that address too when it is already published,
+  and `wherdr phone` makes wherdr adopt an address published by hand (`APP_URL`).
 
 ### Changed
 
+- **Setup guide for agents** (`https://wherdr.dev/agent.md`): a third of its size, so fetch
+  tools return it whole (it also says how to read the raw file). The agent detects what is
+  installed before asking (wherdr, herdr-projects, Tailscale), sets the phone address through
+  wherdr instead of editing `plugin.env`, offers no login service to a plugin or Homebrew
+  install, and finishes on the tailnet address: passkey with the bootstrap token, then the phone.
 - **Settings › Appearance › Theme**: the theme list is split into three titled sections —
   wherdr (Titanium first), Agents (Claude Code, Codex, omp, omp Light) and Herdr (Follow Herdr,
   herdr.dev and Herdr's built-in themes). Each theme carries its section in `app/utils/themes.ts`.

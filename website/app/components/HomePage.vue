@@ -272,7 +272,7 @@ const faq = [
               <p class="label agent-label"><UIcon name="i-lucide-sparkles" class="size-3.5" /> Ask your AI agent</p>
               <p class="agent-text">Paste this into Claude Code, Codex or any coding agent: it installs and sets up wherdr for you.</p>
               <InstallCommand :command="AGENT_PROMPT" prompt="›" what="prompt" wrap big />
-              <p class="agent-note">It follows <a href="/agent.md" target="_blank">our setup guide for agents</a>: asks before installing anything, sets up your phone over Tailscale, never exposes wherdr to the Internet.</p>
+              <p class="agent-note">It follows <a href="/agent.md" target="_blank">our setup guide for agents</a>: checks what you already have, asks before installing anything, sets up your phone over Tailscale, never exposes wherdr to the Internet.</p>
             </div>
 
             <div class="as-app">
