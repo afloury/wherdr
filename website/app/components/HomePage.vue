@@ -111,6 +111,7 @@ const faq = [
             <InstallCommand class="hero-cmd" />
             <div class="hero-ctas">
               <a class="btn primary" href="#install">Install guide <UIcon name="i-lucide-arrow-right" class="size-4" /></a>
+              <a class="btn" href="/demo/"><UIcon name="i-lucide-play" class="size-4" /> Try it in your browser — no install</a>
               <a class="btn" :href="REPO" target="_blank" rel="noopener"><GithubMark /> Star on GitHub</a>
             </div>
             <p class="hero-note label">macOS and Linux · needs Herdr ≥ 0.9.1 · phone through Tailscale</p>

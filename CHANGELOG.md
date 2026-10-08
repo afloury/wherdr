@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Browser demo at [wherdr.dev/demo](https://wherdr.dev/demo/)**: the real app, built with
+  `npm run build:demo` (static, no server), on scripted agents that run in the page — two
+  projects, Claude Code, Codex and omp in different states, a split with a dev server, the Project
+  panel, diffs, terminals. Sending a message gets a scripted answer, sometimes after an
+  Approve / Deny card. Nothing runs: `fetch` and `WebSocket` are answered in the browser and every
+  other request is refused. Linked from the top of the site and of this README.
 - **Long pasted text as a card**, like Claude Desktop: a pasted log or long text (more than 12
   lines or 1,500 characters) shows as a "Pasted text · N lines" card under the message, with its
   first lines. A tap opens the whole text in a scrolling window (a sheet on the phone), in a
@@ -23,6 +29,11 @@ All notable changes to this project are documented here. The format follows
   to that address. No automatic redirect. The Herdr plugin (first install, **Open**),
   `wherdr open` and the installer's summary use that address too when it is already published,
   and `wherdr phone` makes wherdr adopt an address published by hand (`APP_URL`).
+
+### Fixed
+
+- **Project panel**: opening it with the board already loaded (reopening a coordinator) no longer
+  breaks it with "Cannot access … before initialization".
 
 ### Changed
 

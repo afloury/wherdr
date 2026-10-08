@@ -7,6 +7,7 @@ const links = [
   { label: 'Security', to: '#security' },
   { label: 'Install', to: '#install' },
   { label: 'FAQ', to: '#faq' },
+  { label: 'Demo', to: '/demo/' },
 ]
 const open = ref(false)
 </script>

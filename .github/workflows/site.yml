@@ -1,5 +1,6 @@
-# Builds the website (website/, `nuxt generate`) and deploys it to wherdr.dev as
-# Cloudflare Workers static assets (website/wrangler.jsonc).
+# Builds the website (website/, `nuxt generate`) and the browser demo (the app
+# built with VITE_WHERDR_DEMO=1, served at /demo/), and deploys both to wherdr.dev
+# as Cloudflare Workers static assets (website/wrangler.jsonc).
 # Needs the repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID;
 # without them the deploy job is skipped, not failed.
 name: site
@@ -10,6 +11,12 @@ on:
     paths:
       - 'website/**'
       - '.github/workflows/site.yml'
+      # The demo is the app itself: redeployed when the app changes.
+      - 'app/**'
+      - 'shared/**'
+      - 'nuxt.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
   workflow_dispatch:
 
 permissions:
@@ -37,8 +44,32 @@ jobs:
             echo "::notice::CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID is not set: the site is not deployed."
           fi
 
-  deploy:
+  demo:
     needs: secrets
+    if: needs.secrets.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build the demo
+        run: npm run build:demo
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: demo
+          path: .output-demo/public/
+          retention-days: 1
+
+  deploy:
+    needs: [secrets, demo]
     if: needs.secrets.outputs.ready == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -63,6 +94,11 @@ jobs:
 
       - name: Generate
         run: npm run generate
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: demo
+          path: website/.output/public/demo
 
       - name: Deploy
         # v4.1.3

@@ -12,12 +12,24 @@ npm run dev          # http://localhost:3000, hot reload
 npx vitest run       # unit and component tests
 npx nuxt typecheck   # type check (TypeScript stays on 5.x: TS 7 breaks vue-tsc)
 npm run build        # production build in .output/
+npm run build:demo   # browser demo (wherdr.dev/demo/) in .output-demo/public/
 ```
 
 Before opening a pull request, make sure `npx vitest run` and `npx nuxt typecheck` pass, and add
 tests for new logic (see [Tests](#tests) below; fixtures in `tests/fixtures/`, **never real
 conversations or personal paths**: use neutral names such as `host-a`, `laptop`, `alice`,
 `/home/user`).
+
+### The browser demo
+
+`npm run build:demo` builds the same app with `VITE_WHERDR_DEMO=1`: static files for the `/demo/`
+path, with no `server/` code and no service worker. `app/demo/plugin.client.ts` (added only to
+that build) replaces `fetch` and `WebSocket` before the app starts: `app/demo/server.ts` answers
+`/api/*` and the live state from the invented session of `app/demo/scenario.ts`, scripted turns
+included; files under `/demo/` load normally; every other request is refused. Serve the folder
+under `/demo/` to try it (for example `.output-demo/public` copied to `<root>/demo`). The site
+workflow (`.github/workflows/site.yml`) builds it and deploys it with the site. Demo content stays
+invented and in English, like the test fixtures.
 
 ## Tests
 

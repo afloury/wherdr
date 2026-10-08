@@ -9,6 +9,8 @@ computer and on your phone.</b></p>
 
 <p align="center"><a href="https://wherdr.dev"><b>wherdr.dev</b></a> · <code>curl -fsSL https://wherdr.dev/install | sh</code> · <code>herdr plugin install afloury/wherdr</code></p>
 
+<p align="center"><a href="https://wherdr.dev/demo/"><b>Try it in your browser — no install</b></a>: the real app on scripted agents, nothing runs.</p>
+
 <p align="center"><a href="https://github.com/afloury/wherdr/actions/workflows/ci.yml"><img src="https://github.com/afloury/wherdr/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a></p>
 
 ## Quick start
