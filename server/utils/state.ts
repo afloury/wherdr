@@ -20,7 +20,7 @@ import { parseWaitScreen } from './waitScreen'
 import { parseMenu, TOP } from '../../shared/menuScreen'
 import { parseClaudeActivity } from './activity'
 import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './claudeScreen'
-import { type QueueEntry, INPUT_STATES, checkQueue, isUploadLine, loadQueued, nextHeld, publicEntry, queuedDone } from './queued'
+import { type QueueEntry, INPUT_STATES, checkQueue, isUploadLine, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
 import { inputVisible } from './choices'
 import { isSlashCommand, photosOnly } from '../../shared/queuedMatch'
 import { findQueued, inputBox, msgText, unqueueClaude } from './unqueue'
@@ -458,6 +458,7 @@ export function takeBackFromClaude(p: Pane): Promise<ChatItem | null> {
     keys: async (keys) => { await herdr('pane.send_input', { pane_id: p.id, keys }) },
     chat: async () => (await transcripts.chat(p, { fresh: true })).items || [],
     sleep,
+    pending: () => (queued.get(p.id) || []).map(q => q.text),
   }).catch(() => null)
 }
 
@@ -744,9 +745,18 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
     if (pendingPrompts.has(p.id)) { p.pendingPrompt = true; flushPending(p) }
     if (queued.has(p.id)) {
       reconcileQueued(p)
-      const list = queued.get(p.id)
       // Menu, question or panel seen on the previous poll (computed below).
       const before = findPane(p.id)
+      // omp ran this "!" / "$" command (seen running on its screen): taken.
+      // The screen shows the run from then on; a run cancelled (Stop, Escape) or
+      // started before omp's first prompt never reaches the transcript.
+      const run = p.agent === 'omp' ? ompStatuses.get(p.id)?.shell : null
+      if (run) {
+        const left = queued.get(p.id)!.filter(q => q.held || q.failed || !ompRunShown(p.agent, q.text, run))
+        if (left.length) queued.set(p.id, left)
+        else queued.delete(p.id)
+      }
+      const list = queued.get(p.id)
       const menu = Boolean(before && (before.menu || before.prompt || before.screen)) || restarting(p.id)
       // omp running the user's "!" command: idle for Herdr, but busy.
       if (list && TURN.has(p.status || '')) for (const q of list) if (!q.held && !q.failed) q.turnSeen = true

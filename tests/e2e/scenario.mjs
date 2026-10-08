@@ -14,6 +14,7 @@ export const OMP_LONG_PANE = 'w2:p1'
 export const OMP_CHAT_PANE = 'w3:p1'
 export const OMP_IMAGE_PANE = 'w4:p1'
 export const OMP_APPROVAL_PANE = 'w5:p1'
+export const OMP_SHELL_PANE = 'w6:p1'
 
 // Unique markers of the long omp transcript (asserted on by the specs).
 export const LONG_WORD = `Pneumono${'ultramicroscopicsilicovolcano'.repeat(12)}coniosis`
@@ -127,7 +128,8 @@ export function writeScenario(home) {
   const demo = path.join(home, 'projects/demo')
   const screens = path.join(home, 'projects/screens')
   const approval = path.join(home, 'projects/approval')
-  for (const d of [api, docs, demo, screens, approval]) fs.mkdirSync(d, { recursive: true })
+  const scratch = path.join(home, 'projects/scratch')
+  for (const d of [api, docs, demo, screens, approval, scratch]) fs.mkdirSync(d, { recursive: true })
 
   const claudeSid = '00000000-0000-4000-8000-000000000001'
   claudeTranscript(home, api, claudeSid, now)
@@ -166,5 +168,7 @@ export function writeScenario(home) {
     { id: 'w3', label: 'demo', panes: [{ id: OMP_CHAT_PANE, agent: 'omp', status: 'idle', cwd: demo, session: chatFile, transcript: chatFile, reply: 'Got it.' }] },
     { id: 'w4', label: 'screens', panes: [{ id: OMP_IMAGE_PANE, agent: 'omp', status: 'idle', cwd: screens, session: imageFile }] },
     { id: 'w5', label: 'approval', panes: [{ id: OMP_APPROVAL_PANE, agent: 'omp', status: 'blocked', cwd: approval, session: approvalFile }] },
+    // A fresh omp (no transcript yet) that runs "!" commands.
+    { id: 'w6', label: 'scratch', panes: [{ id: OMP_SHELL_PANE, agent: 'omp', status: 'idle', cwd: scratch, shell: true }] },
   ]
 }

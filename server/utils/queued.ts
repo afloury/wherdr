@@ -15,6 +15,17 @@ export const bashText = (t: string) => String(t || '').replace(/^\s*(?:!!?|\$\$?
 // to the transcript when the next prompt starts: once that turn is over, the
 // run is taken even though the transcript does not show it yet.
 export const isOmpRun = (agent: string | null | undefined, text: string) => agent === 'omp' && /^\s*(?:!|\$\$?\s)/.test(String(text || ''))
+// The run omp shows on screen ("Running…", see parseOmpShell) is this message's
+// command: omp took it. A run cancelled (Stop, Escape) or finished while omp
+// rests may never reach the transcript (omp 18.6 writes none before the first
+// prompt of a session, and only "You ran" blocks with the next prompt).
+export function ompRunShown(agent: string | null | undefined, text: string, shell: { command: string, python?: boolean } | null | undefined): boolean {
+  if (!shell || !isOmpRun(agent, text) || /^\s*\$/.test(text) !== Boolean(shell.python)) return false
+  // Without spaces: the screen wraps a long command, even mid-word, and may cut it.
+  const want = bashText(text).replace(/\s+/g, '').toLowerCase().slice(0, 80)
+  const shown = String(shell.command || '').replace(/\s+/g, '').toLowerCase().slice(0, 80)
+  return Boolean(want && shown) && (shown.startsWith(want) || (shown.length >= 8 && want.startsWith(shown)))
+}
 
 // Taken by the agent = a user message in the transcript, written after
 // sending, that contains the start of the text (Claude may group several

@@ -16,6 +16,16 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **Stop on a Claude Code `!` command**: Claude puts the cancelled command back into its input
+  field (shell mode), which kept every following message "Queued · will be sent when the agent's
+  input is free". From the conversation, Stop now empties Claude's field when it holds exactly
+  the command wherdr sent, and the command comes back into wherdr's field, like an interrupted
+  prompt.
+
+- **Stop on an omp `!` / `$` command**: the cancelled command no longer comes back as
+  "Queued · sending…" (then "Not sent"). omp writes nothing for it before the first prompt of a
+  session; seeing the run on omp's screen is now enough to take the message off the queue.
+
 - **`wherdr` command on a Homebrew install**: `status` and `doctor` show the Homebrew service
   (`brew services`) instead of "started another way" / "not installed"; `logs` reads its log
   (`$(brew --prefix)/var/log/wherdr.log`); `start`, `stop`, `restart` and `service install` point

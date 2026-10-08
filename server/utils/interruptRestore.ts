@@ -54,28 +54,38 @@ export interface RestoreDeps {
   keys: (keys: string[]) => Promise<void>
   chat: () => Promise<ChatItem[]>
   sleep: (ms: number) => Promise<void>
+  // wherdr's own messages for this pane not yet seen in the transcript (as
+  // sent). A "!" command Claude puts back is never written as a user message
+  // (Claude Code 2.1.294 only writes its caveat line), so it is found here.
+  pending?: () => string[]
 }
+
+// Bash mode left empty ("!", see inputBox) holds nothing.
+const empty = (box: string) => !box || box === '!'
 
 // After an interrupt: the message Claude put back into its field, once that
 // field is emptied; null when nothing came back (or it could not be emptied:
 // then everything stays as Claude left it).
 export async function takeBackInterrupted(d: RestoreDeps): Promise<ChatItem | null> {
   let box = ''
-  for (let i = 0; i < 3 && !box; i++) {
+  for (let i = 0; i < 3 && empty(box); i++) {
     box = inputBox(await d.screen().catch(() => '')) || ''
-    if (!box) await d.sleep(250)
+    if (empty(box)) await d.sleep(250)
   }
-  if (!box) return null
+  if (empty(box)) return null
   const last = unansweredLast(await d.chat())
-  if (!last || !boxHolds(box, msgText(last.text))) return null
+  const mine = last && boxHolds(box, msgText(last.text))
+    ? last
+    : (d.pending?.() || []).map(msgText).filter(t => boxHolds(box, t)).map((text): ChatItem => ({ role: 'user', text, ts: null }))[0]
+  if (!mine) return null
   const lines = box.split('\n').length
   for (let i = 0; i < 2; i++) {
     // Re-checked before each erase: the user may be typing in the terminal.
-    if (i && !boxHolds(box, msgText(last.text))) return null
+    if (i && !boxHolds(box, msgText(mine.text))) return null
     await d.keys(clearKeys(lines))
     await d.sleep(150)
     box = inputBox(await d.screen().catch(() => '')) || ''
-    if (!box) return last
+    if (empty(box)) return mine
   }
   return null
 }
