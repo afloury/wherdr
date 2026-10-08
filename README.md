@@ -126,7 +126,10 @@ Details in [Features](#features) and [Security](#security).
   A command the agent proposes (shell code block, or inline `! command`) can be copied without
   its prompt, or run in the agent's shell mode (`!`, Claude Code, Codex and omp) after you
   confirm the full command.
-- **Terminal view**: the real terminal (xterm.js, WebGL or DOM renderer) with take-over. On a
+- **Terminal view**: the real terminal (xterm.js, WebGL or DOM renderer) with take-over. Opening
+  it resizes the real pane to your screen; closing it gives the pane the size it had before
+  (after 30 seconds when the connection just dropped, e.g. a locked phone), unless a Herdr
+  client attached meanwhile laid it out its own way. On a
   computer, drag over the text on screen to select it: releasing the button copies it, as do
   `⌘C` / `Ctrl+Shift+C`. The history is browsed with the wheel, not by dragging past the edge.
   Links (OSC 8 hyperlinks and plain `http(s)://` URLs, even wrapped over several rows) open in a

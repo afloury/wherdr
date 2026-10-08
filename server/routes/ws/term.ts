@@ -18,10 +18,11 @@ export default defineWebSocketHandler({
     const raw = messageText(message)
     if (raw) sessions.get(peer.id)?.onMessage(raw)
   },
-  close(peer) {
+  close(peer, details) {
     unwatchPeer(peer)
     const s = sessions.get(peer.id)
     sessions.delete(peer.id)
-    s?.onClose()
+    // 1000: the client closed its terminal (anything else: the connection dropped).
+    s?.onClose(details?.code === 1000)
   },
 })

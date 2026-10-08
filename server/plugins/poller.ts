@@ -6,6 +6,7 @@ export default defineNitroPlugin((nitroApp) => {
   startPolling()
   startThreadLimits()
   startNotices()
+  startPaneSizes()
   cleanUploads()
   cleanAttachments()
   const purge = setInterval(() => { cleanUploads(); cleanAttachments() }, 6 * 3600 * 1000)
@@ -13,6 +14,7 @@ export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook('close', () => {
     stopPolling()
     stopNotices()
+    stopPaneSizes()
     stopMachines()
     clearInterval(purge)
   })

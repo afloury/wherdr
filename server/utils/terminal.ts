@@ -8,12 +8,15 @@
 // refused if someone else already is; with it, the other one is detached.
 // Pane of a remote machine: the same CLI, launched on that machine over the
 // multiplexed SSH connection (stdin/stdout relayed as is).
-import type { ChildProcessWithoutNullStreams } from 'node:child_process'
+import { execFile, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
 import readline from 'node:readline'
-import { PANE_RE, log } from './env'
+import { DATA_DIR, IN_DOCKER, PANE_RE, log } from './env'
 import { herdr } from './herdr'
 import { termSessions, type TermView } from './state'
 import { machineOfPane } from './machines'
+import { type PaneHold, type PaneSize, cleanSavedSizes, createPaneSizes, parseSttySize } from './paneSizes'
 import { splitId } from '../../shared/ids'
 import { fmt } from '../../shared/message'
 
@@ -31,8 +34,79 @@ export interface WsLike {
 
 export interface TermSession {
   onMessage: (raw: string) => void
-  onClose: () => void
+  // `clean`: closed on purpose by the client (not a dropped connection).
+  onClose: (clean?: boolean) => void
 }
+
+// ---------------------------------------------------------------- pane size
+// Size of the PTY behind a shell: Herdr's API only gives the rows.
+const TTY_SIZE_SCRIPT = 't=$(ps -o tty= -p "$1" 2>/dev/null | tr -d " "); [ -n "$t" ] && [ -c "/dev/$t" ] && stty size < "/dev/$t"'
+
+function ttySize(pane: string, pid: number): Promise<string> {
+  const machine = machineOfPane(pane)
+  if (!machine) return Promise.resolve('')
+  if (machine.exec) return machine.exec(TTY_SIZE_SCRIPT, [String(pid)], { timeoutMs: 4000 }).then(r => (r.code === 0 ? r.stdout.toString('utf8') : ''), () => '')
+  // In the container, the host's processes are out of reach.
+  if (IN_DOCKER) return Promise.resolve('')
+  return new Promise(resolve => execFile('sh', ['-c', TTY_SIZE_SCRIPT, 'sh', String(pid)], { timeout: 2000 }, (err, stdout) => resolve(err ? '' : String(stdout))))
+}
+
+// Current size of a pane. Exact when the PTY of its shell can be asked (and
+// agrees with the rows Herdr reports); otherwise the rows Herdr reports and
+// the width of the pane in Herdr's layout, the one Herdr would give it.
+export async function readPaneSize(pane: string): Promise<PaneSize | null> {
+  const p = (await herdr('pane.get', { pane_id: pane }, 3000).catch(() => null))?.pane
+  if (!p) return null
+  const terminal = typeof p.terminal_id === 'string' ? { terminal: p.terminal_id as string } : {}
+  const rows = Number(p.scroll?.viewport_rows) || 0
+  const pid = Number((await herdr('pane.process_info', { pane_id: pane }, 3000).catch(() => null))?.process_info?.shell_pid)
+  if (Number.isInteger(pid) && pid > 1) {
+    const tty = parseSttySize(await ttySize(pane, pid))
+    if (tty && (!rows || tty.rows === rows)) return { ...tty, exact: true, ...terminal }
+  }
+  const local = splitId(pane).local
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rect = (await herdr('pane.layout', { pane_id: pane }, 3000).catch(() => null))?.layout?.panes?.find((x: any) => x.pane_id === local)?.rect
+  const cols = Number(rect?.width) || 0
+  if (!rows || !cols) return null
+  return { cols, rows, exact: false, ...terminal }
+}
+
+const sizesFile = () => path.join(DATA_DIR, 'term-sizes.json')
+const delay = (name: string, dflt: number) => {
+  const n = Number(process.env[name])
+  return Number.isFinite(n) && n >= 0 ? n : dflt
+}
+
+let sizes: ReturnType<typeof createPaneSizes> | null = null
+const paneSizes = () => sizes ||= createPaneSizes({
+  read: readPaneSize,
+  resize: (pane, cols, rows) => resizePane(pane, cols, rows),
+  // Longer than the 1.5 s left to a closed control session to go away.
+  closeMs: delay('WHERDR_TERM_CLOSE_MS', 2000),
+  graceMs: delay('WHERDR_TERM_GRACE_MS', 30000),
+  save(held) {
+    const file = sizesFile()
+    try {
+      if (!Object.keys(held).length) return fs.rmSync(file, { force: true })
+      fs.mkdirSync(DATA_DIR, { recursive: true })
+      fs.writeFileSync(`${file}.tmp`, JSON.stringify(held) + '\n', { mode: 0o600 })
+      fs.renameSync(`${file}.tmp`, file)
+    } catch (e) { log(`term sizes: ${(e as Error).message}`) }
+  },
+  log,
+})
+
+// Panes left at the phone's size by a wherdr stopped with terminals open.
+export function startPaneSizes() {
+  let saved: unknown = null
+  try { saved = JSON.parse(fs.readFileSync(sizesFile(), 'utf8')) }
+  catch { return }
+  paneSizes().adopt(cleanSavedSizes(saved, id => PANE_RE.test(id)))
+}
+export function stopPaneSizes() { sizes?.stop() }
+
+// ---------------------------------------------------------------- relay
 
 export function openTerm(ws: WsLike, url: URL): TermSession | null {
   const pane = url.searchParams.get('pane') || ''
@@ -51,32 +125,61 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
   const args = ['terminal', 'session', 'control', splitId(pane).local, '--cols', String(cols), '--rows', String(rows)]
   if (url.searchParams.get('takeover') === '1') args.push('--takeover')
 
-  const child: ChildProcessWithoutNullStreams = machine.spawnHerdr(args)
   const sess: TermView = { pane, visible: true }
   termSessions.add(sess)
-  log(`term ${pane} opened ${cols}x${rows}${args.includes('--takeover') ? ' (takeover)' : ''}${machine.local ? '' : ` on ${machine.label}`}`)
-
-  readline.createInterface({ input: child.stdout }).on('line', (line) => {
-    if (ws.isOpen()) ws.send(line)
-  })
-  readline.createInterface({ input: child.stderr }).on('line', (line) => {
-    log(`term ${pane} stderr: ${line}`)
-    if (ws.isOpen()) ws.send(JSON.stringify({ type: 'herdr.stderr', message: line }))
-  })
-  child.on('error', (e) => {
-    if (ws.isOpen()) ws.send(JSON.stringify({ type: 'terminal.closed', reason: `herdr: ${e.message}` }))
-    ws.close(4500, 'herdr error')
-  })
-  child.on('exit', (code) => {
-    termSessions.delete(sess)
-    if (ws.isOpen()) ws.close(4000, `herdr exit ${code}`)
-  })
-  // No crash if the CLI closes while we write to it.
-  child.stdin.on('error', () => {})
+  let child: ChildProcessWithoutNullStreams | null = null
+  let hold: PaneHold | null = null
+  let closed = false
+  // Size asked by this terminal, the pane's own once the session is attached
+  // (a refused session, terminal open elsewhere, never resizes the pane).
+  let size = { cols, rows }
+  let attached = false
+  // What the client sends before the control session is started.
+  const early: unknown[] = []
 
   const toChild = (obj: unknown) => {
-    if (child.stdin.writable) child.stdin.write(JSON.stringify(obj) + '\n')
+    if (!child) {
+      if (early.length < 64) early.push(obj)
+    } else if (child.stdin.writable) {
+      child.stdin.write(JSON.stringify(obj) + '\n')
+    }
   }
+
+  function start() {
+    const c = machine!.spawnHerdr(args)
+    child = c
+    log(`term ${pane} opened ${cols}x${rows}${args.includes('--takeover') ? ' (takeover)' : ''}${machine!.local ? '' : ` on ${machine!.label}`}`)
+
+    readline.createInterface({ input: c.stdout }).on('line', (line) => {
+      if (!attached && line.includes('"terminal.frame"')) {
+        attached = true
+        hold?.resized(size.cols, size.rows)
+      }
+      if (ws.isOpen()) ws.send(line)
+    })
+    readline.createInterface({ input: c.stderr }).on('line', (line) => {
+      log(`term ${pane} stderr: ${line}`)
+      if (ws.isOpen()) ws.send(JSON.stringify({ type: 'herdr.stderr', message: line }))
+    })
+    c.on('error', (e) => {
+      if (ws.isOpen()) ws.send(JSON.stringify({ type: 'terminal.closed', reason: `herdr: ${e.message}` }))
+      ws.close(4500, 'herdr error')
+    })
+    c.on('exit', (code) => {
+      termSessions.delete(sess)
+      if (ws.isOpen()) ws.close(4000, `herdr exit ${code}`)
+    })
+    // No crash if the CLI closes while we write to it.
+    c.stdin.on('error', () => {})
+    for (const m of early.splice(0)) toChild(m)
+  }
+
+  // The pane's size is read before the control session resizes it (see paneSizes.ts).
+  paneSizes().hold(pane).then((h) => {
+    if (closed) return h.release(true)
+    hold = h
+    start()
+  })
 
   return {
     onMessage(raw: string) {
@@ -89,9 +192,12 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
           if (typeof m.text === 'string' && m.text.length <= 65536) toChild({ type: 'terminal.input', text: m.text })
           else if (typeof m.bytes === 'string' && m.bytes.length <= 90000) toChild({ type: 'terminal.input', bytes: m.bytes })
           break
-        case 'terminal.resize':
-          toChild({ type: 'terminal.resize', cols: clampInt(m.cols, 10, 400, cols), rows: clampInt(m.rows, 5, 200, rows) })
+        case 'terminal.resize': {
+          size = { cols: clampInt(m.cols, 10, 400, cols), rows: clampInt(m.rows, 5, 200, rows) }
+          if (attached) hold?.resized(size.cols, size.rows)
+          toChild({ type: 'terminal.resize', ...size })
           break
+        }
         case 'terminal.scroll':
           if (m.direction === 'up' || m.direction === 'down') {
             toChild({ type: 'terminal.scroll', direction: m.direction, lines: clampInt(m.lines, 1, 500, 3) })
@@ -117,14 +223,21 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
           break
       }
     },
-    onClose() {
+    onClose(clean = false) {
+      closed = true
       termSessions.delete(sess)
-      // Hand control back cleanly (the pane size goes back to the other clients).
-      toChild({ type: 'terminal.release' })
-      child.stdin.end()
-      setTimeout(() => {
-        if (child.exitCode === null) child.kill('SIGTERM')
-      }, 1500)
+      const c = child
+      if (c) {
+        // Hand control back cleanly (the pane size goes back to the other clients).
+        toChild({ type: 'terminal.release' })
+        c.stdin.end()
+        setTimeout(() => {
+          if (c.exitCode === null) c.kill('SIGTERM')
+        }, 1500)
+      }
+      // No Herdr client to lay the pane out again: its size is given back.
+      // A terminal left in the background (locked phone) usually comes back.
+      hold?.release(clean && sess.visible)
     },
   }
 }

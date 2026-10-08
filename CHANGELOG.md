@@ -62,6 +62,16 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **A pane gets its size back when wherdr's terminal closes.** Opening the terminal on a phone
+  resizes the real pane to about 40 columns, and with no Herdr client attached to lay it out
+  again (a machine driven from afar) it stayed that narrow: the agents' screens were cut (omp's
+  model selector, its status line without the model…). wherdr now remembers the pane's size when
+  its first terminal opens and gives it back when the last one closes — after 2 seconds, or
+  30 seconds after a connection that dropped (locked phone, lost network), so a terminal that
+  comes back keeps its size. A size set meanwhile by an attached Herdr client is left alone, and
+  the sizes to give back survive a restart of wherdr. The width is read from the pane's PTY;
+  in Docker, where it is out of reach, the pane gets the width of Herdr's layout.
+
 - **Claude Code settings card (`/usage`, `/status`, `/config`, `/stats`)**: recent Claude Code
   versions draw the settings panel with a key legend, so wherdr took it for an interactive menu
   and showed its text squashed on one line. The card is back: tabs read from the screen (Stats
