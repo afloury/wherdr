@@ -484,7 +484,12 @@ function readLang(): Lang {
   try {
     const saved = localStorage.getItem(LANG_KEY)
     if (saved === 'fr' || saved === 'en') return saved
-    return navigator.languages?.some(l => l.toLowerCase().startsWith('fr')) ? 'fr' : 'en'
+    // The browser's first preferred language we speak wins (English when it comes first).
+    for (const l of navigator.languages ?? [navigator.language]) {
+      const code = l?.toLowerCase().slice(0, 2)
+      if (code === 'fr' || code === 'en') return code
+    }
+    return 'en'
   }
   catch { return 'en' }
 }
