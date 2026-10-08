@@ -12,8 +12,6 @@ export type TermLine = InstallLine | CommandLine
 export type TermDemo = { title: string, lines: TermLine[] }
 
 export const INSTALL_COMMAND = 'curl -fsSL https://wherdr.dev/install | sh'
-// The same script without the plugin: Docker Compose by hand in ~/wherdr (Linux).
-export const DOCKER_INSTALL_COMMAND = 'curl -fsSL https://wherdr.dev/install | WHERDR_MODE=docker sh'
 // `herdr plugin install owner/repo` (herdr-plugin.toml at the root of the repository).
 export const PLUGIN_COMMAND = `herdr plugin install ${REPO.replace('https://github.com/', '')}`
 // Homebrew formula (<owner>/homebrew-tap): the npm package, with a `brew services` entry.
@@ -24,15 +22,6 @@ export const RUNNERS = {
   bunx: { run: 'bunx wherdr', keep: 'bun add -g wherdr' },
   pnpm: { run: 'pnpm dlx wherdr', keep: 'pnpm add -g wherdr' },
 } as const
-
-// Commands to copy for the Docker-by-hand tab, run as shown in its terminal.
-export const DOCKER_COMMANDS = [
-  `git clone ${REPO}.git && cd wherdr`,
-  'cp .env.example .env',
-  'mkdir -p data "$HOME/.config/herdr" "$HOME/.local/state/herdr/client" \\\n  "$HOME/.cache/herdr-web" "$HOME/.herdr-projects"',
-  'docker compose up -d',
-  'tailscale serve --bg --https=7683 http://127.0.0.1:7683',
-]
 
 const HOME = '/Users/you'
 const PORT = 7683
@@ -64,33 +53,4 @@ export const INSTALL_OUTPUT: InstallLine[] = [
 export const ONE_COMMAND_DEMO: TermDemo = {
   title: 'you@mac — zsh',
   lines: [{ kind: 'cmd', prompt: 'you@mac ~ %', text: INSTALL_COMMAND, wait: 300 }, ...INSTALL_OUTPUT],
-}
-
-// The Docker tab starts from your laptop: a quick ssh, the server's greeting,
-// then the commands. Kept short so the ssh does not lengthen the demo.
-const SERVER = 'you@server:~$'
-const sshIn = (): TermLine[] => [
-  { kind: 'cmd', prompt: '$', text: 'ssh you@server', wait: 300, fast: true },
-  { kind: 'dim', text: 'Welcome to Ubuntu 24.04 LTS (GNU/Linux 6.8.0 aarch64)', wait: 250 },
-  { kind: 'blank', text: '', wait: 40 },
-]
-
-export const DOCKER_DEMO: TermDemo = {
-  title: 'you@server — ssh',
-  lines: [
-    ...sshIn(),
-    { kind: 'cmd', prompt: SERVER, text: DOCKER_COMMANDS[0]!, wait: 200 },
-    { kind: 'say', text: 'Cloning into \'wherdr\'...', wait: 300 },
-    { kind: 'cmd', prompt: 'you@server:~/wherdr$', text: DOCKER_COMMANDS[1]!, wait: 900, fast: true },
-    { kind: 'cmd', prompt: 'you@server:~/wherdr$', text: DOCKER_COMMANDS[2]!, wait: 300, fast: true },
-    { kind: 'cmd', prompt: 'you@server:~/wherdr$', text: DOCKER_COMMANDS[3]!, wait: 300, fast: true },
-    { kind: 'say', text: '[+] Running 2/2', wait: 1600 },
-    { kind: 'ok', text: 'Network wherdr_default  Created', wait: 200 },
-    { kind: 'ok', text: 'Container wherdr        Started', wait: 600 },
-    { kind: 'cmd', prompt: 'you@server:~/wherdr$', text: DOCKER_COMMANDS[4]!, wait: 300, fast: true },
-    { kind: 'say', text: 'Available within your tailnet:', wait: 700 },
-    { kind: 'blank', text: '', wait: 40 },
-    { kind: 'strong', text: `https://server.<tailnet>.ts.net:${PORT}/`, wait: 40 },
-    { kind: 'dim', text: `|-- proxy http://127.0.0.1:${PORT}`, wait: 40 },
-  ],
 }

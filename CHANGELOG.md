@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Website install section**: three tabs side by side — curl (the one command, selected by
+  default), Package managers (Homebrew, npx, bunx, pnpm dlx) and Herdr plugin — above the
+  "Ask your AI agent" card, instead of a folded "Other ways" block. The Docker-by-hand tab is
+  gone from the site; Docker stays documented in the README and through `WHERDR_MODE=docker`.
+
 ## [1.3.1] — 2026-10-08
 
 ### Added

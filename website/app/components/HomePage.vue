@@ -3,7 +3,7 @@
 // live demos in the hero (phone + desktop on one clock) and next to the
 // feature stories, and an install that types itself.
 import { AGENT_PROMPT, REPO } from '~/utils/site'
-import { BREW_COMMANDS, DOCKER_COMMANDS, DOCKER_DEMO, DOCKER_INSTALL_COMMAND, INSTALL_COMMAND, ONE_COMMAND_DEMO, PLUGIN_COMMAND, RUNNERS } from '~/utils/installDemo'
+import { BREW_COMMANDS, INSTALL_COMMAND, ONE_COMMAND_DEMO, PLUGIN_COMMAND, RUNNERS } from '~/utils/installDemo'
 
 const stories = [
   {
@@ -48,13 +48,13 @@ const security = [
   { k: 'CSP', title: 'Strict by default', text: 'Host allow-list, Origin checks on every write and WebSocket, strict Content Security Policy, no framing.' },
 ]
 
-// "Other ways", under the one command and the agent prompt: three tabs at most.
+// The install methods, side by side above the agent prompt; the one command first.
 const installTabs = [
+  { id: 'curl', label: 'curl', short: 'curl' },
   { id: 'pm', label: 'Package managers', short: 'Packages' },
   { id: 'plugin', label: 'Herdr plugin', short: 'Plugin' },
-  { id: 'docker', label: 'Docker, by hand', short: 'Docker' },
 ] as const
-const tab = ref<typeof installTabs[number]['id']>('pm')
+const tab = ref<typeof installTabs[number]['id']>('curl')
 const managers = [
   { id: 'brew', label: 'Homebrew' },
   { id: 'npx', label: 'npx' },
@@ -221,13 +221,49 @@ const faq = [
           </div>
 
           <div v-reveal class="install">
-            <div class="panel one">
+            <div class="tabs" role="tablist" aria-label="Installation methods">
+              <button v-for="t in installTabs" :id="`tab-${t.id}`" :key="t.id" type="button" role="tab" class="tab" :aria-label="t.label" :aria-selected="tab === t.id" :aria-controls="`panel-${t.id}`" @click="tab = t.id">
+                <span class="tab-long">{{ t.label }}</span><span class="tab-short" aria-hidden="true">{{ t.short }}</span>
+              </button>
+            </div>
+
+            <div v-show="tab === 'curl'" id="panel-curl" role="tabpanel" aria-labelledby="tab-curl" class="panel one">
               <InstallCommand :command="INSTALL_COMMAND" />
               <InstallTerminal :demo="ONE_COMMAND_DEMO" />
               <p class="prereq">
                 Needs <a href="https://herdr.dev" target="_blank" rel="noopener">Herdr</a> 0.9.1+ <span class="sep" aria-hidden="true">·</span> macOS or Linux <span class="sep" aria-hidden="true">·</span> phone through <a href="https://tailscale.com/download" target="_blank" rel="noopener">Tailscale</a>.
                 <a :href="`${REPO}#other-private-networks`" target="_blank" rel="noopener">Other private networks</a>.
               </p>
+            </div>
+
+            <div v-show="tab === 'pm'" id="panel-pm" role="tabpanel" aria-labelledby="tab-pm" class="panel">
+              <div class="pills" role="radiogroup" aria-label="Package manager">
+                <button v-for="p in managers" :key="p.id" type="button" role="radio" class="pill" :aria-checked="pm === p.id" @click="pm = p.id">{{ p.label }}</button>
+              </div>
+              <template v-if="pm === 'brew'">
+                <InstallCommand :command="BREW_COMMANDS.join('\n')" what="commands" wrap />
+                <ol class="steps">
+                  <li><b>Install</b> on the machine that runs Herdr, macOS or Linux. The first install also brings Homebrew's Node.js; the package is prebuilt, nothing compiles.</li>
+                  <li><b>Start it:</b> <code>brew services start wherdr</code> runs it now and at every login; <code>wherdr open</code> opens the setup guide.</li>
+                  <li><b>Update:</b> <code>brew upgrade wherdr</code>, then <code>brew services restart wherdr</code>. Stuck? <code>wherdr doctor</code>.</li>
+                </ol>
+              </template>
+              <template v-if="runner">
+                <InstallCommand :command="runner.run" />
+                <ol class="steps">
+                  <li><b>Try it</b> on the machine that runs Herdr, macOS or Linux, with Node.js 22{{ pm === 'bunx' ? ' or Bun' : '' }}. The package is prebuilt: nothing compiles. Open <code>http://localhost:7683</code>.</li>
+                  <li><b>Keep it:</b> <code>{{ runner.keep }}</code>, then <code>wherdr service install</code> starts it at every login.</li>
+                  <li><b>Stuck?</b> <code>wherdr doctor</code> checks Node, Herdr and its socket, the port and the service.</li>
+                </ol>
+              </template>
+            </div>
+
+            <div v-show="tab === 'plugin'" id="panel-plugin" role="tabpanel" aria-labelledby="tab-plugin" class="panel">
+              <InstallCommand :command="PLUGIN_COMMAND" />
+              <ol class="steps">
+                <li><b>Run it</b> on the machine that runs Herdr (≥ 0.9.1): what the one command does, minus its checks. It installs wherdr in <code>~/wherdr</code> (Docker on Linux when available, Node.js 22 otherwise; no sudo), starts it and, the first time, opens its setup guide.</li>
+                <li><b>Press <code>prefix+i</code></b> in Herdr: the wherdr panel — start, stop, log, update, phone.</li>
+              </ol>
             </div>
 
             <p class="or" aria-hidden="true"><span>or</span></p>
@@ -239,58 +275,8 @@ const faq = [
               <p class="agent-note">It follows <a href="/agent.md" target="_blank">our setup guide for agents</a>: asks before installing anything, sets up your phone over Tailscale, never exposes wherdr to the Internet.</p>
             </div>
 
-            <details class="others">
-              <summary>
-                <span class="others-title">Other ways</span>
-                <span class="others-list">Package managers · Herdr plugin · Docker</span>
-                <UIcon name="i-lucide-chevron-down" class="others-chev size-4" />
-              </summary>
-              <div class="tabs" role="tablist" aria-label="Other installation methods">
-                <button v-for="t in installTabs" :id="`tab-${t.id}`" :key="t.id" type="button" role="tab" class="tab" :aria-label="t.label" :aria-selected="tab === t.id" :aria-controls="`panel-${t.id}`" @click="tab = t.id">
-                  <span class="tab-long">{{ t.label }}</span><span class="tab-short" aria-hidden="true">{{ t.short }}</span>
-                </button>
-              </div>
-
-              <div v-show="tab === 'pm'" id="panel-pm" role="tabpanel" aria-labelledby="tab-pm" class="panel">
-                <div class="pills" role="radiogroup" aria-label="Package manager">
-                  <button v-for="p in managers" :key="p.id" type="button" role="radio" class="pill" :aria-checked="pm === p.id" @click="pm = p.id">{{ p.label }}</button>
-                </div>
-                <template v-if="pm === 'brew'">
-                  <InstallCommand :command="BREW_COMMANDS.join('\n')" what="commands" wrap />
-                  <ol class="steps">
-                    <li><b>Install</b> on the machine that runs Herdr, macOS or Linux. The first install also brings Homebrew's Node.js; the package is prebuilt, nothing compiles.</li>
-                    <li><b>Start it:</b> <code>brew services start wherdr</code> runs it now and at every login; <code>wherdr open</code> opens the setup guide.</li>
-                    <li><b>Update:</b> <code>brew upgrade wherdr</code>, then <code>brew services restart wherdr</code>. Stuck? <code>wherdr doctor</code>.</li>
-                  </ol>
-                </template>
-                <template v-if="runner">
-                  <InstallCommand :command="runner.run" />
-                  <ol class="steps">
-                    <li><b>Try it</b> on the machine that runs Herdr, macOS or Linux, with Node.js 22{{ pm === 'bunx' ? ' or Bun' : '' }}. The package is prebuilt: nothing compiles. Open <code>http://localhost:7683</code>.</li>
-                    <li><b>Keep it:</b> <code>{{ runner.keep }}</code>, then <code>wherdr service install</code> starts it at every login.</li>
-                    <li><b>Stuck?</b> <code>wherdr doctor</code> checks Node, Herdr and its socket, the port and the service.</li>
-                  </ol>
-                </template>
-              </div>
-
-              <div v-show="tab === 'plugin'" id="panel-plugin" role="tabpanel" aria-labelledby="tab-plugin" class="panel">
-                <InstallCommand :command="PLUGIN_COMMAND" />
-                <ol class="steps">
-                  <li><b>Run it</b> on the machine that runs Herdr (≥ 0.9.1): what the one command does, minus its checks. It installs wherdr in <code>~/wherdr</code> (Docker on Linux when available, Node.js 22 otherwise; no sudo), starts it and, the first time, opens its setup guide.</li>
-                  <li><b>Press <code>prefix+i</code></b> in Herdr: the wherdr panel — start, stop, log, update, phone.</li>
-                </ol>
-              </div>
-
-              <div v-show="tab === 'docker'" id="panel-docker" role="tabpanel" aria-labelledby="tab-docker" class="panel">
-                <InstallCommand :command="DOCKER_INSTALL_COMMAND" />
-                <p class="cell-text">Linux server, without the plugin: the script writes <code>docker-compose.yml</code> and <code>.env</code> to <code>~/wherdr</code>, pulls the published image and starts it. A <code>wherdr</code> container managed from another folder is never touched. Or entirely by hand:</p>
-                <InstallCommand :command="DOCKER_COMMANDS.join('\n')" what="commands" wrap />
-                <InstallTerminal :demo="DOCKER_DEMO" />
-              </div>
-            </details>
-
             <div class="as-app">
-              <p class="others-title">Install it as an app</p>
+              <p class="as-app-title">Install it as an app</p>
               <ul class="as-app-list">
                 <li><b>iPhone</b><span>Safari › Share › Add to Home Screen <span class="as-app-note">(needed for notifications)</span></span></li>
                 <li><b>Android</b><span>Chrome › menu › Install app</span></li>
@@ -421,18 +407,7 @@ const faq = [
 .pill:hover { color: var(--text); }
 .pill[aria-checked="true"] { border-color: var(--accent); color: #fff; background: color-mix(in srgb, var(--accent) 12%, var(--bg-2)); }
 .tab-short { display: none; }
-.others { margin-top: 28px; border: 1px solid var(--line); }
-.others > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 16px 20px; cursor: pointer; list-style: none; background: var(--bg-2); }
-.others > summary::-webkit-details-marker { display: none; }
-.others > summary:hover { background: var(--surface); }
-.others > summary:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
-.others-title { font: 600 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: #fff; }
-.others-list { flex: 1 1 auto; font: 12px/1.4 var(--mono); color: var(--dim); }
-.others-chev { color: var(--muted); transition: transform .2s; }
-.others[open] > summary { border-bottom: 1px solid var(--line); }
-.others[open] .others-chev { transform: rotate(180deg); }
-.others .tabs { border-left: 0; border-right: 0; border-top: 0; border-bottom: 1px solid var(--line); }
-.others .panel { border: 0; }
+.as-app-title { font: 600 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: #fff; }
 .tabs { display: flex; border: 1px solid var(--line); border-bottom: 0; }
 .tab { flex: 1 1 0; min-width: 0; padding: 14px 18px; border: 0; border-right: 1px solid var(--line); background: var(--bg-2); color: var(--muted); cursor: pointer; font: 600 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; text-align: left; white-space: nowrap; }
 .tab:last-child { border-right: 0; }
@@ -445,7 +420,7 @@ const faq = [
 .install-foot { margin: 20px 0 0; color: var(--muted); font-size: 15px; }
 .install-foot a, .section-head a, .panel .cell-text a { color: var(--text); text-decoration-color: var(--accent); text-underline-offset: 3px; }
 .as-app { margin-top: 28px; padding: 20px; border: 1px solid var(--line); background: var(--bg-2); display: grid; gap: 14px; }
-.as-app .others-title { margin: 0; }
+.as-app .as-app-title { margin: 0; }
 .as-app-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; color: var(--muted); font-size: 15px; }
 .as-app-list li { display: grid; grid-template-columns: 24ch minmax(0, 1fr); gap: 2px 12px; align-items: baseline; }
 .as-app-list b { font: 600 12px/1.6 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--text); }
@@ -494,8 +469,6 @@ const faq = [
   .tab { padding: 14px 10px; text-align: center; letter-spacing: .06em; }
   .tab-long { display: none; }
   .tab-short { display: inline; }
-  .others-chev { margin-left: auto; }
-  .others-list { order: 3; flex-basis: 100%; }
   .panel { padding: 20px; }
 }
 </style>
