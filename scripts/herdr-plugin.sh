@@ -265,8 +265,11 @@ build_start() {
     [ "$quiet" = 1 ] || tell ""
     [ "$quiet" = 1 ] || tell "✓ wherdr is running → $URL"
     if [ "${FIRST_INSTALL:-0}" = 1 ]; then
-      if open_browser "$URL/#/setup"; then [ "$quiet" = 1 ] || tell "  Setup guide opened in your browser"
-      else [ "$quiet" = 1 ] || tell "  Setup guide: open $URL/#/setup in a browser on this computer"
+      # Already published on the tailnet (a reinstall, or `tailscale serve`
+      # run first): the guide opens on that address, where passkeys belong.
+      guide="$(open_address)/#/setup"
+      if open_browser "$guide"; then [ "$quiet" = 1 ] || tell "  Setup guide opened in your browser: $guide"
+      else [ "$quiet" = 1 ] || tell "  Setup guide: open $guide in a browser"
       fi
     fi
     [ "$quiet" = 1 ] || tell "  Phone: open the wherdr panel in Herdr (key above, or herdr plugin action invoke panel --plugin $PLUGIN_ID)"
@@ -551,10 +554,43 @@ open_browser() {
   fi
 }
 
-cmd_open() {
-  open_browser "$URL" || true
-  say "$URL"
+# The tailscale CLI: on the PATH, or inside the macOS app.
+tailscale_bin() {
+  if command -v tailscale >/dev/null 2>&1; then command -v tailscale
+  elif [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]; then echo /Applications/Tailscale.app/Contents/MacOS/Tailscale
+  else return 1
+  fi
 }
+
+# The tailnet address `tailscale serve` already publishes for wherdr's local
+# port (https://<machine>.<tailnet>.ts.net[:port]), only when it answers like
+# wherdr. Passkeys are tied to the address: that is the one to open.
+tailnet_address() {
+  command -v curl >/dev/null 2>&1 || return 1
+  ts="$(tailscale_bin)" || return 1
+  # "<name>:<https port>" of the Web entry whose proxy targets our port.
+  host="$("$ts" serve status --json 2>/dev/null | tr '{,' '\n\n' | awk -v port="$PORT" '
+    /"[^"]*:[0-9]+"[ \t]*:[ \t]*$/ { key = $0; sub(/^[^"]*"/, "", key); sub(/".*$/, "", key) }
+    /"Proxy"/ && $0 ~ ("\"(https?://)?(127\\.0\\.0\\.1|localhost):" port "/?\"") { print key; exit }')"
+  [ -n "$host" ] || return 1
+  host="${host%:443}"
+  # A local request first: wherdr then allows that host by itself (APP_URL).
+  curl -s -o /dev/null --max-time 15 "http://127.0.0.1:$PORT/api/phone" 2>/dev/null || true
+  curl -fsS --max-time 8 "https://$host/manifest.webmanifest" 2>/dev/null | grep -q wherdr || return 1
+  printf 'https://%s\n' "$host"
+}
+
+# The address to open: the tailnet one when published and answering, else localhost.
+open_address() { tailnet_address || printf '%s\n' "$URL"; }
+
+cmd_open() {
+  address="$(open_address)"
+  open_browser "$address" || true
+  say "$address"
+}
+
+# `address`: what `open` would open, without opening it (https://wherdr.dev/install).
+cmd_address() { open_address; }
 
 # ----------------------------------------------------------------- update
 cmd_update() {
@@ -580,9 +616,9 @@ cmd_update() {
 
 # ------------------------------------------------------------------ phone
 tailnet_name() {
-  command -v tailscale >/dev/null 2>&1 || return 1
+  ts="$(tailscale_bin)" || return 1
   # Self comes before Peer in `tailscale status --json`: the first DNSName is this machine.
-  tailscale status --json 2>/dev/null | sed -n 's/.*"DNSName": *"\([^"]*\)\.".*/\1/p' | head -n 1
+  "$ts" status --json 2>/dev/null | sed -n 's/.*"DNSName": *"\([^"]*\)\.".*/\1/p' | head -n 1
 }
 
 # The phone setup is a page of the app (Settings › Phone); `wherdr phone`
@@ -842,9 +878,9 @@ cmd_restart() { cmd_stop; cmd_start; }
 case "${1:-}" in
   build) cmd_build ;;
   panel) cmd_panel ;;
-  start|stop|restart|status|open|update|phone|logs|doctor) "cmd_$1" ;;
+  start|stop|restart|status|open|address|update|phone|logs|doctor) "cmd_$1" ;;
   service) cmd_service "${2:-}" ;;
   skill) cmd_skill "${2:-}" ;;
   key) cmd_key "${2:-}" ;;
-  *) die "usage: $0 build|panel|start|stop|restart|status|open|update|phone|logs|doctor|service install|uninstall|skill install|uninstall|key install|uninstall|status" ;;
+  *) die "usage: $0 build|panel|start|stop|restart|status|open|address|update|phone|logs|doctor|service install|uninstall|skill install|uninstall|key install|uninstall|status" ;;
 esac

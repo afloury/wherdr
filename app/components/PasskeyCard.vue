@@ -1,7 +1,13 @@
 <script setup lang="ts">
 // Passkey lock card: enable it, or (once on) add a device, lock, turn off.
-// Settings › Security and the onboarding's security step.
+// Settings › Security and the onboarding's security step. On localhost with
+// the tailnet address answering, enabling it is done on that address: a
+// passkey is tied to the address it is created on.
 import { startRegistration } from '@simplewebauthn/browser'
+import { onAddress } from '~/utils/onboarding'
+
+// Where the "Continue on …" link lands on the tailnet address.
+const props = withDefaults(defineProps<{ continueHash?: string }>(), { continueHash: '#/settings?section=security' })
 
 const sec = authStatus
 const supported = import.meta.client && Boolean(window.PublicKeyCredential)
@@ -57,12 +63,21 @@ async function disableLock() {
   } catch (err) { toast((err as Error).message, true) }
   refreshAuthStatus()
 }
-onMounted(refreshAuthStatus)
+onMounted(() => {
+  refreshAuthStatus()
+  refreshPhoneAddress()
+})
 </script>
 
 <template>
   <div class="settings-card">
-    <template v-if="sec && !sec.enabled">
+    <template v-if="sec && !sec.enabled && tailnet">
+      <p class="passkey-tailnet">{{ tl(`A passkey only works on the address it was created on: one made here on localhost would not open wherdr on ${tailnet.name}, the address your phone uses. Enable the lock there.`, `Une passkey ne marche que sur l’adresse où elle a été créée : faite ici sur localhost, elle n’ouvrirait pas wherdr sur ${tailnet.name}, l’adresse de ton téléphone. Active le verrou là-bas.`) }}</p>
+      <a class="settings-action passkey-tailnet-go" :href="onAddress(tailnet.url, props.continueHash)">
+        <UIcon name="i-lucide-lock" /><span class="passkey-tailnet-text"><small>{{ tl('Continue on', 'Continuer sur') }}</small> <b>{{ tailnet.name }}</b></span><UIcon name="i-lucide-arrow-right" />
+      </a>
+    </template>
+    <template v-else-if="sec && !sec.enabled">
       <button type="button" class="settings-action" :disabled="!supported" @click="registerKey">
         <UIcon name="i-lucide-lock" />{{ t('Enable passkey lock') }}
       </button>

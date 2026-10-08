@@ -289,11 +289,24 @@ export function openUrl(url) {
   return r.status === 0
 }
 
+// The address to open: the tailnet one when wherdr is already published there
+// and it answers (passkeys are tied to the address they were created on),
+// else the local one. `net` / `reach` / `allow` are injectable for the tests.
+export async function openAddress(localUrl, port, { net = inspect, reach = reachable, allow = url => fetch(`${url}/api/phone`).catch(() => {}) } = {}) {
+  const phone = (await net(port)).phone
+  if (!phone?.served) return localUrl
+  let r = await reach(phone.url, 5000)
+  // Published before wherdr knew the address: a local request makes it allow that host.
+  if (r === 'host') { await allow(localUrl); r = await reach(phone.url, 5000) }
+  return r === 'ok' ? phone.url.replace(/\/$/, '') : localUrl
+}
+
 export async function open(opts) {
   const ctx = context(opts)
   if (await probe(ctx.port, ctx.host) !== 'wherdr') warn(`wherdr does not answer on port ${ctx.port}: run \`wherdr start\` first.`)
-  if (openUrl(ctx.url)) ok(`opened ${c.cyan(ctx.url)}`)
-  else say(ctx.url)
+  const url = await openAddress(ctx.url, ctx.port)
+  if (openUrl(url)) ok(`opened ${c.cyan(url)}`)
+  else say(url)
 }
 
 // ----------------------------------------------------------------- phone

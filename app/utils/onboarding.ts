@@ -22,3 +22,20 @@ export function onboardingSteps(o: { phone: boolean, host: string, standalone: b
   if (o.phone && !isLoopbackHost(o.host)) return o.standalone ? ['welcome', 'security'] : ['welcome', 'homescreen', 'security']
   return ['welcome', 'phone', 'security']
 }
+
+// The page is open on localhost while wherdr's phone address (tailnet) is
+// published and answers: that address, to continue there. Passkeys are tied
+// to the address they are created on, so the lock is set up on the phone's.
+export function tailnetSwitch(host: string, phone: { url: string | null, reach: string | null } | null): { url: string, name: string } | null {
+  if (!phone?.url || phone.reach !== 'ok' || !isLoopbackHost(host)) return null
+  try { return { url: phone.url, name: new URL(phone.url).hostname } } catch { return null }
+}
+
+// The same guide step (#/setup?step=…) or settings section, on another address.
+export const setupHash = (step: OnboardingStep) => `#/setup?step=${step}`
+export const onAddress = (url: string, hash: string) => `${new URL('/', url)}${hash}`
+
+// #/setup?step=…: the step to open the guide at (the first one when unknown).
+export function stepIndex(steps: OnboardingStep[], step: unknown): number {
+  return Math.max(0, steps.indexOf(String(Array.isArray(step) ? step[0] : step) as OnboardingStep))
+}
