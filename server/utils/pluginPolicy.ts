@@ -18,6 +18,8 @@ export interface RawPluginAction {
   title?: string
   description?: string | null
   contexts?: string[] | null
+  command?: unknown
+  placement?: string | null
 }
 export interface RawPlugin { plugin_id?: string, name?: string, enabled?: boolean }
 export interface RawPluginLog {
@@ -66,13 +68,27 @@ export function shortLabel(title: string, pluginName: string): string {
   return rest ? rest[0]!.toUpperCase() + rest.slice(1) : title
 }
 
+// wherdr's own Herdr plugin (`<owner>.wherdr`, also in forks): its actions (panel,
+// open in the browser) only make sense from Herdr; run from wherdr they go round in circles.
+export const isOwnPlugin = (id: string) => id === 'wherdr' || id.endsWith('.wherdr')
+
+// Actions whose result shows up in Herdr itself (a plugin pane, popup or overlay),
+// not in wherdr: declared placement, a `plugin pane open` command, or a
+// "popup" action id (herdr-projects' open-popup).
+export function opensInHerdr(a: RawPluginAction): boolean {
+  if (a.placement === 'popup' || a.placement === 'overlay') return true
+  const cmd = Array.isArray(a.command) ? a.command.map(String).join(' ') : ''
+  if (/\bplugin\s+pane\s+open\b/.test(cmd)) return true
+  return /(^|[-_:])popup($|[-_:])/i.test(String(a.action_id || ''))
+}
+
 export function normalizeActions(actions: RawPluginAction[], plugins: RawPlugin[] = []): PluginAction[] {
   const byId = new Map(plugins.filter(p => p && p.plugin_id).map(p => [p.plugin_id!, p]))
   const out: PluginAction[] = []
   for (const a of actions || []) {
     const plugin = String(a?.plugin_id || '')
     const id = String(a?.action_id || '')
-    if (!PLUGIN_ID_RE.test(plugin) || !ACTION_ID_RE.test(id)) continue
+    if (!PLUGIN_ID_RE.test(plugin) || !ACTION_ID_RE.test(id) || isOwnPlugin(plugin)) continue
     const p = byId.get(plugin)
     if (p && p.enabled === false) continue
     const ctx = (Array.isArray(a.contexts) ? a.contexts : []).map(String)
@@ -84,7 +100,7 @@ export function normalizeActions(actions: RawPluginAction[], plugins: RawPlugin[
     const pluginName = String(p?.name || plugin).trim() || plugin
     out.push({
       plugin, pluginName, id, title, label: shortLabel(title, pluginName), description,
-      agent, machine, confirm: needsConfirm({ id, title }),
+      agent, machine, confirm: needsConfirm({ id, title }), inHerdr: opensInHerdr(a),
     })
   }
   // Grouped by plugin, in alphabetical order of labels (Herdr does not give

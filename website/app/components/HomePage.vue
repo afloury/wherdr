@@ -289,6 +289,17 @@ const faq = [
               </div>
             </details>
 
+            <div class="as-app">
+              <p class="others-title">Install it as an app</p>
+              <ul class="as-app-list">
+                <li><b>iPhone</b><span>Safari › Share › Add to Home Screen <span class="as-app-note">(needed for notifications)</span></span></li>
+                <li><b>Android</b><span>Chrome › menu › Install app</span></li>
+                <li><b>Mac, Safari</b><span>File › Add to Dock <span class="as-app-note">(macOS 14+)</span></span></li>
+                <li><b>Chrome · Edge · Brave</b><span>install icon in the address bar</span></li>
+                <li><b>Arc</b><span>cannot install web apps: use Safari or Chrome for this</span></li>
+              </ul>
+            </div>
+
             <p class="install-foot">
               Full guide, configuration and troubleshooting in the <a :href="`${REPO}#installation`" target="_blank" rel="noopener">README</a>.
             </p>
@@ -433,6 +444,13 @@ const faq = [
 .steps b { color: var(--text); }
 .install-foot { margin: 20px 0 0; color: var(--muted); font-size: 15px; }
 .install-foot a, .section-head a, .panel .cell-text a { color: var(--text); text-decoration-color: var(--accent); text-underline-offset: 3px; }
+.as-app { margin-top: 28px; padding: 20px; border: 1px solid var(--line); background: var(--bg-2); display: grid; gap: 14px; }
+.as-app .others-title { margin: 0; }
+.as-app-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; color: var(--muted); font-size: 15px; }
+.as-app-list li { display: grid; grid-template-columns: 24ch minmax(0, 1fr); gap: 2px 12px; align-items: baseline; }
+.as-app-list b { font: 600 12px/1.6 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--text); }
+@media (max-width: 640px) { .as-app-list li { grid-template-columns: minmax(0, 1fr); } }
+.as-app-note { color: var(--dim); }
 
 /* --------------------------------------------------------------- faq */
 .faq-wrap { display: grid; grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr); gap: 48px; align-items: start; }

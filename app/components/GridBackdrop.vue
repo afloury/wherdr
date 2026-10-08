@@ -5,7 +5,8 @@
 // Shown in the margins of the conversation on a computer when Settings › Appearance ›
 // Desktop › Background is "wherdr grid" (the default). Cheap: a static CSS layer that does not scroll with the
 // content; packets are Web Animations started by a timer that only runs while the
-// layer is on screen and the page is visible. prefers-reduced-motion: no packets.
+// layer is on screen and the page is visible. prefers-reduced-motion or Settings ›
+// Appearance › "Animated packets" off: no packets.
 import { MAX_PACKETS, nextPacketDelay, planPacket } from '~/utils/backdrop'
 
 const root = ref<HTMLElement | null>(null)
@@ -42,11 +43,11 @@ function spawn() {
 
 function schedule() {
   clearTimeout(timer)
-  if (reduced || !visible.value || document.hidden) return
+  if (reduced || !backdropPackets.value || !visible.value || document.hidden) return
   timer = setTimeout(() => { spawn(); schedule() }, nextPacketDelay())
 }
 
-watch(visible, schedule)
+watch([visible, backdropPackets], schedule)
 
 onMounted(() => {
   reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches

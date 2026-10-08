@@ -621,7 +621,7 @@ cmd_phone() {
     say "  ! Not reachable from your phone yet: $phone does not answer (step 2)."
   fi
   say ""
-  say "  Guide: https://github.com/$SOURCE#install-the-app-on-your-phone"
+  say "  Guide: https://github.com/$SOURCE#install-it-as-an-app"
 }
 
 # ------------------------------------------------------------------ service

@@ -84,7 +84,7 @@ Claude Code, Codex and other product names are trademarks of their respective ow
   [as a Herdr plugin](#install-as-a-herdr-plugin) ·
   [Docker on a Mac: Reveal/Open](#wherdr-in-docker-on-a-mac-reveal-in-finder-open-and-modalto)
 - [Updating](#updating)
-- [Install the app on your phone](#install-the-app-on-your-phone)
+- [Install it as an app](#install-it-as-an-app)
 - [Configuration](#configuration)
 - [Several machines (SSH)](#several-machines-ssh)
 - [Claude and Codex quotas](#claude-and-codex-quotas)
@@ -352,7 +352,7 @@ wherdr itself: one button, asked first.
 - **push notifications** (on iOS, only in the installed app);
 - **passkeys** for the lock screen (Face ID, Touch ID, Windows Hello, Android).
 
-**4. On the phone:** open the address, [install the app](#install-the-app-on-your-phone), then
+**4. On the phone:** open the address, [install the app](#install-it-as-an-app), then
 Settings → **Enable notifications**. **On the computer:** use the same address in a browser; the
 desktop layout can replace the Herdr terminal client for daily work.
 
@@ -706,16 +706,23 @@ docker run -d --name watchtower --restart unless-stopped \
 
 Pin a version instead of `latest` with `WHERDR_IMAGE=ghcr.io/afloury/wherdr:1.2.0` in `.env`.
 
-## Install the app on your phone
+## Install it as an app
 
-The app must be served over HTTPS (see [Requirements](#requirements)).
+The app must be served over HTTPS (see [Requirements](#requirements)). Installed, wherdr opens
+in its own window, without the browser's bars.
 
 - **iPhone / iPad** (iOS 16.4 or later): open the address in **Safari** → Share →
   **Add to Home Screen**. Open wherdr from the home screen, then Settings → **Enable
   notifications**. On iOS, push notifications only work in the installed app.
 - **Android**: open the address in **Chrome** → menu → **Install app** (or Add to Home
   screen), then Settings → **Enable notifications**.
-- **Computer**: just use the address in a browser; Chrome and Edge can also install it.
+- **Mac, Safari** (macOS 14 Sonoma or later): File → **Add to Dock**.
+- **Chrome, Edge, Brave** (macOS, Windows, Linux): the install icon at the right of the address
+  bar, or menu → **Cast, save and share** → **Install page as app** (Edge: Apps → **Install
+  this site as an app**).
+- **Arc** cannot install web apps
+  ([Arc Help Center](https://resources.arc.net/hc/en-us/articles/25678978728983-Does-Arc-for-Desktop-Support-Progressive-Web-Apps)):
+  open the address in Safari or Chrome for that, or keep wherdr as an Arc favorite.
 
 Then Settings → Security → **Enable passkey lock** on each device.
 
@@ -924,7 +931,10 @@ Actions declared by the plugins installed on a machine (`herdr plugin install|li
 the menus: workspace / tab / pane actions in the agent menu, global actions in the machine menu.
 wherdr always passes the agent's pane explicitly. It asks for confirmation before running an
 action, except for actions that only show or check something (list, show, status, doctor…).
-Actions that open a plugin panel open it in the attached Herdr terminal client, not on the phone.
+Actions that open a plugin pane or popup open it in the attached Herdr terminal client, not on the
+phone: the menu marks them **Opens in Herdr**. wherdr's own plugin actions (its panel, open in the
+browser) are not listed. With a single machine, the machine's actions are in the **…** menu of
+its session row, under the agent list header.
 
 **herdr-projects** actions that ask for input (New project, continue this workspace as a
 project, open, pause, resume) are run by wherdr itself as `herdr-projects` commands, because

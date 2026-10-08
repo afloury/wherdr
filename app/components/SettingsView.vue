@@ -118,6 +118,7 @@ const focusBorderItems = computed(() => [
   { label: t('None'), description: t('Plain 1 px border, no animation.'), value: 'off' },
 ])
 const backdropMode = backdrop
+const packetsOn = backdropPackets
 const backdropItems = computed(() => [
   { label: 'wherdr grid', description: t('Dotted grid with light packets, like wherdr.dev.'), value: 'wherdr' },
   { label: 'herdr grid', description: t('Flat line grid, like herdr.dev.'), value: 'herdr' },
@@ -370,6 +371,10 @@ onMounted(() => {
             <div class="settings-group">
               <h3>{{ t('Background') }}</h3>
               <URadioGroup v-model="backdropMode" :items="backdropItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+              <label v-if="backdropMode === 'wherdr'" class="settings-toggle">
+                <span><b>{{ t('Animated packets') }}</b><small>{{ t('Small glowing squares running along the wherdr grid.') }}</small></span>
+                <USwitch v-model="packetsOn" color="success" size="xl" />
+              </label>
               <p class="muted settings-hint">{{ t('In the margins of the conversation. Still when the system asks for reduced motion. Saved on this device.') }}</p>
             </div>
             <div class="settings-group settings-width">

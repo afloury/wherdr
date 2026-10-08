@@ -324,6 +324,8 @@ const FR: Record<string, string> = {
   'Background': 'Fond',
   'Dotted grid with light packets, like wherdr.dev.': 'Grille à points parcourue de paquets lumineux, comme wherdr.dev.',
   'Flat line grid, like herdr.dev.': 'Grille de lignes plates, comme herdr.dev.',
+  'Animated packets': 'Paquets animés', 'Small glowing squares running along the wherdr grid.': 'Petits carrés lumineux qui parcourent la grille wherdr.',
+  'Opens in Herdr': 'S’ouvre dans Herdr',
   'In the margins of the conversation. Still when the system asks for reduced motion. Saved on this device.': 'Dans les marges de la conversation. Immobile quand le système demande moins d’animations. Réglage propre à cet appareil.',
   'Halo': 'Halo', 'The same, with a faint glow around the field.': 'Pareil, avec une légère lueur autour du champ.',
   'None': 'Aucune', 'Plain 1 px border, no animation.': 'Bord simple de 1 px, sans animation.',
