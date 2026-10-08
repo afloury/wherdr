@@ -211,7 +211,7 @@ const faq = [
           </div>
           <p v-reveal class="warn">
             <span class="label">Never</span>
-            port forwarding · public reverse proxy · Cloudflare Tunnel · ngrok · <code>tailscale funnel</code>
+            port forwarding · public reverse proxy · ngrok · <code>tailscale funnel</code> · Cloudflare Tunnel without Access
           </p>
         </div>
       </section>
@@ -233,7 +233,8 @@ const faq = [
               <button v-if="tab !== recommended.tab" type="button" class="recommend-steps" @click="tab = recommended.tab">Show its steps <UIcon name="i-lucide-arrow-down" class="size-3.5" /></button>
             </div>
             <p class="prereq">
-              Needs <a href="https://herdr.dev" target="_blank" rel="noopener">Herdr</a> 0.9.1+ on Linux or macOS · your phone needs <a href="https://tailscale.com/download" target="_blank" rel="noopener">Tailscale</a>, free for personal use.
+              Needs <a href="https://herdr.dev" target="_blank" rel="noopener">Herdr</a> 0.9.1+ on Linux or macOS · your phone connects through <a href="https://tailscale.com/download" target="_blank" rel="noopener">Tailscale</a>, free for personal use.
+              <a :href="`${REPO}#other-private-networks`" target="_blank" rel="noopener">Works with any private network that gives you an HTTPS address</a> — Headscale, NetBird, ZeroTier, WireGuard, Cloudflare Tunnel + Access.
             </p>
             <div class="tabs" role="tablist" aria-label="Installation method">
               <button v-for="t in installTabs" :id="`tab-${t.id}`" :key="t.id" type="button" role="tab" class="tab" :aria-selected="tab === t.id" :aria-controls="`panel-${t.id}`" @click="tab = t.id">

@@ -69,6 +69,7 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - [Requirements](#requirements)
 - [Installation](#installation): [which setup?](#which-setup) ·
   [always-on server + Tailscale](#recommended-always-on-server--tailscale) ·
+  [other private networks](#other-private-networks) ·
   [the `wherdr` command](#the-wherdr-command) ·
   [one computer, no Docker](#simple-one-computer-no-docker) ·
   [as a Herdr plugin](#install-as-a-herdr-plugin) ·
@@ -205,7 +206,8 @@ Web Push, lock) runs in Nitro.
 - **HTTPS** to use passkeys, push notifications and the installable app from another device.
   Browsers only allow them on `https://` or `http://localhost`. The easiest way is
   [`tailscale serve`](https://tailscale.com/kb/1312/serve); a reverse proxy **reachable only
-  from your private network** with a valid certificate also works.
+  from your private network** with a valid certificate also works (see
+  [Other private networks](#other-private-networks)).
 
 ## Installation
 
@@ -312,8 +314,82 @@ sleeping for an hour, four hours, the evening or until turned off.
 
 > [!CAUTION]
 > Never publish wherdr on the Internet: no port forwarding on your router, no public reverse
-> proxy, no Cloudflare Tunnel or ngrok, no `tailscale funnel`. Use `tailscale serve`, which stays
-> inside your tailnet. See [Security](#security).
+> proxy, no ngrok, no `tailscale funnel`, no Cloudflare Tunnel without Cloudflare Access. Use
+> `tailscale serve`, which stays inside your tailnet. See [Security](#security).
+
+### Other private networks
+
+Tailscale is the built-in path (one click in **Settings › Phone**), not a requirement. wherdr
+works with any private network that gives it an **HTTPS address with a valid certificate**:
+
+- **HTTPS with a certificate your phone trusts.** The installed app (PWA), push notifications
+  and passkeys only work on `https://`. A self-signed certificate or plain `http://` on your
+  LAN is not enough, and is never a supported way to reach wherdr.
+- **`APP_URL` set to that address** (`.env` with Docker, or the environment of `wherdr` /
+  `npm start`), then restart wherdr. Its hostname is allowed automatically and it enables Web
+  Push. Add `HERDR_WEB_ALLOWED_HOSTS` only if you also open wherdr under another name. The
+  one-click address check in **Settings › Phone** only knows `*.ts.net` addresses; an HTTPS
+  `APP_URL` in the environment always wins.
+- **Never exposed without authentication.** wherdr keeps listening on `127.0.0.1`; only the
+  proxy listens on the private network. Turn on the passkey lock as soon as another device can
+  reach it.
+
+**Headscale, NetBird, ZeroTier, WireGuard: the same recipe.** Join the server and the phone to
+the network, give the server a DNS name that points to its **private** address, and put a reverse
+proxy in front of wherdr that listens on that private address only. Let's Encrypt cannot reach a
+private address, so the certificate comes from the
+[DNS challenge](https://caddyserver.com/docs/automatic-https#dns-challenge). With
+[Caddy](https://caddyserver.com) built with your DNS provider's
+[module](https://github.com/caddy-dns) (here [Cloudflare DNS](https://github.com/caddy-dns/cloudflare)),
+a `Caddyfile` like this ([`bind`](https://caddyserver.com/docs/caddyfile/directives/bind),
+[`tls`](https://caddyserver.com/docs/caddyfile/directives/tls)):
+
+```caddy
+wherdr.example.com {
+	bind 100.64.0.10                 # the server's address on the private network only
+	tls {
+		dns cloudflare {env.CF_API_TOKEN}
+	}
+	reverse_proxy 127.0.0.1:7683
+}
+```
+
+Point `wherdr.example.com` (an `A` record in your DNS zone) to that private address: from
+anywhere else it leads nowhere. Then set `APP_URL=https://wherdr.example.com/` and restart
+wherdr. To join each device:
+
+| Network | Join a device (official docs) | Server's private address |
+| --- | --- | --- |
+| [Headscale](https://headscale.net/stable/usage/getting-started/) | Tailscale clients: `tailscale up --login-server <YOUR_HEADSCALE_URL>` | `tailscale ip -4` |
+| [NetBird](https://docs.netbird.io/get-started/cli) | `netbird up` (`--management-url` when self-hosted) | `netbird status` |
+| [ZeroTier](https://docs.zerotier.com/start) | `zerotier-cli join <network ID>`, then authorize the device in the network's members | The members list of your network |
+| [WireGuard](https://www.wireguard.com/quickstart/) | `wg-quick up wg0` with a peer per device | The `Address` of the server's interface |
+
+Headscale does not support `tailscale serve` with HTTPS yet
+([features](https://headscale.net/stable/about/features/),
+[#1921](https://github.com/juanfont/headscale/issues/1921)): `tailscale cert` and Serve need
+certificates that only Tailscale's own control server provisions. Use the reverse proxy above
+instead of step 3.
+
+**Cloudflare Tunnel + Cloudflare Access: only with Access.**
+
+> [!WARNING]
+> A Cloudflare Tunnel puts wherdr **on the Internet**: anyone can reach its address, and
+> Cloudflare terminates TLS, so it sees all traffic. **Cloudflare Access is mandatory**, created
+> *before* the route: without it, whoever finds the address controls your agents. Keep the
+> passkey lock on as well. Prefer a private network when you can.
+
+1. In Cloudflare One, create the Access application first:
+   [Self-hosted and private › Add public hostname](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
+   `wherdr.example.com`, with an **Allow** policy for your own e-mail only (Access applications
+   deny everyone else by default).
+2. [Create a tunnel](https://developers.cloudflare.com/tunnel/setup/) and run `cloudflared` on the
+   server, then add a **published application** route: hostname `wherdr.example.com`, service
+   `http://localhost:7683`.
+3. Set `APP_URL=https://wherdr.example.com/` and restart wherdr.
+
+Installing the app and notifications behind Access are not tested by the project: the phone must
+first sign in to Access in the browser.
 
 ### The `wherdr` command
 
@@ -768,8 +844,9 @@ wherdr drives Herdr, so **it can run anything as your user**. Docker does not ch
 container talks to the Herdr server running on the host.
 
 - It listens on `127.0.0.1` only. Reach it from other devices **only through a private
-  network** (Tailscale or equivalent). Never add a public route (port forwarding, public reverse
-  proxy, Cloudflare Tunnel, ngrok…).
+  network** (Tailscale or [equivalent](#other-private-networks)). Never add a public route
+  (port forwarding, public reverse proxy, ngrok…); the only exception is a Cloudflare Tunnel
+  behind Cloudflare Access, with its risks.
 - Requests are accepted only for `localhost`, loopback addresses, the runtime's hostname, the
   hostname in `APP_URL`, and the runtime's network interface addresses (those of the container
   with Docker). Add other private names or IP addresses to `HERDR_WEB_ALLOWED_HOSTS`

@@ -3,6 +3,7 @@
 // your devices), check live that the address answers, then its QR code.
 // Settings › Phone, and the onboarding. Server side: server/utils/phone.ts.
 import type { PhoneError, PhoneResult, PhoneStatus } from '#shared/phone'
+import pkg from '../../package.json'
 
 const props = defineProps<{ active: boolean }>()
 
@@ -66,6 +67,9 @@ async function copyCommand() {
 const needsTailscale = computed(() => status.value?.mode === 'missing' || (status.value?.mode === 'native' && !status.value.connected))
 const DOWNLOADS: Record<string, string> = { darwin: 'https://tailscale.com/download/mac', win32: 'https://tailscale.com/download/windows', linux: 'https://tailscale.com/download/linux' }
 const downloadUrl = computed(() => DOWNLOADS[status.value?.platform || ''] || 'https://tailscale.com/download')
+// Headscale, NetBird, ZeroTier, WireGuard, Cloudflare Tunnel + Access: documented
+// in the README (repository URL from package.json), not automated.
+const OTHER_NETWORKS_DOC = pkg.bugs.replace(/\/issues$/, '#other-private-networks')
 const checking = ref(false)
 async function checkAgain() {
   checking.value = true
@@ -97,7 +101,7 @@ const failureText = computed(() => {
 <template>
   <div class="settings-group phone-setup">
     <h3>{{ tl('Use it on your phone', 'Utiliser sur ton téléphone') }}</h3>
-    <p class="phone-intro">{{ tl('Your phone reaches wherdr through Tailscale: a private HTTPS address, only for your devices, never the public Internet.', 'Ton téléphone joint wherdr par Tailscale : une adresse HTTPS privée, pour tes appareils seulement, jamais Internet.') }}</p>
+    <p class="phone-intro">{{ tl('Your phone reaches wherdr through Tailscale: a private HTTPS address, only for your devices, never the public Internet.', 'Ton téléphone joint wherdr par Tailscale : une adresse HTTPS privée, pour tes appareils seulement, jamais Internet.') }} <a class="phone-other" :href="OTHER_NETWORKS_DOC" target="_blank" rel="noopener noreferrer">{{ tl('Using something else?', 'Tu utilises autre chose ?') }}</a></p>
 
     <p v-if="denied" class="phone-note warn">{{ tl('Set it up from the computer that runs wherdr: open http://localhost:' + (status?.port || '7683') + ' there, or unlock wherdr with its passkey.', 'Configure-le depuis l’ordinateur qui fait tourner wherdr : ouvre http://localhost:' + (status?.port || '7683') + ' dessus, ou déverrouille wherdr avec sa passkey.') }}</p>
     <p v-else-if="!status" class="phone-note">{{ tl('Checking…', 'Vérification…') }}</p>

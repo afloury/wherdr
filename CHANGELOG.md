@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Other private networks** (README): wherdr works with any private network that gives it an
+  HTTPS address with a valid certificate. Headscale, NetBird, ZeroTier and WireGuard use a
+  reverse proxy on the private address (Caddy, certificate from the DNS challenge) and `APP_URL`;
+  Cloudflare Tunnel only behind Cloudflare Access, with an explicit warning. Settings › Phone
+  links to it ("Using something else?"), and so do wherdr.dev, `llms.txt` and `agent.md`.
 - **Setup guide** at first launch, full screen on a computer and a phone: what wherdr is, the
   Herdr version and the agents found on this machine (or how to start one), the phone
   (Settings › Phone's Tailscale setup), then the passkey lock and notifications. Skip is always

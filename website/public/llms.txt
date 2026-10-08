@@ -8,6 +8,7 @@
 - [Installer](https://wherdr.dev/install): the `curl -fsSL https://wherdr.dev/install | sh` script (Linux, Docker)
 - [Herdr plugin](https://raw.githubusercontent.com/afloury/wherdr/main/herdr-plugin.toml): `herdr plugin install afloury/wherdr` (Linux: Docker when available, else Node.js 22; macOS: Node.js 22)
 - [README](https://raw.githubusercontent.com/afloury/wherdr/main/README.md): features, installation, configuration, troubleshooting
+- [Other private networks](https://github.com/afloury/wherdr#other-private-networks): phone access over Headscale, NetBird, ZeroTier, WireGuard or Cloudflare Tunnel + Access instead of Tailscale (HTTPS with a valid certificate, `APP_URL`)
 - [Security policy](https://raw.githubusercontent.com/afloury/wherdr/main/SECURITY.md): how to report a vulnerability
 
 ## Optional
