@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { REPO } from '~/utils/site'
 const links = [
+  { label: 'Why', to: '#why' },
   { label: 'Features', to: '#features' },
   { label: 'How it works', to: '#how' },
   { label: 'Security', to: '#security' },
