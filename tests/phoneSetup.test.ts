@@ -6,7 +6,8 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync }
 import path from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as Tailnet from '../bin/lib/tailnet.mjs'
-import { phoneAccess, phoneAction, phoneStatus } from '../server/utils/phone'
+import { failureCause } from '../bin/lib/tailnet.mjs'
+import { httpsPortOf, phoneAccess, phoneAction, phoneStatus } from '../server/utils/phone'
 
 // Before the server modules load: their data folder and port.
 const fake = vi.hoisted(() => {
@@ -20,7 +21,7 @@ const fake = vi.hoisted(() => {
 vi.mock('../bin/lib/tailnet.mjs', async orig => ({
   ...await orig<typeof Tailnet>(),
   tailscaleBin: () => fake.bin,
-  reachable: async () => fake.reach,
+  probe: async () => fake.reach === 'unreachable' ? { reach: fake.reach, cause: 'refused' } : { reach: fake.reach, status: 200 },
 }))
 
 const NAME = 'box.example.ts.net'
@@ -128,5 +129,31 @@ describe('phone setup', () => {
     expect(await phoneAction({ action: 'rm -rf' })).toMatchObject({ ok: false, error: 'failed' })
     expect(await phoneAction({ action: 'address', url: 'https://example.com/' })).toMatchObject({ ok: false, error: 'address' })
     expect(callLog()).toEqual([])
+  })
+})
+
+describe('phone address check', () => {
+  it('tells why an address does not answer', () => {
+    expect(failureCause({ code: 'ENOTFOUND' })).toBe('dns')
+    expect(failureCause({ code: 'ECONNREFUSED' })).toBe('refused')
+    expect(failureCause(new Error('timeout'))).toBe('timeout')
+    expect(failureCause({ code: 'ERR_TLS_CERT_ALTNAME_INVALID' })).toBe('cert')
+    expect(failureCause({ code: 'DEPTH_ZERO_SELF_SIGNED_CERT' })).toBe('cert')
+    expect(failureCause({ code: 'EPROTO', message: 'SSL routines:ssl3_get_record:wrong version number' })).toBe('tls')
+    expect(failureCause({ code: 'ECONNRESET' })).toBe('network')
+  })
+
+  it('keeps the HTTPS port an address is already published on', () => {
+    expect(httpsPortOf('https://box.example.ts.net:8103/')).toBe('8103')
+    expect(httpsPortOf('https://box.example.ts.net/')).toBe('')
+    expect(httpsPortOf(null)).toBe('')
+  })
+
+  it('records the reason and the time of an unreachable address', async () => {
+    fake.reach = 'unreachable'
+    const r = await phoneAction({ action: 'publish' })
+    expect(r.status.reach).toBe('unreachable')
+    expect(r.status.reachCause).toBe('refused')
+    expect(r.status.checkedAt).toBeGreaterThan(0)
   })
 })

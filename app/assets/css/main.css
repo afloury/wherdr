@@ -2102,6 +2102,20 @@ body.kb .composer { padding-bottom: 8px; }
 .phone-note p { margin: 0 0 6px; }
 .phone-note.warn { padding: 10px 12px; border: 1px solid var(--ochre); color: var(--text); }
 .phone-detail { margin: 0 0 6px; max-height: 160px; overflow: auto; font: 11.5px/1.5 var(--mono); white-space: pre-wrap; color: var(--text-2); }
+/* Result of a check asked by hand (PhoneSetup.vue): highlighted briefly, with its time. */
+.phone-result { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 4px 8px; margin: 10px 0 0; padding: 8px 10px; border: 1px solid var(--line); font-size: 12.5px; line-height: 1.45; animation: phone-hit 1.6s ease-out; }
+.phone-result .iconify { flex: none; width: 15px; height: 15px; margin-top: 1px; }
+.phone-result span { flex: 1 1 14em; min-width: 0; }
+.phone-result time { font: 500 10px/1.8 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.phone-result.ok { border-color: var(--done); --hit: var(--done); }
+.phone-result.ok .iconify { color: var(--done); }
+.phone-result.bad { border-color: var(--danger); --hit: var(--danger); }
+.phone-result.bad .iconify { color: var(--danger); }
+@keyframes phone-hit { from { background: color-mix(in srgb, var(--hit) 22%, transparent); } }
+/* State rows refreshed by a check: a short sweep. */
+.phone-flash li { animation: phone-row 1.2s ease-out; }
+@keyframes phone-row { from { background: color-mix(in srgb, var(--mauve) 14%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .phone-result, .phone-flash li { animation: none; } }
 .phone-guide { margin-top: 16px; padding: 16px; border: 1px solid var(--line); background: var(--bg-2); }
 .phone-guide-why { margin: 0 0 14px; font-size: 13px; line-height: 1.5; color: var(--text-2); }
 .phone-guide-steps { margin: 0 0 16px; padding: 0; list-style: none; counter-reset: guide; display: flex; flex-direction: column; gap: 12px; }
@@ -2119,10 +2133,11 @@ body.kb .composer { padding-bottom: 8px; }
   .phone-qr { flex-direction: column; align-items: flex-start; }
   .phone-command, .phone-address { flex-wrap: wrap; }
 }
-/* First-launch setup guide (OnboardingGuide.vue): full screen, grid backdrop like
-   the lock screen; top bar (brand, Skip), step rail, one page, Back / Next. */
-.onboarding {
-  position: fixed; inset: 0; z-index: 45; display: flex; flex-direction: column; background: var(--bg);
+/* First-launch setup guide (OnboardingGuide.vue): full screen on a phone, grid
+   backdrop like the lock screen; top bar (brand, Skip), step rail, one page, Back / Next. */
+.onboarding { position: fixed; inset: 0; z-index: 45; display: flex; }
+.onboarding-panel {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg);
   background-image: linear-gradient(var(--line-soft) 1px, transparent 1px), linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
   background-size: 48px 48px; background-position: center;
 }
@@ -2168,6 +2183,20 @@ body.kb .composer { padding-bottom: 8px; }
 @media (max-width: 520px) {
   .onboarding-next { flex: 1; }
   .onboarding-steps button span { font-size: 9px; letter-spacing: .08em; }
+}
+/* Computer: a centered modal over the blurred app, sized to its content. */
+@media (min-width: 900px) {
+  .onboarding {
+    align-items: center; justify-content: center; padding: 40px 24px;
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  .onboarding-panel { flex: 0 1 auto; width: 100%; max-width: 700px; max-height: min(860px, 100%); border: 1px solid var(--line); box-shadow: 0 24px 80px rgb(0 0 0 / .45); }
+  .onboarding-top { padding-top: 10px; }
+  .onboarding-page { padding: 28px 28px 32px; }
+  .onboarding-title { font-size: 34px; }
+  .onboarding-foot { padding-bottom: 12px; }
+  .onboarding-body { flex: 0 1 auto; }
 }
 .settings-typing .encrypted-toggle.is-disabled { opacity: .48; cursor: not-allowed; }
 /* Typewriter preview: sample reply, replayed on each setting change. */

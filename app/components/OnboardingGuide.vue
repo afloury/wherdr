@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// First-launch setup guide, full screen: welcome (what wherdr is, the Herdr
+// First-launch setup guide: a centered modal over the blurred app on a
+// computer, a full-screen page on a phone. Welcome (what wherdr is, the Herdr
 // agents found), the phone (Tailscale, PhoneSetup.vue) or Add to Home Screen
 // on a phone already on the tailnet address, then passkey lock and
 // notifications. Skip is always there; finishing or skipping is saved by the
@@ -58,7 +59,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <div class="onboarding" role="dialog" aria-modal="true" :aria-label="tl('Setup guide', 'Guide de démarrage')">
+  <div class="onboarding">
+  <div class="onboarding-panel" role="dialog" aria-modal="true" :aria-label="tl('Setup guide', 'Guide de démarrage')">
     <header class="onboarding-top">
       <div class="onboarding-brand">
         <img :src="'/icons/icon-192.png?v=5'" alt="" class="onboarding-logo">
@@ -161,5 +163,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         {{ last ? tl('Finish', 'Terminer') : tl('Next', 'Suivant') }}
       </UButton>
     </footer>
+  </div>
   </div>
 </template>
