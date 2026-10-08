@@ -955,6 +955,32 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 }
 .msg-files { margin-bottom: 6px; }
 .msg-time { font: 400 10.5px/1 var(--mono); color: var(--dim); letter-spacing: .04em; }
+/* Long typed message: folded after ~12 lines, with a fade and Show more. */
+.msg-fold { position: relative; }
+.msg-fold.folded { max-height: calc(15px * 1.5 * 12); overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent); mask-image: linear-gradient(to bottom, #000 60%, transparent); }
+.msg-fold-btn { display: block; margin-top: 6px; padding: 0; font: 600 10.5px/1.6 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--text-2); }
+.msg-fold-btn:hover, .msg-fold-btn:focus-visible { color: var(--accent); outline: none; }
+
+/* Long pasted text: a card (message field and sent message) that opens the whole text. */
+.pasted-card { position: relative; display: flex; align-items: stretch; width: 260px; max-width: 100%; background: var(--bg-2); border: 1px solid var(--line); color: var(--text); white-space: normal; }
+.pasted-card:hover, .pasted-card:focus-within { border-color: var(--accent); }
+.pasted-open { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; padding: 8px 10px; text-align: left; cursor: pointer; }
+.pasted-open:focus-visible { outline: none; }
+.pasted-head { display: flex; align-items: center; gap: 6px; font: 600 10px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--text-2); }
+.pasted-head .iconify { width: 13px; height: 13px; flex: none; }
+.pasted-line { font: 400 11.5px/1.35 var(--mono); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pasted-x { display: grid; place-items: center; width: 26px; flex: none; color: var(--text-2); border-left: 1px solid var(--line); }
+.pasted-x:hover { color: var(--text); background: var(--surface-3); }
+.pasted-x .iconify { width: 13px; height: 13px; }
+.msg-pastes { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; white-space: normal; }
+.msg-fold + .msg-pastes, .msg-fold-btn + .msg-pastes { margin-top: 8px; }
+.attachments .pasted-card { height: 60px; width: 220px; }
+.attachments .pasted-open { justify-content: center; padding: 6px 8px; gap: 4px; }
+.attachments .pasted-line:nth-child(n + 3) { display: none; }
+.pasted-head { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pasted-full { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 14px/1.55 var(--sans, inherit); color: var(--text); user-select: text; -webkit-user-select: text; }
+.pasted-full.mono { font: 400 12.5px/1.5 var(--mono); }
+.pasted-foot { display: flex; justify-content: flex-end; width: 100%; }
 
 /* Agent name at the top of its reply. */
 .msg-who {

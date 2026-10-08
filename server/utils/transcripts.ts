@@ -26,6 +26,7 @@ import { searchFile } from './conversationSearch'
 import { hasTranscript, transcriptKind } from '../../shared/agentKind'
 import { type CommandTemplate, ompCommandTemplates } from './slash'
 import { fmt } from '../../shared/message'
+import { pastedBlocks } from '../../shared/pastedText'
 
 // Backward reading by windows until there are enough messages: Claude's
 // transcripts embed images in base64, a few screenshots
@@ -67,7 +68,8 @@ const isNoise = (t: string) => /^\s*<(?!command-name)[a-z_-]+[\s>]/i.test(t) || 
 const stripImageTags = (t: unknown) => String(t || '').replace(/\[Image #\d+(?:, \d+x\d+)?\]\s*/g, '').trim()
 // Pasted text (a multi-line send from wherdr is one): Claude Code
 // wraps it in <pasted_content id="…">…</pasted_content id="…">. It is a
-// real user message: we keep the text, without the tags.
+// real user message: we keep the text, without the tags; its long blocks
+// are also listed (`pasted`) to be shown as cards.
 const PASTED = /<pasted_content(?:\s[^>]*)?>\n?|\n?<\/pasted_content(?:\s[^>]*)?>/g
 export const unwrapPasted = (t: string) => (t.includes('<pasted_content') ? t.replace(PASTED, '').trim() : t)
 // A message written by the user (after removing the paste wrappers).
@@ -76,6 +78,11 @@ function humanText(t: unknown): string | null {
   const u = unwrapPasted(s)
   if (u !== s) return u
   return isNoise(s) ? null : s
+}
+// `pasted` of a user item: its long blocks, clipped like the text.
+const pastedOf = (raw: string) => {
+  const b = pastedBlocks(raw).map(s => clip(s))
+  return b.length ? { pasted: b } : {}
 }
 // Same message? (spaces, case and images ignored; Claude may group
 // several into one turn, hence inclusion rather than equality).
@@ -289,10 +296,11 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
     if (d.type === 'attachment' && d.attachment && d.attachment.type === 'queued_command'
       && d.attachment.commandMode === 'prompt' && (d.attachment.origin || {}).kind === 'human') {
       const parts: Json[] = Array.isArray(d.attachment.prompt) ? d.attachment.prompt : [{ type: 'text', text: String(d.attachment.prompt || '') }]
-      const text = stripImageTags(unwrapPasted(parts.filter(p => p.type === 'text').map(p => p.text).join('\n')))
+      const raw = parts.filter(p => p.type === 'text').map(p => p.text).join('\n')
+      const text = stripImageTags(unwrapPasted(raw))
       const images = parts.filter(p => p.type === 'image').length
       if (text || images) {
-        items.push({ role: 'user', text: clip(text), images, ref: images ? ref : undefined, ts: d.attachment.timestamp || ts })
+        items.push({ role: 'user', text: clip(text), images, ref: images ? ref : undefined, ts: d.attachment.timestamp || ts, ...pastedOf(raw) })
         pendingCmd = null
         said(text, d.attachment.timestamp || ts, images)
       }
@@ -345,7 +353,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
         } else {
           const text = humanText(content)
           if (text) {
-            items.push({ role: 'user', text: clip(text), ts })
+            items.push({ role: 'user', text: clip(text), ts, ...pastedOf(content) })
             pendingCmd = null
             said(text, ts)
             noteSaid(d)
@@ -355,6 +363,7 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
       }
       if (!Array.isArray(content)) continue
       let text = ''
+      let raw = ''
       let images = 0
       // Images the line's tool results returned come after the message's
       // own (see extractImage).
@@ -374,12 +383,13 @@ export function parseClaude(lines: Lines, home = ''): Parsed {
           if (special(String(part.text || ''), ts)) continue
           const t = humanText(part.text)
           if (t === null) continue
+          raw += '\n' + String(part.text || '')
           if (/^\[Request interrupted/.test(t)) items.push({ role: 'system', text: 'Interrupted', ts })
           else text += (text ? '\n' : '') + unwrapPasted(t.replace(/\[Image #\d+\]\s*/g, ''))
         } else if (part.type === 'image') images++
       }
       if (text.trim() || images) {
-        items.push({ role: 'user', text: clip(text.trim()), images, ref: images ? ref : undefined, ts })
+        items.push({ role: 'user', text: clip(text.trim()), images, ref: images ? ref : undefined, ts, ...pastedOf(raw) })
         pendingCmd = null
         said(text, ts, images)
         noteSaid(d)

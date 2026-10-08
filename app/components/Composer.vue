@@ -17,6 +17,8 @@ import type { AttachKind } from '#shared/attachments'
 import { refusalText, sortForAgent } from '~/utils/fileDrop'
 import { uploadPhoto } from '~/utils/photoUpload'
 import { lostPhotosText, restoreDraft } from '~/utils/queuedCancel'
+import { isLongPaste, messageBody } from '#shared/pastedText'
+import { rememberPastes } from '~/utils/sentPastes'
 
 // `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
 // `takeBack`: conversation view; a prompt Claude puts back into its field on Stop
@@ -148,11 +150,13 @@ const hint = computed(() => desk.value && !stopMode.value)
 async function submit() {
   if (readOnly.value) return toast(t('Sending unavailable offline'), true)
   if (stopMode.value) return interrupt()
-  if (attachments.value.some(a => !a.path)) return toast(t(attachments.value.some(a => !a.path && a.file) ? 'File is uploading…' : 'Photo is uploading…'))
+  if (attachments.value.some(a => !a.paste && !a.path)) return toast(t(attachments.value.some(a => !a.path && a.file) ? 'File is uploading…' : 'Photo is uploading…'))
   // Photos and files go as file paths (`@<path>` for a text file given to
-  // Claude): Claude Code and Codex open them themselves.
-  const paths = attachments.value.map(a => a.ref || a.path!)
-  const body = [text.value.trim(), ...paths].filter(Boolean).join('\n')
+  // Claude): Claude Code and Codex open them themselves. Pasted texts go as
+  // they are, after the typed text (the agent gets one message, as from a paste).
+  const pastes = attachments.value.flatMap(a => (a.paste ? [a.paste] : []))
+  const paths = attachments.value.flatMap(a => (a.paste ? [] : [a.ref || a.path!]))
+  const body = messageBody(text.value, pastes, paths)
   // No marker before a "/" or "!" command: the agent would no longer read it as such
   // (a photo sent alone starts with its path: not a command).
   const reply = isSlashCommand(body) || body.startsWith('!') ? null : replyTo.value
@@ -168,6 +172,7 @@ async function submit() {
   if (free < 0 && viaPrompt(p) && !isSlashCommand(msg)) {
     text.value = ''
     clearAttachments()
+    rememberPastes(pastes)
     if (reply) replyTo.value = null
     haptic()
     emit('sent', null)
@@ -182,6 +187,7 @@ async function submit() {
     } else queued = await sendMessage(p, props.paneId, msg)
     text.value = ''
     clearAttachments()
+    rememberPastes(pastes)
     if (reply) replyTo.value = null
     haptic()
     emit('sent', queued)
@@ -324,9 +330,20 @@ function onPaste(e: ClipboardEvent) {
   const files = [...((e.clipboardData && e.clipboardData.items) || [])]
     .filter(i => i.kind === 'file')
     .map(i => i.getAsFile()).filter((f): f is File => Boolean(f))
-  if (!files.length) return // text: normal paste
+  if (!files.length) {
+    // Long text: a "Pasted text" card instead of filling the field.
+    const s = (e.clipboardData?.getData('text/plain') || '').replace(/\r\n?/g, '\n')
+    if (!isLongPaste(s)) return // normal paste
+    e.preventDefault()
+    addPaste(s)
+    return
+  }
   e.preventDefault()
   addFiles(files)
+  haptic()
+}
+function addPaste(s: string) {
+  attachments.value.push({ url: '', path: null, paste: s })
   haptic()
 }
 
@@ -559,13 +576,14 @@ defineExpose({
       @submit="submit" @keydown="onKeydown" @paste="onPaste" @focus="taFocused = true" @blur="taFocused = false"
     >
       <template v-if="tokensMode" #body>
-        <QuoteTokensField ref="tokensRef" v-model="text" :placeholder="placeholder" :enter-sends="enterSends" @submit="submit" @files="addFiles" />
+        <QuoteTokensField ref="tokensRef" v-model="text" :placeholder="placeholder" :enter-sends="enterSends" @submit="submit" @files="addFiles" @pasted="addPaste" />
       </template>
       <template v-if="attachments.length" #header>
         <div class="attachments">
-          <template v-for="(a, i) in attachments" :key="a.url || a.path || a.file?.label">
+          <template v-for="(a, i) in attachments" :key="a.url || a.path || a.file?.label || `paste:${i}`">
+            <PastedCard v-if="a.paste" :text="a.paste" removable @remove="removeAtt(i)" />
             <FileChip
-              v-if="a.file" :name="a.file.label" :size="a.file.size" :kind="a.file.kind" :uploading="!a.path" removable
+              v-else-if="a.file" :name="a.file.label" :size="a.file.size" :kind="a.file.kind" :uploading="!a.path" removable
               @remove="removeAtt(i)"
             />
             <div

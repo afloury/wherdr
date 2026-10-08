@@ -7,10 +7,11 @@
 // paste and token deletion go through the browser's editing, so undo / redo
 // keeps working.
 import { enterAction, fieldItems, readField, type FieldNode } from '~/utils/quoteTokens'
+import { isLongPaste } from '#shared/pastedText'
 
 const text = defineModel<string>({ required: true })
 const props = defineProps<{ placeholder?: string, enterSends: boolean }>()
-const emit = defineEmits<{ submit: [], files: [files: File[]] }>()
+const emit = defineEmits<{ submit: [], files: [files: File[]], pasted: [text: string] }>()
 const el = ref<HTMLElement | null>(null)
 // Last text read from or drawn into the field: an outside change (a quote
 // added, the message sent, a draft restored) redraws it.
@@ -112,7 +113,10 @@ function onPaste(e: ClipboardEvent) {
   e.preventDefault()
   const files = [...(e.clipboardData?.items || [])].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter((f): f is File => Boolean(f))
   if (files.length) { emit('files', files); return }
-  insertPlain(e.clipboardData?.getData('text/plain') || '')
+  const s = (e.clipboardData?.getData('text/plain') || '').replace(/\r\n?/g, '\n')
+  // Long text: a "Pasted text" card in the field (see shared/pastedText.ts).
+  if (isLongPaste(s)) { emit('pasted', s); return }
+  insertPlain(s)
 }
 // Files dropped: the agent view takes them (attachments). Text: plain only.
 function onDrop(e: DragEvent) {

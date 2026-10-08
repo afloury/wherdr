@@ -16,6 +16,8 @@ export interface DraftAtt {
   // carries (`@<path>` for Claude, the path otherwise).
   file?: { label: string, size: number, kind: AttachKind }
   ref?: string
+  // Long pasted text (shared/pastedText.ts): a card; sent as it is, after the text.
+  paste?: string
 }
 type StoredAtt = { path: string, name?: string, file?: DraftAtt['file'], ref?: string }
 
@@ -45,12 +47,13 @@ function load(paneId: string): Draft {
   try {
     const raw = localStorage.getItem(KEY + paneId)
     if (raw) {
-      const d = JSON.parse(raw) as { text?: string, atts?: StoredAtt[], reply?: ReplyTarget }
+      const d = JSON.parse(raw) as { text?: string, atts?: StoredAtt[], pastes?: string[], reply?: ReplyTarget }
       return {
         text: d.text || '',
         atts: (d.atts || [])
           .filter(a => a.path && a.name && Date.now() - uploadedAt(a.name) < ATT_MAX_AGE)
-          .map(restoreAtt),
+          .map(restoreAtt)
+          .concat((d.pastes || []).filter(p => typeof p === 'string' && p).map(paste => ({ url: '', path: null, paste }))),
         reply: d.reply && typeof d.reply.time === 'string' && typeof d.reply.excerpt === 'string' ? { time: d.reply.time, excerpt: d.reply.excerpt } : null,
       }
     }
@@ -60,9 +63,10 @@ function load(paneId: string): Draft {
 
 function persist(paneId: string, d: Draft) {
   const atts = d.atts.filter(a => a.path && a.name).map(a => (a.file ? { path: a.path, name: a.name, file: a.file, ref: a.ref } : { path: a.path, name: a.name }))
+  const pastes = d.atts.flatMap(a => (a.paste ? [a.paste] : []))
   try {
-    if (!d.text && !atts.length && !d.reply) localStorage.removeItem(KEY + paneId)
-    else localStorage.setItem(KEY + paneId, JSON.stringify({ text: d.text, atts, reply: d.reply || undefined }))
+    if (!d.text && !atts.length && !pastes.length && !d.reply) localStorage.removeItem(KEY + paneId)
+    else localStorage.setItem(KEY + paneId, JSON.stringify({ text: d.text, atts, pastes: pastes.length ? pastes : undefined, reply: d.reply || undefined }))
   } catch { /* stockage indisponible */ }
 }
 
@@ -74,7 +78,7 @@ export function useDraft(paneId: string): Draft {
     d = reactive(load(paneId)) as Draft
     drafts.set(paneId, d)
     const draft = d
-    scope.run(() => watch(() => [draft.text, draft.atts.map(a => a.path).join('|'), draft.reply?.excerpt, draft.reply?.time], () => persist(paneId, draft)))
+    scope.run(() => watch(() => [draft.text, draft.atts.map(a => a.path || (a.paste ? `paste:${a.paste.length}` : '')).join('|'), draft.reply?.excerpt, draft.reply?.time], () => persist(paneId, draft)))
   }
   return d
 }
