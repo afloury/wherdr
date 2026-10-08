@@ -32,15 +32,47 @@ function schedule() {
 watch(() => props.active, async (on) => { if (on) { await refresh(); schedule() } else if (timer) clearTimeout(timer) }, { immediate: true })
 onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
 
+// Result of the last check asked by hand (Check, Check again, publish):
+// shown next to the button with its time, and the state rows flash.
+const result = ref<{ ok: boolean, text: string, at: number } | null>(null)
+const flash = ref(0)
+const now = ref(Date.now())
+let clock: ReturnType<typeof setInterval> | null = null
+onMounted(() => { clock = setInterval(() => { now.value = Date.now() }, 10_000) })
+onBeforeUnmount(() => { if (clock) clearInterval(clock) })
+function report(ok: boolean, text: string) {
+  result.value = { ok, text, at: status.value?.checkedAt || Date.now() }
+  now.value = Date.now()
+  flash.value++
+}
+const resultWhen = computed(() => {
+  if (!result.value) return ''
+  return now.value - result.value.at < 60_000
+    ? tl('checked just now', 'vérifié à l’instant')
+    : tl(`checked at ${fmtTime(result.value.at)}`, `vérifié à ${fmtTime(result.value.at)}`)
+})
+
 async function act(body: Record<string, unknown>) {
   busy.value = true
   failure.value = null
   try {
     const r = await api<PhoneResult>('/api/phone', body)
     status.value = r.status
-    if (!r.ok) failure.value = { error: r.error, link: r.link, detail: r.detail }
-  } catch (e) { toast((e as Error).message, true) }
+    if (!r.ok) {
+      failure.value = { error: r.error, link: r.link, detail: r.detail }
+      report(false, failureText.value)
+    } else reportReach()
+  } catch (e) { report(false, (e as Error).message) }
   finally { busy.value = false; schedule() }
+}
+
+// The outcome of the address check, or of the Tailscale state without one.
+function reportReach() {
+  const s = status.value
+  if (!s) return
+  if (s.url) report(s.reach === 'ok', s.reach === 'ok' ? tl('Reachable', 'Joignable') : reachText.value)
+  else if (needsTailscale.value) report(false, s.mode === 'missing' ? tl('Tailscale is still not found on this computer.', 'Tailscale est toujours introuvable sur cet ordinateur.') : tl('Tailscale is still not connected on this computer.', 'Tailscale n’est toujours pas connecté sur cet ordinateur.'))
+  else report(true, tl('Tailscale is ready.', 'Tailscale est prêt.'))
 }
 
 async function publish() {
@@ -69,7 +101,9 @@ const downloadUrl = computed(() => DOWNLOADS[status.value?.platform || ''] || 'h
 const checking = ref(false)
 async function checkAgain() {
   checking.value = true
-  try { await refresh() } finally { checking.value = false; schedule() }
+  try { await refresh(); if (denied.value) report(false, tl('Only from the computer that runs wherdr.', 'Seulement depuis l’ordinateur qui fait tourner wherdr.')); else reportReach() }
+  catch (e) { report(false, (e as Error).message) }
+  finally { checking.value = false; schedule() }
 }
 
 const reachText = computed(() => {
@@ -77,8 +111,15 @@ const reachText = computed(() => {
   if (!s?.url) return ''
   if (s.reach === 'ok') return tl('Your phone can open it.', 'Ton téléphone peut l’ouvrir.')
   if (s.reach === 'host') return tl(`wherdr answers but refuses this address: APP_URL is set to ${s.appUrl} in its environment.`, `wherdr répond mais refuse cette adresse : APP_URL vaut ${s.appUrl} dans son environnement.`)
-  if (s.reach === 'other') return tl('Something answers, but not wherdr: is wherdr running on this port?', 'Quelque chose répond, mais pas wherdr : wherdr tourne-t-il sur ce port ?')
-  return tl('Not reachable yet. The first visit can take up to a minute: Tailscale gets the HTTPS certificate.', 'Pas encore joignable. La première visite peut prendre jusqu’à une minute : Tailscale obtient le certificat HTTPS.')
+  if (s.reach === 'other' || !s.reach) return tl(`Something answers (HTTP ${s.reachStatus}), but not wherdr: is wherdr running on this port?`, `Quelque chose répond (HTTP ${s.reachStatus}), mais pas wherdr : wherdr tourne-t-il sur ce port ?`)
+  switch (s.reachCause) {
+    case 'dns': return tl('Address not found (DNS): check the machine name, and that MagicDNS is on in Tailscale.', 'Adresse introuvable (DNS) : vérifie le nom de la machine, et que MagicDNS est activé dans Tailscale.')
+    case 'refused': return tl('Connection refused: nothing is published on this port. Run the command above.', 'Connexion refusée : rien n’est publié sur ce port. Lance la commande ci-dessus.')
+    case 'cert': return tl('Invalid certificate: turn on HTTPS for your tailnet, then wait a minute for the certificate.', 'Certificat invalide : active HTTPS pour ton tailnet, puis attends une minute le certificat.')
+    case 'tls': return tl('No HTTPS on this port: publish it with tailscale serve --https.', 'Pas de HTTPS sur ce port : publie-le avec tailscale serve --https.')
+    case 'timeout': return tl('Timed out. The first visit can take up to a minute: Tailscale gets the HTTPS certificate.', 'Délai dépassé. La première visite peut prendre jusqu’à une minute : Tailscale obtient le certificat HTTPS.')
+    default: return tl('Not reachable yet. The first visit can take up to a minute: Tailscale gets the HTTPS certificate.', 'Pas encore joignable. La première visite peut prendre jusqu’à une minute : Tailscale obtient le certificat HTTPS.')
+  }
 })
 
 const failureText = computed(() => {
@@ -87,7 +128,9 @@ const failureText = computed(() => {
     case 'https': return tl('HTTPS certificates are off on your tailnet. Turn on HTTPS in the Tailscale admin console (DNS page), then try again.', 'Les certificats HTTPS sont désactivés sur ton tailnet. Active HTTPS dans la console d’administration Tailscale (page DNS), puis réessaie.')
     case 'offline': return tl('Tailscale is not connected on this computer. Open the Tailscale app (or run tailscale up), then try again.', 'Tailscale n’est pas connecté sur cet ordinateur. Ouvre l’app Tailscale (ou lance tailscale up), puis réessaie.')
     case 'taken': return tl(`HTTPS port ${status.value?.port} of your tailnet already serves something else: wherdr leaves it alone.`, `Le port HTTPS ${status.value?.port} de ton tailnet sert déjà autre chose : wherdr n’y touche pas.`)
-    case 'address': return tl('Paste the https://….ts.net address that tailscale serve printed.', 'Colle l’adresse https://….ts.net affichée par tailscale serve.')
+    case 'address': return /^\s*http:/i.test(typed.value)
+      ? tl('Not HTTPS: the address must start with https:// (tailscale serve --https).', 'Pas en HTTPS : l’adresse doit commencer par https:// (tailscale serve --https).')
+      : tl('Paste the https://….ts.net address that tailscale serve printed.', 'Colle l’adresse https://….ts.net affichée par tailscale serve.')
     case 'failed': return tl('tailscale serve failed:', 'tailscale serve a échoué :')
     default: return ''
   }
@@ -103,7 +146,7 @@ const failureText = computed(() => {
     <p v-else-if="!status" class="phone-note">{{ tl('Checking…', 'Vérification…') }}</p>
 
     <template v-else>
-      <ol class="phone-steps">
+      <ol :key="flash" class="phone-steps" :class="{ 'phone-flash': flash > 0 }">
         <!-- 1. Tailscale -->
         <li :class="{ done: status.mode === 'docker' || status.connected }">
           <span class="phone-step-label">TAILSCALE</span>
@@ -137,6 +180,9 @@ const failureText = computed(() => {
             <UInput v-model="typed" placeholder="https://machine.tailnet.ts.net:7683/" size="md" class="phone-address-input" autocomplete="off" spellcheck="false" />
             <UButton type="submit" size="md" color="neutral" variant="outline" :loading="busy">{{ tl('Check', 'Vérifier') }}</UButton>
           </form>
+          <p v-if="result" :key="`r${flash}`" class="phone-result" :class="result.ok ? 'ok' : 'bad'" role="status">
+            <UIcon :name="result.ok ? 'i-lucide-check' : 'i-lucide-x'" /><span>{{ result.text }}</span><time>{{ resultWhen }}</time>
+          </p>
         </li>
 
         <!-- 3. Answers -->
@@ -152,6 +198,9 @@ const failureText = computed(() => {
           <p v-else>{{ tl(`APP_URL is set to ${status.appUrl} in wherdr's environment, which wins: change it there and restart wherdr for notifications to open this address.`, `APP_URL vaut ${status.appUrl} dans l’environnement de wherdr, qui l’emporte : change-le là et redémarre wherdr pour que les notifications ouvrent cette adresse.`) }}</p>
         </li>
       </ol>
+      <p v-if="result && status.mode === 'native' && !needsTailscale" :key="`r${flash}`" class="phone-result" :class="result.ok ? 'ok' : 'bad'" role="status">
+        <UIcon :name="result.ok ? 'i-lucide-check' : 'i-lucide-x'" /><span>{{ result.text }}</span><time>{{ resultWhen }}</time>
+      </p>
 
       <div v-if="needsTailscale" class="phone-guide">
         <p class="phone-guide-why">{{ tl('Your phone reaches wherdr through Tailscale: a private, encrypted link between your own devices only. Nothing is exposed on the Internet, and it is free for personal use. It also gives wherdr an HTTPS address, which the installed app, notifications and passkeys require.', 'Ton téléphone joint wherdr par Tailscale : un lien privé et chiffré, seulement entre tes appareils. Rien n’est exposé sur Internet, et c’est gratuit pour un usage perso. Tailscale donne aussi à wherdr une adresse HTTPS, obligatoire pour l’app installée, les notifications et les passkeys.') }}</p>
@@ -173,10 +222,13 @@ const failureText = computed(() => {
           </li>
         </ol>
         <UButton color="neutral" variant="outline" icon="i-lucide-refresh-cw" :loading="checking" @click="checkAgain">{{ tl('Check again', 'Vérifier à nouveau') }}</UButton>
+        <p v-if="result" :key="`r${flash}`" class="phone-result" :class="result.ok ? 'ok' : 'bad'" role="status">
+          <UIcon :name="result.ok ? 'i-lucide-check' : 'i-lucide-x'" /><span>{{ result.text }}</span><time>{{ resultWhen }}</time>
+        </p>
       </div>
 
       <div v-if="failure" class="phone-note warn" role="alert">
-        <p>{{ failureText }}</p>
+        <p v-if="!result">{{ failureText }}</p>
         <pre v-if="failure.error === 'failed' && failure.detail" class="phone-detail">{{ failure.detail }}</pre>
         <a v-if="failure.link" class="phone-link" :href="failure.link" target="_blank" rel="noopener noreferrer">{{ failure.link.replace(/^https:\/\//, '') }} <UIcon name="i-lucide-external-link" /></a>
       </div>
