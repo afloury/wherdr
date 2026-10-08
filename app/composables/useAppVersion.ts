@@ -1,34 +1,57 @@
 // New app version (redeployment): state of the "Reload" banner,
 // waiting service worker, periodic check of the served build.
 // Pure logic and anti-loop guard: app/utils/appVersion.ts.
-import { isNewBuild } from '../utils/appVersion'
+import { installedSwAction, isNewBuild, mayReloadForChunk } from '../utils/appVersion'
 
 export const newVersionReady = ref(false)
 export const newVersionDismissed = ref(false)
 let swReg: ServiceWorkerRegistration | null = null
 let applying = false
+// True until our first explicit update check (checkNewVersion): a new SW
+// found meanwhile comes from the page load itself, not from a deployment
+// made while the app was in use.
+let startup = true
 
 function markNew() {
   newVersionReady.value = true
 }
 
-// Service worker: a new SW stays "waiting" (no more automatic
-// skipWaiting) until Reload is clicked.
+function watchInstalling(sw: ServiceWorker | null, atStartup: boolean) {
+  sw?.addEventListener('statechange', () => {
+    if (sw.state !== 'installed') return
+    const action = installedSwAction(Boolean(navigator.serviceWorker.controller), atStartup)
+    if (action === 'activate') sw.postMessage({ type: 'skip-waiting' })
+    else if (action === 'banner') markNew()
+  })
+}
+
+// Service worker: a new SW found during use stays "waiting" until Reload is
+// clicked. One found at startup (waiting since the last visit, or installing
+// because of this page load) is activated silently: the page was loaded from
+// the network and already runs the new build, nothing is reloaded.
 export function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return
   navigator.serviceWorker.register('/sw.js').then((reg) => {
     swReg = reg
-    // A SW waiting at startup: the page was just loaded from the
-    // network, we can activate it without interrupting anything (it reloads nothing).
     reg.waiting?.postMessage({ type: 'skip-waiting' })
-    reg.addEventListener('updatefound', () => {
-      const sw = reg.installing
-      sw?.addEventListener('statechange', () => {
-        // Without a controller, it is the first installation, not an update.
-        if (sw.state === 'installed' && navigator.serviceWorker.controller) markNew()
-      })
-    })
+    // updatefound may have fired before register() resolved.
+    watchInstalling(reg.installing, true)
+    reg.addEventListener('updatefound', () => watchInstalling(reg.installing, startup))
+    startupBuildCheck()
   }).catch(() => {})
+}
+
+// The shell may have come from the SW cache (slow network) and be older than
+// the served build: reload once, right away, before anything is typed.
+async function startupBuildCheck() {
+  try {
+    const res = await fetch(`/_nuxt/builds/latest.json?${Date.now()}`, { cache: 'no-store' })
+    if (!res.ok || !isNewBuild(useRuntimeConfig().app.buildId, await res.json())) return
+    let storage: Storage | null = null
+    try { storage = sessionStorage } catch { /* unavailable */ }
+    if (mayReloadForChunk(storage, Date.now())) applyNewVersion()
+    else markNew()
+  } catch { /* offline: the periodic check will catch up */ }
 }
 
 // Is the server serving a build other than the one running?
@@ -38,6 +61,7 @@ export async function checkNewVersion() {
     const res = await fetch(`/_nuxt/builds/latest.json?${Date.now()}`, { cache: 'no-store' })
     if (res.ok && isNewBuild(useRuntimeConfig().app.buildId, await res.json())) markNew()
   } catch { /* server unreachable: we will retry */ }
+  startup = false
   try { await swReg?.update() } catch { /* same */ }
 }
 

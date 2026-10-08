@@ -1,6 +1,6 @@
 // New version after a deployment: detection and anti-loop guard.
 import { describe, expect, it } from 'vitest'
-import { CHUNK_RELOAD_GUARD_MS, isChunkLoadError, isNewBuild, mayReloadForChunk } from '../app/utils/appVersion'
+import { CHUNK_RELOAD_GUARD_MS, installedSwAction, isChunkLoadError, isNewBuild, mayReloadForChunk } from '../app/utils/appVersion'
 
 function memStorage() {
   const m = new Map<string, string>()
@@ -47,5 +47,18 @@ describe('mayReloadForChunk', () => {
   it('sans stockage : jamais de rechargement', () => {
     expect(mayReloadForChunk(null, 1000)).toBe(false)
     expect(mayReloadForChunk({ getItem: () => { throw new Error('x') }, setItem: () => {} }, 1000)).toBe(false)
+  })
+})
+
+describe('installedSwAction', () => {
+  it('announces nothing on a first installation', () => {
+    expect(installedSwAction(false, true)).toBe('none')
+    expect(installedSwAction(false, false)).toBe('none')
+  })
+  it('activates silently a SW found at startup (reinstall over an old SW)', () => {
+    expect(installedSwAction(true, true)).toBe('activate')
+  })
+  it('shows the banner for an update arriving during use', () => {
+    expect(installedSwAction(true, false)).toBe('banner')
   })
 })
