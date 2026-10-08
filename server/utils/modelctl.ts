@@ -14,6 +14,7 @@ import { HerdrError, agentPrompt, herdr, sleep } from './herdr'
 import { closePanel } from './actions'
 import { READY, findPane, poll, transcripts } from './state'
 import { machineOfPane } from './machines'
+import { resizePane } from './terminal'
 import { type ClaudeEffortSlider, type ModelMenu, type OmpCycleKnowledge, type OmpSelector, OMP_EFFORT_ORDER, claudeEffortCommand, claudeEffortLevels, cleanModelName, codexCachedEfforts, codexConfigModel, claudeScreenEffort, claudeScreenModel, codexFooterModel, effortMatches, effortValue, learnOmpCycle, ompEffortLevels, ompModelLabel, ompScreenEffort, ompScreenModel, ompSelectorCaption, parseClaudeEffortScreen, parseModelMenu, parseOmpSelector, sameModel, switchConfirmKeys } from './models'
 import { fmt } from '../../shared/message'
 
@@ -336,7 +337,14 @@ async function closeOmpSelector(paneId: string) {
   }
 }
 
-async function openOmpSelector(p: Pane): Promise<OmpSelector> {
+// Columns given to a narrow pane while the selector is read and driven.
+const OMP_SELECTOR_COLS = 160
+
+// A selector that is open and readable, with `restore` to call once it is
+// closed (gives a widened pane its width back; no-op otherwise).
+interface OpenOmpSelector { s: OmpSelector, restore: () => Promise<void> }
+
+async function openOmpSelector(p: Pane): Promise<OpenOmpSelector> {
   await closeOmpSelector(p.id)
   await closePanel(p.id).catch(() => false)
   await herdr('pane.send_input', { pane_id: p.id, keys: ['alt+p'] })
@@ -351,7 +359,24 @@ async function openOmpSelector(p: Pane): Promise<OmpSelector> {
     await closeOmpSelector(p.id)
     throw new HerdrError('no_menu', 'omp’s model selector did not show up')
   }
-  return s
+  if (!s.truncated) return { s, restore: async () => {} }
+  // Narrow pane: wherdr's phone terminal leaves the pane at its width when
+  // no Herdr client resizes it back (typical of an SSH machine). omp then
+  // cuts the ids ("anthropic/cla…"): widen the pane for the time of the
+  // choice, then give it its width back.
+  const cols = s.width
+  const rows = Number((await herdr('pane.get', { pane_id: p.id }).catch(() => null))?.pane?.scroll?.viewport_rows) || 40
+  const restore = async () => { await resizePane(p.id, cols, rows) }
+  const wide = (await resizePane(p.id, OMP_SELECTOR_COLS, rows))
+    ? await waitOmpSelector(p.id, x => !x.truncated && !x.task, 4000)
+    : null
+  if (!wide) {
+    await closeOmpSelector(p.id)
+    await restore()
+    throw new HerdrError('narrow', 'The terminal is too narrow for omp’s model selector — close wherdr’s terminal or widen the pane, then try again.')
+  }
+  log(`omp selector ${p.id}: pane widened from ${cols} columns`)
+  return { s: wide, restore }
 }
 
 // omp's own transcript writes the change ("model_change" …, "role":
@@ -371,7 +396,8 @@ async function ompSetModel(paneId: string, wanted: string): Promise<ModelInfo> {
   if (!id) throw new HerdrError('bad_model', 'Missing model')
   return withPane(paneId, async (p) => {
     const started = Date.now()
-    let s = await openOmpSelector(p)
+    const open = await openOmpSelector(p)
+    let s = open.s
     try {
       const rank = (sel: OmpSelector) => sel.options.findIndex(o => o.label === id)
       let at = rank(s)
@@ -411,6 +437,8 @@ async function ompSetModel(paneId: string, wanted: string): Promise<ModelInfo> {
     } catch (e) {
       await closeOmpSelector(p.id).catch(() => {})
       throw e
+    } finally {
+      await open.restore()
     }
     const text = await screen(p.id).catch(() => '')
     const caption = ompSelectorCaption(text, id)
@@ -431,16 +459,17 @@ async function ompListModels(p: Pane, refresh: boolean): Promise<ModelList> {
   const key = `omp|${machineOfPane(p.id)?.key || ''}`
   const hit = listCache.get(key)
   if (hit && !refresh && Date.now() - hit.at < LIST_TTL_MS) return hit
-  let s: OmpSelector
-  try { s = await openOmpSelector(p) }
-  catch (e) { await closeOmpSelector(p.id).catch(() => {}); throw e }
+  const { s, restore } = await openOmpSelector(p)
   try {
     const options = s.options.map(o => ({ label: o.label, hint: o.hint, current: o.current, isDefault: false }))
     const list: ModelList = { agent: 'omp', options, at: Date.now() }
     listCache.set(key, list)
     log(`models omp: ${options.map(o => o.label).join(', ')}`)
     return list
-  } finally { await closeOmpSelector(p.id).catch(() => {}) }
+  } finally {
+    await closeOmpSelector(p.id).catch(() => {})
+    await restore()
+  }
 }
 
 async function codexEffortMenu(p: Pane, model: ModelInfo): Promise<ModelMenu> {

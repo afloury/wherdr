@@ -6,7 +6,7 @@
 // (/daily-log…) makes the agent work: normal user message, usual
 // "agent is working" state, never the screen text ("✢ Roosting…").
 import type { SlashCommand } from './types'
-import { OMP_ENTER, ompAlt } from './ompSymbols'
+import { OMP_ENTER, OMP_UP_DOWN, ompAlt } from './ompSymbols'
 
 // Claude's activity line ("✢ Roosting… (3s · ↓ 1k tokens)", "* Working…"),
 // reply ("⏺ …") or "esc to interrupt": the agent is replying, not an output.
@@ -35,11 +35,12 @@ export function agentAnswering(screen: string, cmd: string): boolean {
 
 // omp's model selector (alt+p, /switch, /model): a boxed list, not a
 // result. Its parsing and control live server-side (models.ts, modelctl.ts);
-// here we only recognize it to keep the "❯ /model" panel closed. The Enter
-// mark depends on omp's symbol preset (shared/ompSymbols.ts).
-export const OMP_SELECTOR_OPEN = /╭─\s*Switch (?:Task )?Model\b/
-const OMP_SELECTOR_ENTER = new RegExp(`${ompAlt(OMP_ENTER)}\\s*use for (?:this session|Task subagents)`)
+// here we only recognize it to keep the "❯ /model" panel closed. Box and
+// marks depend on omp's symbol preset (shared/ompSymbols.ts). A narrow pane
+// cuts the footer ("⏎ use for this sessi…"): its first key hint is enough.
+export const OMP_SELECTOR_OPEN = /(?:╭─|\+-)\s*Switch (?:Task )?Model\b/
+const OMP_SELECTOR_FOOTER = new RegExp(`${ompAlt(OMP_ENTER)}\\s*use for (?:this session|Task subagents)|${ompAlt(OMP_UP_DOWN)} models\\b`)
 
 export function ompSelectorOnScreen(text: string | null | undefined): boolean {
-  return Boolean(text) && OMP_SELECTOR_OPEN.test(String(text)) && OMP_SELECTOR_ENTER.test(String(text))
+  return Boolean(text) && OMP_SELECTOR_OPEN.test(String(text)) && OMP_SELECTOR_FOOTER.test(String(text))
 }
