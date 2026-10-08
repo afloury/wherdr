@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- **Settings › Appearance › Theme**: the theme list is split into three titled sections —
+  wherdr (Titanium first), Agents (Claude Code, Codex, omp, omp Light) and Herdr (Follow Herdr,
+  herdr.dev and Herdr's built-in themes). Each theme carries its section in `app/utils/themes.ts`.
+
 - **Website install section**: three tabs side by side — curl (the one command, selected by
   default), Package managers (Homebrew, npx, bunx, pnpm dlx) and Herdr plugin — above the
   "Ask your AI agent" card, instead of a folded "Other ways" block. The Docker-by-hand tab is
