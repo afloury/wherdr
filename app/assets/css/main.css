@@ -1803,6 +1803,9 @@ body.kb .composer { padding-bottom: 8px; }
   margin: 0 0 8px; padding: 12px 14px; background: var(--code-bg); border: 1px solid var(--line);
   font: 11.5px/1.45 var(--mono); color: var(--text-2); white-space: pre; overflow: auto; max-height: 60vh; min-height: 60px;
 }
+/* Settings panel text (/usage, /status, /config): a phone is narrower than the
+   terminal; long lines wrap instead of hiding behind a horizontal scroll. */
+.menu pre.screen.wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .menu pre.screen .spinner { display: block; margin: 16px auto; }
 
 .confirm { display: flex; flex-direction: column; min-height: 0; max-height: calc(88dvh - var(--safe-bottom) - 48px); }

@@ -42,8 +42,9 @@ export function parseMeters(text: string): { meters: Meter[], rest: string } {
     }
   }
   const rest = lines.filter((_, i) => !drop.has(i))
-    // Settings panel tabs and keyboard help ("Esc to cancel", "d to day · w to week"): not relevant here.
-    .filter(l => !tabsOfRow(l) && !isKeyLegend(l))
+    // Settings panel tabs, keyboard help ("Esc to cancel", "d to day · w to week")
+    // and the Config tab's search box: not relevant here.
+    .filter(l => !tabsOfRow(l) && !isKeyLegend(l) && !/^\s*(?:[╭╰]─+[╮╯]|│\s*⌕.*│)\s*$/.test(l))
     .join('\n').replace(/\n{3,}/g, '\n\n').trim()
   return { meters, rest }
 }

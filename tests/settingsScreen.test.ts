@@ -88,7 +88,9 @@ describe('settings card content', () => {
     const r = card(screens.status)
     expect(r.meters).toEqual([])
     const lines = r.rest.split('\n')
-    expect(lines[0]).toMatch(/^\s*Version:\s+2\.1\.294$/)
+    // Every field aligned, the first one included.
+    expect(lines[0]).toMatch(/^Version:\s+2\.1\.294$/)
+    expect(lines[1]).toMatch(/^Session name:/)
     expect(lines.some(l => /^\s*Model:\s+sonnet/.test(l))).toBe(true)
     expect(r.rest).not.toContain('Esc to cancel')
   })
@@ -98,6 +100,7 @@ describe('settings card content', () => {
     expect(r.rest).toMatch(/❯ Auto-compact\s+true/)
     expect(r.rest).toMatch(/\n\s+Show tips\s+true/)
     expect(r.rest).not.toContain('Esc to close')
+    expect(r.rest).not.toContain('⌕')
   })
 
   it('Stats: the summary lines', () => {

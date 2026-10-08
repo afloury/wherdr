@@ -33,7 +33,8 @@ const level = (m: Meter) => { const u = usedOf(m); return u >= 85 ? 'hi' : u >= 
           <div v-if="m.reset" class="meter-reset">{{ t('Resets') }} · {{ m.reset }}</div>
         </div>
       </div>
-      <pre v-if="!parsed || parsed.rest" class="screen"><span v-if="!parsed" class="spinner" /><template v-else>{{ parsed.rest }}</template></pre>
+      <!-- Stats keeps its chart unwrapped; the other settings tabs wrap on a phone. -->
+      <pre v-if="!parsed || parsed.rest" class="screen" :class="{ wrap: commandResult.tabs.length && commandResult.tab !== 'Stats' }"><span v-if="!parsed" class="spinner" /><template v-else>{{ parsed.rest }}</template></pre>
     </div>
   </AppSheet>
 </template>

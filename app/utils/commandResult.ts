@@ -27,5 +27,9 @@ export function extractResult(text: string, cmd: string) {
   if (rule > 0) out = out.slice(0, rule)
   // Scroll indicators of the panel ("↓", "↑", "↓ stats") at the end of the line.
   out = out.map(l => l.replace(/\s{2,}[↑↓](\s+\w+)?\s*$/, ''))
+  // Common indentation of the panel: removed, so that the first line (trimmed
+  // below) stays aligned with the others.
+  const indent = Math.min(...out.filter(l => l.trim()).map(l => l.match(/^ */)![0].length))
+  if (Number.isFinite(indent) && indent > 0) out = out.map(l => l.slice(indent))
   return out.join('\n').replace(/^\s*⎿\s?/m, '').replace(/\n{3,}/g, '\n\n').trim()
 }
