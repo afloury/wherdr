@@ -210,6 +210,7 @@ const FR: Record<string, string> = {
   'Command copied: paste it into a terminal on the server, in the wherdr folder.': 'Commande copiée : colle-la dans un terminal du serveur, dans le dossier de wherdr.',
   'Then restart wherdr.': 'Puis relance wherdr.', 'Release notes': 'Notes',
   'Stop wherdr first, then run this command.': 'Arrête d’abord wherdr, puis lance cette commande.',
+  'Then restart wherdr: brew services restart wherdr.': 'Puis relance wherdr : brew services restart wherdr.',
   'Hide until the next version': 'Masquer jusqu’à la version suivante',
   'This is the latest version.': 'C’est la dernière version.',
   'About': 'À propos', 'Settings sections': 'Sections des réglages',

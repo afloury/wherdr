@@ -7,7 +7,7 @@ import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { BIN, CliError, SERVER, VERSION, bad, c, localUrl, ok, portTaken, probe, row, say, serverEnv, settingsFile, warn, wherdrDir, withSettings } from './core.mjs'
+import { BIN, CliError, SERVER, VERSION, bad, c, homebrewInstall, localUrl, ok, portTaken, probe, row, say, serverEnv, settingsFile, warn, wherdrDir, withSettings } from './core.mjs'
 import { RUNTIME_HELP, findRuntime, isBun, runtimeOk, runtimeVersion, temporaryInstall } from './runtime.mjs'
 import { controlService, installService, serviceFile, servicePlatform, serviceState, uninstallService } from './service.mjs'
 import { LINKS, inspect, reachable } from './tailnet.mjs'
@@ -342,6 +342,8 @@ export async function service(opts) {
     npm install -g wherdr      (or: bun add -g wherdr, pnpm add -g wherdr)
     wherdr service install`)
   }
+  // A LaunchAgent pointing into Cellar/wherdr/<version> would break at the next `brew upgrade`.
+  if (homebrewInstall(bin)) throw new CliError('this wherdr was installed with Homebrew: start it at login with `brew services start wherdr`.')
   const runtime = findRuntime(ctx.env)
   if (!runtime) throw new CliError(RUNTIME_HELP)
   // The background server of `wherdr start` would hold the port.

@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Homebrew**: `brew install afloury/tap/wherdr`, then `brew services start wherdr` runs it now
+  and at every login (log in `$(brew --prefix)/var/log/wherdr.log`). A Homebrew install shows
+  `brew upgrade wherdr` in the update notice, and `wherdr service install` points to
+  `brew services` instead. Each version tag updates the formula in `afloury/homebrew-tap` when
+  the `HOMEBREW_TAP_TOKEN` secret is set.
+
 ## [1.3.0] — 2026-10-08
 
 ### Added

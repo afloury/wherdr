@@ -46,3 +46,37 @@ jobs:
       # prepack builds the app (nuxt build) and copies Nitro's linked packages.
       - name: Publish
         run: npm publish --provenance --access public
+
+  # Points the Homebrew formula (<owner>/homebrew-tap, Formula/wherdr.rb) at the
+  # tarball just published. Needs the HOMEBREW_TAP_TOKEN secret: a fine-grained
+  # token limited to <owner>/homebrew-tap with Contents: read and write. Skipped
+  # without it (then bump the formula by hand).
+  homebrew:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    env:
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - name: Skip without HOMEBREW_TAP_TOKEN
+        if: env.TAP_TOKEN == ''
+        run: echo "::notice::HOMEBREW_TAP_TOKEN is not set; Homebrew formula not updated."
+
+      - name: Update Formula/wherdr.rb
+        if: env.TAP_TOKEN != ''
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          url="https://registry.npmjs.org/wherdr/-/wherdr-${version}.tgz"
+          # The registry may take a moment to serve a fresh version.
+          for i in 1 2 3 4 5 6 7 8 9 10; do curl -fsSL -o wherdr.tgz "$url" && break; sleep 15; done
+          [ -s wherdr.tgz ] || { echo "::error::$url is not available"; exit 1; }
+          sha=$(sha256sum wherdr.tgz | cut -d' ' -f1)
+          git clone -q "https://x-access-token:${TAP_TOKEN}@github.com/${GITHUB_REPOSITORY_OWNER}/homebrew-tap.git" tap
+          cd tap
+          sed -i -E "s|^  url \".*\"|  url \"${url}\"|; s|^  sha256 \".*\"|  sha256 \"${sha}\"|" Formula/wherdr.rb
+          if git diff --quiet; then echo "Formula already at ${version}."; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -qam "wherdr ${version}"
+          git push -q origin HEAD:main

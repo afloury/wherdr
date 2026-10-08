@@ -12,6 +12,11 @@ export const BIN = path.join(ROOT, 'bin', 'wherdr.mjs')
 export const VERSION = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version
 export const DEFAULT_PORT = '7683'
 
+// Installed by the Homebrew formula: the package lives in <prefix>/Cellar/wherdr/<version>/libexec.
+export function homebrewInstall(file) {
+  return /[\\/]Cellar[\\/]wherdr[\\/]/.test(file)
+}
+
 export const COMMANDS = ['run', 'start', 'stop', 'restart', 'status', 'logs', 'open', 'phone', 'panel', 'service', 'doctor', 'help', 'version']
 const VALUE_OPTIONS = { '--port': 'port', '--host': 'host', '--data-dir': 'dataDir', '--session': 'session', '--lines': 'lines', '-n': 'lines' }
 const FLAGS = { '-h': 'help', '--help': 'help', '-v': 'version', '--version': 'version', '-f': 'follow', '--follow': 'follow' }
@@ -83,7 +88,7 @@ export function withSettings(env, dir) {
 }
 
 // Environment of the server: options win over the environment, which wins over the defaults.
-export function serverEnv(opts, env, home = os.homedir()) {
+export function serverEnv(opts, env, home = os.homedir(), bin = BIN) {
   const out = { ...env }
   const dir = wherdrDir(env, home)
   out.PORT = opts.port ?? env.PORT ?? DEFAULT_PORT
@@ -94,7 +99,7 @@ export function serverEnv(opts, env, home = os.homedir()) {
   // Open WebSockets do not hold Ctrl+C for 30 s; clients reconnect on their own.
   out.NITRO_SHUTDOWN_TIMEOUT ??= '1500'
   // Update command offered in the app (shared/updates.ts).
-  out.WHERDR_INSTALL = 'npm'
+  out.WHERDR_INSTALL = homebrewInstall(bin) ? 'brew' : 'npm'
   // Nitro reads NITRO_PORT / NITRO_HOST before PORT / HOST.
   delete out.NITRO_PORT
   delete out.NITRO_HOST

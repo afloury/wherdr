@@ -19,6 +19,9 @@ With [Herdr](https://herdr.dev) running and Node.js 22 (or Bun), on macOS or Lin
 npx wherdr          # or: bunx wherdr, pnpm dlx wherdr — then open http://localhost:7683
 ```
 
+With Homebrew (macOS or Linux; it brings Node.js): `brew install afloury/tap/wherdr`, then
+`brew services start wherdr` starts it now and at every login.
+
 To keep it: `npm install -g wherdr`, then `wherdr service install` starts it at every login, and
 `wherdr phone` walks you through phone access. See [the `wherdr` command](#the-wherdr-command).
 
@@ -421,6 +424,12 @@ plugin and the install script use), `--session` (a named Herdr session). Every
 environment, then that file. `start` and `service install` remember the port and folders for
 the other commands.
 
+**Homebrew:** `brew install afloury/tap/wherdr` installs the same package (with Node.js);
+`brew services start wherdr` runs `wherdr run` now and at every login, with its log in
+`$(brew --prefix)/var/log/wherdr.log` (not `~/wherdr/wherdr.log`). Use it instead of
+`wherdr service install`, which refuses a Homebrew install (its path changes at each upgrade).
+Update: `brew upgrade wherdr && brew services restart wherdr`.
+
 The login service records the **absolute path** of the runtime (n, nvm, fnm, Volta or Homebrew
 node), since launchd and systemd do not see your shell's `PATH`. It refuses to point at a
 temporary `npx` / `pnpm dlx` / `bunx` folder: install the package globally first. To update:
@@ -610,6 +619,7 @@ installed version is shown in Settings › About.
 | Docker, built from source | `git pull && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` |
 | No Docker | `git pull && npm ci && npm run build`, then restart wherdr |
 | `wherdr` command (npm) | `npm install -g wherdr@latest && wherdr restart` (npx: stop it, then `npx wherdr@latest`) |
+| `wherdr` command (Homebrew) | `brew upgrade wherdr`, then `brew services restart wherdr` |
 | Herdr plugin, Docker | **U** in the **wherdr** panel (pulls the image, restarts the container) |
 | Herdr plugin, Node.js | **U** in the **wherdr** panel, or `herdr plugin install afloury/wherdr --yes` (wherdr restarts on the new version) |
 
