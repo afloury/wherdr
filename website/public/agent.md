@@ -13,7 +13,7 @@ runs, as the same user, on `127.0.0.1:7683` only. Details: https://github.com/af
    network. Other devices use `tailscale serve` only (private HTTPS inside the user's tailnet).
    Another private network: https://github.com/afloury/wherdr#other-private-networks.
 2. **Detect before you ask.** Never offer to install what is already there.
-3. **Ask before** installing Tailscale, Node.js or Docker, and before any `sudo`.
+3. **Ask before** installing anything (wherdr, Tailscale, Node.js, Docker) and before any `sudo`.
 4. Do not edit `~/.claude`, `~/.codex`, Herdr's config or wherdr's files (`plugin.env`, `.env`).
    Never run wherdr as root.
 5. Run every command on the machine where Herdr runs; if you are not on it, ask the user to
@@ -27,12 +27,14 @@ herdr status server      # its server must be running
 herdr plugin list        # afloury.wherdr: wherdr is installed; herdr-projects: see Extras
 curl -fsS http://127.0.0.1:7683/manifest.webmanifest   # answers: wherdr already runs
 brew list wherdr         # a Homebrew install
+node --version           # Node.js 22, needed by the install
 tailscale status         # Tailscale connected?
 tailscale serve status   # an https://….ts.net address proxying to port 7683: already published
 ```
 
-Then ask only what you could not find out: **phone, or this computer only?** (computer only:
-skip step 3 and do not mention Tailscale).
+A command that fails only means "not there". Then ask only what you could not find out:
+**phone, or this computer only?** Computer only: do step 2, give `http://localhost:7683` and
+stop; no Tailscale, and no passkey on localhost if a phone may come later (see step 4).
 
 ## 2. Install
 
@@ -42,9 +44,9 @@ Skip it when wherdr already answers. Otherwise:
 curl -fsSL https://wherdr.dev/install | sh
 ```
 
-It installs the Herdr plugin into `~/wherdr` and starts wherdr, without sudo. It needs
-Node.js 22 (or Docker on Linux): ask before installing one. Another port:
-`curl -fsSL https://wherdr.dev/install | WHERDR_PORT=7684 sh`.
+It installs the Herdr plugin into `~/wherdr`, starts wherdr and opens its setup guide in the
+browser, without sudo. It needs Node.js 22 (or Docker on Linux). Another port:
+`curl -fsSL https://wherdr.dev/install | WHERDR_PORT=7684 sh`, then use it instead of 7683 below.
 
 **Check:** `curl -fsS http://127.0.0.1:7683` returns HTML.
 
@@ -90,11 +92,10 @@ lock is on, and how to update (run the install command again).
 
 ## Extras (only if asked)
 
-- **Only a terminal, no conversation**: `herdr integration install claude|codex|omp`, then
-  start a new agent.
+- **Only a terminal, no conversation**: `herdr integration install claude|codex|omp`.
 - **Agents on other computers**: Herdr only on them, registered with `herdr machine add`:
   https://github.com/afloury/wherdr#several-machines-ssh.
-- **herdr-projects** (parallel threads, shown by wherdr): when `herdr plugin list` does not
-  show it, follow its README: https://github.com/eliasstravik/herdr-projects.
+- **herdr-projects** (parallel threads): when `herdr plugin list` does not show it, follow
+  its README: https://github.com/eliasstravik/herdr-projects.
 - **Something fails**: the **L** key (log) of the wherdr panel in Herdr, and
   https://github.com/afloury/wherdr#troubleshooting.
