@@ -77,6 +77,19 @@ describe('actions des plugins', () => {
     expect(needsConfirm({ id: 'x', title: 'Afficher l’état' })).toBe(false)
   })
 
+  it('hides wherdr\'s own plugin and flags actions that open in Herdr', () => {
+    const list = normalizeActions([
+      ...ACTIONS,
+      { plugin_id: 'someone.wherdr', action_id: 'panel', title: 'wherdr', contexts: ['global'], command: ['sh', '-c', 'exec "${HERDR_BIN_PATH:-herdr}" plugin pane open --plugin "$HERDR_PLUGIN_ID" --entrypoint panel'] },
+      { plugin_id: 'wherdr', action_id: 'open', title: 'wherdr: open in the browser', contexts: ['global'] },
+      { plugin_id: 'wherdr.test', action_id: 'board', title: 'Board', contexts: ['global'], command: ['herdr', 'plugin', 'pane', 'open', '--entrypoint', 'board'] },
+      { plugin_id: 'wherdr.test', action_id: 'float', title: 'Float', contexts: ['global'], placement: 'overlay' },
+    ], PLUGINS)
+    expect(list.some(a => a.plugin.endsWith('wherdr'))).toBe(false)
+    const inHerdr = Object.fromEntries(list.map(a => [a.id, a.inHerdr]))
+    expect(inHerdr).toMatchObject({ 'board': true, 'float': true, 'open-popup': true, 'doctor': false, 'pause': false, 'hello': false })
+  })
+
   it('summarizes the output for a toast', () => {
     expect(outputTail('\x1b[32mok\x1b[0m\n\nfini\n')).toBe('ok\nfini')
     expect(outputTail('a'.repeat(500), 20)).toBe('…' + 'a'.repeat(19))

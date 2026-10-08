@@ -21,6 +21,7 @@ import { spaceTitle } from '#shared/displayTitles'
 import { claudeSetupOf, machineQuotaRows, quotaRows } from '~/utils/quotas'
 import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
 import { headerFold } from '~/utils/headerFold'
+import pkg from '../../package.json'
 import { dropMachineKey, shiftMachineKey, sortMachines } from '#shared/machineOrder'
 import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
 const emit = defineEmits<{ search: [] }>()
@@ -39,7 +40,8 @@ const conn = computed(() => {
   if (offlineView.value) return { ok: false, text: t('offline'), idle: false }
   if (!eventsOpen.value) return { ok: false, text: everOpen.value ? t('offline — reconnecting…') : t('connecting…'), idle: !everOpen.value }
   if (!st.value.ok) return { ok: false, text: t('Herdr unavailable'), idle: false }
-  return { ok: true, text: `wherdr · herdr ${st.value.version || ''}`.trim(), idle: false }
+  // Server version (update check), the app's own until it answers.
+  return { ok: true, text: `wherdr ${updateInfo.value?.current || pkg.version} · herdr ${st.value.version || ''}`.trim(), idle: false }
 })
 
 // "Dashboard"-style counters: always all three, zeros dimmed.
@@ -291,9 +293,10 @@ function machineMenu(m: MachineInfo) {
     items.push({ label: t('Keep awake'), icon: 'i-lucide-sun', run: () => openAwake(m) })
     if (awakeByMachine.value[m.key]?.platform === 'mac') items.push({ label: t('What prevents sleep'), icon: 'i-lucide-list-filter', run: () => openDiagnostic(m) })
   }
-  // Global actions of this machine's Herdr plugins.
-  if (m.status === 'online' && machinePluginActions(m.key).length) {
-    items.push({ label: t('Plugin actions'), icon: 'i-lucide-puzzle', run: () => openPluginMenu({ machine: m.key }) })
+  // Global actions of this machine's Herdr plugins (a single machine: loaded under '').
+  const pluginKey = multiMachine.value ? m.key : ''
+  if (m.status === 'online' && machinePluginActions(pluginKey).length) {
+    items.push({ label: t('Plugin actions'), icon: 'i-lucide-puzzle', run: () => openPluginMenu({ machine: pluginKey }) })
   }
   return toDropdown(items)
 }
@@ -306,13 +309,10 @@ const quietSettings = '/settings?section=notifications'
 const onQuietVisible = () => { if (document.visibilityState === 'visible') refreshQuiet() }
 onMounted(() => { refreshQuiet(); document.addEventListener('visibilitychange', onQuietVisible) })
 onBeforeUnmount(() => document.removeEventListener('visibilitychange', onQuietVisible))
+// A single machine: its plugin actions live in the "…" menu of its session row.
 const soloPlugins = computed(() => !multiMachine.value && machinePluginActions('').length > 0)
-function openSoloPlugins() {
-  haptic()
-  openPluginMenu({ machine: '' })
-}
 // Header buttons: when the list is too narrow, the secondary ones move into a "…" menu
-// (plugins first, then settings, then the do-not-disturb bell).
+// (settings first, then the do-not-disturb bell).
 const titleRow = ref<HTMLElement | null>(null)
 const titleRowWidth = ref(0)
 let titleRowObserver: ResizeObserver | null = null
@@ -321,9 +321,7 @@ onMounted(() => {
   if (titleRow.value) titleRowObserver.observe(titleRow.value)
 })
 onBeforeUnmount(() => titleRowObserver?.disconnect())
-const headerFoldable = computed(() => [
-  ...(soloPlugins.value ? ['plugins'] : []), 'settings', ...(quietCurrent.value ? ['quiet'] : []),
-])
+const headerFoldable = computed(() => ['settings', ...(quietCurrent.value ? ['quiet'] : [])])
 const headerFolded = computed(() => {
   if (!titleRowWidth.value) return new Set<string>()
   const total = headerFoldable.value.length + 1 + (desk.value ? 1 : 0)
@@ -332,7 +330,6 @@ const headerFolded = computed(() => {
 function headerMenuItems(): MenuItem[] {
   const f = headerFolded.value
   return [
-    ...(f.has('plugins') ? [{ label: t('Plugin actions'), icon: 'i-lucide-puzzle', run: openSoloPlugins }] : []),
     ...(f.has('quiet') ? [{ label: quietLabel.value, icon: 'i-lucide-bell-off', run: () => navigateTo(quietSettings) }] : []),
     ...(f.has('settings') ? [{ label: t('Settings'), icon: 'i-lucide-settings-2', run: () => navigateTo('/settings') }] : []),
   ]
@@ -452,14 +449,13 @@ function resetListWidth() {
     </nav>
     <header class="home-top">
       <p class="eyebrow">
-        <AppLogo class="home-logo" :class="conn.idle ? '' : conn.ok ? 'ok' : 'bad'" /><span>{{ conn.text }}</span>
+        <AppLogo class="home-logo" :class="conn.idle ? '' : conn.ok ? 'ok' : 'bad'" />
+        <NuxtLink v-if="conn.ok" to="/settings?section=about" class="home-version" :title="t('About')">{{ conn.text }}</NuxtLink>
+        <span v-else>{{ conn.text }}</span>
       </p>
       <div ref="titleRow" class="home-title-row">
         <h1 class="display">{{ t('Agents') }}</h1>
         <div class="home-actions">
-          <UTooltip v-if="soloPlugins && !headerFolded.has('plugins')" :text="t('Plugin actions')" :disabled="!desk">
-            <UButton icon="i-lucide-puzzle" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Plugin actions')" @click="openSoloPlugins" />
-          </UTooltip>
           <UTooltip :text="tl('Search agents and conversations', 'Rechercher agents et conversations')" :kbds="shortcutKbds('search-all')" :disabled="!desk">
             <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" @click="openSearch" />
           </UTooltip>
@@ -489,7 +485,7 @@ function resetListWidth() {
       <div v-if="!multiMachine" class="solo-machine-row"><button type="button" class="solo-session-row" :aria-label="t('Herdr sessions')" @click="openSessions(soloMachine)">
         <span><UIcon name="i-lucide-layers" />{{ soloMachine.label }}</span>
         <b>{{ soloMachine.session || 'default' }}<UIcon name="i-lucide-chevron-right" /></b>
-      </button><UDropdownMenu v-if="awakeByMachine[soloMachine.key]?.supported" :items="machineMenu(soloMachine)" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :aria-label="t('Options')" /></UDropdownMenu></div>
+      </button><UDropdownMenu v-if="awakeByMachine[soloMachine.key]?.supported || soloPlugins" :items="machineMenu(soloMachine)" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :aria-label="t('Options')" class="solo-machine-options" /></UDropdownMenu></div>
       <p v-if="!multiMachine && awakeByMachine[soloMachine.key]?.active" class="machine-awake"><UIcon name="i-lucide-sun" />{{ awakeLabel(awakeByMachine[soloMachine.key]) }}</p>
 
       <div v-if="showCounters && agents.length" class="stats">

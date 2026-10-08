@@ -311,9 +311,11 @@ export function openPluginMenu(target: Target) {
       group = a.pluginName
       items.push({ kind: 'group', label: group })
     }
+    // Its pane or popup shows up in Herdr (on the computer), not here: said under the label.
+    const where = a.inHerdr ? t('Opens in Herdr') : ''
     items.push({
-      label: a.label, desc: a.description || undefined,
-      icon: a.confirm ? 'i-lucide-play' : 'i-lucide-eye',
+      label: a.label, desc: [where, a.description].filter(Boolean).join(' · ') || undefined,
+      icon: a.inHerdr ? 'i-lucide-monitor' : a.confirm ? 'i-lucide-play' : 'i-lucide-eye',
       run: () => { runPluginAction(a, target) },
     })
   }

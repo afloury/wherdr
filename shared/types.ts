@@ -418,6 +418,7 @@ export interface PluginAction {
   agent: boolean // offered in an agent's menu
   machine: boolean // offered in the machine's menu
   confirm: boolean // asks for confirmation (may change something)
+  inHerdr: boolean // opens a pane or popup in Herdr, not in wherdr
 }
 export interface PluginActionList { actions: PluginAction[] }
 // Result of an action: Herdr runs it in the background, we wait a while for it to finish.

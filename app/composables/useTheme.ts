@@ -24,6 +24,12 @@ function readBackdrop() {
   catch { return DEFAULT_BACKDROP }
 }
 export const backdrop = ref<Backdrop>(import.meta.client ? readBackdrop() : DEFAULT_BACKDROP)
+// Light packets running on the wherdr grid; off: the grid stays still. Kept on the device.
+function readPackets() {
+  try { return localStorage.getItem('backdropPackets') !== 'off' }
+  catch { return true }
+}
+export const backdropPackets = ref(import.meta.client ? readPackets() : true)
 
 const systemLight = ref(false)
 if (import.meta.client) {
@@ -78,6 +84,10 @@ export function installTheme() {
     try { localStorage.setItem('backdrop', v) }
     catch { /* storage unavailable */ }
   }, { immediate: true })
+  watch(backdropPackets, (v) => {
+    try { localStorage.setItem('backdropPackets', v ? 'on' : 'off') }
+    catch { /* storage unavailable */ }
+  })
 }
 
 // xterm palette of the theme shown.

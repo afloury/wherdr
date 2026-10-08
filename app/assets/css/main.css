@@ -311,6 +311,9 @@ body.short-bottom { --safe-bottom: 0px; }
 .home-logo { width: 32px; height: 14px; color: var(--dim); flex: none; margin-right: 2px; }
 .home-logo.ok { color: var(--text); }
 .home-logo.bad { color: var(--rose); }
+/* Versions in the eyebrow: a tap opens Settings › About; truncated before the row overflows. */
+.home-version { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: inherit; text-decoration: none; }
+.home-version:hover, .home-version:focus-visible { color: var(--text); }
 .home-actions { display: flex; align-items: center; gap: 4px; flex: none; margin-right: -6px; }
 /* Global search: square window with thin lines (like the sheets), agent-card-style
    group headers, match highlighted in ochre like the

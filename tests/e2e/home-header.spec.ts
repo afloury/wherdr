@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
-// Agent list header with every optional button (plugin actions, do-not-disturb
-// bell): at the minimum sidebar width the buttons must stay inside the row.
+// Agent list header: at the minimum sidebar width the buttons must stay inside the
+// row. No plugin button there: plugin actions are in the machine row's "…" menu.
 for (const width of [null, 280]) {
   for (const lang of ['en', 'fr']) {
     test(`header buttons fit (sidebar ${width ?? 'default'}, ${lang})`, async ({ page }) => {
@@ -13,15 +13,20 @@ for (const width of [null, 280]) {
       }, [width, lang] as const)
       await page.route('**/api/push/quiet', route => route.fulfill({ json: { global: { until: null }, device: null } }))
       await page.route('**/api/plugins/actions**', route => route.fulfill({
-        json: { actions: [{ plugin: 'demo', pluginName: 'Demo', id: 'run', title: 'Demo: Run', label: 'Run', description: null, agent: false, machine: true, confirm: false }] },
+        json: { actions: [
+          { plugin: 'demo', pluginName: 'Demo', id: 'run', title: 'Demo: Run', label: 'Run', description: null, agent: false, machine: true, confirm: false, inHerdr: false },
+          { plugin: 'demo', pluginName: 'Demo', id: 'board', title: 'Demo: Board', label: 'Board', description: null, agent: false, machine: true, confirm: false, inHerdr: true },
+        ] },
       }))
       await page.goto('/')
       const row = page.locator('.home-title-row')
-      await expect(row.locator('.quiet-on, .space-menu').first()).toBeVisible()
+      await expect(page.locator('.home-version')).toBeVisible()
+      await expect(page.locator('.solo-machine-options')).toBeVisible()
+      await expect(row.locator('.home-actions [aria-label="Plugin actions"], .home-actions [aria-label="Actions des plugins"]')).toHaveCount(0)
       const box = (await row.boundingBox())!
       const buttons = row.locator('.home-actions button, .home-actions a')
       const n = await buttons.count()
-      expect(n).toBeGreaterThanOrEqual(3)
+      expect(n).toBeGreaterThanOrEqual(2)
       for (let i = 0; i < n; i++) {
         const b = (await buttons.nth(i).boundingBox())!
         expect(b.x).toBeGreaterThanOrEqual(box.x - 7)
@@ -33,14 +38,28 @@ for (const width of [null, 280]) {
       const side = (await page.locator('.home-top').boundingBox())!
       const last = (await buttons.nth(n - 1).boundingBox())!
       expect(last.x + last.width).toBeLessThanOrEqual(side.x + side.width)
-      // Folded actions stay reachable through "…".
+      // Folded buttons stay reachable through "…".
       if (await row.locator('.space-menu').count()) {
         await row.locator('.space-menu').click()
         await expect(page.getByText(lang === 'fr' ? /Réglages/ : /Settings/).last()).toBeVisible()
+        await page.keyboard.press('Escape')
       }
+      // Plugin actions: machine row "…" › Plugin actions; Herdr-side ones say so.
+      await page.locator('.solo-machine-options').click()
+      await page.getByText(lang === 'fr' ? 'Actions des plugins' : 'Plugin actions').last().click()
+      await expect(page.getByText('Board').last()).toBeVisible()
+      await expect(page.getByText(lang === 'fr' ? /S’ouvre dans Herdr/ : /Opens in Herdr/).last()).toBeVisible()
     })
   }
 }
+
+test('the eyebrow shows both versions and opens Settings › About', async ({ page }) => {
+  await page.goto('/')
+  const link = page.locator('.home-version')
+  await expect(link).toHaveText(/^wherdr \d+\.\d+\.\d+ · herdr /)
+  await link.click()
+  await expect(page).toHaveURL(/section=about/)
+})
 
 test('the crossed-out bell opens the notification settings without turning quiet off', async ({ page }) => {
   await page.addInitScript(() => {
