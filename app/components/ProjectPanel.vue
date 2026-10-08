@@ -172,6 +172,7 @@ const unblocked = ref(new Set(unblockedByPane.get(props.paneId) || []))
 const unblocking = ref<string | null>(null)
 const reviewed = ref(new Set(reviewedByPane.get(props.paneId) || []))
 const reviewing = ref<string | null>(null)
+const moved = ref(new Set(movedByPane.get(props.paneId) || []))
 // Task removed from "To test" by the coordinator: we forget it.
 watch(() => props.board, (b) => {
   if (!b) return
@@ -218,7 +219,6 @@ const orderable = (s: BoardSection, task: ProjectTask) => (s.kind === 'todo' || 
 const actionable = (s: BoardSection, task: ProjectTask) => testable(s, task) || decidable(s, task) || launchable(s, task) || unblockable(s, task) || reviewable(s, task) || orderable(s, task)
 
 // ------------------------------------------------------------ to do / in queue
-const moved = ref(new Set(movedByPane.get(props.paneId) || []))
 const moving = ref<string | null>(null)
 const moveKey = (s: BoardSection, action: MoveAction, task: ProjectTask) => `${s.kind}|${action}|${task.text}`
 // A task already queued, launched or sent back: its actions give way to "Sent".
