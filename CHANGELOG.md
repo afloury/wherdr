@@ -21,6 +21,10 @@ All notable changes to this project are documented here. The format follows
   (`$(brew --prefix)/var/log/wherdr.log`); `start`, `stop`, `restart` and `service install` point
   to `brew services start|stop|restart wherdr`.
 
+- **Interface language**: without a saved choice, wherdr follows the browser's first preferred
+  language it speaks (English when English comes first), instead of switching to French whenever
+  French is anywhere in the list.
+
 ## [1.3.0] — 2026-10-08
 
 ### Added
