@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createAuth } from '../server/utils/auth'
-import { allowedHosts, crossSiteRequest, hostAllowed } from '../server/utils/hosts'
+import { allowedHosts, crossSiteRequest, HOST_REFUSED_PAGE, hostAllowed, hostRefusalIsHtml } from '../server/utils/hosts'
 import { cspForHtml } from '../server/utils/csp'
 
 const req = (cookie = '') => ({ headers: { origin: 'http://localhost:7683', cookie } })
@@ -22,6 +22,20 @@ describe('allowed hosts', () => {
     for (const host of ['evil.example:7683', 'evil.example@localhost', 'localhost/path', '', 'localhost:bad']) {
       expect(hostAllowed(host, names)).toBe(false)
     }
+  })
+  it('answers a refused browser page with HTML, the API and other clients with JSON', () => {
+    const browser = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+    expect(hostRefusalIsHtml('/', browser)).toBe(true)
+    expect(hostRefusalIsHtml('/s/abc', [browser])).toBe(true)
+    expect(hostRefusalIsHtml('/api/state', browser)).toBe(false)
+    expect(hostRefusalIsHtml('/manifest.webmanifest', 'application/json')).toBe(false)
+    expect(hostRefusalIsHtml('/', undefined)).toBe(false)
+    expect(hostRefusalIsHtml('/', '*/*')).toBe(false)
+  })
+  it('keeps the refusal page free of hosts, addresses and scripts', () => {
+    expect(HOST_REFUSED_PAGE).toContain('This address isn\'t enabled yet.')
+    expect(HOST_REFUSED_PAGE).toContain('Cette adresse n’est pas encore activée.')
+    expect(HOST_REFUSED_PAGE).not.toMatch(/<script|<form|ts\.net|https?:\/\/|APP_URL/i)
   })
 })
 

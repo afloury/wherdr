@@ -33,8 +33,10 @@ watch(() => props.active, async (on) => { if (on) { await refresh(); schedule() 
 onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
 
 // Result of the last check asked by hand (Check, Check again, publish):
-// shown next to the button with its time, and the state rows flash.
-const result = ref<{ ok: boolean, text: string, at: number } | null>(null)
+// shown next to the button with its time, and the state rows flash. Either a
+// fixed message (`text`: an error before any check), or live: read from the
+// current status, so it never disagrees with the state rows above it.
+const result = ref<{ ok: boolean, text: string, at: number } | { live: true, at: number } | null>(null)
 const flash = ref(0)
 const now = ref(Date.now())
 let clock: ReturnType<typeof setInterval> | null = null
@@ -45,11 +47,28 @@ function report(ok: boolean, text: string) {
   now.value = Date.now()
   flash.value++
 }
+const pendingText = computed(() => tl('Getting the HTTPS certificate from Tailscale… this can take up to a minute.', 'Tailscale obtient le certificat HTTPS… cela peut prendre jusqu’à une minute.'))
+const shown = computed<{ state: 'ok' | 'bad' | 'wait', text: string, at: number } | null>(() => {
+  const r = result.value
+  const s = status.value
+  if (!r) return null
+  if (!('live' in r)) return { state: r.ok ? 'ok' : 'bad', text: r.text, at: r.at }
+  if (!s) return null
+  const at = s.checkedAt || r.at
+  if (s.url) {
+    if (s.reach === 'ok') return { state: 'ok', text: tl('Reachable', 'Joignable'), at }
+    if (s.reach === 'pending') return { state: 'wait', text: pendingText.value, at }
+    return { state: 'bad', text: reachText.value, at }
+  }
+  if (needsTailscale.value) return { state: 'bad', text: s.mode === 'missing' ? tl('Tailscale is still not found on this computer.', 'Tailscale est toujours introuvable sur cet ordinateur.') : tl('Tailscale is still not connected on this computer.', 'Tailscale n’est toujours pas connecté sur cet ordinateur.'), at }
+  return { state: 'ok', text: tl('Tailscale is ready.', 'Tailscale est prêt.'), at }
+})
+const RESULT_ICONS = { ok: 'i-lucide-check', bad: 'i-lucide-x', wait: 'i-lucide-loader-circle' }
 const resultWhen = computed(() => {
-  if (!result.value) return ''
-  return now.value - result.value.at < 60_000
+  if (!shown.value) return ''
+  return now.value - shown.value.at < 60_000
     ? tl('checked just now', 'vérifié à l’instant')
-    : tl(`checked at ${fmtTime(result.value.at)}`, `vérifié à ${fmtTime(result.value.at)}`)
+    : tl(`checked at ${fmtTime(shown.value.at)}`, `vérifié à ${fmtTime(shown.value.at)}`)
 })
 
 async function act(body: Record<string, unknown>) {
@@ -66,13 +85,13 @@ async function act(body: Record<string, unknown>) {
   finally { busy.value = false; schedule() }
 }
 
-// The outcome of the address check, or of the Tailscale state without one.
+// The outcome of the address check, or of the Tailscale state without one:
+// live, it follows the automatic checks (waiting → reachable).
 function reportReach() {
-  const s = status.value
-  if (!s) return
-  if (s.url) report(s.reach === 'ok', s.reach === 'ok' ? tl('Reachable', 'Joignable') : reachText.value)
-  else if (needsTailscale.value) report(false, s.mode === 'missing' ? tl('Tailscale is still not found on this computer.', 'Tailscale est toujours introuvable sur cet ordinateur.') : tl('Tailscale is still not connected on this computer.', 'Tailscale n’est toujours pas connecté sur cet ordinateur.'))
-  else report(true, tl('Tailscale is ready.', 'Tailscale est prêt.'))
+  if (!status.value) return
+  result.value = { live: true, at: Date.now() }
+  now.value = Date.now()
+  flash.value++
 }
 
 async function publish() {
@@ -110,6 +129,7 @@ const reachText = computed(() => {
   const s = status.value
   if (!s?.url) return ''
   if (s.reach === 'ok') return tl('Your phone can open it.', 'Ton téléphone peut l’ouvrir.')
+  if (s.reach === 'pending') return pendingText.value
   if (s.reach === 'host') return tl(`wherdr answers but refuses this address: APP_URL is set to ${s.appUrl} in its environment.`, `wherdr répond mais refuse cette adresse : APP_URL vaut ${s.appUrl} dans son environnement.`)
   if (s.reach === 'other' || !s.reach) return tl(`Something answers (HTTP ${s.reachStatus}), but not wherdr: is wherdr running on this port?`, `Quelque chose répond (HTTP ${s.reachStatus}), mais pas wherdr : wherdr tourne-t-il sur ce port ?`)
   switch (s.reachCause) {
@@ -180,15 +200,16 @@ const failureText = computed(() => {
             <UInput v-model="typed" placeholder="https://machine.tailnet.ts.net:7683/" size="md" class="phone-address-input" autocomplete="off" spellcheck="false" />
             <UButton type="submit" size="md" color="neutral" variant="outline" :loading="busy">{{ tl('Check', 'Vérifier') }}</UButton>
           </form>
-          <p v-if="result" :key="`r${flash}`" class="phone-result" :class="result.ok ? 'ok' : 'bad'" role="status">
-            <UIcon :name="result.ok ? 'i-lucide-check' : 'i-lucide-x'" /><span>{{ result.text }}</span><time>{{ resultWhen }}</time>
+          <p v-if="shown" :key="`r${flash}`" class="phone-result" :class="shown.state" role="status">
+            <UIcon :name="RESULT_ICONS[shown.state]" /><span>{{ shown.text }}</span><time>{{ resultWhen }}</time>
           </p>
         </li>
 
         <!-- 3. Answers -->
-        <li v-if="status.url" :class="{ done: status.reach === 'ok', bad: status.reach === 'host' || status.reach === 'other' }" aria-live="polite">
+        <li v-if="status.url" :class="{ done: status.reach === 'ok', wait: status.reach === 'pending', bad: status.reach === 'host' || status.reach === 'other' || status.reach === 'unreachable' }" aria-live="polite">
           <span class="phone-step-label">{{ tl('ANSWERS', 'RÉPOND') }}</span>
-          <p>{{ reachText }}</p>
+          <p v-if="status.reach === 'pending'" class="phone-wait"><UIcon name="i-lucide-loader-circle" /><span>{{ reachText }}</span></p>
+          <p v-else>{{ reachText }}</p>
         </li>
 
         <!-- 4. APP_URL -->
@@ -198,8 +219,8 @@ const failureText = computed(() => {
           <p v-else>{{ tl(`APP_URL is set to ${status.appUrl} in wherdr's environment, which wins: change it there and restart wherdr for notifications to open this address.`, `APP_URL vaut ${status.appUrl} dans l’environnement de wherdr, qui l’emporte : change-le là et redémarre wherdr pour que les notifications ouvrent cette adresse.`) }}</p>
         </li>
       </ol>
-      <p v-if="result && status.mode === 'native' && !needsTailscale" :key="`r${flash}`" class="phone-result" :class="result.ok ? 'ok' : 'bad'" role="status">
-        <UIcon :name="result.ok ? 'i-lucide-check' : 'i-lucide-x'" /><span>{{ result.text }}</span><time>{{ resultWhen }}</time>
+      <p v-if="shown && status.mode === 'native' && !needsTailscale" :key="`r${flash}`" class="phone-result" :class="shown.state" role="status">
+        <UIcon :name="RESULT_ICONS[shown.state]" /><span>{{ shown.text }}</span><time>{{ resultWhen }}</time>
       </p>
 
       <div v-if="needsTailscale" class="phone-guide">
@@ -222,8 +243,8 @@ const failureText = computed(() => {
           </li>
         </ol>
         <UButton color="neutral" variant="outline" icon="i-lucide-refresh-cw" :loading="checking" @click="checkAgain">{{ tl('Check again', 'Vérifier à nouveau') }}</UButton>
-        <p v-if="result" :key="`r${flash}`" class="phone-result" :class="result.ok ? 'ok' : 'bad'" role="status">
-          <UIcon :name="result.ok ? 'i-lucide-check' : 'i-lucide-x'" /><span>{{ result.text }}</span><time>{{ resultWhen }}</time>
+        <p v-if="shown" :key="`r${flash}`" class="phone-result" :class="shown.state" role="status">
+          <UIcon :name="RESULT_ICONS[shown.state]" /><span>{{ shown.text }}</span><time>{{ resultWhen }}</time>
         </p>
       </div>
 
@@ -233,7 +254,7 @@ const failureText = computed(() => {
         <a v-if="failure.link" class="phone-link" :href="failure.link" target="_blank" rel="noopener noreferrer">{{ failure.link.replace(/^https:\/\//, '') }} <UIcon name="i-lucide-external-link" /></a>
       </div>
 
-      <div v-if="status.qr && status.url" class="phone-qr">
+      <div v-if="status.reach === 'ok' && status.qr && status.url" class="phone-qr">
         <svg :viewBox="`0 0 ${status.qr.size} ${status.qr.size}`" role="img" :aria-label="tl('QR code of ', 'QR code de ') + status.url" shape-rendering="crispEdges">
           <rect width="100%" height="100%" fill="#fff" />
           <path :d="status.qr.path" fill="#000" />

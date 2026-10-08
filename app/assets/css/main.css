@@ -2090,6 +2090,11 @@ body.kb .composer { padding-bottom: 8px; }
 .phone-steps li.done .phone-step-label { color: var(--text); }
 .phone-steps li.done .phone-step-label::before { background: var(--done); border-color: var(--done); }
 .phone-steps li.bad .phone-step-label::before { background: var(--ochre); border-color: var(--ochre); }
+/* Waiting for Tailscale's HTTPS certificate: a pulsing square and a spinner. */
+.phone-steps li.wait .phone-step-label::before { border-color: var(--mauve); animation: phone-pulse 1.2s ease-in-out infinite alternate; }
+@keyframes phone-pulse { to { background: var(--mauve); } }
+.phone-wait { display: flex; align-items: flex-start; gap: 8px; }
+.phone-wait .iconify, .phone-result.wait .iconify { flex: none; width: 15px; height: 15px; margin-top: 1px; color: var(--mauve); animation: spin .8s linear infinite; }
 .phone-url { font-family: var(--mono); font-size: 12.5px !important; overflow-wrap: anywhere; color: var(--text); }
 .phone-link { display: inline-flex; align-items: center; gap: 4px; font: 500 12px var(--mono); color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .phone-command { display: flex; align-items: center; gap: 8px; width: 100%; }
@@ -2109,6 +2114,7 @@ body.kb .composer { padding-bottom: 8px; }
 .phone-result.ok .iconify { color: var(--done); }
 .phone-result.bad { border-color: var(--danger); --hit: var(--danger); }
 .phone-result.bad .iconify { color: var(--danger); }
+.phone-result.wait { border-color: var(--mauve); --hit: var(--mauve); }
 @keyframes phone-hit { from { background: color-mix(in srgb, var(--hit) 22%, transparent); } }
 /* State rows refreshed by a check: a short sweep. */
 .phone-flash li { animation: phone-row 1.2s ease-out; }

@@ -1,13 +1,15 @@
 // Settings › Phone, server side: who may use it, publishing through a fake
 // `tailscale` (its calls recorded), Tailscale errors, the port of another
-// service left alone, APP_URL following the address once it answers, and the
-// QR code only then.
+// service left alone, APP_URL following the address, the wait for the HTTPS
+// certificate, and the QR code only once it answers.
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as Tailnet from '../bin/lib/tailnet.mjs'
 import { failureCause } from '../bin/lib/tailnet.mjs'
 import { httpsPortOf, phoneAccess, phoneAction, phoneStatus } from '../server/utils/phone'
+import { PHONE_GRACE_MS, phoneReach } from '../shared/phone'
+import type { PhoneReachCause } from '../shared/phone'
 
 // Before the server modules load: their data folder and port.
 const fake = vi.hoisted(() => {
@@ -15,13 +17,13 @@ const fake = vi.hoisted(() => {
   process.env.DATA_DIR = `${root}/data`
   process.env.PORT = '7699'
   delete process.env.APP_URL
-  return { root, bin: `${root}/tailscale`, reach: 'ok' as 'ok' | 'host' | 'other' | 'unreachable' }
+  return { root, bin: `${root}/tailscale`, reach: 'ok' as 'ok' | 'host' | 'other' | 'unreachable', cause: 'refused' as PhoneReachCause }
 })
 
 vi.mock('../bin/lib/tailnet.mjs', async orig => ({
   ...await orig<typeof Tailnet>(),
   tailscaleBin: () => fake.bin,
-  probe: async () => fake.reach === 'unreachable' ? { reach: fake.reach, cause: 'refused' } : { reach: fake.reach, status: 200 },
+  probe: async () => fake.reach === 'unreachable' ? { reach: fake.reach, cause: fake.cause } : { reach: fake.reach, status: 200 },
 }))
 
 const NAME = 'box.example.ts.net'
@@ -56,7 +58,9 @@ beforeEach(() => {
   rmSync(appUrlFile(), { force: true })
   delete process.env.APP_URL
   fake.reach = 'ok'
+  fake.cause = 'refused'
 })
+afterEach(() => { vi.useRealTimers() })
 
 describe('phone setup access', () => {
   const event = (headers: Record<string, string>, peer = '127.0.0.1') =>
@@ -88,11 +92,32 @@ describe('phone setup', () => {
     expect(process.env.APP_URL).toBe(URL)
   })
 
-  it('keeps the QR code and APP_URL back while the address does not answer', async () => {
+  it('allows its own published address at once, but keeps the QR code back while it does not answer', async () => {
     fake.reach = 'unreachable'
     const r = await phoneAction({ action: 'publish' })
-    expect(r.status).toMatchObject({ served: true, reach: 'unreachable', qr: null, appUrl: '' })
-    expect(existsSync(appUrlFile())).toBe(false)
+    expect(r.status).toMatchObject({ served: true, reach: 'pending', qr: null, appUrl: URL })
+    expect(JSON.parse(readFileSync(appUrlFile(), 'utf8'))).toEqual({ url: URL })
+  })
+
+  it('waits for the certificate after publishing, then turns to an error once the grace period is over', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(1_000_000)
+    fake.reach = 'unreachable'
+    fake.cause = 'timeout'
+    expect((await phoneAction({ action: 'publish' })).status.reach).toBe('pending')
+    vi.setSystemTime(1_000_000 + PHONE_GRACE_MS - 1000)
+    expect((await phoneStatus()).reach).toBe('pending')
+    vi.setSystemTime(1_000_000 + PHONE_GRACE_MS)
+    expect(await phoneStatus()).toMatchObject({ reach: 'unreachable', reachCause: 'timeout', qr: null })
+    // Answers at last: green with the QR code.
+    fake.reach = 'ok'
+    const s = await phoneStatus()
+    expect(s.reach).toBe('ok')
+    expect(s.qr).not.toBeNull()
+    // Published again: a new wait.
+    writeFileSync(serveFile, '{}')
+    fake.reach = 'unreachable'
+    expect((await phoneAction({ action: 'publish' })).status.reach).toBe('pending')
   })
 
   it('accepts its own address once wherdr refused it only for the host name', async () => {
@@ -151,9 +176,22 @@ describe('phone address check', () => {
 
   it('records the reason and the time of an unreachable address', async () => {
     fake.reach = 'unreachable'
+    fake.cause = 'dns'
     const r = await phoneAction({ action: 'publish' })
     expect(r.status.reach).toBe('unreachable')
-    expect(r.status.reachCause).toBe('refused')
+    expect(r.status.reachCause).toBe('dns')
     expect(r.status.checkedAt).toBeGreaterThan(0)
+  })
+
+  it('only waits on causes that pass while Tailscale gets the certificate', () => {
+    const since = 1_000_000
+    for (const cause of ['timeout', 'tls', 'refused', 'cert', 'network'] as const) {
+      expect(phoneReach({ reach: 'unreachable', cause }, since, since + 5000)).toBe('pending')
+      expect(phoneReach({ reach: 'unreachable', cause }, since, since + PHONE_GRACE_MS)).toBe('unreachable')
+    }
+    expect(phoneReach({ reach: 'unreachable', cause: 'dns' }, since, since)).toBe('unreachable')
+    expect(phoneReach({ reach: 'host' }, since, since)).toBe('host')
+    expect(phoneReach({ reach: 'other' }, since, since)).toBe('other')
+    expect(phoneReach({ reach: 'ok' }, since, since + PHONE_GRACE_MS * 2)).toBe('ok')
   })
 })

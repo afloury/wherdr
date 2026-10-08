@@ -158,7 +158,8 @@ export function probe(url, timeoutMs = 8000) {
   const { promise, resolve } = Promise.withResolvers()
   let u
   try { u = new URL('manifest.webmanifest', url) } catch { return Promise.resolve({ reach: 'unreachable', cause: 'network' }) }
-  const req = https.get(u, { lookup, timeout: timeoutMs }, (res) => {
+  // Accept JSON: a refused host then answers { code: 'host' }, not the HTML page.
+  const req = https.get(u, { lookup, timeout: timeoutMs, headers: { accept: 'application/json' } }, (res) => {
     let text = ''
     res.setEncoding('utf8')
     res.on('data', (c) => { if (text.length < 65536) text += c })
