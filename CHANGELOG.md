@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-10-08
+
 ### Added
 
 - **Herdr key for the wherdr panel**: the plugin install appends one marked `[[keys.command]]`
