@@ -69,9 +69,27 @@ it on `localhost`, or from your other devices over Tailscale.
 *Unofficial project. Not affiliated with or endorsed by Herdr, Anthropic or OpenAI. Claude,
 Claude Code, Codex and other product names are trademarks of their respective owners.*
 
+## Why wherdr
+
+- **Herdr's splits, live.** A tab with several panes is drawn in Herdr's real layout, every pane
+  live; drag a pane to move it or a divider to resize, and the change goes to Herdr itself.
+- **A passkey lock.** Face ID, Touch ID, Windows Hello or Android unlock the app; once a passkey
+  exists, nothing about your agents is served to a locked session.
+- **The agent's diff.** Git status and diff of each agent's working folder, one click away from
+  its conversation.
+- **The herdr-projects board.** A coordinator and its threads grouped under their project, with
+  the project's task lists as a live board and one-click replies.
+- **Keyboard and global search.** One shortcut searches every agent and conversation; next
+  agent, new tab, pane swaps and `1`–`9` answers never need the mouse.
+- **Real time, and private.** The real terminal over a WebSocket, a push when an agent needs
+  you, and your phone through Tailscale: nothing is on the Internet.
+
+Details in [Features](#features) and [Security](#security).
+
 ## Contents
 
 - [Quick start](#quick-start)
+- [Why wherdr](#why-wherdr)
 - [Features](#features)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)

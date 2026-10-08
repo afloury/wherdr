@@ -29,6 +29,16 @@ const stories = [
   },
 ] as const
 
+// What sets wherdr apart, in six lines. Each one is detailed further down the page.
+const why = [
+  { k: 'SPLITS', title: 'Herdr\'s splits, live', text: 'A tab with several panes is drawn in Herdr\'s real layout, every pane live. Drag a pane to move it or a divider to resize: the change goes to Herdr itself.' },
+  { k: 'LOCK', title: 'A passkey lock', text: 'Face ID, Touch ID, Windows Hello or Android unlock the app. Once a passkey exists, nothing about your agents is served to a locked session.' },
+  { k: 'DIFF', title: 'The agent\'s diff', text: 'Git status and diff of each agent\'s working folder, one click away from its conversation.' },
+  { k: 'BOARD', title: 'The herdr-projects board', text: 'A coordinator and its threads grouped under their project, with the project\'s task lists as a live board and one-click replies.' },
+  { k: 'KEYS', title: 'Keyboard and global search', text: 'One shortcut searches every agent and conversation. Next agent, new tab, pane swaps and 1–9 answers never need the mouse.' },
+  { k: 'LIVE', title: 'Real time, and private', text: 'The real terminal over a WebSocket, a push when an agent needs you, and your phone through Tailscale. Nothing is on the Internet.' },
+]
+
 const features = [
   { icon: 'i-lucide-columns-2', title: 'Split panes, live', text: 'Herdr\'s real layout on a computer: every pane live, drag to move, drag a divider to resize.' },
   { icon: 'i-lucide-server', title: 'Several machines', text: 'Agents of the SSH machines registered in Herdr appear in their own section. Same features, remote.' },
@@ -123,18 +133,38 @@ const faq = [
         </div>
       </section>
 
+      <!-- ============================================================== WHY -->
+      <section id="why" class="section">
+        <div class="wrap why-wrap">
+          <div v-reveal class="section-head">
+            <p class="label"><span class="k">01</span> Why wherdr</p>
+            <h2 class="display h2">Herdr, whole.<br>In a browser.</h2>
+            <p class="lead">The layout, the terminal, the diff and the project board of your Herdr session, behind your own lock.</p>
+          </div>
+          <ul v-reveal class="why">
+            <li v-for="w in why" :key="w.k" class="why-row">
+              <span class="why-k">[ {{ w.k }} ]</span>
+              <div>
+                <h3 class="cell-title">{{ w.title }}</h3>
+                <p class="cell-text">{{ w.text }}</p>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </section>
+
       <!-- ========================================================= FEATURES -->
       <section id="features" class="section">
         <div class="wrap">
           <div v-reveal class="section-head">
-            <p class="label"><span class="k">01</span> Features</p>
+            <p class="label"><span class="k">02</span> Features</p>
             <h2 class="display h2">A full workspace on a computer.<br>A companion in your pocket.</h2>
             <p class="lead">Same Herdr session, same agents, nothing copied. On a computer wherdr can replace the terminal client day to day; on a phone it follows your agents while you are away.</p>
           </div>
 
           <article v-for="(s, i) in stories" :id="s.id" :key="s.id" v-reveal class="story" :class="{ flip: i % 2 === 1, phones: s.id === 'phone' }">
             <div class="story-copy">
-              <p class="label"><span class="k">1.{{ i + 1 }}</span> {{ s.label }}</p>
+              <p class="label"><span class="k">2.{{ i + 1 }}</span> {{ s.label }}</p>
               <h3 class="display story-title">{{ s.title }}</h3>
               <p class="story-text">{{ s.text }}</p>
               <ul class="ticks">
@@ -163,7 +193,7 @@ const faq = [
             <div v-for="(f, i) in features" :key="f.title" class="cell">
               <div class="cell-top">
                 <UIcon :name="f.icon" class="size-5 cell-icon" />
-                <span class="label">1.{{ i + 4 }}</span>
+                <span class="label">2.{{ i + 4 }}</span>
               </div>
               <h3 class="cell-title">{{ f.title }}</h3>
               <p class="cell-text">{{ f.text }}</p>
@@ -176,7 +206,7 @@ const faq = [
       <section id="how" class="section">
         <div class="wrap">
           <div v-reveal class="section-head">
-            <p class="label"><span class="k">02</span> How it works</p>
+            <p class="label"><span class="k">03</span> How it works</p>
             <h2 class="display h2">Next to Herdr. Never in between.</h2>
             <p class="lead">wherdr runs on the same machine as the Herdr server. It uses Herdr's local socket API and CLI, reads the agents' transcript files, and serves the app to your devices through your private network. Your other computers join through Herdr's SSH machines.</p>
           </div>
@@ -193,7 +223,7 @@ const faq = [
       <section id="security" class="section">
         <div class="wrap">
           <div v-reveal class="section-head">
-            <p class="label"><span class="k">03</span> Security</p>
+            <p class="label"><span class="k">04</span> Security</p>
             <h2 class="display h2">It is a shell on your machine.<br>It is treated like one.</h2>
             <p class="lead">Anyone who reaches wherdr can drive your agents as your user. So it stays on your private network, behind a passkey, with nothing in the cloud.</p>
           </div>
@@ -215,7 +245,7 @@ const faq = [
       <section id="install" class="section">
         <div class="wrap">
           <div v-reveal class="section-head">
-            <p class="label"><span class="k">04</span> Install</p>
+            <p class="label"><span class="k">05</span> Install</p>
             <h2 class="display h2">One command.</h2>
             <p class="lead">On the computer that runs Herdr — your Mac, or an always-on Linux box (a Raspberry Pi works). It installs the wherdr Herdr plugin: wherdr in <code>~/wherdr</code>, listening on 127.0.0.1 only, started now and with Herdr. No sudo, and a wherdr that already runs is never replaced. <a href="/install" target="_blank">Read the script first.</a></p>
           </div>
@@ -297,7 +327,7 @@ const faq = [
       <section id="faq" class="section">
         <div class="wrap faq-wrap">
           <div v-reveal class="section-head">
-            <p class="label"><span class="k">05</span> FAQ</p>
+            <p class="label"><span class="k">06</span> FAQ</p>
             <h2 class="display h2">Questions.</h2>
           </div>
           <UAccordion v-reveal :items="faq" type="multiple" class="faq" :ui="{ item: 'faq-item', trigger: 'faq-trigger', label: 'faq-label', body: 'faq-body' }" />
@@ -356,6 +386,14 @@ const faq = [
 .hv-desk { width: 100%; }
 .hv-phone { position: absolute; right: -18px; bottom: 0; width: 34%; max-width: 230px; }
 .agents-band { margin-top: 56px; }
+
+/* --------------------------------------------------------------- why */
+.why-wrap { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: clamp(32px, 5vw, 72px); align-items: start; }
+.why-wrap .section-head { margin-bottom: 0; position: sticky; top: 100px; }
+.why { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.why-row { display: grid; grid-template-columns: 11ch minmax(0, 1fr); gap: 4px 24px; align-items: baseline; padding: 22px 0; border-bottom: 1px solid var(--line); }
+.why-k { font: 600 12px/1.6 var(--mono); letter-spacing: .1em; color: var(--accent); white-space: nowrap; }
+.why-row .cell-title { margin-bottom: 6px; }
 
 /* ----------------------------------------------------------- stories */
 .story { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: clamp(32px, 5vw, 72px); align-items: center; padding: clamp(40px, 6vw, 72px) 0; border-top: 1px solid var(--line); }
@@ -463,6 +501,9 @@ const faq = [
   .story.flip .story-copy { order: 0; }
   .cells, .sec-grid, .how-notes { grid-template-columns: minmax(0, 1fr); }
   .faq-wrap { grid-template-columns: 1fr; gap: 0; }
+  .why-wrap { grid-template-columns: minmax(0, 1fr); }
+  .why-wrap .section-head { position: static; }
+  .why-row { grid-template-columns: minmax(0, 1fr); padding: 20px 0; }
   .foot-in { grid-template-columns: minmax(0, 1fr); }
   .foot-links { justify-content: flex-start; }
   .hv-phone { width: 38%; right: 2px; }
