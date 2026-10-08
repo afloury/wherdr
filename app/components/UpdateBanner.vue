@@ -22,6 +22,7 @@ async function copy() {
       <code>{{ info.command }}</code>
       <small v-if="info.mode === 'native'">{{ t('Then restart wherdr.') }}</small>
       <small v-else-if="info.mode === 'npm'">{{ t('Stop wherdr first, then run this command.') }}</small>
+      <small v-else-if="info.mode === 'brew'">{{ t('Then restart wherdr: brew services restart wherdr.') }}</small>
     </div>
     <div class="update-banner-actions">
       <UButton v-if="info.url" size="sm" color="neutral" variant="ghost" icon="i-lucide-external-link" :to="info.url" target="_blank" rel="noopener noreferrer">{{ t('Release notes') }}</UButton>

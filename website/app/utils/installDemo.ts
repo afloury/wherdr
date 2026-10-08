@@ -13,6 +13,8 @@ export type TermDemo = { title: string, lines: TermLine[] }
 export const INSTALL_COMMAND = 'curl -fsSL https://wherdr.dev/install | sh'
 // `herdr plugin install owner/repo` (herdr-plugin.toml at the root of the repository).
 export const PLUGIN_COMMAND = `herdr plugin install ${REPO.replace('https://github.com/', '')}`
+// Homebrew formula (<owner>/homebrew-tap): the npm package, with a `brew services` entry.
+export const BREW_COMMANDS = [`brew install ${REPO.replace('https://github.com/', '').split('/')[0]}/tap/wherdr`, 'brew services start wherdr', 'wherdr open']
 // The npm package `wherdr` (prebuilt): try it with a package runner, keep it with a global install.
 export const RUNNERS = {
   npx: { run: 'npx wherdr', keep: 'npm install -g wherdr' },

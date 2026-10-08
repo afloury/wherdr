@@ -46,6 +46,12 @@ describe('wherdr server environment', () => {
     expect(serverEnv({}, { WHERDR_DIR: '~/w2' }, home).DATA_DIR).toBe('/home/test/w2/data')
   })
 
+  it('offers the Homebrew update command only to a Homebrew install', () => {
+    expect(serverEnv({}, {}, home, '/opt/homebrew/Cellar/wherdr/1.3.0/libexec/lib/node_modules/wherdr/bin/wherdr.mjs').WHERDR_INSTALL).toBe('brew')
+    expect(serverEnv({}, {}, home, '/home/linuxbrew/.linuxbrew/Cellar/wherdr/1.3.0/libexec/lib/node_modules/wherdr/bin/wherdr.mjs').WHERDR_INSTALL).toBe('brew')
+    expect(serverEnv({}, {}, home, '/opt/homebrew/lib/node_modules/wherdr/bin/wherdr.mjs').WHERDR_INSTALL).toBe('npm')
+  })
+
   it('lets options win over the environment, and the environment over the defaults', () => {
     const fromEnv = serverEnv({}, { PORT: '7691', HOST: '::1', DATA_DIR: '~/elsewhere', HERDR_WEB_SESSION: 's1' }, home)
     expect(fromEnv).toMatchObject({ PORT: '7691', HOST: '::1', DATA_DIR: '/home/test/elsewhere', HERDR_WEB_SESSION: 's1' })

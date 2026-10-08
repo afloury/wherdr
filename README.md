@@ -19,6 +19,10 @@ With [Herdr](https://herdr.dev) running and Node.js 22 (or Bun), on macOS or Lin
 npx wherdr          # or: bunx wherdr, pnpm dlx wherdr — then open http://localhost:7683
 ```
 
+With Homebrew (macOS or Linux): `brew install afloury/tap/wherdr`, then `brew services start wherdr`
+(runs now and at every login), then `wherdr open` (setup guide in your browser, Phone step included).
+The first install also brings Homebrew's Node.js.
+
 To keep it: `npm install -g wherdr`, then `wherdr service install` starts it at every login, and
 `wherdr phone` walks you through phone access. See [the `wherdr` command](#the-wherdr-command).
 
@@ -421,6 +425,18 @@ plugin and the install script use), `--session` (a named Herdr session). Every
 environment, then that file. `start` and `service install` remember the port and folders for
 the other commands.
 
+**Homebrew:** `brew install afloury/tap/wherdr` installs the same package; the first install also
+brings Homebrew's Node.js (heavier than the Herdr plugin when Node.js 22 is already there). Then:
+
+1. `brew services start wherdr`: runs `wherdr run` now and at every login, log in
+   `$(brew --prefix)/var/log/wherdr.log` (`wherdr logs` reads it).
+2. `wherdr open`: the setup guide in your browser.
+3. Its Phone step (or `wherdr phone`).
+
+On a Homebrew install, `wherdr start`, `stop`, `restart` and `service install` point to
+`brew services` (the installed path changes at each upgrade); `wherdr status` and `wherdr doctor`
+show the Homebrew service. Update: `brew upgrade wherdr && brew services restart wherdr`.
+
 The login service records the **absolute path** of the runtime (n, nvm, fnm, Volta or Homebrew
 node), since launchd and systemd do not see your shell's `PATH`. It refuses to point at a
 temporary `npx` / `pnpm dlx` / `bunx` folder: install the package globally first. To update:
@@ -610,6 +626,7 @@ installed version is shown in Settings › About.
 | Docker, built from source | `git pull && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` |
 | No Docker | `git pull && npm ci && npm run build`, then restart wherdr |
 | `wherdr` command (npm) | `npm install -g wherdr@latest && wherdr restart` (npx: stop it, then `npx wherdr@latest`) |
+| `wherdr` command (Homebrew) | `brew upgrade wherdr`, then `brew services restart wherdr` |
 | Herdr plugin, Docker | **U** in the **wherdr** panel (pulls the image, restarts the container) |
 | Herdr plugin, Node.js | **U** in the **wherdr** panel, or `herdr plugin install afloury/wherdr --yes` (wherdr restarts on the new version) |
 

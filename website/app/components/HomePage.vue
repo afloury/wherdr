@@ -3,7 +3,7 @@
 // live demos in the hero (phone + desktop on one clock) and next to the
 // feature stories, and an install that types itself.
 import { AGENT_PROMPT, REPO } from '~/utils/site'
-import { DOCKER_COMMANDS, DOCKER_DEMO, INSTALL_COMMAND, MAC_COMMANDS, MAC_DEMO, ONE_COMMAND_DEMO, PLUGIN_COMMAND, RUNNERS } from '~/utils/installDemo'
+import { BREW_COMMANDS, DOCKER_COMMANDS, DOCKER_DEMO, INSTALL_COMMAND, MAC_COMMANDS, MAC_DEMO, ONE_COMMAND_DEMO, PLUGIN_COMMAND, RUNNERS } from '~/utils/installDemo'
 import { type InstallOs, installOs } from '~/utils/recommend'
 
 const stories = [
@@ -52,6 +52,7 @@ const security = [
 const installTabs = [
   { id: 'one', label: 'curl' },
   { id: 'plugin', label: 'Herdr plugin' },
+  { id: 'brew', label: 'Homebrew' },
   { id: 'npx', label: 'npx' },
   { id: 'bunx', label: 'bunx' },
   { id: 'pnpm', label: 'pnpm dlx' },
@@ -64,7 +65,7 @@ const tab = ref<typeof installTabs[number]['id']>('one')
 const os = ref<InstallOs | null>(null)
 onMounted(() => { os.value = installOs(navigator.userAgent, navigator.maxTouchPoints) })
 const recommended = computed(() => os.value === 'mac'
-  ? { tab: 'plugin' as const, system: 'macOS', method: 'the Herdr plugin', why: 'Installs and starts wherdr natively, then opens its setup guide in your browser. Homebrew is coming soon.', command: PLUGIN_COMMAND }
+  ? { tab: 'plugin' as const, system: 'macOS', method: 'the Herdr plugin', why: `Installs and starts wherdr natively, then opens its setup guide in your browser. Prefer Homebrew? ${BREW_COMMANDS[0]}.`, command: PLUGIN_COMMAND }
   : os.value === 'linux'
     ? { tab: 'one' as const, system: 'Linux', method: 'the install script', why: 'Docker when it is there, Node.js 22 otherwise, in ~/wherdr. No sudo.', command: INSTALL_COMMAND }
     : null)
@@ -248,6 +249,17 @@ const faq = [
                 <li><b>Run it</b> on the machine that runs Herdr (≥ 0.9.1), Linux or macOS. It installs wherdr in <code>~/wherdr</code> (Docker on Linux when available, Node.js 22 otherwise; no sudo), starts it on <code>http://localhost:7683</code> and, the first time, opens its setup guide in your browser.</li>
                 <li><b>Open the <i>wherdr</i> action</b> in Herdr: one panel with the state, the addresses and a key per command — start, stop, restart, log, update, auto-start at login.</li>
                 <li><b>Phone:</b> the setup guide (or Settings › Phone, key <b>P</b> of the panel) publishes wherdr on your tailnet, then shows a QR code to scan.</li>
+              </ol>
+            </div>
+
+            <div v-show="tab === 'brew'" id="panel-brew" role="tabpanel" aria-labelledby="tab-brew" class="panel">
+              <InstallCommand :command="BREW_COMMANDS.join('\n')" what="commands" wrap />
+              <ol class="steps">
+                <li><b>Install</b> on the machine that runs Herdr, macOS or Linux. The first install also brings Homebrew's Node.js (heavier than the Herdr plugin if you already have Node.js); the package is prebuilt, nothing compiles.</li>
+                <li><b>Start it:</b> <code>brew services start wherdr</code> runs it now and at every login.</li>
+                <li><b>Open it:</b> <code>wherdr open</code> opens the setup guide in your browser.</li>
+                <li><b>Phone:</b> follow the guide's Phone step: one click publishes wherdr on your tailnet, then a QR code to scan.</li>
+                <li><b>Update:</b> <code>brew upgrade wherdr</code>, then <code>brew services restart wherdr</code>. Stuck? <code>wherdr doctor</code>.</li>
               </ol>
             </div>
 
