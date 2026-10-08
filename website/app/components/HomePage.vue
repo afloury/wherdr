@@ -255,10 +255,11 @@ const faq = [
             <div v-show="tab === 'brew'" id="panel-brew" role="tabpanel" aria-labelledby="tab-brew" class="panel">
               <InstallCommand :command="BREW_COMMANDS.join('\n')" what="commands" wrap />
               <ol class="steps">
-                <li><b>Install</b> on the machine that runs Herdr, macOS or Linux. Homebrew brings Node.js; the package is prebuilt, nothing compiles.</li>
-                <li><b>Start it</b> now and at every login with <code>brew services start wherdr</code>, then open <code>http://localhost:7683</code>. Log: <code>$(brew --prefix)/var/log/wherdr.log</code>.</li>
-                <li><b>Phone:</b> open Settings › Phone in wherdr: one click publishes it on your tailnet, then a QR code once the address answers.</li>
-                <li><b>Update:</b> <code>brew upgrade wherdr</code>, then <code>brew services restart wherdr</code>. <code>wherdr doctor</code> checks Node, Herdr and its socket.</li>
+                <li><b>Install</b> on the machine that runs Herdr, macOS or Linux. The first install also brings Homebrew's Node.js (heavier than the Herdr plugin if you already have Node.js); the package is prebuilt, nothing compiles.</li>
+                <li><b>Start it:</b> <code>brew services start wherdr</code> runs it now and at every login.</li>
+                <li><b>Open it:</b> <code>wherdr open</code> opens the setup guide in your browser.</li>
+                <li><b>Phone:</b> follow the guide's Phone step: one click publishes wherdr on your tailnet, then a QR code to scan.</li>
+                <li><b>Update:</b> <code>brew upgrade wherdr</code>, then <code>brew services restart wherdr</code>. Stuck? <code>wherdr doctor</code>.</li>
               </ol>
             </div>
 

@@ -9,6 +9,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { BIN, CliError, SERVER, VERSION, bad, c, homebrewInstall, localUrl, ok, portTaken, probe, row, say, serverEnv, settingsFile, warn, wherdrDir, withSettings } from './core.mjs'
 import { RUNTIME_HELP, findRuntime, isBun, runtimeOk, runtimeVersion, temporaryInstall } from './runtime.mjs'
+import { brewDoctor, brewRedirect, brewService, brewStatusRows } from './brew.mjs'
 import { controlService, installService, serviceFile, servicePlatform, serviceState, uninstallService } from './service.mjs'
 import { LINKS, inspect, reachable } from './tailnet.mjs'
 
@@ -139,6 +140,13 @@ export async function run(opts) {
 export async function start(opts) {
   needServer()
   const ctx = context(opts)
+  const brew = brewService()
+  if (brew) {
+    const redirect = brewRedirect('start', brew)
+    if (redirect) throw new CliError(redirect)
+    ok(`wherdr already runs as a Homebrew service: ${c.cyan(ctx.url)}`)
+    return
+  }
   const svc = serviceState()
   if (svc.installed) {
     if (svc.running && await probe(ctx.port, ctx.host)) { ok(`wherdr already runs as a login service: ${c.cyan(ctx.url)}`); return }
@@ -187,6 +195,12 @@ async function waitUp(ctx, alive, seconds = 45) {
 // ------------------------------------------------------------------ stop
 export async function stop(opts, { quiet = false } = {}) {
   const ctx = context(opts)
+  const brew = brewService()
+  const redirect = brewRedirect('stop', brew)
+  if (redirect) {
+    if (quiet) return false
+    throw new CliError(redirect)
+  }
   const svc = serviceState()
   if (svc.installed && svc.running) {
     controlService('stop')
@@ -213,6 +227,8 @@ export async function stop(opts, { quiet = false } = {}) {
 }
 
 export async function restart(opts) {
+  const redirect = brewRedirect('restart', brewService())
+  if (redirect) throw new CliError(redirect)
   const svc = serviceState()
   if (svc.installed) {
     const ctx = context(opts)
@@ -231,20 +247,22 @@ export async function status(opts) {
   const answer = await probe(ctx.port, ctx.host)
   const pid = livePid(ctx.files.pid)
   const svc = serviceState()
+  const brew = brewService()
+  const hb = brew && brewStatusRows(brew)
   say(`${c.bold('wherdr')} ${VERSION}`)
   row('Address', answer === 'wherdr' ? `${c.green('●')} ${c.cyan(ctx.url)} answers` : answer ? `${c.yellow('●')} port ${ctx.port} is taken by another program` : `${c.dim('○')} port ${ctx.port} free: not running`)
-  row('Process', svc.running ? 'login service' : pid ? `pid ${pid} (wherdr start)` : answer === 'wherdr' ? 'started another way (Docker, plugin, a terminal…)' : 'none')
-  row('Service', svc.installed ? `installed (${serviceFile()})${svc.running ? '' : ', not running'}` : 'not installed · wherdr service install')
+  row('Process', hb?.process ? hb.process : svc.running ? 'login service' : pid ? `pid ${pid} (wherdr start)` : answer === 'wherdr' ? 'started another way (Docker, plugin, a terminal…)' : 'none')
+  row('Service', hb ? hb.service : svc.installed ? `installed (${serviceFile()})${svc.running ? '' : ', not running'}` : 'not installed · wherdr service install')
   row('Data', ctx.env.DATA_DIR)
-  row('Log', ctx.files.log)
+  row('Log', hb ? hb.log : ctx.files.log)
   if (ctx.env.HERDR_WEB_SESSION) row('Session', ctx.env.HERDR_WEB_SESSION)
-  if (!answer) say(c.dim('\n  Start it: wherdr start (background) or wherdr (foreground).'))
+  if (!answer) say(c.dim(hb ? hb.hint : '\n  Start it: wherdr start (background) or wherdr (foreground).'))
 }
 
 // ------------------------------------------------------------------ logs
 export async function logs(opts) {
   const ctx = context(opts)
-  const log = ctx.files.log
+  const log = brewService()?.log ?? ctx.files.log
   if (!existsSync(log)) { say(`No log yet (${log}).`); if (!opts.follow) return }
   const text = tailText(log, Number(opts.lines ?? 50))
   if (text) say(text)
@@ -343,7 +361,7 @@ export async function service(opts) {
     wherdr service install`)
   }
   // A LaunchAgent pointing into Cellar/wherdr/<version> would break at the next `brew upgrade`.
-  if (homebrewInstall(bin)) throw new CliError('this wherdr was installed with Homebrew: start it at login with `brew services start wherdr`.')
+  if (homebrewInstall(bin)) throw new CliError(brewRedirect('service', {}))
   const runtime = findRuntime(ctx.env)
   if (!runtime) throw new CliError(RUNTIME_HELP)
   // The background server of `wherdr start` would hold the port.
@@ -411,10 +429,14 @@ export async function doctor(opts) {
   const taken = answer ? null : await portTaken(ctx.port, ctx.host)
   if (answer === 'wherdr') ok(`Port ${ctx.port}: wherdr answers (${ctx.url})`)
   else if (answer || taken) fail(`Port ${ctx.port}: ${taken?.error || 'taken by another program'}. Use --port.`)
-  else warn(`Port ${ctx.port}: free, wherdr is not running (wherdr start).`)
+  else warn(`Port ${ctx.port}: free, wherdr is not running (${homebrewInstall(BIN) ? 'brew services start wherdr' : 'wherdr start'}).`)
 
   const svc = serviceState()
-  if (!servicePlatform()) warn(`Login service: not available on ${process.platform}.`)
+  const brew = brewService()
+  if (brew) {
+    const [level, text] = brewDoctor(brew)
+    ;({ ok, warn, fail })[level](text)
+  } else if (!servicePlatform()) warn(`Login service: not available on ${process.platform}.`)
   else if (!svc.installed) warn('Login service: not installed (wherdr service install starts wherdr at login).')
   else if (svc.running) ok(`Login service: running (${serviceFile()})`)
   else fail(`Login service: installed but not running (${serviceFile()}). See wherdr logs.`)

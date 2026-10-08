@@ -9,10 +9,17 @@ All notable changes to this project are documented here. The format follows
 ### Added
 
 - **Homebrew**: `brew install afloury/tap/wherdr`, then `brew services start wherdr` runs it now
-  and at every login (log in `$(brew --prefix)/var/log/wherdr.log`). A Homebrew install shows
-  `brew upgrade wherdr` in the update notice, and `wherdr service install` points to
-  `brew services` instead. Each version tag updates the formula in `afloury/homebrew-tap` when
-  the `HOMEBREW_TAP_TOKEN` secret is set.
+  and at every login, and `wherdr open` opens the setup guide. The first install also brings
+  Homebrew's Node.js. A Homebrew install shows `brew upgrade wherdr` in the update notice. Each
+  version tag updates the formula in `afloury/homebrew-tap` when the `HOMEBREW_TAP_TOKEN` secret
+  is set.
+
+### Fixed
+
+- **`wherdr` command on a Homebrew install**: `status` and `doctor` show the Homebrew service
+  (`brew services`) instead of "started another way" / "not installed"; `logs` reads its log
+  (`$(brew --prefix)/var/log/wherdr.log`); `start`, `stop`, `restart` and `service install` point
+  to `brew services start|stop|restart wherdr`.
 
 ## [1.3.0] — 2026-10-08
 

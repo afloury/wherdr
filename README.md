@@ -19,8 +19,9 @@ With [Herdr](https://herdr.dev) running and Node.js 22 (or Bun), on macOS or Lin
 npx wherdr          # or: bunx wherdr, pnpm dlx wherdr — then open http://localhost:7683
 ```
 
-With Homebrew (macOS or Linux; it brings Node.js): `brew install afloury/tap/wherdr`, then
-`brew services start wherdr` starts it now and at every login.
+With Homebrew (macOS or Linux): `brew install afloury/tap/wherdr`, then `brew services start wherdr`
+(runs now and at every login), then `wherdr open` (setup guide in your browser, Phone step included).
+The first install also brings Homebrew's Node.js.
 
 To keep it: `npm install -g wherdr`, then `wherdr service install` starts it at every login, and
 `wherdr phone` walks you through phone access. See [the `wherdr` command](#the-wherdr-command).
@@ -424,11 +425,17 @@ plugin and the install script use), `--session` (a named Herdr session). Every
 environment, then that file. `start` and `service install` remember the port and folders for
 the other commands.
 
-**Homebrew:** `brew install afloury/tap/wherdr` installs the same package (with Node.js);
-`brew services start wherdr` runs `wherdr run` now and at every login, with its log in
-`$(brew --prefix)/var/log/wherdr.log` (not `~/wherdr/wherdr.log`). Use it instead of
-`wherdr service install`, which refuses a Homebrew install (its path changes at each upgrade).
-Update: `brew upgrade wherdr && brew services restart wherdr`.
+**Homebrew:** `brew install afloury/tap/wherdr` installs the same package; the first install also
+brings Homebrew's Node.js (heavier than the Herdr plugin when Node.js 22 is already there). Then:
+
+1. `brew services start wherdr`: runs `wherdr run` now and at every login, log in
+   `$(brew --prefix)/var/log/wherdr.log` (`wherdr logs` reads it).
+2. `wherdr open`: the setup guide in your browser.
+3. Its Phone step (or `wherdr phone`).
+
+On a Homebrew install, `wherdr start`, `stop`, `restart` and `service install` point to
+`brew services` (the installed path changes at each upgrade); `wherdr status` and `wherdr doctor`
+show the Homebrew service. Update: `brew upgrade wherdr && brew services restart wherdr`.
 
 The login service records the **absolute path** of the runtime (n, nvm, fnm, Volta or Homebrew
 node), since launchd and systemd do not see your shell's `PATH`. It refuses to point at a
