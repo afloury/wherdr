@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { isLoopbackHost, mobileOs, onboardingSteps } from '../app/utils/onboarding'
+import { isLoopbackHost, mobileOs, onAddress, onboardingSteps, setupHash, stepIndex, tailnetSwitch } from '../app/utils/onboarding'
 import { readOnboarding, writeOnboarding } from '../server/utils/onboarding'
 
 describe('onboarding steps', () => {
@@ -26,6 +26,36 @@ describe('onboarding steps', () => {
     expect(mobileOs('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', true)).toBe('ios')
     expect(mobileOs('Mozilla/5.0 (Linux; Android 15; Pixel 9)')).toBe('android')
     expect(mobileOs('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)')).toBe(null)
+  })
+})
+
+describe('continuing on the tailnet address', () => {
+  const URL = 'https://box.example.ts.net:7683/'
+
+  it('is offered on localhost once the published address answers', () => {
+    expect(tailnetSwitch('localhost', { url: URL, reach: 'ok' })).toEqual({ url: URL, name: 'box.example.ts.net' })
+    expect(tailnetSwitch('127.0.0.1', { url: URL, reach: 'ok' })?.name).toBe('box.example.ts.net')
+  })
+
+  it('is not offered without an address, before it answers, or off localhost', () => {
+    expect(tailnetSwitch('localhost', null)).toBe(null)
+    expect(tailnetSwitch('localhost', { url: null, reach: null })).toBe(null)
+    for (const reach of ['pending', 'host', 'other', 'unreachable']) expect(tailnetSwitch('localhost', { url: URL, reach })).toBe(null)
+    expect(tailnetSwitch('box.example.ts.net', { url: URL, reach: 'ok' })).toBe(null)
+    expect(tailnetSwitch('localhost', { url: 'not a url', reach: 'ok' })).toBe(null)
+  })
+
+  it('links the same step, or a settings section, on that address', () => {
+    expect(onAddress(URL, setupHash('security'))).toBe('https://box.example.ts.net:7683/#/setup?step=security')
+    expect(onAddress('https://box.example.ts.net', '#/settings?section=security')).toBe('https://box.example.ts.net/#/settings?section=security')
+  })
+
+  it('opens the guide at the step of the link, the first one when unknown', () => {
+    const steps = onboardingSteps({ phone: false, host: 'box.example.ts.net', standalone: false })
+    expect(stepIndex(steps, 'security')).toBe(2)
+    expect(stepIndex(steps, ['phone', 'security'])).toBe(1)
+    expect(stepIndex(steps, 'homescreen')).toBe(0)
+    expect(stepIndex(steps, undefined)).toBe(0)
   })
 })
 

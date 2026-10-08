@@ -12,9 +12,11 @@ const sources = (read('../README.md') + read('../website/public/install')).repla
 const llms = read('../website/public/llms.txt')
 
 // Checks an agent runs to verify a step: not in the README, harmless, read-only.
-const CHECKS = ['curl -fsS http://127.0.0.1:7683', 'docker compose ps', 'tailscale serve status', 'git --version', 'node --version']
+const CHECKS = ['curl -fsS http://127.0.0.1:7683', 'curl -fsS http://127.0.0.1:7683/manifest.webmanifest', 'curl -fsSL https://wherdr.dev/agent.md', 'docker compose ps', 'tailscale status', 'tailscale serve status', 'herdr plugin list', 'brew list wherdr', 'git --version', 'node --version']
 // Placeholders and file paths the guide names, not commands.
-const PLAIN = /^(~\/[\w./-]+|\.env|TASKS\.md|docker|herdr-projects (skill|doctor)|https:\/\/<machine>\.<tailnet>\.ts\.net:7683\/)$/
+const PLAIN = /^(~\/[\w./-]+|\.env|plugin\.env|TASKS\.md|docker|url|herdr-projects (skill|doctor)|https:\/\/<machine>\.<tailnet>\.ts\.net:7683\/)$/
+// Quoted from wherdr's own output, checked against the code below.
+const OUTPUT = ['"reach":"ok"', '"pending"', 'First passkey: bootstrap token']
 
 const snippets = [
   ...[...guide.matchAll(/```sh\n([\s\S]*?)```/g)].flatMap(([, block]) =>
@@ -23,7 +25,7 @@ const snippets = [
 ]
 
 describe('agent.md', () => {
-  it.each(snippets.filter(s => !CHECKS.includes(s) && !PLAIN.test(s)))('`%s` is in the README or the installer', (snippet) => {
+  it.each(snippets.filter(s => !CHECKS.includes(s) && !OUTPUT.includes(s) && !PLAIN.test(s)))('`%s` is in the README or the installer', (snippet) => {
     // The guide fills one placeholder; the README writes a sample address.
     const s = snippet.replace('https://<machine>.<tailnet>.ts.net:7683/', 'https://server.example.ts.net:7683/')
     expect(sources).toContain(s)
@@ -35,6 +37,19 @@ describe('agent.md', () => {
 
   it.each([...new Set(guide.match(/(?<=[:= ])\d{4,5}\b/g))])('port %s exists', (port) => {
     expect(sources).toMatch(new RegExp(`(?:127\\.0\\.0\\.1|localhost|PORT)[:=]${port}\\b`))
+  })
+
+  it('quotes the /api/phone states and the bootstrap token line the server really writes', () => {
+    const reach = read('../shared/phone.ts').match(/export type PhoneReach = (.+)/)![1]
+    expect(reach).toContain('\'ok\'')
+    expect(reach).toContain('\'pending\'')
+    expect(read('../server/utils/phone.ts')).toMatch(/reach: null/)
+    expect(read('../server/utils/auth.ts')).toContain('First passkey: bootstrap token')
+  })
+
+  it('stays short enough for fetch tools to return it whole, and says how to read the raw file', () => {
+    expect(Buffer.byteLength(guide)).toBeLessThan(5000)
+    expect(guide.slice(0, 300)).toContain('curl -fsSL https://wherdr.dev/agent.md')
   })
 
   it('cites the Herdr version the installer requires', () => {

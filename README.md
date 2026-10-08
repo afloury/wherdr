@@ -36,6 +36,13 @@ saved on the server (`data/onboarding.json`), so your other devices do not show 
 it from Settings › About › **Setup guide**. On a phone that already opens wherdr through its
 tailnet address, the phone step becomes Add to Home Screen.
 
+**Passkeys are tied to the address they are created on.** Once wherdr's tailnet address is
+published and answers, the guide opened on `localhost` shows **Continue on
+<machine>.<tailnet>.ts.net**, which reopens it at the same step on that address, and its Security
+step (like Settings › Security) sends the passkey lock there. Nothing redirects on its own:
+`localhost` stays valid on the computer. The installer, the Herdr plugin and `wherdr open` open
+that address too when it is already published.
+
 wherdr is a small self-hosted web app that talks to the Herdr server on your machine. **On a
 computer**, it can replace the Herdr terminal client day to day: your spaces, tabs and split panes
 side by side, live conversations and real terminals, drag-and-drop layout, keyboard shortcuts
@@ -364,7 +371,10 @@ forwards to wherdr's local HTTP port. Only devices of your tailnet can reach it.
 **Settings › Phone** in wherdr on the server (`http://localhost:7683/#/settings?section=phone`),
 paste that address: wherdr checks it answers, sets it as `APP_URL` (saved in `data/app-url.json`;
 an HTTPS `APP_URL` in `.env` wins) and shows its QR code. Without Docker, the same page publishes
-wherdr itself: one button, asked first.
+wherdr itself: one button, asked first. From a terminal on the server (without Docker),
+`curl -fsS http://127.0.0.1:7683/api/phone` runs the same check on an address published by hand:
+it prints the state as JSON and sets `APP_URL` once the address answers (`wherdr phone` does it
+too).
 
 **Why HTTPS matters.** Browsers only allow three things on `https://` (or on `localhost` itself):
 
@@ -484,7 +494,7 @@ wherdr phone                # phone state, the app's phone setup page, QR code o
 | `wherdr start` · `stop` · `restart` | Background server, pid and log in `~/wherdr`. `start` says *started* only once the port answers; otherwise it prints the end of the log. With a login service installed, they drive the service. |
 | `wherdr status` | Address, process, service, data folder and log. |
 | `wherdr logs` (`-f` to follow, `-n 100`) | The log, `~/wherdr/wherdr.log`. |
-| `wherdr open` | Opens wherdr in the browser. |
+| `wherdr open` | Opens wherdr in the browser: its tailnet address when published and answering, else `localhost`. |
 | `wherdr phone` | Whether your phone can reach wherdr (Tailscale, `tailscale serve`, the address answering), the link to **Settings › Phone** where you publish it in one click, and the QR code once the address answers. |
 | `wherdr service install` · `uninstall` | Start at login: a LaunchAgent on macOS (`~/Library/LaunchAgents/dev.wherdr.plist`), a `systemd --user` unit on Linux (`loginctl enable-linger` keeps it running while you are logged out). |
 | `wherdr doctor` | Checks Node/Bun, Herdr and its socket, the port, the service, the data folder and `APP_URL`. |
@@ -614,7 +624,7 @@ Without a key: `herdr plugin action invoke panel --plugin afloury.wherdr`. The p
 | Action | What it does |
 |---|---|
 | `panel` | The **wherdr** panel (a popup) |
-| `open` | Opens wherdr in the browser |
+| `open` | Opens wherdr in the browser (its tailnet address when published and answering) |
 
 Up to 1.2.0 the panel action was called `wherdr`: change a key bound to `afloury.wherdr.wherdr` to
 `afloury.wherdr.panel` (Herdr has no action aliases; the install warns about such a key and

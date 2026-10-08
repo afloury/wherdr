@@ -2195,6 +2195,24 @@ body.kb .composer { padding-bottom: 8px; }
 .onboarding-steps li.done button i { background: var(--done); }
 .onboarding-steps li.current button { color: var(--text-strong); }
 .onboarding-steps li.current button i { background: var(--mauve); }
+/* On localhost with the tailnet address answering: continue there (same step). */
+.onboarding-tailnet { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--bg-2); color: var(--text); text-decoration: none; }
+.onboarding-tailnet-label { display: flex; align-items: center; gap: 8px; font: 600 10px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.onboarding-tailnet-label::before { content: ''; width: 8px; height: 8px; flex: none; background: var(--done); }
+.onboarding-tailnet-go { display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 12px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line-strong); font: 600 11px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; transition: background-color .12s ease, color .12s ease, box-shadow .12s ease; }
+.onboarding-tailnet-go b { font-weight: 600; font-size: 12px; letter-spacing: 0; text-transform: none; overflow-wrap: anywhere; }
+.onboarding-tailnet-go .iconify { flex: none; width: 15px; height: 15px; }
+.onboarding-tailnet:hover .onboarding-tailnet-go, .onboarding-tailnet:focus-visible .onboarding-tailnet-go { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+.onboarding-tailnet:focus-visible { outline: none; }
+@media (max-width: 520px) { .onboarding-tailnet-go { flex: 1 1 100%; justify-content: space-between; } }
+/* Passkey card on localhost: the lock is enabled on the tailnet address. */
+.settings-card > .passkey-tailnet { margin-top: 14px; color: var(--text-2); }
+.settings-action.passkey-tailnet-go { margin-top: 12px; padding: 12px 14px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line-strong); text-decoration: none; transition: background-color .12s ease, color .12s ease, box-shadow .12s ease; }
+.passkey-tailnet-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.passkey-tailnet-text small { font: 600 10px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.passkey-tailnet-text b { font: 600 13px/1.4 var(--mono); overflow-wrap: anywhere; }
+.settings-action.passkey-tailnet-go:hover, .settings-action.passkey-tailnet-go:focus-visible { background: var(--accent); color: var(--on-accent); box-shadow: none; outline: none; }
+.settings-action.passkey-tailnet-go:hover :is(.iconify, small), .settings-action.passkey-tailnet-go:focus-visible :is(.iconify, small) { color: currentColor; }
 .onboarding-body { flex: 1; min-height: 0; overflow-y: auto; }
 .onboarding-page { width: 100%; max-width: 680px; margin: 0 auto; padding: 34px 16px 40px; }
 .onboarding-eyebrow { color: var(--mauve); margin-bottom: 14px; }
