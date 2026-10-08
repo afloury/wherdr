@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **No "New version available" banner right after an install or update**: a service worker left
+  by a previous install on the same address, or a new version deployed while the app was closed,
+  is now activated silently when the page opens (the page already runs the new build). The banner
+  only appears for an update that arrives while the app is in use, so nothing being typed is lost.
+
 ## [1.3.0] — 2026-10-08
 
 ### Added
