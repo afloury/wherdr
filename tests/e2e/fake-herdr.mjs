@@ -33,7 +33,10 @@ const screen = p => (p?.agent === 'omp' && p.status === 'idle' ? (p.run ? ompRun
 // the fake agent appends to when it receives a prompt; `shell`: a "!" prompt
 // starts a run that lasts until Escape, written nowhere, like a fresh omp).
 export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
-  const panes = workspaces.flatMap(w => w.panes.map(p => ({ ...p, workspace: w.id })))
+  // `size`: the pane's PTY. No Herdr client is attached to this session: a
+  // terminal control session resizes it, and it keeps that size afterwards.
+  // `control`: the control session attached to the pane's terminal, if any.
+  const panes = workspaces.flatMap(w => w.panes.map(p => ({ ...p, workspace: w.id, size: { cols: 120, rows: 40 }, control: null })))
   const paneById = id => panes.find(p => p.id === id)
 
   function snapshot() {
@@ -59,6 +62,8 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
         pane_id: p.id, workspace_id: p.workspace, tab_id: `${p.workspace}:t1`,
         agent: p.agent, agent_status: p.status, cwd: p.cwd, foreground_cwd: p.cwd, focused: false,
         terminal_title: p.agent || 'shell',
+        terminal_id: `term_${p.id.replace(/\W/g, '')}`,
+        scroll: { viewport_rows: p.size.rows, offset_from_bottom: 0, max_offset_from_bottom: 0 },
         ...(p.session ? { agent_session: { agent: p.agent, value: p.session } } : {}),
       })),
       agents: [],
@@ -81,6 +86,12 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       ].join('\n') + '\n')
     }
     return { agent: { pane_id: p.id, agent: p.agent, status: p.status } }
+  }
+
+  function need(id) {
+    const p = paneById(id)
+    if (!p) throw Object.assign(new Error(`No pane ${id}`), { code: 'pane_not_found' })
+    return p
   }
 
   const methods = {
@@ -106,6 +117,34 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       const p = paneById(params.pane_id)
       if (p?.run && (params.keys || []).includes('esc')) p.run = null
       return {}
+    },
+    'pane.layout': (params) => {
+      const p = need(params.pane_id)
+      return { layout: snapshot().layouts.find(l => l.workspace_id === p.workspace) }
+    },
+    // Control session of a pane's terminal (tests/e2e/fake-herdr-cli.mjs).
+    'e2e.term_attach': (params) => {
+      const p = need(params.pane_id)
+      if (p.control && !params.takeover) throw Object.assign(new Error('terminal already has an attached client'), { code: 'terminal_attached' })
+      p.control = params.session
+      p.size = { cols: params.cols || p.size.cols, rows: params.rows || p.size.rows }
+      return p.size
+    },
+    'e2e.term_resize': (params) => {
+      const p = need(params.pane_id)
+      if (p.control !== params.session) throw Object.assign(new Error('not attached'), { code: 'terminal_not_attached' })
+      p.size = { cols: params.cols, rows: params.rows }
+      return p.size
+    },
+    'e2e.term_detach': (params) => {
+      const p = need(params.pane_id)
+      if (p.control === params.session) p.control = null
+      return {}
+    },
+    // What the specs look at: the pane's PTY size, and whether its terminal is held.
+    'e2e.pane_size': (params) => {
+      const p = need(params.pane_id)
+      return { ...p.size, attached: Boolean(p.control) }
     },
     'plugin.list': () => ({ plugins: [] }),
     'plugin.action.list': () => ({ actions: [] }),

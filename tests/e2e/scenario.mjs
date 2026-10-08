@@ -2,11 +2,35 @@
 // neutral transcripts written into the fake HOME. Shared by the launcher and the specs.
 import crypto from 'node:crypto'
 import fs from 'node:fs'
+import net from 'node:net'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import zlib from 'node:zlib'
 
 export const PORT = Number(process.env.E2E_PORT || 7699)
 export const BASE_URL = `http://127.0.0.1:${PORT}`
+
+// Path of the fake Herdr's socket, written by the launcher.
+export const SOCK_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../.e2e-tmp/herdr-sock')
+
+// A call to the fake Herdr from a spec (its state, e.g. `e2e.pane_size`).
+export function fakeHerdr(method, params = {}) {
+  return new Promise((resolve, reject) => {
+    const conn = net.createConnection(fs.readFileSync(SOCK_FILE, 'utf8'))
+    let buf = ''
+    conn.setEncoding('utf8')
+    conn.on('error', reject)
+    conn.on('connect', () => conn.write(JSON.stringify({ id: 'spec', method, params }) + '\n'))
+    conn.on('data', (chunk) => { buf += chunk })
+    conn.on('end', () => {
+      try {
+        const res = JSON.parse(buf)
+        if (res.error) reject(new Error(res.error.message))
+        else resolve(res.result)
+      } catch (e) { reject(e) }
+    })
+  })
+}
 
 // Pane ids (Herdr format <workspace>:<pane>).
 export const CLAUDE_PANE = 'w1:p1'

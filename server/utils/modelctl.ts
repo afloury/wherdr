@@ -360,8 +360,8 @@ async function openOmpSelector(p: Pane): Promise<OpenOmpSelector> {
     throw new HerdrError('no_menu', 'omp’s model selector did not show up')
   }
   if (!s.truncated) return { s, restore: async () => {} }
-  // Narrow pane: wherdr's phone terminal leaves the pane at its width when
-  // no Herdr client resizes it back (typical of an SSH machine). omp then
+  // Narrow pane (left at a phone's width by a terminal whose size could not
+  // be given back, see paneSizes.ts, or simply a small split). omp then
   // cuts the ids ("anthropic/cla…"): widen the pane for the time of the
   // choice, then give it its width back.
   const cols = s.width
