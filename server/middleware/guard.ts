@@ -3,11 +3,17 @@
 // are still served so the lock screen can be shown.
 // (WebSockets do the same check in their `upgrade`.)
 // Each authenticated request slides the session (auth.renew).
-import { crossSiteRequest, hostAllowed } from '../utils/hosts'
+import { crossSiteRequest, HOST_REFUSED_PAGE, hostAllowed, hostRefusalIsHtml } from '../utils/hosts'
 const needsUnlock = (p: string) => (p.startsWith('/api/') && !p.startsWith('/api/auth/')) || p.startsWith('/uploads/')
 
 export default defineEventHandler((event) => {
   if (!hostAllowed(event.node.req.headers.host)) {
+    if (hostRefusalIsHtml(event.path.split('?')[0]!, event.node.req.headers.accept)) {
+      setResponseStatus(event, 403)
+      setResponseHeader(event, 'content-type', 'text/html; charset=utf-8')
+      setResponseHeader(event, 'cache-control', 'no-store')
+      return HOST_REFUSED_PAGE
+    }
     return sendError(event, 403, { error: 'Host not allowed', code: 'host' })
   }
   const path = event.path.split('?')[0]!

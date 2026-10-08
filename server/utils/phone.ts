@@ -9,6 +9,7 @@ import { getRequestHeaders } from 'h3'
 import QRCode from 'qrcode-terminal/vendor/QRCode/index.js'
 import QRErrorCorrectLevel from 'qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel.js'
 import { inspect, probe, publishArgs, publishCommand, runTailscale, serveError, tailnetDomain, tailnetUrl, tailscaleBin, unpublishArgs } from '../../bin/lib/tailnet.mjs'
+import { phoneReach } from '../../shared/phone'
 import type { PhoneError, PhoneResult, PhoneStatus } from '../../shared/phone'
 import { APP_URL_FILE, DATA_DIR, ENV_APP_URL, HOST_LABEL, IN_DOCKER, log } from './env'
 import { auth, reqOf } from './http'
@@ -70,6 +71,9 @@ function saveAppUrl(url: string) {
 
 // Docker: the address the user typed (not saved until it answers).
 let typed = ''
+// When the wait for each address started (first check, or publishing):
+// transient failures before PHONE_GRACE_MS are shown as 'pending'.
+const waitSince = new Map<string, number>()
 
 export async function phoneStatus(): Promise<PhoneStatus> {
   const bin = tailscaleBin()
@@ -99,13 +103,19 @@ export async function phoneStatus(): Promise<PhoneStatus> {
     if (httpsPort) out.command = publishCommand(PORT, httpsPort)
   }
   if (out.url) {
+    // Published by our own `tailscale serve` (native): allow the host at
+    // once, so the phone never lands on "Host not allowed" while waiting.
+    if (out.served && !ENV_APP_URL) saveAppUrl(out.url)
     let p = await probe(out.url, 5000)
     // It answers: APP_URL follows, unless the environment sets another one.
     if ((p.reach === 'ok' || p.reach === 'host') && !ENV_APP_URL) {
       saveAppUrl(out.url)
       if (p.reach === 'host') p = await probe(out.url, 5000)
     }
-    out.reach = p.reach
+    const since = waitSince.get(out.url) ?? Date.now()
+    if (p.reach === 'ok') waitSince.delete(out.url)
+    else waitSince.set(out.url, since)
+    out.reach = phoneReach(p, since)
     out.reachCause = p.cause ?? null
     out.reachStatus = p.status ?? null
     out.checkedAt = Date.now()
@@ -147,6 +157,8 @@ export async function phoneAction(body: { action?: unknown, url?: unknown }): Pr
     args = unpublishArgs(net.phone.httpsPort)
   }
   const r = await runTailscale(bin, args)
+  // A fresh publication: its certificate wait starts now.
+  waitSince.clear()
   log(`tailscale ${args.join(' ')} → ${r.code}`)
   if (r.code !== 0) {
     const known = serveError(r.output)

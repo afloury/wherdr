@@ -4,8 +4,10 @@
 // native: wherdr can run the tailscale CLI itself; docker: it cannot (the
 // container), the user runs the command on the host; missing: no Tailscale.
 export type PhoneMode = 'native' | 'docker' | 'missing'
-// See bin/lib/tailnet.mjs reachable().
-export type PhoneReach = 'ok' | 'host' | 'other' | 'unreachable'
+// See bin/lib/tailnet.mjs reachable(). 'pending': not answering yet, but
+// still within the first minute and a half, when Tailscale is getting the
+// HTTPS certificate (phoneReach below).
+export type PhoneReach = 'ok' | 'host' | 'other' | 'unreachable' | 'pending'
 // Why it is unreachable: name not found, connection refused, timeout,
 // invalid certificate, no HTTPS on that port, other network error.
 export type PhoneReachCause = 'dns' | 'refused' | 'timeout' | 'cert' | 'tls' | 'network'
@@ -13,6 +15,19 @@ export type PhoneReachCause = 'dns' | 'refused' | 'timeout' | 'cert' | 'tls' | '
 // not connected, the HTTPS port serves something else, a bad typed address,
 // anything else (`detail` holds Tailscale's output).
 export type PhoneError = 'operator' | 'https' | 'offline' | 'taken' | 'address' | 'failed'
+
+// How long a freshly published (or first checked) address may fail with a
+// transient cause before it counts as an error.
+export const PHONE_GRACE_MS = 90_000
+// Causes that only mean "not ready yet" while Tailscale sets HTTPS up.
+const TRANSIENT: Partial<Record<PhoneReachCause, true>> = { timeout: true, tls: true, refused: true, cert: true, network: true }
+
+// The probe's answer → the reach shown: a transient failure within
+// PHONE_GRACE_MS of `since` (when the wait started) is 'pending'.
+export function phoneReach(probe: { reach: Exclude<PhoneReach, 'pending'>, cause?: PhoneReachCause | null }, since: number, now = Date.now()): PhoneReach {
+  if (probe.reach !== 'unreachable') return probe.reach
+  return probe.cause && TRANSIENT[probe.cause] && now - since < PHONE_GRACE_MS ? 'pending' : 'unreachable'
+}
 
 export interface PhoneStatus {
   mode: PhoneMode

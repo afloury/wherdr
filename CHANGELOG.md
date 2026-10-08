@@ -106,6 +106,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Settings › Phone right after publishing: while Tailscale gets the HTTPS certificate (timeout,
+  TLS error or refused connection during the first 90 seconds), the address shows a loader,
+  "Getting the HTTPS certificate from Tailscale…", and is checked again every 4 seconds, instead
+  of a red error under green rows. The result next to the button now follows the same state as
+  the rows, and the QR code only appears once the address really answers. A published address is
+  allowed as a host at once, so the first scan never lands on "Host not allowed".
+- A browser opening an address wherdr does not allow yet now gets a short page in English and
+  French saying what to do, instead of raw JSON; API requests keep the JSON error. The page
+  reveals neither the allowed hosts nor APP_URL.
 - Agent list header: with plugin actions and do not disturb on, the last buttons were cut off in
   a narrow sidebar. The title now shrinks first, then the plugin, settings and bell buttons move
   into a “…” menu as needed.
