@@ -1,6 +1,6 @@
 #!/bin/sh
 # wherdr as a Herdr plugin (herdr-plugin.toml): build (install + first start),
-# the "wherdr" panel, start, stop, status, open, update, service.
+# the panel, start, stop, status, open, update, service, skill, key.
 #
 #   herdr plugin install <owner>/wherdr
 #
@@ -25,7 +25,9 @@
 #     plugin folder and $WHERDR_DIR (default ~/wherdr), plus the folders the
 #     Docker setup mounts (~/.config/herdr, ~/.cache/herdr-web…), and the
 #     login service only when asked (key A of the panel), plus a "wherdr"
-#     link in the agents' user skill folders (see cmd_skill);
+#     link in the agents' user skill folders (see cmd_skill), plus one marked
+#     block appended to Herdr's config.toml: the key that opens the panel
+#     (see cmd_key);
 #   - the install starts wherdr, and Herdr's startup hook starts it again,
 #     but only when nothing answers on the port: a wherdr started another way
 #     (Docker, systemd, by hand) is never touched, no second wherdr is started;
@@ -35,6 +37,7 @@
 # Uninstall: Herdr has no uninstall hook. Stop wherdr (and remove the login
 # service) from the panel first, then:
 #   sh scripts/herdr-plugin.sh skill uninstall   (in the plugin folder)
+#   sh scripts/herdr-plugin.sh key uninstall     (the Herdr key of the panel)
 #   herdr plugin uninstall <owner>.wherdr && rm -rf ~/wherdr
 #
 # Settings ($WHERDR_DIR/plugin.env, or the environment):
@@ -201,6 +204,7 @@ cmd_build() {
   write_conf
   ok "plugin.env written (mode: $MODE)"
   ( cmd_skill install ) || warn "wherdr skill not linked (optional): run $0 skill install"
+  ( cmd_key install ) || warn "no Herdr key for the panel (optional): run $0 key install"
   build_start
 }
 
@@ -262,12 +266,12 @@ build_start() {
       else tell "  Setup guide: open $URL/#/setup in a browser on this computer"
       fi
     fi
-    tell "  Phone: open the \"wherdr\" action in Herdr"
+    tell "  Phone: open the wherdr panel in Herdr (key above, or herdr plugin action invoke panel --plugin $PLUGIN_ID)"
   else
     tell ""
     tell "! wherdr is installed but did not start:"
     printf '%s\n' "$out" | tail -n 8 | while IFS= read -r l; do tell "    $l"; done
-    tell "  Open the \"wherdr\" action in Herdr, then press S to start it or L for its log."
+    tell "  Open the wherdr panel in Herdr, then press S to start it or L for its log."
   fi
 }
 
@@ -628,14 +632,175 @@ cmd_service() {
   if [ "$1" = "uninstall" ]; then cmd_start; fi
 }
 
+# ------------------------------------------------------------------ key
+# A Herdr key that opens the wherdr panel: Herdr v1 plugins have no menu, so
+# the install appends one marked [[keys.command]] block to Herdr's
+# config.toml, on the first free key of HOTKEYS (never one Herdr or the user
+# already binds). Existing lines are never changed: the block is only ever
+# appended, then removed by `key uninstall`. Nothing is added when the panel
+# already has a key, or when no candidate is free.
+HOTKEYS="${WHERDR_HOTKEYS:-prefix+i prefix+u prefix+y prefix+m prefix+alt+w}"
+HERDR_CONFIG="${HERDR_CONFIG_PATH:-${XDG_CONFIG_HOME:-$HOME/.config}/herdr/config.toml}"
+PLUGIN_ID="$(printf '%s' "$SOURCE" | tr / .)"
+PANEL_ACTION="$PLUGIN_ID.panel"
+KEY_BEGIN="# wherdr: key that opens the wherdr panel (remove this block to unbind it)"
+KEY_END="# end wherdr"
+
+# Herdr's default keymap, from the running binary when it can print it,
+# otherwise as of Herdr 0.9.3 ("name<TAB>key" lines).
+default_keys() {
+  out="$("$(herdr_bin)" --default-config 2>/dev/null | awk '
+    /^\[keys\]/ { k = 1; next }
+    k && /^\[/ { exit }
+    k && match($0, /^# [a-z_]+ = "[^"]*"/) {
+      line = substr($0, 3, RLENGTH - 2); eq = index(line, " = ")
+      v = substr(line, eq + 4); sub(/"$/, "", v)
+      if (v != "") printf "%s\t%s\n", substr(line, 1, eq - 1), v
+    }')" || out=""
+  if [ -n "$out" ]; then printf '%s\n' "$out"; return; fi
+  for p in help:? settings:s detach:q reload_config:shift+r open_notification_target:o \
+    workspace_picker:w goto:g new_workspace:shift+n new_worktree:shift+g rename_workspace:shift+w \
+    close_workspace:shift+d new_tab:c rename_tab:shift+t previous_tab:p next_tab:n \
+    close_tab:shift+x rename_pane:shift+p edit_scrollback:e focus_pane_left:h focus_pane_down:j \
+    focus_pane_up:k focus_pane_right:l cycle_pane_next:tab cycle_pane_previous:shift+tab \
+    split_vertical:v split_horizontal:minus close_pane:x zoom:z resize_mode:r toggle_sidebar:b; do
+    printf '%s\tprefix+%s\n' "${p%%:*}" "${p#*:}"
+  done
+}
+
+# One line on the config: "bound <key>" when a [[keys.command]] already runs
+# the panel, else "free <key>" (first free candidate) or "none". Also
+# "old <key>" for a binding of the panel's former action id (<id>.wherdr).
+key_scan() {
+  defaults="$(default_keys)"
+  { printf '%s\n' "$defaults"; printf '\001\n'; cat "$HERDR_CONFIG" 2>/dev/null; } | awk \
+    -v cands="$HOTKEYS" -v action="$PANEL_ACTION" -v old="$PLUGIN_ID.wherdr" '
+    function norm(k) {
+      gsub(/[ \t]/, "", k)
+      # "prefix+W" is "prefix+shift+w"
+      if (match(k, /\+[A-Z]$/)) k = substr(k, 1, RSTART) "shift+" tolower(substr(k, RSTART + 1))
+      return tolower(k)
+    }
+    function strings(s, out,   n) {
+      n = 0
+      while (match(s, /"[^"]*"/)) { out[++n] = substr(s, RSTART + 1, RLENGTH - 2); s = substr(s, RSTART + RLENGTH) }
+      return n
+    }
+    function flush() {
+      if (ckey != "" && cmd == action && bound == "") bound = ckey
+      if (ckey != "" && cmd == old && oldkey == "") oldkey = ckey
+      ckey = ""; cmd = ""
+    }
+    $0 == "\001" { conf = 1; next }
+    !conf { split($0, d, "\t"); def[d[1]] = d[2]; next }
+    /^[ \t]*\[/ {
+      flush(); t = $0; sub(/#.*/, "", t); gsub(/[ \t]/, "", t)
+      sect = t == "[keys]" ? "keys" : t == "[[keys.command]]" ? "cmd" : ""
+      next
+    }
+    /^[ \t]*(#|$)/ { next }
+    {
+      eq = index($0, "="); if (!eq) next
+      name = substr($0, 1, eq - 1); gsub(/[ \t]/, "", name); val = substr($0, eq + 1)
+      if (sect == "keys") {
+        over[name] = 1; n = strings(val, s)
+        for (i = 1; i <= n; i++) taken[norm(s[i])] = 1
+      } else if (sect == "cmd" && strings(val, s)) {
+        if (name == "key") { ckey = s[1]; taken[norm(s[1])] = 1 }
+        if (name == "command") cmd = s[1]
+      }
+    }
+    END {
+      flush()
+      if (oldkey != "") print "old " oldkey
+      if (bound != "") { print "bound " bound; exit }
+      for (a in def) if (!(a in over)) taken[norm(def[a])] = 1
+      n = split(cands, c, " ")
+      for (i = 1; i <= n; i++) if (!(norm(c[i]) in taken)) { print "free " c[i]; exit }
+      print "none"
+    }'
+}
+
+# The key bound to the panel, if any.
+key_bound() { key_scan | sed -n 's/^bound //p'; }
+
+# Herdr applies keybindings on `herdr server reload-config` (no restart).
+key_reload() {
+  if "$(herdr_bin)" server reload-config >/dev/null 2>&1; then
+    tell "  Herdr reloaded its config: no restart needed."
+  else
+    tell "  Run herdr server reload-config (or restart Herdr) to apply it."
+  fi
+}
+
+cmd_key() {
+  case "${1:-}" in
+    install)
+      scan="$(key_scan)"
+      old="$(printf '%s\n' "$scan" | sed -n 's/^old //p')"
+      [ -z "$old" ] || warn "$old runs $PLUGIN_ID.wherdr, renamed $PANEL_ACTION: edit that line of $HERDR_CONFIG."
+      res="$(printf '%s\n' "$scan" | sed '/^old /d')"
+      case "$res" in
+        bound\ *) tell "Press ${res#bound } in Herdr to open the wherdr panel." ;;
+        free\ *)
+          key="${res#free }"
+          mkdir -p "$(dirname "$HERDR_CONFIG")"
+          block="$(printf '%s\n[[keys.command]]\nkey = "%s"\ntype = "plugin_action"\ncommand = "%s"\ndescription = "wherdr"\n%s' \
+            "$KEY_BEGIN" "$key" "$PANEL_ACTION" "$KEY_END")"
+          sep=""
+          if [ -s "$HERDR_CONFIG" ]; then
+            sep="
+"
+            # A last line without its newline gets one first.
+            [ "$(tail -c 1 "$HERDR_CONFIG" | od -An -c | tr -d ' ')" = '\n' ] || sep="
+$sep"
+          fi
+          # Checked on a copy first when this Herdr can validate a config:
+          # a config Herdr would reject is never written.
+          tmp="$HERDR_CONFIG.wherdr-check.toml"
+          { if [ -f "$HERDR_CONFIG" ]; then cat "$HERDR_CONFIG"; fi; printf '%s%s\n' "$sep" "$block"; } > "$tmp"
+          if "$(herdr_bin)" config --help >/dev/null 2>&1 && ! HERDR_CONFIG_PATH="$tmp" "$(herdr_bin)" config check >/dev/null 2>&1; then
+            rm -f "$tmp"
+            warn "no Herdr key added: $HERDR_CONFIG would not validate with it (herdr config check)."
+            return 0
+          fi
+          rm -f "$tmp"
+          printf '%s%s\n' "$sep" "$block" >> "$HERDR_CONFIG"
+          ok "Herdr key $key added to $HERDR_CONFIG"
+          tell "Press $key in Herdr to open the wherdr panel."
+          key_reload
+          ;;
+        *) warn "no Herdr key added: $HOTKEYS are all taken. Bind one to $PANEL_ACTION (type = \"plugin_action\") in $HERDR_CONFIG." ;;
+      esac
+      ;;
+    uninstall)
+      if ! grep -qxF "$KEY_BEGIN" "$HERDR_CONFIG" 2>/dev/null; then ok "no wherdr key in $HERDR_CONFIG"; return 0; fi
+      # Drops the marked block and the blank line written before it.
+      tmp="$HERDR_CONFIG.wherdr-tmp"
+      awk -v b="$KEY_BEGIN" -v e="$KEY_END" '
+        $0 == b { skip = 1; if (blank) blank--; next }
+        skip { if ($0 == e) skip = 0; next }
+        $0 == "" { blank++; next }
+        { while (blank) { print ""; blank-- } print }
+        END { while (blank) { print ""; blank-- } }' "$HERDR_CONFIG" > "$tmp"
+      # Rewritten in place: the file keeps its owner and mode.
+      cat "$tmp" > "$HERDR_CONFIG" && rm -f "$tmp"
+      ok "wherdr key removed from $HERDR_CONFIG"
+      key_reload
+      ;;
+    status) b="$(key_bound)"; if [ -n "$b" ]; then say "$b"; else say "none"; fi ;;
+    *) die "usage: $0 key install|uninstall|status" ;;
+  esac
+}
+
 # ------------------------------------------------------------------ panel
-# The "wherdr" action: one popup with the state, Open wherdr, Set up my phone
+# The "panel" action: one popup with the state, Open wherdr, Set up my phone
 # (opens Settings › Phone) and the other commands (bin/lib/panel.mjs),
 # driving this script.
 cmd_panel() {
   control="$(printf '["sh","%s"]' "$(printf '%s' "$ROOT/scripts/herdr-plugin.sh" | sed 's/[\\"]/\\&/g')")"
   if [ "$MODE" = "native" ] || { [ -n "$MODE" ] && RUNTIME="$(find_runtime)"; }; then
-    WHERDR_CONTROL="$control" WHERDR_MODE="$MODE" cli panel
+    WHERDR_CONTROL="$control" WHERDR_MODE="$MODE" WHERDR_HOTKEY="$(key_bound)" cli panel
   elif [ -n "$MODE" ]; then
     sh_panel
   else
@@ -651,7 +816,7 @@ sh_panel() {
     printf '\033[H\033[2J\n  WHERDR\n\n'
     ( cmd_status ) || true
     printf '\n  S start  X stop  R restart  O open  L log  U update  P phone  Q quit\n'
-    printf '  Remove: X, then herdr plugin uninstall %s && rm -rf %s\n' "$(printf '%s' "$SOURCE" | tr / .)" "$DIR"
+    printf '  Remove: X, then sh %s key uninstall, then herdr plugin uninstall %s && rm -rf %s\n' "$ROOT/scripts/herdr-plugin.sh" "$PLUGIN_ID" "$DIR"
     stty -icanon -echo min 0 time 50
     k="$(dd bs=1 count=1 2>/dev/null || true)"
     stty "$saved"
@@ -675,5 +840,6 @@ case "${1:-}" in
   start|stop|restart|status|open|update|phone|logs|doctor) "cmd_$1" ;;
   service) cmd_service "${2:-}" ;;
   skill) cmd_skill "${2:-}" ;;
-  *) die "usage: $0 build|panel|start|stop|restart|status|open|update|phone|logs|doctor|service install|uninstall|skill install|uninstall" ;;
+  key) cmd_key "${2:-}" ;;
+  *) die "usage: $0 build|panel|start|stop|restart|status|open|update|phone|logs|doctor|service install|uninstall|skill install|uninstall|key install|uninstall|status" ;;
 esac
