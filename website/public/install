@@ -3,23 +3,28 @@
 #
 #   curl -fsSL https://wherdr.dev/install | sh
 #
-# Installs wherdr the way its README recommends on a Linux server: Docker
-# Compose with the prebuilt image (ghcr.io/afloury/wherdr). It:
-#   1. checks the prerequisites (Linux, Docker, Docker Compose v2, Herdr);
-#   2. creates ~/wherdr (or $WHERDR_DIR) with docker-compose.yml and .env;
-#   3. creates the folders Compose mounts, as your own user;
-#   4. pulls the image and starts the container (127.0.0.1 only).
-# It never uses sudo, never touches Herdr or your agents, and asks before
-# replacing a file it did not create. Running it again is safe.
-#
-# On macOS, wherdr runs without Docker: the script prints the steps instead.
+# One command on macOS and Linux, run on the computer that runs Herdr. It:
+#   1. checks Herdr (and stops with its install link when it is missing);
+#   2. leaves alone a wherdr that already runs (and offers its update);
+#   3. makes sure wherdr can run: Node.js 22 or Bun, or Docker on Linux
+#      (on macOS without Node.js, it offers `brew install node`);
+#   4. installs the wherdr Herdr plugin (herdr plugin install afloury/wherdr),
+#      which installs wherdr in ~/wherdr, starts it, opens its setup guide in
+#      your browser and adds a Herdr key for its panel;
+#   5. on a server without a screen (or over SSH): prints the address and the
+#      phone steps instead of opening a browser.
+# It never uses sudo and never stops or replaces a wherdr started another way.
 #
 # Settings (environment variables):
-#   WHERDR_DIR    install folder               (default: ~/wherdr)
-#   WHERDR_REF    Git tag or branch to fetch   (default: main)
-#   WHERDR_IMAGE  Docker image                 (default: ghcr.io/afloury/wherdr:latest)
-#   WHERDR_PORT   local port                   (default: 7683)
-#   WHERDR_YES=1  answer yes to every question (non-interactive use)
+#   WHERDR_MODE=docker  no plugin: Docker Compose by hand in WHERDR_DIR (Linux)
+#   WHERDR_MODE=native  plugin with Node.js even when Docker is there (Linux)
+#   WHERDR_DIR    install folder                (default: ~/wherdr)
+#   WHERDR_PORT   local port                    (default: 7683)
+#   WHERDR_YES=1  answer yes to every question  (non-interactive use)
+#   WHERDR_NO_BROWSER=1  never open a browser
+#   WHERDR_REF    Git tag or branch of the plugin / compose file (default: latest)
+#   WHERDR_IMAGE  Docker image, WHERDR_MODE=docker (default: ghcr.io/afloury/wherdr:latest)
+#   WHERDR_PLUGIN a local checkout to install instead of afloury/wherdr (development)
 #
 # Source: https://github.com/afloury/wherdr/blob/main/website/public/install
 
@@ -29,40 +34,303 @@ main() {
   set -eu
 
   REPO="afloury/wherdr"
-  REF="${WHERDR_REF:-main}"
-  SOURCE="${WHERDR_SOURCE:-https://raw.githubusercontent.com/$REPO/$REF}"
+  PLUGIN_ID="afloury.wherdr"
+  PLUGIN="${WHERDR_PLUGIN:-$REPO}"
+  REF="${WHERDR_REF:-}"
+  MODE="${WHERDR_MODE:-}"
   DIR="${WHERDR_DIR:-$HOME/wherdr}"
-  IMAGE="${WHERDR_IMAGE:-ghcr.io/afloury/wherdr:latest}"
   PORT="${WHERDR_PORT:-7683}"
+  URL="http://localhost:$PORT"
   YES="${WHERDR_YES:-0}"
 
   setup_colors
   say ""
   say "${B}wherdr${R} ${D}installer — your Herdr agents, from your phone and your browser${R}"
-  say ""
 
   # ---------------------------------------------------------------- checks
   step "Checking the system"
-  case "$(uname -s)" in
+  OS="$(uname -s)"
+  case "$OS" in
     Linux) ok "Linux $(uname -m)" ;;
-    Darwin) macos_steps; exit 1 ;;
-    *) die "Unsupported system: $(uname -s). wherdr runs on Linux (Docker) or macOS (Node.js)." ;;
+    Darwin) ok "macOS $(sw_vers -productVersion 2>/dev/null || uname -r)" ;;
+    *) die "Unsupported system: $OS. wherdr runs on macOS and Linux." ;;
   esac
-
+  case "$MODE" in
+    ""|native|docker) ;;
+    *) die "WHERDR_MODE must be docker or native (got: $MODE)." ;;
+  esac
   if [ "$(id -u)" = "0" ]; then
     die "Run this script as the user who runs Herdr, not as root.
      wherdr reads that user's Herdr socket and transcripts."
   fi
   [ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "\$HOME is not set or not a folder."
-
-  if command -v curl >/dev/null 2>&1; then
-    FETCH="curl"
-  elif command -v wget >/dev/null 2>&1; then
-    FETCH="wget"
-  else
-    die "curl or wget is required to download docker-compose.yml."
+  if command -v curl >/dev/null 2>&1; then FETCH="curl"
+  elif command -v wget >/dev/null 2>&1; then FETCH="wget"
+  else die "curl or wget is required."
   fi
 
+  HERDR="$(find_herdr)" || die "Herdr is not installed for $(id -un). wherdr drives Herdr: install it first,
+     then run this command again:
+       ${C}https://herdr.dev${R}"
+  HERDR_VERSION="$("$HERDR" --version 2>/dev/null | awk '{print $NF}')"
+  if version_lt "${HERDR_VERSION:-0}" "0.9.1"; then
+    die "Herdr ${HERDR_VERSION:-?} found at $HERDR; wherdr needs Herdr 0.9.1 or newer (herdr update)."
+  fi
+  ok "Herdr $HERDR_VERSION ($HERDR)"
+  SOCK="${HERDR_SOCKET_PATH:-$HOME/.config/herdr/herdr.sock}"
+  if [ ! -S "$SOCK" ]; then
+    warn "The Herdr server does not seem to run (no $SOCK).
+     Start it with \`herdr\` or \`herdr server\`; wherdr waits for it."
+  fi
+
+  if [ "$MODE" = "docker" ]; then
+    [ "$OS" = "Linux" ] || die "WHERDR_MODE=docker is for Linux: on macOS, Docker Desktop cannot reach Herdr's socket.
+     Run the command without WHERDR_MODE: wherdr then runs with Node.js."
+    docker_install
+    return 0
+  fi
+
+  # ------------------------------------------------------- existing wherdr
+  PLUGIN_ROOT="$(plugin_root)"
+  if answers; then
+    existing_wherdr
+    return 0
+  fi
+  if [ "$MODE" != "native" ] && container_elsewhere; then
+    die "A \"wherdr\" Docker container already exists, managed from $(container_dir).
+     Start or update it from there; this script does not install a second wherdr."
+  fi
+  # The plugin opens the setup guide on its first install only (no plugin.env).
+  FIRST=1
+  [ ! -f "$DIR/plugin.env" ] || FIRST=0
+  if [ -n "$PLUGIN_ROOT" ]; then
+    ok "wherdr plugin already installed: updating it and starting wherdr"
+  fi
+
+  # ---------------------------------------------------------------- runtime
+  RUNTIME=""
+  if [ "$OS" = "Linux" ] && [ "$MODE" != "native" ] && docker_usable; then
+    ok "Docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo '?'): wherdr runs in a container"
+  elif RUNTIME="$(find_runtime)"; then
+    ver="$("$RUNTIME" --version 2>/dev/null || true)"
+    ok "Runtime: $RUNTIME ($ver)"
+  else
+    no_runtime
+  fi
+
+  # -------------------------------------------------------------- headless
+  BROWSER=1
+  if [ "${WHERDR_NO_BROWSER:-0}" = "1" ] || [ -n "${SSH_CONNECTION:-}${SSH_TTY:-}" ]; then BROWSER=0
+  elif [ "$OS" = "Linux" ] && [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then BROWSER=0
+  fi
+
+  # ---------------------------------------------------------------- plugin
+  step "Installing the wherdr Herdr plugin"
+  # Herdr's own output (the manifest preview) is kept for a failure; the
+  # plugin shows its progress on the terminal itself.
+  LOG="$(mktemp)"
+  trap 'rm -f "$LOG"' EXIT INT TERM
+  if ! plugin_install >"$LOG" 2>&1; then
+    sed 's/^/     /' "$LOG" >&2
+    die "The plugin install failed. Its log: herdr plugin log list --plugin $PLUGIN_ID"
+  fi
+  PLUGIN_ROOT="$(plugin_root)"
+  ok "Herdr plugin $PLUGIN_ID installed"
+
+  i=0
+  while [ "$i" -lt 60 ] && ! answers; do i=$((i + 1)); sleep 1; done
+  if ! answers; then
+    die "wherdr is installed but does not answer on port $PORT.
+     In Herdr, open the wherdr panel and press L for its log,
+     or: herdr plugin log list --plugin $PLUGIN_ID"
+  fi
+  ok "wherdr answers on $URL"
+
+  # ------------------------------------------------------------------ next
+  say ""
+  say "${G}${B}wherdr is running → $URL${R}"
+  if [ "$BROWSER" = "1" ] && [ "$FIRST" = "1" ]; then
+    say "  The setup guide is open in your browser; its Phone step makes wherdr"
+    say "  reachable from your phone over Tailscale (private, never the Internet)."
+  elif [ "$BROWSER" = "1" ]; then
+    say "  Open it in your browser; Settings › Phone sets up your phone."
+  else
+    say "  No screen here: open it from this machine, or from your computer through"
+    say "    ${C}ssh -L $PORT:127.0.0.1:$PORT $(id -un)@$(hostname 2>/dev/null || echo this-server)${R}"
+    phone_steps
+  fi
+  key="$(panel_key)"
+  if [ -n "$key" ]; then
+    say "  In Herdr, ${B}$key${R} opens the wherdr panel: state, open, phone, start/stop, update."
+  else
+    say "  The wherdr panel: herdr plugin action invoke panel --plugin $PLUGIN_ID"
+  fi
+  say ""
+  say "${D}Update: run this command again, or U in the wherdr panel.${R}"
+  say "${D}Docs:   https://github.com/$REPO#readme${R}"
+}
+
+# The Herdr key the plugin bound to its panel, empty when there is none.
+panel_key() {
+  [ -n "$PLUGIN_ROOT" ] && [ -f "$PLUGIN_ROOT/scripts/herdr-plugin.sh" ] || return 0
+  k="$(WHERDR_DIR="$DIR" sh "$PLUGIN_ROOT/scripts/herdr-plugin.sh" key status 2>/dev/null || true)"
+  [ "$k" = "none" ] || printf '%s' "$k"
+}
+
+# ------------------------------------------------------------ plugin path
+find_herdr() {
+  if [ -n "${HERDR_BIN:-}" ] && [ -x "$HERDR_BIN" ]; then echo "$HERDR_BIN"
+  elif [ -x "$HOME/.local/bin/herdr" ]; then echo "$HOME/.local/bin/herdr"
+  elif command -v herdr >/dev/null 2>&1; then command -v herdr
+  else return 1
+  fi
+}
+
+# Folder of the installed wherdr plugin, empty when it is not installed.
+plugin_root() {
+  "$HERDR" plugin list --plugin "$PLUGIN_ID" --json 2>/dev/null \
+    | sed -n 's/.*"plugin_root":"\([^"]*\)".*/\1/p' | head -n 1
+}
+
+# Herdr installs the plugin and runs its build (scripts/herdr-plugin.sh build),
+# which reads these variables. A local checkout (WHERDR_PLUGIN=/path) is linked
+# and built in place instead.
+plugin_install() {
+  set -- env WHERDR_INSTALLER=1 WHERDR_DIR="$DIR" WHERDR_PORT="$PORT"
+  [ -z "$MODE" ] || set -- "$@" WHERDR_MODE="$MODE"
+  [ -z "$RUNTIME" ] || set -- "$@" WHERDR_RUNTIME="$RUNTIME"
+  [ "$BROWSER" = "1" ] || set -- "$@" WHERDR_NO_BROWSER=1
+  if [ -d "$PLUGIN" ]; then
+    "$HERDR" plugin link "$PLUGIN" >/dev/null || return 1
+    ok "Plugin linked from $PLUGIN"
+    "$@" sh "$PLUGIN/scripts/herdr-plugin.sh" build
+  elif [ -n "$REF" ]; then
+    "$@" "$HERDR" plugin install "$PLUGIN" --ref "$REF" --yes
+  else
+    "$@" "$HERDR" plugin install "$PLUGIN" --yes
+  fi
+}
+
+# Something answers on the port: never replaced. A wherdr of the plugin, or
+# of a Docker folder of this script, can be updated; anything else is left as is.
+existing_wherdr() {
+  if ! is_wherdr; then
+    die "Port $PORT is already used by another program.
+     Pick another port: curl -fsSL https://wherdr.dev/install | WHERDR_PORT=7684 sh"
+  fi
+  ok "wherdr already runs on $URL"
+  owner="$(container_dir)"
+  if [ -n "$PLUGIN_ROOT" ] && [ -z "$owner" ]; then
+    say "  Installed as a Herdr plugin."
+    if confirm "Update it now (herdr plugin install $REPO)?"; then
+      step "Updating the wherdr Herdr plugin"
+      RUNTIME="" BROWSER=0
+      log="$(mktemp)"
+      if ! plugin_install >"$log" 2>&1; then
+        sed 's/^/     /' "$log" >&2; rm -f "$log"
+        die "The update failed. Its log: herdr plugin log list --plugin $PLUGIN_ID"
+      fi
+      rm -f "$log"
+      ok "wherdr updated"
+    else
+      say "  Update later: U in the wherdr panel, or run this command again."
+    fi
+  elif [ -n "$owner" ]; then
+    say "  It runs in Docker, from $owner."
+    if [ "$(real_dir "$owner")" = "$(real_dir "$DIR")" ] && confirm "Update it now (docker compose pull && docker compose up -d)?"; then
+      (cd "$DIR" && docker compose pull --quiet && docker compose up -d --remove-orphans >/dev/null)
+      ok "wherdr updated"
+    else
+      say "  Update: cd $owner && docker compose pull && docker compose up -d"
+    fi
+  else
+    say "  It was installed another way (npm, Homebrew, by hand): nothing changed."
+    say "  Update it the same way: https://github.com/$REPO#updating"
+  fi
+  say ""
+  say "  Open ${B}$URL${R}"
+}
+
+# The headless end of the install: the phone steps of the plugin
+# (`wherdr phone`: Tailscale state, the address, the QR code once it answers).
+phone_steps() {
+  say ""
+  if [ -n "$PLUGIN_ROOT" ] && [ -f "$PLUGIN_ROOT/scripts/herdr-plugin.sh" ]; then
+    WHERDR_DIR="$DIR" sh "$PLUGIN_ROOT/scripts/herdr-plugin.sh" phone || true
+  else
+    say "  Phone: wherdr phone (in the wherdr panel: P)."
+  fi
+}
+
+# No Node.js 22, no Bun (and no Docker on Linux).
+no_runtime() {
+  if [ "$OS" = "Darwin" ] && command -v brew >/dev/null 2>&1; then
+    warn "wherdr needs Node.js 22 or newer (or Bun), and none was found."
+    if confirm "Install Node.js with Homebrew now (brew install node)?"; then
+      brew install node || die "brew install node failed."
+      RUNTIME="$(find_runtime)" || die "Node.js was installed but is not found: open a new terminal and run this command again."
+      ver="$("$RUNTIME" --version 2>/dev/null || true)"
+      ok "Runtime: $RUNTIME ($ver)"
+      return 0
+    fi
+    die "Install Node.js 22, then run this command again:
+       ${C}brew install node${R}   (or https://nodejs.org)"
+  elif [ "$OS" = "Darwin" ]; then
+    die "wherdr needs Node.js 22 or newer (or Bun), and none was found.
+     Install it from https://nodejs.org (or Homebrew: brew install node),
+     then run this command again."
+  else
+    die "wherdr needs Node.js 22 or newer (or Bun), or Docker, and none is usable by $(id -un).
+     Install one of them, then run this command again:
+       Node.js: https://nodejs.org/en/download (nvm, fnm, or your package manager)
+       Docker:  https://docs.docker.com/engine/install/"
+  fi
+}
+
+# Node.js 22 or newer, or Bun: WHERDR_RUNTIME, the PATH, then the usual
+# install folders (n, nvm, Volta, fnm, asdf, Homebrew, Bun).
+find_runtime() {
+  # ls | sort: the newest version first (paths under $HOME have no spaces to split).
+  # shellcheck disable=SC2012
+  for c in "${WHERDR_RUNTIME:-}" "$(command -v node 2>/dev/null || true)" \
+    "$HOME/.n/bin/node" $(ls -d "$HOME"/.nvm/versions/node/v*/bin/node 2>/dev/null | sort -r) \
+    "$HOME/.volta/bin/node" \
+    $(ls -d "$HOME"/.local/share/fnm/node-versions/*/installation/bin/node "$HOME"/.fnm/node-versions/*/installation/bin/node 2>/dev/null | sort -r) \
+    "$HOME/.asdf/shims/node" /opt/homebrew/bin/node /usr/local/bin/node /usr/bin/node \
+    "$(command -v bun 2>/dev/null || true)" "$HOME/.bun/bin/bun" /opt/homebrew/bin/bun /usr/local/bin/bun; do
+    [ -n "$c" ] && [ -x "$c" ] && [ ! -d "$c" ] || continue
+    case "$(basename "$c")" in
+      bun) if "$c" --version >/dev/null 2>&1; then echo "$c"; return 0; fi ;;
+      *) if [ "$("$c" -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)" -ge 22 ] 2>/dev/null; then echo "$c"; return 0; fi ;;
+    esac
+  done
+  return 1
+}
+
+# ------------------------------------------------------------- Docker
+docker_usable() {
+  command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 && docker info >/dev/null 2>&1
+}
+
+real_dir() { (cd "$1" 2>/dev/null && pwd -P) || echo "$1"; }
+
+# Compose folder of the `wherdr` container, empty when there is none.
+container_dir() {
+  command -v docker >/dev/null 2>&1 || return 0
+  docker inspect wherdr --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true
+}
+
+# True when a `wherdr` container exists and belongs to another folder than
+# $DIR: Compose would replace it (same project and container name).
+container_elsewhere() {
+  owner="$(container_dir)"
+  [ -n "$owner" ] && [ "$(real_dir "$owner")" != "$(real_dir "$DIR")" ]
+}
+
+# WHERDR_MODE=docker: Docker Compose with the prebuilt image in $DIR, no plugin.
+docker_install() {
+  SOURCE="${WHERDR_SOURCE:-https://raw.githubusercontent.com/$REPO/${REF:-main}}"
+  IMAGE="${WHERDR_IMAGE:-ghcr.io/afloury/wherdr:latest}"
   command -v docker >/dev/null 2>&1 \
     || die "Docker is not installed. Install Docker Engine first: https://docs.docker.com/engine/install/"
   docker compose version >/dev/null 2>&1 \
@@ -74,42 +342,31 @@ main() {
      This script does not run sudo itself."
   fi
   ok "Docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo '?'), $(docker compose version --short 2>/dev/null || echo 'compose v2')"
-
-  HERDR=""
-  if [ -x "$HOME/.local/bin/herdr" ]; then
-    HERDR="$HOME/.local/bin/herdr"
-  elif command -v herdr >/dev/null 2>&1; then
-    HERDR="$(command -v herdr)"
+  if container_elsewhere; then
+    die "A \"wherdr\" Docker container already exists, managed from $(container_dir).
+     Update it from there: cd $(container_dir) && docker compose pull && docker compose up -d"
   fi
-  [ -n "$HERDR" ] || die "Herdr is not installed for $(id -un). Install it first: https://herdr.dev"
-  HERDR_VERSION="$("$HERDR" --version 2>/dev/null | awk '{print $NF}')"
-  if version_lt "${HERDR_VERSION:-0}" "0.9.1"; then
-    die "Herdr ${HERDR_VERSION:-?} found at $HERDR; wherdr needs Herdr 0.9.1 or newer (herdr update)."
+  if answers && [ -z "$(container_dir)" ]; then
+    die "Something already answers on port $PORT (a wherdr installed another way?): nothing changed.
+     Pick another port with WHERDR_PORT=7684."
   fi
-  ok "Herdr $HERDR_VERSION ($HERDR)"
   if [ "$HERDR" != "$HOME/.local/bin/herdr" ]; then
     warn "The container looks for Herdr in ~/.local/bin/herdr: HERDR_BIN=$HERDR is set in .env."
   fi
-  if [ ! -S "$HOME/.config/herdr/herdr.sock" ]; then
-    warn "The Herdr server does not seem to run (no ~/.config/herdr/herdr.sock).
-     Start it with \`herdr\` or \`herdr server\`; wherdr waits for it."
-  fi
 
-  # ------------------------------------------------------------- files
   step "Preparing $DIR"
   mkdir -p "$DIR"
   cd "$DIR"
-
   TMP="$(mktemp)"
   trap 'rm -f "$TMP"' EXIT INT TERM
   download "$SOURCE/docker-compose.yml" "$TMP" \
     || die "Could not download docker-compose.yml from $SOURCE."
   if [ ! -f docker-compose.yml ]; then
     mv "$TMP" docker-compose.yml
-    ok "docker-compose.yml ($REF)"
+    ok "docker-compose.yml (${REF:-main})"
   elif cmp -s "$TMP" docker-compose.yml; then
     ok "docker-compose.yml is up to date"
-  elif confirm "docker-compose.yml differs from the $REF version. Replace it (a backup is kept)?"; then
+  elif confirm "docker-compose.yml differs from the ${REF:-main} version. Replace it (a backup is kept)?"; then
     cp docker-compose.yml docker-compose.yml.bak
     mv "$TMP" docker-compose.yml
     ok "docker-compose.yml replaced (previous one: docker-compose.yml.bak)"
@@ -142,7 +399,6 @@ main() {
     "$HOME/.cache/herdr-web" "$HOME/.herdr-projects"
   ok "Data folders ready"
 
-  # ------------------------------------------------------------- start
   step "Starting wherdr"
   if ! docker compose pull --quiet 2>"$TMP"; then
     sed 's/^/     /' "$TMP" >&2
@@ -157,25 +413,21 @@ main() {
   ok "Container started"
 
   i=0
-  while [ "$i" -lt 30 ]; do
-    if http_ok "http://127.0.0.1:$PORT/"; then break; fi
-    i=$((i + 1)); sleep 1
-  done
-  if [ "$i" -ge 30 ]; then
-    warn "wherdr does not answer on 127.0.0.1:$PORT yet. Check: cd $DIR && docker compose logs"
+  while [ "$i" -lt 30 ] && ! answers; do i=$((i + 1)); sleep 1; done
+  if answers; then
+    ok "wherdr answers on $URL"
   else
-    ok "wherdr answers on http://localhost:$PORT"
+    warn "wherdr does not answer on 127.0.0.1:$PORT yet. Check: cd $DIR && docker compose logs"
   fi
 
-  # ------------------------------------------------------------- next
   say ""
-  say "${G}${B}wherdr is running.${R} Open ${B}http://localhost:$PORT${R} on this machine."
+  say "${G}${B}wherdr is running.${R} Open ${B}$URL${R} on this machine."
   say ""
   say "${B}Next, for your phone${R} (private network only, never the public Internet):"
   say "  1. Install Tailscale on this server and your phone, with HTTPS certificates enabled."
   say "  2. ${C}tailscale serve --bg --https=$PORT http://127.0.0.1:$PORT${R}"
-  say "  3. Put the https://<machine>.<tailnet>.ts.net:$PORT/ address in ${C}APP_URL${R} in $DIR/.env,"
-  say "     then ${C}cd $DIR && docker compose up -d${R}"
+  say "  3. Open $URL/#/settings?section=phone: paste the https://<machine>.<tailnet>.ts.net:$PORT/"
+  say "     address, wherdr checks it and shows its QR code."
   say "  4. Open that address on the phone, add it to the home screen, enable notifications."
   say "  5. Settings → Security → Enable passkey lock (first token: ${C}docker compose logs${R})."
   say ""
@@ -183,17 +435,7 @@ main() {
   say "${D}Docs:   https://github.com/$REPO#readme${R}"
 }
 
-macos_steps() {
-  say ""
-  warn "On macOS, wherdr runs without Docker: Docker Desktop cannot reach Herdr's Unix socket."
-  say "  With Herdr running, Git and Node.js 22:"
-  say ""
-  say "    ${C}git clone https://github.com/afloury/wherdr.git && cd wherdr${R}"
-  say "    ${C}npm ci && npm run build && npm start${R}    # http://localhost:7683"
-  say ""
-  say "  See https://github.com/afloury/wherdr#simple-one-computer-no-docker"
-}
-
+# ------------------------------------------------------------- helpers
 setup_colors() {
   if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     B="$(printf '\033[1m')"; D="$(printf '\033[2m')"; R="$(printf '\033[0m')"
@@ -205,11 +447,11 @@ setup_colors() {
 say() { printf '%s\n' "$*"; }
 step() { printf '\n%s==>%s %s%s%s\n' "$C" "$R" "$B" "$*" "$R"; }
 ok() { printf '  %s✓%s %s\n' "$G" "$R" "$*"; }
-warn() { printf '  %s!%s %s\n' "$Y" "$R" "$*" >&2; }
+warn() { printf '  %s⚠%s %s\n' "$Y" "$R" "$*" >&2; }
 die() { printf '\n  %s✗ %s%s\n\n' "$E" "$*" "$R" >&2; exit 1; }
 
 # Questions read the terminal: stdin is the script itself with `curl … | sh`.
-# No terminal and no WHERDR_YES: the answer is no (nothing is replaced).
+# No terminal and no WHERDR_YES: the answer is no (nothing is changed).
 confirm() {
   if [ "$YES" = "1" ]; then return 0; fi
   # In a subshell: a failed redirection on a special builtin would exit the script.
@@ -224,8 +466,22 @@ confirm() {
 download() {
   if [ "$FETCH" = "curl" ]; then curl -fsSL "$1" -o "$2"; else wget -q -O "$2" "$1"; fi
 }
-http_ok() {
-  if [ "$FETCH" = "curl" ]; then curl -fs -o /dev/null --max-time 2 "$1"; else wget -q -O /dev/null -T 2 "$1"; fi
+# Any HTTP answer counts (a locked wherdr answers 401): the port is taken.
+answers() {
+  if [ "$FETCH" = "curl" ]; then
+    code="$(curl -s -o /dev/null --max-time 2 -w '%{http_code}' "http://127.0.0.1:$PORT/" 2>/dev/null || true)"
+    [ -n "$code" ] && [ "$code" != "000" ]
+  else
+    wget -q -O /dev/null -T 2 "http://127.0.0.1:$PORT/" 2>/dev/null || [ $? -eq 8 ]
+  fi
+}
+# The web app manifest names wherdr (it is served without a session).
+is_wherdr() {
+  if [ "$FETCH" = "curl" ]; then
+    curl -fs --max-time 3 "http://127.0.0.1:$PORT/manifest.webmanifest" 2>/dev/null | grep -q '"wherdr"'
+  else
+    wget -q -O - -T 3 "http://127.0.0.1:$PORT/manifest.webmanifest" 2>/dev/null | grep -q '"wherdr"'
+  fi
 }
 
 # version_lt A B: true when version A < B (numeric dot-separated parts).
