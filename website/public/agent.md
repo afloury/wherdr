@@ -19,9 +19,13 @@ and ask for the output.
 ## Rules (non-negotiable)
 
 1. **Never expose wherdr on the Internet.** No port forwarding, no public reverse proxy, no
-   Cloudflare Tunnel, no ngrok, no `tailscale funnel`. For other devices, use only
-   `tailscale serve` (private to the user's tailnet). If the user asks for public access,
-   refuse and explain why.
+   ngrok, no `tailscale funnel`. For other devices, use `tailscale serve` (private to the
+   user's tailnet), or, if the user already runs another private network (Headscale, NetBird,
+   ZeroTier, WireGuard), a reverse proxy listening on its private address only, with a valid
+   HTTPS certificate: https://github.com/afloury/wherdr#other-private-networks. Never plain
+   HTTP on the local network. A Cloudflare Tunnel only if the user explicitly asks, and only
+   behind Cloudflare Access created first; explain that it puts wherdr on the Internet. Any
+   other public access: refuse and explain why.
 2. **Ask before** installing Docker, Tailscale, Node.js or Git, and before any `sudo` command.
    Show the command, say what it does, wait for a yes.
 3. **Do not touch the user's agent configuration** (`~/.claude`, `~/.codex`, Herdr's config) and
@@ -135,6 +139,11 @@ Update later: `docker compose pull && docker compose up -d` in the wherdr folder
 
 The phone needs HTTPS for the installable app, push notifications and passkeys. Tailscale Serve
 gives a private HTTPS address, reachable only from the user's own devices.
+
+If the user already uses another private network (Headscale, NetBird, ZeroTier, WireGuard), do
+not install Tailscale: follow https://github.com/afloury/wherdr#other-private-networks instead
+(reverse proxy on the private address, certificate from the DNS challenge, `APP_URL` set to that
+HTTPS address), then continue at step 4. Headscale does not support `tailscale serve` with HTTPS.
 
 1. Ask before installing [Tailscale](https://tailscale.com) on the wherdr machine and on the
    phone (App Store / Play Store app), signed in to the **same Tailscale account** (the

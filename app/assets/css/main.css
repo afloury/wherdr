@@ -2080,6 +2080,8 @@ body.kb .composer { padding-bottom: 8px; }
 .settings-typing .encrypted-toggle { margin-top: 14px; }
 /* Settings › Phone (PhoneSetup.vue): steps with a mono label, live state, QR code. */
 .phone-intro { margin: 0 0 14px; color: var(--text-2); font-size: 13px; line-height: 1.5; }
+.phone-other { color: var(--muted); font: 500 12px var(--mono); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; white-space: nowrap; }
+.phone-other:hover { color: var(--text); text-decoration-color: currentColor; }
 .phone-steps { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); background: var(--bg-2); }
 .phone-steps li { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 14px 16px 14px 122px; }
 .phone-steps li + li { border-top: 1px solid var(--line-soft); }
