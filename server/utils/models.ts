@@ -36,7 +36,7 @@
 import type { ModelInfo, ModelOption } from '../../shared/types'
 import { keysFor, parseChoices } from './choices'
 import { ompSelectorOnScreen } from '../../shared/commandScreen'
-import { OMP_CURSOR, OMP_SEARCH, ompAlt } from '../../shared/ompSymbols'
+import { OMP_CURRENT, OMP_CURSOR, OMP_SEARCH, ompAlt } from '../../shared/ompSymbols'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
@@ -285,28 +285,39 @@ export interface OmpSelector {
   search: string // text typed in the search field
   separator: number | null // rank of a "────" row (the matched block separator)
   task: boolean // "Switch Task Model": Enter applies to Task subagents
+  // A narrow pane makes omp cut the ids ("anthropic/cla…"): the options
+  // are then unreliable (and the list may miss rows).
+  truncated: boolean
+  width: number // columns of the box (the whole pane width once truncated)
 }
 
-const OMP_FRAME_TOP = /^╭─\s*(?:Switch (?:Task )?Model)/
+// Box: rounded with the unicode and nerd presets, "+-" / "|" with ascii.
+const OMP_FRAME_TOP = /^(?:╭─|\+-)\s*Switch (?:Task )?Model\b/
+const OMP_FRAME_BOTTOM = /^(?:╰|\+-)/
 // Row: left border, content, right border; a scrollbar column adds a second
 // one ("…$4/20│ │").
-const OMP_ROW = /^│(.*?)│(?:\s*│)?\s*$/
+const OMP_ROW = /^[│|](.*?)[│|](?:\s*[│|])?\s*$/
 const OMP_MODEL = /^(?:[a-z0-9][\w.-]*(?:\/[\w.-]+)+)/
 const OMP_OVERCTX = /⦸\s*(context>[^\s]+|context \d+[kKmM]?[^\s]*|[^\s].{0,60})$/
 const OMP_SEARCH_RE = new RegExp(`^${ompAlt(OMP_SEARCH)}\\s*>\\s*(.*)$`)
 const OMP_CURSOR_RE = new RegExp(`^${ompAlt(OMP_CURSOR)}\\s*`)
+const OMP_CURRENT_RE = new RegExp(`${ompAlt(OMP_CURRENT)}\\s*$`)
+// An id cut by omp: "anthropic/cla…", or the provider itself ("anthr…").
+const OMP_CUT = /^[\w.\-/]+…/
+const OMP_CURRENT_START = new RegExp(`^${ompAlt(OMP_CURRENT)}`)
+const OMP_CURRENT_ALL = new RegExp(ompAlt(OMP_CURRENT), 'g')
 
 export function parseOmpSelector(text: string | null | undefined): OmpSelector | null {
   if (!ompSelectorOnScreen(text)) return null
   const lines = String(text).replace(/\s+$/, '').split('\n')
   let top = -1
   for (let i = lines.length - 1; i >= 0; i--) {
-    if (/^╭─\s*(?:Switch (?:Task )?Model)/.test(lines[i]!)) { top = i; break }
+    if (OMP_FRAME_TOP.test(lines[i]!)) { top = i; break }
   }
   if (top < 0) return null
   const body: string[] = []
   for (const line of lines.slice(top + 1)) {
-    if (/╰/.test(line)) break
+    if (OMP_FRAME_BOTTOM.test(line)) break
     const m = line.match(OMP_ROW)
     if (!m) return null // not the bottom of the box: history above it
     body.push(m[1]!.replace(/\s+$/, ''))
@@ -316,6 +327,7 @@ export function parseOmpSelector(text: string | null | undefined): OmpSelector |
   let cursor = 0
   let search = ''
   let separator: number | null = null
+  let truncated = false
   for (const row of body) {
     const raw = row.trim()
     const q = raw.match(OMP_SEARCH_RE)
@@ -326,12 +338,13 @@ export function parseOmpSelector(text: string | null | undefined): OmpSelector |
     const t = (cut < 0 ? raw : raw.slice(0, cut)).trim()
     const cur = OMP_CURSOR_RE.exec(t)
     const model = (cur ? t.slice(cur[0].length) : t).trim()
+    if (OMP_CUT.test(model)) truncated = true
     if (cur) {
       const hit = model.match(OMP_MODEL)
       if (hit) {
         cursor = options.length
         const warn = model.slice(hit[0].length).trim().match(OMP_OVERCTX)
-        options.push({ label: hit[0], hint: warn ? warn[1]!.trim() : null, current: /(?:●|\uF111)\s*$/.test(model) })
+        options.push({ label: hit[0], hint: warn ? warn[1]!.trim() : null, current: OMP_CURRENT_RE.test(model) })
         continue
       }
     }
@@ -343,7 +356,7 @@ export function parseOmpSelector(text: string | null | undefined): OmpSelector |
     }
     if (/^─{3,}/.test(t) && options.length) separator = options.length
   }
-  return { options, cursor, search, separator, task }
+  return { options, cursor, search, separator, task, truncated, width: [...lines[top]!.trimEnd()].length }
 }
 
 // Caption of the model under the cursor: "Claude Opus 5.5 · 200k ctx · …" —
@@ -358,15 +371,15 @@ export function ompSelectorCaption(text: string | null | undefined, id: string):
   const candidates = [ompModelLabel(id), name.startsWith('claude-') ? `Claude ${ompModelLabel(id)}` : '', name]
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i]!
-    if (!/^│\s*\S/.test(line)) continue
-    const body = line.replace(/^│\s*/, '')
+    if (!/^[│|]\s*\S/.test(line)) continue
+    const body = line.replace(/^[│|]\s*/, '')
     const hit = candidates.find(c => body.toLowerCase().startsWith(`${c.toLowerCase()} ·`))
     if (!hit) continue
     const roles: string[] = []
     for (let k = i + 1; k < Math.min(i + 3, lines.length); k++) {
-      const r = lines[k]!.replace(/^│\s*/, '').replace(/\s*│[\s│]*$/, '').trim()
-      if (!/^(?:●|\uF111)/.test(r)) break
-      roles.push(...r.split('·').map(s => s.replace(/●|\uF111/g, '').replace(/\s*[◕◒◍○○◕◒][\s\S]*$/, '').trim()).filter(Boolean))
+      const r = lines[k]!.replace(/^[│|]\s*/, '').replace(/\s*[│|][\s│|]*$/, '').trim()
+      if (!OMP_CURRENT_START.test(r)) break
+      roles.push(...r.split('·').map(s => s.replace(OMP_CURRENT_ALL, '').replace(/\s*(?:[◕◒◍○]|\[)[\s\S]*$/, '').trim()).filter(Boolean))
     }
     return { name: body.split('·')[0]!.trim(), roles }
   }

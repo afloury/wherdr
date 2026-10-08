@@ -115,6 +115,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- omp: changing the model from the field no longer fails with "omp's model selector did not show
+  up" when the pane is narrow (left at the phone terminal's width, typical of an SSH machine
+  with no Herdr client attached). omp then cuts the model ids and the footer; wherdr now widens
+  the pane for the time of the choice and gives it its width back, or says the terminal is too
+  narrow (wherdr's terminal still open). omp's `ascii` symbol preset is read too.
+
 - Settings › Phone right after publishing: while Tailscale gets the HTTPS certificate (timeout,
   TLS error or refused connection during the first 90 seconds), the address shows a loader,
   "Getting the HTTPS certificate from Tailscale…", and is checked again every 4 seconds, instead

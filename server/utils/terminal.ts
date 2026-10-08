@@ -128,3 +128,40 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
     },
   }
 }
+
+// Sets a pane's size through a short control session: Herdr keeps that size
+// once the session is released (until a client resizes it). Refused (false)
+// while a client is attached to the terminal (wherdr's terminal open on the
+// phone): its size is never taken over.
+export function resizePane(pane: string, cols: number, rows: number): Promise<boolean> {
+  const machine = machineOfPane(pane)
+  if (!machine || !machine.sock()) return Promise.resolve(false)
+  const child = machine.spawnHerdr(['terminal', 'session', 'control', splitId(pane).local, '--cols', String(cols), '--rows', String(rows)])
+  child.stdin.on('error', () => {})
+  const { promise, resolve } = Promise.withResolvers<boolean>()
+  let done = false
+  const finish = (ok: boolean) => {
+    if (done) return
+    done = true
+    clearTimeout(timer)
+    if (child.stdin.writable) child.stdin.write(JSON.stringify({ type: 'terminal.release' }) + '\n')
+    child.stdin.end()
+    setTimeout(() => {
+      if (child.exitCode === null) child.kill('SIGTERM')
+    }, 1500)
+    log(`term ${pane} ${ok ? `resized to ${cols}x${rows}` : 'resize refused'}`)
+    resolve(ok)
+  }
+  const timer = setTimeout(() => finish(false), 5000)
+  // First frame: attached at the new size. Anything else ("already has an
+  // attached client", closed): refused.
+  readline.createInterface({ input: child.stdout }).on('line', (line) => {
+    let m: { type?: string } | null = null
+    try { m = JSON.parse(line) }
+    catch { /* not JSON */ }
+    finish(m?.type === 'terminal.frame')
+  })
+  child.on('error', () => finish(false))
+  child.on('exit', () => finish(false))
+  return promise
+}

@@ -70,6 +70,26 @@ describe('omp selector parsing', () => {
     expect(ompSelectorCaption(t, 'anthropic/claude-sonnet-5-5')).toBeNull()
   })
 
+  it('flags a selector cut by a narrow pane, footer included (omp 18.8, 38 columns)', () => {
+    const s = parseOmpSelector(fx('omp-selector-narrow-nerd.txt'))!
+    expect(s).toMatchObject({ truncated: true, width: 38, task: false })
+    // Once widened, the same selector is complete.
+    const w = parseOmpSelector(fx('omp-selector-wide-nerd.txt'))!
+    expect(w.truncated).toBe(false)
+    expect(w.options[w.cursor]).toMatchObject({ label: 'anthropic/claude-sonnet-4-5', current: true })
+    expect(w.options.map(o => o.label)).toContain('anthropic/claude-opus-5-5')
+  })
+
+  it('reads the ascii symbol preset', () => {
+    const t = fx('omp-selector-ascii.txt')
+    const s = parseOmpSelector(t)!
+    expect(s).toMatchObject({ truncated: false, task: false, search: '' })
+    expect(s.options[s.cursor]).toMatchObject({ label: 'anthropic/claude-sonnet-4-5', current: true })
+    expect(s.options).toHaveLength(21)
+    // "[/]" marks a role the model does not hold.
+    expect(ompSelectorCaption(t, 'anthropic/claude-sonnet-4-5')).toEqual({ name: 'Claude Sonnet 4.5', roles: ['current', 'default'] })
+  })
+
   it('labels the ids readable (Claude ids with Claude\'s naming)', () => {
     expect(ompModelLabel('anthropic/claude-opus-5-5')).toBe('Opus 5.5')
     expect(ompModelLabel('anthropic/claude-haiku-4-5')).toBe('Haiku 4.5')
@@ -132,7 +152,10 @@ describe('model in an omp transcript', () => {
 })
 
 // The setModel sequence, on a fake Herdr socket (same harness as modelctlEffort).
-const calls = vi.hoisted(() => ({ sent: [] as { method: string, params: Record<string, unknown> }[], screen: '', search: '', switched: false }))
+const calls = vi.hoisted(() => ({
+  sent: [] as { method: string, params: Record<string, unknown> }[], screen: '', search: '', switched: false,
+  opened: '', resized: [] as number[][], resizable: true,
+}))
 vi.mock('../server/utils/env', () => ({ log: () => {}, HOME: '/home/x', DATA_DIR: '/tmp/x' }))
 vi.mock('../server/utils/actions', () => ({ closePanel: async () => false }))
 vi.mock('../server/utils/machines', () => ({ machineOfPane: () => null }))
@@ -142,7 +165,7 @@ vi.mock('../server/utils/herdr', () => {
     if (method === 'pane.read') return { read: { text: calls.screen } }
     if (method === 'pane.send_input') {
       const keys = (params.keys as string[]) || []
-      if (keys.includes('alt+p')) calls.screen = fx('omp-selector.txt')
+      if (keys.includes('alt+p')) calls.screen = calls.opened || fx('omp-selector.txt')
       // Letters go to the search field; only 'glm' matches something.
       if (keys.length === 1 && /^[a-z]$/.test(keys[0]!)) calls.search += keys[0]
       // "down" moves the cursor one row further; esc closes.
@@ -179,11 +202,19 @@ vi.mock('../server/utils/state', () => ({
       : null),
   },
 }))
+// Widening a narrow pane: omp redraws its selector uncut.
+vi.mock('../server/utils/terminal', () => ({
+  resizePane: async (_pane: string, cols: number, rows: number) => {
+    calls.resized.push([cols, rows])
+    if (calls.resizable && cols > 100 && calls.screen) calls.screen = fx('omp-selector.txt')
+    return calls.resizable
+  },
+}))
 
 import { setModel } from '../server/utils/modelctl'
 
 describe('omp setModel sequence', () => {
-  beforeEach(() => { calls.sent = []; calls.screen = '' })
+  beforeEach(() => { calls.sent = []; calls.screen = ''; calls.opened = ''; calls.resized = []; calls.resizable = true; calls.switched = false })
 
   it('opens the selector with alt+p, moves the cursor, applies with Enter', async () => {
     const r = await setModel('w1:p1', 'openrouter/z-ai/glm-5.3-flash')
@@ -195,6 +226,23 @@ describe('omp setModel sequence', () => {
   it('refuses an unknown model and closes the selector', async () => {
     await expect(setModel('w1:p1', 'nope/missing-model')).rejects.toMatchObject({ code: 'bad_model' })
     expect(calls.sent.filter(c => c.method === 'pane.send_input').map(c => (c.params.keys as string[])[0])).toContain('esc')
+  })
+
+  it('widens a narrow pane to drive the selector, then gives its width back', async () => {
+    calls.opened = fx('omp-selector-narrow-nerd.txt')
+    const r = await setModel('w1:p1', 'openrouter/z-ai/glm-5.3-flash')
+    expect(r).toMatchObject({ id: 'openrouter/z-ai/glm-5.3-flash' })
+    expect(calls.resized).toEqual([[160, 40], [38, 40]])
+  })
+
+  it('changes nothing when the narrow pane cannot be widened (terminal attached)', async () => {
+    calls.opened = fx('omp-selector-narrow-nerd.txt')
+    calls.resizable = false
+    await expect(setModel('w1:p1', 'openrouter/z-ai/glm-5.3-flash')).rejects.toMatchObject({ code: 'narrow' })
+    const keys = calls.sent.filter(c => c.method === 'pane.send_input').map(c => (c.params.keys as string[])[0])
+    expect(keys).not.toContain('enter')
+    expect(keys).not.toContain('down')
+    expect(keys).toContain('esc')
   })
 })
 

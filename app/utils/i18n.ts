@@ -303,6 +303,7 @@ const FR: Record<string, string> = {
   'Model change already in progress': 'Changement de modèle déjà en cours',
   'The /model menu did not show up': 'Le menu /model ne s’est pas affiché',
   'omp’s model selector did not show up': 'Le sélecteur de modèles d’omp ne s’est pas affiché',
+  'The terminal is too narrow for omp’s model selector — close wherdr’s terminal or widen the pane, then try again.': 'Le terminal est trop étroit pour le sélecteur de modèles d’omp — ferme le terminal de wherdr ou élargis le panneau, puis réessaie.',
   'Model not found in omp’s selector: {model}': 'Modèle introuvable dans le sélecteur d’omp : {model}',
   'The model selector did not follow — nothing was changed.': 'Le sélecteur de modèles n’a pas suivi — rien n’a été changé.',
   'The model selector changed — try again.': 'Le sélecteur de modèles a changé — réessaie.',
