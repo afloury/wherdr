@@ -21,6 +21,7 @@
 // if no entry precedes it), a line entirely in bold is a header.
 // Without ANSI, all lines aligned with the cursor are entries.
 import type { InteractiveMenu, MenuEntry, WaitAction } from './types'
+import { settingsRowIndex } from './settingsScreen'
 
 // eslint-disable-next-line no-control-regex
 const SGR = /\x1b\[([0-9;]*)m/g
@@ -157,6 +158,9 @@ export function parseMenu(text: string | null | undefined): InteractiveMenu | nu
   const region = rows.slice(top + 1)
   while (region.length && !region[region.length - 1]!.text.trim()) region.pop()
   if (!region.length) return null
+  // Claude Code's settings panel (/usage, /config…) has a legend too: it is
+  // shown as a settings card (see settingsScreen.ts), not as a menu.
+  if (settingsRowIndex(region.map(r => r.text)) >= 0) return null
 
   // Legend: last line, and those above as long as the whole is one (wrapped legend).
   const joined = (from: number) => parseLegend(region.slice(from).map(r => r.text.trim()).join(' '))

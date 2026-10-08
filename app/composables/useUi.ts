@@ -36,11 +36,11 @@ export const newAgentOpen = ref(false)
 export const renameTarget = ref<string | null>(null)
 
 // Result of a local command (/context…), read from the terminal screen.
-export const commandResult = reactive<{ open: boolean, pane: string | null, cmd: string, text: string | null, tab: string | null }>({
-  open: false, pane: null, cmd: '', text: null, tab: null,
+// Claude Code's settings panel (/usage, /status, /config, /stats): `tabs` as
+// drawn on screen (they vary between versions), `tab` the active one.
+export const commandResult = reactive<{ open: boolean, pane: string | null, cmd: string, text: string | null, tabs: string[], tab: string | null }>({
+  open: false, pane: null, cmd: '', text: null, tabs: [], tab: null,
 })
-// Tabs of Claude Code's settings panel (/usage, /status, /config, /stats).
-export const SETTINGS_TABS = ['Status', 'Config', 'Usage', 'Stats']
 
 export const lightboxSrc = ref<string | null>(null)
 // Images of the same message, browsable in the viewer (← →, swipe).
@@ -88,6 +88,7 @@ export async function showCommandResult(pane: string, cmd: string, builtin = tru
   commandResult.pane = pane
   commandResult.cmd = cmd
   commandResult.text = null
+  commandResult.tabs = []
   commandResult.tab = null
   commandResult.open = builtin
   await new Promise(r => setTimeout(r, 1800))
@@ -102,7 +103,7 @@ async function readCommandResult(pane: string, cmd: string, tries = 5, seq = res
     && (commandResult.open || commandResult.text === null)
   for (let i = 0; i < tries && current(); i++) {
     try {
-      const { text, tab } = await api<{ text: string, tab: string | null }>(`/api/screen?pane=${encodeURIComponent(pane)}`)
+      const { text, tabs, tab } = await api<{ text: string, tabs: string[] | null, tab: string | null }>(`/api/screen?pane=${encodeURIComponent(pane)}`)
       if (!current()) return
       // Interactive menu (/resume, /model…): not an output, it is driven in the conversation.
       // Skill, custom command, /compact…: the agent is working, the
@@ -115,6 +116,7 @@ async function readCommandResult(pane: string, cmd: string, tries = 5, seq = res
       // "Loading…" (/usage gauges), "⏳ Waiting for response…" (omp's /btw).
       const loading = /\bLoading\b|Waiting for response/.test(shown)
       if (loading && i < tries - 1) { await new Promise(r => setTimeout(r, 1200)); continue }
+      commandResult.tabs = tabs || []
       commandResult.tab = tab
       commandResult.text = shown || t('Nothing displayed — check the Terminal tab.')
       commandResult.open = true
@@ -127,44 +129,11 @@ async function readCommandResult(pane: string, cmd: string, tries = 5, seq = res
   }
 }
 
-// The result on screen: below the command line, or Claude Code's whole settings
-// panel (it replaces the command line), or omp's
-// last titled box ("╭─ Session Info ─", "╭─ /btw … ─"), otherwise
-// the bottom of the screen.
-export function extractResult(text: string, cmd: string) {
-  const lines = text.replace(/\s+$/, '').split('\n')
-  let start = -1
-  for (let i = lines.length - 1; i >= 0; i--) {
-    // "❯ /usage" (Claude), or the command alone on its line (Codex).
-    if (lines[i]!.includes(cmd) && (/^\s*[❯›>]/.test(lines[i]!) || lines[i]!.trim() === cmd)) {
-      start = i + 1
-      break
-    }
-  }
-  if (start < 0) start = lines.findIndex(l => /^\s*Settings\s+Status\s+Config\b/.test(l))
-  if (start < 0) start = lines.findLastIndex(l => /^\s*╭─+ \S/.test(l))
-  let out = start >= 0 ? lines.slice(start) : lines.slice(-30)
-  // Box just below the command (Codex) or omp panel: its content,
-  // without what follows, nor its title, separators and shortcuts ("⎋ to close").
-  const top = out.findIndex(l => l.trim())
-  if (top >= 0 && /^\s*[╭┌]/.test(out[top]!)) {
-    const end = out.findIndex((l, i) => i > top && /^\s*[╰└]/.test(l))
-    out = unbox(out.slice(top, end > 0 ? end + 1 : undefined).filter(l => !/^\s*[╭├]─+ \S/.test(l)))
-      .filter(l => !/⎋/.test(l))
-      .map(l => (/^\s*[├┝][─━]+[┤┥]?\s*$/.test(l) ? '' : l))
-  }
-  const rule = out.findIndex(l => /^[\s─━]{20,}$/.test(l))
-  if (rule > 0) out = out.slice(0, rule)
-  // Scroll indicator of the panel ("↓", "↓ stats") at the end of the line.
-  out = out.map(l => l.replace(/\s{2,}↓(\s+\w+)?\s*$/, ''))
-  return out.join('\n').replace(/^\s*⎿\s?/m, '').replace(/\n{3,}/g, '\n\n').trim()
-}
-
 // Switch tabs in the panel: ← → arrows in the terminal, then re-read.
 export async function switchCommandTab(target: string) {
   const pane = commandResult.pane
-  const from = SETTINGS_TABS.indexOf(commandResult.tab || '')
-  const to = SETTINGS_TABS.indexOf(target)
+  const from = commandResult.tabs.indexOf(commandResult.tab || '')
+  const to = commandResult.tabs.indexOf(target)
   if (!pane || from < 0 || to < 0 || from === to) return
   const n = to - from
   commandResult.tab = target

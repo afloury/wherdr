@@ -15,9 +15,9 @@ const level = (m: Meter) => { const u = usedOf(m); return u >= 85 ? 'hi' : u >= 
   <AppSheet v-model:open="open" wide>
     <div class="menu">
       <p class="eyebrow menu-head"><span>❯ {{ commandResult.cmd }}</span></p>
-      <div v-if="commandResult.tab" class="cmd-tabs" role="tablist">
+      <div v-if="commandResult.tab && commandResult.tabs.length" class="cmd-tabs" role="tablist">
         <button
-          v-for="tb in SETTINGS_TABS" :key="tb" type="button" role="tab" :aria-selected="tb === commandResult.tab"
+          v-for="tb in commandResult.tabs" :key="tb" type="button" role="tab" :aria-selected="tb === commandResult.tab"
           :class="{ on: tb === commandResult.tab }" @click="switchCommandTab(tb)"
         >
           {{ tb }}
@@ -33,7 +33,8 @@ const level = (m: Meter) => { const u = usedOf(m); return u >= 85 ? 'hi' : u >= 
           <div v-if="m.reset" class="meter-reset">{{ t('Resets') }} · {{ m.reset }}</div>
         </div>
       </div>
-      <pre v-if="!parsed || parsed.rest" class="screen"><span v-if="!parsed" class="spinner" /><template v-else>{{ parsed.rest }}</template></pre>
+      <!-- Stats keeps its chart unwrapped; the other settings tabs wrap on a phone. -->
+      <pre v-if="!parsed || parsed.rest" class="screen" :class="{ wrap: commandResult.tabs.length && commandResult.tab !== 'Stats' }"><span v-if="!parsed" class="spinner" /><template v-else>{{ parsed.rest }}</template></pre>
     </div>
   </AppSheet>
 </template>
