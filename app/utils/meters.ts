@@ -1,3 +1,5 @@
+import { isKeyLegend, tabsOfRow } from '../../shared/settingsScreen'
+
 // Usage gauges read from a command's screen (Claude Code's /usage,
 // Codex's /status), to show them as native bars:
 //   Claude:  "Current session" / "████   8% used" / "Resets 2pm (…)"
@@ -20,7 +22,9 @@ export function parseMeters(text: string): { meters: Meter[], rest: string } {
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i]!
     const m = CLAUDE_PCT.exec(l)
-    if (m && BAR.test(l) && i > 0 && lines[i - 1]!.trim() && !BAR.test(lines[i - 1]!)) {
+    // An empty gauge (0%) is drawn without any bar character: its reset line tells it.
+    const drawn = BAR.test(l) || /^\s*Resets?\s+/i.test(lines[i + 1] || '')
+    if (m && drawn && i > 0 && lines[i - 1]!.trim() && !BAR.test(lines[i - 1]!)) {
       const next = lines[i + 1] || ''
       const reset = /^\s*Resets?\s+/i.test(next) ? next.trim().replace(/^Resets?\s+/i, '') : null
       meters.push({ label: lines[i - 1]!.trim(), pct: Math.min(100, Number(m[1])), kind: m[2] as 'used' | 'left', reset })
@@ -38,8 +42,8 @@ export function parseMeters(text: string): { meters: Meter[], rest: string } {
     }
   }
   const rest = lines.filter((_, i) => !drop.has(i))
-    // Settings panel tabs and keyboard help: not relevant here.
-    .filter(l => !/^\s*Settings\s+Status\s+Config\b/.test(l) && !/^\s*Esc to (cancel|close)\s*$/i.test(l))
+    // Settings panel tabs and keyboard help ("Esc to cancel", "d to day · w to week"): not relevant here.
+    .filter(l => !tabsOfRow(l) && !isKeyLegend(l))
     .join('\n').replace(/\n{3,}/g, '\n\n').trim()
   return { meters, rest }
 }

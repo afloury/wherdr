@@ -1,0 +1,40 @@
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;153;153;153m/tmp/demo[0m
+
+[0m[38;2;177;185;249m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔[0m
+   [0m[1m[38;2;177;185;249mSettings[0m  Status   Config  [0m[1m[38;2;0;0;0m[48;2;177;185;249m Usage   [0mStats
+
+                                                                                                                     [0m[38;2;153;153;153m↑[0m
+   [0m[1mCurrent week (all models)[0m
+   [0m[38;2;177;185;249m[48;2;80;83;112m██████████████████████████▌                        [0m53% used
+   [0m[38;2;153;153;153mResets Oct 14, 9pm (Europe/Paris)[0m
+
+   [0m[1mCurrent week (Sonnet)[0m
+   [0m[38;2;177;185;249m[48;2;80;83;112m                                                  [0m 0% used
+   [0m[38;2;153;153;153mResets Oct 14, 9pm (Europe/Paris)[0m
+
+   [0m[1mWhat's contributing to your limits usage?[0m
+   [0m[38;2;153;153;153mApproximate, based on local sessions on this machine — does not include other devices or claude.ai[0m
+
+   [0m[38;2;153;153;153mLast 24h · these are independent characteristics of your usage, not a breakdown[0m
+
+   100% of your usage came from subagent-heavy sessions
+    [0m[38;2;153;153;153mEach subagent runs its own requests. Be deliberate about spawning them — and [0m
+    [0m[38;2;153;153;153mconsider configuring a cheaper model for simpler subagents.[0m
+
+   100% of your usage came from sessions active for 8+ hours
+    [0m[38;2;153;153;153mThese are often background/loop sessions. Continuous usage can add up quickly [0m
+    [0m[38;2;153;153;153mso make sure it is intentional.[0m
+
+   100% of your usage was at >150k context
+    [0m[38;2;153;153;153mLonger sessions are more expensive even when cached. /compact mid-task, /clear [0m
+    [0m[38;2;153;153;153mwhen switching to new tasks.[0m
+
+   [0m[1mSkills, subagents, plugins, and MCP servers[0m
+   [0m[38;2;153;153;153mNo attribution data yet · accumulates as you use Claude[0m
+
+   [0m[38;2;153;153;153md to day · w to week[0m
+
+   [0m[1mUsage credits[0m
+   [0m[38;2;153;153;153mUsage credits are off · /usage-credits to turn them on[0m
+
+   [0m[38;2;153;153;153mEsc to cancel[0m                                                                   

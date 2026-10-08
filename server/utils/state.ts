@@ -18,6 +18,7 @@ import { type AskChecks, completeClaudeAsk, completeOmpAsk, ompActiveTab, parseC
 import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseWaitScreen } from './waitScreen'
 import { parseMenu, TOP } from '../../shared/menuScreen'
+import { settingsTabs } from '../../shared/settingsScreen'
 import { parseClaudeActivity } from './activity'
 import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './claudeScreen'
 import { type QueueEntry, INPUT_STATES, checkQueue, isUploadLine, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
@@ -139,7 +140,10 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
       askChecks.set(p.id, checks)
       choices = completeClaudeAsk(choices, await transcripts.pendingClaudeQuestions(p).catch(() => []), checks)
     } else if (!choices) askChecks.delete(p.id)
-    out = { choices, screen: menu ? null : parseWaitScreen(text, { choices: Boolean(choices) }), menu }
+    // Claude Code's settings panel (/usage…): read-only, shown by the settings
+    // card of the command result; its "Esc to cancel" is not a question.
+    const settings = p.agent === 'claude' && settingsTabs(text) !== null
+    out = { choices, screen: menu || settings ? null : parseWaitScreen(text, { choices: Boolean(choices) }), menu }
     noteScreen(p.id, p.agent, text) // Codex: model from its status line
     if (choices && (choices.detail || isPermissionQuestion(choices.question))) {
       // omp: the tool named in its dialog's title (none when scrolled off).

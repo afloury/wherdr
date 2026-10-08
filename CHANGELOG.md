@@ -16,6 +16,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **Claude Code settings card (`/usage`, `/status`, `/config`, `/stats`)**: recent Claude Code
+  versions draw the settings panel with a key legend, so wherdr took it for an interactive menu
+  and showed its text squashed on one line. The card is back: tabs read from the screen (Stats
+  included, robust to a tab more or less), active tab highlighted, usage gauges with their reset
+  time (an empty 0 % gauge too), the rest as readable lines without the keyboard help.
 - **Stop on a Claude Code `!` command**: Claude puts the cancelled command back into its input
   field (shell mode), which kept every following message "Queued · will be sent when the agent's
   input is free". From the conversation, Stop now empties Claude's field when it holds exactly

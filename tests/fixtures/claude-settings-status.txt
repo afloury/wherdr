@@ -1,0 +1,22 @@
+ ▝▝   ▝▝   /tmp/demo
+
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+   Settings  Status   Config   Usage   Stats
+
+   Version:           2.1.294
+   Session name:      /rename to add a name
+   Session ID:        00000000-0000-4000-8000-000000000000
+   Session kind:      interactive
+   Peer address:      uds:/run/user/1000/cc-socks/1234.sock
+   cwd:               /tmp/demo
+   Login method:      Claude Pro account
+   Organization:      demo@example.com's Organization
+   Email:             demo@example.com
+   Cloud sessions:    GitHub connected
+
+   Model:             sonnet (claude-sonnet-demo)
+   MCP servers:       4 connected, 2 need auth · /mcp
+   Setting sources:   User settings
+   Auto mode server:  Enabled
+
+   Esc to cancel

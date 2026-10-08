@@ -1,0 +1,31 @@
+ ▝▝   ▝▝   /tmp/demo
+
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+   Settings  Status   Config   Usage   Stats
+
+    Overview   Models
+
+
+       Oct Nov Dec Jan Feb Mar Apr May Jun Jul Aug Sep Oct
+       ··················································▓█
+   Mon ··················································▓░
+       ··············································░░··█▒
+   Wed ··············································▒···▓▒
+       ·················································▓█▒
+   Fri ··············································░··▒█
+       ··············································░··▓█
+
+       Less ░ ▒ ▓ █ More
+
+   All time · Last 7 days · Last 30 days
+
+   Favorite model: Sonnet Demo        Total tokens: 1.2m
+
+   Sessions: 42                   Longest session: 2h 5m   
+   Active days: 9/30              Longest streak: 3 days
+   Most active day: Oct 1          Current streak: 3 days
+   Input 1.0k · Output 2.0k · Cache read 3.0k · Cache write 4.0k
+
+   Your input and output are ~2x the tokens in 1984
+
+     ↓ stats
