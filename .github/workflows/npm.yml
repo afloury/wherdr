@@ -50,7 +50,7 @@ jobs:
   # Points the Homebrew formula (<owner>/homebrew-tap, Formula/wherdr.rb) at the
   # tarball just published. Needs the HOMEBREW_TAP_TOKEN secret: a fine-grained
   # token limited to <owner>/homebrew-tap with Contents: read and write. Skipped
-  # without it (then bump the formula by hand).
+  # without it (then run scripts/bump-homebrew.sh <version>).
   homebrew:
     needs: publish
     runs-on: ubuntu-latest
