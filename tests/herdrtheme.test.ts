@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { parseHerdrTheme } from '../server/utils/herdrtheme'
-import { DEFAULT_THEME, THEMES, customVars, mapHerdrTheme, resolveHerdrTheme, storedThemeChoice, themeVars, themesCss, xtermTheme } from '../app/utils/themes'
+import { DEFAULT_THEME, THEMES, THEME_GROUPS, customVars, mapHerdrTheme, resolveHerdrTheme, storedThemeChoice, themeSections, themeVars, themesCss, xtermTheme } from '../app/utils/themes'
 
 describe('config.toml de Herdr', () => {
   it('lit [theme], [theme.custom] et ses variantes, ignore le reste', () => {
@@ -87,5 +87,25 @@ default_shell = ""
       const manifest = JSON.parse(readFileSync(new URL(`../public/${name}`, import.meta.url), 'utf8'))
       expect([manifest.background_color, manifest.theme_color]).toEqual([background, background])
     }
+  })
+})
+
+describe('theme picker sections', () => {
+  it('puts every theme in a known group, listed wherdr → Agents → Herdr', () => {
+    expect(THEME_GROUPS).toEqual(['wherdr', 'agents', 'herdr'])
+    for (const th of THEMES) expect(THEME_GROUPS, th.id).toContain(th.group)
+    const sections = themeSections()
+    expect(sections.map(s => s.group)).toEqual([...THEME_GROUPS])
+    expect(sections.flatMap(s => s.themes).map(t => t.id).sort()).toEqual(THEMES.map(t => t.id).sort())
+  })
+
+  it('leads the wherdr section with the default theme and keeps agents and Herdr themes apart', () => {
+    const [wherdr, agents, herdr] = themeSections()
+    expect(wherdr!.themes[0]!.id).toBe(DEFAULT_THEME)
+    expect(agents!.themes.map(t => t.id)).toEqual(['claude-code', 'codex', 'omp', 'omp-light'])
+    expect(herdr!.themes[0]!.id).toBe('herdr')
+    // Every Herdr built-in theme (herdr --default-config) sits in the Herdr section.
+    for (const id of ['catppuccin', 'terminal', 'tokyo-night', 'dracula', 'nord', 'gruvbox', 'one-dark', 'solarized', 'kanagawa', 'rose-pine', 'vesper'])
+      expect(herdr!.themes.map(t => t.id)).toContain(id)
   })
 })
