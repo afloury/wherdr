@@ -58,8 +58,12 @@ export async function runSelfUpdate(info: UpdateInfo) {
   while (selfUpdate.open) {
     await new Promise(r => setTimeout(r, POLL_MS))
     let status: { version: string, job: UpdateJob | null } | null = null
-    // Unreachable while it restarts: keep waiting.
-    try { status = await api('/api/update/status') } catch { /* restarting */ }
+    try { status = await api('/api/update/status') } catch (e) {
+      // A target older than this screen (no status route): its version from /api/update.
+      // Otherwise unreachable while it restarts: keep waiting.
+      const u = (e as ApiError).status === 404 ? await api<UpdateInfo>('/api/update').catch(() => null) : null
+      if (u?.current === to && selfUpdate.job) status = { version: to, job: { ...selfUpdate.job, state: 'done' } }
+    }
     if (status?.job && status.job.to === to) selfUpdate.job = status.job
     const job = selfUpdate.job
     if (status?.version === to && job?.state === 'done') {
