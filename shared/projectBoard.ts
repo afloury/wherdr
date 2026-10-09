@@ -375,6 +375,12 @@ export function unblockMessage(task: string, lang: TestLang = 'fr'): string {
   return `${lang === 'en' ? '↳ Unblock: ' : '↳ Débloquer : '}${task.trim()}`
 }
 
+// "Add info" on an open thread (or the In progress task of a thread): sent
+// immediately; the coordinator passes the text on to that thread as is.
+export function infoMessage(thread: string, text: string, lang: TestLang = 'fr'): string {
+  return `${lang === 'en' ? `↳ Info for ${thread.trim()}: ` : `↳ Info pour ${thread.trim()} : `}${text.trim()}`
+}
+
 // "To do" and "In queue": sent immediately, the coordinator edits TASKS.md.
 export type MoveAction = 'up' | 'down' | 'queue' | 'now' | 'unqueue' | 'backlog'
 const MOVES: Record<MoveAction, [en: string, fr: string]> = {
@@ -444,6 +450,7 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
         `"${unblockMessage('…', lang)}" → restart the task or ask what is missing. Move a task to Blocked when it waits for something external.`,
         `"${launchMessage('…', lang)}" → launch a thread for this Backlog task.`,
         `"${m(detailPrefix)}" → add the detail to the task.`,
+        `"${infoMessage('t-0140', '…', lang)}" → pass the text on to that thread as is ("herdr-projects thread prompt"), then confirm in one line. Do not change TASKS.md.`,
         `"${moveMessage('up', '…', lang)}" / "${moveMessage('down', '…', lang)}" → move the line one place up or down in its list (To do or In queue).`,
         `"${moveMessage('queue', '…', lang)}" → move the line from To do to the end of In queue.`,
         `"${moveMessage('now', '…', lang)}" → start a thread now if a slot is free in the project and on the machine (beyond the limits only if I say so), otherwise put it first in In queue.`,
@@ -468,6 +475,7 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
         `« ${unblockMessage('…', lang)} » → relancer la tâche ou demander ce qui manque. Déplacer une tâche en Bloqué quand elle attend quelque chose d’extérieur.`,
         `« ${launchMessage('…', lang)} » → lancer un thread pour cette tâche du Backlog.`,
         `« ${m(detailPrefix)} » → compléter la tâche avec cette précision.`,
+        `« ${infoMessage('t-0140', '…', lang)} » → transmettre le texte tel quel à ce thread (« herdr-projects thread prompt »), puis confirmer en une ligne. Ne pas modifier TASKS.md.`,
         `« ${moveMessage('up', '…', lang)} » / « ${moveMessage('down', '…', lang)} » → monter ou descendre la ligne d’un cran dans sa liste (À faire ou En file).`,
         `« ${moveMessage('queue', '…', lang)} » → déplacer la ligne d’À faire à la fin d’En file.`,
         `« ${moveMessage('now', '…', lang)} » → lancer un thread tout de suite si une place est libre dans le projet et sur la machine (au-delà des limites seulement si je le dis), sinon la mettre en tête d’En file.`,

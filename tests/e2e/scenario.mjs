@@ -39,6 +39,8 @@ export const OMP_CHAT_PANE = 'w3:p1'
 export const OMP_IMAGE_PANE = 'w4:p1'
 export const OMP_APPROVAL_PANE = 'w5:p1'
 export const OMP_SHELL_PANE = 'w6:p1'
+// Coordinator of a herdr-projects project (its board is served by the spec).
+export const COORDINATOR_PANE = 'w7:p1'
 
 // Unique markers of the long omp transcript (asserted on by the specs).
 export const LONG_WORD = `Pneumono${'ultramicroscopicsilicovolcano'.repeat(12)}coniosis`
@@ -162,7 +164,8 @@ export function writeScenario(home) {
   const screens = path.join(home, 'projects/screens')
   const approval = path.join(home, 'projects/approval')
   const scratch = path.join(home, 'projects/scratch')
-  for (const d of [api, docs, demo, screens, approval, scratch]) fs.mkdirSync(d, { recursive: true })
+  const coordinator = path.join(home, '.herdr-projects/acme')
+  for (const d of [api, docs, demo, screens, approval, scratch, coordinator]) fs.mkdirSync(d, { recursive: true })
 
   const claudeSid = '00000000-0000-4000-8000-000000000001'
   claudeTranscript(home, api, claudeSid, now)
@@ -185,6 +188,10 @@ export function writeScenario(home) {
     ]),
     msg({ role: 'assistant', content: [{ type: 'text', text: 'The login button is clipped.' }], stopReason: 'stop' }),
   ])
+  const coordinatorFile = ompTranscript(home, coordinator, 'e2e-coordinator', now, msg => [
+    msg({ role: 'user', content: [{ type: 'text', text: 'Where are the threads?' }], attribution: 'user' }),
+    msg({ role: 'assistant', content: [{ type: 'text', text: 'Two threads are working.' }], stopReason: 'stop' }),
+  ])
   // omp waiting for the approval of its first action (status "blocked").
   const approvalFile = ompTranscript(home, approval, 'e2e-approval', now, msg => [
     msg({ role: 'user', content: [{ type: 'text', text: 'Clean the build folder.' }], attribution: 'user' }),
@@ -203,5 +210,6 @@ export function writeScenario(home) {
     { id: 'w5', label: 'approval', panes: [{ id: OMP_APPROVAL_PANE, agent: 'omp', status: 'blocked', cwd: approval, session: approvalFile }] },
     // A fresh omp (no transcript yet) that runs "!" commands.
     { id: 'w6', label: 'scratch', panes: [{ id: OMP_SHELL_PANE, agent: 'omp', status: 'idle', cwd: scratch, shell: true }] },
+    { id: 'w7', label: 'acme', panes: [{ id: COORDINATOR_PANE, agent: 'omp', status: 'idle', cwd: coordinator, session: coordinatorFile, transcript: coordinatorFile, reply: 'Passed on.' }] },
   ]
 }

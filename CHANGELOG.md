@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Project panel › Add info**: each working thread (its card under In progress, or the In
+  progress task of a thread) has an **Add info** button. It opens a multi-line text field (a
+  full-screen sheet on the phone); what you type is sent to the coordinator as
+  `↳ Info for t-NNNN: …` (`↳ Info pour t-NNNN : …` in French), and the coordinator passes it on
+  to that thread as is. The `wherdr` skill and "Copy rules for the coordinator" describe the new
+  message.
 - **wherdr.dev for search engines**: `sitemap.xml` generated at build time with the date of each
   page's last change, a `robots.txt` that names it, a canonical link, complete Open Graph and
   Twitter Card tags with a new 1200×630 share image, and `SoftwareApplication` structured data.

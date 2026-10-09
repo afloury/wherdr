@@ -1,6 +1,6 @@
 ---
 name: wherdr
-description: Conventions for coordinating a herdr-projects project whose TASKS.md is shown and driven by wherdr's Project panel. Use when you coordinate a herdr-projects project (you edit TASKS.md, launch and merge threads), and whenever a message starts with "✓ Tested:", "✓ Testé :", "✗ Problem:", "✗ Problème :", "? Question:", "? Question :", "↳ Decision:", "↳ Décision :", "↳ Launch", "↳ Lancer", "↳ Move up", "↳ Monter", "↳ Move down", "↳ Descendre", "↳ Queue:", "↳ Mettre en file", "↳ Remove from queue", "↳ Retirer de la file", "↳ Back to backlog", "↳ Remettre au backlog", "↳ Unblock", "↳ Débloquer", "↳ Detail on", "↳ Précision sur", "✓ Reviewed:", "✓ Relu :", "↳ Feedback on" or "↳ Retour sur".
+description: Conventions for coordinating a herdr-projects project whose TASKS.md is shown and driven by wherdr's Project panel. Use when you coordinate a herdr-projects project (you edit TASKS.md, launch and merge threads), and whenever a message starts with "✓ Tested:", "✓ Testé :", "✗ Problem:", "✗ Problème :", "? Question:", "? Question :", "↳ Decision:", "↳ Décision :", "↳ Launch", "↳ Lancer", "↳ Move up", "↳ Monter", "↳ Move down", "↳ Descendre", "↳ Queue:", "↳ Mettre en file", "↳ Remove from queue", "↳ Retirer de la file", "↳ Back to backlog", "↳ Remettre au backlog", "↳ Unblock", "↳ Débloquer", "↳ Detail on", "↳ Précision sur", "✓ Reviewed:", "✓ Relu :", "↳ Feedback on", "↳ Retour sur", "↳ Info for" or "↳ Info pour".
 ---
 
 # wherdr Project panel conventions
@@ -47,7 +47,7 @@ Titles are matched case- and accent-insensitively; any of these names works.
 | To test | À tester, To test, Testing, To verify, À vérifier, Test | Deployed, ready for the user to check. | Confirm, Problem, Question |
 | To decide | À décider, To decide, Decision(s), Decide, Question(s) | Questions only the user can settle. | Question, Answer |
 | To review | À relire, Relire, Relecture, To review, Review(s), Code review, PR(s), Pull request(s), À valider, To validate | Pull requests for the user to review; put the PR link in a badge or in the text. | Reviewed, Comment |
-| In progress | En cours, In progress, Doing, Ongoing, WIP, Active | Only what a thread is really doing now. Open threads are shown here live. | — |
+| In progress | En cours, In progress, Doing, Ongoing, WIP, Active | Only what a thread is really doing now. Open threads are shown here live. | Add info (on a thread) |
 | In queue | En file, En file d'attente, File d'attente, File, In queue, Queue, Queued, Up next | Decided work: launch the first task as soon as a thread slot frees, in list order. | Up, Down, Launch now, Clarify, Remove from queue |
 | Blocked | Bloqué(e)(s), Blocked, On hold, En attente, Waiting, Stuck | Waiting for something external. Optional reason: `— blocked by: <reason>` (`— bloqué par : …`). | Unblock, Clarify |
 | To do | À faire, Todo, To do, To dos, Todos, Next, Prochainement, Soon | Soon, in the user's priority order. Never launched without a request. | Up, Down, Queue, Launch now, Clarify, Back to backlog |
@@ -118,6 +118,7 @@ app language; treat them the same.
 
 Messages marked *sent* arrive as is. Messages marked *draft* are put in the user's input
 field, completed by the user after ` — `, then sent: read the user's text after the dash.
+`↳ Info for` names a thread (`t-NNNN`) instead of a task; its text may span several lines.
 
 | Message (EN / FR) | From | What to do |
 |---|---|---|
@@ -136,6 +137,7 @@ field, completed by the user after ` — `, then sent: read the user's text afte
 | `↳ Launch: <task>` / `↳ Lancer : <task>` (sent) | Backlog › Launch | Start the task: a thread if a slot is free, otherwise first in In queue. |
 | `↳ Unblock: <task>` / `↳ Débloquer : <task>` (sent) | Blocked › Unblock | Relaunch the task, or ask the user exactly what is still missing. |
 | `↳ Detail on <task> — <details>` / `↳ Précision sur <task> — …` (draft) | Clarify (Backlog, To do, In queue, Blocked) | Add the details to the task (indented lines under it, or the thread's brief) and confirm. Do not launch it. |
+| `↳ Info for t-NNNN: <text>` / `↳ Info pour t-NNNN : <text>` (sent) | In progress › Add info (a thread's card, or the task of a thread) | Pass `<text>` on to that thread as is, every line of it, without rewording (`herdr-projects thread prompt <project> t-NNNN --text-file <file>`, `-` reads standard input), then confirm to the user in one line. Do not change `TASKS.md`. If the thread is resolved or unknown, say so instead. |
 
 Never launch a task from To do or Backlog without one of these requests.
 
