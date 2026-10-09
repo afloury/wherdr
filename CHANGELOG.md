@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.2] — 2026-10-10
+
 ### Added
 
 - **The tailnet address enables itself**: wherdr reads what `tailscale serve` publishes on its
@@ -59,9 +61,35 @@ All notable changes to this project are documented here. The format follows
   to that address. No automatic redirect. The Herdr plugin (first install, **Open**),
   `wherdr open` and the installer's summary use that address too when it is already published,
   and `wherdr phone` makes wherdr adopt an address published by hand (`APP_URL`).
+- **Why wherdr**: a section at the top of the README and on wherdr.dev that says in six points
+  what wherdr adds to Herdr.
+
+### Changed
+
+- **Setup guide for agents** (`https://wherdr.dev/agent.md`): a third of its size, so fetch
+  tools return it whole (it also says how to read the raw file). The agent detects what is
+  installed before asking (wherdr, herdr-projects, Tailscale), sets the phone address through
+  wherdr instead of editing `plugin.env`, offers no login service to a plugin or Homebrew
+  install, and finishes on the tailnet address: passkey with the bootstrap token, then the phone.
+- **Settings › Appearance › Theme**: the theme list is split into three titled sections —
+  wherdr (Titanium first), Agents (Claude Code, Codex, omp, omp Light) and Herdr (Follow Herdr,
+  herdr.dev and Herdr's built-in themes). Each theme carries its section in `app/utils/themes.ts`.
+- **Website install section**: three tabs side by side — curl (the one command, selected by
+  default), Package managers (Homebrew, npx, bunx, pnpm dlx) and Herdr plugin — above the
+  "Ask your AI agent" card, instead of a folded "Other ways" block. The Docker-by-hand tab is
+  gone from the site; Docker stays documented in the README and through `WHERDR_MODE=docker`.
 
 ### Fixed
 
+- **A pane gets its size back when wherdr's terminal closes.** Opening the terminal on a phone
+  resizes the real pane to about 40 columns, and with no Herdr client attached to lay it out
+  again (a machine driven from afar) it stayed that narrow: the agents' screens were cut (omp's
+  model selector, its status line without the model…). wherdr now remembers the pane's size when
+  its first terminal opens and gives it back when the last one closes — after 2 seconds, or
+  30 seconds after a connection that dropped (locked phone, lost network), so a terminal that
+  comes back keeps its size. A size set meanwhile by an attached Herdr client is left alone, and
+  the sizes to give back survive a restart of wherdr. The width is read from the pane's PTY;
+  in Docker, where it is out of reach, the pane gets the width of Herdr's layout.
 - **Docker: the machine is no longer called "wherdr"** when `HOST_LABEL` is missing from `.env`
   (the container's host name was shown, so Settings › Plugins read "wherdr · Not installed").
   wherdr then shows the name Tailscale gives the machine, and the installer writes the host's
@@ -79,22 +107,6 @@ All notable changes to this project are documented here. The format follows
   its QR code instead of asking to open `http://localhost:7683`.
 - **Project panel**: opening it with the board already loaded (reopening a coordinator) no longer
   breaks it with "Cannot access … before initialization".
-
-### Changed
-
-- **Setup guide for agents** (`https://wherdr.dev/agent.md`): a third of its size, so fetch
-  tools return it whole (it also says how to read the raw file). The agent detects what is
-  installed before asking (wherdr, herdr-projects, Tailscale), sets the phone address through
-  wherdr instead of editing `plugin.env`, offers no login service to a plugin or Homebrew
-  install, and finishes on the tailnet address: passkey with the bootstrap token, then the phone.
-- **Settings › Appearance › Theme**: the theme list is split into three titled sections —
-  wherdr (Titanium first), Agents (Claude Code, Codex, omp, omp Light) and Herdr (Follow Herdr,
-  herdr.dev and Herdr's built-in themes). Each theme carries its section in `app/utils/themes.ts`.
-
-- **Website install section**: three tabs side by side — curl (the one command, selected by
-  default), Package managers (Homebrew, npx, bunx, pnpm dlx) and Herdr plugin — above the
-  "Ask your AI agent" card, instead of a folded "Other ways" block. The Docker-by-hand tab is
-  gone from the site; Docker stays documented in the README and through `WHERDR_MODE=docker`.
 
 ## [1.3.1] — 2026-10-08
 
@@ -129,16 +141,6 @@ All notable changes to this project are documented here. The format follows
   actions that open a pane or popup in Herdr say **Opens in Herdr**.
 
 ### Fixed
-
-- **A pane gets its size back when wherdr's terminal closes.** Opening the terminal on a phone
-  resizes the real pane to about 40 columns, and with no Herdr client attached to lay it out
-  again (a machine driven from afar) it stayed that narrow: the agents' screens were cut (omp's
-  model selector, its status line without the model…). wherdr now remembers the pane's size when
-  its first terminal opens and gives it back when the last one closes — after 2 seconds, or
-  30 seconds after a connection that dropped (locked phone, lost network), so a terminal that
-  comes back keeps its size. A size set meanwhile by an attached Herdr client is left alone, and
-  the sizes to give back survive a restart of wherdr. The width is read from the pane's PTY;
-  in Docker, where it is out of reach, the pane gets the width of Herdr's layout.
 
 - **Claude Code settings card (`/usage`, `/status`, `/config`, `/stats`)**: recent Claude Code
   versions draw the settings panel with a key legend, so wherdr took it for an interactive menu
