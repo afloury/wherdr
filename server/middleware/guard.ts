@@ -3,17 +3,23 @@
 // are still served so the lock screen can be shown.
 // (WebSockets do the same check in their `upgrade`.)
 // Each authenticated request slides the session (auth.renew).
-import { crossSiteRequest, HOST_REFUSED_PAGE, hostAllowed, hostRefusalIsHtml } from '../utils/hosts'
+import { crossSiteRequest, hostAllowed, hostRefusalIsHtml, hostRefusedPage } from '../utils/hosts'
+import { adoptServed } from '../utils/phone'
 // /api/health: version only, for the one-tap updater (bin/lib/updater.mjs).
+const HOST_RECHECK_MS = 3000
 const needsUnlock = (p: string) => (p.startsWith('/api/') && !p.startsWith('/api/auth/') && p !== '/api/health') || p.startsWith('/uploads/')
 
-export default defineEventHandler((event) => {
+export default defineEventHandler(async (event) => {
+  // An unknown host: maybe an address `tailscale serve` just published. The
+  // request only triggers reading Tailscale again (at most every few
+  // seconds); its Host header is never what gets allowed.
+  if (!hostAllowed(event.node.req.headers.host)) await adoptServed(HOST_RECHECK_MS)
   if (!hostAllowed(event.node.req.headers.host)) {
     if (hostRefusalIsHtml(event.path.split('?')[0]!, event.node.req.headers.accept)) {
       setResponseStatus(event, 403)
       setResponseHeader(event, 'content-type', 'text/html; charset=utf-8')
       setResponseHeader(event, 'cache-control', 'no-store')
-      return HOST_REFUSED_PAGE
+      return hostRefusedPage()
     }
     return sendError(event, 403, { error: 'Host not allowed', code: 'host' })
   }

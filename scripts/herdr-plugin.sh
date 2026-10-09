@@ -135,6 +135,13 @@ RUNTIME_HELP="Node.js 22 or newer (or Bun) is required to run wherdr without Doc
      Install it from https://nodejs.org, or set its absolute path in $CONF:
        WHERDR_RUNTIME=/path/to/node"
 
+# The machine's short name (no domain): what the app shows, and the container's
+# host name. Without it the container would be called "wherdr".
+short_host() {
+  h="$(hostname 2>/dev/null | cut -d. -f1)"
+  echo "${h:-server}"
+}
+
 herdr_bin() {
   if [ -n "${HERDR_BIN_PATH:-}" ]; then echo "$HERDR_BIN_PATH"
   elif [ -x "$HOME/.local/bin/herdr" ]; then echo "$HOME/.local/bin/herdr"
@@ -407,6 +414,7 @@ build_docker() {
       echo "PORT=$PORT"
       echo "# Private HTTPS address (tailscale serve), needed for push notifications."
       echo "APP_URL=${APP_URL:-http://localhost:$PORT/}"
+      echo "HOST_LABEL=$(short_host)"
       echo "TZ=${TZ:-UTC}"
       if [ "$herdr" != "$HOME/.local/bin/herdr" ]; then echo "HERDR_BIN=$herdr"; fi
     } > "$DIR/.env"
@@ -562,21 +570,51 @@ tailscale_bin() {
   fi
 }
 
-# The tailnet address `tailscale serve` already publishes for wherdr's local
-# port (https://<machine>.<tailnet>.ts.net[:port]), only when it answers like
-# wherdr. Passkeys are tied to the address: that is the one to open.
-tailnet_address() {
-  command -v curl >/dev/null 2>&1 || return 1
+# "<machine>.<tailnet>.ts.net[:port]" of the address `tailscale serve`
+# publishes for wherdr's local port, read from Tailscale on this machine.
+served_host() {
   ts="$(tailscale_bin)" || return 1
   # "<name>:<https port>" of the Web entry whose proxy targets our port.
   host="$("$ts" serve status --json 2>/dev/null | tr '{,' '\n\n' | awk -v port="$PORT" '
     /"[^"]*:[0-9]+"[ \t]*:[ \t]*$/ { key = $0; sub(/^[^"]*"/, "", key); sub(/".*$/, "", key) }
     /"Proxy"/ && $0 ~ ("\"(https?://)?(127\\.0\\.0\\.1|localhost):" port "/?\"") { print key; exit }')"
   [ -n "$host" ] || return 1
-  host="${host%:443}"
-  # A local request first: wherdr then allows that host by itself (APP_URL).
-  curl -s -o /dev/null --max-time 15 "http://127.0.0.1:$PORT/api/phone" 2>/dev/null || true
-  curl -fsS --max-time 8 "https://$host/manifest.webmanifest" 2>/dev/null | grep -q wherdr || return 1
+  printf '%s\n' "${host%:443}"
+}
+
+# wherdr adopts the address `tailscale serve` publishes by itself: a local
+# request makes it read Tailscale again at once. A container started without
+# Tailscale's socket (an older docker-compose.yml) cannot read it: the address
+# read here, on the host, is sent to it instead. Both only work from this
+# machine (server/utils/phone.ts, phoneAccess).
+adopt_address() {
+  command -v curl >/dev/null 2>&1 || return 0
+  curl -s -o /dev/null --max-time 20 -H 'content-type: application/json' \
+    -d "{\"action\":\"address\",\"url\":\"https://$1/\"}" "http://127.0.0.1:$PORT/api/phone" 2>/dev/null || true
+}
+
+# Does the phone address answer? "ok" (wherdr, and it accepts that address),
+# "host" (wherdr refuses that address), or "none". /api/health goes through
+# wherdr's host check; the static manifest answers for any host name and only
+# recognizes a wherdr older than that route.
+phone_reach() {
+  command -v curl >/dev/null 2>&1 || { echo none; return 0; }
+  body="$(curl -s --max-time 8 "${1}api/health" 2>/dev/null || true)"
+  case "$body" in
+    *'"name":"wherdr"'*) echo ok ;;
+    *'"code":"host"'*) echo host ;;
+    *) if curl -fsS --max-time 8 "${1}manifest.webmanifest" 2>/dev/null | grep -q wherdr; then echo ok; else echo none; fi ;;
+  esac
+}
+
+# The tailnet address `tailscale serve` already publishes for wherdr's local
+# port (https://<machine>.<tailnet>.ts.net[:port]), only when it answers like
+# wherdr. Passkeys are tied to the address: that is the one to open.
+tailnet_address() {
+  command -v curl >/dev/null 2>&1 || return 1
+  host="$(served_host)" || return 1
+  adopt_address "$host"
+  [ "$(phone_reach "https://$host/")" = ok ] || return 1
   printf 'https://%s\n' "$host"
 }
 
@@ -622,39 +660,49 @@ tailnet_name() {
 }
 
 # The phone setup is a page of the app (Settings › Phone); `wherdr phone`
-# prints the state and its link. Docker without Node.js: the steps by hand.
+# prints the state and its link. Docker without Node.js: the same state from
+# here, where the tailscale command is: published or not, the address handed
+# to wherdr (adopt_address), and whether it answers.
 cmd_phone() {
   if [ "$MODE" = "native" ]; then cli phone; return 0; fi
   say ""
   say "  WHERDR · PHONE SETUP"
   say ""
   if answers; then say "  ✓ wherdr answers on $URL"; else say "  ! wherdr is not running: press S in the wherdr panel first."; fi
+  publish="tailscale serve --bg --https=$PORT http://127.0.0.1:$PORT"
   name="$(tailnet_name || true)"
-  say ""
-  say "  Your phone needs a private HTTPS address (never the public Internet):"
-  say "  1. Install Tailscale on this machine and your phone, HTTPS certificates enabled."
-  say "  2. Run:  tailscale serve --bg --https=$PORT http://127.0.0.1:$PORT"
-  if [ -n "$name" ]; then
-    phone="https://$name:$PORT/"
-    say "  3. Open  $phone  on the phone and add it to the home screen."
-  else
-    phone=""
-    say "  3. Open  https://<machine>.<tailnet>.ts.net:$PORT/  on the phone, add it to the home screen."
-  fi
-  say "  4. Then open $URL/#/settings?section=phone: wherdr checks the address and sets APP_URL itself."
-  say "  5. In the app: Settings → Enable notifications, then Security → Enable passkey lock."
-  # The QR code only for an address that answers like wherdr.
-  if [ -n "$phone" ] && command -v curl >/dev/null 2>&1 \
-    && curl -fsS --max-time 8 "${phone}manifest.webmanifest" 2>/dev/null | grep -q wherdr; then
-    say ""
-    if command -v qrencode >/dev/null 2>&1; then
-      qrencode -t ANSIUTF8 -m 2 "$phone"
+  host="$(served_host || true)"
+  if [ -n "$host" ]; then
+    phone="https://$host/"
+    adopt_address "$host"
+    reach="$(phone_reach "$phone")"
+    if [ "$reach" = ok ]; then
+      say "  ✓ $phone answers"
+      say ""
+      if command -v qrencode >/dev/null 2>&1; then
+        qrencode -t ANSIUTF8 -m 2 "$phone"
+      else
+        say "  (Install qrencode to show a QR code of $phone here.)"
+      fi
+      say "  Open it on the phone, add it to the home screen, then in the app:"
+      say "  Settings → Enable notifications, then Security → Enable passkey lock."
+    elif [ "$reach" = host ]; then
+      say "  ! Not reachable from your phone yet: wherdr answers on $phone but refuses that address."
+      say "    Restart wherdr (X then S in the panel): it reads Tailscale at startup. Then run this again."
     else
-      say "  (Install qrencode to show a QR code of $phone here.)"
+      say "  ! Not reachable from your phone yet: $phone is published but does not answer like wherdr."
+      say "    A new address can take a minute (HTTPS certificate); then run this again."
     fi
-  elif [ -n "$phone" ]; then
-    say ""
-    say "  ! Not reachable from your phone yet: $phone does not answer (step 2)."
+  elif ! tailscale_bin >/dev/null 2>&1; then
+    say "  ! Tailscale is not installed on this machine: https://tailscale.com/download"
+    say "    Your phone needs it too (same account), with HTTPS certificates enabled."
+  elif [ -z "$name" ]; then
+    say "  ! Tailscale is not connected on this machine: tailscale up"
+  else
+    say "  ! Not reachable from your phone yet: wherdr is not published on your tailnet."
+    say "    Publish it (private, only your Tailscale devices):"
+    say "      $publish"
+    say "    wherdr enables https://$name:$PORT/ by itself; run this again for its QR code."
   fi
   say ""
   say "  Guide: https://github.com/$SOURCE#install-it-as-an-app"

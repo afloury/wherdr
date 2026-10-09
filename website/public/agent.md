@@ -63,7 +63,7 @@ browser, without sudo. It needs Node.js 22 (or Docker on Linux). Another port:
    tailscale serve --bg --https=7683 http://127.0.0.1:7683
    ```
 
-3. Let wherdr adopt the address: it checks it and sets `APP_URL` itself.
+3. wherdr adopts the address by itself (`APP_URL`). Check it:
 
    ```sh
    curl -fsS http://127.0.0.1:7683/api/phone

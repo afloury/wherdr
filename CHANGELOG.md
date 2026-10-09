@@ -6,8 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.2] — 2026-10-10
+
 ### Added
 
+- **The tailnet address enables itself**: wherdr reads what `tailscale serve` publishes on its
+  machine (at startup, every 30 seconds, and when an address it does not know is opened) and
+  adopts the HTTPS address that points to its own port: allowed host and `APP_URL`, with no
+  visit to Settings › Phone, so a server without a screen works too. An address removed from
+  `tailscale serve` is refused again. In Docker, wherdr reads Tailscale's socket, mounted by the
+  new `docker-compose.yml` (`/var/run/tailscale`; it gives the container Tailscale's local API
+  with the host user's rights, see the README, and can be removed); the address it suggests now
+  carries the machine's name, not the container's. Nothing a request sends can enable an
+  address, and one that `tailscale funnel` opens to the Internet is never adopted.
+- **The installer sets the phone up in Docker**: it offers to run `tailscale serve` (asked
+  first), hands the address to wherdr and waits for it to answer. Run again later, it checks the
+  phone address of the wherdr already installed.
 - **Project panel › Add info**: each working thread (its card under In progress, or the In
   progress task of a thread) has an **Add info** button. It opens a multi-line text field (a
   full-screen sheet on the phone); what you type is sent to the coordinator as
@@ -47,11 +61,8 @@ All notable changes to this project are documented here. The format follows
   to that address. No automatic redirect. The Herdr plugin (first install, **Open**),
   `wherdr open` and the installer's summary use that address too when it is already published,
   and `wherdr phone` makes wherdr adopt an address published by hand (`APP_URL`).
-
-### Fixed
-
-- **Project panel**: opening it with the board already loaded (reopening a coordinator) no longer
-  breaks it with "Cannot access … before initialization".
+- **Why wherdr**: a section at the top of the README and on wherdr.dev that says in six points
+  what wherdr adds to Herdr.
 
 ### Changed
 
@@ -72,11 +83,39 @@ All notable changes to this project are documented here. The format follows
 - **Settings › Appearance › Theme**: the theme list is split into three titled sections —
   wherdr (Titanium first), Agents (Claude Code, Codex, omp, omp Light) and Herdr (Follow Herdr,
   herdr.dev and Herdr's built-in themes). Each theme carries its section in `app/utils/themes.ts`.
-
 - **Website install section**: three tabs side by side — curl (the one command, selected by
   default), Package managers (Homebrew, npx, bunx, pnpm dlx) and Herdr plugin — above the
   "Ask your AI agent" card, instead of a folded "Other ways" block. The Docker-by-hand tab is
   gone from the site; Docker stays documented in the README and through `WHERDR_MODE=docker`.
+
+### Fixed
+
+- **A pane gets its size back when wherdr's terminal closes.** Opening the terminal on a phone
+  resizes the real pane to about 40 columns, and with no Herdr client attached to lay it out
+  again (a machine driven from afar) it stayed that narrow: the agents' screens were cut (omp's
+  model selector, its status line without the model…). wherdr now remembers the pane's size when
+  its first terminal opens and gives it back when the last one closes — after 2 seconds, or
+  30 seconds after a connection that dropped (locked phone, lost network), so a terminal that
+  comes back keeps its size. A size set meanwhile by an attached Herdr client is left alone, and
+  the sizes to give back survive a restart of wherdr. The width is read from the pane's PTY;
+  in Docker, where it is out of reach, the pane gets the width of Herdr's layout.
+- **Docker: the machine is no longer called "wherdr"** when `HOST_LABEL` is missing from `.env`
+  (the container's host name was shown, so Settings › Plugins read "wherdr · Not installed").
+  wherdr then shows the name Tailscale gives the machine, and the installer writes the host's
+  short name (without its domain) in `.env`. A `HOST_LABEL` you set, or a name chosen in the
+  app, still wins.
+- **Settings › Plugins**: the button says **Install herdr-projects** instead of **Install**.
+- **"This address isn't enabled yet" (403) on a server without a screen**: the page no longer
+  only says to open wherdr on the computer. It gives the command to run on the machine
+  (`wherdr phone`, or the installer again for Docker and the Herdr plugin), and the address is
+  now enabled without it in the usual case (see above).
+- **Phone address checks** (`wherdr phone`, the installer, the plugin) ask `/api/health`, which
+  goes through the host check, instead of the static manifest, which answers for any host name:
+  an address wherdr refuses is now reported as refused, not as answering.
+- **Setup guide and Settings › Phone opened on the tailnet address**: they show that address and
+  its QR code instead of asking to open `http://localhost:7683`.
+- **Project panel**: opening it with the board already loaded (reopening a coordinator) no longer
+  breaks it with "Cannot access … before initialization".
 
 ## [1.3.1] — 2026-10-08
 
@@ -111,16 +150,6 @@ All notable changes to this project are documented here. The format follows
   actions that open a pane or popup in Herdr say **Opens in Herdr**.
 
 ### Fixed
-
-- **A pane gets its size back when wherdr's terminal closes.** Opening the terminal on a phone
-  resizes the real pane to about 40 columns, and with no Herdr client attached to lay it out
-  again (a machine driven from afar) it stayed that narrow: the agents' screens were cut (omp's
-  model selector, its status line without the model…). wherdr now remembers the pane's size when
-  its first terminal opens and gives it back when the last one closes — after 2 seconds, or
-  30 seconds after a connection that dropped (locked phone, lost network), so a terminal that
-  comes back keeps its size. A size set meanwhile by an attached Herdr client is left alone, and
-  the sizes to give back survive a restart of wherdr. The width is read from the pane's PTY;
-  in Docker, where it is out of reach, the pane gets the width of Herdr's layout.
 
 - **Claude Code settings card (`/usage`, `/status`, `/config`, `/stats`)**: recent Claude Code
   versions draw the settings panel with a key legend, so wherdr took it for an interactive menu

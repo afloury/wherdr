@@ -126,7 +126,7 @@ const copyRules = () => copyText(coordinatorRules(lang()), tl('Rules copied: pas
       <p v-if="machine.online && errors[machine.key]" class="projects-plugin-note">{{ errors[machine.key] }}</p>
       <template v-if="machine.online && states[machine.key] && !states[machine.key]?.installed && !errors[machine.key]">
         <div class="projects-plugin-actions">
-          <UButton v-if="states[machine.key]?.installable" size="sm" color="primary" icon="i-lucide-download" :loading="busy[machine.key]" @click="install(machine)">{{ t('Install') }}</UButton>
+          <UButton v-if="states[machine.key]?.installable" size="sm" color="primary" icon="i-lucide-download" :loading="busy[machine.key]" @click="install(machine)">{{ tl('Install herdr-projects', 'Installer herdr-projects') }}</UButton>
           <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-copy" @click="copy(machine)">{{ t('Copy command') }}</UButton>
         </div>
         <p v-if="!states[machine.key]?.installable" class="projects-plugin-note">{{ tl('Direct installation is unavailable here: run the command on this machine.', 'Installation directe indisponible ici : lance la commande sur cette machine.') }}</p>
