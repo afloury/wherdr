@@ -41,6 +41,8 @@ export const OMP_APPROVAL_PANE = 'w5:p1'
 export const OMP_SHELL_PANE = 'w6:p1'
 // Coordinator of a herdr-projects project (its board is served by the spec).
 export const COORDINATOR_PANE = 'w7:p1'
+// omp replies with questions in the middle of their paragraphs.
+export const OMP_QUESTIONS_PANE = 'w8:p1'
 
 // Unique markers of the long omp transcript (asserted on by the specs).
 export const LONG_WORD = `Pneumono${'ultramicroscopicsilicovolcano'.repeat(12)}coniosis`
@@ -165,7 +167,8 @@ export function writeScenario(home) {
   const approval = path.join(home, 'projects/approval')
   const scratch = path.join(home, 'projects/scratch')
   const coordinator = path.join(home, '.herdr-projects/acme')
-  for (const d of [api, docs, demo, screens, approval, scratch, coordinator]) fs.mkdirSync(d, { recursive: true })
+  const questions = path.join(home, 'projects/questions')
+  for (const d of [api, docs, demo, screens, approval, scratch, coordinator, questions]) fs.mkdirSync(d, { recursive: true })
 
   const claudeSid = '00000000-0000-4000-8000-000000000001'
   claudeTranscript(home, api, claudeSid, now)
@@ -192,6 +195,23 @@ export function writeScenario(home) {
     msg({ role: 'user', content: [{ type: 'text', text: 'Where are the threads?' }], attribution: 'user' }),
     msg({ role: 'assistant', content: [{ type: 'text', text: 'Two threads are working.' }], stopReason: 'stop' }),
   ])
+  // Questions followed by other sentences, in English and in French, next to
+  // what must not get a "Reply" button (code, a URL, quoted words, a title).
+  const questionsFile = ompTranscript(home, questions, 'e2e-questions', now, msg => [
+    msg({ role: 'user', content: [{ type: 'text', text: 'Plan the release.' }], attribution: 'user' }),
+    msg({ role: 'assistant', content: [{ type: 'text', text: [
+      '## What is left? A summary',
+      'I added the task to the queue, to be confirmed. Shall I start step 1 now? A slot is free on the server.',
+      'Shall I tag the release today? The build is green. Or do you want a review first? Both are fine with me.',
+      'You asked "can it be faster?" earlier. The page is at https://example.com/search?x=1 and `ready ? 1 : 0` stays as it is.',
+    ].join('\n\n') }], stopReason: 'stop' }),
+    msg({ role: 'user', content: [{ type: 'text', text: 'Et en français ?' }], attribution: 'user' }),
+    msg({ role: 'assistant', content: [{ type: 'text', text: [
+      'J’ai noté la tâche dans « En file », à valider. Je lance l’étape 1 maintenant ? Une place est libre sur le serveur.',
+      'Tu as demandé « on peut aller plus vite ? » hier. C’est fait.',
+      'Dernier point : je publie les notes de version ?',
+    ].join('\n\n') }], stopReason: 'stop' }),
+  ])
   // omp waiting for the approval of its first action (status "blocked").
   const approvalFile = ompTranscript(home, approval, 'e2e-approval', now, msg => [
     msg({ role: 'user', content: [{ type: 'text', text: 'Clean the build folder.' }], attribution: 'user' }),
@@ -211,5 +231,6 @@ export function writeScenario(home) {
     // A fresh omp (no transcript yet) that runs "!" commands.
     { id: 'w6', label: 'scratch', panes: [{ id: OMP_SHELL_PANE, agent: 'omp', status: 'idle', cwd: scratch, shell: true }] },
     { id: 'w7', label: 'acme', panes: [{ id: COORDINATOR_PANE, agent: 'omp', status: 'idle', cwd: coordinator, session: coordinatorFile, transcript: coordinatorFile, reply: 'Passed on.' }] },
+    { id: 'w8', label: 'questions', panes: [{ id: OMP_QUESTIONS_PANE, agent: 'omp', status: 'idle', cwd: questions, session: questionsFile }] },
   ]
 }

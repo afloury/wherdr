@@ -81,6 +81,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **↳ Reply on a question in the middle of a paragraph**: a question followed by other
+  sentences ("Shall I start step 1 now? A slot is free.") now gets its **↳ Reply** button, placed
+  right after the question; the quote added to the field is the question alone, not the
+  paragraph. A paragraph or list item with several questions gets one button per question, in
+  order (questions that follow each other stay one quote). Still no button for a "?" in code, in
+  a URL, in quoted words (`You asked "can it be faster?"`), in a title or a table, nor for a
+  question the agent answers itself ("Is it done? Yes.", "Why? Because…"). On a computer, a
+  button in the middle of a paragraph stays faintly visible instead of appearing on hover.
 - **A pane gets its size back when wherdr's terminal closes.** Opening the terminal on a phone
   resizes the real pane to about 40 columns, and with no Herdr client attached to lay it out
   again (a machine driven from afar) it stayed that narrow: the agents' screens were cut (omp's
