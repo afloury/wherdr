@@ -4,6 +4,8 @@ import type { Pane } from '../../shared/types'
 import type { DraftAtt } from '../composables/useDraft'
 import { parseReply, type ReplyTarget } from '../../shared/replyQuote'
 import { extensionOf, parseAttachmentLine } from '../../shared/attachments'
+import { splitPasted } from '../../shared/pastedText'
+import { sentPastes } from './sentPastes'
 import { tl } from './i18n'
 
 const UPLOAD = '/.cache/herdr-web/uploads/'
@@ -25,7 +27,10 @@ export function restoreDraft(draft: { text: string, atts: DraftAtt[], reply?: Re
     draft.reply = parsed.reply
     message = parsed.body
   }
-  const lines = String(message || '').split('\n')
+  // Texts sent as "Pasted text" cards become cards again.
+  const split = splitPasted(String(message || ''), [], sentPastes.value)
+  for (const paste of split.pastes) draft.atts.push({ url: '', path: null, paste })
+  const lines = split.text.split('\n')
   const photos = lines.filter(l => l.includes(UPLOAD)).map(l => l.trim())
   const files = lines.filter(l => parseAttachmentLine(l))
   const text = lines.filter(l => !l.includes(UPLOAD) && !parseAttachmentLine(l)).join('\n').trim()

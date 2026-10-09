@@ -284,7 +284,7 @@ const UPLOAD_RE = /\/\.cache\/herdr-web\/uploads\/\S+/g
 type Block =
   | { k: 'day', key: string, label: string }
   | { k: 'who', key: string }
-  | { k: 'user', key: string, text: string, srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null }
+  | { k: 'user', key: string, text: string, pasted?: string[], srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null }
   | { k: 'assistant', key: string, id: string, text: string, html: string, time: string | null, endsTurn: boolean }
   | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
@@ -413,7 +413,7 @@ const blocks = computed<Block[]>(() => {
       // Reply to a specific message: the marker becomes a quote linking to the original.
       const parsed = parseReply(text)
       const origin = parsed ? findReplyOrigin(replies, parsed.reply)?.key || null : null
-      out.push({ k: 'user', key, text: parsed ? parsed.body : text, srcs, files, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null, reply: parsed?.reply || null, origin })
+      out.push({ k: 'user', key, text: parsed ? parsed.body : text, pasted: it.pasted, srcs, files, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null, reply: parsed?.reply || null, origin })
     } else if (it.role === 'assistant') {
       lastReply = it.text
       const time = it.ts ? fmtTime(it.ts) : null
@@ -1037,7 +1037,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   <template #content>
                     <span v-if="b.files.length" class="msg-file-chips">
                       <FileChip v-for="f in b.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
-                    </span><QuotedText :text="b.text" />
+                    </span><UserText :text="b.text" :pasted="b.pasted" />
                   </template>
                 </UChatMessage>
                 <div v-if="b.time" class="msg-time" :title="b.at || undefined">{{ b.time }}</div>
@@ -1207,7 +1207,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <template #content>
                 <span v-if="q.files.length" class="msg-file-chips">
                   <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
-                </span><QuotedText :text="q.body" />
+                </span><UserText :text="q.body" />
               </template>
             </UChatMessage>
             <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ t('Sent · read by the agent') }}</span></div>
@@ -1244,7 +1244,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <template #content>
                 <span v-if="q.files.length" class="msg-file-chips">
                   <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
-                </span><QuotedText :text="q.body" />
+                </span><UserText :text="q.body" />
               </template>
             </UChatMessage>
             <div v-if="q.state === 'failed'" class="queued-tag failed" role="alert">

@@ -17,7 +17,8 @@ useHead({
     { key: 'theme-color', name: 'theme-color', content: themeColor },
     { key: 'color-scheme', name: 'color-scheme', content: computed(() => (activeTheme.value.def.light ? 'light' : 'dark')) },
   ],
-  link: [{ rel: 'manifest', href: language === 'en' ? '/manifest-en.webmanifest' : '/manifest.webmanifest' }],
+  // The demo build (wherdr.dev/demo) is not installable.
+  link: import.meta.env.VITE_WHERDR_DEMO === '1' ? [] : [{ rel: 'manifest', href: language === 'en' ? '/manifest-en.webmanifest' : '/manifest.webmanifest' }],
 })
 
 function onVisibility() {

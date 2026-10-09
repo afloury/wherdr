@@ -147,9 +147,16 @@ main() {
   ok "wherdr answers on $URL"
 
   # ------------------------------------------------------------------ next
+  # Already published on the tailnet and answering: that address is the one
+  # to use (passkeys are tied to it); the plugin opened the guide there.
+  ADDRESS="$(plugin_address)"
   say ""
-  say "${G}${B}wherdr is running → $URL${R}"
-  if [ "$BROWSER" = "1" ] && [ "$FIRST" = "1" ]; then
+  say "${G}${B}wherdr is running → $ADDRESS${R}"
+  if [ "$ADDRESS" != "$URL" ]; then
+    say "  Your private tailnet address, for this computer and your phone. Enable the"
+    say "  passkey lock there (Settings › Security): a passkey is tied to its address."
+    say "  ${D}Also on this computer: $URL${R}"
+  elif [ "$BROWSER" = "1" ] && [ "$FIRST" = "1" ]; then
     say "  The setup guide is open in your browser; its Phone step makes wherdr"
     say "  reachable from your phone over Tailscale (private, never the Internet)."
   elif [ "$BROWSER" = "1" ]; then
@@ -168,6 +175,16 @@ main() {
   say ""
   say "${D}Update: run this command again, or U in the wherdr panel.${R}"
   say "${D}Docs:   https://github.com/$REPO#readme${R}"
+}
+
+# The address the plugin opens: the tailnet one when wherdr is already
+# published there and it answers, else the local one.
+plugin_address() {
+  a=""
+  if [ -n "$PLUGIN_ROOT" ] && [ -f "$PLUGIN_ROOT/scripts/herdr-plugin.sh" ]; then
+    a="$(WHERDR_DIR="$DIR" WHERDR_PORT="$PORT" sh "$PLUGIN_ROOT/scripts/herdr-plugin.sh" address 2>/dev/null || true)"
+  fi
+  case "$a" in https://*) printf '%s' "$a" ;; *) printf '%s' "$URL" ;; esac
 }
 
 # The Herdr key the plugin bound to its panel, empty when there is none.

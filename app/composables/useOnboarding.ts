@@ -11,7 +11,13 @@ export async function checkOnboarding() {
   } catch { /* locked or offline: checked again after unlocking */ }
 }
 
-export function openOnboarding() { onboardingOpen.value = true }
+// #/setup?step=…: the step the guide opens at (a link from another address).
+export const onboardingStep = ref<unknown>(null)
+
+export function openOnboarding(step: unknown = null) {
+  onboardingStep.value = step
+  onboardingOpen.value = true
+}
 
 export async function finishOnboarding() {
   onboardingOpen.value = false

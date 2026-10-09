@@ -7,7 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { startFakeHerdr } from './fake-herdr.mjs'
-import { PORT, writeScenario } from './scenario.mjs'
+import { PORT, SOCK_FILE, writeScenario } from './scenario.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const entry = path.join(root, '.output/server/index.mjs')
@@ -30,10 +30,14 @@ fs.writeFileSync(path.join(data, 'push.json'), JSON.stringify({ subs: [] }))
 fs.writeFileSync(path.join(data, 'onboarding.json'), JSON.stringify({ done: true, host: 'devbox' }))
 const sockDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-e2e-'))
 const sock = path.join(sockDir, 'herdr.sock')
-// The herdr CLI (worktrees, machines, notifications…): a stub that always fails.
+// The herdr CLI: a fake that only plays the terminal's control session against
+// the fake Herdr; everything else (worktrees, machines, notifications…) fails.
 const bin = path.join(tmp, 'bin/herdr')
+const cli = path.join(root, 'tests/e2e/fake-herdr-cli.mjs')
 fs.mkdirSync(path.dirname(bin), { recursive: true })
-fs.writeFileSync(bin, '#!/bin/sh\necho "herdr is not available in the e2e tests" >&2\nexit 1\n', { mode: 0o755 })
+fs.writeFileSync(bin, `#!/bin/sh\nexec '${process.execPath}' '${cli}' '${sock}' "$@"\n`, { mode: 0o755 })
+// Where the specs reach the fake Herdr (see fakeHerdr in scenario.mjs).
+fs.writeFileSync(SOCK_FILE, sock)
 
 const workspaces = writeScenario(home)
 const server = await startFakeHerdr({ sock, workspaces, log: m => console.log(m) })
@@ -54,6 +58,8 @@ const app = spawn(process.execPath, [entry], {
     HERDR_WEB_SESSION: 'e2e',
     HERDR_WEB_MACHINES: 'off',
     WHERDR_UPDATE_CHECK: 'off',
+    // Delay before a pane gets its size back after a dropped terminal (30 s by default).
+    WHERDR_TERM_GRACE_MS: '3000',
     WHERDR_RUNTIME_DIR: path.join(sockDir, 'run'),
     TZ: 'UTC',
   },

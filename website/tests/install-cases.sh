@@ -69,6 +69,7 @@ case "$1" in
   build) touch /tmp/up ;;
   key) echo "prefix+i" ;;
   phone) echo "PHONE STEPS FROM THE PLUGIN" ;;
+  address) [ -f /tmp/tailnet ] && echo "https://box.example.ts.net:7683" || echo "http://localhost:${WHERDR_PORT:-7683}" ;;
 esac
 EOF
 cat > /stubs/uname <<'EOF'
@@ -87,7 +88,7 @@ chmod +x /stubs/* /opt/stub/herdr /opt/stub/brew
 reset() {
   rm -rf /home/alice/wherdr /home/alice/.local /home/alice/.config /home/alice/.cache /home/alice/.herdr-projects \
     /tmp/docker.log /tmp/curl.log /tmp/herdr.log /tmp/brew.log /tmp/up /tmp/pull-fails /tmp/herdr-version /tmp/darwin \
-    /tmp/no-docker-daemon /tmp/container-dir /tmp/plugin-installed /tmp/build-fails /tmp/foreign /stubs/brew
+    /tmp/no-docker-daemon /tmp/container-dir /tmp/plugin-installed /tmp/build-fails /tmp/foreign /tmp/tailnet /stubs/brew
   [ -f /usr/local/bin/node.off ] && mv /usr/local/bin/node.off /usr/local/bin/node
   mkdir -p /home/alice/.local/bin && cp /opt/stub/herdr /home/alice/.local/bin/herdr && chown -R alice /home/alice
 }
@@ -124,6 +125,10 @@ check "names the panel key the plugin bound" 'has "prefix+i" /tmp/out'
 reset
 run DISPLAY=:0; check "with a display: browser allowed, setup guide mentioned" \
   '! has "WHERDR_NO_BROWSER" /tmp/herdr.log && has "setup guide is open" /tmp/out && ! has "PHONE STEPS" /tmp/out'
+# Already published on the tailnet and answering: that address is the one shown.
+reset; touch /tmp/tailnet
+run DISPLAY=:0; check "tailnet address published: shown instead of localhost, with the passkey hint" \
+  'has "wherdr is running → https://box.example.ts.net:7683" /tmp/out && has "a passkey is tied to its address" /tmp/out && has "Also on this computer: http://localhost:7683" /tmp/out'
 reset
 run DISPLAY=:0 SSH_CONNECTION=1; check "over SSH: no browser even with a display" 'has "WHERDR_NO_BROWSER=1" /tmp/herdr.log'
 

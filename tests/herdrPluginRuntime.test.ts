@@ -4,14 +4,16 @@
 // folder then moves it: the build starts wherdr from a copy that stays put.
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 const REPO = path.resolve(import.meta.dirname, '..')
-const TOOLS = ['sh', 'dirname', 'basename', 'sed', 'tr', 'head', 'tail', 'cat', 'ps', 'grep', 'curl', 'mkdir', 'touch', 'wc', 'sleep', 'nohup', 'ls', 'sort', 'id', 'uname', 'rm', 'mv', 'cp', 'mktemp', 'tar', 'printf', 'setsid']
+// No `tar`: the build must not download the published npm package (it would
+// replace the stand-in server below); it falls back to the stubbed npm build.
+const TOOLS = ['sh', 'dirname', 'basename', 'sed', 'tr', 'head', 'tail', 'cat', 'ps', 'grep', 'curl', 'mkdir', 'touch', 'wc', 'sleep', 'nohup', 'ls', 'sort', 'id', 'uname', 'rm', 'mv', 'cp', 'mktemp', 'printf', 'setsid', 'awk']
 
 async function freePort() {
   const srv = net.createServer()
@@ -34,7 +36,8 @@ describe.skipIf(process.platform === 'win32' || !which('curl'))('herdr plugin, n
   let tmp: string, root: string, home: string, rt: string, minbin: string, port: number
 
   beforeEach(async () => {
-    tmp = mkdtempSync(path.join(os.tmpdir(), 'wherdr-plugin-'))
+    // realpath: on macOS the temp folder is a link (/var → /private/var).
+    tmp = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'wherdr-plugin-')))
     root = path.join(tmp, 'root'); home = path.join(tmp, 'home'); rt = path.join(tmp, 'rt'); minbin = path.join(tmp, 'minbin')
     for (const d of [path.join(root, 'scripts'), path.join(root, '.output', 'server'), home, rt, minbin]) mkdirSync(d, { recursive: true })
     cpSync(path.join(REPO, 'scripts', 'herdr-plugin.sh'), path.join(root, 'scripts', 'herdr-plugin.sh'))
@@ -112,6 +115,46 @@ describe.skipIf(process.platform === 'win32' || !which('curl'))('herdr plugin, n
     expect(existsSync(path.join(home, 'wherdr', 'app', 'bin', 'wherdr.mjs'))).toBe(true)
   })
 
+  // A fake `tailscale` whose `serve status --json` is `serve`, and a `curl`
+  // that answers like wherdr for the tailnet name (no tailnet in the tests).
+  function fakeTailnet(serve: string, answers = true) {
+    const dir = path.join(tmp, 'tailnet')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(path.join(dir, 'serve.json'), serve)
+    writeFileSync(path.join(dir, 'tailscale'), `#!/bin/sh\n[ "$1 $2 $3" = "serve status --json" ] && cat "${dir}/serve.json"\nexit 0\n`)
+    writeFileSync(path.join(dir, 'curl'), `#!/bin/sh\nfor a in "$@"; do case "$a" in https://box.example.ts.net*) ${answers ? `echo '{"name":"wherdr"}'; exit 0` : 'exit 7'} ;; esac; done\nexec ${which('curl')} "$@"\n`)
+    chmodSync(path.join(dir, 'tailscale'), 0o755); chmodSync(path.join(dir, 'curl'), 0o755)
+    return dir
+  }
+  const served = (httpsPort: number, target: number) => JSON.stringify({
+    TCP: { [httpsPort]: { HTTPS: true } },
+    Web: {
+      'box.example.ts.net:8443': { Handlers: { '/': { Proxy: 'http://127.0.0.1:1' } } },
+      [`box.example.ts.net:${httpsPort}`]: { Handlers: { '/': { Proxy: `http://127.0.0.1:${target}` } } },
+    },
+  }, null, 2)
+
+  it('opens the tailnet address when wherdr is already published there and it answers', () => {
+    const first = run('build', `${fakeTailnet(served(port, port))}:${rt}`, { WHERDR_NO_BROWSER: '1' })
+    expect(first.status, first.stderr).toBe(0)
+    expect(first.stdout).toContain(`Setup guide: open https://box.example.ts.net:${port}/#/setup in a browser`)
+    expect(run('address', path.join(tmp, 'tailnet')).stdout.trim()).toBe(`https://box.example.ts.net:${port}`)
+    expect(run('open', path.join(tmp, 'tailnet'), { WHERDR_NO_BROWSER: '1' }).stdout.trim()).toBe(`https://box.example.ts.net:${port}`)
+    // Published on the default HTTPS port, in one line of JSON: no port in the address.
+    writeFileSync(path.join(tmp, 'tailnet', 'serve.json'), JSON.stringify(JSON.parse(served(443, port))))
+    expect(run('address', path.join(tmp, 'tailnet')).stdout.trim()).toBe('https://box.example.ts.net')
+  })
+
+  it('stays on localhost when nothing is published for its port, or the address does not answer', () => {
+    const local = `http://localhost:${port}`
+    const first = run('build', `${fakeTailnet(served(port, port + 1))}:${rt}`, { WHERDR_NO_BROWSER: '1' })
+    expect(first.stdout).toContain(`Setup guide: open ${local}/#/setup in a browser`)
+    expect(run('address', path.join(tmp, 'tailnet')).stdout.trim()).toBe(local)
+    expect(run('address', fakeTailnet(served(port, port), false)).stdout.trim()).toBe(local)
+    expect(run('address', fakeTailnet('{}')).stdout.trim()).toBe(local)
+    expect(run('address').stdout.trim()).toBe(local)
+  })
+
   it('starts nothing at install when something already answers on the port', async () => {
     // Another program, in a child: spawnSync blocks this process's event loop.
     const other = spawn(process.execPath, ['-e', `require('http').createServer((q, s) => s.end('other')).listen(${port}, '127.0.0.1', () => console.log('up'))`])
@@ -154,6 +197,8 @@ describe.skipIf(process.platform === 'win32' || !which('curl'))('herdr plugin, n
     for (const cmd of ['open', 'xdg-open']) {
       writeFileSync(path.join(fake, cmd), `#!/bin/sh\necho "${cmd} $*" >> "${calls}"\n`); chmodSync(path.join(fake, cmd), 0o755)
     }
+    // Linux unless a test says otherwise (the suite also runs on a Mac).
+    writeFileSync(path.join(fake, 'uname'), '#!/bin/sh\necho Linux\n'); chmodSync(path.join(fake, 'uname'), 0o755)
     const opened = () => existsSync(calls) ? readFileSync(calls, 'utf8').trim().split('\n') : []
     return { fake, opened }
   }

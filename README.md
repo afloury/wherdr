@@ -9,6 +9,8 @@ computer and on your phone.</b></p>
 
 <p align="center"><a href="https://wherdr.dev"><b>wherdr.dev</b></a> · <code>curl -fsSL https://wherdr.dev/install | sh</code> · <code>herdr plugin install afloury/wherdr</code></p>
 
+<p align="center"><a href="https://wherdr.dev/demo/"><b>Try it in your browser — no install</b></a>: the real app on scripted agents, nothing runs.</p>
+
 <p align="center"><a href="https://github.com/afloury/wherdr/actions/workflows/ci.yml"><img src="https://github.com/afloury/wherdr/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a></p>
 
 ## Quick start
@@ -35,6 +37,13 @@ At first launch, wherdr opens a **setup guide**: the Herdr agents it found, your
 saved on the server (`data/onboarding.json`), so your other devices do not show it again. Reopen
 it from Settings › About › **Setup guide**. On a phone that already opens wherdr through its
 tailnet address, the phone step becomes Add to Home Screen.
+
+**Passkeys are tied to the address they are created on.** Once wherdr's tailnet address is
+published and answers, the guide opened on `localhost` shows **Continue on
+<machine>.<tailnet>.ts.net**, which reopens it at the same step on that address, and its Security
+step (like Settings › Security) sends the passkey lock there. Nothing redirects on its own:
+`localhost` stays valid on the computer. The installer, the Herdr plugin and `wherdr open` open
+that address too when it is already published.
 
 wherdr is a small self-hosted web app that talks to the Herdr server on your machine. **On a
 computer**, it can replace the Herdr terminal client day to day: your spaces, tabs and split panes
@@ -69,9 +78,27 @@ it on `localhost`, or from your other devices over Tailscale.
 *Unofficial project. Not affiliated with or endorsed by Herdr, Anthropic or OpenAI. Claude,
 Claude Code, Codex and other product names are trademarks of their respective owners.*
 
+## Why wherdr
+
+- **Herdr's splits, live.** A tab with several panes is drawn in Herdr's real layout, every pane
+  live; drag a pane to move it or a divider to resize, and the change goes to Herdr itself.
+- **A passkey lock.** Face ID, Touch ID, Windows Hello or Android unlock the app; once a passkey
+  exists, nothing about your agents is served to a locked session.
+- **The agent's diff.** Git status and diff of each agent's working folder, one click away from
+  its conversation.
+- **The herdr-projects board.** A coordinator and its threads grouped under their project, with
+  the project's task lists as a live board and one-click replies.
+- **Keyboard and global search.** One shortcut searches every agent and conversation; next
+  agent, new tab, pane swaps and `1`–`9` answers never need the mouse.
+- **Real time, and private.** The real terminal over a WebSocket, a push when an agent needs
+  you, and your phone through Tailscale: nothing is on the Internet.
+
+Details in [Features](#features) and [Security](#security).
+
 ## Contents
 
 - [Quick start](#quick-start)
+- [Why wherdr](#why-wherdr)
 - [Features](#features)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
@@ -108,7 +135,10 @@ Claude Code, Codex and other product names are trademarks of their respective ow
   A command the agent proposes (shell code block, or inline `! command`) can be copied without
   its prompt, or run in the agent's shell mode (`!`, Claude Code, Codex and omp) after you
   confirm the full command.
-- **Terminal view**: the real terminal (xterm.js, WebGL or DOM renderer) with take-over. On a
+- **Terminal view**: the real terminal (xterm.js, WebGL or DOM renderer) with take-over. Opening
+  it resizes the real pane to your screen; closing it gives the pane the size it had before
+  (after 30 seconds when the connection just dropped, e.g. a locked phone), unless a Herdr
+  client attached meanwhile laid it out its own way. On a
   computer, drag over the text on screen to select it: releasing the button copies it, as do
   `⌘C` / `Ctrl+Shift+C`. The history is browsed with the wheel, not by dragging past the edge.
   Links (OSC 8 hyperlinks and plain `http(s)://` URLs, even wrapped over several rows) open in a
@@ -119,7 +149,9 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 - **Composer**: send messages while the agent works (queued, cancellable), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
-  of local commands. Stop button while the agent works.
+  of local commands. Stop button while the agent works. A long pasted text (log, output) becomes
+  a "Pasted text · N lines" card, sent to the agent as it is and shown the same way in the
+  conversation, where it opens in full with Copy; long typed messages fold with Show more.
 - **Codex updates and limits**: in a Codex conversation, a new Codex version shows above the
   field with an **Update** button (runs Codex's official update command on that machine, after
   confirmation), then **Restart to update** on the same conversation. When wherdr cannot run it
@@ -344,7 +376,10 @@ forwards to wherdr's local HTTP port. Only devices of your tailnet can reach it.
 **Settings › Phone** in wherdr on the server (`http://localhost:7683/#/settings?section=phone`),
 paste that address: wherdr checks it answers, sets it as `APP_URL` (saved in `data/app-url.json`;
 an HTTPS `APP_URL` in `.env` wins) and shows its QR code. Without Docker, the same page publishes
-wherdr itself: one button, asked first.
+wherdr itself: one button, asked first. From a terminal on the server (without Docker),
+`curl -fsS http://127.0.0.1:7683/api/phone` runs the same check on an address published by hand:
+it prints the state as JSON and sets `APP_URL` once the address answers (`wherdr phone` does it
+too).
 
 **Why HTTPS matters.** Browsers only allow three things on `https://` (or on `localhost` itself):
 
@@ -464,7 +499,7 @@ wherdr phone                # phone state, the app's phone setup page, QR code o
 | `wherdr start` · `stop` · `restart` | Background server, pid and log in `~/wherdr`. `start` says *started* only once the port answers; otherwise it prints the end of the log. With a login service installed, they drive the service. |
 | `wherdr status` | Address, process, service, data folder and log. |
 | `wherdr logs` (`-f` to follow, `-n 100`) | The log, `~/wherdr/wherdr.log`. |
-| `wherdr open` | Opens wherdr in the browser. |
+| `wherdr open` | Opens wherdr in the browser: its tailnet address when published and answering, else `localhost`. |
 | `wherdr phone` | Whether your phone can reach wherdr (Tailscale, `tailscale serve`, the address answering), the link to **Settings › Phone** where you publish it in one click, and the QR code once the address answers. |
 | `wherdr service install` · `uninstall` | Start at login: a LaunchAgent on macOS (`~/Library/LaunchAgents/dev.wherdr.plist`), a `systemd --user` unit on Linux (`loginctl enable-linger` keeps it running while you are logged out). |
 | `wherdr doctor` | Checks Node/Bun, Herdr and its socket, the port, the service, the data folder and `APP_URL`. |
@@ -594,7 +629,7 @@ Without a key: `herdr plugin action invoke panel --plugin afloury.wherdr`. The p
 | Action | What it does |
 |---|---|
 | `panel` | The **wherdr** panel (a popup) |
-| `open` | Opens wherdr in the browser |
+| `open` | Opens wherdr in the browser (its tailnet address when published and answering) |
 
 Up to 1.2.0 the panel action was called `wherdr`: change a key bound to `afloury.wherdr.wherdr` to
 `afloury.wherdr.panel` (Herdr has no action aliases; the install warns about such a key and

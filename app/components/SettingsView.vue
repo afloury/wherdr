@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Settings, in sections: appearance, conversation, terminal, agents,
 // notifications, security (passkey), computer, about.
-import type { ThemeDef } from '~/utils/themes'
+import type { ThemeDef, ThemeGroup } from '~/utils/themes'
 import type { TypingSpeed } from '~/utils/typewriter'
 import type { QuoteMode } from '~/utils/quoteTokens'
 import pkg from '../../package.json'
@@ -203,6 +203,8 @@ const quietEnd = computed(() => {
 })
 
 // ------------------------------------------------------------ theme
+// Picker section titles: brand names stay as is in both languages.
+const themeGroupLabel = (g: ThemeGroup) => (g === 'agents' ? tl('Agents', 'Agents') : g === 'herdr' ? 'Herdr' : 'wherdr')
 // Preview: background, surface, line, text, accent, states (working, waiting, done).
 const swatches = (th: ThemeDef) => [th.c.bg, th.c.surface, th.c.line, th.c.text, th.c.accent, th.c.blue, th.c.rose, th.c.teal]
 const herdrName = computed(() => {
@@ -301,24 +303,30 @@ onMounted(() => {
               <UIcon :name="themesOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="theme-check" />
             </button>
             <div v-show="themesOpen" class="theme-list" role="radiogroup" :aria-label="t('Theme')">
-              <button
-                type="button" role="radio" class="theme-opt" :class="{ on: themeChoice === FOLLOW_HERDR }" :aria-checked="themeChoice === FOLLOW_HERDR"
-                @click="pickTheme(FOLLOW_HERDR)"
-              >
-                <span class="theme-sw">
-                  <i v-for="(c, i) in followed ? swatches(followed) : []" :key="i" :style="{ background: c }" />
-                </span>
-                <span class="theme-name">{{ t('Follow Herdr') }}<small>{{ herdrName ? `config.toml · ${herdrName}` : t('config.toml not found') }}</small></span>
-                <UIcon v-if="themeChoice === FOLLOW_HERDR" name="i-lucide-check" class="theme-check" />
-              </button>
-              <button
-                v-for="th in THEMES" :key="th.id" type="button" role="radio" class="theme-opt" :class="{ on: themeChoice === th.id }"
-                :aria-checked="themeChoice === th.id" @click="pickTheme(th.id)"
-              >
-                <span class="theme-sw"><i v-for="(c, i) in swatches(th)" :key="i" :style="{ background: c }" /></span>
-                <span class="theme-name">{{ th.label }}<small v-if="th.id === DEFAULT_THEME">{{ t('default') }}</small><small v-else-if="th.light">{{ t('light') }}</small></span>
-                <UIcon v-if="themeChoice === th.id" name="i-lucide-check" class="theme-check" />
-              </button>
+              <section v-for="sec in themeSections()" :key="sec.group" class="theme-section" :aria-label="themeGroupLabel(sec.group)">
+                <h4 class="theme-section-title">{{ themeGroupLabel(sec.group) }}</h4>
+                <div class="theme-grid">
+                  <button
+                    v-if="sec.group === 'herdr'"
+                    type="button" role="radio" class="theme-opt" :class="{ on: themeChoice === FOLLOW_HERDR }" :aria-checked="themeChoice === FOLLOW_HERDR"
+                    @click="pickTheme(FOLLOW_HERDR)"
+                  >
+                    <span class="theme-sw">
+                      <i v-for="(c, i) in followed ? swatches(followed) : []" :key="i" :style="{ background: c }" />
+                    </span>
+                    <span class="theme-name">{{ t('Follow Herdr') }}<small>{{ herdrName ? `config.toml · ${herdrName}` : t('config.toml not found') }}</small></span>
+                    <UIcon v-if="themeChoice === FOLLOW_HERDR" name="i-lucide-check" class="theme-check" />
+                  </button>
+                  <button
+                    v-for="th in sec.themes" :key="th.id" type="button" role="radio" class="theme-opt" :class="{ on: themeChoice === th.id }"
+                    :aria-checked="themeChoice === th.id" @click="pickTheme(th.id)"
+                  >
+                    <span class="theme-sw"><i v-for="(c, i) in swatches(th)" :key="i" :style="{ background: c }" /></span>
+                    <span class="theme-name">{{ th.label }}<small v-if="th.id === DEFAULT_THEME">{{ t('default') }}</small><small v-else-if="th.light">{{ t('light') }}</small></span>
+                    <UIcon v-if="themeChoice === th.id" name="i-lucide-check" class="theme-check" />
+                  </button>
+                </div>
+              </section>
             </div>
           </div>
           <p class="muted settings-hint">{{ t('The theme is saved on this device.') }}</p>

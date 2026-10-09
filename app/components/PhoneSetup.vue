@@ -9,10 +9,14 @@ const props = defineProps<{ active: boolean }>()
 
 const status = ref<PhoneStatus | null>(null)
 const denied = ref(false)
+// Denied on an HTTPS address: the page itself came through the phone address.
+const onPhoneAddress = import.meta.client && location.protocol === 'https:'
 const busy = ref(false)
 const failure = ref<{ error: PhoneError, link?: string, detail?: string } | null>(null)
 const typed = ref('')
 let timer: ReturnType<typeof setTimeout> | null = null
+// Shared with the guide and the passkey card (usePhoneAddress.ts).
+watch(status, (s) => { if (s) phoneAddress.value = s })
 
 async function refresh() {
   try {
@@ -166,7 +170,8 @@ const failureText = computed(() => {
     <h3>{{ tl('Use it on your phone', 'Utiliser sur ton téléphone') }}</h3>
     <p class="phone-intro">{{ tl('Your phone reaches wherdr through Tailscale: a private HTTPS address, only for your devices, never the public Internet.', 'Ton téléphone joint wherdr par Tailscale : une adresse HTTPS privée, pour tes appareils seulement, jamais Internet.') }} <a class="phone-other" :href="OTHER_NETWORKS_DOC" target="_blank" rel="noopener noreferrer">{{ tl('Using something else?', 'Tu utilises autre chose ?') }}</a></p>
 
-    <p v-if="denied" class="phone-note warn">{{ tl('Set it up from the computer that runs wherdr: open http://localhost:' + (status?.port || '7683') + ' there, or unlock wherdr with its passkey.', 'Configure-le depuis l’ordinateur qui fait tourner wherdr : ouvre http://localhost:' + (status?.port || '7683') + ' dessus, ou déverrouille wherdr avec sa passkey.') }}</p>
+    <p v-if="denied && onPhoneAddress" class="phone-note">{{ tl('You are on wherdr’s phone address, and it answers: open it on your phone and add it to the Home Screen. To publish or remove it, open wherdr on localhost on its computer, or unlock it with its passkey.', 'Tu es sur l’adresse téléphone de wherdr, et elle répond : ouvre-la sur ton téléphone et ajoute-la à l’écran d’accueil. Pour la publier ou la retirer, ouvre wherdr sur localhost sur son ordinateur, ou déverrouille-le avec sa passkey.') }}</p>
+    <p v-else-if="denied" class="phone-note warn">{{ tl('Set it up from the computer that runs wherdr: open http://localhost:' + (status?.port || '7683') + ' there, or unlock wherdr with its passkey.', 'Configure-le depuis l’ordinateur qui fait tourner wherdr : ouvre http://localhost:' + (status?.port || '7683') + ' dessus, ou déverrouille wherdr avec sa passkey.') }}</p>
     <p v-else-if="!status" class="phone-note">{{ tl('Checking…', 'Vérification…') }}</p>
 
     <template v-else>

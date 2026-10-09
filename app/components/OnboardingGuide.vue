@@ -3,9 +3,10 @@
 // computer, a full-screen page on a phone. Welcome (what wherdr is, the Herdr
 // agents found), the phone (Tailscale, PhoneSetup.vue) or Add to Home Screen
 // on a phone already on the tailnet address, then passkey lock and
-// notifications. Skip is always there; finishing or skipping is saved by the
+// notifications. On localhost, once the tailnet address answers, a button
+// continues at the same step on that address. Skip is always there; finishing or skipping is saved by the
 // server (useOnboarding.ts).
-import { type OnboardingStep, mobileOs, onboardingSteps } from '~/utils/onboarding'
+import { type OnboardingStep, mobileOs, onAddress, onboardingSteps, setupHash, stepIndex } from '~/utils/onboarding'
 
 const os = import.meta.client ? mobileOs(navigator.userAgent, isIOS && !/iPhone|iPad|iPod/.test(navigator.userAgent)) : null
 const steps = computed(() => onboardingSteps({
@@ -14,6 +15,7 @@ const steps = computed(() => onboardingSteps({
   standalone: Boolean(standalone),
 }))
 const index = ref(0)
+watch(onboardingStep, (s) => { if (s) index.value = stepIndex(steps.value, s) }, { immediate: true })
 const step = computed<OnboardingStep>(() => steps.value[Math.min(index.value, steps.value.length - 1)]!)
 const last = computed(() => index.value >= steps.value.length - 1)
 const body = ref<HTMLElement | null>(null)
@@ -49,6 +51,7 @@ function newAgent() { newAgentOpen.value = true }
 onMounted(() => {
   refreshAuthStatus()
   refreshPushOn()
+  refreshPhoneAddress()
 })
 
 function onKey(e: KeyboardEvent) {
@@ -77,6 +80,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         </li>
       </ol>
     </nav>
+
+    <a v-if="tailnet && step !== 'security'" class="onboarding-tailnet" :href="onAddress(tailnet.url, setupHash(step))">
+      <span class="onboarding-tailnet-label">{{ tl('Published on your tailnet', 'Publié sur ton tailnet') }}</span>
+      <span class="onboarding-tailnet-go"><span>{{ tl('Continue on', 'Continuer sur') }} <b>{{ tailnet.name }}</b></span><UIcon name="i-lucide-arrow-right" /></span>
+    </a>
 
     <div ref="body" class="onboarding-body">
       <div class="onboarding-page">
@@ -145,7 +153,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           <div class="settings-group">
             <h3>{{ tl('Passkey lock · recommended', 'Verrou passkey · recommandé') }}</h3>
             <p class="onboarding-why">{{ tl('Only your devices can open wherdr, with Face ID, Touch ID or Windows Hello: no password to leak.', 'Seuls tes appareils ouvrent wherdr, avec Face ID, Touch ID ou Windows Hello : aucun mot de passe à fuiter.') }}</p>
-            <PasskeyCard />
+            <PasskeyCard :continue-hash="setupHash('security')" />
           </div>
           <div class="settings-group">
             <h3>{{ tl('Notifications', 'Notifications') }}</h3>

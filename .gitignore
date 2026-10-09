@@ -1,6 +1,9 @@
 node_modules/
 .nuxt/
 .output/
+.output-demo/
+# `nuxt generate` (npm run build:demo) links its output here
+/dist
 data/
 .env
 .shots/

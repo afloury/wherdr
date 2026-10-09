@@ -16,8 +16,43 @@ All notable changes to this project are documented here. The format follows
   rolled back by itself (previous plugin copy, previous npm version, previous Homebrew keg), and
   the app says "Rolled back to X.Y.Z". Log: `~/wherdr/update.log`. Docker and npx keep showing
   the command.
+- **Browser demo at [wherdr.dev/demo](https://wherdr.dev/demo/)**: the real app, built with
+  `npm run build:demo` (static, no server), on scripted agents that run in the page — two
+  projects, Claude Code, Codex and omp in different states, a split with a dev server, the Project
+  panel, diffs, terminals. Sending a message gets a scripted answer, sometimes after an
+  Approve / Deny card. Nothing runs: `fetch` and `WebSocket` are answered in the browser and every
+  other request is refused. Linked from the top of the site and of this README.
+- **Long pasted text as a card**, like Claude Desktop: a pasted log or long text (more than 12
+  lines or 1,500 characters) shows as a "Pasted text · N lines" card under the message, with its
+  first lines. A tap opens the whole text in a scrolling window (a sheet on the phone), in a
+  monospace font for a log, with **Copy**. Pasting such a text into the message field adds the
+  card instead of filling the field; it can be removed, and is sent to the agent as it is.
+  Claude's `<pasted_content>` blocks are recognized; for Codex and omp, the texts pasted from
+  this device are.
+- **Long typed messages fold** after about 12 lines, with a fade and **Show more / Show less**.
+- **Continue on the tailnet address**: a passkey only works on the address it was created on.
+  When wherdr's tailnet address is published and answers, the setup guide opened on `localhost`
+  shows a **Continue on <machine>.<tailnet>.ts.net** button that reopens it at the same step
+  there (`#/setup?step=…`), and the passkey card (guide and Settings › Security) sends the lock
+  to that address. No automatic redirect. The Herdr plugin (first install, **Open**),
+  `wherdr open` and the installer's summary use that address too when it is already published,
+  and `wherdr phone` makes wherdr adopt an address published by hand (`APP_URL`).
+
+### Fixed
+
+- **Project panel**: opening it with the board already loaded (reopening a coordinator) no longer
+  breaks it with "Cannot access … before initialization".
 
 ### Changed
+
+- **Setup guide for agents** (`https://wherdr.dev/agent.md`): a third of its size, so fetch
+  tools return it whole (it also says how to read the raw file). The agent detects what is
+  installed before asking (wherdr, herdr-projects, Tailscale), sets the phone address through
+  wherdr instead of editing `plugin.env`, offers no login service to a plugin or Homebrew
+  install, and finishes on the tailnet address: passkey with the bootstrap token, then the phone.
+- **Settings › Appearance › Theme**: the theme list is split into three titled sections —
+  wherdr (Titanium first), Agents (Claude Code, Codex, omp, omp Light) and Herdr (Follow Herdr,
+  herdr.dev and Herdr's built-in themes). Each theme carries its section in `app/utils/themes.ts`.
 
 - **Website install section**: three tabs side by side — curl (the one command, selected by
   default), Package managers (Homebrew, npx, bunx, pnpm dlx) and Herdr plugin — above the
@@ -57,6 +92,16 @@ All notable changes to this project are documented here. The format follows
   actions that open a pane or popup in Herdr say **Opens in Herdr**.
 
 ### Fixed
+
+- **A pane gets its size back when wherdr's terminal closes.** Opening the terminal on a phone
+  resizes the real pane to about 40 columns, and with no Herdr client attached to lay it out
+  again (a machine driven from afar) it stayed that narrow: the agents' screens were cut (omp's
+  model selector, its status line without the model…). wherdr now remembers the pane's size when
+  its first terminal opens and gives it back when the last one closes — after 2 seconds, or
+  30 seconds after a connection that dropped (locked phone, lost network), so a terminal that
+  comes back keeps its size. A size set meanwhile by an attached Herdr client is left alone, and
+  the sizes to give back survive a restart of wherdr. The width is read from the pane's PTY;
+  in Docker, where it is out of reach, the pane gets the width of Herdr's layout.
 
 - **Claude Code settings card (`/usage`, `/status`, `/config`, `/stats`)**: recent Claude Code
   versions draw the settings panel with a key legend, so wherdr took it for an interactive menu

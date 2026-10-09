@@ -967,6 +967,32 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 }
 .msg-files { margin-bottom: 6px; }
 .msg-time { font: 400 10.5px/1 var(--mono); color: var(--dim); letter-spacing: .04em; }
+/* Long typed message: folded after ~12 lines, with a fade and Show more. */
+.msg-fold { position: relative; }
+.msg-fold.folded { max-height: calc(15px * 1.5 * 12); overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent); mask-image: linear-gradient(to bottom, #000 60%, transparent); }
+.msg-fold-btn { display: block; margin-top: 6px; padding: 0; font: 600 10.5px/1.6 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--text-2); }
+.msg-fold-btn:hover, .msg-fold-btn:focus-visible { color: var(--accent); outline: none; }
+
+/* Long pasted text: a card (message field and sent message) that opens the whole text. */
+.pasted-card { position: relative; display: flex; align-items: stretch; width: 260px; max-width: 100%; background: var(--bg-2); border: 1px solid var(--line); color: var(--text); white-space: normal; }
+.pasted-card:hover, .pasted-card:focus-within { border-color: var(--accent); }
+.pasted-open { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; padding: 8px 10px; text-align: left; cursor: pointer; }
+.pasted-open:focus-visible { outline: none; }
+.pasted-head { display: flex; align-items: center; gap: 6px; font: 600 10px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--text-2); }
+.pasted-head .iconify { width: 13px; height: 13px; flex: none; }
+.pasted-line { font: 400 11.5px/1.35 var(--mono); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pasted-x { display: grid; place-items: center; width: 26px; flex: none; color: var(--text-2); border-left: 1px solid var(--line); }
+.pasted-x:hover { color: var(--text); background: var(--surface-3); }
+.pasted-x .iconify { width: 13px; height: 13px; }
+.msg-pastes { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; white-space: normal; }
+.msg-fold + .msg-pastes, .msg-fold-btn + .msg-pastes { margin-top: 8px; }
+.attachments .pasted-card { height: 60px; width: 220px; }
+.attachments .pasted-open { justify-content: center; padding: 6px 8px; gap: 4px; }
+.attachments .pasted-line:nth-child(n + 3) { display: none; }
+.pasted-head { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pasted-full { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 14px/1.55 var(--sans, inherit); color: var(--text); user-select: text; -webkit-user-select: text; }
+.pasted-full.mono { font: 400 12.5px/1.5 var(--mono); }
+.pasted-foot { display: flex; justify-content: flex-end; width: 100%; }
 
 /* Agent name at the top of its reply. */
 .msg-who {
@@ -2015,11 +2041,11 @@ body.kb .composer { padding-bottom: 8px; }
 .settings-section-title { display: none; }
 .settings-version { font: 500 12px/1.5 var(--mono); color: var(--muted); }
 .settings-group { margin: 0 0 30px; }
-.settings-group h3 {
+.settings-group h3, .theme-section-title {
   display: flex; align-items: center; gap: 10px; margin: 0 0 10px;
   font: 500 10.5px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--muted);
 }
-.settings-group h3::before { content: ''; width: 18px; height: 1px; background: var(--line); }
+.settings-group h3::before, .theme-section-title::before { content: ''; width: 18px; height: 1px; background: var(--line); }
 .exp-tag {
   display: inline-block; margin-left: 8px; padding: 3px 6px; vertical-align: 1px; border: 1px solid color-mix(in srgb, var(--ochre) 45%, var(--line));
   font: 500 9.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ochre);
@@ -2181,6 +2207,24 @@ body.kb .composer { padding-bottom: 8px; }
 .onboarding-steps li.done button i { background: var(--done); }
 .onboarding-steps li.current button { color: var(--text-strong); }
 .onboarding-steps li.current button i { background: var(--mauve); }
+/* On localhost with the tailnet address answering: continue there (same step). */
+.onboarding-tailnet { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--bg-2); color: var(--text); text-decoration: none; }
+.onboarding-tailnet-label { display: flex; align-items: center; gap: 8px; font: 600 10px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.onboarding-tailnet-label::before { content: ''; width: 8px; height: 8px; flex: none; background: var(--done); }
+.onboarding-tailnet-go { display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 12px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line-strong); font: 600 11px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; transition: background-color .12s ease, color .12s ease, box-shadow .12s ease; }
+.onboarding-tailnet-go b { font-weight: 600; font-size: 12px; letter-spacing: 0; text-transform: none; overflow-wrap: anywhere; }
+.onboarding-tailnet-go .iconify { flex: none; width: 15px; height: 15px; }
+.onboarding-tailnet:hover .onboarding-tailnet-go, .onboarding-tailnet:focus-visible .onboarding-tailnet-go { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+.onboarding-tailnet:focus-visible { outline: none; }
+@media (max-width: 520px) { .onboarding-tailnet-go { flex: 1 1 100%; justify-content: space-between; } }
+/* Passkey card on localhost: the lock is enabled on the tailnet address. */
+.settings-card > .passkey-tailnet { margin-top: 14px; color: var(--text-2); }
+.settings-action.passkey-tailnet-go { margin-top: 12px; padding: 12px 14px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line-strong); text-decoration: none; transition: background-color .12s ease, color .12s ease, box-shadow .12s ease; }
+.passkey-tailnet-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.passkey-tailnet-text small { font: 600 10px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.passkey-tailnet-text b { font: 600 13px/1.4 var(--mono); overflow-wrap: anywhere; }
+.settings-action.passkey-tailnet-go:hover, .settings-action.passkey-tailnet-go:focus-visible { background: var(--accent); color: var(--on-accent); box-shadow: none; outline: none; }
+.settings-action.passkey-tailnet-go:hover :is(.iconify, small), .settings-action.passkey-tailnet-go:focus-visible :is(.iconify, small) { color: currentColor; }
 .onboarding-body { flex: 1; min-height: 0; overflow-y: auto; }
 .onboarding-page { width: 100%; max-width: 680px; margin: 0 auto; padding: 34px 16px 40px; }
 .onboarding-eyebrow { color: var(--mauve); margin-bottom: 14px; }
@@ -2247,16 +2291,15 @@ body.kb .composer { padding-bottom: 8px; }
 /* Home: crossed-out bell while quiet mode is active (a tap turns it off). */
 .icon-btn.quiet-on { color: var(--ochre); }
 /* Themes: color swatches, selection marked by the accent. */
-.theme-list { display: grid; grid-template-columns: 1fr; border: 1px solid var(--line); }
+.theme-list { display: flex; flex-direction: column; gap: 18px; padding-top: 18px; }
+.theme-grid { display: grid; grid-template-columns: 1fr; border: 1px solid var(--line); }
 .theme-opt {
   display: flex; align-items: center; gap: 14px; padding: 11px 14px; text-align: left; position: relative;
   border-top: 1px solid var(--line-soft);
 }
-.theme-opt:first-child { border-top: 0; }
-/* Collapsible header: current theme, list expanded just below. */
+.theme-grid .theme-opt:first-child { border-top: 0; }
+/* Collapsible header: current theme, sections expanded just below. */
 .theme-current { width: 100%; border: 1px solid var(--line); }
-.theme-current[aria-expanded="true"] { border-bottom-color: var(--line-soft); }
-.theme-current + .theme-list { border-top: 0; }
 .theme-opt:hover { background: var(--surface); }
 .theme-opt.on { background: var(--surface-2); }
 .theme-opt.on::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--accent); }
@@ -2265,7 +2308,7 @@ body.kb .composer { padding-bottom: 8px; }
 .theme-name { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 500; color: var(--text); }
 .theme-name small { display: block; font: 400 11px/1.3 var(--mono); color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .theme-check { width: 18px; height: 18px; color: var(--accent); }
-@media (min-width: 900px) { .theme-list { grid-template-columns: 1fr 1fr; } .theme-opt:nth-child(2) { border-top: 0; } .theme-opt:nth-child(even) { border-left: 1px solid var(--line-soft); } }
+@media (min-width: 900px) { .theme-grid { grid-template-columns: 1fr 1fr; } .theme-grid .theme-opt:nth-child(2) { border-top: 0; } .theme-grid .theme-opt:nth-child(even) { border-left: 1px solid var(--line-soft); } }
 .settings-card, .settings-action.solo, .settings-stepper, .settings-toggle { background: var(--bg-2); border: 1px solid var(--line); }
 .settings-card { padding: 0 16px 14px; }
 .settings-card > p { margin: 6px 0 0; font-size: 13px; line-height: 1.45; }

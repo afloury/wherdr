@@ -2,11 +2,35 @@
 // neutral transcripts written into the fake HOME. Shared by the launcher and the specs.
 import crypto from 'node:crypto'
 import fs from 'node:fs'
+import net from 'node:net'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import zlib from 'node:zlib'
 
 export const PORT = Number(process.env.E2E_PORT || 7699)
 export const BASE_URL = `http://127.0.0.1:${PORT}`
+
+// Path of the fake Herdr's socket, written by the launcher.
+export const SOCK_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../.e2e-tmp/herdr-sock')
+
+// A call to the fake Herdr from a spec (its state, e.g. `e2e.pane_size`).
+export function fakeHerdr(method, params = {}) {
+  return new Promise((resolve, reject) => {
+    const conn = net.createConnection(fs.readFileSync(SOCK_FILE, 'utf8'))
+    let buf = ''
+    conn.setEncoding('utf8')
+    conn.on('error', reject)
+    conn.on('connect', () => conn.write(JSON.stringify({ id: 'spec', method, params }) + '\n'))
+    conn.on('data', (chunk) => { buf += chunk })
+    conn.on('end', () => {
+      try {
+        const res = JSON.parse(buf)
+        if (res.error) reject(new Error(res.error.message))
+        else resolve(res.result)
+      } catch (e) { reject(e) }
+    })
+  })
+}
 
 // Pane ids (Herdr format <workspace>:<pane>).
 export const CLAUDE_PANE = 'w1:p1'
@@ -66,6 +90,11 @@ function write(file, content) {
   fs.writeFileSync(file, content)
 }
 
+// A pasted install log (Claude wraps a paste in <pasted_content>) and a long
+// typed message: shown as a "Pasted text" card and a folded bubble.
+export const PASTED_LOG = Array.from({ length: 40 }, (_, i) => `==> Pouring libexample-${i}--2.1.0.arm64_sonoma.bottle.tar.gz`).join('\n')
+export const LONG_TYPED = Array.from({ length: 24 }, (_, i) => `Step ${i + 1}: check the cache entry again.`).join('\n')
+
 // Claude Code: ~/.claude/projects/<cwd with / and . as ->/<session id>.jsonl.
 function claudeTranscript(home, cwd, sid, now) {
   const enc = cwd.replace(/[/.]/g, '-')
@@ -74,6 +103,10 @@ function claudeTranscript(home, cwd, sid, now) {
   write(file, jsonl([
     { ...base, type: 'user', timestamp: iso(now - 60000), message: { role: 'user', content: 'After updating a user, GET /users/:id still returns the old name. Find out why.' } },
     { ...base, type: 'assistant', timestamp: iso(now - 50000), message: { model: 'claude-opus-4-1', role: 'assistant', content: [{ type: 'text', text: '`getUser` caches users forever and `updateUser` never clears the entry. I will add an expiry and clear it on update.' }] } },
+    { ...base, type: 'user', timestamp: iso(now - 40000), message: { role: 'user', content: `The install fails, here is the log:\n\n<pasted_content id="a1f2">\n${PASTED_LOG}\n</pasted_content id="a1f2">` } },
+    { ...base, type: 'assistant', timestamp: iso(now - 35000), message: { model: 'claude-opus-4-1', role: 'assistant', content: [{ type: 'text', text: 'The bottle is fine; the link step fails.' }] } },
+    { ...base, type: 'user', timestamp: iso(now - 30000), message: { role: 'user', content: LONG_TYPED } },
+    { ...base, type: 'assistant', timestamp: iso(now - 25000), message: { model: 'claude-opus-4-1', role: 'assistant', content: [{ type: 'text', text: 'All steps noted.' }] } },
   ]))
 }
 

@@ -289,11 +289,32 @@ export function openUrl(url) {
   return r.status === 0
 }
 
+// Does the published address answer? 'host' means wherdr answers but does not
+// know that name yet (`tailscale serve` run by hand): a local request to
+// /api/phone makes it check the address and save it as APP_URL
+// (server/utils/phone.ts), then it is asked again. `reach` / `allow` are
+// injectable for the tests.
+export async function phoneReach(localUrl, phoneUrl, { reach = reachable, allow = url => fetch(`${url}/api/phone`).catch(() => {}), timeoutMs = 8000 } = {}) {
+  let r = await reach(phoneUrl, timeoutMs)
+  if (r === 'host') { await allow(localUrl); r = await reach(phoneUrl, timeoutMs) }
+  return r
+}
+
+// The address to open: the tailnet one when wherdr is already published there
+// and it answers (passkeys are tied to the address they were created on),
+// else the local one.
+export async function openAddress(localUrl, port, { net = inspect, ...probes } = {}) {
+  const phone = (await net(port)).phone
+  if (!phone?.served) return localUrl
+  return await phoneReach(localUrl, phone.url, { timeoutMs: 5000, ...probes }) === 'ok' ? phone.url.replace(/\/$/, '') : localUrl
+}
+
 export async function open(opts) {
   const ctx = context(opts)
   if (await probe(ctx.port, ctx.host) !== 'wherdr') warn(`wherdr does not answer on port ${ctx.port}: run \`wherdr start\` first.`)
-  if (openUrl(ctx.url)) ok(`opened ${c.cyan(ctx.url)}`)
-  else say(ctx.url)
+  const url = await openAddress(ctx.url, ctx.port)
+  if (openUrl(url)) ok(`opened ${c.cyan(url)}`)
+  else say(url)
 }
 
 // ----------------------------------------------------------------- phone
@@ -325,7 +346,7 @@ export async function phone(opts) {
   else if (!net.connected || !net.phone) warn('Tailscale is not connected on this machine.')
   else if (!net.phone.served) warn(`${c.bold('Not reachable from your phone yet')}: wherdr is not published on your tailnet.`)
   else {
-    reach = await reachable(net.phone.url)
+    reach = await phoneReach(ctx.url, net.phone.url)
     if (reach === 'ok') ok(`${c.cyan(net.phone.url)} answers`)
     else warn(`${c.bold('Not reachable from your phone yet')}: ${net.phone.url} is published but ${reach === 'host' ? 'refused (APP_URL)' : 'does not answer'}.`)
   }
@@ -334,6 +355,7 @@ export async function phone(opts) {
     if (code) { say(); say(code.split('\n').map(l => `  ${l}`).join('\n')) }
     say(`  ${code ? 'Scan it with the iPhone camera' : `Open ${c.cyan(net.phone.url)} on the iPhone`}, then Share → Add to Home Screen.`)
     say('  In the app: Settings → Enable notifications, then Security → Enable passkey lock.')
+    say(`  Enable the lock on ${c.cyan(net.phone.url)}, not on localhost: a passkey is tied to its address.`)
   }
   say()
   say(`  Set up your phone in the app, on this computer: ${c.cyan(setup)}`)

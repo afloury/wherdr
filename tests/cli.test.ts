@@ -4,7 +4,7 @@ import type net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { context } from '../bin/lib/commands.mjs'
+import { context, openAddress } from '../bin/lib/commands.mjs'
 import { parseArgs, parseEnvFile, portTaken, serverEnv } from '../bin/lib/core.mjs'
 import { runtimeCandidates, temporaryInstall } from '../bin/lib/runtime.mjs'
 import { launchdPlist, systemdUnit } from '../bin/lib/service.mjs'
@@ -150,5 +150,31 @@ describe('port check', () => {
       await closed.promise
     }
     expect(await portTaken(port, '127.0.0.1')).toBeNull()
+  })
+})
+
+describe('wherdr open', () => {
+  const LOCAL = 'http://localhost:7683'
+  const phone = { url: 'https://box.example.ts.net:7683/', served: true, httpsPort: '7683' }
+  const net = (p: object | null) => async () => ({ installed: true, phone: p })
+
+  it('opens the tailnet address when wherdr is published there and it answers', async () => {
+    expect(await openAddress(LOCAL, '7683', { net: net(phone), reach: async () => 'ok' })).toBe('https://box.example.ts.net:7683')
+  })
+
+  it('lets wherdr allow a freshly published address, then opens it', async () => {
+    const reaches = ['host', 'ok']
+    const asked: string[] = []
+    expect(await openAddress(LOCAL, '7683', { net: net(phone), reach: async () => reaches.shift(), allow: async (u: string) => { asked.push(u) } })).toBe('https://box.example.ts.net:7683')
+    expect(asked).toEqual([LOCAL])
+  })
+
+  it('stays on localhost when unpublished, unanswered or without Tailscale', async () => {
+    const never = async () => { throw new Error('not probed') }
+    expect(await openAddress(LOCAL, '7683', { net: net({ ...phone, served: false }), reach: never })).toBe(LOCAL)
+    expect(await openAddress(LOCAL, '7683', { net: net(null), reach: never })).toBe(LOCAL)
+    expect(await openAddress(LOCAL, '7683', { net: async () => ({ installed: false }), reach: never })).toBe(LOCAL)
+    expect(await openAddress(LOCAL, '7683', { net: net(phone), reach: async () => 'unreachable' })).toBe(LOCAL)
+    expect(await openAddress(LOCAL, '7683', { net: net(phone), reach: async () => 'host', allow: async () => {} })).toBe(LOCAL)
   })
 })
