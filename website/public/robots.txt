@@ -1,0 +1,6 @@
+# wherdr.dev: everything may be crawled. /demo/ stays crawlable so that its
+# own "noindex" is read; a Disallow here would hide it.
+User-agent: *
+Allow: /
+
+Sitemap: https://wherdr.dev/sitemap.xml

@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **wherdr.dev for search engines**: `sitemap.xml` generated at build time with the date of each
+  page's last change, a `robots.txt` that names it, a canonical link, complete Open Graph and
+  Twitter Card tags with a new 1200×630 share image, and `SoftwareApplication` structured data.
+  The demo and the installer script stay out of search results.
 - **Update in one tap**: with the Herdr plugin (Node.js mode), a global npm install or Homebrew, the
   "wherdr X.Y.Z is available" banner (home screen, Settings › About) has an **Update** button, for
   a session on this computer or unlocked with a passkey. wherdr installs the new version in a

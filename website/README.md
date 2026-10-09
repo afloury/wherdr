@@ -18,6 +18,14 @@ makes no request to another site.
   `text/plain` for `/install` and long caching for `/_nuxt/`. Change both together.
 - **Deploy (private preview)**: `SITE_BIND=<tailscale-ip> docker compose up -d --build` — nginx on
   `${SITE_BIND:-127.0.0.1}:${SITE_PORT:-8120}`, serving the same `nuxt generate` output.
+- **Search engines and link previews**: `app/utils/seo.ts` holds the title, the description, the
+  pages of `sitemap.xml` and the JSON-LD `SoftwareApplication` block. `nuxt.config.ts` sets the
+  Open Graph / Twitter tags and writes `sitemap.xml` at build time, each page dated by the last
+  commit of its sources (the build date without Git history, as in the Docker build); the home
+  page adds the canonical link and the structured data. `public/robots.txt` allows everything and
+  names the sitemap. The demo (`/demo/`) is `noindex` and `/install` is sent with
+  `X-Robots-Tag: noindex`: neither is in the sitemap. `public/og.png` (1200×630) is a screenshot
+  of `tools/og.html`: open it in a 1200×630 viewport to redraw it.
 - **Background**: `components/GridBackground.vue` draws the hero and closing grid: dots at the
   line crossings and short glowing packets along the lines.
 - **Live demos**: the hero phone and desktop and the three feature stories play made-up sessions

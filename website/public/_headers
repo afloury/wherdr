@@ -10,9 +10,11 @@
 
 # `curl -fsSL https://wherdr.dev/install | sh`: a plain-text shell script,
 # always fresh. The file has no extension, so its type is set here.
+# Not a page: kept out of search results.
 /install
   Content-Type: text/plain; charset=utf-8
   Cache-Control: no-cache
+  X-Robots-Tag: noindex
 
 # Plain-text guides for coding agents and LLMs (/agent.md, /llms.txt).
 /agent.md
