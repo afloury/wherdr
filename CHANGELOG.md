@@ -12,8 +12,9 @@ All notable changes to this project are documented here. The format follows
   machine (at startup, every 30 seconds, and when an address it does not know is opened) and
   adopts the HTTPS address that points to its own port: allowed host and `APP_URL`, with no
   visit to Settings › Phone, so a server without a screen works too. An address removed from
-  `tailscale serve` is refused again. In Docker, wherdr reads Tailscale's socket, mounted
-  read-only by the new `docker-compose.yml` (`/var/run/tailscale`); the address it suggests now
+  `tailscale serve` is refused again. In Docker, wherdr reads Tailscale's socket, mounted by the
+  new `docker-compose.yml` (`/var/run/tailscale`; it gives the container Tailscale's local API
+  with the host user's rights, see the README, and can be removed); the address it suggests now
   carries the machine's name, not the container's. Nothing a request sends can enable an
   address, and one that `tailscale funnel` opens to the Internet is never adopted.
 - **The installer sets the phone up in Docker**: it offers to run `tailscale serve` (asked
@@ -55,6 +56,9 @@ All notable changes to this project are documented here. The format follows
   only says to open wherdr on the computer. It gives the command to run on the machine
   (`wherdr phone`, or the installer again for Docker and the Herdr plugin), and the address is
   now enabled without it in the usual case (see above).
+- **Phone address checks** (`wherdr phone`, the installer, the plugin) ask `/api/health`, which
+  goes through the host check, instead of the static manifest, which answers for any host name:
+  an address wherdr refuses is now reported as refused, not as answering.
 - **Setup guide and Settings › Phone opened on the tailnet address**: they show that address and
   its QR code instead of asking to open `http://localhost:7683`.
 - **Project panel**: opening it with the board already loaded (reopening a coordinator) no longer

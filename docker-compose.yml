@@ -70,10 +70,18 @@ services:
       # the app): their root folder, writable. Other root (`root` in
       # ~/.config/herdr-projects/config.toml): mount that one instead.
       - ${HOST_HOME:-${HOME}}/.herdr-projects:${HOST_HOME:-${HOME}}/.herdr-projects
-      # Tailscale's socket, read-only: the container has no `tailscale` command,
-      # so wherdr reads there which address `tailscale serve` publishes for its
-      # port and enables it by itself (and refuses it again once removed).
-      # Reading needs no rights; wherdr changes nothing through it. Without
-      # Tailscale on the host, Docker creates this folder empty: harmless.
-      # After Tailscale itself restarts (an update), restart this container.
+      # Tailscale's socket: the container has no `tailscale` command, so wherdr
+      # reads there which address `tailscale serve` publishes for its port and
+      # enables it by itself (and refuses it again once removed). wherdr only
+      # sends GET requests to it. What the mount gives is Tailscale's local API
+      # with the rights of the host user (the container runs with its UID):
+      # reading for anyone, and changing Tailscale's settings (serve, funnel…)
+      # when that user is Tailscale's operator (`tailscale set --operator`).
+      # `:ro` protects the folder, not the API. Not a new privilege: this
+      # container already drives Herdr, that is a shell of that same user.
+      # To do without it, remove the line: run the installer (or the plugin's
+      # phone step) after `tailscale serve`, it hands the address to wherdr.
+      # Without Tailscale on the host, Docker creates this folder empty:
+      # harmless. After Tailscale itself restarts (an update), restart this
+      # container.
       - /var/run/tailscale:/var/run/tailscale:ro

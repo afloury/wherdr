@@ -66,6 +66,17 @@ test('the refusal page gives a command to run on the machine, in both languages'
   expect(html.body).not.toContain('not-enabled.example.ts.net')
 })
 
+// What the phone address probes rely on (bin/lib/tailnet.mjs, the installer,
+// the plugin): /api/health goes through the host check, the manifest does not.
+test('/api/health tells a refused host, which the static manifest cannot', async ({ request }) => {
+  const refused = await get('/api/health', 'application/json')
+  expect(refused.status).toBe(403)
+  expect(JSON.parse(refused.body)).toMatchObject({ code: 'host' })
+  expect((await get('/manifest.webmanifest', 'application/json')).status).toBe(200)
+  const ok = await request.get('/api/health')
+  expect(await ok.json()).toMatchObject({ ok: true, name: 'wherdr' })
+})
+
 // The app opened on its tailnet address (HTTPS, not localhost): the requests
 // of that origin are answered by the test server, and /api/phone refuses as
 // it does through `tailscale serve` (only this computer may set the phone up).

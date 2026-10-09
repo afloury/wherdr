@@ -3,7 +3,7 @@
 // address, Tailscale's errors, and when the QR code shows.
 import { describe, expect, it } from 'vitest'
 import { keyCommand, render } from '../bin/lib/panel.mjs'
-import { phoneAddress, serveError, servedAddresses, servedPorts, tailnetDomain, tailnetStatus, tailnetUrl, tailscaleBin } from '../bin/lib/tailnet.mjs'
+import { healthReach, phoneAddress, serveError, servedAddresses, servedPorts, tailnetDomain, tailnetStatus, tailnetUrl, tailscaleBin } from '../bin/lib/tailnet.mjs'
 
 const URL = 'https://box.example.ts.net:7683/'
 const state = (over: Record<string, unknown> = {}) => ({
@@ -129,6 +129,21 @@ describe('addresses published for wherdr', () => {
     expect(servedAddresses(NAME, '7683', '{}')).toEqual([])
     for (const unread of ['', 'not json', 'null', '[]']) expect(servedAddresses(NAME, '7683', unread)).toBeNull()
     expect(servedAddresses(null, '7683', '{}')).toBeNull()
+  })
+})
+
+// The probes ask /api/health, which goes through wherdr's host check (the
+// static manifest answers for any host name).
+describe('phone address probe', () => {
+  it('tells an address wherdr accepts from one it refuses', () => {
+    expect(healthReach(200, '{"ok":true,"name":"wherdr","version":"1.4.0"}')).toBe('ok')
+    expect(healthReach(403, '{"error":"Host not allowed","code":"host"}')).toBe('host')
+  })
+  it('leaves an older wherdr or another program to the manifest check', () => {
+    expect(healthReach(404, '{"error":"Not found"}')).toBeNull()
+    expect(healthReach(401, '{"code":"locked"}')).toBeNull()
+    expect(healthReach(200, '<html>something else</html>')).toBeNull()
+    expect(healthReach(403, 'Forbidden')).toBeNull()
   })
 })
 

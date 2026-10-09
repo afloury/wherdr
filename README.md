@@ -384,8 +384,17 @@ host and `APP_URL`, saved in `data/app-url.json`; an HTTPS `APP_URL` in `.env` w
 removed from `tailscale serve` is refused again. Nothing a request says can enable an address:
 only Tailscale's own state on the machine does, and an address that `tailscale funnel` opens to
 the Internet is never adopted. Without Docker, wherdr runs the `tailscale` command; in Docker
-it reads Tailscale's socket, mounted read-only by `docker-compose.yml`
-(`/var/run/tailscale`). After Tailscale itself restarts (an update), restart the container.
+it reads Tailscale's socket, mounted by `docker-compose.yml` (`/var/run/tailscale`). After
+Tailscale itself restarts (an update), restart the container.
+
+What that mount gives: Tailscale's local API, with the rights of the host user the container
+runs as. Anyone may read it; if that user is Tailscale's operator
+(`tailscale set --operator=$USER`), the API also accepts changes from it (serve, funnel…), and
+`:ro` on the folder does not prevent that. wherdr itself only sends `GET` requests. This is not
+a new privilege: the container already drives Herdr, which is a shell of that same user. To do
+without it, remove the line from `docker-compose.yml`: wherdr then no longer finds the address
+by itself, and the one command (or the plugin's phone step) run after `tailscale serve` hands
+it over.
 
 **Settings › Phone** on the server (`http://localhost:7683/#/settings?section=phone`) shows the
 state and the QR code; without Docker it also publishes wherdr itself: one button, asked first.

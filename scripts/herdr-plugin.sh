@@ -586,6 +586,20 @@ adopt_address() {
     -d "{\"action\":\"address\",\"url\":\"https://$1/\"}" "http://127.0.0.1:$PORT/api/phone" 2>/dev/null || true
 }
 
+# Does the phone address answer? "ok" (wherdr, and it accepts that address),
+# "host" (wherdr refuses that address), or "none". /api/health goes through
+# wherdr's host check; the static manifest answers for any host name and only
+# recognizes a wherdr older than that route.
+phone_reach() {
+  command -v curl >/dev/null 2>&1 || { echo none; return 0; }
+  body="$(curl -s --max-time 8 "${1}api/health" 2>/dev/null || true)"
+  case "$body" in
+    *'"name":"wherdr"'*) echo ok ;;
+    *'"code":"host"'*) echo host ;;
+    *) if curl -fsS --max-time 8 "${1}manifest.webmanifest" 2>/dev/null | grep -q wherdr; then echo ok; else echo none; fi ;;
+  esac
+}
+
 # The tailnet address `tailscale serve` already publishes for wherdr's local
 # port (https://<machine>.<tailnet>.ts.net[:port]), only when it answers like
 # wherdr. Passkeys are tied to the address: that is the one to open.
@@ -593,7 +607,7 @@ tailnet_address() {
   command -v curl >/dev/null 2>&1 || return 1
   host="$(served_host)" || return 1
   adopt_address "$host"
-  curl -fsS --max-time 8 "https://$host/manifest.webmanifest" 2>/dev/null | grep -q wherdr || return 1
+  [ "$(phone_reach "https://$host/")" = ok ] || return 1
   printf 'https://%s\n' "$host"
 }
 
@@ -654,7 +668,8 @@ cmd_phone() {
   if [ -n "$host" ]; then
     phone="https://$host/"
     adopt_address "$host"
-    if command -v curl >/dev/null 2>&1 && curl -fsS --max-time 8 "${phone}manifest.webmanifest" 2>/dev/null | grep -q wherdr; then
+    reach="$(phone_reach "$phone")"
+    if [ "$reach" = ok ]; then
       say "  ✓ $phone answers"
       say ""
       if command -v qrencode >/dev/null 2>&1; then
@@ -664,10 +679,12 @@ cmd_phone() {
       fi
       say "  Open it on the phone, add it to the home screen, then in the app:"
       say "  Settings → Enable notifications, then Security → Enable passkey lock."
+    elif [ "$reach" = host ]; then
+      say "  ! Not reachable from your phone yet: wherdr answers on $phone but refuses that address."
+      say "    Restart wherdr (X then S in the panel): it reads Tailscale at startup. Then run this again."
     else
       say "  ! Not reachable from your phone yet: $phone is published but does not answer like wherdr."
       say "    A new address can take a minute (HTTPS certificate); then run this again."
-      say "    Still refused: restart wherdr (X then S in the panel), it reads Tailscale at startup."
     fi
   elif ! tailscale_bin >/dev/null 2>&1; then
     say "  ! Tailscale is not installed on this machine: https://tailscale.com/download"

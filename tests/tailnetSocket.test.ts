@@ -11,13 +11,13 @@ import { inspect, tailscaledSocket } from '../bin/lib/tailnet.mjs'
 const NAME = 'host.example.ts.net'
 const dir = mkdtempSync(path.join(os.tmpdir(), 'wherdr-ts-'))
 const socket = path.join(dir, 'tailscaled.sock')
-const seen: { url: string, host: string }[] = []
+const seen: { method: string, url: string, host: string }[] = []
 const answers = {
   status: JSON.stringify({ BackendState: 'Running', Self: { DNSName: `${NAME}.` }, CertDomains: [NAME] }),
   serve: JSON.stringify({ Web: { [`${NAME}:7683`]: { Handlers: { '/': { Proxy: 'http://127.0.0.1:7683' } } } } }),
 }
 const server = http.createServer((req, res) => {
-  seen.push({ url: req.url || '', host: req.headers.host || '' })
+  seen.push({ method: req.method || '', url: req.url || '', host: req.headers.host || '' })
   if (req.method !== 'GET') { res.statusCode = 405; res.end(); return }
   if (req.url === '/localapi/v0/status?peers=false') res.end(answers.status)
   else if (req.url === '/localapi/v0/serve-config') res.end(answers.serve)
@@ -38,6 +38,7 @@ describe('Tailscale read from its socket', () => {
     expect(net).toMatchObject({ installed: true, connected: true, https: true, name: NAME, phone: { url: `https://${NAME}:7683/`, served: true }, served: [`https://${NAME}:7683/`] })
     // Only reads, with the host name Tailscale's local API expects.
     expect(seen.every(r => r.host === 'local-tailscaled.sock')).toBe(true)
+    expect(seen.map(r => `${r.method} ${r.url}`)).toEqual(['GET /localapi/v0/status?peers=false', 'GET /localapi/v0/serve-config'])
   })
 
   it('reports nothing published, and the unknown when the socket does not answer', async () => {

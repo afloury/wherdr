@@ -524,10 +524,13 @@ docker_phone() {
     say "  Open it on the phone, add it to the home screen, then in the app:"
     say "  Settings → Enable notifications, then Security → Enable passkey lock"
     say "  (first token: ${C}cd $DIR && docker compose logs${R})."
+  elif [ "$(phone_reach "$phone")" = host ]; then
+    warn "wherdr answers on $phone but refuses that address."
+    say "     Restart it: ${C}cd $DIR && docker compose up -d --force-recreate${R}"
+    say "     (wherdr reads Tailscale when it starts), then run this script again."
   else
     warn "$phone is published but does not answer like wherdr yet."
-    say "     Try it in a minute. Still refused: ${C}cd $DIR && docker compose up -d --force-recreate${R}"
-    say "     (wherdr reads Tailscale when it starts), then run this script again."
+    say "     A new address takes up to a minute (HTTPS certificate): run this script again then."
   fi
 }
 
@@ -542,14 +545,26 @@ post_address() {
   fi
 }
 
-# The address answers like wherdr (its web app manifest).
-wherdr_at() {
+# Does the phone address answer? "ok" (wherdr, and it accepts that address),
+# "host" (wherdr refuses that address), or "none". /api/health goes through
+# wherdr's host check; the static manifest answers for any host name and only
+# recognizes a wherdr older than that route.
+phone_reach() {
   if [ "$FETCH" = "curl" ]; then
-    curl -fs --max-time 8 "${1}manifest.webmanifest" 2>/dev/null | grep -q '"wherdr"'
+    body="$(curl -s --max-time 8 "${1}api/health" 2>/dev/null || true)"
+    case "$body" in
+      *'"name":"wherdr"'*) echo ok; return 0 ;;
+      *'"code":"host"'*) echo host; return 0 ;;
+    esac
+    if curl -fs --max-time 8 "${1}manifest.webmanifest" 2>/dev/null | grep -q '"wherdr"'; then echo ok; else echo none; fi
   else
-    wget -q -O - -T 8 "${1}manifest.webmanifest" 2>/dev/null | grep -q '"wherdr"'
+    # wget prints no body for an error: the status line tells a refusal (403).
+    if wget -q -O - -T 8 "${1}api/health" 2>/dev/null | grep -q '"wherdr"'; then echo ok; return 0; fi
+    if wget -S -q -O /dev/null -T 8 "${1}api/health" 2>&1 | grep -q 'HTTP/[0-9.]* 403'; then echo host; return 0; fi
+    if wget -q -O - -T 8 "${1}manifest.webmanifest" 2>/dev/null | grep -q '"wherdr"'; then echo ok; else echo none; fi
   fi
 }
+wherdr_at() { [ "$(phone_reach "$1")" = ok ]; }
 
 # ------------------------------------------------------------- helpers
 setup_colors() {

@@ -29,8 +29,9 @@ export function tailscaleBin(env = process.env, exists = existsSync) {
 
 // Tailscale's own socket on Linux. Its local API answers the same JSON as the
 // CLI: a Docker container has no `tailscale` command, but docker-compose.yml
-// mounts this folder, so wherdr reads the state there. Reading needs no
-// rights; changing anything does, and wherdr never tries through the socket.
+// mounts this folder, so wherdr reads the state there. Anyone may read; the
+// API also accepts changes from Tailscale's operator, but wherdr only ever
+// sends GET requests to it (localApi below).
 export const TAILSCALED_SOCKET = '/var/run/tailscale/tailscaled.sock'
 export function tailscaledSocket(env = process.env, exists = existsSync) {
   const file = env.WHERDR_TAILSCALED_SOCKET || TAILSCALED_SOCKET
@@ -209,27 +210,47 @@ export function failureCause(err) {
   return 'network'
 }
 
-// reachable() with the details: { reach, cause?, status? }: `cause` when
-// unreachable (failureCause), `status` the HTTP code when something answered.
-export function probe(url, timeoutMs = 8000) {
+// GET of `route` on the address → { status, text }, or { cause } when it failed.
+function fetchText(url, route, timeoutMs) {
   const { promise, resolve } = Promise.withResolvers()
   let u
-  try { u = new URL('manifest.webmanifest', url) } catch { return Promise.resolve({ reach: 'unreachable', cause: 'network' }) }
+  try { u = new URL(route, url) } catch { return Promise.resolve({ cause: 'network' }) }
   // Accept JSON: a refused host then answers { code: 'host' }, not the HTML page.
   const req = https.get(u, { lookup, timeout: timeoutMs, headers: { accept: 'application/json' } }, (res) => {
     let text = ''
     res.setEncoding('utf8')
     res.on('data', (c) => { if (text.length < 65536) text += c })
-    res.on('end', () => {
-      const status = res.statusCode || 0
-      if (status >= 200 && status < 300) resolve({ reach: text.includes('wherdr') ? 'ok' : 'other', status })
-      else resolve({ reach: status === 403 && /"code"\s*:\s*"host"/.test(text) ? 'host' : 'other', status })
-    })
-    res.on('error', e => resolve({ reach: 'unreachable', cause: failureCause(e) }))
+    res.on('end', () => resolve({ status: res.statusCode || 0, text }))
+    res.on('error', e => resolve({ cause: failureCause(e) }))
   })
   req.on('timeout', () => req.destroy(new Error('timeout')))
-  req.on('error', e => resolve({ reach: 'unreachable', cause: failureCause(e) }))
+  req.on('error', e => resolve({ cause: failureCause(e) }))
   return promise
+}
+
+// What an answer of /api/health means: 'ok' (wherdr, and it accepts this
+// address), 'host' (wherdr's host check refused it), or null: not a wherdr
+// that has this route (versions up to 1.3.1, or another program).
+export function healthReach(status, text) {
+  if (status >= 200 && status < 300 && /"name"\s*:\s*"wherdr"/.test(text)) return 'ok'
+  if (status === 403 && /"code"\s*:\s*"host"/.test(text)) return 'host'
+  return null
+}
+
+// reachable() with the details: { reach, cause?, status? }: `cause` when
+// unreachable (failureCause), `status` the HTTP code when something answered.
+// /api/health is asked first: it goes through wherdr's host check, which the
+// static manifest does not (it answers for any host name). The manifest only
+// recognizes an older wherdr without that route.
+export async function probe(url, timeoutMs = 8000) {
+  const health = await fetchText(url, 'api/health', timeoutMs)
+  if (health.cause) return { reach: 'unreachable', cause: health.cause }
+  const reach = healthReach(health.status, health.text)
+  if (reach) return { reach, status: health.status }
+  const manifest = await fetchText(url, 'manifest.webmanifest', timeoutMs)
+  if (manifest.cause) return { reach: 'unreachable', cause: manifest.cause }
+  const ok = manifest.status >= 200 && manifest.status < 300 && manifest.text.includes('wherdr')
+  return { reach: ok ? 'ok' : 'other', status: ok ? manifest.status : health.status }
 }
 
 // Runs `tailscale <args>` without a terminal → { code, output }. On a tailnet

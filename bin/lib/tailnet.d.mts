@@ -35,6 +35,7 @@ export function serveError(output: string): { code: ServeErrorCode, link: string
 export function inspect(port: string | number, bin?: string | null, socket?: string | null): Promise<Tailnet>
 export function tailnetDomain(resolvConf: string): string | null
 export function reachable(url: string, timeoutMs?: number): Promise<Reach>
+export function healthReach(status: number, text: string): 'ok' | 'host' | null
 export function probe(url: string, timeoutMs?: number): Promise<Probe>
 export function failureCause(err: unknown): ReachCause
 export function runTailscale(bin: string, args: string[], timeoutMs?: number): Promise<{ code: number, output: string }>
