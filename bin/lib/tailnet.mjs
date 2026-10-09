@@ -7,6 +7,7 @@
 import { execFile } from 'node:child_process'
 import dns from 'node:dns'
 import { existsSync } from 'node:fs'
+import http from 'node:http'
 import https from 'node:https'
 import path from 'node:path'
 import { promisify } from 'node:util'
@@ -26,6 +27,32 @@ export function tailscaleBin(env = process.env, exists = existsSync) {
   return dirs.find(p => exists(p)) || null
 }
 
+// Tailscale's own socket on Linux. Its local API answers the same JSON as the
+// CLI: a Docker container has no `tailscale` command, but docker-compose.yml
+// mounts this folder, so wherdr reads the state there. Anyone may read; the
+// API also accepts changes from Tailscale's operator, but wherdr only ever
+// sends GET requests to it (localApi below).
+export const TAILSCALED_SOCKET = '/var/run/tailscale/tailscaled.sock'
+export function tailscaledSocket(env = process.env, exists = existsSync) {
+  const file = env.WHERDR_TAILSCALED_SOCKET || TAILSCALED_SOCKET
+  return exists(file) ? file : null
+}
+
+// GET on Tailscale's local API → the body, '' on any failure.
+function localApi(socketPath, route, timeoutMs = 4000) {
+  const { promise, resolve } = Promise.withResolvers()
+  const req = http.get({ socketPath, path: `/localapi/v0/${route}`, headers: { host: 'local-tailscaled.sock' }, timeout: timeoutMs }, (res) => {
+    let text = ''
+    res.setEncoding('utf8')
+    res.on('data', (c) => { if (text.length < 1 << 20) text += c })
+    res.on('end', () => resolve(res.statusCode === 200 ? text : ''))
+    res.on('error', () => resolve(''))
+  })
+  req.on('timeout', () => req.destroy())
+  req.on('error', () => resolve(''))
+  return promise
+}
+
 // `tailscale status --json` → { name, connected, https }: this machine's
 // tailnet name (machine.tailnet.ts.net) or null, whether Tailscale is up,
 // and whether the tailnet issues HTTPS certificates.
@@ -40,20 +67,49 @@ export function tailnetStatus(statusJson) {
   }
 }
 
+// The HTTPS entries of a serve configuration that proxy to wherdr's local
+// port on this machine's own name: [{ hostPort, httpsPort, funnel }], or null
+// when the configuration could not be read (Tailscale stopped, not JSON).
+// Background entries (`--bg`) and those of a `tailscale serve` still running
+// in a terminal (Foreground) both count. `funnel`: also open to the Internet.
+function wherdrEntries(name, port, serveJson) {
+  let config = null
+  try { config = JSON.parse(serveJson) } catch {}
+  if (!name || !config || typeof config !== 'object' || Array.isArray(config)) return null
+  const target = new RegExp(`^(https?://)?(127\\.0\\.0\\.1|localhost):${port}/?$`)
+  const out = []
+  for (const part of [config, ...Object.values(config.Foreground || {})]) {
+    for (const [hostPort, entry] of Object.entries(part?.Web || {})) {
+      const colon = hostPort.lastIndexOf(':')
+      if (hostPort.slice(0, colon).toLowerCase() !== name.toLowerCase()) continue
+      if (!Object.values(entry?.Handlers || {}).some(h => target.test(h?.Proxy || ''))) continue
+      out.push({ hostPort, httpsPort: hostPort.slice(colon + 1), funnel: Boolean(part.AllowFunnel?.[hostPort]) })
+    }
+  }
+  return out
+}
+
+const addressOf = (name, httpsPort) => `https://${name}${httpsPort === '443' ? '' : `:${httpsPort}`}/`
+
 // Phone address: the `tailscale serve` entry whose proxy targets wherdr's
 // local port (served on any HTTPS port), else the address publishing would
 // give (same port) with served: false. Null without a tailnet name.
 export function phoneAddress(name, port, serveJson) {
   if (!name) return null
-  let web = {}
-  try { web = JSON.parse(serveJson || '{}')?.Web || {} } catch {}
-  const target = new RegExp(`^(https?://)?(127\\.0\\.0\\.1|localhost):${port}/?$`)
-  for (const [hostPort, entry] of Object.entries(web)) {
-    if (!Object.values(entry?.Handlers || {}).some(h => target.test(h?.Proxy || ''))) continue
-    const servedPort = hostPort.slice(hostPort.lastIndexOf(':') + 1)
-    return { url: `https://${name}${servedPort === '443' ? '' : `:${servedPort}`}/`, served: true, httpsPort: servedPort }
-  }
+  const entries = wherdrEntries(name, port, serveJson) || []
+  const hit = entries.find(e => !e.funnel) || entries[0]
+  if (hit) return { url: addressOf(name, hit.httpsPort), served: true, httpsPort: hit.httpsPort, ...(hit.funnel ? { funnel: true } : {}) }
   return { url: `https://${name}:${port}/`, served: false, httpsPort: String(port) }
+}
+
+// The addresses wherdr adopts by itself (server/utils/phone.ts): what
+// `tailscale serve` publishes for its port on this machine's name, read from
+// Tailscale, which only the owner of the machine configures. null: unknown
+// (nothing is changed then); []: nothing is published. An address that
+// `tailscale funnel` also opens to the Internet is never adopted.
+export function servedAddresses(name, port, serveJson) {
+  const entries = wherdrEntries(name, port, serveJson)
+  return entries && entries.filter(e => !e.funnel).map(e => addressOf(name, e.httpsPort))
 }
 
 // HTTPS ports already published by `tailscale serve` (for anything).
@@ -92,16 +148,18 @@ export function serveError(output) {
   return null
 }
 
-// Tailscale's state for wherdr's port: { installed, bin, connected, https, name, phone, taken }.
-export async function inspect(port, bin = tailscaleBin()) {
-  if (!bin) return { installed: false }
+// Tailscale's state for wherdr's port: { installed, bin, socket, connected,
+// https, name, phone, taken, served }. Read with the CLI, or without one
+// (Docker) from Tailscale's socket.
+export async function inspect(port, bin = tailscaleBin(), socket = bin ? null : tailscaledSocket()) {
+  if (!bin && !socket) return { installed: false }
   const run = args => exec(bin, args, { encoding: 'utf8', timeout: 8000 }).then(r => r.stdout, () => '')
-  const status = tailnetStatus(await run(['status', '--json']))
-  const serve = status.name ? await run(['serve', 'status', '--json']) : ''
+  const status = tailnetStatus(bin ? await run(['status', '--json']) : await localApi(socket, 'status?peers=false'))
+  const serve = !status.name ? '' : bin ? await run(['serve', 'status', '--json']) : await localApi(socket, 'serve-config')
   const phone = phoneAddress(status.name, port, serve)
   // Publishing on wherdr's port would replace whatever else is served there.
   const taken = Boolean(phone && !phone.served && servedPorts(serve).includes(String(port)))
-  return { installed: true, bin, ...status, phone, taken }
+  return { installed: true, bin, socket, ...status, phone, taken, served: servedAddresses(status.name, port, serve) }
 }
 
 // The tailnet's DNS suffix (tailnet.ts.net) from /etc/resolv.conf's search
@@ -152,27 +210,47 @@ export function failureCause(err) {
   return 'network'
 }
 
-// reachable() with the details: { reach, cause?, status? }: `cause` when
-// unreachable (failureCause), `status` the HTTP code when something answered.
-export function probe(url, timeoutMs = 8000) {
+// GET of `route` on the address → { status, text }, or { cause } when it failed.
+function fetchText(url, route, timeoutMs) {
   const { promise, resolve } = Promise.withResolvers()
   let u
-  try { u = new URL('manifest.webmanifest', url) } catch { return Promise.resolve({ reach: 'unreachable', cause: 'network' }) }
+  try { u = new URL(route, url) } catch { return Promise.resolve({ cause: 'network' }) }
   // Accept JSON: a refused host then answers { code: 'host' }, not the HTML page.
   const req = https.get(u, { lookup, timeout: timeoutMs, headers: { accept: 'application/json' } }, (res) => {
     let text = ''
     res.setEncoding('utf8')
     res.on('data', (c) => { if (text.length < 65536) text += c })
-    res.on('end', () => {
-      const status = res.statusCode || 0
-      if (status >= 200 && status < 300) resolve({ reach: text.includes('wherdr') ? 'ok' : 'other', status })
-      else resolve({ reach: status === 403 && /"code"\s*:\s*"host"/.test(text) ? 'host' : 'other', status })
-    })
-    res.on('error', e => resolve({ reach: 'unreachable', cause: failureCause(e) }))
+    res.on('end', () => resolve({ status: res.statusCode || 0, text }))
+    res.on('error', e => resolve({ cause: failureCause(e) }))
   })
   req.on('timeout', () => req.destroy(new Error('timeout')))
-  req.on('error', e => resolve({ reach: 'unreachable', cause: failureCause(e) }))
+  req.on('error', e => resolve({ cause: failureCause(e) }))
   return promise
+}
+
+// What an answer of /api/health means: 'ok' (wherdr, and it accepts this
+// address), 'host' (wherdr's host check refused it), or null: not a wherdr
+// that has this route (versions up to 1.3.1, or another program).
+export function healthReach(status, text) {
+  if (status >= 200 && status < 300 && /"name"\s*:\s*"wherdr"/.test(text)) return 'ok'
+  if (status === 403 && /"code"\s*:\s*"host"/.test(text)) return 'host'
+  return null
+}
+
+// reachable() with the details: { reach, cause?, status? }: `cause` when
+// unreachable (failureCause), `status` the HTTP code when something answered.
+// /api/health is asked first: it goes through wherdr's host check, which the
+// static manifest does not (it answers for any host name). The manifest only
+// recognizes an older wherdr without that route.
+export async function probe(url, timeoutMs = 8000) {
+  const health = await fetchText(url, 'api/health', timeoutMs)
+  if (health.cause) return { reach: 'unreachable', cause: health.cause }
+  const reach = healthReach(health.status, health.text)
+  if (reach) return { reach, status: health.status }
+  const manifest = await fetchText(url, 'manifest.webmanifest', timeoutMs)
+  if (manifest.cause) return { reach: 'unreachable', cause: manifest.cause }
+  const ok = manifest.status >= 200 && manifest.status < 300 && manifest.text.includes('wherdr')
+  return { reach: ok ? 'ok' : 'other', status: ok ? manifest.status : health.status }
 }
 
 // Runs `tailscale <args>` without a terminal → { code, output }. On a tailnet

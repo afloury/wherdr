@@ -117,12 +117,15 @@ describe.skipIf(process.platform === 'win32' || !which('curl'))('herdr plugin, n
 
   // A fake `tailscale` whose `serve status --json` is `serve`, and a `curl`
   // that answers like wherdr for the tailnet name (no tailnet in the tests).
-  function fakeTailnet(serve: string, answers = true) {
+  // `answers` 'refused': wherdr answers there but its host check refuses the
+  // name (/api/health → 403 host), while the static manifest still answers.
+  function fakeTailnet(serve: string, answers: boolean | 'refused' = true) {
     const dir = path.join(tmp, 'tailnet')
     mkdirSync(dir, { recursive: true })
     writeFileSync(path.join(dir, 'serve.json'), serve)
     writeFileSync(path.join(dir, 'tailscale'), `#!/bin/sh\n[ "$1 $2 $3" = "serve status --json" ] && cat "${dir}/serve.json"\nexit 0\n`)
-    writeFileSync(path.join(dir, 'curl'), `#!/bin/sh\nfor a in "$@"; do case "$a" in https://box.example.ts.net*) ${answers ? `echo '{"name":"wherdr"}'; exit 0` : 'exit 7'} ;; esac; done\nexec ${which('curl')} "$@"\n`)
+    const refused = `https://box.example.ts.net*/api/health) echo '{"error":"Host not allowed","code":"host"}'; exit 0 ;; `
+    writeFileSync(path.join(dir, 'curl'), `#!/bin/sh\nfor a in "$@"; do case "$a" in ${answers === 'refused' ? refused : ''}https://box.example.ts.net*) ${answers ? `echo '{"name":"wherdr"}'; exit 0` : 'exit 7'} ;; esac; done\nexec ${which('curl')} "$@"\n`)
     chmodSync(path.join(dir, 'tailscale'), 0o755); chmodSync(path.join(dir, 'curl'), 0o755)
     return dir
   }
@@ -152,6 +155,8 @@ describe.skipIf(process.platform === 'win32' || !which('curl'))('herdr plugin, n
     expect(run('address', path.join(tmp, 'tailnet')).stdout.trim()).toBe(local)
     expect(run('address', fakeTailnet(served(port, port), false)).stdout.trim()).toBe(local)
     expect(run('address', fakeTailnet('{}')).stdout.trim()).toBe(local)
+    // wherdr refuses the name: its manifest answers all the same, /api/health tells.
+    expect(run('address', fakeTailnet(served(port, port), 'refused')).stdout.trim()).toBe(local)
     expect(run('address').stdout.trim()).toBe(local)
   })
 

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createAuth } from '../server/utils/auth'
-import { allowedHosts, crossSiteRequest, HOST_REFUSED_PAGE, hostAllowed, hostRefusalIsHtml } from '../server/utils/hosts'
+import { allowedHosts, crossSiteRequest, hostAllowed, hostRefusalIsHtml, hostRefusedPage, phoneFixCommand } from '../server/utils/hosts'
 import { cspForHtml } from '../server/utils/csp'
 
 const req = (cookie = '') => ({ headers: { origin: 'http://localhost:7683', cookie } })
@@ -32,10 +32,28 @@ describe('allowed hosts', () => {
     expect(hostRefusalIsHtml('/', undefined)).toBe(false)
     expect(hostRefusalIsHtml('/', '*/*')).toBe(false)
   })
-  it('keeps the refusal page free of hosts, addresses and scripts', () => {
-    expect(HOST_REFUSED_PAGE).toContain('This address isn\'t enabled yet.')
-    expect(HOST_REFUSED_PAGE).toContain('Cette adresse n’est pas encore activée.')
-    expect(HOST_REFUSED_PAGE).not.toMatch(/<script|<form|ts\.net|https?:\/\/|APP_URL/i)
+  it('keeps the refusal page free of the instance’s hosts and addresses, and of scripts', () => {
+    for (const install of ['brew', 'npm', 'docker', 'plugin', '']) {
+      const page = hostRefusedPage(install)
+      expect(page).toContain('This address isn\'t enabled yet.')
+      expect(page).toContain('Cette adresse n’est pas encore activée.')
+      // The only address in it is the public installer's.
+      expect(page.replaceAll('https://wherdr.dev/install', '')).not.toMatch(/<script|<form|ts\.net|https?:\/\/|APP_URL|localhost/i)
+    }
+  })
+  it('gives a command that works on a machine without a screen, for each kind of install', () => {
+    expect(phoneFixCommand('brew')).toBe('wherdr phone')
+    expect(phoneFixCommand('npm-global')).toBe('wherdr phone')
+    expect(phoneFixCommand('npm')).toBe('npx wherdr phone')
+    expect(phoneFixCommand('')).toBe('npx wherdr phone')
+    // No `wherdr` command on the host there: the installer ends with the same check.
+    for (const install of ['docker', 'docker-build', 'plugin']) expect(phoneFixCommand(install)).toBe('curl -fsSL https://wherdr.dev/install | sh')
+    expect(hostRefusedPage('docker')).toContain('<pre><code>curl -fsSL https://wherdr.dev/install | sh</code></pre>')
+  })
+  it('allows the hosts read from tailscale serve, next to the others', () => {
+    const served = allowedHosts('', '', {}, ['host.example.ts.net'])
+    expect(hostAllowed('host.example.ts.net:7683', served)).toBe(true)
+    expect(hostAllowed('other.example.ts.net:7683', served)).toBe(false)
   })
 })
 

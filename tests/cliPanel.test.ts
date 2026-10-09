@@ -3,7 +3,7 @@
 // address, Tailscale's errors, and when the QR code shows.
 import { describe, expect, it } from 'vitest'
 import { keyCommand, render } from '../bin/lib/panel.mjs'
-import { phoneAddress, serveError, servedPorts, tailnetDomain, tailnetStatus, tailnetUrl, tailscaleBin } from '../bin/lib/tailnet.mjs'
+import { healthReach, phoneAddress, serveError, servedAddresses, servedPorts, tailnetDomain, tailnetStatus, tailnetUrl, tailscaleBin } from '../bin/lib/tailnet.mjs'
 
 const URL = 'https://box.example.ts.net:7683/'
 const state = (over: Record<string, unknown> = {}) => ({
@@ -96,6 +96,54 @@ describe('Docker: the address typed by hand', () => {
   it('finds the tailnet suffix in the search line copied from the host', () => {
     expect(tailnetDomain('nameserver 192.168.1.1\nsearch home.lan example.ts.net\noptions ndots:1\n')).toBe('example.ts.net')
     expect(tailnetDomain('nameserver 1.1.1.1\n')).toBeNull()
+  })
+})
+
+// What wherdr adopts by itself: only what `tailscale serve` publishes for its
+// own port, on this machine's own name.
+describe('addresses published for wherdr', () => {
+  const NAME = 'host.example.ts.net'
+  const web = (entries: Record<string, string>) => Object.fromEntries(Object.entries(entries).map(([k, proxy]) => [k, { Handlers: { '/': { Proxy: proxy } } }]))
+  const config = (o: object) => JSON.stringify(o)
+
+  it('lists the HTTPS addresses of this machine that proxy to wherdr’s port', () => {
+    const serve = config({ TCP: { 7683: { HTTPS: true } }, Web: web({ [`${NAME}:7683`]: 'http://127.0.0.1:7683', [`${NAME}:443`]: 'http://localhost:7683', [`${NAME}:8101`]: 'http://127.0.0.1:8101' }) })
+    expect(servedAddresses(NAME, '7683', serve)).toEqual([`https://${NAME}:7683/`, `https://${NAME}/`])
+  })
+
+  it('counts a `tailscale serve` still running in a terminal', () => {
+    const serve = config({ Foreground: { abc: { Web: web({ [`${NAME}:7683`]: 'http://127.0.0.1:7683' }) } } })
+    expect(servedAddresses(NAME, '7683', serve)).toEqual([`https://${NAME}:7683/`])
+    expect(phoneAddress(NAME, '7683', serve)).toMatchObject({ served: true, httpsPort: '7683' })
+  })
+
+  it('ignores another port, another name, and an address opened to the Internet', () => {
+    expect(servedAddresses(NAME, '7683', config({ Web: web({ [`${NAME}:7683`]: 'http://127.0.0.1:3000' }) }))).toEqual([])
+    expect(servedAddresses(NAME, '7683', config({ Web: web({ 'other.example.ts.net:7683': 'http://127.0.0.1:7683' }) }))).toEqual([])
+    const funnel = config({ Web: web({ [`${NAME}:443`]: 'http://127.0.0.1:7683' }), AllowFunnel: { [`${NAME}:443`]: true } })
+    expect(servedAddresses(NAME, '7683', funnel)).toEqual([])
+    expect(phoneAddress(NAME, '7683', funnel)).toEqual({ url: `https://${NAME}/`, served: true, httpsPort: '443', funnel: true })
+  })
+
+  it('tells nothing published ([]) from a configuration it could not read (null)', () => {
+    expect(servedAddresses(NAME, '7683', '{}')).toEqual([])
+    for (const unread of ['', 'not json', 'null', '[]']) expect(servedAddresses(NAME, '7683', unread)).toBeNull()
+    expect(servedAddresses(null, '7683', '{}')).toBeNull()
+  })
+})
+
+// The probes ask /api/health, which goes through wherdr's host check (the
+// static manifest answers for any host name).
+describe('phone address probe', () => {
+  it('tells an address wherdr accepts from one it refuses', () => {
+    expect(healthReach(200, '{"ok":true,"name":"wherdr","version":"1.4.0"}')).toBe('ok')
+    expect(healthReach(403, '{"error":"Host not allowed","code":"host"}')).toBe('host')
+  })
+  it('leaves an older wherdr or another program to the manifest check', () => {
+    expect(healthReach(404, '{"error":"Not found"}')).toBeNull()
+    expect(healthReach(401, '{"code":"locked"}')).toBeNull()
+    expect(healthReach(200, '<html>something else</html>')).toBeNull()
+    expect(healthReach(403, 'Forbidden')).toBeNull()
   })
 })
 

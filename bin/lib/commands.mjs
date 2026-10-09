@@ -11,7 +11,7 @@ import { BIN, CliError, SERVER, VERSION, bad, c, homebrewInstall, localUrl, ok, 
 import { RUNTIME_HELP, findRuntime, isBun, runtimeOk, runtimeVersion, temporaryInstall } from './runtime.mjs'
 import { brewDoctor, brewRedirect, brewService, brewStatusRows } from './brew.mjs'
 import { controlService, installService, serviceFile, servicePlatform, serviceState, uninstallService } from './service.mjs'
-import { LINKS, inspect, reachable } from './tailnet.mjs'
+import { LINKS, inspect, publishCommand, reachable } from './tailnet.mjs'
 
 export const HELP = `${'wherdr'}: your Herdr agents from your phone and browser.
 
@@ -290,8 +290,8 @@ export function openUrl(url) {
 }
 
 // Does the published address answer? 'host' means wherdr answers but does not
-// know that name yet (`tailscale serve` run by hand): a local request to
-// /api/phone makes it check the address and save it as APP_URL
+// know that name yet (`tailscale serve` run a moment ago): a local request to
+// /api/phone makes it read Tailscale again and adopt the address
 // (server/utils/phone.ts), then it is asked again. `reach` / `allow` are
 // injectable for the tests.
 export async function phoneReach(localUrl, phoneUrl, { reach = reachable, allow = url => fetch(`${url}/api/phone`).catch(() => {}), timeoutMs = 8000 } = {}) {
@@ -319,7 +319,9 @@ export async function open(opts) {
 
 // ----------------------------------------------------------------- phone
 // The phone setup lives in the app (Settings › Phone: publish on the tailnet,
-// live check, APP_URL, QR code). Here: the real state, the link to that page,
+// live check, APP_URL, QR code). Here: the real state, the command that
+// publishes wherdr when it is not (a server without a screen has no browser
+// for that page; wherdr adopts the address by itself), the link to the page,
 // and the QR code only when the address answers.
 export const phoneSetupUrl = url => `${url}/#/settings?section=phone`
 
@@ -330,6 +332,13 @@ async function qr(text) {
     qrcode.generate(text, { small: true }, resolve)
     return await promise
   } catch { return null }
+}
+
+// Why a published address is not usable yet, for `wherdr phone`.
+export function phoneRefusal(reach, phone, running) {
+  if (reach !== 'host') return running ? 'does not answer yet (the HTTPS certificate can take a minute)' : 'wherdr is not running'
+  if (phone.funnel) return 'also open to the Internet by `tailscale funnel`, which wherdr never enables: turn the funnel off'
+  return 'wherdr refuses it: it could not read `tailscale serve status` itself (is `tailscale` on the PATH of the wherdr server?)'
 }
 
 export async function phone(opts) {
@@ -344,11 +353,14 @@ export async function phone(opts) {
   let reach = null
   if (!net.installed) warn(`Tailscale is not installed: ${c.cyan(LINKS.download)}`)
   else if (!net.connected || !net.phone) warn('Tailscale is not connected on this machine.')
-  else if (!net.phone.served) warn(`${c.bold('Not reachable from your phone yet')}: wherdr is not published on your tailnet.`)
-  else {
+  else if (!net.phone.served) {
+    warn(`${c.bold('Not reachable from your phone yet')}: wherdr is not published on your tailnet.`)
+    say(`    Publish it (private, only your Tailscale devices): ${c.cyan(publishCommand(ctx.port))}`)
+    say('    wherdr enables that address by itself; run `wherdr phone` again for its QR code.')
+  } else {
     reach = await phoneReach(ctx.url, net.phone.url)
     if (reach === 'ok') ok(`${c.cyan(net.phone.url)} answers`)
-    else warn(`${c.bold('Not reachable from your phone yet')}: ${net.phone.url} is published but ${reach === 'host' ? 'refused (APP_URL)' : 'does not answer'}.`)
+    else warn(`${c.bold('Not reachable from your phone yet')}: ${net.phone.url} is published but ${phoneRefusal(reach, net.phone, local === 'wherdr')}.`)
   }
   if (reach === 'ok') {
     const code = await qr(net.phone.url)

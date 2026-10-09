@@ -29,7 +29,7 @@ import { parseSessionList, sessionKey, validSession } from '../../shared/session
 import { LOCAL, type MachineProfile, parseMachineList, parseStatusSocket, splitId } from '../../shared/ids'
 import {
   DATA_DIR, HERDR_BIN, HERDR_CHILD_ENV, HERDR_CLIENT_SOCK, HERDR_SESSION, HERDR_SOCK, HOME, HOST_LABEL, MACHINES_ENABLED, MACHINES_REFRESH_MS,
-  REMOTE_SESSION, REMOTE_UPLOAD_SUBDIR, RUNTIME_DIR, SELF_HOSTS, SESSION_ARGS, SSH_BIN, UPLOAD_TTL_MS, log,
+  REMOTE_SESSION, REMOTE_UPLOAD_SUBDIR, RUNTIME_DIR, SELF_HOSTS, SESSION_ARGS, SSH_BIN, UPLOAD_TTL_MS, log, machineLabel,
 } from './env'
 import { HerdrError, herdr, setSocketResolver } from './herdr'
 import { type ExecResult, type MachineFs, type ShellExec, createShellFs, localFs, remoteCommand, shq } from './fsx'
@@ -40,11 +40,25 @@ import { ATTACH_SUBDIR } from '../../shared/attachments'
 
 const fsp = fs.promises
 const LOCAL_LABEL_FILE = path.join(DATA_DIR, 'machine-label.txt')
-function readLocalLabel() {
-  try { return fs.readFileSync(LOCAL_LABEL_FILE, 'utf8').trim().slice(0, 40) || HOST_LABEL }
-  catch { return HOST_LABEL }
+// The name the user gave this machine in the app ('' = none).
+function renamedLabel() {
+  try { return fs.readFileSync(LOCAL_LABEL_FILE, 'utf8').trim().slice(0, 40) }
+  catch { return '' }
 }
 export const localMachineLabel = () => localMachine.label
+// The name Tailscale gives this machine (phone.ts reads it): shown instead of
+// the container's host name (machineLabel), unless the user renamed the machine.
+let tailnetLabel = ''
+export function adoptTailnetName(name: string | null | undefined) {
+  const label = machineLabel(name)
+  if (label === HOST_LABEL || label === tailnetLabel) return
+  tailnetLabel = label
+  if (renamedLabel() || localMachine.label === label) return
+  localMachine.label = label
+  for (const other of sessions.values()) if (!(other instanceof RemoteMachine)) other.label = label
+  log(`machine name: ${label} (from Tailscale)`)
+  changed()
+}
 // Same names as `uname -s` (in Docker, the container's: Linux).
 export function localOs() {
   const p = os.platform()
@@ -82,7 +96,7 @@ export interface Machine {
 export const localMachine: Machine = {
   key: LOCAL,
   profileId: null,
-  label: readLocalLabel(),
+  label: renamedLabel() || HOST_LABEL,
   local: true,
   target: null,
   session: HERDR_SESSION || 'default',
@@ -118,8 +132,9 @@ export function localMachineId(): string {
   }
   return selfId
 }
-// Names of this machine (profiles to ignore): HOST_LABEL, host name, HERDR_WEB_SELF_HOSTS.
-export const selfNames = () => [HOST_LABEL, os.hostname(), ...SELF_HOSTS].filter(Boolean)
+// Names of this machine (profiles to ignore): HOST_LABEL, host name, its
+// Tailscale name in a container, HERDR_WEB_SELF_HOSTS.
+export const selfNames = () => [HOST_LABEL, os.hostname(), tailnetLabel, ...SELF_HOSTS].filter(Boolean)
 
 export class SkipMachine extends Error {}
 

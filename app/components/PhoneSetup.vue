@@ -3,14 +3,20 @@
 // your devices), check live that the address answers, then its QR code.
 // Settings › Phone, and the onboarding. Server side: server/utils/phone.ts.
 import type { PhoneError, PhoneResult, PhoneStatus } from '#shared/phone'
+import { qrSvg } from '#shared/qr'
+import { isLoopbackHost } from '~/utils/onboarding'
 import pkg from '../../package.json'
 
 const props = defineProps<{ active: boolean }>()
 
 const status = ref<PhoneStatus | null>(null)
 const denied = ref(false)
-// Denied on an HTTPS address: the page itself came through the phone address.
-const onPhoneAddress = import.meta.client && location.protocol === 'https:'
+// The page itself came through the phone address (HTTPS, not localhost), so
+// that address answers: it is shown with its QR code, drawn here from
+// location.origin without asking the server, which only tells this computer
+// or an unlocked session more (then `status` takes over).
+const here = import.meta.client && location.protocol === 'https:' && !isLoopbackHost(location.hostname) ? `${location.origin}/` : ''
+const hereQr = here ? qrSvg(here) : null
 const busy = ref(false)
 const failure = ref<{ error: PhoneError, link?: string, detail?: string } | null>(null)
 const typed = ref('')
@@ -138,6 +144,7 @@ const reachText = computed(() => {
   if (!s?.url) return ''
   if (s.reach === 'ok') return tl('Your phone can open it.', 'Ton téléphone peut l’ouvrir.')
   if (s.reach === 'pending') return pendingText.value
+  if (s.reach === 'host' && s.funnel) return tl('This address is also open to the Internet (tailscale funnel): wherdr does not enable it. Turn the funnel off and publish it with tailscale serve.', 'Cette adresse est aussi ouverte sur Internet (tailscale funnel) : wherdr ne l’active pas. Coupe le funnel et publie-la avec tailscale serve.')
   if (s.reach === 'host') return tl(`wherdr answers but refuses this address: APP_URL is set to ${s.appUrl} in its environment.`, `wherdr répond mais refuse cette adresse : APP_URL vaut ${s.appUrl} dans son environnement.`)
   if (s.reach === 'other' || !s.reach) return tl(`Something answers (HTTP ${s.reachStatus}), but not wherdr: is wherdr running on this port?`, `Quelque chose répond (HTTP ${s.reachStatus}), mais pas wherdr : wherdr tourne-t-il sur ce port ?`)
   switch (s.reachCause) {
@@ -170,7 +177,26 @@ const failureText = computed(() => {
     <h3>{{ tl('Use it on your phone', 'Utiliser sur ton téléphone') }}</h3>
     <p class="phone-intro">{{ tl('Your phone reaches wherdr through Tailscale: a private HTTPS address, only for your devices, never the public Internet.', 'Ton téléphone joint wherdr par Tailscale : une adresse HTTPS privée, pour tes appareils seulement, jamais Internet.') }} <a class="phone-other" :href="OTHER_NETWORKS_DOC" target="_blank" rel="noopener noreferrer">{{ tl('Using something else?', 'Tu utilises autre chose ?') }}</a></p>
 
-    <p v-if="denied && onPhoneAddress" class="phone-note">{{ tl('You are on wherdr’s phone address, and it answers: open it on your phone and add it to the Home Screen. To publish or remove it, open wherdr on localhost on its computer, or unlock it with its passkey.', 'Tu es sur l’adresse téléphone de wherdr, et elle répond : ouvre-la sur ton téléphone et ajoute-la à l’écran d’accueil. Pour la publier ou la retirer, ouvre wherdr sur localhost sur son ordinateur, ou déverrouille-le avec sa passkey.') }}</p>
+    <template v-if="here && hereQr && !status">
+      <ol class="phone-steps">
+        <li class="done">
+          <span class="phone-step-label">{{ tl('ANSWERS', 'RÉPOND') }}</span>
+          <p>{{ tl('You are on wherdr’s phone address: your phone can open it.', 'Tu es sur l’adresse téléphone de wherdr : ton téléphone peut l’ouvrir.') }}</p>
+        </li>
+      </ol>
+      <div class="phone-qr">
+        <svg :viewBox="`0 0 ${hereQr.size} ${hereQr.size}`" role="img" :aria-label="tl('QR code of ', 'QR code de ') + here" shape-rendering="crispEdges">
+          <rect width="100%" height="100%" fill="#fff" />
+          <path :d="hereQr.path" fill="#000" />
+        </svg>
+        <div class="phone-qr-text">
+          <p class="phone-url">{{ here }}</p>
+          <p>{{ tl('1. Scan it with the iPhone camera, open it, then Share → Add to Home Screen.', '1. Scanne-le avec l’appareil photo de l’iPhone, ouvre-le, puis Partager → Sur l’écran d’accueil.') }}</p>
+          <p>{{ tl('2. In the app from the Home Screen: Settings → Enable notifications, then Security → Enable passkey lock.', '2. Dans l’app ouverte depuis l’écran d’accueil : Réglages → Activer les notifications, puis Sécurité → Activer le verrou passkey.') }}</p>
+        </div>
+      </div>
+      <p class="phone-note">{{ tl('To publish or remove this address, open wherdr on localhost on its computer, or unlock it with its passkey.', 'Pour publier ou retirer cette adresse, ouvre wherdr sur localhost sur son ordinateur, ou déverrouille-le avec sa passkey.') }}</p>
+    </template>
     <p v-else-if="denied" class="phone-note warn">{{ tl('Set it up from the computer that runs wherdr: open http://localhost:' + (status?.port || '7683') + ' there, or unlock wherdr with its passkey.', 'Configure-le depuis l’ordinateur qui fait tourner wherdr : ouvre http://localhost:' + (status?.port || '7683') + ' dessus, ou déverrouille wherdr avec sa passkey.') }}</p>
     <p v-else-if="!status" class="phone-note">{{ tl('Checking…', 'Vérification…') }}</p>
 
@@ -180,6 +206,7 @@ const failureText = computed(() => {
         <li :class="{ done: status.mode === 'docker' || status.connected }">
           <span class="phone-step-label">TAILSCALE</span>
           <p v-if="status.mode === 'missing'">{{ tl('Not installed on this computer.', 'Pas installé sur cet ordinateur.') }}</p>
+          <p v-else-if="status.mode === 'docker' && status.served">{{ tl('Connected.', 'Connecté.') }}</p>
           <p v-else-if="status.mode === 'docker'">{{ tl('wherdr runs in Docker: run the command below on the computer, in a terminal.', 'wherdr tourne dans Docker : lance la commande ci-dessous sur l’ordinateur, dans un terminal.') }}</p>
           <p v-else-if="status.connected">{{ tl('Connected.', 'Connecté.') }}</p>
           <p v-else>{{ tl('Installed, but not connected on this computer.', 'Installé, mais pas connecté sur cet ordinateur.') }}</p>
@@ -198,13 +225,19 @@ const failureText = computed(() => {
             <p v-if="!status.https && status.connected" class="phone-note">{{ tl('HTTPS certificates look off on your tailnet: turn them on first.', 'Les certificats HTTPS semblent désactivés sur ton tailnet : active-les d’abord.') }} <a class="phone-link" href="https://login.tailscale.com/admin/dns" target="_blank" rel="noopener noreferrer">{{ tl('Tailscale DNS settings', 'Réglages DNS Tailscale') }} <UIcon name="i-lucide-external-link" /></a></p>
           </template>
         </li>
+        <li v-else-if="status.mode === 'docker' && status.served" class="done">
+          <span class="phone-step-label">{{ tl('TAILNET', 'TAILNET') }}</span>
+          <p class="phone-url">{{ status.url }}</p>
+          <p v-if="!status.funnel">{{ tl('Published by tailscale serve: wherdr found it by itself.', 'Publiée par tailscale serve : wherdr l’a trouvée tout seul.') }}</p>
+        </li>
         <li v-else-if="status.mode === 'docker'" :class="{ done: status.reach === 'ok' }">
           <span class="phone-step-label">{{ tl('TAILNET', 'TAILNET') }}</span>
           <div class="phone-command">
             <code>{{ status.command }}</code>
             <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-copy" @click="copyCommand">{{ tl('Copy', 'Copier') }}</UButton>
           </div>
-          <p>{{ tl('Then paste the address it prints:', 'Puis colle l’adresse qu’elle affiche :') }}</p>
+          <p v-if="status.connected">{{ tl('wherdr then finds the address by itself, within a few seconds. Published another way? Paste its address:', 'wherdr trouve ensuite l’adresse tout seul, en quelques secondes. Publiée autrement ? Colle son adresse :') }}</p>
+          <p v-else>{{ tl('Then paste the address it prints:', 'Puis colle l’adresse qu’elle affiche :') }}</p>
           <form class="phone-address" @submit.prevent="act({ action: 'address', url: typed })">
             <UInput v-model="typed" placeholder="https://machine.tailnet.ts.net:7683/" size="md" class="phone-address-input" autocomplete="off" spellcheck="false" />
             <UButton type="submit" size="md" color="neutral" variant="outline" :loading="busy">{{ tl('Check', 'Vérifier') }}</UButton>

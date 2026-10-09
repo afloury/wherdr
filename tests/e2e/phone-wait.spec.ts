@@ -1,6 +1,6 @@
 import http from 'node:http'
-import { expect, test } from '@playwright/test'
-import { PORT } from './scenario.mjs'
+import { expect, test, type Page } from '@playwright/test'
+import { BASE_URL, PORT } from './scenario.mjs'
 
 // Settings › Phone right after publishing: the address waits for Tailscale's
 // HTTPS certificate (a loader, no error, no QR code), then turns green with
@@ -57,4 +57,68 @@ test('a refused host gets a readable page in a browser, JSON for the API', async
   await page.setContent(html.body)
   await expect(page.getByRole('heading', { name: 'This address isn\'t enabled yet.' })).toBeVisible()
   await page.screenshot({ path: `.shots/host-refused-${testInfo.project.name}.png` })
+})
+
+test('the refusal page gives a command to run on the machine, in both languages', async () => {
+  const html = await get('/', 'text/html')
+  expect(html.body).toMatch(/<pre><code>(npx wherdr phone|wherdr phone|curl -fsSL https:\/\/wherdr\.dev\/install \| sh)<\/code><\/pre>/)
+  expect(html.body).toContain('Cette adresse n’est pas encore activée.')
+  expect(html.body).not.toContain('not-enabled.example.ts.net')
+})
+
+// What the phone address probes rely on (bin/lib/tailnet.mjs, the installer,
+// the plugin): /api/health goes through the host check, the manifest does not.
+test('/api/health tells a refused host, which the static manifest cannot', async ({ request }) => {
+  const refused = await get('/api/health', 'application/json')
+  expect(refused.status).toBe(403)
+  expect(JSON.parse(refused.body)).toMatchObject({ code: 'host' })
+  expect((await get('/manifest.webmanifest', 'application/json')).status).toBe(200)
+  const ok = await request.get('/api/health')
+  expect(await ok.json()).toMatchObject({ ok: true, name: 'wherdr' })
+})
+
+// The app opened on its tailnet address (HTTPS, not localhost): the requests
+// of that origin are answered by the test server, and /api/phone refuses as
+// it does through `tailscale serve` (only this computer may set the phone up).
+const TAILNET = 'https://box.example.ts.net:7683'
+async function onTailnet(page: Page) {
+  await page.route(`${TAILNET}/**`, async (route) => {
+    const url = route.request().url().replace(TAILNET, BASE_URL)
+    if (new globalThis.URL(url).pathname === '/api/phone') {
+      await route.fulfill({ status: 403, json: { error: 'Open wherdr on this computer (localhost) or unlock it', code: 'phone_local' } })
+    } else await route.fulfill({ response: await route.fetch({ url }) })
+  })
+}
+
+test('Settings › Phone on the tailnet address shows that address and its QR code', async ({ page }, testInfo) => {
+  await onTailnet(page)
+  await page.goto(`${TAILNET}/#/settings?section=phone`)
+  const setup = page.locator('.phone-setup')
+  await expect(setup.locator('.phone-qr svg')).toBeVisible()
+  await expect(setup.locator('.phone-qr .phone-url')).toHaveText(`${TAILNET}/`)
+  await expect(setup.locator('.phone-qr svg')).toHaveAttribute('aria-label', `QR code of ${TAILNET}/`)
+  await expect(setup).toContainText('You are on wherdr’s phone address')
+  await expect(setup).not.toContainText('http://localhost')
+  await expect(setup.locator('.phone-note.warn')).toHaveCount(0)
+  await page.screenshot({ path: `.shots/phone-on-tailnet-${testInfo.project.name}.png` })
+})
+
+test('the guide’s Phone step on the tailnet address shows it too, not "open localhost"', async ({ page, isMobile }, testInfo) => {
+  test.skip(isMobile, 'a phone on the tailnet address gets Add to Home Screen instead')
+  const setDone = (done: boolean) => page.evaluate(async (done) => {
+    await fetch('/api/onboarding', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ done }) })
+  }, done)
+  await onTailnet(page)
+  await page.goto(`${TAILNET}/`)
+  await setDone(false)
+  try {
+    await page.goto(`${TAILNET}/#/setup?step=phone`)
+    await page.reload()
+    const guide = page.getByRole('dialog', { name: 'Setup guide' })
+    await expect(guide.locator('[aria-current="step"]')).toHaveText('Phone')
+    await expect(guide.locator('.phone-qr .phone-url')).toHaveText(`${TAILNET}/`)
+    await expect(guide.locator('.phone-qr svg')).toBeVisible()
+    await expect(guide).not.toContainText('http://localhost')
+    await page.screenshot({ path: `.shots/guide-phone-on-tailnet-${testInfo.project.name}.png` })
+  } finally { await setDone(true) }
 })
