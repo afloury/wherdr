@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { compareVersions, installMode, parseVersion, updateCommand } from '../shared/updates'
+import { compareVersions, installMode, oneTapMode, parseVersion, updateCommand } from '../shared/updates'
 import { RELEASES_URL, createUpdateChecker } from '../server/utils/updates'
 
 describe('versions', () => {
@@ -22,13 +22,22 @@ describe('update command', () => {
     expect(installMode('docker-build')).toBe('docker-build')
     expect(installMode('npm')).toBe('npm')
     expect(installMode('brew')).toBe('brew')
+    expect(installMode('npm-global')).toBe('npm-global')
+    expect(installMode('plugin')).toBe('plugin')
     expect(installMode(undefined)).toBe('native')
     expect(installMode('autre')).toBe('native')
-    expect(updateCommand('docker')).toBe('docker compose pull && docker compose up -d')
-    expect(updateCommand('docker-build')).toContain('docker-compose.build.yml up -d --build')
-    expect(updateCommand('native')).toBe('git pull && npm ci && npm run build')
-    expect(updateCommand('npm')).toBe('npx wherdr@latest')
-    expect(updateCommand('brew')).toBe('brew upgrade wherdr')
+    const cmd = (m: Parameters<typeof updateCommand>[0]) => updateCommand(m, 'owner/wherdr')
+    expect(cmd('docker')).toBe('docker compose pull && docker compose up -d')
+    expect(cmd('docker-build')).toContain('docker-compose.build.yml up -d --build')
+    expect(cmd('native')).toBe('git pull && npm ci && npm run build')
+    expect(cmd('npm')).toBe('npx wherdr@latest')
+    expect(cmd('brew')).toBe('brew upgrade wherdr && brew services restart wherdr')
+    expect(cmd('npm-global')).toBe('npm install -g wherdr@latest && wherdr restart')
+    expect(cmd('plugin')).toBe('herdr plugin install owner/wherdr --yes')
+  })
+
+  it('offers the one-tap update only where wherdr can replace itself', () => {
+    expect(['plugin', 'npm-global', 'brew', 'npm', 'docker', 'docker-build', 'native'].filter(m => oneTapMode(installMode(m)))).toEqual(['plugin', 'npm-global', 'brew'])
   })
 })
 
@@ -42,7 +51,7 @@ describe('release check', () => {
     const check = createUpdateChecker({ current: '1.1.0', env: { WHERDR_INSTALL: 'docker' }, fetch })
     const u = await check()
     expect(fetch).toHaveBeenCalledWith(RELEASES_URL)
-    expect(u).toEqual({ current: '1.1.0', latest: '1.2.0', url: 'https://example.test/releases/v1.2.0', checked: true, mode: 'docker', command: 'docker compose pull && docker compose up -d' })
+    expect(u).toEqual({ current: '1.1.0', latest: '1.2.0', url: 'https://example.test/releases/v1.2.0', checked: true, mode: 'docker', command: 'docker compose pull && docker compose up -d', oneTap: false })
   })
 
   it('says nothing when up to date or ahead', async () => {

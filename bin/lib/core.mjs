@@ -17,6 +17,18 @@ export function homebrewInstall(file) {
   return /[\\/]Cellar[\\/]wherdr[\\/]/.test(file)
 }
 
+// How this copy of wherdr was installed (shared/updates.ts InstallMode), from
+// the path of its bin/wherdr.mjs: the Homebrew Cellar; the copy the Herdr
+// plugin keeps in <wherdr dir>/app; `npm i -g` (<prefix>/lib/node_modules/wherdr,
+// never a temporary npx folder); otherwise a temporary package (npx, bunx, pnpm dlx).
+export function installKind(bin, dir) {
+  if (homebrewInstall(bin)) return 'brew'
+  const root = path.resolve(bin, '..', '..')
+  if (root === path.join(dir, 'app')) return 'plugin'
+  if (/[\\/]lib[\\/]node_modules[\\/]wherdr$/.test(root) && !/[\\/]_npx[\\/]/.test(root)) return 'npm-global'
+  return 'npm'
+}
+
 export const COMMANDS = ['run', 'start', 'stop', 'restart', 'status', 'logs', 'open', 'phone', 'panel', 'service', 'doctor', 'help', 'version']
 const VALUE_OPTIONS = { '--port': 'port', '--host': 'host', '--data-dir': 'dataDir', '--session': 'session', '--lines': 'lines', '-n': 'lines' }
 const FLAGS = { '-h': 'help', '--help': 'help', '-v': 'version', '--version': 'version', '-f': 'follow', '--follow': 'follow' }
@@ -98,8 +110,11 @@ export function serverEnv(opts, env, home = os.homedir(), bin = BIN) {
   out.NODE_ENV = 'production'
   // Open WebSockets do not hold Ctrl+C for 30 s; clients reconnect on their own.
   out.NITRO_SHUTDOWN_TIMEOUT ??= '1500'
-  // Update command offered in the app (shared/updates.ts).
-  out.WHERDR_INSTALL = homebrewInstall(bin) ? 'brew' : 'npm'
+  // Update command, or one-tap update, offered in the app (shared/updates.ts):
+  // the package to replace and the folder of its state and log (server/utils/selfupdate.ts).
+  out.WHERDR_INSTALL = installKind(bin, dir)
+  out.WHERDR_ROOT = path.resolve(bin, '..', '..')
+  out.WHERDR_DIR = dir
   // Nitro reads NITRO_PORT / NITRO_HOST before PORT / HOST.
   delete out.NITRO_PORT
   delete out.NITRO_HOST

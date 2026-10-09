@@ -1,9 +1,10 @@
 // Latest wherdr release on GitHub, checked at most once a day
 // (public API without a token, nothing is sent). WHERDR_UPDATE_CHECK=off disables the call.
 import pkg from '../../package.json'
-import { compareVersions, installMode, updateCommand, type UpdateInfo } from '../../shared/updates'
+import { compareVersions, installMode, oneTapMode, updateCommand, type UpdateInfo } from '../../shared/updates'
 
-export const RELEASES_URL = 'https://api.github.com/repos/afloury/wherdr/releases/latest'
+export const REPO = 'afloury/wherdr'
+export const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases/latest`
 const DAY_MS = 24 * 60 * 60 * 1000
 // Failure (offline, API limit): new attempt in an hour.
 const RETRY_MS = 60 * 60 * 1000
@@ -35,7 +36,7 @@ export function createUpdateChecker(opts: {
 
   return async function check(): Promise<UpdateInfo> {
     const mode = installMode(opts.env.WHERDR_INSTALL)
-    const base = { current: opts.current, mode, command: updateCommand(mode) }
+    const base = { current: opts.current, mode, command: updateCommand(mode, REPO), oneTap: oneTapMode(mode) }
     if (String(opts.env.WHERDR_UPDATE_CHECK || '').toLowerCase() === 'off') return { ...base, latest: null, url: null, checked: false }
     if (now() >= nextAt) {
       pending ??= refresh().finally(() => { pending = null })
