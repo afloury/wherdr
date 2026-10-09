@@ -711,6 +711,24 @@ home screen and in Settings › About, with the release notes and the exact comm
 Hide it until the next version with ×. Set `WHERDR_UPDATE_CHECK=off` to disable the check. The
 installed version is shown in Settings › About.
 
+**Update in one tap.** When wherdr runs from the Herdr plugin (Node.js mode), a global npm install
+or Homebrew, the banner has an **Update** button instead of the command, for a session opened on
+this computer (`localhost`) or unlocked with a passkey. wherdr installs the new version in a
+process of its own, restarts, and checks that `/api/health` reports the new version within 60
+seconds; the app shows the progress and reloads on the new version. If the new version does not
+answer, wherdr goes back to the previous one by itself (the plugin keeps the previous copy in
+`~/wherdr/app.prev`, npm reinstalls the previous version, Homebrew points back to the previous keg)
+and the app says so. Every step is logged in `~/wherdr/update.log`.
+
+| Setup | What Update does |
+| --- | --- |
+| Herdr plugin, Node.js | Unpacks the npm package of the new version into `~/wherdr/app`, keeps the old copy, restarts |
+| `npm install -g wherdr` | `npm install -g wherdr@X.Y.Z`, then restarts (login service included) |
+| Homebrew | `brew upgrade wherdr`, then `brew services restart wherdr` |
+
+Docker shows the command instead: replacing its own container would need the Docker socket (root
+on the host) inside it. `npx wherdr` runs from a temporary folder: run `npx wherdr@latest` again.
+
 | Setup | Update command (in the wherdr folder) |
 | --- | --- |
 | Docker, published image (default) | `docker compose pull && docker compose up -d` |

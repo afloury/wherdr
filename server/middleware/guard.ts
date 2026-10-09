@@ -4,7 +4,8 @@
 // (WebSockets do the same check in their `upgrade`.)
 // Each authenticated request slides the session (auth.renew).
 import { crossSiteRequest, HOST_REFUSED_PAGE, hostAllowed, hostRefusalIsHtml } from '../utils/hosts'
-const needsUnlock = (p: string) => (p.startsWith('/api/') && !p.startsWith('/api/auth/')) || p.startsWith('/uploads/')
+// /api/health: version only, for the one-tap updater (bin/lib/updater.mjs).
+const needsUnlock = (p: string) => (p.startsWith('/api/') && !p.startsWith('/api/auth/') && p !== '/api/health') || p.startsWith('/uploads/')
 
 export default defineEventHandler((event) => {
   if (!hostAllowed(event.node.req.headers.host)) {

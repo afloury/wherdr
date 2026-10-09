@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Update in one tap**: with the Herdr plugin (Node.js mode), a global npm install or Homebrew, the
+  "wherdr X.Y.Z is available" banner (home screen, Settings › About) has an **Update** button, for
+  a session on this computer or unlocked with a passkey. wherdr installs the new version in a
+  detached process, restarts, and waits for `/api/health` to report it; the app shows an
+  Updating screen and reloads on the new version. A version that does not answer within 60 s is
+  rolled back by itself (previous plugin copy, previous npm version, previous Homebrew keg), and
+  the app says "Rolled back to X.Y.Z". Log: `~/wherdr/update.log`. Docker and npx keep showing
+  the command.
 - **Browser demo at [wherdr.dev/demo](https://wherdr.dev/demo/)**: the real app, built with
   `npm run build:demo` (static, no server), on scripted agents that run in the page — two
   projects, Claude Code, Codex and omp in different states, a split with a dev server, the Project

@@ -1,9 +1,26 @@
-// New version notice: version comparison and update command
-// depending on the installation mode (shared by server / app, no dependency).
+// New version notice: version comparison, update command depending on the
+// installation mode, and the state of a one-tap update (shared by server / app,
+// no dependency).
 
-// npm: started from the published package (npx / bunx / pnpm dlx wherdr, bin/wherdr.mjs).
+// npm: started from a temporary package folder (npx / bunx / pnpm dlx wherdr).
+// npm-global: the package installed by `npm i -g wherdr` (<prefix>/lib/node_modules/wherdr).
 // brew: the same package, installed by the Homebrew formula (the project's tap).
-export type InstallMode = 'docker' | 'docker-build' | 'native' | 'npm' | 'brew'
+// plugin: the copy the Herdr plugin runs in native mode (~/wherdr/app).
+export type InstallMode = 'docker' | 'docker-build' | 'native' | 'npm' | 'npm-global' | 'brew' | 'plugin'
+
+// One-tap update (bin/lib/updater.mjs): written by the updater to
+// ~/wherdr/update.json, read back by the server for the app.
+export type UpdateState = 'installing' | 'restarting' | 'checking' | 'rolling-back' | 'done' | 'rolled-back' | 'failed'
+export interface UpdateJob {
+  state: UpdateState
+  from: string
+  to: string
+  mode: InstallMode
+  // Error of a failed update, in English (also in ~/wherdr/update.log).
+  message?: string
+  startedAt: number
+  updatedAt: number
+}
 
 export interface UpdateInfo {
   current: string
@@ -14,6 +31,8 @@ export interface UpdateInfo {
   checked: boolean
   mode: InstallMode
   command: string
+  // wherdr can update itself from the app in this mode (button Update).
+  oneTap: boolean
 }
 
 // "v1.2.3", "1.2.3-beta.1" -> [1, 2, 3]; null if unreadable. Pre-releases
@@ -31,14 +50,32 @@ export function compareVersions(a: string, b: string): number {
   return 0
 }
 
+const MODES: InstallMode[] = ['docker', 'docker-build', 'npm', 'npm-global', 'brew', 'plugin']
 export function installMode(env: string | undefined): InstallMode {
-  return env === 'docker' || env === 'docker-build' || env === 'npm' || env === 'brew' ? env : 'native'
+  return MODES.find(m => m === env) ?? 'native'
 }
 
-export function updateCommand(mode: InstallMode): string {
+// `repo`: owner/name of the GitHub repository (the Herdr plugin installs from it).
+export function updateCommand(mode: InstallMode, repo: string): string {
   if (mode === 'docker') return 'docker compose pull && docker compose up -d'
   if (mode === 'docker-build') return 'git pull && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build'
   if (mode === 'npm') return 'npx wherdr@latest'
-  if (mode === 'brew') return 'brew upgrade wherdr'
+  if (mode === 'npm-global') return 'npm install -g wherdr@latest && wherdr restart'
+  if (mode === 'brew') return 'brew upgrade wherdr && brew services restart wherdr'
+  if (mode === 'plugin') return `herdr plugin install ${repo} --yes`
   return 'git pull && npm ci && npm run build'
+}
+
+// Modes the server can update and restart by itself. Not Docker: replacing
+// its own container needs the Docker socket (root on the host) inside it;
+// not npx (a temporary folder: running `npx wherdr@latest` again is the
+// update); not a checkout (local changes, build of several minutes).
+export function oneTapMode(mode: InstallMode): boolean {
+  return mode === 'plugin' || mode === 'npm-global' || mode === 'brew'
+}
+
+// An update still in progress (not finished, and not abandoned: an updater
+// killed half-way leaves a state that stops counting after 10 minutes).
+export function updateRunning(job: UpdateJob | null, now: number): boolean {
+  return !!job && !['done', 'rolled-back', 'failed'].includes(job.state) && now - job.updatedAt < 10 * 60_000
 }
