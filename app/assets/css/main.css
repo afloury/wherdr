@@ -3094,7 +3094,9 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
    a small mono tag with a 1 px rule, like inline code. Faint on the phone,
    shown on hover of its question on the computer; "✓ Quoted" once in the field.
    The label comes from data attributes (no text node: the typewriter and the
-   copied text ignore it). */
+   copied text ignore it). `.q-mid`: the question is followed by more text in
+   its paragraph, so the tag stays faintly visible on the computer too (hidden,
+   it would leave a hole in the line). */
 .q-reply {
   display: inline-flex; align-items: center; height: 18px; margin-left: .45em; padding: 0 5px; vertical-align: 1px;
   font: 500 9.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
@@ -3107,8 +3109,10 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .q-reply:hover, .q-reply:focus-visible { color: var(--text); border-color: var(--accent); opacity: 1; }
 @media (hover: hover) and (pointer: fine) {
   .q-reply:not(.quoted) { opacity: 0; transition: opacity 120ms; }
+  .q-reply.q-mid:not(.quoted) { opacity: .5; }
   .md-body p:hover > .q-reply, .md-body li:hover > .q-reply, .q-reply:focus-visible { opacity: 1; }
 }
+.q-reply.q-mid { margin-right: .15em; }
 .no-reply .q-reply { display: none; }
 /* Quotes in the field: one chip each, to remove it; on one scrolling line. */
 .composer-quotes { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0 0 6px; overflow-x: auto; scrollbar-width: none; }
