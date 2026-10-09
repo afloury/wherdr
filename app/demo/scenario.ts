@@ -321,6 +321,15 @@ export function scriptFor(agent: string, text: string, n: number): ScriptedTurn 
   const shell = agent === 'codex' ? 'shell' : 'Bash'
   const tool = (name: string, target: string, view?: Partial<OmpToolView>) =>
     ({ name: agent === 'codex' && name !== 'apply_patch' ? 'shell' : name, text: target, omp: agent === 'omp' ? omp(name, target, view) : undefined })
+  // Project panel › Add info: the coordinator passes the text on to the thread.
+  const info = /^\s*↳ info (?:for|pour) (t-\d{4,})/i.exec(text)
+  if (info) {
+    return {
+      steps: [tool(shell, `herdr-projects thread prompt ${PROJECT} ${info[1]!.toLowerCase()}`, { exit: 0, ms: 300 })],
+      reply: `Passed on to **${info[1]!.toLowerCase()}** as is.`,
+      denied: '',
+    }
+  }
   // A question ("why…", "how…") is answered, even if it mentions tests; a request
   // phrased as one ("can you run the tests?") is a request.
   if (has(text, /^\s*(why|how|what|explain)\b/)) {
