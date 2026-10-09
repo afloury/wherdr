@@ -8,6 +8,17 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **The tailnet address enables itself**: wherdr reads what `tailscale serve` publishes on its
+  machine (at startup, every 30 seconds, and when an address it does not know is opened) and
+  adopts the HTTPS address that points to its own port: allowed host and `APP_URL`, with no
+  visit to Settings › Phone, so a server without a screen works too. An address removed from
+  `tailscale serve` is refused again. In Docker, wherdr reads Tailscale's socket, mounted
+  read-only by the new `docker-compose.yml` (`/var/run/tailscale`); the address it suggests now
+  carries the machine's name, not the container's. Nothing a request sends can enable an
+  address, and one that `tailscale funnel` opens to the Internet is never adopted.
+- **The installer sets the phone up in Docker**: it offers to run `tailscale serve` (asked
+  first), hands the address to wherdr and waits for it to answer. Run again later, it checks the
+  phone address of the wherdr already installed.
 - **Update in one tap**: with the Herdr plugin (Node.js mode), a global npm install or Homebrew, the
   "wherdr X.Y.Z is available" banner (home screen, Settings › About) has an **Update** button, for
   a session on this computer or unlocked with a passkey. wherdr installs the new version in a
@@ -40,6 +51,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **"This address isn't enabled yet" (403) on a server without a screen**: the page no longer
+  only says to open wherdr on the computer. It gives the command to run on the machine
+  (`wherdr phone`, or the installer again for Docker and the Herdr plugin), and the address is
+  now enabled without it in the usual case (see above).
+- **Setup guide and Settings › Phone opened on the tailnet address**: they show that address and
+  its QR code instead of asking to open `http://localhost:7683`.
 - **Project panel**: opening it with the board already loaded (reopening a coordinator) no longer
   breaks it with "Cannot access … before initialization".
 

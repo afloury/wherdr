@@ -38,6 +38,9 @@ export const AGENT_KINDS = (env.AGENT_KINDS || 'pi,claude,codex,gemini,cursor,de
 // process.env.APP_URL holds the address in use (hosts.ts reads it too).
 export const APP_URL_FILE = path.join(DATA_DIR, 'app-url.json')
 export const ENV_APP_URL = /^https:\/\//i.test(env.APP_URL || '') ? env.APP_URL! : ''
+// APP_URL as the environment gave it (often http://localhost:<port>/): what
+// comes back when the saved phone address is forgotten.
+export const BOOT_APP_URL = env.APP_URL || ''
 export function savedAppUrl(): string {
   try {
     const url = JSON.parse(fs.readFileSync(APP_URL_FILE, 'utf8'))?.url
@@ -51,6 +54,9 @@ export const HOST_LABEL = (env.HOST_LABEL || os.hostname()).trim().slice(0, 40)
 // User name of the passkeys created by the app.
 export const PASSKEY_USER = (env.PASSKEY_USER || 'wherdr').trim().slice(0, 64)
 export const POLL_MS = Number(env.POLL_MS || 1000)
+// How often the addresses `tailscale serve` publishes for wherdr are read
+// again (server/utils/phone.ts): a new one is enabled, a removed one refused.
+export const TAILNET_REFRESH_MS = Number(env.TAILNET_REFRESH_MS || 30000)
 // Confirmation delay before notifying: an agent's state may flicker
 // (working -> idle -> working between two tools).
 export const NOTIFY_SETTLE_MS = Number(env.NOTIFY_SETTLE_MS || 4000)

@@ -275,7 +275,10 @@ The script ([read it first](https://wherdr.dev/install), source in
    opens the setup guide in your browser (first install) and binds **prefix+i** to its panel;
 5. on a computer **without a screen** (no `DISPLAY` on Linux, or an SSH session): opens nothing,
    prints the local address, an `ssh -L` tunnel to reach it from your computer, and the phone
-   steps (`wherdr phone`: Tailscale state, the address, the QR code once it answers).
+   steps (`wherdr phone`: Tailscale state, the address, the QR code once it answers). With
+   Docker, it offers to run `tailscale serve` for you (asked first), and wherdr enables the
+   published address by itself: no browser is needed on the server. Run the command again at
+   any time to check the phone address.
 
 Settings, as environment variables (`curl -fsSL https://wherdr.dev/install | WHERDR_PORT=7684 sh`):
 
@@ -334,7 +337,7 @@ Edit `.env` (every value has a default; `HOST_HOME` defaults to your `$HOME`):
 | `HOST_HOME` | `/home/alice` | Your home folder on the server (default: `$HOME`). Mounted at the same path, read-only. |
 | `PUID` / `PGID` | `1000` | Your user and group IDs (`id -u`, `id -g`). |
 | `PORT` | `7683` | Listening port, published on `127.0.0.1` only. |
-| `APP_URL` | `https://server.example.ts.net:7683/` | Private HTTPS address of the app (step 3; also used as the Web Push contact and an allowed host). Use `http://localhost:7683/` for local testing. |
+| `APP_URL` | `http://localhost:7683/` | Leave it with Tailscale: wherdr adopts the address of step 3 by itself. Set a private HTTPS address only for [another private network](#other-private-networks) (Web Push contact and allowed host; it then always wins). |
 | `HOST_LABEL` | `server` | Name of this machine in the app. |
 | `TZ` | `Europe/Paris` | Time zone for timestamps and logs. |
 | `WHERDR_UPDATE_CHECK` | `off` | Disable the daily check for a new release (default `on`). |
@@ -372,14 +375,29 @@ tailscale serve --bg --https=7683 http://127.0.0.1:7683
 ```
 
 Tailscale Serve listens on HTTPS port 7683 of your tailnet name, with a valid certificate, and
-forwards to wherdr's local HTTP port. Only devices of your tailnet can reach it. Then open
-**Settings › Phone** in wherdr on the server (`http://localhost:7683/#/settings?section=phone`),
-paste that address: wherdr checks it answers, sets it as `APP_URL` (saved in `data/app-url.json`;
-an HTTPS `APP_URL` in `.env` wins) and shows its QR code. Without Docker, the same page publishes
-wherdr itself: one button, asked first. From a terminal on the server (without Docker),
-`curl -fsS http://127.0.0.1:7683/api/phone` runs the same check on an address published by hand:
-it prints the state as JSON and sets `APP_URL` once the address answers (`wherdr phone` does it
-too).
+forwards to wherdr's local HTTP port. Only devices of your tailnet can reach it.
+
+**wherdr enables that address by itself**, on a server without a screen too: at startup, every
+30 seconds, and when an address it does not know yet is opened, it reads what `tailscale serve`
+publishes on this machine and adopts the HTTPS address that points to its own port (allowed
+host and `APP_URL`, saved in `data/app-url.json`; an HTTPS `APP_URL` in `.env` wins). An address
+removed from `tailscale serve` is refused again. Nothing a request says can enable an address:
+only Tailscale's own state on the machine does, and an address that `tailscale funnel` opens to
+the Internet is never adopted. Without Docker, wherdr runs the `tailscale` command; in Docker
+it reads Tailscale's socket, mounted read-only by `docker-compose.yml`
+(`/var/run/tailscale`). After Tailscale itself restarts (an update), restart the container.
+
+**Settings › Phone** on the server (`http://localhost:7683/#/settings?section=phone`) shows the
+state and the QR code; without Docker it also publishes wherdr itself: one button, asked first.
+From a terminal, `wherdr phone` (npm, Homebrew) or the [one command](#the-one-command) run again
+(Docker, Herdr plugin) checks the same thing, and
+`curl -fsS http://127.0.0.1:7683/api/phone` prints the state as JSON. A container started from
+an older `docker-compose.yml` has no Tailscale socket: paste the address in Settings › Phone,
+or run the one command again, which sends it.
+
+If the phone shows **"This address isn't enabled yet"** (403), the address it opened is not one
+`tailscale serve` publishes for wherdr's port on that machine: the page gives the command to run
+there.
 
 **Why HTTPS matters.** Browsers only allow three things on `https://` (or on `localhost` itself):
 
@@ -419,8 +437,8 @@ works with any private network that gives it an **HTTPS address with a valid cer
 - **`APP_URL` set to that address** (`.env` with Docker, or the environment of `wherdr` /
   `npm start`), then restart wherdr. Its hostname is allowed automatically and it enables Web
   Push. Add `HERDR_WEB_ALLOWED_HOSTS` only if you also open wherdr under another name. The
-  one-click address check in **Settings › Phone** only knows `*.ts.net` addresses; an HTTPS
-  `APP_URL` in the environment always wins.
+  automatic adoption and the address check in **Settings › Phone** only know the `*.ts.net`
+  addresses of `tailscale serve`; an HTTPS `APP_URL` in the environment always wins.
 - **Never exposed without authentication.** wherdr keeps listening on `127.0.0.1`; only the
   proxy listens on the private network. Turn on the passkey lock as soon as another device can
   reach it.
@@ -500,7 +518,7 @@ wherdr phone                # phone state, the app's phone setup page, QR code o
 | `wherdr status` | Address, process, service, data folder and log. |
 | `wherdr logs` (`-f` to follow, `-n 100`) | The log, `~/wherdr/wherdr.log`. |
 | `wherdr open` | Opens wherdr in the browser: its tailnet address when published and answering, else `localhost`. |
-| `wherdr phone` | Whether your phone can reach wherdr (Tailscale, `tailscale serve`, the address answering), the link to **Settings › Phone** where you publish it in one click, and the QR code once the address answers. |
+| `wherdr phone` | Whether your phone can reach wherdr (Tailscale, `tailscale serve`, the address answering), the `tailscale serve` command to publish it when it is not (wherdr then enables the address by itself), the link to **Settings › Phone**, and the QR code once the address answers. |
 | `wherdr service install` · `uninstall` | Start at login: a LaunchAgent on macOS (`~/Library/LaunchAgents/dev.wherdr.plist`), a `systemd --user` unit on Linux (`loginctl enable-linger` keeps it running while you are logged out). |
 | `wherdr doctor` | Checks Node/Bun, Herdr and its socket, the port, the service, the data folder and `APP_URL`. |
 
@@ -788,7 +806,8 @@ All settings are environment variables (`.env` with Docker).
 | `PORT` | `7683` | Listening port. |
 | `HOST` | `127.0.0.1` (`npm start`) | Listening address without Docker. Keep it on loopback. |
 | `HOST_LABEL` | server hostname (`wherdr` in Docker) | Name of this machine in the app (can be renamed in the app). |
-| `APP_URL` | *(empty)* | App address and allowed host; a valid HTTPS URL enables Web Push. HTTP, empty or invalid values disable Web Push with a warning. |
+| `APP_URL` | *(empty)* | App address and allowed host; a valid HTTPS URL enables Web Push. HTTP, empty or invalid values disable Web Push with a warning. With Tailscale, leave it empty: wherdr adopts the address `tailscale serve` publishes. |
+| `TAILNET_REFRESH_MS` | `30000` | How often wherdr reads again what `tailscale serve` publishes for its port. |
 | `HERDR_WEB_ALLOWED_HOSTS` | *(empty)* | Additional hostnames or IP addresses allowed to open the app, comma-separated. |
 | `PASSKEY_USER` | `wherdr` | User name stored with the passkeys. |
 | `DATA_DIR` | `./data` | VAPID keys, push subscriptions, passkeys, recent folders. |
@@ -1022,7 +1041,9 @@ container talks to the Herdr server running on the host.
   (port forwarding, public reverse proxy, ngrok…); the only exception is a Cloudflare Tunnel
   behind Cloudflare Access, with its risks.
 - Requests are accepted only for `localhost`, loopback addresses, the runtime's hostname, the
-  hostname in `APP_URL`, and the runtime's network interface addresses (those of the container
+  hostname in `APP_URL`, the tailnet name `tailscale serve` publishes for wherdr's own port
+  (read from Tailscale on the machine, never from a request, and only while it is published),
+  and the runtime's network interface addresses (those of the container
   with Docker). Add other private names or IP addresses to `HERDR_WEB_ALLOWED_HOSTS`
   (comma-separated) before using them. An unlisted name returns HTTP 403 (`host` / "Host not
   allowed"); add it to `HERDR_WEB_ALLOWED_HOSTS`, then restart wherdr. This host check also
@@ -1070,8 +1091,10 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability.
   (`herdr integration install claude|codex|omp`) and start a new agent.
 - **Passkeys or notifications unavailable**: the page must be served over HTTPS (or
   `localhost`). On iPhone, notifications need the app installed on the home screen.
-- **HTTP 403 when opening the app through another name**: add that private hostname or IP
-  address to `HERDR_WEB_ALLOWED_HOSTS`, or use the hostname in `APP_URL`, then restart wherdr.
+- **HTTP 403 "This address isn't enabled yet"**: for a tailnet address, run the command the
+  page gives on the machine: it tells whether `tailscale serve` publishes wherdr's port there.
+  For another private name, add the hostname or IP address to `HERDR_WEB_ALLOWED_HOSTS`, or use
+  the hostname in `APP_URL`, then restart wherdr.
 - **Remote machine offline**: `docker compose logs | grep machine` shows its state. Test SSH as
   wherdr does, from the container:
   `docker compose exec herdr-web ssh -o BatchMode=yes laptop '~/.local/bin/herdr status server'`.

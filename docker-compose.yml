@@ -9,7 +9,8 @@
 # symbolic: the container talks to the Herdr socket running on the host.
 # Hence: listens on 127.0.0.1 only, published on the tailnet only via
 #   tailscale serve --bg --https=${PORT} http://127.0.0.1:${PORT}
-# -> https://<host>.<tailnet>.ts.net:<port>. Never a public route (Caddy, Cloudflare…).
+# -> https://<host>.<tailnet>.ts.net:<port>, which wherdr then enables by itself
+# (it reads what Tailscale publishes). Never a public route (Caddy, Cloudflare…).
 services:
   herdr-web:
     # Image published on each release (arm64 + amd64). Update:
@@ -69,3 +70,10 @@ services:
       # the app): their root folder, writable. Other root (`root` in
       # ~/.config/herdr-projects/config.toml): mount that one instead.
       - ${HOST_HOME:-${HOME}}/.herdr-projects:${HOST_HOME:-${HOME}}/.herdr-projects
+      # Tailscale's socket, read-only: the container has no `tailscale` command,
+      # so wherdr reads there which address `tailscale serve` publishes for its
+      # port and enables it by itself (and refuses it again once removed).
+      # Reading needs no rights; wherdr changes nothing through it. Without
+      # Tailscale on the host, Docker creates this folder empty: harmless.
+      # After Tailscale itself restarts (an update), restart this container.
+      - /var/run/tailscale:/var/run/tailscale:ro

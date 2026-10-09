@@ -1,5 +1,6 @@
 // Background tasks: Herdr polling (session.snapshot every second), VAPID
-// keys, notifications from `herdr notification show`, purge of photos and attached files older than 7 days.
+// keys, notifications from `herdr notification show`, the phone address
+// `tailscale serve` publishes (server/utils/phone.ts), purge of photos and attached files older than 7 days.
 export default defineNitroPlugin((nitroApp) => {
   initVapid()
   startMachines()
@@ -7,6 +8,7 @@ export default defineNitroPlugin((nitroApp) => {
   startThreadLimits()
   startNotices()
   startPaneSizes()
+  startTailnetWatch()
   cleanUploads()
   cleanAttachments()
   const purge = setInterval(() => { cleanUploads(); cleanAttachments() }, 6 * 3600 * 1000)
@@ -15,6 +17,7 @@ export default defineNitroPlugin((nitroApp) => {
     stopPolling()
     stopNotices()
     stopPaneSizes()
+    stopTailnetWatch()
     stopMachines()
     clearInterval(purge)
   })

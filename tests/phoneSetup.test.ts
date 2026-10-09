@@ -7,7 +7,8 @@ import path from 'node:path'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as Tailnet from '../bin/lib/tailnet.mjs'
 import { failureCause } from '../bin/lib/tailnet.mjs'
-import { httpsPortOf, phoneAccess, phoneAction, phoneStatus } from '../server/utils/phone'
+import { hostAllowed } from '../server/utils/hosts'
+import { adoptServed, applyServed, httpsPortOf, phoneAccess, phoneAction, phoneStatus } from '../server/utils/phone'
 import { PHONE_GRACE_MS, phoneReach } from '../shared/phone'
 import type { PhoneReachCause } from '../shared/phone'
 
@@ -57,6 +58,7 @@ beforeEach(() => {
   rmSync(failFile, { force: true })
   rmSync(appUrlFile(), { force: true })
   delete process.env.APP_URL
+  applyServed([])
   fake.reach = 'ok'
   fake.cause = 'refused'
 })
@@ -88,7 +90,7 @@ describe('phone setup', () => {
     expect(callLog()).toEqual(['serve --bg --https=7699 http://127.0.0.1:7699'])
     expect(r).toMatchObject({ ok: true, status: { served: true, url: URL, reach: 'ok', appUrl: URL } })
     expect(r.status.qr?.path).toMatch(/^M\d/)
-    expect(JSON.parse(readFileSync(appUrlFile(), 'utf8'))).toEqual({ url: URL })
+    expect(JSON.parse(readFileSync(appUrlFile(), 'utf8'))).toEqual({ url: URL, source: 'serve' })
     expect(process.env.APP_URL).toBe(URL)
   })
 
@@ -96,7 +98,7 @@ describe('phone setup', () => {
     fake.reach = 'unreachable'
     const r = await phoneAction({ action: 'publish' })
     expect(r.status).toMatchObject({ served: true, reach: 'pending', qr: null, appUrl: URL })
-    expect(JSON.parse(readFileSync(appUrlFile(), 'utf8'))).toEqual({ url: URL })
+    expect(JSON.parse(readFileSync(appUrlFile(), 'utf8'))).toEqual({ url: URL, source: 'serve' })
   })
 
   it('waits for the certificate after publishing, then turns to an error once the grace period is over', async () => {
@@ -154,6 +156,83 @@ describe('phone setup', () => {
     expect(await phoneAction({ action: 'rm -rf' })).toMatchObject({ ok: false, error: 'failed' })
     expect(await phoneAction({ action: 'address', url: 'https://example.com/' })).toMatchObject({ ok: false, error: 'address' })
     expect(callLog()).toEqual([])
+  })
+})
+
+// No Settings › Phone, no browser on the machine: wherdr reads what
+// `tailscale serve` publishes for its port and answers on that address.
+describe('automatic adoption of the tailnet address', () => {
+  const publish = (hostPort = `${NAME}:7699`, target = 7699) => writeFileSync(serveFile, `{"Web":{"${hostPort}":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:${target}"}}}}}`)
+
+  it('adopts the address published for its own port: allowed host and APP_URL', async () => {
+    expect(hostAllowed(`${NAME}:7699`)).toBe(false)
+    publish()
+    await adoptServed()
+    expect(hostAllowed(`${NAME}:7699`)).toBe(true)
+    expect(process.env.APP_URL).toBe(URL)
+    expect(JSON.parse(readFileSync(appUrlFile(), 'utf8'))).toEqual({ url: URL, source: 'serve' })
+  })
+
+  it('still refuses every other host, another tailnet name included', async () => {
+    publish()
+    await adoptServed()
+    for (const host of ['evil.example:7699', 'other.example.ts.net:7699', `evil.${NAME}:7699`, `${NAME}.evil.example:7699`]) {
+      expect(hostAllowed(host)).toBe(false)
+    }
+  })
+
+  it('adopts nothing published for another port, another machine name, or through funnel', async () => {
+    publish(`${NAME}:7699`, 3000)
+    await adoptServed()
+    expect(hostAllowed(`${NAME}:7699`)).toBe(false)
+    publish('other.example.ts.net:7699')
+    await adoptServed()
+    expect(hostAllowed('other.example.ts.net:7699')).toBe(false)
+    writeFileSync(serveFile, `{"Web":{"${NAME}:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:7699"}}}},"AllowFunnel":{"${NAME}:443":true}}`)
+    fake.reach = 'host'
+    expect(await phoneStatus()).toMatchObject({ served: true, funnel: true, reach: 'host', qr: null, appUrl: '' })
+    expect(hostAllowed(NAME)).toBe(false)
+    expect(existsSync(appUrlFile())).toBe(false)
+  })
+
+  it('refuses the address again once it is removed from tailscale serve', async () => {
+    publish()
+    await adoptServed()
+    expect(hostAllowed(`${NAME}:7699`)).toBe(true)
+    writeFileSync(serveFile, '{}')
+    await adoptServed()
+    expect(hostAllowed(`${NAME}:7699`)).toBe(false)
+    expect(process.env.APP_URL).toBeUndefined()
+    expect(existsSync(appUrlFile())).toBe(false)
+  })
+
+  it('keeps what it knows while Tailscale cannot be read', async () => {
+    publish()
+    await adoptServed()
+    writeFileSync(serveFile, '')
+    await adoptServed()
+    expect(hostAllowed(`${NAME}:7699`)).toBe(true)
+    expect(process.env.APP_URL).toBe(URL)
+  })
+
+  it('follows the address to another HTTPS port', async () => {
+    publish()
+    await adoptServed()
+    publish(`${NAME}:8443`)
+    await adoptServed()
+    expect(process.env.APP_URL).toBe(`https://${NAME}:8443/`)
+    expect(hostAllowed(`${NAME}:8443`)).toBe(true)
+  })
+
+  it('reads Tailscale once for callers that come together, and not again within the given age', async () => {
+    publish()
+    await Promise.all([adoptServed(), adoptServed(), adoptServed()])
+    expect(hostAllowed(`${NAME}:7699`)).toBe(true)
+    writeFileSync(serveFile, '{}')
+    await adoptServed(60_000)
+    expect(hostAllowed(`${NAME}:7699`)).toBe(true)
+    await adoptServed()
+    expect(hostAllowed(`${NAME}:7699`)).toBe(false)
   })
 })
 

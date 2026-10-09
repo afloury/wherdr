@@ -109,7 +109,9 @@ main() {
 
   # ---------------------------------------------------------------- runtime
   RUNTIME=""
+  CONTAINER=0
   if [ "$OS" = "Linux" ] && [ "$MODE" != "native" ] && docker_usable; then
+    CONTAINER=1
     ok "Docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo '?'): wherdr runs in a container"
   elif RUNTIME="$(find_runtime)"; then
     ver="$("$RUNTIME" --version 2>/dev/null || true)"
@@ -164,7 +166,8 @@ main() {
   else
     say "  No screen here: open it from this machine, or from your computer through"
     say "    ${C}ssh -L $PORT:127.0.0.1:$PORT $(id -un)@$(hostname 2>/dev/null || echo this-server)${R}"
-    phone_steps
+    # In Docker, this script offers to publish wherdr on the tailnet itself.
+    if [ "$CONTAINER" = "1" ]; then docker_phone; else phone_steps; fi
   fi
   key="$(panel_key)"
   if [ -n "$key" ]; then
@@ -252,17 +255,28 @@ existing_wherdr() {
     else
       say "  Update later: U in the wherdr panel, or run this command again."
     fi
+    say ""
+    say "  On this machine: ${B}$URL${R}"
+    phone_steps
+    return 0
   elif [ -n "$owner" ]; then
     say "  It runs in Docker, from $owner."
     if [ "$(real_dir "$owner")" = "$(real_dir "$DIR")" ] && confirm "Update it now (docker compose pull && docker compose up -d)?"; then
       (cd "$DIR" && docker compose pull --quiet && docker compose up -d --remove-orphans >/dev/null)
       ok "wherdr updated"
+      i=0
+      while [ "$i" -lt 30 ] && ! answers; do i=$((i + 1)); sleep 1; done
     else
       say "  Update: cd $owner && docker compose pull && docker compose up -d"
     fi
+    say ""
+    say "  On this machine: ${B}$URL${R}"
+    docker_phone
+    return 0
   else
     say "  It was installed another way (npm, Homebrew, by hand): nothing changed."
     say "  Update it the same way: https://github.com/$REPO#updating"
+    say "  Phone: ${C}wherdr phone${R} (or ${C}npx wherdr phone${R}) checks the address your phone opens."
   fi
   say ""
   say "  Open ${B}$URL${R}"
@@ -438,18 +452,103 @@ docker_install() {
   fi
 
   say ""
-  say "${G}${B}wherdr is running.${R} Open ${B}$URL${R} on this machine."
-  say ""
-  say "${B}Next, for your phone${R} (private network only, never the public Internet):"
-  say "  1. Install Tailscale on this server and your phone, with HTTPS certificates enabled."
-  say "  2. ${C}tailscale serve --bg --https=$PORT http://127.0.0.1:$PORT${R}"
-  say "  3. Open $URL/#/settings?section=phone: paste the https://<machine>.<tailnet>.ts.net:$PORT/"
-  say "     address, wherdr checks it and shows its QR code."
-  say "  4. Open that address on the phone, add it to the home screen, enable notifications."
-  say "  5. Settings → Security → Enable passkey lock (first token: ${C}docker compose logs${R})."
+  say "${G}${B}wherdr is running.${R} On this machine: ${B}$URL${R}"
+  docker_phone
   say ""
   say "${D}Update: cd $DIR && docker compose pull && docker compose up -d${R}"
   say "${D}Docs:   https://github.com/$REPO#readme${R}"
+}
+
+# "<machine>.<tailnet>.ts.net[:port]" of the address `tailscale serve`
+# publishes for wherdr's local port, empty when there is none.
+served_host() {
+  host="$(tailscale serve status --json 2>/dev/null | tr '{,' '\n\n' | awk -v port="$PORT" '
+    /"[^"]*:[0-9]+"[ \t]*:[ \t]*$/ { key = $0; sub(/^[^"]*"/, "", key); sub(/".*$/, "", key) }
+    /"Proxy"/ && $0 ~ ("\"(https?://)?(127\\.0\\.0\\.1|localhost):" port "/?\"") { print key; exit }')"
+  printf '%s\n' "${host%:443}"
+}
+
+# The phone address of a wherdr in Docker. The container has no `tailscale`
+# command; this script, on the host, has. wherdr adopts what `tailscale serve`
+# publishes for its port by itself, through Tailscale's socket mounted by
+# docker-compose.yml. So: publish it when it is not (asked first; private to
+# the tailnet), hand the address to wherdr (a container started from an older
+# compose file has no socket), and check that it answers.
+docker_phone() {
+  publish="tailscale serve --bg --https=$PORT http://127.0.0.1:$PORT"
+  say ""
+  say "${B}Your phone${R} (private network only, never the public Internet):"
+  if ! command -v tailscale >/dev/null 2>&1; then
+    say "  1. Install Tailscale on this machine and your phone (same account), with HTTPS"
+    say "     certificates enabled: https://tailscale.com/download"
+    say "  2. ${C}$publish${R}"
+    say "  3. Open the https://<machine>.<tailnet>.ts.net:$PORT/ address on the phone: wherdr"
+    say "     enables it by itself. Add it to the home screen, enable notifications."
+    say "  4. Settings → Security → Enable passkey lock (first token: ${C}docker compose logs${R})."
+    return 0
+  fi
+  name="$(tailscale status --json 2>/dev/null | sed -n 's/.*"DNSName": *"\([^"]*\)\.".*/\1/p' | head -n 1)"
+  if [ -z "$name" ]; then
+    warn "Tailscale is not connected on this machine: run tailscale up, then this script again."
+    return 0
+  fi
+  host="$(served_host)"
+  if [ -z "$host" ] && confirm "Publish wherdr on your tailnet now ($publish)? Only your Tailscale devices reach it."; then
+    # Without HTTPS on the tailnet, `tailscale serve` prints a link and waits.
+    limit=""
+    if command -v timeout >/dev/null 2>&1; then limit="timeout 30"; fi
+    if out="$($limit tailscale serve --bg "--https=$PORT" "http://127.0.0.1:$PORT" 2>&1)"; then
+      host="$(served_host)"
+    else
+      printf '%s\n' "$out" | sed 's/^/     /' >&2
+      warn "tailscale serve failed. Not allowed? Run once: sudo tailscale set --operator=\$USER"
+    fi
+  fi
+  if [ -z "$host" ]; then
+    say "  Publish wherdr on your tailnet (only your Tailscale devices reach it):"
+    say "    ${C}$publish${R}"
+    say "  Then open ${B}https://$name:$PORT/${R} on the phone: wherdr enables that address by itself."
+    return 0
+  fi
+  phone="https://$host/"
+  post_address "$phone"
+  i=0
+  while [ "$i" -lt 12 ] && ! wherdr_at "$phone"; do
+    if [ "$i" -eq 0 ]; then say "  Waiting for $phone (a new address takes up to a minute: HTTPS certificate)…"; fi
+    i=$((i + 1)); sleep 5
+    post_address "$phone"
+  done
+  if wherdr_at "$phone"; then
+    ok "${B}$phone${R} answers"
+    if command -v qrencode >/dev/null 2>&1; then qrencode -t ANSIUTF8 -m 2 "$phone"; fi
+    say "  Open it on the phone, add it to the home screen, then in the app:"
+    say "  Settings → Enable notifications, then Security → Enable passkey lock"
+    say "  (first token: ${C}cd $DIR && docker compose logs${R})."
+  else
+    warn "$phone is published but does not answer like wherdr yet."
+    say "     Try it in a minute. Still refused: ${C}cd $DIR && docker compose up -d --force-recreate${R}"
+    say "     (wherdr reads Tailscale when it starts), then run this script again."
+  fi
+}
+
+# Hands the phone address to the local wherdr (POST /api/phone, accepted from
+# this machine only): it checks it and sets APP_URL.
+post_address() {
+  body="{\"action\":\"address\",\"url\":\"$1\"}"
+  if [ "$FETCH" = "curl" ]; then
+    curl -s -o /dev/null --max-time 20 -H 'content-type: application/json' -d "$body" "http://127.0.0.1:$PORT/api/phone" 2>/dev/null || true
+  else
+    wget -q -O /dev/null -T 20 --header='content-type: application/json' --post-data="$body" "http://127.0.0.1:$PORT/api/phone" 2>/dev/null || true
+  fi
+}
+
+# The address answers like wherdr (its web app manifest).
+wherdr_at() {
+  if [ "$FETCH" = "curl" ]; then
+    curl -fs --max-time 8 "${1}manifest.webmanifest" 2>/dev/null | grep -q '"wherdr"'
+  else
+    wget -q -O - -T 8 "${1}manifest.webmanifest" 2>/dev/null | grep -q '"wherdr"'
+  fi
 }
 
 # ------------------------------------------------------------- helpers
