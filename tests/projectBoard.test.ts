@@ -382,9 +382,21 @@ describe('board help (Settings › Plugins)', () => {
     expect(missingLists(parseTasks('## To verify\n## Questions'))).toEqual([])
     expect(missingLists(parseTasks('## À tester\n## Idées'))).toEqual(['decide'])
   })
+  it('Add info names the thread and keeps the text as typed', async () => {
+    const m = await import('../shared/projectBoard')
+    expect(m.infoMessage('t-0012', 'Use the staging key', 'en')).toBe('↳ Info for t-0012: Use the staging key')
+    expect(m.infoMessage('t-0012', 'Utilise la clé de recette')).toBe('↳ Info pour t-0012 : Utilise la clé de recette')
+    expect(m.infoMessage('t-0012', 'Utilise la clé de recette', 'fr')).toBe('↳ Info pour t-0012 : Utilise la clé de recette')
+    // Several lines: sent whole, only the ends trimmed.
+    expect(m.infoMessage(' t-12345 ', '\n  Two things:\n- the limit is per key\n\n- 429 needs Retry-After  \n', 'en'))
+      .toBe('↳ Info for t-12345: Two things:\n- the limit is per key\n\n- 429 needs Retry-After')
+    expect(m.infoMessage('t-0140', 'ligne 1\nligne 2 : suite', 'fr')).toBe('↳ Info pour t-0140 : ligne 1\nligne 2 : suite')
+  })
   it('the rules repeat the messages sent by the panel', async () => {
     const m = await import('../shared/projectBoard')
     const fr = m.coordinatorRules('fr')
+    expect(fr).toContain(m.infoMessage('t-0140', '…', 'fr'))
+    expect(m.coordinatorRules('en')).toContain(m.infoMessage('t-0140', '…', 'en'))
     expect(fr).toContain(m.testedMessage('…'))
     expect(fr).toContain(m.launchMessage('…', 'fr'))
     expect(fr).toContain(m.unblockMessage('…', 'fr'))

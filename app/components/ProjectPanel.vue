@@ -29,10 +29,13 @@ const movedByPane = new Map<string, Set<string>>()
 // backlog / Remove from queue are sent as is; the coordinator edits TASKS.md.
 // The "In queue" header shows the thread slots in use (PROJECT.md) and the
 // global limit of the coordinator's machine, all projects.
+// "In progress": Add info, on an open thread's card and on the task of a
+// thread, opens a text sheet; "↳ Info pour t-NNNN : …" is sent to the coordinator,
+// which passes the text on to the thread.
 // The file is never written from here.
 // `side`: column to the right of the conversation (computer), collapsible.
 import type { Pane, QueuedMessage } from '#shared/types'
-import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, type TaskBadge, boardSections, visibleSections, decisionPrefix, detailPrefix, launchMessage, missingLists, moveMessage, type MoveAction, problemPrefix, queueStatus, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, textParts, unblockMessage } from '#shared/projectBoard'
+import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, type TaskBadge, boardSections, visibleSections, decisionPrefix, detailPrefix, infoMessage, launchMessage, missingLists, moveMessage, type MoveAction, problemPrefix, queueStatus, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, textParts, unblockMessage } from '#shared/projectBoard'
 import { machineSlotsLine } from '#shared/threadLimits'
 import { md } from '~/utils/markdown'
 
@@ -216,7 +219,10 @@ const launchable = (s: BoardSection, task: ProjectTask) => s.kind === 'backlog' 
 const unblockable = (s: BoardSection, task: ProjectTask) => s.kind === 'blocked' && !task.done
 const reviewable = (s: BoardSection, task: ProjectTask) => s.kind === 'review' && !task.done
 const orderable = (s: BoardSection, task: ProjectTask) => (s.kind === 'todo' || s.kind === 'queue') && !task.done
-const actionable = (s: BoardSection, task: ProjectTask) => testable(s, task) || decidable(s, task) || launchable(s, task) || unblockable(s, task) || reviewable(s, task) || orderable(s, task)
+// An In progress task whose thread has no live card (threads unreadable, or not
+// listed): the action of the card, on the task. Not for a closed thread.
+const informable = (s: BoardSection, task: ProjectTask) => s.kind === 'doing' && !task.done && Boolean(task.thread) && !props.board?.resolved.some(x => x.id === task.thread)
+const actionable = (s: BoardSection, task: ProjectTask) => testable(s, task) || decidable(s, task) || launchable(s, task) || unblockable(s, task) || reviewable(s, task) || orderable(s, task) || informable(s, task)
 
 // ------------------------------------------------------------ to do / in queue
 const moving = ref<string | null>(null)
@@ -312,6 +318,41 @@ function prefill(task: ProjectTask, kind: 'problem' | 'question' | 'decision' | 
   emit('prefill', prefix(task.text, lang()))
 }
 
+// ------------------------------------------------------------ add info
+// Text for a working thread, through the coordinator. A text left unsent is
+// kept per thread while the panel stays open.
+const info = ref<{ id: string, title: string } | null>(null)
+const infoOpen = ref(false)
+const infoText = ref('')
+const infoSending = ref(false)
+const infoField = ref<{ textareaRef?: HTMLTextAreaElement } | null>(null)
+const infoDrafts = new Map<string, string>()
+function addInfo(id: string, title: string) {
+  haptic()
+  info.value = { id, title }
+  infoText.value = infoDrafts.get(id) || ''
+  infoOpen.value = true
+  setTimeout(() => infoField.value?.textareaRef?.focus(), 80)
+}
+watch(infoText, (v) => { if (info.value) infoDrafts.set(info.value.id, v) })
+async function sendInfo() {
+  const target = info.value
+  if (!target || infoSending.value || !infoText.value.trim()) return
+  const pane = herdrState.value.panes.find(p => p.id === props.paneId)
+  if (!eventsOpen.value || offlineView.value || paneStale(pane)) return toast(t('Sending unavailable offline'), true)
+  infoSending.value = true
+  haptic()
+  try {
+    const queued = await sendMessage(pane, props.paneId, infoMessage(target.id, infoText.value, lang()))
+    infoOpen.value = false
+    infoText.value = ''
+    infoDrafts.delete(target.id)
+    toast(t('Sent to the coordinator'))
+    emit('sent', queued)
+  } catch (e) { toast((e as Error).message, true) }
+  finally { infoSending.value = false }
+}
+
 // ------------------------------------------------------------ suggestion
 // "To test" or "To decide" missing from TASKS.md: a discreet line points
 // to Settings › Plugins (hidden for good once closed).
@@ -373,6 +414,12 @@ function hideHint() {
                   <span class="pp-thread-title">{{ th.title }}</span>
                   <span class="pp-meta">{{ threadMeta(th) }}</span>
                 </button>
+                <UTooltip v-if="!th.resolved" :text="tl('Add info for this thread', 'Ajouter une info pour ce thread')" :disabled="!desk">
+                  <UButton
+                    icon="i-lucide-message-square-plus" color="neutral" variant="ghost" size="sm" class="icon-btn pp-btn pp-info-btn"
+                    :aria-label="tl(`Add info: ${th.title}`, `Ajouter une info : ${th.title}`)" @click="addInfo(th.id, th.title)"
+                  />
+                </UTooltip>
                 <UButton
                   v-if="th.report && !th.resolved" icon="i-lucide-file-text" color="neutral" variant="ghost" size="sm" class="icon-btn pp-btn"
                   :loading="reportLoading === th.id" :aria-label="t('View report')" @click="openReport(th)"
@@ -404,7 +451,7 @@ function hideHint() {
                   <span v-else-if="reviewable(s, task) && reviewed.has(task.text)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Sent to the coordinator') }}</span>
                   <span v-else-if="orderable(s, task) && movedAway(s, task)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Sent to the coordinator') }}</span>
                   <TaskBadges v-if="task.badges" :badges="task.badges" />
-                  <span v-if="decidable(s, task) || launchable(s, task) || unblockable(s, task) || (reviewable(s, task) && !reviewed.has(task.text)) || (testable(s, task) && !confirmed.has(task.text)) || (orderable(s, task) && !movedAway(s, task))" class="pp-verdict" :class="{ wrap: orderable(s, task) }">
+                  <span v-if="informable(s, task) || decidable(s, task) || launchable(s, task) || unblockable(s, task) || (reviewable(s, task) && !reviewed.has(task.text)) || (testable(s, task) && !confirmed.has(task.text)) || (orderable(s, task) && !movedAway(s, task))" class="pp-verdict" :class="{ wrap: orderable(s, task) }">
                     <template v-if="orderable(s, task)">
                       <UTooltip :text="tl('Move up', 'Monter')" :disabled="!desk">
                         <button type="button" class="pp-vbtn move" :disabled="moving !== null || isFirst(s, task)" :aria-label="tl(`Move up: ${task.text}`, `Monter : ${task.text}`)" @click="moveTask(s, task, 'up')">
@@ -442,6 +489,11 @@ function hideHint() {
                         </button>
                       </UTooltip>
                     </template>
+                    <UTooltip v-if="informable(s, task)" :text="tl('Add info for this thread', 'Ajouter une info pour ce thread')" :disabled="!desk">
+                      <button type="button" class="pp-vbtn backlog-action info" :aria-label="tl(`Add info: ${task.text}`, `Ajouter une info : ${task.text}`)" @click="addInfo(task.thread!, task.text)">
+                        <UIcon name="i-lucide-message-square-plus" /><span>{{ tl('Add info', 'Ajouter info') }}</span>
+                      </button>
+                    </UTooltip>
                     <UTooltip v-if="reviewable(s, task)" :text="tl('Reviewed: tell the coordinator', 'Relu : prévenir le coordinateur')" :disabled="!desk">
                       <button type="button" class="pp-vbtn backlog-action reviewed" :disabled="reviewing !== null" :aria-label="tl(`Reviewed: ${task.text}`, `Relu : ${task.text}`)" @click="reviewTask(task)">
                         <span v-if="reviewing === task.text" class="spinner" /><UIcon v-else name="i-lucide-check" /><span>{{ tl('Reviewed', 'Relu') }}</span>
@@ -515,6 +567,25 @@ function hideHint() {
           </div>
         </li>
       </ul>
+    </AppSheet>
+
+    <AppSheet v-model:open="infoOpen" :title="tl('Add info', 'Ajouter une info')" screen>
+      <form v-if="info" id="pp-info-form" class="rename sheet-form pp-info" @submit.prevent="sendInfo">
+        <p class="pp-info-for"><span class="pp-info-id">{{ info.id.toUpperCase() }}</span><span class="pp-info-title">{{ info.title }}</span></p>
+        <UTextarea
+          ref="infoField" v-model="infoText" :rows="5" autoresize :maxrows="12" size="xl" class="w-full"
+          :aria-label="tl('Info for the thread', 'Info pour le thread')"
+          :placeholder="tl('What the thread should know…', 'Ce que le thread doit savoir…')"
+          @keydown.enter.meta.prevent="sendInfo" @keydown.enter.ctrl.prevent="sendInfo"
+        />
+        <p class="plugin-input-hint">{{ tl('Sent to the coordinator, which passes it on to the thread as is.', 'Envoyé au coordinateur, qui le transmet tel quel au thread.') }}</p>
+      </form>
+      <template #footer>
+        <div class="rename-actions">
+          <UButton color="neutral" variant="ghost" class="sheet-btn" :disabled="infoSending" @click="infoOpen = false">{{ t('Cancel') }}</UButton>
+          <UButton type="submit" form="pp-info-form" color="primary" variant="solid" class="sheet-btn hw-cta" :loading="infoSending" :disabled="!infoText.trim()">{{ t('Send') }}</UButton>
+        </div>
+      </template>
     </AppSheet>
 
     <AppSheet v-model:open="reportOpen" :title="report ? `${report.th.id.toUpperCase()} · ${report.th.title}` : ''" wide tall screen>

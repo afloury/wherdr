@@ -1,0 +1,84 @@
+<!doctype html>
+<!--
+  Source of public/og.png, the 1200×630 image of link previews (og:image,
+  twitter:image). Not part of the built site. To redraw it: open this file
+  in a 1200×630 viewport (after `npm ci`, for the fonts) and save a screenshot
+  as public/og.png. Colours are the "wherdr Titanium" tokens of
+  app/assets/css/main.css; the pixel grids are those of app/utils/pixels.ts.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>wherdr share image</title>
+<style>
+@font-face { font-family: "Archivo Variable"; font-weight: 100 900; src: url("../node_modules/@fontsource-variable/archivo/files/archivo-latin-wght-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter Variable"; font-weight: 100 900; src: url("../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2") format("woff2"); }
+@font-face { font-family: "JetBrains Mono Variable"; font-weight: 100 800; src: url("../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2") format("woff2"); }
+:root { --bg: #12151b; --bg-2: #161a21; --line: #2a3038; --line-strong: #3a424e; --text: #e6eaf2; --muted: #9da5b4; --dim: #828a9a; --accent: #1fb2ff; --green: #00f28a; }
+* { box-sizing: border-box; margin: 0; }
+html, body { width: 1200px; height: 630px; overflow: hidden; }
+body {
+  position: relative; color: var(--text); background-color: var(--bg);
+  font-family: "Inter Variable", sans-serif; -webkit-font-smoothing: antialiased;
+}
+/* The hero grid: 1 px lines every 60 px, fading out to the right and bottom. */
+.grid {
+  position: absolute; inset: 0;
+  background-image: linear-gradient(to right, var(--line) 1px, transparent 1px), linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+  background-size: 60px 60px; background-position: 59px 44px;
+  opacity: .55;
+  -webkit-mask-image: radial-gradient(120% 120% at 100% 0%, #000 0%, rgba(0, 0, 0, .35) 45%, transparent 80%);
+}
+.frame { position: absolute; inset: 0; border: 1px solid var(--line-strong); }
+.in { position: absolute; inset: 0; padding: 56px 72px 56px; display: flex; flex-direction: column; }
+.top { display: flex; align-items: center; justify-content: space-between; }
+.brand { display: flex; align-items: center; gap: 20px; color: #fff; }
+.brand svg { height: 35px; display: block; }
+.label { font-family: "JetBrains Mono Variable", monospace; font-size: 17px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.tag { display: inline-flex; align-items: center; gap: 12px; height: 40px; padding: 0 16px; border: 1px solid var(--line-strong); background: var(--bg-2); }
+.tag i { width: 9px; height: 9px; background: var(--green); }
+h1 { margin-top: auto; font-family: "Archivo Variable", sans-serif; font-weight: 800; font-size: 104px; letter-spacing: -0.03em; line-height: .98; color: #fff; }
+h1 em { font-style: normal; color: var(--accent); }
+.lead { margin-top: 30px; max-width: 900px; font-size: 29px; line-height: 1.4; color: var(--muted); }
+.lead b { font-weight: 600; color: var(--text); }
+.bottom { margin-top: 40px; display: flex; align-items: center; justify-content: space-between; }
+.cmd { display: inline-flex; align-items: center; gap: 16px; height: 60px; padding: 0 24px; border: 1px solid var(--accent); background: var(--bg-2); font-family: "JetBrains Mono Variable", monospace; font-size: 23px; font-weight: 500; font-variant-ligatures: none; color: var(--text); }
+.cmd span { color: var(--green); }
+</style>
+</head>
+<body>
+<div class="grid"></div>
+<div class="frame"></div>
+<div class="in">
+  <div class="top">
+    <div class="brand"><svg id="ram"></svg><svg id="word"></svg></div>
+    <div class="label tag"><i></i>Self-hosted · Open source · MIT</div>
+  </div>
+  <h1>Your coding agents.<br><em>Wherever you are.</em></h1>
+  <p class="lead">A web app and phone PWA for the agents running in Herdr on your machines: <b>Claude Code</b>, <b>Codex</b>, <b>omp</b> and more.</p>
+  <div class="bottom">
+    <div class="cmd"><span>$</span>curl -fsSL https://wherdr.dev/install | sh</div>
+    <div class="label">wherdr.dev</div>
+  </div>
+</div>
+<script>
+const RAM = ['.###........###.', '#...#.####.#...#', '#.#..######..#.#', '#..#.######.#..#', '.##..#.##.#..##.', '.....######.....', '......####......']
+const GLYPHS = {
+  w: ['.....', '.....', '#...#', '#...#', '#.#.#', '#.#.#', '.#.#.'],
+  h: ['#....', '#....', '####.', '#...#', '#...#', '#...#', '#...#'],
+  e: ['.....', '.....', '.###.', '#...#', '#####', '#....', '.###.'],
+  r: ['.....', '.....', '#.##.', '##..#', '#....', '#....', '#....'],
+  d: ['....#', '....#', '.####', '#...#', '#...#', '#...#', '.####'],
+}
+const word = text => RAM.map((_, y) => [...text].map(ch => GLYPHS[ch][y]).join('.'))
+function draw(id, grid) {
+  const svg = document.getElementById(id)
+  svg.setAttribute('viewBox', `0 0 ${grid[0].length} 7`)
+  svg.setAttribute('shape-rendering', 'crispEdges')
+  svg.innerHTML = grid.flatMap((row, y) => [...row].map((c, x) => c === '#' ? `<rect x="${x}" y="${y}" width="1" height="1" fill="currentColor"/>` : '')).join('')
+}
+draw('ram', RAM)
+draw('word', word('wherdr'))
+</script>
+</body>
+</html>

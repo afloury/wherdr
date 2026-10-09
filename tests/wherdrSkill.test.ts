@@ -8,7 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
-  decisionPrefix, detailPrefix, launchMessage, listKind, moveMessage, problemPrefix, questionPrefix,
+  decisionPrefix, detailPrefix, infoMessage, launchMessage, listKind, moveMessage, problemPrefix, questionPrefix,
   reviewCommentPrefix, reviewedMessage, testedMessage, unblockMessage, type ListKind, type MoveAction, type TestLang,
 } from '../shared/projectBoard'
 
@@ -26,6 +26,8 @@ describe('wherdr skill', () => {
     const moves: MoveAction[] = ['up', 'down', 'queue', 'now', 'unqueue', 'backlog']
     const builders: ((task: string, lang: TestLang) => string)[] = [
       testedMessage, problemPrefix, questionPrefix, decisionPrefix, launchMessage, detailPrefix,
+      // Add info names a thread, not a task.
+      (_task: string, lang: TestLang) => infoMessage('t-NNNN', '<text>', lang),
       reviewedMessage, reviewCommentPrefix, unblockMessage, ...moves.map(a => (task: string, lang: TestLang) => moveMessage(a, task, lang)),
     ]
     for (const build of builders) {

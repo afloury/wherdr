@@ -134,5 +134,10 @@ describe('demo server', () => {
     expect(scriptFor('claude', 'Why did the export test fail?', 0).approval).toBeUndefined()
     expect(scriptFor('claude', 'Can you run the tests?', 0).approval).toBe('npm test')
     expect(scriptFor('codex', 'Merge it', 0).approval).toBe('git push origin HEAD')
+    // Project panel › Add info: passed on, whatever the text says (no approval card).
+    const info = scriptFor('claude', '↳ Info for t-0012: run the tests on staging\nthen merge', 0)
+    expect(info.approval).toBeUndefined()
+    expect(info.reply).toContain('t-0012')
+    expect(scriptFor('claude', '↳ Info pour t-0013 : relance les tests', 0).reply).toContain('t-0013')
   })
 })

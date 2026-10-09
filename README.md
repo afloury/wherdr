@@ -926,7 +926,7 @@ worktree. It is optional; with it installed, wherdr adds:
   | **To test** | You confirm the work | Confirm, Problem, Question |
   | **To decide** | Only you can unblock it | Question, Answer |
   | **To review** | Pull requests for you | Reviewed, Comment |
-  | **In progress** | What threads are really doing | (live threads) |
+  | **In progress** | What threads are really doing | (live threads) Add info |
   | **In queue** | Decided: the coordinator launches the first one as soon as a thread slot frees | Move up / down, Launch now, Clarify, Remove from queue |
   | **Blocked** | Waiting for someone or something external | Unblock, Clarify |
   | **To do** | To do soon, in your priority order; never launched on its own | Move up / down, Queue it, Launch now, Clarify, Back to backlog |
@@ -937,9 +937,11 @@ worktree. It is optional; with it installed, wherdr adds:
   project may only need Backlog, In progress and Done); any other `##` list shows in a neutral
   style after Backlog. French titles and common synonyms are recognized (À tester, En file,
   À faire, Plus tard…). Every button sends a ready-made message to the coordinator, which edits
-  `TASKS.md` (wherdr never writes it). The In queue header shows the thread slots in use
-  (`max_parallel_threads` in `PROJECT.md`) and the next task, plus the machine's global limit
-  when one is set (`2 of 2 thread slots in use on <machine> (all projects)`).
+  `TASKS.md` (wherdr never writes it). **Add info**, on a working thread, opens a text field:
+  what you type goes to the coordinator, which passes it on to that thread as is. The In queue
+  header shows the thread slots in use (`max_parallel_threads` in `PROJECT.md`) and the next
+  task, plus the machine's global limit when one is set
+  (`2 of 2 thread slots in use on <machine> (all projects)`).
 - **Max threads per machine**, across all projects: herdr-projects only limits threads per
   project, so three coordinators could still start a dozen threads on one small machine. Set a
   limit per machine in **Settings → Plugins → herdr-projects** (empty `—` = no global limit;
