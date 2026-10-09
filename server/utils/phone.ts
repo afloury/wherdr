@@ -94,6 +94,14 @@ export function applyServed(served: string[] | null | undefined) {
   }
 }
 
+// Told the machine's Tailscale name at each reading (machines.ts shows it in
+// place of a container's host name).
+const nameListeners: ((name: string) => void)[] = []
+export function onTailnetName(f: (name: string) => void) { nameListeners.push(f) }
+function tellName(name: string | null | undefined) {
+  if (name) for (const f of nameListeners) f(name)
+}
+
 // Reads Tailscale and applies it (applyServed). `maxAgeMs`: skipped when the
 // last reading is that recent; concurrent callers share one reading.
 let adoptedAt = 0
@@ -103,7 +111,7 @@ export function adoptServed(maxAgeMs = 0): Promise<void> {
   if (maxAgeMs && Date.now() - adoptedAt < maxAgeMs) return Promise.resolve()
   const bin = tailscaleBin()
   adopting = inspect(PORT, bin, bin ? null : tailscaledSocket())
-    .then((net) => { applyServed(net.served) }, (e) => { log(`tailscale serve could not be read: ${e?.message || e}`) })
+    .then((net) => { applyServed(net.served); tellName(net.name) }, (e) => { log(`tailscale serve could not be read: ${e?.message || e}`) })
     .finally(() => { adoptedAt = Date.now(); adopting = null })
   return adopting
 }
@@ -136,6 +144,7 @@ export async function phoneStatus(): Promise<PhoneStatus> {
   if (bin || socket) {
     const net = await inspect(PORT, bin, socket)
     applyServed(net.served)
+    tellName(net.name)
     out.connected = Boolean(net.connected && net.name)
     out.https = Boolean(net.https)
     out.served = Boolean(net.phone?.served)

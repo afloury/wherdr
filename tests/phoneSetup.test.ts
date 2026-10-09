@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import type * as Tailnet from '../bin/lib/tailnet.mjs'
 import { failureCause } from '../bin/lib/tailnet.mjs'
 import { hostAllowed } from '../server/utils/hosts'
-import { adoptServed, applyServed, httpsPortOf, phoneAccess, phoneAction, phoneStatus } from '../server/utils/phone'
+import { adoptServed, applyServed, httpsPortOf, onTailnetName, phoneAccess, phoneAction, phoneStatus } from '../server/utils/phone'
 import { PHONE_GRACE_MS, phoneReach } from '../shared/phone'
 import type { PhoneReachCause } from '../shared/phone'
 
@@ -171,6 +171,14 @@ describe('automatic adoption of the tailnet address', () => {
     expect(hostAllowed(`${NAME}:7699`)).toBe(true)
     expect(process.env.APP_URL).toBe(URL)
     expect(JSON.parse(readFileSync(appUrlFile(), 'utf8'))).toEqual({ url: URL, source: 'serve' })
+  })
+
+  it("tells the machine's Tailscale name at each reading", async () => {
+    const names: string[] = []
+    onTailnetName((name) => { names.push(name) })
+    await adoptServed()
+    await phoneStatus()
+    expect(names).toEqual([NAME, NAME])
   })
 
   it('still refuses every other host, another tailnet name included', async () => {

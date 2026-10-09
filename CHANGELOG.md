@@ -62,6 +62,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **Docker: the machine is no longer called "wherdr"** when `HOST_LABEL` is missing from `.env`
+  (the container's host name was shown, so Settings › Plugins read "wherdr · Not installed").
+  wherdr then shows the name Tailscale gives the machine, and the installer writes the host's
+  short name (without its domain) in `.env`. A `HOST_LABEL` you set, or a name chosen in the
+  app, still wins.
+- **Settings › Plugins**: the button says **Install herdr-projects** instead of **Install**.
 - **"This address isn't enabled yet" (403) on a server without a screen**: the page no longer
   only says to open wherdr on the computer. It gives the command to run on the machine
   (`wherdr phone`, or the installer again for Docker and the Herdr plugin), and the address is

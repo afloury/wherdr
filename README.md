@@ -814,7 +814,7 @@ All settings are environment variables (`.env` with Docker).
 | --- | --- | --- |
 | `PORT` | `7683` | Listening port. |
 | `HOST` | `127.0.0.1` (`npm start`) | Listening address without Docker. Keep it on loopback. |
-| `HOST_LABEL` | server hostname (`wherdr` in Docker) | Name of this machine in the app (can be renamed in the app). |
+| `HOST_LABEL` | server hostname | Name of this machine in the app (can be renamed in the app). In Docker the installer writes the host's short name; left empty, wherdr shows the name Tailscale gives the machine, else `wherdr`. |
 | `APP_URL` | *(empty)* | App address and allowed host; a valid HTTPS URL enables Web Push. HTTP, empty or invalid values disable Web Push with a warning. With Tailscale, leave it empty: wherdr adopts the address `tailscale serve` publishes. |
 | `TAILNET_REFRESH_MS` | `30000` | How often wherdr reads again what `tailscale serve` publishes for its port. |
 | `HERDR_WEB_ALLOWED_HOSTS` | *(empty)* | Additional hostnames or IP addresses allowed to open the app, comma-separated. |

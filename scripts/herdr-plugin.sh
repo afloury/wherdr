@@ -135,6 +135,13 @@ RUNTIME_HELP="Node.js 22 or newer (or Bun) is required to run wherdr without Doc
      Install it from https://nodejs.org, or set its absolute path in $CONF:
        WHERDR_RUNTIME=/path/to/node"
 
+# The machine's short name (no domain): what the app shows, and the container's
+# host name. Without it the container would be called "wherdr".
+short_host() {
+  h="$(hostname 2>/dev/null | cut -d. -f1)"
+  echo "${h:-server}"
+}
+
 herdr_bin() {
   if [ -n "${HERDR_BIN_PATH:-}" ]; then echo "$HERDR_BIN_PATH"
   elif [ -x "$HOME/.local/bin/herdr" ]; then echo "$HOME/.local/bin/herdr"
@@ -407,7 +414,7 @@ build_docker() {
       echo "PORT=$PORT"
       echo "# Private HTTPS address (tailscale serve), needed for push notifications."
       echo "APP_URL=${APP_URL:-http://localhost:$PORT/}"
-      echo "HOST_LABEL=$(hostname 2>/dev/null || echo server)"
+      echo "HOST_LABEL=$(short_host)"
       echo "TZ=${TZ:-UTC}"
       if [ "$herdr" != "$HOME/.local/bin/herdr" ]; then echo "HERDR_BIN=$herdr"; fi
     } > "$DIR/.env"

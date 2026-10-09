@@ -416,7 +416,7 @@ docker_install() {
       echo "PORT=$PORT"
       echo "# Private HTTPS address (tailscale serve), needed for push notifications."
       echo "APP_URL=http://localhost:$PORT/"
-      echo "HOST_LABEL=$(hostname 2>/dev/null || echo server)"
+      echo "HOST_LABEL=$(short_host)"
       echo "TZ=$(local_tz)"
       if [ "$HERDR" != "$HOME/.local/bin/herdr" ]; then echo "HERDR_BIN=$HERDR"; fi
       if [ "$IMAGE" != "ghcr.io/afloury/wherdr:latest" ]; then echo "WHERDR_IMAGE=$IMAGE"; fi
@@ -603,7 +603,8 @@ answers() {
     code="$(curl -s -o /dev/null --max-time 2 -w '%{http_code}' "http://127.0.0.1:$PORT/" 2>/dev/null || true)"
     [ -n "$code" ] && [ "$code" != "000" ]
   else
-    wget -q -O /dev/null -T 2 "http://127.0.0.1:$PORT/" 2>/dev/null || [ $? -eq 8 ]
+    # wget fails on an error status (and its exit code varies): read the status line.
+    wget -S -q -O /dev/null -T 2 "http://127.0.0.1:$PORT/" 2>&1 | grep -q 'HTTP/[0-9.]* [0-9]'
   fi
 }
 # The web app manifest names wherdr (it is served without a session).
@@ -620,6 +621,13 @@ version_lt() {
   [ "$1" = "$2" ] && return 1
   lowest="$(printf '%s\n%s\n' "$1" "$2" | sort -t. -k1,1n -k2,2n -k3,3n | head -n 1)"
   [ "$lowest" = "$1" ]
+}
+
+# The machine's short name (no domain): what the app shows, and the container's
+# host name. Without it the container would be called "wherdr".
+short_host() {
+  h="$(hostname 2>/dev/null | cut -d. -f1)"
+  echo "${h:-server}"
 }
 
 local_tz() {

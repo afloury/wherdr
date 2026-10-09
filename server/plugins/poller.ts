@@ -8,6 +8,7 @@ export default defineNitroPlugin((nitroApp) => {
   startThreadLimits()
   startNotices()
   startPaneSizes()
+  onTailnetName(adoptTailnetName)
   startTailnetWatch()
   cleanUploads()
   cleanAttachments()
