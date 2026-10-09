@@ -79,10 +79,14 @@ jobs:
     steps:
       # Only website/, like the Docker build context: the app's root
       # tsconfig.json (extending an ungenerated .nuxt) breaks the site build.
+      # Whole history, without the file contents it does not check out:
+      # sitemap.xml dates each page by the last commit of its sources.
       - uses: actions/checkout@v4
         with:
           sparse-checkout: /website/
           sparse-checkout-cone-mode: false
+          fetch-depth: 0
+          filter: blob:none
 
       - uses: actions/setup-node@v4
         with:

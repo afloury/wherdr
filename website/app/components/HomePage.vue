@@ -4,6 +4,16 @@
 // feature stories, and an install that types itself.
 import { AGENT_PROMPT, REPO } from '~/utils/site'
 import { BREW_COMMANDS, INSTALL_COMMAND, ONE_COMMAND_DEMO, PLUGIN_COMMAND, RUNNERS } from '~/utils/installDemo'
+import { SITE_URL, softwareApplication } from '~/utils/seo'
+
+// Only this page is the site's address for search engines: the generated
+// 404 page shares the rest of the head (nuxt.config.ts) but not these.
+useHead({
+  link: [{ rel: 'canonical', href: `${SITE_URL}/` }],
+  meta: [{ property: 'og:url', content: `${SITE_URL}/` }],
+  // "<" escaped: nothing in the data can close the script element.
+  script: [{ type: 'application/ld+json', innerHTML: JSON.stringify(softwareApplication()).replace(/</g, '\\u003c') }],
+})
 
 const stories = [
   {

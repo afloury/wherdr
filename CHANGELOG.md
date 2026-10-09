@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **wherdr.dev for search engines**: `sitemap.xml` generated at build time with the date of each
+  page's last change, a `robots.txt` that names it, a canonical link, complete Open Graph and
+  Twitter Card tags with a new 1200×630 share image, and `SoftwareApplication` structured data.
+  The demo and the installer script stay out of search results.
 - **Browser demo at [wherdr.dev/demo](https://wherdr.dev/demo/)**: the real app, built with
   `npm run build:demo` (static, no server), on scripted agents that run in the page — two
   projects, Claude Code, Codex and omp in different states, a split with a dev server, the Project
