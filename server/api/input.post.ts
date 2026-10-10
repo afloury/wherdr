@@ -5,12 +5,13 @@ export default defineApi(async (event, b) => {
   // Text then keys, in two calls: in a single one, Herdr sends the keys first.
   // Not in the middle of another send of wherdr's (see guardedSend.ts).
   const held = await withPaneLock(b.pane_id, async () => {
-    if (findPane(b.pane_id)?.stopped) {
+    const now = findPane(b.pane_id)
+    if (now?.stopped || now?.leaving) {
       // Old clients and Project panel actions can still reach the raw route.
       // Preserve complete messages; never send raw keys or commands to a shell.
       if (typeof b.text !== 'string' || !b.text.trim() || isSlashCommand(b.text)
         || !Array.isArray(b.keys) || b.keys.length !== 1 || b.keys[0] !== 'enter') {
-        throw new HerdrError('stale', 'Restart Codex before sending a command.')
+        throw new HerdrError('stale', now.stopped ? 'Restart Codex before sending a command.' : 'Codex just stopped. Try again in a few seconds.')
       }
       const q = addQueued(b.pane_id, b.text, { held: true })
       setTimeout(poll, 50)

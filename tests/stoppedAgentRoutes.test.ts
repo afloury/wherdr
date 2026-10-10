@@ -62,6 +62,31 @@ describe('messages to a stopped Codex', () => {
     expect(s.write).not.toHaveBeenCalled()
     expect(s.queue).not.toHaveBeenCalled()
   })
+  // Codex gone, card not shown yet: the pane is a bare shell for 3 seconds.
+  describe('while the exit is being checked', () => {
+    const leave = (s: ReturnType<typeof setup>) => Object.assign(s.pane, { agent: null, status: null, stopped: undefined, prompt: undefined, leaving: true })
+    it('sends the Project panel message through /api/prompt', () => {
+      const s = setup()
+      expect(viaPrompt({ ...s.pane, agent: null, status: null, stopped: undefined, prompt: undefined })).toBe(false)
+      expect(viaPrompt(leave(s))).toBe(true)
+    })
+    it.each(['input', 'prompt'])('holds the message in /api/%s instead of typing it into the shell', async route => {
+      const s = setup()
+      leave(s)
+      const { default: handler } = await import(`../server/api/${route}.post.ts`)
+      const result = await handler({}, { pane_id: s.pane.id, text: 'Confirm: tested, it works', keys: ['enter'] })
+      expect(result.queued).toMatchObject({ held: true, text: 'Confirm: tested, it works' })
+      expect(s.write).not.toHaveBeenCalled()
+    })
+    it.each([{ keys: ['enter'] }, { text: '/exit', keys: ['enter'] }, { text: 'rm -rf build' }])('rejects raw input %j', async input => {
+      const s = setup()
+      leave(s)
+      const { default: handler } = await import('../server/api/input.post')
+      await expect(handler({} as never, { pane_id: s.pane.id, ...input })).rejects.toMatchObject({ code: 'stale', message: 'Codex just stopped. Try again in a few seconds.' })
+      expect(s.write).not.toHaveBeenCalled()
+      expect(s.queue).not.toHaveBeenCalled()
+    })
+  })
   it('holds immediately during a long restart without waiting for its write lock', async () => {
     const s = setup()
     vi.stubGlobal('restarting', () => true)

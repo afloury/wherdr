@@ -35,6 +35,7 @@ const FR: Record<string, string> = {
   'Choose a conversation in Codex': 'Choisis une conversation dans Codex',
   'Use the restart buttons for this stopped agent.': 'Utilise les boutons de relance de cet agent arrêté.',
   'Restart Codex before sending a command.': 'Relance Codex avant d’envoyer une commande.',
+  'Codex just stopped. Try again in a few seconds.': 'Codex vient de s’arrêter. Réessaie dans quelques secondes.',
   'The pane is not at an empty shell prompt. Check its terminal.': 'Le panneau n’est pas sur une invite de shell vide. Vérifie son terminal.',
   'Restart agent': 'Redémarrer l’agent', 'Restart': 'Redémarrer', 'Restart anyway': 'Redémarrer quand même',
   'Restart to update': 'Redémarrer pour mettre à jour', 'Restarting': 'Redémarrage',

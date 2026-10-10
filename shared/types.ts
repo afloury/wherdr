@@ -146,6 +146,9 @@ export interface Pane {
   // Codex update typed into its terminal between the two (the command).
   restart?: { phase: 'stopping' | 'updating' | 'starting' | 'failed', agent: string, error?: string, update?: string }
   stopped?: { reason: 'update' }
+  // Codex just left this pane and its screen is not checked yet (update or
+  // plain exit?): a shell for a few seconds, where a message must not be typed.
+  leaving?: boolean
   // Grayed-out next-message suggestion in Claude Code's field (Tab accepts it).
   claudeSuggestion?: string
   // Codex shown: update available and weekly-limit warning (see shared/codexStatus.ts).

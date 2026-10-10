@@ -21,7 +21,7 @@ import { parseMenu, TOP } from '../../shared/menuScreen'
 import { settingsTabs } from '../../shared/settingsScreen'
 import { parseClaudeActivity } from './activity'
 import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './claudeScreen'
-import { type QueueEntry, INPUT_STATES, checkQueue, isUploadLine, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
+import { type QueueEntry, INPUT_STATES, checkQueue, failHeld, isUploadLine, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
 import { inputVisible } from './choices'
 import { isSlashCommand, photosOnly } from '../../shared/queuedMatch'
 import { findQueued, inputBox, msgText, unqueueClaude } from './unqueue'
@@ -369,7 +369,8 @@ export function sendPrompt(p: Pane, text: string): Promise<void> {
   return withPaneLock(p.id, async () => {
     // Re-check after waiting for another writer/restart's lock. The Pane
     // passed by a request or a held-message delivery can already be stale.
-    if (findPane(p.id)?.stopped) {
+    const now = findPane(p.id)
+    if (now?.stopped || now?.leaving) {
       throw new HerdrError(isSlashCommand(text) ? 'stale' : 'no_input', 'Restart Codex before sending a command.')
     }
     if (p.agent !== 'claude' || !GUARD_STATES.has(p.status || '') || isSlashCommand(text)) return agentPrompt(p.id, text)
@@ -779,6 +780,9 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       if (queued.has(p.id)) p.queued = queued.get(p.id)!.map(publicEntry)
       continue
     }
+    // Codex left without an update (no card) and no agent is back: nothing
+    // will take the messages held during the check. Given back as not sent.
+    if (!p.agent && !p.leaving && findPane(p.id)?.leaving) failHeld(queued.get(p.id))
     if (pendingPrompts.has(p.id)) { p.pendingPrompt = true; flushPending(p) }
     if (queued.has(p.id)) {
       reconcileQueued(p)

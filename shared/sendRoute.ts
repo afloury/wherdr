@@ -9,8 +9,10 @@ import type { Pane } from './types'
 // omp: only its free-answer field takes typed text; its select dialog (tool
 // approval) or "Ask" list would lose it, and Enter would answer them in the
 // user's place.
-export function viaPrompt(p: Pick<Pane, 'agent' | 'status' | 'prompt' | 'stopped'> | undefined): boolean {
-  if (p?.stopped || p?.prompt?.kind === 'self-update') return true
+// Codex stopped by its update, or just gone (`leaving`): a shell. The server
+// holds the message; typed with Enter it would run as a command.
+export function viaPrompt(p: Pick<Pane, 'agent' | 'status' | 'prompt' | 'stopped' | 'leaving'> | undefined): boolean {
+  if (p?.stopped || p?.leaving || p?.prompt?.kind === 'self-update') return true
   if (!p || !p.agent) return false
   if (p.status !== 'blocked') return true
   if (p.agent === 'omp') return !p.prompt?.typing

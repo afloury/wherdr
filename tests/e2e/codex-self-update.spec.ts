@@ -45,6 +45,33 @@ test('a new Codex restarts with its original options, only after a tap', async (
   await expect.poll(async () => (await stats()).prompts.map((p: { text: string }) => p.text)).toEqual(['Held until startup returns'])
 })
 
+const leaving = async (page: Page) => {
+  const state = await (await page.request.get('/api/state')).json()
+  return Boolean(state.panes.find((p: { id: string }) => p.id === CODEX_UPDATE_PANE)?.leaving)
+}
+
+test('a Project message sent before the card appears is held, never typed into the shell', async ({ page }) => {
+  const { pid } = await fakeHerdr('e2e.update_reset', { pane_id: CODEX_UPDATE_PANE })
+  await page.goto(`/#/a/${CODEX_UPDATE_PANE}`)
+  await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, conversation: 'empty' })
+  await fakeHerdr('e2e.update_exit', { pane_id: CODEX_UPDATE_PANE })
+  // Codex is gone and its screen is not checked yet: a bare shell, no card.
+  await expect.poll(() => leaving(page), { intervals: [50] }).toBe(true)
+  await expect(card(page)).toHaveCount(0)
+  // What the Project panel sends to a pane with no agent: text, then Enter.
+  const raw = await post(page, 'input', { text: 'Confirm: Check the restart', keys: ['enter'] })
+  expect((await raw.json()).queued.state).toBe('held')
+  expect((await post(page, 'input', { keys: ['enter'] })).status()).toBe(400)
+  expect(await stats()).toMatchObject({ starts: [], writes: [], prompts: [] })
+  const button = card(page).getByRole('button', { name: 'Restart Codex', exact: false })
+  await expect(button).toBeVisible()
+  expect(await leaving(page)).toBe(false)
+  expect(await stats()).toMatchObject({ writes: [], prompts: [] })
+  await button.click()
+  await expect.poll(async () => (await stats()).prompts.map((p: { text: string }) => p.text)).toEqual(['Confirm: Check the restart'])
+  expect((await stats()).writes).toEqual([])
+})
+
 test('an existing Codex resumes its exact session', async ({ page }) => {
   await stopAfterUpdate(page, true)
   await expect(card(page).getByRole('button', { name: /Start fresh/ })).toBeVisible()

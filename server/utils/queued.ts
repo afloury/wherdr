@@ -123,6 +123,11 @@ export function checkQueue(list: QueueEntry[], status: string | null | undefined
   return changed
 }
 
+// Held messages nobody will take any more: not sent, with Retry / Cancel.
+export function failHeld(list: QueueEntry[] | undefined) {
+  for (const q of list || []) if (q.held) q.failed = true
+}
+
 // Fields the app sees.
 export const publicEntry = (q: QueueEntry): QueuedMessage => ({
   id: q.id, text: q.text, at: q.at,

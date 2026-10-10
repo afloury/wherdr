@@ -102,7 +102,9 @@ export function createSelfUpdates(d: SelfUpdateDeps, saved: [string, LastAgent][
       }
       if (!last.checked) {
         // Give the installer and a multiline shell prompt time to finish.
-        if (d.now() - last.gone < 3000) return false
+        // Until then the pane is a bare shell: flagged so that a message is
+        // held instead of being typed there and run as a command.
+        if (d.now() - last.gone < 3000) { p.leaving = true; return false }
         last.checked = true
         if (d.now() - last.gone < 15000 && !last.oldOutput && (await paneForeground(d, p.id, 'codex')).atShell) {
           last.signature = updateShellSignature(await read(p.id)) || undefined
