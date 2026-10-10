@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Inline diff review**: comment on lines in Changes, edit or delete remarks, and keep a
+  device-local draft per agent. Missing lines are flagged after refresh. Send review appends
+  grouped file/line remarks to the message draft without sending it or replacing existing text.
+  Includes old-line labels for deletions, keyboard/touch controls, remote agents and demo support.
+
 - **Restart after Codex updates itself**: when Codex's own installer exits to its shell,
   a Your turn card offers a one-tap restart and sends the usual attention notification.
   A new conversation reuses its launch command; an existing one can resume its exact session

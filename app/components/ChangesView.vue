@@ -1,7 +1,29 @@
 <script setup lang="ts">
 import type { ChangeFile, ChangesResponse } from '#shared/types'
+import { composeReview, matchesReview, missingReviews, type ReviewComment, type ReviewLine } from '#shared/review'
 
 const props = defineProps<{ paneId: string }>()
+const emit = defineEmits<{ review: [text: string] }>()
+const comments = useReviewDraft(props.paneId)
+const missing = computed(() => changes.value ? missingReviews(comments.value, changes.value) : [])
+const countComments = computed(() => comments.value.filter(c => c.body.trim()).length)
+function update(id: string, body: string) { const c = comments.value.find(c => c.id === id); if (c) c.body = body }
+function remove(id: string) { comments.value = comments.value.filter(c => c.id !== id) }
+async function add(scope: ReviewComment['scope'], path: string, line: ReviewLine) {
+  let c = comments.value.find(c => c.scope === scope && c.path === path && matchesReview(c, line))
+  if (!c) {
+    c = { id: crypto.randomUUID(), scope, path, number: line.number!, side: line.side, text: line.text, body: '' }
+    comments.value.push(c)
+  }
+  await nextTick()
+  document.getElementById(`review-${c.id}`)?.focus()
+}
+function sendReview() {
+  const text = composeReview(comments.value, t('Please review these points:'), t('old line'), t('line no longer in diff'), missing.value.map(c => c.id))
+  if (!text) return
+  emit('review', text)
+  comments.value = []
+}
 const changes = ref<ChangesResponse | null>(null)
 const loading = ref(false)
 const error = ref('')
@@ -46,6 +68,13 @@ function count(n: number | null, sign: string) { return n === null ? `${sign}—
         <UButton icon="i-lucide-refresh-cw" color="neutral" variant="outline" size="sm" :loading="loading" :aria-label="t('Refresh changes')" @click="refresh">{{ t('Refresh') }}</UButton>
       </div>
 
+      <div v-if="comments.length" class="review-toolbar">
+        <span role="status">{{ countComments }} {{ t('review comments') }}</span>
+        <UButton color="neutral" variant="outline" @click="comments = []">{{ t('Discard') }}</UButton>
+        <UButton :disabled="!countComments" @click="sendReview">{{ t('Send review') }}</UButton>
+        <p>{{ t('Adds to your message draft. You send it yourself.') }}</p>
+      </div>
+      <ReviewNote v-for="note in missing" :key="note.id" :comment="note" missing @update="update" @remove="remove" />
       <p v-if="error" class="changes-notice error" role="alert">{{ error }}</p>
       <p v-if="loading && !changes" class="changes-notice"><span class="spinner" /> {{ t('Reading changes…') }}</p>
       <p v-else-if="changes && !changes.git" class="changes-notice">{{ t('This folder is not a Git repository.') }}</p>
@@ -64,9 +93,7 @@ function count(n: number | null, sign: string) { return n === null ? `${sign}—
               </summary>
               <p v-if="f.previousPath" class="change-note">{{ t('From') }} {{ f.previousPath }}</p>
               <p v-if="f.summary" class="change-note">{{ t(f.summary) }}</p>
-              <div v-if="f.lines.length" class="change-code" role="region" :aria-label="f.path">
-                <div v-for="(line, i) in f.lines" :key="i" class="change-line" :class="line.kind">{{ line.text }}</div>
-              </div>
+              <ReviewDiff v-if="f.lines.length" :file="f" scope="working" :comments="comments" @add="add" @update="update" @remove="remove" />
             </details>
           </template>
         </section>
@@ -85,9 +112,7 @@ function count(n: number | null, sign: string) { return n === null ? `${sign}—
                 <span v-else class="change-totals"><b>{{ count(f.added, '+') }}</b><i>{{ count(f.deleted, '−') }}</i></span>
               </summary>
               <p v-if="f.summary" class="change-note">{{ t(f.summary) }}</p>
-              <div v-if="f.lines.length" class="change-code" role="region" :aria-label="f.path">
-                <div v-for="(line, i) in f.lines" :key="i" class="change-line" :class="line.kind">{{ line.text }}</div>
-              </div>
+              <ReviewDiff v-if="f.lines.length" :file="f" scope="committed" :comments="comments" @add="add" @update="update" @remove="remove" />
             </details>
           </template>
           <p v-else-if="includeCommits && !loading && !changes.comparison" class="changes-notice">{{ t('No upstream or base branch available for comparison.') }}</p>
