@@ -15,6 +15,8 @@ const card = (page: Page, pane: string) => page.locator(`#home .card[data-pane="
 const height = (page: Page, pane: string) => card(page, pane).evaluate(el => el.getBoundingClientRect().height)
 const ask = (pane: string, screen?: string) => fakeHerdr('e2e.ask', { pane_id: pane, screen })
 const answers = async (pane: string) => (await fakeHerdr('e2e.answers', { pane_id: pane })).answers
+// Among the agents of this spec (other specs may leave one of theirs waiting).
+const opened = (page: Page) => page.locator(['.open', ':has(.card-more)'].flatMap(s => [OMP_ASK_PANE, CLAUDE_ASK_PANE, CLAUDE_PANE].map(p => `#home .card[data-pane="${p}"]${s}`)).join(', '))
 
 test.beforeEach(async () => {
   await ask(OMP_ASK_PANE)
@@ -31,8 +33,7 @@ test('a waiting agent opens its compact card; one tap answers and folds it back'
   const claude = card(page, CLAUDE_ASK_PANE)
   await expect(omp).toHaveClass(/compact/)
   // Not waiting: one line, no answers.
-  await expect(page.locator('#home .card.compact.open')).toHaveCount(0)
-  await expect(omp.locator('.card-more')).toHaveCount(0)
+  await expect(opened(page)).toHaveCount(0)
   const line = await height(page, OMP_ASK_PANE)
   expect(line).toBeLessThan(44)
 
@@ -42,15 +43,14 @@ test('a waiting agent opens its compact card; one tap answers and folds it back'
   await expect(omp.locator('.card-preview')).toHaveText('Allow tool: bash')
   await expect(omp.locator('.card-choices button .l')).toHaveText(['Approve', 'Deny'])
   // The other agents keep their line.
-  await expect(page.locator('#home .card.compact.open')).toHaveCount(1)
-  await expect(card(page, CLAUDE_PANE).locator('.card-more')).toHaveCount(0)
+  await expect(opened(page)).toHaveCount(1)
   expect(await height(page, CLAUDE_PANE)).toBe(line)
 
   // A second agent waits at the same time: both cards are open.
   await ask(CLAUDE_ASK_PANE, LONG_ASK)
   await expect(claude).toHaveClass(/open/)
   await expect(claude.locator('.card-choices button .l')).toHaveText(['Keep the current cache (Recommended)', 'Move everything to the database', 'Split by data type', 'Chat about this'])
-  await expect(page.locator('#home .card.compact.open')).toHaveCount(2)
+  await expect(opened(page)).toHaveCount(2)
   // A long question is cut after two lines, and nothing widens the list.
   const preview = claude.locator('.card-preview')
   await expect(preview).toContainText('Which of these approaches')
@@ -75,7 +75,7 @@ test('a waiting agent opens its compact card; one tap answers and folds it back'
   await expect(claude).toHaveClass(/open/)
   await claude.locator('.card-choices button', { hasText: 'Move everything' }).click()
   await expect.poll(() => answers(CLAUDE_ASK_PANE)).toEqual([['down', 'enter']])
-  await expect(page.locator('#home .card.compact.open')).toHaveCount(0)
+  await expect(opened(page)).toHaveCount(0)
   await shot(page, 'compact-answered', testInfo.project.name)
 })
 
