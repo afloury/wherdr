@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installDemoNetwork } from '../app/demo/shim'
-import { DEV_SERVER } from '../app/demo/scenario'
+import { CODEX, DEV_SERVER } from '../app/demo/scenario'
 
 const realFetch = window.fetch
 const realSocket = window.WebSocket
@@ -29,6 +29,19 @@ async function connect(route: string) {
 }
 
 describe('demo split terminal sizing', () => {
+  it('streams the interactive usage screen and returns to the field through real terminal keys', async () => {
+    await vi.advanceTimersByTimeAsync(30000)
+    await window.fetch('/api/prompt', { method: 'POST', body: JSON.stringify({ pane_id: CODEX, text: '/usage' }) })
+    const { socket, frames } = await connect(`term?pane=${CODEX}&cols=48&rows=30`)
+    const text = () => atob((frames.at(-1) as unknown as { bytes: string }).bytes)
+    expect(text()).toContain('View analytics  Usage history')
+    socket.send(JSON.stringify({ type: 'keys', keys: ['down', 'enter'] }))
+    expect(text()).toContain('Demo analytics')
+    socket.send(JSON.stringify({ type: 'keys', keys: ['esc', 'esc'] }))
+    const state = await (await window.fetch('/api/state')).json()
+    expect(state.panes.find((p: { id: string }) => p.id === CODEX).interaction).toBe('input')
+    expect(text()).not.toContain('Demo analytics')
+  })
   it('fits the active terminal, keeps its size in a mirror, and follows cell resizing', async () => {
     const { socket, frames } = await connect(`term?pane=${DEV_SERVER}&cols=113&rows=62`)
     expect(frames.at(-1)).toMatchObject({ type: 'terminal.frame', width: 113, height: 62 })

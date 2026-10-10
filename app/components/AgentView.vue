@@ -24,6 +24,7 @@ import { prefillDraft } from '#shared/projectBoard'
 import { swipeAxis, swipeOffset, swipeStep } from '~/utils/swipe'
 import { cellMode, showComposer, terminalAttachment } from '~/utils/viewMode'
 import { carriesFiles, dragDepth } from '~/utils/fileDrop'
+import { interactionWindowFor } from '~/utils/interactionWindow'
 
 const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, grip?: boolean }>()
 const emit = defineEmits<{ activate: [] }>()
@@ -223,7 +224,7 @@ function onSent(q: QueuedMessage | null) {
 // As soon as the server knows them (or 10 s after its answer), the server state wins.
 watch(pane, p => outboxPrune(props.paneId, p?.queued || []))
 
-const prompt = computed(() => (pane.value && pane.value.status === 'blocked' && pane.value.prompt && pane.value.prompt.options ? pane.value.prompt : null))
+const prompt = computed(() => (pane.value && (pane.value.status === 'blocked' || pane.value.interaction === 'native') && pane.value.prompt && pane.value.prompt.options ? pane.value.prompt : null))
 const screen = computed(() => knownScreen(pane.value))
 // Menu interactif de Claude Code ouvert (/resume…), agent au repos.
 const menu = computed(() => (pane.value && pane.value.menu && pane.value.status !== 'working' && !prompt.value && !screen.value ? pane.value.menu : null))
@@ -243,7 +244,20 @@ const attachInput = ref<HTMLInputElement | null>(null)
 // Terminal shown (terminal view or mirror): the prompt, waiting screen or
 // menu are already there, and the key bar answers them; no duplicate "Your turn" card.
 const termShown = computed(() => mode.value === 'term' || mode.value === 'mirror')
-const composerShown = computed(() => showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) }) && !(menu.value && mode.value !== 'term'))
+const interactionWindow = interactionWindowFor(props.paneId)
+const interactionOpen = ref(false)
+const interactionAvailable = computed(() => mode.value === 'chat' && live.value && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value))
+const interactive = computed(() => pane.value?.interaction === 'terminal')
+function syncInteraction() {
+  interactionOpen.value = interactionWindow.update(pane.value?.interaction || 'unknown', Date.now())
+  if ((interactive.value || interactionOpen.value) && commandResult.pane === props.paneId) closeCommandResult(false)
+}
+watch(() => pane.value?.interaction, syncInteraction, { immediate: true })
+const interactionTimer = setInterval(syncInteraction, 100)
+onUnmounted(() => clearInterval(interactionTimer))
+function closeInteraction() { interactionWindow.dismiss(); interactionOpen.value = false }
+function reopenInteraction() { interactionWindow.reopen(); interactionOpen.value = true }
+const composerShown = computed(() => showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) }) && !(menu.value && mode.value !== 'term') && !(mode.value === 'chat' && (interactive.value || interactionOpen.value)))
 const canAttachTerminal = computed(() => terminalAttachment({
   desk: desk.value, live: live.value, mode: mode.value,
   available: Boolean(pane.value && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value)),
@@ -584,8 +598,12 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <div v-else class="chat" />
     <p v-if="pane?.agent && !hasChat(pane) && mode === 'term' && !cell" class="terminal-transcript-note">{{ tl('Conversation unavailable for this agent · follow it in the terminal', 'Conversation non disponible pour cet agent · suivi dans le terminal') }}</p>
 
-    <ChoicesPanel v-if="(prompt || screen) && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :screen="screen" :keys="live" />
-    <MenuPanel v-else-if="menu && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :menu="menu" :keys="live" @terminal="setMode('term')" />
+    <InteractiveTerminal v-if="interactionOpen && interactionAvailable" :pane-id="paneId" @close="closeInteraction" />
+    <button v-else-if="interactive && interactionAvailable" type="button" class="interactive-terminal-reopen" @click="reopenInteraction">
+      <UIcon name="i-lucide-square-terminal" />{{ tl('Open interactive terminal', 'Ouvrir le terminal interactif') }}
+    </button>
+    <ChoicesPanel v-if="(prompt || screen) && !interactionOpen && !interactive && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :screen="screen" :keys="live" />
+    <MenuPanel v-else-if="menu && !interactionOpen && !interactive && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :menu="menu" :keys="live" @terminal="setMode('term')" />
     <Keybar v-if="mode === 'term' && !cell && eventsOpen && !offlineView && !machineDown" :ctl="ctl" />
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :esc-stops="!searchOpen" :take-back="mode === 'chat'" @sent="onSent" @show-terminal="setMode('term')" />
     </div>

@@ -125,7 +125,10 @@ class DemoSocket extends EventTarget {
     let input = ''
     const draw = () => {
       const pane = server.pane(id)
-      if (pane) this.deliver(frame(agentScreen(pane, server.chat(id), input, cols, rows), cols, rows))
+      if (pane) {
+        const interactive = server.interactiveScreen(id)
+        this.deliver(frame(interactive ? `\x1b[2J\x1b[H${interactive.replace(/\n/g, '\r\n')}` : agentScreen(pane, server.chat(id), input, cols, rows), cols, rows))
+      }
     }
     draw()
     const offState = server.onState(draw)
@@ -142,8 +145,13 @@ class DemoSocket extends EventTarget {
         fitted.set(id, { cols, rows })
         return draw()
       }
+      if (m.type === 'keys' && server.terminalKeys(id, m.keys || [])) return
       if (m.type === 'keys' && m.keys?.includes('esc')) return void server.interrupt(id)
       const text = m.type === 'terminal.input' || m.type === 'paste' ? m.text || '' : ''
+      if (server.interactiveScreen(id)) {
+        server.terminalKeys(id, [...text].map(ch => ch === '\r' ? 'enter' : ch === '\x1b' ? 'esc' : ch))
+        return
+      }
       for (const ch of text) {
         if (ch === '\r') {
           if (input.trim()) server.prompt(id, input)

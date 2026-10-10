@@ -838,7 +838,7 @@ watch(() => liveShell.value && liveShell.value.lines.join('\n'), () => nextTick(
 // "Your turn" panel at the bottom; otherwise preview of the last lines, to do in the terminal.
 const waiting = computed(() => {
   const p = props.pane
-  if (unavailable.value !== 'not_found' || !p.screen || p.status === 'working' || readOnly.value) return null
+  if (p.interaction === 'terminal' || unavailable.value !== 'not_found' || !p.screen || p.status === 'working' || readOnly.value) return null
   const who = kindLabel(p.agent)
   return knownScreen(p)
     ? { text: tl(`${who} is waiting for your answer, below or in the terminal.`, `${who} attend ta réponse, ci-dessous ou dans le terminal.`), lines: [] }

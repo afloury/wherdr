@@ -3,6 +3,7 @@
 // preview, confirmation.
 import { parseMenu } from '../../shared/menuScreen'
 import { agentAnswering, ompSelectorOnScreen } from '../../shared/commandScreen'
+import type { ScreenInteraction } from '../../shared/interactiveScreen'
 
 export interface MenuItem {
   kind?: 'action' | 'command' | 'separator' | 'note' | 'group'
@@ -90,7 +91,8 @@ export async function showCommandResult(pane: string, cmd: string, builtin = tru
   commandResult.text = null
   commandResult.tabs = []
   commandResult.tab = null
-  commandResult.open = builtin
+  // Wait for classification: an interactive screen has exactly one live view.
+  commandResult.open = false
   await new Promise(r => setTimeout(r, 1800))
   if (seq !== resultSeq) return
   await readCommandResult(pane, cmd, 5, seq)
@@ -103,7 +105,7 @@ async function readCommandResult(pane: string, cmd: string, tries = 5, seq = res
     && (commandResult.open || commandResult.text === null)
   for (let i = 0; i < tries && current(); i++) {
     try {
-      const { text, tabs, tab } = await api<{ text: string, tabs: string[] | null, tab: string | null }>(`/api/screen?pane=${encodeURIComponent(pane)}`)
+      const { text, tabs, tab, interaction } = await api<{ text: string, tabs: string[] | null, tab: string | null, interaction?: ScreenInteraction }>(`/api/screen?pane=${encodeURIComponent(pane)}`)
       if (!current()) return
       // Interactive menu (/resume, /model…): not an output, it is driven in the conversation.
       // Skill, custom command, /compact…: the agent is working, the
@@ -111,7 +113,11 @@ async function readCommandResult(pane: string, cmd: string, tries = 5, seq = res
       // omp draws no recognizable activity under the command: its state wins.
       const p = herdrState.value.panes.find(x => x.id === pane)
       const working = p?.agent === 'omp' && p.status === 'working'
-      if (parseMenu(text) || ompSelectorOnScreen(text) || agentAnswering(text, cmd) || working) { closeCommandResult(false); return }
+      if (interaction === 'terminal' || interaction === 'native' || interaction === 'working' || interaction === 'managed' || parseMenu(text) || ompSelectorOnScreen(text) || agentAnswering(text, cmd) || working) {
+        closeCommandResult(false)
+        commandResult.text = ''
+        return
+      }
       const shown = extractResult(text, cmd)
       // "Loading…" (/usage gauges), "⏳ Waiting for response…" (omp's /btw).
       const loading = /\bLoading\b|Waiting for response/.test(shown)

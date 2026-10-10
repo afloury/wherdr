@@ -3,6 +3,8 @@
 // rather than confirm the wrong thing.
 // Free answer (`free` option: omp's "Other", Claude's "Type something."): always with its text, and the
 // question shown (the option's label is the same for every question).
+import { nativePrompt } from '../../shared/interactiveScreen'
+
 export default defineApi(async (event, b) => {
   if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'Invalid pane')
   const r = await herdr('pane.read', { pane_id: b.pane_id, source: 'detection' }, 4000)
@@ -13,7 +15,7 @@ export default defineApi(async (event, b) => {
   const i = Number(b.index)
   const option = choices && choices.options[i]
   const answer = typeof b.text === 'string' ? b.text.trim() : ''
-  if (!choices || !option || option.label !== b.label || (answer && !option.free)
+  if (!choices || !nativePrompt(String(text || ''), choices) || !option || option.label !== b.label || (answer && !option.free)
     || (option.free && !sameQuestion(choices.question, typeof b.question === 'string' ? b.question : null))) {
     throw new HerdrError('stale', 'The question has changed — check the current screen.')
   }

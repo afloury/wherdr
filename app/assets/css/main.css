@@ -2697,6 +2697,35 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
    computer. TASKS.md lists, threads in progress and done. */
 .agent-body { flex: 1; min-height: 0; display: flex; }
 .agent-main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+/* A live TUI window inside its own pane; navigation and other panes stay usable. */
+.interactive-terminal {
+  position: absolute; inset: 0; z-index: 25; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--line);
+}
+.interactive-terminal-head {
+  flex: none; display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; min-height: 44px; padding: 4px 8px 4px 12px; border-bottom: 1px solid var(--line);
+}
+.interactive-terminal-head > span {
+  display: flex; align-items: center; gap: 8px; font: 600 11px/1.4 var(--mono);
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.interactive-terminal-note { flex: none; padding: 8px 12px; color: var(--dim); font: 11px/1.4 var(--mono); }
+.interactive-terminal-reopen {
+  flex: none; display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 48px; padding: 10px 12px; border-top: 1px solid var(--line); color: var(--text);
+  background: var(--surface); font: 500 12px/1.4 var(--mono);
+}
+.interactive-terminal-reopen:hover { background: var(--surface-2); }
+@media (min-width: 900px) {
+  .interactive-terminal { inset: 12px; box-shadow: 0 8px 24px #0003; }
+}
+/* Override the desktop reading column: fit the TUI to this window, as in a split. */
+.interactive-terminal #termWrap { padding: 6px; background: var(--bg); }
+.interactive-terminal #term { inset: 6px; transform: none; width: auto; max-width: none; }
+.interactive-terminal #term .xterm { padding: 0; box-shadow: none; }
+.interactive-terminal .keybar { flex: none; padding: 8px; padding-bottom: max(8px, var(--safe-bottom)); border-top: 1px solid var(--line); justify-content: flex-start; background: var(--bg); }
+.interactive-terminal .keybar::before { display: none; }
 /* Settings › Appearance › Desktop › Background "wherdr grid" (components/GridBackdrop.vue):
    the layer sits at z-index -1 inside this host, under its content and above its own
    background. Computer only. */

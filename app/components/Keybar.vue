@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Key bar: logical keys, encoded by Herdr according to the terminal
 // mode (application cursor, etc.). Does not steal the focus from the input field.
-const props = defineProps<{ ctl: TerminalCtl }>()
+const props = defineProps<{ ctl: TerminalCtl, allDigits?: boolean }>()
 
 const KEYS: { key: string, label: string, cls?: string }[] = [
   { key: 'esc', label: 'esc' }, { key: 'enter', label: '⏎', cls: 'wide' }, { key: 'up', label: '↑' }, { key: 'down', label: '↓' },
@@ -9,6 +9,9 @@ const KEYS: { key: string, label: string, cls?: string }[] = [
   { key: 'shift+tab', label: '⇧tab' }, { key: 'left', label: '←' }, { key: 'right', label: '→' },
   { key: 'ctrl+c', label: '^C', cls: 'danger' }, { key: 'backspace', label: '⌫' }, { key: 'y', label: 'y' }, { key: 'n', label: 'n' },
 ]
+const keys = computed<{ key: string, label: string, cls?: string }[]>(() => props.allDigits
+  ? [...KEYS.slice(0, 7), ...['4', '5', '6', '7', '8', '9', '0'].map(key => ({ key, label: key })), ...KEYS.slice(7)]
+  : KEYS)
 
 function press(key: string) {
   haptic()
@@ -22,7 +25,7 @@ function toggleKbd() {
 
 <template>
   <div class="keybar" role="toolbar" :aria-label="t('Keys')">
-    <button v-for="k in KEYS" :key="k.key" type="button" :class="k.cls" @pointerdown.prevent @click="press(k.key)">{{ k.label }}</button>
+    <button v-for="k in keys" :key="k.key" type="button" :class="k.cls" @pointerdown.prevent @click="press(k.key)">{{ k.label }}</button>
     <button type="button" class="kbd" :class="{ on: ctl.kbdOn.value }" :aria-label="t('Type in terminal')" @pointerdown.prevent @click="toggleKbd">
       <UIcon name="i-lucide-keyboard" />
     </button>

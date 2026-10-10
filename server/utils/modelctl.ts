@@ -133,6 +133,7 @@ const LIST_TTL_MS = 12 * 3600 * 1000
 const listCache = new Map<string, ModelList>()
 const listKey = (paneId: string, agent: string) => `${machineOfPane(paneId)?.key || ''}|${agent}`
 const busy = new Set<string>()
+export const modelControlBusy = (paneId: string) => busy.has(paneId)
 
 async function withPane<T>(paneId: string, fn: (p: Pane) => Promise<T>): Promise<T> {
   const p = findPane(paneId)

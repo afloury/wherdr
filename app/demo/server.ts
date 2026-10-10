@@ -31,6 +31,31 @@ export class DemoServer {
   private pending = new Map<string, { token: number, turn: S.ScriptedTurn }>()
   private nextWs = 5
   private seq = 10
+  private interactive = new Map<string, { cursor: number, details: boolean }>()
+
+  interactiveScreen(id: string): string | null {
+    const menu = this.interactive.get(id)
+    if (!menu) return null
+    return menu.details
+      ? 'Usage history\n\nDemo analytics · no account data\n\nesc back'
+      : ['Usage', '', `${menu.cursor === 0 ? '›' : ' '} 1. View analytics  Usage history`, `${menu.cursor === 1 ? '›' : ' '} 2. Redeem reset    Check availability`, '', 'enter open · esc back'].join('\n')
+  }
+
+  terminalKeys(id: string, keys: string[]): boolean {
+    const menu = this.interactive.get(id)
+    if (!menu) return false
+    for (const key of keys) {
+      if (key === 'up' || key === '1') menu.cursor = 0
+      if (key === 'down' || key === '2') menu.cursor = 1
+      if (key === 'enter') menu.details = true
+      if (key === 'esc') {
+        if (menu.details) menu.details = false
+        else { this.interactive.delete(id); this.update(id, { interaction: 'input' }); return true }
+      }
+    }
+    this.update(id, { interaction: 'terminal' })
+    return true
+  }
 
   constructor(private clock: DemoClock = { now: Date.now, setTimeout: (fn, ms) => setTimeout(fn, ms) }) {
     const now = clock.now()
@@ -117,6 +142,11 @@ export class DemoServer {
     if (p.status === 'blocked') return fail(409, 'Answer the question on screen first.', 'agent_blocked')
     this.push(id, { role: 'user', text, ts: null })
     if (text.trim().startsWith('/')) {
+      if (text.trim() === '/usage' && p.agent === 'codex') {
+        this.interactive.set(id, { cursor: 0, details: false })
+        this.update(id, { interaction: 'terminal', status: 'idle' })
+        return ok()
+      }
       this.push(id, { role: 'system', text: `${text.trim().split(/\s/)[0]} — commands do not run in the demo`, ts: null })
       return ok()
     }
@@ -272,7 +302,7 @@ export class DemoServer {
         case '/api/models': return this.models(paneId)
         case '/api/chat': return this.chatReply(paneId, q.get('since'), q.get('before'))
         case '/api/changes': return S.CHANGES[paneId] ? ok(S.CHANGES[paneId]) : ok({ git: false })
-        case '/api/screen': return ok({ text: '', tabs: null, tab: null })
+        case '/api/screen': return ok({ text: this.interactiveScreen(paneId) || '', tabs: null, tab: null, interaction: this.pane(paneId)?.interaction })
         case '/api/search': return ok(this.search(String(q.get('q') || '')))
         case '/api/dirs': return ok({ path: S.HOME, parent: null, home: S.HOME, dirs: [
           { name: 'acme-api', path: `${S.HOME}/code/acme-api`, git: true },
@@ -289,6 +319,7 @@ export class DemoServer {
     switch (path) {
       case '/api/prompt': return this.prompt(paneId, String(body.text || ''))
       case '/api/choose': return this.choose(paneId, Number(body.index), String(body.label || ''))
+      case '/api/input': return this.terminalKeys(paneId, Array.isArray(body.keys) ? body.keys as string[] : []) ? ok() : fail(400, DEMO_REFUSAL)
       case '/api/interrupt': return this.interrupt(paneId)
       case '/api/agents': return this.newAgent(body as Parameters<DemoServer['newAgent']>[0])
       case '/api/close': return this.close(paneId)

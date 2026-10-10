@@ -3,6 +3,7 @@ import type { TabLayout } from './layout'
 import type { ProjectFolderKind } from './projectFolders'
 import type { CodexStatus } from './codexStatus'
 import type { MaxSessionDays } from './sessionLimit'
+import type { ScreenInteraction } from './interactiveScreen'
 
 export type AgentStatus = 'working' | 'blocked' | 'done' | 'idle' | 'unknown'
 
@@ -130,6 +131,8 @@ export interface Pane {
   pendingPrompt?: boolean
   queued?: QueuedMessage[]
   prompt?: Choices
+  // Conservative presentation of the current terminal screen, not a command.
+  interaction?: ScreenInteraction
   screen?: WaitScreen
   // Menu interactif ouvert (agent au repos) : il remplace `prompt` et `screen`.
   menu?: InteractiveMenu

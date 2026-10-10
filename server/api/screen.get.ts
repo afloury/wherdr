@@ -1,4 +1,6 @@
 import { settingsTabs, tabsOfRow } from '../../shared/settingsScreen'
+import { classifyScreen } from '../../shared/interactiveScreen'
+import { parseMenu } from '../../shared/menuScreen'
 
 // Current screen of the pane, as text: output of local commands (/context,
 // /status…) that agents do not write to their transcript. Claude Code
@@ -18,5 +20,7 @@ export default defineApi(async (event) => {
     const hit = line ? activeTab(line) : null
     tab = hit && tabs.includes(hit) ? hit : null
   }
-  return { text, tabs, tab }
+  const p = findPane(pane)
+  const interaction = classifyScreen({ text, status: p?.status, choices: screenChoices(text, p?.agent), waiting: Boolean(tabs || parseMenu(text) || parseWaitScreen(text)) })
+  return { text, tabs, tab, interaction }
 })

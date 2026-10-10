@@ -39,9 +39,9 @@ const opt = name => Number(args[args.indexOf(name) + 1])
 const session = `cli-${process.pid}`
 const out = obj => process.stdout.write(JSON.stringify(obj) + '\n')
 let seq = 0
-const frame = (size, what = 'terminal') => out({
+const frame = (size, what = 'terminal', text = '') => out({
   type: 'terminal.frame', encoding: 'ansi', full: true, width: size.cols, height: size.rows, seq: ++seq,
-  bytes: Buffer.from(`\x1b[2J\x1b[Hfake ${what} ${size.cols}x${size.rows}\r\n$ `).toString('base64'),
+  bytes: Buffer.from(`\x1b[2J\x1b[H${text ? text.replace(/\n/g, '\r\n') : `fake ${what} ${size.cols}x${size.rows}\r\n$ `}`).toString('base64'),
 })
 
 // An observer attaches to nothing: the screen at the size it was given, until it is stopped.
@@ -53,12 +53,21 @@ if (command === 'terminal session observe') {
 }
 
 let done = false
+let pollTimer
 async function leave(code) {
   if (done) return
   done = true
+  clearInterval(pollTimer)
   await call('e2e.term_detach', { pane_id: pane, session }).catch(() => {})
   process.exit(code)
 }
+
+// Live frames for scripted interactive screens; ordinary terminal-size tests
+// retain their original frames and size behaviour.
+pollTimer = setInterval(async () => {
+  const r = await call('e2e.terminal_screen', { pane_id: pane }).catch(() => null)
+  if (r?.text && !done) frame(r.size, 'terminal', r.text)
+}, 200)
 
 try {
   frame(await call('e2e.term_attach', { pane_id: pane, session, cols: opt('--cols'), rows: opt('--rows'), takeover: args.includes('--takeover') }))
@@ -82,6 +91,10 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
   } else if (m.type === 'terminal.release') {
     out({ type: 'terminal.closed', reason: 'detached' })
     leave(0)
+  } else if (m.type === 'terminal.input') {
+    const text = m.text || ''
+    const keys = [...text].map(c => c === '\x1b' ? 'esc' : c === '\r' ? 'enter' : c)
+    await call('pane.send_input', { pane_id: pane, keys }).catch(() => {})
   }
 }).on('close', () => leave(0))
 process.on('SIGTERM', () => leave(0))

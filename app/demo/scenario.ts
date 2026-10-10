@@ -248,6 +248,7 @@ export const COMMANDS: Record<string, SlashCommand[]> = {
     { name: 'review', desc: 'Review the current changes', source: 'command' },
   ],
   codex: [
+    { name: 'usage', desc: 'Open the interactive usage screen', source: 'builtin' },
     { name: 'model', desc: 'Choose the model and reasoning effort', source: 'builtin' },
     { name: 'diff', desc: 'Show the git diff', source: 'builtin' },
     { name: 'status', desc: 'Session configuration and usage', source: 'builtin' },

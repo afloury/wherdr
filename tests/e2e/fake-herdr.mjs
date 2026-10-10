@@ -26,7 +26,7 @@ const ompRunScreen = command => [
   ' π > Opus > demo ▶─1%───────────────────────────────────────────────1M─',
   '╰─ ',
 ].join('\n')
-const screen = p => (p?.agent === 'omp' && p.status === 'idle' ? (p.run ? ompRunScreen(p.run) : OMP_IDLE_SCREEN) : '')
+const screen = p => p?.customScreen ?? (p?.agent === 'omp' && p.status === 'idle' ? (p.run ? ompRunScreen(p.run) : OMP_IDLE_SCREEN) : '')
 
 // A tab's area, in cells; two panes share it side by side (one split).
 const AREA = { x: 0, y: 0, width: 120, height: 40 }
@@ -123,7 +123,24 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     'pane.send_input': (params) => {
       const p = paneById(params.pane_id)
       if (p?.run && (params.keys || []).includes('esc')) p.run = null
+      if (p?.customScreen !== undefined && p.customScreen !== null) {
+        p.sentKeys ||= []
+        p.sentKeys.push(...(params.keys || []))
+        if ((params.keys || []).includes('esc')) p.customScreen = '› Ask Codex to do anything\n\n  GPT-6-Sol medium · demo'
+      }
       return {}
+    },
+    'e2e.interaction_screen': params => {
+      const p = need(params.pane_id)
+      p.customScreen = params.text ?? null
+      if (params.agent) p.agent = params.agent
+      if (params.status) p.status = params.status
+      p.sentKeys = []
+      return {}
+    },
+    'e2e.terminal_screen': params => {
+      const p = need(params.pane_id)
+      return { text: p.customScreen || '', size: p.size, keys: p.sentKeys || [] }
     },
     'pane.layout': (params) => {
       const p = need(params.pane_id)

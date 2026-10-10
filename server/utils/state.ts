@@ -19,6 +19,7 @@ import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseWaitScreen } from './waitScreen'
 import { parseMenu, TOP } from '../../shared/menuScreen'
 import { settingsTabs } from '../../shared/settingsScreen'
+import { classifyScreen, type ScreenInteraction } from '../../shared/interactiveScreen'
 import { parseClaudeActivity } from './activity'
 import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './claudeScreen'
 import { type QueueEntry, INPUT_STATES, checkQueue, isUploadLine, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
@@ -32,7 +33,7 @@ import { type GuardError, guardedSend, withPaneLock } from './guardedSend'
 import { type TranscriptPane, sameMsg } from './transcripts'
 import { agentNotificationTitle, pushSend, subWatchesSession } from './push'
 import { shouldNotify } from './notificationPolicy'
-import { currentModel, forgetModel, noteScreen } from './modelctl'
+import { currentModel, forgetModel, noteScreen, modelControlBusy } from './modelctl'
 import { type Machine, RemoteMachine, allMachines, getMachine, machineOfPane, machinesListed, multiMachine, onMachinesChange, remoteMachines } from './machines'
 import { READY_MAX_MS, serverReady } from '../../shared/stateReady'
 import { createCodexStatus, dirWritable } from './codexStatus'
@@ -104,7 +105,7 @@ export async function withOmpTab(paneId: string, c: Choices): Promise<Choices> {
 // conversation (see screenCache.ts).
 // Permission request: the requested command or file preferably comes from
 // the transcript (in full), otherwise from the screen.
-type OnScreen = { choices: Choices | null, screen: WaitScreen | null, menu: InteractiveMenu | null }
+type OnScreen = { choices: Choices | null, screen: WaitScreen | null, menu: InteractiveMenu | null, interaction: ScreenInteraction }
 // Screen to re-read for a while even without a new `revision` ("/" command
 // sent: an interactive menu may open), see watchScreen().
 const screenWatch = new Map<string, number>()
@@ -116,6 +117,11 @@ export const choicesCache = new Map<string, { rev: unknown, strict: boolean, at:
 // Claude's checkboxes last seen ticked, per pane (see completeClaudeAsk).
 const askChecks = new Map<string, AskChecks>()
 async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false): Promise<OnScreen> {
+  // The existing picker owns its temporary TUI while it reads/changes a model.
+  if (modelControlBusy(p.id)) {
+    choicesCache.delete(p.id)
+    return { choices: null, screen: null, menu: null, interaction: 'managed' }
+  }
   const c = choicesCache.get(p.id)
   const watched = (screenWatch.get(p.id) || 0) > Date.now()
   if (!watched) screenWatch.delete(p.id)
@@ -143,7 +149,9 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
     // Claude Code's settings panel (/usage…): read-only, shown by the settings
     // card of the command result; its "Esc to cancel" is not a question.
     const settings = p.agent === 'claude' && settingsTabs(text) !== null
-    out = { choices, screen: menu || settings ? null : parseWaitScreen(text, { choices: Boolean(choices) }), menu }
+    const screen = menu || settings ? null : parseWaitScreen(text, { choices: Boolean(choices) })
+    const interaction = classifyScreen({ text: String(text || ''), choices, waiting: Boolean(menu || settings || screen), status: p.status })
+    out = { choices: interaction === 'native' ? choices : null, screen: interaction === 'native' ? screen : null, menu: null, interaction }
     noteScreen(p.id, p.agent, text) // Codex: model from its status line
     if (choices && (choices.detail || isPermissionQuestion(choices.question))) {
       // omp: the tool named in its dialog's title (none when scrolled off).
@@ -153,7 +161,7 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
       if (detail) choices.detail = detail
       if (p.agent === 'omp' && !choices.question && tr) choices.question = `Allow tool: ${tr.tool}`
     }
-  } catch { out = { choices: c ? c.choices : null, screen: c ? c.screen : null, menu: c ? c.menu : null } }
+  } catch { out = { choices: c ? c.choices : null, screen: c ? c.screen : null, menu: c ? c.menu : null, interaction: c?.interaction || 'unknown' } }
   choicesCache.set(p.id, { rev, strict, at: Date.now(), ...out })
   return out
 }
@@ -761,7 +769,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
         else queued.delete(p.id)
       }
       const list = queued.get(p.id)
-      const menu = Boolean(before && (before.menu || before.prompt || before.screen)) || restarting(p.id)
+      const menu = Boolean(before && (before.menu || before.prompt || before.screen || before.interaction === 'terminal')) || restarting(p.id)
       // omp running the user's "!" command: idle for Herdr, but busy.
       if (list && TURN.has(p.status || '')) for (const q of list) if (!q.held && !q.failed) q.turnSeen = true
       if (list && checkQueue(list, before?.ompShell ? 'working' : p.status, Date.now(), menu)) log(`message not sent on ${p.id}`)
@@ -791,12 +799,16 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       // Agent without a conversation or born less than 2 min ago (Codex sometimes reports
       // another pane's session, see transcripts.ts): screen watched.
       const young = !p.agentSession || (p.bornAt && Date.now() - p.bornAt < 120000)
-      const c = await choicesFor(p, revs.get(p.id), p.status !== 'blocked', Boolean(young))
+      const c = await choicesFor(p, revs.get(p.id), p.status !== 'blocked', Boolean(young) || isViewed(p.id))
+      p.interaction = c.interaction
       if (c.choices) p.prompt = c.choices
       if (c.screen) p.screen = c.screen
       if (c.menu) p.menu = c.menu
     } else {
-      choicesCache.delete(p.id)
+      p.interaction = isViewed(p.id)
+        ? (await choicesFor(p, revs.get(p.id), true, true)).interaction
+        : 'working'
+      if (!isViewed(p.id)) choicesCache.delete(p.id)
       askChecks.delete(p.id)
     }
     const pv = previews.get(p.id)
