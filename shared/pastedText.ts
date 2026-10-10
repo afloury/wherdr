@@ -9,8 +9,11 @@
 //   words typed outside them (a paste into the agent's terminal).
 // - Codex and omp keep no trace of a paste: their transcript holds the plain
 //   text.
-// - The blocks this device sent as pasted text (see app/utils/sentPastes.ts)
-//   are found back in the message, whatever the agent.
+// - The blocks sent as pasted text from wherdr's field are found back in the
+//   message, whatever the agent: the app tells the server where they sit
+//   (pasteRanges), and the server lists them for every device (see
+//   server/utils/pastes.ts). The device that sent them remembers them too
+//   (app/utils/sentPastes.ts).
 // A message written in wherdr's field is never a card, however long.
 
 export const PASTE_MIN_LINES = 12
@@ -42,6 +45,17 @@ export function messageBody(text: string, pastes: string[], paths: string[]): st
   return [[text.trim(), ...pastes].filter(Boolean).join('\n\n'), ...paths].filter(Boolean).join('\n')
 }
 
+// Where `blocks` (pasted texts) sit in the message `body`, as [start, length]:
+// what the app sends along with a message, instead of the blocks again.
+export function pasteRanges(body: string, blocks: string[]): [number, number][] {
+  const out: [number, number][] = []
+  for (const b of blocks) {
+    const at = b ? body.indexOf(b) : -1
+    if (at >= 0) out.push([at, b.length])
+  }
+  return out
+}
+
 // Cuts `block` out of `text` (first occurrence). The text may be clipped by
 // the server: a block found by its start is cut up to the end.
 function cut(text: string, block: string): string | null {
@@ -56,9 +70,10 @@ function cut(text: string, block: string): string | null {
 }
 
 // A user message split into its own words and its pasted texts.
-// `listed`: blocks the transcript marked as pasted (ChatItem.pasted).
+// `listed`: blocks the server marked as pasted (ChatItem.pasted).
 // `known`: blocks this device sent as pasted text; one found inside a listed
-// block leaves the words around it in the text.
+// block leaves the words around it in the text, and one a listed block is
+// the start of (a queued record's text is cut short) is shown whole.
 export function splitPasted(text: string, listed: string[] = [], known: string[] = []): { text: string, pastes: string[] } {
   let rest = text
   const pastes: string[] = []
@@ -70,7 +85,7 @@ export function splitPasted(text: string, listed: string[] = [], known: string[]
   }
   const longKnown = known.filter(isLongPaste)
   for (const b of listed) {
-    if (longKnown.some(k => k !== b && b.includes(k))) continue // left to the known blocks below
+    if (longKnown.some(k => k !== b && (b.includes(k) || k.startsWith(b)))) continue // left to the known blocks below
     if (take(b)) pastes.push(b)
   }
   for (const k of longKnown) if (take(k)) pastes.push(k)
