@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compactMeta, readCompactList } from '../app/utils/compactCard'
+import { compactMeta, compactOpen, readCompactList } from '../app/utils/compactCard'
 
 describe('compact list setting', () => {
   it('is on for a device that never chose', () => {
@@ -26,5 +26,21 @@ describe('compact list card', () => {
   it('single pane: neither', () => {
     expect(compactMeta({ tabs: 1, panes: 1 })).toMatchObject({ dots: false, panes: null })
     expect(compactMeta({})).toMatchObject({ dots: false, panes: null })
+  })
+})
+
+describe('compact card of a waiting agent', () => {
+  it('opens on a question, the requested action or one-tap answers', () => {
+    expect(compactOpen({ status: 'blocked', preview: 'Do you want to proceed?' })).toBe(true)
+    expect(compactOpen({ status: 'blocked', detail: { tool: 'bash' } })).toBe(true)
+    expect(compactOpen({ status: 'blocked', choices: 2 })).toBe(true)
+  })
+  it('stays one line when the agent is not waiting, whatever its preview', () => {
+    for (const status of ['working', 'done', 'idle', 'unknown', undefined, null])
+      expect(compactOpen({ status, preview: 'Last answer', choices: 2 })).toBe(false)
+  })
+  it('stays one line when a waiting agent has nothing to show', () => {
+    expect(compactOpen({ status: 'blocked' })).toBe(false)
+    expect(compactOpen({ status: 'blocked', preview: '', detail: null, choices: 0 })).toBe(false)
   })
 })

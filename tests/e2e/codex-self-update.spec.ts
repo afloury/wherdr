@@ -45,6 +45,55 @@ test('a new Codex restarts with its original options, only after a tap', async (
   await expect.poll(async () => (await stats()).prompts.map((p: { text: string }) => p.text)).toEqual(['Held until startup returns'])
 })
 
+const leaving = async (page: Page) => {
+  const state = await (await page.request.get('/api/state')).json()
+  return Boolean(state.panes.find((p: { id: string }) => p.id === CODEX_UPDATE_PANE)?.leaving)
+}
+
+test('a Project message sent before the card appears is held, never typed into the shell', async ({ page }) => {
+  const { pid } = await fakeHerdr('e2e.update_reset', { pane_id: CODEX_UPDATE_PANE })
+  await page.goto(`/#/a/${CODEX_UPDATE_PANE}`)
+  await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, conversation: 'empty' })
+  await fakeHerdr('e2e.update_exit', { pane_id: CODEX_UPDATE_PANE })
+  // Codex is gone and its screen is not checked yet: a bare shell, no card.
+  await expect.poll(() => leaving(page), { intervals: [50] }).toBe(true)
+  await expect(card(page)).toHaveCount(0)
+  // What the Project panel sends to a pane with no agent: text, then Enter.
+  const raw = await post(page, 'input', { text: 'Confirm: Check the restart', keys: ['enter'] })
+  expect((await raw.json()).queued.state).toBe('held')
+  expect((await post(page, 'input', { keys: ['enter'] })).status()).toBe(400)
+  expect(await stats()).toMatchObject({ starts: [], writes: [], prompts: [] })
+  const button = card(page).getByRole('button', { name: 'Restart Codex', exact: false })
+  await expect(button).toBeVisible()
+  expect(await leaving(page)).toBe(false)
+  expect(await stats()).toMatchObject({ writes: [], prompts: [] })
+  await button.click()
+  await expect.poll(async () => (await stats()).prompts.map((p: { text: string }) => p.text)).toEqual(['Confirm: Check the restart'])
+  expect((await stats()).writes).toEqual([])
+})
+
+test('Dismiss forgets the update and gives the pane back as a plain shell', async ({ page }, info) => {
+  const pane = async () => (await (await page.request.get('/api/state')).json()).panes.find((p: { id: string }) => p.id === CODEX_UPDATE_PANE)
+  await stopAfterUpdate(page)
+  const held = (await (await post(page, 'prompt', { text: 'Held for the restart' })).json()).queued
+  expect(held.state).toBe('held')
+  await card(page).getByRole('button', { name: 'Dismiss', exact: true }).click()
+  await expect(card(page)).toHaveCount(0)
+  await expect.poll(record).toBeUndefined()
+  // No agent, no question, no disabled field: a shell like any other.
+  expect(await pane()).toMatchObject({ agent: null, queued: expect.arrayContaining([expect.objectContaining({ text: 'Held for the restart', state: 'failed' })]) })
+  expect((await pane()).stopped).toBeUndefined()
+  expect((await pane()).prompt).toBeUndefined()
+  expect(await stats()).toMatchObject({ starts: [], writes: [], prompts: [] })
+  if (info.project.name.startsWith('chromium')) await page.screenshot({ path: `.shots/codex-update-dismissed-${info.project.name}.png`, fullPage: true })
+  // The card does not come back on later polls, nor after a reload.
+  await page.reload()
+  await page.waitForTimeout(2500)
+  await expect(card(page)).toHaveCount(0)
+  expect((await post(page, 'unqueue', held)).status()).toBe(200)
+  expect(await stats()).toMatchObject({ starts: [], writes: [], prompts: [] })
+})
+
 test('an existing Codex resumes its exact session', async ({ page }) => {
   await stopAfterUpdate(page, true)
   await expect(card(page).getByRole('button', { name: /Start fresh/ })).toBeVisible()
@@ -71,6 +120,7 @@ test('the restart card and both conversation choices are translated into French'
   await stopAfterUpdate(page, true, 'Codex s’est mis à jour et s’est arrêté')
   await expect(card(page).getByRole('button', { name: /Reprendre la conversation/ })).toBeVisible()
   await expect(card(page).getByRole('button', { name: /Démarrer une nouvelle conversation/ })).toBeVisible()
+  await expect(card(page).getByRole('button', { name: 'Ignorer', exact: true })).toBeVisible()
   if (info.project.name.startsWith('chromium')) await page.screenshot({ path: `.shots/codex-update-fr-${info.project.name}.png`, fullPage: true })
 })
 

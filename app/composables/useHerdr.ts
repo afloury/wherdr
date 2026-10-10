@@ -19,7 +19,7 @@ import { readShowShells } from '~/utils/terminalVisibility'
 import { readCompactList } from '~/utils/compactCard'
 import { paneFallback } from '~/utils/viewMode'
 import { menuAsSheet } from '~/utils/menuRoute'
-import { readQuoteMode } from '~/utils/quoteTokens'
+import { DEFAULT_QUOTE_MODE, QUOTE_MODE_KEY, migrateQuoteMode, type QuoteMode } from '~/utils/quoteTokens'
 import { parseReplyStyle } from '~/utils/questionReply'
 import type { QuotaDisplay } from '~/utils/quotas'
 import type { ContentWidth } from '~/utils/contentWidth'
@@ -148,14 +148,15 @@ if (import.meta.client) {
 export const typingSpeed = computed(() => effectiveTypingSpeed(typewriterSpeed.value, reducedMotion.value))
 export const typewriterActive = computed(() => typingSpeed.value !== 'off')
 export const encryptedActive = computed(() => encryptedTextActive(typewriterSpeed.value, encryptedText.value, reducedMotion.value))
-// Quoted replies (utils/quoteTokens.ts), experimental: one mode for the
-// computer, one for the phone ("phone" = touch screen as main pointer, the
-// criterion of the rest of the app), plain "> " lines by default.
-export const quoteModeComputer = ref(readQuoteMode(ls.get('quoteModeComputer'), ls.get('quoteTokensComputer')))
-watch(quoteModeComputer, v => ls.set('quoteModeComputer', v))
-export const quoteModePhone = ref(readQuoteMode(ls.get('quoteModePhone'), ls.get('quoteTokensPhone')))
-watch(quoteModePhone, v => ls.set('quoteModePhone', v))
-export const quoteMode = computed(() => (coarse.value ? quoteModePhone.value : quoteModeComputer.value))
+// Quoted replies (utils/quoteTokens.ts): one mode for this device, tokens in
+// the native field by default.
+function savedQuoteMode(): QuoteMode {
+  if (!import.meta.client) return DEFAULT_QUOTE_MODE
+  try { return migrateQuoteMode(localStorage) }
+  catch { return DEFAULT_QUOTE_MODE }
+}
+export const quoteMode = ref(savedQuoteMode())
+watch(quoteMode, v => ls.set(QUOTE_MODE_KEY, v))
 // How the questions and the points of an agent reply offer to be quoted
 // (utils/questionReply.ts): an icon by default.
 export const replyStyle = ref(parseReplyStyle(ls.get('replyStyle')))

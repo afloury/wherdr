@@ -48,6 +48,9 @@ export const SPLIT_TAB = 'w9:t1'
 export const SPLIT_CHAT_PANE = 'w9:p1'
 export const SPLIT_SHELL_PANE = 'w9:p2'
 export const CODEX_UPDATE_PANE = 'w10:p1'
+// Two agents at rest that a spec makes wait on a question (e2e.ask).
+export const OMP_ASK_PANE = 'w11:p1'
+export const CLAUDE_ASK_PANE = 'w12:p1'
 export const CODEX_UPDATE_SESSION = '00000000-0000-4000-8000-000000000288'
 
 // Unique markers of the long omp transcript (asserted on by the specs).
@@ -182,9 +185,11 @@ export function writeScenario(home) {
   const coordinator = path.join(home, '.herdr-projects/acme')
   const questions = path.join(home, 'projects/questions')
   const split = path.join(home, 'projects/split')
+  const release = path.join(home, 'projects/release')
+  const billing = path.join(home, 'projects/billing')
   const codex = path.join(home, '.herdr-projects/codex-update')
   fs.mkdirSync(codex, { recursive: true })
-  for (const d of [api, docs, demo, screens, approval, scratch, coordinator, questions, split]) fs.mkdirSync(d, { recursive: true })
+  for (const d of [api, docs, demo, screens, approval, scratch, coordinator, questions, split, release, billing]) fs.mkdirSync(d, { recursive: true })
 
   const claudeSid = '00000000-0000-4000-8000-000000000001'
   const codexFile = path.join(home, `.codex/sessions/${new Date().toISOString().slice(0, 10).replaceAll('-', '/')}/rollout-test-${CODEX_UPDATE_SESSION}.jsonl`)
@@ -270,5 +275,7 @@ export function writeScenario(home) {
       { id: SPLIT_CHAT_PANE, agent: 'omp', status: 'idle', cwd: split, session: splitFile },
       { id: SPLIT_SHELL_PANE, status: 'idle', cwd: split },
     ] },
+    { id: 'w11', label: 'release', panes: [{ id: OMP_ASK_PANE, agent: 'omp', status: 'idle', cwd: release }] },
+    { id: 'w12', label: 'billing', panes: [{ id: CLAUDE_ASK_PANE, agent: 'claude', status: 'idle', cwd: billing }] },
   ]
 }

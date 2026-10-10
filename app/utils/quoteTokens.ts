@@ -3,9 +3,9 @@
 // question or passage as "> " lines, its answer below — so sending, the draft
 // kept per conversation and the "Quoted" buttons do not change. Only the
 // field's drawing differs, by mode:
-//   lines:  the plain field, "> " lines as typed (default);
+//   lines:  the plain field, "> " lines as typed;
 //   native: the same native textarea, its "> " lines drawn as tokens by a
-//           mirror behind it (utils/quoteMirror.ts);
+//           mirror behind it (utils/quoteMirror.ts), the default;
 //   rich:   a rich field (components/QuoteTokensField.vue) where each run of
 //           "> " lines is one compact, non-editable token.
 
@@ -14,11 +14,27 @@ import { QUOTE_LINE } from './questionReply'
 export const QUOTE_MODES = ['lines', 'native', 'rich'] as const
 export type QuoteMode = typeof QUOTE_MODES[number]
 
-// The saved mode of one device kind. Before the choice, a switch per device
-// (`legacy`, "1" = on) turned the rich field on: it keeps it.
-export function readQuoteMode(saved: string | null, legacy: string | null): QuoteMode {
+export const DEFAULT_QUOTE_MODE: QuoteMode = 'native'
+
+// The mode is saved per device under one key. Earlier versions kept one value
+// for the computer and one for the phone (and, before that, a switch each).
+export const QUOTE_MODE_KEY = 'quoteMode'
+export const OLD_QUOTE_MODE_KEYS = ['quoteModeComputer', 'quoteModePhone', 'quoteTokensComputer', 'quoteTokensPhone'] as const
+
+export function readQuoteMode(saved: string | null): QuoteMode {
+  return QUOTE_MODES.includes(saved as QuoteMode) ? saved as QuoteMode : DEFAULT_QUOTE_MODE
+}
+
+// One pass per device, the first time the single key is missing: the mode
+// becomes the default whatever the old keys held (a choice could not be told
+// from the former default), and the old keys go. The key written here marks
+// the pass as done, so a choice made afterwards is never overwritten.
+export function migrateQuoteMode(store: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>): QuoteMode {
+  const saved = store.getItem(QUOTE_MODE_KEY)
   if (QUOTE_MODES.includes(saved as QuoteMode)) return saved as QuoteMode
-  return legacy === '1' ? 'rich' : 'lines'
+  for (const k of OLD_QUOTE_MODE_KEYS) store.removeItem(k)
+  store.setItem(QUOTE_MODE_KEY, DEFAULT_QUOTE_MODE)
+  return DEFAULT_QUOTE_MODE
 }
 
 // What the field shows for a draft: a line of text, or a token for a run of

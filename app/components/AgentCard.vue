@@ -1,3 +1,9 @@
+<script lang="ts">
+// A card mounted once the list is on screen (an agent that starts waiting moves
+// to another group) opens its answers with the transition; the first render does not.
+let listShown = false
+</script>
+
 <script setup lang="ts">
 // Card of an agent in the list: title, state and model ("working · claude ·
 // opus 5.5"), folder
@@ -23,7 +29,8 @@ const statePane = computed(() => space.value?.state ?? props.pane)
 const source = computed(() => (props.row ? stateSource(props.row) : null))
 // One dot per tab, in order, for a coordinator's space with several tabs.
 const dots = computed(() => (space.value && space.value.tabs.length > 1 && isCoordinator(space.value.lead) ? tabStates(space.value) : []))
-// Compact list: one line (avatar, title, badge, tab dots or pane count, state dot).
+// Compact list: one line (avatar, title, badge, tab dots or pane count, state dot);
+// while the agent waits for an answer, its question and one-tap answers open below.
 const compact = computed(() => compactMeta({
   tag: props.tag, coordinator: !!props.tag && isCoordinator(props.pane),
   tabs: space.value?.tabs.length, panes: space.value?.panes.length,
@@ -66,6 +73,7 @@ const quick = computed(() => quickChoices(prompt.value, 4))
 // Recognized waiting screen (Codex hooks…): its title says better what is expected.
 const screen = computed(() => knownScreen(props.pane))
 const preview = computed(() => (screen.value && screenSummary(screen.value)) || (props.pane.menu && props.pane.status !== 'working' && menuSummary(props.pane.menu)) || (prompt.value ? prompt.value.kind === 'self-update' ? t(prompt.value.question || '') : prompt.value.question : props.pane.preview))
+const more = computed(() => !compactList.value || compactOpen({ status: props.pane.status, preview: preview.value, detail: prompt.value?.detail, choices: quick.value.length }))
 // Read / unread: only for an agent that has finished (ready).
 const unread = computed(() => (space.value ? space.value.panes.filter(p => p.agent && p.status === 'done') : []))
 const readItem = computed(() => {
@@ -158,12 +166,14 @@ async function pick(i: number, label: string) {
   if (!ok) busy.value = false
 }
 watch(() => props.pane.prompt, () => { busy.value = false })
+const appear = listShown
+onMounted(() => { setTimeout(() => { listShown = true }, 1000) })
 </script>
 
 <template>
   <UContextMenu :disabled="sheetMenus" :items="contextItems" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="onContextOpen">
     <div
-      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, 'state-from-tab': source, compact: compactList }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
+      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, 'state-from-tab': source, compact: compactList, open: compactList && more }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
       role="button" tabindex="0" @pointerdown="down" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
       @contextmenu="onContext" @selectstart.prevent @click="open" @keydown.enter.self="open"
     >
@@ -191,19 +201,25 @@ watch(() => props.pane.prompt, () => { busy.value = false })
           <UIcon v-if="space" name="i-lucide-corner-down-right" class="card-where-lead" /><UIcon v-else-if="branch" name="i-lucide-git-branch" />{{ where }}
         </div>
       </div>
-      <div v-if="prompt?.detail" class="card-detail" :title="detailLine(prompt.detail)">
-        <span class="card-detail-tool">{{ prompt.detail.tool }}</span><code>{{ detailLine(prompt.detail) }}</code>
-      </div>
-      <div v-if="preview" class="card-preview">{{ preview }}</div>
-      <div v-if="quick.length" class="card-choices">
-        <button
-          v-for="o in quick" :key="o.i" type="button" :disabled="busy || !eventsOpen || offlineView || paneStale(pane)"
-          @click.stop="pick(o.i, o.label)"
-        >
-          <span class="n">{{ o.i + 1 }}</span><span class="l">{{ prompt?.kind === 'self-update' ? t(o.label) : o.label }}</span>
-        </button>
-      </div>
       </template>
+      <Transition name="card-more" :appear="appear">
+        <div v-if="more" class="card-more">
+          <div class="card-more-in">
+            <div v-if="prompt?.detail" class="card-detail" :title="detailLine(prompt.detail)">
+              <span class="card-detail-tool">{{ prompt.detail.tool }}</span><code>{{ detailLine(prompt.detail) }}</code>
+            </div>
+            <div v-if="preview" class="card-preview">{{ preview }}</div>
+            <div v-if="quick.length" class="card-choices">
+              <button
+                v-for="o in quick" :key="o.i" type="button" :disabled="busy || !eventsOpen || offlineView || paneStale(pane)"
+                @click.stop="pick(o.i, o.label)"
+              >
+                <span class="n">{{ o.i + 1 }}</span><span class="l">{{ prompt?.kind === 'self-update' ? t(o.label) : o.label }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
     </div>
   </UContextMenu>
 </template>

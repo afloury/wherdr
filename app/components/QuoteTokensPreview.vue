@@ -2,17 +2,36 @@
 // Animated preview of quoted replies (Settings › Conversation), drawn in
 // CSS with the theme colors: "↳ Reply" on a question, its quote in the
 // field (as the chosen mode draws it), the answer typed, a second quote, then
-// the message sent (the conversation moves up to it, the field empties); in a
-// loop. Reduced motion: the composed field, still.
+// the message sent (the conversation moves up to it, the field empties), and
+// back to the composed field, where it rests. Played once, then replayed on
+// each change of mode and by the ↻ button, like the typewriter preview.
+// Reduced motion: the composed field, still.
 import type { QuoteMode } from '~/utils/quoteTokens'
 
-defineProps<{ mode: QuoteMode }>()
+const props = defineProps<{ mode: QuoteMode }>()
+// A new key restarts the CSS timeline from its first frame.
+const run = ref(0)
+const playing = ref(false)
+const replay = () => {
+  if (reducedMotion.value) return
+  run.value++
+  playing.value = true
+}
+onMounted(replay)
+watch(() => props.mode, replay)
 </script>
 
 <template>
-  <figure class="qt-preview" :data-mode="mode" aria-hidden="true">
-    <figcaption>{{ t('Preview') }}</figcaption>
-    <div class="qt-stage">
+  <figure class="qt-preview" :data-mode="mode" :data-playing="playing">
+    <figcaption>
+      <span>{{ t('Preview') }}</span>
+      <UTooltip :text="t('Replay')">
+        <button type="button" class="typing-replay" :aria-label="t('Replay')" :disabled="reducedMotion" @click="replay">
+          <UIcon name="i-lucide-rotate-ccw" />
+        </button>
+      </UTooltip>
+    </figcaption>
+    <div :key="run" class="qt-stage" aria-hidden="true" @animationend="playing = false">
       <div class="qt-conv">
         <div class="qt-agent">
           <p>{{ tl('Tea or coffee?', 'Thé ou café ?') }} <span class="qt-tag one">↳ {{ t('Reply') }}</span></p>

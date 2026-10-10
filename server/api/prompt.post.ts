@@ -18,8 +18,9 @@ export default defineApi(async (event, b) => {
     return { ok: true, queued: q }
   }
   const held = await withPaneLock(b.pane_id, async () => {
-    if (!findPane(b.pane_id)?.stopped) return null
-    if (isSlashCommand(text)) throw new HerdrError('stale', 'Restart Codex before sending a command.')
+    const now = findPane(b.pane_id)
+    if (!now?.stopped && !now?.leaving) return null
+    if (isSlashCommand(text)) throw new HerdrError('stale', now.stopped ? 'Restart Codex before sending a command.' : 'Codex just stopped. Try again in a few seconds.')
     const q = addQueued(b.pane_id, text, { held: true, id })
     setTimeout(poll, 50)
     return q

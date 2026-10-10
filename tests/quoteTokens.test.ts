@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { enterAction, fieldItems, readField, readQuoteMode, type FieldNode } from '../app/utils/quoteTokens'
+import { DEFAULT_QUOTE_MODE, enterAction, fieldItems, migrateQuoteMode, readField, readQuoteMode, type FieldNode } from '../app/utils/quoteTokens'
 
 // Minimal DOM: elements, text nodes and tokens (data-q).
 type Fake = FieldNode & { q?: string }
@@ -62,16 +62,41 @@ describe('Enter in the token field', () => {
   })
 })
 
+// A Storage stand-in over a plain record.
+function store(init: Record<string, string>) {
+  const data = { ...init }
+  return {
+    data,
+    getItem: (k: string) => data[k] ?? null,
+    setItem: (k: string, v: string) => { data[k] = v },
+    removeItem: (k: string) => { delete data[k] },
+  }
+}
+
 describe('quote mode saved on this device', () => {
-  it('keeps a saved mode', () => {
-    expect(readQuoteMode('native', '1')).toBe('native')
-    expect(readQuoteMode('lines', '1')).toBe('lines')
-    expect(readQuoteMode('rich', null)).toBe('rich')
+  it('defaults to tokens in the native field', () => {
+    expect(DEFAULT_QUOTE_MODE).toBe('native')
+    expect(readQuoteMode(null)).toBe('native')
+    expect(readQuoteMode('tokens')).toBe('native')
+    expect(readQuoteMode('lines')).toBe('lines')
+    expect(readQuoteMode('rich')).toBe('rich')
   })
-  it('turns the former switch on into the rich field, anything else into "> " lines', () => {
-    expect(readQuoteMode(null, '1')).toBe('rich')
-    expect(readQuoteMode(null, '0')).toBe('lines')
-    expect(readQuoteMode(null, null)).toBe('lines')
-    expect(readQuoteMode('tokens', '0')).toBe('lines')
+  it('an empty storage takes the default and records the pass', () => {
+    const s = store({})
+    expect(migrateQuoteMode(s)).toBe('native')
+    expect(s.data).toEqual({ quoteMode: 'native' })
+  })
+  it('the pass overwrites the former per-device values once and removes their keys', () => {
+    const s = store({ quoteModeComputer: 'lines', quoteModePhone: 'rich', quoteTokensComputer: '1', quoteTokensPhone: '0', theme: 'dark' })
+    expect(migrateQuoteMode(s)).toBe('native')
+    expect(s.data).toEqual({ quoteMode: 'native', theme: 'dark' })
+  })
+  it('a choice made after the pass is kept on the next launches', () => {
+    const s = store({ quoteModeComputer: 'rich' })
+    migrateQuoteMode(s)
+    s.setItem('quoteMode', 'lines')
+    expect(migrateQuoteMode(s)).toBe('lines')
+    expect(migrateQuoteMode(s)).toBe('lines')
+    expect(s.data).toEqual({ quoteMode: 'lines' })
   })
 })
