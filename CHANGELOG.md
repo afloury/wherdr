@@ -12,7 +12,24 @@ All notable changes to this project are documented here. The format follows
   device-local draft per agent. Missing lines are flagged after refresh. Send review appends
   grouped file/line remarks to the message draft without sending it or replacing existing text.
   Includes old-line labels for deletions, keyboard/touch controls, remote agents and demo support.
-
+- **Yes / No in one tap**: a closed question of an agent's reply now has **Yes** and **No** next
+  to its `↳ Reply`, in the three reply styles. A tap quotes the question and writes the answer
+  under it, as Reply and typing would; nothing is sent, so several questions are answered in a row
+  and the keyboard stays down on a phone. The other answer replaces the first, typed words are
+  never replaced. Offered only when yes or no answers the question in full: a single sentence
+  with a yes/no opening, no alternative, no interrogative word and no negation; otherwise Reply
+  alone.
+- **Decision tables answered row by row**: under a Markdown table of numbered questions (a
+  number column, and a question column known by its header, by its question marks or by an advice
+  column next to it), **OK to all** writes `ok to all`, and each row has **Yes**, **No** and `↳`
+  that write `3: yes`, `3: no` or quote the row. French writes `ok tout`, `3 : oui`, `3 : non`.
+  Composed in the field, sent by you; a table of another shape gets nothing.
+- **N questions unanswered** above the field: the questions of the agent's last message, and the
+  rows of its decision tables, that the draft does not answer yet. A tap scrolls to the first
+  one. It goes once everything is quoted or answered and when the message is sent, never shows
+  for earlier messages or while the agent works, and takes no room: nothing moves when it comes
+  or goes. When the message asks one thing only, any typed words count as its answer.
+- The demo's Claude agent now ends its reply with a closed question, to try the one-tap answers.
 - **Restart after Codex updates itself**: when Codex's own installer exits to its shell,
   a Your turn card offers a one-tap restart and sends the usual attention notification.
   A new conversation reuses its launch command; an existing one can resume its exact session

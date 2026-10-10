@@ -7,7 +7,7 @@
 <p align="center"><b>A complete workspace for the coding agents running in <a href="https://herdr.dev">Herdr</a>, on your
 computer and on your phone.</b></p>
 
-<p align="center"><a href="https://wherdr.dev"><b>wherdr.dev</b></a> · <code>curl -fsSL https://wherdr.dev/install | sh</code> · <code>herdr plugin install afloury/wherdr</code></p>
+<p align="center"><a href="https://wherdr.dev"><b>wherdr.dev</b></a> · <a href="#ask-your-ai-agent">Ask your AI agent</a></p>
 
 <p align="center"><a href="https://wherdr.dev/demo/"><b>Try it in your browser — no install</b></a>: the real app on scripted agents, nothing runs.</p>
 
@@ -15,7 +15,20 @@ computer and on your phone.</b></p>
 
 ## Quick start
 
-On the computer that runs [Herdr](https://herdr.dev) (≥ 0.9.1), macOS or Linux, one command:
+### Ask your AI agent
+
+**Recommended.** Paste this into Claude Code, Codex or any coding agent: it installs and sets up wherdr for you.
+
+```text
+Read https://wherdr.dev/agent.md and help me set up wherdr. Check what is already installed first, and ask me before installing anything.
+```
+
+It follows [our setup guide for agents](https://wherdr.dev/agent.md): checks what you already have,
+asks before installing anything, sets up your phone over Tailscale, never exposes wherdr to the Internet.
+
+### Or run the installer yourself
+
+On the computer that runs [Herdr](https://herdr.dev) (≥ 0.9.1), macOS or Linux:
 
 ```sh
 curl -fsSL https://wherdr.dev/install | sh
@@ -102,7 +115,8 @@ Details in [Features](#features) and [Security](#security).
 - [Features](#features)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
-- [Installation](#installation): [the one command](#the-one-command) ·
+- [Installation](#installation): [ask your AI agent](#ask-your-ai-agent-1) ·
+  [or run the installer yourself](#the-one-command) ·
   [which setup?](#which-setup) ·
   [always-on server + Tailscale](#recommended-always-on-server--tailscale) ·
   [other private networks](#other-private-networks) ·
@@ -279,7 +293,20 @@ Web Push, lock) runs in Nitro.
 
 ## Installation
 
-### The one command
+### Ask your AI agent
+
+**Recommended.** Paste this into Claude Code, Codex or any coding agent: it installs and sets up wherdr for you.
+
+```text
+Read https://wherdr.dev/agent.md and help me set up wherdr. Check what is already installed first, and ask me before installing anything.
+```
+
+It follows [our setup guide for agents](https://wherdr.dev/agent.md): checks what you already have,
+asks before installing anything, sets up your phone over Tailscale, never exposes wherdr to the Internet.
+
+<a id="the-one-command"></a>
+
+### Or run the installer yourself
 
 On the computer that runs Herdr, as your user, on macOS or Linux:
 
@@ -876,6 +903,34 @@ nothing), so that one message answers them all:
 
 Every one of these is a button reachable with the keyboard (`Tab`, then `Enter`), and selecting a
 passage still offers **Reply** on it. A quoted question or point shows `✓`.
+
+A **closed question**, one that yes or no answers in full, also gets **Yes** and **No** next to
+its `↳` (at the end of its row in the list style). A tap quotes the question and writes the
+answer under it, exactly as Reply and typing would; nothing is sent, so several questions can be
+answered in a row before sending. The keyboard stays down on a phone. Tapping the other answer
+replaces the first; words you typed under a quote are never replaced. The rule is cautious, and
+in doubt only Reply is offered: a single sentence that opens like a yes/no question (`Shall I…`,
+`Do you…`, `Is it…`, `Want me to…`, `Est-ce que…`, `Je lance… ?`, `On…`, `Dois-je…`) or ends
+with `, OK?` / `, d'accord ?`, with no alternative (`or`, `ou`), no interrogative word (`which`,
+`how`, `quel`, `comment`…) and no negation.
+
+A **decision table**, a Markdown table whose rows are numbered questions as a coordinator writes
+them, gets a panel right under it: **OK to all** writes `ok to all` (a second tap takes it back),
+and each row has **Yes**, **No** and `↳`, which write `3: yes`, `3: no`, or quote the row
+(`> 3. Publish the notes?`) for an answer in words; a row that asks an open question has `↳` alone. In French: `ok tout`, `3 : oui`, `3 : non`.
+Here too everything is composed in the field and you send. A table qualifies when it has a
+number column (a header `#`, `N°`, `No`, `Num`, `ID` or `Q` over short numbers, each once) and a
+question column, known by its header (`Question`, `Decision`, `Choix`…), by cells that all end
+with `?`, or by an advice column next to it (`Avis`, `Recommendation`, `Suggestion`…). Any other
+table is left as it is.
+
+Above the field, **N questions unanswered** counts the questions of the agent's last message
+(and the rows of its decision tables) that your draft does not answer yet; tap it to scroll to
+the first one. A question counts once it is quoted, a row once it is answered, quoted or covered
+by `ok to all`; when the message asks one thing only, any words you type answer it. The line
+goes when everything is answered and when you send, and it never shows for earlier messages,
+while the agent is working, or while it waits on a prompt. It hangs from the top edge of the
+field, so nothing moves when it comes or goes.
 
 ## Several machines (SSH)
 

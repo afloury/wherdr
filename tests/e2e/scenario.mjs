@@ -51,6 +51,11 @@ export const CODEX_UPDATE_PANE = 'w10:p1'
 // Two agents at rest that a spec makes wait on a question (e2e.ask).
 export const OMP_ASK_PANE = 'w11:p1'
 export const CLAUDE_ASK_PANE = 'w12:p1'
+// A coordinator's decision table (numbered questions), next to a plain table.
+export const OMP_DECISIONS_PANE = 'w13:p1'
+// An agent whose every reply ends with a question (the unanswered reminder).
+export const OMP_FOLLOWUP_PANE = 'w14:p1'
+export const FOLLOWUP_REPLY = 'Noted. Shall I go on with the next step?'
 export const CODEX_UPDATE_SESSION = '00000000-0000-4000-8000-000000000288'
 
 // Unique markers of the long omp transcript (asserted on by the specs).
@@ -187,9 +192,11 @@ export function writeScenario(home) {
   const split = path.join(home, 'projects/split')
   const release = path.join(home, 'projects/release')
   const billing = path.join(home, 'projects/billing')
+  const decisions = path.join(home, 'projects/decisions')
+  const followup = path.join(home, 'projects/followup')
   const codex = path.join(home, '.herdr-projects/codex-update')
   fs.mkdirSync(codex, { recursive: true })
-  for (const d of [api, docs, demo, screens, approval, scratch, coordinator, questions, split, release, billing]) fs.mkdirSync(d, { recursive: true })
+  for (const d of [api, docs, demo, screens, approval, scratch, coordinator, questions, split, release, billing, decisions, followup]) fs.mkdirSync(d, { recursive: true })
 
   const claudeSid = '00000000-0000-4000-8000-000000000001'
   const codexFile = path.join(home, `.codex/sessions/${new Date().toISOString().slice(0, 10).replaceAll('-', '/')}/rollout-test-${CODEX_UPDATE_SESSION}.jsonl`)
@@ -246,6 +253,26 @@ export function writeScenario(home) {
       'All 48 tests pass. Shall I merge the branch now?',
     ].join('\n\n') }], stopReason: 'stop' }),
   ])
+  // A decision table to answer row by row; the table of threads above it and
+  // the numbered table of files below it are not ones.
+  const decisionsFile = ompTranscript(home, decisions, 'e2e-decisions', now, msg => [
+    msg({ role: 'user', content: [{ type: 'text', text: 'What do you need from me?' }], attribution: 'user' }),
+    msg({ role: 'assistant', content: [{ type: 'text', text: [
+      'Two threads are done:',
+      '| Thread | State |\n| --- | --- |\n| t-0001 | merged |\n| t-0002 | in review |',
+      'Four decisions are waiting for you:',
+      '| # | Question | My advice |\n| --- | --- | --- |\n| 1 | Tag the release **today**? | Yes |\n| 2 | Keep the old export format for one more version? | No |\n| 3 | Publish the release notes on the site? | Yes |\n| 4 | Which name for the new theme? | Titanium |',
+      'The build output, for reference:',
+      '| # | File | Size |\n| --- | --- | --- |\n| 1 | main.css | 120 kB |\n| 2 | app.js | 300 kB |',
+      'Shall I start the next thread meanwhile?',
+    ].join('\n\n') }], stopReason: 'stop' }),
+  ])
+  const followupFile = ompTranscript(home, followup, 'e2e-followup', now, msg => [
+    msg({ role: 'user', content: [{ type: 'text', text: 'Review the plan.' }], attribution: 'user' }),
+    msg({ role: 'assistant', content: [{ type: 'text', text: 'An earlier point. Was the first draft fine?' }], stopReason: 'stop' }),
+    msg({ role: 'user', content: [{ type: 'text', text: 'Go on.' }], attribution: 'user' }),
+    msg({ role: 'assistant', content: [{ type: 'text', text: 'The plan has two open points. Shall I rename the module? It is a small change.\n\nWhich name do you prefer?' }], stopReason: 'stop' }),
+  ])
   // omp waiting for the approval of its first action (status "blocked").
   const approvalFile = ompTranscript(home, approval, 'e2e-approval', now, msg => [
     msg({ role: 'user', content: [{ type: 'text', text: 'Clean the build folder.' }], attribution: 'user' }),
@@ -277,5 +304,7 @@ export function writeScenario(home) {
     ] },
     { id: 'w11', label: 'release', panes: [{ id: OMP_ASK_PANE, agent: 'omp', status: 'idle', cwd: release }] },
     { id: 'w12', label: 'billing', panes: [{ id: CLAUDE_ASK_PANE, agent: 'claude', status: 'idle', cwd: billing }] },
+    { id: 'w13', label: 'decisions', panes: [{ id: OMP_DECISIONS_PANE, agent: 'omp', status: 'idle', cwd: decisions, session: decisionsFile }] },
+    { id: 'w14', label: 'followup', panes: [{ id: OMP_FOLLOWUP_PANE, agent: 'omp', status: 'idle', cwd: followup, session: followupFile, transcript: followupFile, reply: FOLLOWUP_REPLY }] },
   ]
 }

@@ -3241,6 +3241,88 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
   .q-row { min-height: 40px; }
   .q-pick { min-height: 36px; }
 }
+/* One-tap answers of a closed question (`.q-ans`: "Yes", "No"), right after
+   its Reply button in the three styles: a small mono tag, pressed once the
+   draft holds that answer. Its line keeps its height (the tag is shorter than
+   the text); the target is finger-sized, the two never overlap. */
+.q-ans {
+  display: none; position: relative; box-sizing: border-box; height: 18px; margin: 0 0 0 6px; padding: 0 6px; vertical-align: 1px;
+  font: 500 9.5px/16px var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; color: var(--text-2);
+  background: none; border: 1px solid var(--line); border-radius: 0; cursor: pointer; -webkit-user-select: none; user-select: none;
+}
+:is(.rs-icon, .rs-text, .rs-list) .q-ans { display: inline-block; }
+.q-ans::before { content: attr(data-l); }
+.q-ans::after { content: ""; position: absolute; left: -3px; right: -3px; top: 50%; height: 32px; translate: 0 -50%; }
+.q-ans.q-yes { margin-left: 8px; }
+.q-ans.q-no { margin-right: .3em; }
+.q-ans:is(:hover, :focus-visible), .q-row-ans:is(:hover, :focus-visible) { color: var(--text); border-color: var(--accent); outline: 0; }
+.q-ans[aria-pressed="true"], .q-row-ans[aria-pressed="true"] { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+/* List style: the answers sit at the end of the question's row under the
+   message, not in the text. */
+.rs-list .md-body .q-ans { display: none; }
+.q-line { display: flex; align-items: stretch; gap: 6px; width: 100%; max-width: 620px; }
+.q-line > .q-row { flex: 1; min-width: 0; width: auto; max-width: none; }
+.q-row-ans {
+  flex: none; min-width: 44px; padding: 0 8px; font: 500 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-2); background: none; border: 1px solid var(--line); border-radius: 0; cursor: pointer;
+}
+@media (pointer: coarse) {
+  .q-ans { height: 22px; padding: 0 8px; font-size: 10px; line-height: 20px; }
+  .q-ans::after { height: 36px; }
+}
+/* Decision table (utils/questionReply.ts, decisionRows): under the table, a
+   row per numbered question with its one-tap answers and its Reply, and "OK
+   to all" above them. Every word comes from a data attribute. */
+.q-table { display: none; flex-direction: column; gap: 6px; max-width: 620px; margin: -2px 0 .9em; }
+:is(.rs-icon, .rs-text, .rs-list) .q-table { display: flex; }
+.q-table-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 30px; }
+.q-table-h::before { content: attr(data-l); font: 500 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.q-trow { display: flex; align-items: stretch; gap: 6px; min-height: 34px; }
+.q-tl {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 0 10px; font-size: 13px; line-height: 1.3; color: var(--text-2);
+  border: 1px solid var(--line); border-left: 2px solid var(--accent);
+}
+.q-tl::before { content: attr(data-n); flex: none; font: 500 10px/1 var(--mono); color: var(--accent); }
+.q-tl::after { content: attr(data-l); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.q-tans, .q-tquote, .q-all {
+  flex: none; min-width: 44px; padding: 0 8px; font: 500 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
+  color: var(--text-2); background: none; border: 1px solid var(--line); border-radius: 0; cursor: pointer; -webkit-user-select: none; user-select: none;
+}
+.q-tans::before, .q-all::before { content: attr(data-l); }
+.q-tquote { min-width: 36px; font-size: 15px; letter-spacing: 0; color: var(--accent); }
+.q-tquote::before { content: "↳"; }
+.q-tquote.quoted::before { content: "✓"; }
+.q-all { min-height: 30px; padding: 0 12px; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+.q-all[aria-pressed="true"]::before { content: "✓ " attr(data-l); }
+:is(.q-tans, .q-tquote, .q-all):is(:hover, :focus-visible) { color: var(--text); border-color: var(--accent); outline: 0; }
+:is(.q-tans, .q-all)[aria-pressed="true"] { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+.q-tquote.quoted { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+@media (pointer: coarse) {
+  .q-trow { min-height: 40px; }
+  .q-all { min-height: 36px; }
+}
+/* "N questions unanswered" (Composer.vue): a small tab hanging from the top
+   edge of the composer, over the bottom of the conversation. Out of the
+   flow: nothing moves when it shows or goes. */
+/* Room for it under the last message, as long as that message asks something. */
+.chat-list.asking { padding-bottom: 36px; }
+.composer-ask-anchor { position: relative; height: 0; z-index: 3; }
+.composer-ask {
+  position: absolute; left: 0; bottom: 6px; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px 0 7px;
+  font: 500 9.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; color: var(--text-2);
+  background: var(--bg); border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: 0; cursor: pointer;
+  animation: composer-ask-in 160ms ease-out;
+}
+.composer-ask::after { content: ""; position: absolute; inset: -8px -6px; }
+.composer-ask .iconify, .composer-ask svg { width: 11px; height: 11px; color: var(--accent); }
+.composer-ask:is(:hover, :focus-visible) { color: var(--text); border-color: var(--accent); outline: 0; }
+@keyframes composer-ask-in { from { opacity: 0; transform: translateY(3px); } }
+/* The question the reminder scrolled to. */
+.q-flash { animation: msg-flash 1.6s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .composer-ask { animation: none; }
+  .q-flash { animation: none; outline: 1px solid var(--accent); }
+}
 /* Quotes in the field: one chip each, to remove it; on one scrolling line. */
 .composer-quotes { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0 0 6px; overflow-x: auto; scrollbar-width: none; }
 .composer-quotes::-webkit-scrollbar { display: none; }

@@ -68,13 +68,12 @@ const security = [
   { k: 'CSP', title: 'Strict by default', text: 'Host allow-list, Origin checks on every write and WebSocket, strict Content Security Policy, no framing.' },
 ]
 
-// The install methods, side by side above the agent prompt; the one command first.
+// Other install methods, after the recommended agent prompt and the installer.
 const installTabs = [
-  { id: 'curl', label: 'curl', short: 'curl' },
   { id: 'pm', label: 'Package managers', short: 'Packages' },
   { id: 'plugin', label: 'Herdr plugin', short: 'Plugin' },
 ] as const
-const tab = ref<typeof installTabs[number]['id']>('curl')
+const tab = ref<typeof installTabs[number]['id']>('pm')
 const managers = [
   { id: 'brew', label: 'Homebrew' },
   { id: 'npx', label: 'npx' },
@@ -118,9 +117,8 @@ const faq = [
               on your machines — <b>Claude Code, Codex, omp</b> and more. Read their work, answer their questions,
               take over their terminal. From your laptop or your pocket, over your own private network.
             </p>
-            <InstallCommand class="hero-cmd" />
             <div class="hero-ctas">
-              <a class="btn primary" href="#install">Install guide <UIcon name="i-lucide-arrow-right" class="size-4" /></a>
+              <a class="btn primary" href="#install">Ask your AI agent <UIcon name="i-lucide-arrow-right" class="size-4" /></a>
               <a class="btn" href="/demo/"><UIcon name="i-lucide-play" class="size-4" /> Try it in your browser — no install</a>
               <a class="btn" :href="REPO" target="_blank" rel="noopener"><GithubMark /> Star on GitHub</a>
             </div>
@@ -257,24 +255,34 @@ const faq = [
         <div class="wrap">
           <div v-reveal class="section-head">
             <p class="label"><span class="k">05</span> Install</p>
-            <h2 class="display h2">One command.</h2>
-            <p class="lead">On the computer that runs Herdr — your Mac, or an always-on Linux box (a Raspberry Pi works). It installs the wherdr Herdr plugin: wherdr in <code>~/wherdr</code>, listening on 127.0.0.1 only, started now and with Herdr. No sudo, and a wherdr that already runs is never replaced. <a href="/install" target="_blank">Read the script first.</a></p>
+            <h2 class="display h2">Set up wherdr.</h2>
           </div>
 
           <div v-reveal class="install">
-            <div class="tabs" role="tablist" aria-label="Installation methods">
-              <button v-for="t in installTabs" :id="`tab-${t.id}`" :key="t.id" type="button" role="tab" class="tab" :aria-label="t.label" :aria-selected="tab === t.id" :aria-controls="`panel-${t.id}`" @click="tab = t.id">
-                <span class="tab-long">{{ t.label }}</span><span class="tab-short" aria-hidden="true">{{ t.short }}</span>
-              </button>
+            <div class="panel agent">
+              <p class="label agent-note">Recommended</p>
+              <h3 class="label agent-label"><UIcon name="i-lucide-sparkles" class="size-3.5" /> Ask your AI agent</h3>
+              <p class="agent-text">Paste this into Claude Code, Codex or any coding agent: it installs and sets up wherdr for you.</p>
+              <InstallCommand :command="AGENT_PROMPT" prompt="›" what="prompt" wrap big />
+              <p class="agent-note">It follows <a href="/agent.md" target="_blank">our setup guide for agents</a>: checks what you already have, asks before installing anything, sets up your phone over Tailscale, never exposes wherdr to the Internet.</p>
             </div>
 
-            <div v-show="tab === 'curl'" id="panel-curl" role="tabpanel" aria-labelledby="tab-curl" class="panel one">
+            <div aria-labelledby="installer-title" class="panel one">
+              <h3 id="installer-title" class="cell-title">Or run the installer yourself</h3>
+              <p class="cell-text">On the computer that runs Herdr — your Mac, or an always-on Linux box (a Raspberry Pi works). It installs the wherdr Herdr plugin: wherdr in <code>~/wherdr</code>, listening on 127.0.0.1 only, started now and with Herdr. No sudo, and a wherdr that already runs is never replaced. <a href="/install" target="_blank">Read the script first.</a></p>
               <InstallCommand :command="INSTALL_COMMAND" />
               <InstallTerminal :demo="ONE_COMMAND_DEMO" />
               <p class="prereq">
                 Needs <a href="https://herdr.dev" target="_blank" rel="noopener">Herdr</a> 0.9.1+ <span class="sep" aria-hidden="true">·</span> macOS or Linux <span class="sep" aria-hidden="true">·</span> phone through <a href="https://tailscale.com/download" target="_blank" rel="noopener">Tailscale</a>.
                 <a :href="`${REPO}#other-private-networks`" target="_blank" rel="noopener">Other private networks</a>.
               </p>
+            </div>
+
+            <p class="or"><span>Other methods</span></p>
+            <div class="tabs" role="tablist" aria-label="Installation methods">
+              <button v-for="t in installTabs" :id="`tab-${t.id}`" :key="t.id" type="button" role="tab" class="tab" :aria-label="t.label" :aria-selected="tab === t.id" :aria-controls="`panel-${t.id}`" @click="tab = t.id">
+                <span class="tab-long">{{ t.label }}</span><span class="tab-short" aria-hidden="true">{{ t.short }}</span>
+              </button>
             </div>
 
             <div v-show="tab === 'pm'" id="panel-pm" role="tabpanel" aria-labelledby="tab-pm" class="panel">
@@ -305,15 +313,6 @@ const faq = [
                 <li><b>Run it</b> on the machine that runs Herdr (≥ 0.9.1): what the one command does, minus its checks. It installs wherdr in <code>~/wherdr</code> (Docker on Linux when available, Node.js 22 otherwise; no sudo), starts it and, the first time, opens its setup guide.</li>
                 <li><b>Press <code>prefix+i</code></b> in Herdr: the wherdr panel — start, stop, log, update, phone.</li>
               </ol>
-            </div>
-
-            <p class="or" aria-hidden="true"><span>or</span></p>
-
-            <div class="panel agent">
-              <p class="label agent-label"><UIcon name="i-lucide-sparkles" class="size-3.5" /> Ask your AI agent</p>
-              <p class="agent-text">Paste this into Claude Code, Codex or any coding agent: it installs and sets up wherdr for you.</p>
-              <InstallCommand :command="AGENT_PROMPT" prompt="›" what="prompt" wrap big />
-              <p class="agent-note">It follows <a href="/agent.md" target="_blank">our setup guide for agents</a>: checks what you already have, asks before installing anything, sets up your phone over Tailscale, never exposes wherdr to the Internet.</p>
             </div>
 
             <div class="as-app">
@@ -390,8 +389,9 @@ const faq = [
 .acc { color: var(--accent); }
 .hero-copy .lead { margin: 0 0 32px; }
 .lead a { color: var(--text); text-decoration-color: var(--accent); text-underline-offset: 3px; }
-.hero-cmd { margin-bottom: 20px; }
 .hero-ctas { display: flex; flex-wrap: wrap; gap: 12px; }
+.hero-ctas .btn { max-width: 100%; white-space: normal; }
+.hero-ctas .btn :deep(.iconify) { flex-shrink: 0; }
 .hero-note { margin: 24px 0 0; font-size: 11px; color: var(--dim); }
 .hero-visual { position: relative; padding-bottom: 40px; }
 .hv-desk { width: 100%; }
@@ -445,6 +445,7 @@ const faq = [
 .prereq { margin: 0; color: var(--muted); font-size: 14px; }
 .prereq .sep { color: var(--accent); padding: 0 4px; }
 .prereq a, .steps a, .agent-note a { color: var(--text); text-decoration-color: var(--accent); text-underline-offset: 3px; }
+.panel.one { margin-top: 28px; }
 .or { display: flex; align-items: center; gap: 16px; margin: 28px 0; font: 600 12px/1 var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--dim); }
 .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .panel.agent { gap: 16px; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: color-mix(in srgb, var(--accent) 5%, var(--surface)); box-shadow: inset 0 2px 0 var(--accent); }
