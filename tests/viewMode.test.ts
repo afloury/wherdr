@@ -74,22 +74,22 @@ describe('toggleViewMode', () => {
 
 describe('cellMode', () => {
   it('keeps the pane\'s remembered mode, focused or not', () => {
-    expect(cellMode({ chat: true, viewMode: 'term' })).toBe('mirror')
+    expect(cellMode({ chat: true, viewMode: 'term' })).toBe('term')
     expect(cellMode({ chat: true, viewMode: 'chat' })).toBe('chat')
     expect(cellMode({ chat: true, viewMode: 'project' })).toBe('chat')
     expect(cellMode({ chat: true, viewMode: 'chat', active: true })).toBe('chat')
   })
   it('without a conversation: always the terminal', () => {
-    expect(cellMode({ chat: false, viewMode: 'chat' })).toBe('mirror')
+    expect(cellMode({ chat: false, viewMode: 'chat' })).toBe('term')
     expect(cellMode({ chat: false, viewMode: 'chat', active: true })).toBe('term')
   })
-  it('the focused cell has the real terminal, the others its mirror', () => {
+  it('keeps all terminals live through focus changes', () => {
     const modes: Record<string, 'chat' | 'term'> = { a: 'term', b: 'term', c: 'chat' }
     const show = (focus: string) => Object.fromEntries(Object.entries(modes).map(([k, m]) => [k, cellMode({ chat: true, viewMode: m, active: k === focus })]))
-    expect(show('a')).toEqual({ a: 'term', b: 'mirror', c: 'chat' })
-    expect(show('b')).toEqual({ a: 'mirror', b: 'term', c: 'chat' })
-    // The focus on a conversation: no cell resizes a pane.
-    expect(show('c')).toEqual({ a: 'mirror', b: 'mirror', c: 'chat' })
+    expect(show('a')).toEqual({ a: 'term', b: 'term', c: 'chat' })
+    expect(show('b')).toEqual({ a: 'term', b: 'term', c: 'chat' })
+    // Focusing a conversation also preserves the terminal presentations.
+    expect(show('c')).toEqual({ a: 'term', b: 'term', c: 'chat' })
   })
 })
 

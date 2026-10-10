@@ -1,11 +1,8 @@
 import { type Locator, type Page, expect, test } from '@playwright/test'
 import { SPLIT_CHAT_PANE, SPLIT_SHELL_PANE, SPLIT_TAB, fakeHerdr } from './scenario.mjs'
 
-// Panes side by side on a computer: the terminal of the focused cell is the real
-// one, fitted to the cell (it used to be a mirror at the pane's own size: 80
-// columns in the corner of a cell twice as wide). The other cells mirror their
-// pane; a pane fitted by its cell keeps that size while the tab shows it, and
-// gets its own back afterwards.
+// Every visible terminal stays connected and fitted to its cell. Focus routes
+// input without replacing instances; leaving the tab restores original sizes.
 test.skip(({ isMobile }) => isMobile, 'side-by-side cells are a computer layout')
 
 // The fake panes start at their layout size and keep the size control gave them.
@@ -43,6 +40,45 @@ test.beforeEach(async () => {
   for (const pane of [SPLIT_CHAT_PANE, SPLIT_SHELL_PANE]) await expect.poll(() => paneSize(pane), { timeout: 15_000 }).toEqual(original(pane))
 })
 
+test('focus preserves every visible terminal and its connection', async ({ page }) => {
+  const connections: string[] = []
+  const frames = new Map<string, number>()
+  page.on('websocket', ws => {
+    if (!ws.url().includes('/ws/term?')) return
+    connections.push(ws.url())
+    const pane = new URL(ws.url()).searchParams.get('pane')!
+    ws.on('framereceived', () => frames.set(pane, (frames.get(pane) || 0) + 1))
+  })
+  await open(page, 1440, 900)
+  const chat = cell(page, SPLIT_CHAT_PANE)
+  const shell = cell(page, SPLIT_SHELL_PANE)
+  await chat.getByRole('tab', { name: 'Terminal' }).click()
+  await expect(chat.locator('#term .xterm-rows')).toContainText('fake terminal')
+  await shell.locator('header').click()
+  await expect(shell.locator('#term .xterm-rows')).toContainText('fake terminal')
+  // Keep actual DOM identities: matching text after a remount is insufficient.
+  const nodes = await page.locator('.cell-view #term .xterm').elementHandles()
+  expect(nodes).toHaveLength(2)
+  const count = connections.length
+  const before = new Map(frames)
+  for (let i = 0; i < 6; i++) {
+    await chat.locator('header .agent-title').click()
+    await shell.locator('header .agent-title').click()
+  }
+  for (const node of nodes) expect(await node.evaluate(el => el.isConnected)).toBe(true)
+  expect(connections).toHaveLength(count)
+  for (const pane of [SPLIT_CHAT_PANE, SPLIT_SHELL_PANE]) {
+    expect((await paneSize(pane)).attached).toBe(true)
+    await expect.poll(() => frames.get(pane) || 0).toBeGreaterThan((before.get(pane) || 0) + 2)
+  }
+  await chat.getByRole('tab', { name: 'Conversation' }).click()
+  await expect(chat.locator('.chat')).toContainText('It runs in the pane on the right.')
+  expect(await nodes[1]!.evaluate(el => el.isConnected)).toBe(true)
+  await chat.getByRole('tab', { name: 'Terminal' }).click()
+  await expect(chat.locator('#term .xterm-rows')).toContainText('fake terminal')
+  expect(await nodes[1]!.evaluate(el => el.isConnected)).toBe(true)
+})
+
 for (const [width, height] of [[1440, 900], [2000, 1125]] as const) {
   test(`the terminal of the focused cell fills the cell (${width} px)`, async ({ page }, testInfo) => {
     await open(page, width, height)
@@ -78,36 +114,17 @@ test('the terminal follows its cell when the window is resized', async ({ page }
   await expectFilled(shell.locator('#termWrap'), narrow.cols, narrow.rows)
 })
 
-test('a cell that loses the focus mirrors its pane at the size it was fitted to', async ({ page }, testInfo) => {
+test('inactive terminals follow cell resizing and restore their size after leaving', async ({ page }) => {
   await open(page, 1440, 900)
   const shell = cell(page, SPLIT_SHELL_PANE)
-  // Not focused, never fitted: the pane as it is, framed in its cell.
-  await expect(shell.locator('.mirror .xterm-rows')).toContainText('fake mirror')
-  await expect(shell.locator('.mirror-tag')).toContainText('Mirror')
-  expect(await paneSize(SPLIT_SHELL_PANE)).toEqual(original(SPLIT_SHELL_PANE))
-
-  await shell.click()
   await expect(shell.locator('#term .xterm-rows')).toContainText('fake terminal')
-  await expect.poll(async () => (await paneSize(SPLIT_SHELL_PANE)).attached).toBe(true)
   const fitted = await paneSize(SPLIT_SHELL_PANE)
-
-  // The focus goes to the other cell: a mirror again, of the fitted pane.
   await cell(page, SPLIT_CHAT_PANE).locator('.chat').click()
-  await expect(shell.locator('.mirror .xterm-rows')).toContainText(`fake mirror ${fitted.cols}x${fitted.rows}`)
-  await expect(shell.locator('.mirror-tag')).toHaveText(`Mirror · ${fitted.cols}×${fitted.rows}`)
-  await expectFilled(shell.locator('.mirror'), fitted.cols, fitted.rows)
-  // Longer than the delay after a closed terminal: the size was not given back.
-  await page.waitForTimeout(3000)
-  expect(await paneSize(SPLIT_SHELL_PANE)).toEqual({ cols: fitted.cols, rows: fitted.rows, attached: false })
-  await shot(page, 'split-terminal-mirror', testInfo.project.name)
-
-  // Its cell resized meanwhile: fitted again, without the focus.
+  expect((await paneSize(SPLIT_SHELL_PANE)).attached).toBe(true)
   await page.setViewportSize({ width: 1200, height: 800 })
-  await expect.poll(async () => (await paneSize(SPLIT_SHELL_PANE)).cols, { timeout: 15_000 }).toBeLessThan(fitted.cols)
+  await expect.poll(async () => (await paneSize(SPLIT_SHELL_PANE)).cols).toBeLessThan(fitted.cols)
   const again = await paneSize(SPLIT_SHELL_PANE)
-  await expect(shell.locator('.mirror-tag')).toHaveText(`Mirror · ${again.cols}×${again.rows}`)
-
-  // The tab is left: the pane gets the size it had before wherdr showed it.
+  await expectFilled(shell.locator('#termWrap'), again.cols, again.rows)
   await page.goto('/#/')
   await expect.poll(() => paneSize(SPLIT_SHELL_PANE), { timeout: 10_000 }).toEqual(original(SPLIT_SHELL_PANE))
 })

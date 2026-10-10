@@ -3,11 +3,16 @@
 import { describe, expect, it } from 'vitest'
 import { parseLines } from '../server/utils/transcripts'
 import { isLongPaste, looksLikeLog, messageBody, pastedBlocks, splitPasted } from '../shared/pastedText'
+import { quoteSegments } from '../app/utils/questionReply'
 import { restoreDraft } from '../app/utils/queuedCancel'
 import { sentPastes } from '../app/utils/sentPastes'
 import type { DraftAtt } from '../app/composables/useDraft'
 
 const LOG = Array.from({ length: 40 }, (_, i) => `==> Pouring pkg-${i}--1.0.arm64_sonoma.bottle.tar.gz`).join('\n')
+// Ten lines written in wherdr's field: quotes of the agent's points, each
+// followed by an answer. Long enough to be a card if it were a paste.
+const TYPED = Array.from({ length: 5 }, (_, i) =>
+  `> Point ${i + 1}: ${'the agent explains what it found and what it suggests. '.repeat(6).trim()}\nAnswer ${i + 1}: agreed, go ahead with that one.`).join('\n')
 const claudeLine = (content: unknown, ts = '2026-10-08T08:00:00.000Z') =>
   JSON.stringify({ type: 'user', timestamp: ts, message: { role: 'user', content } })
 
@@ -29,14 +34,37 @@ describe('<pasted_content> blocks', () => {
     expect(pastedBlocks(LOG)).toEqual([])
   })
 
+  it('lists nothing when the blocks are the whole message (a wherdr send)', () => {
+    expect(pastedBlocks(`<pasted_content id="a1">\n${TYPED}\n</pasted_content id="a1">`)).toEqual([])
+    expect(pastedBlocks(`[Image #1] <pasted_content id="a1">\n${LOG}\n</pasted_content id="a1">\n`)).toEqual([])
+  })
+
   it('marks the pasted blocks of a Claude user message, text unchanged', () => {
     const items = parseLines([
       claudeLine(`Why does it fail?\n\n<pasted_content id="37d4">\n${LOG}\n</pasted_content id="37d4">`),
-      claudeLine([{ type: 'text', text: `<pasted_content id="9">\n${LOG}\n</pasted_content id="9">` }]),
+      claudeLine([{ type: 'text', text: `See:\n<pasted_content id="9">\n${LOG}\n</pasted_content id="9">` }]),
       claudeLine('<pasted_content id="1">\nline one\nline two\n</pasted_content id="1">'),
     ].join('\n'), 'claude', 0, '/home/user').filter(i => i.role === 'user')
-    expect(items.map(i => i.text)).toEqual([`Why does it fail?\n\n${LOG}`, LOG, 'line one\nline two'])
+    expect(items.map(i => i.text)).toEqual([`Why does it fail?\n\n${LOG}`, `See:\n${LOG}`, 'line one\nline two'])
     expect(items.map(i => i.pasted)).toEqual([[LOG], [LOG], undefined])
+  })
+
+  it('keeps a long message typed in wherdr a plain message, quotes and all', () => {
+    expect(TYPED.split('\n')).toHaveLength(10)
+    expect(isLongPaste(TYPED)).toBe(true)
+    const wrapped = `<pasted_content id="c3">\n${TYPED}\n</pasted_content id="c3">`
+    const items = parseLines([
+      claudeLine(wrapped),
+      claudeLine([{ type: 'text', text: wrapped }]),
+      // Taken during the turn, and grouped with a one-line message.
+      JSON.stringify({ type: 'attachment', timestamp: '2026-10-08T08:00:00.000Z', attachment: { type: 'queued_command', commandMode: 'prompt', origin: { kind: 'human' }, prompt: wrapped } }),
+      claudeLine([{ type: 'text', text: 'ok' }, { type: 'text', text: wrapped }]),
+    ].join('\n'), 'claude', 0, '/home/user').filter(i => i.role === 'user')
+    expect(items.map(i => i.text)).toEqual([TYPED, TYPED, TYPED, `ok\n${TYPED}`])
+    expect(items.map(i => i.pasted)).toEqual([undefined, undefined, undefined, undefined])
+    // Shown whole, its "> " lines as quotes; no card.
+    expect(splitPasted(items[0]!.text, items[0]!.pasted, [])).toEqual({ text: TYPED, pastes: [] })
+    expect(quoteSegments(TYPED).filter(s => s.quote)).toHaveLength(5)
   })
 })
 
@@ -58,12 +86,11 @@ describe('splitting a user message', () => {
     expect(splitPasted(whole, [whole], [LOG])).toEqual({ text: 'fix this', pastes: [LOG] })
   })
 
-  it('splits a wherdr send from another device: short paragraph, blank line, long text', () => {
+  it('never guesses a paste inside a block: a short paragraph, a blank line, long text stays text', () => {
     const whole = `fix this\nplease\n\n${LOG}`
-    expect(splitPasted(whole, [whole])).toEqual({ text: 'fix this\nplease', pastes: [LOG] })
-    // A long first paragraph is part of the paste.
-    const prose = `${'a long first paragraph '.repeat(30)}\n\n${LOG}`
-    expect(splitPasted(prose, [prose]).pastes).toEqual([prose])
+    expect(splitPasted(whole, [], [])).toEqual({ text: whole, pastes: [] })
+    const typed = `> Point 1\nYes.\n\n${TYPED}`
+    expect(splitPasted(typed, [], [LOG])).toEqual({ text: typed, pastes: [] })
   })
 
   it('cuts a block the server clipped up to the end', () => {
@@ -92,6 +119,8 @@ describe('send from the message field', () => {
     expect(messageBody('', [LOG], [])).toBe(LOG)
     // The conversation shows the typed words and the card back.
     expect(splitPasted(messageBody('fix this', [LOG], []), [], [LOG])).toEqual({ text: 'fix this', pastes: [LOG] })
+    // Long typed words with a real paste: the words stay a message, the paste is the card.
+    expect(splitPasted(messageBody(TYPED, [LOG], []), [], [LOG])).toEqual({ text: TYPED, pastes: [LOG] })
   })
 })
 

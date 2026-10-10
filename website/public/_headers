@@ -7,25 +7,37 @@
   Referrer-Policy: no-referrer
   X-Frame-Options: DENY
   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'
+  # no-transform: Cloudflare serves the pages as built. Without it, the zone's
+  # Web Analytics adds its beacon script to every page; the policy above blocks
+  # it (the site has no analytics), which logged an error in the console on
+  # each visit. The rest is the default of Workers static assets.
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+
+# A header set twice is joined with a comma: the rules below drop the
+# Cache-Control above ("! Cache-Control") before setting their own.
 
 # `curl -fsSL https://wherdr.dev/install | sh`: a plain-text shell script,
 # always fresh. The file has no extension, so its type is set here.
 # Not a page: kept out of search results.
 /install
   Content-Type: text/plain; charset=utf-8
+  ! Cache-Control
   Cache-Control: no-cache
   X-Robots-Tag: noindex
 
 # Plain-text guides for coding agents and LLMs (/agent.md, /llms.txt).
 /agent.md
   Content-Type: text/markdown; charset=utf-8
+  ! Cache-Control
   Cache-Control: no-cache
 
 /llms.txt
   Content-Type: text/plain; charset=utf-8
+  ! Cache-Control
   Cache-Control: no-cache
 
 # Fingerprinted build output.
 /_nuxt/*
+  ! Cache-Control
   Cache-Control: public, max-age=31536000, immutable
 

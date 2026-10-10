@@ -137,7 +137,7 @@ export async function restartAgent(p: Pane) {
     await api('/api/restart', { pane_id: p.id })
   } catch (err) { toast((err as Error).message, true) }
 }
-export const canRestart = (p: Pane) => Boolean(p.agent && RESTARTABLE.has(p.agent))
+export const canRestart = (p: Pane) => Boolean(p.agent && !p.stopped && RESTARTABLE.has(p.agent))
 export async function dismissRestart(paneId: string) {
   try { await api('/api/restart', { pane_id: paneId, dismiss: true }) }
   catch (err) { toast((err as Error).message, true) }

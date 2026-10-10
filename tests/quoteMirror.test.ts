@@ -7,8 +7,8 @@ describe('mirrorLines', () => {
     expect(mirrorLines(draft).map(l => l.prefix + l.text).join('\n')).toBe(draft)
   })
   it('splits a quote line into its hidden prefix and its text', () => {
-    expect(mirrorLines('> One?\n>Two\n>\nAnswer').map(l => [l.quote, l.prefix, l.text])).toEqual([
-      [true, '> ', 'One?'], [true, '>', 'Two'], [true, '>', ''], [false, '', 'Answer'],
+    expect(mirrorLines('> One?\n>\nAnswer').map(l => [l.quote, l.prefix, l.text])).toEqual([
+      [true, '> ', 'One?'], [true, '>', ''], [false, '', 'Answer'],
     ])
   })
   it('marks the ends of each run of quote lines', () => {
@@ -17,5 +17,8 @@ describe('mirrorLines', () => {
   })
   it('only treats a ">" at the very start as a quote', () => {
     expect(mirrorLines(' > not a quote\na > b').every(l => !l.quote)).toBe(true)
+  })
+  it('leaves ">" not followed by a space as typed text', () => {
+    expect(mirrorLines('>>>\n>= 5\n>file').every(l => !l.quote)).toBe(true)
   })
 })

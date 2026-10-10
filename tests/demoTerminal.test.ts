@@ -2,6 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installDemoNetwork } from '../app/demo/shim'
 import { CODEX, DEV_SERVER } from '../app/demo/scenario'
+import { agentScreen } from '../app/demo/terminal'
+import type { Pane } from '../shared/types'
 
 const realFetch = window.fetch
 const realSocket = window.WebSocket
@@ -41,6 +43,13 @@ describe('demo split terminal sizing', () => {
     const state = await (await window.fetch('/api/state')).json()
     expect(state.panes.find((p: { id: string }) => p.id === CODEX).interaction).toBe('input')
     expect(text()).not.toContain('Demo analytics')
+  })
+  it('places a short Claude exchange at the top with its prompt directly after it', () => {
+    const pane = { agent: 'claude', status: 'idle', model: { label: 'Sonnet' } } as Pane
+    const screen = agentScreen(pane, [{ role: 'assistant', text: 'Done.', ts: null }], '', 100, 80)
+    expect(screen).toContain('\x1b[H\r\n')
+    expect(screen.split('\r\n')).toHaveLength(8)
+    expect(screen).toContain('\x1b[6;3H')
   })
   it('fits the active terminal, keeps its size in a mirror, and follows cell resizing', async () => {
     const { socket, frames } = await connect(`term?pane=${DEV_SERVER}&cols=113&rows=62`)

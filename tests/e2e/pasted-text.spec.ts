@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { CLAUDE_PANE, LONG_TYPED, OMP_CHAT_PANE, PASTED_LOG } from './scenario.mjs'
+import { CLAUDE_PANE, LONG_TYPED, OMP_CHAT_PANE, PASTED_LOG, TYPED_QUOTES } from './scenario.mjs'
 
 const shot = (page: Page, name: string, project: string) =>
   process.env.SHOTS ? page.screenshot({ path: `${process.env.SHOTS}/${project}-${name}.png` }) : Promise.resolve()
@@ -38,6 +38,25 @@ test('a pasted log is a card that opens the whole text; a long typed message fol
   await sheet.getByRole('button', { name: 'Copy' }).click()
   await expect(page.locator('.hw-toast-title', { hasText: 'Text copied' })).toBeVisible()
   if (browserName === 'chromium') expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(PASTED_LOG)
+})
+
+test('a long message typed in the field is a plain message with its quotes, not a card', async ({ page }, testInfo) => {
+  await page.goto(`/#/a/${CLAUDE_PANE}`)
+  await expect(page.locator('.chat').getByText('All steps noted.')).toBeVisible()
+  expect(TYPED_QUOTES.split('\n')).toHaveLength(10)
+  expect(TYPED_QUOTES.length).toBeGreaterThan(1500)
+
+  const typed = page.locator('.msg-user', { hasText: 'Answer 1: agreed' })
+  await typed.scrollIntoViewIfNeeded()
+  await expect(typed.locator('.pasted-card')).toHaveCount(0)
+  await expect(typed.locator('.msg-q')).toHaveCount(5)
+  await expect(typed.locator('.msg-q').first()).toContainText('Point 1: the cache entry')
+  await expect(typed.locator('.msg-q').first()).not.toContainText('>')
+  await shot(page, 'typed-quotes', testInfo.project.name)
+  // Long: folded like any long message, the whole text one tap away.
+  await typed.getByRole('button', { name: 'Show more' }).click()
+  await expect(typed).toContainText('Answer 5: agreed, go ahead with that one.')
+  await shot(page, 'typed-quotes-open', testInfo.project.name)
 })
 
 test('a long paste into the field becomes a card, sent as it is', async ({ page }, testInfo) => {

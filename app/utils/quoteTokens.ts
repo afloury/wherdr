@@ -9,6 +9,8 @@
 //   rich:   a rich field (components/QuoteTokensField.vue) where each run of
 //           "> " lines is one compact, non-editable token.
 
+import { QUOTE_LINE } from './questionReply'
+
 export const QUOTE_MODES = ['lines', 'native', 'rich'] as const
 export type QuoteMode = typeof QUOTE_MODES[number]
 
@@ -26,10 +28,10 @@ export type FieldItem = { kind: 'line', text: string } | { kind: 'token', text: 
 export function fieldItems(draft: string): FieldItem[] {
   const out: FieldItem[] = []
   for (const line of String(draft ?? '').split('\n')) {
-    const m = /^>\s?(.*)$/.exec(line)
+    const m = QUOTE_LINE.exec(line)
     const last = out.at(-1)
-    if (m && last?.kind === 'token') last.text += `\n${m[1]}`
-    else if (m) out.push({ kind: 'token', text: m[1]! })
+    if (m && last?.kind === 'token') last.text += `\n${m[2]}`
+    else if (m) out.push({ kind: 'token', text: m[2]! })
     else out.push({ kind: 'line', text: line })
   }
   return out

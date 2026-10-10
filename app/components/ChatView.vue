@@ -1103,7 +1103,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                     <ChatMarkdown :html="b.html" :typing="typingAt(b.id)" @done="typingDone(b.id)" />
                   </template>
                 </UChatMessage>
-                <div v-if="replyStyle === 'list' && !readOnly && typingAt(b.id) === null && (replyTargets(b.html).questions.length || replyTargets(b.html).points)" class="q-bar">
+                <div v-if="replyStyle === 'list' && !readOnly && typingAt(b.id) === null && (replyTargets(b.html).questions.length || replyTargets(b.html).pick)" class="q-bar">
                   <template v-if="replyTargets(b.html).questions.length">
                     <p class="q-bar-h">{{ tl('Questions · reply to', 'Questions · répondre à') }}</p>
                     <button
@@ -1114,7 +1114,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                       <b>{{ isQuoted(draftText, q.text) ? '✓' : q.n }}</b><span>{{ q.text }}</span><i>↳<em> {{ isQuoted(draftText, q.text) ? t('Quoted') : t('Reply') }}</em></i>
                     </button>
                   </template>
-                  <button v-if="replyTargets(b.html).points" type="button" class="q-pick" :aria-pressed="pickKey === b.key" @click="pickKey = pickKey === b.key ? null : b.key">
+                  <button v-if="replyTargets(b.html).pick" type="button" class="q-pick" :aria-pressed="pickKey === b.key" @click="pickKey = pickKey === b.key ? null : b.key">
                     {{ pickKey === b.key ? tl('Pick the point to quote · Cancel', 'Choisis le point à citer · Annuler') : tl('+ Quote a point', '+ Citer un point') }}
                   </button>
                 </div>

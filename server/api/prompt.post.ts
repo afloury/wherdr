@@ -8,7 +8,23 @@ export default defineApi(async (event, b) => {
   if (!text.trim()) throw new HerdrError('empty', 'Empty message')
   // The app's id for the bubble it shows from the tap (see app/utils/outbox.ts).
   const id = typeof b.client_id === 'string' ? b.client_id : undefined
-  if (await closePanel(b.pane_id).catch(() => false)) log(`panel closed before sending on ${b.pane_id}`)
+  // A restart owns the lock for its whole sequence. Holding a message does
+  // not write to the pane, so do it immediately instead of timing out behind it.
+  if (restarting(b.pane_id) && !isSlashCommand(text)) {
+    const q = addQueued(b.pane_id, text, { held: true, id })
+    setTimeout(poll, 50)
+    return { ok: true, queued: q }
+  }
+  const held = await withPaneLock(b.pane_id, async () => {
+    if (!findPane(b.pane_id)?.stopped) return null
+    if (isSlashCommand(text)) throw new HerdrError('stale', 'Restart Codex before sending a command.')
+    const q = addQueued(b.pane_id, text, { held: true, id })
+    setTimeout(poll, 50)
+    return q
+  })
+  if (held) return { ok: true, queued: held }
+  if (await withPaneLock(b.pane_id, () => findPane(b.pane_id)?.stopped
+    ? Promise.resolve(false) : closePanel(b.pane_id).catch(() => false))) log(`panel closed before sending on ${b.pane_id}`)
   // A menu or panel still hides the input field (interactive /mcp flow…), or an
   // earlier message is held: typed now, the message would be lost. Held, it is
   // delivered on a later poll once the input is back (see state.ts deliverHeld).

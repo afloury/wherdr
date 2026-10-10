@@ -20,7 +20,10 @@ if (!fs.existsSync(entry)) {
 // system temp dir: a Unix socket path is limited to ~104 bytes.
 const tmp = path.join(root, '.e2e-tmp')
 fs.rmSync(tmp, { recursive: true, force: true })
-const home = path.join(tmp, 'home')
+// Keep fixture folders outside the checkout: project/thread names in a
+// worktree path must not leak into the app's titles or screenshots.
+const sockDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-e2e-'))
+const home = path.join(sockDir, 'home')
 const data = path.join(tmp, 'data')
 fs.mkdirSync(home, { recursive: true })
 fs.mkdirSync(data, { recursive: true })
@@ -28,7 +31,6 @@ fs.writeFileSync(path.join(data, 'push.json'), JSON.stringify({ subs: [] }))
 // The setup guide covers the app on a first launch: mark it done (for this
 // HOST_LABEL) so the other specs reach the app; onboarding.spec.ts reopens it.
 fs.writeFileSync(path.join(data, 'onboarding.json'), JSON.stringify({ done: true, host: 'devbox' }))
-const sockDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-e2e-'))
 const sock = path.join(sockDir, 'herdr.sock')
 // The herdr CLI: a fake that only plays the terminal's control session against
 // the fake Herdr; everything else (worktrees, machines, notifications…) fails.

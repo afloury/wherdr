@@ -161,6 +161,18 @@ Details in [Features](#features) and [Security](#security).
   resumes the same conversation (only while Codex is idle). Codex's own weekly-limit warning
   (its footer gauge, or its startup heads-up) is repeated above the field, with its values, while
   Codex shows it.
+- **After Codex updates itself and exits**: a **Your turn** card offers **Restart Codex**
+  for a new conversation, with the original launch arguments. For an existing conversation,
+  choose **Resume conversation** (its exact session, with the original options) or **Start
+  fresh**. If wherdr cannot identify the session, Resume opens Codex's picker rather than
+  choosing another pane's latest conversation. The usual attention notification applies.
+  Nothing restarts automatically: the pane must still show the same empty shell prompt,
+  with the shell in the foreground. Unrecognized shell prompts require a manual restart
+  in the terminal. wherdr must have observed Codex before it exited.
+  Project panel messages wait in the queue until the agent returns. Continuation
+  prompts (unfinished quotes or heredocs) refuse a restart too. If the final
+  transcript read fails, both conversation choices remain available; a session
+  contradicted by a guessed match is resumed through Codex's picker.
 - **Model and effort pickers** for Claude Code, Codex and omp (omp: its
   "Switch Model" selector, `/switch` or `/model`, and its thinking level, changed with its own
   ⇧⇥ cycle). Changes apply **to the current session only**; wherdr never changes your default
@@ -178,11 +190,10 @@ Details in [Features](#features) and [Security](#security).
 ### On a computer
 
 - **Split panes, live**: a tab with several panes is drawn with Herdr's real layout; every pane
-  shows its conversation or terminal live. The terminal of the focused pane fills its cell,
-  following window and divider resizing. Other terminals are read-only mirrors, centred and
-  framed when smaller, with smaller text when wider. A terminal fitted to its cell keeps that
-  size while its mirror is visible; leaving the tab restores its original size, unless a Herdr
-  client has resized it meanwhile. Click a cell to give it the keyboard.
+  shows its conversation or terminal live. Every visible terminal fills its cell and follows
+  window and divider resizing, keeping its instance and connection when focus changes.
+  Click a cell to give it the keyboard. Leaving the tab restores each terminal's original size,
+  unless a Herdr client has resized it meanwhile.
 - **Rearrange the layout**: drag a pane onto another to move it, drag a divider to resize
   (arrow keys work on a focused divider); changes go to Herdr itself.
 - **Spaces and tabs**: sidebar with every space, tabs at the top, active tab remembered per space.
@@ -851,7 +862,7 @@ nothing), so that one message answers them all:
 | --- | --- | --- |
 | **Icon** (default) | A small `↳` after it, in the middle or at the end of the message. | A grey `↳` at its end: on hover on a computer, always there and pale on a phone. |
 | **Tap the text** | No button: the question is underlined, tap or click it. | Click it on a computer. On a phone, tap it, then **↳ Discuss**: a single tap never quotes, so reading, scrolling and selecting text stay as they are. |
-| **List under the message** | A number after it, and the questions listed under the message. | **+ Quote a point** under the message, then the point. |
+| **List under the message** | A number after it, and the questions listed under the message. | **+ Quote a point** under the message, then the point. Offered when the reply has a list item to quote, or two points or more: not under one paragraph of prose. |
 
 Every one of these is a button reachable with the keyboard (`Tab`, then `Enter`), and selecting a
 passage still offers **Reply** on it. A quoted question or point shows `✓`.

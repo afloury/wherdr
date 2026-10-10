@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { driverFor, healthUrl, runUpdate } from '../bin/lib/updater.mjs'
+import { driverFor, healthUrl, runUpdate, shortReason } from '../bin/lib/updater.mjs'
 import { buildPlan } from '../server/utils/selfupdate'
 import { updateRunning, type UpdateJob } from '../shared/updates'
 
@@ -129,7 +129,31 @@ describe('one-tap update: going back', () => {
       'health 1.3.0',
     ])
     expect(io.states.map(s => s[0])).toEqual(['installing', 'restarting', 'checking', 'rolling-back', 'rolled-back'])
-    expect(io.states.at(-1)![1]).toBe('wherdr 1.3.1 did not start (wherdr 1.3.1 did not answer within 1 s). Rolled back to 1.3.0.')
+    expect(io.states.at(-1)![1]).toBe('wherdr 1.3.1 did not answer within 1 s. Rolled back to 1.3.0.')
+  })
+
+  it('says why the new version did not start in one short sentence, without paths', async () => {
+    const io = fakeIo({ answers: ['1.3.0'], files: ['/home/test/wherdr/app.prev'] })
+    let starts = 0
+    const run = io.run
+    io.run = async (cmd: string, args: string[]) => {
+      if (args.at(-1) === 'start' && !starts++)
+        throw new Error('node wherdr.mjs exited with 1: wherdr: wherdr exited at startup (/home/test/wherdr/runtime/bin/node).')
+      return run(cmd, args)
+    }
+    expect(await runUpdate(plans.plugin, io)).toBe('rolled-back')
+    expect(io.states.at(-2)).toEqual(['rolling-back', 'wherdr 1.3.1 did not start: wherdr exited at startup.'])
+    expect(io.states.at(-1)![1]).toBe('wherdr 1.3.1 did not start: wherdr exited at startup. Rolled back to 1.3.0.')
+  })
+
+  it('shortReason keeps the cause and drops commands and folders', () => {
+    expect(shortReason('node wherdr.mjs exited with 1: wherdr: port 7683 is already taken by another program: pick another one with --port.'))
+      .toBe('port 7683 is already taken by another program: pick another one with --port')
+    expect(shortReason('tar: /home/test/wherdr/update/wherdr-1.3.1.tgz: Cannot open')).toBe('tar: wherdr-1.3.1.tgz: Cannot open')
+    expect(shortReason('C:\\Users\\test\\wherdr\\app\\bin\\wherdr.mjs is missing')).toBe('wherdr.mjs is missing')
+    expect(shortReason('wherdr 1.3.1 did not answer within 45 s')).toBe('wherdr 1.3.1 did not answer within 45 s')
+    expect(shortReason('x'.repeat(500))).toHaveLength(200)
+    expect(shortReason(undefined)).toBe('')
   })
 
   it('npm global: a new version that fails to start reinstalls the previous one', async () => {
@@ -137,7 +161,7 @@ describe('one-tap update: going back', () => {
     // The first start fails; the second (after the rollback) too, in this fake.
     expect(await runUpdate(plans['npm-global'], io)).toBe('failed')
     expect(io.calls).toContain('/usr/local/bin/npm install --global wherdr@1.3.0 --no-audit --no-fund')
-    expect(io.states.at(-1)![1]).toMatch(/going back to 1\.3\.0 failed.*update\.log/)
+    expect(io.states.at(-1)![1]).toMatch(/^wherdr 1\.3\.1 did not start: .*Going back to 1\.3\.0 failed too: .*update\.log/)
   })
 
   it('Homebrew: removes the keg that does not start, then links the kept one', async () => {
@@ -156,7 +180,7 @@ describe('one-tap update: going back', () => {
   it('Homebrew: says so when the previous keg is gone', async () => {
     const io = fakeIo({ answers: [''] })
     expect(await runUpdate(plans.brew, io)).toBe('failed')
-    expect(io.states.at(-1)![1]).toMatch(/previous Homebrew version .* was removed/)
+    expect(io.states.at(-1)![1]).toMatch(/previous Homebrew version was removed/)
   })
 })
 

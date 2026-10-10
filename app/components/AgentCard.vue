@@ -65,7 +65,7 @@ const prompt = computed(() => (props.pane.status === 'blocked' ? props.pane.prom
 const quick = computed(() => quickChoices(prompt.value, 4))
 // Recognized waiting screen (Codex hooks…): its title says better what is expected.
 const screen = computed(() => knownScreen(props.pane))
-const preview = computed(() => (screen.value && screenSummary(screen.value)) || (props.pane.menu && props.pane.status !== 'working' && menuSummary(props.pane.menu)) || (prompt.value ? prompt.value.question : props.pane.preview))
+const preview = computed(() => (screen.value && screenSummary(screen.value)) || (props.pane.menu && props.pane.status !== 'working' && menuSummary(props.pane.menu)) || (prompt.value ? prompt.value.kind === 'self-update' ? t(prompt.value.question || '') : prompt.value.question : props.pane.preview))
 // Read / unread: only for an agent that has finished (ready).
 const unread = computed(() => (space.value ? space.value.panes.filter(p => p.agent && p.status === 'done') : []))
 const readItem = computed(() => {
@@ -200,7 +200,7 @@ watch(() => props.pane.prompt, () => { busy.value = false })
           v-for="o in quick" :key="o.i" type="button" :disabled="busy || !eventsOpen || offlineView || paneStale(pane)"
           @click.stop="pick(o.i, o.label)"
         >
-          <span class="n">{{ o.i + 1 }}</span><span class="l">{{ o.label }}</span>
+          <span class="n">{{ o.i + 1 }}</span><span class="l">{{ prompt?.kind === 'self-update' ? t(o.label) : o.label }}</span>
         </button>
       </div>
       </template>

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { OMP_QUESTIONS_PANE } from './scenario.mjs'
+import { COORDINATOR_PANE, OMP_QUESTIONS_PANE } from './scenario.mjs'
 
 // Reply targets of an agent reply (utils/questionReply.ts): each question and
 // each point can be quoted in the field, in the three styles of
@@ -184,6 +184,10 @@ test('list style: the questions are listed under the message, a point is picked'
   const bars = chat.locator('.q-bar')
   await expect(bars).toHaveCount(3)
   expect(await bars.nth(0).locator('.q-row > span').allTextContents()).toEqual([STEP, TAG, REVIEW])
+  // Only the reply with a list offers to pick a point: the single paragraph
+  // without a question of the two others is not a choice.
+  await expect(chat.locator('.q-pick')).toHaveCount(1)
+  await expect(bars.nth(0).locator('.q-pick')).toHaveCount(0)
   const bar = bars.nth(2)
   await bar.scrollIntoViewIfNeeded()
   await shot(page, 'list', testInfo.project.name)
@@ -224,6 +228,23 @@ test('list style: the questions are listed under the message, a point is picked'
   await page.locator('.msg-ai.q-picking .q-point').first().focus()
   await page.keyboard.press('Escape')
   await expect(page.locator('.msg-ai.q-picking')).toHaveCount(0)
+})
+
+test('list style: a reply of plain prose has nothing under it', async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('typewriterSpeed', 'off')
+    localStorage.setItem('replyStyle', 'list')
+  })
+  await page.goto(`/#/a/${COORDINATOR_PANE}`)
+  const chat = page.locator('.chat')
+  await expect(chat.getByText('Two threads are working.')).toBeVisible()
+  await expect(page.locator('.chat-list.rs-list')).toBeVisible()
+  // The sentence is still a point (the other styles quote it), but with
+  // nothing to choose from there is no "+ Quote a point".
+  await expect(chat.locator('.q-point')).toHaveCount(1)
+  await expect(chat.locator('.q-bar')).toHaveCount(0)
+  await expect(chat.locator('.q-pick')).toHaveCount(0)
+  await shot(page, 'list-prose', testInfo.project.name)
 })
 
 test('the reply style is chosen in Settings and kept on the device', async ({ page }) => {
