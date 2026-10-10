@@ -14,6 +14,9 @@ describe('Codex self-update output', () => {
   })
   it.each([
     OUTPUT + 'echo hello', OUTPUT + 'echo #', OUTPUT + 'echo >',
+    OUTPUT + "echo '\n> ", OUTPUT + 'cat <<EOF\n> ',
+    OUTPUT.replace('user@host project % ', 'arbitrary output\n❯ '),
+    OUTPUT.replace('user@host project % ', '> '),
     OUTPUT.replace('user@host project % ', '❯ echo %'),
     OUTPUT + '\nsome subsequent output',
     OUTPUT.replace('Codex CLI 0.162.1 installed successfully.', 'a quoted example'),
@@ -52,13 +55,15 @@ function setup(chat: ChatResponse = { available: false, reason: 'not_found' }) {
   let shell = false
   let output = ''
   let pid = 2001
+  let argv = ['codex', '--profile', 'work']
   const call = vi.fn(async (method: string) => method === 'pane.read'
     ? { read: { text: output } }
     : { process_info: { shell_pid: 2000, foreground_process_group_id: shell ? 2000 : pid,
-        foreground_processes: shell ? [{ pid: 2000, name: 'zsh' }] : [{ pid, name: 'codex', argv: ['codex', '--profile', 'work'] }] } })
+        foreground_processes: shell ? [{ pid: 2000, name: 'zsh' }] : [{ pid, name: 'codex', argv }] } })
   const deps = { call, sleep: async () => {}, now: () => now, chat: async () => chat }
   const monitor = createSelfUpdates(deps)
-  return { monitor, deps, call, tick: () => { now += 5000 }, exit: () => { shell = true; output = OUTPUT },
+  return { monitor, deps, call, tick: (ms = 5000) => { now += ms }, exit: () => { shell = true; output = OUTPUT },
+    replace: (args: string[]) => { pid++; argv = args },
     output: (text: string) => { output = text }, foreground: () => { shell = false; pid++ } }
 }
 
@@ -121,6 +126,63 @@ describe('observed process lifecycle and final guards', () => {
     const m = createSelfUpdates(s.deps)
     await m.observe(pane(), false)
     expect(m.get('w1:p1')?.conversation).toBe('unknown')
+  })
+  it.each(["echo '\n> ", 'cat <<EOF\n> '])('rejects a multiline draft entered before the delayed exit check: %s', async draft => {
+    const s = setup()
+    await s.monitor.observe(pane(), false)
+    s.exit()
+    s.output(OUTPUT + draft)
+    await s.monitor.observe(pane(null), false)
+    s.tick()
+    const stopped = pane(null)
+    expect(await s.monitor.observe(stopped, false)).toBe(false)
+    expect(stopped.stopped).toBeUndefined()
+    expect(await s.monitor.check(stopped.id)).toBeNull()
+  })
+  it('invalidates exact A when guessed B is observed, even if the final read fails', async () => {
+    const chat: ChatResponse = { available: true, session: SESSION, items: [{ role: 'user', text: 'Conversation A', ts: null }] }
+    const s = setup(chat)
+    await s.monitor.observe({ ...pane(), agentSession: SESSION }, false)
+    chat.session = '00000000-0000-4000-8000-000000000289'
+    chat.guessed = true
+    chat.items = [{ role: 'user', text: 'Conversation B', ts: null }]
+    await s.monitor.observe(pane(), false)
+    expect(s.monitor.get('w1:p1')?.session).toBeNull()
+    s.deps.chat = async () => { throw new Error('final read failed') }
+    s.exit()
+    await s.monitor.observe(pane(null), false)
+    s.tick()
+    const stopped = pane(null)
+    await s.monitor.observe(stopped, false)
+    expect(stopped.prompt?.options.map(o => o.label)).toEqual(['Resume conversation', 'Start fresh'])
+    expect(updateRestartPlan(s.monitor.get(stopped.id)!, 'resume').args).toEqual(['resume', '--profile', 'work'])
+  })
+  it('offers both choices when the final read fails after a successful empty observation', async () => {
+    const s = setup({ available: true, session: SESSION, items: [] })
+    await s.monitor.observe(pane(), false)
+    expect(s.monitor.get('w1:p1')?.conversation).toBe('empty')
+    s.deps.chat = async () => { throw new Error('first messages are unreadable') }
+    s.exit()
+    await s.monitor.observe(pane(null), false)
+    s.tick()
+    const stopped = pane(null)
+    await s.monitor.observe(stopped, false)
+    expect(s.monitor.get(stopped.id)?.conversation).toBe('unknown')
+    expect(stopped.prompt?.options.map(o => o.label)).toEqual(['Resume conversation', 'Start fresh'])
+    expect(updateRestartPlan(s.monitor.get(stopped.id)!, 'resume').args).toEqual(['resume', '--profile', 'work', SESSION])
+  })
+  it.each([false, true])('captures a replacement process inside the throttle (birth changed: %s)', async birthChanged => {
+    const s = setup()
+    await s.monitor.observe(pane(), false)
+    s.tick(1000)
+    s.replace(['codex', '--profile', 'second', 'second task'])
+    await s.monitor.observe({ ...pane(), ...(birthChanged ? { bornAt: 11000 } : {}) }, false)
+    expect(s.monitor.get('w1:p1')?.pid).toBe(2002)
+    s.exit()
+    await s.monitor.observe(pane(null), false)
+    s.tick()
+    await s.monitor.observe(pane(null), false)
+    expect(updateRestartPlan(s.monitor.get('w1:p1')!, 'restart').args).toEqual(['--profile', 'second', 'second task'])
   })
   it('does not infer an empty session when attaching to an already running Codex', async () => {
     const s = setup()

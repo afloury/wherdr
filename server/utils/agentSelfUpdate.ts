@@ -33,11 +33,18 @@ export function createSelfUpdates(d: SelfUpdateDeps, saved: [string, LastAgent][
       if (owned) return false
       let last = records.get(p.id)
       if (p.agent === 'codex') {
-        if (last && !last.gone && d.now() - last.at < 5000
-          && p.agentSession === last.pane.agentSession && p.cwd === last.pane.cwd) return false
+        // Process identity is checked on every observation. The transcript
+        // throttle must never reuse another invocation's launch arguments.
         const fg = await paneForeground(d, p.id, 'codex')
         if (!fg.agent) return false // installer may still be exiting
         const pid = Number(fg.agent.pid)
+        if (last && last.pid === pid && !last.gone && d.now() - last.at < 5000
+          && p.agentSession === last.pane.agentSession && p.cwd === last.pane.cwd
+          && p.bornAt === last.pane.bornAt) {
+          last.argv = fg.argv || last.argv
+          persist()
+          return false
+        }
         if (!last || last.pid !== pid || last.gone) {
           last = { pid, pane: { ...p }, at: d.now(), argv: fg.argv, session: null, conversation: 'unknown' }
           records.set(p.id, last)
@@ -47,6 +54,12 @@ export function createSelfUpdates(d: SelfUpdateDeps, saved: [string, LastAgent][
         last.pane = { id: p.id, workspace: p.workspace, agent: p.agent, agentSession: p.agentSession, bornAt: p.bornAt, cwd: p.cwd, name: p.name, title: p.title } as Pane
         const screen = await read(p.id)
         const chat = await d.chat(p).catch(() => null)
+        // Even a guessed session can contradict an earlier exact identity.
+        // It cannot establish a replacement, but must invalidate the old one.
+        if (chat && (chat.guessed || (chat.session && chat.session !== last.session))) {
+          if (chat.session !== last.session) last.conversation = 'unknown'
+          last.session = null
+        }
         if (chat?.available && !chat.guessed && chat.session) {
           if (last.session && last.session !== chat.session) last.conversation = 'unknown'
           last.session = chat.session
@@ -58,7 +71,7 @@ export function createSelfUpdates(d: SelfUpdateDeps, saved: [string, LastAgent][
         } else if (chat && last.conversation !== 'existing') {
           const startup = /(?:✨\s*)?Update available!|^Updating Codex via /m.test(screen)
           const witnessedBirth = Boolean(p.bornAt) && !fg.argv?.some(a => a === 'resume' || a === 'fork')
-          if ((chat.available && !chat.start && !chat.items?.length)
+          if ((chat.available && !chat.guessed && !chat.start && !chat.items?.length)
             || (!p.agentSession && !chat.available && (startup || witnessedBirth))) last.conversation = 'empty'
         }
         last.oldOutput = Boolean(updateShellSignature(screen))
@@ -84,6 +97,13 @@ export function createSelfUpdates(d: SelfUpdateDeps, saved: [string, LastAgent][
             // The final messages may have arrived since the last live sample.
             // Re-read the retained session before deciding there is nothing to resume.
             const chat = await d.chat(last.pane).catch(() => null)
+            if (!chat || chat.guessed || (!chat.available && last.session)) {
+              // Absence of messages was only a live snapshot. Failure to
+              // confirm it at exit must offer Resume / Start fresh.
+              if (last.conversation === 'empty') last.conversation = 'unknown'
+            }
+            if (chat && (chat.guessed || (chat.session && chat.session !== last.session))) last.session = null
+            if (chat?.available && !chat.guessed && chat.session) last.session = chat.session
             if (chat?.items?.some(i => i.role === 'user' || i.role === 'assistant')) {
               last.conversation = 'existing'
               if (!chat.guessed && chat.session) last.session = chat.session
@@ -97,7 +117,7 @@ export function createSelfUpdates(d: SelfUpdateDeps, saved: [string, LastAgent][
       p.agent = 'codex'
       p.name = last.pane.name
       p.title = last.pane.title
-      p.agentSession = last.session || last.pane.agentSession
+      p.agentSession = last.session
       p.bornAt = last.pane.bornAt
       p.status = 'blocked'
       p.stopped = { reason: 'update' }

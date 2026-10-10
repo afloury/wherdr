@@ -38,6 +38,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **Codex restart after an update**: Project panel messages wait instead of being typed
+  into the stopped shell. Unfinished quotes and heredocs refuse a restart; uncertain
+  transcripts offer both choices without reusing a contradicted session ID. A rapidly
+  replaced Codex keeps its own launch arguments.
 - **Terminals in split panes**: the focused terminal now fills its cell, including after
   resizing the window or a divider, instead of keeping Herdr's small screen in the corner.
   Inactive terminals are read-only mirrors, centred and framed when smaller and scaled down

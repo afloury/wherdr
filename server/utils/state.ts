@@ -367,6 +367,11 @@ export const restarting = (paneId: string) => { const r = restarts.get(paneId); 
 const GUARD_STATES = new Set(['idle', 'done', 'working'])
 export function sendPrompt(p: Pane, text: string): Promise<void> {
   return withPaneLock(p.id, async () => {
+    // Re-check after waiting for another writer/restart's lock. The Pane
+    // passed by a request or a held-message delivery can already be stale.
+    if (findPane(p.id)?.stopped) {
+      throw new HerdrError(isSlashCommand(text) ? 'stale' : 'no_input', 'Restart Codex before sending a command.')
+    }
     if (p.agent !== 'claude' || !GUARD_STATES.has(p.status || '') || isSlashCommand(text)) return agentPrompt(p.id, text)
     const keep = (texts: string[] | undefined) => {
       for (const t of texts || []) {

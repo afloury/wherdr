@@ -15,10 +15,14 @@ export function updateShellSignature(text: string): string | null {
   const end = lines.findLastIndex(l => /^\s*(?:🎉\s*)?Update ran successfully! Please restart Codex\.\s*$/.test(l))
   if (end < 0 || !lines.slice(Math.max(0, end - 4), end).some(l => /^\s*Codex CLI \S+ installed successfully\.\s*$/.test(l))) return null
   const tail = lines.slice(end + 1).filter(l => l.trim())
-  if (!tail.length || tail.length > 3) return null
+  if (!tail.length || tail.length > 2) return null
   // Conservative: unfamiliar prompts require a manual relaunch in the terminal.
   const last = tail.at(-1)!
-  if (!/^\s*(?:[^\s$%#❯>`"']+(?: [^\s$%#❯>`"']+){0,2} )?[$%#❯>]\s*$/.test(last)) return null
+  // `>` is a continuation prompt (quotes, heredocs), never a fresh input.
+  if (!/^\s*(?:[\w@./~:-]+(?: [\w@./~:-]+){0,2} )?[$%#❯]\s*$/.test(last)) return null
+  // Only a known two-line prompt heading is accepted. Arbitrary preceding
+  // text could be a command already entered before the first exit sample.
+  if (tail.length === 2 && (!/^\s*[\w./~:-]+ on [\w./:-]+\s*$/.test(tail[0]!) || !/^\s*❯\s*$/.test(last))) return null
   return tail.join('\n')
 }
 

@@ -175,12 +175,12 @@ export function writeScenario(home) {
   const coordinator = path.join(home, '.herdr-projects/acme')
   const questions = path.join(home, 'projects/questions')
   const split = path.join(home, 'projects/split')
-  const codex = path.join(home, 'projects/codex-update')
+  const codex = path.join(home, '.herdr-projects/codex-update')
   fs.mkdirSync(codex, { recursive: true })
   for (const d of [api, docs, demo, screens, approval, scratch, coordinator, questions, split]) fs.mkdirSync(d, { recursive: true })
 
   const claudeSid = '00000000-0000-4000-8000-000000000001'
-  const codexFile = path.join(home, `.codex/sessions/2026/01/01/rollout-test-${CODEX_UPDATE_SESSION}.jsonl`)
+  const codexFile = path.join(home, `.codex/sessions/${new Date().toISOString().slice(0, 10).replaceAll('-', '/')}/rollout-test-${CODEX_UPDATE_SESSION}.jsonl`)
   write(codexFile, jsonl([
     { type: 'session_meta', payload: { id: CODEX_UPDATE_SESSION, cwd: codex, timestamp: iso(now - 60000), thread_source: 'user' } },
     { type: 'response_item', timestamp: iso(now - 50000), payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Check the build.' }] } },
