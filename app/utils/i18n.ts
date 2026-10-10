@@ -370,7 +370,6 @@ const FR: Record<string, string> = {
   'This tab is unavailable.': 'Cet onglet est indisponible.',
   'Active pane in Herdr': 'Pane actif dans Herdr', 'A pane is zoomed in Herdr': 'Un pane est agrandi dans Herdr',
   'Tab overview': 'Plan de l’onglet', 'Side by side': 'Côte à côte', 'Open alone': 'Ouvrir seul',
-  'Mirror': 'Miroir', 'Mirror unavailable · retry': 'Miroir indisponible · réessayer',
   // Space, tab and pane actions
   'Space': 'Espace', 'New tab': 'Nouvel onglet', 'New space': 'Nouvel espace', 'in the same space': 'dans le même espace', 'This space': 'Cet espace',
   'Swap with the pane on the left': 'Échanger avec le pane de gauche', 'Swap with the pane on the right': 'Échanger avec le pane de droite',

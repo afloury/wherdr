@@ -363,10 +363,12 @@ watch(() => pane.value && (pane.value.machine || ''), (m) => { if (m !== undefin
 
 // Conversation / Terminal selector (computer): in the pane header
 // or in the side-by-side cell's. The Project panel is a column there.
+// The icons replace the labels in a narrow cell (CSS).
 const tabs = computed(() => [
-  { label: t('Conversation'), value: 'chat' },
-  { label: t('Terminal'), value: 'term' },
+  { label: t('Conversation'), value: 'chat', icon: 'i-lucide-message-square' },
+  { label: t('Terminal'), value: 'term', icon: 'i-lucide-square-terminal' },
 ])
+const tabsUi = { list: 'hw-tabs', trigger: 'hw-tab', indicator: 'hw-tab-ind', leadingIcon: 'hw-tab-icon', label: 'hw-tab-label' }
 const tab = computed({
   get: () => (mode.value === 'term' ? 'term' : 'chat'),
   set: (v: string) => setMode(v === 'term' ? 'term' : 'chat'),
@@ -463,6 +465,14 @@ onMounted(() => {
 watch(() => props.active, (a, was) => {
   if (a && !was && props.cell) setTimeout(() => { if (!document.activeElement?.closest('.cell-view.active')) (mode.value === 'term' ? ctl : composer.value)?.focus() }, 50)
 })
+// Click on the cell's header, outside its controls: nothing there takes the
+// focus, which falls to the page and loses the next keystrokes. Back to the view.
+function refocus(e: MouseEvent) {
+  const el = e.target as Element | null
+  if (!props.cell || !desk.value || !el?.closest?.('.agent-top') || el.closest('button, a, input, [role="tab"], .cell-grip')) return
+  if (document.activeElement && document.activeElement !== document.body) return
+  (mode.value === 'term' ? ctl : composer.value)?.focus()
+}
 
 // Keyboard open (iPhone): the view fits the visible part.
 const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`, top: `${vvTop.value}px` } : {}))
@@ -472,7 +482,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
   <section
     :id="cell ? undefined : 'agent'" :class="cell ? ['cell-view', { active, gripped: grip }] : 'view'" :style="cell ? undefined : viewStyle" :data-pane="cell ? paneId : undefined"
     @touchstart="onSwipeStart" @touchmove="onSwipeMove" @touchend="onSwipeEnd" @touchcancel="onSwipeEnd"
-    @pointerdown.capture="cell && emit('activate')" @focusin="cell && emit('activate')"
+    @pointerdown.capture="cell && emit('activate')" @focusin="cell && emit('activate')" @click="refocus"
     @dragenter="onDrag" @dragover="onDrag" @dragleave="onDrag" @drop="onDrop"
   >
     <div v-if="dropDepth && dropTarget" class="file-drop" aria-hidden="true">
@@ -505,19 +515,19 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         </div>
         <UTabs
           v-if="controls.selector === 'cell'" v-model="tab" :items="tabs" :content="false" color="neutral" variant="pill" size="xs"
-          class="view-tabs" :ui="{ list: 'hw-tabs', trigger: 'hw-tab', indicator: 'hw-tab-ind' }"
+          class="view-tabs" :ui="tabsUi"
         />
         <div class="agent-actions">
           <UTabs
             v-if="controls.selector === 'header'" v-model="tab" :items="tabs" :content="false" color="neutral" variant="pill" size="xs"
-            class="view-tabs" :ui="{ list: 'hw-tabs', trigger: 'hw-tab', indicator: 'hw-tab-ind' }"
+            class="view-tabs" :ui="tabsUi"
           />
           <UButton
             v-if="headerAdd && pane" icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn"
             :aria-label="t('New tab')" :title="t('New tab')" :disabled="offlineView" @click="newTab(pane.workspace)"
           />
           <UTooltip v-if="cell" :text="t('Open alone')">
-            <UButton icon="i-lucide-maximize-2" color="neutral" variant="ghost" size="md" class="icon-btn" :aria-label="t('Open alone')" :to="panePath(paneId)" />
+            <UButton icon="i-lucide-maximize-2" color="neutral" variant="ghost" size="md" class="icon-btn cell-extra" :aria-label="t('Open alone')" :to="panePath(paneId)" />
           </UTooltip>
           <UTooltip v-else-if="inTab && tabEnt" :text="t('Side by side')" :disabled="!desk">
             <button type="button" class="map-btn" :aria-label="desk ? t('Side by side') : t('Tab overview')" @click="openPlan">
@@ -536,7 +546,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
             :class="{ on: mode === 'term' }" :aria-label="t('Terminal')" :aria-pressed="mode === 'term'" @click="toggleMode('term')"
           />
           <UTooltip v-if="hasChat(pane) && (live || cell)" :text="t('Search')" :kbds="mode === 'chat' ? shortcutKbds('search-chat') : undefined" :disabled="!desk">
-            <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :class="{ on: searchOpen }" :aria-label="t('Search')" @click="toggleSearch" />
+            <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn cell-extra" :class="{ on: searchOpen }" :aria-label="t('Search')" @click="toggleSearch" />
           </UTooltip>
           <UDropdownMenu v-if="!sheetMenus" :items="dropdownItems" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
             <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Options')" />

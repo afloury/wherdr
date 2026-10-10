@@ -1,9 +1,7 @@
 // Fake `herdr` CLI for the end-to-end tests: only `terminal session control`
 // (the terminal's control session, see server/utils/terminal.ts), played
-// against the fake Herdr server, and `terminal session observe` (a mirror, see
-// server/utils/mirror.ts), which draws one screen; every other command fails.
+// against the fake Herdr server; every other command fails.
 //   node fake-herdr-cli.mjs <socket> [--session <name>] terminal session control <pane> [--takeover] --cols N --rows N
-//   node fake-herdr-cli.mjs <socket> [--session <name>] terminal session observe <pane> --cols N --rows N
 import net from 'node:net'
 import readline from 'node:readline'
 
@@ -29,7 +27,7 @@ function call(method, params) {
 }
 
 const command = args.slice(0, 3).join(' ')
-if (command !== 'terminal session control' && command !== 'terminal session observe') {
+if (command !== 'terminal session control') {
   console.error('herdr is not available in the e2e tests')
   process.exit(1)
 }
@@ -40,18 +38,10 @@ const session = `cli-${process.pid}`
 const out = obj => process.stdout.write(JSON.stringify(obj) + '\n')
 let seq = 0
 let currentSize
-const frame = (size, what = 'terminal') => out({
+const frame = size => out({
   type: 'terminal.frame', encoding: 'ansi', full: true, width: size.cols, height: size.rows, seq: ++seq,
-  bytes: Buffer.from(`\x1b[2J\x1b[Hfake ${what} ${size.cols}x${size.rows}\r\n${pane} tick ${seq}\r\n$ `).toString('base64'),
+  bytes: Buffer.from(`\x1b[2J\x1b[Hfake terminal ${size.cols}x${size.rows}\r\n${pane} tick ${seq}\r\n$ `).toString('base64'),
 })
-
-// An observer attaches to nothing: the screen at the size it was given, until it is stopped.
-if (command === 'terminal session observe') {
-  frame({ cols: opt('--cols'), rows: opt('--rows') }, 'mirror')
-  process.on('SIGTERM', () => process.exit(0))
-  process.stdin.on('close', () => process.exit(0)).resume()
-  await new Promise(() => {})
-}
 
 let done = false
 async function leave(code) {
