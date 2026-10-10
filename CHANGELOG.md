@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Compact list by default**: the agent list (home screen on a phone, sidebar on a computer)
+  now shows one line per agent or space unless you chose otherwise. A device where Settings ›
+  Appearance › Home screen › Compact list was never touched switches to the compact list; a
+  device where it was turned off keeps the detailed cards. Turn it off there to get the preview,
+  folder, model and one-tap answers back on the cards.
+
 ### Fixed
 
 - **Panes side by side on a computer**: with the default background (Settings › Appearance ›

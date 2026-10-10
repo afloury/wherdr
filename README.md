@@ -126,8 +126,10 @@ Details in [Features](#features) and [Security](#security).
 
 ### Everywhere
 
-- **Live agent list**, one line per Herdr space, grouped by state (your turn, working, ready),
-  with a preview of each agent's last answer. When an agent asks for permission or asks a
+- **Live agent list**, one line per Herdr space, grouped by state (your turn, working, ready).
+  The list is compact by default: agent, title, project badge and state. Turn off Settings ›
+  Appearance › Home screen › **Compact list** for detailed cards, with the folder, the model and
+  a preview of each agent's last answer; there, when an agent asks for permission or asks a
   question, the options show on its card: **answer in one tap** without opening it.
 - **Conversation view**: the agent's real transcript (Claude Code, Codex and omp), rendered as
   Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan), timestamps, search and infinite scroll back to the
