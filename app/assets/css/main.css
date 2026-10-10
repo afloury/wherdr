@@ -851,6 +851,8 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 /* Active tab in mauve, dark text (phone and computer). */
 .hw-tab[data-state="active"] { color: var(--on-accent); }
 .hw-tab-ind { background: var(--mauve); inset-block: 0; }
+/* Its icons only show where the labels do not fit (narrow side-by-side cell). */
+.hw-tab-icon { display: none; }
 
 /* Git review: each file collapses. Long lines wrap
    on the phone, with a stable visual indent for the +/- sign. */
@@ -2641,6 +2643,18 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .cell-view .agent-actions { justify-self: end; }
 .cell-view .agent-actions .icon-btn { width: 34px; height: 34px; }
 .cell-view .agent-actions .icon-btn .iconify { width: 17px; height: 17px; }
+/* Narrow cell: the selector shrinks to its two icons (the labels stay for
+   screen readers); narrower still, the header keeps the title and the menu. */
+.cell-view .agent-top { container: cell-top / inline-size; }
+@container cell-top (max-width: 500px) {
+  .cell-view .agent-top .view-tabs { width: 72px; }
+  .cell-view .hw-tab { padding: 6px 0; }
+  .cell-view .hw-tab-icon { display: block; width: 14px; height: 14px; }
+  .cell-view .hw-tab-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+@container cell-top (max-width: 250px) {
+  .cell-view .agent-actions .cell-extra { display: none; }
+}
 
 /* Drag and drop of panes and dividers (computer and plan). */
 .cell-view.gripped .agent-top { grid-template-columns: auto minmax(0, 1fr) auto auto; grid-template-areas: "grip head tabs actions"; padding-left: 2px; column-gap: 4px; }
