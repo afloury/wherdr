@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Panes side by side on a computer**: with the default background (Settings › Appearance ›
+  Desktop › Background "wherdr grid"), a conversation shown next to another pane had the dotted
+  grid and the two lines of the reading column running through its messages and around its
+  field. A pane in a split is back on a plain background, full width; the grid stays in the
+  margins of a pane opened alone. Seen in the online demo, the same in the app.
+- **Blocking prompt on the "wherdr grid" background**: the grid no longer shows behind the
+  question and its choices; the reading column stays plain and framed there too.
+
 ## [1.3.2] — 2026-10-10
 
 ### Added

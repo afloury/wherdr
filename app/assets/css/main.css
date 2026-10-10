@@ -2964,6 +2964,16 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
     background-position: 0 0;
     background-repeat: no-repeat;
   }
+  /* Same for a blocking prompt between the two: the column stays solid and framed
+     under its tint, the grid does not run behind the question. */
+  html[data-backdrop='wherdr'] .view .choices {
+    --col-l: calc(50% - var(--read) / 2);
+    --col-r: calc(50% + var(--read) / 2);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--rose) 7%, transparent), transparent 80%),
+      linear-gradient(90deg, transparent calc(var(--col-l) - 1px), var(--line) calc(var(--col-l) - 1px), var(--line) var(--col-l),
+        var(--bg) var(--col-l), var(--bg) var(--col-r), var(--line) var(--col-r), var(--line) calc(var(--col-r) + 1px), transparent calc(var(--col-r) + 1px));
+  }
   .composer { padding-bottom: 18px; }
   /* The key separator belongs to the column, not to the gridded margins. */
   .keybar { position: relative; border-top: 0; }
@@ -2995,7 +3005,10 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
   .cell-view .choices, .cell-view .composer { padding-left: 10px; padding-right: 10px; }
   .cell-view .composer { padding-bottom: 10px; }
   .cell-view .slash-menu { left: 10px; right: 10px; }
-  .cell-view .chat, .cell-view .composer { background-image: none; }
+  /* Also over the "wherdr grid" rule above (html[data-backdrop] outweighs .cell-view):
+     a cell keeps a solid background, without the column lines. */
+  .cell-view .chat, .cell-view .composer,
+  html[data-backdrop='wherdr'] .cell-view :is(.chat, .composer) { background-color: var(--bg); background-image: none; }
   .cell-view .keybar { background-image: none; border-top: 1px solid var(--line-soft); }
   .cell-view .keybar::before { content: none; }
   .cell-view .search-bar { max-width: none; }
