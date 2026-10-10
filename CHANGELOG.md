@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Yes / No in one tap**: a closed question of an agent's reply now has **Yes** and **No** next
+  to its `↳ Reply`, in the three reply styles. A tap quotes the question and writes the answer
+  under it, as Reply and typing would; nothing is sent, so several questions are answered in a row
+  and the keyboard stays down on a phone. The other answer replaces the first, typed words are
+  never replaced. Offered only when yes or no answers the question in full: a single sentence
+  with a yes/no opening, no alternative, no interrogative word and no negation; otherwise Reply
+  alone.
 - **Restart after Codex updates itself**: when Codex's own installer exits to its shell,
   a Your turn card offers a one-tap restart and sends the usual attention notification.
   A new conversation reuses its launch command; an existing one can resume its exact session

@@ -11,7 +11,7 @@ md('')
 function reply(markdown: string) {
   const host = document.createElement('div')
   const html = marked.parse(markdown, { breaks: true, gfm: true, async: false }) as string
-  host.innerHTML = withQuestions(html, { reply: 'Reply', quoted: 'Quoted', discuss: 'Discuss' })
+  host.innerHTML = withQuestions(html, { reply: 'Reply', quoted: 'Quoted', discuss: 'Discuss', yes: 'Yes', no: 'No' })
   const buttons = [...host.querySelectorAll<HTMLElement>('.q-reply')]
   const quotes = buttons.map(b => b.dataset.q)
   const points = [...host.querySelectorAll<HTMLElement>('.q-point')]
@@ -175,7 +175,7 @@ describe('what the list style shows under a reply', () => {
   it('lists the questions in order and counts the points', () => {
     const r = reply('Shall I push now? The build is green. Or do you want a review first?\n\n- The cache is cleared on deploy.\n- The export keeps its column order.')
     expect(replyTargets(r.html)).toEqual({
-      questions: [{ n: '1', text: 'Shall I push now?' }, { n: '2', text: 'Or do you want a review first?' }],
+      questions: [{ n: '1', text: 'Shall I push now?', closed: true }, { n: '2', text: 'Or do you want a review first?', closed: false }],
       points: 2,
       pick: true,
     })
@@ -198,6 +198,36 @@ describe('what the list style shows under a reply', () => {
     expect(replyTargets(reply('Here is what changed:\n\n- The cache is cleared on deploy.').html)).toMatchObject({ points: 1, pick: true })
     expect(replyTargets(reply('1. The cache is cleared on deploy.\n2. The export keeps its column order.').html)).toMatchObject({ points: 2, pick: true })
     expect(replyTargets(reply('The cache is cleared on deploy.\n\nThe export keeps its column order.').html)).toMatchObject({ points: 2, pick: true })
+  })
+})
+
+describe('one-tap answers of a closed question', () => {
+  const answers = (host: HTMLElement) => [...host.querySelectorAll<HTMLElement>('.q-ans')].map(b => [b.dataset.a, b.dataset.q, b.dataset.l, b.getAttribute('aria-label')])
+
+  it('adds Yes and No right after the Reply button of a closed question', () => {
+    const r = reply('I added the task to the queue. Shall I start step 1 now? A slot is free.')
+    expect(answers(r.host)).toEqual([
+      ['yes', 'Shall I start step 1 now?', 'Yes', 'Yes: Shall I start step 1 now?'],
+      ['no', 'Shall I start step 1 now?', 'No', 'No: Shall I start step 1 now?'],
+    ])
+    const p = r.host.querySelector('p')!
+    // Reply, Yes, No, then the sentence that follows; no text node of their own.
+    expect([...p.children].map(c => c.className)).toEqual(['q-text', 'q-ans q-yes', 'q-ans q-no'])
+    expect(r.flow).toBe('I added the task to the queue. Shall I start step 1 now?[↳] A slot is free.')
+    expect(replyTargets(r.html).questions).toEqual([{ n: '1', text: 'Shall I start step 1 now?', closed: true }])
+  })
+
+  it('leaves an open question, an alternative and a double question with Reply alone', () => {
+    const r = reply('Which branch shall I use?\n\nShall I push or wait?\n\nShall I push? Or wait for review?\n\nShall I merge the branch now?')
+    expect(r.quotes).toHaveLength(4)
+    expect(answers(r.host).map(a => a[1])).toEqual(['Shall I merge the branch now?', 'Shall I merge the branch now?'])
+    expect(replyTargets(r.html).questions.map(q => q.closed)).toEqual([false, false, false, true])
+  })
+
+  it('keeps the answers after the emphasis a question ends in', () => {
+    const r = reply('Can you plug the box in over **Ethernet?** It is faster.')
+    const p = r.host.querySelector('p')!
+    expect([...p.children].map(c => c.tagName === 'STRONG' ? 'strong' : c.className)).toEqual(['q-text', 'strong', 'q-ans q-yes', 'q-ans q-no'])
   })
 })
 

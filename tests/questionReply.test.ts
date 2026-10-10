@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addQuote, isQuoted, QUOTE_MAX, questionsIn, quoteOf, quotesIn, quoteSegments, removeQuote } from '../app/utils/questionReply'
+import { addAnswer, addQuote, answerOf, isClosedQuestion, isQuoted, QUOTE_MAX, questionsIn, quoteOf, quotesIn, quoteSegments, removeQuote, tappedAnswer } from '../app/utils/questionReply'
 
 const asked = (text: string) => questionsIn(text).map(q => q.text)
 
@@ -129,5 +129,120 @@ describe('quoteSegments', () => {
     expect(quoteSegments('>= 5 items\n>file.txt\n>>nested')).toEqual([{ quote: false, text: '>= 5 items\n>file.txt\n>>nested' }])
     expect(quotesIn('>>>\n> Real?\n>>>')).toEqual([{ text: 'Real?', start: 4, end: 12 }])
     expect(addQuote('done\n>>>', 'Next?')).toBe('done\n>>>\n> Next?\n')
+  })
+})
+
+describe('isClosedQuestion', () => {
+  it('accepts a question that yes or no answers in full', () => {
+    for (const q of [
+      'Shall I start step 1 now?',
+      'Should I merge the branch?',
+      'Can you plug the box in over **Ethernet**?',
+      'Do you want a review first?',
+      'Is the build green?',
+      'Are you ready?',
+      'And so, shall I push?',
+      'Last point: shall I publish the release notes?',
+      'Shall I use this title: Release 2?',
+      'Want me to open the pull request?',
+      'OK to merge?',
+      'I merge it tonight, OK?',
+      'Je lance l’étape 1 maintenant ?',
+      'Dernier point : je publie les notes de version ?',
+      'On garde « la seconde » ?',
+      'Tu peux brancher la box en Ethernet… ?',
+      'Est-ce que je fusionne la branche ?',
+      'Dois-je relancer les tests ?',
+      'Veux-tu une revue avant ?',
+      'Et donc, j’envoie la demande au coordinateur ?',
+      'C’est bon pour toi ?',
+      'D’accord pour fusionner ce soir ?',
+      'Je fusionne ce soir, d’accord ?',
+    ]) expect(isClosedQuestion(q), q).toBe(true)
+  })
+  it('leaves an open question to Reply alone', () => {
+    for (const q of [
+      'What is left?',
+      'Which branch shall I use?',
+      'How do you want it?',
+      'Where are the threads?',
+      'Anything to note?',
+      'Et en français ?',
+      'Quel nom pour la branche ?',
+      'On fait quoi ?',
+      'Je lance laquelle ?',
+      'On déploie quand ?',
+      'Je préviens qui ?',
+      'Tu veux que je range ça où ?',
+      'Comment je nomme le fichier ?',
+    ]) expect(isClosedQuestion(q), q).toBe(false)
+  })
+  it('refuses, in doubt, what a single yes would not settle', () => {
+    for (const q of [
+      // An alternative.
+      'Shall I push or wait?',
+      'Or do you want a review first?',
+      'Je pousse ou j’attends ?',
+      // Two questions in one reply target.
+      'Shall I push? Or wait for review?',
+      'Tu préfères relire avant ? Ou attendre demain ?',
+      // A negation: "yes" could mean either.
+      'Shouldn’t I wait for the review?',
+      'Do you not want the old one?',
+      'Tu ne veux pas relire avant ?',
+      'On n’attend pas la revue ?',
+      // An interrogative word inside a yes/no shape.
+      'Do you know why it fails?',
+      'Can you tell me which one?',
+      // A condition before the question, a noun phrase, an English "on".
+      'If the tests pass, shall I merge?',
+      'The second one?',
+      'On the main branch?',
+      // Not a question.
+      'Shall I push.',
+      'You asked "shall I push?"',
+    ]) expect(isClosedQuestion(q), q).toBe(false)
+  })
+})
+
+describe('one-tap answers', () => {
+  const Q1 = 'Shall I start step 1 now?'
+  const Q2 = 'Je publie les notes de version ?'
+  it('quotes the question and writes the answer under it', () => {
+    expect(addAnswer('', Q1, 'Yes')).toBe(`> ${Q1}\nYes\n`)
+    expect(addAnswer('Hello.', Q1, 'No')).toBe(`Hello.\n> ${Q1}\nNo\n`)
+  })
+  it('answers several questions one after the other', () => {
+    const one = addAnswer('', Q1, 'Yes')!
+    const two = addAnswer(one, Q2, 'Non')!
+    expect(two).toBe(`> ${Q1}\nYes\n> ${Q2}\nNon\n`)
+    expect(answerOf(two, Q1)).toBe('Yes')
+    expect(answerOf(two, Q2)).toBe('Non')
+    // A plain quote can still follow.
+    expect(addQuote(two, 'Anything else?')).toBe(`${two}> Anything else?\n`)
+  })
+  it('answers a question already quoted, wherever it is in the draft', () => {
+    const draft = `> ${Q1}\n\n> ${Q2}\n`
+    expect(answerOf(draft, Q1)).toBe('')
+    expect(addAnswer(draft, Q1, 'Yes')).toBe(`> ${Q1}\nYes\n> ${Q2}\n`)
+    expect(addAnswer(draft, Q2, 'No')).toBe(`> ${Q1}\n\n> ${Q2}\nNo\n`)
+    expect(addAnswer(`> ${Q1}`, Q1, 'Yes')).toBe(`> ${Q1}\nYes\n`)
+  })
+  it('replaces the answer of an earlier tap, in either language', () => {
+    const draft = `> ${Q1}\nYes\n> ${Q2}\nOui\n`
+    expect(addAnswer(draft, Q1, 'No')).toBe(`> ${Q1}\nNo\n> ${Q2}\nOui\n`)
+    expect(addAnswer(draft, Q2, 'Non')).toBe(`> ${Q1}\nYes\n> ${Q2}\nNon\n`)
+    expect(addAnswer(draft, Q1, 'Yes')).toBeNull()
+  })
+  it('never overwrites what the user wrote', () => {
+    const draft = `> ${Q1}\nYes, but after lunch.\n`
+    expect(addAnswer(draft, Q1, 'No')).toBeNull()
+    expect(answerOf(draft, Q1)).toBe('Yes, but after lunch.')
+  })
+  it('reads which answer a tap wrote', () => {
+    expect(['Yes', 'oui', 'OUI.', ' yes '].map(tappedAnswer)).toEqual(['yes', 'yes', 'yes', 'yes'])
+    expect(['No', 'non', 'Non.'].map(tappedAnswer)).toEqual(['no', 'no', 'no'])
+    expect(['', 'Yes please', 'nope', 'ok'].map(tappedAnswer)).toEqual([null, null, null, null])
+    expect(answerOf('Hello', Q1)).toBeNull()
   })
 })

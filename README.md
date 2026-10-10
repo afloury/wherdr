@@ -869,6 +869,16 @@ nothing), so that one message answers them all:
 Every one of these is a button reachable with the keyboard (`Tab`, then `Enter`), and selecting a
 passage still offers **Reply** on it. A quoted question or point shows `✓`.
 
+A **closed question**, one that yes or no answers in full, also gets **Yes** and **No** next to
+its `↳` (at the end of its row in the list style). A tap quotes the question and writes the
+answer under it, exactly as Reply and typing would; nothing is sent, so several questions can be
+answered in a row before sending. The keyboard stays down on a phone. Tapping the other answer
+replaces the first; words you typed under a quote are never replaced. The rule is cautious, and
+in doubt only Reply is offered: a single sentence that opens like a yes/no question (`Shall I…`,
+`Do you…`, `Is it…`, `Want me to…`, `Est-ce que…`, `Je lance… ?`, `On…`, `Dois-je…`) or ends
+with `, OK?` / `, d'accord ?`, with no alternative (`or`, `ou`), no interrogative word (`which`,
+`how`, `quel`, `comment`…) and no negation.
+
 ## Several machines (SSH)
 
 wherdr also shows the agents of the **SSH machines registered in Herdr** — the ones the Herdr

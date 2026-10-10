@@ -11,7 +11,7 @@ import { canCancelQueued, lostPhotosText, restoreDraft } from '~/utils/queuedCan
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
-import { addQuote, isQuoted, replyTargets, withQuestions } from '~/utils/questionReply'
+import { addAnswer, addQuote, answerOf, isQuoted, replyTargets, tappedAnswer, withQuestions, type Answer } from '~/utils/questionReply'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -417,7 +417,7 @@ const blocks = computed<Block[]>(() => {
     } else if (it.role === 'assistant') {
       lastReply = it.text
       const time = it.ts ? fmtTime(it.ts) : null
-      lastReplyBlock = { k: 'assistant', key, id: replyId(it), text: it.text, html: withQuestions(md(it.text), { reply: t('Reply'), quoted: t('Quoted'), discuss: t('Discuss') }), time, endsTurn: false }
+      lastReplyBlock = { k: 'assistant', key, id: replyId(it), text: it.text, html: withQuestions(md(it.text), { reply: t('Reply'), quoted: t('Quoted'), discuss: t('Discuss'), yes: t('Yes'), no: t('No') }), time, endsTurn: false }
       out.push(lastReplyBlock)
       replies.push({ key, time, text: it.text })
     } else if (it.role === 'thinking') {
@@ -487,10 +487,23 @@ function quote(text: string) {
   haptic()
   emit('quote')
 }
+// "Yes" / "No" of a closed question: quotes it and writes the answer under the
+// quote, as Reply and typing would; nothing is sent. The field does not take
+// the focus: on a phone the keyboard would cover the next question to answer.
+const answerWord = (a: Answer) => a === 'yes' ? t('Yes') : t('No')
+function answer(text: string, a: Answer) {
+  const draft = useDraft(props.pane.id)
+  const next = addAnswer(draft.text, text, answerWord(a))
+  if (next !== null) draft.text = next
+  haptic()
+}
+const answered = (text: string, a: Answer) => tappedAnswer(answerOf(draftText.value, text) || '') === a
 // "Quoted" state of the question and point buttons (and of the words of a
-// question), read from the draft.
+// question) and pressed state of the one-tap answers, read from the draft.
 function syncQuoted() {
   const text = useDraft(props.pane.id).text
+  for (const btn of listEl.value?.querySelectorAll<HTMLElement>('.q-ans') || [])
+    btn.setAttribute('aria-pressed', String(tappedAnswer(answerOf(text, btn.dataset.q || '') || '') === btn.dataset.a))
   for (const btn of listEl.value?.querySelectorAll<HTMLElement>('.q-reply, .q-point') || []) {
     const on = isQuoted(text, btn.dataset.q || '')
     btn.classList.toggle('quoted', on)
@@ -603,6 +616,8 @@ async function copyText(text: string) {
 // their menu (event delegation, the HTML comes from v-html).
 function onListClick(e: MouseEvent) {
   const target = e.target as HTMLElement
+  const ans = target.closest?.('.q-ans') as HTMLElement | null
+  if (ans?.dataset.q) { e.preventDefault(); arm(null); pickKey.value = null; answer(ans.dataset.q, ans.dataset.a === 'no' ? 'no' : 'yes'); return }
   const question = target.closest?.('.q-reply, .q-point') as HTMLElement | null
   if (question?.dataset.q) { e.preventDefault(); arm(null); pickKey.value = null; quote(question.dataset.q); return }
   // "Tap the text" style: the words of a question are its button.
@@ -1106,13 +1121,21 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <div v-if="replyStyle === 'list' && !readOnly && typingAt(b.id) === null && (replyTargets(b.html).questions.length || replyTargets(b.html).pick)" class="q-bar">
                   <template v-if="replyTargets(b.html).questions.length">
                     <p class="q-bar-h">{{ tl('Questions · reply to', 'Questions · répondre à') }}</p>
-                    <button
-                      v-for="q in replyTargets(b.html).questions" :key="q.n" type="button" class="q-row" :class="{ quoted: isQuoted(draftText, q.text) }"
-                      :aria-label="`${t('Reply')}: ${q.text}`" @click="quote(q.text)"
-                      @mouseenter="hotQuestion(b.key, q.n, true)" @mouseleave="hotQuestion(b.key, q.n, false)" @focus="hotQuestion(b.key, q.n, true)" @blur="hotQuestion(b.key, q.n, false)"
-                    >
-                      <b>{{ isQuoted(draftText, q.text) ? '✓' : q.n }}</b><span>{{ q.text }}</span><i>↳<em> {{ isQuoted(draftText, q.text) ? t('Quoted') : t('Reply') }}</em></i>
-                    </button>
+                    <div v-for="q in replyTargets(b.html).questions" :key="q.n" class="q-line">
+                      <button
+                        type="button" class="q-row" :class="{ quoted: isQuoted(draftText, q.text) }"
+                        :aria-label="`${t('Reply')}: ${q.text}`" @click="quote(q.text)"
+                        @mouseenter="hotQuestion(b.key, q.n, true)" @mouseleave="hotQuestion(b.key, q.n, false)" @focus="hotQuestion(b.key, q.n, true)" @blur="hotQuestion(b.key, q.n, false)"
+                      >
+                        <b>{{ isQuoted(draftText, q.text) ? '✓' : q.n }}</b><span>{{ q.text }}</span><i>↳<em> {{ isQuoted(draftText, q.text) ? t('Quoted') : t('Reply') }}</em></i>
+                      </button>
+                      <template v-if="q.closed">
+                        <button
+                          v-for="a in (['yes', 'no'] as const)" :key="a" type="button" class="q-row-ans" :aria-pressed="answered(q.text, a)"
+                          :aria-label="`${answerWord(a)}: ${q.text}`" @click="answer(q.text, a)"
+                        >{{ answerWord(a) }}</button>
+                      </template>
+                    </div>
                   </template>
                   <button v-if="replyTargets(b.html).pick" type="button" class="q-pick" :aria-pressed="pickKey === b.key" @click="pickKey = pickKey === b.key ? null : b.key">
                     {{ pickKey === b.key ? tl('Pick the point to quote · Cancel', 'Choisis le point à citer · Annuler') : tl('+ Quote a point', '+ Citer un point') }}

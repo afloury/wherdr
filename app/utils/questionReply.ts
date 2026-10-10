@@ -136,6 +136,90 @@ export function removeQuote(draft: string, q: DraftQuote): string {
   return (draft.slice(0, q.start) + draft.slice(q.end)).replace(/^\n+/, '')
 }
 
+// A closed question: one that "yes" or "no" answers in full, so it gets the
+// one-tap "Yes" / "No" buttons next to its "↳ Reply". The rule is cautious, in
+// doubt a question is open (Reply alone):
+// - a single sentence (two questions in a row, "Shall I push? Or wait?", are
+//   one reply target: a single "yes" would not say which);
+// - it starts, after an optional "Last point:" and a small connector ("And",
+//   "So", "Et", "Donc"…), with a yes/no opening: an English auxiliary and its
+//   subject ("Shall I…", "Do you…", "Is it…"), a short elliptical form ("Want
+//   me to…", "OK to…"), or their French counterparts ("Est-ce que…", "Je
+//   lance… ?", "On…", "Tu…", "Dois-je…", any inversion "Veux-tu…"); or it ends
+//   with a tag (", OK?", ", d'accord ?");
+// - it holds no alternative ("or", "ou"), no interrogative word ("which",
+//   "how", "quel", "comment"…, and "où", "quand", "qui" as its last word) and
+//   no negation ("Shouldn't I…", "Tu ne veux pas… ?": "yes" is ambiguous).
+const EN_SUBJECT = 'i|we|you|it|this|that|these|those|there|they|he|she|the|your|my|our|everything|anything|all'
+const OPENING = new RegExp(`^(?:${[
+  `(?:shall|should|can|could|may|will|would|do|does|did|is|are|was|were|have|has|am|must)\\s+(?:${EN_SUBJECT})(?![\\p{L}\\p{N}'’])`,
+  '(?:want me to|ok(?:ay)? (?:to|if|for|with)|sounds? good|good to go|go ahead|proceed|ready (?:to|for)|agreed|makes? sense|all good)(?![\\p{L}\\p{N}])',
+  'est-ce(?![\\p{L}\\p{N}])',
+  '(?:je|tu|vous|nous|ça)\\s',
+  'on\\s+(?!(?:the|a|an|this|that|these|those|my|your|our|its|top|main|all|both|each|every)(?![\\p{L}\\p{N}]))',
+  '(?:j|c)[\'’]\\p{L}',
+  '(?:ok|d[\'’]accord) pour(?![\\p{L}\\p{N}])',
+  '\\p{L}+-(?:t-)?(?:je|tu|il|elle|on|nous|vous|ils|elles)(?![\\p{L}\\p{N}])',
+].map(r => `(?:${r})`).join('|')})`, 'iu')
+const TAG = /,\s*(?:ok|okay|right|agreed|d['’]accord|ça te va|ça vous va|c['’]est bon|non)\s*\?[\s"'»”’)\]*_~]*$/iu
+const CONNECTOR = /^(?:and|so|then|also|but|now|et|donc|alors|sinon|mais|du coup)[,\s]+/iu
+const ALTERNATIVE = /(?<![\p{L}\p{N}])(?:or|ou|ou bien|plutôt|either|versus|vs)(?![\p{L}\p{N}])/iu
+const INTERROGATIVE = /(?<![\p{L}\p{N}])(?:what|which|who|whom|whose|where|when|why|how|quel|quels|quelle|quelles|quoi|comment|combien|pourquoi|lequel|laquelle|lesquels|lesquelles)(?![\p{L}\p{N}])/iu
+const INTERROGATIVE_LAST = /(?<![\p{L}\p{N}])(?:où|quand|qui)\s*\?/iu
+const NEGATION = /(?<![\p{L}\p{N}])(?:not|never|ne|pas|jamais)(?![\p{L}\p{N}])|n['’]t(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])n['’]\p{L}/iu
+export function isClosedQuestion(text: string): boolean {
+  const q = oneLine(text)
+  if ((q.match(/\?/g) || []).length !== 1 || !isQuestion(q)) return false
+  if (ALTERNATIVE.test(q) || INTERROGATIVE.test(q) || INTERROGATIVE_LAST.test(q) || NEGATION.test(q)) return false
+  if (TAG.test(q)) return true
+  // The whole sentence, or what follows its last colon ("Last point: shall I…?").
+  return [q, q.slice(q.lastIndexOf(': ') + 1)].some((part) => {
+    let head = part.replace(/^[\s"'«“‘(*_~]+/, '')
+    for (let m = CONNECTOR.exec(head); m; m = CONNECTOR.exec(head)) head = head.slice(m[0].length)
+    return OPENING.test(head)
+  })
+}
+
+// One-tap answers: "yes" / "no" under the quote of a closed question, as
+// Reply and typing would write them:
+//   > Shall I merge the branch now?
+//   Yes
+export type Answer = 'yes' | 'no'
+export interface AnswerWords { yes: string, no: string }
+// What a tap may have written, in either language: only that is replaced.
+const TAPPED: Record<Answer, RegExp> = { yes: /^(?:yes|oui)\.?$/i, no: /^(?:no|non)\.?$/i }
+export const tappedAnswer = (s: string): Answer | null => {
+  const v = s.trim()
+  return TAPPED.yes.test(v) ? 'yes' : TAPPED.no.test(v) ? 'no' : null
+}
+const sameQuote = (q: DraftQuote, text: string) => oneLine(q.text).toLowerCase() === oneLine(quoteOf(text).replace(/^> /gm, '')).toLowerCase()
+// Where the answer to a quote of the draft sits: from the end of the quote to
+// the next quote (or the end of the draft).
+function answerSpan(draft: string, text: string): { start: number, end: number } | null {
+  const quotes = quotesIn(draft)
+  const i = quotes.findIndex(q => sameQuote(q, text))
+  return i < 0 ? null : { start: quotes[i]!.end, end: quotes[i + 1]?.start ?? draft.length }
+}
+// What the draft answers to a quoted question: its text ("" when nothing is
+// written yet), null when the question is not quoted.
+export function answerOf(draft: string, text: string): string | null {
+  const at = answerSpan(draft, text)
+  return at ? draft.slice(at.start, at.end).trim() : null
+}
+// Draft with the question quoted and answered in one tap. A question already
+// quoted gets the answer under its quote; a "yes" or "no" written by an
+// earlier tap is replaced. Null when there is nothing to change: the same
+// answer is there, or the user wrote their own (never overwritten).
+export function addAnswer(draft: string, text: string, word: string): string | null {
+  const base = addQuote(draft, text) ?? String(draft || '')
+  const at = answerSpan(base, text)
+  if (!at) return null
+  const current = base.slice(at.start, at.end).trim()
+  if (current === word || (current && !tappedAnswer(current))) return null
+  const head = base.slice(0, at.start)
+  return `${head}${head.endsWith('\n') ? '' : '\n'}${word}\n${base.slice(at.end)}`
+}
+
 // Message display: quote lines apart from the rest.
 export function quoteSegments(text: string): { quote: boolean, text: string }[] {
   const out: { quote: boolean, text: string }[] = []
@@ -190,7 +274,7 @@ export type ReplyStyle = typeof REPLY_STYLES[number]
 export const parseReplyStyle = (v: string | null | undefined): ReplyStyle =>
   (REPLY_STYLES as readonly string[]).includes(v || '') ? v as ReplyStyle : 'icon'
 
-export interface ReplyLabels { reply: string, quoted: string, discuss: string }
+export interface ReplyLabels { reply: string, quoted: string, discuss: string, yes: string, no: string }
 
 // A point worth discussing: a few words that ask nothing and do not merely
 // introduce what follows ("Three things to note:").
@@ -199,7 +283,8 @@ export const isPoint = (text: string) => words(text) >= POINT_MIN_WORDS && !/[:�
 
 // Reply targets in the HTML of an agent reply. Each question gets a button
 // right after it (`.q-reply`, numbered in reading order) and its words are
-// wrapped (`.q-text`, same number); each point (`.q-pt`: a list item or a
+// wrapped (`.q-text`, same number); a closed question also gets its one-tap
+// answers (`.q-ans`: `.q-yes`, `.q-no`); each point (`.q-pt`: a list item or a
 // paragraph with no question) gets a button at its end (`.q-point`). The
 // labels come from data attributes (CSS content): no text node, so the
 // typewriter and the copied text ignore them.
@@ -244,6 +329,21 @@ export function markQuestions(root: ParentNode, labels: ReplyLabels) {
       let at: Node = part.node
       while (at.parentNode && at.parentNode !== el && (!at.nextSibling || /^(A|CODE|KBD)$/.test((at.parentNode as Element).tagName))) at = at.parentNode
       at.parentNode!.insertBefore(btn, at.nextSibling)
+      // A closed question: "Yes" / "No" right after its Reply button.
+      if (isClosedQuestion(q)) {
+        btn.dataset.c = '1'
+        for (const a of ['no', 'yes'] as const) {
+          const ans = document.createElement('button')
+          ans.type = 'button'
+          ans.className = `q-ans q-${a}`
+          ans.dataset.q = q
+          ans.dataset.a = a
+          ans.dataset.l = labels[a]
+          ans.setAttribute('aria-label', `${labels[a]}: ${q}`)
+          ans.setAttribute('aria-pressed', 'false')
+          btn.after(ans)
+        }
+      }
       // The words of the question, text node by text node (a question may
       // cross emphasis, a link or inline code); what is before it stays in
       // the node the earlier questions still point to.
@@ -278,7 +378,7 @@ const marked = new Map<string, string>()
 // conversation is re-read every 1.5 s).
 export function withQuestions(html: string, labels: ReplyLabels): string {
   if (typeof document === 'undefined') return html
-  const key = `${labels.reply}\u0000${labels.discuss}\u0000${html}`
+  const key = `${labels.reply}\u0000${labels.discuss}\u0000${labels.yes}\u0000${html}`
   let out = marked.get(key)
   if (out === undefined) {
     const tpl = document.createElement('template')
@@ -297,7 +397,7 @@ export function withQuestions(html: string, labels: ReplyLabels): string {
 // points or more. A reply of plain prose in one paragraph is a single point:
 // the whole message is the thing to reply to.
 // Read from the marked HTML, cached with it.
-export interface ReplyTargets { questions: { n: string, text: string }[], points: number, pick: boolean }
+export interface ReplyTargets { questions: { n: string, text: string, closed: boolean }[], points: number, pick: boolean }
 const targets = new Map<string, ReplyTargets>()
 export function replyTargets(html: string): ReplyTargets {
   let out = targets.get(html)
@@ -306,7 +406,7 @@ export function replyTargets(html: string): ReplyTargets {
     if (typeof document !== 'undefined' && html.includes('class="q-')) {
       const tpl = document.createElement('template')
       tpl.innerHTML = html
-      out.questions = [...tpl.content.querySelectorAll<HTMLElement>('.q-reply')].map(b => ({ n: b.dataset.n || '', text: b.dataset.q || '' }))
+      out.questions = [...tpl.content.querySelectorAll<HTMLElement>('.q-reply')].map(b => ({ n: b.dataset.n || '', text: b.dataset.q || '', closed: b.dataset.c === '1' }))
       const points = [...tpl.content.querySelectorAll('.q-point')]
       out.points = points.length
       out.pick = points.length > 1 || points.some(b => b.closest('li'))
