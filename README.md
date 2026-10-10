@@ -896,6 +896,34 @@ nothing), so that one message answers them all:
 Every one of these is a button reachable with the keyboard (`Tab`, then `Enter`), and selecting a
 passage still offers **Reply** on it. A quoted question or point shows `✓`.
 
+A **closed question**, one that yes or no answers in full, also gets **Yes** and **No** next to
+its `↳` (at the end of its row in the list style). A tap quotes the question and writes the
+answer under it, exactly as Reply and typing would; nothing is sent, so several questions can be
+answered in a row before sending. The keyboard stays down on a phone. Tapping the other answer
+replaces the first; words you typed under a quote are never replaced. The rule is cautious, and
+in doubt only Reply is offered: a single sentence that opens like a yes/no question (`Shall I…`,
+`Do you…`, `Is it…`, `Want me to…`, `Est-ce que…`, `Je lance… ?`, `On…`, `Dois-je…`) or ends
+with `, OK?` / `, d'accord ?`, with no alternative (`or`, `ou`), no interrogative word (`which`,
+`how`, `quel`, `comment`…) and no negation.
+
+A **decision table**, a Markdown table whose rows are numbered questions as a coordinator writes
+them, gets a panel right under it: **OK to all** writes `ok to all` (a second tap takes it back),
+and each row has **Yes**, **No** and `↳`, which write `3: yes`, `3: no`, or quote the row
+(`> 3. Publish the notes?`) for an answer in words; a row that asks an open question has `↳` alone. In French: `ok tout`, `3 : oui`, `3 : non`.
+Here too everything is composed in the field and you send. A table qualifies when it has a
+number column (a header `#`, `N°`, `No`, `Num`, `ID` or `Q` over short numbers, each once) and a
+question column, known by its header (`Question`, `Decision`, `Choix`…), by cells that all end
+with `?`, or by an advice column next to it (`Avis`, `Recommendation`, `Suggestion`…). Any other
+table is left as it is.
+
+Above the field, **N questions unanswered** counts the questions of the agent's last message
+(and the rows of its decision tables) that your draft does not answer yet; tap it to scroll to
+the first one. A question counts once it is quoted, a row once it is answered, quoted or covered
+by `ok to all`; when the message asks one thing only, any words you type answer it. The line
+goes when everything is answered and when you send, and it never shows for earlier messages,
+while the agent is working, or while it waits on a prompt. It hangs from the top edge of the
+field, so nothing moves when it comes or goes.
+
 ## Several machines (SSH)
 
 wherdr also shows the agents of the **SSH machines registered in Herdr** — the ones the Herdr
