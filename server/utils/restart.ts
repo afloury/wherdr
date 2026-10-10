@@ -44,6 +44,7 @@ const planning = new Set<string>()
 // Starts the restart in the background; the state is published in `pane.restart`.
 export async function restartAgent(paneId: string) {
   const p = findPane(paneId)
+  if (p?.stopped) throw new HerdrError('stale', 'Use the restart buttons for this stopped agent.')
   if (!p || !p.agent) throw new HerdrError('bad_pane', 'agent not found')
   const cur = restarts.get(paneId)
   if (planning.has(paneId) || (cur && cur.phase !== 'failed')) throw new HerdrError('restart_busy', 'restart already in progress')

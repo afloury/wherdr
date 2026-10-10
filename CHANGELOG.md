@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Restart after Codex updates itself**: when Codex's own installer exits to its shell,
+  a Your turn card offers a one-tap restart and sends the usual attention notification.
+  A new conversation reuses its launch command; an existing one can resume its exact session
+  or start fresh. If the session is uncertain, Resume opens Codex's conversation picker.
+  Restart checks the foreground process and the unchanged empty prompt before typing.
+
 ### Fixed
 
 - **Panes side by side on a computer**: with the default background (Settings › Appearance ›

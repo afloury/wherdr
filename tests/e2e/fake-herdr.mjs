@@ -26,7 +26,7 @@ const ompRunScreen = command => [
   ' π > Opus > demo ▶─1%───────────────────────────────────────────────1M─',
   '╰─ ',
 ].join('\n')
-const screen = p => (p?.agent === 'omp' && p.status === 'idle' ? (p.run ? ompRunScreen(p.run) : OMP_IDLE_SCREEN) : '')
+const screen = p => p?.updateOutput ?? (p?.agent === 'omp' && p.status === 'idle' ? (p.run ? ompRunScreen(p.run) : OMP_IDLE_SCREEN) : '')
 
 // A tab's area, in cells; two panes share it side by side (one split).
 const AREA = { x: 0, y: 0, width: 120, height: 40 }
@@ -114,8 +114,34 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     'pane.read': params => ({ read: { pane_id: params.pane_id, source: params.source || 'visible', text: screen(paneById(params.pane_id)) } }),
     'pane.process_info': (params) => {
       const p = paneById(params.pane_id)
-      const procs = p?.agent ? [{ pid: 2001, name: p.agent, argv: [p.agent] }] : []
-      return { process_info: { shell_pid: 2000, foreground_processes: procs } }
+      if (p) p.processReads = (p.processReads || 0) + 1
+      const procs = p?.agent ? [{ pid: p.pid || 2001, name: p.agent, argv: [p.agent, ...(p.agent === 'codex' ? ['--profile', 'work', '-m', 'gpt-x'] : [])] }] : [{ pid: 2000, name: 'zsh' }]
+      return { process_info: { shell_pid: 2000, foreground_process_group_id: p?.foreground ? 4000 : p?.agent ? (p.pid || 2001) : 2000, foreground_processes: procs } }
+    },
+    'e2e.update_reset': params => {
+      const p = need(params.pane_id)
+      p.agent = 'codex'; p.status = 'idle'; p.pid = (p.pid || 3000) + 1
+      p.updateOutput = params.session ? '' : '✨ Update available! 0.148.0 -> 0.162.1'; p.foreground = false; p.starts = []
+      p.processReads = 0
+      p.baseCwd ||= p.cwd
+      p.cwd = params.session ? p.baseCwd : `${p.baseCwd}/fresh`
+      p.session = params.session || null
+      return { pid: p.pid }
+    },
+    'e2e.update_exit': params => {
+      const p = need(params.pane_id)
+      p.agent = null; p.status = 'unknown'; p.session = null
+      p.updateOutput = 'Codex CLI 0.162.1 installed successfully.\n\n🎉 Update ran successfully! Please restart Codex.\n\nuser@host project % '
+      return {}
+    },
+    'e2e.update_draft': params => { need(params.pane_id).updateOutput += params.text; return {} },
+    'e2e.update_foreground': params => { need(params.pane_id).foreground = true; return {} },
+    'e2e.update_starts': params => ({ starts: need(params.pane_id).starts || [], reads: need(params.pane_id).processReads || 0 }),
+    'agent.start': params => {
+      const p = need(params.pane_id)
+      p.starts = [...(p.starts || []), params]
+      p.agent = params.kind; p.status = 'idle'; p.pid = (p.pid || 3000) + 1; p.updateOutput = ''
+      return { agent: { pane_id: p.id, agent: p.agent } }
     },
     'pane.send_input': (params) => {
       const p = paneById(params.pane_id)

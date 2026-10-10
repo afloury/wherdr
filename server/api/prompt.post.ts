@@ -8,6 +8,12 @@ export default defineApi(async (event, b) => {
   if (!text.trim()) throw new HerdrError('empty', 'Empty message')
   // The app's id for the bubble it shows from the tap (see app/utils/outbox.ts).
   const id = typeof b.client_id === 'string' ? b.client_id : undefined
+  if (findPane(b.pane_id)?.stopped) {
+    if (isSlashCommand(text)) throw new HerdrError('stale', 'Restart Codex before sending a command.')
+    const q = addQueued(b.pane_id, text, { held: true, id })
+    setTimeout(poll, 50)
+    return { ok: true, queued: q }
+  }
   if (await closePanel(b.pane_id).catch(() => false)) log(`panel closed before sending on ${b.pane_id}`)
   // A menu or panel still hides the input field (interactive /mcp flow…), or an
   // earlier message is held: typed now, the message would be lost. Held, it is

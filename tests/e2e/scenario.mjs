@@ -47,6 +47,8 @@ export const OMP_QUESTIONS_PANE = 'w8:p1'
 export const SPLIT_TAB = 'w9:t1'
 export const SPLIT_CHAT_PANE = 'w9:p1'
 export const SPLIT_SHELL_PANE = 'w9:p2'
+export const CODEX_UPDATE_PANE = 'w10:p1'
+export const CODEX_UPDATE_SESSION = '00000000-0000-4000-8000-000000000288'
 
 // Unique markers of the long omp transcript (asserted on by the specs).
 export const LONG_WORD = `Pneumono${'ultramicroscopicsilicovolcano'.repeat(12)}coniosis`
@@ -173,9 +175,17 @@ export function writeScenario(home) {
   const coordinator = path.join(home, '.herdr-projects/acme')
   const questions = path.join(home, 'projects/questions')
   const split = path.join(home, 'projects/split')
+  const codex = path.join(home, 'projects/codex-update')
+  fs.mkdirSync(codex, { recursive: true })
   for (const d of [api, docs, demo, screens, approval, scratch, coordinator, questions, split]) fs.mkdirSync(d, { recursive: true })
 
   const claudeSid = '00000000-0000-4000-8000-000000000001'
+  const codexFile = path.join(home, `.codex/sessions/2026/01/01/rollout-test-${CODEX_UPDATE_SESSION}.jsonl`)
+  write(codexFile, jsonl([
+    { type: 'session_meta', payload: { id: CODEX_UPDATE_SESSION, cwd: codex, timestamp: iso(now - 60000), thread_source: 'user' } },
+    { type: 'response_item', timestamp: iso(now - 50000), payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Check the build.' }] } },
+    { type: 'response_item', timestamp: iso(now - 40000), payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'The build passes.' }] } },
+  ]))
   claudeTranscript(home, api, claudeSid, now)
   const longFile = ompTranscript(home, docs, 'e2e-long', now, longContent)
   const chatFile = ompTranscript(home, demo, 'e2e-chat', now, msg => [
@@ -232,6 +242,7 @@ export function writeScenario(home) {
   write(path.join(demo, '.omp/commands/daily-sync.md'), '---\ndescription: Sync the daily branch\n---\nSync.\n')
 
   return [
+    { id: 'w10', label: 'codex-update', panes: [{ id: CODEX_UPDATE_PANE, agent: 'codex', status: 'idle', cwd: codex, session: CODEX_UPDATE_SESSION, pid: 3001 }] },
     { id: 'w1', label: 'acme-api', panes: [{ id: CLAUDE_PANE, agent: 'claude', status: 'idle', cwd: api, session: claudeSid }] },
     { id: 'w2', label: 'docs-site', panes: [{ id: OMP_LONG_PANE, agent: 'omp', status: 'idle', cwd: docs, session: longFile }] },
     { id: 'w3', label: 'demo', panes: [{ id: OMP_CHAT_PANE, agent: 'omp', status: 'idle', cwd: demo, session: chatFile, transcript: chatFile, reply: 'Got it.' }] },

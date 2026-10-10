@@ -11,6 +11,7 @@ const KEYS = new Set(['up', 'down', 'enter', 'esc', 'left', 'right'])
 export default defineApi(async (event, b) => {
   if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'Invalid pane')
   const pane: string = b.pane_id
+  if (findPane(pane)?.stopped) throw new HerdrError('stale', 'Use the restart buttons for this stopped agent.')
   const key = String(b.key || '')
   if (!KEYS.has(key)) throw new HerdrError('bad_request', 'Invalid key')
   const r = await herdr('pane.read', { pane_id: pane, source: 'detection' }, 4000)
