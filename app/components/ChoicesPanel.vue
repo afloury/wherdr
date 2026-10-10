@@ -32,6 +32,12 @@ async function press(a: WaitAction) {
   busy.value = true
   if (!(await pressScreenKey(props.paneId, a))) busy.value = false
 }
+// Codex stopped by its update: the user relaunches it themselves, or not at all.
+const dismissable = computed(() => props.prompt?.kind === 'self-update')
+async function dismiss() {
+  busy.value = true
+  if (!(await dismissStopped(props.paneId))) busy.value = false
+}
 // Checkboxes (omp): Enter moves to the next question.
 async function next() {
   busy.value = true
@@ -156,7 +162,8 @@ useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.opt
         {{ t('Continue') }}<kbd>{{ screenKeyName('enter') }}</kbd>
       </button>
     </div>
-    <div v-if="actions.length || keyboard" class="choices-keys">
+    <div v-if="actions.length || keyboard || dismissable" class="choices-keys">
+      <button v-if="dismissable" type="button" :disabled="disabled" @click="dismiss">{{ t('Dismiss') }}</button>
       <button
         v-for="a in actions" :key="a.key + a.label" type="button"
         :disabled="disabled" @click="press(a)"

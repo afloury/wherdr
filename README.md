@@ -169,6 +169,7 @@ Details in [Features](#features) and [Security](#security).
   Nothing restarts automatically: the pane must still show the same empty shell prompt,
   with the shell in the foreground. Unrecognized shell prompts require a manual restart
   in the terminal. wherdr must have observed Codex before it exited.
+  **Dismiss** puts the card away for good: the pane is a plain shell again, to use as you like.
   Project panel messages wait in the queue until the agent returns. Continuation
   prompts (unfinished quotes or heredocs) refuse a restart too. If the final
   transcript read fails, both conversation choices remain available; a session

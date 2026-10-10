@@ -13,6 +13,7 @@ All notable changes to this project are documented here. The format follows
   A new conversation reuses its launch command; an existing one can resume its exact session
   or start fresh. If the session is uncertain, Resume opens Codex's conversation picker.
   Restart checks the foreground process and the unchanged empty prompt before typing.
+  Dismiss puts the card away and gives the pane back as a plain shell.
 - **Browse files** in an agent's ⋯ menu: a read-only browser of its project (the Git root, or the
   agent's folder outside Git), opened on the agent's folder. Folders and files with their sizes, a
   breadcrumb to go back up, text files with line numbers (first 256 kB), images up to 2 MB.
