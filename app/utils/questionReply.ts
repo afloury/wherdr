@@ -286,19 +286,25 @@ export function withQuestions(html: string, labels: ReplyLabels): string {
   return out
 }
 
-// What the "list" style shows under a reply: its questions in order, and
-// whether it has points to quote. Read from the marked HTML, cached with it.
-export interface ReplyTargets { questions: { n: string, text: string }[], points: number }
+// What the "list" style shows under a reply: its questions in order, how many
+// points it has, and whether "+ Quote a point" is worth offering (`pick`):
+// only when there is a choice to make, that is a point in a list, or two
+// points or more. A reply of plain prose in one paragraph is a single point:
+// the whole message is the thing to reply to.
+// Read from the marked HTML, cached with it.
+export interface ReplyTargets { questions: { n: string, text: string }[], points: number, pick: boolean }
 const targets = new Map<string, ReplyTargets>()
 export function replyTargets(html: string): ReplyTargets {
   let out = targets.get(html)
   if (!out) {
-    out = { questions: [], points: 0 }
+    out = { questions: [], points: 0, pick: false }
     if (typeof document !== 'undefined' && html.includes('class="q-')) {
       const tpl = document.createElement('template')
       tpl.innerHTML = html
       out.questions = [...tpl.content.querySelectorAll<HTMLElement>('.q-reply')].map(b => ({ n: b.dataset.n || '', text: b.dataset.q || '' }))
-      out.points = tpl.content.querySelectorAll('.q-point').length
+      const points = [...tpl.content.querySelectorAll('.q-point')]
+      out.points = points.length
+      out.pick = points.length > 1 || points.some(b => b.closest('li'))
     }
     targets.set(html, out)
     if (targets.size > 2000) targets.delete(targets.keys().next().value!)
