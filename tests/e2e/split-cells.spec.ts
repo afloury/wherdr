@@ -46,3 +46,37 @@ test('a pane opened alone keeps the backdrop in its margins', async ({ page }) =
   await expect(page.locator('.agent-main > .grid-backdrop')).toHaveCount(1)
   expect(await page.locator('.chat').evaluate(paint)).toMatchObject({ color: 'rgba(0, 0, 0, 0)' })
 })
+
+// The Conversation / Terminal selector of a cell: its labels where they fit,
+// its two icons in a narrow cell; never cut by the cell's edge.
+for (const [width, narrow] of [[1440, false], [1000, true]] as const) {
+  test(`the selector of a cell stays whole (${width} px)`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 800 })
+    await page.goto(`/#/t/${SPLIT_TAB}`)
+    const cell = page.locator('.cell-view').first()
+    const terminal = cell.getByRole('tab', { name: 'Terminal' })
+    await expect(terminal).toBeVisible()
+    await expect(terminal.locator('.hw-tab-icon')).toBeVisible({ visible: narrow })
+    const m = await cell.evaluate((el) => {
+      const right = (x: Element) => x.getBoundingClientRect().right
+      const label = el.querySelector('.hw-tab[id$="term"] .hw-tab-label, .hw-tab:last-child .hw-tab-label') as HTMLElement
+      const tab = label.closest('.hw-tab') as HTMLElement
+      return {
+        cell: right(el), tabs: right(el.querySelector('.view-tabs')!), actions: right(el.querySelector('.agent-actions')!),
+        label: label.getBoundingClientRect().width, cut: label.scrollWidth > label.clientWidth + 1 || tab.scrollWidth > tab.clientWidth + 1,
+        title: el.querySelector('.agent-title')!.getBoundingClientRect().width,
+      }
+    })
+    expect(m.tabs).toBeLessThanOrEqual(m.actions)
+    expect(m.actions).toBeLessThanOrEqual(m.cell)
+    expect(m.title).toBeGreaterThan(60)
+    if (narrow) expect(m.label).toBeLessThanOrEqual(1)
+    else expect(m.cut).toBe(false)
+    await shot(page, `split-selector-${width}`, testInfo.project.name)
+    // The icons still switch the view.
+    await terminal.click()
+    await expect(cell.locator('#term .xterm')).toBeVisible()
+    await cell.getByRole('tab', { name: 'Conversation' }).click()
+    await expect(cell.locator('.chat')).toContainText('It runs in the pane on the right.')
+  })
+}

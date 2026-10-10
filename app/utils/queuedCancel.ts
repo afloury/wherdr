@@ -20,7 +20,8 @@ export function canCancelQueued(p: Pane | undefined): boolean {
 
 // Puts a cancelled message back into the draft, as if it had never been
 // sent: its text before what was already typed, its attached photos.
-export function restoreDraft(draft: { text: string, atts: DraftAtt[], reply?: ReplyTarget | null }, message: string) {
+// `pasted`: the pasted texts the server lists for it (sent from another device).
+export function restoreDraft(draft: { text: string, atts: DraftAtt[], reply?: ReplyTarget | null }, message: string, pasted: string[] = []) {
   // Reply to a specific message: the marker becomes the "Replying to" box again.
   const parsed = parseReply(message)
   if (parsed && 'reply' in draft) {
@@ -28,7 +29,7 @@ export function restoreDraft(draft: { text: string, atts: DraftAtt[], reply?: Re
     message = parsed.body
   }
   // Texts sent as "Pasted text" cards become cards again.
-  const split = splitPasted(String(message || ''), [], sentPastes.value)
+  const split = splitPasted(String(message || ''), pasted, sentPastes.value)
   for (const paste of split.pastes) draft.atts.push({ url: '', path: null, paste })
   const lines = split.text.split('\n')
   const photos = lines.filter(l => l.includes(UPLOAD)).map(l => l.trim())

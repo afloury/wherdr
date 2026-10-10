@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { reduceSnapshot } from '../server/utils/snapshot'
-import { isShellRow, leadPane, mirrorSize, projectRoots, rememberTab, repoRoots, rowGroup, spaceRows, spaceTab } from '../shared/spaces'
+import { isShellRow, leadPane, projectRoots, rememberTab, repoRoots, rowGroup, spaceRows, spaceTab } from '../shared/spaces'
 import { groupByProject, leadByCoordinator, projectCounts, projectSections, remoteCoordinator, stateSource, tabStates, waitingTab } from '../shared/projects'
 import type { Pane } from '../shared/types'
 import layouts from './fixtures/snapshot-layouts.json'
@@ -290,15 +290,5 @@ describe('projets et machines', () => {
     if (coord?.kind !== 'space') throw new Error('space expected')
     expect([coord.lead.id, coord.state, stateSource(coord), waitingTab(coord)]).toEqual(['w1:p1', undefined, null, null])
     expect(tabStates(coord)).toEqual(['blocked', 'working'])
-  })
-})
-
-describe('terminal mirror', () => {
-  it('size: rows of the real terminal, width overestimated', () => {
-    const rule = '─'.repeat(98)
-    expect(mirrorSize({ rows: 50, text: `❯ ls\n${rule}\nok   `, rect: { width: 60, height: 40 } })).toEqual({ cols: 98, rows: 50 })
-    expect(mirrorSize({ rows: 30, text: 'court', rect: { width: 60, height: 40 } })).toEqual({ cols: 60, rows: 30 })
-    expect(mirrorSize({ text: '', rect: null })).toEqual({ cols: 20, rows: 24 })
-    expect(mirrorSize({ rows: 900, text: 'x'.repeat(999) })).toEqual({ cols: 300, rows: 200 })
   })
 })

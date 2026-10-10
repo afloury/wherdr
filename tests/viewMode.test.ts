@@ -26,7 +26,8 @@ describe('viewControls', () => {
 })
 
 describe('saisie du pane', () => {
-  it.each(['term', 'mirror'] as const)('removes the field on a computer in %s mode', mode => {
+  it('removes the field on a computer in the terminal', () => {
+    const mode = 'term'
     expect(showComposer({ desk: true, live: true, mode })).toBe(false)
     expect(terminalAttachment({ desk: true, live: true, mode, available: true })).toBe(true)
     expect(showComposer({ desk: false, live: true, mode })).toBe(true)
@@ -39,12 +40,12 @@ describe('saisie du pane', () => {
   })
   it('keeps the field of a conversation cell without the focus', () => {
     expect(showComposer({ desk: true, live: false, mode: 'chat', cell: true })).toBe(true)
-    expect(showComposer({ desk: true, live: false, mode: 'mirror', cell: true })).toBe(false)
+    expect(showComposer({ desk: true, live: false, mode: 'term', cell: true })).toBe(false)
     expect(showComposer({ desk: true, live: false, mode: 'chat' })).toBe(false)
   })
   it('offers nothing in an inactive or offline cell', () => {
-    expect(showComposer({ desk: true, live: false, mode: 'mirror' })).toBe(false)
-    expect(terminalAttachment({ desk: true, live: false, mode: 'mirror', available: true })).toBe(false)
+    expect(showComposer({ desk: true, live: false, mode: 'term' })).toBe(false)
+    expect(terminalAttachment({ desk: true, live: false, mode: 'term', available: true })).toBe(false)
     expect(terminalAttachment({ desk: true, live: true, mode: 'term', available: false })).toBe(false)
   })
 })

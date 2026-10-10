@@ -112,35 +112,10 @@ describe('pane size given back when wherdr’s terminal closes', () => {
     expect(t.resizes).toEqual(['160x48'])
   })
 
-  // Side by side: the terminal of a cell fitted its pane, the focus went to
-  // another cell and its mirror took over the hold (see server/utils/mirror.ts).
-  it('keeps the fitted size while the mirror of the cell holds the pane', async () => {
+  it('a terminal that never resized its pane gives nothing back', async () => {
     const t = setup()
-    const term = await t.open(113, 62)
-    expect(t.sizes.asked(PANE)).toEqual({ cols: 113, rows: 62 })
+    const term = await t.sizes.hold(PANE)
     term.release(true)
-    // The mirror connects after the terminal closed, within the delay.
-    await wait(CLOSE_MS / 2)
-    const mirror = await t.sizes.hold(PANE)
-    await wait(GRACE_MS * 2)
-    expect(t.resizes).toEqual([])
-    expect(t.sizes.asked(PANE)).toEqual({ cols: 113, rows: 62 })
-    // Its cell resized: fitted again through the mirror.
-    t.native(72, 50)
-    mirror.resized(72, 50)
-    expect(t.sizes.asked(PANE)).toEqual({ cols: 72, rows: 50 })
-    // The tab is left: the size from before the terminal comes back.
-    mirror.release(true)
-    await wait(CLOSE_MS)
-    expect(t.resizes).toEqual(['160x48'])
-    expect(t.sizes.asked(PANE)).toBeNull()
-  })
-
-  it('a mirror alone resizes nothing', async () => {
-    const t = setup()
-    const mirror = await t.sizes.hold(PANE)
-    expect(t.sizes.asked(PANE)).toBeNull()
-    mirror.release(true)
     await wait(GRACE_MS)
     expect(t.resizes).toEqual([])
     expect(t.sizes.held()).toEqual([])

@@ -30,6 +30,8 @@ export interface PendingMessage {
   photos: string[]
   // Photos Claude's queue counts but whose files are unknown.
   missing: number
+  // Long pasted texts of `raw`, as the server lists them (QueuedMessage.pasted).
+  pasted?: string[]
 }
 
 const normText = (s: string) => dropReplyMarker(String(s || '').replace(/\s+/g, ' ').trim().toLowerCase())
@@ -100,5 +102,6 @@ export function pendingQueue(o: {
     ...(q.reason ? { reason: q.reason } : {}),
     photos: uploadNames(q.text),
     missing: q.missing || 0,
+    ...(q.pasted ? { pasted: q.pasted } : {}),
   }))
 }

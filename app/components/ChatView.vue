@@ -784,7 +784,7 @@ const pendingParts = (q: { srcs: string[], missing: number, body: string, files:
 // field. Already read in the meantime: the server refuses, we say so.
 const canCancel = computed(() => !readOnly.value && canCancelQueued(props.pane))
 const cancelling = ref<string | null>(null)
-async function cancelQueued(q: { id: string, raw: string, mine: boolean, local?: boolean }) {
+async function cancelQueued(q: { id: string, raw: string, mine: boolean, local?: boolean, pasted?: string[] }) {
   if (cancelling.value) return
   // Never reached the server: the app's copy goes back into the field.
   if (q.local) {
@@ -796,7 +796,7 @@ async function cancelQueued(q: { id: string, raw: string, mine: boolean, local?:
   haptic()
   try {
     const r = await api<{ text: string, lost?: number }>('/api/unqueue', { pane_id: props.pane.id, text: q.raw, id: q.mine ? q.id : undefined })
-    restoreDraft(useDraft(props.pane.id), r.text || q.raw)
+    restoreDraft(useDraft(props.pane.id), r.text || q.raw, q.pasted)
     emit('restored')
     // Photos Claude queued itself, whose files wherdr never had: said, not silently dropped.
     if (r.lost) toast(t('Removed from the queue'), true, lostPhotosText(r.lost))
@@ -1271,7 +1271,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <template #content>
                 <span v-if="q.files.length" class="msg-file-chips">
                   <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
-                </span><UserText :text="q.body" />
+                </span><UserText :text="q.body" :pasted="q.pasted" />
               </template>
             </UChatMessage>
             <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ t('Sent · read by the agent') }}</span></div>
@@ -1308,7 +1308,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <template #content>
                 <span v-if="q.files.length" class="msg-file-chips">
                   <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
-                </span><UserText :text="q.body" />
+                </span><UserText :text="q.body" :pasted="q.pasted" />
               </template>
             </UChatMessage>
             <div v-if="q.state === 'failed'" class="queued-tag failed" role="alert">

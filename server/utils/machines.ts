@@ -290,7 +290,7 @@ export class RemoteMachine implements Machine {
     })
   }
 
-  // Long-lived session (terminal, mirror): counted in the budget, never queued.
+  // Long-lived session (terminal): counted in the budget, never queued.
   spawnHerdr(args: string[]): ChildProcessWithoutNullStreams {
     const sess = this.session && this.session !== 'default' ? ['--session', this.session] : []
     const cmd = `exec ${[this.bin || 'herdr', ...sess, ...args].map(shq).join(' ')}`

@@ -1,4 +1,4 @@
-// Selection and copy in an xterm terminal (computer), terminal and mirror.
+// Selection and copy in an xterm terminal (computer).
 // Plain xterm selection: Herdr keeps the history (scrollback 0 on the xterm
 // side), so only what is on screen can be selected, and dragging past the
 // edge does not scroll. xterm keeps the selection internally, even with the
