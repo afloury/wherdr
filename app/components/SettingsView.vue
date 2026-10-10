@@ -353,7 +353,7 @@ onMounted(() => {
           <div class="settings-group">
             <h3>{{ t('Home screen') }}</h3>
             <label class="settings-toggle">
-              <span><b>{{ t('Compact list') }}</b><small>{{ t('One line per agent or space: no preview, folder or model. Computer and phone. Saved on this device.') }}</small></span>
+              <span><b>{{ t('Compact list') }}</b><small>{{ t('One line per agent or space: no preview, folder or model; an agent waiting for an answer shows its question and answers. Computer and phone. Saved on this device.') }}</small></span>
               <USwitch v-model="compactOn" color="success" size="xl" />
             </label>
             <label class="settings-toggle">
