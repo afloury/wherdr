@@ -153,27 +153,27 @@ main() {
   # to use (passkeys are tied to it); the plugin opened the guide there.
   ADDRESS="$(plugin_address)"
   say ""
-  say "${G}${B}wherdr is running → $ADDRESS${R}"
-  if [ "$ADDRESS" != "$URL" ]; then
-    say "  Your private tailnet address, for this computer and your phone. Enable the"
-    say "  passkey lock there (Settings › Security): a passkey is tied to its address."
-    say "  ${D}Also on this computer: $URL${R}"
-  elif [ "$BROWSER" = "1" ] && [ "$FIRST" = "1" ]; then
-    say "  The setup guide is open in your browser; its Phone step makes wherdr"
-    say "  reachable from your phone over Tailscale (private, never the Internet)."
-  elif [ "$BROWSER" = "1" ]; then
-    say "  Open it in your browser; Settings › Phone sets up your phone."
+  say "${G}${B}✓ wherdr is running${R}"
+  say "  On this computer: ${B}$URL${R}"
+  key="$(panel_key)"
+  if [ -n "$key" ]; then
+    say "  In Herdr, ${B}$key${R} opens the wherdr panel."
   else
-    say "  No screen here: open it from this machine, or from your computer through"
+    say "  In Herdr: herdr plugin action invoke panel --plugin $PLUGIN_ID"
+  fi
+  if [ "$ADDRESS" != "$URL" ]; then
+    say "  On your phone: ${B}$ADDRESS${R} (Tailscale, private network only)."
+    say "  Enable the passkey lock there (Settings › Security): a passkey is tied to its address."
+  elif [ "$BROWSER" = "1" ] && [ "$FIRST" = "1" ]; then
+    say "  The setup guide is open in your browser."
+    say "  Phone: follow its Phone step to set up Tailscale (private network only)."
+  elif [ "$BROWSER" = "1" ]; then
+    say "  Phone: open Settings › Phone in your browser to set up Tailscale (private network only)."
+  else
+    say "  No screen here: open the local address from this machine, or use an SSH tunnel:"
     say "    ${C}ssh -L $PORT:127.0.0.1:$PORT $(id -un)@$(hostname 2>/dev/null || echo this-server)${R}"
     # In Docker, this script offers to publish wherdr on the tailnet itself.
     if [ "$CONTAINER" = "1" ]; then docker_phone; else phone_steps; fi
-  fi
-  key="$(panel_key)"
-  if [ -n "$key" ]; then
-    say "  In Herdr, ${B}$key${R} opens the wherdr panel: state, open, phone, start/stop, update."
-  else
-    say "  The wherdr panel: herdr plugin action invoke panel --plugin $PLUGIN_ID"
   fi
   say ""
   say "${D}Update: run this command again, or U in the wherdr panel.${R}"

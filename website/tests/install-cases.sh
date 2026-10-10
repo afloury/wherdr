@@ -128,7 +128,7 @@ run DISPLAY=:0; check "with a display: browser allowed, setup guide mentioned" \
 # Already published on the tailnet and answering: that address is the one shown.
 reset; touch /tmp/tailnet
 run DISPLAY=:0; check "tailnet address published: shown instead of localhost, with the passkey hint" \
-  'has "wherdr is running → https://box.example.ts.net:7683" /tmp/out && has "a passkey is tied to its address" /tmp/out && has "Also on this computer: http://localhost:7683" /tmp/out'
+  'has "On your phone: https://box.example.ts.net:7683" /tmp/out && has "a passkey is tied to its address" /tmp/out && has "On this computer: http://localhost:7683" /tmp/out'
 reset
 run DISPLAY=:0 SSH_CONNECTION=1; check "over SSH: no browser even with a display" 'has "WHERDR_NO_BROWSER=1" /tmp/herdr.log'
 
