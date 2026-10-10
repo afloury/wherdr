@@ -43,6 +43,10 @@ export const OMP_SHELL_PANE = 'w6:p1'
 export const COORDINATOR_PANE = 'w7:p1'
 // omp replies with questions in the middle of their paragraphs.
 export const OMP_QUESTIONS_PANE = 'w8:p1'
+// A Space with two panes side by side: an omp conversation and a shell.
+export const SPLIT_TAB = 'w9:t1'
+export const SPLIT_CHAT_PANE = 'w9:p1'
+export const SPLIT_SHELL_PANE = 'w9:p2'
 
 // Unique markers of the long omp transcript (asserted on by the specs).
 export const LONG_WORD = `Pneumono${'ultramicroscopicsilicovolcano'.repeat(12)}coniosis`
@@ -168,7 +172,8 @@ export function writeScenario(home) {
   const scratch = path.join(home, 'projects/scratch')
   const coordinator = path.join(home, '.herdr-projects/acme')
   const questions = path.join(home, 'projects/questions')
-  for (const d of [api, docs, demo, screens, approval, scratch, coordinator, questions]) fs.mkdirSync(d, { recursive: true })
+  const split = path.join(home, 'projects/split')
+  for (const d of [api, docs, demo, screens, approval, scratch, coordinator, questions, split]) fs.mkdirSync(d, { recursive: true })
 
   const claudeSid = '00000000-0000-4000-8000-000000000001'
   claudeTranscript(home, api, claudeSid, now)
@@ -217,6 +222,10 @@ export function writeScenario(home) {
     msg({ role: 'user', content: [{ type: 'text', text: 'Clean the build folder.' }], attribution: 'user' }),
     msg({ role: 'assistant', content: [{ type: 'toolCall', id: 'call-rm', name: 'bash', arguments: { i: 'Removing the build folder', command: 'rm -rf build' } }], stopReason: 'toolUse' }),
   ])
+  const splitFile = ompTranscript(home, split, 'e2e-split', now, msg => [
+    msg({ role: 'user', content: [{ type: 'text', text: 'Is the dev server up?' }], attribution: 'user' }),
+    msg({ role: 'assistant', content: [{ type: 'text', text: 'It runs in the pane on the right.' }], stopReason: 'stop' }),
+  ])
   // "/" menu: a project skill and a project command for Claude, a project command for omp.
   write(path.join(api, '.claude/skills/daily-notes/SKILL.md'), '---\nname: daily-notes\ndescription: Write the daily notes of the project\n---\nSteps.\n')
   write(path.join(api, '.claude/commands/daily-check.md'), '# Check the daily build\n')
@@ -232,5 +241,9 @@ export function writeScenario(home) {
     { id: 'w6', label: 'scratch', panes: [{ id: OMP_SHELL_PANE, agent: 'omp', status: 'idle', cwd: scratch, shell: true }] },
     { id: 'w7', label: 'acme', panes: [{ id: COORDINATOR_PANE, agent: 'omp', status: 'idle', cwd: coordinator, session: coordinatorFile, transcript: coordinatorFile, reply: 'Passed on.' }] },
     { id: 'w8', label: 'questions', panes: [{ id: OMP_QUESTIONS_PANE, agent: 'omp', status: 'idle', cwd: questions, session: questionsFile }] },
+    { id: 'w9', label: 'split', panes: [
+      { id: SPLIT_CHAT_PANE, agent: 'omp', status: 'idle', cwd: split, session: splitFile },
+      { id: SPLIT_SHELL_PANE, status: 'idle', cwd: split },
+    ] },
   ]
 }
