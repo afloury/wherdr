@@ -117,7 +117,7 @@ export function conversations(now: number): Record<string, ChatItem[]> {
       { role: 'tool', name: 'Edit', text: 'src/pages/settings.vue', ts: at(37) },
       { role: 'tool', name: 'Edit', text: 'src/assets/main.css', ts: at(37) },
       { role: 'tool', name: 'Bash', text: 'Run the unit tests', ts: at(36) },
-      { role: 'assistant', text: 'Done. The settings page has an **Appearance** row with three choices:\n\n| Choice | Behaviour |\n|---|---|\n| System | follows `prefers-color-scheme`, live |\n| Light | always light |\n| Dark | always dark |\n\nThe choice is saved in `localStorage` and applied before the first paint, so there is no flash on reload. Tests pass (48/48). **View changes** in the ⋯ menu shows the diff.', ts: at(35) },
+      { role: 'assistant', text: 'Done. The settings page has an **Appearance** row with three choices:\n\n| Choice | Behaviour |\n|---|---|\n| System | follows `prefers-color-scheme`, live |\n| Light | always light |\n| Dark | always dark |\n\nThe choice is saved in `localStorage` and applied before the first paint, so there is no flash on reload. Tests pass (48/48). **View changes** in the ⋯ menu shows the diff.\n\nShall I open the pull request?', ts: at(35) },
     ],
   }
 }

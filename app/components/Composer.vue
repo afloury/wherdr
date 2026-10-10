@@ -23,8 +23,8 @@ import { rememberPastes } from '~/utils/sentPastes'
 // `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
 // `takeBack`: conversation view; a prompt Claude puts back into its field on Stop
 // comes back here instead (never in the terminal view, where the user sees Claude's field).
-const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void>, escStops?: boolean, takeBack?: boolean }>()
-const emit = defineEmits<{ sent: [queued: QueuedMessage | null], showTerminal: [] }>()
+const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void>, escStops?: boolean, takeBack?: boolean, unanswered?: number }>()
+const emit = defineEmits<{ sent: [queued: QueuedMessage | null], showTerminal: [], showUnanswered: [] }>()
 
 // Claude Code update installed: the status line restarts the agent.
 // Claude Code error status ("Auto-update failed…"): in red, like in the terminal.
@@ -551,6 +551,14 @@ defineExpose({
           <span class="slash-desc">{{ c.desc }}</span>
         </button>
       </div>
+    </div>
+    <!-- Questions of the agent's last message the draft does not answer yet
+         (ChatView.vue): a tab on the top edge, out of the flow, so that it
+         comes and goes without moving the field or the conversation. -->
+    <div v-if="unanswered && !readOnly" class="composer-ask-anchor">
+      <button type="button" class="composer-ask" @mousedown.prevent @click="emit('showUnanswered')">
+        <UIcon name="i-lucide-arrow-up" /><span>{{ unanswered > 1 ? tl(`${unanswered} questions unanswered`, `${unanswered} questions sans réponse`) : tl('1 question unanswered', '1 question sans réponse') }}</span>
+      </button>
     </div>
     <div v-if="replyTo" class="composer-reply" role="status">
       <UIcon name="i-lucide-reply" class="composer-reply-icon" />

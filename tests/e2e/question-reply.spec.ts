@@ -52,7 +52,8 @@ test('icon style: a question in the middle of a paragraph gets its own Reply but
 
   // The button sits right after the words of its question, before the sentence that follows.
   const step = chat.locator(quoteBtn(STEP))
-  expect(await step.evaluate(el => [el.parentElement!.firstChild!.textContent, el.previousSibling?.textContent, el.nextSibling?.textContent])).toEqual([
+  // (Its one-tap answers come in between: see the "Yes / No" test.)
+  expect(await step.evaluate(el => [el.parentElement!.firstChild!.textContent, el.previousSibling?.textContent, el.parentElement!.lastChild!.textContent])).toEqual([
     'I added the task to the queue, to be confirmed. ',
     STEP,
     ' A slot is free on the server.',
@@ -76,6 +77,90 @@ test('icon style: a question in the middle of a paragraph gets its own Reply but
   await expect(field).toHaveValue(`> ${STEP}\n\n> ${REVIEW}\n\n> ${ETAPE}\n`)
   await expect(chat.locator('.q-reply.quoted')).toHaveCount(3)
   await shot(page, 'questions-quoted', testInfo.project.name)
+})
+
+// One-tap answers: "Yes" / "No" next to the Reply button of a closed question.
+const ansBtn = (text: string, a: 'yes' | 'no') => quoteBtn(text, `q-${a}`)
+const sentCount = (page: Page) => page.locator('.msg-user-wrap').count()
+
+test('a closed question is answered in one tap, several in a row, nothing is sent', async ({ page }, testInfo) => {
+  const { chat, field } = await open(page)
+  const before = await sentCount(page)
+  // Yes and No for the five closed questions; none for "Or do you want a review first?".
+  expect(await chat.locator('.q-yes').evaluateAll(els => els.map(el => (el as HTMLElement).dataset.q))).toEqual([STEP, TAG, ETAPE, NOTES, MERGE])
+  await expect(chat.locator('.q-no')).toHaveCount(5)
+  await expect(chat.locator(ansBtn(REVIEW, 'yes'))).toHaveCount(0)
+
+  const yes = chat.locator(ansBtn(STEP, 'yes'))
+  const no = chat.locator(ansBtn(STEP, 'no'))
+  await yes.scrollIntoViewIfNeeded()
+  await expect(yes).toBeVisible()
+  expect(await yes.evaluate(el => getComputedStyle(el, '::before').content)).toBe('"Yes"')
+  expect(await yes.getAttribute('aria-label')).toBe(`Yes: ${STEP}`)
+  // Finger-sized targets that do not overlap, and a line as tall as its neighbours.
+  const target = (el: Element) => {
+    const r = el.getBoundingClientRect()
+    const a = getComputedStyle(el, '::after')
+    return { left: r.left + parseFloat(a.left), right: r.right - parseFloat(a.right), height: parseFloat(a.height) }
+  }
+  const [ty, tn] = [await yes.evaluate(target), await no.evaluate(target)]
+  expect(ty.height).toBeGreaterThanOrEqual(32)
+  expect(ty.right).toBeLessThanOrEqual(tn.left)
+  expect(await yes.evaluate(el => el.getBoundingClientRect().height)).toBeLessThanOrEqual(22)
+  await shot(page, 'yes-no', testInfo.project.name)
+
+  await yes.click()
+  await expect(field).toHaveValue(`> ${STEP}\nYes\n`)
+  await expect(yes).toHaveAttribute('aria-pressed', 'true')
+  await expect(chat.locator(quoteBtn(STEP))).toHaveClass(/quoted/)
+  // The field does not take the focus: the next question stays in sight.
+  expect(await field.evaluate(el => document.activeElement === el)).toBe(false)
+  await chat.locator(ansBtn(TAG, 'no')).click()
+  await expect(field).toHaveValue(`> ${STEP}\nYes\n> ${TAG}\nNo\n`)
+  // A plain Reply joins them, and the other answer replaces the first.
+  await chat.locator(quoteBtn(REVIEW)).click()
+  await expect(field).toHaveValue(`> ${STEP}\nYes\n> ${TAG}\nNo\n> ${REVIEW}\n`)
+  await no.click()
+  await expect(field).toHaveValue(`> ${STEP}\nNo\n> ${TAG}\nNo\n> ${REVIEW}\n`)
+  await expect(no).toHaveAttribute('aria-pressed', 'true')
+  await expect(yes).toHaveAttribute('aria-pressed', 'false')
+  await shot(page, 'yes-no-answered', testInfo.project.name)
+  // Typed words under a quote are the user's: a tap leaves them alone.
+  await field.fill(`> ${STEP}\nNo, tomorrow.\n`)
+  await yes.click()
+  await expect(field).toHaveValue(`> ${STEP}\nNo, tomorrow.\n`)
+  expect(await sentCount(page)).toBe(before)
+  expect(await fits(page)).toBe(true)
+})
+
+test('text style: Yes / No stay next to the underlined question', async ({ page }, testInfo) => {
+  const { chat, field } = await open(page, 'text')
+  await field.fill('')
+  const yes = chat.locator(ansBtn(MERGE, 'yes'))
+  await yes.scrollIntoViewIfNeeded()
+  await expect(yes).toBeVisible()
+  await yes.click()
+  await expect(field).toHaveValue(`> ${MERGE}\nYes\n`)
+  await expect(chat.locator('.q-text', { hasText: MERGE })).toHaveClass(/quoted/)
+  await shot(page, 'yes-no-text', testInfo.project.name)
+})
+
+test('list style: Yes / No sit in the question row under the message, not in the text', async ({ page }, testInfo) => {
+  const { chat, field } = await open(page, 'list')
+  await field.fill('')
+  await expect(chat.locator('.md-body .q-ans').first()).toBeHidden()
+  const bars = chat.locator('.q-bar')
+  // The open question of the first message has a row without answers.
+  await expect(bars.nth(0).locator('.q-line')).toHaveCount(3)
+  await expect(bars.nth(0).locator('.q-row-ans')).toHaveCount(4)
+  const line = bars.nth(2).locator('.q-line')
+  await line.scrollIntoViewIfNeeded()
+  await line.getByRole('button', { name: `No: ${MERGE}` }).click()
+  await expect(field).toHaveValue(`> ${MERGE}\nNo\n`)
+  await expect(line.getByRole('button', { name: `No: ${MERGE}` })).toHaveAttribute('aria-pressed', 'true')
+  await expect(line.locator('.q-row')).toHaveClass(/quoted/)
+  await shot(page, 'yes-no-list', testInfo.project.name)
+  expect(await fits(page)).toBe(true)
 })
 
 test('icon style: a point that asks nothing can be quoted to discuss it', async ({ page }, testInfo) => {

@@ -11,7 +11,7 @@ md('')
 function reply(markdown: string) {
   const host = document.createElement('div')
   const html = marked.parse(markdown, { breaks: true, gfm: true, async: false }) as string
-  host.innerHTML = withQuestions(html, { reply: 'Reply', quoted: 'Quoted', discuss: 'Discuss' })
+  host.innerHTML = withQuestions(html, { reply: 'Reply', quoted: 'Quoted', discuss: 'Discuss', yes: 'Yes', no: 'No', okAll: 'OK to all', decisions: 'Decisions' })
   const buttons = [...host.querySelectorAll<HTMLElement>('.q-reply')]
   const quotes = buttons.map(b => b.dataset.q)
   const points = [...host.querySelectorAll<HTMLElement>('.q-point')]
@@ -175,19 +175,20 @@ describe('what the list style shows under a reply', () => {
   it('lists the questions in order and counts the points', () => {
     const r = reply('Shall I push now? The build is green. Or do you want a review first?\n\n- The cache is cleared on deploy.\n- The export keeps its column order.')
     expect(replyTargets(r.html)).toEqual({
-      questions: [{ n: '1', text: 'Shall I push now?' }, { n: '2', text: 'Or do you want a review first?' }],
+      questions: [{ n: '1', text: 'Shall I push now?', closed: true }, { n: '2', text: 'Or do you want a review first?', closed: false }],
+      rows: [],
       points: 2,
       pick: true,
     })
   })
 
   it('is empty for a reply with nothing to quote', () => {
-    expect(replyTargets(reply('Done.').html)).toEqual({ questions: [], points: 0, pick: false })
+    expect(replyTargets(reply('Done.').html)).toEqual({ questions: [], rows: [], points: 0, pick: false })
   })
 
   it('does not offer to pick a point in a reply of plain prose', () => {
     const prose = replyTargets(reply('Nothing is blocked, the state is unchanged. I am still waiting for your answers.').html)
-    expect(prose).toEqual({ questions: [], points: 1, pick: false })
+    expect(prose).toEqual({ questions: [], rows: [], points: 1, pick: false })
     // A question next to a single paragraph: the question is listed, no pick.
     const asked = replyTargets(reply('The build is green on every platform.\n\nShall I push now?').html)
     expect(asked.questions).toHaveLength(1)
@@ -198,6 +199,104 @@ describe('what the list style shows under a reply', () => {
     expect(replyTargets(reply('Here is what changed:\n\n- The cache is cleared on deploy.').html)).toMatchObject({ points: 1, pick: true })
     expect(replyTargets(reply('1. The cache is cleared on deploy.\n2. The export keeps its column order.').html)).toMatchObject({ points: 2, pick: true })
     expect(replyTargets(reply('The cache is cleared on deploy.\n\nThe export keeps its column order.').html)).toMatchObject({ points: 2, pick: true })
+  })
+})
+
+describe('one-tap answers of a closed question', () => {
+  const answers = (host: HTMLElement) => [...host.querySelectorAll<HTMLElement>('.q-ans')].map(b => [b.dataset.a, b.dataset.q, b.dataset.l, b.getAttribute('aria-label')])
+
+  it('adds Yes and No right after the Reply button of a closed question', () => {
+    const r = reply('I added the task to the queue. Shall I start step 1 now? A slot is free.')
+    expect(answers(r.host)).toEqual([
+      ['yes', 'Shall I start step 1 now?', 'Yes', 'Yes: Shall I start step 1 now?'],
+      ['no', 'Shall I start step 1 now?', 'No', 'No: Shall I start step 1 now?'],
+    ])
+    const p = r.host.querySelector('p')!
+    // Reply, Yes, No, then the sentence that follows; no text node of their own.
+    expect([...p.children].map(c => c.className)).toEqual(['q-text', 'q-ans q-yes', 'q-ans q-no'])
+    expect(r.flow).toBe('I added the task to the queue. Shall I start step 1 now?[↳] A slot is free.')
+    expect(replyTargets(r.html).questions).toEqual([{ n: '1', text: 'Shall I start step 1 now?', closed: true }])
+  })
+
+  it('leaves an open question, an alternative and a double question with Reply alone', () => {
+    const r = reply('Which branch shall I use?\n\nShall I push or wait?\n\nShall I push? Or wait for review?\n\nShall I merge the branch now?')
+    expect(r.quotes).toHaveLength(4)
+    expect(answers(r.host).map(a => a[1])).toEqual(['Shall I merge the branch now?', 'Shall I merge the branch now?'])
+    expect(replyTargets(r.html).questions.map(q => q.closed)).toEqual([false, false, false, true])
+  })
+
+  it('keeps the answers after the emphasis a question ends in', () => {
+    const r = reply('Can you plug the box in over **Ethernet?** It is faster.')
+    const p = r.host.querySelector('p')!
+    expect([...p.children].map(c => c.tagName === 'STRONG' ? 'strong' : c.className)).toEqual(['q-text', 'strong', 'q-ans q-yes', 'q-ans q-no'])
+  })
+})
+
+describe('the panel under a decision table', () => {
+  const TABLE = [
+    'Three decisions are waiting:',
+    '',
+    '| # | Question | My advice |',
+    '| --- | --- | --- |',
+    '| 1 | Tag the release **today**? | Yes |',
+    '| 2 | Keep the old export format? | No |',
+    '| 3 | Publish the notes? | Yes |',
+    '',
+    'Tell me what you decide.',
+  ].join('\n')
+
+  it('lists each row with Yes, No and Reply, and OK to all above them', () => {
+    const r = reply(TABLE)
+    const panel = r.host.querySelector<HTMLElement>('.q-table')!
+    expect(panel.previousElementSibling!.tagName).toBe('TABLE')
+    expect(panel.getAttribute('aria-label')).toBe('Decisions')
+    expect(panel.querySelector<HTMLElement>('.q-all')!.dataset.l).toBe('OK to all')
+    const rows = [...panel.querySelectorAll<HTMLElement>('.q-trow')]
+    expect(rows.map(x => [x.dataset.n, x.dataset.q])).toEqual([['1', 'Tag the release today?'], ['2', 'Keep the old export format?'], ['3', 'Publish the notes?']])
+    expect([...rows[1]!.children].map(c => [c.className, (c as HTMLElement).dataset.l, c.getAttribute('aria-label')])).toEqual([
+      ['q-tl', 'Keep the old export format?', null],
+      ['q-tans q-yes', 'Yes', '2 · Yes: Keep the old export format?'],
+      ['q-tans q-no', 'No', '2 · No: Keep the old export format?'],
+      ['q-tquote', 'Reply', 'Reply: 2. Keep the old export format?'],
+    ])
+    expect(rows[1]!.querySelector<HTMLElement>('.q-tquote')!.dataset.q).toBe('2. Keep the old export format?')
+    // The panel adds no text: the reply reads and copies as before.
+    expect(panel.textContent).toBe('')
+    // The cells of a table get no question button of their own.
+    expect(r.quotes).toEqual([])
+    expect(replyTargets(r.html).rows).toEqual([
+      { n: '1', text: 'Tag the release today?' },
+      { n: '2', text: 'Keep the old export format?' },
+      { n: '3', text: 'Publish the notes?' },
+    ])
+  })
+
+  it('offers Reply alone on a row that asks an open question', () => {
+    const r = reply('| # | Question |\n| --- | --- |\n| 1 | Merge now? |\n| 2 | Which name for the theme? |\n| 3 | Merge t-0001 |')
+    expect([...r.host.querySelectorAll('.q-trow')].map(row => [...row.children].map(c => c.className))).toEqual([
+      ['q-tl', 'q-tans q-yes', 'q-tans q-no', 'q-tquote'],
+      ['q-tl', 'q-tquote'],
+      ['q-tl', 'q-tans q-yes', 'q-tans q-no', 'q-tquote'],
+    ])
+  })
+
+  it('has no OK to all for a single row', () => {
+    const r = reply('| # | Question |\n| --- | --- |\n| 1 | Merge now? |')
+    expect(r.host.querySelectorAll('.q-trow')).toHaveLength(1)
+    expect(r.host.querySelector('.q-all')).toBeNull()
+  })
+
+  it('adds nothing under a table of another shape', () => {
+    for (const table of [
+      '| # | File | Size |\n| --- | --- | --- |\n| 1 | main.css | 120 kB |\n| 2 | app.js | 300 kB |',
+      '| Question | Advice |\n| --- | --- |\n| Merge now? | Yes |',
+      '| Thread | State |\n| --- | --- |\n| t-0001 | done |',
+    ]) {
+      const r = reply(table)
+      expect(r.host.querySelector('table')).not.toBeNull()
+      expect(r.host.querySelector('.q-table')).toBeNull()
+      expect(replyTargets(r.html).rows).toEqual([])
+    }
   })
 })
 
