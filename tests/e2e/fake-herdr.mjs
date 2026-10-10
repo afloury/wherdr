@@ -137,7 +137,8 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     'e2e.update_exit': params => {
       const p = need(params.pane_id)
       p.agent = null; p.status = 'unknown'; p.session = null
-      p.updateOutput = 'Codex CLI 0.162.1 installed successfully.\n\n🎉 Update ran successfully! Please restart Codex.\n\nuser@host project % ' + (params.draft || '')
+      // `plain`: Codex simply left (/exit), no update.
+      p.updateOutput = (params.plain ? '' : 'Codex CLI 0.162.1 installed successfully.\n\n🎉 Update ran successfully! Please restart Codex.\n\n') + 'user@host project % ' + (params.draft || '')
       return {}
     },
     'e2e.update_replace': params => {

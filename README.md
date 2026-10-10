@@ -185,7 +185,8 @@ Details in [Features](#features) and [Security](#security).
   with the shell in the foreground. Unrecognized shell prompts require a manual restart
   in the terminal. wherdr must have observed Codex before it exited.
   **Dismiss** puts the card away for good: the pane is a plain shell again, to use as you like.
-  Project panel messages wait in the queue until the agent returns. Continuation
+  Project panel messages wait in the queue until the agent returns; if it does not (Dismiss, or
+  a Codex that simply left), their text goes back into the pane's message field. Continuation
   prompts (unfinished quotes or heredocs) refuse a restart too. If the final
   transcript read fails, both conversation choices remain available; a session
   contradicted by a guessed match is resumed through Codex's picker.

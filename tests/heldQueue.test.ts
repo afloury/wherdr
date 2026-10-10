@@ -2,7 +2,7 @@
 // delivered in order once the input is back; failed (not "sending…" forever)
 // when it really can't go.
 import { describe, expect, it } from 'vitest'
-import { HOLD_TTL_MS, LOST_MS, type QueueEntry, checkQueue, nextHeld, publicEntry, shouldHold, failHeld } from '../server/utils/queued'
+import { HOLD_TTL_MS, LOST_MS, type QueueEntry, checkQueue, giveBackHeld, leftForGood, loadQueued, nextHeld, publicEntry, shouldHold } from '../server/utils/queued'
 
 const entry = (id: string, at: number, more: Partial<QueueEntry> = {}): QueueEntry => ({ id, text: `message ${id}`, at, ...more })
 
@@ -72,10 +72,60 @@ describe('checkQueue', () => {
 })
 
 describe('messages held for an agent that will not come back', () => {
-  it('gives the held ones back as not sent, leaving the others alone', () => {
-    const list = [{ id: 'a', text: 'Confirm: tested', at: 1000, held: true }, { id: 'b', text: 'typed earlier', at: 900 }]
-    failHeld(list)
-    expect(list.map(publicEntry).map(q => q.state)).toEqual(['failed', undefined])
-    expect(() => failHeld(undefined)).not.toThrow()
+  it('gives the held ones back, leaving the others alone', () => {
+    const list: QueueEntry[] = [{ id: 'a', text: 'Confirm: tested', at: 1000, held: true }, { id: 'b', text: 'typed earlier', at: 900 }]
+    giveBackHeld(list)
+    // Marked for the app: their text returns to the message field.
+    expect(list.map(publicEntry)).toEqual([
+      { id: 'a', text: 'Confirm: tested', at: 1000, state: 'failed', back: true },
+      { id: 'b', text: 'typed earlier', at: 900 },
+    ])
+    // Never delivered meanwhile.
+    expect(nextHeld(list)).toBeNull()
+    expect(() => giveBackHeld(undefined)).not.toThrow()
+  })
+
+  it('still gives them back after a restart of the service', () => {
+    const list: QueueEntry[] = [{ id: 'a', text: 'Confirm: tested', at: 1000, held: true }]
+    giveBackHeld(list)
+    const [[pane, read]] = loadQueued(JSON.parse(JSON.stringify({ 'w1:p1': list })), 2000) as [[string, QueueEntry[]]]
+    expect(pane).toBe('w1:p1')
+    expect(read.map(publicEntry)).toEqual([{ id: 'a', text: 'Confirm: tested', at: 1000, state: 'failed', back: true }])
+  })
+
+  // The polls of a Codex that simply left (no update): its pane is flagged
+  // while its screen is checked, then it is a plain shell.
+  it('gives back what was held while a Codex that simply left was checked', () => {
+    const list: QueueEntry[] = []
+    const polls = [
+      { agent: 'codex' as string | null },
+      { agent: null, leaving: true },
+      { agent: null, leaving: true },
+      { agent: null },
+      { agent: null },
+    ]
+    const given: boolean[] = []
+    let before: typeof polls[number] | undefined
+    for (const [i, p] of polls.entries()) {
+      // Sent from the Project panel during the check: held.
+      if (i === 2) list.push({ id: 'a', text: 'Confirm: tested', at: 1000, held: true })
+      const left = leftForGood(p, before)
+      if (left) giveBackHeld(list)
+      given.push(left)
+      before = p
+    }
+    // Once, on the poll that ends the check.
+    expect(given).toEqual([false, false, false, true, false])
+    expect(list.map(publicEntry)).toEqual([{ id: 'a', text: 'Confirm: tested', at: 1000, state: 'failed', back: true }])
+  })
+
+  it('keeps them held when the check ends on the update card, or on a new agent', () => {
+    // The card of a stopped Codex is served as an agent (see agentSelfUpdate.ts).
+    expect(leftForGood({ agent: 'codex' }, { leaving: true })).toBe(false)
+    expect(leftForGood({ agent: 'claude' }, { leaving: true })).toBe(false)
+    // Still being checked, and a shell that never held an agent.
+    expect(leftForGood({ agent: null, leaving: true }, { leaving: true })).toBe(false)
+    expect(leftForGood({ agent: null }, {})).toBe(false)
+    expect(leftForGood({ agent: null }, undefined)).toBe(false)
   })
 })

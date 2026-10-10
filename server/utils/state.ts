@@ -21,7 +21,7 @@ import { parseMenu, TOP } from '../../shared/menuScreen'
 import { settingsTabs } from '../../shared/settingsScreen'
 import { parseClaudeActivity } from './activity'
 import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './claudeScreen'
-import { type QueueEntry, INPUT_STATES, checkQueue, failHeld, isUploadLine, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
+import { type QueueEntry, INPUT_STATES, checkQueue, giveBackHeld, isUploadLine, leftForGood, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
 import { inputVisible } from './choices'
 import { isSlashCommand, photosOnly } from '../../shared/queuedMatch'
 import { findQueued, inputBox, msgText, unqueueClaude } from './unqueue'
@@ -496,6 +496,7 @@ export function retryQueued(paneId: string, id: string): QueuedMessage {
   q.failed = false
   q.held = true
   q.at = Date.now()
+  delete q.back
   delete q.busy
   delete q.readySince
   delete q.turnSeen
@@ -640,10 +641,10 @@ export const selfUpdates = createSelfUpdates({
 }, (() => { try { return JSON.parse(fs.readFileSync(LAST_AGENTS_FILE, 'utf8')) } catch { return [] } })())
 // Card of a Codex stopped by its update, dismissed: the saved record goes and
 // the pane is a plain shell again. No agent will take the messages held for
-// the restart: given back as not sent.
+// the restart: given back, into the message field.
 export function dismissStopped(paneId: string) {
   selfUpdates.clear(paneId)
-  failHeld(queued.get(paneId))
+  giveBackHeld(queued.get(paneId))
 }
 function flushPending(p: Pane) {
   const pend = pendingPrompts.get(p.id)
@@ -791,8 +792,9 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       continue
     }
     // Codex left without an update (no card) and no agent is back: nothing
-    // will take the messages held during the check. Given back as not sent.
-    if (!p.agent && !p.leaving && findPane(p.id)?.leaving) failHeld(queued.get(p.id))
+    // will take the messages held during the check. Given back, into the
+    // message field.
+    if (leftForGood(p, findPane(p.id))) giveBackHeld(queued.get(p.id))
     if (pendingPrompts.has(p.id)) { p.pendingPrompt = true; flushPending(p) }
     if (queued.has(p.id)) {
       reconcileQueued(p)
