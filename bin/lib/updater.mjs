@@ -123,6 +123,26 @@ export function driverFor(plan, io) {
   throw new Error(`no one-tap update for ${plan.kind}`)
 }
 
+// ------------------------------------------------------- shown on the phone
+// The reason of a failed start as one short sentence: the line that says why,
+// without the command that reported it nor any absolute path (the whole
+// reason is in update.log).
+export function shortReason(reason) {
+  const why = String(reason || '')
+    .replace(/^.*? exited with \d+: /, '')
+    .replace(/^wherdr: /, '')
+    .replace(/\s*\((?:[A-Za-z]:)?[\\/][^()]*\)/g, '')
+    .replace(/(?:[A-Za-z]:)?[\\/](?:[^\s\\/:]+[\\/])+([^\s\\/:]+)/g, '$1')
+    .replace(/[\s.]+$/, '')
+  return why.length > 200 ? `${why.slice(0, 199)}…` : why
+}
+
+function didNotStart(plan, reason) {
+  const why = shortReason(reason)
+  if (why.startsWith(`wherdr ${plan.to} `)) return why
+  return `wherdr ${plan.to} did not start${why ? `: ${why}` : ''}`
+}
+
 // ---------------------------------------------------------- state machine
 // installing → restarting → checking → done; a failed install leaves the old
 // server running (failed); a new version that does not start or answer goes
@@ -152,20 +172,20 @@ export async function runUpdate(plan, io) {
     reason = `wherdr ${plan.to} did not answer within ${Math.round(healthMs / 1000)} s`
   } catch (e) { reason = e.message }
   io.log(`${reason}: going back to ${plan.from}`)
-  io.state('rolling-back', reason)
+  io.state('rolling-back', `${didNotStart(plan, reason)}.`)
   try {
     await io.stopServer()
     await d.rollback()
     await d.start()
     if (await io.healthy(plan.from, healthMs)) {
       io.log(`wherdr ${plan.from} answers again: rolled back`)
-      io.state('rolled-back', `wherdr ${plan.to} did not start (${reason}). Rolled back to ${plan.from}.`)
+      io.state('rolled-back', `${didNotStart(plan, reason)}. Rolled back to ${plan.from}.`)
       return 'rolled-back'
     }
     throw new Error(`wherdr ${plan.from} did not answer either`)
   } catch (e) {
     io.log(`rollback failed: ${e.message}`)
-    io.state('failed', `wherdr ${plan.to} did not start (${reason}), and going back to ${plan.from} failed: ${e.message}. See ${path.join(plan.dir, 'update.log')}.`)
+    io.state('failed', `${didNotStart(plan, reason)}. Going back to ${plan.from} failed too: ${shortReason(e.message)}. See update.log in the wherdr folder on the server.`)
     return 'failed'
   }
 }
@@ -206,7 +226,7 @@ export function realIo(plan, now = Date.now) {
         const lines = out.split('\n').map(l => l.trim()).filter(Boolean)
         const why = lines.filter(l => /^(wherdr: |error\b|\w*Error: )/i.test(l)).slice(0, 2)
         const tail = (why.length ? why : lines.slice(-1)).join(' / ')
-        reject(new Error(`${path.basename(cmd)} ${args[0]} exited with ${code}${tail ? `: ${tail}` : ''}`))
+        reject(new Error(`${path.basename(cmd)} ${path.basename(args[0] ?? '')} exited with ${code}${tail ? `: ${tail}` : ''}`))
       })
       return promise
     },
