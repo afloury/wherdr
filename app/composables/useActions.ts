@@ -2,6 +2,8 @@
 import type { Pane, QueuedMessage, WaitAction } from '#shared/types'
 import { type RestartPreview, RESTARTABLE, restartNotice } from '#shared/restart'
 import { viaPrompt } from '#shared/sendRoute'
+import { pasteRanges, splitPasted } from '#shared/pastedText'
+import { sentPastes } from '~/utils/sentPastes'
 
 // Choose an option of a blocking prompt (the server re-checks the screen).
 // Free-answer option (`free`): with its text, typed by the server, and the
@@ -97,9 +99,12 @@ export function navKey(paneId: string, key: 'up' | 'down' | 'enter' | 'esc' | 'l
 // queues the message (returned in `queued`).
 // `clientId`: id of the bubble already shown for it (see utils/outbox.ts); the
 // server keeps it for its record, so the bubble never changes identity.
+// `pastes`: where the texts this device pasted into the field sit in the
+// message, so that every device shows them as cards (see shared/pastedText.ts).
 export async function sendMessage(p: Pane | undefined, paneId: string, text: string, clientId?: string): Promise<QueuedMessage | null> {
+  const pastes = pasteRanges(text, splitPasted(text, [], sentPastes.value).pastes)
   const r = viaPrompt(p)
-    ? await api<{ queued?: QueuedMessage }>('/api/prompt', { pane_id: paneId, text, ...(clientId ? { client_id: clientId } : {}) })
+    ? await api<{ queued?: QueuedMessage }>('/api/prompt', { pane_id: paneId, text, ...(clientId ? { client_id: clientId } : {}), ...(pastes.length ? { pastes } : {}) })
     : await api<{ queued?: QueuedMessage }>('/api/input', { pane_id: paneId, text, keys: ['enter'] })
   return r.queued || null
 }

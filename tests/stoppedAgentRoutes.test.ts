@@ -22,7 +22,9 @@ function setup() {
   vi.stubGlobal('addQueued', queue)
   vi.stubGlobal('poll', () => {})
   vi.stubGlobal('closePanel', write)
-  return { pane, write, queue }
+  const keep = vi.fn()
+  vi.stubGlobal('keepPastes', keep)
+  return { pane, write, queue, keep }
 }
 
 // These import and execute the actual endpoints, including their pane lock.
@@ -39,6 +41,14 @@ describe('messages to a stopped Codex', () => {
     expect(result.queued).toMatchObject({ held: true, text: 'Confirm: tested, it works' })
     expect(s.write).not.toHaveBeenCalled()
     expect(s.queue).toHaveBeenCalledOnce()
+  })
+  it('keeps where the pasted texts of a message sit, never for a command', async () => {
+    const s = setup()
+    const { default: handler } = await import('../server/api/prompt.post')
+    await handler({} as never, { pane_id: s.pane.id, text: 'fix this\n\nthe pasted log', pastes: [[10, 14]] })
+    expect(s.keep).toHaveBeenCalledExactlyOnceWith('fix this\n\nthe pasted log', [[10, 14]])
+    await expect(handler({} as never, { pane_id: s.pane.id, text: '/status', pastes: [[0, 7]] })).rejects.toMatchObject({ code: 'stale' })
+    expect(s.keep).toHaveBeenCalledOnce()
   })
   it.each(['input', 'prompt'])('checks stopped state after waiting for the %s lock', async route => {
     const s = setup()

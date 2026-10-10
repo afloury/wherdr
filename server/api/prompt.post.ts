@@ -8,6 +8,8 @@ export default defineApi(async (event, b) => {
   if (!text.trim()) throw new HerdrError('empty', 'Empty message')
   // The app's id for the bubble it shows from the tap (see app/utils/outbox.ts).
   const id = typeof b.client_id === 'string' ? b.client_id : undefined
+  // Where its pasted texts sit: kept, to show them as cards on every device.
+  if (!isSlashCommand(text)) keepPastes(text, b.pastes)
   // A restart owns the lock for its whole sequence. Holding a message does
   // not write to the pane, so do it immediately instead of timing out behind it.
   if (restarting(b.pane_id) && !isSlashCommand(text)) {

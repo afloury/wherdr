@@ -19,7 +19,7 @@ export default defineApi(async (event) => {
   })
   if (r.token) r.token += mark
   if (r.items) {
-    r.items = withoutTakenBack(r.items, hidden)
+    r.items = chatPasted(withoutTakenBack(r.items, hidden))
     await addUploadHashes(r.items)
   }
   if (r.queue && r.queue.length) r.queue = withSentText(p.id, r.queue)

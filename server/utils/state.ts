@@ -27,6 +27,7 @@ import { isSlashCommand, photosOnly } from '../../shared/queuedMatch'
 import { findQueued, inputBox, msgText, unqueueClaude } from './unqueue'
 import { takeBackInterrupted, unansweredTurn } from './interruptRestore'
 import { interruptAgent } from './interruptSeq'
+import { queuedPasted } from './pastes'
 import { type SentRecord, addSent, findSent, hasAttachments, lostPhotos } from './sentHistory'
 import { type GuardError, guardedSend, withPaneLock } from './guardedSend'
 import { type TranscriptPane, sameMsg } from './transcripts'
@@ -333,7 +334,7 @@ export function addQueued(paneId: string, text: string, opts: { held?: boolean, 
   }
   queued.set(paneId, [...list, e])
   sent.set(paneId, addSent(sent.get(paneId) || [], e.text, e.at))
-  return publicEntry(e)
+  return queuedPasted(publicEntry(e))
 }
 // Sent messages with photos or files (see sentHistory.ts): their paths, once
 // wherdr's record is gone.
@@ -501,7 +502,7 @@ export function retryQueued(paneId: string, id: string): QueuedMessage {
   delete q.stuckSince
   delete q.noInput
   setTimeout(poll, 50)
-  return publicEntry(q)
+  return queuedPasted(publicEntry(q))
 }
 const reconcileBusy = new Set<string>()
 function reconcileQueued(p: Pane) {
@@ -786,7 +787,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
   const exited = await Promise.all(next.panes.map(p => selfUpdates.observe(p, restarts.has(p.id)).catch(() => false)))
   for (const [i, p] of next.panes.entries()) {
     if (exited[i]) {
-      if (queued.has(p.id)) p.queued = queued.get(p.id)!.map(publicEntry)
+      if (queued.has(p.id)) p.queued = queued.get(p.id)!.map(q => queuedPasted(publicEntry(q)))
       continue
     }
     // Codex left without an update (no card) and no agent is back: nothing
@@ -812,7 +813,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       if (list && TURN.has(p.status || '')) for (const q of list) if (!q.held && !q.failed) q.turnSeen = true
       if (list && checkQueue(list, before?.ompShell ? 'working' : p.status, Date.now(), menu)) log(`message not sent on ${p.id}`)
       if (list) deliverHeld(p)
-      if (list && list.length) p.queued = list.map(publicEntry)
+      if (list && list.length) p.queued = list.map(q => queuedPasted(publicEntry(q)))
     }
     const rs = restarts.get(p.id)
     // Relaunch failure then agent relaunched manually, or old failure: nothing left to report.

@@ -180,6 +180,8 @@ async function submit() {
     return
   }
   sending.value = true
+  // Before the send: it tells the server where they sit (see sendMessage).
+  rememberPastes(pastes)
   try {
     let queued: QueuedMessage | null = null
     if (prompt && free >= 0) {
@@ -187,7 +189,6 @@ async function submit() {
     } else queued = await sendMessage(p, props.paneId, msg)
     text.value = ''
     clearAttachments()
-    rememberPastes(pastes)
     if (reply) replyTo.value = null
     haptic()
     emit('sent', queued)

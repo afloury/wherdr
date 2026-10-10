@@ -87,3 +87,45 @@ test('a long paste into the field becomes a card, sent as it is', async ({ page 
   await expect(sent.locator('.pasted-line').first()).toContainText(marker)
   await shot(page, 'sent-card', testInfo.project.name)
 })
+
+test('a paste sent from one device is the same card on another device', async ({ page, browser, baseURL, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale, timezoneId }, testInfo) => {
+  await page.goto(`/#/a/${OMP_CHAT_PANE}`)
+  await expect(page.locator('.chat').getByText('Ready when you are.')).toBeVisible()
+  const marker = `${testInfo.project.name} ${Date.now()}`
+  const words = `Seen from elsewhere ${marker}:`
+  const log = PASTED_LOG.replace('libexample-0-', `libexample-0-${marker}-`)
+  const field = page.locator('.prompt').locator('textarea, [contenteditable="true"]').first()
+  await field.click()
+  await page.keyboard.type(words)
+  await field.evaluate((el, text) => {
+    const data = new DataTransfer()
+    data.setData('text/plain', text)
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+  }, log)
+  await expect(page.locator('.prompt .attachments .pasted-card')).toContainText('Pasted text · 40 lines')
+  await page.locator('.prompt-send').click()
+  const sent = page.locator('.msg-user:not(.msg-pending)', { hasText: words })
+  await expect(sent.locator('.pasted-card')).toContainText('Pasted text · 40 lines', { timeout: 15_000 })
+
+  // Another device: its own storage, it never sent this paste.
+  const other = await browser.newContext({ baseURL, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, locale, timezoneId, serviceWorkers: 'block' })
+  try {
+    const page2 = await other.newPage()
+    await page2.goto(`/#/a/${OMP_CHAT_PANE}`)
+    const seen = page2.locator('.msg-user:not(.msg-pending)', { hasText: words })
+    await expect(seen).toBeVisible()
+    expect(await page2.evaluate(() => localStorage.getItem('sentPastes'))).toBeNull()
+    // The typed words in the bubble, the paste as one card with its first lines.
+    await expect(seen.locator('.pasted-card')).toHaveCount(1)
+    await expect(seen.locator('.pasted-card')).toContainText('Pasted text · 40 lines')
+    await expect(seen.locator('.pasted-line').first()).toContainText(marker)
+    await expect(seen).not.toContainText('libexample-39')
+    await seen.scrollIntoViewIfNeeded()
+    await shot(page2, 'other-device-card', testInfo.project.name)
+    // The card opens the whole paste there too.
+    await seen.locator('.pasted-open').click()
+    await expect(page2.locator('.hw-sheet .pasted-full')).toHaveText(log)
+  } finally {
+    await other.close()
+  }
+})
