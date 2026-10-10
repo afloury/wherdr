@@ -6,6 +6,7 @@ import { isLongPaste, looksLikeLog, messageBody, pastedBlocks, splitPasted } fro
 import { quoteSegments } from '../app/utils/questionReply'
 import { restoreDraft } from '../app/utils/queuedCancel'
 import { sentPastes } from '../app/utils/sentPastes'
+import { pendingQueue } from '../app/utils/pendingQueue'
 import type { DraftAtt } from '../app/composables/useDraft'
 
 const LOG = Array.from({ length: 40 }, (_, i) => `==> Pouring pkg-${i}--1.0.arm64_sonoma.bottle.tar.gz`).join('\n')
@@ -132,5 +133,21 @@ describe('cancelled message back into the field', () => {
     expect(draft.text).toBe('fix this')
     expect(draft.atts).toEqual([{ url: '', path: null, paste: LOG }])
     sentPastes.value = []
+  })
+
+  it('puts back as a card a pasted text another device sent', () => {
+    const draft: { text: string, atts: DraftAtt[] } = { text: '', atts: [] }
+    restoreDraft(draft, `fix this\n\n${LOG}`, [LOG])
+    expect(draft.text).toBe('fix this')
+    expect(draft.atts).toEqual([{ url: '', path: null, paste: LOG }])
+  })
+})
+
+describe('queued bubble', () => {
+  it('carries the pasted texts the server lists', () => {
+    const [q] = pendingQueue({ mine: [{ id: 'w-1', text: `fix this\n\n${LOG}`, at: 1, pasted: [LOG] }], claude: [], items: [], screen: null })
+    expect(q!.pasted).toEqual([LOG])
+    const [plain] = pendingQueue({ mine: [{ id: 'w-2', text: 'hello', at: 1 }], claude: [], items: [], screen: null })
+    expect(plain).not.toHaveProperty('pasted')
   })
 })
