@@ -3464,8 +3464,11 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 /* :has: the line keeps its wrap while the answers fold back. */
 .card.compact.open, .card.compact:has(> .card-more) { flex-wrap: wrap; row-gap: 0; }
 .card.compact .card-more { flex: 0 0 100%; min-width: 0; display: grid; grid-template-rows: 1fr; }
-.card.compact .card-more-in { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding: 6px 0 4px 26px; }
+.card.compact .card-more-in { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding-left: 26px; }
 .card.compact .card-detail, .card.compact .card-preview, .card.compact .card-choices { flex: none; margin: 0; }
+/* Margins, not padding: a folded block must be 0 px high. */
+.card.compact .card-more-in > :first-child { margin-top: 6px; }
+.card.compact .card-more-in > :last-child { margin-bottom: 4px; }
 .card.compact .card-detail { padding: 4px 8px; }
 .card.compact .card-preview { font-size: 12.5px; line-height: 1.4; }
 .card.compact .card-choices { gap: 4px; }
