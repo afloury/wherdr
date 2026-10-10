@@ -491,7 +491,12 @@ function quote(text: string) {
 // quote, as Reply and typing would; nothing is sent. The field does not take
 // the focus: on a phone the keyboard would cover the next question to answer.
 const answerWord = (a: Answer) => a === 'yes' ? t('Yes') : t('No')
+// A one-tap answer adds lines to the field, which grows over the bottom of the
+// conversation: the messages stay where they are (no re-pinning to the end),
+// so the next button to tap does not move under the finger.
+const holdScroll = () => { stick = false }
 function answer(text: string, a: Answer) {
+  holdScroll()
   const draft = useDraft(props.pane.id)
   const next = addAnswer(draft.text, text, answerWord(a))
   if (next !== null) draft.text = next
@@ -500,12 +505,14 @@ function answer(text: string, a: Answer) {
 // Decision table (see decisionRows): a row answered by its number ("3: yes"),
 // or the whole table accepted ("ok to all"; a second tap takes it back).
 function answerRow(n: string, a: Answer) {
+  holdScroll()
   const draft = useDraft(props.pane.id)
   const next = setRowAnswer(draft.text, n, a === 'yes' ? tl(`${n}: yes`, `${n} : oui`) : tl(`${n}: no`, `${n} : non`))
   if (next !== null) draft.text = next
   haptic()
 }
 function okAll() {
+  holdScroll()
   const draft = useDraft(props.pane.id)
   draft.text = toggleOkAll(draft.text, tl('ok to all', 'ok tout'))
   haptic()
@@ -1058,12 +1065,18 @@ function focusSearch() {
 // reminder above the field. Only once the agent has stopped on that message
 // and nothing of the user's follows it: not while it works, types, waits on
 // a prompt, or while a message of ours is on its way.
-const unanswered = computed(() => {
+// `asked`: that message, whatever the draft says (the list keeps room for the
+// reminder as long as it may show, so answering moves nothing).
+const asked = computed(() => {
   if (readOnly.value || working.value || props.pane.status === 'blocked' || queuedList.value.length || liveShell.value) return null
   const last = blocks.value.findLast(b => b.k === 'assistant' || b.k === 'user' || b.k === 'shell' || b.k === 'ompRun')
   if (!last || last.k !== 'assistant' || typingAt(last.id) !== null) return null
-  const count = unansweredCount(replyTargets(last.html), draftText.value)
-  return count ? { key: last.key, count } : null
+  const targets = replyTargets(last.html)
+  return targets.questions.length + targets.rows.length ? { key: last.key, targets } : null
+})
+const unanswered = computed(() => {
+  const count = asked.value ? unansweredCount(asked.value.targets, draftText.value) : 0
+  return asked.value && count ? { key: asked.value.key, count } : null
 })
 watch(() => unanswered.value?.count || 0, n => emit('unanswered', n), { immediate: true })
 onUnmounted(() => emit('unanswered', 0))
@@ -1111,7 +1124,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         auto-scroll-icon="i-lucide-arrow-down"
         :ui="{ root: 'chat-msgs', viewport: 'hw-jump-vp', autoScroll: 'hw-jump' }"
       >
-        <div ref="listEl" class="chat-list" :class="readOnly ? 'no-reply' : `rs-${replyStyle}`" @click="onListClick" @keydown="onListKey">
+        <div ref="listEl" class="chat-list" :class="[readOnly ? 'no-reply' : `rs-${replyStyle}`, { asking: asked }]" @click="onListClick" @keydown="onListKey">
           <div v-if="unavailable && waiting" class="chat-empty waiting">
             <UIcon name="i-lucide-square-terminal" class="chat-empty-icon" />
             <p>{{ waiting.text }}</p>

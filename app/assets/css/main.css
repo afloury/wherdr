@@ -3246,13 +3246,14 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
    draft holds that answer. Its line keeps its height (the tag is shorter than
    the text); the target is finger-sized, the two never overlap. */
 .q-ans {
-  display: none; position: relative; box-sizing: border-box; height: 18px; margin: 0 0 0 .4em; padding: 0 6px; vertical-align: 1px;
+  display: none; position: relative; box-sizing: border-box; height: 18px; margin: 0 0 0 6px; padding: 0 6px; vertical-align: 1px;
   font: 500 9.5px/16px var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; color: var(--text-2);
   background: none; border: 1px solid var(--line); border-radius: 0; cursor: pointer; -webkit-user-select: none; user-select: none;
 }
 :is(.rs-icon, .rs-text, .rs-list) .q-ans { display: inline-block; }
 .q-ans::before { content: attr(data-l); }
 .q-ans::after { content: ""; position: absolute; left: -3px; right: -3px; top: 50%; height: 32px; translate: 0 -50%; }
+.q-ans.q-yes { margin-left: 8px; }
 .q-ans.q-no { margin-right: .3em; }
 .q-ans:is(:hover, :focus-visible), .q-row-ans:is(:hover, :focus-visible) { color: var(--text); border-color: var(--accent); outline: 0; }
 .q-ans[aria-pressed="true"], .q-row-ans[aria-pressed="true"] { color: var(--bg); background: var(--accent); border-color: var(--accent); }
@@ -3303,6 +3304,8 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 /* "N questions unanswered" (Composer.vue): a small tab hanging from the top
    edge of the composer, over the bottom of the conversation. Out of the
    flow: nothing moves when it shows or goes. */
+/* Room for it under the last message, as long as that message asks something. */
+.chat-list.asking { padding-bottom: 36px; }
 .composer-ask-anchor { position: relative; height: 0; z-index: 3; }
 .composer-ask {
   position: absolute; left: 0; bottom: 6px; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px 0 7px;

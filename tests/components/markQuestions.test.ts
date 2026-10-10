@@ -271,6 +271,15 @@ describe('the panel under a decision table', () => {
     ])
   })
 
+  it('offers Reply alone on a row that asks an open question', () => {
+    const r = reply('| # | Question |\n| --- | --- |\n| 1 | Merge now? |\n| 2 | Which name for the theme? |\n| 3 | Merge t-0001 |')
+    expect([...r.host.querySelectorAll('.q-trow')].map(row => [...row.children].map(c => c.className))).toEqual([
+      ['q-tl', 'q-tans q-yes', 'q-tans q-no', 'q-tquote'],
+      ['q-tl', 'q-tquote'],
+      ['q-tl', 'q-tans q-yes', 'q-tans q-no', 'q-tquote'],
+    ])
+  })
+
   it('has no OK to all for a single row', () => {
     const r = reply('| # | Question |\n| --- | --- |\n| 1 | Merge now? |')
     expect(r.host.querySelectorAll('.q-trow')).toHaveLength(1)

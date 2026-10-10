@@ -133,9 +133,9 @@ test('a closed question is answered in one tap, several in a row, nothing is sen
   expect(await fits(page)).toBe(true)
 })
 
-test('the one-tap answers follow the reply style', async ({ page }, testInfo) => {
-  // Tap the text: the words quote, Yes / No stay next to them.
-  let { chat, field } = await open(page, 'text')
+test('text style: Yes / No stay next to the underlined question', async ({ page }, testInfo) => {
+  const { chat, field } = await open(page, 'text')
+  await field.fill('')
   const yes = chat.locator(ansBtn(MERGE, 'yes'))
   await yes.scrollIntoViewIfNeeded()
   await expect(yes).toBeVisible()
@@ -143,9 +143,10 @@ test('the one-tap answers follow the reply style', async ({ page }, testInfo) =>
   await expect(field).toHaveValue(`> ${MERGE}\nYes\n`)
   await expect(chat.locator('.q-text', { hasText: MERGE })).toHaveClass(/quoted/)
   await shot(page, 'yes-no-text', testInfo.project.name)
+})
 
-  // List: in the question's row under the message, not in the text.
-  ;({ chat, field } = await open(page, 'list'))
+test('list style: Yes / No sit in the question row under the message, not in the text', async ({ page }, testInfo) => {
+  const { chat, field } = await open(page, 'list')
   await field.fill('')
   await expect(chat.locator('.md-body .q-ans').first()).toBeHidden()
   const bars = chat.locator('.q-bar')

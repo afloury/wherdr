@@ -882,7 +882,7 @@ with `, OK?` / `, d'accord ?`, with no alternative (`or`, `ou`), no interrogativ
 A **decision table**, a Markdown table whose rows are numbered questions as a coordinator writes
 them, gets a panel right under it: **OK to all** writes `ok to all` (a second tap takes it back),
 and each row has **Yes**, **No** and `↳`, which write `3: yes`, `3: no`, or quote the row
-(`> 3. Publish the notes?`) for an answer in words. In French: `ok tout`, `3 : oui`, `3 : non`.
+(`> 3. Publish the notes?`) for an answer in words; a row that asks an open question has `↳` alone. In French: `ok tout`, `3 : oui`, `3 : non`.
 Here too everything is composed in the field and you send. A table qualifies when it has a
 number column (a header `#`, `N°`, `No`, `Num`, `ID` or `Q` over short numbers, each once) and a
 question column, known by its header (`Question`, `Decision`, `Choix`…), by cells that all end

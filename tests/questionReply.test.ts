@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addAnswer, addQuote, answerOf, decisionRows, hasOkAll, isClosedQuestion, rowAnswer, rowQuote, rowSettled, setRowAnswer, toggleOkAll, unansweredCount, isQuoted, QUOTE_MAX, questionsIn, quoteOf, quotesIn, quoteSegments, removeQuote, tappedAnswer } from '../app/utils/questionReply'
+import { addAnswer, addQuote, answerOf, decisionRows, hasOkAll, isClosedQuestion, isOpenQuestion, rowAnswer, rowQuote, rowSettled, setRowAnswer, toggleOkAll, unansweredCount, isQuoted, QUOTE_MAX, questionsIn, quoteOf, quotesIn, quoteSegments, removeQuote, tappedAnswer } from '../app/utils/questionReply'
 
 const asked = (text: string) => questionsIn(text).map(q => q.text)
 
@@ -202,6 +202,14 @@ describe('isClosedQuestion', () => {
       'Shall I push.',
       'You asked "shall I push?"',
     ]) expect(isClosedQuestion(q), q).toBe(false)
+  })
+})
+
+describe('isOpenQuestion', () => {
+  it('tells the questions that ask for words', () => {
+    expect(['Which name for the theme?', 'Merge or wait?', 'On déploie quand ?', 'Quel thème par défaut ?'].map(isOpenQuestion)).toEqual([true, true, true, true])
+    // Terse rows of a decision table, and what is not a question.
+    expect(['Merge now?', 'Keep the old export format?', 'Fusionner ce soir', 'Publier la 1.4 ?'].map(isOpenQuestion)).toEqual([false, false, false, false])
   })
 })
 

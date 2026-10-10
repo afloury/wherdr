@@ -67,6 +67,9 @@ test('a decision table is answered row by row under it; other tables get nothing
   // The field keeps the keyboard down for the taps, and nothing was sent.
   expect(await sentCount(page)).toBe(before)
 
+  // "Which name…?" is an open question: Reply alone on its row.
+  await expect(rows.nth(3).locator('.q-tans')).toHaveCount(0)
+  await expect(rows.nth(2).locator('.q-tans')).toHaveCount(2)
   // The closing question of the message keeps its own Yes / No.
   await expect(chat.locator('.q-reply')).toHaveCount(1)
   await expect(chat.locator('.md-body .q-ans')).toHaveCount(2)

@@ -167,6 +167,13 @@ const ALTERNATIVE = /(?<![\p{L}\p{N}])(?:or|ou|ou bien|plutôt|either|versus|vs)
 const INTERROGATIVE = /(?<![\p{L}\p{N}])(?:what|which|who|whom|whose|where|when|why|how|quel|quels|quelle|quelles|quoi|comment|combien|pourquoi|lequel|laquelle|lesquels|lesquelles)(?![\p{L}\p{N}])/iu
 const INTERROGATIVE_LAST = /(?<![\p{L}\p{N}])(?:où|quand|qui)\s*\?/iu
 const NEGATION = /(?<![\p{L}\p{N}])(?:not|never|ne|pas|jamais)(?![\p{L}\p{N}])|n['’]t(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])n['’]\p{L}/iu
+// A question that clearly asks for words: an alternative or an interrogative
+// word. (The rows of a decision table are terse, "Merge now?": they keep
+// their Yes / No unless they are open in this sense.)
+export function isOpenQuestion(text: string): boolean {
+  const q = oneLine(text)
+  return isQuestion(q) && (ALTERNATIVE.test(q) || INTERROGATIVE.test(q) || INTERROGATIVE_LAST.test(q))
+}
 export function isClosedQuestion(text: string): boolean {
   const q = oneLine(text)
   if ((q.match(/\?/g) || []).length !== 1 || !isQuestion(q)) return false
@@ -503,7 +510,8 @@ function markDecisions(root: ParentNode, labels: ReplyLabels) {
     for (const row of rows) {
       const line = el('div', 'q-trow', { n: row.n, q: row.text })
       line.append(el('span', 'q-tl', { n: row.n, l: row.text }))
-      for (const a of ['yes', 'no'] as const) {
+      // A row that asks an open question ("Which name…?") is answered in words.
+      for (const a of isOpenQuestion(row.text) ? [] : ['yes', 'no'] as const) {
         const ans = el('button', `q-tans q-${a}`, { n: row.n, a, l: labels[a] }, `${row.n} · ${labels[a]}: ${row.text}`)
         ans.setAttribute('aria-pressed', 'false')
         line.append(ans)
