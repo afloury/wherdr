@@ -110,7 +110,7 @@ const FR: Record<string, string> = {
   'Hide': 'Masquer',
   'Show terminals': 'Afficher les terminaux',
   'Compact list': 'Liste compacte',
-  'One line per agent or space: no preview, folder or model. Computer and phone. Saved on this device.': 'Une ligne par agent ou space : sans aperçu, dossier ni modèle. Ordinateur et téléphone. Enregistré sur cet appareil.',
+  'One line per agent or space: no preview, folder or model; an agent waiting for an answer shows its question and answers. Computer and phone. Saved on this device.': 'Une ligne par agent ou space : sans aperçu, dossier ni modèle ; un agent qui attend une réponse montre sa question et ses réponses. Ordinateur et téléphone. Enregistré sur cet appareil.',
   'The Herdr server is not responding': 'Le serveur Herdr ne répond pas',
   'This pane has been closed.': 'Ce pane a été fermé.', 'Back': 'Retour',
   'Type a reply…': 'Réponse libre…', 'Command…': 'Commande…',
