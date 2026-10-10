@@ -101,6 +101,11 @@ function write(file, content) {
 // A pasted install log (Claude wraps a paste in <pasted_content>) and a long
 // typed message: shown as a "Pasted text" card and a folded bubble.
 export const PASTED_LOG = Array.from({ length: 40 }, (_, i) => `==> Pouring libexample-${i}--2.1.0.arm64_sonoma.bottle.tar.gz`).join('\n')
+// Ten lines written in wherdr's field (quotes of the agent's points, each with
+// an answer): Claude wraps a multi-line send whole in <pasted_content>, and it
+// is still a plain message.
+export const TYPED_QUOTES = Array.from({ length: 5 }, (_, i) =>
+  `> Point ${i + 1}: ${'the cache entry is kept after an update and should expire. '.repeat(5).trim()}\nAnswer ${i + 1}: agreed, go ahead with that one.`).join('\n')
 export const LONG_TYPED = Array.from({ length: 24 }, (_, i) => `Step ${i + 1}: check the cache entry again.`).join('\n')
 
 // Claude Code: ~/.claude/projects/<cwd with / and . as ->/<session id>.jsonl.
@@ -113,6 +118,8 @@ function claudeTranscript(home, cwd, sid, now) {
     { ...base, type: 'assistant', timestamp: iso(now - 50000), message: { model: 'claude-opus-4-1', role: 'assistant', content: [{ type: 'text', text: '`getUser` caches users forever and `updateUser` never clears the entry. I will add an expiry and clear it on update.' }] } },
     { ...base, type: 'user', timestamp: iso(now - 40000), message: { role: 'user', content: `The install fails, here is the log:\n\n<pasted_content id="a1f2">\n${PASTED_LOG}\n</pasted_content id="a1f2">` } },
     { ...base, type: 'assistant', timestamp: iso(now - 35000), message: { model: 'claude-opus-4-1', role: 'assistant', content: [{ type: 'text', text: 'The bottle is fine; the link step fails.' }] } },
+    { ...base, type: 'user', timestamp: iso(now - 33000), message: { role: 'user', content: `<pasted_content id="b7c3">\n${TYPED_QUOTES}\n</pasted_content id="b7c3">` } },
+    { ...base, type: 'assistant', timestamp: iso(now - 32000), message: { model: 'claude-opus-4-1', role: 'assistant', content: [{ type: 'text', text: 'Understood, point by point.' }] } },
     { ...base, type: 'user', timestamp: iso(now - 30000), message: { role: 'user', content: LONG_TYPED } },
     { ...base, type: 'assistant', timestamp: iso(now - 25000), message: { model: 'claude-opus-4-1', role: 'assistant', content: [{ type: 'text', text: 'All steps noted.' }] } },
   ]))
