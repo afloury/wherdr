@@ -4,11 +4,14 @@
 // Where it comes from:
 // - Claude Code wraps every paste in <pasted_content id="…">…</pasted_content id="…">
 //   in its transcript, a multi-line send from wherdr included (the whole
-//   message is one paste). The server lists the long blocks in ChatItem.pasted.
+//   message is one block, typed words and all). Such a block proves nothing:
+//   the server lists in ChatItem.pasted only the long blocks that sit next to
+//   words typed outside them (a paste into the agent's terminal).
 // - Codex and omp keep no trace of a paste: their transcript holds the plain
-//   text. The blocks this device sent as pasted text (see app/utils/sentPastes.ts)
-//   are found back in the message.
-// Short blocks stay text: a three-line message typed in wherdr is a paste too.
+//   text.
+// - The blocks this device sent as pasted text (see app/utils/sentPastes.ts)
+//   are found back in the message, whatever the agent.
+// A message written in wherdr's field is never a card, however long.
 
 export const PASTE_MIN_LINES = 12
 export const PASTE_MIN_CHARS = 1500
@@ -23,9 +26,12 @@ export const isLongPaste = (s: string) => {
 
 const BLOCK = /<pasted_content(?:\s[^>]*)?>\n?([\s\S]*?)\n?<\/pasted_content(?:\s[^>]*)?>/g
 
-// Contents of the long <pasted_content> blocks of a raw Claude message.
+// Contents of the long <pasted_content> blocks of a raw Claude message (one
+// text part). None when the blocks are the whole message: that is how a
+// multi-line message sent from wherdr arrives, and it was typed.
 export function pastedBlocks(raw: string): string[] {
   if (!raw.includes('<pasted_content')) return []
+  if (!raw.replace(BLOCK, '').replace(/\[Image #\d+[^\]]*\]/g, '').trim()) return []
   return [...raw.matchAll(BLOCK)].map(m => m[1]!.trim()).filter(isLongPaste)
 }
 
@@ -52,10 +58,7 @@ function cut(text: string, block: string): string | null {
 // A user message split into its own words and its pasted texts.
 // `listed`: blocks the transcript marked as pasted (ChatItem.pasted).
 // `known`: blocks this device sent as pasted text; one found inside a listed
-// block (a wherdr send: the typed words and the paste in one block) leaves the
-// typed words in the text. Sent from another device, such a block is split
-// the way wherdr builds it (messageBody): a short paragraph, a blank line,
-// then the long text.
+// block leaves the words around it in the text.
 export function splitPasted(text: string, listed: string[] = [], known: string[] = []): { text: string, pastes: string[] } {
   let rest = text
   const pastes: string[] = []
@@ -67,11 +70,8 @@ export function splitPasted(text: string, listed: string[] = [], known: string[]
   }
   const longKnown = known.filter(isLongPaste)
   for (const b of listed) {
-    const inner = longKnown.filter(k => k !== b && b.includes(k))
-    if (inner.length) continue // left to the known blocks below
-    const m = /^([^\n]+(?:\n[^\n]+){0,2})\n\n([\s\S]+)$/.exec(b)
-    const block = m && m[1]!.length <= 400 && isLongPaste(m[2]!) ? m[2]!.trim() : b
-    if (take(block)) pastes.push(block)
+    if (longKnown.some(k => k !== b && b.includes(k))) continue // left to the known blocks below
+    if (take(b)) pastes.push(b)
   }
   for (const k of longKnown) if (take(k)) pastes.push(k)
   if (!pastes.length) return { text, pastes }
