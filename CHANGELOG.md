@@ -45,6 +45,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **Pasted text cards on every device**: a message with typed words and a text pasted into the
+  field showed its card only on the device that sent it; elsewhere it was one long folded message.
+  The server now remembers which parts were pasted (`pastes.json` in its data folder, the last 100
+  texts), so every device shows the same card, for Claude, Codex and omp, queued messages
+  included. Not covered: a paste typed into a Codex or omp terminal, and messages sent before
+  this version.
 - **Codex restart after an update**: Project panel messages wait instead of being typed
   into the stopped shell. Unfinished quotes and heredocs refuse a restart; uncertain
   transcripts offer both choices without reusing a contradicted session ID. A rapidly

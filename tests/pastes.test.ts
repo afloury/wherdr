@@ -1,7 +1,10 @@
 // Pasted texts sent from wherdr's field, kept by the server for every device:
 // what a request may add, the bounds of the list, and the conversation and
 // queued records served with their pasted texts listed.
-import { describe, expect, it } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PASTES_MAX, PASTES_MAX_CHARS, addPastes, loadPastes, pastedIn, pastesAt, withPasted, withQueuedPasted } from '../server/utils/pastes'
 import { messageBody, pasteRanges, splitPasted } from '../shared/pastedText'
 import type { ChatItem } from '../shared/types'
@@ -136,5 +139,43 @@ describe('queued record', () => {
   it('is unchanged without a paste', () => {
     const q = { id: 'w-1', text: TYPED, at: 1 }
     expect(withQueuedPasted(q, [LOG])).toBe(q)
+  })
+})
+
+describe('data/pastes.json', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-pastes-'))
+  const file = path.join(dir, 'pastes.json')
+  const body = `fix this\n\n${LOG}`
+  const ranges = pasteRanges(body, [LOG])
+  // A fresh module: the server just started with this data folder.
+  const start = () => { vi.resetModules(); return import('../server/utils/pastes') }
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('is written when a paste is sent, read back at startup, and left alone otherwise', async () => {
+    vi.stubEnv('DATA_DIR', dir)
+    const server = await start()
+    // No paste: no file.
+    server.keepPastes('a short message', undefined)
+    server.keepPastes(TYPED, [])
+    await new Promise(r => setTimeout(r, 50))
+    expect(fs.existsSync(file)).toBe(false)
+
+    server.keepPastes(body, ranges)
+    await vi.waitFor(() => expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual([LOG]))
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600)
+    expect(server.chatPasted([user(body)])[0]!.pasted).toEqual([LOG])
+    expect(server.queuedPasted({ id: 'w-1', text: body }).pasted).toEqual([LOG])
+
+    // After a restart the conversation still lists it; the same paste sent
+    // again changes nothing, so nothing is written.
+    const restarted = await start()
+    expect(restarted.chatPasted([user(body)])[0]!.pasted).toEqual([LOG])
+    fs.rmSync(file)
+    restarted.keepPastes(body, ranges)
+    await new Promise(r => setTimeout(r, 50))
+    expect(fs.existsSync(file)).toBe(false)
   })
 })
