@@ -2,7 +2,7 @@
 // delivered in order once the input is back; failed (not "sending…" forever)
 // when it really can't go.
 import { describe, expect, it } from 'vitest'
-import { HOLD_TTL_MS, LOST_MS, type QueueEntry, checkQueue, nextHeld, publicEntry, shouldHold } from '../server/utils/queued'
+import { HOLD_TTL_MS, LOST_MS, type QueueEntry, checkQueue, nextHeld, publicEntry, shouldHold, failHeld } from '../server/utils/queued'
 
 const entry = (id: string, at: number, more: Partial<QueueEntry> = {}): QueueEntry => ({ id, text: `message ${id}`, at, ...more })
 
@@ -68,5 +68,14 @@ describe('checkQueue', () => {
   it('exposes the state to the app', () => {
     expect(publicEntry(entry('a', 5, { held: true }))).toEqual({ id: 'a', text: 'message a', at: 5, state: 'held' })
     expect(publicEntry(entry('b', 5))).toEqual({ id: 'b', text: 'message b', at: 5 })
+  })
+})
+
+describe('messages held for an agent that will not come back', () => {
+  it('gives the held ones back as not sent, leaving the others alone', () => {
+    const list = [{ id: 'a', text: 'Confirm: tested', at: 1000, held: true }, { id: 'b', text: 'typed earlier', at: 900 }]
+    failHeld(list)
+    expect(list.map(publicEntry).map(q => q.state)).toEqual(['failed', undefined])
+    expect(() => failHeld(undefined)).not.toThrow()
   })
 })

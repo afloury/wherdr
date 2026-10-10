@@ -26,7 +26,8 @@ const ompRunScreen = command => [
   ' π > Opus > demo ▶─1%───────────────────────────────────────────────1M─',
   '╰─ ',
 ].join('\n')
-const screen = p => p?.updateOutput ?? (p?.agent === 'omp' && p.status === 'idle' ? (p.run ? ompRunScreen(p.run) : OMP_IDLE_SCREEN) : '')
+// `ask`: the question a waiting agent shows (e2e.ask), until Enter answers it.
+const screen = p => p?.ask ?? p?.updateOutput ?? (p?.agent === 'omp' && p.status === 'idle' ? (p.run ? ompRunScreen(p.run) : OMP_IDLE_SCREEN) : '')
 
 // A tab's area, in cells; two panes share it side by side (one split).
 const AREA = { x: 0, y: 0, width: 120, height: 40 }
@@ -151,6 +152,14 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       const p = need(params.pane_id)
       return { starts: p.starts || [], reads: p.processReads || 0, writes: p.writes || [], prompts: p.prompts || [] }
     },
+    // An agent starts waiting on a question (`screen`: what its pane shows), or
+    // goes back to rest (no `screen`). `e2e.answers`: the keys that answered it.
+    'e2e.ask': params => {
+      const p = need(params.pane_id)
+      p.ask = params.screen || null; p.status = p.ask ? 'blocked' : 'idle'; p.answers = []
+      return {}
+    },
+    'e2e.answers': params => ({ answers: need(params.pane_id).answers || [] }),
     'agent.start': params => {
       const p = need(params.pane_id)
       p.starts = [...(p.starts || []), params]
@@ -161,6 +170,10 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       const p = paneById(params.pane_id)
       if (p) p.writes = [...(p.writes || []), params]
       if (p?.run && (params.keys || []).includes('esc')) p.run = null
+      if (p?.ask && (params.keys || []).includes('enter')) {
+        p.answers = [...(p.answers || []), params.keys]
+        p.ask = null; p.status = 'idle'
+      }
       return {}
     },
     'pane.layout': (params) => {

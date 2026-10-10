@@ -21,7 +21,7 @@ import { parseMenu, TOP } from '../../shared/menuScreen'
 import { settingsTabs } from '../../shared/settingsScreen'
 import { parseClaudeActivity } from './activity'
 import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './claudeScreen'
-import { type QueueEntry, INPUT_STATES, checkQueue, isUploadLine, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
+import { type QueueEntry, INPUT_STATES, checkQueue, failHeld, isUploadLine, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
 import { inputVisible } from './choices'
 import { isSlashCommand, photosOnly } from '../../shared/queuedMatch'
 import { findQueued, inputBox, msgText, unqueueClaude } from './unqueue'
@@ -370,7 +370,8 @@ export function sendPrompt(p: Pane, text: string): Promise<void> {
   return withPaneLock(p.id, async () => {
     // Re-check after waiting for another writer/restart's lock. The Pane
     // passed by a request or a held-message delivery can already be stale.
-    if (findPane(p.id)?.stopped) {
+    const now = findPane(p.id)
+    if (now?.stopped || now?.leaving) {
       throw new HerdrError(isSlashCommand(text) ? 'stale' : 'no_input', 'Restart Codex before sending a command.')
     }
     if (p.agent !== 'claude' || !GUARD_STATES.has(p.status || '') || isSlashCommand(text)) return agentPrompt(p.id, text)
@@ -532,7 +533,7 @@ async function deliveryDone(paneId: string) {
 }
 export async function cancelQueued(paneId: string, text: string, id?: string): Promise<{ text: string, lost?: number }> {
   const p = findPane(paneId)
-  if (!p || !p.agent) throw new HerdrError('not_found', 'agent not found')
+  if (!p) throw new HerdrError('not_found', 'agent not found')
   let mine = findQueued(queued.get(p.id) || [], text, id)
   if (mine && (mine.held || mine.failed) && deliverBusy.has(p.id)) {
     await deliveryDone(p.id)
@@ -549,6 +550,8 @@ export async function cancelQueued(paneId: string, text: string, id?: string): P
     setTimeout(poll, 50)
     return { text: mine.text }
   }
+  // Only wherdr's own held or failed record (above) outlives its agent.
+  if (!p.agent) throw new HerdrError('not_found', 'agent not found')
   const pend = pendingPrompts.get(p.id)
   if (pend && !pendingBusy.has(p.id) && sameMsg(msgText(pend.text), msgText(text))) {
     pendingPrompts.delete(p.id)
@@ -622,13 +625,26 @@ let lastAgentsWrite: Promise<unknown> = Promise.resolve()
 export const selfUpdates = createSelfUpdates({
   call: herdr, sleep, now: Date.now,
   chat: p => transcripts.chat(p, { fresh: true }),
-  save: records => {
+  // Only called when a record changed (see agentSelfUpdate.ts).
+  save: (records, sync) => {
+    const s = JSON.stringify(records) + '\n'
+    if (sync) {
+      try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(LAST_AGENTS_FILE, s, { mode: 0o600 }) } catch { /* best effort */ }
+      return
+    }
     lastAgentsWrite = lastAgentsWrite.then(async () => {
       await fsp.mkdir(DATA_DIR, { recursive: true })
-      await fsp.writeFile(LAST_AGENTS_FILE, JSON.stringify(records) + '\n', { mode: 0o600 })
+      await fsp.writeFile(LAST_AGENTS_FILE, s, { mode: 0o600 })
     }).catch(() => {})
   },
 }, (() => { try { return JSON.parse(fs.readFileSync(LAST_AGENTS_FILE, 'utf8')) } catch { return [] } })())
+// Card of a Codex stopped by its update, dismissed: the saved record goes and
+// the pane is a plain shell again. No agent will take the messages held for
+// the restart: given back as not sent.
+export function dismissStopped(paneId: string) {
+  selfUpdates.clear(paneId)
+  failHeld(queued.get(paneId))
+}
 function flushPending(p: Pane) {
   const pend = pendingPrompts.get(p.id)
   if (!pend || pendingBusy.has(p.id)) return
@@ -765,13 +781,18 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
   seenMachines.add(machine)
   getMachine(machine)?.transcripts.observe(next.panes)
   const revs = new Map((snap.panes || []).map((p: Json) => [joinId(machine, p.pane_id), p.revision]))
-  for (const p of next.panes) {
-    // Before queues or screen parsing: an exited agent must never receive input.
-    const stopped = await selfUpdates.observe(p, restarts.has(p.id)).catch(() => false)
-    if (stopped) {
+  // Before queues or screen parsing: an exited agent must never receive input.
+  // All panes at once: the process read of each Codex pane does not wait for
+  // the previous one's.
+  const exited = await Promise.all(next.panes.map(p => selfUpdates.observe(p, restarts.has(p.id)).catch(() => false)))
+  for (const [i, p] of next.panes.entries()) {
+    if (exited[i]) {
       if (queued.has(p.id)) p.queued = queued.get(p.id)!.map(q => queuedPasted(publicEntry(q)))
       continue
     }
+    // Codex left without an update (no card) and no agent is back: nothing
+    // will take the messages held during the check. Given back as not sent.
+    if (!p.agent && !p.leaving && findPane(p.id)?.leaving) failHeld(queued.get(p.id))
     if (pendingPrompts.has(p.id)) { p.pendingPrompt = true; flushPending(p) }
     if (queued.has(p.id)) {
       reconcileQueued(p)
@@ -1007,6 +1028,7 @@ const localMachineOf = (ms: Machine[]) => ms.find(m => m.local)!
 export function stopPolling() {
   stopped = true
   if (pollTimer) clearTimeout(pollTimer)
+  selfUpdates.flush()
 }
 
 // ---------------------------------------------------------------- notifications

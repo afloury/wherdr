@@ -127,10 +127,11 @@ Details in [Features](#features) and [Security](#security).
 ### Everywhere
 
 - **Live agent list**, one line per Herdr space, grouped by state (your turn, working, ready).
-  The list is compact by default: agent, title, project badge and state. Turn off Settings ›
+  The list is compact by default: agent, title, project badge and state. When an agent asks for
+  permission or asks a question, its card opens on the question and its options: **answer in one
+  tap** without opening it; the card is one line again once answered. Turn off Settings ›
   Appearance › Home screen › **Compact list** for detailed cards, with the folder, the model and
-  a preview of each agent's last answer; there, when an agent asks for permission or asks a
-  question, the options show on its card: **answer in one tap** without opening it.
+  a preview of each agent's last answer.
 - **Conversation view**: the agent's real transcript (Claude Code, Codex and omp), rendered as
   Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan), timestamps, search and infinite scroll back to the
   first message. Reading a conversation never touches the terminal, so it never resizes a pane.
@@ -169,6 +170,7 @@ Details in [Features](#features) and [Security](#security).
   Nothing restarts automatically: the pane must still show the same empty shell prompt,
   with the shell in the foreground. Unrecognized shell prompts require a manual restart
   in the terminal. wherdr must have observed Codex before it exited.
+  **Dismiss** puts the card away for good: the pane is a plain shell again, to use as you like.
   Project panel messages wait in the queue until the agent returns. Continuation
   prompts (unfinished quotes or heredocs) refuse a restart too. If the final
   transcript read fails, both conversation choices remain available; a session

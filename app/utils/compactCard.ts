@@ -19,3 +19,9 @@ export function compactMeta(o: { tag?: string | null, coordinator?: boolean, tab
     panes: tabs <= 1 && panes > 1 ? panes : null,
   }
 }
+
+// A one-line card opens (the question and its one-tap answers, below the line)
+// only while its agent waits for an answer and has something to show.
+export function compactOpen(o: { status?: string | null, preview?: string | null, detail?: unknown, choices?: number }): boolean {
+  return o.status === 'blocked' && Boolean(o.preview || o.detail || o.choices)
+}
