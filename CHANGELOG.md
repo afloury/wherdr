@@ -25,6 +25,11 @@ All notable changes to this project are documented here. The format follows
   message was only shown on hover on a computer, while one in the middle of a paragraph stayed
   visible. Both now show the same way, and the labelled tag gives way to the icon (or to the
   style chosen in Settings).
+- **Compact list by default**: the agent list (home screen on a phone, sidebar on a computer)
+  now shows one line per agent or space unless you chose otherwise. A device where Settings ›
+  Appearance › Home screen › Compact list was never touched switches to the compact list; a
+  device where it was turned off keeps the detailed cards. Turn it off there to get the preview,
+  folder, model and one-tap answers back on the cards.
 
 ### Fixed
 

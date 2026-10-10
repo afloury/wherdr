@@ -1,4 +1,10 @@
-// Compact list (Settings › Appearance): what a one-line card keeps.
+// Compact list (Settings › Appearance), on unless this device turned it off:
+// a missing preference follows the default; a saved choice takes priority.
+export function readCompactList(stored: string | null): boolean {
+  return stored !== '0'
+}
+
+// What a one-line card keeps.
 // Badge: the project role, shortened ("coord" for the coordinator, "t-0007"
 // for a thread). Space: one state dot per tab when it has several tabs,
 // otherwise its number of panes when it has several.
