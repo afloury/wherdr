@@ -36,6 +36,8 @@ describe('conservative interactive screen presentation', () => {
       '› One\n  Two\n\nenter select · esc back',
       '› 1. One  Help\n  2. Two  More help',
       '› 1. One\n  2. Two\n     Help',
+      '› 1. One\n    2. Two',
+      '› 1. One\n  2. Two\n\nA separate description',
     ]) expect(classify(text)).toBe('terminal')
   })
   it('does not treat an empty or failed read as a message field', () => {

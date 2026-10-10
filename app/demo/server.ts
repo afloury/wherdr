@@ -407,11 +407,11 @@ export class DemoServer {
       // The app types a written reply to Claude's or Codex's question (see
       // shared/sendRoute.ts): here it never answers the question in the
       // visitor's place, it waits like any message sent while one is open.
-      case '/api/input': return typeof body.text === 'string' && body.text.trim() && this.pane(paneId)?.agent ? this.prompt(paneId, body.text) : fail(403, DEMO_REFUSAL)
+      case '/api/input': return this.terminalKeys(paneId, Array.isArray(body.keys) ? body.keys as string[] : []) ? ok()
+        : typeof body.text === 'string' && body.text.trim() && this.pane(paneId)?.agent ? this.prompt(paneId, body.text) : fail(403, DEMO_REFUSAL)
       case '/api/unqueue': return this.unqueue(paneId, String(body.text || ''), typeof body.id === 'string' ? body.id : undefined)
       case '/api/requeue': return this.requeue(paneId, String(body.id || ''))
       case '/api/choose': return this.choose(paneId, Number(body.index), String(body.label || ''))
-      case '/api/input': return this.terminalKeys(paneId, Array.isArray(body.keys) ? body.keys as string[] : []) ? ok() : fail(400, DEMO_REFUSAL)
       case '/api/interrupt': return this.interrupt(paneId)
       case '/api/agents': return this.newAgent(body as Parameters<DemoServer['newAgent']>[0])
       case '/api/close': return this.close(paneId)

@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Live terminal window for interactive agent screens**: ambiguous menus and panels open
+  the real pane inside the conversation, with a key bar and an always-visible Close button.
+  A stable return to the message field closes it; manual dismissal lasts for that interaction.
+  The window fits the pane to its container and releases its existing size lease when closed.
+  Native controls remain for certain simple lists, approvals and free-answer fields.
+  Codex `/usage` is no longer copied into a static result and a guessed two-column choice list.
+  The browser demo includes a scripted version of the interactive usage screen.
+
 - **Restart after Codex updates itself**: when Codex's own installer exits to its shell,
   a Your turn card offers a one-tap restart and sends the usual attention notification.
   A new conversation reuses its launch command; an existing one can resume its exact session

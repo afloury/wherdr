@@ -1,13 +1,14 @@
 <script setup lang="ts">
 // The pane's real terminal, fitted with the same size lease as Terminal view.
 // Escape belongs to the agent. Closing this window only releases the lease.
-const props = defineProps<{ paneId: string }>()
+const props = defineProps<{ paneId: string, active: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 const banner = shallowRef<Banner | null>(null)
 const ctl = createTerminal(props.paneId, {
   setBanner: b => { banner.value = b },
   hasBanner: () => Boolean(banner.value),
   fill: () => true,
+  input: () => props.active,
 })
 watch(pageVisible, v => ctl.setVisible(v))
 </script>

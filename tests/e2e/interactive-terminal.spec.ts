@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
-import { OMP_CHAT_PANE, fakeHerdr } from './scenario.mjs'
+import { OMP_CHAT_PANE, SPLIT_CHAT_PANE, SPLIT_SHELL_PANE, SPLIT_TAB, fakeHerdr } from './scenario.mjs'
 
 const pane = OMP_CHAT_PANE
 const usage = readFileSync(new URL('../fixtures/codex-usage-menu.txt', import.meta.url), 'utf8')
@@ -14,7 +14,10 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('terminalRenderer', 'html'))
   await page.goto(`/#/a/${pane}`)
 })
-test.afterEach(async () => { await screen(null, 'omp') })
+test.afterEach(async () => {
+  await screen(null, 'omp')
+  await fakeHerdr('e2e.interaction_screen', { pane_id: SPLIT_CHAT_PANE, text: null, agent: 'omp', status: 'idle' })
+})
 
 test('shows only the live TUI, sends real keys and closes when its field returns', async ({ page }, info) => {
   const window = page.getByRole('region', { name: 'Interactive terminal', exact: true })
@@ -62,4 +65,39 @@ test('rejects a stale native choice after the screen changes to an ambiguous men
   })
   expect(response.ok()).toBe(false)
   expect((await fakeHerdr('e2e.terminal_screen', { pane_id: pane }) as { keys: string[] }).keys).toEqual([])
+})
+
+test('switching to Terminal and back keeps one fitted terminal for the pane', async ({ page }, info) => {
+  await expect(page.locator('.interactive-terminal .xterm')).toBeVisible()
+  if (info.project.name.includes('desktop')) await page.getByRole('tab', { name: 'Terminal', exact: true }).click()
+  else await page.getByRole('button', { name: 'Terminal', exact: true }).click()
+  await expect(page.locator('.interactive-terminal')).toHaveCount(0)
+  await expect(page.locator('#term .xterm-rows')).toContainText('View analytics')
+  await expect(page.locator('#term .xterm')).toHaveCount(1)
+  if (info.project.name.includes('desktop')) await page.getByRole('tab', { name: 'Conversation', exact: true }).click()
+  else await page.getByRole('button', { name: 'Conversation', exact: true }).click()
+  await expect(page.locator('.interactive-terminal .xterm-rows')).toContainText('View analytics')
+  await expect(page.locator('#term .xterm')).toHaveCount(1)
+  expect((await size() as { attached: boolean }).attached).toBe(true)
+})
+
+test('an inactive interactive window holds its pane beside another live terminal', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'side-by-side cells are a computer layout')
+  await fakeHerdr('e2e.interaction_screen', { pane_id: SPLIT_CHAT_PANE, text: usage, agent: 'codex', status: 'idle' })
+  await page.goto(`/#/t/${SPLIT_TAB}`)
+  const chat = page.locator(`.cell-view[data-pane="${SPLIT_CHAT_PANE}"]`)
+  const shell = page.locator(`.cell-view[data-pane="${SPLIT_SHELL_PANE}"]`)
+  await expect(chat.locator('.interactive-terminal .xterm-rows')).toContainText('View analytics')
+  const node = await chat.locator('.interactive-terminal .xterm').elementHandle()
+  await shell.locator('header .agent-title').click()
+  await expect(shell.locator('.xterm-rows')).toContainText('fake terminal')
+  expect(await node!.evaluate(el => el.isConnected)).toBe(true)
+  const sizeOf = () => fakeHerdr('e2e.pane_size', { pane_id: SPLIT_CHAT_PANE }) as Promise<{ cols: number, attached: boolean }>
+  const before = await sizeOf()
+  expect(before.attached).toBe(true)
+  await page.setViewportSize({ width: 1200, height: 800 })
+  await expect.poll(async () => (await sizeOf()).cols).toBeLessThan(before.cols)
+  expect(await node!.evaluate(el => el.isConnected)).toBe(true)
+  await page.goto('/#/')
+  await expect.poll(sizeOf, { timeout: 15000 }).toEqual({ cols: 60, rows: 40, attached: false })
 })

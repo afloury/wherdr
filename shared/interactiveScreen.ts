@@ -29,14 +29,16 @@ export function nativePrompt(text: string, choices: Choices | null | undefined):
   while (last + 1 < lines.length && NUMBER.test(lines[last + 1]!)) last++
   const block = lines.slice(first, last + 1)
   if (block.length !== options.length || block.filter(l => /^\s*[❯›>]/.test(l)).length !== 1) return false
+  const numberColumn = (line: string) => line.search(/\d{1,2}\./)
+  if (block.some(line => numberColumn(line) !== numberColumn(block[0]!))) return false
   if (block.some((l, i) => {
     const m = NUMBER.exec(l)!
     return Number(m[1]) !== i + 1 || m[2] !== options[i]!.label || COLUMN.test(m[2]!)
   })) return false
   // Any indented text immediately after the last option is a description,
   // unless it is a separate, explicit keyboard legend.
-  const after = lines[last + 1]?.trim()
-  return !after || /\b(?:enter|esc|escape)\b/i.test(after)
+  const after = lines.slice(last + 1).map(line => line.trim()).filter(Boolean)
+  return after.every(line => /^(?:enter|esc|escape)\b/i.test(line))
 }
 
 // A menu cursor is not a message field. In particular, Codex uses the same

@@ -40,6 +40,7 @@ const session = `cli-${process.pid}`
 const out = obj => process.stdout.write(JSON.stringify(obj) + '\n')
 let seq = 0
 let currentSize
+let currentText = ''
 const frame = (size, what = 'terminal', text = '') => out({
   type: 'terminal.frame', encoding: 'ansi', full: true, width: size.cols, height: size.rows, seq: ++seq,
   bytes: Buffer.from(`\x1b[2J\x1b[H${text ? text.replace(/\n/g, '\r\n') : `fake ${what} ${size.cols}x${size.rows}\r\n${pane} tick ${seq}\r\n$ `}`).toString('base64'),
@@ -67,7 +68,7 @@ async function leave(code) {
 // retain their original frames and size behaviour.
 pollTimer = setInterval(async () => {
   const r = await call('e2e.terminal_screen', { pane_id: pane }).catch(() => null)
-  if (r?.text && !done) frame(r.size, 'terminal', r.text)
+  if (r && !done) currentText = r.text
 }, 200)
 
 try {
@@ -79,7 +80,7 @@ try {
 }
 
 // Independent output continues in every attached pane, including inactive cells.
-setInterval(() => frame(currentSize), 150).unref()
+setInterval(() => frame(currentSize, 'terminal', currentText), 150).unref()
 
 readline.createInterface({ input: process.stdin }).on('line', async (line) => {
   let m

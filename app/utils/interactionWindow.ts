@@ -10,6 +10,9 @@ export function createInteractionWindow() {
   return {
     update(next: ScreenInteraction, now: number) {
       if (next !== kind) { kind = next; since = now }
+      // A server-owned operation or recovery card must never share input with
+      // the TUI. It does not end an episode or undo a manual dismissal.
+      if (next === 'managed') open = false
       if (next === 'input' && now - since >= 900) { open = false; dismissed = false }
       if (next === 'terminal' && now - since >= 500 && !dismissed) open = true
       return open

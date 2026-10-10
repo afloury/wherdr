@@ -148,6 +148,18 @@ Details in [Features](#features) and [Security](#security).
   line wrapped by the width is copied in one piece, without the breaks between its rows. An image
   pasted with `⌘V` (Mac), here or in a side-by-side terminal, goes to the agent's machine and its
   path is pasted, which omp and Claude Code attach as an image, as in the conversation.
+- **Interactive agent screens**: in a conversation, an uncertain menu or panel opens the
+  pane's real terminal in a live window, with arrows, Enter, Escape, Tab, digits and y/n.
+  It closes after the agent's message field returns. Close it yourself at any time: that
+  releases the terminal without pressing Escape, and the same interaction stays closed
+  until you reopen it. A simple, continuous numbered list with one column and no mixed-in
+  help, a recognized approval, or a recognized free-answer field can still use native
+  controls. Everything ambiguous stays in the terminal, including Codex's two-column
+  `/usage` menu. The slash menu still lists and sends commands. On a phone, the window
+  temporarily fits the real pane to its width and restores its size on release, using
+  the same lease as Terminal view; it does not shrink 120 columns into unreadable text.
+  A pane already shown in Terminal keeps its existing live view. Try `/usage` on the
+  Codex agent in the browser demo (scripted, no account data).
 - **Composer**: send messages while the agent works (queued, cancellable), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output

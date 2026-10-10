@@ -33,15 +33,19 @@ async function connect(route: string) {
 describe('demo split terminal sizing', () => {
   it('streams the interactive usage screen and returns to the field through real terminal keys', async () => {
     await vi.advanceTimersByTimeAsync(30000)
-    await window.fetch('/api/prompt', { method: 'POST', body: JSON.stringify({ pane_id: CODEX, text: '/usage' }) })
+    const sent = window.fetch('/api/prompt', { method: 'POST', body: JSON.stringify({ pane_id: CODEX, text: '/usage' }) })
+    await vi.advanceTimersByTimeAsync(100)
+    await sent
     const { socket, frames } = await connect(`term?pane=${CODEX}&cols=48&rows=30`)
     const text = () => atob((frames.at(-1) as unknown as { bytes: string }).bytes)
     expect(text()).toContain('View analytics  Usage history')
     socket.send(JSON.stringify({ type: 'keys', keys: ['down', 'enter'] }))
     expect(text()).toContain('Demo analytics')
     socket.send(JSON.stringify({ type: 'keys', keys: ['esc', 'esc'] }))
-    const state = await (await window.fetch('/api/state')).json()
-    expect(state.panes.find((p: { id: string }) => p.id === CODEX).interaction).toBe('input')
+    const reading = window.fetch(`/api/screen?pane=${CODEX}`)
+    await vi.advanceTimersByTimeAsync(100)
+    const state = await (await reading).json()
+    expect(state.interaction).toBe('input')
     expect(text()).not.toContain('Demo analytics')
   })
   it('places a short Claude exchange at the top with its prompt directly after it', () => {

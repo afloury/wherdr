@@ -776,6 +776,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
     // Before queues or screen parsing: an exited agent must never receive input.
     const stopped = await selfUpdates.observe(p, restarts.has(p.id)).catch(() => false)
     if (stopped) {
+      p.interaction = 'managed'
       if (queued.has(p.id)) p.queued = queued.get(p.id)!.map(publicEntry)
       continue
     }

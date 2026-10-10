@@ -240,7 +240,7 @@ const attachInput = ref<HTMLInputElement | null>(null)
 const termShown = computed(() => mode.value === 'term')
 const interactionWindow = interactionWindowFor(props.paneId)
 const interactionOpen = ref(false)
-const interactionAvailable = computed(() => mode.value === 'chat' && live.value && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value))
+const interactionAvailable = computed(() => mode.value === 'chat' && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value))
 const interactive = computed(() => pane.value?.interaction === 'terminal')
 function syncInteraction() {
   interactionOpen.value = interactionWindow.update(pane.value?.interaction || 'unknown', Date.now())
@@ -592,7 +592,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <div v-else class="chat" />
     <p v-if="pane?.agent && !hasChat(pane) && mode === 'term' && !cell" class="terminal-transcript-note">{{ tl('Conversation unavailable for this agent · follow it in the terminal', 'Conversation non disponible pour cet agent · suivi dans le terminal') }}</p>
 
-    <InteractiveTerminal v-if="interactionOpen && interactionAvailable" :pane-id="paneId" @close="closeInteraction" />
+    <InteractiveTerminal v-if="interactionOpen && interactionAvailable" :pane-id="paneId" :active="live" @close="closeInteraction" />
     <button v-else-if="interactive && interactionAvailable" type="button" class="interactive-terminal-reopen" @click="reopenInteraction">
       <UIcon name="i-lucide-square-terminal" />{{ tl('Open interactive terminal', 'Ouvrir le terminal interactif') }}
     </button>
