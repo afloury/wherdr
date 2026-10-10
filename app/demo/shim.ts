@@ -7,8 +7,6 @@ import { DEV_SERVER_SCREEN, SHELL_REFUSAL, agentScreen } from './terminal'
 import { DEV_SERVER } from './scenario'
 
 const enc = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(s)))
-// Size the terminal of a side-by-side cell gave each pane: its mirror keeps it.
-const fitted = new Map<string, { cols: number, rows: number }>()
 const frame = (s: string, cols: number, rows: number) => JSON.stringify({ type: 'terminal.frame', bytes: enc(s), width: cols, height: rows })
 
 // Enough of the WebSocket interface for the app (on* handlers, send, close).
@@ -39,11 +37,11 @@ class DemoSocket extends EventTarget {
     setTimeout(() => {
       if (this.readyState !== 0) return
       const route = u.pathname
-      if (route !== '/ws/events' && route !== '/ws/term' && route !== '/ws/mirror') return this.finish(1008)
+      if (route !== '/ws/events' && route !== '/ws/term') return this.finish(1008)
       this.readyState = 1
       this.fire('open', new Event('open'))
       if (route === '/ws/events') this.events(server)
-      else this.terminal(server, u.searchParams, route === '/ws/mirror')
+      else this.terminal(server, u.searchParams)
     }, 20)
   }
 
@@ -69,41 +67,20 @@ class DemoSocket extends EventTarget {
     }
   }
 
-  private terminal(server: DemoServer, q: URLSearchParams, mirror: boolean) {
+  private terminal(server: DemoServer, q: URLSearchParams) {
     const id = q.get('pane') || ''
     const p = server.pane(id)
     let cols = Number(q.get('cols')) || 100
     let rows = Number(q.get('rows')) || 32
     if (!p) return this.finish(1008)
-    if (mirror) {
-      // The pane's own size (its place in the layout), or the one the cell's terminal last gave it.
-      const rect = (server.state().tabs || []).flatMap(t => t.layout?.panes || []).find(x => x.pane === id)?.rect
-      ;({ cols, rows } = fitted.get(id) || { cols: rect?.width || 96, rows: rect?.height || 30 })
-      this.deliver(JSON.stringify({ type: 'mirror.size', cols, rows }))
-      this.receive = (raw) => {
-        const m = JSON.parse(raw)
-        if (q.get('hold') !== '1' || !fitted.has(id) || m?.type !== 'fit') return
-        if (!Number.isInteger(m.cols) || !Number.isInteger(m.rows)) return
-        cols = Math.max(10, Math.min(400, m.cols))
-        rows = Math.max(5, Math.min(200, m.rows))
-        fitted.set(id, { cols, rows })
-        this.deliver(JSON.stringify({ type: 'mirror.size', cols, rows }))
-        const pane = server.pane(id)
-        if (pane) this.deliver(frame(id === DEV_SERVER ? DEV_SERVER_SCREEN : agentScreen(pane, server.chat(id), '', cols, rows), cols, rows))
-      }
-    } else {
-      fitted.set(id, { cols, rows })
-    }
     if (id === DEV_SERVER) {
       let line = ''
       this.deliver(frame(DEV_SERVER_SCREEN, cols, rows))
-      if (mirror) return
       this.receive = (raw) => {
         const m = JSON.parse(raw)
         if (m?.type === 'terminal.resize' && m.cols && m.rows) {
           cols = m.cols
           rows = m.rows
-          fitted.set(id, { cols, rows })
           return this.deliver(frame(DEV_SERVER_SCREEN + line, cols, rows))
         }
         if (m?.type !== 'terminal.input' || typeof m.text !== 'string') return
@@ -131,7 +108,6 @@ class DemoSocket extends EventTarget {
     const offState = server.onState(draw)
     const offChat = server.onChat(pane => { if (pane === id) draw() })
     this.stop = () => { offState(); offChat() }
-    if (mirror) return
     this.receive = (raw) => {
       let m: { type?: string, text?: string, cols?: number, rows?: number, keys?: string[] }
       try { m = JSON.parse(raw) }
@@ -139,7 +115,6 @@ class DemoSocket extends EventTarget {
       if (m.type === 'terminal.resize' && m.cols && m.rows) {
         cols = m.cols
         rows = m.rows
-        fitted.set(id, { cols, rows })
         return draw()
       }
       if (m.type === 'keys' && m.keys?.includes('esc')) return void server.interrupt(id)

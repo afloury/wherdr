@@ -2700,19 +2700,7 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .plan .divider.down::before { width: 26px; height: 4px; }
 .plan .divider.on::before { background: var(--mauve); }
 
-/* Terminal mirror: the shared Herdr terminal at its real size, framed and
-   centred in its cell (MirrorView shrinks the characters of a wider one). */
-.mirror { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg); cursor: default; }
-.mirror-screen { position: absolute; left: 8px; top: 6px; }
-.mirror-screen.framed { outline: 1px solid var(--line-soft); outline-offset: 5px; }
-.mirror-screen .xterm { padding: 0; }
-.mirror-screen .xterm-viewport { overflow: hidden !important; background: transparent !important; }
-.mirror-screen .xterm-helper-textarea { opacity: 0; }
-.mirror-tag {
-  position: absolute; right: 8px; bottom: 6px; padding: 3px 6px; pointer-events: none;
-  font: 600 9.5px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase;
-  color: var(--dim); background: color-mix(in srgb, var(--bg) 80%, transparent); border: 1px solid var(--line-soft);
-}
+
 .terminal-selection-hint {
   position: absolute; z-index: 2; right: 8px; top: 8px; display: flex; align-items: center; gap: 8px;
   padding: 4px 5px 4px 8px; background: var(--bg-2); border: 1px solid var(--line);
@@ -2720,8 +2708,6 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 }
 .terminal-selection-hint button { padding: 0 3px; color: var(--text-2); font-size: 16px; line-height: 1; }
 .terminal-selection-hint button:hover { color: var(--text); }
-.mirror-failed { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; font: 500 12px/1.3 var(--mono); color: var(--muted); }
-.mirror-failed:hover { color: var(--text); }
 
 /* ---------- "Project" panel of the herdr-projects coordinator ----------
    Tab on the phone, collapsible column to the right of the conversation on a

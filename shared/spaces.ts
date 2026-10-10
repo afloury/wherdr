@@ -1,7 +1,7 @@
 // List by state, one row per Herdr space (workspace): a space with a single
 // tab and a single pane stays its agent's card; otherwise a space
-// card, sorted by its most urgent pane. Tab remembered per space,
-// size of a terminal mirror, keys sent to a mirror. Pure (tested).
+// card, sorted by its most urgent pane. Tab remembered per space.
+// Pure (tested).
 import type { HerdrState, Pane, Workspace } from './types'
 import { type TabEntry, tabEntry, workspaceTree } from './workspaces'
 
@@ -223,22 +223,6 @@ export function rememberTab(memory: TabMemory, workspace: string, tab: string, o
   if (!open) return next
   const keep = new Set(open)
   return Object.fromEntries(Object.entries(next).filter(([w]) => keep.has(w)))
-}
-
-// ------------------------------------------------------------ mirror
-// Size to request from `herdr terminal session observe` to see a pane as
-// it is: the observer crops what exceeds its width and leaves the rest
-// empty (text wraps at the real terminal's width). Herdr only
-// gives the terminal's number of rows: the width is overestimated
-// (longest line on screen — an agent's horizontal rule spans
-// the full width —, otherwise the layout cell).
-export function mirrorSize(o: { rows?: number | null, text?: string | null, rect?: { width: number, height: number } | null }) {
-  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(v)))
-  const longest = Math.max(0, ...String(o.text || '').split('\n').map(l => [...l.replace(/\s+$/, '')].length))
-  return {
-    cols: clamp(Math.max(longest, o.rect?.width || 0, 20), 20, 300),
-    rows: clamp(o.rows || o.rect?.height || 24, 5, 200),
-  }
 }
 
 // ------------------------------------------------------------ reorder

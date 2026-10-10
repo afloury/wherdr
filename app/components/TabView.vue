@@ -1,11 +1,12 @@
 <script setup lang="ts">
 // Tab of a Herdr workspace, in its real proportions. Phone: plan of
 // summary cards; tapping a cell opens the pane full screen (mini-map and
-// swipe to the neighbours). Computer: the panes side by side, live
-// conversation in each cell; the active cell (click) has the input field and
-// can show the terminal. Nothing is changed on the Herdr side (focus, zoom) without
-// an explicit gesture: the layout is shared with the attached client, and
-// wherdr's active cell is not Herdr's focus. Explicit gestures:
+// swipe to the neighbours). Computer: the panes side by side, every cell live
+// (conversation or terminal); the active cell (click) gets the keyboard. A
+// terminal shown in a cell fits its pane to the cell, and each pane gets its
+// size back when the tab is left (server/utils/paneSizes.ts). Herdr's focus and
+// zoom are never changed: wherdr's active cell is not Herdr's focus. The layout,
+// shared with the attached client, only changes on an explicit gesture:
 // dragging a pane (header handle, long press on the phone) onto
 // another, and dragging a divider to resize.
 import { type Divider, type DropSide, type TabLayout, dividers, dropPreview, dropZone, neighborPane, paneBoxes, ratioAt, resizePreview } from '#shared/layout'

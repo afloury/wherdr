@@ -1,4 +1,4 @@
-// Links in an xterm terminal (terminal and mirror): OSC 8 hyperlinks
+// Links in an xterm terminal: OSC 8 hyperlinks
 // (xterm's linkHandler) and plain http(s) URLs (our own link provider).
 //
 // Herdr paints each row with an absolute cursor move, so xterm never sees a
