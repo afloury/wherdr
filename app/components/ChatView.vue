@@ -11,7 +11,7 @@ import { canCancelQueued, lostPhotosText, restoreDraft } from '~/utils/queuedCan
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
-import { addAnswer, addQuote, answerOf, isQuoted, replyTargets, tappedAnswer, withQuestions, type Answer } from '~/utils/questionReply'
+import { addAnswer, addQuote, answerOf, hasOkAll, isQuoted, replyTargets, rowAnswer, setRowAnswer, tappedAnswer, toggleOkAll, withQuestions, type Answer } from '~/utils/questionReply'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -417,7 +417,7 @@ const blocks = computed<Block[]>(() => {
     } else if (it.role === 'assistant') {
       lastReply = it.text
       const time = it.ts ? fmtTime(it.ts) : null
-      lastReplyBlock = { k: 'assistant', key, id: replyId(it), text: it.text, html: withQuestions(md(it.text), { reply: t('Reply'), quoted: t('Quoted'), discuss: t('Discuss'), yes: t('Yes'), no: t('No') }), time, endsTurn: false }
+      lastReplyBlock = { k: 'assistant', key, id: replyId(it), text: it.text, html: withQuestions(md(it.text), { reply: t('Reply'), quoted: t('Quoted'), discuss: t('Discuss'), yes: t('Yes'), no: t('No'), okAll: t('OK to all'), decisions: t('Decisions') }), time, endsTurn: false }
       out.push(lastReplyBlock)
       replies.push({ key, time, text: it.text })
     } else if (it.role === 'thinking') {
@@ -497,6 +497,19 @@ function answer(text: string, a: Answer) {
   if (next !== null) draft.text = next
   haptic()
 }
+// Decision table (see decisionRows): a row answered by its number ("3: yes"),
+// or the whole table accepted ("ok to all"; a second tap takes it back).
+function answerRow(n: string, a: Answer) {
+  const draft = useDraft(props.pane.id)
+  const next = setRowAnswer(draft.text, n, a === 'yes' ? tl(`${n}: yes`, `${n} : oui`) : tl(`${n}: no`, `${n} : non`))
+  if (next !== null) draft.text = next
+  haptic()
+}
+function okAll() {
+  const draft = useDraft(props.pane.id)
+  draft.text = toggleOkAll(draft.text, tl('ok to all', 'ok tout'))
+  haptic()
+}
 const answered = (text: string, a: Answer) => tappedAnswer(answerOf(draftText.value, text) || '') === a
 // "Quoted" state of the question and point buttons (and of the words of a
 // question) and pressed state of the one-tap answers, read from the draft.
@@ -504,7 +517,11 @@ function syncQuoted() {
   const text = useDraft(props.pane.id).text
   for (const btn of listEl.value?.querySelectorAll<HTMLElement>('.q-ans') || [])
     btn.setAttribute('aria-pressed', String(tappedAnswer(answerOf(text, btn.dataset.q || '') || '') === btn.dataset.a))
-  for (const btn of listEl.value?.querySelectorAll<HTMLElement>('.q-reply, .q-point') || []) {
+  for (const btn of listEl.value?.querySelectorAll<HTMLElement>('.q-tans') || [])
+    btn.setAttribute('aria-pressed', String(tappedAnswer(rowAnswer(text, btn.dataset.n || '') || '') === btn.dataset.a))
+  const all = hasOkAll(text)
+  for (const btn of listEl.value?.querySelectorAll<HTMLElement>('.q-all') || []) btn.setAttribute('aria-pressed', String(all))
+  for (const btn of listEl.value?.querySelectorAll<HTMLElement>('.q-reply, .q-point, .q-tquote') || []) {
     const on = isQuoted(text, btn.dataset.q || '')
     btn.classList.toggle('quoted', on)
     if (btn.dataset.n) for (const span of wordsOf(btn)) span.classList.toggle('quoted', on)
@@ -618,7 +635,10 @@ function onListClick(e: MouseEvent) {
   const target = e.target as HTMLElement
   const ans = target.closest?.('.q-ans') as HTMLElement | null
   if (ans?.dataset.q) { e.preventDefault(); arm(null); pickKey.value = null; answer(ans.dataset.q, ans.dataset.a === 'no' ? 'no' : 'yes'); return }
-  const question = target.closest?.('.q-reply, .q-point') as HTMLElement | null
+  const rowAns = target.closest?.('.q-tans') as HTMLElement | null
+  if (rowAns?.dataset.n) { e.preventDefault(); arm(null); pickKey.value = null; answerRow(rowAns.dataset.n, rowAns.dataset.a === 'no' ? 'no' : 'yes'); return }
+  if (target.closest?.('.q-all')) { e.preventDefault(); arm(null); pickKey.value = null; okAll(); return }
+  const question = target.closest?.('.q-reply, .q-point, .q-tquote') as HTMLElement | null
   if (question?.dataset.q) { e.preventDefault(); arm(null); pickKey.value = null; quote(question.dataset.q); return }
   // "Tap the text" style: the words of a question are its button.
   const asked = replyStyle.value === 'text' && !readOnly.value ? target.closest?.('.q-text') as HTMLElement | null : null

@@ -15,6 +15,11 @@ All notable changes to this project are documented here. The format follows
   never replaced. Offered only when yes or no answers the question in full: a single sentence
   with a yes/no opening, no alternative, no interrogative word and no negation; otherwise Reply
   alone.
+- **Decision tables answered row by row**: under a Markdown table of numbered questions (a
+  number column, and a question column known by its header, by its question marks or by an advice
+  column next to it), **OK to all** writes `ok to all`, and each row has **Yes**, **No** and `↳`
+  that write `3: yes`, `3: no` or quote the row. French writes `ok tout`, `3 : oui`, `3 : non`.
+  Composed in the field, sent by you; a table of another shape gets nothing.
 - **Restart after Codex updates itself**: when Codex's own installer exits to its shell,
   a Your turn card offers a one-tap restart and sends the usual attention notification.
   A new conversation reuses its launch command; an existing one can resume its exact session

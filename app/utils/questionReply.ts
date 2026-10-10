@@ -220,6 +220,93 @@ export function addAnswer(draft: string, text: string, word: string): string | n
   return `${head}${head.endsWith('\n') ? '' : '\n'}${word}\n${base.slice(at.end)}`
 }
 
+// Decision table: a Markdown table whose rows are numbered questions, as a
+// coordinator writes them ("# | Question | My advice"). Under it, each row is
+// answered in one tap ("3: yes"), quoted ("> 3. Tag the release today?") or
+// the whole table accepted ("ok to all"). The table must have:
+// - a number column: a header that says so ("#", "N°", "No", "Num", "ID",
+//   "Q") over cells that all hold a short number ("1", "2.", "Q3"), each once;
+// - a question column, by one of three signs: a header that names it
+//   ("Question", "Decision", "Choix"…); or cells that all end with "?"; or an
+//   advice column next to it ("Avis", "Recommendation", "Suggestion"…), the
+//   question then being the first column left.
+// Any other table (a list of files, a comparison) gets nothing.
+const NUM_HEAD = /^(?:#|n[°º]|no\.?|num(?:[ée]ro)?\.?|id|q)$/i
+const NUM_CELL = /^(?:[#qd]|n[°º])?\s*\d{1,3}[.)]?$/i
+const QUESTION_HEAD = /question|d[ée]cision|choix|choice|to decide|à décider|à trancher/i
+const ADVICE_HEAD = /avis|recomm|suggestion|proposition|proposal|opinion|my take|my pick|conseil|advice/i
+export interface DecisionRow { n: string, text: string }
+export function decisionRows(header: string[], rows: string[][]): DecisionRow[] | null {
+  const head = header.map(oneLine)
+  const body = rows.map(r => r.map(oneLine))
+  if (head.length < 2 || !body.length || body.some(r => r.length < head.length)) return null
+  const column = (i: number) => body.map(r => r[i]!)
+  const label = (cell: string) => cell.replace(/[.)]$/, '')
+  const num = head.findIndex((h, i) => NUM_HEAD.test(h) && column(i).every(c => NUM_CELL.test(c))
+    && new Set(column(i).map(c => label(c).toLowerCase())).size === body.length)
+  if (num < 0) return null
+  const others = head.map((_, i) => i).filter(i => i !== num)
+  const advice = others.filter(i => ADVICE_HEAD.test(head[i]!))
+  let question = others.find(i => QUESTION_HEAD.test(head[i]!) && !advice.includes(i))
+  question ??= others.find(i => column(i).every(isQuestion))
+  if (question === undefined && advice.length) question = others.find(i => !advice.includes(i))
+  if (question === undefined || column(question).some(c => !words(c))) return null
+  return body.map(r => ({ n: label(r[num]!), text: r[question]! }))
+}
+
+// A row quoted to discuss it: its number, then its question.
+export const rowQuote = (row: DecisionRow) => `${row.n}. ${row.text}`
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+// Lines of the draft that are the user's own (not quotes), with their position.
+function ownLines(draft: string) {
+  const out: { text: string, start: number, end: number }[] = []
+  let pos = 0
+  for (const text of String(draft || '').split('\n')) {
+    if (!QUOTE_LINE.test(text)) out.push({ text, start: pos, end: pos + text.length })
+    pos += text.length + 1
+  }
+  return out
+}
+// Draft with a line of the user's appended, never glued to an unanswered
+// quote (it would read as its answer).
+function appendLine(draft: string, line: string): string {
+  const base = String(draft || '').replace(/\s+$/, '')
+  const sep = !base ? '' : QUOTE_LINE.test(base.slice(base.lastIndexOf('\n') + 1)) ? '\n\n' : '\n'
+  return `${base}${sep}${line}\n`
+}
+const rowLine = (draft: string, n: string) => {
+  const re = new RegExp(`^\\s*${escapeRe(n)}\\s*[:=]\\s*(.*)$`, 'i')
+  for (const l of ownLines(draft)) {
+    const m = re.exec(l.text)
+    if (m) return { ...l, value: m[1]!.trim() }
+  }
+  return null
+}
+// What the draft answers to the row numbered `n` ("3: yes" → "yes"), null
+// when it has no line for it.
+export const rowAnswer = (draft: string, n: string): string | null => rowLine(draft, n)?.value ?? null
+// Draft with `line` ("3: yes") as the answer to row `n`: appended, or in
+// place of the line an earlier tap wrote. Null when nothing changes: the same
+// line is there, or the user wrote their own answer for that row.
+export function setRowAnswer(draft: string, n: string, line: string): string | null {
+  const at = rowLine(draft, n)
+  if (!at) return appendLine(draft, line)
+  if (at.text.trim() === line || (at.value && !tappedAnswer(at.value))) return null
+  return draft.slice(0, at.start) + line + draft.slice(at.end)
+}
+// "ok to all" / "ok tout": the whole table accepted, on a line of its own.
+const OK_ALL = /^\s*ok\s+(?:to\s+all|tout)\s*[.!]?\s*$/i
+export const hasOkAll = (draft: string) => ownLines(draft).some(l => OK_ALL.test(l.text))
+// Draft with the line added, or removed when it is there (a second tap).
+export function toggleOkAll(draft: string, phrase: string): string {
+  const at = ownLines(draft).find(l => OK_ALL.test(l.text))
+  if (!at) return appendLine(draft, phrase)
+  return (draft.slice(0, at.start) + draft.slice(Math.min(draft.length, at.end + 1))).replace(/^\n+/, '')
+}
+// A row is settled once the draft answers it, quotes it, or accepts them all.
+export const rowSettled = (draft: string, row: DecisionRow) =>
+  rowAnswer(draft, row.n) !== null || isQuoted(draft, rowQuote(row)) || hasOkAll(draft)
+
 // Message display: quote lines apart from the rest.
 export function quoteSegments(text: string): { quote: boolean, text: string }[] {
   const out: { quote: boolean, text: string }[] = []
@@ -274,7 +361,7 @@ export type ReplyStyle = typeof REPLY_STYLES[number]
 export const parseReplyStyle = (v: string | null | undefined): ReplyStyle =>
   (REPLY_STYLES as readonly string[]).includes(v || '') ? v as ReplyStyle : 'icon'
 
-export interface ReplyLabels { reply: string, quoted: string, discuss: string, yes: string, no: string }
+export interface ReplyLabels { reply: string, quoted: string, discuss: string, yes: string, no: string, okAll: string, decisions: string }
 
 // A point worth discussing: a few words that ask nothing and do not merely
 // introduce what follows ("Three things to note:").
@@ -366,10 +453,54 @@ export function markQuestions(root: ParentNode, labels: ReplyLabels) {
       wrapped.set(btn, spans)
     }
   }
+  markDecisions(root, labels)
   let n = 0
   for (const btn of root.querySelectorAll<HTMLElement>('.q-reply')) {
     btn.dataset.n = String(++n)
     for (const span of wrapped.get(btn) || []) span.dataset.n = btn.dataset.n
+  }
+}
+
+// The panel under a decision table (`.q-table`, see decisionRows): "OK to
+// all" (`.q-all`), then per row (`.q-trow`) its number and question (`.q-tl`),
+// "Yes" / "No" (`.q-tans`) and Reply (`.q-tquote`). No text node here either: every
+// word comes from a data attribute.
+function markDecisions(root: ParentNode, labels: ReplyLabels) {
+  const cells = (tr: Element) => [...tr.children].filter(c => /^T[DH]$/.test(c.tagName)).map(c => c.textContent || '')
+  for (const table of root.querySelectorAll('table')) {
+    if (table.closest('pre, code, .code-block, blockquote') || table.parentElement?.closest('table')) continue
+    const head = table.querySelector(':scope > thead > tr')
+    const rows = head ? decisionRows(cells(head), [...table.querySelectorAll(':scope > tbody > tr')].map(cells)) : null
+    if (!rows) continue
+    const el = (tag: string, cls: string, data: Record<string, string>, label?: string) => {
+      const e = document.createElement(tag)
+      e.className = cls
+      Object.assign(e.dataset, data)
+      if (tag === 'button') (e as HTMLButtonElement).type = 'button'
+      if (label) e.setAttribute('aria-label', label)
+      return e
+    }
+    const panel = el('div', 'q-table', {}, labels.decisions)
+    panel.setAttribute('role', 'group')
+    const top = el('div', 'q-table-h', { l: labels.decisions })
+    if (rows.length > 1) {
+      const all = el('button', 'q-all', { l: labels.okAll }, labels.okAll)
+      all.setAttribute('aria-pressed', 'false')
+      top.append(all)
+    }
+    panel.append(top)
+    for (const row of rows) {
+      const line = el('div', 'q-trow', { n: row.n, q: row.text })
+      line.append(el('span', 'q-tl', { n: row.n, l: row.text }))
+      for (const a of ['yes', 'no'] as const) {
+        const ans = el('button', `q-tans q-${a}`, { n: row.n, a, l: labels[a] }, `${row.n} · ${labels[a]}: ${row.text}`)
+        ans.setAttribute('aria-pressed', 'false')
+        line.append(ans)
+      }
+      line.append(el('button', 'q-tquote', { q: rowQuote(row), l: labels.reply, lq: labels.quoted }, `${labels.reply}: ${rowQuote(row)}`))
+      panel.append(line)
+    }
+    table.after(panel)
   }
 }
 
@@ -378,7 +509,7 @@ const marked = new Map<string, string>()
 // conversation is re-read every 1.5 s).
 export function withQuestions(html: string, labels: ReplyLabels): string {
   if (typeof document === 'undefined') return html
-  const key = `${labels.reply}\u0000${labels.discuss}\u0000${labels.yes}\u0000${html}`
+  const key = `${labels.reply}\u0000${labels.discuss}\u0000${labels.yes}\u0000${labels.okAll}\u0000${html}`
   let out = marked.get(key)
   if (out === undefined) {
     const tpl = document.createElement('template')
@@ -391,22 +522,24 @@ export function withQuestions(html: string, labels: ReplyLabels): string {
   return out
 }
 
-// What the "list" style shows under a reply: its questions in order, how many
+// What a reply offers to answer: its questions in order, the rows of its
+// decision tables, and for the "list" style how many
 // points it has, and whether "+ Quote a point" is worth offering (`pick`):
 // only when there is a choice to make, that is a point in a list, or two
 // points or more. A reply of plain prose in one paragraph is a single point:
 // the whole message is the thing to reply to.
 // Read from the marked HTML, cached with it.
-export interface ReplyTargets { questions: { n: string, text: string, closed: boolean }[], points: number, pick: boolean }
+export interface ReplyTargets { questions: { n: string, text: string, closed: boolean }[], rows: DecisionRow[], points: number, pick: boolean }
 const targets = new Map<string, ReplyTargets>()
 export function replyTargets(html: string): ReplyTargets {
   let out = targets.get(html)
   if (!out) {
-    out = { questions: [], points: 0, pick: false }
+    out = { questions: [], rows: [], points: 0, pick: false }
     if (typeof document !== 'undefined' && html.includes('class="q-')) {
       const tpl = document.createElement('template')
       tpl.innerHTML = html
       out.questions = [...tpl.content.querySelectorAll<HTMLElement>('.q-reply')].map(b => ({ n: b.dataset.n || '', text: b.dataset.q || '', closed: b.dataset.c === '1' }))
+      out.rows = [...tpl.content.querySelectorAll<HTMLElement>('.q-trow')].map(r => ({ n: r.dataset.n || '', text: r.dataset.q || '' }))
       const points = [...tpl.content.querySelectorAll('.q-point')]
       out.points = points.length
       out.pick = points.length > 1 || points.some(b => b.closest('li'))

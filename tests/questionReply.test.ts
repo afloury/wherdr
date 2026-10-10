@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addAnswer, addQuote, answerOf, isClosedQuestion, isQuoted, QUOTE_MAX, questionsIn, quoteOf, quotesIn, quoteSegments, removeQuote, tappedAnswer } from '../app/utils/questionReply'
+import { addAnswer, addQuote, answerOf, decisionRows, hasOkAll, isClosedQuestion, rowAnswer, rowQuote, rowSettled, setRowAnswer, toggleOkAll, isQuoted, QUOTE_MAX, questionsIn, quoteOf, quotesIn, quoteSegments, removeQuote, tappedAnswer } from '../app/utils/questionReply'
 
 const asked = (text: string) => questionsIn(text).map(q => q.text)
 
@@ -244,5 +244,96 @@ describe('one-tap answers', () => {
     expect(['No', 'non', 'Non.'].map(tappedAnswer)).toEqual(['no', 'no', 'no'])
     expect(['', 'Yes please', 'nope', 'ok'].map(tappedAnswer)).toEqual([null, null, null, null])
     expect(answerOf('Hello', Q1)).toBeNull()
+  })
+})
+
+describe('decisionRows', () => {
+  const rows = [['1', 'Tag the release today?', 'Yes'], ['2', 'Keep the old export format?', 'No'], ['3', 'Publish the notes?', 'Yes']]
+  it('reads the numbered questions of a decision table', () => {
+    expect(decisionRows(['#', 'Question', 'My advice'], rows)).toEqual([
+      { n: '1', text: 'Tag the release today?' },
+      { n: '2', text: 'Keep the old export format?' },
+      { n: '3', text: 'Publish the notes?' },
+    ])
+  })
+  it('finds the number column wherever it is, in its usual spellings', () => {
+    expect(decisionRows(['Décision', 'Avis', 'N°'], [['Fusionner ce soir', 'Oui', '1.'], ['Publier la 1.4', 'Non', '2.']]))
+      .toEqual([{ n: '1', text: 'Fusionner ce soir' }, { n: '2', text: 'Publier la 1.4' }])
+    expect(decisionRows(['ID', 'Question'], [['Q1', 'Merge now?'], ['Q2', 'Tag it?']])).toEqual([{ n: 'Q1', text: 'Merge now?' }, { n: 'Q2', text: 'Tag it?' }])
+    for (const head of ['#', 'N°', 'Nº', 'No', 'no.', 'Num', 'Numéro', 'Q', 'id'])
+      expect(decisionRows([head, 'Question'], [['1', 'Merge now?']]), head).toEqual([{ n: '1', text: 'Merge now?' }])
+  })
+  it('names the question column by its header, by its question marks, or by the advice next to it', () => {
+    // Header.
+    expect(decisionRows(['#', 'Choix', 'Détail'], [['1', 'Thème par défaut', 'Titanium']])).toEqual([{ n: '1', text: 'Thème par défaut' }])
+    // Every cell asks.
+    expect(decisionRows(['#', 'Sujet', 'Contexte'], [['1', 'On fusionne ?', 'CI verte'], ['2', 'On publie ?', 'npm prêt']]))
+      .toEqual([{ n: '1', text: 'On fusionne ?' }, { n: '2', text: 'On publie ?' }])
+    // An advice column: the first column left is the question.
+    expect(decisionRows(['#', 'Sujet', 'Mon avis'], [['1', 'Fusionner t-0001', 'Oui'], ['2', 'Publier', 'Non']]))
+      .toEqual([{ n: '1', text: 'Fusionner t-0001' }, { n: '2', text: 'Publier' }])
+    expect(decisionRows(['#', 'Recommendation', 'Topic'], [['1', 'Yes', 'Merge the branch']])).toEqual([{ n: '1', text: 'Merge the branch' }])
+  })
+  it('ignores a table that is not a list of numbered questions', () => {
+    // Numbered, but nothing says its rows are questions.
+    expect(decisionRows(['#', 'File', 'Size'], [['1', 'main.css', '120 kB'], ['2', 'app.js', '300 kB']])).toBeNull()
+    // Questions, but no number column.
+    expect(decisionRows(['Question', 'Avis'], [['Merge now?', 'Yes']])).toBeNull()
+    // The "#" column does not number: text, a repeated number, a long one.
+    expect(decisionRows(['#', 'Question'], [['a', 'Merge now?']])).toBeNull()
+    expect(decisionRows(['#', 'Question'], [['1', 'Merge now?'], ['1', 'Tag it?']])).toBeNull()
+    expect(decisionRows(['#', 'Question'], [['1234', 'Merge now?']])).toBeNull()
+    expect(decisionRows(['Count', 'Question'], [['1', 'Merge now?']])).toBeNull()
+    // Only some cells ask, and no header or advice says more.
+    expect(decisionRows(['#', 'Step', 'State'], [['1', 'Merge now?', 'open'], ['2', 'Tagged', 'done']])).toBeNull()
+    // An empty question, a short row, no row, a single column.
+    expect(decisionRows(['#', 'Question'], [['1', '']])).toBeNull()
+    expect(decisionRows(['#', 'Question', 'Avis'], [['1', 'Merge now?']])).toBeNull()
+    expect(decisionRows(['#', 'Question'], [])).toBeNull()
+    expect(decisionRows(['#'], [['1']])).toBeNull()
+  })
+})
+
+describe('answers to a decision table', () => {
+  it('writes one line per row, by its number', () => {
+    const one = setRowAnswer('', '1', '1: yes')!
+    expect(one).toBe('1: yes\n')
+    const two = setRowAnswer(one, '3', '3 : non')!
+    expect(two).toBe('1: yes\n3 : non\n')
+    expect([rowAnswer(two, '1'), rowAnswer(two, '2'), rowAnswer(two, '3')]).toEqual(['yes', null, 'non'])
+    // "1" is not "10", and a quoted line is not an answer.
+    expect(rowAnswer('10: yes\n> 1: yes\n', '1')).toBeNull()
+  })
+  it('replaces the line of an earlier tap in place, never the user\'s own words', () => {
+    const draft = '1: yes\n2 : oui\n3: later, after the review\n'
+    expect(setRowAnswer(draft, '1', '1: no')).toBe('1: no\n2 : oui\n3: later, after the review\n')
+    expect(setRowAnswer(draft, '2', '2 : non')).toBe('1: yes\n2 : non\n3: later, after the review\n')
+    expect(setRowAnswer(draft, '1', '1: yes')).toBeNull()
+    expect(setRowAnswer(draft, '3', '3: no')).toBeNull()
+    // A line the user started ("4:") takes the answer.
+    expect(setRowAnswer('4:', '4', '4: yes')).toBe('4: yes')
+  })
+  it('never glues a line to an unanswered quote', () => {
+    expect(setRowAnswer('> Shall I push?\n', '1', '1: yes')).toBe('> Shall I push?\n\n1: yes\n')
+    expect(setRowAnswer('> Shall I push?\nYes\n', '1', '1: yes')).toBe('> Shall I push?\nYes\n1: yes\n')
+  })
+  it('accepts the whole table, and takes it back on a second tap', () => {
+    expect(toggleOkAll('', 'ok to all')).toBe('ok to all\n')
+    expect(toggleOkAll('2: no\n', 'ok tout')).toBe('2: no\nok tout\n')
+    expect(hasOkAll('2: no\nok tout\n')).toBe(true)
+    expect(hasOkAll('OK to all.')).toBe(true)
+    expect(hasOkAll('> ok to all\n')).toBe(false)
+    expect(hasOkAll('ok to all of them but 2')).toBe(false)
+    expect(toggleOkAll('2: no\nok tout\n', 'ok tout')).toBe('2: no\n')
+    expect(toggleOkAll('ok to all\n3: no\n', 'ok to all')).toBe('3: no\n')
+  })
+  it('quotes a row with its number, and knows when a row is settled', () => {
+    const row = { n: '2', text: 'Keep the old export format?' }
+    expect(rowQuote(row)).toBe('2. Keep the old export format?')
+    expect(rowSettled('', row)).toBe(false)
+    expect(rowSettled('1: yes\n', row)).toBe(false)
+    expect(rowSettled('2: no\n', row)).toBe(true)
+    expect(rowSettled(addQuote('', rowQuote(row))!, row)).toBe(true)
+    expect(rowSettled('ok to all\n', row)).toBe(true)
   })
 })

@@ -879,6 +879,16 @@ in doubt only Reply is offered: a single sentence that opens like a yes/no quest
 with `, OK?` / `, d'accord ?`, with no alternative (`or`, `ou`), no interrogative word (`which`,
 `how`, `quel`, `comment`…) and no negation.
 
+A **decision table**, a Markdown table whose rows are numbered questions as a coordinator writes
+them, gets a panel right under it: **OK to all** writes `ok to all` (a second tap takes it back),
+and each row has **Yes**, **No** and `↳`, which write `3: yes`, `3: no`, or quote the row
+(`> 3. Publish the notes?`) for an answer in words. In French: `ok tout`, `3 : oui`, `3 : non`.
+Here too everything is composed in the field and you send. A table qualifies when it has a
+number column (a header `#`, `N°`, `No`, `Num`, `ID` or `Q` over short numbers, each once) and a
+question column, known by its header (`Question`, `Decision`, `Choix`…), by cells that all end
+with `?`, or by an advice column next to it (`Avis`, `Recommendation`, `Suggestion`…). Any other
+table is left as it is.
+
 ## Several machines (SSH)
 
 wherdr also shows the agents of the **SSH machines registered in Herdr** — the ones the Herdr

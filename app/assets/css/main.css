@@ -3269,6 +3269,37 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
   .q-ans { height: 22px; padding: 0 8px; font-size: 10px; line-height: 20px; }
   .q-ans::after { height: 36px; }
 }
+/* Decision table (utils/questionReply.ts, decisionRows): under the table, a
+   row per numbered question with its one-tap answers and its Reply, and "OK
+   to all" above them. Every word comes from a data attribute. */
+.q-table { display: none; flex-direction: column; gap: 6px; max-width: 620px; margin: -2px 0 .9em; }
+:is(.rs-icon, .rs-text, .rs-list) .q-table { display: flex; }
+.q-table-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 30px; }
+.q-table-h::before { content: attr(data-l); font: 500 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.q-trow { display: flex; align-items: stretch; gap: 6px; min-height: 34px; }
+.q-tl {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 0 10px; font-size: 13px; line-height: 1.3; color: var(--text-2);
+  border: 1px solid var(--line); border-left: 2px solid var(--accent);
+}
+.q-tl::before { content: attr(data-n); flex: none; font: 500 10px/1 var(--mono); color: var(--accent); }
+.q-tl::after { content: attr(data-l); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.q-tans, .q-tquote, .q-all {
+  flex: none; min-width: 44px; padding: 0 8px; font: 500 10px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
+  color: var(--text-2); background: none; border: 1px solid var(--line); border-radius: 0; cursor: pointer; -webkit-user-select: none; user-select: none;
+}
+.q-tans::before, .q-all::before { content: attr(data-l); }
+.q-tquote { min-width: 36px; font-size: 15px; letter-spacing: 0; color: var(--accent); }
+.q-tquote::before { content: "↳"; }
+.q-tquote.quoted::before { content: "✓"; }
+.q-all { min-height: 30px; padding: 0 12px; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+.q-all[aria-pressed="true"]::before { content: "✓ " attr(data-l); }
+:is(.q-tans, .q-tquote, .q-all):is(:hover, :focus-visible) { color: var(--text); border-color: var(--accent); outline: 0; }
+:is(.q-tans, .q-all)[aria-pressed="true"] { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+.q-tquote.quoted { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+@media (pointer: coarse) {
+  .q-trow { min-height: 40px; }
+  .q-all { min-height: 36px; }
+}
 /* Quotes in the field: one chip each, to remove it; on one scrolling line. */
 .composer-quotes { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0 0 6px; overflow-x: auto; scrollbar-width: none; }
 .composer-quotes::-webkit-scrollbar { display: none; }
