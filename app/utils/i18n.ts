@@ -277,7 +277,7 @@ const FR: Record<string, string> = {
   'Changes': 'Changements', 'View changes': 'Voir les changements', 'Refresh changes': 'Rafraîchir les changements', 'Refresh': 'Rafraîchir',
   'Reading changes…': 'Lecture des changements…', 'This folder is not a Git repository.': 'Ce dossier n’est pas un dépôt Git.',
   'Send review': 'Envoyer la relecture', 'Discard': 'Abandonner',
-  'review comments': 'remarques', 'Comment on line': 'Commenter la ligne',
+  'review comment': 'remarque', 'review comments': 'remarques', 'Comment on line': 'Commenter la ligne',
   'old line': 'ancienne ligne', 'line no longer in diff': 'ligne absente du diff',
   'Please review these points:': 'Merci de revoir ces points :',
   'Write a review comment…': 'Écrire une remarque…', 'Delete comment': 'Supprimer la remarque',

@@ -69,7 +69,7 @@ function count(n: number | null, sign: string) { return n === null ? `${sign}—
       </div>
 
       <div v-if="comments.length" class="review-toolbar">
-        <span role="status">{{ countComments }} {{ t('review comments') }}</span>
+        <span role="status">{{ countComments }} {{ t(countComments === 1 ? 'review comment' : 'review comments') }}</span>
         <UButton color="neutral" variant="outline" @click="comments = []">{{ t('Discard') }}</UButton>
         <UButton :disabled="!countComments" @click="sendReview">{{ t('Send review') }}</UButton>
         <p>{{ t('Adds to your message draft. You send it yourself.') }}</p>
