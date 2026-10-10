@@ -241,65 +241,6 @@ export function mirrorSize(o: { rows?: number | null, text?: string | null, rect
   }
 }
 
-// Keystrokes of an interactive mirror (xterm.js data) -> sends to Herdr:
-// text as is, special keys by name (`pane.send_input`), the
-// sequences Herdr cannot name being ignored.
-export type MirrorInput = { text: string } | { keys: string[] }
-const SEQ: Record<string, string> = {
-  '\r': 'enter', '\n': 'enter', '\x7f': 'backspace', '\b': 'backspace', '\t': 'tab', '\x1b': 'esc',
-  '\x1b[A': 'up', '\x1b[B': 'down', '\x1b[C': 'right', '\x1b[D': 'left',
-  '\x1bOA': 'up', '\x1bOB': 'down', '\x1bOC': 'right', '\x1bOD': 'left', '\x1b[Z': 'shift+tab',
-  '\x1bOP': 'f1', '\x1bOQ': 'f2', '\x1bOR': 'f3', '\x1bOS': 'f4',
-  // Home / End (normal, application and VT220 xterm), Delete, Insert, Page Up/Down.
-  '\x1b[H': 'home', '\x1bOH': 'home', '\x1b[1~': 'home', '\x1b[7~': 'home',
-  '\x1b[F': 'end', '\x1bOF': 'end', '\x1b[4~': 'end', '\x1b[8~': 'end',
-  '\x1b[3~': 'delete', '\x1b[2~': 'insert', '\x1b[5~': 'pageup', '\x1b[6~': 'pagedown',
-}
-// A complete escape sequence (CSI, SS3) or Alt+character.
-const PASTE_START = '\x1b[200~'
-const PASTE_END = '\x1b[201~'
-const ESC_RE = /^\x1b(?:\[[0-9;?]*[ -/]*[@-~]|O[@-~]|[^[O])?/
-export function mirrorInput(data: string): MirrorInput[] {
-  const out: MirrorInput[] = []
-  const key = (k: string) => {
-    const last = out[out.length - 1]
-    if (last && 'keys' in last && last.keys.length < 32) last.keys.push(k)
-    else out.push({ keys: [k] })
-  }
-  const text = (s: string) => {
-    const last = out[out.length - 1]
-    if (last && 'text' in last) last.text += s
-    else out.push({ text: s })
-  }
-  // Bracketed paste (mode 2004 enabled by the program): the content
-  // is text, never Enters that would send each line.
-  if (data.startsWith(PASTE_START) && data.endsWith(PASTE_END)) {
-    const body = data.slice(PASTE_START.length, -PASTE_END.length).replace(/\r\n?/g, '\n')
-    return body ? [{ text: body }] : []
-  }
-  // Collage de plusieurs lignes : du texte, retours compris.
-  if (data.length > 1 && !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(data)) {
-    const body = data.replace(/\r\n?/g, '\n')
-    if (body.includes('\n')) return [{ text: body }]
-  }
-  let i = 0
-  while (i < data.length) {
-    const c = data[i]!
-    if (c === '\x1b') {
-      const m = ESC_RE.exec(data.slice(i))![0]
-      if (SEQ[m]) key(SEQ[m])
-      else if (m.length === 2 && m[1]! >= ' ' && m[1]! <= '~') key(`alt+${m[1]!.toLowerCase()}`)
-      i += m.length
-      continue
-    }
-    if (SEQ[c]) key(SEQ[c])
-    else if (c < ' ') { if (c !== '\x00') key(`ctrl+${String.fromCharCode(c.charCodeAt(0) + 96)}`) }
-    else text(c)
-    i++
-  }
-  return out
-}
-
 // ------------------------------------------------------------ reorder
 // Drag and drop of a card within its group (same machine, same
 // state): a group's order is Herdr's, so dropping a card between

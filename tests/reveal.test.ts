@@ -63,13 +63,13 @@ describe('reveal: success', () => {
   it('reveals a relative path from the agent folder with open -R', async () => {
     const r = await revealPath({ pane_id: PANE, path: 'src/app.ts:12', mode: 'reveal' })
     expect(r).toMatchObject({ ok: true, mode: 'reveal', machine: 'Test Mac' })
-    expect(opened()).toEqual([`-R|${path.join(home, 'project/src/app.ts')}|`])
+    expect(opened()).toEqual([`-R|${realpathSync(path.join(home, 'project/src/app.ts'))}|`])
     expect(env.logs.at(-1)).toMatch(/^reveal: reveal on Test Mac for abcd1234~w1:p1: ok$/)
   })
 
   it('opens a document with spaces in its name, as one argument', async () => {
     await revealPath({ pane_id: PANE, path: '~/project/My Notes.md', mode: 'open' })
-    expect(opened()).toEqual([`${path.join(home, 'project/My Notes.md')}|`])
+    expect(opened()).toEqual([`${realpathSync(path.join(home, 'project/My Notes.md'))}|`])
   })
 
   it('reveals an app bundle (but does not open it)', async () => {

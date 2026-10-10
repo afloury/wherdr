@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { reduceSnapshot } from '../server/utils/snapshot'
-import { isShellRow, leadPane, mirrorInput, mirrorSize, projectRoots, rememberTab, repoRoots, rowGroup, spaceRows, spaceTab } from '../shared/spaces'
+import { isShellRow, leadPane, mirrorSize, projectRoots, rememberTab, repoRoots, rowGroup, spaceRows, spaceTab } from '../shared/spaces'
 import { groupByProject, leadByCoordinator, projectCounts, projectSections, remoteCoordinator, stateSource, tabStates, waitingTab } from '../shared/projects'
 import type { Pane } from '../shared/types'
 import layouts from './fixtures/snapshot-layouts.json'
@@ -300,27 +300,5 @@ describe('terminal mirror', () => {
     expect(mirrorSize({ rows: 30, text: 'court', rect: { width: 60, height: 40 } })).toEqual({ cols: 60, rows: 30 })
     expect(mirrorSize({ text: '', rect: null })).toEqual({ cols: 20, rows: 24 })
     expect(mirrorSize({ rows: 900, text: 'x'.repeat(999) })).toEqual({ cols: 300, rows: 200 })
-  })
-
-  it('keystrokes: text, named keys, unknown sequences ignored', () => {
-    expect(mirrorInput('ls')).toEqual([{ text: 'ls' }])
-    expect(mirrorInput('\r')).toEqual([{ keys: ['enter'] }])
-    expect(mirrorInput('\x1b[A\x1b[B')).toEqual([{ keys: ['up', 'down'] }])
-    expect(mirrorInput('\x03')).toEqual([{ keys: ['ctrl+c'] }])
-    expect(mirrorInput('\x1b')).toEqual([{ keys: ['esc'] }])
-    expect(mirrorInput('\x1bb')).toEqual([{ keys: ['alt+b'] }])
-    expect(mirrorInput('\x1b[H\x1b[F\x1b[3~')).toEqual([{ keys: ['home', 'end', 'delete'] }])
-    expect(mirrorInput('\x1b[1~\x1b[4~\x1bOH\x1bOF')).toEqual([{ keys: ['home', 'end', 'home', 'end'] }])
-    expect(mirrorInput('\x1b[5~\x1b[6~\x1b[2~')).toEqual([{ keys: ['pageup', 'pagedown', 'insert'] }])
-    expect(mirrorInput('\x1b[Z')).toEqual([{ keys: ['shift+tab'] }])
-    expect(mirrorInput('a\x7fb')).toEqual([{ text: 'a' }, { keys: ['backspace'] }, { text: 'b' }])
-    expect(mirrorInput('\x1b[3~x')).toEqual([{ keys: ['delete'] }, { text: 'x' }])
-    expect(mirrorInput('un\ndeux\r\n')).toEqual([{ text: 'un\ndeux\n' }])
-  })
-
-  it('bracketed paste: text, not Enters', () => {
-    expect(mirrorInput('\x1b[200~un\rdeux\x1b[201~')).toEqual([{ text: 'un\ndeux' }])
-    expect(mirrorInput('\x1b[200~a\tb\x1b[201~')).toEqual([{ text: 'a\tb' }])
-    expect(mirrorInput('\x1b[200~\x1b[201~')).toEqual([])
   })
 })

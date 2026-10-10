@@ -1,35 +1,60 @@
 // Mirror of a pane: `herdr terminal session observe` relayed as is. An
 // observer does not attach to the terminal: it changes neither its size, nor the
 // focus, nor the client in control. It must be given the real
-// terminal's size (see mirrorSize); it is re-checked now and then and
-// the observer restarted if it changed. Keystrokes (clicked cell): sent
-// with `pane.send_input`, text or named keys, without taking control.
+// terminal's size (see paneScreen); it is re-checked now and then and
+// the observer restarted if it changed. Read only: the keystrokes of a
+// side-by-side cell go through its terminal (terminal.ts).
 //   output: Herdr's frames, preceded by {"type":"mirror.size",cols,rows}
-//   input: {"type":"input","text"} | {"type":"input","keys":[…]}
+// `hold=1`: the cell's terminal fitted the pane to the cell, and the focus went
+// to another cell. The mirror keeps that size (no Herdr client attached would
+// lay the pane out again) until it closes: the pane then gets its own back, as
+// after a terminal (paneSizes.ts). Its cell resized meanwhile (window, divider):
+//   input: {"type":"fit",cols,rows}, applied as long as the pane still has the
+//   size wherdr gave it (a Herdr client that laid it out again keeps its own).
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import readline from 'node:readline'
 import { PANE_RE, log } from './env'
 import { herdr } from './herdr'
 import { getState } from './state'
 import { machineOfPane } from './machines'
-import type { TermSession, WsLike } from './terminal'
+import { type TermSession, type WsLike, askedPaneSize, clampInt, holdPaneSize, readPaneSize, resizePane } from './terminal'
 import { splitId } from '../../shared/ids'
 import { mirrorSize } from '../../shared/spaces'
 import { fmt } from '../../shared/message'
 
 const RECHECK_MS = 8000
+// The cell's terminal was just closed: the pane's size settles within a second or two.
+const HELD_RECHECK_MS = 2000
 // Borne : quelques miroirs par onglet, quelques onglets ouverts.
 const MAX_MIRRORS = 24
 let open = 0
 
-async function probe(pane: string) {
+const layoutRect = (pane: string) => {
+  const tab = (getState().tabs || []).find(t => t.layout?.panes.some(x => x.pane === pane))
+  return tab?.layout?.panes.find(x => x.pane === pane)?.rect || null
+}
+
+// What tells, cheaply, that a pane may have been resized: its rows, its place
+// in Herdr's layout, the size wherdr gave it.
+async function sizeHint(pane: string) {
+  const info = await herdr('pane.get', { pane_id: pane }, 4000).catch(() => null)
+  const rect = layoutRect(pane)
+  const asked = askedPaneSize(pane)
+  return [info?.pane?.scroll?.viewport_rows, rect?.width, rect?.height, asked?.cols, asked?.rows].join(' ')
+}
+
+// Size of the pane's screen: the PTY's when it can be asked, then the one
+// wherdr gave it, otherwise an estimate (see mirrorSize).
+async function paneScreen(pane: string) {
+  const real = await readPaneSize(pane).catch(() => null)
+  if (real?.exact) return mirrorSize({ rows: real.rows, rect: { width: real.cols, height: real.rows } })
+  const asked = askedPaneSize(pane)
+  if (asked && (!real || real.rows === asked.rows)) return mirrorSize({ rows: asked.rows, rect: { width: asked.cols, height: asked.rows } })
   const [info, read] = await Promise.all([
     herdr('pane.get', { pane_id: pane }, 4000).catch(() => null),
     herdr('pane.read', { pane_id: pane, source: 'visible' }, 4000).catch(() => null),
   ])
-  const tab = (getState().tabs || []).find(t => t.layout?.panes.some(x => x.pane === pane))
-  const rect = tab?.layout?.panes.find(x => x.pane === pane)?.rect || null
-  return mirrorSize({ rows: info?.pane?.scroll?.viewport_rows, text: read?.read?.text, rect })
+  return mirrorSize({ rows: info?.pane?.scroll?.viewport_rows, text: read?.read?.text, rect: layoutRect(pane) })
 }
 
 export function openMirror(ws: WsLike, url: URL): TermSession | null {
@@ -53,6 +78,8 @@ export function openMirror(ws: WsLike, url: URL): TermSession | null {
   let size = { cols: 0, rows: 0 }
   let closed = false
   let timer: ReturnType<typeof setTimeout> | undefined
+  let hint = ''
+  const hold = url.searchParams.get('hold') === '1' ? holdPaneSize(pane) : null
 
   function stopChild() {
     const c = child
@@ -75,21 +102,49 @@ export function openMirror(ws: WsLike, url: URL): TermSession | null {
     })
     c.stdin.on('error', () => {})
   }
+  // One check at a time: a fit asks for one at once, over the pending one.
+  let round = 0
   async function recheck() {
     if (closed) return
-    const next = await probe(pane).catch(() => null)
-    if (closed) return
-    if (next && (next.cols !== size.cols || next.rows !== size.rows)) {
-      log(`mirror ${pane}: ${size.cols}x${size.rows} -> ${next.cols}x${next.rows}`)
-      start(next)
+    const mine = ++round
+    clearTimeout(timer)
+    const now = await sizeHint(pane)
+    if (closed || mine !== round) return
+    if (now !== hint) {
+      hint = now
+      const next = await paneScreen(pane).catch(() => null)
+      if (closed || mine !== round) return
+      if (next && (next.cols !== size.cols || next.rows !== size.rows)) {
+        log(`mirror ${pane}: ${size.cols}x${size.rows} -> ${next.cols}x${next.rows}`)
+        start(next)
+      }
     }
-    timer = setTimeout(recheck, RECHECK_MS)
+    timer = setTimeout(recheck, hold ? HELD_RECHECK_MS : RECHECK_MS)
   }
-  probe(pane).then((s) => {
+  // A held pane: its size is read once the hold has it (a restore under way is over).
+  Promise.resolve(hold).then(async () => {
+    hint = await sizeHint(pane)
+    return paneScreen(pane)
+  }).then((s) => {
     if (closed) return
     start(s)
-    timer = setTimeout(recheck, RECHECK_MS)
+    timer = setTimeout(recheck, hold ? HELD_RECHECK_MS : RECHECK_MS)
   }).catch(() => ws.close(4500, 'pane illisible'))
+
+  let fitting = false
+  async function fit(cols: number, rows: number) {
+    const h = await hold
+    const asked = askedPaneSize(pane)
+    if (!h || closed || fitting || !asked || (asked.cols === cols && asked.rows === rows)) return
+    fitting = true
+    try {
+      const real = await readPaneSize(pane).catch(() => null)
+      if (!real || real.rows !== asked.rows || (real.exact && real.cols !== asked.cols)) return
+      if (closed || !await resizePane(pane, cols, rows)) return
+      h.resized(cols, rows)
+      await recheck()
+    } finally { fitting = false }
+  }
 
   return {
     onMessage(raw: string) {
@@ -97,19 +152,15 @@ export function openMirror(ws: WsLike, url: URL): TermSession | null {
       let m: any
       try { m = JSON.parse(raw) }
       catch { return }
-      if (!m || m.type !== 'input') return
-      let params: Record<string, unknown> | null = null
-      if (typeof m.text === 'string' && m.text && m.text.length <= 65536) params = { pane_id: pane, text: m.text }
-      else if (Array.isArray(m.keys) && m.keys.length && m.keys.length <= 32 && m.keys.every((k: unknown) => typeof k === 'string' && k.length <= 24)) params = { pane_id: pane, keys: m.keys }
-      if (!params) return
-      herdr('pane.send_input', params).catch(e => ws.isOpen() && ws.send(JSON.stringify({ type: 'web.error', code: e.code, message: e.message })))
+      if (hold && m?.type === 'fit') fit(clampInt(m.cols, 10, 400, 80), clampInt(m.rows, 5, 200, 24)).catch(() => {})
     },
-    onClose() {
+    onClose(clean = false) {
       if (closed) return
       closed = true
       open--
       clearTimeout(timer)
       stopChild()
+      hold?.then(h => h.release(clean))
     },
   }
 }

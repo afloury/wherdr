@@ -13,9 +13,10 @@ let curPaneOwner: symbol | null = null
 // (back to the plan, or side-by-side view on a computer) and, on the phone,
 // left / right swipe to the neighbours (Herdr's reading order).
 // `cell`: cell of the side-by-side view (computer). All cells are
-// live: the conversation, or the terminal mirror (MirrorView, without ever
-// resizing the real pane). Only the active cell (`active`, a click in
-// a cell activates it) has the input field, and its mirror receives the keystrokes.
+// live: the conversation, or the terminal. Only the active cell (`active`, a
+// click in a cell activates it) has the input field, and the real terminal,
+// fitted to the cell; the others show a mirror of theirs (MirrorView), which
+// never resizes the real pane.
 import type { QueuedMessage } from '#shared/types'
 import type { PaneViewMode } from '~/composables/useHerdr'
 import { neighborPane } from '#shared/layout'
@@ -65,12 +66,13 @@ const viewMode = computed<PaneViewMode>({
 })
 // State not received yet (opened from a notification): we wait to
 // know whether it is an agent, so as not to open the terminal for nothing.
-// Cell: the pane's remembered mode (conversation or terminal mirror), whether the
-// cell has the focus or not; the focus only changes the border and the input.
+// Cell: the pane's remembered mode (conversation or terminal), whether the cell
+// has the focus or not; the focus changes the border, the input and, for a
+// terminal, who drives it (the real terminal, or its mirror).
 const mode = computed<PaneViewMode | 'mirror' | null>(() => {
   const p = pane.value
   if (!p) return null
-  if (props.cell) return cellMode({ chat: hasChat(p), viewMode: viewMode.value })
+  if (props.cell) return cellMode({ chat: hasChat(p), viewMode: viewMode.value, active: props.active })
   // Project: phone tab only (right-hand column on a computer).
   if (viewMode.value === 'project') return projectTab.value ? 'project' : hasChat(p) ? 'chat' : 'term'
   return hasChat(p) ? viewMode.value : 'term'
@@ -124,7 +126,11 @@ const banner = shallowRef<Banner | null>(null)
 const ctl = createTerminal(props.paneId, {
   setBanner: (b) => { banner.value = b },
   hasBanner: () => Boolean(banner.value),
+  fill: () => Boolean(props.cell),
 })
+// Cell whose terminal was fitted to it: its mirror keeps that size as long as
+// it is shown, instead of giving the pane's back as soon as the focus leaves.
+const fitted = ref(false)
 const chatRef = ref<{ scrollToEnd: (force: boolean) => void, reload: () => void, focusSearch: () => void } | null>(null)
 const composer = ref<{ focus: () => void, focusEnd: () => void, blur: () => void, addImages: (files: File[]) => Promise<void>, addFiles: (files: File[]) => Promise<number>, stop: () => boolean } | null>(null)
 const mirror = ref<{ focus: () => void } | null>(null)
@@ -151,15 +157,17 @@ watch(closed, (c) => {
 }, { immediate: true })
 
 watch(mode, (m, old) => {
-  if (m === 'chat' && old === 'term') {
+  if ((m === 'chat' || m === 'mirror') && old === 'term') {
     banner.value = closed.value ? banner.value : null
   }
-})
+  if (props.cell && m === 'term') fitted.value = true
+  else if (m !== 'mirror') fitted.value = false
+}, { immediate: true })
 
 function setMode(m: PaneViewMode) {
   if (props.cell) emit('activate')
   viewMode.value = m
-  if (desk.value && m === 'term') nextTick(() => (props.cell ? mirror.value : ctl)?.focus())
+  if (desk.value && m === 'term') nextTick(() => (mode.value === 'mirror' ? mirror.value : ctl)?.focus())
   haptic()
 }
 // Header icons (phone): one tap shows the terminal (or the Project
@@ -458,7 +466,7 @@ onMounted(() => {
 })
 // Cell just activated by a click outside its content: we give it the keyboard.
 watch(() => props.active, (a, was) => {
-  if (a && !was && props.cell) setTimeout(() => { if (!document.activeElement?.closest('.cell-view.active')) (mode.value === 'mirror' ? mirror.value : composer.value)?.focus() }, 50)
+  if (a && !was && props.cell) setTimeout(() => { if (!document.activeElement?.closest('.cell-view.active')) (mode.value === 'term' ? ctl : mode.value === 'mirror' ? mirror.value : composer.value)?.focus() }, 50)
 })
 
 // Keyboard open (iPhone): the view fits the visible part.
@@ -568,17 +576,17 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <TerminalView
       v-else-if="mode === 'term'" :ctl="ctl" :class="enter ? (enter > 0 ? 'enter-next' : 'enter-prev') : undefined" :style="swipeStyle"
     />
-    <MirrorView v-else-if="mode === 'mirror'" ref="mirror" :pane-id="paneId" :interactive="active" />
+    <MirrorView v-else-if="mode === 'mirror'" ref="mirror" :pane-id="paneId" :hold="fitted" />
     <ProjectPanel
       v-else-if="mode === 'project'" :pane-id="paneId" :board="project.board.value" :loading="project.loading.value" :error="project.error.value"
       @reload="project.reload()" @sent="onSent" @prefill="onPrefill"
     />
     <div v-else class="chat" />
-    <p v-if="pane?.agent && !hasChat(pane) && mode === 'term'" class="terminal-transcript-note">{{ tl('Conversation unavailable for this agent · follow it in the terminal', 'Conversation non disponible pour cet agent · suivi dans le terminal') }}</p>
+    <p v-if="pane?.agent && !hasChat(pane) && mode === 'term' && !cell" class="terminal-transcript-note">{{ tl('Conversation unavailable for this agent · follow it in the terminal', 'Conversation non disponible pour cet agent · suivi dans le terminal') }}</p>
 
     <ChoicesPanel v-if="(prompt || screen) && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :screen="screen" :keys="live" />
     <MenuPanel v-else-if="menu && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :menu="menu" :keys="live" @terminal="setMode('term')" />
-    <Keybar v-if="mode === 'term' && eventsOpen && !offlineView && !machineDown" :ctl="ctl" />
+    <Keybar v-if="mode === 'term' && !cell && eventsOpen && !offlineView && !machineDown" :ctl="ctl" />
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :esc-stops="!searchOpen" :take-back="mode === 'chat'" @sent="onSent" @show-terminal="setMode('term')" />
     </div>
     <div

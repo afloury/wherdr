@@ -15,7 +15,9 @@ import { TERM_FONT, onFontsLoaded } from '~/utils/terminalFont'
 
 export interface Banner { text: string, btn: string, fn: () => void }
 
-export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | null) => void, hasBanner: () => boolean }) {
+// `fill`: side-by-side cell, the terminal takes the whole cell instead of the
+// reading column of a pane opened alone.
+export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | null) => void, hasBanner: () => boolean, fill?: () => boolean }) {
   let term: Terminal | null = null
   let fit: FitAddon | null = null
   let webgl: WebglAddon | null = null
@@ -129,7 +131,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     if (!term || !fit || !el || !el.parentElement) return
     // FitAddon measures the parent of .xterm (#term), not .xterm itself.
     // On the phone, the inset of #term already defines its width.
-    const desktop = matchMedia('(min-width: 900px)').matches
+    const desktop = matchMedia('(min-width: 900px)').matches && !opts.fill?.()
     el.style.width = desktop ? `${terminalPixelWidth(el.parentElement.clientWidth, contentWidth.value)}px` : ''
     const p = fit.proposeDimensions()
     if (!p || !p.cols || !p.rows) return

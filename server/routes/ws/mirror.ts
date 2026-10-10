@@ -18,10 +18,11 @@ export default defineWebSocketHandler({
     const raw = messageText(message)
     if (raw) sessions.get(peer.id)?.onMessage(raw)
   },
-  close(peer) {
+  close(peer, details) {
     unwatchPeer(peer)
     const s = sessions.get(peer.id)
     sessions.delete(peer.id)
-    s?.onClose()
+    // 1000: the mirror was closed (anything else: hidden page, dropped connection).
+    s?.onClose(details?.code === 1000)
   },
 })

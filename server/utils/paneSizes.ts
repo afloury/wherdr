@@ -32,7 +32,7 @@ export interface PaneSizesDeps {
   log?: (message: string) => void
 }
 
-// One open terminal of a pane.
+// One open terminal of a pane (or the mirror of a pane wherdr resized).
 export interface PaneHold {
   // The size this terminal asked for.
   resized: (cols: number, rows: number) => void
@@ -155,7 +155,10 @@ export function createPaneSizes(deps: PaneSizesDeps) {
     for (const e of entries.values()) clearTimeout(e.timer)
   }
 
-  return { hold, adopt, stop, held: () => [...entries.keys()] }
+  // Size wherdr last gave the pane, while one of its views holds it.
+  const asked = (pane: string) => entries.get(pane)?.set ?? null
+
+  return { hold, adopt, stop, asked, held: () => [...entries.keys()] }
 }
 
 // "rows cols" of `stty size`.
