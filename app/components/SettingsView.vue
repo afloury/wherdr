@@ -3,7 +3,6 @@
 // notifications, security (passkey), computer, about.
 import type { ThemeDef, ThemeGroup } from '~/utils/themes'
 import type { TypingSpeed } from '~/utils/typewriter'
-import type { QuoteMode } from '~/utils/quoteTokens'
 import pkg from '../../package.json'
 import { SETTINGS_SECTIONS, settingsBack } from '~/utils/settingsNav'
 import type { SettingsSection } from '~/utils/settingsNav'
@@ -73,16 +72,11 @@ const quotasOn = showQuotas
 const compactOn = compactList
 const autoReorderOn = autoReorderReady
 const encryptedOn = encryptedText
-// Quoted replies: one mode per device kind; the preview shows the last one
-// picked, at first this device's.
-const quoteComputer = quoteModeComputer
-const quotePhone = quoteModePhone
-const quotePreview = ref<QuoteMode>(quoteMode.value)
-watch(quoteComputer, (m) => { quotePreview.value = m })
-watch(quotePhone, (m) => { quotePreview.value = m })
+// Quoted replies: the mode of this device.
+const quoteChoice = quoteMode
 const quoteItems = computed(() => [
-  { label: tl('“>” lines', 'Lignes « > »'), description: tl('Plain text: each quote stays “> ” lines, a chip above the field removes it. Default.', 'Texte simple : chaque citation reste en lignes « > », une puce au-dessus du champ la retire. Par défaut.'), value: 'lines', exp: false },
-  { label: tl('Tokens, native field', 'Jetons, champ natif'), description: tl('The same plain field, each “> ” line drawn as a token. Typing, dictation and autocorrect unchanged.', 'Le même champ simple, chaque ligne « > » dessinée en jeton. Saisie, dictée et correction auto inchangées.'), value: 'native', exp: true },
+  { label: tl('“>” lines', 'Lignes « > »'), description: tl('Plain text: each quote stays “> ” lines, a chip above the field removes it.', 'Texte simple : chaque citation reste en lignes « > », une puce au-dessus du champ la retire.'), value: 'lines', exp: false },
+  { label: tl('Tokens, native field', 'Jetons, champ natif'), description: tl('The same plain field, each “> ” line drawn as a token. Typing, dictation and autocorrect unchanged. Default.', 'Le même champ simple, chaque ligne « > » dessinée en jeton. Saisie, dictée et correction auto inchangées. Par défaut.'), value: 'native', exp: false },
   { label: tl('Tokens, rich field', 'Jetons, champ riche'), description: tl('A rich field, each quote one compact token with ✕. On iOS, moving the caret around the tokens is unreliable.', 'Un champ riche, chaque citation un jeton compact avec ✕. Sur iOS, déplacer le curseur autour des jetons est peu fiable.'), value: 'rich', exp: true },
 ])
 // How questions and points offer to be quoted (utils/questionReply.ts).
@@ -353,7 +347,7 @@ onMounted(() => {
           <div class="settings-group">
             <h3>{{ t('Home screen') }}</h3>
             <label class="settings-toggle">
-              <span><b>{{ t('Compact list') }}</b><small>{{ t('One line per agent or space: no preview, folder or model. Computer and phone. Saved on this device.') }}</small></span>
+              <span><b>{{ t('Compact list') }}</b><small>{{ t('One line per agent or space: no preview, folder or model; an agent waiting for an answer shows its question and answers. Computer and phone. Saved on this device.') }}</small></span>
               <USwitch v-model="compactOn" color="success" size="xl" />
             </label>
             <label class="settings-toggle">
@@ -420,15 +414,8 @@ onMounted(() => {
           <div class="settings-group">
             <h3>{{ tl('Quoted replies', 'Réponses citées') }}</h3>
             <p class="muted settings-lead">{{ tl('Answer several questions or passages of an agent in one message: ↳ Reply quotes each in the field, above its answer. Choose how the field shows the quotes; the message sent is the same.', 'Réponds à plusieurs questions ou passages d’un agent dans un seul message : ↳ Répondre cite chacun dans le champ, au-dessus de sa réponse. Choisis comment le champ affiche les citations ; le message envoyé est le même.') }}</p>
-            <QuoteTokensPreview v-if="activeSection === 'conversation'" :mode="quotePreview" />
-            <h4 class="qt-device">{{ tl('On a computer', 'Sur ordinateur') }}</h4>
-            <URadioGroup v-model="quoteComputer" :items="quoteItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio">
-              <template #label="{ item }">
-                {{ item.label }}<span v-if="item.exp" class="exp-tag">{{ tl('Experimental', 'Expérimental') }}</span>
-              </template>
-            </URadioGroup>
-            <h4 class="qt-device">{{ tl('On a phone', 'Sur téléphone') }}</h4>
-            <URadioGroup v-model="quotePhone" :items="quoteItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio">
+            <QuoteTokensPreview v-if="activeSection === 'conversation'" :mode="quoteChoice" />
+            <URadioGroup v-model="quoteChoice" :items="quoteItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio quote-mode-radio">
               <template #label="{ item }">
                 {{ item.label }}<span v-if="item.exp" class="exp-tag">{{ tl('Experimental', 'Expérimental') }}</span>
               </template>
