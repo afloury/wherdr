@@ -26,7 +26,7 @@ test('two files review appends to the message draft without sending; survives cl
   for (const [path, body] of [['src/first.ts', 'Check the first call'], ['src/second.ts', 'Handle the empty case']]) {
     const f = page.locator('.change-file').filter({ hasText: path })
     await f.locator('summary').click()
-    await f.getByRole('button', { name: 'Comment on line 10', exact: true }).click()
+    await f.locator('.review-source').last().click()
     await expect(f.locator('textarea')).toBeFocused()
     await f.locator('textarea').fill(body!)
   }

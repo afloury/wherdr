@@ -3495,7 +3495,7 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .review-gutter:hover, .review-gutter:focus-visible { background: color-mix(in srgb, var(--blue) 18%, transparent); outline: 1px solid var(--blue); outline-offset: -1px; }
 .review-note { padding: 12px; border-block: 1px solid var(--line); border-left: 3px solid var(--blue); background: var(--surface); scroll-margin-block: 16px; }
 .review-note label { display: block; overflow-wrap: anywhere; color: var(--blue); font: 11px/1.5 var(--mono); }
-.review-note textarea { display: block; width: 100%; margin-top: 8px; padding: 10px; resize: vertical; border: 1px solid var(--line); border-radius: 0; background: var(--code-bg); color: var(--text); font: 16px/1.5 var(--sans); }
+.review-note textarea { scroll-margin-top: 120px; display: block; width: 100%; margin-top: 8px; padding: 10px; resize: vertical; border: 1px solid var(--line); border-radius: 0; background: var(--code-bg); color: var(--text); font: 16px/1.5 var(--sans); }
 .review-note textarea:focus { outline: 1px solid var(--blue); }
 .review-note button { min-height: 44px; color: var(--muted); text-decoration: underline; font-size: 12px; cursor: pointer; }
 .review-note p { color: var(--ochre); font-size: 12px; margin-top: 8px; }
