@@ -75,7 +75,7 @@ test('switching to Terminal and back keeps one fitted terminal for the pane', as
   await expect(page.locator('#term .xterm-rows')).toContainText('View analytics')
   await expect(page.locator('#term .xterm')).toHaveCount(1)
   if (info.project.name.includes('desktop')) await page.getByRole('tab', { name: 'Conversation', exact: true }).click()
-  else await page.getByRole('button', { name: 'Conversation', exact: true }).click()
+  else await page.getByRole('button', { name: 'Terminal', exact: true }).click()
   await expect(page.locator('.interactive-terminal .xterm-rows')).toContainText('View analytics')
   await expect(page.locator('#term .xterm')).toHaveCount(1)
   expect((await size() as { attached: boolean }).attached).toBe(true)
