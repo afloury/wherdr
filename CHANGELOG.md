@@ -41,7 +41,10 @@ All notable changes to this project are documented here. The format follows
   now shows one line per agent or space unless you chose otherwise. A device where Settings ›
   Appearance › Home screen › Compact list was never touched switches to the compact list; a
   device where it was turned off keeps the detailed cards. Turn it off there to get the preview,
-  folder, model and one-tap answers back on the cards.
+  folder and model back on the cards.
+- **One-tap answers in the compact list**: the one-line card of an agent waiting for an answer
+  opens on its question, the requested action and the same answer buttons as the detailed card,
+  then folds back to one line once answered. The other cards stay one line.
 
 ### Fixed
 

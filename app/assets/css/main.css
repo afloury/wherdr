@@ -691,6 +691,9 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 }
 .card-detail-tool { flex: none; font: 600 10px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--rose); max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-detail code { min-width: 0; font: 400 12px/1.35 var(--mono); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Question, requested action and one-tap answers. Detailed card: the wrappers
+   leave their children to the card's own layout. */
+.card-more, .card-more-in { display: contents; }
 .card-choices { flex: 0 0 calc(100% - 50px); min-width: 0; display: flex; flex-direction: column; gap: 6px; margin-left: 50px; }
 .card-choices button {
   display: flex; align-items: center; gap: 10px; text-align: left;
@@ -3456,6 +3459,23 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .card.compact.blocked .card-title { color: var(--rose); }
 /* Touch: keep a usable target. */
 @media (pointer: coarse) { .card.compact { min-height: 38px; } }
+/* Waiting for an answer: the line opens on the question and the one-tap
+   answers of the detailed card, and folds back once answered. */
+/* :has: the line keeps its wrap while the answers fold back. */
+.card.compact.open, .card.compact:has(> .card-more) { flex-wrap: wrap; row-gap: 0; }
+.card.compact .card-more { flex: 0 0 100%; min-width: 0; display: grid; grid-template-rows: 1fr; }
+.card.compact .card-more-in { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding: 6px 0 4px 26px; }
+.card.compact .card-detail, .card.compact .card-preview, .card.compact .card-choices { flex: none; margin: 0; }
+.card.compact .card-detail { padding: 4px 8px; }
+.card.compact .card-preview { font-size: 12.5px; line-height: 1.4; }
+.card.compact .card-choices { gap: 4px; }
+.card.compact .card-choices button { padding: 6px 10px; font-size: 13px; }
+@media (pointer: coarse) { .card.compact .card-choices button { min-height: 38px; } }
+.card.compact .card-more.card-more-enter-active, .card.compact .card-more.card-more-leave-active { transition: grid-template-rows .18s ease, opacity .18s ease; }
+.card.compact .card-more.card-more-enter-from, .card.compact .card-more.card-more-leave-to { grid-template-rows: 0fr; opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .card.compact .card-more.card-more-enter-active, .card.compact .card-more.card-more-leave-active { transition: none; }
+}
 
 .list-compact .agent-group { margin-bottom: 14px; }
 .list-compact .group-title { margin-bottom: 6px; font-size: 9.5px; }
