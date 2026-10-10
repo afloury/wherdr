@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
-import { CLAUDE_ASK_PANE, CLAUDE_PANE, OMP_ASK_PANE, fakeHerdr } from './scenario.mjs'
+import { CLAUDE_ASK_PANE, CLAUDE_PANE, OMP_ASK_PANE, SPLIT_CHAT_PANE, fakeHerdr } from './scenario.mjs'
 
 // Compact list (the default): the card of an agent waiting for an answer opens
 // on its question and the one-tap answers of the detailed card, and is one
@@ -77,6 +77,103 @@ test('a waiting agent opens its compact card; one tap answers and folds it back'
   await expect.poll(() => answers(CLAUDE_ASK_PANE)).toEqual([['down', 'enter']])
   await expect(opened(page)).toHaveCount(0)
   await shot(page, 'compact-answered', testInfo.project.name)
+})
+
+test('a tap that lands on the answers the moment they appear is ignored', async ({ page }) => {
+  await page.goto('/')
+  const omp = card(page, OMP_ASK_PANE)
+  await expect(omp).toHaveClass(/compact/)
+  await expect(opened(page)).toHaveCount(0)
+  // The list has been on screen for a while.
+  await page.waitForTimeout(1200)
+  // A finger on its way to a line: it lands in the frame the answers of the
+  // agent above appear, on the first of them.
+  await page.evaluate((pane) => {
+    const w = window as unknown as { tapped?: boolean }
+    const seen = new MutationObserver(() => {
+      const b = document.querySelector<HTMLElement>(`#home .card[data-pane="${pane}"] .card-choices button`)
+      if (!b) return
+      seen.disconnect()
+      b.click()
+      w.tapped = true
+    })
+    seen.observe(document.querySelector('#home')!, { childList: true, subtree: true })
+  }, OMP_ASK_PANE)
+  await ask(OMP_ASK_PANE, APPROVAL)
+  await expect.poll(() => page.evaluate(() => (window as unknown as { tapped?: boolean }).tapped)).toBe(true)
+  await page.waitForTimeout(700)
+  // Nothing answered, nothing opened: the question still waits.
+  expect(await answers(OMP_ASK_PANE)).toEqual([])
+  await expect(omp).toHaveClass(/open/)
+  await expect(omp.locator('.card-choices button').first()).toBeEnabled()
+  await expect(page).toHaveURL(/\/$|#\/$/)
+  // A moment later the same answer takes the tap.
+  await omp.locator('.card-choices button', { hasText: 'Approve' }).click()
+  await expect.poll(() => answers(OMP_ASK_PANE)).toEqual([['enter']])
+})
+
+test('open cards do not replay their opening when the list comes back', async ({ page }) => {
+  await ask(OMP_ASK_PANE, APPROVAL)
+  await page.goto('/')
+  const more = card(page, OMP_ASK_PANE).locator('.card-more')
+  await expect(more).toBeVisible()
+  // The list has been on screen for a while.
+  await page.waitForTimeout(1200)
+  // Counts the answers that enter the page with the opening transition.
+  await page.evaluate(() => {
+    const w = window as unknown as { openings: number }
+    w.openings = 0
+    new MutationObserver((records) => {
+      for (const r of records) for (const n of r.addedNodes) {
+        if (!(n instanceof Element)) continue
+        w.openings += [n, ...n.querySelectorAll('.card-more')].filter(el => el.matches('.card-more.card-more-enter-active')).length
+      }
+    }).observe(document.body, { childList: true, subtree: true })
+  })
+  const openings = () => page.evaluate(() => (window as unknown as { openings: number }).openings)
+  // A conversation and back (on a phone the list leaves the screen meanwhile).
+  await page.goto(`/#/a/${CLAUDE_PANE}`)
+  await expect(page.locator('.prompt textarea')).toBeVisible()
+  await page.goBack()
+  await expect(more).toBeVisible()
+  await page.waitForTimeout(300)
+  expect(await openings()).toBe(0)
+  // An agent that starts waiting while the list is shown still opens with it.
+  await page.waitForTimeout(1000)
+  await ask(CLAUDE_ASK_PANE, LONG_ASK)
+  await expect(card(page, CLAUDE_ASK_PANE)).toHaveClass(/open/)
+  expect(await openings()).toBe(1)
+})
+
+test('a space with several panes says which pane asks, as the detailed card does', async ({ page }, testInfo) => {
+  await ask(SPLIT_CHAT_PANE, APPROVAL)
+  try {
+    await page.goto('/')
+    const space = page.locator('#home .card[data-ws="w9"]')
+    await expect(space).toHaveClass(/compact/)
+    await expect(space).toHaveClass(/open/)
+    const where = space.locator('.card-more .card-where')
+    await expect(where).toBeVisible()
+    // On the mini-map of the tab, and by name (this pane has no title: its agent).
+    await expect(where.locator('.tabmap i')).toHaveCount(2)
+    await expect(where.locator('.tabmap i.cur')).toHaveCount(1)
+    expect(await where.locator('.tabmap i').first().evaluate(el => el.classList.contains('cur'))).toBe(true)
+    expect((await where.innerText()).trim()).toBe('omp')
+    // Above the question, inside the card.
+    const [w, q, host] = await Promise.all([where.boundingBox(), space.locator('.card-preview').boundingBox(), space.boundingBox()])
+    expect(w!.y + w!.height).toBeLessThanOrEqual(q!.y + 1)
+    expect(w!.x + w!.width).toBeLessThanOrEqual(host!.x + host!.width)
+    await shot(page, 'compact-space-where', testInfo.project.name)
+    // A space of one pane has nothing to tell apart.
+    await ask(OMP_ASK_PANE, APPROVAL)
+    await expect(card(page, OMP_ASK_PANE)).toHaveClass(/open/)
+    await expect(card(page, OMP_ASK_PANE).locator('.card-where')).toHaveCount(0)
+    // The detailed card points at the same pane on its own mini-map.
+    await page.evaluate(() => localStorage.setItem('compactList', '0'))
+    await page.reload()
+    await expect(space).not.toHaveClass(/compact/)
+    expect(await space.locator('.space-avatar .tabmap i').first().evaluate(el => el.classList.contains('cur'))).toBe(true)
+  } finally { await ask(SPLIT_CHAT_PANE) }
 })
 
 test('the answers open with a transition, off under reduced motion', async ({ page }) => {
