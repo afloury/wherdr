@@ -7,7 +7,7 @@
 <p align="center"><b>A complete workspace for the coding agents running in <a href="https://herdr.dev">Herdr</a>, on your
 computer and on your phone.</b></p>
 
-<p align="center"><a href="https://wherdr.dev"><b>wherdr.dev</b></a> · <code>curl -fsSL https://wherdr.dev/install | sh</code> · <code>herdr plugin install afloury/wherdr</code></p>
+<p align="center"><a href="https://wherdr.dev"><b>wherdr.dev</b></a> · <a href="#ask-your-ai-agent">Ask your AI agent</a></p>
 
 <p align="center"><a href="https://wherdr.dev/demo/"><b>Try it in your browser — no install</b></a>: the real app on scripted agents, nothing runs.</p>
 
@@ -15,7 +15,20 @@ computer and on your phone.</b></p>
 
 ## Quick start
 
-On the computer that runs [Herdr](https://herdr.dev) (≥ 0.9.1), macOS or Linux, one command:
+### Ask your AI agent
+
+**Recommended.** Paste this into Claude Code, Codex or any coding agent: it installs and sets up wherdr for you.
+
+```text
+Read https://wherdr.dev/agent.md and help me set up wherdr. Check what is already installed first, and ask me before installing anything.
+```
+
+It follows [our setup guide for agents](https://wherdr.dev/agent.md): checks what you already have,
+asks before installing anything, sets up your phone over Tailscale, never exposes wherdr to the Internet.
+
+### Or run the installer yourself
+
+On the computer that runs [Herdr](https://herdr.dev) (≥ 0.9.1), macOS or Linux:
 
 ```sh
 curl -fsSL https://wherdr.dev/install | sh
@@ -102,7 +115,8 @@ Details in [Features](#features) and [Security](#security).
 - [Features](#features)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
-- [Installation](#installation): [the one command](#the-one-command) ·
+- [Installation](#installation): [ask your AI agent](#ask-your-ai-agent-1) ·
+  [or run the installer yourself](#the-one-command) ·
   [which setup?](#which-setup) ·
   [always-on server + Tailscale](#recommended-always-on-server--tailscale) ·
   [other private networks](#other-private-networks) ·
@@ -270,7 +284,20 @@ Web Push, lock) runs in Nitro.
 
 ## Installation
 
-### The one command
+### Ask your AI agent
+
+**Recommended.** Paste this into Claude Code, Codex or any coding agent: it installs and sets up wherdr for you.
+
+```text
+Read https://wherdr.dev/agent.md and help me set up wherdr. Check what is already installed first, and ask me before installing anything.
+```
+
+It follows [our setup guide for agents](https://wherdr.dev/agent.md): checks what you already have,
+asks before installing anything, sets up your phone over Tailscale, never exposes wherdr to the Internet.
+
+<a id="the-one-command"></a>
+
+### Or run the installer yourself
 
 On the computer that runs Herdr, as your user, on macOS or Linux:
 
