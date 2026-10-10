@@ -390,6 +390,8 @@ const faq = [
 .hero-copy .lead { margin: 0 0 32px; }
 .lead a { color: var(--text); text-decoration-color: var(--accent); text-underline-offset: 3px; }
 .hero-ctas { display: flex; flex-wrap: wrap; gap: 12px; }
+.hero-ctas .btn { max-width: 100%; white-space: normal; }
+.hero-ctas .btn :deep(.iconify) { flex-shrink: 0; }
 .hero-note { margin: 24px 0 0; font-size: 11px; color: var(--dim); }
 .hero-visual { position: relative; padding-bottom: 40px; }
 .hv-desk { width: 100%; }
