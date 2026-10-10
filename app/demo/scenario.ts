@@ -109,15 +109,13 @@ export function conversations(now: number): Record<string, ChatItem[]> {
       { role: 'assistant', text: 'Now I will run the spec twenty times in a row to make sure the order no longer moves.', ts: at(1) },
       { role: 'tool', name: 'Bash', text: 'npm test -- export.spec.ts --repeat 20', ts: at(1), omp: omp('Bash', 'npm test -- export.spec.ts --repeat 20') },
     ],
+    // t-0283 mock-ups (throwaway): a French reply with a question in the middle
+    // of a paragraph, three points and a closing question.
     [CLAUDE_WEB]: [
-      { role: 'user', text: 'Add a dark mode toggle to the settings page. Follow the system by default and remember the choice.', ts: at(40) },
-      { role: 'tool', name: 'Read', text: 'src/pages/settings.vue', ts: at(39) },
-      { role: 'tool', name: 'Grep', text: 'prefers-color-scheme · src', ts: at(39) },
-      { role: 'tool', name: 'Write', text: 'src/composables/useColorMode.ts', ts: at(38) },
+      { role: 'user', text: 'Ajoute un mode sombre à la page Réglages. Suis le système par défaut et retiens le choix.', ts: at(40) },
       { role: 'tool', name: 'Edit', text: 'src/pages/settings.vue', ts: at(37) },
-      { role: 'tool', name: 'Edit', text: 'src/assets/main.css', ts: at(37) },
       { role: 'tool', name: 'Bash', text: 'Run the unit tests', ts: at(36) },
-      { role: 'assistant', text: 'Done. The settings page has an **Appearance** row with three choices:\n\n| Choice | Behaviour |\n|---|---|\n| System | follows `prefers-color-scheme`, live |\n| Light | always light |\n| Dark | always dark |\n\nThe choice is saved in `localStorage` and applied before the first paint, so there is no flash on reload. Tests pass (48/48). **View changes** in the ⋯ menu shows the diff.', ts: at(35) },
+      { role: 'assistant', text: 'C’est en place : la page Réglages a une ligne **Apparence** avec trois choix. Le choix est enregistré dans `localStorage`. Veux-tu que je le synchronise aussi avec le compte, pour le retrouver sur tes autres appareils ? Pour l’instant il reste propre à chaque navigateur.\n\nTrois points à noter :\n\n- Le thème est appliqué avant le premier affichage, donc aucun flash au rechargement.\n- Les graphiques gardent leurs couleurs claires : il faudra une seconde palette pour le mode sombre.\n- Les e-mails ne sont pas concernés, ils restent en clair.\n\nLes 48 tests passent. Je pousse la branche et j’ouvre la PR maintenant ?', ts: at(35) },
     ],
   }
 }
