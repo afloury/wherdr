@@ -42,6 +42,12 @@ All notable changes to this project are documented here. The format follows
   Appearance › Home screen › Compact list was never touched switches to the compact list; a
   device where it was turned off keeps the detailed cards. Turn it off there to get the preview,
   folder, model and one-tap answers back on the cards.
+- **Quoted replies: tokens in the native field by default.** Settings › Conversation › Quoted
+  replies is one list for the device in use, instead of one for a computer and one for a phone.
+  "Tokens, native field" is the default and no longer marked experimental ("Tokens, rich field"
+  still is). Every device moves to it once, whatever it had saved (a choice could not be told
+  from the former default); a choice made afterwards is kept. The preview plays once instead of
+  looping, and has a **Replay** button like the typewriter preview.
 
 ### Fixed
 
