@@ -1,7 +1,7 @@
 // In-browser stand-in for wherdr's server in the demo build: answers the
 // app's /api/* calls and feeds the live state, from scenario.ts. Nothing here
 // talks to a network or runs a command; agents "answer" with scripted turns.
-import type { ChatItem, HerdrState, Pane } from '#shared/types'
+import type { ChatItem, HerdrState, Pane, QueuedMessage } from '#shared/types'
 import * as S from './scenario'
 
 export const DEMO_REFUSAL = 'Demo — nothing runs here. Install wherdr to drive your own agents.'
@@ -29,6 +29,10 @@ export class DemoServer {
   private turns = new Map<string, number>()
   private sent = 0
   private pending = new Map<string, { token: number, turn: S.ScriptedTurn }>()
+  // Messages typed while a question hides the agent's input field: held, like
+  // the real server does (server/utils/queued.ts), until the agent rests.
+  private held = new Map<string, QueuedMessage[]>()
+  private heldSeq = 0
   private nextWs = 5
   private seq = 10
 
@@ -87,6 +91,53 @@ export class DemoServer {
   // End of a turn: read right away when watched, otherwise "done" (unread).
   private finish(id: string) {
     this.update(id, { status: this.viewing === id ? 'idle' : 'done', activity: undefined, ompActivity: undefined, prompt: undefined })
+    this.deliverHeld(id)
+  }
+
+  // ---------------------------------------------------------------- held messages
+  private setHeld(id: string, list: QueuedMessage[]) {
+    if (list.length) this.held.set(id, list)
+    else this.held.delete(id)
+    this.update(id, { queued: list.length ? list : undefined })
+  }
+
+  // `clientId`: the app's id for the bubble it already shows (app/utils/outbox.ts).
+  private hold(id: string, text: string, clientId?: string): DemoReply {
+    const list = this.held.get(id) || []
+    const own = clientId && /^w-[a-z0-9]{1,32}$/.test(clientId) && !list.some(q => q.id === clientId) ? clientId : null
+    const q: QueuedMessage = { id: own || `demo-q${++this.heldSeq}`, text: text.slice(0, 4000), at: this.clock.now(), state: 'held' }
+    // Listed in the pane's state (sent before this answer) and not returned
+    // here: the app would keep its own copy of a returned record for a while
+    // (app/utils/outbox.ts), still shown after a Cancel.
+    this.setHeld(id, [...list, q])
+    return ok()
+  }
+
+  // The agent rests with its input field back: the oldest held message goes
+  // out; the next one follows at the end of that turn.
+  private deliverHeld(id: string) {
+    if (!this.held.has(id)) return
+    this.clock.setTimeout(() => {
+      const p = this.pane(id)
+      const [next, ...rest] = this.held.get(id) || []
+      if (!p || !next || p.status === 'working' || p.status === 'blocked') return
+      this.setHeld(id, rest)
+      this.send(p, next.text)
+    }, 600)
+  }
+
+  unqueue(id: string, text: string, msgId?: string): DemoReply {
+    const list = this.held.get(id) || []
+    const mine = list.find(q => q.id === msgId) || list.find(q => q.text === text)
+    if (!mine) return fail(409, 'Already read by the agent', 'already_read')
+    this.setHeld(id, list.filter(q => q !== mine))
+    return ok({ ok: true, text: mine.text })
+  }
+
+  // Nothing fails to send here: a held message is still waiting, as asked.
+  requeue(id: string, msgId: string): DemoReply {
+    const mine = (this.held.get(id) || []).find(q => q.id === msgId)
+    return mine ? ok({ ok: true, queued: mine }) : fail(404, 'Message not found', 'not_found')
   }
 
   private working(p: Pane, step: string) {
@@ -109,18 +160,26 @@ export class DemoServer {
   }
 
   // ---------------------------------------------------------------- turns
-  prompt(id: string, text: string): DemoReply {
+  prompt(id: string, text: string, clientId?: string): DemoReply {
     const p = this.pane(id)
     if (!p) return fail(404, 'Pane not found', 'bad_pane')
     if (!text.trim()) return fail(400, 'Empty message', 'empty')
     if (!p.agent) return fail(400, DEMO_REFUSAL)
-    if (p.status === 'blocked') return fail(409, 'Answer the question on screen first.', 'agent_blocked')
-    this.push(id, { role: 'user', text, ts: null })
     if (text.trim().startsWith('/')) {
+      this.push(id, { role: 'user', text, ts: null })
       this.push(id, { role: 'system', text: `${text.trim().split(/\s/)[0]} — commands do not run in the demo`, ts: null })
       return ok()
     }
-    const turn = S.scriptFor(p.agent, text, this.sent++)
+    // A question is open (or an earlier message still waits): typed now, the
+    // message would be lost in it. Held, and sent once the agent rests.
+    if (p.status === 'blocked' || this.held.has(id)) return this.hold(id, text, clientId)
+    return this.send(p, text)
+  }
+
+  private send(p: Pane, text: string): DemoReply {
+    const id = p.id
+    this.push(id, { role: 'user', text, ts: null })
+    const turn = S.scriptFor(p.agent || '', text, this.sent++)
     const token = (this.turns.get(id) || 0) + 1
     this.turns.set(id, token)
     this.update(id, this.working(p, 'Thinking'))
@@ -207,6 +266,7 @@ export class DemoServer {
     if (stopped) {
       this.push(id, { role: 'system', text: 'Interrupted', ts: null })
       this.update(id, { status: 'idle', activity: undefined, ompActivity: undefined, prompt: undefined })
+      this.deliverHeld(id)
     }
     return ok({ ok: true, stopped, background: 0 })
   }
@@ -231,6 +291,7 @@ export class DemoServer {
     const p = this.pane(id)
     if (!p) return fail(404, 'Pane not found', 'bad_pane')
     this.turns.set(id, (this.turns.get(id) || 0) + 1)
+    this.held.delete(id)
     this.panes = this.panes.filter(x => x.id !== id)
     if (!this.panes.some(x => x.workspace === p.workspace)) {
       this.workspaces = this.workspaces.filter(w => w.id !== p.workspace)
@@ -287,7 +348,13 @@ export class DemoServer {
       return fail(404, DEMO_REFUSAL)
     }
     switch (path) {
-      case '/api/prompt': return this.prompt(paneId, String(body.text || ''))
+      case '/api/prompt': return this.prompt(paneId, String(body.text || ''), typeof body.client_id === 'string' ? body.client_id : undefined)
+      // The app types a written reply to Claude's or Codex's question (see
+      // shared/sendRoute.ts): here it never answers the question in the
+      // visitor's place, it waits like any message sent while one is open.
+      case '/api/input': return typeof body.text === 'string' && body.text.trim() && this.pane(paneId)?.agent ? this.prompt(paneId, body.text) : fail(403, DEMO_REFUSAL)
+      case '/api/unqueue': return this.unqueue(paneId, String(body.text || ''), typeof body.id === 'string' ? body.id : undefined)
+      case '/api/requeue': return this.requeue(paneId, String(body.id || ''))
       case '/api/choose': return this.choose(paneId, Number(body.index), String(body.label || ''))
       case '/api/interrupt': return this.interrupt(paneId)
       case '/api/agents': return this.newAgent(body as Parameters<DemoServer['newAgent']>[0])

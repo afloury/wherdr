@@ -87,17 +87,85 @@ describe('demo server', () => {
     expect(s.pane(CLAUDE_WEB)?.prompt).toBeUndefined()
   })
 
-  it('refuses a stale answer and a message while a question is open', () => {
+  it('refuses a stale answer while a question is open', () => {
     const c = clock()
     const s = new DemoServer(c)
     expect(s.handle('POST', '/api/choose', { pane_id: OMP, index: 0, label: 'Deny' }).status).toBe(409)
-    expect(s.handle('POST', '/api/prompt', { pane_id: OMP, text: 'hello' }).status).toBe(409)
     expect(s.handle('POST', '/api/choose', { pane_id: OMP, index: 0, label: 'Approve' }).status).toBe(200)
     c.advance(20_000)
     // The command already shown as running gets its result, not a second line.
     const runs = chat(s, OMP).items!.filter(i => i.text === 'npm test -- export.spec.ts --repeat 20')
     expect(runs).toHaveLength(1)
     expect(runs[0]!.omp?.exit).toBe(0)
+  })
+
+  it('holds a message typed during an approval, and sends it once the agent rests', () => {
+    const c = clock()
+    const s = new DemoServer(c)
+    const before = chat(s, OMP).items!.length
+    const r = s.handle('POST', '/api/prompt', { pane_id: OMP, text: 'Why was it flaky?', client_id: 'w-abc123' })
+    expect(r).toEqual({ status: 200, body: { ok: true } })
+    // Still waiting on the question, the message is listed, not in the conversation.
+    expect(s.pane(OMP)).toMatchObject({ status: 'blocked', queued: [{ id: 'w-abc123', text: 'Why was it flaky?', state: 'held' }] })
+    expect(chat(s, OMP).items).toHaveLength(before)
+    // Retry of a message still held: the same record, never an error.
+    expect(s.handle('POST', '/api/requeue', { pane_id: OMP, id: 'w-abc123' })).toMatchObject({ status: 200, body: { queued: { id: 'w-abc123', state: 'held' } } })
+    // A second one waits behind it.
+    expect(s.handle('POST', '/api/prompt', { pane_id: OMP, text: 'How do I check it?' }).status).toBe(200)
+    expect(s.pane(OMP)?.queued).toHaveLength(2)
+
+    s.handle('POST', '/api/choose', { pane_id: OMP, index: 0, label: 'Approve' })
+    c.advance(60_000)
+    const users = chat(s, OMP).items!.slice(before).filter(i => i.role === 'user').map(i => i.text)
+    expect(users).toEqual(['Why was it flaky?', 'How do I check it?'])
+    expect(s.pane(OMP)?.queued).toBeUndefined()
+    expect(s.pane(OMP)?.status).toBe('done')
+    expect(chat(s, OMP).items!.at(-1)!.role).toBe('assistant')
+  })
+
+  it('holds a written reply to a Claude question too, without answering it', () => {
+    const c = clock()
+    const s = new DemoServer(c)
+    s.handle('POST', '/api/prompt', { pane_id: CLAUDE_WEB, text: 'Run the tests' })
+    c.advance(5_000)
+    expect(s.pane(CLAUDE_WEB)?.status).toBe('blocked')
+    // The route the app takes for Claude and Codex questions (shared/sendRoute.ts).
+    const r = s.handle('POST', '/api/input', { pane_id: CLAUDE_WEB, text: 'Only the unit tests', keys: ['enter'] })
+    expect(r.status).toBe(200)
+    expect(s.pane(CLAUDE_WEB)).toMatchObject({ status: 'blocked', queued: [{ text: 'Only the unit tests', state: 'held' }] })
+    // Stop closes the question: the held message goes out.
+    s.handle('POST', '/api/interrupt', { pane_id: CLAUDE_WEB })
+    c.advance(1_000)
+    expect(s.pane(CLAUDE_WEB)?.queued).toBeUndefined()
+    expect(chat(s, CLAUDE_WEB).items!.filter(i => i.role === 'user').at(-1)!.text).toBe('Only the unit tests')
+    // Keys alone are not simulated.
+    expect(s.handle('POST', '/api/input', { pane_id: CLAUDE_WEB, keys: ['enter'] }).status).toBe(403)
+  })
+
+  it('cancels a held message: its text comes back, nothing is sent', () => {
+    const c = clock()
+    const s = new DemoServer(c)
+    const before = chat(s, OMP).items!.length
+    s.handle('POST', '/api/prompt', { pane_id: OMP, text: 'Never mind' })
+    const q = s.pane(OMP)!.queued![0]!
+    expect(s.handle('POST', '/api/unqueue', { pane_id: OMP, text: 'Never mind', id: q.id })).toEqual({ status: 200, body: { ok: true, text: 'Never mind' } })
+    expect(s.pane(OMP)?.queued).toBeUndefined()
+    expect(s.handle('POST', '/api/unqueue', { pane_id: OMP, text: 'Never mind', id: q.id }).status).toBe(409)
+    s.handle('POST', '/api/choose', { pane_id: OMP, index: 0, label: 'Approve' })
+    c.advance(60_000)
+    expect(chat(s, OMP).items!.slice(before).some(i => i.role === 'user')).toBe(false)
+  })
+
+  it('takes a message while the agent works, and a command while a question is open', () => {
+    const c = clock()
+    const s = new DemoServer(c)
+    s.handle('POST', '/api/prompt', { pane_id: COORD, text: 'Plan the next release' })
+    expect(s.pane(COORD)?.status).toBe('working')
+    expect(s.handle('POST', '/api/prompt', { pane_id: COORD, text: 'Why this order?' }).status).toBe(200)
+    c.advance(30_000)
+    expect(chat(s, COORD).items!.at(-1)!.role).toBe('assistant')
+    expect(s.handle('POST', '/api/prompt', { pane_id: OMP, text: '/compact' }).status).toBe(200)
+    expect(s.pane(OMP)?.queued).toBeUndefined()
   })
 
   it('the Codex thread finishes by itself and the project board follows', () => {
