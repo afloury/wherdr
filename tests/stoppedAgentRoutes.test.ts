@@ -87,6 +87,32 @@ describe('messages to a stopped Codex', () => {
       expect(s.queue).not.toHaveBeenCalled()
     })
   })
+  describe('Dismiss on the card', () => {
+    const run = async (s: ReturnType<typeof setup>, restart = false) => {
+      const dismiss = vi.fn()
+      vi.stubGlobal('dismissStopped', dismiss)
+      vi.stubGlobal('restarting', () => restart)
+      const { default: handler } = await import('../server/api/dismiss-stopped.post')
+      expect(await handler({} as never, { pane_id: s.pane.id })).toEqual({ ok: true })
+      expect(s.write).not.toHaveBeenCalled()
+      return dismiss
+    }
+    it('drops the record of a stopped Codex without writing to its pane', async () => {
+      const s = setup()
+      expect(await run(s)).toHaveBeenCalledExactlyOnceWith(s.pane.id)
+    })
+    it('leaves a live agent and a restart in progress alone', async () => {
+      const s = setup()
+      expect(await run(s, true)).not.toHaveBeenCalled()
+      s.pane.stopped = undefined
+      expect(await run(s)).not.toHaveBeenCalled()
+    })
+    it('rejects an invalid pane', async () => {
+      setup()
+      const { default: handler } = await import('../server/api/dismiss-stopped.post')
+      await expect(handler({} as never, { pane_id: 'nope' })).rejects.toMatchObject({ code: 'bad_pane' })
+    })
+  })
   it('holds immediately during a long restart without waiting for its write lock', async () => {
     const s = setup()
     vi.stubGlobal('restarting', () => true)

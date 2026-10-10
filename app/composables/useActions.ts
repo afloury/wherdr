@@ -19,6 +19,19 @@ export async function choose(paneId: string, index: number, label: string, free?
   }
 }
 
+// "Dismiss" on the card of a Codex stopped by its update: the pane is a plain
+// shell again, as if wherdr had not seen the update.
+export async function dismissStopped(paneId: string): Promise<boolean> {
+  haptic()
+  try {
+    await api('/api/dismiss-stopped', { pane_id: paneId })
+    return true
+  } catch (err) {
+    toast((err as Error).message, true)
+    return false
+  }
+}
+
 // omp "Ask" box with tabs: show question `index` (or Submit).
 export async function askTab(paneId: string, index: number, label: string): Promise<boolean> {
   haptic()

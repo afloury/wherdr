@@ -532,7 +532,7 @@ async function deliveryDone(paneId: string) {
 }
 export async function cancelQueued(paneId: string, text: string, id?: string): Promise<{ text: string, lost?: number }> {
   const p = findPane(paneId)
-  if (!p || !p.agent) throw new HerdrError('not_found', 'agent not found')
+  if (!p) throw new HerdrError('not_found', 'agent not found')
   let mine = findQueued(queued.get(p.id) || [], text, id)
   if (mine && (mine.held || mine.failed) && deliverBusy.has(p.id)) {
     await deliveryDone(p.id)
@@ -549,6 +549,8 @@ export async function cancelQueued(paneId: string, text: string, id?: string): P
     setTimeout(poll, 50)
     return { text: mine.text }
   }
+  // Only wherdr's own held or failed record (above) outlives its agent.
+  if (!p.agent) throw new HerdrError('not_found', 'agent not found')
   const pend = pendingPrompts.get(p.id)
   if (pend && !pendingBusy.has(p.id) && sameMsg(msgText(pend.text), msgText(text))) {
     pendingPrompts.delete(p.id)
@@ -635,6 +637,13 @@ export const selfUpdates = createSelfUpdates({
     }).catch(() => {})
   },
 }, (() => { try { return JSON.parse(fs.readFileSync(LAST_AGENTS_FILE, 'utf8')) } catch { return [] } })())
+// Card of a Codex stopped by its update, dismissed: the saved record goes and
+// the pane is a plain shell again. No agent will take the messages held for
+// the restart: given back as not sent.
+export function dismissStopped(paneId: string) {
+  selfUpdates.clear(paneId)
+  failHeld(queued.get(paneId))
+}
 function flushPending(p: Pane) {
   const pend = pendingPrompts.get(p.id)
   if (!pend || pendingBusy.has(p.id)) return

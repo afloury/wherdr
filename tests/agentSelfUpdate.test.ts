@@ -271,6 +271,25 @@ describe('observed process lifecycle and final guards', () => {
     expect(await s.monitor.observe(shell, false)).toBe(false)
     expect(shell.leaving).toBeUndefined()
   })
+  it('forgets a dismissed card for good: the pane stays a plain shell', async () => {
+    const s = setup()
+    await s.monitor.observe(pane(), false)
+    s.exit()
+    await s.monitor.observe(pane(null), false)
+    s.tick()
+    expect(await s.monitor.observe(pane(null), false)).toBe(true)
+    s.monitor.clear('w1:p1')
+    expect(s.save).toHaveBeenLastCalledWith([])
+    const reads = s.call.mock.calls.length
+    for (let i = 0; i < 3; i++) {
+      s.tick()
+      const shell = pane(null)
+      expect(await s.monitor.observe(shell, false)).toBe(false)
+      expect(shell).toEqual(pane(null))
+    }
+    expect(s.call).toHaveBeenCalledTimes(reads)
+    expect(await s.monitor.check('w1:p1')).toBeNull()
+  })
   it('writes nothing while nothing changes, alive or stopped', async () => {
     const s = setup({ available: true, session: SESSION, items: [{ role: 'user', text: 'Hello', ts: null }] })
     await s.monitor.observe(pane(), false)

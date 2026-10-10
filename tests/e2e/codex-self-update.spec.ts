@@ -72,6 +72,28 @@ test('a Project message sent before the card appears is held, never typed into t
   expect((await stats()).writes).toEqual([])
 })
 
+test('Dismiss forgets the update and gives the pane back as a plain shell', async ({ page }, info) => {
+  const pane = async () => (await (await page.request.get('/api/state')).json()).panes.find((p: { id: string }) => p.id === CODEX_UPDATE_PANE)
+  await stopAfterUpdate(page)
+  const held = (await (await post(page, 'prompt', { text: 'Held for the restart' })).json()).queued
+  expect(held.state).toBe('held')
+  await card(page).getByRole('button', { name: 'Dismiss', exact: true }).click()
+  await expect(card(page)).toHaveCount(0)
+  await expect.poll(record).toBeUndefined()
+  // No agent, no question, no disabled field: a shell like any other.
+  expect(await pane()).toMatchObject({ agent: null, queued: expect.arrayContaining([expect.objectContaining({ text: 'Held for the restart', state: 'failed' })]) })
+  expect((await pane()).stopped).toBeUndefined()
+  expect((await pane()).prompt).toBeUndefined()
+  expect(await stats()).toMatchObject({ starts: [], writes: [], prompts: [] })
+  if (info.project.name.startsWith('chromium')) await page.screenshot({ path: `.shots/codex-update-dismissed-${info.project.name}.png`, fullPage: true })
+  // The card does not come back on later polls, nor after a reload.
+  await page.reload()
+  await page.waitForTimeout(2500)
+  await expect(card(page)).toHaveCount(0)
+  expect((await post(page, 'unqueue', held)).status()).toBe(200)
+  expect(await stats()).toMatchObject({ starts: [], writes: [], prompts: [] })
+})
+
 test('an existing Codex resumes its exact session', async ({ page }) => {
   await stopAfterUpdate(page, true)
   await expect(card(page).getByRole('button', { name: /Start fresh/ })).toBeVisible()
@@ -98,6 +120,7 @@ test('the restart card and both conversation choices are translated into French'
   await stopAfterUpdate(page, true, 'Codex s’est mis à jour et s’est arrêté')
   await expect(card(page).getByRole('button', { name: /Reprendre la conversation/ })).toBeVisible()
   await expect(card(page).getByRole('button', { name: /Démarrer une nouvelle conversation/ })).toBeVisible()
+  await expect(card(page).getByRole('button', { name: 'Ignorer', exact: true })).toBeVisible()
   if (info.project.name.startsWith('chromium')) await page.screenshot({ path: `.shots/codex-update-fr-${info.project.name}.png`, fullPage: true })
 })
 

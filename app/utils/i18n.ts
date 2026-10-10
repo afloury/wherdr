@@ -31,7 +31,7 @@ const FR: Record<string, string> = {
   'Codex updated itself and stopped': 'Codex s’est mis à jour et s’est arrêté',
   'Restart Codex before sending a message': 'Relance Codex avant d’envoyer un message',
   'Restart Codex': 'Relancer Codex', 'Resume conversation': 'Reprendre la conversation',
-  'Start fresh': 'Démarrer une nouvelle conversation',
+  'Start fresh': 'Démarrer une nouvelle conversation', 'Dismiss': 'Ignorer',
   'Choose a conversation in Codex': 'Choisis une conversation dans Codex',
   'Use the restart buttons for this stopped agent.': 'Utilise les boutons de relance de cet agent arrêté.',
   'Restart Codex before sending a command.': 'Relance Codex avant d’envoyer une commande.',
