@@ -2,6 +2,7 @@
 // Client-only app (no SSR) served by Nitro, which also hosts the whole
 // Herdr gateway (API, WebSockets, Web Push): see server/.
 import { CSP_BASE } from './server/utils/csp'
+import { ICON_SCAN_GLOBS } from './shared/iconScan'
 
 // Demo build (`VITE_WHERDR_DEMO=1 nuxt generate`, served at wherdr.dev/demo/):
 // the same app, static, with no server at all — app/demo/ answers the API in
@@ -35,7 +36,7 @@ export default defineNuxtConfig({
     serverBundle: false,
     customCollections: [{ prefix: 'herdr', dir: './app/assets/icons' }],
     clientBundle: {
-      scan: true,
+      scan: { globInclude: ICON_SCAN_GLOBS },
       includeCustomCollections: true,
       // Icons used by Nuxt UI components (close, check…).
       icons: [
@@ -45,10 +46,6 @@ export default defineNuxtConfig({
         'lucide:arrow-left', 'lucide:arrow-right', 'lucide:search', 'lucide:ellipsis',
         // Machines (computed names, not always seen by the scan).
         'lucide:server', 'lucide:laptop', 'lucide:unplug',
-        // Space menus (app/composables/useSpaces.ts: composables are not scanned).
-        'lucide:columns-2', 'lucide:rows-2', 'lucide:move', 'lucide:square-plus', 'lucide:panels-top-left',
-        // Attached file chips (shared/attachments.ts attachmentIcon: not scanned).
-        'lucide:file-text', 'lucide:notebook-pen', 'lucide:file-image', 'lucide:file-json', 'lucide:file-type', 'lucide:file-code',
       ],
     },
   },
