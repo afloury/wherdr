@@ -230,6 +230,7 @@ const where = computed(() => {
 const machine = computed(() => (multiMachine.value && pane.value ? machineInfo(pane.value.machine) : undefined))
 const machineDown = computed(() => Boolean(machine.value && machine.value.status !== 'online'))
 const changesOpen = ref(false)
+const filesOpen = ref(false)
 const attachInput = ref<HTMLInputElement | null>(null)
 // Interactive menu open (conversation view): what would be typed would go into its
 // search; the menu card has its own field.
@@ -304,6 +305,7 @@ const agentMenu = computed<MenuItem[]>(() => {
   const items: MenuItem[] = []
   if (canAttachTerminal.value) items.push({ label: t('Attach a file…'), icon: 'i-lucide-paperclip', run: () => attachInput.value?.click() })
   if (p) items.push({ label: t('View changes'), icon: 'i-lucide-file-diff', run: () => { changesOpen.value = true } })
+  if (p) items.push({ label: t('Browse files'), icon: 'i-lucide-folder-tree', run: () => { filesOpen.value = true } })
   // Current agent folder in its default editor, on the agent's Mac (Mod+Alt+O).
   if (p && canOpenOnMachine(p)) {
     items.push({
@@ -593,6 +595,9 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     </div>
     <AppSheet v-model:open="changesOpen" :title="t('Changes')" wide full screen>
       <ChangesView v-if="changesOpen && pane" :pane-id="paneId" />
+    </AppSheet>
+    <AppSheet v-model:open="filesOpen" :title="t('Files')" wide full screen>
+      <FilesView v-if="filesOpen && pane" :pane-id="paneId" />
     </AppSheet>
     <input ref="attachInput" type="file" multiple hidden @change="attachFile">
   </section>

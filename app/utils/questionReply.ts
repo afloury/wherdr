@@ -82,6 +82,11 @@ export function quoteOf(text: string): string {
   return lines.map(l => `> ${l.trim()}`).join('\n')
 }
 
+// A quote line: ">" then a space (or nothing else), as quoteOf() writes it.
+// ">>>", ">= 5" or ">file" are the user's own text, not quotes.
+// Groups: 1 = prefix as typed, 2 = quoted text.
+export const QUOTE_LINE = /^(>(?:\s|$))(.*)$/
+
 export interface DraftQuote { text: string, start: number, end: number }
 
 // Quotes of a draft: runs of consecutive "> " lines; `end` includes the
@@ -92,12 +97,12 @@ export function quotesIn(draft: string): DraftQuote[] {
   let cur: DraftQuote | null = null
   for (const line of String(draft || '').split('\n')) {
     const end = pos + line.length
-    const m = /^>\s?(.*)$/.exec(line)
+    const m = QUOTE_LINE.exec(line)
     if (m) {
       if (cur) {
-        cur.text += `\n${m[1]}`
+        cur.text += `\n${m[2]}`
         cur.end = end
-      } else cur = { text: m[1]!, start: pos, end }
+      } else cur = { text: m[2]!, start: pos, end }
     } else if (cur) {
       out.push(cur)
       cur = null
@@ -122,7 +127,7 @@ export function addQuote(draft: string, text: string): string | null {
   const quote = quoteOf(text)
   if (!quote || isQuoted(draft, text)) return null
   const base = String(draft || '').replace(/\s+$/, '')
-  const sep = !base ? '' : /(^|\n)>[^\n]*$/.test(base) ? '\n\n' : '\n'
+  const sep = !base ? '' : QUOTE_LINE.test(base.slice(base.lastIndexOf('\n') + 1)) ? '\n\n' : '\n'
   return `${base}${sep}${quote}\n`
 }
 
@@ -135,10 +140,10 @@ export function removeQuote(draft: string, q: DraftQuote): string {
 export function quoteSegments(text: string): { quote: boolean, text: string }[] {
   const out: { quote: boolean, text: string }[] = []
   for (const line of String(text || '').split('\n')) {
-    const m = /^>\s?(.*)$/.exec(line)
+    const m = QUOTE_LINE.exec(line)
     const quote = Boolean(m)
     const last = out.at(-1)
-    const body = m ? m[1]! : line
+    const body = m ? m[2]! : line
     if (last && last.quote === quote) last.text += `\n${body}`
     else out.push({ quote, text: body })
   }
@@ -286,19 +291,25 @@ export function withQuestions(html: string, labels: ReplyLabels): string {
   return out
 }
 
-// What the "list" style shows under a reply: its questions in order, and
-// whether it has points to quote. Read from the marked HTML, cached with it.
-export interface ReplyTargets { questions: { n: string, text: string }[], points: number }
+// What the "list" style shows under a reply: its questions in order, how many
+// points it has, and whether "+ Quote a point" is worth offering (`pick`):
+// only when there is a choice to make, that is a point in a list, or two
+// points or more. A reply of plain prose in one paragraph is a single point:
+// the whole message is the thing to reply to.
+// Read from the marked HTML, cached with it.
+export interface ReplyTargets { questions: { n: string, text: string }[], points: number, pick: boolean }
 const targets = new Map<string, ReplyTargets>()
 export function replyTargets(html: string): ReplyTargets {
   let out = targets.get(html)
   if (!out) {
-    out = { questions: [], points: 0 }
+    out = { questions: [], points: 0, pick: false }
     if (typeof document !== 'undefined' && html.includes('class="q-')) {
       const tpl = document.createElement('template')
       tpl.innerHTML = html
       out.questions = [...tpl.content.querySelectorAll<HTMLElement>('.q-reply')].map(b => ({ n: b.dataset.n || '', text: b.dataset.q || '' }))
-      out.points = tpl.content.querySelectorAll('.q-point').length
+      const points = [...tpl.content.querySelectorAll('.q-point')]
+      out.points = points.length
+      out.pick = points.length > 1 || points.some(b => b.closest('li'))
     }
     targets.set(html, out)
     if (targets.size > 2000) targets.delete(targets.keys().next().value!)

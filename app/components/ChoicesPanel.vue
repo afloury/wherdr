@@ -22,7 +22,7 @@ const actions = computed(() => (props.screen ? props.screen.actions.filter(a => 
 const note = computed(() => (props.screen ? screenNote(props.screen.kind) : null))
 // Aligned columns (hooks table): no wrapping; running text: wrapping.
 const tabular = computed(() => Boolean(props.screen && props.screen.lines.some(l => /\S {3,}\S/.test(l))))
-const question = computed(() => (props.screen && props.screen.title) || (props.prompt && props.prompt.question))
+const question = computed(() => props.prompt?.kind === 'self-update' ? t(props.prompt.question || '') : (props.screen && props.screen.title) || (props.prompt && props.prompt.question))
 
 async function pick(i: number, label: string) {
   busy.value = true
@@ -96,7 +96,7 @@ function onFreeKey(e: KeyboardEvent, i: number, label: string) {
 // option (or opens the free-answer field), ←/→ change tabs. Field open: the
 // keyboard is its own.
 const disabled = computed(() => busy.value || !eventsOpen.value || offlineView.value)
-const keyboard = computed(() => Boolean(props.keys && desk.value && props.prompt && props.prompt.options.length && freeAt.value === null && !disabled.value))
+const keyboard = computed(() => Boolean(props.keys && desk.value && props.prompt && !props.prompt.kind && props.prompt.options.length && freeAt.value === null && !disabled.value))
 useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.options.length || 0), enter: true, tabs: Boolean(tabs.value) }), (k) => {
   const p = props.prompt
   if (!p) return
@@ -138,7 +138,7 @@ useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.opt
         >
           <span v-if="prompt.multi && o.checked !== undefined" class="n"><UIcon :name="o.checked ? 'i-lucide-square-check' : 'i-lucide-square'" /></span>
           <span v-else class="n">{{ i + 1 }}</span>
-          <span class="l">{{ o.label }}<small v-if="o.hint">{{ o.hint }}</small></span>
+          <span class="l">{{ prompt.kind === 'self-update' ? t(o.label) : o.label }}<small v-if="o.hint">{{ prompt.kind === 'self-update' ? t(o.hint) : o.hint }}</small></span>
           <UIcon v-if="o.free" name="i-lucide-pencil-line" class="choices-free-icon" />
         </button>
         <form v-if="o.free && freeAt === i" class="choices-free" @submit.prevent="sendFree(i, o.label)">

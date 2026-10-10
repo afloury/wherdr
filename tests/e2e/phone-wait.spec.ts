@@ -61,7 +61,10 @@ test('a refused host gets a readable page in a browser, JSON for the API', async
 
 test('the refusal page gives a command to run on the machine, in both languages', async () => {
   const html = await get('/', 'text/html')
-  expect(html.body).toMatch(/<pre><code>(npx wherdr phone|wherdr phone|curl -fsSL https:\/\/wherdr\.dev\/install \| sh)<\/code><\/pre>/)
+  // The test server is not on the default port: the command names it.
+  expect(html.body).toContain(`<pre><code>npx wherdr phone --port ${PORT}</code></pre>`)
+  // A tailnet name: the command alone, no setting to edit.
+  expect(html.body).not.toContain('HERDR_WEB_ALLOWED_HOSTS')
   expect(html.body).toContain('Cette adresse n’est pas encore activée.')
   expect(html.body).not.toContain('not-enabled.example.ts.net')
 })

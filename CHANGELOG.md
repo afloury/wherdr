@@ -8,6 +8,17 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Restart after Codex updates itself**: when Codex's own installer exits to its shell,
+  a Your turn card offers a one-tap restart and sends the usual attention notification.
+  A new conversation reuses its launch command; an existing one can resume its exact session
+  or start fresh. If the session is uncertain, Resume opens Codex's conversation picker.
+  Restart checks the foreground process and the unchanged empty prompt before typing.
+- **Browse files** in an agent's ⋯ menu: a read-only browser of its project (the Git root, or the
+  agent's folder outside Git), opened on the agent's folder. Folders and files with their sizes, a
+  breadcrumb to go back up, text files with line numbers (first 256 kB), images up to 2 MB.
+  Hidden files (name starting with a dot) are shown; **Show hidden files** hides them, remembered
+  on the device. Local and remote machines alike; nothing above that root is shown, symlinks
+  included, and nothing is written.
 - **Discuss a point**: a list item or a paragraph of an agent's reply that asks nothing can now be
   quoted in the field like a question, to answer it in the same message. Not offered on code,
   tables, quotes, titles, an introduction ending with a colon or a point of one or two words.
@@ -17,7 +28,8 @@ All notable changes to this project are documented here. The format follows
   no button, the underlined question is tapped; a point is clicked on a computer, and on a phone
   tapped once to show **↳ Discuss**, so that a tap while reading never quotes. **List under the
   message**: a number after each question, the questions listed under the message, and
-  **+ Quote a point** to pick a point. All of them work with the keyboard.
+  **+ Quote a point** to pick a point, offered only when there is a choice (a list item, or two
+  points or more), not under a reply of plain prose. All of them work with the keyboard.
 
 ### Changed
 
@@ -33,6 +45,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **Codex restart after an update**: Project panel messages wait instead of being typed
+  into the stopped shell. Unfinished quotes and heredocs refuse a restart; uncertain
+  transcripts offer both choices without reusing a contradicted session ID. A rapidly
+  replaced Codex keeps its own launch arguments.
 - **Terminals in split panes**: every visible terminal fills its cell and stays connected
   when focus changes. Moving focus routes keyboard input without replacing terminal instances.
   Divider resizing updates all terminals while dragging. Leaving the tab restores original

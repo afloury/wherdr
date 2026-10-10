@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createAuth } from '../server/utils/auth'
-import { allowedHosts, crossSiteRequest, hostAllowed, hostRefusalIsHtml, hostRefusedPage, phoneFixCommand } from '../server/utils/hosts'
+import { allowedHosts, crossSiteRequest, hostAllowed, hostRefusalIsHtml, hostRefusedPage, phoneFixCommand, tailnetName } from '../server/utils/hosts'
 import { cspForHtml } from '../server/utils/csp'
 
 const req = (cookie = '') => ({ headers: { origin: 'http://localhost:7683', cookie } })
@@ -33,8 +33,9 @@ describe('allowed hosts', () => {
     expect(hostRefusalIsHtml('/', '*/*')).toBe(false)
   })
   it('keeps the refusal page free of the instance’s hosts and addresses, and of scripts', () => {
-    for (const install of ['brew', 'npm', 'docker', 'plugin', '']) {
-      const page = hostRefusedPage(install)
+    for (const [install, host] of [['brew', 'nas.example.ts.net'], ['npm', 'nas.lan:7690'], ['docker', '<script>alert(1)</script>'], ['plugin', undefined], ['', '192.0.2.7']] as const) {
+      const page = hostRefusedPage(install, host, '7690')
+      expect(page).not.toMatch(/nas\.|192\.0|alert/)
       expect(page).toContain('This address isn\'t enabled yet.')
       expect(page).toContain('Cette adresse n’est pas encore activée.')
       // The only address in it is the public installer's.
@@ -42,13 +43,32 @@ describe('allowed hosts', () => {
     }
   })
   it('gives a command that works on a machine without a screen, for each kind of install', () => {
-    expect(phoneFixCommand('brew')).toBe('wherdr phone')
-    expect(phoneFixCommand('npm-global')).toBe('wherdr phone')
-    expect(phoneFixCommand('npm')).toBe('npx wherdr phone')
-    expect(phoneFixCommand('')).toBe('npx wherdr phone')
+    expect(phoneFixCommand('brew', '')).toBe('wherdr phone')
+    expect(phoneFixCommand('npm-global', '7683')).toBe('wherdr phone')
+    expect(phoneFixCommand('npm', '')).toBe('npx wherdr phone')
+    expect(phoneFixCommand('', '7683')).toBe('npx wherdr phone')
     // No `wherdr` command on the host there: the installer ends with the same check.
-    for (const install of ['docker', 'docker-build', 'plugin']) expect(phoneFixCommand(install)).toBe('curl -fsSL https://wherdr.dev/install | sh')
+    for (const install of ['docker', 'docker-build', 'plugin']) expect(phoneFixCommand(install, '7690')).toBe('curl -fsSL https://wherdr.dev/install | sh')
     expect(hostRefusedPage('docker')).toContain('<pre><code>curl -fsSL https://wherdr.dev/install | sh</code></pre>')
+  })
+  it('names the port in the command when wherdr does not run on the default one', () => {
+    // `wherdr phone` alone looks at port 7683.
+    expect(phoneFixCommand('', '7690')).toBe('npx wherdr phone --port 7690')
+    expect(phoneFixCommand('npm-global', '8080')).toBe('wherdr phone --port 8080')
+    expect(phoneFixCommand('brew', 'abc; rm -rf')).toBe('wherdr phone')
+    expect(hostRefusedPage('', 'box.example.ts.net', '7690')).toContain('<pre><code>npx wherdr phone --port 7690</code></pre>')
+  })
+  it('explains HERDR_WEB_ALLOWED_HOSTS for a name tailscale serve cannot have published', () => {
+    expect(tailnetName('box.example.ts.net:443')).toBe(true)
+    expect(tailnetName('BOX.Example.TS.net.')).toBe(true)
+    for (const host of ['box.lan:7690', '192.0.2.7', 'ts.net.example.org', '', undefined]) expect(tailnetName(host)).toBe(false)
+    const tailnet = hostRefusedPage('npm', 'box.example.ts.net')
+    expect(tailnet).not.toContain('HERDR_WEB_ALLOWED_HOSTS')
+    const lan = hostRefusedPage('npm', 'box.lan:7690')
+    expect(lan.match(/HERDR_WEB_ALLOWED_HOSTS/g)).toHaveLength(2)
+    expect(lan).toContain('~/wherdr/wherdr.env')
+    expect(lan).toContain('npx wherdr phone')
+    expect(hostRefusedPage('docker', 'box.lan')).toContain('in the container\'s environment')
   })
   it('allows the hosts read from tailscale serve, next to the others', () => {
     const served = allowedHosts('', '', {}, ['host.example.ts.net'])

@@ -27,7 +27,7 @@ export interface PromptDetail {
 // `typing`: omp's free-text answer field is open (single option: `free`).
 // `tabs`: tabs of omp's multi-question "Ask" box (the last one is Submit),
 // `tab` the one shown; ←/→ move between them.
-export interface Choices { question: string | null, cursor: number, options: ChoiceOption[], detail?: PromptDetail, multi?: boolean, typing?: boolean, tabs?: string[], tab?: number }
+export interface Choices { question: string | null, cursor: number, options: ChoiceOption[], kind?: 'self-update', detail?: PromptDetail, multi?: boolean, typing?: boolean, tabs?: string[], tab?: number }
 
 // Waiting screen of an agent (Codex at startup: hooks, folder trust,
 // login…), see server/utils/waitScreen.ts. `other`: unrecognized screen,
@@ -145,6 +145,7 @@ export interface Pane {
   // quits then comes back, the pane is briefly without an agent. `update`:
   // Codex update typed into its terminal between the two (the command).
   restart?: { phase: 'stopping' | 'updating' | 'starting' | 'failed', agent: string, error?: string, update?: string }
+  stopped?: { reason: 'update' }
   // Grayed-out next-message suggestion in Claude Code's field (Tab accepts it).
   claudeSuggestion?: string
   // Codex shown: update available and weekly-limit warning (see shared/codexStatus.ts).
@@ -432,4 +433,16 @@ export interface PluginActionResult {
   // herdr-projects "Check setup": what wherdr uses, then the full output.
   setup?: { key: 'version' | 'binary' | 'home' | 'config', value: string, warn?: boolean }[]
   full?: string
+}
+
+// Read-only file browser of an agent's folder (Git root, or the folder itself).
+export interface FileEntry { name: string, kind: 'dir' | 'file' | 'other', size: number | null, link: boolean }
+export interface FilesListing { root: string, path: string, entries: FileEntry[], truncated: boolean }
+export interface FilePreview {
+  path: string
+  size: number
+  kind: 'text' | 'image' | 'binary' | 'large'
+  text?: string
+  dataUrl?: string
+  truncated: boolean
 }

@@ -16,6 +16,8 @@ makes no request to another site.
   without an account).
 - **Headers**: `public/_headers` (Workers) and `nginx.conf` (Docker) set the same security headers,
   `text/plain` for `/install` and long caching for `/_nuxt/`. Change both together.
+  `_headers` alone adds `Cache-Control: no-transform` to the pages, so Cloudflare does not inject
+  its Web Analytics beacon (the site has no analytics, and its policy would block the script).
 - **Deploy (private preview)**: `SITE_BIND=<tailscale-ip> docker compose up -d --build` — nginx on
   `${SITE_BIND:-127.0.0.1}:${SITE_PORT:-8120}`, serving the same `nuxt generate` output.
 - **Search engines and link previews**: `app/utils/seo.ts` holds the title, the description, the

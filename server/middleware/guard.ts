@@ -19,7 +19,7 @@ export default defineEventHandler(async (event) => {
       setResponseStatus(event, 403)
       setResponseHeader(event, 'content-type', 'text/html; charset=utf-8')
       setResponseHeader(event, 'cache-control', 'no-store')
-      return hostRefusedPage()
+      return hostRefusedPage(undefined, event.node.req.headers.host)
     }
     return sendError(event, 403, { error: 'Host not allowed', code: 'host' })
   }

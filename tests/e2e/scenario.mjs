@@ -47,6 +47,8 @@ export const OMP_QUESTIONS_PANE = 'w8:p1'
 export const SPLIT_TAB = 'w9:t1'
 export const SPLIT_CHAT_PANE = 'w9:p1'
 export const SPLIT_SHELL_PANE = 'w9:p2'
+export const CODEX_UPDATE_PANE = 'w10:p1'
+export const CODEX_UPDATE_SESSION = '00000000-0000-4000-8000-000000000288'
 
 // Unique markers of the long omp transcript (asserted on by the specs).
 export const LONG_WORD = `Pneumono${'ultramicroscopicsilicovolcano'.repeat(12)}coniosis`
@@ -101,6 +103,11 @@ function write(file, content) {
 // A pasted install log (Claude wraps a paste in <pasted_content>) and a long
 // typed message: shown as a "Pasted text" card and a folded bubble.
 export const PASTED_LOG = Array.from({ length: 40 }, (_, i) => `==> Pouring libexample-${i}--2.1.0.arm64_sonoma.bottle.tar.gz`).join('\n')
+// Ten lines written in wherdr's field (quotes of the agent's points, each with
+// an answer): Claude wraps a multi-line send whole in <pasted_content>, and it
+// is still a plain message.
+export const TYPED_QUOTES = Array.from({ length: 5 }, (_, i) =>
+  `> Point ${i + 1}: ${'the cache entry is kept after an update and should expire. '.repeat(5).trim()}\nAnswer ${i + 1}: agreed, go ahead with that one.`).join('\n')
 export const LONG_TYPED = Array.from({ length: 24 }, (_, i) => `Step ${i + 1}: check the cache entry again.`).join('\n')
 
 // Claude Code: ~/.claude/projects/<cwd with / and . as ->/<session id>.jsonl.
@@ -113,6 +120,8 @@ function claudeTranscript(home, cwd, sid, now) {
     { ...base, type: 'assistant', timestamp: iso(now - 50000), message: { model: 'claude-opus-4-1', role: 'assistant', content: [{ type: 'text', text: '`getUser` caches users forever and `updateUser` never clears the entry. I will add an expiry and clear it on update.' }] } },
     { ...base, type: 'user', timestamp: iso(now - 40000), message: { role: 'user', content: `The install fails, here is the log:\n\n<pasted_content id="a1f2">\n${PASTED_LOG}\n</pasted_content id="a1f2">` } },
     { ...base, type: 'assistant', timestamp: iso(now - 35000), message: { model: 'claude-opus-4-1', role: 'assistant', content: [{ type: 'text', text: 'The bottle is fine; the link step fails.' }] } },
+    { ...base, type: 'user', timestamp: iso(now - 33000), message: { role: 'user', content: `<pasted_content id="b7c3">\n${TYPED_QUOTES}\n</pasted_content id="b7c3">` } },
+    { ...base, type: 'assistant', timestamp: iso(now - 32000), message: { model: 'claude-opus-4-1', role: 'assistant', content: [{ type: 'text', text: 'Understood, point by point.' }] } },
     { ...base, type: 'user', timestamp: iso(now - 30000), message: { role: 'user', content: LONG_TYPED } },
     { ...base, type: 'assistant', timestamp: iso(now - 25000), message: { model: 'claude-opus-4-1', role: 'assistant', content: [{ type: 'text', text: 'All steps noted.' }] } },
   ]))
@@ -173,9 +182,17 @@ export function writeScenario(home) {
   const coordinator = path.join(home, '.herdr-projects/acme')
   const questions = path.join(home, 'projects/questions')
   const split = path.join(home, 'projects/split')
+  const codex = path.join(home, '.herdr-projects/codex-update')
+  fs.mkdirSync(codex, { recursive: true })
   for (const d of [api, docs, demo, screens, approval, scratch, coordinator, questions, split]) fs.mkdirSync(d, { recursive: true })
 
   const claudeSid = '00000000-0000-4000-8000-000000000001'
+  const codexFile = path.join(home, `.codex/sessions/${new Date().toISOString().slice(0, 10).replaceAll('-', '/')}/rollout-test-${CODEX_UPDATE_SESSION}.jsonl`)
+  write(codexFile, jsonl([
+    { type: 'session_meta', payload: { id: CODEX_UPDATE_SESSION, cwd: codex, timestamp: iso(now - 60000), thread_source: 'user' } },
+    { type: 'response_item', timestamp: iso(now - 50000), payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Check the build.' }] } },
+    { type: 'response_item', timestamp: iso(now - 40000), payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'The build passes.' }] } },
+  ]))
   claudeTranscript(home, api, claudeSid, now)
   const longFile = ompTranscript(home, docs, 'e2e-long', now, longContent)
   const chatFile = ompTranscript(home, demo, 'e2e-chat', now, msg => [
@@ -239,6 +256,7 @@ export function writeScenario(home) {
   write(path.join(demo, '.omp/commands/daily-sync.md'), '---\ndescription: Sync the daily branch\n---\nSync.\n')
 
   return [
+    { id: 'w10', label: 'codex-update', panes: [{ id: CODEX_UPDATE_PANE, agent: 'codex', status: 'idle', cwd: codex, session: CODEX_UPDATE_SESSION, pid: 3001 }] },
     { id: 'w1', label: 'acme-api', panes: [{ id: CLAUDE_PANE, agent: 'claude', status: 'idle', cwd: api, session: claudeSid }] },
     { id: 'w2', label: 'docs-site', panes: [{ id: OMP_LONG_PANE, agent: 'omp', status: 'idle', cwd: docs, session: longFile }] },
     { id: 'w3', label: 'demo', panes: [{ id: OMP_CHAT_PANE, agent: 'omp', status: 'idle', cwd: demo, session: chatFile, transcript: chatFile, reply: 'Got it.' }] },
