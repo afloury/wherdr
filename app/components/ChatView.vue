@@ -11,7 +11,7 @@ import { canCancelQueued, lostPhotosText, restoreDraft } from '~/utils/queuedCan
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
-import { addQuote, isQuoted, withQuestions } from '~/utils/questionReply'
+import { addQuote, isQuoted, replyTargets, withQuestions } from '~/utils/questionReply'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -417,7 +417,7 @@ const blocks = computed<Block[]>(() => {
     } else if (it.role === 'assistant') {
       lastReply = it.text
       const time = it.ts ? fmtTime(it.ts) : null
-      lastReplyBlock = { k: 'assistant', key, id: replyId(it), text: it.text, html: withQuestions(md(it.text), { reply: t('Reply'), quoted: t('Quoted') }), time, endsTurn: false }
+      lastReplyBlock = { k: 'assistant', key, id: replyId(it), text: it.text, html: withQuestions(md(it.text), { reply: t('Reply'), quoted: t('Quoted'), discuss: t('Discuss') }), time, endsTurn: false }
       out.push(lastReplyBlock)
       replies.push({ key, time, text: it.text })
     } else if (it.role === 'thinking') {
@@ -487,11 +487,54 @@ function quote(text: string) {
   haptic()
   emit('quote')
 }
-// "Quoted" state of the question buttons, read from the draft.
+// "Quoted" state of the question and point buttons (and of the words of a
+// question), read from the draft.
 function syncQuoted() {
   const text = useDraft(props.pane.id).text
-  for (const btn of listEl.value?.querySelectorAll<HTMLElement>('.q-reply') || []) btn.classList.toggle('quoted', isQuoted(text, btn.dataset.q || ''))
+  for (const btn of listEl.value?.querySelectorAll<HTMLElement>('.q-reply, .q-point') || []) {
+    const on = isQuoted(text, btn.dataset.q || '')
+    btn.classList.toggle('quoted', on)
+    if (btn.dataset.n) for (const span of wordsOf(btn)) span.classList.toggle('quoted', on)
+  }
 }
+// The words of a question (`.q-text`) and its button share a number in their message.
+const wordsOf = (btn: HTMLElement) => btn.closest('.md-body')?.querySelectorAll<HTMLElement>(`.q-text[data-n="${btn.dataset.n}"]`) || []
+const buttonOf = (span: HTMLElement) => span.closest('.md-body')?.querySelector<HTMLElement>(`.q-reply[data-n="${span.dataset.n}"]`) || null
+// "Tap the text" style on a touch screen: a tap on a point only arms it (its
+// "↳ Discuss" button shows); a tap anywhere while reading must not quote.
+let armed: HTMLElement | null = null
+function arm(el: HTMLElement | null) {
+  armed?.classList.remove('q-armed')
+  armed = el
+  el?.classList.add('q-armed')
+}
+// "List" style: the message whose points are waiting to be picked.
+const pickKey = ref<string | null>(null)
+const draftText = computed(() => useDraft(props.pane.id).text)
+function hotQuestion(key: string, n: string, on: boolean) {
+  for (const span of msgEl(key)?.querySelectorAll<HTMLElement>(`.q-text[data-n="${n}"]`) || []) span.classList.toggle('q-hot', on)
+}
+// A click on a point quotes it at once on a computer; not the first click of
+// a double click, which selects a word.
+let pointTimer: ReturnType<typeof setTimeout> | undefined
+function onPointClick(e: MouseEvent, target: HTMLElement) {
+  const point = target.closest<HTMLElement>('.msg-ai .md-body .q-pt')
+  const text = point?.querySelector<HTMLElement>(':scope > .q-point')?.dataset.q
+  clearTimeout(pointTimer)
+  if (!point || !text || target.closest('a, button, summary, input')) return arm(null)
+  if (replyStyle.value === 'list') {
+    if (pickKey.value && point.closest<HTMLElement>('[data-hit-key]')?.dataset.hitKey === pickKey.value) {
+      pickKey.value = null
+      quote(text)
+    }
+    return
+  }
+  if (replyStyle.value !== 'text' || window.getSelection()?.isCollapsed === false) return arm(null)
+  if (isTouch()) return arm(point === armed ? null : point)
+  if (e.detail > 1) return
+  pointTimer = setTimeout(() => { if (window.getSelection()?.isCollapsed !== false) quote(text) }, 220)
+}
+onUnmounted(() => clearTimeout(pointTimer))
 watch([() => useDraft(props.pane.id).text, blocks], () => nextTick(syncQuoted), { flush: 'post' })
 const selReply = ref<{ text: string, sig: string, top: number, left: number } | null>(null)
 const selBtn = ref<HTMLElement | null>(null)
@@ -560,8 +603,12 @@ async function copyText(text: string) {
 // their menu (event delegation, the HTML comes from v-html).
 function onListClick(e: MouseEvent) {
   const target = e.target as HTMLElement
-  const question = target.closest?.('.q-reply') as HTMLElement | null
-  if (question?.dataset.q) { e.preventDefault(); quote(question.dataset.q); return }
+  const question = target.closest?.('.q-reply, .q-point') as HTMLElement | null
+  if (question?.dataset.q) { e.preventDefault(); arm(null); pickKey.value = null; quote(question.dataset.q); return }
+  // "Tap the text" style: the words of a question are its button.
+  const asked = replyStyle.value === 'text' && !readOnly.value ? target.closest?.('.q-text') as HTMLElement | null : null
+  const askedText = asked && window.getSelection()?.isCollapsed !== false ? buttonOf(asked)?.dataset.q : null
+  if (askedText) { e.preventDefault(); arm(null); quote(askedText); return }
   const pathEl = target.closest?.('.md-body .md-path') as HTMLElement | null
   if (pathEl) { e.preventDefault(); openPathMenu(pathEl); return }
   const cmdEl = target.closest?.('.md-body .md-cmd') as HTMLElement | null
@@ -569,6 +616,7 @@ function onListClick(e: MouseEvent) {
   // Image in an agent reply (markdown): large preview, like ours.
   const img = target.closest?.('.md-body img') as HTMLImageElement | null
   if (img && img.src) { e.preventDefault(); openImage(img.src); return }
+  if (!readOnly.value && !target.closest?.('.code-block')) onPointClick(e, target)
   const run = target.closest?.('.can-run .code-run') as HTMLElement | null
   const runCmd = run?.closest<HTMLElement>('.code-block')?.dataset.cmd
   if (runCmd) { void runCommand(runCmd); return }
@@ -656,6 +704,7 @@ function openPathMenu(el: HTMLElement, path?: string) {
   if (p) openCodeMenu(el, pathMenuItems(p), p.replace(/\/+$/, '').split('/').pop() || p)
 }
 function onListKey(e: KeyboardEvent) {
+  if (e.key === 'Escape' && (pickKey.value || armed)) { pickKey.value = null; arm(null); return }
   if (e.key !== 'Enter' && e.key !== ' ') return
   const el = (e.target as HTMLElement).closest?.('.md-body .md-path, .md-body .md-cmd') as HTMLElement | null
   if (!el) return
@@ -995,7 +1044,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         auto-scroll-icon="i-lucide-arrow-down"
         :ui="{ root: 'chat-msgs', viewport: 'hw-jump-vp', autoScroll: 'hw-jump' }"
       >
-        <div ref="listEl" class="chat-list" :class="{ 'no-reply': readOnly }" @click="onListClick" @keydown="onListKey">
+        <div ref="listEl" class="chat-list" :class="readOnly ? 'no-reply' : `rs-${replyStyle}`" @click="onListClick" @keydown="onListKey">
           <div v-if="unavailable && waiting" class="chat-empty waiting">
             <UIcon name="i-lucide-square-terminal" class="chat-empty-icon" />
             <p>{{ waiting.text }}</p>
@@ -1048,12 +1097,27 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   :id="b.key" role="assistant" side="left" variant="naked"
                   :data-hit-key="b.key"
                   :parts="[{ type: 'text', text: b.text }]"
-                  :ui="{ root: `msg msg-ai tw-${pane.agent || 'agent'}${canRun ? ' can-run' : ''}`, container: 'msg-c', content: 'md' }"
+                  :ui="{ root: `msg msg-ai tw-${pane.agent || 'agent'}${canRun ? ' can-run' : ''}${pickKey === b.key ? ' q-picking' : ''}`, container: 'msg-c', content: 'md' }"
                 >
                   <template #content>
                     <ChatMarkdown :html="b.html" :typing="typingAt(b.id)" @done="typingDone(b.id)" />
                   </template>
                 </UChatMessage>
+                <div v-if="replyStyle === 'list' && !readOnly && typingAt(b.id) === null && (replyTargets(b.html).questions.length || replyTargets(b.html).points)" class="q-bar">
+                  <template v-if="replyTargets(b.html).questions.length">
+                    <p class="q-bar-h">{{ tl('Questions · reply to', 'Questions · répondre à') }}</p>
+                    <button
+                      v-for="q in replyTargets(b.html).questions" :key="q.n" type="button" class="q-row" :class="{ quoted: isQuoted(draftText, q.text) }"
+                      :aria-label="`${t('Reply')}: ${q.text}`" @click="quote(q.text)"
+                      @mouseenter="hotQuestion(b.key, q.n, true)" @mouseleave="hotQuestion(b.key, q.n, false)" @focus="hotQuestion(b.key, q.n, true)" @blur="hotQuestion(b.key, q.n, false)"
+                    >
+                      <b>{{ isQuoted(draftText, q.text) ? '✓' : q.n }}</b><span>{{ q.text }}</span><i>↳<em> {{ isQuoted(draftText, q.text) ? t('Quoted') : t('Reply') }}</em></i>
+                    </button>
+                  </template>
+                  <button v-if="replyTargets(b.html).points" type="button" class="q-pick" :aria-pressed="pickKey === b.key" @click="pickKey = pickKey === b.key ? null : b.key">
+                    {{ pickKey === b.key ? tl('Pick the point to quote · Cancel', 'Choisis le point à citer · Annuler') : tl('+ Quote a point', '+ Citer un point') }}
+                  </button>
+                </div>
                 <div v-if="!b.endsTurn && !readOnly" class="msg-actions">
                   <button type="button" class="msg-reply" @click="replyTo(b.key)">
                     <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>

@@ -20,6 +20,7 @@ import { readCompactList } from '~/utils/compactCard'
 import { paneFallback } from '~/utils/viewMode'
 import { menuAsSheet } from '~/utils/menuRoute'
 import { readQuoteMode } from '~/utils/quoteTokens'
+import { parseReplyStyle } from '~/utils/questionReply'
 import type { QuotaDisplay } from '~/utils/quotas'
 import type { ContentWidth } from '~/utils/contentWidth'
 
@@ -155,6 +156,10 @@ watch(quoteModeComputer, v => ls.set('quoteModeComputer', v))
 export const quoteModePhone = ref(readQuoteMode(ls.get('quoteModePhone'), ls.get('quoteTokensPhone')))
 watch(quoteModePhone, v => ls.set('quoteModePhone', v))
 export const quoteMode = computed(() => (coarse.value ? quoteModePhone.value : quoteModeComputer.value))
+// How the questions and the points of an agent reply offer to be quoted
+// (utils/questionReply.ts): an icon by default.
+export const replyStyle = ref(parseReplyStyle(ls.get('replyStyle')))
+watch(replyStyle, v => ls.set('replyStyle', v))
 // Account quotas (read by QuotaStrip, also shown in the machine headers).
 export const homeQuotas = ref<Quotas | null>(null)
 export const fontSize = ref(Number(ls.get('fontSize')) || 12)

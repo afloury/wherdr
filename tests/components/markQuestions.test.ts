@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { marked } from 'marked'
 import { md } from '~/utils/markdown'
-import { withQuestions } from '~/utils/questionReply'
+import { parseReplyStyle, replyTargets, withQuestions } from '~/utils/questionReply'
 
 // The first call installs the app's renderers (inline code, code blocks).
 md('')
@@ -11,12 +11,14 @@ md('')
 function reply(markdown: string) {
   const host = document.createElement('div')
   const html = marked.parse(markdown, { breaks: true, gfm: true, async: false }) as string
-  host.innerHTML = withQuestions(html, { reply: 'Reply', quoted: 'Quoted' })
+  host.innerHTML = withQuestions(html, { reply: 'Reply', quoted: 'Quoted', discuss: 'Discuss' })
   const buttons = [...host.querySelectorAll<HTMLElement>('.q-reply')]
   const quotes = buttons.map(b => b.dataset.q)
+  const points = [...host.querySelectorAll<HTMLElement>('.q-point')]
+  const markedHtml = host.innerHTML
   // The text as read, a "[↳]" where each button sits.
   for (const b of buttons) b.replaceWith('[↳]')
-  return { host, buttons, quotes, flow: (host.textContent || '').replace(/\s+/g, ' ').trim() }
+  return { host, html: markedHtml, buttons, quotes, points, pointQuotes: points.map(b => b.dataset.q), flow: (host.textContent || '').replace(/\s+/g, ' ').trim() }
 }
 
 describe('question buttons in an agent reply', () => {
@@ -97,5 +99,95 @@ describe('question buttons in an agent reply', () => {
     expect(reply('## What changed? A summary\n\nThe cache expires now.').quotes).toEqual([])
     expect(reply('## Qu’est-ce qui change ? Résumé\n\nLe cache expire.').quotes).toEqual([])
     expect(reply('| Question | Answer |\n|---|---|\n| Is it fast? Mostly. | Yes |').quotes).toEqual([])
+  })
+})
+
+describe('the words of a question', () => {
+  const words = (host: HTMLElement, n: string) => [...host.querySelectorAll<HTMLElement>(`.q-text[data-n="${n}"]`)].map(s => s.textContent).join('')
+
+  it('wraps each question, numbered like its button, in reading order', () => {
+    const r = reply('Shall I push now? The build is green. Or do you want a review first? Both are fine.\n\nLast one: shall I tag it?')
+    expect(r.buttons.map(b => b.dataset.n)).toEqual(['1', '2', '3'])
+    expect(words(r.host, '1')).toBe('Shall I push now?')
+    expect(words(r.host, '2')).toBe('Or do you want a review first?')
+    expect(words(r.host, '3')).toBe('Last one: shall I tag it?')
+    // Nothing else is wrapped, and the text reads the same.
+    expect(r.host.querySelectorAll('.q-text')).toHaveLength(3)
+    expect(r.flow).toBe('Shall I push now?[↳] The build is green. Or do you want a review first?[↳] Both are fine. Last one: shall I tag it?[↳]')
+  })
+
+  it('wraps a question across emphasis and inline code, text node by text node', () => {
+    const r = reply('Done. Shall I run `npm test` on the **whole** suite? It takes two minutes.')
+    expect(words(r.host, '1')).toBe('Shall I run npm test on the whole suite?')
+    expect(r.host.querySelector('code .q-text')!.textContent).toBe('npm test')
+    expect(r.host.querySelector('strong .q-text')!.textContent).toBe('whole')
+    expect(r.host.querySelector('p')!.firstChild!.textContent).toBe('Done. ')
+  })
+})
+
+describe('points of an agent reply', () => {
+  it('marks a list item and a paragraph that ask nothing', () => {
+    const r = reply('The build is green and the export is fixed.\n\n- The cache is cleared on deploy.\n- The export keeps its column order.')
+    expect(r.pointQuotes).toEqual(['The build is green and the export is fixed.', 'The cache is cleared on deploy.', 'The export keeps its column order.'])
+    expect(r.points.every(b => b.parentElement!.classList.contains('q-pt'))).toBe(true)
+    expect(r.points[1]!.getAttribute('aria-label')).toBe('Discuss: The cache is cleared on deploy.')
+    expect(r.points[1]!.dataset.l).toBe('Discuss')
+    // The button closes the point; it holds no text.
+    expect(r.points[1]!.parentElement!.lastChild).toBe(r.points[1])
+    expect(r.points[1]!.textContent).toBe('')
+  })
+
+  it('leaves a block with a question to its question', () => {
+    const r = reply('The build is green. Shall I push?\n\n- Do you want the logs?\n- The logs are kept for a week.')
+    expect(r.quotes).toEqual(['Shall I push?', 'Do you want the logs?'])
+    expect(r.pointQuotes).toEqual(['The logs are kept for a week.'])
+    expect(r.host.querySelectorAll('.q-pt')).toHaveLength(1)
+  })
+
+  it('skips an introduction ending with a colon and a point of one or two words', () => {
+    const r = reply('Three things to note:\n\n- Done.\n- Tests pass.\n- The export keeps its column order.\n\nTrois points à noter :')
+    expect(r.pointQuotes).toEqual(['The export keeps its column order.'])
+  })
+
+  it('skips code, tables, quotes and titles', () => {
+    const r = reply('## The plan for this week\n\n> The export keeps its column order.\n\n| Choice | What it does |\n|---|---|\n| System | follows the system setting |\n\n```\nthe cache is cleared on deploy\n```')
+    expect(r.pointQuotes).toEqual([])
+    expect(r.host.querySelectorAll('.q-pt')).toHaveLength(0)
+  })
+
+  it('puts the button of a list item before its sub-list, and gives the paragraphs of a loose item theirs', () => {
+    const nested = reply('- The export keeps its column order.\n  - The header row stays first.')
+    expect(nested.pointQuotes).toEqual(['The export keeps its column order.', 'The header row stays first.'])
+    expect(nested.points[0]!.nextElementSibling!.tagName).toBe('UL')
+
+    const loose = reply('- The export keeps its column order.\n\n  The header row stays first.\n\n- The cache is cleared on deploy.')
+    expect(loose.pointQuotes).toEqual(['The export keeps its column order.', 'The header row stays first.', 'The cache is cleared on deploy.'])
+    expect(loose.points.every(b => b.parentElement!.tagName === 'P')).toBe(true)
+  })
+
+  it('quotes the words of a point on one line', () => {
+    const r = reply('- The limits come from `req.plan.limits`,\n  60 a minute on **Free**.')
+    expect(r.pointQuotes).toEqual(['The limits come from req.plan.limits, 60 a minute on Free.'])
+  })
+})
+
+describe('what the list style shows under a reply', () => {
+  it('lists the questions in order and counts the points', () => {
+    const r = reply('Shall I push now? The build is green. Or do you want a review first?\n\n- The cache is cleared on deploy.\n- The export keeps its column order.')
+    expect(replyTargets(r.html)).toEqual({
+      questions: [{ n: '1', text: 'Shall I push now?' }, { n: '2', text: 'Or do you want a review first?' }],
+      points: 2,
+    })
+  })
+
+  it('is empty for a reply with nothing to quote', () => {
+    expect(replyTargets(reply('Done.').html)).toEqual({ questions: [], points: 0 })
+  })
+})
+
+describe('the reply style setting', () => {
+  it('reads the three styles and falls back to the icon', () => {
+    expect(['icon', 'text', 'list'].map(parseReplyStyle)).toEqual(['icon', 'text', 'list'])
+    expect([null, undefined, '', 'tag'].map(parseReplyStyle)).toEqual(['icon', 'icon', 'icon', 'icon'])
   })
 })

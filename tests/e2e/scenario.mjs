@@ -201,7 +201,8 @@ export function writeScenario(home) {
     msg({ role: 'assistant', content: [{ type: 'text', text: 'Two threads are working.' }], stopReason: 'stop' }),
   ])
   // Questions followed by other sentences, in English and in French, next to
-  // what must not get a "Reply" button (code, a URL, quoted words, a title).
+  // what must not get a "Reply" button (code, a URL, quoted words, a title);
+  // then a list of points, an introduction and a closing question.
   const questionsFile = ompTranscript(home, questions, 'e2e-questions', now, msg => [
     msg({ role: 'user', content: [{ type: 'text', text: 'Plan the release.' }], attribution: 'user' }),
     msg({ role: 'assistant', content: [{ type: 'text', text: [
@@ -215,6 +216,12 @@ export function writeScenario(home) {
       'J’ai noté la tâche dans « En file », à valider. Je lance l’étape 1 maintenant ? Une place est libre sur le serveur.',
       'Tu as demandé « on peut aller plus vite ? » hier. C’est fait.',
       'Dernier point : je publie les notes de version ?',
+    ].join('\n\n') }], stopReason: 'stop' }),
+    msg({ role: 'user', content: [{ type: 'text', text: 'Anything to note?' }], attribution: 'user' }),
+    msg({ role: 'assistant', content: [{ type: 'text', text: [
+      'Three things to note:',
+      '- The cache is cleared on every deploy.\n- The export keeps its old column order.\n- The limits come from `req.plan.limits`.',
+      'All 48 tests pass. Shall I merge the branch now?',
     ].join('\n\n') }], stopReason: 'stop' }),
   ])
   // omp waiting for the approval of its first action (status "blocked").
