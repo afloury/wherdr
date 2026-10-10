@@ -115,30 +115,100 @@ describe('conversation served to every device', () => {
     expect(cut!.pasted).toEqual([LOG])
   })
 
-  it('finds a paste the server clipped by its start', () => {
+  it('finds a paste the server clipped by its start, and lists what the message holds of it', () => {
     const long = log('big', 600)
     const text = `fix this\n\n${long}`.slice(0, 20000) + '…'
+    const part = long.slice(0, 20000 - 10)
     const [item] = withPasted([user(text)], [long])
-    expect(item!.pasted).toEqual([long])
-    expect(splitPasted(item!.text, item!.pasted, [])).toEqual({ text: 'fix this', pastes: [long] })
+    expect(item!.pasted).toEqual([part])
+    expect(splitPasted(item!.text, item!.pasted, [])).toEqual({ text: 'fix this', pastes: [part] })
+    // The device that sent it shows the same card.
+    expect(splitPasted(item!.text, item!.pasted, [long])).toEqual({ text: 'fix this', pastes: [part] })
+  })
+})
+
+// A paste sent again later, longer: both start the same way.
+describe('two pasted texts that start the same way', () => {
+  const FIRST = log('pkg', 31)
+  const SECOND = log('pkg', 61)
+  // Most recent first, as the server keeps them.
+  const kept = addPastes(addPastes([], [FIRST]), [SECOND])
+
+  it('never shows the later paste on the earlier message, on any agent', () => {
+    expect(SECOND.startsWith(FIRST)).toBe(true)
+    // One conversation per agent; the same kept list serves both.
+    const claude = withPasted([user(FIRST), user(`and now\n\n${SECOND}`)], kept)
+    const codex = withPasted([user(`fix this\n\n${FIRST}`), user(SECOND)], kept)
+    expect(claude.map(i => i.pasted)).toEqual([[FIRST], [SECOND]])
+    expect(codex.map(i => i.pasted)).toEqual([[FIRST], [SECOND]])
+    // The later paste sent to one agent only: the other's message keeps its own card.
+    expect(withPasted([user(FIRST)], [SECOND])[0]!.pasted).toBeUndefined()
+    expect(withPasted([user(FIRST)], [SECOND, FIRST])[0]!.pasted).toEqual([FIRST])
+    for (const conv of [claude, codex]) {
+      for (const i of conv) for (const b of i.pasted!) expect(i.text).toContain(b)
+    }
+  })
+
+  it('shows each message its own card, on the device that sent both and on another', () => {
+    for (const known of [[], [SECOND, FIRST], [FIRST, SECOND], [SECOND], [FIRST]]) {
+      expect(splitPasted(`fix this\n\n${FIRST}`, [FIRST], known)).toEqual({ text: 'fix this', pastes: [FIRST] })
+    }
+    for (const known of [[], [SECOND, FIRST], [FIRST, SECOND], [SECOND]]) {
+      expect(splitPasted(SECOND, [SECOND], known)).toEqual({ text: '', pastes: [SECOND] })
+    }
+    // Codex and omp list nothing: the device's own memory, and never the later paste.
+    expect(splitPasted(FIRST, [], [SECOND, FIRST])).toEqual({ text: '', pastes: [FIRST] })
+    expect(splitPasted(FIRST, [], [SECOND])).toEqual({ text: FIRST, pastes: [] })
+  })
+
+  it('lists of a clipped message only what it holds, whatever kept paste starts like it', () => {
+    const a = log('big', 600)
+    const b = `${a}\n${log('more', 50)}`
+    const text = `fix this\n\n${a}`.slice(0, 20000) + '…'
+    const part = a.slice(0, 20000 - 10)
+    expect(withPasted([user(text)], [b, a])[0]!.pasted).toEqual([part])
+    expect(splitPasted(text, [part], [b, a])).toEqual({ text: 'fix this', pastes: [part] })
+    // A message that only ends like the start of a paste holds no paste.
+    const typed = `${TYPED}\n${a.slice(0, 300)}`
+    expect(withPasted([user(typed)], [a])[0]!.pasted).toBeUndefined()
+    expect(withPasted([user(`${typed}…`)], [a])[0]!.pasted).toBeUndefined()
   })
 })
 
 describe('queued record', () => {
-  it('lists its pasted texts, cut like its text', () => {
+  it('lists its pasted texts: what its text, cut short, holds of them', () => {
     const long = log('big', 600)
     const q = { id: 'w-1', text: `fix this\n\n${long}`.slice(0, 4000), at: 1 }
+    const part = long.slice(0, 4000 - 10)
     const out = withQueuedPasted(q, [long])
-    expect(out.pasted).toEqual([long.slice(0, 4000)])
-    // Another device: the words and a card of what the record holds.
-    expect(splitPasted(out.text, out.pasted, []).text).toBe('fix this')
-    // The device that sent it shows the whole paste.
-    expect(splitPasted(out.text, out.pasted, [long])).toEqual({ text: 'fix this', pastes: [long] })
+    expect(out.pasted).toEqual([part])
+    // Every device shows the words and a card of what the record holds.
+    expect(splitPasted(out.text, out.pasted, [])).toEqual({ text: 'fix this', pastes: [part] })
+    expect(splitPasted(out.text, out.pasted, [long])).toEqual({ text: 'fix this', pastes: [part] })
+    // Cancelled on the device that sent it: the whole paste goes back into
+    // the field, unless two of its pastes start that way.
+    expect(splitPasted(out.text, out.pasted, [long], true)).toEqual({ text: 'fix this', pastes: [long] })
+    expect(splitPasted(out.text, out.pasted, [`${long}\nmore`, long], true)).toEqual({ text: 'fix this', pastes: [part] })
+  })
+
+  it('lists a second paste the record stops in, after a whole one', () => {
+    const long = log('big', 600)
+    const q = { id: 'w-1', text: `fix this\n\n${LOG}\n\n${long}`.slice(0, 4000), at: 1 }
+    const part = long.slice(0, 4000 - 12 - LOG.length)
+    const out = withQueuedPasted(q, [long, LOG])
+    expect(out.pasted).toEqual([LOG, part])
+    expect(splitPasted(out.text, out.pasted, [])).toEqual({ text: 'fix this', pastes: [LOG, part] })
   })
 
   it('is unchanged without a paste', () => {
     const q = { id: 'w-1', text: TYPED, at: 1 }
     expect(withQueuedPasted(q, [LOG])).toBe(q)
+  })
+
+  it('never lists the later, longer paste for a short record', () => {
+    const first = log('pkg', 31)
+    const out = withQueuedPasted({ id: 'w-1', text: first, at: 1 }, [log('pkg', 61), first])
+    expect(out.pasted).toEqual([first])
   })
 })
 

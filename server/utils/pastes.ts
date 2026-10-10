@@ -17,8 +17,6 @@ export const PASTES_MAX = 100
 export const PASTES_MAX_CHARS = 2_000_000
 // Ranges read from one request.
 const PER_MESSAGE = 20
-// A queued record only keeps the start of its text (see state.ts addQueued).
-const QUEUED_CHARS = 4000
 
 // The pasted texts of `text` at the [start, length] ranges the app gave:
 // long blocks only, each one once. Anything malformed is ignored.
@@ -54,7 +52,9 @@ export function loadPastes(raw: unknown): string[] {
 
 // Pasted texts of a user message: the blocks its transcript lists (`listed`)
 // and the kept ones found in it, the longest first (a kept block may sit
-// inside another one), in the order of the text.
+// inside another one), in the order of the text. Only text of the message
+// itself: a kept block that merely starts like it is another message's, and
+// of a text cut short, the part it holds.
 export function pastedIn(list: string[], text: string, listed: string[] = []): string[] {
   if (!list.length || !isLongPaste(text)) return listed
   const known = list.filter(b => !listed.includes(b)).sort((a, b) => b.length - a.length)
@@ -71,9 +71,9 @@ export function withPasted<T extends { role: string, text: string, pasted?: stri
   })
 }
 
-// A queued record with its pasted texts, cut like its text.
+// A queued record with its pasted texts: what its text, cut short, holds of them.
 export function withQueuedPasted(q: QueuedMessage, list: string[]): QueuedMessage {
-  const pasted = pastedIn(list, q.text).map(b => b.slice(0, QUEUED_CHARS))
+  const pasted = pastedIn(list, q.text)
   return pasted.length ? { ...q, pasted } : q
 }
 

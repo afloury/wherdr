@@ -29,7 +29,7 @@ export function restoreDraft(draft: { text: string, atts: DraftAtt[], reply?: Re
     message = parsed.body
   }
   // Texts sent as "Pasted text" cards become cards again.
-  const split = splitPasted(String(message || ''), pasted, sentPastes.value)
+  const split = splitPasted(String(message || ''), pasted, sentPastes.value, true)
   for (const paste of split.pastes) draft.atts.push({ url: '', path: null, paste })
   const lines = split.text.split('\n')
   const photos = lines.filter(l => l.includes(UPLOAD)).map(l => l.trim())
