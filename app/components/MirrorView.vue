@@ -36,6 +36,7 @@ let unbindSelection: (() => void) | null = null
 let fontKey = ''
 let fontCap = 0
 let fitBox = ''
+let baseCell: { width: number, height: number } | null = null
 let fitTimer: ReturnType<typeof setTimeout> | undefined
 let links: ReturnType<typeof bindTerminalLinks> | null = null
 
@@ -46,6 +47,7 @@ function positionScreen() {
   const el = term?.element?.querySelector('.xterm-screen') as HTMLElement | null
   if (!term || !b || !el || !el.offsetHeight || !el.offsetWidth) return
   const now = term.options.fontSize || fontSize.value
+  if (now === fontSize.value) baseCell = { width: el.offsetWidth / term.cols, height: el.offsetHeight / term.rows }
   // For one width and one screen, the size only goes down: no back and forth
   // between two sizes that measure almost the same.
   const key = `${b.clientWidth} ${term.cols} ${fontSize.value}`
@@ -71,11 +73,12 @@ function askFit() {
   const b = box.value
   const el = term?.element?.querySelector('.xterm-screen') as HTMLElement | null
   if (!props.hold || !term || !b || !el?.offsetWidth || !ready.value) return
-  const key = `${b.clientWidth} ${b.clientHeight}`
+  const key = `${b.clientWidth} ${b.clientHeight} ${fontSize.value}`
   if (key === fitBox) return
-  // Size of a character at the setting's size (the mirror may show smaller ones).
-  const k = fontSize.value / (term.options.fontSize || fontSize.value)
-  const fit = mirrorFit(b.clientWidth, b.clientHeight, el.offsetWidth / term.cols * k, el.offsetHeight / term.rows * k)
+  // Use the measured cells at the setting's size. Scaling smaller text back
+  // proportionally is inaccurate: xterm rounds character heights to pixels.
+  if (!baseCell) return
+  const fit = mirrorFit(b.clientWidth, b.clientHeight, baseCell.width, baseCell.height)
   if (!fit || ws?.readyState !== 1) return
   fitBox = key
   ws.send(JSON.stringify({ type: 'fit', ...fit }))
@@ -149,7 +152,7 @@ onMounted(() => {
   links = bindTerminalLinks(term, t)
   term.attachCustomWheelEventHandler(() => false)
   document.fonts?.load(`${fontSize.value}px "JetBrains Mono Variable"`).then(() => nextTick(positionScreen)).catch(() => {})
-  fitBox = `${box.value!.clientWidth} ${box.value!.clientHeight}`
+  fitBox = `${box.value!.clientWidth} ${box.value!.clientHeight} ${fontSize.value}`
   ro = new ResizeObserver(() => {
     positionScreen()
     clearTimeout(fitTimer)
@@ -173,6 +176,7 @@ onUnmounted(() => {
 watch(terminalTheme, (th) => { if (term) term.options.theme = th })
 watch(fontSize, (n) => {
   if (!term) return
+  baseCell = null
   term.options.fontSize = n
   nextTick(positionScreen)
 })

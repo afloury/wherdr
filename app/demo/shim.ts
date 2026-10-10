@@ -77,9 +77,20 @@ class DemoSocket extends EventTarget {
     if (!p) return this.finish(1008)
     if (mirror) {
       // The pane's own size (its place in the layout), or the one the cell's terminal last gave it.
-      const rect = server.state().tabs.flatMap(t => t.layout?.panes || []).find(x => x.pane === id)?.rect
+      const rect = (server.state().tabs || []).flatMap(t => t.layout?.panes || []).find(x => x.pane === id)?.rect
       ;({ cols, rows } = fitted.get(id) || { cols: rect?.width || 96, rows: rect?.height || 30 })
       this.deliver(JSON.stringify({ type: 'mirror.size', cols, rows }))
+      this.receive = (raw) => {
+        const m = JSON.parse(raw)
+        if (q.get('hold') !== '1' || !fitted.has(id) || m?.type !== 'fit') return
+        if (!Number.isInteger(m.cols) || !Number.isInteger(m.rows)) return
+        cols = Math.max(10, Math.min(400, m.cols))
+        rows = Math.max(5, Math.min(200, m.rows))
+        fitted.set(id, { cols, rows })
+        this.deliver(JSON.stringify({ type: 'mirror.size', cols, rows }))
+        const pane = server.pane(id)
+        if (pane) this.deliver(frame(id === DEV_SERVER ? DEV_SERVER_SCREEN : agentScreen(pane, server.chat(id), '', cols, rows), cols, rows))
+      }
     } else {
       fitted.set(id, { cols, rows })
     }

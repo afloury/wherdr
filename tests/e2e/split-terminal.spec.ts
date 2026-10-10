@@ -8,8 +8,8 @@ import { SPLIT_CHAT_PANE, SPLIT_SHELL_PANE, SPLIT_TAB, fakeHerdr } from './scena
 // gets its own back afterwards.
 test.skip(({ isMobile }) => isMobile, 'side-by-side cells are a computer layout')
 
-// The fake panes start at 120x40 and keep the size a control session gave them.
-const ORIGINAL = { cols: 120, rows: 40, attached: false }
+// The fake panes start at their layout size and keep the size control gave them.
+const original = (pane: string) => ({ cols: pane === SPLIT_CHAT_PANE ? 60 : 59, rows: 40, attached: false })
 const paneSize = (pane: string) => fakeHerdr('e2e.pane_size', { pane_id: pane }) as Promise<{ cols: number, rows: number, attached: boolean }>
 
 const shot = (page: Page, name: string, project: string) =>
@@ -40,7 +40,7 @@ async function expectFilled(body: Locator, cols: number, rows: number) {
 }
 
 test.beforeEach(async () => {
-  for (const pane of [SPLIT_CHAT_PANE, SPLIT_SHELL_PANE]) await expect.poll(() => paneSize(pane), { timeout: 15_000 }).toEqual(ORIGINAL)
+  for (const pane of [SPLIT_CHAT_PANE, SPLIT_SHELL_PANE]) await expect.poll(() => paneSize(pane), { timeout: 15_000 }).toEqual(original(pane))
 })
 
 for (const [width, height] of [[1440, 900], [2000, 1125]] as const) {
@@ -84,7 +84,7 @@ test('a cell that loses the focus mirrors its pane at the size it was fitted to'
   // Not focused, never fitted: the pane as it is, framed in its cell.
   await expect(shell.locator('.mirror .xterm-rows')).toContainText('fake mirror')
   await expect(shell.locator('.mirror-tag')).toContainText('Mirror')
-  expect(await paneSize(SPLIT_SHELL_PANE)).toEqual(ORIGINAL)
+  expect(await paneSize(SPLIT_SHELL_PANE)).toEqual(original(SPLIT_SHELL_PANE))
 
   await shell.click()
   await expect(shell.locator('#term .xterm-rows')).toContainText('fake terminal')
@@ -109,5 +109,5 @@ test('a cell that loses the focus mirrors its pane at the size it was fitted to'
 
   // The tab is left: the pane gets the size it had before wherdr showed it.
   await page.goto('/#/')
-  await expect.poll(() => paneSize(SPLIT_SHELL_PANE), { timeout: 10_000 }).toEqual(ORIGINAL)
+  await expect.poll(() => paneSize(SPLIT_SHELL_PANE), { timeout: 10_000 }).toEqual(original(SPLIT_SHELL_PANE))
 })
