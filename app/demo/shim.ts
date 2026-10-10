@@ -7,6 +7,8 @@ import { DEV_SERVER_SCREEN, SHELL_REFUSAL, agentScreen } from './terminal'
 import { DEV_SERVER } from './scenario'
 
 const enc = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(s)))
+// Size the terminal of a side-by-side cell gave each pane: its mirror keeps it.
+const fitted = new Map<string, { cols: number, rows: number }>()
 const frame = (s: string, cols: number, rows: number) => JSON.stringify({ type: 'terminal.frame', bytes: enc(s), width: cols, height: rows })
 
 // Enough of the WebSocket interface for the app (on* handlers, send, close).
@@ -74,15 +76,25 @@ class DemoSocket extends EventTarget {
     let rows = Number(q.get('rows')) || 32
     if (!p) return this.finish(1008)
     if (mirror) {
-      cols = 96
-      rows = 30
+      // The pane's own size (its place in the layout), or the one the cell's terminal last gave it.
+      const rect = server.state().tabs.flatMap(t => t.layout?.panes || []).find(x => x.pane === id)?.rect
+      ;({ cols, rows } = fitted.get(id) || { cols: rect?.width || 96, rows: rect?.height || 30 })
       this.deliver(JSON.stringify({ type: 'mirror.size', cols, rows }))
+    } else {
+      fitted.set(id, { cols, rows })
     }
     if (id === DEV_SERVER) {
       let line = ''
       this.deliver(frame(DEV_SERVER_SCREEN, cols, rows))
+      if (mirror) return
       this.receive = (raw) => {
         const m = JSON.parse(raw)
+        if (m?.type === 'terminal.resize' && m.cols && m.rows) {
+          cols = m.cols
+          rows = m.rows
+          fitted.set(id, { cols, rows })
+          return this.deliver(frame(DEV_SERVER_SCREEN + line, cols, rows))
+        }
         if (m?.type !== 'terminal.input' || typeof m.text !== 'string') return
         for (const ch of m.text as string) {
           if (ch === '\r') {
@@ -116,6 +128,7 @@ class DemoSocket extends EventTarget {
       if (m.type === 'terminal.resize' && m.cols && m.rows) {
         cols = m.cols
         rows = m.rows
+        fitted.set(id, { cols, rows })
         return draw()
       }
       if (m.type === 'keys' && m.keys?.includes('esc')) return void server.interrupt(id)

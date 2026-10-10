@@ -77,16 +77,19 @@ describe('cellMode', () => {
     expect(cellMode({ chat: true, viewMode: 'term' })).toBe('mirror')
     expect(cellMode({ chat: true, viewMode: 'chat' })).toBe('chat')
     expect(cellMode({ chat: true, viewMode: 'project' })).toBe('chat')
+    expect(cellMode({ chat: true, viewMode: 'chat', active: true })).toBe('chat')
   })
-  it('without a conversation: always the mirror', () => {
+  it('without a conversation: always the terminal', () => {
     expect(cellMode({ chat: false, viewMode: 'chat' })).toBe('mirror')
+    expect(cellMode({ chat: false, viewMode: 'chat', active: true })).toBe('term')
   })
-  it('changing the focus changes no cell\'s mode', () => {
+  it('the focused cell has the real terminal, the others its mirror', () => {
     const modes: Record<string, 'chat' | 'term'> = { a: 'term', b: 'term', c: 'chat' }
-    const show = () => Object.fromEntries(Object.entries(modes).map(([k, m]) => [k, cellMode({ chat: true, viewMode: m })]))
-    const before = show()
-    for (const _focus of ['a', 'b', 'c', 'a']) expect(show()).toEqual(before)
-    expect(before).toEqual({ a: 'mirror', b: 'mirror', c: 'chat' })
+    const show = (focus: string) => Object.fromEntries(Object.entries(modes).map(([k, m]) => [k, cellMode({ chat: true, viewMode: m, active: k === focus })]))
+    expect(show('a')).toEqual({ a: 'term', b: 'mirror', c: 'chat' })
+    expect(show('b')).toEqual({ a: 'mirror', b: 'term', c: 'chat' })
+    // The focus on a conversation: no cell resizes a pane.
+    expect(show('c')).toEqual({ a: 'mirror', b: 'mirror', c: 'chat' })
   })
 })
 

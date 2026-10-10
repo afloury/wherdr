@@ -2669,11 +2669,11 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
 .plan .divider.down::before { width: 26px; height: 4px; }
 .plan .divider.on::before { background: var(--mauve); }
 
-/* Terminal mirror: characters at the setting's size, screen cropped by
-   the cell when the shared Herdr terminal is larger. */
+/* Terminal mirror: the shared Herdr terminal at its real size, framed and
+   centred in its cell (MirrorView shrinks the characters of a wider one). */
 .mirror { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--bg); cursor: default; }
-.mirror.interactive { cursor: text; }
 .mirror-screen { position: absolute; left: 8px; top: 6px; }
+.mirror-screen.framed { outline: 1px solid var(--line-soft); outline-offset: 5px; }
 .mirror-screen .xterm { padding: 0; }
 .mirror-screen .xterm-viewport { overflow: hidden !important; background: transparent !important; }
 .mirror-screen .xterm-helper-textarea { opacity: 0; }
@@ -2682,7 +2682,6 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
   font: 600 9.5px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase;
   color: var(--dim); background: color-mix(in srgb, var(--bg) 80%, transparent); border: 1px solid var(--line-soft);
 }
-.mirror.interactive .mirror-tag { color: var(--mauve); border-color: color-mix(in srgb, var(--mauve) 50%, transparent); }
 .terminal-selection-hint {
   position: absolute; z-index: 2; right: 8px; top: 8px; display: flex; align-items: center; gap: 8px;
   padding: 4px 5px 4px 8px; background: var(--bg-2); border: 1px solid var(--line);
@@ -3012,6 +3011,10 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
   .cell-view .keybar { background-image: none; border-top: 1px solid var(--line-soft); }
   .cell-view .keybar::before { content: none; }
   .cell-view .search-bar { max-width: none; }
+  /* The terminal of the focused cell takes the whole cell (no reading column). */
+  .cell-view #termWrap { background-image: none; }
+  .cell-view #term { inset: 0; transform: none; }
+  .cell-view #term .xterm { box-shadow: none; }
 
   .hw-sheet {
     top: 50%; left: 50%; right: auto; bottom: auto; translate: -50% -50%;
