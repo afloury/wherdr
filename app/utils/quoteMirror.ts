@@ -9,14 +9,16 @@
 // margin or padding, the "> " kept (hidden, "↳" drawn over it), the band
 // widened into the padding by margin = -padding.
 
+import { QUOTE_LINE } from './questionReply'
+
 export interface MirrorLine { quote: boolean, prefix: string, text: string, first: boolean, last: boolean }
 
 // The textarea's lines, as drawn: a "> " line keeps its prefix apart (same
 // characters, hidden), `first`/`last` mark the ends of a run of quote lines.
 export function mirrorLines(value: string): MirrorLine[] {
   const lines = value.split('\n').map((line) => {
-    const m = /^>\s?/.exec(line)
-    return { quote: Boolean(m), prefix: m ? m[0] : '', text: m ? line.slice(m[0].length) : line, first: false, last: false }
+    const m = QUOTE_LINE.exec(line)
+    return { quote: Boolean(m), prefix: m ? m[1]! : '', text: m ? m[2]! : line, first: false, last: false }
   })
   lines.forEach((l, i) => {
     l.first = l.quote && !lines[i - 1]?.quote
