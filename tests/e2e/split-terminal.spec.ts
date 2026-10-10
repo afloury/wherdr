@@ -128,3 +128,31 @@ test('inactive terminals follow cell resizing and restore their size after leavi
   await page.goto('/#/')
   await expect.poll(() => paneSize(SPLIT_SHELL_PANE), { timeout: 10_000 }).toEqual(original(SPLIT_SHELL_PANE))
 })
+
+// What the terminal of a pane was sent as keyboard input.
+function typedInto(page: Page, pane: string) {
+  const typed: string[] = []
+  page.on('websocket', ws => {
+    if (!ws.url().includes('/ws/term?') || new URL(ws.url()).searchParams.get('pane') !== pane) return
+    ws.on('framesent', (f) => {
+      const m = JSON.parse(String(f.payload))
+      if (m.type === 'terminal.input') typed.push(m.text)
+    })
+  })
+  return typed
+}
+
+test('a click on the header of the active cell keeps the keyboard in its terminal', async ({ page }) => {
+  const typed = typedInto(page, SPLIT_SHELL_PANE)
+  await open(page, 1440, 900)
+  const shell = cell(page, SPLIT_SHELL_PANE)
+  await shell.locator('#term').click()
+  await expect.poll(async () => (await paneSize(SPLIT_SHELL_PANE)).attached).toBe(true)
+  await page.keyboard.type('a')
+  await expect.poll(() => typed.join('')).toBe('a')
+  // Already active: its header takes no focus, the terminal keeps the keyboard.
+  await shell.locator('header .agent-title').click()
+  await page.keyboard.type('b')
+  await expect.poll(() => typed.join('')).toBe('ab')
+  expect(await page.evaluate(pane => Boolean(document.activeElement?.closest(`.cell-view[data-pane="${pane}"] #term`)), SPLIT_SHELL_PANE)).toBe(true)
+})

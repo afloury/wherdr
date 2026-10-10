@@ -463,6 +463,14 @@ onMounted(() => {
 watch(() => props.active, (a, was) => {
   if (a && !was && props.cell) setTimeout(() => { if (!document.activeElement?.closest('.cell-view.active')) (mode.value === 'term' ? ctl : composer.value)?.focus() }, 50)
 })
+// Click on the cell's header, outside its controls: nothing there takes the
+// focus, which falls to the page and loses the next keystrokes. Back to the view.
+function refocus(e: MouseEvent) {
+  const el = e.target as Element | null
+  if (!props.cell || !desk.value || !el?.closest?.('.agent-top') || el.closest('button, a, input, [role="tab"], .cell-grip')) return
+  if (document.activeElement && document.activeElement !== document.body) return
+  (mode.value === 'term' ? ctl : composer.value)?.focus()
+}
 
 // Keyboard open (iPhone): the view fits the visible part.
 const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`, top: `${vvTop.value}px` } : {}))
@@ -472,7 +480,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
   <section
     :id="cell ? undefined : 'agent'" :class="cell ? ['cell-view', { active, gripped: grip }] : 'view'" :style="cell ? undefined : viewStyle" :data-pane="cell ? paneId : undefined"
     @touchstart="onSwipeStart" @touchmove="onSwipeMove" @touchend="onSwipeEnd" @touchcancel="onSwipeEnd"
-    @pointerdown.capture="cell && emit('activate')" @focusin="cell && emit('activate')"
+    @pointerdown.capture="cell && emit('activate')" @focusin="cell && emit('activate')" @click="refocus"
     @dragenter="onDrag" @dragover="onDrag" @dragleave="onDrag" @drop="onDrop"
   >
     <div v-if="dropDepth && dropTarget" class="file-drop" aria-hidden="true">
