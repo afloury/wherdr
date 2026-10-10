@@ -33,12 +33,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
-- **Terminals in split panes**: the focused terminal now fills its cell, including after
-  resizing the window or a divider, instead of keeping Herdr's small screen in the corner.
-  Inactive terminals are read-only mirrors, centred and framed when smaller and scaled down
-  when wider. A fitted pane keeps its size while mirrored and gets its original size back
-  when leaving the tab, respecting later resizing by a Herdr client. The browser demo follows
-  the same sizing behaviour.
+- **Terminals in split panes**: every visible terminal fills its cell and stays connected
+  when focus changes. Moving focus routes keyboard input without replacing terminal instances.
+  Divider resizing updates all terminals while dragging. Leaving the tab restores original
+  sizes, respecting later resizing by a Herdr client. The browser demo follows the same sizing
+  behaviour and places short Claude exchanges at the top without inserting blank rows.
 - **Panes side by side on a computer**: with the default background (Settings › Appearance ›
   Desktop › Background "wherdr grid"), a conversation shown next to another pane had the dotted
   grid and the two lines of the reading column running through its messages and around its

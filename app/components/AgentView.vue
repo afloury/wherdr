@@ -14,9 +14,8 @@ let curPaneOwner: symbol | null = null
 // left / right swipe to the neighbours (Herdr's reading order).
 // `cell`: cell of the side-by-side view (computer). All cells are
 // live: the conversation, or the terminal. Only the active cell (`active`, a
-// click in a cell activates it) has the input field, and the real terminal,
-// fitted to the cell; the others show a mirror of theirs (MirrorView), which
-// never resizes the real pane.
+// click in a cell activates it) receives keyboard input. Every terminal
+// stays connected and fitted to its own cell regardless of focus.
 import type { QueuedMessage } from '#shared/types'
 import type { PaneViewMode } from '~/composables/useHerdr'
 import { neighborPane } from '#shared/layout'
@@ -67,9 +66,8 @@ const viewMode = computed<PaneViewMode>({
 // State not received yet (opened from a notification): we wait to
 // know whether it is an agent, so as not to open the terminal for nothing.
 // Cell: the pane's remembered mode (conversation or terminal), whether the cell
-// has the focus or not; the focus changes the border, the input and, for a
-// terminal, who drives it (the real terminal, or its mirror).
-const mode = computed<PaneViewMode | 'mirror' | null>(() => {
+// has the focus or not; focus changes the border and keyboard routing.
+const mode = computed<PaneViewMode | null>(() => {
   const p = pane.value
   if (!p) return null
   if (props.cell) return cellMode({ chat: hasChat(p), viewMode: viewMode.value, active: props.active })
@@ -127,13 +125,10 @@ const ctl = createTerminal(props.paneId, {
   setBanner: (b) => { banner.value = b },
   hasBanner: () => Boolean(banner.value),
   fill: () => Boolean(props.cell),
+  input: () => live.value,
 })
-// Cell whose terminal was fitted to it: its mirror keeps that size as long as
-// it is shown, instead of giving the pane's back as soon as the focus leaves.
-const fitted = ref(false)
 const chatRef = ref<{ scrollToEnd: (force: boolean) => void, reload: () => void, focusSearch: () => void } | null>(null)
 const composer = ref<{ focus: () => void, focusEnd: () => void, blur: () => void, addImages: (files: File[]) => Promise<void>, addFiles: (files: File[]) => Promise<number>, stop: () => boolean } | null>(null)
-const mirror = ref<{ focus: () => void } | null>(null)
 const searchOpen = ref(typeof route.query.q === 'string' && typeof route.query.hit === 'string')
 
 // Pane closed while being viewed. A pane just created may be missing
@@ -157,17 +152,15 @@ watch(closed, (c) => {
 }, { immediate: true })
 
 watch(mode, (m, old) => {
-  if ((m === 'chat' || m === 'mirror') && old === 'term') {
+  if (m === 'chat' && old === 'term') {
     banner.value = closed.value ? banner.value : null
   }
-  if (props.cell && m === 'term') fitted.value = true
-  else if (m !== 'mirror') fitted.value = false
 }, { immediate: true })
 
 function setMode(m: PaneViewMode) {
   if (props.cell) emit('activate')
   viewMode.value = m
-  if (desk.value && m === 'term') nextTick(() => (mode.value === 'mirror' ? mirror.value : ctl)?.focus())
+  if (desk.value && m === 'term') nextTick(() => ctl.focus())
   haptic()
 }
 // Header icons (phone): one tap shows the terminal (or the Project
@@ -240,9 +233,9 @@ const changesOpen = ref(false)
 const attachInput = ref<HTMLInputElement | null>(null)
 // Interactive menu open (conversation view): what would be typed would go into its
 // search; the menu card has its own field.
-// Terminal shown (terminal view or mirror): the prompt, waiting screen or
+// Terminal shown: the prompt, waiting screen or
 // menu are already there, and the key bar answers them; no duplicate "Your turn" card.
-const termShown = computed(() => mode.value === 'term' || mode.value === 'mirror')
+const termShown = computed(() => mode.value === 'term')
 const composerShown = computed(() => showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) }) && !(menu.value && mode.value !== 'term'))
 const canAttachTerminal = computed(() => terminalAttachment({
   desk: desk.value, live: live.value, mode: mode.value,
@@ -373,7 +366,7 @@ const tabs = computed(() => [
   { label: t('Terminal'), value: 'term' },
 ])
 const tab = computed({
-  get: () => (mode.value === 'mirror' || mode.value === 'term' ? 'term' : 'chat'),
+  get: () => (mode.value === 'term' ? 'term' : 'chat'),
   set: (v: string) => setMode(v === 'term' ? 'term' : 'chat'),
 })
 const controls = computed(() => viewControls({ desk: desk.value, cell: Boolean(props.cell), chat: hasChat(pane.value), live: live.value, project: projectTab.value }))
@@ -462,11 +455,11 @@ const swipeStyle = computed(() => (inTab.value && !desk.value
 
 // Computer: give the keyboard to the interactive view on opening.
 onMounted(() => {
-  if (desk.value && live.value) setTimeout(() => (mode.value === 'term' ? ctl : mode.value === 'mirror' ? mirror.value : composer.value)?.focus(), 50)
+  if (desk.value && live.value) setTimeout(() => (mode.value === 'term' ? ctl : composer.value)?.focus(), 50)
 })
 // Cell just activated by a click outside its content: we give it the keyboard.
 watch(() => props.active, (a, was) => {
-  if (a && !was && props.cell) setTimeout(() => { if (!document.activeElement?.closest('.cell-view.active')) (mode.value === 'term' ? ctl : mode.value === 'mirror' ? mirror.value : composer.value)?.focus() }, 50)
+  if (a && !was && props.cell) setTimeout(() => { if (!document.activeElement?.closest('.cell-view.active')) (mode.value === 'term' ? ctl : composer.value)?.focus() }, 50)
 })
 
 // Keyboard open (iPhone): the view fits the visible part.
@@ -572,11 +565,10 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         @goto-term="setMode('term')" @restored="composer?.focus()" @reply="composer?.focus()" @quote="composer?.focusEnd()" @sent="onSent"
       />
     </div>
-    <div v-else-if="(mode === 'term' || mode === 'mirror') && (!eventsOpen || offlineView || machineDown)" class="chat-empty offline-terminal"><UIcon name="i-lucide-wifi-off" class="chat-empty-icon" /><p>{{ t('Terminal unavailable offline') }}</p></div>
+    <div v-else-if="mode === 'term' && (!eventsOpen || offlineView || machineDown)" class="chat-empty offline-terminal"><UIcon name="i-lucide-wifi-off" class="chat-empty-icon" /><p>{{ t('Terminal unavailable offline') }}</p></div>
     <TerminalView
       v-else-if="mode === 'term'" :ctl="ctl" :class="enter ? (enter > 0 ? 'enter-next' : 'enter-prev') : undefined" :style="swipeStyle"
     />
-    <MirrorView v-else-if="mode === 'mirror'" ref="mirror" :pane-id="paneId" :hold="fitted" />
     <ProjectPanel
       v-else-if="mode === 'project'" :pane-id="paneId" :board="project.board.value" :loading="project.loading.value" :error="project.error.value"
       @reload="project.reload()" @sent="onSent" @prefill="onPrefill"

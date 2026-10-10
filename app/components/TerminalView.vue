@@ -88,10 +88,16 @@ function onWheel(e: WheelEvent) {
 }
 
 let fitTimer: ReturnType<typeof setTimeout> | undefined
-watch(layoutTick, () => {
-  clearTimeout(fitTimer)
-  fitTimer = setTimeout(() => props.ctl.fitNow(true), 120)
-})
+// Throttle rather than debounce: long divider drags must keep fitting while
+// the pointer moves, without sending every intermediate pixel to Herdr.
+function scheduleFit() {
+  if (fitTimer) return
+  fitTimer = setTimeout(() => {
+    fitTimer = undefined
+    props.ctl.fitNow(true)
+  }, 50)
+}
+watch(layoutTick, scheduleFit)
 let ro: ResizeObserver | null = null
 onMounted(() => {
   props.ctl.mount(host.value!)
@@ -99,15 +105,13 @@ onMounted(() => {
     props.ctl.fitNow(false)
     if (!props.ctl.hasBanner()) props.ctl.connect(false)
   })
-  ro = new ResizeObserver(() => {
-    clearTimeout(fitTimer)
-    fitTimer = setTimeout(() => props.ctl.fitNow(true), 120)
-  })
+  ro = new ResizeObserver(scheduleFit)
   ro.observe(host.value!)
 })
 onUnmounted(() => {
   ro?.disconnect()
   clearTimeout(fitTimer)
+  cancelAnimationFrame(raf)
   props.ctl.dispose()
 })
 </script>

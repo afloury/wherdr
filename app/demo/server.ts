@@ -2,6 +2,7 @@
 // app's /api/* calls and feeds the live state, from scenario.ts. Nothing here
 // talks to a network or runs a command; agents "answer" with scripted turns.
 import type { ChatItem, HerdrState, Pane } from '#shared/types'
+import { dividers, resizePreview } from '../../shared/layout'
 import * as S from './scenario'
 
 export const DEMO_REFUSAL = 'Demo — nothing runs here. Install wherdr to drive your own agents.'
@@ -287,6 +288,19 @@ export class DemoServer {
       return fail(404, DEMO_REFUSAL)
     }
     switch (path) {
+      case '/api/space': {
+        // A demo divider changes only the in-memory layout, never a real pane.
+        if (body.op !== 'layout.ratio') return fail(403, DEMO_REFUSAL)
+        const tab = this.tabs.find(t => t.id === body.tab_id)
+        const ratio = body.ratio
+        if (!tab?.layout || typeof body.path !== 'string' || typeof ratio !== 'number'
+          || !Number.isFinite(ratio) || ratio < 0.1 || ratio > 0.9
+          || !dividers(tab.layout).some(d => d.path === body.path)) return fail(400, 'Invalid split')
+        const layout = resizePreview(tab.layout, body.path, ratio)
+        this.tabs = this.tabs.map(t => t === tab ? { ...t, layout } : t)
+        this.emit()
+        return ok()
+      }
       case '/api/prompt': return this.prompt(paneId, String(body.text || ''))
       case '/api/choose': return this.choose(paneId, Number(body.index), String(body.label || ''))
       case '/api/interrupt': return this.interrupt(paneId)

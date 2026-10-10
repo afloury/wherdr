@@ -2,6 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installDemoNetwork } from '../app/demo/shim'
 import { DEV_SERVER } from '../app/demo/scenario'
+import { agentScreen } from '../app/demo/terminal'
+import type { Pane } from '../shared/types'
 
 const realFetch = window.fetch
 const realSocket = window.WebSocket
@@ -29,6 +31,13 @@ async function connect(route: string) {
 }
 
 describe('demo split terminal sizing', () => {
+  it('places a short Claude exchange at the top with its prompt directly after it', () => {
+    const pane = { agent: 'claude', status: 'idle', model: { label: 'Sonnet' } } as Pane
+    const screen = agentScreen(pane, [{ role: 'assistant', text: 'Done.', ts: null }], '', 100, 80)
+    expect(screen).toContain('\x1b[H\r\n')
+    expect(screen.split('\r\n')).toHaveLength(8)
+    expect(screen).toContain('\x1b[6;3H')
+  })
   it('fits the active terminal, keeps its size in a mirror, and follows cell resizing', async () => {
     const { socket, frames } = await connect(`term?pane=${DEV_SERVER}&cols=113&rows=62`)
     expect(frames.at(-1)).toMatchObject({ type: 'terminal.frame', width: 113, height: 62 })

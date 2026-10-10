@@ -26,12 +26,11 @@ export function showComposer(o: { desk: boolean, live: boolean, mode: Mode | 'mi
 
 // Side-by-side cell: the mode chosen for this pane, whether it has the focus or not.
 // Conversation (the Project panel does not exist in a cell) or terminal; without
-// a conversation, always the terminal. The active cell has the real terminal,
-// fitted to the cell (it resizes the pane, like the terminal of a pane opened
-// alone); the others a mirror, which never resizes anything.
-export function cellMode(o: { chat: boolean, viewMode: Mode, active?: boolean }): 'chat' | 'term' | 'mirror' {
+// a conversation, always the terminal. Focus only routes keyboard input;
+// every visible terminal keeps its instance, connection and fitted size.
+export function cellMode(o: { chat: boolean, viewMode: Mode, active?: boolean }): 'chat' | 'term' {
   if (o.chat && o.viewMode !== 'term') return 'chat'
-  return o.active ? 'term' : 'mirror'
+  return 'term'
 }
 
 // A pane without an explicit choice follows the device default on a computer,

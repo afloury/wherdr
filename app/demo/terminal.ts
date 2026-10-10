@@ -48,10 +48,9 @@ export function agentScreen(p: Pane, items: ChatItem[], input: string, cols: num
   const footer = ['', status, rule, `${BOLD}>${RESET} ${input}`, rule, `${DIM}  ${p.model?.label || ''} · demo — nothing runs${RESET}`]
   const room = Math.max(1, rows - footer.length)
   const lines = [...body.slice(-room)]
-  while (lines.length < room) lines.unshift('')
   const screen = [...lines, ...footer].map(l => (plain(l).length > cols ? l.slice(0, cols) : l)).join('\r\n')
   // The cursor waits in the input field, after what is typed.
-  return `\x1b[2J\x1b[H${screen}\x1b[${room + 4};${Math.min(cols, input.length + 3)}H`
+  return `\x1b[2J\x1b[H${screen}\x1b[${lines.length + 4};${Math.min(cols, input.length + 3)}H`
 }
 
 export const DEV_SERVER_SCREEN = '\x1b[2J\x1b[H' + DEV_SERVER_OUTPUT.join('\r\n') + '\r\n'
