@@ -27,7 +27,7 @@ function sendReview() {
 const changes = ref<ChangesResponse | null>(null)
 const loading = ref(false)
 const error = ref('')
-const includeCommits = ref(false)
+const includeCommits = ref(comments.value.some(c => c.scope === 'committed'))
 let request = 0
 
 async function refresh() {

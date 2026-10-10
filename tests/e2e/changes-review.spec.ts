@@ -17,7 +17,7 @@ async function setup(page: Page) {
 }
 const field = (page: Page) => page.locator('.prompt').locator('textarea, [contenteditable="true"]').first()
 
-test('two files review appends to the message draft without sending; survives closing and reload', async ({ page }, info) => {
+test('two files review appends to the message draft without sending; survives closing and reload', async ({ page, isMobile }, info) => {
   await setup(page)
   const sent: string[] = []
   page.on('request', r => { if (r.method() === 'POST' && /\/api\/(prompt|input)$/.test(new URL(r.url()).pathname)) sent.push(r.url()) })
@@ -26,7 +26,8 @@ test('two files review appends to the message draft without sending; survives cl
   for (const [path, body] of [['src/first.ts', 'Check the first call'], ['src/second.ts', 'Handle the empty case']]) {
     const f = page.locator('.change-file').filter({ hasText: path })
     await f.locator('summary').click()
-    await f.locator('.review-source').last().click()
+    if (isMobile) await f.locator('.review-source').last().tap()
+    else await f.locator('.review-source').last().click()
     await expect(f.locator('textarea')).toBeFocused()
     await f.locator('textarea').fill(body!)
   }
@@ -83,10 +84,32 @@ test('keyboard editing, delete, and text selection without creating a comment', 
   await f.locator('.review-source').last().dispatchEvent('click')
   await expect(page.locator('.review-note')).toHaveCount(0)
   await page.evaluate(() => window.getSelection()?.removeAllRanges())
+  await f.locator('.review-source').last().dblclick()
+  await page.waitForTimeout(300)
+  await expect(page.locator('.review-note')).toHaveCount(0)
+  await page.evaluate(() => window.getSelection()?.removeAllRanges())
   await f.getByRole('button', { name: 'Comment on line 10', exact: true }).focus()
   await page.keyboard.press('Enter')
   await expect(f.locator('textarea')).toBeFocused()
   await f.locator('textarea').fill('Keyboard review')
   await f.getByRole('button', { name: 'Delete comment' }).click()
   await expect(page.locator('.review-note')).toHaveCount(0)
+})
+
+test('French review controls fit the phone and prepare a localized message', async ({ page }, info) => {
+  await page.addInitScript(() => localStorage.setItem('herdrLanguage', 'fr'))
+  await setup(page)
+  await page.locator('.agent-top').getByRole('button', { name: 'Options', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Voir les changements', exact: true }).or(page.getByRole('button', { name: 'Voir les changements', exact: true })).click()
+  await page.locator('.change-file summary').first().click()
+  await page.getByRole('button', { name: 'Commenter la ligne 10', exact: true }).first().click()
+  await page.locator('.review-note textarea').fill('Vérifier la valeur vide')
+  const send = page.getByRole('button', { name: 'Envoyer la relecture', exact: true })
+  await expect(send).toBeVisible()
+  const rect = (await send.boundingBox())!
+  expect(rect.x).toBeGreaterThanOrEqual(0)
+  expect(rect.x + rect.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/${info.project.name}-review-french.png` })
+  await send.click()
+  await expect(field(page)).toHaveValue('Merci de revoir ces points :\n\nsrc/first.ts:10 — Vérifier la valeur vide')
 })
