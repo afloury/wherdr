@@ -31,14 +31,16 @@ test('an empty storage gets tokens in the native field, from one list', async ({
   await expect(group).not.toContainText('On a phone')
 
   // "Default." and no badge on the native field; the rich field keeps its badge.
-  const item = (label: string) => group.locator('.settings-radio label', { hasText: label }).locator('xpath=ancestor::*[.//*[@role="radio"]][1]')
-  await expect(item('Tokens, native field')).toContainText('Default.')
-  await expect(item('Tokens, native field')).not.toContainText('Experimental')
-  await expect(item('“>” lines')).not.toContainText('Default.')
-  await expect(item('Tokens, rich field')).toContainText('Experimental')
+  // The whole row of a choice: the outermost element holding its radio alone.
+  const item = (value: string) => radio(value).locator('xpath=ancestor::*[count(.//*[@role="radio"])=1][last()]')
+  await expect(item('native')).toContainText('Tokens, native field')
+  await expect(item('native')).toContainText('Default.')
+  await expect(item('native')).not.toContainText('Experimental')
+  await expect(item('lines')).not.toContainText('Default.')
+  await expect(item('rich')).toContainText('Experimental')
   await expect(group.locator('.exp-tag')).toHaveCount(1)
 
-  await group.scrollIntoViewIfNeeded()
+  await group.evaluate(el => el.scrollIntoView({ block: 'start' }))
   await shot(page, 'quote-mode-settings', testInfo.project.name)
 })
 
@@ -83,6 +85,7 @@ test('the preview plays once, then Replay plays it again', async ({ page }, test
   await expect(preview).toHaveAttribute('data-playing', 'false', { timeout: 15_000 })
   expect(await running()).toBe(0)
   await expect(preview.locator('.qt-tok.two')).toBeVisible()
+  await group.evaluate(el => el.scrollIntoView({ block: 'start' }))
   await shot(page, 'quote-mode-preview-ended', testInfo.project.name)
   await page.waitForTimeout(1_500)
   await expect(preview).toHaveAttribute('data-playing', 'false')

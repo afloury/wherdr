@@ -3296,6 +3296,7 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
    keyframes have no 100% step, so each piece returns to them. */
 .qt-preview { margin: 14px 0 0; border: 1px solid var(--line); background: var(--bg); --qt-d: 10s; }
 .settings-lead { margin: 0 2px; font-size: 13.5px; line-height: 1.45; }
+.quote-mode-radio { margin-top: 14px; }
 .qt-preview figcaption {
   display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 36px; padding: 0 4px 0 14px; border-bottom: 1px solid var(--line);
   font: 500 10.5px/1 var(--mono); letter-spacing: .13em; text-transform: uppercase; color: var(--muted);
