@@ -20,8 +20,8 @@ export function viewControls(o: { desk: boolean, cell: boolean, chat: boolean, l
 // The terminal takes input directly on a computer, including in a side-by-side
 // cell. The field stays useful on the phone and in the conversation;
 // a side-by-side cell keeps it even without the focus (nothing moves on click).
-export function showComposer(o: { desk: boolean, live: boolean, mode: Mode | 'mirror' | null, cell?: boolean }) {
-  return (o.live || Boolean(o.desk && o.cell)) && (!o.desk || (o.mode !== 'term' && o.mode !== 'mirror'))
+export function showComposer(o: { desk: boolean, live: boolean, mode: Mode | null, cell?: boolean }) {
+  return (o.live || Boolean(o.desk && o.cell)) && (!o.desk || o.mode !== 'term')
 }
 
 // Side-by-side cell: the mode chosen for this pane, whether it has the focus or not.
@@ -41,8 +41,8 @@ export function paneFallback(o: { desk: boolean, defaultMode: 'chat' | 'term' })
   return o.desk ? o.defaultMode : 'chat'
 }
 
-export function terminalAttachment(o: { desk: boolean, live: boolean, mode: Mode | 'mirror' | null, available: boolean }) {
-  return o.desk && o.live && o.available && (o.mode === 'term' || o.mode === 'mirror')
+export function terminalAttachment(o: { desk: boolean, live: boolean, mode: Mode | null, available: boolean }) {
+  return o.desk && o.live && o.available && o.mode === 'term'
 }
 
 // A single tab: the "+" button fits in the header. From the second one,
@@ -52,7 +52,7 @@ export function spaceTabControls(count: number) {
 }
 
 // A tap on a toggle shows it; a second one goes back to the conversation.
-export function toggleViewMode(current: Mode | 'mirror' | null, target: Exclude<Mode, 'chat'>): Mode {
+export function toggleViewMode(current: Mode | null, target: Exclude<Mode, 'chat'>): Mode {
   return current === target ? 'chat' : target
 }
 

@@ -1,20 +1,20 @@
 // Session budget of one multiplexed SSH connection.
 //
 // sshd caps the sessions a single connection may carry (`MaxSessions`, 10 by
-// default). Every terminal, live mirror and remote file read of a machine is
+// default). Every terminal and remote file read of a machine is
 // one session on its shared master connection: past the cap, sshd answers
 // "Session open refused by peer", and the ssh client, finding no master to
 // fall back on (ProxyCommand=/bin/false), prints "Connection closed by
 // UNKNOWN port 65535".
 //
 // The gate keeps short commands (reads, probes) below the cap, leaving room
-// for long-lived streams (terminals, mirrors), which are counted but never
+// for long-lived streams (terminals), which are counted but never
 // queued: they follow a user's action. A refused command is retried after a
 // short delay; identical read-only commands already running are shared.
 
 // sshd's default MaxSessions.
 export const SSH_MAX_SESSIONS = 10
-// Sessions left free for a new terminal or mirror.
+// Sessions left free for a new terminal.
 export const STREAM_MARGIN = 2
 // Short commands at once, even with no stream open.
 export const EXEC_MAX = 6
@@ -46,7 +46,7 @@ export class SessionGate {
     return { execs: this.execs, streams: this.streams, queued: this.waiting.length, peak: this.peak, refusals: this.refusals }
   }
 
-  // A long-lived session (terminal, mirror) opens; call the result when it closes.
+  // A long-lived session (terminal) opens; call the result when it closes.
   openStream(): () => void {
     this.streams++
     this.track()
