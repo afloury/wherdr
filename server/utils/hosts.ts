@@ -38,8 +38,8 @@ export function hostAllowed(host: string | undefined, names = allowedHosts()): b
 
 // A browser (Accept: text/html) opening a page on an address that is not
 // allowed yet gets hostRefusedPage(), saying what to run; API requests (and
-// anything else) keep the JSON error. The page is static on purpose: it
-// reveals neither the allowed hosts nor APP_URL.
+// anything else) keep the JSON error. The page reveals neither the allowed
+// hosts nor APP_URL, and never echoes the request.
 export function hostRefusalIsHtml(path: string, accept: string | string[] | undefined): boolean {
   return !path.startsWith('/api/') && /\btext\/html\b/i.test(Array.isArray(accept) ? accept.join(',') : accept || '')
 }
@@ -47,14 +47,33 @@ export function hostRefusalIsHtml(path: string, accept: string | string[] | unde
 // The command that checks and fixes the phone address on the machine, which
 // may have no screen: `wherdr phone` where that command exists (npm, Homebrew),
 // else the installer, which ends with the same check (Docker, Herdr plugin).
-export function phoneFixCommand(install = process.env.WHERDR_INSTALL || ''): string {
-  if (install === 'brew' || install === 'npm-global') return 'wherdr phone'
+// `wherdr phone` looks at its default port: one started on another port
+// (--port, PORT=…, from the sources) is named, or the command checks nothing.
+const CLI_DEFAULT_PORT = '7683'
+export function phoneFixCommand(install = process.env.WHERDR_INSTALL || '', port = process.env.NITRO_PORT || process.env.PORT || ''): string {
   if (install === 'docker' || install === 'docker-build' || install === 'plugin') return 'curl -fsSL https://wherdr.dev/install | sh'
-  return 'npx wherdr phone'
+  const command = install === 'brew' || install === 'npm-global' ? 'wherdr phone' : 'npx wherdr phone'
+  return /^\d+$/.test(port) && port !== CLI_DEFAULT_PORT ? `${command} --port ${port}` : command
 }
 
-export function hostRefusedPage(install?: string): string {
-  const command = phoneFixCommand(install)
+// Whether the refused name is a tailnet one (what `tailscale serve` publishes).
+// Only this yes/no reaches the page, never the Host header itself.
+export function tailnetName(host: string | undefined): boolean {
+  return /\.ts\.net$/.test(hostname(host || '') || '')
+}
+
+// `host`: the refused Host header. A tailnet name gets the command alone; any
+// other name (LAN name, IP address, reverse proxy) also gets the setting that
+// allows it, since no command can add it.
+export function hostRefusedPage(install?: string, host?: string, port?: string): string {
+  const kind = install ?? process.env.WHERDR_INSTALL ?? ''
+  const command = phoneFixCommand(kind, port)
+  const docker = kind === 'docker' || kind === 'docker-build'
+  const where = docker ? 'in the container\'s environment' : 'in <code>~/wherdr/wherdr.env</code>'
+  const whereFr = docker ? 'dans l’environnement du conteneur' : 'dans <code>~/wherdr/wherdr.env</code>'
+  const other = !tailnetName(host)
+  const serve = other ? 'If you reach wherdr through <code>tailscale serve</code>, wherdr enables that address by itself.' : 'wherdr enables by itself the address <code>tailscale serve</code> publishes for it.'
+  const serveFr = other ? 'Si tu passes par <code>tailscale serve</code>, wherdr active cette adresse tout seul.' : 'wherdr active tout seul l’adresse que <code>tailscale serve</code> publie pour lui.'
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex"><title>wherdr · address not enabled</title>
@@ -64,18 +83,20 @@ body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0d0f1
 main{max-width:480px;border:1px solid #3a3f47;padding:24px}
 .tag{font:11px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:#9aa0a8;margin:0 0 16px}
 h1{font:600 20px/1.25 Archivo,system-ui,sans-serif;margin:0 0 8px}
-p{margin:0 0 12px}hr{border:0;border-top:1px solid #3a3f47;margin:20px 0}
-code{font:13px/1.45 "JetBrains Mono",ui-monospace,monospace}
+p{margin:0 0 12px}pre+p{margin-top:16px}p:last-child{margin-bottom:0}hr{border:0;border-top:1px solid #3a3f47;margin:20px 0}
+code{font:13px/1.45 "JetBrains Mono",ui-monospace,monospace;overflow-wrap:anywhere}
 pre{margin:0;padding:10px 12px;border:1px solid #3a3f47;background:#15181d;white-space:pre-wrap;overflow-wrap:anywhere;user-select:all;-webkit-user-select:all}
 </style></head><body><main>
 <p class="tag">wherdr · 403</p>
 <h1>This address isn't enabled yet.</h1>
-<p>wherdr enables by itself the address <code>tailscale serve</code> publishes for it. On the machine that runs wherdr, run this, then reload:</p>
-<pre><code>${command}</code></pre>
+<p>${serve} On the machine that runs wherdr, run this, then reload:</p>
+<pre><code>${command}</code></pre>${other ? `
+<p>For any other private name or IP address, add it to <code>HERDR_WEB_ALLOWED_HOSTS</code> (comma-separated) ${where}, then restart wherdr.</p>` : ''}
 <hr>
 <h1 lang="fr">Cette adresse n’est pas encore activée.</h1>
-<p lang="fr">wherdr active tout seul l’adresse que <code>tailscale serve</code> publie pour lui. Sur la machine qui fait tourner wherdr, lance ceci, puis recharge :</p>
-<pre><code>${command}</code></pre>
+<p lang="fr">${serveFr} Sur la machine qui fait tourner wherdr, lance ceci, puis recharge :</p>
+<pre><code>${command}</code></pre>${other ? `
+<p lang="fr">Pour tout autre nom privé ou adresse IP, ajoute-le à <code>HERDR_WEB_ALLOWED_HOSTS</code> (séparés par des virgules) ${whereFr}, puis redémarre wherdr.</p>` : ''}
 </main></body></html>
 `
 }

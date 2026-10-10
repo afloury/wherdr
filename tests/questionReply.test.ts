@@ -122,4 +122,12 @@ describe('quoteSegments', () => {
     ])
     expect(quoteSegments('Plain message')).toEqual([{ quote: false, text: 'Plain message' }])
   })
+
+  it('keeps a line starting with ">" but no space as the user\'s text', () => {
+    const text = 'Reply between the markers.\n<<<\nBody\n>>>'
+    expect(quoteSegments(text)).toEqual([{ quote: false, text }])
+    expect(quoteSegments('>= 5 items\n>file.txt\n>>nested')).toEqual([{ quote: false, text: '>= 5 items\n>file.txt\n>>nested' }])
+    expect(quotesIn('>>>\n> Real?\n>>>')).toEqual([{ text: 'Real?', start: 4, end: 12 }])
+    expect(addQuote('done\n>>>', 'Next?')).toBe('done\n>>>\n> Next?\n')
+  })
 })

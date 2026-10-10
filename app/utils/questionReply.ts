@@ -82,6 +82,11 @@ export function quoteOf(text: string): string {
   return lines.map(l => `> ${l.trim()}`).join('\n')
 }
 
+// A quote line: ">" then a space (or nothing else), as quoteOf() writes it.
+// ">>>", ">= 5" or ">file" are the user's own text, not quotes.
+// Groups: 1 = prefix as typed, 2 = quoted text.
+export const QUOTE_LINE = /^(>(?:\s|$))(.*)$/
+
 export interface DraftQuote { text: string, start: number, end: number }
 
 // Quotes of a draft: runs of consecutive "> " lines; `end` includes the
@@ -92,12 +97,12 @@ export function quotesIn(draft: string): DraftQuote[] {
   let cur: DraftQuote | null = null
   for (const line of String(draft || '').split('\n')) {
     const end = pos + line.length
-    const m = /^>\s?(.*)$/.exec(line)
+    const m = QUOTE_LINE.exec(line)
     if (m) {
       if (cur) {
-        cur.text += `\n${m[1]}`
+        cur.text += `\n${m[2]}`
         cur.end = end
-      } else cur = { text: m[1]!, start: pos, end }
+      } else cur = { text: m[2]!, start: pos, end }
     } else if (cur) {
       out.push(cur)
       cur = null
@@ -122,7 +127,7 @@ export function addQuote(draft: string, text: string): string | null {
   const quote = quoteOf(text)
   if (!quote || isQuoted(draft, text)) return null
   const base = String(draft || '').replace(/\s+$/, '')
-  const sep = !base ? '' : /(^|\n)>[^\n]*$/.test(base) ? '\n\n' : '\n'
+  const sep = !base ? '' : QUOTE_LINE.test(base.slice(base.lastIndexOf('\n') + 1)) ? '\n\n' : '\n'
   return `${base}${sep}${quote}\n`
 }
 
@@ -135,10 +140,10 @@ export function removeQuote(draft: string, q: DraftQuote): string {
 export function quoteSegments(text: string): { quote: boolean, text: string }[] {
   const out: { quote: boolean, text: string }[] = []
   for (const line of String(text || '').split('\n')) {
-    const m = /^>\s?(.*)$/.exec(line)
+    const m = QUOTE_LINE.exec(line)
     const quote = Boolean(m)
     const last = out.at(-1)
-    const body = m ? m[1]! : line
+    const body = m ? m[2]! : line
     if (last && last.quote === quote) last.text += `\n${body}`
     else out.push({ quote, text: body })
   }
