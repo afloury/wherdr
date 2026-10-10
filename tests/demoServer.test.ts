@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEMO_REFUSAL, DemoServer } from '../app/demo/server'
 import { CLAUDE_WEB, COORD, CODEX, OMP, scriptFor } from '../app/demo/scenario'
 import type { ChatResponse } from '../shared/types'
+import { dividers } from '../shared/layout'
 
 // Manual clock: timers run only when the test advances time.
 function clock() {
@@ -27,6 +28,17 @@ function clock() {
 const chat = (s: DemoServer, pane: string, since = '') => s.handle('GET', `/api/chat?pane=${encodeURIComponent(pane)}&since=${since}`).body as ChatResponse
 
 describe('demo server', () => {
+  it('keeps divider resizing in the simulated layout without allowing other space commands', () => {
+    const s = new DemoServer(clock())
+    const tab = s.state().tabs!.find(t => t.layout && t.layout.panes.length === 2)!
+    const divider = dividers(tab.layout!)[0]!
+    expect(s.handle('POST', '/api/space', { op: 'layout.ratio', tab_id: tab.id, path: divider.path, ratio: 0.4 }).status).toBe(200)
+    const resized = s.state().tabs!.find(t => t.id === tab.id)!
+    expect(dividers(resized.layout!)[0]!.ratio).toBeCloseTo(0.4)
+    expect(resized.layout!.panes.map(p => p.pane)).toEqual(tab.layout!.panes.map(p => p.pane))
+    expect(s.handle('POST', '/api/space', { op: 'pane.drop' }).status).toBe(403)
+    expect(s.handle('POST', '/api/space', { op: 'layout.ratio', tab_id: tab.id, path: divider.path, ratio: NaN }).status).toBe(400)
+  })
   it('opens on a consistent session: every laid-out pane exists, questions only on waiting agents', () => {
     const s = new DemoServer(clock())
     const st = s.state()

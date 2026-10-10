@@ -17,7 +17,7 @@ export interface Banner { text: string, btn: string, fn: () => void }
 
 // `fill`: side-by-side cell, the terminal takes the whole cell instead of the
 // reading column of a pane opened alone.
-export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | null) => void, hasBanner: () => boolean, fill?: () => boolean }) {
+export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | null) => void, hasBanner: () => boolean, fill?: () => boolean, input?: () => boolean }) {
   let term: Terminal | null = null
   let fit: FitAddon | null = null
   let webgl: WebglAddon | null = null
@@ -102,8 +102,9 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     // utils/terminalWheel.ts); TerminalView converts it to terminal.scroll.
     term.attachCustomWheelEventHandler(() => false)
     bindShiftEnter(term, key => sendKeys([key]))
-    term.onData(d => sendTerm({ type: 'terminal.input', text: d }))
+    term.onData(d => { if (opts.input?.() !== false) sendTerm({ type: 'terminal.input', text: d }) })
     term.onBinary((d) => {
+      if (opts.input?.() === false) return
       const bytes = Uint8Array.from(d, c => c.charCodeAt(0) & 0xff)
       sendTerm({ type: 'terminal.input', bytes: bytesToB64(bytes) })
     })

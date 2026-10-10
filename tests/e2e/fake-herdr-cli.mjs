@@ -39,9 +39,10 @@ const opt = name => Number(args[args.indexOf(name) + 1])
 const session = `cli-${process.pid}`
 const out = obj => process.stdout.write(JSON.stringify(obj) + '\n')
 let seq = 0
+let currentSize
 const frame = (size, what = 'terminal') => out({
   type: 'terminal.frame', encoding: 'ansi', full: true, width: size.cols, height: size.rows, seq: ++seq,
-  bytes: Buffer.from(`\x1b[2J\x1b[Hfake ${what} ${size.cols}x${size.rows}\r\n$ `).toString('base64'),
+  bytes: Buffer.from(`\x1b[2J\x1b[Hfake ${what} ${size.cols}x${size.rows}\r\n${pane} tick ${seq}\r\n$ `).toString('base64'),
 })
 
 // An observer attaches to nothing: the screen at the size it was given, until it is stopped.
@@ -61,11 +62,15 @@ async function leave(code) {
 }
 
 try {
-  frame(await call('e2e.term_attach', { pane_id: pane, session, cols: opt('--cols'), rows: opt('--rows'), takeover: args.includes('--takeover') }))
+  currentSize = await call('e2e.term_attach', { pane_id: pane, session, cols: opt('--cols'), rows: opt('--rows'), takeover: args.includes('--takeover') })
+  frame(currentSize)
 } catch (e) {
   out({ type: 'terminal.closed', reason: e.message })
   process.exit(1)
 }
+
+// Independent output continues in every attached pane, including inactive cells.
+setInterval(() => frame(currentSize), 150).unref()
 
 readline.createInterface({ input: process.stdin }).on('line', async (line) => {
   let m
@@ -73,7 +78,7 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
   catch { return }
   if (m.type === 'terminal.resize') {
     const size = await call('e2e.term_resize', { pane_id: pane, session, cols: m.cols, rows: m.rows }).catch(() => null)
-    if (size) frame(size)
+    if (size) { currentSize = size; frame(size) }
     else {
       // Another session took the terminal over.
       out({ type: 'terminal.closed', reason: 'taken over' })
