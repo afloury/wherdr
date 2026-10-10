@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { compactMeta } from '../app/utils/compactCard'
+import { compactMeta, readCompactList } from '../app/utils/compactCard'
+
+describe('compact list setting', () => {
+  it('is on for a device that never chose', () => {
+    expect(readCompactList(null)).toBe(true)
+  })
+  it('keeps a saved choice, off included', () => {
+    expect(readCompactList('1')).toBe(true)
+    expect(readCompactList('0')).toBe(false)
+  })
+})
 
 describe('compact list card', () => {
   it('shortens the coordinator role, keeps a thread number', () => {
