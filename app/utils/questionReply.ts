@@ -307,6 +307,17 @@ export function toggleOkAll(draft: string, phrase: string): string {
 export const rowSettled = (draft: string, row: DecisionRow) =>
   rowAnswer(draft, row.n) !== null || isQuoted(draft, rowQuote(row)) || hasOkAll(draft)
 
+// How many questions of a reply (its questions and the rows of its decision
+// tables) the draft does not answer yet: the reminder above the field. A
+// question counts as answered once it is quoted, a row once it is settled.
+// A reply that asks one thing only is answered by any words of the user's:
+// there is nothing to tell apart, quoting it would be a formality.
+export function unansweredCount(targets: Pick<ReplyTargets, 'questions' | 'rows'>, draft: string): number {
+  const left = targets.questions.filter(q => !isQuoted(draft, q.text)).length + targets.rows.filter(r => !rowSettled(draft, r)).length
+  const single = targets.questions.length + targets.rows.length === 1
+  return single && ownLines(draft).some(l => l.text.trim()) ? 0 : left
+}
+
 // Message display: quote lines apart from the rest.
 export function quoteSegments(text: string): { quote: boolean, text: string }[] {
   const out: { quote: boolean, text: string }[] = []

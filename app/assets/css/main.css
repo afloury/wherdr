@@ -3300,6 +3300,26 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
   .q-trow { min-height: 40px; }
   .q-all { min-height: 36px; }
 }
+/* "N questions unanswered" (Composer.vue): a small tab hanging from the top
+   edge of the composer, over the bottom of the conversation. Out of the
+   flow: nothing moves when it shows or goes. */
+.composer-ask-anchor { position: relative; height: 0; z-index: 3; }
+.composer-ask {
+  position: absolute; left: 0; bottom: 6px; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px 0 7px;
+  font: 500 9.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; color: var(--text-2);
+  background: var(--bg); border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: 0; cursor: pointer;
+  animation: composer-ask-in 160ms ease-out;
+}
+.composer-ask::after { content: ""; position: absolute; inset: -8px -6px; }
+.composer-ask .iconify, .composer-ask svg { width: 11px; height: 11px; color: var(--accent); }
+.composer-ask:is(:hover, :focus-visible) { color: var(--text); border-color: var(--accent); outline: 0; }
+@keyframes composer-ask-in { from { opacity: 0; transform: translateY(3px); } }
+/* The question the reminder scrolled to. */
+.q-flash { animation: msg-flash 1.6s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .composer-ask { animation: none; }
+  .q-flash { animation: none; outline: 1px solid var(--accent); }
+}
 /* Quotes in the field: one chip each, to remove it; on one scrolling line. */
 .composer-quotes { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0 0 6px; overflow-x: auto; scrollbar-width: none; }
 .composer-quotes::-webkit-scrollbar { display: none; }

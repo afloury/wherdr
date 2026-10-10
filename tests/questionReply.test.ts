@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addAnswer, addQuote, answerOf, decisionRows, hasOkAll, isClosedQuestion, rowAnswer, rowQuote, rowSettled, setRowAnswer, toggleOkAll, isQuoted, QUOTE_MAX, questionsIn, quoteOf, quotesIn, quoteSegments, removeQuote, tappedAnswer } from '../app/utils/questionReply'
+import { addAnswer, addQuote, answerOf, decisionRows, hasOkAll, isClosedQuestion, rowAnswer, rowQuote, rowSettled, setRowAnswer, toggleOkAll, unansweredCount, isQuoted, QUOTE_MAX, questionsIn, quoteOf, quotesIn, quoteSegments, removeQuote, tappedAnswer } from '../app/utils/questionReply'
 
 const asked = (text: string) => questionsIn(text).map(q => q.text)
 
@@ -335,5 +335,38 @@ describe('answers to a decision table', () => {
     expect(rowSettled('2: no\n', row)).toBe(true)
     expect(rowSettled(addQuote('', rowQuote(row))!, row)).toBe(true)
     expect(rowSettled('ok to all\n', row)).toBe(true)
+  })
+})
+
+describe('unansweredCount', () => {
+  const q = (text: string, n = '1') => ({ n, text, closed: false })
+  const two = { questions: [q('Shall I push now?'), q('Which name do you prefer?', '2')], rows: [] }
+  it('counts the questions the draft does not quote yet', () => {
+    expect(unansweredCount(two, '')).toBe(2)
+    // Words of the user's do not say which of two questions they answer.
+    expect(unansweredCount(two, 'Yes, go ahead.')).toBe(2)
+    const one = addAnswer('', 'Shall I push now?', 'Yes')!
+    expect(unansweredCount(two, one)).toBe(1)
+    expect(unansweredCount(two, addQuote(one, 'Which name do you prefer?')!)).toBe(0)
+  })
+  it('takes any words as the answer when the reply asks one thing only', () => {
+    const single = { questions: [q('Shall I push now?')], rows: [] }
+    expect(unansweredCount(single, '')).toBe(1)
+    expect(unansweredCount(single, '  \n')).toBe(1)
+    expect(unansweredCount(single, 'Go ahead.')).toBe(0)
+    expect(unansweredCount(single, '> Shall I push now?\n')).toBe(0)
+    // A quote of something else is not an answer.
+    expect(unansweredCount(single, '> The build is green.\n')).toBe(1)
+  })
+  it('counts the rows of a decision table until they are settled', () => {
+    const rows = [{ n: '1', text: 'Tag the release?' }, { n: '2', text: 'Keep the old format?' }, { n: '3', text: 'Publish the notes?' }]
+    const table = { questions: [q('Shall I start the next thread?')], rows }
+    expect(unansweredCount(table, '')).toBe(4)
+    expect(unansweredCount(table, '1: yes\n')).toBe(3)
+    expect(unansweredCount(table, `1: yes\n> ${rowQuote(rows[1]!)}\n`)).toBe(2)
+    // "ok to all" settles the table, not the question next to it.
+    expect(unansweredCount(table, 'ok to all\n')).toBe(1)
+    expect(unansweredCount(table, addAnswer('ok to all\n', 'Shall I start the next thread?', 'Yes')!)).toBe(0)
+    expect(unansweredCount({ questions: [], rows: [] }, '')).toBe(0)
   })
 })

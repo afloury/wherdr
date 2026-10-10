@@ -20,6 +20,12 @@ All notable changes to this project are documented here. The format follows
   column next to it), **OK to all** writes `ok to all`, and each row has **Yes**, **No** and `↳`
   that write `3: yes`, `3: no` or quote the row. French writes `ok tout`, `3 : oui`, `3 : non`.
   Composed in the field, sent by you; a table of another shape gets nothing.
+- **N questions unanswered** above the field: the questions of the agent's last message, and the
+  rows of its decision tables, that the draft does not answer yet. A tap scrolls to the first
+  one. It goes once everything is quoted or answered and when the message is sent, never shows
+  for earlier messages or while the agent works, and takes no room: nothing moves when it comes
+  or goes. When the message asks one thing only, any typed words count as its answer.
+- The demo's Claude agent now ends its reply with a closed question, to try the one-tap answers.
 - **Restart after Codex updates itself**: when Codex's own installer exits to its shell,
   a Your turn card offers a one-tap restart and sends the usual attention notification.
   A new conversation reuses its launch command; an existing one can resume its exact session

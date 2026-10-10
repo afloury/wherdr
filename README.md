@@ -889,6 +889,14 @@ question column, known by its header (`Question`, `Decision`, `Choix`…), by ce
 with `?`, or by an advice column next to it (`Avis`, `Recommendation`, `Suggestion`…). Any other
 table is left as it is.
 
+Above the field, **N questions unanswered** counts the questions of the agent's last message
+(and the rows of its decision tables) that your draft does not answer yet; tap it to scroll to
+the first one. A question counts once it is quoted, a row once it is answered, quoted or covered
+by `ok to all`; when the message asks one thing only, any words you type answer it. The line
+goes when everything is answered and when you send, and it never shows for earlier messages,
+while the agent is working, or while it waits on a prompt. It hangs from the top edge of the
+field, so nothing moves when it comes or goes.
+
 ## Several machines (SSH)
 
 wherdr also shows the agents of the **SSH machines registered in Herdr** — the ones the Herdr

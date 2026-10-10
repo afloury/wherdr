@@ -11,7 +11,7 @@ import { canCancelQueued, lostPhotosText, restoreDraft } from '~/utils/queuedCan
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
-import { addAnswer, addQuote, answerOf, hasOkAll, isQuoted, replyTargets, rowAnswer, setRowAnswer, tappedAnswer, toggleOkAll, withQuestions, type Answer } from '~/utils/questionReply'
+import { addAnswer, addQuote, answerOf, hasOkAll, isQuoted, replyTargets, rowAnswer, rowSettled, setRowAnswer, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -23,7 +23,7 @@ import { duplicateImages } from '#shared/imageDupes'
 
 const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
 const route = useRoute()
-const emit = defineEmits<{ gotoTerm: [], restored: [], reply: [], quote: [], sent: [queued: QueuedMessage | null] }>()
+const emit = defineEmits<{ gotoTerm: [], restored: [], reply: [], quote: [], unanswered: [count: number], sent: [queued: QueuedMessage | null] }>()
 const searchOpen = defineModel<boolean>('search', { default: false })
 
 const box = ref<HTMLElement | null>(null)
@@ -1053,7 +1053,39 @@ function focusSearch() {
   el?.focus()
   el?.select()
 }
-defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch })
+// Questions left unanswered: those of the agent's last message that the draft
+// does not answer yet (utils/questionReply.ts, unansweredCount), for the
+// reminder above the field. Only once the agent has stopped on that message
+// and nothing of the user's follows it: not while it works, types, waits on
+// a prompt, or while a message of ours is on its way.
+const unanswered = computed(() => {
+  if (readOnly.value || working.value || props.pane.status === 'blocked' || queuedList.value.length || liveShell.value) return null
+  const last = blocks.value.findLast(b => b.k === 'assistant' || b.k === 'user' || b.k === 'shell' || b.k === 'ompRun')
+  if (!last || last.k !== 'assistant' || typingAt(last.id) !== null) return null
+  const count = unansweredCount(replyTargets(last.html), draftText.value)
+  return count ? { key: last.key, count } : null
+})
+watch(() => unanswered.value?.count || 0, n => emit('unanswered', n), { immediate: true })
+onUnmounted(() => emit('unanswered', 0))
+// Reminder tapped: scrolls to the first question still unanswered and flashes it.
+function gotoUnanswered() {
+  const msg = unanswered.value ? msgEl(unanswered.value.key) : null
+  const text = draftText.value
+  const el = [...(msg?.querySelectorAll<HTMLElement>('.q-reply, .q-trow') || [])].find(x => x.classList.contains('q-trow')
+    ? !rowSettled(text, { n: x.dataset.n || '', text: x.dataset.q || '' })
+    : !isQuoted(text, x.dataset.q || ''))
+  if (!el) return
+  const lit = el.classList.contains('q-trow') ? [el] : [...wordsOf(el)]
+  ;(lit[0] || el).scrollIntoView({ block: 'center', behavior: reducedMotion.value ? 'auto' : 'smooth' })
+  for (const x of lit) {
+    x.classList.remove('q-flash')
+    void x.offsetWidth
+    x.classList.add('q-flash')
+    setTimeout(() => x.classList.remove('q-flash'), 1700)
+  }
+  haptic()
+}
+defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch, gotoUnanswered })
 </script>
 
 <template>
