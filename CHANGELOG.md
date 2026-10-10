@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Restart after Codex updates itself**: when Codex's own installer exits to its shell,
+  a Your turn card offers a one-tap restart and sends the usual attention notification.
+  A new conversation reuses its launch command; an existing one can resume its exact session
+  or start fresh. If the session is uncertain, Resume opens Codex's conversation picker.
+  Restart checks the foreground process and the unchanged empty prompt before typing.
 - **Discuss a point**: a list item or a paragraph of an agent's reply that asks nothing can now be
   quoted in the field like a question, to answer it in the same message. Not offered on code,
   tables, quotes, titles, an introduction ending with a colon or a point of one or two words.
@@ -33,6 +38,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **Codex restart after an update**: Project panel messages wait instead of being typed
+  into the stopped shell. Unfinished quotes and heredocs refuse a restart; uncertain
+  transcripts offer both choices without reusing a contradicted session ID. A rapidly
+  replaced Codex keeps its own launch arguments.
 - **Terminals in split panes**: every visible terminal fills its cell and stays connected
   when focus changes. Moving focus routes keyboard input without replacing terminal instances.
   Divider resizing updates all terminals while dragging. Leaving the tab restores original

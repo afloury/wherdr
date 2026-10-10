@@ -161,6 +161,18 @@ Details in [Features](#features) and [Security](#security).
   resumes the same conversation (only while Codex is idle). Codex's own weekly-limit warning
   (its footer gauge, or its startup heads-up) is repeated above the field, with its values, while
   Codex shows it.
+- **After Codex updates itself and exits**: a **Your turn** card offers **Restart Codex**
+  for a new conversation, with the original launch arguments. For an existing conversation,
+  choose **Resume conversation** (its exact session, with the original options) or **Start
+  fresh**. If wherdr cannot identify the session, Resume opens Codex's picker rather than
+  choosing another pane's latest conversation. The usual attention notification applies.
+  Nothing restarts automatically: the pane must still show the same empty shell prompt,
+  with the shell in the foreground. Unrecognized shell prompts require a manual restart
+  in the terminal. wherdr must have observed Codex before it exited.
+  Project panel messages wait in the queue until the agent returns. Continuation
+  prompts (unfinished quotes or heredocs) refuse a restart too. If the final
+  transcript read fails, both conversation choices remain available; a session
+  contradicted by a guessed match is resumed through Codex's picker.
 - **Model and effort pickers** for Claude Code, Codex and omp (omp: its
   "Switch Model" selector, `/switch` or `/model`, and its thinking level, changed with its own
   ⇧⇥ cycle). Changes apply **to the current session only**; wherdr never changes your default

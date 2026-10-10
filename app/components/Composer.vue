@@ -89,7 +89,7 @@ watch(text, () => nextTick(() => mirror?.render()), { flush: 'post' })
 onBeforeUnmount(() => { mirror?.destroy(); mirror = null })
 
 const canSend = computed(() => Boolean(text.value.trim() || attachments.value.length))
-const readOnly = computed(() => !eventsOpen.value || offlineView.value || paneStale(props.pane))
+const readOnly = computed(() => Boolean(props.pane?.stopped) || !eventsOpen.value || offlineView.value || paneStale(props.pane))
 // Offline, no Stop: UChatPromptSubmit ignores `disabled` in "streaming" mode.
 // omp running the user's "!" / "$" command stays idle: Stop cancels the command.
 const shellRun = computed(() => Boolean(props.pane && props.pane.agent === 'omp' && props.pane.ompShell && props.pane.status !== 'working'))
@@ -569,7 +569,7 @@ defineExpose({
       </span>
     </div>
     <UChatPrompt
-      ref="promptRef" v-model="text" :placeholder="readOnly ? t('Draft saved — sending unavailable offline') : placeholder" variant="outline" color="neutral"
+      ref="promptRef" v-model="text" :disabled="Boolean(pane?.stopped)" :placeholder="pane?.stopped ? t('Restart Codex before sending a message') : readOnly ? t('Draft saved — sending unavailable offline') : placeholder" variant="outline" color="neutral"
       :rows="1" :maxrows="7" :autofocus="false" :submit-on-enter="enterSends && !slashOpen"
       :enterkeyhint="enterSends ? 'send' : 'enter'" autocapitalize="sentences"
       class="prompt" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"

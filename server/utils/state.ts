@@ -37,6 +37,7 @@ import { type Machine, RemoteMachine, allMachines, getMachine, machineOfPane, ma
 import { READY_MAX_MS, serverReady } from '../../shared/stateReady'
 import { createCodexStatus, dirWritable } from './codexStatus'
 import { runLocal, setCodexKnownWeek } from './quotas'
+import { createSelfUpdates } from './agentSelfUpdate'
 
 const fsp = fs.promises
 
@@ -366,6 +367,11 @@ export const restarting = (paneId: string) => { const r = restarts.get(paneId); 
 const GUARD_STATES = new Set(['idle', 'done', 'working'])
 export function sendPrompt(p: Pane, text: string): Promise<void> {
   return withPaneLock(p.id, async () => {
+    // Re-check after waiting for another writer/restart's lock. The Pane
+    // passed by a request or a held-message delivery can already be stale.
+    if (findPane(p.id)?.stopped) {
+      throw new HerdrError(isSlashCommand(text) ? 'stale' : 'no_input', 'Restart Codex before sending a command.')
+    }
     if (p.agent !== 'claude' || !GUARD_STATES.has(p.status || '') || isSlashCommand(text)) return agentPrompt(p.id, text)
     const keep = (texts: string[] | undefined) => {
       for (const t of texts || []) {
@@ -403,7 +409,7 @@ export const isBusyError = (e: unknown) => e instanceof HerdrError && (e.code ==
 const deliverBusy = new Set<string>()
 function deliverHeld(p: Pane) {
   const q = nextHeld(queued.get(p.id) || [])
-  if (!q || deliverBusy.has(p.id) || !p.agent || !INPUT_STATES.has(p.status || '') || restarting(p.id)) return
+  if (!q || deliverBusy.has(p.id) || !p.agent || p.stopped || !INPUT_STATES.has(p.status || '') || restarting(p.id)) return
   deliverBusy.add(p.id)
   herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
     .then(async (r) => {
@@ -610,6 +616,18 @@ export const READY = new Set(['done', 'idle'])
 const TURN = new Set(['working', 'blocked'])
 // Restarts in progress or failed, per pane (see restart.ts).
 export const restarts = new Map<string, NonNullable<Pane['restart']> & { at: number, session?: string | null, stopped?: boolean, started?: boolean }>()
+const LAST_AGENTS_FILE = path.join(DATA_DIR, 'last-agents.json')
+let lastAgentsWrite: Promise<unknown> = Promise.resolve()
+export const selfUpdates = createSelfUpdates({
+  call: herdr, sleep, now: Date.now,
+  chat: p => transcripts.chat(p, { fresh: true }),
+  save: records => {
+    lastAgentsWrite = lastAgentsWrite.then(async () => {
+      await fsp.mkdir(DATA_DIR, { recursive: true })
+      await fsp.writeFile(LAST_AGENTS_FILE, JSON.stringify(records) + '\n', { mode: 0o600 })
+    }).catch(() => {})
+  },
+}, (() => { try { return JSON.parse(fs.readFileSync(LAST_AGENTS_FILE, 'utf8')) } catch { return [] } })())
 function flushPending(p: Pane) {
   const pend = pendingPrompts.get(p.id)
   if (!pend || pendingBusy.has(p.id)) return
@@ -723,6 +741,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
   const firstSnapshot = !seenMachines.has(machine)
   const prevStatus = new Map((mstates.get(machine)?.panes || []).map(p => [p.id, p.status || undefined]))
   const live = new Set(next.panes.map(p => p.id))
+  selfUpdates.prune(live, id => machineOf(id) === machine)
   for (const id of commands.keys()) if (machineOf(id) === machine && !live.has(id)) commands.delete(id)
   for (const p of next.panes) {
     const b = agentBorn.get(p.id)
@@ -746,6 +765,12 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
   getMachine(machine)?.transcripts.observe(next.panes)
   const revs = new Map((snap.panes || []).map((p: Json) => [joinId(machine, p.pane_id), p.revision]))
   for (const p of next.panes) {
+    // Before queues or screen parsing: an exited agent must never receive input.
+    const stopped = await selfUpdates.observe(p, restarts.has(p.id)).catch(() => false)
+    if (stopped) {
+      if (queued.has(p.id)) p.queued = queued.get(p.id)!.map(publicEntry)
+      continue
+    }
     if (pendingPrompts.has(p.id)) { p.pendingPrompt = true; flushPending(p) }
     if (queued.has(p.id)) {
       reconcileQueued(p)
@@ -994,8 +1019,9 @@ function watchTransitions(prev: HerdrState, next: HerdrState) {
   const before = new Map(prev.panes.map(p => [p.id, p.status]))
   for (const p of next.panes) {
     const was = before.get(p.id)
-    if (!p.agent || was === p.status) continue
-    if (was === 'working' && (p.status === 'blocked' || READY.has(p.status || ''))) {
+    const updated = p.stopped && !prev.panes.find(x => x.id === p.id)?.stopped
+    if (!p.agent || (was === p.status && !updated)) continue
+    if (updated || (was === 'working' && (p.status === 'blocked' || READY.has(p.status || '')))) {
       clearTimeout(notifyTimers.get(p.id))
       const target = p.status
       notifyTimers.set(p.id, setTimeout(() => {
