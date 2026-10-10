@@ -9,6 +9,9 @@
 //   Yes.
 // The draft text is the only state: the quotes shown above the field, the
 // "quoted" state of the buttons and their removal are all read from it.
+// A point that asks nothing (a list item, a paragraph without a question) can
+// be quoted the same way, to discuss it. How the two show is a setting
+// (ReplyStyle): the markup below is the same for every style, main.css draws it.
 import { truncateMiddle } from '../../shared/replyQuote'
 
 // Longest quote kept (a selected passage can be long; the agent has the
@@ -173,18 +176,52 @@ function ownText(el: Element) {
   return { parts, raw, masked }
 }
 
-// Question buttons in the HTML of an agent reply, each right after its
-// question. The label comes from data attributes (CSS content): no text node,
-// so the typewriter and the copied text ignore it.
-export function markQuestions(root: ParentNode, labels: { reply: string, quoted: string }) {
+// How the reply targets show in a conversation (Settings › Conversation):
+// `icon`, a small "↳" after each question and each point; `text`, the words of
+// the question are the button and a point is clicked; `list`, a number after
+// each question and the questions listed under the message.
+export const REPLY_STYLES = ['icon', 'text', 'list'] as const
+export type ReplyStyle = typeof REPLY_STYLES[number]
+export const parseReplyStyle = (v: string | null | undefined): ReplyStyle =>
+  (REPLY_STYLES as readonly string[]).includes(v || '') ? v as ReplyStyle : 'icon'
+
+export interface ReplyLabels { reply: string, quoted: string, discuss: string }
+
+// A point worth discussing: a few words that ask nothing and do not merely
+// introduce what follows ("Three things to note:").
+const POINT_MIN_WORDS = 3
+export const isPoint = (text: string) => words(text) >= POINT_MIN_WORDS && !/[:：]$/.test(text.trim())
+
+// Reply targets in the HTML of an agent reply. Each question gets a button
+// right after it (`.q-reply`, numbered in reading order) and its words are
+// wrapped (`.q-text`, same number); each point (`.q-pt`: a list item or a
+// paragraph with no question) gets a button at its end (`.q-point`). The
+// labels come from data attributes (CSS content): no text node, so the
+// typewriter and the copied text ignore them.
+export function markQuestions(root: ParentNode, labels: ReplyLabels) {
+  const wrapped = new Map<HTMLElement, HTMLElement[]>()
   for (const el of root.querySelectorAll<HTMLElement>('p, li')) {
     if (el.closest('pre, code, .code-block, blockquote, table')) continue
     // A loose list item holds paragraphs: they carry the button.
     if (el.tagName === 'LI' && el.querySelector(':scope > p')) continue
     const { parts, raw, masked } = ownText(el)
     const last = raw.trimEnd().length
+    const questions = questionsIn(masked)
+    if (!questions.length && isPoint(raw)) {
+      const point = oneLine(raw)
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.className = 'q-point'
+      btn.dataset.q = point
+      btn.dataset.l = labels.discuss
+      btn.dataset.lq = labels.quoted
+      btn.setAttribute('aria-label', `${labels.discuss}: ${point}`)
+      el.classList.add('q-pt')
+      // At the end of the point's own text, before a nested list or code block.
+      el.insertBefore(btn, [...el.children].find(c => NESTED.test(c.tagName)) || null)
+    }
     // From the last one: a text node cut for a button keeps its start.
-    for (const { start, end } of questionsIn(masked).reverse()) {
+    for (const { start, end } of questions.reverse()) {
       const part = parts.findLast(p => p.start < end)
       if (!part) continue
       const q = oneLine(raw.slice(start, end))
@@ -202,16 +239,41 @@ export function markQuestions(root: ParentNode, labels: { reply: string, quoted:
       let at: Node = part.node
       while (at.parentNode && at.parentNode !== el && (!at.nextSibling || /^(A|CODE|KBD)$/.test((at.parentNode as Element).tagName))) at = at.parentNode
       at.parentNode!.insertBefore(btn, at.nextSibling)
+      // The words of the question, text node by text node (a question may
+      // cross emphasis, a link or inline code); what is before it stays in
+      // the node the earlier questions still point to.
+      const spans: HTMLElement[] = []
+      for (const p of parts.filter(x => x.start < end).reverse()) {
+        const len = p.node.data.length
+        if (p.start + len <= start) break
+        const from = Math.max(0, start - p.start)
+        const to = Math.min(len, end - p.start)
+        if (to <= from) continue
+        if (to < len) p.node.splitText(to)
+        const node = from > 0 ? p.node.splitText(from) : p.node
+        if (!node.data.trim()) continue
+        const span = document.createElement('span')
+        span.className = 'q-text'
+        node.replaceWith(span)
+        span.appendChild(node)
+        spans.push(span)
+      }
+      wrapped.set(btn, spans)
     }
+  }
+  let n = 0
+  for (const btn of root.querySelectorAll<HTMLElement>('.q-reply')) {
+    btn.dataset.n = String(++n)
+    for (const span of wrapped.get(btn) || []) span.dataset.n = btn.dataset.n
   }
 }
 
 const marked = new Map<string, string>()
 // HTML of an agent reply with its question buttons (cached: the
 // conversation is re-read every 1.5 s).
-export function withQuestions(html: string, labels: { reply: string, quoted: string }): string {
+export function withQuestions(html: string, labels: ReplyLabels): string {
   if (typeof document === 'undefined') return html
-  const key = `${labels.reply}\u0000${html}`
+  const key = `${labels.reply}\u0000${labels.discuss}\u0000${html}`
   let out = marked.get(key)
   if (out === undefined) {
     const tpl = document.createElement('template')
@@ -220,6 +282,26 @@ export function withQuestions(html: string, labels: { reply: string, quoted: str
     out = tpl.innerHTML
     marked.set(key, out)
     if (marked.size > 2000) marked.delete(marked.keys().next().value!)
+  }
+  return out
+}
+
+// What the "list" style shows under a reply: its questions in order, and
+// whether it has points to quote. Read from the marked HTML, cached with it.
+export interface ReplyTargets { questions: { n: string, text: string }[], points: number }
+const targets = new Map<string, ReplyTargets>()
+export function replyTargets(html: string): ReplyTargets {
+  let out = targets.get(html)
+  if (!out) {
+    out = { questions: [], points: 0 }
+    if (typeof document !== 'undefined' && html.includes('class="q-')) {
+      const tpl = document.createElement('template')
+      tpl.innerHTML = html
+      out.questions = [...tpl.content.querySelectorAll<HTMLElement>('.q-reply')].map(b => ({ n: b.dataset.n || '', text: b.dataset.q || '' }))
+      out.points = tpl.content.querySelectorAll('.q-point').length
+    }
+    targets.set(html, out)
+    if (targets.size > 2000) targets.delete(targets.keys().next().value!)
   }
   return out
 }

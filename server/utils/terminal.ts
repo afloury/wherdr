@@ -105,6 +105,9 @@ export function startPaneSizes() {
   paneSizes().adopt(cleanSavedSizes(saved, id => PANE_RE.test(id)))
 }
 export function stopPaneSizes() { sizes?.stop() }
+// A mirror that keeps the size wherdr gave the pane (see mirror.ts).
+export const holdPaneSize = (pane: string) => paneSizes().hold(pane)
+export const askedPaneSize = (pane: string) => sizes?.asked(pane) ?? null
 
 // ---------------------------------------------------------------- relay
 

@@ -13,9 +13,37 @@ All notable changes to this project are documented here. The format follows
   A new conversation reuses its launch command; an existing one can resume its exact session
   or start fresh. If the session is uncertain, Resume opens Codex's conversation picker.
   Restart checks the foreground process and the unchanged empty prompt before typing.
+- **Discuss a point**: a list item or a paragraph of an agent's reply that asks nothing can now be
+  quoted in the field like a question, to answer it in the same message. Not offered on code,
+  tables, quotes, titles, an introduction ending with a colon or a point of one or two words.
+- **Settings › Conversation › Reply style**: three ways for a reply to offer its questions and
+  points, saved on the device. **Icon** (default): a small `↳` after each question and a grey one
+  after each point (on hover on a computer, always there and pale on a phone). **Tap the text**:
+  no button, the underlined question is tapped; a point is clicked on a computer, and on a phone
+  tapped once to show **↳ Discuss**, so that a tap while reading never quotes. **List under the
+  message**: a number after each question, the questions listed under the message, and
+  **+ Quote a point** to pick a point. All of them work with the keyboard.
+
+### Changed
+
+- **↳ Reply looks the same wherever the question is**: the button of a question that ends a
+  message was only shown on hover on a computer, while one in the middle of a paragraph stayed
+  visible. Both now show the same way, and the labelled tag gives way to the icon (or to the
+  style chosen in Settings).
+- **Compact list by default**: the agent list (home screen on a phone, sidebar on a computer)
+  now shows one line per agent or space unless you chose otherwise. A device where Settings ›
+  Appearance › Home screen › Compact list was never touched switches to the compact list; a
+  device where it was turned off keeps the detailed cards. Turn it off there to get the preview,
+  folder, model and one-tap answers back on the cards.
 
 ### Fixed
 
+- **Terminals in split panes**: the focused terminal now fills its cell, including after
+  resizing the window or a divider, instead of keeping Herdr's small screen in the corner.
+  Inactive terminals are read-only mirrors, centred and framed when smaller and scaled down
+  when wider. A fitted pane keeps its size while mirrored and gets its original size back
+  when leaving the tab, respecting later resizing by a Herdr client. The browser demo follows
+  the same sizing behaviour.
 - **Panes side by side on a computer**: with the default background (Settings › Appearance ›
   Desktop › Background "wherdr grid"), a conversation shown next to another pane had the dotted
   grid and the two lines of the reading column running through its messages and around its

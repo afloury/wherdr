@@ -40,7 +40,10 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
   // `size`: the pane's PTY. No Herdr client is attached to this session: a
   // terminal control session resizes it, and it keeps that size afterwards.
   // `control`: the control session attached to the pane's terminal, if any.
-  const panes = workspaces.flatMap(w => w.panes.map(p => ({ ...p, workspace: w.id, size: { cols: 120, rows: 40 }, control: null })))
+  const panes = workspaces.flatMap(w => w.panes.map((p, i) => {
+    const rect = w.panes.length === 2 ? HALVES[i] : AREA
+    return { ...p, workspace: w.id, size: { cols: rect.width, rows: rect.height }, control: null }
+  }))
   const paneById = id => panes.find(p => p.id === id)
 
   function snapshot() {

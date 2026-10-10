@@ -126,8 +126,10 @@ Details in [Features](#features) and [Security](#security).
 
 ### Everywhere
 
-- **Live agent list**, one line per Herdr space, grouped by state (your turn, working, ready),
-  with a preview of each agent's last answer. When an agent asks for permission or asks a
+- **Live agent list**, one line per Herdr space, grouped by state (your turn, working, ready).
+  The list is compact by default: agent, title, project badge and state. Turn off Settings ›
+  Appearance › Home screen › **Compact list** for detailed cards, with the folder, the model and
+  a preview of each agent's last answer; there, when an agent asks for permission or asks a
   question, the options show on its card: **answer in one tap** without opening it.
 - **Conversation view**: the agent's real transcript (Claude Code, Codex and omp), rendered as
   Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan), timestamps, search and infinite scroll back to the
@@ -136,7 +138,7 @@ Details in [Features](#features) and [Security](#security).
   its prompt, or run in the agent's shell mode (`!`, Claude Code, Codex and omp) after you
   confirm the full command.
 - **Terminal view**: the real terminal (xterm.js, WebGL or DOM renderer) with take-over. Opening
-  it resizes the real pane to your screen; closing it gives the pane the size it had before
+  it resizes the real pane to your screen (or its cell in a split); closing it gives the pane the size it had before
   (after 30 seconds when the connection just dropped, e.g. a locked phone), unless a Herdr
   client attached meanwhile laid it out its own way. On a
   computer, drag over the text on screen to select it: releasing the button copies it, as do
@@ -184,7 +186,11 @@ Details in [Features](#features) and [Security](#security).
 ### On a computer
 
 - **Split panes, live**: a tab with several panes is drawn with Herdr's real layout; every pane
-  shows its conversation or terminal live, and the one you click becomes interactive.
+  shows its conversation or terminal live. The terminal of the focused pane fills its cell,
+  following window and divider resizing. Other terminals are read-only mirrors, centred and
+  framed when smaller, with smaller text when wider. A terminal fitted to its cell keeps that
+  size while its mirror is visible; leaving the tab restores its original size, unless a Herdr
+  client has resized it meanwhile. Click a cell to give it the keyboard.
 - **Rearrange the layout**: drag a pane onto another to move it, drag a divider to resize
   (arrow keys work on a focused divider); changes go to Herdr itself.
 - **Spaces and tabs**: sidebar with every space, tabs at the top, active tab remembered per space.
@@ -844,6 +850,19 @@ All settings are environment variables (`.env` with Docker).
 
 In the app, **Settings** holds per-device preferences: language, theme, notifications, terminal
 text size and renderer, typing effect, what the home screen shows, and the passkey lock.
+
+**Settings › Conversation › Reply style** chooses how an agent's reply offers to be quoted in
+the field, question by question and point by point (a list item or a paragraph that asks
+nothing), so that one message answers them all:
+
+| Style | A question | A point |
+| --- | --- | --- |
+| **Icon** (default) | A small `↳` after it, in the middle or at the end of the message. | A grey `↳` at its end: on hover on a computer, always there and pale on a phone. |
+| **Tap the text** | No button: the question is underlined, tap or click it. | Click it on a computer. On a phone, tap it, then **↳ Discuss**: a single tap never quotes, so reading, scrolling and selecting text stay as they are. |
+| **List under the message** | A number after it, and the questions listed under the message. | **+ Quote a point** under the message, then the point. |
+
+Every one of these is a button reachable with the keyboard (`Tab`, then `Enter`), and selecting a
+passage still offers **Reply** on it. A quoted question or point shows `✓`.
 
 ## Several machines (SSH)
 

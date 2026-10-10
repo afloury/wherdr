@@ -305,7 +305,7 @@ const FR: Record<string, string> = {
   'App is locked': 'app verrouillée', 'Origin refused': 'origine refusée', 'Not found': 'introuvable',
   'Waiting for your reply — details in the Terminal tab': 'En attente de ta réponse — détail dans l’onglet Terminal',
   'Copy': 'Copier', 'Reply': 'Répondre', 'Replying to the message': 'En réponse au message', 'Reply to this passage': 'Répondre à ce passage', 'Cancel reply': 'Annuler la réponse', 'Show original message': 'Voir le message d’origine', 'Original message not found (further up the conversation?)': 'Message d’origine introuvable (plus haut dans la conversation ?)', 'Copy reply': 'Copier la réponse', 'No output': 'Aucune sortie', 'Copied': 'Copié', 'Copy pane ID': 'Copier l’ID du pane', 'Copy failed': 'Copie impossible',
-  'Quoted': 'Citée', 'Quoted questions': 'Citations', 'Remove quote': 'Retirer la citation',
+  'Quoted': 'Citée', 'Discuss': 'Discuter', 'Quoted questions': 'Citations', 'Remove quote': 'Retirer la citation',
   '⌘+click to open': '⌘+clic pour ouvrir', 'Ctrl+click to open': 'Ctrl+clic pour ouvrir',
   'Enter': 'Entrée', 'send': 'envoyer', 'suggestion': 'suggestion', 'Use suggestion': 'Utiliser la suggestion', 'new line': 'nouvelle ligne',
   'Image not found': 'image introuvable', 'Invalid JSON': 'JSON invalide', 'Request too large': 'requête trop grosse',
@@ -362,7 +362,7 @@ const FR: Record<string, string> = {
   'This tab is unavailable.': 'Cet onglet est indisponible.',
   'Active pane in Herdr': 'Pane actif dans Herdr', 'A pane is zoomed in Herdr': 'Un pane est agrandi dans Herdr',
   'Tab overview': 'Plan de l’onglet', 'Side by side': 'Côte à côte', 'Open alone': 'Ouvrir seul',
-  'Mirror': 'Miroir', 'Live input': 'Saisie directe', 'Mirror unavailable · retry': 'Miroir indisponible · réessayer',
+  'Mirror': 'Miroir', 'Mirror unavailable · retry': 'Miroir indisponible · réessayer',
   // Space, tab and pane actions
   'Space': 'Espace', 'New tab': 'Nouvel onglet', 'New space': 'Nouvel espace', 'in the same space': 'dans le même espace', 'This space': 'Cet espace',
   'Swap with the pane on the left': 'Échanger avec le pane de gauche', 'Swap with the pane on the right': 'Échanger avec le pane de droite',

@@ -16,9 +16,11 @@ import { checkNewVersion } from './useAppVersion'
 import { migrateContentWidth } from '~/utils/contentWidth'
 import { readQuotaDisplay } from '~/utils/quotas'
 import { readShowShells } from '~/utils/terminalVisibility'
+import { readCompactList } from '~/utils/compactCard'
 import { paneFallback } from '~/utils/viewMode'
 import { menuAsSheet } from '~/utils/menuRoute'
 import { readQuoteMode } from '~/utils/quoteTokens'
+import { parseReplyStyle } from '~/utils/questionReply'
 import type { QuotaDisplay } from '~/utils/quotas'
 import type { ContentWidth } from '~/utils/contentWidth'
 
@@ -101,7 +103,8 @@ watch(showCounters, v => ls.set('showCounters', v ? '1' : '0'))
 export const showQuotas = ref(ls.get('showQuotas') !== '0')
 watch(showQuotas, v => ls.set('showQuotas', v ? '1' : '0'))
 // Compact list: one line per card (sidebar on a computer, home list on the phone).
-export const compactList = ref(ls.get('compactList') === '1')
+// The default; read before the first render, so the list never shows detailed first.
+export const compactList = ref(readCompactList(ls.get('compactList')))
 watch(compactList, v => ls.set('compactList', v ? '1' : '0'))
 export const autoReorderReady = ref(ls.get('autoReorderReady') !== '0')
 watch(autoReorderReady, v => ls.set('autoReorderReady', v ? '1' : '0'))
@@ -153,6 +156,10 @@ watch(quoteModeComputer, v => ls.set('quoteModeComputer', v))
 export const quoteModePhone = ref(readQuoteMode(ls.get('quoteModePhone'), ls.get('quoteTokensPhone')))
 watch(quoteModePhone, v => ls.set('quoteModePhone', v))
 export const quoteMode = computed(() => (coarse.value ? quoteModePhone.value : quoteModeComputer.value))
+// How the questions and the points of an agent reply offer to be quoted
+// (utils/questionReply.ts): an icon by default.
+export const replyStyle = ref(parseReplyStyle(ls.get('replyStyle')))
+watch(replyStyle, v => ls.set('replyStyle', v))
 // Account quotas (read by QuotaStrip, also shown in the machine headers).
 export const homeQuotas = ref<Quotas | null>(null)
 export const fontSize = ref(Number(ls.get('fontSize')) || 12)
