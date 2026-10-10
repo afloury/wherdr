@@ -56,7 +56,9 @@ export interface InteractiveMenu {
 // 'no_input': not sent because the input field was not found on a screen
 // showing no recognized menu (see queued.ts NO_INPUT_MS).
 // `pasted`: the long pasted texts its text holds (see server/utils/pastes.ts).
-export interface QueuedMessage { id: string, text: string, at?: number, state?: 'held' | 'failed', reason?: 'busy' | 'no_input', pasted?: string[] }
+// `back`: no agent will take it (see server/utils/queued.ts giveBackHeld): the
+// app puts its text back into the message field.
+export interface QueuedMessage { id: string, text: string, at?: number, state?: 'held' | 'failed', reason?: 'busy' | 'no_input', pasted?: string[], back?: boolean }
 
 // Claude Code's screen while working (see server/utils/claudeScreen.ts): the
 // "!" command running, the last message sent, the messages

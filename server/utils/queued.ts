@@ -1,6 +1,6 @@
 // Messages sent from the phone and shown as "queued": when
 // did the agent take them?
-import type { ChatItem, QueuedMessage } from '../../shared/types'
+import type { ChatItem, Pane, QueuedMessage } from '../../shared/types'
 import { isUploadLine, photosLanded, photosOnly } from '../../shared/queuedMatch'
 
 export const QUEUED_TTL_MS = 60 * 60 * 1000
@@ -85,6 +85,8 @@ export interface QueueEntry {
   stuckSince?: number
   // Failed because the input field was not found on an unknown screen.
   noInput?: boolean
+  // Given back (see giveBackHeld): its text returns to the message field.
+  back?: boolean
 }
 
 // Hold a new message instead of typing it now?
@@ -123,10 +125,18 @@ export function checkQueue(list: QueueEntry[], status: string | null | undefined
   return changed
 }
 
-// Held messages nobody will take any more: not sent, with Retry / Cancel.
-export function failHeld(list: QueueEntry[] | undefined) {
-  for (const q of list || []) if (q.held) q.failed = true
+// Held messages nobody will take any more (their agent is gone and the pane is
+// a plain shell, with no conversation to show them in): given back. The
+// first device that sees one takes it out of the queue and puts its text back
+// into the pane's message field (see app/utils/givenBack.ts), so that the
+// user never loses sight of something they wrote.
+export function giveBackHeld(list: QueueEntry[] | undefined) {
+  for (const q of list || []) if (q.held) { q.failed = true; q.back = true }
 }
+// Codex left without an update (no card after the check of its screen) and
+// no agent is back: nothing will take the messages held during the check.
+export const leftForGood = (p: Pick<Pane, 'agent' | 'leaving'>, before: Pick<Pane, 'leaving'> | undefined) =>
+  !p.agent && !p.leaving && Boolean(before?.leaving)
 
 // Fields the app sees.
 export const publicEntry = (q: QueueEntry): QueuedMessage => ({
@@ -134,6 +144,7 @@ export const publicEntry = (q: QueueEntry): QueuedMessage => ({
   ...(q.held && !q.failed ? { state: 'held' as const } : {}),
   ...(q.failed ? { state: 'failed' as const } : {}),
   ...((q.held || q.failed) && q.busy ? { reason: 'busy' as const } : q.failed && q.noInput ? { reason: 'no_input' as const } : {}),
+  ...(q.back ? { back: true } : {}),
 })
 
 // Records read back from data/queued.json at startup: well-formed, recent
@@ -145,7 +156,7 @@ export function loadQueued(raw: unknown, now: number): [string, QueueEntry[]][] 
     if (!Array.isArray(list)) continue
     const ok = list.filter((q): q is QueueEntry => Boolean(q) && typeof q.id === 'string' && typeof q.text === 'string' && typeof q.at === 'number'
       && now - q.at < QUEUED_TTL_MS)
-      .map(q => ({ id: q.id, text: q.text, at: q.at, ...(q.held ? { held: true } : {}), ...(q.failed ? { failed: true } : {}), ...(q.busy ? { busy: true } : {}) }))
+      .map(q => ({ id: q.id, text: q.text, at: q.at, ...(q.held ? { held: true } : {}), ...(q.failed ? { failed: true } : {}), ...(q.busy ? { busy: true } : {}), ...(q.back ? { back: true } : {}) }))
     if (ok.length) out.push([pane, ok])
   }
   return out

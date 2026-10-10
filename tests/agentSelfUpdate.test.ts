@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { updateChoices, updateRestartPlan, updateShellSignature } from '../shared/selfUpdate'
-import { createSelfUpdates } from '../server/utils/agentSelfUpdate'
+import { AT_SAVE_MS, createSelfUpdates } from '../server/utils/agentSelfUpdate'
 import type { ChatResponse, Pane } from '../shared/types'
 
 const SESSION = '00000000-0000-4000-8000-000000000288'
@@ -235,7 +235,8 @@ describe('observed process lifecycle and final guards', () => {
     const s = setup()
     await s.monitor.observe(pane(), false)
     const saved = JSON.parse(JSON.stringify([['w1:p1', s.monitor.get('w1:p1')]]))
-    for (let i = 0; i < 5; i++) s.tick()
+    // Longer than the saved time may be late, plus a short outage.
+    for (let i = 0; i < 16; i++) s.tick()
     const restored = createSelfUpdates(s.deps, saved)
     s.exit()
     await restored.observe(pane(null), false)
@@ -320,5 +321,64 @@ describe('observed process lifecycle and final guards', () => {
     expect(s.save).toHaveBeenCalledTimes(2)
     s.monitor.flush()
     expect(s.save).toHaveBeenLastCalledWith([['w1:p1', expect.objectContaining({ at: 16000 })]], true)
+  })
+  it('writes the last time Codex was seen at most once a minute', async () => {
+    expect(AT_SAVE_MS).toBe(60000)
+    const s = setup({ available: true, session: SESSION, items: [{ role: 'user', text: 'Hello', ts: null }] })
+    // What the disk holds: the records as they were when written.
+    let disk = '[]'
+    s.save.mockImplementation((records: unknown) => { disk = JSON.stringify(records) })
+    await s.monitor.observe(pane(), false)
+    expect(s.save).toHaveBeenCalledTimes(1)
+    const savedAt = () => JSON.parse(disk)[0][1].at as number
+    // One pass a second for ten minutes, nothing changes.
+    for (let i = 1; i <= 600; i++) {
+      s.tick(1000)
+      await s.monitor.observe(pane(), false)
+      if (i === 59) expect(s.save).toHaveBeenCalledTimes(1)
+      // What the disk holds is never more than a minute (and a pass) late.
+      if (i >= 60) expect(s.deps.now() - savedAt()).toBeLessThanOrEqual(AT_SAVE_MS + 5000)
+    }
+    expect(s.save).toHaveBeenCalledTimes(11)
+    // A stopped Codex has nothing new to write.
+    s.exit()
+    await s.monitor.observe(pane(null), false)
+    s.tick()
+    expect(await s.monitor.observe(pane(null), false)).toBe(true)
+    const writes = s.save.mock.calls.length
+    for (let i = 0; i < 180; i++) { s.tick(1000); await s.monitor.observe(pane(null), false) }
+    s.monitor.prune(new Set(['w1:p1']), () => true)
+    expect(s.save).toHaveBeenCalledTimes(writes)
+  })
+  it('detects an update that happened while the service was down after being killed', async () => {
+    const s = setup()
+    // Codex lives for a while; the service is killed (no flush): the disk
+    // holds what the last write left.
+    let disk = '[]'
+    s.save.mockImplementation((records: unknown) => { disk = JSON.stringify(records) })
+    for (let i = 0; i < 170; i++) { await s.monitor.observe(pane(), false); s.tick(1000) }
+    const onDisk = JSON.parse(disk)
+    expect(s.deps.now() - onDisk[0][1].at).toBeGreaterThan(15000)
+    // Codex updates itself and stops during the short outage.
+    s.exit()
+    s.tick(8000)
+    const restarted = createSelfUpdates(s.deps, onDisk)
+    const gone = pane(null)
+    expect(await restarted.observe(gone, false)).toBe(false)
+    expect(gone.leaving).toBe(true)
+    s.tick(3000)
+    const stopped = pane(null)
+    expect(await restarted.observe(stopped, false)).toBe(true)
+    expect(stopped.stopped).toEqual({ reason: 'update' })
+  })
+  it('keeps the short limit for an outage of Herdr while the service runs', async () => {
+    const s = setup()
+    await s.monitor.observe(pane(), false)
+    // No pass for 20 s (Herdr unreachable), then a shell: not an observed exit.
+    s.tick(20000)
+    s.exit()
+    await s.monitor.observe(pane(null), false)
+    s.tick()
+    expect(await s.monitor.observe(pane(null), false)).toBe(false)
   })
 })

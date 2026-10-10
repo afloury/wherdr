@@ -3548,8 +3548,12 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .card.compact.open, .card.compact:has(> .card-more) { flex-wrap: wrap; row-gap: 0; }
 .card.compact .card-more { flex: 0 0 100%; min-width: 0; display: grid; grid-template-rows: 1fr; }
 .card.compact .card-more-in { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding-left: 26px; }
-.card.compact .card-detail, .card.compact .card-preview, .card.compact .card-choices { flex: none; margin: 0; }
+.card.compact .card-where, .card.compact .card-detail, .card.compact .card-preview, .card.compact .card-choices { flex: none; margin: 0; }
 /* Margins, not padding: a folded block must be 0 px high. */
+.card.compact .card-where { display: flex; align-items: center; gap: 6px; }
+.card.compact .card-where .tabmap { flex: none; width: 22px; height: 15px; }
+.card.compact .card-where-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.card.compact.blocked:not(.state-from-tab) .card-where .tabmap i.cur { background: var(--rose); }
 .card.compact .card-more-in > :first-child { margin-top: 6px; }
 .card.compact .card-more-in > :last-child { margin-bottom: 4px; }
 .card.compact .card-detail { padding: 4px 8px; }

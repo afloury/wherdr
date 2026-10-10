@@ -21,21 +21,23 @@ export function canCancelQueued(p: Pane | undefined): boolean {
 // Puts a cancelled message back into the draft, as if it had never been
 // sent: its text before what was already typed, its attached photos.
 // `pasted`: the pasted texts the server lists for it (sent from another device).
-export function restoreDraft(draft: { text: string, atts: DraftAtt[], reply?: ReplyTarget | null }, message: string, pasted: string[] = []) {
+// `after`: a message the server gives back (see givenBack.ts) goes after what
+// was already typed, and leaves the reply being written alone.
+export function restoreDraft(draft: { text: string, atts: DraftAtt[], reply?: ReplyTarget | null }, message: string, pasted: string[] = [], after = false) {
   // Reply to a specific message: the marker becomes the "Replying to" box again.
-  const parsed = parseReply(message)
+  const parsed = after && draft.reply ? null : parseReply(message)
   if (parsed && 'reply' in draft) {
     draft.reply = parsed.reply
     message = parsed.body
   }
   // Texts sent as "Pasted text" cards become cards again.
-  const split = splitPasted(String(message || ''), pasted, sentPastes.value)
+  const split = splitPasted(String(message || ''), pasted, sentPastes.value, true)
   for (const paste of split.pastes) draft.atts.push({ url: '', path: null, paste })
   const lines = split.text.split('\n')
   const photos = lines.filter(l => l.includes(UPLOAD)).map(l => l.trim())
   const files = lines.filter(l => parseAttachmentLine(l))
   const text = lines.filter(l => !l.includes(UPLOAD) && !parseAttachmentLine(l)).join('\n').trim()
-  draft.text = [text, draft.text.trim()].filter(Boolean).join('\n')
+  draft.text = (after ? [draft.text.trim(), text] : [text, draft.text.trim()]).filter(Boolean).join('\n')
   for (const path of photos) {
     if (draft.atts.some(a => a.path === path)) continue
     const name = path.split('/').pop()!
