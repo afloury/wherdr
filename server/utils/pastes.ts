@@ -9,6 +9,7 @@
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import type { QueuedMessage } from '../../shared/types'
 import { isLongPaste, splitPasted } from '../../shared/pastedText'
 import { DATA_DIR } from './env'
@@ -85,15 +86,34 @@ function pastes(): string[] {
   return kept
 }
 
+// Written to a temporary file then renamed (a reader never sees half a file,
+// which would read as an empty list), one write after the other: the latest
+// list, whatever sends came in meanwhile.
+let saved: string[] | null = null
+let writing: Promise<unknown> = Promise.resolve()
+function save() {
+  writing = writing.then(async () => {
+    const list = kept
+    if (!list || list === saved) return
+    const temp = `${PASTES_FILE}.${randomUUID()}.tmp`
+    try {
+      await fsp.mkdir(DATA_DIR, { recursive: true })
+      await fsp.writeFile(temp, JSON.stringify(list) + '\n', { mode: 0o600 })
+      await fsp.rename(temp, PASTES_FILE)
+      saved = list
+    } catch {
+      await fsp.rm(temp, { force: true }).catch(() => {})
+    }
+  })
+}
+
 // A message sent from the app: its pasted texts are kept. Written only when
 // the list changes (never for a message without a paste).
 export function keepPastes(text: string, ranges: unknown) {
   const next = addPastes(pastes(), pastesAt(text, ranges))
   if (next === kept) return
   kept = next
-  fsp.mkdir(DATA_DIR, { recursive: true })
-    .then(() => fsp.writeFile(PASTES_FILE, JSON.stringify(next) + '\n', { mode: 0o600 }))
-    .catch(() => {})
+  save()
 }
 export const chatPasted = <T extends { role: string, text: string, pasted?: string[] }>(items: T[]) => withPasted(items, pastes())
 export const queuedPasted = (q: QueuedMessage) => withQueuedPasted(q, pastes())

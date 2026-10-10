@@ -2,6 +2,7 @@
 // what a request may add, the bounds of the list, and the conversation and
 // queued records served with their pasted texts listed.
 import fs from 'node:fs'
+import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -220,6 +221,7 @@ describe('data/pastes.json', () => {
   // A fresh module: the server just started with this data folder.
   const start = () => { vi.resetModules(); return import('../server/utils/pastes') }
   afterEach(() => {
+    vi.restoreAllMocks()
     vi.unstubAllEnvs()
     fs.rmSync(dir, { recursive: true, force: true })
   })
@@ -247,5 +249,60 @@ describe('data/pastes.json', () => {
     restarted.keepPastes(body, ranges)
     await new Promise(r => setTimeout(r, 50))
     expect(fs.existsSync(file)).toBe(false)
+  })
+
+  it('is written to a temporary file then renamed, one write after the other', async () => {
+    vi.stubEnv('DATA_DIR', dir)
+    const server = await start()
+    // What touches the disk, in order: a write is slow, a second send comes in meanwhile.
+    const events: string[] = []
+    const slow = Promise.withResolvers<void>()
+    const name = (f: unknown) => (path.basename(String(f)) === 'pastes.json' ? 'pastes.json' : 'temp')
+    const write = fsp.writeFile.bind(fsp)
+    const rename = fsp.rename.bind(fsp)
+    vi.spyOn(fsp, 'writeFile').mockImplementation(async (f, data, o) => {
+      events.push(`write ${name(f)}`)
+      await slow.promise
+      await write(f, data, o)
+      events.push('written')
+    })
+    vi.spyOn(fsp, 'rename').mockImplementation(async (from, to) => {
+      // The reader of the file always finds a whole list.
+      if (fs.existsSync(file)) expect(Array.isArray(JSON.parse(fs.readFileSync(file, 'utf8')))).toBe(true)
+      await rename(from, to)
+      events.push(`rename ${name(from)} -> ${name(to)}`)
+    })
+    server.keepPastes(body, ranges)
+    await vi.waitFor(() => expect(events).toEqual(['write temp']))
+    const second = `and this\n\n${OTHER}`
+    server.keepPastes(second, pasteRanges(second, [OTHER]))
+    await new Promise(r => setTimeout(r, 30))
+    expect(events).toEqual(['write temp'])
+    slow.resolve()
+    await vi.waitFor(() => expect(events.filter(e => e.startsWith('rename'))).toHaveLength(2))
+    const one = ['write temp', 'written', 'rename temp -> pastes.json']
+    expect(events).toEqual([...one, ...one])
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual([OTHER, LOG])
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600)
+    // No temporary file left behind.
+    expect(fs.readdirSync(dir)).toEqual(['pastes.json'])
+  })
+
+  it('leaves the file as it was, and no temporary file, when a write fails', async () => {
+    vi.stubEnv('DATA_DIR', dir)
+    const server = await start()
+    server.keepPastes(body, ranges)
+    await vi.waitFor(() => expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual([LOG]))
+    vi.spyOn(fsp, 'rename').mockRejectedValueOnce(new Error('disk full'))
+    const second = `and this\n\n${OTHER}`
+    server.keepPastes(second, pasteRanges(second, [OTHER]))
+    await new Promise(r => setTimeout(r, 80))
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual([LOG])
+    expect(fs.readdirSync(dir)).toEqual(['pastes.json'])
+    // Still served from memory, and written with the next send.
+    expect(server.chatPasted([user(second)])[0]!.pasted).toEqual([OTHER])
+    const third = `last\n\n${log('third')}`
+    server.keepPastes(third, pasteRanges(third, [log('third')]))
+    await vi.waitFor(() => expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual([log('third'), OTHER, LOG]))
   })
 })
