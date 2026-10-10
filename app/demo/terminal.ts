@@ -27,11 +27,55 @@ function wrap(text: string, width: number): string[] {
   return out
 }
 
+// Markdown the terminal does not draw: bold and code marks.
+const strip = (s: string) => s.replace(/\*\*|`/g, '')
+const isRow = (l: string) => /^\s*\|.*\|\s*$/.test(l)
+const isRule = (l: string) => /^\s*\|(\s*:?-+:?\s*\|)+\s*$/.test(l)
+const cells = (row: string) => row.trim().replace(/^\||\|$/g, '').split('|').map(c => strip(c.trim()))
+
+// A Markdown table the way Claude Code draws it: a grid of box characters,
+// header in bold, the widest columns narrowed and wrapped to fit the width.
+function tableLines(rows: string[][], width: number): string[] {
+  const n = Math.max(...rows.map(r => r.length))
+  const widths = Array.from({ length: n }, (_, c) => Math.max(1, ...rows.map(r => (r[c] || '').length)))
+  // Around the cells: "│ " … " │ " … " │".
+  const room = width - (3 * n + 1)
+  while (widths.reduce((a, b) => a + b, 0) > room && Math.max(...widths) > 3) widths[widths.indexOf(Math.max(...widths))]!--
+  const rule = (l: string, m: string, r: string) => `${DIM}${l}${widths.map(w => '─'.repeat(w + 2)).join(m)}${r}${RESET}`
+  const bar = `${DIM}│${RESET}`
+  const out = [rule('┌', '┬', '┐')]
+  rows.forEach((row, i) => {
+    const wrapped = widths.map((w, c) => wrap(row[c] || '', w))
+    const height = Math.max(...wrapped.map(x => x.length))
+    for (let k = 0; k < height; k++) {
+      out.push(`${bar} ${widths.map((w, c) => `${i ? '' : BOLD}${(wrapped[c]![k] || '').padEnd(w)}${i ? '' : RESET}`).join(` ${bar} `)} ${bar}`)
+    }
+    if (i < rows.length - 1) out.push(rule('├', '┼', '┤'))
+  })
+  return [...out, rule('└', '┴', '┘')]
+}
+
+function assistantLines(text: string, width: number): string[] {
+  const src = text.split('\n')
+  const out: string[] = []
+  for (let i = 0; i < src.length; i++) {
+    if (!isRow(src[i]!) || !isRule(src[i + 1] || '')) {
+      out.push(...wrap(strip(src[i]!), width))
+      continue
+    }
+    const rows = [cells(src[i]!)]
+    for (i += 2; i < src.length && isRow(src[i]!); i++) rows.push(cells(src[i]!))
+    i--
+    out.push(...tableLines(rows, width))
+  }
+  return out
+}
+
 function itemLines(it: ChatItem, width: number): string[] {
   const w = Math.max(20, width - 4)
   switch (it.role) {
     case 'user': return ['', ...wrap(it.text, w).map((l, i) => `${DIM}${i ? '  ' : '> '}${RESET}${BOLD}${l}${RESET}`)]
-    case 'assistant': return ['', ...wrap(it.text.replace(/\*\*|`/g, ''), w).map((l, i) => `${i ? '  ' : `${ACCENT}⏺${RESET} `}${l}`)]
+    case 'assistant': return ['', ...assistantLines(it.text, w).map((l, i) => `${i ? '  ' : `${ACCENT}⏺${RESET} `}${l}`)]
     case 'thinking': return ['', ...wrap(it.text, w).map(l => `${DIM}  ${l}${RESET}`)]
     case 'tool': return [`${CYAN}⏺${RESET} ${BOLD}${it.name || 'Tool'}${RESET}${DIM}(${it.text.slice(0, w - (it.name || '').length - 4)})${RESET}`]
     default: return [`${DIM}  ${it.text}${RESET}`]

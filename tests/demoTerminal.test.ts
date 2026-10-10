@@ -30,6 +30,38 @@ async function connect(route: string) {
   return { socket, frames }
 }
 
+describe('demo terminal Markdown', () => {
+  const pane = { agent: 'claude', status: 'idle', model: { label: 'Sonnet' } } as Pane
+  const text = 'Three choices:\n\n| Choice | Behaviour |\n|---|---|\n| System | follows `prefers-color-scheme`, live |\n| Dark | **always** dark |\n\nSaved.'
+  const lines = (cols: number) => agentScreen(pane, [{ role: 'assistant', text, ts: null }], '', cols, 60)
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').split('\r\n')
+
+  it('draws a table as a grid, without the Markdown bars and marks', () => {
+    const out = lines(100)
+    expect(out.slice(3, 10)).toEqual([
+      '  ┌────────┬────────────────────────────────────┐',
+      '  │ Choice │ Behaviour                          │',
+      '  ├────────┼────────────────────────────────────┤',
+      '  │ System │ follows prefers-color-scheme, live │',
+      '  ├────────┼────────────────────────────────────┤',
+      '  │ Dark   │ always dark                        │',
+      '  └────────┴────────────────────────────────────┘',
+    ])
+    expect(out.join('\n')).not.toMatch(/\|/)
+    expect(out).toContain('  Saved.')
+  })
+
+  it('wraps the cells of a table wider than the screen', () => {
+    const out = lines(40)
+    const grid = out.filter(l => /[│┌├└]/.test(l))
+    expect(grid.length).toBeGreaterThan(7)
+    for (const l of grid) expect(l.length).toBeLessThanOrEqual(40)
+    expect(new Set(grid.map(l => l.length)).size).toBe(1)
+    // Nothing is dropped: a word longer than its column is cut over two rows.
+    expect(grid.join('').replace(/[^a-z,-]/g, '')).toContain('followsprefers-color-scheme,live')
+  })
+})
+
 describe('demo split terminal sizing', () => {
   it('places a short Claude exchange at the top with its prompt directly after it', () => {
     const pane = { agent: 'claude', status: 'idle', model: { label: 'Sonnet' } } as Pane
