@@ -64,11 +64,12 @@ function activate(paneId: string) {
 // Keyboard: Ctrl/⌘ + Alt + arrow, neighbouring cell (caught before the terminal).
 function onFocusKey(e: KeyboardEvent) {
   const step = desk.value && entry.value && active.value ? cellFocusStep(e) : 0
-  const next = step ? neighborPane(entry.value!.layout, active.value!, step) : null
-  if (!next) return
+  if (!step) return
+  // Consumed even without a neighbour that way: the terminal must not get the sequence.
   e.preventDefault()
   e.stopPropagation()
-  activate(next)
+  const next = neighborPane(entry.value!.layout, active.value!, step)
+  if (next) activate(next)
 }
 onMounted(() => window.addEventListener('keydown', onFocusKey, true))
 onUnmounted(() => window.removeEventListener('keydown', onFocusKey, true))

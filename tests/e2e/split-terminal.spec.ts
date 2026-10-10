@@ -156,3 +156,21 @@ test('a click on the header of the active cell keeps the keyboard in its termina
   await expect.poll(() => typed.join('')).toBe('ab')
   expect(await page.evaluate(pane => Boolean(document.activeElement?.closest(`.cell-view[data-pane="${pane}"] #term`)), SPLIT_SHELL_PANE)).toBe(true)
 })
+
+test('Ctrl+Alt+arrow without a neighbour that way sends nothing to the terminal', async ({ page }) => {
+  const typed = typedInto(page, SPLIT_SHELL_PANE)
+  await open(page, 1440, 900)
+  const shell = cell(page, SPLIT_SHELL_PANE)
+  await shell.locator('#term').click()
+  await expect.poll(async () => (await paneSize(SPLIT_SHELL_PANE)).attached).toBe(true)
+  // The last cell in reading order: nothing after it.
+  await page.keyboard.press('Control+Alt+ArrowRight')
+  await page.keyboard.press('Control+Alt+ArrowDown')
+  await page.keyboard.type('a')
+  await expect.poll(() => typed.join('')).toBe('a')
+  await expect(shell).toHaveClass(/active/)
+  // With a neighbour, the shortcut still moves the focus.
+  await page.keyboard.press('Control+Alt+ArrowLeft')
+  await expect(cell(page, SPLIT_CHAT_PANE)).toHaveClass(/active/)
+  expect(typed.join('')).toBe('a')
+})
