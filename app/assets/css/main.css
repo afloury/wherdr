@@ -3596,3 +3596,21 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .list-compact .quota-top b { font-size: 14px; }
 .list-compact .quota-bar { margin: 4px 0 0; }
 .list-compact .quota-reset, .list-compact .quota-foot { display: none; }
+
+/* Inline review: the gutter is a separate touch target; code stays selectable. */
+.review-line { display: flex; align-items: stretch; padding: 0; }
+.review-source { padding: 4px 8px; min-width: 0; flex: 1; }
+.review-gutter { flex: 0 0 48px; min-height: 44px; padding: 4px; border-right: 1px solid var(--line); color: var(--muted); cursor: pointer; font: 10px/1.4 var(--mono); user-select: none; }
+.review-gutter span { display: block; color: var(--blue); }
+.review-gutter:hover, .review-gutter:focus-visible { background: color-mix(in srgb, var(--blue) 18%, transparent); outline: 1px solid var(--blue); outline-offset: -1px; }
+.review-note { padding: 12px; border-block: 1px solid var(--line); border-left: 3px solid var(--blue); background: var(--surface); scroll-margin-block: 16px; }
+.review-note label { display: block; overflow-wrap: anywhere; color: var(--blue); font: 11px/1.5 var(--mono); }
+.review-note textarea { scroll-margin-top: 120px; display: block; width: 100%; margin-top: 8px; padding: 10px; resize: vertical; border: 1px solid var(--line); border-radius: 0; background: var(--code-bg); color: var(--text); font: 16px/1.5 var(--sans); }
+.review-note textarea:focus { outline: 1px solid var(--blue); }
+.review-note button { min-height: 44px; color: var(--muted); text-decoration: underline; font-size: 12px; cursor: pointer; }
+.review-note p { color: var(--ochre); font-size: 12px; margin-top: 8px; }
+.review-note.missing { border-left-color: var(--ochre); margin-bottom: 12px; }
+.review-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; position: sticky; top: 0; z-index: 2; padding: 10px; border: 1px solid var(--line); background: var(--surface); }
+.review-toolbar > span { flex: 1; font: 11px/1.4 var(--mono); }
+.review-toolbar button { min-height: 44px; }
+.review-toolbar p { width: 100%; margin: 0; color: var(--muted); font-size: 11px; }

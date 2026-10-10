@@ -197,6 +197,14 @@ Details in [Features](#features) and [Security](#security).
 - **New agent**: pick an installed agent (or a plain terminal), a folder, optionally a separate
   Git **worktree** and branch, resume the last conversation, and queue a first message.
 - **Changes view**: Git status and diff of an agent's working folder; worktree management.
+  Tap or click a diff line (or focus its line-number button) to write a review comment.
+  Comments stay editable under the line and are saved on this device for that agent, including
+  across refreshes. Comments whose line disappears are flagged above the diff for checking.
+  **Send review** groups them by file and appends them to the conversation's message draft,
+  preserving existing text; it never sends a message. Deleted lines use the old file's number,
+  explicitly labelled. **Discard** clears the local review. Works on remote agents and in the
+  demo too, with no writes to the agent's machine. Browser storage must be available to retain
+  comments after closing the view.
 - **Several machines**: agents of the SSH machines registered in Herdr (`herdr machine add`)
   appear in their own section; everything works the same on a remote agent.
 - **Named Herdr sessions**, **quotas** (remaining Claude and Codex usage limits), **Herdr plugin
