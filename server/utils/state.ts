@@ -621,10 +621,16 @@ let lastAgentsWrite: Promise<unknown> = Promise.resolve()
 export const selfUpdates = createSelfUpdates({
   call: herdr, sleep, now: Date.now,
   chat: p => transcripts.chat(p, { fresh: true }),
-  save: records => {
+  // Only called when a record changed (see agentSelfUpdate.ts).
+  save: (records, sync) => {
+    const s = JSON.stringify(records) + '\n'
+    if (sync) {
+      try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(LAST_AGENTS_FILE, s, { mode: 0o600 }) } catch { /* best effort */ }
+      return
+    }
     lastAgentsWrite = lastAgentsWrite.then(async () => {
       await fsp.mkdir(DATA_DIR, { recursive: true })
-      await fsp.writeFile(LAST_AGENTS_FILE, JSON.stringify(records) + '\n', { mode: 0o600 })
+      await fsp.writeFile(LAST_AGENTS_FILE, s, { mode: 0o600 })
     }).catch(() => {})
   },
 }, (() => { try { return JSON.parse(fs.readFileSync(LAST_AGENTS_FILE, 'utf8')) } catch { return [] } })())
@@ -764,10 +770,12 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
   seenMachines.add(machine)
   getMachine(machine)?.transcripts.observe(next.panes)
   const revs = new Map((snap.panes || []).map((p: Json) => [joinId(machine, p.pane_id), p.revision]))
-  for (const p of next.panes) {
-    // Before queues or screen parsing: an exited agent must never receive input.
-    const stopped = await selfUpdates.observe(p, restarts.has(p.id)).catch(() => false)
-    if (stopped) {
+  // Before queues or screen parsing: an exited agent must never receive input.
+  // All panes at once: the process read of each Codex pane does not wait for
+  // the previous one's.
+  const exited = await Promise.all(next.panes.map(p => selfUpdates.observe(p, restarts.has(p.id)).catch(() => false)))
+  for (const [i, p] of next.panes.entries()) {
+    if (exited[i]) {
       if (queued.has(p.id)) p.queued = queued.get(p.id)!.map(publicEntry)
       continue
     }
@@ -1006,6 +1014,7 @@ const localMachineOf = (ms: Machine[]) => ms.find(m => m.local)!
 export function stopPolling() {
   stopped = true
   if (pollTimer) clearTimeout(pollTimer)
+  selfUpdates.flush()
 }
 
 // ---------------------------------------------------------------- notifications

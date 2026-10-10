@@ -60,9 +60,10 @@ function setup(chat: ChatResponse = { available: false, reason: 'not_found' }) {
     ? { read: { text: output } }
     : { process_info: { shell_pid: 2000, foreground_process_group_id: shell ? 2000 : pid,
         foreground_processes: shell ? [{ pid: 2000, name: 'zsh' }] : [{ pid, name: 'codex', argv }] } })
-  const deps = { call, sleep: async () => {}, now: () => now, chat: async () => chat }
+  const save = vi.fn()
+  const deps = { call, sleep: async () => {}, now: () => now, chat: async () => chat, save }
   const monitor = createSelfUpdates(deps)
-  return { monitor, deps, call, tick: (ms = 5000) => { now += ms }, exit: () => { shell = true; output = OUTPUT },
+  return { monitor, deps, call, save, tick: (ms = 5000) => { now += ms }, exit: () => { shell = true; output = OUTPUT },
     replace: (args: string[]) => { pid++; argv = args },
     output: (text: string) => { output = text }, foreground: () => { shell = false; pid++ } }
 }
@@ -240,5 +241,36 @@ describe('observed process lifecycle and final guards', () => {
     await restored.observe(pane(null), false)
     s.tick()
     expect(await restored.observe(pane(null), false)).toBe(false)
+  })
+  it('writes nothing while nothing changes, alive or stopped', async () => {
+    const s = setup({ available: true, session: SESSION, items: [{ role: 'user', text: 'Hello', ts: null }] })
+    await s.monitor.observe(pane(), false)
+    expect(s.save).toHaveBeenCalledTimes(1)
+    // Throttled passes, then full ones: same process, same conversation.
+    for (let i = 0; i < 20; i++) { s.tick(1000); await s.monitor.observe(pane(), false) }
+    expect(s.save).toHaveBeenCalledTimes(1)
+    s.exit()
+    await s.monitor.observe(pane(null), false)
+    s.tick()
+    expect(await s.monitor.observe(pane(null), false)).toBe(true)
+    const writes = s.save.mock.calls.length
+    for (let i = 0; i < 20; i++) { s.tick(1000); expect(await s.monitor.observe(pane(null), false)).toBe(true) }
+    expect(s.save).toHaveBeenCalledTimes(writes)
+    s.monitor.prune(new Set(['w1:p1']), () => true)
+    expect(s.save).toHaveBeenCalledTimes(writes)
+  })
+  it('writes a real change at once, and the last time Codex was seen when the service stops', async () => {
+    const s = setup()
+    await s.monitor.observe(pane(), false)
+    s.tick(1000)
+    s.replace(['codex', '--profile', 'second'])
+    await s.monitor.observe(pane(), false)
+    expect(s.save).toHaveBeenCalledTimes(2)
+    expect(s.save.mock.lastCall![0][0][1]).toMatchObject({ pid: 2002, argv: ['codex', '--profile', 'second'] })
+    s.tick()
+    await s.monitor.observe(pane(), false)
+    expect(s.save).toHaveBeenCalledTimes(2)
+    s.monitor.flush()
+    expect(s.save).toHaveBeenLastCalledWith([['w1:p1', expect.objectContaining({ at: 16000 })]], true)
   })
 })

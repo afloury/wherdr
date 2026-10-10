@@ -15,15 +15,28 @@ interface LastAgent extends UpdateLaunch {
 }
 export interface SelfUpdateDeps extends RestartDeps {
   chat: (p: Pane) => Promise<ChatResponse>
-  save?: (records: [string, LastAgent][]) => void
+  // `sync`: last write before the service stops.
+  save?: (records: [string, LastAgent][], sync?: boolean) => void
 }
 export function createSelfUpdates(d: SelfUpdateDeps, saved: [string, LastAgent][] = []) {
   const records = new Map(saved)
-  const persist = () => d.save?.([...records])
+  // `at` moves on every pass while Codex lives: alone it is never worth a
+  // disk write. It is saved with the next real change, and by flush().
+  const stable = () => JSON.stringify([...records].map(([id, r]) => [id, { ...r, at: 0 }]))
+  let written = stable()
+  const persist = () => {
+    const s = stable()
+    if (s === written) return
+    written = s
+    d.save?.([...records])
+  }
   const read = async (id: string) => String((await d.call('pane.read', { pane_id: id, source: 'recent_unwrapped', lines: 80 }, 4000))?.read?.text || '')
   return {
     get: (id: string) => records.get(id),
     clear(id: string) { records.delete(id); persist() },
+    // Service stopping: keep the exact time Codex was last seen alive, so a
+    // quick restart still tells a short outage from a long one.
+    flush() { if (records.size) d.save?.([...records], true) },
     prune(ids: Set<string>, belongs: (id: string) => boolean) {
       let changed = false
       for (const id of records.keys()) if (belongs(id) && !ids.has(id)) { records.delete(id); changed = true }
