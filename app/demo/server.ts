@@ -334,6 +334,17 @@ export class DemoServer {
         case '/api/models': return this.models(paneId)
         case '/api/chat': return this.chatReply(paneId, q.get('since'), q.get('before'))
         case '/api/changes': return S.CHANGES[paneId] ? ok(S.CHANGES[paneId]) : ok({ git: false })
+        case '/api/files': return ok(q.get('path') === 'src'
+          ? { root: `${S.HOME}/code/acme-web`, path: 'src', truncated: false, entries: [
+              { name: 'main.ts', kind: 'file', size: 236, link: false },
+            ] }
+          : { root: `${S.HOME}/code/acme-web`, path: '', truncated: false, entries: [
+              { name: 'src', kind: 'dir', size: null, link: false },
+              { name: '.gitignore', kind: 'file', size: 24, link: false },
+              { name: 'package.json', kind: 'file', size: 412, link: false },
+              { name: 'README.md', kind: 'file', size: 88, link: false },
+            ] })
+        case '/api/files/read': return fail(404, DEMO_REFUSAL)
         case '/api/screen': return ok({ text: '', tabs: null, tab: null })
         case '/api/search': return ok(this.search(String(q.get('q') || '')))
         case '/api/dirs': return ok({ path: S.HOME, parent: null, home: S.HOME, dirs: [

@@ -13,6 +13,12 @@ All notable changes to this project are documented here. The format follows
   A new conversation reuses its launch command; an existing one can resume its exact session
   or start fresh. If the session is uncertain, Resume opens Codex's conversation picker.
   Restart checks the foreground process and the unchanged empty prompt before typing.
+- **Browse files** in an agent's ⋯ menu: a read-only browser of its project (the Git root, or the
+  agent's folder outside Git), opened on the agent's folder. Folders and files with their sizes, a
+  breadcrumb to go back up, text files with line numbers (first 256 kB), images up to 2 MB.
+  Hidden files (name starting with a dot) are shown; **Show hidden files** hides them, remembered
+  on the device. Local and remote machines alike; nothing above that root is shown, symlinks
+  included, and nothing is written.
 - **Discuss a point**: a list item or a paragraph of an agent's reply that asks nothing can now be
   quoted in the field like a question, to answer it in the same message. Not offered on code,
   tables, quotes, titles, an introduction ending with a colon or a point of one or two words.

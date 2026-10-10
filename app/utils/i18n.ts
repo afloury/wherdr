@@ -281,6 +281,13 @@ const FR: Record<string, string> = {
   'No committed changes to show.': 'Aucun changement commité à afficher.',
   'No upstream or base branch available for comparison.': 'Aucun amont ou branche de base disponible pour comparer.',
   'Untracked': 'Non suivi', 'Commit': 'Commit',
+  // Read-only file browser
+  'Browse files': 'Parcourir les fichiers', 'Back to folder': 'Retour au dossier',
+  'Reading files…': 'Lecture des fichiers…', 'Empty folder.': 'Dossier vide.', 'Show hidden files': 'Afficher les fichiers cachés',
+  'Permission denied': 'Accès refusé', 'The folder took too long to read': 'Le dossier a mis trop de temps à se lire',
+  'File truncated to keep this view responsive.': 'Fichier tronqué pour garder la vue rapide.',
+  'Image too large to preview.': 'Image trop lourde pour l’aperçu.',
+  'File not found': 'Fichier introuvable', 'Outside the project folder': 'Hors du dossier du projet', 'Not a file': 'Pas un fichier',
   'Added': 'Ajouté', 'Modified': 'Modifié', 'Deleted': 'Supprimé', 'From': 'Depuis', 'Binary file': 'Fichier binaire', 'Binary': 'Binaire',
   'Diff truncated': 'Diff tronqué', 'Diff not loaded (size limit)': 'Diff non chargé (limite de taille)',
   'Generated file or dependency lockfile': 'Fichier généré ou verrouillage de dépendances',

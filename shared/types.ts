@@ -434,3 +434,15 @@ export interface PluginActionResult {
   setup?: { key: 'version' | 'binary' | 'home' | 'config', value: string, warn?: boolean }[]
   full?: string
 }
+
+// Read-only file browser of an agent's folder (Git root, or the folder itself).
+export interface FileEntry { name: string, kind: 'dir' | 'file' | 'other', size: number | null, link: boolean }
+export interface FilesListing { root: string, path: string, entries: FileEntry[], truncated: boolean }
+export interface FilePreview {
+  path: string
+  size: number
+  kind: 'text' | 'image' | 'binary' | 'large'
+  text?: string
+  dataUrl?: string
+  truncated: boolean
+}
