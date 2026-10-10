@@ -28,6 +28,10 @@ const ompRunScreen = command => [
 ].join('\n')
 const screen = p => (p?.agent === 'omp' && p.status === 'idle' ? (p.run ? ompRunScreen(p.run) : OMP_IDLE_SCREEN) : '')
 
+// A tab's area, in cells; two panes share it side by side (one split).
+const AREA = { x: 0, y: 0, width: 120, height: 40 }
+const HALVES = [{ x: 0, y: 0, width: 60, height: 40 }, { x: 61, y: 0, width: 59, height: 40 }]
+
 // `workspaces`: [{ id, label, panes: [{ id, agent, status, cwd, session, transcript, reply, shell }] }]
 // (`session`: the value Herdr's agent integration reports; `transcript`: the file
 // the fake agent appends to when it receives a prompt; `shell`: a "!" prompt
@@ -53,10 +57,10 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       })),
       layouts: workspaces.map(w => ({
         tab_id: `${w.id}:t1`, workspace_id: w.id, zoomed: false,
-        area: { x: 0, y: 0, width: 120, height: 40 },
+        area: AREA,
         focused_pane_id: w.panes[0]?.id,
-        panes: w.panes.map((p, i) => ({ pane_id: p.id, focused: i === 0, rect: { x: 0, y: 0, width: 120, height: 40 } })),
-        splits: [],
+        panes: w.panes.map((p, i) => ({ pane_id: p.id, focused: i === 0, rect: w.panes.length === 2 ? HALVES[i] : AREA })),
+        splits: w.panes.length === 2 ? [{ id: 'split_0_root', direction: 'right', ratio: 0.5, rect: AREA }] : [],
       })),
       panes: panes.map(p => ({
         pane_id: p.id, workspace_id: p.workspace, tab_id: `${p.workspace}:t1`,
