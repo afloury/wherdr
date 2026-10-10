@@ -22,7 +22,8 @@ All notable changes to this project are documented here. The format follows
   no button, the underlined question is tapped; a point is clicked on a computer, and on a phone
   tapped once to show **↳ Discuss**, so that a tap while reading never quotes. **List under the
   message**: a number after each question, the questions listed under the message, and
-  **+ Quote a point** to pick a point. All of them work with the keyboard.
+  **+ Quote a point** to pick a point, offered only when there is a choice (a list item, or two
+  points or more), not under a reply of plain prose. All of them work with the keyboard.
 
 ### Changed
 
