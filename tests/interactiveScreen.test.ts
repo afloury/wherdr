@@ -17,7 +17,7 @@ describe('conservative interactive screen presentation', () => {
     expect(classify(text)).toBe('terminal')
     expect(confirmedInput(text)).toBe(false)
   })
-  it.each(['codex-model-1.txt', 'claude-ask.txt', 'claude-settings-stats.txt', 'omp-selector.txt', 'omp-ask-tabs.txt'])(
+  it.each(['codex-model-1.txt', 'claude-ask.txt', 'claude-ask-long.txt', 'claude-settings-stats.txt', 'omp-selector.txt', 'omp-ask-tabs.txt'])(
     'leaves the complex real screen %s in the terminal', name => {
       expect(classify(fx(name), name.startsWith('omp') ? 'omp' : 'claude')).toBe('terminal')
     },

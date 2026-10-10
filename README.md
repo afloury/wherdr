@@ -161,6 +161,8 @@ Details in [Features](#features) and [Security](#security).
   the same lease as Terminal view; it does not shrink 120 columns into unreadable text.
   A pane already shown in Terminal keeps its existing live view. Try `/usage` on the
   Codex agent in the browser demo (scripted, no account data).
+  In the compact list, a waiting agent's ambiguous question opens its card with an
+  **Open interactive terminal** button; certain questions keep their one-tap answers.
 - **Composer**: send messages while the agent works (queued, cancellable), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output

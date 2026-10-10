@@ -20,6 +20,7 @@ import type { Row } from '#shared/spaces'
 import { isCoordinator, stateSource, tabStates, waitingTab } from '#shared/projects'
 import type { MenuItem } from '~/composables/useUi'
 import { longPress } from '~/utils/longPress'
+import { interactionWindowFor } from '~/utils/interactionWindow'
 
 // `tag`: role in a herdr-projects project (coordinator, t-0018).
 const props = defineProps<{ pane: Pane, tag?: string | null, row?: Row | null }>()
@@ -70,9 +71,10 @@ const where = computed(() => {
 })
 const prompt = computed(() => (props.pane.status === 'blocked' ? props.pane.prompt : undefined))
 const quick = computed(() => quickChoices(prompt.value, 4))
+const interactive = computed(() => props.pane.interaction === 'terminal')
 // Recognized waiting screen (Codex hooks…): its title says better what is expected.
 const screen = computed(() => knownScreen(props.pane))
-const preview = computed(() => (screen.value && screenSummary(screen.value)) || (props.pane.menu && props.pane.status !== 'working' && menuSummary(props.pane.menu)) || (prompt.value ? prompt.value.kind === 'self-update' ? t(prompt.value.question || '') : prompt.value.question : props.pane.preview))
+const preview = computed(() => interactive.value ? tl('Interactive agent screen', 'Écran interactif de l’agent') : (screen.value && screenSummary(screen.value)) || (props.pane.menu && props.pane.status !== 'working' && menuSummary(props.pane.menu)) || (prompt.value ? prompt.value.kind === 'self-update' ? t(prompt.value.question || '') : prompt.value.question : props.pane.preview))
 const more = computed(() => !compactList.value || compactOpen({ status: props.pane.status, preview: preview.value, detail: prompt.value?.detail, choices: quick.value.length }))
 // Read / unread: only for an agent that has finished (ready).
 const unread = computed(() => (space.value ? space.value.panes.filter(p => p.agent && p.status === 'done') : []))
@@ -165,6 +167,12 @@ async function pick(i: number, label: string) {
   // Success: the buttons disappear with the question on the next state.
   if (!ok) busy.value = false
 }
+function openInteraction() {
+  if (recentTouchMenu()) return
+  interactionWindowFor(props.pane.id).reopen()
+  haptic()
+  navigateTo(panePath(props.pane.id))
+}
 watch(() => props.pane.prompt, () => { busy.value = false })
 const appear = listShown
 onMounted(() => { setTimeout(() => { listShown = true }, 1000) })
@@ -209,7 +217,12 @@ onMounted(() => { setTimeout(() => { listShown = true }, 1000) })
               <span class="card-detail-tool">{{ prompt.detail.tool }}</span><code>{{ detailLine(prompt.detail) }}</code>
             </div>
             <div v-if="preview" class="card-preview">{{ preview }}</div>
-            <div v-if="quick.length" class="card-choices">
+            <div v-if="interactive" class="card-choices">
+              <button type="button" :disabled="!eventsOpen || offlineView || paneStale(pane)" @click.stop="openInteraction">
+                <UIcon name="i-lucide-square-terminal" /><span class="l">{{ tl('Open interactive terminal', 'Ouvrir le terminal interactif') }}</span>
+              </button>
+            </div>
+            <div v-else-if="quick.length" class="card-choices">
               <button
                 v-for="o in quick" :key="o.i" type="button" :disabled="busy || !eventsOpen || offlineView || paneStale(pane)"
                 @click.stop="pick(o.i, o.label)"
