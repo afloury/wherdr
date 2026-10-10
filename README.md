@@ -265,7 +265,10 @@ phone / laptop ──private network──> HTTPS (tailscale serve, private prox
 
 wherdr runs on the same machine as the Herdr server (the "server" below). It uses Herdr's local
 socket API and CLI, reads the agents' transcript files, and serves a client-only Nuxt app. Data
-it keeps (VAPID keys, push subscriptions, passkeys, recent folders) lives in `data/`.
+it keeps (VAPID keys, push subscriptions, passkeys, recent folders) lives in `data/`. So do the
+long texts pasted into the message field, which the server keeps to show them as cards on every
+device: `data/pastes.json`, in clear, readable by the server's user only (mode 600), at most the
+last 100 texts and 2 MB, each one deleted 30 days after it was last sent.
 
 Built with Nuxt 4, Nuxt UI 4, Tailwind 4 and TypeScript; the Herdr gateway (API, WebSockets,
 Web Push, lock) runs in Nitro.

@@ -6,7 +6,7 @@ import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { PASTES_MAX, PASTES_MAX_CHARS, addPastes, loadPastes, pastedIn, pastesAt, withPasted, withQueuedPasted } from '../server/utils/pastes'
+import { PASTES_MAX, PASTES_MAX_CHARS, PASTES_TTL_MS, type KeptPaste, addPastes, loadPastes, pastedIn, pastesAt, withPasted, withQueuedPasted } from '../server/utils/pastes'
 import { messageBody, pasteRanges, splitPasted } from '../shared/pastedText'
 import type { ChatItem } from '../shared/types'
 
@@ -14,6 +14,9 @@ const log = (name: string, n = 40) => Array.from({ length: n }, (_, i) => `==> P
 const LOG = log('pkg')
 const OTHER = log('lib')
 const TYPED = Array.from({ length: 20 }, (_, i) => `Step ${i + 1}: check the service and write down what you see.`).join('\n')
+const DAY = 86400000
+const NOW = Date.UTC(2026, 9, 11)
+const texts = (list: KeptPaste[]) => list.map(p => p.text)
 const user = (text: string, pasted?: string[]): ChatItem => ({ role: 'user', text, ts: null, ...(pasted ? { pasted } : {}) })
 
 describe('pasted texts of a request', () => {
@@ -38,36 +41,53 @@ describe('pasted texts of a request', () => {
 })
 
 describe('kept pasted texts', () => {
-  it('keeps the most recent first, each block once', () => {
-    let list = addPastes([], [LOG])
-    list = addPastes(list, [OTHER])
-    expect(list).toEqual([OTHER, LOG])
-    expect(addPastes(list, [LOG])).toEqual([LOG, OTHER])
+  it('keeps the most recent first, each block once, with when it was last sent', () => {
+    let list = addPastes([], [LOG], NOW)
+    list = addPastes(list, [OTHER], NOW + 1000)
+    expect(list).toEqual([{ text: OTHER, at: NOW + 1000 }, { text: LOG, at: NOW }])
+    expect(addPastes(list, [LOG], NOW + 2000)).toEqual([{ text: LOG, at: NOW + 2000 }, { text: OTHER, at: NOW + 1000 }])
   })
 
-  it('is the same list when nothing changes: nothing to write', () => {
-    const list = addPastes([], [LOG, OTHER])
-    // A message without a paste, and the paste just sent, sent again.
-    expect(addPastes(list, [])).toBe(list)
-    expect(addPastes(list, [LOG])).toBe(list)
-    expect(addPastes(list, pastesAt('a short message', undefined))).toBe(list)
+  it('is the same list for a message without a paste: nothing to write', () => {
+    const list = addPastes([], [LOG, OTHER], NOW)
+    expect(addPastes(list, [], NOW + DAY)).toBe(list)
+    expect(addPastes(list, pastesAt('a short message', undefined), NOW + DAY)).toBe(list)
   })
 
   it('is bounded in number and in size: the oldest go', () => {
-    let list: string[] = []
-    for (let i = 0; i < PASTES_MAX + 5; i++) list = addPastes(list, [log(`n${i}`)])
+    let list: KeptPaste[] = []
+    for (let i = 0; i < PASTES_MAX + 5; i++) list = addPastes(list, [log(`n${i}`)], NOW + i)
     expect(list).toHaveLength(PASTES_MAX)
-    expect(list[0]).toBe(log(`n${PASTES_MAX + 4}`))
-    expect(list).not.toContain(log('n0'))
+    expect(list[0]!.text).toBe(log(`n${PASTES_MAX + 4}`))
+    expect(texts(list)).not.toContain(log('n0'))
     const big = (c: string) => c.repeat(PASTES_MAX_CHARS / 2 - 10)
-    list = addPastes(addPastes(addPastes([], [big('a')]), [big('b')]), [big('c')])
-    expect(list).toEqual([big('c'), big('b')])
+    list = addPastes(addPastes(addPastes([], [big('a')], NOW), [big('b')], NOW), [big('c')], NOW)
+    expect(texts(list)).toEqual([big('c'), big('b')])
   })
 
-  it('reads back well-formed blocks only', () => {
-    expect(loadPastes([LOG, 3, null, 'short', OTHER])).toEqual([LOG, OTHER])
-    expect(loadPastes({ a: LOG })).toEqual([])
-    expect(loadPastes(null)).toEqual([])
+  it('drops a block 30 days after it was last sent, when the next one is kept', () => {
+    expect(PASTES_TTL_MS).toBe(30 * DAY)
+    let list = addPastes([], [LOG], NOW)
+    list = addPastes(list, [OTHER], NOW + 10 * DAY)
+    // Day 30: the first block is gone, the second has 10 days left.
+    expect(texts(addPastes(list, [log('new')], NOW + 30 * DAY - 1))).toEqual([log('new'), OTHER, LOG])
+    expect(texts(addPastes(list, [log('new')], NOW + 30 * DAY))).toEqual([log('new'), OTHER])
+    // Sent again in time: 30 more days.
+    list = addPastes(list, [LOG], NOW + 29 * DAY)
+    expect(texts(addPastes(list, [log('new')], NOW + 45 * DAY))).toEqual([log('new'), LOG])
+  })
+
+  it('reads back well-formed blocks that have not expired', () => {
+    const raw = [{ text: LOG, at: NOW - DAY }, 3, null, { text: 'short', at: NOW }, { text: OTHER, at: NOW - 30 * DAY }, { text: log('x') }, { text: LOG, at: NOW }, { text: log('y'), at: NOW - 29 * DAY }]
+    expect(loadPastes(raw, NOW)).toEqual([{ text: LOG, at: NOW - DAY }, { text: log('y'), at: NOW - 29 * DAY }])
+    expect(loadPastes({ a: LOG }, NOW)).toEqual([])
+    expect(loadPastes(null, NOW)).toEqual([])
+    // A clock set back: a block never lives longer than 30 days from now.
+    expect(loadPastes([{ text: LOG, at: NOW + 90 * DAY }], NOW)).toEqual([{ text: LOG, at: NOW }])
+  })
+
+  it('reads the first format (texts alone): their 30 days start then', () => {
+    expect(loadPastes([LOG, 'short', OTHER], NOW)).toEqual([{ text: LOG, at: NOW }, { text: OTHER, at: NOW }])
   })
 })
 
@@ -133,7 +153,7 @@ describe('two pasted texts that start the same way', () => {
   const FIRST = log('pkg', 31)
   const SECOND = log('pkg', 61)
   // Most recent first, as the server keeps them.
-  const kept = addPastes(addPastes([], [FIRST]), [SECOND])
+  const kept = texts(addPastes(addPastes([], [FIRST], NOW), [SECOND], NOW))
 
   it('never shows the later paste on the earlier message, on any agent', () => {
     expect(SECOND.startsWith(FIRST)).toBe(true)
@@ -220,7 +240,9 @@ describe('data/pastes.json', () => {
   const ranges = pasteRanges(body, [LOG])
   // A fresh module: the server just started with this data folder.
   const start = () => { vi.resetModules(); return import('../server/utils/pastes') }
+  const onDisk = () => (JSON.parse(fs.readFileSync(file, 'utf8')) as KeptPaste[]).map(p => p.text)
   afterEach(() => {
+    vi.useRealTimers()
     vi.restoreAllMocks()
     vi.unstubAllEnvs()
     fs.rmSync(dir, { recursive: true, force: true })
@@ -236,19 +258,64 @@ describe('data/pastes.json', () => {
     expect(fs.existsSync(file)).toBe(false)
 
     server.keepPastes(body, ranges)
-    await vi.waitFor(() => expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual([LOG]))
+    await vi.waitFor(() => expect(onDisk()).toEqual([LOG]))
     expect(fs.statSync(file).mode & 0o777).toBe(0o600)
     expect(server.chatPasted([user(body)])[0]!.pasted).toEqual([LOG])
     expect(server.queuedPasted({ id: 'w-1', text: body }).pasted).toEqual([LOG])
 
-    // After a restart the conversation still lists it; the same paste sent
-    // again changes nothing, so nothing is written.
+    // After a restart the conversation still lists it; a message without a
+    // paste and a purge with nothing expired write nothing.
     const restarted = await start()
     expect(restarted.chatPasted([user(body)])[0]!.pasted).toEqual([LOG])
     fs.rmSync(file)
-    restarted.keepPastes(body, ranges)
+    restarted.keepPastes(TYPED, [])
+    restarted.purgePastes()
     await new Promise(r => setTimeout(r, 50))
     expect(fs.existsSync(file)).toBe(false)
+  })
+
+  it('drops the blocks older than 30 days at startup, from the file too', async () => {
+    vi.stubEnv('DATA_DIR', dir)
+    const now = Date.now()
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(file, JSON.stringify([{ text: OTHER, at: now - 5 * DAY }, { text: LOG, at: now - 31 * DAY }]) + '\n', { mode: 0o600 })
+    const server = await start()
+    // Never served again, even before the file is written.
+    expect(server.chatPasted([user(body)])[0]!.pasted).toBeUndefined()
+    expect(server.chatPasted([user(`see\n\n${OTHER}`)])[0]!.pasted).toEqual([OTHER])
+    server.purgePastes()
+    await vi.waitFor(() => expect(fs.readFileSync(file, 'utf8')).not.toContain('Pouring pkg-0-'))
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual([{ text: OTHER, at: now - 5 * DAY }])
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600)
+    expect(fs.readdirSync(dir)).toEqual(['pastes.json'])
+  })
+
+  it('drops a block that expires while the server runs, at the next purge or write', async () => {
+    vi.stubEnv('DATA_DIR', dir)
+    const server = await start()
+    const t0 = Date.now()
+    server.keepPastes(body, ranges)
+    await vi.waitFor(() => expect(onDisk()).toEqual([LOG]))
+    // 29 days later: still there. Day 30: gone from the conversation and the file.
+    server.purgePastes(t0 + 29 * DAY)
+    expect(server.chatPasted([user(body)])[0]!.pasted).toEqual([LOG])
+    server.purgePastes(t0 + 30 * DAY + 1000)
+    expect(server.chatPasted([user(body)])[0]!.pasted).toBeUndefined()
+    await vi.waitFor(() => expect(onDisk()).toEqual([]))
+  })
+
+  it('gives the blocks of the first format a date, written at startup', async () => {
+    vi.stubEnv('DATA_DIR', dir)
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(file, JSON.stringify([LOG]) + '\n', { mode: 0o600 })
+    const before = Date.now()
+    const server = await start()
+    expect(server.chatPasted([user(body)])[0]!.pasted).toEqual([LOG])
+    server.purgePastes()
+    await vi.waitFor(() => expect(JSON.parse(fs.readFileSync(file, 'utf8'))[0]).toMatchObject({ text: LOG }))
+    const at = JSON.parse(fs.readFileSync(file, 'utf8'))[0].at
+    expect(at).toBeGreaterThanOrEqual(before)
+    expect(at).toBeLessThanOrEqual(Date.now())
   })
 
   it('is written to a temporary file then renamed, one write after the other', async () => {
@@ -268,7 +335,7 @@ describe('data/pastes.json', () => {
     })
     vi.spyOn(fsp, 'rename').mockImplementation(async (from, to) => {
       // The reader of the file always finds a whole list.
-      if (fs.existsSync(file)) expect(Array.isArray(JSON.parse(fs.readFileSync(file, 'utf8')))).toBe(true)
+      if (fs.existsSync(file)) expect(onDisk()).toEqual([LOG])
       await rename(from, to)
       events.push(`rename ${name(from)} -> ${name(to)}`)
     })
@@ -282,7 +349,7 @@ describe('data/pastes.json', () => {
     await vi.waitFor(() => expect(events.filter(e => e.startsWith('rename'))).toHaveLength(2))
     const one = ['write temp', 'written', 'rename temp -> pastes.json']
     expect(events).toEqual([...one, ...one])
-    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual([OTHER, LOG])
+    expect(onDisk()).toEqual([OTHER, LOG])
     expect(fs.statSync(file).mode & 0o777).toBe(0o600)
     // No temporary file left behind.
     expect(fs.readdirSync(dir)).toEqual(['pastes.json'])
@@ -292,17 +359,17 @@ describe('data/pastes.json', () => {
     vi.stubEnv('DATA_DIR', dir)
     const server = await start()
     server.keepPastes(body, ranges)
-    await vi.waitFor(() => expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual([LOG]))
+    await vi.waitFor(() => expect(onDisk()).toEqual([LOG]))
     vi.spyOn(fsp, 'rename').mockRejectedValueOnce(new Error('disk full'))
     const second = `and this\n\n${OTHER}`
     server.keepPastes(second, pasteRanges(second, [OTHER]))
     await new Promise(r => setTimeout(r, 80))
-    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual([LOG])
+    expect(onDisk()).toEqual([LOG])
     expect(fs.readdirSync(dir)).toEqual(['pastes.json'])
     // Still served from memory, and written with the next send.
     expect(server.chatPasted([user(second)])[0]!.pasted).toEqual([OTHER])
     const third = `last\n\n${log('third')}`
     server.keepPastes(third, pasteRanges(third, [log('third')]))
-    await vi.waitFor(() => expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual([log('third'), OTHER, LOG]))
+    await vi.waitFor(() => expect(onDisk()).toEqual([log('third'), OTHER, LOG]))
   })
 })

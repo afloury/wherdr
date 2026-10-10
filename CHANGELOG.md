@@ -77,7 +77,7 @@ All notable changes to this project are documented here. The format follows
 - **Pasted text cards on every device**: a message with typed words and a text pasted into the
   field showed its card only on the device that sent it; elsewhere it was one long folded message.
   The server now remembers which parts were pasted (`pastes.json` in its data folder, the last 100
-  texts), so every device shows the same card, for Claude, Codex and omp, queued messages
+  texts, each for 30 days), so every device shows the same card, for Claude, Codex and omp, queued messages
   included. Not covered: a paste typed into a Codex or omp terminal, and messages sent before
   this version.
 - **Codex restart after an update**: Project panel messages wait instead of being typed

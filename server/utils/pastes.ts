@@ -4,8 +4,10 @@
 // says where they sit in the message it sends, and the conversation served to
 // all devices lists them (ChatItem.pasted), so each one shows the same cards
 // (see shared/pastedText.ts).
-// Kept in data/pastes.json, most recent first, bounded in number and size:
-// the oldest go, and their messages become plain text again.
+// Kept in data/pastes.json (in clear, readable by the server's user only),
+// most recent first, bounded in number, size and time: the oldest go, a block
+// goes 30 days after it was last sent, and their messages become plain text
+// again.
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
@@ -16,6 +18,10 @@ import { DATA_DIR } from './env'
 
 export const PASTES_MAX = 100
 export const PASTES_MAX_CHARS = 2_000_000
+export const PASTES_TTL_MS = 30 * 86400000
+// A kept block, and when it was last sent.
+export interface KeptPaste { text: string, at: number }
+const live = (p: KeptPaste, now: number) => now - p.at < PASTES_TTL_MS
 // Ranges read from one request.
 const PER_MESSAGE = 20
 
@@ -35,20 +41,32 @@ export function pastesAt(text: string, ranges: unknown): string[] {
   return out
 }
 
-// The list with `blocks` first. The same list (same array) when nothing changes.
-export function addPastes(list: string[], blocks: string[]): string[] {
+// The list with `blocks` first, sent at `now`, without the blocks that
+// expired. The same list (same array) when there is nothing to add.
+export function addPastes(list: KeptPaste[], blocks: string[], now: number): KeptPaste[] {
   if (!blocks.length) return list
   let total = 0
-  const next = [...blocks, ...list.filter(s => !blocks.includes(s))].slice(0, PASTES_MAX).filter((s) => {
-    total += s.length
+  return [...blocks.map(text => ({ text, at: now })), ...list.filter(p => !blocks.includes(p.text) && live(p, now))].slice(0, PASTES_MAX).filter((p) => {
+    total += p.text.length
     return total <= PASTES_MAX_CHARS
   })
-  return next.length === list.length && next.every((s, i) => s === list[i]) ? list : next
 }
 
-// Blocks read back from data/pastes.json: well-formed ones, within the bounds.
-export function loadPastes(raw: unknown): string[] {
-  return Array.isArray(raw) ? addPastes([], raw.filter((s): s is string => typeof s === 'string' && isLongPaste(s))) : []
+// Blocks read back from data/pastes.json: well-formed ones that have not
+// expired, within the bounds. A block of the first format (the text alone)
+// starts its 30 days at `now`.
+export function loadPastes(raw: unknown, now: number): KeptPaste[] {
+  if (!Array.isArray(raw)) return []
+  const out: KeptPaste[] = []
+  let total = 0
+  for (const r of raw as unknown[]) {
+    const p = typeof r === 'string' ? { text: r, at: now } : (r as KeptPaste | null)
+    if (!p || typeof p.text !== 'string' || typeof p.at !== 'number' || !Number.isFinite(p.at)) continue
+    if (!isLongPaste(p.text) || !live(p, now) || out.some(o => o.text === p.text)) continue
+    if (out.length >= PASTES_MAX || (total += p.text.length) > PASTES_MAX_CHARS) break
+    out.push({ text: p.text, at: Math.min(p.at, now) })
+  }
+  return out
 }
 
 // Pasted texts of a user message: the blocks its transcript lists (`listed`)
@@ -79,17 +97,32 @@ export function withQueuedPasted(q: QueuedMessage, list: string[]): QueuedMessag
 }
 
 const PASTES_FILE = path.join(DATA_DIR, 'pastes.json')
-let kept: string[] | null = null
-function pastes(): string[] {
+let kept: KeptPaste[] | null = null
+// The list the file holds (null: the file is to be written).
+let saved: KeptPaste[] | null = null
+// Texts of `list`, for the conversations (read on every request).
+let texts: { of: KeptPaste[], list: string[] } | null = null
+function pastes(): KeptPaste[] {
   if (kept) return kept
-  try { kept = loadPastes(JSON.parse(fs.readFileSync(PASTES_FILE, 'utf8'))) } catch { kept = [] }
+  kept = []
+  saved = kept
+  try {
+    const raw = fs.readFileSync(PASTES_FILE, 'utf8')
+    kept = loadPastes(JSON.parse(raw), Date.now())
+    // Expired blocks, or the first format: the file is written again.
+    saved = JSON.stringify(kept) + '\n' === raw ? kept : null
+  } catch { /* no file yet, or unreadable: nothing kept */ }
   return kept
+}
+function keptTexts(): string[] {
+  const list = pastes()
+  if (texts?.of !== list) texts = { of: list, list: list.map(p => p.text) }
+  return texts.list
 }
 
 // Written to a temporary file then renamed (a reader never sees half a file,
 // which would read as an empty list), one write after the other: the latest
 // list, whatever sends came in meanwhile.
-let saved: string[] | null = null
 let writing: Promise<unknown> = Promise.resolve()
 function save() {
   writing = writing.then(async () => {
@@ -110,10 +143,17 @@ function save() {
 // A message sent from the app: its pasted texts are kept. Written only when
 // the list changes (never for a message without a paste).
 export function keepPastes(text: string, ranges: unknown) {
-  const next = addPastes(pastes(), pastesAt(text, ranges))
+  const next = addPastes(pastes(), pastesAt(text, ranges), Date.now())
   if (next === kept) return
   kept = next
   save()
 }
-export const chatPasted = <T extends { role: string, text: string, pasted?: string[] }>(items: T[]) => withPasted(items, pastes())
-export const queuedPasted = (q: QueuedMessage) => withQueuedPasted(q, pastes())
+// At startup and from time to time (see plugins/poller.ts): the blocks that
+// expired leave the memory and the file.
+export function purgePastes(now = Date.now()) {
+  const list = pastes()
+  if (list.some(p => !live(p, now))) kept = list.filter(p => live(p, now))
+  if (kept !== saved) save()
+}
+export const chatPasted = <T extends { role: string, text: string, pasted?: string[] }>(items: T[]) => withPasted(items, keptTexts())
+export const queuedPasted = (q: QueuedMessage) => withQueuedPasted(q, keptTexts())
