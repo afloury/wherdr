@@ -85,6 +85,13 @@ const quoteItems = computed(() => [
   { label: tl('Tokens, native field', 'Jetons, champ natif'), description: tl('The same plain field, each “> ” line drawn as a token. Typing, dictation and autocorrect unchanged.', 'Le même champ simple, chaque ligne « > » dessinée en jeton. Saisie, dictée et correction auto inchangées.'), value: 'native', exp: true },
   { label: tl('Tokens, rich field', 'Jetons, champ riche'), description: tl('A rich field, each quote one compact token with ✕. On iOS, moving the caret around the tokens is unreliable.', 'Un champ riche, chaque citation un jeton compact avec ✕. Sur iOS, déplacer le curseur autour des jetons est peu fiable.'), value: 'rich', exp: true },
 ])
+// How questions and points offer to be quoted (utils/questionReply.ts).
+const replyStyleChoice = replyStyle
+const replyStyleItems = computed(() => [
+  { label: tl('Icon', 'Icône'), description: tl('A small ↳ after each question, and a grey one after each point (on hover on a computer). Default.', 'Un petit ↳ après chaque question, et un gris après chaque point (au survol sur ordinateur). Par défaut.'), value: 'icon' },
+  { label: tl('Tap the text', 'Toucher le texte'), description: tl('No button: a question is underlined, tap it. A point: click it on a computer; on a phone, tap it, then “↳ Discuss”.', 'Aucun bouton : une question est soulignée, touche-la. Un point : clique-le sur ordinateur ; sur téléphone, touche-le, puis « ↳ Discuter ».'), value: 'text' },
+  { label: tl('List under the message', 'Liste sous le message'), description: tl('A number after each question and the questions listed under the message; “+ Quote a point”, then the point.', 'Un numéro après chaque question et les questions listées sous le message ; « + Citer un point », puis le point.'), value: 'list' },
+])
 // Forced off if the system reduces motion: shown disabled.
 const typewriter = computed({ get: () => typingSpeed.value, set: (v: TypingSpeed) => { typewriterSpeed.value = v } })
 const typingItems = computed(() => [
@@ -403,6 +410,12 @@ onMounted(() => {
               <USwitch v-model="encryptedOn" :disabled="!typewriterActive" color="success" size="xl" />
             </label>
             <TypingPreview v-if="activeSection === 'conversation'" />
+          </div>
+          <div class="settings-group">
+            <h3>{{ tl('Reply style', 'Style de réponse') }}</h3>
+            <p class="muted settings-lead">{{ tl('Each question an agent asks, and each point it lists, can be quoted in the field to answer them one by one. Choose how they offer it.', 'Chaque question d’un agent, et chaque point qu’il liste, peut être cité dans le champ pour y répondre un par un. Choisis comment ils le proposent.') }}</p>
+            <URadioGroup v-model="replyStyleChoice" :items="replyStyleItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio reply-style-radio" />
+            <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
           </div>
           <div class="settings-group">
             <h3>{{ tl('Quoted replies', 'Réponses citées') }}</h3>

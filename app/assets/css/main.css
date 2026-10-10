@@ -3103,30 +3103,121 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 @media (prefers-reduced-motion: reduce) { .sel-reply { animation: none; } }
 .sel-reply:hover, .sel-reply:focus-visible { border-color: var(--accent); }
 .sel-reply .iconify, .sel-reply svg { width: 13px; height: 13px; color: var(--accent); }
-/* "↳ Reply" after each question of an agent reply (utils/questionReply.ts):
-   a small mono tag with a 1 px rule, like inline code. Faint on the phone,
-   shown on hover of its question on the computer; "✓ Quoted" once in the field.
-   The label comes from data attributes (no text node: the typewriter and the
-   copied text ignore it). `.q-mid`: the question is followed by more text in
-   its paragraph, so the tag stays faintly visible on the computer too (hidden,
-   it would leave a hole in the line). */
-.q-reply {
-  display: inline-flex; align-items: center; height: 18px; margin-left: .45em; padding: 0 5px; vertical-align: 1px;
-  font: 500 9.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
-  color: var(--dim); background: none; border: 1px solid var(--line); border-radius: 0; cursor: pointer;
-  -webkit-user-select: none; user-select: none; opacity: .75;
+/* Reply targets of an agent reply (utils/questionReply.ts): a button after
+   each question (`.q-reply`, its words in `.q-text`) and at the end of each
+   point (`.q-point` in a `.q-pt` block). The same markup for the three styles
+   of Settings › Conversation › Reply style; the list carries `rs-icon`,
+   `rs-text` or `rs-list`, or `no-reply` when the conversation is read-only
+   (nothing shows then). Labels come from data attributes (no text node: the
+   typewriter and the copied text ignore them). */
+.q-reply, .q-point {
+  display: none; position: relative; margin: 0; padding: 0; white-space: nowrap; color: var(--dim); background: none;
+  border: 0; border-radius: 0; cursor: pointer; -webkit-user-select: none; user-select: none;
 }
-.q-reply::before { content: "↳ " attr(data-l); }
-.q-reply.quoted { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); background: color-mix(in srgb, var(--accent) 7%, transparent); opacity: 1; }
-.q-reply.quoted::before { content: "✓ " attr(data-lq); }
-.q-reply:hover, .q-reply:focus-visible { color: var(--text); border-color: var(--accent); opacity: 1; }
+:is(.rs-icon, .rs-text, .rs-list) :is(.q-reply, .q-point):focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+/* Finger-sized target around a small glyph. */
+.q-reply::after, .q-point::after { content: ""; position: absolute; left: 50%; top: 50%; width: 32px; height: 32px; translate: -50% -50%; }
+/* The glyph alone: "↳", then "✓" once quoted. Shared by the icon style and by
+   what the two other styles show of a point. */
+.rs-icon :is(.q-reply, .q-point), .rs-text :is(.q-reply, .q-point), .rs-list .q-point {
+  display: inline-block; margin-left: .3em; padding: 0 3px; font: 500 15px/1 var(--mono); letter-spacing: 0;
+}
+.rs-icon :is(.q-reply, .q-point)::before, .rs-text .q-reply::before, .rs-list .q-point::before { content: "↳"; }
+:is(.rs-icon, .rs-text, .rs-list) :is(.q-reply, .q-point).quoted::before { content: "✓"; }
+:is(.rs-icon, .rs-text, .rs-list) :is(.q-reply, .q-point).quoted { color: var(--accent); opacity: 1; }
+
+/* Icon: accent after a question (the agent expects an answer), grey after a
+   point. On a computer the point's icon shows on hover of its point, from a
+   zero-width anchor: hidden, it must not change where the text wraps. */
+.rs-icon .q-reply { color: var(--accent); opacity: .9; }
+.rs-icon .q-reply.q-mid { margin-right: .15em; }
+.rs-icon .q-point { opacity: .5; }
+.rs-icon :is(.q-reply, .q-point):is(:hover, :focus-visible) { color: var(--text); opacity: 1; }
 @media (hover: hover) and (pointer: fine) {
-  .q-reply:not(.quoted) { opacity: 0; transition: opacity 120ms; }
-  .q-reply.q-mid:not(.quoted) { opacity: .5; }
-  .md-body p:hover > .q-reply, .md-body li:hover > .q-reply, .q-reply:focus-visible { opacity: 1; }
+  .rs-icon .q-point { width: 0; height: 1em; margin: 0; padding: 0; vertical-align: -1px; transition: opacity 120ms; }
+  .rs-icon .q-point::before { position: absolute; left: .45em; top: 62%; translate: 0 -50%; padding: 4px; }
+  .rs-icon .q-point::after { left: calc(.45em + 9px); }
+  .rs-icon .q-point:not(.quoted) { opacity: 0; }
+  .rs-icon .md-body :is(p, li):hover > .q-point, .rs-icon .q-point:focus-visible { opacity: 1; }
 }
-.q-reply.q-mid { margin-right: .15em; }
-.no-reply .q-reply { display: none; }
+
+/* Tap the text: the words of a question are the button; its own button only
+   shows for the keyboard and as the "✓" of a quoted question. */
+.rs-text .q-text {
+  text-decoration: underline dotted color-mix(in srgb, var(--accent) 75%, transparent); text-decoration-thickness: 1.5px;
+  text-underline-offset: 5px; cursor: pointer;
+}
+.rs-text .q-text:hover { text-decoration-style: solid; background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.rs-text .q-text.quoted { text-decoration-style: solid; text-decoration-color: var(--accent); }
+.rs-text .q-reply { color: var(--accent); }
+.rs-text :is(.q-reply, .q-point):not(:focus-visible, .quoted) { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; overflow: hidden; clip-path: inset(50%); }
+.rs-text .q-point::before { content: "↳ " attr(data-l); }
+.rs-text .q-point { font: 500 9.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); vertical-align: 1px; }
+.rs-text .q-point.quoted::before { content: "✓ " attr(data-lq); }
+/* A point about to be quoted: hovered on a computer (a click quotes it), or
+   tapped once on a touch screen (its "↳ Discuss" then quotes it). */
+.rs-text .q-pt.q-armed {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  box-shadow: -6px 0 0 color-mix(in srgb, var(--accent) 7%, transparent), 6px 0 0 color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.rs-text .q-pt.q-armed > .q-point:not(.quoted) {
+  position: relative; width: auto; height: 22px; margin-left: .6em; padding: 0 6px; overflow: visible; clip-path: none;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .rs-text .q-pt { cursor: pointer; }
+  .rs-text .q-pt:hover:not(:has(.q-pt:hover)) {
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+    box-shadow: -6px 0 0 color-mix(in srgb, var(--accent) 7%, transparent), 6px 0 0 color-mix(in srgb, var(--accent) 7%, transparent);
+  }
+  /* The hint of the hovered point, out of the flow like the icon above. */
+  .rs-text .q-pt:hover:not(:has(.q-pt:hover)) > .q-point:not(.quoted, :focus-visible) { position: relative; width: 0; height: 1em; overflow: visible; clip-path: none; }
+  .rs-text .q-pt:hover:not(:has(.q-pt:hover)) > .q-point:not(.quoted, :focus-visible)::before { position: absolute; left: .6em; top: 50%; translate: 0 -50%; }
+}
+
+/* List under the message: a number after each question, the questions listed
+   in `.q-bar` (ChatView.vue); "+ Quote a point" makes the points of that
+   message (`.q-picking`) the targets. */
+.rs-list .q-reply {
+  display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-left: .3em; vertical-align: 5px;
+  font: 500 9px/1 var(--mono); letter-spacing: 0; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.rs-list .q-reply::before { content: attr(data-n); }
+.rs-list .q-reply:is(:hover, :focus-visible) { border-color: var(--accent); }
+.rs-list .q-reply.quoted { color: var(--bg); background: var(--accent); }
+.rs-list .q-reply.quoted::before { content: attr(data-n); }
+.rs-list .q-text.q-hot { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.rs-list .q-point:not(.quoted) { display: none; }
+.rs-list .q-picking .q-point { display: inline-block; opacity: .7; }
+.rs-list .q-picking .q-pt { outline: 1px dashed color-mix(in srgb, var(--text) 30%, transparent); outline-offset: 3px; cursor: pointer; }
+.rs-list .q-picking .q-pt:hover:not(:has(.q-pt:hover)) { outline: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.rs-list .q-picking li.q-pt { margin: .7em 0; }
+.q-bar { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: -4px 0 6px; padding-top: 12px; border-top: 1px solid var(--line); }
+.q-bar-h { margin: 0; font: 500 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+.q-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; max-width: 620px; min-height: 34px; padding: 0 10px;
+  font-size: 13px; line-height: 1.3; text-align: left; color: var(--text-2); background: none;
+  border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: 0; cursor: pointer;
+}
+.q-row > b { flex: none; min-width: 1ch; font: 500 10px/1 var(--mono); color: var(--accent); }
+.q-row > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.q-row > i { flex: none; font: 500 9.5px/1 var(--mono); font-style: normal; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+.q-row > i > em { margin-left: .5em; font-style: normal; }
+.q-row:is(:hover, :focus-visible) { color: var(--text); border-color: var(--accent); outline: 0; }
+.q-row:is(:hover, :focus-visible) > i, .q-row.quoted > i { color: var(--accent); }
+.q-row.quoted { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.q-pick {
+  display: inline-flex; align-items: center; min-height: 30px; margin-top: 2px; padding: 0 10px;
+  font: 500 10px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; text-align: left; color: var(--dim);
+  background: none; border: 1px dashed var(--line); border-radius: 0; cursor: pointer;
+}
+.q-pick:is(:hover, :focus-visible) { color: var(--text); border-color: var(--accent); outline: 0; }
+.q-pick[aria-pressed="true"] { color: var(--accent); border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+@media (pointer: coarse) {
+  .q-row > i > em { display: none; }
+  .q-row { min-height: 40px; }
+  .q-pick { min-height: 36px; }
+}
 /* Quotes in the field: one chip each, to remove it; on one scrolling line. */
 .composer-quotes { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 0 0 6px; overflow-x: auto; scrollbar-width: none; }
 .composer-quotes::-webkit-scrollbar { display: none; }
