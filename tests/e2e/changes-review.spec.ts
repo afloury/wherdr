@@ -45,7 +45,10 @@ test('two files review appends to the message draft without sending; survives cl
   const expected = 'Existing draft\n\nPlease review these points:\n\nsrc/first.ts:10 — Check the first call\n\nsrc/second.ts:10 — Handle the empty case'
   await expect(field(page)).toHaveValue(expected)
   expect(sent).toEqual([])
-  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/${info.project.name}-review-message-draft.png` })
+  if (process.env.SHOTS) {
+    await expect(page.locator('.hw-sheet-close')).toBeHidden()
+    await page.screenshot({ path: `${process.env.SHOTS}/${info.project.name}-review-message-draft.png` })
+  }
   await openChanges(page)
   await expect(page.locator('.review-note')).toHaveCount(0)
 })
