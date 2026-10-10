@@ -5,7 +5,7 @@ import { composeReview, matchesReview, missingReviews, type ReviewComment, type 
 const props = defineProps<{ paneId: string }>()
 const emit = defineEmits<{ review: [text: string] }>()
 const comments = useReviewDraft(props.paneId)
-const missing = computed(() => changes.value ? missingReviews(comments.value, changes.value) : [])
+const missing = computed(() => changes.value ? missingReviews(comments.value, changes.value, includeCommits.value) : [])
 const countComments = computed(() => comments.value.filter(c => c.body.trim()).length)
 function update(id: string, body: string) { const c = comments.value.find(c => c.id === id); if (c) c.body = body }
 function remove(id: string) { comments.value = comments.value.filter(c => c.id !== id) }

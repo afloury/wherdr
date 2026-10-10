@@ -30,7 +30,13 @@ describe('inline review', () => {
     expect(missingReviews([comment({ path: 'gone.ts' }), comment({ number: 14 }), comment({ side: 'old' })], changes())).toHaveLength(3)
     expect(c.body).toBe('Check this')
   })
+  it('flags every comment when the folder is no longer a repository', () => {
+    const comments = [comment(), comment({ scope: 'committed' })]
+    expect(missingReviews(comments, { git: false })).toEqual(comments)
+  })
   it('does not flag comments in a commit diff which has not been requested', () => {
-    expect(missingReviews([comment({ scope: 'committed' })], changes())).toEqual([])
+    const c = comment({ scope: 'committed' })
+    expect(missingReviews([c], changes())).toEqual([])
+    expect(missingReviews([c], changes(), true)).toEqual([c])
   })
 })

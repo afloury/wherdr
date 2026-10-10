@@ -31,9 +31,9 @@ export function matchesReview(comment: ReviewComment, line: ReviewLine) {
 }
 
 // A hidden commit section is not a refreshed diff: its comments remain pending.
-export function missingReviews(comments: ReviewComment[], changes: ChangesResponse): ReviewComment[] {
+export function missingReviews(comments: ReviewComment[], changes: ChangesResponse, commitsRequested = false): ReviewComment[] {
   return comments.filter(c => {
-    if (c.scope === 'committed' && !changes.committed) return false
+    if (changes.git && c.scope === 'committed' && !changes.committed && !commitsRequested) return false
     const file = changes[c.scope]?.files.find(f => f.path === c.path)
     return !file || !reviewLines(file.lines).some(line => matchesReview(c, line))
   })
