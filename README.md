@@ -377,7 +377,7 @@ Settings, as environment variables (`curl -fsSL https://wherdr.dev/install | WHE
 | `WHERDR_MODE` | — | `native`: Node.js even when Docker is there. `docker`: no plugin, Docker Compose by hand in `WHERDR_DIR` (Linux; see below). |
 | `WHERDR_YES` | — | `1` answers yes to every question (non-interactive use). |
 | `WHERDR_NO_BROWSER` | — | `1` never opens a browser. |
-| `WHERDR_REF` | latest | Git tag or branch of the plugin (or of `docker-compose.yml` with `WHERDR_MODE=docker`). |
+| `WHERDR_REF` | main | Git tag or branch of the plugin (or of `docker-compose.yml` with `WHERDR_MODE=docker`). |
 | `WHERDR_PLUGIN` | `afloury/wherdr` | A local checkout to link and build instead (development, tests). |
 
 **Docker by hand, with the script:** `curl -fsSL https://wherdr.dev/install | WHERDR_MODE=docker sh`
@@ -703,8 +703,8 @@ setup by itself:
   `~/wherdr` (`docker-compose.yml`, `.env`), the same files as `WHERDR_MODE=docker` of
   [the one command](#the-one-command).
 - **Node.js 22** everywhere else, and always on macOS (Docker Desktop cannot reach Herdr's
-  socket): the plugin downloads the prebuilt npm package of its version (or builds wherdr in its
-  own folder when that fails), copies it to `~/wherdr/app` and runs it detached from there, with
+  socket): the plugin downloads the prebuilt package of its version from GitHub Releases and
+  verifies its SHA-256 checksum, copies it to `~/wherdr/app` and runs it detached from there, with
   its pid and log (`wherdr.log`) in `~/wherdr`. Herdr builds plugins in a temporary folder and
   then moves them, so the server never runs from the plugin folder. Bun works too when Node.js 22
   is missing. Without either, the install stops and says so.
@@ -826,6 +826,27 @@ home screen and in Settings › About, with the release notes and the exact comm
 Hide it until the next version with ×. Set `WHERDR_UPDATE_CHECK=off` to disable the check. The
 installed version is shown in Settings › About.
 
+GitHub release packages (including the bundled agent skill), Docker images, and Homebrew
+updates are published without waiting for npm moderation. Native plugin installs and updates
+use the GitHub `.tgz` and verify its SHA-256 checksum before extraction. A failed one-tap
+download or checksum check leaves the running version in place. Plugin installation tries
+GitHub first, then the prebuilt npm package of the exact same version (with its registry integrity hash), and only builds from source when neither works.
+This also keeps older 1.3.x releases without GitHub archives installable with Node.js or Bun.
+Packages predating the bundled skill retain the plugin checkout's commands and skill, so
+skill refresh, installation and uninstallation remain available.
+The installer fetches `main` explicitly unless you set `WHERDR_REF`.
+
+The SHA-256 checksum detects damaged downloads. It is served beside the archive, so someone
+who can replace both files can make them match; it does not prove the publisher’s identity
+or protect against replacement of the archive and checksum together.
+
+`npm install -g`, `npx`, `bunx` and `pnpm dlx` still need npm to serve the wherdr package.
+Their banner waits for registry availability; Homebrew's banner waits for its formula.
+Versions through 1.3.2 use GitHub's `latest` marker and an npm-based updater. That marker only
+advances once npm **and** Homebrew are ready, so their existing Update button continues to work.
+To update an older native plugin earlier, rerun the installer or press **U** in its Herdr panel.
+See [Releasing](docs/RELEASING.md) for the publication order and recovery steps.
+
 **Update in one tap.** When wherdr runs from the Herdr plugin (Node.js mode), a global npm install
 or Homebrew, the banner has an **Update** button instead of the command, for a session opened on
 this computer (`localhost`) or unlocked with a passkey. wherdr installs the new version in a
@@ -837,7 +858,7 @@ and the app says so. Every step is logged in `~/wherdr/update.log`.
 
 | Setup | What Update does |
 | --- | --- |
-| Herdr plugin, Node.js | Unpacks the npm package of the new version into `~/wherdr/app`, keeps the old copy, restarts |
+| Herdr plugin, Node.js | Verifies and unpacks the GitHub release package of the new version into `~/wherdr/app`, keeps the old copy, restarts |
 | `npm install -g wherdr` | `npm install -g wherdr@X.Y.Z`, then restarts (login service included) |
 | Homebrew | `brew upgrade wherdr`, then `brew services restart wherdr` |
 
@@ -1218,14 +1239,54 @@ mean what, the badges, `(agent → t-NNNN)`, and what to do with each message th
 (`✓ Tested: …`, `↳ Queue: …`, `↳ Problem: … —` or `↳ Decision: … —` with the answer below it…). They are written once, as an agent skill:
 [`skills/wherdr/SKILL.md`](skills/wherdr/SKILL.md).
 
-- **Herdr plugin**: the install links the skill for every coordinator, whatever its agent:
-  `~/.claude/skills/wherdr` (Claude Code, or `$CLAUDE_CONFIG_DIR/skills`) and
-  `~/.agents/skills/wherdr` (Codex, omp), each only when that agent is installed. Both point to a
-  copy in `~/wherdr/skills/wherdr`, refreshed on each update. An existing `wherdr` skill that is
-  not this link is left alone. Remove the links with `sh scripts/herdr-plugin.sh skill uninstall`
-  in the plugin folder.
-- **Other installs**: link or copy `skills/wherdr` into your agent's skills folder yourself, or
-  paste **Settings → Plugins → herdr-projects → Copy rules for the coordinator** to it.
+The npm package (also used by Homebrew) and Docker image include the skill from that
+release. Installation is best effort: a missing agent or an unwritable home never blocks
+wherdr. It links `~/.claude/skills/wherdr` (or `$CLAUDE_CONFIG_DIR/skills/wherdr`) only
+when the Claude configuration folder exists, and `~/.agents/skills/wherdr` only when
+`.agents`, `.codex` or `.omp` exists. Links point to a stable copy in
+`${WHERDR_DIR:-$HOME/wherdr}/skills/wherdr`. Existing skills from elsewhere are left alone.
+Relative `WHERDR_DIR` resolves from the working directory; relative `CLAUDE_CONFIG_DIR`
+resolves from HOME, including when saved in a login service. Unchanged content is not rewritten.
+A broken link is repaired only when local metadata proves wherdr created it.
+
+| Install mode | Skill installation and refresh |
+| --- | --- |
+| npm / npx / Bun / pnpm | On `wherdr`, `wherdr run`, `wherdr start` or `wherdr service install`; after updating the package, the next start refreshes it. |
+| Homebrew | On `wherdr` startup, including the Homebrew service; restart the service after `brew upgrade`. |
+| One-tap update (npm, Homebrew, native plugin) | Restarting wherdr refreshes the skill from the newly installed package; rollback restores the previous copy when that package also bundles the skill. |
+| Herdr plugin, Node.js | On plugin installation / reinstallation, and on startup from its installed package. |
+| Herdr plugin, Docker | On plugin installation and Update, extracted from the pulled image on the host. |
+| One-command installer, Docker | After each pull, including reruns and `WHERDR_MODE=docker`; saves host helpers in `$WHERDR_DIR/skill-installer`. |
+| Docker by hand | Run the host-side command below after the initial pull and after each image update. |
+| From source | Use `node bin/wherdr.mjs` after building, or run `sh bin/lib/install-skill.sh` yourself after updating; `npm start` alone does not install the skill. |
+
+Docker cannot write the host's agent folders through its read-only home mount. From the
+repository checkout on the **host**, after pulling your image, run:
+
+```sh
+sh bin/install-docker-skill.sh ghcr.io/afloury/wherdr:latest
+```
+
+Pass your image tag if different. The helper creates a stopped temporary container, copies
+only `/app/skills/wherdr/SKILL.md` out of it, uses the local host installer, then removes
+the container. No host home is mounted into it. Repeat this command after each manual Docker update; Docker has no one-tap
+update in the app. Manual failures (including older images without the skill) return a
+nonzero status with diagnostics; plugin and one-command installation warn and continue. Without a checkout, use
+`sh "${WHERDR_DIR:-$HOME/wherdr}/skill-installer/bin/install-docker-skill.sh" <image>` after the one-command install.
+
+Remove managed links with `sh bin/lib/install-skill.sh uninstall` (or
+`sh scripts/herdr-plugin.sh skill uninstall` in the plugin folder). Uninstall leaves
+`~/.local/state/wherdr/skill-disabled`: subsequent starts and updates respect it, even if
+`WHERDR_DIR` changes. To re-enable, explicitly run `sh bin/lib/install-skill.sh install`
+or the plugin's `skill install` (or the Docker host helper above). `WHERDR_SKILL=off`
+disables all installation and refresh, including explicit install; export it for interactive
+starts or set it when installing the login service to preserve it there.
+
+Two limitations remain: rollback to an older package without the helper (such as 1.3.2)
+leaves the failed release's skill in place. With multiple wherdr versions sharing an account,
+the last one started supplies the skill; there is no version comparison.
+
+You can also paste **Settings → Plugins → herdr-projects → Copy rules for the coordinator** to your agent.
 
 ## Herdr plugins
 

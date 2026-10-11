@@ -13,7 +13,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -21,6 +20,9 @@ concurrency:
 
 jobs:
   image:
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -83,3 +85,66 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  package:
+    permissions:
+      contents: write
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          test "$GITHUB_REF_NAME" = "v$version"
+          test "$(sed -n 's/^version = "\(.*\)"$/\1/p' herdr-plugin.toml)" = "$version"
+      - run: npm ci
+      - run: npm pack
+      - name: Attach package to draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sha256sum "wherdr-${version}.tgz" > "wherdr-${version}.tgz.sha256"
+          test "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)" = true
+          test -n "$(gh release view "$GITHUB_REF_NAME" --json body --jq '.body | gsub("\\s"; "")')"
+          gh release upload "$GITHUB_REF_NAME" "wherdr-${version}.tgz" "wherdr-${version}.tgz.sha256" --clobber
+
+  publish-release:
+    permissions:
+      contents: write
+    needs: [image, package]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish without advancing the legacy update channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
+          test -n "$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json body --jq '.body | gsub("\\s"; "")')"
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
+
+  homebrew:
+    permissions: {}
+    needs: publish-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip without HOMEBREW_TAP_TOKEN
+        if: env.TAP_TOKEN == ''
+        run: echo "::notice::Run scripts/bump-homebrew.sh ${GITHUB_REF_NAME#v} to update Homebrew."
+      - name: Update formula from GitHub
+        if: env.TAP_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          gh auth setup-git
+          scripts/bump-homebrew.sh "${GITHUB_REF_NAME#v}" "$GITHUB_REPOSITORY_OWNER"

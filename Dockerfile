@@ -1,4 +1,4 @@
-# wherdr (Nuxt 4): built in node:22-alpine, final image = .output only.
+# wherdr (Nuxt 4): built in node:22-alpine, final image = built server and bundled agent skill.
 # Generic image (published on ghcr.io, see .github/workflows/release.yml; source and
 # revision added by the workflow):
 # the user, their UID/GID and home directory are set at startup
@@ -29,6 +29,7 @@ RUN apk add --no-cache openssh-client git su-exec \
 # command offered in the app (docker-compose.build.yml replaces it).
 ENV NODE_ENV=production PORT=7683 NITRO_SHUTDOWN_TIMEOUT=1500 WHERDR_INSTALL=docker
 COPY --from=build /app/.output ./.output
+COPY skills/wherdr ./skills/wherdr
 COPY scripts/docker-entrypoint.sh /usr/local/bin/wherdr-entrypoint
 EXPOSE 7683
 ENTRYPOINT ["wherdr-entrypoint"]

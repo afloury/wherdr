@@ -14,3 +14,6 @@ branding
 docker-compose.override*.yml
 .env.example
 website
+
+# The agent skill ships in the image.
+!skills/wherdr/SKILL.md

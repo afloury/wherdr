@@ -11,6 +11,7 @@ import { BIN, CliError, SERVER, VERSION, bad, c, homebrewInstall, localUrl, ok, 
 import { RUNTIME_HELP, findRuntime, isBun, runtimeOk, runtimeVersion, temporaryInstall } from './runtime.mjs'
 import { brewDoctor, brewRedirect, brewService, brewStatusRows } from './brew.mjs'
 import { controlService, installService, serviceFile, servicePlatform, serviceState, uninstallService } from './service.mjs'
+import { refreshSkill } from './skill.mjs'
 import { LINKS, inspect, publishCommand, reachable } from './tailnet.mjs'
 
 export const HELP = `${'wherdr'}: your Herdr agents from your phone and browser.
@@ -115,6 +116,7 @@ function needServer() {
 
 // ------------------------------------------------------------------- run
 export async function run(opts) {
+  refreshSkill(context(opts).env)
   needServer()
   const ctx = context(opts)
   if (!process.versions.bun && Number(process.versions.node.split('.')[0]) < 22) throw new CliError(`Node.js 22 or newer is required (found ${process.version}).`)
@@ -138,6 +140,7 @@ export async function run(opts) {
 
 // ----------------------------------------------------------------- start
 export async function start(opts) {
+  refreshSkill(context(opts).env)
   needServer()
   const ctx = context(opts)
   const brew = brewService()
@@ -375,6 +378,7 @@ export async function phone(opts) {
 
 // --------------------------------------------------------------- service
 export async function service(opts) {
+  if (opts.sub === 'install') refreshSkill(context(opts).env)
   const ctx = context(opts)
   if (opts.sub === 'uninstall') {
     const file = uninstallService()
@@ -406,7 +410,7 @@ export async function service(opts) {
   if (ctx.env.HERDR_WEB_SESSION) args.push('--session', ctx.env.HERDR_WEB_SESSION)
   const PATH = [...new Set([path.dirname(runtime), path.join(os.homedir(), '.local/bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'])].join(':')
   const env = { PATH, WHERDR_DIR: ctx.dir, WHERDR_RUNTIME: runtime }
-  for (const k of ['APP_URL', 'HERDR_BIN', 'HOST_LABEL']) if (process.env[k]) env[k] = process.env[k]
+  for (const k of ['APP_URL', 'HERDR_BIN', 'HOST_LABEL', 'CLAUDE_CONFIG_DIR', 'WHERDR_SKILL']) if (ctx.env[k]) env[k] = ctx.env[k]
   const file = installService({ runtime, args, env, log: ctx.files.log })
   ok(`login service installed: ${file}`)
   say(c.dim(`    ${runtime} ${args.join(' ')}`))

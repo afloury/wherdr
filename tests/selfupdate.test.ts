@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { driverFor, healthUrl, runUpdate, shortReason } from '../bin/lib/updater.mjs'
+import { REPO } from '../server/utils/updates'
 import { buildPlan } from '../server/utils/selfupdate'
 import { updateRunning, type UpdateJob } from '../shared/updates'
 
 const base = {
   from: '1.3.0', to: '1.3.1', dir: '/home/test/wherdr', runtime: '/usr/local/bin/node',
-  serverPid: 4242, port: '7683', host: '127.0.0.1', registry: 'https://registry.npmjs.org', healthMs: 1000,
+  serverPid: 4242, port: '7683', host: '127.0.0.1', registry: 'https://registry.npmjs.org', releaseBase: 'https://github.com/example/wherdr/releases/download', healthMs: 1000,
 }
 const plans = {
   'plugin': { ...base, kind: 'plugin', root: '/home/test/wherdr/app' },
@@ -18,20 +19,23 @@ const plans = {
 // (matched on its text) throw, `answers` lists the versions /api/health reports.
 function fakeIo(o: { fail?: RegExp, answers?: string[], files?: string[], opt?: string } = {}) {
   const calls: string[] = []
+  const environments: Record<string, string>[] = []
   const states: [string, string | undefined][] = []
   const files = new Set(o.files ?? [])
   const answers = [...(o.answers ?? [])]
   const io = {
-    calls, states, files,
+    calls, states, files, environments,
     log: () => {},
     state: (s: string, m?: string) => { states.push([s, m]) },
-    async run(cmd: string, args: string[]) {
+    async run(cmd: string, args: string[], env: Record<string, string> = {}) {
+      environments.push(env)
       const line = [cmd, ...args].join(' ')
       calls.push(line)
       if (o.fail?.test(line)) throw new Error(`${line} exited with 1`)
       return ''
     },
     async download(url: string, file: string) { calls.push(`GET ${url} > ${file}`) },
+    async verify(file: string, checksum: string) { calls.push(`verify ${file} ${checksum}`) },
     async stopServer() { calls.push('stop') },
     async healthy(version: string) { calls.push(`health ${version}`); return answers.shift() === version },
     exists: (p: string) => files.has(p) || p.endsWith('/.output/server/index.mjs'),
@@ -45,11 +49,14 @@ function fakeIo(o: { fail?: RegExp, answers?: string[], files?: string[], opt?: 
 }
 
 describe('one-tap update: commands of each installation', () => {
-  it('plugin: unpacks the npm package next to the copy, keeps the old one, starts the new one', async () => {
+  it('plugin: verifies and unpacks the GitHub package next to the copy, keeps the old one, starts the new one', async () => {
     const io = fakeIo({ answers: ['1.3.1'] })
     expect(await runUpdate(plans.plugin, io)).toBe('done')
     expect(io.calls).toEqual([
-      'GET https://registry.npmjs.org/wherdr/-/wherdr-1.3.1.tgz > /home/test/wherdr/update/wherdr-1.3.1.tgz',
+      'GET https://github.com/example/wherdr/releases/download/v1.3.1/wherdr-1.3.1.tgz > /home/test/wherdr/update/wherdr-1.3.1.tgz',
+      'GET https://github.com/example/wherdr/releases/download/v1.3.1/wherdr-1.3.1.tgz.sha256 > /home/test/wherdr/update/wherdr-1.3.1.tgz.sha256',
+      'verify /home/test/wherdr/update/wherdr-1.3.1.tgz /home/test/wherdr/update/wherdr-1.3.1.tgz.sha256',
+      'rm /home/test/wherdr/update/wherdr-1.3.1.tgz.sha256',
       'rm /home/test/wherdr/app.new',
       'mkdir /home/test/wherdr/app.new',
       'tar -xzf /home/test/wherdr/update/wherdr-1.3.1.tgz -C /home/test/wherdr/app.new --strip-components=1',
@@ -91,6 +98,20 @@ describe('one-tap update: commands of each installation', () => {
       'health 1.3.1',
     ])
   })
+
+  for (const kind of ['plugin', 'npm-global'] as const) {
+    it(`${kind}: refreshes the installed skill without making update success depend on it`, async () => {
+      const plan = plans[kind]
+      const root = plan.root
+      const helper = `${root}/bin/lib/install-skill.sh`
+      for (const fail of [undefined, /install-skill/]) {
+        const io = fakeIo({ answers: ['1.3.1'], files: [helper], fail })
+        expect(await runUpdate(plan, io)).toBe('done')
+        expect(io.calls).toContain(`sh ${helper} refresh ${root}`)
+        expect(io.environments.some(env => env.WHERDR_SKILL_REFRESHED === '1')).toBe(fail === undefined)
+      }
+    })
+  }
 
   it('Homebrew: a formula that does not offer the version yet changes nothing', async () => {
     const io = fakeIo({ opt: '/opt/homebrew/Cellar/wherdr/1.3.0' })
@@ -194,6 +215,7 @@ describe('one-tap update: who may start it', () => {
   it('plans the update of the release the server found', () => {
     expect(buildPlan(ok)).toEqual({
       kind: 'plugin', from: '1.3.0', to: '1.3.1', root: '/home/test/wherdr/app', dir: '/home/test/wherdr',
+      releaseBase: `https://github.com/${REPO}/releases/download`,
       runtime: '/usr/local/bin/node', serverPid: 4242, port: '7691', host: '127.0.0.1', registry: 'https://registry.npmjs.org',
     })
   })
@@ -213,4 +235,12 @@ describe('one-tap update: who may start it', () => {
     expect(buildPlan({ ...ok, job: job('rolled-back', ok.now) }).to).toBe('1.3.1')
     expect(updateRunning(job('done', ok.now), ok.now)).toBe(false)
   })
+})
+
+it('a checksum failure leaves the old plugin running and never extracts the archive', async () => {
+  const io = fakeIo()
+  io.verify = async () => { throw new Error('Release SHA-256 mismatch') }
+  expect(await runUpdate(plans.plugin, io)).toBe('failed')
+  expect(io.calls).not.toContain('stop')
+  expect(io.calls.some(c => c.startsWith('tar '))).toBe(false)
 })

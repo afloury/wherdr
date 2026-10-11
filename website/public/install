@@ -22,7 +22,8 @@
 #   WHERDR_PORT   local port                    (default: 7683)
 #   WHERDR_YES=1  answer yes to every question  (non-interactive use)
 #   WHERDR_NO_BROWSER=1  never open a browser
-#   WHERDR_REF    Git tag or branch of the plugin / compose file (default: latest)
+#   WHERDR_SKILL=off  skip agent skill installation and refresh
+#   WHERDR_REF    Git tag or branch of the plugin / compose file (default: main)
 #   WHERDR_IMAGE  Docker image, WHERDR_MODE=docker (default: ghcr.io/afloury/wherdr:latest)
 #   WHERDR_PLUGIN a local checkout to install instead of afloury/wherdr (development)
 #
@@ -36,9 +37,10 @@ main() {
   REPO="afloury/wherdr"
   PLUGIN_ID="afloury.wherdr"
   PLUGIN="${WHERDR_PLUGIN:-$REPO}"
-  REF="${WHERDR_REF:-}"
+  REF="${WHERDR_REF:-main}"
   MODE="${WHERDR_MODE:-}"
   DIR="${WHERDR_DIR:-$HOME/wherdr}"
+  case "$DIR" in /*) ;; *) DIR="$PWD/$DIR" ;; esac
   PORT="${WHERDR_PORT:-7683}"
   URL="http://localhost:$PORT"
   YES="${WHERDR_YES:-0}"
@@ -213,7 +215,8 @@ plugin_root() {
 }
 
 # Herdr installs the plugin and runs its build (scripts/herdr-plugin.sh build),
-# which reads these variables. A local checkout (WHERDR_PLUGIN=/path) is linked
+# which downloads and verifies the GitHub release package (no npm publication wait).
+# It reads these variables. A local checkout (WHERDR_PLUGIN=/path) is linked
 # and built in place instead.
 plugin_install() {
   set -- env WHERDR_INSTALLER=1 WHERDR_DIR="$DIR" WHERDR_PORT="$PORT"
@@ -224,10 +227,8 @@ plugin_install() {
     "$HERDR" plugin link "$PLUGIN" >/dev/null || return 1
     ok "Plugin linked from $PLUGIN"
     "$@" sh "$PLUGIN/scripts/herdr-plugin.sh" build
-  elif [ -n "$REF" ]; then
-    "$@" "$HERDR" plugin install "$PLUGIN" --ref "$REF" --yes
   else
-    "$@" "$HERDR" plugin install "$PLUGIN" --yes
+    "$@" "$HERDR" plugin install "$PLUGIN" --ref "$REF" --yes
   fi
 }
 
@@ -262,7 +263,7 @@ existing_wherdr() {
   elif [ -n "$owner" ]; then
     say "  It runs in Docker, from $owner."
     if [ "$(real_dir "$owner")" = "$(real_dir "$DIR")" ] && confirm "Update it now (docker compose pull && docker compose up -d)?"; then
-      (cd "$DIR" && docker compose pull --quiet && docker compose up -d --remove-orphans >/dev/null)
+      (cd "$DIR" && docker compose pull --quiet && { docker_skill || warn "Optional skill refresh failed."; } && docker compose up -d --remove-orphans >/dev/null)
       ok "wherdr updated"
       i=0
       while [ "$i" -lt 30 ] && ! answers; do i=$((i + 1)); sleep 1; done
@@ -358,6 +359,29 @@ container_elsewhere() {
   [ -n "$owner" ] && [ "$(real_dir "$owner")" != "$(real_dir "$DIR")" ]
 }
 
+# Keep trusted host helpers beside Compose, also for installs without a checkout.
+# Image contents supply only SKILL.md. Failures remain optional for wherdr.
+docker_skill() (
+  set -eu
+  [ "${WHERDR_SKILL:-}" != off ] || return 0
+  [ ! -e "$HOME/.local/state/wherdr/skill-disabled" ] || return 0
+  source="${WHERDR_SOURCE:-https://raw.githubusercontent.com/$REPO/${REF:-main}}"
+  helper_dir="$DIR/skill-installer"
+  mkdir -p "$helper_dir/bin/lib"
+  for file in bin/lib/install-skill.sh bin/install-docker-skill.sh; do
+    download "$source/$file" "$helper_dir/$file.new" || {
+      rm -f "$helper_dir/$file.new"
+      warn "Could not download the optional wherdr skill installer. Run this installer again to retry."
+      return 0
+    }
+    mv "$helper_dir/$file.new" "$helper_dir/$file"
+  done
+  image="$(docker compose config --images herdr-web | head -n 1)"
+  if [ -z "$image" ]; then warn "Could not find the wherdr image for the optional skill."; return 0; fi
+  WHERDR_DIR="$DIR" sh "$helper_dir/bin/install-docker-skill.sh" "$image" refresh \
+    || warn "wherdr skill refresh failed (optional): run this installer again to retry."
+)
+
 # WHERDR_MODE=docker: Docker Compose with the prebuilt image in $DIR, no plugin.
 docker_install() {
   SOURCE="${WHERDR_SOURCE:-https://raw.githubusercontent.com/$REPO/${REF:-main}}"
@@ -440,6 +464,7 @@ docker_install() {
      Your $DIR folder and .env are kept: run this script again later."
   fi
   ok "Image pulled"
+  docker_skill || warn "Optional skill refresh failed."
   docker compose up -d --remove-orphans >/dev/null
   ok "Container started"
 
@@ -462,7 +487,7 @@ docker_install() {
 # "<machine>.<tailnet>.ts.net[:port]" of the address `tailscale serve`
 # publishes for wherdr's local port, empty when there is none.
 served_host() {
-  host="$(tailscale serve status --json 2>/dev/null | tr '{,' '\n\n' | awk -v port="$PORT" '
+  host="$(tailscale serve status --json 2>/dev/null | tr '{,' '\n' | awk -v port="$PORT" '
     /"[^"]*:[0-9]+"[ \t]*:[ \t]*$/ { key = $0; sub(/^[^"]*"/, "", key); sub(/".*$/, "", key) }
     /"Proxy"/ && $0 ~ ("\"(https?://)?(127\\.0\\.0\\.1|localhost):" port "/?\"") { print key; exit }')"
   printf '%s\n' "${host%:443}"

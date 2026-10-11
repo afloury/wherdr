@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve unchanged skill files and repair only recorded managed broken links. Respect
+  `WHERDR_SKILL=off` and persistent uninstall across starts and updates. Docker extracts
+  only skill data with the local helper and the one-command installer refreshes it too.
+  Bound updater refreshes, preserve service paths, and report manual helper failures.
+
 ### Added
 
 - **Live terminal window for interactive agent screens**: ambiguous menus and panels open
@@ -54,6 +61,25 @@ All notable changes to this project are documented here. The format follows
   `file:12-18 — remark` and a short excerpt of the block, grouped by file, to the message draft
   without sending it or replacing existing text. Old-line labels for deletions, remote agents
   and demo support.
+- Publish checksummed GitHub release packages independently of npm moderation. Native
+  plugin installs and one-tap updates verify these packages, including the agent skill;
+  Homebrew uses the same GitHub archive. npm publishes that exact archive separately.
+  Registry and formula availability gate update notices; the legacy GitHub latest marker
+  advances automatically only when existing 1.3.x updaters can safely install the version.
+  Plugin installs fall back to the prebuilt npm archive before compiling. Preserve validated
+  update notices on transient failures; require a prepared draft with notes before publishing.
+  Release readiness reports missing npm/Homebrew conditions and leaves an unchanged latest alone.
+
+- Bundle the wherdr agent skill in npm / Homebrew packages and Docker images. Native
+  starts and one-tap updates refresh the shared host copy; the Herdr Docker plugin
+  extracts it after pulling the image. Manual Docker installs have a host-side helper.
+  Existing unrelated skills are preserved, and missing agents or write failures do not
+  prevent startup. Document plain task URL links in the skill.
+
+- **Inline diff review**: comment on lines in Changes, edit or delete remarks, and keep a
+  device-local draft per agent. Missing lines are flagged after refresh. Send review appends
+  grouped file/line remarks to the message draft without sending it or replacing existing text.
+  Includes old-line labels for deletions, keyboard/touch controls, remote agents and demo support.
 - **Yes / No in one tap**: a closed question of an agent's reply now has **Yes** and **No** next
   to its `↳ Reply`, in the three reply styles. A tap quotes the question and writes the answer
   under it, as Reply and typing would; nothing is sent, so several questions are answered in a row
@@ -153,6 +179,9 @@ All notable changes to this project are documented here. The format follows
 - **Back pressed while the app loads**: an address change that arrived during startup (Back
   right after a reload, a hash set as the page loads) was undone, and the app stayed on the view
   it started on. The last address asked for now wins.
+- The manual Homebrew formula update uses the authenticated GitHub user's noreply
+  identity in its temporary clone, including on machines without a Git email configured.
+
 - **One diff line per row in Changes**: since inline review, every line of a diff was 44 px high
   (a blank line after each one) with the comment marker under its line number. A row is one line
   of code again, on a computer and on a phone; the marker shows beside the number on hover or

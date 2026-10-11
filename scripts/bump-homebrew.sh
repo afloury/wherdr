@@ -1,7 +1,7 @@
 #!/bin/sh
 # Points the Homebrew formula (<owner>/homebrew-tap, Formula/wherdr.rb) at a
-# version already published on npm. Manual fallback for the `homebrew` job of
-# .github/workflows/npm.yml when the HOMEBREW_TAP_TOKEN secret is missing.
+# version already published on GitHub. Manual fallback for the `homebrew` job of
+# .github/workflows/release.yml when the HOMEBREW_TAP_TOKEN secret is missing.
 # Uses the GitHub CLI authentication (`gh auth login`) to clone and push.
 #
 #   scripts/bump-homebrew.sh [version] [owner]
@@ -12,17 +12,20 @@ set -eu
 cd "$(dirname "$0")/.."
 version=${1:-$(node -p 'require("./package.json").version' 2>/dev/null || sed -n 's/^  "version": "\(.*\)",$/\1/p' package.json)}
 owner=${2:-$(gh repo view --json owner -q .owner.login)}
-url="https://registry.npmjs.org/wherdr/-/wherdr-${version}.tgz"
+url="https://github.com/${owner}/wherdr/releases/download/v${version}/wherdr-${version}.tgz"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-curl -fsSL "$url" -o "$tmp/wherdr.tgz" || { echo "wherdr@${version} is not on npm yet ($url)" >&2; exit 1; }
+curl -fsSL "$url" -o "$tmp/wherdr.tgz" || { echo "wherdr@${version} is not on GitHub yet ($url)" >&2; exit 1; }
 if command -v sha256sum >/dev/null; then
   sha=$(sha256sum "$tmp/wherdr.tgz" | cut -d' ' -f1)
 else
   sha=$(shasum -a 256 "$tmp/wherdr.tgz" | cut -d' ' -f1)
 fi
+curl -fsSL "$url.sha256" -o "$tmp/checksum"
+expected=$(cut -d' ' -f1 "$tmp/checksum")
+[ "$sha" = "$expected" ] || { echo "Release SHA-256 mismatch" >&2; exit 1; }
 [ -n "$sha" ] || { echo "Could not compute sha256" >&2; exit 1; }
 
 gh repo clone "${owner}/homebrew-tap" "$tmp/tap" -- -q
@@ -30,6 +33,14 @@ cd "$tmp/tap"
 sed -E "s|^  url \".*\"|  url \"${url}\"|; s|^  sha256 \".*\"|  sha256 \"${sha}\"|" Formula/wherdr.rb > Formula/wherdr.rb.new
 mv Formula/wherdr.rb.new Formula/wherdr.rb
 if git diff --quiet; then echo "Formula already at ${version}."; exit 0; fi
+# Scope the authenticated owner's public identity to this temporary clone.
+login=$(gh api user --jq .login)
+user_id=$(gh api user --jq .id)
+name=$(gh api user --jq '.name // .login')
+[ -n "$login" ] && [ -n "$name" ] || { echo "Missing GitHub identity" >&2; exit 1; }
+case "$user_id" in ''|*[!0-9]*) echo "Invalid GitHub user id" >&2; exit 1 ;; esac
+git config --local user.name "$name"
+git config --local user.email "${user_id}+${login}@users.noreply.github.com"
 git diff
 git commit -qam "wherdr ${version}"
 git push -q

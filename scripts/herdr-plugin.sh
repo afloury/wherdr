@@ -9,7 +9,7 @@
 #   docker  Linux with Docker Compose v2 usable by this user: the published
 #           image, run from $WHERDR_DIR exactly like https://wherdr.dev/install.
 #   native  everywhere else (always on macOS: Docker Desktop cannot reach
-#           Herdr's Unix socket): Node.js 22 (or Bun) runs the prebuilt npm
+#           Herdr's Unix socket): Node.js 22 (or Bun) runs the prebuilt GitHub
 #           package of this version (or a build made in the plugin folder),
 #           copied to $WHERDR_DIR/app and started detached from there, with
 #           its pid and log in $WHERDR_DIR.
@@ -55,6 +55,7 @@ if [ -z "${WHERDR_DIR:-}" ] && [ -f "$ROOT/.wherdr-dir" ]; then
   WHERDR_DIR="$(cat "$ROOT/.wherdr-dir")"
 fi
 DIR="${WHERDR_DIR:-$HOME/wherdr}"
+case "$DIR" in /*) ;; *) DIR="$PWD/$DIR" ;; esac
 CONF="$DIR/plugin.env"
 # Native mode: the installed copy of wherdr (bin + built server).
 APP="$DIR/app"
@@ -210,48 +211,25 @@ cmd_build() {
   # install from the merged settings (environment over the previous file).
   write_conf
   ok "plugin.env written (mode: $MODE)"
-  ( cmd_skill install ) || warn "wherdr skill not linked (optional): run $0 skill install"
+  ( cmd_skill refresh ) || warn "wherdr skill not linked (optional): run $0 skill install"
   ( cmd_key install ) || warn "no Herdr key for the panel (optional): run $0 key install"
   build_start
 }
 
 # ------------------------------------------------------------------ skill
-# The "wherdr" agent skill (skills/wherdr/SKILL.md): the conventions of the
-# Project panel for herdr-projects coordinators. Copied to $DIR/skills/wherdr
-# (the checkout is built in a temporary folder, then moved), then linked into
-# the user skill folders: Claude Code's ${CLAUDE_CONFIG_DIR:-~/.claude}/skills,
-# and ~/.agents/skills, read by Codex and omp. Only links to that copy are
-# ever created or removed: a "wherdr" skill of someone else is left alone.
-SKILL_COPY="$DIR/skills/wherdr"
-
-skill_dirs() {
-  claude="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-  [ -d "$claude" ] && echo "$claude/skills"
-  if [ -d "$HOME/.agents" ] || [ -d "$HOME/.codex" ] || [ -d "$HOME/.omp" ]; then echo "$HOME/.agents/skills"; fi
-  return 0
-}
-
+# Installation is shared with npm / Homebrew; Docker reads the pulled image.
 cmd_skill() {
   case "${1:-}" in
-    install)
-      mkdir -p "$SKILL_COPY"
-      cp "$ROOT/skills/wherdr/SKILL.md" "$SKILL_COPY/SKILL.md"
-      skill_dirs | while IFS= read -r d; do
-        link="$d/wherdr"
-        if [ -L "$link" ] && [ "$(readlink "$link")" = "$SKILL_COPY" ]; then ok "skill already linked: $link"
-        elif [ -e "$link" ] || [ -L "$link" ]; then warn "skill not linked: $link already exists (left alone)"
-        else mkdir -p "$d" && ln -s "$SKILL_COPY" "$link" && ok "skill linked: $link"
-        fi
-      done
+    refresh|install)
+      if [ "$MODE" = docker ]; then
+        ( image="$(compose config --images herdr-web | head -n 1)"
+          WHERDR_DIR="$DIR" sh "$ROOT/bin/install-docker-skill.sh" "$image" "$1"
+        )
+      else
+        WHERDR_DIR="$DIR" sh "$ROOT/bin/lib/install-skill.sh" "$1" "$ROOT"
+      fi
       ;;
-    uninstall)
-      skill_dirs | while IFS= read -r d; do
-        link="$d/wherdr"
-        if [ -L "$link" ] && [ "$(readlink "$link")" = "$SKILL_COPY" ]; then rm "$link" && ok "skill unlinked: $link"; fi
-      done
-      rm -rf "$SKILL_COPY"
-      rmdir "$DIR/skills" 2>/dev/null || true
-      ;;
+    uninstall) WHERDR_DIR="$DIR" sh "$ROOT/bin/lib/install-skill.sh" uninstall "$ROOT" ;;
     *) die "usage: $0 skill install|uninstall" ;;
   esac
 }
@@ -309,21 +287,43 @@ write_conf() {
   } > "$CONF"
 }
 
-# The published npm package of this exact version holds the built server:
-# download it instead of building (no npm ci). Fails when it is not published.
+# Prefer the release archive, then the already-built npm package. Compile only
+# when neither source provides a usable package of this exact version.
 fetch_prebuilt() {
   command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1 || return 1
   version="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$ROOT/herdr-plugin.toml" | head -n 1)"
   tmp="$(mktemp -d)"
-  if curl -fsSL --max-time 120 "https://registry.npmjs.org/wherdr/-/wherdr-$version.tgz" -o "$tmp/wherdr.tgz" 2>/dev/null \
-    && tar -xzf "$tmp/wherdr.tgz" -C "$tmp" \
-    && [ -f "$tmp/package/.output/server/index.mjs" ]; then
-    rm -rf "$ROOT/.output"
-    mv "$tmp/package/.output" "$ROOT/.output"
+  for source in github npm; do
+    rm -rf "$tmp/package"
+    if [ "$source" = github ]; then
+      url="https://github.com/$SOURCE/releases/download/v$version/wherdr-$version.tgz"
+      curl -fsSL --max-time 120 "$url" -o "$tmp/wherdr.tgz" 2>/dev/null \
+        && curl -fsSL --max-time 30 "$url.sha256" -o "$tmp/checksum" 2>/dev/null \
+        && "$RUNTIME" "$ROOT/bin/lib/verify-release.mjs" "$tmp/wherdr.tgz" "$tmp/checksum" 2>/dev/null || continue
+    else
+      url="https://registry.npmjs.org/wherdr/-/wherdr-$version.tgz"
+      curl -fsSL --max-time 120 "$url" -o "$tmp/wherdr.tgz" 2>/dev/null \
+        && curl -fsSL --max-time 30 "https://registry.npmjs.org/wherdr/$version" -o "$tmp/metadata" 2>/dev/null \
+        && "$RUNTIME" "$ROOT/bin/lib/verify-release.mjs" "$tmp/wherdr.tgz" "$tmp/metadata" npm "$version" 2>/dev/null || continue
+    fi
+    tar -xzf "$tmp/wherdr.tgz" -C "$tmp" 2>/dev/null || continue
+    [ -f "$tmp/package/.output/server/index.mjs" ] \
+      && [ -d "$tmp/package/bin" ] && [ -f "$tmp/package/package.json" ] || continue
+    # Legacy packages have neither the skill nor its helpers. Keep the
+    # checkout's commands so plugin skill install/uninstall still work.
+    for entry in .output bin package.json skills; do
+      [ -e "$tmp/package/$entry" ] || continue
+      if [ "$entry" = bin ]; then
+        [ -f "$tmp/package/skills/wherdr/SKILL.md" ] \
+          && [ -f "$tmp/package/bin/lib/install-skill.sh" ] || continue
+      fi
+      rm -rf "$ROOT/$entry"
+      mv "$tmp/package/$entry" "$ROOT/$entry"
+    done
     rm -rf "$tmp"
-    ok "wherdr $version downloaded (prebuilt npm package)"
+    ok "wherdr $version downloaded ($source package, checksum matched)"
     return 0
-  fi
+  done
   rm -rf "$tmp"
   return 1
 }
@@ -377,7 +377,7 @@ install_app() {
   new="$APP.new"
   rm -rf "$new"
   mkdir -p "$new"
-  cp -R "$ROOT/bin" "$ROOT/.output" "$ROOT/package.json" "$new/"
+  cp -R "$ROOT/bin" "$ROOT/skills" "$ROOT/.output" "$ROOT/package.json" "$new/"
   if [ -d "$ROOT/node_modules/qrcode-terminal" ]; then
     mkdir -p "$new/node_modules"
     cp -R "$ROOT/node_modules/qrcode-terminal" "$new/node_modules/"
@@ -642,6 +642,7 @@ cmd_update() {
     docker)
       container_ours || die "The \"$CONTAINER\" container belongs to $(container_dir): update it from there."
       compose pull --quiet
+      cmd_skill refresh || warn "wherdr skill refresh failed (optional)"
       if [ "$(docker inspect "$CONTAINER" --format '{{.State.Running}}' 2>/dev/null)" = "true" ]; then
         compose up -d --remove-orphans
         say "wherdr updated and restarted."
@@ -652,7 +653,7 @@ cmd_update() {
     native)
       # A new checkout, a new copy in $APP, and wherdr restarted (build_start).
       say "Updating the wherdr plugin from $SOURCE…"
-      "$(herdr_bin)" plugin install "$SOURCE" --yes
+      "$(herdr_bin)" plugin install "$SOURCE" --ref main --yes
       ;;
     *) die "wherdr plugin is not set up: install it again with herdr plugin install $SOURCE." ;;
   esac
