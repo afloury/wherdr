@@ -126,9 +126,12 @@ The user quotes your own messages with the same kind of line, by the time shown 
 `↳ Quote message 11:37 : <start of the message> —` (the whole message),
 `↳ Quote point 11:37 : <question, point or passage> —`,
 `↳ Quote decision 11:37 #3 : <question of row 3> —` (a row of a table of numbered decisions) and
-`↳ Quote decisions 11:37 #1-4 : <questions> —` (the whole table, usually followed by `OK to all`).
+`↳ Quote decisions 11:37 #1-4 : <questions> —` (the whole table, usually followed by `OK to all`;
+`#1,4` when the rows are not consecutive).
 Read the lines under each one as the answer to that message and that row, even when you have
-written other messages since. Long excerpts are cut with `…`.
+written other messages since. Long excerpts are cut with `…`. A short code may follow the time
+or the row, as in `11:37 #3 ~k3f`: wherdr uses it to tell apart two of your messages written in
+the same minute, or two tables of one message. You have nothing to do with it.
 `↳ Info for` names a thread (`t-NNNN`) instead of a task; its text may span several lines.
 
 | Message (EN / FR) | From | What to do |

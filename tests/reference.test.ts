@@ -24,6 +24,10 @@ describe('reference line', () => {
       pointRef('No time', null),
       decisionRef('3', 'Publish the notes?', '11:37'),
       decisionRef('1-4', 'Tag today? · Which name?', '11:37', true),
+      decisionRef('1,4', 'Tag today? · Which name?', '11:37', true, 'k3f2'),
+      pointRef('Shall I merge?', '2:32 PM', '07a'),
+      taskRef('Problem:', 'Export as CSV'),
+      taskRef('Question :', 'Export CSV'),
       taskRef('Detail on', 'Export as CSV'),
       taskRef('Retour sur', 'PR 12 — bannière'),
     ]) expect(parseRef(refLine(ref))).toEqual(ref)
@@ -153,7 +157,7 @@ describe('round trip: field, message sent, bubble', () => {
     expect(refSegments(sent)).toEqual([
       { kind: 'ref', ref: pointRef('Shall I merge the branch now?', '11:37') },
       { kind: 'text', text: 'Yes' },
-      { kind: 'ref', ref: { kind: 'message', label: '', time: '11:35', n: null, excerpt: 'Three things to note: the cache…' } },
+      { kind: 'ref', ref: { kind: 'message', label: '', time: '11:35', n: null, id: null, excerpt: 'Three things to note: the cache…' } },
       { kind: 'text', text: 'Noted — thanks.' },
     ])
   })

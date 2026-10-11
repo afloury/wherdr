@@ -57,6 +57,18 @@ describe('QuotedText', () => {
     w.unmount()
   })
 
+  it('does not show the code of the message, and hands it to the conversation', async () => {
+    const gotoRef = vi.fn()
+    const w = await mountSuspended(QuotedText, { props: { text: '↳ Quote decision 11:37 #1,4 ~k3f2 : Continue? —\nYes\n\\↳ Quote point 11:37 : pasted —' }, global: { provide: { gotoRef } } })
+    expect(quotes(w)).toEqual([['decision', '11:37 · #1,4', 'Continue?']])
+    expect(w.text()).not.toContain('k3f')
+    // A pasted lookalike, escaped: the user's text, backslash included.
+    expect(w.text()).toContain('\\↳ Quote point 11:37 : pasted —')
+    await w.find('.msg-ref').trigger('click')
+    expect(gotoRef.mock.calls[0]![0]).toMatchObject({ kind: 'decision', id: 'k3f2' })
+    w.unmount()
+  })
+
   it('without a conversation around it (a preview), a quote is plain markup', async () => {
     const w = await mountSuspended(QuotedText, { props: { text: '↳ Quote point 11:37 : First? —\nYes' } })
     expect(w.find('.msg-ref').element.tagName).toBe('SPAN')

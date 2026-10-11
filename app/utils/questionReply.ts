@@ -12,7 +12,7 @@
 // A point that asks nothing (a list item, a paragraph without a question) can
 // be quoted the same way, to discuss it. How the two show is a setting
 // (ReplyStyle): the markup below is the same for every style, main.css draws it.
-import { type Reference, type TextRef, decisionRef, pointRef, isRefLine, refLine, refsIn, sameRef } from '../../shared/reference'
+import { type Reference, type TextRef, decisionRef, pointRef, isRefLine, refLine, refsIn, sameRef, tableId } from '../../shared/reference'
 
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim()
 // What may close a question after its "?": quotes, brackets, emphasis, spaces.
@@ -185,10 +185,11 @@ export function addAnswer(draft: string, ref: Reference, word: string): string |
 // Decision table: a Markdown table whose rows are numbered questions, as a
 // coordinator writes them ("# | Question | My advice"). Under it, each row is
 // answered in one tap or quoted for an answer in words, and the whole table
-// accepted, each time under a reference that names the message and the row:
-//   ↳ Quote decision 11:37 #3 : Tag the release today? —
+// accepted, each time under a reference that names the message, the row and
+// the table (the code after "~", see shared/reference.ts):
+//   ↳ Quote decision 11:37 #3 ~k3f : Tag the release today? —
 //   Yes
-//   ↳ Quote decisions 11:37 #1-4 : Tag the release today? · … —
+//   ↳ Quote decisions 11:37 #1-4 ~k3f : Tag the release today? · … —
 //   OK to all
 // The reference is always written, even for the agent's last message: the
 // agent may write another one before the answer is sent, and "3: yes" alone
@@ -205,7 +206,8 @@ const NUM_CELL = /^(?:[#qd]|n[°º])?\s*\d{1,3}[.)]?$/i
 const QUESTION_HEAD = /question|d[ée]cision|choix|choice|to decide|à décider|à trancher/i
 const ADVICE_HEAD = /avis|recomm|suggestion|proposition|proposal|opinion|my take|my pick|conseil|advice/i
 // `all`: the whole table the row belongs to (its rows, their questions), when it has several rows.
-export interface DecisionRow { n: string, text: string, all?: { n: string, text: string } | null }
+// `table`: rank of that table among the decision tables of its message, from 1.
+export interface DecisionRow { n: string, text: string, all?: { n: string, text: string } | null, table?: number }
 export function decisionRows(header: string[], rows: string[][]): DecisionRow[] | null {
   const head = header.map(oneLine)
   const body = rows.map(r => r.map(oneLine))
@@ -239,8 +241,9 @@ export function rowNumbers(labels: string[]): string {
 }
 // The whole table as "OK to all" refers to it: its row numbers and questions.
 export const tableOf = (rows: DecisionRow[]) => ({ n: rowNumbers(rows.map(r => r.n)), text: rows.map(r => r.text).join(' · ') })
-export const rowRef = (row: DecisionRow, time: string | null) => decisionRef(row.n, row.text, time)
-export const tableRef = (all: { n: string, text: string }, time: string | null) => decisionRef(all.n, all.text, time, true)
+// `id`: code of the message the table is in (shared/reference.ts messageId).
+export const rowRef = (row: DecisionRow, time: string | null, id?: string | null) => decisionRef(row.n, row.text, time, false, tableId(id, row.table))
+export const tableRef = (all: { n: string, text: string }, time: string | null, id?: string | null, table = 1) => decisionRef(all.n, all.text, time, true, tableId(id, table))
 // "OK to all" / "OK tout": what a tap writes under the reference to the table.
 const OK_ALL = /^ok\s+(?:to\s+all|tout|pour\s+tout)\s*[.!]?$/i
 // Draft with the table accepted, or with that taken back when it is there (a
@@ -254,16 +257,16 @@ export function toggleOkAll(draft: string, ref: Reference, phrase: string): stri
 }
 // A row is settled once the draft refers to it (answered or quoted), or
 // accepts its whole table.
-export const rowSettled = (draft: string, row: DecisionRow, time: string | null) =>
-  isQuoted(draft, rowRef(row, time)) || Boolean(row.all && isQuoted(draft, tableRef(row.all, time)))
+export const rowSettled = (draft: string, row: DecisionRow, time: string | null, id?: string | null) =>
+  isQuoted(draft, rowRef(row, time, id)) || Boolean(row.all && isQuoted(draft, tableRef(row.all, time, id, row.table)))
 
 // How many questions of a reply (its questions and the rows of its decision
 // tables) the draft does not answer yet: the reminder above the field. A
 // question counts as answered once it is quoted, a row once it is settled.
 // A reply that asks one thing only is answered by any words of the user's:
 // there is nothing to tell apart, quoting it would be a formality.
-export function unansweredCount(targets: Pick<ReplyTargets, 'questions' | 'rows'>, draft: string, time: string | null): number {
-  const left = targets.questions.filter(q => !isQuoted(draft, pointRef(q.text, time))).length + targets.rows.filter(r => !rowSettled(draft, r, time)).length
+export function unansweredCount(targets: Pick<ReplyTargets, 'questions' | 'rows'>, draft: string, time: string | null, id?: string | null): number {
+  const left = targets.questions.filter(q => !isQuoted(draft, pointRef(q.text, time, id))).length + targets.rows.filter(r => !rowSettled(draft, r, time, id)).length
   const single = targets.questions.length + targets.rows.length === 1
   return single && String(draft || '').split('\n').some(l => l.trim() && !isRefLine(l)) ? 0 : left
 }
@@ -412,9 +415,11 @@ export function markQuestions(root: ParentNode, labels: ReplyLabels) {
 // all" (`.q-all`), then per row (`.q-trow`) its number and question (`.q-tl`),
 // "Yes" / "No" (`.q-tans`) and Reply (`.q-tquote`). No text node here either: every
 // word comes from a data attribute. `.q-all` carries the row numbers and the
-// questions of its table (`n`, `q`), as "OK to all" refers to them.
+// questions of its table (`n`, `q`), as "OK to all" refers to them; the panel
+// carries the rank of its table among those of the message (`t`).
 function markDecisions(root: ParentNode, labels: ReplyLabels) {
   const cells = (tr: Element) => [...tr.children].filter(c => /^T[DH]$/.test(c.tagName)).map(c => c.textContent || '')
+  let rank = 0
   for (const table of root.querySelectorAll('table')) {
     if (table.closest('pre, code, .code-block, blockquote') || table.parentElement?.closest('table')) continue
     const head = table.querySelector(':scope > thead > tr')
@@ -428,7 +433,7 @@ function markDecisions(root: ParentNode, labels: ReplyLabels) {
       if (label) e.setAttribute('aria-label', label)
       return e
     }
-    const panel = el('div', 'q-table', {}, labels.decisions)
+    const panel = el('div', 'q-table', { t: String(++rank) }, labels.decisions)
     panel.setAttribute('role', 'group')
     const top = el('div', 'q-table-h', { l: labels.decisions })
     if (rows.length > 1) {
@@ -481,9 +486,10 @@ export function withQuestions(html: string, labels: ReplyLabels): string {
 // Read from the marked HTML, cached with it.
 export interface ReplyTargets { questions: { n: string, text: string, closed: boolean }[], rows: DecisionRow[], points: number, pick: boolean }
 // A row of the panel under a decision table, read back from its markup.
+export const tableRank = (el: HTMLElement) => Number(el.closest<HTMLElement>('.q-table')?.dataset.t) || 1
 export function rowOf(el: HTMLElement): DecisionRow {
   const all = el.closest('.q-table')?.querySelector<HTMLElement>('.q-all')
-  return { n: el.dataset.n || '', text: el.dataset.q || '', all: all ? { n: all.dataset.n || '', text: all.dataset.q || '' } : null }
+  return { n: el.dataset.n || '', text: el.dataset.q || '', all: all ? { n: all.dataset.n || '', text: all.dataset.q || '' } : null, table: tableRank(el) }
 }
 const targets = new Map<string, ReplyTargets>()
 export function replyTargets(html: string): ReplyTargets {

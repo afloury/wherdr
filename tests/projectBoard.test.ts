@@ -207,7 +207,7 @@ describe('answers to decisions (To decide)', () => {
     expect(prefillDraft(answer, answer)).toBe(answer)
     // The task is a reference of its own line: the answer goes under it.
     expect(isRefLine(answer.trimEnd())).toBe(true)
-    expect(refSegments(`${answer}Oui, lundi.`)).toEqual([{ kind: 'ref', ref: { kind: 'task', label: 'Décision :', time: null, n: null, excerpt: 'Publier le dépôt ?' } }, { kind: 'text', text: 'Oui, lundi.' }])
+    expect(refSegments(`${answer}Oui, lundi.`)).toEqual([{ kind: 'ref', ref: { kind: 'task', label: 'Décision :', time: null, n: null, id: null, excerpt: 'Publier le dépôt ?' } }, { kind: 'text', text: 'Oui, lundi.' }])
   })
 })
 

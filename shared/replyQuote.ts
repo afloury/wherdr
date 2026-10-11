@@ -59,15 +59,20 @@ export function parseReply(text: string): { reply: ReplyTarget, body: string } |
 
 const norm = (s: string) => plainText(s).toLowerCase()
 
-// Original message of a quote, among the agent replies shown:
-// same time and text containing the excerpt; failing that the excerpt alone, then
-// the time alone. The most recent before the reply (index `before`) wins.
-export function findReplyOrigin<T extends { time: string | null, text: string }>(list: T[], r: ReplyTarget, before = list.length): T | null {
+// Original message of a quote, among the agent replies shown: the one with
+// the code the reference carries (`id`, `rid` of a reply: shared/reference.ts
+// messageId);
+// without a code, or with one no reply shown has, same time and text
+// containing the excerpt; failing that the excerpt alone, then the time
+// alone. The most recent before the reply (index `before`) wins.
+export function findReplyOrigin<T extends { time: string | null, text: string, rid?: string }>(list: T[], r: ReplyTarget & { id?: string | null }, before = list.length): T | null {
   // Part before the first "…": start of the message, or of a "start… end" passage.
   const bit = norm(r.excerpt.split('…')[0]!).slice(0, 60)
   const cands = list.slice(0, before).reverse()
   const hasBit = (x: T) => Boolean(bit) && norm(x.text).includes(bit)
-  return cands.find(x => x.time === r.time && hasBit(x))
+  const coded = r.id ? cands.filter(x => x.rid === r.id) : []
+  return coded.find(x => x.time === r.time) || coded[0]
+    || cands.find(x => x.time === r.time && hasBit(x))
     || cands.find(hasBit)
     || cands.find(x => x.time === r.time)
     || null

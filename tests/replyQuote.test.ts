@@ -51,7 +51,7 @@ describe('displaying a reply', () => {
 
   it('does not confuse two replies to the same message in the queue', () => {
     const excerpt = 'Je propose deux options : garder le cache actuel et le borner à 50 Mo…'
-    for (const head of [refLine({ kind: 'message', label: '', time: '14:32', n: null, excerpt }), old('14:32', excerpt, '').trimEnd()]) {
+    for (const head of [refLine({ kind: 'message', label: '', time: '14:32', n: null, id: null, excerpt }), old('14:32', excerpt, '').trimEnd()]) {
       const one = `${head}\nPremier avis détaillé ici`
       const two = `${head}\nSecond avis tout à fait différent`
       expect(dropReplyMarker(one.replace(/\s+/g, ' ').toLowerCase())).toBe('premier avis détaillé ici')

@@ -60,6 +60,8 @@ export const FOLLOWUP_REPLY = 'Noted. Shall I go on with the next step?'
 export const OMP_FRENCH_PANE = 'w15:p1'
 // A decision table the agent has written other messages after.
 export const OMP_OLD_TABLE_PANE = 'w16:p1'
+// One message with two decision tables whose first rows ask the same thing.
+export const OMP_TWO_TABLES_PANE = 'w17:p1'
 export const CODEX_UPDATE_SESSION = '00000000-0000-4000-8000-000000000288'
 
 // Unique markers of the long omp transcript (asserted on by the specs).
@@ -200,9 +202,10 @@ export function writeScenario(home) {
   const followup = path.join(home, 'projects/followup')
   const french = path.join(home, 'projects/fusion')
   const oldTable = path.join(home, 'projects/earlier')
+  const twoTables = path.join(home, 'projects/rollout')
   const codex = path.join(home, '.herdr-projects/codex-update')
   fs.mkdirSync(codex, { recursive: true })
-  for (const d of [api, docs, demo, screens, approval, scratch, coordinator, questions, split, release, billing, decisions, followup, french, oldTable]) fs.mkdirSync(d, { recursive: true })
+  for (const d of [api, docs, demo, screens, approval, scratch, coordinator, questions, split, release, billing, decisions, followup, french, oldTable, twoTables]) fs.mkdirSync(d, { recursive: true })
 
   const claudeSid = '00000000-0000-4000-8000-000000000001'
   const codexFile = path.join(home, `.codex/sessions/${new Date().toISOString().slice(0, 10).replaceAll('-', '/')}/rollout-test-${CODEX_UPDATE_SESSION}.jsonl`)
@@ -293,6 +296,15 @@ export function writeScenario(home) {
     msg({ role: 'user', content: [{ type: 'text', text: 'Give me a minute.' }], attribution: 'user' }),
     msg({ role: 'assistant', content: [{ type: 'text', text: 'Sure. Meanwhile the docs build finished.\n\nShall I delete the old staging database?' }], stopReason: 'stop' }),
   ])
+  const twoTablesFile = ompTranscript(home, twoTables, 'e2e-two-tables', now, msg => [
+    msg({ role: 'user', content: [{ type: 'text', text: 'What about the rollout?' }], attribution: 'user' }),
+    msg({ role: 'assistant', content: [{ type: 'text', text: [
+      'Staging first:',
+      '| # | Question |\n| --- | --- |\n| 1 | Continue? |\n| 2 | Keep the staging data? |',
+      'Then production (rows 2 and 3 are settled):',
+      '| # | Question |\n| --- | --- |\n| 1 | Continue? |\n| 4 | Delete the old production replica? |',
+    ].join('\n\n') }], stopReason: 'stop' }),
+  ])
   // omp waiting for the approval of its first action (status "blocked").
   const approvalFile = ompTranscript(home, approval, 'e2e-approval', now, msg => [
     msg({ role: 'user', content: [{ type: 'text', text: 'Clean the build folder.' }], attribution: 'user' }),
@@ -328,5 +340,6 @@ export function writeScenario(home) {
     { id: 'w14', label: 'followup', panes: [{ id: OMP_FOLLOWUP_PANE, agent: 'omp', status: 'idle', cwd: followup, session: followupFile, transcript: followupFile, reply: FOLLOWUP_REPLY }] },
     { id: 'w15', label: 'fusion', panes: [{ id: OMP_FRENCH_PANE, agent: 'omp', status: 'idle', cwd: french, session: frenchFile }] },
     { id: 'w16', label: 'earlier', panes: [{ id: OMP_OLD_TABLE_PANE, agent: 'omp', status: 'idle', cwd: oldTable, session: oldTableFile }] },
+    { id: 'w17', label: 'rollout', panes: [{ id: OMP_TWO_TABLES_PANE, agent: 'omp', status: 'idle', cwd: twoTables, session: twoTablesFile }] },
   ]
 }

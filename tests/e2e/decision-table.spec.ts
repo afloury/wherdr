@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { OMP_DECISIONS_PANE } from './scenario.mjs'
+import { OMP_DECISIONS_PANE, OMP_TWO_TABLES_PANE } from './scenario.mjs'
 import { decision, decisions, expectDraft } from './refs'
 
 // The panel under a decision table (utils/questionReply.ts, decisionRows):
@@ -125,3 +125,43 @@ for (const style of ['text', 'list']) {
     await shot(page, `decisions-${style}`, testInfo.project.name)
   })
 }
+
+test('two decision tables of one message keep their own answers, the same question included', async ({ page }, testInfo) => {
+  await page.addInitScript(() => localStorage.setItem('typewriterSpeed', 'off'))
+  await page.goto(`/#/a/${OMP_TWO_TABLES_PANE}`)
+  const panels = page.locator('.chat .q-table')
+  await expect(panels).toHaveCount(2)
+  const field = page.locator('.prompt textarea').first()
+  await field.fill('')
+  const [staging, production] = [panels.nth(0), panels.nth(1)]
+  const pressed = (panel: typeof staging, name: string) => panel.getByRole('button', { name }).getAttribute('aria-pressed')
+
+  // Yes to the first table, No to the same question of the second: two
+  // references, told apart by the code of their table.
+  await staging.getByRole('button', { name: '1 · Yes: Continue?' }).click()
+  await production.getByRole('button', { name: '1 · No: Continue?' }).click()
+  const draft = await field.inputValue()
+  const m = /^↳ Quote decision \d\d:\d\d #1 ~([0-9a-z]{3}) : Continue\? —\nYes\n↳ Quote decision \d\d:\d\d #1 ~([0-9a-z]{3})2 : Continue\? —\nNo\n$/.exec(draft)
+  expect(m, draft).not.toBeNull()
+  expect(m![2]).toBe(m![1])
+  expect(await pressed(staging, '1 · Yes: Continue?')).toBe('true')
+  expect(await pressed(staging, '1 · No: Continue?')).toBe('false')
+  expect(await pressed(production, '1 · No: Continue?')).toBe('true')
+  expect(await pressed(production, '1 · Yes: Continue?')).toBe('false')
+  await expect(page.locator('.prompt .qm-mirror .qm-q')).toHaveCount(2)
+  await shot(page, 'two-tables-answered', testInfo.project.name)
+
+  // "OK to all" on the second table accepts that one only, and names the rows it has.
+  await field.fill('')
+  await production.locator('.q-all').click()
+  expect(await field.inputValue()).toMatch(/^↳ Quote decisions \d\d:\d\d #1,4 ~[0-9a-z]{3}2 : Continue\? · Delete the old production replica\? —\nOK to all\n$/)
+  await expect(production.locator('.q-all')).toHaveAttribute('aria-pressed', 'true')
+  await expect(staging.locator('.q-all')).toHaveAttribute('aria-pressed', 'false')
+  await expect(staging.locator('.q-tquote.quoted')).toHaveCount(0)
+  await staging.locator('.q-all').click()
+  expect(await field.inputValue()).toMatch(/^↳ Quote decisions [^\n]* #1,4 [^\n]*\nOK to all\n↳ Quote decisions \d\d:\d\d #1-2 ~[0-9a-z]{3} : Continue\? · Keep the staging data\? —\nOK to all\n$/)
+  await expect(production.locator('.q-all')).toHaveAttribute('aria-pressed', 'true')
+  expect(await fits(page)).toBe(true)
+  await shot(page, 'two-tables-ok-all', testInfo.project.name)
+  await field.fill('')
+})

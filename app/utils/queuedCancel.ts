@@ -27,7 +27,7 @@ export function canCancelQueued(p: Pane | undefined): boolean {
 export function restoreDraft(draft: { text: string, atts: DraftAtt[] }, message: string, pasted: string[] = [], after = false) {
   // A reply marker of an earlier version comes back as a reference.
   const old = parseReply(message)
-  if (old) message = `${refLine({ kind: 'message', label: '', time: old.reply.time, n: null, excerpt: old.reply.excerpt })}\n${old.body}`
+  if (old) message = `${refLine({ kind: 'message', label: '', time: old.reply.time, n: null, id: null, excerpt: old.reply.excerpt })}\n${old.body}`
   // Texts sent as "Pasted text" cards become cards again.
   const split = splitPasted(String(message || ''), pasted, sentPastes.value, true)
   for (const paste of split.pastes) draft.atts.push({ url: '', path: null, paste })

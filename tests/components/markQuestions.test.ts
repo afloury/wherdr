@@ -260,17 +260,32 @@ describe('the panel under a decision table', () => {
       ['q-tans q-no', 'No', '2 · No: Keep the old export format?'],
       ['q-tquote', 'Reply', 'Reply: 2. Keep the old export format?'],
     ])
-    expect(rowOf(rows[1]!)).toEqual({ n: '2', text: 'Keep the old export format?', all: { n: '1-3', text: 'Tag the release today? · Keep the old export format? · Publish the notes?' } })
+    expect(rowOf(rows[1]!)).toEqual({ n: '2', text: 'Keep the old export format?', all: { n: '1-3', text: 'Tag the release today? · Keep the old export format? · Publish the notes?' }, table: 1 })
     // The panel adds no text: the reply reads and copies as before.
     expect(panel.textContent).toBe('')
     // The cells of a table get no question button of their own.
     expect(r.quotes).toEqual([])
     const all = { n: '1-3', text: 'Tag the release today? · Keep the old export format? · Publish the notes?' }
     expect(replyTargets(r.html).rows).toEqual([
-      { n: '1', text: 'Tag the release today?', all },
-      { n: '2', text: 'Keep the old export format?', all },
-      { n: '3', text: 'Publish the notes?', all },
+      { n: '1', text: 'Tag the release today?', all, table: 1 },
+      { n: '2', text: 'Keep the old export format?', all, table: 1 },
+      { n: '3', text: 'Publish the notes?', all, table: 1 },
     ])
+  })
+
+  it('ranks the decision tables of a message, and names the rows a table really has', () => {
+    const r = reply([
+      '| # | Question |', '| --- | --- |', '| 1 | Continue? |', '| 2 | Keep staging? |',
+      '',
+      '| File | Size |', '| --- | --- |', '| main.css | 120 kB |',
+      '',
+      '| # | Question |', '| --- | --- |', '| 1 | Continue? |', '| 4 | Delete production? |',
+    ].join('\n'))
+    const panels = [...r.host.querySelectorAll<HTMLElement>('.q-table')]
+    // The table that asks nothing has no rank: the second decision table is the second.
+    expect(panels.map(p => p.dataset.t)).toEqual(['1', '2'])
+    expect(panels.map(p => p.querySelector<HTMLElement>('.q-all')!.dataset.n)).toEqual(['1-2', '1,4'])
+    expect(replyTargets(r.html).rows.map(x => [x.table, x.n, x.all!.n])).toEqual([[1, '1', '1-2'], [1, '2', '1-2'], [2, '1', '1,4'], [2, '4', '1,4']])
   })
 
   it('offers Reply alone on a row that asks an open question', () => {

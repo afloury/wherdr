@@ -50,7 +50,7 @@ function load(paneId: string): Draft {
       // A draft saved while "Replying to the message" was a box above the
       // field: the message it named is now a reference in the text.
       const reply = d.reply && typeof d.reply.time === 'string' && typeof d.reply.excerpt === 'string'
-        ? refLine({ kind: 'message', label: '', time: d.reply.time || null, n: null, excerpt: d.reply.excerpt.replace(/\s+/g, ' ').trim() })
+        ? refLine({ kind: 'message', label: '', time: d.reply.time || null, n: null, id: null, excerpt: d.reply.excerpt.replace(/\s+/g, ' ').trim() })
         : ''
       return {
         text: [reply, d.text || ''].filter(Boolean).join('\n'),

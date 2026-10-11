@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { COORDINATOR_PANE, OMP_CHAT_PANE, OMP_FOLLOWUP_PANE, OMP_OLD_TABLE_PANE, OMP_QUESTIONS_PANE } from './scenario.mjs'
-import { decision, decisions, draftOf, expectDraft, message, point } from './refs'
+import { codesOf, decision, decisions, draftOf, expectDraft, message, point } from './refs'
 
 // One syntax for everything a message refers to (shared/reference.ts): a
 // "↳ <type> <reference> : <excerpt> —" line, the answer below. The field draws
@@ -53,11 +53,18 @@ test('an answer to an older decision table names its message and its row', async
   // The time written is the one of the table's message, earlier than the last one.
   const times = [...(await field.inputValue()).matchAll(/^↳ Quote \w+ (\d\d:\d\d)/gm)].map(m => m[1])
   expect(new Set(times).size).toBe(1)
+  // And so is the code: the table and its row are of one message.
+  const codes = await codesOf(field)
+  expect(codes).toHaveLength(2)
+  expect(codes[1]).toBe(codes[0])
 
   // The last question, answered in the same message, names its own message.
   await chat.locator('.q-yes[data-q="Shall I delete the old staging database?"]').click()
   await expectDraft(field, `${ALL}\nOK to all\n${decision('2', OLD[1]!)}\nNo\n${point('Shall I delete the old staging database?')}\nYes\n`)
   await expect(tokens).toHaveCount(3)
+  // Another message: another code, whatever the minute both were written in.
+  const three = await codesOf(field)
+  expect(three[2]).not.toBe(three[0])
   expect(await page.locator('.chat-list').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
   await shot(page, 'ref-several', testInfo.project.name)
   await field.fill('')

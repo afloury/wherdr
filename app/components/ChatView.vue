@@ -11,13 +11,13 @@ import { canCancelQueued, lostPhotosText, restoreDraft } from '~/utils/queuedCan
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
-import { addAnswer, addQuote, answerOf, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
+import { addAnswer, addQuote, answerOf, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 import { isStale, noMisses, onError, onUnavailable, type ChatMisses } from '~/utils/chatMiss'
 import { findReplyOrigin, parseReply, type ReplyTarget } from '#shared/replyQuote'
-import { messageRef, pointRef, type Reference } from '#shared/reference'
+import { messageId, messageOf, messageRef, pointRef, type Reference } from '#shared/reference'
 import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
 import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } from '~/utils/ompTool'
 import { duplicateImages } from '#shared/imageDupes'
@@ -286,7 +286,8 @@ type Block =
   | { k: 'day', key: string, label: string }
   | { k: 'who', key: string }
   | { k: 'user', key: string, text: string, pasted?: string[], srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null }
-  | { k: 'assistant', key: string, id: string, text: string, html: string, time: string | null, endsTurn: boolean }
+  // `rid`: its code in the references to it (shared/reference.ts messageId).
+  | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, endsTurn: boolean }
   | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
   | { k: 'system', key: string, text: string }
@@ -355,7 +356,7 @@ const blocks = computed<Block[]>(() => {
   // Last reply of a turn: copyable from the end-of-turn line.
   let lastReply: string | null = null
   let lastReplyBlock: (Block & { k: 'assistant' }) | null = null
-  const replies: { key: string, time: string | null, text: string }[] = []
+  const replies: { key: string, time: string | null, text: string, rid: string }[] = []
   const closeTurn = () => {
     if (turn && turn.end && turn.start && (turn.tools || turn.replies)) {
       const s = Math.max(0, Math.round((Date.parse(turn.end) - Date.parse(turn.start)) / 1000))
@@ -418,9 +419,9 @@ const blocks = computed<Block[]>(() => {
     } else if (it.role === 'assistant') {
       lastReply = it.text
       const time = it.ts ? fmtTime(it.ts) : null
-      lastReplyBlock = { k: 'assistant', key, id: replyId(it), text: it.text, html: withQuestions(md(it.text), { reply: t('Reply'), quoted: t('Quoted'), discuss: t('Discuss'), yes: t('Yes'), no: t('No'), okAll: t('OK to all'), decisions: t('Decisions') }), time, endsTurn: false }
+      lastReplyBlock = { k: 'assistant', key, id: replyId(it), rid: messageId(it), text: it.text, html: withQuestions(md(it.text), { reply: t('Reply'), quoted: t('Quoted'), discuss: t('Discuss'), yes: t('Yes'), no: t('No'), okAll: t('OK to all'), decisions: t('Decisions') }), time, endsTurn: false }
       out.push(lastReplyBlock)
-      replies.push({ key, time, text: it.text })
+      replies.push({ key, time, text: it.text, rid: lastReplyBlock.rid })
     } else if (it.role === 'thinking') {
       out.push({ k: 'thinking', key, id: replyId(it), text: it.text, html: md(it.text), ms: it.ms })
     } else if (it.role === 'job' && it.job) {
@@ -473,25 +474,26 @@ function setOpen(key: string, v: boolean) {
 // question (utils/questionReply.ts): several references, each with its answer
 // (shared/reference.ts).
 const msgEl = (key: string) => [...(listEl.value?.querySelectorAll<HTMLElement>('[data-hit-key]') || [])].find(el => el.dataset.hitKey === key) || null
-// Time shown on the agent message an element sits in: what a reference names.
-const timeAt = (el: Element | null) => {
+// The agent message an element sits in, as a reference names it: the time
+// shown on it, and its code.
+const sourceAt = (el: Element | null) => {
   const key = el?.closest<HTMLElement>('[data-hit-key]')?.dataset.hitKey
   const b = key ? blocks.value.find(x => x.key === key) : null
-  return b && b.k === 'assistant' ? b.time : null
+  return b && b.k === 'assistant' ? { time: b.time, id: b.rid } : { time: null, id: null }
 }
 // What a button of a reply refers to: a row of a decision table, the whole
 // table ("OK to all"), or a question or point.
 function refOf(el: HTMLElement): Reference | null {
-  const time = timeAt(el)
-  if (el.classList.contains('q-all')) return tableRef({ n: el.dataset.n || '', text: el.dataset.q || '' }, time)
+  const { time, id } = sourceAt(el)
+  if (el.classList.contains('q-all')) return tableRef({ n: el.dataset.n || '', text: el.dataset.q || '' }, time, id, tableRank(el))
   const row = el.closest<HTMLElement>('.q-trow')
-  if (row) return rowRef(rowOf(row), time)
-  return el.dataset.q ? pointRef(el.dataset.q, time) : null
+  if (row) return rowRef(rowOf(row), time, id)
+  return el.dataset.q ? pointRef(el.dataset.q, time, id) : null
 }
 function replyTo(key: string) {
   const b = blocks.value.find(x => x.key === key)
   if (!b || b.k !== 'assistant') return
-  quote(messageRef(b.text, b.time))
+  quote(messageRef(b.text, b.time, b.rid))
 }
 function quote(ref: Reference | null) {
   const draft = useDraft(props.pane.id)
@@ -584,7 +586,7 @@ function onPointClick(e: MouseEvent, target: HTMLElement) {
 }
 onUnmounted(() => clearTimeout(pointTimer))
 watch([() => useDraft(props.pane.id).text, blocks], () => nextTick(syncQuoted), { flush: 'post' })
-const selReply = ref<{ text: string, time: string | null, sig: string, top: number, left: number } | null>(null)
+const selReply = ref<{ text: string, time: string | null, id: string | null, sig: string, top: number, left: number } | null>(null)
 const selBtn = ref<HTMLElement | null>(null)
 const isTouch = () => window.matchMedia('(pointer: coarse)').matches
 // Current selection in an agent message: text, end (last line) and signature.
@@ -606,7 +608,7 @@ function showSelectionReply() {
   if (!cur || !listEl.value) { selReply.value = null; return }
   const view = listEl.value.getBoundingClientRect()
   const pos = selectionReplyPos(cur.end, { width: selBtn.value?.offsetWidth || 104, height: selBtn.value?.offsetHeight || 32 }, { width: window.innerWidth, top: Math.max(0, view.top), bottom: Math.min(window.innerHeight, view.bottom) }, isTouch())
-  selReply.value = pos ? { text: cur.text, time: timeAt(cur.host), sig: cur.sig, ...pos } : null
+  selReply.value = pos ? { text: cur.text, ...sourceAt(cur.host), sig: cur.sig, ...pos } : null
 }
 const settler = createSelectionSettler({ show: showSelectionReply, hide: () => { selReply.value = null }, touch: isTouch })
 const onSelDown = (e: PointerEvent) => { if (e.button === 0 && !(e.target as Element | null)?.closest?.('.sel-reply')) settler.down() }
@@ -635,8 +637,8 @@ onUnmounted(() => {
 provide('gotoRef', (ref: Reference, el: HTMLElement) => {
   const key = el.closest<HTMLElement>('[data-hit-key]')?.dataset.hitKey
   const at = key ? blocks.value.findIndex(b => b.key === key) : -1
-  const replies = (at < 0 ? blocks.value : blocks.value.slice(0, at)).flatMap(b => (b.k === 'assistant' ? [{ key: b.key, time: b.time, text: b.text }] : []))
-  gotoOrigin(findReplyOrigin(replies, { time: ref.time || '', excerpt: ref.excerpt })?.key || null)
+  const replies = (at < 0 ? blocks.value : blocks.value.slice(0, at)).flatMap(b => (b.k === 'assistant' ? [{ key: b.key, time: b.time, text: b.text, rid: b.rid }] : []))
+  gotoOrigin(findReplyOrigin(replies, { time: ref.time || '', excerpt: ref.excerpt, id: ref.id && messageOf(ref.id) })?.key || null)
 })
 // Quote tapped: scrolls to the original message and highlights it.
 function gotoOrigin(key: string | null) {
@@ -1093,10 +1095,10 @@ const asked = computed(() => {
   const last = blocks.value.findLast(b => b.k === 'assistant' || b.k === 'user' || b.k === 'shell' || b.k === 'ompRun')
   if (!last || last.k !== 'assistant' || typingAt(last.id) !== null) return null
   const targets = replyTargets(last.html)
-  return targets.questions.length + targets.rows.length ? { key: last.key, time: last.time, targets } : null
+  return targets.questions.length + targets.rows.length ? { key: last.key, time: last.time, rid: last.rid, targets } : null
 })
 const unanswered = computed(() => {
-  const count = asked.value ? unansweredCount(asked.value.targets, draftText.value, asked.value.time) : 0
+  const count = asked.value ? unansweredCount(asked.value.targets, draftText.value, asked.value.time, asked.value.rid) : 0
   return asked.value && count ? { key: asked.value.key, count } : null
 })
 watch(() => unanswered.value?.count || 0, n => emit('unanswered', n), { immediate: true })
@@ -1105,8 +1107,9 @@ onUnmounted(() => emit('unanswered', 0))
 function gotoUnanswered() {
   const msg = unanswered.value ? msgEl(unanswered.value.key) : null
   const text = draftText.value
+  const src = sourceAt(msg)
   const el = [...(msg?.querySelectorAll<HTMLElement>('.q-reply, .q-trow') || [])].find(x => x.classList.contains('q-trow')
-    ? !rowSettled(text, rowOf(x), timeAt(x))
+    ? !rowSettled(text, rowOf(x), src.time, src.id)
     : !isQuoted(text, refOf(x)!))
   if (!el) return
   const lit = el.classList.contains('q-trow') ? [el] : [...wordsOf(el)]
@@ -1209,16 +1212,16 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                     <p class="q-bar-h">{{ tl('Questions · reply to', 'Questions · répondre à') }}</p>
                     <div v-for="q in replyTargets(b.html).questions" :key="q.n" class="q-line">
                       <button
-                        type="button" class="q-row" :class="{ quoted: isQuoted(draftText, pointRef(q.text, b.time)) }"
-                        :aria-label="`${t('Reply')}: ${q.text}`" @click="quote(pointRef(q.text, b.time))"
+                        type="button" class="q-row" :class="{ quoted: isQuoted(draftText, pointRef(q.text, b.time, b.rid)) }"
+                        :aria-label="`${t('Reply')}: ${q.text}`" @click="quote(pointRef(q.text, b.time, b.rid))"
                         @mouseenter="hotQuestion(b.key, q.n, true)" @mouseleave="hotQuestion(b.key, q.n, false)" @focus="hotQuestion(b.key, q.n, true)" @blur="hotQuestion(b.key, q.n, false)"
                       >
-                        <b>{{ isQuoted(draftText, pointRef(q.text, b.time)) ? '✓' : q.n }}</b><span>{{ q.text }}</span><i>↳<em> {{ isQuoted(draftText, pointRef(q.text, b.time)) ? t('Quoted') : t('Reply') }}</em></i>
+                        <b>{{ isQuoted(draftText, pointRef(q.text, b.time, b.rid)) ? '✓' : q.n }}</b><span>{{ q.text }}</span><i>↳<em> {{ isQuoted(draftText, pointRef(q.text, b.time, b.rid)) ? t('Quoted') : t('Reply') }}</em></i>
                       </button>
                       <template v-if="q.closed">
                         <button
-                          v-for="a in (['yes', 'no'] as const)" :key="a" type="button" class="q-row-ans" :aria-pressed="answered(pointRef(q.text, b.time), a)"
-                          :aria-label="`${answerWord(a)}: ${q.text}`" @click="answer(pointRef(q.text, b.time), a)"
+                          v-for="a in (['yes', 'no'] as const)" :key="a" type="button" class="q-row-ans" :aria-pressed="answered(pointRef(q.text, b.time, b.rid), a)"
+                          :aria-label="`${answerWord(a)}: ${q.text}`" @click="answer(pointRef(q.text, b.time, b.rid), a)"
                         >{{ answerWord(a) }}</button>
                       </template>
                     </div>
@@ -1358,7 +1361,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         <Teleport to="body">
           <button
             v-if="selReply" ref="selBtn" type="button" class="sel-reply" :style="{ top: `${selReply.top}px`, left: `${selReply.left}px` }"
-            :aria-label="t('Reply to this passage')" @pointerdown.prevent @mousedown.prevent @click="quote(pointRef(selReply.text, selReply.time))"
+            :aria-label="t('Reply to this passage')" @pointerdown.prevent @mousedown.prevent @click="quote(pointRef(selReply.text, selReply.time, selReply.id))"
           >
             <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
           </button>
