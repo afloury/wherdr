@@ -53,7 +53,8 @@ function select(anchor: number, head: number, via: ReviewSelection['via']) {
   return at
 }
 function comment(a: number, b: number, extend?: string) {
-  emit('add', props.scope, props.file.path, lines.value.slice(a, b + 1), extend)
+  const block = lines.value.slice(a, b + 1)
+  if (block.some(l => l.number !== null)) emit('add', props.scope, props.file.path, block, extend)
   emit('select', null)
 }
 
@@ -106,6 +107,8 @@ function down(e: PointerEvent, i: number) {
   window.addEventListener('keydown', abortKey, true)
 }
 onUnmounted(stopDrag)
+// Row indexes belong to the diff they were read in: a refresh ends the drag.
+watch(() => props.file, () => { if (drag) abort() })
 
 // Touch: a first tap chooses a line, the next one the other end of the block.
 // Tapping the only chosen line again lets go of it.

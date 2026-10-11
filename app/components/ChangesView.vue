@@ -26,6 +26,7 @@ function act(action: ReviewAction, id: string, text?: string) {
 // A comment on the block: the one already there if any, else a new one. With
 // `extend`, the block of that open comment changes instead.
 function add(scope: ReviewComment['scope'], path: string, block: ReviewLine[], extend?: string) {
+  if (!block.some(l => l.number !== null)) return
   const at = reviewBlock(block)
   let c = comments.value.find(c => extend ? c.id === extend : c.scope === scope && c.path === path && sameBlock(c, at))
   if (c && extend) Object.assign(c, at)

@@ -273,6 +273,38 @@ test('mouse and keyboard: Shift+click extends, a block stops at its hunk, Escape
   await expect(field(page)).toHaveValue('Please review these points:\n\nsrc/first.ts:11-12 (old line 8) — Keyboard review\n    -  return 1\n    +  const n = 2\n    +  return n')
 })
 
+test('a refresh arriving during a drag cancels it: no comment on rows that are gone', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'mouse drag')
+  await setup(page)
+  await openChanges(page)
+  const f = fileOf(page, 'src/first.ts')
+  await f.locator('summary').click()
+  let finish!: () => void
+  const held = new Promise<void>((resolve) => { finish = resolve })
+  let asked!: () => void
+  const request = new Promise<void>((resolve) => { asked = resolve })
+  await page.route('**/api/changes?**', async (r) => {
+    asked()
+    await held
+    await r.fulfill({ json: { ...data, working: { ...data.working, files: [{ ...first, lines: first.lines.slice(0, 2) }, second] } } })
+  })
+  const errors: string[] = []
+  page.on('pageerror', e => errors.push(e.message))
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
+  await page.getByRole('button', { name: 'Refresh changes' }).click()
+  await request
+  await gutter(f, '41').hover()
+  await page.mouse.down()
+  await expect(f.locator('.review-line.picked')).toHaveCount(1)
+  finish()
+  await expect(gutter(f, '41')).toHaveCount(0)
+  await expect(f.locator('.review-line.picked')).toHaveCount(0)
+  await page.mouse.up()
+  await page.waitForTimeout(200)
+  expect(errors).toEqual([])
+  await expect(page.locator('.review-note')).toHaveCount(0)
+})
+
 test('French review controls fit the phone and prepare a localized message', async ({ page, isMobile }, info) => {
   await page.addInitScript(() => localStorage.setItem('herdrLanguage', 'fr'))
   await setup(page)

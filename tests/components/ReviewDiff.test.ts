@@ -93,6 +93,16 @@ describe('ReviewDiff', () => {
     w.unmount()
   })
 
+  it('cancels a drag in progress when a refreshed file replaces its rows', async () => {
+    const w = await mount()
+    w.findAll('.review-gutter')[2]!.element.dispatchEvent(down())
+    await w.setProps({ file: { ...file, lines: file.lines.slice(0, 2) }, selection: null })
+    expect(last(w.emitted('select'))).toEqual([null])
+    window.dispatchEvent(new PointerEvent('pointerup'))
+    expect(w.emitted('add')).toBeUndefined()
+    w.unmount()
+  })
+
   it('extends the block of the open editor on Shift+click', async () => {
     const open: ReviewComment = { id: 'open', scope: 'working', path: 'src/app.ts', number: 10, side: 'new', text: ' keep', body: '', draft: '' }
     const w = await mount({ comments: [open] })
