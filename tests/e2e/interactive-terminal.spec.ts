@@ -84,7 +84,11 @@ test('switching to Terminal and back keeps one fitted terminal for the pane', as
 test('an inactive interactive window holds its pane beside another live terminal', async ({ page, isMobile }) => {
   test.skip(isMobile, 'side-by-side cells are a computer layout')
   await fakeHerdr('e2e.interaction_screen', { pane_id: SPLIT_CHAT_PANE, text: usage, agent: 'codex', status: 'idle' })
+  // The app is still starting on the first pane: a hash change sent now can be
+  // dropped, and the split tab never opens. Wait for that pane's window first.
+  await expect(page.locator('.interactive-terminal')).toBeVisible()
   await page.goto(`/#/t/${SPLIT_TAB}`)
+  await expect(page).toHaveURL(new RegExp(`#/t/${SPLIT_TAB}`))
   const chat = page.locator(`.cell-view[data-pane="${SPLIT_CHAT_PANE}"]`)
   const shell = page.locator(`.cell-view[data-pane="${SPLIT_SHELL_PANE}"]`)
   await expect(chat.locator('.interactive-terminal .xterm-rows')).toContainText('View analytics')
