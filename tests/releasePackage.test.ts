@@ -24,6 +24,7 @@ it('downloads a local release, verifies before extraction, and restores the prev
   const sha = createHash('sha256').update(data).digest('hex')
   let corrupt = false
   const server = http.createServer((req, res) => {
+    if (req.url?.startsWith('/npm/')) { res.writeHead(404); res.end('missing'); return }
     res.end(req.url?.endsWith('.sha256') ? `${corrupt ? '0'.repeat(64) : sha}  wherdr-1.3.3.tgz\n` : data)
   })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -48,6 +49,7 @@ it('downloads a local release, verifies before extraction, and restores the prev
     const script = readFileSync('scripts/herdr-plugin.sh', 'utf8')
     const fn = script.slice(script.indexOf('fetch_prebuilt()'), script.indexOf('# qrcode-terminal'))
       .replace('https://github.com/$SOURCE/releases/download', base)
+      .replaceAll('https://registry.npmjs.org', `${base}/npm`)
     const checkout = path.join(home, 'checkout')
     mkdirSync(path.join(checkout, 'bin/lib'), { recursive: true })
     cpSync('bin/lib/verify-release.mjs', path.join(checkout, 'bin/lib/verify-release.mjs'))
