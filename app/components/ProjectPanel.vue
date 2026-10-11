@@ -7,6 +7,8 @@ const unblockedByPane = new Map<string, Set<string>>()
 const reviewedByPane = new Map<string, Set<string>>()
 // "To do" / "In queue" moves sent (`kind|action|task`), until the task leaves that list.
 const movedByPane = new Map<string, Set<string>>()
+// Tab shown, per pane: kept when leaving the panel and coming back.
+const tabByPane = new Map<string, string>()
 </script>
 
 <script setup lang="ts">
@@ -33,6 +35,9 @@ const movedByPane = new Map<string, Set<string>>()
 // thread, opens a text sheet; "↳ Info pour t-NNNN : …" is sent to the coordinator,
 // which passes the text on to the thread.
 // The file is never written from here.
+// Tabs: "Tasks" (all of the above) and "Threads" (ProjectThreads.vue: every
+// thread, its record and its actions). A new tab is one more entry in TABS
+// and one more block under the tab bar.
 // `side`: column to the right of the conversation (computer), collapsible.
 import type { Pane, QueuedMessage } from '#shared/types'
 import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, type TaskBadge, boardSections, visibleSections, decisionPrefix, detailPrefix, infoMessage, launchMessage, missingLists, moveMessage, type MoveAction, problemPrefix, queueStatus, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, textParts, unblockMessage } from '#shared/projectBoard'
@@ -43,6 +48,32 @@ const props = defineProps<{ paneId: string, board: ProjectBoard | null, loading:
 const emit = defineEmits<{ reload: [], collapse: [], sent: [queued: QueuedMessage | null], prefill: [prefix: string] }>()
 
 const DONE_SHOWN = 20
+
+// ------------------------------------------------------------ tabs
+type PanelTab = 'tasks' | 'threads'
+const TABS: { key: PanelTab, label: string, icon: string }[] = [
+  { key: 'tasks', label: tl('Tasks', 'Tâches'), icon: 'i-lucide-list-checks' },
+  { key: 'threads', label: 'Threads', icon: 'i-lucide-git-branch' },
+]
+const saved = tabByPane.get(props.paneId)
+const tab = ref<PanelTab>(TABS.some(x => x.key === saved) ? saved as PanelTab : 'tasks')
+function setTab(key: PanelTab) {
+  if (tab.value === key) return
+  tab.value = key
+  tabByPane.set(props.paneId, key)
+  haptic()
+}
+// Arrow keys move between tabs, as in any tab list.
+function onTabKey(e: KeyboardEvent) {
+  const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+  if (!step) return
+  e.preventDefault()
+  const next = TABS[(TABS.findIndex(x => x.key === tab.value) + step + TABS.length) % TABS.length]!
+  const bar = e.currentTarget as HTMLElement
+  setTab(next.key)
+  nextTick(() => bar.querySelector<HTMLElement>('.pp-tab.on')?.focus())
+}
+const tabCount = (key: PanelTab) => (key === 'threads' && props.board ? props.board.open.length : null)
 
 const sections = computed<BoardSection[]>(() => (props.board ? visibleSections(boardSections(props.board, { doing: t('In progress'), done: tl('Done', 'Fait') }), projectHideEmpty.value) : []))
 
@@ -385,16 +416,26 @@ function hideHint() {
       </UTooltip>
     </header>
 
-    <div class="pp-scroll">
+    <div v-if="board" class="pp-tabs" role="tablist" :aria-label="tl('Project sections', 'Sections du projet')" @keydown="onTabKey">
+      <button
+        v-for="x in TABS" :id="`pp-tab-${x.key}`" :key="x.key" type="button" role="tab" class="pp-tab" :class="{ on: tab === x.key }"
+        :aria-selected="tab === x.key" :tabindex="tab === x.key ? 0 : -1" @click="setTab(x.key)"
+      >
+        <UIcon :name="x.icon" /><span>{{ x.label }}</span><span v-if="tabCount(x.key) !== null" class="pp-tab-n">{{ tabCount(x.key) }}</span>
+      </button>
+    </div>
+
+    <div class="pp-scroll" role="tabpanel" :aria-labelledby="board ? `pp-tab-${tab}` : undefined">
       <p v-if="error && !board" class="pp-notice error" role="alert">{{ error }}</p>
       <p v-if="!board && loading" class="pp-notice"><span class="spinner" /> {{ t('Reading the project…') }}</p>
-      <template v-if="board">
+      <p v-if="board?.threadsError" class="pp-notice error">{{ t('Threads unavailable') }} · <code>{{ board.threadsError }}</code></p>
+      <ProjectThreads v-if="board && tab === 'threads'" :pane-id="paneId" :board="board" @reload="emit('reload')" @report="openReport" @agent="openThread" />
+      <template v-else-if="board">
         <p v-if="board.tasksMissing" class="pp-notice">{{ t('No TASKS.md in this project yet.') }}</p>
         <p v-if="missing.length && !hintOff" class="pp-hint">
           <span>{{ hintText }} <NuxtLink to="/settings?section=plugins">{{ tl('See the convention', 'Voir la convention') }}</NuxtLink></span>
           <button type="button" class="pp-hint-x" :aria-label="tl('Hide the suggestion', 'Masquer la suggestion')" @click="hideHint"><UIcon name="i-lucide-x" /></button>
         </p>
-        <p v-if="board.threadsError" class="pp-notice error">{{ t('Threads unavailable') }} · <code>{{ board.threadsError }}</code></p>
 
         <section v-for="s in sections" :key="s.key" class="pp-sec" :class="[s.kind, { folded: !isOpen(s) }]">
           <button type="button" class="pp-sec-head" :aria-expanded="isOpen(s)" @click="toggle(s)">

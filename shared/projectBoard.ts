@@ -36,6 +36,8 @@ export interface ProjectThread {
   created: string
   agentName: string | null // nom du pane (hp-<slug>-t-NNNN)
   machine: string // nom de la machine chez herdr-projects (vide : la sienne)
+  profile: string // agent profile the thread runs with (claude, codex…)
+  stateLine: string // herdr-projects' own summary ("needs you · ~55%")
   activity: string
   percent: number | null
   pr: string
@@ -219,6 +221,8 @@ export function normalizeThreads(raw: unknown): ProjectThread[] {
       created: str(r.created),
       agentName: str(r.agent_name) || null,
       machine: str(r.machine),
+      profile: str(r.profile) || str(r.agent),
+      stateLine: str(r.state_line).trim(),
       activity: str(r.activity).trim(),
       percent: typeof r.percent === 'number' && Number.isFinite(r.percent) ? Math.max(0, Math.min(100, Math.round(r.percent))) : null,
       pr: /^https:\/\//.test(str(r.pr)) ? str(r.pr) : '',

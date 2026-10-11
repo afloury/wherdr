@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// Confirmation of an action (close a pane, disable the lock, install…).
+// Confirmation of an action (close a pane, disable the lock, install…),
+// shown above any window it is asked from.
 const open = computed({
   get: () => confirmState.open,
   set: (v) => { if (!v) answerConfirm(false) },
@@ -7,7 +8,7 @@ const open = computed({
 </script>
 
 <template>
-  <AppSheet v-model:open="open">
+  <AppSheet v-model:open="open" top>
     <div class="confirm">
       <p style="white-space: pre-line">{{ confirmState.message }}</p>
       <pre v-if="confirmState.code" class="confirm-code">{{ confirmState.code }}</pre>

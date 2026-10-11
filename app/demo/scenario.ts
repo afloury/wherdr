@@ -3,6 +3,7 @@
 // English, with no real path, machine, person or conversation.
 import type { ChangesResponse, ChatItem, ModelInfo, OmpToolView, Pane, Quotas, SlashCommand, Tab, Workspace } from '#shared/types'
 import type { ProjectBoard } from '#shared/projectBoard'
+import type { ThreadDetail } from '#shared/projectThreads'
 
 export const HOME = '/Users/demo'
 export const PROJECT = 'acme-api'
@@ -289,12 +290,34 @@ export function board(now: number, threads: { codex: string, omp: string }): Pro
       ] },
     ],
     open: [
-      { id: 't-0013', title: 'Fix the flaky CSV export test', group: group(threads.omp), token: token(threads.omp), rank: rank(threads.omp), resolved: false, updated: iso(1), created: iso(25), agentName: 'hp-acme-api-t-0013', machine: '', activity: threads.omp === 'blocked' ? 'Waiting for approval' : 'Reporting', percent: threads.omp === 'blocked' ? 70 : 100, pr: '', report: threads.omp !== 'blocked' },
-      { id: 't-0012', title: 'Per-key rate limits on the public API', group: group(threads.codex), token: token(threads.codex), rank: rank(threads.codex), resolved: false, updated: iso(2), created: iso(30), agentName: 'hp-acme-api-t-0012', machine: '', activity: threads.codex === 'working' ? 'Writing tests' : 'Done', percent: threads.codex === 'working' ? 75 : 100, pr: '', report: threads.codex !== 'working' },
+      { id: 't-0013', title: 'Fix the flaky CSV export test', group: group(threads.omp), token: token(threads.omp), rank: rank(threads.omp), resolved: false, updated: iso(1), created: iso(25), agentName: 'hp-acme-api-t-0013', machine: '', profile: 'omp', stateLine: threads.omp === 'blocked' ? 'needs you · ~70%' : 'review · report', activity: threads.omp === 'blocked' ? 'Waiting for approval' : 'Reporting', percent: threads.omp === 'blocked' ? 70 : 100, pr: '', report: threads.omp !== 'blocked' },
+      { id: 't-0012', title: 'Per-key rate limits on the public API', group: group(threads.codex), token: token(threads.codex), rank: rank(threads.codex), resolved: false, updated: iso(2), created: iso(30), agentName: 'hp-acme-api-t-0012', machine: '', profile: 'codex', stateLine: threads.codex === 'working' ? 'working · ~75%' : 'review · report', activity: threads.codex === 'working' ? 'Writing tests' : 'Done', percent: threads.codex === 'working' ? 75 : 100, pr: '', report: threads.codex !== 'working' },
     ],
     resolved: [
-      { id: 't-0010', title: 'Webhook retries with exponential backoff', group: 'Resolved', token: 'resolved', rank: 6, resolved: true, updated: iso(90), created: iso(180), agentName: null, machine: '', activity: '', percent: 100, pr: '', report: true },
+      { id: 't-0010', title: 'Webhook retries with exponential backoff', group: 'Resolved', token: 'resolved', rank: 6, resolved: true, updated: iso(90), created: iso(180), agentName: null, machine: '', profile: 'claude', stateLine: 'review · report', activity: '', percent: 100, pr: '', report: true },
+      { id: 't-0009', title: 'Paginate the invoices endpoint', group: 'Resolved', token: 'resolved', rank: 6, resolved: true, updated: iso(60 * 26), created: iso(60 * 30), agentName: null, machine: '', profile: 'codex', stateLine: 'review · report', activity: '', percent: 100, pr: 'https://github.com/owner/repo/pull/12', report: false },
+      { id: 't-0008', title: 'Dead-letter list in the dashboard', group: 'Resolved', token: 'resolved', rank: 6, resolved: true, updated: iso(60 * 50), created: iso(60 * 54), agentName: null, machine: '', profile: 'omp', stateLine: 'review · report', activity: '', percent: 100, pr: '', report: false },
     ],
+  }
+}
+
+// One thread's record (Project panel › Threads), as `thread show --json` gives it.
+const NEXT: Record<string, string[]> = {
+  't-0012': ['Merge the branch', 'Add a Redis store before running several instances'],
+  't-0013': ['Merge the branch'],
+}
+export function threadDetail(b: ProjectBoard, id: string, acked: boolean): ThreadDetail | null {
+  const th = [...b.open, ...b.resolved].find(x => x.id === id)
+  if (!th) return null
+  const slug = th.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
+  return {
+    ...th,
+    note: th.resolved ? 'manual' : th.token === 'working' ? 'working' : th.token === 'waiting-on-you' ? 'needs you' : 'done',
+    error: '', kind: 'worktree', agent: th.profile,
+    branch: `hp/${PROJECT}/${th.id}-${slug}`, base: 'origin/main',
+    prState: th.pr ? 'merged' : '', prReview: th.pr ? 'approved' : '',
+    next: th.report && !th.resolved ? NEXT[th.id] || [] : [],
+    acked: th.resolved || acked, hasPane: !th.resolved, keptWorktree: false, resolvedReason: th.resolved ? 'manual' : '',
   }
 }
 

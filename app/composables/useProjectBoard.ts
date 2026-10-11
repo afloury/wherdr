@@ -6,6 +6,7 @@
 // Nothing shows without herdr-projects on the machine (`available: false`).
 import type { Pane } from '#shared/types'
 import type { ProjectBoard } from '#shared/projectBoard'
+import type { ThreadAction, ThreadDetail } from '#shared/projectThreads'
 import { isCoordinator, projectOf } from '#shared/projects'
 
 type Reply = ProjectBoard | { same: true, version: string } | { available: false }
@@ -142,4 +143,14 @@ export function useProjectBoard(paneId: () => string, visible: () => boolean) {
 // Report of a thread (Markdown), read on demand.
 export function fetchThreadReport(paneId: string, id: string) {
   return api<{ id: string, text: string, truncated: boolean }>(`/api/project/report?pane=${encodeURIComponent(paneId)}&id=${encodeURIComponent(id)}`)
+}
+
+// One thread's record and Next list (`herdr-projects thread show`), read on demand.
+export function fetchThreadDetail(paneId: string, id: string) {
+  return api<{ thread: ThreadDetail }>(`/api/project/thread?pane=${encodeURIComponent(paneId)}&id=${encodeURIComponent(id)}`)
+}
+
+// An action on a thread, run by herdr-projects on the coordinator's machine.
+export function runThreadAction(paneId: string, id: string, action: ThreadAction) {
+  return api<{ output: string }>('/api/project/thread', { pane_id: paneId, id, action })
 }

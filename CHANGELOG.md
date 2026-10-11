@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Project panel › Threads tab**: every thread of a herdr-projects project, as `herdr-projects
+  thread list` gives it. Open threads sit under their group (Your turn, Ready for review,
+  Working…) with machine and profile; resolved ones stay in their own folded section, by pages of
+  30. One filter covers both (ID, title, machine, profile). A tap opens the thread's record
+  (`thread show`): state, Next list, branch, dates, and its actions, run by herdr-projects on
+  the coordinator's machine: **Acknowledge**, **Restart**, **Stop** and **Resolve** (the last two
+  ask first), plus Open agent, View report and Pull request. The panel now has tabs (Tasks,
+  Threads). Nothing changes without herdr-projects.
 - **Inline diff review**: comment on lines in Changes, edit or delete remarks, and keep a
   device-local draft per agent. Missing lines are flagged after refresh. Send review appends
   grouped file/line remarks to the message draft without sending it or replacing existing text.
@@ -78,6 +86,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- A confirmation asked from an open window (a sheet on the phone) showed behind it; it now
+  sits above every window.
 - **Pasted text cards on every device**: a message with typed words and a text pasted into the
   field showed its card only on the device that sent it; elsewhere it was one long folded message.
   The server now remembers which parts were pasted (`pastes.json` in its data folder, the last 100
