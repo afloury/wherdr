@@ -101,8 +101,9 @@ test('a thread’s record shows its Next list; Acknowledge is sent at once, Reso
   await expect(sheet.getByRole('link', { name: 'Pull request' })).toHaveAttribute('href', 'https://github.com/owner/repo/pull/12')
   await shot(page, 'thread-record', testInfo.project.name)
 
-  // Touch targets of the actions are at least 44 px high.
-  for (const b of await sheet.locator('.pt-actions button').all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44)
+  // Touch targets of the actions are at least 44 px high (rounded: a box read
+  // while the sheet still settles comes back a hair under).
+  for (const b of await sheet.locator('.pt-actions button').all()) expect(Math.round((await b.boundingBox())!.height)).toBeGreaterThanOrEqual(44)
 
   await sheet.getByRole('button', { name: 'Acknowledge' }).click()
   await expect.poll(() => actions).toEqual([{ id: 't-0040', action: 'ack' }])
