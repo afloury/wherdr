@@ -73,6 +73,9 @@ const detailError = ref('')
 // What herdr-projects printed for the last action on this thread.
 const output = ref('')
 let seq = 0
+// False once the tab is left: an action still running then updates nothing here.
+let alive = true
+onUnmounted(() => { alive = false })
 async function loadDetail() {
   const th = current.value
   if (!th) return
@@ -96,6 +99,14 @@ function openDetail(th: ProjectThread) {
   detailOpen.value = true
   loadDetail()
 }
+// The thread of an open record changed on the board (its agent stopped, asks
+// a question, was resolved elsewhere): the record and its actions are read again.
+const boardRow = computed(() => {
+  const id = detailOpen.value ? current.value?.id : undefined
+  const th = id ? props.board.open.find(x => x.id === id) || props.board.resolved.find(x => x.id === id) : undefined
+  return th ? `${th.token}|${th.updated}|${th.stateLine}|${th.report}|${th.pr}` : ''
+})
+watch(boardRow, (now, before) => { if (now && before) loadDetail() })
 // The row's data until the record arrives, then the record.
 const shown = computed<ProjectThread | null>(() => detail.value || current.value)
 const shownPane = computed(() => (shown.value ? paneOf(shown.value) : undefined))
@@ -146,14 +157,21 @@ async function run(action: ThreadAction) {
   const key = runKey(th.id)
   if (runningByThread.has(key)) return
   runningByThread.set(key, action)
+  // The record may be closed, or show another thread, when the answer comes:
+  // what herdr-projects printed belongs to the thread it was run on.
+  const stillShown = () => alive && current.value?.id === th.id
   try {
     const r = await runThreadAction(props.paneId, th.id, action)
-    output.value = r.output
+    if (stillShown()) output.value = r.output
     toast(lastLine(r.output) || tl(`${LABELS[action].label}: done`, `${LABELS[action].label} : fait`))
-    emit('reload')
-    await loadDetail()
   } catch (e) { toast((e as Error).message, true) }
-  finally { runningByThread.delete(key) }
+  finally {
+    runningByThread.delete(key)
+    // Failed or not, the thread may have changed (a command that timed out
+    // here may still finish): the board and the record are read again.
+    emit('reload')
+    if (stillShown()) loadDetail()
+  }
 }
 function openAgent() {
   if (!shown.value) return

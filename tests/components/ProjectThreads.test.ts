@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, shallowRef } from 'vue'
 import { flushPromises } from '@vue/test-utils'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
-import { getQuery, readBody } from 'h3'
+import { getQuery, readBody, setResponseStatus } from 'h3'
 import { UApp } from '#components'
 import ProjectPanel from '~/components/ProjectPanel.vue'
 import { answerConfirm, confirmState } from '~/composables/useUi'
@@ -38,10 +38,15 @@ registerEndpoint('/api/project/thread', { method: 'GET', handler: (event) => {
 } })
 // A request held open stands for an action still running on the server.
 let hold: Promise<void> | null = null
+let fail = false
 registerEndpoint('/api/project/thread', { method: 'POST', handler: async (event) => {
   const body = await readBody(event)
   posted.push(body)
   if (hold) await hold
+  if (fail) {
+    setResponseStatus(event, 400)
+    return { error: 'timed out', code: 'thread_failed' }
+  }
   return { output: `${body.id}: done` }
 } })
 
@@ -55,7 +60,7 @@ async function mountThreads() {
 const inBody = (sel: string) => [...document.body.querySelectorAll<HTMLElement>(sel)]
 
 describe('ProjectPanel › Threads tab', () => {
-  beforeEach(() => { asked.length = 0; posted.length = 0; hold = null; eventsOpen.value = true })
+  beforeEach(() => { asked.length = 0; posted.length = 0; hold = null; fail = false; eventsOpen.value = true })
 
   it('switches between the Tasks and Threads tabs', async () => {
     const Host = defineComponent({ render: () => h(UApp, null, () => h(ProjectPanel, { paneId: 'w9:p9', board, loading: false, error: '' })) })
@@ -164,6 +169,73 @@ describe('ProjectPanel › Threads tab', () => {
     await openRecord(1)
     await vi.waitFor(() => expect(last('.pt-act-resolve').disabled).toBe(false))
     expect(posted).toHaveLength(1)
+  })
+
+  // The three tests below: minor defects of the adversarial review (t-0315).
+  const last = (sel: string) => inBody(sel).at(-1) as HTMLButtonElement
+  async function openRecordOf(w: Awaited<ReturnType<typeof mountSuspended>>, title: string) {
+    const before = asked.length
+    await w.findAll('.pt-thread').find(x => x.text().includes(title))!.trigger('click')
+    await vi.waitFor(() => expect(asked.length).toBeGreaterThan(before))
+    await flushPromises()
+    await vi.waitFor(() => expect(inBody('.pt-spin').length).toBe(0))
+  }
+
+  it('shows what an action printed only in the record of its own thread', async () => {
+    let release = () => {}
+    hold = new Promise<void>((r) => { release = r })
+    const Host = defineComponent({ render: () => h(UApp, null, () => h(ProjectPanel, { paneId: 'w3:p1', board, loading: false, error: '' })) })
+    const w = await mountSuspended(Host)
+    await w.find('#pp-tab-threads').trigger('click')
+    await openRecordOf(w, 'CSV import')
+    last('.pt-act-ack').click()
+    await vi.waitFor(() => expect(posted).toHaveLength(1))
+    // Another thread's record is opened while the action runs.
+    await openRecordOf(w, 'Flaky export')
+    const reads = asked.length
+    release()
+    hold = null
+    await flushPromises()
+    await new Promise(r => setTimeout(r, 120))
+    expect(last('.pt-detail').closest('[role="dialog"]')!.textContent).toContain('T-0103')
+    expect(last('.pt-detail').querySelector('.pt-output')).toBeNull()
+    // The record shown is not read again for an action on another thread.
+    expect(asked.length).toBe(reads)
+  })
+
+  it('reads the board and the record again after a failed action', async () => {
+    const reloads: number[] = []
+    const Host = defineComponent({ render: () => h(UApp, null, () => h(ProjectPanel, { paneId: 'w4:p1', board, loading: false, error: '', onReload: () => reloads.push(1) })) })
+    const w = await mountSuspended(Host)
+    await w.find('#pp-tab-threads').trigger('click')
+    await openRecordOf(w, 'CSV import')
+    const reads = asked.length
+    fail = true
+    last('.pt-act-ack').click()
+    await vi.waitFor(() => expect(reloads).toHaveLength(1))
+    await vi.waitFor(() => expect(asked.length).toBe(reads + 1))
+    expect(asked.at(-1)).toBe('t-0102')
+    expect(last('.pt-detail').querySelector('.pt-output')).toBeNull()
+    await vi.waitFor(() => expect(last('.pt-act-ack').disabled).toBe(false))
+  })
+
+  it('reads an open record again when its thread changes on the board', async () => {
+    const live = shallowRef<ProjectBoard>({ ...board, version: 'a' })
+    const Host = defineComponent({ render: () => h(UApp, null, () => h(ProjectPanel, { paneId: 'w6:p1', board: live.value, loading: false, error: '' })) })
+    const w = await mountSuspended(Host)
+    await w.find('#pp-tab-threads').trigger('click')
+    await openRecordOf(w, 'Rate limits')
+    expect(inBody('.pt-act-stop').length).toBeGreaterThan(0)
+    const reads = asked.length
+    // Another thread changes: this record is left alone.
+    live.value = { ...board, version: 'b', open: board.open.map(t => (t.id === 't-0103' ? { ...t, updated: '2026-01-01T00:00:00Z' } : t)) }
+    await flushPromises()
+    await new Promise(r => setTimeout(r, 80))
+    expect(asked.length).toBe(reads)
+    // Its own thread stops working and asks a question: the record is read again.
+    live.value = { ...board, version: 'c', open: board.open.map(t => (t.id === 't-0101' ? { ...t, group: 'Waiting on you', token: 'waiting-on-you', rank: 1 } : t)) }
+    await vi.waitFor(() => expect(asked.length).toBe(reads + 1))
+    expect(asked.at(-1)).toBe('t-0101')
   })
 
   it('sends nothing offline', async () => {
