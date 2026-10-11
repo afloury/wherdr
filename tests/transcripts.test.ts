@@ -411,3 +411,19 @@ describe('Claude narration stored in a thinking block', () => {
     expect(narration).toBeLessThan(tool)
   })
 })
+
+
+describe('user paragraph spacing', () => {
+  const text = 'First paragraph.\n\nSecond paragraph.\n\n\nThird paragraph.'
+  const cases = [
+    ['claude', { type: 'user', message: { role: 'user', content: text } }],
+    ['claude', { type: 'user', message: { role: 'user', content: [{ type: 'text', text }] } }],
+    ['claude', { type: 'user', message: { role: 'user', content: `<pasted_content id="example">\n${text}\n</pasted_content id="example">` } }],
+    ['codex', { type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } }],
+    ['omp', { type: 'message', message: { role: 'user', content: [{ type: 'text', text }], attribution: 'user' } }],
+  ] as const
+
+  it.each(cases)('%s preserves every internal newline', (kind, line) => {
+    expect(parseLines(JSON.stringify(line), kind).find(i => i.role === 'user')?.text).toBe(text)
+  })
+})

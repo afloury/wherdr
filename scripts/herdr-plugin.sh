@@ -271,6 +271,12 @@ build_start() {
     [ "${WHERDR_INSTALLER:-0}" = 1 ] && quiet=1
     [ "$quiet" = 1 ] || tell ""
     [ "$quiet" = 1 ] || tell "✓ wherdr is running → $URL"
+    if [ "$quiet" != 1 ]; then
+      key="$(key_bound)"
+      if [ -n "$key" ]; then tell "  In Herdr, $key opens the wherdr panel."
+      else tell "  In Herdr: herdr plugin action invoke panel --plugin $PLUGIN_ID"
+      fi
+    fi
     if [ "${FIRST_INSTALL:-0}" = 1 ]; then
       # Already published on the tailnet (a reinstall, or `tailscale serve`
       # run first): the guide opens on that address, where passkeys belong.
@@ -279,7 +285,7 @@ build_start() {
       else [ "$quiet" = 1 ] || tell "  Setup guide: open $guide in a browser"
       fi
     fi
-    [ "$quiet" = 1 ] || tell "  Phone: open the wherdr panel in Herdr (key above, or herdr plugin action invoke panel --plugin $PLUGIN_ID)"
+    [ "$quiet" = 1 ] || tell "  Phone: press P in the panel to get your Tailscale address (private network only)."
   else
     tell ""
     tell "! wherdr is installed but did not start:"
