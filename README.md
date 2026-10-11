@@ -1109,7 +1109,7 @@ when the Claude configuration folder exists, and `~/.agents/skills/wherdr` only 
 | --- | --- |
 | npm / npx / Bun / pnpm | On `wherdr`, `wherdr run`, `wherdr start` or `wherdr service install`; after updating the package, the next start refreshes it. |
 | Homebrew | On `wherdr` startup, including the Homebrew service; restart the service after `brew upgrade`. |
-| One-tap update (npm, Homebrew, native plugin) | Restarting wherdr refreshes the skill from the newly installed package; a rollback restores the previous release's skill. |
+| One-tap update (npm, Homebrew, native plugin) | Restarting wherdr refreshes the skill from the newly installed package; rollback restores the previous copy when that package also bundles the skill. |
 | Herdr plugin, Node.js | On plugin installation / reinstallation, and on startup from its installed package. |
 | Herdr plugin, Docker (including the one-command installer) | On plugin installation and Update, extracted from the pulled image on the host. |
 | Docker by hand | Run the host-side command below after the initial pull and after each image update. |

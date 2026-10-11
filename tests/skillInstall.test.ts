@@ -146,3 +146,22 @@ for (const args of [['start'], ['service', 'install']]) {
     expect(readFileSync(path.join(f.home, '.agents/skills/wherdr/SKILL.md'), 'utf8')).toBe(readFileSync(f.source, 'utf8'))
   })
 }
+
+it.skipIf(process.platform !== 'linux')('keeps a custom Claude directory in the generated login service environment', () => {
+  const f = fixture('npm')
+  const claude = path.join(f.home, 'custom-claude')
+  mkdirSync(claude)
+  mkdirSync(path.join(f.root, '.output/server'), { recursive: true })
+  writeFileSync(path.join(f.root, '.output/server/index.mjs'), '')
+  // Write the unit but refuse activation, so no real service or server is started.
+  writeFileSync(path.join(f.home, 'tools/systemctl'), `#!/bin/sh
+case "$*" in '--user enable --now skill-test.service') exit 1 ;; esac
+exit 0
+`, { mode: 0o755 })
+  const result = spawnSync(process.execPath, [path.join(f.root, 'bin/wherdr.mjs'), 'service', 'install', '--port', '7699'], {
+    env: { ...f.env, CLAUDE_CONFIG_DIR: claude, WHERDR_SERVICE_NAME: 'skill-test', XDG_CONFIG_HOME: path.join(f.home, '.config') }, encoding: 'utf8', timeout: 10000,
+  })
+  expect(result.stderr).toContain('enable --now failed')
+  const unit = readFileSync(path.join(f.home, '.config/systemd/user/skill-test.service'), 'utf8')
+  expect(unit).toContain(`CLAUDE_CONFIG_DIR=${claude}`)
+})

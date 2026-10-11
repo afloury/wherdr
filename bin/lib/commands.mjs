@@ -410,7 +410,7 @@ export async function service(opts) {
   if (ctx.env.HERDR_WEB_SESSION) args.push('--session', ctx.env.HERDR_WEB_SESSION)
   const PATH = [...new Set([path.dirname(runtime), path.join(os.homedir(), '.local/bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'])].join(':')
   const env = { PATH, WHERDR_DIR: ctx.dir, WHERDR_RUNTIME: runtime }
-  for (const k of ['APP_URL', 'HERDR_BIN', 'HOST_LABEL']) if (process.env[k]) env[k] = process.env[k]
+  for (const k of ['APP_URL', 'HERDR_BIN', 'HOST_LABEL', 'CLAUDE_CONFIG_DIR']) if (process.env[k]) env[k] = process.env[k]
   const file = installService({ runtime, args, env, log: ctx.files.log })
   ok(`login service installed: ${file}`)
   say(c.dim(`    ${runtime} ${args.join(' ')}`))
