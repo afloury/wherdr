@@ -70,6 +70,24 @@ One line per memory file: \`- [title](memory/file.md): what it holds\`.
 - [Release again](memory/release.md): duplicate
 `
 
+// Found by the adversarial review (t-0315): `^\\s*…` with the `m` flag took
+// 16 s on a 32 KB front matter of blank lines, with the whole server waiting.
+describe('project settings: a hostile PROJECT.md', () => {
+  it('reads 32 KB of blank lines at once', () => {
+    const blank = `+++\n${'\n'.repeat(32 * 1024)}name = "Demo"\n${'\n'.repeat(1024)}max_parallel_threads = 4\n\n[[repos]]\n${' \n\t\n'.repeat(2048)}path = "/srv/a"\n+++\n`
+    const at = performance.now()
+    const s = parseProjectSettings(blank)!
+    const ms = performance.now() - at
+    expect([s.name, s.maxParallelThreads, s.repos]).toEqual(['Demo', 4, [{ path: '/srv/a', machine: '' }]])
+    expect(ms).toBeLessThan(500)
+  })
+
+  it('reads the same settings whatever the spaces around keys and tables', () => {
+    const s = parseProjectSettings('+++\n \tname =\t"Demo"\n  mute = true   # quiet\n\n  [[ repos ]]  \n  path = "/srv/a"\n+++\n')!
+    expect([s.name, s.mute, s.repos]).toEqual(['Demo', true, [{ path: '/srv/a', machine: '' }]])
+  })
+})
+
 describe('project memory', () => {
   it('reads the index lines that point into memory/', () => {
     expect(parseMemoryIndex(INDEX)).toEqual([

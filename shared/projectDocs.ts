@@ -28,17 +28,21 @@ export interface ProjectSettings {
 export type SettingKey = 'name' | 'goal' | 'coordinatorProfile' | 'threadProfile' | 'maxParallelThreads' | 'autoResolveDays' | 'nudge' | 'mute'
 
 const front = (md: string) => /^\+\+\+\r?\n([\s\S]*?)\r?\n\+\+\+/.exec(String(md || ''))?.[1] ?? null
+// Start of a TOML table: the plain keys before it end there.
+const TABLE = /^[ \t]*\[/m
 const cut = (s: string | undefined, max: number) => (s || '').replace(/\s+/g, ' ').trim().slice(0, max)
 
 // null: no front matter (not a herdr-projects PROJECT.md).
 export function parseProjectSettings(projectMd: string): ProjectSettings | null {
   const f = front(projectMd)
   if (f === null) return null
-  // Plain keys first, then the `[[repos]]` tables.
-  const parts = f.replace(/\r\n?/g, '\n').split(/^\s*\[\[\s*repos\s*\]\]\s*$/m)
-  const top = parts[0]!.split(/^\s*\[/m)[0]!
+  // Plain keys first, then the `[[repos]]` tables. Spaces are matched within a
+  // line only (`[ \t]`, never `\s`): with the `m` flag, `^\s*` walks every run
+  // of blank lines again from each of its lines, seconds for a 32 KB file.
+  const parts = f.replace(/\r\n?/g, '\n').split(/^[ \t]*\[\[[ \t]*repos[ \t]*\]\][ \t]*$/m)
+  const top = parts[0]!.split(TABLE)[0]!
   const strings = tomlStrings(top)
-  const raw = (key: string) => new RegExp(`^\\s*${key}\\s*=\\s*([^\\s#]+)\\s*(?:#.*)?$`, 'm').exec(top)?.[1]
+  const raw = (key: string) => new RegExp(`^[ \\t]*${key}[ \\t]*=[ \\t]*([^\\s#]+)[ \\t]*(?:#.*)?$`, 'm').exec(top)?.[1]
   const defaults: SettingKey[] = []
   const pick = <T>(key: SettingKey, value: T | undefined, fallback: T): T => {
     if (value !== undefined) return value
@@ -58,7 +62,7 @@ export function parseProjectSettings(projectMd: string): ProjectSettings | null 
     nudge: pick('nudge', bool('nudge'), true),
     mute: pick('mute', bool('mute'), false),
     repos: parts.slice(1, 51).map((p) => {
-      const t = tomlStrings(p.split(/^\s*\[/m)[0]!)
+      const t = tomlStrings(p.split(TABLE)[0]!)
       return { path: cut(t.path, 1024), machine: cut(t.machine, 120) }
     }).filter(r => r.path),
     defaults,
