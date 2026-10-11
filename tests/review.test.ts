@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampBlock, composeReview, freshReviews, hunkRange, locateReview, missingReviews, reviewBlock, reviewExcerpt, reviewLines, reviewSpan, reviewText, sameBlock, spanLabel, type ReviewComment } from '../shared/review'
+import { staleReview, clampBlock, composeReview, freshReviews, hunkRange, locateReview, missingReviews, reviewBlock, reviewExcerpt, reviewLines, reviewSpan, reviewText, sameBlock, spanLabel, type ReviewComment } from '../shared/review'
 import type { ChangeLine, ChangesResponse } from '../shared/types'
 const lines: ChangeLine[] = [
   { kind: 'meta', text: '+++ b/app.ts' },
@@ -13,7 +13,7 @@ const lines: ChangeLine[] = [
   { kind: 'add', text: '+last' },
 ]
 const comment = (extra: Partial<ReviewComment> = {}): ReviewComment => ({ id: 'one', scope: 'working', path: 'app.ts', number: 13, side: 'new', text: '+new', body: 'Check this', ...extra })
-const words = { intro: 'Review:', oldLine: 'old line', oldLines: 'old lines', missing: 'missing' }
+const words = { intro: 'Review:', oldLine: 'old line', oldLines: 'old lines', missing: 'missing', changed: 'changed' }
 const changes = (source = lines): ChangesResponse => ({ git: true, working: { count: 1, truncated: false, files: [{ path: 'app.ts', status: ' M', added: 3, deleted: 1, binary: false, truncated: false, lines: source }] } })
 describe('inline review', () => {
   it('numbers new and old lines across hunks, excluding metadata', () => {
@@ -21,7 +21,7 @@ describe('inline review', () => {
     expect(reviewLines([{ kind: 'add', text: '+no hunk' }])[0]?.number).toBeNull()
   })
   it('groups files and labels deleted and missing lines, one remark and its excerpt per comment', () => {
-    expect(composeReview([comment(), comment({ path: 'other.ts', number: 2 }), comment({ id: 'old', number: 9, side: 'old', text: '-old', body: 'Use\n another value' })], words, ['old']))
+    expect(composeReview([comment(), comment({ path: 'other.ts', number: 2 }), comment({ id: 'old', number: 9, side: 'old', text: '-old', body: 'Use\n another value' })], words, { old: 'gone' }))
       .toBe('Review:\n\napp.ts:13 — Check this\n    +new\napp.ts:9 (old line, missing) — Use another value\n    -old\n\nother.ts:2 — Check this\n    +new')
     expect(composeReview([comment({ body: '  ' })], words)).toBe('')
   })
@@ -78,6 +78,19 @@ describe('inline review', () => {
     const across = comment({ end: { number: 40, side: 'new', text: '+last' } })
     expect(locateReview(across, rows)).toBeNull()
     expect(missingReviews([block], changes(lines.filter(l => l.text !== '+extra')))).toEqual([block])
+  })
+  it('flags a block whose inner lines changed, and keeps the excerpt that was commented', () => {
+    const source: ChangeLine[] = [{ kind: 'hunk', text: '@@ -0,0 +1,3 @@' }, { kind: 'add', text: '+start()' }, { kind: 'add', text: '+dangerous()' }, { kind: 'add', text: '+end()' }]
+    const note = comment({ ...reviewBlock(reviewLines(source).slice(1)), body: 'Remove the dangerous call' })
+    const changed = changes(source.map(l => l.text === '+dangerous()' ? { ...l, text: '+safe()' } : l))
+    expect(locateReview(note, reviewLines(source))).toEqual([1, 3])
+    expect(missingReviews([note], changes(source))).toEqual([])
+    expect(missingReviews([note], changed)).toEqual([note])
+    expect([staleReview(note, changed), staleReview(note, changes()), staleReview(note, changes(source))]).toEqual(['changed', 'gone', null])
+    expect(composeReview(freshReviews([note], changed), words, { one: 'changed' }))
+      .toBe('Review:\n\napp.ts:1-3 (changed) — Remove the dangerous call\n    +start()\n    +dangerous()\n    +end()')
+    // A draft saved before blocks had a fingerprint is still found by its ends.
+    expect(missingReviews([{ ...note, hash: undefined }], changed)).toEqual([])
   })
   it('refreshes the numbers and excerpt of a located block before sending', () => {
     const rows = reviewLines(lines)

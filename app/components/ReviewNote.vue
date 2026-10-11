@@ -2,7 +2,7 @@
 // One review comment, shown as a thread under the last line of its block: the
 // editor while it is being written, the saved text with Edit and Delete after.
 import type { ReviewAction, ReviewComment } from '#shared/review'
-const props = defineProps<{ comment: ReviewComment, label: string, missing?: boolean }>()
+const props = defineProps<{ comment: ReviewComment, label: string, missing?: boolean, changed?: boolean }>()
 const emit = defineEmits<{ act: [action: ReviewAction, id: string, text?: string], hover: [id: string | null] }>()
 const editing = computed(() => props.comment.draft !== undefined)
 const text = computed(() => props.comment.draft ?? '')
@@ -47,7 +47,7 @@ function key(e: KeyboardEvent) {
       <span class="review-range">{{ label }}</span>
       <span v-if="missing" class="review-path">{{ comment.path }}</span>
     </div>
-    <p v-if="missing" class="review-warning" role="status">{{ t('No longer in the diff. Check this comment before sending.') }}</p>
+    <p v-if="missing" class="review-warning" role="status">{{ changed ? t('The code of this block changed. Check this comment before sending.') : t('No longer in the diff. Check this comment before sending.') }}</p>
     <template v-if="editing">
       <textarea
         :id="`review-${comment.id}`" :value="text" :placeholder="t('Write a review comment…')" :aria-label="`${label}: ${t('review comment')}`" rows="3"

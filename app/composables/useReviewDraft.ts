@@ -11,6 +11,7 @@ function valid(c: ReviewComment) {
     && (c.span === undefined || (typeof c.span === 'object' && c.span !== null && isRange(c.span.new) && isRange(c.span.old) && Boolean(c.span.new || c.span.old)))
     && (c.excerpt === undefined || (Array.isArray(c.excerpt) && c.excerpt.every(s => typeof s === 'string')))
     && (c.draft === undefined || typeof c.draft === 'string')
+    && (c.hash === undefined || typeof c.hash === 'string')
 }
 
 export function useReviewDraft(paneId: string) {

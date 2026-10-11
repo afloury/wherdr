@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import type { ChangeFile, ChangesResponse } from '#shared/types'
-import { commentSpan, composeReview, freshReviews, missingReviews, reviewBlock, reviewSpan, reviewText, sameBlock, spanLabel, type ReviewAction, type ReviewComment, type ReviewLine, type ReviewSelection } from '#shared/review'
+import { commentSpan, composeReview, freshReviews, missingReviews, reviewBlock, staleReview, reviewSpan, reviewText, sameBlock, spanLabel, type ReviewAction, type ReviewComment, type ReviewLine, type ReviewSelection } from '#shared/review'
 
 const props = defineProps<{ paneId: string }>()
 const emit = defineEmits<{ review: [text: string] }>()
 const comments = useReviewDraft(props.paneId)
 const missing = computed(() => changes.value ? missingReviews(comments.value, changes.value, includeCommits.value) : [])
+const stale = computed(() => Object.fromEntries(missing.value.map(c => [c.id, staleReview(c, changes.value!, includeCommits.value) ?? undefined])))
 // An editor still open counts with what it holds: Send review never drops written text.
 const countComments = computed(() => comments.value.filter(reviewText).length)
 const words = computed(() => ({ line: t('Line'), lines: t('Lines'), oldLine: t('old line'), oldLines: t('old lines') }))
@@ -40,7 +41,7 @@ function add(scope: ReviewComment['scope'], path: string, block: ReviewLine[], e
 }
 function sendReview() {
   const fresh = changes.value ? freshReviews(comments.value, changes.value) : comments.value
-  const text = composeReview(fresh, { intro: t('Please review these points:'), oldLine: t('old line'), oldLines: t('old lines'), missing: t('no longer in diff') }, missing.value.map(c => c.id))
+  const text = composeReview(fresh, { intro: t('Please review these points:'), oldLine: t('old line'), oldLines: t('old lines'), missing: t('no longer in diff'), changed: t('code changed since this comment') }, stale.value)
   if (!text) return
   emit('review', text)
   comments.value = []
@@ -101,7 +102,7 @@ function count(n: number | null, sign: string) { return n === null ? `${sign}—
         <UButton :disabled="!countComments" @click="sendReview">{{ t('Send review') }}</UButton>
         <p>{{ t('Adds to your message draft. You send it yourself.') }}</p>
       </div>
-      <ReviewNote v-for="note in missing" :key="note.id" :comment="note" :label="spanLabel(commentSpan(note), words)" missing @act="act" />
+      <ReviewNote v-for="note in missing" :key="note.id" :comment="note" :label="spanLabel(commentSpan(note), words)" missing :changed="stale[note.id] === 'changed'" @act="act" />
       <p v-if="error" class="changes-notice error" role="alert">{{ error }}</p>
       <p v-if="loading && !changes" class="changes-notice"><span class="spinner" /> {{ t('Reading changes…') }}</p>
       <p v-else-if="changes && !changes.git" class="changes-notice">{{ t('This folder is not a Git repository.') }}</p>

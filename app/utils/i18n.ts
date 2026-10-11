@@ -284,6 +284,8 @@ const FR: Record<string, string> = {
   'Write a review comment…': 'Écrire une remarque…', 'Delete comment': 'Supprimer la remarque',
   'Edit comment': 'Modifier la remarque', 'Confirm delete': 'Confirmer la suppression',
   'Discard this text?': 'Abandonner ce texte ?', 'to save': 'pour enregistrer', 'to cancel': 'pour annuler',
+  'The code of this block changed. Check this comment before sending.': 'Le code de ce bloc a changé. Vérifie cette remarque avant de l’envoyer.',
+  'code changed since this comment': 'code modifié depuis la remarque',
   'No longer in the diff. Check this comment before sending.': 'Absent du diff. Vérifie cette remarque avant de l’envoyer.',
   'To comment, hover a line and click +. Drag from the + to comment a block of lines.': 'Pour commenter, survole une ligne et clique sur +. Glisse depuis le + pour commenter un bloc de lignes.',
   'To comment, tap a line number, then another line for a block.': 'Pour commenter, touche un numéro de ligne, puis une autre ligne pour un bloc.',

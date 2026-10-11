@@ -18,6 +18,9 @@ export interface ReviewComment {
   // left to show once the block is gone from the diff.
   span?: ReviewSpan
   excerpt?: string[]
+  // Fingerprint of every line of the block: the same first and last lines
+  // around other code are not the block that was commented.
+  hash?: string
   body: string
   // Text being written; defined while the editor is open.
   draft?: string
@@ -88,15 +91,22 @@ export function reviewExcerpt(block: ReviewLine[]): string[] {
   return kept.map(s => s.length > EXCERPT_WIDTH ? `${s.slice(0, EXCERPT_WIDTH - 1)}…` : s)
 }
 
+// FNV-1a over the lines of the block, as text: short, stable across sessions.
+export function reviewHash(block: ReviewLine[]): string {
+  let h = 0x811c9dc5
+  for (const c of numbered(block).map(l => l.text).join('\n')) h = Math.imul(h ^ c.codePointAt(0)!, 0x01000193)
+  return (h >>> 0).toString(16)
+}
+
 // What a comment keeps of the block it was written on.
-export function reviewBlock(block: ReviewLine[]): Pick<ReviewComment, 'number' | 'side' | 'text' | 'end' | 'span' | 'excerpt'> {
+export function reviewBlock(block: ReviewLine[]): Pick<ReviewComment, 'number' | 'side' | 'text' | 'end' | 'span' | 'excerpt' | 'hash'> {
   const rows = numbered(block)
   const first = rows[0]!
   const last = rows.at(-1)!
   return {
     number: first.number, side: first.side, text: first.text,
     end: rows.length > 1 ? { number: last.number, side: last.side, text: last.text } : undefined,
-    span: reviewSpan(rows), excerpt: reviewExcerpt(rows),
+    span: reviewSpan(rows), excerpt: reviewExcerpt(rows), hash: reviewHash(rows),
   }
 }
 
@@ -105,9 +115,8 @@ export function sameBlock(a: Pick<ReviewComment, 'number' | 'side' | 'text' | 'e
   return sameLine(a, b) && Boolean(a.end) === Boolean(b.end) && (!a.end || sameLine(a.end, b.end!))
 }
 
-// Rows of the comment's block in a file's diff: its first and last lines must
-// both still be there, unchanged, in one hunk.
-export function locateReview(comment: ReviewComment, lines: ReviewLine[]): [number, number] | null {
+// Rows between the comment's first and last lines, both still there in one hunk.
+function findEnds(comment: ReviewComment, lines: ReviewLine[]): [number, number] | null {
   for (let i = 0; i < lines.length; i++) {
     if (!sameLine(comment, lines[i]!)) continue
     if (!comment.end) return [i, i]
@@ -118,21 +127,34 @@ export function locateReview(comment: ReviewComment, lines: ReviewLine[]): [numb
   return null
 }
 
+// Rows of the comment's block in a file's diff: its first and last lines still
+// there in one hunk, around the very lines that were commented.
+export function locateReview(comment: ReviewComment, lines: ReviewLine[]): [number, number] | null {
+  const at = findEnds(comment, lines)
+  return at && (!comment.hash || comment.hash === reviewHash(lines.slice(at[0], at[1] + 1))) ? at : null
+}
+
 function fileLines(comment: ReviewComment, changes: ChangesResponse) {
   const file = changes[comment.scope]?.files.find(f => f.path === comment.path)
   return file ? reviewLines(file.lines) : null
 }
 
-// A hidden commit section is not a refreshed diff: its comments remain pending.
+export type ReviewStale = 'gone' | 'changed'
+// Why a comment needs a look before it is sent: its block left the diff, or its
+// ends are still there around code that changed. A hidden commit section is not
+// a refreshed diff: its comments remain pending.
+export function staleReview(comment: ReviewComment, changes: ChangesResponse, commitsRequested = false): ReviewStale | null {
+  if (changes.git && comment.scope === 'committed' && !changes.committed && !commitsRequested) return null
+  const lines = fileLines(comment, changes)
+  if (lines && locateReview(comment, lines)) return null
+  return lines && findEnds(comment, lines) ? 'changed' : 'gone'
+}
 export function missingReviews(comments: ReviewComment[], changes: ChangesResponse, commitsRequested = false): ReviewComment[] {
-  return comments.filter(c => {
-    if (changes.git && c.scope === 'committed' && !changes.committed && !commitsRequested) return false
-    const lines = fileLines(c, changes)
-    return !lines || !locateReview(c, lines)
-  })
+  return comments.filter(c => staleReview(c, changes, commitsRequested))
 }
 
 // Comments with the numbers and excerpt of their block as the diff shows it now.
+// A block that changed or left the diff keeps what was read when it was commented.
 export function freshReviews(comments: ReviewComment[], changes: ChangesResponse): ReviewComment[] {
   return comments.map(c => {
     const lines = fileLines(c, changes)
@@ -163,19 +185,19 @@ export function spanLabel(span: ReviewSpan, w: SpanWords) {
   return span.old ? `${label} + ${old} ${range(span.old, '–')}` : label
 }
 
-export interface ReviewWords { intro: string, oldLine: string, oldLines: string, missing: string }
+export interface ReviewWords { intro: string, oldLine: string, oldLines: string, missing: string, changed?: string }
 // One remark per block: `file:12-18 — remark` (`file:12` for a single line),
 // then the excerpt, indented. The agent edits the file as it goes, so line
 // numbers drift from the second remark on, and deleted lines are in no file:
 // the excerpt is what it can search for.
-export function composeReview(comments: ReviewComment[], w: ReviewWords, missing: string[] = []) {
+export function composeReview(comments: ReviewComment[], w: ReviewWords, stale: Record<string, ReviewStale | undefined> = {}) {
   const files = new Map<string, string[]>()
   for (const c of comments) {
     const body = reviewText(c).replace(/\s*\n\s*/g, ' ')
     if (!body) continue
     const span = commentSpan(c)
     const old = span.old && (many(span.old) ? w.oldLines : w.oldLine)
-    const notes = [span.old ? (span.new ? `${old} ${range(span.old, '-')}` : old) : '', missing.includes(c.id) ? w.missing : ''].filter(Boolean)
+    const notes = [span.old ? (span.new ? `${old} ${range(span.old, '-')}` : old) : '', stale[c.id] === 'changed' ? w.changed ?? w.missing : stale[c.id] ? w.missing : ''].filter(Boolean)
     const head = `${c.path}:${range(span.new ?? span.old!, '-')}${notes.length ? ` (${notes.join(', ')})` : ''} — ${body}`
     const excerpt = (c.excerpt ?? [c.text.trimEnd()]).filter(Boolean).map(s => `    ${s}`)
     if (!files.has(c.path)) files.set(c.path, [])

@@ -168,6 +168,27 @@ test('deleted line, edit, delete in two steps, block gone from the diff and disc
   expect(await page.evaluate(pane => localStorage.getItem(`review:${pane}`), OMP_CHAT_PANE)).toBeNull()
 })
 
+test('a block whose inner code changed is flagged, and keeps the excerpt that was commented', async ({ page, isMobile }, info) => {
+  await setup(page)
+  await openChanges(page)
+  const f = fileOf(page, 'src/first.ts')
+  await f.locator('summary').click()
+  await comment(page, isMobile, f, '11', '13')
+  await f.locator('.review-note textarea').fill('Return the constant directly')
+  await f.locator('.review-note').getByRole('button', { name: 'Comment', exact: true }).click()
+  // Same first and last lines, another line between them.
+  const lines = first.lines.map(l => l.text === '+  return n' ? { ...l, text: '+  return n + 1' } : l)
+  await page.route('**/api/changes?**', r => r.fulfill({ json: { ...data, working: { ...data.working, files: [{ ...first, lines }, second] } } }))
+  await page.getByRole('button', { name: 'Refresh changes' }).click()
+  const note = page.locator('.review-note.missing')
+  await expect(note).toContainText('The code of this block changed')
+  await expect(note.locator('.review-body')).toHaveText('Return the constant directly')
+  await expect(fileOf(page, 'src/first.ts').locator('.review-note')).toHaveCount(0)
+  await shot(page, info.project.name, 'changed-block')
+  await page.getByRole('button', { name: 'Send review', exact: true }).click()
+  await expect(field(page)).toHaveValue('Please review these points:\n\nsrc/first.ts:11-13 (code changed since this comment) — Return the constant directly\n    +  const n = 2\n    +  return n\n     }')
+})
+
 test('code stays selectable: clicks and selections in it never start a comment', async ({ page, isMobile }) => {
   await setup(page)
   await openChanges(page)

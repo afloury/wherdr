@@ -17,7 +17,7 @@ All notable changes to this project are documented here. The format follows
   ⌘/Ctrl+Enter saves, Escape cancels without closing the window. A block stays within one hunk.
   Each comment is a thread under the last line of its block, with its lines ("Lines 12–18"),
   Edit and a two-step Delete; drafts, including an editor left open, are kept per agent on the
-  device, and a block that leaves the diff is flagged after refresh. Send review appends
+  device, and a block that leaves the diff or whose code changed is flagged after refresh. Send review appends
   `file:12-18 — remark` and a short excerpt of the block, grouped by file, to the message draft
   without sending it or replacing existing text. Old-line labels for deletions, remote agents
   and demo support.

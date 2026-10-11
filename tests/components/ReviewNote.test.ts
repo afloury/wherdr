@@ -56,5 +56,7 @@ describe('ReviewNote', () => {
     const w = await mount(saved, true)
     expect(w.find('.review-path').text()).toBe('src/app.ts')
     expect(w.find('[role="status"]').text()).toContain('No longer in the diff')
+    await w.setProps({ changed: true })
+    expect(w.find('[role="status"]').text()).toContain('The code of this block changed')
   })
 })
