@@ -6,18 +6,29 @@ import { OMP_SHELL_PANE } from './scenario.mjs'
 test('Stop cancels an omp "!" command and the message does not go back to the queue', async ({ page }) => {
   await page.goto(`/#/a/${OMP_SHELL_PANE}`)
   const field = page.locator('.prompt').locator('textarea, [contenteditable="true"]').first()
-  await field.click()
+  await expect(field).toBeEditable()
   await field.fill('! sleep 30')
+  const sent = page.waitForResponse(r => r.url().endsWith('/api/prompt') && r.request().method() === 'POST')
   await page.locator('.prompt-send').click()
+  expect((await sent).ok()).toBe(true)
 
   const stop = page.getByRole('button', { name: 'Cancel the command' })
   await expect(stop).toBeVisible()
   await expect(page.locator('.queued-tag.running')).toBeVisible()
+  const cancelled = page.waitForResponse(r => r.url().endsWith('/api/interrupt') && r.request().method() === 'POST')
   await stop.click()
+  const response = await cancelled
+  expect(response.ok()).toBe(true)
+  expect(await response.json()).toMatchObject({ stopped: true, shell: true, esc: 1 })
   await expect(page.locator('.hw-toast-title', { hasText: 'Command cancelled' })).toBeVisible()
   await expect(stop).toHaveCount(0)
-  // Several polls later, still nothing waiting.
-  await page.waitForTimeout(3000)
-  await expect(page.locator('.msg-pending')).toHaveCount(0)
-  await expect(page.locator('.queued-tag')).toHaveCount(0)
+  // Observe actual conversation polls: a fixed sleep can finish before even
+  // one response on a slow machine. Nothing returns to the queue in between.
+  for (let poll = 0; poll < 3; poll++) {
+    const update = await page.waitForResponse(r => new URL(r.url()).pathname === '/api/chat' && new URL(r.url()).searchParams.get('pane') === OMP_SHELL_PANE)
+    expect(update.ok()).toBe(true)
+    await update.finished()
+    await expect(page.locator('.msg-pending')).toHaveCount(0)
+    await expect(page.locator('.queued-tag')).toHaveCount(0)
+  }
 })
