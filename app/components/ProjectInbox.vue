@@ -99,16 +99,25 @@ async function done(it: InboxItem) {
         <li v-for="it in items" :key="it.id" class="pp-row">
           <div class="pp-card pi-card">
             <div class="pi-body">
-              <span class="pi-kind"><UIcon :name="kindIcon(it)" />{{ kindLabel(it) }}</span>
-              <button v-if="threadOf(it)" type="button" class="pi-title link" @click="emit('thread', threadOf(it)!)">{{ title(it) }}</button>
-              <span v-else class="pi-title">{{ title(it) }}</span>
-              <span class="pp-meta pi-meta">{{ meta(it) }}</span>
+              <!-- An item about a thread: its whole heading opens the thread (a
+                   finger-sized target, not the title's single line). -->
+              <component
+                :is="threadOf(it) ? 'button' : 'div'" class="pi-head" :class="{ link: threadOf(it) }" :type="threadOf(it) ? 'button' : undefined"
+                :aria-label="threadOf(it) ? tl(`Open the thread: ${title(it)}`, `Ouvrir le thread : ${title(it)}`) : undefined"
+                @click="threadOf(it) && emit('thread', threadOf(it)!)"
+              >
+                <span class="pi-kind"><UIcon :name="kindIcon(it)" />{{ kindLabel(it) }}</span>
+                <span class="pi-title">{{ title(it) }}</span>
+                <span class="pp-meta pi-meta">{{ meta(it) }}</span>
+              </component>
               <button
-                v-if="it.summary || it.body" type="button" class="pi-text" :class="{ open: unfolded.has(it.id) }"
+                v-if="it.summary || it.body" type="button" class="pi-fold"
                 :aria-expanded="unfolded.has(it.id)" :aria-label="tl('Show or fold the text', 'Afficher ou replier le texte')" @click="toggle(it.id)"
               >
-                <span v-if="it.summary">{{ it.summary }}</span>
-                <span v-if="it.body" class="pi-prompt">{{ it.body }}</span>
+                <span class="pi-text" :class="{ open: unfolded.has(it.id) }">
+                  <span v-if="it.summary">{{ it.summary }}</span>
+                  <span v-if="it.body" class="pi-prompt">{{ it.body }}</span>
+                </span>
               </button>
             </div>
             <UTooltip :text="tl('Mark as handled', 'Marquer comme traité')" :disabled="!desk">

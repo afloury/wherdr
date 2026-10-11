@@ -56,6 +56,9 @@ describe('ProjectPanel › Inbox and Routines tabs', () => {
     expect(w.findAll('.pi-title').map(x => x.text())).toEqual(['nightly', 'CSV import'])
     expect(w.findAll('.pi-meta').map(x => x.text())).toEqual(['due', 'T-0102 · new report'])
     expect(w.find('.pi-prompt').text()).toBe('Run the suite.')
+    // Only the item about a thread opens something: its whole heading is the target.
+    expect(w.findAll('.pi-head').map(x => x.element.tagName)).toEqual(['DIV', 'BUTTON'])
+    expect(w.find('button.pi-head').attributes('aria-label')).toBe('Open the thread: CSV import')
     expect(w.find('#pp-tab-inbox').text()).toBe('Inbox2')
 
     await w.findAll('.pi-done')[1]!.trigger('click')

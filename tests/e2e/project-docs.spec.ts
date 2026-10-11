@@ -99,7 +99,7 @@ test('six tabs: the bar scrolls sideways on a phone, never the page', async ({ p
   if (overflows) await expect(page.locator('.pp-tabs-wrap')).toHaveClass(/more-left/)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   // Every tab is tall enough for a finger.
-  for (const t of await tabs(page).all()) expect(Math.round((await t.boundingBox())!.height)).toBeGreaterThanOrEqual(40)
+  for (const t of await tabs(page).all()) expect(Math.round((await t.boundingBox())!.height)).toBeGreaterThanOrEqual(44)
 })
 
 test('the Settings tab shows the project’s settings, read-only', async ({ page }, testInfo) => {

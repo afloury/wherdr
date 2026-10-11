@@ -73,8 +73,14 @@ test('the Inbox tab lists unhandled items and marks one as handled', async ({ pa
   expect(Math.round(Math.min(box.width, box.height))).toBeGreaterThanOrEqual(44)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 
+  // Found by the adversarial review (t-0315): the thread link and the text
+  // toggle were 18 px high. Every target of a card is finger-sized.
+  for (const sel of ['.pi-head.link', '.pi-fold', '.pi-done']) {
+    for (const el of await page.locator(sel).all()) expect(Math.round((await el.boundingBox())!.height), sel).toBeGreaterThanOrEqual(44)
+  }
+  await expect(page.locator('.pi-head.link')).toHaveCount(1)
   // A routine's prompt is folded until tapped.
-  const text = page.locator('.pi-text').nth(1)
+  const text = page.locator('.pi-fold').nth(1)
   await expect(text).toHaveAttribute('aria-expanded', 'false')
   await text.click()
   await expect(text).toHaveAttribute('aria-expanded', 'true')
