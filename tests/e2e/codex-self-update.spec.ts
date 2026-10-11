@@ -12,6 +12,15 @@ const record = () => {
 }
 const transcriptFile = (session = CODEX_UPDATE_SESSION) => path.join(path.dirname(fs.readFileSync(SOCK_FILE, 'utf8')),
   `home/.codex/sessions/${new Date().toISOString().slice(0, 10).replaceAll('-', '/')}/rollout-test-${session}.jsonl`)
+// A directory at the retained path fails reads even as root, unlike chmod(0).
+// Keep the transcript next to it, outside the rollout filename pattern.
+function failTranscriptRead(file: string) {
+  const saved = `${file}.saved`
+  fs.renameSync(file, saved)
+  try { fs.mkdirSync(file) }
+  catch (error) { fs.renameSync(saved, file); throw error }
+  return () => { fs.rmdirSync(file); fs.renameSync(saved, file) }
+}
 const stats = () => fakeHerdr('e2e.update_starts', { pane_id: CODEX_UPDATE_PANE })
 const post = (page: Page, endpoint: string, data: object) => page.request.post(`/api/${endpoint}`, {
   headers: { Origin: new URL(page.url()).origin }, data: { pane_id: CODEX_UPDATE_PANE, ...data },
@@ -228,15 +237,17 @@ test('an empty transcript followed by a failed final read offers Resume with the
     await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, conversation: 'empty', session: CODEX_UPDATE_SESSION })
     // First messages arrive, but the final re-read cannot read the transcript.
     fs.writeFileSync(file, original)
-    fs.chmodSync(file, 0)
-    await fakeHerdr('e2e.update_exit', { pane_id: CODEX_UPDATE_PANE })
-    await expect(card(page).getByRole('button', { name: /Resume conversation/ })).toBeVisible()
-    expect(record().conversation).toBe('unknown')
-    await expect(card(page).getByRole('button', { name: /Start fresh/ })).toBeVisible()
-    fs.chmodSync(file, 0o600)
+    const restore = failTranscriptRead(file)
+    try {
+      expect(() => fs.readFileSync(file)).toThrow(/EISDIR/)
+      await fakeHerdr('e2e.update_exit', { pane_id: CODEX_UPDATE_PANE })
+      await expect(card(page).getByRole('button', { name: /Resume conversation/ })).toBeVisible()
+      expect(record().conversation).toBe('unknown')
+      await expect(card(page).getByRole('button', { name: /Start fresh/ })).toBeVisible()
+    } finally { restore() }
     await card(page).getByRole('button', { name: /Resume conversation/ }).click()
     await expect.poll(async () => (await stats()).starts).toMatchObject([{ args: ['resume', '--profile', 'work', '-m', 'gpt-x', CODEX_UPDATE_SESSION] }])
-  } finally { fs.chmodSync(file, 0o600); fs.writeFileSync(file, original) }
+  } finally { fs.writeFileSync(file, original) }
 })
 
 test('guessed B invalidates exact A before a final read failure and Resume opens the picker', async ({ page }) => {
@@ -252,14 +263,16 @@ test('guessed B invalidates exact A before a final read failure and Resume opens
     await fakeHerdr('e2e.update_session', { pane_id: CODEX_UPDATE_PANE, session: null })
     await expect(page.locator('.chat').getByText('Conversation B is current.')).toBeVisible()
     await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, session: null, conversation: 'existing' })
-    fs.chmodSync(file, 0)
-    await fakeHerdr('e2e.update_exit', { pane_id: CODEX_UPDATE_PANE })
-    await expect(card(page).getByRole('button', { name: /Resume conversation/ })).toBeVisible()
-    expect(record().session).toBeNull()
-    fs.chmodSync(file, 0o600)
+    const restore = failTranscriptRead(file)
+    try {
+      expect(() => fs.readFileSync(file)).toThrow(/EISDIR/)
+      await fakeHerdr('e2e.update_exit', { pane_id: CODEX_UPDATE_PANE })
+      await expect(card(page).getByRole('button', { name: /Resume conversation/ })).toBeVisible()
+      expect(record().session).toBeNull()
+    } finally { restore() }
     await card(page).getByRole('button', { name: /Resume conversation/ }).click()
     await expect.poll(async () => (await stats()).starts).toMatchObject([{ args: ['resume', '--profile', 'work', '-m', 'gpt-x'] }])
-  } finally { fs.chmodSync(file, 0o600); fs.unlinkSync(file) }
+  } finally { fs.unlinkSync(file) }
 })
 
 for (const occupied of ['draft', 'foreground']) {

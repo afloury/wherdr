@@ -18,6 +18,10 @@ async function setup(page: Page) {
 const field = (page: Page) => page.locator('.prompt').locator('textarea, [contenteditable="true"]').first()
 
 test('two files review appends to the message draft without sending; survives closing and reload', async ({ page, isMobile }, info) => {
+  // WebKit can spend seconds on each gesture on a slow runner. Closing,
+  // reopening and reloading all verify persistence; keep every assertion's
+  // normal timeout, but budget for the complete workflow on this project.
+  if (info.project.name === 'webkit-desktop') test.setTimeout(60_000)
   await setup(page)
   const sent: string[] = []
   page.on('request', r => { if (r.method() === 'POST' && /\/api\/(prompt|input)$/.test(new URL(r.url()).pathname)) sent.push(r.url()) })
@@ -54,6 +58,8 @@ test('two files review appends to the message draft without sending; survives cl
 })
 
 test('deleted line, editing, disappeared line warning and discard', async ({ page }, info) => {
+  // This workflow also opens the modal twice; see the persistence case above.
+  if (info.project.name === 'webkit-desktop') test.setTimeout(60_000)
   await setup(page)
   await openChanges(page)
   const f = page.locator('.change-file').first()

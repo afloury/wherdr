@@ -108,15 +108,14 @@ test('Settings › Phone on the tailnet address shows that address and its QR co
 
 test('the guide’s Phone step on the tailnet address shows it too, not "open localhost"', async ({ page, isMobile }, testInfo) => {
   test.skip(isMobile, 'a phone on the tailnet address gets Add to Home Screen instead')
-  const setDone = (done: boolean) => page.evaluate(async (done) => {
-    await fetch('/api/onboarding', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ done }) })
-  }, done)
+  const setDone = async (done: boolean) => {
+    const response = await page.request.post(`${BASE_URL}/api/onboarding`, { headers: { Origin: BASE_URL }, data: { done } })
+    expect(response.ok()).toBe(true)
+  }
   await onTailnet(page)
-  await page.goto(`${TAILNET}/`)
   await setDone(false)
   try {
     await page.goto(`${TAILNET}/#/setup?step=phone`)
-    await page.reload()
     const guide = page.getByRole('dialog', { name: 'Setup guide' })
     await expect(guide.locator('[aria-current="step"]')).toHaveText('Phone')
     await expect(guide.locator('.phone-qr .phone-url')).toHaveText(`${TAILNET}/`)

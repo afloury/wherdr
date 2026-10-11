@@ -9,6 +9,13 @@ const text = `Why does this fail?\n\n${LOG}`
 describe('UserText pasted cards', () => {
   afterEach(() => { sentPastes.value = [] })
 
+  it('preserves blank lines between paragraphs in the bubble DOM', async () => {
+    const text = 'First paragraph.\n\nSecond paragraph.\n\n\nThird paragraph.'
+    const w = await mountSuspended(UserText, { props: { text } })
+    expect(w.find('.msg-fold').element.textContent).toBe(text)
+    w.unmount()
+  })
+
   // A device that did not send the message only knows what the server lists.
   it('shows the paste the server lists as a card, on a device that never sent it', async () => {
     const w = await mountSuspended(UserText, { props: { text, pasted: [LOG] } })
