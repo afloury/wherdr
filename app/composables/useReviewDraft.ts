@@ -14,19 +14,37 @@ function valid(c: ReviewComment) {
     && (c.hash === undefined || typeof c.hash === 'string')
 }
 
+function parse(raw: string | null): ReviewComment[] {
+  try {
+    const stored: unknown = JSON.parse(raw || '[]')
+    // An editor left open with nothing written is not a draft worth restoring.
+    return Array.isArray(stored) ? stored.filter(c => valid(c) && (c.body.trim() || c.draft?.trim())) : []
+  } catch { return [] }
+}
+
 export function useReviewDraft(paneId: string) {
   const key = `review:${paneId}`
   const comments = ref<ReviewComment[]>([])
-  try {
-    const stored: unknown = JSON.parse(localStorage.getItem(key) || '[]')
-    // An editor left open with nothing written is not a draft worth restoring.
-    if (Array.isArray(stored)) comments.value = stored.filter(c => valid(c) && (c.body.trim() || c.draft?.trim()))
-  } catch { /* Storage may be unavailable. Keep the draft in this view. */ }
+  try { comments.value = parse(localStorage.getItem(key)) } catch { /* Storage may be unavailable. Keep the draft in this view. */ }
   watch(comments, value => {
     try {
-      if (value.length) localStorage.setItem(key, JSON.stringify(value))
+      const json = value.length ? JSON.stringify(value) : null
+      if (json === localStorage.getItem(key)) return
+      if (json) localStorage.setItem(key, json)
       else localStorage.removeItem(key)
     } catch { /* Keep the in-memory draft when storage is full. */ }
   }, { deep: true, flush: 'sync' })
+  // The same agent open in another tab: each view writes the whole list, so
+  // take the other tab's list before writing over it. A comment being written
+  // here keeps its text.
+  function other(e: StorageEvent) {
+    if (e.key !== key && e.key !== null) return
+    const mine = new Map(comments.value.filter(c => c.draft !== undefined).map(c => [c.id, c]))
+    comments.value = parse(e.key === null ? null : e.newValue).map(c => mine.get(c.id) ?? c)
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('storage', other)
+    onScopeDispose(() => window.removeEventListener('storage', other))
+  }
   return comments
 }

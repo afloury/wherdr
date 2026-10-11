@@ -32,6 +32,37 @@ describe('local review drafts', () => {
     next.stop()
     localStorage.removeItem('review:review-test')
   })
+  it('does not lose the review of another open tab when either one edits', () => {
+    const key = 'review:review-tabs'
+    localStorage.removeItem(key)
+    const scope = effectScope()
+    // What the other browser tab receives when this one writes.
+    const notify = () => window.dispatchEvent(new StorageEvent('storage', { key, newValue: localStorage.getItem(key) }))
+    try {
+      const a = scope.run(() => useReviewDraft('review-tabs'))!
+      const b = scope.run(() => useReviewDraft('review-tabs'))!
+      a.value.push({ ...comment, id: 'first-tab' })
+      notify()
+      expect(b.value.map(c => c.id)).toEqual(['first-tab'])
+      b.value.push({ ...comment, id: 'second-tab', body: '', draft: 'Typing here' })
+      // The first tab saves its comment again: the text being typed in the second stays.
+      a.value[0]!.body = 'Edited in the first tab'
+      localStorage.setItem(key, JSON.stringify([...a.value, { ...comment, id: 'second-tab', body: '', draft: 'Typ' }]))
+      notify()
+      expect(b.value.map(c => [c.id, c.draft ?? c.body])).toEqual([['first-tab', 'Edited in the first tab'], ['second-tab', 'Typing here']])
+      expect(scope.run(() => useReviewDraft('review-tabs'))!.value.map(c => c.id)).toEqual(['first-tab', 'second-tab'])
+      // A review discarded or sent in one tab is gone in the other; another agent's is not.
+      window.dispatchEvent(new StorageEvent('storage', { key: 'review:other-agent', newValue: null }))
+      expect(b.value).toHaveLength(2)
+      b.value[1]!.body = 'Saved'
+      delete b.value[1]!.draft
+      window.dispatchEvent(new StorageEvent('storage', { key, newValue: null }))
+      expect(b.value).toEqual([])
+    } finally {
+      scope.stop()
+      localStorage.removeItem(key)
+    }
+  })
   it('isolates agents and ignores malformed stored entries', () => {
     const bad = [{ id: 'invalid' }, { ...comment, end: { number: 0, side: 'new', text: '' } }, { ...comment, span: {} }, { ...comment, span: { new: [1] } }, { ...comment, excerpt: [1] }, { ...comment, draft: 3 }]
     localStorage.setItem('review:review-test-one', JSON.stringify([comment, ...bad]))
