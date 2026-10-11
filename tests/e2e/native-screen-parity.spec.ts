@@ -53,6 +53,14 @@ test('native questions, menus and waiting screens keep their cards in conversati
 
 test('Claude usage keeps the immediate loading sheet and native settings tabs', async ({ page }) => {
   await show('claude-idle.txt', 'claude')
+  // The previous case ended on a blocked Codex question. Wait for the server
+  // to publish Claude's idle field before a fresh page can receive that state;
+  // otherwise /usage is sent through the previous question's /api/input route.
+  await expect.poll(async () => {
+    const state = await (await page.request.get('/api/state')).json()
+    const current = state.panes.find((p: { id: string }) => p.id === pane)
+    return { agent: current?.agent, prompt: current?.prompt ?? null, interaction: current?.interaction }
+  }).toEqual({ agent: 'claude', prompt: null, interaction: 'input' })
   await page.goto(`/#/a/${pane}`)
   const field = page.locator('.prompt').locator('textarea, [contenteditable="true"]').first()
   await field.fill('/usage')
