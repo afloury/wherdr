@@ -328,8 +328,13 @@ function onPaste(e: ClipboardEvent) {
     if (plain === s) return // normal paste
     e.preventDefault()
     const el = e.target as HTMLTextAreaElement
-    if (!document.execCommand('insertText', false, plain)) {
-      el.setRangeText(plain, el.selectionStart, el.selectionEnd, 'end')
+    const before = el.value
+    // As one undoable edit where the browser allows it.
+    const done = typeof document.execCommand === 'function' && document.execCommand('insertText', false, plain)
+    if (!done || el.value === before) {
+      const from = el.selectionStart ?? before.length
+      el.value = before.slice(0, from) + plain + before.slice(el.selectionEnd ?? from)
+      el.setSelectionRange(from + plain.length, from + plain.length)
       el.dispatchEvent(new Event('input', { bubbles: true }))
     }
     return

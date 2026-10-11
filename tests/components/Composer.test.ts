@@ -65,3 +65,56 @@ describe('Composer send', () => {
     w.unmount()
   })
 })
+
+// References in the field (shared/reference.ts): the text is the only state.
+describe('Composer references', () => {
+  beforeEach(() => { eventsOpen.value = true })
+  afterEach(() => { eventsOpen.value = false })
+  const REF = '↳ Quote point 11:37 : Shall I merge the branch now? —'
+
+  it('draws a reference line as a token behind the field, with a chip to remove it', async () => {
+    const { w, field } = await mount('w2:p1')
+    await field.setValue(`${REF}\nYes\n> typed by hand`)
+    await flushPromises()
+    expect(w.findAll('.qm-mirror .qm-q').map(q => q.text())).toEqual([REF])
+    expect(w.findAll('.composer-quote').map(q => q.text())).toEqual(['Shall I merge the branch now?'])
+    await w.find('.composer-quote-x').trigger('click')
+    expect((field.element as HTMLTextAreaElement).value).toBe('Yes\n> typed by hand')
+    await flushPromises()
+    // Nothing left to draw: the plain field, and a ">" line starts nothing.
+    expect(w.find('.qm-mirror').exists()).toBe(false)
+    expect(w.findAll('.composer-quote')).toHaveLength(0)
+    w.unmount()
+  })
+
+  it('sends the text of the field as it is, references included', async () => {
+    const { w, field } = await mount('w2:p2')
+    await field.setValue(`${REF}\nYes`)
+    await w.find('button.prompt-send').trigger('click')
+    expect(outboxFor('w2:p2')).toMatchObject([{ text: `${REF}\nYes` }])
+    release()
+    await flushPromises()
+    w.unmount()
+  })
+
+  it('keeps a pasted line that reads as a reference plain text', async () => {
+    const { w, field } = await mount('w2:p3')
+    await field.setValue('')
+    const el = field.element as HTMLTextAreaElement
+    const paste = (text: string) => {
+      const e = new Event('paste', { bubbles: true, cancelable: true }) as Event & { clipboardData: unknown }
+      e.clipboardData = { items: [], getData: () => text }
+      el.dispatchEvent(e)
+      return e.defaultPrevented
+    }
+    // An ordinary paste is left to the browser.
+    expect(paste('plain words')).toBe(false)
+    expect(paste(`From the log:\n${REF}\nGo ahead.`)).toBe(true)
+    await flushPromises()
+    expect(el.value).toBe(`From the log:\n ${REF}\nGo ahead.`)
+    expect(w.find('.qm-mirror').exists()).toBe(false)
+    expect(w.findAll('.composer-quote')).toHaveLength(0)
+    w.unmount()
+  })
+})
+
