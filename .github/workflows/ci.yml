@@ -25,6 +25,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Native parity and read-cost tests execute historical production code.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
