@@ -39,7 +39,7 @@ export const POINT_MAX = 120
 const TIME = String.raw`\d{1,2}[:h.]\d{2}(?:\s?[AaPp][Mm])?`
 // Groups: 1 = head up to the excerpt, 2 = kind, 3 = time, 4 = number, 5 = excerpt, 6 = tail.
 const QUOTE_RE = new RegExp(`^(↳ Quote (message|point|decisions?)(?: (${TIME}))?(?: #(\\S+))? : )(\\S.*?)( —[ \\t]*)$`)
-export const TASK_LABELS = ['Decision:', 'Décision :', 'Detail on', 'Précision sur', 'Feedback on', 'Retour sur'] as const
+export const TASK_LABELS = ['Decision:', 'Décision :', 'Problem:', 'Problème :', 'Question:', 'Question :', 'Detail on', 'Précision sur', 'Feedback on', 'Retour sur'] as const
 // Groups: 1 = head, 2 = label, 3 = task, 4 = tail.
 const TASK_RE = new RegExp(`^(↳ (${TASK_LABELS.join('|')}) )(\\S.*?)( —[ \\t]*)$`)
 

@@ -1,6 +1,6 @@
 ---
 name: wherdr
-description: Conventions for coordinating a herdr-projects project whose TASKS.md is shown and driven by wherdr's Project panel. Use when you coordinate a herdr-projects project (you edit TASKS.md, launch and merge threads), and whenever a message starts with "✓ Tested:", "✓ Testé :", "✗ Problem:", "✗ Problème :", "? Question:", "? Question :", "↳ Decision:", "↳ Décision :", "↳ Launch", "↳ Lancer", "↳ Move up", "↳ Monter", "↳ Move down", "↳ Descendre", "↳ Queue:", "↳ Mettre en file", "↳ Remove from queue", "↳ Retirer de la file", "↳ Back to backlog", "↳ Remettre au backlog", "↳ Unblock", "↳ Débloquer", "↳ Detail on", "↳ Précision sur", "✓ Reviewed:", "✓ Relu :", "↳ Feedback on", "↳ Retour sur", "↳ Info for", "↳ Info pour" or "↳ Quote".
+description: Conventions for coordinating a herdr-projects project whose TASKS.md is shown and driven by wherdr's Project panel. Use when you coordinate a herdr-projects project (you edit TASKS.md, launch and merge threads), and whenever a message starts with "✓ Tested:", "✓ Testé :", "↳ Problem:", "↳ Problème :", "↳ Question:", "↳ Question :", "✗ Problem:", "✗ Problème :", "? Question:", "? Question :", "↳ Decision:", "↳ Décision :", "↳ Launch", "↳ Lancer", "↳ Move up", "↳ Monter", "↳ Move down", "↳ Descendre", "↳ Queue:", "↳ Mettre en file", "↳ Remove from queue", "↳ Retirer de la file", "↳ Back to backlog", "↳ Remettre au backlog", "↳ Unblock", "↳ Débloquer", "↳ Detail on", "↳ Précision sur", "✓ Reviewed:", "✓ Relu :", "↳ Feedback on", "↳ Retour sur", "↳ Info for", "↳ Info pour" or "↳ Quote".
 ---
 
 # wherdr Project panel conventions
@@ -117,9 +117,10 @@ owner. Find the line in `TASKS.md` by that text. The English or French form depe
 app language; treat them the same.
 
 Messages marked *sent* arrive as is. Messages marked *draft* are put in the user's input
-field, completed by the user, then sent. A draft that starts with `✗` or `?` is completed after
-` — ` on the same line. A draft that starts with `↳` and ends with ` —` is a **reference**: the
-task on one line, the user's text on the lines below it, up to the next reference.
+field, completed by the user, then sent. A draft starts with `↳` and ends with ` —`: it is a
+**reference**, the task on one line, the user's text on the lines below it, up to the next
+reference. (Earlier versions wrote a problem and a question on one line, `✗ Problem: <task> —
+<details>` and `? Question: <task> — <question>`: treat them the same.)
 
 The user quotes your own messages with the same kind of line, by the time shown on the message:
 `↳ Quote message 11:37 : <start of the message> —` (the whole message),
@@ -133,8 +134,8 @@ written other messages since. Long excerpts are cut with `…`.
 | Message (EN / FR) | From | What to do |
 |---|---|---|
 | `✓ Tested: <task>` / `✓ Testé : <task>` (sent) | To test › Confirm | The user validated it: remove the line from To test. |
-| `✗ Problem: <task> — <details>` / `✗ Problème : <task> — …` (draft) | To test › Problem | A bug report: remove the line from To test, fix it (or launch a thread) and track it in In progress; it comes back to To test once the fix is deployed. |
-| `? Question: <task> — <question>` / `? Question : <task> — …` (draft) | To test, To decide › Question | Answer in detail: what to test and how (where to tap, expected result), from the thread's report. Do not change `TASKS.md`. |
+| `↳ Problem: <task> —` / `↳ Problème : <task> —`, then the details below (draft) | To test › Problem | A bug report: remove the line from To test, fix it (or launch a thread) and track it in In progress; it comes back to To test once the fix is deployed. |
+| `↳ Question: <task> —` / `↳ Question : <task> —`, then the question below (draft) | To test, To decide › Question | Answer in detail: what to test and how (where to tap, expected result), from the thread's report. Do not change `TASKS.md`. |
 | `↳ Decision: <task> —` / `↳ Décision : <task> —`, then the answer below (draft) | To decide › Answer | Apply the decision, remove the line from To decide, and record it where the project keeps durable decisions. |
 | `✓ Reviewed: <task>` / `✓ Relu : <task>` (sent) | To review › Reviewed | The user reviewed the PR: carry on (merge, deploy as the project says) and remove the line from To review. |
 | `↳ Feedback on <task> —` / `↳ Retour sur <task> —`, then the comments below (draft) | To review › Comment | Review feedback on that PR: apply it or send it to the thread. |

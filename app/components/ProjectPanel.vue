@@ -17,7 +17,7 @@ const movedByPane = new Map<string, Set<string>>()
 // section collapsed, "see all"). Tapping an open thread opens its agent;
 // tapping a report shows it.
 // "To test": each task has Confirm (message "✓ Testé : …" sent to the
-// coordinator), Problem ("✗ Problème : … — ") and Question ("? Question : … — "),
+// coordinator), Problem ("↳ Problème : … —") and Question ("↳ Question : … —"),
 // the latter two put into its input field (emitted to the agent view).
 // "To decide": Question and Answer also prepare a draft.
 // "To review": Reviewed sends "✓ Relu : …", Comment prepares "↳ Retour sur

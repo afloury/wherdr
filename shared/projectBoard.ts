@@ -334,11 +334,11 @@ export function testedMessage(task: string, lang: TestLang = 'fr'): string {
 }
 
 export function problemPrefix(task: string, lang: TestLang = 'fr'): string {
-  return `${lang === 'en' ? '✗ Problem: ' : '✗ Problème : '}${task.trim()} — `
+  return `${refLine(taskRef(lang === 'en' ? 'Problem:' : 'Problème :', task))}\n`
 }
 
 export function questionPrefix(task: string, lang: TestLang = 'fr'): string {
-  return `${lang === 'en' ? '? Question: ' : '? Question : '}${task.trim()} — `
+  return `${refLine(taskRef(lang === 'en' ? 'Question:' : 'Question :', task))}\n`
 }
 
 export function decisionPrefix(task: string, lang: TestLang = 'fr'): string {

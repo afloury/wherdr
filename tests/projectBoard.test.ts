@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { boardSections, visibleSections, maxParallelThreads, moveMessage, queueStatus, missingLists as missingListsOf, coordinatorRules, decisionPrefix, reviewCommentPrefix, reviewedMessage, detailPrefix, launchMessage, listKind, normalizeThreads, parseTaskLine, parseTasks, takeBadges, badgeColor, badgeTarget, textParts, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage, unblockMessage } from '../shared/projectBoard'
-import { isRefLine, refSegments } from '../shared/reference'
+import { decisionRef, isRefLine, refSegments, refsIn } from '../shared/reference'
+import { addAnswer, answerOf } from '../app/utils/questionReply'
 import { pluginBinary } from '../server/utils/projectBoard'
 import { isCoordinator } from '../shared/projects'
 import type { Pane } from '../shared/types'
@@ -341,13 +342,14 @@ describe('test feedback (To test)', () => {
     const task = parseTaskLine('- [ ] Panneau « Projet » (au milieu) : ok ? (me)')!
     expect(testedMessage(task.text)).toBe('✓ Testé : Panneau « Projet » (au milieu) : ok ?')
   })
-  it('Problem: message start, cursor after the dash', () => {
-    expect(problemPrefix('Étoile animée')).toBe('✗ Problème : Étoile animée — ')
-    expect(problemPrefix('Star', 'en')).toBe('✗ Problem: Star — ')
+  it('Problem: a reference to the task, the details on the next line', () => {
+    expect(problemPrefix('Étoile animée')).toBe('↳ Problème : Étoile animée —\n')
+    expect(problemPrefix('Star', 'en')).toBe('↳ Problem: Star —\n')
+    expect(refSegments(`${problemPrefix('Star', 'en')}It does not turn.`)).toMatchObject([{ kind: 'ref', ref: { kind: 'task', label: 'Problem:', excerpt: 'Star' } }, { kind: 'text', text: 'It does not turn.' }])
   })
-  it('Question: message start, cursor after the dash', () => {
-    expect(questionPrefix('Étoile animée')).toBe('? Question : Étoile animée — ')
-    expect(questionPrefix(' Star ', 'en')).toBe('? Question: Star — ')
+  it('Question: a reference to the task, the question on the next line', () => {
+    expect(questionPrefix('Étoile animée')).toBe('↳ Question : Étoile animée —\n')
+    expect(questionPrefix(' Star ', 'en')).toBe('↳ Question: Star —\n')
     const q = questionPrefix('Étoile animée')
     expect(prefillDraft('', q)).toBe(q)
     expect(prefillDraft(q, q)).toBe(q)
@@ -526,5 +528,21 @@ describe('In queue and To do lists', () => {
     expect(maxParallelThreads(head('max_parallel_threads = 0'))).toBeNull()
     expect(maxParallelThreads('# No front matter\nmax_parallel_threads = 3')).toBeNull()
     expect(maxParallelThreads('')).toBeNull()
+  })
+})
+
+describe('Problem and Question after an answer to the agent', () => {
+  const decision = decisionRef('1', 'Keep the cache?', '11:37')
+  const draft = addAnswer('', decision, 'Yes')!
+  it('does not attach a new project problem to the preceding decision answer', () => {
+    const next = `${prefillDraft(draft, problemPrefix('Fix the layout', 'en'))}The button is hidden.`
+    expect(next).toBe('↳ Quote decision 11:37 #1 : Keep the cache? —\nYes\n↳ Problem: Fix the layout —\nThe button is hidden.')
+    expect(answerOf(next, decision)).toBe('Yes')
+    expect(refsIn(next).map(r => r.label)).toEqual(['', 'Problem:'])
+  })
+  it('does not attach a new project question to the preceding decision answer', () => {
+    const next = `${prefillDraft(draft, questionPrefix('Fix the layout', 'en'))}How should I test it?`
+    expect(answerOf(next, decision)).toBe('Yes')
+    expect(refsIn(next).at(-1)).toMatchObject({ kind: 'task', label: 'Question:', excerpt: 'Fix the layout' })
   })
 })
