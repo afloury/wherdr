@@ -57,7 +57,7 @@ describe('ProjectPanel › Threads tab', () => {
   it('switches between the Tasks and Threads tabs', async () => {
     const Host = defineComponent({ render: () => h(UApp, null, () => h(ProjectPanel, { paneId: 'w9:p9', board, loading: false, error: '' })) })
     const w = await mountSuspended(Host)
-    expect(w.findAll('[role="tab"]').map(b => [b.text(), b.attributes('aria-selected')])).toEqual([['Tasks', 'true'], ['Threads3', 'false']])
+    expect(w.findAll('[role="tab"]').slice(0, 2).map(b => [b.text(), b.attributes('aria-selected')])).toEqual([['Tasks', 'true'], ['Threads3', 'false']])
     expect(w.text()).toContain('Webhook retries')
     await w.find('#pp-tab-threads').trigger('click')
     expect(w.find('#pp-tab-threads').attributes('aria-selected')).toBe('true')

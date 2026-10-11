@@ -1019,7 +1019,7 @@ worktree. It is optional; with it installed, wherdr adds:
 - **Project panel** next to the coordinator (a side panel on a computer, a tab on a phone). It
   reads the project's `TASKS.md` and shows the lists it has, always in this order, with the open
   threads live (state, progress, report) and resolved threads under Done (**Tasks** tab; the
-  **Threads** tab is described below):
+  **Threads**, **Inbox** and **Routines** tabs are described below):
 
   | List | Meaning | Buttons |
   | --- | --- | --- |
@@ -1063,6 +1063,18 @@ worktree. It is optional; with it installed, wherdr adds:
   its open workspace removed through Herdr, but its merged branch, or a worktree whose workspace
   was already closed, may stay. herdr-projects lists what it kept, and
   `herdr-projects sweep <project>` on the host removes it.
+- **Inbox tab**: the project's unhandled inbox items, what herdr-projects tells the coordinator
+  (a thread's new report, a routine due, a machine out of reach…), oldest first, up to 100. An
+  item about a thread shows the thread's title and opens it. **Done** (✓) marks one item as
+  handled with `herdr-projects inbox done`; a coordinator that has not read it yet will not see
+  it any more. Summaries are shown as plain text.
+- **Routines tab**: each routine's schedule, whether it is enabled, its kind (prompt only, or a
+  command and its approval) and its last and next run. Read-only: wherdr never approves,
+  switches or runs a routine, and does not expose the plugin's safety settings.
+
+  herdr-projects (0.2.34) has no JSON output for the inbox or the routines: wherdr reads the
+  front matter of the project's `inbox/*.md` files, and the tab-separated lines of
+  `herdr-projects routine list`, showing the run texts (`last … · next …`) as printed.
 - **Max threads per machine**, across all projects: herdr-projects only limits threads per
   project, so three coordinators could still start a dozen threads on one small machine. Set a
   limit per machine in **Settings → Plugins → herdr-projects** (empty `—` = no global limit;

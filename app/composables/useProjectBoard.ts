@@ -6,6 +6,7 @@
 // Nothing shows without herdr-projects on the machine (`available: false`).
 import type { Pane } from '#shared/types'
 import type { ProjectBoard } from '#shared/projectBoard'
+import type { InboxItem, RoutineList } from '#shared/projectInbox'
 import type { ThreadAction, ThreadDetail } from '#shared/projectThreads'
 import { isCoordinator, projectOf } from '#shared/projects'
 
@@ -153,4 +154,17 @@ export function fetchThreadDetail(paneId: string, id: string) {
 // An action on a thread, run by herdr-projects on the coordinator's machine.
 export function runThreadAction(paneId: string, id: string, action: ThreadAction) {
   return api<{ output: string }>('/api/project/thread', { pane_id: paneId, id, action })
+}
+
+// Unhandled inbox items of the project, and "handled" on one of them.
+export function fetchProjectInbox(paneId: string) {
+  return api<{ items: InboxItem[], total: number }>(`/api/project/inbox?pane=${encodeURIComponent(paneId)}`)
+}
+export function markInboxDone(paneId: string, id: string) {
+  return api<{ ok: true }>('/api/project/inbox', { pane_id: paneId, id })
+}
+
+// Routines of the project (read-only).
+export function fetchProjectRoutines(paneId: string) {
+  return api<RoutineList>(`/api/project/routines?pane=${encodeURIComponent(paneId)}`)
 }

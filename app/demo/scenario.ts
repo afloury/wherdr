@@ -3,6 +3,7 @@
 // English, with no real path, machine, person or conversation.
 import type { ChangesResponse, ChatItem, ModelInfo, OmpToolView, Pane, Quotas, SlashCommand, Tab, Workspace } from '#shared/types'
 import type { ProjectBoard } from '#shared/projectBoard'
+import type { InboxItem, RoutineList } from '#shared/projectInbox'
 import type { ThreadDetail } from '#shared/projectThreads'
 
 export const HOME = '/Users/demo'
@@ -299,6 +300,24 @@ export function board(now: number, threads: { codex: string, omp: string }): Pro
       { id: 't-0008', title: 'Dead-letter list in the dashboard', group: 'Resolved', token: 'resolved', rank: 6, resolved: true, updated: iso(60 * 50), created: iso(60 * 54), agentName: null, machine: '', profile: 'omp', stateLine: 'review · report', activity: '', percent: 100, pr: '', report: false },
     ],
   }
+}
+
+// Project panel › Inbox and Routines.
+export function inbox(now: number): InboxItem[] {
+  const iso = (minutesAgo: number) => new Date(now - minutesAgo * 60_000).toISOString()
+  return [
+    { id: '20260101T090000Z-thread-state-t-0010-41', kind: 'thread-state', subject: 't-0010', event: 'resolved', summary: 't-0010 "Webhook retries with exponential backoff" was resolved: worktree removed and its workspace closed', created: iso(90), body: '' },
+    { id: '20260101T101500Z-routine-nightly-tests-42', kind: 'routine', subject: 'nightly-tests', event: 'due', summary: 'Routine nightly-tests is due', created: iso(35), body: 'Run the full test suite on main and open a thread for every new failure.' },
+    { id: '20260101T104800Z-thread-state-t-0013-43', kind: 'thread-state', subject: 't-0013', event: 'blocked on a prompt', summary: 't-0013 "Fix the flaky CSV export test" is waiting for an approval', created: iso(2), body: '' },
+  ]
+}
+export const ROUTINES: RoutineList = {
+  routines: [
+    { name: 'nightly-tests', schedule: 'daily 02:30', enabled: true, kind: 'prompt only', when: ['last 2026-01-01 02:30', 'next 2026-01-02 02:30'] },
+    { name: 'pr-followup', schedule: 'on pr: checks-failed, review', enabled: true, kind: 'prompt only', when: [] },
+    { name: 'dependency-audit', schedule: 'every 7d', enabled: false, kind: 'command: approved', when: ['last 2025-12-28 09:00', 'next - (disabled)'] },
+  ],
+  broken: [],
 }
 
 // One thread's record (Project panel › Threads), as `thread show --json` gives it.

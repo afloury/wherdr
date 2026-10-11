@@ -35,9 +35,10 @@ const tabByPane = new Map<string, string>()
 // thread, opens a text sheet; "↳ Info pour t-NNNN : …" is sent to the coordinator,
 // which passes the text on to the thread.
 // The file is never written from here.
-// Tabs: "Tasks" (all of the above) and "Threads" (ProjectThreads.vue: every
-// thread, its record and its actions). A new tab is one more entry in TABS
-// and one more block under the tab bar.
+// Tabs: "Tasks" (all of the above), "Threads" (ProjectThreads.vue: every
+// thread, its record and its actions), "Inbox" (ProjectInbox.vue: unhandled
+// items, Done) and "Routines" (ProjectRoutines.vue, read-only). A new tab is
+// one more entry in TABS and one more block under the tab bar.
 // `side`: column to the right of the conversation (computer), collapsible.
 import type { Pane, QueuedMessage } from '#shared/types'
 import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, type TaskBadge, boardSections, visibleSections, decisionPrefix, detailPrefix, infoMessage, launchMessage, missingLists, moveMessage, type MoveAction, problemPrefix, queueStatus, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, textParts, unblockMessage } from '#shared/projectBoard'
@@ -50,10 +51,12 @@ const emit = defineEmits<{ reload: [], collapse: [], sent: [queued: QueuedMessag
 const DONE_SHOWN = 20
 
 // ------------------------------------------------------------ tabs
-type PanelTab = 'tasks' | 'threads'
-const TABS: { key: PanelTab, label: string, icon: string }[] = [
-  { key: 'tasks', label: tl('Tasks', 'Tâches'), icon: 'i-lucide-list-checks' },
-  { key: 'threads', label: 'Threads', icon: 'i-lucide-git-branch' },
+type PanelTab = 'tasks' | 'threads' | 'inbox' | 'routines'
+const TABS: { key: PanelTab, label: string }[] = [
+  { key: 'tasks', label: tl('Tasks', 'Tâches') },
+  { key: 'threads', label: 'Threads' },
+  { key: 'inbox', label: 'Inbox' },
+  { key: 'routines', label: 'Routines' },
 ]
 const saved = tabByPane.get(props.paneId)
 const tab = ref<PanelTab>(TABS.some(x => x.key === saved) ? saved as PanelTab : 'tasks')
@@ -63,6 +66,11 @@ function setTab(key: PanelTab) {
   tabByPane.set(props.paneId, key)
   haptic()
 }
+// The bar scrolls sideways when the tabs do not fit: the picked one stays in view.
+function pickTab(key: PanelTab, e: MouseEvent) {
+  setTab(key)
+  ;(e.currentTarget as HTMLElement).scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+}
 // Arrow keys move between tabs, as in any tab list.
 function onTabKey(e: KeyboardEvent) {
   const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
@@ -71,9 +79,26 @@ function onTabKey(e: KeyboardEvent) {
   const next = TABS[(TABS.findIndex(x => x.key === tab.value) + step + TABS.length) % TABS.length]!
   const bar = e.currentTarget as HTMLElement
   setTab(next.key)
-  nextTick(() => bar.querySelector<HTMLElement>('.pp-tab.on')?.focus())
+  nextTick(() => {
+    const on = bar.querySelector<HTMLElement>('.pp-tab.on')
+    on?.focus()
+    on?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  })
 }
-const tabCount = (key: PanelTab) => (key === 'threads' && props.board ? props.board.open.length : null)
+// Unhandled inbox items: known once the Inbox tab was opened.
+const inboxCount = ref<number | null>(null)
+const tabCount = (key: PanelTab) => (key === 'threads' && props.board ? props.board.open.length : key === 'inbox' ? inboxCount.value : null)
+// Refresh re-reads the board (the parent) and the tab's own list.
+const refreshTick = ref(0)
+function refresh() {
+  refreshTick.value++
+  emit('reload')
+}
+// An inbox item about a thread: its agent if it runs, otherwise its report.
+function openInboxThread(th: ProjectThread) {
+  if (paneOf(th) || th.report) openThread(th)
+  else setTab('threads')
+}
 
 const sections = computed<BoardSection[]>(() => (props.board ? visibleSections(boardSections(props.board, { doing: t('In progress'), done: tl('Done', 'Fait') }), projectHideEmpty.value) : []))
 
@@ -409,7 +434,7 @@ function hideHint() {
       <span v-if="board" class="pp-slug">{{ board.slug }}</span>
       <span class="pp-grow" />
       <UTooltip :text="t('Refresh')" :disabled="!desk">
-        <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="sm" class="icon-btn pp-btn" :class="{ spinning: loading }" :aria-label="t('Refresh')" @click="emit('reload')" />
+        <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="sm" class="icon-btn pp-btn" :class="{ spinning: loading }" :aria-label="t('Refresh')" @click="refresh" />
       </UTooltip>
       <UTooltip v-if="side" :text="t('Collapse the panel')">
         <UButton icon="i-lucide-panel-right-close" color="neutral" variant="ghost" size="sm" class="icon-btn pp-btn" :aria-label="t('Collapse the panel')" @click="emit('collapse')" />
@@ -419,9 +444,9 @@ function hideHint() {
     <div v-if="board" class="pp-tabs" role="tablist" :aria-label="tl('Project sections', 'Sections du projet')" @keydown="onTabKey">
       <button
         v-for="x in TABS" :id="`pp-tab-${x.key}`" :key="x.key" type="button" role="tab" class="pp-tab" :class="{ on: tab === x.key }"
-        :aria-selected="tab === x.key" :tabindex="tab === x.key ? 0 : -1" @click="setTab(x.key)"
+        :aria-selected="tab === x.key" :tabindex="tab === x.key ? 0 : -1" @click="pickTab(x.key, $event)"
       >
-        <UIcon :name="x.icon" /><span>{{ x.label }}</span><span v-if="tabCount(x.key) !== null" class="pp-tab-n">{{ tabCount(x.key) }}</span>
+        <span>{{ x.label }}</span><span v-if="tabCount(x.key) !== null" class="pp-tab-n">{{ tabCount(x.key) }}</span>
       </button>
     </div>
 
@@ -430,6 +455,8 @@ function hideHint() {
       <p v-if="!board && loading" class="pp-notice"><span class="spinner" /> {{ t('Reading the project…') }}</p>
       <p v-if="board?.threadsError" class="pp-notice error">{{ t('Threads unavailable') }} · <code>{{ board.threadsError }}</code></p>
       <ProjectThreads v-if="board && tab === 'threads'" :pane-id="paneId" :board="board" @reload="emit('reload')" @report="openReport" @agent="openThread" />
+      <ProjectInbox v-else-if="board && tab === 'inbox'" :pane-id="paneId" :board="board" :tick="refreshTick" @count="inboxCount = $event" @thread="openInboxThread" />
+      <ProjectRoutines v-else-if="board && tab === 'routines'" :pane-id="paneId" :board="board" :tick="refreshTick" />
       <template v-else-if="board">
         <p v-if="board.tasksMissing" class="pp-notice">{{ t('No TASKS.md in this project yet.') }}</p>
         <p v-if="missing.length && !hintOff" class="pp-hint">

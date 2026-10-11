@@ -30,6 +30,8 @@ export class DemoServer {
   private turns = new Map<string, number>()
   // Threads whose report was acknowledged in the Project panel.
   private acked = new Set<string>()
+  // Inbox items marked as handled in the Project panel.
+  private handled = new Set<string>()
   private sent = 0
   private pending = new Map<string, { token: number, turn: S.ScriptedTurn }>()
   // Messages typed while a question hides the agent's input field: held, like
@@ -358,6 +360,12 @@ export class DemoServer {
           const text = S.REPORTS[String(q.get('id'))]
           return text ? ok({ id: q.get('id'), text, truncated: false }) : fail(404, 'No report yet')
         }
+        case '/api/project/inbox': {
+          if (paneId !== S.COORD) return fail(404, 'project not found')
+          const items = S.inbox(this.clock.now()).filter(x => !this.handled.has(x.id))
+          return ok({ items, total: items.length })
+        }
+        case '/api/project/routines': return paneId === S.COORD ? ok(S.ROUTINES) : fail(404, 'project not found')
         case '/api/project/thread': {
           const id = String(q.get('id'))
           const thread = paneId === S.COORD ? S.threadDetail(this.board(), id, this.acked.has(id)) : null
@@ -414,6 +422,13 @@ export class DemoServer {
       case '/api/onboarding': return ok()
       // Project panel › Threads: acknowledging a report is only a note; the
       // other actions would stop or remove an agent, which the demo never does.
+      // Project panel › Inbox: an item marked as handled leaves the list.
+      case '/api/project/inbox': {
+        const id = String(body.id || '')
+        if (paneId !== S.COORD || !S.inbox(this.clock.now()).some(x => x.id === id)) return fail(403, DEMO_REFUSAL)
+        this.handled.add(id)
+        return ok()
+      }
       case '/api/project/thread': {
         const id = String(body.id || '')
         if (paneId !== S.COORD || body.action !== 'ack' || !S.threadDetail(this.board(), id, false)) return fail(403, DEMO_REFUSAL)

@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Project panel › Inbox and Routines tabs**. **Inbox** lists the project's unhandled inbox
+  items (a thread's new report, a routine due, a machine out of reach…), oldest first, with the
+  thread's title when the item is about one; **Done** marks one as handled (`herdr-projects
+  inbox done`). **Routines** shows each routine's schedule, whether it is enabled, its kind and
+  its last and next run, read-only: approving or switching a routine stays in the terminal.
+  herdr-projects has no JSON for either yet, so the inbox is read from the project's `inbox/`
+  files and routines from the tab-separated output of `routine list`, whose run texts are shown
+  as printed.
 - **Project panel › Threads tab**: every thread of a herdr-projects project, as `herdr-projects
   thread list` gives it. Open threads sit under their group (Your turn, Ready for review,
   Working…) with machine and profile; resolved ones stay in their own folded section, by pages of
