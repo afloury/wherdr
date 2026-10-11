@@ -83,6 +83,7 @@ for (const scenario of [
   { github: true, npm: true, version: '1.3.3', runtime: 'node' },
   { github: false, npm: true, version: '1.3.2', runtime: 'node' },
   { github: false, npm: true, version: '1.3.2', runtime: 'bun' },
+  { github: false, npm: true, version: '1.3.2', runtime: 'node', skillCommands: true },
   { github: false, npm: false, version: '1.3.3', runtime: 'node' },
 ]) {
   it(`uses prebuilt sources before compilation: ${JSON.stringify(scenario)}`, async () => {
@@ -93,9 +94,11 @@ for (const scenario of [
     mkdirSync(path.join(pkg, 'bin'), { recursive: true })
     mkdirSync(path.join(checkout, 'bin/lib'), { recursive: true })
     mkdirSync(path.join(checkout, 'skills/wherdr'), { recursive: true })
+    cpSync('bin', path.join(checkout, 'bin'), { recursive: true })
     writeFileSync(path.join(checkout, 'skills/wherdr/SKILL.md'), 'checkout skill for legacy npm')
     writeFileSync(path.join(pkg, '.output/server/index.mjs'), '// prebuilt')
     writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ version: scenario.version }))
+    writeFileSync(path.join(pkg, 'bin/wherdr.mjs'), '// legacy package commands without skill helpers')
     cpSync('bin/lib/verify-release.mjs', path.join(checkout, 'bin/lib/verify-release.mjs'))
     writeFileSync(path.join(checkout, 'herdr-plugin.toml'), `version = "${scenario.version}"\n`)
     const archive = path.join(home, 'package.tgz')
@@ -137,6 +140,29 @@ for (const scenario of [
       if (prebuilt) expect(readFileSync(path.join(checkout, '.output/server/index.mjs'), 'utf8')).toBe('// prebuilt')
       if (scenario.github) expect(requests.some(url => url.startsWith('/npm/'))).toBe(false)
       expect(readFileSync(path.join(checkout, 'skills/wherdr/SKILL.md'), 'utf8')).toBe('checkout skill for legacy npm')
+      if ('skillCommands' in scenario) {
+        // Reproduce the plugin's refresh and explicit skill commands after
+        // npm 1.3.2 has supplied its prebuilt server and legacy bin directory.
+        for (const helper of ['install-skill.sh', 'skill.mjs', 'verify-release.mjs']) {
+          expect(readFileSync(path.join(checkout, 'bin/lib', helper))).toEqual(readFileSync(`bin/lib/${helper}`))
+        }
+        mkdirSync(path.join(home, '.claude'))
+        const skillCommand = script.slice(script.indexOf('cmd_skill()'), script.indexOf('# Last step of the install'))
+        const skillShell = path.join(home, 'skill.sh')
+        writeFileSync(skillShell, `set -eu\nROOT="$1"\nDIR="$HOME/wherdr"\nMODE=native\n${skillCommand}\ncmd_skill "$2"\n`)
+        const runSkill = (mode: string) => promisify(execFile)('sh', [skillShell, checkout, mode], {
+          env: { ...process.env, HOME: home, CLAUDE_CONFIG_DIR: path.join(home, '.claude'), WHERDR_SKILL: '' },
+        })
+        const link = path.join(home, '.claude/skills/wherdr/SKILL.md')
+        await runSkill('refresh')
+        expect(readFileSync(link, 'utf8')).toBe('checkout skill for legacy npm')
+        await runSkill('uninstall')
+        expect(existsSync(link)).toBe(false)
+        expect(existsSync(path.join(home, '.local/state/wherdr/skill-disabled'))).toBe(true)
+        await runSkill('install')
+        expect(readFileSync(link, 'utf8')).toBe('checkout skill for legacy npm')
+        expect(existsSync(path.join(home, '.local/state/wherdr/skill-disabled'))).toBe(false)
+      }
     } finally {
       await new Promise<void>(resolve => server.close(() => resolve()))
       rmSync(home, { recursive: true, force: true })

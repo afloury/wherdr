@@ -802,6 +802,8 @@ use the GitHub `.tgz` and verify its SHA-256 checksum before extraction. A faile
 download or checksum check leaves the running version in place. Plugin installation tries
 GitHub first, then the prebuilt npm package of the exact same version (with its registry integrity hash), and only builds from source when neither works.
 This also keeps older 1.3.x releases without GitHub archives installable with Node.js or Bun.
+Packages predating the bundled skill retain the plugin checkout's commands and skill, so
+skill refresh, installation and uninstallation remain available.
 The installer fetches `main` explicitly unless you set `WHERDR_REF`.
 
 The SHA-256 checksum detects damaged downloads. It is served beside the archive, so someone

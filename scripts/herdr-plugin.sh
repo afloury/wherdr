@@ -309,9 +309,14 @@ fetch_prebuilt() {
     tar -xzf "$tmp/wherdr.tgz" -C "$tmp" 2>/dev/null || continue
     [ -f "$tmp/package/.output/server/index.mjs" ] \
       && [ -d "$tmp/package/bin" ] && [ -f "$tmp/package/package.json" ] || continue
-    # Old npm releases predate the bundled skill; retain the checkout's copy.
+    # Legacy packages have neither the skill nor its helpers. Keep the
+    # checkout's commands so plugin skill install/uninstall still work.
     for entry in .output bin package.json skills; do
       [ -e "$tmp/package/$entry" ] || continue
+      if [ "$entry" = bin ]; then
+        [ -f "$tmp/package/skills/wherdr/SKILL.md" ] \
+          && [ -f "$tmp/package/bin/lib/install-skill.sh" ] || continue
+      fi
       rm -rf "$ROOT/$entry"
       mv "$tmp/package/$entry" "$ROOT/$entry"
     done
