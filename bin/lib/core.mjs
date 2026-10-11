@@ -115,6 +115,7 @@ export function serverEnv(opts, env, home = os.homedir(), bin = BIN) {
   out.WHERDR_INSTALL = installKind(bin, dir)
   out.WHERDR_ROOT = path.resolve(bin, '..', '..')
   out.WHERDR_DIR = dir
+  if (out.CLAUDE_CONFIG_DIR) out.CLAUDE_CONFIG_DIR = path.resolve(home, expandHome(out.CLAUDE_CONFIG_DIR, home))
   // Nitro reads NITRO_PORT / NITRO_HOST before PORT / HOST.
   delete out.NITRO_PORT
   delete out.NITRO_HOST

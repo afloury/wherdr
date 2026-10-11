@@ -165,3 +165,70 @@ exit 0
   const unit = readFileSync(path.join(f.home, '.config/systemd/user/skill-test.service'), 'utf8')
   expect(unit).toContain(`CLAUDE_CONFIG_DIR=${claude}`)
 })
+
+
+it.skipIf(process.platform !== 'linux')('normalizes a relative Claude config and preserves skill opt-out in the login service', () => {
+  const f = fixture('npm')
+  mkdirSync(path.join(f.root, '.output/server'), { recursive: true })
+  writeFileSync(path.join(f.root, '.output/server/index.mjs'), '')
+  const tools = path.join(f.home, 'tools')
+  writeFileSync(path.join(tools, 'systemctl'), '#!/bin/sh\ncase "$*" in "--user enable --now skill-test.service") exit 1 ;; esac\nexit 0\n', { mode: 0o755 })
+  const result = spawnSync(process.execPath, [path.join(f.root, 'bin/wherdr.mjs'), 'service', 'install', '--port', '7699'], {
+    env: { ...f.env, CLAUDE_CONFIG_DIR: '.custom-claude', WHERDR_SKILL: 'off', WHERDR_SERVICE_NAME: 'skill-test', XDG_CONFIG_HOME: path.join(f.home, '.config') },
+    encoding: 'utf8', timeout: 10000,
+  })
+  // Refuse activation after the unit is written; no real service is started.
+  const unit = readFileSync(path.join(f.home, '.config/systemd/user/skill-test.service'), 'utf8')
+  expect(unit).toContain(`CLAUDE_CONFIG_DIR=${f.home}/.custom-claude`)
+  expect(unit).toContain('WHERDR_SKILL=off')
+  expect(existsSync(f.copy)).toBe(false)
+  expect(result.stderr).toContain('enable --now failed')
+})
+
+
+for (const mode of ['npm', 'brew', 'plugin-native', 'plugin-docker', 'docker']) {
+  it(`${mode}: WHERDR_SKILL=off neither installs nor refreshes`, () => {
+    const f = fixture(mode)
+    mkdirSync(path.join(f.home, '.claude'))
+    const disabled = { ...f.env, WHERDR_SKILL: 'off' }
+    Object.assign(f.env, disabled)
+    f.run()
+    expect(existsSync(f.copy)).toBe(false)
+    Object.assign(f.env, { WHERDR_SKILL: '' })
+    f.run()
+    const installed = readFileSync(path.join(f.copy, 'SKILL.md'), 'utf8')
+    writeFileSync(f.source, 'a new release')
+    Object.assign(f.env, disabled)
+    f.run()
+    expect(readFileSync(path.join(f.copy, 'SKILL.md'), 'utf8')).toBe(installed)
+  })
+}
+
+
+it('consumes the updater handoff without another refresh or leaking it to the server', () => {
+  const f = fixture('npm')
+  mkdirSync(path.join(f.home, '.claude'))
+  mkdirSync(path.join(f.root, '.output/server'), { recursive: true })
+  writeFileSync(path.join(f.root, '.output/server/index.mjs'), "console.log(process.env.WHERDR_SKILL_REFRESHED ?? 'consumed')")
+  const result = spawnSync(process.execPath, [path.join(f.root, 'bin/wherdr.mjs'), 'run', '--port', '7699'], {
+    env: { ...f.env, WHERDR_SKILL_REFRESHED: '1' }, encoding: 'utf8', timeout: 10000,
+  })
+  expect(result.status).toBe(0)
+  expect(result.stdout).toContain('consumed')
+  expect(existsSync(f.copy)).toBe(false)
+})
+
+for (const mode of ['plugin-native', 'plugin-docker', 'docker']) {
+  it(`${mode}: automatic refresh preserves uninstall until explicit installation`, () => {
+    const f = fixture(mode)
+    mkdirSync(path.join(f.home, '.claude'))
+    f.run()
+    execFileSync('sh', [path.join(f.root, 'bin/lib/install-skill.sh'), 'uninstall'], { env: f.env })
+    const script = mode === 'docker' ? 'bin/install-docker-skill.sh' : 'scripts/herdr-plugin.sh'
+    execFileSync('sh', [path.join(f.root, script), ...(mode === 'docker' ? ['test-image', 'refresh'] : ['skill', 'refresh'])], { env: f.env })
+    expect(existsSync(f.link)).toBe(false)
+    expect(existsSync(f.copy)).toBe(false)
+    f.run()
+    expect(readFileSync(path.join(f.link, 'SKILL.md'), 'utf8')).toBe(readFileSync(f.source, 'utf8'))
+  })
+}

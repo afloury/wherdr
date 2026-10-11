@@ -1104,6 +1104,9 @@ wherdr. It links `~/.claude/skills/wherdr` (or `$CLAUDE_CONFIG_DIR/skills/wherdr
 when the Claude configuration folder exists, and `~/.agents/skills/wherdr` only when
 `.agents`, `.codex` or `.omp` exists. Links point to a stable copy in
 `${WHERDR_DIR:-$HOME/wherdr}/skills/wherdr`. Existing skills from elsewhere are left alone.
+Relative `WHERDR_DIR` resolves from the working directory; relative `CLAUDE_CONFIG_DIR`
+resolves from HOME, including when saved in a login service. Unchanged content is not rewritten.
+A broken link is repaired only when local metadata proves wherdr created it.
 
 | Install mode | Skill installation and refresh |
 | --- | --- |
@@ -1111,7 +1114,8 @@ when the Claude configuration folder exists, and `~/.agents/skills/wherdr` only 
 | Homebrew | On `wherdr` startup, including the Homebrew service; restart the service after `brew upgrade`. |
 | One-tap update (npm, Homebrew, native plugin) | Restarting wherdr refreshes the skill from the newly installed package; rollback restores the previous copy when that package also bundles the skill. |
 | Herdr plugin, Node.js | On plugin installation / reinstallation, and on startup from its installed package. |
-| Herdr plugin, Docker (including the one-command installer) | On plugin installation and Update, extracted from the pulled image on the host. |
+| Herdr plugin, Docker | On plugin installation and Update, extracted from the pulled image on the host. |
+| One-command installer, Docker | After each pull, including reruns and `WHERDR_MODE=docker`; saves host helpers in `$WHERDR_DIR/skill-installer`. |
 | Docker by hand | Run the host-side command below after the initial pull and after each image update. |
 | From source | Use `node bin/wherdr.mjs` after building, or run `sh bin/lib/install-skill.sh` yourself after updating; `npm start` alone does not install the skill. |
 
@@ -1123,13 +1127,25 @@ sh bin/install-docker-skill.sh ghcr.io/afloury/wherdr:latest
 ```
 
 Pass your image tag if different. The helper creates a stopped temporary container, copies
-only the bundled skill and installer out of it, then removes the container. No host home is
-mounted into it. Repeat this command after each manual Docker update; Docker has no one-tap
-update in the app. Older images without the bundled skill are silently skipped.
+only `/app/skills/wherdr/SKILL.md` out of it, uses the local host installer, then removes
+the container. No host home is mounted into it. Repeat this command after each manual Docker update; Docker has no one-tap
+update in the app. Manual failures (including older images without the skill) return a
+nonzero status with diagnostics; plugin and one-command installation warn and continue. Without a checkout, use
+`sh "${WHERDR_DIR:-$HOME/wherdr}/skill-installer/bin/install-docker-skill.sh" <image>` after the one-command install.
 
 Remove managed links with `sh bin/lib/install-skill.sh uninstall` (or
-`sh scripts/herdr-plugin.sh skill uninstall` in the plugin folder). You can also paste
-**Settings → Plugins → herdr-projects → Copy rules for the coordinator** to your agent.
+`sh scripts/herdr-plugin.sh skill uninstall` in the plugin folder). Uninstall leaves
+`~/.local/state/wherdr/skill-disabled`: subsequent starts and updates respect it, even if
+`WHERDR_DIR` changes. To re-enable, explicitly run `sh bin/lib/install-skill.sh install`
+or the plugin's `skill install` (or the Docker host helper above). `WHERDR_SKILL=off`
+disables all installation and refresh, including explicit install; export it for interactive
+starts or set it when installing the login service to preserve it there.
+
+Two limitations remain: rollback to an older package without the helper (such as 1.3.2)
+leaves the failed release's skill in place. With multiple wherdr versions sharing an account,
+the last one started supplies the skill; there is no version comparison.
+
+You can also paste **Settings → Plugins → herdr-projects → Copy rules for the coordinator** to your agent.
 
 ## Herdr plugins
 

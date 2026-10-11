@@ -30,7 +30,6 @@ RUN apk add --no-cache openssh-client git su-exec \
 ENV NODE_ENV=production PORT=7683 NITRO_SHUTDOWN_TIMEOUT=1500 WHERDR_INSTALL=docker
 COPY --from=build /app/.output ./.output
 COPY skills/wherdr ./skills/wherdr
-COPY bin/lib/install-skill.sh ./bin/lib/install-skill.sh
 COPY scripts/docker-entrypoint.sh /usr/local/bin/wherdr-entrypoint
 EXPOSE 7683
 ENTRYPOINT ["wherdr-entrypoint"]

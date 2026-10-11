@@ -18,14 +18,16 @@ const plans = {
 // (matched on its text) throw, `answers` lists the versions /api/health reports.
 function fakeIo(o: { fail?: RegExp, answers?: string[], files?: string[], opt?: string } = {}) {
   const calls: string[] = []
+  const environments: Record<string, string>[] = []
   const states: [string, string | undefined][] = []
   const files = new Set(o.files ?? [])
   const answers = [...(o.answers ?? [])]
   const io = {
-    calls, states, files,
+    calls, states, files, environments,
     log: () => {},
     state: (s: string, m?: string) => { states.push([s, m]) },
-    async run(cmd: string, args: string[]) {
+    async run(cmd: string, args: string[], env: Record<string, string> = {}) {
+      environments.push(env)
       const line = [cmd, ...args].join(' ')
       calls.push(line)
       if (o.fail?.test(line)) throw new Error(`${line} exited with 1`)
@@ -92,15 +94,16 @@ describe('one-tap update: commands of each installation', () => {
     ])
   })
 
-  for (const kind of ['plugin', 'npm-global', 'brew'] as const) {
+  for (const kind of ['plugin', 'npm-global'] as const) {
     it(`${kind}: refreshes the installed skill without making update success depend on it`, async () => {
       const plan = plans[kind]
-      const root = kind === 'brew' ? '/opt/homebrew/Cellar/wherdr/1.3.1/libexec/lib/node_modules/wherdr' : plan.root
+      const root = plan.root
       const helper = `${root}/bin/lib/install-skill.sh`
       for (const fail of [undefined, /install-skill/]) {
         const io = fakeIo({ answers: ['1.3.1'], files: [helper], fail })
         expect(await runUpdate(plan, io)).toBe('done')
-        expect(io.calls).toContain(`sh ${helper} install ${root}`)
+        expect(io.calls).toContain(`sh ${helper} refresh ${root}`)
+        expect(io.environments.some(env => env.WHERDR_SKILL_REFRESHED === '1')).toBe(fail === undefined)
       }
     })
   }

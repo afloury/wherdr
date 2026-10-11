@@ -108,8 +108,8 @@ function brewDriver(plan, io) {
       await io.run(brew, ['link', '--overwrite', 'wherdr'], env)
     },
     async start() {
-      // Resolve the current opt link: plan.root still names the previous keg.
-      await refreshInstalledSkill(plan, io, path.join(io.realpath(opt), 'libexec/lib/node_modules/wherdr'))
+      // The service's CLI refreshes its own package. No opt lookup or duplicate
+      // helper invocation can prevent the service restart.
       return io.run(brew, ['services', 'restart', 'wherdr'], env)
     },
   }
@@ -119,13 +119,16 @@ function brewDriver(plan, io) {
 export async function refreshInstalledSkill(plan, io, root = plan.root) {
   try {
     const helper = path.join(root, 'bin', 'lib', 'install-skill.sh')
-    if (io.exists(helper)) await io.run('sh', [helper, 'install', root], { WHERDR_DIR: plan.dir })
+    if (io.exists(helper)) {
+      await io.run('sh', [helper, 'refresh', root], { WHERDR_DIR: plan.dir }, { timeout: 5000 })
+      return true
+    }
   } catch {} // A skill refresh never prevents an update or rollback.
 }
 
 async function cliStart(plan, io) {
-  await refreshInstalledSkill(plan, io)
-  return io.run(plan.runtime, [path.join(plan.root, 'bin', 'wherdr.mjs'), 'start'])
+  const refreshed = await refreshInstalledSkill(plan, io)
+  return io.run(plan.runtime, [path.join(plan.root, 'bin', 'wherdr.mjs'), 'start'], refreshed ? { WHERDR_SKILL_REFRESHED: '1' } : {})
 }
 
 export function driverFor(plan, io) {
@@ -223,16 +226,22 @@ export function realIo(plan, now = Date.now) {
       writeFileSync(`${stateFile}.tmp`, `${JSON.stringify(job)}\n`)
       renameSync(`${stateFile}.tmp`, stateFile)
     },
-    run(cmd, args, env = {}) {
+    run(cmd, args, env = {}, { timeout } = {}) {
       log(`$ ${[cmd, ...args].join(' ')}`)
       const { promise, resolve, reject } = Promise.withResolvers()
-      const child = spawn(cmd, args, { cwd: plan.dir, env: { ...process.env, PATH, ...env }, stdio: ['ignore', 'pipe', 'pipe'] })
+      const child = spawn(cmd, args, { cwd: plan.dir, env: { ...process.env, PATH, ...env }, detached: Boolean(timeout), stdio: ['ignore', 'pipe', 'pipe'] })
+      const timer = timeout ? setTimeout(() => {
+        // The shell's own children must not keep copying or hold log pipes open.
+        try { process.kill(-child.pid, 'SIGKILL') } catch { child.kill('SIGKILL') }
+        reject(new Error(`${path.basename(cmd)} timed out after ${timeout} ms`))
+      }, timeout) : undefined
       let out = ''
       const keep = (b) => { out = (out + b).slice(-4000); try { appendFileSync(logFile, b) } catch {} }
       child.stdout.on('data', keep)
       child.stderr.on('data', keep)
-      child.on('error', e => reject(new Error(`${path.basename(cmd)}: ${e.message}`)))
+      child.on('error', e => { clearTimeout(timer); reject(new Error(`${path.basename(cmd)}: ${e.message}`)) })
       child.on('close', (code) => {
+        clearTimeout(timer)
         if (code === 0) return resolve(out)
         // The lines that say what went wrong (`wherdr: …`, `Error: …`), not a stack trace.
         const lines = out.split('\n').map(l => l.trim()).filter(Boolean)

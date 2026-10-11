@@ -14,5 +14,5 @@ else
   echo "shellcheck: image unavailable, skipped"
 fi
 
-docker run --rm -i --cpus=1 -v "$PWD/public/install:/opt/install:ro" -v "$PWD/tests/install-cases.sh:/opt/cases.sh:ro" \
+docker run --rm -i --cpus=1 -v "$PWD/public/install:/opt/install:ro" -v "$PWD/tests/install-cases.sh:/opt/cases.sh:ro" -v "$PWD/../bin:/opt/skill-bin:ro" \
   node:22-alpine sh /opt/cases.sh

@@ -13,6 +13,9 @@ mkdir -p /srv /stubs /opt/plugin/scripts
 chmod 777 /usr/local/bin
 # owner/wherdr, as the installer names it.
 REPO="$(sed -n 's/^  REPO="\(.*\)"$/\1/p' /opt/install)"
+cp /opt/skill-bin/install-docker-skill.sh /srv/install-docker-skill.sh
+cp /opt/skill-bin/lib/install-skill.sh /srv/install-skill.sh
+echo 'image skill v1' > /srv/SKILL.md
 printf 'services:\n  herdr-web:\n    image: ${WHERDR_IMAGE:-example/wherdr:latest}\n' > /srv/docker-compose.yml
 
 # docker: /tmp/no-docker-daemon makes `docker info` fail; /tmp/container-dir
@@ -28,6 +31,10 @@ case "$*" in
   "inspect wherdr"*) [ -f /tmp/container-dir ] || exit 1; cat /tmp/container-dir ;;
   "compose pull"*) if [ -f /tmp/pull-fails ]; then echo "denied: requested access to the resource is denied" >&2; exit 1; fi ;;
   "compose up"*) touch /tmp/up ;;
+  "compose config --images herdr-web") echo example/wherdr:latest ;;
+  "create -- "*) echo skill-container ;;
+  "cp "*) [ "$2" = "skill-container:/app/skills/wherdr/SKILL.md" ] || exit 1; cp /srv/SKILL.md "$3" ;;
+  "rm skill-container") : ;;
 esac
 exit 0
 EOF
@@ -86,7 +93,7 @@ EOF
 chmod +x /stubs/* /opt/stub/herdr /opt/stub/brew
 
 reset() {
-  rm -rf /home/alice/wherdr /home/alice/.local /home/alice/.config /home/alice/.cache /home/alice/.herdr-projects \
+  rm -rf /home/alice/.claude /home/alice/wherdr /home/alice/.local /home/alice/.config /home/alice/.cache /home/alice/.herdr-projects \
     /tmp/docker.log /tmp/curl.log /tmp/herdr.log /tmp/brew.log /tmp/up /tmp/pull-fails /tmp/herdr-version /tmp/darwin \
     /tmp/no-docker-daemon /tmp/container-dir /tmp/plugin-installed /tmp/build-fails /tmp/foreign /tmp/tailnet /stubs/brew
   [ -f /usr/local/bin/node.off ] && mv /usr/local/bin/node.off /usr/local/bin/node
@@ -114,8 +121,8 @@ run && pass "fresh install exits 0" || { fail "fresh install exits 0"; cat /tmp/
 check "installs the Herdr plugin" 'has "herdr plugin install $REPO --yes" /tmp/herdr.log'
 check "passes the folder, the port and no-browser to the plugin" \
   'has "WHERDR_DIR=/home/alice/wherdr" /tmp/herdr.log && has "WHERDR_PORT=7683" /tmp/herdr.log && has "WHERDR_NO_BROWSER=1" /tmp/herdr.log'
-check "headless: prints the address, an ssh tunnel and the plugin phone steps" \
-  'has "wherdr is running" /tmp/out && has "http://localhost:7683" /tmp/out && has "ssh -L 7683:127.0.0.1:7683" /tmp/out && has "PHONE STEPS FROM THE PLUGIN" /tmp/out'
+check "headless Docker: prints the address, an ssh tunnel and Docker phone steps" \
+  'has "wherdr is running" /tmp/out && has "http://localhost:7683" /tmp/out && has "ssh -L 7683:127.0.0.1:7683" /tmp/out && has "tailscale serve --bg" /tmp/out'
 check "warns when the Herdr server is not running" 'has "herdr.sock" /tmp/out'
 check "Docker usable: the plugin picks it (no runtime forced)" '! has "WHERDR_RUNTIME" /tmp/herdr.log && has "runs in a container" /tmp/out'
 check "never runs sudo or compose up itself" '! grep -q sudo /tmp/docker.log && ! has "compose up" /tmp/docker.log'
@@ -158,7 +165,7 @@ run && fail "macOS without Node.js nor Homebrew refused" || check "macOS without
 # 6. wherdr already running: never replaced.
 reset; touch /tmp/up /tmp/plugin-installed
 run; check "plugin wherdr running, no terminal: says so, no update" \
-  'has "already runs" /tmp/out && has "answering no" /tmp/out && [ ! -f /tmp/herdr.log ]'
+  'has "already runs" /tmp/out && has "answering no" /tmp/out && ! has "herdr plugin install" /tmp/herdr.log && ! has "plugin script: build" /tmp/herdr.log'
 run WHERDR_YES=1; check "plugin wherdr running, WHERDR_YES=1: updates the plugin" 'has "herdr plugin install $REPO" /tmp/herdr.log && has "wherdr updated" /tmp/out'
 reset; touch /tmp/up; echo /srv/prod > /tmp/container-dir
 run WHERDR_YES=1; check "Docker wherdr of another folder running: left alone, update command shown" \
@@ -181,6 +188,7 @@ run WHERDR_PLUGIN=/opt/plugin; check "WHERDR_PLUGIN=folder: linked and built in 
 
 # 8. WHERDR_MODE=docker: Docker Compose by hand, no plugin.
 reset
+mkdir -p /home/alice/.claude; chown alice /home/alice/.claude
 run WHERDR_MODE=docker && pass "docker: fresh install exits 0" || { fail "docker: fresh install exits 0"; cat /tmp/out; }
 cmp -s /srv/docker-compose.yml /home/alice/wherdr/docker-compose.yml && pass "docker: docker-compose.yml downloaded" || fail "docker: docker-compose.yml downloaded"
 check "docker: .env has PUID, HOME, PORT, no HERDR_BIN" \
@@ -188,8 +196,25 @@ check "docker: .env has PUID, HOME, PORT, no HERDR_BIN" \
 check "docker: bind-mount folders created as the user" \
   '[ -d /home/alice/wherdr/data ] && [ -d /home/alice/.herdr-projects ] && [ "$(stat -c %U /home/alice/.cache/herdr-web)" = alice ]'
 check "docker: pulls then starts, no plugin" 'has "compose pull" /tmp/docker.log && has "compose up -d" /tmp/docker.log && [ ! -f /tmp/herdr.log ]'
+check "docker: installs skill with downloaded local helpers, copies only SKILL.md" \
+  'has "image skill v1" /home/alice/.claude/skills/wherdr/SKILL.md && has "cp skill-container:/app/skills/wherdr/SKILL.md" /tmp/docker.log && ! has "cp skill-container:/app/bin" /tmp/docker.log'
+echo 'image skill v2' > /srv/SKILL.md
 echo "# mine" >> /home/alice/wherdr/.env; rm /tmp/up
 run WHERDR_MODE=docker; check "docker: second run keeps .env and the compose file" 'has "# mine" /home/alice/wherdr/.env && has "up to date" /tmp/out'
+check "docker: rerun refreshes skill without a checkout" 'has "image skill v2" /home/alice/.claude/skills/wherdr/SKILL.md'
+echo /home/alice/wherdr > /tmp/container-dir
+echo 'image skill v3' > /srv/SKILL.md
+run WHERDR_YES=1
+check "docker: rerun on a running Compose install refreshes skill" 'has "image skill v3" /home/alice/.claude/skills/wherdr/SKILL.md'
+echo 'image skill v4' > /srv/SKILL.md
+run WHERDR_YES=1 WHERDR_SKILL=off
+check "docker: installer respects WHERDR_SKILL=off" 'has "image skill v3" /home/alice/.claude/skills/wherdr/SKILL.md'
+su alice -s /bin/sh -c 'sh /home/alice/wherdr/skill-installer/bin/lib/install-skill.sh uninstall' > /tmp/out 2>&1
+run WHERDR_YES=1
+check "docker: installer preserves uninstall" '[ ! -e /home/alice/.claude/skills/wherdr ] && [ -f /home/alice/.local/state/wherdr/skill-disabled ]'
+su alice -s /bin/sh -c 'PATH=/stubs:/usr/bin:/bin sh /home/alice/wherdr/skill-installer/bin/install-docker-skill.sh example/wherdr:latest' > /tmp/out 2>&1
+check "docker: saved host helper explicitly re-enables the skill" 'has "image skill v4" /home/alice/.claude/skills/wherdr/SKILL.md'
+rm /tmp/container-dir
 echo "# edited" >> /home/alice/wherdr/docker-compose.yml; rm /tmp/up
 run WHERDR_MODE=docker; check "docker: edited compose kept without a terminal" 'has "# edited" /home/alice/wherdr/docker-compose.yml && has "answering no" /tmp/out'
 rm /tmp/up
