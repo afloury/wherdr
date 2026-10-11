@@ -37,8 +37,10 @@ const tabByPane = new Map<string, string>()
 // The file is never written from here.
 // Tabs: "Tasks" (all of the above), "Threads" (ProjectThreads.vue: every
 // thread, its record and its actions), "Inbox" (ProjectInbox.vue: unhandled
-// items, Done) and "Routines" (ProjectRoutines.vue, read-only). A new tab is
-// one more entry in TABS and one more block under the tab bar.
+// items, Done), "Routines", "Settings" and "Memory" (ProjectRoutines.vue,
+// ProjectSettings.vue, ProjectMemory.vue: read-only). A new tab is one more
+// entry in TABS and one more block under the tab bar. The bar scrolls sideways
+// when the tabs do not fit (a phone); a fade on its edge says there are more.
 // `side`: column to the right of the conversation (computer), collapsible.
 import type { Pane, QueuedMessage } from '#shared/types'
 import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, type TaskBadge, boardSections, visibleSections, decisionPrefix, detailPrefix, infoMessage, launchMessage, missingLists, moveMessage, type MoveAction, problemPrefix, queueStatus, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, textParts, unblockMessage } from '#shared/projectBoard'
@@ -51,12 +53,14 @@ const emit = defineEmits<{ reload: [], collapse: [], sent: [queued: QueuedMessag
 const DONE_SHOWN = 20
 
 // ------------------------------------------------------------ tabs
-type PanelTab = 'tasks' | 'threads' | 'inbox' | 'routines'
+type PanelTab = 'tasks' | 'threads' | 'inbox' | 'routines' | 'settings' | 'memory'
 const TABS: { key: PanelTab, label: string }[] = [
   { key: 'tasks', label: tl('Tasks', 'Tâches') },
   { key: 'threads', label: 'Threads' },
   { key: 'inbox', label: 'Inbox' },
   { key: 'routines', label: 'Routines' },
+  { key: 'settings', label: t('Settings') },
+  { key: 'memory', label: tl('Memory', 'Mémoire') },
 ]
 const saved = tabByPane.get(props.paneId)
 const tab = ref<PanelTab>(TABS.some(x => x.key === saved) ? saved as PanelTab : 'tasks')
@@ -71,6 +75,28 @@ function pickTab(key: PanelTab, e: MouseEvent) {
   setTab(key)
   ;(e.currentTarget as HTMLElement).scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
 }
+// Tabs hidden past an edge of the bar: that edge fades.
+const tabBar = useTemplateRef<HTMLElement>('tabBar')
+const more = ref({ left: false, right: false })
+function measureTabs() {
+  const el = tabBar.value
+  if (!el) return
+  more.value = { left: el.scrollLeft > 2, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2 }
+}
+let tabsSeen: ResizeObserver | null = null
+watch(tabBar, (el) => {
+  tabsSeen?.disconnect()
+  tabsSeen = null
+  if (!el) return
+  measureTabs()
+  if (typeof ResizeObserver !== 'undefined') {
+    tabsSeen = new ResizeObserver(measureTabs)
+    tabsSeen.observe(el)
+  }
+  // The tab kept from an earlier visit may be out of view.
+  el.querySelector<HTMLElement>('.pp-tab.on')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+}, { flush: 'post' })
+onUnmounted(() => tabsSeen?.disconnect())
 // Arrow keys move between tabs, as in any tab list.
 function onTabKey(e: KeyboardEvent) {
   const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
@@ -441,13 +467,15 @@ function hideHint() {
       </UTooltip>
     </header>
 
-    <div v-if="board" class="pp-tabs" role="tablist" :aria-label="tl('Project sections', 'Sections du projet')" @keydown="onTabKey">
+    <div v-if="board" class="pp-tabs-wrap" :class="{ 'more-left': more.left, 'more-right': more.right }">
+    <div ref="tabBar" class="pp-tabs" role="tablist" :aria-label="tl('Project sections', 'Sections du projet')" @keydown="onTabKey" @scroll.passive="measureTabs">
       <button
         v-for="x in TABS" :id="`pp-tab-${x.key}`" :key="x.key" type="button" role="tab" class="pp-tab" :class="{ on: tab === x.key }"
         :aria-selected="tab === x.key" :tabindex="tab === x.key ? 0 : -1" @click="pickTab(x.key, $event)"
       >
         <span>{{ x.label }}</span><span v-if="tabCount(x.key) !== null" class="pp-tab-n">{{ tabCount(x.key) }}</span>
       </button>
+    </div>
     </div>
 
     <div class="pp-scroll" role="tabpanel" :aria-labelledby="board ? `pp-tab-${tab}` : undefined">
@@ -457,6 +485,8 @@ function hideHint() {
       <ProjectThreads v-if="board && tab === 'threads'" :pane-id="paneId" :board="board" @reload="emit('reload')" @report="openReport" @agent="openThread" />
       <ProjectInbox v-else-if="board && tab === 'inbox'" :pane-id="paneId" :board="board" :tick="refreshTick" @count="inboxCount = $event" @thread="openInboxThread" />
       <ProjectRoutines v-else-if="board && tab === 'routines'" :pane-id="paneId" :board="board" :tick="refreshTick" />
+      <ProjectSettings v-else-if="board && tab === 'settings'" :pane-id="paneId" :board="board" :tick="refreshTick" />
+      <ProjectMemory v-else-if="board && tab === 'memory'" :pane-id="paneId" :board="board" :tick="refreshTick" />
       <template v-else-if="board">
         <p v-if="board.tasksMissing" class="pp-notice">{{ t('No TASKS.md in this project yet.') }}</p>
         <p v-if="missing.length && !hintOff" class="pp-hint">

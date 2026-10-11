@@ -44,10 +44,10 @@ async function mountTab(key: string) {
 describe('ProjectPanel › Inbox and Routines tabs', () => {
   beforeEach(() => { items = [...ALL]; posted.length = 0; eventsOpen.value = true })
 
-  it('has four tabs', async () => {
+  it('has its tabs after Threads', async () => {
     const Host = defineComponent({ render: () => h(UApp, null, () => h(ProjectPanel, { paneId: 'w1:tabs', board, loading: false, error: '' })) })
     const w = await mountSuspended(Host)
-    expect(w.findAll('[role="tab"]').map(b => b.text())).toEqual(['Tasks', 'Threads1', 'Inbox', 'Routines'])
+    expect(w.findAll('[role="tab"]').slice(0, 4).map(b => b.text())).toEqual(['Tasks', 'Threads1', 'Inbox', 'Routines'])
   })
 
   it('lists inbox items with the thread’s title, and marks one as handled', async () => {

@@ -1019,7 +1019,7 @@ worktree. It is optional; with it installed, wherdr adds:
 - **Project panel** next to the coordinator (a side panel on a computer, a tab on a phone). It
   reads the project's `TASKS.md` and shows the lists it has, always in this order, with the open
   threads live (state, progress, report) and resolved threads under Done (**Tasks** tab; the
-  **Threads**, **Inbox** and **Routines** tabs are described below):
+  **Threads**, **Inbox**, **Routines**, **Settings** and **Memory** tabs are described below):
 
   | List | Meaning | Buttons |
   | --- | --- | --- |
@@ -1071,10 +1071,21 @@ worktree. It is optional; with it installed, wherdr adds:
 - **Routines tab**: each routine's schedule, whether it is enabled, its kind (prompt only, or a
   command and its approval) and its last and next run. Read-only: wherdr never approves,
   switches or runs a routine, and does not expose the plugin's safety settings.
+- **Settings tab**, read-only: what the project's `PROJECT.md` sets, the keys
+  `herdr-projects set` changes (name, goal, coordinator and thread profiles,
+  `max_parallel_threads`, `auto_resolve_days`, `nudge`, `mute`, repositories). A key the file
+  leaves out shows the plugin's default, marked as such. Safety settings are not shown.
+- **Memory tab**, read-only: `MEMORY.md` (the index) and the `.md` files of `memory/`, with the
+  title and hook the index gives them; a file the index does not mention is listed by name. A
+  tap opens one, rendered as Markdown. The coordinator writes memory, wherdr never does.
+
+  With six tabs, the bar scrolls sideways on a phone and in a narrow side panel; a fade on its
+  edge says there are more.
 
   herdr-projects (0.2.34) has no JSON output for the inbox or the routines: wherdr reads the
   front matter of the project's `inbox/*.md` files, and the tab-separated lines of
-  `herdr-projects routine list`, showing the run texts (`last … · next …`) as printed.
+  `herdr-projects routine list`, showing the run texts (`last … · next …`) as printed. No command
+  prints a project's settings or memory either: those two tabs read the files named above.
 - **Max threads per machine**, across all projects: herdr-projects only limits threads per
   project, so three coordinators could still start a dozen threads on one small machine. Set a
   limit per machine in **Settings → Plugins → herdr-projects** (empty `—` = no global limit;

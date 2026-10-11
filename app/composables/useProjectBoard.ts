@@ -6,6 +6,7 @@
 // Nothing shows without herdr-projects on the machine (`available: false`).
 import type { Pane } from '#shared/types'
 import type { ProjectBoard } from '#shared/projectBoard'
+import type { MemoryFile, ProjectSettings } from '#shared/projectDocs'
 import type { InboxItem, RoutineList } from '#shared/projectInbox'
 import type { ThreadAction, ThreadDetail } from '#shared/projectThreads'
 import { isCoordinator, projectOf } from '#shared/projects'
@@ -167,4 +168,15 @@ export function markInboxDone(paneId: string, id: string) {
 // Routines of the project (read-only).
 export function fetchProjectRoutines(paneId: string) {
   return api<RoutineList>(`/api/project/routines?pane=${encodeURIComponent(paneId)}`)
+}
+
+// Settings and memory of the project (read-only).
+export function fetchProjectSettings(paneId: string) {
+  return api<{ settings: ProjectSettings }>(`/api/project/settings?pane=${encodeURIComponent(paneId)}`)
+}
+export function fetchProjectMemory(paneId: string) {
+  return api<{ files: MemoryFile[] }>(`/api/project/memory?pane=${encodeURIComponent(paneId)}`)
+}
+export function fetchMemoryFile(paneId: string, name: string) {
+  return api<{ name: string, text: string, truncated: boolean }>(`/api/project/memory?pane=${encodeURIComponent(paneId)}&name=${encodeURIComponent(name)}`)
 }

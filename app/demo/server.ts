@@ -366,6 +366,14 @@ export class DemoServer {
           return ok({ items, total: items.length })
         }
         case '/api/project/routines': return paneId === S.COORD ? ok(S.ROUTINES) : fail(404, 'project not found')
+        case '/api/project/settings': return paneId === S.COORD ? ok({ settings: S.SETTINGS }) : fail(404, 'project not found')
+        case '/api/project/memory': {
+          if (paneId !== S.COORD) return fail(404, 'project not found')
+          const name = q.get('name')
+          if (name === null) return ok({ files: S.memoryList() })
+          const text = Object.hasOwn(S.MEMORY, name) ? S.MEMORY[name] : undefined
+          return text === undefined ? fail(404, 'memory file not found') : ok({ name, text, truncated: false })
+        }
         case '/api/project/thread': {
           const id = String(q.get('id'))
           const thread = paneId === S.COORD ? S.threadDetail(this.board(), id, this.acked.has(id)) : null

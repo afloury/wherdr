@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Project panel › Settings and Memory tabs**, both read-only. **Settings** shows what
+  PROJECT.md sets (name, goal, coordinator and thread profiles, parallel threads, auto-resolve
+  delay, nudge, mute, repositories), with the plugin's default marked for a key the file leaves
+  out; safety settings are not shown. **Memory** lists MEMORY.md and the files of `memory/` with
+  the title and hook the index gives them, and opens one as Markdown. With six tabs the bar
+  scrolls sideways on a phone; a fade on its edge says there are more.
 - **Project panel › Inbox and Routines tabs**. **Inbox** lists the project's unhandled inbox
   items (a thread's new report, a routine due, a machine out of reach…), oldest first, with the
   thread's title when the item is about one; **Done** marks one as handled (`herdr-projects

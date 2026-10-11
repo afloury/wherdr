@@ -3,6 +3,7 @@
 // English, with no real path, machine, person or conversation.
 import type { ChangesResponse, ChatItem, ModelInfo, OmpToolView, Pane, Quotas, SlashCommand, Tab, Workspace } from '#shared/types'
 import type { ProjectBoard } from '#shared/projectBoard'
+import { type MemoryFile, type ProjectSettings, memoryFiles } from '../../shared/projectDocs'
 import type { InboxItem, RoutineList } from '#shared/projectInbox'
 import type { ThreadDetail } from '#shared/projectThreads'
 
@@ -319,6 +320,20 @@ export const ROUTINES: RoutineList = {
   ],
   broken: [],
 }
+
+// Project panel › Settings and Memory.
+export const SETTINGS: ProjectSettings = {
+  name: 'Acme API', goal: 'Ship the public API v2: rate limits, webhooks and a clean OpenAPI spec.',
+  coordinatorProfile: 'claude', threadProfile: 'codex', maxParallelThreads: 3, autoResolveDays: 7, nudge: true, mute: false,
+  repos: [{ path: `${HOME}/code/acme-api`, machine: '' }],
+  defaults: ['autoResolveDays', 'nudge', 'mute'],
+}
+export const MEMORY: Record<string, string> = {
+  'MEMORY.md': '# Memory\n\nOne line per memory file: `- [title](memory/file.md): what it holds`.\n\n- [Release checklist](memory/release.md): what to check before tagging a version\n- [Rate limit decisions](memory/rate-limits.md): 429 with Retry-After, limits per API key\n',
+  'release.md': '# Release checklist\n\n1. `npm test` green on `main`.\n2. Changelog entry under **Unreleased**.\n3. Tag `vX.Y.Z`, then watch the publish workflow.\n',
+  'rate-limits.md': '# Rate limit decisions\n\n- Limits are **per API key**, not per user.\n- Over the limit: `429` with a `Retry-After` header.\n- Paid plans queue nothing; they get a higher bucket.\n',
+}
+export const memoryList = (): MemoryFile[] => memoryFiles(MEMORY['MEMORY.md']!, Object.keys(MEMORY).filter(n => n !== 'MEMORY.md'))
 
 // One thread's record (Project panel › Threads), as `thread show --json` gives it.
 const NEXT: Record<string, string[]> = {
