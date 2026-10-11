@@ -19,7 +19,7 @@
 // - The actions of the Project panel keep their own labels, in both languages
 //   ("↳ Decision: <task> —", "↳ Décision : <task> —").
 // Any other line is the user's own text, a "↳" typed by hand included.
-import { plainText, truncate, truncateMiddle } from './replyQuote'
+import { OLD_MARKER_START, plainText, truncate, truncateMiddle } from './replyQuote'
 
 export type RefKind = 'message' | 'point' | 'decision' | 'decisions' | 'task'
 export interface Reference {
@@ -140,6 +140,25 @@ export function refsIn(text: string): TextRef[] {
 export function unreference(text: string): string {
   if (!text.includes('↳')) return text
   return text.split('\n').map(l => (l.startsWith('↳') && isRefLine(l.replace(/\r$/, '')) ? `\\${l}` : l)).join('\n')
+}
+
+// Two texts already normalized (one line, lowercase) that are one message:
+// the reference each starts with is the same one, and `sameWords` holds for
+// what follows it. Without this, "Yes" under one reference would pass for
+// "Yes" under another, and two answers to one message for each other (a
+// comparison only looks at the first characters). A text cut short (a line
+// of the agent's screen) may have lost the end of its reference: it is then
+// compared as it is.
+const LEAD_RE = new RegExp(`^↳ (?:quote (?:message|point|decisions?)|${TASK_LABELS.join('|').toLowerCase()}) .*? —(?:\\s+|$)`)
+function lead(normed: string): { ref: string, words: string } {
+  const m = LEAD_RE.exec(normed) || OLD_MARKER_START.exec(normed)
+  return m ? { ref: m[0].replace(/\s+/g, ''), words: normed.slice(m[0].length) } : { ref: '', words: normed }
+}
+export function sameSent(a: string, b: string, sameWords: (a: string, b: string) => boolean): boolean {
+  const x = lead(a)
+  const y = lead(b)
+  if (!x.ref || !y.ref) return sameWords(a, b)
+  return x.ref === y.ref && (x.words || y.words ? sameWords(x.words, y.words) : true)
 }
 
 // Message display: its references apart from the words under them. A run of

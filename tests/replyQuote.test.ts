@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dropReplyMarker, findReplyOrigin, parseReply, plainText, truncate } from '../shared/replyQuote'
+import { findReplyOrigin, parseReply, plainText, truncate } from '../shared/replyQuote'
 import { messageRef, refLine } from '../shared/reference'
 import { restoreDraft } from '../app/utils/queuedCancel'
 import { queuedPhase } from '../shared/queuedPhase'
@@ -54,7 +54,6 @@ describe('displaying a reply', () => {
     for (const head of [refLine({ kind: 'message', label: '', time: '14:32', n: null, id: null, excerpt }), old('14:32', excerpt, '').trimEnd()]) {
       const one = `${head}\nPremier avis détaillé ici`
       const two = `${head}\nSecond avis tout à fait différent`
-      expect(dropReplyMarker(one.replace(/\s+/g, ' ').toLowerCase())).toBe('premier avis détaillé ici')
       const screen = { queued: [two], sent: one } as unknown as Parameters<typeof queuedPhase>[1]
       expect(queuedPhase(one, screen)).toBe('sent')
       expect(queuedPhase(two, screen)).toBe('queued')

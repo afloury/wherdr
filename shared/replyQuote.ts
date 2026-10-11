@@ -78,11 +78,5 @@ export function findReplyOrigin<T extends { time: string | null, text: string, r
     || null
 }
 
-// Already normalized text (one line, lowercase) without the reference it
-// starts with (shared/reference.ts, or the marker used before): two replies
-// to the same message are not confused in the queue.
-export function dropReplyMarker(normed: string): string {
-  return normed
-    .replace(/^↳ (?:en réponse à ton message de|replying to your message from) .*?(?: »|")\)\s*/i, '')
-    .replace(/^↳ (?:quote (?:message|point|decisions?)|decision:|décision :|detail on|précision sur|feedback on|retour sur) .*? —(?:\s+|$)/i, '')
-}
+// The marker at the start of an already normalized text (one line, lowercase).
+export const OLD_MARKER_START = /^↳ (?:en réponse à ton message de|replying to your message from) .*?(?: »|")\)\s*/

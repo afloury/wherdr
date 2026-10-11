@@ -11,7 +11,7 @@ import type { ChatItem, ClaudeQueueEntry, ClaudeScreen } from '../../shared/type
 import type { OutboxItem } from './outbox'
 import { type QueuedPhase, queuedPhases } from '../../shared/queuedPhase'
 import { photosLanded, photosOnly, uploadNames, withoutUploads } from '../../shared/queuedMatch'
-import { dropReplyMarker } from '../../shared/replyQuote'
+import { sameSent } from '../../shared/reference'
 
 export interface PendingMessage {
   id: string
@@ -34,7 +34,10 @@ export interface PendingMessage {
   pasted?: string[]
 }
 
-const normText = (s: string) => dropReplyMarker(String(s || '').replace(/\s+/g, ' ').trim().toLowerCase())
+const normText = (s: string) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase()
+// `text` holds the message `sent`: the same reference at its start, then the
+// first words of `sent` (see sameSent).
+const holds = (text: string, sent: string) => sameSent(normText(text), normText(sent), (a, b) => a.includes(b.slice(0, 60)))
 
 // Records with photos seen for a pane (most recent last), to give Claude's
 // entries their photos. Plain memory of this page, outside reactivity.
@@ -60,10 +63,10 @@ export function pendingQueue(o: {
   const inChat = (q: OutboxItem) => {
     const after = (i: ChatItem) => !q.at || !i.ts || Date.parse(i.ts) >= q.at - 10000
     if (photosOnly(q.text)) return o.items.some(i => after(i) && photosLanded(q.text, i))
-    const n = normText(withoutUploads(q.text)).slice(0, 60)
+    const sent = withoutUploads(q.text)
     const nb = normText(q.text.replace(/^\s*(?:!!?|\$\$?)\s*/, '')).slice(0, 60)
-    return Boolean(n) && o.items.some(i => after(i)
-      && (i.role === 'user' ? normText(i.text).includes(n) : i.role === 'bash' && Boolean(nb) && normText(i.text).includes(nb)))
+    return Boolean(normText(sent)) && o.items.some(i => after(i)
+      && (i.role === 'user' ? holds(i.text, sent) : i.role === 'bash' && Boolean(nb) && normText(i.text).includes(nb)))
   }
   // Sending order, whatever the source (server or local send).
   const mine = [...o.mine].sort((a, b) => (a.at && b.at ? a.at - b.at : 0))
@@ -85,9 +88,8 @@ export function pendingQueue(o: {
       list.push({ id: `cc-${q.ts}`, text: known || '', missing: known ? 0 : images })
       continue
     }
-    const n = normText(q.text).slice(0, 60)
-    if (!n || mine.some(x => normText(x.text).includes(n))) continue
-    const known = images ? q.sent || [...(o.memory || [])].reverse().find(m => normText(withoutUploads(m.text)).includes(n))?.text : null
+    if (!normText(q.text) || mine.some(x => holds(x.text, q.text))) continue
+    const known = images ? q.sent || [...(o.memory || [])].reverse().find(m => holds(withoutUploads(m.text), q.text))?.text : null
     list.push({ id: `cc-${q.ts}`, text: known || q.text, missing: known ? 0 : images })
   }
   const phases = queuedPhases(list.map(q => q.text), o.screen)
