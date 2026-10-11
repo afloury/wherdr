@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { OMP_CHAT_PANE, SPLIT_CHAT_PANE, SPLIT_SHELL_PANE, SPLIT_TAB, fakeHerdr } from './scenario.mjs'
 
 const pane = OMP_CHAT_PANE
@@ -7,6 +7,13 @@ const usage = readFileSync(new URL('../fixtures/codex-usage-menu.txt', import.me
 const screen = (text: string | null, agent = 'codex') => fakeHerdr('e2e.interaction_screen', { pane_id: pane, text, agent, status: 'idle' })
 const original = { cols: 120, rows: 40, attached: false }
 const size = () => fakeHerdr('e2e.pane_size', { pane_id: pane })
+const sentKeys = async () => (await fakeHerdr('e2e.terminal_screen', { pane_id: pane }) as { keys: string[] }).keys
+// What a tap at the middle of `selector` would reach: the window or its scrim, or the app.
+const coveredAt = (page: Page, selector: string) => page.locator(selector).first().evaluate((el) => {
+  const r = el.getBoundingClientRect()
+  return Boolean(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest('.interactive-terminal, .hw-scrim'))
+})
+const bodyBlocked = (page: Page) => page.evaluate(() => getComputedStyle(document.body).pointerEvents === 'none')
 
 test.beforeEach(async ({ page }) => {
   await expect.poll(size, { timeout: 15_000 }).toEqual(original)
@@ -20,12 +27,16 @@ test.afterEach(async () => {
 })
 
 test('shows only the live TUI, sends real keys and closes when its field returns', async ({ page }, info) => {
-  const window = page.getByRole('region', { name: 'Interactive terminal', exact: true })
+  const window = page.getByRole('dialog', { name: 'Interactive terminal', exact: true })
   await expect(window).toBeVisible()
   await expect(window.locator('.xterm-rows')).toContainText('View analytics')
   await expect(page.locator('.choices')).toHaveCount(0)
   await expect(page.locator('.hw-sheet')).toHaveCount(0)
   await expect(page.locator('.composer')).toHaveCount(0)
+  // A modal like the other windows: their scrim, and nothing behind it can be reached.
+  await expect(page.locator('.hw-scrim')).toHaveCount(1)
+  expect(await coveredAt(page, '.agent-top')).toBe(true)
+  expect(await bodyBlocked(page)).toBe(true)
   const fitted = await size() as { cols: number, rows: number, attached: boolean }
   expect(fitted.attached).toBe(true)
   expect(fitted.cols).not.toBe(original.cols)
@@ -37,11 +48,61 @@ test('shows only the live TUI, sends real keys and closes when its field returns
   await window.getByRole('button', { name: 'esc', exact: true }).click()
   await expect(window).toHaveCount(0)
   await expect(page.locator('.composer')).toBeVisible()
+  // Closed by the agent: no scrim left, the app answers again.
+  await expect(page.locator('.hw-scrim')).toHaveCount(0)
+  await expect.poll(() => bodyBlocked(page)).toBe(false)
+  expect(await coveredAt(page, '.agent-top')).toBe(false)
   await expect.poll(size, { timeout: 15_000 }).toEqual(original)
 })
 
+test('the scrim covers the whole app; a click on it closes the window until it is reopened', async ({ page, isMobile }, info) => {
+  test.skip(isMobile, 'the window fills the phone screen: no scrim to tap')
+  const window = page.getByRole('dialog', { name: 'Interactive terminal', exact: true })
+  await expect(window.locator('.xterm-rows')).toContainText('View analytics')
+  await page.screenshot({ path: `.shots/interactive-terminal-modal-${info.project.name}.png` })
+  const box = (await window.boundingBox())!
+  expect(box.x).toBeGreaterThan(40)
+  // Agent list, header and conversation: all under the scrim.
+  for (const selector of ['#home', '.agent-top', '.swipe-area']) expect(await coveredAt(page, selector)).toBe(true)
+  await expect(page.getByRole('tab', { name: 'Terminal', exact: true }).click({ trial: true, timeout: 1000 })).rejects.toThrow()
+  // The keys go to the terminal, and the focus cannot leave the window.
+  await expect.poll(() => page.evaluate(() => Boolean(document.activeElement?.closest('.interactive-terminal .xterm')))).toBe(true)
+  await page.locator('#home button').first().evaluate(el => (el as HTMLElement).focus())
+  await expect.poll(() => page.evaluate(() => Boolean(document.activeElement?.closest('.interactive-terminal')))).toBe(true)
+  // Reka listens for pointerdown outside, which WebKit's synthetic tap does not send.
+  await page.mouse.click(box.x / 2, box.y + box.height / 2)
+  await expect(window).toHaveCount(0)
+  await expect(page.locator('.hw-scrim')).toHaveCount(0)
+  await expect.poll(() => bodyBlocked(page)).toBe(false)
+  await expect.poll(size, { timeout: 15_000 }).toEqual(original)
+  expect(await sentKeys()).toEqual([])
+  // Same episode: it stays closed, with its button to open it again.
+  const reopen = page.getByRole('button', { name: 'Open interactive terminal' })
+  await expect(reopen).toBeVisible()
+  await page.waitForTimeout(3500)
+  await expect(window).toHaveCount(0)
+  await expect(reopen).toBeVisible()
+  await reopen.click()
+  await expect(window).toBeVisible()
+  await window.getByRole('button', { name: 'esc', exact: true }).click()
+  await expect(window).toHaveCount(0)
+})
+
+test('Escape goes to the agent instead of closing the window', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'no hardware keyboard on the phone')
+  const window = page.getByRole('dialog', { name: 'Interactive terminal', exact: true })
+  await expect(window.locator('.xterm-rows')).toContainText('View analytics')
+  await expect.poll(() => page.evaluate(() => Boolean(document.activeElement?.closest('.interactive-terminal .xterm')))).toBe(true)
+  await page.keyboard.press('Escape')
+  await expect.poll(sentKeys).toContain('esc')
+  // The agent left its screen: the window follows, without a manual dismissal.
+  await expect(window).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Open interactive terminal' })).toHaveCount(0)
+  await expect(page.locator('.composer')).toBeVisible()
+})
+
 test('manual close releases the pane without Escape and does not reopen the same screen', async ({ page }) => {
-  const window = page.getByRole('region', { name: 'Interactive terminal', exact: true })
+  const window = page.getByRole('dialog', { name: 'Interactive terminal', exact: true })
   await expect(window).toBeVisible()
   await window.getByRole('button', { name: 'Close terminal window' }).click()
   await expect(window).toHaveCount(0)
@@ -67,41 +128,55 @@ test('rejects a stale native choice after the screen changes to an ambiguous men
   expect((await fakeHerdr('e2e.terminal_screen', { pane_id: pane }) as { keys: string[] }).keys).toEqual([])
 })
 
-test('switching to Terminal and back keeps one fitted terminal for the pane', async ({ page }, info) => {
+test('Terminal view after closing the window keeps one fitted terminal for the pane', async ({ page }, info) => {
+  const toggle = info.project.name.includes('desktop')
+    ? (name: string) => page.getByRole('tab', { name, exact: true }).click()
+    : () => page.getByRole('button', { name: 'Terminal', exact: true }).click()
   await expect(page.locator('.interactive-terminal .xterm')).toBeVisible()
-  if (info.project.name.includes('desktop')) await page.getByRole('tab', { name: 'Terminal', exact: true }).click()
-  else await page.getByRole('button', { name: 'Terminal', exact: true }).click()
+  await page.getByRole('button', { name: 'Close terminal window' }).click()
   await expect(page.locator('.interactive-terminal')).toHaveCount(0)
+  await toggle('Terminal')
   await expect(page.locator('#term .xterm-rows')).toContainText('View analytics')
   await expect(page.locator('#term .xterm')).toHaveCount(1)
-  if (info.project.name.includes('desktop')) await page.getByRole('tab', { name: 'Conversation', exact: true }).click()
-  else await page.getByRole('button', { name: 'Terminal', exact: true }).click()
-  await expect(page.locator('.interactive-terminal .xterm-rows')).toContainText('View analytics')
-  await expect(page.locator('#term .xterm')).toHaveCount(1)
   expect((await size() as { attached: boolean }).attached).toBe(true)
+  await toggle('Conversation')
+  // Dismissed for this screen: back to the conversation with the button, not the window.
+  await expect(page.getByRole('button', { name: 'Open interactive terminal' })).toBeVisible()
+  await expect(page.locator('.xterm')).toHaveCount(0)
+  await expect.poll(size, { timeout: 15_000 }).toEqual(original)
 })
 
-test('an inactive interactive window holds its pane beside another live terminal', async ({ page, isMobile }) => {
+test('in a split, only the cell in use opens the window; another one keeps its button', async ({ page, isMobile }) => {
   test.skip(isMobile, 'side-by-side cells are a computer layout')
   await fakeHerdr('e2e.interaction_screen', { pane_id: SPLIT_CHAT_PANE, text: usage, agent: 'codex', status: 'idle' })
   // The app is still starting on the first pane: a hash change sent now can be
   // dropped, and the split tab never opens. Wait for that pane's window first.
   await expect(page.locator('.interactive-terminal')).toBeVisible()
-  await page.goto(`/#/t/${SPLIT_TAB}`)
+  // Start in the shell cell: the other cell's screen must not cover the work in progress.
+  await page.goto(`/#/t/${SPLIT_TAB}?pane=${SPLIT_SHELL_PANE}`)
   await expect(page).toHaveURL(new RegExp(`#/t/${SPLIT_TAB}`))
   const chat = page.locator(`.cell-view[data-pane="${SPLIT_CHAT_PANE}"]`)
   const shell = page.locator(`.cell-view[data-pane="${SPLIT_SHELL_PANE}"]`)
-  await expect(chat.locator('.interactive-terminal .xterm-rows')).toContainText('View analytics')
-  const node = await chat.locator('.interactive-terminal .xterm').elementHandle()
-  await shell.locator('header .agent-title').click()
-  await expect(shell.locator('.xterm-rows')).toContainText('fake terminal')
-  expect(await node!.evaluate(el => el.isConnected)).toBe(true)
   const sizeOf = () => fakeHerdr('e2e.pane_size', { pane_id: SPLIT_CHAT_PANE }) as Promise<{ cols: number, attached: boolean }>
+  await expect(shell.locator('.xterm-rows')).toContainText('fake terminal')
+  const reopen = chat.getByRole('button', { name: 'Open interactive terminal' })
+  await expect(reopen).toBeVisible()
+  await page.waitForTimeout(1500)
+  await expect(page.locator('.interactive-terminal')).toHaveCount(0)
+  await expect(page.locator('.hw-scrim')).toHaveCount(0)
+  expect((await sizeOf()).attached).toBe(false)
+  // Its button opens the one window, over both cells.
+  await reopen.click()
+  const window = page.getByRole('dialog', { name: 'Interactive terminal', exact: true })
+  await expect(window.locator('.xterm-rows')).toContainText('View analytics')
+  await expect(page.locator('.interactive-terminal')).toHaveCount(1)
+  expect(await coveredAt(page, `.cell-view[data-pane="${SPLIT_SHELL_PANE}"]`)).toBe(true)
+  await expect.poll(async () => (await sizeOf()).attached).toBe(true)
   const before = await sizeOf()
-  expect(before.attached).toBe(true)
-  await page.setViewportSize({ width: 1200, height: 800 })
+  await page.setViewportSize({ width: 1000, height: 700 })
   await expect.poll(async () => (await sizeOf()).cols).toBeLessThan(before.cols)
-  expect(await node!.evaluate(el => el.isConnected)).toBe(true)
   await page.goto('/#/')
+  await expect(page.locator('.hw-scrim')).toHaveCount(0)
+  await expect.poll(() => bodyBlocked(page)).toBe(false)
   await expect.poll(sizeOf, { timeout: 15000 }).toEqual({ cols: 60, rows: 40, attached: false })
 })

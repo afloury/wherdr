@@ -19,7 +19,10 @@ All notable changes to this project are documented here. The format follows
 ### Added
 
 - **Live terminal window for interactive agent screens**: ambiguous menus and panels open
-  the real pane inside the conversation, with a key bar and an always-visible Close button.
+  the real pane in a modal window, with a key bar and an always-visible Close button.
+  The scrim of the other windows covers the whole app and keeps clicks and focus in the
+  terminal; a click on it closes the window, Escape goes to the agent. In a split, only the
+  cell in use opens it.
   A stable return to the message field closes it; manual dismissal lasts for that interaction.
   The window fits the pane to its container and releases its existing size lease when closed.
   Existing native questions, approvals, menus, waiting screens and Claude settings cards

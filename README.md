@@ -164,10 +164,12 @@ Details in [Features](#features) and [Security](#security).
   pasted with `⌘V` (Mac), here or in a side-by-side terminal, goes to the agent's machine and its
   path is pasted, which omp and Claude Code attach as an image, as in the conversation.
 - **Interactive agent screens**: in a conversation, an uncertain menu or panel opens the
-  pane's real terminal in a live window, with arrows, Enter, Escape, Tab, digits and y/n.
-  It closes after the agent's message field returns. Close it yourself at any time: that
-  releases the terminal without pressing Escape, and the same interaction stays closed
-  until you reopen it. Existing native questions, approvals, menus, waiting screens and
+  pane's real terminal in a modal window, with arrows, Enter, Escape, Tab, digits and y/n.
+  The rest of the app waits behind a scrim (the window fills the screen on a phone); in a
+  split, only the cell in use opens it. It closes after the agent's message field returns.
+  Close it yourself at any time with its button or a click on the scrim: that releases the
+  terminal without pressing Escape, which goes to the agent, and the same interaction stays
+  closed until you reopen it. Existing native questions, approvals, menus, waiting screens and
   Claude settings cards keep their controls. The window is a fallback after those
   recognizers, with two explicit exceptions: Codex's two-column `/usage` menu and
   its Agent Command Center. The slash menu still lists and sends commands. On a phone, the window

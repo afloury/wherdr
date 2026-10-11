@@ -2718,18 +2718,30 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
    computer. TASKS.md lists, threads in progress and done. */
 .agent-body { flex: 1; min-height: 0; display: flex; }
 .agent-main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
-/* A live TUI window inside its own pane; navigation and other panes stay usable. */
+/* A live TUI in a modal window (UModal), behind the scrim of the other windows:
+   the whole screen on the phone, a large centered window on a computer. */
+.interactive-terminal-scrim { cursor: default; }
+:where(.interactive-terminal) > * { border-width: 0; }
 .interactive-terminal {
-  position: absolute; inset: 0; z-index: 25; min-width: 0; min-height: 0;
-  display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--line);
+  z-index: 21; inset: 0; translate: 0 0; width: auto; max-width: none; height: 100%; max-height: none;
+  min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
+  padding-top: var(--safe-top); background: var(--bg); color: var(--text);
+  border-radius: 0; box-shadow: 0 160px 0 var(--bg); --tw-ring-shadow: 0 0 #0000;
 }
+body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: var(--vv-h, 100%); }
+.interactive-terminal[data-state="open"] { animation: rise .26s cubic-bezier(.2, .8, .2, 1); }
 .interactive-terminal-head {
   flex: none; display: flex; align-items: center; justify-content: space-between;
   gap: 8px; min-height: 44px; padding: 4px 8px 4px 12px; border-bottom: 1px solid var(--line);
 }
 .interactive-terminal-head > span {
-  display: flex; align-items: center; gap: 8px; font: 600 11px/1.4 var(--mono);
+  display: flex; align-items: center; gap: 8px; min-width: 0; font: 600 11px/1.4 var(--mono);
   text-transform: uppercase; letter-spacing: .06em;
+}
+.interactive-terminal-head > span > .iconify { flex: none; }
+.interactive-terminal-head small {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding-left: 8px; border-left: 1px solid var(--line); color: var(--dim); font: inherit; font-weight: 500;
 }
 .interactive-terminal-note { flex: none; padding: 8px 12px; color: var(--dim); font: 11px/1.4 var(--mono); }
 .interactive-terminal-reopen {
@@ -2738,8 +2750,16 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
   background: var(--surface); font: 500 12px/1.4 var(--mono);
 }
 .interactive-terminal-reopen:hover { background: var(--surface-2); }
+@media (max-width: 899px) {
+  .interactive-terminal-scrim { background: var(--bg); }
+}
 @media (min-width: 900px) {
-  .interactive-terminal { inset: 12px; box-shadow: 0 8px 24px #0003; }
+  .interactive-terminal {
+    inset: auto; top: 50%; left: 50%; translate: -50% -50%;
+    width: min(1200px, calc(100vw - 96px)); height: min(900px, calc(100dvh - 96px));
+    padding-top: 0; border: 1px solid var(--line); box-shadow: 0 30px 80px var(--shadow);
+  }
+  .interactive-terminal[data-state="open"] { animation: pop .16s ease; }
 }
 /* Override the desktop reading column: fit the TUI to this window, as in a split. */
 .interactive-terminal #termWrap { padding: 6px; background: var(--bg); }

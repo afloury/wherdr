@@ -258,7 +258,14 @@ watch(() => pane.value?.interaction, syncInteraction, { immediate: true })
 const interactionTimer = setInterval(syncInteraction, 100)
 onUnmounted(() => clearInterval(interactionTimer))
 function closeInteraction() { interactionWindow.dismiss(); interactionOpen.value = false }
-function reopenInteraction() { interactionWindow.reopen(); interactionOpen.value = true }
+function reopenInteraction() {
+  if (props.cell) emit('activate')
+  interactionWindow.reopen()
+  interactionOpen.value = true
+}
+// A modal window over the whole app: only the pane in use shows it, never under the
+// lock screen. Another cell of a split keeps its "Open" button until it is activated.
+const interactionShown = computed(() => interactionOpen.value && interactionAvailable.value && live.value && !locked.value)
 const composerShown = computed(() => showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) }) && !(menu.value && mode.value !== 'term') && !(mode.value === 'chat' && interactionOpen.value))
 const canAttachTerminal = computed(() => terminalAttachment({
   desk: desk.value, live: live.value, mode: mode.value,
@@ -610,8 +617,8 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <div v-else class="chat" />
     <p v-if="pane?.agent && !hasChat(pane) && mode === 'term' && !cell" class="terminal-transcript-note">{{ tl('Conversation unavailable for this agent · follow it in the terminal', 'Conversation non disponible pour cet agent · suivi dans le terminal') }}</p>
 
-    <InteractiveTerminal v-if="interactionOpen && interactionAvailable" :pane-id="paneId" :active="live" @close="closeInteraction" />
-    <button v-else-if="interactive && interactionAvailable" type="button" class="interactive-terminal-reopen" @click="reopenInteraction">
+    <InteractiveTerminal v-if="interactionShown" :pane-id="paneId" :active="live" :title="headTitle" @close="closeInteraction" />
+    <button v-else-if="(interactive || interactionOpen) && interactionAvailable" type="button" class="interactive-terminal-reopen" @click="reopenInteraction">
       <UIcon name="i-lucide-square-terminal" />{{ tl('Open interactive terminal', 'Ouvrir le terminal interactif') }}
     </button>
     <ChoicesPanel v-if="(prompt || screen) && !interactionOpen && !interactive && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :screen="screen" :keys="live" />
