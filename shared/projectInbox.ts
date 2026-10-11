@@ -10,6 +10,9 @@
 //    is shown as is (its dates are never parsed).
 // `routine approve|toggle` and the `safety` commands are not exposed.
 import { projectSlugOk } from './projectThreads'
+import { tomlStrings } from './toml'
+
+export { tomlStrings }
 
 // ---------------------------------------------------------------- inbox
 export interface InboxItem {
@@ -28,67 +31,6 @@ export const INBOX_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/
 export const inboxIdOk = (id: unknown): id is string => typeof id === 'string' && INBOX_ID_RE.test(id) && !id.includes('..')
 
 export const INBOX_BODY_MAX = 2000
-
-const ESCAPES: Record<string, string> = { b: '\b', t: '\t', n: '\n', f: '\f', r: '\r', e: '\x1B', '"': '"', '\\': '\\' }
-function unescapeBasic(s: string): string {
-  return s
-    // Multi-line strings: a backslash at the end of a line joins the next one.
-    .replace(/\\[ \t]*\n\s*/g, '')
-    .replace(/\\(u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|[\s\S])/g, (all, x: string) => {
-      if (x.length > 1) {
-        const code = Number.parseInt(x.slice(1), 16)
-        return code <= 0x10FFFF ? String.fromCodePoint(code) : all
-      }
-      return ESCAPES[x] ?? all
-    })
-}
-
-// End of a quoted TOML string starting at `from`: index of the closing
-// delimiter, skipping escaped quotes in basic strings. -1: not closed.
-function closing(text: string, from: number, quote: string, basic: boolean): number {
-  for (let i = from; i < text.length; i++) {
-    if (basic && text[i] === '\\') { i++; continue }
-    if (quote.length === 1 && text[i] === '\n') return -1
-    if (text.startsWith(quote, i)) {
-      // `""""`: up to two quotes may sit right before a multi-line delimiter.
-      if (quote.length === 3) while (text[i + 3] === quote[0]) i++
-      return i
-    }
-  }
-  return -1
-}
-
-// String values of a TOML table, the only kind an inbox item holds: basic
-// ("…"), literal ('…') and their multi-line forms. Other values are skipped.
-export function tomlStrings(front: string): Record<string, string> {
-  const out: Record<string, string> = {}
-  const text = front.replace(/\r\n?/g, '\n')
-  let at = 0
-  while (at < text.length) {
-    const eol = text.indexOf('\n', at)
-    const line = text.slice(at, eol < 0 ? text.length : eol)
-    const m = /^\s*([A-Za-z0-9_-]+)\s*=\s*/.exec(line)
-    let next = eol < 0 ? text.length : eol + 1
-    if (m) {
-      const start = at + m[0].length
-      const quote = ['"""', '\'\'\'', '"', '\''].find(q => text.startsWith(q, start))
-      if (quote) {
-        const basic = quote[0] === '"'
-        const end = closing(text, start + quote.length, quote, basic)
-        if (end >= 0) {
-          let raw = text.slice(start + quote.length, end)
-          // A newline right after a multi-line opening is not part of the value.
-          if (quote.length === 3 && raw.startsWith('\n')) raw = raw.slice(1)
-          out[m[1]!] = basic ? unescapeBasic(raw) : raw
-          const after = text.indexOf('\n', end + quote.length)
-          next = after < 0 ? text.length : after + 1
-        }
-      }
-    }
-    at = next
-  }
-  return out
-}
 
 // One `inbox/<id>.md` file. null: not an item (no front matter, no ID).
 export function parseInboxItem(fileText: string): InboxItem | null {

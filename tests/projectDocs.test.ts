@@ -82,6 +82,15 @@ describe('project settings: a hostile PROJECT.md', () => {
     expect(ms).toBeLessThan(500)
   })
 
+  // Found by the adversarial review (t-0315): a goal line starting with "["
+  // hid every setting written after it.
+  it('reads a multi-line goal as text, whatever its lines look like', () => {
+    const s = parseProjectSettings('+++\nname = "Demo"\ngoal = """\nShip the app.\n[x] phase one\n[[repos]]\nmute = false\nmax_parallel_threads = 9\n"""\nmax_parallel_threads = 2\nmute = true\n\n[[repos]]\npath = "/srv/a"\n+++\n')!
+    expect(s.goal).toBe('Ship the app. [x] phase one [[repos]] mute = false max_parallel_threads = 9')
+    expect([s.maxParallelThreads, s.mute, s.repos]).toEqual([2, true, [{ path: '/srv/a', machine: '' }]])
+    expect(s.defaults).toEqual(['coordinatorProfile', 'threadProfile', 'autoResolveDays', 'nudge'])
+  })
+
   it('reads the same settings whatever the spaces around keys and tables', () => {
     const s = parseProjectSettings('+++\n \tname =\t"Demo"\n  mute = true   # quiet\n\n  [[ repos ]]  \n  path = "/srv/a"\n+++\n')!
     expect([s.name, s.mute, s.repos]).toEqual(['Demo', true, [{ path: '/srv/a', machine: '' }]])

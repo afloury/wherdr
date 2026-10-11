@@ -8,6 +8,8 @@
 // the `[b:color(text)]` and `[b:color(text)](target)` badges that the
 // coordinator adds when useful (no automatic badge).
 
+import { tomlTables } from './toml'
+
 export type ListKind = 'test' | 'decide' | 'review' | 'doing' | 'queue' | 'blocked' | 'todo' | 'backlog' | 'done'
 
 export interface ProjectTask {
@@ -312,11 +314,11 @@ export function queueStatus(slots: ProjectBoard['slots'], next: string | undefin
 export function maxParallelThreads(projectMd: string): number | null {
   const m = /^\+\+\+\r?\n([\s\S]*?)\r?\n\+\+\+/.exec(String(projectMd || ''))
   if (!m) return null
-  // Top-level keys only: stop at the first table (`[[repos]]`).
-  const top = m[1]!.split(/^\s*\[/m)[0]!
-  const v = /^\s*max_parallel_threads\s*=\s*(\d+)\s*(?:#.*)?$/m.exec(top)
-  if (!v) return 10
-  const n = Number(v[1])
+  // Top-level keys only, read line by line (shared/toml.ts): `^\s*…` with the
+  // `m` flag took seconds on a front matter of blank lines.
+  const v = tomlTables(m[1]!)[0]!.bare.max_parallel_threads
+  if (v === undefined || !/^\d+$/.test(v)) return 10
+  const n = Number(v)
   return n >= 1 ? n : null
 }
 
