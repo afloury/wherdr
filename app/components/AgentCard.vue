@@ -71,7 +71,7 @@ const where = computed(() => {
 })
 const prompt = computed(() => (props.pane.status === 'blocked' ? props.pane.prompt : undefined))
 const quick = computed(() => quickChoices(prompt.value, 4))
-const interactive = computed(() => props.pane.interaction === 'terminal')
+const interactive = computed(() => props.pane.interaction === 'terminal' && props.pane.status === 'blocked' && !prompt.value && !props.pane.menu && !props.pane.screen)
 // Recognized waiting screen (Codex hooks…): its title says better what is expected.
 const screen = computed(() => knownScreen(props.pane))
 const preview = computed(() => interactive.value ? tl('Interactive agent screen', 'Écran interactif de l’agent') : (screen.value && screenSummary(screen.value)) || (props.pane.menu && props.pane.status !== 'working' && menuSummary(props.pane.menu)) || (prompt.value ? prompt.value.kind === 'self-update' ? t(prompt.value.question || '') : prompt.value.question : props.pane.preview))

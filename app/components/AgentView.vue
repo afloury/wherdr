@@ -219,7 +219,7 @@ function onSent(q: QueuedMessage | null) {
 // As soon as the server knows them (or 10 s after its answer), the server state wins.
 watch(pane, p => outboxPrune(props.paneId, p?.queued || []))
 
-const prompt = computed(() => (pane.value && (pane.value.status === 'blocked' || pane.value.interaction === 'native') && pane.value.prompt && pane.value.prompt.options ? pane.value.prompt : null))
+const prompt = computed(() => (pane.value && pane.value.status === 'blocked' && pane.value.prompt && pane.value.prompt.options ? pane.value.prompt : null))
 const screen = computed(() => knownScreen(pane.value))
 // Menu interactif de Claude Code ouvert (/resume…), agent au repos.
 const menu = computed(() => (pane.value && pane.value.menu && pane.value.status !== 'working' && !prompt.value && !screen.value ? pane.value.menu : null))
@@ -241,7 +241,7 @@ const attachInput = ref<HTMLInputElement | null>(null)
 // menu are already there, and the key bar answers them; no duplicate "Your turn" card.
 const termShown = computed(() => mode.value === 'term')
 const interactionWindow = interactionWindowFor(props.paneId)
-const interactionOpen = ref(false)
+const interactionOpen = ref(interactionWindow.resume(pane.value?.interaction || 'unknown'))
 const interactionAvailable = computed(() => mode.value === 'chat' && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value))
 const interactive = computed(() => pane.value?.interaction === 'terminal')
 function syncInteraction() {

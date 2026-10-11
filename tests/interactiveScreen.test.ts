@@ -1,52 +1,47 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { classifyScreen, confirmedInput, nativePrompt } from '../shared/interactiveScreen'
+import { classifyScreen, confirmedInput, terminalException } from '../shared/interactiveScreen'
 import { parseChoices, parseOmpPrompt } from '../server/utils/choices'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
-const classify = (text: string, agent = 'codex') => classifyScreen({ text, choices: agent === 'omp' ? parseOmpPrompt(text) : parseChoices(text, { strict: true }) })
 
-describe('conservative interactive screen presentation', () => {
-  it('keeps a simple continuous numbered list native', () => {
-    expect(classify('Choose a colour?\n\n› 1. Red\n  2. Blue\n\nenter select · esc back')).toBe('native')
-    expect(classify(fx('claude-trust.txt'))).toBe('native')
-  })
-  it('rejects the two columns in Codex usage instead of gluing them', () => {
-    const text = fx('codex-usage-menu.txt')
-    expect(parseChoices(text)?.options[0]?.label).toContain('Usage history')
-    expect(classify(text)).toBe('terminal')
-    expect(confirmedInput(text)).toBe(false)
-  })
-  it.each(['codex-model-1.txt', 'claude-ask.txt', 'claude-ask-long.txt', 'claude-settings-stats.txt', 'omp-selector.txt', 'omp-ask-tabs.txt'])(
-    'leaves the complex real screen %s in the terminal', name => {
-      expect(classify(fx(name), name.startsWith('omp') ? 'omp' : 'claude')).toBe('terminal')
+describe('terminal fallback after native recognition', () => {
+  it.each(['claude-ask.txt', 'claude-ask-long.txt', 'claude-ask-multi.txt', 'claude-ask-tabs-1.txt', 'claude-security-guide.txt', 'codex-login.txt', 'codex-model-1.txt', 'omp-ask-tabs.txt'])(
+    'preserves the existing native prompt %s', name => {
+      const text = fx(name)
+      const agent = name.startsWith('omp') ? 'omp' : name.startsWith('codex') ? 'codex' : 'claude'
+      const choices = agent === 'omp' ? parseOmpPrompt(text) : parseChoices(text)
+      expect(choices).toBeTruthy()
+      expect(classifyScreen({ text, agent, choices })).toBe('native')
     },
   )
-  it('keeps a recognized omp yes/no tool approval and its command native', () => {
-    expect(classify(fx('omp-approve-bash.txt'), 'omp')).toBe('native')
+  it('preserves native menus, waiting screens and settings without requiring choices', () => {
+    for (const recognized of [{ menu: {} }, { screen: {} }, { settings: true }]) {
+      expect(classifyScreen({ text: 'A native screen', agent: 'claude', ...recognized })).toBe('native')
+    }
+  })
+  it.each(['codex-usage-menu.txt', 'codex-command-center.txt'])('uses the explicit terminal exception %s', name => {
+    const text = fx(name)
+    expect(terminalException(text)).toBe(true)
+    expect(classifyScreen({ text, agent: 'codex', choices: parseChoices(text), screen: {} })).toBe('terminal')
+    expect(confirmedInput(text)).toBe(false)
   })
   it.each(['codex-idle.txt', 'claude-idle.txt', 'omp-fresh-nerd.txt', 'omp-idle-footer.txt'])(
-    'confirms the real message field in %s', name => { expect(confirmedInput(fx(name))).toBe(true) },
+    'confirms the real message field in %s', name => expect(confirmedInput(fx(name))).toBe(true),
   )
-  it('rejects gaps, descriptions, multiple cursors, unnumbered options and inline columns', () => {
-    for (const text of [
-      '› 1. One\n  3. Three',
-      '› 1. One\n     A description\n  2. Two',
-      '› 1. One\n› 2. Two',
-      '› One\n  Two\n\nenter select · esc back',
-      '› 1. One  Help\n  2. Two  More help',
-      '› 1. One\n  2. Two\n     Help',
-      '› 1. One\n    2. Two',
-      '› 1. One\n  2. Two\n\nA separate description',
-    ]) expect(classify(text)).toBe('terminal')
+  it.each(['claude', 'codex', 'omp'])('keeps long %s drafts and wrapped footers at the message field', agent => {
+    const draft = Array.from({ length: 30 }, (_, i) => `  draft line ${i}`).join('\n')
+    const text = agent === 'claude' ? `────────────────\n❯ draft\n${draft}\n────────────────\n  auto mode`
+      : agent === 'codex' ? `› draft\n${draft}\n\n  GPT-6-Sol medium ·\n  ~/demo\n  status wraps\n  on a phone\n  ? for shortcuts`
+        : ` π > Opus > demo\n╰─ draft\n${draft}`
+    expect(confirmedInput(text)).toBe(true)
+    expect(classifyScreen({ text, agent })).toBe('input')
   })
-  it('does not treat an empty or failed read as a message field', () => {
-    expect(classifyScreen({ text: '' })).toBe('unknown')
-    expect(classifyScreen({ text: 'Thinking…', status: 'working' })).toBe('working')
-    expect(classifyScreen({ text: fx('codex-idle.txt'), status: 'working' })).toBe('input')
+  it.each(['pi', 'gemini', 'opencode', 'kimi', null])('does not infer a menu from an unsupported agent %s', agent => {
+    expect(classifyScreen({ text: 'A normal reply without a known input marker', agent })).toBe('unknown')
   })
-  it('allows only an explicitly recognized, already-open free answer', () => {
-    expect(nativePrompt('Answer:', { question: 'Why?', cursor: 0, typing: true, options: [{ label: 'Other', hint: null, free: true }] })).toBe(true)
-    expect(nativePrompt('Answer:', { question: 'Why?', cursor: 0, typing: true, options: [{ label: 'Other', hint: null }] })).toBe(false)
+  it('never reads normal working output as an interactive fallback', () => {
+    expect(classifyScreen({ text: 'Thinking…', agent: 'codex', status: 'working' })).toBe('working')
+    expect(classifyScreen({ text: '', agent: 'codex' })).toBe('unknown')
   })
 })

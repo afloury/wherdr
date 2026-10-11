@@ -91,8 +91,7 @@ export async function showCommandResult(pane: string, cmd: string, builtin = tru
   commandResult.text = null
   commandResult.tabs = []
   commandResult.tab = null
-  // Wait for classification: an interactive screen has exactly one live view.
-  commandResult.open = false
+  commandResult.open = builtin
   await new Promise(r => setTimeout(r, 1800))
   if (seq !== resultSeq) return
   await readCommandResult(pane, cmd, 5, seq)
@@ -113,7 +112,7 @@ async function readCommandResult(pane: string, cmd: string, tries = 5, seq = res
       // omp draws no recognizable activity under the command: its state wins.
       const p = herdrState.value.panes.find(x => x.id === pane)
       const working = p?.agent === 'omp' && p.status === 'working'
-      if (interaction === 'terminal' || interaction === 'native' || interaction === 'working' || interaction === 'managed' || parseMenu(text) || ompSelectorOnScreen(text) || agentAnswering(text, cmd) || working) {
+      if (interaction === 'terminal' || parseMenu(text) || ompSelectorOnScreen(text) || agentAnswering(text, cmd) || working) {
         closeCommandResult(false)
         commandResult.text = ''
         return

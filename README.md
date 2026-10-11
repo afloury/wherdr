@@ -167,16 +167,16 @@ Details in [Features](#features) and [Security](#security).
   pane's real terminal in a live window, with arrows, Enter, Escape, Tab, digits and y/n.
   It closes after the agent's message field returns. Close it yourself at any time: that
   releases the terminal without pressing Escape, and the same interaction stays closed
-  until you reopen it. A simple, continuous numbered list with one column and no mixed-in
-  help, a recognized approval, or a recognized free-answer field can still use native
-  controls. Everything ambiguous stays in the terminal, including Codex's two-column
-  `/usage` menu. The slash menu still lists and sends commands. On a phone, the window
+  until you reopen it. Existing native questions, approvals, menus, waiting screens and
+  Claude settings cards keep their controls. The window is a fallback after those
+  recognizers, with two explicit exceptions: Codex's two-column `/usage` menu and
+  its Agent Command Center. The slash menu still lists and sends commands. On a phone, the window
   temporarily fits the real pane to its width and restores its size on release, using
   the same lease as Terminal view; it does not shrink 120 columns into unreadable text.
   A pane already shown in Terminal keeps its existing live view. Try `/usage` on the
   Codex agent in the browser demo (scripted, no account data).
-  In the compact list, a waiting agent's ambiguous question opens its card with an
-  **Open interactive terminal** button; certain questions keep their one-tap answers.
+  In the compact list, native questions keep their preview and one-tap answers.
+  Unrecognized blocking screens offer an **Open interactive terminal** button.
 - **Composer**: send messages while the agent works (queued, cancellable), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output

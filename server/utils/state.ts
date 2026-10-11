@@ -152,8 +152,8 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
     // card of the command result; its "Esc to cancel" is not a question.
     const settings = p.agent === 'claude' && settingsTabs(text) !== null
     const screen = menu || settings ? null : parseWaitScreen(text, { choices: Boolean(choices) })
-    const interaction = classifyScreen({ text: String(text || ''), choices, waiting: Boolean(menu || settings || screen), status: p.status })
-    out = { choices: interaction === 'native' ? choices : null, screen: interaction === 'native' ? screen : null, menu: null, interaction }
+    const interaction = classifyScreen({ text: String(text || ''), agent: p.agent, choices, menu, screen, settings, status: p.status })
+    out = interaction === 'terminal' ? { choices: null, screen: null, menu: null, interaction } : { choices, screen, menu, interaction }
     noteScreen(p.id, p.agent, text) // Codex: model from its status line
     if (choices && (choices.detail || isPermissionQuestion(choices.question))) {
       // omp: the tool named in its dialog's title (none when scrolled off).
@@ -853,10 +853,9 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       if (c.screen) p.screen = c.screen
       if (c.menu) p.menu = c.menu
     } else {
-      p.interaction = isViewed(p.id)
-        ? (await choicesFor(p, revs.get(p.id), true, true)).interaction
-        : 'working'
-      if (!isViewed(p.id)) choicesCache.delete(p.id)
+      // No fallback screen read while working: normal activity is not a menu.
+      p.interaction = 'working'
+      choicesCache.delete(p.id)
       askChecks.delete(p.id)
     }
     const pv = previews.get(p.id)

@@ -12,9 +12,10 @@ All notable changes to this project are documented here. The format follows
   the real pane inside the conversation, with a key bar and an always-visible Close button.
   A stable return to the message field closes it; manual dismissal lasts for that interaction.
   The window fits the pane to its container and releases its existing size lease when closed.
-  Native controls remain for certain simple lists, approvals and free-answer fields.
-  A waiting agent's compact card opens with direct terminal access for ambiguous questions;
-  certain questions and approvals keep their one-tap answers.
+  Existing native questions, approvals, menus, waiting screens and Claude settings cards
+  retain their controls, compact-card previews, one-tap answers and notifications.
+  The window is a fallback after their recognizers, with explicit exceptions for
+  Codex's two-column `/usage` and Agent Command Center.
   Codex `/usage` is no longer copied into a static result and a guessed two-column choice list.
   The browser demo includes a scripted version of the interactive usage screen.
 

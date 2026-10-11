@@ -10,14 +10,6 @@ const shot = (page: Page, name: string, project: string) =>
 const fx = (name: string) => fs.readFileSync(new URL(`../fixtures/${name}`, import.meta.url), 'utf8')
 const APPROVAL = fx('omp-approve-bash.txt')
 const LONG_ASK = fx('claude-ask-long.txt')
-// The long question still fits native controls when its options are a single,
-// continuous column without descriptions or a special free-answer entry.
-const SIMPLE_ASK = LONG_ASK.slice(0, LONG_ASK.indexOf('❯ 1.')) + [
-  '❯ 1. Keep the current cache (Recommended)',
-  '  2. Move everything to the database',
-  '  3. Split by data type',
-  '', 'Enter to select · ↑/↓ to navigate · Esc to cancel',
-].join('\n')
 
 const card = (page: Page, pane: string) => page.locator(`#home .card[data-pane="${pane}"]`)
 const height = (page: Page, pane: string) => card(page, pane).evaluate(el => el.getBoundingClientRect().height)
@@ -55,9 +47,9 @@ test('a waiting agent opens its compact card; one tap answers and folds it back'
   expect(await height(page, CLAUDE_PANE)).toBe(line)
 
   // A second agent waits at the same time: both cards are open.
-  await ask(CLAUDE_ASK_PANE, SIMPLE_ASK)
+  await ask(CLAUDE_ASK_PANE, LONG_ASK)
   await expect(claude).toHaveClass(/open/)
-  await expect(claude.locator('.card-choices button .l')).toHaveText(['Keep the current cache (Recommended)', 'Move everything to the database', 'Split by data type'])
+  await expect(claude.locator('.card-choices button .l')).toHaveText(['Keep the current cache (Recommended)', 'Move everything to the database', 'Split by data type', 'Chat about this'])
   await expect(opened(page)).toHaveCount(2)
   // A long question is cut after two lines, and nothing widens the list.
   const preview = claude.locator('.card-preview')
@@ -101,26 +93,6 @@ test('the answers open with a transition, off under reduced motion', async ({ pa
   expect(await duration()).toBeGreaterThan(0)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   expect(await duration()).toBe(0)
-})
-
-test('an ambiguous question opens its compact card with access to the live terminal', async ({ page }) => {
-  await ask(CLAUDE_ASK_PANE, LONG_ASK)
-  await page.goto('/')
-  const claude = card(page, CLAUDE_ASK_PANE)
-  await expect(claude).toHaveClass(/open/)
-  await expect(claude.locator('.card-preview')).toHaveText('Interactive agent screen')
-  await expect(claude.locator('.card-choices button')).toHaveCount(1)
-  await claude.getByRole('button', { name: 'Open interactive terminal' }).click()
-  const window = page.getByRole('region', { name: 'Interactive terminal', exact: true })
-  await expect(window).toBeVisible()
-  await expect(page.locator('.choices')).toHaveCount(0)
-  expect(await answers(CLAUDE_ASK_PANE)).toEqual([])
-  await window.getByRole('button', { name: 'Close terminal window' }).click()
-  await expect(window).toHaveCount(0)
-  await page.goto('/')
-  // The card explicitly reopens a manually dismissed interaction.
-  await card(page, CLAUDE_ASK_PANE).getByRole('button', { name: 'Open interactive terminal' }).click()
-  await expect(window).toBeVisible()
 })
 
 test('detailed list: a waiting agent keeps its detailed card and answers', async ({ page }, testInfo) => {

@@ -38,4 +38,18 @@ describe('interactive terminal episode', () => {
     expect(w.update('terminal', 1800)).toBe(false)
     expect(w.update('terminal', 2300)).toBe(true)
   })
+  it('never reattaches a stale window when returning to a pane already at its field', () => {
+    const w = createInteractionWindow()
+    w.update('terminal', 0)
+    w.update('terminal', 500)
+    expect(w.resume('input')).toBe(false)
+    expect(w.update('input', 2000)).toBe(false)
+  })
+  it('immediately yields to every recognized native screen', () => {
+    const w = createInteractionWindow()
+    w.update('terminal', 0)
+    w.update('terminal', 500)
+    expect(w.update('native', 600)).toBe(false)
+  })
+
 })

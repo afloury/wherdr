@@ -21,6 +21,6 @@ export default defineApi(async (event) => {
     tab = hit && tabs.includes(hit) ? hit : null
   }
   const p = findPane(pane)
-  const interaction = classifyScreen({ text, status: p?.status, choices: screenChoices(text, p?.agent), waiting: Boolean(tabs || parseMenu(text) || parseWaitScreen(text)) })
+  const interaction = classifyScreen({ text, agent: p?.agent, status: p?.status, choices: screenChoices(text, p?.agent), settings: Boolean(tabs), menu: parseMenu(text), screen: parseWaitScreen(text) })
   return { text, tabs, tab, interaction }
 })

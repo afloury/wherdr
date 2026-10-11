@@ -1,0 +1,6 @@
+Agent Command Center
+
+› Analytics      Open usage history
+  Account        Check account options
+
+Use arrows to navigate, Enter to open, Escape to return.
