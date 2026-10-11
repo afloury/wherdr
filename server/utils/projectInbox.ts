@@ -16,6 +16,13 @@ export const INBOX_MAX = 100
 const ITEM_BYTES = 8 * 1024
 const READS_AT_ONCE = 8
 
+// Items already read, by file (`<machine>|<path>`), kept while the file's size
+// and date do not change: an inbox is re-read on every change of the project,
+// and on another machine each file read is a command over SSH. A file is
+// written once by herdr-projects (atomically), then only moved.
+const seen = new Map<string, { size: number, mtimeMs: number, item: InboxItem | null }>()
+const SEEN_MAX = 2000
+
 type Where = Pick<Target, 'm' | 'bin' | 'dir' | 'slug'>
 export interface InboxReply { items: InboxItem[], total: number }
 
@@ -31,19 +38,33 @@ export async function inboxOn(t: Pick<Target, 'm' | 'dir'>): Promise<InboxReply>
   // pipe (or any special file) called `<id>.md` would block the read for good,
   // and four of them every file read of the server (Node's worker threads).
   const stats = await t.m.fs.statMany(wanted.map(id => `${dir}/${id}.md`))
-  const files = wanted.flatMap((id, i) => {
+  const base = `${t.m.key ?? ''}|${dir}/`
+  const todo: { id: string, size: number, mtimeMs: number }[] = []
+  const found = new Map<string, InboxItem>()
+  wanted.forEach((id, i) => {
     const st = stats[i]
-    return st && st.isFile && st.size > 0 ? [{ id, len: Math.min(st.size, ITEM_BYTES) }] : []
+    if (!st || !st.isFile || st.size <= 0) return
+    const known = seen.get(base + id)
+    if (known && known.size === st.size && known.mtimeMs === st.mtimeMs) { if (known.item) found.set(id, known.item) }
+    else todo.push({ id, size: st.size, mtimeMs: st.mtimeMs })
   })
-  for (let i = 0; i < files.length; i += READS_AT_ONCE) {
-    const read = await Promise.all(files.slice(i, i + READS_AT_ONCE).map(async ({ id, len }) => {
-      const text = await t.m.fs.read(`${dir}/${id}.md`, 0, len).then(b => b.toString('utf8')).catch(() => '')
-      const item = parseInboxItem(text.length >= ITEM_BYTES && !text.includes('\n+++\n') ? '' : text)
+  for (let i = 0; i < todo.length; i += READS_AT_ONCE) {
+    await Promise.all(todo.slice(i, i + READS_AT_ONCE).map(async ({ id, size, mtimeMs }) => {
+      const text = await t.m.fs.read(`${dir}/${id}.md`, 0, Math.min(size, ITEM_BYTES)).then(b => b.toString('utf8')).catch(() => null)
+      // A failed read is tried again next time; anything read is remembered.
+      if (text === null) return
+      const parsed = parseInboxItem(text.length >= ITEM_BYTES && !text.includes('\n+++\n') ? '' : text)
       // The file name is the ID `inbox done` takes: an item saying otherwise is not shown.
-      return item && item.id === id ? item : null
+      const item = parsed && parsed.id === id ? parsed : null
+      seen.set(base + id, { size, mtimeMs, item })
+      if (item) found.set(id, item)
     }))
-    for (const item of read) if (item) items.push(item)
   }
+  for (const item of found.values()) items.push(item)
+  // Handled items leave the folder: their entries go, and the map stays bounded.
+  const here = new Set(ids)
+  for (const key of seen.keys()) if (key.startsWith(base) && !here.has(key.slice(base.length))) seen.delete(key)
+  while (seen.size > SEEN_MAX) seen.delete(seen.keys().next().value!)
   // Files that are not items do not count; the ones left unread do.
   return { items: sortInbox(items), total: items.length + (ids.length - wanted.length) }
 }

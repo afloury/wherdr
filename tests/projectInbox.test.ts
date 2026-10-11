@@ -196,6 +196,48 @@ esac
     expect(r.items.map(x => x.id)).toEqual([id(1), id(2)])
   })
 
+  // Minor defect of the review: 100 file reads on every refresh (100 SSH
+  // commands for a project on another machine).
+  it('reads a file once, again only when it changed, and forgets a handled one', async () => {
+    const files = new Map<string, { text: string, mtimeMs: number }>()
+    const id = (n: number) => `20260105T00000${n}Z-pr-t-0001-${n}`
+    for (const n of [1, 2, 3]) files.set(id(n), { text: item(id(n), `kind = "pr"\nsummary = "v1"`), mtimeMs: 1 })
+    const reads: string[] = []
+    let failing = ''
+    const fake: MachineFs = {
+      ...localFs,
+      readdir: async () => [...files.keys()].map(k => `${k}.md`),
+      statMany: async ps => ps.map((p) => { const f = files.get(path.basename(p, '.md')); return f ? { size: f.text.length, mtimeMs: f.mtimeMs, isFile: true, isDir: false } : null }),
+      read: async (p) => { const k = path.basename(p, '.md'); reads.push(k); if (k === failing) throw new Error('refused'); return Buffer.from(files.get(k)!.text) },
+    }
+    const t = { m: { key: 'ab12cd34', fs: fake } as unknown as Machine, dir: '/srv/projects/cached' }
+    expect((await inboxOn(t)).items.map(x => x.summary)).toEqual(['v1', 'v1', 'v1'])
+    expect(reads).toEqual([id(1), id(2), id(3)])
+    // Nothing changed: no file is read again.
+    expect((await inboxOn(t)).items).toHaveLength(3)
+    expect(reads).toHaveLength(3)
+    // A rewritten file is read again; a handled one is forgotten.
+    files.set(id(2), { text: item(id(2), `kind = "pr"\nsummary = "v2"`), mtimeMs: 2 })
+    files.delete(id(3))
+    expect((await inboxOn(t)).items.map(x => x.summary)).toEqual(['v1', 'v2'])
+    expect(reads.slice(3)).toEqual([id(2)])
+    // The same ID coming back (another file) is read, not served from memory.
+    files.set(id(3), { text: item(id(3), `kind = "pr"\nsummary = "back"`), mtimeMs: 1 })
+    expect((await inboxOn(t)).items.map(x => x.summary)).toEqual(['v1', 'v2', 'back'])
+    expect(reads.slice(4)).toEqual([id(3)])
+    // A failed read is not remembered: it is tried again.
+    files.set(id(1), { text: item(id(1), `kind = "pr"\nsummary = "v3"`), mtimeMs: 3 })
+    failing = id(1)
+    expect((await inboxOn(t)).items.map(x => x.summary)).toEqual(['v2', 'back'])
+    failing = ''
+    expect((await inboxOn(t)).items.map(x => x.summary)).toEqual(['v3', 'v2', 'back'])
+    // Another machine with the same path has its own files.
+    const other = { m: { key: 'ffff0000', fs: fake } as unknown as Machine, dir: '/srv/projects/cached' }
+    const before = reads.length
+    await inboxOn(other)
+    expect(reads.length).toBe(before + 3)
+  })
+
   it('marks an item as handled with inbox done, one checked ID per call', async () => {
     expect(await inboxDoneOn(where(), '20260102T000000Z-thread-state-t-0012-2')).toEqual({ ok: true })
     expect(logged()).toEqual([['--root', path.join(tmp, 'projects'), 'inbox', 'done', 'demo', '20260102T000000Z-thread-state-t-0012-2']])
