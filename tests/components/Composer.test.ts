@@ -43,6 +43,18 @@ describe('Composer send', () => {
     w.unmount()
   })
 
+  it('keeps paragraph spacing in the outgoing message', async () => {
+    const { w, field } = await mount('w1:p3')
+    const text = 'First paragraph.\n\nSecond paragraph.\n\n\nThird paragraph.'
+    await field.setValue(text)
+    await w.find('button.prompt-send').trigger('click')
+    expect(outboxFor('w1:p3')).toMatchObject([{ text, state: 'sending' }])
+    release()
+    await flushPromises()
+    await vi.waitFor(() => expect(outboxFor('w1:p3')).toHaveLength(0))
+    w.unmount()
+  })
+
   it('offline: keeps the draft and sends nothing', async () => {
     eventsOpen.value = false
     const { w, field } = await mount('w1:p2')
