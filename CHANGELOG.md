@@ -13,6 +13,9 @@ All notable changes to this project are documented here. The format follows
   Homebrew uses the same GitHub archive. npm publishes that exact archive separately.
   Registry and formula availability gate update notices; the legacy GitHub latest marker
   advances automatically only when existing 1.3.x updaters can safely install the version.
+  Plugin installs fall back to the prebuilt npm archive before compiling. Preserve validated
+  update notices on transient failures; require a prepared draft with notes before publishing.
+  Release readiness reports missing npm/Homebrew conditions and leaves an unchanged latest alone.
 
 - Bundle the wherdr agent skill in npm / Homebrew packages and Docker images. Native
   starts and one-tap updates refresh the shared host copy; the Herdr Docker plugin

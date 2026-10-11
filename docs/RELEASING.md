@@ -9,16 +9,20 @@ Publishing (`npm.yml`), and the tap uses the existing optional `HOMEBREW_TAP_TOK
 2. Set the same version in `package.json`, `package-lock.json` and `herdr-plugin.toml`.
    Move the Unreleased changelog into a dated version entry. Run tests, typecheck and leak
    checks; review and merge this version commit before tagging it.
-3. Create the GitHub release as a **draft**, with English notes under New / Improved /
-   Fixed / Update. Push its version tag only after these notes are ready.
+3. Create the GitHub release as a **draft**, with reviewed, nonempty English notes under New / Improved /
+   Fixed / Update. Push its version tag only after these notes are ready. The workflow fails
+   if this draft or its notes are missing; it never creates or publishes generated notes.
 4. The tag starts `release.yml` and `npm.yml` independently. `release.yml` builds a multiarch
    Docker image and runs `npm pack` (prepack builds Nitro, includes `skills/wherdr`, resolves
    linked packages). It attaches `wherdr-X.Y.Z.tgz` and `wherdr-X.Y.Z.tgz.sha256` to the draft.
    After both jobs succeed, it publishes the release with `latest=false`. Docker and the
-   public GitHub package are now usable; native plugins use the verified archive. A failed
+   public GitHub package are now usable; native plugins compare the archive checksum. A failed
    image or package job leaves the release draft; fix and rerun the failed jobs.
 5. The Homebrew job updates the formula URL and SHA from GitHub, without waiting for npm.
-   Without the existing tap token, run the fallback below after the release is public.
+   **The manual Homebrew step is MANDATORY while `HOMEBREW_TAP_TOKEN` is absent** (including
+   the current 1.3.3 preparation). Wait for `release.yml` to finish successfully first, so its
+   archive is public; then run `scripts/bump-homebrew.sh`. Otherwise the legacy update channel
+   cannot advance even when npm is ready. A skipped Homebrew job does not complete this step.
    Homebrew still uses npm to install the local archive and fetch its third-party dependency;
    it does not need the new **wherdr version** to be available on npm.
 6. `npm.yml` waits for the attached archive (up to 30 minutes), verifies it, then publishes
@@ -32,9 +36,23 @@ Publishing (`npm.yml`), and the tap uses the existing optional `HOMEBREW_TAP_TOK
    own installation mode. No update notice is offered while that channel is unavailable.
 
 An old plugin can get the release immediately via **U** in Herdr or the one-command installer;
-its old in-app Update button waits for the legacy channel. Plugin installation keeps its existing source-build fallback when no verified archive is
-available, including older releases and the interval between the version commit and the tag. Keep the previous npm version,
-GitHub assets, and Homebrew keg available for automatic health-check rollback.
+its old in-app Update button waits for the legacy channel. Plugin installation tries the exact
+version from GitHub, then npm, then compiles only when neither prebuilt source works. This
+includes older releases with no GitHub archive. Keep the previous npm version, GitHub assets,
+and Homebrew keg available for automatic health-check rollback.
+
+SHA-256 checks download integrity, not authenticity: the archive and checksum share an origin.
+Replacing both defeats this check. npm fallback compares the archive to the SHA-512 integrity
+in registry metadata, with the same limitation. There is no signature or build attestation check.
+
+npm provenance identifies the publishing workflow (`npm.yml`); the archive was built by
+`release.yml` in the same repository at the same tagged commit. It does not independently
+attest that separate build workflow (M8); this limitation is intentionally retained.
+
+Readiness logs name each missing npm or Homebrew condition, and an already-current `latest`
+marker is left alone. GitHub disables scheduled workflows in public repositories after 60 days
+without repository activity. Check that `release-ready.yml` remains enabled; re-enable it and
+run it manually if needed. After re-enabling, workflow-completion and manual checks work too.
 
 ## Commands for 1.3.3
 
@@ -60,9 +78,11 @@ git pull --ff-only
 gh release create v1.3.3 --target "$(git rev-parse HEAD)" --draft --title "wherdr 1.3.3" --notes-file /tmp/wherdr-1.3.3.md
 git tag v1.3.3
 git push origin v1.3.3
-gh run list --workflow release.yml --limit 3
+release_run=$(gh run list --workflow release.yml --commit "$(git rev-parse HEAD)" --json databaseId --jq '.[0].databaseId')
+# If no run appears yet, wait for GitHub to register the tag and repeat the lookup.
+gh run watch "$release_run" --exit-status
 gh run list --workflow npm.yml --limit 3
-# Only if the automatic Homebrew job skipped (no tap token):
+# MANDATORY while the tap secret is absent. Run only after release.yml succeeds:
 sh scripts/bump-homebrew.sh 1.3.3 "$(gh repo view --json owner -q .owner.login)"
 # Inspect the readiness workflow; optionally request an immediate check:
 gh workflow run release-ready.yml --ref main

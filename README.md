@@ -799,10 +799,14 @@ installed version is shown in Settings › About.
 GitHub release packages (including the bundled agent skill), Docker images, and Homebrew
 updates are published without waiting for npm moderation. Native plugin installs and updates
 use the GitHub `.tgz` and verify its SHA-256 checksum before extraction. A failed one-tap
-download or checksum check leaves the running version in place. Plugin installation retains
-its source-build fallback when the release archive cannot be fetched or verified, including
-older 1.3.x releases with no GitHub archive. The installer fetches `main` explicitly unless
-you set `WHERDR_REF`.
+download or checksum check leaves the running version in place. Plugin installation tries
+GitHub first, then the prebuilt npm package of the exact same version (with its registry integrity hash), and only builds from source when neither works.
+This also keeps older 1.3.x releases without GitHub archives installable with Node.js or Bun.
+The installer fetches `main` explicitly unless you set `WHERDR_REF`.
+
+The SHA-256 checksum detects damaged downloads. It is served beside the archive, so someone
+who can replace both files can make them match; it does not prove the publisher’s identity
+or protect against replacement of the archive and checksum together.
 
 `npm install -g`, `npx`, `bunx` and `pnpm dlx` still need npm to serve the wherdr package.
 Their banner waits for registry availability; Homebrew's banner waits for its formula.

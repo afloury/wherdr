@@ -31,29 +31,36 @@ export function createUpdateChecker(opts: {
       const body = releases.filter(r => !r.draft && !r.prerelease && /^v\d+\.\d+\.\d+$/.test(String(r.tag_name)))
         .sort((a, b) => compareVersions(String(b.tag_name), String(a.tag_name)))[0]
       if (!body || typeof body.tag_name !== 'string') throw new Error('tag')
-      cached = { version: body.tag_name.replace(/^v/, ''), url: typeof body.html_url === 'string' ? body.html_url : '' }
+      const candidate = { version: body.tag_name.replace(/^v/, ''), url: typeof body.html_url === 'string' ? body.html_url : '' }
       const mode = installMode(opts.env.WHERDR_INSTALL)
+      if (mode === 'plugin') {
+        const archive = `https://github.com/${REPO}/releases/download/v${candidate.version}/wherdr-${candidate.version}.tgz`
+        if (!(await opts.fetch(archive)).ok || !(await opts.fetch(`${archive}.sha256`)).ok) {
+          nextAt = now() + RETRY_MS; return
+        }
+      }
       if (mode === 'npm' || mode === 'npm-global') {
         // Check the actual tarball, rather than trusting npm publish's exit code.
         const registry = (opts.env.npm_config_registry || 'https://registry.npmjs.org').replace(/\/$/, '')
-        const available = await opts.fetch(`${registry}/wherdr/-/wherdr-${cached.version}.tgz`)
-        if (!available.ok) { cached = null; nextAt = now() + RETRY_MS; return }
+        const available = await opts.fetch(`${registry}/wherdr/-/wherdr-${candidate.version}.tgz`)
+        if (!available.ok) { nextAt = now() + RETRY_MS; return }
         if (mode === 'npm') {
           const latest = await opts.fetch(`${registry}/wherdr/latest`)
-          if (!latest.ok || (await latest.json() as { version?: string }).version !== cached.version) {
-            cached = null; nextAt = now() + RETRY_MS; return
+          if (!latest.ok || (await latest.json() as { version?: string }).version !== candidate.version) {
+            nextAt = now() + RETRY_MS; return
           }
         }
       }
       if (mode === 'brew') {
         const formula = await opts.fetch('https://raw.githubusercontent.com/afloury/homebrew-tap/main/Formula/wherdr.rb')
         const text = formula.ok ? await formula.text?.() : ''
-        if (!text?.includes(`/v${cached.version}/wherdr-${cached.version}.tgz"`)) {
-          cached = null; nextAt = now() + RETRY_MS; return
+        if (!text?.includes(`/v${candidate.version}/wherdr-${candidate.version}.tgz"`)) {
+          nextAt = now() + RETRY_MS; return
         }
       }
+      cached = candidate
       nextAt = now() + DAY_MS
-    } catch { cached = null; nextAt = now() + RETRY_MS }
+    } catch { nextAt = now() + RETRY_MS }
   }
 
   return async function check(): Promise<UpdateInfo> {
@@ -69,12 +76,21 @@ export function createUpdateChecker(opts: {
   }
 }
 
+// Keep provider-specific headers off npm and release asset requests. In
+// particular npm's version metadata endpoint rejects GitHub's Accept with 406.
+export function fetchUpdateResource(url: string, request: typeof fetch = fetch) {
+  return request(url, {
+    method: /\.tgz(?:\.sha256)?$/.test(url) ? 'HEAD' : 'GET',
+    headers: {
+      ...(new URL(url).hostname === 'api.github.com' ? { accept: 'application/vnd.github+json' } : {}),
+      'user-agent': 'wherdr',
+    },
+    signal: AbortSignal.timeout(10_000),
+  })
+}
+
 export const checkUpdate = createUpdateChecker({
   current: pkg.version,
   env: process.env,
-  fetch: (url) => fetch(url, {
-    method: url.endsWith('.tgz') ? 'HEAD' : 'GET',
-    headers: { accept: 'application/vnd.github+json', 'user-agent': 'wherdr' },
-    signal: AbortSignal.timeout(10_000),
-  }),
+  fetch: fetchUpdateResource,
 })

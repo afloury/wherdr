@@ -225,10 +225,8 @@ plugin_install() {
     "$HERDR" plugin link "$PLUGIN" >/dev/null || return 1
     ok "Plugin linked from $PLUGIN"
     "$@" sh "$PLUGIN/scripts/herdr-plugin.sh" build
-  elif [ -n "$REF" ]; then
-    "$@" "$HERDR" plugin install "$PLUGIN" --ref "$REF" --yes
   else
-    "$@" "$HERDR" plugin install "$PLUGIN" --yes
+    "$@" "$HERDR" plugin install "$PLUGIN" --ref "$REF" --yes
   fi
 }
 

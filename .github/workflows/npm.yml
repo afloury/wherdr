@@ -47,7 +47,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${GITHUB_REF_NAME#v}"
-          for i in $(seq 1 120); do
+          for ((attempt=1; attempt<=120; attempt++)); do
             if gh release download "$GITHUB_REF_NAME" --pattern "wherdr-${version}.tgz*" --dir package --clobber && (cd package && sha256sum -c "wherdr-${version}.tgz.sha256"); then break; fi
             sleep 15
           done

@@ -286,28 +286,38 @@ write_conf() {
   } > "$CONF"
 }
 
-# Download the exact release package and verify it before extraction.
+# Prefer the release archive, then the already-built npm package. Compile only
+# when neither source provides a usable package of this exact version.
 fetch_prebuilt() {
   command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1 || return 1
   version="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$ROOT/herdr-plugin.toml" | head -n 1)"
   tmp="$(mktemp -d)"
-  url="https://github.com/$SOURCE/releases/download/v$version/wherdr-$version.tgz"
-  if curl -fsSL --max-time 120 "$url" -o "$tmp/wherdr.tgz" \
-    && curl -fsSL --max-time 30 "$url.sha256" -o "$tmp/checksum" \
-    && "$RUNTIME" "$ROOT/bin/lib/verify-release.mjs" "$tmp/wherdr.tgz" "$tmp/checksum" \
-    && tar -xzf "$tmp/wherdr.tgz" -C "$tmp" \
-    && [ -f "$tmp/package/.output/server/index.mjs" ]; then
-    for entry in .output bin skills package.json; do
-      [ -e "$tmp/package/$entry" ] || { rm -rf "$tmp"; return 1; }
-    done
-    for entry in .output bin skills package.json; do
+  for source in github npm; do
+    rm -rf "$tmp/package"
+    if [ "$source" = github ]; then
+      url="https://github.com/$SOURCE/releases/download/v$version/wherdr-$version.tgz"
+      curl -fsSL --max-time 120 "$url" -o "$tmp/wherdr.tgz" 2>/dev/null \
+        && curl -fsSL --max-time 30 "$url.sha256" -o "$tmp/checksum" 2>/dev/null \
+        && "$RUNTIME" "$ROOT/bin/lib/verify-release.mjs" "$tmp/wherdr.tgz" "$tmp/checksum" 2>/dev/null || continue
+    else
+      url="https://registry.npmjs.org/wherdr/-/wherdr-$version.tgz"
+      curl -fsSL --max-time 120 "$url" -o "$tmp/wherdr.tgz" 2>/dev/null \
+        && curl -fsSL --max-time 30 "https://registry.npmjs.org/wherdr/$version" -o "$tmp/metadata" 2>/dev/null \
+        && "$RUNTIME" "$ROOT/bin/lib/verify-release.mjs" "$tmp/wherdr.tgz" "$tmp/metadata" npm "$version" 2>/dev/null || continue
+    fi
+    tar -xzf "$tmp/wherdr.tgz" -C "$tmp" 2>/dev/null || continue
+    [ -f "$tmp/package/.output/server/index.mjs" ] \
+      && [ -d "$tmp/package/bin" ] && [ -f "$tmp/package/package.json" ] || continue
+    # Old npm releases predate the bundled skill; retain the checkout's copy.
+    for entry in .output bin package.json skills; do
+      [ -e "$tmp/package/$entry" ] || continue
       rm -rf "$ROOT/$entry"
       mv "$tmp/package/$entry" "$ROOT/$entry"
     done
     rm -rf "$tmp"
-    ok "wherdr $version downloaded (verified GitHub package)"
+    ok "wherdr $version downloaded ($source package, checksum matched)"
     return 0
-  fi
+  done
   rm -rf "$tmp"
   return 1
 }

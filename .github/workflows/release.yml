@@ -12,8 +12,7 @@ on:
         required: false
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -21,6 +20,9 @@ concurrency:
 
 jobs:
   image:
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -85,6 +87,8 @@ jobs:
           cache-to: type=gha,mode=max
 
   package:
+    permissions:
+      contents: write
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -106,11 +110,13 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
           sha256sum "wherdr-${version}.tgz" > "wherdr-${version}.tgz.sha256"
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --draft --title "wherdr ${version}" --generate-notes
           test "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)" = true
+          test -n "$(gh release view "$GITHUB_REF_NAME" --json body --jq '.body | gsub("\\s"; "")')"
           gh release upload "$GITHUB_REF_NAME" "wherdr-${version}.tgz" "wherdr-${version}.tgz.sha256" --clobber
 
   publish-release:
+    permissions:
+      contents: write
     needs: [image, package]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
@@ -118,9 +124,13 @@ jobs:
       - name: Publish without advancing the legacy update channel
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
+        run: |
+          test "$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
+          test -n "$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json body --jq '.body | gsub("\\s"; "")')"
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
 
   homebrew:
+    permissions: {}
     needs: publish-release
     runs-on: ubuntu-latest
     timeout-minutes: 10
