@@ -11,15 +11,21 @@ for (const [kind, pane] of [['claude', CLAUDE_PANE], ['codex', CODEX_UPDATE_PANE
     const body = page.locator('.msg-user .msg-fold').first()
     await expect(body).toHaveText(text)
     const spacing = await body.evaluate((el, text) => {
-      const node = [...el.childNodes].find(n => n.nodeType === Node.TEXT_NODE)!
       const top = (offset: number) => {
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+        let node = walker.nextNode()!
+        while (offset >= node.textContent!.length) {
+          offset -= node.textContent!.length
+          node = walker.nextNode()!
+        }
         const range = document.createRange()
         range.setStart(node, offset)
         range.setEnd(node, offset + 1)
         return range.getBoundingClientRect().top
       }
       return { raw: el.textContent, line: parseFloat(getComputedStyle(el).lineHeight),
-        second: top(text.indexOf('Second')) - top(0), third: top(text.indexOf('Third')) - top(text.indexOf('Second')) }
+        second: top(text.indexOf('Second')) - top(text.indexOf('\n') - 1),
+        third: top(text.indexOf('Third')) - top(text.indexOf('\n', text.indexOf('Second')) - 1) }
     }, text)
     expect(spacing.raw).toBe(text)
     expect(spacing.second).toBeCloseTo(spacing.line * 2, 0)

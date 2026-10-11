@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Inline diff review**: comment on lines in Changes, edit or delete remarks, and keep a
+  device-local draft per agent. Missing lines are flagged after refresh. Send review appends
+  grouped file/line remarks to the message draft without sending it or replacing existing text.
+  Includes old-line labels for deletions, keyboard/touch controls, remote agents and demo support.
 - **Yes / No in one tap**: a closed question of an agent's reply now has **Yes** and **No** next
   to its `↳ Reply`, in the three reply styles. A tap quotes the question and writes the answer
   under it, as Reply and typing would; nothing is sent, so several questions are answered in a row
@@ -31,7 +35,8 @@ All notable changes to this project are documented here. The format follows
   A new conversation reuses its launch command; an existing one can resume its exact session
   or start fresh. If the session is uncertain, Resume opens Codex's conversation picker.
   Restart checks the foreground process and the unchanged empty prompt before typing.
-  Dismiss puts the card away and gives the pane back as a plain shell.
+  Dismiss puts the card away and gives the pane back as a plain shell; the messages that waited
+  for the restart go back into the message field.
 - **Browse files** in an agent's ⋯ menu: a read-only browser of its project (the Git root, or the
   agent's folder outside Git), opened on the agent's folder. Folders and files with their sizes, a
   breadcrumb to go back up, text files with line numbers (first 256 kB), images up to 2 MB.
@@ -76,7 +81,7 @@ All notable changes to this project are documented here. The format follows
 - **Pasted text cards on every device**: a message with typed words and a text pasted into the
   field showed its card only on the device that sent it; elsewhere it was one long folded message.
   The server now remembers which parts were pasted (`pastes.json` in its data folder, the last 100
-  texts), so every device shows the same card, for Claude, Codex and omp, queued messages
+  texts, each for 30 days), so every device shows the same card, for Claude, Codex and omp, queued messages
   included. Not covered: a paste typed into a Codex or omp terminal, and messages sent before
   this version.
 - **Codex restart after an update**: Project panel messages wait instead of being typed

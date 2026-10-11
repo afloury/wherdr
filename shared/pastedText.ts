@@ -56,39 +56,65 @@ export function pasteRanges(body: string, blocks: string[]): [number, number][] 
   return out
 }
 
-// Cuts `block` out of `text` (first occurrence). The text may be clipped by
-// the server: a block found by its start is cut up to the end.
-function cut(text: string, block: string): string | null {
+// A queued record only keeps the start of its text (server/utils/state.ts addQueued).
+export const QUEUED_CHARS = 4000
+
+// A text the server cut short: a conversation message then ends with "…", a
+// queued record stops at QUEUED_CHARS.
+const cutShort = (text: string) => text.endsWith('…') || text.length === QUEUED_CHARS
+
+// Cuts `block` out of `text` (first occurrence): the text left, and the part
+// of the block the text holds. A text cut short may stop inside the block:
+// the part is then what the text holds of it, up to its end (`short`: the
+// part ends a text cut short, more of it may be missing). A whole text only
+// holds a whole block: one that merely starts like another is not it.
+// `open`: the text is cut short, and its end is not taken yet.
+function cut(text: string, block: string, open: boolean): { rest: string, part: string, short: boolean } | null {
+  const body = open ? text.replace(/…$/, '') : null
   let at = text.indexOf(block)
-  let len = block.length
+  let end = at + block.length
+  let part = block
   if (at < 0) {
-    at = text.indexOf(block.slice(0, 200))
-    if (at < 0 || at + len <= text.length) return null
-    len = text.length - at
+    if (body === null) return null
+    at = body.indexOf(block.slice(0, 200))
+    if (at < 0 || !block.startsWith(body.slice(at))) return null
+    part = body.slice(at).trimEnd()
+    if (!isLongPaste(part)) return null
+    end = text.length
   }
-  return (text.slice(0, at).replace(/\s+$/, '') + '\n' + text.slice(at + len).replace(/^\s+/, '')).trim()
+  // The part ends a text cut short: its "…" goes with it.
+  const short = body !== null && end >= body.trimEnd().length
+  if (short) end = text.length
+  return { rest: (text.slice(0, at).replace(/\s+$/, '') + '\n' + text.slice(end).replace(/^\s+/, '')).trim(), part, short }
 }
 
-// A user message split into its own words and its pasted texts.
+// A user message split into its own words and its pasted texts. A card only
+// ever holds text of the message itself: of a text cut short, what it holds.
 // `listed`: blocks the server marked as pasted (ChatItem.pasted).
 // `known`: blocks this device sent as pasted text; one found inside a listed
-// block leaves the words around it in the text, and one a listed block is
-// the start of (a queued record's text is cut short) is shown whole.
-export function splitPasted(text: string, listed: string[] = [], known: string[] = []): { text: string, pastes: string[] } {
+// block leaves the words around it in the text.
+// `whole`: for a text cut short, the block this device sent instead of the
+// part left of it, when only one starts that way (a cancelled message put
+// back into the field).
+export function splitPasted(text: string, listed: string[] = [], known: string[] = [], whole = false): { text: string, pastes: string[] } {
   let rest = text
   const pastes: string[] = []
+  // The longest first: one of them may sit inside another.
+  const longKnown = known.filter(isLongPaste).sort((a, b) => b.length - a.length)
+  let open = cutShort(text)
   const take = (block: string) => {
-    const r = cut(rest, block)
-    if (r === null) return false
-    rest = r
-    return true
+    const r = cut(rest, block, open)
+    if (r === null) return
+    rest = r.rest
+    if (r.short) open = false
+    const sent = whole && r.short ? longKnown.filter(k => k.startsWith(r.part)) : []
+    pastes.push(sent.length === 1 ? sent[0]! : r.part)
   }
-  const longKnown = known.filter(isLongPaste)
   for (const b of listed) {
-    if (longKnown.some(k => k !== b && (b.includes(k) || k.startsWith(b)))) continue // left to the known blocks below
-    if (take(b)) pastes.push(b)
+    if (longKnown.some(k => k !== b && b.includes(k))) continue // left to the known blocks below
+    take(b)
   }
-  for (const k of longKnown) if (take(k)) pastes.push(k)
+  for (const k of longKnown) take(k)
   if (!pastes.length) return { text, pastes }
   // Back in the order the user wrote them.
   pastes.sort((a, b) => text.indexOf(a.slice(0, 200)) - text.indexOf(b.slice(0, 200)))

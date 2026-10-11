@@ -94,9 +94,11 @@ describe('splitting a user message', () => {
     expect(splitPasted(typed, [], [LOG])).toEqual({ text: typed, pastes: [] })
   })
 
-  it('cuts a block the server clipped up to the end', () => {
+  it('cuts a block the server clipped up to the end: the card is what the message holds', () => {
     const text = `see\n${LOG.slice(0, 900)}…`
-    expect(splitPasted(text, [LOG])).toEqual({ text: 'see', pastes: [LOG] })
+    expect(splitPasted(text, [LOG])).toEqual({ text: 'see', pastes: [LOG.slice(0, 900)] })
+    // A whole message that starts like the block does not hold it.
+    expect(splitPasted(`see\n${LOG.slice(0, 900)}`, [LOG])).toEqual({ text: `see\n${LOG.slice(0, 900)}`, pastes: [] })
   })
 
   it('keeps the text when nothing matches', () => {

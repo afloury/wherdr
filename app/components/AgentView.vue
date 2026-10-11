@@ -231,6 +231,12 @@ const where = computed(() => {
 // Several machines: the agent's, in its metadata.
 const machine = computed(() => (multiMachine.value && pane.value ? machineInfo(pane.value.machine) : undefined))
 const machineDown = computed(() => Boolean(machine.value && machine.value.status !== 'online'))
+function onReview(text: string) {
+  draft.text = draft.text ? `${draft.text}\n\n${text}` : text
+  changesOpen.value = false
+  setMode('chat')
+  nextTick(() => composer.value?.focusEnd())
+}
 const changesOpen = ref(false)
 const filesOpen = ref(false)
 const attachInput = ref<HTMLInputElement | null>(null)
@@ -606,7 +612,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     />
     </div>
     <AppSheet v-model:open="changesOpen" :title="t('Changes')" wide full screen>
-      <ChangesView v-if="changesOpen && pane" :pane-id="paneId" />
+      <ChangesView v-if="changesOpen && pane" :pane-id="paneId" @review="onReview" />
     </AppSheet>
     <AppSheet v-model:open="filesOpen" :title="t('Files')" wide full screen>
       <FilesView v-if="filesOpen && pane" :pane-id="paneId" />

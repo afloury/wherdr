@@ -18,16 +18,30 @@ export interface SelfUpdateDeps extends RestartDeps {
   // `sync`: last write before the service stops.
   save?: (records: [string, LastAgent][], sync?: boolean) => void
 }
+// How often the last time Codex was seen alive (`at`) is written on its own.
+export const AT_SAVE_MS = 60 * 1000
+// Longest outage after which an exit still counts as observed.
+const OUTAGE_MS = 15000
 export function createSelfUpdates(d: SelfUpdateDeps, saved: [string, LastAgent][] = []) {
   const records = new Map(saved)
-  // `at` moves on every pass while Codex lives: alone it is never worth a
-  // disk write. It is saved with the next real change, and by flush().
+  // Read back from the disk and not seen alive since: without flush() (the
+  // service was killed), their `at` may be up to AT_SAVE_MS old.
+  const restored = new Set(records.keys())
+  // `at` moves on every pass while Codex lives: alone it is not worth a disk
+  // write every second. It is saved with the next real change, by flush(),
+  // and otherwise once a minute, so that a service killed without flush()
+  // still knows when Codex was last alive.
   const stable = () => JSON.stringify([...records].map(([id, r]) => [id, { ...r, at: 0 }]))
+  const times = () => [...records.values()].map(r => r.at).join()
   let written = stable()
+  let writtenTimes = times()
+  let writtenAt = d.now()
   const persist = () => {
     const s = stable()
-    if (s === written) return
+    if (s === written && (d.now() - writtenAt < AT_SAVE_MS || times() === writtenTimes)) return
     written = s
+    writtenTimes = times()
+    writtenAt = d.now()
     d.save?.([...records])
   }
   const read = async (id: string) => String((await d.call('pane.read', { pane_id: id, source: 'recent_unwrapped', lines: 80 }, 4000))?.read?.text || '')
@@ -50,6 +64,7 @@ export function createSelfUpdates(d: SelfUpdateDeps, saved: [string, LastAgent][
         // throttle must never reuse another invocation's launch arguments.
         const fg = await paneForeground(d, p.id, 'codex')
         if (!fg.agent) return false // installer may still be exiting
+        restored.delete(p.id)
         const pid = Number(fg.agent.pid)
         if (last && last.pid === pid && !last.gone && d.now() - last.at < 5000
           && p.agentSession === last.pane.agentSession && p.cwd === last.pane.cwd
@@ -96,7 +111,7 @@ export function createSelfUpdates(d: SelfUpdateDeps, saved: [string, LastAgent][
       if (!last.gone) {
         // A long service outage is not an observed exit. An old saved record
         // must not arm detection for arbitrary shell output on reconnection.
-        if (d.now() - last.at > 15000) last.checked = true
+        if (d.now() - last.at > OUTAGE_MS + (restored.has(p.id) ? AT_SAVE_MS : 0)) last.checked = true
         last.gone = d.now()
         persist()
       }

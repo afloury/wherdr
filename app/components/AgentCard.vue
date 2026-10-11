@@ -1,7 +1,10 @@
 <script lang="ts">
+import { choicesArmed, createListShown } from '~/utils/compactCard'
+
 // A card mounted once the list is on screen (an agent that starts waiting moves
-// to another group) opens its answers with the transition; the first render does not.
-let listShown = false
+// to another group) opens its answers with the transition; the first render
+// does not, each time the list comes back on screen.
+const list = createListShown()
 </script>
 
 <script setup lang="ts">
@@ -158,16 +161,23 @@ function open() {
   haptic()
   navigateTo(`/a/${encodeURIComponent(props.pane.id)}`)
 }
+// When the answers shown appeared (see choicesArmed): a tap that lands on them
+// right then was aimed at what they pushed away.
+// Answers that come with the list itself (first render) pushed nothing.
+const shownChoices = () => (more.value ? quick.value.map(o => `${o.i}:${o.label}`).join('\n') : '')
+let choicesAt = list.shown() && shownChoices() ? Date.now() : 0
+watch(shownChoices, (shown) => { if (shown) choicesAt = Date.now() }, { flush: 'sync' })
 async function pick(i: number, label: string) {
-  if (recentTouchMenu()) return
+  if (recentTouchMenu() || !choicesArmed(choicesAt, Date.now())) return
   busy.value = true
   const ok = await choose(props.pane.id, i, label)
   // Success: the buttons disappear with the question on the next state.
   if (!ok) busy.value = false
 }
 watch(() => props.pane.prompt, () => { busy.value = false })
-const appear = listShown
-onMounted(() => { setTimeout(() => { listShown = true }, 1000) })
+const appear = list.shown()
+onMounted(list.mount)
+onUnmounted(list.unmount)
 </script>
 
 <template>
@@ -205,6 +215,10 @@ onMounted(() => { setTimeout(() => { listShown = true }, 1000) })
       <Transition name="card-more" :appear="appear">
         <div v-if="more" class="card-more">
           <div class="card-more-in">
+            <!-- Space with several panes: the one that asks, on the mini-map and by name (the detailed card has both around its title). -->
+            <div v-if="compactList && space && space.panes.length > 1" class="card-where">
+              <TabMap :layout="space.leadTab.layout" :panes="space.leadTab.panes" :current="pane.id" /><span class="card-where-text">{{ where || kindLabel(pane.agent) }}</span>
+            </div>
             <div v-if="prompt?.detail" class="card-detail" :title="detailLine(prompt.detail)">
               <span class="card-detail-tool">{{ prompt.detail.tool }}</span><code>{{ detailLine(prompt.detail) }}</code>
             </div>
