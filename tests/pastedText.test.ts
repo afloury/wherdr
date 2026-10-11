@@ -3,17 +3,17 @@
 import { describe, expect, it } from 'vitest'
 import { parseLines } from '../server/utils/transcripts'
 import { isLongPaste, looksLikeLog, messageBody, pastedBlocks, splitPasted } from '../shared/pastedText'
-import { quoteSegments } from '../app/utils/questionReply'
+import { refSegments } from '../shared/reference'
 import { restoreDraft } from '../app/utils/queuedCancel'
 import { sentPastes } from '../app/utils/sentPastes'
 import { pendingQueue } from '../app/utils/pendingQueue'
 import type { DraftAtt } from '../app/composables/useDraft'
 
 const LOG = Array.from({ length: 40 }, (_, i) => `==> Pouring pkg-${i}--1.0.arm64_sonoma.bottle.tar.gz`).join('\n')
-// Ten lines written in wherdr's field: quotes of the agent's points, each
+// Ten lines written in wherdr's field: references to the agent's points, each
 // followed by an answer. Long enough to be a card if it were a paste.
 const TYPED = Array.from({ length: 5 }, (_, i) =>
-  `> Point ${i + 1}: ${'the agent explains what it found and what it suggests. '.repeat(6).trim()}\nAnswer ${i + 1}: agreed, go ahead with that one.`).join('\n')
+  `↳ Quote point 08:0${i} : Point ${i + 1}: ${'the agent explains what it found and what it suggests. '.repeat(6).trim()} —\nAnswer ${i + 1}: agreed, go ahead with that one.`).join('\n')
 const claudeLine = (content: unknown, ts = '2026-10-08T08:00:00.000Z') =>
   JSON.stringify({ type: 'user', timestamp: ts, message: { role: 'user', content } })
 
@@ -63,9 +63,9 @@ describe('<pasted_content> blocks', () => {
     ].join('\n'), 'claude', 0, '/home/user').filter(i => i.role === 'user')
     expect(items.map(i => i.text)).toEqual([TYPED, TYPED, TYPED, `ok\n${TYPED}`])
     expect(items.map(i => i.pasted)).toEqual([undefined, undefined, undefined, undefined])
-    // Shown whole, its "> " lines as quotes; no card.
+    // Shown whole, its references as quotes; no card.
     expect(splitPasted(items[0]!.text, items[0]!.pasted, [])).toEqual({ text: TYPED, pastes: [] })
-    expect(quoteSegments(TYPED).filter(s => s.quote)).toHaveLength(5)
+    expect(refSegments(TYPED).filter(s => s.kind === 'ref')).toHaveLength(5)
   })
 })
 

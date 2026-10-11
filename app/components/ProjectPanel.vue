@@ -21,7 +21,9 @@ const movedByPane = new Map<string, Set<string>>()
 // the latter two put into its input field (emitted to the agent view).
 // "To decide": Question and Answer also prepare a draft.
 // "To review": Reviewed sends "✓ Relu : …", Comment prepares "↳ Retour sur
-// … :" (the PR link: link badge or URL in the text, set by the coordinator).
+// … —" (the PR link: link badge or URL in the text, set by the coordinator).
+// The drafts that start with "↳" are references (shared/reference.ts): the
+// task on one line, the answer below it.
 // The only task decorations: the coordinator's [b:color(text)](target)
 // badges; URLs in the text are plain links.
 // "Backlog": Launch sends the message; Detail prepares a draft.

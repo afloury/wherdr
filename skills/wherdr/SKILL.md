@@ -1,6 +1,6 @@
 ---
 name: wherdr
-description: Conventions for coordinating a herdr-projects project whose TASKS.md is shown and driven by wherdr's Project panel. Use when you coordinate a herdr-projects project (you edit TASKS.md, launch and merge threads), and whenever a message starts with "✓ Tested:", "✓ Testé :", "✗ Problem:", "✗ Problème :", "? Question:", "? Question :", "↳ Decision:", "↳ Décision :", "↳ Launch", "↳ Lancer", "↳ Move up", "↳ Monter", "↳ Move down", "↳ Descendre", "↳ Queue:", "↳ Mettre en file", "↳ Remove from queue", "↳ Retirer de la file", "↳ Back to backlog", "↳ Remettre au backlog", "↳ Unblock", "↳ Débloquer", "↳ Detail on", "↳ Précision sur", "✓ Reviewed:", "✓ Relu :", "↳ Feedback on", "↳ Retour sur", "↳ Info for" or "↳ Info pour".
+description: Conventions for coordinating a herdr-projects project whose TASKS.md is shown and driven by wherdr's Project panel. Use when you coordinate a herdr-projects project (you edit TASKS.md, launch and merge threads), and whenever a message starts with "✓ Tested:", "✓ Testé :", "✗ Problem:", "✗ Problème :", "? Question:", "? Question :", "↳ Decision:", "↳ Décision :", "↳ Launch", "↳ Lancer", "↳ Move up", "↳ Monter", "↳ Move down", "↳ Descendre", "↳ Queue:", "↳ Mettre en file", "↳ Remove from queue", "↳ Retirer de la file", "↳ Back to backlog", "↳ Remettre au backlog", "↳ Unblock", "↳ Débloquer", "↳ Detail on", "↳ Précision sur", "✓ Reviewed:", "✓ Relu :", "↳ Feedback on", "↳ Retour sur", "↳ Info for", "↳ Info pour" or "↳ Quote".
 ---
 
 # wherdr Project panel conventions
@@ -117,7 +117,17 @@ owner. Find the line in `TASKS.md` by that text. The English or French form depe
 app language; treat them the same.
 
 Messages marked *sent* arrive as is. Messages marked *draft* are put in the user's input
-field, completed by the user after ` — `, then sent: read the user's text after the dash.
+field, completed by the user, then sent. A draft that starts with `✗` or `?` is completed after
+` — ` on the same line. A draft that starts with `↳` and ends with ` —` is a **reference**: the
+task on one line, the user's text on the lines below it, up to the next reference.
+
+The user quotes your own messages with the same kind of line, by the time shown on the message:
+`↳ Quote message 11:37 : <start of the message> —` (the whole message),
+`↳ Quote point 11:37 : <question, point or passage> —`,
+`↳ Quote decision 11:37 #3 : <question of row 3> —` (a row of a table of numbered decisions) and
+`↳ Quote decisions 11:37 #1-4 : <questions> —` (the whole table, usually followed by `OK to all`).
+Read the lines under each one as the answer to that message and that row, even when you have
+written other messages since. Long excerpts are cut with `…`.
 `↳ Info for` names a thread (`t-NNNN`) instead of a task; its text may span several lines.
 
 | Message (EN / FR) | From | What to do |
@@ -125,9 +135,9 @@ field, completed by the user after ` — `, then sent: read the user's text afte
 | `✓ Tested: <task>` / `✓ Testé : <task>` (sent) | To test › Confirm | The user validated it: remove the line from To test. |
 | `✗ Problem: <task> — <details>` / `✗ Problème : <task> — …` (draft) | To test › Problem | A bug report: remove the line from To test, fix it (or launch a thread) and track it in In progress; it comes back to To test once the fix is deployed. |
 | `? Question: <task> — <question>` / `? Question : <task> — …` (draft) | To test, To decide › Question | Answer in detail: what to test and how (where to tap, expected result), from the thread's report. Do not change `TASKS.md`. |
-| `↳ Decision: <task> — <answer>` / `↳ Décision : <task> — …` (draft) | To decide › Answer | Apply the decision, remove the line from To decide, and record it where the project keeps durable decisions. |
+| `↳ Decision: <task> —` / `↳ Décision : <task> —`, then the answer below (draft) | To decide › Answer | Apply the decision, remove the line from To decide, and record it where the project keeps durable decisions. |
 | `✓ Reviewed: <task>` / `✓ Relu : <task>` (sent) | To review › Reviewed | The user reviewed the PR: carry on (merge, deploy as the project says) and remove the line from To review. |
-| `↳ Feedback on <task>: <comments>` / `↳ Retour sur <task> : …` (draft) | To review › Comment | Review feedback on that PR: apply it or send it to the thread. |
+| `↳ Feedback on <task> —` / `↳ Retour sur <task> —`, then the comments below (draft) | To review › Comment | Review feedback on that PR: apply it or send it to the thread. |
 | `↳ Move up: <task>` / `↳ Monter : <task>` (sent) | To do, In queue | Move the line one place up in its list. May arrive several times in a row. |
 | `↳ Move down: <task>` / `↳ Descendre : <task>` (sent) | To do, In queue | Move the line one place down in its list. |
 | `↳ Queue: <task>` / `↳ Mettre en file : <task>` (sent) | To do › Queue | Move the line from To do to the end of In queue; launch it if a slot is free and it is first. |
@@ -136,7 +146,7 @@ field, completed by the user after ` — `, then sent: read the user's text afte
 | `↳ Back to backlog: <task>` / `↳ Remettre au backlog : <task>` (sent) | To do | Move the line to Backlog. |
 | `↳ Launch: <task>` / `↳ Lancer : <task>` (sent) | Backlog › Launch | Start the task: a thread if a slot is free, otherwise first in In queue. |
 | `↳ Unblock: <task>` / `↳ Débloquer : <task>` (sent) | Blocked › Unblock | Relaunch the task, or ask the user exactly what is still missing. |
-| `↳ Detail on <task> — <details>` / `↳ Précision sur <task> — …` (draft) | Clarify (Backlog, To do, In queue, Blocked) | Add the details to the task (indented lines under it, or the thread's brief) and confirm. Do not launch it. |
+| `↳ Detail on <task> —` / `↳ Précision sur <task> —`, then the details below (draft) | Clarify (Backlog, To do, In queue, Blocked) | Add the details to the task (indented lines under it, or the thread's brief) and confirm. Do not launch it. |
 | `↳ Info for t-NNNN: <text>` / `↳ Info pour t-NNNN : <text>` (sent) | In progress › Add info (a thread's card, or the task of a thread) | Pass `<text>` on to that thread as is, every line of it, without rewording (`herdr-projects thread prompt <project> t-NNNN --text-file <file>`, `-` reads standard input), then confirm to the user in one line. Do not change `TASKS.md`. If the thread is resolved or unknown, say so instead. |
 
 Never launch a task from To do or Backlog without one of these requests.

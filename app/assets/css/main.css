@@ -2068,10 +2068,6 @@ body.kb .composer { padding-bottom: 8px; }
   font: 500 10.5px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--muted);
 }
 .settings-group h3::before, .theme-section-title::before { content: ''; width: 18px; height: 1px; background: var(--line); }
-.exp-tag {
-  display: inline-block; margin-left: 8px; padding: 3px 6px; vertical-align: 1px; border: 1px solid color-mix(in srgb, var(--ochre) 45%, var(--line));
-  font: 500 9.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ochre);
-}
 .settings-hint { font-size: 13px; margin: -20px 2px 30px; }
 .settings-group .settings-hint { margin: 9px 2px 0; }
 /* Sub-section of a settings section shown only on a computer (Appearance › Desktop). */
@@ -3084,19 +3080,6 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 @media (hover: hover) { .tab-chip.tab-add:hover { border-style: solid; color: var(--text); } }
 .tab-chip.tab-add:disabled { opacity: .4; cursor: default; }
 
-/* Reply to a specific agent message (see utils/replyQuote.ts). */
-.composer-reply {
-  display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0 0 6px; padding: 6px 4px 6px 10px;
-  border: 1px solid var(--line); border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent);
-}
-.composer-reply-icon { flex: none; width: 14px; height: 14px; color: var(--accent); }
-.composer-reply-label { flex: none; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
-.composer-reply-text { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.35; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.composer-reply-x {
-  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
-  color: var(--dim); background: none; border: 0; border-radius: 0; cursor: pointer;
-}
-.composer-reply-x:hover { color: var(--text); }
 .msg-actions { display: flex; align-items: center; margin: -10px 0 4px -6px; min-height: 28px; }
 .msg-reply {
   display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 6px;
@@ -3338,26 +3321,9 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 }
 .composer-quote-x:hover { color: var(--text); }
 .composer-quote-x .iconify, .composer-quote-x svg { width: 12px; height: 12px; }
-/* Field with the quotes as tokens (components/QuoteTokensField.vue): same
-   text metrics as .prompt-input; each quote one compact, non-editable line. */
-.rb-field {
-  min-height: 38px; max-height: 40vh; overflow-y: auto; padding: 8px 6px 4px;
-  font-size: 16px; line-height: 1.45; color: var(--text); outline: none;
-  white-space: pre-wrap; overflow-wrap: anywhere; cursor: text;
-}
-.rb-field:empty::before { content: attr(data-placeholder); color: var(--dim); }
-.rb-token {
-  display: flex; align-items: center; gap: 6px; max-width: 100%; height: 26px; margin: 4px 0 2px; padding: 0 0 0 8px;
-  border: 1px solid var(--line); border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent);
-  -webkit-user-select: none; user-select: none; cursor: default;
-}
-.rb-token:first-child { margin-top: 0; }
-.rb-token-label { flex: none; font: 500 10px/1 var(--mono); color: var(--accent); }
-.rb-token-text { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.3; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rb-token-x { flex: none; width: 26px; height: 24px; font-size: 11px; color: var(--dim); background: none; border: 0; cursor: pointer; }
-.rb-token-x:hover { color: var(--text); }
-/* "Native" mode (utils/quoteMirror.ts): the native field, its "> " lines drawn
-   as tokens by a mirror behind it. Nothing here may change a line's size. */
+/* "Native" mode (utils/quoteMirror.ts): the native field, its reference lines
+   ("↳ … —") drawn as tokens by a mirror behind it. Nothing here may change a
+   line's size: colours and a band only. */
 .qm-host { position: relative; }
 .qm-on {
   position: relative; z-index: 1; background: transparent !important;
@@ -3368,13 +3334,10 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .qm-q {
   margin: 0 calc(-1 * var(--qm-pr)) 0 calc(-1 * var(--qm-pl)); padding: 0 var(--qm-pr) 0 var(--qm-pl);
   color: var(--text-2); background: color-mix(in srgb, var(--accent) 9%, transparent);
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent), inset 0 1px 0 color-mix(in srgb, var(--accent) 22%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--accent) 22%, transparent);
 }
-.qm-q.first { box-shadow: inset 2px 0 0 var(--accent), inset 0 1px 0 color-mix(in srgb, var(--accent) 22%, transparent); }
-.qm-q.last { box-shadow: inset 2px 0 0 var(--accent), inset 0 -1px 0 color-mix(in srgb, var(--accent) 22%, transparent); }
-.qm-q.first.last { box-shadow: inset 2px 0 0 var(--accent), inset 0 1px 0 color-mix(in srgb, var(--accent) 22%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--accent) 22%, transparent); }
-.qm-p { position: relative; color: transparent; }
-.qm-p::before { content: "↳"; position: absolute; left: 0; top: 0; color: var(--accent); font-family: var(--mono); font-size: .78em; }
+.qm-a { color: var(--accent); }
+.qm-h { color: var(--dim); }
 /* Settings preview of quoted replies (components/QuoteTokensPreview.vue):
    one 10 s timeline shared by every piece, played once; the static styles are
    the composed field, where it ends (and stays under reduced motion): the
@@ -3399,7 +3362,8 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
   align-self: end; justify-self: end; display: flex; flex-direction: column; gap: 1px; max-width: 80%; padding: 7px 10px;
   background: var(--surface); border: 1px solid var(--line); opacity: 0;
 }
-.qt-sent-q { padding-left: 7px; border-left: 2px solid var(--accent); font-size: 12px; color: var(--text-2); }
+.qt-sent-q { padding: 1px 6px; border: 1px solid var(--line); border-left: 2px solid var(--accent); font-size: 11.5px; color: var(--text-2); }
+.qt-sent-q b { margin-right: 5px; font: 500 9.5px/1 var(--mono); color: var(--dim); }
 .qt-field { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 92px; padding: 8px 44px 8px 8px; border: 1px solid var(--accent); }
 .qt-ph { position: absolute; left: 9px; top: 8px; color: var(--dim); opacity: 0; }
 .qt-tok {
@@ -3407,11 +3371,12 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
   border: 1px solid var(--line); border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent);
   font-size: 11.5px; color: var(--text-2); white-space: nowrap; overflow: hidden;
 }
-.qt-tok b { font: 500 9.5px/1 var(--mono); color: var(--accent); }
-.qt-tok i { font-style: normal; font-size: 10px; color: var(--dim); margin-left: 4px; }
-/* Preview of the "lines" mode: the "> " text as typed, a chip above the field per quote. */
-.qt-preview[data-mode="lines"] .qt-tok { height: auto; padding: 0; border: 0; background: none; font-size: 12.5px; }
-.qt-preview[data-mode="lines"] .qt-tok b { font: inherit; color: var(--dim); }
+.qt-tok b { font-weight: 400; color: var(--accent); }
+.qt-tok em { font-style: normal; color: var(--dim); }
+.qt-tok span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Preview of the "lines" mode: the same "↳ … —" lines as plain text. */
+.qt-preview[data-mode="lines"] .qt-tok { height: auto; padding: 0; border: 0; background: none; color: var(--text); }
+.qt-preview[data-mode="lines"] .qt-tok :is(b, em) { color: inherit; }
 .qt-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 22px; margin-bottom: -4px; }
 .qt-chip {
   display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 6px 0 7px;
@@ -3419,7 +3384,7 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
   font-size: 11.5px; color: var(--text-2); white-space: nowrap;
 }
 .qt-chip i { font-style: normal; font-size: 10px; color: var(--dim); }
-/* Preview of the "native" mode: a band across the field, no ✕. */
+/* Preview of the "native" mode: a band across the field. */
 .qt-preview[data-mode="native"] .qt-tok {
   align-self: stretch; max-width: none; margin: 0 -44px 0 -8px; padding: 0 44px 0 8px; border: 0;
   background: color-mix(in srgb, var(--accent) 9%, transparent); box-shadow: inset 2px 0 0 var(--accent);
@@ -3463,7 +3428,19 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 @keyframes qt-send { 0%, 64% { background: var(--text); } 67% { background: var(--accent); transform: scale(.9); } 70% { background: var(--text); transform: none; } }
 @keyframes qt-sent { 0%, 70% { opacity: 0; transform: translateY(14px); } 75%, 94% { opacity: 1; transform: none; } }
 @keyframes qt-agent { 0%, 70% { opacity: 1; transform: none; } 75%, 94% { opacity: 0; transform: translateY(-14px); } }
-/* Sent message: each quoted question above its answer. */
+/* Sent message: each reference ("↳ … —" line) a quote above its answer. */
+.msg-ref {
+  display: flex; align-items: baseline; gap: 6px; width: fit-content; max-width: 100%; min-width: 0; margin: 4px 0 3px; padding: 3px 8px;
+  font: inherit; font-size: 12.5px; line-height: 1.35; text-align: left; color: var(--text-2);
+  background: color-mix(in srgb, var(--accent) 6%, transparent); border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: 0;
+}
+.msg-ref:first-child { margin-top: 0; }
+button.msg-ref { cursor: pointer; }
+button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); border-left-color: var(--accent); outline: 0; }
+.msg-ref-mark { flex: none; font: 500 10px/1.4 var(--mono); color: var(--accent); }
+.msg-ref-meta { flex: none; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+.msg-ref-text { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+/* A run of "> " lines, as quotes were written before. */
 .msg-q {
   display: block; margin: 2px 0; padding: 1px 0 1px 9px; border-left: 2px solid var(--accent);
   font-size: 13.5px; line-height: 1.4; color: var(--text-2);

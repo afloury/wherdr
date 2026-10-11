@@ -1,22 +1,18 @@
 // Replying to several questions of an agent in one message.
 // Each question of a reply (a sentence ending with "?" in a paragraph or a
 // list item, never in code) gets a small "↳ Reply" button right after it; a
-// tap appends it to the draft as a quote, followed by an empty line for the
-// answer:
-//   > Can you plug the box in over Ethernet?
+// tap appends a reference to it to the draft (shared/reference.ts), followed
+// by an empty line for the answer:
+//   ↳ Quote point 11:37 : Can you plug the box in over Ethernet? —
 //   No, not for now.
-//   > Shall I send the request to the coordinator?
+//   ↳ Quote point 11:37 : Shall I send the request to the coordinator? —
 //   Yes.
 // The draft text is the only state: the quotes shown above the field, the
 // "quoted" state of the buttons and their removal are all read from it.
 // A point that asks nothing (a list item, a paragraph without a question) can
 // be quoted the same way, to discuss it. How the two show is a setting
 // (ReplyStyle): the markup below is the same for every style, main.css draws it.
-import { truncateMiddle } from '../../shared/replyQuote'
-
-// Longest quote kept (a selected passage can be long; the agent has the
-// whole conversation, the start and the end are enough to find it).
-export const QUOTE_MAX = 400
+import { type Reference, type TextRef, decisionRef, pointRef, isRefLine, refLine, refsIn, sameRef } from '../../shared/reference'
 
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim()
 // What may close a question after its "?": quotes, brackets, emphasis, spaces.
@@ -75,64 +71,25 @@ export function questionsIn(text: string): Question[] {
   return out
 }
 
-// Quote as sent: every line prefixed with "> ".
-export function quoteOf(text: string): string {
-  let lines = String(text || '').split('\n').map(l => l.replace(/\s+$/, '')).filter(l => l.trim())
-  if (lines.join(' ').length > QUOTE_MAX) lines = [truncateMiddle(oneLine(lines.join(' ')), QUOTE_MAX)]
-  return lines.map(l => `> ${l.trim()}`).join('\n')
-}
+// References of a draft (see shared/reference.ts): one line each.
+export const quotesIn = refsIn
+const find = (draft: string, ref: Reference) => refsIn(draft).find(q => sameRef(q, ref)) || null
+export const isQuoted = (draft: string, ref: Reference) => find(draft, ref) !== null
 
-// A quote line: ">" then a space (or nothing else), as quoteOf() writes it.
-// ">>>", ">= 5" or ">file" are the user's own text, not quotes.
-// Groups: 1 = prefix as typed, 2 = quoted text.
-export const QUOTE_LINE = /^(>(?:\s|$))(.*)$/
-
-export interface DraftQuote { text: string, start: number, end: number }
-
-// Quotes of a draft: runs of consecutive "> " lines; `end` includes the
-// newline that closes the run.
-export function quotesIn(draft: string): DraftQuote[] {
-  const out: DraftQuote[] = []
-  let pos = 0
-  let cur: DraftQuote | null = null
-  for (const line of String(draft || '').split('\n')) {
-    const end = pos + line.length
-    const m = QUOTE_LINE.exec(line)
-    if (m) {
-      if (cur) {
-        cur.text += `\n${m[2]}`
-        cur.end = end
-      } else cur = { text: m[2]!, start: pos, end }
-    } else if (cur) {
-      out.push(cur)
-      cur = null
-    }
-    pos = end + 1
-  }
-  if (cur) out.push(cur)
-  for (const q of out) if (q.end < draft.length) q.end++
-  return out
-}
-
-export function isQuoted(draft: string, text: string): boolean {
-  const want = oneLine(quoteOf(text).replace(/^> /gm, '')).toLowerCase()
-  return Boolean(want) && quotesIn(draft).some(q => oneLine(q.text).toLowerCase() === want)
-}
-
-// Draft with the quote appended at the end (one quote/answer pair after the
-// other, in order) and an empty line below it for the answer. A quote still
-// unanswered is closed by an empty line, so the two never merge. Null if it
-// is already quoted.
-export function addQuote(draft: string, text: string): string | null {
-  const quote = quoteOf(text)
-  if (!quote || isQuoted(draft, text)) return null
+// Draft with the reference appended at the end (one reference / answer pair
+// after the other, in order) and an empty line below it for the answer. A
+// reference still unanswered is closed by an empty line, so the next one does
+// not read as sharing its answer. Null if it is already there.
+export function addQuote(draft: string, ref: Reference): string | null {
+  const line = refLine(ref)
+  if (!line || isQuoted(draft, ref)) return null
   const base = String(draft || '').replace(/\s+$/, '')
-  const sep = !base ? '' : QUOTE_LINE.test(base.slice(base.lastIndexOf('\n') + 1)) ? '\n\n' : '\n'
-  return `${base}${sep}${quote}\n`
+  const sep = !base ? '' : isRefLine(base.slice(base.lastIndexOf('\n') + 1)) ? '\n\n' : '\n'
+  return `${base}${sep}${line}\n`
 }
 
-// Draft without one of its quotes (its answer stays).
-export function removeQuote(draft: string, q: DraftQuote): string {
+// Draft without one of its references (its answer stays).
+export function removeQuote(draft: string, q: TextRef): string {
   return (draft.slice(0, q.start) + draft.slice(q.end)).replace(/^\n+/, '')
 }
 
@@ -187,39 +144,37 @@ export function isClosedQuestion(text: string): boolean {
   })
 }
 
-// One-tap answers: "yes" / "no" under the quote of a closed question, as
+// One-tap answers: "Yes" / "No" under the reference to a closed question, as
 // Reply and typing would write them:
-//   > Shall I merge the branch now?
+//   ↳ Quote point 11:37 : Shall I merge the branch now? —
 //   Yes
 export type Answer = 'yes' | 'no'
-export interface AnswerWords { yes: string, no: string }
 // What a tap may have written, in either language: only that is replaced.
 const TAPPED: Record<Answer, RegExp> = { yes: /^(?:yes|oui)\.?$/i, no: /^(?:no|non)\.?$/i }
 export const tappedAnswer = (s: string): Answer | null => {
   const v = s.trim()
   return TAPPED.yes.test(v) ? 'yes' : TAPPED.no.test(v) ? 'no' : null
 }
-const sameQuote = (q: DraftQuote, text: string) => oneLine(q.text).toLowerCase() === oneLine(quoteOf(text).replace(/^> /gm, '')).toLowerCase()
-// Where the answer to a quote of the draft sits: from the end of the quote to
-// the next quote (or the end of the draft).
-function answerSpan(draft: string, text: string): { start: number, end: number } | null {
-  const quotes = quotesIn(draft)
-  const i = quotes.findIndex(q => sameQuote(q, text))
+// Where the answer to a reference of the draft sits: from its end to the next
+// reference (or the end of the draft).
+function answerSpan(draft: string, ref: Reference): { start: number, end: number } | null {
+  const quotes = refsIn(draft)
+  const i = quotes.findIndex(q => sameRef(q, ref))
   return i < 0 ? null : { start: quotes[i]!.end, end: quotes[i + 1]?.start ?? draft.length }
 }
-// What the draft answers to a quoted question: its text ("" when nothing is
-// written yet), null when the question is not quoted.
-export function answerOf(draft: string, text: string): string | null {
-  const at = answerSpan(draft, text)
+// What the draft answers to a reference: its text ("" when nothing is written
+// yet), null when the reference is not there.
+export function answerOf(draft: string, ref: Reference): string | null {
+  const at = answerSpan(draft, ref)
   return at ? draft.slice(at.start, at.end).trim() : null
 }
-// Draft with the question quoted and answered in one tap. A question already
-// quoted gets the answer under its quote; a "yes" or "no" written by an
-// earlier tap is replaced. Null when there is nothing to change: the same
-// answer is there, or the user wrote their own (never overwritten).
-export function addAnswer(draft: string, text: string, word: string): string | null {
-  const base = addQuote(draft, text) ?? String(draft || '')
-  const at = answerSpan(base, text)
+// Draft with the reference and its answer, in one tap. A reference already
+// there gets the answer under it; a "yes" or "no" written by an earlier tap
+// is replaced. Null when there is nothing to change: the same answer is
+// there, or the user wrote their own (never overwritten).
+export function addAnswer(draft: string, ref: Reference, word: string): string | null {
+  const base = addQuote(draft, ref) ?? String(draft || '')
+  const at = answerSpan(base, ref)
   if (!at) return null
   const current = base.slice(at.start, at.end).trim()
   if (current === word || (current && !tappedAnswer(current))) return null
@@ -229,8 +184,15 @@ export function addAnswer(draft: string, text: string, word: string): string | n
 
 // Decision table: a Markdown table whose rows are numbered questions, as a
 // coordinator writes them ("# | Question | My advice"). Under it, each row is
-// answered in one tap ("3: yes"), quoted ("> 3. Tag the release today?") or
-// the whole table accepted ("ok to all"). The table must have:
+// answered in one tap or quoted for an answer in words, and the whole table
+// accepted, each time under a reference that names the message and the row:
+//   ↳ Quote decision 11:37 #3 : Tag the release today? —
+//   Yes
+//   ↳ Quote decisions 11:37 #1-4 : Tag the release today? · … —
+//   OK to all
+// The reference is always written, even for the agent's last message: the
+// agent may write another one before the answer is sent, and "3: yes" alone
+// would then be read against that one. The table must have:
 // - a number column: a header that says so ("#", "N°", "No", "Num", "ID",
 //   "Q") over cells that all hold a short number ("1", "2.", "Q3"), each once;
 // - a question column, by one of three signs: a header that names it
@@ -242,7 +204,8 @@ const NUM_HEAD = /^(?:#|n[°º]|no\.?|num(?:[ée]ro)?\.?|id|q)$/i
 const NUM_CELL = /^(?:[#qd]|n[°º])?\s*\d{1,3}[.)]?$/i
 const QUESTION_HEAD = /question|d[ée]cision|choix|choice|to decide|à décider|à trancher/i
 const ADVICE_HEAD = /avis|recomm|suggestion|proposition|proposal|opinion|my take|my pick|conseil|advice/i
-export interface DecisionRow { n: string, text: string }
+// `all`: the whole table the row belongs to (its rows, their questions), when it has several rows.
+export interface DecisionRow { n: string, text: string, all?: { n: string, text: string } | null }
 export function decisionRows(header: string[], rows: string[][]): DecisionRow[] | null {
   const head = header.map(oneLine)
   const body = rows.map(r => r.map(oneLine))
@@ -261,82 +224,35 @@ export function decisionRows(header: string[], rows: string[][]): DecisionRow[] 
   return body.map(r => ({ n: label(r[num]!), text: r[question]! }))
 }
 
-// A row quoted to discuss it: its number, then its question.
-export const rowQuote = (row: DecisionRow) => `${row.n}. ${row.text}`
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-// Lines of the draft that are the user's own (not quotes), with their position.
-function ownLines(draft: string) {
-  const out: { text: string, start: number, end: number }[] = []
-  let pos = 0
-  for (const text of String(draft || '').split('\n')) {
-    if (!QUOTE_LINE.test(text)) out.push({ text, start: pos, end: pos + text.length })
-    pos += text.length + 1
-  }
-  return out
+// The whole table as "OK to all" refers to it: its row numbers and questions.
+export const tableOf = (rows: DecisionRow[]) => ({ n: `${rows[0]!.n}-${rows.at(-1)!.n}`, text: rows.map(r => r.text).join(' · ') })
+export const rowRef = (row: DecisionRow, time: string | null) => decisionRef(row.n, row.text, time)
+export const tableRef = (all: { n: string, text: string }, time: string | null) => decisionRef(all.n, all.text, time, true)
+// "OK to all" / "OK tout": what a tap writes under the reference to the table.
+const OK_ALL = /^ok\s+(?:to\s+all|tout|pour\s+tout)\s*[.!]?$/i
+// Draft with the table accepted, or with that taken back when it is there (a
+// second tap): the reference goes, and the words under it when a tap wrote them.
+export function toggleOkAll(draft: string, ref: Reference, phrase: string): string {
+  const at = find(draft, ref)
+  if (!at) return addAnswer(draft, ref, phrase) ?? draft
+  const span = answerSpan(draft, ref)!
+  const end = OK_ALL.test(draft.slice(span.start, span.end).trim()) ? span.end : at.end
+  return (draft.slice(0, at.start) + draft.slice(end)).replace(/^\n+/, '')
 }
-// Draft with a line of the user's appended, never glued to an unanswered
-// quote (it would read as its answer).
-function appendLine(draft: string, line: string): string {
-  const base = String(draft || '').replace(/\s+$/, '')
-  const sep = !base ? '' : QUOTE_LINE.test(base.slice(base.lastIndexOf('\n') + 1)) ? '\n\n' : '\n'
-  return `${base}${sep}${line}\n`
-}
-const rowLine = (draft: string, n: string) => {
-  const re = new RegExp(`^\\s*${escapeRe(n)}\\s*[:=]\\s*(.*)$`, 'i')
-  for (const l of ownLines(draft)) {
-    const m = re.exec(l.text)
-    if (m) return { ...l, value: m[1]!.trim() }
-  }
-  return null
-}
-// What the draft answers to the row numbered `n` ("3: yes" → "yes"), null
-// when it has no line for it.
-export const rowAnswer = (draft: string, n: string): string | null => rowLine(draft, n)?.value ?? null
-// Draft with `line` ("3: yes") as the answer to row `n`: appended, or in
-// place of the line an earlier tap wrote. Null when nothing changes: the same
-// line is there, or the user wrote their own answer for that row.
-export function setRowAnswer(draft: string, n: string, line: string): string | null {
-  const at = rowLine(draft, n)
-  if (!at) return appendLine(draft, line)
-  if (at.text.trim() === line || (at.value && !tappedAnswer(at.value))) return null
-  return draft.slice(0, at.start) + line + draft.slice(at.end)
-}
-// "ok to all" / "ok tout": the whole table accepted, on a line of its own.
-const OK_ALL = /^\s*ok\s+(?:to\s+all|tout)\s*[.!]?\s*$/i
-export const hasOkAll = (draft: string) => ownLines(draft).some(l => OK_ALL.test(l.text))
-// Draft with the line added, or removed when it is there (a second tap).
-export function toggleOkAll(draft: string, phrase: string): string {
-  const at = ownLines(draft).find(l => OK_ALL.test(l.text))
-  if (!at) return appendLine(draft, phrase)
-  return (draft.slice(0, at.start) + draft.slice(Math.min(draft.length, at.end + 1))).replace(/^\n+/, '')
-}
-// A row is settled once the draft answers it, quotes it, or accepts them all.
-export const rowSettled = (draft: string, row: DecisionRow) =>
-  rowAnswer(draft, row.n) !== null || isQuoted(draft, rowQuote(row)) || hasOkAll(draft)
+// A row is settled once the draft refers to it (answered or quoted), or
+// accepts its whole table.
+export const rowSettled = (draft: string, row: DecisionRow, time: string | null) =>
+  isQuoted(draft, rowRef(row, time)) || Boolean(row.all && isQuoted(draft, tableRef(row.all, time)))
 
 // How many questions of a reply (its questions and the rows of its decision
 // tables) the draft does not answer yet: the reminder above the field. A
 // question counts as answered once it is quoted, a row once it is settled.
 // A reply that asks one thing only is answered by any words of the user's:
 // there is nothing to tell apart, quoting it would be a formality.
-export function unansweredCount(targets: Pick<ReplyTargets, 'questions' | 'rows'>, draft: string): number {
-  const left = targets.questions.filter(q => !isQuoted(draft, q.text)).length + targets.rows.filter(r => !rowSettled(draft, r)).length
+export function unansweredCount(targets: Pick<ReplyTargets, 'questions' | 'rows'>, draft: string, time: string | null): number {
+  const left = targets.questions.filter(q => !isQuoted(draft, pointRef(q.text, time))).length + targets.rows.filter(r => !rowSettled(draft, r, time)).length
   const single = targets.questions.length + targets.rows.length === 1
-  return single && ownLines(draft).some(l => l.text.trim()) ? 0 : left
-}
-
-// Message display: quote lines apart from the rest.
-export function quoteSegments(text: string): { quote: boolean, text: string }[] {
-  const out: { quote: boolean, text: string }[] = []
-  for (const line of String(text || '').split('\n')) {
-    const m = QUOTE_LINE.exec(line)
-    const quote = Boolean(m)
-    const last = out.at(-1)
-    const body = m ? m[2]! : line
-    if (last && last.quote === quote) last.text += `\n${body}`
-    else out.push({ quote, text: body })
-  }
-  return out
+  return single && String(draft || '').split('\n').some(l => l.trim() && !isRefLine(l)) ? 0 : left
 }
 
 // Text of a block as the reader sees it, with the text node of each
@@ -482,7 +398,8 @@ export function markQuestions(root: ParentNode, labels: ReplyLabels) {
 // The panel under a decision table (`.q-table`, see decisionRows): "OK to
 // all" (`.q-all`), then per row (`.q-trow`) its number and question (`.q-tl`),
 // "Yes" / "No" (`.q-tans`) and Reply (`.q-tquote`). No text node here either: every
-// word comes from a data attribute.
+// word comes from a data attribute. `.q-all` carries the row numbers and the
+// questions of its table (`n`, `q`), as "OK to all" refers to them.
 function markDecisions(root: ParentNode, labels: ReplyLabels) {
   const cells = (tr: Element) => [...tr.children].filter(c => /^T[DH]$/.test(c.tagName)).map(c => c.textContent || '')
   for (const table of root.querySelectorAll('table')) {
@@ -502,7 +419,8 @@ function markDecisions(root: ParentNode, labels: ReplyLabels) {
     panel.setAttribute('role', 'group')
     const top = el('div', 'q-table-h', { l: labels.decisions })
     if (rows.length > 1) {
-      const all = el('button', 'q-all', { l: labels.okAll }, labels.okAll)
+      const table = tableOf(rows)
+      const all = el('button', 'q-all', { l: labels.okAll, n: table.n, q: table.text }, labels.okAll)
       all.setAttribute('aria-pressed', 'false')
       top.append(all)
     }
@@ -516,7 +434,7 @@ function markDecisions(root: ParentNode, labels: ReplyLabels) {
         ans.setAttribute('aria-pressed', 'false')
         line.append(ans)
       }
-      line.append(el('button', 'q-tquote', { q: rowQuote(row), l: labels.reply, lq: labels.quoted }, `${labels.reply}: ${rowQuote(row)}`))
+      line.append(el('button', 'q-tquote', { n: row.n, l: labels.reply, lq: labels.quoted }, `${labels.reply}: ${row.n}. ${row.text}`))
       panel.append(line)
     }
     table.after(panel)
@@ -549,6 +467,11 @@ export function withQuestions(html: string, labels: ReplyLabels): string {
 // the whole message is the thing to reply to.
 // Read from the marked HTML, cached with it.
 export interface ReplyTargets { questions: { n: string, text: string, closed: boolean }[], rows: DecisionRow[], points: number, pick: boolean }
+// A row of the panel under a decision table, read back from its markup.
+export function rowOf(el: HTMLElement): DecisionRow {
+  const all = el.closest('.q-table')?.querySelector<HTMLElement>('.q-all')
+  return { n: el.dataset.n || '', text: el.dataset.q || '', all: all ? { n: all.dataset.n || '', text: all.dataset.q || '' } : null }
+}
 const targets = new Map<string, ReplyTargets>()
 export function replyTargets(html: string): ReplyTargets {
   let out = targets.get(html)
@@ -558,7 +481,7 @@ export function replyTargets(html: string): ReplyTargets {
       const tpl = document.createElement('template')
       tpl.innerHTML = html
       out.questions = [...tpl.content.querySelectorAll<HTMLElement>('.q-reply')].map(b => ({ n: b.dataset.n || '', text: b.dataset.q || '', closed: b.dataset.c === '1' }))
-      out.rows = [...tpl.content.querySelectorAll<HTMLElement>('.q-trow')].map(r => ({ n: r.dataset.n || '', text: r.dataset.q || '' }))
+      out.rows = [...tpl.content.querySelectorAll<HTMLElement>('.q-trow')].map(rowOf)
       const points = [...tpl.content.querySelectorAll('.q-point')]
       out.points = points.length
       out.pick = points.length > 1 || points.some(b => b.closest('li'))

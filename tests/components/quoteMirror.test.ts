@@ -15,12 +15,17 @@ function field(value: string) {
   return { host, ta, m, rows: () => [...host.querySelectorAll('.qm-mirror > div > div')] as HTMLElement[] }
 }
 
+const Q1 = '↳ Quote point 11:37 : Tea or coffee? —'
+const Q2 = '↳ Quote decision 11:37 #2 : And your series? —'
+
 describe('attachQuoteMirror (native field)', () => {
-  it('draws one row per line, the "> " lines as tokens, behind an unchanged field', () => {
-    const draft = '> Tea or coffee?\nCoffee.\n> And your series?\nLost!'
+  it('draws one row per line, the reference lines as tokens, behind an unchanged field', () => {
+    const draft = `${Q1}\nCoffee.\n${Q2}\nLost!\n> typed`
     const { ta, host, rows } = field(draft)
-    expect(rows().map(r => r.className)).toEqual(['qm-q first last', '', 'qm-q first last', ''])
-    expect(rows().map(r => r.textContent)).toEqual(['> Tea or coffee?', 'Coffee.', '> And your series?', 'Lost!'])
+    expect(rows().map(r => r.className)).toEqual(['qm-q', '', 'qm-q', '', ''])
+    // The same characters as the field, in the same order: the lines wrap alike.
+    expect(rows().map(r => r.textContent)).toEqual([Q1, 'Coffee.', Q2, 'Lost!', '> typed'])
+    expect([...rows()[2]!.children].map(c => [c.className, c.textContent])).toEqual([['qm-a', '↳'], ['qm-h', ' Quote decision 11:37 #2 : '], ['qm-h', ' —']])
     expect(host.firstElementChild?.className).toBe('qm-mirror')
     expect(ta.classList.contains('qm-on')).toBe(true)
     // What is sent is the field's text: the mirror never touches it.
@@ -28,18 +33,22 @@ describe('attachQuoteMirror (native field)', () => {
   })
 
   it('follows typing and text set from script', () => {
-    const { ta, m, rows } = field('> Q?\n')
+    const { ta, m, rows } = field(`${Q1}\n`)
     expect(rows()).toHaveLength(2)
-    ta.value = '> Q?\nA\n> R?\nB'
+    ta.value = `${Q1}\nA\n${Q2}\nB`
     ta.dispatchEvent(new Event('input'))
     expect(rows().filter(r => r.classList.contains('qm-q'))).toHaveLength(2)
+    // The line stops being a token as soon as words follow its dash.
+    ta.value = `${Q1} yes`
+    ta.dispatchEvent(new Event('input'))
+    expect(rows().map(r => r.className)).toEqual([''])
     ta.value = 'plain'
     m.render()
     expect(rows().map(r => r.className)).toEqual([''])
   })
 
   it('leaves the field as it was once destroyed', () => {
-    const { ta, host, m } = field('> Q?\nA')
+    const { ta, host, m } = field(`${Q1}\nA`)
     m.destroy()
     expect(host.querySelector('.qm-mirror')).toBeNull()
     expect(ta.classList.contains('qm-on')).toBe(false)

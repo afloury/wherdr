@@ -1,19 +1,15 @@
-// Reply to a whole agent message: the message sent starts with a
-// short marker (time + start of the message), never with the
-// whole message: the agent already has the whole conversation in its context.
-// (Passages and questions are quoted inline instead, see app/utils/questionReply.ts.)
+// Text helpers of the references (shared/reference.ts), and the marker that
+// replies to a whole agent message used before them:
 //   ↳ En réponse à ton message de 14:32 (« Je propose deux options : … »)
 //   <empty line>
 //   the reply
-// On display, this marker becomes a small clickable quote box.
+// Nothing writes it any more; a message already sent still shows it as a
+// small clickable quote box.
 
 export interface ReplyTarget {
   time: string // displayed time of the original message ("14:32")
   excerpt: string // readable excerpt, already truncated
 }
-
-// Maximum length of the whole marker ("↳ …" line).
-export const MARKER_MAX = 120
 
 // Readable text of a markdown message: without code tags, links, headings,
 // emphasis, and on a single line.
@@ -50,29 +46,6 @@ export function truncateMiddle(s: string, max: number): string {
   return `${start}… ${end.replace(/^[\s,;:.]+/, '')}`
 }
 
-function head(lang: 'fr' | 'en', time: string) {
-  return lang === 'en' ? `↳ Replying to your message from ${time} (` : `↳ En réponse à ton message de ${time} (`
-}
-const open = (lang: 'fr' | 'en') => (lang === 'en' ? '"' : '« ')
-const close = (lang: 'fr' | 'en') => (lang === 'en' ? '")' : ' »)')
-
-// Target of a reply: start of the message, short enough for the whole marker
-// to fit in MARKER_MAX.
-export function replyTarget(message: string, time: string, lang: 'fr' | 'en'): ReplyTarget {
-  const room = MARKER_MAX - head(lang, time).length - open(lang).length - close(lang).length
-  return { time, excerpt: truncate(plainText(message), Math.max(20, room)) }
-}
-
-export function replyMarker(r: ReplyTarget, lang: 'fr' | 'en'): string {
-  return `${head(lang, r.time)}${open(lang)}${r.excerpt}${close(lang)}`
-}
-
-// Message sent: marker + empty line + reply.
-export function withReply(r: ReplyTarget | null | undefined, body: string, lang: 'fr' | 'en'): string {
-  if (!r || !body) return body
-  return `${replyMarker(r, lang)}\n\n${body}`
-}
-
 // Both languages are recognized (the app language may have changed since).
 const MARKER_RE = /^↳ (?:En réponse à ton message de|Replying to your message from) (\d{1,2}[:h.]\d{2}(?:\s?[AaPp][Mm])?) \((?:« (.*) »|"(.*)")\)[ \t]*(?:\r?\n|$)/
 
@@ -100,8 +73,11 @@ export function findReplyOrigin<T extends { time: string | null, text: string }>
     || null
 }
 
-// Already normalized text (one line, lowercase) without its marker: two replies
+// Already normalized text (one line, lowercase) without the reference it
+// starts with (shared/reference.ts, or the marker used before): two replies
 // to the same message are not confused in the queue.
 export function dropReplyMarker(normed: string): string {
-  return normed.replace(/^↳ (?:en réponse à ton message de|replying to your message from) .*?(?: »|")\)\s*/i, '')
+  return normed
+    .replace(/^↳ (?:en réponse à ton message de|replying to your message from) .*?(?: »|")\)\s*/i, '')
+    .replace(/^↳ (?:quote (?:message|point|decisions?)|decision:|décision :|detail on|précision sur|feedback on|retour sur) .*? —(?:\s+|$)/i, '')
 }

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { addAnswer, addQuote, answerOf, decisionRows, hasOkAll, isClosedQuestion, isOpenQuestion, rowAnswer, rowQuote, rowSettled, setRowAnswer, toggleOkAll, unansweredCount, isQuoted, QUOTE_MAX, questionsIn, quoteOf, quotesIn, quoteSegments, removeQuote, tappedAnswer } from '../app/utils/questionReply'
+import { addAnswer, addQuote, answerOf, decisionRows, isClosedQuestion, isOpenQuestion, rowRef, rowSettled, tableOf, tableRef, toggleOkAll, unansweredCount, isQuoted, questionsIn, quotesIn, removeQuote, tappedAnswer } from '../app/utils/questionReply'
+import { messageRef, pointRef } from '../shared/reference'
+
+// A question or a point of the message of 11:37, as its button refers to it.
+const T = '11:37'
+const pt = (text: string) => pointRef(text, T)
+const line = (text: string) => `↳ Quote point ${T} : ${text} —`
 
 const asked = (text: string) => questionsIn(text).map(q => q.text)
 
@@ -73,62 +79,43 @@ describe('questionsIn', () => {
 })
 
 describe('quoting in the draft', () => {
-  it('stacks quotes in order, each followed by its answer', () => {
-    let draft = addQuote('', 'Can you plug the box in over Ethernet?')!
-    expect(draft).toBe('> Can you plug the box in over Ethernet?\n')
+  it('stacks references in order, each followed by its answer', () => {
+    let draft = addQuote('', pt('Can you plug the box in over Ethernet?'))!
+    expect(draft).toBe(`${line('Can you plug the box in over Ethernet?')}\n`)
     draft += 'No, not for now.'
-    draft = addQuote(draft, 'Shall I send the request to the coordinator?')!
+    draft = addQuote(draft, pt('Shall I send the request to the coordinator?'))!
     draft += 'Yes.'
-    expect(draft).toBe('> Can you plug the box in over Ethernet?\nNo, not for now.\n> Shall I send the request to the coordinator?\nYes.')
-    expect(quotesIn(draft).map(q => q.text)).toEqual(['Can you plug the box in over Ethernet?', 'Shall I send the request to the coordinator?'])
+    expect(draft).toBe(`${line('Can you plug the box in over Ethernet?')}\nNo, not for now.\n${line('Shall I send the request to the coordinator?')}\nYes.`)
+    expect(quotesIn(draft).map(q => q.excerpt)).toEqual(['Can you plug the box in over Ethernet?', 'Shall I send the request to the coordinator?'])
   })
   it('never quotes the same question twice', () => {
-    const draft = addQuote('Hi\n', 'Shall I push?')!
-    expect(isQuoted(draft, 'Shall I push?')).toBe(true)
-    expect(isQuoted(draft, '  shall i   push? ')).toBe(true)
-    expect(isQuoted(draft, 'Shall I merge?')).toBe(false)
-    expect(addQuote(draft, 'Shall I push?')).toBeNull()
+    const draft = addQuote('Hi\n', pt('Shall I push?'))!
+    expect(isQuoted(draft, pt('Shall I push?'))).toBe(true)
+    expect(isQuoted(draft, pt('  shall i   push? '))).toBe(true)
+    expect(isQuoted(draft, pt('Shall I merge?'))).toBe(false)
+    expect(addQuote(draft, pt('Shall I push?'))).toBeNull()
   })
-  it('keeps two unanswered quotes apart', () => {
-    const draft = addQuote(addQuote('', 'First?')!, 'Second?')!
-    expect(draft).toBe('> First?\n\n> Second?\n')
-    expect(quotesIn(draft).map(q => q.text)).toEqual(['First?', 'Second?'])
+  it('tells the same words of two messages apart', () => {
+    const draft = addQuote('', pt('Shall I push?'))!
+    expect(isQuoted(draft, pointRef('Shall I push?', '09:02'))).toBe(false)
+    expect(addQuote(draft, pointRef('Shall I push?', '09:02'))).toBe(`${line('Shall I push?')}\n\n↳ Quote point 09:02 : Shall I push? —\n`)
   })
-  it('quotes a multi-line passage line by line, a very long one by its start and end', () => {
-    expect(quoteOf('First line\n\n  second line  \n')).toBe('> First line\n> second line')
-    const long = `${'word '.repeat(150)}end.`
-    const q = quoteOf(long)
-    expect(q.startsWith('> word')).toBe(true)
-    expect(q.endsWith('end.')).toBe(true)
-    expect(q.length).toBeLessThanOrEqual(QUOTE_MAX + 2)
-    expect(q).toContain('…')
+  it('keeps two unanswered references apart', () => {
+    const draft = addQuote(addQuote('', pt('First?'))!, pt('Second?'))!
+    expect(draft).toBe(`${line('First?')}\n\n${line('Second?')}\n`)
+    expect(quotesIn(draft).map(q => q.excerpt)).toEqual(['First?', 'Second?'])
   })
-  it('removes one quote and keeps the answers', () => {
-    const draft = '> First?\nYes.\n> Second?\nNo.'
+  it('refers to a whole message the same way', () => {
+    const draft = addQuote('Hello.', messageRef('I can merge the PR.', T))!
+    expect(draft).toBe('Hello.\n↳ Quote message 11:37 : I can merge the PR. —\n')
+    expect(addQuote(draft, messageRef('I can merge the PR.', T))).toBeNull()
+  })
+  it('removes one reference and keeps the answers', () => {
+    const draft = `${line('First?')}\nYes.\n${line('Second?')}\nNo.`
     const [first, second] = quotesIn(draft)
-    expect(removeQuote(draft, first!)).toBe('Yes.\n> Second?\nNo.')
-    expect(removeQuote(draft, second!)).toBe('> First?\nYes.\nNo.')
-    expect(removeQuote('> Only?\n', quotesIn('> Only?\n')[0]!)).toBe('')
-  })
-})
-
-describe('quoteSegments', () => {
-  it('splits a sent message into quotes and answers', () => {
-    expect(quoteSegments('> First?\nYes.\n> Second?\n> still second\nNo.')).toEqual([
-      { quote: true, text: 'First?' },
-      { quote: false, text: 'Yes.' },
-      { quote: true, text: 'Second?\nstill second' },
-      { quote: false, text: 'No.' },
-    ])
-    expect(quoteSegments('Plain message')).toEqual([{ quote: false, text: 'Plain message' }])
-  })
-
-  it('keeps a line starting with ">" but no space as the user\'s text', () => {
-    const text = 'Reply between the markers.\n<<<\nBody\n>>>'
-    expect(quoteSegments(text)).toEqual([{ quote: false, text }])
-    expect(quoteSegments('>= 5 items\n>file.txt\n>>nested')).toEqual([{ quote: false, text: '>= 5 items\n>file.txt\n>>nested' }])
-    expect(quotesIn('>>>\n> Real?\n>>>')).toEqual([{ text: 'Real?', start: 4, end: 12 }])
-    expect(addQuote('done\n>>>', 'Next?')).toBe('done\n>>>\n> Next?\n')
+    expect(removeQuote(draft, first!)).toBe(`Yes.\n${line('Second?')}\nNo.`)
+    expect(removeQuote(draft, second!)).toBe(`${line('First?')}\nYes.\nNo.`)
+    expect(removeQuote(`${line('Only?')}\n`, quotesIn(`${line('Only?')}\n`)[0]!)).toBe('')
   })
 })
 
@@ -216,42 +203,42 @@ describe('isOpenQuestion', () => {
 describe('one-tap answers', () => {
   const Q1 = 'Shall I start step 1 now?'
   const Q2 = 'Je publie les notes de version ?'
-  it('quotes the question and writes the answer under it', () => {
-    expect(addAnswer('', Q1, 'Yes')).toBe(`> ${Q1}\nYes\n`)
-    expect(addAnswer('Hello.', Q1, 'No')).toBe(`Hello.\n> ${Q1}\nNo\n`)
+  it('refers to the question and writes the answer under it', () => {
+    expect(addAnswer('', pt(Q1), 'Yes')).toBe(`${line(Q1)}\nYes\n`)
+    expect(addAnswer('Hello.', pt(Q1), 'No')).toBe(`Hello.\n${line(Q1)}\nNo\n`)
   })
   it('answers several questions one after the other', () => {
-    const one = addAnswer('', Q1, 'Yes')!
-    const two = addAnswer(one, Q2, 'Non')!
-    expect(two).toBe(`> ${Q1}\nYes\n> ${Q2}\nNon\n`)
-    expect(answerOf(two, Q1)).toBe('Yes')
-    expect(answerOf(two, Q2)).toBe('Non')
+    const one = addAnswer('', pt(Q1), 'Yes')!
+    const two = addAnswer(one, pt(Q2), 'Non')!
+    expect(two).toBe(`${line(Q1)}\nYes\n${line(Q2)}\nNon\n`)
+    expect(answerOf(two, pt(Q1))).toBe('Yes')
+    expect(answerOf(two, pt(Q2))).toBe('Non')
     // A plain quote can still follow.
-    expect(addQuote(two, 'Anything else?')).toBe(`${two}> Anything else?\n`)
+    expect(addQuote(two, pt('Anything else?'))).toBe(`${two}${line('Anything else?')}\n`)
   })
   it('answers a question already quoted, wherever it is in the draft', () => {
-    const draft = `> ${Q1}\n\n> ${Q2}\n`
-    expect(answerOf(draft, Q1)).toBe('')
-    expect(addAnswer(draft, Q1, 'Yes')).toBe(`> ${Q1}\nYes\n> ${Q2}\n`)
-    expect(addAnswer(draft, Q2, 'No')).toBe(`> ${Q1}\n\n> ${Q2}\nNo\n`)
-    expect(addAnswer(`> ${Q1}`, Q1, 'Yes')).toBe(`> ${Q1}\nYes\n`)
+    const draft = `${line(Q1)}\n\n${line(Q2)}\n`
+    expect(answerOf(draft, pt(Q1))).toBe('')
+    expect(addAnswer(draft, pt(Q1), 'Yes')).toBe(`${line(Q1)}\nYes\n${line(Q2)}\n`)
+    expect(addAnswer(draft, pt(Q2), 'No')).toBe(`${line(Q1)}\n\n${line(Q2)}\nNo\n`)
+    expect(addAnswer(line(Q1), pt(Q1), 'Yes')).toBe(`${line(Q1)}\nYes\n`)
   })
   it('replaces the answer of an earlier tap, in either language', () => {
-    const draft = `> ${Q1}\nYes\n> ${Q2}\nOui\n`
-    expect(addAnswer(draft, Q1, 'No')).toBe(`> ${Q1}\nNo\n> ${Q2}\nOui\n`)
-    expect(addAnswer(draft, Q2, 'Non')).toBe(`> ${Q1}\nYes\n> ${Q2}\nNon\n`)
-    expect(addAnswer(draft, Q1, 'Yes')).toBeNull()
+    const draft = `${line(Q1)}\nYes\n${line(Q2)}\nOui\n`
+    expect(addAnswer(draft, pt(Q1), 'No')).toBe(`${line(Q1)}\nNo\n${line(Q2)}\nOui\n`)
+    expect(addAnswer(draft, pt(Q2), 'Non')).toBe(`${line(Q1)}\nYes\n${line(Q2)}\nNon\n`)
+    expect(addAnswer(draft, pt(Q1), 'Yes')).toBeNull()
   })
   it('never overwrites what the user wrote', () => {
-    const draft = `> ${Q1}\nYes, but after lunch.\n`
-    expect(addAnswer(draft, Q1, 'No')).toBeNull()
-    expect(answerOf(draft, Q1)).toBe('Yes, but after lunch.')
+    const draft = `${line(Q1)}\nYes, but after lunch.\n`
+    expect(addAnswer(draft, pt(Q1), 'No')).toBeNull()
+    expect(answerOf(draft, pt(Q1))).toBe('Yes, but after lunch.')
   })
   it('reads which answer a tap wrote', () => {
     expect(['Yes', 'oui', 'OUI.', ' yes '].map(tappedAnswer)).toEqual(['yes', 'yes', 'yes', 'yes'])
     expect(['No', 'non', 'Non.'].map(tappedAnswer)).toEqual(['no', 'no', 'no'])
     expect(['', 'Yes please', 'nope', 'ok'].map(tappedAnswer)).toEqual([null, null, null, null])
-    expect(answerOf('Hello', Q1)).toBeNull()
+    expect(answerOf('Hello', pt(Q1))).toBeNull()
   })
 })
 
@@ -303,46 +290,53 @@ describe('decisionRows', () => {
 })
 
 describe('answers to a decision table', () => {
-  it('writes one line per row, by its number', () => {
-    const one = setRowAnswer('', '1', '1: yes')!
-    expect(one).toBe('1: yes\n')
-    const two = setRowAnswer(one, '3', '3 : non')!
-    expect(two).toBe('1: yes\n3 : non\n')
-    expect([rowAnswer(two, '1'), rowAnswer(two, '2'), rowAnswer(two, '3')]).toEqual(['yes', null, 'non'])
-    // "1" is not "10", and a quoted line is not an answer.
-    expect(rowAnswer('10: yes\n> 1: yes\n', '1')).toBeNull()
+  const rows = [{ n: '1', text: 'Tag the release?' }, { n: '2', text: 'Keep the old format?' }, { n: '3', text: 'Publish the notes?' }]
+  const all = tableOf(rows)
+  const table = rows.map(r => ({ ...r, all }))
+  const row = (n: number) => rowRef(table[n - 1]!, T)
+  const ALL = '↳ Quote decisions 11:37 #1-3 : Tag the release? · Keep the old format? · Publish the notes? —'
+  it('names the message and the row in every answer', () => {
+    const one = addAnswer('', row(1), 'Yes')!
+    expect(one).toBe('↳ Quote decision 11:37 #1 : Tag the release? —\nYes\n')
+    const two = addAnswer(one, row(3), 'Non')!
+    expect(two).toBe('↳ Quote decision 11:37 #1 : Tag the release? —\nYes\n↳ Quote decision 11:37 #3 : Publish the notes? —\nNon\n')
+    expect([1, 2, 3].map(n => answerOf(two, row(n)))).toEqual(['Yes', null, 'Non'])
   })
-  it('replaces the line of an earlier tap in place, never the user\'s own words', () => {
-    const draft = '1: yes\n2 : oui\n3: later, after the review\n'
-    expect(setRowAnswer(draft, '1', '1: no')).toBe('1: no\n2 : oui\n3: later, after the review\n')
-    expect(setRowAnswer(draft, '2', '2 : non')).toBe('1: yes\n2 : non\n3: later, after the review\n')
-    expect(setRowAnswer(draft, '1', '1: yes')).toBeNull()
-    expect(setRowAnswer(draft, '3', '3: no')).toBeNull()
-    // A line the user started ("4:") takes the answer.
-    expect(setRowAnswer('4:', '4', '4: yes')).toBe('4: yes')
+  it('never takes the row of another message for this one', () => {
+    const earlier = addAnswer('', rowRef(table[0]!, '09:02'), 'Yes')!
+    expect(answerOf(earlier, row(1))).toBeNull()
+    expect(rowSettled(earlier, table[0]!, T)).toBe(false)
+    expect(rowSettled(earlier, table[0]!, '09:02')).toBe(true)
   })
-  it('never glues a line to an unanswered quote', () => {
-    expect(setRowAnswer('> Shall I push?\n', '1', '1: yes')).toBe('> Shall I push?\n\n1: yes\n')
-    expect(setRowAnswer('> Shall I push?\nYes\n', '1', '1: yes')).toBe('> Shall I push?\nYes\n1: yes\n')
+  it('replaces the answer of an earlier tap in place, never the user\'s own words', () => {
+    const draft = addAnswer(addAnswer('', row(1), 'Yes')!, row(2), 'Oui')! + '↳ Quote decision 11:37 #3 : Publish the notes? —\nLater, after the review\n'
+    expect(answerOf(addAnswer(draft, row(1), 'No')!, row(1))).toBe('No')
+    expect(answerOf(addAnswer(draft, row(2), 'Non')!, row(2))).toBe('Non')
+    expect(addAnswer(draft, row(1), 'Yes')).toBeNull()
+    expect(addAnswer(draft, row(3), 'No')).toBeNull()
   })
   it('accepts the whole table, and takes it back on a second tap', () => {
-    expect(toggleOkAll('', 'ok to all')).toBe('ok to all\n')
-    expect(toggleOkAll('2: no\n', 'ok tout')).toBe('2: no\nok tout\n')
-    expect(hasOkAll('2: no\nok tout\n')).toBe(true)
-    expect(hasOkAll('OK to all.')).toBe(true)
-    expect(hasOkAll('> ok to all\n')).toBe(false)
-    expect(hasOkAll('ok to all of them but 2')).toBe(false)
-    expect(toggleOkAll('2: no\nok tout\n', 'ok tout')).toBe('2: no\n')
-    expect(toggleOkAll('ok to all\n3: no\n', 'ok to all')).toBe('3: no\n')
+    const ref = tableRef(all, T)
+    expect(toggleOkAll('', ref, 'OK to all')).toBe(`${ALL}\nOK to all\n`)
+    const withNo = addAnswer('', row(2), 'No')!
+    const both = toggleOkAll(withNo, ref, 'OK tout')
+    expect(both).toBe(`${withNo}${ALL}\nOK tout\n`)
+    expect(isQuoted(both, ref)).toBe(true)
+    expect(toggleOkAll(both, ref, 'OK tout')).toBe(withNo)
+    // An exception written after it stays.
+    const exception = addAnswer(toggleOkAll('', ref, 'OK to all'), row(3), 'No')!
+    expect(toggleOkAll(exception, ref, 'OK to all')).toBe('↳ Quote decision 11:37 #3 : Publish the notes? —\nNo\n')
+    // Words the user wrote under it are kept.
+    expect(toggleOkAll(`${ALL}\nOK, except the last one\n`, ref, 'OK to all')).toBe('OK, except the last one\n')
   })
-  it('quotes a row with its number, and knows when a row is settled', () => {
-    const row = { n: '2', text: 'Keep the old export format?' }
-    expect(rowQuote(row)).toBe('2. Keep the old export format?')
-    expect(rowSettled('', row)).toBe(false)
-    expect(rowSettled('1: yes\n', row)).toBe(false)
-    expect(rowSettled('2: no\n', row)).toBe(true)
-    expect(rowSettled(addQuote('', rowQuote(row))!, row)).toBe(true)
-    expect(rowSettled('ok to all\n', row)).toBe(true)
+  it('knows when a row is settled: answered, quoted, or its table accepted', () => {
+    expect(rowSettled('', table[1]!, T)).toBe(false)
+    expect(rowSettled(addAnswer('', row(1), 'Yes')!, table[1]!, T)).toBe(false)
+    expect(rowSettled(addAnswer('', row(2), 'No')!, table[1]!, T)).toBe(true)
+    expect(rowSettled(addQuote('', row(2))!, table[1]!, T)).toBe(true)
+    expect(rowSettled(`${ALL}\nOK to all\n`, table[1]!, T)).toBe(true)
+    // The table of another message does not settle this one.
+    expect(rowSettled(toggleOkAll('', tableRef(all, '09:02'), 'OK to all'), table[1]!, T)).toBe(false)
   })
 })
 
@@ -350,31 +344,34 @@ describe('unansweredCount', () => {
   const q = (text: string, n = '1') => ({ n, text, closed: false })
   const two = { questions: [q('Shall I push now?'), q('Which name do you prefer?', '2')], rows: [] }
   it('counts the questions the draft does not quote yet', () => {
-    expect(unansweredCount(two, '')).toBe(2)
+    expect(unansweredCount(two, '', T)).toBe(2)
     // Words of the user's do not say which of two questions they answer.
-    expect(unansweredCount(two, 'Yes, go ahead.')).toBe(2)
-    const one = addAnswer('', 'Shall I push now?', 'Yes')!
-    expect(unansweredCount(two, one)).toBe(1)
-    expect(unansweredCount(two, addQuote(one, 'Which name do you prefer?')!)).toBe(0)
+    expect(unansweredCount(two, 'Yes, go ahead.', T)).toBe(2)
+    const one = addAnswer('', pt('Shall I push now?'), 'Yes')!
+    expect(unansweredCount(two, one, T)).toBe(1)
+    expect(unansweredCount(two, addQuote(one, pt('Which name do you prefer?'))!, T)).toBe(0)
   })
   it('takes any words as the answer when the reply asks one thing only', () => {
     const single = { questions: [q('Shall I push now?')], rows: [] }
-    expect(unansweredCount(single, '')).toBe(1)
-    expect(unansweredCount(single, '  \n')).toBe(1)
-    expect(unansweredCount(single, 'Go ahead.')).toBe(0)
-    expect(unansweredCount(single, '> Shall I push now?\n')).toBe(0)
+    expect(unansweredCount(single, '', T)).toBe(1)
+    expect(unansweredCount(single, '  \n', T)).toBe(1)
+    expect(unansweredCount(single, 'Go ahead.', T)).toBe(0)
+    expect(unansweredCount(single, `${line('Shall I push now?')}\n`, T)).toBe(0)
     // A quote of something else is not an answer.
-    expect(unansweredCount(single, '> The build is green.\n')).toBe(1)
+    expect(unansweredCount(single, `${line('The build is green.')}\n`, T)).toBe(1)
   })
   it('counts the rows of a decision table until they are settled', () => {
     const rows = [{ n: '1', text: 'Tag the release?' }, { n: '2', text: 'Keep the old format?' }, { n: '3', text: 'Publish the notes?' }]
-    const table = { questions: [q('Shall I start the next thread?')], rows }
-    expect(unansweredCount(table, '')).toBe(4)
-    expect(unansweredCount(table, '1: yes\n')).toBe(3)
-    expect(unansweredCount(table, `1: yes\n> ${rowQuote(rows[1]!)}\n`)).toBe(2)
-    // "ok to all" settles the table, not the question next to it.
-    expect(unansweredCount(table, 'ok to all\n')).toBe(1)
-    expect(unansweredCount(table, addAnswer('ok to all\n', 'Shall I start the next thread?', 'Yes')!)).toBe(0)
-    expect(unansweredCount({ questions: [], rows: [] }, '')).toBe(0)
+    const all = tableOf(rows)
+    const table = { questions: [q('Shall I start the next thread?')], rows: rows.map(r => ({ ...r, all })) }
+    expect(unansweredCount(table, '', T)).toBe(4)
+    const one = addAnswer('', rowRef(rows[0]!, T), 'Yes')!
+    expect(unansweredCount(table, one, T)).toBe(3)
+    expect(unansweredCount(table, addQuote(one, rowRef(rows[1]!, T))!, T)).toBe(2)
+    // "OK to all" settles the table, not the question next to it.
+    const ok = toggleOkAll('', tableRef(all, T), 'OK to all')
+    expect(unansweredCount(table, ok, T)).toBe(1)
+    expect(unansweredCount(table, addAnswer(ok, pt('Shall I start the next thread?'), 'Yes')!, T)).toBe(0)
+    expect(unansweredCount({ questions: [], rows: [] }, '', T)).toBe(0)
   })
 })

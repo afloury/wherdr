@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { boardSections, visibleSections, maxParallelThreads, moveMessage, queueStatus, missingLists as missingListsOf, coordinatorRules, decisionPrefix, reviewCommentPrefix, reviewedMessage, detailPrefix, launchMessage, listKind, normalizeThreads, parseTaskLine, parseTasks, takeBadges, badgeColor, badgeTarget, textParts, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage, unblockMessage } from '../shared/projectBoard'
+import { isRefLine, refSegments } from '../shared/reference'
 import { pluginBinary } from '../server/utils/projectBoard'
 import { isCoordinator } from '../shared/projects'
 import type { Pane } from '../shared/types'
@@ -194,8 +195,8 @@ describe('bare URLs in the text', () => {
 describe('answers to decisions (To decide)', () => {
   it('prepares an answer in the chosen language with the task text', () => {
     const task = parseTaskLine('- [ ] Publier le dépôt « wherdr » ? (me)')!
-    expect(decisionPrefix(task.text)).toBe('↳ Décision : Publier le dépôt « wherdr » ? — ')
-    expect(decisionPrefix(' Publish the repository? ', 'en')).toBe('↳ Decision: Publish the repository? — ')
+    expect(decisionPrefix(task.text)).toBe('↳ Décision : Publier le dépôt « wherdr » ? —\n')
+    expect(decisionPrefix(' Publish the repository? ', 'en')).toBe('↳ Decision: Publish the repository? —\n')
   })
 
   it('keeps the draft and puts the answer at the end', () => {
@@ -203,6 +204,9 @@ describe('answers to decisions (To decide)', () => {
     expect(prefillDraft('', answer)).toBe(answer)
     expect(prefillDraft('Autre réponse', answer)).toBe(`Autre réponse\n${answer}`)
     expect(prefillDraft(answer, answer)).toBe(answer)
+    // The task is a reference of its own line: the answer goes under it.
+    expect(isRefLine(answer.trimEnd())).toBe(true)
+    expect(refSegments(`${answer}Oui, lundi.`)).toEqual([{ kind: 'ref', ref: { kind: 'task', label: 'Décision :', time: null, n: null, excerpt: 'Publier le dépôt ?' } }, { kind: 'text', text: 'Oui, lundi.' }])
   })
 })
 
@@ -211,8 +215,8 @@ describe('actions du Backlog', () => {
     const task = parseTaskLine('- [ ] Améliorer le panneau Projet (agent)')!
     expect(launchMessage(task.text)).toBe('↳ Lancer : Améliorer le panneau Projet')
     expect(launchMessage(' Improve the project panel ', 'en')).toBe('↳ Launch: Improve the project panel')
-    expect(detailPrefix(task.text)).toBe('↳ Précision sur Améliorer le panneau Projet — ')
-    expect(detailPrefix(' Improve the project panel ', 'en')).toBe('↳ Detail on Improve the project panel — ')
+    expect(detailPrefix(task.text)).toBe('↳ Précision sur Améliorer le panneau Projet —\n')
+    expect(detailPrefix(' Improve the project panel ', 'en')).toBe('↳ Detail on Improve the project panel —\n')
   })
 
   it('keeps the Detail draft and avoids the duplicate on a second tap', () => {
@@ -228,7 +232,7 @@ describe('Blocked actions', () => {
     const task = parseTasks('## Bloqué\n- [ ] Publier le guide — bloqué par : relecture (agent)')[0]!.tasks[0]!
     expect(unblockMessage(task.text)).toBe('↳ Débloquer : Publier le guide')
     expect(unblockMessage(' Ship guide ', 'en')).toBe('↳ Unblock: Ship guide')
-    expect(detailPrefix(task.text)).toBe('↳ Précision sur Publier le guide — ')
+    expect(detailPrefix(task.text)).toBe('↳ Précision sur Publier le guide —\n')
   })
 })
 
@@ -418,8 +422,8 @@ describe('board help (Settings › Plugins)', () => {
     expect(m.coordinatorRules('en')).toContain(m.launchMessage('…', 'en'))
     expect(m.coordinatorRules('en')).toContain(m.unblockMessage('…', 'en'))
     for (const p of [m.problemPrefix, m.questionPrefix, m.decisionPrefix, m.detailPrefix]) {
-      expect(fr).toContain(p('…', 'fr'))
-      expect(m.coordinatorRules('en')).toContain(p('…', 'en'))
+      expect(fr).toContain(p('…', 'fr').trimEnd())
+      expect(m.coordinatorRules('en')).toContain(p('…', 'en').trimEnd())
     }
   })
 })
@@ -438,7 +442,8 @@ describe('To review list', () => {
   it('messages Relu et Commenter', () => {
     expect(reviewedMessage(' Bandeau ')).toBe('✓ Relu : Bandeau')
     expect(reviewedMessage('Banner', 'en')).toBe('✓ Reviewed: Banner')
-    expect(reviewCommentPrefix('Bandeau')).toBe('↳ Retour sur Bandeau : ')
+    expect(reviewCommentPrefix('Bandeau')).toBe('↳ Retour sur Bandeau —\n')
+    expect(reviewCommentPrefix('Banner', 'en')).toBe('↳ Feedback on Banner —\n')
     expect(coordinatorRules()).toContain('✓ Relu : …')
   })
   it('In progress goes after To review', () => {
