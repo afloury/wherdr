@@ -24,7 +24,7 @@ test('a sent message shows at once as pending, then settles into the conversatio
   await expect(page.locator('.chat').getByText('Got it.').last()).toBeVisible()
 })
 
-test('a sent line starting with ">>>" stays text; only "> " lines are quotes', async ({ page }, testInfo) => {
+test('a sent line starting with ">>>" stays text; "> " lines still show as quotes', async ({ page }, testInfo) => {
   await page.goto(`/#/a/${OMP_CHAT_PANE}`)
   await expect(page.locator('.chat').getByText('Ready when you are.')).toBeVisible()
 

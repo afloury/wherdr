@@ -119,7 +119,7 @@ export const PASTED_LOG = Array.from({ length: 40 }, (_, i) => `==> Pouring libe
 // with an answer): Claude wraps a multi-line send whole in <pasted_content>,
 // and it is still a plain message.
 export const TYPED_QUOTES = Array.from({ length: 5 }, (_, i) =>
-  `↳ Quote point 09:0${i} : Point ${i + 1}: ${'the cache entry is kept after an update and should expire. '.repeat(2).trim()} —\nAnswer ${i + 1}: agreed, go ahead with that one.`).join('\n')
+  `↳ Quote point 09:0${i} : Point ${i + 1}: ${'the cache entry is kept after an update and should expire. '.repeat(5).trim()} —\nAnswer ${i + 1}: agreed, go ahead with that one.`).join('\n')
 export const LONG_TYPED = Array.from({ length: 24 }, (_, i) => `Step ${i + 1}: check the cache entry again.`).join('\n')
 
 // Claude Code: ~/.claude/projects/<cwd with / and . as ->/<session id>.jsonl.

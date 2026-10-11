@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { COORDINATOR_PANE, OMP_QUESTIONS_PANE } from './scenario.mjs'
+import { expectDraft, point } from './refs'
 
 // Reply targets of an agent reply (utils/questionReply.ts): each question and
 // each point can be quoted in the field, in the three styles of
@@ -69,12 +70,12 @@ test('icon style: a question in the middle of a paragraph gets its own Reply but
 
   // A tap quotes the question alone, then the next one below it.
   await step.click()
-  await expect(field).toHaveValue(`> ${STEP}\n`)
+  await expectDraft(field, `${point(STEP)}\n`)
   await expect(step).toHaveClass(/quoted/)
   await chat.locator(quoteBtn(REVIEW)).click()
-  await expect(field).toHaveValue(`> ${STEP}\n\n> ${REVIEW}\n`)
+  await expectDraft(field, `${point(STEP)}\n\n${point(REVIEW)}\n`)
   await chat.locator(quoteBtn(ETAPE)).click()
-  await expect(field).toHaveValue(`> ${STEP}\n\n> ${REVIEW}\n\n> ${ETAPE}\n`)
+  await expectDraft(field, `${point(STEP)}\n\n${point(REVIEW)}\n\n${point(ETAPE)}\n`)
   await expect(chat.locator('.q-reply.quoted')).toHaveCount(3)
   await shot(page, 'questions-quoted', testInfo.project.name)
 })
@@ -110,25 +111,25 @@ test('a closed question is answered in one tap, several in a row, nothing is sen
   await shot(page, 'yes-no', testInfo.project.name)
 
   await yes.click()
-  await expect(field).toHaveValue(`> ${STEP}\nYes\n`)
+  await expectDraft(field, `${point(STEP)}\nYes\n`)
   await expect(yes).toHaveAttribute('aria-pressed', 'true')
   await expect(chat.locator(quoteBtn(STEP))).toHaveClass(/quoted/)
   // The field does not take the focus: the next question stays in sight.
   expect(await field.evaluate(el => document.activeElement === el)).toBe(false)
   await chat.locator(ansBtn(TAG, 'no')).click()
-  await expect(field).toHaveValue(`> ${STEP}\nYes\n> ${TAG}\nNo\n`)
+  await expectDraft(field, `${point(STEP)}\nYes\n${point(TAG)}\nNo\n`)
   // A plain Reply joins them, and the other answer replaces the first.
   await chat.locator(quoteBtn(REVIEW)).click()
-  await expect(field).toHaveValue(`> ${STEP}\nYes\n> ${TAG}\nNo\n> ${REVIEW}\n`)
+  await expectDraft(field, `${point(STEP)}\nYes\n${point(TAG)}\nNo\n${point(REVIEW)}\n`)
   await no.click()
-  await expect(field).toHaveValue(`> ${STEP}\nNo\n> ${TAG}\nNo\n> ${REVIEW}\n`)
+  await expectDraft(field, `${point(STEP)}\nNo\n${point(TAG)}\nNo\n${point(REVIEW)}\n`)
   await expect(no).toHaveAttribute('aria-pressed', 'true')
   await expect(yes).toHaveAttribute('aria-pressed', 'false')
   await shot(page, 'yes-no-answered', testInfo.project.name)
   // Typed words under a quote are the user's: a tap leaves them alone.
-  await field.fill(`> ${STEP}\nNo, tomorrow.\n`)
+  await field.fill((await field.inputValue()).replace(/\n[\s\S]*$/, '\nNo, tomorrow.\n'))
   await yes.click()
-  await expect(field).toHaveValue(`> ${STEP}\nNo, tomorrow.\n`)
+  await expectDraft(field, `${point(STEP)}\nNo, tomorrow.\n`)
   expect(await sentCount(page)).toBe(before)
   expect(await fits(page)).toBe(true)
 })
@@ -140,7 +141,7 @@ test('text style: Yes / No stay next to the underlined question', async ({ page 
   await yes.scrollIntoViewIfNeeded()
   await expect(yes).toBeVisible()
   await yes.click()
-  await expect(field).toHaveValue(`> ${MERGE}\nYes\n`)
+  await expectDraft(field, `${point(MERGE)}\nYes\n`)
   await expect(chat.locator('.q-text', { hasText: MERGE })).toHaveClass(/quoted/)
   await shot(page, 'yes-no-text', testInfo.project.name)
 })
@@ -156,7 +157,7 @@ test('list style: Yes / No sit in the question row under the message, not in the
   const line = bars.nth(2).locator('.q-line')
   await line.scrollIntoViewIfNeeded()
   await line.getByRole('button', { name: `No: ${MERGE}` }).click()
-  await expect(field).toHaveValue(`> ${MERGE}\nNo\n`)
+  await expectDraft(field, `${point(MERGE)}\nNo\n`)
   await expect(line.getByRole('button', { name: `No: ${MERGE}` })).toHaveAttribute('aria-pressed', 'true')
   await expect(line.locator('.q-row')).toHaveClass(/quoted/)
   await shot(page, 'yes-no-list', testInfo.project.name)
@@ -187,7 +188,7 @@ test('icon style: a point that asks nothing can be quoted to discuss it', async 
     })
     await page.mouse.click(at.x, at.y)
   }
-  await expect(field).toHaveValue(`> ${EXPORT}\n`)
+  await expectDraft(field, `${point(EXPORT)}\n`)
   await expect(btn).toHaveClass(/quoted/)
   expect(await fits(page)).toBe(true)
 
@@ -195,10 +196,10 @@ test('icon style: a point that asks nothing can be quoted to discuss it', async 
   const limits = chat.locator(quoteBtn(LIMITS, 'q-point'))
   await limits.focus()
   await page.keyboard.press('Enter')
-  await expect(field).toHaveValue(`> ${EXPORT}\n\n> ${LIMITS}\n`)
+  await expectDraft(field, `${point(EXPORT)}\n\n${point(LIMITS)}\n`)
   await chat.locator(quoteBtn(MERGE)).focus()
   await page.keyboard.press('Enter')
-  await expect(field).toHaveValue(`> ${EXPORT}\n\n> ${LIMITS}\n\n> ${MERGE}\n`)
+  await expectDraft(field, `${point(EXPORT)}\n\n${point(LIMITS)}\n\n${point(MERGE)}\n`)
 })
 
 test('text style: the words of a question are its button, a point is clicked', async ({ page }, testInfo) => {
@@ -209,7 +210,7 @@ test('text style: the words of a question are its button, a point is clicked', a
   expect(await words.evaluate(el => getComputedStyle(el).textDecorationLine)).toBe('underline')
   expect(await chat.locator(quoteBtn(MERGE)).evaluate(el => el.getBoundingClientRect().width)).toBeLessThanOrEqual(1)
   await words.click()
-  await expect(field).toHaveValue(`> ${MERGE}\n`)
+  await expectDraft(field, `${point(MERGE)}\n`)
   await expect(words).toHaveClass(/quoted/)
 
   const item = chat.locator('li', { hasText: EXPORT })
@@ -217,7 +218,7 @@ test('text style: the words of a question are its button, a point is clicked', a
     // A first tap only arms the point: reading or scrolling never quotes.
     await item.tap()
     await expect(item).toHaveClass(/q-armed/)
-    await expect(field).toHaveValue(`> ${MERGE}\n`)
+    await expectDraft(field, `${point(MERGE)}\n`)
     const discuss = chat.locator(quoteBtn(EXPORT, 'q-point'))
     await expect(discuss).toBeVisible()
     expect(await discuss.evaluate(el => getComputedStyle(el, '::before').content)).toContain('Discuss')
@@ -229,17 +230,17 @@ test('text style: the words of a question are its button, a point is clicked', a
     await shot(page, 'text-hover', testInfo.project.name)
     await item.click()
   }
-  await expect(field).toHaveValue(`> ${MERGE}\n\n> ${EXPORT}\n`)
+  await expectDraft(field, `${point(MERGE)}\n\n${point(EXPORT)}\n`)
   expect(await fits(page)).toBe(true)
 
   // Keyboard: the hidden buttons take the focus, show, and Enter quotes.
   const step = chat.locator(quoteBtn(STEP))
   await step.focus()
   await page.keyboard.press('Enter')
-  await expect(field).toHaveValue(`> ${MERGE}\n\n> ${EXPORT}\n\n> ${STEP}\n`)
+  await expectDraft(field, `${point(MERGE)}\n\n${point(EXPORT)}\n\n${point(STEP)}\n`)
   await chat.locator(quoteBtn(LIMITS, 'q-point')).focus()
   await page.keyboard.press('Enter')
-  await expect(field).toHaveValue(`> ${MERGE}\n\n> ${EXPORT}\n\n> ${STEP}\n\n> ${LIMITS}\n`)
+  await expectDraft(field, `${point(MERGE)}\n\n${point(EXPORT)}\n\n${point(STEP)}\n\n${point(LIMITS)}\n`)
 })
 
 test('text style: selecting text in a point still offers to reply to the passage', async ({ page }, testInfo) => {
@@ -259,7 +260,7 @@ test('text style: selecting text in a point still offers to reply to the passage
   await expect(reply).toBeVisible()
   await expect(field).toHaveValue('')
   await reply.click()
-  await expect(field).toHaveValue(`> ${selected.trim()}\n`)
+  await expectDraft(field, `${point(selected.trim())}\n`)
 })
 
 test('list style: the questions are listed under the message, a point is picked', async ({ page }, testInfo) => {
@@ -280,14 +281,14 @@ test('list style: the questions are listed under the message, a point is picked'
   const row = bar.locator('.q-row')
   await expect(row).toHaveAccessibleName(`Reply: ${MERGE}`)
   await row.click()
-  await expect(field).toHaveValue(`> ${MERGE}\n`)
+  await expectDraft(field, `${point(MERGE)}\n`)
   await expect(row).toHaveClass(/quoted/)
   await expect(chat.locator(quoteBtn(MERGE))).toHaveClass(/quoted/)
 
   // A point is not a target until "+ Quote a point" is pressed.
   const item = chat.locator('li', { hasText: EXPORT })
   await item.click()
-  await expect(field).toHaveValue(`> ${MERGE}\n`)
+  await expectDraft(field, `${point(MERGE)}\n`)
   const pick = bar.locator('.q-pick')
   await expect(pick).toHaveText('+ Quote a point')
   await pick.click()
@@ -296,7 +297,7 @@ test('list style: the questions are listed under the message, a point is picked'
   await item.scrollIntoViewIfNeeded()
   await shot(page, 'list-picking', testInfo.project.name)
   await item.click()
-  await expect(field).toHaveValue(`> ${MERGE}\n\n> ${EXPORT}\n`)
+  await expectDraft(field, `${point(MERGE)}\n\n${point(EXPORT)}\n`)
   await expect(page.locator('.msg-ai.q-picking')).toHaveCount(0)
   expect(await fits(page)).toBe(true)
 
@@ -306,7 +307,7 @@ test('list style: the questions are listed under the message, a point is picked'
   await expect(page.locator('.msg-ai.q-picking')).toHaveCount(1)
   await chat.locator(quoteBtn(LIMITS, 'q-point')).focus()
   await page.keyboard.press('Enter')
-  await expect(field).toHaveValue(`> ${MERGE}\n\n> ${EXPORT}\n\n> ${LIMITS}\n`)
+  await expectDraft(field, `${point(MERGE)}\n\n${point(EXPORT)}\n\n${point(LIMITS)}\n`)
   await pick.focus()
   await page.keyboard.press('Enter')
   await expect(page.locator('.msg-ai.q-picking')).toHaveCount(1)

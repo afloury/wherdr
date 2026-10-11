@@ -63,6 +63,10 @@ describe('long excerpts', () => {
   })
   it('keeps the start and the end of a long passage, on one line', () => {
     const ref = pointRef(`First words ${'and a long explanation\n'.repeat(20)}last words.`, '11:37')
+    // A whole table: its first questions, the row numbers say the rest.
+    const table = decisionRef('1-9', Array.from({ length: 9 }, (_, i) => `Question number ${i + 1}?`).join(' · '), '11:37', true)
+    expect(table.excerpt.length).toBeLessThanOrEqual(MESSAGE_MAX)
+    expect(table.excerpt).toMatch(/^Question number 1\? · .*…$/)
     expect(ref.excerpt.length).toBeLessThanOrEqual(POINT_MAX)
     expect(ref.excerpt).toMatch(/^First words .*… .*last words\.$/)
     expect(refLine(ref)).not.toContain('\n')

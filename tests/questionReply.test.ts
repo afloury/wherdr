@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { addAnswer, addQuote, answerOf, decisionRows, isClosedQuestion, isOpenQuestion, rowRef, rowSettled, tableOf, tableRef, toggleOkAll, unansweredCount, isQuoted, questionsIn, quotesIn, removeQuote, tappedAnswer } from '../app/utils/questionReply'
-import { messageRef, pointRef } from '../shared/reference'
+import { messageRef, pointRef, refLine } from '../shared/reference'
 
 // A question or a point of the message of 11:37, as its button refers to it.
 const T = '11:37'
@@ -295,6 +295,7 @@ describe('answers to a decision table', () => {
   const table = rows.map(r => ({ ...r, all }))
   const row = (n: number) => rowRef(table[n - 1]!, T)
   const ALL = '↳ Quote decisions 11:37 #1-3 : Tag the release? · Keep the old format? · Publish the notes? —'
+  expect(ALL).toBe(refLine(tableRef(all, T)))
   it('names the message and the row in every answer', () => {
     const one = addAnswer('', row(1), 'Yes')!
     expect(one).toBe('↳ Quote decision 11:37 #1 : Tag the release? —\nYes\n')

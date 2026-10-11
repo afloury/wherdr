@@ -30,10 +30,11 @@ export interface Reference {
   excerpt: string
 }
 
-// Longest excerpt of a whole message (its start), and of a point or passage
-// (its start and its end).
+// Longest excerpt of a whole message or of a whole decision table (its
+// start), and of a point, a passage or a row (its start and its end). Short:
+// on a phone a reference should stay two or three lines of the field.
 export const MESSAGE_MAX = 80
-export const POINT_MAX = 160
+export const POINT_MAX = 120
 
 const TIME = String.raw`\d{1,2}[:h.]\d{2}(?:\s?[AaPp][Mm])?`
 // Groups: 1 = head up to the excerpt, 2 = kind, 3 = time, 4 = number, 5 = excerpt, 6 = tail.
@@ -55,7 +56,9 @@ export function pointRef(text: string, time?: string | null): Reference {
 }
 // Row `n` of a decision table, or the whole table (`n`: "1-4", `text`: its questions).
 export function decisionRef(n: string, text: string, time?: string | null, all = false): Reference {
-  return { kind: all ? 'decisions' : 'decision', label: '', time: clean(time), n: n.replace(/\s+/g, ''), excerpt: truncateMiddle(oneLine(text), POINT_MAX) }
+  // The row numbers already say which rows: the first questions are enough.
+  const excerpt = all ? truncate(oneLine(text), MESSAGE_MAX) : truncateMiddle(oneLine(text), POINT_MAX)
+  return { kind: all ? 'decisions' : 'decision', label: '', time: clean(time), n: n.replace(/\s+/g, ''), excerpt }
 }
 export function taskRef(label: typeof TASK_LABELS[number], task: string): Reference {
   return { kind: 'task', label, time: null, n: null, excerpt: oneLine(task) }
