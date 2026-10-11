@@ -57,7 +57,7 @@ const app = spawn(process.execPath, [entry], {
     HERDR_SOCK: sock,
     HERDR_CLIENT_SOCK: path.join(sockDir, 'herdr-client.sock'),
     HERDR_BIN: bin,
-    HERDR_WEB_SESSION: 'e2e',
+    HERDR_WEB_SESSION: 'hwtest',
     HERDR_WEB_MACHINES: 'off',
     WHERDR_UPDATE_CHECK: 'off',
     // Delay before a pane gets its size back after a dropped terminal (30 s by default).

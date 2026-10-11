@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { BASE_URL } from './scenario.mjs'
 
 // The setup guide on localhost while wherdr's tailnet address is published
 // and answers: a "Continue on <address>" button reopens the guide at the same
@@ -13,10 +14,10 @@ const published = {
 }
 const missing = { ...published, mode: 'missing', connected: false, https: false, url: null, served: false, suggested: null, reach: null, reachStatus: null, checkedAt: null, appUrl: '', qr: null }
 
-const setDone = (page: Page, done: boolean) => page.evaluate(async (done) => {
-  const r = await fetch('/api/onboarding', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ done }) })
-  if (!r.ok) throw new Error(`onboarding: ${r.status}`)
-}, done)
+async function setDone(page: Page, done: boolean) {
+  const r = await page.request.post('/api/onboarding', { headers: { Origin: BASE_URL }, data: { done } })
+  expect(r.ok()).toBe(true)
+}
 
 const guide = (page: Page) => page.getByRole('dialog', { name: 'Setup guide' })
 const go = (page: Page) => guide(page).getByRole('link', { name: `Continue on ${NAME}` })
@@ -24,10 +25,10 @@ const next = (page: Page) => guide(page).getByRole('button', { name: 'Next' })
 
 async function open(page: Page, phone: object, hash = '') {
   await page.route('**/api/phone', route => route.fulfill({ json: phone }))
-  await page.goto('/')
   await setDone(page, false)
+  // Navigate once with the requested step intact. setup.vue replaces the
+  // hash with / after opening the guide, so a reload would lose that step.
   await page.goto(`/${hash}`)
-  await page.reload()
   await expect(guide(page)).toBeVisible()
 }
 
@@ -57,6 +58,28 @@ test('#/setup?step=security opens the guide at that step', async ({ page }) => {
   await open(page, missing, '#/setup?step=security')
   await expect(guide(page).locator('[aria-current="step"]')).toHaveText('Security')
   await expect(guide(page).getByRole('button', { name: 'Finish' })).toBeVisible()
+})
+
+test('a direct Security link stays at that step when the first-launch check arrives late', async ({ page }) => {
+  await setDone(page, true)
+  await page.route('**/api/phone', route => route.fulfill({ json: missing }))
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  await page.route('**/api/onboarding', async route => {
+    await gate
+    await route.fulfill({ json: { done: true } })
+  })
+  try {
+    await page.goto('/#/setup?step=security')
+    await expect(guide(page).locator('[aria-current="step"]')).toHaveText('Security')
+    // The route has finished opening the guide and replacing its URL.
+    await expect(page).toHaveURL(`${BASE_URL}/#/`)
+    const checked = page.waitForResponse(r => r.url().endsWith('/api/onboarding'))
+    release()
+    await (await checked).finished()
+    await expect(guide(page).locator('[aria-current="step"]')).toHaveText('Security')
+    await expect(guide(page).getByRole('button', { name: 'Finish' })).toBeVisible()
+  } finally { release() }
 })
 
 test('without a tailnet address the guide stays on localhost', async ({ page }) => {
