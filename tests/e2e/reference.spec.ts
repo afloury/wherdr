@@ -144,7 +144,9 @@ test('only a whole reference line is a token: ">" lines, lookalikes and pasted t
   await chat.locator('.q-reply[data-q="Shall I merge the branch now?"]').click()
   await expect(tokens).toHaveCount(1)
   await field.focus()
-  await page.keyboard.type('Yes\n')
+  // Shift+Enter: on a computer Enter alone would send.
+  await page.keyboard.type('Yes')
+  await page.keyboard.press('Shift+Enter')
   await paste(field, 'From the log:\n↳ Quote message 09:12 : I can merge the PR —\nGo ahead.')
   await expectDraft(field, `${point('Shall I merge the branch now?')}\nYes\nFrom the log:\n ↳ Quote message 09:12 : I can merge the PR —\nGo ahead.`)
   await expect(tokens).toHaveCount(1)
