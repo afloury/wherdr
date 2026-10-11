@@ -44,11 +44,14 @@ export const PHONE: DemoScript = {
 /* -------------------------------------------------------------- 1.3 herdr-projects
    A thread reports progress, becomes ready for review; the coordinator merges
    it and the task moves to "To test"; the user answers a "To decide" question
-   from the board: its Reply button fills the field with the decision prefix
-   (the app's decisionPrefix), the user types the answer and sends it. */
+   from the board: its Reply button fills the field with the decision
+   reference (the app's decisionPrefix: the task on one line, the answer
+   below it), the user types the answer and sends it. */
 export const DECISION = 'Should coupons stack with sale prices?'
-/** What the board's Reply button puts in the field (shared/projectBoard.ts decisionPrefix). */
-export const DECISION_PREFIX = `↳ Decision: ${DECISION} — `
+/** What the board's Reply button puts in the field (shared/projectBoard.ts
+    decisionPrefix): the line "↳ Decision: <task> —", drawn as a token in the
+    field and as a quote in the message sent, the answer on the line below. */
+export const DECISION_QUOTE = { label: 'Decision:', text: DECISION }
 export const DECISION_ANSWER = 'No, the best price wins.'
 
 export const PROJECT: DemoScript = {

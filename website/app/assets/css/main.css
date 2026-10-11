@@ -319,6 +319,13 @@ code, kbd, pre { font-family: var(--mono); }
 .app-ui .msg-user-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: calc(var(--u) * 5); margin-top: calc(var(--u) * 6); }
 .app-ui .msg-bubble { max-width: 88%; padding: calc(var(--u) * 10) calc(var(--u) * 14); background: var(--surface-2); color: var(--text); border: 1px solid var(--line); font-size: calc(var(--u) * 15); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .app-ui.desk .msg-bubble { max-width: 78%; }
+.app-ui .msg-ref {
+  display: flex; align-items: baseline; gap: calc(var(--u) * 6); width: fit-content; max-width: 100%; margin: 0 0 calc(var(--u) * 3); padding: calc(var(--u) * 3) calc(var(--u) * 8);
+  font-size: calc(var(--u) * 12.5); line-height: 1.35; white-space: normal; color: var(--text-2);
+  background: color-mix(in srgb, var(--accent) 6%, transparent); border: 1px solid var(--line); border-left: 2px solid var(--accent);
+}
+.app-ui .msg-ref-mark { flex: none; font: 500 calc(var(--u) * 10)/1.4 var(--mono); color: var(--accent); }
+.app-ui .msg-ref-meta { flex: none; font: 500 calc(var(--u) * 10)/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
 .app-ui .msg-bubble.queued { background: transparent; border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); color: var(--text-2); }
 .app-ui .msg-time { font: 400 calc(var(--u) * 10.5) / 1 var(--mono); color: var(--dim); letter-spacing: .04em; }
 .app-ui .queued-tag { display: flex; justify-content: flex-end; align-items: center; gap: calc(var(--u) * 6); font: 400 calc(var(--u) * 11) / 1.3 var(--mono); color: var(--muted); }
@@ -432,6 +439,13 @@ code, kbd, pre { font-family: var(--mono); }
 }
 .app-ui .prompt-input { min-height: calc(var(--u) * 38); padding: calc(var(--u) * 8) calc(var(--u) * 6) calc(var(--u) * 4); font-size: calc(var(--u) * 16); line-height: 1.45; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
 .app-ui .prompt-input .ph { color: var(--dim); }
+.app-ui .prompt-input .qm-q {
+  display: block; margin: 0 calc(var(--u) * -6); padding: 0 calc(var(--u) * 6); color: var(--text-2);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent), inset 0 1px 0 color-mix(in srgb, var(--accent) 22%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.app-ui .prompt-input .qm-a { color: var(--accent); }
+.app-ui .prompt-input .qm-h { color: var(--dim); }
 .app-ui .prompt-input .caret { display: inline-block; width: 1px; height: 1.15em; margin-left: 1px; vertical-align: -.2em; background: var(--text); }
 .app-ui .prompt-foot { display: flex; align-items: center; gap: calc(var(--u) * 8); }
 .app-ui .prompt-plus { display: grid; place-items: center; width: calc(var(--u) * 32); height: calc(var(--u) * 32); flex: none; color: var(--text-2); border: 1px solid var(--line); }

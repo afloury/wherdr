@@ -4,13 +4,15 @@
 // computer, send button. `focus`: the field has the focus, so the gliding
 // ring and its halo turn (the app's default "Halo" setting) in the agent's
 // color. `stop`: the agent works and the field is empty, so send becomes stop.
-// `menu`: the effort picker's list, open.
+// `menu`: the effort picker's list, open. `quote`: a reference line above the
+// text ("↳ Decision: <task> —"), drawn as the app's token (`qm-q`).
 import { KIND_LABEL } from '~/utils/demoScript'
 import type { AgentKind } from '~/utils/demoScript'
 
 const props = defineProps<{
   agent: AgentKind
   text?: string
+  quote?: { label: string, text: string }
   /** Defaults to the app's "Message to <agent>…". */
   placeholder?: string
   model: string
@@ -20,14 +22,15 @@ const props = defineProps<{
   stop?: boolean
   menu?: readonly string[]
 }>()
-const stopping = computed(() => props.stop && !props.text)
+const filled = computed(() => Boolean(props.text || props.quote))
+const stopping = computed(() => props.stop && !filled.value)
 </script>
 
 <template>
   <div class="composer" :data-agent="agent">
     <div class="prompt" :class="{ focus }">
       <div class="prompt-input">
-        <template v-if="text">{{ text }}<i v-if="focus" class="caret" /></template>
+        <template v-if="filled"><span v-if="quote" class="qm-q"><span class="qm-a">↳</span><span class="qm-h">{{ ` ${quote.label} ` }}</span>{{ quote.text }}<span class="qm-h">{{ ' —' }}</span></span>{{ text }}<i v-if="focus" class="caret" /></template>
         <span v-else class="ph">{{ placeholder ?? `Message to ${KIND_LABEL[agent]}…` }}</span>
       </div>
       <div class="prompt-foot">
@@ -41,7 +44,7 @@ const stopping = computed(() => props.stop && !props.text)
         </span>
         <span v-if="desktop && !stopping" class="prompt-hint"><kbd>↵</kbd> send <span class="sep">·</span><kbd>⇧</kbd><kbd>↵</kbd> new line</span>
         <span v-else-if="desktop" class="prompt-hint"><kbd>Esc</kbd> stop</span>
-        <span class="prompt-send" :class="{ stop: stopping, off: !text && !stopping }"><UIcon :name="stopping ? 'i-herdr-stop' : 'i-lucide-arrow-up'" /></span>
+        <span class="prompt-send" :class="{ stop: stopping, off: !filled && !stopping }"><UIcon :name="stopping ? 'i-herdr-stop' : 'i-lucide-arrow-up'" /></span>
       </div>
     </div>
   </div>
