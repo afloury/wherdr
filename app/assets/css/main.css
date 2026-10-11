@@ -3733,28 +3733,67 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .list-compact .quota-bar { margin: 4px 0 0; }
 .list-compact .quota-reset, .list-compact .quota-foot { display: none; }
 
-/* Inline review: the gutter is a separate touch target; code stays selectable. */
+/* Inline review: comments start from the gutter; code is plain selectable text. */
 .review-line { display: flex; align-items: stretch; padding: 0; }
 .review-source { padding: 1px 8px; min-width: 0; flex: 1; }
-/* The gutter is as high as its line of code, never more: the whole row opens
-   the comment, so it needs no touch target of its own. The "+" is the comment
-   marker (not the diff sign), shown beside the number on hover or focus. */
-.review-gutter { position: relative; display: flex; flex: 0 0 48px; justify-content: flex-end; align-items: flex-start; padding: 1px 6px; border-right: 1px solid var(--line); color: var(--muted); cursor: pointer; font: inherit; white-space: nowrap; user-select: none; }
-.review-plus { position: absolute; top: 1px; left: 5px; color: var(--blue); opacity: 0; }
+/* The gutter is as high as its line of code, never more. The "+" is the
+   comment button (not the diff sign): a filled square over the start of the
+   gutter, shown on the hovered line or on keyboard focus. Touch has no hover:
+   the number itself is the target, and the first tap only chooses the line. */
+.review-gutter { position: relative; display: flex; flex: 0 0 48px; justify-content: flex-end; align-items: flex-start; padding: 1px 6px; border-right: 1px solid var(--line); color: var(--muted); cursor: pointer; font: inherit; white-space: nowrap; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+.review-plus { position: absolute; top: 50%; left: 3px; width: 14px; height: 14px; margin-top: -7px; background: var(--blue); color: var(--on-accent); font: 700 13px/14px var(--mono); text-align: center; opacity: 0; }
 .review-gutter:focus-visible .review-plus { opacity: 1; }
 @media (hover: hover) { .review-line:hover .review-plus { opacity: 1; } }
-.review-gutter:hover, .review-gutter:focus-visible { background: color-mix(in srgb, var(--blue) 18%, transparent); outline: 1px solid var(--blue); outline-offset: -1px; }
-.review-note { padding: 12px; border-block: 1px solid var(--line); border-left: 3px solid var(--blue); background: var(--surface); scroll-margin-block: 16px; }
-.review-note label { display: block; overflow-wrap: anywhere; color: var(--blue); font: 11px/1.5 var(--mono); }
+.change-code.dragging .review-plus { opacity: 0; }
+.review-gutter:focus-visible { background: color-mix(in srgb, var(--blue) 18%, transparent); color: var(--text); }
+/* Not on touch, where the hover would stay on the last number tapped. */
+@media (hover: hover) { .review-gutter:hover { background: color-mix(in srgb, var(--blue) 18%, transparent); color: var(--text); } }
+.review-gutter:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
+@media (pointer: coarse) { .review-gutter { flex-basis: 54px; } }
+/* Lines of a block: being chosen or with its editor open (filled), or under a
+   saved comment (a bar in the gutter). */
+.review-line.picked, .review-line.open { background: color-mix(in srgb, var(--blue) 24%, transparent); }
+.review-line.picked .review-gutter, .review-line.open .review-gutter { box-shadow: inset 3px 0 0 var(--blue); color: var(--text); }
+.review-line.noted .review-gutter { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--blue) 55%, transparent); }
+/* A block stays in one hunk: the rest of the file steps back while it is chosen. */
+.change-code.picking .review-line.out { opacity: .38; }
+.change-code.dragging { cursor: ns-resize; user-select: none; -webkit-user-select: none; }
+.change-code.dragging .review-gutter { cursor: ns-resize; }
+.review-hint { margin: -8px 0 14px; color: var(--muted); font: 11px/1.5 var(--mono); }
+.review-hint .by-touch { display: none; }
+@media (hover: none) { .review-hint .by-mouse { display: none; } .review-hint .by-touch { display: inline; } }
+/* The comment thread, under the last line of its block. */
+.review-note { padding: 10px 12px 12px; border-block: 1px solid var(--line); border-left: 3px solid var(--blue); background: var(--surface); scroll-margin-block: 16px; }
+.review-note-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font: 500 10.5px/1.5 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.review-range { color: var(--blue); }
+.review-path { min-width: 0; color: var(--muted); letter-spacing: 0; text-transform: none; overflow-wrap: anywhere; }
+.review-body { margin: 6px 0 0; color: var(--text); font: 14px/1.5 var(--sans); white-space: pre-wrap; overflow-wrap: anywhere; }
 .review-note textarea { scroll-margin-top: 120px; display: block; width: 100%; margin-top: 8px; padding: 10px; resize: vertical; border: 1px solid var(--line); border-radius: 0; background: var(--code-bg); color: var(--text); font: 16px/1.5 var(--sans); }
 .review-note textarea:focus { outline: 1px solid var(--blue); }
-.review-note button { min-height: 44px; color: var(--muted); text-decoration: underline; font-size: 12px; cursor: pointer; }
-.review-note p { color: var(--ochre); font-size: 12px; margin-top: 8px; }
+.review-note-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.review-keys { flex: 1; min-width: 0; color: var(--dim); font: 10.5px/1.4 var(--mono); }
+@media (hover: none) { .review-keys { visibility: hidden; } }
+.review-btn { min-height: 32px; padding: 0 12px; border: 1px solid var(--line); color: var(--text-2); font: 500 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+.review-btn:hover { color: var(--text); border-color: var(--text-2); }
+.review-btn:focus-visible { outline: 1px solid var(--blue); outline-offset: 1px; }
+.review-btn.primary { border-color: var(--blue); background: var(--blue); color: var(--on-accent); }
+.review-btn.primary:disabled { opacity: .4; cursor: default; }
+.review-btn.armed { border-color: var(--rose); color: var(--rose); }
+@media (pointer: coarse) { .review-btn { min-height: 44px; padding: 0 16px; } }
+.review-warning { margin: 8px 0 0; color: var(--ochre); font-size: 12px; }
 .review-note.missing { border-left-color: var(--ochre); margin-bottom: 12px; }
+.review-note.missing .review-range { color: var(--ochre); }
 .review-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; position: sticky; top: 0; z-index: 2; padding: 10px; border: 1px solid var(--line); background: var(--surface); }
 .review-toolbar > span { flex: 1; font: 11px/1.4 var(--mono); }
 .review-toolbar button { min-height: 44px; }
 .review-toolbar p { width: 100%; margin: 0; color: var(--muted); font-size: 11px; }
+/* The block being chosen by touch or keyboard: pinned at the bottom, within
+   reach of the thumb, so the diff does not move under the finger. */
+.review-pick { display: flex; align-items: center; gap: 8px; position: sticky; bottom: 0; z-index: 2; margin-top: 12px; padding: 10px; border: 1px solid var(--blue); background: var(--surface); }
+.review-pick > div { flex: 1; min-width: 0; }
+.review-pick b { display: block; color: var(--blue); font: 500 11px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.review-pick p { margin: 2px 0 0; color: var(--muted); font-size: 11px; line-height: 1.35; }
+.review-pick button { flex: none; }
 /* Full-screen window on the phone: its body has 4 px of top padding, where a
    sliver of diff would show above the pinned bar. */
 @media (max-width: 899px) { .review-toolbar { top: -4px; } }
