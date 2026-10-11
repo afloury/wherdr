@@ -45,7 +45,7 @@ test('a native approval keeps its card when the screen also quotes an exception 
 test('a closed agent at its shell prompt keeps the conversation and its composer', async ({ page }, info) => {
   await show('Resume this session with:\nclaude --resume 00000000-0000-4000-8000-000000000000\nuser@host demo % ', 'claude', 'unknown')
   await page.goto(`/#/a/${pane}`)
-  // The server's own verdict first (screens are re-read every 3 s), then the view.
+  // Wait for the server's verdict before checking the rendered view.
   await expect.poll(() => interaction(page)).not.toBe('input')
   await page.waitForTimeout(1500)
   await shot(page, 'closed-agent', info.project.name)
