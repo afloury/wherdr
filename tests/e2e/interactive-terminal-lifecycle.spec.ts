@@ -1,6 +1,7 @@
 // Regressions reproduced by the independent t-0325 review.
 import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
+import { screenChoices } from '../../server/utils/choices'
 import { OMP_CHAT_PANE as pane, fakeHerdr } from './scenario.mjs'
 
 const fx = (name: string) => readFileSync(new URL(`../fixtures/${name}`, import.meta.url), 'utf8')
@@ -52,4 +53,35 @@ test('a closed agent at its shell prompt keeps the conversation and its composer
   expect(await fakeHerdr('e2e.pane_size', { pane_id: pane })).toMatchObject({ attached: false })
   await expect(page.locator('.interactive-terminal')).toHaveCount(0)
   await expect(page.locator('.composer')).toBeVisible()
+})
+
+test('Codex approvals below quoted old menus keep their native card and accept answers', async ({ page }) => {
+  for (const [file, quote] of [
+    ['codex-approve-command.txt', 'Agent Command Center'],
+    ['codex-approve-edits.txt', fx('codex-command-center.txt')],
+    ['codex-approve-command.txt', fx('codex-usage-menu.txt')],
+  ]) {
+    const text = `${quote}\n\n${fx(file!)}`
+    await show(text, 'codex', 'blocked')
+    await page.goto(`/#/a/${pane}`)
+    await expect.poll(() => interaction(page)).toBe('native')
+    await expect(page.locator('.choices-list')).toBeVisible()
+    await expect(page.locator('.interactive-terminal')).toHaveCount(0)
+    const response = await page.request.post('/api/choose', {
+      headers: { Origin: new URL(page.url()).origin },
+      data: { pane_id: pane, index: 0, label: screenChoices(text, 'codex')!.options[0]!.label },
+    })
+    expect(response.ok()).toBe(true)
+  }
+})
+
+test('a starting unknown Codex discovers a trust card drawn after its first empty read', async ({ page }) => {
+  await show('', 'codex', 'unknown')
+  await page.goto(`/#/a/${pane}`)
+  await expect.poll(() => interaction(page)).toBe('unknown')
+  await page.waitForTimeout(2000)
+  await show(fx('codex-trust.txt'), 'codex', 'unknown')
+  await expect.poll(() => interaction(page)).toBe('native')
+  await expect(page.locator('.choices')).toBeVisible()
+  await expect(page.locator('.interactive-terminal')).toHaveCount(0)
 })

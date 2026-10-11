@@ -127,7 +127,9 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
   const c = choicesCache.get(p.id)
   const watched = (screenWatch.get(p.id) || 0) > Date.now()
   if (!watched) screenWatch.delete(p.id)
-  if (c && keepReading(c, rev, strict, watch || watched, Date.now())) return c
+  // A closed agent can retain the same revision and strictness as its last
+  // idle TUI. Reclassify it once so the old terminal reading cannot poll forever.
+  if (c && !(p.status === 'unknown' && c.interaction === 'terminal') && keepReading(c, rev, strict, watch || watched, Date.now())) return c
   let out: OnScreen
   try {
     const r = await herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
@@ -849,8 +851,8 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       // Agent without a conversation or born less than 2 min ago (Codex sometimes reports
       // another pane's session, see transcripts.ts): screen watched.
       const young = !p.agentSession || (p.bornAt && Date.now() - p.bornAt < 120000)
-      const c = await choicesFor(p, revs.get(p.id), p.status !== 'blocked', Boolean(young) && p.status !== 'unknown')
-      p.interaction = p.status === 'unknown' ? 'unknown' : c.interaction
+      const c = await choicesFor(p, revs.get(p.id), p.status !== 'blocked', Boolean(young))
+      p.interaction = c.interaction
       if (c.choices) p.prompt = c.choices
       if (c.screen) p.screen = c.screen
       if (c.menu) p.menu = c.menu

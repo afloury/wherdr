@@ -3,7 +3,7 @@
 // rather than confirm the wrong thing.
 // Free answer (`free` option: omp's "Other", Claude's "Type something."): always with its text, and the
 // question shown (the option's label is the same for every question).
-import { terminalException } from '../../shared/interactiveScreen'
+import { usesTerminalException } from '../../shared/interactiveScreen'
 import { updateChoices, updateRestartPlan, UPDATE_LABELS } from '../../shared/selfUpdate'
 
 export default defineApi(async (event, b) => {
@@ -43,7 +43,7 @@ export default defineApi(async (event, b) => {
   const i = Number(b.index)
   const option = choices && choices.options[i]
   const answer = typeof b.text === 'string' ? b.text.trim() : ''
-  if (!choices || (pane?.agent === 'codex' && terminalException(String(text || ''))) || !option || option.label !== b.label || (answer && !option.free)
+  if (!choices || usesTerminalException({ text: String(text || ''), agent: pane?.agent, status: pane?.status }) || !option || option.label !== b.label || (answer && !option.free)
     || (option.free && !sameQuestion(choices.question, typeof b.question === 'string' ? b.question : null))) {
     throw new HerdrError('stale', 'The question has changed — check the current screen.')
   }

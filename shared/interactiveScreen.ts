@@ -9,10 +9,26 @@ export type ScreenInteraction = 'input' | 'native' | 'terminal' | 'working' | 'u
 // misread as choices by the existing recognizers. Do not generalize this into
 // stricter rules for native questions (descriptions, tabs and checkboxes work).
 export function terminalException(text: string): boolean {
-  return /^\s*Agent Command Center\s*$/im.test(text)
-    || (/^\s*Usage\s*$/im.test(text)
-      && /View analytics {2,}Usage history/.test(text)
-      && /Redeem reset {2,}Check availability/.test(text))
+  // Match the active menu through its final legend. A title or a full old menu
+  // quoted above a newer approval must not override that native approval.
+  const lines = text.trimEnd().split('\n')
+  const at = lines.findLastIndex(l => /^\s*(?:Agent Command Center|Usage)\s*$/.test(l))
+  if (at < 0) return false
+  const body = lines.slice(at + 1).filter(l => l.trim())
+  const legend = body.pop()?.trim()
+  if (lines[at]!.trim() === 'Agent Command Center') {
+    return legend === 'Use arrows to navigate, Enter to open, Escape to return.'
+      && body.some(l => /^\s*›\s+\S/.test(l))
+      && body.every(l => /^(?:›\s+)?\S.* {2,}\S/.test(l.trim()))
+  }
+  return legend === 'enter open · esc back' && body.length === 2
+    && /^[ \t›]*1\. View analytics {2,}Usage history[ \t]*$/.test(body[0]!)
+    && /^[ \t›]*2\. Redeem reset {2,}Check availability[ \t]*$/.test(body[1]!)
+}
+
+// Shared by classification and the last-moment native-answer validation.
+export function usesTerminalException(o: { text: string, agent?: string | null, status?: string | null }): boolean {
+  return o.agent === 'codex' && o.status !== 'unknown' && o.status !== 'working' && terminalException(o.text)
 }
 
 // Search the full field, including long drafts and wrapped status bars. Native
@@ -37,7 +53,7 @@ export function classifyScreen(o: {
   if (o.status === 'working') return 'working'
   // Only the two active Codex menus override a mistaken list recognition.
   // A completed/closed agent may retain its kind while showing a shell.
-  if (o.status !== 'unknown' && o.agent === 'codex' && terminalException(o.text)) return 'terminal'
+  if (usesTerminalException(o)) return 'terminal'
   if (o.choices || o.menu || o.screen || o.settings) return 'native'
   // Unsupported agents already have their permanent Terminal view. An absent
   // transcript/input recognizer is not evidence of an interactive screen.
