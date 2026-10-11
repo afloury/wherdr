@@ -2,7 +2,9 @@
 import type { FileEntry, FilePreview, FilesListing } from '#shared/types'
 
 // Read-only browser of the agent's folder: listing, then a file's text or image.
-const props = defineProps<{ paneId: string }>()
+// `file`: one file only, a path as written in the conversation (ChatView's
+// Preview), with no folder around it. Any file shown can be downloaded.
+const props = defineProps<{ paneId: string, file?: string }>()
 const listing = ref<FilesListing | null>(null)
 const preview = ref<FilePreview | null>(null)
 const loading = ref(false)
@@ -29,8 +31,18 @@ function openDir(path: string | null) {
   const q = path === null ? '' : `&path=${encodeURIComponent(path)}`
   return load<FilesListing>(`/api/files?pane=${pane()}${q}`, (d) => { listing.value = d; preview.value = null })
 }
+const fileQuery = (path: string) => `pane=${pane()}&path=${encodeURIComponent(path)}${props.file ? '&from=chat' : ''}`
 function openFile(path: string) {
-  return load<FilePreview>(`/api/files/read?pane=${pane()}&path=${encodeURIComponent(path)}`, (d) => { preview.value = d })
+  return load<FilePreview>(`/api/files/read?${fileQuery(path)}`, (d) => { preview.value = d })
+}
+const downloading = ref(false)
+async function download() {
+  const p = preview.value?.path
+  if (!p || downloading.value) return
+  downloading.value = true
+  try { await saveFile(`/api/files/download?${fileQuery(p)}`, p.split('/').pop() || p) }
+  catch (e) { toast((e as Error).message, true) }
+  finally { downloading.value = false }
 }
 const join = (name: string) => listing.value?.path ? `${listing.value.path}/${name}` : name
 function open(e: FileEntry) {
@@ -44,10 +56,11 @@ function back() {
   preview.value = null
 }
 function refresh() {
-  if (preview.value) openFile(preview.value.path)
+  if (props.file) openFile(props.file)
+  else if (preview.value) openFile(preview.value.path)
   else openDir(listing.value ? listing.value.path : null)
 }
-onMounted(() => openDir(null))
+onMounted(() => props.file ? openFile(props.file) : openDir(null))
 onUnmounted(() => { request++ })
 
 // Breadcrumb: root folder name, then each segment of the current path.
@@ -81,20 +94,23 @@ function icon(e: FileEntry) {
     <div class="changes-inner">
       <div class="changes-toolbar">
         <nav class="files-crumbs" :aria-label="t('Folder')">
-          <UButton v-if="preview" icon="i-lucide-arrow-left" color="neutral" variant="ghost" size="sm" :aria-label="t('Back to folder')" @click="back" />
+          <UButton v-if="preview && !file" icon="i-lucide-arrow-left" color="neutral" variant="ghost" size="sm" :aria-label="t('Back to folder')" @click="back" />
           <template v-for="(c, i) in crumbs" :key="c.path">
             <span v-if="i" class="files-sep">/</span>
             <button type="button" class="files-crumb" @click="openDir(c.path)">{{ c.label }}</button>
           </template>
           <template v-if="preview">
-            <span class="files-sep">/</span><span class="files-crumb current">{{ preview.path.split('/').pop() }}</span>
+            <span v-if="crumbs.length" class="files-sep">/</span><span class="files-crumb current">{{ preview.path.split('/').pop() }}</span>
           </template>
         </nav>
-        <UButton icon="i-lucide-refresh-cw" color="neutral" variant="outline" size="sm" :loading="loading" :aria-label="t('Refresh')" @click="refresh">{{ t('Refresh') }}</UButton>
+        <div class="files-actions">
+          <UButton v-if="preview" icon="i-lucide-download" color="neutral" variant="outline" size="sm" :loading="downloading" :aria-label="t('Download')" @click="download">{{ t('Download') }}</UButton>
+          <UButton icon="i-lucide-refresh-cw" color="neutral" variant="outline" size="sm" :loading="loading" :aria-label="t('Refresh')" @click="refresh">{{ t('Refresh') }}</UButton>
+        </div>
       </div>
 
       <p v-if="error" class="changes-notice error" role="alert">{{ error }}</p>
-      <p v-if="loading && !listing" class="changes-notice"><span class="spinner" /> {{ t('Reading files…') }}</p>
+      <p v-if="loading && !listing && !preview" class="changes-notice"><span class="spinner" /> {{ t('Reading files…') }}</p>
 
       <template v-else-if="preview">
         <p class="changes-location">{{ preview.path }} · {{ fmtBytes(preview.size) }}</p>

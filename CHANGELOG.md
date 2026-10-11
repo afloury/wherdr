@@ -43,6 +43,11 @@ All notable changes to this project are documented here. The format follows
   Hidden files (name starting with a dot) are shown; **Show hidden files** hides them, remembered
   on the device. Local and remote machines alike; nothing above that root is shown, symlinks
   included, and nothing is written.
+- **Preview** and **Download** on a file path in an agent's reply (and on a sent attachment),
+  whatever machine the agent runs on: Preview shows the file in a window like Browse files, and
+  Download saves it on the device you are using, where Copy path alone did not help when the
+  agent runs on another machine. Browse files' preview gets a **Download** button too. Files in
+  the home folder only, symlinks included, up to 50 MB.
 - **Discuss a point**: a list item or a paragraph of an agent's reply that asks nothing can now be
   quoted in the field like a question, to answer it in the same message. Not offered on code,
   tables, quotes, titles, an introduction ending with a colon or a point of one or two words.

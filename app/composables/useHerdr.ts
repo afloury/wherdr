@@ -353,6 +353,26 @@ export async function api<T = Record<string, unknown>>(path: string, body?: unkn
   return data as T
 }
 
+// A file from the server saved on this device under `name` (/api/files/download):
+// fetched first, so a refusal is an error to show rather than a saved error page.
+export async function saveFile(path: string, name: string) {
+  const r = await fetch(path)
+  if (!r.ok) {
+    const data = await r.json().catch(() => ({}))
+    if (r.status === 401 && data.code === 'locked') confirmLock()
+    throw new ApiError(t(data.error || `HTTP ${r.status}`), r.status, data.code)
+  }
+  const href = URL.createObjectURL(await r.blob())
+  const a = document.createElement('a')
+  a.href = href
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  // Revoked once the browser has taken the file.
+  setTimeout(() => URL.revokeObjectURL(href), 60_000)
+}
+
 // Current agent folder in its default editor, on the agent's machine (the
 // "Open" action of /api/reveal with the folder path; macOS only, checked
 // server-side). Shared by ChatView's "Open" menu and the Mod+Alt+O shortcut.
