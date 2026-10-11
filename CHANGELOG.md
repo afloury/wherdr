@@ -82,6 +82,9 @@ All notable changes to this project are documented here. The format follows
   (a blank line after each one) with the comment marker under its line number. A row is one line
   of code again, on a computer and on a phone; the marker shows beside the number on hover or
   keyboard focus.
+- **Long folders scroll in Files**: a folder taller than the window (1500 files, for example) did
+  not scroll with the wheel, the trackpad or a finger, so its last files were out of reach. Changes
+  had the same defect, and its review bar now stays pinned while the diff scrolls.
 - **Pasted text cards on every device**: a message with typed words and a text pasted into the
   field showed its card only on the device that sent it; elsewhere it was one long folded message.
   The server now remembers which parts were pasted (`pastes.json` in its data folder, the last 100
