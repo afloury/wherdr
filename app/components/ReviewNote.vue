@@ -25,13 +25,17 @@ function remove() {
   if (armed.value !== 'remove') { armed.value = 'remove'; return }
   emit('act', 'remove', props.comment.id)
 }
+// Keys of the whole thread, its buttons included: the window around the diff
+// closes on Escape too, and must not while an editor or a confirmation is open.
 function key(e: KeyboardEvent) {
   if (e.isComposing) return
-  if (e.key === 'Escape') {
-    // The window around the diff closes on Escape too: this one is for the editor.
+  if (e.key === 'Escape' && (editing.value || armed.value)) {
     e.preventDefault()
     e.stopPropagation()
-    cancel()
+    if (editing.value) cancel()
+    else armed.value = ''
+  } else if (!editing.value) {
+    return
   } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
     e.preventDefault()
     save()
@@ -41,7 +45,7 @@ function key(e: KeyboardEvent) {
 <template>
   <div
     class="review-note" :class="{ missing, editing }" role="group" :aria-label="`${label}: ${t('review comment')}`"
-    @mouseenter="emit('hover', comment.id)" @mouseleave="emit('hover', null)" @focusin="emit('hover', comment.id)" @focusout="emit('hover', null)"
+    @keydown="key" @mouseenter="emit('hover', comment.id)" @mouseleave="emit('hover', null)" @focusin="emit('hover', comment.id)" @focusout="emit('hover', null)"
   >
     <div class="review-note-head">
       <span class="review-range">{{ label }}</span>
@@ -51,7 +55,7 @@ function key(e: KeyboardEvent) {
     <template v-if="editing">
       <textarea
         :id="`review-${comment.id}`" :value="text" :placeholder="t('Write a review comment…')" :aria-label="`${label}: ${t('review comment')}`" rows="3"
-        @input="input" @keydown="key" @focus="($event.target as HTMLTextAreaElement).scrollIntoView({ block: 'nearest' })"
+        @input="input" @focus="($event.target as HTMLTextAreaElement).scrollIntoView({ block: 'nearest' })"
       />
       <div class="review-note-actions">
         <span class="review-keys" aria-hidden="true">{{ saveKeys }} {{ t('to save') }} · Esc {{ t('to cancel') }}</span>

@@ -275,6 +275,18 @@ test('mouse and keyboard: Shift+click extends, a block stops at its hunk, Escape
   await page.keyboard.press('Escape')
   await expect(note).toHaveCount(0)
   await expect(page.locator('.changes-view')).toBeVisible()
+  // Escape from a button of the editor is the editor's too, and gives the focus back to the line.
+  await gutter(f, '41').click()
+  await page.keyboard.type('Unfinished comment')
+  await page.keyboard.press('Tab')
+  await expect(note.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.changes-view')).toBeVisible()
+  await expect(note.getByRole('button', { name: 'Discard this text?', exact: true })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(note).toHaveCount(0)
+  await expect(page.locator('.changes-view')).toBeVisible()
+  await expect(gutter(f, '41')).toBeFocused()
   // Keyboard only: arrows between lines, Shift+arrows for the block, Enter, Ctrl+Enter.
   await gutter(f, '10').focus()
   await page.keyboard.press('ArrowDown')

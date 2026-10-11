@@ -1,3 +1,4 @@
+import { nextTick } from 'vue'
 import { describe, expect, it } from 'vitest'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import ReviewNote from '~/components/ReviewNote.vue'
@@ -50,6 +51,29 @@ describe('ReviewNote', () => {
     expect(buttons(w)).toEqual(['Discard this text?', 'Save'])
     await w.find('textarea').trigger('keydown', { key: 'Escape' })
     expect(w.emitted('act')![1]).toEqual(['cancel', 'note'])
+  })
+
+  it('keeps Escape for the editor from its buttons too, and for a pending Delete', async () => {
+    const press = (el: Element) => {
+      const e = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      el.dispatchEvent(e)
+      return e.defaultPrevented
+    }
+    const w = await mountSuspended(ReviewNote, { props: { comment: { ...saved, draft: 'Unfinished edit' }, label: 'Line 12' }, attachTo: document.body })
+    expect(press(w.findAll('button')[0]!.element)).toBe(true)
+    await nextTick()
+    expect(buttons(w)).toEqual(['Discard this text?', 'Save'])
+    expect(w.emitted('act')).toBeUndefined()
+    expect(press(w.findAll('button')[1]!.element)).toBe(true)
+    expect(w.emitted('act')).toEqual([['cancel', 'note']])
+    // A saved comment leaves Escape to the window, unless a Delete waits for its confirmation.
+    await w.setProps({ comment: saved })
+    expect(press(w.findAll('button')[0]!.element)).toBe(false)
+    await w.findAll('button')[1]!.trigger('click')
+    expect(press(w.findAll('button')[1]!.element)).toBe(true)
+    await nextTick()
+    expect(buttons(w)).toEqual(['Edit', 'Delete'])
+    w.unmount()
   })
 
   it('names the file and warns when the block left the diff', async () => {
