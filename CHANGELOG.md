@@ -8,10 +8,19 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- **Inline diff review**: comment on lines in Changes, edit or delete remarks, and keep a
-  device-local draft per agent. Missing lines are flagged after refresh. Send review appends
-  grouped file/line remarks to the message draft without sending it or replacing existing text.
-  Includes old-line labels for deletions, keyboard/touch controls, remote agents and demo support.
+- **Diff review on a line or a block of lines**: in Changes, comments start from the gutter and
+  the code is plain text that can be selected and copied — a click on a line no longer creates a
+  comment. With a mouse, a **+** shows on the hovered line: click it, or press and drag over
+  other lines for a block (Shift+click changes the block of the open editor). On a phone, tap a
+  line number, tap another line to extend, then **Comment** in the bar pinned at the bottom. On a
+  keyboard, arrows move between lines, Shift+arrows choose a block and Enter opens the editor;
+  ⌘/Ctrl+Enter saves, Escape cancels without closing the window. A block stays within one hunk.
+  Each comment is a thread under the last line of its block, with its lines ("Lines 12–18"),
+  Edit and a two-step Delete; drafts, including an editor left open, are kept per agent on the
+  device, and a block that leaves the diff is flagged after refresh. Send review appends
+  `file:12-18 — remark` and a short excerpt of the block, grouped by file, to the message draft
+  without sending it or replacing existing text. Old-line labels for deletions, remote agents
+  and demo support.
 - **Yes / No in one tap**: a closed question of an agent's reply now has **Yes** and **No** next
   to its `↳ Reply`, in the three reply styles. A tap quotes the question and writes the answer
   under it, as Reply and typing would; nothing is sent, so several questions are answered in a row
