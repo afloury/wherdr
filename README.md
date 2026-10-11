@@ -912,24 +912,29 @@ passage still offers **Reply** on it. A quoted question or point shows `✓`.
 and your answer goes on the lines below:
 
 ```
-↳ Quote message 11:37 : I can merge the PR —
+↳ Quote message 11:37 ~k3f : I can merge the PR —
 Go ahead.
-↳ Quote point 11:37 : Shall I tag the release today? —
+↳ Quote point 11:37 ~k3f : Shall I tag the release today? —
 Yes
-↳ Quote decision 11:37 #3 : Publish the release notes on the site? —
+↳ Quote decision 11:37 #3 ~k3f : Publish the release notes on the site? —
 No
 ```
 
 | Line | Written by |
 | --- | --- |
-| `↳ Quote message <time> : <start of the message> —` | **Reply** under an agent message. |
-| `↳ Quote point <time> : <excerpt> —` | `↳` on a question or a point, **Reply** on a selected passage. |
-| `↳ Quote decision <time> #<n> : <question> —` | **Yes**, **No** or `↳` on a row of a decision table. |
-| `↳ Quote decisions <time> #<first>-<last> : <questions> —` | **OK to all** on a decision table. |
-| `↳ Decision: <task> —`, `↳ Detail on <task> —`, `↳ Feedback on <task> —` (and their French labels) | **Answer**, **Clarify** and **Comment** in the Project panel. |
+| `↳ Quote message <time> ~<code> : <start of the message> —` | **Reply** under an agent message. |
+| `↳ Quote point <time> ~<code> : <excerpt> —` | `↳` on a question or a point, **Reply** on a selected passage. |
+| `↳ Quote decision <time> #<n> ~<code> : <question> —` | **Yes**, **No** or `↳` on a row of a decision table. |
+| `↳ Quote decisions <time> #<rows> ~<code> : <questions> —` | **OK to all** on a decision table. |
+| `↳ Decision: <task> —`, `↳ Problem: <task> —`, `↳ Question: <task> —`, `↳ Detail on <task> —`, `↳ Feedback on <task> —` (and their French labels) | **Answer**, **Problem**, **Question**, **Clarify** and **Comment** in the Project panel. |
 
 - The time is the one shown on the agent's message, so an answer to an earlier message is never
   read as an answer to the last one. The types are the same words in every language.
+- The code after `~` is three characters wherdr derives from the message (and the rank of the
+  table, from the second table of a message on). It tells apart two messages of the same minute
+  and two tables of one message, whatever the excerpt shows. The field draws it dimmed, like
+  the words before the excerpt; the quote of a sent message leaves it out. The rows of **OK to
+  all** are the numbers the table really has: `#1-4`, or `#1,4` when rows 2 and 3 do not exist.
 - A reference is a whole line: it starts with `↳` in the first column and ends with ` —` at the
   end of the line, and only there, so an excerpt may hold dashes of its own. The excerpt is plain
   text on one line; a long one is cut with `…` (a message keeps its start, a passage its start
@@ -937,7 +942,8 @@ No
 - Several references fit in one message, each followed by its answer.
 - Anything else is your own text: a `>` at the start of a line, a `↳` line of an unknown type or
   with words after its dash. Text you paste never becomes a reference either: a pasted line that
-  reads like one is moved one space to the right.
+  reads like one gets a `\` before its `↳`. A long paste, shown as a **Pasted text** card, is
+  sent exactly as it was pasted.
 - In the conversation, each reference of a sent message shows as a quote; tap it to see the
   message it names. Messages sent earlier with `> ` lines still show as quotes.
 
@@ -1134,7 +1140,7 @@ worktree. It is optional; with it installed, wherdr adds:
 
 The Project panel only works well when the coordinator follows its conventions: which lists
 mean what, the badges, `(agent → t-NNNN)`, and what to do with each message the buttons send
-(`✓ Tested: …`, `✗ Problem: … — …`, `↳ Queue: …`, `↳ Decision: … —` with the answer below it…). They are written once, as an agent skill:
+(`✓ Tested: …`, `↳ Queue: …`, `↳ Problem: … —` or `↳ Decision: … —` with the answer below it…). They are written once, as an agent skill:
 [`skills/wherdr/SKILL.md`](skills/wherdr/SKILL.md).
 
 - **Herdr plugin**: the install links the skill for every coordinator, whatever its agent:

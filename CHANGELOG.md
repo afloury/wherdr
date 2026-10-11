@@ -66,12 +66,19 @@ All notable changes to this project are documented here. The format follows
   `↳ Quote point 11:37 : … —`, `↳ Quote decision 11:37 #3 : … —`,
   `↳ Quote decisions 11:37 #1-4 : … —`, `↳ Decision: <task> —`. The reference ends with ` —` at the
   end of its line only (an excerpt may hold dashes), a long excerpt is cut with `…`, and several
-  references fit in one message. The field draws each one as a token and the sent bubble as a
+  references fit in one message. A short code after the time or the row (`11:37 #3 ~k3f`) tells
+  apart two messages of the same minute and two tables of one message, so an answer never
+  replaces the answer to another table; the field draws it dimmed, the sent quote leaves it out.
+  **OK to all** names the rows the table really has (`#1,4`, not `#1-4`, when rows 2 and 3 do
+  not exist). The field draws each one as a token and the sent bubble as a
   quote that leads to the message it names. **Reply** under a message no longer opens a box above
   the field: it adds its line like the others. A `>` typed at the start of a line is plain text
   again; messages already sent with `> ` lines still show as quotes. Pasted text never becomes a
-  reference. The Project panel drafts that started with `↳` now put the answer on the next line
-  instead of after the dash; the `wherdr` skill and the coordinator rules explain the new lines.
+  reference: a pasted line that reads like one gets a `\` before its `↳`, and a **Pasted text**
+  card is sent exactly as pasted. The Project panel drafts that started with `↳` now put the
+  answer on the next line instead of after the dash, and **Problem** and **Question** write the
+  same kind of line (`↳ Problem: <task> —`, `↳ Question: <task> —`) instead of `✗ Problem: … — `
+  and `? Question: … — `; the `wherdr` skill and the coordinator rules explain the new lines.
 - **Quoted replies: two choices.** Settings › Conversation › Quoted replies keeps "Tokens, native
   field" (default) and "Plain text", the same `↳ … —` lines shown as text, as a fallback. The
   experimental "Tokens, rich field" is removed; a device set to it moves to the native field.
