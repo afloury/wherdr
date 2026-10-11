@@ -30,6 +30,14 @@ cd "$tmp/tap"
 sed -E "s|^  url \".*\"|  url \"${url}\"|; s|^  sha256 \".*\"|  sha256 \"${sha}\"|" Formula/wherdr.rb > Formula/wherdr.rb.new
 mv Formula/wherdr.rb.new Formula/wherdr.rb
 if git diff --quiet; then echo "Formula already at ${version}."; exit 0; fi
+# Scope the authenticated owner's public identity to this temporary clone.
+login=$(gh api user --jq .login)
+user_id=$(gh api user --jq .id)
+name=$(gh api user --jq '.name // .login')
+[ -n "$login" ] && [ -n "$name" ] || { echo "Missing GitHub identity" >&2; exit 1; }
+case "$user_id" in ''|*[!0-9]*) echo "Invalid GitHub user id" >&2; exit 1 ;; esac
+git config --local user.name "$name"
+git config --local user.email "${user_id}+${login}@users.noreply.github.com"
 git diff
 git commit -qam "wherdr ${version}"
 git push -q
