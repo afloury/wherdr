@@ -15,6 +15,10 @@ describe('terminal fallback after native recognition', () => {
       expect(classifyScreen({ text, agent, choices })).toBe('native')
     },
   )
+  it('preserves an already open free-answer field', () => {
+    const choices = { question: 'Favourite colour?', cursor: 0, typing: true, options: [{ label: 'Other (type your own)', free: true }] }
+    expect(classifyScreen({ text: 'An open answer box', agent: 'omp', choices })).toBe('native')
+  })
   it('preserves native menus, waiting screens and settings without requiring choices', () => {
     for (const recognized of [{ menu: {} }, { screen: {} }, { settings: true }]) {
       expect(classifyScreen({ text: 'A native screen', agent: 'claude', ...recognized })).toBe('native')

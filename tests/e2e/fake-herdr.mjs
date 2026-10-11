@@ -116,7 +116,13 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       if (!p) throw Object.assign(new Error(`No pane ${params.pane_id}`), { code: 'pane_not_found' })
       return { pane: snapshot().panes.find(x => x.pane_id === p.id) }
     },
-    'pane.read': params => ({ read: { pane_id: params.pane_id, source: params.source || 'visible', text: screen(paneById(params.pane_id)) } }),
+    'pane.read': params => {
+      const raw = screen(paneById(params.pane_id))
+      // Herdr detection/visible reads are plain unless ANSI was requested.
+      // eslint-disable-next-line no-control-regex
+      const text = params.format === 'ansi' ? raw : raw.replace(/\x1b\[[0-9;]*m|\r/g, '')
+      return { read: { pane_id: params.pane_id, source: params.source || 'visible', text } }
+    },
     'pane.process_info': (params) => {
       const p = paneById(params.pane_id)
       if (p) p.processReads = (p.processReads || 0) + 1

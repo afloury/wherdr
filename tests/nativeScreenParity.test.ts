@@ -39,15 +39,24 @@ const before = { choices: await load('server/utils/choices.ts'), wait: await loa
 const after = { choices, wait, menu, settings }
 const beforeSource = execFileSync('git', ['show', `${BASELINE}:server/utils/state.ts`], { encoding: 'utf8' })
 const afterSource = readFileSync(new URL('../server/utils/state.ts', import.meta.url), 'utf8')
+// Herdr emits plain detection text and preserves styling only for ANSI reads.
+// eslint-disable-next-line no-control-regex
+const plain = (text: string) => text.replace(/\x1b\[[0-9;]*m|\r/g, '')
 function pipeline(source: string, modules: typeof after, text: string) {
   return bindFunction(source, 'choicesFor', {
     ...modules.choices, ...modules.wait, ...modules.menu, ...modules.settings,
     classifyScreen, keepReading, isPermissionQuestion, mergeDetail,
     choicesCache: new Map(), screenWatch: new Map(), askChecks: new Map(),
     modelControlBusy: () => false, noteScreen: () => {},
-    herdr: async () => ({ read: { text } }),
+    herdr: async (_method: string, params: { format?: string }) => ({ read: { text: params.format === 'ansi' ? text : plain(text) } }),
     readMenu: async () => modules.menu.parseMenu(text),
-    withOmpTab: async (_id: string, c: unknown) => c,
+    withOmpTab: async (_id: string, c: import('../shared/types').Choices) => {
+      if (!c.tabs || c.tab !== undefined) return c
+      const tab = modules.choices.ompActiveTab(text, c.tabs)
+      if (tab !== null) return { ...c, tab }
+      const { tabs: _, ...rest } = c
+      return rest
+    },
     transcripts: { pendingAsk: async () => [], pendingClaudeQuestions: async () => [], pendingTool: async () => null },
   })
 }
@@ -56,10 +65,11 @@ function pipeline(source: string, modules: typeof after, text: string) {
 // The recognizer sequence in origin/main's choicesFor, with the same screen
 // used for its ANSI read. Transcript completion is unchanged and covered by
 // choices.test.ts; compare all extracted objects, not only their truthiness.
-function recognize(modules: typeof after, text: string, agent: string, strict: boolean) {
+function recognize(modules: typeof after, raw: string, agent: string, strict: boolean) {
+  const text = plain(raw)
   const framed = text.split('\n').some(l => modules.menu.TOP.test(l))
   let prompt = agent === 'omp' ? modules.choices.parseOmpPrompt(text) : modules.choices.parseChoices(text, { strict })
-  const panel = agent !== 'omp' && framed && (strict || !prompt || !modules.choices.parseChoices(text, { strict: true })) ? modules.menu.parseMenu(text) : null
+  const panel = agent !== 'omp' && framed && (strict || !prompt || !modules.choices.parseChoices(text, { strict: true })) ? modules.menu.parseMenu(raw) : null
   if (panel) prompt = null
   const tabs = agent === 'claude' && modules.settings.settingsTabs(text) !== null
   const screen = panel || tabs ? null : modules.wait.parseWaitScreen(text, { choices: Boolean(prompt) })
@@ -85,7 +95,7 @@ describe('all fixtures retain origin/main native recognition', () => {
       if (exceptions.has(file)) expect(newOutput).toEqual({ choices: null, menu: null, screen: null })
       else expect(newOutput).toEqual(oldOutput)
       const nativeBefore = Boolean(original.choices || original.menu || original.screen || original.settings)
-      const interaction = classifyScreen({ text, agent, ...current })
+      const interaction = classifyScreen({ text: plain(text), agent, ...current })
       expect(serverInteraction).toBe(interaction)
       results.push({ file, agent, strict, nativeBefore, nativeAfter: interaction === 'native', exception: exceptions.has(file) })
       if (exceptions.has(file)) expect(interaction).toBe('terminal')
@@ -115,5 +125,19 @@ describe('question push parity', () => {
     }
     expect(sent[1]).toEqual(sent[0])
     expect((sent[1] as { body: string }).body).toContain('\n')
+  })
+})
+
+// Reconstructed neutral counterparts of review-only captures. These are not
+// claimed as new captures from authenticated agents.
+describe('review approval rows', () => {
+  for (const file of fixtures.filter(f => /^(?:claude|codex)-approve-/.test(f))) it(file, async () => {
+    const text = readFileSync(new URL(`./fixtures/${file}`, import.meta.url), 'utf8')
+    const pane = { id: 'neutral', agent: file.startsWith('claude') ? 'claude' : 'codex', status: 'blocked' }
+    const original = await pipeline(beforeSource, before, text)(pane, 1, false)
+    const current = await pipeline(afterSource, after, text)(pane, 1, false)
+    expect(original.choices).toBeTruthy()
+    expect(current.interaction).toBe('native')
+    expect(current.choices).toEqual(original.choices)
   })
 })
