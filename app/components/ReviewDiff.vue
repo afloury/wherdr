@@ -28,7 +28,7 @@ function open(event: MouseEvent, line: ReviewLine) {
   <div class="change-code" role="region" :aria-label="file.path">
     <template v-for="(line, i) in lines" :key="i">
       <div class="change-line review-line" :class="line.kind" @pointerdown="point" @click="open($event, line)">
-        <button v-if="line.number !== null" type="button" class="review-gutter" :aria-label="`${t('Comment on line')} ${line.number}${line.side === 'old' ? ` (${t('old line')})` : ''}`" @click.stop="emit('add', scope, file.path, line)">{{ line.number }}<span aria-hidden="true">+</span></button>
+        <button v-if="line.number !== null" type="button" class="review-gutter" :aria-label="`${t('Comment on line')} ${line.number}${line.side === 'old' ? ` (${t('old line')})` : ''}`" @click.stop="emit('add', scope, file.path, line)"><span class="review-plus" aria-hidden="true">+</span><span class="review-number">{{ line.number }}</span></button>
         <span class="review-source">{{ line.text }}</span>
       </div>
       <ReviewNote v-for="note in notes(line)" :key="note.id" :comment="note" @update="(id, body) => emit('update', id, body)" @remove="emit('remove', $event)" />
