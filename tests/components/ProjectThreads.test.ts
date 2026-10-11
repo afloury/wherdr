@@ -36,9 +36,12 @@ registerEndpoint('/api/project/thread', { method: 'GET', handler: (event) => {
     next: th.report ? ['Merge the branch', 'Remove the worktree'] : [], acked: false, hasPane: !th.resolved, keptWorktree: false, resolvedReason: '',
   } }
 } })
+// A request held open stands for an action still running on the server.
+let hold: Promise<void> | null = null
 registerEndpoint('/api/project/thread', { method: 'POST', handler: async (event) => {
   const body = await readBody(event)
   posted.push(body)
+  if (hold) await hold
   return { output: `${body.id}: done` }
 } })
 
@@ -52,7 +55,7 @@ async function mountThreads() {
 const inBody = (sel: string) => [...document.body.querySelectorAll<HTMLElement>(sel)]
 
 describe('ProjectPanel › Threads tab', () => {
-  beforeEach(() => { asked.length = 0; posted.length = 0; eventsOpen.value = true })
+  beforeEach(() => { asked.length = 0; posted.length = 0; hold = null; eventsOpen.value = true })
 
   it('switches between the Tasks and Threads tabs', async () => {
     const Host = defineComponent({ render: () => h(UApp, null, () => h(ProjectPanel, { paneId: 'w9:p9', board, loading: false, error: '' })) })
@@ -117,6 +120,50 @@ describe('ProjectPanel › Threads tab', () => {
     await vi.waitFor(() => expect(inBody('.pt-act-ack')[0]!.hasAttribute('disabled')).toBe(false))
     inBody('.pt-act-ack')[0]!.click()
     await vi.waitFor(() => expect(posted.at(-1)).toEqual({ pane_id: 'w1:p1', id: 't-0102', action: 'ack' }))
+  })
+
+  // Found by the adversarial review (t-0315): the running state lived in the tab.
+  it('keeps a thread’s actions disabled while one runs, even after leaving the tab', async () => {
+    let release = () => {}
+    hold = new Promise<void>((r) => { release = r })
+    const Host = defineComponent({ render: () => h(UApp, null, () => h(ProjectPanel, { paneId: 'w7:p1', board, loading: false, error: '' })) })
+    const w = await mountSuspended(Host)
+    await w.find('#pp-tab-threads').trigger('click')
+    const last = (sel: string) => inBody(sel).at(-1) as HTMLButtonElement
+    // Opens the record of the n-th open thread and waits for it to be read.
+    const openRecord = async (n: number) => {
+      const before = asked.length
+      await w.findAll('.pt-group .pt-thread')[n]!.trigger('click')
+      await vi.waitFor(() => expect(asked.length).toBeGreaterThan(before))
+      await flushPromises()
+      await vi.waitFor(() => expect(last('.pt-act-resolve')).toBeTruthy())
+      await vi.waitFor(() => expect(inBody('.pt-spin').length).toBe(0))
+    }
+    await openRecord(1)
+    last('.pt-act-ack').click()
+    await vi.waitFor(() => expect(posted).toHaveLength(1))
+    expect(last('.pt-act-resolve').disabled).toBe(true)
+
+    // Another tab, and back: the action still runs on the server.
+    await w.find('#pp-tab-tasks').trigger('click')
+    await w.find('#pp-tab-threads').trigger('click')
+    await openRecord(1)
+    expect([last('.pt-act-ack').disabled, last('.pt-act-restart').disabled, last('.pt-act-resolve').disabled]).toEqual([true, true, true])
+    last('.pt-act-ack').click()
+    last('.pt-act-restart').click()
+    await new Promise(r => setTimeout(r, 80))
+    expect(posted).toEqual([{ pane_id: 'w7:p1', id: 't-0102', action: 'ack' }])
+
+    // Another thread is not held back.
+    await openRecord(0)
+    expect(last('.pt-act-resolve').disabled).toBe(false)
+
+    // Once the action ends, the thread's buttons come back.
+    release()
+    hold = null
+    await openRecord(1)
+    await vi.waitFor(() => expect(last('.pt-act-resolve').disabled).toBe(false))
+    expect(posted).toHaveLength(1)
   })
 
   it('sends nothing offline', async () => {

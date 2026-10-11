@@ -27,15 +27,27 @@ export async function threadDetailOn(t: Where, id: string): Promise<ThreadDetail
   return detail
 }
 
+// Threads with an action in progress (`<machine>|<project folder>|<id>`). One
+// action at a time per thread: herdr-projects only locks the write of the
+// record, so two `resolve` would both make the final copy and clean up.
+const busy = new Set<string>()
+
 // `thread <action> <slug> <id>`: what herdr-projects printed (its last lines
-// say what was done, or kept), or its error.
+// say what was done, or kept), or its error. Refused while another action
+// runs on the same thread, whoever asked for it.
 export async function threadActionOn(t: Where, id: string, action: ThreadAction): Promise<{ output: string }> {
-  const r = await runProjectCommand(t, argsFor(action, t, id), THREAD_TIMEOUT_MS[action])
-  const out = stripAnsi(r.stdout).trim()
-  if (r.code !== 0) {
-    throw new HerdrError('thread_failed', lastLine(stripAnsi(r.stderr || r.stdout)) || `code ${r.code}`)
-  }
-  return { output: out.slice(-2000) }
+  const args = argsFor(action, t, id)
+  const key = `${t.m.key ?? ''}|${t.dir}|${id}`
+  if (busy.has(key)) throw new HerdrError('thread_busy', 'an action is already running on this thread')
+  busy.add(key)
+  try {
+    const r = await runProjectCommand(t, args, THREAD_TIMEOUT_MS[action])
+    const out = stripAnsi(r.stdout).trim()
+    if (r.code !== 0) {
+      throw new HerdrError('thread_failed', lastLine(stripAnsi(r.stderr || r.stdout)) || `code ${r.code}`)
+    }
+    return { output: out.slice(-2000) }
+  } finally { busy.delete(key) }
 }
 
 async function where(pane: Pane, id: unknown): Promise<{ t: Target, id: string }> {

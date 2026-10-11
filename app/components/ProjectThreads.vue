@@ -1,6 +1,10 @@
 <script lang="ts">
 // Filter typed in the Threads tab, per pane: kept when switching tabs.
 const queryByPane = new Map<string, string>()
+// Action in progress on a thread (`<pane>|<thread>`). Kept here, outside the
+// component: leaving the tab or closing the record while an action runs (a
+// resolve may take minutes) must not offer its buttons again.
+const runningByThread = reactive(new Map<string, string>())
 </script>
 
 <script setup lang="ts">
@@ -120,7 +124,9 @@ const LABELS: Record<ThreadAction, { label: string, icon: string, hint: string }
   stop: { label: tl('Stop', 'Arrêter'), icon: 'i-lucide-square', hint: tl('Send Escape to its agent', 'Envoyer Échap à son agent') },
   resolve: { label: tl('Resolve', 'Clôturer'), icon: 'i-lucide-circle-check', hint: tl('Close the thread and clean up its worktree, merged branch and tab', 'Clôturer le thread et nettoyer son worktree, sa branche fusionnée et son onglet') },
 }
-const running = ref<ThreadAction | null>(null)
+const runKey = (id: string) => `${props.paneId}|${id}`
+// The action running on the thread shown, started from this tab or before leaving it.
+const running = computed(() => (shown.value ? runningByThread.get(runKey(shown.value.id)) as ThreadAction | undefined : undefined) ?? null)
 function confirmText(action: ThreadAction, th: ProjectThread): string {
   const id = th.id.toUpperCase()
   if (action === 'stop') {
@@ -136,7 +142,10 @@ async function run(action: ThreadAction) {
   if (!eventsOpen.value || offlineView.value) return toast(tl('Thread actions are unavailable offline', 'Actions des threads indisponibles hors ligne'), true)
   haptic()
   if (CONFIRMED_ACTIONS.includes(action) && !(await askConfirm(confirmText(action, th), LABELS[action].label, 'error'))) return
-  running.value = action
+  // Asked again while the question was open, or from another record of the same thread.
+  const key = runKey(th.id)
+  if (runningByThread.has(key)) return
+  runningByThread.set(key, action)
   try {
     const r = await runThreadAction(props.paneId, th.id, action)
     output.value = r.output
@@ -144,7 +153,7 @@ async function run(action: ThreadAction) {
     emit('reload')
     await loadDetail()
   } catch (e) { toast((e as Error).message, true) }
-  finally { running.value = null }
+  finally { runningByThread.delete(key) }
 }
 function openAgent() {
   if (!shown.value) return

@@ -156,6 +156,29 @@ esac
     await expect(threadActionOn(where(), 't-0007', 'restart')).rejects.toThrow('t-0007 is running; nothing to restart')
   })
 
+  // Found by the adversarial review (t-0315): two resolve ran side by side.
+  it('runs one action at a time per thread, and refuses the second one', async () => {
+    const slow = path.join(tmp, 'slow')
+    fs.mkdirSync(slow)
+    const slowBin = path.join(slow, 'herdr-projects')
+    fs.writeFileSync(slowBin, `#!/bin/sh\ndir="$(dirname "$0")"\necho "start $4 $6" >> "$dir/calls.log"\nsleep 0.4\necho "end $4 $6" >> "$dir/calls.log"\n[ "$4" = restart ] && { echo "Error: $6 is running" >&2; exit 1; }\necho "$6 resolved"\n`, { mode: 0o755 })
+    const t = { ...where(), bin: slowBin }
+    const log = () => fs.readFileSync(path.join(slow, 'calls.log'), 'utf8').trim().split('\n')
+    const both = await Promise.allSettled([threadActionOn(t, 't-0007', 'resolve'), threadActionOn(t, 't-0007', 'resolve'), threadActionOn(t, 't-0007', 'ack')])
+    expect(both.map(r => (r.status === 'fulfilled' ? r.value.output : (r.reason as Error).message))).toEqual([
+      't-0007 resolved', 'an action is already running on this thread', 'an action is already running on this thread',
+    ])
+    expect(log()).toEqual(['start resolve t-0007', 'end resolve t-0007'])
+    // Another thread, another project and another machine are not held back.
+    await Promise.all([threadActionOn(t, 't-0008', 'ack'), threadActionOn(t, 't-0009', 'ack'), threadActionOn({ ...t, dir: '/srv/projects/other' }, 't-0008', 'ack'), threadActionOn({ ...t, m: { ...t.m, key: 'ab12cd34' } as Machine }, 't-0008', 'ack')])
+    expect(log().filter(l => l.startsWith('start')).length).toBe(5)
+    // The thread is free again once its action ended, failed or not.
+    await expect(threadActionOn(t, 't-0007', 'restart')).rejects.toThrow('t-0007 is running')
+    expect((await threadActionOn(t, 't-0007', 'ack')).output).toBe('t-0007 resolved')
+    // An invalid request never takes the lock.
+    await expect(threadActionOn(t, 'nope', 'ack')).rejects.toThrow('invalid thread')
+  })
+
   it('never runs a command for an invalid thread or project', async () => {
     await expect(threadActionOn(where(), 't-0007; rm -rf /', 'ack')).rejects.toThrow('invalid thread')
     await expect(threadDetailOn({ ...where(), slug: '--root' }, 't-0007')).rejects.toThrow('invalid project')
