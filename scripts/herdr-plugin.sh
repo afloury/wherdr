@@ -9,7 +9,7 @@
 #   docker  Linux with Docker Compose v2 usable by this user: the published
 #           image, run from $WHERDR_DIR exactly like https://wherdr.dev/install.
 #   native  everywhere else (always on macOS: Docker Desktop cannot reach
-#           Herdr's Unix socket): Node.js 22 (or Bun) runs the prebuilt npm
+#           Herdr's Unix socket): Node.js 22 (or Bun) runs the prebuilt GitHub
 #           package of this version (or a build made in the plugin folder),
 #           copied to $WHERDR_DIR/app and started detached from there, with
 #           its pid and log in $WHERDR_DIR.
@@ -286,19 +286,26 @@ write_conf() {
   } > "$CONF"
 }
 
-# The published npm package of this exact version holds the built server:
-# download it instead of building (no npm ci). Fails when it is not published.
+# Download the exact release package and verify it before extraction.
 fetch_prebuilt() {
   command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1 || return 1
   version="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$ROOT/herdr-plugin.toml" | head -n 1)"
   tmp="$(mktemp -d)"
-  if curl -fsSL --max-time 120 "https://registry.npmjs.org/wherdr/-/wherdr-$version.tgz" -o "$tmp/wherdr.tgz" 2>/dev/null \
+  url="https://github.com/$SOURCE/releases/download/v$version/wherdr-$version.tgz"
+  if curl -fsSL --max-time 120 "$url" -o "$tmp/wherdr.tgz" \
+    && curl -fsSL --max-time 30 "$url.sha256" -o "$tmp/checksum" \
+    && "$RUNTIME" "$ROOT/bin/lib/verify-release.mjs" "$tmp/wherdr.tgz" "$tmp/checksum" \
     && tar -xzf "$tmp/wherdr.tgz" -C "$tmp" \
     && [ -f "$tmp/package/.output/server/index.mjs" ]; then
-    rm -rf "$ROOT/.output"
-    mv "$tmp/package/.output" "$ROOT/.output"
+    for entry in .output bin skills package.json; do
+      [ -e "$tmp/package/$entry" ] || { rm -rf "$tmp"; return 1; }
+    done
+    for entry in .output bin skills package.json; do
+      rm -rf "$ROOT/$entry"
+      mv "$tmp/package/$entry" "$ROOT/$entry"
+    done
     rm -rf "$tmp"
-    ok "wherdr $version downloaded (prebuilt npm package)"
+    ok "wherdr $version downloaded (verified GitHub package)"
     return 0
   fi
   rm -rf "$tmp"
@@ -630,7 +637,7 @@ cmd_update() {
     native)
       # A new checkout, a new copy in $APP, and wherdr restarted (build_start).
       say "Updating the wherdr plugin from $SOURCE…"
-      "$(herdr_bin)" plugin install "$SOURCE" --yes
+      "$(herdr_bin)" plugin install "$SOURCE" --ref main --yes
       ;;
     *) die "wherdr plugin is not set up: install it again with herdr plugin install $SOURCE." ;;
   esac

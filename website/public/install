@@ -22,7 +22,7 @@
 #   WHERDR_PORT   local port                    (default: 7683)
 #   WHERDR_YES=1  answer yes to every question  (non-interactive use)
 #   WHERDR_NO_BROWSER=1  never open a browser
-#   WHERDR_REF    Git tag or branch of the plugin / compose file (default: latest)
+#   WHERDR_REF    Git tag or branch of the plugin / compose file (default: main)
 #   WHERDR_IMAGE  Docker image, WHERDR_MODE=docker (default: ghcr.io/afloury/wherdr:latest)
 #   WHERDR_PLUGIN a local checkout to install instead of afloury/wherdr (development)
 #
@@ -36,7 +36,7 @@ main() {
   REPO="afloury/wherdr"
   PLUGIN_ID="afloury.wherdr"
   PLUGIN="${WHERDR_PLUGIN:-$REPO}"
-  REF="${WHERDR_REF:-}"
+  REF="${WHERDR_REF:-main}"
   MODE="${WHERDR_MODE:-}"
   DIR="${WHERDR_DIR:-$HOME/wherdr}"
   PORT="${WHERDR_PORT:-7683}"
@@ -213,7 +213,8 @@ plugin_root() {
 }
 
 # Herdr installs the plugin and runs its build (scripts/herdr-plugin.sh build),
-# which reads these variables. A local checkout (WHERDR_PLUGIN=/path) is linked
+# which downloads and verifies the GitHub release package (no npm publication wait).
+# It reads these variables. A local checkout (WHERDR_PLUGIN=/path) is linked
 # and built in place instead.
 plugin_install() {
   set -- env WHERDR_INSTALLER=1 WHERDR_DIR="$DIR" WHERDR_PORT="$PORT"

@@ -347,7 +347,7 @@ Settings, as environment variables (`curl -fsSL https://wherdr.dev/install | WHE
 | `WHERDR_MODE` | — | `native`: Node.js even when Docker is there. `docker`: no plugin, Docker Compose by hand in `WHERDR_DIR` (Linux; see below). |
 | `WHERDR_YES` | — | `1` answers yes to every question (non-interactive use). |
 | `WHERDR_NO_BROWSER` | — | `1` never opens a browser. |
-| `WHERDR_REF` | latest | Git tag or branch of the plugin (or of `docker-compose.yml` with `WHERDR_MODE=docker`). |
+| `WHERDR_REF` | main | Git tag or branch of the plugin (or of `docker-compose.yml` with `WHERDR_MODE=docker`). |
 | `WHERDR_PLUGIN` | `afloury/wherdr` | A local checkout to link and build instead (development, tests). |
 
 **Docker by hand, with the script:** `curl -fsSL https://wherdr.dev/install | WHERDR_MODE=docker sh`
@@ -673,8 +673,8 @@ setup by itself:
   `~/wherdr` (`docker-compose.yml`, `.env`), the same files as `WHERDR_MODE=docker` of
   [the one command](#the-one-command).
 - **Node.js 22** everywhere else, and always on macOS (Docker Desktop cannot reach Herdr's
-  socket): the plugin downloads the prebuilt npm package of its version (or builds wherdr in its
-  own folder when that fails), copies it to `~/wherdr/app` and runs it detached from there, with
+  socket): the plugin downloads the prebuilt package of its version from GitHub Releases and
+  verifies its SHA-256 checksum, copies it to `~/wherdr/app` and runs it detached from there, with
   its pid and log (`wherdr.log`) in `~/wherdr`. Herdr builds plugins in a temporary folder and
   then moves them, so the server never runs from the plugin folder. Bun works too when Node.js 22
   is missing. Without either, the install stops and says so.
@@ -796,6 +796,21 @@ home screen and in Settings › About, with the release notes and the exact comm
 Hide it until the next version with ×. Set `WHERDR_UPDATE_CHECK=off` to disable the check. The
 installed version is shown in Settings › About.
 
+GitHub release packages (including the bundled agent skill), Docker images, and Homebrew
+updates are published without waiting for npm moderation. Native plugin installs and updates
+use the GitHub `.tgz` and verify its SHA-256 checksum before extraction. A failed one-tap
+download or checksum check leaves the running version in place. Plugin installation retains
+its source-build fallback when the release archive cannot be fetched or verified, including
+older 1.3.x releases with no GitHub archive. The installer fetches `main` explicitly unless
+you set `WHERDR_REF`.
+
+`npm install -g`, `npx`, `bunx` and `pnpm dlx` still need npm to serve the wherdr package.
+Their banner waits for registry availability; Homebrew's banner waits for its formula.
+Versions through 1.3.2 use GitHub's `latest` marker and an npm-based updater. That marker only
+advances once npm **and** Homebrew are ready, so their existing Update button continues to work.
+To update an older native plugin earlier, rerun the installer or press **U** in its Herdr panel.
+See [Releasing](docs/RELEASING.md) for the publication order and recovery steps.
+
 **Update in one tap.** When wherdr runs from the Herdr plugin (Node.js mode), a global npm install
 or Homebrew, the banner has an **Update** button instead of the command, for a session opened on
 this computer (`localhost`) or unlocked with a passkey. wherdr installs the new version in a
@@ -807,7 +822,7 @@ and the app says so. Every step is logged in `~/wherdr/update.log`.
 
 | Setup | What Update does |
 | --- | --- |
-| Herdr plugin, Node.js | Unpacks the npm package of the new version into `~/wherdr/app`, keeps the old copy, restarts |
+| Herdr plugin, Node.js | Verifies and unpacks the GitHub release package of the new version into `~/wherdr/app`, keeps the old copy, restarts |
 | `npm install -g wherdr` | `npm install -g wherdr@X.Y.Z`, then restarts (login service included) |
 | Homebrew | `brew upgrade wherdr`, then `brew services restart wherdr` |
 

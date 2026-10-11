@@ -42,7 +42,7 @@ describe('update command', () => {
 })
 
 function release(tag: string) {
-  return vi.fn(async (_url: string) => ({ ok: true, json: async () => ({ tag_name: tag, html_url: `https://example.test/releases/${tag}` }) }))
+  return vi.fn(async (_url: string) => ({ ok: true, json: async () => ([{ tag_name: tag, html_url: `https://example.test/releases/${tag}` }]) }))
 }
 
 describe('release check', () => {
@@ -92,5 +92,38 @@ describe('release check', () => {
     const u = await createUpdateChecker({ current: '1.0.0', env: { WHERDR_UPDATE_CHECK: 'OFF' }, fetch })()
     expect(fetch).not.toHaveBeenCalled()
     expect(u).toMatchObject({ latest: null, checked: false, mode: 'native' })
+  })
+})
+
+describe('independent release channels', () => {
+  const releases = [{ tag_name: 'v1.3.3' }, { tag_name: 'v1.3.4-beta', prerelease: true }, { tag_name: 'v9.0.0', draft: true }]
+  it('offers published releases to plugins even while npm is unavailable', async () => {
+    const fetch = vi.fn(async () => ({ ok: true, json: async () => releases }))
+    const check = createUpdateChecker({ current: '1.3.2', env: { WHERDR_INSTALL: 'plugin' }, fetch })
+    expect(await check()).toMatchObject({ latest: '1.3.3', oneTap: true })
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+  for (const mode of ['npm', 'npm-global']) {
+    it(`${mode} waits for the tarball and retries after an hour`, async () => {
+      let available = false, time = 0
+      const fetch = vi.fn(async (url: string) => ({ ok: url === RELEASES_URL || available, json: async () => url.endsWith('/latest') ? { version: '1.3.3' } : releases }))
+      const check = createUpdateChecker({ current: '1.3.2', env: { WHERDR_INSTALL: mode }, fetch, now: () => time })
+      expect((await check()).latest).toBeNull()
+      available = true; time = 3600e3
+      expect((await check()).latest).toBe('1.3.3')
+    })
+    it(`${mode} fails closed on a network error`, async () => {
+      const fetch = async (url: string) => {
+        if (url !== RELEASES_URL) throw new Error('offline')
+        return { ok: true, json: async () => releases }
+      }
+      expect((await createUpdateChecker({ current: '1.3.2', env: { WHERDR_INSTALL: mode }, fetch })()).latest).toBeNull()
+    })
+  }
+  it('Homebrew waits for its formula, independently of npm', async () => {
+    const check = (text: string) => createUpdateChecker({ current: '1.3.2', env: { WHERDR_INSTALL: 'brew' },
+      fetch: async () => ({ ok: true, json: async () => releases, text: async () => text }) })()
+    expect((await check('url "old"')).latest).toBeNull()
+    expect((await check('url "https://github.com/example/wherdr/releases/download/v1.3.3/wherdr-1.3.3.tgz"')).latest).toBe('1.3.3')
   })
 })

@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Publish checksummed GitHub release packages independently of npm moderation. Native
+  plugin installs and one-tap updates verify these packages, including the agent skill;
+  Homebrew uses the same GitHub archive. npm publishes that exact archive separately.
+  Registry and formula availability gate update notices; the legacy GitHub latest marker
+  advances automatically only when existing 1.3.x updaters can safely install the version.
+
 - Bundle the wherdr agent skill in npm / Homebrew packages and Docker images. Native
   starts and one-tap updates refresh the shared host copy; the Herdr Docker plugin
   extracts it after pulling the image. Manual Docker installs have a host-side helper.

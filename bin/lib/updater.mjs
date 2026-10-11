@@ -9,6 +9,7 @@
 //
 // The server copies this file out of the package before running it (npm and
 // Homebrew replace the package folder): it imports Node built-ins only.
+import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -38,10 +39,16 @@ function pluginDriver(plan, io) {
   const staged = `${plan.root}.new`
   const previous = `${plan.root}.prev`
   return {
-    // The npm package of the target version, unpacked next to the running copy.
+    // The checksummed GitHub package, unpacked next to the running copy.
     async install() {
       const tgz = path.join(plan.dir, 'update', `wherdr-${plan.to}.tgz`)
-      await io.download(`${plan.registry.replace(/\/$/, '')}/wherdr/-/wherdr-${plan.to}.tgz`, tgz)
+      if (!plan.releaseBase) throw new Error('Release source is missing from the update plan')
+      if (!/^\d+\.\d+\.\d+$/.test(plan.to)) throw new Error('Invalid release version')
+      const url = `${plan.releaseBase}/v${plan.to}/wherdr-${plan.to}.tgz`
+      await io.download(url, tgz)
+      await io.download(`${url}.sha256`, `${tgz}.sha256`)
+      await io.verify(tgz, `${tgz}.sha256`)
+      io.rm(`${tgz}.sha256`)
       io.rm(staged)
       io.mkdir(staged)
       await io.run('tar', ['-xzf', tgz, '-C', staged, '--strip-components=1'])
@@ -248,6 +255,11 @@ export function realIo(plan, now = Date.now) {
       if (!res.ok) throw new Error(`${url} answered ${res.status}`)
       mkdirSync(path.dirname(file), { recursive: true })
       writeFileSync(file, Buffer.from(await res.arrayBuffer()))
+    },
+    verify(file, checksum) {
+      const expected = readFileSync(checksum, 'utf8').trim().split(/\s+/)[0]
+      const actual = createHash('sha256').update(readFileSync(file)).digest('hex')
+      if (!/^[a-f0-9]{64}$/.test(expected || '') || actual !== expected) throw new Error('Release SHA-256 mismatch')
     },
     // The server being replaced, then whatever `wherdr start` left (pid file).
     async stopServer() {

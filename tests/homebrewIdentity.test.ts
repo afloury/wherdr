@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
@@ -17,7 +18,7 @@ it('sets the authenticated GitHub identity only in the temporary tap clone', () 
       repo\\ clone*) mkdir -p "$4/Formula"; printf '  url "old"\\n  sha256 "old"\\n' > "$4/Formula/wherdr.rb" ;;
       *) exit 1 ;;
     esac`)
-    executable('curl', 'printf archive > "$4"')
+    executable('curl', `case "$2" in *.sha256) printf '%s  wherdr.tgz\\n' '${createHash('sha256').update('archive').digest('hex')}' > "$4" ;; *) printf archive > "$4" ;; esac`)
     executable('git', `printf '%s\\n' "$*" >> "$HOME/git-calls"
       case "$*" in 'diff --quiet') exit 1 ;; esac`)
     execFileSync('sh', ['scripts/bump-homebrew.sh', '1.2.3', 'example'], {

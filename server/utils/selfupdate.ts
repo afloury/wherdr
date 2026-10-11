@@ -10,7 +10,7 @@ import pkg from '../../package.json'
 import { installMode, oneTapMode, updateRunning, type InstallMode, type UpdateJob } from '../../shared/updates'
 import { log } from './env'
 import { HerdrError } from './herdr'
-import { checkUpdate } from './updates'
+import { checkUpdate, REPO } from './updates'
 
 export function wherdrDir(env: NodeJS.ProcessEnv = process.env): string {
   const home = os.homedir()
@@ -36,6 +36,7 @@ export interface UpdatePlan {
   port: string
   host: string
   registry: string
+  releaseBase: string
 }
 
 // Why an update cannot start now (HerdrError code + English message), or the
@@ -58,6 +59,7 @@ export function buildPlan(o: {
     serverPid: o.pid,
     port: String(o.env.NITRO_PORT || o.env.PORT || 3000),
     host: String(o.env.NITRO_HOST || o.env.HOST || '127.0.0.1'),
+    releaseBase: `https://github.com/${REPO}/releases/download`,
     registry: o.env.npm_config_registry || 'https://registry.npmjs.org',
   }
 }
