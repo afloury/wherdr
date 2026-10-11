@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve unchanged skill files and repair only recorded managed broken links. Respect
+  `WHERDR_SKILL=off` and persistent uninstall across starts and updates. Docker extracts
+  only skill data with the local helper and the one-command installer refreshes it too.
+  Bound updater refreshes, preserve service paths, and report manual helper failures.
+
 ### Added
 
 - Publish checksummed GitHub release packages independently of npm moderation. Native

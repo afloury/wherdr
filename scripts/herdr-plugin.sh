@@ -55,6 +55,7 @@ if [ -z "${WHERDR_DIR:-}" ] && [ -f "$ROOT/.wherdr-dir" ]; then
   WHERDR_DIR="$(cat "$ROOT/.wherdr-dir")"
 fi
 DIR="${WHERDR_DIR:-$HOME/wherdr}"
+case "$DIR" in /*) ;; *) DIR="$PWD/$DIR" ;; esac
 CONF="$DIR/plugin.env"
 # Native mode: the installed copy of wherdr (bin + built server).
 APP="$DIR/app"
@@ -210,7 +211,7 @@ cmd_build() {
   # install from the merged settings (environment over the previous file).
   write_conf
   ok "plugin.env written (mode: $MODE)"
-  ( cmd_skill install ) || warn "wherdr skill not linked (optional): run $0 skill install"
+  ( cmd_skill refresh ) || warn "wherdr skill not linked (optional): run $0 skill install"
   ( cmd_key install ) || warn "no Herdr key for the panel (optional): run $0 key install"
   build_start
 }
@@ -219,13 +220,13 @@ cmd_build() {
 # Installation is shared with npm / Homebrew; Docker reads the pulled image.
 cmd_skill() {
   case "${1:-}" in
-    install)
+    refresh|install)
       if [ "$MODE" = docker ]; then
         ( image="$(compose config --images herdr-web | head -n 1)"
-          WHERDR_DIR="$DIR" sh "$ROOT/bin/install-docker-skill.sh" "$image"
-        ) >/dev/null 2>&1 || true
+          WHERDR_DIR="$DIR" sh "$ROOT/bin/install-docker-skill.sh" "$image" "$1"
+        )
       else
-        WHERDR_DIR="$DIR" sh "$ROOT/bin/lib/install-skill.sh" install "$ROOT"
+        WHERDR_DIR="$DIR" sh "$ROOT/bin/lib/install-skill.sh" "$1" "$ROOT"
       fi
       ;;
     uninstall) WHERDR_DIR="$DIR" sh "$ROOT/bin/lib/install-skill.sh" uninstall "$ROOT" ;;
@@ -636,7 +637,7 @@ cmd_update() {
     docker)
       container_ours || die "The \"$CONTAINER\" container belongs to $(container_dir): update it from there."
       compose pull --quiet
-      cmd_skill install
+      cmd_skill refresh || warn "wherdr skill refresh failed (optional)"
       if [ "$(docker inspect "$CONTAINER" --format '{{.State.Running}}' 2>/dev/null)" = "true" ]; then
         compose up -d --remove-orphans
         say "wherdr updated and restarted."
