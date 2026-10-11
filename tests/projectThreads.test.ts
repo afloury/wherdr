@@ -195,6 +195,11 @@ esac
     expect(seen[0]!.args).toEqual(['/opt/herdr', 'work', '/plug/herdr-projects', '--root', '/r', 'thread', 'ack', 'demo', 't-0007'])
     // The script itself holds no value: only "$@".
     expect(seen[0]!.script).not.toMatch(/demo|t-0007|\/r\b/)
+    // Minor defect of the review: the output limit only held on the local machine.
+    const big = { local: false, session: 'work', exec: async () => ({ code: 0, stdout: Buffer.alloc(2 * 1024 * 1024, 0x61), stderr: '' }) } as unknown as Machine
+    expect(await runProjectCommand({ m: big, bin: '/plug/herdr-projects' }, ['--version'])).toEqual({ code: 1, stdout: '', stderr: 'output too long' })
+    expect((await runProjectCommand({ m: big, bin: '/plug/herdr-projects' }, ['--version'], 15000, 4 * 1024 * 1024)).stdout.length).toBe(2 * 1024 * 1024)
+    await expect(threadDetailOn({ m: big, bin: '/plug/herdr-projects', dir: '/srv/projects/demo', slug: 'demo' }, 't-0007')).rejects.toThrow('output too long')
   })
 })
 

@@ -92,14 +92,18 @@ async function version(t: Target): Promise<{ v: string, tasks: { size: number } 
 // session: argv only (remote: positional parameters of a fixed script).
 export interface ProjectsRun { code: number, stdout: string, stderr: string }
 const REMOTE_RUN = 'export HERDR_BIN_PATH="$1" HERDR_SESSION="$2"; bin="$3"; shift 3; exec "$bin" "$@"'
-// `maxBytes` bounds the output of a local command.
+// `maxBytes` bounds the output on both sides: more is a failed command.
 export function runProjectCommand(t: Pick<Target, 'm' | 'bin'>, args: string[], timeoutMs = 15000, maxBytes = 1024 * 1024): Promise<ProjectsRun> {
   const session = t.m.session && t.m.session !== 'default' ? t.m.session : ''
   const remote = t.m.exec
   if (remote) {
     const herdrBin = (t.m as { bin?: string }).bin || 'herdr'
+    // The SSH runner has no output limit of its own: an output over the limit
+    // is refused here, never decoded, parsed or sent to the app.
     return remote(REMOTE_RUN, [herdrBin, session, t.bin, ...args], { timeoutMs })
-      .then(r => ({ code: r.code ?? 1, stdout: r.stdout.toString('utf8'), stderr: r.stderr }))
+      .then(r => (r.stdout.length > maxBytes
+        ? { code: 1, stdout: '', stderr: 'output too long' }
+        : { code: r.code ?? 1, stdout: r.stdout.toString('utf8'), stderr: r.stderr }))
   }
   const env: NodeJS.ProcessEnv = { ...HERDR_CHILD_ENV, HERDR_BIN_PATH: HERDR_BIN }
   if (session) env.HERDR_SESSION = session
