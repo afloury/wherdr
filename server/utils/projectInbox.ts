@@ -27,9 +27,17 @@ export async function inboxOn(t: Pick<Target, 'm' | 'dir'>): Promise<InboxReply>
   const ids = names.filter(n => n.endsWith('.md')).map(n => n.slice(0, -3)).filter(inboxIdOk).sort()
   const items: InboxItem[] = []
   const wanted = ids.slice(0, INBOX_MAX)
-  for (let i = 0; i < wanted.length; i += READS_AT_ONCE) {
-    const read = await Promise.all(wanted.slice(i, i + READS_AT_ONCE).map(async (id) => {
-      const text = await t.m.fs.read(`${dir}/${id}.md`, 0, ITEM_BYTES).then(b => b.toString('utf8')).catch(() => '')
+  // Only regular files are opened, and never more than their size: a named
+  // pipe (or any special file) called `<id>.md` would block the read for good,
+  // and four of them every file read of the server (Node's worker threads).
+  const stats = await t.m.fs.statMany(wanted.map(id => `${dir}/${id}.md`))
+  const files = wanted.flatMap((id, i) => {
+    const st = stats[i]
+    return st && st.isFile && st.size > 0 ? [{ id, len: Math.min(st.size, ITEM_BYTES) }] : []
+  })
+  for (let i = 0; i < files.length; i += READS_AT_ONCE) {
+    const read = await Promise.all(files.slice(i, i + READS_AT_ONCE).map(async ({ id, len }) => {
+      const text = await t.m.fs.read(`${dir}/${id}.md`, 0, len).then(b => b.toString('utf8')).catch(() => '')
       const item = parseInboxItem(text.length >= ITEM_BYTES && !text.includes('\n+++\n') ? '' : text)
       // The file name is the ID `inbox done` takes: an item saying otherwise is not shown.
       return item && item.id === id ? item : null

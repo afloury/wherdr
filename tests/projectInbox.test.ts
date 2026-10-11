@@ -1,10 +1,11 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { inboxDoneArgs, inboxIdOk, inboxThread, parseInboxItem, parseRoutineList, routineListArgs, sortInbox, tomlStrings } from '../shared/projectInbox'
 import { INBOX_MAX, inboxDoneOn, inboxOn, routinesOn } from '../server/utils/projectInbox'
-import { localFs } from '../server/utils/fsx'
+import { type MachineFs, localFs } from '../server/utils/fsx'
 import type { Machine } from '../server/utils/machines'
 import { DemoServer } from '../app/demo/server'
 import * as S from '../app/demo/scenario'
@@ -150,6 +151,49 @@ esac
     expect(r.items).toHaveLength(INBOX_MAX)
     expect(r.total).toBe(INBOX_MAX + 5)
     expect(r.items[0]!.id).toBe('20260101T000000Z-pr-t-0001-0')
+  })
+
+  // Found by the adversarial review (t-0315): files were read without a stat.
+  it('answers at once with a named pipe in inbox/, which is not an item', async () => {
+    const fifo = path.join(dir, 'inbox', '20260101T000000Z-thread-state-t-0007-1.md')
+    execFileSync('mkfifo', [fifo])
+    put('20260102T000000Z-pr-t-0001-2.md', item('20260102T000000Z-pr-t-0001-2', 'kind = "pr"'))
+    fs.mkdirSync(path.join(dir, 'inbox', '20260103T000000Z-folder-3.md'))
+    const outcome = await Promise.race([
+      inboxOn(where()),
+      new Promise<string>(r => setTimeout(() => r('still blocked'), 1500)),
+    ])
+    // Would let a blocked read go, so a failure here does not hang the run.
+    fs.closeSync(fs.openSync(fifo, fs.constants.O_RDWR | fs.constants.O_NONBLOCK))
+    expect(outcome).toEqual({ items: [expect.objectContaining({ id: '20260102T000000Z-pr-t-0001-2' })], total: 1 })
+  })
+
+  it('leaves the server reading other files with four named pipes in inbox/', async () => {
+    const fifos = [1, 2, 3, 4].map(n => path.join(dir, 'inbox', `20260101T000000Z-thread-state-t-0007-${n}.md`))
+    for (const f of fifos) execFileSync('mkfifo', [f])
+    const reading = inboxOn(where())
+    await new Promise(r => setTimeout(r, 300))
+    const other = await Promise.race([
+      fs.promises.readFile(bin).then(() => 'answered'),
+      new Promise<string>(r => setTimeout(() => r('frozen'), 1500)),
+    ])
+    for (const f of fifos) fs.closeSync(fs.openSync(f, fs.constants.O_RDWR | fs.constants.O_NONBLOCK))
+    expect(other).toBe('answered')
+    expect(await reading).toEqual({ items: [], total: 0 })
+  })
+
+  it('never reads more than the size it measured, nor a file it could not measure', async () => {
+    const asked: [string, number][] = []
+    const id = (n: number) => `20260101T00000${n}Z-pr-t-0001-${n}`
+    const fake: MachineFs = {
+      ...localFs,
+      readdir: async () => [1, 2, 3, 4].map(n => `${id(n)}.md`),
+      statMany: async ps => ps.map((p, i) => [{ size: 60, mtimeMs: 0, isFile: true, isDir: false }, { size: 1_000_000, mtimeMs: 0, isFile: true, isDir: false }, { size: 60, mtimeMs: 0, isFile: false, isDir: false }, null][i] ?? null),
+      read: async (p, _start, len) => { asked.push([path.basename(p, '.md'), len]); return Buffer.from(item(path.basename(p, '.md'), 'kind = "pr"')) },
+    }
+    const r = await inboxOn({ m: { fs: fake } as unknown as Machine, dir: '/srv/projects/demo' })
+    expect(asked).toEqual([[id(1), 60], [id(2), 8192]])
+    expect(r.items.map(x => x.id)).toEqual([id(1), id(2)])
   })
 
   it('marks an item as handled with inbox done, one checked ID per call', async () => {
