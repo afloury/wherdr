@@ -797,7 +797,8 @@ const shellDuration = computed(() => {
 })
 const queuedList = computed(() => {
   const p = props.pane
-  const mine = withOutbox(readOnly.value ? [] : p.queued || [], props.localQueued)
+  // A record the server gives back is on its way to the message field (see utils/givenBack.ts).
+  const mine = withOutbox(readOnly.value ? [] : (p.queued || []).filter(q => !q.back), props.localQueued)
   const memory = rememberSent(p.id, mine)
   const replies = blocks.value.filter(b => b.k === 'assistant')
   return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory }).map((q) => {

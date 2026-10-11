@@ -72,26 +72,72 @@ test('a Project message sent before the card appears is held, never typed into t
   expect((await stats()).writes).toEqual([])
 })
 
+// What the message field of the pane holds: its draft (kept by the device),
+// and the field itself where the app shows one (a shell on a computer is its
+// terminal alone).
+const draftText = (page: Page) => page.evaluate(key => JSON.parse(localStorage.getItem(key) || '{}').text || '', `draft:${CODEX_UPDATE_PANE}`)
+const paneState = async (page: Page) => (await (await page.request.get('/api/state')).json()).panes.find((p: { id: string }) => p.id === CODEX_UPDATE_PANE)
+async function expectInField(page: Page, project: string, text: string) {
+  await expect.poll(() => draftText(page)).toBe(text)
+  if (project.endsWith('-phone')) await expect(page.locator('.prompt textarea')).toHaveValue(text)
+}
+
 test('Dismiss forgets the update and gives the pane back as a plain shell', async ({ page }, info) => {
-  const pane = async () => (await (await page.request.get('/api/state')).json()).panes.find((p: { id: string }) => p.id === CODEX_UPDATE_PANE)
+  const pane = () => paneState(page)
+  // Something already typed in the field of this pane (once: not after the reload below).
+  await page.addInitScript((key) => {
+    if (sessionStorage.getItem('typed')) return
+    sessionStorage.setItem('typed', '1')
+    localStorage.setItem(key, JSON.stringify({ text: 'already typed' }))
+  }, `draft:${CODEX_UPDATE_PANE}`)
   await stopAfterUpdate(page)
-  const held = (await (await post(page, 'prompt', { text: 'Held for the restart' })).json()).queued
-  expect(held.state).toBe('held')
+  for (const text of ['Held for the restart', 'And a second one']) {
+    expect((await (await post(page, 'prompt', { text })).json()).queued.state).toBe('held')
+  }
   await card(page).getByRole('button', { name: 'Dismiss', exact: true }).click()
   await expect(card(page)).toHaveCount(0)
   await expect.poll(record).toBeUndefined()
+  // The user finds what they wrote back in the message field, after what
+  // was there; nothing stays in a queue no screen shows.
+  await expect(page.locator('.hw-toast-title', { hasText: '2 unsent messages put back into the message field' })).toBeVisible()
+  await expectInField(page, info.project.name, 'already typed\nHeld for the restart\nAnd a second one')
+  // (Records of earlier tests, typed into the fake Codex, may still be listed.)
+  const mine = async () => ((await pane()).queued || []).filter((q: { text: string, back?: boolean }) => q.back || /^(Held for the restart|And a second one)$/.test(q.text))
+  await expect.poll(mine).toEqual([])
   // No agent, no question, no disabled field: a shell like any other.
-  expect(await pane()).toMatchObject({ agent: null, queued: expect.arrayContaining([expect.objectContaining({ text: 'Held for the restart', state: 'failed' })]) })
+  expect(await pane()).toMatchObject({ agent: null })
   expect((await pane()).stopped).toBeUndefined()
   expect((await pane()).prompt).toBeUndefined()
   expect(await stats()).toMatchObject({ starts: [], writes: [], prompts: [] })
   if (info.project.name.startsWith('chromium')) await page.screenshot({ path: `.shots/codex-update-dismissed-${info.project.name}.png`, fullPage: true })
-  // The card does not come back on later polls, nor after a reload.
+  // The card does not come back on later polls, nor after a reload; the text stays, once.
   await page.reload()
   await page.waitForTimeout(2500)
   await expect(card(page)).toHaveCount(0)
-  expect((await post(page, 'unqueue', held)).status()).toBe(200)
+  await expectInField(page, info.project.name, 'already typed\nHeld for the restart\nAnd a second one')
+  expect(await mine()).toEqual([])
   expect(await stats()).toMatchObject({ starts: [], writes: [], prompts: [] })
+})
+
+test('a Codex that simply left gives the message held meanwhile back into the field', async ({ page }, info) => {
+  const { pid } = await fakeHerdr('e2e.update_reset', { pane_id: CODEX_UPDATE_PANE })
+  await page.goto(`/#/a/${CODEX_UPDATE_PANE}`)
+  await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, conversation: 'empty' })
+  // /exit, no update: a bare shell whose screen is not checked yet.
+  await fakeHerdr('e2e.update_exit', { pane_id: CODEX_UPDATE_PANE, plain: true })
+  await expect.poll(() => leaving(page), { intervals: [50] }).toBe(true)
+  const raw = await post(page, 'input', { text: 'Written while Codex was leaving', keys: ['enter'] })
+  expect((await raw.json()).queued.state).toBe('held')
+  // The check ends without a card: no agent will take the message.
+  await expect.poll(() => leaving(page)).toBe(false)
+  await expect(card(page)).toHaveCount(0)
+  await expect(page.locator('.hw-toast-title', { hasText: 'Unsent message put back into the message field' })).toBeVisible()
+  await expectInField(page, info.project.name, 'Written while Codex was leaving')
+  await expect.poll(async () => ((await paneState(page)).queued || []).filter((q: { text: string, back?: boolean }) => q.back || q.text === 'Written while Codex was leaving')).toEqual([])
+  expect(await paneState(page)).toMatchObject({ agent: null })
+  // Never typed into the shell.
+  expect(await stats()).toMatchObject({ starts: [], writes: [], prompts: [] })
+  if (info.project.name.startsWith('chromium')) await page.screenshot({ path: `.shots/codex-left-${info.project.name}.png`, fullPage: true })
 })
 
 test('an existing Codex resumes its exact session', async ({ page }) => {

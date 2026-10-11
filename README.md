@@ -199,7 +199,8 @@ Details in [Features](#features) and [Security](#security).
   with the shell in the foreground. Unrecognized shell prompts require a manual restart
   in the terminal. wherdr must have observed Codex before it exited.
   **Dismiss** puts the card away for good: the pane is a plain shell again, to use as you like.
-  Project panel messages wait in the queue until the agent returns. Continuation
+  Project panel messages wait in the queue until the agent returns; if it does not (Dismiss, or
+  a Codex that simply left), their text goes back into the pane's message field. Continuation
   prompts (unfinished quotes or heredocs) refuse a restart too. If the final
   transcript read fails, both conversation choices remain available; a session
   contradicted by a guessed match is resumed through Codex's picker.
@@ -210,6 +211,14 @@ Details in [Features](#features) and [Security](#security).
 - **New agent**: pick an installed agent (or a plain terminal), a folder, optionally a separate
   Git **worktree** and branch, resume the last conversation, and queue a first message.
 - **Changes view**: Git status and diff of an agent's working folder; worktree management.
+  Tap or click a diff line (or focus its line-number button) to write a review comment.
+  Comments stay editable under the line and are saved on this device for that agent, including
+  across refreshes. Comments whose line disappears are flagged above the diff for checking.
+  **Send review** groups them by file and appends them to the conversation's message draft,
+  preserving existing text; it never sends a message. Deleted lines use the old file's number,
+  explicitly labelled. **Discard** clears the local review. Works on remote agents and in the
+  demo too, with no writes to the agent's machine. Browser storage must be available to retain
+  comments after closing the view.
 - **Several machines**: agents of the SSH machines registered in Herdr (`herdr machine add`)
   appear in their own section; everything works the same on a remote agent.
 - **Named Herdr sessions**, **quotas** (remaining Claude and Codex usage limits), **Herdr plugin
@@ -278,7 +287,10 @@ phone / laptop ──private network──> HTTPS (tailscale serve, private prox
 
 wherdr runs on the same machine as the Herdr server (the "server" below). It uses Herdr's local
 socket API and CLI, reads the agents' transcript files, and serves a client-only Nuxt app. Data
-it keeps (VAPID keys, push subscriptions, passkeys, recent folders) lives in `data/`.
+it keeps (VAPID keys, push subscriptions, passkeys, recent folders) lives in `data/`. So do the
+long texts pasted into the message field, which the server keeps to show them as cards on every
+device: `data/pastes.json`, in clear, readable by the server's user only (mode 600), at most the
+last 100 texts and 2 MB, each one deleted 30 days after it was last sent.
 
 Built with Nuxt 4, Nuxt UI 4, Tailwind 4 and TypeScript; the Herdr gateway (API, WebSockets,
 Web Push, lock) runs in Nitro.
