@@ -401,7 +401,7 @@ const FR: Record<string, string> = {
   'View report': 'Voir le rapport', 'Open agent': 'Ouvrir l’agent', 'Pull request': 'Pull request',
   'Report truncated (too long).': 'Rapport tronqué (trop long).', 'This thread’s agent was not found': 'Agent de ce thread introuvable',
   'No report for this thread': 'Pas de rapport pour ce thread', 'no report for this thread': 'pas de rapport pour ce thread',
-  'invalid thread': 'thread invalide', 'project not found': 'projet introuvable', 'thread list too long': 'liste des threads trop longue',
+  'invalid thread': 'thread invalide', 'project not found': 'projet introuvable', 'thread list too long': 'liste des threads trop longue', 'unreadable thread record': 'fiche du thread illisible', 'an action is already running on this thread': 'une action est déjà en cours sur ce thread', 'project settings not found': 'réglages du projet introuvables', 'invalid memory file': 'fichier de mémoire invalide', 'memory file not found': 'fichier de mémoire introuvable',
   // Server messages (shared/message.ts: {name} = value filled in by the server)
   '{machine} is unreachable: {reason}': '{machine} injoignable : {reason}',
   '{machine} is unreachable': '{machine} injoignable',

@@ -19,6 +19,28 @@ All notable changes to this project are documented here. The format follows
   Codex `/usage` is no longer copied into a static result and a guessed two-column choice list.
   The browser demo includes a scripted version of the interactive usage screen.
 
+- **Project panel › Settings and Memory tabs**, both read-only. **Settings** shows what
+  PROJECT.md sets (name, goal, coordinator and thread profiles, parallel threads, auto-resolve
+  delay, nudge, mute, repositories), with the plugin's default marked for a key the file leaves
+  out; safety settings are not shown. **Memory** lists MEMORY.md and the files of `memory/` with
+  the title and hook the index gives them, and opens one as Markdown. With six tabs the bar
+  scrolls sideways on a phone; a fade on its edge says there are more.
+- **Project panel › Inbox and Routines tabs**. **Inbox** lists the project's unhandled inbox
+  items (a thread's new report, a routine due, a machine out of reach…), oldest first, with the
+  thread's title when the item is about one; **Done** marks one as handled (`herdr-projects
+  inbox done`). **Routines** shows each routine's schedule, whether it is enabled, its kind and
+  its last and next run, read-only: approving or switching a routine stays in the terminal.
+  herdr-projects has no JSON for either yet, so the inbox is read from the project's `inbox/`
+  files and routines from the tab-separated output of `routine list`, whose run texts are shown
+  as printed.
+- **Project panel › Threads tab**: every thread of a herdr-projects project, as `herdr-projects
+  thread list` gives it. Open threads sit under their group (Your turn, Ready for review,
+  Working…) with machine and profile; resolved ones stay in their own folded section, by pages of
+  30. One filter covers both (ID, title, machine, profile). A tap opens the thread's record
+  (`thread show`): state, Next list, branch, dates, and its actions, run by herdr-projects on
+  the coordinator's machine: **Acknowledge**, **Restart**, **Stop** and **Resolve** (the last two
+  ask first), plus Open agent, View report and Pull request. The panel now has tabs (Tasks,
+  Threads). Nothing changes without herdr-projects.
 - **Inline diff review**: comment on lines in Changes, edit or delete remarks, and keep a
   device-local draft per agent. Missing lines are flagged after refresh. Send review appends
   grouped file/line remarks to the message draft without sending it or replacing existing text.
@@ -101,6 +123,8 @@ All notable changes to this project are documented here. The format follows
 - **Long folders scroll in Files**: a folder taller than the window (1500 files, for example) did
   not scroll with the wheel, the trackpad or a finger, so its last files were out of reach. Changes
   had the same defect, and its review bar now stays pinned while the diff scrolls.
+- A confirmation asked from an open window (a sheet on the phone) showed behind it; it now
+  sits above every window.
 - **Pasted text cards on every device**: a message with typed words and a text pasted into the
   field showed its card only on the device that sent it; elsewhere it was one long folded message.
   The server now remembers which parts were pasted (`pastes.json` in its data folder, the last 100

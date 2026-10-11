@@ -7,6 +7,8 @@ const unblockedByPane = new Map<string, Set<string>>()
 const reviewedByPane = new Map<string, Set<string>>()
 // "To do" / "In queue" moves sent (`kind|action|task`), until the task leaves that list.
 const movedByPane = new Map<string, Set<string>>()
+// Tab shown, per pane: kept when leaving the panel and coming back.
+const tabByPane = new Map<string, string>()
 </script>
 
 <script setup lang="ts">
@@ -33,6 +35,12 @@ const movedByPane = new Map<string, Set<string>>()
 // thread, opens a text sheet; "↳ Info pour t-NNNN : …" is sent to the coordinator,
 // which passes the text on to the thread.
 // The file is never written from here.
+// Tabs: "Tasks" (all of the above), "Threads" (ProjectThreads.vue: every
+// thread, its record and its actions), "Inbox" (ProjectInbox.vue: unhandled
+// items, Done), "Routines", "Settings" and "Memory" (ProjectRoutines.vue,
+// ProjectSettings.vue, ProjectMemory.vue: read-only). A new tab is one more
+// entry in TABS and one more block under the tab bar. The bar scrolls sideways
+// when the tabs do not fit (a phone); a fade on its edge says there are more.
 // `side`: column to the right of the conversation (computer), collapsible.
 import type { Pane, QueuedMessage } from '#shared/types'
 import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, type TaskBadge, boardSections, visibleSections, decisionPrefix, detailPrefix, infoMessage, launchMessage, missingLists, moveMessage, type MoveAction, problemPrefix, queueStatus, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, textParts, unblockMessage } from '#shared/projectBoard'
@@ -43,6 +51,80 @@ const props = defineProps<{ paneId: string, board: ProjectBoard | null, loading:
 const emit = defineEmits<{ reload: [], collapse: [], sent: [queued: QueuedMessage | null], prefill: [prefix: string] }>()
 
 const DONE_SHOWN = 20
+
+// ------------------------------------------------------------ tabs
+type PanelTab = 'tasks' | 'threads' | 'inbox' | 'routines' | 'settings' | 'memory'
+const TABS: { key: PanelTab, label: string }[] = [
+  { key: 'tasks', label: tl('Tasks', 'Tâches') },
+  { key: 'threads', label: 'Threads' },
+  { key: 'inbox', label: 'Inbox' },
+  { key: 'routines', label: 'Routines' },
+  { key: 'settings', label: t('Settings') },
+  { key: 'memory', label: tl('Memory', 'Mémoire') },
+]
+const saved = tabByPane.get(props.paneId)
+const tab = ref<PanelTab>(TABS.some(x => x.key === saved) ? saved as PanelTab : 'tasks')
+function setTab(key: PanelTab) {
+  if (tab.value === key) return
+  tab.value = key
+  tabByPane.set(props.paneId, key)
+  haptic()
+}
+// The bar scrolls sideways when the tabs do not fit: the picked one stays in view.
+function pickTab(key: PanelTab, e: MouseEvent) {
+  setTab(key)
+  ;(e.currentTarget as HTMLElement).scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+}
+// Tabs hidden past an edge of the bar: that edge fades.
+const tabBar = useTemplateRef<HTMLElement>('tabBar')
+const more = ref({ left: false, right: false })
+function measureTabs() {
+  const el = tabBar.value
+  if (!el) return
+  more.value = { left: el.scrollLeft > 2, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2 }
+}
+let tabsSeen: ResizeObserver | null = null
+watch(tabBar, (el) => {
+  tabsSeen?.disconnect()
+  tabsSeen = null
+  if (!el) return
+  measureTabs()
+  if (typeof ResizeObserver !== 'undefined') {
+    tabsSeen = new ResizeObserver(measureTabs)
+    tabsSeen.observe(el)
+  }
+  // The tab kept from an earlier visit may be out of view.
+  el.querySelector<HTMLElement>('.pp-tab.on')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+}, { flush: 'post' })
+onUnmounted(() => tabsSeen?.disconnect())
+// Arrow keys move between tabs, as in any tab list.
+function onTabKey(e: KeyboardEvent) {
+  const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+  if (!step) return
+  e.preventDefault()
+  const next = TABS[(TABS.findIndex(x => x.key === tab.value) + step + TABS.length) % TABS.length]!
+  const bar = e.currentTarget as HTMLElement
+  setTab(next.key)
+  nextTick(() => {
+    const on = bar.querySelector<HTMLElement>('.pp-tab.on')
+    on?.focus()
+    on?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  })
+}
+// Unhandled inbox items: known once the Inbox tab was opened.
+const inboxCount = ref<number | null>(null)
+const tabCount = (key: PanelTab) => (key === 'threads' && props.board ? props.board.open.length : key === 'inbox' ? inboxCount.value : null)
+// Refresh re-reads the board (the parent) and the tab's own list.
+const refreshTick = ref(0)
+function refresh() {
+  refreshTick.value++
+  emit('reload')
+}
+// An inbox item about a thread: its agent if it runs, otherwise its report.
+function openInboxThread(th: ProjectThread) {
+  if (paneOf(th) || th.report) openThread(th)
+  else setTab('threads')
+}
 
 const sections = computed<BoardSection[]>(() => (props.board ? visibleSections(boardSections(props.board, { doing: t('In progress'), done: tl('Done', 'Fait') }), projectHideEmpty.value) : []))
 
@@ -378,23 +460,39 @@ function hideHint() {
       <span v-if="board" class="pp-slug">{{ board.slug }}</span>
       <span class="pp-grow" />
       <UTooltip :text="t('Refresh')" :disabled="!desk">
-        <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="sm" class="icon-btn pp-btn" :class="{ spinning: loading }" :aria-label="t('Refresh')" @click="emit('reload')" />
+        <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="sm" class="icon-btn pp-btn" :class="{ spinning: loading }" :aria-label="t('Refresh')" @click="refresh" />
       </UTooltip>
       <UTooltip v-if="side" :text="t('Collapse the panel')">
         <UButton icon="i-lucide-panel-right-close" color="neutral" variant="ghost" size="sm" class="icon-btn pp-btn" :aria-label="t('Collapse the panel')" @click="emit('collapse')" />
       </UTooltip>
     </header>
 
-    <div class="pp-scroll">
+    <div v-if="board" class="pp-tabs-wrap" :class="{ 'more-left': more.left, 'more-right': more.right }">
+    <div ref="tabBar" class="pp-tabs" role="tablist" :aria-label="tl('Project sections', 'Sections du projet')" @keydown="onTabKey" @scroll.passive="measureTabs">
+      <button
+        v-for="x in TABS" :id="`pp-tab-${x.key}`" :key="x.key" type="button" role="tab" class="pp-tab" :class="{ on: tab === x.key }"
+        :aria-selected="tab === x.key" :tabindex="tab === x.key ? 0 : -1" @click="pickTab(x.key, $event)"
+      >
+        <span>{{ x.label }}</span><span v-if="tabCount(x.key) !== null" class="pp-tab-n">{{ tabCount(x.key) }}</span>
+      </button>
+    </div>
+    </div>
+
+    <div class="pp-scroll" role="tabpanel" :aria-labelledby="board ? `pp-tab-${tab}` : undefined">
       <p v-if="error && !board" class="pp-notice error" role="alert">{{ error }}</p>
       <p v-if="!board && loading" class="pp-notice"><span class="spinner" /> {{ t('Reading the project…') }}</p>
-      <template v-if="board">
+      <p v-if="board?.threadsError" class="pp-notice error">{{ t('Threads unavailable') }} · <code>{{ board.threadsError }}</code></p>
+      <ProjectThreads v-if="board && tab === 'threads'" :pane-id="paneId" :board="board" @reload="emit('reload')" @report="openReport" @agent="openThread" />
+      <ProjectInbox v-else-if="board && tab === 'inbox'" :pane-id="paneId" :board="board" :tick="refreshTick" @count="inboxCount = $event" @thread="openInboxThread" />
+      <ProjectRoutines v-else-if="board && tab === 'routines'" :pane-id="paneId" :board="board" :tick="refreshTick" />
+      <ProjectSettings v-else-if="board && tab === 'settings'" :pane-id="paneId" :board="board" :tick="refreshTick" />
+      <ProjectMemory v-else-if="board && tab === 'memory'" :pane-id="paneId" :board="board" :tick="refreshTick" />
+      <template v-else-if="board">
         <p v-if="board.tasksMissing" class="pp-notice">{{ t('No TASKS.md in this project yet.') }}</p>
         <p v-if="missing.length && !hintOff" class="pp-hint">
           <span>{{ hintText }} <NuxtLink to="/settings?section=plugins">{{ tl('See the convention', 'Voir la convention') }}</NuxtLink></span>
           <button type="button" class="pp-hint-x" :aria-label="tl('Hide the suggestion', 'Masquer la suggestion')" @click="hideHint"><UIcon name="i-lucide-x" /></button>
         </p>
-        <p v-if="board.threadsError" class="pp-notice error">{{ t('Threads unavailable') }} · <code>{{ board.threadsError }}</code></p>
 
         <section v-for="s in sections" :key="s.key" class="pp-sec" :class="[s.kind, { folded: !isOpen(s) }]">
           <button type="button" class="pp-sec-head" :aria-expanded="isOpen(s)" @click="toggle(s)">

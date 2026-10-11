@@ -5,7 +5,7 @@ import { COORDINATOR_PANE } from './scenario.mjs'
 // the coordinator as "↳ Info for t-NNNN: …", for it to pass on to the thread.
 const thread = (id: string, title: string, percent: number) => ({
   id, title, group: 'Working', token: 'working', rank: 4, resolved: false, updated: '', created: '',
-  agentName: null, machine: '', activity: 'Writing tests', percent, pr: '', report: false,
+  agentName: null, machine: '', profile: 'claude', stateLine: '', activity: 'Writing tests', percent, pr: '', report: false,
 })
 const board = {
   slug: 'acme',

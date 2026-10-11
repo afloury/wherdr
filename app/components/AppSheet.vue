@@ -6,16 +6,17 @@
 // `screen`: full-screen view on the phone instead of a sheet (page color,
 // safe areas included); unchanged on a computer. The `footer` slot stays
 // pinned under the scrolling content (above the home bar or the keyboard).
+// `top`: above the other windows (a confirmation asked from an open sheet).
 import { SHEET_DRAG_SLOP, sheetDragCloses, sheetDragOffset } from '~/utils/sheetDrag'
 
 const open = defineModel<boolean>('open', { default: false })
-const props = defineProps<{ title?: string, tall?: boolean, wide?: boolean, full?: boolean, screen?: boolean }>()
+const props = defineProps<{ title?: string, tall?: boolean, wide?: boolean, full?: boolean, screen?: boolean, top?: boolean }>()
 const emit = defineEmits<{ closed: [] }>()
 const slots = defineSlots<{ default?: () => unknown, footer?: () => unknown }>()
 watch(open, (v, old) => { if (old && !v) emit('closed') })
 const ui = computed(() => ({
-  overlay: `hw-scrim${props.screen ? ' screen' : ''}`,
-  content: `hw-sheet${props.tall ? ' tall' : ''}${props.wide ? ' wide' : ''}${props.full ? ' full' : ''}${props.screen ? ' screen' : ''}`,
+  overlay: `hw-scrim${props.screen ? ' screen' : ''}${props.top ? ' top' : ''}`,
+  content: `hw-sheet${props.tall ? ' tall' : ''}${props.wide ? ' wide' : ''}${props.full ? ' full' : ''}${props.screen ? ' screen' : ''}${props.top ? ' top' : ''}`,
 }))
 
 // Swipe down: the sheet follows the finger, then closes or springs back.

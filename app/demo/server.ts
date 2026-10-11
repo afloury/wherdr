@@ -28,6 +28,10 @@ export class DemoServer {
   private chatListeners = new Set<(pane: string) => void>()
   private viewing: string | null = null
   private turns = new Map<string, number>()
+  // Threads whose report was acknowledged in the Project panel.
+  private acked = new Set<string>()
+  // Inbox items marked as handled in the Project panel.
+  private handled = new Set<string>()
   private sent = 0
   private pending = new Map<string, { token: number, turn: S.ScriptedTurn }>()
   // Messages typed while a question hides the agent's input field: held, like
@@ -386,6 +390,25 @@ export class DemoServer {
           const text = S.REPORTS[String(q.get('id'))]
           return text ? ok({ id: q.get('id'), text, truncated: false }) : fail(404, 'No report yet')
         }
+        case '/api/project/inbox': {
+          if (paneId !== S.COORD) return fail(404, 'project not found')
+          const items = S.inbox(this.clock.now()).filter(x => !this.handled.has(x.id))
+          return ok({ items, total: items.length })
+        }
+        case '/api/project/routines': return paneId === S.COORD ? ok(S.ROUTINES) : fail(404, 'project not found')
+        case '/api/project/settings': return paneId === S.COORD ? ok({ settings: S.SETTINGS }) : fail(404, 'project not found')
+        case '/api/project/memory': {
+          if (paneId !== S.COORD) return fail(404, 'project not found')
+          const name = q.get('name')
+          if (name === null) return ok({ files: S.memoryList() })
+          const text = Object.hasOwn(S.MEMORY, name) ? S.MEMORY[name] : undefined
+          return text === undefined ? fail(404, 'memory file not found') : ok({ name, text, truncated: false })
+        }
+        case '/api/project/thread': {
+          const id = String(q.get('id'))
+          const thread = paneId === S.COORD ? S.threadDetail(this.board(), id, this.acked.has(id)) : null
+          return thread ? ok({ thread }) : fail(404, 'thread not found')
+        }
       }
       return fail(404, DEMO_REFUSAL)
     }
@@ -436,6 +459,21 @@ export class DemoServer {
       }
       case '/api/dismiss': case '/api/push/unsubscribe': case '/api/sessions': return ok()
       case '/api/onboarding': return ok()
+      // Project panel › Threads: acknowledging a report is only a note; the
+      // other actions would stop or remove an agent, which the demo never does.
+      // Project panel › Inbox: an item marked as handled leaves the list.
+      case '/api/project/inbox': {
+        const id = String(body.id || '')
+        if (paneId !== S.COORD || !S.inbox(this.clock.now()).some(x => x.id === id)) return fail(403, DEMO_REFUSAL)
+        this.handled.add(id)
+        return ok()
+      }
+      case '/api/project/thread': {
+        const id = String(body.id || '')
+        if (paneId !== S.COORD || body.action !== 'ack' || !S.threadDetail(this.board(), id, false)) return fail(403, DEMO_REFUSAL)
+        this.acked.add(id)
+        return ok({ output: `${id}: report acknowledged` })
+      }
     }
     return fail(403, DEMO_REFUSAL)
   }
@@ -458,9 +496,13 @@ export class DemoServer {
     return ok({ agent: p.agent, at: this.clock.now(), options: (S.MODEL_OPTIONS[p.agent] || []).map((label, i) => ({ label, hint: null, current: label === current, isDefault: i === 0 })) })
   }
 
+  private board() {
+    return S.board(this.clock.now(), { codex: this.pane(S.CODEX)?.status || 'done', omp: this.pane(S.OMP)?.status || 'done' })
+  }
+
   private project(id: string, since: string | null): DemoReply {
     if (id !== S.COORD) return ok({ available: false })
-    const b = S.board(this.clock.now(), { codex: this.pane(S.CODEX)?.status || 'done', omp: this.pane(S.OMP)?.status || 'done' })
+    const b = this.board()
     return since === b.version ? ok({ same: true, version: b.version }) : ok(b)
   }
 

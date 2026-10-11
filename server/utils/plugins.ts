@@ -80,7 +80,7 @@ async function projectsCommand(m: Machine, args: string[], lang: 'fr' | 'en' = '
 // version, the host would not replace it. We stop it right away: the next
 // `herdr-projects` run on the host (coordinator's `thread start`, Herdr
 // startup) starts one again in the right place.
-async function withoutContainerTicker<T>(m: Machine, run: () => Promise<T>): Promise<T> {
+export async function withoutContainerTicker<T>(m: Machine, run: () => Promise<T>): Promise<T> {
   if (!m.local || !IN_DOCKER) return run()
   const bin = await projectsBin(m)
   const before = await runProjects(m, bin, ['ticker', 'status']).catch(() => null)

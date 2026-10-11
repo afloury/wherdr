@@ -3,6 +3,9 @@
 // English, with no real path, machine, person or conversation.
 import type { ChangesResponse, ChatItem, ModelInfo, OmpToolView, Pane, Quotas, SlashCommand, Tab, Workspace } from '#shared/types'
 import type { ProjectBoard } from '#shared/projectBoard'
+import { type MemoryFile, type ProjectSettings, memoryFiles } from '../../shared/projectDocs'
+import type { InboxItem, RoutineList } from '#shared/projectInbox'
+import type { ThreadDetail } from '#shared/projectThreads'
 
 export const HOME = '/Users/demo'
 export const PROJECT = 'acme-api'
@@ -290,12 +293,66 @@ export function board(now: number, threads: { codex: string, omp: string }): Pro
       ] },
     ],
     open: [
-      { id: 't-0013', title: 'Fix the flaky CSV export test', group: group(threads.omp), token: token(threads.omp), rank: rank(threads.omp), resolved: false, updated: iso(1), created: iso(25), agentName: 'hp-acme-api-t-0013', machine: '', activity: threads.omp === 'blocked' ? 'Waiting for approval' : 'Reporting', percent: threads.omp === 'blocked' ? 70 : 100, pr: '', report: threads.omp !== 'blocked' },
-      { id: 't-0012', title: 'Per-key rate limits on the public API', group: group(threads.codex), token: token(threads.codex), rank: rank(threads.codex), resolved: false, updated: iso(2), created: iso(30), agentName: 'hp-acme-api-t-0012', machine: '', activity: threads.codex === 'working' ? 'Writing tests' : 'Done', percent: threads.codex === 'working' ? 75 : 100, pr: '', report: threads.codex !== 'working' },
+      { id: 't-0013', title: 'Fix the flaky CSV export test', group: group(threads.omp), token: token(threads.omp), rank: rank(threads.omp), resolved: false, updated: iso(1), created: iso(25), agentName: 'hp-acme-api-t-0013', machine: '', profile: 'omp', stateLine: threads.omp === 'blocked' ? 'needs you · ~70%' : 'review · report', activity: threads.omp === 'blocked' ? 'Waiting for approval' : 'Reporting', percent: threads.omp === 'blocked' ? 70 : 100, pr: '', report: threads.omp !== 'blocked' },
+      { id: 't-0012', title: 'Per-key rate limits on the public API', group: group(threads.codex), token: token(threads.codex), rank: rank(threads.codex), resolved: false, updated: iso(2), created: iso(30), agentName: 'hp-acme-api-t-0012', machine: '', profile: 'codex', stateLine: threads.codex === 'working' ? 'working · ~75%' : 'review · report', activity: threads.codex === 'working' ? 'Writing tests' : 'Done', percent: threads.codex === 'working' ? 75 : 100, pr: '', report: threads.codex !== 'working' },
     ],
     resolved: [
-      { id: 't-0010', title: 'Webhook retries with exponential backoff', group: 'Resolved', token: 'resolved', rank: 6, resolved: true, updated: iso(90), created: iso(180), agentName: null, machine: '', activity: '', percent: 100, pr: '', report: true },
+      { id: 't-0010', title: 'Webhook retries with exponential backoff', group: 'Resolved', token: 'resolved', rank: 6, resolved: true, updated: iso(90), created: iso(180), agentName: null, machine: '', profile: 'claude', stateLine: 'review · report', activity: '', percent: 100, pr: '', report: true },
+      { id: 't-0009', title: 'Paginate the invoices endpoint', group: 'Resolved', token: 'resolved', rank: 6, resolved: true, updated: iso(60 * 26), created: iso(60 * 30), agentName: null, machine: '', profile: 'codex', stateLine: 'review · report', activity: '', percent: 100, pr: 'https://github.com/owner/repo/pull/12', report: false },
+      { id: 't-0008', title: 'Dead-letter list in the dashboard', group: 'Resolved', token: 'resolved', rank: 6, resolved: true, updated: iso(60 * 50), created: iso(60 * 54), agentName: null, machine: '', profile: 'omp', stateLine: 'review · report', activity: '', percent: 100, pr: '', report: false },
     ],
+  }
+}
+
+// Project panel › Inbox and Routines.
+export function inbox(now: number): InboxItem[] {
+  const iso = (minutesAgo: number) => new Date(now - minutesAgo * 60_000).toISOString()
+  return [
+    { id: '20260101T090000Z-thread-state-t-0010-41', kind: 'thread-state', subject: 't-0010', event: 'resolved', summary: 't-0010 "Webhook retries with exponential backoff" was resolved: worktree removed and its workspace closed', created: iso(90), body: '' },
+    { id: '20260101T101500Z-routine-nightly-tests-42', kind: 'routine', subject: 'nightly-tests', event: 'due', summary: 'Routine nightly-tests is due', created: iso(35), body: 'Run the full test suite on main and open a thread for every new failure.' },
+    { id: '20260101T104800Z-thread-state-t-0013-43', kind: 'thread-state', subject: 't-0013', event: 'blocked on a prompt', summary: 't-0013 "Fix the flaky CSV export test" is waiting for an approval', created: iso(2), body: '' },
+  ]
+}
+export const ROUTINES: RoutineList = {
+  routines: [
+    { name: 'nightly-tests', schedule: 'daily 02:30', enabled: true, kind: 'prompt only', when: ['last 2026-01-01 02:30', 'next 2026-01-02 02:30'] },
+    { name: 'pr-followup', schedule: 'on pr: checks-failed, review', enabled: true, kind: 'prompt only', when: [] },
+    { name: 'dependency-audit', schedule: 'every 7d', enabled: false, kind: 'command: approved', when: ['last 2025-12-28 09:00', 'next - (disabled)'] },
+  ],
+  broken: [],
+}
+
+// Project panel › Settings and Memory.
+export const SETTINGS: ProjectSettings = {
+  name: 'Acme API', goal: 'Ship the public API v2: rate limits, webhooks and a clean OpenAPI spec.',
+  coordinatorProfile: 'claude', threadProfile: 'codex', maxParallelThreads: 3, autoResolveDays: 7, nudge: true, mute: false,
+  repos: [{ path: `${HOME}/code/acme-api`, machine: '' }],
+  defaults: ['autoResolveDays', 'nudge', 'mute'],
+}
+export const MEMORY: Record<string, string> = {
+  'MEMORY.md': '# Memory\n\nOne line per memory file: `- [title](memory/file.md): what it holds`.\n\n- [Release checklist](memory/release.md): what to check before tagging a version\n- [Rate limit decisions](memory/rate-limits.md): 429 with Retry-After, limits per API key\n',
+  'release.md': '# Release checklist\n\n1. `npm test` green on `main`.\n2. Changelog entry under **Unreleased**.\n3. Tag `vX.Y.Z`, then watch the publish workflow.\n',
+  'rate-limits.md': '# Rate limit decisions\n\n- Limits are **per API key**, not per user.\n- Over the limit: `429` with a `Retry-After` header.\n- Paid plans queue nothing; they get a higher bucket.\n',
+}
+export const memoryList = (): MemoryFile[] => memoryFiles(MEMORY['MEMORY.md']!, Object.keys(MEMORY).filter(n => n !== 'MEMORY.md'))
+
+// One thread's record (Project panel › Threads), as `thread show --json` gives it.
+const NEXT: Record<string, string[]> = {
+  't-0012': ['Merge the branch', 'Add a Redis store before running several instances'],
+  't-0013': ['Merge the branch'],
+}
+export function threadDetail(b: ProjectBoard, id: string, acked: boolean): ThreadDetail | null {
+  const th = [...b.open, ...b.resolved].find(x => x.id === id)
+  if (!th) return null
+  const slug = th.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
+  return {
+    ...th,
+    note: th.resolved ? 'manual' : th.token === 'working' ? 'working' : th.token === 'waiting-on-you' ? 'needs you' : 'done',
+    error: '', kind: 'worktree', agent: th.profile,
+    branch: `hp/${PROJECT}/${th.id}-${slug}`, base: 'origin/main',
+    prState: th.pr ? 'merged' : '', prReview: th.pr ? 'approved' : '',
+    next: th.report && !th.resolved ? NEXT[th.id] || [] : [],
+    acked: th.resolved || acked, hasPane: !th.resolved, keptWorktree: false, resolvedReason: th.resolved ? 'manual' : '',
   }
 }
 

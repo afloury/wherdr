@@ -1032,7 +1032,8 @@ worktree. It is optional; with it installed, wherdr adds:
   grouped by repository (`Repo web-shop · 2 worktrees`), with their thread number and state.
 - **Project panel** next to the coordinator (a side panel on a computer, a tab on a phone). It
   reads the project's `TASKS.md` and shows the lists it has, always in this order, with the open
-  threads live (state, progress, report) and resolved threads under Done:
+  threads live (state, progress, report) and resolved threads under Done (**Tasks** tab; the
+  **Threads**, **Inbox**, **Routines**, **Settings** and **Memory** tabs are described below):
 
   | List | Meaning | Buttons |
   | --- | --- | --- |
@@ -1055,6 +1056,50 @@ worktree. It is optional; with it installed, wherdr adds:
   header shows the thread slots in use (`max_parallel_threads` in `PROJECT.md`) and the next
   task, plus the machine's global limit when one is set
   (`2 of 2 thread slots in use on <machine> (all projects)`).
+- **Threads tab** of the Project panel: every thread of the project, resolved ones included.
+  Open threads are grouped as herdr-projects groups them (Your turn, Ready for review, Working…),
+  each with its machine and agent profile; resolved threads stay in their own folded section,
+  shown by pages of 30. One filter covers both (ID, title, machine, profile). A tap opens the
+  thread's record: state, its **Next** list, branch, dates, and these actions:
+
+  | Action | Command | Asks first |
+  | --- | --- | --- |
+  | **Acknowledge** | `thread ack`: you have seen its report | |
+  | **Restart** | `thread restart`: bring back a thread whose pane is gone or whose start failed | |
+  | **Stop** | `thread stop`: Escape in its agent's pane | Yes |
+  | **Resolve** | `thread resolve`: final copy, then its worktree, merged branch and tab are cleaned up (report and library kept) | Yes |
+
+  Open agent, View report and Pull request are there too when they apply. wherdr only runs
+  these `herdr-projects` commands on the coordinator's machine (and reads `thread show --json`);
+  it writes no thread file itself, and herdr-projects has the last word (it refuses to restart a
+  running thread, for instance): its answer is shown as is. With Docker, **Resolve** runs in
+  the container, where the home folder is read-only: a thread of this machine is resolved and
+  its open workspace removed through Herdr, but its merged branch, or a worktree whose workspace
+  was already closed, may stay. herdr-projects lists what it kept, and
+  `herdr-projects sweep <project>` on the host removes it.
+- **Inbox tab**: the project's unhandled inbox items, what herdr-projects tells the coordinator
+  (a thread's new report, a routine due, a machine out of reach…), oldest first, up to 100. An
+  item about a thread shows the thread's title and opens it. **Done** (✓) marks one item as
+  handled with `herdr-projects inbox done`; a coordinator that has not read it yet will not see
+  it any more. Summaries are shown as plain text.
+- **Routines tab**: each routine's schedule, whether it is enabled, its kind (prompt only, or a
+  command and its approval) and its last and next run. Read-only: wherdr never approves,
+  switches or runs a routine, and does not expose the plugin's safety settings.
+- **Settings tab**, read-only: what the project's `PROJECT.md` sets, the keys
+  `herdr-projects set` changes (name, goal, coordinator and thread profiles,
+  `max_parallel_threads`, `auto_resolve_days`, `nudge`, `mute`, repositories). A key the file
+  leaves out shows the plugin's default, marked as such. Safety settings are not shown.
+- **Memory tab**, read-only: `MEMORY.md` (the index) and the `.md` files of `memory/`, with the
+  title and hook the index gives them; a file the index does not mention is listed by name. A
+  tap opens one, rendered as Markdown. The coordinator writes memory, wherdr never does.
+
+  With six tabs, the bar scrolls sideways on a phone and in a narrow side panel; a fade on its
+  edge says there are more.
+
+  herdr-projects (0.2.34) has no JSON output for the inbox or the routines: wherdr reads the
+  front matter of the project's `inbox/*.md` files, and the tab-separated lines of
+  `herdr-projects routine list`, showing the run texts (`last … · next …`) as printed. No command
+  prints a project's settings or memory either: those two tabs read the files named above.
 - **Max threads per machine**, across all projects: herdr-projects only limits threads per
   project, so three coordinators could still start a dozen threads on one small machine. Set a
   limit per machine in **Settings → Plugins → herdr-projects** (empty `—` = no global limit;

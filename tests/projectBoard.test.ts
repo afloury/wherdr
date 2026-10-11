@@ -521,5 +521,11 @@ describe('In queue and To do lists', () => {
     expect(maxParallelThreads(head('max_parallel_threads = 0'))).toBeNull()
     expect(maxParallelThreads('# No front matter\nmax_parallel_threads = 3')).toBeNull()
     expect(maxParallelThreads('')).toBeNull()
+    // A table's key, or a line of a multi-line goal, is not the project's setting.
+    expect(maxParallelThreads(head('goal = """\n[x] one\nmax_parallel_threads = 9\n"""\nmax_parallel_threads = 3\n\n[[repos]]\nmax_parallel_threads = 7'))).toBe(3)
+    // 16 KB of blank lines are read at once (the old pattern took seconds).
+    const at = performance.now()
+    expect(maxParallelThreads(head(`${'\n'.repeat(16 * 1024)}max_parallel_threads = 5`))).toBe(5)
+    expect(performance.now() - at).toBeLessThan(500)
   })
 })

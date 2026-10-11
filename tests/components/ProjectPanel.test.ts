@@ -32,7 +32,7 @@ describe('ProjectPanel', () => {
   it('offers Add info on working threads only', async () => {
     const thread = (id: string, resolved: boolean) => ({
       id, title: `Thread ${id}`, group: resolved ? 'Resolved' : 'Working', token: resolved ? 'resolved' : 'working', rank: resolved ? 6 : 4, resolved,
-      updated: '', created: '', agentName: null, machine: '', activity: '', percent: null, pr: '', report: false,
+      updated: '', created: '', agentName: null, machine: '', profile: 'claude', stateLine: '', activity: '', percent: null, pr: '', report: false,
     })
     const doing: ProjectBoard = {
       ...board,

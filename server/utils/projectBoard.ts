@@ -70,8 +70,8 @@ async function projectDir(m: Machine, p: Pane): Promise<{ dir: string, slug: str
   return { dir: cwd, slug: path.posix.basename(cwd) }
 }
 
-interface Target { m: Machine, dir: string, slug: string, bin: string }
-async function target(pane: Pane): Promise<Target | null> {
+export interface Target { m: Machine, dir: string, slug: string, bin: string }
+export async function target(pane: Pane): Promise<Target | null> {
   const m = machineFor(pane.machine)
   const bin = await binaryOn(m).catch(() => null)
   if (!bin) return null
@@ -88,27 +88,42 @@ async function version(t: Target): Promise<{ v: string, tasks: { size: number } 
   return { v, tasks: tasks?.isFile ? tasks : null, project: project?.isFile ? project : null }
 }
 
-function threadList(t: Target): Promise<string> {
-  const root = path.posix.dirname(t.dir)
+// A herdr-projects command of the project, on its machine, in its Herdr
+// session: argv only (remote: positional parameters of a fixed script).
+export interface ProjectsRun { code: number, stdout: string, stderr: string }
+const REMOTE_RUN = 'export HERDR_BIN_PATH="$1" HERDR_SESSION="$2"; bin="$3"; shift 3; exec "$bin" "$@"'
+// `maxBytes` bounds the output on both sides: more is a failed command.
+export function runProjectCommand(t: Pick<Target, 'm' | 'bin'>, args: string[], timeoutMs = 15000, maxBytes = 1024 * 1024): Promise<ProjectsRun> {
   const session = t.m.session && t.m.session !== 'default' ? t.m.session : ''
   const remote = t.m.exec
   if (remote) {
     const herdrBin = (t.m as { bin?: string }).bin || 'herdr'
-    return remote('HERDR_BIN_PATH="$1" HERDR_SESSION="$2" exec "$3" --root "$4" thread list "$5" --json', [herdrBin, session, t.bin, root, t.slug], { timeoutMs: 15000 })
-      .then((r) => {
-        if (r.code !== 0) throw new Error(r.stderr.trim().split('\n').pop() || `code ${r.code}`)
-        if (r.stdout.length > THREADS_BYTES) throw new Error('thread list too long')
-        return r.stdout.toString('utf8')
-      })
+    // The SSH runner has no output limit of its own: an output over the limit
+    // is refused here, never decoded, parsed or sent to the app.
+    return remote(REMOTE_RUN, [herdrBin, session, t.bin, ...args], { timeoutMs })
+      .then(r => (r.stdout.length > maxBytes
+        ? { code: 1, stdout: '', stderr: 'output too long' }
+        : { code: r.code ?? 1, stdout: r.stdout.toString('utf8'), stderr: r.stderr }))
   }
   const env: NodeJS.ProcessEnv = { ...HERDR_CHILD_ENV, HERDR_BIN_PATH: HERDR_BIN }
   if (session) env.HERDR_SESSION = session
-  return new Promise((resolve, reject) => {
-    execFile(t.bin, ['--root', root, 'thread', 'list', t.slug, '--json'], { env, timeout: 15000, maxBuffer: THREADS_BYTES }, (err, out, stderr) => {
-      if (err) reject(new Error(String(stderr || err.message).trim().split('\n').pop()))
-      else resolve(String(out))
-    })
+  return new Promise((resolve) => {
+    execFile(t.bin, args, { env, timeout: timeoutMs, maxBuffer: maxBytes }, (err, out, stderr) => resolve({
+      code: err ? (typeof err.code === 'number' ? err.code : 1) : 0,
+      stdout: String(out),
+      stderr: String(stderr || (err ? err.message : '')),
+    }))
   })
+}
+
+// Projects root of a project folder (`--root`): its parent.
+export const projectsRoot = (t: Pick<Target, 'dir'>) => path.posix.dirname(t.dir)
+
+async function threadList(t: Target): Promise<string> {
+  const r = await runProjectCommand(t, ['--root', projectsRoot(t), 'thread', 'list', t.slug, '--json'], 15000, THREADS_BYTES)
+  if (r.code !== 0) throw new Error(r.stderr.trim().split('\n').pop() || `code ${r.code}`)
+  if (r.stdout.length > THREADS_BYTES) throw new Error('thread list too long')
+  return r.stdout
 }
 
 export type BoardReply = ProjectBoard | { same: true, version: string } | { available: false }
