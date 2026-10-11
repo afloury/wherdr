@@ -150,6 +150,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **Back pressed while the app loads**: an address change that arrived during startup (Back
+  right after a reload, a hash set as the page loads) was undone, and the app stayed on the view
+  it started on. The last address asked for now wins.
 - **One diff line per row in Changes**: since inline review, every line of a diff was 44 px high
   (a blank line after each one) with the comment marker under its line number. A row is one line
   of code again, on a computer and on a phone; the marker shows beside the number on hover or
