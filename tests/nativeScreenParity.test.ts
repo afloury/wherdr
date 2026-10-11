@@ -10,10 +10,13 @@ import * as wait from '../server/utils/waitScreen'
 import * as menu from '../shared/menuScreen'
 import * as settings from '../shared/settingsScreen'
 import { classifyScreen } from '../shared/interactiveScreen'
+import { keepReading } from '../server/utils/screenCache'
+import { isPermissionQuestion, mergeDetail } from '../server/utils/promptDetail'
+import { bindFunction } from './stateFunction'
 
 // Actual recognizers from the fetched origin/main, not a second implementation
 // of our new policy. Pin the reviewed base so concurrent fetches cannot move it.
-export const BASELINE = '5bed72b7f1f5d3c3cc7e5a543675a0feda0f7b7e'
+export const BASELINE = 'a430192d380ab1afb2819ad5378c2ce38baeb154'
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'wherdr-native-parity-'))
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 const emitted = new Set<string>()
@@ -34,6 +37,21 @@ function baselineModule(file: string): string {
 const load = async (file: string) => import(/* @vite-ignore */ pathToFileURL(baselineModule(file)).href)
 const before = { choices: await load('server/utils/choices.ts'), wait: await load('server/utils/waitScreen.ts'), menu: await load('shared/menuScreen.ts'), settings: await load('shared/settingsScreen.ts') }
 const after = { choices, wait, menu, settings }
+const beforeSource = execFileSync('git', ['show', `${BASELINE}:server/utils/state.ts`], { encoding: 'utf8' })
+const afterSource = readFileSync(new URL('../server/utils/state.ts', import.meta.url), 'utf8')
+function pipeline(source: string, modules: typeof after, text: string) {
+  return bindFunction(source, 'choicesFor', {
+    ...modules.choices, ...modules.wait, ...modules.menu, ...modules.settings,
+    classifyScreen, keepReading, isPermissionQuestion, mergeDetail,
+    choicesCache: new Map(), screenWatch: new Map(), askChecks: new Map(),
+    modelControlBusy: () => false, noteScreen: () => {},
+    herdr: async () => ({ read: { text } }),
+    readMenu: async () => modules.menu.parseMenu(text),
+    withOmpTab: async (_id: string, c: unknown) => c,
+    transcripts: { pendingAsk: async () => [], pendingClaudeQuestions: async () => [], pendingTool: async () => null },
+  })
+}
+
 
 // The recognizer sequence in origin/main's choicesFor, with the same screen
 // used for its ANSI read. Transcript completion is unchanged and covered by
@@ -48,19 +66,54 @@ function recognize(modules: typeof after, text: string, agent: string, strict: b
   return { choices: prompt, menu: panel, screen, settings: tabs }
 }
 const fixtures = readdirSync(new URL('./fixtures/', import.meta.url)).sort()
+const results: { file: string, agent: string, strict: boolean, nativeBefore: boolean, nativeAfter: boolean, exception: boolean }[] = []
+afterAll(() => {
+  if (process.env.NATIVE_PARITY_REPORT) writeFileSync(process.env.NATIVE_PARITY_REPORT, JSON.stringify({ baseline: BASELINE, fixtures: fixtures.length, comparisons: results.length, results }, null, 2) + '\n')
+})
 const exceptions = new Set(['codex-usage-menu.txt', 'codex-command-center.txt'])
 
 describe('all fixtures retain origin/main native recognition', () => {
   for (const file of fixtures) for (const agent of ['claude', 'codex', 'omp']) for (const strict of [false, true]) {
-    it(`${file} / ${agent} / ${strict ? 'idle' : 'blocked'}`, () => {
+    it(`${file} / ${agent} / ${strict ? 'idle' : 'blocked'}`, async () => {
       const text = readFileSync(new URL(`./fixtures/${file}`, import.meta.url), 'utf8')
       const original = recognize(before, text, agent, strict)
       const current = recognize(after, text, agent, strict)
       expect(current).toEqual(original)
+      const pane = { id: 'neutral', agent, status: strict ? 'idle' : 'blocked' }
+      const oldOutput = await pipeline(beforeSource, before, text)(pane, 1, strict)
+      const { interaction: serverInteraction, ...newOutput } = await pipeline(afterSource, after, text)(pane, 1, strict)
+      if (exceptions.has(file)) expect(newOutput).toEqual({ choices: null, menu: null, screen: null })
+      else expect(newOutput).toEqual(oldOutput)
       const nativeBefore = Boolean(original.choices || original.menu || original.screen || original.settings)
       const interaction = classifyScreen({ text, agent, ...current })
+      expect(serverInteraction).toBe(interaction)
+      results.push({ file, agent, strict, nativeBefore, nativeAfter: interaction === 'native', exception: exceptions.has(file) })
       if (exceptions.has(file)) expect(interaction).toBe('terminal')
       else expect(interaction === 'native').toBe(nativeBefore)
     })
   }
+})
+
+// A push must contain the original question/options, not a fallback label.
+// Execute the unchanged notification function with both production pipelines.
+describe('question push parity', () => {
+  for (const agent of ['claude', 'omp']) it(`${agent} retains the exact notification body`, async () => {
+    const text = readFileSync(new URL(`./fixtures/${agent === 'claude' ? 'claude-ask-long' : 'omp-ask-single'}.txt`, import.meta.url), 'utf8')
+    const sent: unknown[] = []
+    for (const [source, modules] of [[beforeSource, before], [afterSource, after]] as const) {
+      const pane = { id: 'neutral', agent, status: 'blocked', workspace: 'neutral-workspace', title: 'Neutral' }
+      const output = await pipeline(source, modules, text)(pane, 1, false)
+      expect(output.choices?.question).toBeTruthy()
+      const notify = bindFunction(source, 'notifyPane', {
+        isViewed: () => false, state: { workspaces: [], panes: [pane] },
+        isProjectThread: () => false, notificationTitle: (t: string) => t,
+        multiMachine: () => false, machineOfPane: () => null, getMachine: () => null,
+        agentLabel: (a: string) => a, agentNotificationTitle: () => ({ title: 'Question', titleFr: 'Question' }),
+        pushSend: async (payload: unknown) => { sent.push(payload); return 1 }, log: () => {},
+      })
+      await notify({ ...pane, prompt: output.choices })
+    }
+    expect(sent[1]).toEqual(sent[0])
+    expect((sent[1] as { body: string }).body).toContain('\n')
+  })
 })
