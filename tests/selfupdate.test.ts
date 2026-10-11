@@ -92,6 +92,19 @@ describe('one-tap update: commands of each installation', () => {
     ])
   })
 
+  for (const kind of ['plugin', 'npm-global', 'brew'] as const) {
+    it(`${kind}: refreshes the installed skill without making update success depend on it`, async () => {
+      const plan = plans[kind]
+      const root = kind === 'brew' ? '/opt/homebrew/Cellar/wherdr/1.3.1/libexec/lib/node_modules/wherdr' : plan.root
+      const helper = `${root}/bin/lib/install-skill.sh`
+      for (const fail of [undefined, /install-skill/]) {
+        const io = fakeIo({ answers: ['1.3.1'], files: [helper], fail })
+        expect(await runUpdate(plan, io)).toBe('done')
+        expect(io.calls).toContain(`sh ${helper} install ${root}`)
+      }
+    })
+  }
+
   it('Homebrew: a formula that does not offer the version yet changes nothing', async () => {
     const io = fakeIo({ opt: '/opt/homebrew/Cellar/wherdr/1.3.0' })
     expect(await runUpdate(plans.brew, io)).toBe('failed')

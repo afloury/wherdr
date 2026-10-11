@@ -1098,14 +1098,38 @@ mean what, the badges, `(agent → t-NNNN)`, and what to do with each message th
 (`✓ Tested: …`, `✗ Problem: … — …`, `↳ Queue: …`…). They are written once, as an agent skill:
 [`skills/wherdr/SKILL.md`](skills/wherdr/SKILL.md).
 
-- **Herdr plugin**: the install links the skill for every coordinator, whatever its agent:
-  `~/.claude/skills/wherdr` (Claude Code, or `$CLAUDE_CONFIG_DIR/skills`) and
-  `~/.agents/skills/wherdr` (Codex, omp), each only when that agent is installed. Both point to a
-  copy in `~/wherdr/skills/wherdr`, refreshed on each update. An existing `wherdr` skill that is
-  not this link is left alone. Remove the links with `sh scripts/herdr-plugin.sh skill uninstall`
-  in the plugin folder.
-- **Other installs**: link or copy `skills/wherdr` into your agent's skills folder yourself, or
-  paste **Settings → Plugins → herdr-projects → Copy rules for the coordinator** to it.
+The npm package (also used by Homebrew) and Docker image include the skill from that
+release. Installation is best effort: a missing agent or an unwritable home never blocks
+wherdr. It links `~/.claude/skills/wherdr` (or `$CLAUDE_CONFIG_DIR/skills/wherdr`) only
+when the Claude configuration folder exists, and `~/.agents/skills/wherdr` only when
+`.agents`, `.codex` or `.omp` exists. Links point to a stable copy in
+`${WHERDR_DIR:-$HOME/wherdr}/skills/wherdr`. Existing skills from elsewhere are left alone.
+
+| Install mode | Skill installation and refresh |
+| --- | --- |
+| npm / npx / Bun / pnpm | On `wherdr`, `wherdr run`, `wherdr start` or `wherdr service install`; after updating the package, the next start refreshes it. |
+| Homebrew | On `wherdr` startup, including the Homebrew service; restart the service after `brew upgrade`. |
+| One-tap update (npm, Homebrew, native plugin) | Restarting wherdr refreshes the skill from the newly installed package; a rollback restores the previous release's skill. |
+| Herdr plugin, Node.js | On plugin installation / reinstallation, and on startup from its installed package. |
+| Herdr plugin, Docker (including the one-command installer) | On plugin installation and Update, extracted from the pulled image on the host. |
+| Docker by hand | Run the host-side command below after the initial pull and after each image update. |
+| From source | Use `node bin/wherdr.mjs` after building, or run `sh bin/lib/install-skill.sh` yourself after updating; `npm start` alone does not install the skill. |
+
+Docker cannot write the host's agent folders through its read-only home mount. From the
+repository checkout on the **host**, after pulling your image, run:
+
+```sh
+sh bin/install-docker-skill.sh ghcr.io/afloury/wherdr:latest
+```
+
+Pass your image tag if different. The helper creates a stopped temporary container, copies
+only the bundled skill and installer out of it, then removes the container. No host home is
+mounted into it. Repeat this command after each manual Docker update; Docker has no one-tap
+update in the app. Older images without the bundled skill are silently skipped.
+
+Remove managed links with `sh bin/lib/install-skill.sh uninstall` (or
+`sh scripts/herdr-plugin.sh skill uninstall` in the plugin folder). You can also paste
+**Settings → Plugins → herdr-projects → Copy rules for the coordinator** to your agent.
 
 ## Herdr plugins
 

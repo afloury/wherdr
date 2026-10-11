@@ -11,6 +11,7 @@ import { BIN, CliError, SERVER, VERSION, bad, c, homebrewInstall, localUrl, ok, 
 import { RUNTIME_HELP, findRuntime, isBun, runtimeOk, runtimeVersion, temporaryInstall } from './runtime.mjs'
 import { brewDoctor, brewRedirect, brewService, brewStatusRows } from './brew.mjs'
 import { controlService, installService, serviceFile, servicePlatform, serviceState, uninstallService } from './service.mjs'
+import { refreshSkill } from './skill.mjs'
 import { LINKS, inspect, publishCommand, reachable } from './tailnet.mjs'
 
 export const HELP = `${'wherdr'}: your Herdr agents from your phone and browser.
@@ -115,6 +116,7 @@ function needServer() {
 
 // ------------------------------------------------------------------- run
 export async function run(opts) {
+  refreshSkill(context(opts).env)
   needServer()
   const ctx = context(opts)
   if (!process.versions.bun && Number(process.versions.node.split('.')[0]) < 22) throw new CliError(`Node.js 22 or newer is required (found ${process.version}).`)
@@ -138,6 +140,7 @@ export async function run(opts) {
 
 // ----------------------------------------------------------------- start
 export async function start(opts) {
+  refreshSkill(context(opts).env)
   needServer()
   const ctx = context(opts)
   const brew = brewService()
@@ -375,6 +378,7 @@ export async function phone(opts) {
 
 // --------------------------------------------------------------- service
 export async function service(opts) {
+  if (opts.sub === 'install') refreshSkill(context(opts).env)
   const ctx = context(opts)
   if (opts.sub === 'uninstall') {
     const file = uninstallService()

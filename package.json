@@ -25,7 +25,8 @@
   "files": [
     ".output",
     "!.output/**/*.map",
-    "bin"
+    "bin",
+    "skills/wherdr"
   ],
   "engines": {
     "node": ">=22"

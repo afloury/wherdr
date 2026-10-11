@@ -44,6 +44,7 @@ describe.skipIf(process.platform === 'win32' || !which('curl'))('herdr plugin, n
     cpSync(path.join(REPO, 'herdr-plugin.toml'), path.join(root, 'herdr-plugin.toml'))
     cpSync(path.join(REPO, 'package.json'), path.join(root, 'package.json'))
     cpSync(path.join(REPO, 'bin'), path.join(root, 'bin'), { recursive: true })
+    cpSync(path.join(REPO, 'skills'), path.join(root, 'skills'), { recursive: true })
     // Stand-in server: answers on $PORT like wherdr (its manifest names it).
     writeFileSync(path.join(root, '.output', 'server', 'index.mjs'),
       `import http from 'node:http'\nhttp.createServer((q, s) => s.end('{"name":"wherdr"}')).listen(Number(process.env.PORT), process.env.HOST)\n`)

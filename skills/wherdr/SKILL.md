@@ -110,6 +110,10 @@ unless the user prefers otherwise:
 - `[b:red(bug)]`: a fix. `[b:blue(iPhone)]`: to test on the phone.
 - A PR: `[b:violet(PR #12)](https://github.com/<owner>/<repo>/pull/12)`.
 
+A bare `http://` or `https://` URL in the task text also becomes a plain clickable
+link (for example `Review https://github.com/example/project/pull/12`). Use this
+when the URL should remain visible; use a linked badge for a compact label.
+
 ## Messages from the panel
 
 `<task>` is the task text as the panel shows it: the line without its checkbox, badges and

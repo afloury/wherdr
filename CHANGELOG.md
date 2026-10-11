@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Bundle the wherdr agent skill in npm / Homebrew packages and Docker images. Native
+  starts and one-tap updates refresh the shared host copy; the Herdr Docker plugin
+  extracts it after pulling the image. Manual Docker installs have a host-side helper.
+  Existing unrelated skills are preserved, and missing agents or write failures do not
+  prevent startup. Document plain task URL links in the skill.
+
 - **Inline diff review**: comment on lines in Changes, edit or delete remarks, and keep a
   device-local draft per agent. Missing lines are flagged after refresh. Send review appends
   grouped file/line remarks to the message draft without sending it or replacing existing text.
@@ -82,6 +88,9 @@ All notable changes to this project are documented here. The format follows
   looping, and has a **Replay** button like the typewriter preview.
 
 ### Fixed
+
+- The manual Homebrew formula update uses the authenticated GitHub user's noreply
+  identity in its temporary clone, including on machines without a Git email configured.
 
 - **One diff line per row in Changes**: since inline review, every line of a diff was 44 px high
   (a blank line after each one) with the comment marker under its line number. A row is one line

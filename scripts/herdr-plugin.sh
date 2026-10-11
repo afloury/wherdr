@@ -216,42 +216,19 @@ cmd_build() {
 }
 
 # ------------------------------------------------------------------ skill
-# The "wherdr" agent skill (skills/wherdr/SKILL.md): the conventions of the
-# Project panel for herdr-projects coordinators. Copied to $DIR/skills/wherdr
-# (the checkout is built in a temporary folder, then moved), then linked into
-# the user skill folders: Claude Code's ${CLAUDE_CONFIG_DIR:-~/.claude}/skills,
-# and ~/.agents/skills, read by Codex and omp. Only links to that copy are
-# ever created or removed: a "wherdr" skill of someone else is left alone.
-SKILL_COPY="$DIR/skills/wherdr"
-
-skill_dirs() {
-  claude="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-  [ -d "$claude" ] && echo "$claude/skills"
-  if [ -d "$HOME/.agents" ] || [ -d "$HOME/.codex" ] || [ -d "$HOME/.omp" ]; then echo "$HOME/.agents/skills"; fi
-  return 0
-}
-
+# Installation is shared with npm / Homebrew; Docker reads the pulled image.
 cmd_skill() {
   case "${1:-}" in
     install)
-      mkdir -p "$SKILL_COPY"
-      cp "$ROOT/skills/wherdr/SKILL.md" "$SKILL_COPY/SKILL.md"
-      skill_dirs | while IFS= read -r d; do
-        link="$d/wherdr"
-        if [ -L "$link" ] && [ "$(readlink "$link")" = "$SKILL_COPY" ]; then ok "skill already linked: $link"
-        elif [ -e "$link" ] || [ -L "$link" ]; then warn "skill not linked: $link already exists (left alone)"
-        else mkdir -p "$d" && ln -s "$SKILL_COPY" "$link" && ok "skill linked: $link"
-        fi
-      done
+      if [ "$MODE" = docker ]; then
+        ( image="$(compose config --images herdr-web | head -n 1)"
+          WHERDR_DIR="$DIR" sh "$ROOT/bin/install-docker-skill.sh" "$image"
+        ) >/dev/null 2>&1 || true
+      else
+        WHERDR_DIR="$DIR" sh "$ROOT/bin/lib/install-skill.sh" install "$ROOT"
+      fi
       ;;
-    uninstall)
-      skill_dirs | while IFS= read -r d; do
-        link="$d/wherdr"
-        if [ -L "$link" ] && [ "$(readlink "$link")" = "$SKILL_COPY" ]; then rm "$link" && ok "skill unlinked: $link"; fi
-      done
-      rm -rf "$SKILL_COPY"
-      rmdir "$DIR/skills" 2>/dev/null || true
-      ;;
+    uninstall) WHERDR_DIR="$DIR" sh "$ROOT/bin/lib/install-skill.sh" uninstall "$ROOT" ;;
     *) die "usage: $0 skill install|uninstall" ;;
   esac
 }
@@ -377,7 +354,7 @@ install_app() {
   new="$APP.new"
   rm -rf "$new"
   mkdir -p "$new"
-  cp -R "$ROOT/bin" "$ROOT/.output" "$ROOT/package.json" "$new/"
+  cp -R "$ROOT/bin" "$ROOT/skills" "$ROOT/.output" "$ROOT/package.json" "$new/"
   if [ -d "$ROOT/node_modules/qrcode-terminal" ]; then
     mkdir -p "$new/node_modules"
     cp -R "$ROOT/node_modules/qrcode-terminal" "$new/node_modules/"
@@ -642,6 +619,7 @@ cmd_update() {
     docker)
       container_ours || die "The \"$CONTAINER\" container belongs to $(container_dir): update it from there."
       compose pull --quiet
+      cmd_skill install
       if [ "$(docker inspect "$CONTAINER" --format '{{.State.Running}}' 2>/dev/null)" = "true" ]; then
         compose up -d --remove-orphans
         say "wherdr updated and restarted."

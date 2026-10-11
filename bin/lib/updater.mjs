@@ -107,12 +107,24 @@ function brewDriver(plan, io) {
       if (failed !== keg && path.dirname(failed) === path.dirname(keg)) io.rm(failed)
       await io.run(brew, ['link', '--overwrite', 'wherdr'], env)
     },
-    start: () => io.run(brew, ['services', 'restart', 'wherdr'], env),
+    async start() {
+      // Resolve the current opt link: plan.root still names the previous keg.
+      await refreshInstalledSkill(plan, io, path.join(io.realpath(opt), 'libexec/lib/node_modules/wherdr'))
+      return io.run(brew, ['services', 'restart', 'wherdr'], env)
+    },
   }
 }
 
 // `wherdr start` of the package now in place: the pid file, or the login service.
-function cliStart(plan, io) {
+export async function refreshInstalledSkill(plan, io, root = plan.root) {
+  try {
+    const helper = path.join(root, 'bin', 'lib', 'install-skill.sh')
+    if (io.exists(helper)) await io.run('sh', [helper, 'install', root], { WHERDR_DIR: plan.dir })
+  } catch {} // A skill refresh never prevents an update or rollback.
+}
+
+async function cliStart(plan, io) {
+  await refreshInstalledSkill(plan, io)
   return io.run(plan.runtime, [path.join(plan.root, 'bin', 'wherdr.mjs'), 'start'])
 }
 
