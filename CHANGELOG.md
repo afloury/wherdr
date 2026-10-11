@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- A pane whose agent changed while its session stayed the same could show an empty
+  conversation ("No messages yet.") until a new message arrived: its transcript was read as the
+  other agent's. A transcript is now always read as the kind its file says.
 - Preserve unchanged skill files and repair only recorded managed broken links. Respect
   `WHERDR_SKILL=off` and persistent uninstall across starts and updates. Docker extracts
   only skill data with the local helper and the one-command installer refreshes it too.

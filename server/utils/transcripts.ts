@@ -990,9 +990,9 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
 
   // Bottom of the conversation: from `from` (already shown on the phone) or,
   // on first load, the last PAGE_ITEMS messages. Cached by
-  // (file, size, from).
+  // (file, kind, size, from).
   async function tail(file: string, kind: string | null, size: number, from: number | null): Promise<TailResult> {
-    const key = `${file}|${from}`
+    const key = `${file}|${kind}|${from}`
     const c = parseCache.get(key)
     if (c && c.size === size) return c.r
     let r: TailResult
@@ -1037,15 +1037,18 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     }
     const fileId = path.basename(loc.file)
     const base = { available: true, file: fileId, session: loc.session, guessed: Boolean(loc.guessed) }
-    if (pane.agent === 'omp') await refreshOmpTemplates()
+    // The transcript path tells the real kind: a pane whose agent changed while
+    // its session stayed must not read the file as another agent's (no message).
+    const kind = transcriptKind(loc.file) || pane.agent
+    if (kind === 'omp') await refreshOmpTemplates()
     if (opts.before !== null && opts.before !== undefined) {
-      const r = await readBackwards(loc.file, Math.min(opts.before, st.size), pane.agent)
+      const r = await readBackwards(loc.file, Math.min(opts.before, st.size), kind)
       return { ...base, older: true, items: r.items, start: r.start }
     }
     const from = opts.from === undefined ? null : opts.from
     const token = `${fileId}:${st.size}:${from}`
     if (opts.since && opts.since === token) return { ...base, unchanged: true, token }
-    const r = await tail(loc.file, pane.agent, st.size, from)
+    const r = await tail(loc.file, kind, st.size, from)
     return { ...base, token, items: r.items, start: r.start, queue: r.queue || [] }
   }
 

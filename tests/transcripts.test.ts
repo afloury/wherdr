@@ -294,6 +294,24 @@ describe('omp', () => {
     const t2 = createTranscripts({ home, herdr: async () => { throw new Error('pas de Herdr') } })
     expect((await t2.chat({ ...omp, id: 'wO:p5', agentSession: withCmd }, {})).items!.map(i => i.text)).toEqual(['/aside quelle heure ?'])
   })
+
+  it('keeps reading an omp session as omp while the pane reports another agent', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-omp-kind-'))
+    const dir = path.join(home, '.omp/agent/sessions/-x')
+    mkdirSync(dir, { recursive: true })
+    const file = path.join(dir, '2026-01-01T00-00-00-000Z_s1.jsonl')
+    const say = (text: string) => msg({ role: 'user', content: [{ type: 'text', text }], attribution: 'user' }, '2026-01-01T00:00:00Z') + '\n'
+    writeFileSync(file, say('first'))
+    const t = createTranscripts({ home, herdr: async () => { throw new Error('pas de Herdr') } })
+    const omp = { id: 'wK:p1', agent: 'omp', cwd: '/x', agentSession: file }
+    expect((await t.chat(omp, {})).items!.map(i => i.text)).toEqual(['first'])
+    // The file grows, then the pane is first read while it reports Codex with the same session.
+    writeFileSync(file, say('first') + say('second'))
+    expect((await t.chat({ ...omp, agent: 'codex' }, {})).items!.map(i => i.text)).toEqual(['first', 'second'])
+    expect((await t.chat({ ...omp, agent: 'codex' }, { from: 0 })).items!.map(i => i.text)).toEqual(['first', 'second'])
+    expect((await t.chat(omp, {})).items!.map(i => i.text)).toEqual(['first', 'second'])
+    expect((await t.chat(omp, { from: 0 })).items!.map(i => i.text)).toEqual(['first', 'second'])
+  })
 })
 
 describe('Codex with a shared daemon (session hook reported to the wrong pane)', () => {
