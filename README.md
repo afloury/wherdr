@@ -227,7 +227,8 @@ Details in [Features](#features) and [Security](#security).
 - **Keyboard shortcuts** (`Mod` is ⌘ on macOS, Ctrl elsewhere; `Mod+/` or `?` lists them all,
   also in Settings › Computer):
   - `Ctrl/⌘+K` global search across agents and conversations, `Alt+↑/↓` previous / next agent
-    in the list, `Mod+,` settings.
+    in the list, `Mod+,` settings, `H` the [Board](#works-great-with-herdr-projects) (outside a
+    text field and the terminal).
   - `Mod+Alt+N` new agent in a new space, `Mod+Alt+T` new tab in the current space,
     `Mod+Alt+W` close the current pane (after confirmation). They work from the terminal too.
   - With [herdr-projects](#works-great-with-herdr-projects) on the agent's machine: `Mod+Alt+P`
@@ -244,6 +245,9 @@ Details in [Features](#features) and [Security](#security).
   under their project, and a side panel with the project's task lists (to test, to decide,
   to review, in progress, in queue, blocked, to do, backlog — each optional) and one-click
   replies to the coordinator.
+- **Board**: every agent, and with herdr-projects every project, thread and task, in four columns
+  (Blocked, Todo, Ongoing, Finished). Drag a task card to another column, or use its **Move
+  to…** menu, to ask the coordinator to move it.
 - **Settings** in a sidebar, with desktop-only options such as the content width.
 
 ### On a phone
@@ -1041,6 +1045,27 @@ worktree. It is optional; with it installed, wherdr adds:
   header shows the thread slots in use (`max_parallel_threads` in `PROJECT.md`) and the next
   task, plus the machine's global limit when one is set
   (`2 of 2 thread slots in use on <machine> (all projects)`).
+- **Board** (`H`, or the board button above the agent list): every project, thread, task and
+  agent at a glance, in four columns. Agents outside projects show too. Each card opens what it
+  stands for: a project or task opens its Project panel, a thread opens its agent (or its report
+  once closed), an agent opens its conversation. A project card takes the most urgent column of
+  its cards and counts them; Finished shows the 5 most recent threads and done tasks of each
+  project, **Show all** the rest.
+
+  | Card | Blocked | Todo | Ongoing | Finished |
+  | --- | --- | --- | --- | --- |
+  | **Task** (its `TASKS.md` list) | Blocked | To test, To decide, To review, In queue, To do, Backlog, other lists | In progress without an open thread | Done, or a checked line |
+  | **Thread** | Its agent is your turn, or *waiting on you* | *Ready for review* | Working, landing, idle | Resolved |
+  | **Agent** | Your turn | | Working, starting, restarting | Done, ready |
+
+  Moving a **task** card (drag and drop on a computer, **Move to…** everywhere) sends the
+  coordinator the Project panel's message when one says it (**Launch now** from To do or In
+  queue, **Launch** from Backlog, **Unblock** from Blocked, **Tested** from To test, **Reviewed**
+  from To review), otherwise `↳ Mark blocked: …`, `↳ Move to To do: …` or `↳ Mark done: …`. The
+  card shows *Sent* until the coordinator has moved the line; only the allowed columns are
+  offered, and To decide tasks wait for your answer. Thread, agent and project cards follow
+  what they do and do not move. The server reads every project at once
+  (`GET /api/board`); a project on an offline machine keeps its last read, marked as such.
 - **Max threads per machine**, across all projects: herdr-projects only limits threads per
   project, so three coordinators could still start a dozen threads on one small machine. Set a
   limit per machine in **Settings → Plugins → herdr-projects** (empty `—` = no global limit;

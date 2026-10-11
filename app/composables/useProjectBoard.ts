@@ -6,11 +6,11 @@
 // Nothing shows without herdr-projects on the machine (`available: false`).
 import type { Pane } from '#shared/types'
 import type { ProjectBoard } from '#shared/projectBoard'
-import { isCoordinator, projectOf } from '#shared/projects'
+import { isCoordinator, pickCoordinator, projectOf } from '#shared/projects'
 
 type Reply = ProjectBoard | { same: true, version: string } | { available: false }
 
-const POLL_MS = 15000
+export const POLL_MS = 15000
 // Last known state per pane: no flicker of the tab when reopening the view.
 const known = new Map<string, ProjectBoard | false>()
 
@@ -33,10 +33,8 @@ export function setProjectSideOpen(v: boolean) {
 // machine coordinated from elsewhere). null: not in a project, or no coordinator.
 export function projectCoordinatorOf(p: Pane): Pane | null {
   if (isCoordinator(p)) return p
-  const slug = projectOf(p)?.toLowerCase()
-  if (!slug) return null
-  const all = herdrState.value.panes.filter(x => isCoordinator(x) && projectOf(x)?.toLowerCase() === slug)
-  return all.find(x => (x.machine || '') === (p.machine || '')) || all[0] || null
+  const slug = projectOf(p)
+  return slug ? pickCoordinator(herdrState.value.panes, slug, p.machine || '') : null
 }
 
 // The Project panel of a pane's project: its coordinator, panel shown (right-hand

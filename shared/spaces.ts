@@ -63,12 +63,12 @@ export function spaceRows(s: State, machine?: string): Row[] {
 // first list.
 export type RowGroup = 'blocked' | 'working' | 'ready'
 export const isShellRow = (r: Row) => !r.lead.agent
-export function rowGroup(r: Row): RowGroup {
-  const p = r.lead
+export function paneGroup(p: Pick<Pane, 'agent' | 'status'>): RowGroup {
   if (p.agent && p.status === 'blocked') return 'blocked'
   if (p.agent && p.status === 'working') return 'working'
   return 'ready'
 }
+export const rowGroup = (r: Row): RowGroup => paneGroup(r.lead)
 
 // ------------------------------------------------------------ root terminal
 // herdr-projects opens a "root" workspace on a repository's main checkout,

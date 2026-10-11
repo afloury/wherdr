@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Board**: one view of everything, in four columns (Blocked, Todo, Ongoing, Finished): every
+  agent pane, also outside projects, and with herdr-projects every project, thread and
+  `TASKS.md` task, read for all projects at once (`GET /api/board`). Opened with `H` or the
+  board button above the agent list; each card opens its Project panel, thread, report or
+  agent. Moving a task card (drag and drop on a computer, **Move to…** everywhere) sends the
+  coordinator the Project panel's message, or the new `↳ Mark blocked`, `↳ Move to To do` and
+  `↳ Mark done` (coordinator rules and `skills/wherdr/SKILL.md` updated). Thread and agent cards
+  follow their state. English and French, phone and computer, demo included.
 - **Inline diff review**: comment on lines in Changes, edit or delete remarks, and keep a
   device-local draft per agent. Missing lines are flagged after refresh. Send review appends
   grouped file/line remarks to the message draft without sending it or replacing existing text.
@@ -83,6 +91,17 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **Project panel messages never answer the coordinator's screen**: a button pressed while a
+  Claude or Codex coordinator waited on a question or a permission dialog typed its message there
+  and pressed Enter, which could answer it. Panel and Board messages now always go through the
+  message queue, held until the coordinator's input field is back, and are refused when the pane
+  no longer runs an agent. One task message is sent at a time, app-wide.
+- **TASKS.md lines are cleaned before use**: control characters, terminal escape sequences and
+  invisible direction marks in a task line are removed, so a button never types them into the
+  coordinator's terminal. Very long lines (over 2,000 characters) are ignored, and headings are
+  read without a regular expression that could stall the server on long runs of spaces.
+- **Tab threads open from the Project panel**: a thread opened as a tab of its coordinator has no
+  pane name; it is now found by its herdr-projects token.
 - **One diff line per row in Changes**: since inline review, every line of a diff was 44 px high
   (a blank line after each one) with the comment marker under its line number. A row is one line
   of code again, on a computer and on a phone; the marker shows beside the number on hover or
