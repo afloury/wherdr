@@ -224,8 +224,21 @@ export function decisionRows(header: string[], rows: string[][]): DecisionRow[] 
   return body.map(r => ({ n: label(r[num]!), text: r[question]! }))
 }
 
+// Row numbers as a reference names them: the numbers that are there, a run
+// of consecutive ones as a range ("1-4", "1-2,4", "Q1,Q3").
+export function rowNumbers(labels: string[]): string {
+  const runs: string[][] = []
+  for (const label of labels) {
+    const run = runs.at(-1)
+    const prev = run ? /^(\D*)(\d+)$/.exec(run.at(-1)!) : null
+    const cur = /^(\D*)(\d+)$/.exec(label)
+    if (run && prev && cur && prev[1] === cur[1] && Number(cur[2]) === Number(prev[2]) + 1) run.push(label)
+    else runs.push([label])
+  }
+  return runs.map(r => (r.length > 1 ? `${r[0]}-${r.at(-1)}` : r[0]!)).join(',')
+}
 // The whole table as "OK to all" refers to it: its row numbers and questions.
-export const tableOf = (rows: DecisionRow[]) => ({ n: `${rows[0]!.n}-${rows.at(-1)!.n}`, text: rows.map(r => r.text).join(' · ') })
+export const tableOf = (rows: DecisionRow[]) => ({ n: rowNumbers(rows.map(r => r.n)), text: rows.map(r => r.text).join(' · ') })
 export const rowRef = (row: DecisionRow, time: string | null) => decisionRef(row.n, row.text, time)
 export const tableRef = (all: { n: string, text: string }, time: string | null) => decisionRef(all.n, all.text, time, true)
 // "OK to all" / "OK tout": what a tap writes under the reference to the table.

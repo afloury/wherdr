@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { addAnswer, addQuote, answerOf, decisionRows, isClosedQuestion, isOpenQuestion, rowRef, rowSettled, tableOf, tableRef, toggleOkAll, unansweredCount, isQuoted, questionsIn, quotesIn, removeQuote, tappedAnswer } from '../app/utils/questionReply'
-import { messageRef, pointRef, refLine } from '../shared/reference'
+import { addAnswer, addQuote, answerOf, decisionRows, isClosedQuestion, isOpenQuestion, rowNumbers, rowRef, rowSettled, tableOf, tableRef, toggleOkAll, unansweredCount, isQuoted, questionsIn, quotesIn, removeQuote, tappedAnswer } from '../app/utils/questionReply'
+import { messageRef, parseRef, pointRef, refLine } from '../shared/reference'
 
 // A question or a point of the message of 11:37, as its button refers to it.
 const T = '11:37'
@@ -374,5 +374,26 @@ describe('unansweredCount', () => {
     expect(unansweredCount(table, ok, T)).toBe(1)
     expect(unansweredCount(table, addAnswer(ok, pt('Shall I start the next thread?'), 'Yes')!, T)).toBe(0)
     expect(unansweredCount({ questions: [], rows: [] }, '', T)).toBe(0)
+  })
+})
+
+describe('row numbers of a whole table', () => {
+  it('names only the rows actually present', () => {
+    const rows = decisionRows(['#', 'Question'], [['1', 'Keep staging?'], ['4', 'Delete production?']])!
+    expect(rows).toHaveLength(2)
+    expect(refLine(tableRef(tableOf(rows), '11:37'))).toBe('↳ Quote decisions 11:37 #1,4 : Keep staging? · Delete production? —')
+  })
+  it('writes a run of consecutive numbers as a range', () => {
+    expect(rowNumbers(['1', '2', '3', '4'])).toBe('1-4')
+    expect(rowNumbers(['1', '2'])).toBe('1-2')
+    expect(rowNumbers(['1', '2', '4'])).toBe('1-2,4')
+    expect(rowNumbers(['2', '4', '5', '6', '9'])).toBe('2,4-6,9')
+    expect(rowNumbers(['Q1', 'Q2', 'Q3'])).toBe('Q1-Q3')
+    expect(rowNumbers(['Q1', 'D2'])).toBe('Q1,D2')
+    expect(rowNumbers(['3', '2', '1'])).toBe('3,2,1')
+    expect(rowNumbers(['7'])).toBe('7')
+  })
+  it('is read back as the rows of the reference', () => {
+    expect(parseRef('↳ Quote decisions 11:37 #1-2,4 : Keep staging? —')).toMatchObject({ kind: 'decisions', n: '1-2,4' })
   })
 })

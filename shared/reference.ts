@@ -25,7 +25,7 @@ export interface Reference {
   // Task action as written ("Decision:", "Retour sur"); '' for a quote.
   label: string
   time: string | null
-  // Row of a decision table ("3"), or its rows ("1-4").
+  // Row of a decision table ("3"), or its rows ("1-4", "1,4").
   n: string | null
   excerpt: string
 }
