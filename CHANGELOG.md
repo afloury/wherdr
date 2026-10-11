@@ -78,6 +78,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **One diff line per row in Changes**: since inline review, every line of a diff was 44 px high
+  (a blank line after each one) with the comment marker under its line number. A row is one line
+  of code again, on a computer and on a phone; the marker shows beside the number on hover or
+  keyboard focus.
 - **Pasted text cards on every device**: a message with typed words and a text pasted into the
   field showed its card only on the device that sent it; elsewhere it was one long folded message.
   The server now remembers which parts were pasted (`pastes.json` in its data folder, the last 100
