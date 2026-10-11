@@ -3,26 +3,29 @@
 // running. The transcript only tells afterwards (a "!" command
 // is only written there at the end), the screen right away.
 import type { ClaudeScreen } from './types'
-import { dropReplyMarker } from './replyQuote'
+import { sameSent } from './reference'
 import { imageTagCount, onlyImageTags, photosOnly, uploadNames } from './queuedMatch'
 
 export type QueuedPhase = 'queued' | 'sent' | 'running'
 
 const UPLOAD = '/.cache/herdr-web/uploads/'
 // The screen replaces photos with "[Image #1]" and cuts long lines.
-const norm = (t: string) => dropReplyMarker(String(t || '').replace(/\[Image #\d+\]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase())
+const norm = (t: string) => String(t || '').replace(/\[Image #\d+\]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase()
 const msgNorm = (t: string) => norm(String(t || '').split('\n').filter(l => !l.includes(UPLOAD)).join('\n'))
 
 // Same message (first 80 characters); or one starts with the other, long
 // enough not to confuse "ok" with "ok, go ahead" (cut screen). Whitespace is
 // ignored: the screen wraps long lines, mid-word when a word (a path) is
 // longer than the line, so a break may stand where the text has none.
-function same(a: string, b: string): boolean {
+// Under the same reference (see sameSent): "Yes" to one question is not "Yes"
+// to another.
+function sameWords(a: string, b: string): boolean {
   const x = a.replace(/\s+/g, '').slice(0, 80)
   const y = b.replace(/\s+/g, '').slice(0, 80)
   if (!x || !y) return false
   return x === y || (Math.min(x.length, y.length) >= 24 && (x.startsWith(y) || y.startsWith(x)))
 }
+const same = (a: string, b: string) => Boolean(a && b) && sameSent(a, b, sameWords)
 
 // Photos alone: "[Image #1] [Image #2]" alone on the screen, as many as its photos.
 const samePhotos = (text: string, shown: string) => onlyImageTags(shown) && imageTagCount(shown) === uploadNames(text).length

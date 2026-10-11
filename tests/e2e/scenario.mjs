@@ -59,6 +59,12 @@ export const OMP_DECISIONS_PANE = 'w13:p1'
 // An agent whose every reply ends with a question (the unanswered reminder).
 export const OMP_FOLLOWUP_PANE = 'w14:p1'
 export const FOLLOWUP_REPLY = 'Noted. Shall I go on with the next step?'
+// A reply in French that asks one closed question.
+export const OMP_FRENCH_PANE = 'w15:p1'
+// A decision table the agent has written other messages after.
+export const OMP_OLD_TABLE_PANE = 'w16:p1'
+// One message with two decision tables whose first rows ask the same thing.
+export const OMP_TWO_TABLES_PANE = 'w17:p1'
 export const CODEX_UPDATE_SESSION = '00000000-0000-4000-8000-000000000288'
 
 // Unique markers of the long omp transcript (asserted on by the specs).
@@ -114,11 +120,11 @@ function write(file, content) {
 // A pasted install log (Claude wraps a paste in <pasted_content>) and a long
 // typed message: shown as a "Pasted text" card and a folded bubble.
 export const PASTED_LOG = Array.from({ length: 40 }, (_, i) => `==> Pouring libexample-${i}--2.1.0.arm64_sonoma.bottle.tar.gz`).join('\n')
-// Ten lines written in wherdr's field (quotes of the agent's points, each with
-// an answer): Claude wraps a multi-line send whole in <pasted_content>, and it
-// is still a plain message.
+// Ten lines written in wherdr's field (references to the agent's points, each
+// with an answer): Claude wraps a multi-line send whole in <pasted_content>,
+// and it is still a plain message.
 export const TYPED_QUOTES = Array.from({ length: 5 }, (_, i) =>
-  `> Point ${i + 1}: ${'the cache entry is kept after an update and should expire. '.repeat(5).trim()}\nAnswer ${i + 1}: agreed, go ahead with that one.`).join('\n')
+  `↳ Quote point 09:0${i} : Point ${i + 1}: ${'the cache entry is kept after an update and should expire. '.repeat(5).trim()} —\nAnswer ${i + 1}: agreed, go ahead with that one.`).join('\n')
 export const LONG_TYPED = Array.from({ length: 24 }, (_, i) => `Step ${i + 1}: check the cache entry again.`).join('\n')
 
 // Claude Code: ~/.claude/projects/<cwd with / and . as ->/<session id>.jsonl.
@@ -197,9 +203,12 @@ export function writeScenario(home) {
   const billing = path.join(home, 'projects/billing')
   const decisions = path.join(home, 'projects/decisions')
   const followup = path.join(home, 'projects/followup')
+  const french = path.join(home, 'projects/fusion')
+  const oldTable = path.join(home, 'projects/earlier')
+  const twoTables = path.join(home, 'projects/rollout')
   const codex = path.join(home, '.herdr-projects/codex-update')
   fs.mkdirSync(codex, { recursive: true })
-  for (const d of [api, docs, demo, screens, approval, scratch, coordinator, questions, split, release, billing, decisions, followup]) fs.mkdirSync(d, { recursive: true })
+  for (const d of [api, docs, demo, screens, approval, scratch, coordinator, questions, split, release, billing, decisions, followup, french, oldTable, twoTables]) fs.mkdirSync(d, { recursive: true })
 
   const claudeSid = '00000000-0000-4000-8000-000000000001'
   const codexFile = path.join(home, `.codex/sessions/${new Date().toISOString().slice(0, 10).replaceAll('-', '/')}/rollout-test-${CODEX_UPDATE_SESSION}.jsonl`)
@@ -278,6 +287,29 @@ export function writeScenario(home) {
     msg({ role: 'user', content: [{ type: 'text', text: 'Go on.' }], attribution: 'user' }),
     msg({ role: 'assistant', content: [{ type: 'text', text: 'The plan has two open points. Shall I rename the module? It is a small change.\n\nWhich name do you prefer?' }], stopReason: 'stop' }),
   ])
+  const frenchFile = ompTranscript(home, french, 'e2e-french', now, msg => [
+    msg({ role: 'user', content: [{ type: 'text', text: 'Où en est la fusion ?' }], attribution: 'user' }),
+    msg({ role: 'assistant', content: [{ type: 'text', text: 'Les 48 tests passent et la revue est faite.\n\nJe fusionne la branche maintenant ?' }], stopReason: 'stop' }),
+  ])
+  const oldTableFile = ompTranscript(home, oldTable, 'e2e-old-table', now, msg => [
+    msg({ role: 'user', content: [{ type: 'text', text: 'What is waiting for me?' }], attribution: 'user' }),
+    msg({ role: 'assistant', content: [{ type: 'text', text: [
+      'Three decisions are waiting for you:',
+      '| # | Question | My advice |\n| --- | --- | --- |\n| 1 | Drop the legacy importer? | Yes |\n| 2 | Move the nightly job to 02:00 — after the backup? | Yes |\n| 3 | Rename the public API field? | No |',
+      'Take your time.',
+    ].join('\n\n') }], stopReason: 'stop' }),
+    msg({ role: 'user', content: [{ type: 'text', text: 'Give me a minute.' }], attribution: 'user' }),
+    msg({ role: 'assistant', content: [{ type: 'text', text: 'Sure. Meanwhile the docs build finished.\n\nShall I delete the old staging database?' }], stopReason: 'stop' }),
+  ])
+  const twoTablesFile = ompTranscript(home, twoTables, 'e2e-two-tables', now, msg => [
+    msg({ role: 'user', content: [{ type: 'text', text: 'What about the rollout?' }], attribution: 'user' }),
+    msg({ role: 'assistant', content: [{ type: 'text', text: [
+      'Staging first:',
+      '| # | Question |\n| --- | --- |\n| 1 | Continue? |\n| 2 | Keep the staging data? |',
+      'Then production (rows 2 and 3 are settled):',
+      '| # | Question |\n| --- | --- |\n| 1 | Continue? |\n| 4 | Delete the old production replica? |',
+    ].join('\n\n') }], stopReason: 'stop' }),
+  ])
   // omp waiting for the approval of its first action (status "blocked").
   const approvalFile = ompTranscript(home, approval, 'e2e-approval', now, msg => [
     msg({ role: 'user', content: [{ type: 'text', text: 'Clean the build folder.' }], attribution: 'user' }),
@@ -311,5 +343,8 @@ export function writeScenario(home) {
     { id: 'w12', label: 'billing', panes: [{ id: CLAUDE_ASK_PANE, agent: 'claude', status: 'idle', cwd: billing }] },
     { id: 'w13', label: 'decisions', panes: [{ id: OMP_DECISIONS_PANE, agent: 'omp', status: 'idle', cwd: decisions, session: decisionsFile }] },
     { id: 'w14', label: 'followup', panes: [{ id: OMP_FOLLOWUP_PANE, agent: 'omp', status: 'idle', cwd: followup, session: followupFile, transcript: followupFile, reply: FOLLOWUP_REPLY }] },
+    { id: 'w15', label: 'fusion', panes: [{ id: OMP_FRENCH_PANE, agent: 'omp', status: 'idle', cwd: french, session: frenchFile }] },
+    { id: 'w16', label: 'earlier', panes: [{ id: OMP_OLD_TABLE_PANE, agent: 'omp', status: 'idle', cwd: oldTable, session: oldTableFile }] },
+    { id: 'w17', label: 'rollout', panes: [{ id: OMP_TWO_TABLES_PANE, agent: 'omp', status: 'idle', cwd: twoTables, session: twoTablesFile }] },
   ]
 }

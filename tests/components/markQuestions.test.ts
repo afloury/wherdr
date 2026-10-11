@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { marked } from 'marked'
 import { md } from '~/utils/markdown'
-import { parseReplyStyle, replyTargets, withQuestions } from '~/utils/questionReply'
+import { parseReplyStyle, replyTargets, rowOf, withQuestions } from '~/utils/questionReply'
 
 // The first call installs the app's renderers (inline code, code blocks).
 md('')
@@ -250,7 +250,8 @@ describe('the panel under a decision table', () => {
     const panel = r.host.querySelector<HTMLElement>('.q-table')!
     expect(panel.previousElementSibling!.tagName).toBe('TABLE')
     expect(panel.getAttribute('aria-label')).toBe('Decisions')
-    expect(panel.querySelector<HTMLElement>('.q-all')!.dataset.l).toBe('OK to all')
+    // "OK to all" carries what it refers to: the rows of its table and their questions.
+    expect({ ...panel.querySelector<HTMLElement>('.q-all')!.dataset }).toEqual({ l: 'OK to all', n: '1-3', q: 'Tag the release today? · Keep the old export format? · Publish the notes?' })
     const rows = [...panel.querySelectorAll<HTMLElement>('.q-trow')]
     expect(rows.map(x => [x.dataset.n, x.dataset.q])).toEqual([['1', 'Tag the release today?'], ['2', 'Keep the old export format?'], ['3', 'Publish the notes?']])
     expect([...rows[1]!.children].map(c => [c.className, (c as HTMLElement).dataset.l, c.getAttribute('aria-label')])).toEqual([
@@ -259,16 +260,32 @@ describe('the panel under a decision table', () => {
       ['q-tans q-no', 'No', '2 · No: Keep the old export format?'],
       ['q-tquote', 'Reply', 'Reply: 2. Keep the old export format?'],
     ])
-    expect(rows[1]!.querySelector<HTMLElement>('.q-tquote')!.dataset.q).toBe('2. Keep the old export format?')
+    expect(rowOf(rows[1]!)).toEqual({ n: '2', text: 'Keep the old export format?', all: { n: '1-3', text: 'Tag the release today? · Keep the old export format? · Publish the notes?' }, table: 1 })
     // The panel adds no text: the reply reads and copies as before.
     expect(panel.textContent).toBe('')
     // The cells of a table get no question button of their own.
     expect(r.quotes).toEqual([])
+    const all = { n: '1-3', text: 'Tag the release today? · Keep the old export format? · Publish the notes?' }
     expect(replyTargets(r.html).rows).toEqual([
-      { n: '1', text: 'Tag the release today?' },
-      { n: '2', text: 'Keep the old export format?' },
-      { n: '3', text: 'Publish the notes?' },
+      { n: '1', text: 'Tag the release today?', all, table: 1 },
+      { n: '2', text: 'Keep the old export format?', all, table: 1 },
+      { n: '3', text: 'Publish the notes?', all, table: 1 },
     ])
+  })
+
+  it('ranks the decision tables of a message, and names the rows a table really has', () => {
+    const r = reply([
+      '| # | Question |', '| --- | --- |', '| 1 | Continue? |', '| 2 | Keep staging? |',
+      '',
+      '| File | Size |', '| --- | --- |', '| main.css | 120 kB |',
+      '',
+      '| # | Question |', '| --- | --- |', '| 1 | Continue? |', '| 4 | Delete production? |',
+    ].join('\n'))
+    const panels = [...r.host.querySelectorAll<HTMLElement>('.q-table')]
+    // The table that asks nothing has no rank: the second decision table is the second.
+    expect(panels.map(p => p.dataset.t)).toEqual(['1', '2'])
+    expect(panels.map(p => p.querySelector<HTMLElement>('.q-all')!.dataset.n)).toEqual(['1-2', '1,4'])
+    expect(replyTargets(r.html).rows.map(x => [x.table, x.n, x.all!.n])).toEqual([[1, '1', '1-2'], [1, '2', '1-2'], [2, '1', '1,4'], [2, '4', '1,4']])
   })
 
   it('offers Reply alone on a row that asks an open question', () => {

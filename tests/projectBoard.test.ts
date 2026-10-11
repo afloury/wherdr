@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { boardSections, visibleSections, maxParallelThreads, moveMessage, queueStatus, missingLists as missingListsOf, coordinatorRules, decisionPrefix, reviewCommentPrefix, reviewedMessage, detailPrefix, launchMessage, listKind, normalizeThreads, parseTaskLine, parseTasks, takeBadges, badgeColor, badgeTarget, textParts, prefillDraft, problemPrefix, questionPrefix, splitThreads, testedMessage, unblockMessage } from '../shared/projectBoard'
+import { decisionRef, isRefLine, refSegments, refsIn } from '../shared/reference'
+import { addAnswer, answerOf } from '../app/utils/questionReply'
 import { pluginBinary } from '../server/utils/projectBoard'
 import { isCoordinator } from '../shared/projects'
 import type { Pane } from '../shared/types'
@@ -194,8 +196,8 @@ describe('bare URLs in the text', () => {
 describe('answers to decisions (To decide)', () => {
   it('prepares an answer in the chosen language with the task text', () => {
     const task = parseTaskLine('- [ ] Publier le dépôt « wherdr » ? (me)')!
-    expect(decisionPrefix(task.text)).toBe('↳ Décision : Publier le dépôt « wherdr » ? — ')
-    expect(decisionPrefix(' Publish the repository? ', 'en')).toBe('↳ Decision: Publish the repository? — ')
+    expect(decisionPrefix(task.text)).toBe('↳ Décision : Publier le dépôt « wherdr » ? —\n')
+    expect(decisionPrefix(' Publish the repository? ', 'en')).toBe('↳ Decision: Publish the repository? —\n')
   })
 
   it('keeps the draft and puts the answer at the end', () => {
@@ -203,6 +205,9 @@ describe('answers to decisions (To decide)', () => {
     expect(prefillDraft('', answer)).toBe(answer)
     expect(prefillDraft('Autre réponse', answer)).toBe(`Autre réponse\n${answer}`)
     expect(prefillDraft(answer, answer)).toBe(answer)
+    // The task is a reference of its own line: the answer goes under it.
+    expect(isRefLine(answer.trimEnd())).toBe(true)
+    expect(refSegments(`${answer}Oui, lundi.`)).toEqual([{ kind: 'ref', ref: { kind: 'task', label: 'Décision :', time: null, n: null, id: null, excerpt: 'Publier le dépôt ?' } }, { kind: 'text', text: 'Oui, lundi.' }])
   })
 })
 
@@ -211,8 +216,8 @@ describe('actions du Backlog', () => {
     const task = parseTaskLine('- [ ] Améliorer le panneau Projet (agent)')!
     expect(launchMessage(task.text)).toBe('↳ Lancer : Améliorer le panneau Projet')
     expect(launchMessage(' Improve the project panel ', 'en')).toBe('↳ Launch: Improve the project panel')
-    expect(detailPrefix(task.text)).toBe('↳ Précision sur Améliorer le panneau Projet — ')
-    expect(detailPrefix(' Improve the project panel ', 'en')).toBe('↳ Detail on Improve the project panel — ')
+    expect(detailPrefix(task.text)).toBe('↳ Précision sur Améliorer le panneau Projet —\n')
+    expect(detailPrefix(' Improve the project panel ', 'en')).toBe('↳ Detail on Improve the project panel —\n')
   })
 
   it('keeps the Detail draft and avoids the duplicate on a second tap', () => {
@@ -228,7 +233,7 @@ describe('Blocked actions', () => {
     const task = parseTasks('## Bloqué\n- [ ] Publier le guide — bloqué par : relecture (agent)')[0]!.tasks[0]!
     expect(unblockMessage(task.text)).toBe('↳ Débloquer : Publier le guide')
     expect(unblockMessage(' Ship guide ', 'en')).toBe('↳ Unblock: Ship guide')
-    expect(detailPrefix(task.text)).toBe('↳ Précision sur Publier le guide — ')
+    expect(detailPrefix(task.text)).toBe('↳ Précision sur Publier le guide —\n')
   })
 })
 
@@ -337,13 +342,14 @@ describe('test feedback (To test)', () => {
     const task = parseTaskLine('- [ ] Panneau « Projet » (au milieu) : ok ? (me)')!
     expect(testedMessage(task.text)).toBe('✓ Testé : Panneau « Projet » (au milieu) : ok ?')
   })
-  it('Problem: message start, cursor after the dash', () => {
-    expect(problemPrefix('Étoile animée')).toBe('✗ Problème : Étoile animée — ')
-    expect(problemPrefix('Star', 'en')).toBe('✗ Problem: Star — ')
+  it('Problem: a reference to the task, the details on the next line', () => {
+    expect(problemPrefix('Étoile animée')).toBe('↳ Problème : Étoile animée —\n')
+    expect(problemPrefix('Star', 'en')).toBe('↳ Problem: Star —\n')
+    expect(refSegments(`${problemPrefix('Star', 'en')}It does not turn.`)).toMatchObject([{ kind: 'ref', ref: { kind: 'task', label: 'Problem:', excerpt: 'Star' } }, { kind: 'text', text: 'It does not turn.' }])
   })
-  it('Question: message start, cursor after the dash', () => {
-    expect(questionPrefix('Étoile animée')).toBe('? Question : Étoile animée — ')
-    expect(questionPrefix(' Star ', 'en')).toBe('? Question: Star — ')
+  it('Question: a reference to the task, the question on the next line', () => {
+    expect(questionPrefix('Étoile animée')).toBe('↳ Question : Étoile animée —\n')
+    expect(questionPrefix(' Star ', 'en')).toBe('↳ Question: Star —\n')
     const q = questionPrefix('Étoile animée')
     expect(prefillDraft('', q)).toBe(q)
     expect(prefillDraft(q, q)).toBe(q)
@@ -418,8 +424,8 @@ describe('board help (Settings › Plugins)', () => {
     expect(m.coordinatorRules('en')).toContain(m.launchMessage('…', 'en'))
     expect(m.coordinatorRules('en')).toContain(m.unblockMessage('…', 'en'))
     for (const p of [m.problemPrefix, m.questionPrefix, m.decisionPrefix, m.detailPrefix]) {
-      expect(fr).toContain(p('…', 'fr'))
-      expect(m.coordinatorRules('en')).toContain(p('…', 'en'))
+      expect(fr).toContain(p('…', 'fr').trimEnd())
+      expect(m.coordinatorRules('en')).toContain(p('…', 'en').trimEnd())
     }
   })
 })
@@ -438,7 +444,8 @@ describe('To review list', () => {
   it('messages Relu et Commenter', () => {
     expect(reviewedMessage(' Bandeau ')).toBe('✓ Relu : Bandeau')
     expect(reviewedMessage('Banner', 'en')).toBe('✓ Reviewed: Banner')
-    expect(reviewCommentPrefix('Bandeau')).toBe('↳ Retour sur Bandeau : ')
+    expect(reviewCommentPrefix('Bandeau')).toBe('↳ Retour sur Bandeau —\n')
+    expect(reviewCommentPrefix('Banner', 'en')).toBe('↳ Feedback on Banner —\n')
     expect(coordinatorRules()).toContain('✓ Relu : …')
   })
   it('In progress goes after To review', () => {
@@ -527,5 +534,21 @@ describe('In queue and To do lists', () => {
     const at = performance.now()
     expect(maxParallelThreads(head(`${'\n'.repeat(16 * 1024)}max_parallel_threads = 5`))).toBe(5)
     expect(performance.now() - at).toBeLessThan(500)
+  })
+})
+
+describe('Problem and Question after an answer to the agent', () => {
+  const decision = decisionRef('1', 'Keep the cache?', '11:37')
+  const draft = addAnswer('', decision, 'Yes')!
+  it('does not attach a new project problem to the preceding decision answer', () => {
+    const next = `${prefillDraft(draft, problemPrefix('Fix the layout', 'en'))}The button is hidden.`
+    expect(next).toBe('↳ Quote decision 11:37 #1 : Keep the cache? —\nYes\n↳ Problem: Fix the layout —\nThe button is hidden.')
+    expect(answerOf(next, decision)).toBe('Yes')
+    expect(refsIn(next).map(r => r.label)).toEqual(['', 'Problem:'])
+  })
+  it('does not attach a new project question to the preceding decision answer', () => {
+    const next = `${prefillDraft(draft, questionPrefix('Fix the layout', 'en'))}How should I test it?`
+    expect(answerOf(next, decision)).toBe('Yes')
+    expect(refsIn(next).at(-1)).toMatchObject({ kind: 'task', label: 'Question:', excerpt: 'Fix the layout' })
   })
 })

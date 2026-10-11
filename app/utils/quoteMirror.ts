@@ -1,30 +1,25 @@
 // Quoted replies, "native" mode (utils/quoteTokens.ts): the field stays the
-// native textarea, with the same "> quote" / answer text as the plain mode
-// (utils/questionReply.ts), so sending, Enter, "/", image paste, dictation and
-// autocorrect do not change; only its drawing does. A mirror behind the
-// textarea draws the same text with the same metrics (font, size, padding,
-// wrapping, scroll), each "> " line as a compact token; the textarea's own
-// text is transparent, its caret and selection stay visible. Nothing in the
-// mirror may change a line's width or height: same font size, no vertical
-// margin or padding, the "> " kept (hidden, "↳" drawn over it), the band
-// widened into the padding by margin = -padding.
+// native textarea, with the same text as the plain mode (a "↳ … —" line per
+// reference, its answer below, see shared/reference.ts), so sending, Enter,
+// "/", image paste, dictation and autocorrect do not change; only its drawing
+// does. A mirror behind the textarea draws the same text with the same
+// metrics (font, size, padding, wrapping, scroll), each reference line as a
+// token; the textarea's own text is transparent, its caret and selection stay
+// visible. Nothing in the mirror may change a line's width or height: the
+// same characters in the same font, no vertical margin or padding, only
+// colours and a band widened into the padding by margin = -padding.
 
-import { QUOTE_LINE } from './questionReply'
+import { refParts } from '../../shared/reference'
 
-export interface MirrorLine { quote: boolean, prefix: string, text: string, first: boolean, last: boolean }
+// A line as drawn: a reference keeps what introduces its excerpt (`head`,
+// "↳ Quote point 11:37 : ") and its closing dash (`tail`) apart.
+export interface MirrorLine { ref: boolean, head: string, text: string, tail: string }
 
-// The textarea's lines, as drawn: a "> " line keeps its prefix apart (same
-// characters, hidden), `first`/`last` mark the ends of a run of quote lines.
 export function mirrorLines(value: string): MirrorLine[] {
-  const lines = value.split('\n').map((line) => {
-    const m = QUOTE_LINE.exec(line)
-    return { quote: Boolean(m), prefix: m ? m[1]! : '', text: m ? m[2]! : line, first: false, last: false }
+  return value.split('\n').map((line) => {
+    const p = line.startsWith('↳') ? refParts(line) : null
+    return p ? { ref: true, head: p.head, text: p.ref.excerpt, tail: p.tail } : { ref: false, head: '', text: line, tail: '' }
   })
-  lines.forEach((l, i) => {
-    l.first = l.quote && !lines[i - 1]?.quote
-    l.last = l.quote && !lines[i + 1]?.quote
-  })
-  return lines
 }
 
 // Styles that decide where text wraps and how it is drawn.
@@ -36,7 +31,7 @@ const COPIED = [
   'boxSizing',
 ] as const
 
-// Draws `ta`'s quote lines as tokens until destroyed. Call render() when the
+// Draws `ta`'s reference lines as tokens until destroyed. Call render() when the
 // value is set from script (no input event).
 export function attachQuoteMirror(ta: HTMLTextAreaElement) {
   const host = ta.parentElement!
@@ -74,15 +69,19 @@ export function attachQuoteMirror(ta: HTMLTextAreaElement) {
     inner.textContent = ''
     for (const l of mirrorLines(ta.value)) {
       const row = document.createElement('div')
-      if (l.quote) {
-        row.className = `qm-q${l.first ? ' first' : ''}${l.last ? ' last' : ''}`
-        const p = document.createElement('span')
-        p.className = 'qm-p'
-        p.textContent = l.prefix
-        row.append(p)
-      }
-      // An empty line still takes one line (zero-width space).
-      row.append(l.text || '\u200B')
+      if (l.ref) {
+        row.className = 'qm-q'
+        const mark = document.createElement('span')
+        mark.className = 'qm-a'
+        mark.textContent = l.head.slice(0, 1)
+        const head = document.createElement('span')
+        head.className = 'qm-h'
+        head.textContent = l.head.slice(1)
+        const tail = document.createElement('span')
+        tail.className = 'qm-h'
+        tail.textContent = l.tail
+        row.append(mark, head, l.text, tail)
+      } else row.append(l.text || '\u200B') // an empty line still takes one line (zero-width space)
       inner.append(row)
     }
     layout()

@@ -41,10 +41,6 @@ All notable changes to this project are documented here. The format follows
   the coordinator's machine: **Acknowledge**, **Restart**, **Stop** and **Resolve** (the last two
   ask first), plus Open agent, View report and Pull request. The panel now has tabs (Tasks,
   Threads). Nothing changes without herdr-projects.
-- **Inline diff review**: comment on lines in Changes, edit or delete remarks, and keep a
-  device-local draft per agent. Missing lines are flagged after refresh. Send review appends
-  grouped file/line remarks to the message draft without sending it or replacing existing text.
-  Includes old-line labels for deletions, keyboard/touch controls, remote agents and demo support.
 - **Diff review on a line or a block of lines**: in Changes, comments start from the gutter and
   the code is plain text that can be selected and copied — a click on a line no longer creates a
   comment. With a mouse, a **+** shows on the hovered line: click it, or press and drag over
@@ -67,9 +63,11 @@ All notable changes to this project are documented here. The format follows
   alone.
 - **Decision tables answered row by row**: under a Markdown table of numbered questions (a
   number column, and a question column known by its header, by its question marks or by an advice
-  column next to it), **OK to all** writes `ok to all`, and each row has **Yes**, **No** and `↳`
-  that write `3: yes`, `3: no` or quote the row. French writes `ok tout`, `3 : oui`, `3 : non`.
-  Composed in the field, sent by you; a table of another shape gets nothing.
+  column next to it), **OK to all** accepts the whole table, and each row has **Yes**, **No** and
+  `↳`. Every answer names the message and the row it refers to
+  (`↳ Quote decision 11:37 #3 : … —`, then `Yes`), so an answer to an earlier table is never read
+  as an answer to the agent's last message. Composed in the field, sent by you; a table of another
+  shape gets nothing.
 - **N questions unanswered** above the field: the questions of the agent's last message, and the
   rows of its decision tables, that the draft does not answer yet. A tap scrolls to the first
   one. It goes once everything is quoted or answered and when the message is sent, never shows
@@ -108,6 +106,30 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- **One syntax for every reference: `↳ <type> <reference> : <excerpt> —`.** Replying to a
+  message, quoting a question, a point or a passage, answering a row of a decision table and the
+  Answer / Clarify / Comment actions of the Project panel all write the same kind of line, the
+  answer on the lines below: `↳ Quote message 11:37 : I can merge the PR —`,
+  `↳ Quote point 11:37 : … —`, `↳ Quote decision 11:37 #3 : … —`,
+  `↳ Quote decisions 11:37 #1-4 : … —`, `↳ Decision: <task> —`. The reference ends with ` —` at the
+  end of its line only (an excerpt may hold dashes), a long excerpt is cut with `…`, and several
+  references fit in one message. A short code after the time or the row (`11:37 #3 ~k3f`) tells
+  apart two messages of the same minute and two tables of one message, so an answer never
+  replaces the answer to another table; the field draws it dimmed, the sent quote leaves it out.
+  **OK to all** names the rows the table really has (`#1,4`, not `#1-4`, when rows 2 and 3 do
+  not exist). The field draws each one as a token and the sent bubble as a
+  quote that leads to the message it names. **Reply** under a message no longer opens a box above
+  the field: it adds its line like the others. A `>` typed at the start of a line is plain text
+  again; messages already sent with `> ` lines still show as quotes. Pasted text never becomes a
+  reference: a pasted line that reads like one gets a `\` before its `↳`, and a **Pasted text**
+  card is sent exactly as pasted. The Project panel drafts that started with `↳` now put the
+  answer on the next line instead of after the dash, and **Problem** and **Question** write the
+  same kind of line (`↳ Problem: <task> —`, `↳ Question: <task> —`) instead of `✗ Problem: … — `
+  and `? Question: … — `; the `wherdr` skill and the coordinator rules explain the new lines.
+- **Quoted replies: two choices.** Settings › Conversation › Quoted replies keeps "Tokens, native
+  field" (default) and "Plain text", the same `↳ … —` lines shown as text, as a fallback. The
+  experimental "Tokens, rich field" is removed; a device set to it moves to the native field.
+
 - **↳ Reply looks the same wherever the question is**: the button of a question that ends a
   message was only shown on hover on a computer, while one in the middle of a paragraph stayed
   visible. Both now show the same way, and the labelled tag gives way to the icon (or to the
@@ -122,8 +144,7 @@ All notable changes to this project are documented here. The format follows
   then folds back to one line once answered. The other cards stay one line.
 - **Quoted replies: tokens in the native field by default.** Settings › Conversation › Quoted
   replies is one list for the device in use, instead of one for a computer and one for a phone.
-  "Tokens, native field" is the default and no longer marked experimental ("Tokens, rich field"
-  still is). Every device moves to it once, whatever it had saved (a choice could not be told
+  "Tokens, native field" is the default and no longer marked experimental. Every device moves to it once, whatever it had saved (a choice could not be told
   from the former default); a choice made afterwards is kept. The preview plays once instead of
   looping, and has a **Replay** button like the typewriter preview.
 

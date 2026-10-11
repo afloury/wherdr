@@ -8,6 +8,7 @@
 // the `[b:color(text)]` and `[b:color(text)](target)` badges that the
 // coordinator adds when useful (no automatic badge).
 
+import { refLine, taskRef } from './reference'
 import { tomlTables } from './toml'
 
 export type ListKind = 'test' | 'decide' | 'review' | 'doing' | 'queue' | 'blocked' | 'todo' | 'backlog' | 'done'
@@ -338,25 +339,26 @@ export function testedMessage(task: string, lang: TestLang = 'fr'): string {
 }
 
 export function problemPrefix(task: string, lang: TestLang = 'fr'): string {
-  return `${lang === 'en' ? '✗ Problem: ' : '✗ Problème : '}${task.trim()} — `
+  return `${refLine(taskRef(lang === 'en' ? 'Problem:' : 'Problème :', task))}\n`
 }
 
 export function questionPrefix(task: string, lang: TestLang = 'fr'): string {
-  return `${lang === 'en' ? '? Question: ' : '? Question : '}${task.trim()} — `
+  return `${refLine(taskRef(lang === 'en' ? 'Question:' : 'Question :', task))}\n`
 }
 
 export function decisionPrefix(task: string, lang: TestLang = 'fr'): string {
-  return `${lang === 'en' ? '↳ Decision: ' : '↳ Décision : '}${task.trim()} — `
+  return `${refLine(taskRef(lang === 'en' ? 'Decision:' : 'Décision :', task))}\n`
 }
 
 // Input field after a panel action: the draft already typed
 // is kept, the message start follows on a new line
 // (cursor at the end). Already present at the end of the draft (double tap): nothing
-// changes.
+// changes. A "↳ … —" start is a reference (shared/reference.ts): a whole
+// line, the answer goes on the next one.
 export function prefillDraft(draft: string, prefix: string): string {
   const kept = draft.replace(/\s+$/, '')
   if (!kept) return prefix
-  if (kept.endsWith(prefix.trimEnd())) return `${kept} `
+  if (kept.endsWith(prefix.trimEnd())) return `${kept}${prefix.endsWith('\n') ? '\n' : ' '}`
   return `${kept}\n${prefix}`
 }
 
@@ -366,7 +368,7 @@ export function launchMessage(task: string, lang: TestLang = 'fr'): string {
 }
 
 export function detailPrefix(task: string, lang: TestLang = 'fr'): string {
-  return `${lang === 'en' ? '↳ Detail on ' : '↳ Précision sur '}${task.trim()} — `
+  return `${refLine(taskRef(lang === 'en' ? 'Detail on' : 'Précision sur', task))}\n`
 }
 
 export function reviewedMessage(task: string, lang: TestLang = 'fr'): string {
@@ -374,7 +376,7 @@ export function reviewedMessage(task: string, lang: TestLang = 'fr'): string {
 }
 
 export function reviewCommentPrefix(task: string, lang: TestLang = 'fr'): string {
-  return `${lang === 'en' ? '↳ Feedback on ' : '↳ Retour sur '}${task.trim()}${lang === 'en' ? ': ' : ' : '}`
+  return `${refLine(taskRef(lang === 'en' ? 'Feedback on' : 'Retour sur', task))}\n`
 }
 
 export function unblockMessage(task: string, lang: TestLang = 'fr'): string {
@@ -439,7 +441,8 @@ export function missingLists(lists: Pick<ProjectList, 'kind'>[]): ListKind[] {
 // Text to paste to the coordinator: what the panel's messages mean.
 export function coordinatorRules(lang: TestLang = 'fr'): string {
   const en = lang === 'en'
-  const m = (prefix: (task: string, lang: TestLang) => string) => `${prefix('…', lang)}…`
+  // A draft: the start of a message, or a reference line (shared/reference.ts) the answer goes under.
+  const m = (prefix: (task: string, lang: TestLang) => string) => (prefix('…', lang).endsWith('\n') ? prefix('…', lang).trimEnd() : `${prefix('…', lang)}…`)
   const lines = en
     ? [
         'wherdr Project panel: TASKS.md conventions and messages.',
@@ -447,12 +450,13 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
         'One task per line: "- [ ] title (owner)", owner = me, agent or "agent → t-0140" (not shown); blocked tasks may add "— blocked by: reason" before the owner.',
         'Badges (the only decoration wherdr shows): "[b:color(text)]", or "[b:color(text)](target)" for a clickable badge. Color: red, orange, amber, green, teal, blue, violet, pink, gray, #hex, or nothing (neutral). Target: an https:// link (opens a new tab) or a thread ID like t-0140 (opens its tab). Short text (24 characters max). E.g. "- [ ] Stop button [b:red(bug)] [b:gray(t-0140)](t-0140) [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me)".',
         'Badges are free-form: use them on your own whenever they help me (status, owner, thread, PR, device, priority…), and follow the badge preferences I give you. Stay sparse: two or three badges per line at most. A bare URL in a task shows as a plain link.',
+        'A line that starts with "↳" and ends with "—" is a reference: it names a task ("↳ Decision: … —") or quotes one of your messages by its time ("↳ Quote message 11:37 : … —", "↳ Quote point 11:37 : … —", "↳ Quote decision 11:37 #3 : … —" for row 3 of a table of decisions, "↳ Quote decisions 11:37 #1-4 : … —" for the whole table). A short code such as "~k3f" may follow the time or the row: it is wherdr\'s own mark for the message, nothing for you to act on. What I answer about it is on the lines below it, up to the next reference.',
         `"${testedMessage('…', lang)}" → remove the line from To test.`,
         `"${m(problemPrefix)}" → treat it as a bug: fix it (new thread).`,
         `"${m(questionPrefix)}" → answer: explain what to test and how.`,
         `"${m(decisionPrefix)}" → apply the decision and remove the line from To decide.`,
         `"${reviewedMessage('…', lang)}" → remove the line from To review.`,
-        `"${reviewCommentPrefix('…', lang)}…" → take the review feedback into account (on the PR or in a thread).`,
+        `"${m(reviewCommentPrefix)}" → take the review feedback into account (on the PR or in a thread).`,
         `"${unblockMessage('…', lang)}" → restart the task or ask what is missing. Move a task to Blocked when it waits for something external.`,
         `"${launchMessage('…', lang)}" → launch a thread for this Backlog task.`,
         `"${m(detailPrefix)}" → add the detail to the task.`,
@@ -472,12 +476,13 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
         'Une tâche par ligne : « - [ ] titre (responsable) », responsable = me, agent ou « agent → t-0140 » (non affiché) ; une tâche bloquée peut ajouter « — bloqué par : raison » avant le responsable.',
         'Badges (seule décoration affichée par wherdr) : « [b:couleur(texte)] », ou « [b:couleur(texte)](cible) » pour un badge cliquable. Couleur : red, orange, amber, green, teal, blue, violet, pink, gray, #hex, ou rien (neutre). Cible : un lien https:// (nouvel onglet) ou un ID de thread comme t-0140 (ouvre son onglet). Texte court (24 caractères au plus). Ex. « - [ ] Bouton Stop [b:red(bug)] [b:gray(t-0140)](t-0140) [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me) ».',
         'Les badges sont libres : utilise-les de toi-même quand ils me sont utiles (statut, responsable, thread, PR, appareil, priorité…), et suis les préférences de badges que je te donne. Reste sobre : deux ou trois badges par ligne au plus. Une URL brute dans une tâche s’affiche en lien simple.',
+        'Une ligne qui commence par « ↳ » et finit par « — » est une référence : elle nomme une tâche (« ↳ Décision : … — ») ou cite un de tes messages par son heure (« ↳ Quote message 11:37 : … — », « ↳ Quote point 11:37 : … — », « ↳ Quote decision 11:37 #3 : … — » pour la ligne 3 d’un tableau de décisions, « ↳ Quote decisions 11:37 #1-4 : … — » pour tout le tableau). Un petit code comme « ~k3f » peut suivre l’heure ou la ligne : c’est le repère de wherdr pour le message, tu n’as rien à en faire. Ce que j’en dis est sur les lignes en dessous, jusqu’à la référence suivante.',
         `« ${testedMessage('…', lang)} » → retirer la ligne d’À tester.`,
         `« ${m(problemPrefix)} » → c’est un bug : le corriger (nouveau thread).`,
         `« ${m(questionPrefix)} » → répondre : expliquer quoi tester et comment.`,
         `« ${m(decisionPrefix)} » → appliquer la décision et retirer la ligne d’À décider.`,
         `« ${reviewedMessage('…', lang)} » → retirer la ligne d’À relire.`,
-        `« ${reviewCommentPrefix('…', lang)}… » → prendre en compte ce retour de relecture (sur la PR ou dans un thread).`,
+        `« ${m(reviewCommentPrefix)} » → prendre en compte ce retour de relecture (sur la PR ou dans un thread).`,
         `« ${unblockMessage('…', lang)} » → relancer la tâche ou demander ce qui manque. Déplacer une tâche en Bloqué quand elle attend quelque chose d’extérieur.`,
         `« ${launchMessage('…', lang)} » → lancer un thread pour cette tâche du Backlog.`,
         `« ${m(detailPrefix)} » → compléter la tâche avec cette précision.`,

@@ -5,7 +5,7 @@
 // task moves to "To test"; the user answers the "To decide" question from the
 // board: its Reply button fills the field with the decision prefix, the user
 // types the answer and sends it (wherdr never writes TASKS.md). PROJECT script.
-import { DECISION, DECISION_ANSWER, DECISION_PREFIX, PROJECT, boardAt } from '~/utils/storyDemos'
+import { DECISION, DECISION_ANSWER, DECISION_QUOTE, PROJECT, boardAt } from '~/utils/storyDemos'
 import type { BoardItem } from '~/utils/storyDemos'
 import type { DemoAgent } from '~/utils/demoScript'
 
@@ -21,7 +21,9 @@ const lists = computed<{ kind: string, icon: string, label: string, items: Board
   { kind: 'backlog', icon: 'i-lucide-archive', label: 'Backlog', items: board.value.backlog },
 ])
 const coordinator = computed(() => (step.value === 3 || step.value === 7 ? 'working' : 'idle'))
-const field = computed(() => (step.value === 5 ? DECISION_PREFIX : step.value === 6 ? DECISION_PREFIX + typed.value : ''))
+// The reference alone, then the answer typed under it.
+const quoting = computed(() => step.value === 5 || step.value === 6)
+const field = computed(() => (step.value === 6 ? typed.value : ''))
 const agents = computed<DemoAgent[]>(() => [
   { name: 'checkout', tag: 'Coordinator', agent: 'claude', model: 'Opus 5.5', effort: 'high', state: coordinator.value, where: '~/.herdr-projects/checkout', line: step.value >= 8 ? 'Noted: the best price wins, coupons never stack.' : 'Thread t-0001 · coupon codes is running in web-shop (Codex).' },
   ...(step.value >= 4 ? [] : [{ name: 'hp-checkout-t-0001-coupon-codes', tag: 'T-0001', agent: 'codex' as const, model: 'gpt-5.5', effort: 'high', state: step.value >= 2 ? 'done' as const : 'working' as const, line: step.value >= 2 ? 'Coupons apply in cartTotal; 9 tests pass.' : 'I will add a coupons module and cover it with tests.' }]),
@@ -45,11 +47,11 @@ const toolUi = { root: 'tool', trigger: 'tool-trigger', label: 'tool-label', suf
             <UChatTool text="Command" suffix="npm test" icon="i-lucide-terminal" :loading="step < 4" :streaming="step < 4" :ui="toolUi" />
           </div>
         </template>
-        <DemoUserMessage v-if="step >= 7" :key="`d${loop}`" :text="DECISION_PREFIX + DECISION_ANSWER" :phase="step < 8 ? 'sent' : undefined" :time="step >= 8 ? '07:31' : undefined" />
+        <DemoUserMessage v-if="step >= 7" :key="`d${loop}`" :quote="DECISION_QUOTE" :text="DECISION_ANSWER" :phase="step < 8 ? 'sent' : undefined" :time="step >= 8 ? '07:31' : undefined" />
         <DemoReply v-if="step >= 8" :key="`n${loop}`" :paras="['Noted: the best price wins, coupons never stack. I added it to the coupons thread.']" agent="claude" typing />
       </div>
       <template #bottom>
-        <DemoComposer agent="claude" desktop focus :text="field" :stop="coordinator === 'working'" model="Opus 5.5" effort="high" />
+        <DemoComposer agent="claude" desktop focus :quote="quoting ? DECISION_QUOTE : undefined" :text="field" :stop="coordinator === 'working'" model="Opus 5.5" effort="high" />
       </template>
       <template #aside>
         <div class="pp-head"><span class="pp-kicker">Project</span><span class="pp-slug">checkout</span><span class="pp-grow" /><span class="icon-btn pp-btn"><UIcon name="i-lucide-refresh-cw" /></span></div>

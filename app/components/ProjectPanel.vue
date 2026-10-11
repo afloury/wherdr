@@ -19,11 +19,13 @@ const tabByPane = new Map<string, string>()
 // section collapsed, "see all"). Tapping an open thread opens its agent;
 // tapping a report shows it.
 // "To test": each task has Confirm (message "✓ Testé : …" sent to the
-// coordinator), Problem ("✗ Problème : … — ") and Question ("? Question : … — "),
+// coordinator), Problem ("↳ Problème : … —") and Question ("↳ Question : … —"),
 // the latter two put into its input field (emitted to the agent view).
 // "To decide": Question and Answer also prepare a draft.
 // "To review": Reviewed sends "✓ Relu : …", Comment prepares "↳ Retour sur
-// … :" (the PR link: link badge or URL in the text, set by the coordinator).
+// … —" (the PR link: link badge or URL in the text, set by the coordinator).
+// The drafts that start with "↳" are references (shared/reference.ts): the
+// task on one line, the answer below it.
 // The only task decorations: the coordinator's [b:color(text)](target)
 // badges; URLs in the text are plain links.
 // "Backlog": Launch sends the message; Detail prepares a draft.

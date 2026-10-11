@@ -75,9 +75,8 @@ const encryptedOn = encryptedText
 // Quoted replies: the mode of this device.
 const quoteChoice = quoteMode
 const quoteItems = computed(() => [
-  { label: tl('“>” lines', 'Lignes « > »'), description: tl('Plain text: each quote stays “> ” lines, a chip above the field removes it.', 'Texte simple : chaque citation reste en lignes « > », une puce au-dessus du champ la retire.'), value: 'lines', exp: false },
-  { label: tl('Tokens, native field', 'Jetons, champ natif'), description: tl('The same plain field, each “> ” line drawn as a token. Typing, dictation and autocorrect unchanged. Default.', 'Le même champ simple, chaque ligne « > » dessinée en jeton. Saisie, dictée et correction auto inchangées. Par défaut.'), value: 'native', exp: false },
-  { label: tl('Tokens, rich field', 'Jetons, champ riche'), description: tl('A rich field, each quote one compact token with ✕. On iOS, moving the caret around the tokens is unreliable.', 'Un champ riche, chaque citation un jeton compact avec ✕. Sur iOS, déplacer le curseur autour des jetons est peu fiable.'), value: 'rich', exp: true },
+  { label: tl('Tokens, native field', 'Jetons, champ natif'), description: tl('Each “↳ … —” line is drawn as a token in the usual field. Typing, dictation and autocorrect unchanged. Default.', 'Chaque ligne « ↳ … — » est dessinée en jeton dans le champ habituel. Saisie, dictée et correction auto inchangées. Par défaut.'), value: 'native' },
+  { label: tl('Plain text', 'Texte simple'), description: tl('The same “↳ … —” lines, shown as plain text. A fallback if the tokens misbehave.', 'Les mêmes lignes « ↳ … — », affichées en texte simple. Un secours si les jetons se comportent mal.'), value: 'lines' },
 ])
 // How questions and points offer to be quoted (utils/questionReply.ts).
 const replyStyleChoice = replyStyle
@@ -413,13 +412,9 @@ onMounted(() => {
           </div>
           <div class="settings-group">
             <h3>{{ tl('Quoted replies', 'Réponses citées') }}</h3>
-            <p class="muted settings-lead">{{ tl('Answer several questions or passages of an agent in one message: ↳ Reply quotes each in the field, above its answer. Choose how the field shows the quotes; the message sent is the same.', 'Réponds à plusieurs questions ou passages d’un agent dans un seul message : ↳ Répondre cite chacun dans le champ, au-dessus de sa réponse. Choisis comment le champ affiche les citations ; le message envoyé est le même.') }}</p>
+            <p class="muted settings-lead">{{ tl('Answer several questions, passages or decisions of an agent in one message: each one goes into the field as a “↳ … —” line that names the message and quotes it, your answer below. Choose how the field shows these lines; the message sent is the same.', 'Réponds à plusieurs questions, passages ou décisions d’un agent dans un seul message : chacun entre dans le champ sous la forme d’une ligne « ↳ … — » qui nomme le message et le cite, ta réponse en dessous. Choisis comment le champ affiche ces lignes ; le message envoyé est le même.') }}</p>
             <QuoteTokensPreview v-if="activeSection === 'conversation'" :mode="quoteChoice" />
-            <URadioGroup v-model="quoteChoice" :items="quoteItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio quote-mode-radio">
-              <template #label="{ item }">
-                {{ item.label }}<span v-if="item.exp" class="exp-tag">{{ tl('Experimental', 'Expérimental') }}</span>
-              </template>
-            </URadioGroup>
+            <URadioGroup v-model="quoteChoice" :items="quoteItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio quote-mode-radio" />
             <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
           </div>
         </div>

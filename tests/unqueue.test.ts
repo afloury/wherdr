@@ -232,11 +232,10 @@ describe('bouton et brouillon', () => {
     expect(d.text).toBe('')
     expect(d.atts.map(a => a.name)).toEqual(['a.jpg', 'b.jpg'])
   })
-  it('photos and attached files together, with a reply marker', () => {
+  it('photos and attached files together, with the reply marker of an earlier version', () => {
     const d = { text: '', atts: [] as { url: string, path: string | null, name?: string, file?: unknown, ref?: string }[], reply: null as unknown }
     restoreDraft(d as never, '↳ Replying to your message from 14:22 ("La mer")\n\nRegarde\n/home/user/.cache/herdr-web/uploads/a.jpg\n@/home/user/.cache/herdr-web/files/notes.md')
-    expect(d.text).toBe('Regarde')
-    expect(d.reply).toEqual({ time: '14:22', excerpt: 'La mer' })
+    expect(d.text).toBe('↳ Quote message 14:22 : La mer —\nRegarde')
     expect(d.atts.map(a => [a.name, Boolean(a.file)])).toEqual([['a.jpg', false], ['notes.md', true]])
   })
 })

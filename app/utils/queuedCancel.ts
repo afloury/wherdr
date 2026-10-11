@@ -2,7 +2,8 @@
 // put the message back into the input field (text + attached photos).
 import type { Pane } from '../../shared/types'
 import type { DraftAtt } from '../composables/useDraft'
-import { parseReply, type ReplyTarget } from '../../shared/replyQuote'
+import { parseReply } from '../../shared/replyQuote'
+import { refLine } from '../../shared/reference'
 import { extensionOf, parseAttachmentLine } from '../../shared/attachments'
 import { splitPasted } from '../../shared/pastedText'
 import { sentPastes } from './sentPastes'
@@ -22,14 +23,11 @@ export function canCancelQueued(p: Pane | undefined): boolean {
 // sent: its text before what was already typed, its attached photos.
 // `pasted`: the pasted texts the server lists for it (sent from another device).
 // `after`: a message the server gives back (see givenBack.ts) goes after what
-// was already typed, and leaves the reply being written alone.
-export function restoreDraft(draft: { text: string, atts: DraftAtt[], reply?: ReplyTarget | null }, message: string, pasted: string[] = [], after = false) {
-  // Reply to a specific message: the marker becomes the "Replying to" box again.
-  const parsed = after && draft.reply ? null : parseReply(message)
-  if (parsed && 'reply' in draft) {
-    draft.reply = parsed.reply
-    message = parsed.body
-  }
+// was already typed.
+export function restoreDraft(draft: { text: string, atts: DraftAtt[] }, message: string, pasted: string[] = [], after = false) {
+  // A reply marker of an earlier version comes back as a reference.
+  const old = parseReply(message)
+  if (old) message = `${refLine({ kind: 'message', label: '', time: old.reply.time, n: null, id: null, excerpt: old.reply.excerpt })}\n${old.body}`
   // Texts sent as "Pasted text" cards become cards again.
   const split = splitPasted(String(message || ''), pasted, sentPastes.value, true)
   for (const paste of split.pastes) draft.atts.push({ url: '', path: null, paste })

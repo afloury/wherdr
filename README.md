@@ -938,9 +938,52 @@ nothing), so that one message answers them all:
 Every one of these is a button reachable with the keyboard (`Tab`, then `Enter`), and selecting a
 passage still offers **Reply** on it. A quoted question or point shows `✓`.
 
+**One syntax for every reference.** Whatever you reply to, the field gets one line that names it,
+and your answer goes on the lines below:
+
+```
+↳ Quote message 11:37 ~k3f : I can merge the PR —
+Go ahead.
+↳ Quote point 11:37 ~k3f : Shall I tag the release today? —
+Yes
+↳ Quote decision 11:37 #3 ~k3f : Publish the release notes on the site? —
+No
+```
+
+| Line | Written by |
+| --- | --- |
+| `↳ Quote message <time> ~<code> : <start of the message> —` | **Reply** under an agent message. |
+| `↳ Quote point <time> ~<code> : <excerpt> —` | `↳` on a question or a point, **Reply** on a selected passage. |
+| `↳ Quote decision <time> #<n> ~<code> : <question> —` | **Yes**, **No** or `↳` on a row of a decision table. |
+| `↳ Quote decisions <time> #<rows> ~<code> : <questions> —` | **OK to all** on a decision table. |
+| `↳ Decision: <task> —`, `↳ Problem: <task> —`, `↳ Question: <task> —`, `↳ Detail on <task> —`, `↳ Feedback on <task> —` (and their French labels) | **Answer**, **Problem**, **Question**, **Clarify** and **Comment** in the Project panel. |
+
+- The time is the one shown on the agent's message, so an answer to an earlier message is never
+  read as an answer to the last one. The types are the same words in every language.
+- The code after `~` is three characters wherdr derives from the message (and the rank of the
+  table, from the second table of a message on). It tells apart two messages of the same minute
+  and two tables of one message, whatever the excerpt shows. The field draws it dimmed, like
+  the words before the excerpt; the quote of a sent message leaves it out. The rows of **OK to
+  all** are the numbers the table really has: `#1-4`, or `#1,4` when rows 2 and 3 do not exist.
+- A reference is a whole line: it starts with `↳` in the first column and ends with ` —` at the
+  end of the line, and only there, so an excerpt may hold dashes of its own. The excerpt is plain
+  text on one line; a long one is cut with `…` (a message keeps its start, a passage its start
+  and its end).
+- Several references fit in one message, each followed by its answer.
+- Anything else is your own text: a `>` at the start of a line, a `↳` line of an unknown type or
+  with words after its dash. Text you paste never becomes a reference either: a pasted line that
+  reads like one gets a `\` before its `↳`. A long paste, shown as a **Pasted text** card, is
+  sent exactly as it was pasted.
+- In the conversation, each reference of a sent message shows as a quote; tap it to see the
+  message it names. Messages sent earlier with `> ` lines still show as quotes.
+
+**Settings › Conversation › Quoted replies** chooses how the field shows these lines: **Tokens,
+native field** (default) draws each one as a token in the usual field, **Plain text** shows the
+same lines as text, a fallback if the tokens misbehave. The message sent is the same.
+
 A **closed question**, one that yes or no answers in full, also gets **Yes** and **No** next to
-its `↳` (at the end of its row in the list style). A tap quotes the question and writes the
-answer under it, exactly as Reply and typing would; nothing is sent, so several questions can be
+its `↳` (at the end of its row in the list style). A tap refers to the question and writes the
+answer under it, in the language of the interface, exactly as Reply and typing would; nothing is sent, so several questions can be
 answered in a row before sending. The keyboard stays down on a phone. Tapping the other answer
 replaces the first; words you typed under a quote are never replaced. The rule is cautious, and
 in doubt only Reply is offered: a single sentence that opens like a yes/no question (`Shall I…`,
@@ -949,10 +992,12 @@ with `, OK?` / `, d'accord ?`, with no alternative (`or`, `ou`), no interrogativ
 `how`, `quel`, `comment`…) and no negation.
 
 A **decision table**, a Markdown table whose rows are numbered questions as a coordinator writes
-them, gets a panel right under it: **OK to all** writes `ok to all` (a second tap takes it back),
-and each row has **Yes**, **No** and `↳`, which write `3: yes`, `3: no`, or quote the row
-(`> 3. Publish the notes?`) for an answer in words; a row that asks an open question has `↳` alone. In French: `ok tout`, `3 : oui`, `3 : non`.
-Here too everything is composed in the field and you send. A table qualifies when it has a
+them, gets a panel right under it: **OK to all** refers to the whole table and writes `OK to all`
+under it (a second tap takes it back), and each row has **Yes**, **No** and `↳`, which refer to
+the row by its number and write `Yes` or `No` under it, or nothing for an answer in words; a row
+that asks an open question has `↳` alone. Every answer names the message and the row, even for
+the last message: the agent may write another one before you send. In French: `OK tout`, `Oui`,
+`Non`. Here too everything is composed in the field and you send. A table qualifies when it has a
 number column (a header `#`, `N°`, `No`, `Num`, `ID` or `Q` over short numbers, each once) and a
 question column, known by its header (`Question`, `Decision`, `Choix`…), by cells that all end
 with `?`, or by an advice column next to it (`Avis`, `Recommendation`, `Suggestion`…). Any other
@@ -961,7 +1006,7 @@ table is left as it is.
 Above the field, **N questions unanswered** counts the questions of the agent's last message
 (and the rows of its decision tables) that your draft does not answer yet; tap it to scroll to
 the first one. A question counts once it is quoted, a row once it is answered, quoted or covered
-by `ok to all`; when the message asks one thing only, any words you type answer it. The line
+by **OK to all**; when the message asks one thing only, any words you type answer it. The line
 goes when everything is answered and when you send, and it never shows for earlier messages,
 while the agent is working, or while it waits on a prompt. It hangs from the top edge of the
 field, so nothing moves when it comes or goes.
@@ -1170,7 +1215,7 @@ worktree. It is optional; with it installed, wherdr adds:
 
 The Project panel only works well when the coordinator follows its conventions: which lists
 mean what, the badges, `(agent → t-NNNN)`, and what to do with each message the buttons send
-(`✓ Tested: …`, `✗ Problem: … — …`, `↳ Queue: …`…). They are written once, as an agent skill:
+(`✓ Tested: …`, `↳ Queue: …`, `↳ Problem: … —` or `↳ Decision: … —` with the answer below it…). They are written once, as an agent skill:
 [`skills/wherdr/SKILL.md`](skills/wherdr/SKILL.md).
 
 - **Herdr plugin**: the install links the skill for every coordinator, whatever its agent:

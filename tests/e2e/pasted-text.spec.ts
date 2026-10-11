@@ -49,9 +49,9 @@ test('a long message typed in the field is a plain message with its quotes, not 
   const typed = page.locator('.msg-user', { hasText: 'Answer 1: agreed' })
   await typed.scrollIntoViewIfNeeded()
   await expect(typed.locator('.pasted-card')).toHaveCount(0)
-  await expect(typed.locator('.msg-q')).toHaveCount(5)
-  await expect(typed.locator('.msg-q').first()).toContainText('Point 1: the cache entry')
-  await expect(typed.locator('.msg-q').first()).not.toContainText('>')
+  await expect(typed.locator('.msg-ref')).toHaveCount(5)
+  await expect(typed.locator('.msg-ref').first()).toContainText('Point 1: the cache entry')
+  await expect(typed.locator('.msg-ref').first()).not.toContainText('Quote point')
   await shot(page, 'typed-quotes', testInfo.project.name)
   // Long: folded like any long message, the whole text one tap away.
   await typed.getByRole('button', { name: 'Show more' }).click()

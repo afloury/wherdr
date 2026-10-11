@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { findReplyOrigin, MARKER_MAX, parseReply, replyMarker, replyTarget, truncateMiddle, withReply } from '../shared/replyQuote'
+import { findReplyOrigin, parseReply, truncateMiddle } from '../shared/replyQuote'
+import { messageRef, parseRef, refLine } from '../shared/reference'
 import { queuedPhases } from '../shared/queuedPhase'
 import { createSelectionSettler, lastLineRect, trimmedEnd, selectionReplyPos, SETTLE_KEYBOARD, SETTLE_POINTER, SETTLE_SCROLL, SETTLE_TOUCH } from '../app/utils/selectionReply'
 import type { ClaudeScreen } from '../shared/types'
@@ -9,8 +10,9 @@ const screen = (sent: string | null, queued: string[] = []) => ({ shell: null, s
 
 describe('replying to a whole message', () => {
   it('the button under the message quotes the start of the message', () => {
-    const r = replyTarget(MSG, '14:32', 'fr')
+    const r = messageRef(MSG, '14:32')
     expect(r.excerpt.startsWith('Je propose deux options')).toBe(true)
+    expect(refLine(r).startsWith('↳ Quote message 14:32 : Je propose deux options')).toBe(true)
   })
   const view = { width: 1440, top: 100, bottom: 900 }
   const btn = { width: 100, height: 32 }
@@ -121,8 +123,8 @@ describe('queue: sending order', () => {
 
 describe('queue: quote', () => {
   it('la bulle en file garde sa citation', () => {
-    const msg = withReply(replyTarget('Option A ?', '14:32', 'fr'), 'Yes please', 'fr')
-    expect(parseReply(msg)).toEqual({ reply: { time: '14:32', excerpt: 'Option A ?' }, body: 'Yes please' })
+    expect(parseRef(refLine(messageRef('Option A ?', '14:32')))).toMatchObject({ kind: 'message', time: '14:32', excerpt: 'Option A ?' })
+    expect(parseReply('↳ En réponse à ton message de 14:32 (« Option A ? »)\n\nYes please')).toEqual({ reply: { time: '14:32', excerpt: 'Option A ?' }, body: 'Yes please' })
   })
 })
 
@@ -139,8 +141,7 @@ describe('long passage: start and end', () => {
   })
   it('history: passage markers of older versions still find their message', () => {
     const list = [{ time: '14:32', text: MSG }, { time: '14:32', text: long }]
-    const marker = replyMarker({ time: '14:32', excerpt: truncateMiddle(long, 80) }, 'fr')
-    expect(marker.length).toBeLessThanOrEqual(MARKER_MAX)
+    const marker = `↳ En réponse à ton message de 14:32 (« ${truncateMiddle(long, 80)} »)`
     const p = parseReply(`${marker}\n\nok`)!
     expect(p.body).toBe('ok')
     expect(findReplyOrigin(list, p.reply)).toBe(list[1])

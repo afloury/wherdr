@@ -5,7 +5,7 @@
 // via /uploads/<name>).
 
 import { effectScope, reactive, watch } from 'vue'
-import type { ReplyTarget } from '../../shared/replyQuote'
+import { refLine } from '../../shared/reference'
 import type { AttachKind } from '../../shared/attachments'
 
 export interface DraftAtt {
@@ -27,8 +27,7 @@ export function restoreAtt(a: StoredAtt): DraftAtt {
     ? { url: '', path: a.path, name: a.name, file: a.file, ref: a.ref || a.path }
     : { url: `/uploads/${encodeURIComponent(a.name!)}`, path: a.path, name: a.name }
 }
-// reply: the agent message being replied to (see utils/replyQuote.ts).
-interface Draft { text: string, atts: DraftAtt[], reply: ReplyTarget | null }
+interface Draft { text: string, atts: DraftAtt[] }
 
 const KEY = 'draft:'
 // Stored photos are purged after 7 days: we forget them before that.
@@ -47,26 +46,30 @@ function load(paneId: string): Draft {
   try {
     const raw = localStorage.getItem(KEY + paneId)
     if (raw) {
-      const d = JSON.parse(raw) as { text?: string, atts?: StoredAtt[], pastes?: string[], reply?: ReplyTarget }
+      const d = JSON.parse(raw) as { text?: string, atts?: StoredAtt[], pastes?: string[], reply?: { time?: unknown, excerpt?: unknown } }
+      // A draft saved while "Replying to the message" was a box above the
+      // field: the message it named is now a reference in the text.
+      const reply = d.reply && typeof d.reply.time === 'string' && typeof d.reply.excerpt === 'string'
+        ? refLine({ kind: 'message', label: '', time: d.reply.time || null, n: null, id: null, excerpt: d.reply.excerpt.replace(/\s+/g, ' ').trim() })
+        : ''
       return {
-        text: d.text || '',
+        text: [reply, d.text || ''].filter(Boolean).join('\n'),
         atts: (d.atts || [])
           .filter(a => a.path && a.name && Date.now() - uploadedAt(a.name) < ATT_MAX_AGE)
           .map(restoreAtt)
           .concat((d.pastes || []).filter(p => typeof p === 'string' && p).map(paste => ({ url: '', path: null, paste }))),
-        reply: d.reply && typeof d.reply.time === 'string' && typeof d.reply.excerpt === 'string' ? { time: d.reply.time, excerpt: d.reply.excerpt } : null,
       }
     }
   } catch { /* stockage indisponible ou brouillon illisible */ }
-  return { text: '', atts: [], reply: null }
+  return { text: '', atts: [] }
 }
 
 function persist(paneId: string, d: Draft) {
   const atts = d.atts.filter(a => a.path && a.name).map(a => (a.file ? { path: a.path, name: a.name, file: a.file, ref: a.ref } : { path: a.path, name: a.name }))
   const pastes = d.atts.flatMap(a => (a.paste ? [a.paste] : []))
   try {
-    if (!d.text && !atts.length && !pastes.length && !d.reply) localStorage.removeItem(KEY + paneId)
-    else localStorage.setItem(KEY + paneId, JSON.stringify({ text: d.text, atts, pastes: pastes.length ? pastes : undefined, reply: d.reply || undefined }))
+    if (!d.text && !atts.length && !pastes.length) localStorage.removeItem(KEY + paneId)
+    else localStorage.setItem(KEY + paneId, JSON.stringify({ text: d.text, atts, pastes: pastes.length ? pastes : undefined }))
   } catch { /* stockage indisponible */ }
 }
 
@@ -78,7 +81,7 @@ export function useDraft(paneId: string): Draft {
     d = reactive(load(paneId)) as Draft
     drafts.set(paneId, d)
     const draft = d
-    scope.run(() => watch(() => [draft.text, draft.atts.map(a => a.path || (a.paste ? `paste:${a.paste.length}` : '')).join('|'), draft.reply?.excerpt, draft.reply?.time], () => persist(paneId, draft)))
+    scope.run(() => watch(() => [draft.text, draft.atts.map(a => a.path || (a.paste ? `paste:${a.paste.length}` : '')).join('|')], () => persist(paneId, draft)))
   }
   return d
 }

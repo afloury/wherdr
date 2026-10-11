@@ -7,7 +7,7 @@
 // text, code, notebooks) are stored on its machine as they are (/api/attach).
 import type { Pane, QueuedMessage, SlashCommand } from '#shared/types'
 import type { DraftAtt } from '~/composables/useDraft'
-import { withReply } from '#shared/replyQuote'
+import { unreference } from '#shared/reference'
 import { quotesIn, removeQuote } from '~/utils/questionReply'
 import { attachQuoteMirror } from '~/utils/quoteMirror'
 import { isAgentCommand } from '#shared/commandScreen'
@@ -61,24 +61,12 @@ const enterSends = computed(() => desk.value && !isIOS && !touchKeyboard)
 
 type Att = DraftAtt
 const attachments = toRef(draft, 'atts')
-// Reply to a specific agent message: box above the field, short marker on send.
-const replyTo = toRef(draft, 'reply')
-// Questions and passages quoted in the text ("> " lines, see utils/questionReply.ts):
-// one chip each above the field, to remove it.
+// What the text refers to ("↳ … —" lines, see shared/reference.ts): one chip
+// each above the field, to remove it.
 const quotes = computed(() => quotesIn(text.value))
-// Quotes as tokens (Settings › Conversation, utils/quoteTokens.ts). "rich":
-// the rich field replaces the plain one while the draft holds a quote. Not
-// while the plain field has the focus: a ">" typed there does not swap fields
-// mid-word.
-const tokensRef = ref<{ focus: () => void, focusEnd: () => void, blur: () => void } | null>(null)
-const taFocused = ref(false)
-const tokensMode = computed(() => quoteMode.value === 'rich' && quotes.value.length > 0 && !taFocused.value)
-// Last token removed while typing in the rich field: the caret goes on in the plain one.
-watch(tokensMode, (on, was) => {
-  if (was && !on && document.activeElement?.closest('.rb-field')) nextTick(focusEnd)
-})
-// "native": the "> " lines of the plain field drawn as tokens by a mirror
-// behind it, while the text holds a quote.
+// "native" mode (Settings › Conversation, utils/quoteTokens.ts): the
+// reference lines of the field drawn as tokens by a mirror behind it, while
+// the text holds one.
 let mirror: ReturnType<typeof attachQuoteMirror> | null = null
 watch([() => quoteMode.value === 'native' && quotes.value.length > 0, ta], ([on, el]) => {
   if (mirror && (!on || !el)) { mirror.destroy(); mirror = null }
@@ -157,10 +145,7 @@ async function submit() {
   const pastes = attachments.value.flatMap(a => (a.paste ? [a.paste] : []))
   const paths = attachments.value.flatMap(a => (a.paste ? [] : [a.ref || a.path!]))
   const body = messageBody(text.value, pastes, paths)
-  // No marker before a "/" or "!" command: the agent would no longer read it as such
-  // (a photo sent alone starts with its path: not a command).
-  const reply = isSlashCommand(body) || body.startsWith('!') ? null : replyTo.value
-  const msg = withReply(reply, body, language)
+  const msg = body
   if (!msg || sending.value) return
   const p = props.pane
   // omp question with "Other": the message is its free answer.
@@ -173,7 +158,6 @@ async function submit() {
     text.value = ''
     clearAttachments()
     rememberPastes(pastes)
-    if (reply) replyTo.value = null
     haptic()
     emit('sent', null)
     outboxSend(p, props.paneId, msg).then(() => emit('sent', null), (err: Error) => toast(err.message, true))
@@ -189,7 +173,6 @@ async function submit() {
     } else queued = await sendMessage(p, props.paneId, msg)
     text.value = ''
     clearAttachments()
-    if (reply) replyTo.value = null
     haptic()
     emit('sent', queued)
     // "/" command: its result (terminal screen), as from the + menu.
@@ -334,15 +317,34 @@ function onPaste(e: ClipboardEvent) {
   if (!files.length) {
     // Long text: a "Pasted text" card instead of filling the field.
     const s = (e.clipboardData?.getData('text/plain') || '').replace(/\r\n?/g, '\n')
-    if (!isLongPaste(s)) return // normal paste
+    if (isLongPaste(s)) {
+      e.preventDefault()
+      addPaste(s)
+      return
+    }
+    // A pasted line that reads as a reference stays plain text: only the
+    // buttons of the conversation and of the Project panel write references.
+    const plain = unreference(s)
+    if (plain === s) return // normal paste
     e.preventDefault()
-    addPaste(s)
+    const el = e.target as HTMLTextAreaElement
+    const before = el.value
+    // As one undoable edit where the browser allows it.
+    const done = typeof document.execCommand === 'function' && document.execCommand('insertText', false, plain)
+    if (!done || el.value === before) {
+      const from = el.selectionStart ?? before.length
+      el.value = before.slice(0, from) + plain + before.slice(el.selectionEnd ?? from)
+      el.setSelectionRange(from + plain.length, from + plain.length)
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    }
     return
   }
   e.preventDefault()
   addFiles(files)
   haptic()
 }
+// A card is sent as it was pasted, to the character: nothing reads it as the
+// user's words (it is not in the field, and shows as a card once sent).
 function addPaste(s: string) {
   attachments.value.push({ url: '', path: null, paste: s })
   haptic()
@@ -475,15 +477,8 @@ async function runSlash(cmd: string) {
 // panel). The focus is given right away, within the gesture, so that the iPhone
 // opens the keyboard; the cursor is placed once the text is rendered.
 function focusEnd() {
-  if (tokensMode.value) {
-    if (tokensRef.value) tokensRef.value.focusEnd()
-    else nextTick(() => tokensRef.value?.focusEnd())
-    return
-  }
   ta.value?.focus()
   nextTick(() => {
-    // A quote just added: the rich field may have taken over.
-    if (tokensMode.value) return tokensRef.value?.focusEnd()
     const el = ta.value
     if (!el) return
     el.focus()
@@ -493,9 +488,9 @@ function focusEnd() {
 }
 
 defineExpose({
-  focus: () => (tokensMode.value ? tokensRef.value?.focus() : ta.value?.focus()),
+  focus: () => ta.value?.focus(),
   focusEnd,
-  blur: () => (tokensMode.value ? tokensRef.value?.blur() : ta.value?.blur()),
+  blur: () => ta.value?.blur(),
   addImages, addFiles, stop,
 })
 </script>
@@ -560,18 +555,10 @@ defineExpose({
         <UIcon name="i-lucide-arrow-up" /><span>{{ unanswered > 1 ? tl(`${unanswered} questions unanswered`, `${unanswered} questions sans réponse`) : tl('1 question unanswered', '1 question sans réponse') }}</span>
       </button>
     </div>
-    <div v-if="replyTo" class="composer-reply" role="status">
-      <UIcon name="i-lucide-reply" class="composer-reply-icon" />
-      <span class="composer-reply-label">{{ t('Replying to the message') }} · {{ replyTo.time }}</span>
-      <span class="composer-reply-text">{{ replyTo.excerpt }}</span>
-      <button type="button" class="composer-reply-x" :aria-label="t('Cancel reply')" @mousedown.prevent @click="replyTo = null">
-        <UIcon name="i-lucide-x" />
-      </button>
-    </div>
-    <div v-if="quotes.length && !tokensMode" class="composer-quotes" role="list" :aria-label="t('Quoted questions')">
+    <div v-if="quotes.length" class="composer-quotes" role="list" :aria-label="t('Quoted questions')">
       <span class="composer-quotes-label">↳ {{ quotes.length }}</span>
       <span v-for="q in quotes" :key="q.start" class="composer-quote" role="listitem">
-        <span class="composer-quote-text">{{ q.text }}</span>
+        <span class="composer-quote-text">{{ q.excerpt }}</span>
         <button type="button" class="composer-quote-x" :aria-label="t('Remove quote')" @mousedown.prevent @click="text = removeQuote(text, q)">
           <UIcon name="i-lucide-x" />
         </button>
@@ -582,11 +569,8 @@ defineExpose({
       :rows="1" :maxrows="7" :autofocus="false" :submit-on-enter="enterSends && !slashOpen"
       :enterkeyhint="enterSends ? 'send' : 'enter'" autocapitalize="sentences"
       class="prompt" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"
-      @submit="submit" @keydown="onKeydown" @paste="onPaste" @focus="taFocused = true" @blur="taFocused = false"
+      @submit="submit" @keydown="onKeydown" @paste="onPaste"
     >
-      <template v-if="tokensMode" #body>
-        <QuoteTokensField ref="tokensRef" v-model="text" :placeholder="placeholder" :enter-sends="enterSends" @submit="submit" @files="addFiles" @pasted="addPaste" />
-      </template>
       <template v-if="attachments.length" #header>
         <div class="attachments">
           <template v-for="(a, i) in attachments" :key="a.url || a.path || a.file?.label || `paste:${i}`">

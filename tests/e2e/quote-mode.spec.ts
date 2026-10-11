@@ -1,9 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
 import { OMP_QUESTIONS_PANE } from './scenario.mjs'
+import { expectDraft, point } from './refs'
 
 // Settings › Conversation › Quoted replies (utils/quoteTokens.ts): one list
-// for the device in use, tokens in the native field by default, and a
-// preview played once with a Replay button.
+// for the device in use, tokens in the native field by default with plain
+// text as the fallback, and a preview played once with a Replay button.
 const shot = (page: Page, name: string, project: string) =>
   process.env.SHOTS ? page.screenshot({ path: `${process.env.SHOTS}/${project}-${name}.png` }) : Promise.resolve()
 
@@ -24,21 +25,23 @@ test('an empty storage gets tokens in the native field, from one list', async ({
   await expect(radio('native')).toHaveAttribute('aria-checked', 'true')
   expect(await saved(page, 'quoteMode')).toBe('native')
 
-  // One list of three choices, no title per device kind.
+  // One list of two choices, no title per device kind.
   await expect(group.locator('[role="radiogroup"]')).toHaveCount(1)
-  await expect(group.locator('[role="radio"]')).toHaveCount(3)
+  await expect(group.locator('[role="radio"]')).toHaveCount(2)
   await expect(group).not.toContainText('On a computer')
   await expect(group).not.toContainText('On a phone')
 
-  // "Default." and no badge on the native field; the rich field keeps its badge.
+  // "Default." on the native field; both choices speak of the "↳ … —" lines.
   // The whole row of a choice: the outermost element holding its radio alone.
   const item = (value: string) => radio(value).locator('xpath=ancestor::*[count(.//*[@role="radio"])=1][last()]')
   await expect(item('native')).toContainText('Tokens, native field')
   await expect(item('native')).toContainText('Default.')
-  await expect(item('native')).not.toContainText('Experimental')
+  await expect(item('native')).toContainText('“↳ … —”')
+  await expect(item('lines')).toContainText('Plain text')
+  await expect(item('lines')).toContainText('“↳ … —”')
   await expect(item('lines')).not.toContainText('Default.')
-  await expect(item('rich')).toContainText('Experimental')
-  await expect(group.locator('.exp-tag')).toHaveCount(1)
+  await expect(group).not.toContainText('rich field')
+  await expect(group).not.toContainText('“>”')
 
   await group.evaluate(el => el.scrollIntoView({ block: 'start' }))
   await shot(page, 'quote-mode-settings', testInfo.project.name)
@@ -71,6 +74,15 @@ test('the former per-device values are overwritten once, then a new choice is ke
   expect(await saved(page, 'quoteMode')).toBe('lines')
 })
 
+test('a device set to the former rich field moves to the native one', async ({ page }) => {
+  await page.goto('/#/settings')
+  await page.evaluate(() => localStorage.setItem('quoteMode', 'rich'))
+  await page.reload()
+  const { radio } = await settings(page)
+  await expect(radio('native')).toHaveAttribute('aria-checked', 'true')
+  expect(await saved(page, 'quoteMode')).toBe('native')
+})
+
 test('the preview plays once, then Replay plays it again', async ({ page }, testInfo) => {
   const { group } = await settings(page)
   const preview = group.locator('.qt-preview')
@@ -85,6 +97,7 @@ test('the preview plays once, then Replay plays it again', async ({ page }, test
   await expect(preview).toHaveAttribute('data-playing', 'false', { timeout: 15_000 })
   expect(await running()).toBe(0)
   await expect(preview.locator('.qt-tok.two')).toBeVisible()
+  await expect(preview.locator('.qt-tok.one')).toHaveText(/↳\s*Quote point 09:12 :.*—/)
   await group.evaluate(el => el.scrollIntoView({ block: 'start' }))
   await shot(page, 'quote-mode-preview-ended', testInfo.project.name)
   await page.waitForTimeout(1_500)
@@ -104,9 +117,30 @@ test('the message field draws a quoted question as a token by default', async ({
   await chat.locator('.q-reply[data-q="Shall I start step 1 now?"]').click()
 
   const field = page.locator('.prompt textarea').first()
-  await expect(field).toHaveValue(/^> Shall I start step 1 now\?/)
+  await expectDraft(field, `${point('Shall I start step 1 now?')}\n`)
   // The native field with its mirror behind it (utils/quoteMirror.ts).
   await expect(field).toHaveClass(/qm-on/)
   await expect(page.locator('.prompt .qm-mirror .qm-q')).toHaveCount(1)
   await shot(page, 'quote-mode-field', testInfo.project.name)
+})
+
+test('the plain text mode writes the same line, without a token', async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('typewriterSpeed', 'off')
+    localStorage.setItem('quoteMode', 'lines')
+  })
+  await page.goto(`/#/a/${OMP_QUESTIONS_PANE}`)
+  const chat = page.locator('.chat')
+  await expect(chat.getByText('All 48 tests pass.')).toBeVisible()
+  const field = page.locator('.prompt textarea').first()
+  await field.fill('')
+  await chat.locator('.q-reply[data-q="Shall I start step 1 now?"]').click()
+  await expectDraft(field, `${point('Shall I start step 1 now?')}\n`)
+  await expect(field).not.toHaveClass(/qm-on/)
+  await expect(page.locator('.prompt .qm-mirror')).toHaveCount(0)
+  // The chip above the field still removes it.
+  await expect(page.locator('.composer-quote')).toHaveCount(1)
+  await shot(page, 'quote-mode-field-plain', testInfo.project.name)
+  await page.locator('.composer-quote-x').click()
+  await expect(field).toHaveValue('')
 })

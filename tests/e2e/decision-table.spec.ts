@@ -1,9 +1,11 @@
 import { expect, test, type Page } from '@playwright/test'
-import { OMP_DECISIONS_PANE } from './scenario.mjs'
+import { OMP_DECISIONS_PANE, OMP_TWO_TABLES_PANE } from './scenario.mjs'
+import { decision, decisions, expectDraft } from './refs'
 
 // The panel under a decision table (utils/questionReply.ts, decisionRows):
 // "OK to all", and Yes / No / Reply per numbered row. Everything is composed
-// in the field; the user sends.
+// in the field, each answer under a reference to the message and the row
+// (shared/reference.ts); the user sends.
 const shot = (page: Page, name: string, project: string) =>
   process.env.SHOTS ? page.screenshot({ path: `${process.env.SHOTS}/${project}-${name}.png` }) : Promise.resolve()
 
@@ -13,6 +15,8 @@ const ROWS = [
   ['3', 'Publish the release notes on the site?'],
   ['4', 'Which name for the new theme?'],
 ]
+const row = (n: number) => decision(ROWS[n - 1]![0]!, ROWS[n - 1]![1]!)
+const ALL = decisions('1-4', ROWS.map(r => r[1]).join(' · '))
 
 async function open(page: Page, style?: string, language?: string) {
   await page.addInitScript(([s, l]) => {
@@ -49,19 +53,19 @@ test('a decision table is answered row by row under it; other tables get nothing
   expect(await fits(page)).toBe(true)
   await shot(page, 'decisions', testInfo.project.name)
 
-  // A row answered by its number; the other answer replaces it in place.
+  // A row answered under a reference to it; the other answer replaces it in place.
   await panel.getByRole('button', { name: '1 · Yes: Tag the release today?' }).click()
-  await expect(field).toHaveValue('1: yes\n')
+  await expectDraft(field, `${row(1)}\nYes\n`)
   await panel.getByRole('button', { name: `2 · No: ${ROWS[1]![1]}` }).click()
-  await expect(field).toHaveValue('1: yes\n2: no\n')
+  await expectDraft(field, `${row(1)}\nYes\n${row(2)}\nNo\n`)
   await expect(panel.getByRole('button', { name: `2 · No: ${ROWS[1]![1]}` })).toHaveAttribute('aria-pressed', 'true')
   await panel.getByRole('button', { name: '1 · No: Tag the release today?' }).click()
-  await expect(field).toHaveValue('1: no\n2: no\n')
+  await expectDraft(field, `${row(1)}\nNo\n${row(2)}\nNo\n`)
   await expect(panel.getByRole('button', { name: '1 · Yes: Tag the release today?' })).toHaveAttribute('aria-pressed', 'false')
-  // Reply quotes the row, with its number, for an answer in words.
+  // Reply refers to the row the same way, for an answer in words.
   const reply = panel.getByRole('button', { name: `Reply: 4. ${ROWS[3]![1]}` })
   await reply.click()
-  await expect(field).toHaveValue(`1: no\n2: no\n> 4. ${ROWS[3]![1]}\n`)
+  await expectDraft(field, `${row(1)}\nNo\n${row(2)}\nNo\n${row(4)}\n`)
   await expect(reply).toHaveClass(/quoted/)
   await shot(page, 'decisions-answered', testInfo.project.name)
   // The field keeps the keyboard down for the taps, and nothing was sent.
@@ -75,25 +79,25 @@ test('a decision table is answered row by row under it; other tables get nothing
   await expect(chat.locator('.md-body .q-ans')).toHaveCount(2)
 })
 
-test('"OK to all" accepts the table in one line, a second tap takes it back', async ({ page }, testInfo) => {
+test('"OK to all" accepts the table under a reference to it, a second tap takes it back', async ({ page }, testInfo) => {
   const { field, panel } = await open(page)
   const all = panel.locator('.q-all')
   await all.scrollIntoViewIfNeeded()
   expect(await all.evaluate(el => getComputedStyle(el, '::before').content)).toBe('"OK to all"')
   await all.click()
-  await expect(field).toHaveValue('ok to all\n')
+  await expectDraft(field, `${ALL}\nOK to all\n`)
   await expect(all).toHaveAttribute('aria-pressed', 'true')
   // An exception still goes below it.
   await panel.getByRole('button', { name: `3 · No: ${ROWS[2]![1]}` }).click()
-  await expect(field).toHaveValue('ok to all\n3: no\n')
+  await expectDraft(field, `${ALL}\nOK to all\n${row(3)}\nNo\n`)
   await shot(page, 'decisions-ok-all', testInfo.project.name)
   await all.click()
-  await expect(field).toHaveValue('3: no\n')
+  await expectDraft(field, `${row(3)}\nNo\n`)
   await expect(all).toHaveAttribute('aria-pressed', 'false')
   // Keyboard: the buttons are focusable and Enter answers.
   await all.focus()
   await page.keyboard.press('Enter')
-  await expect(field).toHaveValue('3: no\nok to all\n')
+  await expectDraft(field, `${row(3)}\nNo\n${ALL}\nOK to all\n`)
 })
 
 test('the panel speaks French and writes French answers', async ({ page }, testInfo) => {
@@ -104,7 +108,8 @@ test('the panel speaks French and writes French answers', async ({ page }, testI
   await panel.getByRole('button', { name: '1 · Oui: Tag the release today?' }).click()
   await panel.getByRole('button', { name: `2 · Non: ${ROWS[1]![1]}` }).click()
   await all.click()
-  await expect(field).toHaveValue('1 : oui\n2 : non\nok tout\n')
+  // The answers follow the language of the interface; the reference does not change.
+  await expectDraft(field, `${row(1)}\nOui\n${row(2)}\nNon\n${ALL}\nOK tout\n`)
   await shot(page, 'decisions-fr', testInfo.project.name)
 })
 
@@ -115,8 +120,48 @@ for (const style of ['text', 'list']) {
     await panel.scrollIntoViewIfNeeded()
     await panel.getByRole('button', { name: '1 · Yes: Tag the release today?' }).click()
     await panel.getByRole('button', { name: `Reply: 4. ${ROWS[3]![1]}` }).click()
-    await expect(field).toHaveValue(`1: yes\n> 4. ${ROWS[3]![1]}\n`)
+    await expectDraft(field, `${row(1)}\nYes\n${row(4)}\n`)
     expect(await fits(page)).toBe(true)
     await shot(page, `decisions-${style}`, testInfo.project.name)
   })
 }
+
+test('two decision tables of one message keep their own answers, the same question included', async ({ page }, testInfo) => {
+  await page.addInitScript(() => localStorage.setItem('typewriterSpeed', 'off'))
+  await page.goto(`/#/a/${OMP_TWO_TABLES_PANE}`)
+  const panels = page.locator('.chat .q-table')
+  await expect(panels).toHaveCount(2)
+  const field = page.locator('.prompt textarea').first()
+  await field.fill('')
+  const [staging, production] = [panels.nth(0), panels.nth(1)]
+  const pressed = (panel: typeof staging, name: string) => panel.getByRole('button', { name }).getAttribute('aria-pressed')
+
+  // Yes to the first table, No to the same question of the second: two
+  // references, told apart by the code of their table.
+  await staging.getByRole('button', { name: '1 · Yes: Continue?' }).click()
+  await production.getByRole('button', { name: '1 · No: Continue?' }).click()
+  const draft = await field.inputValue()
+  const m = /^↳ Quote decision \d\d:\d\d #1 ~([0-9a-z]{3}) : Continue\? —\nYes\n↳ Quote decision \d\d:\d\d #1 ~([0-9a-z]{3})2 : Continue\? —\nNo\n$/.exec(draft)
+  expect(m, draft).not.toBeNull()
+  expect(m![2]).toBe(m![1])
+  expect(await pressed(staging, '1 · Yes: Continue?')).toBe('true')
+  expect(await pressed(staging, '1 · No: Continue?')).toBe('false')
+  expect(await pressed(production, '1 · No: Continue?')).toBe('true')
+  expect(await pressed(production, '1 · Yes: Continue?')).toBe('false')
+  await expect(page.locator('.prompt .qm-mirror .qm-q')).toHaveCount(2)
+  await shot(page, 'two-tables-answered', testInfo.project.name)
+
+  // "OK to all" on the second table accepts that one only, and names the rows it has.
+  await field.fill('')
+  await production.locator('.q-all').click()
+  expect(await field.inputValue()).toMatch(/^↳ Quote decisions \d\d:\d\d #1,4 ~[0-9a-z]{3}2 : Continue\? · Delete the old production replica\? —\nOK to all\n$/)
+  await expect(production.locator('.q-all')).toHaveAttribute('aria-pressed', 'true')
+  await expect(staging.locator('.q-all')).toHaveAttribute('aria-pressed', 'false')
+  await expect(staging.locator('.q-tquote.quoted')).toHaveCount(0)
+  await staging.locator('.q-all').click()
+  expect(await field.inputValue()).toMatch(/^↳ Quote decisions [^\n]* #1,4 [^\n]*\nOK to all\n↳ Quote decisions \d\d:\d\d #1-2 ~[0-9a-z]{3} : Continue\? · Keep the staging data\? —\nOK to all\n$/)
+  await expect(production.locator('.q-all')).toHaveAttribute('aria-pressed', 'true')
+  expect(await fits(page)).toBe(true)
+  await shot(page, 'two-tables-ok-all', testInfo.project.name)
+  await field.fill('')
+})
