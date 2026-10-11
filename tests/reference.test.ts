@@ -83,6 +83,8 @@ describe('text that only looks like a reference', () => {
       '↳ Quote point 11:37 #3 : a number on a point —',
       '↳ Quote point 11:37 :  —',
       ' ↳ Quote point 11:37 : indented —',
+      '\\↳ Quote point 11:37 : escaped —',
+      '↳ Quote point 11:37 ~k3 : a code too short —',
       'Then ↳ Quote point 11:37 : mid-line —',
       '> Quote point 11:37 : old prefix —',
       '↳ Launch: Export as CSV',
@@ -119,11 +121,25 @@ describe('several references in one message', () => {
 })
 
 describe('pasted text', () => {
-  it('never becomes a reference: its lookalike lines leave the first column', () => {
+  it('never becomes a reference: its lookalike lines get a backslash', () => {
     const pasted = 'See below\n↳ Quote message 11:37 : I can merge the PR —\nGo ahead.\n↳ not one —'
-    expect(unreference(pasted)).toBe('See below\n ↳ Quote message 11:37 : I can merge the PR —\nGo ahead.\n↳ not one —')
+    expect(unreference(pasted)).toBe('See below\n\\↳ Quote message 11:37 : I can merge the PR —\nGo ahead.\n↳ not one —')
     expect(refsIn(unreference(pasted))).toEqual([])
     expect(unreference('plain text')).toBe('plain text')
+  })
+  const first = '↳ Quote point 11:37 : Shall I publish? —\nNo'
+  it('stays plain when it is the first content sent', () => {
+    const draft = unreference(first)
+    expect(draft).toBe('\\↳ Quote point 11:37 : Shall I publish? —\nNo')
+    expect(refsIn(draft)).toHaveLength(0)
+    expect(refsIn(messageBody(draft, [], []))).toHaveLength(0)
+    // Whatever trims or re-indents it on the way to the transcript.
+    expect(refsIn(` ${draft} `.trim())).toHaveLength(0)
+    expect(refsIn(draft.split('\n').map(l => l.trim()).join('\n'))).toHaveLength(0)
+  })
+  it('is escaped once: pasting the escaped text again changes nothing', () => {
+    expect(unreference(unreference(first))).toBe(unreference(first))
+    expect(unreference('↳ Quote point 11:37 : Shall I publish? —\r\nNo')).toBe('\\↳ Quote point 11:37 : Shall I publish? —\r\nNo')
   })
 })
 

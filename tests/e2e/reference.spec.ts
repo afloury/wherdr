@@ -148,7 +148,7 @@ test('only a whole reference line is a token: ">" lines, lookalikes and pasted t
   await page.keyboard.type('Yes')
   await page.keyboard.press('Shift+Enter')
   await paste(field, 'From the log:\n↳ Quote message 09:12 : I can merge the PR —\nGo ahead.')
-  await expectDraft(field, `${point('Shall I merge the branch now?')}\nYes\nFrom the log:\n ↳ Quote message 09:12 : I can merge the PR —\nGo ahead.`)
+  await expectDraft(field, `${point('Shall I merge the branch now?')}\nYes\nFrom the log:\n\\↳ Quote message 09:12 : I can merge the PR —\nGo ahead.`)
   await expect(tokens).toHaveCount(1)
   await expect(chips).toHaveCount(1)
   await expect(page.locator('.prompt .attachments .pasted-card')).toHaveCount(0)
@@ -158,6 +158,23 @@ test('only a whole reference line is a token: ">" lines, lookalikes and pasted t
   await paste(field, 'plain')
   await expect(tokens).toHaveCount(0)
   await field.fill('')
+})
+
+test('a pasted line that reads as a reference is still plain text once sent, first line included', async ({ page }, testInfo) => {
+  const { field, tokens, chips } = await open(page, OMP_CHAT_PANE, 'Ready when you are.')
+  const id = `${testInfo.project.name} ${Date.now()}`
+  await paste(field, `↳ Quote point 09:12 : Shall I publish? —\nNo ${id}`)
+  await expect(field).toHaveValue(`\\↳ Quote point 09:12 : Shall I publish? —\nNo ${id}`)
+  await expect(tokens).toHaveCount(0)
+  await expect(chips).toHaveCount(0)
+  await page.locator('.prompt-send').click()
+  // The message is trimmed on its way: the first line is no reference for all that.
+  const sent = page.locator('.msg-user:not(.msg-pending)', { hasText: id })
+  await expect(sent).toBeVisible()
+  await expect(sent.locator('.msg-ref')).toHaveCount(0)
+  await expect(sent).toContainText('\\↳ Quote point 09:12 : Shall I publish? —')
+  await sent.scrollIntoViewIfNeeded()
+  await shot(page, 'ref-pasted-sent', testInfo.project.name)
 })
 
 const BOARD = {

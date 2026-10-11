@@ -111,11 +111,12 @@ export function refsIn(text: string): TextRef[] {
 }
 
 // Text that came from elsewhere (pasted, dropped): a line of it that reads as
-// a reference is moved off the first column, so it stays the plain text it
-// is. Only what wherdr's own buttons write is a reference.
+// a reference gets a "\" before its "↳", so it stays the plain text it is.
+// Only what wherdr's own buttons write is a reference. A character that
+// shows, not a space: sending and the agents' transcripts trim a message.
 export function unreference(text: string): string {
   if (!text.includes('↳')) return text
-  return text.split('\n').map(l => (l.startsWith('↳') && isRefLine(l.replace(/\r$/, '')) ? ` ${l}` : l)).join('\n')
+  return text.split('\n').map(l => (l.startsWith('↳') && isRefLine(l.replace(/\r$/, '')) ? `\\${l}` : l)).join('\n')
 }
 
 // Message display: its references apart from the words under them. A run of

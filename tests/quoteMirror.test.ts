@@ -14,6 +14,6 @@ describe('mirrorLines', () => {
     ])
   })
   it('draws nothing else as a token: ">" lines, lookalikes, a reference off the first column', () => {
-    expect(mirrorLines('> a quote typed by hand\n>>>\n↳ note —\n ↳ Quote point 11:37 : pasted —\n↳ Quote point 11:37 : answered — yes').every(l => !l.ref)).toBe(true)
+    expect(mirrorLines('> a quote typed by hand\n>>>\n↳ note —\n\\↳ Quote point 11:37 : pasted —\n↳ Quote point 11:37 : answered — yes').every(l => !l.ref)).toBe(true)
   })
 })

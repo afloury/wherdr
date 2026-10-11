@@ -111,7 +111,7 @@ describe('Composer references', () => {
     expect(paste('plain words')).toBe(false)
     expect(paste(`From the log:\n${REF}\nGo ahead.`)).toBe(true)
     await flushPromises()
-    expect(el.value).toBe(`From the log:\n ${REF}\nGo ahead.`)
+    expect(el.value).toBe(`From the log:\n\\${REF}\nGo ahead.`)
     expect(w.find('.qm-mirror').exists()).toBe(false)
     expect(w.findAll('.composer-quote')).toHaveLength(0)
     w.unmount()
