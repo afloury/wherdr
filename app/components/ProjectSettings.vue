@@ -33,7 +33,8 @@ watch(() => [props.tick, props.board.version], load)
 onUnmounted(() => { seq++ })
 
 const onOff = (v: boolean) => (v ? tl('On', 'Oui') : tl('Off', 'Non'))
-const days = (n: number) => tl(`${n} day${n === 1 ? '' : 's'}`, `${n} jour${n > 1 ? 's' : ''}`)
+// herdr-projects: `auto_resolve_days = 0` means never.
+const days = (n: number) => (n === 0 ? tl('Never', 'Jamais') : tl(`${n} day${n === 1 ? '' : 's'}`, `${n} jour${n > 1 ? 's' : ''}`))
 // Label, PROJECT.md key, value.
 const rows = computed<{ key: SettingKey, label: string, toml: string, value: string }[]>(() => {
   const s = settings.value

@@ -7,7 +7,8 @@ import ProjectPanel from '~/components/ProjectPanel.vue'
 import type { ProjectBoard } from '#shared/projectBoard'
 
 const board: ProjectBoard = { slug: 'acme', version: 'v1', lists: [], open: [], resolved: [] }
-registerEndpoint('/api/project/settings', () => ({ settings: {
+let zeroDays = false
+registerEndpoint('/api/project/settings', () => (zeroDays ? { settings: { name: 'Acme API', goal: '', coordinatorProfile: 'claude', threadProfile: 'codex', maxParallelThreads: 3, autoResolveDays: 0, nudge: true, mute: false, repos: [], defaults: [] } } : { settings: {
   name: 'Acme API', goal: 'Ship the public API v2', coordinatorProfile: 'claude', threadProfile: 'codex',
   maxParallelThreads: 3, autoResolveDays: 7, nudge: true, mute: false,
   repos: [{ path: '/srv/code/acme-api', machine: '' }, { path: '/srv/code/acme-web', machine: 'Laptop' }],
@@ -51,6 +52,14 @@ describe('ProjectPanel › Settings and Memory tabs', () => {
     })
     expect(w.findAll('.ps-repos li').map(x => x.text())).toEqual(['/srv/code/acme-api', '/srv/code/acme-webLaptop'])
     expect(w.findAll('.ps button, .ps input, .ps select, .ps textarea')).toHaveLength(0)
+  })
+
+  it('says Never for an auto-resolve delay of 0, as herdr-projects means it', async () => {
+    zeroDays = true
+    const w = await mountTab('settings')
+    await vi.waitFor(() => expect(w.findAll('.ps-row')).toHaveLength(8))
+    expect(w.findAll('.ps-row')[5]!.find('dd').text()).toBe('Never')
+    zeroDays = false
   })
 
   it('lists memory files and opens one as Markdown', async () => {
