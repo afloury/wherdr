@@ -20,6 +20,7 @@ import { findReplyOrigin, parseReply, replyTarget, type ReplyTarget } from '#sha
 import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
 import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } from '~/utils/ompTool'
 import { duplicateImages } from '#shared/imageDupes'
+import { stripPosition } from '#shared/filePaths'
 
 const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
 const route = useRoute()
@@ -714,8 +715,9 @@ function openCmdMenu(el: HTMLElement) {
 }
 
 // ------------------------------------------------------------ file paths
-// Inline code that looks like a path (utils/markdown.ts): Reveal in Finder and
-// Open on the agent's machine when it is a Mac, Copy path everywhere.
+// Inline code that looks like a path (utils/markdown.ts): Preview (in a sheet,
+// FilesView) and Download from the agent's machine, wherever it runs; Reveal
+// in Finder and Open there when it is a Mac; Copy path everywhere.
 // Paths and commands: dropdown at the code on a computer, sheet on the phone.
 const codeMenu = reactive({ open: false, x: 0, y: 0, w: 0, h: 0 })
 const codeMenuDropdown = ref<ReturnType<typeof toDropdown>>([])
@@ -730,8 +732,16 @@ function openCodeMenu(el: HTMLElement, items: MenuItem[], title: string) {
   codeMenuDropdown.value = toDropdown(items)
   codeMenu.open = true
 }
+const fileName = (p: string) => p.replace(/\/+$/, '').split('/').pop() || p
 function pathMenuItems(p: string): MenuItem[] {
   const items: MenuItem[] = []
+  // A folder (`src/`) has nothing to show or save.
+  if (!offlineView.value && !p.endsWith('/')) {
+    items.push(
+      { label: t('Preview'), icon: 'i-lucide-eye', run: () => previewFile(p) },
+      { label: t('Download'), icon: 'i-lucide-download', run: () => downloadFile(p) },
+    )
+  }
   if (canOpenOnMachine(props.pane) && !offlineView.value) {
     items.push(
       { label: t('Reveal in Finder'), icon: 'i-lucide-folder-search', run: () => revealOnMachine(p, 'reveal') },
@@ -743,7 +753,15 @@ function pathMenuItems(p: string): MenuItem[] {
 }
 function openPathMenu(el: HTMLElement, path?: string) {
   const p = path || (el.textContent || '').trim()
-  if (p) openCodeMenu(el, pathMenuItems(p), p.replace(/\/+$/, '').split('/').pop() || p)
+  if (p) openCodeMenu(el, pathMenuItems(p), fileName(p))
+}
+const filePeek = reactive({ open: false, path: '' })
+function previewFile(p: string) {
+  Object.assign(filePeek, { open: true, path: p })
+}
+async function downloadFile(p: string) {
+  try { await saveFile(`/api/files/download?pane=${encodeURIComponent(props.pane.id)}&path=${encodeURIComponent(p)}&from=chat`, fileName(stripPosition(p))) }
+  catch (err) { toast((err as Error).message, true) }
 }
 function onListKey(e: KeyboardEvent) {
   if (e.key === 'Escape' && (pickKey.value || armed)) { pickKey.value = null; arm(null); return }
@@ -1433,5 +1451,8 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
     <UDropdownMenu v-if="!sheetMenus" v-model:open="codeMenu.open" :items="codeMenuDropdown" :content="{ align: 'start', side: 'bottom', sideOffset: 4 }" :ui="{ content: 'hw-dropdown' }">
       <span class="path-anchor" :style="{ left: `${codeMenu.x}px`, top: `${codeMenu.y}px`, width: `${codeMenu.w}px`, height: `${codeMenu.h}px` }" aria-hidden="true" />
     </UDropdownMenu>
+    <AppSheet v-model:open="filePeek.open" :title="fileName(stripPosition(filePeek.path))" wide full screen>
+      <FilesView v-if="filePeek.open" :key="filePeek.path" :pane-id="pane.id" :file="filePeek.path" />
+    </AppSheet>
   </div>
 </template>

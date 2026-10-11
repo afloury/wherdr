@@ -3,9 +3,14 @@
 // shell scripts on the local disk and on a remote machine; paths only ever go
 // in positional arguments, and every resolved path (symlinks included) must
 // stay under the root. Nothing here writes.
+//
+// A file path written in a conversation (shared/filePaths.ts) is previewed and
+// downloaded the same way, with the machine's home folder as the root, like
+// Reveal in Finder (server/utils/reveal.ts).
 import { execFile } from 'node:child_process'
 import path from 'node:path'
 import type { FileEntry, FilePreview, FilesListing } from '../../shared/types'
+import { posixResolve, resolveAgentPath } from '../../shared/filePaths'
 import { gitToplevel } from './changes'
 import { HerdrError } from './herdr'
 import type { Machine } from './machines'
@@ -13,6 +18,7 @@ import type { Machine } from './machines'
 const MAX_ENTRIES = 2000
 const TEXT_BYTES = 256 * 1024
 const IMAGE_BYTES = 2 * 1024 * 1024
+export const DOWNLOAD_BYTES = 50 * 1024 * 1024
 const IMAGE_TYPES: Record<string, string> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
   avif: 'image/avif', bmp: 'image/bmp', ico: 'image/x-icon', svg: 'image/svg+xml',
@@ -53,8 +59,10 @@ printf '=\\0'
 if stat -f %z / >/dev/null 2>&1; then stat -f %z -- "$@"; else stat -c %s -- "$@"; fi 2>/dev/null
 exit 0`
 
-// "<size>\\n" then at most $3 bytes of the file. Symlinks resolved one link at
-// a time (readlink, cd -P: realpath is missing before macOS 13).
+// "<size>\\n" then at most $3 bytes of the file; with $4 set, the size alone
+// when the file has $3 bytes or more (a download refused, nothing sent).
+// Symlinks resolved one link at a time (readlink, cd -P: realpath is missing
+// before macOS 13).
 export const READ_SCRIPT = `${RESOLVE}
 case "$2" in */*) d=\${2%/*} ;; *) d=. ;; esac
 b=\${2##*/}
@@ -74,14 +82,16 @@ under "$f" || { echo "outside" >&2; exit 5; }
 [ -r "$f" ] || { echo "permission denied" >&2; exit 7; }
 s=$(wc -c < "$f") || exit 4
 echo $s
+[ -n "$4" ] && [ $(($s)) -ge "$3" ] && exit 0
 head -c "$3" < "$f"`
 
 type Exec = (script: string, args: string[]) => Promise<{ code: number | null, stdout: Buffer, stderr: string }>
-function executor(m: Machine): Exec {
+interface RunOpts { timeoutMs?: number, maxBytes?: number }
+function executor(m: Machine, { timeoutMs = 15000, maxBytes = IMAGE_BYTES }: RunOpts = {}): Exec {
   const remote = m.exec
-  if (remote) return (script, args) => remote(script, args, { timeoutMs: 15000 })
+  if (remote) return (script, args) => remote(script, args, { timeoutMs })
   return (script, args) => new Promise((resolve) => {
-    execFile('sh', ['-c', script, 'sh', ...args], { timeout: 15000, encoding: 'buffer', maxBuffer: IMAGE_BYTES + 64 * 1024 }, (err, out, stderr) => {
+    execFile('sh', ['-c', script, 'sh', ...args], { timeout: timeoutMs, encoding: 'buffer', maxBuffer: maxBytes + 64 * 1024 }, (err, out, stderr) => {
       // Killed at the timeout: 124, like timeout(1) on a remote machine.
       const e = err as (Error & { code?: unknown, killed?: boolean }) | null
       const code = !e ? 0 : e.killed ? 124 : typeof e.code === 'number' ? e.code : 1
@@ -90,8 +100,8 @@ function executor(m: Machine): Exec {
   })
 }
 
-async function run(m: Machine, script: string, args: string[]) {
-  const r = await executor(m)(script, args)
+async function run(m: Machine, script: string, args: string[], opts?: RunOpts) {
+  const r = await executor(m, opts)(script, args)
   if (r.code === 0) return r.stdout
   if (r.code === 3) throw new HerdrError('bad_cwd', 'This agent’s folder is unknown')
   if (r.code === 4) throw new HerdrError('not_found', 'File not found')
@@ -163,21 +173,74 @@ export function cutAt(b: Buffer, max: number) {
   return i
 }
 
-export async function readFilePreview(m: Machine, cwd: string, rel: unknown): Promise<FilePreview> {
-  const root = await rootOf(m, cwd)
-  const p = cleanRelative(rel)
-  if (!p) throw new HerdrError('not_file', 'Not a file')
-  const mime = IMAGE_TYPES[path.posix.extname(p).slice(1).toLowerCase()]
-  const out = await run(m, READ_SCRIPT, [root, p, String(mime ? IMAGE_BYTES + 1 : TEXT_BYTES + 1)])
+// Root and path under it of a file written in a conversation: resolved against
+// the agent's folder, and under the machine's home folder (checked again on
+// the machine once symlinks are resolved).
+export function writtenTarget(m: Machine, cwd: string | null | undefined, written: unknown): { root: string, rel: string, abs: string } {
+  const w = String(written ?? '')
+  const abs = w.length > 1024 ? null : resolveAgentPath(w, cwd, m.home)
+  if (!abs) throw new HerdrError('outside_home', 'Only files in your home folder can be shown')
+  const root = posixResolve('/', m.home)
+  const rel = path.posix.relative(root, abs)
+  if (!rel) throw new HerdrError('not_file', 'Not a file')
+  return { root, rel, abs }
+}
+
+// Size and first `max` bytes of a file (`whole`: no bytes at all when it has `max` or more).
+async function readHead(m: Machine, root: string, rel: string, max: number, opts?: RunOpts & { whole?: boolean }) {
+  const out = await run(m, READ_SCRIPT, [root, rel, String(max), ...(opts?.whole ? ['1'] : [])], opts)
   const nl = out.indexOf(10)
-  const size = Number(out.subarray(0, nl).toString('utf8')) || 0
-  const body = out.subarray(nl + 1)
+  return { size: Number(out.subarray(0, nl).toString('utf8')) || 0, body: out.subarray(nl + 1) }
+}
+
+// `shown`: the path given back to the client (relative to the project in the
+// file browser, absolute for a path written in a conversation).
+async function previewAt(m: Machine, root: string, rel: string, shown: string): Promise<FilePreview> {
+  const mime = IMAGE_TYPES[path.posix.extname(rel).slice(1).toLowerCase()]
+  const { size, body } = await readHead(m, root, rel, mime ? IMAGE_BYTES + 1 : TEXT_BYTES + 1)
   if (mime) {
-    if (size > IMAGE_BYTES) return { path: p, size, kind: 'large', truncated: true }
-    return { path: p, size, kind: 'image', dataUrl: `data:${mime};base64,${body.toString('base64')}`, truncated: false }
+    if (size > IMAGE_BYTES) return { path: shown, size, kind: 'large', truncated: true }
+    return { path: shown, size, kind: 'image', dataUrl: `data:${mime};base64,${body.toString('base64')}`, truncated: false }
   }
-  if (!isText(body)) return { path: p, size, kind: 'binary', truncated: false }
+  if (!isText(body)) return { path: shown, size, kind: 'binary', truncated: false }
   const truncated = body.length > TEXT_BYTES
   const text = (truncated ? body.subarray(0, cutAt(body, TEXT_BYTES)) : body).toString('utf8')
-  return { path: p, size, kind: 'text', text, truncated }
+  return { path: shown, size, kind: 'text', text, truncated }
+}
+
+export async function readFilePreview(m: Machine, cwd: string, rel: unknown): Promise<FilePreview> {
+  const p = cleanRelative(rel)
+  if (!p) throw new HerdrError('not_file', 'Not a file')
+  return previewAt(m, await rootOf(m, cwd), p, p)
+}
+
+export async function readWrittenPreview(m: Machine, cwd: string | null | undefined, written: unknown): Promise<FilePreview> {
+  const t = writtenTarget(m, cwd, written)
+  return previewAt(m, t.root, t.rel, t.abs)
+}
+
+// The whole file, for a download: refused beyond DOWNLOAD_BYTES rather than cut.
+async function bytesAt(m: Machine, root: string, rel: string) {
+  const { size, body } = await readHead(m, root, rel, DOWNLOAD_BYTES + 1, { timeoutMs: 120000, maxBytes: DOWNLOAD_BYTES + 1, whole: true })
+  if (size > DOWNLOAD_BYTES || body.length > DOWNLOAD_BYTES) throw new HerdrError('too_large', 'File too large to download (50 MB max)')
+  return { name: path.posix.basename(rel), body }
+}
+
+export async function readFileBytes(m: Machine, cwd: string, rel: unknown) {
+  const p = cleanRelative(rel)
+  if (!p) throw new HerdrError('not_file', 'Not a file')
+  return bytesAt(m, await rootOf(m, cwd), p)
+}
+
+export async function readWrittenBytes(m: Machine, cwd: string | null | undefined, written: unknown) {
+  const t = writtenTarget(m, cwd, written)
+  return bytesAt(m, t.root, t.rel)
+}
+
+// Content-Disposition of a download: an ASCII fallback, then the real name
+// (RFC 6266 / 5987), so accents and spaces survive.
+export function attachmentHeader(name: string): string {
+  const ascii = name.replace(/[^\x20-\x7e]|["\\]/g, '_') || 'download'
+  const utf8 = encodeURIComponent(name).replace(/['()*]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${utf8}`
 }

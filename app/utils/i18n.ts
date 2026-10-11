@@ -69,6 +69,7 @@ const FR: Record<string, string> = {
   'Branch': 'Branche', '(optional)': '(optionnel)',
   // File paths in conversations
   'Reveal in Finder': 'Afficher dans le Finder', 'Open': 'Ouvrir', 'Copy path': 'Copier le chemin',
+  'Download': 'Télécharger', 'File too large to download (50 MB max)': 'Fichier trop lourd à télécharger (50 Mo max)',
   'Not found on {machine}: {path}': 'Introuvable sur {machine} : {path}',
   'Only files in your home folder can be shown': 'Seuls les fichiers de ton dossier personnel peuvent être affichés',
   '{machine} is not a Mac': '{machine} n’est pas un Mac',

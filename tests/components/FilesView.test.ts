@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { getQuery } from 'h3'
@@ -17,13 +17,25 @@ registerEndpoint('/api/files', (event) => {
       ] }
 })
 let hold: Promise<void> | null = null
+const reads: Record<string, unknown>[] = []
 registerEndpoint('/api/files/read', async (event) => {
   if (hold) await hold
-  return { path: String(getQuery(event).path), size: 19, kind: 'text', text: 'export const x = 1\nlet y\n', truncated: false }
+  const q = getQuery(event)
+  reads.push(q)
+  // A path written in the conversation comes back absolute.
+  const path = String(q.path).replace(/^~(?=\/)/, '/home/user')
+  return { path, size: 19, kind: 'text', text: 'export const x = 1\nlet y\n', truncated: false }
+})
+const downloads: Record<string, unknown>[] = []
+registerEndpoint('/api/files/download', (event) => {
+  const q = getQuery(event)
+  downloads.push(q)
+  return 'a,b\r\n1,2\r\n'
 })
 
 describe('FilesView', () => {
   beforeEach(() => { localStorage.clear(); hold = null })
+  afterEach(() => vi.restoreAllMocks())
 
   it('walks into a folder, opens a file with line numbers, and goes back through the breadcrumb', async () => {
     const w = await mountSuspended(FilesView, { props: { paneId: 'w1:p1' } })
@@ -66,5 +78,42 @@ describe('FilesView', () => {
     await new Promise(r => setTimeout(r, 100))
     await flushPromises()
     expect(w.find('.files-text').exists()).toBe(false)
+  })
+
+  it('downloads the file it shows', async () => {
+    const saved: { href: string, name: string }[] = []
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { saved.push({ href: this.href, name: this.download }) })
+    const w = await mountSuspended(FilesView, { props: { paneId: 'w1:p1' } })
+    await flushPromises()
+    await w.findAll('.files-entry')[2]!.trigger('click')
+    await flushPromises()
+    await w.find('button[aria-label="Download"]').trigger('click')
+    await vi.waitFor(() => expect(saved).toHaveLength(1))
+    expect(downloads.at(-1)).toEqual({ pane: 'w1:p1', path: 'README.md' })
+    expect(saved[0]).toMatchObject({ href: expect.stringMatching(/^blob:/), name: 'README.md' })
+  })
+
+  it('shows one file named in the conversation, with no folder around it, and downloads it', async () => {
+    const saved: { href: string, name: string }[] = []
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { saved.push({ href: this.href, name: this.download }) })
+    const listed = asked.length
+    const w = await mountSuspended(FilesView, { props: { paneId: 'w1:p1', file: '~/exports/report.csv' } })
+    await flushPromises()
+    expect(asked).toHaveLength(listed)
+    expect(reads.at(-1)).toEqual({ pane: 'w1:p1', path: '~/exports/report.csv', from: 'chat' })
+    expect(w.find('.files-crumb.current').text()).toBe('report.csv')
+    expect(w.find('.files-sep').exists()).toBe(false)
+    expect(w.find('button[aria-label="Back to folder"]').exists()).toBe(false)
+    expect(w.find('.changes-location').text()).toContain('/home/user/exports/report.csv')
+    await w.find('button[aria-label="Download"]').trigger('click')
+    await vi.waitFor(() => expect(saved).toHaveLength(1))
+    expect(downloads.at(-1)).toEqual({ pane: 'w1:p1', path: '/home/user/exports/report.csv', from: 'chat' })
+    expect(saved[0]!.name).toBe('report.csv')
+    // Refresh reads the same file again, still with no folder.
+    await w.find('button[aria-label="Refresh"]').trigger('click')
+    await flushPromises()
+    expect(reads.at(-1)).toEqual({ pane: 'w1:p1', path: '~/exports/report.csv', from: 'chat' })
+    expect(w.find('.files-text').text()).toBe('export const x = 1\nlet y')
+    expect(asked).toHaveLength(listed)
   })
 })

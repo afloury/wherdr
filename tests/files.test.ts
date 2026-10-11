@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { cleanRelative, listFiles, readFilePreview } from '../server/utils/files'
+import { DOWNLOAD_BYTES, READ_SCRIPT, attachmentHeader, cleanRelative, listFiles, readFileBytes, readFilePreview, readWrittenBytes, readWrittenPreview } from '../server/utils/files'
 import type { Machine } from '../server/utils/machines'
 
 const local = { exec: null } as unknown as Machine
@@ -35,6 +35,8 @@ beforeAll(() => {
   for (let i = 0; i < 3; i++) mkdirSync(path.join(base, 'crowded', `zdir${i}`))
 })
 afterAll(() => rmSync(base, { recursive: true, force: true }))
+afterAll(() => { if (elsewhere) rmSync(elsewhere, { recursive: true, force: true }) })
+let elsewhere = ''
 
 describe('read-only file browser', () => {
   it('lists folders first, then files with sizes, dotfiles and spaces included', async () => {
@@ -125,5 +127,58 @@ describe('read-only file browser', () => {
     expect(await readFilePreview({ exec } as Machine, '/srv/repo', name)).toMatchObject({ kind: 'text', text: 'hello', size: 12 })
     expect(calls.every(c => !c.script.includes(name) && !c.script.includes('/srv/repo'))).toBe(true)
     expect(calls.at(-1)!.args.slice(0, 2)).toEqual(['/srv/repo', name])
+  })
+})
+
+// Paths written in a conversation, with `base` as the machine's home folder.
+describe('files named in a conversation', () => {
+  const home = () => ({ exec: null, home: base }) as unknown as Machine
+
+  beforeAll(() => {
+    elsewhere = mkdtempSync(path.join(tmpdir(), 'wherdr-elsewhere-'))
+    writeFileSync(path.join(elsewhere, 'other.txt'), 'nope\n')
+    symlinkSync(path.join(elsewhere, 'other.txt'), path.join(base, 'leaves-home.txt'))
+  })
+
+  it('previews a path relative to the agent folder, under ~ or absolute, without its :line', async () => {
+    expect(await readWrittenPreview(home(), root, 'README.md:3')).toMatchObject({ kind: 'text', text: '# Hello\n', path: path.join(root, 'README.md') })
+    expect(await readWrittenPreview(home(), root, '~/project/src/app.ts')).toMatchObject({ kind: 'text', size: 19 })
+    expect(await readWrittenPreview(home(), null, path.join(root, 'with space.txt'))).toMatchObject({ kind: 'text', text: 'a b\n' })
+    // Outside the project but in the home folder: still shown.
+    expect(await readWrittenPreview(home(), root, '../secret.txt')).toMatchObject({ kind: 'text', text: 'nope\n' })
+  })
+
+  it('refuses a path outside the home folder, written or through a symlink', async () => {
+    await expect(readWrittenPreview(home(), root, '/etc/hosts')).rejects.toMatchObject({ code: 'outside_home' })
+    await expect(readWrittenPreview(home(), root, '../../../x.txt')).rejects.toMatchObject({ code: 'outside_home' })
+    await expect(readWrittenPreview(home(), root, '~/leaves-home.txt')).rejects.toMatchObject({ code: 'outside' })
+    await expect(readWrittenBytes(home(), root, '~/leaves-home.txt')).rejects.toMatchObject({ code: 'outside' })
+    await expect(readWrittenPreview(home(), root, '~/')).rejects.toMatchObject({ code: 'not_file' })
+    await expect(readWrittenPreview(home(), root, 'src')).rejects.toMatchObject({ code: 'not_file' })
+  })
+
+  it('downloads whole files, binary and past the preview limit', async () => {
+    expect(await readWrittenBytes(home(), root, 'blob.bin')).toEqual({ name: 'blob.bin', body: Buffer.from([1, 0, 2, 3]) })
+    const min = await readFileBytes(local, root, 'min.js')
+    expect(min.name).toBe('min.js')
+    expect(min.body.length).toBe(300 * 1024)
+  })
+
+  it('refuses a file over the limit without sending its content', async () => {
+    const run = (...args: string[]) => execFileSync('sh', ['-c', READ_SCRIPT, 'sh', root, 'big.txt', ...args]).toString('utf8')
+    expect(run('10', '1')).toBe('300000\n')
+    expect(run('10')).toBe('300000\nline\nline\n')
+    const calls: string[][] = []
+    const exec: NonNullable<Machine['exec']> = async (_script, args = []) => {
+      calls.push(args)
+      return { code: 0, stdout: Buffer.from(`${DOWNLOAD_BYTES + 1}\n`), stderr: '' }
+    }
+    await expect(readWrittenBytes({ exec, home: '/home/user' } as Machine, '/home/user/demo', 'dump.sql')).rejects.toMatchObject({ code: 'too_large' })
+    expect(calls).toEqual([['/home/user', 'demo/dump.sql', String(DOWNLOAD_BYTES + 1), '1']])
+  })
+
+  it('names the attachment so that any file name survives', () => {
+    expect(attachmentHeader('report.csv')).toBe(`attachment; filename="report.csv"; filename*=UTF-8''report.csv`)
+    expect(attachmentHeader('été "v2".csv')).toBe(`attachment; filename="_t_ _v2_.csv"; filename*=UTF-8''%C3%A9t%C3%A9%20%22v2%22.csv`)
   })
 })
