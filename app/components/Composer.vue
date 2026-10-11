@@ -343,8 +343,10 @@ function onPaste(e: ClipboardEvent) {
   addFiles(files)
   haptic()
 }
+// A card is sent as it was pasted, to the character: nothing reads it as the
+// user's words (it is not in the field, and shows as a card once sent).
 function addPaste(s: string) {
-  attachments.value.push({ url: '', path: null, paste: unreference(s) })
+  attachments.value.push({ url: '', path: null, paste: s })
   haptic()
 }
 
