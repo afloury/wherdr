@@ -849,8 +849,8 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       // Agent without a conversation or born less than 2 min ago (Codex sometimes reports
       // another pane's session, see transcripts.ts): screen watched.
       const young = !p.agentSession || (p.bornAt && Date.now() - p.bornAt < 120000)
-      const c = await choicesFor(p, revs.get(p.id), p.status !== 'blocked', Boolean(young) || isViewed(p.id))
-      p.interaction = c.interaction
+      const c = await choicesFor(p, revs.get(p.id), p.status !== 'blocked', Boolean(young) && p.status !== 'unknown')
+      p.interaction = p.status === 'unknown' ? 'unknown' : c.interaction
       if (c.choices) p.prompt = c.choices
       if (c.screen) p.screen = c.screen
       if (c.menu) p.menu = c.menu

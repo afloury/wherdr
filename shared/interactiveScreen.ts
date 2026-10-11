@@ -35,11 +35,13 @@ export function classifyScreen(o: {
   menu?: unknown, screen?: unknown, settings?: boolean, status?: string | null,
 }): ScreenInteraction {
   if (o.status === 'working') return 'working'
-  if (hasTranscript(o.agent) && terminalException(o.text)) return 'terminal'
+  // Only the two active Codex menus override a mistaken list recognition.
+  // A completed/closed agent may retain its kind while showing a shell.
+  if (o.status !== 'unknown' && o.agent === 'codex' && terminalException(o.text)) return 'terminal'
   if (o.choices || o.menu || o.screen || o.settings) return 'native'
   // Unsupported agents already have their permanent Terminal view. An absent
   // transcript/input recognizer is not evidence of an interactive screen.
-  if (!hasTranscript(o.agent) || !o.text.trim()) return 'unknown'
+  if (o.status === 'unknown' || !hasTranscript(o.agent) || !o.text.trim()) return 'unknown'
   if (confirmedInput(o.text)) return 'input'
   return 'terminal'
 }

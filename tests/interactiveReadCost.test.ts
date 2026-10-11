@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
@@ -11,10 +10,11 @@ import * as choices from '../server/utils/choices'
 import { parseWaitScreen } from '../server/utils/waitScreen'
 import { parseMenu, TOP } from '../shared/menuScreen'
 import { settingsTabs } from '../shared/settingsScreen'
+import { isPermissionQuestion, mergeDetail } from '../server/utils/promptDetail'
 import { classifyScreen } from '../shared/interactiveScreen'
 import { bindFunction, sourceFunction } from './stateFunction'
 
-it('measures the removed working-screen RPCs against a local Unix-socket responder', async () => {
+it('measures working, resting, closed and watched-screen RPCs against a local Unix-socket responder', async () => {
   const tmp = mkdtempSync(path.join(os.tmpdir(), 'wherdr-read-cost-'))
   const sock = path.join(tmp, 'rpc.sock')
   const durations: number[] = []
@@ -29,26 +29,23 @@ it('measures the removed working-screen RPCs against a local Unix-socket respond
   })
   await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(sock, resolve) })
   try {
-    const sources = {
-      main: execFileSync('git', ['show', 'a430192:server/utils/state.ts'], { encoding: 'utf8' }),
-      reviewed: execFileSync('git', ['show', 'f54b0cc:server/utils/state.ts'], { encoding: 'utf8' }),
-      corrected: readFileSync(new URL('../server/utils/state.ts', import.meta.url), 'utf8'),
-    }
+    const source = readFileSync(new URL('../server/utils/state.ts', import.meta.url), 'utf8')
     const counts: Record<string, number> = {}
-    for (const [version, source] of Object.entries(sources)) for (const agent of ['claude', 'codex', 'omp']) for (const status of ['working', 'idle']) {
+    for (const agent of ['claude', 'codex', 'omp']) for (const status of ['working', 'idle', 'unknown']) for (const viewed of [false, true]) {
       let now = 0
       let reads = 0
       const cache = new Map()
       const clock = { now: () => now }
+      const idle = readFileSync(new URL(`./fixtures/${agent === 'omp' ? 'omp-idle-footer' : `${agent}-idle`}.txt`, import.meta.url), 'utf8')
       const read = async () => {
         const at = performance.now()
         const result = await herdrSock(sock, 'pane.read', { pane_id: 'w1:p1', source: 'detection' })
         durations.push(performance.now() - at)
         reads++
-        return result
+        return { ...result, read: { text: status === 'unknown' ? 'user@host demo % ' : idle } }
       }
       const getChoices = bindFunction(source, 'choicesFor', {
-        ...choices, parseWaitScreen, parseMenu, TOP, settingsTabs, classifyScreen, keepReading,
+        ...choices, parseWaitScreen, parseMenu, TOP, settingsTabs, classifyScreen, keepReading, isPermissionQuestion, mergeDetail,
         Date: clock, choicesCache: cache, screenWatch: new Map(), askChecks: new Map(),
         modelControlBusy: () => false, herdr: read, noteScreen: () => {},
       })
@@ -61,13 +58,13 @@ it('measures the removed working-screen RPCs against a local Unix-socket respond
       visit(file)
       if (!branch) throw new Error('Missing working branch')
       const cycle = bindFunction(`async function cycle(p) { ${branch.getText(file)} }`, 'cycle', {
-        Date: clock, choicesFor: getChoices, isViewed: () => true,
+        Date: clock, choicesFor: getChoices, isViewed: () => viewed,
         choicesCache: cache, askChecks: new Map(), revs: new Map([['w1:p1', 1]]),
       })
       // Replay sixty normal one-second polls, without a minute-long sleep.
       for (now = 0; now < 60_000; now += 1000) await cycle({ id: 'w1:p1', agent, status, agentSession: 'neutral' })
-      counts[`${version}/${agent}/${status}`] = reads
-      expect(reads).toBe(status === 'working' ? (version === 'reviewed' ? 20 : 0) : version === 'main' ? 1 : 20)
+      counts[`${agent}/${status}/${viewed ? 'viewed' : 'unviewed'}`] = reads
+      expect(reads).toBe(status === 'working' ? 0 : 1)
     }
     const sorted = durations.toSorted((a, b) => a - b)
     const result = {

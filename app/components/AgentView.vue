@@ -259,7 +259,7 @@ const interactionTimer = setInterval(syncInteraction, 100)
 onUnmounted(() => clearInterval(interactionTimer))
 function closeInteraction() { interactionWindow.dismiss(); interactionOpen.value = false }
 function reopenInteraction() { interactionWindow.reopen(); interactionOpen.value = true }
-const composerShown = computed(() => showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) }) && !(menu.value && mode.value !== 'term') && !(mode.value === 'chat' && (interactive.value || interactionOpen.value)))
+const composerShown = computed(() => showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) }) && !(menu.value && mode.value !== 'term') && !(mode.value === 'chat' && interactionOpen.value))
 const canAttachTerminal = computed(() => terminalAttachment({
   desk: desk.value, live: live.value, mode: mode.value,
   available: Boolean(pane.value && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value)),

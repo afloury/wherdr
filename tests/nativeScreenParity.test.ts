@@ -1,9 +1,4 @@
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
-import { pathToFileURL } from 'node:url'
-import ts from 'typescript'
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { afterAll, describe, expect, it } from 'vitest'
 import * as choices from '../server/utils/choices'
 import * as wait from '../server/utils/waitScreen'
@@ -14,30 +9,12 @@ import { keepReading } from '../server/utils/screenCache'
 import { isPermissionQuestion, mergeDetail } from '../server/utils/promptDetail'
 import { bindFunction } from './stateFunction'
 
-// Actual recognizers from the fetched origin/main, not a second implementation
-// of our new policy. Pin the reviewed base so concurrent fetches cannot move it.
-export const BASELINE = 'a430192d380ab1afb2819ad5378c2ce38baeb154'
-const tmp = mkdtempSync(path.join(os.tmpdir(), 'wherdr-native-parity-'))
-afterAll(() => rmSync(tmp, { recursive: true, force: true }))
-const emitted = new Set<string>()
-function baselineModule(file: string): string {
-  const output = path.join(tmp, file.replace(/\.ts$/, '.mjs'))
-  if (emitted.has(file)) return output
-  emitted.add(file)
-  const source = execFileSync('git', ['show', `${BASELINE}:${file}`], { encoding: 'utf8' })
-  const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ESNext } }).outputText
-  const linked = js.replace(/(from\s+['"])(\.[^'"]+)(['"])/g, (_, prefix, relative, suffix) => {
-    const dependency = path.posix.normalize(path.posix.join(path.posix.dirname(file), relative)) + '.ts'
-    return prefix + pathToFileURL(baselineModule(dependency)).href + suffix
-  })
-  mkdirSync(path.dirname(output), { recursive: true })
-  writeFileSync(output, linked)
-  return output
-}
-const load = async (file: string) => import(/* @vite-ignore */ pathToFileURL(baselineModule(file)).href)
-const before = { choices: await load('server/utils/choices.ts'), wait: await load('server/utils/waitScreen.ts'), menu: await load('shared/menuScreen.ts'), settings: await load('shared/settingsScreen.ts') }
+// Versioned fixture expectations, captured once from the reviewed main. These
+// are ordinary regression expectations: deliberate native improvements update
+// the affected cases, rather than requiring old commits or executing old code.
+const baseline = JSON.parse(readFileSync(new URL('./baselines/native-screens.json', import.meta.url), 'utf8'))
+const expected = (key: string) => baseline.values[baseline.cases[key]]
 const after = { choices, wait, menu, settings }
-const beforeSource = execFileSync('git', ['show', `${BASELINE}:server/utils/state.ts`], { encoding: 'utf8' })
 const afterSource = readFileSync(new URL('../server/utils/state.ts', import.meta.url), 'utf8')
 // Herdr emits plain detection text and preserves styling only for ANSI reads.
 // eslint-disable-next-line no-control-regex
@@ -78,7 +55,7 @@ function recognize(modules: typeof after, raw: string, agent: string, strict: bo
 const fixtures = readdirSync(new URL('./fixtures/', import.meta.url)).sort()
 const results: { file: string, agent: string, strict: boolean, nativeBefore: boolean, nativeAfter: boolean, exception: boolean }[] = []
 afterAll(() => {
-  if (process.env.NATIVE_PARITY_REPORT) writeFileSync(process.env.NATIVE_PARITY_REPORT, JSON.stringify({ baseline: BASELINE, fixtures: fixtures.length, comparisons: results.length, results }, null, 2) + '\n')
+  if (process.env.NATIVE_PARITY_REPORT) writeFileSync(process.env.NATIVE_PARITY_REPORT, JSON.stringify({ baseline: baseline.provenance, fixtures: fixtures.length, comparisons: results.length, results }, null, 2) + '\n')
 })
 const exceptions = new Set(['codex-usage-menu.txt', 'codex-command-center.txt'])
 
@@ -86,19 +63,21 @@ describe('all fixtures retain origin/main native recognition', () => {
   for (const file of fixtures) for (const agent of ['claude', 'codex', 'omp']) for (const strict of [false, true]) {
     it(`${file} / ${agent} / ${strict ? 'idle' : 'blocked'}`, async () => {
       const text = readFileSync(new URL(`./fixtures/${file}`, import.meta.url), 'utf8')
-      const original = recognize(before, text, agent, strict)
+      const reference = expected(`${file}/${agent}/${strict}`)
+      expect(reference).toBeDefined()
+      const original = reference.recognized
       const current = recognize(after, text, agent, strict)
       expect(current).toEqual(original)
       const pane = { id: 'neutral', agent, status: strict ? 'idle' : 'blocked' }
-      const oldOutput = await pipeline(beforeSource, before, text)(pane, 1, strict)
+      const oldOutput = reference.output
       const { interaction: serverInteraction, ...newOutput } = await pipeline(afterSource, after, text)(pane, 1, strict)
-      if (exceptions.has(file)) expect(newOutput).toEqual({ choices: null, menu: null, screen: null })
+      if (exceptions.has(file) && agent === 'codex') expect(newOutput).toEqual({ choices: null, menu: null, screen: null })
       else expect(newOutput).toEqual(oldOutput)
       const nativeBefore = Boolean(original.choices || original.menu || original.screen || original.settings)
       const interaction = classifyScreen({ text: plain(text), agent, ...current })
       expect(serverInteraction).toBe(interaction)
-      results.push({ file, agent, strict, nativeBefore, nativeAfter: interaction === 'native', exception: exceptions.has(file) })
-      if (exceptions.has(file)) expect(interaction).toBe('terminal')
+      results.push({ file, agent, strict, nativeBefore, nativeAfter: interaction === 'native', exception: exceptions.has(file) && agent === 'codex' })
+      if (exceptions.has(file) && agent === 'codex') expect(interaction).toBe('terminal')
       else expect(interaction === 'native').toBe(nativeBefore)
     })
   }
@@ -110,7 +89,7 @@ describe('question push parity', () => {
   for (const agent of ['claude', 'omp']) it(`${agent} retains the exact notification body`, async () => {
     const text = readFileSync(new URL(`./fixtures/${agent === 'claude' ? 'claude-ask-long' : 'omp-ask-single'}.txt`, import.meta.url), 'utf8')
     const sent: unknown[] = []
-    for (const [source, modules] of [[beforeSource, before], [afterSource, after]] as const) {
+    for (const [source, modules] of [[afterSource, after]] as const) {
       const pane = { id: 'neutral', agent, status: 'blocked', workspace: 'neutral-workspace', title: 'Neutral' }
       const output = await pipeline(source, modules, text)(pane, 1, false)
       expect(output.choices?.question).toBeTruthy()
@@ -123,8 +102,8 @@ describe('question push parity', () => {
       })
       await notify({ ...pane, prompt: output.choices })
     }
-    expect(sent[1]).toEqual(sent[0])
-    expect((sent[1] as { body: string }).body).toContain('\n')
+    expect(sent[0]).toEqual(expected(`push/${agent}`))
+    expect((sent[0] as { body: string }).body).toContain('\n')
   })
 })
 
@@ -134,10 +113,14 @@ describe('review approval rows', () => {
   for (const file of fixtures.filter(f => /^(?:claude|codex)-approve-/.test(f))) it(file, async () => {
     const text = readFileSync(new URL(`./fixtures/${file}`, import.meta.url), 'utf8')
     const pane = { id: 'neutral', agent: file.startsWith('claude') ? 'claude' : 'codex', status: 'blocked' }
-    const original = await pipeline(beforeSource, before, text)(pane, 1, false)
+    const original = expected(`${file}/${pane.agent}/false`).output
     const current = await pipeline(afterSource, after, text)(pane, 1, false)
     expect(original.choices).toBeTruthy()
     expect(current.interaction).toBe('native')
     expect(current.choices).toEqual(original.choices)
   })
+})
+
+it('covers exactly the current fixture corpus', () => {
+  expect(Object.keys(baseline.cases).filter(k => !k.startsWith('push/')).sort()).toEqual(fixtures.flatMap(f => ['claude', 'codex', 'omp'].flatMap(a => [false, true].map(strict => `${f}/${a}/${strict}`))).sort())
 })

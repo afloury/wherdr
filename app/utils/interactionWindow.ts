@@ -1,6 +1,6 @@
 import type { ScreenInteraction } from '#shared/interactiveScreen'
 
-// One episode lasts until a stable return to the message field. Cursor motion,
+// One episode lasts until work starts or a stable return to the message field. Cursor motion,
 // transient native prompts and missed reads cannot undo a manual dismissal.
 export function createInteractionWindow() {
   let kind: ScreenInteraction = 'unknown'
@@ -10,8 +10,8 @@ export function createInteractionWindow() {
   return {
     // Re-entry with a field already observed: never mount a stale terminal.
     resume(next: ScreenInteraction) {
-      if (next === 'input' || next === 'native' || next === 'managed') open = false
-      if (next === 'input') dismissed = false
+      if (next !== 'terminal') open = false
+      if (next === 'input' || next === 'working') dismissed = false
       kind = 'unknown'
       return open
     },
@@ -19,7 +19,8 @@ export function createInteractionWindow() {
       if (next !== kind) { kind = next; since = now }
       // A server-owned operation or recovery card must never share input with
       // the TUI. It does not end an episode or undo a manual dismissal.
-      if (next === 'managed' || next === 'native') open = false
+      if (next === 'managed' || next === 'native' || next === 'working' || next === 'unknown') open = false
+      if (next === 'working') dismissed = false
       if (next === 'input' && now - since >= 900) { open = false; dismissed = false }
       if (next === 'terminal' && now - since >= 500 && !dismissed) open = true
       return open

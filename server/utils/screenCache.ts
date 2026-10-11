@@ -10,6 +10,6 @@ export interface ScreenReading { rev: unknown, strict: boolean, at: number, choi
 
 export function keepReading(c: ScreenReading | undefined, rev: unknown, strict: boolean, watch: boolean, now: number): boolean {
   if (!c || c.rev !== rev || c.strict !== strict) return false
-  const live = watch || !strict || Boolean(c.choices || c.screen || c.menu || c.interaction === 'terminal')
+  const live = watch || !strict || Boolean(c.choices || c.screen || c.menu)
   return !(live && now - c.at >= SCREEN_MS)
 }

@@ -43,7 +43,7 @@ export default defineApi(async (event, b) => {
   const i = Number(b.index)
   const option = choices && choices.options[i]
   const answer = typeof b.text === 'string' ? b.text.trim() : ''
-  if (!choices || terminalException(String(text || '')) || !option || option.label !== b.label || (answer && !option.free)
+  if (!choices || (pane?.agent === 'codex' && terminalException(String(text || ''))) || !option || option.label !== b.label || (answer && !option.free)
     || (option.free && !sameQuestion(choices.question, typeof b.question === 'string' ? b.question : null))) {
     throw new HerdrError('stale', 'The question has changed — check the current screen.')
   }
