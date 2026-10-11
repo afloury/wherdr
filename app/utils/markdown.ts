@@ -10,10 +10,20 @@ import { blockCommand, inlineCommand } from './shellCommand'
 let hooked = false
 const cache = new Map<string, string>()
 
+// `plain`: Markdown from a file kept on disk (a project's memory), shown
+// outside a conversation. Its raw HTML must not restyle the app or draw
+// controls over it: no `<style>`, no `style` attribute, no form or field. A
+// task list's own checkbox (`- [ ]`, disabled) is kept.
+export interface MdOptions { plain?: boolean }
+const PLAIN = { FORBID_TAGS: ['style', 'form', 'textarea', 'select', 'option', 'optgroup', 'fieldset', 'legend', 'label', 'datalist', 'output', 'dialog'], FORBID_ATTR: ['style'] }
+let plainNow = false
+
 const escHtml = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' }[c]!))
 
-export function md(text: string): string {
-  const hit = cache.get(text)
+export function md(text: string, options: MdOptions = {}): string {
+  // The two modes never share a cached result.
+  const key = options.plain ? `\0plain\0${text}` : text
+  const hit = cache.get(key)
   if (hit !== undefined) return hit
   if (!hooked) {
     hooked = true
@@ -45,6 +55,11 @@ export function md(text: string): string {
         },
       },
     })
+    DOMPurify.addHook('uponSanitizeElement', (n, data) => {
+      if (!plainNow || data.tagName !== 'input') return
+      const el = n as Element
+      if (!(el.getAttribute('type') === 'checkbox' && el.hasAttribute('disabled'))) el.parentNode?.removeChild(el)
+    })
     DOMPurify.addHook('afterSanitizeAttributes', (n) => {
       if (n.tagName === 'A') {
         n.setAttribute('target', '_blank')
@@ -53,9 +68,13 @@ export function md(text: string): string {
     })
   }
   let html: string
-  try { html = DOMPurify.sanitize(marked.parse(text, { breaks: true, gfm: true, async: false }) as string) }
-  catch { html = `<p>${escHtml(text)}</p>` }
-  cache.set(text, html)
+  plainNow = Boolean(options.plain)
+  try {
+    const parsed = marked.parse(text, { breaks: true, gfm: true, async: false }) as string
+    html = plainNow ? DOMPurify.sanitize(parsed, PLAIN) : DOMPurify.sanitize(parsed)
+  } catch { html = `<p>${escHtml(text)}</p>` }
+  finally { plainNow = false }
+  cache.set(key, html)
   if (cache.size > 5000) cache.delete(cache.keys().next().value!)
   return html
 }

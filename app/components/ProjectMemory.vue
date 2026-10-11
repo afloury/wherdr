@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // "Memory" tab of the Project panel: the project's memory files (MEMORY.md,
 // the index, then the files of memory/ with the title and hook the index
-// gives them). A tap opens one, rendered as Markdown. Read-only: memory is
-// written by the coordinator, never from here.
+// gives them). A tap opens one, rendered as Markdown in its `plain` mode: a
+// file's raw HTML cannot restyle the app or draw controls over it. Read-only:
+// memory is written by the coordinator, never from here.
 // Re-read when the panel is refreshed (`tick`) or the board changes.
 import type { ProjectBoard } from '#shared/projectBoard'
 import type { MemoryFile } from '#shared/projectDocs'
@@ -43,7 +44,7 @@ async function open(file: MemoryFile) {
   haptic()
   try {
     const r = await fetchMemoryFile(props.paneId, file.name)
-    doc.value = { file, html: md(r.text), truncated: r.truncated }
+    doc.value = { file, html: md(r.text, { plain: true }), truncated: r.truncated }
     docOpen.value = true
   } catch (e) { toast((e as Error).message, true) }
   finally { opening.value = null }
