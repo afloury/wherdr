@@ -121,4 +121,17 @@ describe('matchShortcut', () => {
     expect(match({ key: 'Escape' }, body, phone)).toBeNull()
     expect(match({ key: 'f', metaKey: true }, body, phone)).toBeNull()
   })
+
+  it('Board: bare H outside fields and the terminal, computer layout only', () => {
+    expect(match({ key: 'h' })).toBe('board')
+    expect(match({ key: 'h' }, field(''))).toBeNull()
+    expect(match({ key: 'h' }, field('draft'))).toBeNull()
+    expect(match({ key: 'h' }, term)).toBeNull()
+    expect(match({ key: 'H', shiftKey: true })).toBeNull()
+    expect(match({ key: 'h', altKey: true })).toBeNull()
+    expect(match({ key: 'h', ctrlKey: true }, body, linux)).toBeNull()
+    expect(match({ key: 'h', metaKey: true })).toBeNull()
+    expect(match({ key: 'H', altKey: true, shiftKey: true })).toBeNull()
+    expect(match({ key: 'h' }, body, { ...mac, desk: false })).toBeNull()
+  })
 })

@@ -94,6 +94,23 @@ export function isCoordinator(p: ProjectPane & Pick<Pane, 'agent'>): boolean {
   return Boolean(p.agent && projectOf(p) && !isProjectThread(p))
 }
 
+// The coordinator of a project among `panes`: on `machine` first (when given),
+// then the agent in the project folder (`…/.herdr-projects/<slug>`), then the
+// first coordinator in list order. null: none.
+export function pickCoordinator<P extends ProjectPane & Pick<Pane, 'agent'> & Partial<Pick<Pane, 'machine'>>>(
+  panes: P[], slug: string, machine?: string,
+): P | null {
+  const key = slug.toLowerCase()
+  const rank = (p: P) => (machine !== undefined && (p.machine || '') !== machine ? 2 : 0)
+    + (norm(p.cwd).toLowerCase().endsWith(`/.herdr-projects/${key}`) ? 0 : 1)
+  let best: P | null = null
+  for (const p of panes) {
+    if (!isCoordinator(p) || projectOf(p)!.toLowerCase() !== key) continue
+    if (!best || rank(p) < rank(best)) best = p
+  }
+  return best
+}
+
 // herdr-projects can open a thread as a tab of its coordinator's space
 // (`--kind tab`). The space stays one card, the coordinator's: it represents
 // the space (name, preview, mini-map, tab opened by default) so the card keeps

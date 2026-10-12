@@ -283,6 +283,9 @@ export function board(now: number, threads: { codex: string, omp: string }): Pro
       { title: 'In queue', kind: 'queue', tasks: [
         { text: 'OpenAPI spec for the v2 endpoints', done: false, owner: 'agent', thread: null },
       ] },
+      { title: 'Blocked', kind: 'blocked', tasks: [
+        { text: 'Publish the API changelog', done: false, owner: 'agent', thread: null, reason: 'review of the 429 behaviour' },
+      ] },
       { title: 'Backlog', kind: 'backlog', tasks: [
         { text: 'Redis store for the rate limiter', done: false, owner: null, thread: null },
         { text: 'Audit log export', done: false, owner: null, thread: null },
@@ -317,6 +320,12 @@ export interface ScriptedTurn {
 
 const has = (text: string, re: RegExp) => re.test(text.toLowerCase())
 
+// Task moves of the Board and the Project panel, English and French ("↳ Mark done: …", "✓ Tested: …").
+const TASK_MOVE = new RegExp(`^\\s*(?:↳ (?:${[
+  'launch now', 'launch', 'unblock', 'move to to do', 'mark blocked', 'mark done', 'move up', 'move down', 'queue', 'remove from queue', 'back to backlog',
+  'lancer maintenant', 'lancer', 'débloquer', 'passer en à faire', 'marquer bloqué', 'marquer fait', 'monter', 'descendre', 'mettre en file', 'retirer de la file', 'remettre au backlog',
+].join('|')})|✓ (?:tested|reviewed|testé|relu))\\s*:\\s*(.+)`, 'i')
+
 export function scriptFor(agent: string, text: string, n: number): ScriptedTurn {
   const shell = agent === 'codex' ? 'shell' : 'Bash'
   const tool = (name: string, target: string, view?: Partial<OmpToolView>) =>
@@ -327,6 +336,15 @@ export function scriptFor(agent: string, text: string, n: number): ScriptedTurn 
     return {
       steps: [tool(shell, `herdr-projects thread prompt ${PROJECT} ${info[1]!.toLowerCase()}`, { exit: 0, ms: 300 })],
       reply: `Passed on to **${info[1]!.toLowerCase()}** as is.`,
+      denied: '',
+    }
+  }
+  // The coordinator would edit TASKS.md; the demo board does not change.
+  const move = TASK_MOVE.exec(text)
+  if (move) {
+    return {
+      steps: [tool('Read', `~/.herdr-projects/${PROJECT}/TASKS.md`, { ms: 20 })],
+      reply: `Noted: **${move[1]!.trim()}**. In a real project I would edit TASKS.md now, and the card would move on the Board.`,
       denied: '',
     }
   }

@@ -42,6 +42,7 @@ promise that wherdr "can replace the Herdr terminal client day to day".
 | Stop the working agent, same as the Stop button | Esc | Conversation mode, Stop shown, empty field, no conversation search open | No (Esc goes to the program) |
 | Settings | Mod+, | Computer | Yes |
 | Shortcut list | Mod+/, or `?` outside a field | Computer; also Settings › Computer | Mod+/ only |
+| Board: every project, thread, task and agent in four columns | `H` outside a field | Computer | No (the program gets the key) |
 
 These existing shortcuts are unchanged and listed in the help sheet:
 
@@ -60,6 +61,7 @@ These existing shortcuts are unchanged and listed in the help sheet:
 Where the keys are shown:
 
 - Tooltips: global search, new agent (rail) and settings in the sidebar; search in the agent header.
+- The Board button (header and collapsed rail of the list) shows `H` in its tooltip.
 - The agent menu's "Close this pane" entry shows Mod+Alt+W.
 - The agent menu's "Open in editor" entry shows Mod+Alt+O (on the agent's Mac).
 - The agent menu's Projects entries show Mod+Alt+P (Project panel) and Mod+Alt+Shift+N (New
@@ -204,6 +206,10 @@ The composer blurs itself on Esc. After a stop it gets the focus back.
   the panel shown. New project is Mod+Alt+Shift+N, the Shift sibling of New agent; on Windows,
   AltGr+Shift+letter typing a non-Latin letter (Polish `Ń`) stays text. Both are caught before
   the terminal like the other Mod+Alt keys.
+- **Q11.** (2026-10-12) Board key: bare `H`, like `?`, because the user asked for H.
+  Mod+Alt+H is unusable on macOS: ⌘⌥H is "Hide Others", the page never sees it. Bare `H`
+  does not fire while typing (any text field) or in the terminal, nor with Shift, Alt, Ctrl or ⌘
+  (Alt+Shift+H stays the pane swap). Computer layout only.
 - **Q5.** Sidebar toggle: not now.
 
 ## Still open

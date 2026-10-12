@@ -321,7 +321,8 @@ onMounted(() => {
   if (titleRow.value) titleRowObserver.observe(titleRow.value)
 })
 onBeforeUnmount(() => titleRowObserver?.disconnect())
-const headerFoldable = computed(() => ['settings', ...(quietCurrent.value ? ['quiet'] : [])])
+// First to fold first: the quiet bell is a state, so it stays in sight longest.
+const headerFoldable = computed(() => ['settings', 'board', ...(quietCurrent.value ? ['quiet'] : [])])
 const headerFolded = computed(() => {
   if (!titleRowWidth.value) return new Set<string>()
   const total = headerFoldable.value.length + 1 + (desk.value ? 1 : 0)
@@ -331,6 +332,7 @@ function headerMenuItems(): MenuItem[] {
   const f = headerFolded.value
   return [
     ...(f.has('quiet') ? [{ label: quietLabel.value, icon: 'i-lucide-bell-off', run: () => navigateTo(quietSettings) }] : []),
+    ...(f.has('board') ? [{ label: t('Board'), icon: 'i-lucide-square-kanban', run: () => navigateTo('/board') }] : []),
     ...(f.has('settings') ? [{ label: t('Settings'), icon: 'i-lucide-settings-2', run: () => navigateTo('/settings') }] : []),
   ]
 }
@@ -438,6 +440,9 @@ function resetListWidth() {
       <UTooltip v-if="quietCurrent" :text="quietLabel" :content="{ side: 'right' }">
         <UButton icon="i-lucide-bell-off" color="neutral" variant="ghost" size="lg" class="icon-btn quiet-on" :aria-label="quietLabel" :to="quietSettings" />
       </UTooltip>
+      <UTooltip :text="t('Board')" :kbds="shortcutKbds('board')" :content="{ side: 'right' }">
+        <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Board')" to="/board" />
+      </UTooltip>
       <UTooltip :text="t('Settings')" :kbds="shortcutKbds('settings')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-settings-2" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Settings')" to="/settings" />
       </UTooltip>
@@ -461,6 +466,9 @@ function resetListWidth() {
           </UTooltip>
           <UTooltip v-if="quietCurrent && !headerFolded.has('quiet')" :text="quietLabel" :disabled="!desk">
             <UButton icon="i-lucide-bell-off" color="neutral" variant="ghost" size="lg" class="icon-btn quiet-on" :aria-label="quietLabel" :to="quietSettings" />
+          </UTooltip>
+          <UTooltip v-if="!headerFolded.has('board')" :text="t('Board')" :kbds="shortcutKbds('board')" :disabled="!desk">
+            <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Board')" to="/board" />
           </UTooltip>
           <UTooltip v-if="!headerFolded.has('settings')" :text="t('Settings')" :kbds="shortcutKbds('settings')" :disabled="!desk">
             <UButton
