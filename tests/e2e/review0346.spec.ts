@@ -20,7 +20,7 @@ test('R1: Enter on an old card refuses the new question without sending a key',a
  await expect(page.locator('.choices-q')).toContainText('lower credit usage')
  await page.locator('.choices-q').click()
  await page.keyboard.press('ArrowUp');await page.keyboard.press('Enter')
- await expect.poll(async()=> (await fakeHerdr('e2e.terminal_screen',{pane_id:pane})).keys).toEqual([['up'],['enter']])
+ await expect.poll(async()=> (await fakeHerdr('e2e.terminal_screen',{pane_id:pane})).keys).toEqual(['up','enter'])
 })
 
 test('R1: omp Continue refuses a different question',async({page})=>{
