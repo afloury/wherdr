@@ -29,6 +29,7 @@ Publishing (`npm.yml`), and the tap uses the existing optional `HOMEBREW_TAP_TOK
    that exact file with provenance. npm moderation may still delay registry availability.
    If the assets were too slow to arrive, rerun the failed download job before any successful
    publication; never retry a successful `npm publish` merely because moderation is pending.
+   To recover a workflow fix without moving a tag, run `gh workflow run npm.yml --ref main -f version=vX.Y.Z` after merging the fix; it checks out that tag and publishes its existing release archive.
 7. `release-ready.yml` checks hourly and after npm/release workflow completion. Once npm's
    tarball and `latest` tag, and the Homebrew formula are ready, it marks the GitHub release
    `latest`. Existing 1.3.x apps read this marker and can then safely use their npm updater.
@@ -46,8 +47,10 @@ Replacing both defeats this check. npm fallback compares the archive to the SHA-
 in registry metadata, with the same limitation. There is no signature or build attestation check.
 
 npm provenance identifies the publishing workflow (`npm.yml`); the archive was built by
-`release.yml` in the same repository at the same tagged commit. It does not independently
-attest that separate build workflow (M8); this limitation is intentionally retained.
+`release.yml` in the same repository at the requested tagged commit. On a manual run from
+`main`, provenance identifies the workflow's `main` commit, while checkout and version checks
+use the requested tag. It does not independently attest that separate build workflow (M8);
+this limitation is intentionally retained.
 
 Readiness logs name each missing npm or Homebrew condition, and an already-current `latest`
 marker is left alone. GitHub disables scheduled workflows in public repositories after 60 days

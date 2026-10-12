@@ -6,13 +6,23 @@ name: npm
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Existing release tag (e.g. v1.3.3)'
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.version || github.ref_name }}
+  GH_REPO: ${{ github.repository }}
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: npm-${{ github.ref }}
+  group: npm-${{ inputs.version || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -20,7 +30,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
+      - name: Validate release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::not a version tag: $RELEASE_TAG"; exit 1
+          fi
+          gh release view "$RELEASE_TAG" --json tagName --jq .tagName
+
       - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
 
       - uses: actions/setup-node@v4
         with:
@@ -32,10 +53,7 @@ jobs:
 
       - name: Versions match the tag
         run: |
-          ref="${GITHUB_REF_NAME}"
-          if [[ ! "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::not a version tag: $ref"; exit 1
-          fi
+          ref="$RELEASE_TAG"
           pkg=$(node -p "require('./package.json').version")
           plugin=$(sed -n 's/^version = "\(.*\)"$/\1/p' herdr-plugin.toml)
           if [ "v$pkg" != "$ref" ]; then echo "::error::package.json version ($pkg) does not match tag $ref"; exit 1; fi
@@ -46,13 +64,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${RELEASE_TAG#v}"
           for ((attempt=1; attempt<=120; attempt++)); do
-            if gh release download "$GITHUB_REF_NAME" --pattern "wherdr-${version}.tgz*" --dir package --clobber && (cd package && sha256sum -c "wherdr-${version}.tgz.sha256"); then break; fi
+            if gh release download "$RELEASE_TAG" --pattern "wherdr-${version}.tgz*" --dir package --clobber && (cd package && sha256sum -c "wherdr-${version}.tgz.sha256"); then break; fi
             sleep 15
           done
           cd package
           sha256sum -c "wherdr-${version}.tgz.sha256"
 
       - name: Publish
-        run: npm publish "package/wherdr-${GITHUB_REF_NAME#v}.tgz" --provenance --access public
+        run: npm publish "./package/wherdr-${RELEASE_TAG#v}.tgz" --provenance --access public
