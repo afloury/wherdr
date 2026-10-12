@@ -67,9 +67,10 @@ test('Codex approvals below quoted old menus keep their native card and accept a
     await expect.poll(() => interaction(page)).toBe('native')
     await expect(page.locator('.choices-list')).toBeVisible()
     await expect(page.locator('.interactive-terminal')).toHaveCount(0)
+    const prompt = screenChoices(text, 'codex')!
     const response = await page.request.post('/api/choose', {
       headers: { Origin: new URL(page.url()).origin },
-      data: { pane_id: pane, index: 0, label: screenChoices(text, 'codex')!.options[0]!.label },
+      data: { pane_id: pane, index: 0, label: prompt.options[0]!.label, identity: prompt.identity },
     })
     expect(response.ok()).toBe(true)
   }

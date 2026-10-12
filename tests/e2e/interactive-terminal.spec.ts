@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
+import { screenChoices } from '../../server/utils/choices'
 import { OMP_CHAT_PANE, SPLIT_CHAT_PANE, SPLIT_SHELL_PANE, SPLIT_TAB, fakeHerdr } from './scenario.mjs'
 
 const pane = OMP_CHAT_PANE
@@ -122,7 +123,7 @@ test('rejects a stale native choice after the screen changes to an ambiguous men
   await expect(page.locator('.interactive-terminal')).toBeVisible()
   const response = await page.request.post('/api/choose', {
     headers: { Origin: new URL(page.url()).origin },
-    data: { pane_id: pane, index: 0, label: 'View analytics  Usage history' },
+    data: { pane_id: pane, index: 0, label: 'View analytics  Usage history', identity: screenChoices(usage, 'codex')!.identity },
   })
   expect(response.ok()).toBe(false)
   expect((await fakeHerdr('e2e.terminal_screen', { pane_id: pane }) as { keys: string[] }).keys).toEqual([])
