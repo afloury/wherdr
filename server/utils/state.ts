@@ -1038,6 +1038,13 @@ function focusScreenGate() {
 function screenFields(p: Pane) {
   return { prompt: p.prompt, screen: p.screen, menu: p.menu, interaction: p.interaction, usageLimit: p.usageLimit }
 }
+// A user gesture bypasses the one-second viewed-card cooldown. Generation
+// checks below keep an older in-flight reading from replacing this result.
+export function refreshNativeScreen(pane: string) {
+  choicesCache.delete(pane)
+  viewedBusy.delete(pane)
+  pollViewed()
+}
 function pollViewed() {
   for (const [machine, s] of mstates) for (const p of s.panes) {
     const cached = choicesCache.previous(p.id)

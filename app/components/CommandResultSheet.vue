@@ -18,7 +18,7 @@ const level = (m: Meter) => { const u = usedOf(m); return u >= 85 ? 'hi' : u >= 
       <div v-if="commandResult.tab && commandResult.tabs.length" class="cmd-tabs" role="tablist">
         <button
           v-for="tb in commandResult.tabs" :key="tb" type="button" role="tab" :aria-selected="tb === commandResult.tab"
-          :class="{ on: tb === commandResult.tab }" @click="switchCommandTab(tb)"
+          :disabled="commandResult.text === null" :class="{ on: tb === commandResult.tab }" @click="switchCommandTab(tb)"
         >
           {{ tb }}
         </button>

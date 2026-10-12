@@ -1,6 +1,6 @@
 // Computer keyboard on a "Your turn" card (interactive menu, choice
 // prompt): ↑ ↓ Enter Escape sent as is to the terminal, like the key
-// bar. The screen is re-read first: without a menu or prompt, we refuse. Enter
+// bar. Arrows use the displayed card; confirming keys re-read the screen. Enter
 // is never sent to a menu where it is not a simple choice (/model:
 // "set as default"). ← →: only between the tabs of omp's "Ask" box. The
 // state is broadcast again right after (screen re-read).
@@ -15,6 +15,17 @@ export default defineApi(async (event, b) => {
   const key = String(b.key || '')
   if (!KEYS.has(key)) throw new HerdrError('bad_request', 'Invalid key')
   try {
+    // Arrows cannot confirm a choice. Use the published card to avoid queued
+    // detection reads before sending; Enter still validates the live screen.
+    const shown = findPane(pane)
+    if ((key === 'up' || key === 'down') && shown && !shown.leaving && shown.status !== 'working'
+      && !shown.menu?.unavailable && !shown.prompt?.unavailable
+      && (shown.menu || shown.prompt)) {
+      await herdr('pane.send_input', { pane_id: pane, keys: [key] })
+      watchScreen(pane, 30000)
+      setTimeout(() => refreshNativeScreen(pane), 50)
+      return { ok: true }
+    }
     const r = await herdr('pane.read', { pane_id: pane, source: 'detection' }, 4000)
     const text = r.read && r.read.text
     const agent = findPane(pane)?.agent
@@ -36,7 +47,7 @@ export default defineApi(async (event, b) => {
     await herdr('pane.send_input', { pane_id: pane, keys: [key] })
     watchScreen(pane, 30000)
     // Quick re-read: the new selection shows without waiting for the poll.
-    for (const ms of [50, 150, 400]) setTimeout(() => { choicesCache.delete(pane); poll() }, ms)
+    setTimeout(() => refreshNativeScreen(pane), 50)
     return { ok: true }
   } finally {
     choicesCache.delete(pane)

@@ -127,6 +127,7 @@ async function readCommandResult(pane: string, cmd: string, tries = 5, seq = res
       commandResult.open = true
       return
     } catch (err) {
+      if (!current()) return
       commandResult.text = (err as Error).message
       commandResult.open = true
       return
@@ -140,11 +141,10 @@ export async function switchCommandTab(target: string) {
   const from = commandResult.tabs.indexOf(commandResult.tab || '')
   const to = commandResult.tabs.indexOf(target)
   if (!pane || from < 0 || to < 0 || from === to) return
-  const n = to - from
   commandResult.tab = target
   commandResult.text = null
   try {
-    await api('/api/input', { pane_id: pane, keys: Array(Math.abs(n)).fill(n > 0 ? 'right' : 'left') })
+    await api('/api/settings-tab', { pane_id: pane, target })
   } catch (err) {
     commandResult.text = (err as Error).message
     return

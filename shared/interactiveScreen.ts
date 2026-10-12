@@ -16,6 +16,8 @@ export function terminalException(text: string): boolean {
   const at = lines.findLastIndex(l => /^\s*(?:Agent Command Center|Usage)\s*$/.test(l))
   if (at < 0) return false
   const body = lines.slice(at + 1).filter(l => l.trim())
+  // Current Codex includes a subtitle before the two-column entries.
+  if (lines[at]!.trim() === 'Usage' && body[0]?.trim() === 'Account usage and resets.') body.shift()
   const legend = body.pop()?.trim()
   if (lines[at]!.trim() === 'Agent Command Center') {
     return legend === 'Use arrows to navigate, Enter to open, Escape to return.'

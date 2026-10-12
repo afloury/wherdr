@@ -650,7 +650,31 @@
     "codex-approaching-limits.txt/codex/false": 92,
     "codex-approaching-limits.txt/codex/true": 92,
     "codex-approaching-limits.txt/omp/false": 93,
-    "codex-approaching-limits.txt/omp/true": 93
+    "codex-approaching-limits.txt/omp/true": 93,
+    "codex-usage-subtitle.txt/claude/false": 94,
+    "codex-usage-subtitle.txt/claude/true": 94,
+    "codex-usage-subtitle.txt/codex/false": 95,
+    "codex-usage-subtitle.txt/codex/true": 95,
+    "codex-usage-subtitle.txt/omp/false": 96,
+    "codex-usage-subtitle.txt/omp/true": 96,
+    "claude-config-list.ansi/claude/false": 48,
+    "claude-config-list.ansi/claude/true": 48,
+    "claude-config-list.ansi/codex/false": 0,
+    "claude-config-list.ansi/codex/true": 0,
+    "claude-config-list.ansi/omp/false": 0,
+    "claude-config-list.ansi/omp/true": 0,
+    "claude-mcp.ansi/claude/false": 97,
+    "claude-mcp.ansi/claude/true": 97,
+    "claude-mcp.ansi/codex/false": 97,
+    "claude-mcp.ansi/codex/true": 97,
+    "claude-mcp.ansi/omp/false": 98,
+    "claude-mcp.ansi/omp/true": 98,
+    "codex-permissions.txt/claude/false": 99,
+    "codex-permissions.txt/claude/true": 99,
+    "codex-permissions.txt/codex/false": 99,
+    "codex-permissions.txt/codex/true": 99,
+    "codex-permissions.txt/omp/false": 100,
+    "codex-permissions.txt/omp/true": 100
   },
   "values": [
     {
@@ -7563,6 +7587,467 @@
             "  1. Switch to gpt-6-luna                    Fast and affordable model for easier tasks.",
             "  2. Keep current model",
             "› 3. Keep current model (never show again)   Hide future rate limit reminders about switching models"
+          ],
+          "actions": [
+            {
+              "key": "enter",
+              "label": "select"
+            },
+            {
+              "key": "esc",
+              "label": "back"
+            }
+          ]
+        },
+        "menu": null
+      }
+    },
+    {
+      "recognized": {
+        "choices": {
+          "question": "Account usage and resets.",
+          "cursor": 0,
+          "options": [
+            {
+              "label": "View analytics  Usage history",
+              "hint": null,
+              "n": 1
+            },
+            {
+              "label": "Redeem reset    Check availability",
+              "hint": null,
+              "n": 2
+            }
+          ]
+        },
+        "menu": null,
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "Usage",
+            "Account usage and resets."
+          ],
+          "actions": [
+            {
+              "key": "enter",
+              "label": "open"
+            },
+            {
+              "key": "esc",
+              "label": "back"
+            }
+          ]
+        },
+        "settings": false
+      },
+      "output": {
+        "choices": {
+          "question": "Account usage and resets.",
+          "cursor": 0,
+          "options": [
+            {
+              "label": "View analytics  Usage history",
+              "hint": null,
+              "n": 1
+            },
+            {
+              "label": "Redeem reset    Check availability",
+              "hint": null,
+              "n": 2
+            }
+          ]
+        },
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "Usage",
+            "Account usage and resets."
+          ],
+          "actions": [
+            {
+              "key": "enter",
+              "label": "open"
+            },
+            {
+              "key": "esc",
+              "label": "back"
+            }
+          ]
+        },
+        "menu": null
+      }
+    },
+    {
+      "recognized": {
+        "choices": {
+          "question": "Account usage and resets.",
+          "cursor": 0,
+          "options": [
+            {
+              "label": "View analytics  Usage history",
+              "hint": null,
+              "n": 1
+            },
+            {
+              "label": "Redeem reset    Check availability",
+              "hint": null,
+              "n": 2
+            }
+          ]
+        },
+        "menu": null,
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "Usage",
+            "Account usage and resets."
+          ],
+          "actions": [
+            {
+              "key": "enter",
+              "label": "open"
+            },
+            {
+              "key": "esc",
+              "label": "back"
+            }
+          ]
+        },
+        "settings": false
+      },
+      "output": {
+        "choices": null,
+        "screen": null,
+        "menu": null
+      }
+    },
+    {
+      "recognized": {
+        "choices": null,
+        "menu": null,
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "  Usage",
+            "  Account usage and resets.",
+            "",
+            "› 1. View analytics  Usage history",
+            "  2. Redeem reset    Check availability"
+          ],
+          "actions": [
+            {
+              "key": "enter",
+              "label": "open"
+            },
+            {
+              "key": "esc",
+              "label": "back"
+            }
+          ]
+        },
+        "settings": false
+      },
+      "output": {
+        "choices": null,
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "  Usage",
+            "  Account usage and resets.",
+            "",
+            "› 1. View analytics  Usage history",
+            "  2. Redeem reset    Check availability"
+          ],
+          "actions": [
+            {
+              "key": "enter",
+              "label": "open"
+            },
+            {
+              "key": "esc",
+              "label": "back"
+            }
+          ]
+        },
+        "menu": null
+      }
+    },
+    {
+      "recognized": {
+        "choices": null,
+        "menu": {
+          "title": "Manage MCP servers",
+          "lines": [
+            "3 servers CLAUDE.AI"
+          ],
+          "items": [
+            {
+              "label": "✔ Docs",
+              "hint": "8 tools",
+              "cursor": true
+            },
+            {
+              "label": "✔ Calendar",
+              "hint": "12 tools"
+            },
+            {
+              "label": "→ Show unused connectors",
+              "hint": "1 hidden"
+            }
+          ],
+          "cursor": 0,
+          "search": null,
+          "actions": [
+            {
+              "key": "esc",
+              "label": "cancel"
+            }
+          ],
+          "more": null
+        },
+        "screen": null,
+        "settings": false
+      },
+      "output": {
+        "choices": null,
+        "screen": null,
+        "menu": {
+          "title": "Manage MCP servers",
+          "lines": [
+            "3 servers CLAUDE.AI"
+          ],
+          "items": [
+            {
+              "label": "✔ Docs",
+              "hint": "8 tools",
+              "cursor": true
+            },
+            {
+              "label": "✔ Calendar",
+              "hint": "12 tools"
+            },
+            {
+              "label": "→ Show unused connectors",
+              "hint": "1 hidden"
+            }
+          ],
+          "cursor": 0,
+          "search": null,
+          "actions": [
+            {
+              "key": "esc",
+              "label": "cancel"
+            }
+          ],
+          "more": null
+        }
+      }
+    },
+    {
+      "recognized": {
+        "choices": null,
+        "menu": null,
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔",
+            "   Manage MCP servers",
+            "   3 servers",
+            "",
+            "   CLAUDE.AI",
+            "   ❯ ✔ Docs",
+            "       8 tools",
+            "     ✔ Calendar",
+            "       12 tools",
+            "     → Show unused connectors",
+            "       1 hidden"
+          ],
+          "actions": [
+            {
+              "key": "esc",
+              "label": "cancel"
+            }
+          ]
+        },
+        "settings": false
+      },
+      "output": {
+        "choices": null,
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔",
+            "   Manage MCP servers",
+            "   3 servers",
+            "",
+            "   CLAUDE.AI",
+            "   ❯ ✔ Docs",
+            "       8 tools",
+            "     ✔ Calendar",
+            "       12 tools",
+            "     → Show unused connectors",
+            "       1 hidden"
+          ],
+          "actions": [
+            {
+              "key": "esc",
+              "label": "cancel"
+            }
+          ]
+        },
+        "menu": null
+      }
+    },
+    {
+      "recognized": {
+        "choices": {
+          "question": "Update Model Permissions",
+          "cursor": 1,
+          "options": [
+            {
+              "label": "Ask for approval",
+              "hint": "Read and edit workspace files, with approval required for internet access.",
+              "n": 1
+            },
+            {
+              "label": "Approve for me (current)",
+              "hint": "Only ask for actions detected as potentially unsafe.",
+              "n": 2
+            },
+            {
+              "label": "Full Access",
+              "hint": "Read and edit files outside the workspace and access the internet.",
+              "n": 3
+            },
+            {
+              "label": "Read Only",
+              "hint": "Read workspace files, with approval required for edits or internet access.",
+              "n": 4
+            }
+          ]
+        },
+        "menu": null,
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "Update Model Permissions"
+          ],
+          "actions": [
+            {
+              "key": "enter",
+              "label": "select"
+            },
+            {
+              "key": "esc",
+              "label": "back"
+            }
+          ]
+        },
+        "settings": false
+      },
+      "output": {
+        "choices": {
+          "question": "Update Model Permissions",
+          "cursor": 1,
+          "options": [
+            {
+              "label": "Ask for approval",
+              "hint": "Read and edit workspace files, with approval required for internet access.",
+              "n": 1
+            },
+            {
+              "label": "Approve for me (current)",
+              "hint": "Only ask for actions detected as potentially unsafe.",
+              "n": 2
+            },
+            {
+              "label": "Full Access",
+              "hint": "Read and edit files outside the workspace and access the internet.",
+              "n": 3
+            },
+            {
+              "label": "Read Only",
+              "hint": "Read workspace files, with approval required for edits or internet access.",
+              "n": 4
+            }
+          ]
+        },
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "Update Model Permissions"
+          ],
+          "actions": [
+            {
+              "key": "enter",
+              "label": "select"
+            },
+            {
+              "key": "esc",
+              "label": "back"
+            }
+          ]
+        },
+        "menu": null
+      }
+    },
+    {
+      "recognized": {
+        "choices": null,
+        "menu": null,
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "Update Model Permissions",
+            "",
+            "  1. Ask for approval",
+            "     Read and edit workspace files, with approval required for internet access.",
+            "› 2. Approve for me (current)",
+            "     Only ask for actions detected as potentially unsafe.",
+            "  3. Full Access",
+            "     Read and edit files outside the workspace and access the internet.",
+            "  4. Read Only",
+            "     Read workspace files, with approval required for edits or internet access."
+          ],
+          "actions": [
+            {
+              "key": "enter",
+              "label": "select"
+            },
+            {
+              "key": "esc",
+              "label": "back"
+            }
+          ]
+        },
+        "settings": false
+      },
+      "output": {
+        "choices": null,
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "Update Model Permissions",
+            "",
+            "  1. Ask for approval",
+            "     Read and edit workspace files, with approval required for internet access.",
+            "› 2. Approve for me (current)",
+            "     Only ask for actions detected as potentially unsafe.",
+            "  3. Full Access",
+            "     Read and edit files outside the workspace and access the internet.",
+            "  4. Read Only",
+            "     Read workspace files, with approval required for edits or internet access."
           ],
           "actions": [
             {

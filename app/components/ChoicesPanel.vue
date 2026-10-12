@@ -15,6 +15,8 @@ import type { Choices, WaitAction, WaitScreen } from '#shared/types'
 
 const props = defineProps<{ paneId: string, prompt?: Choices | null, screen?: WaitScreen | null, keys?: boolean }>()
 const busy = ref(false)
+const cursor = ref(props.prompt?.cursor)
+watch(() => props.prompt, p => { cursor.value = p?.cursor })
 watch(() => [props.prompt, props.screen], () => { busy.value = false })
 
 // With options, Enter already confirms them: we only keep the other keys (Escape…).
@@ -114,7 +116,12 @@ useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.opt
   }
   // Like ↑/↓: key by key, in typing order (without waiting for the state).
   if (k.kind === 'tab') return navKey(props.paneId, k.dir > 0 ? 'right' : 'left')
-  if (k.kind === 'nav') navKey(props.paneId, k.key, p.identity)
+  if (k.kind === 'nav') {
+    if ((k.key === 'up' || k.key === 'down') && cursor.value !== null && cursor.value !== undefined) {
+      cursor.value = Math.max(0, Math.min(p.options.length - 1, cursor.value + (k.key === 'down' ? 1 : -1)))
+    }
+    navKey(props.paneId, k.key, p.identity).then(ok => { if (!ok) cursor.value = props.prompt?.cursor })
+  }
 })
 </script>
 
@@ -138,7 +145,7 @@ useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.opt
     <div v-if="prompt" class="choices-list" :class="{ multi: prompt.multi }">
       <template v-for="(o, i) in prompt.options" :key="i">
         <button
-          type="button" :class="{ cur: i === prompt.cursor, on: o.checked }"
+          type="button" :class="{ cur: i === cursor, on: o.checked }"
           :aria-pressed="prompt.multi && !o.free ? Boolean(o.checked) : undefined"
           :aria-expanded="o.free ? freeAt === i : undefined"
           :disabled="disabled" @click="o.free ? (editing = prompt.typing || editing === i ? null : i) : pick(i, o.label)"

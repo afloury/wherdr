@@ -73,9 +73,12 @@ useCardKeys(() => Boolean(props.keys && desk.value && !disabled.value && (known.
     // the identity of the intended target without trusting an unseen row.
     const entries = props.menu.items.map((item, i) => item.header ? -1 : i).filter(i => i >= 0)
     const at = entries.indexOf(cursor.value ?? -1)
-    cursor.value = entries[at + (k.key === 'down' ? 1 : -1)] ?? null
+    cursor.value = entries[at + (k.key === 'down' ? 1 : -1)] ?? cursor.value
+    showCursor()
   }
-  navKey(props.paneId, k.key, identity.value)
+  navKey(props.paneId, k.key, identity.value).then(ok => {
+    if (!ok) { cursor.value = props.menu.cursor; showCursor() }
+  })
 })
 </script>
 
@@ -96,8 +99,8 @@ useCardKeys(() => Boolean(props.keys && desk.value && !disabled.value && (known.
     <div v-if="known" ref="listRef" class="choices-list menu-list">
       <template v-for="(o, i) in menu.items" :key="i">
         <p v-if="o.header" class="menu-group">{{ o.label }}</p>
-        <button v-else type="button" :class="{ cur: i === menu.cursor }" :aria-current="i === menu.cursor ? 'true' : undefined" :disabled="disabled" @click="pick(i, o.label)">
-          <span class="n" aria-hidden="true">{{ i === menu.cursor ? '❯' : '' }}</span><span class="l">{{ o.label }}<small v-if="o.hint">{{ o.hint }}</small></span>
+        <button v-else type="button" :class="{ cur: i === cursor }" :aria-current="i === cursor ? 'true' : undefined" :disabled="disabled" @click="pick(i, o.label)">
+          <span class="n" aria-hidden="true">{{ i === cursor ? '❯' : '' }}</span><span class="l">{{ o.label }}<small v-if="o.hint">{{ o.hint }}</small></span>
         </button>
       </template>
       <p v-if="menu.more" class="menu-more">{{ menu.more }}</p>

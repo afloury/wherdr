@@ -252,7 +252,10 @@ const interactionAvailable = computed(() => mode.value === 'chat' && eventsOpen.
 const interactive = computed(() => pane.value?.interaction === 'terminal')
 function syncInteraction() {
   interactionOpen.value = interactionWindow.update(pane.value?.interaction || 'unknown', Date.now())
-  if ((interactive.value || interactionOpen.value) && commandResult.pane === props.paneId) closeCommandResult(false)
+  // A late native card owns the interaction too: an earlier text snapshot
+  // must never cover its controls or swallow its keyboard shortcuts.
+  if ((interactive.value || interactionOpen.value || prompt.value || menu.value || screen.value)
+    && commandResult.open && commandResult.pane === props.paneId) closeCommandResult(false)
 }
 watch(() => pane.value?.interaction, syncInteraction, { immediate: true })
 const interactionTimer = setInterval(syncInteraction, 100)

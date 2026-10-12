@@ -21,3 +21,8 @@ remain reachable after a squash or rebase.
 Run `npx vitest run tests/nativeScreenParity.test.ts tests/interactiveReadCost.test.ts`.
 The read-cost test replays the current production branch over simulated poll
 times and counts actual local Unix-socket calls; it does not load old commits.
+
+The MCP and Config-list variants added for menu navigation are neutral
+reconstructions of reported layouts. The Codex Usage subtitle variant records
+its native recognizer output, with presentation deliberately routed to the live
+terminal, just like the original description-free Usage fixture.

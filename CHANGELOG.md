@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Make native menu arrows responsive, focus Claude settings tabs before switching, show the live Codex usage terminal with its subtitle, and dismiss stale command previews when native controls appear.
+
 - Refresh consecutive agent questions faster and refuse outdated card answers, including keyboard confirmation, typed replies and menu clicks. Identify full questions before display truncation. Re-read viewed cards independently of slow batches with reserved RPC capacity; keep newer captures when an older batch completes. Menu clicks identify the target and its details across scrolling. Publish a viewed pane as soon as its read completes; keep native forms disabled with an explanation during read failures and bound screen-read concurrency.
 - Native-answer validation and input are separate Herdr RPCs: Herdr protocol 22 has no conditional send. A question can still change between the checked read and key injection, or recur identically; this race is not closed by wherdr.
 

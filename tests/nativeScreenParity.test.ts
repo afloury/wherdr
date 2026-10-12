@@ -58,7 +58,7 @@ const results: { file: string, agent: string, strict: boolean, nativeBefore: boo
 afterAll(() => {
   if (process.env.NATIVE_PARITY_REPORT) writeFileSync(process.env.NATIVE_PARITY_REPORT, JSON.stringify({ baseline: baseline.provenance, fixtures: fixtures.length, comparisons: results.length, results }, null, 2) + '\n')
 })
-const exceptions = new Set(['codex-usage-menu.txt', 'codex-command-center.txt'])
+const exceptions = new Set(['codex-usage-menu.txt', 'codex-usage-subtitle.txt', 'codex-command-center.txt'])
 
 describe('all fixtures retain origin/main native recognition', () => {
   for (const file of fixtures) for (const agent of ['claude', 'codex', 'omp']) for (const strict of [false, true]) {
