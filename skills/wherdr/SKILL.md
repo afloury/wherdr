@@ -55,7 +55,7 @@ Titles are matched case- and accent-insensitively; any of these names works.
 | Blocked | Bloqué(e)(s), Blocked, On hold, En attente, Waiting, Stuck | Waiting for something external. Optional reason: `— blocked by: <reason>` (`— bloqué par : …`). | Unblock, Clarify |
 | To do | À faire, Todo, To do, To dos, Todos, Next, Prochainement, Soon | Soon, in the user's priority order. Never launched without a request. | Up, Down, Queue, Launch now, Clarify, Back to backlog |
 | Backlog | Backlog, Later, Plus tard, Idées, Ideas, Someday, Un jour | Everything else. Never launched without a request. | Launch, Clarify |
-| Done | Fait(s), Done, Terminé(e)(s), Finished, Complete(d) | Filled by the panel with resolved threads; you may leave it out. | — |
+| Done | Fait(s), Done, Terminé(e)(s), Finished, Complete(d) | Filled by the panel with threads marked done; you may leave it out. | — |
 
 Rules:
 
@@ -64,7 +64,7 @@ Rules:
 - **No duplicates across lists.** When the user asks for a change to a feature that is in
   To test, remove its To test line; one line comes back to To test once the change is
   deployed (feature and change tested together).
-- **In queue** contract: whenever a thread slot frees (a thread is resolved), launch the
+- **In queue** contract: whenever a thread slot frees (a thread is marked done), launch the
   first In queue task and move it to In progress, as long as the project and the machine
   have a free slot. The In queue header shows the thread slots in use
   (`max_parallel_threads` of `PROJECT.md`).
@@ -161,7 +161,7 @@ the same minute, or two tables of one message. You have nothing to do with it.
 | `↳ Move to To do: <task>` / `↳ Passer en À faire : <task>` (sent) | Board: a task moved to To do (from Blocked, In progress or Done) | Move the line to the end of To do (add that list if it is missing), unchecked. Do not launch it. |
 | `↳ Mark done: <task>` / `↳ Marquer fait : <task>` (sent) | Board: a task moved to Finished | The task is finished or no longer needed: move the line, checked, to Done when the project has that list, otherwise remove it. |
 | `↳ Detail on <task> —` / `↳ Précision sur <task> —`, then the details below (draft) | Clarify (Backlog, To do, In queue, Blocked) | Add the details to the task (indented lines under it, or the thread's brief) and confirm. Do not launch it. |
-| `↳ Info for t-NNNN: <text>` / `↳ Info pour t-NNNN : <text>` (sent) | In progress › Add info (a thread's card, or the task of a thread) | Pass `<text>` on to that thread as is, every line of it, without rewording (`herdr-projects thread prompt <project> t-NNNN --text-file <file>`, `-` reads standard input), then confirm to the user in one line. Do not change `TASKS.md`. If the thread is resolved or unknown, say so instead. |
+| `↳ Info for t-NNNN: <text>` / `↳ Info pour t-NNNN : <text>` (sent) | In progress › Add info (a thread's card, or the task of a thread) | Pass `<text>` on to that thread as is, every line of it, without rewording (`herdr-projects thread prompt <project> t-NNNN --text-file <file>`, `-` reads standard input), then confirm to the user in one line. Do not change `TASKS.md`. If the thread is done or unknown, say so instead. |
 
 Never launch a task from To do or Backlog without one of these requests.
 

@@ -12,8 +12,8 @@ const GROUPS: Record<string, [string, string]> = {
 }
 
 // Status class: blocked, done, working, idle, inactive (resolved: neutral gray) or unknown.
-export const threadClass = (th: ProjectThread) => GROUPS[th.token]?.[0] || 'unknown'
-export const threadLabel = (th: ProjectThread) => GROUPS[th.token]?.[1] || th.group || t('Unknown')
+export const threadClass = (th: Pick<ProjectThread, 'token'>) => GROUPS[th.token]?.[0] || 'unknown'
+export const threadLabel = (th: Pick<ProjectThread, 'token' | 'group'>) => GROUPS[th.token]?.[1] || th.group || t('Unknown')
 
 export function threadMeta(th: ProjectThread) {
   const bits = [th.id.toUpperCase()]

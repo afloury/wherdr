@@ -300,9 +300,9 @@ export function board(now: number, threads: { codex: string, omp: string }): Pro
       { id: 't-0012', title: 'Per-key rate limits on the public API', group: group(threads.codex), token: token(threads.codex), rank: rank(threads.codex), resolved: false, updated: iso(2), created: iso(30), agentName: 'hp-acme-api-t-0012', machine: '', profile: 'codex', stateLine: threads.codex === 'working' ? 'working · ~75%' : 'review · report', activity: threads.codex === 'working' ? 'Writing tests' : 'Done', percent: threads.codex === 'working' ? 75 : 100, pr: '', report: threads.codex !== 'working' },
     ],
     resolved: [
-      { id: 't-0010', title: 'Webhook retries with exponential backoff', group: 'Resolved', token: 'resolved', rank: 6, resolved: true, updated: iso(90), created: iso(180), agentName: null, machine: '', profile: 'claude', stateLine: 'review · report', activity: '', percent: 100, pr: '', report: true },
-      { id: 't-0009', title: 'Paginate the invoices endpoint', group: 'Resolved', token: 'resolved', rank: 6, resolved: true, updated: iso(60 * 26), created: iso(60 * 30), agentName: null, machine: '', profile: 'codex', stateLine: 'review · report', activity: '', percent: 100, pr: 'https://github.com/owner/repo/pull/12', report: false },
-      { id: 't-0008', title: 'Dead-letter list in the dashboard', group: 'Resolved', token: 'resolved', rank: 6, resolved: true, updated: iso(60 * 50), created: iso(60 * 54), agentName: null, machine: '', profile: 'omp', stateLine: 'review · report', activity: '', percent: 100, pr: '', report: false },
+      { id: 't-0010', title: 'Webhook retries with exponential backoff', group: 'Done', token: 'resolved', rank: 6, resolved: true, updated: iso(90), created: iso(180), agentName: null, machine: '', profile: 'claude', stateLine: 'review · report', activity: '', percent: 100, pr: '', report: true },
+      { id: 't-0009', title: 'Paginate the invoices endpoint', group: 'Done', token: 'resolved', rank: 6, resolved: true, updated: iso(60 * 26), created: iso(60 * 30), agentName: null, machine: '', profile: 'codex', stateLine: 'review · report', activity: '', percent: 100, pr: 'https://github.com/owner/repo/pull/12', report: false },
+      { id: 't-0008', title: 'Dead-letter list in the dashboard', group: 'Done', token: 'resolved', rank: 6, resolved: true, updated: iso(60 * 50), created: iso(60 * 54), agentName: null, machine: '', profile: 'omp', stateLine: 'review · report', activity: '', percent: 100, pr: '', report: false },
     ],
   }
 }
@@ -311,7 +311,7 @@ export function board(now: number, threads: { codex: string, omp: string }): Pro
 export function inbox(now: number): InboxItem[] {
   const iso = (minutesAgo: number) => new Date(now - minutesAgo * 60_000).toISOString()
   return [
-    { id: '20260101T090000Z-thread-state-t-0010-41', kind: 'thread-state', subject: 't-0010', event: 'resolved', summary: 't-0010 "Webhook retries with exponential backoff" was resolved: worktree removed and its workspace closed', created: iso(90), body: '' },
+    { id: '20260101T090000Z-thread-state-t-0010-41', kind: 'thread-state', subject: 't-0010', event: 'resolved', summary: 't-0010 "Webhook retries with exponential backoff" was marked done: worktree removed and its workspace closed', created: iso(90), body: '' },
     { id: '20260101T101500Z-routine-nightly-tests-42', kind: 'routine', subject: 'nightly-tests', event: 'due', summary: 'Routine nightly-tests is due', created: iso(35), body: 'Run the full test suite on main and open a thread for every new failure.' },
     { id: '20260101T104800Z-thread-state-t-0013-43', kind: 'thread-state', subject: 't-0013', event: 'blocked on a prompt', summary: 't-0013 "Fix the flaky CSV export test" is waiting for an approval', created: iso(2), body: '' },
   ]

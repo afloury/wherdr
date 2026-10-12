@@ -74,6 +74,7 @@ test('the Threads tab lists open threads by group and keeps resolved ones folded
   await expect(page.locator('.pt-group-head .pill')).toHaveText(['Your turn', 'Ready for review', 'Working'])
   await expect(page.locator('.pt-group .pp-meta').nth(1)).toContainText('T-0040 · Laptop · codex')
   const head = page.locator('.pt-resolved .pp-sec-head')
+  await expect(head).toContainText('Done')
   await expect(head).toHaveAttribute('aria-expanded', 'false')
   await expect(page.locator('.pt-resolved .pp-row')).toHaveCount(0)
   await shot(page, 'threads-tab', testInfo.project.name)
@@ -92,12 +93,12 @@ test('the Threads tab lists open threads by group and keeps resolved ones folded
   await expect(page.locator('.project-panel')).toContainText('Export to CSV')
 })
 
-test('a thread’s record shows its Next list; Acknowledge is sent at once, Resolve asks first', async ({ page }, testInfo) => {
+test('a thread’s record shows its Next list; Acknowledge is sent at once, Mark done asks first', async ({ page }, testInfo) => {
   const actions = await openThreads(page)
   await page.getByRole('button', { name: 'Thread t-0040: Per-key rate limits on the public API' }).click()
   const sheet = page.locator('.hw-sheet').first()
   await expect(sheet.locator('.pt-next li')).toHaveText(['1Merge the pull request', '2Add a Redis store before running several instances', '3Remove the worktree and branch'])
-  await expect(sheet.locator('.pt-actions button')).toHaveText(['Acknowledge', 'Restart', 'Resolve'])
+  await expect(sheet.locator('.pt-actions button')).toHaveText(['Acknowledge', 'Restart', 'Mark done'])
   await expect(sheet.getByRole('link', { name: 'Pull request' })).toHaveAttribute('href', 'https://github.com/owner/repo/pull/12')
   await shot(page, 'thread-record', testInfo.project.name)
 
@@ -107,11 +108,11 @@ test('a thread’s record shows its Next list; Acknowledge is sent at once, Reso
 
   await sheet.getByRole('button', { name: 'Acknowledge' }).click()
   await expect.poll(() => actions).toEqual([{ id: 't-0040', action: 'ack' }])
-  await expect(sheet.locator('.pt-actions button')).toHaveText(['Restart', 'Resolve'])
+  await expect(sheet.locator('.pt-actions button')).toHaveText(['Restart', 'Mark done'])
 
-  await sheet.getByRole('button', { name: 'Resolve' }).click()
+  await sheet.getByRole('button', { name: 'Mark done' }).click()
   const confirm = page.locator('.confirm')
-  await expect(confirm).toContainText('Resolve T-0040?')
+  await expect(confirm).toContainText('Mark T-0040 done?')
   // The confirmation is painted above the record it was asked from.
   const z = (sel: string) => page.locator(sel).evaluate(el => Number(getComputedStyle(el).zIndex))
   expect(await z('.hw-sheet:has(.confirm)')).toBeGreaterThan(await z('.hw-sheet:has(.pt-detail)'))
@@ -120,8 +121,8 @@ test('a thread’s record shows its Next list; Acknowledge is sent at once, Reso
   await expect(confirm).toHaveCount(0)
   expect(actions).toHaveLength(1)
 
-  await sheet.getByRole('button', { name: 'Resolve' }).click()
-  await page.locator('.confirm').getByRole('button', { name: 'Resolve' }).click()
+  await sheet.getByRole('button', { name: 'Mark done' }).click()
+  await page.locator('.confirm').getByRole('button', { name: 'Mark done' }).click()
   await expect.poll(() => actions.at(-1)).toEqual({ id: 't-0040', action: 'resolve' })
   await expect(sheet.locator('.pt-output')).toContainText('worktree removed')
 })
@@ -130,10 +131,41 @@ test('Stop asks first too, in French', async ({ page }, testInfo) => {
   const actions = await openThreads(page, 'fr')
   await page.getByRole('button', { name: 'Thread t-0042 : OpenAPI spec for the v2 endpoints' }).click()
   const sheet = page.locator('.hw-sheet').first()
-  await expect(sheet.locator('.pt-actions button')).toHaveText(['Arrêter', 'Clôturer'])
+  await expect(sheet.locator('.pt-actions button')).toHaveText(['Arrêter', 'Marquer comme fait'])
   await sheet.getByRole('button', { name: 'Arrêter' }).click()
   await expect(page.locator('.confirm')).toContainText('Arrêter T-0042 ?')
   await shot(page, 'thread-stop-confirm-fr', testInfo.project.name)
   await page.locator('.confirm').getByRole('button', { name: 'Annuler' }).click()
   expect(actions).toEqual([])
 })
+
+for (const [lang, done, mark, confirmation, success] of [
+  ['en', 'Done', 'Mark done', 'Mark T-0040 done?', 'Thread marked done'],
+  ['fr', 'Fait', 'Marquer comme fait', 'Marquer T-0040 comme fait ?', 'Thread marqué comme fait'],
+]) {
+  test(`done labels, neutral badge and mark-done action in ${lang}`, async ({ page }, testInfo) => {
+    const actions = await openThreads(page, lang)
+    const head = page.locator('.pt-resolved .pp-sec-head')
+    await expect(head.locator('.pp-sec-title')).toHaveText(done!)
+    await head.click()
+    await page.locator('.pt-resolved .pt-thread').first().click()
+    const detail = page.locator('.hw-sheet:has(.pt-detail)')
+    await expect(detail.locator('.pill')).toHaveText(done!)
+    await expect(detail.locator('.pill')).toHaveClass(/inactive/)
+    await shot(page, `thread-done-${lang}`, testInfo.project.name)
+    await page.keyboard.press('Escape')
+    // Filtering done threads retains the same section label.
+    await page.locator('.pt-filter input').fill('audit')
+    await expect(head.locator('.pp-sec-title')).toHaveText(done!)
+    await page.locator('.pt-filter input').fill('')
+    await page.locator('.pt-group .pt-thread').nth(1).click()
+    await detail.getByRole('button', { name: mark, exact: true }).click()
+    await expect(page.locator('.confirm')).toContainText(confirmation!)
+    await shot(page, `thread-mark-done-${lang}`, testInfo.project.name)
+    await page.locator('.confirm').getByRole('button', { name: mark, exact: true }).click()
+    await expect.poll(() => actions.at(-1)).toEqual({ id: 't-0040', action: 'resolve' })
+    await expect(page.getByText(success!, { exact: true })).toBeVisible()
+    // The CLI's diagnostic output remains available verbatim.
+    await expect(detail.locator('.pt-output')).toContainText('resolved; its report and library are kept.')
+  })
+}

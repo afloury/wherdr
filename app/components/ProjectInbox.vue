@@ -55,7 +55,7 @@ const title = (it: InboxItem) => threadOf(it)?.title || it.subject || kindLabel(
 function meta(it: InboxItem) {
   const bits: string[] = []
   if (inboxThread(it)) bits.push(it.subject.toUpperCase())
-  if (it.event) bits.push(it.event)
+  if (it.event) bits.push(it.kind === 'thread-state' && it.event === 'resolved' ? threadLabel({ token: it.event, group: '' }) : it.event)
   const when = it.created && fmtWhen(it.created)
   if (when) bits.push(when)
   return bits.join(' · ')

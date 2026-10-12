@@ -14,7 +14,7 @@ const runningByThread = reactive(new Map<string, string>())
 // for both (ID, title, machine, profile).
 // Tapping a thread opens its record (`thread show`): state, Next list, facts,
 // and its actions, each run by herdr-projects on the coordinator's machine:
-// Acknowledge, Restart, Stop and Resolve (the last two ask first).
+// Acknowledge, Restart, Stop and Mark done (the last two ask first).
 import type { Pane } from '#shared/types'
 import type { ProjectBoard, ProjectThread } from '#shared/projectBoard'
 import { type ThreadAction, type ThreadDetail, CONFIRMED_ACTIONS, filterThreads, groupThreads, lastLine, threadActionsFor } from '#shared/projectThreads'
@@ -40,16 +40,6 @@ function toggleResolved() {
   haptic()
 }
 
-const GROUPS: Record<string, [string, string]> = {
-  'waiting-on-you': ['blocked', t('Your turn')],
-  'ready-for-review': ['done', t('Ready for review')],
-  'landing': ['working', t('Landing')],
-  'working': ['working', t('Working')],
-  'idle': ['idle', t('Idle')],
-  'resolved': ['inactive', tl('Resolved', 'Clôturé')],
-}
-const groupClass = (token: string) => GROUPS[token]?.[0] || 'unknown'
-const groupLabel = (token: string, fallback: string) => GROUPS[token]?.[1] || fallback || t('Unknown')
 // The thread's live agent, found as the Tasks tab and the Board find it.
 function paneOf(th: ProjectThread): Pane | undefined {
   const coordinator = herdrState.value.panes.find(p => p.id === props.paneId)
@@ -135,7 +125,7 @@ const LABELS: Record<ThreadAction, { label: string, icon: string, hint: string }
   ack: { label: tl('Acknowledge', 'Marquer vu'), icon: 'i-lucide-eye', hint: tl('Record that you have seen its report', 'Noter que tu as vu son rapport') },
   restart: { label: t('Restart'), icon: 'i-lucide-rotate-cw', hint: tl('Bring back a thread whose pane is gone or whose start failed', 'Relancer un thread dont le pane a disparu ou dont le démarrage a échoué') },
   stop: { label: tl('Stop', 'Arrêter'), icon: 'i-lucide-square', hint: tl('Send Escape to its agent', 'Envoyer Échap à son agent') },
-  resolve: { label: tl('Resolve', 'Clôturer'), icon: 'i-lucide-circle-check', hint: tl('Close the thread and clean up its worktree, merged branch and tab', 'Clôturer le thread et nettoyer son worktree, sa branche fusionnée et son onglet') },
+  resolve: { label: tl('Mark done', 'Marquer comme fait'), icon: 'i-lucide-circle-check', hint: tl('Mark the thread done and clean up its worktree, merged branch and tab', 'Marquer le thread comme fait et nettoyer son worktree, sa branche fusionnée et son onglet') },
 }
 const runKey = (id: string) => `${props.paneId}|${id}`
 // The action running on the thread shown, started from this tab or before leaving it.
@@ -146,8 +136,8 @@ function confirmText(action: ThreadAction, th: ProjectThread): string {
     return tl(`Stop ${id}?\n${th.title}\n\nEscape is sent to its agent: the turn in progress is interrupted.`,
       `Arrêter ${id} ?\n${th.title}\n\nÉchap est envoyé à son agent : le tour en cours est interrompu.`)
   }
-  return tl(`Resolve ${id}?\n${th.title}\n\nIts worktree, its branch once merged and its tab are removed. Its report and library are kept.`,
-    `Clôturer ${id} ?\n${th.title}\n\nSon worktree, sa branche une fois fusionnée et son onglet sont supprimés. Son rapport et sa bibliothèque sont conservés.`)
+  return tl(`Mark ${id} done?\n${th.title}\n\nIts worktree, its branch once merged and its tab are removed. Its report and library are kept.`,
+    `Marquer ${id} comme fait ?\n${th.title}\n\nSon worktree, sa branche une fois fusionnée et son onglet sont supprimés. Son rapport et sa bibliothèque sont conservés.`)
 }
 async function run(action: ThreadAction) {
   const th = shown.value
@@ -165,7 +155,7 @@ async function run(action: ThreadAction) {
   try {
     const r = await runThreadAction(props.paneId, th.id, action)
     if (stillShown()) output.value = r.output
-    toast(lastLine(r.output) || tl(`${LABELS[action].label}: done`, `${LABELS[action].label} : fait`))
+    toast(action === 'resolve' ? tl('Thread marked done', 'Thread marqué comme fait') : lastLine(r.output) || tl(`${LABELS[action].label}: done`, `${LABELS[action].label} : fait`))
   } catch (e) { toast((e as Error).message, true) }
   finally {
     runningByThread.delete(key)
@@ -195,7 +185,7 @@ function openReport() {
 
     <section v-for="g in groups" :key="g.token" class="pt-group">
       <h3 class="pt-group-head">
-        <span class="pill" :class="groupClass(g.token)"><i />{{ groupLabel(g.token, g.group) }}</span>
+        <span class="pill" :class="threadClass(g)"><i />{{ threadLabel(g) }}</span>
         <span class="pp-count">{{ g.threads.length }}</span>
       </h3>
       <ul class="pp-list">
@@ -215,7 +205,7 @@ function openReport() {
     <section class="pp-sec done pt-resolved" :class="{ folded: !showResolved }">
       <button type="button" class="pp-sec-head" :aria-expanded="showResolved" @click="toggleResolved">
         <UIcon name="i-lucide-circle-check" class="pp-sec-icon" />
-        <span class="pp-sec-title">{{ tl('Resolved', 'Clôturés') }}</span>
+        <span class="pp-sec-title">{{ threadLabel({ token: 'resolved', group: '' }) }}</span>
         <span class="pp-count">{{ resolved.length }}</span>
         <UIcon name="i-lucide-chevron-down" class="pp-chev" />
       </button>
@@ -239,7 +229,7 @@ function openReport() {
     <AppSheet v-model:open="detailOpen" :title="shown ? `${shown.id.toUpperCase()} · ${shown.title}` : ''" wide tall screen>
       <div v-if="shown" class="pt-detail">
         <p class="pt-state">
-          <span class="pill" :class="groupClass(shown.token)"><i />{{ groupLabel(shown.token, shown.group) }}</span>
+          <span class="pill" :class="threadClass(shown)"><i />{{ threadLabel(shown) }}</span>
           <span v-if="shown.stateLine" class="pt-state-line">{{ shown.stateLine }}</span>
           <span v-if="detailLoading" class="spinner pt-spin" />
         </p>

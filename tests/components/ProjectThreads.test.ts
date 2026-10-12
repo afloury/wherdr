@@ -78,7 +78,7 @@ describe('ProjectPanel › Threads tab', () => {
     expect(w.findAll('.pt-group-head').map(x => x.text())).toEqual(['Your turn1', 'Ready for review1', 'Working1'])
     expect(w.find('.pt-group .pp-meta').text()).toBe('T-0103 · Laptop · codex')
     const head = w.find('.pt-resolved .pp-sec-head')
-    expect(head.text()).toContain('35')
+    expect(head.text()).toBe('Done35')
     expect(head.attributes('aria-expanded')).toBe('false')
     expect(w.findAll('.pt-resolved .pp-row')).toHaveLength(0)
     await head.trigger('click')
@@ -97,20 +97,20 @@ describe('ProjectPanel › Threads tab', () => {
     await w.find('.pt-filter input').setValue('')
   })
 
-  it('shows a thread’s record, its Next list and its actions; Resolve asks first', async () => {
+  it('shows a thread’s record, its Next list and its actions; Mark done asks first', async () => {
     const { w, reloads } = await mountThreads()
     await w.findAll('.pt-group .pt-thread')[1]!.trigger('click')
     await vi.waitFor(() => expect(inBody('.pt-next li')).toHaveLength(2))
     expect(asked).toEqual(['t-0102'])
     expect(inBody('.pt-next li').map(x => x.textContent)).toEqual(['1Merge the branch', '2Remove the worktree'])
     expect(inBody('.pt-facts dd').map(x => x.textContent)).toContain('hp/acme/t-0102-work ← origin/main')
-    expect(inBody('.pt-actions button').map(x => x.textContent!.trim())).toEqual(['Acknowledge', 'Restart', 'Resolve'])
+    expect(inBody('.pt-actions button').map(x => x.textContent!.trim())).toEqual(['Acknowledge', 'Restart', 'Mark done'])
 
-    // Resolve: nothing is sent until the confirmation is accepted.
+    // Mark done: nothing is sent until the confirmation is accepted.
     inBody('.pt-act-resolve')[0]!.click()
     await flushPromises()
     expect(confirmState.open).toBe(true)
-    expect(confirmState.message).toContain('T-0102')
+    expect(confirmState.message).toContain('Mark T-0102 done?')
     answerConfirm(false)
     await flushPromises()
     expect(posted).toEqual([])
@@ -186,7 +186,7 @@ describe('ProjectPanel › Threads tab', () => {
     await w.find('.pt-resolved .pp-sec-head').trigger('click')
     await openRecordOf(w, 'Old work 35')
     const badge = inBody('.pt-detail .pill').at(-1)!
-    expect(badge.textContent).toContain('Resolved')
+    expect(badge.textContent).toContain('Done')
     expect(badge.classList.contains('inactive')).toBe(true)
     expect(badge.classList.contains('idle')).toBe(false)
     w.unmount()

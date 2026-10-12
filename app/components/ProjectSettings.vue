@@ -45,7 +45,7 @@ const rows = computed<{ key: SettingKey, label: string, toml: string, value: str
     { key: 'coordinatorProfile', label: tl('Coordinator profile', 'Profil du coordinateur'), toml: 'coordinator_profile', value: s.coordinatorProfile },
     { key: 'threadProfile', label: tl('Thread profile', 'Profil des threads'), toml: 'thread_profile', value: s.threadProfile },
     { key: 'maxParallelThreads', label: tl('Parallel threads', 'Threads en parallèle'), toml: 'max_parallel_threads', value: String(s.maxParallelThreads) },
-    { key: 'autoResolveDays', label: tl('Auto-resolve after', 'Clôture automatique après'), toml: 'auto_resolve_days', value: days(s.autoResolveDays) },
+    { key: 'autoResolveDays', label: tl('Automatically mark done after', 'Marquer automatiquement comme fait après'), toml: 'auto_resolve_days', value: days(s.autoResolveDays) },
     { key: 'nudge', label: tl('Nudge the coordinator', 'Relancer le coordinateur'), toml: 'nudge', value: onOff(s.nudge) },
     { key: 'mute', label: tl('Mute notifications', 'Notifications en sourdine'), toml: 'mute', value: onOff(s.mute) },
   ]

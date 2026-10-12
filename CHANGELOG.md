@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Use “Done” consistently for completed project threads and “Mark done” for their action, sharing the Board’s status labels.
+
 ## [1.3.3] — 2026-10-12
 
 ### Added

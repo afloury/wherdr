@@ -63,7 +63,7 @@ const boardLists = computed(() => [
   { icon: 'i-lucide-octagon-alert', name: tl('Blocked', 'Bloqué'), also: 'Bloque, Bloquée(s), Blocked, On hold, En attente, Waiting, Stuck', what: tl('Waiting for someone or something external: optional “— blocked by: …” reason; Unblock sends a request, Clarify prepares a message.', 'Attente de quelqu’un ou de quelque chose d’extérieur : raison facultative « — bloqué par : … » ; Débloquer envoie une demande, Préciser prépare un message.') },
   { icon: 'i-lucide-list-todo', name: tl('To do', 'À faire'), also: 'To do, Todo, Next, Soon, Prochainement', what: tl('To do soon, in your priority order; never launched automatically. Move up / down, Queue it, Launch now (a thread if a slot is free, otherwise first in the queue), Clarify, Back to backlog.', 'À faire bientôt, dans ton ordre de priorité ; jamais lancé automatiquement. Monter / Descendre, Mettre en file, Lancer maintenant (un thread si une place est libre, sinon en tête de file), Préciser, Remettre au backlog.') },
   { icon: 'i-lucide-archive', name: 'Backlog', also: 'Later, Plus tard, Idées, Ideas, Someday', what: tl('Everything else. Launch sends the task to the coordinator; Clarify prepares a message.', 'Tout le reste. Lancer envoie la tâche au coordinateur ; Préciser prépare un message.') },
-  { icon: 'i-lucide-circle-check', name: tl('Done', 'Fait'), also: 'Done, Terminé, Finished', what: tl('Filled by resolved threads.', 'Remplie par les threads clôturés.') },
+  { icon: 'i-lucide-circle-check', name: tl('Done', 'Fait'), also: 'Done, Terminé, Finished', what: tl('Filled by threads marked done.', 'Remplie par les threads marqués comme faits.') },
 ])
 async function copyText(text: string, done: string) {
   haptic()

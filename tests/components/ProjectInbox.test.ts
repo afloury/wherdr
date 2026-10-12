@@ -67,6 +67,14 @@ describe('ProjectPanel › Inbox and Routines tabs', () => {
     expect(w.find('#pp-tab-inbox').text()).toBe('Inbox1')
   })
 
+  it('labels a resolved thread event Done without changing its token', async () => {
+    items = [{ ...ALL[1]!, event: 'resolved' }]
+    const w = await mountTab('inbox')
+    await vi.waitFor(() => expect(w.findAll('.pi-card')).toHaveLength(1))
+    expect(w.find('.pi-meta').text()).toBe('T-0102 · Done')
+    expect(items[0]!.event).toBe('resolved')
+  })
+
   it('sends nothing offline, and says when the inbox is empty', async () => {
     const w = await mountTab('inbox')
     await vi.waitFor(() => expect(w.findAll('.pi-card')).toHaveLength(2))
