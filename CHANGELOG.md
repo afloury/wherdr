@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 - Use “Done” consistently for completed project threads and “Mark done” for their action, sharing the Board’s status labels.
+- Fix npm release archive paths and allow manual publication of an existing release from `main`.
+### Added
+
+- **Board project filter**: the filter button in the Board header hides chosen projects, or the
+  agents outside projects (**Other agents**). The choice is kept on the device; column counts
+  follow the filter, and a new project shows until you hide it.
 
 ## [1.3.3] — 2026-10-12
 

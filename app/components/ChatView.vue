@@ -72,15 +72,16 @@ const nearEnd = (px: number) => {
 function scrollToEnd(force: boolean) {
   const b = box.value
   if (!b) return
-  if (force || stick || nearEnd(160)) {
+  if (force || (!held && (stick || nearEnd(160)))) {
     stick = true
+    held = false
     requestAnimationFrame(() => { b.scrollTop = b.scrollHeight })
   }
 }
 // Updates the conversation while keeping the current reading position: stuck to the bottom if
 // we were there (or on first display), otherwise at the same place.
 async function apply(update: () => void, keepScroll = false) {
-  const wasNear = stick || nearEnd(120)
+  const wasNear = !held && (stick || nearEnd(120))
   const first = !rendered.value
   update()
   await nextTick()
@@ -104,6 +105,14 @@ let restoring = typeof route.query.hit !== 'string'
 // Stuck to the bottom: the conversation stays there when the area shrinks (agent
 // question, keyboard, attached photos) or when content arrives.
 let stick = true
+// After a one-tap answer (holdScroll): nothing sticks it again, neither the
+// scroll events that follow nor a status change, until the reader scrolls
+// or the draft is sent or emptied.
+let held = false
+function onUserScroll() {
+  held = false
+  interruptThought()
+}
 let ro: ResizeObserver | null = null
 onMounted(() => {
   ro = new ResizeObserver(() => {
@@ -122,7 +131,7 @@ function onScroll() {
   const b = box.value
   if (!b) return
   codeMenu.open = false
-  stick = b.scrollHeight - b.scrollTop - b.clientHeight < 120
+  if (!held) stick = b.scrollHeight - b.scrollTop - b.clientHeight < 120
   if (b.scrollTop < 400 && rendered.value) loadOlder() // infinite scrolling upwards
 }
 function interruptThought() { activeThought.value = null }
@@ -513,7 +522,7 @@ const answerWord = (a: Answer) => a === 'yes' ? t('Yes') : t('No')
 // A one-tap answer adds lines to the field, which grows over the bottom of the
 // conversation: the messages stay where they are (no re-pinning to the end),
 // so the next button to tap does not move under the finger.
-const holdScroll = () => { stick = false }
+const holdScroll = () => { stick = false; held = true }
 function answer(ref: Reference | null, a: Answer) {
   if (!ref) return
   holdScroll()
@@ -561,6 +570,7 @@ function arm(el: HTMLElement | null) {
 // "List" style: the message whose points are waiting to be picked.
 const pickKey = ref<string | null>(null)
 const draftText = computed(() => useDraft(props.pane.id).text)
+watch(draftText, (text) => { if (!text) held = false })
 function hotQuestion(key: string, n: string, on: boolean) {
   for (const span of msgEl(key)?.querySelectorAll<HTMLElement>(`.q-text[data-n="${n}"]`) || []) span.classList.toggle('q-hot', on)
 }
@@ -1159,7 +1169,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
   <div class="chat-wrap">
     <OfflineNote v-if="readOnly || netDown" :label="readOnly ? t('Offline reading') : undefined" :at="savedAt" />
     <OfflineNote v-else-if="isStale(misses)" :label="t('Conversation not up to date — reconnecting…')" />
-    <div ref="box" class="chat" @scroll.passive="onScroll" @wheel.passive="interruptThought" @touchmove.passive="interruptThought">
+    <div ref="box" class="chat" @scroll.passive="onScroll" @wheel.passive="onUserScroll" @touchmove.passive="onUserScroll">
       <UChatMessages
         :status="working ? 'streaming' : 'ready'" :should-auto-scroll="false"
         :auto-scroll="{ color: 'neutral', variant: 'outline' }"

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { COORDINATOR_PANE, FOLLOWUP_REPLY, OMP_DECISIONS_PANE, OMP_FOLLOWUP_PANE } from './scenario.mjs'
 
 // "N questions unanswered" above the field: the questions of the agent's last
@@ -16,6 +16,18 @@ async function open(page: Page, pane: string, text: string) {
   await field.fill('')
   return { chat, field, ask: page.locator('.composer-ask') }
 }
+// The smooth scroll of the reminder is over: a tap during it lands elsewhere.
+const scrolled = (chat: Locator) => chat.evaluate(el => new Promise<void>((done) => {
+  let last = el.scrollTop
+  let still = 0
+  const frame = () => {
+    still = el.scrollTop === last ? still + 1 : 0
+    last = el.scrollTop
+    if (still >= 10) done()
+    else requestAnimationFrame(frame)
+  }
+  requestAnimationFrame(frame)
+}))
 const top = (page: Page, sel: string) => page.locator(sel).first().evaluate(el => Math.round(el.getBoundingClientRect().top))
 
 test('the reminder counts the rows and questions left, and goes once all are answered', async ({ page }, testInfo) => {
@@ -33,6 +45,7 @@ test('the reminder counts the rows and questions left, and goes once all are ans
   const first = chat.locator('.q-trow').first()
   await expect(first).toBeInViewport()
   await expect(first).toHaveClass(/q-flash/)
+  await scrolled(chat)
   await shot(page, 'unanswered-goto', testInfo.project.name)
 
   const panel = chat.locator('.q-table')
@@ -62,8 +75,14 @@ test('answering never moves the buttons under the finger', async ({ page }) => {
   await panel.getByRole('button', { name: '1 · Yes: Tag the release today?' }).click()
   await expect(ask).toHaveText('4 questions unanswered')
   expect(await top(page, '.q-trow')).toBe(before)
-  // The reminder leaving does not move the field either.
+  // Nor once the field has grown with its quote chips: the conversation is
+  // not pinned to its end again behind the tap.
   await panel.locator('.q-all').click()
+  await expect(page.locator('.composer-quote').first()).toBeVisible()
+  await expect(ask).toHaveText('1 question unanswered')
+  await scrolled(chat)
+  expect(await top(page, '.q-trow')).toBe(before)
+  // The reminder leaving does not move the field either.
   await chat.locator('.q-yes[data-q="Shall I start the next thread meanwhile?"]').click()
   await expect(ask).toHaveCount(0)
   expect(await top(page, '.prompt')).toBeLessThanOrEqual(field)
