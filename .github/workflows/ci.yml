@@ -1,6 +1,11 @@
 # Checks on every push and pull request to main: unit + component tests, type check,
 # leak check (gitleaks only: the forbidden patterns file is local and never committed),
 # then the end-to-end tests in Chromium and WebKit against a fake Herdr server.
+#
+# The browser tests run as four parallel jobs, one per Playwright project. The
+# branch protection requires the checks named `checks` and `e2e`: `e2e` is the
+# last job, green only when every project is. After a failure, "Re-run failed
+# jobs" runs the failed project again, then `e2e`.
 name: ci
 
 on:
@@ -48,9 +53,50 @@ jobs:
       - name: Leak check
         run: npm run check:leaks
 
-  e2e:
+  # Whether the browser tests are needed: not for a pull request that only
+  # touches files with no effect on the app or on its tests. When in doubt, run.
+  changes:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 5
+    outputs:
+      e2e: ${{ steps.filter.outputs.e2e }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A pull request is checked out as its merge commit: the first
+          # parent is the base branch.
+          fetch-depth: 2
+
+      - name: Look for a change that needs the browser tests
+        id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          e2e=true
+          if [ "$EVENT" = pull_request ] && files=$(git diff --name-only HEAD^1 HEAD) && [ -n "$files" ]; then
+            e2e=false
+            while IFS= read -r file; do
+              case "$file" in
+                README.md | CHANGELOG.md | CONTRIBUTING.md | SECURITY.md | LICENSE) ;;
+                docs/* | release-notes/* | website/*) ;;
+                .github/workflows/npm.yml | .github/workflows/release.yml) ;;
+                .github/workflows/release-ready.yml | .github/workflows/site.yml) ;;
+                *) echo "needs the browser tests: $file"; e2e=true ;;
+              esac
+            done <<< "$files"
+          fi
+          echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
+
+  e2e-project:
+    name: e2e-project (${{ matrix.project }})
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium-desktop, chromium-phone, webkit-desktop, webkit-phone]
     steps:
       - uses: actions/checkout@v4
 
@@ -61,35 +107,61 @@ jobs:
 
       - run: npm ci
 
-      - name: Playwright version
+      - name: Playwright version and browser
         id: pw
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        env:
+          PROJECT: ${{ matrix.project }}
+        run: |
+          echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "browser=${PROJECT%%-*}" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
         id: pw-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-${{ steps.pw.outputs.browser }}
 
-      - name: Install browsers
+      - name: Install the browser
         if: steps.pw-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium webkit
+        run: npx playwright install --with-deps ${{ steps.pw.outputs.browser }}
 
-      - name: Install browser system dependencies
+      - name: Install the browser's system dependencies
         if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium webkit
+        run: npx playwright install-deps ${{ steps.pw.outputs.browser }}
 
       - run: npm run build
 
       - name: End-to-end tests
-        run: npm run test:e2e
+        run: npm run test:e2e -- --project=${{ matrix.project }}
 
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.project }}-${{ github.run_attempt }}
           path: |
             playwright-report/
             test-results/
           retention-days: 7
+
+  # The required check. `always()`: a skipped job would count as a success, so
+  # this one runs whatever happened and reads the results itself.
+  e2e:
+    needs: [changes, e2e-project]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every browser project to pass
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          NEEDED: ${{ needs.changes.outputs.e2e }}
+          PROJECTS: ${{ needs.e2e-project.result }}
+        run: |
+          echo "changes: $CHANGES, browser tests needed: $NEEDED, projects: $PROJECTS"
+          [ "$CHANGES" = success ] || exit 1
+          if [ "$NEEDED" = false ]; then
+            [ "$PROJECTS" = skipped ] && echo "No change needs the browser tests." && exit 0
+            exit 1
+          fi
+          [ "$PROJECTS" = success ]

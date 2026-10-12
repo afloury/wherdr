@@ -10,8 +10,14 @@ const record = () => {
     return records.find(([id]: [string]) => id === CODEX_UPDATE_PANE)?.[1]
   } catch { return null }
 }
-const transcriptFile = (session = CODEX_UPDATE_SESSION) => path.join(path.dirname(fs.readFileSync(SOCK_FILE, 'utf8')),
-  `home/.codex/sessions/${new Date().toISOString().slice(0, 10).replaceAll('-', '/')}/rollout-test-${session}.jsonl`)
+// Next to the transcript the launcher wrote: its folder is dated from the
+// start of the run, which may be yesterday by now (a run crossing midnight UTC).
+function transcriptFile(session = CODEX_UPDATE_SESSION) {
+  const root = path.join(path.dirname(fs.readFileSync(SOCK_FILE, 'utf8')), 'home/.codex/sessions')
+  const seeded = (fs.readdirSync(root, { recursive: true }) as string[]).find(f => path.basename(f) === `rollout-test-${CODEX_UPDATE_SESSION}.jsonl`)
+  if (!seeded) throw new Error(`no seeded Codex transcript under ${root}`)
+  return path.join(root, path.dirname(seeded), `rollout-test-${session}.jsonl`)
+}
 // A directory at the retained path fails reads even as root, unlike chmod(0).
 // Keep the transcript next to it, outside the rollout filename pattern.
 function failTranscriptRead(file: string) {
