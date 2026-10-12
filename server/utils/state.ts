@@ -1092,7 +1092,8 @@ async function pollMachine(m: Machine) {
     const error = (e as Error).message
     if (m instanceof RemoteMachine) m.reportPoll(false, error)
     // Remote machine: its last state stays shown (grayed out).
-    next = m.local || !prev ? { ok: false, error, workspaces: [], panes: [] } : { ...prev, ok: false, error }
+    const latest = mstates.get(m.key)
+    next = m.local || !latest ? { ok: false, error, workspaces: [], panes: [] } : { ...latest, ok: false, error }
   }
   if (!getMachine(m.key)) return // removed in the meantime
   mstates.set(m.key, next)

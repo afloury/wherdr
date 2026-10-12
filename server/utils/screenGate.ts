@@ -42,9 +42,14 @@ export class ScreenGate {
     while (this.active < SCREEN_TOTAL_MAX) {
       const eligible = (q: typeof this.queue[number]) => {
         const active = this.machines.get(q.machine) || 0
-        return active < SCREEN_MACHINE_MAX && (this.priority(q.machine, q.pane)
-          || ((this.backgroundMachines.get(q.machine) || 0) < SCREEN_MACHINE_MAX - Number(this.reserved(q.machine))
-            && this.background < SCREEN_TOTAL_MAX - Number(this.reserved())))
+        if (active >= SCREEN_MACHINE_MAX) return false
+        if (this.priority(q.machine, q.pane)) {
+          // Keep one slot for queued background work, even with several viewers.
+          return active - (this.backgroundMachines.get(q.machine) || 0) < SCREEN_MACHINE_MAX - 1
+            || !this.queue.some(p => p.machine === q.machine && !this.priority(p.machine, p.pane))
+        }
+        return (this.backgroundMachines.get(q.machine) || 0) < SCREEN_MACHINE_MAX - Number(this.reserved(q.machine))
+          && this.background < SCREEN_TOTAL_MAX - Number(this.reserved())
       }
       const first = this.queue.findIndex(q => eligible(q) && this.priority(q.machine, q.pane))
       const i = first < 0 ? this.queue.findIndex(eligible) : first
