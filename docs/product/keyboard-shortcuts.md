@@ -48,7 +48,11 @@ These existing shortcuts are unchanged and listed in the help sheet:
 
 - Alt+Shift+arrows or Alt+Shift+H J K L swap panes (`useSpaces.swapShortcut`).
 - Ctrl/⌘+Alt+arrows move focus between side-by-side cells (`viewMode.cellFocusStep`).
-- In the composer: Enter, Shift+Enter, Tab and the slash menu keys.
+- In the composer: Enter, Shift+Enter, Tab and the slash menu keys. ↑ on the first logical
+  line recalls previous sent texts; ↓ on the last returns to newer texts, then the saved draft
+  and caret. Cards and slash suggestions keep priority. History is per device and pane, keeps
+  100 texts, drops consecutive duplicates, and excludes attachments and reference lines.
+  Editing a recalled text does not change stored entries.
 - In the terminal: Shift+Enter and the copy keys (⌘C or Ctrl+Shift+C copy the on-screen selection,
   which releasing the mouse button also copies).
 - On a "Your turn" card: ↑ ↓ Enter Esc, 1–9 and ← →.

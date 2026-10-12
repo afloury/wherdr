@@ -22,6 +22,7 @@ const groups: Group[] = [
     { label: tl('Conversation / terminal', 'Conversation / terminal'), keys: [shortcutKbds('toggle-term')] },
     { label: tl('Stop the agent (empty field)', 'Arrêter l’agent (champ vide)'), keys: [shortcutKbds('stop')] },
     { label: tl('Send / new line', 'Envoyer / nouvelle ligne'), keys: [['enter'], ['shift', 'enter']] },
+    { label: tl('Previous / next sent text (first / last line)', 'Texte envoyé précédent / suivant (première / dernière ligne)'), keys: [['arrowup'], ['arrowdown']] },
     { label: tl('Use Claude’s suggestion', 'Prendre la suggestion de Claude'), keys: [['tab']] },
   ] },
   { title: tl('Side by side', 'Côte à côte'), rows: [

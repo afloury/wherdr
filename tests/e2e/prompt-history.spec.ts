@@ -1,0 +1,88 @@
+import { readFileSync } from 'node:fs'
+import { expect, test } from '@playwright/test'
+import { OMP_CHAT_PANE as pane, OMP_IMAGE_PANE, fakeHerdr } from './scenario.mjs'
+
+test.afterEach(async () => {
+  await fakeHerdr('e2e.interaction_screen', { pane_id: pane, text: null, agent: 'omp', status: 'idle' })
+})
+
+test('recalls sent texts, preserves the draft, and leaves middle-line arrows to the editor', async ({ page }, info) => {
+  await page.goto(`/#/a/${pane}`)
+  await expect(page.locator('.chat').getByText('Ready when you are.')).toBeVisible()
+  const field = page.locator('.prompt textarea')
+  for (const text of ['First history message', '/daily-sync ', 'Second history message']) {
+    if (text.startsWith('/')) {
+      await field.fill('/daily')
+      await page.locator('.slash-item', { hasText: '/daily-sync' }).click()
+    } else await field.fill(text)
+    await page.locator('.prompt-send').click()
+    await expect(field).toHaveValue('')
+    await expect(page.locator('.msg-user:not(.msg-pending)', { hasText: text.trim() })).toBeVisible()
+  }
+  const draft = '  Keep this draft  '
+  await field.fill(draft)
+  await field.press('ArrowUp')
+  await expect(field).toHaveValue('Second history message')
+  await field.fill('Edit the recalled message')
+  await field.press('ArrowUp')
+  await expect(field).toHaveValue('/daily-sync')
+  await field.press('ArrowUp')
+  await expect(field).toHaveValue('First history message')
+  await field.press('ArrowDown')
+  await expect(field).toHaveValue('/daily-sync')
+  await field.press('ArrowDown')
+  await expect(field).toHaveValue('Second history message')
+  await field.press('ArrowDown')
+  await expect(field).toHaveValue(draft)
+
+  await field.fill('first\nmiddle\nlast')
+  await field.evaluate((el: HTMLTextAreaElement) => el.setSelectionRange(9, 9))
+  await field.press('ArrowUp')
+  await expect(field).toHaveValue('first\nmiddle\nlast')
+  expect(await field.evaluate((el: HTMLTextAreaElement) => el.selectionStart)).toBeLessThan(6)
+  await field.evaluate((el: HTMLTextAreaElement) => el.setSelectionRange(9, 9))
+  await field.press('ArrowDown')
+  await expect(field).toHaveValue('first\nmiddle\nlast')
+  expect(await field.evaluate((el: HTMLTextAreaElement) => el.selectionStart)).toBeGreaterThan(12)
+
+  await field.fill('Draft kept across panes')
+  await field.press('ArrowUp')
+  await expect(field).toHaveValue('Second history message')
+  await page.screenshot({ path: `.shots/prompt-history-${info.project.name}.png` })
+  // Leaving while browsing preserves the unsent draft, not the recalled text.
+  await page.goto(`/#/a/${OMP_IMAGE_PANE}`)
+  const other = page.locator('.prompt textarea')
+  await expect(other).toBeVisible()
+  await other.fill('')
+  await other.press('ArrowUp')
+  await expect(other).toHaveValue('')
+  await page.goto(`/#/a/${pane}`)
+  await expect(field).toHaveValue('Draft kept across panes')
+  await page.reload()
+  await expect(field).toHaveValue('Draft kept across panes')
+  await field.press('ArrowUp')
+  await expect(field).toHaveValue('Second history message')
+})
+
+test('slash suggestions and an active choice card own arrows before history', async ({ page }) => {
+  test.skip(!test.info().project.name.includes('desktop'), 'Card keyboard navigation is desktop only')
+  await page.goto(`/#/a/${pane}`)
+  const field = page.locator('.prompt textarea')
+  await field.fill('Saved history message')
+  await page.locator('.prompt-send').click()
+  await expect(field).toHaveValue('')
+  await field.fill('/')
+  const options = page.locator('.slash-item')
+  await expect(options.first()).toBeVisible()
+  await field.press('ArrowDown')
+  await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true')
+  await expect(field).toHaveValue('/')
+  await field.press('Escape')
+  await field.fill('')
+  const screen = readFileSync(new URL('../fixtures/codex-request-increase.txt', import.meta.url), 'utf8')
+  await fakeHerdr('e2e.interaction_screen', { pane_id: pane, text: screen, agent: 'codex', status: 'blocked' })
+  await expect(page.locator('.choices-list')).toContainText('Yes (y)')
+  await field.press('ArrowUp')
+  await expect(field).toHaveValue('')
+  await expect.poll(async () => (await fakeHerdr('e2e.terminal_screen', { pane_id: pane })).keys).toEqual(['up'])
+})

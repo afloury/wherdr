@@ -19,6 +19,7 @@ import { uploadPhoto } from '~/utils/photoUpload'
 import { lostPhotosText, restoreDraft } from '~/utils/queuedCancel'
 import { isLongPaste, messageBody } from '#shared/pastedText'
 import { rememberPastes } from '~/utils/sentPastes'
+import { PromptHistory, historyDirection } from '~/utils/promptHistory'
 
 // `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
 // `takeBack`: conversation view; a prompt Claude puts back into its field on Stop
@@ -125,6 +126,36 @@ function onKeydown(e: KeyboardEvent) {
     submit()
   }
 }
+// Bubble on window, after useCardKeys on document: the active card owns
+// arrows in an empty field. Slash suggestions are handled above at the field.
+const history = new PromptHistory()
+function onHistoryKey(e: KeyboardEvent) {
+  const el = ta.value
+  if (!el || e.target !== el || slashOpen.value || sending.value) return
+  const current = { text: el.value, start: el.selectionStart, end: el.selectionEnd }
+  const direction = historyDirection(e, current)
+  if (direction === null) return
+  const recalled = history.move(direction, current, promptHistoryFor(props.paneId))
+  if (!recalled) return
+  e.preventDefault()
+  text.value = recalled.text
+  // A recalled command should be browsable with the next arrow too.
+  slashDismissed.value = true
+  nextTick(() => {
+    slashDismissed.value = true
+    el.setSelectionRange(recalled.start, recalled.end)
+  })
+}
+onMounted(() => window.addEventListener('keydown', onHistoryKey))
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onHistoryKey)
+  // Leaving the pane while browsing must keep the original unsent draft.
+  if (history.draft) text.value = history.draft.text
+})
+function rememberSent(typed: string) {
+  rememberPrompt(props.paneId, typed)
+  history.reset()
+}
 // The button handles Send and Stop itself (one click = one action, without
 // going back through the form). In Stop mode ("streaming" status),
 // UChatPromptSubmit replaces our @click with its "stop" event:
@@ -144,7 +175,8 @@ async function submit() {
   // they are, after the typed text (the agent gets one message, as from a paste).
   const pastes = attachments.value.flatMap(a => (a.paste ? [a.paste] : []))
   const paths = attachments.value.flatMap(a => (a.paste ? [] : [a.ref || a.path!]))
-  const body = messageBody(text.value, pastes, paths)
+  const typed = text.value
+  const body = messageBody(typed, pastes, paths)
   const msg = body
   if (!msg || sending.value) return
   const p = props.pane
@@ -155,6 +187,7 @@ async function submit() {
   // after any earlier one still going (see composables/useOutbox.ts). Failed:
   // the bubble says "Not sent" with Retry / Cancel, nothing is lost.
   if (free < 0 && viaPrompt(p) && !isSlashCommand(msg)) {
+    rememberSent(typed)
     text.value = ''
     clearAttachments()
     rememberPastes(pastes)
@@ -171,6 +204,7 @@ async function submit() {
     if (prompt && free >= 0) {
       if (!(await choose(props.paneId, free, prompt.options[free]!.label, prompt.identity, { text: msg, question: prompt.question }))) return
     } else queued = await sendMessage(p, props.paneId, msg)
+    rememberSent(typed)
     text.value = ''
     clearAttachments()
     haptic()
@@ -468,6 +502,7 @@ function openPlus() {
 async function runSlash(cmd: string, result = true) {
   try {
     await api('/api/prompt', { pane_id: props.paneId, text: cmd })
+    rememberPrompt(props.paneId, cmd)
     haptic()
   } catch (err) { return toast((err as Error).message, true) }
   if (result) showCommandResult(props.paneId, cmd)
