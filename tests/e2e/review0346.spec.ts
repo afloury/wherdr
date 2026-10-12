@@ -3,7 +3,7 @@ import { expect,test } from '@playwright/test'
 import { OMP_CHAT_PANE as pane,fakeHerdr } from './scenario.mjs'
 const fx=(name:string)=>readFileSync(new URL(`../fixtures/${name}.txt`,import.meta.url),'utf8')
 const show=(name:string|null,agent='codex')=>fakeHerdr('e2e.interaction_screen',{pane_id:pane,text:name?fx(name):null,agent,status:'blocked'})
-test.afterEach(async()=>{await fakeHerdr('e2e.read_failure',{pane_id:pane,fail:false});await show(null)})
+test.afterEach(async()=>{await fakeHerdr('e2e.read_failure',{pane_id:pane,fail:false});await fakeHerdr('e2e.interaction_screen',{pane_id:pane,text:null,agent:'omp',status:'idle'})})
 test('R1: Enter on an old card refuses the new question without sending a key',async({page})=>{
  test.skip(!test.info().project.name.includes('desktop'), 'Card keyboard is a desktop control')
  await show('codex-request-increase');await page.goto(`/#/a/${pane}`)
