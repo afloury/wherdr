@@ -255,3 +255,26 @@ export function capFinished(cards: BoardCard[], n: number): { cards: BoardCard[]
   })
   return { cards: kept, hidden }
 }
+
+// ---------------------------------------------------------------- project filter
+// One choice of the Board's project filter: a project card's segment (the
+// server's `<base machine>|<folder>` key) and its name, with its machine when
+// another project shares that name.
+export interface BoardFilterOption { key: string, label: string }
+
+// The projects on the Board, by name then machine. `machineLabel` names a machine key.
+export function boardFilterOptions(cards: BoardCard[], machineLabel: (machine: string) => string): BoardFilterOption[] {
+  const projects = cards.flatMap(c => (c.kind === 'project' ? [{ key: c.segment, name: c.project || '', machine: machineLabel(c.coordinator.machine || '') }] : []))
+  const named = new Map<string, number>()
+  for (const p of projects) named.set(p.name.toLowerCase(), (named.get(p.name.toLowerCase()) || 0) + 1)
+  return projects
+    .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.machine.localeCompare(b.machine))
+    .map(p => ({ key: p.key, label: named.get(p.name.toLowerCase())! > 1 && p.machine ? `${p.name} · ${p.machine}` : p.name }))
+}
+
+// The cards of project `key`: its project card, threads, tasks and agents. Every
+// card when `key` is '' or names no project on the Board (gone, or not read yet).
+export function filterBoard(cards: BoardCard[], key: string): BoardCard[] {
+  if (!key || !cards.some(c => c.kind === 'project' && c.segment === key)) return cards
+  return cards.filter(c => c.segment === key)
+}

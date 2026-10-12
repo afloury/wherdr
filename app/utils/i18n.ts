@@ -394,6 +394,7 @@ const FR: Record<string, string> = {
   'Swap with the pane above': 'Échanger avec le pane du dessus', 'Swap with the pane below': 'Échanger avec le pane du dessous',
   'Split right': 'Diviser à droite', 'Split down': 'Diviser en bas', 'Move to…': 'Déplacer vers…',
   'Board': 'Tableau', 'Blocked': 'Bloqué', 'Todo': 'À faire', 'Ongoing': 'En cours', 'Finished': 'Terminé', 'Sent': 'Envoyé', 'Nothing here': 'Rien ici',
+  'All projects': 'Tous les projets',
   'Board read timed out': 'Lecture du tableau trop longue', 'The coordinator is not running': 'Le coordinateur ne tourne pas',
   'Drag to move the pane': 'Glisser pour déplacer le pane', 'Swap': 'Échanger', 'Place left': 'Placer à gauche', 'Place right': 'Placer à droite',
   'Place above': 'Placer au-dessus', 'Place below': 'Placer en dessous', 'Resize': 'Redimensionner',

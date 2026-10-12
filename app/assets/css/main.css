@@ -3801,6 +3801,12 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-view { z-index: 3; }
 .board-top { justify-content: flex-start; gap: 6px; }
 .board-top h2 { font: 850 22px/1 var(--display); letter-spacing: -.035em; }
+.board-filter { margin-left: auto; min-width: 0; max-width: min(60%, 320px); display: flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid var(--line); font: 500 11px/1.2 var(--mono); color: var(--text-2); cursor: pointer; }
+.board-filter span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board-filter.on { border-color: var(--mauve); color: var(--text); }
+.board-filter:hover { border-color: var(--mauve); }
+.board-filter:focus-visible { outline: 1px solid var(--mauve); outline-offset: 2px; }
+.board-filter-icon { width: 13px; height: 13px; flex: none; color: var(--muted); }
 .board-offline, .board-notice { margin: 12px 16px 0; }
 /* Phone: one column at a time under four counters. */
 .board-seg { flex: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 12px 16px 0; border: 1px solid var(--line); }

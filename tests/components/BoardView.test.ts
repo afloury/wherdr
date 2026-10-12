@@ -55,7 +55,10 @@ describe('BoardView', () => {
     desk.value = false
     eventsOpen.value = true
   })
-  afterEach(() => { herdrState.value = before })
+  afterEach(() => {
+    herdrState.value = before
+    localStorage.removeItem('boardProject')
+  })
   const setPanes = () => {
     herdrState.value = {
       ok: true, workspaces: [], panes: [local, remote, shell],
@@ -139,5 +142,58 @@ describe('BoardView', () => {
     for (const stop of stops) stop()
     expect(went).toEqual([`/a/${local.id}`])
     expect(router.currentRoute.value.path).toBe(`/a/${local.id}`)
+  })
+
+  // Phone column picker: the count of each column.
+  const counts = (w: Awaited<ReturnType<typeof mountBoard>>) => Object.fromEntries(w.findAll('.board-seg-btn').map(b => [b.classes()[1], Number(b.get('b').text())]))
+
+  it('narrows the Board to the project picked in the header, and remembers it', async () => {
+    setPanes()
+    const w = await mountBoard()
+    expect(counts(w)).toMatchObject({ ongoing: 3 })
+    await w.get('.board-filter').trigger('click')
+    expect(menuState.items.map(i => i.label)).toEqual([t('All projects'), 'acme-shop', 'beta-api'])
+    menuState.items.find(i => i.label === 'acme-shop')!.run!()
+    await flushPromises()
+    expect(w.get('.board-filter').text()).toBe('acme-shop')
+    expect(w.findAll('.board-card.project').map(c => c.text())).toEqual([expect.stringContaining('acme-shop')])
+    expect(column(w, 'ongoing').text()).not.toContain('Notes agent')
+    expect(column(w, 'ongoing').text()).toContain('OpenAPI spec')
+    expect(counts(w)).toMatchObject({ ongoing: 2 })
+    w.unmount()
+
+    // Kept on this device.
+    const again = await mountBoard()
+    expect(again.get('.board-filter').text()).toBe('acme-shop')
+    expect(column(again, 'ongoing').text()).not.toContain('Notes agent')
+    await again.get('.board-filter').trigger('click')
+    menuState.items.find(i => i.label === t('All projects'))!.run!()
+    await flushPromises()
+    expect(column(again, 'ongoing').text()).toContain('Notes agent')
+    expect(localStorage.getItem('boardProject')).toBeNull()
+  })
+
+  it('a stored project missing from the Board shows every project and stays stored', async () => {
+    setPanes()
+    localStorage.setItem('boardProject', 'host-b|/srv/gone')
+    const w = await mountBoard()
+    expect(w.get('.board-filter').text()).toBe(t('All projects'))
+    expect(column(w, 'ongoing').text()).toContain('Notes agent')
+    expect(localStorage.getItem('boardProject')).toBe('host-b|/srv/gone')
+  })
+
+  it('no filter with a single project', async () => {
+    herdrState.value = { ok: true, workspaces: [], panes: [local, shell] }
+    localStorage.setItem('boardProject', 'acme-shop')
+    const projects = reply.projects
+    reply.projects = [projects[0]!]
+    try {
+      const w = await mountBoard()
+      expect(w.find('.board-filter').exists()).toBe(false)
+      // The stored choice narrows nothing: the agent outside projects still shows.
+      expect(column(w, 'ongoing').text()).toContain('Notes agent')
+    } finally {
+      reply.projects = projects
+    }
   })
 })

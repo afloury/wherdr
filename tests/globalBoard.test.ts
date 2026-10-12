@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Pane } from '../shared/types'
 import type { ProjectBoard, ProjectThread } from '../shared/projectBoard'
 import {
-  type BoardCard, type BoardProject, boardMoveMessage, boardMoves, buildGlobalBoard, capFinished, paneColumn, rollUp, taskColumn, threadColumn,
+  type BoardCard, type BoardProject, boardFilterOptions, boardMoveMessage, boardMoves, buildGlobalBoard, capFinished, filterBoard, paneColumn, rollUp, taskColumn, threadColumn,
 } from '../shared/globalBoard'
 import { pickCoordinator } from '../shared/projects'
 
@@ -213,6 +213,52 @@ describe('capFinished', () => {
     expect(kept.filter(x => x.kind === 'thread').map(x => (x as Extract<BoardCard, { kind: 'thread' }>).thread.id)).toEqual(['t-0001', 't-0002'])
     expect(kept.filter(x => x.kind === 'task').map(x => (x as Extract<BoardCard, { kind: 'task' }>).task.text)).toEqual(['a', 'b'])
     expect(kept.some(x => x.kind === 'agent')).toBe(true)
+  })
+})
+
+describe('project filter', () => {
+  // Two projects named shop on two machines, a third project, a thread pane of
+  // the first shop, an agent of a project without a coordinator, and a loose agent.
+  const a = coord('shop', { machine: 'm1' })
+  const b = coord('shop', { machine: 'm2' })
+  const c = coord('Billing')
+  const onA = threadPane('shop', 't-0001', { machine: 'm1', status: 'working' })
+  const stray = threadPane('gamma', 't-0001')
+  const loose = pane()
+  const lists = [{ title: 'To do', kind: 'todo' as const, tasks: [{ text: 'Checkout', done: false, owner: 'me', thread: null }] }]
+  const projects = [
+    project(a, board({ open: [thread('t-0001')], lists }), { key: 'm1|/srv/shop' }),
+    project(b, board({ lists }), { key: 'm2|/srv/shop' }),
+    project(c, board({ slug: 'Billing' }), { key: '|/srv/billing' }),
+  ]
+  const cards = buildGlobalBoard(projects, [a, b, c, onA, stray, loose])
+  const labels: Record<string, string> = { '': 'This machine', m1: 'Host A', m2: 'Host B' }
+
+  it('lists the projects by name, and names the machine of same-named projects', () => {
+    expect(boardFilterOptions(cards, m => labels[m]!)).toEqual([
+      { key: '|/srv/billing', label: 'Billing' },
+      { key: 'm1|/srv/shop', label: 'shop · Host A' },
+      { key: 'm2|/srv/shop', label: 'shop · Host B' },
+    ])
+  })
+
+  it('all projects: every card', () => {
+    expect(filterBoard(cards, '')).toBe(cards)
+  })
+
+  it('one project: its project card, threads and tasks; other projects and agents outside projects hidden', () => {
+    const shown = filterBoard(cards, 'm1|/srv/shop')
+    expect(shown.map(x => x.kind)).toEqual(['project', 'thread', 'task'])
+    expect(shown.every(x => x.segment === 'm1|/srv/shop')).toBe(true)
+    // The thread keeps its live pane; the same-named project on m2 is hidden.
+    expect((shown[1] as Extract<BoardCard, { kind: 'thread' }>).panes).toEqual([onA])
+    expect(filterBoard(cards, 'm2|/srv/shop').map(x => x.kind)).toEqual(['project', 'task'])
+  })
+
+  it('an unknown key shows every card', () => {
+    expect(filterBoard(cards, 'm3|/srv/gone')).toBe(cards)
+    // An agent segment is not a project.
+    expect(filterBoard(cards, 'slug:gamma')).toBe(cards)
   })
 })
 

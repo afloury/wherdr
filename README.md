@@ -1193,7 +1193,10 @@ worktree. It is optional; with it installed, wherdr adds:
   stands for: a project or task opens its Project panel, a thread opens its agent (or its report
   once closed), an agent opens its conversation. A project card takes the most urgent column of
   its cards and counts them; Finished shows the 5 most recent threads and done tasks of each
-  project, **Show all** the rest.
+  project, **Show all** the rest. With two projects or more, the menu in the header narrows the
+  Board to one project (its threads and tasks, without the other projects and the agents outside
+  projects); the choice is kept on the device, and a project with the same name on another
+  machine is listed with that machine's name.
 
   | Card | Blocked | Todo | Ongoing | Finished |
   | --- | --- | --- | --- | --- |

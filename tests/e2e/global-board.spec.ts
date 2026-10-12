@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { COORDINATOR_PANE } from './scenario.mjs'
+import { CODEX_UPDATE_PANE, COORDINATOR_PANE } from './scenario.mjs'
 
 // Board: every project's TASKS.md tasks and threads, and every agent, in four
 // columns. Moving a task card sends the coordinator the matching message; the
@@ -89,3 +89,56 @@ test('dragging a task card to another column moves it, the same column does noth
   await expect.poll(() => sent.map(s => s.text)).toEqual(['↳ Mark blocked: Keyboard shortcuts help'])
   await expect(todo).toContainText('Sent')
 })
+
+test('the project filter narrows the Board to one project and is remembered', async ({ page }, testInfo) => {
+  const phone = testInfo.project.name.includes('phone')
+  const other = {
+    key: '|/home/user/.herdr-projects/codex-update',
+    slug: 'codex-update',
+    panes: [CODEX_UPDATE_PANE],
+    resolvedTotal: 0,
+    board: { slug: 'codex-update', version: 'p2', lists: [{ title: 'To do', kind: 'todo', tasks: [task('Release notes')] }], open: [], resolved: [] },
+  }
+  await page.route('**/api/board*', route => route.fulfill({ json: { ...board, projects: [...board.projects, other] } }))
+  await page.goto('/#/board')
+  await expect(page.locator('#board .board-card.task')).toHaveCount(4)
+
+  const filter = page.locator('#board .board-filter')
+  await expect(filter).toHaveText('All projects')
+  const pick = (name: string) => page.getByRole('menuitem', { name }).or(page.locator('.hw-sheet').getByRole('button', { name, exact: true }))
+  if (phone) {
+    await filter.click()
+  } else {
+    // Keyboard: the filter takes the focus and opens with Enter.
+    await filter.focus()
+    await page.keyboard.press('Enter')
+  }
+  await expect(pick('codex-update')).toBeVisible()
+  await pick('acme').click()
+
+  await expect(filter).toHaveText('acme')
+  await expect(page.locator('#board .board-card.task')).toHaveCount(3)
+  await expect(card(page, 'Release notes')).toHaveCount(0)
+  await expect(page.locator('#board .board-card.project')).toHaveCount(1)
+  if (phone) {
+    // The filter fits the header; the column picker stays on screen and counts the project's cards.
+    const width = page.viewportSize()!.width
+    const box = (await filter.boundingBox())!
+    expect(box.x + box.width).toBeLessThanOrEqual(width)
+    await expect(page.locator('#board .board-seg')).toBeInViewport({ ratio: 1 })
+    await expect(page.locator('#board .board-seg-btn.todo b')).toHaveText('4')
+  } else {
+    await expect(page.locator('#board .board-col.todo .board-col-head .pp-count')).toHaveText('4')
+  }
+
+  // A task still moves under the filter.
+  if (phone) await page.locator('#board .board-seg').getByRole('button', { name: /^Todo/ }).click()
+  await card(page, 'Export to CSV').getByRole('button', { name: 'Move to…' }).click()
+  await choices(page).filter({ hasText: 'Ongoing' }).click()
+  await expect(card(page, 'Export to CSV')).toContainText('Sent')
+
+  await page.reload()
+  await expect(filter).toHaveText('acme')
+  await expect(page.locator('#board .board-card.task')).toHaveCount(3)
+})
+

@@ -3,11 +3,15 @@
 // (Blocked, Todo, Ongoing, Finished). Computer: columns side by side; phone: one
 // column at a time under a segmented control. Task cards move through the project's
 // coordinator (menu or drag and drop); the other cards open what they stand for.
-import { BOARD_COLUMNS, type BoardCard, type BoardColumn, type BoardMove, type TaskCard, boardMoveMessage, capFinished } from '#shared/globalBoard'
+// A filter in the header narrows the Board to one project.
+import {
+  BOARD_COLUMNS, type BoardCard, type BoardColumn, type BoardMove, type TaskCard, boardFilterOptions, boardMoveMessage, capFinished, filterBoard,
+} from '#shared/globalBoard'
 
 // Finished tasks and threads shown per project until "Show all".
 const FINISHED_SHOWN = 5
 const COLUMN_KEY = 'boardColumn'
+const PROJECT_KEY = 'boardProject'
 
 const router = useRouter()
 const { board, cards, error } = useGlobalBoard()
@@ -15,12 +19,47 @@ const { board, cards, error } = useGlobalBoard()
 const labels: Record<BoardColumn, string> = {
   blocked: t('Blocked'), todo: t('Todo'), ongoing: t('Ongoing'), finished: t('Finished'),
 }
+
+// Project filter, kept on this device. A stored project missing from the Board
+// (machine offline, not read yet) shows every project but stays stored.
+function readProject(): string {
+  try { return localStorage.getItem(PROJECT_KEY) || '' }
+  catch { return '' /* storage unavailable */ }
+}
+const storedProject = ref(readProject())
+const projectOptions = computed(() => boardFilterOptions(cards.value, machineName))
+// Shown with two projects or more; with fewer, nothing to narrow.
+const project = computed(() => (projectOptions.value.length > 1 ? projectOptions.value.find(o => o.key === storedProject.value) ?? null : null))
+const shown = computed(() => filterBoard(cards.value, project.value?.key || ''))
+function selectProject(key: string) {
+  storedProject.value = key
+  try {
+    if (key) localStorage.setItem(PROJECT_KEY, key)
+    else localStorage.removeItem(PROJECT_KEY)
+  } catch { /* storage unavailable */ }
+}
+const projectItems = (): MenuItem[] => [{ key: '', label: t('All projects') }, ...projectOptions.value].map(o => ({
+  label: o.label, icon: o.key === (project.value?.key || '') ? 'i-lucide-check' : undefined, run: () => selectProject(o.key),
+}))
+const filterLabel = computed(() => {
+  const name = project.value?.label || t('All projects')
+  return tl(`Project: ${name}`, `Projet : ${name}`)
+})
+const projectDropdown = ref<ReturnType<typeof toDropdown>>([])
+function onProjectMenu(o: boolean) {
+  if (o) projectDropdown.value = toDropdown(projectItems())
+}
+function openProjectSheet() {
+  haptic()
+  openMenu(projectItems(), t('Project'))
+}
+
 const showAll = ref(false)
-const capped = computed(() => (showAll.value ? { cards: cards.value, hidden: 0 } : capFinished(cards.value, FINISHED_SHOWN)))
+const capped = computed(() => (showAll.value ? { cards: shown.value, hidden: 0 } : capFinished(shown.value, FINISHED_SHOWN)))
 const columns = computed(() => BOARD_COLUMNS.map(id => ({
   id,
   label: labels[id],
-  total: cards.value.filter(c => c.column === id).length,
+  total: shown.value.filter(c => c.column === id).length,
   cards: capped.value.cards.filter(c => c.column === id),
 })))
 
@@ -113,6 +152,16 @@ function back() {
     <header class="top bar board-top">
       <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Back')" @click="back" />
       <h2>{{ t('Board') }}</h2>
+      <template v-if="projectOptions.length > 1">
+        <UDropdownMenu v-if="!sheetMenus" :items="projectDropdown" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }" @update:open="onProjectMenu">
+          <button type="button" class="board-filter" :class="{ on: project }" :aria-label="filterLabel">
+            <UIcon name="i-lucide-folder" class="board-filter-icon" /><span>{{ project?.label || t('All projects') }}</span><UIcon name="i-lucide-chevron-down" class="board-filter-icon" />
+          </button>
+        </UDropdownMenu>
+        <button v-else type="button" class="board-filter" :class="{ on: project }" :aria-label="filterLabel" @click="openProjectSheet">
+          <UIcon name="i-lucide-folder" class="board-filter-icon" /><span>{{ project?.label || t('All projects') }}</span><UIcon name="i-lucide-chevron-down" class="board-filter-icon" />
+        </button>
+      </template>
     </header>
     <OfflineNote v-if="offlineView && cachedAt" class="board-offline" :label="t('Last known state')" :at="cachedAt" date-style="medium" />
     <div v-if="error" class="notice board-notice">{{ error }}</div>

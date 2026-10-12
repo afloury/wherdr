@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Board › project filter**: a menu in the Board header narrows it to one project (its project
+  card, threads and tasks; other projects and agents outside projects hidden), **All projects**
+  by default. Columns, counts, the phone column picker and **Show all** follow the filter, and task
+  cards still move. Kept on the device; a remembered project missing from the Board (machine
+  offline) shows every project without forgetting it. Same-named projects on two machines are
+  told apart by their machine. Hidden with a single project. English and French, phone and
+  computer.
+
 ## [1.3.3] — 2026-10-12
 
 ### Added
