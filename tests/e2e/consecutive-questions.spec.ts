@@ -3,7 +3,13 @@ import { expect, test } from '@playwright/test'
 import { OMP_CHAT_PANE as pane, fakeHerdr } from './scenario.mjs'
 const fx = (name: string) => readFileSync(new URL(`../fixtures/${name}.txt`,import.meta.url),'utf8')
 const show = (name: string | null) => fakeHerdr('e2e.interaction_screen',{pane_id:pane,text:name ? fx(name) : null,agent:'codex',status:'blocked'})
-test.afterEach(async()=>{await fakeHerdr('e2e.interaction_screen',{pane_id:pane,text:null,agent:'omp',status:'idle'})})
+test.afterEach(async({request})=>{
+ await fakeHerdr('e2e.interaction_screen',{pane_id:pane,text:null,agent:'omp',status:'idle'})
+ await expect.poll(async()=>{
+  const state=await (await request.get('/api/state')).json()
+  return state.panes.find((p:{id:string})=>p.id===pane)?.agent
+ }).toBe('omp')
+})
 test('replaces consecutive questions and refuses an answer clicked during the stale interval',async({page},info)=>{
  await show('codex-request-increase')
  await page.goto(`/#/a/${pane}`)

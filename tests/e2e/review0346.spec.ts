@@ -3,7 +3,17 @@ import { expect,test } from '@playwright/test'
 import { OMP_CHAT_PANE as pane,fakeHerdr } from './scenario.mjs'
 const fx=(name:string)=>readFileSync(new URL(`../fixtures/${name}.txt`,import.meta.url),'utf8')
 const show=(name:string|null,agent='codex')=>fakeHerdr('e2e.interaction_screen',{pane_id:pane,text:name?fx(name):null,agent,status:'blocked'})
-test.afterEach(async()=>{await fakeHerdr('e2e.read_failure',{pane_id:pane,fail:false});await fakeHerdr('e2e.interaction_screen',{pane_id:pane,text:null,agent:'omp',status:'idle'})})
+test.afterEach(async({request})=>{
+ await fakeHerdr('e2e.read_failure',{pane_id:pane,fail:false})
+ await fakeHerdr('e2e.interaction_screen',{pane_id:pane,text:null,agent:'omp',status:'idle'})
+ // The fake mutation precedes wherdr's next poll. Do not let the next spec
+ // cache commands for the previous agent while its state is still published.
+ await expect.poll(async()=>{
+  const state=await (await request.get('/api/state')).json()
+  const p=state.panes.find((p:{id:string})=>p.id===pane)
+  return {agent:p?.agent,status:p?.status,prompt:p?.prompt??null}
+ }).toEqual({agent:'omp',status:'idle',prompt:null})
+})
 test('R1: Enter on an old card refuses the new question without sending a key',async({page})=>{
  test.skip(!test.info().project.name.includes('desktop'), 'Card keyboard is a desktop control')
  await show('codex-request-increase');await page.goto(`/#/a/${pane}`)
