@@ -1120,7 +1120,7 @@ worktree. It is optional; with it installed, wherdr adds:
   grouped by repository (`Repo web-shop · 2 worktrees`), with their thread number and state.
 - **Project panel** next to the coordinator (a side panel on a computer, a tab on a phone). It
   reads the project's `TASKS.md` and shows the lists it has, always in this order, with the open
-  threads live (state, progress, report) and resolved threads under Done (**Tasks** tab; the
+  threads live (state, progress, report) and threads marked done under Done (**Tasks** tab; the
   **Threads**, **Inbox**, **Routines**, **Settings** and **Memory** tabs are described below):
 
   | List | Meaning | Buttons |
@@ -1133,7 +1133,7 @@ worktree. It is optional; with it installed, wherdr adds:
   | **Blocked** | Waiting for someone or something external | Unblock, Clarify |
   | **To do** | To do soon, in your priority order; never launched on its own | Move up / down, Queue it, Launch now, Clarify, Back to backlog |
   | **Backlog** | Everything else | Launch, Clarify |
-  | **Done** | Resolved threads | |
+  | **Done** | Threads marked done | |
 
   Every list is **optional**: you and your coordinator pick the ones a project uses (a small
   project may only need Backlog, In progress and Done); any other `##` list shows in a neutral
@@ -1144,9 +1144,9 @@ worktree. It is optional; with it installed, wherdr adds:
   header shows the thread slots in use (`max_parallel_threads` in `PROJECT.md`) and the next
   task, plus the machine's global limit when one is set
   (`2 of 2 thread slots in use on <machine> (all projects)`).
-- **Threads tab** of the Project panel: every thread of the project, resolved ones included.
+- **Threads tab** of the Project panel: every thread of the project, including those marked done.
   Open threads are grouped as herdr-projects groups them (Your turn, Ready for review, Working…),
-  each with its machine and agent profile; resolved threads stay in their own folded section,
+  each with its machine and agent profile; threads marked done stay in their own folded section,
   shown by pages of 30. One filter covers both (ID, title, machine, profile). A tap opens the
   thread's record: state, its **Next** list, branch, dates, and these actions:
 
@@ -1155,13 +1155,13 @@ worktree. It is optional; with it installed, wherdr adds:
   | **Acknowledge** | `thread ack`: you have seen its report | |
   | **Restart** | `thread restart`: bring back a thread whose pane is gone or whose start failed | |
   | **Stop** | `thread stop`: Escape in its agent's pane | Yes |
-  | **Resolve** | `thread resolve`: final copy, then its worktree, merged branch and tab are cleaned up (report and library kept) | Yes |
+  | **Mark done** | `thread resolve`: final copy, then its worktree, merged branch and tab are cleaned up (report and library kept) | Yes |
 
   Open agent, View report and Pull request are there too when they apply. wherdr only runs
   these `herdr-projects` commands on the coordinator's machine (and reads `thread show --json`);
   it writes no thread file itself, and herdr-projects has the last word (it refuses to restart a
-  running thread, for instance): its answer is shown as is. With Docker, **Resolve** runs in
-  the container, where the home folder is read-only: a thread of this machine is resolved and
+  running thread, for instance): its answer is shown as is. With Docker, **Mark done** runs in
+  the container, where the home folder is read-only: a thread of this machine is marked done and
   its open workspace removed through Herdr, but its merged branch, or a worktree whose workspace
   was already closed, may stay. herdr-projects lists what it kept, and
   `herdr-projects sweep <project>` on the host removes it.
@@ -1200,7 +1200,7 @@ worktree. It is optional; with it installed, wherdr adds:
   | Card | Blocked | Todo | Ongoing | Finished |
   | --- | --- | --- | --- | --- |
   | **Task** (its `TASKS.md` list) | Blocked | To test, To decide, To review, In queue, To do, Backlog, other lists | In progress without an open thread | Done, or a checked line |
-  | **Thread** | Its agent is your turn, or *waiting on you* | *Ready for review* | Working, landing, idle | Resolved |
+  | **Thread** | Its agent is your turn, or *waiting on you* | *Ready for review* | Working, landing, idle | Done |
   | **Agent** | Your turn | | Working, starting, restarting | Done, ready |
 
   Moving a **task** card (drag and drop on a computer, **Move to…** everywhere) sends the

@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 - Refresh consecutive agent questions faster and refuse answers to an outdated question card.
 
+- Use “Done” consistently for completed project threads and “Mark done” for their action, sharing the Board’s status labels.
 - Fix npm release archive paths and allow manual publication of an existing release from `main`.
 ### Added
 
