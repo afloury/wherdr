@@ -787,7 +787,7 @@ function paneCommand(id: string): string {
   return c?.cmd || ''
 }
 
-async function enrich(next: HerdrState, snap: Json, machine: string) {
+async function enrich(next: HerdrState, snap: Json, machine: string, publish?: (pane: Pane) => void) {
   const firstSnapshot = !seenMachines.has(machine)
   const prevStatus = new Map((mstates.get(machine)?.panes || []).map(p => [p.id, p.status || undefined]))
   const live = new Set(next.panes.map(p => p.id))
@@ -917,7 +917,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       const c = codexStatus.statusOf(p)
       if (c) p.codexStatus = c
     } else codexStatus.forget(p.id)
-  }, p => isViewed(p.id))
+  }, p => isViewed(p.id), publish)
   // Cleanup of vanished panes… of this machine only.
   const alive = (id: string) => machineOf(id) !== machine || next.panes.some(p => p.id === id)
   for (const id of choicesCache.ids()) if (!alive(id)) choicesCache.forget(id)
@@ -1009,7 +1009,14 @@ async function pollMachine(m: Machine) {
     const r = await herdrOn(m.key, 'session.snapshot', {}, 5000)
     const snap = r.snapshot || r
     next = reduceSnapshot(snap, m.key, HERDR_SESSION || 'default')
-    await enrich(next, snap, m.key)
+    await enrich(next, snap, m.key, pane => {
+      if (!getMachine(m.key)) return
+      const published = new Map(mstates.get(m.key)?.panes.map(p => [p.id, p]))
+      // Keep other cards intact while their reads are still in flight. Clone
+      // unfinished new panes so background enrichment cannot mutate this state.
+      mstates.set(m.key, { ...next, panes: next.panes.map(p => p.id === pane.id ? { ...pane } : published.get(p.id) || { ...p }) })
+      rebuild()
+    })
     if (m instanceof RemoteMachine) m.reportPoll(true)
   } catch (e) {
     const error = (e as Error).message

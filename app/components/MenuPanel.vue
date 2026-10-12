@@ -26,11 +26,11 @@ const known = computed(() => props.menu.items.length > 0)
 
 async function pick(i: number, label: string) {
   busy.value = true
-  if (!(await menuAction(props.paneId, { op: 'select', index: i, label }))) busy.value = false
+  if (!(await menuAction(props.paneId, { op: 'select', index: i, label }, props.menu.identity))) busy.value = false
 }
 async function press(a: WaitAction) {
   busy.value = true
-  if (!(await menuAction(props.paneId, { op: 'key', key: a.key, label: a.label }))) busy.value = false
+  if (!(await menuAction(props.paneId, { op: 'key', key: a.key, label: a.label }, props.menu.identity))) busy.value = false
 }
 
 // Search: the text goes out (letter by letter, on the server) once typing settles.
@@ -46,7 +46,7 @@ function onInput() {
 async function sendSearch() {
   if (timer) { clearTimeout(timer); timer = null }
   const text = query.value
-  if (text !== (props.menu.search || '')) await menuAction(props.paneId, { op: 'search', text })
+  if (text !== (props.menu.search || '')) await menuAction(props.paneId, { op: 'search', text }, props.menu.identity)
   typing.value = false
 }
 onBeforeUnmount(() => { if (timer) clearTimeout(timer) })
@@ -73,6 +73,7 @@ useCardKeys(() => Boolean(props.keys && desk.value && !disabled.value && (known.
 <template>
   <div class="choices choices-menu">
     <p class="eyebrow choices-eyebrow"><i />{{ t('Your turn') }}<span class="menu-kind">{{ t('Interactive menu') }}</span></p>
+    <p v-if="menu.unavailable" class="choices-note" role="status">{{ tl('Screen read failed. Retrying…', 'Lecture de l’écran impossible. Nouvelle tentative…') }}</p>
     <p v-if="menu.title" class="choices-q">{{ menu.title }}</p>
     <p v-if="known && menu.lines.length" class="choices-note">{{ menu.lines[0] }}</p>
     <p v-if="known && moveOnly" class="choices-note">{{ tl('Tap an entry to move the cursor there, then confirm with a button below.', 'Toucher une entrée y place le curseur ; valide ensuite avec un bouton ci-dessous.') }}</p>

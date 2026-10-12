@@ -62,10 +62,10 @@ export async function pressScreenKey(paneId: string, a: WaitAction, identity?: s
 // Claude Code interactive menu (/resume…): choose an entry, press
 // a key from its legend, replace the text of its search. The server
 // re-reads the screen before each key.
-export async function menuAction(paneId: string, body: { op: 'select', index: number, label: string } | { op: 'key', key: string, label: string } | { op: 'search', text: string }): Promise<boolean> {
+export async function menuAction(paneId: string, body: { op: 'select', index: number, label: string } | { op: 'key', key: string, label: string } | { op: 'search', text: string }, identity?: string): Promise<boolean> {
   haptic()
   try {
-    await api('/api/menu', { pane_id: paneId, ...body })
+    await api('/api/menu', { pane_id: paneId, ...body, identity })
     if (body.op === 'select') toast(`✓ ${body.label}`)
     return true
   } catch (err) {
@@ -105,7 +105,7 @@ export async function sendMessage(p: Pane | undefined, paneId: string, text: str
   const pastes = pasteRanges(text, splitPasted(text, [], sentPastes.value).pastes)
   const r = viaPrompt(p)
     ? await api<{ queued?: QueuedMessage }>('/api/prompt', { pane_id: paneId, text, ...(clientId ? { client_id: clientId } : {}), ...(pastes.length ? { pastes } : {}) })
-    : await api<{ queued?: QueuedMessage }>('/api/input', { pane_id: paneId, text, keys: ['enter'] })
+    : await api<{ queued?: QueuedMessage }>('/api/input', { pane_id: paneId, text, keys: ['enter'], ...(p?.prompt ? { native: true, identity: p.prompt.identity } : {}) })
   return r.queued || null
 }
 

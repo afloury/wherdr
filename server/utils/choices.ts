@@ -111,7 +111,7 @@ const CLAUDE_FREE_BOX = 'Type something'
 // the agent as blocked (Codex's trust screen passes for "idle"):
 // an unnumbered list could then just be the input field
 // ("› Ask Codex…" followed by the model line, aligned the same way).
-export function parseChoices(text: string | null | undefined, { strict = false }: { strict?: boolean } = {}): Choices | null {
+export function parseChoices(text: string | null | undefined, { strict = false, full = false }: { strict?: boolean, full?: boolean } = {}): Choices | null {
   if (!text) return null
   let lines = text.replace(/\s+$/, '').split('\n').slice(-60)
 
@@ -227,11 +227,11 @@ export function parseChoices(text: string | null | undefined, { strict = false }
   question = question || asks || nearest
 
   const out: Choices = {
-    question: question ? (/\?\s*$/.test(question.t) ? joinQuestion(lines, question.i) : question.t).replace(/^[☐☒✔●◆▸•│\s]+/, '').slice(0, 300) : null,
+    question: question ? (/\?\s*$/.test(question.t) ? joinQuestion(lines, question.i) : question.t).replace(/^[☐☒✔●◆▸•│\s]+/, '').slice(0, full ? undefined : 300) : null,
     cursor,
     options: options.map(o => ({
-      label: o.label.slice(0, 200),
-      hint: o.hint ? o.hint.slice(0, 300) : null,
+      label: o.label.slice(0, full ? undefined : 200),
+      hint: o.hint ? o.hint.slice(0, full ? undefined : 300) : null,
       ...(o.n !== null ? { n: o.n } : {}),
     })),
   }
@@ -254,7 +254,7 @@ export function parseChoices(text: string | null | undefined, { strict = false }
   const review = lastMatch(lines.slice(0, top), /^\s*Review your answers\s*$/)
   if (review >= 0 && out.options[0] && /^Submit answers$/.test(out.options[0].label)) {
     const answers = lines.slice(review + 1, top).map(l => l.match(/^\s*→\s+(.+?)\s*$/)).filter(Boolean).map(m => m![1]!)
-    if (answers.length) out.options[0] = { ...out.options[0], hint: answers.join(' · ').slice(0, 300) }
+    if (answers.length) out.options[0] = { ...out.options[0], hint: answers.join(' · ').slice(0, full ? undefined : 300) }
   }
   // Permission request: what is requested (tool, command, file).
   if (question && isPermissionQuestion(out.question)) {
@@ -390,12 +390,12 @@ export function parseOmpField(text: string | null | undefined): OmpField | null 
   return text ? readOmpField(text.replace(/\s+$/, '').split('\n')) : null
 }
 
-export function parseOmpAsk(text: string | null | undefined): Choices | null {
+export function parseOmpAsk(text: string | null | undefined, full = false): Choices | null {
   if (!text) return null
   const lines = text.replace(/\s+$/, '').split('\n')
   const field = readOmpField(lines)
   if (field) {
-    const hint = field.value.replace(/\s+/g, ' ').trim().slice(0, 200) || null
+    const hint = field.value.replace(/\s+/g, ' ').trim().slice(0, full ? undefined : 200) || null
     return { question: field.question, cursor: 0, options: [{ label: OMP_OTHER, hint, free: true }], typing: true }
   }
   const top = lastMatch(lines, OMP_ASK)
@@ -414,7 +414,7 @@ export function parseOmpAsk(text: string | null | undefined): Choices | null {
   // several rows in a narrow pane, always ending with Submit.
   const bar = header.slice(0, 3).findIndex(l => /(?:^| {2,})Submit$/.test(l.trim()))
   const tabs = bar >= 0 ? header.splice(0, bar + 1).join('  ').trim().split(/ {2,}/) : null
-  const question = header.map(l => l.trim()).join(' ').slice(0, 300) || null
+  const question = header.map(l => l.trim()).join(' ').slice(0, full ? undefined : 300) || null
   const list = sections[1]!
   const options: ChoiceOption[] = []
   let cursor = -1
@@ -424,16 +424,16 @@ export function parseOmpAsk(text: string | null | undefined): Choices | null {
     if (m) {
       if (m[1]) cursor = options.length
       multi ||= OMP_CHECK.includes(m[2]!)
-      options.push({ label: m[3]!.slice(0, 200), hint: null, ...(OMP_CHECKED.has(m[2]!) ? { checked: true } : {}), ...(m[3] === OMP_OTHER ? { free: true } : {}) })
+      options.push({ label: m[3]!.slice(0, full ? undefined : 200), hint: null, ...(OMP_CHECKED.has(m[2]!) ? { checked: true } : {}), ...(m[3] === OMP_OTHER ? { free: true } : {}) })
     } else if (options.length && line.trim() && !options[options.length - 1]!.hint) {
-      options[options.length - 1]!.hint = line.trim().replace(/^↳\s*/, '').slice(0, 200)
+      options[options.length - 1]!.hint = line.trim().replace(/^↳\s*/, '').slice(0, full ? undefined : 200)
     }
   }
   if (!options.length) {
     // "Review answers" step: the answers as Submit's description.
     if (!list.some(l => OMP_CURSOR.some(c => l.trim() === `${c} Submit`))) return null
     const answers = list.map(l => l.trim()).filter(l => /^\d+\.\s/.test(l)).map(l => l.replace(/^\d+\.\s+/, ''))
-    return { question, cursor: 0, options: [{ label: 'Submit', hint: answers.join(' · ').slice(0, 200) || null }], ...(tabs ? { tabs, tab: tabs.length - 1 } : {}) }
+    return { question, cursor: 0, options: [{ label: 'Submit', hint: answers.join(' · ').slice(0, full ? undefined : 200) || null }], ...(tabs ? { tabs, tab: tabs.length - 1 } : {}) }
   }
   if (cursor < 0) return null
   const shown = multi ? options.map(o => ({ ...o, checked: Boolean(o.checked) })) : options
@@ -461,7 +461,7 @@ export function parseOmpAsk(text: string | null | undefined): Choices | null {
 const OMP_SELECT_TOP = /^\s*[╭+][─-] (.+?) [─-]+[╮+]\s*$/
 const OMP_SELECT_LEGEND = new RegExp(`^\\s*[│|] ${ompAlt(OMP_UP_DOWN)} navigate\\b.*\\bselect\\b`)
 const OMP_SELECT_OPTION = new RegExp(`^ (?:(${ompAlt(OMP_CURSOR)})|\\s)\\s(\\S.*)$`)
-export function parseOmpSelect(text: string | null | undefined): Choices | null {
+export function parseOmpSelect(text: string | null | undefined, full = false): Choices | null {
   if (!text) return null
   const lines = text.replace(/\s+$/, '').split('\n')
   const legend = lastMatch(lines, OMP_SELECT_LEGEND)
@@ -478,7 +478,7 @@ export function parseOmpSelect(text: string | null | undefined): Choices | null 
     const m = s ? OMP_SELECT_OPTION.exec(s) : null
     if (!m) break
     if (m[1]) cursor = options.length
-    options.unshift({ label: m[2]!.trim().slice(0, 200), hint: null })
+    options.unshift({ label: m[2]!.trim().slice(0, full ? undefined : 200), hint: null })
   }
   if (cursor < 0) return null
   cursor = options.length - 1 - cursor
@@ -504,8 +504,8 @@ export function parseOmpSelect(text: string | null | undefined): Choices | null 
 
 // omp's blocking prompt on screen: an open select dialog (its legend is at the
 // bottom of the screen), otherwise its "Ask" box.
-export function parseOmpPrompt(text: string | null | undefined): Choices | null {
-  return parseOmpSelect(text) || parseOmpAsk(text)
+export function parseOmpPrompt(text: string | null | undefined, full = false): Choices | null {
+  return parseOmpSelect(text, full) || parseOmpAsk(text, full)
 }
 
 // Tab shown in the "Ask" box (ANSI screen): the only one of the bar on a
@@ -712,7 +712,7 @@ export function sameQuestion(a: string | null | undefined, b: string | null | un
 // Permission details are part of the question; checkbox/cursor state is not.
 const identity = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 export function promptIdentity(text: string | null | undefined, agent?: string | null): string {
-  const c = agent === 'omp' ? parseOmpPrompt(text) : agent ? parseChoices(text) : parseChoices(text) || parseOmpPrompt(text)
+  const c = agent === 'omp' ? parseOmpPrompt(text, true) : agent ? parseChoices(text, { full: true }) : parseChoices(text, { full: true }) || parseOmpPrompt(text, true)
   return identity(c ? { question: c.question, options: c.options.map(({ label, hint, n, free }) => ({ label, hint, n, free })), detail: c.detail, multi: c.multi, tabs: c.tabs } : null)
 }
 export function menuIdentity(menu: InteractiveMenu): string {

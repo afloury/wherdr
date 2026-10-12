@@ -37,8 +37,11 @@ export class ScreenGate {
 
 const workGate = new ScreenGate()
 export const screenRpcGate = new ScreenGate()
-export async function mapScreenPanes<T>(panes: T[], machine: string, work: (pane: T, index: number) => Promise<void>, viewed: (pane: T) => boolean) {
+export async function mapScreenPanes<T>(panes: T[], machine: string, work: (pane: T, index: number) => Promise<void>, viewed: (pane: T) => boolean, publish?: (pane: T) => void) {
   const order = panes.map((pane, index) => ({ pane, index }))
     .sort((a, b) => Number(viewed(b.pane)) - Number(viewed(a.pane)))
-  await Promise.all(order.map(({ pane, index }) => workGate.run(machine, () => work(pane, index))))
+  await Promise.all(order.map(({ pane, index }) => workGate.run(machine, async () => {
+    await work(pane, index)
+    if (viewed(pane)) publish?.(pane)
+  })))
 }

@@ -132,6 +132,7 @@ useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.opt
     <!-- Permission request: what is requested, instead of the raw box text. -->
     <PromptDetailBlock v-if="prompt?.detail" :detail="prompt.detail" />
     <p v-if="question" class="choices-q">{{ question }}</p>
+    <p v-if="prompt?.unavailable || screen?.unavailable" class="choices-note" role="status">{{ tl('Screen read failed. Retrying…', 'Lecture de l’écran impossible. Nouvelle tentative…') }}</p>
     <p v-if="note" class="choices-note">{{ note }}</p>
     <pre v-if="screen && screen.lines.length && !prompt?.detail" class="choices-screen-text" :class="{ wrap: !tabular }">{{ screen.lines.join('\n') }}</pre>
     <div v-if="prompt" class="choices-list" :class="{ multi: prompt.multi }">
