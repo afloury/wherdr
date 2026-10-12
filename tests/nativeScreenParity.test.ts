@@ -72,6 +72,7 @@ describe('all fixtures retain origin/main native recognition', () => {
       const pane = { id: 'neutral', agent, status: strict ? 'idle' : 'blocked' }
       const oldOutput = reference.output
       const { interaction: serverInteraction, ...newOutput } = await pipeline(afterSource, after, text)(pane, 1, strict)
+      if (newOutput.choices) delete newOutput.choices.identity
       if (exceptions.has(file) && agent === 'codex') expect(newOutput).toEqual({ choices: null, menu: null, screen: null })
       else expect(newOutput).toEqual(oldOutput)
       const nativeBefore = Boolean((agent === 'claude' && file.startsWith('claude-limit-')) || original.choices || original.menu || original.screen || original.settings)
@@ -118,6 +119,7 @@ describe('review approval rows', () => {
     const current = await pipeline(afterSource, after, text)(pane, 1, false)
     expect(original.choices).toBeTruthy()
     expect(current.interaction).toBe('native')
+    if (current.choices) delete current.choices.identity
     expect(current.choices).toEqual(original.choices)
   })
 })

@@ -16,6 +16,7 @@ const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.m
 describe('omp approval dialog on screen', () => {
   it('reads the tool, its input and the Approve / Deny options', () => {
     expect(screenChoices(fx('omp-approve-bash.txt'), 'omp')).toEqual({
+      identity: expect.any(String),
       question: 'Allow tool: bash',
       cursor: 0,
       options: [{ label: 'Approve', hint: null }, { label: 'Deny', hint: null }],

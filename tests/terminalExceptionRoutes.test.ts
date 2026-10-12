@@ -21,7 +21,7 @@ async function choose(text: string, agent: string, status: string) {
     choicesCache: new Map(), poll: () => {},
   })) vi.stubGlobal(name, value)
   const { default: handler } = await import('../server/api/choose.post')
-  return { call, result: () => handler({}, { pane_id: pane.id, index: 0, label: choices.options[0]!.label }) }
+  return { call, result: () => handler({}, { pane_id: pane.id, index: 0, label: choices.options[0]!.label, identity: choices.identity }) }
 }
 
 describe('the classifier and native answer route share the terminal exception scope', () => {

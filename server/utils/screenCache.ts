@@ -6,6 +6,7 @@
 // (its box may not have been readable the first time: drawn just after, or a
 // read that timed out, and that empty reading would otherwise stay for good).
 export const SCREEN_MS = 3000
+export const CHOICE_MS = 1000
 
 export interface ScreenReading { rev: unknown, strict: boolean, at: number, choices: unknown, screen: unknown, menu: unknown, interaction?: string, usageLimit?: unknown }
 
@@ -14,5 +15,5 @@ export function keepReading(c: ScreenReading | undefined, rev: unknown, strict: 
   // Quota waits can last hours. Their next revision invalidates this cache;
   // a recognized wait needs no periodic retry even if Herdr calls it blocked.
   const live = watch || (!strict && !c.usageLimit) || Boolean(c.choices || c.screen || c.menu || c.interaction === 'terminal')
-  return !(live && now - c.at >= SCREEN_MS)
+  return !(live && now - c.at >= (c.choices ? CHOICE_MS : SCREEN_MS))
 }

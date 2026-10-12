@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Refresh consecutive agent questions faster and refuse answers to an outdated question card.
+
 - Fix npm release archive paths and allow manual publication of an existing release from `main`.
 ### Added
 

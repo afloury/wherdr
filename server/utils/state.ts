@@ -144,6 +144,7 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
     const usageLimit = p.status === 'unknown' ? null : parseUsageLimit(String(text || ''), p.agent)
     // omp: its select dialog (tool approval) or "Ask" box.
     let choices = usageLimit ? null : p.agent === 'omp' ? parseOmpPrompt(text) : parseChoices(text, { strict })
+    if (choices) choices.identity = promptIdentity(text)
     const menu = !usageLimit && p.agent !== 'omp' && framed && (strict || !choices || !parseChoices(text, { strict: true })) ? await readMenu(p.id) : null
     if (menu) choices = null
     if (choices && p.agent === 'omp' && !choices.detail) choices = await withOmpTab(p.id, completeOmpAsk(choices, await transcripts.pendingAsk(p).catch(() => [])))
@@ -168,7 +169,10 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
       if (detail) choices.detail = detail
       if (p.agent === 'omp' && !choices.question && tr) choices.question = `Allow tool: ${tr.tool}`
     }
-  } catch { out = { choices: c ? c.choices : null, screen: c ? c.screen : null, menu: c ? c.menu : null, interaction: c?.interaction || 'unknown', ...(c?.usageLimit ? { usageLimit: c.usageLimit } : {}) } }
+  } catch {
+    // An unreadable screen cannot authorize buttons from a previous question.
+    out = { choices: null, screen: null, menu: null, interaction: 'terminal' }
+  }
   choicesCache.set(p.id, { rev, strict, at: Date.now(), ...out })
   return out
 }
@@ -801,11 +805,12 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
   // All panes at once: the process read of each Codex pane does not wait for
   // the previous one's.
   const exited = await Promise.all(next.panes.map(p => selfUpdates.observe(p, restarts.has(p.id)).catch(() => false)))
-  for (const [i, p] of next.panes.entries()) {
+  // Independent socket reads must not accumulate SSH latency across panes.
+  await Promise.all(next.panes.map(async (p, i) => {
     if (exited[i]) {
       p.interaction = 'managed'
       if (queued.has(p.id)) p.queued = queued.get(p.id)!.map(q => queuedPasted(publicEntry(q)))
-      continue
+      return
     }
     // Codex left without an update (no card) and no agent is back: nothing
     // will take the messages held during the check. Given back, into the
@@ -846,10 +851,10 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
         p.agent = rs.agent
         p.agentSession = rs.session || null
         p.status = 'unknown'
-        continue
+        return
       }
     }
-    if (!p.agent) continue
+    if (!p.agent) return
     // Outside `working`, we also look for a question: some (Codex's folder
     // trust) do not make the agent `blocked` for Herdr.
     if (p.status !== 'working') {
@@ -899,7 +904,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       const c = codexStatus.statusOf(p)
       if (c) p.codexStatus = c
     } else codexStatus.forget(p.id)
-  }
+  }))
   // Cleanup of vanished panes… of this machine only.
   const alive = (id: string) => machineOf(id) !== machine || next.panes.some(p => p.id === id)
   for (const id of choicesCache.keys()) if (!alive(id)) choicesCache.delete(id)

@@ -26,7 +26,7 @@ const question = computed(() => props.prompt?.kind === 'self-update' ? t(props.p
 
 async function pick(i: number, label: string) {
   busy.value = true
-  if (!(await choose(props.paneId, i, label))) busy.value = false
+  if (!(await choose(props.paneId, i, label, props.prompt?.identity))) busy.value = false
 }
 async function press(a: WaitAction) {
   busy.value = true
@@ -72,7 +72,7 @@ async function sendFree(i: number, label: string) {
   busy.value = true
   sending.value = true
   try {
-    if (await choose(props.paneId, i, label, { text, question: props.prompt?.question ?? null })) {
+    if (await choose(props.paneId, i, label, props.prompt?.identity, { text, question: props.prompt?.question ?? null })) {
       freeText.value = ''
       editing.value = null
     } else busy.value = false

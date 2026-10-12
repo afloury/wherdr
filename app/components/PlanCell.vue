@@ -12,7 +12,7 @@ const screen = computed(() => knownScreen(props.pane))
 const line = computed(() => ((screen.value && screenSummary(screen.value)) || (prompt.value ? prompt.value.question : props.pane.preview)) || (props.pane.agent ? '' : shortPath(props.pane.cwd)))
 async function pick(i: number, label: string) {
   busy.value = true
-  if (!(await choose(props.pane.id, i, label))) busy.value = false
+  if (!(await choose(props.pane.id, i, label, props.pane.prompt?.identity))) busy.value = false
 }
 watch(() => props.pane.prompt, () => { busy.value = false })
 </script>

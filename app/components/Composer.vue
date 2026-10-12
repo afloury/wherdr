@@ -169,7 +169,7 @@ async function submit() {
   try {
     let queued: QueuedMessage | null = null
     if (prompt && free >= 0) {
-      if (!(await choose(props.paneId, free, prompt.options[free]!.label, { text: msg, question: prompt.question }))) return
+      if (!(await choose(props.paneId, free, prompt.options[free]!.label, prompt.identity, { text: msg, question: prompt.question }))) return
     } else queued = await sendMessage(p, props.paneId, msg)
     text.value = ''
     clearAttachments()

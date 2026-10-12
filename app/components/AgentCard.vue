@@ -172,7 +172,7 @@ watch(shownChoices, (shown) => { if (shown) choicesAt = Date.now() }, { flush: '
 async function pick(i: number, label: string) {
   if (recentTouchMenu() || !choicesArmed(choicesAt, Date.now())) return
   busy.value = true
-  const ok = await choose(props.pane.id, i, label)
+  const ok = await choose(props.pane.id, i, label, props.pane.prompt?.identity)
   // Success: the buttons disappear with the question on the next state.
   if (!ok) busy.value = false
 }

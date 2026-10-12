@@ -37,6 +37,7 @@
 // first/last one when more are hidden ("↑ 2.", "↓ 3."), the numbering then has
 // gaps ("❯ 1." … "5. Chat about this"). The full question and options come
 // from the transcript (pendingClaudeAsk, completeClaudeAsk).
+import { createHash } from 'node:crypto'
 import type { ChoiceOption, Choices, PromptDetail } from '../../shared/types'
 import { isPermissionQuestion, screenDetail } from './promptDetail'
 import { OMP_CURSOR, OMP_UP_DOWN, ompAlt } from '../../shared/ompSymbols'
@@ -707,12 +708,20 @@ export function sameQuestion(a: string | null | undefined, b: string | null | un
   return x && y ? x.startsWith(y) || y.startsWith(x) : x === y
 }
 
-// On-screen prompt of a pane, re-read before answering it (choose, nav): the
-// select dialog or "Ask" box for omp, otherwise a numbered or unnumbered list
-// (Claude's AskUserQuestion completed by its pending call, `asked`).
+// Bind an answer to the visible screen, including permission command details.
+// Ignore the leading list cursor and trailing whitespace. Other screen changes
+// conservatively require a fresh card, including changes to command details.
+export function promptIdentity(text: string | null | undefined): string {
+  const normalized = String(text || '').trimEnd().split('\n')
+    .map(l => l.replace(/^([ \t]*)[❯›>] /, '$1  ').trimEnd()).join('\n')
+  return createHash('sha256').update(normalized).digest('hex')
+}
+
+// On-screen prompt re-read before choose/nav; Claude questions can be
+// completed by the pending transcript call after their screen identity is set.
 export function screenChoices(text: string | null | undefined, agent: string | null | undefined, asked: ClaudeAsked[] = []): Choices | null {
-  if (agent === 'omp') return parseOmpPrompt(text)
-  const c = parseChoices(text) || parseChoices(text, { strict: true })
+  const c = agent === 'omp' ? parseOmpPrompt(text) : parseChoices(text) || parseChoices(text, { strict: true })
+  if (c) c.identity = promptIdentity(text)
   return c && agent === 'claude' ? completeClaudeAsk(c, asked) : c
 }
 

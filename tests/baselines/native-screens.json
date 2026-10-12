@@ -638,7 +638,19 @@
     "claude-limit-weekly.txt/codex/false": 89,
     "claude-limit-weekly.txt/codex/true": 0,
     "claude-limit-weekly.txt/omp/false": 0,
-    "claude-limit-weekly.txt/omp/true": 0
+    "claude-limit-weekly.txt/omp/true": 0,
+    "codex-request-increase.txt/claude/false": 90,
+    "codex-request-increase.txt/claude/true": 90,
+    "codex-request-increase.txt/codex/false": 90,
+    "codex-request-increase.txt/codex/true": 90,
+    "codex-request-increase.txt/omp/false": 91,
+    "codex-request-increase.txt/omp/true": 91,
+    "codex-approaching-limits.txt/claude/false": 92,
+    "codex-approaching-limits.txt/claude/true": 92,
+    "codex-approaching-limits.txt/codex/false": 92,
+    "codex-approaching-limits.txt/codex/true": 92,
+    "codex-approaching-limits.txt/omp/false": 93,
+    "codex-approaching-limits.txt/omp/true": 93
   },
   "values": [
     {
@@ -7281,6 +7293,294 @@
         "screen": null,
         "menu": null
       }
+    },
+    {
+      "recognized": {
+        "choices": {
+          "question": "Request increase?",
+          "cursor": 0,
+          "options": [
+            {
+              "label": "Yes (y)",
+              "hint": null,
+              "n": 1
+            },
+            {
+              "label": "No (default) (n)",
+              "hint": null,
+              "n": 2
+            }
+          ]
+        },
+        "menu": null,
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "Usage limit reached",
+            "Request a limit increase from your owner to continue using codex.",
+            "Request increase?"
+          ],
+          "actions": [
+            {
+              "key": "enter",
+              "label": "select"
+            },
+            {
+              "key": "esc",
+              "label": "back"
+            }
+          ]
+        },
+        "settings": false
+      },
+      "output": {
+        "choices": {
+          "question": "Request increase?",
+          "cursor": 0,
+          "options": [
+            {
+              "label": "Yes (y)",
+              "hint": null,
+              "n": 1
+            },
+            {
+              "label": "No (default) (n)",
+              "hint": null,
+              "n": 2
+            }
+          ]
+        },
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "Usage limit reached",
+            "Request a limit increase from your owner to continue using codex.",
+            "Request increase?"
+          ],
+          "actions": [
+            {
+              "key": "enter",
+              "label": "select"
+            },
+            {
+              "key": "esc",
+              "label": "back"
+            }
+          ]
+        },
+        "menu": null
+      }
+    },
+    {
+      "recognized": {
+        "choices": null,
+        "menu": null,
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "Usage limit reached",
+            "Request a limit increase from your owner to continue using codex.",
+            "Request increase?",
+            "",
+            "› 1. Yes (y)",
+            "  2. No (default) (n)"
+          ],
+          "actions": [
+            {
+              "key": "enter",
+              "label": "select"
+            },
+            {
+              "key": "esc",
+              "label": "back"
+            }
+          ]
+        },
+        "settings": false
+      },
+      "output": {
+        "choices": null,
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "Usage limit reached",
+            "Request a limit increase from your owner to continue using codex.",
+            "Request increase?",
+            "",
+            "› 1. Yes (y)",
+            "  2. No (default) (n)"
+          ],
+          "actions": [
+            {
+              "key": "enter",
+              "label": "select"
+            },
+            {
+              "key": "esc",
+              "label": "back"
+            }
+          ]
+        },
+        "menu": null
+      }
+    },
+    {
+      "recognized": {
+        "choices": {
+          "question": "Approaching rate limits Switch to gpt-6-luna for lower credit usage?",
+          "cursor": 2,
+          "options": [
+            {
+              "label": "Switch to gpt-6-luna                    Fast and affordable model for easier tasks.",
+              "hint": null,
+              "n": 1
+            },
+            {
+              "label": "Keep current model",
+              "hint": null,
+              "n": 2
+            },
+            {
+              "label": "Keep current model (never show again)   Hide future rate limit reminders about switching models",
+              "hint": null,
+              "n": 3
+            }
+          ]
+        },
+        "menu": null,
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "■ Your workspace is out of credits. Ask your workspace owner to refill in order to continue.",
+            "",
+            "  Approaching rate limits",
+            "  Switch to gpt-6-luna for lower credit usage?"
+          ],
+          "actions": [
+            {
+              "key": "enter",
+              "label": "select"
+            },
+            {
+              "key": "esc",
+              "label": "back"
+            }
+          ]
+        },
+        "settings": false
+      },
+      "output": {
+        "choices": {
+          "question": "Approaching rate limits Switch to gpt-6-luna for lower credit usage?",
+          "cursor": 2,
+          "options": [
+            {
+              "label": "Switch to gpt-6-luna                    Fast and affordable model for easier tasks.",
+              "hint": null,
+              "n": 1
+            },
+            {
+              "label": "Keep current model",
+              "hint": null,
+              "n": 2
+            },
+            {
+              "label": "Keep current model (never show again)   Hide future rate limit reminders about switching models",
+              "hint": null,
+              "n": 3
+            }
+          ]
+        },
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "■ Your workspace is out of credits. Ask your workspace owner to refill in order to continue.",
+            "",
+            "  Approaching rate limits",
+            "  Switch to gpt-6-luna for lower credit usage?"
+          ],
+          "actions": [
+            {
+              "key": "enter",
+              "label": "select"
+            },
+            {
+              "key": "esc",
+              "label": "back"
+            }
+          ]
+        },
+        "menu": null
+      }
+    },
+    {
+      "recognized": {
+        "choices": null,
+        "menu": null,
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "■ Your workspace is out of credits. Ask your workspace owner to refill in order to continue.",
+            "",
+            "  Approaching rate limits",
+            "  Switch to gpt-6-luna for lower credit usage?",
+            "",
+            "  1. Switch to gpt-6-luna                    Fast and affordable model for easier tasks.",
+            "  2. Keep current model",
+            "› 3. Keep current model (never show again)   Hide future rate limit reminders about switching models"
+          ],
+          "actions": [
+            {
+              "key": "enter",
+              "label": "select"
+            },
+            {
+              "key": "esc",
+              "label": "back"
+            }
+          ]
+        },
+        "settings": false
+      },
+      "output": {
+        "choices": null,
+        "screen": {
+          "kind": "other",
+          "title": null,
+          "lines": [
+            "■ Your workspace is out of credits. Ask your workspace owner to refill in order to continue.",
+            "",
+            "  Approaching rate limits",
+            "  Switch to gpt-6-luna for lower credit usage?",
+            "",
+            "  1. Switch to gpt-6-luna                    Fast and affordable model for easier tasks.",
+            "  2. Keep current model",
+            "› 3. Keep current model (never show again)   Hide future rate limit reminders about switching models"
+          ],
+          "actions": [
+            {
+              "key": "enter",
+              "label": "select"
+            },
+            {
+              "key": "esc",
+              "label": "back"
+            }
+          ]
+        },
+        "menu": null
+      }
     }
-  ]
+  ],
+  "sources": {
+    "codex-request-increase.txt": "User report, 2026-10-12, t-0345: reconstructed from Conversation capture; cursor and terminal legend inferred, not a raw terminal capture.",
+    "codex-approaching-limits.txt": "User report, 2026-10-12, t-0345: terminal text transcribed in task brief; no real account accessed."
+  }
 }

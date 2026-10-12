@@ -8,10 +8,10 @@ import { sentPastes } from '~/utils/sentPastes'
 // Choose an option of a blocking prompt (the server re-checks the screen).
 // Free-answer option (`free`): with its text, typed by the server, and the
 // question shown ("Other" has the same label for every question).
-export async function choose(paneId: string, index: number, label: string, free?: { text: string, question: string | null }): Promise<boolean> {
+export async function choose(paneId: string, index: number, label: string, identity: string | undefined, free?: { text: string, question: string | null }): Promise<boolean> {
   haptic()
   try {
-    await api('/api/choose', { pane_id: paneId, index, label, ...free })
+    await api('/api/choose', { pane_id: paneId, index, label, identity, ...free })
     const said = free && free.text.replace(/\s+/g, ' ').slice(0, 60)
     toast(`✓ ${said ? tl(`“${said}”`, `« ${said} »`) : label}`)
     return true
