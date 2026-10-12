@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Fix npm release archive paths and allow manual publication of an existing release from `main`.
+
 ## [1.3.3] — 2026-10-12
 
 ### Added
