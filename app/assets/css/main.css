@@ -3801,6 +3801,7 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-view { z-index: 3; }
 .board-top { justify-content: flex-start; gap: 6px; }
 .board-top h2 { font: 850 22px/1 var(--display); letter-spacing: -.035em; }
+.board-top .board-filter { margin-left: auto; }
 .board-offline, .board-notice { margin: 12px 16px 0; }
 /* Phone: one column at a time under four counters. */
 .board-seg { flex: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 12px 16px 0; border: 1px solid var(--line); }

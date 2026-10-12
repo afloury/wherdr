@@ -3,11 +3,12 @@
 // (Blocked, Todo, Ongoing, Finished). Computer: columns side by side; phone: one
 // column at a time under a segmented control. Task cards move through the project's
 // coordinator (menu or drag and drop); the other cards open what they stand for.
-import { BOARD_COLUMNS, type BoardCard, type BoardColumn, type BoardMove, type TaskCard, boardMoveMessage, capFinished } from '#shared/globalBoard'
+import { BOARD_COLUMNS, type BoardCard, type BoardColumn, type BoardMove, type TaskCard, boardMoveMessage, boardProjectsOf, capFinished, filterBoard } from '#shared/globalBoard'
 
 // Finished tasks and threads shown per project until "Show all".
 const FINISHED_SHOWN = 5
 const COLUMN_KEY = 'boardColumn'
+const HIDDEN_KEY = 'boardHiddenProjects'
 
 const router = useRouter()
 const { board, cards, error } = useGlobalBoard()
@@ -16,11 +17,52 @@ const labels: Record<BoardColumn, string> = {
   blocked: t('Blocked'), todo: t('Todo'), ongoing: t('Ongoing'), finished: t('Finished'),
 }
 const showAll = ref(false)
-const capped = computed(() => (showAll.value ? { cards: cards.value, hidden: 0 } : capFinished(cards.value, FINISHED_SHOWN)))
+
+// Project filter: the projects hidden on this device (ids of boardProjectsOf), so
+// a new project shows. A hidden project gone from the Board stays hidden on its return.
+function readHidden(): Set<string> {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]')
+    if (Array.isArray(v)) return new Set(v.filter((x): x is string => typeof x === 'string'))
+  } catch { /* storage unavailable or damaged */ }
+  return new Set()
+}
+const hidden = shallowRef(readHidden())
+function setHidden(next: Set<string>) {
+  hidden.value = next
+  try { localStorage.setItem(HIDDEN_KEY, JSON.stringify([...next])) }
+  catch { /* storage unavailable */ }
+}
+const filterEntries = computed(() => boardProjectsOf(cards.value))
+const hiddenShown = computed(() => filterEntries.value.filter(e => hidden.value.has(e.id)).length)
+const filterItems = computed(() => [[
+  { type: 'label' as const, label: tl('Projects', 'Projets') },
+  ...filterEntries.value.map(e => ({
+    type: 'checkbox' as const,
+    label: e.name === null ? tl('Other agents', 'Autres agents') : [e.name, e.machine ? machineName(e.machine) : ''].filter(Boolean).join(' · '),
+    checked: !hidden.value.has(e.id),
+    onUpdateChecked: (on: boolean) => {
+      const next = new Set(hidden.value)
+      if (on) next.delete(e.id)
+      else next.add(e.id)
+      setHidden(next)
+    },
+    // Several projects in a row: the menu stays open.
+    onSelect: (ev: Event) => ev.preventDefault(),
+  })),
+], [
+  { label: tl('Show all projects', 'Afficher tous les projets'), icon: 'i-lucide-eye', disabled: !hiddenShown.value, onSelect: () => setHidden(new Set()) },
+]])
+const filterLabel = computed(() => (hiddenShown.value
+  ? tl(`Filter projects: ${hiddenShown.value} hidden`, `Filtrer les projets : ${hiddenShown.value} masqué(s)`)
+  : tl('Filter projects', 'Filtrer les projets')))
+
+const shown = computed(() => filterBoard(cards.value, hidden.value))
+const capped = computed(() => (showAll.value ? { cards: shown.value, hidden: 0 } : capFinished(shown.value, FINISHED_SHOWN)))
 const columns = computed(() => BOARD_COLUMNS.map(id => ({
   id,
   label: labels[id],
-  total: cards.value.filter(c => c.column === id).length,
+  total: shown.value.filter(c => c.column === id).length,
   cards: capped.value.cards.filter(c => c.column === id),
 })))
 
@@ -113,6 +155,12 @@ function back() {
     <header class="top bar board-top">
       <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Back')" @click="back" />
       <h2>{{ t('Board') }}</h2>
+      <UDropdownMenu v-if="filterEntries.length" :items="filterItems" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }">
+        <UButton
+          icon="i-lucide-filter" :color="hiddenShown ? 'primary' : 'neutral'" variant="ghost" size="lg" class="icon-btn board-filter"
+          :aria-label="filterLabel" :title="filterLabel"
+        />
+      </UDropdownMenu>
     </header>
     <OfflineNote v-if="offlineView && cachedAt" class="board-offline" :label="t('Last known state')" :at="cachedAt" date-style="medium" />
     <div v-if="error" class="notice board-notice">{{ error }}</div>

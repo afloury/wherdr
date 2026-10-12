@@ -255,3 +255,44 @@ export function capFinished(cards: BoardCard[], n: number): { cards: BoardCard[]
   })
   return { cards: kept, hidden }
 }
+
+// ---------------------------------------------------------------- project filter
+// A project of the Board's filter. `id`: `<machine>|<slug, lower case>`, kept
+// across reads; '' for the agents outside projects (name null). Two folders of
+// the same name on one machine share an id: one entry hides both.
+export interface BoardFilterEntry { id: string, name: string | null, machine: string }
+
+// The filter entry of each project (card segment), named by its first card.
+function segmentEntries(cards: BoardCard[]): Map<string, BoardFilterEntry> {
+  const bySegment = new Map<string, BoardFilterEntry>()
+  for (const c of cards) {
+    if (bySegment.has(c.segment)) continue
+    // The coordinator's machine, else the agent's.
+    const machine = c.segment ? (c.kind === 'agent' ? c.pane.machine : c.coordinator.machine) || '' : ''
+    bySegment.set(c.segment, c.segment ? { id: `${machine}|${(c.project || '').toLowerCase()}`, name: c.project, machine } : { id: '', name: null, machine: '' })
+  }
+  return bySegment
+}
+
+// One entry per project id in Board order, then the agents outside projects when
+// there are any.
+export function boardProjectsOf(cards: BoardCard[]): BoardFilterEntry[] {
+  const out: BoardFilterEntry[] = []
+  const seen = new Set<string>()
+  let outside: BoardFilterEntry | null = null
+  for (const e of segmentEntries(cards).values()) {
+    if (!e.id) outside = e
+    else if (!seen.has(e.id)) {
+      seen.add(e.id)
+      out.push(e)
+    }
+  }
+  return outside ? [...out, outside] : out
+}
+
+// The cards of the projects not in `hidden` (ids of boardProjectsOf).
+export function filterBoard(cards: BoardCard[], hidden: ReadonlySet<string>): BoardCard[] {
+  if (!hidden.size) return cards
+  const entries = segmentEntries(cards)
+  return cards.filter(c => !hidden.has(entries.get(c.segment)!.id))
+}
