@@ -8,10 +8,10 @@ const GROUPS: Record<string, [string, string]> = {
   'landing': ['working', t('Landing')],
   'working': ['working', t('Working')],
   'idle': ['idle', t('Idle')],
-  'resolved': ['idle', tl('Done', 'Fait')],
+  'resolved': ['inactive', tl('Done', 'Fait')],
 }
 
-// Status class: blocked, done, working, idle or unknown.
+// Status class: blocked, done, working, idle, inactive (resolved: neutral gray) or unknown.
 export const threadClass = (th: ProjectThread) => GROUPS[th.token]?.[0] || 'unknown'
 export const threadLabel = (th: ProjectThread) => GROUPS[th.token]?.[1] || th.group || t('Unknown')
 

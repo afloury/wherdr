@@ -8,20 +8,6 @@ All notable changes to this project are documented here. The format follows
 
 ## [1.3.3] — 2026-10-12
 
-### Fixed
-
-- Show Claude usage-limit waits above the conversation field with automatic resume, cancel,
-  usage credits and reset actions when offered, without opening the interactive terminal.
-
-- Disabled routines and resolved thread records in the Project panel use neutral gray badges; enabled routines stay green.
-- A pane whose agent changed while its session stayed the same could show an empty
-  conversation ("No messages yet.") until a new message arrived: its transcript was read as the
-  other agent's. A transcript is now always read as the kind its file says.
-- Preserve unchanged skill files and repair only recorded managed broken links. Respect
-  `WHERDR_SKILL=off` and persistent uninstall across starts and updates. Docker extracts
-  only skill data with the local helper and the one-command installer refreshes it too.
-  Bound updater refreshes, preserve service paths, and report manual helper failures.
-
 ### Added
 
 - **Live terminal window for interactive agent screens**: ambiguous menus and panels open
@@ -196,6 +182,17 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Show Claude usage-limit waits above the conversation field with automatic resume, cancel,
+  usage credits and reset actions when offered, without opening the interactive terminal.
+- Disabled routines and resolved threads (their record in the Project panel, their card on the
+  Board) use neutral gray badges; enabled routines stay green.
+- A pane whose agent changed while its session stayed the same could show an empty
+  conversation ("No messages yet.") until a new message arrived: its transcript was read as the
+  other agent's. A transcript is now always read as the kind its file says.
+- Preserve unchanged skill files and repair only recorded managed broken links. Respect
+  `WHERDR_SKILL=off` and persistent uninstall across starts and updates. Docker extracts
+  only skill data with the local helper and the one-command installer refreshes it too.
+  Bound updater refreshes, preserve service paths, and report manual helper failures.
 - **Back pressed while the app loads**: an address change that arrived during startup (Back
   right after a reload, a hash set as the page loads) was undone, and the app stayed on the view
   it started on. The last address asked for now wins.

@@ -73,6 +73,27 @@ describe('BoardView', () => {
     expect(column(w, 'todo').text()).not.toContain('OpenAPI spec')
   })
 
+  it('uses a neutral badge for a resolved thread card', async () => {
+    setPanes()
+    const board = reply.projects[0]!.board!
+    const lists = board.lists
+    board.lists = []
+    board.resolved = [{
+      id: 't-0003', title: 'Old work', group: 'Resolved', token: 'resolved', rank: 6, resolved: true,
+      updated: '', created: '', agentName: null, machine: '', profile: 'claude', stateLine: '', activity: '', percent: null, pr: '', report: false,
+    }]
+    try {
+      const w = await mountBoard()
+      const badge = column(w, 'finished').get('.board-card.thread .pill')
+      expect(badge.text()).toBe('Done')
+      expect(badge.classes()).toContain('inactive')
+      expect(badge.classes()).not.toContain('idle')
+    } finally {
+      board.lists = lists
+      board.resolved = []
+    }
+  })
+
   it('a task card offers only the columns it can move to', async () => {
     setPanes()
     const w = await mountBoard()
