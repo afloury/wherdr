@@ -16,7 +16,7 @@ const showCursor = () => nextTick(() => listRef.value?.querySelector('.cur')?.sc
 watch(() => props.menu, () => { busy.value = false; showCursor() })
 onMounted(showCursor)
 
-const disabled = computed(() => busy.value || !eventsOpen.value || offlineView.value)
+const disabled = computed(() => busy.value || props.menu.unavailable || !eventsOpen.value || offlineView.value)
 // A click on an entry only moves the cursor there (Enter = "set as default"…).
 const moveOnly = computed(() => clickMovesOnly(props.menu))
 // With clickable entries that confirm, Enter is redundant.
@@ -66,7 +66,7 @@ useCardKeys(() => Boolean(props.keys && desk.value && !disabled.value && (known.
     return
   }
   if (k.kind !== 'nav' || (k.key === 'esc' && !esc.value)) return
-  navKey(props.paneId, k.key)
+  navKey(props.paneId, k.key, props.menu.identity)
 })
 </script>
 
@@ -80,7 +80,7 @@ useCardKeys(() => Boolean(props.keys && desk.value && !disabled.value && (known.
       <UIcon name="i-lucide-search" aria-hidden="true" />
       <input
         ref="searchRef" v-model="query" type="search" :placeholder="t('Search…')" :aria-label="t('Search the menu')"
-        enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" :disabled="!eventsOpen || offlineView" @input="onInput"
+        enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" :disabled="disabled" @input="onInput"
       >
     </form>
     <div v-if="known" ref="listRef" class="choices-list menu-list">

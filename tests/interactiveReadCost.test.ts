@@ -5,7 +5,7 @@ import path from 'node:path'
 import ts from 'typescript'
 import { expect, it, vi } from 'vitest'
 import { herdrSock } from '../server/utils/herdr'
-import { keepReading } from '../server/utils/screenCache'
+import { keepReading, ScreenCache } from '../server/utils/screenCache'
 import * as choices from '../server/utils/choices'
 import { parseWaitScreen } from '../server/utils/waitScreen'
 import { parseMenu, TOP } from '../shared/menuScreen'
@@ -23,8 +23,8 @@ for (const variant of ['weekly', 'session']) for (const status of ['idle', 'bloc
     const read = vi.fn(async () => ({ read: { text } }))
     const getChoices = bindFunction(source, 'choicesFor', {
       ...choices, parseWaitScreen, parseMenu, TOP, settingsTabs, classifyScreen, parseUsageLimit, keepReading, isPermissionQuestion, mergeDetail,
-      Date: { now: () => now }, choicesCache: new Map(), screenWatch: new Map(), askChecks: new Map(),
-      modelControlBusy: () => false, herdr: read, noteScreen: () => {},
+      Date: { now: () => now }, choicesCache: new ScreenCache(), screenWatch: new Map(), askChecks: new Map(),
+      isViewed: () => false, modelControlBusy: () => false, herdr: read, noteScreen: () => {},
     })
     const pane = { id: 'w1:p1', agent: 'claude', status }
     const strict = status !== 'blocked'
@@ -61,7 +61,7 @@ it('measures working, resting, closed and watched-screen RPCs against a local Un
     for (const agent of ['claude', 'codex', 'omp']) for (const status of ['working', 'idle', 'unknown']) for (const viewed of [false, true]) {
       let now = 0
       let reads = 0
-      const cache = new Map()
+      const cache = new ScreenCache()
       const clock = { now: () => now }
       const idle = readFileSync(new URL(`./fixtures/${agent === 'omp' ? 'omp-idle-footer' : `${agent}-idle`}.txt`, import.meta.url), 'utf8')
       const read = async () => {
@@ -74,7 +74,7 @@ it('measures working, resting, closed and watched-screen RPCs against a local Un
       const getChoices = bindFunction(source, 'choicesFor', {
         ...choices, parseWaitScreen, parseMenu, TOP, settingsTabs, classifyScreen, parseUsageLimit, keepReading, isPermissionQuestion, mergeDetail,
         Date: clock, choicesCache: cache, screenWatch: new Map(), askChecks: new Map(),
-        modelControlBusy: () => false, herdr: read, noteScreen: () => {},
+        isViewed: () => false, modelControlBusy: () => false, herdr: read, noteScreen: () => {},
       })
       const file = ts.createSourceFile('enrich.ts', sourceFunction(source, 'enrich'), ts.ScriptTarget.Latest, true)
       let branch: ts.IfStatement | undefined
@@ -107,4 +107,21 @@ it('measures working, resting, closed and watched-screen RPCs against a local Un
     await new Promise<void>(resolve => server.close(() => resolve()))
     rmSync(tmp, { recursive: true, force: true })
   }
+})
+
+// The reviewed native-card cost was missing from the resting/quota cases.
+// Six hours of simulated polls retain the 3s background cadence; only the
+// pane visible to the user spends one detection read per second.
+for (const viewed of [false, true]) it(`native card open six hours (${viewed ? 'viewed' : 'unviewed'}) has an explicit read budget`, async () => {
+  let now = 0, reads = 0
+  const text = readFileSync(new URL('./fixtures/codex-request-increase.txt', import.meta.url), 'utf8')
+  const read = bindFunction(readFileSync(new URL('../server/utils/state.ts', import.meta.url), 'utf8'), 'choicesFor', {
+    ...choices, parseWaitScreen, parseMenu, TOP, settingsTabs, classifyScreen, parseUsageLimit, keepReading, isPermissionQuestion, mergeDetail,
+    Date: { now: () => now }, choicesCache: new ScreenCache(), screenWatch: new Map(), askChecks: new Map(),
+    isViewed: () => viewed, modelControlBusy: () => false, noteScreen: () => {}, readMenu: async () => null,
+    herdr: async () => { reads++; return { read: { text } } },
+    transcripts: { pendingClaudeQuestions: async () => [] },
+  })
+  for (now = 0; now < 6 * 3600_000; now += 1000) await read({ id: 'w1:p1', agent: 'codex', status: 'blocked' }, 7, false)
+  expect(reads).toBe(viewed ? 21600 : 7200)
 })

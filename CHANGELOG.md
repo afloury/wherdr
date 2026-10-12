@@ -6,7 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-- Refresh consecutive agent questions faster and refuse answers to an outdated question card.
+- Refresh consecutive agent questions faster and refuse outdated card answers, including keyboard confirmation. Keep native forms disabled during read failures and bound screen-read concurrency.
+- Native-answer validation and input are separate Herdr RPCs: Herdr protocol 22 has no conditional send. A question can still change between the checked read and key injection, or recur identically; this race is not closed by wherdr.
 
 - Use “Done” consistently for completed project threads and “Mark done” for their action, sharing the Board’s status labels.
 - Fix npm release archive paths and allow manual publication of an existing release from `main`.

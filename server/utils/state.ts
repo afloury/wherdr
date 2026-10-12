@@ -13,7 +13,8 @@ import { isProjectThread, paneTitle } from '../../shared/paneTitle'
 import { foregroundCommand, reduceSnapshot } from './snapshot'
 import { DATA_DIR, HERDR_SESSION, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
 import { HerdrError, agentPrompt, herdr, herdrOn, sleep } from './herdr'
-import { keepReading } from './screenCache'
+import { keepReading, ScreenCache } from './screenCache'
+import { mapScreenPanes } from './screenGate'
 import { type AskChecks, completeClaudeAsk, completeOmpAsk, ompActiveTab, parseChoices, parseOmpPrompt } from './choices'
 import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseWaitScreen } from './waitScreen'
@@ -99,16 +100,16 @@ export async function withOmpTab(paneId: string, c: Choices): Promise<Choices> {
   return rest
 }
 
-// Blocking prompts: re-read only when the pane's screen has changed
-// (Herdr's `revision`), and forgotten as soon as the agent is no longer blocked.
+// Blocking prompts: re-read on revision changes and periodically while
+// native cards remain visible, even if Herdr stays blocked at the same revision.
 // The waiting screen (key legend, see waitScreen.ts) is read at the same time.
 // `watch`: Herdr's `revision` does not move when the screen of an idle agent
 // changes (Codex starting, box closed from the terminal); we then re-read
-// every SCREEN_MS while a prompt is shown, the agent is blocked or has no
+// every SCREEN_MS (CHOICE_MS for a viewed question) while the agent is blocked or has no
 // conversation (see screenCache.ts).
 // Permission request: the requested command or file preferably comes from
 // the transcript (in full), otherwise from the screen.
-type OnScreen = { usageLimit?: UsageLimit, choices: Choices | null, screen: WaitScreen | null, menu: InteractiveMenu | null, interaction: ScreenInteraction }
+type OnScreen = { unavailable?: boolean, usageLimit?: UsageLimit, choices: Choices | null, screen: WaitScreen | null, menu: InteractiveMenu | null, interaction: ScreenInteraction }
 // Screen to re-read for a while even without a new `revision` ("/" command
 // sent: an interactive menu may open), see watchScreen().
 const screenWatch = new Map<string, number>()
@@ -116,7 +117,7 @@ export function watchScreen(paneId: string, ms = 60000) {
   screenWatch.set(paneId, Date.now() + ms)
   choicesCache.delete(paneId)
 }
-export const choicesCache = new Map<string, { rev: unknown, strict: boolean, at: number } & OnScreen>()
+export const choicesCache = new ScreenCache<{ rev: unknown, strict: boolean, at: number } & OnScreen>()
 // Claude's checkboxes last seen ticked, per pane (see completeClaudeAsk).
 const askChecks = new Map<string, AskChecks>()
 async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false): Promise<OnScreen> {
@@ -125,12 +126,13 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
     choicesCache.delete(p.id)
     return { choices: null, screen: null, menu: null, interaction: 'managed' }
   }
+  const generation = choicesCache.version(p.id)
   const c = choicesCache.get(p.id)
   const watched = (screenWatch.get(p.id) || 0) > Date.now()
   if (!watched) screenWatch.delete(p.id)
   // A closed agent can retain the same revision and strictness as its last
   // idle TUI. Reclassify it once so the old terminal reading cannot poll forever.
-  if (c && !(p.status === 'unknown' && c.interaction === 'terminal') && keepReading(c, rev, strict, watch || watched, Date.now())) return c
+  if (c && !(p.status === 'unknown' && c.interaction === 'terminal') && keepReading(c, rev, strict, watch || watched, Date.now(), isViewed(p.id))) return c
   let out: OnScreen
   try {
     const r = await herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
@@ -144,9 +146,9 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
     const usageLimit = p.status === 'unknown' ? null : parseUsageLimit(String(text || ''), p.agent)
     // omp: its select dialog (tool approval) or "Ask" box.
     let choices = usageLimit ? null : p.agent === 'omp' ? parseOmpPrompt(text) : parseChoices(text, { strict })
-    if (choices) choices.identity = promptIdentity(text)
+    if (choices) choices.identity = promptIdentity(text, p.agent)
     const menu = !usageLimit && p.agent !== 'omp' && framed && (strict || !choices || !parseChoices(text, { strict: true })) ? await readMenu(p.id) : null
-    if (menu) choices = null
+    if (menu) { menu.identity = menuIdentity(menu); choices = null }
     if (choices && p.agent === 'omp' && !choices.detail) choices = await withOmpTab(p.id, completeOmpAsk(choices, await transcripts.pendingAsk(p).catch(() => [])))
     // Claude's AskUserQuestion: full question and options from the call.
     if (choices && p.agent === 'claude') {
@@ -158,6 +160,7 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
     // card of the command result; its "Esc to cancel" is not a question.
     const settings = p.agent === 'claude' && settingsTabs(text) !== null
     const screen = menu || settings ? null : parseWaitScreen(text, { choices: Boolean(choices) })
+    if (screen) screen.identity = waitIdentity(screen)
     const interaction = classifyScreen({ text: String(text || ''), agent: p.agent, choices, menu, screen, settings, status: p.status })
     out = interaction === 'terminal' ? { choices: null, screen: null, menu: null, interaction } : { choices, screen: usageLimit ? null : screen, menu, interaction, ...(usageLimit ? { usageLimit } : {}) }
     noteScreen(p.id, p.agent, text) // Codex: model from its status line
@@ -170,8 +173,16 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
       if (p.agent === 'omp' && !choices.question && tr) choices.question = `Allow tool: ${tr.tool}`
     }
   } catch {
-    // An unreadable screen cannot authorize buttons from a previous question.
-    out = { choices: null, screen: null, menu: null, interaction: 'terminal' }
+    // A transport failure is not evidence of an interactive terminal. Keep
+    // the mounted native form/draft, but disable its controls until a fresh read.
+    out = c ? { ...c, unavailable: true,
+      choices: c.choices ? { ...c.choices, unavailable: true } : null,
+      screen: c.screen ? { ...c.screen, unavailable: true } : null,
+      menu: c.menu ? { ...c.menu, unavailable: true } : null,
+    } : { choices: null, screen: null, menu: null, interaction: 'unknown', unavailable: true }
+  }
+  if (choicesCache.version(p.id) !== generation) {
+    return choicesCache.get(p.id) || { choices: null, screen: null, menu: null, interaction: 'unknown', unavailable: true }
   }
   choicesCache.set(p.id, { rev, strict, at: Date.now(), ...out })
   return out
@@ -806,7 +817,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
   // the previous one's.
   const exited = await Promise.all(next.panes.map(p => selfUpdates.observe(p, restarts.has(p.id)).catch(() => false)))
   // Independent socket reads must not accumulate SSH latency across panes.
-  await Promise.all(next.panes.map(async (p, i) => {
+  await mapScreenPanes(next.panes, machine, async (p, i) => {
     if (exited[i]) {
       p.interaction = 'managed'
       if (queued.has(p.id)) p.queued = queued.get(p.id)!.map(q => queuedPasted(publicEntry(q)))
@@ -904,10 +915,10 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       const c = codexStatus.statusOf(p)
       if (c) p.codexStatus = c
     } else codexStatus.forget(p.id)
-  }))
+  }, p => isViewed(p.id))
   // Cleanup of vanished panes… of this machine only.
   const alive = (id: string) => machineOf(id) !== machine || next.panes.some(p => p.id === id)
-  for (const id of choicesCache.keys()) if (!alive(id)) choicesCache.delete(id)
+  for (const id of choicesCache.keys()) if (!alive(id)) choicesCache.forget(id)
   for (const id of askChecks.keys()) if (!alive(id)) askChecks.delete(id)
   for (const id of pendingPrompts.keys()) if (!alive(id)) pendingPrompts.delete(id)
   for (const id of queued.keys()) if (!alive(id)) queued.delete(id)

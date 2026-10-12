@@ -239,7 +239,7 @@ onUnmounted(list.unmount)
             </div>
             <div v-else-if="quick.length" class="card-choices">
               <button
-                v-for="o in quick" :key="o.i" type="button" :disabled="busy || !eventsOpen || offlineView || paneStale(pane)"
+                v-for="o in quick" :key="o.i" type="button" :disabled="busy || prompt?.unavailable || !eventsOpen || offlineView || paneStale(pane)"
                 @click.stop="pick(o.i, o.label)"
               >
                 <span class="n">{{ o.i + 1 }}</span><span class="l">{{ prompt?.kind === 'self-update' ? t(o.label) : o.label }}</span>

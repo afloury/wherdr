@@ -47,10 +47,10 @@ export async function askTab(paneId: string, index: number, label: string): Prom
 }
 
 // Press a key from the legend of a waiting screen (the server re-checks the screen).
-export async function pressScreenKey(paneId: string, a: WaitAction): Promise<boolean> {
+export async function pressScreenKey(paneId: string, a: WaitAction, identity?: string): Promise<boolean> {
   haptic()
   try {
-    await api('/api/screen-key', { pane_id: paneId, key: a.key, label: a.label })
+    await api('/api/screen-key', { pane_id: paneId, key: a.key, label: a.label, identity })
     toast(`✓ ${screenActionLabel(a)}`)
     return true
   } catch (err) {
@@ -79,10 +79,10 @@ export async function menuAction(paneId: string, body: { op: 'select', index: nu
 // on omp's "Ask" box with tabs).
 // Keys sent one after the other, in typing order.
 let navChain: Promise<unknown> = Promise.resolve()
-export function navKey(paneId: string, key: 'up' | 'down' | 'enter' | 'esc' | 'left' | 'right'): Promise<boolean> {
+export function navKey(paneId: string, key: 'up' | 'down' | 'enter' | 'esc' | 'left' | 'right', identity?: string): Promise<boolean> {
   const run = navChain.then(async () => {
     try {
-      await api('/api/nav', { pane_id: paneId, key })
+      await api('/api/nav', { pane_id: paneId, key, identity })
       return true
     } catch (err) {
       toast((err as Error).message, true)

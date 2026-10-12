@@ -9,7 +9,7 @@ import * as menu from '../shared/menuScreen'
 import * as settings from '../shared/settingsScreen'
 import { parseUsageLimit } from '../shared/usageLimit'
 import { classifyScreen } from '../shared/interactiveScreen'
-import { keepReading } from '../server/utils/screenCache'
+import { keepReading, ScreenCache } from '../server/utils/screenCache'
 import { isPermissionQuestion, mergeDetail } from '../server/utils/promptDetail'
 import { bindFunction, sourceFunction } from './stateFunction'
 import ts from 'typescript'
@@ -26,12 +26,12 @@ function poller(screenAt: (now: number) => string, watchUntil = 0) {
   let now = 0
   let reads = 0
   const clock = { now: () => now }
-  const cache = new Map()
+  const cache = new ScreenCache()
   const screenWatch = new Map<string, number>(watchUntil ? [['w1:p1', watchUntil]] : [])
   const getChoices = bindFunction(source, 'choicesFor', {
     ...choices, ...wait, ...menu, ...settings, classifyScreen, parseUsageLimit, keepReading, isPermissionQuestion, mergeDetail,
     Date: clock, choicesCache: cache, screenWatch, askChecks: new Map(),
-    modelControlBusy: () => false, noteScreen: () => {},
+    isViewed: () => false, modelControlBusy: () => false, noteScreen: () => {},
     herdr: async () => { reads++; return { read: { text: plain(screenAt(now)) } } },
     readMenu: async () => menu.parseMenu(screenAt(now)),
     transcripts: { pendingAsk: async () => [], pendingClaudeQuestions: async () => [], pendingTool: async () => null },

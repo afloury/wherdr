@@ -6,9 +6,10 @@ import * as menu from '../shared/menuScreen'
 import * as settings from '../shared/settingsScreen'
 import { classifyScreen } from '../shared/interactiveScreen'
 import { parseUsageLimit } from '../shared/usageLimit'
-import { CHOICE_MS, keepReading } from '../server/utils/screenCache'
+import { CHOICE_MS, keepReading, ScreenCache } from '../server/utils/screenCache'
 import { isPermissionQuestion, mergeDetail } from '../server/utils/promptDetail'
 import { HerdrError } from '../server/utils/herdr'
+import { mapScreenPanes } from '../server/utils/screenGate'
 import { bindFunction } from './stateFunction'
 const fx = (name: string) => readFileSync(`tests/fixtures/${name}.txt`, 'utf8')
 const source = readFileSync('server/utils/state.ts', 'utf8')
@@ -28,7 +29,7 @@ describe('consecutive questions on one pane', () => {
   const call = vi.fn(async () => { if (failed) throw new Error('SSH timeout'); return { read: { text } } })
   const read = bindFunction(source,'choicesFor', {
    ...choices,...wait,...menu,...settings,classifyScreen,parseUsageLimit,keepReading,isPermissionQuestion,mergeDetail,
-   choicesCache:new Map(),screenWatch:new Map(),askChecks:new Map(),modelControlBusy:()=>false,noteScreen:()=>{},
+   choicesCache:new ScreenCache(),screenWatch:new Map(),askChecks:new Map(),isViewed:()=>true,modelControlBusy:()=>false,noteScreen:()=>{},
    Date:{now:()=>now},herdr:call,readMenu:async()=>null,withOmpTab:async (_:string,c:unknown)=>c,
    transcripts:{pendingAsk:async()=>[],pendingClaudeQuestions:async()=>[],pendingTool:async()=>null},
   })
@@ -73,7 +74,7 @@ for (const agent of ['codex','claude','omp']) it(`${agent}: rejects changed ques
   transcripts:{pendingClaudeQuestions:pending},choicesCache:cache,poll,
  })) vi.stubGlobal(name,value)
  const {default:handler}=await import('../server/api/choose.post')
- text = text.replace(agent === 'omp' ? 'Favourite' : 'npm test', agent === 'omp' ? 'Preferred' : 'npm run build')
+ text = text.replaceAll(agent === 'omp' ? 'Favourite' : 'npm test', agent === 'omp' ? 'Preferred' : 'npm run build')
  expect(choices.screenChoices(text,agent)!.options[0]!.label).toBe(old.options[0]!.label)
  await expect(handler({} as never,{pane_id:'w1:p1',index:0,label:old.options[0]!.label,identity:old.identity})).rejects.toMatchObject({code:'stale'})
  expect(call).toHaveBeenCalledTimes(1)
@@ -87,7 +88,7 @@ for (const agent of ['codex','claude','omp']) it(`${agent}: rejects changed ques
  expect(call).toHaveBeenCalledWith('pane.send_input',expect.objectContaining({keys:choices.keysFor(current,0)}))
 })
 
-it('publishes eight slow pane readings in one latency window instead of eight', async () => {
+it('bounds eight slow pane readings to two at once', async () => {
  vi.useFakeTimers()
  const panes = Array.from({length:8},(_,i)=>({id:`w1:p${i+1}`,agent:'codex',status:'blocked',agentSession:'neutral'}))
  const map = () => new Map()
@@ -97,9 +98,9 @@ it('publishes eight slow pane readings in one latency window instead of eight', 
   selfUpdates:{prune:()=>{},observe:async()=>false},commands:map(),READY:new Set(),
   getMachine:()=>({transcripts:{observe:()=>{}}}),joinId:(_:string,id:string)=>id,
   restarts:map(),leftForGood:()=>false,findPane:()=>null,pendingPrompts:map(),queued:map(),
-  choicesFor,previews:new Map(panes.map(p=>[p.id,{status:'blocked',at:Date.now()}])),
+  mapScreenPanes,choicesFor,previews:new Map(panes.map(p=>[p.id,{status:'blocked',at:Date.now()}])),
   models:new Map(panes.map(p=>[p.id,{status:'blocked',at:Date.now()}])),isViewed:()=>false,
-  activities:map(),ompStatuses:map(),codexStatus:{forget:()=>{}},choicesCache:map(),askChecks:map(),
+  activities:map(),ompStatuses:map(),codexStatus:{forget:()=>{}},choicesCache:new ScreenCache(),askChecks:map(),
   takenBack:map(),seen:map(),saveBorn:()=>{},saveSeen:()=>{},saveQueued:()=>{},machineOf:()=>'',
  }
  const enrich = bindFunction(source,'enrich',bind)
@@ -107,8 +108,8 @@ it('publishes eight slow pane readings in one latency window instead of eight', 
  const result = enrich({panes},{panes:panes.map(p=>({pane_id:p.id,revision:7}))},'').then(()=>{published=true})
  await vi.advanceTimersByTimeAsync(249)
  expect(published).toBe(false)
- expect(choicesFor).toHaveBeenCalledTimes(8)
- await vi.advanceTimersByTimeAsync(1)
+ expect(choicesFor).toHaveBeenCalledTimes(2)
+ await vi.advanceTimersByTimeAsync(751)
  await result
  expect(published).toBe(true)
  expect(panes.every(p => (p as any).prompt?.options.length === 3)).toBe(true)

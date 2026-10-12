@@ -4,6 +4,7 @@
 // socket forwarded over SSH, see machines.ts). Calls are routed according to
 // the ID of the pane / workspace they target ("<machine>~" prefix, see shared/ids.ts).
 import net from 'node:net'
+import { screenRpcGate } from './screenGate'
 import { HERDR_SOCK } from './env'
 import { LOCAL, routeParams } from '../../shared/ids'
 import { fmt } from '../../shared/message'
@@ -35,7 +36,8 @@ export function herdr<T = any>(method: string, params: Record<string, unknown> =
 export function herdrOn<T = any>(machine: string, method: string, params: Record<string, unknown> = {}, timeoutMs = 15000): Promise<T> {
   const r = resolveSocket(machine)
   if (!r.sock) return Promise.reject(new HerdrError('unreachable', r.error || 'Machine unreachable'))
-  return herdrSock<T>(r.sock, method, params, timeoutMs)
+  const read = () => herdrSock<T>(r.sock!, method, params, timeoutMs)
+  return method === 'pane.read' ? screenRpcGate.run(machine, read) : read()
 }
 
 let reqSeq = 0

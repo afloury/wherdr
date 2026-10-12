@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import { CHOICE_GUARD_MS } from '../../app/utils/compactCard'
 import { expect, test, type Page } from '@playwright/test'
 import { CLAUDE_ASK_PANE, CLAUDE_PANE, OMP_ASK_PANE, SPLIT_CHAT_PANE, fakeHerdr } from './scenario.mjs'
 
@@ -64,6 +65,9 @@ test('a waiting agent opens its compact card; one tap answers and folds it back'
   await claude.scrollIntoViewIfNeeded()
   await shot(page, 'compact-blocked', testInfo.project.name)
 
+  // Both answer rows have passed the intentional accidental-tap guard.
+  // A fast fake-Herdr response can otherwise reach Claude within that window.
+  await page.waitForTimeout(CHOICE_GUARD_MS)
   // One tap answers, without opening the conversation.
   await omp.locator('.card-choices button', { hasText: 'Approve' }).click()
   await expect.poll(() => answers(OMP_ASK_PANE)).toEqual([['enter']])

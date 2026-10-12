@@ -6,7 +6,7 @@ import * as menu from '../shared/menuScreen'
 import * as settings from '../shared/settingsScreen'
 import { parseUsageLimit } from '../shared/usageLimit'
 import { classifyScreen } from '../shared/interactiveScreen'
-import { keepReading } from '../server/utils/screenCache'
+import { keepReading, ScreenCache } from '../server/utils/screenCache'
 import { isPermissionQuestion, mergeDetail } from '../server/utils/promptDetail'
 import { bindFunction } from './stateFunction'
 
@@ -24,8 +24,8 @@ function pipeline(source: string, modules: typeof after, text: string) {
   return bindFunction(source, 'choicesFor', {
     ...modules.choices, ...modules.wait, ...modules.menu, ...modules.settings,
     classifyScreen, parseUsageLimit, keepReading, isPermissionQuestion, mergeDetail,
-    choicesCache: new Map(), screenWatch: new Map(), askChecks: new Map(),
-    modelControlBusy: () => false, noteScreen: () => {},
+    choicesCache: new ScreenCache(), screenWatch: new Map(), askChecks: new Map(),
+    isViewed: () => false, modelControlBusy: () => false, noteScreen: () => {},
     herdr: async (_method: string, params: { format?: string }) => ({ read: { text: params.format === 'ansi' ? text : plain(text) } }),
     readMenu: async () => modules.menu.parseMenu(text),
     withOmpTab: async (_id: string, c: import('../shared/types').Choices) => {
@@ -73,6 +73,8 @@ describe('all fixtures retain origin/main native recognition', () => {
       const oldOutput = reference.output
       const { interaction: serverInteraction, ...newOutput } = await pipeline(afterSource, after, text)(pane, 1, strict)
       if (newOutput.choices) delete newOutput.choices.identity
+      if (newOutput.menu) delete newOutput.menu.identity
+      if (newOutput.screen) delete newOutput.screen.identity
       if (exceptions.has(file) && agent === 'codex') expect(newOutput).toEqual({ choices: null, menu: null, screen: null })
       else expect(newOutput).toEqual(oldOutput)
       const nativeBefore = Boolean((agent === 'claude' && file.startsWith('claude-limit-')) || original.choices || original.menu || original.screen || original.settings)

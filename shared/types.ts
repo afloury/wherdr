@@ -29,7 +29,7 @@ export interface PromptDetail {
 // `typing`: omp's free-text answer field is open (single option: `free`).
 // `tabs`: tabs of omp's multi-question "Ask" box (the last one is Submit),
 // `tab` the one shown; ←/→ move between them.
-export interface Choices { identity?: string, question: string | null, cursor: number, options: ChoiceOption[], kind?: 'self-update', detail?: PromptDetail, multi?: boolean, typing?: boolean, tabs?: string[], tab?: number }
+export interface Choices { identity?: string, unavailable?: boolean, question: string | null, cursor: number, options: ChoiceOption[], kind?: 'self-update', detail?: PromptDetail, multi?: boolean, typing?: boolean, tabs?: string[], tab?: number }
 
 // Waiting screen of an agent (Codex at startup: hooks, folder trust,
 // login…), see server/utils/waitScreen.ts. `other`: unrecognized screen,
@@ -37,13 +37,15 @@ export interface Choices { identity?: string, question: string | null, cursor: n
 export type WaitKind = 'hooks' | 'trust' | 'login' | 'update' | 'other'
 // Key from the screen's legend ("t trust all" → { key: 't', label: 'trust all' }).
 export interface WaitAction { key: string, label: string }
-export interface WaitScreen { kind: WaitKind, title: string | null, lines: string[], actions: WaitAction[] }
+export interface WaitScreen { identity?: string, unavailable?: boolean, kind: WaitKind, title: string | null, lines: string[], actions: WaitAction[] }
 
 // Claude Code's full-screen interactive menu (/resume, /model, /mcp…), see
 // shared/menuScreen.ts. `header`: group header, not an entry; `search`:
 // text of the search field (null: no search); `more`: "19 more below".
 export interface MenuEntry { label: string, hint: string | null, header?: boolean, cursor?: boolean }
 export interface InteractiveMenu {
+  identity?: string
+  unavailable?: boolean
   title: string | null
   lines: string[]
   items: MenuEntry[]

@@ -38,7 +38,7 @@
 // gaps ("❯ 1." … "5. Chat about this"). The full question and options come
 // from the transcript (pendingClaudeAsk, completeClaudeAsk).
 import { createHash } from 'node:crypto'
-import type { ChoiceOption, Choices, PromptDetail } from '../../shared/types'
+import type { ChoiceOption, Choices, PromptDetail, InteractiveMenu, WaitScreen } from '../../shared/types'
 import { isPermissionQuestion, screenDetail } from './promptDetail'
 import { OMP_CURSOR, OMP_UP_DOWN, ompAlt } from '../../shared/ompSymbols'
 
@@ -708,20 +708,25 @@ export function sameQuestion(a: string | null | undefined, b: string | null | un
   return x && y ? x.startsWith(y) || y.startsWith(x) : x === y
 }
 
-// Bind an answer to the visible screen, including permission command details.
-// Ignore the leading list cursor and trailing whitespace. Other screen changes
-// conservatively require a fresh card, including changes to command details.
-export function promptIdentity(text: string | null | undefined): string {
-  const normalized = String(text || '').trimEnd().split('\n')
-    .map(l => l.replace(/^([ \t]*)[❯›>] /, '$1  ').trimEnd()).join('\n')
-  return createHash('sha256').update(normalized).digest('hex')
+// Identity describes the native question, not surrounding output or selection.
+// Permission details are part of the question; checkbox/cursor state is not.
+const identity = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
+export function promptIdentity(text: string | null | undefined, agent?: string | null): string {
+  const c = agent === 'omp' ? parseOmpPrompt(text) : agent ? parseChoices(text) : parseChoices(text) || parseOmpPrompt(text)
+  return identity(c ? { question: c.question, options: c.options.map(({ label, hint, n, free }) => ({ label, hint, n, free })), detail: c.detail, multi: c.multi, tabs: c.tabs } : null)
+}
+export function menuIdentity(menu: InteractiveMenu): string {
+  return identity({ title: menu.title, items: menu.items.map(({ label, hint, header }) => ({ label, hint, header })), actions: menu.actions })
+}
+export function waitIdentity(screen: WaitScreen): string {
+  return identity({ kind: screen.kind, title: screen.title, lines: screen.lines, actions: screen.actions })
 }
 
 // On-screen prompt re-read before choose/nav; Claude questions can be
 // completed by the pending transcript call after their screen identity is set.
 export function screenChoices(text: string | null | undefined, agent: string | null | undefined, asked: ClaudeAsked[] = []): Choices | null {
   const c = agent === 'omp' ? parseOmpPrompt(text) : parseChoices(text) || parseChoices(text, { strict: true })
-  if (c) c.identity = promptIdentity(text)
+  if (c) c.identity = promptIdentity(text, agent)
   return c && agent === 'claude' ? completeClaudeAsk(c, asked) : c
 }
 

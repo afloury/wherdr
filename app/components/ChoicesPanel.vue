@@ -30,7 +30,7 @@ async function pick(i: number, label: string) {
 }
 async function press(a: WaitAction) {
   busy.value = true
-  if (!(await pressScreenKey(props.paneId, a))) busy.value = false
+  if (!(await pressScreenKey(props.paneId, a, props.screen?.identity))) busy.value = false
 }
 // Codex stopped by its update: the user relaunches it themselves, or not at all.
 const dismissable = computed(() => props.prompt?.kind === 'self-update')
@@ -41,7 +41,7 @@ async function dismiss() {
 // Checkboxes (omp): Enter moves to the next question.
 async function next() {
   busy.value = true
-  if (!(await navKey(props.paneId, 'enter'))) busy.value = false
+  if (!(await navKey(props.paneId, 'enter', props.prompt?.identity))) busy.value = false
 }
 // Claude's checkboxes come with their own Submit (an option without a box):
 // no Continue button then.
@@ -101,7 +101,7 @@ function onFreeKey(e: KeyboardEvent, i: number, label: string) {
 // go to the terminal (the card follows the re-read screen), 1-9 picks the
 // option (or opens the free-answer field), ←/→ change tabs. Field open: the
 // keyboard is its own.
-const disabled = computed(() => busy.value || !eventsOpen.value || offlineView.value)
+const disabled = computed(() => busy.value || props.prompt?.unavailable || props.screen?.unavailable || !eventsOpen.value || offlineView.value)
 const keyboard = computed(() => Boolean(props.keys && desk.value && props.prompt && !props.prompt.kind && props.prompt.options.length && freeAt.value === null && !disabled.value))
 useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.options.length || 0), enter: true, tabs: Boolean(tabs.value) }), (k) => {
   const p = props.prompt
@@ -114,7 +114,7 @@ useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.opt
   }
   // Like ↑/↓: key by key, in typing order (without waiting for the state).
   if (k.kind === 'tab') return navKey(props.paneId, k.dir > 0 ? 'right' : 'left')
-  if (k.kind === 'nav') navKey(props.paneId, k.key)
+  if (k.kind === 'nav') navKey(props.paneId, k.key, p.identity)
 })
 </script>
 

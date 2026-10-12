@@ -117,7 +117,9 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       return { pane: snapshot().panes.find(x => x.pane_id === p.id) }
     },
     'pane.read': params => {
-      const raw = screen(paneById(params.pane_id))
+      const p = paneById(params.pane_id)
+      if (p?.readFailure && params.source === 'detection') throw Object.assign(new Error('Transient detection read failure'), { code: 'timeout' })
+      const raw = screen(p)
       // Herdr detection/visible reads are plain unless ANSI was requested.
       // eslint-disable-next-line no-control-regex
       const text = params.format === 'ansi' ? raw : raw.replace(/\x1b\[[0-9;]*m|\r/g, '')
@@ -188,6 +190,7 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       }
       return {}
     },
+    'e2e.read_failure': params => { need(params.pane_id).readFailure = Boolean(params.fail); return {} },
     'e2e.interaction_screen': params => {
       const p = need(params.pane_id)
       p.customScreen = params.text ?? null
