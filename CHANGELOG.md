@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Disabled routines and resolved thread records in the Project panel use neutral gray badges; enabled routines stay green.
 - A pane whose agent changed while its session stayed the same could show an empty
   conversation ("No messages yet.") until a new message arrived: its transcript was read as the
   other agent's. A transcript is now always read as the kind its file says.

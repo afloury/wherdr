@@ -47,7 +47,7 @@ onUnmounted(() => { seq++ })
           <div class="pp-card pr-card" :class="{ off: !r.enabled }">
             <div class="pr-head">
               <span class="pr-name">{{ r.name }}</span>
-              <span class="pill" :class="r.enabled ? 'done' : 'idle'"><i />{{ r.enabled ? tl('Enabled', 'Activée') : tl('Disabled', 'Désactivée') }}</span>
+              <span class="pill" :class="r.enabled ? 'done' : 'inactive'"><i />{{ r.enabled ? tl('Enabled', 'Activée') : tl('Disabled', 'Désactivée') }}</span>
             </div>
             <span class="pr-schedule"><UIcon name="i-lucide-alarm-clock" />{{ r.schedule }}</span>
             <dl class="pr-facts">

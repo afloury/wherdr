@@ -765,6 +765,8 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .pill.done { color: var(--done); }
 .pill.idle { color: var(--idle); opacity: .85; }
 .pill.idle i { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
+.pill.inactive { color: var(--muted); }
+.pill.inactive i { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
 .pill.unknown, .pill.shell { color: var(--dim); }
 /* Model on the card: discreet, the state color stays on "working". */
 .pill .pill-model { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }

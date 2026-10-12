@@ -181,6 +181,17 @@ describe('ProjectPanel › Threads tab', () => {
     await vi.waitFor(() => expect(inBody('.pt-spin').length).toBe(0))
   }
 
+  it('uses a neutral badge for a resolved thread record', async () => {
+    const { w } = await mountThreads()
+    await w.find('.pt-resolved .pp-sec-head').trigger('click')
+    await openRecordOf(w, 'Old work 35')
+    const badge = inBody('.pt-detail .pill').at(-1)!
+    expect(badge.textContent).toContain('Resolved')
+    expect(badge.classList.contains('inactive')).toBe(true)
+    expect(badge.classList.contains('idle')).toBe(false)
+    w.unmount()
+  })
+
   it('shows what an action printed only in the record of its own thread', async () => {
     let release = () => {}
     hold = new Promise<void>((r) => { release = r })
