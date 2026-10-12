@@ -46,7 +46,7 @@ const GROUPS: Record<string, [string, string]> = {
   'landing': ['working', t('Landing')],
   'working': ['working', t('Working')],
   'idle': ['idle', t('Idle')],
-  'resolved': ['idle', tl('Resolved', 'Clôturé')],
+  'resolved': ['inactive', tl('Resolved', 'Clôturé')],
 }
 const groupClass = (token: string) => GROUPS[token]?.[0] || 'unknown'
 const groupLabel = (token: string, fallback: string) => GROUPS[token]?.[1] || fallback || t('Unknown')
