@@ -13,8 +13,8 @@ import { isProjectThread, paneTitle } from '../../shared/paneTitle'
 import { foregroundCommand, reduceSnapshot } from './snapshot'
 import { DATA_DIR, HERDR_SESSION, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
 import { HerdrError, agentPrompt, herdr, herdrOn, sleep } from './herdr'
-import { keepReading, ScreenCache } from './screenCache'
-import { mapScreenPanes } from './screenGate'
+import { CHOICE_MS, keepReading, ScreenCache } from './screenCache'
+import { mapScreenPanes, screenRpcGate } from './screenGate'
 import { type AskChecks, completeClaudeAsk, completeOmpAsk, ompActiveTab, parseChoices, parseOmpPrompt } from './choices'
 import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseWaitScreen } from './waitScreen'
@@ -120,19 +120,31 @@ export function watchScreen(paneId: string, ms = 60000) {
 export const choicesCache = new ScreenCache<{ rev: unknown, strict: boolean, at: number } & OnScreen>()
 // Claude's checkboxes last seen ticked, per pane (see completeClaudeAsk).
 const askChecks = new Map<string, AskChecks>()
+const choicesPending = new Map<string, { key: string, generation: number, reading: Promise<OnScreen> }>()
 async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false): Promise<OnScreen> {
+  const key = JSON.stringify([rev, strict, p.agent, p.agentSession])
+  const active = choicesPending.get(p.id)
+  if (active?.key === key && active.generation === choicesCache.version(p.id)) return active.reading
+  const reading = readChoices(p, rev, strict, watch)
+  const entry = { key, reading, generation: choicesCache.version(p.id) }
+  choicesPending.set(p.id, entry)
+  try { return await reading }
+  finally { if (choicesPending.get(p.id) === entry) choicesPending.delete(p.id) }
+}
+async function readChoices(p: Pane, rev: unknown, strict: boolean, watch = false): Promise<OnScreen> {
   // The existing picker owns its temporary TUI while it reads/changes a model.
   if (modelControlBusy(p.id)) {
     choicesCache.delete(p.id)
     return { choices: null, screen: null, menu: null, interaction: 'managed' }
   }
-  const generation = choicesCache.version(p.id)
   const c = choicesCache.get(p.id)
   const watched = (screenWatch.get(p.id) || 0) > Date.now()
   if (!watched) screenWatch.delete(p.id)
   // A closed agent can retain the same revision and strictness as its last
   // idle TUI. Reclassify it once so the old terminal reading cannot poll forever.
   if (c && !(p.status === 'unknown' && c.interaction === 'terminal') && keepReading(c, rev, strict, watch || watched, Date.now(), isViewed(p.id))) return c
+  choicesCache.invalidate(p.id)
+  const generation = choicesCache.version(p.id)
   const unavailable = (previous = choicesCache.previous(p.id)): OnScreen => previous ? {
     ...previous, unavailable: true,
     choices: previous.choices ? { ...previous.choices, unavailable: true } : null,
@@ -154,7 +166,11 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
     let choices = usageLimit ? null : p.agent === 'omp' ? parseOmpPrompt(text) : parseChoices(text, { strict })
     if (choices) choices.identity = promptIdentity(text, p.agent)
     const menu = !usageLimit && p.agent !== 'omp' && framed && (strict || !choices || !parseChoices(text, { strict: true })) ? await readMenu(p.id) : null
-    if (menu) { menu.identity = menuIdentity(menu); choices = null }
+    if (menu) {
+      menu.identity = menuIdentity(menu)
+      for (const item of menu.items) item.identity = menuIdentity(menu, item)
+      choices = null
+    }
     if (choices && p.agent === 'omp' && !choices.detail) choices = await withOmpTab(p.id, completeOmpAsk(choices, await transcripts.pendingAsk(p).catch(() => [])))
     // Claude's AskUserQuestion: full question and options from the call.
     if (choices && p.agent === 'claude') {
@@ -875,6 +891,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string, publish?: (
       // another pane's session, see transcripts.ts): screen watched.
       const young = !p.agentSession || (p.bornAt && Date.now() - p.bornAt < 120000)
       const c = await choicesFor(p, revs.get(p.id), p.status !== 'blocked', Boolean(young))
+      screenVersions.set(p, choicesCache.version(p.id))
       p.interaction = c.interaction
       if (c.usageLimit) { p.usageLimit = c.usageLimit; p.status = 'idle' }
       if (c.choices) p.prompt = c.choices
@@ -1002,6 +1019,52 @@ function isReady() {
 }
 setTimeout(rebuild, READY_MAX_MS + 100).unref?.()
 
+// Independent viewed-card reads share the RPC budget, never the batch work queue.
+const screenVersions = new WeakMap<Pane, number>()
+const viewedBusy = new Set<string>()
+function nativeViewed(p: Pane) {
+  return Boolean(p.agent && !p.stopped && !p.leaving && p.status !== 'working' && isViewed(p.id)
+    && (p.prompt || p.screen || p.menu || p.interaction === 'terminal' || (p.status === 'blocked' && !p.usageLimit)))
+}
+function screenMachine(key: string) {
+  const m = getMachine(key)
+  return Boolean(m && (m.local || m.status === 'online'))
+}
+function focusScreenGate() {
+  screenRpcGate.priority = (machine, pane) => typeof pane === 'string' && isViewed(joinId(machine, pane))
+  // Leave room for the next focused read, even while slow background reads run.
+  screenRpcGate.reserved = machine => [...mstates].some(([key, s]) => (machine === undefined || key === machine) && screenMachine(key) && s.ok && s.panes.some(nativeViewed))
+}
+function screenFields(p: Pane) {
+  return { prompt: p.prompt, screen: p.screen, menu: p.menu, interaction: p.interaction, usageLimit: p.usageLimit }
+}
+function pollViewed() {
+  for (const [machine, s] of mstates) for (const p of s.panes) {
+    const cached = choicesCache.previous(p.id)
+    if (!screenMachine(machine) || !s.ok || !nativeViewed(p) || viewedBusy.has(p.id) || !cached
+      || (choicesCache.has(p.id) && keepReading(cached, cached.rev, cached.strict, false, Date.now(), true))) continue
+    viewedBusy.add(p.id)
+    const reading = choicesFor(p, cached.rev, cached.strict)
+    const generation = choicesCache.version(p.id)
+    void reading.then(c => {
+      const current = mstates.get(machine)
+      const latest = current?.panes.find(x => x.id === p.id)
+      if (stopped || !screenMachine(machine) || !current?.ok || !latest || !nativeViewed(latest) || latest.agent !== p.agent
+        || latest.agentSession !== p.agentSession || choicesCache.version(p.id) !== generation) return
+      // Advance after completion too: a batch may have retained its disabled
+      // fallback while this read was in flight, under the starting generation.
+      choicesCache.invalidate(p.id)
+      const fresh = { ...latest, prompt: c.choices || undefined, screen: c.screen || undefined,
+        menu: c.menu || undefined, interaction: c.interaction, usageLimit: c.usageLimit }
+      if (c.usageLimit) fresh.status = 'idle'
+      mstates.set(machine, { ...current, panes: current.panes.map(x => x.id === p.id ? fresh : x) })
+      rebuild()
+    }).catch(() => {}).finally(() => {
+      setTimeout(() => viewedBusy.delete(p.id), CHOICE_MS).unref?.()
+    })
+  }
+}
+
 async function pollMachine(m: Machine) {
   const prev = mstates.get(m.key)
   let next: HerdrState
@@ -1017,6 +1080,13 @@ async function pollMachine(m: Machine) {
       mstates.set(m.key, { ...next, panes: next.panes.map(p => p.id === pane.id ? { ...pane } : published.get(p.id) || { ...p }) })
       rebuild()
     })
+    // A newer independent read wins over the screen retained by this batch.
+    const current = new Map(mstates.get(m.key)?.panes.map(p => [p.id, p]))
+    for (const p of next.panes) {
+      const latest = current.get(p.id)
+      if (latest && screenVersions.has(p) && screenVersions.get(p) !== choicesCache.version(p.id)
+        && latest.agent === p.agent && latest.agentSession === p.agentSession && p.status !== 'working') Object.assign(p, screenFields(latest), latest.usageLimit ? { status: 'idle' } : {})
+    }
     if (m instanceof RemoteMachine) m.reportPoll(true)
   } catch (e) {
     const error = (e as Error).message
@@ -1058,8 +1128,17 @@ export async function poll() {
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 let stopped = false
+let viewedTimer: ReturnType<typeof setTimeout> | null = null
 export function startPolling() {
   stopped = false
+  focusScreenGate()
+  if (viewedTimer) clearTimeout(viewedTimer)
+  const views = () => {
+    if (stopped) return
+    pollViewed()
+    viewedTimer = setTimeout(views, 250)
+  }
+  views()
   // The loop only waits for the local machine: a slow remote machine is
   // polled at its own pace (pollOne does not restart a poll already in progress).
   const loop = () => {
@@ -1075,6 +1154,7 @@ const localMachineOf = (ms: Machine[]) => ms.find(m => m.local)!
 export function stopPolling() {
   stopped = true
   if (pollTimer) clearTimeout(pollTimer)
+  if (viewedTimer) clearTimeout(viewedTimer)
   selfUpdates.flush()
 }
 

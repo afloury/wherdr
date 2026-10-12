@@ -38,7 +38,7 @@
 // gaps ("❯ 1." … "5. Chat about this"). The full question and options come
 // from the transcript (pendingClaudeAsk, completeClaudeAsk).
 import { createHash } from 'node:crypto'
-import type { ChoiceOption, Choices, PromptDetail, InteractiveMenu, WaitScreen } from '../../shared/types'
+import type { ChoiceOption, Choices, PromptDetail, InteractiveMenu, MenuEntry, WaitScreen } from '../../shared/types'
 import { isPermissionQuestion, screenDetail } from './promptDetail'
 import { OMP_CURSOR, OMP_UP_DOWN, ompAlt } from '../../shared/ompSymbols'
 
@@ -715,8 +715,8 @@ export function promptIdentity(text: string | null | undefined, agent?: string |
   const c = agent === 'omp' ? parseOmpPrompt(text, true) : agent ? parseChoices(text, { full: true }) : parseChoices(text, { full: true }) || parseOmpPrompt(text, true)
   return identity(c ? { question: c.question, options: c.options.map(({ label, hint, n, free }) => ({ label, hint, n, free })), detail: c.detail, multi: c.multi, tabs: c.tabs } : null)
 }
-export function menuIdentity(menu: InteractiveMenu): string {
-  return identity({ title: menu.title, items: menu.items.map(({ label, hint, header }) => ({ label, hint, header })), actions: menu.actions })
+export function menuIdentity(menu: InteractiveMenu, target: MenuEntry | undefined = menu.cursor === null ? undefined : menu.items[menu.cursor]): string {
+  return identity({ title: menu.title, target: target ? { label: target.label, hint: target.hint, header: target.header } : null, actions: menu.actions })
 }
 export function waitIdentity(screen: WaitScreen): string {
   return identity({ kind: screen.kind, title: screen.title, lines: screen.lines, actions: screen.actions })

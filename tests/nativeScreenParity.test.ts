@@ -8,7 +8,7 @@ import { parseUsageLimit } from '../shared/usageLimit'
 import { classifyScreen } from '../shared/interactiveScreen'
 import { keepReading, ScreenCache } from '../server/utils/screenCache'
 import { isPermissionQuestion, mergeDetail } from '../server/utils/promptDetail'
-import { bindFunction } from './stateFunction'
+import { bindChoices, bindFunction } from './stateFunction'
 
 // Versioned fixture expectations, captured once from the reviewed main. These
 // are ordinary regression expectations: deliberate native improvements update
@@ -21,7 +21,7 @@ const afterSource = readFileSync(new URL('../server/utils/state.ts', import.meta
 // eslint-disable-next-line no-control-regex
 const plain = (text: string) => text.replace(/\x1b\[[0-9;]*m|\r/g, '')
 function pipeline(source: string, modules: typeof after, text: string) {
-  return bindFunction(source, 'choicesFor', {
+  return bindChoices(source, {
     ...modules.choices, ...modules.wait, ...modules.menu, ...modules.settings,
     classifyScreen, parseUsageLimit, keepReading, isPermissionQuestion, mergeDetail,
     choicesCache: new ScreenCache(), screenWatch: new Map(), askChecks: new Map(),
@@ -73,7 +73,10 @@ describe('all fixtures retain origin/main native recognition', () => {
       const oldOutput = reference.output
       const { interaction: serverInteraction, ...newOutput } = await pipeline(afterSource, after, text)(pane, 1, strict)
       if (newOutput.choices) delete newOutput.choices.identity
-      if (newOutput.menu) delete newOutput.menu.identity
+      if (newOutput.menu) {
+        delete newOutput.menu.identity
+        for (const item of newOutput.menu.items) delete item.identity
+      }
       if (newOutput.screen) delete newOutput.screen.identity
       if (exceptions.has(file) && agent === 'codex') expect(newOutput).toEqual({ choices: null, menu: null, screen: null })
       else expect(newOutput).toEqual(oldOutput)

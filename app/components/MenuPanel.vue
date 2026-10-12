@@ -10,10 +10,12 @@ import { clickMovesOnly } from '#shared/menuScreen'
 const props = defineProps<{ paneId: string, menu: InteractiveMenu, keys?: boolean }>()
 const emit = defineEmits<{ terminal: [] }>()
 const busy = ref(false)
+const cursor = ref(props.menu.cursor)
+const identity = computed(() => cursor.value === null ? props.menu.identity : props.menu.items[cursor.value]?.identity)
 const listRef = ref<HTMLElement | null>(null)
 // Entry under the cursor visible (long list: /model…).
 const showCursor = () => nextTick(() => listRef.value?.querySelector('.cur')?.scrollIntoView({ block: 'nearest' }))
-watch(() => props.menu, () => { busy.value = false; showCursor() })
+watch(() => props.menu, () => { busy.value = false; cursor.value = props.menu.cursor; showCursor() })
 onMounted(showCursor)
 
 const disabled = computed(() => busy.value || props.menu.unavailable || !eventsOpen.value || offlineView.value)
@@ -26,11 +28,11 @@ const known = computed(() => props.menu.items.length > 0)
 
 async function pick(i: number, label: string) {
   busy.value = true
-  if (!(await menuAction(props.paneId, { op: 'select', index: i, label }, props.menu.identity))) busy.value = false
+  if (!(await menuAction(props.paneId, { op: 'select', index: i, label }, props.menu.items[i]?.identity))) busy.value = false
 }
 async function press(a: WaitAction) {
   busy.value = true
-  if (!(await menuAction(props.paneId, { op: 'key', key: a.key, label: a.label }, props.menu.identity))) busy.value = false
+  if (!(await menuAction(props.paneId, { op: 'key', key: a.key, label: a.label }, identity.value))) busy.value = false
 }
 
 // Search: the text goes out (letter by letter, on the server) once typing settles.
@@ -66,7 +68,14 @@ useCardKeys(() => Boolean(props.keys && desk.value && !disabled.value && (known.
     return
   }
   if (k.kind !== 'nav' || (k.key === 'esc' && !esc.value)) return
-  navKey(props.paneId, k.key, props.menu.identity)
+  if (k.key === 'up' || k.key === 'down') {
+    // Predict only entries already displayed, so a rapid arrow + Enter keeps
+    // the identity of the intended target without trusting an unseen row.
+    const entries = props.menu.items.map((item, i) => item.header ? -1 : i).filter(i => i >= 0)
+    const at = entries.indexOf(cursor.value ?? -1)
+    cursor.value = entries[at + (k.key === 'down' ? 1 : -1)] ?? null
+  }
+  navKey(props.paneId, k.key, identity.value)
 })
 </script>
 

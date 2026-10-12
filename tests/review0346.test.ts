@@ -10,7 +10,7 @@ import { keepReading, ScreenCache } from '../server/utils/screenCache'
 import { isPermissionQuestion, mergeDetail } from '../server/utils/promptDetail'
 import { HerdrError } from '../server/utils/herdr'
 import { mapScreenPanes, ScreenGate, SCREEN_MACHINE_MAX, SCREEN_TOTAL_MAX } from '../server/utils/screenGate'
-import { bindFunction } from './stateFunction'
+import { bindChoices, bindFunction } from './stateFunction'
 import { createInteractionWindow } from '../app/utils/interactionWindow'
 const fx=(n:string)=>readFileSync(`tests/fixtures/${n}.txt`,'utf8')
 afterEach(()=>{vi.unstubAllGlobals();vi.useRealTimers()})
@@ -69,7 +69,7 @@ it('a second identical screen occurrence is indistinguishable from the first',as
 })
 export function reviewPoller(viewed = false){
  let now=0,fail=false;const cache=new ScreenCache();let reads=0
- const read=bindFunction(readFileSync('server/utils/state.ts','utf8'),'choicesFor',{
+ const read=bindChoices(readFileSync('server/utils/state.ts','utf8'),{
  ...choices,...wait,...menu,...settings,classifyScreen,parseUsageLimit,keepReading,isPermissionQuestion,mergeDetail,
  choicesCache:cache,screenWatch:new Map(),askChecks:new Map(),isViewed:()=>viewed,modelControlBusy:()=>false,noteScreen:()=>{},
  Date:{now:()=>now},herdr:async()=>{reads++;if(fail)throw Error('temporary timeout');return {read:{text:fx('codex-request-increase')}}},
@@ -103,7 +103,7 @@ it('R5: bounds 20 pane enrichments to two at once per machine', async () => {
   selfUpdates:{prune:()=>{},observe:async()=>false},commands:map(),READY:new Set(),
   getMachine:()=>({transcripts:{observe:()=>{}}}),joinId:(_:string,id:string)=>id,
   restarts:map(),leftForGood:()=>false,findPane:()=>null,pendingPrompts:map(),queued:map(),
-  mapScreenPanes,choicesFor,previews:new Map(panes.map(p=>[p.id,{status:'blocked',at:Date.now()}])),
+  screenVersions:new WeakMap(),mapScreenPanes,choicesFor,previews:new Map(panes.map(p=>[p.id,{status:'blocked',at:Date.now()}])),
   models:new Map(panes.map(p=>[p.id,{status:'blocked',at:Date.now()}])),isViewed:()=>false,
   activities:map(),ompStatuses:map(),codexStatus:{forget:()=>{}},choicesCache:new ScreenCache(),askChecks:map(),
   takenBack:map(),seen:map(),saveBorn:()=>{},saveSeen:()=>{},saveQueued:()=>{},machineOf:()=>'',
@@ -122,7 +122,7 @@ it('R5: bounds 20 pane enrichments to two at once per machine', async () => {
 it('an invalidated in-flight screen cannot repopulate the cache or return its old card',async()=>{
  const oldText=fx('codex-request-increase');let release!:(v:any)=>void
  const cache=new ScreenCache();const pending=new Promise(r=>{release=r})
- const read=bindFunction(source,'choicesFor',{
+ const read=bindChoices(source,{
  ...choices,...wait,...menu,...settings,classifyScreen,parseUsageLimit,keepReading,isPermissionQuestion,mergeDetail,
  choicesCache:cache,screenWatch:new Map(),askChecks:new Map(),isViewed:()=>false,modelControlBusy:()=>false,noteScreen:()=>{},
  herdr:()=>pending,readMenu:async()=>null,transcripts:{pendingClaudeQuestions:async()=>[],pendingTool:async()=>null}})

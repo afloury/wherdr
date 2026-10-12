@@ -13,7 +13,7 @@ import { settingsTabs } from '../shared/settingsScreen'
 import { isPermissionQuestion, mergeDetail } from '../server/utils/promptDetail'
 import { parseUsageLimit } from '../shared/usageLimit'
 import { classifyScreen } from '../shared/interactiveScreen'
-import { bindFunction, sourceFunction } from './stateFunction'
+import { bindChoices, bindFunction, sourceFunction } from './stateFunction'
 
 for (const variant of ['weekly', 'session']) for (const status of ['idle', 'blocked']) {
   it(`caches a ${variant} quota wait while ${status} for hours until the revision changes`, async () => {
@@ -21,7 +21,7 @@ for (const variant of ['weekly', 'session']) for (const status of ['idle', 'bloc
     let text = readFileSync(new URL(`./fixtures/claude-limit-${variant}.txt`, import.meta.url), 'utf8')
     let now = 0
     const read = vi.fn(async () => ({ read: { text } }))
-    const getChoices = bindFunction(source, 'choicesFor', {
+    const getChoices = bindChoices(source, {
       ...choices, parseWaitScreen, parseMenu, TOP, settingsTabs, classifyScreen, parseUsageLimit, keepReading, isPermissionQuestion, mergeDetail,
       Date: { now: () => now }, choicesCache: new ScreenCache(), screenWatch: new Map(), askChecks: new Map(),
       isViewed: () => false, modelControlBusy: () => false, herdr: read, noteScreen: () => {},
@@ -71,7 +71,7 @@ it('measures working, resting, closed and watched-screen RPCs against a local Un
         reads++
         return { ...result, read: { text: status === 'unknown' ? 'user@host demo % ' : idle } }
       }
-      const getChoices = bindFunction(source, 'choicesFor', {
+      const getChoices = bindChoices(source, {
         ...choices, parseWaitScreen, parseMenu, TOP, settingsTabs, classifyScreen, parseUsageLimit, keepReading, isPermissionQuestion, mergeDetail,
         Date: clock, choicesCache: cache, screenWatch: new Map(), askChecks: new Map(),
         isViewed: () => false, modelControlBusy: () => false, herdr: read, noteScreen: () => {},
@@ -86,7 +86,7 @@ it('measures working, resting, closed and watched-screen RPCs against a local Un
       if (!branch) throw new Error('Missing working branch')
       const cycle = bindFunction(`async function cycle(p) { ${branch.getText(file)} }`, 'cycle', {
         Date: clock, choicesFor: getChoices, isViewed: () => viewed,
-        choicesCache: cache, askChecks: new Map(), revs: new Map([['w1:p1', 1]]),
+        screenVersions: new WeakMap(), choicesCache: cache, askChecks: new Map(), revs: new Map([['w1:p1', 1]]),
       })
       // Replay sixty normal one-second polls, without a minute-long sleep.
       for (now = 0; now < 60_000; now += 1000) await cycle({ id: 'w1:p1', agent, status, agentSession: 'neutral' })
@@ -115,7 +115,7 @@ it('measures working, resting, closed and watched-screen RPCs against a local Un
 for (const viewed of [false, true]) it(`native card open six hours (${viewed ? 'viewed' : 'unviewed'}) has an explicit read budget`, async () => {
   let now = 0, reads = 0
   const text = readFileSync(new URL('./fixtures/codex-request-increase.txt', import.meta.url), 'utf8')
-  const read = bindFunction(readFileSync(new URL('../server/utils/state.ts', import.meta.url), 'utf8'), 'choicesFor', {
+  const read = bindChoices(readFileSync(new URL('../server/utils/state.ts', import.meta.url), 'utf8'), {
     ...choices, parseWaitScreen, parseMenu, TOP, settingsTabs, classifyScreen, parseUsageLimit, keepReading, isPermissionQuestion, mergeDetail,
     Date: { now: () => now }, choicesCache: new ScreenCache(), screenWatch: new Map(), askChecks: new Map(),
     isViewed: () => viewed, modelControlBusy: () => false, noteScreen: () => {}, readMenu: async () => null,

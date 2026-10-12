@@ -6,15 +6,27 @@ export const SCREEN_TOTAL_MAX = 4
 
 export class ScreenGate {
   private active = 0
+  private background = 0
+  private backgroundMachines = new Map<string, number>()
   private machines = new Map<string, number>()
-  private queue: { machine: string, start: () => void }[] = []
+  priority: (machine: string, pane: unknown) => boolean = () => false
+  reserved: (machine?: string) => boolean = () => false
+  private queue: { machine: string, pane: unknown, start: () => void }[] = []
 
-  run<T>(machine: string, work: () => Promise<T>): Promise<T> {
+  run<T>(machine: string, work: () => Promise<T>, pane?: unknown): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      this.queue.push({ machine, start: () => {
+      this.queue.push({ machine, pane, start: () => {
+        const background = !this.priority(machine, pane)
+        if (background) { this.background++; this.backgroundMachines.set(machine, (this.backgroundMachines.get(machine) || 0) + 1) }
         this.active++
         this.machines.set(machine, (this.machines.get(machine) || 0) + 1)
         Promise.resolve().then(work).then(resolve, reject).finally(() => {
+          if (background) {
+            this.background--
+            const n = this.backgroundMachines.get(machine)! - 1
+            if (n) this.backgroundMachines.set(machine, n)
+            else this.backgroundMachines.delete(machine)
+          }
           this.active--
           const remaining = this.machines.get(machine)! - 1
           if (remaining) this.machines.set(machine, remaining)
@@ -28,7 +40,14 @@ export class ScreenGate {
 
   private drain() {
     while (this.active < SCREEN_TOTAL_MAX) {
-      const i = this.queue.findIndex(q => (this.machines.get(q.machine) || 0) < SCREEN_MACHINE_MAX)
+      const eligible = (q: typeof this.queue[number]) => {
+        const active = this.machines.get(q.machine) || 0
+        return active < SCREEN_MACHINE_MAX && (this.priority(q.machine, q.pane)
+          || ((this.backgroundMachines.get(q.machine) || 0) < SCREEN_MACHINE_MAX - Number(this.reserved(q.machine))
+            && this.background < SCREEN_TOTAL_MAX - Number(this.reserved())))
+      }
+      const first = this.queue.findIndex(q => eligible(q) && this.priority(q.machine, q.pane))
+      const i = first < 0 ? this.queue.findIndex(eligible) : first
       if (i < 0) return
       this.queue.splice(i, 1)[0]!.start()
     }

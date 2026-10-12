@@ -57,3 +57,18 @@ test('S2 browser: a native menu click carries its identity and refuses a changed
  expect(sent.request().postDataJSON()).toMatchObject({op:'select',identity:expect.any(String)})
  expect((await fakeHerdr('e2e.terminal_screen',{pane_id:pane})).keys).toEqual([])
 })
+
+test('S8 keyboard: a rapid arrow then Enter uses the displayed target identity',async({page})=>{
+ test.skip(!test.info().project.name.includes('desktop'),'Keyboard navigation is a desktop control')
+ const text=readFileSync(new URL('../fixtures/claude-resume.ansi',import.meta.url),'utf8')
+ await show(text,'claude');await page.goto(`/#/a/${pane}`)
+ await expect(page.locator('.choices-menu')).toBeVisible()
+ let release!:()=>void,arrive!:()=>void
+ const held=new Promise<void>(r=>{release=r}),arrived=new Promise<void>(r=>{arrive=r})
+ await page.route('**/api/nav',async route=>{if(route.request().postDataJSON().key==='down'){arrive();await held}await route.continue()})
+ const response=page.waitForResponse(r=>r.url().endsWith('/api/nav')&&r.request().postDataJSON().key==='enter')
+ await page.locator('.choices-q').click();await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');await arrived
+ await show(text.replace('   ❯ Review the module','     Review the module').replace('     Fix the tests','   ❯ Fix the tests'),'claude');release()
+ expect((await response).ok()).toBe(true)
+ expect((await fakeHerdr('e2e.terminal_screen',{pane_id:pane})).keys).toEqual(['down','enter'])
+})

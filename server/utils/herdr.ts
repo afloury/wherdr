@@ -37,7 +37,7 @@ export function herdrOn<T = any>(machine: string, method: string, params: Record
   const r = resolveSocket(machine)
   if (!r.sock) return Promise.reject(new HerdrError('unreachable', r.error || 'Machine unreachable'))
   const read = () => herdrSock<T>(r.sock!, method, params, timeoutMs)
-  return method === 'pane.read' ? screenRpcGate.run(machine, read) : read()
+  return method === 'pane.read' ? screenRpcGate.run(machine, read, params.pane_id) : read()
 }
 
 let reqSeq = 0

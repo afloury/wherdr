@@ -14,3 +14,10 @@ export function bindFunction(source: string, name: string, bindings: Record<stri
   const js = ts.transpileModule(sourceFunction(source, name), { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText
   return new Function(...Object.keys(bindings), `${js}\nreturn ${name}`)(...Object.values(bindings))
 }
+
+// Bind both layers of the production display-read coalescer; historical sources
+// without it remain usable for before/after probes.
+export function bindChoices(source: string, bindings: Record<string, unknown>) {
+  if (!source.includes('async function readChoices(')) return bindFunction(source, 'choicesFor', bindings)
+  return bindFunction(source, 'choicesFor', { ...bindings, choicesPending: new Map(), readChoices: bindFunction(source, 'readChoices', bindings) })
+}

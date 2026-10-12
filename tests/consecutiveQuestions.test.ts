@@ -10,7 +10,7 @@ import { CHOICE_MS, keepReading, ScreenCache } from '../server/utils/screenCache
 import { isPermissionQuestion, mergeDetail } from '../server/utils/promptDetail'
 import { HerdrError } from '../server/utils/herdr'
 import { mapScreenPanes } from '../server/utils/screenGate'
-import { bindFunction } from './stateFunction'
+import { bindChoices, bindFunction } from './stateFunction'
 const fx = (name: string) => readFileSync(`tests/fixtures/${name}.txt`, 'utf8')
 const source = readFileSync('server/utils/state.ts', 'utf8')
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
@@ -27,7 +27,7 @@ describe('consecutive questions on one pane', () => {
  for (const [agent, first, second] of pairs) it(`${agent}: ${first} → ${second}, unchanged revision and status`, async () => {
   let now = 0, text = fx(first), failed = false
   const call = vi.fn(async () => { if (failed) throw new Error('SSH timeout'); return { read: { text } } })
-  const read = bindFunction(source,'choicesFor', {
+  const read = bindChoices(source, {
    ...choices,...wait,...menu,...settings,classifyScreen,parseUsageLimit,keepReading,isPermissionQuestion,mergeDetail,
    choicesCache:new ScreenCache(),screenWatch:new Map(),askChecks:new Map(),isViewed:()=>true,modelControlBusy:()=>false,noteScreen:()=>{},
    Date:{now:()=>now},herdr:call,readMenu:async()=>null,withOmpTab:async (_:string,c:unknown)=>c,
@@ -98,7 +98,7 @@ it('bounds eight slow pane readings to two at once', async () => {
   selfUpdates:{prune:()=>{},observe:async()=>false},commands:map(),READY:new Set(),
   getMachine:()=>({transcripts:{observe:()=>{}}}),joinId:(_:string,id:string)=>id,
   restarts:map(),leftForGood:()=>false,findPane:()=>null,pendingPrompts:map(),queued:map(),
-  mapScreenPanes,choicesFor,previews:new Map(panes.map(p=>[p.id,{status:'blocked',at:Date.now()}])),
+  screenVersions:new WeakMap(),mapScreenPanes,choicesFor,previews:new Map(panes.map(p=>[p.id,{status:'blocked',at:Date.now()}])),
   models:new Map(panes.map(p=>[p.id,{status:'blocked',at:Date.now()}])),isViewed:()=>false,
   activities:map(),ompStatuses:map(),codexStatus:{forget:()=>{}},choicesCache:new ScreenCache(),askChecks:map(),
   takenBack:map(),seen:map(),saveBorn:()=>{},saveSeen:()=>{},saveQueued:()=>{},machineOf:()=>'',

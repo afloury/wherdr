@@ -59,16 +59,17 @@ it('S4: publishes the viewed pane at 250ms while the twenty-pane batch still tak
  const map=()=>new Map();const finished:string[]=[]
  const states=new Map([['',{ok:true,workspaces:[],panes:panes.map(p=>({...p,preview:'previous'}))}]])
  const choicesFor=vi.fn(async(p:any)=>{await new Promise(r=>setTimeout(r,p.id==='w1:p20'?250:4000));finished.push(p.id);return {choices:choices.screenChoices(fx('codex-request-increase.txt'),'codex'),interaction:'native'}})
+ const versions=new WeakMap();const cache=new ScreenCache()
  const enrich=bindFunction(source,'enrich',{
  seenMachines:new Set(['']),mstates:states,agentBorn:new Map(panes.map(p=>[p.id,{agent:p.agent,at:null}])),
  selfUpdates:{prune:()=>{},observe:async()=>false},commands:map(),READY:new Set(),
  getMachine:()=>({transcripts:{observe:()=>{}}}),joinId:(_:string,id:string)=>id,restarts:map(),leftForGood:()=>false,
- findPane:()=>null,pendingPrompts:map(),queued:map(),mapScreenPanes,choicesFor,refreshModel:()=>{},refreshPreview:()=>{},
+ findPane:()=>null,pendingPrompts:map(),queued:map(),screenVersions:versions,mapScreenPanes,choicesFor,refreshModel:()=>{},refreshPreview:()=>{},
  previews:new Map(panes.map(p=>[p.id,{status:'blocked',at:Date.now()}])),models:new Map(panes.map(p=>[p.id,{status:'blocked',at:Date.now()}])),
  isViewed:(id:string)=>id==='w1:p20',activities:map(),ompStatuses:map(),codexStatus:{forget:()=>{},statusOf:()=>null},
  choicesCache:new ScreenCache(),askChecks:map(),takenBack:map(),seen:map(),saveBorn:()=>{},saveSeen:()=>{},saveQueued:()=>{},machineOf:()=>''})
  const publish=vi.fn(()=>JSON.parse(JSON.stringify(states.get(''))))
- const pollMachine=bindFunction(source,'pollMachine',{mstates:states,herdrOn:async()=>({panes:panes.map(p=>({pane_id:p.id,revision:7}))}),
+ const pollMachine=bindFunction(source,'pollMachine',{mstates:states,screenVersions:versions,choicesCache:cache,screenFields:(p:any)=>p,herdrOn:async()=>({panes:panes.map(p=>({pane_id:p.id,revision:7}))}),
  reduceSnapshot:()=>({ok:true,workspaces:[],panes}),HERDR_SESSION:'test',enrich,RemoteMachine:class {},getMachine:()=>({}),rebuild:publish,watchTransitions:()=>{}})
  let published=false;const run=pollMachine({key:'',local:true}).then(()=>{published=true})
  await vi.advanceTimersByTimeAsync(250);expect(finished).toEqual(['w1:p20']);expect(published).toBe(false)

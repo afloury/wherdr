@@ -29,12 +29,13 @@ export class ScreenCache<T> extends Map<string, T> {
     if (!this.versions.has(id)) this.versions.set(id, ++this.sequence)
     return this.versions.get(id)!
   }
+  invalidate(id: string) { this.versions.set(id, ++this.sequence) }
   previous(id: string): T | undefined { return this.get(id) || this.retained.get(id) }
   ids(): Set<string> { return new Set([...this.keys(), ...this.versions.keys()]) }
   override delete(id: string): boolean {
     const previous = this.get(id)
     if (previous !== undefined) this.retained.set(id, previous)
-    if (this.versions.has(id)) this.versions.set(id, ++this.sequence)
+    if (this.versions.has(id)) this.invalidate(id)
     return super.delete(id)
   }
   override clear() {

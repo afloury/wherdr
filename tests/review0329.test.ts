@@ -11,7 +11,7 @@ import { parseUsageLimit } from '../shared/usageLimit'
 import { classifyScreen } from '../shared/interactiveScreen'
 import { keepReading, ScreenCache } from '../server/utils/screenCache'
 import { isPermissionQuestion, mergeDetail } from '../server/utils/promptDetail'
-import { bindFunction, sourceFunction } from './stateFunction'
+import { bindChoices, bindFunction, sourceFunction } from './stateFunction'
 import ts from 'typescript'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
@@ -28,7 +28,7 @@ function poller(screenAt: (now: number) => string, watchUntil = 0) {
   const clock = { now: () => now }
   const cache = new ScreenCache()
   const screenWatch = new Map<string, number>(watchUntil ? [['w1:p1', watchUntil]] : [])
-  const getChoices = bindFunction(source, 'choicesFor', {
+  const getChoices = bindChoices(source, {
     ...choices, ...wait, ...menu, ...settings, classifyScreen, parseUsageLimit, keepReading, isPermissionQuestion, mergeDetail,
     Date: clock, choicesCache: cache, screenWatch, askChecks: new Map(),
     isViewed: () => false, modelControlBusy: () => false, noteScreen: () => {},
@@ -45,7 +45,7 @@ function poller(screenAt: (now: number) => string, watchUntil = 0) {
   visit(file)
   const cycle = bindFunction(`async function cycle(p) { ${branch!.getText(file)}; return p }`, 'cycle', {
     Date: clock, choicesFor: getChoices, isViewed: () => true,
-    choicesCache: cache, askChecks: new Map(), revs: new Map([['w1:p1', 1]]),
+    screenVersions: new WeakMap(), choicesCache: cache, askChecks: new Map(), revs: new Map([['w1:p1', 1]]),
   })
   return {
     async run(pane: Record<string, unknown>, until: number) {

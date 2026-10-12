@@ -42,7 +42,7 @@ export interface WaitScreen { identity?: string, unavailable?: boolean, kind: Wa
 // Claude Code's full-screen interactive menu (/resume, /model, /mcp…), see
 // shared/menuScreen.ts. `header`: group header, not an entry; `search`:
 // text of the search field (null: no search); `more`: "19 more below".
-export interface MenuEntry { label: string, hint: string | null, header?: boolean, cursor?: boolean }
+export interface MenuEntry { identity?: string, label: string, hint: string | null, header?: boolean, cursor?: boolean }
 export interface InteractiveMenu {
   identity?: string
   unavailable?: boolean

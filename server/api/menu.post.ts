@@ -17,7 +17,9 @@ export default defineApi(async (event, b) => {
   if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'Invalid pane')
   const pane: string = b.pane_id
   let menu = await readMenu(pane)
-  if (!menu || !b.identity || menuIdentity(menu) !== b.identity) throw new HerdrError('stale', STALE)
+  if (!menu) throw new HerdrError('stale', STALE)
+  const targetEntry = b.op === 'select' ? menu.items[findEntry(menu, Number(b.index), String(b.label || ''))] : undefined
+  if (!b.identity || menuIdentity(menu, targetEntry) !== b.identity) throw new HerdrError('stale', STALE)
 
   if (b.op === 'key') {
     const a = menu.actions.find(x => x.key === b.key && x.label === b.label)
@@ -46,8 +48,9 @@ export default defineApi(async (event, b) => {
       menu = await readMenu(pane)
       // The cursor did not move: re-read once, then give up.
       if (at(menu) === before) { await sleep(250); menu = await readMenu(pane) }
-      if (!menu || menuIdentity(menu) !== b.identity || at(menu) === before) throw new HerdrError('stale', 'The cursor doesn’t move — finish in the terminal.')
+      if (!menu || at(menu) === before) throw new HerdrError('stale', 'The cursor doesn’t move — finish in the terminal.')
       target = findEntry(menu, -1, label)
+      if (target < 0 || menuIdentity(menu, menu.items[target]) !== b.identity) throw new HerdrError('stale', STALE)
     }
   } else throw new HerdrError('bad_request', 'Invalid operation')
 
