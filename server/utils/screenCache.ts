@@ -21,21 +21,29 @@ export function keepReading(c: ScreenReading | undefined, rev: unknown, strict: 
 // A delete also invalidates reads already in flight, even on a cache miss.
 // An old capture must not acquire a fresh timestamp after an answer/nav.
 export class ScreenCache<T> extends Map<string, T> {
+  // Retained only for disabled display after invalidation; never a cache hit.
+  private retained = new Map<string, T>()
   private sequence = 0
   private versions = new Map<string, number>()
   version(id: string): number {
     if (!this.versions.has(id)) this.versions.set(id, ++this.sequence)
     return this.versions.get(id)!
   }
+  previous(id: string): T | undefined { return this.get(id) || this.retained.get(id) }
+  ids(): Set<string> { return new Set([...this.keys(), ...this.versions.keys()]) }
   override delete(id: string): boolean {
+    const previous = this.get(id)
+    if (previous !== undefined) this.retained.set(id, previous)
     if (this.versions.has(id)) this.versions.set(id, ++this.sequence)
     return super.delete(id)
   }
   override clear() {
+    this.retained.clear()
     this.versions.clear()
     super.clear()
   }
   forget(id: string) {
+    this.retained.delete(id)
     this.versions.delete(id)
     super.delete(id)
   }

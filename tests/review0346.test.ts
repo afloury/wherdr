@@ -74,7 +74,7 @@ export function reviewPoller(viewed = false){
  choicesCache:cache,screenWatch:new Map(),askChecks:new Map(),isViewed:()=>viewed,modelControlBusy:()=>false,noteScreen:()=>{},
  Date:{now:()=>now},herdr:async()=>{reads++;if(fail)throw Error('temporary timeout');return {read:{text:fx('codex-request-increase')}}},
  readMenu:async()=>null,transcripts:{pendingClaudeQuestions:async()=>[],pendingTool:async()=>null}})
- return {tick:async(t:number,bad=false)=>{now=t;fail=bad;return read({id:'w1:p1',agent:'codex',status:'blocked'},7,false)},reads:()=>reads}
+ return {tick:async(t:number,bad=false)=>{now=t;fail=bad;return read({id:'w1:p1',agent:'codex',status:'blocked'},7,false)},reads:()=>reads,invalidate:()=>cache.delete('w1:p1')}
 }
 it('R3: one failed read keeps the native card disabled and retries at the next poll',async()=>{
  const p=reviewPoller(true), window=createInteractionWindow()
@@ -195,4 +195,15 @@ it('legend confirmation refuses a changed waiting screen and accepts its fresh i
  expect(call).not.toHaveBeenCalledWith('pane.send_input',expect.anything())
  await expect(handler({}, {pane_id:'w1:p1',key:'enter',label:'review',identity:choices.waitIdentity(current)})).resolves.toEqual({ok:true})
  expect(call).toHaveBeenCalledWith('pane.send_input',{pane_id:'w1:p1',keys:['enter']})
+})
+
+it('R3: invalidation keeps a disabled display fallback until a fresh read succeeds', async () => {
+ const p=reviewPoller(true)
+ const original=await p.tick(0)
+ p.invalidate()
+ const failed=await p.tick(1000,true)
+ expect(failed).toMatchObject({interaction:'native',unavailable:true,choices:{...original.choices,unavailable:true}})
+ const recovered=await p.tick(2000)
+ expect(recovered.choices).toEqual(original.choices)
+ expect(recovered.unavailable).toBeUndefined()
 })

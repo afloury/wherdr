@@ -59,3 +59,24 @@ test('R3: a transient read failure preserves the disabled card and its draft',as
  await expect(draft).toBeEnabled()
  await expect(draft).toHaveValue('Keep this unsent answer')
 })
+
+test('R3: a failed answer validation keeps its card and unsent draft',async({page})=>{
+ await show('claude-ask-long','claude');await page.goto(`/#/a/${pane}`)
+ await page.locator('.choices-list button[aria-expanded]').click()
+ const draft=page.locator('.choices-free textarea')
+ await draft.fill('Preserve this failed answer')
+ let release!:()=>void,arrive!:()=>void
+ const held=new Promise<void>(r=>{release=r}),arrived=new Promise<void>(r=>{arrive=r})
+ await page.route('**/api/choose',async route=>{arrive();await held;await route.continue()})
+ const response=page.waitForResponse('**/api/choose')
+ await page.locator('.choices-free button[type=submit]').click();await arrived
+ await fakeHerdr('e2e.read_failure',{pane_id:pane,fail:true});release()
+ expect((await response).ok()).toBe(false)
+ await expect(draft).toBeDisabled()
+ await expect(draft).toHaveValue('Preserve this failed answer')
+ await expect(page.locator('.interactive-terminal')).toHaveCount(0)
+ await fakeHerdr('e2e.read_failure',{pane_id:pane,fail:false})
+ await expect(draft).toBeEnabled()
+ await expect(draft).toHaveValue('Preserve this failed answer')
+ expect((await fakeHerdr('e2e.terminal_screen',{pane_id:pane})).keys).toEqual([])
+})

@@ -133,6 +133,12 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
   // A closed agent can retain the same revision and strictness as its last
   // idle TUI. Reclassify it once so the old terminal reading cannot poll forever.
   if (c && !(p.status === 'unknown' && c.interaction === 'terminal') && keepReading(c, rev, strict, watch || watched, Date.now(), isViewed(p.id))) return c
+  const unavailable = (previous = choicesCache.previous(p.id)): OnScreen => previous ? {
+    ...previous, unavailable: true,
+    choices: previous.choices ? { ...previous.choices, unavailable: true } : null,
+    screen: previous.screen ? { ...previous.screen, unavailable: true } : null,
+    menu: previous.menu ? { ...previous.menu, unavailable: true } : null,
+  } : { choices: null, screen: null, menu: null, interaction: 'unknown', unavailable: true }
   let out: OnScreen
   try {
     const r = await herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
@@ -175,14 +181,10 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
   } catch {
     // A transport failure is not evidence of an interactive terminal. Keep
     // the mounted native form/draft, but disable its controls until a fresh read.
-    out = c ? { ...c, unavailable: true,
-      choices: c.choices ? { ...c.choices, unavailable: true } : null,
-      screen: c.screen ? { ...c.screen, unavailable: true } : null,
-      menu: c.menu ? { ...c.menu, unavailable: true } : null,
-    } : { choices: null, screen: null, menu: null, interaction: 'unknown', unavailable: true }
+    out = unavailable(c || choicesCache.previous(p.id))
   }
   if (choicesCache.version(p.id) !== generation) {
-    return choicesCache.get(p.id) || { choices: null, screen: null, menu: null, interaction: 'unknown', unavailable: true }
+    return choicesCache.get(p.id) || unavailable()
   }
   choicesCache.set(p.id, { rev, strict, at: Date.now(), ...out })
   return out
@@ -918,7 +920,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
   }, p => isViewed(p.id))
   // Cleanup of vanished panes… of this machine only.
   const alive = (id: string) => machineOf(id) !== machine || next.panes.some(p => p.id === id)
-  for (const id of choicesCache.keys()) if (!alive(id)) choicesCache.forget(id)
+  for (const id of choicesCache.ids()) if (!alive(id)) choicesCache.forget(id)
   for (const id of askChecks.keys()) if (!alive(id)) askChecks.delete(id)
   for (const id of pendingPrompts.keys()) if (!alive(id)) pendingPrompts.delete(id)
   for (const id of queued.keys()) if (!alive(id)) queued.delete(id)
