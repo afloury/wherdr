@@ -85,10 +85,20 @@ export function listKind(title: string): ListKind | null {
 
 const THREAD_ID = /\bt-\d{4,}\b/i
 const TASK_LINE = /^[-*+]\s+(?:\[([ xX])\](?:\s+|$))?(.*)$/
-// Owner: last parenthesis of the line, short, without nested parentheses.
-const OWNER = /\s*\(([^()]{1,48})\)\s*$/
+// Owner: last parenthesis of the line, short, without nested parentheses. No
+// leading `\s*` (quadratic on long whitespace runs): the caller trims afterwards.
+const OWNER = /\(([^()]{1,48})\)\s*$/
 // Old `[t-0140]` / `[t-0140, t-0141]` syntax: removed from the text, no badge.
-const REFS = /\s*\[\s*t-\d{4,}(?:\s*[,;\s]\s*t-\d{4,})*\s*\]/gi
+// The separator alternatives cannot overlap, so the match stays polynomial.
+const REFS = /\s*\[\s*t-\d{4,}(?:(?:\s+|\s*[,;]\s*)t-\d{4,})*\s*\]/gi
+// Blocked cause after the em dash, tried at each ` — ` (see parseTaskLine).
+const CAUSE = /^\s*(?:bloqu[eé]e? par|blocked by)\s*:\s*(.+)$/i
+// Task text is typed to a coordinator pane later: no terminal control sequences,
+// control characters or bidi/zero-width characters may reach it.
+const ANSI = /\u001b\[[0-?]*[ -/]*[@-~]/g
+const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g
+// Longer lines are not tasks; skipping them keeps every regex input bounded.
+const MAX_LINE = 2000
 // Badges: `[b:#fff(text)]`, `[b:green(text)]`, `[b:(text)]`, optionally followed
 // by `(target)`, anywhere in the line. The text runs up to the first ")]".
 export const BADGE_COLORS = ['red', 'orange', 'amber', 'green', 'teal', 'blue', 'violet', 'pink', 'gray'] as const
@@ -124,23 +134,29 @@ export function takeBadges(input: string): { text: string, badges: TaskBadge[] }
 }
 
 export function parseTaskLine(line: string, kind: ListKind | null = null): ProjectTask | null {
-  const m = TASK_LINE.exec(line.trim())
+  if (line.length > MAX_LINE) return null
+  // Cleaned first, so the card shows exactly what will be sent.
+  const m = TASK_LINE.exec(line.replace(ANSI, '').replace(/\t/g, ' ').replace(CONTROL, '').trim())
   if (!m) return null
   const free = takeBadges(m[2]!.trim())
   let text = free.text.replace(REFS, '').trim()
   let owner: string | null = null
   const o = OWNER.exec(text)
   // "[PR](https://…)" at the end of the line: a Markdown link, not an owner.
-  if (o && o.index > 0 && !(text[o.index] === '(' && text[o.index - 1] === ']')) {
+  if (o && o.index > 0 && text[o.index - 1] !== ']') {
     owner = o[1]!.trim()
     text = text.slice(0, o.index).trim()
   }
   let reason: string | undefined
   if (kind === 'blocked') {
-    const cause = /\s+—\s*(?:bloqu[eé]e? par|blocked by)\s*:\s*(.+)$/i.exec(text)
-    if (cause?.[1]?.trim()) {
+    // Leftmost " — <cause>: …" (an indexOf walk instead of one backtracking regex).
+    for (let at = text.indexOf('—'); at > 0; at = text.indexOf('—', at + 1)) {
+      if (!/\s/.test(text[at - 1]!)) continue
+      const cause = CAUSE.exec(text.slice(at + 1))
+      if (!cause?.[1]?.trim()) continue
       reason = cause[1].trim()
-      text = text.slice(0, cause.index).trim()
+      text = text.slice(0, at).trim()
+      break
     }
   }
   if (!text) text = free.badges.map(b => b.text).join(' · ')
@@ -175,6 +191,16 @@ export function textParts(input: string): TextPart[] {
   return parts
 }
 
+// Title of a `## ` heading, or null. String operations, not a regex: the old
+// `^##\s+(.+?)\s*#*\s*$` backtracked badly on long whitespace runs. `###` is no heading.
+function headingTitle(raw: string): string | null {
+  if (!raw.startsWith('##') || !/\s/.test(raw[2] ?? '')) return null
+  const body = raw.slice(2).trim()
+  if (!body) return null
+  // A title made only of `#` keeps its first one, as before.
+  return body.replace(/#+$/, '').trim() || body[0]!
+}
+
 // All `##` lists, in file order (empty ones included). Lines
 // outside a list, deeper subheadings and indented lines
 // (task details) are ignored.
@@ -183,11 +209,12 @@ export function parseTasks(md: string): ProjectList[] {
   let cur: ProjectList | null = null
   let fence = false
   for (const raw of String(md || '').replace(/\r\n?/g, '\n').split('\n')) {
+    if (raw.length > MAX_LINE) continue
     if (/^\s*(```|~~~)/.test(raw)) { fence = !fence; continue }
     if (fence) continue
-    const h = /^##\s+(.+?)\s*#*\s*$/.exec(raw)
-    if (h) {
-      cur = { title: h[1]!, kind: listKind(h[1]!), tasks: [] }
+    const title = headingTitle(raw)
+    if (title) {
+      cur = { title, kind: listKind(title), tasks: [] }
       lists.push(cur)
       continue
     }
@@ -390,7 +417,9 @@ export function infoMessage(thread: string, text: string, lang: TestLang = 'fr')
 }
 
 // "To do" and "In queue": sent immediately, the coordinator edits TASKS.md.
-export type MoveAction = 'up' | 'down' | 'queue' | 'now' | 'unqueue' | 'backlog'
+// `block`, `todo` and `done`: a card moved between columns of the global Board
+// (shared/globalBoard.ts) when no panel message says it already.
+export type MoveAction = 'up' | 'down' | 'queue' | 'now' | 'unqueue' | 'backlog' | 'block' | 'todo' | 'done'
 const MOVES: Record<MoveAction, [en: string, fr: string]> = {
   up: ['↳ Move up: ', '↳ Monter : '],
   down: ['↳ Move down: ', '↳ Descendre : '],
@@ -398,6 +427,9 @@ const MOVES: Record<MoveAction, [en: string, fr: string]> = {
   now: ['↳ Launch now: ', '↳ Lancer maintenant : '],
   unqueue: ['↳ Remove from queue: ', '↳ Retirer de la file : '],
   backlog: ['↳ Back to backlog: ', '↳ Remettre au backlog : '],
+  block: ['↳ Mark blocked: ', '↳ Marquer bloqué : '],
+  todo: ['↳ Move to To do: ', '↳ Passer en À faire : '],
+  done: ['↳ Mark done: ', '↳ Marquer fait : '],
 }
 export function moveMessage(action: MoveAction, task: string, lang: TestLang = 'fr'): string {
   return `${MOVES[action][lang === 'en' ? 0 : 1]}${task.trim()}`
@@ -465,6 +497,7 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
         `"${moveMessage('queue', '…', lang)}" → move the line from To do to the end of In queue.`,
         `"${moveMessage('now', '…', lang)}" → start a thread now if a slot is free in the project and on the machine (beyond the limits only if I say so), otherwise put it first in In queue.`,
         `"${moveMessage('unqueue', '…', lang)}" → move the line from In queue back to the top of To do. "${moveMessage('backlog', '…', lang)}" → move the line from To do to Backlog.`,
+        `"${moveMessage('block', '…', lang)}" (wherdr Board) → move the line to Blocked (add that list if it is missing); ask me what it waits for if you do not know. "${moveMessage('todo', '…', lang)}" (wherdr Board) → move the line to the end of To do (add that list if it is missing), unchecked; do not launch it. "${moveMessage('done', '…', lang)}" (wherdr Board) → the task is finished or no longer needed: move the line, checked, to Done when the project has that list, otherwise remove it.`,
         'In queue contract: whenever a thread slot frees (a thread is resolved), launch the first In queue task and move it to In progress, as long as the machine has a free slot (next rule). Never launch To do or Backlog tasks without being asked.',
         'Global limit per machine (all projects, set in wherdr): before starting a thread, read .wherdr-limits.json in the herdr-projects folder (the parent of this project\'s folder). machines[this].free = free thread slots on this machine (machines["<machine>"] for a thread started on another machine; max null = no global limit). If free is 0, the machine is full: wait, even if this project still has slots under max_parallel_threads; In queue tasks start when the machine has a free slot. File missing or out of date: count the open threads of every project with "herdr-projects overview".',
         'After each deploy, add to To test what I must check. Put in To review each pull request I must review, with its link (link badge).',
@@ -491,6 +524,7 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
         `« ${moveMessage('queue', '…', lang)} » → déplacer la ligne d’À faire à la fin d’En file.`,
         `« ${moveMessage('now', '…', lang)} » → lancer un thread tout de suite si une place est libre dans le projet et sur la machine (au-delà des limites seulement si je le dis), sinon la mettre en tête d’En file.`,
         `« ${moveMessage('unqueue', '…', lang)} » → remettre la ligne d’En file en tête d’À faire. « ${moveMessage('backlog', '…', lang)} » → déplacer la ligne d’À faire vers Backlog.`,
+        `« ${moveMessage('block', '…', lang)} » (Tableau wherdr) → déplacer la ligne vers Bloqué (ajouter cette liste si elle manque) ; me demander ce qu’elle attend si tu ne le sais pas. « ${moveMessage('todo', '…', lang)} » (Tableau wherdr) → déplacer la ligne à la fin d’À faire (ajouter cette liste si elle manque), décochée ; ne pas la lancer. « ${moveMessage('done', '…', lang)} » (Tableau wherdr) → la tâche est finie ou n’est plus utile : déplacer la ligne, cochée, dans Fait si le projet a cette liste, sinon la retirer.`,
         'Contrat d’En file : dès qu’une place de thread se libère (thread clôturé), lancer la première tâche d’En file et la passer dans En cours, si la machine a une place libre (règle suivante). Ne jamais lancer une tâche d’À faire ou du Backlog sans qu’on te le demande.',
         'Limite globale par machine (tous projets, réglée dans wherdr) : avant de lancer un thread, lire .wherdr-limits.json dans le dossier herdr-projects (le parent du dossier de ce projet). machines[this].free = places de thread libres sur cette machine (machines["<machine>"] pour un thread lancé sur une autre machine ; max null = pas de limite globale). Si free vaut 0, la machine est pleine : attendre, même si ce projet a encore des places sous max_parallel_threads ; les tâches d’En file partent quand la machine a une place libre. Fichier absent ou périmé : compter les threads ouverts de tous les projets avec « herdr-projects overview ».',
         'Après chaque déploiement, ajouter à À tester ce que je dois vérifier. Mettre dans À relire chaque PR que je dois relire, avec son lien (badge-lien).',

@@ -419,10 +419,10 @@ function openPlan() {
   if (desk.value) navigateTo({ path: tabPath(tabEnt.value.tab.id), query: { pane: props.paneId } })
   else backToTab(tabEnt.value.tab.id)
 }
-// Back: to the tab's plan if we came from it, otherwise to the list.
+// Back: to the tab's plan or to the Board if we came from it, otherwise to the list.
 function goBack() {
   const back = (history.state as { back?: string } | null)?.back
-  if (tabEnt.value && back === tabPath(tabEnt.value.tab.id)) router.back()
+  if (back === '/board' || (tabEnt.value && back === tabPath(tabEnt.value.tab.id))) router.back()
   else navigateTo('/')
 }
 

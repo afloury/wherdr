@@ -193,6 +193,21 @@ describe('demo server', () => {
     expect(s.handle('GET', `/api/project?pane=${CODEX}`).body).toEqual({ available: false })
   })
 
+  it('answers the global Board like the server: one project, {same} on its version, a new version when a thread moves', () => {
+    const c = clock()
+    const s = new DemoServer(c)
+    const first = s.handle('GET', '/api/board').body as { version: string, projects: { key: string, slug: string, panes: string[], board: { lists: { kind: string, tasks: { text: string, reason?: string }[] }[], open: unknown[] } }[] }
+    expect(first.projects).toHaveLength(1)
+    expect(first.projects[0]).toMatchObject({ key: '|/Users/demo/.herdr-projects/acme-api', slug: 'acme-api', panes: [COORD] })
+    // A Blocked task for the Board's Blocked column.
+    expect(first.projects[0]!.board.lists.find(l => l.kind === 'blocked')!.tasks[0]!.reason).toBeTruthy()
+    expect(s.handle('GET', `/api/board?since=${first.version}`).body).toEqual({ same: true, version: first.version })
+    c.advance(60_000)
+    const next = s.handle('GET', `/api/board?since=${first.version}`).body as { version: string }
+    expect(next.version).not.toBe(first.version)
+    expect(s.handle('GET', `/api/board?since=${next.version}`).body).toEqual({ same: true, version: next.version })
+  })
+
   it('refuses everything it does not simulate, with the demo message', () => {
     const s = new DemoServer(clock())
     expect(s.handle('POST', '/api/push/test', {})).toEqual({ status: 403, body: { error: DEMO_REFUSAL, code: 'demo' } })
@@ -219,5 +234,11 @@ describe('demo server', () => {
     expect(info.approval).toBeUndefined()
     expect(info.reply).toContain('t-0012')
     expect(scriptFor('claude', '↳ Info pour t-0013 : relance les tests', 0).reply).toContain('t-0013')
+    // Board moves: acknowledged by the coordinator, never a command to approve (the task text mentions tests).
+    for (const text of ['↳ Mark done: Fix the flaky CSV export test', '↳ Move to To do: Run the audit', '↳ Marquer bloqué : Publish the API changelog', '✓ Tested: Webhook retries']) {
+      const move = scriptFor('claude', text, 0)
+      expect(move.approval).toBeUndefined()
+      expect(move.reply).toContain(text.split(/ ?: /)[1])
+    }
   })
 })

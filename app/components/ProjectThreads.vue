@@ -50,8 +50,10 @@ const GROUPS: Record<string, [string, string]> = {
 }
 const groupClass = (token: string) => GROUPS[token]?.[0] || 'unknown'
 const groupLabel = (token: string, fallback: string) => GROUPS[token]?.[1] || fallback || t('Unknown')
+// The thread's live agent, found as the Tasks tab and the Board find it.
 function paneOf(th: ProjectThread): Pane | undefined {
-  return th.agentName ? herdrState.value.panes.find(p => p.name === th.agentName) : undefined
+  const coordinator = herdrState.value.panes.find(p => p.id === props.paneId)
+  return coordinator ? threadLivePane(coordinator, props.board.slug, th) : undefined
 }
 function meta(th: ProjectThread) {
   const bits = [th.id.toUpperCase()]

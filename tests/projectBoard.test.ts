@@ -407,7 +407,7 @@ describe('board help (Settings › Plugins)', () => {
     expect(fr).toContain(m.launchMessage('…', 'fr'))
     expect(fr).toContain(m.unblockMessage('…', 'fr'))
     expect(fr).toContain('Déplacer une tâche en Bloqué')
-    for (const a of ['up', 'down', 'queue', 'now', 'unqueue', 'backlog'] as const) {
+    for (const a of ['up', 'down', 'queue', 'now', 'unqueue', 'backlog', 'block', 'todo', 'done'] as const) {
       expect(fr).toContain(m.moveMessage(a, '…', 'fr'))
       expect(m.coordinatorRules('en')).toContain(m.moveMessage(a, '…', 'en'))
     }
@@ -508,6 +508,13 @@ describe('In queue and To do lists', () => {
     expect(moveMessage('now', 'Export', 'en')).toBe('↳ Launch now: Export')
     expect(moveMessage('unqueue', 'Export', 'en')).toBe('↳ Remove from queue: Export')
     expect(moveMessage('backlog', 'Export', 'en')).toBe('↳ Back to backlog: Export')
+    // Moves between columns of the global Board.
+    expect(moveMessage('block', 'Export CSV')).toBe('↳ Marquer bloqué : Export CSV')
+    expect(moveMessage('todo', 'Export CSV')).toBe('↳ Passer en À faire : Export CSV')
+    expect(moveMessage('done', 'Export CSV')).toBe('↳ Marquer fait : Export CSV')
+    expect(moveMessage('block', 'Export', 'en')).toBe('↳ Mark blocked: Export')
+    expect(moveMessage('todo', 'Export', 'en')).toBe('↳ Move to To do: Export')
+    expect(moveMessage('done', 'Export', 'en')).toBe('↳ Mark done: Export')
   })
 
   it('slot status line of the In queue header', () => {
@@ -550,5 +557,34 @@ describe('Problem and Question after an answer to the agent', () => {
     const next = `${prefillDraft(draft, questionPrefix('Fix the layout', 'en'))}How should I test it?`
     expect(answerOf(next, decision)).toBe('Yes')
     expect(refsIn(next).at(-1)).toMatchObject({ kind: 'task', label: 'Question:', excerpt: 'Fix the layout' })
+  })
+})
+
+describe('TASKS.md: control characters and pathological lines', () => {
+  it('strips terminal control sequences from task text, reason, owner and badges', () => {
+    const t = parseTaskLine('- [ ] fix\u0003 the\u001b[31m bug\u001b[0m\u001b[200~\u0015 [b:red(ur\u001bgent\u007f)] (me\u0000)\tnow')
+    expect(t?.text).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/)
+    expect(t?.badges?.map(b => b.text)).toEqual(['urgent'])
+    const b = parseTaskLine('- wait\u202e a — blocked by: api\u0004 key\u200b', 'blocked')
+    expect(b).toMatchObject({ text: 'wait a', reason: 'api key' })
+    expect(parseTaskLine('- a\tb')?.text).toBe('a b')
+    expect(parseTaskLine('- t (own\u001b[2Jer)')?.owner).toBe('owner')
+  })
+
+  it('keeps normal headings', () => {
+    const titles = (md: string) => parseTasks(md).map(l => l.title)
+    expect(titles('## Done ##\n## Fix C#\n## A  \n### Sub\n##x\n## #')).toEqual(['Done', 'Fix C', 'A', '#'])
+  })
+
+  it('parses pathological lines in linear time', () => {
+    const sp = ' '.repeat(50_000)
+    const t0 = performance.now()
+    expect(parseTasks('## a' + sp + 'b')).toEqual([])
+    expect(parseTasks('## Todo\n- task' + sp + '(x')[0]!.tasks).toEqual([])
+    parseTasks('## Todo\n- task' + ' '.repeat(1900) + '(x')
+    parseTasks('## Blocked\n- task' + sp + '—')
+    parseTasks('## Blocked\n- task' + ' '.repeat(1900) + '— ' + ' '.repeat(50))
+    parseTasks('## Todo\n- [t-0001' + ' t-0001'.repeat(280) + ' x')
+    expect(performance.now() - t0).toBeLessThan(500)
   })
 })

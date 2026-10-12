@@ -1,13 +1,16 @@
 ---
 name: wherdr
-description: Conventions for coordinating a herdr-projects project whose TASKS.md is shown and driven by wherdr's Project panel. Use when you coordinate a herdr-projects project (you edit TASKS.md, launch and merge threads), and whenever a message starts with "✓ Tested:", "✓ Testé :", "↳ Problem:", "↳ Problème :", "↳ Question:", "↳ Question :", "✗ Problem:", "✗ Problème :", "? Question:", "? Question :", "↳ Decision:", "↳ Décision :", "↳ Launch", "↳ Lancer", "↳ Move up", "↳ Monter", "↳ Move down", "↳ Descendre", "↳ Queue:", "↳ Mettre en file", "↳ Remove from queue", "↳ Retirer de la file", "↳ Back to backlog", "↳ Remettre au backlog", "↳ Unblock", "↳ Débloquer", "↳ Detail on", "↳ Précision sur", "✓ Reviewed:", "✓ Relu :", "↳ Feedback on", "↳ Retour sur", "↳ Info for", "↳ Info pour" or "↳ Quote".
+description: Conventions for coordinating a herdr-projects project whose TASKS.md is shown and driven by wherdr's Project panel and Board. Use when you coordinate a herdr-projects project (you edit TASKS.md, launch and merge threads), and whenever a message starts with "✓ Tested:", "✓ Testé :", "↳ Problem:", "↳ Problème :", "↳ Question:", "↳ Question :", "✗ Problem:", "✗ Problème :", "? Question:", "? Question :", "↳ Decision:", "↳ Décision :", "↳ Launch", "↳ Lancer", "↳ Move up", "↳ Monter", "↳ Move down", "↳ Descendre", "↳ Queue:", "↳ Mettre en file", "↳ Remove from queue", "↳ Retirer de la file", "↳ Back to backlog", "↳ Remettre au backlog", "↳ Mark blocked", "↳ Marquer bloqué", "↳ Move to To do", "↳ Passer en À faire", "↳ Mark done", "↳ Marquer fait", "↳ Unblock", "↳ Débloquer", "↳ Detail on", "↳ Précision sur", "✓ Reviewed:", "✓ Relu :", "↳ Feedback on", "↳ Retour sur", "↳ Info for", "↳ Info pour" or "↳ Quote".
 ---
 
 # wherdr Project panel conventions
 
 wherdr shows the project's `TASKS.md` as a board on the user's phone and computer, with
 buttons on each task. Each button sends a short message to you, the coordinator. You own
-`TASKS.md`: the panel never edits it, it only reads it and asks you to.
+`TASKS.md`: the panel never edits it, it only reads it and asks you to. wherdr's **Board**
+(every project, thread and agent in Blocked / To do / Ongoing / Finished columns) sends the
+same messages when the user moves a task card to another column, plus the three moves of
+its own listed below.
 
 Follow the project's own instructions (`PROJECT.md`) first; this skill fills in what the
 panel expects. Write task lines and badges in the user's language.
@@ -154,6 +157,9 @@ the same minute, or two tables of one message. You have nothing to do with it.
 | `↳ Back to backlog: <task>` / `↳ Remettre au backlog : <task>` (sent) | To do | Move the line to Backlog. |
 | `↳ Launch: <task>` / `↳ Lancer : <task>` (sent) | Backlog › Launch | Start the task: a thread if a slot is free, otherwise first in In queue. |
 | `↳ Unblock: <task>` / `↳ Débloquer : <task>` (sent) | Blocked › Unblock | Relaunch the task, or ask the user exactly what is still missing. |
+| `↳ Mark blocked: <task>` / `↳ Marquer bloqué : <task>` (sent) | Board: a task moved to Blocked | Move the line to Blocked (add that list if it is missing); ask the user what it waits for if you do not know. |
+| `↳ Move to To do: <task>` / `↳ Passer en À faire : <task>` (sent) | Board: a task moved to To do (from Blocked, In progress or Done) | Move the line to the end of To do (add that list if it is missing), unchecked. Do not launch it. |
+| `↳ Mark done: <task>` / `↳ Marquer fait : <task>` (sent) | Board: a task moved to Finished | The task is finished or no longer needed: move the line, checked, to Done when the project has that list, otherwise remove it. |
 | `↳ Detail on <task> —` / `↳ Précision sur <task> —`, then the details below (draft) | Clarify (Backlog, To do, In queue, Blocked) | Add the details to the task (indented lines under it, or the thread's brief) and confirm. Do not launch it. |
 | `↳ Info for t-NNNN: <text>` / `↳ Info pour t-NNNN : <text>` (sent) | In progress › Add info (a thread's card, or the task of a thread) | Pass `<text>` on to that thread as is, every line of it, without rewording (`herdr-projects thread prompt <project> t-NNNN --text-file <file>`, `-` reads standard input), then confirm to the user in one line. Do not change `TASKS.md`. If the thread is resolved or unknown, say so instead. |
 

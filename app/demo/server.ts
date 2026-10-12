@@ -386,6 +386,7 @@ export class DemoServer {
           { name: 'acme-web', path: `${S.HOME}/code/acme-web`, git: true },
         ] })
         case '/api/project': return this.project(paneId, q.get('since'))
+        case '/api/board': return this.globalBoard(q.get('since'))
         case '/api/project/report': {
           const text = S.REPORTS[String(q.get('id'))]
           return text ? ok({ id: q.get('id'), text, truncated: false }) : fail(404, 'No report yet')
@@ -406,7 +407,7 @@ export class DemoServer {
         }
         case '/api/project/thread': {
           const id = String(q.get('id'))
-          const thread = paneId === S.COORD ? S.threadDetail(this.board(), id, this.acked.has(id)) : null
+          const thread = paneId === S.COORD ? S.threadDetail(this.projectBoard(), id, this.acked.has(id)) : null
           return thread ? ok({ thread }) : fail(404, 'thread not found')
         }
       }
@@ -470,7 +471,7 @@ export class DemoServer {
       }
       case '/api/project/thread': {
         const id = String(body.id || '')
-        if (paneId !== S.COORD || body.action !== 'ack' || !S.threadDetail(this.board(), id, false)) return fail(403, DEMO_REFUSAL)
+        if (paneId !== S.COORD || body.action !== 'ack' || !S.threadDetail(this.projectBoard(), id, false)) return fail(403, DEMO_REFUSAL)
         this.acked.add(id)
         return ok({ output: `${id}: report acknowledged` })
       }
@@ -496,14 +497,21 @@ export class DemoServer {
     return ok({ agent: p.agent, at: this.clock.now(), options: (S.MODEL_OPTIONS[p.agent] || []).map((label, i) => ({ label, hint: null, current: label === current, isDefault: i === 0 })) })
   }
 
-  private board() {
+  private projectBoard() {
     return S.board(this.clock.now(), { codex: this.pane(S.CODEX)?.status || 'done', omp: this.pane(S.OMP)?.status || 'done' })
   }
 
   private project(id: string, since: string | null): DemoReply {
     if (id !== S.COORD) return ok({ available: false })
-    const b = this.board()
+    const b = this.projectBoard()
     return since === b.version ? ok({ same: true, version: b.version }) : ok(b)
+  }
+
+  // Global Board: the one project of the demo, shaped like server/utils/globalBoard.ts.
+  private globalBoard(since: string | null): DemoReply {
+    const b = this.projectBoard()
+    if (since === b.version) return ok({ same: true, version: b.version })
+    return ok({ version: b.version, projects: [{ key: `|${this.pane(S.COORD)?.cwd}`, slug: S.PROJECT, panes: [S.COORD], board: b, resolvedTotal: b.resolved.length }] })
   }
 
   private search(text: string) {

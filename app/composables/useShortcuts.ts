@@ -84,6 +84,10 @@ function run(id: Exclude<ShortcutId, 'search-all'>, overlay: boolean): boolean {
     case 'settings':
       navigateTo('/settings')
       return true
+    // On the Board already, the router ignores the identical navigation.
+    case 'board':
+      navigateTo('/board')
+      return true
     case 'help':
       // Over another window: no (the help only closes itself).
       if (overlay && !shortcutsOpen.value) return false

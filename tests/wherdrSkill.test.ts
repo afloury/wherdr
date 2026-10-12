@@ -23,7 +23,7 @@ describe('wherdr skill', () => {
   })
 
   it('quotes every panel message as the panel writes it, in both languages', () => {
-    const moves: MoveAction[] = ['up', 'down', 'queue', 'now', 'unqueue', 'backlog']
+    const moves: MoveAction[] = ['up', 'down', 'queue', 'now', 'unqueue', 'backlog', 'block', 'todo', 'done']
     const builders: ((task: string, lang: TestLang) => string)[] = [
       testedMessage, problemPrefix, questionPrefix, decisionPrefix, launchMessage, detailPrefix,
       // Add info names a thread, not a task.

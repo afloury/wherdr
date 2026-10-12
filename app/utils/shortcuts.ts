@@ -5,7 +5,7 @@
 // lightbox, dividers) stay with that component.
 
 export type ShortcutId = 'search-all' | 'search-chat' | 'toggle-term' | 'stop' | 'prev-agent' | 'next-agent'
-  | 'new-space' | 'new-tab' | 'close-pane' | 'open-editor' | 'project-panel' | 'new-project' | 'settings' | 'help'
+  | 'new-space' | 'new-tab' | 'close-pane' | 'open-editor' | 'project-panel' | 'new-project' | 'settings' | 'board' | 'help'
 
 type Mod = 'mod' | 'ctrl' | 'alt' | 'shift'
 
@@ -66,6 +66,9 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'settings', mods: ['mod'], key: ',', fields: 'any', terminal: true, kbds: ['meta', ','] },
   { id: 'help', mods: ['mod'], anyShift: true, key: '/', fields: 'any', terminal: true, overlay: true, kbds: ['meta', '/'] },
   { id: 'help', mods: [], anyShift: true, key: '?', fields: 'none', terminal: false, overlay: true, kbds: ['?'] },
+  // Board: bare H like `?`, never while typing nor in the terminal. Mod+Alt+H is
+  // unusable on macOS (⌘⌥H = Hide Others, the page never sees it).
+  { id: 'board', mods: [], key: 'h', fields: 'none', terminal: false, kbds: ['H'] },
 ]
 
 export function shortcutKbds(id: ShortcutId): string[] {
