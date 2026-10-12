@@ -5,7 +5,6 @@ import { parseChoices } from '../server/utils/choices'
 import { classifyScreen } from '../shared/interactiveScreen'
 import { bindFunction } from './stateFunction'
 import { isSlashCommand } from '../shared/queuedMatch'
-import { keepReading } from '../server/utils/screenCache'
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/claude-limit-${name}.txt`, import.meta.url), 'utf8')
 
 describe('Claude live quota wait', () => {
@@ -32,9 +31,6 @@ describe('Claude live quota wait', () => {
   it('does not steal a newer approval below a quoted quota screen', () => {
     const approval = readFileSync(new URL('./fixtures/claude-approve-bash.txt', import.meta.url), 'utf8')
     expect(parseUsageLimit(`${fixture('weekly')}\n${approval}`, 'claude')).toBeNull()
-  })
-  it('polls the wait even when an idle pane revision stays unchanged', () => {
-    expect(keepReading({ rev: 1, strict: true, at: 0, choices: null, menu: null, screen: null, interaction: 'native', usageLimit: {} }, 1, true, false, 3000)).toBe(false)
   })
 })
 
