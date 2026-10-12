@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.3] — 2026-10-12
+
 ### Fixed
 
 - Show Claude usage-limit waits above the conversation field with automatic resume, cancel,
