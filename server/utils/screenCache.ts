@@ -2,15 +2,17 @@
 // state.ts). Herdr's `revision` does not always move when the screen changes,
 // so a reading is also redone every SCREEN_MS while it may be stale: an
 // interactive terminal, prompt or waiting screen is shown, the screen is
-// watched, or the agent is blocked
+// watched, or the agent is blocked without a recognized quota wait
 // (its box may not have been readable the first time: drawn just after, or a
 // read that timed out, and that empty reading would otherwise stay for good).
 export const SCREEN_MS = 3000
 
-export interface ScreenReading { rev: unknown, strict: boolean, at: number, choices: unknown, screen: unknown, menu: unknown, interaction?: string }
+export interface ScreenReading { rev: unknown, strict: boolean, at: number, choices: unknown, screen: unknown, menu: unknown, interaction?: string, usageLimit?: unknown }
 
 export function keepReading(c: ScreenReading | undefined, rev: unknown, strict: boolean, watch: boolean, now: number): boolean {
   if (!c || c.rev !== rev || c.strict !== strict) return false
-  const live = watch || !strict || Boolean(c.choices || c.screen || c.menu || c.interaction === 'terminal')
+  // Quota waits can last hours. Their next revision invalidates this cache;
+  // a recognized wait needs no periodic retry even if Herdr calls it blocked.
+  const live = watch || (!strict && !c.usageLimit) || Boolean(c.choices || c.screen || c.menu || c.interaction === 'terminal')
   return !(live && now - c.at >= SCREEN_MS)
 }

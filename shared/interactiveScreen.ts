@@ -1,6 +1,7 @@
-// Existing native recognizers own presentation. This policy only supplies the
-// live-terminal fallback; it never reinterprets their choices, menus or details.
+// Native recognizers own presentation; the live quota footer also rules out
+// a choice list misread from scrollback above Claude's still-visible input.
 import type { Choices } from './types'
+import { parseUsageLimit } from './usageLimit'
 import { hasTranscript } from './agentKind'
 
 export type ScreenInteraction = 'input' | 'native' | 'terminal' | 'working' | 'unknown' | 'managed'
@@ -54,6 +55,8 @@ export function classifyScreen(o: {
   // Only the two active Codex menus override a mistaken list recognition.
   // A completed/closed agent may retain its kind while showing a shell.
   if (usesTerminalException(o)) return 'terminal'
+  // The live input and quota footer distinguish this wait from old reply lists.
+  if (o.status !== 'unknown' && parseUsageLimit(o.text, o.agent)) return 'native'
   if (o.choices || o.menu || o.screen || o.settings) return 'native'
   // Unsupported agents already have their permanent Terminal view. An absent
   // transcript/input recognizer is not evidence of an interactive screen.

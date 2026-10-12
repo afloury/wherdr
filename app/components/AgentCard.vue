@@ -77,7 +77,7 @@ const quick = computed(() => quickChoices(prompt.value, 4))
 const interactive = computed(() => props.pane.interaction === 'terminal' && props.pane.status === 'blocked' && !prompt.value && !props.pane.menu && !props.pane.screen)
 // Recognized waiting screen (Codex hooks…): its title says better what is expected.
 const screen = computed(() => knownScreen(props.pane))
-const preview = computed(() => interactive.value ? tl('Interactive agent screen', 'Écran interactif de l’agent') : (screen.value && screenSummary(screen.value)) || (props.pane.menu && props.pane.status !== 'working' && menuSummary(props.pane.menu)) || (prompt.value ? prompt.value.kind === 'self-update' ? t(prompt.value.question || '') : prompt.value.question : props.pane.preview))
+const preview = computed(() => props.pane.usageLimit ? tl('Usage limit reached', 'Limite de quota atteinte') : interactive.value ? tl('Interactive agent screen', 'Écran interactif de l’agent') : (screen.value && screenSummary(screen.value)) || (props.pane.menu && props.pane.status !== 'working' && menuSummary(props.pane.menu)) || (prompt.value ? prompt.value.kind === 'self-update' ? t(prompt.value.question || '') : prompt.value.question : props.pane.preview))
 const more = computed(() => !compactList.value || compactOpen({ status: props.pane.status, preview: preview.value, detail: prompt.value?.detail, choices: quick.value.length }))
 // Read / unread: only for an agent that has finished (ready).
 const unread = computed(() => (space.value ? space.value.panes.filter(p => p.agent && p.status === 'done') : []))
@@ -198,6 +198,7 @@ onUnmounted(list.unmount)
       <template v-if="compactList">
         <AgentAvatar :agent="pane.agent" />
         <span class="card-title">{{ title }}</span>
+        <span v-if="statePane.usageLimit" class="card-tag quota-limit" :title="stateTitle">{{ tl('Limit', 'Quota') }}</span>
         <span v-if="compact.badge" class="card-tag">{{ compact.badge }}</span>
         <span v-if="compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
         <span v-else-if="compact.panes" class="card-panes" :title="counts">{{ compact.panes }}</span>
@@ -250,3 +251,7 @@ onUnmounted(list.unmount)
     </div>
   </UContextMenu>
 </template>
+
+<style scoped>
+.card.compact .quota-limit { color: var(--ochre); border-color: currentColor; }
+</style>

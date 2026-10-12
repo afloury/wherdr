@@ -4,6 +4,7 @@ import * as choices from '../server/utils/choices'
 import * as wait from '../server/utils/waitScreen'
 import * as menu from '../shared/menuScreen'
 import * as settings from '../shared/settingsScreen'
+import { parseUsageLimit } from '../shared/usageLimit'
 import { classifyScreen } from '../shared/interactiveScreen'
 import { keepReading } from '../server/utils/screenCache'
 import { isPermissionQuestion, mergeDetail } from '../server/utils/promptDetail'
@@ -22,7 +23,7 @@ const plain = (text: string) => text.replace(/\x1b\[[0-9;]*m|\r/g, '')
 function pipeline(source: string, modules: typeof after, text: string) {
   return bindFunction(source, 'choicesFor', {
     ...modules.choices, ...modules.wait, ...modules.menu, ...modules.settings,
-    classifyScreen, keepReading, isPermissionQuestion, mergeDetail,
+    classifyScreen, parseUsageLimit, keepReading, isPermissionQuestion, mergeDetail,
     choicesCache: new Map(), screenWatch: new Map(), askChecks: new Map(),
     modelControlBusy: () => false, noteScreen: () => {},
     herdr: async (_method: string, params: { format?: string }) => ({ read: { text: params.format === 'ansi' ? text : plain(text) } }),
@@ -73,7 +74,7 @@ describe('all fixtures retain origin/main native recognition', () => {
       const { interaction: serverInteraction, ...newOutput } = await pipeline(afterSource, after, text)(pane, 1, strict)
       if (exceptions.has(file) && agent === 'codex') expect(newOutput).toEqual({ choices: null, menu: null, screen: null })
       else expect(newOutput).toEqual(oldOutput)
-      const nativeBefore = Boolean(original.choices || original.menu || original.screen || original.settings)
+      const nativeBefore = Boolean((agent === 'claude' && file.startsWith('claude-limit-')) || original.choices || original.menu || original.screen || original.settings)
       const interaction = classifyScreen({ text: plain(text), agent, ...current })
       expect(serverInteraction).toBe(interaction)
       results.push({ file, agent, strict, nativeBefore, nativeAfter: interaction === 'native', exception: exceptions.has(file) && agent === 'codex' })

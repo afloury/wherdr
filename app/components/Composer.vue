@@ -23,7 +23,7 @@ import { rememberPastes } from '~/utils/sentPastes'
 // `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
 // `takeBack`: conversation view; a prompt Claude puts back into its field on Stop
 // comes back here instead (never in the terminal view, where the user sees Claude's field).
-const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void>, escStops?: boolean, takeBack?: boolean, unanswered?: number }>()
+const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void>, conversation?: boolean, escStops?: boolean, takeBack?: boolean, unanswered?: number }>()
 const emit = defineEmits<{ sent: [queued: QueuedMessage | null], showTerminal: [], showUnanswered: [] }>()
 
 // Claude Code update installed: the status line restarts the agent.
@@ -465,12 +465,12 @@ function openPlus() {
   }
   openMenu(items)
 }
-async function runSlash(cmd: string) {
+async function runSlash(cmd: string, result = true) {
   try {
     await api('/api/prompt', { pane_id: props.paneId, text: cmd })
     haptic()
   } catch (err) { return toast((err as Error).message, true) }
-  showCommandResult(props.paneId, cmd)
+  if (result) showCommandResult(props.paneId, cmd)
 }
 
 // Focus, cursor at the end (text set from outside: "Problem" of the Project
@@ -520,6 +520,7 @@ defineExpose({
         <span class="restart-text">{{ restartLabel }}</span>
       </template>
     </div>
+    <UsageLimitCard v-else-if="conversation && pane?.usageLimit" :limit="pane.usageLimit" :read-only="readOnly" :send-keys="sendKeys" @credits="runSlash('/usage-credits', false)" />
     <div v-else-if="pane?.claudeNotice" class="composer-notice" :class="{ error: noticeIsError }" role="status">
       <template v-if="updateReady">
         <span class="restart-text">{{ pane.claudeNotice.replace(/\s*·\s*Restart to update\b.*$/, '') }} ·</span>

@@ -32,6 +32,19 @@ describe('Composer send', () => {
   beforeEach(() => { eventsOpen.value = true })
   afterEach(() => { eventsOpen.value = false })
 
+  it('shows the quota card and its actions only while the parent displays conversation', async () => {
+    const p = { ...pane('w3:p9'), usageLimit: { resets: '11pm', automatic: true, credits: true, resetLink: true } }
+    const w = await mountSuspended(Composer, { props: { pane: p, paneId: p.id, sendKeys: async () => {} } })
+    expect(w.find('.usage-limit-card').exists()).toBe(false)
+    await w.setProps({ conversation: true })
+    expect(w.find('.usage-limit-card').exists()).toBe(true)
+    expect(w.findAll('.usage-limit-card button, .usage-limit-card a')).toHaveLength(3)
+    await w.setProps({ conversation: false })
+    expect(w.find('.usage-limit-card').exists()).toBe(false)
+    expect(w.findAll('.usage-limit-card button, .usage-limit-card a')).toHaveLength(0)
+    w.unmount()
+  })
+
   it('empties the field and shows the message as sending before the server answers', async () => {
     const { w, field } = await mount('w1:p1')
     await w.find('button.prompt-send').trigger('click')

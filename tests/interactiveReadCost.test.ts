@@ -3,7 +3,7 @@ import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import ts from 'typescript'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { herdrSock } from '../server/utils/herdr'
 import { keepReading } from '../server/utils/screenCache'
 import * as choices from '../server/utils/choices'
@@ -11,8 +11,35 @@ import { parseWaitScreen } from '../server/utils/waitScreen'
 import { parseMenu, TOP } from '../shared/menuScreen'
 import { settingsTabs } from '../shared/settingsScreen'
 import { isPermissionQuestion, mergeDetail } from '../server/utils/promptDetail'
+import { parseUsageLimit } from '../shared/usageLimit'
 import { classifyScreen } from '../shared/interactiveScreen'
 import { bindFunction, sourceFunction } from './stateFunction'
+
+for (const variant of ['weekly', 'session']) for (const status of ['idle', 'blocked']) {
+  it(`caches a ${variant} quota wait while ${status} for hours until the revision changes`, async () => {
+    const source = readFileSync(new URL('../server/utils/state.ts', import.meta.url), 'utf8')
+    let text = readFileSync(new URL(`./fixtures/claude-limit-${variant}.txt`, import.meta.url), 'utf8')
+    let now = 0
+    const read = vi.fn(async () => ({ read: { text } }))
+    const getChoices = bindFunction(source, 'choicesFor', {
+      ...choices, parseWaitScreen, parseMenu, TOP, settingsTabs, classifyScreen, parseUsageLimit, keepReading, isPermissionQuestion, mergeDetail,
+      Date: { now: () => now }, choicesCache: new Map(), screenWatch: new Map(), askChecks: new Map(),
+      modelControlBusy: () => false, herdr: read, noteScreen: () => {},
+    })
+    const pane = { id: 'w1:p1', agent: 'claude', status }
+    const strict = status !== 'blocked'
+    // Simulate six hours of normal polls, including the raw blocked state.
+    for (now = 0; now < 6 * 60 * 60_000; now += 1000) {
+      expect((await getChoices(pane, 1, strict)).usageLimit).toBeTruthy()
+    }
+    expect(read).toHaveBeenCalledOnce()
+    text = readFileSync(new URL('./fixtures/claude-idle.txt', import.meta.url), 'utf8')
+    // Keep the real idle field/footer without the historical /context output.
+    text = text.slice(text.indexOf('────────────────'))
+    expect((await getChoices(pane, 2, strict)).usageLimit).toBeUndefined()
+    expect(read).toHaveBeenCalledTimes(2)
+  })
+}
 
 it('measures working, resting, closed and watched-screen RPCs against a local Unix-socket responder', async () => {
   const tmp = mkdtempSync(path.join(os.tmpdir(), 'wherdr-read-cost-'))
@@ -45,7 +72,7 @@ it('measures working, resting, closed and watched-screen RPCs against a local Un
         return { ...result, read: { text: status === 'unknown' ? 'user@host demo % ' : idle } }
       }
       const getChoices = bindFunction(source, 'choicesFor', {
-        ...choices, parseWaitScreen, parseMenu, TOP, settingsTabs, classifyScreen, keepReading, isPermissionQuestion, mergeDetail,
+        ...choices, parseWaitScreen, parseMenu, TOP, settingsTabs, classifyScreen, parseUsageLimit, keepReading, isPermissionQuestion, mergeDetail,
         Date: clock, choicesCache: cache, screenWatch: new Map(), askChecks: new Map(),
         modelControlBusy: () => false, herdr: read, noteScreen: () => {},
       })

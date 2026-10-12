@@ -19,6 +19,7 @@ import { isPermissionQuestion, mergeDetail } from './promptDetail'
 import { parseWaitScreen } from './waitScreen'
 import { parseMenu, TOP } from '../../shared/menuScreen'
 import { settingsTabs } from '../../shared/settingsScreen'
+import { parseUsageLimit, type UsageLimit } from '../../shared/usageLimit'
 import { classifyScreen, type ScreenInteraction } from '../../shared/interactiveScreen'
 import { parseClaudeActivity } from './activity'
 import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './claudeScreen'
@@ -107,7 +108,7 @@ export async function withOmpTab(paneId: string, c: Choices): Promise<Choices> {
 // conversation (see screenCache.ts).
 // Permission request: the requested command or file preferably comes from
 // the transcript (in full), otherwise from the screen.
-type OnScreen = { choices: Choices | null, screen: WaitScreen | null, menu: InteractiveMenu | null, interaction: ScreenInteraction }
+type OnScreen = { usageLimit?: UsageLimit, choices: Choices | null, screen: WaitScreen | null, menu: InteractiveMenu | null, interaction: ScreenInteraction }
 // Screen to re-read for a while even without a new `revision` ("/" command
 // sent: an interactive menu may open), see watchScreen().
 const screenWatch = new Map<string, number>()
@@ -139,9 +140,11 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
     // blocking (/hooks, /mcp): a real question (numbered list) then keeps
     // priority; a simple cursor list there is read as a menu.
     const framed = String(text || '').split('\n').some((l: string) => TOP.test(l))
-    // omp: its select dialog (tool approval) or "Ask" box (boxed, they would pass for a menu).
-    let choices = p.agent === 'omp' ? parseOmpPrompt(text) : parseChoices(text, { strict })
-    const menu = p.agent !== 'omp' && framed && (strict || !choices || !parseChoices(text, { strict: true })) ? await readMenu(p.id) : null
+    // A live quota footer keeps the input usable. Ignore lists in scrollback.
+    const usageLimit = p.status === 'unknown' ? null : parseUsageLimit(String(text || ''), p.agent)
+    // omp: its select dialog (tool approval) or "Ask" box.
+    let choices = usageLimit ? null : p.agent === 'omp' ? parseOmpPrompt(text) : parseChoices(text, { strict })
+    const menu = !usageLimit && p.agent !== 'omp' && framed && (strict || !choices || !parseChoices(text, { strict: true })) ? await readMenu(p.id) : null
     if (menu) choices = null
     if (choices && p.agent === 'omp' && !choices.detail) choices = await withOmpTab(p.id, completeOmpAsk(choices, await transcripts.pendingAsk(p).catch(() => [])))
     // Claude's AskUserQuestion: full question and options from the call.
@@ -155,7 +158,7 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
     const settings = p.agent === 'claude' && settingsTabs(text) !== null
     const screen = menu || settings ? null : parseWaitScreen(text, { choices: Boolean(choices) })
     const interaction = classifyScreen({ text: String(text || ''), agent: p.agent, choices, menu, screen, settings, status: p.status })
-    out = interaction === 'terminal' ? { choices: null, screen: null, menu: null, interaction } : { choices, screen, menu, interaction }
+    out = interaction === 'terminal' ? { choices: null, screen: null, menu: null, interaction } : { choices, screen: usageLimit ? null : screen, menu, interaction, ...(usageLimit ? { usageLimit } : {}) }
     noteScreen(p.id, p.agent, text) // Codex: model from its status line
     if (choices && (choices.detail || isPermissionQuestion(choices.question))) {
       // omp: the tool named in its dialog's title (none when scrolled off).
@@ -165,7 +168,7 @@ async function choicesFor(p: Pane, rev: unknown, strict: boolean, watch = false)
       if (detail) choices.detail = detail
       if (p.agent === 'omp' && !choices.question && tr) choices.question = `Allow tool: ${tr.tool}`
     }
-  } catch { out = { choices: c ? c.choices : null, screen: c ? c.screen : null, menu: c ? c.menu : null, interaction: c?.interaction || 'unknown' } }
+  } catch { out = { choices: c ? c.choices : null, screen: c ? c.screen : null, menu: c ? c.menu : null, interaction: c?.interaction || 'unknown', ...(c?.usageLimit ? { usageLimit: c.usageLimit } : {}) } }
   choicesCache.set(p.id, { rev, strict, at: Date.now(), ...out })
   return out
 }
@@ -384,7 +387,9 @@ export function sendPrompt(p: Pane, text: string): Promise<void> {
     if (now?.stopped || now?.leaving) {
       throw new HerdrError(isSlashCommand(text) ? 'stale' : 'no_input', 'Restart Codex before sending a command.')
     }
-    if (p.agent !== 'claude' || !GUARD_STATES.has(p.status || '') || isSlashCommand(text)) return agentPrompt(p.id, text)
+    // Herdr may still call a quota wait blocked. Its visible field also takes
+    // slash commands, using the same checked send rather than agent.prompt.
+    if (p.agent !== 'claude' || !GUARD_STATES.has(p.status || '') || (isSlashCommand(text) && !p.usageLimit)) return agentPrompt(p.id, text)
     const keep = (texts: string[] | undefined) => {
       for (const t of texts || []) {
         addQueued(p.id, t, { held: true })
@@ -853,6 +858,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string) {
       const young = !p.agentSession || (p.bornAt && Date.now() - p.bornAt < 120000)
       const c = await choicesFor(p, revs.get(p.id), p.status !== 'blocked', Boolean(young))
       p.interaction = c.interaction
+      if (c.usageLimit) { p.usageLimit = c.usageLimit; p.status = 'idle' }
       if (c.choices) p.prompt = c.choices
       if (c.screen) p.screen = c.screen
       if (c.menu) p.menu = c.menu
