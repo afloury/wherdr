@@ -123,6 +123,21 @@ describe('BoardView', () => {
     expect(column(w, 'finished').find('.board-more').exists()).toBe(false)
   })
 
+  it('leaves out the projects hidden on this device, counters included', async () => {
+    setPanes()
+    localStorage.setItem('boardHiddenProjects', JSON.stringify(['|acme-shop']))
+    try {
+      const w = await mountBoard()
+      expect(w.get('.board-seg-btn.todo b').text()).toBe('0')
+      expect(w.text()).not.toContain('Webhook retries')
+      expect(w.findAll('.board-card.project').map(c => c.text()).join()).toContain('beta-api')
+      expect(column(w, 'ongoing').text()).toContain('Notes agent')
+      expect(w.get('.board-filter').attributes('aria-label')).toBe('Filter projects: 1 hidden')
+    } finally {
+      localStorage.removeItem('boardHiddenProjects')
+    }
+  })
+
   it('a click on a task opens its Project panel, a click on its badge does not', async () => {
     setPanes()
     const w = await mountBoard()

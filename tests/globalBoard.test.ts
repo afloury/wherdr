@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Pane } from '../shared/types'
 import type { ProjectBoard, ProjectThread } from '../shared/projectBoard'
 import {
-  type BoardCard, type BoardProject, boardMoveMessage, boardMoves, buildGlobalBoard, capFinished, paneColumn, rollUp, taskColumn, threadColumn,
+  type BoardCard, type BoardProject, boardMoveMessage, boardMoves, boardProjectsOf, buildGlobalBoard, capFinished, filterBoard, paneColumn, rollUp, taskColumn, threadColumn,
 } from '../shared/globalBoard'
 import { pickCoordinator } from '../shared/projects'
 
@@ -213,6 +213,47 @@ describe('capFinished', () => {
     expect(kept.filter(x => x.kind === 'thread').map(x => (x as Extract<BoardCard, { kind: 'thread' }>).thread.id)).toEqual(['t-0001', 't-0002'])
     expect(kept.filter(x => x.kind === 'task').map(x => (x as Extract<BoardCard, { kind: 'task' }>).task.text)).toEqual(['a', 'b'])
     expect(kept.some(x => x.kind === 'agent')).toBe(true)
+  })
+})
+
+describe('project filter', () => {
+  const setup = () => {
+    const shop = coord('shop')
+    const api = coord('api', { machine: 'm1' })
+    const worker = pane({ cwd: '/home/user/.herdr-projects/api/x', project: 'api', machine: 'm1', status: 'working' })
+    const loose = pane({ status: 'working' })
+    const lists = [{ title: 'To do', kind: 'todo' as const, tasks: [{ text: 'a', done: false, owner: null, thread: null }] }]
+    const cards = buildGlobalBoard([project(shop, board({ lists })), project(api, board({ slug: 'api' }), { slug: 'api' })], [shop, api, worker, loose])
+    return { cards, worker, loose }
+  }
+
+  it('lists each project once, in Board order, with the agents outside projects last', () => {
+    const { cards } = setup()
+    expect(boardProjectsOf(cards).map(e => [e.id, e.name, e.machine])).toEqual([['m1|api', 'api', 'm1'], ['|shop', 'shop', ''], ['', null, '']])
+  })
+
+  it('drops every card of a hidden project, and the outside agents under the empty id', () => {
+    const { cards, worker, loose } = setup()
+    const noShop = filterBoard(cards, new Set(['|shop']))
+    expect(noShop.some(c => c.project === 'shop')).toBe(false)
+    expect(noShop.some(c => c.kind === 'agent' && c.pane === worker)).toBe(true)
+    const noOutside = filterBoard(cards, new Set(['']))
+    expect(noOutside.some(c => c.kind === 'agent' && c.pane === loose)).toBe(false)
+    expect(noOutside.filter(c => c.kind === 'project')).toHaveLength(2)
+  })
+
+  it('ignores ids of projects no longer on the Board', () => {
+    const { cards } = setup()
+    expect(filterBoard(cards, new Set(['m9|gone']))).toEqual(cards)
+  })
+
+  it('one entry for two folders of the same name on one machine, hiding both', () => {
+    const a = coord('shop')
+    const b = coord('Shop', { cwd: '/home/user/work/.herdr-projects/Shop' })
+    const cards = buildGlobalBoard([project(a, board(), { key: '|a' }), project(b, board({ slug: 'Shop' }), { key: '|b', slug: 'Shop' })], [a, b])
+    expect(by(cards, 'project')).toHaveLength(2)
+    expect(boardProjectsOf(cards).map(e => e.id)).toEqual(['|shop'])
+    expect(filterBoard(cards, new Set(['|shop']))).toEqual([])
   })
 })
 
