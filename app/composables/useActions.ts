@@ -123,6 +123,7 @@ export function statusKey(p: Pane) {
 export function statusLabel(p: Pane) {
   const s = statusKey(p)
   if (!p.agent) return 'Shell'
+  if (p.usageLimit) return tl('Usage limit reached', 'Limite de quota atteinte')
   if (p.restart && p.restart.phase !== 'failed') return t('Restarting')
   if (s === 'unknown' && p.pendingPrompt) return t('Starting')
   return t((STATUS[s] || STATUS.unknown!).label)

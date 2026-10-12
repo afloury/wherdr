@@ -11,6 +11,7 @@ import { parseWaitScreen } from '../server/utils/waitScreen'
 import { parseMenu, TOP } from '../shared/menuScreen'
 import { settingsTabs } from '../shared/settingsScreen'
 import { isPermissionQuestion, mergeDetail } from '../server/utils/promptDetail'
+import { parseUsageLimit } from '../shared/usageLimit'
 import { classifyScreen } from '../shared/interactiveScreen'
 import { bindFunction, sourceFunction } from './stateFunction'
 
@@ -45,7 +46,7 @@ it('measures working, resting, closed and watched-screen RPCs against a local Un
         return { ...result, read: { text: status === 'unknown' ? 'user@host demo % ' : idle } }
       }
       const getChoices = bindFunction(source, 'choicesFor', {
-        ...choices, parseWaitScreen, parseMenu, TOP, settingsTabs, classifyScreen, keepReading, isPermissionQuestion, mergeDetail,
+        ...choices, parseWaitScreen, parseMenu, TOP, settingsTabs, classifyScreen, parseUsageLimit, keepReading, isPermissionQuestion, mergeDetail,
         Date: clock, choicesCache: cache, screenWatch: new Map(), askChecks: new Map(),
         modelControlBusy: () => false, herdr: read, noteScreen: () => {},
       })

@@ -7,6 +7,7 @@ import * as choices from '../server/utils/choices'
 import * as wait from '../server/utils/waitScreen'
 import * as menu from '../shared/menuScreen'
 import * as settings from '../shared/settingsScreen'
+import { parseUsageLimit } from '../shared/usageLimit'
 import { classifyScreen } from '../shared/interactiveScreen'
 import { keepReading } from '../server/utils/screenCache'
 import { isPermissionQuestion, mergeDetail } from '../server/utils/promptDetail'
@@ -28,7 +29,7 @@ function poller(screenAt: (now: number) => string, watchUntil = 0) {
   const cache = new Map()
   const screenWatch = new Map<string, number>(watchUntil ? [['w1:p1', watchUntil]] : [])
   const getChoices = bindFunction(source, 'choicesFor', {
-    ...choices, ...wait, ...menu, ...settings, classifyScreen, keepReading, isPermissionQuestion, mergeDetail,
+    ...choices, ...wait, ...menu, ...settings, classifyScreen, parseUsageLimit, keepReading, isPermissionQuestion, mergeDetail,
     Date: clock, choicesCache: cache, screenWatch, askChecks: new Map(),
     modelControlBusy: () => false, noteScreen: () => {},
     herdr: async () => { reads++; return { read: { text: plain(screenAt(now)) } } },

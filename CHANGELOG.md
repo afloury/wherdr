@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Show Claude usage-limit waits above the conversation field with automatic resume, cancel,
+  usage credits and reset actions when offered, without opening the interactive terminal.
+
 - A pane whose agent changed while its session stayed the same could show an empty
   conversation ("No messages yet.") until a new message arrived: its transcript was read as the
   other agent's. A transcript is now always read as the kind its file says.

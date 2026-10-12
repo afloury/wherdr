@@ -626,7 +626,19 @@
     "snapshot-layouts.json/omp/false": 0,
     "snapshot-layouts.json/omp/true": 0,
     "push/claude": 82,
-    "push/omp": 83
+    "push/omp": 83,
+    "claude-limit-session.txt/claude/false": 84,
+    "claude-limit-session.txt/claude/true": 85,
+    "claude-limit-session.txt/codex/false": 86,
+    "claude-limit-session.txt/codex/true": 0,
+    "claude-limit-session.txt/omp/false": 0,
+    "claude-limit-session.txt/omp/true": 0,
+    "claude-limit-weekly.txt/claude/false": 87,
+    "claude-limit-weekly.txt/claude/true": 88,
+    "claude-limit-weekly.txt/codex/false": 89,
+    "claude-limit-weekly.txt/codex/true": 0,
+    "claude-limit-weekly.txt/omp/false": 0,
+    "claude-limit-weekly.txt/omp/true": 0
   },
   "values": [
     {
@@ -7089,6 +7101,186 @@
       "tag": "pane-neutral",
       "url": "/#/a/neutral",
       "badge": 1
+    },
+    {
+      "recognized": {
+        "choices": {
+          "question": null,
+          "cursor": 0,
+          "options": [
+            {
+              "label": "Continue the review",
+              "hint": null
+            },
+            {
+              "label": "\u23bf You've hit your session limit \u00b7 resets 3pm (UTC)",
+              "hint": null
+            }
+          ]
+        },
+        "menu": null,
+        "screen": null,
+        "settings": false
+      },
+      "output": {
+        "choices": null,
+        "screen": null,
+        "menu": null,
+        "usageLimit": {
+          "resets": "3pm",
+          "automatic": true,
+          "credits": true,
+          "resetLink": false
+        }
+      }
+    },
+    {
+      "recognized": {
+        "choices": null,
+        "menu": null,
+        "screen": null,
+        "settings": false
+      },
+      "output": {
+        "choices": null,
+        "screen": null,
+        "menu": null,
+        "usageLimit": {
+          "resets": "3pm",
+          "automatic": true,
+          "credits": true,
+          "resetLink": false
+        }
+      }
+    },
+    {
+      "recognized": {
+        "choices": {
+          "question": null,
+          "cursor": 0,
+          "options": [
+            {
+              "label": "Continue the review",
+              "hint": null
+            },
+            {
+              "label": "\u23bf You've hit your session limit \u00b7 resets 3pm (UTC)",
+              "hint": null
+            }
+          ]
+        },
+        "menu": null,
+        "screen": null,
+        "settings": false
+      },
+      "output": {
+        "choices": {
+          "question": null,
+          "cursor": 0,
+          "options": [
+            {
+              "label": "Continue the review",
+              "hint": null
+            },
+            {
+              "label": "\u23bf You've hit your session limit \u00b7 resets 3pm (UTC)",
+              "hint": null
+            }
+          ]
+        },
+        "screen": null,
+        "menu": null
+      }
+    },
+    {
+      "recognized": {
+        "choices": {
+          "question": null,
+          "cursor": 0,
+          "options": [
+            {
+              "label": "Continue the review",
+              "hint": null
+            },
+            {
+              "label": "\u23bf You've hit your weekly limit \u00b7 resets 11pm (UTC)",
+              "hint": null
+            }
+          ]
+        },
+        "menu": null,
+        "screen": null,
+        "settings": false
+      },
+      "output": {
+        "choices": null,
+        "screen": null,
+        "menu": null,
+        "usageLimit": {
+          "resets": "11pm",
+          "automatic": true,
+          "credits": true,
+          "resetLink": true
+        }
+      }
+    },
+    {
+      "recognized": {
+        "choices": null,
+        "menu": null,
+        "screen": null,
+        "settings": false
+      },
+      "output": {
+        "choices": null,
+        "screen": null,
+        "menu": null,
+        "usageLimit": {
+          "resets": "11pm",
+          "automatic": true,
+          "credits": true,
+          "resetLink": true
+        }
+      }
+    },
+    {
+      "recognized": {
+        "choices": {
+          "question": null,
+          "cursor": 0,
+          "options": [
+            {
+              "label": "Continue the review",
+              "hint": null
+            },
+            {
+              "label": "\u23bf You've hit your weekly limit \u00b7 resets 11pm (UTC)",
+              "hint": null
+            }
+          ]
+        },
+        "menu": null,
+        "screen": null,
+        "settings": false
+      },
+      "output": {
+        "choices": {
+          "question": null,
+          "cursor": 0,
+          "options": [
+            {
+              "label": "Continue the review",
+              "hint": null
+            },
+            {
+              "label": "\u23bf You've hit your weekly limit \u00b7 resets 11pm (UTC)",
+              "hint": null
+            }
+          ]
+        },
+        "screen": null,
+        "menu": null
+      }
     }
   ]
 }

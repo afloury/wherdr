@@ -3,6 +3,7 @@ import type { TabLayout } from './layout'
 import type { ProjectFolderKind } from './projectFolders'
 import type { CodexStatus } from './codexStatus'
 import type { MaxSessionDays } from './sessionLimit'
+import type { UsageLimit } from './usageLimit'
 import type { ScreenInteraction } from './interactiveScreen'
 
 export type AgentStatus = 'working' | 'blocked' | 'done' | 'idle' | 'unknown'
@@ -134,6 +135,8 @@ export interface Pane {
   pendingPrompt?: boolean
   queued?: QueuedMessage[]
   prompt?: Choices
+  // Live wait in this pane, independent of the account-wide quota gauges.
+  usageLimit?: UsageLimit
   // Conservative presentation of the current terminal screen, not a command.
   interaction?: ScreenInteraction
   screen?: WaitScreen

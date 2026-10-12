@@ -1,0 +1,12 @@
+❯ Continue the review
+  ⎿ You've hit your weekly limit · resets 11pm (UTC)
+    Use your limit reset to reset it now: clau.de/reset
+
+● Usage limit reached · continuing automatically at 11pm · esc to cancel
+
+────────────────────────────────────────
+❯ 
+────────────────────────────────────────
+  ⚠ Usage limit reached · limit resets 11pm
+    Continuing automatically at 11pm · esc to cancel · /usage-credits to continue now
+  ⏵⏵ auto mode on (shift+tab to cycle)

@@ -465,12 +465,12 @@ function openPlus() {
   }
   openMenu(items)
 }
-async function runSlash(cmd: string) {
+async function runSlash(cmd: string, result = true) {
   try {
     await api('/api/prompt', { pane_id: props.paneId, text: cmd })
     haptic()
   } catch (err) { return toast((err as Error).message, true) }
-  showCommandResult(props.paneId, cmd)
+  if (result) showCommandResult(props.paneId, cmd)
 }
 
 // Focus, cursor at the end (text set from outside: "Problem" of the Project
@@ -520,6 +520,7 @@ defineExpose({
         <span class="restart-text">{{ restartLabel }}</span>
       </template>
     </div>
+    <UsageLimitCard v-else-if="pane?.usageLimit" :limit="pane.usageLimit" :read-only="readOnly" :send-keys="sendKeys" @credits="runSlash('/usage-credits', false)" />
     <div v-else-if="pane?.claudeNotice" class="composer-notice" :class="{ error: noticeIsError }" role="status">
       <template v-if="updateReady">
         <span class="restart-text">{{ pane.claudeNotice.replace(/\s*·\s*Restart to update\b.*$/, '') }} ·</span>

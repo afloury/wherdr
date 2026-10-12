@@ -7,10 +7,10 @@
 // read that timed out, and that empty reading would otherwise stay for good).
 export const SCREEN_MS = 3000
 
-export interface ScreenReading { rev: unknown, strict: boolean, at: number, choices: unknown, screen: unknown, menu: unknown, interaction?: string }
+export interface ScreenReading { rev: unknown, strict: boolean, at: number, choices: unknown, screen: unknown, menu: unknown, interaction?: string, usageLimit?: unknown }
 
 export function keepReading(c: ScreenReading | undefined, rev: unknown, strict: boolean, watch: boolean, now: number): boolean {
   if (!c || c.rev !== rev || c.strict !== strict) return false
-  const live = watch || !strict || Boolean(c.choices || c.screen || c.menu || c.interaction === 'terminal')
+  const live = watch || !strict || Boolean(c.usageLimit || c.choices || c.screen || c.menu || c.interaction === 'terminal')
   return !(live && now - c.at >= SCREEN_MS)
 }
