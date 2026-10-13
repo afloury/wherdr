@@ -1,14 +1,28 @@
 // Markdown of replies: marked for rendering, DOMPurify so that nothing
 // an agent might have written gets executed. Cached by text (the
-// conversation is re-read every 1.5 s).
+// conversation is re-read every 1.5 s), within a budget (see MD_CACHE_CHARS).
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { pathCandidate } from '../../shared/filePaths'
 import { codeKind } from './codeKind'
+import { createRenderCache, createSupersedeTracker } from './renderCache'
 import { blockCommand, inlineCommand } from './shellCommand'
 
 let hooked = false
-const cache = new Map<string, string>()
+// Budget of the cache, in characters of text + HTML: about 4 MB of strings
+// (twice that if a text is not Latin-1), small for a phone tab yet above what
+// one 2 MiB page of transcript renders to, so a long conversation on screen
+// is not parsed again at every re-read.
+export const MD_CACHE_ENTRIES = 5000
+export const MD_CACHE_CHARS = 4_000_000
+const cache = createRenderCache<string>(MD_CACHE_ENTRIES, MD_CACHE_CHARS)
+export const mdCacheStats = () => cache.stats()
+// A reply still being written: each longer version replaces the previous one
+// instead of piling up. What was derived from the dropped HTML is told to go
+// too (utils/questionReply.ts, wired in ChatView.vue).
+const superseded = createSupersedeTracker()
+const dropListeners = new Set<(html: string) => void>()
+export function onMdDropped(fn: (html: string) => void) { dropListeners.add(fn) }
 
 // `plain`: Markdown from a file kept on disk (a project's memory), shown
 // outside a conversation. Its raw HTML must not restyle the app or draw
@@ -74,7 +88,10 @@ export function md(text: string, options: MdOptions = {}): string {
     html = plainNow ? DOMPurify.sanitize(parsed, PLAIN) : DOMPurify.sanitize(parsed)
   } catch { html = `<p>${escHtml(text)}</p>` }
   finally { plainNow = false }
-  cache.set(key, html)
-  if (cache.size > 5000) cache.delete(cache.keys().next().value!)
+  for (const old of superseded(key)) {
+    const gone = cache.delete(old)
+    if (gone !== undefined && gone !== html) for (const fn of dropListeners) fn(gone)
+  }
+  cache.set(key, html, key.length + html.length)
   return html
 }

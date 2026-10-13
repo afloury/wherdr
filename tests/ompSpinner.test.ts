@@ -1,6 +1,6 @@
 // omp's braille spinner and elapsed time in the conversation (t-0182).
 import { describe, expect, it } from 'vitest'
-import { OMP_SPINNER_FRAMES, OMP_SPINNER_MS, OMP_SPINNER_REST, ompElapsed, ompSpinnerGlyph } from '../app/utils/ompSpinner'
+import { OMP_SPINNER_FRAMES, OMP_SPINNER_MS, OMP_SPINNER_REST, ompElapsed, ompSpinnerDelay, ompSpinnerGlyph } from '../app/utils/ompSpinner'
 
 describe('omp spinner', () => {
   it('ten braille frames, one every 80 ms, looping', () => {
@@ -21,5 +21,11 @@ describe('omp spinner', () => {
     expect(ompElapsed(0, 125_000)).toBe('2m 5s')
     expect(ompElapsed(0, 3_780_000)).toBe('1h 3m')
     expect(ompElapsed(5000, 1000)).toBe('0s')
+  })
+  it('no timer on a hidden page; once a second for the time with reduced motion', () => {
+    expect(ompSpinnerDelay(false, true)).toBe(OMP_SPINNER_MS)
+    expect(ompSpinnerDelay(true, true)).toBe(1000)
+    expect(ompSpinnerDelay(false, false)).toBeNull()
+    expect(ompSpinnerDelay(true, false)).toBeNull()
   })
 })

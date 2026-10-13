@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Lighten an open tab: the interactive-terminal window is driven by state changes and one timeout at the end of its debounce instead of a 100 ms poll; the Markdown and question caches are capped in characters, least recently used first, and drop the earlier versions of a reply still being written; the Claude and omp spinners stop while the page is hidden and resume on the right frame and elapsed time.
+
 - Recall previous messages and slash commands with ↑/↓ in the message field, with per-agent history and draft restoration.
 
 - Make native menu arrows responsive, focus Claude settings tabs before switching, show the live Codex usage terminal with its subtitle, and dismiss stale command previews when native controls appear.

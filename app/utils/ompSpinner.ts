@@ -12,6 +12,13 @@ export function ompSpinnerGlyph(elapsed: number, reduced = false): string {
   return OMP_SPINNER_FRAMES[i]!
 }
 
+// Delay between two ticks; null: no timer at all (hidden page). With reduced
+// motion only the elapsed time moves, once a second.
+export function ompSpinnerDelay(reduced: boolean, visible: boolean): number | null {
+  if (!visible) return null
+  return reduced ? 1000 : OMP_SPINNER_MS
+}
+
 // Time since the start of the turn, written like omp: "47s", "2m 5s", "1h 3m".
 export function ompElapsed(since: number, now: number): string {
   const s = Math.max(0, Math.floor((now - since) / 1000))
