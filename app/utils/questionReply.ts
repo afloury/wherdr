@@ -13,6 +13,7 @@
 // be quoted the same way, to discuss it. How the two show is a setting
 // (ReplyStyle): the markup below is the same for every style, main.css draws it.
 import { type Reference, type TextRef, decisionRef, pointRef, isRefLine, refLine, refsIn, sameRef, tableId } from '../../shared/reference'
+import { createRenderCache } from './renderCache'
 
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim()
 // What may close a question after its "?": quotes, brackets, emphasis, spaces.
@@ -459,23 +460,36 @@ function markDecisions(root: ParentNode, labels: ReplyLabels) {
   }
 }
 
-const marked = new Map<string, string>()
+// Budgets of the two caches below, in characters (see utils/markdown.ts for
+// the reasoning): the first holds each reply's HTML twice (as key and marked),
+// the second only as key. Together with the Markdown cache: 13 MB of strings
+// at most when the text is Latin-1.
+export const MARKED_CACHE_CHARS = 6_000_000
+export const TARGETS_CACHE_CHARS = 3_000_000
+const REPLY_CACHE_ENTRIES = 2000
+const marked = createRenderCache<{ labels: string, out: string }>(REPLY_CACHE_ENTRIES, MARKED_CACHE_CHARS)
 // HTML of an agent reply with its question buttons (cached: the
-// conversation is re-read every 1.5 s).
+// conversation is re-read every 1.5 s). One entry per reply: the labels only
+// change with the language.
 export function withQuestions(html: string, labels: ReplyLabels): string {
   if (typeof document === 'undefined') return html
-  const key = `${labels.reply}\u0000${labels.discuss}\u0000${labels.yes}\u0000${labels.okAll}\u0000${html}`
-  let out = marked.get(key)
-  if (out === undefined) {
-    const tpl = document.createElement('template')
-    tpl.innerHTML = html
-    markQuestions(tpl.content, labels)
-    out = tpl.innerHTML
-    marked.set(key, out)
-    if (marked.size > 2000) marked.delete(marked.keys().next().value!)
-  }
+  const sig = `${labels.reply}\u0000${labels.discuss}\u0000${labels.yes}\u0000${labels.okAll}`
+  const hit = marked.get(html)
+  if (hit && hit.labels === sig) return hit.out
+  const tpl = document.createElement('template')
+  tpl.innerHTML = html
+  markQuestions(tpl.content, labels)
+  const out = tpl.innerHTML
+  marked.set(html, { labels: sig, out }, html.length + out.length)
   return out
 }
+// A reply's HTML that will not be shown again (a version replaced by a longer
+// one while the agent writes): nothing derived from it is kept.
+export function forgetReply(html: string) {
+  const gone = marked.delete(html)
+  targets.delete(gone ? gone.out : html)
+}
+export const replyCacheStats = () => ({ marked: marked.stats(), targets: targets.stats() })
 
 // What a reply offers to answer: its questions in order, the rows of its
 // decision tables, and for the "list" style how many
@@ -491,7 +505,7 @@ export function rowOf(el: HTMLElement): DecisionRow {
   const all = el.closest('.q-table')?.querySelector<HTMLElement>('.q-all')
   return { n: el.dataset.n || '', text: el.dataset.q || '', all: all ? { n: all.dataset.n || '', text: all.dataset.q || '' } : null, table: tableRank(el) }
 }
-const targets = new Map<string, ReplyTargets>()
+const targets = createRenderCache<ReplyTargets>(REPLY_CACHE_ENTRIES, TARGETS_CACHE_CHARS)
 export function replyTargets(html: string): ReplyTargets {
   let out = targets.get(html)
   if (!out) {
@@ -505,8 +519,7 @@ export function replyTargets(html: string): ReplyTargets {
       out.points = points.length
       out.pick = points.length > 1 || points.some(b => b.closest('li'))
     }
-    targets.set(html, out)
-    if (targets.size > 2000) targets.delete(targets.keys().next().value!)
+    targets.set(html, out, html.length)
   }
   return out
 }

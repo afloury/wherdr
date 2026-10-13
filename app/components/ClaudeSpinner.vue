@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // Claude's spinning star (utils/spinner.ts). The timer only lives while
-// the component is shown, and does not start if the system asks for reduced
-// motion (fixed "✻" glyph).
-import { spinnerGlyph, SPINNER_MS } from '~/utils/spinner'
+// the component is shown on a visible page, and does not start if the system
+// asks for reduced motion (fixed "✻" glyph). Back from a hidden page, the
+// star resumes on the frame it would have reached.
+import { spinnerDelay, spinnerGlyph } from '~/utils/spinner'
 
 const elapsed = ref(0)
 const glyph = computed(() => spinnerGlyph(elapsed.value, reducedMotion.value))
@@ -13,14 +14,18 @@ function stop() {
   if (timer) clearInterval(timer)
   timer = undefined
 }
-function run(reduced: boolean) {
+function tick() { elapsed.value = performance.now() - start }
+function run() {
   stop()
-  if (reduced) return
-  start = performance.now()
-  elapsed.value = 0
-  timer = setInterval(() => { elapsed.value = performance.now() - start }, SPINNER_MS)
+  const delay = spinnerDelay(reducedMotion.value, pageVisible.value)
+  if (delay === null) return
+  tick()
+  timer = setInterval(tick, delay)
 }
-onMounted(() => watch(reducedMotion, run, { immediate: true }))
+onMounted(() => {
+  watch(reducedMotion, () => { start = performance.now(); run() }, { immediate: true })
+  watch(pageVisible, run)
+})
 onBeforeUnmount(stop)
 </script>
 

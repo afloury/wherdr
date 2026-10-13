@@ -1,0 +1,76 @@
+import { describe, expect, it } from 'vitest'
+import { createRenderCache, createSupersedeTracker } from '../app/utils/renderCache'
+
+describe('render cache', () => {
+  it('caps the number of entries, oldest out first', () => {
+    const c = createRenderCache<string>(2, 1000)
+    c.set('a', 'A', 1)
+    c.set('b', 'B', 1)
+    c.set('c', 'C', 1)
+    expect(c.get('a')).toBeUndefined()
+    expect(c.get('b')).toBe('B')
+    expect(c.stats()).toEqual({ entries: 2, weight: 2 })
+  })
+  it('caps the weight held, whatever the number of entries', () => {
+    const c = createRenderCache<string>(100, 10)
+    c.set('a', 'A', 4)
+    c.set('b', 'B', 4)
+    c.set('c', 'C', 4)
+    expect(c.get('a')).toBeUndefined()
+    expect(c.stats()).toEqual({ entries: 2, weight: 8 })
+    c.set('d', 'D', 9)
+    expect(c.stats()).toEqual({ entries: 1, weight: 9 })
+  })
+  it('keeps what was read last', () => {
+    const c = createRenderCache<string>(2, 1000)
+    c.set('a', 'A', 1)
+    c.set('b', 'B', 1)
+    c.get('a')
+    c.set('c', 'C', 1)
+    expect(c.get('a')).toBe('A')
+    expect(c.get('b')).toBeUndefined()
+  })
+  it('does not keep an entry heavier than the whole budget', () => {
+    const c = createRenderCache<string>(10, 10)
+    c.set('a', 'A', 4)
+    c.set('big', 'B', 11)
+    expect(c.get('big')).toBeUndefined()
+    expect(c.get('a')).toBe('A')
+  })
+  it('replaces and deletes with an exact weight', () => {
+    const c = createRenderCache<string>(10, 100)
+    c.set('a', 'A', 40)
+    c.set('a', 'A2', 10)
+    expect(c.stats()).toEqual({ entries: 1, weight: 10 })
+    expect(c.delete('a')).toBe('A2')
+    expect(c.delete('a')).toBeUndefined()
+    expect(c.stats()).toEqual({ entries: 0, weight: 0 })
+  })
+})
+
+describe('versions of a text being written', () => {
+  it('a longer version replaces the one it extends', () => {
+    const seen = createSupersedeTracker()
+    expect(seen('Hello')).toEqual([])
+    expect(seen('Hello wor')).toEqual(['Hello'])
+    expect(seen('Hello world')).toEqual(['Hello wor'])
+    expect(seen('Hello world')).toEqual([])
+  })
+  it('leaves unrelated and shorter texts alone', () => {
+    const seen = createSupersedeTracker()
+    seen('Hello world')
+    expect(seen('Hello')).toEqual([])
+    expect(seen('Other')).toEqual([])
+    expect(seen('Hello world, again').sort()).toEqual(['Hello', 'Hello world'])
+  })
+  it('follows several texts at once, within its depth', () => {
+    const seen = createSupersedeTracker(2)
+    seen('a1')
+    seen('b1')
+    expect(seen('a12')).toEqual(['a1'])
+    expect(seen('b12')).toEqual(['b1'])
+    seen('c')
+    seen('d')
+    expect(seen('a123')).toEqual([])
+  })
+})

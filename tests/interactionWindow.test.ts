@@ -70,3 +70,59 @@ describe('interactive terminal episode', () => {
     expect(w.update('terminal', 1500)).toBe(true)
   })
 })
+
+describe('interactive terminal deadline', () => {
+  it('names the end of the opening debounce, then nothing', () => {
+    const w = createInteractionWindow()
+    expect(w.deadline()).toBeNull()
+    w.update('terminal', 1000)
+    expect(w.deadline()).toBe(1500)
+    expect(w.update('terminal', 1500)).toBe(true)
+    expect(w.deadline()).toBeNull()
+  })
+  it('names the end of the closing debounce while a window or a dismissal remains', () => {
+    const w = createInteractionWindow()
+    w.update('terminal', 0)
+    w.update('terminal', 500)
+    w.update('input', 1000)
+    expect(w.deadline()).toBe(1900)
+    expect(w.update('input', 1900)).toBe(false)
+    expect(w.deadline()).toBeNull()
+    w.update('terminal', 2000)
+    w.dismiss()
+    expect(w.deadline()).toBeNull()
+    w.update('input', 3000)
+    expect(w.deadline()).toBe(3900)
+    w.update('input', 3900)
+    expect(w.deadline()).toBeNull()
+  })
+  it('has none for a field at rest, work, a native card or a dismissed terminal', () => {
+    for (const kind of ['input', 'working', 'native', 'managed', 'unknown'] as const) {
+      const w = createInteractionWindow()
+      w.update(kind, 0)
+      expect(w.deadline()).toBeNull()
+    }
+  })
+  it('a single update at the deadline matches the former 100 ms polling', () => {
+    const polled = createInteractionWindow()
+    const timed = createInteractionWindow()
+    polled.update('terminal', 40)
+    timed.update('terminal', 40)
+    let opened = -1
+    for (let now = 100; now <= 700 && opened < 0; now += 100) if (polled.update('terminal', now)) opened = now
+    expect(opened).toBe(600)
+    expect(timed.update('terminal', timed.deadline()!)).toBe(true)
+    expect(timed.deadline()).toBe(null)
+  })
+  it('tells its subscribers of a dismissal or a reopening, until they leave', () => {
+    const w = createInteractionWindow()
+    let calls = 0
+    const leave = w.subscribe(() => { calls++ })
+    w.reopen()
+    w.dismiss()
+    expect(calls).toBe(2)
+    leave()
+    w.reopen()
+    expect(calls).toBe(2)
+  })
+})

@@ -250,16 +250,28 @@ const interactionWindow = interactionWindowFor(props.paneId)
 const interactionOpen = ref(interactionWindow.resume(pane.value?.interaction || 'unknown'))
 const interactionAvailable = computed(() => mode.value === 'chat' && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value))
 const interactive = computed(() => pane.value?.interaction === 'terminal')
+// No polling: the window only changes with an observation (watchers below) or
+// when a debounce ends, which gets a single timeout. A hidden page arms none
+// and catches up when it comes back.
+let interactionTimer: ReturnType<typeof setTimeout> | undefined
 function syncInteraction() {
-  interactionOpen.value = interactionWindow.update(pane.value?.interaction || 'unknown', Date.now())
+  clearTimeout(interactionTimer)
+  interactionTimer = undefined
+  const now = Date.now()
+  interactionOpen.value = interactionWindow.update(pane.value?.interaction || 'unknown', now)
+  const due = interactionWindow.deadline()
+  if (due !== null && pageVisible.value) interactionTimer = setTimeout(syncInteraction, Math.max(0, due - now))
   // A late native card owns the interaction too: an earlier text snapshot
   // must never cover its controls or swallow its keyboard shortcuts.
   if ((interactive.value || interactionOpen.value || prompt.value || menu.value || screen.value)
     && commandResult.open && commandResult.pane === props.paneId) closeCommandResult(false)
 }
-watch(() => pane.value?.interaction, syncInteraction, { immediate: true })
-const interactionTimer = setInterval(syncInteraction, 100)
-onUnmounted(() => clearInterval(interactionTimer))
+watch([() => pane.value?.interaction, prompt, menu, screen, () => commandResult.open, () => commandResult.pane, pageVisible], syncInteraction, { immediate: true })
+const unsubscribeInteraction = interactionWindow.subscribe(syncInteraction)
+onUnmounted(() => {
+  clearTimeout(interactionTimer)
+  unsubscribeInteraction()
+})
 function closeInteraction() { interactionWindow.dismiss(); interactionOpen.value = false }
 function reopenInteraction() {
   if (props.cell) emit('activate')

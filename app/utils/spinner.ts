@@ -14,3 +14,9 @@ export function spinnerGlyph(elapsed: number, reduced = false): string {
   const i = Math.floor(Math.max(0, elapsed) / SPINNER_MS) % SPINNER_FRAMES.length
   return SPINNER_FRAMES[i]!
 }
+
+// Delay between two frames; null: no timer at all (reduced motion keeps the
+// fixed glyph, a hidden page draws nothing).
+export function spinnerDelay(reduced: boolean, visible: boolean): number | null {
+  return reduced || !visible ? null : SPINNER_MS
+}

@@ -11,7 +11,7 @@ import { canCancelQueued, lostPhotosText, restoreDraft } from '~/utils/queuedCan
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
-import { addAnswer, addQuote, answerOf, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
+import { addAnswer, addQuote, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -24,6 +24,8 @@ import { duplicateImages } from '#shared/imageDupes'
 import { stripPosition } from '#shared/filePaths'
 
 const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
+// A version of a reply replaced while the agent writes takes its question marks with it.
+onMdDropped(forgetReply)
 const route = useRoute()
 const emit = defineEmits<{ gotoTerm: [], restored: [], quote: [], unanswered: [count: number], sent: [queued: QueuedMessage | null] }>()
 const searchOpen = defineModel<boolean>('search', { default: false })

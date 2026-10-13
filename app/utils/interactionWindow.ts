@@ -7,6 +7,8 @@ export function createInteractionWindow() {
   let since = 0
   let open = false
   let dismissed = false
+  const listeners = new Set<() => void>()
+  const changed = () => { for (const fn of [...listeners]) fn() }
   return {
     // Re-entry with a field already observed: never mount a stale terminal.
     resume(next: ScreenInteraction) {
@@ -25,8 +27,21 @@ export function createInteractionWindow() {
       if (next === 'terminal' && now - since >= 500 && !dismissed) open = true
       return open
     },
-    dismiss() { dismissed = true; open = false },
-    reopen() { dismissed = false; open = true },
+    // When `update` would next answer differently with nothing new observed
+    // (the end of a debounce); null: only a new observation can change it.
+    deadline(): number | null {
+      if (kind === 'terminal' && !open && !dismissed) return since + 500
+      if (kind === 'input' && (open || dismissed)) return since + 900
+      return null
+    },
+    dismiss() { dismissed = true; open = false; changed() },
+    reopen() { dismissed = false; open = true; changed() },
+    // Told of a manual dismissal or reopening, wherever it comes from (a card
+    // of the list reopens the window of a view already shown).
+    subscribe(fn: () => void) {
+      listeners.add(fn)
+      return () => { listeners.delete(fn) }
+    },
   }
 }
 
