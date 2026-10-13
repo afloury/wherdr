@@ -1,0 +1,31 @@
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Settings  Status  [7m Config [0m  Usage   Stats
+
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ⌕ Search settings…                                                                                               │
+  ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+    ↑ 17 more
+    Use auto mode during plan                   true
+    Respect .gitignore in file picker           true
+    Skip the /copy picker                       false
+    Open agents view by default                 false
+    ← opens agents                              true
+    Auto-update channel                         latest ›
+    Theme                                       Dark mode ›
+    Local notifications                         Auto
+    Output style                                default ›
+    Language                                    Default (English) ›
+    Editor mode                                 normal
+    Question auto-continue timeout              never
+    Show last response in external editor       false
+    Show PR status footer                       true
+    Model                                       Default (recommended) ›
+    Auto-connect to IDE (external terminal)     false
+    Claude in Chrome enabled by default         false
+    Dialog expiry                               default
+  ❯ Messages from your other sessions           default ›
+    Project instructions · cc-plugin-agents-md  claude-md-or-agents-md ›
+
+  Enter/Space to change · / to search · Esc to close

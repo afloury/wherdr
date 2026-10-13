@@ -1,0 +1,15 @@
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Settings [7m Status [0m  Config   Usage   Stats
+
+  Version:           2.1.296
+  Session name: Demo
+  Session ID:        00000000-0000-4000-8000-000000000000
+  Session kind:      interactive
+  cwd:               /tmp/demo
+  Auth token:        none
+
+  Model:             Default (claude-opus-5-5)
+  Setting sources:
+  Auto mode server:  Enabled
+
+  Esc to cancel

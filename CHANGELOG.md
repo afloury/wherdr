@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Fix Claude Config tab clicks using the real focus legend, verify each tab transition, and report failed switches.
+
 - Recall previous messages and slash commands with ↑/↓ in the message field, with per-agent history and draft restoration.
 
 - Make native menu arrows responsive, focus Claude settings tabs before switching, show the live Codex usage terminal with its subtitle, and dismiss stale command previews when native controls appear.

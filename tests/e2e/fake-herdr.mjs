@@ -184,7 +184,9 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
         p.sentKeys ||= []
         p.sentKeys.push(...(params.keys || []))
         for (const key of params.keys || []) {
-          if (p.screenTransitions?.[key]) p.customScreen = p.screenTransitions[key]
+          const next = p.screenTransitions?.[key]
+          if (typeof next === 'string') p.customScreen = next
+          else if (next) { p.customScreen = next.text; p.screenTransitions = next.transitions || null }
         }
         if ((params.keys || []).includes('esc')) p.customScreen = '› Ask Codex to do anything\n\n  GPT-6-Sol medium · demo'
       }

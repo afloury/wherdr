@@ -99,13 +99,14 @@ export async function showCommandResult(pane: string, cmd: string, builtin = tru
 
 // Reads the screen and extracts the result; re-reads while the panel loads
 // ("Loading…": the /usage gauges arrive after a moment).
-async function readCommandResult(pane: string, cmd: string, tries = 5, seq = resultSeq) {
+async function readCommandResult(pane: string, cmd: string, tries = 5, seq = resultSeq, expectedTab?: string) {
   const current = () => seq === resultSeq && commandResult.pane === pane && commandResult.cmd === cmd
     && (commandResult.open || commandResult.text === null)
   for (let i = 0; i < tries && current(); i++) {
     try {
       const { text, tabs, tab, interaction } = await api<{ text: string, tabs: string[] | null, tab: string | null, interaction?: ScreenInteraction }>(`/api/screen?pane=${encodeURIComponent(pane)}`)
       if (!current()) return
+      if (expectedTab && tab !== expectedTab) throw new Error(t('Could not switch settings tabs. Open the terminal and try again.'))
       // Interactive menu (/resume, /model…): not an output, it is driven in the conversation.
       // Skill, custom command, /compact…: the agent is working, the
       // conversation shows it; Escape would interrupt it.
@@ -140,17 +141,19 @@ export async function switchCommandTab(target: string) {
   const pane = commandResult.pane
   const from = commandResult.tabs.indexOf(commandResult.tab || '')
   const to = commandResult.tabs.indexOf(target)
-  if (!pane || from < 0 || to < 0 || from === to) return
-  commandResult.tab = target
+  if (!pane || from < 0 || to < 0) return
+  const seq = resultSeq
   commandResult.text = null
   try {
     await api('/api/settings-tab', { pane_id: pane, target })
+    if (seq !== resultSeq || commandResult.pane !== pane || !commandResult.open) return
   } catch (err) {
+    if (seq !== resultSeq || commandResult.pane !== pane || !commandResult.open) return
     commandResult.text = (err as Error).message
     return
   }
   await new Promise(r => setTimeout(r, 900))
-  await readCommandResult(pane, commandResult.cmd, 8)
+  await readCommandResult(pane, commandResult.cmd, 8, seq, target)
 }
 // When closing the result, we also close the panel on the agent side (/usage…),
 // otherwise it stays open and swallows the following messages.
