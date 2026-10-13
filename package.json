@@ -60,6 +60,7 @@
     "@types/node": "^22.0.0",
     "@types/web-push": "^3.6.4",
     "@vite-pwa/nuxt": "^1.1.1",
+    "@vue/reactivity": "^3.5.43",
     "@vue/test-utils": "^2.5.1",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-webgl": "^0.18.0",
