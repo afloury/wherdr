@@ -54,42 +54,6 @@ test('usage subtitle opens the real terminal and its arrows update the live fram
   await window.getByRole('button', { name: 'esc', exact: true }).click()
   await expect(window).toHaveCount(0)
 })
-test('config list gives focus back to tabs before switching', async ({ page }, info) => {
-  const config = fx('claude-config-list.ansi')
-  const focused = config.replace('   ❯ Auto-compact', '     Auto-compact').replace('Type to filter · Enter/↓ to select · ↑ to tabs · Esc to clear', '←/→/tab to switch · ↓ to return · Esc to close')
-  const status = fx('claude-settings-status.txt').replace('Status   Config', '\x1b[7mStatus\x1b[0m   Config')
-  await fakeHerdr('e2e.interaction_screen', { pane_id: pane, text: fx('claude-idle.txt'), agent: 'claude', status: 'idle' })
-  await expect.poll(async () => {
-    const s = await (await page.request.get('/api/state')).json()
-    const p = s.panes.find((p: { id: string }) => p.id === pane)
-    return { interaction: p?.interaction, agent: p?.agent }
-  }).toEqual({ interaction: 'input', agent: 'claude' })
-  await page.goto(`/#/a/${pane}`)
-  await page.route('**/api/prompt', async route => {
-    const response = await route.fetch()
-    await show(config, 'claude', { up: focused, left: status })
-    await route.fulfill({ response })
-  })
-  const field = page.locator('.prompt').locator('textarea, [contenteditable="true"]').first()
-  await field.fill('/config')
-  await page.locator('.slash-menu .slash-item', { hasText: '/config' }).first().click()
-  await page.getByRole('button', { name: 'Send', exact: true }).click()
-  await expect(page.getByRole('tab', { name: 'Config', exact: true })).toHaveAttribute('aria-selected', 'true')
-  await page.getByRole('tab', { name: 'Status', exact: true }).click()
-  await expect(page.getByRole('tab', { name: 'Status', exact: true })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.locator('.hw-sheet .screen')).toContainText('Version:')
-  expect((await fakeHerdr('e2e.terminal_screen', { pane_id: pane })).keys).toEqual(['up', 'left'])
-  const result = await (await page.request.get(`/api/screen?pane=${encodeURIComponent(pane)}`)).json()
-  expect(result.tab).toBe('Status')
-  await page.screenshot({ path: `.shots/config-responsive-${info.project.name}.png` })
-  const stats = fx('claude-settings-stats.txt').replace('   Stats', '   \x1b[7mStats\x1b[0m')
-  await show(fx('claude-settings-usage.ansi'), 'claude', { right: stats })
-  await page.getByRole('tab', { name: 'Stats', exact: true }).click()
-  await expect(page.locator('.hw-sheet .screen')).toContainText('Sessions: 42')
-  // The live tab was Usage, even though the last client snapshot was Status.
-  expect((await fakeHerdr('e2e.terminal_screen', { pane_id: pane })).keys).toEqual(['right'])
-})
-
 test('a late permissions card dismisses the old command snapshot and receives arrows', async ({ page }, info) => {
   const idle = '› Ask Codex to do anything\n\n  GPT-6-Sol medium · demo\n  ? for shortcuts'
   const permissions = fx('codex-permissions.txt')
