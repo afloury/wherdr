@@ -260,6 +260,8 @@ const FR: Record<string, string> = {
   'Invalid pane': 'pane invalide', 'Pane not found': 'pane introuvable',
   'The question has changed — check the current screen.': 'La question a changé entre-temps — regarde l’écran à jour.',
   'Settings are no longer open.': 'Les réglages ne sont plus ouverts.',
+  'Settings tab change already in progress.': 'Un changement d’onglet est déjà en cours.',
+  'Could not switch settings tabs. Open the terminal and try again.': 'Impossible de changer d’onglet. Ouvre le terminal et réessaie.',
   'Settings have changed.': 'Les réglages ont changé.',
   'Use the terminal to focus the settings tabs.': 'Utilise le terminal pour revenir aux onglets des réglages.',
   'The screen has changed — check the current screen.': 'L’écran a changé entre-temps — regarde l’écran à jour.',

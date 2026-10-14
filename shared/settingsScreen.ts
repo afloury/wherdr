@@ -36,3 +36,16 @@ export function isKeyLegend(line: string): boolean {
   const segs = line.trim().split(/\s+·\s+/)
   return segs[0] !== '' && segs.every(s => KEY_SEG.test(s))
 }
+
+// Config keeps its ❯ row marker even when its tab bar has focus. Only the
+// keyboard legend distinguishes the filter, setting list and tab bar.
+export function settingsFocus(text: string): 'tabs' | 'filter' | 'list' | null {
+  const rows = text.split('\n')
+  const index = settingsRowIndex(rows)
+  if (index < 0) return null
+  const lines = rows.slice(index + 1).map(l => l.trim())
+  if (lines.some(l => /^←\/→\/tab to switch · ↓ to return · Esc to close$/.test(l))) return 'tabs'
+  if (lines.some(l => /^Type to filter · Enter\/↓ to select · ↑ to tabs · Esc to clear$/.test(l))) return 'filter'
+  if (lines.some(l => /^(?:Enter\/Space to change · )?\/ to search · Esc to close$/.test(l))) return 'list'
+  return null
+}

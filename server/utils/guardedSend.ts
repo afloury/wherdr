@@ -31,6 +31,13 @@
 // would interrupt a turn), the field must read empty, then it is typed.
 // Text the field shows in a way we cannot split exactly (a foreign paste
 // shown as "[Pasted text #2]"…) is never cleared: sent as it is, logged.
+// Claude Code reads "\" followed by Enter as a line break, not as a submit:
+// the backslash goes, the cursor moves to a new line and the message stays in
+// the field. A message that ends with "\" (a Windows path, a regex, a slip of
+// the finger next to Enter) is therefore typed with one space after it: Enter
+// then submits, and Claude drops that space, so the message is recorded with
+// its backslashes intact (checked on Claude Code 2.1.296; Codex 0.162 and omp
+// submit such a message as it is).
 import { HerdrError } from './herdr'
 import { clearKeys } from './unqueue'
 
@@ -81,6 +88,8 @@ const compact = (s: string) => s.replace(/\s+/g, '')
 export const BASH_EMPTY = '!'
 const isFree = (box: string) => !box || box === BASH_EMPTY
 const tidy = (s: string) => s.replace(/\s+/g, ' ').trim()
+// What to type so that Enter submits `text` (see the header).
+export const submittable = (text: string) => (text.endsWith('\\') ? `${text} ` : text)
 
 export type BoxState =
   | { kind: 'empty' }
@@ -219,7 +228,7 @@ async function sendOne(d: GuardDeps, text: string, o: Required<GuardOptions>, fo
   }
   field = await waitFree(d, o)
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    await d.type(await bashReady(d, o, text, field))
+    await d.type(submittable(await bashReady(d, o, text, field)))
     // 1. Our text shown, alone.
     let state: BoxState = { kind: 'empty' }
     let box: string | null = ''
@@ -261,6 +270,9 @@ async function sendOne(d: GuardDeps, text: string, o: Required<GuardOptions>, fo
         after = state.kind === 'unknown' ? { kind: 'unknown' } : classifyBox(box, text)
         // Our text joined by another's before Claude took it.
         if (after.kind === 'glued') break
+        // Only a part of our text is left: Enter changed the field instead of
+        // submitting it (a line break…). Not taken, and reported as such.
+        if (after.kind === 'partial') continue
         // Replaced by other text: ours was taken, another writer typed since.
         return
       }
