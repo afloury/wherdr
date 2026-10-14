@@ -62,9 +62,9 @@ onMounted(() => {
   start({ resume: true })
   // First launch: the setup guide, until finished or skipped (saved by the server).
   watch(locked, (l) => { if (!l) checkOnboarding() }, { immediate: true })
-  // Local lease over: ask the server (which slides an active session) rather
-  // than locking on the browser's own clock. Only the sliding lease counts here:
-  // the maximum duration never locks the app while it is open.
+  // Local lease over: ask the server rather than locking on the browser's own
+  // clock. Only the lease counts here: the deadline never locks the app while
+  // it is open.
   leaseTimer = setInterval(() => {
     const access = readOfflineAccess()
     if (access?.enabled && !mayReadOffline({ enabled: true, expiresAt: access.expiresAt }) && !locked.value) start()

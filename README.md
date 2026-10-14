@@ -1372,16 +1372,13 @@ container talks to the Herdr server running on the host.
   allowed"); add it to `HERDR_WEB_ALLOWED_HOSTS`, then restart wherdr. This host check also
   applies to WebSockets.
 - **Passkey lock** (Settings → Security, recommended): once a passkey is registered, the API,
-  images, photos and WebSockets require an unlocked session (signed HttpOnly cookie). Two limits
-  apply:
-  - **12 hours without use**: the session slides, so the app only locks again after 12 hours
-    without any request (or when you lock it from Settings).
-  - **Maximum duration** since the last passkey unlock, set in Settings → Security for every
-    device: 1 day, 7 days (default), 30 days, 90 days or 1 year. The unlock time is signed in the
-    cookie and the slide never moves it. Past it, the device asks for the passkey again at the
-    next opening of the app (launch, reload, or back in the foreground), never in the middle of
-    use; the app warns in the last hours. A client that never reopens is cut 12 hours after the
-    deadline. A shorter duration applies to the sessions already open.
+  images, photos and WebSockets require an unlocked session (signed HttpOnly cookie). One rule
+  applies: the duration set in Settings → Security for every device, counted from the last
+  passkey unlock, used or not in between: 1 day, 7 days (default), 30 days, 90 days or 1 year.
+  There is no idle lock. Past it, the device asks for the passkey again at the next opening of
+  the app (launch, reload, or back in the foreground), never in the middle of use; the app warns
+  in the last hours. A client that never reopens is cut 12 hours after the deadline. A changed
+  duration applies to the sessions already open.
 
   A network error or a server restart never locks the app. **Lock all devices** (Settings →
   Security, for a lost or stolen device) ends every session, this one included, and keeps the

@@ -56,7 +56,7 @@ const features = [
   { icon: 'i-lucide-git-branch', title: 'New agent, new worktree', text: 'Pick an agent, a folder, optionally a Git worktree and branch, and queue the first message.' },
   { icon: 'i-lucide-file-diff', title: 'Changes view', text: 'Git status and diff of an agent\'s working folder, worktree management.' },
   { icon: 'i-lucide-keyboard', title: 'Keyboard first', text: 'Global search, next agent, new tab, pane swaps, 1–9 to answer. Everything without the mouse.' },
-  { icon: 'i-lucide-fingerprint', title: 'Passkey lock', text: 'Face ID, Touch ID, Windows Hello, Android. Sessions slide, devices can be locked remotely.' },
+  { icon: 'i-lucide-fingerprint', title: 'Passkey lock', text: 'Face ID, Touch ID, Windows Hello, Android. Unlock lasts as long as you choose, devices can be locked remotely.' },
   { icon: 'i-lucide-palette', title: 'Themes, compact list', text: 'wherdr Titanium, herdr.dev, Herdr\'s own themes or follow Herdr. English and French.' },
   { icon: 'i-lucide-puzzle', title: 'Herdr plugins', text: 'Actions declared by your installed Herdr plugins show up in the menus.' },
 ]

@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Passkey lock: the duration chosen in Settings → Security is now the only rule. The passkey is asked again at the first opening after the last unlock plus that duration, used or not in between; the 12-hour idle lock is gone. Open sessions move to the new rule without a new unlock, and a changed duration applies to them right away (a session in use is not cut on the spot).
 - Fix Claude Config tab clicks using the real focus legend, verify each tab transition, and report failed switches.
 - Lighten an open tab: the interactive-terminal window is driven by state changes and one timeout at the end of its debounce instead of a 100 ms poll; the Markdown and question caches are capped in characters, least recently used first, and drop the earlier versions of a reply still being written; the Claude and omp spinners stop while the page is hidden and resume on the right frame and elapsed time.
 

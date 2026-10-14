@@ -1,15 +1,19 @@
 // Passkey lock (WebAuthn: Face ID on iPhone, Touch ID on
 // Mac). As long as no key is registered, the app stays open (the tailnet
 // is the only door). From the first one on, all access to agents requires an
-// unlocked session: signed cookie, valid for 12 h after the last use (sliding:
-// an authenticated request more than RENEW_MS after the cookie was issued
-// gets a fresh 12 h cookie). Only 12 h without any request locks the app.
+// unlocked session: a signed cookie carrying the time of the passkey unlock
+// ("since").
 //
-// The cookie also carries the time of the passkey unlock ("since"), which the
-// slide never moves. Past since + the maximum duration set in Settings, the
-// session ends when the app opens or comes back to the foreground (status
-// with `resume`), never in the middle of use; a client that never reopens is
-// cut SESSION_MS later at the latest.
+// The duration set in Settings is the only rule: past since + that duration,
+// the session ends when the app opens or comes back to the foreground (status
+// with `resume`), never in the middle of use, however long the device stayed
+// unused. A client that never reopens is cut OVERRUN_MS after the deadline
+// (or after a change that moved the deadline into the past).
+//
+// The cookie lives as long as the longest duration offered, so lengthening the
+// setting also keeps devices that were not used in the meantime; the server
+// alone decides with the current setting. Cookies issued by earlier versions
+// (12 h sliding) are re-issued at the next request, keeping their unlock time.
 //
 // data/auth.json: signing secret, registered keys (public key +
 // counter), generation number (incremented when disabling or locking every
@@ -24,11 +28,12 @@ import {
 } from '@simplewebauthn/server'
 import type { AuthenticatorTransportFuture } from '@simplewebauthn/server'
 import type { AuthStatus } from '../../shared/types'
-import { DAY_MS, DEFAULT_MAX_SESSION_DAYS, isMaxSessionDays, type MaxSessionDays } from '../../shared/sessionLimit'
+import { DAY_MS, DEFAULT_MAX_SESSION_DAYS, isMaxSessionDays, MAX_SESSION_DAYS, OVERRUN_MS, type MaxSessionDays } from '../../shared/sessionLimit'
 
-const SESSION_MS = 12 * 3600 * 1000
-// Minimum age of a session cookie before it is re-issued (limits Set-Cookie churn).
-const RENEW_MS = 10 * 60 * 1000
+// Browser lifetime of a session cookie, counted from the passkey unlock.
+const COOKIE_MS = Math.max(...MAX_SESSION_DAYS) * DAY_MS + OVERRUN_MS
+// Earlier versions: 12 h sliding cookies (exp = last renewal + 12 h).
+const LEGACY_SLIDE_MS = 12 * 3600 * 1000
 const CHALLENGE_MS = 5 * 60 * 1000
 export const AUTH_COOKIE = 'hw_session'
 const CHALLENGE_COOKIE = 'hw_challenge'
@@ -45,7 +50,9 @@ interface Credential {
   createdAt: string
   lastUsed?: string
 }
-interface AuthDb { secret: string | null, generation: number, credentials: Credential[], maxSessionDays?: MaxSessionDays }
+// maxSessionChangedAt: when the duration was last changed (a shorter one does not
+// cut a session in use before OVERRUN_MS has passed).
+interface AuthDb { secret: string | null, generation: number, credentials: Credential[], maxSessionDays?: MaxSessionDays, maxSessionChangedAt?: number }
 
 export class AuthError extends Error {
   code: string
@@ -101,8 +108,12 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   }
 
   const maxSessionMs = () => (db.maxSessionDays ?? DEFAULT_MAX_SESSION_DAYS) * DAY_MS
-  // A valid session cookie (expiry, passkey unlock time), or null. Cookies from
-  // before the unlock time was recorded (exp.gen.mac) count from their issue.
+  // Backstop for clients that never reopen: the deadline plus OVERRUN_MS, and
+  // never sooner than OVERRUN_MS after the duration was last changed.
+  const cutAt = (since: number) => Math.max(since + maxSessionMs(), db.maxSessionChangedAt ?? 0) + OVERRUN_MS
+  // A valid session cookie (cookie expiry, passkey unlock time), or null.
+  // Cookies from before the unlock time was recorded (exp.gen.mac) count from
+  // their last renewal.
   function session(req: ReqLike, now = Date.now()): { exp: number, since: number } | null {
     const v = readCookie(req)
     if (!v) return null
@@ -111,10 +122,9 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
     const mac = parts.pop()!
     if (!mac || parts[1] !== String(db.generation) || !safeEq(mac, sign(parts.join('.')))) return null
     const exp = Number(parts[0])
-    const since = parts.length === 3 ? Number(parts[2]) : exp - SESSION_MS
+    const since = parts.length === 3 ? Number(parts[2]) : exp - LEGACY_SLIDE_MS
     if (!(exp >= now) || !Number.isFinite(since)) return null
-    // Backstop for clients that never reopen: the deadline plus one idle period.
-    if (now > since + maxSessionMs() + SESSION_MS) return null
+    if (now > cutAt(since)) return null
     return { exp, since }
   }
   function isUnlocked(req: ReqLike): boolean {
@@ -128,20 +138,19 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
     ? '; Secure'
     : '')
   function sessionCookie(req: ReqLike, now = Date.now(), since = now) {
-    const exp = now + SESSION_MS
+    const exp = since + COOKIE_MS
     const payload = `${exp}.${db.generation}.${since}`
-    return `${AUTH_COOKIE}=${payload}.${sign(payload)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_MS / 1000}${secure(req)}`
+    return `${AUTH_COOKIE}=${payload}.${sign(payload)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.max(0, Math.floor((exp - now) / 1000))}${secure(req)}`
   }
   const clearCookie = (req: ReqLike) => `${AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure(req)}`
 
-  // Sliding session: a valid cookie issued more than RENEW_MS ago is replaced
-  // by a fresh one, keeping its unlock time. Returns the Set-Cookie value and
-  // the new expiry, or null.
-  function renew(req: ReqLike, now = Date.now()): { cookie: string, expiresAt: number } | null {
+  // A valid cookie issued by an earlier version (12 h sliding) is replaced by
+  // a long one keeping its unlock time. Returns the Set-Cookie value, or null.
+  function renew(req: ReqLike, now = Date.now()): { cookie: string } | null {
     if (!enabled()) return null
     const s = session(req, now)
-    if (s === null || s.exp - now > SESSION_MS - RENEW_MS) return null
-    return { cookie: sessionCookie(req, now, s.since), expiresAt: now + SESSION_MS }
+    if (s === null || s.exp >= s.since + COOKIE_MS) return null
+    return { cookie: sessionCookie(req, now, s.since) }
   }
 
   // Relying party (rpID) = the page's host name (e.g. <host>.ts.net).
@@ -247,16 +256,18 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
     return { ok: true, __cookie: clearCookie(req) }
   }
 
-  function setMaxSession(req: ReqLike, days: unknown) {
+  function setMaxSession(req: ReqLike, days: unknown, now = Date.now()) {
     if (!enabled() || !isUnlocked(req)) throw new AuthError('locked', 'Unlock first')
     if (!isMaxSessionDays(days)) throw new AuthError('invalid', 'Invalid duration')
+    if (days !== (db.maxSessionDays ?? DEFAULT_MAX_SESSION_DAYS)) db.maxSessionChangedAt = now
     db.maxSessionDays = days
     save()
     return { ok: true, maxSessionDays: days }
   }
 
   // Lock state; `resume` = the app opens or comes back to the foreground: a
-  // session past its maximum duration ends here. Also slides the session.
+  // session past its maximum duration ends here. expiresAt: when the server
+  // cuts a client that never reopens.
   function status(req: ReqLike, { resume = false, now = Date.now() } = {}): AuthStatus & { __cookie?: string } {
     const devices = db.credentials.map(c => ({ name: c.name, createdAt: c.createdAt, lastUsed: c.lastUsed || null }))
     if (!enabled()) return { enabled: false, unlocked: true, devices }
@@ -267,7 +278,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
     }
     const renewed = renew(req, now)
     return {
-      enabled: true, unlocked: true, expiresAt: renewed?.expiresAt ?? s.exp, deadline, now,
+      enabled: true, unlocked: true, expiresAt: cutAt(s.since), deadline, now,
       maxSessionDays: db.maxSessionDays ?? DEFAULT_MAX_SESSION_DAYS, devices,
       ...(renewed ? { __cookie: renewed.cookie } : {}),
     }

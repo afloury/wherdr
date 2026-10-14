@@ -89,7 +89,7 @@ onMounted(() => {
       <button type="button" class="settings-action" @click="lockNow"><UIcon name="i-lucide-lock" />{{ t('Lock now') }}</button>
       <button type="button" class="settings-action danger" @click="lockAllDevices"><UIcon name="i-lucide-shield-alert" />{{ t('Lock all devices') }}</button>
       <button type="button" class="settings-action danger" @click="disableLock"><UIcon name="i-lucide-lock-open" />{{ t('Turn off lock') }}</button>
-      <p class="muted">{{ hostLabel ? tl(`The app locks after 12 h without use. Lost or stolen device: Lock all devices. Lost key: delete data/auth.json on ${hostLabel}.`, `L’app se verrouille après 12 h sans utilisation. Appareil perdu ou volé : Verrouiller tous les appareils. Clé perdue : supprimer data/auth.json sur ${hostLabel}.`) : tl('The app locks after 12 h without use. Lost or stolen device: Lock all devices. Lost key: delete data/auth.json on the server.', 'L’app se verrouille après 12 h sans utilisation. Appareil perdu ou volé : Verrouiller tous les appareils. Clé perdue : supprimer data/auth.json sur le serveur.') }}</p>
+      <p class="muted">{{ hostLabel ? tl(`Lost or stolen device: Lock all devices. Lost key: delete data/auth.json on ${hostLabel}.`, `Appareil perdu ou volé : Verrouiller tous les appareils. Clé perdue : supprimer data/auth.json sur ${hostLabel}.`) : tl('Lost or stolen device: Lock all devices. Lost key: delete data/auth.json on the server.', 'Appareil perdu ou volé : Verrouiller tous les appareils. Clé perdue : supprimer data/auth.json sur le serveur.') }}</p>
     </template>
   </div>
 </template>

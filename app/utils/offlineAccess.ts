@@ -1,11 +1,16 @@
 // The server stays the authority. This marker only serves to hide the cache when
 // the server is absent; no private content is stored in it.
-// expiresAt: end of the sliding session; deadline: end of the maximum duration
-// since the passkey unlock (past it, the cache stays closed until unlocked again).
+// expiresAt: when the server cuts the session at the latest; deadline: end of
+// the duration since the passkey unlock (past it, the cache stays closed until
+// unlocked again).
+import { DAY_MS, MAX_SESSION_DAYS, OVERRUN_MS } from '../../shared/sessionLimit'
+
 export interface OfflineAccess { enabled: boolean, expiresAt: number, deadline?: number }
 export const ACCESS_KEY = 'wherdr-offline-access'
+// No session lasts longer: a lease further ahead is not one the server gave.
+const LONGEST_MS = Math.max(...MAX_SESSION_DAYS) * DAY_MS + OVERRUN_MS
 export function mayReadOffline(access: OfflineAccess | null, now = Date.now()): boolean {
-  return Boolean(access && (!access.enabled || (access.expiresAt > now && access.expiresAt <= now + 12 * 3600 * 1000
+  return Boolean(access && (!access.enabled || (access.expiresAt > now && access.expiresAt <= now + LONGEST_MS
     && (access.deadline === undefined || access.deadline > now))))
 }
 // Lease from /api/auth/status, on the client's clock: the server's times are

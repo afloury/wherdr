@@ -33,12 +33,15 @@ describe('cache hors ligne', () => {
       .toEqual(['abcd1234~w1:p1', 'w1:p1'])
   })
 
-  it('expires reading after 12 h and refuses a missing deadline', () => {
+  it('expires reading with the lease and refuses a missing or implausible one', () => {
     const now = 10_000
     expect(mayReadOffline({ enabled: true, expiresAt: now + 1 }, now)).toBe(true)
     expect(mayReadOffline({ enabled: true, expiresAt: now }, now)).toBe(false)
     expect(mayReadOffline({ enabled: true, expiresAt: 0 }, now)).toBe(false)
     expect(mayReadOffline(null, now)).toBe(false)
+    // A long session (1 year) reads offline; a lease beyond any duration offered does not.
+    expect(mayReadOffline({ enabled: true, expiresAt: now + 365 * 24 * 3600 * 1000 }, now)).toBe(true)
+    expect(mayReadOffline({ enabled: true, expiresAt: now + 400 * 24 * 3600 * 1000 }, now)).toBe(false)
   })
 
   it('puts the lease on the client clock so a lagging browser clock keeps a fresh lease', () => {
@@ -47,8 +50,6 @@ describe('cache hors ligne', () => {
     const lease = leaseFromStatus({ enabled: true, expiresAt: server + 12 * 3600 * 1000, now: server }, client)
     expect(lease).toEqual({ enabled: true, expiresAt: client + 12 * 3600 * 1000 })
     expect(mayReadOffline(lease, client)).toBe(true)
-    // The raw server deadline would have been refused (more than 12 h ahead).
-    expect(mayReadOffline({ enabled: true, expiresAt: server + 12 * 3600 * 1000 }, client)).toBe(false)
     expect(leaseFromStatus({ enabled: true, expiresAt: null, now: server }, client)).toEqual({ enabled: true, expiresAt: 0 })
     expect(leaseFromStatus({ enabled: false }, client)).toEqual({ enabled: false, expiresAt: 0 })
   })

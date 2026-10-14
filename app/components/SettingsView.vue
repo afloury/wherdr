@@ -499,7 +499,7 @@ onMounted(() => {
           <div v-if="sec?.enabled" class="settings-group">
             <h3>{{ t('Ask for the passkey again after') }}</h3>
             <URadioGroup v-model="maxSession" :items="maxSessionItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
-            <p class="muted settings-hint">{{ t('Counted from the last passkey unlock, for every device. Never in the middle of use: at the next opening of the app.') }}</p>
+            <p class="muted settings-hint">{{ t('Counted from the last passkey unlock, used or not, for every device. Never in the middle of use: at the next opening of the app.') }}</p>
             <p v-if="deadlineText" class="muted settings-hint">{{ deadlineText }}</p>
           </div>
         </div>

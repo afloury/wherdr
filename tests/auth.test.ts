@@ -35,10 +35,10 @@ describe('auth', () => {
     withKey(a)
     expect(a.isUnlocked(req())).toBe(false)
     const c = a._sessionCookie(req())
-    expect(c).toMatch(/^hw_session=\d+\.0\.\d+\.[\w-]+; Path=\/; HttpOnly; SameSite=Strict; Max-Age=43200$/)
+    // The cookie outlives the longest duration offered (365 days + 12 h): the server decides.
+    expect(c).toMatch(/^hw_session=\d+\.0\.\d+\.[\w-]+; Path=\/; HttpOnly; SameSite=Strict; Max-Age=31579200$/)
     expect(a.isUnlocked(req(cookieValue(c)))).toBe(true)
     expect(a.status(req(cookieValue(c)))).toMatchObject({ enabled: true, unlocked: true, devices: [{ name: 'iPhone' }] })
-    expect(a.status(req(cookieValue(c))).expiresAt).toBe(Number(cookieValue(c).split('=')[1]?.split('.')[0]))
   })
 
   it('refuses a modified or expired cookie', () => {
@@ -50,7 +50,8 @@ describe('auth', () => {
     expect(a.isUnlocked(req(`hw_session=${Number(exp) + 1000}.${gen}.${since}.${mac}`))).toBe(false)
     // The unlock time is signed too: moving it later does not buy more time.
     expect(a.isUnlocked(req(`hw_session=${exp}.${gen}.${Number(since) + 1000}.${mac}`))).toBe(false)
-    const old = cookieValue(a._sessionCookie(req(), Date.now() - 13 * 3600 * 1000))
+    // Unlocked 8 days ago (default: 7 days) and never reopened: cut.
+    const old = cookieValue(a._sessionCookie(req(), Date.now() - 8 * 24 * 3600 * 1000))
     expect(a.isUnlocked(req(old))).toBe(false)
   })
 
@@ -88,19 +89,12 @@ describe('auth', () => {
     await expect(a.registerOptions(req())).rejects.toMatchObject({ code: 'locked' })
   })
 
-  it('slides an active session: a cookie older than 10 min is renewed for 12 h', () => {
+  it('never re-issues a current cookie (no slide, no Set-Cookie churn)', () => {
     const a = createAuth({ dataDir: dir() })
     withKey(a)
     const now = Date.now()
-    const fresh = cookieValue(a._sessionCookie(req(), now - 5 * 60 * 1000))
-    expect(a.renew(req(fresh), now)).toBeNull()
-    // Issued 11 h 59 min ago: still valid, renewed instead of expiring a minute later.
-    const old = cookieValue(a._sessionCookie(req(), now - (12 * 60 - 1) * 60 * 1000))
-    const r = a.renew(req(old), now)
-    expect(r?.expiresAt).toBe(now + 12 * 3600 * 1000)
-    expect(a.isUnlocked(req(cookieValue(r!.cookie)))).toBe(true)
-    // Expired or missing sessions are never renewed.
-    expect(a.renew(req(cookieValue(a._sessionCookie(req(), now - 13 * 3600 * 1000))), now)).toBeNull()
+    expect(a.renew(req(cookieValue(a._sessionCookie(req(), now - 5 * 60 * 1000))), now)).toBeNull()
+    expect(a.renew(req(cookieValue(a._sessionCookie(req(), now - 3 * 24 * 3600 * 1000))), now)).toBeNull()
     expect(a.renew(req(), now)).toBeNull()
   })
 
@@ -109,58 +103,80 @@ describe('auth', () => {
     withKey(a)
     const st = a.status(req(cookieValue(a._sessionCookie(req()))))
     expect(Math.abs(st.now! - Date.now())).toBeLessThan(1000)
+    // expiresAt: deadline (7 days by default) + 12 h for a client that never reopens.
+    expect(st.expiresAt! - st.deadline!).toBe(12 * 3600 * 1000)
     expect(a.status(req()).expiresAt).toBeNull()
   })
 })
 
-describe('auth: maximum duration since the passkey unlock', () => {
+describe('auth: the chosen duration is the only rule', () => {
   const H = 3600 * 1000
   const D = 24 * H
-  // A session still in use (renewed a minute ago) whose passkey unlock is `ago` old.
-  const inUse = (a: Auth, now: number, ago: number) =>
-    req(cookieValue(a._sessionCookie(req(), now - 60 * 1000, now - ago)))
+  // The cookie of a passkey unlock `ago` old (it is never re-issued since).
+  const unlocked = (a: Auth, now: number, ago: number) =>
+    req(cookieValue(a._sessionCookie(req(), now - ago, now - ago)))
 
-  it('keeps a session past the deadline while in use, and ends it at the next opening despite the slide', () => {
+  it('does not lock an unused device before the duration, whatever the idle time', () => {
     const a = createAuth({ dataDir: dir() })
     withKey(a)
     const now = Date.now()
-    const r = inUse(a, now, 7 * D + 60 * 1000) // default: 7 days
-    // Never in the middle of use: requests and plain status checks still pass.
-    expect(a.isUnlocked(r)).toBe(true)
+    a.setMaxSession(unlocked(a, now, 0), 30, now - 40 * D)
+    // 13 h, 29 days without any request: opening the app keeps the session.
+    expect(a.status(unlocked(a, now, 13 * H), { resume: true, now })).toMatchObject({ unlocked: true, deadline: now + 30 * D - 13 * H })
+    expect(a.status(unlocked(a, now, 29 * D), { resume: true, now })).toMatchObject({ unlocked: true, maxSessionDays: 30 })
+    // 31 days: past the duration, the passkey is asked again.
+    const late = a.status(unlocked(a, now, 31 * D), { resume: true, now })
+    expect(late).toMatchObject({ enabled: true, unlocked: false, expiresAt: null })
+    expect(late).not.toHaveProperty('deadline')
+    // 1 day: 13 h without use still opens, 25 h does not.
+    a.setMaxSession(unlocked(a, now, 0), 1, now - 40 * D)
+    expect(a.status(unlocked(a, now, 13 * H), { resume: true, now }).unlocked).toBe(true)
+    expect(a.status(unlocked(a, now, 25 * H), { resume: true, now }).unlocked).toBe(false)
+  })
+
+  it('keeps a session past the deadline while in use, and ends it at the next opening', () => {
+    const a = createAuth({ dataDir: dir() })
+    withKey(a)
+    const now = Date.now()
+    const r = unlocked(a, now, 7 * D + 60 * 1000) // default: 7 days
+    // Never in the middle of use: plain status checks still pass.
     expect(a.status(r, { now })).toMatchObject({ unlocked: true, deadline: now - 60 * 1000, maxSessionDays: 7 })
-    // The slide keeps the unlock time: a renewed cookie is still past the deadline.
-    const renewed = a.renew(req(cookieValue(a._sessionCookie(req(), now - 11 * H, now - 7 * D - 60 * 1000))), now)!
-    const opened = a.status(req(cookieValue(renewed.cookie)), { resume: true, now })
+    const opened = a.status(r, { resume: true, now })
     expect(opened).toMatchObject({ enabled: true, unlocked: false, expiresAt: null })
     expect(opened.__cookie).toMatch(/^hw_session=; .*Max-Age=0/)
-    expect(opened).not.toHaveProperty('deadline')
-    // Before the deadline, opening the app keeps the session.
-    expect(a.status(inUse(a, now, 6 * D), { resume: true, now })).toMatchObject({ unlocked: true, deadline: now + D })
   })
 
-  it('cuts a client that never reopens one idle period after the deadline', () => {
+  it('cuts a client that never reopens 12 h after the deadline', () => {
     const a = createAuth({ dataDir: dir() })
     withKey(a)
     const now = Date.now()
-    expect(a.isUnlocked(inUse(a, now, 7 * D + 11 * H))).toBe(true)
-    expect(a.isUnlocked(inUse(a, now, 7 * D + 12 * H + 60 * 1000))).toBe(false)
-    expect(a.renew(inUse(a, now, 7 * D + 12 * H + 60 * 1000), now)).toBeNull()
+    expect(a.isUnlocked(unlocked(a, now, 7 * D + 11 * H))).toBe(true)
+    expect(a.isUnlocked(unlocked(a, now, 7 * D + 12 * H + 60 * 1000))).toBe(false)
+    expect(a.renew(unlocked(a, now, 7 * D + 12 * H + 60 * 1000), now)).toBeNull()
   })
 
-  it('applies a changed duration to existing sessions and keeps it in data/auth.json', () => {
+  it('applies a changed duration to open sessions and keeps it in data/auth.json', () => {
     const d = dir()
     const a = createAuth({ dataDir: d })
     withKey(a)
     const now = Date.now()
-    const twoDays = inUse(a, now, 2 * D)
+    const twoDays = unlocked(a, now, 2 * D)
     expect(a.status(twoDays, { resume: true, now }).unlocked).toBe(true)
-    expect(a.setMaxSession(twoDays, 1)).toEqual({ ok: true, maxSessionDays: 1 })
+    // 30 → 1 day: the next opening asks again; a session in use is only cut
+    // 12 h after the change, not on the spot.
+    expect(a.setMaxSession(twoDays, 1, now)).toEqual({ ok: true, maxSessionDays: 1 })
+    expect(a.status(twoDays, { now: now + 11 * H }).unlocked).toBe(true)
+    expect(a.status(twoDays, { now: now + 13 * H }).unlocked).toBe(false)
     expect(a.status(twoDays, { resume: true, now }).unlocked).toBe(false)
-    const tenDays = inUse(a, now, 10 * D)
-    a.setMaxSession(inUse(a, now, 0), 30)
-    expect(a.status(tenDays, { resume: true, now })).toMatchObject({ unlocked: true, maxSessionDays: 30 })
-    expect(JSON.parse(readFileSync(path.join(d, 'auth.json'), 'utf8')).maxSessionDays).toBe(30)
-    expect(createAuth({ dataDir: d }).status(tenDays, { now }).maxSessionDays).toBe(30)
+    // 1 → 30 days: a device unlocked 10 days ago and unused since opens again
+    // (its cookie outlives every duration offered).
+    const tenDays = a._sessionCookie(req(), now - 10 * D, now - 10 * D)
+    expect(Number(tenDays.match(/Max-Age=(\d+)/)![1]) * 1000).toBeGreaterThan(355 * D)
+    a.setMaxSession(unlocked(a, now, 0), 30, now)
+    expect(a.status(req(cookieValue(tenDays)), { resume: true, now })).toMatchObject({ unlocked: true, maxSessionDays: 30, deadline: now + 20 * D })
+    const saved = JSON.parse(readFileSync(path.join(d, 'auth.json'), 'utf8'))
+    expect(saved).toMatchObject({ maxSessionDays: 30, maxSessionChangedAt: now })
+    expect(createAuth({ dataDir: d }).status(req(cookieValue(tenDays)), { now }).maxSessionDays).toBe(30)
   })
 
   it('only lets an unlocked session pick one of the offered durations', () => {
@@ -169,20 +185,29 @@ describe('auth: maximum duration since the passkey unlock', () => {
     const now = Date.now()
     expect(() => a.setMaxSession(req(), 30)).toThrow(expect.objectContaining({ code: 'locked' }))
     for (const bad of [0, 2, 3650, '7', null]) {
-      expect(() => a.setMaxSession(inUse(a, now, 0), bad)).toThrow(expect.objectContaining({ code: 'invalid' }))
+      expect(() => a.setMaxSession(unlocked(a, now, 0), bad)).toThrow(expect.objectContaining({ code: 'invalid' }))
     }
     expect(a._db().maxSessionDays).toBeUndefined()
   })
 
-  it('accepts a cookie from before the unlock time was recorded, counting from its issue', () => {
+  it('moves a 12 h cookie from an earlier version to the new regime without a passkey', () => {
     const a = createAuth({ dataDir: dir() })
     withKey(a)
     const now = Date.now()
-    const exp = now + 11 * H // issued an hour ago, old format exp.gen.mac
-    const legacy = { headers: { cookie: `hw_session=${exp}.0.${createHmac('sha256', a._db().secret!).update(`${exp}.0`).digest('base64url')}` } }
+    const sign = (v: string) => createHmac('sha256', a._db().secret!).update(v).digest('base64url')
+    // exp.gen.since.mac, renewed an hour ago, passkey unlock 3 days ago.
+    const v = `${now + 11 * H}.0.${now - 3 * D}`
+    const old = { headers: { cookie: `hw_session=${v}.${sign(v)}` } }
+    expect(a.isUnlocked(old)).toBe(true)
+    const renewed = a.renew(old, now)!
+    expect(cookieValue(renewed.cookie).split('.')[2]).toBe(String(now - 3 * D))
+    expect(Number(renewed.cookie.match(/Max-Age=(\d+)/)![1]) * 1000).toBeGreaterThan(360 * D)
+    expect(a.renew(req(cookieValue(renewed.cookie)), now)).toBeNull()
+    // Older format exp.gen.mac: counted from its last renewal.
+    const exp = now + 11 * H
+    const legacy = { headers: { cookie: `hw_session=${exp}.0.${sign(`${exp}.0`)}` } }
     expect(a.isUnlocked(legacy)).toBe(true)
-    const renewed = a.renew(legacy, now)!
-    expect(cookieValue(renewed.cookie).split('.')[2]).toBe(String(exp - 12 * H))
+    expect(cookieValue(a.renew(legacy, now)!.cookie).split('.')[2]).toBe(String(exp - 12 * H))
   })
 })
 

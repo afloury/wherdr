@@ -2,7 +2,7 @@
 // unlocked session as soon as a passkey is registered. The app's files
 // are still served so the lock screen can be shown.
 // (WebSockets do the same check in their `upgrade`.)
-// Each authenticated request slides the session (auth.renew).
+// An authenticated request upgrades a cookie from an earlier version (auth.renew).
 import { crossSiteRequest, hostAllowed, hostRefusalIsHtml, hostRefusedPage } from '../utils/hosts'
 import { adoptServed } from '../utils/phone'
 // /api/health: version only, for the one-tap updater (bin/lib/updater.mjs).

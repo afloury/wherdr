@@ -323,7 +323,7 @@ const FR: Record<string, string> = {
   'Lock every device? Each one, this one included, will need its passkey again. The keys are kept.': 'Verrouiller tous les appareils ? Chacun, celui-ci compris, devra repasser par sa clé d’accès. Les clés sont conservées.',
   'Ask for the passkey again after': 'Redemander la clé d’accès après',
   '1 day': '1 jour', '1 year': '1 an', 'Invalid duration': 'Durée invalide',
-  'Counted from the last passkey unlock, for every device. Never in the middle of use: at the next opening of the app.': 'Compté depuis le dernier déverrouillage par clé d’accès, pour tous les appareils. Jamais en pleine utilisation : à la prochaine ouverture de l’app.',
+  'Counted from the last passkey unlock, used or not, for every device. Never in the middle of use: at the next opening of the app.': 'Compté depuis le dernier déverrouillage par clé d’accès, utilisée ou non, pour tous les appareils. Jamais en pleine utilisation : à la prochaine ouverture de l’app.',
   'The passkey will be asked again the next time the app opens.': 'La clé d’accès sera redemandée à la prochaine ouverture de l’app.',
   'Parent': 'Parent',
   'Confirm': 'Confirmer', 'Close pane': 'Fermer le pane', 'Turn off': 'Désactiver',
