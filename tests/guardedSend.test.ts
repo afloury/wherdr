@@ -1,9 +1,10 @@
 // Sending to Claude Code next to another writer (the herdr-projects ticker
 // typing "[hp inbox] …" with `herdr agent prompt`): played against a fake
 // input field that behaves like the one observed on Claude Code 2.1.x
-// (typed text appended, Ctrl+U clears, Enter submits the whole field).
+// (typed text appended, Ctrl+U clears, Enter submits the whole field, except
+// after a "\\": that one becomes a line break and nothing is submitted).
 import { describe, expect, it } from 'vitest'
-import { type GuardDeps, classifyBox, guardedSend, withPaneLock } from '../server/utils/guardedSend'
+import { type GuardDeps, classifyBox, guardedSend, submittable, withPaneLock } from '../server/utils/guardedSend'
 import { BUSY_TTL_MS, type QueueEntry, checkQueue, loadQueued, publicEntry } from '../server/utils/queued'
 
 const OURS = 'do we have a way to pass the total number of threads (all projects) ?'
@@ -23,7 +24,11 @@ function field(o: { box?: string, on?: Record<number, (f: Fake) => void>, loseEn
     // Another writer: types its text, its own Enter comes later (`enter`).
     write(t: string) { f.box += t },
     enter() {
-      if (f.box) f.submitted.push(f.box)
+      // Claude Code: "\\" then Enter is a line break (2.1.296).
+      if (f.box.endsWith('\\')) { f.box = `${f.box.slice(0, -1)}\n`; return }
+      // The submitted message loses its trailing spaces (the only case
+      // played here: the one typed after a final backslash).
+      if (f.box) f.submitted.push(f.box.replace(/\\ $/, '\\'))
       f.box = ''
     },
   }
@@ -188,6 +193,63 @@ describe('guarded send to Claude Code', () => {
   it('message never taken: reported (the caller shows it as not sent)', async () => {
     const { deps } = field({ loseEnters: 5 })
     await expect(guardedSend(deps, OURS, fast)).rejects.toMatchObject({ code: 'not_submitted' })
+  })
+})
+
+describe('message ending with a backslash', () => {
+  it('submitted once, with its backslash', async () => {
+    const { f, deps } = field()
+    expect(await guardedSend(deps, 'done\\', fast)).toEqual({ foreign: [], unsent: [] })
+    expect(f.submitted).toEqual(['done\\'])
+    expect(f.keys).toEqual(['enter'])
+  })
+
+  it('several backslashes, a Windows path, a regex: text intact', async () => {
+    for (const text of ['a\\\\\\', 'C:\\Users\\me\\', '^\\d+\\', '\\']) {
+      const { f, deps } = field()
+      await guardedSend(deps, text, fast)
+      expect(f.submitted).toEqual([text])
+    }
+  })
+
+  it('last line of a multi-line message', async () => {
+    const { f, deps } = field()
+    await guardedSend(deps, 'first line\nsecond line\\', fast)
+    expect(f.submitted).toEqual(['first line\nsecond line\\'])
+  })
+
+  it('a backslash inside the message, or a normal multi-line message: typed as it is', async () => {
+    for (const text of ['a\\b', 'first line\nsecond line', 'path\\ ', OURS]) {
+      const { f, deps } = field()
+      await guardedSend(deps, text, fast)
+      expect(f.typed).toEqual([text])
+      expect(f.submitted).toEqual([text.trim()])
+    }
+  })
+
+  it('foreign text glued to it: both still sent alone', async () => {
+    const { f, deps } = field({ on: { 2: f => f.write(NOTICE) } })
+    const r = await guardedSend(deps, 'done\\', fast)
+    expect(f.submitted).toEqual(['done\\', NOTICE])
+    expect(r).toEqual({ foreign: [NOTICE], unsent: [] })
+  })
+
+  it('what is typed for it', () => {
+    expect(submittable('done\\')).toBe('done\\ ')
+    expect(submittable('done\\\\')).toBe('done\\\\ ')
+    expect(submittable('done')).toBe('done')
+    expect(submittable('do\\ne')).toBe('do\\ne')
+    expect(submittable('')).toBe('')
+  })
+
+  it('Enter that leaves a part of our text in the field: reported as not sent, never as taken', async () => {
+    // What Claude Code did with "done\\" before the trailing space: the field
+    // kept "done" and an empty line, and the message was counted as sent.
+    const { f, deps } = field()
+    const keys = deps.keys
+    const eaten = { ...deps, keys: async (k: string[]) => { if (k[0] === 'enter') f.box = 'do\n'; else await keys(k) } }
+    await expect(guardedSend(eaten, 'done', fast)).rejects.toMatchObject({ code: 'not_submitted' })
+    expect(f.submitted).toEqual([])
   })
 })
 

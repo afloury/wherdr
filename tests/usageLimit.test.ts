@@ -44,7 +44,7 @@ it('sends quota commands through the checked field, preserving other slash routi
   const send = bindFunction(source.replace('export function sendPrompt', 'function sendPrompt'), 'sendPrompt', {
     withPaneLock: (_id: string, fn: () => unknown) => fn(), findPane: () => p,
     GUARD_STATES: new Set(['idle', 'done', 'working']), isSlashCommand,
-    guardedSend, agentPrompt, sleep: async () => {},
+    guardedSend, agentPrompt, sleep: async () => {}, typedFor: (_p: unknown, text: string) => text,
   })
   await send(p, '/usage-credits')
   expect(guardedSend).toHaveBeenCalledOnce()

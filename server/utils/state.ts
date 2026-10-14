@@ -32,7 +32,7 @@ import { takeBackInterrupted, unansweredTurn } from './interruptRestore'
 import { interruptAgent } from './interruptSeq'
 import { queuedPasted } from './pastes'
 import { type SentRecord, addSent, findSent, hasAttachments, lostPhotos } from './sentHistory'
-import { type GuardError, guardedSend, withPaneLock } from './guardedSend'
+import { type GuardError, guardedSend, submittable, withPaneLock } from './guardedSend'
 import { type TranscriptPane, sameMsg } from './transcripts'
 import { agentNotificationTitle, pushSend, subWatchesSession } from './push'
 import { shouldNotify } from './notificationPolicy'
@@ -412,6 +412,8 @@ export const restarting = (paneId: string) => { const r = restarts.get(paneId); 
 // Another writer's text taken out of the field and not typed back yet is
 // kept as a held message, delivered later like ours.
 const GUARD_STATES = new Set(['idle', 'done', 'working'])
+// What agent.prompt must type for the agent to submit `text` (see guardedSend.ts).
+const typedFor = (p: Pane, text: string) => (p.agent === 'claude' ? submittable(text) : text)
 export function sendPrompt(p: Pane, text: string): Promise<void> {
   return withPaneLock(p.id, async () => {
     // Re-check after waiting for another writer/restart's lock. The Pane
@@ -422,7 +424,7 @@ export function sendPrompt(p: Pane, text: string): Promise<void> {
     }
     // Herdr may still call a quota wait blocked. Its visible field also takes
     // slash commands, using the same checked send rather than agent.prompt.
-    if (p.agent !== 'claude' || !GUARD_STATES.has(p.status || '') || (isSlashCommand(text) && !p.usageLimit)) return agentPrompt(p.id, text)
+    if (p.agent !== 'claude' || !GUARD_STATES.has(p.status || '') || (isSlashCommand(text) && !p.usageLimit)) return agentPrompt(p.id, typedFor(p, text))
     const keep = (texts: string[] | undefined) => {
       for (const t of texts || []) {
         addQueued(p.id, t, { held: true })
@@ -630,7 +632,7 @@ export async function cancelQueued(paneId: string, text: string, id?: string): P
         const r = await transcripts.chat(p, {})
         return { queue: r.queue || [], items: r.items || [] }
       },
-      prompt: t => agentPrompt(p.id, t),
+      prompt: t => agentPrompt(p.id, submittable(t)),
       sleep,
       original: e => (!e.text && e.images
         ? ownPhotos.shift()?.text || fromHistory(e)
@@ -704,7 +706,7 @@ function flushPending(p: Pane) {
   }
   if (!p.agent || !READY.has(p.status || '')) return
   pendingBusy.add(p.id)
-  withPaneLock(p.id, () => agentPrompt(p.id, pend.text))
+  withPaneLock(p.id, () => agentPrompt(p.id, typedFor(p, pend.text)))
     .then(() => {
       pendingPrompts.delete(p.id)
       log(`initial prompt ${p.id} sent`)
