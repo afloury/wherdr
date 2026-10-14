@@ -7,6 +7,8 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 - Passkey lock: the duration chosen in Settings → Security is now the only rule. The passkey is asked again at the first opening after the last unlock plus that duration, used or not in between; the 12-hour idle lock is gone. Open sessions move to the new rule without a new unlock, and a changed duration applies to them right away (a session in use is not cut on the spot).
+- Release unmounted conversations while keeping per-agent drafts, attachments, pasted text and prompt-history draft restoration persistent.
+
 - Fix a message ending with a backslash never reaching Claude Code: Claude reads “\\” then Enter as a line break, so the message stayed in its input field while wherdr showed it as sending. Such a message is now typed with a trailing space that Claude drops, and submitted with its backslashes intact; a send that leaves part of the message in the field is reported as not sent.
 
 - Fix Claude Config tab clicks using the real focus legend, verify each tab transition, and report failed switches.

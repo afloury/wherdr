@@ -4,7 +4,8 @@
 // server: we keep their path (sent with the message) and their name (preview
 // via /uploads/<name>).
 
-import { effectScope, reactive, watch } from 'vue'
+import { effectScope, reactive, nextTick } from 'vue'
+import { watch } from '@vue/reactivity'
 import { refLine } from '../../shared/reference'
 import type { AttachKind } from '../../shared/attachments'
 
@@ -33,7 +34,8 @@ const KEY = 'draft:'
 // Stored photos are purged after 7 days: we forget them before that.
 const ATT_MAX_AGE = 6 * 86400000
 const drafts = new Map<string, Draft>()
-// Drafts outlive the component: their watchers do not belong to it.
+// Drafts outlive the component. Use the reactivity watcher below: Vue's
+// component-aware watch captures the setup instance even in a detached scope.
 const scope = effectScope(true)
 
 // Upload date of a photo, read from its name (2026-09-26T00-36-39-393Z-4fa305.jpg).
@@ -81,7 +83,15 @@ export function useDraft(paneId: string): Draft {
     d = reactive(load(paneId)) as Draft
     drafts.set(paneId, d)
     const draft = d
-    scope.run(() => watch(() => [draft.text, draft.atts.map(a => a.path || (a.paste ? `paste:${a.paste.length}` : '')).join('|')], () => persist(paneId, draft)))
+    let pending = false
+    scope.run(() => watch(() => [draft.text, draft.atts.map(a => a.path || (a.paste ? `paste:${a.paste.length}` : '')).join('|')], () => persist(paneId, draft), {
+      // Keep persistence batched and let setup/unmount draft restoration finish.
+      scheduler(job) {
+        if (pending) return
+        pending = true
+        nextTick(() => { pending = false; job() })
+      },
+    }))
   }
   return d
 }
