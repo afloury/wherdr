@@ -361,7 +361,9 @@ export interface AppConfig {
 }
 
 export interface DirEntry { name: string, path: string, git: boolean, project?: ProjectFolderKind }
-export interface DirListing { path: string, parent: string | null, home: string, dirs: DirEntry[], project?: ProjectFolderKind }
+// `denied`: the folder exists but its content cannot be listed (`dirs` empty);
+// `remote`: listed over SSH (the macOS fix differs from the local one).
+export interface DirListing { path: string, parent: string | null, home: string, dirs: DirEntry[], project?: ProjectFolderKind, denied?: 'macos' | 'permission', remote?: boolean }
 
 export interface AuthStatus {
   hostLabel?: string
@@ -459,7 +461,7 @@ export interface FilesListing { root: string, path: string, entries: FileEntry[]
 export interface FilePreview {
   path: string
   size: number
-  kind: 'text' | 'image' | 'binary' | 'large'
+  kind: 'text' | 'image' | 'pdf' | 'binary' | 'large'
   text?: string
   dataUrl?: string
   truncated: boolean

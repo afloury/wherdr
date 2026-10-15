@@ -98,7 +98,21 @@ function openFirst() {
           <UIcon :name="d.project ? 'i-lucide-folder-kanban' : 'i-lucide-folder'" /><span>{{ d.name }}</span>
           <ProjectFolderMark v-if="d.project" :kind="d.project" /><span v-if="d.git" class="git">git</span>
         </button>
-        <p v-if="!listing.dirs.length" class="muted" style="padding:16px 8px">{{ t('No subfolders.') }}</p>
+        <div v-if="listing.denied" class="dir-denied" role="status">
+          <p class="dir-denied-label">
+            <UIcon name="i-lucide-shield-alert" />{{ listing.denied === 'macos' ? tl('macOS blocks access to this folder', 'macOS bloque l’accès à ce dossier') : t('Permission denied') }}
+          </p>
+          <p v-if="listing.denied === 'macos' && listing.remote">
+            {{ tl('On the Mac, allow it once:', 'Sur le Mac, autorise-le une fois :') }}
+            <span class="dir-denied-path">{{ tl('System Settings › General › Sharing › Remote Login ⓘ › “Allow full disk access for remote users”', 'Réglages Système › Général › Partage › Session à distance ⓘ › « Autoriser l’accès complet au disque pour les utilisateurs distants »') }}</span>
+          </p>
+          <p v-else-if="listing.denied === 'macos'">
+            {{ tl('On this Mac, allow the app that runs wherdr:', 'Sur ce Mac, autorise l’app qui fait tourner wherdr :') }}
+            <span class="dir-denied-path">{{ tl('System Settings › Privacy & Security › Full Disk Access', 'Réglages Système › Confidentialité et sécurité › Accès complet au disque') }}</span>
+          </p>
+          <p v-else>{{ tl('This account cannot read this folder’s content.', 'Ce compte ne peut pas lire le contenu de ce dossier.') }}</p>
+        </div>
+        <p v-else-if="!listing.dirs.length" class="muted" style="padding:16px 8px">{{ t('No subfolders.') }}</p>
         <p v-else-if="!subdirs.length" class="muted" role="status" style="padding:16px 8px">{{ tl('No matching subfolder.', 'Aucun sous-dossier correspondant.') }}</p>
       </template>
     </div>

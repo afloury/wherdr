@@ -3,8 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { DOWNLOAD_BYTES, READ_SCRIPT, attachmentHeader, cleanRelative, listFiles, readFileBytes, readFilePreview, readWrittenBytes, readWrittenPreview } from '../server/utils/files'
+import { DOWNLOAD_BYTES, READ_SCRIPT, attachmentHeader, isPdf, cleanRelative, listFiles, readFileBytes, readFilePreview, readWrittenBytes, readWrittenPreview } from '../server/utils/files'
 import type { Machine } from '../server/utils/machines'
+import { samplePdf } from './e2e/samplePdf.mjs'
 
 const local = { exec: null } as unknown as Machine
 let base = ''
@@ -21,6 +22,8 @@ beforeAll(() => {
   writeFileSync(path.join(root, 'src', 'app.ts'), 'export const x = 1\n')
   writeFileSync(path.join(root, 'blob.bin'), Buffer.from([1, 0, 2, 3]))
   writeFileSync(path.join(root, 'dot.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+  writeFileSync(path.join(root, 'Guide.PDF'), samplePdf(['Page one', 'Page two']))
+  writeFileSync(path.join(root, 'fake.pdf'), '<script>alert(1)</script>\n')
   writeFileSync(path.join(root, 'big.txt'), 'line\n'.repeat(60000))
   writeFileSync(path.join(base, 'secret.txt'), 'nope\n')
   symlinkSync(path.join(base, 'secret.txt'), path.join(root, 'escape.txt'))
@@ -71,6 +74,28 @@ describe('read-only file browser', () => {
     expect(big).toMatchObject({ kind: 'text', size: 300000, truncated: true })
     expect(big.text!.endsWith('line\n')).toBe(true)
     expect(big.text!.length).toBeLessThanOrEqual(256 * 1024)
+  })
+
+  it('previews a PDF by its extension and signature, without reading it', async () => {
+    const pdf = samplePdf(['Page one', 'Page two'])
+    expect(await readFilePreview(local, root, 'Guide.PDF')).toEqual({ path: 'Guide.PDF', size: pdf.length, kind: 'pdf', truncated: false })
+    // A .pdf that is not one (here HTML) is never handed to a PDF viewer.
+    expect(await readFilePreview(local, root, 'fake.pdf')).toMatchObject({ kind: 'binary' })
+    expect(isPdf('a.pdf', Buffer.from('\n%PDF-1.7'))).toBe(true)
+    expect(isPdf('a.bin', pdf)).toBe(false)
+    expect(isPdf('a.pdf', Buffer.concat([Buffer.alloc(1024, 32), pdf]))).toBe(false)
+  })
+
+  it('reads only the head of a remote PDF, and calls one past the download limit too large', async () => {
+    const calls: string[][] = []
+    const size = (n: number): NonNullable<Machine['exec']> => async (_script, args = []) => {
+      calls.push(args)
+      return { code: 0, stdout: Buffer.concat([Buffer.from(`${n}\n`), samplePdf().subarray(0, 1024)]), stderr: '' }
+    }
+    const remote = (n: number) => ({ exec: size(n), home: '/home/user' }) as unknown as Machine
+    expect(await readWrittenPreview(remote(11_000_000), '/home/user/demo', 'docs/manual.pdf')).toMatchObject({ kind: 'pdf', size: 11_000_000 })
+    expect(calls.at(-1)).toEqual(['/home/user', 'demo/docs/manual.pdf', '1024'])
+    expect(await readWrittenPreview(remote(DOWNLOAD_BYTES + 1), '/home/user/demo', 'docs/manual.pdf')).toMatchObject({ kind: 'large' })
   })
 
   it('hides the size of a symlink, which may point outside the root', async () => {
@@ -179,6 +204,7 @@ describe('files named in a conversation', () => {
 
   it('names the attachment so that any file name survives', () => {
     expect(attachmentHeader('report.csv')).toBe(`attachment; filename="report.csv"; filename*=UTF-8''report.csv`)
+    expect(attachmentHeader('guide.pdf', 'inline')).toBe(`inline; filename="guide.pdf"; filename*=UTF-8''guide.pdf`)
     expect(attachmentHeader('été "v2".csv')).toBe(`attachment; filename="_t_ _v2_.csv"; filename*=UTF-8''%C3%A9t%C3%A9%20%22v2%22.csv`)
   })
 })

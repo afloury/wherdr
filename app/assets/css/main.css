@@ -912,8 +912,12 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .files-num { flex: none; min-width: 4ch; padding: 6px 8px 6px 6px !important; text-align: right; color: var(--dim); user-select: none; border-right: 1px solid var(--line); }
 .files-text { flex: 1; padding: 6px 10px !important; color: var(--text-2); }
 .files-image { display: block; max-width: 100%; max-height: 70vh; margin: 12px auto; background: repeating-conic-gradient(var(--code-bg) 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
+/* The browser's PDF viewer: its own toolbar and scrolling, framed in a 1 px line. */
+.files-pdf { display: block; width: 100%; height: max(360px, calc(100vh - 280px)); height: max(360px, calc(100dvh - 280px)); border: 1px solid var(--line); background: var(--code-bg); }
 @media (max-width: 520px) {
   .changes-inner { padding: 14px 8px 40px; }
+  /* Three actions next to the path: Refresh keeps only its icon. */
+  .files-actions:has(> :nth-child(3)) .files-label { display: none; }
   .change-file summary { gap: 5px; padding-left: 8px; padding-right: 8px; }
   .change-status { font-size: 9px; }
   .change-line { font-size: 10px; padding-left: 7px; padding-right: 7px; }
@@ -2044,6 +2048,16 @@ body.kb .composer { padding-bottom: 8px; }
   margin-left: auto; font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
   color: var(--green); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); padding: 3px 6px;
 }
+/* Folder whose content the system refuses to list (macOS privacy protection, rights). */
+.dir-denied { margin: 14px 0; padding: 12px; border: 1px solid var(--line); border-left: 2px solid var(--ochre); background: var(--surface); }
+.dir-denied p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-2); }
+.dir-denied p + p { margin-top: 8px; }
+.dir-denied .dir-denied-label {
+  display: flex; align-items: center; gap: 8px; color: var(--text-strong);
+  font: 600 11px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+}
+.dir-denied-label .iconify { width: 15px; height: 15px; color: var(--ochre); flex: none; }
+.dir-denied-path { display: block; margin-top: 4px; font: 12.5px/1.5 var(--mono); color: var(--text-strong); }
 .dir-actions { display: flex; gap: 8px; padding-top: 12px; position: sticky; bottom: 0; background: var(--bg-2); }
 .dir-actions > * { flex: 1; justify-content: center; }
 
