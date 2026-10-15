@@ -2045,6 +2045,16 @@ body.kb .composer { padding-bottom: 8px; }
   margin-left: auto; font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
   color: var(--green); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); padding: 3px 6px;
 }
+/* Folder whose content the system refuses to list (macOS privacy protection, rights). */
+.dir-denied { margin: 14px 0; padding: 12px; border: 1px solid var(--line); border-left: 2px solid var(--ochre); background: var(--surface); }
+.dir-denied p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-2); }
+.dir-denied p + p { margin-top: 8px; }
+.dir-denied .dir-denied-label {
+  display: flex; align-items: center; gap: 8px; color: var(--text-strong);
+  font: 600 11px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+}
+.dir-denied-label .iconify { width: 15px; height: 15px; color: var(--ochre); flex: none; }
+.dir-denied-path { display: block; margin-top: 4px; font: 12.5px/1.5 var(--mono); color: var(--text-strong); }
 .dir-actions { display: flex; gap: 8px; padding-top: 12px; position: sticky; bottom: 0; background: var(--bg-2); }
 .dir-actions > * { flex: 1; justify-content: center; }
 

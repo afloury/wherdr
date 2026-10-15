@@ -136,13 +136,33 @@ export function createShellFs(exec: ShellExec, opts: { statTtlMs?: number } = {}
 // ---------------------------------------------------------------- dossiers
 export interface DirEntryRaw { name: string, git: boolean }
 
-// Visible subfolders of a folder, with "is a Git repository".
-export const LIST_DIRS_SCRIPT = `cd "$1" || exit 1
+// Why a folder's content cannot be listed: `macos`, macOS privacy protection
+// (TCC: Documents, Desktop, Downloads… refused to a process without full
+// disk access, even though `cd` works), or `permission`, plain Unix rights.
+export type DirDenied = 'macos' | 'permission'
+
+// Visible subfolders of a folder, with "is a Git repository". Exit 1: not a
+// folder; 2: unreadable; 3: refused by macOS. `for d in *` alone would print
+// nothing for a refused folder, as for an empty one: `ls` tells them apart.
+export const LIST_DIRS_SCRIPT = `why() { case "$1" in *"not permitted"*) [ "$(uname -s)" = Darwin ] && exit 3 ;; esac; exit 2; }
+e=$(cd "$1" 2>&1) || { [ -d "$1" ] || exit 1; why "$e"; }
+cd "$1" || exit 1
+e=$(LC_ALL=C ls -A 2>&1 >/dev/null) || why "$e"
 for d in * ; do
   [ -d "$d" ] || continue
   [ "$d" = node_modules ] && continue
   if [ -e "$d/.git" ]; then echo "g $d"; else echo "d $d"; fi
 done`
+
+// Exit code of LIST_DIRS_SCRIPT → refusal (null: listed, or not a folder).
+export const dirDeniedFromCode = (code: number | null): DirDenied | null => code === 3 ? 'macos' : code === 2 ? 'permission' : null
+
+// Local `readdir` error → refusal (EPERM is macOS privacy protection there).
+export function dirDeniedFromError(err: unknown, platform: string = process.platform): DirDenied | null {
+  const code = (err as { code?: unknown } | null)?.code
+  if (code === 'EPERM' && platform === 'darwin') return 'macos'
+  return code === 'EACCES' || code === 'EPERM' ? 'permission' : null
+}
 
 export function parseDirList(out: string): DirEntryRaw[] {
   return String(out || '').split('\n').filter(l => /^[gd] ./.test(l)).map(l => ({ name: l.slice(2), git: l[0] === 'g' }))

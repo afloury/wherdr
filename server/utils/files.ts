@@ -45,7 +45,10 @@ else
   under "$dir" || { echo "outside" >&2; exit 5; }
 fi
 cd "$dir" || exit 4
-[ -r . ] || { echo "permission denied" >&2; exit 7; }
+e=$(LC_ALL=C ls -A 2>&1 >/dev/null) || {
+  case "$e" in *"not permitted"*) [ "$(uname -s)" = Darwin ] && exit 8 ;; esac
+  echo "permission denied" >&2; exit 7
+}
 printf '%s\\0%s\\0' "$root" "$dir"
 max=$3; n=0
 set --
@@ -90,6 +93,9 @@ echo $s
 [ -n "$4" ] && [ $(($s)) -ge "$3" ] && exit 0
 head -c "$3" < "$f"`
 
+export const MACOS_SSH_DENIED = 'macOS blocks access to this folder. On the Mac: System Settings › General › Sharing › Remote Login ⓘ › “Allow full disk access for remote users”.'
+export const MACOS_LOCAL_DENIED = 'macOS blocks access to this folder. Allow the app that runs wherdr in System Settings › Privacy & Security › Full Disk Access.'
+
 type Exec = (script: string, args: string[]) => Promise<{ code: number | null, stdout: Buffer, stderr: string }>
 interface RunOpts { timeoutMs?: number, maxBytes?: number }
 function executor(m: Machine, { timeoutMs = 15000, maxBytes = IMAGE_BYTES }: RunOpts = {}): Exec {
@@ -113,6 +119,8 @@ async function run(m: Machine, script: string, args: string[], opts?: RunOpts) {
   if (r.code === 5) throw new HerdrError('outside', 'Outside the project folder')
   if (r.code === 6) throw new HerdrError('not_file', 'Not a file')
   if (r.code === 7) throw new HerdrError('denied', 'Permission denied')
+  // macOS privacy protection (Documents, Desktop…): `[ -r . ]` passes, the listing is refused.
+  if (r.code === 8) throw new HerdrError('denied', m.exec ? MACOS_SSH_DENIED : MACOS_LOCAL_DENIED)
   if (r.code === 124) throw new HerdrError('timeout', 'The folder took too long to read')
   if (r.code === 255 || r.code === null) throw new HerdrError('unreachable', 'Machine unreachable')
   throw new HerdrError('remote', r.stderr.trim().split('\n').pop() || `code ${r.code}`)

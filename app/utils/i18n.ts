@@ -309,6 +309,10 @@ const FR: Record<string, string> = {
   'Browse files': 'Parcourir les fichiers', 'Back to folder': 'Retour au dossier',
   'Reading files…': 'Lecture des fichiers…', 'Empty folder.': 'Dossier vide.', 'Show hidden files': 'Afficher les fichiers cachés',
   'Permission denied': 'Accès refusé', 'The folder took too long to read': 'Le dossier a mis trop de temps à se lire',
+  'macOS blocks access to this folder. On the Mac: System Settings › General › Sharing › Remote Login ⓘ › “Allow full disk access for remote users”.':
+    'macOS bloque l’accès à ce dossier. Sur le Mac : Réglages Système › Général › Partage › Session à distance ⓘ › « Autoriser l’accès complet au disque pour les utilisateurs distants ».',
+  'macOS blocks access to this folder. Allow the app that runs wherdr in System Settings › Privacy & Security › Full Disk Access.':
+    'macOS bloque l’accès à ce dossier. Autorise l’app qui fait tourner wherdr dans Réglages Système › Confidentialité et sécurité › Accès complet au disque.',
   'File truncated to keep this view responsive.': 'Fichier tronqué pour garder la vue rapide.',
   'Image too large to preview.': 'Image trop lourde pour l’aperçu.',
   'PDF too large to preview (50 MB max).': 'PDF trop lourd pour l’aperçu (50 Mo max).',

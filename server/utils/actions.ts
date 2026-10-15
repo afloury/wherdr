@@ -7,7 +7,7 @@ import { HerdrError, herdr, herdrOn, sleep } from './herdr'
 import { panelOpen } from './choices'
 import { addQueued, findPane, pendingPrompts, poll } from './state'
 import { type Machine, RemoteMachine, allMachines, getMachine, machineOfPane } from './machines'
-import { LIST_DIRS_SCRIPT, listDirsLocal, parseDirList } from './fsx'
+import { type DirDenied, type DirEntryRaw, LIST_DIRS_SCRIPT, dirDeniedFromCode, dirDeniedFromError, listDirsLocal, parseDirList } from './fsx'
 import { AGENT_NAME_HINT, AGENT_NAME_RE, PANE_RE, joinId } from '../../shared/ids'
 import { safeUploadExtension } from '../../shared/uploadName'
 import type { DirEntry, DirListing, MachineConfig } from '../../shared/types'
@@ -201,20 +201,30 @@ export async function listDirs(p: string | null, machine: unknown = ''): Promise
   const home = m.home
   const dir = underHome(p || home, home)
   if (!dir) throw new HerdrError('bad_path', fmt('Outside {home}', { home }))
-  let raw
+  const remote = m instanceof RemoteMachine
+  const parent = dir === home ? null : px.dirname(dir)
+  let raw: DirEntryRaw[]
+  let denied: DirDenied | null = null
   if (m instanceof RemoteMachine) {
     const r = await m.exec(LIST_DIRS_SCRIPT, [dir], { timeoutMs: 15000 })
-    if (r.code !== 0) throw new HerdrError('bad_path', fmt('Folder unreadable: {path}', { path: dir }))
+    denied = dirDeniedFromCode(r.code)
+    if (r.code !== 0 && !denied) throw new HerdrError('bad_path', fmt('Folder unreadable: {path}', { path: dir }))
     raw = parseDirList(r.stdout.toString('utf8'))
   } else {
     try { raw = await listDirsLocal(dir) }
-    catch { throw new HerdrError('bad_path', fmt('Folder unreadable: {path}', { path: dir })) }
+    catch (err) {
+      denied = dirDeniedFromError(err)
+      if (!denied) throw new HerdrError('bad_path', fmt('Folder unreadable: {path}', { path: dir }))
+      raw = []
+    }
   }
+  // Parent and typed path stay usable: the window explains instead of "No subfolders".
+  if (denied) return { path: dir, parent, home, dirs: [], denied, ...(remote ? { remote } : {}) }
   const out: DirEntry[] = raw.map(e => ({ name: e.name, path: px.join(dir, e.name), git: e.git }))
   out.sort((a, b) => (Number(b.git) - Number(a.git)) || a.name.localeCompare(b.name))
   const kinds = await projectFolderKinds(m, [dir, ...out.map(e => e.path)])
   for (const e of out) if (kinds[e.path]) e.project = kinds[e.path]
-  return { path: dir, parent: dir === home ? null : px.dirname(dir), home, dirs: out, ...(kinds[dir] ? { project: kinds[dir] } : {}) }
+  return { path: dir, parent, home, dirs: out, ...(kinds[dir] ? { project: kinds[dir] } : {}) }
 }
 
 // --- Open panels ------------------------------------------------------------
