@@ -101,15 +101,38 @@ describe('Codex interrupted turn', () => {
 })
 
 describe('Codex field', () => {
-  const footer = '  \x1b[0m\x1b[38;2;246;226;183mgpt-model medium\x1b[0m · \x1b[0m\x1b[38;2;171;223;167m~/project\x1b[0m\r'
-  const screen = (field: string) => ['\x1b[0m\x1b[1m› \x1b[0mearlier message\r', '\x1b[0m• Done.\r', '', field, footer].join('\n')
+  // Shapes read on Codex 0.162.1: earlier user message "›" bold + dim, the
+  // field's "›" bold only, placeholder dim, footer indented by two spaces.
+  const footer = ['  \x1b[0m\x1b[38;2;246;226;183mgpt-model medium\x1b[0m · \x1b[0m\x1b[38;2;171;223;167m~/project\x1b[0m\r', '  \x1b[0m\x1b[1m← \x1b[0mfor agents · \x1b[0m\x1b[1m? \x1b[0mfor shortcuts']
+  const history = ['\x1b[0m\x1b[1m\x1b[2m› \x1b[0mReply with just: ok\r', '\r', '\x1b[0m\x1b[2m• \x1b[0mok\r', '\r', '\x1b[0m\x1b[2m  Worked for 6s • 14:07\x1b[0m\r', '\r']
+  const field = (text: string) => `\x1b[0m\x1b[1m› \x1b[0m${text}\r`
+  const placeholder = field('\x1b[2mAsk Codex to do anything\x1b[0m')
+  const screen = (...rows: string[]) => rows.join('\n')
 
-  it('reads the placeholder as empty', () => {
-    expect(codexFieldLine(screen('\x1b[0m\x1b[1m› \x1b[0m\x1b[2mAsk Codex to do anything\x1b[0m\r'))).toBe('')
+  it('reads the placeholder as empty after a turn, not the earlier message', () => {
+    expect(codexFieldLine(screen(...history, placeholder, '\r', ...footer))).toBe('')
   })
 
   it('reads text left in the field', () => {
-    expect(codexFieldLine(screen('\x1b[0m\x1b[1m› \x1b[0m[<65;76;23M\r'))).toBe('[<65;76;23M')
+    expect(codexFieldLine(screen(...history, field('[<65;76;23M'), '\r', ...footer))).toBe('[<65;76;23M')
+  })
+
+  it('reads a field drawn without a space after "›" as empty', () => {
+    expect(codexFieldLine(screen(...history, '\x1b[0m\x1b[1m›\x1b[0m\r', '\r', ...footer))).toBe('')
+  })
+
+  it('reads the field under a popup of commands, not the selected row', () => {
+    const popup = ['\x1b[0m\x1b[1m\x1b[7m› /model         \x1b[0m\x1b[7mchoose what model to use\x1b[0m\r', '  /fast          \x1b[0m\x1b[2m2x speed\x1b[0m\r', '\r']
+    expect(codexFieldLine(screen(...history, ...popup, field('/'), '\r', ...footer))).toBe('/')
+  })
+
+  it('never falls back on an earlier message when the field is not on screen', () => {
+    // Field hidden: the last "›" is the history's (dim).
+    expect(codexFieldLine(screen(...history.slice(0, 1), '\r', ...footer))).toBeNull()
+    // A "›" followed by the history (agent reply, not indented) is not the field.
+    expect(codexFieldLine(screen('\x1b[0m\x1b[1m› \x1b[0mReply with just: ok\r', '\r', '\x1b[0m\x1b[2m• \x1b[0mok\r'))).toBeNull()
+    // Selected row of a menu (reverse video) last.
+    expect(codexFieldLine(screen(...history, '\x1b[0m\x1b[1m\x1b[7m› 1. Yes, proceed\x1b[0m\r', '  2. No\r'))).toBeNull()
   })
 
   it('returns null without a field', () => {

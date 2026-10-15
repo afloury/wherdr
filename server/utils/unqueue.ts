@@ -90,17 +90,53 @@ export function inputBox(ansi: string): string | null {
   return bash ? `!${box && ' '}${box}` : box
 }
 
-// First line of Codex's input field (0.16x), read from the ANSI screen: the
-// last line starting with "› ", its grayed-out placeholder ("Ask Codex to do
-// anything") left out. '' empty, null: field not found. Only meaningful while
-// Codex rests without a menu: its menus mark the selected row with "›" too.
+// First line of Codex's input field (0.16x), read from the ANSI screen.
+// '' empty, null: field not found. Codex also marks its earlier user messages
+// with "›" in the history (drawn bold + dim) and the selected row of a menu
+// (reverse video), so the field is anchored on its place, never on any "›":
+// - it is the LAST line starting with "›" (followed by a space or nothing);
+// - its "›" is neither dim nor reversed: otherwise that last "›" belongs to
+//   the history or a menu and the field is not on screen (no earlier line is
+//   tried);
+// - below it come only blank lines and indented ones (its continuation lines,
+//   then the footer: model · folder, shortcuts), never history.
+// Its grayed-out placeholder ("Ask Codex to do anything") reads as empty.
+// Checked on Codex 0.162.1: fresh, after a turn, popup of commands (drawn
+// above the field), panes of 6 to 70 rows.
+const CODEX_FIELD = /^›(?: |$)/
 export function codexFieldLine(ansi: string): string | null {
   const lines = String(ansi || '').split('\n').map(l => l.replace(/\r$/, ''))
-  for (let i = lines.length - 1; i >= 0; i--) {
-    if (!lines[i]!.replace(SGR, '').startsWith('› ')) continue
-    return undimmed(lines[i]!).replace(/^› /, '').replace(/\u00a0/g, ' ').trim()
+  let at = -1
+  for (let i = lines.length - 1; i >= 0 && at < 0; i--) if (CODEX_FIELD.test(lines[i]!.replace(SGR, ''))) at = i
+  if (at < 0) return null
+  const line = lines[at]!
+  const mark = sgrState(line.slice(0, line.indexOf('›')))
+  if (mark.dim || mark.reverse) return null
+  for (const below of lines.slice(at + 1)) {
+    const plain = below.replace(SGR, '')
+    if (plain.trim() && !plain.startsWith('  ')) return null
   }
-  return null
+  return undimmed(line).replace(/^›\s?/, '').replace(/\u00a0/g, ' ').trim()
+}
+
+// Dim and reverse video in effect at the end of `prefix` (SGR sequences only).
+function sgrState(prefix: string): { dim: boolean, reverse: boolean } {
+  let dim = false
+  let reverse = false
+  for (const m of prefix.matchAll(SGR)) {
+    if (!m[0].endsWith('m')) continue
+    const codes = m[0].slice(2, -1).split(';')
+    for (let i = 0; i < codes.length; i++) {
+      const c = Number(codes[i] || 0)
+      if (c === 0) { dim = false; reverse = false }
+      else if (c === 2) dim = true
+      else if (c === 22) dim = false
+      else if (c === 7) reverse = true
+      else if (c === 27) reverse = false
+      else if (c === 38 || c === 48 || c === 58) i += codes[i + 1] === '5' ? 2 : codes[i + 1] === '2' ? 4 : 0
+    }
+  }
+  return { dim, reverse }
 }
 
 // Keys that empty a field of `lines` lines.
