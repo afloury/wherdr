@@ -328,6 +328,8 @@ export function writeScenario(home) {
   write(path.join(api, '.claude/skills/daily-notes/SKILL.md'), '---\nname: daily-notes\ndescription: Write the daily notes of the project\n---\nSteps.\n')
   write(path.join(api, '.claude/commands/daily-check.md'), '# Check the daily build\n')
   write(path.join(demo, '.omp/commands/daily-sync.md'), '---\ndescription: Sync the daily branch\n---\nSync.\n')
+  // In the .claude/ of a parent folder: Claude Code offers it in every project below.
+  write(path.join(home, 'projects/.claude/commands/team-standup.md'), '---\ndescription: Prepare the team standup\n---\nStandup.\n')
 
   return [
     { id: 'w10', label: 'codex-update', panes: [{ id: CODEX_UPDATE_PANE, agent: 'codex', status: 'idle', cwd: codex, session: CODEX_UPDATE_SESSION, pid: 3001 }] },

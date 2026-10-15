@@ -1,10 +1,12 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { frontmatter, mergeCommands, ompSkillDirs, slashCommands } from '../server/utils/slash'
-import { type ShellExec, localFs } from '../server/utils/fsx'
+import { claudeProjectDirs, frontmatter, mergeCommands, ompSkillDirs, slashCommands as slashResult } from '../server/utils/slash'
+import { type MachineFs, type ShellExec, localFs } from '../server/utils/fsx'
+
+const slashCommands = async (o: Parameters<typeof slashResult>[0]) => (await slashResult(o)).commands
 
 // A machine reached over SSH: the script run by a local `sh`.
 const shExec: ShellExec = async (script, args = []) => {
@@ -110,5 +112,86 @@ describe('"/" commands', () => {
     const cfg = 'skills:\n  customDirectories:\n    - ~/a\n    - "/abs/b"\n    - rel\n  enableSkillCommands: true\nother:\n  customDirectories:\n    - ~/no\n'
     expect(ompSkillDirs(cfg, '/h')).toEqual(['/h/a', '/abs/b', '/h/rel'])
     expect(ompSkillDirs('theme: x\n', '/h')).toEqual([])
+  })
+
+  it('Claude: project folders are the pane folder and its parents, up to the home folder', () => {
+    expect(claudeProjectDirs('/h/vault/notes/day', '/h')).toEqual(['/h/vault/notes/day', '/h/vault/notes', '/h/vault'])
+    expect(claudeProjectDirs('/h', '/h')).toEqual([])
+    expect(claudeProjectDirs('/h/', '/h')).toEqual([])
+    expect(claudeProjectDirs(null, '/h')).toEqual([])
+    expect(claudeProjectDirs('/srv/app', '/h')).toEqual(['/srv/app', '/srv', '/'])
+  })
+
+  // As Claude Code: a pane in a subfolder still offers the commands of the
+  // project's .claude/ above it, but nothing above the Git root.
+  for (const ssh of [false, true]) {
+    it(`Claude${ssh ? ', SSH machine' : ''}: reads the .claude/ of parent folders, stopping at the Git root`, async () => {
+      const home = mkdtempSync(path.join(tmpdir(), 'hw-slash-up-'))
+      const w = (f: string, t: string) => { mkdirSync(path.dirname(path.join(home, f)), { recursive: true }); writeFileSync(path.join(home, f), t) }
+      w('notes/.claude/commands/journal.md', '---\ndescription: Journal\n---\n')
+      w('notes/.claude/skills/weekly/SKILL.md', '---\nname: weekly\ndescription: Weekly review\n---\n')
+      w('notes/inbox/today/.keep', '')
+      w('work/.claude/commands/outside.md', 'Above the repository\n')
+      w('work/app/.git/HEAD', 'ref: refs/heads/main\n')
+      w('work/app/.claude/skills/ship/SKILL.md', '---\nname: ship\n---\n')
+      w('work/app/src/.claude/commands/near.md', 'Nearest\n')
+      w('.claude/commands/mine.md', 'Mine\n')
+      const exec = ssh ? shExec : null
+      const key = `up-${ssh}`
+      const sub = (await slashCommands({ key, fs: localFs, exec, home, kind: 'claude', cwd: path.join(home, 'notes/inbox/today') })).map(c => c.name)
+      expect(sub).toEqual(expect.arrayContaining(['journal', 'weekly', 'mine']))
+      const repo = (await slashCommands({ key, fs: localFs, exec, home, kind: 'claude', cwd: path.join(home, 'work/app/src') })).map(c => c.name)
+      expect(repo).toEqual(expect.arrayContaining(['near', 'ship', 'mine']))
+      expect(repo).not.toContain('outside')
+      const atHome = (await slashCommands({ key, fs: localFs, exec, home, kind: 'claude', cwd: home })).filter(c => c.source !== 'builtin').map(c => c.name)
+      expect(atHome).toEqual(['mine'])
+    })
+  }
+
+  it('SSH machine on macOS: a project folder macOS refuses to list is reported, not taken for "no commands"', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-slash-tcc-'))
+    const w = (f: string, t: string) => { mkdirSync(path.dirname(path.join(home, f)), { recursive: true }); writeFileSync(path.join(home, f), t) }
+    w('Documents/vault/.claude/commands/journal.md', 'Journal\n')
+    w('.claude/commands/mine.md', 'Mine\n')
+    // A Mac without full disk access for SSH: `ls` is refused under Documents.
+    const bin = path.join(home, 'bin')
+    mkdirSync(bin)
+    writeFileSync(path.join(bin, 'uname'), '#!/bin/sh\necho Darwin\n')
+    writeFileSync(path.join(bin, 'ls'), `#!/bin/sh\nfor a; do case $a in */Documents/*) echo "ls: $a: Operation not permitted" >&2; exit 1 ;; esac; done\nexec /bin/ls "$@"\n`)
+    chmodSync(path.join(bin, 'uname'), 0o755)
+    chmodSync(path.join(bin, 'ls'), 0o755)
+    chmodSync(path.join(home, 'Documents/vault/.claude/commands'), 0o000)
+    const mac: ShellExec = async (script, args = []) => {
+      const r = spawnSync('sh', ['-c', script, 'sh', ...args], { env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } })
+      return { code: r.status, stdout: r.stdout, stderr: r.stderr.toString() }
+    }
+    try {
+      const r = await slashResult({ key: 'tcc1', fs: localFs, exec: mac, home, kind: 'claude', cwd: path.join(home, 'Documents/vault') })
+      expect(r.denied).toBe('macos')
+      expect(r.commands.map(c => c.name)).toContain('mine')
+      // Same refusal on Linux: plain permissions, nothing to explain.
+      const linux = await slashResult({ key: 'tcc2', fs: localFs, exec: shExec, home, kind: 'claude', cwd: path.join(home, 'Documents/vault') })
+      expect(linux.denied).toBeUndefined()
+    } finally {
+      chmodSync(path.join(home, 'Documents/vault/.claude/commands'), 0o755)
+    }
+  })
+
+  it('local disk on macOS: EPERM on a project folder is reported', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-slash-tcc-local-'))
+    mkdirSync(path.join(home, '.claude/commands'), { recursive: true })
+    writeFileSync(path.join(home, '.claude/commands/mine.md'), 'Mine\n')
+    const vault = path.join(home, 'Documents/vault')
+    const eperm = () => Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' })
+    const fs: MachineFs = { ...localFs, readdir: p => (p.startsWith(vault) ? Promise.reject(eperm()) : localFs.readdir(p)) }
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    try {
+      const r = await slashResult({ key: 'tcc3', fs, home, kind: 'claude', cwd: vault })
+      expect(r.denied).toBe('macos')
+      expect(r.commands.map(c => c.name)).toContain('mine')
+    } finally {
+      Object.defineProperty(process, 'platform', platform)
+    }
   })
 })

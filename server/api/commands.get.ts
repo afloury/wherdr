@@ -8,7 +8,9 @@ export default defineApi(async (event) => {
   // Remote machine unreachable: built-in commands only (no cache).
   if (!m.local && m.status !== 'online') return { commands: builtinCommands(p.agent), partial: true }
   try {
-    return { commands: await slashCommands({ key: m.key, fs: m.fs, exec: m.exec, home: m.home, kind: p.agent, cwd: p.cwd }) }
+    const r = await slashCommands({ key: m.key, fs: m.fs, exec: m.exec, home: m.home, kind: p.agent, cwd: p.cwd })
+    // macOS refused some project folders: the menu says why commands are missing.
+    return r.denied ? { ...r, remote: !m.local } : r
   } catch (e) {
     // Skills and commands unreadable this time: the built-in ones still show,
     // the next "/" asks again.

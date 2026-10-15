@@ -3,7 +3,8 @@
 // pane's machine (local disk, or SSH):
 //  - Claude Code: skills (~/.claude/skills/**/SKILL.md, including those
 //    synced from the account), commands (~/.claude/commands/**.md), and
-//    the same in <project folder>/.claude/.
+//    the same in the .claude/ of the pane's folder and of its parents (see
+//    claudeProjectDirs).
 //  - Codex: personal prompts ~/.codex/prompts/*.md -> /prompts:<name>.
 //  - omp: commands (~/.omp/agent/commands, and those of Claude Code, Codex and
 //    ~/.agents that it also discovers), skills -> /skill:<name> (same folders,
@@ -15,11 +16,16 @@
 // slow and a single refused session dropped the whole list.
 import path from 'node:path'
 import type { SlashCommand } from '../../shared/types'
-import type { MachineFs, ShellExec } from './fsx'
+import { type MachineFs, type ShellExec, dirDeniedFromError } from './fsx'
 import { CLAUDE_BUILTIN, CODEX_BUILTIN, OMP_BUILTIN } from './slashcatalog'
 
-const TTL = 5 * 60 * 1000
-const cache = new Map<string, { at: number, list: SlashCommand[] }>()
+// Short: a skill or command added on the machine shows up within seconds,
+// as in the terminal (Claude Code watches its folders).
+const TTL = 20 * 1000
+// `denied`: macOS refused to list some of the folders (privacy protection,
+// see LIST_DIRS_SCRIPT): their commands are missing from `commands`.
+export interface SlashResult { commands: SlashCommand[], denied?: 'macos' }
+const cache = new Map<string, { at: number, result: SlashResult }>()
 
 // Minimal YAML frontmatter (simple one-line keys).
 export function frontmatter(text: string): Record<string, string> {
@@ -44,6 +50,11 @@ async function ls(fs: MachineFs, d: string) {
   try { return await fs.readdir(d) }
   catch { return [] }
 }
+// Like ls, but tells a folder macOS refuses to list from a missing one.
+async function lsRoot(fs: MachineFs, d: string): Promise<string[] | 'denied'> {
+  try { return await fs.readdir(d) }
+  catch (err) { return dirDeniedFromError(err) === 'macos' ? 'denied' : [] }
+}
 async function read(fs: MachineFs, f: string) {
   try { return await fs.readFile(f) }
   catch { return null }
@@ -51,23 +62,35 @@ async function read(fs: MachineFs, f: string) {
 
 // Where commands come from: `skills` = <dir>/<name>/SKILL.md up to two more
 // levels (skills/synced/<account>/<name>/); `commands` = <dir>/**.md, `depth`
-// subfolder levels giving "folder:command" names; `file` = one file.
-export interface SlashRoot { dir: string, kind: 'skills' | 'commands' | 'file', prefix?: string, depth?: number }
+// subfolder levels giving "folder:command" names; `file` = one file;
+// `exists` = only whether the path exists (a `.git`).
+export interface SlashRoot { dir: string, kind: 'skills' | 'commands' | 'file' | 'exists', prefix?: string, depth?: number }
 // A file found under a root: its path relative to it ('' for a `file`) and its start.
 export interface SlashFile { root: number, rel: string, text: string }
+// Files found, and the roots macOS refused to list.
+export interface SlashFiles { files: SlashFile[], denied: number[] }
 
 const HEAD = 16384
 
-async function collectLocal(fs: MachineFs, roots: SlashRoot[]): Promise<SlashFile[]> {
+async function collectLocal(fs: MachineFs, roots: SlashRoot[]): Promise<SlashFiles> {
   const out: SlashFile[] = []
+  const denied: number[] = []
   for (let i = 0; i < roots.length; i++) {
     const r = roots[i]!
+    if (r.kind === 'exists') {
+      if (await fs.stat(r.dir).then(() => true, () => false)) out.push({ root: i, rel: '', text: '' })
+      continue
+    }
     if (r.kind === 'file') {
       const text = await read(fs, r.dir)
       if (text !== null) out.push({ root: i, rel: '', text })
-    } else if (r.kind === 'skills') {
+      continue
+    }
+    const top = await lsRoot(fs, r.dir)
+    if (top === 'denied') { denied.push(i); continue }
+    if (r.kind === 'skills') {
       const dirs: string[] = []
-      for (const a of await ls(fs, r.dir)) {
+      for (const a of top) {
         dirs.push(a)
         for (const b of await ls(fs, path.join(r.dir, a))) {
           if (b === 'SKILL.md') continue
@@ -84,7 +107,7 @@ async function collectLocal(fs: MachineFs, roots: SlashRoot[]): Promise<SlashFil
       }
     } else {
       const walk = async (rel: string, depth: number) => {
-        for (const n of await ls(fs, path.join(r.dir, rel))) {
+        for (const n of rel ? await ls(fs, path.join(r.dir, rel)) : top) {
           const f = rel ? path.join(rel, n) : n
           if (n.endsWith('.md')) {
             const text = await read(fs, path.join(r.dir, f))
@@ -95,18 +118,25 @@ async function collectLocal(fs: MachineFs, roots: SlashRoot[]): Promise<SlashFil
       await walk('', 0)
     }
   }
-  return out
+  return { files: out, denied }
 }
 
 // Arguments: pairs <kind> <dir>. One record per file found:
-// RS <root index> US <relative path> US <first bytes>.
+// RS <root index> US <relative path> US <first bytes>; RS D US <root index> US
+// for a folder macOS refuses to list (`find` alone would print nothing, as
+// for a missing folder: `ls` tells them apart, see LIST_DIRS_SCRIPT).
 export const SLASH_SCRIPT = `i=0
+os=$(uname -s)
 while [ $# -ge 2 ]; do
   k=$1; d=$2; shift 2
   case $k in
+    exists) if [ -e "$d" ]; then printf '\\036%s\\037\\037' "$i"; fi ;;
     file) if [ -f "$d" ]; then printf '\\036%s\\037\\037' "$i"; head -c ${HEAD} "$d"; fi ;;
     skills|commands*)
       if [ "$k" = skills ]; then lo=2; hi=4; name=SKILL.md; else lo=1; hi=$((\${k#commands} + 1)); name='*.md'; fi
+      case $(LC_ALL=C ls -A "$d" 2>&1 >/dev/null) in
+        *"not permitted"*) [ "$os" = Darwin ] && printf '\\036D\\037%s\\037' "$i" ;;
+      esac
       if [ -d "$d" ]; then
         find -L "$d" -mindepth $lo -maxdepth $hi -name "$name" -type f 2>/dev/null | sort | while IFS= read -r f; do
           printf '\\036%s\\037%s\\037' "$i" "\${f#"$d"/}"; head -c ${HEAD} "$f"
@@ -117,20 +147,22 @@ while [ $# -ge 2 ]; do
 done
 exit 0`
 
-export function parseSlashFiles(out: string): SlashFile[] {
+export function parseSlashFiles(out: string): SlashFiles {
   const files: SlashFile[] = []
+  const denied: number[] = []
   for (const rec of out.split('\x1E')) {
     const a = rec.indexOf('\x1F')
     const b = a < 0 ? -1 : rec.indexOf('\x1F', a + 1)
     if (b < 0) continue
-    files.push({ root: Number(rec.slice(0, a)), rel: rec.slice(a + 1, b), text: rec.slice(b + 1) })
+    if (rec.slice(0, a) === 'D') denied.push(Number(rec.slice(a + 1, b)))
+    else files.push({ root: Number(rec.slice(0, a)), rel: rec.slice(a + 1, b), text: rec.slice(b + 1) })
   }
-  return files
+  return { files, denied }
 }
 
 // One script run; a failed run (a session the connection refused…) is
 // retried once, then thrown: never mistaken for "no commands".
-async function collectRemote(exec: ShellExec, roots: SlashRoot[]): Promise<SlashFile[]> {
+async function collectRemote(exec: ShellExec, roots: SlashRoot[]): Promise<SlashFiles> {
   const args = roots.flatMap(r => [r.kind === 'commands' ? `commands${r.depth ?? 2}` : r.kind, path.posix.normalize(r.dir).replace(/(.)\/+$/, '$1')])
   let last = ''
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -152,7 +184,7 @@ export function commandsOf(roots: SlashRoot[], files: SlashFile[]): SlashCommand
   const sorted = [...files].sort((a, b) => a.root - b.root || (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0))
   for (const f of sorted) {
     const r = roots[f.root]
-    if (!r || r.kind === 'file') continue
+    if (!r || r.kind === 'file' || r.kind === 'exists') continue
     const parts = f.rel.split('/')
     const fm = frontmatter(f.text)
     const hint = fm['argument-hint'] || undefined
@@ -212,21 +244,53 @@ export function builtinCommands(kind: string) {
   return mergeCommands(kind === 'claude' ? CLAUDE_BUILTIN : kind === 'codex' ? CODEX_BUILTIN : kind === 'omp' ? OMP_BUILTIN : [], [])
 }
 
-export async function slashCommands(opts: { key: string, fs: MachineFs, exec?: ShellExec | null, home: string, kind: string, cwd: string | null }) {
+// Project folders whose .claude/ Claude Code reads (getProjectDirsUpToHome,
+// checked in 2.1.301): the pane's folder then its parents, stopping at the
+// Git root (the folder holding `.git`, see claudeCommands) and never reaching
+// the home folder, whose .claude/ is the user's. Nearest first.
+export function claudeProjectDirs(cwd: string | null, home: string): string[] {
+  if (!cwd) return []
+  const stop = path.resolve(home)
+  const out: string[] = []
+  for (let d = path.resolve(cwd); d !== stop; d = path.dirname(d)) {
+    out.push(d)
+    if (path.dirname(d) === d) break
+  }
+  return out
+}
+
+async function claudeCommands(collect: (roots: SlashRoot[]) => Promise<SlashFiles>, home: string, cwd: string | null) {
+  // Per project folder: its .git, then its skills and commands; the user's last.
+  const dirs = claudeProjectDirs(cwd, home)
+  const roots: SlashRoot[] = dirs.flatMap(d => [
+    { dir: path.join(d, '.git'), kind: 'exists' as const },
+    { dir: path.join(d, '.claude/skills'), kind: 'skills' as const },
+    { dir: path.join(d, '.claude/commands'), kind: 'commands' as const },
+  ])
+  roots.push({ dir: path.join(home, '.claude/skills'), kind: 'skills' }, { dir: path.join(home, '.claude/commands'), kind: 'commands' })
+  const { files, denied } = await collect(roots)
+  // Folders above the Git root: Claude Code does not read them.
+  const git = files.filter(f => roots[f.root]!.kind === 'exists').map(f => f.root / 3)
+  const last = git.length ? Math.min(...git) : Infinity
+  const kept = (root: number) => root >= dirs.length * 3 || Math.floor(root / 3) <= last
+  return { commands: commandsOf(roots, files.filter(f => kept(f.root))), denied: denied.some(kept) }
+}
+
+export async function slashCommands(opts: { key: string, fs: MachineFs, exec?: ShellExec | null, home: string, kind: string, cwd: string | null }): Promise<SlashResult> {
   const { fs, exec, home, kind, cwd } = opts
   const id = `${opts.key}|${kind}|${cwd || ''}`
   const hit = cache.get(id)
-  if (hit && Date.now() - hit.at < TTL) return hit.list
+  if (hit && Date.now() - hit.at < TTL) return hit.result
   const collect = (roots: SlashRoot[]) => (exec ? collectRemote(exec, roots) : collectLocal(fs, roots))
-  const project = cwd && cwd !== home ? cwd : null
   let roots: SlashRoot[] = []
   let builtin: [string, string, string?][] = []
   const extra: SlashCommand[] = []
+  let denied = false
   if (kind === 'claude') {
     builtin = CLAUDE_BUILTIN
-    for (const b of project ? [project, home] : [home]) {
-      roots.push({ dir: path.join(b, '.claude/skills'), kind: 'skills' }, { dir: path.join(b, '.claude/commands'), kind: 'commands' })
-    }
+    const r = await claudeCommands(collect, home, cwd)
+    extra.push(...r.commands)
+    denied = r.denied
   } else if (kind === 'codex') {
     builtin = CODEX_BUILTIN
     roots = [{ dir: path.join(home, '.codex/prompts'), kind: 'commands', depth: 0, prefix: 'prompts:' }]
@@ -235,11 +299,11 @@ export async function slashCommands(opts: { key: string, fs: MachineFs, exec?: S
     const dirs = ompConfigDirs(home, cwd)
     const config: SlashRoot = { dir: path.join(home, '.omp/agent/config.yml'), kind: 'file' }
     roots = [...dirs.map(d => ({ dir: path.join(d, 'commands'), kind: 'commands' as const })), config, ...dirs.map(d => ({ dir: path.join(d, 'skills'), kind: 'skills' as const, prefix: 'skill:' }))]
-    const files = await collect(roots)
+    const { files } = await collect(roots)
     const cfg = files.find(f => roots[f.root] === config)
     const more = cfg ? ompSkillDirs(cfg.text, home).map(d => ({ dir: d, kind: 'skills' as const, prefix: 'skill:' })) : []
     const all = [...roots, ...more]
-    const found = more.length ? [...files, ...(await collect(more)).map(f => ({ ...f, root: f.root + roots.length }))] : files
+    const found = more.length ? [...files, ...(await collect(more)).files.map(f => ({ ...f, root: f.root + roots.length }))] : files
     const cmds = commandsOf(all, found)
     // Command shipped with omp (task/commands), after the user's ones, before the skills.
     const firstSkill = cmds.findIndex(c => c.source === 'skill')
@@ -247,10 +311,10 @@ export async function slashCommands(opts: { key: string, fs: MachineFs, exec?: S
     extra.push(...cmds)
     roots = []
   }
-  if (roots.length) extra.push(...commandsOf(roots, await collect(roots)))
-  const list = mergeCommands(builtin, extra)
-  cache.set(id, { at: Date.now(), list })
-  return list
+  if (roots.length) extra.push(...commandsOf(roots, (await collect(roots)).files))
+  const result: SlashResult = { commands: mergeCommands(builtin, extra), ...(denied ? { denied: 'macos' as const } : {}) }
+  cache.set(id, { at: Date.now(), result })
+  return result
 }
 
 // omp config folders (project then user, ~/.omp/agent for omp

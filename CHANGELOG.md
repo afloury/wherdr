@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Fix project skills and commands missing from the “/” menu of a Claude Code conversation when the agent runs in a subfolder: like Claude Code, wherdr now reads the `.claude/skills` and `.claude/commands` of the pane's folder and of each parent folder, up to the Git root and never past the home folder. When macOS refuses to list those folders (a project under Documents, Desktop… on a Mac reached over SSH without full disk access), the menu now says so, with the setting to turn on, instead of silently showing no project commands; typed in full they still work. A skill or command added on the machine shows up in the menu within about 20 seconds, without reloading the app.
 - Fix Codex being interrupted by scrolling its terminal: Codex tracks the mouse, so each scroll becomes a wheel report written to its terminal. A trackpad flick sent about 60 of them a second; when Codex read them late, the tty buffer filled up (about 1 KB on macOS) and a read could end right after the Escape that starts a report. Codex took it for the Escape key, interrupted its turn and typed the rest (`[<65;76;23M`) into its field. Scrolls are now merged and sent at most every 75 ms (a two-second flick: 270 bytes instead of 1,200).
 - Show a Codex turn stopped by Escape as “Interrupted” in the conversation, as for Claude, and show text left in Codex's input field above the message field (it would otherwise be sent glued before the next message), with a button to clear it.
 

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { CLAUDE_PANE, OMP_CHAT_PANE } from './scenario.mjs'
+import { CLAUDE_ASK_PANE, CLAUDE_PANE, OMP_CHAT_PANE } from './scenario.mjs'
 
 async function typeInField(page: Page, text: string) {
   const field = page.locator('.prompt').locator('textarea, [contenteditable="true"]').first()
@@ -28,4 +28,32 @@ test('omp: "/" lists the project command', async ({ page }) => {
   await expect(page.locator('.chat').getByText('Ready when you are.')).toBeVisible()
   await typeInField(page, '/dai')
   await expect(page.locator('.slash-menu .slash-item', { hasText: '/daily-sync' })).toBeVisible()
+})
+
+test('Claude Code: "/" lists a command from the .claude/ of a parent folder', async ({ page }) => {
+  await page.goto(`/#/a/${CLAUDE_ASK_PANE}`)
+  await typeInField(page, '/team')
+  await expect(page.locator('.slash-menu .slash-item', { hasText: '/team-standup' })).toBeVisible()
+  await expect(page.locator('.slash-denied')).toHaveCount(0)
+})
+
+test('Claude Code: project folders macOS refuses to list are explained in the menu', async ({ page }, testInfo) => {
+  // A Mac reached over SSH without full disk access (simulated: the fake
+  // machine is Linux).
+  await page.route('**/api/commands?**', async (route) => {
+    const r = await route.fetch()
+    await route.fulfill({ response: r, json: { ...(await r.json()), denied: 'macos', remote: true } })
+  })
+  await page.goto(`/#/a/${CLAUDE_PANE}`)
+  await typeInField(page, '/journal')
+  const note = page.locator('.slash-menu .slash-denied')
+  await expect(note).toContainText('macOS hides this project’s commands')
+  await expect(note).toContainText('Allow full disk access for remote users')
+  await expect(page.locator('.slash-menu .slash-item')).toHaveCount(0)
+  if (testInfo.project.name === 'chromium-phone') await page.screenshot({ path: '.shots/slash-menu-denied-phone.png' })
+  // Matching commands stay listed above the note.
+  await page.locator('.prompt').locator('textarea, [contenteditable="true"]').first().fill('')
+  await page.keyboard.type('/dai')
+  await expect(page.locator('.slash-menu .slash-item', { hasText: '/daily-notes' })).toBeVisible()
+  await expect(note).toBeVisible()
 })

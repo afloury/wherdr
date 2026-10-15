@@ -1609,6 +1609,14 @@ body.kb .composer { padding-bottom: 8px; }
 .slash-name small { font-size: 11.5px; color: var(--dim); }
 .slash-item.on .slash-name { color: var(--mauve); }
 .slash-desc { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.35; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Project commands macOS keeps from being listed (see .dir-denied). */
+.slash-denied { padding: 10px 12px; border-left: 2px solid var(--ochre); }
+.slash-list + .slash-denied { border-top: 1px solid var(--line); }
+.slash-denied p { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.slash-denied p + p { margin-top: 4px; }
+.slash-denied .slash-denied-label { display: flex; align-items: center; gap: 8px; font: 600 11px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-strong); }
+.slash-denied-label .iconify { width: 14px; height: 14px; color: var(--ochre); flex: none; }
+.slash-denied .dir-denied-path { font-size: 11.5px; }
 .prompt {
   padding: 4px 6px 6px; gap: 2px;
   background: var(--bg-2); border: 1px solid var(--input-line); box-shadow: none; backdrop-filter: none;

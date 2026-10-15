@@ -416,8 +416,12 @@ async function pasteFromClipboard() {
 // "/" as the first character: the agent's commands, like the terminal's
 // menu (built-in + the machine's skills and commands), filtered as you
 // type. Tapping a command puts it in the field; Enter sends it.
-const slashCache = new Map<string, { at: number, list: SlashCommand[] }>()
+// `denied`: macOS refused to list project folders, some commands are missing
+// (`remote`: the pane's machine is reached over SSH).
+interface SlashDenied { remote: boolean }
+const slashCache = new Map<string, { at: number, list: SlashCommand[], denied: SlashDenied | null }>()
 const slashList = ref<SlashCommand[]>([])
+const slashDenied = ref<SlashDenied | null>(null)
 const slashSel = ref(0)
 const slashDismissed = ref(false)
 const slashListEl = ref<HTMLElement | null>(null)
@@ -428,12 +432,24 @@ const slashQuery = computed(() => {
 async function loadSlash() {
   const key = props.paneId
   const hit = slashCache.get(key)
-  if (hit && Date.now() - hit.at < 60000) { slashList.value = hit.list; return }
+  // The known list at once, asked again after a few seconds: a skill or
+  // command added on the machine shows up without reloading the app.
+  if (hit) {
+    slashList.value = hit.list
+    slashDenied.value = hit.denied
+    if (Date.now() - hit.at < 15000) return
+  }
   try {
-    const r = await api<{ commands: SlashCommand[], partial?: boolean }>(`/api/commands?pane=${encodeURIComponent(key)}`)
-    // Built-in commands only (machine's skills unreadable): asked again on the next "/".
-    if (!r.partial) slashCache.set(key, { at: Date.now(), list: r.commands })
-    if (key === props.paneId) slashList.value = r.commands
+    const r = await api<{ commands: SlashCommand[], partial?: boolean, denied?: 'macos', remote?: boolean }>(`/api/commands?pane=${encodeURIComponent(key)}`)
+    // Built-in commands only (machine's skills unreadable): asked again on
+    // the next "/", the last full list stays.
+    if (r.partial && hit) return
+    const denied = r.denied ? { remote: !!r.remote } : null
+    if (!r.partial) slashCache.set(key, { at: Date.now(), list: r.commands, denied })
+    if (key === props.paneId) {
+      slashList.value = r.commands
+      slashDenied.value = denied
+    }
   } catch { /* no suggestions */ }
 }
 watch(slashQuery, (q, old) => {
@@ -441,7 +457,10 @@ watch(slashQuery, (q, old) => {
   if (old === null || old === undefined) loadSlash()
   slashSel.value = 0
 })
-watch(() => props.paneId, () => { slashList.value = [] })
+watch(() => props.paneId, () => {
+  slashList.value = []
+  slashDenied.value = null
+})
 const slashMatches = computed(() => {
   const q = slashQuery.value
   if (q === null) return []
@@ -456,7 +475,8 @@ const slashMatches = computed(() => {
   }
   return [...starts, ...inName, ...inDesc]
 })
-const slashOpen = computed(() => slashQuery.value !== null && !slashDismissed.value && slashMatches.value.length > 0
+// Nothing matches but macOS hid project commands: the menu says so.
+const slashOpen = computed(() => slashQuery.value !== null && !slashDismissed.value && (slashMatches.value.length > 0 || !!slashDenied.value)
   && !(slashMatches.value.length === 1 && slashMatches.value[0]!.name.toLowerCase() === slashQuery.value))
 // Hover: only if the mouse really moved. When the list scrolls with the
 // keyboard under a still pointer, the browser also emits hovers, which
@@ -588,7 +608,7 @@ defineExpose({
       <UIcon name="i-lucide-corner-down-left" /> {{ t('Use suggestion') }}
     </button>
     <div v-if="slashOpen" class="slash-menu" role="listbox" :aria-label="t('Commands')">
-      <div ref="slashListEl" class="slash-list">
+      <div v-if="slashMatches.length" ref="slashListEl" class="slash-list">
         <button
           v-for="(c, i) in slashMatches" :key="c.name" type="button" role="option" class="slash-item"
           :class="{ on: i === slashSel }" :aria-selected="i === slashSel"
@@ -597,6 +617,17 @@ defineExpose({
           <span class="slash-name">/{{ c.name }}<small v-if="c.hint"> {{ c.hint }}</small></span>
           <span class="slash-desc">{{ c.desc }}</span>
         </button>
+      </div>
+      <div v-if="slashDenied" class="slash-denied" role="status">
+        <p class="slash-denied-label">
+          <UIcon name="i-lucide-shield-alert" />{{ tl('macOS hides this project’s commands', 'macOS masque les commandes de ce projet') }}
+        </p>
+        <p>
+          {{ tl('Typed in full, they still work. To list them, on the Mac:', 'Tapées en entier, elles marchent quand même. Pour les lister, sur le Mac :') }}
+          <span class="dir-denied-path">{{ slashDenied.remote
+            ? tl('System Settings › General › Sharing › Remote Login ⓘ › “Allow full disk access for remote users”', 'Réglages Système › Général › Partage › Session à distance ⓘ › « Autoriser l’accès complet au disque pour les utilisateurs distants »')
+            : tl('System Settings › Privacy & Security › Full Disk Access', 'Réglages Système › Confidentialité et sécurité › Accès complet au disque') }}</span>
+        </p>
       </div>
     </div>
     <!-- Questions of the agent's last message the draft does not answer yet
