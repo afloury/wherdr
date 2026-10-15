@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Preview PDFs in the Files window and from a file named in a conversation, on this computer or a remote machine, in the browser's own PDF viewer (up to 50 MB, like Download). **Open** shows the same PDF in a new tab, where an iPhone uses its native viewer with every page. The PDF is served as `application/pdf` with `nosniff`, framed by the app only, and runs nothing in wherdr's origin; other binary files still show “Binary file”, and Download is unchanged.
 - Passkey lock: the duration chosen in Settings → Security is now the only rule. The passkey is asked again at the first opening after the last unlock plus that duration, used or not in between; the 12-hour idle lock is gone. Open sessions move to the new rule without a new unlock, and a changed duration applies to them right away (a session in use is not cut on the spot).
 - Release unmounted conversations while keeping per-agent drafts, attachments, pasted text and prompt-history draft restoration persistent.
 

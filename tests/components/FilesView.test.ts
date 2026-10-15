@@ -24,6 +24,8 @@ registerEndpoint('/api/files/read', async (event) => {
   reads.push(q)
   // A path written in the conversation comes back absolute.
   const path = String(q.path).replace(/^~(?=\/)/, '/home/user')
+  if (path.endsWith('.pdf')) return { path, size: 11_000_000, kind: 'pdf', truncated: false }
+  if (path.endsWith('.zip')) return { path, size: 40, kind: 'binary', truncated: false }
   return { path, size: 19, kind: 'text', text: 'export const x = 1\nlet y\n', truncated: false }
 })
 const downloads: Record<string, unknown>[] = []
@@ -115,5 +117,29 @@ describe('FilesView', () => {
     expect(reads.at(-1)).toEqual({ pane: 'w1:p1', path: '~/exports/report.csv', from: 'chat' })
     expect(w.find('.files-text').text()).toBe('export const x = 1\nlet y')
     expect(asked).toHaveLength(listed)
+  })
+
+  it('shows a PDF in the browser viewer from the download path, with Open; other binaries stay a notice', async () => {
+    const w = await mountSuspended(FilesView, { props: { paneId: 'w1:p1', file: '~/docs/manual.pdf' } })
+    await flushPromises()
+    const url = '/api/files/download?pane=w1%3Ap1&path=%2Fhome%2Fuser%2Fdocs%2Fmanual.pdf&from=chat&inline=1'
+    const frame = w.find('iframe.files-pdf')
+    expect(frame.attributes('src')).toBe(url)
+    expect(frame.attributes('sandbox')).toBeUndefined()
+    expect(frame.attributes('title')).toBe('/home/user/docs/manual.pdf')
+    const open = w.find('a[aria-label="Open"]')
+    expect(open.attributes('href')).toBe(url)
+    expect(open.attributes('target')).toBe('_blank')
+    expect(w.find('button[aria-label="Download"]').exists()).toBe(true)
+    // Refresh loads the viewer again.
+    await w.find('button[aria-label="Refresh"]').trigger('click')
+    await flushPromises()
+    expect(w.find('iframe.files-pdf').element).not.toBe(frame.element)
+
+    const zip = await mountSuspended(FilesView, { props: { paneId: 'w1:p1', file: '~/docs/archive.zip' } })
+    await flushPromises()
+    expect(zip.find('iframe').exists()).toBe(false)
+    expect(zip.find('a[aria-label="Open"]').exists()).toBe(false)
+    expect(zip.find('.changes-notice').text()).toBe('Binary file')
   })
 })

@@ -23,6 +23,11 @@ const IMAGE_TYPES: Record<string, string> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
   avif: 'image/avif', bmp: 'image/bmp', ico: 'image/x-icon', svg: 'image/svg+xml',
 }
+// A PDF: its extension, and its signature in the first kilobyte (where
+// readers look for it). Shown by the browser's own viewer, up to DOWNLOAD_BYTES.
+const PDF_HEAD = 1024
+export const isPdf = (name: string, head: Buffer) =>
+  path.posix.extname(name).toLowerCase() === '.pdf' && head.subarray(0, PDF_HEAD).includes('%PDF-')
 
 // Physical root, then the requested folder resolved under it (exit 5 outside).
 const RESOLVE = `root=$(cd "$1" 2>/dev/null && pwd -P) || { echo "folder not found" >&2; exit 3; }
@@ -196,8 +201,13 @@ async function readHead(m: Machine, root: string, rel: string, max: number, opts
 // `shown`: the path given back to the client (relative to the project in the
 // file browser, absolute for a path written in a conversation).
 async function previewAt(m: Machine, root: string, rel: string, shown: string): Promise<FilePreview> {
-  const mime = IMAGE_TYPES[path.posix.extname(rel).slice(1).toLowerCase()]
-  const { size, body } = await readHead(m, root, rel, mime ? IMAGE_BYTES + 1 : TEXT_BYTES + 1)
+  const ext = path.posix.extname(rel).slice(1).toLowerCase()
+  const mime = IMAGE_TYPES[ext]
+  const { size, body } = await readHead(m, root, rel, mime ? IMAGE_BYTES + 1 : ext === 'pdf' ? PDF_HEAD : TEXT_BYTES + 1)
+  if (ext === 'pdf') {
+    if (!isPdf(rel, body)) return { path: shown, size, kind: 'binary', truncated: false }
+    return { path: shown, size, kind: size > DOWNLOAD_BYTES ? 'large' : 'pdf', truncated: false }
+  }
   if (mime) {
     if (size > IMAGE_BYTES) return { path: shown, size, kind: 'large', truncated: true }
     return { path: shown, size, kind: 'image', dataUrl: `data:${mime};base64,${body.toString('base64')}`, truncated: false }
@@ -237,10 +247,10 @@ export async function readWrittenBytes(m: Machine, cwd: string | null | undefine
   return bytesAt(m, t.root, t.rel)
 }
 
-// Content-Disposition of a download: an ASCII fallback, then the real name
-// (RFC 6266 / 5987), so accents and spaces survive.
-export function attachmentHeader(name: string): string {
+// Content-Disposition of a download (or of a PDF shown `inline`): an ASCII
+// fallback, then the real name (RFC 6266 / 5987), so accents and spaces survive.
+export function attachmentHeader(name: string, type: 'attachment' | 'inline' = 'attachment'): string {
   const ascii = name.replace(/[^\x20-\x7e]|["\\]/g, '_') || 'download'
   const utf8 = encodeURIComponent(name).replace(/['()*]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${utf8}`
+  return `${type}; filename="${ascii}"; filename*=UTF-8''${utf8}`
 }

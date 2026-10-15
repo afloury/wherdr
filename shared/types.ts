@@ -456,7 +456,7 @@ export interface FilesListing { root: string, path: string, entries: FileEntry[]
 export interface FilePreview {
   path: string
   size: number
-  kind: 'text' | 'image' | 'binary' | 'large'
+  kind: 'text' | 'image' | 'pdf' | 'binary' | 'large'
   text?: string
   dataUrl?: string
   truncated: boolean

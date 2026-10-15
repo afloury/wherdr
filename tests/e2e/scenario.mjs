@@ -6,6 +6,7 @@ import net from 'node:net'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import zlib from 'node:zlib'
+import { samplePdf } from './samplePdf.mjs'
 
 export const PORT = Number(process.env.E2E_PORT || 7699)
 export const BASE_URL = `http://127.0.0.1:${PORT}`
@@ -40,6 +41,9 @@ export const OMP_IMAGE_PANE = 'w4:p1'
 // A file named in the image pane's last reply, in its folder (CRLF kept as is).
 export const REVIEW_CSV = 'notes/login-review.csv'
 export const REVIEW_CSV_TEXT = 'screen,issue\r\nlogin,clipped button\r\n'
+// A PDF next to it, previewed in the browser's own viewer.
+export const SAMPLE_PDF = 'notes/style-guide.pdf'
+export const SAMPLE_PDF_PAGES = ['Style guide', 'Buttons and spacing']
 export const OMP_APPROVAL_PANE = 'w5:p1'
 export const OMP_SHELL_PANE = 'w6:p1'
 // Coordinator of a herdr-projects project (its board is served by the spec).
@@ -239,6 +243,7 @@ export function writeScenario(home) {
   ])
   // The file that reply names, previewed and downloaded from the conversation.
   write(path.join(screens, REVIEW_CSV), REVIEW_CSV_TEXT)
+  write(path.join(screens, SAMPLE_PDF), samplePdf(SAMPLE_PDF_PAGES))
   const coordinatorFile = ompTranscript(home, coordinator, 'e2e-coordinator', now, msg => [
     msg({ role: 'user', content: [{ type: 'text', text: 'Where are the threads?' }], attribution: 'user' }),
     msg({ role: 'assistant', content: [{ type: 'text', text: 'Two threads are working.' }], stopReason: 'stop' }),

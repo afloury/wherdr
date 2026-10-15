@@ -311,6 +311,7 @@ const FR: Record<string, string> = {
   'Permission denied': 'Accès refusé', 'The folder took too long to read': 'Le dossier a mis trop de temps à se lire',
   'File truncated to keep this view responsive.': 'Fichier tronqué pour garder la vue rapide.',
   'Image too large to preview.': 'Image trop lourde pour l’aperçu.',
+  'PDF too large to preview (50 MB max).': 'PDF trop lourd pour l’aperçu (50 Mo max).',
   'File not found': 'Fichier introuvable', 'Outside the project folder': 'Hors du dossier du projet', 'Not a file': 'Pas un fichier',
   'Added': 'Ajouté', 'Modified': 'Modifié', 'Deleted': 'Supprimé', 'From': 'Depuis', 'Binary file': 'Fichier binaire', 'Binary': 'Binaire',
   'Diff truncated': 'Diff tronqué', 'Diff not loaded (size limit)': 'Diff non chargé (limite de taille)',
