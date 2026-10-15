@@ -444,6 +444,12 @@ export function parseCodex(lines: Lines): Parsed {
     let d: Json
     try { d = JSON.parse(line) }
     catch { continue }
+    // Turn stopped by Escape (or by anything Codex took for it): shown like
+    // Claude's "[Request interrupted by user]".
+    if (d.type === 'event_msg' && d.payload?.type === 'turn_aborted') {
+      if (d.payload.reason === 'interrupted') items.push({ role: 'system', text: 'Interrupted', ts: d.timestamp || null })
+      continue
+    }
     if (d.type !== 'response_item' || !d.payload) continue
     const p = d.payload
     const ts: string | null = d.timestamp || null

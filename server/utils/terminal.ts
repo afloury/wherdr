@@ -18,6 +18,7 @@ import { termSessions, type TermView } from './state'
 import { machineOfPane } from './machines'
 import { type PaneHold, type PaneSize, cleanSavedSizes, createPaneSizes, parseSttySize } from './paneSizes'
 import { splitId } from '../../shared/ids'
+import { createScrollThrottle } from './scrollThrottle'
 import { fmt } from '../../shared/message'
 
 export const clampInt = (v: unknown, lo: number, hi: number, dflt: number) => {
@@ -174,6 +175,9 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
     for (const m of early.splice(0)) toChild(m)
   }
 
+  // Scrolls merged and rate-limited (see scrollThrottle.ts).
+  const scroll = createScrollThrottle((direction, lines) => toChild({ type: 'terminal.scroll', direction, lines }))
+
   // The pane's size is read before the control session resizes it (see paneSizes.ts).
   paneSizes().hold(pane).then((h) => {
     if (closed) return h.release(true)
@@ -200,7 +204,7 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
         }
         case 'terminal.scroll':
           if (m.direction === 'up' || m.direction === 'down') {
-            toChild({ type: 'terminal.scroll', direction: m.direction, lines: clampInt(m.lines, 1, 500, 3) })
+            scroll.push(m.direction, clampInt(m.lines, 1, 500, 3))
           }
           break
         case 'keys': // logical keys encoded by Herdr according to the terminal mode
@@ -225,6 +229,7 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
     },
     onClose(clean = false) {
       closed = true
+      scroll.dispose()
       termSessions.delete(sess)
       const c = child
       if (c) {

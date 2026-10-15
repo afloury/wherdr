@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
+import { defineComponent, h, nextTick, ref } from 'vue'
+import { UApp } from '#components'
 import Composer from '~/components/Composer.vue'
 import { eventsOpen } from '~/composables/useHerdr'
 import { outboxFor } from '~/composables/useOutbox'
@@ -42,6 +44,23 @@ describe('Composer send', () => {
     await w.setProps({ conversation: false })
     expect(w.find('.usage-limit-card').exists()).toBe(false)
     expect(w.findAll('.usage-limit-card button, .usage-limit-card a')).toHaveLength(0)
+    w.unmount()
+  })
+
+  it('shows text left in Codex’s field and clears it with Ctrl+U / Backspace', async () => {
+    const keys: string[][] = []
+    const p = ref<Pane>({ ...pane('w3:p8'), agent: 'codex', codexField: '[<65;76;23M' })
+    const Host = defineComponent({ render: () => h(UApp, null, () => h(Composer, { pane: p.value, paneId: p.value.id, sendKeys: async (k: string[]) => { keys.push(k) } })) })
+    const w = await mountSuspended(Host)
+    const notice = w.find('.codex-field')
+    expect(notice.find('code').text()).toBe('[<65;76;23M')
+    await notice.find('button').trigger('click')
+    await flushPromises()
+    expect(keys).toHaveLength(1)
+    expect(new Set(keys[0])).toEqual(new Set(['ctrl+u', 'backspace']))
+    p.value = { ...p.value, codexField: undefined }
+    await nextTick()
+    expect(w.find('.codex-field').exists()).toBe(false)
     w.unmount()
   })
 

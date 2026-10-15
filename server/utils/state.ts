@@ -27,7 +27,7 @@ import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './c
 import { type QueueEntry, INPUT_STATES, checkQueue, giveBackHeld, isUploadLine, leftForGood, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
 import { inputVisible } from './choices'
 import { isSlashCommand, photosOnly } from '../../shared/queuedMatch'
-import { findQueued, inputBox, msgText, unqueueClaude } from './unqueue'
+import { codexFieldLine, findQueued, inputBox, msgText, unqueueClaude } from './unqueue'
 import { takeBackInterrupted, unansweredTurn } from './interruptRestore'
 import { interruptAgent } from './interruptSeq'
 import { queuedPasted } from './pastes'
@@ -261,6 +261,28 @@ function refreshActivity(p: Pane) {
       if ((old2?.notice ?? null) !== notice || (old2?.suggestion ?? null) !== (working ? null : suggestion)) setTimeout(poll, 0)
     })
     .finally(() => activityBusy.delete(p.id))
+}
+
+// Codex resting, conversation shown: text left in its input field (typed in
+// its terminal, or arrived there by mistake: a wheel report cut in two, see
+// scrollThrottle.ts). Its next message from wherdr would be glued after it.
+// Kept only once seen by two readings in a row: a message wherdr is typing
+// shows there for a moment before its Enter.
+type CodexField = { text: string, seen: number, at: number }
+const codexFields = new Map<string, CodexField>()
+const codexFieldBusy = new Set<string>()
+function refreshCodexField(p: Pane) {
+  if (codexFieldBusy.has(p.id)) return
+  codexFieldBusy.add(p.id)
+  herdr('pane.read', { pane_id: p.id, source: 'visible', format: 'ansi' }, 4000)
+    .then(r => codexFieldLine(String((r.read && r.read.text) || '')) || '', () => '')
+    .then((text) => {
+      const old = codexFields.get(p.id)
+      const seen = text && old?.text === text ? old.seen + 1 : 1
+      codexFields.set(p.id, { text, seen, at: Date.now() })
+      if ((old && old.seen > 1 ? old.text : '') !== (seen > 1 ? text : '')) setTimeout(poll, 0)
+    })
+    .finally(() => codexFieldBusy.delete(p.id))
 }
 
 // omp status line (see ompScreen.ts): re-read only for an omp on screen.
@@ -936,6 +958,11 @@ async function enrich(next: HerdrState, snap: Json, machine: string, publish?: (
       const c = codexStatus.statusOf(p)
       if (c) p.codexStatus = c
     } else codexStatus.forget(p.id)
+    if (p.agent === 'codex' && isViewed(p.id) && (p.status === 'idle' || p.status === 'done') && !p.prompt && !p.menu && !p.restart) {
+      const f = codexFields.get(p.id)
+      if (!f || Date.now() - f.at >= NOTICE_MS) refreshCodexField(p)
+      if (f && f.text && f.seen > 1) p.codexField = f.text
+    } else codexFields.delete(p.id)
   }, p => isViewed(p.id), publish)
   // Cleanup of vanished panes… of this machine only.
   const alive = (id: string) => machineOf(id) !== machine || next.panes.some(p => p.id === id)
@@ -953,6 +980,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string, publish?: (
   for (const id of previews.keys()) if (!alive(id)) { previews.delete(id); transcripts.forget(id) }
   for (const id of models.keys()) if (!alive(id)) { models.delete(id); forgetModel(id) }
   for (const id of activities.keys()) if (!alive(id)) activities.delete(id)
+  for (const id of codexFields.keys()) if (!alive(id)) codexFields.delete(id)
 }
 
 // Server-side followers of the merged state (thread limits file…).

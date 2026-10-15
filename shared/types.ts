@@ -164,6 +164,9 @@ export interface Pane {
   claudeSuggestion?: string
   // Codex shown: update available and weekly-limit warning (see shared/codexStatus.ts).
   codexStatus?: CodexStatus
+  // Codex resting, conversation shown: first line of the text left in its
+  // input field (see server/utils/state.ts, refreshCodexField).
+  codexField?: string
   // omp shown: its status line (model, folder, branch) and its gauges (context, quotas).
   ompStatus?: OmpStatus
   // omp working, conversation shown: the running step ("Finding Fixed section",

@@ -29,6 +29,16 @@ const emit = defineEmits<{ sent: [queued: QueuedMessage | null], showTerminal: [
 
 // Claude Code update installed: the status line restarts the agent.
 // Claude Code error status ("Auto-update failed…"): in red, like in the terminal.
+// Text left in Codex's field (pane.codexField): it would be sent glued before
+// the next message. Clear: Ctrl+U and Backspace, line by line (a field of a
+// few lines; harmless on an empty field), only offered while Codex rests.
+const codexFieldHint = computed(() => tl('Text typed in Codex’s terminal, or arrived there by mistake: your next message would be sent after it.', 'Texte tapé dans le terminal de Codex, ou arrivé là par erreur : ton prochain message serait envoyé à sa suite.'))
+const clearingField = ref(false)
+async function clearCodexField() {
+  clearingField.value = true
+  try { await props.sendKeys(Array.from({ length: 10 }, () => ['ctrl+u', 'backspace']).flat()) }
+  finally { clearingField.value = false }
+}
 const noticeIsError = computed(() => /\b(failed|error)\b/i.test(props.pane?.claudeNotice || ''))
 const updateReady = computed(() => Boolean(props.pane?.claudeNotice && /Restart to update/i.test(props.pane.claudeNotice) && canRestart(props.pane)))
 const restartLabel = computed(() => {
@@ -566,6 +576,12 @@ defineExpose({
       <template v-else>{{ noticeIsError && !/^[✗✘]/.test(pane.claudeNotice) ? `✘ ${pane.claudeNotice}` : pane.claudeNotice }}</template>
     </div>
     <CodexNotices v-else-if="pane?.codexStatus" :pane="pane" :pane-id="paneId" :read-only="readOnly" />
+    <div v-if="pane?.agent === 'codex' && pane.codexField && !interrupting" class="composer-notice codex-field" role="status">
+      <UIcon name="i-lucide-text-cursor-input" class="notice-icon" />
+      <span class="restart-text" :title="codexFieldHint">{{ tl('In Codex’s field:', 'Dans le champ de Codex :') }} <code>{{ pane.codexField }}</code></span>
+      <button type="button" class="notice-btn" :disabled="readOnly || clearingField" :title="codexFieldHint" @click="clearCodexField">{{ tl('Clear', 'Vider') }}</button>
+      <button type="button" class="notice-btn" @click="emit('showTerminal')"><UIcon name="i-lucide-terminal" /><span class="notice-label">{{ t('View terminal') }}</span></button>
+    </div>
     <button
       v-if="suggestion && !enterSends" type="button" class="composer-suggest" @mousedown.prevent @click="useSuggestion"
     >

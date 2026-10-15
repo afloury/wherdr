@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Fix Codex being interrupted by scrolling its terminal: Codex tracks the mouse, so each scroll becomes a wheel report written to its terminal. A trackpad flick sent about 60 of them a second; when Codex read them late, the tty buffer filled up (about 1 KB on macOS) and a read could end right after the Escape that starts a report. Codex took it for the Escape key, interrupted its turn and typed the rest (`[<65;76;23M`) into its field. Scrolls are now merged and sent at most every 75 ms (a two-second flick: 270 bytes instead of 1,200).
+- Show a Codex turn stopped by Escape as “Interrupted” in the conversation, as for Claude, and show text left in Codex's input field above the message field (it would otherwise be sent glued before the next message), with a button to clear it.
+
 - Passkey lock: the duration chosen in Settings → Security is now the only rule. The passkey is asked again at the first opening after the last unlock plus that duration, used or not in between; the 12-hour idle lock is gone. Open sessions move to the new rule without a new unlock, and a changed duration applies to them right away (a session in use is not cut on the spot).
 - Release unmounted conversations while keeping per-agent drafts, attachments, pasted text and prompt-history draft restoration persistent.
 

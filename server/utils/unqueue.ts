@@ -90,6 +90,19 @@ export function inputBox(ansi: string): string | null {
   return bash ? `!${box && ' '}${box}` : box
 }
 
+// First line of Codex's input field (0.16x), read from the ANSI screen: the
+// last line starting with "› ", its grayed-out placeholder ("Ask Codex to do
+// anything") left out. '' empty, null: field not found. Only meaningful while
+// Codex rests without a menu: its menus mark the selected row with "›" too.
+export function codexFieldLine(ansi: string): string | null {
+  const lines = String(ansi || '').split('\n').map(l => l.replace(/\r$/, ''))
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i]!.replace(SGR, '').startsWith('› ')) continue
+    return undimmed(lines[i]!).replace(/^› /, '').replace(/\u00a0/g, ' ').trim()
+  }
+  return null
+}
+
 // Keys that empty a field of `lines` lines.
 export function clearKeys(lines: number): string[] {
   const keys: string[] = []
