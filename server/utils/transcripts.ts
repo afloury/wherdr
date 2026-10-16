@@ -27,6 +27,7 @@ import { hasTranscript, transcriptKind } from '../../shared/agentKind'
 import { type CommandTemplate, ompCommandTemplates } from './slash'
 import { fmt } from '../../shared/message'
 import { pastedBlocks } from '../../shared/pastedText'
+import { createActivity } from '../../shared/integrations'
 
 // Backward reading by windows until there are enough messages: Claude's
 // transcripts embed images in base64, a few screenshots
@@ -42,6 +43,7 @@ export interface TranscriptPane {
   cwd: string | null
   agentSession?: string | null
   bornAt?: number
+  status?: string | null
 }
 
 interface Loc { file: string, session: string, guessed?: boolean }
@@ -866,9 +868,14 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
 
   // Codex panes of the machine (kept up to date by the state): for the claims.
   const codexPeers = new Map<string, TranscriptPane>()
+  // Agents seen at work: they have a conversation (see shared/integrations.ts).
+  const activity = createActivity()
   function observe(panes: TranscriptPane[]) {
     codexPeers.clear()
     for (const p of panes) if (p.agent === 'codex') codexPeers.set(p.id, p)
+    const live = new Set(panes.map(p => p.id))
+    activity.prune(id => live.has(id))
+    for (const p of panes) activity.observe({ id: p.id, agent: p.agent, status: p.status ?? null })
   }
 
   // File of a session known by its identifier (Herdr integration).
@@ -1221,7 +1228,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     claudeAskCache.delete(paneId)
   }
 
-  return { chat, preview, image, forget, locate, model, observe, search, pendingTool, pendingAsk, pendingClaudeQuestions }
+  return { chat, preview, image, forget, locate, model, observe, wasActive: activity.was, search, pendingTool, pendingAsk, pendingClaudeQuestions }
 }
 
 export type Transcripts = ReturnType<typeof createTranscripts>

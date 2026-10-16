@@ -305,7 +305,12 @@ export interface ClaudeQueueEntry { text: string, ts: string | null, images?: nu
 
 export interface ChatResponse {
   available: boolean
-  reason?: 'unsupported' | 'not_found'
+  // 'no_integration': not found, and Herdr's integration of this agent is
+  // missing on its machine (see shared/integrations.ts).
+  reason?: 'unsupported' | 'not_found' | 'no_integration'
+  // With 'no_integration': the agent kind, the command to run, and on which
+  // machine (null: this one, or the only one).
+  integration?: { agent: string, command: string, machine: string | null }
   file?: string
   session?: string
   guessed?: boolean

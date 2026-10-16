@@ -45,7 +45,9 @@ interface ChatData {
 const fresh = (): ChatData => ({ file: null, token: '', tailStart: null, older: [], olderCursor: 0, tail: [], queue: [] })
 const chat = shallowRef<ChatData>(fresh())
 const items = computed(() => chat.value.older.concat(chat.value.tail))
-const unavailable = ref<'not_found' | 'unsupported' | null>(null)
+const unavailable = ref<ChatResponse['reason'] | null>(null)
+// With 'no_integration': what to install, and where (see shared/integrations.ts).
+const integration = ref<ChatResponse['integration'] | null>(null)
 const loadError = ref<string | null>(null)
 const misses = shallowRef<ChatMisses>(noMisses()) // missed polls, view kept
 const rendered = ref(false)
@@ -167,6 +169,15 @@ function thoughtTyping(id: string) { return activeThought.value?.id === id ? act
 function thoughtDone(id: string) { if (activeThought.value?.id === id) interruptThought() }
 
 // ------------------------------------------------------------ chargement
+async function copyIntegration() {
+  if (!integration.value) return
+  haptic()
+  try {
+    await navigator.clipboard.writeText(integration.value.command)
+    toast(tl('Command copied.', 'Commande copiée.'))
+  } catch { toast(t('Copy failed'), true) }
+}
+
 let busy = false
 async function loadChat(): Promise<void> {
   if (busy) return
@@ -183,11 +194,13 @@ async function loadChat(): Promise<void> {
       if (!m.clear) return
       chat.value = fresh()
       unavailable.value = r.reason || 'unsupported'
+      integration.value = r.reason === 'no_integration' ? r.integration || null : null
       // Conversation opened before its first reply: that reply is new.
       synced = true
       return
     }
     unavailable.value = null
+    integration.value = null
     loadError.value = null
     if (misses.value.misses || misses.value.errors) misses.value = noMisses()
     if (r.unchanged) return
@@ -933,7 +946,7 @@ watch(() => liveShell.value && liveShell.value.lines.join('\n'), () => nextTick(
 // "Your turn" panel at the bottom; otherwise preview of the last lines, to do in the terminal.
 const waiting = computed(() => {
   const p = props.pane
-  if (p.interaction === 'terminal' || unavailable.value !== 'not_found' || !p.screen || p.status === 'working' || readOnly.value) return null
+  if (p.interaction === 'terminal' || !unavailable.value || unavailable.value === 'unsupported' || !p.screen || p.status === 'working' || readOnly.value) return null
   const who = kindLabel(p.agent)
   return knownScreen(p)
     ? { text: tl(`${who} is waiting for your answer, below or in the terminal.`, `${who} attend ta réponse, ci-dessous ou dans le terminal.`), lines: [] }
@@ -1184,6 +1197,20 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <p>{{ waiting.text }}</p>
             <pre v-if="waiting.lines.length" class="choices-screen-text">{{ waiting.lines.join('\n') }}</pre>
             <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('View terminal') }}</UButton>
+          </div>
+          <div v-else-if="unavailable === 'no_integration' && integration" class="chat-empty no-integration">
+            <UIcon name="i-lucide-plug-zap" class="chat-empty-icon" />
+            <p class="no-integration-title">{{ tl(`Herdr's ${kindLabel(integration.agent)} integration is missing`, `L’intégration ${kindLabel(integration.agent)} de Herdr manque`) }}</p>
+            <p class="no-integration-text">
+              {{ integration.machine
+                ? tl(`Without it, wherdr cannot find this agent's conversation. Run this in a terminal on ${integration.machine}, then restart the agent:`, `Sans elle, wherdr ne retrouve pas la conversation de cet agent. Lance cette commande dans un terminal de ${integration.machine}, puis relance l’agent :`)
+                : tl('Without it, wherdr cannot find this agent\'s conversation. Run this in a terminal on the agent\'s machine, then restart the agent:', 'Sans elle, wherdr ne retrouve pas la conversation de cet agent. Lance cette commande dans un terminal de la machine de l’agent, puis relance l’agent :') }}
+            </p>
+            <code class="no-integration-cmd">{{ integration.command }}</code>
+            <div class="no-integration-actions">
+              <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-copy" @click="copyIntegration">{{ t('Copy command') }}</UButton>
+              <UButton size="sm" color="neutral" variant="outline" class="mono-btn" icon="i-lucide-square-terminal" @click="emit('gotoTerm')">{{ t('View terminal') }}</UButton>
+            </div>
           </div>
           <div v-else-if="unavailable" class="chat-empty">
             <UIcon name="i-lucide-message-square-dashed" class="chat-empty-icon" />

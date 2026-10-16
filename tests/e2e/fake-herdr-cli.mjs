@@ -1,6 +1,6 @@
 // Fake `herdr` CLI for the end-to-end tests: only `terminal session control`
 // (the terminal's control session, see server/utils/terminal.ts), played
-// against the fake Herdr server; every other command fails.
+// against the fake Herdr server, and `integration status`; every other command fails.
 //   node fake-herdr-cli.mjs <socket> [--session <name>] terminal session control <pane> [--takeover] --cols N --rows N
 import net from 'node:net'
 import readline from 'node:readline'
@@ -24,6 +24,16 @@ function call(method, params) {
       } catch (e) { reject(e) }
     })
   })
+}
+
+// `herdr integration status`: the states set by the specs (e2e.integrations).
+if (args[0] === 'integration' && args[1] === 'status') {
+  const { states } = await call('e2e.integration_states', {})
+  const file = { claude: '~/.claude/hooks/herdr-agent-state.sh', codex: '~/.codex/herdr-agent-state.sh', omp: '~/.omp/agent/extensions/herdr-omp-agent-state.ts' }
+  for (const [agent, path] of Object.entries(file)) {
+    process.stdout.write(`${agent}: ${states[agent] === 'missing' ? 'not installed' : 'current (v10)'} (${path})\n`)
+  }
+  process.exit(0)
 }
 
 const command = args.slice(0, 3).join(' ')

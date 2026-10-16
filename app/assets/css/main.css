@@ -1534,6 +1534,12 @@ button.omp-tool-head:hover .omp-tool-chev { color: var(--text-strong); }
 .choices-keys .card-kbd + .menu-term { margin-left: 0; }
 /* No conversation yet, but the agent is waiting for an action in the terminal. */
 .chat-empty.waiting .chat-empty-icon { color: var(--rose); }
+.chat-empty.no-integration { max-width: 460px; margin: 0 auto; gap: 10px; }
+.chat-empty.no-integration .chat-empty-icon { color: var(--ochre); }
+.no-integration-title { margin: 0; font: 600 12px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--text); }
+.no-integration-text { margin: 0; color: var(--muted); line-height: 1.5; }
+.no-integration-cmd { align-self: stretch; padding: 8px 10px; border: 1px solid var(--line); background: var(--code-bg); font: 12px/1.45 var(--mono); color: var(--text); text-align: left; overflow-wrap: anywhere; user-select: all; }
+.no-integration-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 4px; }
 .chat-empty.waiting .choices-screen-text { text-align: left; align-self: stretch; max-width: 720px; margin: 0 auto; width: 100%; }
 
 /* ---------- Input bar (UChatPrompt) ---------- */

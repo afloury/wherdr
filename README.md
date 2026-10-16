@@ -1408,7 +1408,8 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability.
   `herdr server`). With Docker, check that `HOST_HOME` and `PUID` match your user.
 - **No conversation, only the terminal**: the agent was started before the Herdr integration
   was installed, or it is not Claude Code / Codex / omp. Install the integration
-  (`herdr integration install claude|codex|omp`) and start a new agent.
+  (`herdr integration install claude|codex|omp`) and start a new agent. When the integration
+  is missing on the agent's machine, the conversation says so with the exact command.
 - **Passkeys or notifications unavailable**: the page must be served over HTTPS (or
   `localhost`). On iPhone, notifications need the app installed on the home screen.
 - **HTTP 403 "This address isn't enabled yet"**: for a tailnet address, run the command the

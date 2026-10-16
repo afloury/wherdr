@@ -62,6 +62,8 @@ const app = spawn(process.execPath, [entry], {
     WHERDR_UPDATE_CHECK: 'off',
     // Delay before a pane gets its size back after a dropped terminal (30 s by default).
     WHERDR_TERM_GRACE_MS: '3000',
+    // `herdr integration status` cache (60 s by default), see e2e.integrations.
+    WHERDR_INTEGRATION_TTL_MS: '500',
     WHERDR_RUNTIME_DIR: path.join(sockDir, 'run'),
     TZ: 'UTC',
   },

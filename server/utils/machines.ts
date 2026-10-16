@@ -506,6 +506,15 @@ export const getMachine = (key: string | null | undefined): Machine | undefined 
 export const machineOfPane = (id: string | null | undefined) => getMachine(splitId(String(id || '')).machine)
 export const multiMachine = () => remotes.size > 0 || sessions.size > 0
 
+// Session-free Herdr command on the machine (`herdr integration status`…):
+// its integrations live in its home, shared by all its sessions.
+export async function runHerdrCli(m: Machine, args: string[], timeoutMs = 10000): Promise<ExecResult> {
+  if (m.local) return runFile(HERDR_BIN, args, timeoutMs)
+  const remote = m as RemoteMachine
+  if (remote.status !== 'online' || !remote.bin) throw new HerdrError('unreachable', fmt('{machine} is unreachable', { machine: m.label }))
+  return remote.exec('b="$1"; shift; "$b" "$@"', [remote.bin, ...args], { timeoutMs })
+}
+
 export async function listSessions(baseKey: string): Promise<NamedSession[]> {
   const m = baseMachines().find(x => x.key === baseKey)
   if (!m) throw new HerdrError('bad_machine', 'unknown machine')

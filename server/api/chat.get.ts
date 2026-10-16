@@ -1,4 +1,7 @@
 import { fmt } from '../../shared/message'
+import { integrationCommand, missingIntegration } from '../../shared/integrations'
+import { integrationStatus } from '../utils/integrations'
+import { multiMachine } from '../utils/machines'
 export default defineApi(async (event) => {
   const q = getQuery(event)
   const p = findPane(String(q.pane || ''))
@@ -17,6 +20,12 @@ export default defineApi(async (event) => {
     from: num('from'), // re-read from this byte (bottom of the conversation already shown)
     before: num('before'), // older slice, ending at this byte
   })
+  // Not found because Herdr's integration of this agent is missing: say so,
+  // with the command (a fresh agent keeps "No conversation yet").
+  if (!r.available && r.reason === 'not_found' && m && p.agent && !p.agentSession
+    && missingIntegration(p, await integrationStatus(m), m.transcripts.wasActive(p.id, p.agent))) {
+    return { ...r, reason: 'no_integration', integration: { agent: p.agent, command: integrationCommand(p.agent), machine: multiMachine() ? m.label : null } }
+  }
   if (r.token) r.token += mark
   if (r.items) {
     r.items = chatPasted(withoutTakenBack(r.items, hidden))

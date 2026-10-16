@@ -103,6 +103,7 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     return p
   }
 
+  let integrations = {}
   const methods = {
     'session.snapshot': () => ({ snapshot: snapshot() }),
     'agent.prompt': prompt,
@@ -155,6 +156,11 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       p.pid++; p.argv = params.argv
       return { pid: p.pid }
     },
+    // Herdr integrations as `herdr integration status` reports them (all
+    // installed unless a spec says otherwise): { codex: 'missing' }…
+    'e2e.integrations': params => { integrations = { ...(params.states || {}) }; return {} },
+    'e2e.integration_states': () => ({ states: integrations }),
+    'e2e.pane_status': params => { need(params.pane_id).status = params.status; return {} },
     'e2e.update_session': params => { need(params.pane_id).session = params.session; return {} },
     'e2e.update_draft': params => { need(params.pane_id).updateOutput += params.text; return {} },
     'e2e.update_foreground': params => { need(params.pane_id).foreground = true; return {} },
