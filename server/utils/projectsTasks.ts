@@ -55,8 +55,8 @@ export const REMOTE_TASKS_SCRIPT = 'export HERDR_BIN_PATH="$1"; unset HERDR_SOCK
 const runLauncher: Runner = async (m, launcher, args, timeoutMs) => {
   if (m.exec) {
     const herdrBin = 'bin' in m && typeof (m as { bin?: unknown }).bin === 'string' ? (m as { bin: string }).bin : 'herdr'
-    const r = await m.exec(REMOTE_TASKS_SCRIPT, [herdrBin, m.session || '', 'sh', launcher, ...args], { timeoutMs })
-    if (r.stdout.length > OUTPUT_MAX) return { code: 1, stdout: '', stderr: 'herdr-projects: output too long' }
+    // Bounded while it arrives (the SSH runner stops the command past it).
+    const r = await m.exec(REMOTE_TASKS_SCRIPT, [herdrBin, m.session || '', 'sh', launcher, ...args], { timeoutMs, maxBytes: OUTPUT_MAX })
     return { code: r.code ?? 1, stdout: r.stdout.toString('utf8'), stderr: r.stderr.trim() }
   }
   const sock = m.sock()
@@ -117,47 +117,68 @@ async function command(m: Machine, args: string[], timeoutMs = ACTION_TIMEOUT_MS
 // ---------------------------------------------------------------- the board's files
 const tasksRoot = (m: Machine) => path.posix.join(m.home, '.herdr-projects/data/tasks')
 
+const missing = (e: unknown) => (e as { code?: unknown })?.code === 'ENOENT'
+
+// A task's file. null: no such file (a task being made, or cleared). Anything
+// else that keeps it from being read (rights, disk, broken JSON) is an error.
 async function readTaskFile(m: Machine, id: string): Promise<Record<string, unknown> | null> {
   const [repo, n] = id.split('/') as [string, string]
-  try {
-    const t = JSON.parse(await m.fs.readFile(path.posix.join(tasksRoot(m), repo, n, 'task.json')))
-    return t && typeof t === 'object' ? t : null
-  } catch { return null }
+  let text: string
+  try { text = await m.fs.readFile(path.posix.join(tasksRoot(m), repo, n, 'task.json')) }
+  catch (e) { if (missing(e)) return null; throw e }
+  const t: unknown = JSON.parse(text)
+  if (!t || typeof t !== 'object' || Array.isArray(t)) throw new Error('not a task')
+  return t as Record<string, unknown>
 }
 
 // The machine key of the session a task's agent runs in (its link.socket):
-// `…/sessions/<name>/herdr.sock`, or the default session's socket.
-export function sessionMachine(base: Machine, socket: unknown): string {
+// `…/sessions/<name>/herdr.sock`, or the default session's socket. null: a
+// session wherdr has not opened. Never another session's key: a pane id
+// (w1:p1) means another agent there.
+export function sessionMachine(base: Machine, socket: unknown): string | null {
+  // No socket named: the board's own session, as herdr-projects reads it (flow/live.rs).
+  if (typeof socket !== 'string' || !socket) return base.key
   const parts = typeof socket === 'string' ? socket.split('/') : []
   const n = parts.length
   const name = n >= 3 && parts[n - 1] === 'herdr.sock' && parts[n - 3] === 'sessions' ? parts[n - 2]! : 'default'
   if (name === (base.session || 'default')) return base.key
-  return allMachines().find(m => m.info().baseKey === base.key && m.session === name)?.key ?? base.key
+  return allMachines().find(m => m.info().baseKey === base.key && m.session === name)?.key ?? null
 }
 
-function linkedPane(base: Machine, t: Record<string, unknown> | null): string | null {
-  const link = t && typeof t.link === 'object' ? t.link as Record<string, unknown> : null
-  if (!link || typeof link.pane !== 'string' || !/^w[0-9a-z]+:p[0-9a-z]+$/i.test(link.pane)) return null
-  return joinId(sessionMachine(base, link.socket), link.pane)
+// The task's agent pane as its file links it, in the session it names. `known`:
+// that session is open in wherdr (false: no pane can be named for it).
+function linkedPane(base: Machine, t: Record<string, unknown> | null): { pane: string | null, known: boolean } {
+  const link = t && typeof t.link === 'object' && t.link ? t.link as Record<string, unknown> : null
+  if (!link || typeof link.pane !== 'string' || !/^w[0-9a-z]+:p[0-9a-z]+$/i.test(link.pane)) return { pane: null, known: true }
+  const key = sessionMachine(base, link.socket)
+  return key === null ? { pane: null, known: false } : { pane: joinId(key, link.pane), known: true }
 }
 
-async function listFromFiles(m: Machine): Promise<TaskRow[]> {
+// Every task's row. Only a board not made yet (no tasks folder) reads as empty;
+// a folder or file that cannot be read fails the read, or, for some tasks only,
+// is named in `failed` (a partial read).
+async function listFromFiles(m: Machine): Promise<{ tasks: TaskRow[], failed: string[] }> {
   const root = tasksRoot(m)
   let repos: string[]
-  try { repos = await m.fs.readdir(root) } catch { return [] } // no board yet
+  try { repos = await m.fs.readdir(root) }
+  catch (e) { if (missing(e)) return { tasks: [], failed: [] }; throw e }
   const ids: string[] = []
+  const failed: string[] = []
   for (const repo of repos) {
     let ns: string[]
-    try { ns = await m.fs.readdir(path.posix.join(root, repo)) } catch { continue }
+    try { ns = await m.fs.readdir(path.posix.join(root, repo)) }
+    catch (e) { if (!missing(e)) failed.push(`${repo} (${(e as Error).message})`); continue }
     for (const n of ns) if (isTaskId(`${repo}/${n}`)) ids.push(`${repo}/${n}`)
   }
   const panes = getState().panes
   const rows = await Promise.all(ids.slice(0, FILES_MAX).map(async (id) => {
-    const t = await readTaskFile(m, id)
-    const pane = linkedPane(m, t)
+    let t: Record<string, unknown> | null
+    try { t = await readTaskFile(m, id) }
+    catch (e) { failed.push(`${id} (${(e as Error).message})`); return null }
+    const { pane } = linkedPane(m, t)
     return t ? rowFromTaskFile(t, pane ? panes.find(p => p.id === pane)?.status ?? null : null) : null
   }))
-  return rows.filter((r): r is TaskRow => r !== null && !r.archived)
+  return { tasks: rows.filter((r): r is TaskRow => r !== null && !r.archived), failed }
 }
 
 // ---------------------------------------------------------------- the list
@@ -169,8 +190,14 @@ const reading = new Map<string, Promise<Cached>>()
 function readList(m: Machine): Promise<Cached> {
   const now = reading.get(m.key)
   if (now) return now
-  const read = (readsFiles(m) ? listFromFiles(m) : command(m, ['list', '--json'], LIST_TIMEOUT_MS).then(parseTaskList))
-    .then(tasks => ({ tasks, at: Date.now(), readAt: Date.now() }))
+  const read = (readsFiles(m) ? listFromFiles(m) : command(m, ['list', '--json'], LIST_TIMEOUT_MS).then(tasks => ({ tasks: parseTaskList(tasks), failed: [] as string[] })))
+    .then(({ tasks, failed }): Cached => {
+      if (!failed.length) return { tasks, at: Date.now(), readAt: Date.now() }
+      // Some tasks could not be read: the others are fresh, those keep their last row, and it is said.
+      const ids = new Set(tasks.map(t => t.id))
+      const kept = (lists.get(m.key)?.tasks || []).filter(t => !ids.has(t.id) && failed.some(f => f.startsWith(`${t.id} `) || f.startsWith(`${t.repo} `)))
+      return { tasks: [...tasks, ...kept], at: Date.now(), readAt: Date.now(), error: fmt('Some tasks could not be read: {list}', { list: failed.slice(0, 3).join(', ') + (failed.length > 3 ? ` (+${failed.length - 3})` : '') }) }
+    })
     .catch((e: Error) => {
       const last = lists.get(m.key)
       return { tasks: last?.tasks || [], at: Date.now(), readAt: last?.readAt ?? 0, error: e.message }
@@ -234,7 +261,8 @@ function checkId(id: unknown): string {
 export async function taskDetails(machine: unknown, id: unknown): Promise<TaskDetails & { pane: string | null }> {
   const m = boardOf(machine)
   const tid = checkId(id)
-  const file = await readTaskFile(m, tid)
+  // From a container the file is the only source: an unreadable one is said.
+  const file = readsFiles(m) ? await readTaskFile(m, tid) : await readTaskFile(m, tid).catch(() => null)
   let d: TaskDetails
   if (readsFiles(m)) {
     const fromFile = detailsFromTaskFile(file)
@@ -248,7 +276,9 @@ export async function taskDetails(machine: unknown, id: unknown): Promise<TaskDe
 // read only, in the session it names), or else the pane working in its worktree.
 function taskPane(m: Machine, file: Record<string, unknown> | null, worktree: string): string | null {
   const linked = linkedPane(m, file)
-  if (linked && findPane(linked)) return linked
+  // Linked to a session wherdr has not opened: no pane to offer, not one of another session.
+  if (!linked.known) return null
+  if (linked.pane && findPane(linked.pane)) return linked.pane
   if (!worktree) return null
   const keys = new Set(allMachines().filter(x => boardMachine(x).key === m.key).map(x => x.key))
   const hit = getState().panes.find(p => keys.has(p.machine || '') && p.agent && (p.cwd || '').replace(/\/+$/, '') === worktree.replace(/\/+$/, ''))

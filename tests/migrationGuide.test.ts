@@ -1,7 +1,7 @@
 // docs/herdr-projects-1x.md: the way back to 0.2 runs as written, on a HOME
 // shaped as herdr-projects 1.2.1 leaves it (its moved.json, a `-legacy-2`
 // because an older `-legacy` was there, and folders already at the old places).
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -62,9 +62,12 @@ describe.skipIf(process.platform === 'win32')('herdr-projects 1.x guide: the way
     expect(readdirSync(at('.herdr-projects.from-1x-1'))).toEqual([])
   })
 
-  it('changes nothing when run a second time', () => {
+  it('changes nothing when run a second time, and says nothing is wrong', () => {
     const at = setUp()
     run()
+    const again = spawnSync('sh', ['-c', script], { env: { HOME: home, PATH: process.env.PATH }, encoding: 'utf8' })
+    expect(again.status).toBe(0)
+    expect(again.stderr).toBe('')
     const before = execFileSync('find', ['.'], { cwd: home, encoding: 'utf8' }).split('\n').sort()
     run()
     expect(execFileSync('find', ['.'], { cwd: home, encoding: 'utf8' }).split('\n').sort()).toEqual(before)

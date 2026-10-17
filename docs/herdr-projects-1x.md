@@ -85,12 +85,14 @@ work your 0.2 projects still had.
    second time changes nothing.
 
    ```sh
-   [ -s ~/herdr-projects-restore.tsv ] || python3 - <<'PY' > ~/herdr-projects-restore.tsv.new && mv ~/herdr-projects-restore.tsv.new ~/herdr-projects-restore.tsv
+   if [ ! -s ~/herdr-projects-restore.tsv ]; then
+   python3 - <<'PY' > ~/herdr-projects-restore.tsv.new && mv ~/herdr-projects-restore.tsv.new ~/herdr-projects-restore.tsv
    import json, os
    moved = json.load(open(os.path.expanduser('~/.herdr-projects/moved.json')))
    for v in moved.get('legacy', {}).values():
        print(v['from'] + '\t' + v['to'])
    PY
+   fi
    cat ~/herdr-projects-restore.tsv    # each line: old place <tab> where 1.x put it
 
    restore() {

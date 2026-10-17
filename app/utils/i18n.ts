@@ -10,6 +10,7 @@ const FR: Record<string, string> = {
   'This task does not wait for approval': 'Cette tâche n’attend pas d’approbation',
   'wherdr runs in a container: run herdr-projects on the host for this': 'wherdr tourne dans un conteneur : lance herdr-projects sur l’hôte pour cela',
   'Task not found': 'Tâche introuvable',
+  'Some tasks could not be read: {list}': 'Certaines tâches n’ont pas pu être lues : {list}',
   'Move up': 'Monter', 'Move down': 'Descendre', 'Reset order': 'Réinitialiser l’ordre',
   'Drag to reorder': 'Glisser pour réordonner',
   'Keep awake': 'Garder éveillé',

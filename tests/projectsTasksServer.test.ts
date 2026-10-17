@@ -20,7 +20,13 @@ function taskFile(id: string, t: Record<string, unknown>) {
 }
 
 // The local machine, and a named session of it ("review"): one board.
-const machine = { key: '', label: 'devbox', local: true, status: 'online', home, session: 'default', exec: null, sock: () => null, fs: localFs, info: () => ({ key: '' }) }
+// `fault`: what the disk does wrong for the container read.
+let fault: '' | 'eacces' = ''
+const fs = { ...localFs, readdir: async (p: string) => {
+  if (fault === 'eacces') throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+  return localFs.readdir(p)
+} }
+const machine = { key: '', label: 'devbox', local: true, status: 'online', home, session: 'default', exec: null, sock: () => null, fs, info: () => ({ key: '' }) }
 const session = { ...machine, key: 'abcd1234', session: 'review', info: () => ({ key: 'abcd1234', baseKey: '' }) }
 const info = { status: 'ready', version: '1.2.1', launcher: '/plugins/herdr-projects/bin/run.sh' }
 let infoFails = false
@@ -60,6 +66,8 @@ beforeEach(() => {
   panes.length = 0
   T.setInContainer(false)
   T.resetTasksCache()
+  fault = ''
+  rmSync(path.join(home, '.herdr-projects'), { recursive: true, force: true })
   T.setRunner(async (_m, launcher, args) => {
     expect(launcher).toBe('/plugins/herdr-projects/bin/run.sh')
     calls.push(args)
@@ -162,6 +170,47 @@ describe('wherdr in a container: the board is read from its files, nothing runs'
     expect(calls).toEqual([])
   })
 
+  it('no board yet: no tasks, and nothing wrong', async () => {
+    T.setInContainer(true)
+    const r = await read()
+    expect(r.machines[0]).toMatchObject({ status: 'ready', tasks: [], readOnly: true })
+    expect(r.machines[0]!.error).toBeUndefined()
+  })
+
+  it('a folder it may not read: the error, and the last tasks kept, dated and marked', async () => {
+    T.setInContainer(true)
+    taskFile('acme/1', { title: 'Review me', stage: 'approval', app: 'claude' })
+    const good = await read()
+    later()
+    fault = 'eacces'
+    const r = await read()
+    expect(r.machines[0]).toMatchObject({ error: 'EACCES: permission denied', stale: true, at: good.machines[0]!.at })
+    expect(r.machines[0]!.tasks.map(t => t.id)).toEqual(['acme/1'])
+  })
+
+  it('a task file that is not JSON: said, the others read, its last row kept', async () => {
+    T.setInContainer(true)
+    taskFile('acme/1', { title: 'Review me', stage: 'approval', app: 'claude' })
+    taskFile('acme/2', { title: 'To do', stage: 'todo' })
+    await read()
+    later()
+    writeFileSync(path.join(home, '.herdr-projects/data/tasks/acme/2/task.json'), '{ broken')
+    taskFile('acme/1', { title: 'Review me', stage: 'done' })
+    const r = await read()
+    expect(r.machines[0]!.error).toMatch(/^Some tasks could not be read: acme\/2 \(/)
+    expect(Object.fromEntries(r.machines[0]!.tasks.map(t => [t.id, t.group]))).toEqual({ 'acme/1': 'done', 'acme/2': 'todo' })
+    // Its details say so too, rather than an empty task.
+    await expect(T.taskDetails('', 'acme/2')).rejects.toThrow()
+  })
+
+  it('a task file that is not JSON, before any good read: said, not an empty board', async () => {
+    T.setInContainer(true)
+    taskFile('acme/2', { title: 'To do', stage: 'todo' })
+    writeFileSync(path.join(home, '.herdr-projects/data/tasks/acme/2/task.json'), '{ broken')
+    const r = await read()
+    expect(r.machines[0]!.error).toMatch(/acme\/2/)
+  })
+
   it('refuses the actions, which belong to the host', async () => {
     T.setInContainer(true)
     await read()
@@ -199,6 +248,27 @@ describe('actions on a task', () => {
   it('gives the first line of a refusal', async () => {
     await read()
     await expect(T.approveTask('', 'demo/1')).rejects.toThrow('demo/1: its pull request\'s checks failed')
+  })
+
+  it('never offers the pane of another session: a task linked to a session wherdr has not opened', async () => {
+    // Its file names the "other" session; w1:p1 there is not the w1:p1 of the default session.
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'approval', link: { socket: '/h/.config/herdr/sessions/other/herdr.sock', pane: 'w1:p1' } })
+    panes.push({ id: 'w1:p1', machine: '', agent: 'claude', cwd: '/elsewhere' })
+    expect((await T.taskDetails('', 'demo/1')).pane).toBeNull()
+    T.setInContainer(true)
+    expect((await T.taskDetails('', 'demo/1')).pane).toBeNull()
+  })
+
+  it('a link without a socket: the machine\'s own session, as herdr-projects reads it', async () => {
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'approval', link: { pane: 'w1:p1' } })
+    panes.push({ id: 'w1:p1', machine: '', agent: 'claude' })
+    expect((await T.taskDetails('', 'demo/1')).pane).toBe('w1:p1')
+  })
+
+  it('the pane of the session the task names, when wherdr has it open', async () => {
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'approval', link: { socket: '/h/.config/herdr/sessions/review/herdr.sock', pane: 'w1:p1' } })
+    panes.push({ id: 'w1:p1', machine: '', agent: 'claude' }, { id: 'abcd1234~w1:p1', machine: 'abcd1234', agent: 'claude' })
+    expect((await T.taskDetails('', 'demo/1')).pane).toBe('abcd1234~w1:p1')
   })
 
   it('finds the agent\'s pane by its worktree when the task file is elsewhere', async () => {
