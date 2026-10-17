@@ -1,6 +1,7 @@
 // Starts the end-to-end environment (Playwright webServer): a fake HOME with
 // neutral transcripts, an empty data dir, the fake Herdr socket server, then
 // the built app (.output/) pointed at them. Everything is removed on exit.
+import { pdfAuthDb } from './pdfAuth.mjs'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -31,6 +32,7 @@ fs.writeFileSync(path.join(data, 'push.json'), JSON.stringify({ subs: [] }))
 // The setup guide covers the app on a first launch: mark it done (for this
 // HOST_LABEL) so the other specs reach the app; onboarding.spec.ts reopens it.
 fs.writeFileSync(path.join(data, 'onboarding.json'), JSON.stringify({ done: true, host: 'devbox' }))
+if (process.env.E2E_PDF_AUTH) fs.writeFileSync(path.join(data, 'auth.json'), JSON.stringify(pdfAuthDb))
 const sock = path.join(sockDir, 'herdr.sock')
 // The herdr CLI: a fake that only plays the terminal's control session against
 // the fake Herdr; everything else (worktrees, machines, notifications…) fails.
