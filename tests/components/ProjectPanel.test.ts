@@ -3,7 +3,7 @@ import { defineComponent, h } from 'vue'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import { UApp } from '#components'
 import ProjectPanel from '~/components/ProjectPanel.vue'
-import type { ProjectBoard } from '#shared/projectBoard'
+import { parseTasks, questionPrefix, type ProjectBoard } from '#shared/projectBoard'
 
 const board: ProjectBoard = {
   slug: 'acme',
@@ -50,4 +50,38 @@ describe('ProjectPanel', () => {
     const labels = w.findAll('button[aria-label^="Add info: "], button[aria-label^="Ajouter une info : "]').map(b => b.attributes('aria-label')!.replace(/^.*?: /, ''))
     expect(labels).toEqual(['Thread t-0012', 'Thread without a card'])
   })
+  it('renders plain bullets and checkboxes with the same footer and question draft', async () => {
+    const mixed: ProjectBoard = {
+      ...board,
+      lists: parseTasks(`## In progress
+- Improve keyboard navigation [b:amber(waiting)]
+## Follow-up
+- Review the documentation [b:blue(PR #12)](https://example.com/pull/12)
+- [ ] Check the export
+- [x] Update examples [b:gray(done)]
+## To test
+- [ ] Open settings
+`),
+    }
+    const Host = defineComponent({ render: () => h(UApp, null, () => h(ProjectPanel, { paneId: 'w1:p1', board: mixed, loading: false, error: '' })) })
+    const w = await mountSuspended(Host)
+    const panel = w.findComponent(ProjectPanel)
+    const tasks = w.findAll('.pp-task')
+    expect(tasks).toHaveLength(5)
+    for (const task of tasks.filter(row => !row.classes().includes('done'))) {
+      expect(task.find('.pp-task-body > .pp-task-text').exists()).toBe(true)
+      const ask = task.find('.pp-task-foot .pp-vbtn.ask')
+      expect(ask.exists()).toBe(true)
+      await ask.trigger('click')
+      const text = task.find('.pp-task-text').text()
+      const draft = panel.emitted('prefill')!.at(-1)![0]
+      expect([questionPrefix(text, 'en'), questionPrefix(text, 'fr')]).toContain(draft)
+    }
+    const done = tasks.find(row => row.classes().includes('done'))!
+    expect(done.findAll('.pp-vbtn')).toHaveLength(0)
+    expect(done.find('.pp-task-foot').exists()).toBe(true)
+    expect(panel.emitted('sent')).toBeUndefined()
+    w.unmount()
+  })
+
 })

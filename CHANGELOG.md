@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Render plain bullet tasks with the same full-width text and badge footer as other project tasks. Every unfinished task, including custom lists and In progress entries, offers a question draft to the coordinator.
 - Render PDF previews with a bundled, lazily loaded PDF.js worker on every device, including iPhone and iPad: all pages fit the window, with Retina canvases rendered near the viewport and released off screen. Open and Download keep their existing URLs.
 
 - Fix missing Codex conversations and messages reported as “Not sent” on remote Linux machines using dash when a recent session day has no folder. Remote folder and file reads now identify missing paths independently of shell error wording, including byte-range reads.
