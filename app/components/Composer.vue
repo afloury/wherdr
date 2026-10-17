@@ -70,8 +70,8 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const anyFileInput = ref<HTMLInputElement | null>(null)
 const sending = ref(false)
 // On a touch keyboard, Enter adds a line; the button below the field sends.
-// An iPad with a hardware keyboard (no on-screen keyboard): Enter sends.
-const enterSends = computed(() => enterSendsFor({ desk: desk.value, touch: Boolean(isIOS || touchKeyboard), softKeyboard: kbOpen.value }))
+// An iPad with a proven hardware keyboard (utils/layoutMode.ts): Enter sends.
+const enterSends = computed(() => enterSendsFor({ desk: desk.value, touch: Boolean(isIOS || touchKeyboard), tablet: tablet.value, hardwareKeyboard: hardwareKeyboard.value, softKeyboard: kbOpen.value }))
 
 type Att = DraftAtt
 const attachments = toRef(draft, 'atts')

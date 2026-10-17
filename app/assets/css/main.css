@@ -3895,8 +3895,9 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
   .board-col + .board-col { border-left: 1px solid var(--line-soft); }
 }
 
-/* Touch screen on a computer layout (iPad): 44 px targets, like on the phone. */
-@media (min-width: 900px) and (pointer: coarse), (min-width: 700px) and (min-height: 700px) and (pointer: coarse) {
+/* Touch tablet (iPad, shortest side ≥ 700 px): 44 px targets, like on the
+   phone. A large phone in landscape keeps its layout. */
+@media (min-width: 700px) and (min-height: 700px) and (pointer: coarse) {
   .icon-btn { width: 44px; height: 44px; }
   .home-rail { gap: 6px; }
   .card { min-height: 52px; }

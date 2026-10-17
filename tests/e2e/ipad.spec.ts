@@ -87,16 +87,47 @@ test('iPad landscape: list docked beside the conversation, 44 px targets', async
   await ctx.close()
 })
 
-test('iPad with a hardware keyboard: Enter sends the message', async ({ browser }) => {
+test('iPad: Enter adds a line until a hardware keyboard is proven, then sends', async ({ browser }) => {
   const { ctx, page } = await ipad(browser, sizes.portrait)
   await page.goto(`/#/a/${OMP_CHAT_PANE}`)
   await expect(page.locator('.chat').getByText('Ready when you are.')).toBeVisible()
-  const text = `From the iPad keyboard ${Date.now()}`
   const field = page.locator('.prompt').locator('textarea').first()
   await field.click()
+  // No proof (e.g. the floating on-screen keyboard, which leaves the page size alone).
+  await page.keyboard.type('first line')
+  await page.keyboard.press('Enter')
+  await expect(field).toHaveValue('first line\n')
+  await field.fill('')
+  // An arrow key: only a hardware keyboard sends it.
+  const text = `From the iPad keyboard ${Date.now()}`
   await page.keyboard.type(text)
+  await page.keyboard.press('ArrowLeft')
+  await page.keyboard.press('End')
   await page.keyboard.press('Enter')
   await expect(page.locator('.msg-user', { hasText: text })).toBeVisible()
   await expect(field).toHaveValue('')
+  await ctx.close()
+})
+
+test('large iPhone in landscape (932 × 430): docked list, Enter adds a line, as before', async ({ browser }) => {
+  const ctx = await browser.newContext({
+    viewport: { width: 932, height: 430 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1, serviceWorkers: 'block',
+    baseURL: test.info().project.use.baseURL, locale: 'en-US', timezoneId: 'UTC',
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6 Mobile/15E148 Safari/604.1',
+  })
+  const page = await ctx.newPage()
+  await page.goto(`/#/a/${OMP_CHAT_PANE}`)
+  const home = page.locator('#home')
+  await expect(home).toBeVisible()
+  await expect(home).not.toHaveClass(/rail|drawer/)
+  expect((await home.boundingBox())!.width).toBeGreaterThanOrEqual(280)
+  // Buttons keep their phone-landscape size (no tablet 44 px rule).
+  expect((await page.locator('.home-actions .icon-btn').first().boundingBox())!.width).toBeLessThan(44)
+  const field = page.locator('.prompt').locator('textarea').first()
+  await field.click()
+  await page.keyboard.press('ArrowLeft')
+  await page.keyboard.type('line')
+  await page.keyboard.press('Enter')
+  await expect(field).toHaveValue('line\n')
   await ctx.close()
 })

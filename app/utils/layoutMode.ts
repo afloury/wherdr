@@ -15,8 +15,14 @@ export function isDesk(width: number, height: number): boolean {
   return width >= 900 || (width >= 700 && height >= 700)
 }
 
+// Tablet: shortest side at least 700 px (iPad mini included). A large
+// phone in landscape (932 × 430) is not one: it keeps its layout.
+export function isTablet(width: number, height: number): boolean {
+  return Math.min(width, height) >= 700
+}
+
 export function isSlim(width: number, height: number): boolean {
-  return isDesk(width, height) && width <= SLIM_MAX
+  return isDesk(width, height) && isTablet(width, height) && width <= SLIM_MAX
 }
 
 // State of the agent list on a computer layout.
@@ -28,11 +34,18 @@ export function listMode(o: { desk: boolean, slim: boolean, collapsed: boolean, 
   return o.collapsed ? 'rail' : 'docked'
 }
 
-// Enter in the message field: sends on a computer. On an iPhone or iPad
-// with the on-screen keyboard, Enter adds a line (the button sends). An iPad
-// with a hardware keyboard shows no on-screen keyboard: Enter sends there too.
-export function enterSends(o: { desk: boolean, touch: boolean, softKeyboard: boolean }): boolean {
+// Proof of a hardware keyboard: keys an on-screen keyboard (docked or
+// floating) does not send — arrows, Escape, Tab, or a ⌘ / Ctrl / Alt chord.
+export function provesHardwareKeyboard(e: { key: string, metaKey: boolean, ctrlKey: boolean, altKey: boolean }): boolean {
+  if (e.metaKey || e.ctrlKey || e.altKey) return true
+  return ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Escape', 'Tab'].includes(e.key)
+}
+
+// Enter in the message field: sends on a computer. On a touch screen Enter
+// adds a line (the button sends), unless it is a tablet with a proven
+// hardware keyboard and no on-screen keyboard showing. When in doubt: a line.
+export function enterSends(o: { desk: boolean, touch: boolean, tablet: boolean, hardwareKeyboard: boolean, softKeyboard: boolean }): boolean {
   if (!o.desk) return false
   if (!o.touch) return true
-  return !o.softKeyboard
+  return o.tablet && o.hardwareKeyboard && !o.softKeyboard
 }
