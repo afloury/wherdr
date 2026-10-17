@@ -8,6 +8,7 @@ const FR: Record<string, string> = {
   'TASKS.md changed in the meantime: check the list and try again': 'TASKS.md a changé entre-temps : vérifie la liste et réessaie',
   'TASKS.md cannot be written on this machine': 'TASKS.md ne peut pas être modifié sur cette machine',
   'TASKS.md is being written: try again': 'TASKS.md est en cours d’écriture : réessaie',
+  'TASKS.md is locked by an interrupted write: remove the folder TASKS.md.wherdr-lock next to it, then try again': 'TASKS.md est verrouillé par une écriture interrompue : supprime le dossier TASKS.md.wherdr-lock à côté, puis réessaie',
   'TASKS.md is too large to edit from wherdr': 'TASKS.md est trop grand pour être modifié depuis wherdr',
   'TASKS.md is not valid UTF-8': 'TASKS.md n’est pas en UTF-8 valide',
   'This task is no longer in TASKS.md: the list was reloaded': 'Cette tâche n’est plus dans TASKS.md : la liste a été rechargée',

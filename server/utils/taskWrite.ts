@@ -4,7 +4,8 @@
 //
 // Compare-and-write is serialized: one wherdr write at a time per file in this
 // process (a promise chain), and across processes and machines by a lock
-// directory next to the file (`mkdir` is atomic), taken by the write script.
+// directory next to the file (`mkdir` is atomic), taken by the write script
+// and never removed by another writer.
 // The hash is checked inside that lock, right before the rename. The same
 // script runs locally and over SSH.
 // Limit: an author that does not take the lock (the coordinator editing the
@@ -20,24 +21,29 @@ import { target, tasksHash } from './projectBoard'
 export const TASKS_WRITE_BYTES = 256 * 1024
 
 // $1 file, $2 expected hash, new content on stdin. Exit codes: 44 missing,
-// 45 changed since read, 46 cannot write, 47 lock busy. The new content is
-// stored first (unique `$$` names: one shell process per write), then, under
-// the lock: hash check, copy keeping the file mode, rename. A lock older than
-// a minute is left over from a killed write and removed.
+// 45 changed since read, 46 cannot write, 47 lock busy, 48 lock left over.
+// The new content is stored first (unique `$$` names: one shell process per
+// write), then, under the lock: hash check, copy keeping the file mode,
+// rename. The lock holds an owner token; a write removes only a lock whose
+// token is its own. A lock older than a minute is never removed
+// automatically (two writers could both judge it stale and both enter): the
+// write is refused and the user removes the folder (explicit recovery).
 export const WRITE_TASKS_SCRIPT = `f="$1"; want="$2"; lock="$f.wherdr-lock"
-in="$f.wherdr-$$.in"; tmp="$f.wherdr-$$"; held=
+in="$f.wherdr-$$.in"; tmp="$f.wherdr-$$"; held=; tok="$$.$(date +%s).$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \\n')"
 h() { if command -v sha256sum >/dev/null 2>&1; then sha256sum < "$1"; else shasum -a 256 < "$1"; fi | cut -d' ' -f1; }
-trap 'rm -f "$in" "$tmp"; [ -n "$held" ] && rmdir "$lock" 2>/dev/null' EXIT
+unlock() { [ -n "$held" ] && [ "$(cat "$lock/owner" 2>/dev/null)" = "$tok" ] && rm -f "$lock/owner" && rmdir "$lock" 2>/dev/null; }
+trap 'rm -f "$in" "$tmp"; unlock' EXIT
 trap 'exit 1' HUP INT TERM
 cat > "$in" || exit 46
 [ -f "$f" ] || exit 44
 n=0
 until mkdir "$lock" 2>/dev/null; do
-  if [ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then rmdir "$lock" 2>/dev/null; continue; fi
+  [ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ] && exit 48
   n=$((n + 1)); [ "$n" -ge 50 ] && exit 47
   sleep 0.1 2>/dev/null || sleep 1
 done
 held=1
+printf '%s' "$tok" > "$lock/owner" || exit 46
 [ -f "$f" ] || exit 44
 [ "$(h "$f")" = "$want" ] || exit 45
 cp -p "$f" "$tmp" 2>/dev/null || exit 46
@@ -64,6 +70,7 @@ export async function writeTasksFile(exec: ShellExec, file: string, want: string
   if (r.code === 0) return
   if (r.code === 44 || r.code === 45) throw STALE()
   if (r.code === 47) throw new HerdrError('tasks_busy', 'TASKS.md is being written: try again')
+  if (r.code === 48) throw new HerdrError('tasks_locked', 'TASKS.md is locked by an interrupted write: remove the folder TASKS.md.wherdr-lock next to it, then try again')
   if (r.code === 255 || r.code === 124) throw new HerdrError('unreachable', 'Machine unreachable')
   throw UNWRITABLE()
 }

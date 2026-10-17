@@ -178,13 +178,35 @@ describe('WRITE_TASKS_SCRIPT', () => {
     expect(fs.readdirSync(dir)).toEqual(['TASKS.md'])
   })
 
-  it('removes a stale lock left by a killed write', () => {
+  it('never removes a stale lock: two writers recovering the same one are both refused', async () => {
     fs.writeFileSync(f, 'old\n')
-    fs.mkdirSync(`${f}.wherdr-lock`)
+    const lock = `${f}.wherdr-lock`
+    fs.mkdirSync(lock)
+    fs.writeFileSync(`${lock}/owner`, 'killed-writer')
     const old = new Date(Date.now() - 5 * 60_000)
-    fs.utimesSync(`${f}.wherdr-lock`, old, old)
+    fs.utimesSync(lock, old, old)
+    const codes = await Promise.all([start(f, sha('old\n'), 'first\n'), start(f, sha('old\n'), 'second\n')])
+    expect(codes).toEqual([48, 48])
+    expect(fs.readFileSync(f, 'utf8')).toBe('old\n')
+    expect(fs.readFileSync(`${lock}/owner`, 'utf8')).toBe('killed-writer')
+    expect(fs.readdirSync(dir).sort()).toEqual(['TASKS.md', 'TASKS.md.wherdr-lock'])
+    // Explicit recovery: the folder removed, the next write goes through.
+    fs.rmSync(lock, { recursive: true })
     expect(run(f, sha('old\n'), 'new\n')).toBe(0)
-    expect(fs.readFileSync(f, 'utf8')).toBe('new\n')
+    expect(fs.readdirSync(dir)).toEqual(['TASKS.md'])
+  })
+
+  it('does not remove a lock that another writer owns', async () => {
+    fs.writeFileSync(f, 'old\n')
+    const lock = `${f}.wherdr-lock`
+    // A writer whose hash check fails exits while holding the lock; meanwhile
+    // its owner token is replaced, as if the lock had been taken again.
+    const slow = path.join(dir, 'bin')
+    fs.mkdirSync(slow)
+    fs.writeFileSync(path.join(slow, 'sha256sum'), `#!/bin/sh\nprintf other > '${lock}/owner'\nexec ${execFileSync('sh', ['-c', 'command -v sha256sum']).toString().trim()} "$@"\n`, { mode: 0o755 })
+    const r = spawnSync('sh', ['-c', WRITE_TASKS_SCRIPT, 'sh', f, sha('changed\n')], { input: 'new\n', env: { ...process.env, PATH: `${slow}:${process.env.PATH}` } })
+    expect(r.status).toBe(45)
+    expect(fs.readFileSync(`${lock}/owner`, 'utf8')).toBe('other')
   })
 
   it('gives up on a lock that stays held', () => {
