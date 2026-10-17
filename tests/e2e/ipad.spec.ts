@@ -109,6 +109,29 @@ test('iPad: Enter adds a line until a hardware keyboard is proven, then sends', 
   await ctx.close()
 })
 
+test('iPad: hardware keyboard, then a touch (floating keyboard next): Enter adds a line again', async ({ browser }) => {
+  const { ctx, page } = await ipad(browser, sizes.portrait)
+  await page.goto(`/#/a/${OMP_CHAT_PANE}`)
+  await expect(page.locator('.chat').getByText('Ready when you are.')).toBeVisible()
+  const field = page.locator('.prompt').locator('textarea').first()
+  await field.click()
+  await page.keyboard.press('ArrowLeft')
+  // Touch on the field (keyboard detached, floating one used): proof forgotten.
+  await field.tap()
+  await page.keyboard.type('after touch')
+  await page.keyboard.press('Enter')
+  await expect(field).toHaveValue('after touch\n')
+  // Proof again, then leaving the field forgets it too.
+  await field.fill('')
+  await page.keyboard.press('ArrowLeft')
+  await field.evaluate(el => (el as HTMLElement).blur())
+  await field.focus()
+  await page.keyboard.type('after blur')
+  await page.keyboard.press('Enter')
+  await expect(field).toHaveValue('after blur\n')
+  await ctx.close()
+})
+
 test('large iPhone in landscape (932 × 430): docked list, Enter adds a line, as before', async ({ browser }) => {
   const ctx = await browser.newContext({
     viewport: { width: 932, height: 430 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1, serviceWorkers: 'block',

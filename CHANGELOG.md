@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-- iPad layout: in portrait (iPad mini 744 × 1133, iPad Air 820 × 1180) the app now uses the computer layout instead of a stretched phone view. The agent list stays a narrow column and slides over the conversation when opened (closed by a tap outside, Escape, or picking an agent); on the home page it opens by itself. Landscape keeps the docked sidebar. On touch tablets buttons are 44 px. Once a hardware keyboard is proven (an arrow, Escape, Tab or a ⌘/Ctrl/Alt chord), Enter sends the message (Shift+Enter adds a line); otherwise, including with the floating on-screen keyboard, Enter adds a line. Phones are unchanged, including large ones in landscape (932 × 430).
+- iPad layout: in portrait (iPad mini 744 × 1133, iPad Air 820 × 1180) the app now uses the computer layout instead of a stretched phone view. The agent list stays a narrow column and slides over the conversation when opened (closed by a tap outside, Escape, or picking an agent); on the home page it opens by itself. Landscape keeps the docked sidebar. On touch tablets buttons are 44 px. Once a hardware keyboard is proven (an arrow, Escape, Tab or a ⌘/Ctrl/Alt chord), Enter sends the message (Shift+Enter adds a line); the proof is forgotten on any touch and when the message field loses focus; otherwise, including with the floating on-screen keyboard, Enter adds a line. Phones are unchanged, including large ones in landscape (932 × 430).
 
 ## [1.3.4] — 2026-10-18
 

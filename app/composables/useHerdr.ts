@@ -244,7 +244,8 @@ export const slim = ref(false)
 // Slim: the list opened over the agent (HomeView; backdrop in app.vue).
 export const listDrawer = ref(false)
 // Tablet (shortest side ≥ 700 px) and hardware keyboard seen (a key an
-// on-screen keyboard does not send); forgotten when the on-screen one shows.
+// on-screen keyboard does not send); forgotten on a touch, when the message
+// field loses focus, or when the on-screen keyboard shows.
 export const tablet = ref(false)
 export const hardwareKeyboard = ref(false)
 if (import.meta.client) {
@@ -252,6 +253,12 @@ if (import.meta.client) {
   tablet.value = tq.matches
   tq.addEventListener('change', () => { tablet.value = tq.matches })
   window.addEventListener('keydown', (e) => { if (provesHardwareKeyboard(e)) hardwareKeyboard.value = true }, true)
+  // The proof only covers the current typing: a touch (the on-screen keyboard,
+  // possibly floating, may be next) or leaving the message field forgets it.
+  const forget = () => { hardwareKeyboard.value = false }
+  window.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch') forget() }, true)
+  window.addEventListener('touchstart', forget, { capture: true, passive: true })
+  window.addEventListener('focusout', (e) => { if ((e.target as Element | null)?.closest?.('.prompt')) forget() }, true)
 }
 if (import.meta.client) {
   const mq = matchMedia(DESK_QUERY)
