@@ -1,6 +1,6 @@
 // A file of the agent's machine, whole, as an attachment: the same paths and
 // checks as its preview (files/read.get.ts), up to DOWNLOAD_BYTES.
-// `inline=1`: a PDF shown by the browser's own viewer (FilesView's preview);
+// `inline=1`: PDF bytes for the canvas preview and Open's native viewer;
 // any other file is still only an attachment.
 import { attachmentHeader, isPdf, readFileBytes, readWrittenBytes } from '../../utils/files'
 

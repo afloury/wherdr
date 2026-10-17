@@ -101,6 +101,8 @@ export default defineNuxtConfig({
       minify: false,
       // Fonts included (≈ 400 KB): the app keeps its typography offline.
       globPatterns: ['**/*.{js,css,png,svg,webmanifest,woff2}'],
+      // PDF.js and its worker are URL-imported .mjs assets, fetched only
+      // when a PDF opens; deliberately outside this precache glob.
       globIgnores: ['**/node_modules/**'],
     },
     client: { installPrompt: false, periodicSyncForUpdates: 0 },

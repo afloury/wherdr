@@ -69,6 +69,7 @@
     "happy-dom": "^20.14.5",
     "marked": "^15.0.12",
     "nuxt": "^4.5.2",
+    "pdfjs-dist": "5.4.624",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.9.3",
     "vitest": "^4.1.11",
