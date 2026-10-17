@@ -9,6 +9,7 @@ const router = useRouter()
 const isHome = computed(() => route.path === '/' || route.path === '')
 const searchOpen = ref(false)
 function openSearch() { searchOpen.value = true }
+function closeListDrawer() { listDrawer.value = false }
 
 useHead({
   htmlAttrs: { lang: language, class: computed(() => (activeTheme.value.def.light ? 'light' : 'dark')) },
@@ -82,6 +83,7 @@ onUnmounted(() => {
 <template>
   <UApp :locale="language === 'fr' ? fr : en" :toaster="{ position: desk ? 'top-right' : 'top-center', max: 1, progress: false }">
     <HomeView v-show="desk || isHome" @search="openSearch" />
+    <div v-if="desk && slim && listDrawer" class="list-scrim" aria-hidden="true" @click="closeListDrawer" />
     <GlobalSearch v-model:open="searchOpen" />
     <NuxtPage />
     <NewAgentSheet />

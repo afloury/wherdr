@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // App window: sheet at the bottom of the screen on the phone, centered window
-// on a computer (≥ 900 px). Escape or a tap outside closes it; on the phone,
+// on a computer (≥ 900 px, or a tablet). Escape or a tap outside closes it; on the phone,
 // so do a tap on the handle and a swipe down from the handle, the header, or
 // the content while it is scrolled to its top.
+import { PHONE_QUERY } from '~/utils/layoutMode'
 // `screen`: full-screen view on the phone instead of a sheet (page color,
 // safe areas included); unchanged on a computer. The `footer` slot stays
 // pinned under the scrolling content (above the home bar or the keyboard).
@@ -22,7 +23,7 @@ const ui = computed(() => ({
 // Swipe down: the sheet follows the finger, then closes or springs back.
 let drag: { sheet: HTMLElement, fromHandle: boolean, y0: number, y: number, t: number, v: number, dragging: boolean } | null = null
 function dragStart(e: TouchEvent, fromHandle: boolean) {
-  if (props.screen || e.touches.length !== 1 || !matchMedia('(max-width: 899px)').matches) return
+  if (props.screen || e.touches.length !== 1 || !matchMedia(PHONE_QUERY).matches) return
   const el = e.currentTarget as HTMLElement
   const sheet = el.closest<HTMLElement>('.hw-sheet')
   if (!sheet || (!fromHandle && el.scrollTop > 0)) return

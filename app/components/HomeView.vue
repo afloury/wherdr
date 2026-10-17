@@ -21,6 +21,7 @@ import { spaceTitle } from '#shared/displayTitles'
 import { claudeSetupOf, machineQuotaRows, quotaRows } from '~/utils/quotas'
 import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
 import { headerFold } from '~/utils/headerFold'
+import { listMode } from '~/utils/layoutMode'
 import pkg from '../../package.json'
 import { dropMachineKey, shiftMachineKey, sortMachines } from '#shared/machineOrder'
 import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
@@ -370,21 +371,43 @@ function openSearch() { emit('search') }
 const listWidth = ref<number | null>(null)
 const listDrag = ref(false)
 const listCollapsed = ref(false)
-const rail = computed(() => desk.value && listCollapsed.value)
+// Tablet in portrait (slim): the list stays a narrow column; opened, it
+// slides over the agent (drawer) and closes once a choice is made.
+const drawerOpen = listDrawer
+const mode = computed(() => listMode({ desk: desk.value, slim: slim.value, collapsed: listCollapsed.value, drawerOpen: drawerOpen.value }))
+const rail = computed(() => mode.value === 'rail')
+const drawer = computed(() => mode.value === 'drawer')
+const homeRoute = useRoute()
+// On the home page there is no agent to show: the list opens there.
+const atHome = () => homeRoute.path === '/' || homeRoute.path === ''
+watch(() => homeRoute.fullPath, () => { drawerOpen.value = slim.value && atHome() }, { immediate: true })
+watch(slim, (v) => { drawerOpen.value = v && atHome() })
+function onDrawerKey(e: KeyboardEvent) {
+  if (e.key === 'Escape' && drawer.value) { e.preventDefault(); setListCollapsed(true) }
+}
+// The agent already open: no route change, close on the tap itself.
+function onDrawerPick(e: MouseEvent) {
+  if (drawer.value && (e.target as Element | null)?.closest('.card')) drawerOpen.value = false
+}
 onMounted(() => {
   listWidth.value = readListWidth()
   listCollapsed.value = readListCollapsed()
+  window.addEventListener('keydown', onDrawerKey)
 })
-watch([listWidth, rail], ([w, r]) => {
+onUnmounted(() => window.removeEventListener('keydown', onDrawerKey))
+watch([listWidth, rail, slim], ([w, r, narrow]) => {
   const root = document.documentElement.style
-  if (r) root.setProperty('--side', `${LIST_RAIL}px`)
+  if (r || narrow) root.setProperty('--side', `${LIST_RAIL}px`)
   else if (w === null) root.removeProperty('--side')
   else root.setProperty('--side', listWidthCss(w))
-})
+}, { immediate: import.meta.client })
 // The original button disappears with its column: the focus goes to the opposite one.
 function setListCollapsed(collapsed: boolean) {
-  listCollapsed.value = collapsed
-  saveListCollapsed(collapsed)
+  if (slim.value) drawerOpen.value = !collapsed
+  else {
+    listCollapsed.value = collapsed
+    saveListCollapsed(collapsed)
+  }
   nextTick(() => document.querySelector<HTMLElement>(`#home ${collapsed ? '.home-rail' : '.home-top'} .rail-toggle`)?.focus())
 }
 function listNow() { return document.getElementById('home')?.getBoundingClientRect().width || LIST_DEFAULT }
@@ -424,7 +447,7 @@ function resetListWidth() {
 </script>
 
 <template>
-  <section id="home" class="view" :class="{ resizing: listDrag, rail, 'list-compact': compactList }">
+  <section id="home" class="view" :class="{ resizing: listDrag, rail, drawer, 'list-compact': compactList }" @click.capture="onDrawerPick">
     <!-- Collapsed list (computer): narrow column, the rest of the list is hidden. -->
     <nav v-if="rail" class="home-rail" :aria-label="t('Agents')">
       <AppLogo class="home-logo" :class="conn.idle ? '' : conn.ok ? 'ok' : 'bad'" :title="conn.text" />
@@ -644,7 +667,7 @@ function resetListWidth() {
     </AppSheet>
     <Teleport to="body">
       <div
-        v-if="desk && !rail" class="list-handle" :class="{ dragging: listDrag }" role="separator" aria-orientation="vertical" tabindex="0"
+        v-if="desk && !rail && !slim" class="list-handle" :class="{ dragging: listDrag }" role="separator" aria-orientation="vertical" tabindex="0"
         :aria-label="t('List width')" :aria-valuenow="listWidth ?? LIST_DEFAULT" :aria-valuemin="LIST_MIN" :aria-valuemax="LIST_MAX"
         :title="t('Drag to resize · double-click: default width')"
         @pointerdown="onListGrab" @dblclick="resetListWidth" @keydown="onListKey"

@@ -1,6 +1,7 @@
 // Terminal of a pane: xterm.js connected to /ws/term (Herdr's ANSI frames).
 // Herdr keeps the history: no local scrollback, scrolling is
 // requested from the server (terminal.scroll).
+import { DESK_QUERY } from '~/utils/layoutMode'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -132,7 +133,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     if (!term || !fit || !el || !el.parentElement) return
     // FitAddon measures the parent of .xterm (#term), not .xterm itself.
     // On the phone, the inset of #term already defines its width.
-    const desktop = matchMedia('(min-width: 900px)').matches && !opts.fill?.()
+    const desktop = matchMedia(DESK_QUERY).matches && !opts.fill?.()
     el.style.width = desktop ? `${terminalPixelWidth(el.parentElement.clientWidth, contentWidth.value)}px` : ''
     const p = fit.proposeDimensions()
     if (!p || !p.cols || !p.rows) return
