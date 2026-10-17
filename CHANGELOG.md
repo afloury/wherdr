@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Add a 15-second README hero animation: start an agent in a desktop browser and follow the same conversation on a phone, approve its test request, and check project tasks and multiple machines. Includes silent square and 16:9 MP4s, a 720 px animated WebP, and reproducible HyperFrames sources in `tools/launch-video/`. Clarify phone home-screen installation without an App Store.
+
 - Render plain bullet tasks with the same full-width text and badge footer as other project tasks. Every unfinished task, including custom lists and In progress entries, offers a question draft to the coordinator.
 - Render PDF previews with a bundled, lazily loaded PDF.js worker on every device, including iPhone and iPad: all pages fit the window, with Retina canvases rendered near the viewport and released off screen. Open and Download keep their existing URLs.
 

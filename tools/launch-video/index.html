@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>wherdr — Step away. Stay in control.</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="node_modules/gsap/dist/gsap.min.js"></script>
+  </head>
+  <body>
+    <div
+      id="film"
+      data-composition-id="wherdr"
+      data-width="1080"
+      data-height="1080"
+      data-duration="15"
+      data-fps="30"
+    >
+      <header>
+        <img src=".generated/logo.png" alt="" /><b>wherdr</b
+        ><span>YOUR HERDR AGENTS. EVERYWHERE.</span>
+      </header>
+      <div class="headline" id="desktop-title">
+        <h1>Start on PC.<br /><em>Keep going.</em></h1>
+        <p>ON YOUR COMPUTER</p>
+      </div>
+      <div class="headline side" id="mobile-title">
+        <h1>
+          Step away.<br /><em>Stay in<br />control.</em>
+        </h1>
+        <p>SAME AGENT.<br />SAME CONVERSATION.</p>
+      </div>
+      <div class="headline side" id="project-title">
+        <h1>Keep work<br /><em>moving.</em></h1>
+        <p>PROJECTS. TASKS. THREADS.</p>
+      </div>
+      <div class="headline side" id="machines-title">
+        <h1>Every<br />machine.<br /><em>One view.</em></h1>
+        <p>COMPUTER → PHONE</p>
+      </div>
+      <div id="device">
+        <div id="browser">
+          <i></i><i></i><i></i><span>▣ &nbsp; wherdr · private workspace</span>
+        </div>
+        <div id="phone-status"><span>9:41</span><span>▰ ▰ ▰</span></div>
+        <div id="app">
+          <aside id="sidebar">
+            <div class="brand">wherdr <span>+</span></div>
+            <div class="small">WORKING <b id="working-count">2</b></div>
+            <div class="agent selected">
+              <span class="dot working"></span>
+              <div><b>Checkout</b><small>Claude Code · Studio</small></div>
+            </div>
+            <div class="agent">
+              <span class="dot working"></span>
+              <div><b>API tests</b><small>Codex · Server</small></div>
+            </div>
+            <div class="agent">
+              <span class="dot working"></span>
+              <div><b>Search</b><small>Claude Code · Studio</small></div>
+            </div>
+            <div class="small">READY <b>1</b></div>
+            <div class="agent">
+              <span class="dot done"></span>
+              <div><b>Documentation</b><small>Codex · Server</small></div>
+            </div>
+            <div class="sidebar-bottom">⌘ K &nbsp; Search &nbsp; ⚙</div>
+          </aside>
+          <main id="conversation" class="view">
+            <div class="appbar">
+              <span class="back">‹</span><b>Checkout</b
+              ><span class="badge purple" id="working-badge">WORKING</span
+              ><span class="badge amber" id="question-badge">YOUR TURN</span>
+            </div>
+            <div class="tabs">
+              <span class="active">Conversation</span><span>Terminal</span
+              ><span>Changes</span>
+            </div>
+            <div class="messages">
+              <div class="role">YOU <span>9:40</span></div>
+              <div class="user-message">Polish the checkout.</div>
+              <div class="role agent-role">CLAUDE CODE <span>9:41</span></div>
+              <div class="reply">I’m updating the payment form.</div>
+              <div class="tool">
+                <span class="dot working"></span> Editing Checkout.vue
+                <span>+24 −8</span>
+              </div>
+              <div id="approval">
+                <div class="approval-label">PERMISSION REQUEST</div>
+                <strong>Run the checkout tests?</strong
+                ><code>npm run test:checkout</code>
+                <div id="approve-button">✓ &nbsp; Yes, allow once</div>
+                <div class="decline">No, keep waiting</div>
+              </div>
+              <div id="approved">
+                <span>✓ APPROVED</span>
+                <p>Running the checkout tests…</p>
+                <div class="run-line"></div>
+              </div>
+            </div>
+            <div class="composer"><span>Message your agent…</span><b>↑</b></div>
+          </main>
+          <section id="launch" class="view overlay-view">
+            <div class="appbar">
+              <b>New agent</b><span class="badge blue">WEB SHOP</span>
+            </div>
+            <div class="launch-content">
+              <div class="launch-model">
+                <span class="dot working"></span> Claude Code
+              </div>
+              <div class="launch-prompt">Polish the checkout.</div>
+              <div id="start-agent">Start agent <span>→</span></div>
+              <svg id="mouse" width="36" height="44" viewBox="0 0 36 44">
+                <path
+                  d="M3 3v32l9-8 7 14 7-4-7-14h13Z"
+                  fill="#e6eaf2"
+                  stroke="#12151b"
+                  stroke-width="2"
+                />
+              </svg>
+            </div>
+          </section>
+          <section id="project" class="view overlay-view">
+            <div class="appbar">
+              <span class="back">‹</span><b>Web shop</b
+              ><span class="badge blue">PROJECT</span>
+            </div>
+            <div class="tabs">
+              <span class="active">Tasks</span><span>Threads</span
+              ><span>Inbox</span>
+            </div>
+            <div class="project-content">
+              <div class="small">IN PROGRESS <b>2</b></div>
+              <div class="task">
+                <span class="dot working"></span>
+                <div>
+                  <b>Polish the checkout</b><small>Claude Code · t-0042</small>
+                  <div class="progress"><i></i></div>
+                </div>
+              </div>
+              <div class="task">
+                <span class="dot working"></span>
+                <div>
+                  <b>Test the payment API</b><small>Codex · t-0043</small>
+                </div>
+              </div>
+              <div class="small">TO TEST <b>1</b></div>
+              <div class="task test-task">
+                <span class="dot done"></span>
+                <div>
+                  <b>Search suggestions</b
+                  ><span class="badge green">READY TO TEST</span>
+                  <div class="actions">
+                    <span id="tested-button">✓ Tested</span
+                    ><span>Question</span>
+                  </div>
+                </div>
+              </div>
+              <div class="small">IN QUEUE <b>1</b></div>
+              <div class="task">
+                <span class="queue-icon">↳</span>
+                <div>
+                  <b>Refresh the product page</b
+                  ><small>Next when a slot opens</small>
+                </div>
+              </div>
+              <div id="tested-feedback">✓ Sent to the coordinator</div>
+            </div>
+          </section>
+          <section id="machines" class="view overlay-view">
+            <div class="appbar">
+              <b>wherdr</b><span class="badge green">LIVE</span><span>+</span>
+            </div>
+            <div class="machine-content">
+              <div class="machine-name">
+                ▣ &nbsp; STUDIO <span>● ONLINE</span>
+              </div>
+              <div class="small">WORKING <b>2</b></div>
+              <div class="agent">
+                <span class="dot working"></span>
+                <div><b>Checkout</b><small>Claude Code · Web shop</small></div>
+              </div>
+              <div class="agent">
+                <span class="dot working"></span>
+                <div><b>Search</b><small>Claude Code · Web shop</small></div>
+              </div>
+              <div class="machine-name second-machine">
+                ▤ &nbsp; SERVER <span>● ONLINE</span>
+              </div>
+              <div class="small">WORKING <b>1</b></div>
+              <div class="agent">
+                <span class="dot working"></span>
+                <div><b>API tests</b><small>Codex · Web shop</small></div>
+              </div>
+              <div class="small">READY <b>1</b></div>
+              <div class="agent">
+                <span class="dot done"></span>
+                <div><b>Documentation</b><small>Codex · Web shop</small></div>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div id="home-indicator"></div>
+      </div>
+      <div id="handoff">
+        <span>PC</span><i></i><b>→</b><i></i><span>PHONE</span>
+      </div>
+      <div id="tap"></div>
+      <svg
+        id="thumb"
+        width="270"
+        height="350"
+        viewBox="0 0 270 350"
+        aria-label="A thumb taps the approval"
+      >
+        <path
+          d="M270 350H150C135 322 130 300 112 269L27 133C5 98 4 72 29 54C52 38 81 46 100 71L210 213C247 226 270 249 270 285Z"
+          fill="#d2b39c"
+          stroke="#f3d5be"
+          stroke-width="3"
+        />
+        <ellipse
+          cx="65"
+          cy="99"
+          rx="22"
+          ry="34"
+          transform="rotate(-34 65 99)"
+          fill="#ecd0bb"
+          opacity=".8"
+        />
+      </svg>
+      <div id="end">
+        <div class="end-kicker">THE WORKSPACE FOR YOUR HERDR AGENTS</div>
+        <h1>wherdr<span>_</span></h1>
+        <h2>Step away. Stay in control.</h2>
+        <div class="end-link">wherdr.dev <span>↗</span></div>
+        <p>SELF-HOSTED &nbsp; / &nbsp; PRIVATE &nbsp; / &nbsp; OPEN SOURCE</p>
+      </div>
+      <footer>
+        <span>YOUR AGENTS KEEP GOING.</span><span>wherdr.dev</span>
+      </footer>
+      <div class="timeline"><i></i></div>
+    </div>
+    <script src="timeline.js"></script>
+    <script>
+      window.__timelines = { wherdr: tl };
+    </script>
+  </body>
+</html>

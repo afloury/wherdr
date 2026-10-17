@@ -4,8 +4,15 @@
 
 <h1 align="center">wherdr</h1>
 
-<p align="center"><b>A complete workspace for the coding agents running in <a href="https://herdr.dev">Herdr</a>, on your
-computer and on your phone.</b></p>
+<p align="center"><b>Start your <a href="https://herdr.dev">Herdr</a> agents on your computer.
+Follow their work and answer from your phone.</b></p>
+
+<p align="center">Add it to your home screen like an app — no App Store needed.</p>
+
+<p align="center">
+  <a href="assets/wherdr-launch.mp4"><img src="assets/wherdr-launch.webp" width="720" alt="Animated demo: an agent starts in a wherdr desktop browser, the same checkout conversation moves onto a phone, a thumb approves the agent’s test request, then project tasks and agents on two machines appear."></a>
+</p>
+<p align="center"><sub>Step away. Stay in control. <a href="assets/wherdr-launch.mp4">Watch the 15-second video</a>.</sub></p>
 
 <p align="center"><a href="https://wherdr.dev"><b>wherdr.dev</b></a> · <a href="#ask-your-ai-agent">Ask your AI agent</a></p>
 
