@@ -1,12 +1,12 @@
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { parseTasks } from '../shared/projectBoard'
 import { moveTaskInText } from '../shared/taskEdit'
-import { WRITE_TASKS_SCRIPT, checkMove } from '../server/utils/taskWrite'
+import { WRITE_TASKS_SCRIPT, applyMove, checkMove, localExec, serialized } from '../server/utils/taskWrite'
 
 const MD = `# Demo
 
@@ -127,31 +127,104 @@ describe('checkMove', () => {
 describe('WRITE_TASKS_SCRIPT', () => {
   const sha = (s: string) => createHash('sha256').update(s).digest('hex')
   const run = (file: string, want: string, input: string) => spawnSync('sh', ['-c', WRITE_TASKS_SCRIPT, 'sh', file, want], { input }).status
+  const start = (file: string, want: string, input: string) => new Promise<number | null>((resolve) => {
+    const c = spawn('sh', ['-c', WRITE_TASKS_SCRIPT, 'sh', file, want])
+    c.on('close', resolve)
+    c.stdin.end(input)
+  })
+  let dir = ''
+  let f = ''
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'taskedit-'))
+    f = path.join(dir, 'TASKS.md')
+  })
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }))
 
   it('writes when the file is unchanged, keeping its mode', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'taskedit-'))
-    const f = path.join(dir, 'TASKS.md')
-    fs.writeFileSync(f, 'old\n', { mode: 0o640 })
+    fs.writeFileSync(f, 'old\n')
     fs.chmodSync(f, 0o640)
     expect(run(f, sha('old\n'), 'new\n')).toBe(0)
     expect(fs.readFileSync(f, 'utf8')).toBe('new\n')
     expect(fs.statSync(f).mode & 0o777).toBe(0o640)
     expect(fs.readdirSync(dir)).toEqual(['TASKS.md'])
-    fs.rmSync(dir, { recursive: true })
   })
 
   it('refuses a changed or missing file, writing nothing', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'taskedit-'))
-    const f = path.join(dir, 'TASKS.md')
     fs.writeFileSync(f, 'changed\n')
     expect(run(f, sha('old\n'), 'new\n')).toBe(45)
     expect(fs.readFileSync(f, 'utf8')).toBe('changed\n')
     expect(run(path.join(dir, 'none.md'), sha('old\n'), 'new\n')).toBe(44)
     expect(fs.readdirSync(dir)).toEqual(['TASKS.md'])
-    fs.rmSync(dir, { recursive: true })
   })
+
+  it('two writes from the same read: exactly one wins, the other is refused', async () => {
+    fs.writeFileSync(f, 'old\n')
+    // Both wait on a held lock, then race for it once released.
+    fs.mkdirSync(`${f}.wherdr-lock`)
+    const both = Promise.all([start(f, sha('old\n'), 'first\n'), start(f, sha('old\n'), 'second\n')])
+    await new Promise(r => setTimeout(r, 300))
+    fs.rmdirSync(`${f}.wherdr-lock`)
+    const codes = (await both).sort()
+    expect(codes).toEqual([0, 45])
+    expect(['first\n', 'second\n']).toContain(fs.readFileSync(f, 'utf8'))
+    expect(fs.readdirSync(dir)).toEqual(['TASKS.md'])
+  })
+
+  it('many concurrent writes from the same read: one success, no leftovers', async () => {
+    fs.writeFileSync(f, 'old\n')
+    const codes = await Promise.all(Array.from({ length: 6 }, (_, i) => start(f, sha('old\n'), `w${i}\n`)))
+    expect(codes.filter(c => c === 0)).toHaveLength(1)
+    expect(codes.filter(c => c === 45)).toHaveLength(5)
+    expect(fs.readdirSync(dir)).toEqual(['TASKS.md'])
+  })
+
+  it('removes a stale lock left by a killed write', () => {
+    fs.writeFileSync(f, 'old\n')
+    fs.mkdirSync(`${f}.wherdr-lock`)
+    const old = new Date(Date.now() - 5 * 60_000)
+    fs.utimesSync(`${f}.wherdr-lock`, old, old)
+    expect(run(f, sha('old\n'), 'new\n')).toBe(0)
+    expect(fs.readFileSync(f, 'utf8')).toBe('new\n')
+  })
+
+  it('gives up on a lock that stays held', () => {
+    fs.writeFileSync(f, 'old\n')
+    fs.mkdirSync(`${f}.wherdr-lock`)
+    expect(run(f, sha('old\n'), 'new\n')).toBe(47)
+    expect(fs.readFileSync(f, 'utf8')).toBe('old\n')
+    expect(fs.readdirSync(dir).sort()).toEqual(['TASKS.md', 'TASKS.md.wherdr-lock'])
+  }, 20_000)
 
   it('has a hash tool available', () => {
     expect(execFileSync('sh', ['-c', 'command -v sha256sum || command -v shasum']).toString().trim()).not.toBe('')
+  })
+})
+
+describe('applyMove (local, serialized)', () => {
+  it('two moves sent with the same hash at once: one applied, the other refused', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'taskedit-'))
+    const f = path.join(dir, 'TASKS.md')
+    const md = '## To do\n- [ ] A\n- [ ] B\n- [ ] C\n'
+    fs.writeFileSync(f, md)
+    const io = { read: async (p: string) => fs.readFileSync(p), exec: localExec }
+    const hash = createHash('sha256').update(md).digest('hex')
+    const key = `local|${f}`
+    const results = await Promise.allSettled([
+      serialized(key, () => applyMove(io, f, { list: 0, index: 0, text: 'A' }, 'down', hash)),
+      serialized(key, () => applyMove(io, f, { list: 0, index: 2, text: 'C' }, 'up', hash)),
+    ])
+    expect(results[0]!.status).toBe('fulfilled')
+    expect(results[1]!.status).toBe('rejected')
+    expect((results[1] as PromiseRejectedResult).reason.code).toBe('tasks_changed')
+    expect(fs.readFileSync(f, 'utf8')).toBe('## To do\n- [ ] B\n- [ ] A\n- [ ] C\n')
+    expect(fs.readdirSync(dir)).toEqual(['TASKS.md'])
+    fs.rmSync(dir, { recursive: true })
+  })
+
+  it('a refused move does not block the next one', async () => {
+    const order: string[] = []
+    await serialized('k', async () => { order.push('a'); throw new Error('x') }).catch(() => {})
+    await serialized('k', async () => { order.push('b') })
+    expect(order).toEqual(['a', 'b'])
   })
 })

@@ -1,31 +1,84 @@
 // Moves a task in a project's TASKS.md from the Project panel (local or SSH
-// machine). Safe write: the file is read again just before, refused if its
-// content no longer matches what the app showed (hash), checked once more
-// right before an atomic rename, and only the task's lines move
-// (shared/taskEdit.ts).
-import fs from 'node:fs'
+// machine). Safe write: refused if the file's content no longer matches what
+// the app showed (hash), and only the task's lines move (shared/taskEdit.ts).
+//
+// Compare-and-write is serialized: one wherdr write at a time per file in this
+// process (a promise chain), and across processes and machines by a lock
+// directory next to the file (`mkdir` is atomic), taken by the write script.
+// The hash is checked inside that lock, right before the rename. The same
+// script runs locally and over SSH.
+// Limit: an author that does not take the lock (the coordinator editing the
+// file) can still write between our last check and the rename; that window is
+// a few milliseconds, and its write would then be replaced by ours.
+import { execFile } from 'node:child_process'
 import type { Pane } from '../../shared/types'
 import { type TaskMove, type TaskRef, TASK_MOVES, moveTaskInText } from '../../shared/taskEdit'
+import type { ShellExec } from './fsx'
 import { HerdrError } from './herdr'
 import { target, tasksHash } from './projectBoard'
 
-const fsp = fs.promises
 export const TASKS_WRITE_BYTES = 256 * 1024
 
-// Remote write: $1 file, $2 expected hash, new content on stdin.
-// 44 missing, 45 changed since read, 46 cannot write.
-export const WRITE_TASKS_SCRIPT = `f="$1"; want="$2"
+// $1 file, $2 expected hash, new content on stdin. Exit codes: 44 missing,
+// 45 changed since read, 46 cannot write, 47 lock busy. The new content is
+// stored first (unique `$$` names: one shell process per write), then, under
+// the lock: hash check, copy keeping the file mode, rename. A lock older than
+// a minute is left over from a killed write and removed.
+export const WRITE_TASKS_SCRIPT = `f="$1"; want="$2"; lock="$f.wherdr-lock"
+in="$f.wherdr-$$.in"; tmp="$f.wherdr-$$"; held=
 h() { if command -v sha256sum >/dev/null 2>&1; then sha256sum < "$1"; else shasum -a 256 < "$1"; fi | cut -d' ' -f1; }
+trap 'rm -f "$in" "$tmp"; [ -n "$held" ] && rmdir "$lock" 2>/dev/null' EXIT
+trap 'exit 1' HUP INT TERM
+cat > "$in" || exit 46
+[ -f "$f" ] || exit 44
+n=0
+until mkdir "$lock" 2>/dev/null; do
+  if [ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then rmdir "$lock" 2>/dev/null; continue; fi
+  n=$((n + 1)); [ "$n" -ge 50 ] && exit 47
+  sleep 0.1 2>/dev/null || sleep 1
+done
+held=1
 [ -f "$f" ] || exit 44
 [ "$(h "$f")" = "$want" ] || exit 45
-tmp="$f.wherdr-$$"
 cp -p "$f" "$tmp" 2>/dev/null || exit 46
-cat > "$tmp" || { rm -f "$tmp"; exit 46; }
-[ "$(h "$f")" = "$want" ] || { rm -f "$tmp"; exit 45; }
-mv -f "$tmp" "$f" || { rm -f "$tmp"; exit 46; }`
+cat "$in" > "$tmp" || exit 46
+mv -f "$tmp" "$f" || exit 46`
+
+// The script on this machine (no SSH).
+export const localExec: ShellExec = (script, args = [], opts = {}) => new Promise((resolve) => {
+  const child = execFile('sh', ['-c', script, 'sh', ...args], { timeout: opts.timeoutMs || 15000, encoding: 'buffer' }, (err, out, stderr) => resolve({
+    code: err ? (typeof err.code === 'number' ? err.code : 1) : 0,
+    stdout: out,
+    stderr: String(stderr || ''),
+  }))
+  child.stdin?.on('error', () => {})
+  child.stdin?.end(opts.input || undefined)
+})
 
 const STALE = () => new HerdrError('tasks_changed', 'TASKS.md changed in the meantime: check the list and try again')
 const UNWRITABLE = () => new HerdrError('tasks_readonly', 'TASKS.md cannot be written on this machine')
+
+// Compare-and-write of TASKS.md through the script (local or remote shell).
+export async function writeTasksFile(exec: ShellExec, file: string, want: string, data: Buffer): Promise<void> {
+  const r = await exec(WRITE_TASKS_SCRIPT, [file, want], { input: data, timeoutMs: 20000 })
+  if (r.code === 0) return
+  if (r.code === 44 || r.code === 45) throw STALE()
+  if (r.code === 47) throw new HerdrError('tasks_busy', 'TASKS.md is being written: try again')
+  if (r.code === 255 || r.code === 124) throw new HerdrError('unreachable', 'Machine unreachable')
+  throw UNWRITABLE()
+}
+
+// One move at a time per file in this process: the read, the check and the
+// write of a move all happen before the next one starts.
+const chains = new Map<string, Promise<unknown>>()
+export function serialized<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = chains.get(key) || Promise.resolve()
+  const run = prev.catch(() => {}).then(fn)
+  const done = run.catch(() => {})
+  chains.set(key, done)
+  done.then(() => { if (chains.get(key) === done) chains.delete(key) })
+  return run
+}
 
 const ERRORS: Record<string, string> = {
   not_found: 'This task is no longer in TASKS.md: the list was reloaded',
@@ -43,32 +96,14 @@ export function checkMove(body: Record<string, unknown>): { ref: TaskRef, move: 
   return { ref, move, hash }
 }
 
-// Local write: same steps as the remote script.
-async function writeLocal(file: string, want: string, data: Buffer) {
-  const cur = await fsp.readFile(file).catch(() => { throw STALE() })
-  if (tasksHash(cur) !== want) throw STALE()
-  const tmp = `${file}.wherdr-${process.pid}-${Date.now()}`
-  try {
-    const st = await fsp.stat(file)
-    await fsp.writeFile(tmp, data, { mode: st.mode & 0o7777, flag: 'wx' })
-    if (tasksHash(await fsp.readFile(file)) !== want) throw STALE()
-    await fsp.rename(tmp, file)
-  } catch (e) {
-    await fsp.rm(tmp, { force: true }).catch(() => {})
-    if (e instanceof HerdrError) throw e
-    throw UNWRITABLE()
-  }
-}
-
-export async function moveProjectTask(pane: Pane, body: Record<string, unknown>): Promise<{ ok: true, hash: string }> {
-  const { ref, move, hash } = checkMove(body)
-  const t = await target(pane)
-  if (!t) throw new HerdrError('no_project', 'project not found')
-  const file = `${t.dir}/TASKS.md`
-  const st = await t.m.fs.stat(file).catch(() => null)
-  if (!st?.isFile) throw STALE()
-  if (st.size > TASKS_WRITE_BYTES) throw new HerdrError('tasks_too_large', 'TASKS.md is too large to edit from wherdr')
-  const buf = await t.m.fs.read(file, 0, st.size)
+// Reads TASKS.md, checks the hash, applies the move and writes it back.
+export async function applyMove(
+  io: { read: (file: string) => Promise<Buffer | null>, exec: ShellExec },
+  file: string, ref: TaskRef, move: TaskMove, hash: string,
+): Promise<{ ok: true, hash: string }> {
+  const buf = await io.read(file)
+  if (!buf) throw STALE()
+  if (buf.length > TASKS_WRITE_BYTES) throw new HerdrError('tasks_too_large', 'TASKS.md is too large to edit from wherdr')
   if (tasksHash(buf) !== hash) throw STALE()
   const md = buf.toString('utf8')
   // Bytes that are not UTF-8 would not survive the round trip: refused.
@@ -76,13 +111,20 @@ export async function moveProjectTask(pane: Pane, body: Record<string, unknown>)
   const res = moveTaskInText(md, ref, move)
   if (!res.ok) throw new HerdrError(`task_${res.error}`, ERRORS[res.error]!)
   const out = Buffer.from(res.text, 'utf8')
-  if (t.m.exec) {
-    const r = await t.m.exec(WRITE_TASKS_SCRIPT, [file, hash], { input: out, timeoutMs: 15000 })
-    if (r.code === 44 || r.code === 45) throw STALE()
-    if (r.code === 255 || r.code === 124) throw new HerdrError('unreachable', 'Machine unreachable')
-    if (r.code !== 0) throw UNWRITABLE()
-  } else {
-    await writeLocal(file, hash, out)
-  }
+  await writeTasksFile(io.exec, file, hash, out)
   return { ok: true, hash: tasksHash(out) }
+}
+
+export async function moveProjectTask(pane: Pane, body: Record<string, unknown>): Promise<{ ok: true, hash: string }> {
+  const { ref, move, hash } = checkMove(body)
+  const t = await target(pane)
+  if (!t) throw new HerdrError('no_project', 'project not found')
+  const file = `${t.dir}/TASKS.md`
+  const read = async (f: string) => {
+    const st = await t.m.fs.stat(f).catch(() => null)
+    if (!st?.isFile) return null
+    if (st.size > TASKS_WRITE_BYTES) throw new HerdrError('tasks_too_large', 'TASKS.md is too large to edit from wherdr')
+    return t.m.fs.read(f, 0, st.size)
+  }
+  return serialized(`${t.m.key}|${file}`, () => applyMove({ read, exec: t.m.exec || localExec }, file, ref, move, hash))
 }
