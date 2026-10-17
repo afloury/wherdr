@@ -21,14 +21,16 @@ const tabByPane = new Map<string, string>()
 // The only task decorations: the coordinator's [b:color(text)](target)
 // badges; URLs in the text are plain links.
 // "Backlog": Launch sends the message; Detail prepares a draft.
-// "To do" / "In queue": Move up / Move down, Queue it, Launch now, Back to
-// backlog / Remove from queue are sent as is; the coordinator edits TASKS.md.
+// "To do" / "In queue": Launch now and Back to backlog are sent as is; the
+// coordinator edits TASKS.md.
+// Every unfinished task: its "…" menu moves it up / down in its list, to To do
+// or to In queue, written straight to TASKS.md by the server (only the task's
+// lines; refused if the file changed since it was read).
 // The "In queue" header shows the thread slots in use (PROJECT.md) and the
 // global limit of the coordinator's machine, all projects.
 // "In progress": Add info, on an open thread's card and on the task of a
 // thread, opens a text sheet; "↳ Info pour t-NNNN : …" is sent to the coordinator,
 // which passes the text on to the thread.
-// The file is never written from here.
 // Tabs: "Tasks" (all of the above), "Threads" (ProjectThreads.vue: every
 // thread, its record and its actions), "Inbox" (ProjectInbox.vue: unhandled
 // items, Done), "Routines", "Settings" and "Memory" (ProjectRoutines.vue,
@@ -39,6 +41,7 @@ const tabByPane = new Map<string, string>()
 import type { QueuedMessage } from '#shared/types'
 import { type BoardSection, type ListKind, type ProjectBoard, type ProjectTask, type ProjectThread, boardSections, visibleSections, decisionPrefix, detailPrefix, infoMessage, launchMessage, missingLists, moveMessage, type MoveAction, problemPrefix, queueStatus, questionPrefix, reviewCommentPrefix, reviewedMessage, testedMessage, unblockMessage } from '#shared/projectBoard'
 import type { BoardAction } from '#shared/globalBoard'
+import type { TaskMove, TaskRef } from '#shared/taskEdit'
 import { machineSlotsLine } from '#shared/threadLimits'
 
 const props = defineProps<{ paneId: string, board: ProjectBoard | null, loading: boolean, error: string, side?: boolean }>()
@@ -189,9 +192,46 @@ const taskSent = (s: BoardSection, task: ProjectTask) => (testable(s, task) || l
 // ------------------------------------------------------------ to do / in queue
 const moveKey = (s: BoardSection, action: MoveAction, task: ProjectTask) => sentKey(s.kind, action, task.text)
 const pending = (s: BoardSection) => s.tasks.filter(x => !x.done)
-const isFirst = (s: BoardSection, task: ProjectTask) => pending(s)[0] === task
-const isLast = (s: BoardSection, task: ProjectTask) => pending(s).at(-1) === task
 const moveTask = (s: BoardSection, task: ProjectTask, action: MoveAction) => act(s.kind, action, task.text, moveMessage(action, task.text, lang()))
+
+// Direct moves, written to TASKS.md by the server (card menu): up / down in
+// the list, to To do, to In queue. Only when the whole file was read
+// (`tasksHash`); a file changed since is refused and re-read.
+const moving = ref<string | null>(null)
+function taskRefOf(s: BoardSection, task: ProjectTask): TaskRef | null {
+  const m = /^l(\d+)$/.exec(s.key)
+  const list = m ? props.board?.lists[Number(m[1])] : undefined
+  const index = list ? list.tasks.indexOf(task) : -1
+  return list && index >= 0 ? { list: Number(m![1]), index, text: task.text } : null
+}
+const taskRefKey = (s: BoardSection, task: ProjectTask) => `${s.key}|${task.text}`
+function taskMoves(s: BoardSection, task: ProjectTask): MenuItem[] {
+  const b = props.board
+  const ref = b?.tasksHash && !task.done && s.kind !== 'done' && !offlineView.value ? taskRefOf(s, task) : null
+  if (!b || !ref) return []
+  const tasks = b.lists[ref.list]!.tasks
+  const go = (move: TaskMove) => () => writeMove(s, task, ref, move)
+  const items: MenuItem[] = []
+  if (ref.index > 0) items.push({ label: tl('Move up', 'Monter'), icon: 'i-lucide-arrow-up', run: go('up') })
+  if (ref.index < tasks.length - 1) items.push({ label: tl('Move down', 'Descendre'), icon: 'i-lucide-arrow-down', run: go('down') })
+  const todo = s.kind !== 'todo' && b.lists.find(l => l.kind === 'todo')
+  if (todo) items.push({ label: tl(`Move to ${todo.title}`, `Passer en ${todo.title}`), icon: 'i-lucide-list-todo', run: go('todo') })
+  const queue = s.kind !== 'queue' && b.lists.find(l => l.kind === 'queue')
+  if (queue) items.push({ label: tl(`Move to ${queue.title}`, `Passer en ${queue.title}`), icon: 'i-lucide-list-ordered', run: go('queue') })
+  return items
+}
+async function writeMove(s: BoardSection, task: ProjectTask, ref: TaskRef, move: TaskMove) {
+  if (moving.value || !props.board?.tasksHash) return
+  moving.value = taskRefKey(s, task)
+  haptic()
+  try {
+    await moveProjectTask(props.paneId, ref, props.board.tasksHash, move)
+  } catch (e) { toast((e as Error).message, true) }
+  finally {
+    moving.value = null
+    emit('reload')
+  }
+}
 // "In queue" header: thread slots in use and the next task.
 const slotLine = (s: BoardSection) => (s.kind === 'queue' ? queueStatus(props.board?.slots, pending(s)[0]?.text, lang()) : null)
 // Global limit of the coordinator's machine, all projects (Settings › Plugins).
@@ -338,28 +378,17 @@ function hideHint() {
               <span class="pp-box" aria-hidden="true" />
               <!-- All tasks share the full-width text and badge/action footer. -->
               <span class="pp-task-body">
-                <span class="pp-task-text"><TaskText :text="task.text" /></span>
+                <span class="pp-task-head">
+                  <span class="pp-task-text"><TaskText :text="task.text" /></span>
+                  <span v-if="moving === taskRefKey(s, task)" class="spinner pp-spin" />
+                  <SpaceMenu v-else-if="taskMoves(s, task).length" :items="() => taskMoves(s, task)" :title="task.text" :label="tl(`Move: ${task.text}`, `Déplacer : ${task.text}`)" size="sm" />
+                </span>
                 <span v-if="task.reason" class="pp-reason">{{ task.reason }}</span>
                 <span v-if="task.badges?.length || questionable(s, task)" class="pp-task-foot">
                   <span v-if="taskSent(s, task)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Sent to the coordinator') }}</span>
                   <TaskBadges v-if="task.badges && coordinator" :badges="task.badges" :coordinator="coordinator" :board="board" />
                   <span v-if="questionable(s, task)" class="pp-verdict" :class="{ wrap: orderable(s, task) }">
                     <template v-if="orderable(s, task) && !taskSent(s, task)">
-                      <UTooltip :text="tl('Move up', 'Monter')" :disabled="!desk">
-                        <button type="button" class="pp-vbtn move" :disabled="acting !== null || isFirst(s, task)" :aria-label="tl(`Move up: ${task.text}`, `Monter : ${task.text}`)" @click="moveTask(s, task, 'up')">
-                          <span v-if="acting === moveKey(s, 'up', task)" class="spinner" /><UIcon v-else name="i-lucide-arrow-up" />
-                        </button>
-                      </UTooltip>
-                      <UTooltip :text="tl('Move down', 'Descendre')" :disabled="!desk">
-                        <button type="button" class="pp-vbtn move" :disabled="acting !== null || isLast(s, task)" :aria-label="tl(`Move down: ${task.text}`, `Descendre : ${task.text}`)" @click="moveTask(s, task, 'down')">
-                          <span v-if="acting === moveKey(s, 'down', task)" class="spinner" /><UIcon v-else name="i-lucide-arrow-down" />
-                        </button>
-                      </UTooltip>
-                      <UTooltip v-if="s.kind === 'todo'" :text="tl('Queue it: launched automatically when a thread slot frees', 'Mettre en file : lancé automatiquement dès qu’une place de thread se libère')" :disabled="!desk">
-                        <button type="button" class="pp-vbtn backlog-action queue" :disabled="acting !== null" :aria-label="tl(`Queue it: ${task.text}`, `Mettre en file : ${task.text}`)" @click="moveTask(s, task, 'queue')">
-                          <span v-if="acting === moveKey(s, 'queue', task)" class="spinner" /><UIcon v-else name="i-lucide-list-plus" /><span>{{ tl('Queue', 'En file') }}</span>
-                        </button>
-                      </UTooltip>
                       <UTooltip :text="s.kind === 'queue' ? tl('Launch now, ahead of the queue', 'Lancer maintenant, avant la file') : tl('Launch now if a thread slot is free, otherwise first in the queue', 'Lancer maintenant si une place de thread est libre, sinon en tête de file')" :disabled="!desk">
                         <button type="button" class="pp-vbtn backlog-action launch" :disabled="acting !== null" :aria-label="tl(`Launch now: ${task.text}`, `Lancer maintenant : ${task.text}`)" @click="moveTask(s, task, 'now')">
                           <span v-if="acting === moveKey(s, 'now', task)" class="spinner" /><UIcon v-else name="i-lucide-play" /><span>{{ tl('Launch', 'Lancer') }}</span>
@@ -373,11 +402,6 @@ function hideHint() {
                       <UTooltip v-if="s.kind === 'todo'" :text="tl('Back to backlog', 'Remettre au backlog')" :disabled="!desk">
                         <button type="button" class="pp-vbtn park" :disabled="acting !== null" :aria-label="tl(`Back to backlog: ${task.text}`, `Remettre au backlog : ${task.text}`)" @click="moveTask(s, task, 'backlog')">
                           <span v-if="acting === moveKey(s, 'backlog', task)" class="spinner" /><UIcon v-else name="i-lucide-archive" />
-                        </button>
-                      </UTooltip>
-                      <UTooltip v-else :text="tl('Remove from queue (back to To do)', 'Retirer de la file (retour en À faire)')" :disabled="!desk">
-                        <button type="button" class="pp-vbtn park" :disabled="acting !== null" :aria-label="tl(`Remove from queue: ${task.text}`, `Retirer de la file : ${task.text}`)" @click="moveTask(s, task, 'unqueue')">
-                          <span v-if="acting === moveKey(s, 'unqueue', task)" class="spinner" /><UIcon v-else name="i-lucide-list-x" />
                         </button>
                       </UTooltip>
                     </template>
