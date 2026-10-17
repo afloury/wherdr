@@ -64,6 +64,11 @@ for f; do
   else stat -c '%s %Y %F' "$f" 2>/dev/null || echo x; fi
 done`
 
+// Reserved by our read scripts, independent of shell/utility diagnostics
+// (dash's failed `cd`, for example, never says "No such file").
+const MISSING_PATH_EXIT = 44
+const REQUIRE_PATH = `[ -e "$1" ] || exit ${MISSING_PATH_EXIT}\n`
+
 export function parseStatLine(line: string): FsStat | null {
   const m = /^(\d+) (\d+) (.+)$/.exec(String(line || '').trim())
   if (!m) return null
@@ -83,7 +88,7 @@ export function createShellFs(exec: ShellExec, opts: { statTtlMs?: number } = {}
     const r = await exec(script, args, { timeoutMs, input })
     if (r.code !== 0) {
       const reason = (r.stderr || `code ${r.code}`).trim().split('\n').pop() || 'failed'
-      const code = r.code === 255 || r.code === 124 ? 'unreachable' : /no such file/i.test(r.stderr) ? 'ENOENT' : 'remote'
+      const code = r.code === 255 || r.code === 124 ? 'unreachable' : r.code === MISSING_PATH_EXIT || /no such file/i.test(r.stderr) ? 'ENOENT' : 'remote'
       throw new FsError(code, reason)
     }
     return r.stdout
@@ -119,16 +124,18 @@ export function createShellFs(exec: ShellExec, opts: { statTtlMs?: number } = {}
     },
     statMany,
     async readdir(p) {
-      const b = await run('cd "$1" && ls -1A', [p])
+      const b = await run(REQUIRE_PATH + 'cd "$1" && ls -1A', [p])
       return b.toString('utf8').split('\n').filter(Boolean)
     },
     async readFile(p) {
-      return (await run('cat "$1"', [p])).toString('utf8')
+      return (await run(REQUIRE_PATH + 'cat "$1"', [p])).toString('utf8')
     },
     async read(p, start, len, timeoutMs) {
       if (len <= 0) return Buffer.alloc(0)
       // tail -c +N jumps straight to byte N (regular file); head cuts.
-      return run('tail -c +"$2" "$1" | head -c "$3"', [p, String(start + 1), String(len)], timeoutMs || 60000)
+      // Open before the pipeline so a failed open cannot be hidden by head's
+      // successful exit (POSIX sh has no portable pipefail).
+      return run(REQUIRE_PATH + 'exec 3< "$1" || exit $?\ntail -c +"$2" <&3 | head -c "$3"', [p, String(start + 1), String(len)], timeoutMs || 60000)
     },
   }
 }
