@@ -98,13 +98,15 @@ function readList(m: Machine): Promise<Cached> {
   return read
 }
 
-async function machineTasks(m: Machine): Promise<MachineTasks | null> {
+// `fresh`: the Board just opened (or asked to): check the plugin again rather
+// than trust the last answer, so an install or update shows at once.
+async function machineTasks(m: Machine, fresh = false): Promise<MachineTasks | null> {
   if (!m.local && m.status !== 'online') {
     const last = lists.get(m.key)
     return last ? { machine: m.key, status: 'ready', version: '', tasks: last.tasks, stale: true, error: fmt('{machine} is unreachable', { machine: m.label }) } : null
   }
   let info
-  try { info = await projectsPluginInfo(m) }
+  try { info = await projectsPluginInfo(m, fresh) }
   catch { return null } // no Herdr there: nothing to say
   const base = { machine: m.key, status: info.status, version: info.version || '' }
   if (info.status !== 'ready') return { ...base, tasks: [] }
@@ -117,8 +119,9 @@ async function machineTasks(m: Machine): Promise<MachineTasks | null> {
 }
 
 // Every machine's tasks. `since`: the version the client has; `{ same: true }` when nothing changed.
+// Without it (the Board opening, or Refresh), each machine's plugin is checked afresh.
 export async function readTasksBoard(since?: string): Promise<TasksBoard | { same: true, version: string }> {
-  const machines = (await Promise.all(allMachines().map(machineTasks))).filter((x): x is MachineTasks => x !== null)
+  const machines = (await Promise.all(allMachines().map(m => machineTasks(m, !since)))).filter((x): x is MachineTasks => x !== null)
   const version = createHash('sha1').update(JSON.stringify(machines)).digest('hex').slice(0, 16)
   return since === version ? { same: true, version } : { version, machines }
 }

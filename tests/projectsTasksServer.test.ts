@@ -10,7 +10,8 @@ const machine = { key: '', label: 'devbox', local: true, status: 'online', home:
 const info = { status: 'ready', version: '1.2.1', launcher: '/plugins/herdr-projects/bin/run.sh' }
 vi.mock('../server/utils/machines', () => ({ allMachines: () => [machine] }))
 vi.mock('../server/utils/actions', () => ({ machineFor: () => machine }))
-vi.mock('../server/utils/projectsPlugin', () => ({ projectsPluginInfo: async () => info }))
+const infoAsked: boolean[] = []
+vi.mock('../server/utils/projectsPlugin', () => ({ projectsPluginInfo: async (_m: unknown, fresh = false) => { infoAsked.push(fresh); return info } }))
 vi.mock('../server/utils/state', () => ({
   findPane: (id: string) => (id === 'w3:p1' ? { id } : null),
   getState: () => ({ panes: [{ id: 'w5:p1', machine: '', agent: 'codex', cwd: '/home/user/code/demo-wt/1' }] }),
@@ -59,6 +60,13 @@ describe('the Board read', () => {
     vi.setSystemTime(Date.now() + T.REUSE_MS + 1)
     await T.readTasksBoard()
     expect(calls).toHaveLength(2)
+  })
+
+  it('checks the plugin afresh when the Board opens, not on every poll', async () => {
+    infoAsked.length = 0
+    const r = await T.readTasksBoard()
+    await T.readTasksBoard((r as { version: string }).version)
+    expect(infoAsked).toEqual([true, false])
   })
 
   it('a machine without herdr-projects 1.2.1 runs nothing and says so', async () => {
