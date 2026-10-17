@@ -9,6 +9,7 @@ import type { ProjectBoard } from '#shared/projectBoard'
 import type { MemoryFile, ProjectSettings } from '#shared/projectDocs'
 import type { InboxItem, RoutineList } from '#shared/projectInbox'
 import type { ThreadAction, ThreadDetail } from '#shared/projectThreads'
+import type { TaskMove, TaskRef } from '#shared/taskEdit'
 import { isCoordinator, pickCoordinator, projectOf } from '#shared/projects'
 
 type Reply = ProjectBoard | { same: true, version: string } | { available: false }
@@ -177,4 +178,10 @@ export function fetchProjectMemory(paneId: string) {
 }
 export function fetchMemoryFile(paneId: string, name: string) {
   return api<{ name: string, text: string, truncated: boolean }>(`/api/project/memory?pane=${encodeURIComponent(paneId)}&name=${encodeURIComponent(name)}`)
+}
+
+// Moves a task in TASKS.md (written by the server; refused if the file changed
+// since `hash` was read).
+export function moveProjectTask(paneId: string, ref: TaskRef, hash: string, move: TaskMove) {
+  return api<{ ok: true, hash: string }>('/api/project/task', { pane_id: paneId, ...ref, hash, move })
 }
