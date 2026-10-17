@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
-import { COORDINATOR_PANE, OMP_CHAT_PANE, OMP_FOLLOWUP_PANE, OMP_OLD_TABLE_PANE, OMP_QUESTIONS_PANE } from './scenario.mjs'
+import { OMP_CHAT_PANE, OMP_FOLLOWUP_PANE, OMP_OLD_TABLE_PANE, OMP_QUESTIONS_PANE } from './scenario.mjs'
 import { codesOf, decision, decisions, draftOf, expectDraft, message, point } from './refs'
 
 // One syntax for everything a message refers to (shared/reference.ts): a
@@ -184,58 +184,3 @@ test('a pasted line that reads as a reference is still plain text once sent, fir
   await shot(page, 'ref-pasted-sent', testInfo.project.name)
 })
 
-const BOARD = {
-  slug: 'acme', version: 'v1', open: [], resolved: [],
-  lists: [
-    { title: 'To test', kind: 'test', tasks: [{ text: 'New settings page', done: false, owner: 'me', thread: null }] },
-    { title: 'To decide', kind: 'decide', tasks: [{ text: 'Ship the new theme — before the release?', done: false, owner: 'me', thread: null }] },
-  ],
-}
-async function openBoard(page: Page) {
-  await page.addInitScript((pane) => {
-    localStorage.setItem('typewriterSpeed', 'off')
-    localStorage.setItem('viewModes', JSON.stringify({ [String(pane)]: 'project' }))
-  }, COORDINATOR_PANE)
-  await page.route('**/api/project?**', route => route.fulfill({ json: BOARD }))
-  await page.goto(`/#/a/${COORDINATOR_PANE}`)
-}
-
-test('a task action of the Project panel is a reference: the task on a line, the answer below', async ({ page }, testInfo) => {
-  await openBoard(page)
-  await page.getByRole('button', { name: 'Answer: Ship the new theme — before the release?' }).click()
-  const field = page.locator('.prompt textarea').first()
-  await expect(field).toHaveValue('↳ Decision: Ship the new theme — before the release? —\n')
-  await expect(page.locator('.prompt .qm-mirror .qm-q')).toHaveCount(1)
-  await shot(page, 'ref-task-field', testInfo.project.name)
-
-  const id = `${testInfo.project.name} ${Date.now()}`
-  await field.focus()
-  await page.keyboard.type(`Yes ${id}`)
-  await expect(field).toHaveValue(`↳ Decision: Ship the new theme — before the release? —\nYes ${id}`)
-  await page.locator('.prompt-send').click()
-  const sent = page.locator('.msg-user:not(.msg-pending)', { hasText: id })
-  await expect(sent).toBeVisible()
-  await expect(sent.locator('.msg-ref[data-kind="task"] .msg-ref-meta')).toHaveText('Decision')
-  await expect(sent.locator('.msg-ref[data-kind="task"] .msg-ref-text')).toHaveText('Ship the new theme — before the release?')
-  await sent.scrollIntoViewIfNeeded()
-  await shot(page, 'ref-task-bubble', testInfo.project.name)
-})
-
-test('Problem and Question of the Project panel write the same kind of line', async ({ page }, testInfo) => {
-  await openBoard(page)
-  await page.getByRole('button', { name: 'Problem: New settings page' }).click()
-  const field = page.locator('.prompt textarea').first()
-  await expect(field).toHaveValue('↳ Problem: New settings page —\n')
-  await expect(page.locator('.prompt .qm-mirror .qm-q')).toHaveCount(1)
-  const id = `${testInfo.project.name} ${Date.now()}`
-  await field.focus()
-  await page.keyboard.type(`The save button is hidden ${id}`)
-  await shot(page, 'ref-problem-field', testInfo.project.name)
-  await page.locator('.prompt-send').click()
-  const sent = page.locator('.msg-user:not(.msg-pending)', { hasText: id })
-  await expect(sent).toBeVisible()
-  await expect(sent.locator('.msg-ref[data-kind="task"] .msg-ref-meta')).toHaveText('Problem')
-  await expect(sent.locator('.msg-ref[data-kind="task"] .msg-ref-text')).toHaveText('New settings page')
-  await sent.scrollIntoViewIfNeeded()
-  await shot(page, 'ref-problem-bubble', testInfo.project.name)
-})

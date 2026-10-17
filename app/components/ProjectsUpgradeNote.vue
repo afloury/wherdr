@@ -8,6 +8,8 @@ import {
 } from '#shared/projectsPlugin'
 
 const props = defineProps<{ status: 'missing' | 'old', version?: string | null, machine?: string }>()
+// A 0.2 (or a version Herdr does not give): its projects are set aside by 1.x.
+const is02 = computed(() => !props.version || !/^[1-9]/.test(props.version))
 const install = computed(() => (props.status === 'missing' ? PROJECTS_COMMAND : PROJECTS_UPGRADE_COMMAND))
 
 async function copy(text: string) {
@@ -30,14 +32,14 @@ async function copy(text: string) {
       </p>
       <p v-else>{{ tl(`herdr-projects is not installed${machine ? ` on ${machine}` : ''}. The Board shows its tasks from version ${PROJECTS_MIN} on.`, `herdr-projects n’est pas installé${machine ? ` sur ${machine}` : ''}. Le Board affiche ses tâches à partir de la version ${PROJECTS_MIN}.`) }}</p>
 
-      <p class="projects-upgrade-step">{{ status === 'missing' ? tl('Install it:', 'L’installer :') : tl('Update it (your 0.2 projects are set aside in ~/.herdr-projects-legacy, never deleted):', 'La mettre à jour (tes projets 0.2 sont mis de côté dans ~/.herdr-projects-legacy, jamais supprimés) :') }}</p>
+      <p class="projects-upgrade-step">{{ status === 'missing' ? tl('Install it:', 'L’installer :') : is02 ? tl('Update it (your 0.2 projects are set aside in ~/.herdr-projects-legacy, never deleted):', 'La mettre à jour (tes projets 0.2 sont mis de côté dans ~/.herdr-projects-legacy, jamais supprimés) :') : tl('Update it:', 'La mettre à jour :') }}</p>
       <div class="projects-upgrade-cmd">
         <code class="projects-plugin-command">{{ install }}</code>
         <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-copy" :aria-label="t('Copy command')" @click="copy(install)" />
       </div>
 
       <template v-if="status === 'old'">
-        <p class="projects-upgrade-step">{{ tl(`Or keep herdr-projects 0.2 and go back to wherdr ${WHERDR_LAST_02}. With npm:`, `Ou garder herdr-projects 0.2 et revenir à wherdr ${WHERDR_LAST_02}. Avec npm :`) }}</p>
+        <p class="projects-upgrade-step">{{ tl(`Or go back to wherdr ${WHERDR_LAST_02}, the last version for herdr-projects 0.2. With npm:`, `Ou revenir à wherdr ${WHERDR_LAST_02}, la dernière version pour herdr-projects 0.2. Avec npm :`) }}</p>
         <div class="projects-upgrade-cmd">
           <code class="projects-plugin-command">{{ WHERDR_DOWNGRADE_COMMANDS[0] }}</code>
           <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-copy" :aria-label="t('Copy command')" @click="copy(WHERDR_DOWNGRADE_COMMANDS[0])" />

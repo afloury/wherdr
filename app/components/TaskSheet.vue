@@ -99,7 +99,7 @@ function openPane() {
       <p v-if="loading && !details" class="board-empty">{{ t('Loading…') }}</p>
       <p v-if="error" class="board-note error">{{ error }}</p>
 
-      <dl v-if="details || pr || review" class="task-sheet-facts">
+      <dl v-if="pr || review || details?.branch || details?.agent" class="task-sheet-facts">
         <template v-if="pr">
           <dt>{{ tl('Pull request', 'Pull request') }}</dt>
           <dd><a :href="pr" target="_blank" rel="noopener noreferrer">{{ prNumber(pr) || 'PR' }} <UIcon name="i-lucide-external-link" /></a></dd>

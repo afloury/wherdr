@@ -74,9 +74,9 @@ describe('actions on a task', () => {
   it('puts the user\'s words after --, so they are never read as flags', async () => {
     vi.setSystemTime(Date.now() + 60_000)
     await T.readTasksBoard()
-    await T.tellTask('', 'demo/2', '--delegate now')
+    await T.tellTask('', 'demo/3', '--delegate now')
     await T.tellCoordinator('', '--now please')
-    expect(calls.slice(1)).toEqual([['tell', '--', 'demo/2', '--delegate now'], ['coordinator', '--', 'tell', '--now please']])
+    expect(calls.slice(1)).toEqual([['tell', '--', 'demo/3', '--delegate now'], ['coordinator', '--', 'tell', '--now please']])
   })
 
   it('refuses what the task cannot take, before running anything', async () => {
@@ -86,7 +86,8 @@ describe('actions on a task', () => {
     await expect(T.tellTask('', 'demo/4', 'hi')).rejects.toThrow(/no agent/)
     await expect(T.approveTask('', 'demo/2')).rejects.toThrow(/does not wait/)
     await expect(T.tellTask('', '../x', 'hi')).rejects.toThrow(/Invalid task/)
-    await expect(T.tellTask('', 'demo/2', '   ')).rejects.toThrow(/Nothing to send/)
+    await expect(T.tellTask('', 'demo/2', 'hi')).rejects.toThrow(/no agent/)
+    await expect(T.tellTask('', 'demo/3', '   ')).rejects.toThrow(/Nothing to send/)
     expect(calls).toEqual([])
   })
 

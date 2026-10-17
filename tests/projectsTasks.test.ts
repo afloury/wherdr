@@ -84,11 +84,13 @@ describe('groups and actions', () => {
   })
 
   it('offers reply on a live task and approve where the board waits for a yes', () => {
-    const live = { state: 'blocked', stage: 'asks', group: 'needs', archived: false } as const
+    const live = { state: 'blocked', stage: 'asks', group: 'needs', archived: false, app: 'claude' } as const
     expect(taskActions(live)).toEqual({ tell: true, approve: false })
     expect(taskActions({ ...live, stage: 'approval', group: 'ready' })).toEqual({ tell: true, approve: true })
     expect(taskActions({ ...live, stage: 'plan' })).toEqual({ tell: true, approve: true })
-    expect(taskActions({ state: 'idle', stage: 'todo', group: 'todo', archived: false })).toEqual({ tell: false, approve: false })
+    expect(taskActions({ state: 'idle', stage: 'todo', group: 'todo', archived: false, app: '' })).toEqual({ tell: false, approve: false })
+    // No agent has been on it yet: 1.x refuses a message.
+    expect(taskActions({ ...live, app: '' })).toEqual({ tell: false, approve: false })
     expect(taskActions({ ...live, archived: true })).toEqual({ tell: false, approve: false })
   })
 

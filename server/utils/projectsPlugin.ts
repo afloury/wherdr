@@ -16,10 +16,11 @@ export function projectsPluginFromList(plugins: RawProjectsPlugin[]): Omit<Proje
   return { status: projectsStatus(plugin), version: cleanVersion(plugin?.version) }
 }
 
-// herdr-projects on a machine, kept a minute: the Board asks on every read.
+// herdr-projects on a machine, kept 10 s: the Board asks on every read (a cheap
+// Herdr call, not the plugin), and an update shows soon after.
 // `launcher`: its bin/run.sh, only when wherdr can run it (status ready).
 export interface ProjectsPluginInfo extends Omit<ProjectsPluginState, 'installable'> { launcher: string | null }
-const PLUGIN_TTL_MS = 60_000
+const PLUGIN_TTL_MS = 10_000
 const infos = new Map<string, { at: number, info: Promise<ProjectsPluginInfo> }>()
 export function projectsPluginInfo(m: Machine, fresh = false): Promise<ProjectsPluginInfo> {
   const hit = infos.get(m.key)

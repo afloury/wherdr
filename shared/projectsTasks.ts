@@ -188,12 +188,13 @@ export function parseTaskDetails(text: string): TaskDetails {
 }
 
 // What the card offers. `tell` reaches the task's agent (or, on a plan that
-// waits, sends the plan back); `approve` merges finished work or says yes to a plan.
-export function taskActions(r: Pick<TaskRow, 'state' | 'stage' | 'group' | 'archived'>): TaskActions {
+// waits, sends the plan back), so only once an agent has been on it (1.x
+// refuses it before); `approve` merges finished work or says yes to a plan.
+export function taskActions(r: Pick<TaskRow, 'state' | 'stage' | 'group' | 'archived' | 'app'>): TaskActions {
   if (r.archived) return { tell: false, approve: false }
   const live = r.group !== 'todo' && r.group !== 'done'
   return {
-    tell: live,
+    tell: live && Boolean(r.app),
     approve: r.stage === 'approval' || (r.stage === 'plan' && r.state === 'blocked'),
   }
 }

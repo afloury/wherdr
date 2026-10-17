@@ -79,11 +79,17 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   await expect.poll(callLog).toContain('approve -- demo/1')
 
   // A reply to a task's agent, and a message to the Coordinator: the user's words after "--".
+  // DEMO-2 has had no agent yet: nothing to reply to. DEMO-3 has one.
   if (phone) await page.getByRole('button', { name: /Needs you/ }).click()
   await card('DEMO-2').click()
+  await expect(page.getByRole('dialog').locator('.task-sheet-msg')).toHaveText('Which changelog format?')
+  await expect(page.getByRole('dialog').getByRole('textbox')).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  if (phone) await page.getByRole('button', { name: /Working/ }).click()
+  await card('DEMO-3').click()
   await page.getByRole('dialog').getByRole('textbox').fill('--keep-a-changelog please')
   await page.getByRole('dialog').getByRole('button', { name: 'Send' }).click()
-  await expect.poll(callLog).toContain('tell -- demo/2 --keep-a-changelog please')
+  await expect.poll(callLog).toContain('tell -- demo/3 --keep-a-changelog please')
   await page.keyboard.press('Escape')
   await page.locator('#board-coord-text').fill('Add a dark mode toggle')
   await page.locator('.board-coord').getByRole('button', { name: 'Send' }).click()
@@ -94,6 +100,7 @@ test('a 0.2 or a 1.x older than 1.2.1: the Board and Settings say what to do, an
   for (const plugin of [manifest('0.2.34', false), manifest('1.2.0')]) {
     await fakeHerdr('e2e.plugins', { plugins: [plugin] })
     await page.goto('/#/settings?section=plugins')
+    await page.reload()
     const machine = page.locator('.projects-plugin-machine').first()
     await expect(machine.locator('.projects-plugin-head')).toContainText(`Update needed · v${plugin.version}`, { timeout: 15000 })
     const note = machine.locator('.projects-upgrade')
