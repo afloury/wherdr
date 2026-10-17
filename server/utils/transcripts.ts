@@ -729,7 +729,8 @@ export function extractImage(d: Json, index: number): TranscriptImage | null {
 // `fs`: disk of the machine where the agents run (local, or remote over SSH).
 // File really missing, as opposed to a failed read (SSH cut,
 // timeout): only absence means "no conversation". Remotely,
-// `cat`/`ls` only return their error message.
+// Shell reads use an explicit missing-path exit code; retain the message
+// fallback for other remote filesystem implementations.
 export function isMissing(e: unknown): boolean {
   const err = e as { code?: string, message?: string } | null
   if (!err) return false

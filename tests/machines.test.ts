@@ -2,10 +2,10 @@
 // list` profiles, and file access on a remote machine through shell commands
 // (run locally here: same POSIX scripts as over SSH).
 import { spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { PANE_RE, isSelfTarget, joinId, machineKey, machineOf, parseMachineList, parseStatusSocket, routeParams, splitId, targetHost } from '../shared/ids'
 import { type ShellExec, createShellFs, LIST_DIRS_SCRIPT, parseDirList, parseStatLine, shq } from '../server/utils/fsx'
 import { createTranscripts, isMissing } from '../server/utils/transcripts'
@@ -193,6 +193,59 @@ describe('files of a remote machine (shell)', () => {
     const size = Buffer.byteLength(fx('claude-session.jsonl'))
     const older = await t.chat(pane, { before: Math.floor(size / 2) })
     expect(older.older).toBe(true)
+  })
+})
+
+describe('remote missing paths without shell diagnostic matching', () => {
+  const home = mkdtempSync(path.join(tmpdir(), 'hw-missing-'))
+  afterAll(() => rmSync(home, { recursive: true, force: true }))
+  const operations = ['readdir', 'readFile', 'read'] as const
+  const read = (fs: ReturnType<typeof createShellFs>, op: typeof operations[number], p: string) =>
+    op === 'read' ? fs.read(p, 0, 100) : fs[op](p)
+
+  it.each(operations)('%s reports ENOENT for an absent path through POSIX sh', async (op) => {
+    await expect(read(createShellFs(localSh), op, path.join(home, 'absent')))
+      .rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it.each(operations)('%s recognizes the dedicated status even with dash wording', async (op) => {
+    const fs = createShellFs(async () => ({
+      code: 44, stdout: Buffer.alloc(0), stderr: "sh: 1: cd: can't cd to /missing/day",
+    }))
+    await expect(read(fs, op, '/missing/day')).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it.each([
+    [2, "sh: 1: cd: can't cd to /restricted/day", 'remote'],
+    [1, 'Permission denied', 'remote'],
+    [255, 'Connection closed', 'unreachable'],
+    [124, 'Timed out', 'unreachable'],
+    [null, '', 'remote'],
+  ] as const)('does not classify status %s as an absent path', async (code, stderr, expected) => {
+    const fs = createShellFs(async () => ({ code, stdout: Buffer.alloc(0), stderr }))
+    for (const op of operations) {
+      await expect(read(fs, op, '/restricted/day')).rejects.toMatchObject({ code: expected })
+    }
+  })
+
+  it('finds a Codex conversation when the other recent day folders are absent', async () => {
+    const now = new Date()
+    // Today is absent; the conversation is in yesterday's folder. The third
+    // day is absent too, so lookup must continue on both sides of a match.
+    const yesterday = new Date(now.getTime() - 86400000)
+    const dir = path.join(home, '.codex/sessions', String(yesterday.getFullYear()),
+      String(yesterday.getMonth() + 1).padStart(2, '0'), String(yesterday.getDate()).padStart(2, '0'))
+    mkdirSync(dir, { recursive: true })
+    const file = path.join(dir, 'rollout-example-session.jsonl')
+    writeFileSync(file, [
+      { type: 'session_meta', payload: { id: 'example-session', cwd: '/workspace/app', timestamp: yesterday.toISOString(), thread_source: 'user' } },
+      { type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Conversation found' }] } },
+    ].map(line => JSON.stringify(line)).join('\n') + '\n')
+    const transcripts = createTranscripts({ home, fs: createShellFs(localSh), herdr: async () => ({}) })
+    const result = await transcripts.chat({ id: '12345678~w1:p1', agent: 'codex', cwd: '/workspace/app' }, {})
+    expect(result.available).toBe(true)
+    expect(result.file).toBe(path.basename(file))
+    expect(result.items).toEqual(expect.arrayContaining([expect.objectContaining({ text: 'Conversation found' })]))
   })
 })
 
