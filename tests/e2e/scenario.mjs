@@ -41,9 +41,9 @@ export const OMP_IMAGE_PANE = 'w4:p1'
 // A file named in the image pane's last reply, in its folder (CRLF kept as is).
 export const REVIEW_CSV = 'notes/login-review.csv'
 export const REVIEW_CSV_TEXT = 'screen,issue\r\nlogin,clipped button\r\n'
-// A PDF next to it, previewed in the browser's own viewer.
+// A multipage PDF next to it, generated for the canvas preview tests.
 export const SAMPLE_PDF = 'notes/style-guide.pdf'
-export const SAMPLE_PDF_PAGES = ['Style guide', 'Buttons and spacing']
+export const SAMPLE_PDF_PAGES = Array.from({ length: 12 }, (_, i) => `Style guide page ${i + 1}`)
 export const OMP_APPROVAL_PANE = 'w5:p1'
 export const OMP_SHELL_PANE = 'w6:p1'
 // Coordinator of a herdr-projects project (its board is served by the spec).

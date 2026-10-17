@@ -30,7 +30,7 @@ export default defineConfig({
   ],
   webServer: {
     command: 'node tests/e2e/launch.mjs',
-    url: `${BASE_URL}/api/state`,
+    url: `${BASE_URL}${process.env.E2E_PDF_AUTH ? '/api/health' : '/api/state'}`,
     reuseExistingServer: false,
     timeout: 60_000,
     stdout: 'pipe',
