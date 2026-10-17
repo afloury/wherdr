@@ -1,5 +1,6 @@
 // Dimensions on iPhone: keyboard, home bar, shortened page (iOS 26).
 import { sheetViewport } from '~/utils/sheetViewport'
+import { hardwareKeyboard } from '~/composables/useHerdr'
 
 // Clavier ouvert : hauteur et position de la zone visible au-dessus.
 export const kbOpen = ref(false)
@@ -25,6 +26,8 @@ export function layout() {
   fullH.h = Math.max(fullH.h, h, window.innerHeight)
   const kb = fullH.h - h > 120
   kbOpen.value = kb
+  // The on-screen keyboard is showing: no hardware keyboard in use.
+  if (kb) hardwareKeyboard.value = false
   vvHeight.value = h
   vvTop.value = top
   document.body.classList.toggle('kb', kb)

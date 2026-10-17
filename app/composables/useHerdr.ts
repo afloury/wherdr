@@ -1,5 +1,6 @@
 // Global app state: live agents (WebSocket /ws/events), device
 // settings, lock, API calls. Module singletons (client app).
+import { DESK_QUERY, SLIM_MAX, provesHardwareKeyboard } from '~/utils/layoutMode'
 import type { AppConfig, AuthStatus, HerdrState, MachineConfig, MachineInfo, NamedSession, Pane, Quotas } from '#shared/types'
 import { LOCAL, splitId } from '#shared/ids'
 import { clearOffline, readOffline, saveHome } from '~/utils/offlineCache'
@@ -235,12 +236,30 @@ watch(herdrState, pruneViewModes)
 export const lastKind = ref(ls.get('lastKind') || '')
 watch(lastKind, v => ls.set('lastKind', v))
 
-// Computer (≥ 900 px): list as a sidebar, agent on the right.
+// Computer (≥ 900 px, or a tablet in portrait): list as a sidebar, agent on
+// the right. Slim: narrower than 1024 px, the list slides over the agent
+// (utils/layoutMode.ts).
 export const desk = ref(false)
+export const slim = ref(false)
+// Slim: the list opened over the agent (HomeView; backdrop in app.vue).
+export const listDrawer = ref(false)
+// Tablet (shortest side ≥ 700 px) and hardware keyboard seen (a key an
+// on-screen keyboard does not send); forgotten when the on-screen one shows.
+export const tablet = ref(false)
+export const hardwareKeyboard = ref(false)
 if (import.meta.client) {
-  const mq = matchMedia('(min-width: 900px)')
-  desk.value = mq.matches
-  mq.addEventListener('change', () => { desk.value = mq.matches })
+  const tq = matchMedia('(min-width: 700px) and (min-height: 700px)')
+  tablet.value = tq.matches
+  tq.addEventListener('change', () => { tablet.value = tq.matches })
+  window.addEventListener('keydown', (e) => { if (provesHardwareKeyboard(e)) hardwareKeyboard.value = true }, true)
+}
+if (import.meta.client) {
+  const mq = matchMedia(DESK_QUERY)
+  const narrow = matchMedia(`(max-width: ${SLIM_MAX}px) and (min-width: 700px) and (min-height: 700px)`)
+  const read = () => { desk.value = mq.matches; slim.value = mq.matches && narrow.matches }
+  read()
+  mq.addEventListener('change', read)
+  narrow.addEventListener('change', read)
 }
 // Touch screen (phone, tablet): menus open as the bottom sheet, even on a
 // computer layout (utils/menuRoute.ts).
