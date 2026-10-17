@@ -69,7 +69,7 @@ describe('ProjectPanel', () => {
     const tasks = w.findAll('.pp-task')
     expect(tasks).toHaveLength(5)
     for (const task of tasks.filter(row => !row.classes().includes('done'))) {
-      expect(task.find('.pp-task-body > .pp-task-text').exists()).toBe(true)
+      expect(task.find('.pp-task-body > .pp-task-head > .pp-task-text').exists()).toBe(true)
       const ask = task.find('.pp-task-foot .pp-vbtn.ask')
       expect(ask.exists()).toBe(true)
       await ask.trigger('click')

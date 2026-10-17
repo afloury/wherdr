@@ -61,6 +61,9 @@ export interface ProjectBoard {
   machineSlots?: { label: string, open: number, max: number }
   // TASKS.md missing, or unreadable threads: the panel says so without breaking.
   tasksMissing?: boolean
+  // sha256 of TASKS.md as read: sent back with a task move (shared/taskEdit.ts).
+  // Missing when the file is too large to be moved from the app.
+  tasksHash?: string
   threadsError?: string
 }
 

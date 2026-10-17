@@ -6,6 +6,7 @@
 // (`plugin.list`: plugin_root + manifest command), the project folder is
 // the coordinator's (`<root>/<slug>`), the root is its parent.
 import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import type { Pane } from '../../shared/types'
 import { type ProjectBoard, type ProjectThread, maxParallelThreads, normalizeThreads, parseTasks, splitThreads } from '../../shared/projectBoard'
@@ -24,6 +25,10 @@ const REPORT_BYTES = 512 * 1024
 const THREADS_BYTES = 8 * 1024 * 1024
 const BIN_TTL_MS = 60000
 const PLUGIN_ID = 'herdr-projects'
+
+// Hash of TASKS.md's bytes: the app sends it back with a task move, which is
+// refused if the file changed since (server/utils/taskWrite.ts).
+export const tasksHash = (b: Buffer | string) => createHash('sha256').update(b).digest('hex')
 
 // herdr-projects binary according to the manifest: path relative to plugin_root.
 // None for herdr-projects 1.x (see shared/projectsPlugin.ts).
@@ -128,8 +133,8 @@ export async function readProjectBoard(pane: Pane, since?: string): Promise<Boar
   const machine = (await currentMachineSlots().catch(() => [])).find(s => s.key === paneBaseMachine(pane))
   if (machine?.max) ver.v += `|m${machine.open}/${machine.max}`
   if (since && since === ver.v) return { same: true, version: ver.v }
-  const [tasksText, projectText, threads] = await Promise.all([
-    ver.tasks ? t.m.fs.read(`${t.dir}/TASKS.md`, 0, Math.min(ver.tasks.size, TASKS_BYTES)).then(b => b.toString('utf8')) : Promise.resolve(null),
+  const [tasksBuf, projectText, threads] = await Promise.all([
+    ver.tasks ? t.m.fs.read(`${t.dir}/TASKS.md`, 0, Math.min(ver.tasks.size, TASKS_BYTES)) : Promise.resolve(null),
     ver.project ? t.m.fs.read(`${t.dir}/PROJECT.md`, 0, Math.min(ver.project.size, PROJECT_HEAD_BYTES)).then(b => b.toString('utf8')).catch(() => '') : Promise.resolve(''),
     threadList(t).then(out => ({ list: normalizeThreads(JSON.parse(out)), error: undefined as string | undefined }))
       .then((r) => { lastThreads.set(`${t.m.key}|${t.dir}`, r.list); return r })
@@ -139,8 +144,11 @@ export async function readProjectBoard(pane: Pane, since?: string): Promise<Boar
       }),
   ])
   const { open, resolved } = splitThreads(threads.list)
+  const tasksText = tasksBuf ? tasksBuf.toString('utf8') : null
   const board: ProjectBoard = { slug: t.slug, lists: parseTasks(tasksText || ''), open, resolved, version: ver.v }
   if (tasksText === null) board.tasksMissing = true
+  // Whole file read: moves allowed (a truncated read could not be checked).
+  else if (ver.tasks && ver.tasks.size <= TASKS_BYTES && tasksBuf!.length === ver.tasks.size) board.tasksHash = tasksHash(tasksBuf!)
   if (threads.error) board.threadsError = threads.error
   // herdr-projects counts every open thread against max_parallel_threads.
   const max = maxParallelThreads(projectText)
