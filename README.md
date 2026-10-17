@@ -61,7 +61,7 @@ that address too when it is already published.
 wherdr is a small self-hosted web app that talks to the Herdr server on your machine. **On a
 computer**, it can replace the Herdr terminal client day to day: your spaces, tabs and split panes
 side by side, live conversations and real terminals, drag-and-drop layout, keyboard shortcuts
-and a project board for herdr-projects. **On a phone**, installed as a PWA, it is the companion
+and a task board for herdr-projects. **On a phone**, installed as a PWA, it is the companion
 that follows your agents when you are away: push notifications when an agent finishes or needs
 you, one-tap answers, quick replies and offline reading.
 
@@ -99,8 +99,8 @@ Claude Code, Codex and other product names are trademarks of their respective ow
   exists, nothing about your agents is served to a locked session.
 - **The agent's diff.** Git status and diff of each agent's working folder, one click away from
   its conversation.
-- **The herdr-projects board.** A coordinator and its threads grouped under their project, with
-  the project's task lists as a live board and one-click replies.
+- **The herdr-projects board.** Every machine's herdr-projects tasks in the board's own groups,
+  with replies to their agents, approval of finished work and a box for the Coordinator.
 - **Keyboard and global search.** One shortcut searches every agent and conversation; next
   agent, new tab, pane swaps and `1`–`9` answers never need the mouse.
 - **Real time, and private.** The real terminal over a WebSocket, a push when an agent needs
@@ -201,7 +201,7 @@ Details in [Features](#features) and [Security](#security).
   with the shell in the foreground. Unrecognized shell prompts require a manual restart
   in the terminal. wherdr must have observed Codex before it exited.
   **Dismiss** puts the card away for good: the pane is a plain shell again, to use as you like.
-  Project panel messages wait in the queue until the agent returns; if it does not (Dismiss, or
+  Messages sent meanwhile wait in the queue until the agent returns; if it does not (Dismiss, or
   a Codex that simply left), their text goes back into the pane's message field. Continuation
   prompts (unfinished quotes or heredocs) refuse a restart too. If the final
   transcript read fails, both conversation choices remain available; a session
@@ -263,9 +263,6 @@ Details in [Features](#features) and [Security](#security).
     text field and the terminal).
   - `Mod+Alt+N` new agent in a new space, `Mod+Alt+T` new tab in the current space,
     `Mod+Alt+W` close the current pane (after confirmation). They work from the terminal too.
-  - With [herdr-projects](#works-great-with-herdr-projects) on the agent's machine: `Mod+Alt+P`
-    shows or collapses the Project panel of the current agent's project (from a thread, it opens
-    the coordinator), and `Mod+Alt+Shift+N` opens **New project**.
   - In an agent: `Mod+F` searches the conversation, ``Ctrl+` `` switches between conversation
     and terminal, and `Esc` stops a working agent when the message field is empty.
   - `Alt+Shift+arrows` swaps the current pane with its neighbour, `Ctrl/⌘+Alt+arrows` moves
@@ -276,13 +273,9 @@ Details in [Features](#features) and [Security](#security).
 - In the message field, `↑` on the first line recalls previous messages and slash commands;
   `↓` on the last line returns to newer entries, then restores your draft. History keeps the
   last 100 texts sent from this device per agent, without attachments or quoted references.
-- **Project board** for [herdr-projects](#works-great-with-herdr-projects): coordinator and threads grouped
-  under their project, and a side panel with the project's task lists (to test, to decide,
-  to review, in progress, in queue, blocked, to do, backlog — each optional) and one-click
-  replies to the coordinator.
-- **Board**: every agent, and with herdr-projects every project, thread and task, in four columns
-  (Blocked, Todo, Ongoing, Finished). Drag a task card to another column, or use its **Move
-  to…** menu, to ask the coordinator to move it.
+- **Board** for [herdr-projects](#works-great-with-herdr-projects) 1.2.1 or later: every machine's
+  tasks in five columns (needs you, ready to approve, working, to do, done), each task with its
+  pull request, review, reply and approval.
 - **Settings** in a sidebar, with desktop-only options such as the content width.
 
 ### On a phone
@@ -451,8 +444,8 @@ docker compose logs -f        # optional: follow the logs and find the first-pas
 
 The container runs as your user and mounts your home folder **read-only**, except
 `~/.config/herdr` (Herdr sockets), `~/.local/state/herdr/client` (machine names),
-`~/.cache/herdr-web` (uploaded photos and files, quotas) and `~/.herdr-projects` (herdr-projects
-projects, see [Works great with herdr-projects](#works-great-with-herdr-projects)). It uses the
+`~/.cache/herdr-web` (uploaded photos and files, quotas) and `~/.herdr-projects` (the herdr-projects
+board, see [Works great with herdr-projects](#works-great-with-herdr-projects)). It uses the
 server's own `herdr` binary, so the client and the server always stay on the same version.
 
 The repository is only needed for `docker-compose.yml` and `.env`: the image is prebuilt and
@@ -986,7 +979,6 @@ No
 | `↳ Quote point <time> ~<code> : <excerpt> —` | `↳` on a question or a point, **Reply** on a selected passage. |
 | `↳ Quote decision <time> #<n> ~<code> : <question> —` | **Yes**, **No** or `↳` on a row of a decision table. |
 | `↳ Quote decisions <time> #<rows> ~<code> : <questions> —` | **OK to all** on a decision table. |
-| `↳ Decision: <task> —`, `↳ Problem: <task> —`, `↳ Question: <task> —`, `↳ Detail on <task> —`, `↳ Feedback on <task> —` (and their French labels) | **Answer**, **Problem**, **Question**, **Clarify** and **Comment** in the Project panel. |
 
 - The time is the one shown on the agent's message, so an answer to an earlier message is never
   read as an answer to the last one. The types are the same words in every language.
@@ -1099,8 +1091,7 @@ week, with reset times), for every online machine.
 
 With notifications enabled on a device, wherdr sends a Web Push when an agent goes from working
 to **blocked** (with its question and options) or to **done** (with the start of its answer).
-There is no push for the agent currently on screen. Settings → Notifications lets each device
-choose between all agents and main agents only (herdr-projects threads are muted by default).
+There is no push for the agent currently on screen.
 
 **Do not disturb** (top of Settings → Notifications) stops every push, for this device or for all
 devices, for 1 hour, until 8 am or until turned back on. The server applies it before sending and
@@ -1115,229 +1106,49 @@ gets a default workspace, as with any attached client.
 
 ## Works great with herdr-projects
 
-[herdr-projects](https://github.com/afloury/herdr-projects) is a Herdr plugin that runs a
-project as one **coordinator** conversation and parallel **threads**, each in its own Git
-worktree. It is optional. wherdr works with its **0.2** line, installed from the fork (or with
-**Install herdr-projects** in **Settings → Plugins → herdr-projects**):
+[herdr-projects](https://github.com/eliasstravik/herdr-projects) is a work board for Herdr: one
+list of tasks, each handed to an ordinary agent in its own space, reviewed when it finishes and
+merged on your yes. wherdr shows it on the **Board** (the button next to Settings, or `H`), for
+every machine at once. It needs **herdr-projects 1.2.1 or later**; the plugin is optional.
+
+**Install herdr-projects** in **Settings → Plugins → herdr-projects**, or on the machine:
 
 ```sh
-herdr plugin install afloury/herdr-projects --ref v0.2.36 --yes
+herdr plugin install eliasstravik/herdr-projects --ref v1.2.1 --yes
 ```
 
-> **herdr-projects 1.x is not supported yet.** Upstream
-> ([eliasstravik/herdr-projects](https://github.com/eliasstravik/herdr-projects)) moved to a 1.x
-> that is a different product (a task board, with no projects, `TASKS.md` or threads), and its
-> first run moves `~/.herdr-projects` to `~/.herdr-projects-legacy`. Settings says when a machine
-> has 1.x and gives the command to go back to 0.2. A 0.2 installed from upstream must not run
-> `herdr-projects update`, which would install 1.x: reinstall it from the fork
-> (`herdr plugin uninstall herdr-projects && herdr plugin install afloury/herdr-projects --ref v0.2.36 --yes`;
-> projects stay in `~/.herdr-projects`). The pinned v0.2.36 release downloads a prebuilt binary
-> for macOS or Linux, on ARM64 or x86_64.
+> **Breaking change in wherdr 2.0: herdr-projects 0.2 is no longer read.** The Project panel,
+> the `TASKS.md` board, threads, thread limits and **New project** belonged to herdr-projects
+> 0.2 and are gone. With 0.2 (or a 1.x older than 1.2.1), Settings and the Board say
+> **Update herdr-projects to 1.2.1 or later, or downgrade wherdr to 1.3.4**, with the commands.
+> The step-by-step move, with a backup and the way back, is in
+> [docs/herdr-projects-1x.md](docs/herdr-projects-1x.md). wherdr 1.3.4 is the last version
+> that reads herdr-projects 0.2.
 
-With it installed, wherdr adds:
+What the Board shows and does:
 
-- **Project groups** in the agent list: the coordinator first, its threads indented under it,
-  grouped by repository (`Repo web-shop · 2 worktrees`), with their thread number and state.
-- **Project panel** next to the coordinator (a side panel on a computer, a tab on a phone). It
-  reads the project's `TASKS.md` and shows the lists it has, always in this order, with the open
-  threads live (state, progress, report) and threads marked done under Done (**Tasks** tab; the
-  **Threads**, **Inbox**, **Routines**, **Settings** and **Memory** tabs are described below):
+- **The board's five groups**: needs you, ready to approve, working, to do, done (the latest
+  eight, then **Show all**). Side by side on a computer, one at a time on a phone. A card shows
+  the task's key (`DEMO-12`), title, the line its agent reports, the agent program, progress, its
+  pull request and its review (pass or fail, with the findings by severity).
+- **A task** opens its details: description, plan, branch, pull request, review, what went
+  wrong. **Reply** sends a message to its agent (on a plan that waits, it sends the plan back
+  with your words). **Approve** merges finished work or says yes to a plan, after a
+  confirmation. **Open its agent** opens the agent's pane when it is open in Herdr.
+- **The Coordinator box** on top sends a message to a machine's Coordinator, the agent that turns
+  what you write into tasks. Adding, delegating, stopping or archiving tasks goes through it.
+- What wherdr runs, on the task's machine and in its Herdr session: `herdr-projects list --json`,
+  `details <id> --json`, `tell <id> <text>`, `approve <id>` and `coordinator tell <text>` (your
+  words always after `--`, so they are never read as options), through the plugin's own
+  launcher (`bin/run.sh`). Each command also runs herdr-projects' own upkeep, so wherdr calls it
+  sparingly: one command at a time per machine, a read every 15 seconds and only while the Board
+  is open (a list less than 5 seconds old is reused), and the last list kept when a machine is
+  slow or unreachable. Nothing runs where herdr-projects is missing or older than 1.2.1: its first
+  run would take over an older install's files.
+- With Docker, `docker-compose.yml` mounts `~/.herdr-projects` read-write: herdr-projects keeps
+  its locks and bookkeeping there.
 
-  | List | Meaning | Buttons |
-  | --- | --- | --- |
-  | **To test** | You confirm the work | Confirm, Problem, Question |
-  | **To decide** | Only you can unblock it | Question, Answer |
-  | **To review** | Pull requests for you | Reviewed, Comment |
-  | **In progress** | What threads are really doing | (live threads) Add info |
-  | **In queue** | Decided: the coordinator launches the first one as soon as a thread slot frees | Move up / down, Launch now, Clarify, Remove from queue |
-  | **Blocked** | Waiting for someone or something external | Unblock, Clarify |
-  | **To do** | To do soon, in your priority order; never launched on its own | Move up / down, Queue it, Launch now, Clarify, Back to backlog |
-  | **Backlog** | Everything else | Launch, Clarify |
-  | **Done** | Threads marked done | |
-
-  Every list is **optional**: you and your coordinator pick the ones a project uses (a small
-  project may only need Backlog, In progress and Done); any other `##` list shows in a neutral
-  style after Backlog. French titles and common synonyms are recognized (À tester, En file,
-  À faire, Plus tard…). Every button sends a ready-made message to the coordinator, which edits
-  `TASKS.md` (wherdr never writes it). **Add info**, on a working thread, opens a text field:
-  what you type goes to the coordinator, which passes it on to that thread as is. The In queue
-  header shows the thread slots in use (`max_parallel_threads` in `PROJECT.md`) and the next
-  task, plus the machine's global limit when one is set
-  (`2 of 2 thread slots in use on <machine> (all projects)`).
-- **Threads tab** of the Project panel: every thread of the project, including those marked done.
-  Open threads are grouped as herdr-projects groups them (Your turn, Ready for review, Working…),
-  each with its machine and agent profile; threads marked done stay in their own folded section,
-  shown by pages of 30. One filter covers both (ID, title, machine, profile). A tap opens the
-  thread's record: state, its **Next** list, branch, dates, and these actions:
-
-  | Action | Command | Asks first |
-  | --- | --- | --- |
-  | **Acknowledge** | `thread ack`: you have seen its report | |
-  | **Restart** | `thread restart`: bring back a thread whose pane is gone or whose start failed | |
-  | **Stop** | `thread stop`: Escape in its agent's pane | Yes |
-  | **Mark done** | `thread resolve`: final copy, then its worktree, merged branch and tab are cleaned up (report and library kept) | Yes |
-
-  Open agent, View report and Pull request are there too when they apply. wherdr only runs
-  these `herdr-projects` commands on the coordinator's machine (and reads `thread show --json`);
-  it writes no thread file itself, and herdr-projects has the last word (it refuses to restart a
-  running thread, for instance): its answer is shown as is. With Docker, **Mark done** runs in
-  the container, where the home folder is read-only: a thread of this machine is marked done and
-  its open workspace removed through Herdr, but its merged branch, or a worktree whose workspace
-  was already closed, may stay. herdr-projects lists what it kept, and
-  `herdr-projects sweep <project>` on the host removes it.
-- **Inbox tab**: the project's unhandled inbox items, what herdr-projects tells the coordinator
-  (a thread's new report, a routine due, a machine out of reach…), oldest first, up to 100. An
-  item about a thread shows the thread's title and opens it. **Done** (✓) marks one item as
-  handled with `herdr-projects inbox done`; a coordinator that has not read it yet will not see
-  it any more. Summaries are shown as plain text.
-- **Routines tab**: each routine's schedule, whether it is enabled, its kind (prompt only, or a
-  command and its approval) and its last and next run. Read-only: wherdr never approves,
-  switches or runs a routine, and does not expose the plugin's safety settings.
-- **Settings tab**, read-only: what the project's `PROJECT.md` sets, the keys
-  `herdr-projects set` changes (name, goal, coordinator and thread profiles,
-  `max_parallel_threads`, `auto_resolve_days`, `nudge`, `mute`, repositories). A key the file
-  leaves out shows the plugin's default, marked as such. Safety settings are not shown.
-- **Memory tab**, read-only: `MEMORY.md` (the index) and the `.md` files of `memory/`, with the
-  title and hook the index gives them; a file the index does not mention is listed by name. A
-  tap opens one, rendered as Markdown. The coordinator writes memory, wherdr never does.
-
-  With six tabs, the bar scrolls sideways on a phone and in a narrow side panel; a fade on its
-  edge says there are more.
-
-  herdr-projects (0.2.34) has no JSON output for the inbox or the routines: wherdr reads the
-  front matter of the project's `inbox/*.md` files, and the tab-separated lines of
-  `herdr-projects routine list`, showing the run texts (`last … · next …`) as printed. No command
-  prints a project's settings or memory either: those two tabs read the files named above.
-- **Board** (`H`, or the board button above the agent list): every project, thread, task and
-  agent at a glance, in four columns. Agents outside projects show too. Each card opens what it
-  stands for: a project or task opens its Project panel, a thread opens its agent (or its report
-  once closed), an agent opens its conversation. A project card takes the most urgent column of
-  its cards and counts them; Finished shows the 5 most recent threads and done tasks of each
-  project, **Show all** the rest. The filter button in the header hides chosen projects, or the
-  agents outside projects (**Other agents**); the choice is kept on the device, and a new project
-  shows until you hide it.
-
-  | Card | Blocked | Todo | Ongoing | Finished |
-  | --- | --- | --- | --- | --- |
-  | **Task** (its `TASKS.md` list) | Blocked | To test, To decide, To review, In queue, To do, Backlog, other lists | In progress without an open thread | Done, or a checked line |
-  | **Thread** | Its agent is your turn, or *waiting on you* | *Ready for review* | Working, landing, idle | Done |
-  | **Agent** | Your turn | | Working, starting, restarting | Done, ready |
-
-  Moving a **task** card (drag and drop on a computer, **Move to…** everywhere) sends the
-  coordinator the Project panel's message when one says it (**Launch now** from To do or In
-  queue, **Launch** from Backlog, **Unblock** from Blocked, **Tested** from To test, **Reviewed**
-  from To review), otherwise `↳ Mark blocked: …`, `↳ Move to To do: …` or `↳ Mark done: …`. The
-  card shows *Sent* until the coordinator has moved the line; only the allowed columns are
-  offered, and To decide tasks wait for your answer. Thread, agent and project cards follow
-  what they do and do not move. The server reads every project at once
-  (`GET /api/board`); a project on an offline machine keeps its last read, marked as such.
-- **Max threads per machine**, across all projects: herdr-projects only limits threads per
-  project, so three coordinators could still start a dozen threads on one small machine. Set a
-  limit per machine in **Settings → Plugins → herdr-projects** (empty `—` = no global limit;
-  saved on the server, in `data/thread-limits.json`). wherdr counts the active threads of every
-  project from the live panes (herdr-projects marks each open thread's pane): a thread whose agent
-  has finished (idle or done, waiting for review or for you) gives its slot back right away; one
-  started less than 3 minutes ago still counts while it waits for its brief. wherdr writes
-  `.wherdr-limits.json` in each herdr-projects folder where a coordinator runs, refreshed on
-  every change:
-
-  ```json
-  { "updated": "…", "this": "Server", "machines": { "Server": { "max": 2, "open": 2, "free": 0, "threads": ["shop/t-0012", "docs/t-0003"] } } }
-  ```
-
-  The coordinator rules (Settings) tell the coordinator to read it before starting a thread and
-  to wait while `free` is `0`, even if its project still has slots; In queue tasks start when the
-  machine has a free slot. `herdr-projects overview` is the fallback when the file is missing.
-  The same data is available read-only at `GET /api/plugins/thread-limits`.
-- **Badges**, the only decoration on task lines, chosen by the coordinator (wherdr adds none
-  on its own): `[b:color(text)]`, or `[b:color(text)](target)` for a clickable badge with a small ↗.
-  The target is an `https://` / `http://` link (new tab) or a thread ID such as `t-0140` (opens
-  its tab); any other scheme is ignored. Color is `red`, `orange`, `amber`, `green`, `teal`,
-  `blue`, `violet`, `pink`, `gray` (theme-aware), a `#rgb` / `#rrggbb` hex, or empty for neutral;
-  at most 24 characters are shown. A bare URL in the text shows as a plain link, and the owner
-  `(me)` / `(agent)` is read but not shown. The coordinator rules (Settings) tell the coordinator
-  to use badges on its own when they help (status, thread, PR, device, priority…), sparingly,
-  and to follow your preferences. Example:
-
-  ```markdown
-  - [ ] Stop button on iPhone [b:red(bug)] [b:gray(t-0140)](t-0140) [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me)
-  ```
-- **Settings → Plugins → herdr-projects**: install status per machine (with a warning for an
-  unsupported 1.x, or a 0.2 from upstream whose update would install 1.x), the `TASKS.md` convention,
-  a template, the max threads per machine and the coordinator rules to copy.
-- **Projects entries** in the menus when the plugin is on the agent's machine: an agent's menu
-  (`…`) and its card's (right click, long press on the phone) offer the Project panel, **New
-  project…**, **Continue as a project…** (an agent outside a project), **Pause this project…**
-  and **Check herdr-projects setup**; the project's header in the list has its own menu with
-  the same entries. Shortcuts: `Mod+Alt+P` (Project panel) and `Mod+Alt+Shift+N` (New project).
-  The plugin's other actions stay under **Plugin actions**.
-- **New project** with the same machine and folder picker as **New agent**, and the agent
-  profiles of its coordinator and threads (see [Herdr plugins](#herdr-plugins)).
-
-<p align="center">
-  <img src="docs/screenshots/project-panel.png" alt="A coordinator with the Project panel open, and its project group with threads in the sidebar" width="900">
-</p>
-<p align="center">
-  <img src="docs/screenshots/project-phone.png" alt="The Project panel on a phone" width="340">
-</p>
-<p align="center"><sub>A coordinator with its Project panel, on a computer and on a phone (demo data).</sub></p>
-
-### Using wherdr with herdr-projects
-
-The Project panel only works well when the coordinator follows its conventions: which lists
-mean what, the badges, `(agent → t-NNNN)`, and what to do with each message the buttons send
-(`✓ Tested: …`, `↳ Queue: …`, `↳ Problem: … —` or `↳ Decision: … —` with the answer below it…). They are written once, as an agent skill:
-[`skills/wherdr/SKILL.md`](skills/wherdr/SKILL.md).
-
-The npm package (also used by Homebrew) and Docker image include the skill from that
-release. Installation is best effort: a missing agent or an unwritable home never blocks
-wherdr. It links `~/.claude/skills/wherdr` (or `$CLAUDE_CONFIG_DIR/skills/wherdr`) only
-when the Claude configuration folder exists, and `~/.agents/skills/wherdr` only when
-`.agents`, `.codex` or `.omp` exists. Links point to a stable copy in
-`${WHERDR_DIR:-$HOME/wherdr}/skills/wherdr`. Existing skills from elsewhere are left alone.
-Relative `WHERDR_DIR` resolves from the working directory; relative `CLAUDE_CONFIG_DIR`
-resolves from HOME, including when saved in a login service. Unchanged content is not rewritten.
-A broken link is repaired only when local metadata proves wherdr created it.
-
-| Install mode | Skill installation and refresh |
-| --- | --- |
-| npm / npx / Bun / pnpm | On `wherdr`, `wherdr run`, `wherdr start` or `wherdr service install`; after updating the package, the next start refreshes it. |
-| Homebrew | On `wherdr` startup, including the Homebrew service; restart the service after `brew upgrade`. |
-| One-tap update (npm, Homebrew, native plugin) | Restarting wherdr refreshes the skill from the newly installed package; rollback restores the previous copy when that package also bundles the skill. |
-| Herdr plugin, Node.js | On plugin installation / reinstallation, and on startup from its installed package. |
-| Herdr plugin, Docker | On plugin installation and Update, extracted from the pulled image on the host. |
-| One-command installer, Docker | After each pull, including reruns and `WHERDR_MODE=docker`; saves host helpers in `$WHERDR_DIR/skill-installer`. |
-| Docker by hand | Run the host-side command below after the initial pull and after each image update. |
-| From source | Use `node bin/wherdr.mjs` after building, or run `sh bin/lib/install-skill.sh` yourself after updating; `npm start` alone does not install the skill. |
-
-Docker cannot write the host's agent folders through its read-only home mount. From the
-repository checkout on the **host**, after pulling your image, run:
-
-```sh
-sh bin/install-docker-skill.sh ghcr.io/afloury/wherdr:latest
-```
-
-Pass your image tag if different. The helper creates a stopped temporary container, copies
-only `/app/skills/wherdr/SKILL.md` out of it, uses the local host installer, then removes
-the container. No host home is mounted into it. Repeat this command after each manual Docker update; Docker has no one-tap
-update in the app. Manual failures (including older images without the skill) return a
-nonzero status with diagnostics; plugin and one-command installation warn and continue. Without a checkout, use
-`sh "${WHERDR_DIR:-$HOME/wherdr}/skill-installer/bin/install-docker-skill.sh" <image>` after the one-command install.
-
-Remove managed links with `sh bin/lib/install-skill.sh uninstall` (or
-`sh scripts/herdr-plugin.sh skill uninstall` in the plugin folder). Uninstall leaves
-`~/.local/state/wherdr/skill-disabled`: subsequent starts and updates respect it, even if
-`WHERDR_DIR` changes. To re-enable, explicitly run `sh bin/lib/install-skill.sh install`
-or the plugin's `skill install` (or the Docker host helper above). `WHERDR_SKILL=off`
-disables all installation and refresh, including explicit install; export it for interactive
-starts or set it when installing the login service to preserve it there.
-
-Two limitations remain: rollback to an older package without the helper (such as 1.3.2)
-leaves the failed release's skill in place. With multiple wherdr versions sharing an account,
-the last one started supplies the skill; there is no version comparison.
-
-You can also paste **Settings → Plugins → herdr-projects → Copy rules for the coordinator** to your agent.
-
+## Herdr plugins
 ## Herdr plugins
 
 Actions declared by the plugins installed on a machine (`herdr plugin install|link`) appear in
@@ -1348,29 +1159,6 @@ Actions that open a plugin pane or popup open it in the attached Herdr terminal 
 phone: the menu marks them **Opens in Herdr**. wherdr's own plugin actions (its panel, open in the
 browser) are not listed. With a single machine, the machine's actions are in the **…** menu of
 its session row, under the agent list header.
-
-**herdr-projects** actions that ask for input (New project, continue this workspace as a
-project, open, pause, resume) are run by wherdr itself as `herdr-projects` commands, because
-Herdr's API cannot pass them arguments. **New project** picks its repository like **New agent**
-picks a folder: the machine (when the project is created from this machine, a repository on an
-SSH machine is passed as `PATH@MACHINE`), a folder browser and recent folders. It suggests the
-root of the current space's Git repository (nothing outside a repository, never your home
-folder itself), offers the root when you pick a subfolder, and names the project after the
-repository. It also asks which agent profile runs the **coordinator** and which one the
-**threads** start with: the profiles of the project's machine (`herdr-projects profile list`:
-yours and the signed-in built-ins such as Claude or omp) that the plugin allows for each role,
-with the plugin's defaults for new projects selected (or the first profile listed, when a default
-is not available there). The choice is written to the project's
-`PROJECT.md` (`coordinator_profile`, `thread_profile`); with a herdr-projects without profiles,
-the choice is not shown.
-With Docker, these commands write to the projects folder, so `docker-compose.yml` mounts
-`~/.herdr-projects` read-write. If you set another `root` in
-`~/.config/herdr-projects/config.toml`, mount that folder instead (same path on both sides);
-otherwise wherdr reports that the home folder is read-only. Check setup only reads; the other
-actions (Configure…) run on the host through Herdr, as in the terminal client. When no herdr-projects
-ticker is running yet, the one these commands start inside the container is stopped right away;
-the next `herdr-projects` command run on the host (a coordinator starting a thread, Herdr
-starting) starts it there.
 
 ## Security
 
