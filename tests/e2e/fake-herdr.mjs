@@ -104,6 +104,7 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
   }
 
   let integrations = {}
+  let plugins = []
   const methods = {
     'session.snapshot': () => ({ snapshot: snapshot() }),
     'agent.prompt': prompt,
@@ -245,7 +246,12 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       const p = need(params.pane_id)
       return { ...p.size, attached: Boolean(p.control) }
     },
-    'plugin.list': () => ({ plugins: [] }),
+    'plugin.list': () => ({ plugins }),
+    // Installed plugins as plugin.list reports them (herdr-projects 0.2 or 1.x).
+    'e2e.plugins': (params) => {
+      plugins = Array.isArray(params.plugins) ? params.plugins : []
+      return {}
+    },
     'plugin.action.list': () => ({ actions: [] }),
   }
 

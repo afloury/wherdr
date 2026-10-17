@@ -1115,9 +1115,26 @@ gets a default workspace, as with any attached client.
 
 ## Works great with herdr-projects
 
-[herdr-projects](https://github.com/eliasstravik/herdr-projects) is a Herdr plugin that runs a
+[herdr-projects](https://github.com/afloury/herdr-projects) is a Herdr plugin that runs a
 project as one **coordinator** conversation and parallel **threads**, each in its own Git
-worktree. It is optional; with it installed, wherdr adds:
+worktree. It is optional. wherdr works with its **0.2** line, installed from the fork (or with
+**Install herdr-projects** in **Settings → Plugins → herdr-projects**):
+
+```sh
+herdr plugin install afloury/herdr-projects --yes
+```
+
+> **herdr-projects 1.x is not supported yet.** Upstream
+> ([eliasstravik/herdr-projects](https://github.com/eliasstravik/herdr-projects)) moved to a 1.x
+> that is a different product (a task board, with no projects, `TASKS.md` or threads), and its
+> first run moves `~/.herdr-projects` to `~/.herdr-projects-legacy`. Settings says when a machine
+> has 1.x and gives the command to go back to 0.2. A 0.2 installed from upstream must not run
+> `herdr-projects update`, which would install 1.x: reinstall it from the fork
+> (`herdr plugin uninstall herdr-projects && herdr plugin install afloury/herdr-projects --yes`;
+> projects stay in `~/.herdr-projects`). The fork has no prebuilt binary yet, so its installer
+> builds it with Rust (`cargo`, a few minutes).
+
+With it installed, wherdr adds:
 
 - **Project groups** in the agent list: the coordinator first, its threads indented under it,
   grouped by repository (`Repo web-shop · 2 worktrees`), with their thread number and state.
@@ -1245,7 +1262,8 @@ worktree. It is optional; with it installed, wherdr adds:
   ```markdown
   - [ ] Stop button on iPhone [b:red(bug)] [b:gray(t-0140)](t-0140) [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me)
   ```
-- **Settings → Plugins → herdr-projects**: install status per machine, the `TASKS.md` convention,
+- **Settings → Plugins → herdr-projects**: install status per machine (with a warning for an
+  unsupported 1.x, or a 0.2 from upstream whose update would install 1.x), the `TASKS.md` convention,
   a template, the max threads per machine and the coordinator rules to copy.
 - **Projects entries** in the menus when the plugin is on the agent's machine: an agent's menu
   (`…`) and its card's (right click, long press on the phone) offer the Project panel, **New

@@ -477,6 +477,7 @@ const FR: Record<string, string> = {
   'Home folder is read-only here: copy the command and paste it into a terminal on {machine}': 'Dossier personnel en lecture seule ici : copie la commande et colle-la dans un terminal de {machine}',
   'Install failed on {machine}: {reason}': 'Installation impossible sur {machine} : {reason}',
   'Projects binary not found': 'Binaire Projects introuvable',
+  'herdr-projects 1.x is not supported by wherdr yet: install the 0.2 line (Settings › Plugins › herdr-projects)': 'herdr-projects 1.x n’est pas encore pris en charge par wherdr : installe la version 0.2 (Réglages › Plugins › herdr-projects)',
   'Invalid action': 'Action invalide',
   'Action not found on this machine': 'Action introuvable sur cette machine',
   'Action not available here': 'Action non disponible ici',

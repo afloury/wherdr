@@ -8,6 +8,7 @@ import { splitId } from '../../shared/ids'
 import { HERDR_BIN, HERDR_CHILD_ENV, HOME, IN_DOCKER, log } from './env'
 import { execFile } from 'node:child_process'
 import { binaryOn } from './projectBoard'
+import { projectsPluginState } from './projectsPlugin'
 import { getState } from './state'
 import { HerdrError, herdrOn, sleep } from './herdr'
 import { findPane } from './state'
@@ -58,8 +59,10 @@ async function runProjects(m: Machine, bin: string, args: string[], timeoutMs = 
 
 async function projectsBin(m: Machine): Promise<string> {
   const bin = await binaryOn(m)
-  if (!bin) throw new HerdrError('plugin_unavailable', 'Projects binary not found')
-  return bin
+  if (bin) return bin
+  // herdr-projects 1.x has no such binary: say so rather than "not found".
+  if ((await projectsPluginState(m).catch(() => null))?.unsupported) throw new HerdrError('plugin_unsupported', 'herdr-projects 1.x is not supported by wherdr yet: install the 0.2 line (Settings › Plugins › herdr-projects)')
+  throw new HerdrError('plugin_unavailable', 'Projects binary not found')
 }
 
 async function projectsCommand(m: Machine, args: string[], lang: 'fr' | 'en' = 'en'): Promise<string> {

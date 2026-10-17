@@ -10,6 +10,7 @@ import path from 'node:path'
 import type { Pane } from '../../shared/types'
 import { type ProjectBoard, type ProjectThread, maxParallelThreads, normalizeThreads, parseTasks, splitThreads } from '../../shared/projectBoard'
 import { projectOf } from '../../shared/projects'
+import { type RawProjectsPlugin, manifestBinary } from '../../shared/projectsPlugin'
 import { isProjectThread } from '../../shared/paneTitle'
 import { HERDR_BIN, HERDR_CHILD_ENV } from './env'
 import { HerdrError, herdrOn } from './herdr'
@@ -24,34 +25,21 @@ const THREADS_BYTES = 8 * 1024 * 1024
 const BIN_TTL_MS = 60000
 const PLUGIN_ID = 'herdr-projects'
 
-interface RawCommand { command?: unknown }
-interface RawPluginFull {
-  plugin_id?: string
-  enabled?: boolean
-  plugin_root?: string
-  startup?: RawCommand[]
-  actions?: RawCommand[]
-  panes?: RawCommand[]
-}
-
 // herdr-projects binary according to the manifest: path relative to plugin_root.
-export function pluginBinary(plugins: RawPluginFull[]): string | null {
+// None for herdr-projects 1.x (see shared/projectsPlugin.ts).
+export function pluginBinary(plugins: RawProjectsPlugin[]): string | null {
   const p = (plugins || []).find(x => x && x.plugin_id === PLUGIN_ID && x.enabled !== false)
   if (!p || typeof p.plugin_root !== 'string' || !path.posix.isAbsolute(p.plugin_root)) return null
-  for (const c of [...(p.startup || []), ...(p.actions || []), ...(p.panes || [])]) {
-    const argv = Array.isArray(c?.command) ? c.command : []
-    const bin = typeof argv[0] === 'string' ? argv[0] : ''
-    if (!/(^|\/)herdr-projects$/.test(bin) || bin.split('/').includes('..')) continue
-    return path.posix.isAbsolute(bin) ? bin : path.posix.join(p.plugin_root, bin)
-  }
-  return null
+  const bin = manifestBinary(p)
+  if (!bin) return null
+  return path.posix.isAbsolute(bin) ? bin : path.posix.join(p.plugin_root, bin)
 }
 
 const bins = new Map<string, { at: number, bin: Promise<string | null> }>()
 export function binaryOn(m: Machine): Promise<string | null> {
   const hit = bins.get(m.key)
   if (hit && Date.now() - hit.at < BIN_TTL_MS) return hit.bin
-  const bin = herdrOn<{ plugins?: RawPluginFull[] }>(m.key, 'plugin.list', {}, 8000)
+  const bin = herdrOn<{ plugins?: RawProjectsPlugin[] }>(m.key, 'plugin.list', {}, 8000)
     .then(r => pluginBinary(r.plugins || []))
   bin.catch(() => bins.delete(m.key))
   bins.set(m.key, { at: Date.now(), bin })

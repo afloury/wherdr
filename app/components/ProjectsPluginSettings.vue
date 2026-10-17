@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import type { MachineConfig } from '#shared/types'
-import { PROJECTS_COMMAND } from '#shared/projectsPlugin'
+import { PROJECTS_COMMAND, PROJECTS_LEGACY_GUIDE, PROJECTS_REINSTALL_COMMAND, PROJECTS_REPO_URL, PROJECTS_UPSTREAM } from '#shared/projectsPlugin'
 import { coordinatorRules, tasksTemplate } from '#shared/projectBoard'
 import { LIMITS_FILE, MAX_THREAD_LIMIT, type MachineSlots } from '#shared/threadLimits'
 
 const props = defineProps<{ machines: MachineConfig[] }>()
-type PluginState = { installed: boolean, enabled: boolean, version: string | null, installable: boolean }
+type PluginState = { installed: boolean, enabled: boolean, version: string | null, unsupported: boolean, upstream: boolean, installable: boolean }
 const states = ref<Record<string, PluginState>>({})
 const errors = ref<Record<string, string>>({})
 const loading = ref<Record<string, boolean>>({})
@@ -31,8 +31,8 @@ watch(() => props.machines.map(m => `${m.key}:${m.online}`).join('|'), () => {
 async function install(machine: MachineConfig) {
   haptic()
   if (!await askConfirm(tl(
-    `Install herdr-projects on ${machine.label}? Herdr will download the plugin from GitHub and run its installer on this machine.`,
-    `Installer herdr-projects sur ${machine.label} ? Herdr téléchargera le plugin depuis GitHub et exécutera son installation sur cette machine.`,
+    `Install herdr-projects 0.2 on ${machine.label}? Herdr will download the plugin from GitHub and run its installer on this machine. Without a prebuilt binary, the installer builds it with Rust (cargo): this can take several minutes.`,
+    `Installer herdr-projects 0.2 sur ${machine.label} ? Herdr téléchargera le plugin depuis GitHub et exécutera son installation sur cette machine. Sans binaire précompilé, l’installation le compile avec Rust (cargo) : cela peut prendre plusieurs minutes.`,
   ), t('Install'), 'primary')) return
   busy.value = { ...busy.value, [machine.key]: true }
   try {
@@ -44,10 +44,10 @@ async function install(machine: MachineConfig) {
   finally { busy.value = { ...busy.value, [machine.key]: false } }
 }
 
-async function copy(machine: MachineConfig) {
+async function copy(machine: MachineConfig, command = PROJECTS_COMMAND) {
   haptic()
   try {
-    await navigator.clipboard.writeText(PROJECTS_COMMAND)
+    await navigator.clipboard.writeText(command)
     toast(tl(`Command copied: paste it into a terminal on ${machine.label}.`, `Commande copiée : colle-la dans un terminal de ${machine.label}.`))
   } catch { toast(t('Copy failed'), true) }
 }
@@ -111,7 +111,8 @@ const copyRules = () => copyText(coordinatorRules(lang()), tl('Rules copied: pas
   <div class="settings-group projects-plugin">
     <h3>herdr-projects</h3>
     <p class="projects-plugin-intro">{{ tl('herdr-projects groups coordinators and their threads by project, adding the Project panel and worktree repositories in wherdr. The plugin is optional: agents and other wherdr features still work without it.', 'herdr-projects regroupe les coordinateurs et leurs threads par projet, avec un panneau Projet et les dépôts de worktrees dans wherdr. Le plugin est facultatif : les agents et les autres fonctions de wherdr restent utilisables sans lui.') }}</p>
-    <a class="projects-plugin-link" href="https://github.com/eliasstravik/herdr-projects" target="_blank" rel="noopener noreferrer">
+    <p class="projects-plugin-intro">{{ tl('wherdr works with the 0.2 line of herdr-projects, installed from the fork below. herdr-projects 1.x, a different task board, is not supported yet.', 'wherdr fonctionne avec la version 0.2 de herdr-projects, installée depuis le fork ci-dessous. herdr-projects 1.x, un autre tableau de tâches, n’est pas encore pris en charge.') }}</p>
+    <a class="projects-plugin-link" :href="PROJECTS_REPO_URL" target="_blank" rel="noopener noreferrer">
       {{ tl('View plugin repository', 'Voir le dépôt du plugin') }} <UIcon name="i-lucide-external-link" />
     </a>
     <div v-for="machine in machines" :key="machine.key" class="projects-plugin-machine">
@@ -120,6 +121,7 @@ const copyRules = () => copyText(coordinatorRules(lang()), tl('Rules copied: pas
         <span v-if="!machine.online">{{ tl('Offline', 'Hors ligne') }}</span>
         <span v-else-if="loading[machine.key] && !states[machine.key]">{{ tl('Checking…', 'Vérification…') }}</span>
         <span v-else-if="errors[machine.key]">{{ tl('Status unavailable', 'État indisponible') }}</span>
+        <span v-else-if="states[machine.key]?.unsupported" class="unsupported">{{ tl('Not supported', 'Non pris en charge') }}{{ states[machine.key]?.version ? ` · v${states[machine.key]?.version}` : '' }}</span>
         <span v-else-if="states[machine.key]?.installed" class="installed">{{ tl('Installed', 'Installé') }}{{ states[machine.key]?.version ? ` · v${states[machine.key]?.version}` : '' }}</span>
         <span v-else>{{ tl('Not installed', 'Non installé') }}</span>
       </div>
@@ -136,6 +138,30 @@ const copyRules = () => copyText(coordinatorRules(lang()), tl('Rules copied: pas
         <div>
           <strong>{{ tl('Reload the Herdr client config', 'Recharge la config du client Herdr') }}</strong>
           <p>{{ tl('In the Herdr terminal: ', 'Dans le terminal Herdr : ') }}<kbd>prefix</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd>. {{ tl('Then run “Set up the sidebar…” from an agent’s menu to install the sidebar and the hooks.', 'Puis lance « Set up the sidebar… » depuis le menu d’un agent pour installer la barre latérale et les hooks.') }}</p>
+        </div>
+      </div>
+      <div v-if="states[machine.key]?.unsupported" class="plugin-input-note warn projects-plugin-reload projects-plugin-unsupported">
+        <UIcon name="i-lucide-triangle-alert" />
+        <div>
+          <strong>{{ tl('herdr-projects 1.x is not supported by wherdr yet', 'herdr-projects 1.x n’est pas encore pris en charge par wherdr') }}</strong>
+          <p>{{ tl('1.x is a different task board: wherdr reads the 0.2 line (projects, TASKS.md, threads). To get the Project panel and the Board back, uninstall it and install 0.2 on this machine:', 'La 1.x est un autre tableau de tâches : wherdr lit la version 0.2 (projets, TASKS.md, threads). Pour retrouver le panneau Projet et le Board, désinstalle-la et installe la 0.2 sur cette machine :') }}</p>
+          <code class="projects-plugin-command">{{ PROJECTS_REINSTALL_COMMAND }}</code>
+          <p>{{ tl('If you have 0.2 projects, do not run 1.x: its first run moves ~/.herdr-projects to ~/.herdr-projects-legacy. If it already ran, its guide explains how to go back.', 'Si tu as des projets 0.2, ne lance pas la 1.x : à son premier lancement, elle déplace ~/.herdr-projects vers ~/.herdr-projects-legacy. Si elle a déjà tourné, son guide explique comment revenir en arrière.') }}</p>
+          <div class="projects-plugin-actions tight">
+            <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-copy" @click="copy(machine, PROJECTS_REINSTALL_COMMAND)">{{ t('Copy command') }}</UButton>
+            <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-external-link" :to="PROJECTS_LEGACY_GUIDE" target="_blank" rel="noopener noreferrer">{{ tl('Going back to 0.2', 'Revenir à la 0.2') }}</UButton>
+          </div>
+        </div>
+      </div>
+      <div v-else-if="states[machine.key]?.upstream" class="plugin-input-note warn projects-plugin-reload projects-plugin-upstream">
+        <UIcon name="i-lucide-triangle-alert" />
+        <div>
+          <strong>{{ tl('Do not run “herdr-projects update” here', 'Ne lance pas « herdr-projects update » ici') }}</strong>
+          <p>{{ tl(`This copy comes from ${PROJECTS_UPSTREAM}, whose newest release is 1.x: updating would install it, wherdr would lose its projects, and 1.x would move ~/.herdr-projects. To stay on 0.2, reinstall it from the fork (your projects stay where they are):`, `Cette copie vient de ${PROJECTS_UPSTREAM}, dont la dernière version est la 1.x : la mise à jour l’installerait, wherdr perdrait ses projets et la 1.x déplacerait ~/.herdr-projects. Pour rester sur la 0.2, réinstalle-la depuis le fork (tes projets ne bougent pas) :`) }}</p>
+          <code class="projects-plugin-command">{{ PROJECTS_REINSTALL_COMMAND }}</code>
+          <div class="projects-plugin-actions tight">
+            <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-copy" @click="copy(machine, PROJECTS_REINSTALL_COMMAND)">{{ t('Copy command') }}</UButton>
+          </div>
         </div>
       </div>
       <p v-if="states[machine.key]?.installed && !states[machine.key]?.enabled" class="projects-plugin-note">{{ tl('The plugin is disabled in Herdr.', 'Le plugin est désactivé dans Herdr.') }}</p>
