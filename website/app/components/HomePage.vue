@@ -34,7 +34,7 @@ const stories = [
     id: 'projects',
     label: 'herdr-projects',
     title: 'A coordinator, its threads, one board.',
-    text: 'With the herdr-projects plugin (0.2 line; 1.x is not supported yet), a coordinator conversation runs parallel threads, each in its own Git worktree. wherdr groups them under their project and shows the project\'s TASKS.md as a live board: to test, to decide, in progress, blocked, backlog — with one-click replies.',
+    text: 'With the herdr-projects plugin (v0.2.36 from the fork; 1.x is not supported yet), a coordinator conversation runs parallel threads, each in its own Git worktree. wherdr groups them under their project and shows the project\'s TASKS.md as a live board: to test, to decide, in progress, blocked, backlog — with one-click replies.',
     points: ['Threads live: state, progress, report', 'Thread slots per machine, across projects', 'wherdr never writes TASKS.md: buttons message the coordinator'],
   },
 ] as const

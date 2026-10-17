@@ -16,7 +16,7 @@ Follow the project's own instructions (`PROJECT.md`) first; this skill fills in 
 panel expects. Write task lines and badges in the user's language.
 
 wherdr reads herdr-projects **0.2** (projects, `TASKS.md`, threads), installed from
-`afloury/herdr-projects`. herdr-projects 1.x is a different product that wherdr does not
+`herdr plugin install afloury/herdr-projects --ref v0.2.36 --yes` (prebuilt binary). herdr-projects 1.x is a different product that wherdr does not
 support yet, and its first run moves `~/.herdr-projects`: never install it, and never run
 `herdr-projects update` on a 0.2 installed from `eliasstravik/herdr-projects` (it would
 install 1.x). Ask the user first.

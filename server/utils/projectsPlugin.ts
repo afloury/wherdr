@@ -26,9 +26,9 @@ export function projectsPluginFromList(plugins: RawProjectsPlugin[]): Omit<Proje
   }
 }
 
-// The fork has no prebuilt binary yet: its installer then builds it with
-// cargo, which takes minutes on a small machine.
-const INSTALL_TIMEOUT_MS = 15 * 60 * 1000
+// The pinned release downloads a prebuilt binary; allow two minutes for
+// the checkout and download, including on a slower connection.
+const INSTALL_TIMEOUT_MS = 2 * 60 * 1000
 
 async function canInstall(m: Machine): Promise<boolean> {
   if (!m.local) return m.status === 'online'

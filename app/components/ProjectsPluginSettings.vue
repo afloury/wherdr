@@ -31,9 +31,9 @@ watch(() => props.machines.map(m => `${m.key}:${m.online}`).join('|'), () => {
 async function install(machine: MachineConfig) {
   haptic()
   if (!await askConfirm(tl(
-    `Install herdr-projects 0.2 on ${machine.label}? Herdr will download the plugin from GitHub and run its installer on this machine. Without a prebuilt binary, the installer builds it with Rust (cargo): this can take several minutes.`,
-    `Installer herdr-projects 0.2 sur ${machine.label} ? Herdr téléchargera le plugin depuis GitHub et exécutera son installation sur cette machine. Sans binaire précompilé, l’installation le compile avec Rust (cargo) : cela peut prendre plusieurs minutes.`,
-  ), t('Install'), 'primary')) return
+    `Install herdr-projects 0.2 on ${machine.label}? Herdr will download the plugin from GitHub and run its installer on this machine.`,
+    `Installer herdr-projects 0.2 sur ${machine.label} ? Herdr téléchargera le plugin depuis GitHub et exécutera son installation sur cette machine.`,
+  ) + ' ' + t('The v0.2.36 release provides a prebuilt binary.'), t('Install'), 'primary')) return
   busy.value = { ...busy.value, [machine.key]: true }
   try {
     await api('/api/plugins/projects', { machine: machine.key })

@@ -10,7 +10,8 @@
 export const PROJECTS_REPO = 'afloury/herdr-projects'
 export const PROJECTS_REPO_URL = `https://github.com/${PROJECTS_REPO}`
 export const PROJECTS_UPSTREAM = 'eliasstravik/herdr-projects'
-export const PROJECTS_INSTALL_ARGS = ['plugin', 'install', PROJECTS_REPO, '--yes'] as const
+export const PROJECTS_REF = 'v0.2.36'
+export const PROJECTS_INSTALL_ARGS = ['plugin', 'install', PROJECTS_REPO, '--ref', PROJECTS_REF, '--yes'] as const
 export const PROJECTS_COMMAND = `herdr ${PROJECTS_INSTALL_ARGS.join(' ')}`
 export const PROJECTS_UNINSTALL_COMMAND = 'herdr plugin uninstall herdr-projects'
 // Back to the 0.2 line from 1.x or from an upstream 0.2. Projects stay in

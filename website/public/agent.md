@@ -95,7 +95,7 @@ lock is on, and how to update (run the install command again).
 - **Only a terminal, no conversation**: `herdr integration install claude|codex|omp`.
 - **Agents on other computers**: Herdr only on them, registered with `herdr machine add`:
   https://github.com/afloury/wherdr#several-machines-ssh.
-- **herdr-projects** (parallel threads): `herdr plugin install afloury/herdr-projects --yes`
+- **herdr-projects** (parallel threads): `herdr plugin install afloury/herdr-projects --ref v0.2.36 --yes`
   (0.2; upstream's 1.x is not supported yet).
 - **Something fails**: the **L** key (log) of the wherdr panel in Herdr, and
   https://github.com/afloury/wherdr#troubleshooting.

@@ -1121,7 +1121,7 @@ worktree. It is optional. wherdr works with its **0.2** line, installed from the
 **Install herdr-projects** in **Settings → Plugins → herdr-projects**):
 
 ```sh
-herdr plugin install afloury/herdr-projects --yes
+herdr plugin install afloury/herdr-projects --ref v0.2.36 --yes
 ```
 
 > **herdr-projects 1.x is not supported yet.** Upstream
@@ -1130,9 +1130,9 @@ herdr plugin install afloury/herdr-projects --yes
 > first run moves `~/.herdr-projects` to `~/.herdr-projects-legacy`. Settings says when a machine
 > has 1.x and gives the command to go back to 0.2. A 0.2 installed from upstream must not run
 > `herdr-projects update`, which would install 1.x: reinstall it from the fork
-> (`herdr plugin uninstall herdr-projects && herdr plugin install afloury/herdr-projects --yes`;
-> projects stay in `~/.herdr-projects`). The fork has no prebuilt binary yet, so its installer
-> builds it with Rust (`cargo`, a few minutes).
+> (`herdr plugin uninstall herdr-projects && herdr plugin install afloury/herdr-projects --ref v0.2.36 --yes`;
+> projects stay in `~/.herdr-projects`). The pinned v0.2.36 release downloads a prebuilt binary
+> for macOS or Linux, on ARM64 or x86_64.
 
 With it installed, wherdr adds:
 

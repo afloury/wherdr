@@ -26,9 +26,9 @@ describe('herdr-projects in Settings', () => {
     expect(projectsPluginFromList([{ plugin_id: 'herdr-projects', enabled: false, version: '<script>' }])).toMatchObject({ installed: true, enabled: false, version: null })
   })
   it('installs the 0.2 line from the fork, never upstream (whose newest release is 1.x)', () => {
-    expect(PROJECTS_COMMAND).toBe('herdr plugin install afloury/herdr-projects --yes')
-    expect(PROJECTS_INSTALL_ARGS).toEqual(['plugin', 'install', 'afloury/herdr-projects', '--yes'])
-    expect(PROJECTS_REINSTALL_COMMAND).toBe('herdr plugin uninstall herdr-projects && herdr plugin install afloury/herdr-projects --yes')
+    expect(PROJECTS_COMMAND).toBe('herdr plugin install afloury/herdr-projects --ref v0.2.36 --yes')
+    expect(PROJECTS_INSTALL_ARGS).toEqual(['plugin', 'install', 'afloury/herdr-projects', '--ref', 'v0.2.36', '--yes'])
+    expect(PROJECTS_REINSTALL_COMMAND).toBe('herdr plugin uninstall herdr-projects && herdr plugin install afloury/herdr-projects --ref v0.2.36 --yes')
   })
 })
 

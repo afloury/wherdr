@@ -14,7 +14,7 @@ const upstream02 = {
   plugin_id: 'herdr-projects', enabled: true, version: '0.2.34',
   source: { kind: 'github', owner: 'eliasstravik', repo: 'herdr-projects' },
 }
-const reinstall = 'herdr plugin uninstall herdr-projects && herdr plugin install afloury/herdr-projects --yes'
+const reinstall = 'herdr plugin uninstall herdr-projects && herdr plugin install afloury/herdr-projects --ref v0.2.36 --yes'
 
 test.afterEach(async () => { await fakeHerdr('e2e.plugins', { plugins: [] }) })
 
@@ -55,4 +55,17 @@ test('a 0.2 from the fork shows no warning', async ({ page }) => {
   const machine = page.locator('.projects-plugin-machine').first()
   await expect(machine.locator('.projects-plugin-head .installed')).toHaveText('Installed · v0.2.34', { timeout: 15000 })
   await expect(machine.locator('.plugin-input-note.warn')).toHaveCount(0)
+})
+
+test('installation confirmation identifies the prebuilt release without running the installer', async ({ page }, testInfo) => {
+  await page.route('**/api/plugins/projects?*', route => route.fulfill({ json: {
+    installed: false, enabled: false, version: null, unsupported: false, upstream: false, installable: true,
+  } }))
+  await page.goto('/#/settings?section=plugins')
+  await page.getByRole('button', { name: 'Install herdr-projects', exact: true }).first().click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('The v0.2.36 release provides a prebuilt binary.')
+  await expect(dialog).not.toContainText('Rust')
+  await page.screenshot({ path: `.shots/projects-plugin-install-${testInfo.project.name}.png` })
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
 })

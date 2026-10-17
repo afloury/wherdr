@@ -468,6 +468,7 @@ const FR: Record<string, string> = {
   'Session missing or stopped': 'Session absente ou arrêtée',
   'Empty machine name': 'Nom de machine vide',
   'Rename failed': 'Renommage impossible',
+  'The v0.2.36 release provides a prebuilt binary.': 'La version v0.2.36 fournit un binaire précompilé.',
   'herdr-projects is already installed': 'herdr-projects est déjà installé',
   'Herdr folder is read-only on {machine}': 'Dossier Herdr en lecture seule sur {machine}',
   'Install failed (code {code})': 'Installation impossible (code {code})',
