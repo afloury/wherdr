@@ -2,23 +2,33 @@ import { constants, promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { Machine } from './machines'
 import { HerdrError, herdrOn } from './herdr'
-import { PROJECTS_INSTALL_ARGS } from '../../shared/projectsPlugin'
+import { PROJECTS_INSTALL_ARGS, type RawProjectsPlugin, isUnsupportedProjects, updatesToUnsupported } from '../../shared/projectsPlugin'
 import { fmt } from '../../shared/message'
 
 export interface ProjectsPluginState {
   installed: boolean
   enabled: boolean
   version: string | null
+  // herdr-projects 1.x: installed, but wherdr cannot read it yet.
+  unsupported: boolean
+  // A 0.2 from upstream: its `herdr-projects update` would install 1.x.
+  upstream: boolean
   installable: boolean
 }
 
-export function projectsPluginFromList(plugins: { plugin_id?: string, enabled?: boolean, version?: string }[]): Pick<ProjectsPluginState, 'installed' | 'enabled' | 'version'> {
-  const plugin = plugins.find(p => p.plugin_id === 'herdr-projects')
+export function projectsPluginFromList(plugins: RawProjectsPlugin[]): Omit<ProjectsPluginState, 'installable'> {
+  const plugin = plugins.find(p => p && p.plugin_id === 'herdr-projects')
   return {
     installed: Boolean(plugin), enabled: Boolean(plugin && plugin.enabled !== false),
     version: plugin && typeof plugin.version === 'string' && /^\d[\w.+-]{0,39}$/.test(plugin.version) ? plugin.version : null,
+    unsupported: Boolean(plugin && isUnsupportedProjects(plugin)),
+    upstream: Boolean(plugin && updatesToUnsupported(plugin)),
   }
 }
+
+// The pinned release downloads a prebuilt binary; allow two minutes for
+// the checkout and download, including on a slower connection.
+const INSTALL_TIMEOUT_MS = 2 * 60 * 1000
 
 async function canInstall(m: Machine): Promise<boolean> {
   if (!m.local) return m.status === 'online'
@@ -30,7 +40,7 @@ async function canInstall(m: Machine): Promise<boolean> {
 
 export async function projectsPluginState(m: Machine): Promise<ProjectsPluginState> {
   if (m.status !== 'online') throw new HerdrError('unreachable', fmt('{machine} is unreachable', { machine: m.label }))
-  const r = await herdrOn<{ plugins?: { plugin_id?: string, enabled?: boolean, version?: string }[] }>(m.key, 'plugin.list', {}, 8000)
+  const r = await herdrOn<{ plugins?: RawProjectsPlugin[] }>(m.key, 'plugin.list', {}, 8000)
   return { ...projectsPluginFromList(r.plugins || []), installable: await canInstall(m) }
 }
 
@@ -44,7 +54,7 @@ export async function installProjectsPlugin(m: Machine): Promise<string> {
     const append = (b: Buffer) => { output = (output + b.toString('utf8')).slice(-4000) }
     child.stdout.on('data', append)
     child.stderr.on('data', append)
-    const timer = setTimeout(() => child.kill('SIGKILL'), 120000)
+    const timer = setTimeout(() => child.kill('SIGKILL'), INSTALL_TIMEOUT_MS)
     child.on('error', e => { clearTimeout(timer); reject(new HerdrError('install_failed', e.message)) })
     child.on('close', code => {
       clearTimeout(timer)
