@@ -146,14 +146,6 @@ function agentMachineHint(kind: string) {
 
 // ------------------------------------------------------------ notifications
 const subscribed = pushOn
-const scopeItems = [
-  { label: t('Project coordinators and agents outside projects'), value: 'project_leads' },
-  { label: t('All agents'), value: 'all' },
-]
-const selectedScope = computed({
-  get: () => notifyScope.value,
-  set: (v: 'project_leads' | 'all') => { setNotifyScope(v).catch(e => toast((e as Error).message, true)) },
-})
 const refreshPush = refreshPushOn
 
 // Quiet mode: scope (this device = its subscription, or all) and duration.
@@ -477,9 +469,6 @@ onMounted(() => {
           </div>
           <div class="settings-group">
             <PushCard />
-            <p class="notify-caption">{{ t('Notify for') }}</p>
-            <URadioGroup v-model="selectedScope" :items="scopeItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
-            <p class="muted notify-hint">{{ t('Project threads remain visible and their unread messages are kept.') }}</p>
           </div>
         </div>
 

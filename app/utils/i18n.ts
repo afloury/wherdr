@@ -3,6 +3,11 @@
 // checks that every key used in the code has one). The choice is saved on the device.
 
 const FR: Record<string, string> = {
+  // herdr-projects 1.x tasks (server/utils/projectsTasks.ts)
+  'herdr-projects 1.2.1 or later is not available on {machine}': 'herdr-projects 1.2.1 ou plus n’est pas disponible sur {machine}',
+  'Invalid task': 'Tâche invalide', 'Nothing to send': 'Rien à envoyer',
+  'This task has no agent to talk to': 'Cette tâche n’a pas d’agent à qui parler',
+  'This task does not wait for approval': 'Cette tâche n’attend pas d’approbation',
   'Move up': 'Monter', 'Move down': 'Descendre', 'Reset order': 'Réinitialiser l’ordre',
   'Drag to reorder': 'Glisser pour réordonner',
   'Keep awake': 'Garder éveillé',
@@ -107,7 +112,6 @@ const FR: Record<string, string> = {
   'Unknown': 'Inconnu', 'Starting': 'Démarrage', 'Closed': 'Fermé',
   'your turn': 'à toi', 'working': 'au travail', 'ready': 'prêts',
   'coordinator': 'coordinateur',
-  'In progress': 'En cours',
   'Hide': 'Masquer',
   'Show terminals': 'Afficher les terminaux',
   'Compact list': 'Liste compacte',
@@ -163,9 +167,7 @@ const FR: Record<string, string> = {
   'Settings': 'Réglages',
   'You are notified when an agent needs your input or finishes.': 'Tu es prévenu quand un agent attend ta réponse ou a terminé.',
   'Notify for': 'Notifier pour',
-  'Project coordinators and agents outside projects': 'Coordinateurs et agents hors projet',
-  'All agents': 'Tous les agents',
-  'Project threads remain visible and their unread messages are kept.': 'Les threads de projet restent visibles et leurs messages non lus sont conservés.',
+  
   'On iPhone, add the app to your Home Screen (Share → Add to Home Screen) to receive notifications.': 'Sur iPhone, ajoute d’abord l’app à l’écran d’accueil (Partager → Sur l’écran d’accueil) pour recevoir les notifications.',
   'Enable notifications to know when an agent needs your input.': 'Active les notifications pour être prévenu quand un agent attend ta réponse.',
   'Close this terminal': 'Fermer ce terminal',
@@ -406,8 +408,7 @@ const FR: Record<string, string> = {
   'Swap with the pane on the left': 'Échanger avec le pane de gauche', 'Swap with the pane on the right': 'Échanger avec le pane de droite',
   'Swap with the pane above': 'Échanger avec le pane du dessus', 'Swap with the pane below': 'Échanger avec le pane du dessous',
   'Split right': 'Diviser à droite', 'Split down': 'Diviser en bas', 'Move to…': 'Déplacer vers…',
-  'Board': 'Tableau', 'Blocked': 'Bloqué', 'Todo': 'À faire', 'Ongoing': 'En cours', 'Finished': 'Terminé', 'Sent': 'Envoyé', 'Nothing here': 'Rien ici',
-  'Board read timed out': 'Lecture du tableau trop longue', 'The coordinator is not running': 'Le coordinateur ne tourne pas',
+  'Board': 'Tableau', 'Todo': 'À faire', 'Nothing here': 'Rien ici',
   'Drag to move the pane': 'Glisser pour déplacer le pane', 'Swap': 'Échanger', 'Place left': 'Placer à gauche', 'Place right': 'Placer à droite',
   'Place above': 'Placer au-dessus', 'Place below': 'Placer en dessous', 'Resize': 'Redimensionner',
   'Rename tab': 'Renommer l’onglet', 'Rename space': 'Renommer l’espace', 'Close tab': 'Fermer l’onglet', 'Close space': 'Fermer l’espace',
@@ -417,16 +418,11 @@ const FR: Record<string, string> = {
   'Space closed': 'Espace fermé', 'Pane moved': 'Pane déplacé',
   'Start in a new pane': 'Lancer dans un nouveau pane', 'Start in a new tab': 'Lancer dans un nouvel onglet', 'New pane': 'Nouveau pane',
   // Project panel (herdr-projects coordinator)
-  'Project': 'Projet', 'Show the Project panel': 'Afficher le panneau Projet', 'Collapse the panel': 'Replier le panneau',
-  'Ready for review': 'À relire', 'Landing': 'Atterrissage', 'Idle': 'Inactif',
-  'Nothing yet': 'Rien pour l’instant', 'Reading the project…': 'Lecture du projet…',
-  'Confirm: tested, it works': 'Confirmer : testé, ça marche', 'Report a problem': 'Signaler un problème', 'Ask a question': 'Poser une question', 'Project panel width': 'Largeur du panneau Projet', 'List width': 'Largeur de la liste', 'Drag to resize · double-click: default width': 'Glisser pour élargir · double-clic : largeur par défaut', 'Sent to the coordinator': 'Envoyé au coordinateur',
-  'Clarify': 'Préciser',
-  'No TASKS.md in this project yet.': 'Pas encore de TASKS.md dans ce projet.', 'Threads unavailable': 'Threads illisibles',
-  'View report': 'Voir le rapport', 'Open agent': 'Ouvrir l’agent', 'Pull request': 'Pull request',
-  'Report truncated (too long).': 'Rapport tronqué (trop long).', 'This thread’s agent was not found': 'Agent de ce thread introuvable',
-  'No report for this thread': 'Pas de rapport pour ce thread', 'no report for this thread': 'pas de rapport pour ce thread',
-  'invalid thread': 'thread invalide', 'project not found': 'projet introuvable', 'thread list too long': 'liste des threads trop longue', 'unreadable thread record': 'fiche du thread illisible', 'an action is already running on this thread': 'une action est déjà en cours sur ce thread', 'project settings not found': 'réglages du projet introuvables', 'invalid memory file': 'fichier de mémoire invalide', 'memory file not found': 'fichier de mémoire introuvable',
+  
+  'List width': 'Largeur de la liste', 'Drag to resize · double-click: default width': 'Glisser pour élargir · double-clic : largeur par défaut', 
+  
+  'Pull request': 'Pull request',
+  
   // Server messages (shared/message.ts: {name} = value filled in by the server)
   '{machine} is unreachable: {reason}': '{machine} injoignable : {reason}',
   '{machine} is unreachable': '{machine} injoignable',
@@ -471,7 +467,6 @@ const FR: Record<string, string> = {
   'Session missing or stopped': 'Session absente ou arrêtée',
   'Empty machine name': 'Nom de machine vide',
   'Rename failed': 'Renommage impossible',
-  'The v0.2.36 release provides a prebuilt binary.': 'La version v0.2.36 fournit un binaire précompilé.',
   'herdr-projects is already installed': 'herdr-projects est déjà installé',
   'Herdr folder is read-only on {machine}': 'Dossier Herdr en lecture seule sur {machine}',
   'Install failed (code {code})': 'Installation impossible (code {code})',
@@ -480,15 +475,12 @@ const FR: Record<string, string> = {
   'Install script not found': 'Script d’installation introuvable',
   'Home folder is read-only here: copy the command and paste it into a terminal on {machine}': 'Dossier personnel en lecture seule ici : copie la commande et colle-la dans un terminal de {machine}',
   'Install failed on {machine}: {reason}': 'Installation impossible sur {machine} : {reason}',
-  'Projects binary not found': 'Binaire Projects introuvable',
-  'herdr-projects 1.x is not supported by wherdr yet: install the 0.2 line (Settings › Plugins › herdr-projects)': 'herdr-projects 1.x n’est pas encore pris en charge par wherdr : installe la version 0.2 (Réglages › Plugins › herdr-projects)',
+  
   'Invalid action': 'Action invalide',
   'Action not found on this machine': 'Action introuvable sur cette machine',
   'Action not available here': 'Action non disponible ici',
-  'The Projects panel is available in the Herdr client; its inputs are not reachable through the Herdr API.': 'Le panneau Projects est disponible dans le client Herdr ; ses saisies ne sont pas accessibles par l’API Herdr.',
-  'Invalid plugin input': 'Saisie du plugin invalide',
-  'This space needs an agent and its folder': 'Un agent et son dossier sont nécessaires dans ce space',
-  'Repository unusable from {machine}: {path}': 'Dépôt inutilisable depuis {machine} : {path}',
+  
+  
   'Invalid bootstrap token (see the server logs)': 'Jeton d’amorçage invalide (voir les journaux du serveur)',
   'Challenge expired, try again': 'Défi expiré, recommence',
   'Unlock first': 'Déverrouille d’abord',
@@ -507,15 +499,12 @@ const FR: Record<string, string> = {
   'No agent in this pane': 'Pas d’agent dans ce pane',
   'This agent’s folder is unknown': 'Dossier de cet agent inconnu',
   'Name: lowercase letters, digits, - and _ (32 max), starting with a letter': 'Nom : minuscules, chiffres, - et _ (32 max), commence par une lettre',
-  'wherdr runs in Docker with your home folder read-only: herdr-projects cannot write to {path}. Mount its projects folder (~/.herdr-projects by default) read-write in docker-compose.yml (see README, “Herdr plugins”), then restart the container.': 'wherdr tourne en Docker avec le HOME en lecture seule : herdr-projects ne peut pas écrire dans {path}. Monte son dossier de projets (~/.herdr-projects par défaut) en écriture dans docker-compose.yml (cf. README, « Herdr plugins »), puis relance le conteneur.',
-  'wherdr runs in Docker with your home folder read-only: herdr-projects cannot write. Mount its projects folder (~/.herdr-projects by default) read-write in docker-compose.yml (see README, “Herdr plugins”), then restart the container.': 'wherdr tourne en Docker avec le HOME en lecture seule : herdr-projects ne peut pas écrire. Monte son dossier de projets (~/.herdr-projects par défaut) en écriture dans docker-compose.yml (cf. README, « Herdr plugins »), puis relance le conteneur.',
-  'herdr-projects cannot write to {path}: read-only file system.': 'herdr-projects ne peut pas écrire dans {path} : système de fichiers en lecture seule.',
-  'herdr-projects cannot write: read-only file system.': 'herdr-projects ne peut pas écrire : système de fichiers en lecture seule.',
+  
+  
   'Uncommitted changes in this worktree': 'Modifications non commitées dans ce worktree',
   'This pane’s folder is unknown': 'Dossier de ce pane inconnu',
   'Invalid machine order': 'Ordre des machines invalide',
-  'Unknown machine': 'Machine inconnue',
-  'Invalid thread limit': 'Limite de threads invalide',
+  
   'Invalid machine name (40 characters max)': 'Nom de machine invalide (40 caractères maximum)',
   'Invalid quiet setting': 'Réglage de silence invalide',
   'Notifications are not enabled on this device': 'Notifications non activées sur cet appareil',
@@ -536,7 +525,7 @@ const FR: Record<string, string> = {
   'The agent did not take the message': 'L’agent n’a pas pris le message',
   'Another writer keeps typing into the agent’s input': 'Un autre programme écrit sans arrêt dans le champ de l’agent',
   'message already being sent': 'message déjà en cours d’envoi',
-  'same pane': 'même pane', 'pane in another tab': 'pane d’un autre onglet', 'pane and folder required': 'pane et dossier nécessaires',
+  'same pane': 'même pane', 'pane in another tab': 'pane d’un autre onglet', 
 }
 
 export type Lang = 'en' | 'fr'

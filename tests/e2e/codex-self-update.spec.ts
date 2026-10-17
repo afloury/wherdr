@@ -281,38 +281,3 @@ test('guessed B invalidates exact A before a final read failure and Resume opens
   } finally { fs.unlinkSync(file) }
 })
 
-for (const occupied of ['draft', 'foreground']) {
-  test(`Project panel confirmation and launch stay queued with a shell ${occupied}`, async ({ page }) => {
-    await stopAfterUpdate(page, true)
-    if (occupied === 'draft') await fakeHerdr('e2e.update_draft', { pane_id: CODEX_UPDATE_PANE, text: 'echo hello' })
-    else await fakeHerdr('e2e.update_foreground', { pane_id: CODEX_UPDATE_PANE })
-    const board = { slug: 'acme', version: 'v1', lists: [
-      { title: 'To test', kind: 'test', tasks: [{ text: 'Check the restart', done: false, owner: 'agent', thread: null }] },
-      { title: 'Backlog', kind: 'backlog', tasks: [{ text: 'Continue the task', done: false, owner: 'agent', thread: null }] },
-    ], open: [], resolved: [] }
-    await page.route('**/api/project?**', route => route.fulfill({ json: board }))
-    await page.evaluate(pane => localStorage.setItem('viewModes', JSON.stringify({ [pane]: 'project' })), CODEX_UPDATE_PANE)
-    await page.reload()
-    const held: { id: string, text: string }[] = []
-    for (const label of ['Confirm: Check the restart', 'Launch: Continue the task']) {
-      const response = page.waitForResponse(r => r.url().endsWith('/api/prompt') && r.request().method() === 'POST')
-      await page.getByRole('button', { name: label, exact: true }).click()
-      const r = await response
-      expect(r.status()).toBe(200)
-      const queued = (await r.json()).queued
-      expect(queued.state).toBe('held')
-      held.push(queued)
-    }
-    // A stale client bypassing sendMessage is guarded by the real raw endpoint too.
-    const raw = await post(page, 'input', { text: 'Send to coordinator', keys: ['enter'] })
-    const queued = (await raw.json()).queued
-    expect(queued.state).toBe('held')
-    held.push(queued)
-    expect((await post(page, 'input', { keys: ['enter'] })).status()).toBe(400)
-    expect((await post(page, 'prompt', { text: '/exit' })).status()).toBe(400)
-    expect(await stats()).toMatchObject({ starts: [], writes: [], prompts: [] })
-    // Leave no held Project messages for the next browser profile's restart.
-    for (const message of held) expect((await post(page, 'unqueue', message)).status()).toBe(200)
-    expect(await stats()).toMatchObject({ starts: [], writes: [], prompts: [] })
-  })
-}

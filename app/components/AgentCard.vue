@@ -15,32 +15,22 @@ const list = createListShown()
 // Space with several tabs or panes (`row`): a single card, named after the space,
 // with its mini-map, the number of tabs / panes, and the state, preview and
 // answers of its most urgent pane (`pane`). Tapping it opens the space.
-// Coordinator's space (herdr-projects thread opened as a tab): the card stays
-// the coordinator's, but shows the most urgent tab's state ("working · T-0008"),
-// one state dot per tab next to "N TABS", and a tap opens the tab waiting for an answer.
 import type { Pane } from '#shared/types'
 import type { Row } from '#shared/spaces'
-import { isCoordinator, stateSource, tabStates, waitingTab } from '#shared/projects'
+import { tabStates } from '#shared/spaces'
 import type { MenuItem } from '~/composables/useUi'
 import { longPress } from '~/utils/longPress'
 import { interactionWindowFor } from '~/utils/interactionWindow'
 
-// `tag`: role in a herdr-projects project (coordinator, t-0018).
-const props = defineProps<{ pane: Pane, tag?: string | null, row?: Row | null }>()
+const props = defineProps<{ pane: Pane, row?: Row | null }>()
 const space = computed(() => (props.row && props.row.kind === 'space' ? props.row : null))
-// Pane whose state the card shows (a more urgent tab of a coordinator's space).
-const statePane = computed(() => space.value?.state ?? props.pane)
-const source = computed(() => (props.row ? stateSource(props.row) : null))
-// One dot per tab, in order, for a coordinator's space with several tabs.
-const dots = computed(() => (space.value && space.value.tabs.length > 1 && isCoordinator(space.value.lead) ? tabStates(space.value) : []))
-// Compact list: one line (avatar, title, badge, tab dots or pane count, state dot);
+// Pane whose state the card shows.
+const statePane = computed(() => props.pane)
+// Compact list: one line (avatar, title, tab dots or pane count, state dot);
 // while the agent waits for an answer, its question and one-tap answers open below.
-const compact = computed(() => compactMeta({
-  tag: props.tag, coordinator: !!props.tag && isCoordinator(props.pane),
-  tabs: space.value?.tabs.length, panes: space.value?.panes.length,
-}))
+const compact = computed(() => compactMeta({ tabs: space.value?.tabs.length, panes: space.value?.panes.length }))
 const compactDots = computed(() => (compact.value.dots && space.value ? tabStates(space.value) : []))
-const stateTitle = computed(() => [statusLabel(statePane.value), source.value, counts.value].filter(Boolean).join(' · '))
+const stateTitle = computed(() => [statusLabel(statePane.value), counts.value].filter(Boolean).join(' · '))
 const busy = ref(false)
 const card = ref<HTMLElement | null>(null)
 let pointerType = ''
@@ -104,17 +94,13 @@ async function setRead(read: boolean) {
     if (!read && curPane.value === props.pane.id) navigateTo('/')
   } catch (err) { toast((err as Error).message, true) }
 }
-// herdr-projects entries (Project panel, New project…) when the plugin is on the
-// agent's machine; a space card offers those of the pane it represents.
 const menuItems = computed<MenuItem[]>(() => space.value ? [
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
   ...workspaceItems(space.value.workspace.id),
-  ...projectMenuItems(props.pane),
 ] : [
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
   ...paneSpaceItems(props.pane),
   ...paneWorkspaceItems(props.pane),
-  ...projectMenuItems(props.pane),
   { kind: 'separator' },
   copyPaneIdItem(props.pane),
   { kind: 'separator' },
@@ -157,8 +143,7 @@ function recentTouchMenu() { return Date.now() - touchMenuOpenedAt < 1000 || lp.
 function open() {
   if (recentTouchMenu()) return
   if (space.value) {
-    const waiting = waitingTab(space.value)
-    return waiting ? openTab(waiting) : openSpace(space.value.workspace.id, space.value.leadTab.tab.id)
+    return openSpace(space.value.workspace.id, space.value.leadTab.tab.id)
   }
   haptic()
   navigateTo(`/a/${encodeURIComponent(props.pane.id)}`)
@@ -191,7 +176,7 @@ onUnmounted(list.unmount)
 <template>
   <UContextMenu :disabled="sheetMenus" :items="contextItems" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="onContextOpen">
     <div
-      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, 'state-from-tab': source, compact: compactList, open: compactList && more }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
+      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, compact: compactList, open: compactList && more }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
       role="button" tabindex="0" @pointerdown="down" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
       @contextmenu="onContext" @selectstart.prevent @click="open" @keydown.enter.self="open"
     >
@@ -199,7 +184,6 @@ onUnmounted(list.unmount)
         <AgentAvatar :agent="pane.agent" />
         <span class="card-title">{{ title }}</span>
         <span v-if="statePane.usageLimit" class="card-tag quota-limit" :title="stateTitle">{{ tl('Limit', 'Quota') }}</span>
-        <span v-if="compact.badge" class="card-tag">{{ compact.badge }}</span>
         <span v-if="compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
         <span v-else-if="compact.panes" class="card-panes" :title="counts">{{ compact.panes }}</span>
         <span class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
@@ -212,9 +196,8 @@ onUnmounted(list.unmount)
           {{ title }}
         </div>
         <div class="card-meta">
-          <span v-if="tag" class="card-tag">{{ tag }}</span>
-          <span v-if="space" class="card-count">{{ counts }}<span v-if="dots.length" class="card-tab-dots" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in dots" :key="i" :class="d" /></span></span>
-          <StatusPill :pane="statePane" :model="!source" :source="source" />
+          <span v-if="space" class="card-count">{{ counts }}</span>
+          <StatusPill :pane="statePane" model />
         </div>
         <div v-if="where" class="card-where">
           <UIcon v-if="space" name="i-lucide-corner-down-right" class="card-where-lead" /><UIcon v-else-if="branch" name="i-lucide-git-branch" />{{ where }}

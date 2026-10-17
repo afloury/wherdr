@@ -3,20 +3,15 @@
 // Several machines: one section per machine (like Herdr's sidebar),
 // collapsible, with its connection state; the state groups
 // inside. A single machine: the previous list, without a header.
-// herdr-projects projects (coordinator + threads): one collapsible block per project,
-// before the state groups of the other agents; under each machine.
 // Quotas: those shared by all machines at the top; the Claude account specific
 // to a machine (different accounts) and its install banner under its header.
 // One row per Herdr space (shared/spaces.ts): a space with a single tab and
 // a single pane keeps its agent's card; otherwise a space card, sorted
-// by its most urgent pane. A project's threads stay under their
-// machine; coordinated from another one, their block says so and links there.
+// by its most urgent pane.
 // Terminals: a shell space is a row like any other, sorted in
-// Ready ("Show terminals" setting); the root terminal of a project's repository
-// becomes a small header above its threads.
+// Ready ("Show terminals" setting).
 import type { MachineInfo, NamedSession, Pane } from '#shared/types'
-import { groupByProject, leadByCoordinator, remoteCoordinator } from '#shared/projects'
-import { type ReadySort, type Row, projectRoots, readyLists, repoRoots, rowGroup, sortReady, spaceRows } from '#shared/spaces'
+import { type ReadySort, type Row, readyLists, rowGroup, sortReady, spaceRows } from '#shared/spaces'
 import { spaceTitle } from '#shared/displayTitles'
 import { claudeSetupOf, machineQuotaRows, quotaRows } from '~/utils/quotas'
 import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
@@ -73,29 +68,11 @@ const readySortItems = computed(() => [[
     checked: readySort.value === s, onUpdateChecked: () => { readySort.value = s },
   })),
 ]])
-// Rows of a machine (`machine` missing: a single machine): projects
-// (their rows found through the representative pane, the root terminal of their
-// repository), then the state groups of the other spaces, shells included, in
-// Herdr's order.
-function listOf(rows: Row[], machine?: string) {
-  const agentRows = rows.filter(r => r.lead.agent)
-  const byLead = new Map(agentRows.map(r => [r.lead.id, r]))
-  const byProject = groupByProject(agentRows.map(r => r.lead))
-  const roots = repoRoots(st.value, rows)
-  const projects = byProject.projects.map(g => ({
-    g,
-    remote: machine === undefined ? null : remoteCoordinator(g, agents.value, machine),
-    roots: projectRoots(roots, g.panes),
-  }))
-  const inHeader = new Set(projects.flatMap(x => x.roots.map(r => r.row.key)))
-  const others = new Set(byProject.others.map(p => p.id))
-  return {
-    rowOf: (p: Pane) => byLead.get(p.id),
-    projects,
-    groups: groupsOf(rows.filter(r => (r.lead.agent ? others.has(r.lead.id) : showShells.value && !inHeader.has(r.key)))),
-  }
+// Rows of a machine: the state groups of its spaces, shells included, in Herdr's order.
+function listOf(rows: Row[]) {
+  return { groups: groupsOf(rows.filter(r => r.lead.agent || showShells.value)) }
 }
-const solo = computed(() => listOf(leadByCoordinator(spaceRows(st.value))))
+const solo = computed(() => listOf(spaceRows(st.value)))
 
 const topQuotas = computed(() => (showQuotas.value ? quotaRows(homeQuotas.value, hiddenAgents.value) : []))
 const hasClaude = (list: Pane[]) => list.some(p => p.agent === 'claude')
@@ -165,7 +142,7 @@ const sections = computed(() => {
       name: machineName(m.key),
       state: t(STATE_LABEL[m.status]),
       agents: a,
-      ...listOf(leadByCoordinator(spaceRows(st.value, m.key)), m.key),
+      ...listOf(spaceRows(st.value, m.key)),
       waiting: a.filter(p => p.status === 'blocked').length,
       collapsed: collapsedMachines.value.includes(m.key),
       quotas: showQuotas.value && m.status === 'online' ? machineQuotaRows(homeQuotas.value, m.baseKey ?? m.key, hiddenAgents.value) : [],
@@ -509,7 +486,6 @@ function resetListWidth() {
 
       <!-- A single machine: the previous list. -->
       <template v-if="!sections">
-        <ProjectGroup v-for="x in solo.projects" :key="x.g.key" :group="x.g" :row-of="solo.rowOf" :roots="x.roots" />
         <section v-for="g in solo.groups" :key="g.key" class="agent-group" :class="g.key">
           <h2 class="group-title"><span>{{ g.title }}</span><span class="count">{{ g.list.length }}</span>
             <UDropdownMenu v-if="g.key === 'ready'" :items="readySortItems" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }">
@@ -574,7 +550,6 @@ function resetListWidth() {
           <div v-if="!s.collapsed" class="machine-body">
             <QuotaStrip :rows="s.quotas" class="machine-quotas" />
             <ClaudeSetupBanner v-if="s.setup" :setup="s.setup" :name="s.name" />
-            <ProjectGroup v-for="x in s.projects" :key="x.g.key" :group="x.g" :machine="s.m.key" :row-of="s.rowOf" :remote="x.remote" :roots="x.roots" />
             <section v-for="g in s.groups" :key="g.key" class="agent-group" :class="g.key">
               <h2 class="group-title"><span>{{ g.title }}</span><span class="count">{{ g.list.length }}</span>
             <UDropdownMenu v-if="g.key === 'ready'" :items="readySortItems" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }">

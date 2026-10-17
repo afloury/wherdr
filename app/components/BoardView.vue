@@ -1,147 +1,86 @@
 <script setup lang="ts">
-// Global Board: every project, thread, TASKS.md task and agent in four columns
-// (Blocked, Todo, Ongoing, Finished). Computer: columns side by side; phone: one
-// column at a time under a segmented control. Task cards move through the project's
-// coordinator (menu or drag and drop); the other cards open what they stand for.
-import { BOARD_COLUMNS, type BoardCard, type BoardColumn, type BoardMove, type TaskCard, boardMoveMessage, boardProjectsOf, capFinished, filterBoard } from '#shared/globalBoard'
+// The Board: herdr-projects 1.x tasks of every machine, in the five groups of
+// its own board (Needs you, Ready to approve, Working, To do, Done). Computer:
+// columns side by side; phone: one group at a time under a segmented control.
+// A card opens its task (TaskSheet); the box on top talks to a machine's
+// Coordinator, which turns what you write into tasks. A machine without
+// herdr-projects 1.2.1+ says what to do instead (ProjectsUpgradeNote).
+import { TASK_GROUPS, type TaskGroup, type TaskRow, prNumber, sortTasks } from '#shared/projectsTasks'
 
-// Finished tasks and threads shown per project until "Show all".
-const FINISHED_SHOWN = 5
+// Done tasks shown until "Show all".
+const DONE_SHOWN = 8
 const COLUMN_KEY = 'boardColumn'
-const HIDDEN_KEY = 'boardHiddenProjects'
 
 const router = useRouter()
-const { board, cards, error } = useGlobalBoard()
+const { board, error, reload } = useTasksBoard()
 
-const labels: Record<BoardColumn, string> = {
-  blocked: t('Blocked'), todo: t('Todo'), ongoing: t('Ongoing'), finished: t('Finished'),
-}
+const ready = computed(() => (board.value?.machines || []).filter(m => m.status === 'ready'))
+// Machines Herdr answers on but where the Board cannot read herdr-projects.
+const notes = computed(() => (board.value?.machines || []).filter(m => m.status === 'missing' || m.status === 'old'))
+const disabled = computed(() => (board.value?.machines || []).filter(m => m.status === 'disabled'))
+const several = computed(() => (board.value?.machines.length || 0) > 1)
+
+interface Card { key: string, machine: string, task: TaskRow, stale: boolean }
+const cards = computed<Card[]>(() => ready.value.flatMap(m => sortTasks(m.tasks.filter(t => !t.archived))
+  .map(task => ({ key: `${m.machine}|${task.id}`, machine: m.machine, task, stale: Boolean(m.stale) }))))
 const showAll = ref(false)
+const columns = computed(() => TASK_GROUPS.map((id) => {
+  const all = cards.value.filter(c => c.task.group === id)
+  const list = id === 'done' && !showAll.value ? all.slice(0, DONE_SHOWN) : all
+  return { id, label: taskGroupLabel(id), total: all.length, cards: list, hidden: all.length - list.length }
+}))
 
-// Project filter: the projects hidden on this device (ids of boardProjectsOf), so
-// a new project shows. A hidden project gone from the Board stays hidden on its return.
-function readHidden(): Set<string> {
-  try {
-    const v: unknown = JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]')
-    if (Array.isArray(v)) return new Set(v.filter((x): x is string => typeof x === 'string'))
-  } catch { /* storage unavailable or damaged */ }
-  return new Set()
-}
-const hidden = shallowRef(readHidden())
-function setHidden(next: Set<string>) {
-  hidden.value = next
-  try { localStorage.setItem(HIDDEN_KEY, JSON.stringify([...next])) }
-  catch { /* storage unavailable */ }
-}
-const filterEntries = computed(() => boardProjectsOf(cards.value))
-const hiddenShown = computed(() => filterEntries.value.filter(e => hidden.value.has(e.id)).length)
-const filterItems = computed(() => [[
-  { type: 'label' as const, label: tl('Projects', 'Projets') },
-  ...filterEntries.value.map(e => ({
-    type: 'checkbox' as const,
-    label: e.name === null ? tl('Other agents', 'Autres agents') : [e.name, e.machine ? machineName(e.machine) : ''].filter(Boolean).join(' · '),
-    checked: !hidden.value.has(e.id),
-    onUpdateChecked: (on: boolean) => {
-      const next = new Set(hidden.value)
-      if (on) next.delete(e.id)
-      else next.add(e.id)
-      setHidden(next)
-    },
-    // Several projects in a row: the menu stays open.
-    onSelect: (ev: Event) => ev.preventDefault(),
-  })),
-], [
-  { label: tl('Show all projects', 'Afficher tous les projets'), icon: 'i-lucide-eye', disabled: !hiddenShown.value, onSelect: () => setHidden(new Set()) },
-]])
-const filterLabel = computed(() => (hiddenShown.value
-  ? tl(`Filter projects: ${hiddenShown.value} hidden`, `Filtrer les projets : ${hiddenShown.value} masqué(s)`)
-  : tl('Filter projects', 'Filtrer les projets')))
-
-const shown = computed(() => filterBoard(cards.value, hidden.value))
-const capped = computed(() => (showAll.value ? { cards: shown.value, hidden: 0 } : capFinished(shown.value, FINISHED_SHOWN)))
-const columns = computed(() => BOARD_COLUMNS.map(id => ({
-  id,
-  label: labels[id],
-  total: shown.value.filter(c => c.column === id).length,
-  cards: capped.value.cards.filter(c => c.column === id),
-})))
-
-// Phone: the column shown, kept on this device.
-function readColumn(): BoardColumn {
+// Phone: the group shown, kept on this device.
+function readColumn(): TaskGroup {
   try {
     const v = localStorage.getItem(COLUMN_KEY)
-    if (BOARD_COLUMNS.includes(v as BoardColumn)) return v as BoardColumn
+    if (TASK_GROUPS.includes(v as TaskGroup)) return v as TaskGroup
   } catch { /* storage unavailable */ }
-  return 'blocked'
+  return 'needs'
 }
-const phoneColumn = ref(readColumn())
-function selectColumn(id: BoardColumn) {
+const phoneColumn = ref<TaskGroup>(readColumn())
+function selectColumn(id: TaskGroup) {
   phoneColumn.value = id
   try { localStorage.setItem(COLUMN_KEY, id) }
   catch { /* storage unavailable */ }
 }
 
-const boardOf = (c: BoardCard) => (c.kind === 'task' ? board.value?.projects.find(p => p.panes.includes(c.coordinator.id))?.board ?? null : null)
-
-function open(c: BoardCard) {
-  if (c.kind === 'agent') navigateTo(panePath(c.pane.id))
-  else if (c.kind === 'thread') openThread(c.coordinator, c.project || '', c.thread)
-  else openProjectPanel(c.coordinator)
+// ------------------------------------------------------------ one task
+const picked = shallowRef<Card | null>(null)
+const sheetOpen = ref(false)
+function openCard(c: Card) {
+  picked.value = c
+  sheetOpen.value = true
 }
-
-// ------------------------------------------------------------ moves
-const lang = language === 'en' ? 'en' : 'fr'
-// Moves need the coordinator's agent, a connection, and no other task message on its way.
-const canMove = (c: TaskCard) => eventsOpen.value && !offlineView.value && !paneStale(c.coordinator) && Boolean(c.coordinator.agent) && !taskSending.value
-// A task already sent (from here or the Project panel): no other move until the coordinator has edited TASKS.md.
-const isSentTask = (c: TaskCard) => isTaskSent(c.coordinator.id, c.list, c.task.text)
-
-async function move(c: TaskCard, m: BoardMove) {
-  // The live card: a read may have moved or removed it since the menu opened or the drag began.
-  const now = cards.value.find(x => x.key === c.key)
-  if (now?.kind !== 'task' || !now.moves.some(x => x.action === m.action)) return
-  const sent = await sendTask(now.coordinator.id, now.list, m.action, now.task.text, boardMoveMessage(m.action, now.task.text, lang))
-  if (sent !== false) toast(t('Sent to the coordinator'))
-}
-
-// Drag and drop (computer): a column takes the card only when it is one of its moves.
-// The drag carries its own type, so text or files dropped from elsewhere move nothing.
-const DRAG_TYPE = 'application/x-wherdr-board-task'
-const dragged = shallowRef<TaskCard | null>(null)
-const overColumn = ref<BoardColumn | null>(null)
-const moveTo = (id: BoardColumn) => dragged.value?.moves.find(m => m.to === id)
-const ours = (e: DragEvent) => Boolean(e.dataTransfer?.types.includes(DRAG_TYPE))
-function onDragStart(c: TaskCard, e: DragEvent) {
-  if (!canMove(c) || isSentTask(c) || !e.dataTransfer) return e.preventDefault()
-  dragged.value = c
-  e.dataTransfer.effectAllowed = 'move'
-  e.dataTransfer.setData(DRAG_TYPE, c.key)
-  // Firefox starts no drag without data.
-  e.dataTransfer.setData('text/plain', c.task.text)
-}
-function onDragEnd() {
-  dragged.value = null
-  overColumn.value = null
-}
-// A dragged card that a read removed fires no dragend: forget the drag.
-watch(cards, (list) => {
-  const c = dragged.value
-  if (c && !list.some(x => x.key === c.key)) onDragEnd()
+// The open task as the last read has it (its group or review may have moved on).
+const pickedTask = computed(() => {
+  const p = picked.value
+  return p ? cards.value.find(c => c.key === p.key)?.task || p.task : null
 })
-function onDragOver(id: BoardColumn, e: DragEvent) {
-  if (!ours(e) || !moveTo(id)) return
-  e.preventDefault()
-  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
-  overColumn.value = id
+
+// ------------------------------------------------------------ the Coordinator
+const coordMachine = ref('')
+watch(ready, (list) => {
+  if (!list.some(m => m.machine === coordMachine.value)) coordMachine.value = list[0]?.machine ?? ''
+}, { immediate: true })
+const coordItems = computed(() => ready.value.map(m => ({ label: machineName(m.machine) || hostLabel.value || t('This machine'), value: m.machine })))
+const coordText = ref('')
+const coordBusy = ref(false)
+async function tellCoordinator() {
+  const text = coordText.value.trim()
+  if (!text || coordBusy.value || !ready.value.length) return
+  coordBusy.value = true
+  try {
+    await api('/api/tasks/coordinator', { machine: coordMachine.value, text })
+    coordText.value = ''
+    haptic()
+    toast(tl('Sent to the Coordinator', 'Envoyé au Coordinateur'))
+    setTimeout(reload, 3000)
+  } catch (e) { toast((e as Error).message, true) }
+  finally { coordBusy.value = false }
 }
-function onDrop(id: BoardColumn, e: DragEvent) {
-  const m = moveTo(id)
-  const c = dragged.value
-  onDragEnd()
-  if (!ours(e) || !m || !c) return
-  e.preventDefault()
-  void move(c, m)
-}
+
+const meta = (task: TaskRow) => [task.app, task.progress !== null && task.group === 'working' ? `${task.progress}%` : ''].filter(Boolean)
 
 function back() {
   const from = (history.state as { back?: unknown } | null)?.back
@@ -155,42 +94,65 @@ function back() {
     <header class="top bar board-top">
       <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Back')" @click="back" />
       <h2>{{ t('Board') }}</h2>
-      <UDropdownMenu v-if="filterEntries.length" :items="filterItems" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }">
-        <UButton
-          icon="i-lucide-filter" :color="hiddenShown ? 'primary' : 'neutral'" variant="ghost" size="lg" class="icon-btn board-filter"
-          :aria-label="filterLabel" :title="filterLabel"
-        />
-      </UDropdownMenu>
+      <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="lg" class="icon-btn board-filter" :aria-label="tl('Refresh', 'Actualiser')" :disabled="offlineView" @click="reload" />
     </header>
-    <OfflineNote v-if="offlineView && cachedAt" class="board-offline" :label="t('Last known state')" :at="cachedAt" date-style="medium" />
     <div v-if="error" class="notice board-notice">{{ error }}</div>
     <p v-else-if="!board && !offlineView" class="board-empty board-loading">{{ t('Loading…') }}</p>
-    <div v-if="!desk" class="board-seg" role="group" :aria-label="t('Board')">
-      <button
-        v-for="col in columns" :key="col.id" type="button" class="board-seg-btn" :class="[col.id, { on: phoneColumn === col.id }]"
-        :aria-pressed="phoneColumn === col.id" @click="selectColumn(col.id)"
-      >
-        <span>{{ col.label }}</span><b>{{ col.total }}</b>
-      </button>
+
+    <div v-if="notes.length || disabled.length" class="board-notes">
+      <ProjectsUpgradeNote
+        v-for="m in notes" :key="m.machine" :status="m.status as 'missing' | 'old'" :version="m.version || null"
+        :machine="several ? (machineName(m.machine) || hostLabel || t('This machine')) : undefined"
+      />
+      <p v-for="m in disabled" :key="m.machine" class="board-note">{{ tl(`herdr-projects is disabled in Herdr${several ? ` on ${machineName(m.machine)}` : ''}: herdr plugin enable herdr-projects`, `herdr-projects est désactivé dans Herdr${several ? ` sur ${machineName(m.machine)}` : ''} : herdr plugin enable herdr-projects`) }}</p>
     </div>
-    <div class="board-cols">
-      <section
-        v-for="col in columns" v-show="desk || phoneColumn === col.id" :key="col.id" class="board-col" :class="[col.id, { drop: dragged && moveTo(col.id), over: overColumn === col.id }]"
-        :aria-label="col.label" @dragover="onDragOver(col.id, $event)" @dragleave.self="overColumn = null" @drop="onDrop(col.id, $event)"
-      >
-        <h3 v-if="desk" class="board-col-head"><span>{{ col.label }}</span><span class="pp-count">{{ col.total }}</span></h3>
-        <div class="board-col-body">
-          <BoardCard
-            v-for="c in col.cards" :key="c.key" :card="c" :board="boardOf(c)"
-            :sent="c.kind === 'task' && isSentTask(c)" :movable="c.kind === 'task' && canMove(c)" :draggable="desk && c.kind === 'task' && c.moves.length > 0 && canMove(c) && !isSentTask(c)"
-            @open="open(c)" @move="m => c.kind === 'task' && move(c, m)" @dragstart="e => c.kind === 'task' && onDragStart(c, e)" @dragend="onDragEnd"
-          />
-          <p v-if="!col.cards.length" class="board-empty">{{ t('Nothing here') }}</p>
-          <button v-if="col.id === 'finished' && capped.hidden" type="button" class="board-more" @click="showAll = true">
-            {{ tl(`Show all (${capped.hidden} more)`, `Tout afficher (${capped.hidden} de plus)`) }}
-          </button>
-        </div>
-      </section>
-    </div>
+
+    <template v-if="ready.length">
+      <form class="board-coord" @submit.prevent="tellCoordinator">
+        <label for="board-coord-text" class="board-coord-label">{{ tl('Coordinator', 'Coordinateur') }}</label>
+        <USelect v-if="ready.length > 1" v-model="coordMachine" :items="coordItems" size="sm" class="board-coord-machine" :aria-label="tl('Machine', 'Machine')" />
+        <UInput
+          id="board-coord-text" v-model="coordText" class="board-coord-input" :disabled="offlineView" maxlength="8000"
+          :placeholder="tl('Describe work to add as tasks…', 'Décris le travail à ajouter en tâches…')"
+        />
+        <UButton type="submit" color="primary" icon="i-lucide-send" :loading="coordBusy" :disabled="!coordText.trim() || offlineView" :aria-label="t('Send')" />
+      </form>
+
+      <div v-if="!desk" class="board-seg tasks" role="group" :aria-label="t('Board')">
+        <button
+          v-for="col in columns" :key="col.id" type="button" class="board-seg-btn" :class="[col.id, { on: phoneColumn === col.id }]"
+          :aria-pressed="phoneColumn === col.id" @click="selectColumn(col.id)"
+        >
+          <span>{{ col.label }}</span><b>{{ col.total }}</b>
+        </button>
+      </div>
+      <div class="board-cols">
+        <section v-for="col in columns" v-show="desk || phoneColumn === col.id" :key="col.id" class="board-col" :class="col.id" :aria-label="col.label">
+          <h3 v-if="desk" class="board-col-head"><span>{{ col.label }}</span><span class="pp-count">{{ col.total }}</span></h3>
+          <div class="board-col-body">
+            <button v-for="c in col.cards" :key="c.key" type="button" class="board-card task-card" :class="[c.task.group, { stale: c.stale }]" @click="openCard(c)">
+              <span class="board-card-head">
+                <span class="task-key">{{ c.task.repo.toUpperCase() }}-{{ c.task.n }}</span>
+                <span v-if="several" class="board-card-label">{{ machineName(c.machine) }}</span>
+              </span>
+              <span class="board-card-title wrap">{{ c.task.title }}</span>
+              <span v-if="c.task.msg" class="board-note">{{ c.task.msg }}</span>
+              <span v-if="meta(c.task).length || c.task.pr || c.task.review" class="task-chips">
+                <span v-for="m in meta(c.task)" :key="m" class="task-chip">{{ m }}</span>
+                <span v-if="c.task.pr" class="task-chip">{{ prNumber(c.task.pr) || 'PR' }}</span>
+                <span v-if="c.task.review" class="task-chip" :class="c.task.review.pass === false ? 'fail' : c.task.review.pass ? 'pass' : ''">
+                  {{ c.task.review.pass === false ? tl('review failed', 'revue échouée') : tl('review', 'revue') }}{{ c.task.review.tally ? ` · ${c.task.review.tally}` : '' }}
+                </span>
+              </span>
+            </button>
+            <p v-if="!col.cards.length" class="board-empty">{{ t('Nothing here') }}</p>
+            <button v-if="col.hidden" type="button" class="board-more" @click="showAll = true">
+              {{ tl(`Show all (${col.hidden} more)`, `Tout afficher (${col.hidden} de plus)`) }}
+            </button>
+          </div>
+        </section>
+      </div>
+    </template>
+    <TaskSheet v-model:open="sheetOpen" :task="pickedTask" :machine="picked?.machine ?? ''" @changed="reload" />
   </section>
 </template>

@@ -9,7 +9,7 @@ import crypto from 'node:crypto'
 import type { ChatItem, Choices, ClaudeQueueEntry, ClaudeScreen, HerdrState, InteractiveMenu, WaitScreen, MachineInfo, ModelInfo, OmpActivity, OmpStatus, Pane, QueuedMessage, ShellRun } from '../../shared/types'
 import { ompActivityOf, parseOmpActivity, parseOmpShell, parseOmpStatus } from './ompScreen'
 import { LOCAL, joinId, machineOf } from '../../shared/ids'
-import { isProjectThread, paneTitle } from '../../shared/paneTitle'
+import { paneTitle } from '../../shared/paneTitle'
 import { foregroundCommand, reduceSnapshot } from './snapshot'
 import { DATA_DIR, HERDR_SESSION, NOTIFY_SETTLE_MS, POLL_MS, log } from './env'
 import { HerdrError, agentPrompt, herdr, herdrOn, sleep } from './herdr'
@@ -35,7 +35,6 @@ import { type SentRecord, addSent, findSent, hasAttachments, lostPhotos } from '
 import { type GuardError, guardedSend, submittable, withPaneLock } from './guardedSend'
 import { type TranscriptPane, sameMsg } from './transcripts'
 import { agentNotificationTitle, pushSend, subWatchesSession } from './push'
-import { shouldNotify } from './notificationPolicy'
 import { currentModel, forgetModel, noteScreen, modelControlBusy } from './modelctl'
 import { type Machine, RemoteMachine, allMachines, getMachine, machineOfPane, machinesListed, multiMachine, onMachinesChange, remoteMachines } from './machines'
 import { READY_MAX_MS, serverReady } from '../../shared/stateReady'
@@ -1238,9 +1237,7 @@ export function isViewed(paneId: string) {
 async function notifyPane(p: Pane) {
   if (isViewed(p.id)) return
   const ws = state.workspaces.find(w => w.id === p.workspace)
-  const where = isProjectThread(p)
-    ? paneTitle(p, ws?.label)
-    : [ws && ws.label, notificationTitle(p.title)].filter(Boolean).join(' · ')
+  const where = [ws && ws.label, notificationTitle(p.title)].filter(Boolean).join(' · ')
   let body: string
   // Several machines: the title says which one ("laptop · Claude has finished").
   const m = multiMachine() ? machineOfPane(p.id) : null
@@ -1260,6 +1257,6 @@ async function notifyPane(p: Pane) {
   const baseSession = getMachine(baseKey)?.session || 'default'
   const session = source?.session || baseSession
   const sent = await pushSend({ title, titleFr, body, tag: `pane-${p.id}`, url: `/#/a/${encodeURIComponent(p.id)}`, badge },
-    (scope, sub) => shouldNotify(scope, p) && subWatchesSession(sub, baseKey, session, baseSession))
+    sub => subWatchesSession(sub, baseKey, session, baseSession))
   log(`notification ${p.id} ${p.status} "${title}" -> ${sent} device(s)`)
 }

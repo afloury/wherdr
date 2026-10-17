@@ -10,9 +10,8 @@ import net from 'node:net'
 import crypto from 'node:crypto'
 import { NOTICES_ENABLED, log } from './env'
 import { type HerdrNotification, FrameSplitter, decodeServerFrame, helloFrame } from './herdrEndpoint'
-import { NoticeDeduper, findThreadPane, forwardableNotice, noticeKey, projectThreadOfNotice, shouldNotifyNotice } from './notificationPolicy'
+import { NoticeDeduper, forwardableNotice, noticeKey } from './notificationPolicy'
 import { type Machine, allMachines, multiMachine, onMachinesChange } from './machines'
-import { getState, isViewed } from './state'
 import { pushSend, subWatchesSession } from './push'
 
 const BACKOFF_MS = [2000, 5000, 10000, 30000, 60000]
@@ -114,22 +113,16 @@ const dedupe = new NoticeDeduper()
 
 async function onNotice(m: Machine, n: HerdrNotification) {
   if (!forwardableNotice(n) || !dedupe.fresh(`${m.key}:${noticeKey(n)}`)) return
-  // Notification from a herdr-projects thread: link to its pane if it is unique.
-  const thread = projectThreadOfNotice(n.title)
-  const panes = getState().panes.filter(p => (p.machine || '') === m.key)
-  const pane = thread ? findThreadPane(panes, thread.project, thread.thread) : null
-  if (pane && isViewed(pane.id)) return
   const on = multiMachine() ? `${m.label || (m.local ? 'local' : m.key)} · ` : ''
   const title = `${on}${n.title}`
-  // One notification per pane (replaces the one for its state), otherwise one per title.
-  const tag = pane ? `pane-${pane.id}` : `herdr-${crypto.createHash('sha1').update(`${m.key}\n${n.title}`).digest('hex').slice(0, 12)}`
+  // One notification per title.
+  const tag = `herdr-${crypto.createHash('sha1').update(`${m.key}\n${n.title}`).digest('hex').slice(0, 12)}`
   const sent = await pushSend(
-    { title, body: n.body || '', tag, url: pane ? `/#/a/${encodeURIComponent(pane.id)}` : '/#/' },
-    (scope, sub) => shouldNotifyNotice(scope, n.title) &&
-      subWatchesSession(sub, m.info().baseKey ?? m.key, m.session,
+    { title, body: n.body || '', tag, url: '/#/' },
+    sub => subWatchesSession(sub, m.info().baseKey ?? m.key, m.session,
         allMachines().find(base => base.key === (m.info().baseKey ?? m.key))?.session || 'default'),
   )
-  log(`herdr notification "${title}"${pane ? ` (${pane.id})` : ''} -> ${sent} device(s)`)
+  log(`herdr notification "${title}" -> ${sent} device(s)`)
 }
 
 export function syncNoticeListeners() {

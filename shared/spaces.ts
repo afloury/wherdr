@@ -31,9 +31,6 @@ export interface SpaceRow {
   // Tab of the representative pane (its mini-map).
   leadTab: TabEntry
   sum: { blocked: number, working: number, done: number, agents: number }
-  // Pane whose state the card shows when it is not `lead` (coordinator
-  // space: a more urgent thread tab, see leadByCoordinator).
-  state?: Pane
 }
 export type Row = PaneRow | SpaceRow
 
@@ -69,59 +66,6 @@ export function paneGroup(p: Pick<Pane, 'agent' | 'status'>): RowGroup {
   return 'ready'
 }
 export const rowGroup = (r: Row): RowGroup => paneGroup(r.lead)
-
-// ------------------------------------------------------------ root terminal
-// herdr-projects opens a "root" workspace on a repository's main checkout,
-// which holds in Herdr the group of its threads' worktrees. In the
-// list, it is not a card: a small "Repository <name> · N worktrees" header
-// above the project's threads. A shell space is the root of a repository
-// if other spaces of the same machine are worktrees of it: same repository
-// according to Herdr (`repo`), otherwise (Herdr without these fields) same folder name
-// as herdr-projects worktrees (~/.herdr/worktrees/<repo>/…). The
-// counter only sees the worktrees open in Herdr on this machine.
-export interface RepoRoot {
-  row: Row
-  name: string
-  // Workspaces open on a worktree of this repository.
-  worktrees: string[]
-}
-const WT_DIR = /\/\.herdr\/worktrees\/([^/]+)\/[^/]+/
-const cwdOf = (c: string | null | undefined) => (c || '').replace(/\\/g, '/').replace(/\/+$/, '')
-
-export function repoRoots(s: Pick<HerdrState, 'workspaces' | 'panes'>, rows: Row[]): RepoRoot[] {
-  const wsOf = new Map(s.workspaces.map(w => [w.id, w]))
-  const panesOf = (ws: string) => s.panes.filter(p => p.workspace === ws)
-  // Worktrees: repo (if known) and repository name.
-  const trees = s.workspaces.flatMap((w) => {
-    const dir = panesOf(w.id).map(p => WT_DIR.exec(cwdOf(p.cwd))?.[1]).find(Boolean)
-    if (!w.worktree && !dir) return []
-    return [{ id: w.id, machine: w.machine || '', repo: w.repo, name: w.repoName || dir || '' }]
-  })
-  const best = new Map<string, { number: number, root: RepoRoot }>()
-  for (const row of rows) {
-    if (!isShellRow(row)) continue
-    const ws = wsOf.get(row.lead.workspace)
-    if (!ws || ws.worktree || WT_DIR.test(cwdOf(row.lead.cwd))) continue
-    const machine = ws.machine || ''
-    const name = ws.repoName || cwdOf(row.lead.cwd).split('/').pop() || ''
-    const mine = trees.filter(t => t.machine === machine && t.id !== ws.id
-      && (ws.repo && t.repo ? t.repo === ws.repo : !ws.repo && Boolean(name) && t.name === name))
-    if (!mine.length) continue
-    // A single header per repository: herdr-projects sometimes opens several
-    // shells at the root (Herdr does not always give their repository, hence the
-    // key by covered worktrees); keep the oldest (lowest Herdr number),
-    // the others stay ordinary terminals in the list.
-    const key = `${machine}\0${mine.map(t => t.id).sort().join(' ')}`
-    const kept = best.get(key)
-    if (!kept || ws.number < kept.number) best.set(key, { number: ws.number, root: { row, name, worktrees: mine.map(t => t.id) } })
-  }
-  return [...best.values()].map(b => b.root)
-}
-
-// Roots attached to a project: those with a worktree holding one of its panes.
-export function projectRoots(roots: RepoRoot[], panes: Pick<Pane, 'workspace'>[]): RepoRoot[] {
-  return roots.filter(r => panes.some(p => r.worktrees.includes(p.workspace)))
-}
 
 // The Ready group can be split into independent repository lists. Herdr's
 // order is kept in each list; a space is unread if a pane has finished.
@@ -267,4 +211,14 @@ export function reorderWorkspaces<W extends Pick<Workspace, 'id' | 'number'> & {
   const order = list.filter(w => (w.machine || '') === machine).sort((a, b) => a.number - b.number).map(w => w.id)
   const rank = new Map(applyMove(order, moving, before).map((id, i) => [id, i + 1]))
   return list.map(w => (rank.has(w.id) ? { ...w, number: rank.get(w.id)! } : w))
+}
+
+// State key of each tab of a space, in order (its most urgent pane;
+// 'shell' for a tab without an agent).
+export function tabStates(row: Row): string[] {
+  if (row.kind !== 'space') return []
+  return row.tabs.map((e) => {
+    const p = leadPane(e.panes)
+    return p?.agent ? p.status || 'unknown' : 'shell'
+  })
 }
