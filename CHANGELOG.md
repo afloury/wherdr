@@ -13,6 +13,8 @@ All notable changes to this project are documented here. The format follows
   - **herdr-projects missing, 0.2, or older than 1.2.1**: Settings › Plugins and the Board say “Update herdr-projects to 1.2.1 or later, or downgrade wherdr to 1.3.4”, with the commands; nothing else in wherdr changes, and wherdr never runs herdr-projects there (its first run would take over the older install's files). **Install herdr-projects** installs `eliasstravik/herdr-projects` pinned to v1.2.1.
   - **Removed with herdr-projects 0.2**: the Project panel (TASKS.md lists, threads, inbox, routines, settings, memory), the Board of projects, threads and agents, thread limits per machine, **New project** and the other 0.2 actions, `Mod+Alt+P` and `Mod+Alt+Shift+N`, the grouping of coordinators and threads in the agent list, the herdr-projects folder marks in folder pickers, and the “Notify for: project coordinators” setting (every agent now notifies, as without herdr-projects).
   - The wherdr agent skill now describes what reaches a herdr-projects 1.x agent from the Board.
+  - **wherdr in a container** (Docker, Podman) reads its own machine's board from the board's files and runs nothing of herdr-projects there: every 1.x command also runs the board's upkeep (queued tasks, sync, clean-up, pull requests), which belongs to the host. Reply, approve and the Coordinator are left to Herdr on the host there, with the command to run. `WHERDR_TASKS_FROM_FILES=1` asks for the same elsewhere. On an SSH machine, commands run there, in its own Herdr session.
+  - A machine is one board, shared by its named sessions (one list, one queue). A machine whose read fails says why on the Board; its last tasks stay, marked with the time they were read.
 
 ## [1.3.4] — 2026-10-18
 

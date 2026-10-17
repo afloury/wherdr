@@ -5,7 +5,9 @@
 // open its agent's pane. What 1.x does not give for a task is not shown.
 import { type TaskDetails, type TaskRow, TELL_MAX, prNumber, taskActions } from '#shared/projectsTasks'
 
-const props = defineProps<{ task: TaskRow | null, machine: string }>()
+// `readOnly`: the board is read from its files (wherdr in a container): the
+// actions are the host's, given as commands.
+const props = defineProps<{ task: TaskRow | null, machine: string, readOnly?: boolean }>()
 const emit = defineEmits<{ changed: [] }>()
 const open = defineModel<boolean>('open', { default: false })
 
@@ -14,7 +16,8 @@ const error = ref('')
 const loading = ref(false)
 const reply = ref('')
 const busy = ref(false)
-const actions = computed(() => (props.task ? taskActions(props.task) : { tell: false, approve: false }))
+const actions = computed(() => (props.task && !props.readOnly ? taskActions(props.task) : { tell: false, approve: false }))
+const hostActions = computed(() => (props.task && props.readOnly ? taskActions(props.task) : { tell: false, approve: false }))
 const pr = computed(() => details.value?.pr || props.task?.pr || '')
 const review = computed(() => details.value?.review || props.task?.review || null)
 const label = computed(() => (props.task ? `${props.task.repo.toUpperCase()}-${props.task.n}` : ''))
@@ -139,6 +142,11 @@ function openPane() {
         </UButton>
       </div>
 
+      <div v-if="hostActions.tell || hostActions.approve" class="task-sheet-block">
+        <h4>{{ tl('On the host', 'Sur l’hôte') }}</h4>
+        <code v-if="hostActions.tell" class="projects-plugin-command">herdr-projects tell {{ task.id }} "…"</code>
+        <code v-if="hostActions.approve" class="projects-plugin-command">herdr-projects approve {{ task.id }}</code>
+      </div>
       <form v-if="actions.tell" class="task-sheet-reply" @submit.prevent="send">
         <label for="task-reply">{{ task.stage === 'plan' ? tl('Send the plan back with', 'Renvoyer le plan avec') : tl('Reply to its agent', 'Répondre à son agent') }}</label>
         <UTextarea id="task-reply" v-model="reply" :rows="3" autoresize :maxlength="TELL_MAX" :placeholder="tl('Message', 'Message')" />

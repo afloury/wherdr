@@ -135,3 +135,45 @@ test('without herdr-projects: install it, from 1.2.1', async ({ page }, testInfo
   await page.screenshot({ path: `.shots/projects-plugin-install-${testInfo.project.name}.png` })
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
 })
+
+// Replies of the server the Board must show as they are: a failed read, a container.
+const row = (id: string, o: Record<string, unknown> = {}) => ({
+  id, repo: id.split('/')[0], n: Number(id.split('/')[1]), state: 'blocked', kind: 'permission', stage: 'approval', title: `Task ${id}`, msg: '',
+  app: 'claude', progress: null, eta: null, pr: '', review: null, reviewRound: 0, research: false, archived: false, queue: null, group: 'ready', ...o,
+})
+const reply = (machine: Record<string, unknown>) => ({ json: { version: `v-${Date.now()}`, machines: [{ machine: '', status: 'ready', version: '1.2.1', ...machine }] } })
+
+test('a failed read says why, and keeps the last tasks marked with when they were read', async ({ page }, testInfo) => {
+  const at = Date.UTC(2026, 0, 2, 9, 41)
+  await page.route('**/api/tasks?*', route => route.fulfill(reply({ tasks: [row('demo/1')], at, stale: true, error: 'herdr-projects did not answer within 30 s' })))
+  await page.route('**/api/tasks', route => route.fulfill(reply({ tasks: [row('demo/1')], at, stale: true, error: 'herdr-projects did not answer within 30 s' })))
+  await page.goto('/#/board')
+  const note = page.locator('.board-note.error')
+  await expect(note).toContainText('herdr-projects did not answer within 30 s', { timeout: 15000 })
+  await expect(note).toContainText('tasks as read at')
+  if (testInfo.project.name.includes('phone')) await page.getByRole('button', { name: /Ready to approve/ }).click()
+  await expect(page.locator('.task-card.stale')).toContainText('Task demo/1')
+  await page.screenshot({ path: `.shots/board-1x-error-${testInfo.project.name}.png` })
+})
+
+test('Herdr not answering for a machine: said, not five empty columns', async ({ page }) => {
+  await page.route('**/api/tasks*', route => route.fulfill(reply({ status: 'error', tasks: [], error: 'Herdr did not answer' })))
+  await page.goto('/#/board')
+  await expect(page.locator('.board-note.error')).toContainText('Herdr did not answer', { timeout: 15000 })
+  await expect(page.locator('.board-col')).toHaveCount(0)
+})
+
+test('in a container: the tasks show, the actions are the host\'s', async ({ page }, testInfo) => {
+  await page.route('**/api/tasks*', route => route.fulfill(reply({ tasks: [row('demo/1'), row('demo/3', { state: 'working', stage: 'working', kind: '', group: 'working', app: 'codex' })], at: Date.now(), readOnly: true })))
+  await page.route('**/api/tasks/details*', route => route.fulfill({ json: { id: 'demo/1', title: 'Task demo/1', stage: 'approval', msg: '', description: 'From the file', agent: 'claude', pr: '', branch: '', worktree: '', failure: '', review: null, reviewRounds: 0, plan: '', research: false, pane: null } }))
+  await page.goto('/#/board')
+  await expect(page.locator('.board-notes')).toContainText('wherdr runs in a container', { timeout: 15000 })
+  await expect(page.locator('.board-coord')).toHaveCount(0)
+  if (testInfo.project.name.includes('phone')) await page.getByRole('button', { name: /Ready to approve/ }).click()
+  await page.locator('.task-card', { hasText: 'Task demo/1' }).click()
+  const sheet = page.getByRole('dialog')
+  await expect(sheet).toContainText('herdr-projects approve demo/1')
+  await expect(sheet.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0)
+  await expect(sheet.getByRole('textbox')).toHaveCount(0)
+  await page.screenshot({ path: `.shots/board-1x-container-${testInfo.project.name}.png` })
+})

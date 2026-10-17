@@ -8,6 +8,8 @@ const FR: Record<string, string> = {
   'Invalid task': 'Tâche invalide', 'Nothing to send': 'Rien à envoyer',
   'This task has no agent to talk to': 'Cette tâche n’a pas d’agent à qui parler',
   'This task does not wait for approval': 'Cette tâche n’attend pas d’approbation',
+  'wherdr runs in a container: run herdr-projects on the host for this': 'wherdr tourne dans un conteneur : lance herdr-projects sur l’hôte pour cela',
+  'Task not found': 'Tâche introuvable',
   'Move up': 'Monter', 'Move down': 'Descendre', 'Reset order': 'Réinitialiser l’ordre',
   'Drag to reorder': 'Glisser pour réordonner',
   'Keep awake': 'Garder éveillé',

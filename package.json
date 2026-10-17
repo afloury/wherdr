@@ -26,7 +26,8 @@
     ".output",
     "!.output/**/*.map",
     "bin",
-    "skills/wherdr"
+    "skills/wherdr",
+    "docs/herdr-projects-1x.md"
   ],
   "engines": {
     "node": ">=22"

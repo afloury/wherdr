@@ -1,7 +1,9 @@
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { projectsPluginFromList } from '../server/utils/projectsPlugin'
 import {
-  PROJECTS_COMMAND, PROJECTS_INSTALL_ARGS, PROJECTS_UPGRADE_COMMAND, WHERDR_DOWNGRADE_COMMANDS,
+  PROJECTS_COMMAND, PROJECTS_INSTALL_ARGS, PROJECTS_MIGRATION_GUIDE, PROJECTS_UPGRADE_COMMAND, WHERDR_DOWNGRADE_COMMANDS,
   projectsLauncher, projectsStatus, versionAtLeast,
 } from '../shared/projectsPlugin'
 
@@ -74,5 +76,13 @@ describe('herdr-projects in Settings', () => {
     expect(PROJECTS_INSTALL_ARGS).toEqual(['plugin', 'install', 'eliasstravik/herdr-projects', '--ref', 'v1.2.1', '--yes'])
     expect(PROJECTS_UPGRADE_COMMAND).toBe('herdr plugin uninstall herdr-projects && herdr plugin install eliasstravik/herdr-projects --ref v1.2.1 --yes')
     expect(WHERDR_DOWNGRADE_COMMANDS).toContain('npm install -g wherdr@1.3.4')
+  })
+})
+
+describe('the migration guide the note names', () => {
+  it('is in the repository and in the npm package', () => {
+    const root = path.resolve(import.meta.dirname, '..')
+    expect(existsSync(path.join(root, PROJECTS_MIGRATION_GUIDE))).toBe(true)
+    expect(JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).files).toContain(PROJECTS_MIGRATION_GUIDE)
   })
 })

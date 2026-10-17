@@ -431,6 +431,7 @@ Edit `.env` (every value has a default; `HOST_HOME` defaults to your `$HOME`):
 | `HOST_LABEL` | `server` | Name of this machine in the app. |
 | `TZ` | `Europe/Paris` | Time zone for timestamps and logs. |
 | `WHERDR_UPDATE_CHECK` | `off` | Disable the daily check for a new release (default `on`). |
+| `WHERDR_TASKS_FROM_FILES` | `1` | Read this machine's herdr-projects board from its files and run nothing of herdr-projects here, as in a container (detected by itself in Docker and Podman). |
 
 Create the bind-mount folders **before** starting Compose, as your own user. Otherwise Docker
 may create missing host folders as root, leaving the container unable to write to them.
@@ -1137,7 +1138,11 @@ What the Board shows and does:
   confirmation. **Open its agent** opens the agent's pane when it is open in Herdr.
 - **The Coordinator box** on top sends a message to a machine's Coordinator, the agent that turns
   what you write into tasks. Adding, delegating, stopping or archiving tasks goes through it.
-- What wherdr runs, on the task's machine and in its Herdr session: `herdr-projects list --json`,
+- **A machine is one board**, shared by its named sessions: one list, one queue, one card per
+  task. A machine whose read fails says why on the Board, and its last tasks stay, marked with
+  the time they were read.
+- What wherdr runs, on the task's machine and in its Herdr session (on an SSH machine, its own
+  session by name): `herdr-projects list --json`,
   `details <id> --json`, `tell <id> <text>`, `approve <id>` and `coordinator tell <text>` (your
   words always after `--`, so they are never read as options), through the plugin's own
   launcher (`bin/run.sh`). Each command also runs herdr-projects' own upkeep, so wherdr calls it
@@ -1145,8 +1150,13 @@ What the Board shows and does:
   is open (a list less than 5 seconds old is reused), and the last list kept when a machine is
   slow or unreachable. Nothing runs where herdr-projects is missing or older than 1.2.1: its first
   run would take over an older install's files.
-- With Docker, `docker-compose.yml` mounts `~/.herdr-projects` read-write: herdr-projects keeps
-  its locks and bookkeeping there.
+- **wherdr in a container** (Docker, Podman): for its own machine, the Board reads the board's
+  files (`~/.herdr-projects/data/tasks`) and runs nothing of herdr-projects: each 1.x command also
+  runs the board's upkeep (start queued tasks, sync, clean up, poll pull requests), which belongs
+  to the host, not to a container with read-only repositories and no `gh`. The tasks show, with
+  their state as herdr-projects would show it; reply, approve and the Coordinator box are left to
+  Herdr on the host, and a task gives the command to run there. SSH machines are not affected:
+  their commands run on them.
 
 ## Herdr plugins
 ## Herdr plugins

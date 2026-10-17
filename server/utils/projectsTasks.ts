@@ -1,26 +1,35 @@
 // herdr-projects 1.x on every machine: its tasks (GET /api/tasks), one task's
 // details, and what the Board can do on a task (tell, approve, open its pane).
 //
-// Everything goes through the plugin's own CLI, run by its launcher
-// (`sh <plugin_root>/bin/run.sh …`), only where Herdr reports a 1.x from
-// 1.2.1 on (shared/projectsPlugin.ts). Each command also runs the board's
-// own upkeep, so wherdr calls it sparingly:
-//  - one command at a time per machine;
-//  - a list read less than REUSE_MS ago is reused, and polls in between get it;
-//  - a read slower than READ_DEADLINE_MS answers with the last list, marked stale.
+// One board per machine: herdr-projects keeps it in the machine's HOME
+// (~/.herdr-projects), so the named sessions of a machine share it. Its cache,
+// its queue and its card list are the base machine's.
+//
+// How a board is read:
+//  - on the host (wherdr installed natively, or any SSH machine): the plugin's
+//    own CLI, run by its launcher (`sh <plugin_root>/bin/run.sh …`), in the
+//    machine's own Herdr session. Each command also runs the board's upkeep, as
+//    any 1.x command does on that machine; wherdr calls it sparingly: one
+//    command at a time per machine, a list reused for REUSE_MS, the last list
+//    kept (marked stale) when a read outlives READ_DEADLINE_MS.
+//  - wherdr in a container, for its own machine: the board's files, read only.
+//    The CLI would run the upkeep in the container (repositories read-only,
+//    no gh, another environment) with write access to the shared board, so it
+//    is never run there, and the actions are left to the host.
+// Only where Herdr reports a 1.x from 1.2.1 on (shared/projectsPlugin.ts).
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
   type MachineTasks, type TaskDetails, type TaskRow, type TasksBoard,
-  cleanTell, isTaskId, parseTaskDetails, parseTaskList, taskActions,
+  cleanTell, detailsFromTaskFile, isTaskId, parseTaskDetails, parseTaskList, rowFromTaskFile, taskActions,
 } from '../../shared/projectsTasks'
-import { HERDR_BIN, HERDR_CHILD_ENV, log } from './env'
+import { HERDR_BIN, HERDR_CHILD_ENV, IN_DOCKER, log } from './env'
 import { HerdrError } from './herdr'
-import { type Machine, allMachines } from './machines'
+import { type Machine, allMachines, baseMachines } from './machines'
 import { machineFor } from './actions'
-import { REMOTE_PROJECTS_SCRIPT } from './pluginPolicy'
 import { projectsPluginInfo } from './projectsPlugin'
 import { findPane, getState } from './state'
 import { fmt } from '../../shared/message'
@@ -30,16 +39,24 @@ export const READ_DEADLINE_MS = 4000
 const LIST_TIMEOUT_MS = 30_000
 const ACTION_TIMEOUT_MS = 60_000
 const OUTPUT_MAX = 8 * 1024 * 1024
+const FILES_MAX = 500
 
 export interface RunResult { code: number, stdout: string, stderr: string }
 export type Runner = (m: Machine, launcher: string, args: string[], timeoutMs: number) => Promise<RunResult>
+
+// On an SSH machine: its own Herdr session, by name, as herdr-projects finds it
+// there (never the socket wherdr forwards here). `$1` herdr binary, `$2` session
+// ('' or 'default': the default one), then the command.
+export const REMOTE_TASKS_SCRIPT = 'export HERDR_BIN_PATH="$1"; unset HERDR_SOCKET_PATH; '
+  + 'if [ -n "$2" ] && [ "$2" != default ]; then export HERDR_SESSION="$2"; else unset HERDR_SESSION; fi; shift 2; exec "$@"'
 
 // The plugin's launcher with argv only: no shell on this machine, and
 // positional parameters of a fixed script on a remote one.
 const runLauncher: Runner = async (m, launcher, args, timeoutMs) => {
   if (m.exec) {
     const herdrBin = 'bin' in m && typeof (m as { bin?: unknown }).bin === 'string' ? (m as { bin: string }).bin : 'herdr'
-    const r = await m.exec(REMOTE_PROJECTS_SCRIPT, [herdrBin, 'sh', launcher, ...args], { timeoutMs })
+    const r = await m.exec(REMOTE_TASKS_SCRIPT, [herdrBin, m.session || '', 'sh', launcher, ...args], { timeoutMs })
+    if (r.stdout.length > OUTPUT_MAX) return { code: 1, stdout: '', stderr: 'herdr-projects: output too long' }
     return { code: r.code ?? 1, stdout: r.stdout.toString('utf8'), stderr: r.stderr.trim() }
   }
   const sock = m.sock()
@@ -49,12 +66,27 @@ const runLauncher: Runner = async (m, launcher, args, timeoutMs) => {
     timeout: timeoutMs, maxBuffer: OUTPUT_MAX,
   }, (err, stdout, stderr) => resolve({
     code: err ? (typeof err.code === 'number' ? err.code : 1) : 0,
-    stdout: String(stdout), stderr: String(stderr || (err && !stdout ? err.message : '')).trim(),
+    stdout: String(stdout),
+    stderr: String(stderr || (err ? (err.killed ? `herdr-projects did not answer within ${Math.round(timeoutMs / 1000)} s` : err.message) : '')).trim(),
   })))
 }
 let runner: Runner = runLauncher
 // Tests replace the launcher with recorded output.
 export function setRunner(r: Runner | null) { runner = r || runLauncher }
+// wherdr in a container (Docker, or Podman's /run/.containerenv), or told to
+// read the boards from their files (WHERDR_TASKS_FROM_FILES=1). Tests set it.
+const CONTAINER = IN_DOCKER || existsSync('/run/.containerenv') || process.env.WHERDR_TASKS_FROM_FILES === '1'
+let inContainer = CONTAINER
+export function setInContainer(v: boolean | null) { inContainer = v ?? CONTAINER }
+
+// The board of this machine is read from its files: wherdr's own machine, from a container.
+export const readsFiles = (m: Machine) => m.local && inContainer
+
+// The base machine of a machine or a named session: the board's owner.
+export function boardMachine(m: Machine): Machine {
+  const key = m.info().baseKey
+  return (key !== undefined && baseMachines().find(b => b.key === key)) || m
+}
 
 // One command at a time per machine.
 const queues = new Map<string, Promise<unknown>>()
@@ -75,58 +107,121 @@ async function launcherOf(m: Machine): Promise<string> {
 }
 
 async function command(m: Machine, args: string[], timeoutMs = ACTION_TIMEOUT_MS): Promise<string> {
+  if (readsFiles(m)) throw new HerdrError('projects_host_only', 'wherdr runs in a container: run herdr-projects on the host for this')
   const launcher = await launcherOf(m)
   const r = await serial(m.key, () => runner(m, launcher, args, timeoutMs))
   if (r.code !== 0) throw new HerdrError('projects_failed', firstLine(r.stderr) || firstLine(r.stdout) || `herdr-projects ${args[0]}: code ${r.code}`)
   return r.stdout
 }
 
+// ---------------------------------------------------------------- the board's files
+const tasksRoot = (m: Machine) => path.posix.join(m.home, '.herdr-projects/data/tasks')
+
+async function readTaskFile(m: Machine, id: string): Promise<Record<string, unknown> | null> {
+  const [repo, n] = id.split('/') as [string, string]
+  try {
+    const t = JSON.parse(await m.fs.readFile(path.posix.join(tasksRoot(m), repo, n, 'task.json')))
+    return t && typeof t === 'object' ? t : null
+  } catch { return null }
+}
+
+// The machine key of the session a task's agent runs in (its link.socket):
+// `…/sessions/<name>/herdr.sock`, or the default session's socket.
+export function sessionMachine(base: Machine, socket: unknown): string {
+  const parts = typeof socket === 'string' ? socket.split('/') : []
+  const n = parts.length
+  const name = n >= 3 && parts[n - 1] === 'herdr.sock' && parts[n - 3] === 'sessions' ? parts[n - 2]! : 'default'
+  if (name === (base.session || 'default')) return base.key
+  return allMachines().find(m => m.info().baseKey === base.key && m.session === name)?.key ?? base.key
+}
+
+function linkedPane(base: Machine, t: Record<string, unknown> | null): string | null {
+  const link = t && typeof t.link === 'object' ? t.link as Record<string, unknown> : null
+  if (!link || typeof link.pane !== 'string' || !/^w[0-9a-z]+:p[0-9a-z]+$/i.test(link.pane)) return null
+  return joinId(sessionMachine(base, link.socket), link.pane)
+}
+
+async function listFromFiles(m: Machine): Promise<TaskRow[]> {
+  const root = tasksRoot(m)
+  let repos: string[]
+  try { repos = await m.fs.readdir(root) } catch { return [] } // no board yet
+  const ids: string[] = []
+  for (const repo of repos) {
+    let ns: string[]
+    try { ns = await m.fs.readdir(path.posix.join(root, repo)) } catch { continue }
+    for (const n of ns) if (isTaskId(`${repo}/${n}`)) ids.push(`${repo}/${n}`)
+  }
+  const panes = getState().panes
+  const rows = await Promise.all(ids.slice(0, FILES_MAX).map(async (id) => {
+    const t = await readTaskFile(m, id)
+    const pane = linkedPane(m, t)
+    return t ? rowFromTaskFile(t, pane ? panes.find(p => p.id === pane)?.status ?? null : null) : null
+  }))
+  return rows.filter((r): r is TaskRow => r !== null && !r.archived)
+}
+
 // ---------------------------------------------------------------- the list
-interface Cached { tasks: TaskRow[], at: number, error?: string }
+interface Cached { tasks: TaskRow[], at: number, readAt: number, error?: string }
 const lists = new Map<string, Cached>()
 const reading = new Map<string, Promise<Cached>>()
 
+// `at`: when this answer was given; `readAt`: when its tasks were read (kept on an error).
 function readList(m: Machine): Promise<Cached> {
   const now = reading.get(m.key)
   if (now) return now
-  const read = command(m, ['list', '--json'], LIST_TIMEOUT_MS)
-    .then(out => ({ tasks: parseTaskList(out), at: Date.now() }))
-    .catch((e: Error) => ({ tasks: lists.get(m.key)?.tasks || [], at: Date.now(), error: e.message }))
+  const read = (readsFiles(m) ? listFromFiles(m) : command(m, ['list', '--json'], LIST_TIMEOUT_MS).then(parseTaskList))
+    .then(tasks => ({ tasks, at: Date.now(), readAt: Date.now() }))
+    .catch((e: Error) => {
+      const last = lists.get(m.key)
+      return { tasks: last?.tasks || [], at: Date.now(), readAt: last?.readAt ?? 0, error: e.message }
+    })
     .then((c) => { lists.set(m.key, c); return c })
     .finally(() => reading.delete(m.key))
   reading.set(m.key, read)
   return read
 }
 
+// What a cached read says: its tasks, when they were read, and why they may be old.
+function shown(c: Cached): Pick<MachineTasks, 'tasks' | 'at' | 'error' | 'stale'> {
+  return { tasks: c.tasks, ...(c.readAt ? { at: c.readAt } : {}), ...(c.error ? { error: c.error, stale: c.tasks.length > 0 } : {}) }
+}
+
 // `fresh`: the Board just opened (or asked to): check the plugin again rather
 // than trust the last answer, so an install or update shows at once.
 async function machineTasks(m: Machine, fresh = false): Promise<MachineTasks | null> {
+  const last = lists.get(m.key)
   if (!m.local && m.status !== 'online') {
-    const last = lists.get(m.key)
-    return last ? { machine: m.key, status: 'ready', version: '', tasks: last.tasks, stale: true, error: fmt('{machine} is unreachable', { machine: m.label }) } : null
+    const error = fmt('{machine} is unreachable', { machine: m.label })
+    return last ? { machine: m.key, status: 'ready', version: '', ...shown(last), error, stale: true } : null
   }
   let info
   try { info = await projectsPluginInfo(m, fresh) }
-  catch { return null } // no Herdr there: nothing to say
-  const base = { machine: m.key, status: info.status, version: info.version || '' }
+  catch (e) {
+    // Herdr did not answer: say so, with the last tasks read there.
+    return { machine: m.key, status: 'error', version: '', tasks: [], ...(last ? shown(last) : {}), error: (e as Error).message, ...(last?.tasks.length ? { stale: true } : {}) }
+  }
+  const base = { machine: m.key, status: info.status, version: info.version || '', ...(readsFiles(m) ? { readOnly: true } : {}) }
   if (info.status !== 'ready') return { ...base, tasks: [] }
-  const hit = lists.get(m.key)
-  if (hit && Date.now() - hit.at < REUSE_MS) return { ...base, tasks: hit.tasks, ...(hit.error ? { error: hit.error } : {}) }
+  if (last && Date.now() - last.at < REUSE_MS) return { ...base, ...shown(last) }
   const deadline = new Promise<null>(resolve => setTimeout(() => resolve(null), READ_DEADLINE_MS).unref?.())
   const c = await Promise.race([readList(m), deadline])
-  if (!c) return { ...base, tasks: hit?.tasks || [], stale: true }
-  return { ...base, tasks: c.tasks, ...(c.error ? { error: c.error } : {}) }
+  if (!c) return { ...base, tasks: last?.tasks || [], ...(last?.readAt ? { at: last.readAt } : {}), stale: true }
+  return { ...base, ...shown(c) }
 }
 
 // Every machine's tasks. `since`: the version the client has; `{ same: true }` when nothing changed.
 // Without it (the Board opening, or Refresh), each machine's plugin is checked afresh.
 export async function readTasksBoard(since?: string): Promise<TasksBoard | { same: true, version: string }> {
-  const machines = (await Promise.all(allMachines().map(m => machineTasks(m, !since)))).filter((x): x is MachineTasks => x !== null)
+  const machines = (await Promise.all(baseMachines().map(m => machineTasks(m, !since)))).filter((x): x is MachineTasks => x !== null)
   const version = createHash('sha1').update(JSON.stringify(machines)).digest('hex').slice(0, 16)
   return since === version ? { same: true, version } : { version, machines }
 }
 
 // ---------------------------------------------------------------- one task
+// The board a request names: a machine key of the Board (a base machine); a
+// named session's key reaches its machine's board.
+const boardOf = (machine: unknown) => boardMachine(machineFor(machine))
+
 function taskOf(m: Machine, id: string): TaskRow | null {
   return lists.get(m.key)?.tasks.find(t => t.id === id) || null
 }
@@ -137,32 +232,35 @@ function checkId(id: unknown): string {
 }
 
 export async function taskDetails(machine: unknown, id: unknown): Promise<TaskDetails & { pane: string | null }> {
-  const m = machineFor(machine)
+  const m = boardOf(machine)
   const tid = checkId(id)
-  const d = parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS))
-  return { ...d, pane: await taskPane(m, tid, d.worktree).catch(() => null) }
+  const file = await readTaskFile(m, tid)
+  let d: TaskDetails
+  if (readsFiles(m)) {
+    const fromFile = detailsFromTaskFile(file)
+    if (!fromFile) throw new HerdrError('bad_task', 'Task not found')
+    d = fromFile
+  } else d = parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS))
+  return { ...d, pane: taskPane(m, file, d.worktree) }
 }
 
 // The task's agent pane in Herdr: the one the board linked it to (its task.json,
-// read only), or else the pane working in its worktree. null: none open.
-async function taskPane(m: Machine, id: string, worktree: string): Promise<string | null> {
-  const [repo, n] = id.split('/') as [string, string]
-  const file = path.posix.join(m.home, '.herdr-projects/data/tasks', repo, n, 'task.json')
-  let linked = ''
-  try {
-    const t = JSON.parse(await m.fs.readFile(file)) as { link?: { pane?: unknown } }
-    if (typeof t?.link?.pane === 'string' && /^w[0-9a-z]+:p[0-9a-z]+$/i.test(t.link.pane)) linked = t.link.pane
-  } catch { /* moved by HERDR_PROJECTS_HOME, or not started yet */ }
-  if (linked && findPane(joinId(m.key, linked))) return joinId(m.key, linked)
+// read only, in the session it names), or else the pane working in its worktree.
+function taskPane(m: Machine, file: Record<string, unknown> | null, worktree: string): string | null {
+  const linked = linkedPane(m, file)
+  if (linked && findPane(linked)) return linked
   if (!worktree) return null
-  const hit = getState().panes.find(p => (p.machine || '') === m.key && p.agent && (p.cwd || '').replace(/\/+$/, '') === worktree.replace(/\/+$/, ''))
+  const keys = new Set(allMachines().filter(x => boardMachine(x).key === m.key).map(x => x.key))
+  const hit = getState().panes.find(p => keys.has(p.machine || '') && p.agent && (p.cwd || '').replace(/\/+$/, '') === worktree.replace(/\/+$/, ''))
   return hit ? hit.id : null
 }
 
 function forget(m: Machine) { lists.delete(m.key) }
+// Tests start from an empty cache.
+export function resetTasksCache() { lists.clear(); reading.clear(); queues.clear() }
 
 export async function tellTask(machine: unknown, id: unknown, text: unknown): Promise<{ ok: true, msg: string }> {
-  const m = machineFor(machine)
+  const m = boardOf(machine)
   const tid = checkId(id)
   const words = cleanTell(text)
   if (!words) throw new HerdrError('empty', 'Nothing to send')
@@ -175,7 +273,7 @@ export async function tellTask(machine: unknown, id: unknown, text: unknown): Pr
 }
 
 export async function approveTask(machine: unknown, id: unknown): Promise<{ ok: true, msg: string }> {
-  const m = machineFor(machine)
+  const m = boardOf(machine)
   const tid = checkId(id)
   const row = taskOf(m, tid)
   if (!row || !taskActions(row).approve) throw new HerdrError('bad_action', 'This task does not wait for approval')
@@ -186,9 +284,10 @@ export async function approveTask(machine: unknown, id: unknown): Promise<{ ok: 
 }
 
 // A message to the machine's Coordinator (the agent behind the board's box):
-// it turns it into tasks. Started by herdr-projects when it is not running.
+// it turns it into tasks. Started by herdr-projects when it is not running, in
+// the machine's own session.
 export async function tellCoordinator(machine: unknown, text: unknown): Promise<{ ok: true, msg: string }> {
-  const m = machineFor(machine)
+  const m = boardOf(machine)
   const words = cleanTell(text)
   if (!words) throw new HerdrError('empty', 'Nothing to send')
   const out = await command(m, ['coordinator', '--', 'tell', words])

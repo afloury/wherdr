@@ -27,7 +27,8 @@ export const WHERDR_DOWNGRADE_COMMANDS = [
   `npm install -g wherdr@${WHERDR_LAST_02}`,
   'docker compose pull && docker compose up -d',
 ] as const
-// The step-by-step guide, in wherdr's repository (also in the npm package).
+// The step-by-step guide: in wherdr's repository, and shipped in the npm package
+// (package.json `files`; tests/projectsPlugin.test.ts checks both).
 export const PROJECTS_MIGRATION_GUIDE = 'docs/herdr-projects-1x.md'
 
 export interface PluginCommand { command?: unknown }

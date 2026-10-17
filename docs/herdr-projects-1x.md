@@ -64,18 +64,49 @@ work your 0.2 projects still had.
 
 ## Going back to 0.2
 
-1. Stop the 1.x board: close its tab in Herdr, and stop its Coordinator
-   (`~/.herdr-projects/data/bin/herdr-projects coordinator stop`).
-2. Uninstall 1.x: `herdr plugin uninstall herdr-projects`
-3. Put the 0.2 folders back (1.x's own board goes aside, kept):
+1. **Stop everything of 1.x first**, so nothing writes while folders move:
 
    ```sh
-   mv ~/.herdr-projects ~/.herdr-projects-1x
-   mv ~/.herdr-projects-legacy ~/.herdr-projects
-   [ -d ~/.config/herdr-projects-legacy ] && mv ~/.config/herdr-projects-legacy ~/.config/herdr-projects
-   [ -d ~/.local/state/herdr/plugins/herdr-projects-legacy ] && \
-     mv ~/.local/state/herdr/plugins/herdr-projects-legacy ~/.local/state/herdr/plugins/herdr-projects
+   ~/.herdr-projects/data/bin/herdr-projects coordinator stop   # its Coordinator
+   herdr plugin disable herdr-projects                           # its hooks and its board key
+   pgrep -fl herdr-projects                                      # what still runs (keeper, page server, jobs)
    ```
+
+   Close the work board's tab in Herdr. If `pgrep` still lists a `herdr-projects` process,
+   stop it by its number (`kill <pid>`) and run `pgrep -fl herdr-projects` again until it lists nothing.
+
+2. **Uninstall 1.x**: `herdr plugin uninstall herdr-projects`
+
+3. **Put the 0.2 folders back.** 1.x wrote down where it put each one in
+   `~/.herdr-projects/moved.json`: `~/.herdr-projects-legacy`, or `-legacy-2`, `-legacy-3`… when an
+   older one was already there. Do not guess the names: this lists them, then puts each folder back.
+   A folder already at the old place (1.x's own board, or a folder created since) is set aside
+   first, as `<name>.from-1x-1` (or the next free number), never moved inside it. Running it a
+   second time changes nothing.
+
+   ```sh
+   [ -s ~/herdr-projects-restore.tsv ] || python3 - <<'PY' > ~/herdr-projects-restore.tsv.new && mv ~/herdr-projects-restore.tsv.new ~/herdr-projects-restore.tsv
+   import json, os
+   moved = json.load(open(os.path.expanduser('~/.herdr-projects/moved.json')))
+   for v in moved.get('legacy', {}).values():
+       print(v['from'] + '\t' + v['to'])
+   PY
+   cat ~/herdr-projects-restore.tsv    # each line: old place <tab> where 1.x put it
+
+   restore() {
+     dest=$1 src=$2
+     [ -e "$src" ] || { echo "not found, skipped: $src"; return 0; }
+     if [ -e "$dest" ] || [ -L "$dest" ]; then
+       n=1; while [ -e "$dest.from-1x-$n" ] || [ -L "$dest.from-1x-$n" ]; do n=$((n + 1)); done
+       mv "$dest" "$dest.from-1x-$n" && echo "set aside: $dest -> $dest.from-1x-$n" || return 1
+     fi
+     mv "$src" "$dest" && echo "restored: $src -> $dest"
+   }
+   tab=$(printf '\t')
+   while IFS="$tab" read -r from to; do restore "$from" "$to" || break; done < ~/herdr-projects-restore.tsv
+   ```
+
+   1.x's own board is now in `~/.herdr-projects.from-1x-<n>`: keep it if you may come back to 1.x.
 
 4. The hooks 0.2 had put in your agents' settings (Claude, Codex…) and its lines in Herdr's
    config were taken out by 1.x, each file backed up first beside it as

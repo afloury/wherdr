@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  cleanTell, cleanUrl, groupOf, isTaskId, parseReview, parseTaskDetails, parseTaskList, prNumber, sortTasks, taskActions,
+  cleanTell, cleanUrl, detailsFromTaskFile, groupOf, rowFromTaskFile, stateFromTaskFile, isTaskId, parseReview, parseTaskDetails, parseTaskList, prNumber, sortTasks, taskActions,
 } from '../shared/projectsTasks'
 
 const fixture = (name: string) => readFileSync(path.join(import.meta.dirname, 'recordings/herdr-projects-1.2.1', name), 'utf8')
@@ -129,5 +129,42 @@ describe('small checks', () => {
     expect(cleanTell('  hello\r\nworld  ')).toBe('hello\nworld')
     expect(cleanTell(42)).toBe('')
     expect(cleanTell('x'.repeat(9000))).toHaveLength(8000)
+  })
+})
+
+describe('a task read from its file (wherdr in a container)', () => {
+  it('follows the stages as herdr-projects 1.2.1 shows them', () => {
+    const st = (t: Record<string, unknown>, pane: string | null = null) => stateFromTaskFile(t, pane)
+    expect(st({ stage: 'todo' })).toEqual({ state: 'idle', kind: '' })
+    expect(st({ stage: 'approval' })).toEqual({ state: 'blocked', kind: 'permission' })
+    expect(st({ stage: 'plan' })).toEqual({ state: 'blocked', kind: 'permission' })
+    expect(st({ stage: 'asks', kind: 'auth' })).toEqual({ state: 'blocked', kind: 'auth' })
+    expect(st({ stage: 'asks' })).toEqual({ state: 'blocked', kind: 'question' })
+    expect(st({ stage: 'failed', failure: { auth: true } })).toEqual({ state: 'blocked', kind: 'auth' })
+    expect(st({ stage: 'failed' })).toEqual({ state: 'error', kind: '' })
+    expect(st({ stage: 'nosummary' })).toEqual({ state: 'error', kind: '' })
+    expect(st({ stage: 'stopped', limitStop: true }).state).toBe('blocked')
+    expect(st({ stage: 'stopped' }).state).toBe('idle')
+    expect(st({ stage: 'after', afterBlocked: true })).toEqual({ state: 'blocked', kind: 'question' })
+    expect(st({ stage: 'reviewing' }).state).toBe('working')
+    expect(st({ stage: 'done' }).state).toBe('done')
+    // The agent's own turn: what Herdr says of its pane.
+    expect(st({ stage: 'working' }, 'blocked').state).toBe('blocked')
+    expect(st({ stage: 'working' }, 'working').state).toBe('working')
+    expect(st({ stage: 'working' }, null).state).toBe('working')
+  })
+
+  it('a row as the list gives it, and nothing for an attempt of another task', () => {
+    const r = rowFromTaskFile({ id: 'acme/4', title: 'T', stage: 'approval', app: 'claude', pr: 'https://github.com/o/r/pull/9', review: { meets: true, pass: false, findings: [{ severity: 'major' }] }, reviewRound: 2, watch: { progress: 40 } }, null)
+    expect(r).toMatchObject({ id: 'acme/4', group: 'needs', pr: 'https://github.com/o/r/pull/9', reviewRound: 2, progress: 40, review: { pass: false, tally: '1 major' } })
+    expect(rowFromTaskFile({ id: 'acme/5', attemptOf: 'acme/4', stage: 'working' }, null)).toBeNull()
+    expect(rowFromTaskFile({ id: '../5', stage: 'todo' }, null)).toBeNull()
+    expect(rowFromTaskFile({ id: 'acme/6', stage: 'approval', review: { stale: true, meets: true, pass: true, findings: [] } }, null)!.review).toBeNull()
+  })
+
+  it('details from the file', () => {
+    expect(detailsFromTaskFile({ id: 'acme/4', title: 'T', stage: 'working', description: 'D', on: 'codex', branch: 'b', worktree: '/w', failure: { msg: 'm' } }))
+      .toMatchObject({ id: 'acme/4', description: 'D', agent: 'codex', branch: 'b', worktree: '/w', failure: 'm', plan: '' })
+    expect(detailsFromTaskFile({ id: 'nope' })).toBeNull()
   })
 })
