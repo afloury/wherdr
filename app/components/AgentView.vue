@@ -6,8 +6,8 @@ let curPaneOwner: symbol | null = null
 <script setup lang="ts">
 // Agent view: space tabs, header, then the pane (Conversation / Terminal
 // selector, blocking prompt, key bar, input bar).
-// Phone: no selector, header icons (terminal `>_`, Project)
-// toggle the pane's presentation. Computer: small selector in
+// Phone: no selector, a header icon (terminal `>_`)
+// toggles the pane's presentation. Computer: small selector in
 // the header (or in the cell's, side by side).
 // Pane of a tab with several panes: mini-map of the tab in the header
 // (back to the plan, or side-by-side view on a computer) and, on the phone,
@@ -19,7 +19,6 @@ let curPaneOwner: symbol | null = null
 import type { QueuedMessage } from '#shared/types'
 import type { PaneViewMode } from '~/composables/useHerdr'
 import { neighborPane } from '#shared/layout'
-import { prefillDraft } from '#shared/projectBoard'
 import { swipeAxis, swipeOffset, swipeStep } from '~/utils/swipe'
 import { cellMode, showComposer, terminalAttachment } from '~/utils/viewMode'
 import { carriesFiles, dragDepth } from '~/utils/fileDrop'
@@ -72,54 +71,8 @@ const mode = computed<PaneViewMode | null>(() => {
   const p = pane.value
   if (!p) return null
   if (props.cell) return cellMode({ chat: hasChat(p), viewMode: viewMode.value, active: props.active })
-  // Project: phone tab only (right-hand column on a computer).
-  if (viewMode.value === 'project') return projectTab.value ? 'project' : hasChat(p) ? 'chat' : 'term'
   return hasChat(p) ? viewMode.value : 'term'
 })
-
-// "Project" panel (herdr-projects coordinator): tab on the phone,
-// collapsible right-hand column on a computer (projectSideOpen, shared with
-// Mod+Alt+P and the menus). Nothing without herdr-projects.
-//
-// Column width: handle on its left edge (drag; double-click =
-// default width), clamped (260 px, half the area), kept on the device.
-// The saved width is also clamped in CSS: the window may shrink.
-const sideWidth = ref(readSideWidth())
-const sideDrag = ref(false)
-const sideStyle = computed(() => (sideWidth.value ? { width: `${sideWidth.value}px` } : undefined))
-function onSideGrab(e: PointerEvent) {
-  if (e.button !== 0) return
-  const handle = e.currentTarget as HTMLElement
-  const panel = handle.nextElementSibling as HTMLElement | null
-  const area = handle.parentElement?.getBoundingClientRect().width || 0
-  if (!panel || !area) return
-  e.preventDefault()
-  const x0 = e.clientX
-  const w0 = panel.getBoundingClientRect().width
-  handle.setPointerCapture(e.pointerId)
-  sideDrag.value = true
-  const move = (ev: PointerEvent) => { sideWidth.value = clampSideWidth(w0 + x0 - ev.clientX, area) }
-  const up = () => {
-    handle.removeEventListener('pointermove', move)
-    handle.removeEventListener('pointerup', up)
-    handle.removeEventListener('pointercancel', up)
-    sideDrag.value = false
-    saveSideWidth(sideWidth.value)
-  }
-  handle.addEventListener('pointermove', move)
-  handle.addEventListener('pointerup', up)
-  handle.addEventListener('pointercancel', up)
-}
-function resetSideWidth() {
-  sideWidth.value = null
-  saveSideWidth(null)
-}
-
-const projectShown = () => !props.cell && (desk.value ? projectSideOpen.value : viewMode.value === 'project')
-const project = useProjectBoard(() => props.paneId, projectShown)
-const projectOk = computed(() => !props.cell && project.coordinator.value && project.available.value === true)
-const projectTab = computed(() => projectOk.value && !desk.value)
-const projectSide = computed(() => projectOk.value && desk.value)
 
 const banner = shallowRef<Banner | null>(null)
 const ctl = createTerminal(props.paneId, {
@@ -166,9 +119,8 @@ function setMode(m: PaneViewMode) {
   if (desk.value && m === 'term') nextTick(() => ctl.focus())
   haptic()
 }
-// Header icons (phone): one tap shows the terminal (or the Project
-// panel), a second one goes back to the conversation.
-function toggleMode(m: 'term' | 'project') {
+// Header icon (phone): one tap shows the terminal, a second one goes back to the conversation.
+function toggleMode(m: 'term') {
   setMode(toggleViewMode(mode.value, m))
 }
 function toggleSearch() {
@@ -198,15 +150,7 @@ usePaneShortcuts(() => props.paneId, () => live.value, {
   stop: () => mode.value === 'chat' && Boolean(composer.value?.stop()),
 })
 
-// "Problem" or "Question" on a task to test (Project panel): the message start goes
-// into the input field, cursor at the end; on the phone, back to the
-// conversation. Focus given within the gesture: the iPhone opens the keyboard.
 const draft = useDraft(props.paneId)
-function onPrefill(prefix: string) {
-  draft.text = prefillDraft(draft.text, prefix)
-  if (!desk.value && viewMode.value === 'project') viewMode.value = hasChat(pane.value) ? 'chat' : 'term'
-  composer.value?.focusEnd()
-}
 
 // Messages just sent (or still sending), shown without waiting for the next
 // state (see composables/useOutbox.ts).
@@ -311,11 +255,11 @@ async function sendFiles(files: File[]) {
 
 // Files dragged from the Finder / file explorer: conversation → photos of the
 // field (same path as the "+"); terminal → same send as "Attach a
-// file…". Elsewhere (Project panel, offline), nothing: app.vue only stops
+// file…". Elsewhere (offline), nothing: app.vue only stops
 // the browser from opening the file.
 const dropTarget = computed<'chat' | 'term' | null>(() => {
   if (canAttachTerminal.value) return 'term'
-  if (composerShown.value && mode.value !== 'project' && !offlineView.value) return 'chat'
+  if (composerShown.value && !offlineView.value) return 'chat'
   return null
 })
 const dropDepth = ref(0)
@@ -361,10 +305,7 @@ const agentMenu = computed<MenuItem[]>(() => {
   // Split, move to another tab (never zoom or resize).
   if (p) items.push(...paneSpaceItems(p))
   if (p) items.push(copyPaneIdItem(p))
-  // herdr-projects entries of its own (Project panel, New project…), then the
-  // machine's other Herdr plugin actions that apply to a workspace / pane.
-  const projectItems = p ? projectMenuItems(p, live.value) : []
-  if (projectItems.length) items.push(...projectItems, { kind: 'separator' })
+  // The machine's Herdr plugin actions that apply to a workspace / pane.
   if (p && agentPluginActions(p.machine).length) {
     items.push({ label: t('Plugin actions'), icon: 'i-lucide-puzzle', run: () => openPluginMenu({ pane: p }) })
   }
@@ -406,7 +347,7 @@ function openAgentMenu() { openMenu(agentMenu.value) }
 watch(() => pane.value && (pane.value.machine || ''), (m) => { if (m !== undefined) loadPluginActions(m) }, { immediate: true })
 
 // Conversation / Terminal selector (computer): in the pane header
-// or in the side-by-side cell's. The Project panel is a column there.
+// or in the side-by-side cell's.
 // The icons replace the labels in a narrow cell (CSS).
 const tabs = computed(() => [
   { label: t('Conversation'), value: 'chat', icon: 'i-lucide-message-square' },
@@ -417,7 +358,7 @@ const tab = computed({
   get: () => (mode.value === 'term' ? 'term' : 'chat'),
   set: (v: string) => setMode(v === 'term' ? 'term' : 'chat'),
 })
-const controls = computed(() => viewControls({ desk: desk.value, cell: Boolean(props.cell), chat: hasChat(pane.value), live: live.value, project: projectTab.value }))
+const controls = computed(() => viewControls({ desk: desk.value, cell: Boolean(props.cell), chat: hasChat(pane.value), live: live.value }))
 const headerAdd = computed(() => !props.cell && pane.value && spaceTabControls(spaceTabs(pane.value.workspace).length).headerAdd)
 
 watch(fontSize, n => ctl.setFontSize(n))
@@ -578,13 +519,6 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
               <TabMap :layout="tabEnt.layout" :panes="tabEnt.panes" :current="paneId" />
             </button>
           </UTooltip>
-          <UTooltip v-if="projectSide && !projectSideOpen" :text="t('Show the Project panel')" :kbds="live ? shortcutKbds('project-panel') : undefined">
-            <UButton icon="i-lucide-panel-right-open" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Show the Project panel')" @click="setProjectSideOpen(true)" />
-          </UTooltip>
-          <UButton
-            v-if="controls.project" icon="i-lucide-folder-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn mode-btn"
-            :class="{ on: mode === 'project' }" :aria-label="t('Project')" :aria-pressed="mode === 'project'" @click="toggleMode('project')"
-          />
           <UButton
             v-if="controls.term" icon="i-lucide-square-terminal" color="neutral" variant="ghost" size="lg" class="icon-btn mode-btn"
             :class="{ on: mode === 'term' }" :aria-label="t('Terminal')" :aria-pressed="mode === 'term'" @click="toggleMode('term')"
@@ -625,10 +559,6 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <TerminalView
       v-else-if="mode === 'term'" :ctl="ctl" :class="enter ? (enter > 0 ? 'enter-next' : 'enter-prev') : undefined" :style="swipeStyle"
     />
-    <ProjectPanel
-      v-else-if="mode === 'project'" :pane-id="paneId" :board="project.board.value" :loading="project.loading.value" :error="project.error.value"
-      @reload="project.reload()" @sent="onSent" @prefill="onPrefill"
-    />
     <div v-else class="chat" />
     <p v-if="pane?.agent && !hasChat(pane) && mode === 'term' && !cell" class="terminal-transcript-note">{{ tl('Conversation unavailable for this agent · follow it in the terminal', 'Conversation non disponible pour cet agent · suivi dans le terminal') }}</p>
 
@@ -641,15 +571,6 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <Keybar v-if="mode === 'term' && !cell && eventsOpen && !offlineView && !machineDown" :ctl="ctl" />
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :conversation="mode === 'chat'" :esc-stops="!searchOpen" :take-back="mode === 'chat'" :unanswered="mode === 'chat' ? unanswered : 0" @sent="onSent" @show-terminal="setMode('term')" @show-unanswered="chatRef?.gotoUnanswered()" />
     </div>
-    <div
-      v-if="projectSide && projectSideOpen" class="side-handle" :class="{ dragging: sideDrag }" role="separator" aria-orientation="vertical"
-      :aria-label="t('Project panel width')" :title="t('Drag to resize · double-click: default width')"
-      @pointerdown="onSideGrab" @dblclick="resetSideWidth"
-    />
-    <ProjectPanel
-      v-if="projectSide && projectSideOpen" side :style="sideStyle" :class="{ resizing: sideDrag }" :pane-id="paneId" :board="project.board.value" :loading="project.loading.value" :error="project.error.value"
-      @reload="project.reload()" @collapse="setProjectSideOpen(false)" @sent="onSent" @prefill="onPrefill"
-    />
     </div>
     <AppSheet v-model:open="changesOpen" :title="t('Changes')" wide full screen>
       <ChangesView v-if="changesOpen && pane" :pane-id="paneId" @review="onReview" />

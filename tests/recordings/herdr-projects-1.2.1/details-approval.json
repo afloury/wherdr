@@ -1,0 +1,63 @@
+{
+  "task": {
+    "id": "demo/1",
+    "title": "Fix login redirect",
+    "stage": "approval",
+    "msg": "",
+    "description": "The login page loops"
+  },
+  "failure": null,
+  "review": {
+    "meets": true,
+    "pass": true,
+    "gate": "major",
+    "findings": [
+      {
+        "id": "f1",
+        "severity": "minor",
+        "title": "Unused import"
+      }
+    ],
+    "by": "codex"
+  },
+  "reviews": [
+    {
+      "round": 1,
+      "at": null,
+      "by": "codex",
+      "meets": true,
+      "findings": [
+        {
+          "id": "f1",
+          "severity": "minor",
+          "title": "Unused import"
+        }
+      ],
+      "gate": "major",
+      "pass": true,
+      "left": 0,
+      "text": null,
+      "checks": [],
+      "limitations": [],
+      "head": null
+    }
+  ],
+  "agent": "claude",
+  "handovers": [],
+  "research": false,
+  "report": null,
+  "plan": null,
+  "pr": "https://github.com/example/demo/pull/7",
+  "worktree": "/home/user/code/demo-wt/1",
+  "branch": "demo-1-fix-login",
+  "limits": {
+    "time": {
+      "limit": "none"
+    },
+    "tokens": {
+      "limit": "none",
+      "used": 0,
+      "total": 0
+    }
+  }
+}

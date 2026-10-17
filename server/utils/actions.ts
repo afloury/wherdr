@@ -11,8 +11,6 @@ import { type DirDenied, type DirEntryRaw, LIST_DIRS_SCRIPT, dirDeniedFromCode, 
 import { AGENT_NAME_HINT, AGENT_NAME_RE, PANE_RE, joinId } from '../../shared/ids'
 import { safeUploadExtension } from '../../shared/uploadName'
 import type { DirEntry, DirListing, MachineConfig } from '../../shared/types'
-import type { ProjectFolderKind } from '../../shared/projectFolders'
-import { projectFolderKinds } from './projectFolders'
 import { installedAgentKinds } from './agentAvailability'
 import { fmt } from '../../shared/message'
 
@@ -171,11 +169,6 @@ export async function recentDirs(m: Machine = getMachine('')!): Promise<string[]
   const f = await readDirsFile()
   return (m.local ? f.dirs : f.machines && f.machines[dirsKey(m)]) || []
 }
-// Recent folders and the herdr-projects folders among them (only on a reachable machine).
-export async function recentDirsWithKinds(m: Machine = getMachine('')!): Promise<{ dirs: string[], projectDirs: Record<string, ProjectFolderKind> }> {
-  const dirs = await recentDirs(m)
-  return { dirs, projectDirs: m.status === 'online' ? await projectFolderKinds(m, dirs) : {} }
-}
 async function rememberDir(d: string, m: Machine) {
   const f = await readDirsFile()
   const dirs = [d, ...(await recentDirs(m)).filter(x => x !== d)].slice(0, 30)
@@ -192,7 +185,7 @@ export async function machineConfigs(): Promise<MachineConfig[] | undefined> {
   return Promise.all(ms.map(async m => ({
     key: m.key, label: m.label, local: m.local, home: m.home,
     kinds: m.local || m.status === 'online' ? await installedAgentKinds(m) : [],
-    ...(await recentDirsWithKinds(m)), online: m.local || (m.status === 'online' && Boolean(m.home)),
+    dirs: await recentDirs(m), online: m.local || (m.status === 'online' && Boolean(m.home)),
   })))
 }
 
@@ -222,9 +215,7 @@ export async function listDirs(p: string | null, machine: unknown = ''): Promise
   if (denied) return { path: dir, parent, home, dirs: [], denied, ...(remote ? { remote } : {}) }
   const out: DirEntry[] = raw.map(e => ({ name: e.name, path: px.join(dir, e.name), git: e.git }))
   out.sort((a, b) => (Number(b.git) - Number(a.git)) || a.name.localeCompare(b.name))
-  const kinds = await projectFolderKinds(m, [dir, ...out.map(e => e.path)])
-  for (const e of out) if (kinds[e.path]) e.project = kinds[e.path]
-  return { path: dir, parent, home, dirs: out, ...(kinds[dir] ? { project: kinds[dir] } : {}) }
+  return { path: dir, parent, home, dirs: out }
 }
 
 // --- Open panels ------------------------------------------------------------

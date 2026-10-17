@@ -102,7 +102,7 @@ describe('question push parity', () => {
       expect(output.choices?.question).toBeTruthy()
       const notify = bindFunction(source, 'notifyPane', {
         isViewed: () => false, state: { workspaces: [], panes: [pane] },
-        isProjectThread: () => false, notificationTitle: (t: string) => t,
+        notificationTitle: (t: string) => t,
         multiMachine: () => false, machineOfPane: () => null, getMachine: () => null,
         agentLabel: (a: string) => a, agentNotificationTitle: () => ({ title: 'Question', titleFr: 'Question' }),
         pushSend: async (payload: unknown) => { sent.push(payload); return 1 }, log: () => {},

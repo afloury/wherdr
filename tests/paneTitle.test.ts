@@ -10,19 +10,7 @@ const pane = (overrides: Partial<Pane> = {}): Pane => ({
 })
 
 describe('displayed pane title', () => {
-  it('takes the workspace topic for a herdr-projects thread', () => {
-    const thread = pane({ name: 'hp-wherdr-t-0005-changements', title: 'Read project brief' })
-    expect(paneTitle(thread, 'Effort du modèle depuis le champ de saisie')).toBe('Effort du modèle depuis le champ de saisie')
-    expect(paneTitle(thread, '   ')).toBe('Read project brief')
-    expect(paneTitle({ ...thread, label: 'Nom choisi' }, 'Effort du modèle')).toBe('Nom choisi')
-  })
-
-  it('recognizes a remote thread by its path when its name changed', () => {
-    const thread = pane({ name: 'codex', cwd: '/Users/alice/.herdr/worktrees/app/hp-app-t-0012-title' })
-    expect(paneTitle(thread, 'Recherche globale')).toBe('Recherche globale')
-  })
-
-  it('keeps the current title of other agents and of the coordinator', () => {
+  it('keeps the current title of agents, whatever their folder', () => {
     expect(paneTitle(pane({ label: 'Mon agent' }), 'Workspace')).toBe('Mon agent')
     expect(paneTitle(pane({ title: 'Corriger le menu | codex' }), 'Workspace')).toBe('Corriger le menu')
     expect(paneTitle(pane({ name: 'coordinator', cwd: '/home/user/.herdr-projects/wherdr' }), 'Projet wherdr')).toBe('Read brief and act')

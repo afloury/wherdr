@@ -180,32 +180,30 @@ describe('demo server', () => {
     expect(s.pane(OMP)?.queued).toBeUndefined()
   })
 
-  it('the Codex thread finishes by itself and the project board follows', () => {
+  it('the Codex task finishes by itself and the Board follows', () => {
     const c = clock()
     const s = new DemoServer(c)
-    const first = s.handle('GET', `/api/project?pane=${COORD}`).body as { version: string, open: { id: string, token: string }[] }
-    expect(first.open.find(t => t.id === 't-0012')?.token).toBe('working')
-    expect(s.handle('GET', `/api/project?pane=${COORD}&since=${first.version}`).body).toEqual({ same: true, version: first.version })
+    type Board = { version: string, machines: { status: string, tasks: { id: string, group: string, pr: string }[] }[] }
+    const first = s.handle('GET', '/api/tasks').body as Board
+    expect(first.machines).toHaveLength(1)
+    expect(first.machines[0]!.status).toBe('ready')
+    expect(first.machines[0]!.tasks.find(t => t.id === 'acme-api/12')?.group).toBe('working')
+    expect(first.machines[0]!.tasks.find(t => t.id === 'acme-api/13')?.group).toBe('needs')
+    expect(s.handle('GET', `/api/tasks?since=${first.version}`).body).toEqual({ same: true, version: first.version })
     c.advance(60_000)
     expect(s.pane(CODEX)?.status).toBe('done')
-    const next = s.handle('GET', `/api/project?pane=${COORD}&since=${first.version}`).body as { open: { id: string, token: string }[] }
-    expect(next.open.find(t => t.id === 't-0012')?.token).toBe('ready-for-review')
-    expect(s.handle('GET', `/api/project?pane=${CODEX}`).body).toEqual({ available: false })
+    const next = s.handle('GET', `/api/tasks?since=${first.version}`).body as Board
+    const done = next.machines[0]!.tasks.find(t => t.id === 'acme-api/12')!
+    expect(done.group).toBe('ready')
+    expect(done.pr).toMatch(/^https:\/\//)
   })
 
-  it('answers the global Board like the server: one project, {same} on its version, a new version when a thread moves', () => {
-    const c = clock()
-    const s = new DemoServer(c)
-    const first = s.handle('GET', '/api/board').body as { version: string, projects: { key: string, slug: string, panes: string[], board: { lists: { kind: string, tasks: { text: string, reason?: string }[] }[], open: unknown[] } }[] }
-    expect(first.projects).toHaveLength(1)
-    expect(first.projects[0]).toMatchObject({ key: '|/Users/demo/.herdr-projects/acme-api', slug: 'acme-api', panes: [COORD] })
-    // A Blocked task for the Board's Blocked column.
-    expect(first.projects[0]!.board.lists.find(l => l.kind === 'blocked')!.tasks[0]!.reason).toBeTruthy()
-    expect(s.handle('GET', `/api/board?since=${first.version}`).body).toEqual({ same: true, version: first.version })
-    c.advance(60_000)
-    const next = s.handle('GET', `/api/board?since=${first.version}`).body as { version: string }
-    expect(next.version).not.toBe(first.version)
-    expect(s.handle('GET', `/api/board?since=${next.version}`).body).toEqual({ same: true, version: next.version })
+  it('gives a task\'s details with its agent\'s pane, and refuses to act on it', () => {
+    const s = new DemoServer(clock())
+    expect(s.handle('GET', '/api/tasks/details?machine=&id=acme-api%2F12').body).toMatchObject({ id: 'acme-api/12', pane: CODEX })
+    expect(s.handle('GET', '/api/tasks/details?machine=&id=acme-api%2F99').status).toBe(404)
+    expect(s.handle('POST', '/api/tasks/tell', { machine: '', id: 'acme-api/12', text: 'hi' }).status).toBe(403)
+    expect(s.handle('POST', '/api/tasks/approve', { machine: '', id: 'acme-api/12' }).status).toBe(403)
   })
 
   it('refuses everything it does not simulate, with the demo message', () => {
@@ -229,16 +227,5 @@ describe('demo server', () => {
     expect(scriptFor('claude', 'Why did the export test fail?', 0).approval).toBeUndefined()
     expect(scriptFor('claude', 'Can you run the tests?', 0).approval).toBe('npm test')
     expect(scriptFor('codex', 'Merge it', 0).approval).toBe('git push origin HEAD')
-    // Project panel › Add info: passed on, whatever the text says (no approval card).
-    const info = scriptFor('claude', '↳ Info for t-0012: run the tests on staging\nthen merge', 0)
-    expect(info.approval).toBeUndefined()
-    expect(info.reply).toContain('t-0012')
-    expect(scriptFor('claude', '↳ Info pour t-0013 : relance les tests', 0).reply).toContain('t-0013')
-    // Board moves: acknowledged by the coordinator, never a command to approve (the task text mentions tests).
-    for (const text of ['↳ Mark done: Fix the flaky CSV export test', '↳ Move to To do: Run the audit', '↳ Marquer bloqué : Publish the API changelog', '✓ Tested: Webhook retries']) {
-      const move = scriptFor('claude', text, 0)
-      expect(move.approval).toBeUndefined()
-      expect(move.reply).toContain(text.split(/ ?: /)[1])
-    }
   })
 })

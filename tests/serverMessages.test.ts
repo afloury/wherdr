@@ -7,7 +7,6 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { FR_DICTIONARY, french } from '../app/utils/i18n'
 import { fmt } from '../shared/message'
-import { readOnlyMessage } from '../shared/projectsActions'
 import { agentNotificationTitle } from '../server/utils/push'
 
 function files(dir: string, ext: RegExp): string[] {
@@ -74,13 +73,6 @@ describe('server messages', () => {
     expect(french(fmt('{count} tasks', { count: 3 }))).toBe('3 tâches')
     expect(french('Invalid pane')).toBe('pane invalide')
     expect(french('Some text from Herdr')).toBeUndefined()
-  })
-
-  it('explain a read-only home folder in English, translated by the client', () => {
-    const raw = 'herdr-projects: could not create /home/demo/.herdr-projects/test: Read-only file system (os error 30)'
-    const en = readOnlyMessage(raw, { docker: false })!
-    expect(en).toBe('herdr-projects cannot write to /home/demo/.herdr-projects/test: read-only file system.')
-    expect(french(en)).toBe('herdr-projects ne peut pas écrire dans /home/demo/.herdr-projects/test : système de fichiers en lecture seule.')
   })
 
   it('build agent notification titles in both languages', () => {

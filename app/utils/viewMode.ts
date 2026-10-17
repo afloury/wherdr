@@ -1,19 +1,18 @@
-// Presentation of a pane (conversation, terminal, Project panel): which
+// Presentation of a pane (conversation, terminal): which
 // controls the agent view shows, and what a tap on a toggle does.
 
-type Mode = 'chat' | 'term' | 'project'
+type Mode = 'chat' | 'term'
 
-// Phone: header icons (terminal `>_`, Project); computer: small
+// Phone: a header icon (terminal `>_`); computer: small
 // Conversation / Terminal selector in the header (`header`) or in
 // the side-by-side cell header (`cell`). Nothing for an agent without
 // conversation (shell, Kimi…): it stays on the terminal. Side by side, each
 // cell keeps its selector, focused or not.
-export function viewControls(o: { desk: boolean, cell: boolean, chat: boolean, live: boolean, project: boolean }) {
+export function viewControls(o: { desk: boolean, cell: boolean, chat: boolean, live: boolean }) {
   const on = o.chat && (o.live || (o.desk && o.cell))
   return {
     selector: on && o.desk ? (o.cell ? 'cell' as const : 'header' as const) : null,
     term: on && !o.desk,
-    project: on && !o.desk && o.project,
   }
 }
 
@@ -25,7 +24,7 @@ export function showComposer(o: { desk: boolean, live: boolean, mode: Mode | nul
 }
 
 // Side-by-side cell: the mode chosen for this pane, whether it has the focus or not.
-// Conversation (the Project panel does not exist in a cell) or terminal; without
+// Conversation or terminal; without
 // a conversation, always the terminal. Focus only routes keyboard input;
 // every visible terminal keeps its instance, connection and fitted size.
 export function cellMode(o: { chat: boolean, viewMode: Mode, active?: boolean }): 'chat' | 'term' {

@@ -6,7 +6,6 @@ import path from 'node:path'
 import webpush from 'web-push'
 import { DATA_DIR, appUrl, log } from './env'
 import { pushConfig } from './pushConfig'
-import { shouldNotify, type NotifyScope } from './notificationPolicy'
 import type { Pane } from '../../shared/types'
 import { type Quiet, quietActive, silenced } from '../../shared/quiet'
 
@@ -20,7 +19,6 @@ export interface PushSub {
   keys: { p256dh: string, auth: string }
   lang: 'en' | 'fr'
   addedAt: string
-  notifyScope?: NotifyScope
   sessions?: Record<string, string>
   quiet?: Quiet // mode silence de cet appareil
 }
@@ -74,9 +72,8 @@ export async function writeSubs(subs: PushSub[]) {
   await fsp.writeFile(SUBS_FILE, JSON.stringify({ subs }, null, 2) + '\n', { mode: 0o600 })
 }
 
-// `audience`: the pane concerned (each device's "Notify for" setting),
-// or directly the filter to apply to the setting.
-export type PushAudience = Pick<Pane, 'name' | 'cwd'> | ((scope: NotifyScope | undefined, sub: PushSub) => boolean)
+// `audience`: the devices a notification goes to (none given: all of them).
+export type PushAudience = (sub: PushSub) => boolean
 
 export function subWatchesSession(sub: PushSub, baseKey: string, session: string, baseSession: string): boolean {
   return (sub.sessions?.[baseKey] || baseSession) === session
@@ -111,7 +108,7 @@ export async function pushSend(payload: PushPayload, audience?: PushAudience, fo
   for (const sub of subs) {
     // Filter before sending: nothing goes to a muted device.
     if (!force && silenced(globalQuiet, sub.quiet)) continue
-    if (typeof audience === 'function' ? !audience(sub.notifyScope, sub) : audience && !shouldNotify(sub.notifyScope, audience)) continue
+    if (audience && !audience(sub)) continue
     try {
       const { titleFr, bodyFr, ...message } = payload
       if (sub.lang === 'fr') {

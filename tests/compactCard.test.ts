@@ -12,11 +12,6 @@ describe('compact list setting', () => {
 })
 
 describe('compact list card', () => {
-  it('shortens the coordinator role, keeps a thread number', () => {
-    expect(compactMeta({ tag: 'coordinator', coordinator: true }).badge).toBe('coord')
-    expect(compactMeta({ tag: 't-0007' }).badge).toBe('t-0007')
-    expect(compactMeta({}).badge).toBeNull()
-  })
   it('several tabs: dots per tab, no pane count', () => {
     expect(compactMeta({ tabs: 3, panes: 5 })).toMatchObject({ dots: true, panes: null })
   })

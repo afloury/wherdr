@@ -41,8 +41,6 @@ const groups: Group[] = [
 ]
 // herdr-projects keys, listed (after Agent) once the plugin is on a machine.
 const projects: Group = { title: tl('Projects', 'Projets'), rows: [
-  { label: tl('Project panel of this agent’s project', 'Panneau Projet du projet de cet agent'), keys: [shortcutKbds('project-panel')] },
-  { label: tl('New project', 'Nouveau projet'), keys: [shortcutKbds('new-project')] },
 ] }
 const shown = computed(() => Object.values(pluginActions.value).some(l => l.some(a => a.plugin === 'herdr-projects'))
   ? [...groups.slice(0, 2), projects, ...groups.slice(2)]

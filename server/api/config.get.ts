@@ -9,7 +9,7 @@ export default defineApi(async (): Promise<AppConfig> => ({
   // wherdr in a container on a Mac, with the "open on the host" route set up:
   // local panes behave as Mac panes for Reveal in Finder / Open / Mod+Alt+O.
   hostOpen: hostOpenReady(),
-  ...(await recentDirsWithKinds()),
+  dirs: await recentDirs(),
   // Several machines: each with its home folder and recent folders.
   machines: await machineConfigs(),
   push: { enabled: pushReady(), key: vapidPublicKey(), devices: (await readSubs()).length },

@@ -6,9 +6,7 @@ import type { HerdrState, Pane, Tab, Workspace } from '../../shared/types'
 import { LOCAL, joinId } from '../../shared/ids'
 import { reduceLayout } from '../../shared/layout'
 import { paneAgentKind } from '../../shared/agentKind'
-import { projectToken } from '../../shared/projects'
 import { cleanLabel } from '../../shared/displayTitles'
-import { threadOfPane } from '../../shared/threadLimits'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
@@ -58,9 +56,6 @@ export function reduceSnapshot(s: Json, machine = LOCAL, session = 'default'): H
       // Session identifier passed by the agent's Herdr integration
       // (herdr integration install codex): designates exactly its transcript.
       agentSession: p.agent_session && p.agent_session.value ? p.agent_session.value : null,
-      // Tokens set by the herdr-projects plugin on its panes.
-      ...(projectToken(p.tokens) ? { project: projectToken(p.tokens) } : {}),
-      ...(threadOfPane(p.tokens, p.name, p.agent) ? { hpThread: threadOfPane(p.tokens, p.name, p.agent)! } : {}),
       ...(Number.isFinite(p.state_change_seq) ? { stateSeq: Number(p.state_change_seq) } : {}),
     }
   })
