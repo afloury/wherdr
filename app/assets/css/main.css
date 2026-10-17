@@ -2959,7 +2959,6 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
 .pp-task.done .pp-box { background: var(--line-strong); }
 .pp-task-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .pp-task.done .pp-task-text { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--dim); }
-.pp-tags { flex: none; max-width: 45%; margin-top: 1px; display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
 /* Free badge [b:color(text)]: colored text, very light border and background. */
 .pp-badge { --bc: var(--muted); display: inline-flex; align-items: center; max-width: 100%; padding: 3px 5px; border: 1px solid color-mix(in srgb, var(--bc) 45%, transparent); background: color-mix(in srgb, var(--bc) 9%, transparent); font: 500 10px/1 var(--mono); letter-spacing: .04em; color: var(--bc); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Free hex: mixed with the text color to stay readable in both themes. */

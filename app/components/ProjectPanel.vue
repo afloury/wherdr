@@ -179,7 +179,8 @@ const orderable = (s: BoardSection, task: ProjectTask) => (s.kind === 'todo' || 
 // An In progress task whose thread has no live card (threads unreadable, or not
 // listed): the action of the card, on the task. Not for a closed thread.
 const informable = (s: BoardSection, task: ProjectTask) => s.kind === 'doing' && !task.done && Boolean(task.thread) && !props.board?.resolved.some(x => x.id === task.thread)
-const actionable = (s: BoardSection, task: ProjectTask) => testable(s, task) || decidable(s, task) || launchable(s, task) || unblockable(s, task) || reviewable(s, task) || orderable(s, task) || informable(s, task)
+// Every unfinished task can be discussed, including plain bullets in custom lists.
+const questionable = (s: BoardSection, task: ProjectTask) => !task.done && s.kind !== 'done'
 
 // Any action already sent for the task (from here or from the Board): its actions give way to "Sent".
 const taskSent = (s: BoardSection, task: ProjectTask) => (testable(s, task) || launchable(s, task) || unblockable(s, task) || reviewable(s, task) || orderable(s, task))
@@ -335,23 +336,15 @@ function hideHint() {
               :class="{ done: task.done, testable: testable(s, task), decidable: decidable(s, task), launchable: launchable(s, task), unblockable: unblockable(s, task), reviewable: reviewable(s, task), sent: taskSent(s, task), orderable: orderable(s, task) }"
             >
               <span class="pp-box" aria-hidden="true" />
-              <template v-if="!actionable(s, task)">
-                <span v-if="task.reason" class="pp-task-body"><span class="pp-task-text"><TaskText :text="task.text" /></span><span class="pp-reason">{{ task.reason }}</span></span>
-                <span v-else class="pp-task-text"><TaskText :text="task.text" /></span>
-                <span v-if="task.badges && coordinator" class="pp-tags">
-                  <TaskBadges :badges="task.badges" :coordinator="coordinator" :board="board" />
-                </span>
-              </template>
-              <!-- To test / To decide / Backlog: text across the full width; below,
-                   the owner and the section's actions. -->
-              <span v-else class="pp-task-body">
+              <!-- All tasks share the full-width text and badge/action footer. -->
+              <span class="pp-task-body">
                 <span class="pp-task-text"><TaskText :text="task.text" /></span>
                 <span v-if="task.reason" class="pp-reason">{{ task.reason }}</span>
-                <span class="pp-task-foot">
+                <span v-if="task.badges?.length || questionable(s, task)" class="pp-task-foot">
                   <span v-if="taskSent(s, task)" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Sent to the coordinator') }}</span>
                   <TaskBadges v-if="task.badges && coordinator" :badges="task.badges" :coordinator="coordinator" :board="board" />
-                  <span v-if="informable(s, task) || decidable(s, task) || launchable(s, task) || unblockable(s, task) || ((reviewable(s, task) || testable(s, task) || orderable(s, task)) && !taskSent(s, task))" class="pp-verdict" :class="{ wrap: orderable(s, task) }">
-                    <template v-if="orderable(s, task)">
+                  <span v-if="questionable(s, task)" class="pp-verdict" :class="{ wrap: orderable(s, task) }">
+                    <template v-if="orderable(s, task) && !taskSent(s, task)">
                       <UTooltip :text="tl('Move up', 'Monter')" :disabled="!desk">
                         <button type="button" class="pp-vbtn move" :disabled="acting !== null || isFirst(s, task)" :aria-label="tl(`Move up: ${task.text}`, `Monter : ${task.text}`)" @click="moveTask(s, task, 'up')">
                           <span v-if="acting === moveKey(s, 'up', task)" class="spinner" /><UIcon v-else name="i-lucide-arrow-up" />
@@ -393,17 +386,17 @@ function hideHint() {
                         <UIcon name="i-lucide-message-square-plus" /><span>{{ tl('Add info', 'Ajouter info') }}</span>
                       </button>
                     </UTooltip>
-                    <UTooltip v-if="reviewable(s, task)" :text="tl('Reviewed: tell the coordinator', 'Relu : prévenir le coordinateur')" :disabled="!desk">
+                    <UTooltip v-if="reviewable(s, task) && !taskSent(s, task)" :text="tl('Reviewed: tell the coordinator', 'Relu : prévenir le coordinateur')" :disabled="!desk">
                       <button type="button" class="pp-vbtn backlog-action reviewed" :disabled="acting !== null" :aria-label="tl(`Reviewed: ${task.text}`, `Relu : ${task.text}`)" @click="reviewTask(task)">
                         <span v-if="acting === sentKey('review', 'reviewed', task.text)" class="spinner" /><UIcon v-else name="i-lucide-check" /><span>{{ tl('Reviewed', 'Relu') }}</span>
                       </button>
                     </UTooltip>
-                    <UTooltip v-if="reviewable(s, task)" :text="tl('Draft review feedback', 'Préparer un retour de relecture')" :disabled="!desk">
+                    <UTooltip v-if="reviewable(s, task) && !taskSent(s, task)" :text="tl('Draft review feedback', 'Préparer un retour de relecture')" :disabled="!desk">
                       <button type="button" class="pp-vbtn backlog-action clarify" :aria-label="tl(`Comment: ${task.text}`, `Commenter : ${task.text}`)" @click="prefill(task, 'comment')">
                         <UIcon name="i-lucide-message-square" /><span>{{ tl('Comment', 'Commenter') }}</span>
                       </button>
                     </UTooltip>
-                    <UTooltip v-if="testable(s, task)" :text="t('Confirm: tested, it works')" :disabled="!desk">
+                    <UTooltip v-if="testable(s, task) && !taskSent(s, task)" :text="t('Confirm: tested, it works')" :disabled="!desk">
                       <button
                         type="button" class="pp-vbtn ok" :disabled="acting !== null"
                         :aria-label="tl(`Confirm: ${task.text}`, `Confirmer : ${task.text}`)" @click="confirmTask(task)"
@@ -411,12 +404,12 @@ function hideHint() {
                         <span v-if="acting === sentKey('test', 'tested', task.text)" class="spinner" /><UIcon v-else name="i-lucide-check" />
                       </button>
                     </UTooltip>
-                    <UTooltip v-if="testable(s, task)" :text="t('Report a problem')" :disabled="!desk">
+                    <UTooltip v-if="testable(s, task) && !taskSent(s, task)" :text="t('Report a problem')" :disabled="!desk">
                       <button type="button" class="pp-vbtn ko" :aria-label="tl(`Problem: ${task.text}`, `Problème : ${task.text}`)" @click="prefill(task, 'problem')">
                         <UIcon name="i-lucide-x" />
                       </button>
                     </UTooltip>
-                    <UTooltip v-if="testable(s, task) || decidable(s, task)" :text="t('Ask a question')" :disabled="!desk">
+                    <UTooltip v-if="questionable(s, task)" :text="t('Ask a question')" :disabled="!desk">
                       <button type="button" class="pp-vbtn ask" :aria-label="tl(`Question: ${task.text}`, `Question : ${task.text}`)" @click="prefill(task, 'question')">
                         <UIcon name="i-lucide-circle-help" />
                       </button>
