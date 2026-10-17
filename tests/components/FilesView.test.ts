@@ -4,6 +4,8 @@ import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { getQuery } from 'h3'
 import FilesView from '~/components/FilesView.vue'
 
+vi.mock('~/components/PdfPreview.vue', () => ({ default: { props: ['src', 'title'], template: '<div class="files-pdf" :data-src="src" :title="title" />' } }))
+
 const asked: string[] = []
 registerEndpoint('/api/files', (event) => {
   const path = String(getQuery(event).path ?? '')
@@ -119,12 +121,12 @@ describe('FilesView', () => {
     expect(asked).toHaveLength(listed)
   })
 
-  it('shows a PDF in the browser viewer from the download path, with Open; other binaries stay a notice', async () => {
+  it('shows a PDF in the canvas viewer from the download path, with Open; other binaries stay a notice', async () => {
     const w = await mountSuspended(FilesView, { props: { paneId: 'w1:p1', file: '~/docs/manual.pdf' } })
     await flushPromises()
     const url = '/api/files/download?pane=w1%3Ap1&path=%2Fhome%2Fuser%2Fdocs%2Fmanual.pdf&from=chat&inline=1'
-    const frame = w.find('iframe.files-pdf')
-    expect(frame.attributes('src')).toBe(url)
+    const frame = w.find('.files-pdf')
+    expect(frame.attributes('data-src')).toBe(url)
     expect(frame.attributes('sandbox')).toBeUndefined()
     expect(frame.attributes('title')).toBe('/home/user/docs/manual.pdf')
     const open = w.find('a[aria-label="Open"]')
@@ -134,7 +136,7 @@ describe('FilesView', () => {
     // Refresh loads the viewer again.
     await w.find('button[aria-label="Refresh"]').trigger('click')
     await flushPromises()
-    expect(w.find('iframe.files-pdf').element).not.toBe(frame.element)
+    expect(w.find('.files-pdf').element).not.toBe(frame.element)
 
     const zip = await mountSuspended(FilesView, { props: { paneId: 'w1:p1', file: '~/docs/archive.zip' } })
     await flushPromises()

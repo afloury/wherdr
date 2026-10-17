@@ -35,7 +35,7 @@ const fileQuery = (path: string) => `pane=${pane()}&path=${encodeURIComponent(pa
 function openFile(path: string) {
   return load<FilePreview>(`/api/files/read?${fileQuery(path)}`, (d) => { preview.value = d })
 }
-// A PDF: the browser's own viewer, framed, on the download path (`inline`).
+// Preview and Open share the authenticated inline download path.
 // Each refresh reloads it.
 const reloads = ref(0)
 const pdfUrl = computed(() => preview.value?.kind === 'pdf' ? `/api/files/download?${fileQuery(preview.value.path)}&inline=1` : '')
@@ -122,7 +122,7 @@ function icon(e: FileEntry) {
         <p class="changes-location">{{ preview.path }} · {{ fmtBytes(preview.size) }}</p>
         <p v-if="preview.truncated && preview.kind === 'text'" class="changes-limit">{{ t('File truncated to keep this view responsive.') }}</p>
         <img v-if="preview.kind === 'image'" class="files-image" :src="preview.dataUrl" :alt="preview.path">
-        <iframe v-else-if="preview.kind === 'pdf'" :key="reloads" class="files-pdf" :src="pdfUrl" :title="preview.path" />
+        <PdfPreview v-else-if="preview.kind === 'pdf'" :key="`${pdfUrl}:${reloads}`" :src="pdfUrl" :title="preview.path" />
         <p v-else-if="preview.kind === 'binary'" class="changes-notice">{{ t('Binary file') }}</p>
         <p v-else-if="preview.kind === 'large'" class="changes-notice">{{ /\.pdf$/i.test(preview.path) ? t('PDF too large to preview (50 MB max).') : t('Image too large to preview.') }}</p>
         <div v-else class="files-code" role="region" :aria-label="preview.path">
