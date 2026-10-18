@@ -12,6 +12,7 @@ import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
+import { nextTail, tailQuery } from '~/utils/chatTail'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -184,9 +185,7 @@ async function loadChat(): Promise<void> {
   busy = true
   const pane = props.pane.id
   try {
-    const q = new URLSearchParams({ pane, since: chat.value.token })
-    if (chat.value.tailStart !== null) q.set('from', String(chat.value.tailStart))
-    const r = await api<ChatResponse>(`/api/chat?${q}`)
+    const r = await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`)
     if (pane !== props.pane.id) return
     if (!r.available) {
       const m = onUnavailable(misses.value, Boolean(chat.value.file) && items.value.length > 0)
@@ -207,9 +206,19 @@ async function loadChat(): Promise<void> {
     savedAt.value = null
     // New session (/clear, new agent): the old one's bytes no
     // longer mean anything, we start again from the bottom.
-    if (chat.value.file && r.file !== chat.value.file) {
+    // Same for a bottom that no longer starts where ours does (file rewritten
+    // or shrunk): the older pages above it would not join it.
+    if ((chat.value.file && r.file !== chat.value.file)
+      || (chat.value.tailStart !== null && r.start !== undefined && r.start !== chat.value.tailStart)) {
       chat.value = fresh()
       synced = false
+      busy = false
+      return loadChat()
+    }
+    // Incremental reply that does not fit our list: ask for it in full.
+    const tail = nextTail(chat.value.tail, r)
+    if (!tail) {
+      chat.value = { ...chat.value, token: '' }
       busy = false
       return loadChat()
     }
@@ -221,7 +230,7 @@ async function loadChat(): Promise<void> {
       }
       c.file = r.file || null
       c.token = r.token || ''
-      c.tail = r.items || []
+      c.tail = tail
       c.queue = r.queue || []
       chat.value = c
       noteReplies(c.tail)
