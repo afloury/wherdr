@@ -73,7 +73,7 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: |
           e2e=true
-          if [ "$EVENT" = pull_request ] && files=$(git diff --name-only HEAD^1 HEAD) && [ -n "$files" ]; then
+          if [ "$EVENT" = pull_request ] && files=$(git diff --no-renames --name-only HEAD^1 HEAD) && [ -n "$files" ]; then
             e2e=false
             while IFS= read -r file; do
               case "$file" in
