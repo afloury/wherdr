@@ -1,168 +1,171 @@
 #!/usr/bin/env node
-/** Rebuild the silent, fictional product film. Run under nice/flock on shared hosts. */
+/** Build main's real app, capture it, then compose the recordings without redrawing UI. */
 import { spawnSync } from "node:child_process";
-import {
-  copyFile,
-  mkdir,
-  readFile,
-  readdir,
-  rm,
-  writeFile,
-  stat,
-} from "node:fs/promises";
-import { existsSync } from "node:fs";
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, stat, writeFile, copyFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../..");
+const generated = join(here, ".generated");
 const assets = join(root, "assets");
-const cli = join(here, "node_modules/.bin/hyperframes");
-const stills = process.argv.includes("--stills");
-const env = {
-  ...process.env,
-  HYPERFRAMES_NO_TELEMETRY: "1",
-  HYPERFRAMES_NO_UPDATE_CHECK: "1",
-  NODE_OPTIONS: "--max-old-space-size=1024",
-};
-// Reuse an installed headless browser when available; HyperFrames otherwise manages its browser.
-if (!env.HYPERFRAMES_BROWSER_PATH) {
-  const cache = join(homedir(), ".cache/ms-playwright");
-  for (const entry of (await readdir(cache).catch(() => [])).sort().reverse()) {
-    if (!entry.startsWith("chromium_headless_shell-")) continue;
-    const candidate = join(
-      cache,
-      entry,
-      "chrome-headless-shell-linux64/chrome-headless-shell",
-    );
-    if (existsSync(candidate)) {
-      env.HYPERFRAMES_BROWSER_PATH = candidate;
-      break;
-    }
-  }
-}
-function run(command, args) {
-  const result = spawnSync(command, args, { cwd: here, env, stdio: "inherit" });
+const env = { ...process.env, NODE_OPTIONS: "--max-old-space-size=1024" };
+function run(command, args, cwd = root) {
+  const result = spawnSync(command, args, { cwd, env, stdio: "inherit" });
   if (result.error) throw result.error;
   if (result.status !== 0)
     throw new Error(`${command} exited ${result.status}`);
 }
-await mkdir(join(here, ".generated"), { recursive: true });
+await mkdir(generated, { recursive: true });
 await mkdir(assets, { recursive: true });
-await copyFile(
-  join(root, "server/assets/branding/icons/icon-512.png"),
-  join(here, ".generated/logo.png"),
+if (!process.argv.includes("--reuse-captures")) {
+  run("git", [
+    "diff",
+    "--exit-code",
+    "origin/main",
+    "--",
+    "app",
+    "nuxt.config.ts",
+  ]);
+  if (!process.argv.includes("--skip-build")) run("npm", ["run", "build:demo"]);
+  run(process.execPath, [join(here, "capture.mjs")]);
+}
+const evidence = JSON.parse(
+  await readFile(join(generated, "capture.json"), "utf8"),
 );
-const html = await readFile(join(here, "index.html"), "utf8");
-await writeFile(
-  join(here, ".wide.html"),
-  html
-    .replace('id="film"', 'id="film" class="wide"')
-    .replace('data-width="1080"', 'data-width="1920"'),
-);
-try {
-  if (stills) {
-    run(cli, [
-      "snapshot",
-      ".",
-      "--at",
-      "0.4,1.2,2.4,4.4,5.5,7.6,10.8,13.5",
-      "--no-end",
-      "--describe",
-      "false",
-      "--output",
-      join(root, ".shots/launch-video"),
-    ]);
-    // A separate entry directory lets snapshot read the wide composition using its normal index contract.
-    const preview = join(here, ".generated/wide");
-    await mkdir(preview, { recursive: true });
-    await writeFile(
-      join(preview, "index.html"),
-      html
-        .replace('id="film"', 'id="film" class="wide"')
-        .replace('data-width="1080"', 'data-width="1920"'),
-    );
-    const files = [
-      "style.css",
-      "timeline.js",
-      ".generated/logo.png",
-      "node_modules/gsap/dist/gsap.min.js",
-      ...["archivo", "inter", "jetbrains-mono"].map(
-        (font) =>
-          `node_modules/@fontsource-variable/${font}/files/${font}-latin-wght-normal.woff2`,
-      ),
-    ];
-    for (const file of files) {
-      await mkdir(dirname(join(preview, file)), { recursive: true });
-      await copyFile(join(here, file), join(preview, file));
-    }
-    run(cli, [
-      "snapshot",
-      preview,
-      "--at",
-      "0.4,1.2,4.4,7.6,13.5",
-      "--no-end",
-      "--describe",
-      "false",
-      "--output",
-      join(root, ".shots/launch-video-wide"),
-    ]);
-  } else {
-    for (const [composition, name] of [
-      ["index.html", "wherdr-launch.mp4"],
-      [".wide.html", "wherdr-launch-wide.mp4"],
-    ]) {
-      run(cli, [
-        "render",
-        ".",
-        "-c",
-        composition,
-        "-o",
-        join(assets, name),
-        "--workers",
-        "1",
-        "--low-memory-mode",
-        "--no-browser-gpu",
-        "--fps",
-        "30",
-        "--crf",
-        "24",
-      ]);
-    }
-    run("ffmpeg", [
+for (const frame of evidence.frames) {
+  const bytes = await readFile(join(generated, frame.file));
+  assert.equal(
+    createHash("sha256").update(bytes).digest("hex"),
+    frame.sha256,
+    `Captured source changed: ${frame.file}`,
+  );
+}
+const titles = {
+  desktop: "Start on your computer.",
+  mobile: "Same agent. On your phone.",
+  board: "Your workspace. Everywhere.",
+};
+const encode = [
+  "-an",
+  "-r",
+  "30",
+  "-c:v",
+  "libx264",
+  "-preset",
+  "fast",
+  "-crf",
+  "22",
+  "-pix_fmt",
+  "yuv420p",
+  "-threads",
+  "2",
+];
+for (const [width, name] of [
+  [1080, "wherdr-launch.mp4"],
+  [1920, "wherdr-launch-wide.mp4"],
+]) {
+  const parts = [];
+  for (const [segment, count] of [
+    ["desktop", 36],
+    ["mobile", 144],
+    ["board", 45],
+  ]) {
+    const output = join(generated, `${width}-${segment}.mp4`);
+    const input = [
       "-hide_banner",
       "-loglevel",
       "error",
       "-y",
+      "-framerate",
+      "15",
       "-i",
-      join(assets, "wherdr-launch.mp4"),
-      "-an",
-      "-vf",
-      "fps=15,scale=720:720:flags=lanczos",
-      "-c:v",
-      "libwebp_anim",
-      "-quality",
-      "68",
-      "-compression_level",
-      "4",
-      "-loop",
-      "0",
-      "-threads",
-      "2",
-      join(assets, "wherdr-launch.webp"),
-    ]);
-    run(process.execPath, ["verify.mjs"]);
-    for (const name of [
-      "wherdr-launch.mp4",
-      "wherdr-launch.webp",
-      "wherdr-launch-wide.mp4",
-    ]) {
-      console.log(
-        `${name}: ${((await stat(join(assets, name))).size / 1024 / 1024).toFixed(2)} MiB`,
-      );
+      join(generated, segment, "%03d.png"),
+    ];
+    let filter;
+    if (segment === "mobile" && width === 1920) {
+      // Both panels are actual screenshots. The left is the last PC frame before handoff.
+      input.push("-loop", "1", "-i", join(generated, "desktop", "035.png"));
+      filter = `[0:v]scale=-2:900,pad=1920:1080:1390:100:color=0x12151b[phone];[1:v]scale=1056:660[pc];[phone][pc]overlay=64:218:shortest=1`;
+    } else {
+      filter = `[0:v]scale=${width}:900:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=${width}:1080:(ow-iw)/2:(oh-ih)/2+20:color=0x12151b`;
     }
+    filter += `,drawtext=text='${titles[segment]}':fontcolor=0xe6eaf2:fontsize=32:x=(w-tw)/2:y=38${segment === "mobile" ? ":enable='lt(t,7.6)'" : ""}`;
+    if (segment === "mobile")
+      filter +=
+        ",drawtext=text='Keep projects moving.':fontcolor=0xe6eaf2:fontsize=32:x=(w-tw)/2:y=38:enable='gte(t,7.6)'";
+    filter +=
+      ",drawtext=text=wherdr.dev:fontcolor=0x9da5b4:fontsize=20:x=(w-tw)/2:y=1040,setsar=1[v]";
+    run("ffmpeg", [
+      ...input,
+      "-filter_complex",
+      filter,
+      "-map",
+      "[v]",
+      "-frames:v",
+      String(count * 2),
+      ...encode,
+      output,
+    ]);
+    parts.push(output);
   }
-} finally {
-  await rm(join(here, ".wide.html"), { force: true });
+  const concat = join(generated, `${width}-concat.txt`);
+  await writeFile(
+    concat,
+    parts.map((file) => `file '${file.replaceAll("'", "'\\''")}'`).join("\n"),
+  );
+  run("ffmpeg", [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-y",
+    "-f",
+    "concat",
+    "-safe",
+    "0",
+    "-i",
+    concat,
+    "-c",
+    "copy",
+    "-movflags",
+    "+faststart+use_metadata_tags",
+    "-metadata",
+    "wherdr_capture=playwright-real-app",
+    "-metadata",
+    `wherdr_app_tree=${evidence.appTree}`,
+    join(assets, name),
+  ]);
 }
+run("ffmpeg", [
+  "-hide_banner",
+  "-loglevel",
+  "error",
+  "-y",
+  "-i",
+  join(assets, "wherdr-launch.mp4"),
+  "-an",
+  "-vf",
+  "fps=15,scale=720:720:flags=lanczos",
+  "-c:v",
+  "libwebp_anim",
+  "-quality",
+  "72",
+  "-compression_level",
+  "4",
+  "-loop",
+  "0",
+  "-threads",
+  "2",
+  join(assets, "wherdr-launch.webp"),
+]);
+await copyFile(join(generated, "capture.json"), join(here, "capture.json"));
+run(process.execPath, [join(here, "verify.mjs")]);
+for (const name of [
+  "wherdr-launch.mp4",
+  "wherdr-launch-wide.mp4",
+  "wherdr-launch.webp",
+])
+  console.log(
+    `${name}: ${((await stat(join(assets, name))).size / 1024 / 1024).toFixed(2)} MiB`,
+  );

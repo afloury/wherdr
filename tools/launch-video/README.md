@@ -1,76 +1,72 @@
-# wherdr launch film
+# wherdr launch recording
 
-A 15-second, silent HTML/CSS + GSAP composition rendered by **HyperFrames 0.8.169**.
-All conversations, project names, thread IDs and machines are fictional. This is a redrawn
-product animation, not a recording of a live Herdr session. No app server or agent is contacted.
+A 15-second recording of **the actual wherdr app**, built from `origin/main` in its
+existing `app/demo` mode. All agent data is fictional; the components, styles, forms,
+conversation, approval, Project panel and Board are the real app. The native DEMO
+banner remains visible. No interface is redrawn, no hand/cursor/tap graphic is added,
+and no app CSS or DOM is changed for filming.
 
 ## Rebuild
 
-Requires Node.js ≥ 22, FFmpeg with H.264 and animated WebP support, and Chromium.
-Install only the isolated tooling dependencies; there is no need to install/build wherdr:
+Requires Node.js 22, the repository's locked dependencies, Chromium from Playwright,
+and FFmpeg/ffprobe with H.264, animated WebP and drawtext support. Use the host's shared
+lock for each heavy operation; no Docker or system installation is needed.
 
 ```sh
-npm ci --prefix tools/launch-video --ignore-scripts
-# Optional: reuse a Chromium installation instead of HyperFrames' managed browser.
-export HYPERFRAMES_BROWSER_PATH=/path/to/chrome-headless-shell
-nice -n 15 node tools/launch-video/render.mjs
-```
-
-On a shared development host, put both installation and rendering under its shared lock:
-
-```sh
-flock /tmp/wherdr-heavy.lock nice -n 15 npm ci --prefix tools/launch-video --ignore-scripts
+flock /tmp/wherdr-heavy.lock nice -n 15 npm ci
+# Only if Chromium is not already in Playwright's user cache:
+npx playwright install chromium
 flock /tmp/wherdr-heavy.lock nice -n 15 node tools/launch-video/render.mjs
+flock /tmp/wherdr-heavy.lock nice -n 15 node tools/launch-video/review.mjs
 ```
 
-The script reuses Linux Playwright headless Chromium if present in its normal cache; otherwise
-HyperFrames manages Chromium (`npx --prefix tools/launch-video hyperframes browser --help`).
-No global packages, Docker, system installs, music or external media services are needed.
-Fonts and GSAP come from the lockfile; the app logo is copied into an ignored staging folder.
-HyperFrames telemetry and update checks are disabled. One browser worker renders each cut in
-sequence with the low-memory profile and a 1 GiB Node heap. Close preview tools before rendering.
+`render.mjs` checks that `app/` and `nuxt.config.ts` match `origin/main`, builds with
+`npm run build:demo`, captures the real controls with Playwright, then encodes the
+recording with FFmpeg. `--skip-build` reuses the existing demo build during editing;
+`--reuse-captures` only re-encodes a completed recording. Neither flag is needed for
+a clean rebuild. HyperFrames and the former HTML reconstruction have been removed.
 
-Outputs (relative to the repository root):
+The demo is served only on loopback, on a free port from 7690 to 7699. Its existing
+in-browser backend handles every agent request. External requests and real API
+requests are refused. The static server and the single browser close in `finally`,
+including on failure. No Herdr session or installed wherdr server is used.
 
-| File | Format | Size |
-| --- | --- | --- |
-| `assets/wherdr-launch.mp4` | 1080 × 1080, H.264, 30 fps, silent | ~0.55 MiB |
-| `assets/wherdr-launch.webp` | 720 × 720, 15 fps, infinite loop; README preview | ~0.44 MiB |
-| `assets/wherdr-launch-wide.mp4` | 1920 × 1080, H.264, 30 fps, silent; X / YouTube | ~0.65 MiB |
+## Shots
 
-`verify.mjs` runs automatically after rendering. It checks dimensions, codecs, duration,
-frame counts, absence of audio, MP4 fast start, WebP loop and file-size limits. Run it alone
-with `node tools/launch-video/verify.mjs`. Exact encoded bytes can vary with browser/FFmpeg
-versions; the timeline and frame count are fixed.
+| Time | Actual app interaction |
+| --- | --- |
+| 0–1.2 s | Desktop 1440×900: the real New agent form, with a first message |
+| 1.2–2.4 s | Click Launch; the new Claude conversation opens and starts working |
+| 2.4–4.8 s | Resize the same page to 390×844; same agent and message, then its permission request |
+| 4.8–10 s | Select the native Yes option; the demo agent runs its script and reports 162 tests passed |
+| 10–12 s | Open the existing coordinator's Project panel and Tasks tab |
+| 12–15 s | Return to desktop and open the app's four-column Board |
 
-## Story and editing
+The browser clock makes the demo's existing scripted responses reproducible. Reduced
+motion is the browser's accessibility preference, also disabling the app's typing
+animation. All actions are real clicks on the unmodified app. The handoff uses one
+page and one demo session, with no reload. `capture.json` records the exact main
+commit, app Git tree, actions, viewport and SHA-256 of every captured frame.
 
-| Time | Shot | Copy |
-| --- | --- | --- |
-| 0–1.5 s | Start Claude Code in the desktop browser; Checkout opens beside working agents | Start on PC. Keep going. |
-| 1.5–2.2 s | The browser reshapes into a phone, preserving the conversation | Step away. Stay in control. |
-| 2.7–6.4 s | Agent asks to run checkout tests; thumb approves; agent continues | Same agent. Same conversation. |
-| 6.4–9.3 s | Web shop project: threads, tasks and a Tested action | Keep work moving. |
-| 9.3–12.1 s | Studio and Server agents together, with working/ready states | Every machine. One view. |
-| 12.1–15 s | Product name, promise and wherdr.dev | Step away. Stay in control. |
+The camera captures 225 instants at 15 fps. Each is duplicated for the 30 fps MP4s.
+The 720 px WebP samples those same instants; its encoder coalesces identical holds.
+FFmpeg only scales/pads the actual screenshots and adds short captions **outside**
+their bounds. In the wide mobile shot, the last PC screenshot stays on the left;
+the live phone capture is on the right. There is no fake phone bezel or app panel.
+The current demo has one machine; this recording does not invent a second machine.
 
-`index.html` is the scene; `style.css` mirrors Titanium tokens and uses the app's Archivo,
-Inter and JetBrains Mono families. `timeline.js` registers a paused, seekable GSAP timeline
-for HyperFrames. The handoff animates the **same conversation DOM** into a mobile layout,
-with no reload, new conversation or fabricated synchronization feature. The hand is a simple
-original vector drawing. Only device hardware is rounded; app panels keep square corners.
-The wide cut recomposes the layout rather than cropping the square.
+## Outputs and review
 
-Generate review stills in both formats without rendering the films:
+- `assets/wherdr-launch.mp4`: square 1080×1080, silent H.264, 30 fps.
+- `assets/wherdr-launch-wide.mp4`: 1920×1080, silent H.264, 30 fps.
+- `assets/wherdr-launch.webp`: 720×720, infinite loop, sampled at 15 fps.
 
-```sh
-flock /tmp/wherdr-heavy.lock nice -n 15 node tools/launch-video/render.mjs --stills
-```
+`verify.mjs` checks the capture provenance, all 225 frame records, codecs, dimensions,
+15-second duration, MP4 frame counts, absence of audio, fast start, WebP loop and size.
+It runs after rendering; run it alone with `node tools/launch-video/verify.mjs`.
 
-They land in `.shots/launch-video/` and `.shots/launch-video-wide/` (ignored).
-For interactive editing, use `cd tools/launch-video && npx hyperframes preview --no-open`;
-stop the preview when finished. Run the build or `--stills` once first to stage the logo.
-
-Tone references: [herdr-projects hero](https://github.com/eliasstravik/herdr-projects/pull/139)
-and [herdr-voice](https://github.com/brogrammerMW/herdr-voice): dark grid, agent statuses,
-short headlines and a product action. No footage, music or source code was copied from them.
+`review.mjs` extracts every distinct instant from both MP4s into 15 numbered contact
+sheets under `.shots/real-review/sheet-01.jpg` through `sheet-15.jpg`, plus full-size
+key frames. Inspect every sheet and the key frames before committing/pushing. The
+225 source screenshots remain under `tools/launch-video/.generated/` (ignored).
+Exact pixels and encoded bytes can vary with browser/FFmpeg versions.
