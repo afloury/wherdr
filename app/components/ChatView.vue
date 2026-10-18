@@ -57,7 +57,7 @@ const savedAt = ref<number | null>(null)
 const readOnly = computed(() => offlineView.value || paneStale(props.pane))
 // Commands in the agent's replies can be run in its shell mode (Run buttons,
 // utils/shellCommand.ts); the replies carry `can-run` then.
-const canRun = computed(() => !readOnly.value && eventsOpen.value && canRunCommands(props.pane.agent))
+const canRun = computed(() => canRunIn(props.pane))
 async function restoreChat() {
   if (!mayReadOffline(readOfflineAccess())) return
   const saved = (await readOffline()).chats.find(c => c.id === props.pane.id)
@@ -686,12 +686,7 @@ function gotoOrigin(key: string | null) {
   setTimeout(() => el.classList.remove('msg-flash'), 1700)
 }
 
-async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text)
-    toast(t('Copied'))
-  } catch { toast(t('Copy failed'), true) }
-}
+const copyText = copyCode
 // Markdown code blocks: "Copy" and "Run" buttons; inline paths and commands:
 // their menu (event delegation, the HTML comes from v-html).
 function onListClick(e: MouseEvent) {
@@ -736,27 +731,12 @@ function onListClick(e: MouseEvent) {
 }
 
 // ------------------------------------------------------------ commands
-// A command the agent proposes runs in its own terminal, in its shell mode
-// ("! cmd": Claude Code's bash mode, Codex and omp likewise), only after the
-// user has seen it in full and confirmed. Never from a message of the user's
-// (their messages are not markdown) nor on its own.
+// A command the agent proposes runs in its own terminal, in its shell mode,
+// only after the user has seen it in full and confirmed (composables/useCodeRun.ts).
+// Never from a message of the user's (their messages are not markdown) nor on its own.
 async function runCommand(cmd: string) {
-  const text = runMessage(props.pane.agent, cmd)
-  if (!text || !canRun.value) return
-  // A question on screen would take the command as its typed answer.
-  if (props.pane.status === 'blocked' && props.pane.prompt) return toast(tl('The agent is waiting for your answer: answer it first.', 'L’agent attend ta réponse : réponds-lui d’abord.'), true)
-  haptic()
-  const name = kindLabel(props.pane.agent)
-  const ok = await askConfirm(
-    tl(`Run this command? ${name} runs it in its shell mode (!), in its own folder, and shows the output in the conversation.`,
-      `Lancer cette commande ? ${name} l’exécute dans son mode shell (!), dans son propre dossier, et affiche la sortie dans la conversation.`),
-    tl('Run', 'Lancer'), 'primary', cmd,
-  )
-  if (!ok) return
-  try {
-    emit('sent', await sendMessage(props.pane, props.pane.id, text))
-    haptic()
-  } catch (err) { toast((err as Error).message, true) }
+  const queued = await runInAgent(props.pane.id, cmd)
+  if (queued !== false) emit('sent', queued)
 }
 function cmdMenuItems(cmd: string, runnable: boolean): MenuItem[] {
   const items: MenuItem[] = []
