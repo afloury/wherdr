@@ -1453,8 +1453,8 @@ How a request is judged, before anything else (WebSockets included):
     reads that from Tailscale every 10 seconds (the CLI, or Tailscale's socket in Docker); an
     interface address in that range proves nothing, since a LAN may use it too. When Tailscale is
     stopped, missing or unreadable for 30 seconds, no direct connection counts as tailnet. In
-    Docker without Tailscale's socket, direct tailnet connections are refused (`tailscale serve`
-    still works, below).
+    Docker without Tailscale's socket, direct tailnet connections are refused, and `tailscale
+    serve` only works with a passkey (Funnel cannot be ruled out, below).
   - *Docker*: the host's own connections reach the container from its gateway, but so do
     outside ones that Docker's userland proxy relays (a port published on every interface, on an
     IPv6 address, or on another host port), and nothing inside the container tells them apart.
@@ -1471,10 +1471,15 @@ How a request is judged, before anything else (WebSockets included):
   more: a client that writes its own headers directly only gets itself refused. A proxy that
   adds the client's address (Caddy, nginx with `proxy_add_x_forwarded_for`, Cloudflare Tunnel)
   therefore has its outside clients refused.
-- **Tailscale Funnel**: wherdr reads Tailscale's serve configuration every 10 seconds.
-  Connections from this computer stay local only while the latest reading **proves** that Funnel
-  does not expose wherdr's port, in any form (HTTPS, TCP, or TCP with TLS termination, which
-  carry no client address). Funnel on, a failed or garbled reading, no reading yet (startup) or
+- **Tailscale Funnel**: wherdr reads Tailscale's serve configuration every 10 seconds, at most
+  2 seconds before an HTTP request, and again for every WebSocket it opens. Connections from this
+  computer stay local only while the latest reading **proves** that Funnel does not expose
+  wherdr's port, in any form (HTTPS, TCP, or TCP with TLS termination, which carry no client
+  address). A Funnel route counts unless its target clearly leads to another port: the host is
+  never compared (`0.0.0.0:7683`, `127.1:7683` or a LAN address reach wherdr too), and a target
+  wherdr cannot parse counts. In Docker, every Funnel route counts. Open WebSockets are judged
+  again after every reading and closed when no longer allowed; between two readings (10 seconds
+  at most), a connection opened before Funnel was turned on can last that long. Funnel on, a failed or garbled reading, no reading yet (startup) or
   none for 30 seconds all make them unverified; Tailscale reporting itself stopped, or absent
   without Docker, counts as no Funnel. In Docker without Tailscale's socket, nothing can be read:
   keep the socket mounted. A Funnel request with Tailscale's `Tailscale-Funnel-Request` header is

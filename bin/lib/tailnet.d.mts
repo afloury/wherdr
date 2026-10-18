@@ -42,5 +42,6 @@ export function runTailscale(bin: string, args: string[], timeoutMs?: number): P
 export interface TailnetPeers { readable: boolean, state: string | null, running: boolean, selfIps: string[], peerIps: string[] }
 export interface TailnetFacts extends Omit<TailnetPeers, 'state'> { installed: boolean, funnel: boolean | null }
 export function tailnetPeers(statusJson: string): TailnetPeers
-export function funnelExposes(port: string | number, serveJson: string): boolean | null
-export function tailnetFacts(port: string | number, bin?: string | null, socket?: string | null): Promise<TailnetFacts>
+export function targetPort(target: unknown): number | null
+export function funnelExposes(port: string | number, serveJson: string, anyRoute?: boolean): boolean | null
+export function tailnetFacts(port: string | number, bin?: string | null, socket?: string | null, anyRoute?: boolean): Promise<TailnetFacts>

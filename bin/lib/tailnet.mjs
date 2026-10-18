@@ -90,23 +90,43 @@ export function tailnetPeers(statusJson) {
 // States in which tailscaled relays nothing, Funnel included.
 const IDLE_STATES = new Set(['Stopped', 'NeedsLogin', 'NoState', 'NeedsMachineAuth'])
 
-// Whether `tailscale funnel` opens wherdr's local port to the Internet, in
-// any form: an HTTPS proxy (`Web` handlers) or a raw TCP forward, with or
-// without TLS termination (`TCP[port].TCPForward`). The TCP forms carry no
-// client address, so wherdr cannot tell their connections from local ones.
-// null: the configuration could not be read.
-export function funnelExposes(port, serveJson) {
+// The port a Serve or Funnel target leads to, or null when it cannot be told
+// ("127.0.0.1:7683", "0.0.0.0:7683", "[::1]:7683", "http://localhost:7683/x",
+// "https+insecure://host", "7683"…). The host is deliberately not compared:
+// 0.0.0.0, another spelling of loopback, a LAN address of this machine or a
+// name may all reach wherdr, so only the port can rule a target out.
+export function targetPort(target) {
+  const t = String(target ?? '').trim()
+  if (/^\d{1,5}$/.test(t)) return Number(t)
+  const m = /^(?:([a-z][a-z0-9+.-]*):\/\/)?(\[[^\]]*\]|[^/:\s]*)(?::(\d{1,5}))?(?:[/?#].*)?$/i.exec(t)
+  if (!m || !m[2]) return null
+  if (m[3]) return Number(m[3])
+  const scheme = (m[1] || '').toLowerCase().replace(/\+insecure$/, '')
+  return scheme === 'http' ? 80 : scheme === 'https' ? 443 : null
+}
+
+// Whether `tailscale funnel` may open wherdr's port to the Internet, in any
+// form: an HTTPS proxy (`Web` handlers) or a raw TCP forward, with or without
+// TLS termination (`TCP[port].TCPForward`); the TCP forms carry no client
+// address. Fail closed: a Funnel route counts unless its target is parsed and
+// leads to another port (`anyRoute`: every Funnel route counts, for Docker,
+// where the host's port may differ from the container's). null: the
+// configuration could not be read.
+export function funnelExposes(port, serveJson, anyRoute = false) {
   let config = null
   try { config = JSON.parse(serveJson) } catch {}
   if (!config || typeof config !== 'object' || Array.isArray(config)) return null
-  const local = '(127\\.0\\.0\\.1|localhost|\\[::1\\]|::1)'
-  const target = new RegExp(`^((https?(\\+insecure)?|tcp)://)?(${local}:)?${port}/?$`, 'i')
+  const reaches = target => anyRoute || targetPort(target) === null || targetPort(target) === Number(port)
   for (const part of [config, ...Object.values(config.Foreground || {})]) {
     for (const [hostPort, on] of Object.entries(part?.AllowFunnel || {})) {
       if (!on) continue
       const tcpPort = hostPort.slice(hostPort.lastIndexOf(':') + 1)
-      if (target.test(String(part?.TCP?.[tcpPort]?.TCPForward || ''))) return true
-      if (Object.values(part?.Web?.[hostPort]?.Handlers || {}).some(h => target.test(String(h?.Proxy || '')))) return true
+      const tcp = part?.TCP?.[tcpPort]
+      if (tcp?.TCPForward !== undefined && reaches(tcp.TCPForward)) return true
+      const handlers = Object.values(part?.Web?.[hostPort]?.Handlers || {})
+      if (handlers.some(h => h && typeof h === 'object' && h.Proxy !== undefined && reaches(h.Proxy))) return true
+      // Funnel on a port with neither a TCP forward nor web handlers we can read.
+      if (tcp?.TCPForward === undefined && !part?.Web?.[hostPort] && !tcp?.HTTPS && !tcp?.HTTP) return true
     }
   }
   return false
@@ -116,14 +136,14 @@ export function funnelExposes(port, serveJson) {
 // selfIps, peerIps, funnel }. funnel: true / false only from a valid reading
 // (Funnel routes to wherdr's port, or none; or Tailscale idle), null when
 // anything could not be read. CLI, or Tailscale's socket (Docker).
-export async function tailnetFacts(port, bin = tailscaleBin(), socket = bin ? null : tailscaledSocket()) {
+export async function tailnetFacts(port, bin = tailscaleBin(), socket = bin ? null : tailscaledSocket(), anyRoute = false) {
   if (!bin && !socket) return { installed: false, readable: true, running: false, selfIps: [], peerIps: [], funnel: false }
   const run = args => exec(bin, args, { encoding: 'utf8', timeout: 8000 }).then(r => r.stdout, () => '')
   const { state, ...peers } = tailnetPeers(bin ? await run(['status', '--json']) : await localApi(socket, 'status'))
   if (!peers.readable) return { installed: true, ...peers, funnel: null }
   if (IDLE_STATES.has(state)) return { installed: true, ...peers, funnel: false }
   const serve = bin ? await run(['serve', 'status', '--json']) : await localApi(socket, 'serve-config')
-  return { installed: true, ...peers, funnel: funnelExposes(port, serve) }
+  return { installed: true, ...peers, funnel: funnelExposes(port, serve, anyRoute) }
 }
 
 // The HTTPS entries of a serve configuration that proxy to wherdr's local

@@ -74,6 +74,19 @@ describe('Funnel protection through the real reader', () => {
     expect(await readAndDecide()).toEqual(CLOSED)
   })
 
+  it('sees Funnel TCP/TLS aimed at 0.0.0.0 (which reaches a server on 127.0.0.1)', async () => {
+    set(RUNNING, JSON.stringify({ TCP: { 443: { TCPForward: '0.0.0.0:7683', TerminateTLS: host } }, AllowFunnel: { [`${host}:443`]: true } }))
+    expect(await readAndDecide()).toEqual(CLOSED)
+    set(RUNNING, JSON.stringify({ TCP: { 443: { TCPForward: 'unix:/run/x.sock' } }, AllowFunnel: { [`${host}:443`]: true } }))
+    expect(await readAndDecide()).toEqual(CLOSED)
+    // Funnel to another service's port: wherdr is not reached (natively).
+    const other = JSON.stringify({ TCP: { 443: { TCPForward: '127.0.0.1:3000' } }, AllowFunnel: { [`${host}:443`]: true } })
+    set(RUNNING, other)
+    expect(await readAndDecide()).toEqual(OPEN)
+    // In Docker the host's port may differ: every Funnel route counts.
+    expect(await tailnetFacts(7683, bin, null, true)).toMatchObject({ funnel: true })
+  })
+
   it('starts closed when Serve cannot be read at the first reading', async () => {
     set(RUNNING, null)
     expect(await readAndDecide()).toEqual(CLOSED)

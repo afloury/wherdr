@@ -7,9 +7,10 @@
 // An authenticated request upgrades a cookie from an earlier version (auth.renew).
 import type { H3Event } from 'h3'
 import { crossSiteRequest, hostAllowed, hostRefusalIsHtml, hostRefusedPage, networkRefusedPage } from '../utils/hosts'
-import { checkRequestClient, gateDecision, networkReady } from '../utils/network'
+import { checkRequestClient, ensureFresh, gateDecision, networkReady } from '../utils/network'
 import { adoptServed } from '../utils/phone'
 const HOST_RECHECK_MS = 3000
+const HTTP_FRESH_MS = 2000
 
 function htmlRefusal(event: H3Event, page: string) {
   setResponseStatus(event, 403)
@@ -20,6 +21,8 @@ function htmlRefusal(event: H3Event, page: string) {
 
 export default defineEventHandler(async (event) => {
   await networkReady()
+  // Tailscale read at most 2 s ago (Funnel may have been turned on since).
+  await ensureFresh(HTTP_FRESH_MS)
   const path = event.path.split('?')[0]!
   const headers = event.node.req.headers
   const check = checkRequestClient(event.node.req.socket?.remoteAddress, headers)

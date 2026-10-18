@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { funnelExposes, tailnetPeers } from '../bin/lib/tailnet.mjs'
+import { funnelExposes, tailnetPeers, targetPort } from '../bin/lib/tailnet.mjs'
 import {
   checkClient, forwardedClients, fullAccess, gateDecision, isLoopbackIp, isTailnetIp, listenVerdict, netContext,
-  parseTrustedNetworks, plainIp, refreshTailscale, resetNetworkStateForTests, tailnetKnown, type NetContext, type TailscaleState,
+  ensureFresh, parseTrustedNetworks, plainIp, refreshTailscale, resetNetworkStateForTests, tailnetKnown, type NetContext, type TailscaleState,
 } from '../server/utils/network'
 
 const TS: TailscaleState = { running: true, selfIps: ['100.90.1.2', 'fd7a:115c:a1e0::2'], peerIps: ['100.101.102.103', 'fd7a:115c:a1e0::5'], funnel: false }
@@ -93,6 +93,22 @@ describe('tailnet state over time', () => {
     expect(checkClient('127.0.0.1', {}, netContext(t0 + 31_000))).toEqual({ ok: true, zone: 'local' })
     expect(checkClient('127.0.0.1', {}, netContext(t0 + 70_000))).toEqual({ ok: true, zone: 'unverified', why: 'funnel' })
   })
+  it('reads Tailscale again for a WebSocket upgrade, and for HTTP past 2 s', async () => {
+    let funnel = false
+    let reads = 0
+    const reader = async () => { reads++; return { ...up, funnel } }
+    const t0 = Date.now()
+    await refreshTailscale(reader, t0, false)
+    // Funnel turned on right after that reading.
+    funnel = true
+    // HTTP within 2 s: the reading is recent enough, no new one.
+    await ensureFresh(2000, reader, t0 + 1000)
+    expect(reads).toBe(1)
+    // A WebSocket upgrade: a reading started after it arrived, which sees Funnel.
+    await ensureFresh(0, reader, Date.now() + 1)
+    expect(reads).toBe(2)
+    expect(checkClient('127.0.0.1', {}, netContext()).ok && checkClient('127.0.0.1', {}, netContext())).toMatchObject({ zone: 'unverified', why: 'funnel' })
+  })
   it('treats a missing Tailscale socket in Docker as unknown, and no Tailscale natively as none', async () => {
     const none = { installed: false, readable: true, running: false, selfIps: [], peerIps: [], funnel: false }
     await refreshTailscale(async () => none, 3_000_000, true)
@@ -110,6 +126,28 @@ describe('Funnel configuration', () => {
     const tls = { TCP: { 8443: { TCPForward: 'localhost:7683', TerminateTLS: host } }, AllowFunnel: { [`${host}:8443`]: true } }
     const fg = { Foreground: { x: tcp } }
     for (const c of [web, tcp, tls, fg]) expect(funnelExposes(7683, JSON.stringify(c))).toBe(true)
+  })
+  it('counts any target that may reach wherdr’s port, whatever the host is spelled, and any target it cannot parse', () => {
+    const tcpTo = (target: string) => JSON.stringify({ TCP: { 443: { TCPForward: target, TerminateTLS: host } }, AllowFunnel: { [`${host}:443`]: true } })
+    for (const t of ['0.0.0.0:7683', '127.1:7683', '[::ffff:127.0.0.1]:7683', '192.168.1.2:7683', 'box:7683', 'tcp://127.0.0.1:7683', '7683', 'unix:/run/wherdr.sock', 'localhost', '']) {
+      expect(funnelExposes(7683, tcpTo(t))).toBe(true)
+    }
+    const webTo = (proxy: string) => JSON.stringify({ Web: { [`${host}:443`]: { Handlers: { '/': { Proxy: proxy } } } }, AllowFunnel: { [`${host}:443`]: true } })
+    for (const p of ['http://0.0.0.0:7683', 'https+insecure://[::1]:7683/x', 'http://wherdr.local:7683']) expect(funnelExposes(7683, webTo(p))).toBe(true)
+    // Funnel on with nothing readable behind it.
+    expect(funnelExposes(7683, JSON.stringify({ AllowFunnel: { [`${host}:443`]: true } }))).toBe(true)
+    // Docker: every Funnel route counts (the host port may differ).
+    expect(funnelExposes(7683, tcpTo('127.0.0.1:3000'), true)).toBe(true)
+  })
+  it('reads the port of every target form', () => {
+    expect(targetPort('0.0.0.0:7683')).toBe(7683)
+    expect(targetPort('[::1]:7683')).toBe(7683)
+    expect(targetPort('http://localhost:7683/path')).toBe(7683)
+    expect(targetPort('https+insecure://host')).toBe(443)
+    expect(targetPort('http://host')).toBe(80)
+    expect(targetPort('7683')).toBe(7683)
+    expect(targetPort('unix:/tmp/s')).toBe(null)
+    expect(targetPort('localhost')).toBe(null)
   })
   it('does not count Serve without Funnel, nor Funnel on another port', () => {
     const serve = { Web: { [`${host}:7683`]: { Handlers: { '/': { Proxy: 'http://127.0.0.1:7683' } } } }, TCP: { 7683: { HTTPS: true } } }

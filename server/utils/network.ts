@@ -285,8 +285,16 @@ const gatewayDeclared = /^(1|true|yes|on)$/i.test((process.env.WHERDR_DOCKER_LOO
 let gatewayWide: boolean | null = null
 
 export type TailscaleReader = () => Promise<{ installed?: boolean, readable?: boolean, running: boolean, selfIps: string[], peerIps: string[], funnel: boolean | null }>
-const defaultReader: TailscaleReader = () => tailnetFacts(PORT)
+// In Docker every Funnel route counts: the host's port may differ from the container's.
+const defaultReader: TailscaleReader = () => tailnetFacts(PORT, undefined, undefined, inDocker)
 
+// Called after every reading (server/utils/ws.ts closes the WebSockets the
+// new state no longer allows).
+const listeners = new Set<() => void>()
+export function onNetworkReading(fn: () => void) { listeners.add(fn); return () => listeners.delete(fn) }
+const notify = () => { for (const fn of listeners) { try { fn() } catch { /* a listener's own problem */ } } }
+
+// `now`: when the reading starts; it is dated from then.
 export async function refreshTailscale(read: TailscaleReader = defaultReader, now = Date.now(), docker = inDocker) {
   try {
     const f = await read()
@@ -297,18 +305,34 @@ export async function refreshTailscale(read: TailscaleReader = defaultReader, no
   } catch {
     ts = { running: false, selfIps: [], peerIps: [], funnel: null, at: now }
   }
+  notify()
+}
+
+// A reading started at most `maxAgeMs` ago, read now if needed (concurrent
+// callers share one reading started late enough). HTTP requests accept 2 s;
+// a WebSocket upgrade asks for a reading started after it arrived.
+let inflight: { at: number, done: Promise<void> } | null = null
+export async function ensureFresh(maxAgeMs: number, read: TailscaleReader = defaultReader, now = Date.now()) {
+  if (forced) return
+  if (ts && ts.at >= now - maxAgeMs) return
+  if (inflight && inflight.at >= now - maxAgeMs) return inflight.done
+  const at = Date.now()
+  const done = refreshTailscale(read, at).finally(() => { if (inflight?.done === done) inflight = null })
+  inflight = { at, done }
+  return done
 }
 
 export async function refreshGateway(port = PORT) {
   if (!gateway) return
   gatewayWide = await portAnswers(gateway, port)
+  notify()
 }
 
 let forced: NetContext | null = null
 // Tests: a fixed context (null = the live one).
 export function setNetContextForTests(ctx: NetContext | null) { forced = ctx }
 // Tests: forget what was read.
-export function resetNetworkStateForTests() { ts = null; gatewayWide = null }
+export function resetNetworkStateForTests() { ts = null; gatewayWide = null; inflight = null }
 
 export function netContext(now = Date.now()): NetContext {
   if (forced) return forced
