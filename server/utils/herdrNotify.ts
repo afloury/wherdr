@@ -13,7 +13,7 @@ import { type HerdrNotification, FrameSplitter, decodeServerFrame, helloFrame } 
 import { NoticeDeduper, forwardableNotice, noticeKey } from './notificationPolicy'
 import { type Machine, allMachines, multiMachine, onMachinesChange } from './machines'
 import { pushSend, subWatchesSession } from './push'
-import { boardMachine } from './projectsTasks'
+import { boardMachine, repoKeyOf } from './projectsTasks'
 import { taskKey, taskNotice } from '../../shared/projectsTasks'
 
 const BACKOFF_MS = [2000, 5000, 10000, 30000, 60000]
@@ -120,7 +120,7 @@ async function onNotice(m: Machine, n: HerdrNotification) {
   // notification per task, and a tap opens it on the Board.
   const task = taskNotice(n.title)
   const board = task ? boardMachine(m).key : ''
-  const title = task ? `${on}${taskKey(task.id)} · ${task.event}` : `${on}${n.title}`
+  const title = task ? `${on}${taskKey(task.id, repoKeyOf(board, task.id.split('/')[0]!))} · ${task.event}` : `${on}${n.title}`
   // One notification per title (per task for the Board's).
   const tag = `herdr-${crypto.createHash('sha1').update(task ? `task\n${board}\n${task.id}` : `${m.key}\n${n.title}`).digest('hex').slice(0, 12)}`
   const url = task ? `/#/board?machine=${encodeURIComponent(board)}&task=${encodeURIComponent(task.id)}` : '/#/'

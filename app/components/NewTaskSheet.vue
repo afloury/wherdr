@@ -10,9 +10,12 @@ const props = defineProps<{ machines: string[], repos: Record<string, string[]>,
 const emit = defineEmits<{ added: [machine: string] }>()
 const open = defineModel<boolean>('open', { default: false })
 
+// Choices that are not a repo's name. A select's item cannot have an empty
+// value (Reka refuses it), so the home folder has one of its own.
+const HOME = '\u0000home'
 const OTHER = '\u0000other'
 const machine = ref('')
-const repoPick = ref('') // '' home folder, a repo's name, or OTHER
+const repoPick = ref(HOME) // HOME, a repo's name, or OTHER
 const other = ref('')
 const title = ref('')
 const description = ref('')
@@ -21,17 +24,17 @@ const busy = ref(false)
 const error = ref('')
 
 const repoItems = computed(() => [
-  { label: tl('Home folder', 'Dossier personnel'), value: '' },
+  { label: tl('Home folder', 'Dossier personnel'), value: HOME },
   ...(props.repos[machine.value] || []).map(r => ({ label: r, value: r })),
   { label: tl('Other repo or folder…', 'Autre dépôt ou dossier…'), value: OTHER },
 ])
-const repo = computed(() => (repoPick.value === OTHER ? other.value.trim() : repoPick.value))
+const repo = computed(() => (repoPick.value === OTHER ? other.value.trim() : repoPick.value === HOME ? '' : repoPick.value))
 const repoOk = computed(() => cleanRepo(repo.value) !== null && (repoPick.value !== OTHER || Boolean(repo.value)))
 
 watch(open, (o) => {
   if (!o) return
   machine.value = props.machine && props.machines.includes(props.machine) ? props.machine : props.machines[0] ?? ''
-  repoPick.value = props.repo ?? ''
+  repoPick.value = props.repo || HOME
   other.value = ''
   title.value = ''
   description.value = ''
@@ -39,7 +42,7 @@ watch(open, (o) => {
   error.value = ''
 }, { immediate: true })
 // Another machine: its own repos.
-watch(machine, () => { if (repoPick.value !== OTHER && repoPick.value && !(props.repos[machine.value] || []).includes(repoPick.value)) repoPick.value = '' })
+watch(machine, () => { if (repoPick.value !== OTHER && repoPick.value !== HOME && !(props.repos[machine.value] || []).includes(repoPick.value)) repoPick.value = HOME })
 
 async function add() {
   if (busy.value || !title.value.trim()) return
@@ -70,7 +73,8 @@ async function add() {
       </template>
 
       <label class="field-label" for="new-task-repo">{{ tl('Repo', 'Dépôt') }}</label>
-      <USelect id="new-task-repo" v-model="repoPick" :items="repoItems" size="xl" class="w-full" />
+      <!-- Its list opens above the sheet (windows sit at z-index 20–23), so it can be picked from. -->
+      <USelect id="new-task-repo" v-model="repoPick" :items="repoItems" size="xl" class="w-full" :ui="{ content: 'z-[30]' }" />
       <UInput
         v-if="repoPick === OTHER" v-model="other" size="xl" class="w-full mono" autocapitalize="none" autocorrect="off" :spellcheck="false"
         :placeholder="tl('Repo name, or /path/to/folder', 'Nom du dépôt, ou /chemin/du/dossier')" maxlength="500" :aria-label="tl('Repo or folder', 'Dépôt ou dossier')"

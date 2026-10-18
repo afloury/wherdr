@@ -17,7 +17,7 @@ const staleTitle = computed(() => (props.stale
 <template>
   <button type="button" class="board-card task-card" :class="[task.group, { stale }]" :title="staleTitle" :data-task="task.id" @click="$emit('open')">
     <span class="board-card-head">
-      <span class="task-key">{{ taskKey(task.id) }}</span>
+      <span class="task-key">{{ taskKey(task.id, task.repoKey) }}</span>
       <span v-if="status" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
       <span v-if="machine" class="board-card-label">{{ machine }}</span>
     </span>

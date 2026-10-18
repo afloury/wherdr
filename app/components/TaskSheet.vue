@@ -26,7 +26,7 @@ const hostActions = computed(() => (props.task && props.readOnly ? taskActions(p
 const hostCommands = computed(() => (['delegate', 'stop', 'retry', 'archive'] as const).filter(a => hostActions.value[a]))
 const pr = computed(() => details.value?.pr || props.task?.pr || '')
 const review = computed(() => details.value?.review || props.task?.review || null)
-const label = computed(() => (props.task ? taskKey(props.task.id) : ''))
+const label = computed(() => (props.task ? taskKey(props.task.id, props.task.repoKey) : ''))
 
 let seq = 0
 async function load() {

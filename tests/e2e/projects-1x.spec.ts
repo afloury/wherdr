@@ -10,6 +10,8 @@ import { CLAUDE_PANE, SOCK_FILE, fakeHerdr } from './scenario.mjs'
 // release (tests/recordings/herdr-projects-1.2.1) and writes down each call.
 // demo/6 failed in its agent's own work: 1.2.1 `retry` sends it back (failure_of's shape).
 const failedDetails = { task: { id: 'demo/6', title: 'Broke on the tests', stage: 'failed', msg: 'Tests failed' }, failure: { stage: 'agent', title: 'Tests failed', detail: 'npm test exited 1', auth: false, agentCanFix: true } }
+// `show --repo <name> --json`: a repo's key (1.2.1 settings show). web's is not its name.
+const keyReply = (key: string) => JSON.stringify({ settings: [{ name: 'repo.key', kind: 'repo', value: key, from: 'your entry', place: 'you', own: false, note: '' }], problems: [] })
 const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../recordings/herdr-projects-1.2.1')
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-hp1x-'))
 const calls = path.join(root, 'calls.log')
@@ -24,6 +26,7 @@ case "$1" in
   coordinator) echo "sent to the Coordinator" ;;
   add) echo "demo/7: added" ;;
   delegate|stop|retry|archive) echo "$3: done" ;;
+  show) case "$2" in --repo=demo) echo '${keyReply('DEMO')}' ;; --repo=web) echo '${keyReply('SITE')}' ;; *) echo '${keyReply('none')}' ;; esac ;;
   *) echo "unexpected: $*" >&2; exit 1 ;;
 esac
 `, { mode: 0o755 })
@@ -202,6 +205,9 @@ test('grouped by machine then repo: each heading talks to its coordinator, Send 
   await expect(demo).toContainText('In the backlog', { timeout: 15000 })
   await expect(demo.locator('.board-head')).toContainText('1 needs you · 1 working · 1 to do')
   await expect(web).toContainText('Old cleanup')
+  // Each task by its repo's key (show --repo), not its repo's name: web's is SITE.
+  await expect(web.locator('.task-card')).toContainText('SITE-2')
+  await expect(demo.locator('.task-card', { hasText: 'In the backlog' })).toContainText('DEMO-5')
   await expect(page.locator('.board-head.machine')).toBeVisible()
   // Under each repo, the board's five groups: each card in its own.
   const col = (repo: typeof demo, g: string) => repo.locator(`.board-repo-col[data-group="${g}"]`)
@@ -274,8 +280,17 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   await sheet.getByRole('button', { name: 'Add and start' }).click()
   await expect.poll(callLog).toContain('add --desc=--steps here --repo=demo --delegate -- Fix the footer')
   await expect(sheet).toHaveCount(0)
-  // From the header: the home folder by default, no agent.
+  // From the header: the home folder by default, no agent; a repo picked, then the home folder again.
+  const selectErrors: string[] = []
+  page.on('console', (m) => { if (m.type() === 'error' && /Select/i.test(m.text())) selectErrors.push(m.text()) })
   await page.locator('.board-new').click()
+  await page.locator('#new-task-repo').click()
+  await page.getByRole('option', { name: 'web' }).click()
+  await expect(page.locator('#new-task-repo')).toContainText('web')
+  await page.locator('#new-task-repo').click()
+  await page.getByRole('option', { name: 'Home folder' }).click()
+  await expect(page.locator('#new-task-repo')).toContainText('Home folder')
+  expect(selectErrors).toEqual([])
   await page.getByRole('dialog').getByLabel('Title').fill('Home chores')
   await page.getByRole('dialog').getByRole('button', { name: 'Add to To do' }).click()
   await expect.poll(callLog).toContain('add -- Home chores')

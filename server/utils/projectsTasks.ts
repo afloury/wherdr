@@ -25,7 +25,7 @@ import { joinId } from '../../shared/ids'
 import {
   type MachineTasks, type TaskDetails, type TaskRow, type TasksBoard,
   type TaskCommand, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, coordinatorArgs, detailsFromTaskFile, isTaskCommand,
-  isTaskId, parseTaskDetails, parseTaskList, rowFromTaskFile, taskActions,
+  isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, repoKeysFromFile, rowFromTaskFile, taskActions,
 } from '../../shared/projectsTasks'
 import { HERDR_BIN, HERDR_CHILD_ENV, IN_DOCKER, log } from './env'
 import { HerdrError } from './herdr'
@@ -212,15 +212,66 @@ function readList(m: Machine): Promise<Cached> {
       const last = lists.get(m.key)
       return { tasks: last?.tasks || [], at: Date.now(), readAt: last?.readAt ?? 0, error: e.message }
     })
-    .then((c) => { lists.set(m.key, c); return c })
+    .then(async (c: Cached) => {
+      lists.set(m.key, c)
+      if (c.error && !c.partial) return c
+      // A repo never seen: its key is waited for a moment, so the first look names its tasks right.
+      const keys = readKeys(m, c.tasks.map(t => t.repo))
+      if (c.tasks.some(t => !repoKeys.get(m.key)?.has(t.repo))) await Promise.race([keys, new Promise(r => setTimeout(r, KEYS_WAIT_MS).unref?.())])
+      return c
+    })
     .finally(() => reading.delete(m.key))
   reading.set(m.key, read)
   return read
 }
 
+// ---------------------------------------------------------------- repo keys
+// A task's name on the board is its repo's short key and its number (`APP-6`).
+// `list --json` gives ids only, so each repo's key is asked once
+// (`show --repo=<name> --json`), after a list, behind the Board's own commands,
+// and asked again after a while (a key can be changed). In a container: read
+// from the board's record of keys (data/repo-keys.json).
+const KEYS_TTL_MS = 10 * 60_000
+const KEYS_RETRY_MS = 60_000
+const KEYS_WAIT_MS = 3_000
+const repoKeys = new Map<string, Map<string, { key: string, at: number }>>()
+const keysReading = new Set<string>()
+
+export function repoKeyOf(machine: string, repo: string): string {
+  return repoKeys.get(machine)?.get(repo)?.key || ''
+}
+const withKeys = (machine: string, tasks: TaskRow[]): TaskRow[] => {
+  const known = repoKeys.get(machine)
+  return known ? tasks.map((t) => { const key = known.get(t.repo)?.key; return key ? { ...t, repoKey: key } : t }) : tasks
+}
+
+async function readKeys(m: Machine, repos: string[]): Promise<void> {
+  if (keysReading.has(m.key)) return
+  const known = repoKeys.get(m.key) ?? new Map<string, { key: string, at: number }>()
+  const now = Date.now()
+  const due = [...new Set(repos)].filter(r => (known.get(r)?.at ?? 0) <= now - KEYS_TTL_MS)
+  if (!due.length) return
+  keysReading.add(m.key)
+  try {
+    if (readsFiles(m)) {
+      let keys: Record<string, string> = {}
+      try { keys = repoKeysFromFile(await m.fs.readFile(path.posix.join(m.home, '.herdr-projects/data/repo-keys.json'))) }
+      catch { /* no record yet: no keys */ }
+      for (const r of due) known.set(r, { key: keys[r] || '', at: Date.now() })
+    } else {
+      for (const r of due) {
+        // A failed read is asked again sooner.
+        try { known.set(r, { key: parseRepoKey(await command(m, ['show', `--repo=${r}`, '--json'], LIST_TIMEOUT_MS)), at: Date.now() }) }
+        catch { known.set(r, { key: known.get(r)?.key || '', at: Date.now() - KEYS_TTL_MS + KEYS_RETRY_MS }) }
+      }
+    }
+    repoKeys.set(m.key, known)
+  } finally { keysReading.delete(m.key) }
+}
+
 // What a cached read says: its tasks, when they were read, and why they may be old.
-function shown(c: Cached): Pick<MachineTasks, 'tasks' | 'at' | 'error' | 'stale'> {
-  return { tasks: c.tasks, ...(c.readAt ? { at: c.readAt } : {}), ...(c.error ? { error: c.error, stale: !c.partial && c.tasks.length > 0 } : {}) }
+function shown(machine: string, c: Cached): Pick<MachineTasks, 'tasks' | 'at' | 'error' | 'stale'> {
+  return { tasks: withKeys(machine, c.tasks), ...(c.readAt ? { at: c.readAt } : {}), ...(c.error ? { error: c.error, stale: !c.partial && c.tasks.length > 0 } : {}) }
 }
 
 // `fresh`: the Board just opened (or asked to): check the plugin again rather
@@ -229,21 +280,21 @@ async function machineTasks(m: Machine, fresh = false): Promise<MachineTasks | n
   const last = lists.get(m.key)
   if (!m.local && m.status !== 'online') {
     const error = fmt('{machine} is unreachable', { machine: m.label })
-    return last ? { machine: m.key, status: 'ready', version: '', ...shown(last), error, stale: true } : null
+    return last ? { machine: m.key, status: 'ready', version: '', ...shown(m.key, last), error, stale: true } : null
   }
   let info
   try { info = await projectsPluginInfo(m, fresh) }
   catch (e) {
     // Herdr did not answer: say so, with the last tasks read there.
-    return { machine: m.key, status: 'error', version: '', tasks: [], ...(last ? shown(last) : {}), error: (e as Error).message, ...(last?.tasks.length ? { stale: true } : {}) }
+    return { machine: m.key, status: 'error', version: '', tasks: [], ...(last ? shown(m.key, last) : {}), error: (e as Error).message, ...(last?.tasks.length ? { stale: true } : {}) }
   }
   const base = { machine: m.key, status: info.status, version: info.version || '', ...(readsFiles(m) ? { readOnly: true } : {}) }
   if (info.status !== 'ready') return { ...base, tasks: [] }
-  if (last && Date.now() - last.at < REUSE_MS) return { ...base, ...shown(last) }
+  if (last && Date.now() - last.at < REUSE_MS) return { ...base, ...shown(m.key, last) }
   const deadline = new Promise<null>(resolve => setTimeout(() => resolve(null), READ_DEADLINE_MS).unref?.())
   const c = await Promise.race([readList(m), deadline])
-  if (!c) return { ...base, tasks: last?.tasks || [], ...(last?.readAt ? { at: last.readAt } : {}), stale: true }
-  return { ...base, ...shown(c) }
+  if (!c) return { ...base, tasks: withKeys(m.key, last?.tasks || []), ...(last?.readAt ? { at: last.readAt } : {}), stale: true }
+  return { ...base, ...shown(m.key, c) }
 }
 
 // Every machine's tasks. `since`: the version the client has; `{ same: true }` when nothing changed.
@@ -303,7 +354,11 @@ function taskPane(m: Machine, file: Record<string, unknown> | null, worktree: st
 
 function forget(m: Machine) { lists.delete(m.key) }
 // Tests start from an empty cache.
-export function resetTasksCache() { lists.clear(); reading.clear(); queues.clear() }
+// `keepKeys`: the repos' keys stay (a later list without asking them again).
+export function resetTasksCache(keepKeys = false) {
+  lists.clear(); reading.clear(); queues.clear()
+  if (!keepKeys) { repoKeys.clear(); keysReading.clear() }
+}
 
 export async function tellTask(machine: unknown, id: unknown, text: unknown): Promise<{ ok: true, msg: string }> {
   const m = boardOf(machine)

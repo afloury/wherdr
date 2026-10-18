@@ -34,6 +34,9 @@ export interface TaskRow {
   archived: boolean
   queue: number | null
   group: TaskGroup
+  // Its repo's short key (`repo.key`, 1.x store/keys.rs), once read: `APP`
+  // names this task `APP-6`. Not in `list --json`: wherdr asks `show --repo`.
+  repoKey?: string
   // A partial read kept this row from an earlier one (when it was read, in ms).
   stale?: boolean
   readAt?: number
@@ -98,8 +101,40 @@ export function isTaskId(v: unknown): v is string {
   return typeof v === 'string' && ID_RE.test(v)
 }
 
-// A task as the Board names it: `DEMO-12` for `demo/12`.
-export const taskKey = (id: string) => { const [repo, n] = id.split('/'); return `${(repo || '').toUpperCase()}-${n}` }
+// A task as herdr-projects names it (store/keys.rs tag_of): its repo's key and
+// its number, `APP-6` for `demo-app/6`; `#6` while the key is not known.
+export const taskKey = (id: string, repoKey?: string | null) => { const n = id.split('/')[1] || ''; return repoKey ? `${repoKey}-${n}` : `#${n}` }
+
+// A repo's key: 2 to 5 letters or digits, the first a letter, in capitals.
+const REPO_KEY_RE = /^[A-Z][A-Z0-9]{1,4}$/
+// `show --repo <name> --json`: the `repo.key` row. A key another repo has or
+// had is not used: its note names the stand-in the tasks go by, if any.
+export function parseRepoKey(text: string): string {
+  let v: unknown
+  try { v = JSON.parse(text) } catch { return '' }
+  const rows = obj(v)?.settings
+  const row = Array.isArray(rows) ? rows.map(obj).find(r => r?.name === 'repo.key') : null
+  if (!row) return ''
+  const note = str(row.note, 300)
+  const standIn = /its tasks go by ([A-Z][A-Z0-9]{1,4})\b/.exec(note)
+  if (standIn) return standIn[1]!
+  if (note.startsWith('not used')) return ''
+  const key = str(row.value, 10)
+  return REPO_KEY_RE.test(key) ? key : ''
+}
+
+// From `data/repo-keys.json` (store/keys_given.rs), where a container reads the
+// board's files: every key a repo went by (`had`, key -> repo, in the order they
+// were recorded: the last is the latest) and the stand-ins (`standIn`, repo -> key).
+export function repoKeysFromFile(text: string): Record<string, string> {
+  let v: unknown
+  try { v = JSON.parse(text) } catch { return {} }
+  const o = obj(v)
+  const out: Record<string, string> = {}
+  for (const [key, repo] of Object.entries(obj(o?.had) || {})) if (typeof repo === 'string' && REPO_KEY_RE.test(key)) out[repo] = key
+  for (const [repo, key] of Object.entries(obj(o?.standIn) || {})) if (typeof key === 'string' && REPO_KEY_RE.test(key)) out[repo] = key
+  return out
+}
 
 // Only an https link is kept: the card opens it in a new tab.
 export function cleanUrl(v: unknown): string {

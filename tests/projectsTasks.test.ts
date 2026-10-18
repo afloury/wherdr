@@ -6,7 +6,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   NOTIFY_SETUP, NO_ACTIONS, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, detailsFromTaskFile, groupByRepo, groupCounts, groupOf,
-  rowFromTaskFile, stateFromTaskFile, isTaskId, parseReview, parseTaskDetails, parseTaskList, prNumber, sortTasks, taskActions, taskKey, taskNotice,
+  rowFromTaskFile, stateFromTaskFile, isTaskId, parseReview, parseRepoKey, parseTaskDetails, parseTaskList, prNumber, repoKeysFromFile, sortTasks, taskActions, taskKey, taskNotice,
 } from '../shared/projectsTasks'
 
 const fixture = (name: string) => readFileSync(path.join(import.meta.dirname, 'recordings/herdr-projects-1.2.1', name), 'utf8')
@@ -261,7 +261,23 @@ describe('commands, by repo, and push', () => {
     expect(taskNotice('Build finished')).toBeNull()
     expect(taskNotice('../x/1 · failed')).toBeNull()
     expect(taskNotice('demo/1 · merged')).toBeNull()
-    expect(taskKey('demo/12')).toBe('DEMO-12')
+  })
+
+  // 1.2.1 store/keys.rs: `APP-6` with its repo's key, `#6` without one.
+  it('names a task by its repo\'s key, as herdr-projects does', () => {
+    expect(taskKey('demo-app/6', 'APP')).toBe('APP-6')
+    expect(taskKey('demo-app/6')).toBe('#6')
+    const show = (row: object) => JSON.stringify({ settings: [{ name: 'check.command', value: 'x' }, { name: 'repo.key', ...row }], problems: [] })
+    expect(parseRepoKey(show({ value: 'APP', note: '' }))).toBe('APP')
+    // Another repo has or had it: the stand-in its tasks go by.
+    expect(parseRepoKey(show({ value: 'KEEP', note: 'not used: another repo has or had the same key; its tasks go by BETA' }))).toBe('BETA')
+    expect(parseRepoKey(show({ value: 'KEEP', note: 'not used: another repo has or had the same key' }))).toBe('')
+    expect(parseRepoKey(show({ value: 'none', note: '' }))).toBe('')
+    expect(parseRepoKey('not json')).toBe('')
+    // The record of keys: the last one a repo went by, a stand-in first.
+    expect(repoKeysFromFile(JSON.stringify({ had: { DEMO: 'demo-app', APP: 'demo-app', HOME: 'home', KEEP: 'proj' }, standIn: { beta: 'BETA' } })))
+      .toEqual({ 'demo-app': 'APP', 'home': 'HOME', 'proj': 'KEEP', 'beta': 'BETA' })
+    expect(repoKeysFromFile('{')).toEqual({})
   })
 
   it('the migration guide gives the same board.notify command as Settings', () => {

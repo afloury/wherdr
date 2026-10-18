@@ -48,6 +48,9 @@ vi.mock('../server/utils/env', () => ({ HERDR_BIN: 'herdr', HERDR_CHILD_ENV: {},
 const T = await import('../server/utils/projectsTasks')
 
 let calls: string[][]
+// `show --repo` (a repo's key): kept apart, so `calls` stays the Board's own commands.
+let shows: string[][] = []
+let keysOf: Record<string, string> = {}
 let active = 0
 let maxActive = 0
 let delay = 0
@@ -58,6 +61,8 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   later()
   calls = []
+  shows = []
+  keysOf = { demo: 'DEMO' }
   active = maxActive = 0
   delay = 0
   listReply = null
@@ -70,6 +75,11 @@ beforeEach(() => {
   rmSync(path.join(home, '.herdr-projects'), { recursive: true, force: true })
   T.setRunner(async (_m, launcher, args) => {
     expect(launcher).toBe('/plugins/herdr-projects/bin/run.sh')
+    if (args[0] === 'show') {
+      shows.push(args)
+      const repo = args[1]!.replace('--repo=', '')
+      return { code: 0, stdout: JSON.stringify({ settings: [{ name: 'repo.key', value: keysOf[repo] ?? 'none', note: '' }], problems: [] }), stderr: '' }
+    }
     calls.push(args)
     active++
     maxActive = Math.max(maxActive, active)
@@ -343,6 +353,22 @@ describe('the session on an SSH machine', () => {
   it('the default session: none named', () => {
     expect(env('default', { HERDR_SESSION: 'stale' })).toBe('/opt/herdr|unset|unset|--keep a')
     expect(env('')).toBe('/opt/herdr|unset|unset|--keep a')
+  })
+})
+
+describe('task keys', () => {
+  it('names a task by its repo\'s key, asked once per repo with show --repo, and again after a while', async () => {
+    keysOf = { demo: 'APP' }
+    await read()
+    await vi.waitFor(() => expect(shows).toEqual([['show', '--repo=demo', '--json']]))
+    T.resetTasksCache(true)
+    const r = await read()
+    expect(r.machines[0]!.tasks.every(t => (t as { repoKey?: string }).repoKey === 'APP')).toBe(true)
+    // Read again: the key is not asked again.
+    T.resetTasksCache(true)
+    await read()
+    expect(shows).toHaveLength(1)
+    expect(T.repoKeyOf('', 'demo')).toBe('APP')
   })
 })
 
