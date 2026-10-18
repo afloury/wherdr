@@ -1,6 +1,6 @@
 // Keys an xterm terminal leaves to the browser or sends as named keys (issue #45):
 // Ctrl+V outside Apple devices must reach the browser's paste, F12 its tools.
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bindTerminalKeys, isApplePlatform, terminalKeyAction } from '../app/utils/terminalKeys'
 
 type Handler = (e: KeyboardEvent) => boolean
@@ -28,7 +28,33 @@ describe('isApplePlatform', () => {
     for (const p of ['iPhone', 'iPad', 'MacIntel']) expect(isApplePlatform({ platform: p })).toBe(true)
     for (const p of ['Win32', 'Linux x86_64', 'Linux aarch64', 'CrOS x86_64', '']) expect(isApplePlatform({ platform: p })).toBe(false)
     expect(isApplePlatform({ userAgentData: { platform: 'Chrome OS' } })).toBe(false)
-    expect(isApplePlatform(undefined)).toBe(false)
+    for (const p of ['Android', 'Linux']) expect(isApplePlatform({ userAgentData: { platform: p } })).toBe(false)
+    expect(isApplePlatform({ userAgentData: { platform: 'iOS' } })).toBe(true)
+    // iPadOS presents itself as a Mac.
+    expect(isApplePlatform({ platform: 'MacIntel' })).toBe(true)
+    // Unknown platform.
+    expect(isApplePlatform({})).toBe(false)
+  })
+
+  describe('default: the global navigator', () => {
+    // Node 22 has a global navigator whose platform is the host's ("MacIntel" on
+    // macOS): the default is tested with a stubbed one, never the real one.
+    afterEach(() => { vi.unstubAllGlobals() })
+
+    it('reads an Apple navigator', () => {
+      vi.stubGlobal('navigator', { platform: 'MacIntel' })
+      expect(isApplePlatform()).toBe(true)
+    })
+
+    it('reads another navigator', () => {
+      vi.stubGlobal('navigator', { platform: 'Win32', userAgentData: { platform: 'Windows' } })
+      expect(isApplePlatform()).toBe(false)
+    })
+
+    it('is not Apple without a navigator', () => {
+      vi.stubGlobal('navigator', undefined)
+      expect(isApplePlatform()).toBe(false)
+    })
   })
 })
 
