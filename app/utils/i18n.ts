@@ -12,6 +12,11 @@ const FR: Record<string, string> = {
   'Task not found': 'Tâche introuvable',
   'Some tasks could not be read: {list}': 'Certaines tâches n’ont pas pu être lues : {list}',
   'Move up': 'Monter', 'Move down': 'Descendre', 'Reset order': 'Réinitialiser l’ordre',
+  
+  
+  
+  
+  
   'Drag to reorder': 'Glisser pour réordonner',
   'Keep awake': 'Garder éveillé',
   'Extend by one hour': 'Prolonger d’une heure',
@@ -170,7 +175,6 @@ const FR: Record<string, string> = {
   'Settings': 'Réglages',
   'You are notified when an agent needs your input or finishes.': 'Tu es prévenu quand un agent attend ta réponse ou a terminé.',
   'Notify for': 'Notifier pour',
-  
   'On iPhone, add the app to your Home Screen (Share → Add to Home Screen) to receive notifications.': 'Sur iPhone, ajoute d’abord l’app à l’écran d’accueil (Partager → Sur l’écran d’accueil) pour recevoir les notifications.',
   'Enable notifications to know when an agent needs your input.': 'Active les notifications pour être prévenu quand un agent attend ta réponse.',
   'Close this terminal': 'Fermer ce terminal',
@@ -421,11 +425,8 @@ const FR: Record<string, string> = {
   'Space closed': 'Espace fermé', 'Pane moved': 'Pane déplacé',
   'Start in a new pane': 'Lancer dans un nouveau pane', 'Start in a new tab': 'Lancer dans un nouvel onglet', 'New pane': 'Nouveau pane',
   // Project panel (herdr-projects coordinator)
-  
   'List width': 'Largeur de la liste', 'Drag to resize · double-click: default width': 'Glisser pour élargir · double-clic : largeur par défaut', 
-  
   'Pull request': 'Pull request',
-  
   // Server messages (shared/message.ts: {name} = value filled in by the server)
   '{machine} is unreachable: {reason}': '{machine} injoignable : {reason}',
   '{machine} is unreachable': '{machine} injoignable',
@@ -478,11 +479,9 @@ const FR: Record<string, string> = {
   'Install script not found': 'Script d’installation introuvable',
   'Home folder is read-only here: copy the command and paste it into a terminal on {machine}': 'Dossier personnel en lecture seule ici : copie la commande et colle-la dans un terminal de {machine}',
   'Install failed on {machine}: {reason}': 'Installation impossible sur {machine} : {reason}',
-  
   'Invalid action': 'Action invalide',
   'Action not found on this machine': 'Action introuvable sur cette machine',
   'Action not available here': 'Action non disponible ici',
-  
   
   'Invalid bootstrap token (see the server logs)': 'Jeton d’amorçage invalide (voir les journaux du serveur)',
   'Challenge expired, try again': 'Défi expiré, recommence',
@@ -503,11 +502,9 @@ const FR: Record<string, string> = {
   'This agent’s folder is unknown': 'Dossier de cet agent inconnu',
   'Name: lowercase letters, digits, - and _ (32 max), starting with a letter': 'Nom : minuscules, chiffres, - et _ (32 max), commence par une lettre',
   
-  
   'Uncommitted changes in this worktree': 'Modifications non commitées dans ce worktree',
   'This pane’s folder is unknown': 'Dossier de ce pane inconnu',
   'Invalid machine order': 'Ordre des machines invalide',
-  
   'Invalid machine name (40 characters max)': 'Nom de machine invalide (40 caractères maximum)',
   'Invalid quiet setting': 'Réglage de silence invalide',
   'Notifications are not enabled on this device': 'Notifications non activées sur cet appareil',
