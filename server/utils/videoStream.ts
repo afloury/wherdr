@@ -9,6 +9,7 @@
 // request, the process is killed (locally its whole group, remotely the SSH
 // session, whose dd then dies on a closed pipe).
 import { spawn, type ChildProcess } from 'node:child_process'
+import crypto from 'node:crypto'
 import path from 'node:path'
 import { Readable } from 'node:stream'
 import { HerdrError } from './herdr'
@@ -19,12 +20,12 @@ import { OPEN_FILE, VIDEO_HEAD, cleanRelative, isVideo, rootOf, shellError, writ
 export const VIDEO_BLOCK = 64 * 1024
 const OPEN_TIMEOUT_MS = 15000
 
-// "<inode> <size> <mtime>\n" and the first VIDEO_HEAD bytes (one read), then
-// "<skip> <count>" awaited on stdin: `count` blocks from block `skip` after
-// those first bytes.
+// "<now> <inode> <size> <mtime> <version>\n" (the machine's clock first)
+// and the first VIDEO_HEAD bytes (one read), then "<skip> <count>" awaited on
+// stdin: `count` blocks from block `skip` after those first bytes.
 export const STREAM_SCRIPT = `${OPEN_FILE}
 m=$(meta) || exit 4
-echo "$m"
+echo "$(date +%s) $m"
 dd bs=${VIDEO_HEAD} count=1 <&3 2>/dev/null
 read skip count || exit 0
 [ "$count" -gt 0 ] 2>/dev/null || exit 0
@@ -64,6 +65,36 @@ export function parseRange(header: string | undefined, size: number): RangeAnswe
   return { kind: 'none' }
 }
 
+// The answer to a GET or HEAD of a video (`etag`: strong or W/). HEAD ignores
+// Range (RFC 9110 §14.2): the whole representation's headers. If-Range keeps
+// the Range only for the same strong ETag; a date never matches (one-second
+// precision cannot tell two versions apart).
+export function answer(v: { size: number, etag: string }, req: { method: string, range?: string, ifRange?: string }) {
+  let range = req.method === 'HEAD' ? undefined : req.range
+  if (range !== undefined && req.ifRange !== undefined && (req.ifRange.trim() !== v.etag || v.etag.startsWith('W/'))) range = undefined
+  const r = parseRange(range, v.size)
+  if (r.kind === 'none') return { status: 416, start: 0, len: 0, contentRange: `bytes */${v.size}` }
+  if (r.kind === 'full') return { status: 200, start: 0, len: v.size }
+  return { status: 206, start: r.start, len: r.end - r.start + 1, contentRange: `bytes ${r.start}-${r.end}/${v.size}` }
+}
+
+// The ETag of a version: strong only when its times are precise (below the
+// second) and older than 2 s by the machine's clock: a file written within
+// the same clock tick keeps its times, so a recent one may still change unseen.
+export function videoEtag(meta: { now: number, ino: string, size: number, mtime: number, version: string }) {
+  const frac = /\.(\d+)/.exec(meta.version)?.[1] || ''
+  const strong = /[1-9]/.test(frac) && meta.now - meta.mtime >= 2
+  const hash = crypto.createHash('sha1').update(`${meta.ino}|${meta.size}|${meta.version}`).digest('hex').slice(0, 20)
+  return `${strong ? '' : 'W/'}"${hash}"`
+}
+
+// A body that fails (the file shrank under it) must not end like a success:
+// the connection is cut, so the client sees an incomplete transfer.
+export function cutOnError(res: { destroy: () => void }, body: Readable) {
+  body.once('error', () => res.destroy())
+  return body
+}
+
 // What to ask the script for bytes start…start+len-1, the file's first
 // `head` bytes being already read (the descriptor stands at `head`): the
 // part taken from those bytes, then dd's blocks and the bytes to drop from them.
@@ -82,7 +113,7 @@ export interface OpenedVideo {
   size: number
   etag: string
   mtime: number
-  // Bytes start…start+len-1 (fewer if the file shrank), then the process ends.
+  // Bytes start…start+len-1, then the process ends; an error if the file shrank.
   read: (start: number, len: number) => Readable
   // Kills the process (any time; nothing left running afterwards).
   close: () => void
@@ -108,7 +139,10 @@ function kill(child: ChildProcess, local: boolean) {
   } catch { /* already gone */ }
 }
 
-async function openAt(m: Machine, root: string, rel: string): Promise<OpenedVideo> {
+const closedError = () => new HerdrError('closed', 'Request closed')
+
+async function openAt(m: Machine, root: string, rel: string, signal?: AbortSignal): Promise<OpenedVideo> {
+  if (signal?.aborted) throw closedError()
   const child = spawnScript(m, [root, rel])
   const done = new Promise<void>((resolve) => { child.on('close', () => resolve()); child.on('error', () => resolve()) })
   const local = !m.exec
@@ -118,20 +152,30 @@ async function openAt(m: Machine, root: string, rel: string): Promise<OpenedVide
   let stderr = ''
   child.stderr!.on('data', (b: Buffer) => { if (stderr.length < 4000) stderr += b.toString('utf8') })
   // First the identity line and the first bytes; nothing more comes before stdin answers.
-  const opened = await new Promise<{ ino: string, size: number, mtime: number, head: Buffer }>((resolve, reject) => {
+  const opened = await new Promise<{ now: number, ino: string, size: number, mtime: number, version: string, head: Buffer }>((resolve, reject) => {
     const timer = setTimeout(() => { close(); reject(new HerdrError('timeout', 'The folder took too long to read')) }, OPEN_TIMEOUT_MS)
-    const done = (f: () => void) => { clearTimeout(timer); child.stdout!.off('data', onData); child.off('close', onClose); child.off('error', onError); f() }
+    // The request closed while opening (slow SSH, root lookup): nothing goes on.
+    const onAbort = () => done(() => { close(); reject(closedError()) })
+    signal?.addEventListener('abort', onAbort, { once: true })
+    const done = (f: () => void) => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+      child.stdout!.off('data', onData)
+      child.off('close', onClose)
+      child.off('error', onError)
+      f()
+    }
     const onData = (b: Buffer) => {
       buf = Buffer.concat([buf, b])
       const nl = buf.indexOf(10)
       if (nl < 0) return
-      const [ino = '0', size = '0', mtime = '0'] = buf.subarray(0, nl).toString('utf8').trim().split(/\s+/)
+      const [now = '0', ino = '0', size = '0', mtime = '0', ...version] = buf.subarray(0, nl).toString('utf8').trim().split(/\s+/)
       const n = Number(size) || 0
       const headLen = Math.min(VIDEO_HEAD, n)
       if (buf.length - nl - 1 < headLen) return
       child.stdout!.pause()
       const head = buf.subarray(nl + 1, nl + 1 + headLen)
-      done(() => resolve({ ino, size: n, mtime: Number(mtime) || 0, head }))
+      done(() => resolve({ now: Number(now) || 0, ino, size: n, mtime: Number(mtime) || 0, version: version.join(' '), head }))
     }
     const onClose = (code: number | null) => done(() => reject(code === 0 ? new HerdrError('not_found', 'File not found') : shellError(m, code, stderr)))
     const onError = () => done(() => reject(new HerdrError('unreachable', 'Machine unreachable')))
@@ -150,7 +194,7 @@ async function openAt(m: Machine, root: string, rel: string): Promise<OpenedVide
     name,
     size: opened.size,
     mtime: opened.mtime,
-    etag: `"${opened.ino}-${opened.size}-${opened.mtime}"`,
+    etag: videoEtag(opened),
     close,
     done,
     read(start, len) {
@@ -181,6 +225,8 @@ async function openAt(m: Machine, root: string, rel: string): Promise<OpenedVide
             yield c
             if (left <= 0) break
           }
+          // dd met the end of the file before the length announced.
+          if (left > 0) throw new HerdrError('truncated', 'The file shrank while being read')
         } finally {
           close()
         }
@@ -190,13 +236,14 @@ async function openAt(m: Machine, root: string, rel: string): Promise<OpenedVide
   }
 }
 
-export async function openVideo(m: Machine, cwd: string, rel: unknown) {
+export async function openVideo(m: Machine, cwd: string, rel: unknown, signal?: AbortSignal) {
   const p = cleanRelative(rel)
   if (!p) throw new HerdrError('not_file', 'Not a file')
-  return openAt(m, await rootOf(m, cwd), p)
+  const root = await rootOf(m, cwd)
+  return openAt(m, root, p, signal)
 }
 
-export async function openWrittenVideo(m: Machine, cwd: string | null | undefined, written: unknown) {
+export async function openWrittenVideo(m: Machine, cwd: string | null | undefined, written: unknown, signal?: AbortSignal) {
   const t = writtenTarget(m, cwd, written)
-  return openAt(m, t.root, t.rel)
+  return openAt(m, t.root, t.rel, signal)
 }

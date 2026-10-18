@@ -1,11 +1,13 @@
-import { spawn } from 'node:child_process'
-import { appendFileSync, mkdtempSync, readFileSync, renameSync, rmSync, truncateSync, writeFileSync } from 'node:fs'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { appendFileSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, truncateSync, utimesSync, writeFileSync, writeSync, closeSync } from 'node:fs'
+import http from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { READ_SCRIPT } from '../server/utils/files'
 import type { Machine } from '../server/utils/machines'
-import { VIDEO_BLOCK, openVideo, openWrittenVideo, parseRange, readPlan } from '../server/utils/videoStream'
+import { VIDEO_BLOCK, answer, cutOnError, openVideo, openWrittenVideo, parseRange, readPlan, videoEtag } from '../server/utils/videoStream'
 
 const local = { exec: null } as unknown as Machine
 let root = ''
@@ -89,7 +91,7 @@ describe('video stream', () => {
   it('gives an identity that changes with the file', async () => {
     const a = await openVideo(local, root, 'clip.webm')
     a.close()
-    expect(a.etag).toMatch(/^"\d+-\d+-\d+"$/)
+    expect(a.etag).toMatch(/^(W\/)?"[0-9a-f]{20}"$/)
     expect(a.name).toBe('clip.webm')
     writeFileSync(path.join(root, 'other.webm'), long)
     renameSync(path.join(root, 'other.webm'), path.join(root, 'clip2.webm'))
@@ -123,10 +125,12 @@ describe('video stream', () => {
     appendFileSync(path.join(root, 'grow.webm'), Buffer.alloc(5000, 1))
     expect((await collect(grown.read(0, grown.size))).length).toBe(long.length)
 
+    // Shrunk under the reader: an error, never a short body that ends well.
     writeFileSync(path.join(root, 'shrink.webm'), long)
     const shrunk = await openVideo(local, root, 'shrink.webm')
     truncateSync(path.join(root, 'shrink.webm'), 100)
-    expect(Buffer.compare(await collect(shrunk.read(0, shrunk.size)), long.subarray(0, 100))).toBe(0)
+    await expect(collect(shrunk.read(0, shrunk.size))).rejects.toMatchObject({ code: 'truncated' })
+    await shrunk.done
 
     // Replaced by a rename between opening and reading: still the opened file.
     writeFileSync(path.join(root, 'swap.webm'), long)
@@ -168,5 +172,102 @@ describe('video stream', () => {
     expect(calls.at(-1)).toEqual([path.resolve(root), 'long.webm'])
     expect(Buffer.compare(await collect(v.read(VIDEO_BLOCK, 30)), long.subarray(VIDEO_BLOCK, VIDEO_BLOCK + 30))).toBe(0)
     await expect(openWrittenVideo(remote(false), root, 'long.webm')).rejects.toMatchObject({ code: 'unreachable' })
+  })
+
+  it('stops opening when the request closes first', async () => {
+    // Already closed: nothing is started.
+    const gone = new AbortController()
+    gone.abort()
+    await expect(openVideo(local, root, 'clip.webm', gone.signal)).rejects.toMatchObject({ code: 'closed' })
+    // Closed during a slow SSH opening: the session is killed at once.
+    let child: ChildProcess | undefined
+    const slow = { home: root, exec: async () => ({ code: 0, stdout: Buffer.alloc(0), stderr: '' }), spawnShell: () => (child = spawn('sleep', ['30'])) } as unknown as Machine
+    const closing = new AbortController()
+    const t = Date.now()
+    const opening = openWrittenVideo(slow, root, 'clip.webm', closing.signal)
+    setTimeout(() => closing.abort(), 50)
+    await expect(opening).rejects.toMatchObject({ code: 'closed' })
+    expect(Date.now() - t).toBeLessThan(2000)
+    await new Promise(resolve => child!.exitCode !== null || child!.signalCode !== null ? resolve(null) : child!.once('close', resolve))
+    expect(child!.signalCode).toBe('SIGKILL')
+  })
+})
+
+describe('versions', () => {
+  it('gives a strong ETag only to precise, settled times', () => {
+    const base = { now: 1000, ino: '7', size: 10, mtime: 900, version: '2026-10-18 10:00:00.250000000 +0000 2026-10-18 10:00:00.250000000 +0000' }
+    expect(videoEtag(base)).toMatch(/^"[0-9a-f]{20}"$/)
+    expect(videoEtag({ ...base, version: base.version.replace('.250', '.750') })).not.toBe(videoEtag(base))
+    expect(videoEtag({ ...base, version: '1760781600.250000000 1760781600.250000000' })).toMatch(/^"/)
+    // Whole seconds only, no descriptor metadata, or written just now: weak.
+    expect(videoEtag({ ...base, version: '2026-10-18 10:00:00.000000000 +0000 x' })).toMatch(/^W\//)
+    expect(videoEtag({ ...base, version: '' })).toMatch(/^W\//)
+    expect(videoEtag({ ...base, now: 901 })).toMatch(/^W\//)
+  })
+
+  it('tells apart two versions written in the same second', async () => {
+    const file = path.join(root, 'inplace.webm')
+    writeFileSync(file, long)
+    const second = Math.floor(Date.now() / 1000) - 100
+    utimesSync(file, second + 0.25, second + 0.25)
+    const before = await openVideo(local, root, 'inplace.webm')
+    before.close()
+    // Same inode, same size, one byte changed, same second.
+    const fd = openSync(file, 'r+')
+    writeSync(fd, Buffer.from([0xAB]), 0, 1, 500)
+    closeSync(fd)
+    utimesSync(file, second + 0.75, second + 0.75)
+    const after = await openVideo(local, root, 'inplace.webm')
+    after.close()
+    expect(after.size).toBe(before.size)
+    expect(before.etag).toMatch(/^"/)
+    expect(after.etag).toMatch(/^"/)
+    expect(after.etag).not.toBe(before.etag)
+    // The old version's If-Range gets the whole file again.
+    expect(answer(after, { method: 'GET', range: 'bytes=10-20', ifRange: before.etag })).toMatchObject({ status: 200, start: 0, len: after.size })
+  })
+})
+
+describe('answers', () => {
+  const v = { size: 100, etag: '"abc"' }
+  it('serves a Range only to GET, and only for the same strong version', () => {
+    expect(answer(v, { method: 'GET', range: 'bytes=0-1' })).toEqual({ status: 206, start: 0, len: 2, contentRange: 'bytes 0-1/100' })
+    expect(answer(v, { method: 'GET' })).toEqual({ status: 200, start: 0, len: 100 })
+    expect(answer(v, { method: 'GET', range: 'bytes=500-' })).toEqual({ status: 416, start: 0, len: 0, contentRange: 'bytes */100' })
+    expect(answer(v, { method: 'GET', range: 'bytes=0-1', ifRange: '"abc"' })).toMatchObject({ status: 206 })
+    expect(answer(v, { method: 'GET', range: 'bytes=0-1', ifRange: '"old"' })).toMatchObject({ status: 200, len: 100 })
+    expect(answer(v, { method: 'GET', range: 'bytes=0-1', ifRange: 'Sat, 18 Oct 2026 10:00:00 GMT' })).toMatchObject({ status: 200 })
+    expect(answer({ size: 100, etag: 'W/"abc"' }, { method: 'GET', range: 'bytes=0-1', ifRange: 'W/"abc"' })).toMatchObject({ status: 200 })
+    // HEAD ignores Range: the whole file's headers, never 206 nor 416.
+    expect(answer(v, { method: 'HEAD', range: 'bytes=0-1' })).toEqual({ status: 200, start: 0, len: 100 })
+    expect(answer(v, { method: 'HEAD', range: 'bytes=500-' })).toEqual({ status: 200, start: 0, len: 100 })
+  })
+
+  it('cuts the HTTP connection when the file shrinks during a 200 or a 206', async () => {
+    for (const range of [undefined, `bytes=10-${long.length - 1}`]) {
+      writeFileSync(path.join(root, 'cut.webm'), long)
+      const server = http.createServer(async (req, res) => {
+        const v = await openVideo(local, root, 'cut.webm')
+        const a = answer(v, { method: req.method!, range: req.headers.range })
+        truncateSync(path.join(root, 'cut.webm'), 50)
+        res.writeHead(a.status, { 'content-length': a.len })
+        cutOnError(res, v.read(a.start, a.len)).pipe(res)
+      })
+      await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+      const port = (server.address() as AddressInfo).port
+      const got = await new Promise<{ status?: number, bytes: number, failed: boolean }>((resolve) => {
+        const req = http.get({ port, host: '127.0.0.1', headers: range ? { range } : {}, agent: false }, (res) => {
+          let bytes = 0
+          res.on('data', (c: Buffer) => { bytes += c.length })
+          res.on('end', () => resolve({ status: res.statusCode, bytes, failed: !res.complete }))
+          res.on('error', () => resolve({ status: res.statusCode, bytes, failed: true }))
+        })
+        req.on('error', () => resolve({ bytes: 0, failed: true }))
+      })
+      server.close()
+      expect(got.status).toBe(range ? 206 : 200)
+      expect(got.failed).toBe(true)
+      expect(got.bytes).toBeLessThan(long.length - 10)
+    }
   })
 })

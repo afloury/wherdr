@@ -253,6 +253,8 @@ export function writeScenario(home) {
   write(path.join(screens, SAMPLE_PDF), samplePdf(SAMPLE_PDF_PAGES))
   write(path.join(screens, SAMPLE_WEBM), fixture('sample.webm'))
   write(path.join(screens, SAMPLE_MP4), fixture('sample.mp4'))
+  // Settled, sub-second times: the videos get a strong ETag (If-Range).
+  for (const f of [SAMPLE_WEBM, SAMPLE_MP4]) fs.utimesSync(path.join(screens, f), 1767225600.25, 1767225600.25)
   write(path.join(screens, FAKE_MOV), '<html><script>alert(1)</script>\n')
   const coordinatorFile = ompTranscript(home, coordinator, 'e2e-coordinator', now, msg => [
     msg({ role: 'user', content: [{ type: 'text', text: 'Where are the threads?' }], attribution: 'user' }),

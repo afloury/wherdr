@@ -102,10 +102,12 @@ under "$f" || { echo "outside" >&2; exit 5; }
 [ -f "$f" ] || { echo "not a file" >&2; exit 6; }
 [ -r "$f" ] || { echo "permission denied" >&2; exit 7; }
 command exec 3< "$f" || { echo "permission denied" >&2; exit 7; }
-# "<inode> <size> <mtime>" of the opened file, from its metadata: never a
-# read (BusyBox's wc -c reads every byte). GNU/BusyBox stat, then BSD.
+# "<inode> <size> <mtime> <version>" of the opened file, from its metadata:
+# never a read (BusyBox's wc -c reads every byte). <version>: modification
+# and change times to the nanosecond (GNU/BusyBox, then BSD). Without the
+# descriptor's metadata, the path's, with no <version>: never a strong ETag.
 meta() {
-  stat -L -c '%i %s %Y' /dev/fd/3 2>/dev/null || stat -L -f '%i %z %m' /dev/fd/3 2>/dev/null ||
+  stat -L -c '%i %s %Y %y %z' /dev/fd/3 2>/dev/null || stat -L -f '%i %z %m %Fm %Fc' /dev/fd/3 2>/dev/null ||
   stat -L -c '%i %s %Y' "$f" 2>/dev/null || stat -L -f '%i %z %m' "$f" 2>/dev/null || echo "0 $(wc -c < "$f") 0"
 }`
 

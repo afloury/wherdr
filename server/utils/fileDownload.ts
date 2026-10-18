@@ -11,47 +11,49 @@ import { HerdrError } from './herdr'
 import { machineFor } from './actions'
 import { defineApi } from './http'
 import { findPane } from './state'
-import { openVideo, openWrittenVideo, parseRange } from './videoStream'
+import { answer, cutOnError, openVideo, openWrittenVideo } from './videoStream'
 
 import type { Pane } from '../../shared/types'
 
 async function serveVideo(event: H3Event, p: Pane, q: Record<string, unknown>, type: string) {
   const m = machineFor(p.machine)
-  const v = q.from === 'chat' ? await openWrittenVideo(m, p.cwd, q.path) : await openVideo(m, p.cwd!, q.path)
-  // The browser drops a request (seek, closed player): the read stops with it.
-  event.node.res.on('close', v.close)
+  const res = event.node.res
+  // The browser drops a request (seek, closed player): the read stops with
+  // it, from the start: while the file opens too.
+  const closed = new AbortController()
+  res.once('close', () => closed.abort())
+  if (res.destroyed) closed.abort()
+  const v = q.from === 'chat'
+    ? await openWrittenVideo(m, p.cwd, q.path, closed.signal)
+    : await openVideo(m, p.cwd!, q.path, closed.signal)
+  if (closed.signal.aborted) {
+    v.close()
+    return ''
+  }
+  closed.signal.addEventListener('abort', v.close, { once: true })
   try {
-    const modified = new Date(v.mtime * 1000).toUTCString()
     // Only ever a video type (nosniff): never rendered as a page, whatever the bytes.
     setResponseHeader(event, 'x-content-type-options', 'nosniff')
     setResponseHeader(event, 'accept-ranges', 'bytes')
     setResponseHeader(event, 'content-security-policy', "default-src 'none'; media-src 'self'; frame-ancestors 'self'")
     setResponseHeader(event, 'etag', v.etag)
-    setResponseHeader(event, 'last-modified', modified)
-    let range = getRequestHeader(event, 'range')
-    // A range of another version of the file: the whole current one (RFC 9110 §13.1.5).
-    const ifRange = getRequestHeader(event, 'if-range')?.trim()
-    if (range !== undefined && ifRange !== undefined && ifRange !== v.etag && ifRange !== modified) range = undefined
-    const r = parseRange(range, v.size)
-    if (r.kind === 'none') {
+    setResponseHeader(event, 'last-modified', new Date(v.mtime * 1000).toUTCString())
+    const a = answer(v, { method: event.method, range: getRequestHeader(event, 'range'), ifRange: getRequestHeader(event, 'if-range') })
+    setResponseStatus(event, a.status)
+    if (a.contentRange) setResponseHeader(event, 'content-range', a.contentRange)
+    if (a.status === 416) {
       v.close()
-      setResponseStatus(event, 416)
-      setResponseHeader(event, 'content-range', `bytes */${v.size}`)
       setResponseHeader(event, 'content-type', 'text/plain')
       return ''
     }
-    const start = r.kind === 'part' ? r.start : 0
-    const len = r.kind === 'part' ? r.end - r.start + 1 : v.size
-    setResponseStatus(event, r.kind === 'part' ? 206 : 200)
-    if (r.kind === 'part') setResponseHeader(event, 'content-range', `bytes ${r.start}-${r.end}/${v.size}`)
     setResponseHeader(event, 'content-type', type)
     setResponseHeader(event, 'content-disposition', attachmentHeader(v.name, 'inline'))
-    setResponseHeader(event, 'content-length', len)
-    if (event.method === 'HEAD' || !len) {
+    setResponseHeader(event, 'content-length', a.len)
+    if (event.method === 'HEAD' || !a.len) {
       v.close()
       return ''
     }
-    return v.read(start, len)
+    return cutOnError(res, v.read(a.start, a.len))
   } catch (e) {
     v.close()
     throw e

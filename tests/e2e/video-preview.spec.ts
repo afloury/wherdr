@@ -98,10 +98,18 @@ test('video pieces follow the Range header', async ({ page }) => {
   expect(head.headers()['content-length']).toBe(String(size))
   expect(head.headers()['content-type']).toBe('video/webm')
   expect((await head.body()).length).toBe(0)
+  // HEAD ignores Range: still the whole file's headers.
+  for (const range of ['bytes=0-1', `bytes=${size}-`]) {
+    const ranged = await page.request.fetch(inline(SAMPLE_WEBM), { method: 'HEAD', headers: { range } })
+    expect(ranged.status()).toBe(200)
+    expect(ranged.headers()['content-length']).toBe(String(size))
+    expect(ranged.headers()['content-range']).toBeUndefined()
+  }
 
   // If-Range: the current ETag keeps the range, another one gets the whole file.
   const etag = h.etag!
-  expect(etag).toMatch(/^"[\d-]+"$/)
+  // Strong: the fixtures' times are precise and settled (scenario.mjs).
+  expect(etag).toMatch(/^"[0-9a-f]{20}"$/)
   expect((await page.request.get(inline(SAMPLE_WEBM), { headers: { 'range': 'bytes=0-1', 'if-range': etag } })).status()).toBe(206)
   const stale = await page.request.get(inline(SAMPLE_WEBM), { headers: { 'range': 'bytes=0-1', 'if-range': '"0-1-2"' } })
   expect(stale.status()).toBe(200)
