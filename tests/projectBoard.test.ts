@@ -193,6 +193,41 @@ describe('bare URLs in the text', () => {
   })
 })
 
+describe('inline code in the text', () => {
+  it('a code span is its own part, the text around it kept', () => {
+    expect(textParts('Run `npm test` then merge')).toEqual([{ text: 'Run ' }, { text: 'npm test', code: true }, { text: ' then merge' }])
+    expect(textParts('`a` and `b`')).toEqual([{ text: 'a', code: true }, { text: ' and ' }, { text: 'b', code: true }])
+  })
+  it('longer fences hold backticks; one padding space on each side is dropped', () => {
+    expect(textParts('See ``a `b` c``.')).toEqual([{ text: 'See ' }, { text: 'a `b` c', code: true }, { text: '.' }])
+    expect(textParts('`` `x` ``')).toEqual([{ text: '`x`', code: true }])
+    expect(textParts('`  two  `')).toEqual([{ text: ' two ', code: true }])
+    expect(textParts('` `')).toEqual([{ text: ' ', code: true }])
+  })
+  it('a URL inside code stays code, one outside is still a link', () => {
+    expect(textParts('`curl https://example.test/x` or https://example.test/y')).toEqual([
+      { text: 'curl https://example.test/x', code: true }, { text: ' or ' }, { text: 'https://example.test/y', href: 'https://example.test/y' },
+    ])
+  })
+  it('unclosed or mismatched backticks are text', () => {
+    expect(textParts('a ` b')).toEqual([{ text: 'a ` b' }])
+    expect(textParts('``a` b')).toEqual([{ text: '``a` b' }])
+    expect(textParts('``')).toEqual([{ text: '``' }])
+  })
+  it('stays fast on a long run of backticks', () => {
+    const line = '`'.repeat(999) + 'x'.repeat(999)
+    const t0 = Date.now()
+    expect(textParts(line)).toEqual([{ text: line }])
+    expect(Date.now() - t0).toBeLessThan(200)
+  })
+  it('a task line keeps its code, a badge written in code is not a badge', () => {
+    const task = parseTaskLine('- [ ] Run `npm run check:leaks` before `[b:red(x)]` [b:red(bug)] (me)')!
+    expect(task.text).toBe('Run `npm run check:leaks` before `[b:red(x)]`')
+    expect(task.badges).toEqual([{ text: 'bug', color: 'red' }])
+    expect(textParts(task.text).filter(p => p.code).map(p => p.text)).toEqual(['npm run check:leaks', '[b:red(x)]'])
+  })
+})
+
 describe('answers to decisions (To decide)', () => {
   it('prepares an answer in the chosen language with the task text', () => {
     const task = parseTaskLine('- [ ] Publier le dépôt « wherdr » ? (me)')!

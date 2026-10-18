@@ -99,7 +99,7 @@ four digits).
 
 ## Badges
 
-The only decoration the panel draws. Anywhere on a task line:
+The only labels the panel draws. Anywhere on a task line:
 
 - `[b:color(text)]`: a badge. `[b:(text)]` is neutral.
 - `[b:color(text)](target)`: a clickable badge. Target: an `https://` (or `http://`) URL, or
@@ -108,6 +108,10 @@ The only decoration the panel draws. Anywhere on a task line:
   (`grey`), a hex color (`#e5484d`, `#fff`), or nothing (neutral).
 - Text: short, at most 24 characters. It is removed from the task text (the text the
   panel sends back to you).
+
+Inline code (`` `npm test` ``) shows as code; the user can copy it, and run a shell command
+in your shell mode (`! npm test`, after confirming). Write a command the user may want to
+run as inline code, exactly as it should run in your folder.
 
 Use them sparingly, when they help the user: two or three per line at most. Defaults
 unless the user prefers otherwise:

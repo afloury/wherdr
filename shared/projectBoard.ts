@@ -6,7 +6,7 @@
 // task per line `- [ ] <title> (<owner>)`, the owner being `me`,
 // `agent`, a name, or `agent → t-0031` (read, never shown). Only decoration:
 // the `[b:color(text)]` and `[b:color(text)](target)` badges that the
-// coordinator adds when useful (no automatic badge).
+// coordinator adds when useful (no automatic badge). Inline code shows as code.
 
 import { refLine, taskRef } from './reference'
 import { tomlTables } from './toml'
@@ -106,6 +106,9 @@ const MAX_LINE = 2000
 // by `(target)`, anywhere in the line. The text runs up to the first ")]".
 export const BADGE_COLORS = ['red', 'orange', 'amber', 'green', 'teal', 'blue', 'violet', 'pink', 'gray'] as const
 const BADGE = /\[b:\s*([#\w-]*)\s*\((.*?)\)\](?:\(\s*((?:[^\s()]|\([^\s()]*\))*)\s*\))?/gi
+// Inline code, as in CommonMark: a run of N backticks closed by a run of
+// exactly N. Lines are bounded (MAX_LINE), which keeps the lazy scan cheap.
+const CODE = /(?<!`)(`+)(?!`)([^\n]*?[^`\n])\1(?!`)/g
 export function badgeColor(raw: string): string | null {
   const c = raw.trim().toLowerCase()
   if ((BADGE_COLORS as readonly string[]).includes(c)) return c
@@ -127,9 +130,12 @@ export function badgeTarget(raw: string | undefined): { href: string } | { threa
 }
 export function takeBadges(input: string): { text: string, badges: TaskBadge[] } {
   const badges: TaskBadge[] = []
-  const text = input.replace(BADGE, (all, color: string, label: string, target?: string) => {
+  // A badge written inside inline code is code, shown as typed.
+  const spans = [...input.matchAll(CODE)].map(m => [m.index!, m.index! + m[0].length] as const)
+  const inCode = (at: number) => spans.some(([a, b]) => at >= a && at < b)
+  const text = input.replace(BADGE, (all, color: string, label: string, target: string | undefined, at: number) => {
     const t = label.replace(/\s+/g, ' ').trim()
-    if (!t) return all
+    if (!t || inCode(at)) return all
     badges.push({ text: t, color: badgeColor(color), ...(badgeTarget(target) || {}) })
     return ' '
   })
@@ -168,29 +174,44 @@ export function parseTaskLine(line: string, kind: ListKind | null = null): Proje
   return { text, done: m[1] === 'x' || m[1] === 'X', owner, thread: ref ? ref[0].toLowerCase() : null, ...(reason ? { reason } : {}), ...(free.badges.length ? { badges: free.badges } : {}) }
 }
 
-// Task text split for display: bare http(s) URLs (or in
-// <…>) and Markdown links [label](url) become simple text
-// links; the rest is text. Other schemes stay text.
-export interface TextPart { text: string, href?: string }
+// Task text split for display: inline code (`npm test`, ``a `b` c``) is
+// code, shown as in a conversation with a Copy / Run menu (TaskText.vue);
+// outside it, bare http(s) URLs (or in <…>) and Markdown links [label](url)
+// become simple text links; the rest is text. Other schemes stay text. An
+// unclosed backtick is text.
+export interface TextPart { text: string, href?: string, code?: true }
 const LINKISH = /\[([^\]]+)\]\((https?:\/\/[^\s()]+)\)|<?(https?:\/\/[^\s<>]+?)>?(?=[\s,;]|[.)!?]*(?:\s|$))/gi
+// Content of a code span: one space on each side is padding, as in CommonMark.
+function codeText(raw: string): string {
+  return raw.length > 2 && raw.startsWith(' ') && raw.endsWith(' ') && raw.trim() ? raw.slice(1, -1) : raw
+}
 export function textParts(input: string): TextPart[] {
   const parts: TextPart[] = []
-  let at = 0
   const push = (text: string, href?: string) => {
     if (!text) return
     const last = parts[parts.length - 1]
-    if (!href && last && !last.href) last.text += text
+    if (!href && last && !last.href && !last.code) last.text += text
     else parts.push(href ? { text, href } : { text })
   }
-  for (const m of input.matchAll(LINKISH)) {
-    const raw = m[2] || m[3]!
-    const t = badgeTarget(raw)
-    push(input.slice(at, m.index))
-    if (t && 'href' in t) push(m[1] || raw, t.href)
-    else push(m[0])
+  const links = (text: string) => {
+    let at = 0
+    for (const m of text.matchAll(LINKISH)) {
+      const raw = m[2] || m[3]!
+      const t = badgeTarget(raw)
+      push(text.slice(at, m.index))
+      if (t && 'href' in t) push(m[1] || raw, t.href)
+      else push(m[0])
+      at = m.index! + m[0].length
+    }
+    push(text.slice(at))
+  }
+  let at = 0
+  for (const m of input.matchAll(CODE)) {
+    links(input.slice(at, m.index))
+    parts.push({ text: codeText(m[2]!), code: true })
     at = m.index! + m[0].length
   }
-  push(input.slice(at))
+  links(input.slice(at))
   return parts
 }
 
@@ -483,8 +504,8 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
         'wherdr Project panel: TASKS.md conventions and messages.',
         'Lists, all optional: we choose together which ones this project uses (a small project may only need Backlog, In progress and Done). wherdr shows the ## lists present in TASKS.md, in this order: "## To test" (what I must check after a deploy), "## To decide" (questions for me), "## To review" (pull requests for me to review), "## In progress" (what a thread is really doing), "## In queue" (decided: you launch the first one as soon as a thread slot frees, in list order), "## Blocked" (waiting for someone or something external), "## To do" (to do soon, in my priority order; never launched on your own), "## Backlog" (everything else), "## Done".',
         'One task per line: "- [ ] title (owner)", owner = me, agent or "agent → t-0140" (not shown); blocked tasks may add "— blocked by: reason" before the owner.',
-        'Badges (the only decoration wherdr shows): "[b:color(text)]", or "[b:color(text)](target)" for a clickable badge. Color: red, orange, amber, green, teal, blue, violet, pink, gray, #hex, or nothing (neutral). Target: an https:// link (opens a new tab) or a thread ID like t-0140 (opens its tab). Short text (24 characters max). E.g. "- [ ] Stop button [b:red(bug)] [b:gray(t-0140)](t-0140) [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me)".',
-        'Badges are free-form: use them on your own whenever they help me (status, owner, thread, PR, device, priority…), and follow the badge preferences I give you. Stay sparse: two or three badges per line at most. A bare URL in a task shows as a plain link.',
+        'Badges (the only labels wherdr shows): "[b:color(text)]", or "[b:color(text)](target)" for a clickable badge. Color: red, orange, amber, green, teal, blue, violet, pink, gray, #hex, or nothing (neutral). Target: an https:// link (opens a new tab) or a thread ID like t-0140 (opens its tab). Short text (24 characters max). E.g. "- [ ] Stop button [b:red(bug)] [b:gray(t-0140)](t-0140) [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me)".',
+        'Badges are free-form: use them on your own whenever they help me (status, owner, thread, PR, device, priority…), and follow the badge preferences I give you. Stay sparse: two or three badges per line at most. A bare URL in a task shows as a plain link. Inline code (`npm test`) shows as code, which I can copy, or run in your shell mode after confirming: write a command I may want to run that way, exactly as it runs in your folder.',
         'A line that starts with "↳" and ends with "—" is a reference: it names a task ("↳ Decision: … —") or quotes one of your messages by its time ("↳ Quote message 11:37 : … —", "↳ Quote point 11:37 : … —", "↳ Quote decision 11:37 #3 : … —" for row 3 of a table of decisions, "↳ Quote decisions 11:37 #1-4 : … —" for the whole table). A short code such as "~k3f" may follow the time or the row: it is wherdr\'s own mark for the message, nothing for you to act on. What I answer about it is on the lines below it, up to the next reference.',
         `"${testedMessage('…', lang)}" → remove the line from To test.`,
         `"${m(problemPrefix)}" → treat it as a bug: fix it (new thread).`,
@@ -510,8 +531,8 @@ export function coordinatorRules(lang: TestLang = 'fr'): string {
         'Panneau Projet de wherdr : conventions de TASKS.md et messages.',
         'Listes, toutes facultatives : on choisit ensemble celles que ce projet utilise (un petit projet peut se contenter de Backlog, En cours et Fait). wherdr affiche les listes ## présentes dans TASKS.md, dans cet ordre : « ## À tester » (ce que je dois vérifier après un déploiement), « ## À décider » (questions pour moi), « ## À relire » (PR que je dois relire), « ## En cours » (ce qu’un thread fait vraiment), « ## En file » (décidé : tu lances la première dès qu’une place de thread se libère, dans l’ordre de la liste), « ## Bloqué » (attente de quelqu’un ou de quelque chose d’extérieur), « ## À faire » (à faire bientôt, dans mon ordre de priorité ; jamais lancé de toi-même), « ## Backlog » (tout le reste), « ## Fait ».',
         'Une tâche par ligne : « - [ ] titre (responsable) », responsable = me, agent ou « agent → t-0140 » (non affiché) ; une tâche bloquée peut ajouter « — bloqué par : raison » avant le responsable.',
-        'Badges (seule décoration affichée par wherdr) : « [b:couleur(texte)] », ou « [b:couleur(texte)](cible) » pour un badge cliquable. Couleur : red, orange, amber, green, teal, blue, violet, pink, gray, #hex, ou rien (neutre). Cible : un lien https:// (nouvel onglet) ou un ID de thread comme t-0140 (ouvre son onglet). Texte court (24 caractères au plus). Ex. « - [ ] Bouton Stop [b:red(bug)] [b:gray(t-0140)](t-0140) [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me) ».',
-        'Les badges sont libres : utilise-les de toi-même quand ils me sont utiles (statut, responsable, thread, PR, appareil, priorité…), et suis les préférences de badges que je te donne. Reste sobre : deux ou trois badges par ligne au plus. Une URL brute dans une tâche s’affiche en lien simple.',
+        'Badges (seules étiquettes affichées par wherdr) : « [b:couleur(texte)] », ou « [b:couleur(texte)](cible) » pour un badge cliquable. Couleur : red, orange, amber, green, teal, blue, violet, pink, gray, #hex, ou rien (neutre). Cible : un lien https:// (nouvel onglet) ou un ID de thread comme t-0140 (ouvre son onglet). Texte court (24 caractères au plus). Ex. « - [ ] Bouton Stop [b:red(bug)] [b:gray(t-0140)](t-0140) [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me) ».',
+        'Les badges sont libres : utilise-les de toi-même quand ils me sont utiles (statut, responsable, thread, PR, appareil, priorité…), et suis les préférences de badges que je te donne. Reste sobre : deux ou trois badges par ligne au plus. Une URL brute dans une tâche s’affiche en lien simple. Le code en ligne (`npm test`) s’affiche en code, que je peux copier, ou lancer dans ton mode shell après confirmation : écris ainsi une commande que je voudrais lancer, telle qu’elle s’exécute dans ton dossier.',
         'Une ligne qui commence par « ↳ » et finit par « — » est une référence : elle nomme une tâche (« ↳ Décision : … — ») ou cite un de tes messages par son heure (« ↳ Quote message 11:37 : … — », « ↳ Quote point 11:37 : … — », « ↳ Quote decision 11:37 #3 : … — » pour la ligne 3 d’un tableau de décisions, « ↳ Quote decisions 11:37 #1-4 : … — » pour tout le tableau). Un petit code comme « ~k3f » peut suivre l’heure ou la ligne : c’est le repère de wherdr pour le message, tu n’as rien à en faire. Ce que j’en dis est sur les lignes en dessous, jusqu’à la référence suivante.',
         `« ${testedMessage('…', lang)} » → retirer la ligne d’À tester.`,
         `« ${m(problemPrefix)} » → c’est un bug : le corriger (nouveau thread).`,
