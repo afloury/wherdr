@@ -47,8 +47,8 @@ describe('link previews and structured data', () => {
   })
 
   it('title and description fit a search result', () => {
-    expect(TITLE.length).toBeLessThanOrEqual(70)
-    expect(DESCRIPTION.length).toBeLessThanOrEqual(200)
+    expect(TITLE.length).toBeLessThanOrEqual(60)
+    expect(DESCRIPTION.length).toBeLessThanOrEqual(160)
   })
 
   it('describes wherdr as a free, MIT-licensed application', () => {
