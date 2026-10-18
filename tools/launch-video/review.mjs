@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-/** Extract every distinct captured instant, in both cuts, for visual review. */
+/** Extract every output frame, in both cuts, for visual review. */
 import { mkdir } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const output = join(root, ".shots/real-review");
+const output = join(root, ".shots/v3-review");
 await mkdir(output, { recursive: true });
 function ffmpeg(args) {
   const result = spawnSync(
@@ -23,23 +23,22 @@ ffmpeg([
   "-i",
   "assets/wherdr-launch-wide.mp4",
   "-filter_complex",
-  "[0:v]fps=15,scale=360:360,drawtext=text='%{n}':fontsize=20:fontcolor=white:box=1:boxcolor=black:x=6:y=6[s];[1:v]fps=15,scale=640:360[w];[s][w]hstack=inputs=2,tile=3x5:nb_frames=15:padding=6:margin=6[v]",
+  "[0:v]fps=30,scale=360:360,drawtext=text='%{n}':fontsize=20:fontcolor=white:box=1:boxcolor=black:x=6:y=6[s];[1:v]fps=30,scale=640:360[w];[s][w]hstack=inputs=2,tile=3x5:nb_frames=15:padding=6:margin=6[v]",
   "-map",
   "[v]",
   "-fps_mode",
   "vfr",
   "-frames:v",
-  "15",
+  "30",
   "-threads",
   "2",
   join(output, "sheet-%02d.jpg"),
 ]);
 for (const [at, name, cut] of [
-  [0.8, "desktop", ""],
-  [4, "mobile-approval", ""],
-  [8.8, "mobile-result", ""],
-  [11, "project", ""],
-  [13, "board", "-wide"],
+  [0.8, "01-start-on-pc", ""],
+  [2.8, "02-handoff-to-phone", ""],
+  [4.5, "03-one-tap-approval", ""],
+  [8.8, "04-project-wide", "-wide"],
 ]) {
   ffmpeg([
     "-ss",
@@ -54,5 +53,5 @@ for (const [at, name, cut] of [
   ]);
 }
 console.log(
-  "15 sheets: every one of the 225 captured instants, square + wide. Review before pushing.",
+  "30 sheets: all 450 rendered frames, square + wide. Review before pushing.",
 );

@@ -39,6 +39,8 @@ for (const [name, width] of [
     1,
     `${name}: exactly one video stream, no audio`,
   );
+  assert.equal(info.format.tags.hyperframes_renderer, "hyperframes");
+  assert.equal(info.format.tags.hyperframes_version, "0.8.169");
   assert.equal(info.format.tags.wherdr_capture, "playwright-real-app");
   assert.equal(info.format.tags.wherdr_app_tree, capture.appTree);
   const video = info.streams[0];

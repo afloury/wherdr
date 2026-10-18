@@ -10,9 +10,9 @@ Follow their work and answer from your phone.</b></p>
 <p align="center">Add it to your home screen like an app — no App Store needed.</p>
 
 <p align="center">
-  <a href="assets/wherdr-launch.mp4"><img src="assets/wherdr-launch.webp" width="720" alt="Recording of the actual wherdr app with demo data: launch a Claude agent on desktop, continue the same conversation on a phone, approve its test request, then open project tasks and the Board."></a>
+  <a href="assets/wherdr-launch.mp4"><img src="assets/wherdr-launch.webp" width="720" alt="Animated wherdr launch film with real app captures: launch a Claude agent on desktop, continue the same conversation on a phone, approve its test request, then open project tasks and the Board."></a>
 </p>
-<p align="center"><sub>Step away. Stay in control. Real app, demo data. <a href="assets/wherdr-launch.mp4">Watch the 15-second video</a>.</sub></p>
+<p align="center"><sub>Start on PC. Stay in control from your phone. Real app, demo data. <a href="assets/wherdr-launch.mp4">Watch the 15-second video</a>.</sub></p>
 
 <p align="center"><a href="https://wherdr.dev"><b>wherdr.dev</b></a> · <a href="#ask-your-ai-agent">Ask your AI agent</a></p>
 
