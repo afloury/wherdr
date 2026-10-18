@@ -9,14 +9,17 @@
 // A task's agent is the pane its details name. A task with no agent (to do,
 // or its agent gone) is not shown here: `noAgent` asks the Board for its
 // sheet instead; `sheet` (its "Task" button) opens the sheet over the panel.
-// A coordinator is found by its agent's name among its machine's panes; one
-// not started yet gets a field whose first message starts it (`coordinator
-// tell`), and the panel turns into its conversation once its pane shows up.
+// A coordinator's pane is the one herdr-projects keeps for it (`coordinator
+// status`, asked by the server), never one guessed from a name. One not
+// started yet gets a field whose first message starts it (`coordinator tell`);
+// the panel asks again until its pane shows up, then turns into its
+// conversation. Everything asked for a coordinator belongs to that target: a
+// reply that comes back once another one is shown is dropped.
 //
 // Above a task's conversation: its title, its description (folded after a few
 // lines), the Watcher's progress, and the agent's closing note and research
 // report once there is one (`details`, read again as the task moves on).
-import { type CoordinatorTarget, type TaskDetails, type TaskRow, TELL_MAX, coordinatorPane, taskKey } from '#shared/projectsTasks'
+import { type CoordinatorTarget, type TaskDetails, type TaskRow, TELL_MAX, taskKey } from '#shared/projectsTasks'
 
 export type PanelTarget =
   | { machine: string, kind: 'task', id: string }
@@ -68,16 +71,34 @@ const progress = computed(() => {
 })
 
 // ------------------------------------------------------------ a coordinator
-// The machine's sessions, its own first: where its board runs coordinators.
-const sessionKeys = computed(() => {
-  const m = props.target.machine
-  return [m, ...machines.value.filter(x => x.baseKey === m && x.key !== m).map(x => x.key)]
-})
-const coordPane = computed(() => (props.target.kind === 'coordinator'
-  ? coordinatorPane(herdrState.value.panes, sessionKeys.value, props.target.to)?.id || null
-  : null))
+// `gen` changes with the target: what comes back for an earlier one is dropped.
+let gen = 0
+const coordPane = ref<string | null>(null)
+const coordLoaded = ref(false)
+let poll: ReturnType<typeof setTimeout> | undefined
+let tries = 0
+async function lookCoordinator(g: number) {
+  const t = props.target
+  if (t.kind !== 'coordinator' || g !== gen) return
+  clearTimeout(poll)
+  try {
+    const q = new URLSearchParams({ machine: t.machine, kind: t.to.kind, ...(t.to.kind === 'project' ? { repo: t.to.repo } : {}) })
+    const r = await api<{ pane: string | null, state: string }>(`/api/tasks/coordinator?${q}`)
+    if (g !== gen) return
+    coordPane.value = r.pane
+    // Starting (or just told to): asked again until it has a pane.
+    if (!r.pane && (r.state === 'starting' || sent.value) && ++tries <= 40) poll = setTimeout(() => lookCoordinator(g), 3000)
+  } catch {
+    if (g === gen && sent.value && ++tries <= 40) poll = setTimeout(() => lookCoordinator(g), 3000)
+  } finally {
+    if (g === gen) coordLoaded.value = true
+  }
+}
+onUnmounted(() => { gen++; clearTimeout(poll) })
+// The coordinator's pane once Herdr shows it.
+const coordShown = computed(() => (coordPane.value && herdrState.value.panes.some(p => p.id === coordPane.value) ? coordPane.value : null))
 
-const paneId = computed(() => (props.target.kind === 'task' ? taskPane.value : coordPane.value))
+const paneId = computed(() => (props.target.kind === 'task' ? taskPane.value : coordShown.value))
 // A task's agent that closes while shown: back to its sheet.
 const gone = computed(() => props.target.kind === 'task' && Boolean(taskPane.value) && herdrState.value.ok
   && !herdrState.value.panes.some(p => p.id === taskPane.value))
@@ -105,19 +126,34 @@ const taskLabel = computed(() => {
 const first = ref('')
 const starting = ref(false)
 const sent = ref(false)
-watch(() => JSON.stringify(props.target), () => { first.value = ''; sent.value = false })
+watch(() => JSON.stringify(props.target), () => {
+  gen++
+  clearTimeout(poll)
+  tries = 0
+  first.value = ''
+  sent.value = false
+  starting.value = false
+  coordPane.value = null
+  coordLoaded.value = false
+  lookCoordinator(gen)
+}, { immediate: true })
 async function start() {
   const t = props.target
   const text = first.value.trim()
   if (t.kind !== 'coordinator' || !text || starting.value || !props.reachable) return
+  const g = gen
   starting.value = true
   try {
     await api('/api/tasks/coordinator', { machine: t.machine, text, to: t.to })
+    haptic()
+    // Another coordinator is shown now: its field and its words stay as they are.
+    if (g !== gen) return
     first.value = ''
     sent.value = true
-    haptic()
+    tries = 0
+    lookCoordinator(g)
   } catch (e) { toast((e as Error).message, true) }
-  finally { starting.value = false }
+  finally { if (g === gen) starting.value = false }
 }
 
 // Escape closes it on a computer, unless a sheet or a field has it.
@@ -195,6 +231,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       <AgentView v-if="paneId" :key="paneId" :pane-id="paneId" cell active />
       <p v-else-if="target.kind === 'task' && loading" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
       <p v-else-if="failed" class="board-note error board-panel-wait">{{ failed }}</p>
+      <p v-else-if="target.kind === 'coordinator' && !coordLoaded && !readOnly" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
       <div v-else-if="target.kind === 'coordinator'" class="board-panel-start">
         <p v-if="readOnly" class="board-note">{{ tl('This coordinator has not started. wherdr runs in a container here: start it from Herdr on the host.', 'Ce coordinateur n’a pas démarré. wherdr tourne ici dans un conteneur : lance-le depuis Herdr sur l’hôte.') }}</p>
         <template v-else-if="sent">

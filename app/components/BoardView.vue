@@ -240,6 +240,13 @@ function panelSheet() {
   // No agent to show: the sheet replaces the panel.
   openSheet(c)
 }
+// One panel per target: nothing of one coordinator or task (a reply on its
+// way, a message being written) carries over to another.
+const panelKey = computed(() => {
+  const p = panel.value
+  if (!p) return ''
+  return p.kind === 'task' ? `t|${p.machine}|${p.id}` : `c|${p.machine}|${p.to.kind}|${p.to.kind === 'project' ? p.to.repo : ''}`
+})
 function panelNoAgent() {
   panelSheet()
   panel.value = null
@@ -388,7 +395,7 @@ function back() {
       </template>
     </template>
     <BoardPanel
-      v-if="panel" :key="panel.kind === 'task' ? `t|${panel.machine}|${panel.id}` : `c|${panel.machine}`" :target="panel" :task="panelTask"
+      v-if="panel" :key="panelKey" :target="panel" :task="panelTask"
       :machine-label="machineLabel(panel.machine)" :read-only="readOnly(panel.machine)" :reachable="writable.some(m => m.machine === panel!.machine)"
       @close="panel = null" @sheet="panelSheet" @no-agent="panelNoAgent"
     />

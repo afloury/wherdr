@@ -24,7 +24,7 @@ import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
   type MachineTasks, type TaskDetails, type TaskRow, type TasksBoard,
-  type TaskCommand, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, coordinatorArgs, detailsFromTaskFile, isTaskCommand,
+  type TaskCommand, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, coordinatorArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, repoKeysFromFile, rowFromTaskFile, taskActions,
 } from '../../shared/projectsTasks'
 import { HERDR_BIN, HERDR_CHILD_ENV, IN_DOCKER, log } from './env'
@@ -431,6 +431,21 @@ export async function addTask(machine: unknown, b: { title?: unknown, descriptio
 // repo's project coordinator. It turns it into tasks; `delegate` puts an agent
 // on each task it adds. Started by herdr-projects when it is not running, in
 // the machine's own session.
+// The pane a coordinator talks in, as herdr-projects keeps it: asked in the
+// board's own session (where `coordinator tell` starts it), so its pane id is
+// that session's, and only a pane Herdr shows there now. `pane: null`: not
+// started, starting, or gone (its first message starts it). From a container:
+// not asked (nothing runs there), so no pane.
+export async function coordinatorPane(machine: unknown, to: unknown): Promise<{ pane: string | null, state: string }> {
+  const m = boardOf(machine)
+  const target = cleanTarget(to)
+  if (!target) throw new HerdrError('bad_target', 'Invalid coordinator')
+  if (readsFiles(m)) return { pane: null, state: 'unknown' }
+  const st = parseCoordinatorStatus(await command(m, coordinatorStatusArgs(target), LIST_TIMEOUT_MS))
+  const pane = st.pane ? joinId(m.key, st.pane) : null
+  return { pane: pane && findPane(pane) ? pane : null, state: st.state }
+}
+
 export async function tellCoordinator(machine: unknown, text: unknown, opts: { to?: unknown, delegate?: unknown } = {}): Promise<{ ok: true, msg: string }> {
   const m = boardOf(machine)
   const words = cleanTell(text)

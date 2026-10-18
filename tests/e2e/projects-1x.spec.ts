@@ -23,7 +23,11 @@ case "$1" in
   details) case "$4" in demo/1) cat '${fixtures}/details-approval.json' ;; demo/2) cat '${fixtures}/details-asks.json' ;; demo/6) echo '${JSON.stringify(failedDetails)}' ;; *) cat '${fixtures}/details-working.json' ;; esac ;;
   tell) echo "$3: sent" ;;
   approve) echo "$3: approved, merging" ;;
-  coordinator) echo "sent to the Coordinator" ;;
+  coordinator) case "$*" in
+    # status --json: the pane herdr-projects keeps for it; web's runs once the spec says so.
+    *status) if [ "$2" = --project=web ] && [ -f '${root}/web-coordinator' ]; then echo '{"state":"idle","pane":"${COORDINATOR_PANE}"}'; else echo '{"state":"none","pane":""}'; fi ;;
+    *) echo "sent to the Coordinator" ;;
+  esac ;;
   add) echo "demo/7: added" ;;
   delegate|stop|retry|archive) echo "$3: done" ;;
   show) case "$2" in --repo=demo) echo '${keyReply('DEMO')}' ;; --repo=web) echo '${keyReply('SITE')}' ;; *) echo '${keyReply('none')}' ;; esac ;;
@@ -43,11 +47,10 @@ const callLog = () => (fs.existsSync(calls) ? fs.readFileSync(calls, 'utf8').tri
 const home = path.join(path.dirname(fs.readFileSync(SOCK_FILE, 'utf8').trim()), 'home')
 const taskDir = path.join(home, '.herdr-projects/data/tasks/demo/1')
 
-test.beforeEach(() => { fs.rmSync(calls, { force: true }); fs.rmSync(path.join(root, 'list.json'), { force: true }) })
-test.afterEach(async () => {
-  await fakeHerdr('e2e.plugins', { plugins: [] })
-  await fakeHerdr('e2e.pane_name', { pane_id: COORDINATOR_PANE, name: '' })
+test.beforeEach(() => {
+  for (const f of [calls, path.join(root, 'list.json'), path.join(root, 'web-coordinator')]) fs.rmSync(f, { force: true })
 })
+test.afterEach(async () => { await fakeHerdr('e2e.plugins', { plugins: [] }) })
 // The side panel's way back: a close button beside the Board, "Back to the Board" on a phone.
 const closePanel = (page: import('@playwright/test').Page, phone: boolean) =>
   page.locator('.board-panel-head').getByRole('button', { name: phone ? 'Back to the Board' : 'Close' }).click()
@@ -286,8 +289,8 @@ test('grouped by machine then repo: each heading opens its coordinator in the si
   await page.screenshot({ path: `.shots/board-1x-project-coord-${testInfo.project.name}.png` })
   await panel.getByRole('button', { name: 'Send', exact: true }).click()
   await expect.poll(callLog).toContain('coordinator --project=web -- tell --tidy up')
-  // Once it runs (its agent in Herdr: sw-coordinator-web), the panel is its conversation.
-  await fakeHerdr('e2e.pane_name', { pane_id: COORDINATOR_PANE, name: 'sw-coordinator-web' })
+  // Once it runs (herdr-projects names its pane), the panel is its conversation.
+  fs.writeFileSync(path.join(root, 'web-coordinator'), '')
   await expect(panel.locator('.cell-view .agent-top')).toBeVisible({ timeout: 15000 })
   await expect(panel.locator('.cell-view textarea')).toBeVisible()
   await expect(panel.locator('.board-panel-name')).toHaveText('web coordinator')
@@ -441,6 +444,7 @@ test('a first message to a coordinator stays with it while its machine is away, 
   await fakeBoard(page, () => machines)
   const sent: unknown[] = []
   await page.route(url => new URL(url).pathname === '/api/tasks/coordinator', async (route) => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: { pane: null, state: 'none' } })
     sent.push(route.request().postDataJSON())
     await route.fulfill({ json: { ok: true, msg: 'sent' } })
   })
@@ -463,4 +467,67 @@ test('a first message to a coordinator stays with it while its machine is away, 
   await expect(panel.locator('.board-panel-away')).toHaveCount(0, { timeout: 15000 })
   await send.click()
   await expect.poll(() => sent).toEqual([{ machine: 'ma', text: 'Draft for demo on A', to: { kind: 'project', repo: 'demo' } }])
+})
+
+test('the same task id on another machine: its sheet starts empty, and what is sent goes there', async ({ page }) => {
+  const machines: Fake[] = [{ machine: 'ma', tasks: [{ id: 'demo/1', title: 'On machine A' }] }, { machine: 'mb', tasks: [{ id: 'demo/1', title: 'On machine B' }] }]
+  await fakeBoard(page, () => machines)
+  const asked: string[] = []
+  await page.route(url => new URL(url).pathname === '/api/tasks/details', async (route) => {
+    const q = new URL(route.request().url()).searchParams
+    asked.push(q.get('machine')!)
+    await route.fulfill({ json: { id: q.get('id'), title: '', stage: 'asks', msg: '', description: `Details of ${q.get('machine')}`, agent: 'claude', pr: '', branch: '', worktree: '', failure: '', failureStage: '', failureAuth: false, summary: '', report: null, review: null, reviewRounds: 0, plan: '', research: false, pane: null } })
+  })
+  const told: unknown[] = []
+  await page.route(url => new URL(url).pathname === '/api/tasks/tell', async (route) => {
+    told.push(route.request().postDataJSON())
+    await route.fulfill({ json: { ok: true, msg: 'sent' } })
+  })
+  await page.goto('/#/board')
+  // A's task (no pane for its agent here: its sheet), with words written for A.
+  await page.locator('.board-machine[data-machine="ma"] .task-card').click({ timeout: 15000 })
+  const sheet = page.getByRole('dialog')
+  await expect(sheet.locator('.task-sheet-text')).toHaveText('Details of ma')
+  await sheet.locator('#task-reply').fill('Only for A')
+  // A push opens B's task with the same id while A's sheet is open.
+  await page.evaluate(() => { location.hash = '#/board?machine=mb&task=demo%2F1' })
+  await expect(sheet.locator('.task-sheet-text')).toHaveText('Details of mb', { timeout: 15000 })
+  await expect(sheet).toContainText('On machine B')
+  await expect(sheet.locator('#task-reply')).toHaveValue('')
+  expect(asked.at(-1)).toBe('mb')
+  await sheet.locator('#task-reply').fill('For B')
+  await sheet.getByRole('button', { name: 'Send' }).click()
+  await expect.poll(() => told).toEqual([{ machine: 'mb', id: 'demo/1', text: 'For B' }])
+})
+
+test('a reply for the coordinator shown before never lands on the one shown now', async ({ page }, testInfo) => {
+  const phone = testInfo.project.name.includes('phone')
+  await fakeBoard(page, () => [{ machine: '', tasks: [{ id: 'demo/1', title: 'In demo' }, { id: 'web/2', title: 'In web' }] }])
+  let release = () => {}
+  const held = new Promise<void>((r) => { release = r })
+  const sent: { to: { repo?: string } }[] = []
+  await page.route(url => new URL(url).pathname === '/api/tasks/coordinator', async (route) => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: { pane: null, state: 'none' } })
+    const body = route.request().postDataJSON()
+    sent.push(body)
+    if (body.to.repo === 'demo') await held
+    await route.fulfill({ json: { ok: true, msg: 'sent' } })
+  })
+  await page.goto('/#/board')
+  const panel = page.locator('.board-panel')
+  await page.getByRole('button', { name: 'Talk to the demo coordinator' }).click({ timeout: 15000 })
+  await panel.locator('#board-panel-first').fill('For demo')
+  await panel.getByRole('button', { name: 'Send', exact: true }).click()
+  await expect.poll(() => sent.length).toBe(1)
+  // demo's reply is still on its way: web's coordinator is shown, and written to.
+  if (phone) await closePanel(page, phone)
+  await page.getByRole('button', { name: 'Talk to the web coordinator' }).click()
+  await expect(panel.locator('.board-panel-name')).toHaveText('web coordinator')
+  await panel.locator('#board-panel-first').fill('Draft for web')
+  release()
+  await page.waitForTimeout(500)
+  await expect(panel.locator('#board-panel-first')).toHaveValue('Draft for web')
+  await expect(panel).not.toContainText('its conversation opens here')
+  await expect(panel.getByRole('button', { name: 'Send', exact: true })).toBeEnabled()
+  expect(sent.map(b => b.to.repo)).toEqual(['demo'])
 })

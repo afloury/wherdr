@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  NOTIFY_SETUP, NO_ACTIONS, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorAgentName, coordinatorArgs, coordinatorPane, detailsFromTaskFile, groupByRepo, groupCounts, groupOf,
+  NOTIFY_SETUP, NO_ACTIONS, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, coordinatorStatusArgs, detailsFromTaskFile, parseCoordinatorStatus, groupByRepo, groupCounts, groupOf,
   rowFromTaskFile, stateFromTaskFile, isTaskId, parseReview, parseRepoKey, parseTaskDetails, parseTaskList, prNumber, repoKeysFromFile, sortTasks, taskActions, taskKey, taskNotice,
 } from '../shared/projectsTasks'
 
@@ -253,26 +253,17 @@ describe('commands, by repo, and push', () => {
     expect(cleanTarget({ kind: 'nope' })).toBeNull()
   })
 
-  it('finds a coordinator\'s pane by its agent name, in the machine\'s own session first', () => {
-    expect(coordinatorAgentName({ kind: 'main' })).toBe('sw-coordinator')
-    expect(coordinatorAgentName({ kind: 'machine' })).toBe('sw-coordinator-machine')
-    expect(coordinatorAgentName({ kind: 'project', repo: 'Demo.App' })).toBe('sw-coordinator-demo-app')
-    expect(coordinatorAgentName({ kind: 'project', repo: 'a-very-long-r-pository' })).toBe('sw-coordinator-a-very-long-r')
-    const panes = [
-      { id: 'w1:p1', name: 'sw-coordinator-demo' },
-      { id: 'other~w1:p1', machine: 'other', name: 'sw-coordinator' },
-      { id: 'hw~w2:p1', machine: 'hw', name: 'sw-coordinator-2' },
-      { id: 'w3:p1', name: 'sw-coordinator' },
-      { id: 'w4:p1', name: 'sw-coordinator-machine' },
-      { id: 'w5:p1', name: 'sw-coordinator-demo-2' },
-    ]
-    expect(coordinatorPane(panes, ['', 'hw'], { kind: 'main' })?.id).toBe('w3:p1')
-    expect(coordinatorPane(panes, ['hw', ''], { kind: 'main' })?.id).toBe('hw~w2:p1')
-    expect(coordinatorPane(panes, ['', 'hw'], { kind: 'machine' })?.id).toBe('w4:p1')
-    expect(coordinatorPane(panes, [''], { kind: 'project', repo: 'demo' })?.id).toBe('w1:p1')
-    // Never another machine's, never one not started.
-    expect(coordinatorPane(panes, ['nope'], { kind: 'main' })).toBeNull()
-    expect(coordinatorPane(panes, [''], { kind: 'project', repo: 'web' })).toBeNull()
+  it('a coordinator\'s pane, as herdr-projects keeps it (coordinator status --json)', () => {
+    expect(coordinatorStatusArgs({ kind: 'main' })).toEqual(['coordinator', '--json', 'status'])
+    expect(coordinatorStatusArgs({ kind: 'machine' })).toEqual(['coordinator', '--machine', '--json', 'status'])
+    expect(coordinatorStatusArgs({ kind: 'project', repo: 'demo-2' })).toEqual(['coordinator', '--project=demo-2', '--json', 'status'])
+    const st = (o: Record<string, unknown>) => parseCoordinatorStatus(JSON.stringify({ name: 'demo coordinator', agent: 'claude', ...o }))
+    for (const state of ['working', 'blocked', 'idle']) expect(st({ state, pane: 'w4:p2' })).toEqual({ state, pane: 'w4:p2' })
+    // No agent answering in it: nothing to talk to.
+    for (const state of ['none', 'starting', 'exited']) expect(st({ state, pane: 'w4:p2' }).pane).toBeNull()
+    expect(st({ state: 'idle', pane: '' }).pane).toBeNull()
+    expect(st({ state: 'idle', pane: '../w1:p1' }).pane).toBeNull()
+    expect(() => parseCoordinatorStatus('sent to the Coordinator')).toThrow(/not JSON/)
   })
 
   it('groups a machine\'s tasks by repo, repos by name, each as the board orders it', () => {

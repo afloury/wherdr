@@ -73,8 +73,6 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
         terminal_id: `term_${p.id.replace(/\W/g, '')}`,
         scroll: { viewport_rows: p.size.rows, offset_from_bottom: 0, max_offset_from_bottom: 0 },
         ...(p.session ? { agent_session: { agent: p.agent, value: p.session } } : {}),
-        // Its agent's inner name (e2e.pane_name), as herdr-projects names its coordinators.
-        ...(p.name ? { name: p.name } : {}),
       })),
       agents: [],
     }
@@ -164,7 +162,6 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     'e2e.integrations': params => { integrations = { ...(params.states || {}) }; return {} },
     'e2e.integration_states': () => ({ states: integrations }),
     'e2e.pane_status': params => { need(params.pane_id).status = params.status; return {} },
-    'e2e.pane_name': params => { need(params.pane_id).name = params.name || undefined; return {} },
     'e2e.update_session': params => { need(params.pane_id).session = params.session; return {} },
     'e2e.update_draft': params => { need(params.pane_id).updateOutput += params.text; return {} },
     'e2e.update_foreground': params => { need(params.pane_id).foreground = true; return {} },

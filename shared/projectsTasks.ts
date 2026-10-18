@@ -366,30 +366,26 @@ export function coordinatorArgs(to: CoordinatorTarget, words: string, delegate: 
     '--', 'tell', words]
 }
 
-// A coordinator's agent in Herdr (1.x coordinator/co.rs `agent_name`):
-// `sw-coordinator`, `sw-coordinator-machine`, `sw-coordinator-<repo>` (lowercase,
-// other characters as `-`, room left in Herdr's 32 for the `-2` that tells two
-// alike apart).
-const AGENT_NAME_MAX = 32
-export function coordinatorAgentName(to: CoordinatorTarget): string {
-  if (to.kind === 'main') return 'sw-coordinator'
-  if (to.kind === 'machine') return 'sw-coordinator-machine'
-  const tail = [...to.repo.toLowerCase()].map(c => (/[a-z0-9_]/.test(c) ? c : '-')).join('')
-  return `sw-coordinator-${tail}`.slice(0, AGENT_NAME_MAX - 3).replace(/-+$/, '')
+// Which pane a coordinator talks in, as herdr-projects itself keeps it
+// (coordinator/look.rs `summary`): `coordinator [--machine | --project=REPO]
+// status --json` gives its state and its pane in the board's own session.
+// Never guessed from an agent's name: two repos can share one once Herdr's
+// rules shorten it (`demo` and `demo-2`, `demo.app` and `demo-app`).
+export function coordinatorStatusArgs(to: CoordinatorTarget): string[] {
+  return ['coordinator', ...(to.kind === 'machine' ? ['--machine'] : to.kind === 'project' ? [`--project=${to.repo}`] : []), '--json', 'status']
 }
-// That coordinator's pane among a machine's: `keys` are the machine's sessions,
-// its own first (the session its board runs coordinators in); null while it
-// has not started (its first message starts it).
-export function coordinatorPane<P extends { machine?: string, name: string | null }>(panes: P[], keys: string[], to: CoordinatorTarget): P | null {
-  const name = coordinatorAgentName(to)
-  const fits = (n: string | null) => n === name || (Boolean(n) && n!.startsWith(`${name}-`) && /^\d+$/.test(n!.slice(name.length + 1)))
-  let best: P | null = null
-  let rank = Infinity
-  for (const p of panes) {
-    const at = keys.indexOf(p.machine || '')
-    if (at >= 0 && at < rank && fits(p.name)) { best = p; rank = at }
-  }
-  return best
+// Its agent answers in Herdr: working, blocked or idle. Anything else (none,
+// starting, exited) has no pane to talk to yet.
+const LIVE_COORDINATOR = ['working', 'blocked', 'idle']
+const PANE_RE = /^w[0-9a-z]+:p[0-9a-z]+$/i
+export function parseCoordinatorStatus(text: string): { state: string, pane: string | null } {
+  let v: unknown
+  try { v = JSON.parse(text) } catch { throw new Error('herdr-projects coordinator: not JSON') }
+  const o = obj(v)
+  if (!o) throw new Error('herdr-projects coordinator: unexpected reply')
+  const state = str(o.state, 20)
+  const pane = str(o.pane, 40)
+  return { state, pane: LIVE_COORDINATOR.includes(state) && PANE_RE.test(pane) ? pane : null }
 }
 
 // ---------------------------------------------------------------- by repo

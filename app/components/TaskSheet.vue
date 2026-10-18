@@ -45,9 +45,12 @@ async function load() {
     if (id === seq) loading.value = false
   }
 }
-// By the id itself: each read of the Board gives a new row, which must not
-// empty the sheet back to "Loading…" under the user's finger.
-watch([open, () => props.task?.id], ([o]) => {
+// By the task itself, its machine and its id: each read of the Board gives a
+// new row, which must not empty the sheet back to "Loading…" under the user's
+// finger; the same id on another machine is another task, whose sheet starts
+// empty (no details, no words written for the other one).
+const target = () => `${props.machine}|${props.task?.id ?? ''}`
+watch([open, target], ([o]) => {
   if (!o) return
   details.value = null
   reply.value = ''
@@ -69,18 +72,24 @@ async function send() {
   finally { busy.value = false }
 }
 
+// Still the task the user was asked about (a push or a card may have shown
+// another meanwhile): nothing is sent for it otherwise.
+const still = (was: string) => open.value && target() === was
+
 async function approve() {
   const t = props.task
   if (!t || busy.value) return
+  const was = target()
+  const machine = props.machine
   const plan = t.stage === 'plan'
   const ok = await askConfirm(plan
     ? tl(`Say yes to the plan of “${t.title}”? Its agent starts building.`, `Accepter le plan de « ${t.title} » ? Son agent commence à construire.`)
     : tl(`Approve “${t.title}”? herdr-projects merges its work. This cannot be undone.`, `Approuver « ${t.title} » ? herdr-projects fusionne son travail. C’est irréversible.`),
   plan ? tl('Approve plan', 'Accepter le plan') : tl('Approve and merge', 'Approuver et fusionner'), 'primary')
-  if (!ok) return
+  if (!ok || !still(was)) return
   busy.value = true
   try {
-    const r = await api<{ msg: string }>('/api/tasks/approve', { machine: props.machine, id: t.id })
+    const r = await api<{ msg: string }>('/api/tasks/approve', { machine, id: t.id })
     toast(r.msg || tl('Approved', 'Approuvé'))
     emit('changed')
     open.value = false
@@ -100,13 +109,16 @@ const running = ref<TaskCommand | null>(null)
 async function act(action: TaskCommand) {
   const t = props.task
   if (!t || busy.value) return
+  const was = target()
+  const machine = props.machine
   if (action === 'stop' && !await askConfirm(
     tl(`Stop the agent of “${t.title}”? Its turn ends now; the task stays, and Retry or Start picks it up again.`, `Arrêter l’agent de « ${t.title} » ? Son tour s’arrête maintenant ; la tâche reste, Réessayer ou Lancer la reprend.`),
     tl('Stop the agent', 'Arrêter l’agent'))) return
+  if (!still(was)) return
   busy.value = true
   running.value = action
   try {
-    const r = await api<{ msg: string }>('/api/tasks/action', { machine: props.machine, id: t.id, action })
+    const r = await api<{ msg: string }>('/api/tasks/action', { machine, id: t.id, action })
     haptic()
     toast(r.msg || ACTION_DONE[action]())
     emit('changed')

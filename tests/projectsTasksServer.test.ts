@@ -31,7 +31,7 @@ const session = { ...machine, key: 'abcd1234', session: 'review', info: () => ({
 const info = { status: 'ready', version: '1.2.1', launcher: '/plugins/herdr-projects/bin/run.sh' }
 let infoFails = false
 const infoAsked: boolean[] = []
-const panes: { id: string, machine?: string, agent?: string, cwd?: string, status?: string }[] = []
+const panes: { id: string, machine?: string, agent?: string, cwd?: string, status?: string, name?: string }[] = []
 vi.mock('../server/utils/machines', () => ({ allMachines: () => [machine, session], baseMachines: () => [machine] }))
 vi.mock('../server/utils/actions', () => ({ machineFor: (k: unknown) => (k === session.key ? session : machine) }))
 vi.mock('../server/utils/projectsPlugin', () => ({ projectsPluginInfo: async (_m: unknown, fresh = false) => {
@@ -55,6 +55,8 @@ let active = 0
 let maxActive = 0
 let delay = 0
 let listReply: { code: number, stdout: string, stderr: string } | null = null
+// `coordinator [--machine | --project=R] status --json`, by its flag ('' for the Coordinator).
+let coordStatus: Record<string, { state: string, pane: string }> = {}
 let clock = Date.now()
 const later = (ms = 60_000) => { clock += ms; vi.setSystemTime(clock) }
 beforeEach(() => {
@@ -66,6 +68,7 @@ beforeEach(() => {
   active = maxActive = 0
   delay = 0
   listReply = null
+  coordStatus = {}
   infoFails = false
   info.status = 'ready'
   panes.length = 0
@@ -91,6 +94,10 @@ beforeEach(() => {
       return { code: 0, stdout: JSON.stringify({ task: { id: args[3], title: 'Broke', stage: 'failed' }, failure: { stage: args[3] === 'demo/6' ? 'agent' : 'setup', title: 'Failed', detail: 'x', auth: false } }), stderr: '' }
     }
     if (args[0] === 'details') return { code: 0, stdout: fixture('details-approval.json'), stderr: '' }
+    if (args[0] === 'coordinator' && args.at(-1) === 'status') {
+      const flag = args.length > 3 ? args[1]! : ''
+      return { code: 0, stdout: JSON.stringify({ name: 'x', agent: 'claude', ...(coordStatus[flag] || { state: 'none', pane: '' }) }), stderr: '' }
+    }
     if (args[0] === 'approve') return { code: 1, stdout: '', stderr: 'demo/1: its pull request\'s checks failed\nmore' }
     return { code: 0, stdout: `${args[args.length - 2]}: sent\n`, stderr: '' }
   })
@@ -460,6 +467,35 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     ])
     calls = []
     await expect(T.tellCoordinator('', 'x', { to: { kind: 'project', repo: '../etc' } })).rejects.toThrow(/Invalid coordinator/)
+    expect(calls).toEqual([])
+  })
+
+  it('a coordinator\'s pane is the one herdr-projects keeps for it, never one found by name', async () => {
+    // Two repos whose agents' names Herdr would mix up (demo, demo-2): each has its own pane.
+    coordStatus = { '--project=demo': { state: 'idle', pane: 'w2:p1' }, '--project=demo-2': { state: 'working', pane: 'w1:p1' }, '': { state: 'blocked', pane: 'w3:p1' } }
+    panes.push({ id: 'w1:p1', machine: '', name: 'sw-coordinator-demo' }, { id: 'w2:p1', machine: '', name: 'sw-coordinator-demo-2' }, { id: 'w3:p1', machine: '', name: 'sw-coordinator' })
+    // The same pane id and name in the machine's named session: not the board's.
+    panes.unshift({ id: 'abcd1234~w2:p1', machine: 'abcd1234', name: 'sw-coordinator-demo' })
+    expect(await T.coordinatorPane('', { kind: 'project', repo: 'demo' })).toEqual({ pane: 'w2:p1', state: 'idle' })
+    expect(await T.coordinatorPane('', { kind: 'project', repo: 'demo-2' })).toEqual({ pane: 'w1:p1', state: 'working' })
+    expect(await T.coordinatorPane('', { kind: 'main' })).toEqual({ pane: 'w3:p1', state: 'blocked' })
+    // Not started: no pane, even with one named like it.
+    expect(await T.coordinatorPane('', { kind: 'machine' })).toEqual({ pane: null, state: 'none' })
+    // Exited, or a pane Herdr does not show (any more): none either.
+    coordStatus = { '--project=demo': { state: 'exited', pane: 'w2:p1' }, '--project=web': { state: 'idle', pane: 'w9:p1' } }
+    expect((await T.coordinatorPane('', { kind: 'project', repo: 'demo' })).pane).toBeNull()
+    expect((await T.coordinatorPane('', { kind: 'project', repo: 'web' })).pane).toBeNull()
+    // Asked of the board's own session, the user's words never as a flag.
+    expect(calls.filter(c => c[0] === 'coordinator')).toEqual([
+      ['coordinator', '--project=demo', '--json', 'status'], ['coordinator', '--project=demo-2', '--json', 'status'],
+      ['coordinator', '--json', 'status'], ['coordinator', '--machine', '--json', 'status'],
+      ['coordinator', '--project=demo', '--json', 'status'], ['coordinator', '--project=web', '--json', 'status'],
+    ])
+    await expect(T.coordinatorPane('', { kind: 'project', repo: '--all' })).rejects.toThrow(/Invalid coordinator/)
+    // From a container: nothing asked, no pane.
+    calls = []
+    T.setInContainer(true)
+    expect(await T.coordinatorPane('', { kind: 'main' })).toEqual({ pane: null, state: 'unknown' })
     expect(calls).toEqual([])
   })
 
