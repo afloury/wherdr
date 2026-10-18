@@ -20,6 +20,7 @@ const error = ref('')
 const loading = ref(false)
 const reply = ref('')
 const busy = ref(false)
+const running = ref<TaskCommand | null>(null)
 // A failed task's Retry or Start waits for its details (what failed).
 const failure = computed(() => (details.value && details.value.id === props.task?.id ? details.value : null))
 const actions = computed(() => (props.task && !props.readOnly ? taskActions(props.task, failure.value) : NO_ACTIONS))
@@ -50,7 +51,14 @@ async function load() {
 // finger; the same id on another machine is another task, whose sheet starts
 // empty (no details, no words written for the other one).
 const target = () => `${props.machine}|${props.task?.id ?? ''}`
+// The sheet's generation: a new one each time it shows another task, closes or
+// opens again. What a request finishes for an older one (clear the reply, close
+// the sheet, end "busy") is not done to the sheet now shown.
+let gen = 0
 watch([open, target], ([o]) => {
+  gen++
+  busy.value = false
+  running.value = null
   if (!o) return
   details.value = null
   reply.value = ''
@@ -61,15 +69,16 @@ async function send() {
   const t = props.task
   const text = reply.value.trim()
   if (!t || !text || busy.value) return
+  const g = gen
   busy.value = true
   try {
     await api('/api/tasks/tell', { machine: props.machine, id: t.id, text })
-    reply.value = ''
     haptic()
     toast(tl('Sent to the task’s agent', 'Envoyé à l’agent de la tâche'))
     emit('changed')
+    if (g === gen) reply.value = ''
   } catch (e) { toast((e as Error).message, true) }
-  finally { busy.value = false }
+  finally { if (g === gen) busy.value = false }
 }
 
 // Still the task the user was asked about (a push or a card may have shown
@@ -87,14 +96,15 @@ async function approve() {
     : tl(`Approve “${t.title}”? herdr-projects merges its work. This cannot be undone.`, `Approuver « ${t.title} » ? herdr-projects fusionne son travail. C’est irréversible.`),
   plan ? tl('Approve plan', 'Accepter le plan') : tl('Approve and merge', 'Approuver et fusionner'), 'primary')
   if (!ok || !still(was)) return
+  const g = gen
   busy.value = true
   try {
     const r = await api<{ msg: string }>('/api/tasks/approve', { machine, id: t.id })
     toast(r.msg || tl('Approved', 'Approuvé'))
     emit('changed')
-    open.value = false
+    if (g === gen) open.value = false
   } catch (e) { toast((e as Error).message, true) }
-  finally { busy.value = false }
+  finally { if (g === gen) busy.value = false }
 }
 
 // Start, stop, retry, archive: the task's id only. Stopping is asked first
@@ -105,7 +115,6 @@ const ACTION_DONE: Record<TaskCommand, () => string> = {
   retry: () => tl('Sent back to its agent', 'Renvoyée à son agent'),
   archive: () => tl('Archived', 'Archivée'),
 }
-const running = ref<TaskCommand | null>(null)
 async function act(action: TaskCommand) {
   const t = props.task
   if (!t || busy.value) return
@@ -115,6 +124,7 @@ async function act(action: TaskCommand) {
     tl(`Stop the agent of “${t.title}”? Its turn ends now; the task stays, and Retry or Start picks it up again.`, `Arrêter l’agent de « ${t.title} » ? Son tour s’arrête maintenant ; la tâche reste, Réessayer ou Lancer la reprend.`),
     tl('Stop the agent', 'Arrêter l’agent'))) return
   if (!still(was)) return
+  const g = gen
   busy.value = true
   running.value = action
   try {
@@ -122,9 +132,9 @@ async function act(action: TaskCommand) {
     haptic()
     toast(r.msg || ACTION_DONE[action]())
     emit('changed')
-    if (action === 'archive') open.value = false
+    if (action === 'archive' && g === gen) open.value = false
   } catch (e) { toast((e as Error).message, true) }
-  finally { busy.value = false; running.value = null }
+  finally { if (g === gen) { busy.value = false; running.value = null } }
 }
 
 function openPane() {
