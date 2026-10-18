@@ -38,7 +38,11 @@ function openFile(path: string) {
 // Preview and Open share the authenticated inline download path.
 // Each refresh reloads it.
 const reloads = ref(0)
-const pdfUrl = computed(() => preview.value?.kind === 'pdf' ? `/api/files/download?${fileQuery(preview.value.path)}&inline=1` : '')
+const inlineUrl = computed(() => preview.value?.kind === 'pdf' || preview.value?.kind === 'video' ? `/api/files/download?${fileQuery(preview.value.path)}&inline=1` : '')
+// A video the browser cannot decode (codec, or a .mov outside Safari): say so,
+// Open and Download stay.
+const videoFailed = ref(false)
+watch(inlineUrl, () => { videoFailed.value = false })
 const downloading = ref(false)
 async function download() {
   const p = preview.value?.path
@@ -109,7 +113,7 @@ function icon(e: FileEntry) {
           </template>
         </nav>
         <div class="files-actions">
-          <UButton v-if="pdfUrl" icon="i-lucide-external-link" color="neutral" variant="outline" size="sm" :to="pdfUrl" target="_blank" external :aria-label="t('Open')">{{ t('Open') }}</UButton>
+          <UButton v-if="inlineUrl" icon="i-lucide-external-link" color="neutral" variant="outline" size="sm" :to="inlineUrl" target="_blank" external :aria-label="t('Open')">{{ t('Open') }}</UButton>
           <UButton v-if="preview" icon="i-lucide-download" color="neutral" variant="outline" size="sm" :loading="downloading" :aria-label="t('Download')" @click="download">{{ t('Download') }}</UButton>
           <UButton icon="i-lucide-refresh-cw" color="neutral" variant="outline" size="sm" :loading="loading" :aria-label="t('Refresh')" @click="refresh"><span class="files-label">{{ t('Refresh') }}</span></UButton>
         </div>
@@ -122,7 +126,12 @@ function icon(e: FileEntry) {
         <p class="changes-location">{{ preview.path }} · {{ fmtBytes(preview.size) }}</p>
         <p v-if="preview.truncated && preview.kind === 'text'" class="changes-limit">{{ t('File truncated to keep this view responsive.') }}</p>
         <img v-if="preview.kind === 'image'" class="files-image" :src="preview.dataUrl" :alt="preview.path">
-        <PdfPreview v-else-if="preview.kind === 'pdf'" :key="`${pdfUrl}:${reloads}`" :src="pdfUrl" :title="preview.path" />
+        <PdfPreview v-else-if="preview.kind === 'pdf'" :key="`${inlineUrl}:${reloads}`" :src="inlineUrl" :title="preview.path" />
+        <template v-else-if="preview.kind === 'video'">
+          <p v-if="videoFailed" class="changes-notice" role="alert">{{ t('This video cannot be played here. Use Open or Download.') }}</p>
+          <!-- Streamed in pieces (Range); playsinline: no forced full screen on iPhone. -->
+          <video v-else :key="`${inlineUrl}:${reloads}`" class="files-video" :src="inlineUrl" :aria-label="preview.path" controls playsinline preload="metadata" @error="videoFailed = true" />
+        </template>
         <p v-else-if="preview.kind === 'binary'" class="changes-notice">{{ t('Binary file') }}</p>
         <p v-else-if="preview.kind === 'large'" class="changes-notice">{{ /\.pdf$/i.test(preview.path) ? t('PDF too large to preview (50 MB max).') : t('Image too large to preview.') }}</p>
         <div v-else class="files-code" role="region" :aria-label="preview.path">

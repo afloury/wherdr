@@ -329,6 +329,7 @@ const FR: Record<string, string> = {
   'Image too large to preview.': 'Image trop lourde pour l’aperçu.',
   'Loading PDF…': 'Chargement du PDF…',
   'Could not preview this PDF. Use Open to view it.': 'Impossible d’afficher ce PDF. Utilise Ouvrir pour le consulter.',
+  'This video cannot be played here. Use Open or Download.': 'Cette vidéo ne peut pas être lue ici. Utilise Ouvrir ou Télécharger.',
   'Page': 'Page',
   'PDF too large to preview (50 MB max).': 'PDF trop lourd pour l’aperçu (50 Mo max).',
   'File not found': 'Fichier introuvable', 'Outside the project folder': 'Hors du dossier du projet', 'Not a file': 'Pas un fichier',
