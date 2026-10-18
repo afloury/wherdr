@@ -86,8 +86,10 @@ async function lookCoordinator(g: number) {
     const r = await api<{ pane: string | null, state: string }>(`/api/tasks/coordinator?${q}`)
     if (g !== gen) return
     coordPane.value = r.pane
-    // Starting (or just told to): asked again until it has a pane.
-    if (!r.pane && (r.state === 'starting' || sent.value) && ++tries <= 40) poll = setTimeout(() => lookCoordinator(g), 3000)
+    // Starting (or just told to): asked again until it has a pane. A pane Herdr
+    // does not show (yet, or any more): asked again too, for the one it has now.
+    const unseen = Boolean(r.pane) && herdrState.value.ok && !herdrState.value.panes.some(p => p.id === r.pane)
+    if ((unseen || (!r.pane && (r.state === 'starting' || sent.value))) && ++tries <= 40) poll = setTimeout(() => lookCoordinator(g), 3000)
   } catch {
     if (g === gen && sent.value && ++tries <= 40) poll = setTimeout(() => lookCoordinator(g), 3000)
   } finally {
@@ -97,6 +99,27 @@ async function lookCoordinator(g: number) {
 onUnmounted(() => { gen++; clearTimeout(poll) })
 // The coordinator's pane once Herdr shows it.
 const coordShown = computed(() => (coordPane.value && herdrState.value.panes.some(p => p.id === coordPane.value) ? coordPane.value : null))
+// Asked again while none is shown and Herdr's agents change (its pane closed,
+// a coordinator restarted or started from Herdr), and when its machine is back.
+function relook() {
+  if (props.target.kind !== 'coordinator') return
+  tries = 0
+  lookCoordinator(gen)
+}
+let settle: ReturnType<typeof setTimeout> | undefined
+watch(() => (props.target.kind === 'coordinator' && coordLoaded.value && !coordShown.value
+  ? herdrState.value.panes.filter(p => p.agent).map(p => p.id).join(' ')
+  : null), (k, was) => {
+  if (k === null || was === null || k === was) return
+  clearTimeout(settle)
+  settle = setTimeout(relook, 800)
+})
+// The pane it had closed: asked at once for the one it has now.
+watch(() => props.target.kind === 'coordinator' && Boolean(coordPane.value) && herdrState.value.ok && !coordShown.value, (lost) => {
+  if (lost) { clearTimeout(settle); settle = setTimeout(relook, 800) }
+})
+watch(() => props.reachable, (r, was) => { if (r && was === false) relook() })
+onUnmounted(() => clearTimeout(settle))
 
 const paneId = computed(() => (props.target.kind === 'task' ? taskPane.value : coordShown.value))
 // A task's agent that closes while shown: back to its sheet.
