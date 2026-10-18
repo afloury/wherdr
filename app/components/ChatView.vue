@@ -726,7 +726,7 @@ function onListClick(e: MouseEvent) {
 // only after the user has seen it in full and confirmed (composables/useCodeRun.ts).
 // Never from a message of the user's (their messages are not markdown) nor on its own.
 async function runCommand(cmd: string) {
-  const queued = await runInAgent(props.pane, cmd)
+  const queued = await runInAgent(props.pane.id, cmd)
   if (queued !== false) emit('sent', queued)
 }
 function cmdMenuItems(cmd: string, runnable: boolean): MenuItem[] {

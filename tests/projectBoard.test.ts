@@ -3,6 +3,7 @@ import { boardSections, visibleSections, maxParallelThreads, moveMessage, queueS
 import { decisionRef, isRefLine, refSegments, refsIn } from '../shared/reference'
 import { addAnswer, answerOf } from '../app/utils/questionReply'
 import { pluginBinary } from '../server/utils/projectBoard'
+import { inlineCommand } from '../app/utils/shellCommand'
 import { isCoordinator } from '../shared/projects'
 import type { Pane } from '../shared/types'
 
@@ -219,6 +220,27 @@ describe('inline code in the text', () => {
     const t0 = Date.now()
     expect(textParts(line)).toEqual([{ text: line }])
     expect(Date.now() - t0).toBeLessThan(200)
+  })
+  // What Copy and Run use comes from the parsed task: the code must survive
+  // the line's cleanup (badges, old refs, owner, blocked cause) byte for byte.
+  const commandOf = (line: string, kind: Parameters<typeof parseTaskLine>[1] = null) =>
+    textParts(parseTaskLine(line, kind)!.text).filter(p => p.code).map(p => inlineCommand(p.text) ?? p.text)
+  it('keeps the spaces inside code when a badge is removed', () => {
+    expect(commandOf('- [ ] Run `cp "report  final.txt" backup.txt` [b:green(ready)] (me)')).toEqual(['cp "report  final.txt" backup.txt'])
+    // Outside the code the spaces left by the badge are still collapsed.
+    expect(parseTaskLine('- [ ] Run  [b:green(ready)]  `ls  -la` now (me)')!.text).toBe('Run `ls  -la` now')
+  })
+  it('keeps an old [t-NNNN] reference written inside code', () => {
+    expect(commandOf('- [ ] Check `echo "[t-0140]"` [t-0141] (agent)')).toEqual(['echo "[t-0140]"'])
+    expect(parseTaskLine('- [ ] Check `echo "[t-0140]"` [t-0141] (agent)')!.text).toBe('Check `echo "[t-0140]"`')
+  })
+  it('a dash inside code is not the blocked cause', () => {
+    const task = parseTaskLine('- [ ] Run `git log — blocked by: x` — blocked by: review (agent)', 'blocked')!
+    expect(task.reason).toBe('review')
+    expect(commandOf('- [ ] Run `git log — blocked by: x` — blocked by: review (agent)', 'blocked')).toEqual(['git log — blocked by: x'])
+  })
+  it('a prompt in front of the command is dropped, the rest kept', () => {
+    expect(commandOf('- [ ] Merge with `! gh pr merge 5  --squash` [b:red(bug)] [t-0001] (me)')).toEqual(['gh pr merge 5  --squash'])
   })
   it('a task line keeps its code, a badge written in code is not a badge', () => {
     const task = parseTaskLine('- [ ] Run `npm run check:leaks` before `[b:red(x)]` [b:red(bug)] (me)')!

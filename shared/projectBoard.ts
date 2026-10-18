@@ -128,18 +128,29 @@ export function badgeTarget(raw: string | undefined): { href: string } | { threa
     return u.protocol === 'https:' || u.protocol === 'http:' ? { href: u.href } : null
   } catch { return null }
 }
+// Applies `fn` to the text outside inline code only: what is inside a code
+// span (a command the user may copy or run) is kept byte for byte.
+function outsideCode(text: string, fn: (s: string) => string): string {
+  let out = ''
+  let at = 0
+  for (const m of text.matchAll(CODE)) {
+    out += fn(text.slice(at, m.index)) + m[0]
+    at = m.index! + m[0].length
+  }
+  return out + fn(text.slice(at))
+}
+// Start and end of each code span of `text`.
+const codeSpans = (text: string) => [...text.matchAll(CODE)].map(m => [m.index!, m.index! + m[0].length] as const)
 export function takeBadges(input: string): { text: string, badges: TaskBadge[] } {
   const badges: TaskBadge[] = []
   // A badge written inside inline code is code, shown as typed.
-  const spans = [...input.matchAll(CODE)].map(m => [m.index!, m.index! + m[0].length] as const)
-  const inCode = (at: number) => spans.some(([a, b]) => at >= a && at < b)
-  const text = input.replace(BADGE, (all, color: string, label: string, target: string | undefined, at: number) => {
+  const text = outsideCode(input, part => part.replace(BADGE, (all, color: string, label: string, target?: string) => {
     const t = label.replace(/\s+/g, ' ').trim()
-    if (!t || inCode(at)) return all
+    if (!t) return all
     badges.push({ text: t, color: badgeColor(color), ...(badgeTarget(target) || {}) })
     return ' '
-  })
-  return badges.length ? { text: text.replace(/\s{2,}/g, ' ').trim(), badges } : { text: input, badges }
+  }))
+  return badges.length ? { text: outsideCode(text, part => part.replace(/\s{2,}/g, ' ')).trim(), badges } : { text: input, badges }
 }
 
 export function parseTaskLine(line: string, kind: ListKind | null = null): ProjectTask | null {
@@ -148,7 +159,7 @@ export function parseTaskLine(line: string, kind: ListKind | null = null): Proje
   const m = TASK_LINE.exec(line.replace(ANSI, '').replace(/\t/g, ' ').replace(CONTROL, '').trim())
   if (!m) return null
   const free = takeBadges(m[2]!.trim())
-  let text = free.text.replace(REFS, '').trim()
+  let text = outsideCode(free.text, part => part.replace(REFS, '')).trim()
   let owner: string | null = null
   const o = OWNER.exec(text)
   // "[PR](https://…)" at the end of the line: a Markdown link, not an owner.
@@ -159,8 +170,10 @@ export function parseTaskLine(line: string, kind: ListKind | null = null): Proje
   let reason: string | undefined
   if (kind === 'blocked') {
     // Leftmost " — <cause>: …" (an indexOf walk instead of one backtracking regex).
+    // A dash inside inline code is part of the code.
+    const spans = codeSpans(text)
     for (let at = text.indexOf('—'); at > 0; at = text.indexOf('—', at + 1)) {
-      if (!/\s/.test(text[at - 1]!)) continue
+      if (!/\s/.test(text[at - 1]!) || spans.some(([a, b]) => at >= a && at < b)) continue
       const cause = CAUSE.exec(text.slice(at + 1))
       if (!cause?.[1]?.trim()) continue
       reason = cause[1].trim()

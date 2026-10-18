@@ -31,10 +31,8 @@ function items(code: string): { title: string, items: MenuItem[] } {
   return { title: cmd !== null ? tl('Command', 'Commande') : isPath ? fileName(code) : 'Code', items: list }
 }
 async function run(paneId: string, cmd: string) {
-  // The pane as it is now: it may have changed while the menu was open.
-  const pane = herdrState.value.panes.find(p => p.id === paneId)
-  if (!pane) return
-  const queued = await runInAgent(pane, cmd)
+  // The pane is read again when Run is picked and once confirmed (useCodeRun.ts).
+  const queued = await runInAgent(paneId, cmd)
   if (queued !== false) emit('sent', queued)
 }
 function open(e: Event, code: string) {

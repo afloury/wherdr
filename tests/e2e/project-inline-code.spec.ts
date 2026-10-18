@@ -50,6 +50,10 @@ test('inline code in a task is code, and its menu runs the command in the coordi
   await menuItem(page, 'Run…').click()
   const confirm = page.locator('.hw-sheet').filter({ has: page.locator('.confirm-code') })
   await expect(confirm.locator('.confirm-code')).toHaveText('npm run check:leaks')
+  // The confirmation names where the command goes: the coordinator and its folder.
+  await expect(confirm).toContainText('acme')
+  await expect(confirm).toContainText('.herdr-projects/acme')
+  await shot(page, 'task-code-confirm', info.project.name)
   expect(sent).toEqual([])
   await confirm.getByRole('button', { name: 'Run', exact: true }).click()
   await expect.poll(() => sent).toEqual(['! npm run check:leaks'])

@@ -115,6 +115,71 @@ describe('TaskText inline code', () => {
     expect(posts).toEqual([])
   })
 
+  // Opens the confirmation for `npm test` and leaves it open.
+  async function confirmOpen() {
+    const w = await mount('`npm test`')
+    await w.get('code.pp-code').trigger('click')
+    menuState.items[0]!.run!()
+    await flushPromises()
+    expect(confirmState.open).toBe(true)
+  }
+
+  it('the confirmation names the agent, its pane, machine and folder', async () => {
+    herdrState.value = { ok: true, workspaces: [{ id: 'w1', label: 'acme' } as never], panes: [pane({ cwd: '/srv/acme', name: 'coord' })] }
+    await confirmOpen()
+    expect(confirmState.message).toContain('Claude')
+    expect(confirmState.message).toContain('acme')
+    expect(confirmState.message).toContain('/srv/acme')
+    answerConfirm(false)
+  })
+
+  it('another agent in the pane while confirming: nothing is sent', async () => {
+    herdrState.value = { ok: true, workspaces: [], panes: [pane({ agent: 'claude', cwd: '/repo/first', agentSession: 's1' })] }
+    await confirmOpen()
+    // Same pane ID, now omp in another folder.
+    herdrState.value = { ok: true, workspaces: [], panes: [pane({ agent: 'omp', cwd: '/repo/second', agentSession: 's2' })] }
+    answerConfirm(true)
+    await flushPromises()
+    expect(posts).toEqual([])
+  })
+
+  it('a new session or folder of the same agent while confirming: nothing is sent', async () => {
+    for (const change of [{ agentSession: 's2' }, { cwd: '/repo/second' }]) {
+      herdrState.value = { ok: true, workspaces: [], panes: [pane({ cwd: '/repo/first', agentSession: 's1' })] }
+      await confirmOpen()
+      herdrState.value = { ok: true, workspaces: [], panes: [pane({ cwd: '/repo/first', agentSession: 's1', ...change })] }
+      answerConfirm(true)
+      await flushPromises()
+    }
+    expect(posts).toEqual([])
+  })
+
+  it('the pane gone, offline, or a question on screen while confirming: nothing is sent', async () => {
+    const changes: (() => void)[] = [
+      () => { herdrState.value = { ok: true, workspaces: [], panes: [] } },
+      () => { eventsOpen.value = false },
+      () => { herdrState.value = { ok: true, workspaces: [], panes: [pane({ status: 'blocked', prompt: { question: 'Allow?', cursor: 0, options: [{ label: 'Yes' }] } as Pane['prompt'] })] } },
+    ]
+    for (const change of changes) {
+      eventsOpen.value = true
+      herdrState.value = { ok: true, workspaces: [], panes: [pane()] }
+      await confirmOpen()
+      change()
+      answerConfirm(true)
+      await flushPromises()
+    }
+    expect(posts).toEqual([])
+  })
+
+  it('an unchanged pane (status updates only) still gets the command', async () => {
+    herdrState.value = { ok: true, workspaces: [], panes: [pane({ cwd: '/repo/first', agentSession: 's1' })] }
+    await confirmOpen()
+    herdrState.value = { ok: true, workspaces: [], panes: [pane({ cwd: '/repo/first', agentSession: 's1', status: 'working' })] }
+    answerConfirm(true)
+    await flushPromises()
+    expect(posts).toEqual(['! npm test'])
+  })
+
   it('the keyboard opens the menu too, and a tap does not reach the row', async () => {
     let rowClicks = 0
     const w = await mountSuspended(defineComponent({
