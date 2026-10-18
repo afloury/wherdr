@@ -25,15 +25,33 @@ and never deletes them. Upstream describes what it does in
 as `<file>.bak-herdr-projects`). Keep your own copy too:
 
 ```sh
-cd ~ && for p in .herdr-projects .config/herdr-projects .local/state/herdr/plugins/herdr-projects \
-  .config/herdr/config.toml .config/herdr/plugins.json; do [ -e "$p" ] && echo "$p"; done \
-  | tar czf ~/herdr-projects-0.2-backup-$(date +%F).tgz -T -
-tar tzf ~/herdr-projects-0.2-backup-$(date +%F).tgz | head
+cd ~ && if [ -s ~/herdr-projects-0.2-backup.path ]; then
+  echo "backup already made, kept: $(cat ~/herdr-projects-0.2-backup.path)"
+else
+  backup="$HOME/herdr-projects-0.2-backup-$(date +%Y%m%d-%H%M%S).tgz"
+  files=$(for p in .herdr-projects .config/herdr-projects .local/state/herdr/plugins/herdr-projects \
+    .config/herdr/config.toml .config/herdr/plugins.json; do [ -e "$p" ] && echo "$p"; done)
+  if [ ! -e "$backup" ] && printf '%s\n' "$files" | tar czf "$backup" -T - \
+    && tar tzf "$backup" > /dev/null; then
+    echo "$backup" > ~/herdr-projects-0.2-backup.path && echo "backup ok: $backup"
+    printf '%s\n' "$files" | grep -qx .config/herdr/config.toml \
+      || echo "no Herdr config.toml to keep: step 5 of Going back has nothing to restore"
+  else
+    echo "BACKUP FAILED: do not go on"
+  fi
+fi
 ```
 
+Go on only after `backup ok` (or `backup already made`). The archive has a new name each time
+and is never overwritten. `~/herdr-projects-0.2-backup.path` keeps the path of the **first**
+one: running this again, for example after an install that stopped halfway, keeps that first
+backup instead of saving files 1.x has already changed. The steps of
+[Going back](#going-back-to-02) read the path from that file.
+
 The archive holds your whole projects (their libraries, uploads and thread records): expect
-hundreds of megabytes. Keep it until you are sure you will not go back: it is the only full copy
-of Herdr's `config.toml` as it was (see [Going back](#going-back-to-02), step 4).
+hundreds of megabytes. Keep it, and its `.path` file, until you are sure you will not go back:
+it is the only full copy of Herdr's `config.toml` as it was (see
+[Going back](#going-back-to-02), step 5).
 
 ## 2. Install herdr-projects 1.2.1
 
@@ -77,8 +95,15 @@ Do not run `herdr-projects update` on a machine that still had 0.2 before this s
 
 ## 3. Update wherdr
 
-- npm: `npm install -g wherdr@latest`
+Installing a new version does not change a wherdr that is already running: restart it too.
+
+- npm: `npm install -g wherdr@latest && wherdr restart`
+- Homebrew: `brew upgrade wherdr && brew services restart wherdr`
+- Herdr plugin: **U** in the **wherdr** panel (wherdr restarts on the new version).
 - Docker: `docker compose pull && docker compose up -d` in wherdr's folder.
+
+Check the version wherdr now serves in **Settings › About**: 2.0 or later. Still 1.3.4 means the
+old process is still running: restart it.
 
 Open **Settings › Plugins › herdr-projects**: each machine says **Installed · v1.2.1**. The
 **Board** (next to Settings) shows the tasks; write to the Coordinator in its box to add the
@@ -86,21 +111,58 @@ work your 0.2 projects still had.
 
 ## Going back to 0.2
 
-1. **Stop everything of 1.x first**, so nothing writes while folders move:
+1. **Bring 1.x's agents to rest first**, so none keeps changing a repo while folders move.
+   Stopping the Coordinator is not enough: each task has its own agent (and its reviewer), and
+   machine and project coordinators are stopped apart. A Coordinator belongs to one Herdr
+   session while the plugin and its files are shared, so do this in each Herdr session where you
+   used 1.x's board.
 
    ```sh
-   ~/.herdr-projects/data/bin/herdr-projects coordinator stop   # its Coordinator
-   herdr plugin disable herdr-projects                           # its hooks and its board key
-   pgrep -af herdr-projects                                      # what still runs (board, keeper, page server, jobs)
+   hp=~/.herdr-projects/data/bin/herdr-projects
+   $hp list --all --json      # every task, with its id and state
    ```
 
-   `disable` does not stop what already runs. Close the work board's tab in Herdr: that ends the
-   board, but its `keeper` and `keeper-work` keep running. Stop each process `pgrep` still lists by
-   its number (`kill <pid>`) and run `pgrep -af herdr-projects` again until it lists nothing.
+   Let each task that is working finish, or stop it with `$hp stop <id>`. Then stop the
+   coordinators you used:
 
-2. **Uninstall 1.x**: `herdr plugin uninstall herdr-projects`
+   ```sh
+   $hp coordinator stop                     # the Coordinator of this session
+   $hp coordinator --machine stop           # the machine coordinator
+   $hp coordinator --project <repo> stop    # each project coordinator (one per repo)
+   herdr agent list                         # every agent of this Herdr session and its status
+   ```
 
-3. **Put the 0.2 folders back.** 1.x wrote down where it put each one in
+   Go on when none of the agents 1.x started (its tasks' agents and reviewers, its coordinators)
+   is still working. Leave the agents you started yourself alone.
+
+2. **Take out 1.x's extras, then stop what still runs.** Herdr has no uninstall hook, so 1.x
+   cleans up outside its folders only when asked: its how-to files for agents, its blocks in
+   Herdr's config, and the herdr web UI's shared link if you pointed it at the board. Run this
+   while 1.x is still installed:
+
+   ```sh
+   ~/.herdr-projects/data/bin/herdr-projects remove-extras && echo "extras removed"
+   herdr plugin disable herdr-projects     # its hooks and its board key
+   ```
+
+   Go on only after `extras removed`. `disable` does not stop what already runs. Close the work
+   board's tab in Herdr: that ends the board, but its `keeper` and `keeper-work` keep running. List
+   your processes that name herdr-projects:
+
+   ```sh
+   ps -U "$(id -u)" -o pid=,args= | grep '[h]erdr-projects'
+   ```
+
+   This is a list to read, not a list to stop. Stop with `kill <pid>` only a line whose program
+   is 1.x's in **your** HOME: `~/.config/herdr/plugins/…/herdr-projects-…/bin/herdr-projects-<system>`
+   or `~/.herdr-projects/data/bin/herdr-projects`, such as its `keeper`, `keeper-work`, `board`
+   and page server. Leave any other line: another HOME or install, a 0.2 program
+   (`…/target/release/herdr-projects`), or a command that only mentions the name. Run the list
+   again: none of the processes you stopped may still be there.
+
+3. **Uninstall 1.x**: `herdr plugin uninstall herdr-projects`
+
+4. **Put the 0.2 folders back.** 1.x wrote down where it put each one in
    `~/.herdr-projects/moved.json`: `~/.herdr-projects-legacy`, or `-legacy-2`, `-legacy-3`… when an
    older one was already there. Do not guess the names: this lists them, then puts each folder back.
    A folder already at the old place (1.x's own board, or a folder created since) is set aside
@@ -133,16 +195,30 @@ work your 0.2 projects still had.
 
    1.x's own board is now in `~/.herdr-projects.from-1x-<n>`: keep it if you may come back to 1.x.
 
-4. Put back the files 1.x changed.
-   - **Herdr's config: restore it from your backup of step 1**, not from
+5. Put back the files 1.x changed.
+   - **Herdr's config: restore it from your own backup** (step 1 of the move), not from
      `config.toml.bak-herdr-projects`. 1.x rewrites that one file at each change it makes to
      Herdr's config (adding its own key, then taking it out again on uninstall), so it only holds the
-     state before its last change, without 0.2's lines. Compare, then restore:
+     state before its last change, without 0.2's lines. If step 1 said there was no `config.toml`
+     to keep, skip this: 0.2 had none.
+
+     First take the file out of the archive, into a new private folder, and have Herdr check it.
+     Nothing is replaced yet:
 
      ```sh
-     cd ~ && tar xzf ~/herdr-projects-0.2-backup-<date>.tgz -O .config/herdr/config.toml > /tmp/herdr-config-0.2.toml
-     diff ~/.config/herdr/config.toml /tmp/herdr-config-0.2.toml
-     cp /tmp/herdr-config-0.2.toml ~/.config/herdr/config.toml && herdr server reload-config
+     ok= && backup=$(cat ~/herdr-projects-0.2-backup.path) && tmp=$(mktemp -d) \
+       && tar xzf "$backup" -C "$tmp" .config/herdr/config.toml \
+       && [ -s "$tmp/.config/herdr/config.toml" ] \
+       && XDG_CONFIG_HOME="$tmp/.config" herdr config check \
+       && ok=1 && echo "checked: $tmp/.config/herdr/config.toml" || echo "STOP: nothing restored"
+     diff ~/.config/herdr/config.toml "$tmp/.config/herdr/config.toml"   # what the restore changes
+     ```
+
+     Only after `checked`, in the same shell, keep the current file beside it and restore:
+
+     ```sh
+     [ "$ok" = 1 ] && cp ~/.config/herdr/config.toml ~/.config/herdr/config.toml.before-0.2-restore \
+       && cp "$tmp/.config/herdr/config.toml" ~/.config/herdr/config.toml && herdr server reload-config
      ```
 
    - **Agents' settings** (Claude, Codex…): 1.x changes them once, so their
@@ -151,12 +227,20 @@ work your 0.2 projects still had.
      `diff ~/.claude/settings.json ~/.claude/settings.json.bak-herdr-projects`, then
      `cp ~/.claude/settings.json.bak-herdr-projects ~/.claude/settings.json` (same for
      `~/.codex/hooks.json` and the others `doctor` named).
-5. Reinstall 0.2 from the fork wherdr 1.3.4 installs, pinned to `v0.2.36`: the command is in
+6. Reinstall 0.2 from the fork wherdr 1.3.4 installs, pinned to `v0.2.36`: the command is in
    wherdr 1.3.4's README and in its **Settings › Plugins › herdr-projects**. `v0.2.36` exists only on
    that fork: upstream's last 0.2 tag is `v0.2.35`, whose `herdr-projects update` would offer 1.x
    again. The install puts the `herdr-projects` link back on your PATH.
-6. Go back to wherdr 1.3.4: `npm install -g wherdr@1.3.4`, or with Docker set the image tag in
-   `docker-compose.yml` to `1.3.4`, then `docker compose pull && docker compose up -d`.
+7. Go back to wherdr 1.3.4, and restart it:
+   - npm: `npm install -g wherdr@1.3.4 && wherdr restart`
+   - Herdr plugin: run its `herdr plugin install … --yes` command from the README again, with
+     `WHERDR_REF=v1.3.4` in front of it (wherdr restarts on that version).
+   - Docker: set the image tag in `docker-compose.yml` to `1.3.4`, then
+     `docker compose pull && docker compose up -d`.
+   - Homebrew installs only the newest version: for 1.3.4, `brew services stop wherdr && brew uninstall wherdr`,
+     then use npm as above.
 
-If anything is missing, the backup from step 1 has everything as it was:
-`cd ~ && tar xzf ~/herdr-projects-0.2-backup-<date>.tgz` (with herdr-projects stopped).
+   **Settings › About** must say 1.3.4: 2.0 there means the old process still runs.
+
+If anything is missing, the backup from step 1 of the move has everything as it was:
+`cd ~ && tar xzf "$(cat ~/herdr-projects-0.2-backup.path)"` (with herdr-projects stopped).
