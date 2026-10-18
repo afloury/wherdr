@@ -79,6 +79,8 @@ jobs:
               case "$file" in
                 README.md | CHANGELOG.md | CONTRIBUTING.md | SECURITY.md | LICENSE) ;;
                 docs/* | release-notes/* | website/*) ;;
+                # The README launch film and the tooling that renders it.
+                assets/* | tools/launch-video/*) ;;
                 .github/workflows/npm.yml | .github/workflows/release.yml) ;;
                 .github/workflows/release-ready.yml | .github/workflows/site.yml) ;;
                 *) echo "needs the browser tests: $file"; e2e=true ;;
