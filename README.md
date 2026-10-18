@@ -1132,12 +1132,19 @@ What the Board shows and does:
   eight, then **Show all**). Side by side on a computer, one at a time on a phone. A card shows
   the task's key (`DEMO-12`), title, the line its agent reports, the agent program, progress, its
   pull request and its review (pass or fail, with the findings by severity).
-- **A task** opens its details: description, plan, branch, pull request, review, what went
-  wrong. **Reply** sends a message to its agent (on a plan that waits, it sends the plan back
-  with your words). **Approve** merges finished work or says yes to a plan, after a
-  confirmation. **Open its agent** opens the agent's pane when it is open in Herdr.
-- **The Coordinator box** on top sends a message to a machine's Coordinator, the agent that turns
-  what you write into tasks. Adding, delegating, stopping or archiving tasks goes through it.
+- **A task** opens its agent in a side panel: wherdr's own agent view (conversation, terminal,
+  message field), under the task's title, its description (folded after a few lines), the
+  Watcher's progress, and the agent's closing note or research report once there is one. The
+  panel always says who you talk to: machine, repo, task. It sits beside the Board on a computer
+  and takes the whole screen on a phone, with a way back.
+- **A task's sheet**, from the panel (or at once for a task with no agent: to do, or its agent
+  gone): description, plan, branch, pull request, review, what went wrong. **Reply** sends a
+  message to its agent (on a plan that waits, it sends the plan back with your words).
+  **Approve** merges finished work or says yes to a plan, after a confirmation; **Start**,
+  **Stop**, **Retry** and **Archive** where herdr-projects takes them.
+- **Coordinators**, in the same panel: a machine's heading opens its Coordinator, the agent that
+  turns what you write into tasks; a repo's heading opens that repo's project coordinator. One
+  not started yet takes a first message (`coordinator tell`), which starts it.
 - **A machine is one board**, shared by its named sessions: one list, one queue, one card per
   task. A machine whose read fails says why on the Board, and its last tasks stay, marked with
   the time they were read.
@@ -1154,7 +1161,7 @@ What the Board shows and does:
   files (`~/.herdr-projects/data/tasks`) and runs nothing of herdr-projects: each 1.x command also
   runs the board's upkeep (start queued tasks, sync, clean up, poll pull requests), which belongs
   to the host, not to a container with read-only repositories and no `gh`. The tasks show, with
-  their state as herdr-projects would show it; reply, approve and the Coordinator box are left to
+  their state as herdr-projects would show it; reply, approve and the coordinators are left to
   Herdr on the host, and a task gives the command to run there. SSH machines are not affected:
   their commands run on them.
 

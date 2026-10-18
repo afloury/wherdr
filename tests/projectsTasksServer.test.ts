@@ -333,6 +333,11 @@ describe('actions on a task', () => {
     expect(calls.at(-1)).toEqual(['details', '--json', '--', 'demo/1'])
   })
 
+  it('the closing note comes from the task file, which 1.2.1 details leave it out of', async () => {
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'approval', summary: 'Redirect fixed, two tests added.' })
+    expect((await T.taskDetails('', 'demo/1')).summary).toBe('Redirect fixed, two tests added.')
+  })
+
   it('runs one command at a time on a machine, whichever session asks', async () => {
     delay = 20
     vi.useRealTimers()

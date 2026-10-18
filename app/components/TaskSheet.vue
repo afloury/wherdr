@@ -9,8 +9,9 @@ import { NO_ACTIONS, type TaskCommand, type TaskDetails, type TaskRow, TELL_MAX,
 import { PROJECTS_LAUNCHER } from '#shared/projectsPlugin'
 
 // `readOnly`: the board is read from its files (wherdr in a container): the
-// actions are the host's, given as commands.
-const props = defineProps<{ task: TaskRow | null, machine: string, readOnly?: boolean }>()
+// actions are the host's, given as commands. `inPanel`: opened over the Board's
+// side panel, which already shows its agent.
+const props = defineProps<{ task: TaskRow | null, machine: string, readOnly?: boolean, inPanel?: boolean }>()
 const emit = defineEmits<{ changed: [] }>()
 const open = defineModel<boolean>('open', { default: false })
 
@@ -44,7 +45,9 @@ async function load() {
     if (id === seq) loading.value = false
   }
 }
-watch(() => [open.value, props.task?.id], ([o]) => {
+// By the id itself: each read of the Board gives a new row, which must not
+// empty the sheet back to "Loading…" under the user's finger.
+watch([open, () => props.task?.id], ([o]) => {
   if (!o) return
   details.value = null
   reply.value = ''
@@ -168,13 +171,13 @@ function openPane() {
         <p class="task-sheet-text">{{ details.plan }}</p>
       </section>
 
-      <div v-if="details?.pane || actions.approve || actions.delegate || actions.retry || actions.stop || actions.archive" class="task-sheet-actions">
+      <div v-if="(details?.pane && !inPanel) || actions.approve || actions.delegate || actions.retry || actions.stop || actions.archive" class="task-sheet-actions">
         <UButton v-if="actions.delegate" color="primary" icon="i-lucide-play" :loading="running === 'delegate'" :disabled="busy || offlineView" @click="act('delegate')">{{ tl('Start', 'Lancer') }}</UButton>
         <UButton v-if="actions.approve" color="primary" icon="i-lucide-check" :loading="busy && !running" :disabled="busy || offlineView" @click="approve">
           {{ task.stage === 'plan' ? tl('Approve plan', 'Accepter le plan') : tl('Approve', 'Approuver') }}
         </UButton>
         <UButton v-if="actions.retry" color="primary" variant="outline" icon="i-lucide-rotate-ccw" :loading="running === 'retry'" :disabled="busy || offlineView" @click="act('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
-        <UButton v-if="details?.pane" color="neutral" variant="outline" icon="i-lucide-square-terminal" @click="openPane">{{ tl('Open its agent', 'Ouvrir son agent') }}</UButton>
+        <UButton v-if="details?.pane && !inPanel" color="neutral" variant="outline" icon="i-lucide-square-terminal" @click="openPane">{{ tl('Open its agent', 'Ouvrir son agent') }}</UButton>
         <UButton v-if="actions.stop" color="error" variant="outline" icon="i-lucide-square" :loading="running === 'stop'" :disabled="busy || offlineView" @click="act('stop')">{{ tl('Stop', 'Arrêter') }}</UButton>
         <UButton v-if="actions.archive" color="neutral" variant="ghost" icon="i-lucide-archive" class="task-archive" :loading="running === 'archive'" :disabled="busy || offlineView" @click="act('archive')">{{ tl('Archive', 'Archiver') }}</UButton>
       </div>

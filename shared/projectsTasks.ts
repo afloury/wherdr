@@ -57,6 +57,11 @@ export interface TaskDetails {
   // pr, merge, attempts…) and whether a login stopped it: what Retry needs.
   failureStage: string
   failureAuth: boolean
+  // The agent's closing note (task.json `summary`: 1.2.1's `details` leaves
+  // it out, so the server reads it from the task's file) and, for research, its
+  // report (`details.report`: the file's name, its link when it is https).
+  summary: string
+  report: { file: string, link: string } | null
   review: TaskReview | null
   reviewRounds: number
   plan: string
@@ -244,7 +249,14 @@ export function parseTaskDetails(text: string): TaskDetails {
     reviewRounds: Array.isArray(d.reviews) ? d.reviews.length : 0,
     plan: plan ? str(plan.text, 8000) : '',
     research: d.research === true,
+    summary: str(d.summary ?? t.summary, 8000).trim(),
+    report: parseReport(d.report),
   }
+}
+function parseReport(v: unknown): TaskDetails['report'] {
+  const r = obj(v)
+  const file = r ? str(r.file, 200) : ''
+  return file ? { file, link: cleanUrl(r!.link) } : null
 }
 
 // What the card offers, from the row and, for a failed task, what failed
@@ -354,6 +366,32 @@ export function coordinatorArgs(to: CoordinatorTarget, words: string, delegate: 
     '--', 'tell', words]
 }
 
+// A coordinator's agent in Herdr (1.x coordinator/co.rs `agent_name`):
+// `sw-coordinator`, `sw-coordinator-machine`, `sw-coordinator-<repo>` (lowercase,
+// other characters as `-`, room left in Herdr's 32 for the `-2` that tells two
+// alike apart).
+const AGENT_NAME_MAX = 32
+export function coordinatorAgentName(to: CoordinatorTarget): string {
+  if (to.kind === 'main') return 'sw-coordinator'
+  if (to.kind === 'machine') return 'sw-coordinator-machine'
+  const tail = [...to.repo.toLowerCase()].map(c => (/[a-z0-9_]/.test(c) ? c : '-')).join('')
+  return `sw-coordinator-${tail}`.slice(0, AGENT_NAME_MAX - 3).replace(/-+$/, '')
+}
+// That coordinator's pane among a machine's: `keys` are the machine's sessions,
+// its own first (the session its board runs coordinators in); null while it
+// has not started (its first message starts it).
+export function coordinatorPane<P extends { machine?: string, name: string | null }>(panes: P[], keys: string[], to: CoordinatorTarget): P | null {
+  const name = coordinatorAgentName(to)
+  const fits = (n: string | null) => n === name || (Boolean(n) && n!.startsWith(`${name}-`) && /^\d+$/.test(n!.slice(name.length + 1)))
+  let best: P | null = null
+  let rank = Infinity
+  for (const p of panes) {
+    const at = keys.indexOf(p.machine || '')
+    if (at >= 0 && at < rank && fits(p.name)) { best = p; rank = at }
+  }
+  return best
+}
+
 // ---------------------------------------------------------------- by repo
 // A machine's rows under their repos (1.x: grouped by repo, `Alt+S`): repos
 // by name, each one's rows as the board orders them (by group, newest first).
@@ -439,7 +477,8 @@ export function detailsFromTaskFile(t: unknown): TaskDetails | null {
   const o = obj(t)
   if (!o || !isTaskId(o.id)) return null
   return parseTaskDetails(JSON.stringify({
-    task: { id: o.id, title: o.title, stage: o.stage, msg: o.msg, description: o.description },
+    task: { id: o.id, title: o.title, stage: o.stage, msg: o.msg, description: o.description, summary: o.summary },
+    report: o.report ?? null,
     failure: o.failure ?? null, review: o.review ?? null, reviews: [],
     // The program on it: `on` while one works, then `agent`, as `details` gives it; else the row's `app`.
     agent: o.on || o.agent || o.app || null,

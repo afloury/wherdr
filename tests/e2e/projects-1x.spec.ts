@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { CLAUDE_PANE, SOCK_FILE, fakeHerdr } from './scenario.mjs'
+import { CLAUDE_PANE, COORDINATOR_PANE, SOCK_FILE, fakeHerdr } from './scenario.mjs'
 
 // herdr-projects 1.x on the Board and in Settings. The plugin's launcher
 // (bin/run.sh) is a fake that answers with the real output of the 1.2.1
@@ -44,15 +44,23 @@ const home = path.join(path.dirname(fs.readFileSync(SOCK_FILE, 'utf8').trim()), 
 const taskDir = path.join(home, '.herdr-projects/data/tasks/demo/1')
 
 test.beforeEach(() => { fs.rmSync(calls, { force: true }); fs.rmSync(path.join(root, 'list.json'), { force: true }) })
-test.afterEach(async () => { await fakeHerdr('e2e.plugins', { plugins: [] }) })
+test.afterEach(async () => {
+  await fakeHerdr('e2e.plugins', { plugins: [] })
+  await fakeHerdr('e2e.pane_name', { pane_id: COORDINATOR_PANE, name: '' })
+})
+// The side panel's way back: a close button beside the Board, "Back to the Board" on a phone.
+const closePanel = (page: import('@playwright/test').Page, phone: boolean) =>
+  page.locator('.board-panel-head').getByRole('button', { name: phone ? 'Back to the Board' : 'Close' }).click()
 test.afterAll(() => {
   fs.rmSync(root, { recursive: true, force: true })
   fs.rmSync(path.join(home, '.herdr-projects'), { recursive: true, force: true })
 })
 
 test('the Board shows the 1.x tasks in its five groups, and acts on them', async ({ page }, testInfo) => {
+  // Long, and WebKit on a small machine draws the agent's conversation slowly.
+  test.setTimeout(120000)
   fs.mkdirSync(taskDir, { recursive: true })
-  fs.writeFileSync(path.join(taskDir, 'task.json'), JSON.stringify({ id: 'demo/1', link: { pane: CLAUDE_PANE } }))
+  fs.writeFileSync(path.join(taskDir, 'task.json'), JSON.stringify({ id: 'demo/1', link: { pane: CLAUDE_PANE }, summary: 'Redirect fixed; a test covers the loop.' }))
   await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
   await page.goto('/#/board')
   const phone = testInfo.project.name.includes('phone')
@@ -75,21 +83,49 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   }
   expect(callLog()).toContain('list --json')
 
-  // A task: its pull request, its review, approve (asked first).
+  // A task with an agent: its agent in the side panel (wherdr's agent view), under
+  // who it is (machine, repo, task), its title, description and closing note.
   if (phone) await page.getByRole('button', { name: /Ready to approve/ }).click()
   await card('DEMO-1').click()
+  const panel = page.locator('.board-panel')
+  await expect(panel.locator('.board-panel-repo')).toHaveText('demo', { timeout: 15000 })
+  await expect(panel.locator('.board-panel-machine')).not.toBeEmpty()
+  await expect(panel.locator('.board-panel-name')).toContainText('DEMO-1')
+  await expect(panel.locator('.board-panel-task-title')).toHaveText('Fix login redirect')
+  await expect(panel.locator('.board-panel-desc')).toContainText('The login page loops')
+  await expect(panel.locator('.board-panel-note')).toContainText('Redirect fixed; a test covers the loop.')
+  await expect(panel.locator(`.cell-view .agent-top`)).toBeVisible()
+  await expect(panel.locator('.cell-view textarea')).toBeVisible()
+  const box = (await panel.boundingBox())!
+  const view = page.viewportSize()!
+  if (phone) expect(box.width).toBe(view.width)
+  else {
+    // Beside the Board, which stays in view.
+    expect(box.width).toBeLessThan(view.width * 0.6)
+    expect((await page.locator('.board-view').boundingBox())!.width).toBeLessThanOrEqual(view.width - box.width + 1)
+  }
+  await page.screenshot({ path: `.shots/board-1x-panel-${testInfo.project.name}.png` })
+  // Its sheet, from the panel: pull request, review, approve (asked first).
+  await panel.locator('.board-panel-sheet').click()
   const sheet = page.getByRole('dialog')
   await expect(sheet.locator('.task-sheet-facts')).toContainText('Pass · 1 minor · codex')
   await expect(sheet.getByRole('link', { name: /#7/ })).toHaveAttribute('href', 'https://github.com/example/demo/pull/7')
   await expect(sheet.locator('.task-sheet-text')).toHaveText('The login page loops')
-  await expect(sheet.getByRole('button', { name: 'Open its agent' })).toBeVisible()
+  // Its agent is already in the panel.
+  await expect(sheet.getByRole('button', { name: 'Open its agent' })).toHaveCount(0)
   await page.screenshot({ path: `.shots/board-1x-task-${testInfo.project.name}.png` })
   await sheet.getByRole('button', { name: 'Approve', exact: true }).click()
   await page.getByRole('dialog').last().getByRole('button', { name: 'Approve and merge' }).click()
   await expect.poll(callLog).toContain('approve -- demo/1')
+  // Approved: the sheet closes, the panel stays.
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(panel).toBeVisible()
+  await closePanel(page, phone)
+  await expect(panel).toHaveCount(0)
 
   // A reply to a task's agent, and a message to the Coordinator: the user's words after "--".
-  // DEMO-2 has had no agent yet: nothing to reply to. DEMO-3 has one.
+  // DEMO-2 has had no agent yet: its sheet, nothing to reply to. DEMO-3 has one,
+  // whose pane is not known here: its sheet too, with Reply.
   if (phone) await page.getByRole('button', { name: /Needs you/ }).click()
   await card('DEMO-2').click()
   await expect(page.getByRole('dialog').locator('.task-sheet-msg')).toHaveText('Which changelog format?')
@@ -101,9 +137,17 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   await page.getByRole('dialog').getByRole('button', { name: 'Send' }).click()
   await expect.poll(callLog).toContain('tell -- demo/3 --keep-a-changelog please')
   await page.keyboard.press('Escape')
-  await page.locator('#board-coord-text').fill('Add a dark mode toggle')
-  await page.locator('.board-coord').getByRole('button', { name: 'Send', exact: true }).click()
+  await expect(page.locator('.board-panel')).toHaveCount(0)
+  // No chat box on the Board: a machine's heading opens its Coordinator in the panel;
+  // one not started yet takes a first message, which starts it.
+  await expect(page.locator('.board-coord, #board-coord-text')).toHaveCount(0)
+  await page.getByRole('button', { name: 'By repo' }).click()
+  await page.locator('.board-head.machine .board-head-talk').click()
+  await expect(panel.locator('.board-panel-name')).toHaveText('Coordinator')
+  await panel.locator('#board-panel-first').fill('Add a dark mode toggle')
+  await panel.getByRole('button', { name: 'Send', exact: true }).click()
   await expect.poll(callLog).toContain('coordinator -- tell Add a dark mode toggle')
+  await expect(panel).toContainText('its conversation opens here')
 })
 
 test('a 0.2 or a 1.x older than 1.2.1: the Board and Settings say what to do, and run nothing', async ({ page }, testInfo) => {
@@ -177,7 +221,7 @@ test('in a container: the tasks show, the actions are the host\'s', async ({ pag
   await page.route('**/api/tasks/details*', route => route.fulfill({ json: { id: 'demo/1', title: 'Task demo/1', stage: 'approval', msg: '', description: 'From the file', agent: 'claude', pr: '', branch: '', worktree: '', failure: '', review: null, reviewRounds: 0, plan: '', research: false, pane: null } }))
   await page.goto('/#/board')
   await expect(page.locator('.board-notes')).toContainText('wherdr runs in a container', { timeout: 15000 })
-  await expect(page.locator('.board-coord')).toHaveCount(0)
+  await expect(page.locator('.board-head-talk').first()).toBeDisabled()
   await expect(page.locator('.board-head-add')).toHaveCount(0)
   await expect(page.locator('.board-new')).toHaveCount(0)
   await page.locator('.task-card', { hasText: 'Task demo/1' }).click()
@@ -196,7 +240,7 @@ const actionBoard = [
   { id: 'web/2', state: 'done', title: 'Old cleanup', msg: 'Merged', stage: 'done' },
 ]
 
-test('grouped by machine then repo: each heading talks to its coordinator, Send and Send and start', async ({ page }, testInfo) => {
+test('grouped by machine then repo: each heading opens its coordinator in the side panel', async ({ page }, testInfo) => {
   fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(actionBoard))
   await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
   await page.goto('/#/board')
@@ -231,28 +275,33 @@ test('grouped by machine then repo: each heading talks to its coordinator, Send 
   }
   await page.screenshot({ path: `.shots/board-1x-repos-${testInfo.project.name}.png` })
 
-  const label = page.locator('.board-coord-label')
-  const text = page.locator('#board-coord-text')
-  // A repo's heading: its project coordinator. Send and start = --delegate.
+  const phone = testInfo.project.name.includes('phone')
+  const panel = page.locator('.board-panel')
+  // A repo's heading: its project coordinator, not started yet: a first message starts it.
   await page.getByRole('button', { name: 'Talk to the web coordinator' }).click()
-  await expect(label).toContainText('web coordinator')
-  await expect(web.locator('.board-head')).toHaveClass(/talking/)
-  await text.fill('--tidy up')
+  await expect(panel.locator('.board-panel-name')).toHaveText('web coordinator')
+  await expect(panel.locator('.board-panel-repo')).toHaveText('web')
+  if (!phone) await expect(web.locator('.board-head')).toHaveClass(/talking/)
+  await panel.locator('#board-panel-first').fill('--tidy up')
   await page.screenshot({ path: `.shots/board-1x-project-coord-${testInfo.project.name}.png` })
-  await page.getByRole('button', { name: 'Send and start' }).click()
-  await expect.poll(callLog).toContain('coordinator --project=web --delegate -- tell --tidy up')
-  // The machine's heading: its machine coordinator; Enter sends.
+  await panel.getByRole('button', { name: 'Send', exact: true }).click()
+  await expect.poll(callLog).toContain('coordinator --project=web -- tell --tidy up')
+  // Once it runs (its agent in Herdr: sw-coordinator-web), the panel is its conversation.
+  await fakeHerdr('e2e.pane_name', { pane_id: COORDINATOR_PANE, name: 'sw-coordinator-web' })
+  await expect(panel.locator('.cell-view .agent-top')).toBeVisible({ timeout: 15000 })
+  await expect(panel.locator('.cell-view textarea')).toBeVisible()
+  await expect(panel.locator('.board-panel-name')).toHaveText('web coordinator')
+  await page.screenshot({ path: `.shots/board-1x-coord-panel-${testInfo.project.name}.png` })
+  // The machine's heading: its Coordinator.
+  if (phone) await closePanel(page, phone)
   await page.locator('.board-head.machine .board-head-talk').click()
-  await expect(label).toContainText('coordinator')
-  await text.fill('machine hello')
-  await text.press('Enter')
-  await expect.poll(callLog).toContain('coordinator --machine -- tell machine hello')
-  // Back to the Coordinator.
-  await page.locator('.board-coord-back').click()
-  await expect(label).toHaveText('Coordinator')
-  await text.fill('plain')
-  await page.locator('.board-coord').getByRole('button', { name: 'Send', exact: true }).click()
+  await expect(panel.locator('.board-panel-name')).toHaveText('Coordinator')
+  await expect(panel.locator('.board-panel-repo')).toHaveCount(0)
+  await panel.locator('#board-panel-first').fill('plain')
+  await panel.getByRole('button', { name: 'Send', exact: true }).click()
   await expect.poll(callLog).toContain('coordinator -- tell plain')
+  await closePanel(page, phone)
+  await expect(panel).toHaveCount(0)
 
   // A folded repo hides its tasks, and stays folded on this device.
   await web.locator('.board-fold').click()
@@ -387,7 +436,7 @@ test('a push for a task newer than the board kept from the last visit opens it a
   await expect(page.locator('.hw-toast-title', { hasText: 'That task is no longer on the Board' })).toHaveCount(0)
 })
 
-test('a draft for a coordinator stays with it while its machine is away, and is sent there once it is back', async ({ page }) => {
+test('a first message to a coordinator stays with it while its machine is away, and is sent there once it is back', async ({ page }) => {
   let machines: Fake[] = [{ machine: 'ma', tasks: [{ id: 'demo/1', title: 'On A' }] }, { machine: 'mb', tasks: [{ id: 'web/2', title: 'On B' }] }]
   await fakeBoard(page, () => machines)
   const sent: unknown[] = []
@@ -397,21 +446,21 @@ test('a draft for a coordinator stays with it while its machine is away, and is 
   })
   await page.goto('/#/board')
   await page.locator('.board-machine[data-machine="ma"] .board-repo[data-repo="demo"] .board-head-talk').click({ timeout: 15000 })
-  const text = page.locator('#board-coord-text')
+  const panel = page.locator('.board-panel')
+  const text = panel.locator('#board-panel-first')
   await text.fill('Draft for demo on A')
-  const send = page.locator('.board-coord').getByRole('button', { name: 'Send', exact: true })
-  // Machine A stops answering: the box keeps its target and its words, and sends nothing.
+  const send = panel.getByRole('button', { name: 'Send', exact: true })
+  // Machine A stops answering: the panel keeps its target and its words, and sends nothing.
   machines = [{ machine: 'ma', status: 'error', error: 'No answer', tasks: [] }, machines[1]!]
-  await page.locator('.board-filter').click()
-  await expect(page.locator('.board-coord-away')).toBeVisible({ timeout: 15000 })
-  await expect(page.locator('.board-coord-label')).toContainText('demo coordinator')
+  await page.locator('.board-filter').dispatchEvent('click') // under the panel on a phone
+  await expect(panel.locator('.board-panel-away')).toBeVisible({ timeout: 15000 })
+  await expect(panel.locator('.board-panel-name')).toHaveText('demo coordinator')
   await expect(text).toHaveValue('Draft for demo on A')
   await expect(send).toBeDisabled()
-  await expect(page.locator('.board-coord-start')).toBeDisabled()
   // Back: still A's demo coordinator.
   machines = [{ machine: 'ma', tasks: [{ id: 'demo/1', title: 'On A' }] }, machines[1]!]
-  await page.locator('.board-filter').click()
-  await expect(page.locator('.board-coord-away')).toHaveCount(0, { timeout: 15000 })
+  await page.locator('.board-filter').dispatchEvent('click') // under the panel on a phone
+  await expect(panel.locator('.board-panel-away')).toHaveCount(0, { timeout: 15000 })
   await send.click()
-  await expect.poll(() => sent).toEqual([{ machine: 'ma', text: 'Draft for demo on A', to: { kind: 'project', repo: 'demo' }, delegate: false }])
+  await expect.poll(() => sent).toEqual([{ machine: 'ma', text: 'Draft for demo on A', to: { kind: 'project', repo: 'demo' } }])
 })

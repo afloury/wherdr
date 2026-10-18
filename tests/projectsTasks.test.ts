@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  NOTIFY_SETUP, NO_ACTIONS, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, detailsFromTaskFile, groupByRepo, groupCounts, groupOf,
+  NOTIFY_SETUP, NO_ACTIONS, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorAgentName, coordinatorArgs, coordinatorPane, detailsFromTaskFile, groupByRepo, groupCounts, groupOf,
   rowFromTaskFile, stateFromTaskFile, isTaskId, parseReview, parseRepoKey, parseTaskDetails, parseTaskList, prNumber, repoKeysFromFile, sortTasks, taskActions, taskKey, taskNotice,
 } from '../shared/projectsTasks'
 
@@ -219,6 +219,15 @@ describe('a task read from its file (wherdr in a container)', () => {
       .toMatchObject({ id: 'acme/4', description: 'D', agent: 'codex', branch: 'b', worktree: '/w', failure: 'm', plan: '' })
     expect(detailsFromTaskFile({ id: 'nope' })).toBeNull()
   })
+
+  it('the closing note and a research report, as details or the file give them', () => {
+    expect(parseTaskDetails(fixture('details-approval.json'))).toMatchObject({ summary: '', report: null })
+    const d = parseTaskDetails(JSON.stringify({ task: { id: 'acme/4', title: 'T' }, summary: ' Done. ', report: { file: 'REPORT.md', link: 'https://example.test/r/REPORT.md', at: 1 } }))
+    expect(d).toMatchObject({ summary: 'Done.', report: { file: 'REPORT.md', link: 'https://example.test/r/REPORT.md' } })
+    // A local path is not a link: the file's name is kept.
+    expect(parseTaskDetails(JSON.stringify({ task: { id: 'acme/4' }, report: { file: 'R.md', link: '/tmp/r/R.md' } })).report).toEqual({ file: 'R.md', link: '' })
+    expect(detailsFromTaskFile({ id: 'acme/4', summary: 'All green.', report: { file: 'R.md' } })).toMatchObject({ summary: 'All green.', report: { file: 'R.md', link: '' } })
+  })
 })
 
 describe('commands, by repo, and push', () => {
@@ -242,6 +251,28 @@ describe('commands, by repo, and push', () => {
     expect(cleanTarget(undefined)).toEqual({ kind: 'main' })
     expect(cleanTarget({ kind: 'project', repo: '/abs' })).toBeNull()
     expect(cleanTarget({ kind: 'nope' })).toBeNull()
+  })
+
+  it('finds a coordinator\'s pane by its agent name, in the machine\'s own session first', () => {
+    expect(coordinatorAgentName({ kind: 'main' })).toBe('sw-coordinator')
+    expect(coordinatorAgentName({ kind: 'machine' })).toBe('sw-coordinator-machine')
+    expect(coordinatorAgentName({ kind: 'project', repo: 'Demo.App' })).toBe('sw-coordinator-demo-app')
+    expect(coordinatorAgentName({ kind: 'project', repo: 'a-very-long-r-pository' })).toBe('sw-coordinator-a-very-long-r')
+    const panes = [
+      { id: 'w1:p1', name: 'sw-coordinator-demo' },
+      { id: 'other~w1:p1', machine: 'other', name: 'sw-coordinator' },
+      { id: 'hw~w2:p1', machine: 'hw', name: 'sw-coordinator-2' },
+      { id: 'w3:p1', name: 'sw-coordinator' },
+      { id: 'w4:p1', name: 'sw-coordinator-machine' },
+      { id: 'w5:p1', name: 'sw-coordinator-demo-2' },
+    ]
+    expect(coordinatorPane(panes, ['', 'hw'], { kind: 'main' })?.id).toBe('w3:p1')
+    expect(coordinatorPane(panes, ['hw', ''], { kind: 'main' })?.id).toBe('hw~w2:p1')
+    expect(coordinatorPane(panes, ['', 'hw'], { kind: 'machine' })?.id).toBe('w4:p1')
+    expect(coordinatorPane(panes, [''], { kind: 'project', repo: 'demo' })?.id).toBe('w1:p1')
+    // Never another machine's, never one not started.
+    expect(coordinatorPane(panes, ['nope'], { kind: 'main' })).toBeNull()
+    expect(coordinatorPane(panes, [''], { kind: 'project', repo: 'web' })).toBeNull()
   })
 
   it('groups a machine\'s tasks by repo, repos by name, each as the board orders it', () => {

@@ -290,11 +290,16 @@ const DESCRIPTIONS: Record<string, string> = {
   'acme-api/13': 'export.spec.ts fails one run in ten: the rows of the export come back in no defined order.',
   'acme-api/10': 'Retry failed webhook deliveries with exponential backoff, then move them to the dead-letter list.',
 }
+// The agent's closing note, once it stopped.
+const SUMMARIES: Record<string, string> = {
+  'acme-api/12': 'Rate limiting is in: a token bucket per API key, limits from the customer plan, 429 with Retry-After. 14 new tests, all green.',
+}
 export function taskDetails(t: TaskRow) {
   return {
     id: t.id, title: t.title, stage: t.stage, msg: t.msg, description: DESCRIPTIONS[t.id] || '',
     agent: t.app, pr: t.pr, branch: t.group === 'todo' ? '' : `acme-api-${t.n}`, worktree: '', failure: '', failureStage: '', failureAuth: false,
     review: t.review, reviewRounds: t.reviewRound, plan: '', research: false,
+    summary: t.group === 'working' ? '' : SUMMARIES[t.id] || '', report: null,
     pane: t.n === 12 ? CODEX : t.n === 13 ? OMP : null,
   }
 }

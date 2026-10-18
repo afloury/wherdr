@@ -336,6 +336,8 @@ export async function taskDetails(machine: unknown, id: unknown): Promise<TaskDe
     if (!fromFile) throw new HerdrError('bad_task', 'Task not found')
     d = fromFile
   } else d = parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS))
+  // The closing note: in the task's file only (1.2.1's `details` leaves it out).
+  if (!d.summary && typeof file?.summary === 'string') d = { ...d, summary: file.summary.slice(0, 8000).trim() }
   return { ...d, pane: taskPane(m, file, d.worktree) }
 }
 
