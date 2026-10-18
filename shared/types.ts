@@ -375,6 +375,9 @@ export interface DirListing { path: string, parent: string | null, home: string,
 export interface AuthStatus {
   hostLabel?: string
   enabled: boolean
+  // No passkey yet, and wherdr cannot verify where this connection comes from
+  // (server/utils/network.ts): the first passkey must be set up to continue.
+  setup?: 'funnel' | 'docker'
   unlocked: boolean
   expiresAt?: number | null
   // Server clock when answering (the client converts expiresAt to its own clock).

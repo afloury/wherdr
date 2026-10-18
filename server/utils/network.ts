@@ -12,20 +12,26 @@
 //   interface, so a reply to a forged peer address never goes back to the
 //   Wi-Fi. An interface address in that range proves nothing (a LAN may use
 //   it): Tailscale's state is read from Tailscale (CLI or its socket).
-// - Docker: the port is published on the host's 127.0.0.1, and connections
-//   made on the host reach the container from its gateway. That gateway only
-//   counts as this computer while wherdr's port does not answer on it: a port
-//   published on every interface lets Docker's userland proxy relay outside
-//   connections (IPv6 to an IPv4 container) from the gateway too. Checked
-//   from the container on the same port number (the Compose file maps the
-//   same port on both sides).
+// - Docker: connections made on the host reach the container from its
+//   gateway, and so do outside ones Docker's userland proxy relays (a port
+//   published on every interface, on an IPv6 address, or on another host
+//   port). Nothing inside the container proves which: the gateway counts as
+//   this computer only when the deployment declares that the port is published
+//   on the host's 127.0.0.1 only (WHERDR_DOCKER_LOOPBACK_ONLY=1, set next to
+//   the `ports` line of the shipped Compose file) AND the port does not answer
+//   on the gateway (which catches the most common mistake, `7683:7683`).
+//   Otherwise it is unverified.
 //
 // What a peer on this machine cannot prove: a relay running here (a reverse
 // proxy, a TCP forward, `tailscale funnel`) connects from loopback like a
 // local browser. wherdr reads Tailscale's serve configuration and treats
-// every local connection as unverified while Funnel exposes wherdr's port, in
-// any form (HTTPS proxy, TCP, TLS-terminated TCP); unverified connections are
-// only served with a passkey lock, which then asks for the passkey. Any other
+// every local connection as unverified unless its latest reading proves that
+// Funnel does not expose wherdr's port, in any form (HTTPS proxy, TCP,
+// TLS-terminated TCP): a failed, missing or stale reading counts as exposed.
+// Unverified connections only get the app and the passkey routes until a
+// passkey lock exists (its first passkey needs the bootstrap token printed in
+// the server's logs, which a client elsewhere cannot read); then the lock
+// applies as everywhere. Any other
 // relay the owner runs is indistinguishable from this computer: documented,
 // with the passkey as the answer.
 //
@@ -58,20 +64,23 @@ export interface TrustedNetworks {
   invalid: string[]
 }
 
-// Tailscale as Tailscale reports it. funnel: Funnel exposes wherdr's port
-// (null: unknown).
+// Tailscale as Tailscale reports it. funnel: Funnel exposes wherdr's port;
+// null: unknown, treated as exposed.
 export interface TailscaleState { running: boolean, selfIps: string[], peerIps: string[], funnel: boolean | null }
 
 export interface NetContext {
   trusted: TrustedNetworks
-  // null: Tailscale's state is unknown (not installed, unreadable, stale).
+  // null: nothing read yet (treated like an unreadable state).
   tailscale: TailscaleState | null
   // In Docker: the container's gateway, through which the host's own
   // connections arrive…
   gateway?: string
-  // …and whether wherdr's port also answers on it (published on every
-  // interface). null: not checked yet. Only `false` makes the gateway local.
+  // …whether wherdr's port also answers on it (published on every
+  // interface; null: not checked yet)…
   gatewayWide?: boolean | null
+  // …and whether the deployment declares a loopback-only publication
+  // (WHERDR_DOCKER_LOOPBACK_ONLY). The gateway is local only with both.
+  gatewayDeclared?: boolean
 }
 
 const LOOPBACK = new net.BlockList()
@@ -178,7 +187,7 @@ export function checkClient(peer: string | undefined, h: Headers, ctx: NetContex
   let why: Unverified | undefined
   if (isLoopbackIp(p)) zone = 'local'
   else if (ctx.gateway && sameIp(p, ctx.gateway)) {
-    if (ctx.gatewayWide === false) zone = 'local'
+    if (ctx.gatewayDeclared && ctx.gatewayWide === false) zone = 'local'
     else { zone = 'unverified'; why = 'docker' }
   } else if (tailnetKnown(p, ctx.tailscale)) return { ok: true, zone: 'tailnet' }
   else if (inList(ctx.trusted.list, p)) return { ok: true, zone: 'trusted' }
@@ -186,7 +195,8 @@ export function checkClient(peer: string | undefined, h: Headers, ctx: NetContex
 
   // From this machine: a local browser, or a relay running here.
   if (header(h, 'tailscale-funnel-request') && !any) return { ok: false, reason: 'funnel' }
-  if (ctx.tailscale?.funnel && zone === 'local') { zone = 'unverified'; why = 'funnel' }
+  // Only a valid reading saying "no Funnel to wherdr" keeps it local.
+  if (zone === 'local' && ctx.tailscale?.funnel !== false) { zone = 'unverified'; why = 'funnel' }
   for (const client of forwardedClients(h)) {
     const z = forwardedZone(client, ctx)
     if (!z) return { ok: false, reason: 'forwarded' }
@@ -199,12 +209,18 @@ export function checkClient(peer: string | undefined, h: Headers, ctx: NetContex
 // ------------------------------------------------------------------ gate
 
 export type GateVerdict = 'ok' | 'network' | 'unverified' | 'host' | 'origin' | 'locked'
+// What an unverified connection gets before any passkey exists: the app
+// itself and the routes that create the first passkey (bootstrap token
+// required), so the lock can be set up from there.
+export const setupRoute = (p: string) => (!p.startsWith('/api/') && !p.startsWith('/uploads/') && !p.startsWith('/ws'))
+  || p === '/api/health' || p === '/api/auth/status' || p.startsWith('/api/auth/register/')
 const needsUnlock = (p: string) => (p.startsWith('/api/') && !p.startsWith('/api/auth/') && p !== '/api/health') || p.startsWith('/uploads/')
 
 // The whole guard decision for one request (server/middleware/guard.ts) or one
 // WebSocket upgrade (server/utils/ws.ts), in order:
-// 1. network: the provenance above; an unverified one is served only when a
-//    passkey lock exists (which then asks for the passkey everywhere it applies);
+// 1. network: the provenance above; an unverified one gets only the app and
+//    the first-passkey routes until a passkey lock exists (which then asks for
+//    the passkey everywhere it applies);
 // 2. Host header; 3. cross-site requests (HTTP) or a foreign Origin (WS);
 // 4. the passkey lock.
 export function gateDecision(o: {
@@ -218,7 +234,7 @@ export function gateDecision(o: {
   ws?: boolean
 }): GateVerdict {
   if (!o.check.ok) return 'network'
-  if (o.check.zone === 'unverified' && !o.passkey) return 'unverified'
+  if (o.check.zone === 'unverified' && !o.passkey && (o.ws || !setupRoute(o.path))) return 'unverified'
   if (!o.hostOk) return 'host'
   if (o.crossSite && (o.ws || o.path.startsWith('/api/'))) return 'origin'
   if ((o.ws || needsUnlock(o.path)) && !o.unlocked) return 'locked'
@@ -261,21 +277,26 @@ const REFRESH_MS = 10_000
 // Past this age without a successful read, Tailscale's peers are not trusted.
 const STALE_MS = 3 * REFRESH_MS
 
+// The latest reading of Tailscale. A failed one replaces it too: what was true
+// before is not known any more.
 let ts: (TailscaleState & { at: number }) | null = null
-// Funnel stays "exposed" until a read says otherwise (a failed read keeps it).
-let lastFunnel: boolean | null = null
 const gateway = inDocker ? dockerGateway() : ''
+const gatewayDeclared = /^(1|true|yes|on)$/i.test((process.env.WHERDR_DOCKER_LOOPBACK_ONLY || '').trim())
 let gatewayWide: boolean | null = null
 
-export type TailscaleReader = () => Promise<{ running: boolean, selfIps: string[], peerIps: string[], funnel: boolean | null }>
+export type TailscaleReader = () => Promise<{ installed?: boolean, readable?: boolean, running: boolean, selfIps: string[], peerIps: string[], funnel: boolean | null }>
 const defaultReader: TailscaleReader = () => tailnetFacts(PORT)
 
-export async function refreshTailscale(read: TailscaleReader = defaultReader, now = Date.now()) {
+export async function refreshTailscale(read: TailscaleReader = defaultReader, now = Date.now(), docker = inDocker) {
   try {
     const f = await read()
-    if (f.funnel !== null) lastFunnel = f.funnel
-    ts = { running: f.running, selfIps: f.selfIps, peerIps: f.peerIps, funnel: f.running ? lastFunnel : false, at: now }
-  } catch { /* keeps the last state until it is stale */ }
+    // In Docker, no Tailscale socket does not mean no Tailscale: the host may
+    // run one (with Funnel) that the container cannot see.
+    const funnel = docker && f.installed === false ? null : f.funnel
+    ts = { running: f.readable === false ? false : f.running, selfIps: f.selfIps, peerIps: f.peerIps, funnel, at: now }
+  } catch {
+    ts = { running: false, selfIps: [], peerIps: [], funnel: null, at: now }
+  }
 }
 
 export async function refreshGateway(port = PORT) {
@@ -287,16 +308,16 @@ let forced: NetContext | null = null
 // Tests: a fixed context (null = the live one).
 export function setNetContextForTests(ctx: NetContext | null) { forced = ctx }
 // Tests: forget what was read.
-export function resetNetworkStateForTests() { ts = null; lastFunnel = null; gatewayWide = null }
+export function resetNetworkStateForTests() { ts = null; gatewayWide = null }
 
 export function netContext(now = Date.now()): NetContext {
   if (forced) return forced
+  // Stale (no reading finished lately): nothing is known.
   const fresh = ts && now - ts.at < STALE_MS ? ts : null
   return {
     trusted: TRUSTED,
-    // Stale: no peer is trusted, and a Funnel last seen open still counts.
-    tailscale: fresh ?? (lastFunnel ? { running: false, selfIps: [], peerIps: [], funnel: lastFunnel } : null),
-    ...(gateway ? { gateway, gatewayWide } : {}),
+    tailscale: fresh ? { running: fresh.running, selfIps: fresh.selfIps, peerIps: fresh.peerIps, funnel: fresh.funnel } : null,
+    ...(gateway ? { gateway, gatewayWide, gatewayDeclared } : {}),
   }
 }
 export const openNetworkMode = () => TRUSTED.any
@@ -306,16 +327,18 @@ let timer: ReturnType<typeof setInterval> | null = null
 let warnedWide = false
 async function refreshAll() {
   await Promise.all([refreshTailscale(), refreshGateway()])
-  if (gatewayWide && !warnedWide) {
+  if (gateway && gatewayWide && !warnedWide) {
     console.warn(`${new Date().toISOString()} WARNING: wherdr's port ${PORT} is published on every interface of this host, not only 127.0.0.1: connections through Docker's gateway may come from another network, so wherdr serves them only with a passkey lock. Publish it as "127.0.0.1:${PORT}:${PORT}" (docker-compose.yml).`)
   }
   warnedWide = Boolean(gatewayWide)
 }
 // Started once (server/plugins/network.ts); requests wait for the first read
-// (at most a few seconds) so none is judged on an unknown state.
+// so as few as possible are judged on an unknown state.
 export function startNetworkWatch() {
   if (ready) return ready
-  ready = Promise.race([refreshAll(), new Promise<void>(r => setTimeout(r, 5000))])
+  // A slow Tailscale: requests wait up to 15 s, then are judged on what is
+  // known (nothing yet: unverified).
+  ready = Promise.race([refreshAll(), new Promise<void>(r => setTimeout(r, 15_000))])
   timer = setInterval(() => { void refreshAll() }, REFRESH_MS)
   timer.unref?.()
   return ready

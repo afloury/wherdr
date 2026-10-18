@@ -48,11 +48,16 @@ services:
       # "New version" notice (one request per day to the GitHub releases API): `off` to disable it.
       - WHERDR_UPDATE_CHECK=${WHERDR_UPDATE_CHECK:-on}
       - WHERDR_TRUSTED_NETWORKS=${WHERDR_TRUSTED_NETWORKS:-}
+      # Declares the `ports` line below (127.0.0.1, same port): keep them together.
+      - WHERDR_DOCKER_LOOPBACK_ONLY=1
     # Short tailnet names (`ssh laptop`): musl only tries the search domain
     # (MagicDNS) if the name has fewer than `ndots` dots; Docker sets 0.
     dns_opt:
       - ndots:1
     ports:
+      # Loopback only: wherdr trusts Docker's gateway as this computer only
+      # because of WHERDR_DOCKER_LOOPBACK_ONLY above. Publishing on another
+      # address or host port? Remove that line too (a passkey is then needed).
       - "127.0.0.1:${PORT:-7683}:${PORT:-7683}"
     volumes:
       # VAPID keys, push subscriptions, passkeys, recent folders.

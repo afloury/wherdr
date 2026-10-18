@@ -68,19 +68,27 @@ export function tailnetStatus(statusJson) {
 }
 
 // What wherdr's network check needs from `tailscale status --json` (with
-// peers): whether Tailscale is running, this machine's tailnet addresses and
-// those of its peers. Read from Tailscale itself, never guessed from an
-// interface address in 100.64.0.0/10.
+// peers): whether the answer could be read at all, Tailscale's state, this
+// machine's tailnet addresses and those of its peers. Read from Tailscale
+// itself, never guessed from an interface address in 100.64.0.0/10.
+// readable: false for an empty or broken answer (a failed command, a socket
+// that did not answer): nothing is known then, not "stopped".
 export function tailnetPeers(statusJson) {
   let s = null
   try { s = JSON.parse(statusJson) } catch {}
   const ips = node => (Array.isArray(node?.TailscaleIPs) ? node.TailscaleIPs.filter(ip => typeof ip === 'string') : [])
+  const readable = Boolean(s && typeof s === 'object' && typeof s.BackendState === 'string')
   return {
-    running: s?.BackendState === 'Running',
-    selfIps: ips(s?.Self),
-    peerIps: Object.values(s?.Peer || {}).flatMap(ips),
+    readable,
+    state: readable ? s.BackendState : null,
+    running: readable && s.BackendState === 'Running',
+    selfIps: readable ? ips(s.Self) : [],
+    peerIps: readable ? Object.values(s.Peer || {}).flatMap(ips) : [],
   }
 }
+
+// States in which tailscaled relays nothing, Funnel included.
+const IDLE_STATES = new Set(['Stopped', 'NeedsLogin', 'NoState', 'NeedsMachineAuth'])
 
 // Whether `tailscale funnel` opens wherdr's local port to the Internet, in
 // any form: an HTTPS proxy (`Web` handlers) or a raw TCP forward, with or
@@ -104,13 +112,16 @@ export function funnelExposes(port, serveJson) {
   return false
 }
 
-// Tailscale's state for the network check: { installed, running, selfIps,
-// peerIps, funnel } (funnel: null when unknown). CLI, or Tailscale's socket.
+// Tailscale's state for the network check: { installed, readable, running,
+// selfIps, peerIps, funnel }. funnel: true / false only from a valid reading
+// (Funnel routes to wherdr's port, or none; or Tailscale idle), null when
+// anything could not be read. CLI, or Tailscale's socket (Docker).
 export async function tailnetFacts(port, bin = tailscaleBin(), socket = bin ? null : tailscaledSocket()) {
-  if (!bin && !socket) return { installed: false, running: false, selfIps: [], peerIps: [], funnel: false }
+  if (!bin && !socket) return { installed: false, readable: true, running: false, selfIps: [], peerIps: [], funnel: false }
   const run = args => exec(bin, args, { encoding: 'utf8', timeout: 8000 }).then(r => r.stdout, () => '')
-  const peers = tailnetPeers(bin ? await run(['status', '--json']) : await localApi(socket, 'status'))
-  if (!peers.running) return { installed: true, ...peers, funnel: false }
+  const { state, ...peers } = tailnetPeers(bin ? await run(['status', '--json']) : await localApi(socket, 'status'))
+  if (!peers.readable) return { installed: true, ...peers, funnel: null }
+  if (IDLE_STATES.has(state)) return { installed: true, ...peers, funnel: false }
   const serve = bin ? await run(['serve', 'status', '--json']) : await localApi(socket, 'serve-config')
   return { installed: true, ...peers, funnel: funnelExposes(port, serve) }
 }

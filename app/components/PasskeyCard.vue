@@ -12,16 +12,6 @@ const props = withDefaults(defineProps<{ continueHash?: string }>(), { continueH
 const sec = authStatus
 const supported = import.meta.client && Boolean(window.PublicKeyCredential)
 
-// Readable device name, for the key list.
-function deviceName() {
-  const ua = navigator.userAgent
-  if (/iPhone/.test(ua)) return 'iPhone'
-  if (/iPad/.test(ua) || (isIOS && !/iPhone/.test(ua))) return 'iPad'
-  if (/Macintosh/.test(ua)) return 'Mac'
-  if (/Windows/.test(ua)) return 'Windows'
-  if (/Android/.test(ua)) return 'Android'
-  return t('Device')
-}
 async function registerKey() {
   try {
     const bootstrapToken = sec.value?.enabled ? undefined : window.prompt(tl(

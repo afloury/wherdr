@@ -93,6 +93,10 @@ describe('a raw TCP relay on this machine (Funnel TCP / TLS-terminated TCP, soca
     expect(await upgrade(ports.tcp)).toBe(403)
     // This computer itself is refused too: it cannot be told from the relay.
     expect((await get(ports.app)).status).toBe(403)
+    // Only the app and the first-passkey routes answer (bootstrap token needed there).
+    expect((await get(ports.tcp, {}, '/')).status).toBe(200)
+    expect((await get(ports.tcp, {}, '/api/auth/register/options')).status).toBe(200)
+    expect((await get(ports.tcp, {}, '/api/auth/login/options')).status).toBe(403)
   })
 
   it('needs the passkey while Funnel exposes wherdr and a passkey exists', async () => {

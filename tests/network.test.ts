@@ -38,9 +38,11 @@ describe('trusted networks', () => {
 describe('tailnet: what Tailscale itself reports', () => {
   it('reads running state, own and peer addresses from `tailscale status --json`', () => {
     const json = JSON.stringify({ BackendState: 'Running', Self: { TailscaleIPs: ['100.90.1.2'] }, Peer: { a: { TailscaleIPs: ['100.101.102.103', 'fd7a:115c:a1e0::5'] } } })
-    expect(tailnetPeers(json)).toEqual({ running: true, selfIps: ['100.90.1.2'], peerIps: ['100.101.102.103', 'fd7a:115c:a1e0::5'] })
-    expect(tailnetPeers('{"BackendState":"Stopped"}').running).toBe(false)
-    expect(tailnetPeers('not json')).toEqual({ running: false, selfIps: [], peerIps: [] })
+    expect(tailnetPeers(json)).toEqual({ readable: true, state: 'Running', running: true, selfIps: ['100.90.1.2'], peerIps: ['100.101.102.103', 'fd7a:115c:a1e0::5'] })
+    expect(tailnetPeers('{"BackendState":"Stopped"}')).toMatchObject({ readable: true, running: false })
+    // A failed read is unknown, not "stopped".
+    expect(tailnetPeers('')).toMatchObject({ readable: false, running: false })
+    expect(tailnetPeers('not json')).toMatchObject({ readable: false })
   })
   it('trusts a tailnet peer only while Tailscale runs and lists it', () => {
     expect(tailnetKnown('100.101.102.103', TS)).toBe(true)
@@ -56,33 +58,47 @@ describe('tailnet: what Tailscale itself reports', () => {
     expect(checkClient('100.101.102.103', {}, ctx({ tailscale: null }))).toEqual({ ok: false, reason: 'peer' })
     expect(checkClient('100.101.102.103', {}, ctx({ tailscale: { ...TS, running: false } }))).toEqual({ ok: false, reason: 'peer' })
     // Docker without Tailscale's socket: no implicit trust in the range either.
-    expect(checkClient('100.101.102.103', {}, ctx({ tailscale: null, gateway: '172.17.0.1', gatewayWide: false }))).toEqual({ ok: false, reason: 'peer' })
+    expect(checkClient('100.101.102.103', {}, ctx({ tailscale: null, gateway: '172.17.0.1', gatewayWide: false, gatewayDeclared: true }))).toEqual({ ok: false, reason: 'peer' })
   })
 })
 
 describe('tailnet state over time', () => {
   afterEach(() => resetNetworkStateForTests())
-  it('stops trusting peers once Tailscale stops, or once its state is stale', async () => {
+  const up = { installed: true, readable: true, running: true, selfIps: [], peerIps: ['100.101.102.103'], funnel: false }
+  it('stops trusting peers once Tailscale stops, fails to answer, or its state is stale', async () => {
     const t0 = 1_000_000
-    await refreshTailscale(async () => ({ running: true, selfIps: [], peerIps: ['100.101.102.103'], funnel: false }), t0)
+    await refreshTailscale(async () => up, t0, false)
     expect(checkClient('100.101.102.103', {}, netContext(t0 + 1000)).ok).toBe(true)
-    // Read again: Tailscale stopped.
-    await refreshTailscale(async () => ({ running: false, selfIps: [], peerIps: [], funnel: false }), t0 + 10_000)
+    await refreshTailscale(async () => ({ ...up, running: false, peerIps: [] }), t0 + 10_000, false)
     expect(checkClient('100.101.102.103', {}, netContext(t0 + 11_000))).toEqual({ ok: false, reason: 'peer' })
-    // Running again, then no successful read for 30 s.
-    await refreshTailscale(async () => ({ running: true, selfIps: [], peerIps: ['100.101.102.103'], funnel: false }), t0 + 20_000)
-    await refreshTailscale(async () => { throw new Error('tailscale hangs') }, t0 + 30_000)
-    expect(checkClient('100.101.102.103', {}, netContext(t0 + 51_000))).toEqual({ ok: false, reason: 'peer' })
+    await refreshTailscale(async () => up, t0 + 20_000, false)
+    await refreshTailscale(async () => { throw new Error('tailscale hangs') }, t0 + 30_000, false)
+    expect(checkClient('100.101.102.103', {}, netContext(t0 + 31_000))).toEqual({ ok: false, reason: 'peer' })
+    await refreshTailscale(async () => up, t0 + 40_000, false)
+    expect(checkClient('100.101.102.103', {}, netContext(t0 + 80_000))).toEqual({ ok: false, reason: 'peer' })
   })
-  it('keeps a Funnel it saw until a read says it is gone', async () => {
+  it('counts Funnel as possible until a valid reading proves otherwise', async () => {
     const t0 = 2_000_000
-    await refreshTailscale(async () => ({ running: true, selfIps: [], peerIps: [], funnel: true }), t0)
-    await refreshTailscale(async () => ({ running: true, selfIps: [], peerIps: [], funnel: null }), t0 + 10_000)
+    // Nothing read yet (startup): unverified.
+    expect(checkClient('127.0.0.1', {}, netContext(t0))).toEqual({ ok: true, zone: 'unverified', why: 'funnel' })
+    await refreshTailscale(async () => ({ ...up, funnel: true }), t0, false)
+    expect(checkClient('127.0.0.1', {}, netContext(t0 + 1000))).toEqual({ ok: true, zone: 'unverified', why: 'funnel' })
+    // Status unreadable: still unverified (not "stopped, so no Funnel").
+    await refreshTailscale(async () => ({ ...up, readable: false, running: false, peerIps: [], funnel: null }), t0 + 10_000, false)
     expect(checkClient('127.0.0.1', {}, netContext(t0 + 11_000))).toEqual({ ok: true, zone: 'unverified', why: 'funnel' })
-    // Stale reads: Funnel still counts.
-    expect(checkClient('127.0.0.1', {}, netContext(t0 + 100_000))).toEqual({ ok: true, zone: 'unverified', why: 'funnel' })
-    await refreshTailscale(async () => ({ running: true, selfIps: [], peerIps: [], funnel: false }), t0 + 110_000)
-    expect(checkClient('127.0.0.1', {}, netContext(t0 + 111_000))).toEqual({ ok: true, zone: 'local' })
+    await refreshTailscale(async () => { throw new Error('socket gone') }, t0 + 20_000, false)
+    expect(checkClient('127.0.0.1', {}, netContext(t0 + 21_000))).toEqual({ ok: true, zone: 'unverified', why: 'funnel' })
+    // A valid reading without Funnel: local again; stale: unverified again.
+    await refreshTailscale(async () => up, t0 + 30_000, false)
+    expect(checkClient('127.0.0.1', {}, netContext(t0 + 31_000))).toEqual({ ok: true, zone: 'local' })
+    expect(checkClient('127.0.0.1', {}, netContext(t0 + 70_000))).toEqual({ ok: true, zone: 'unverified', why: 'funnel' })
+  })
+  it('treats a missing Tailscale socket in Docker as unknown, and no Tailscale natively as none', async () => {
+    const none = { installed: false, readable: true, running: false, selfIps: [], peerIps: [], funnel: false }
+    await refreshTailscale(async () => none, 3_000_000, true)
+    expect(checkClient('127.0.0.1', {}, netContext(3_000_001))).toEqual({ ok: true, zone: 'unverified', why: 'funnel' })
+    await refreshTailscale(async () => none, 3_000_000, false)
+    expect(checkClient('127.0.0.1', {}, netContext(3_000_001))).toEqual({ ok: true, zone: 'local' })
   })
 })
 
@@ -132,12 +148,20 @@ describe('client check', () => {
     // A tailnet peer connecting directly is still the tailnet.
     expect(checkClient('100.101.102.103', {}, f)).toEqual({ ok: true, zone: 'tailnet' })
   })
-  it('trusts the Docker gateway only while the port does not answer on it', () => {
-    expect(checkClient('172.17.0.1', {}, ctx({ gateway: '172.17.0.1', gatewayWide: false }))).toEqual({ ok: true, zone: 'local' })
-    expect(checkClient('172.17.0.1', {}, ctx({ gateway: '172.17.0.1', gatewayWide: true }))).toEqual({ ok: true, zone: 'unverified', why: 'docker' })
-    expect(checkClient('172.17.0.1', {}, ctx({ gateway: '172.17.0.1', gatewayWide: null }))).toEqual({ ok: true, zone: 'unverified', why: 'docker' })
-    expect(checkClient('::ffff:172.17.0.1', { 'x-forwarded-for': '100.64.0.9' }, ctx({ gateway: '172.17.0.1', gatewayWide: false }))).toEqual({ ok: true, zone: 'tailnet' })
-    expect(checkClient('172.17.0.5', {}, ctx({ gateway: '172.17.0.1', gatewayWide: false }))).toEqual({ ok: false, reason: 'peer' })
+  it('trusts the Docker gateway only with the declared loopback publication and a negative probe', () => {
+    const gw = (gatewayWide: boolean | null, gatewayDeclared: boolean) => ctx({ gateway: '172.17.0.1', gatewayWide, gatewayDeclared })
+    const unverified = { ok: true, zone: 'unverified', why: 'docker' }
+    // The shipped Compose file: 127.0.0.1, same port, declared → local.
+    expect(checkClient('172.17.0.1', {}, gw(false, true))).toEqual({ ok: true, zone: 'local' })
+    // A negative probe alone proves nothing: IPv6-only publication ('[::]:7683:7683'),
+    // a remapped host port ('7699:7683'), or an unreachable probe all look like this.
+    expect(checkClient('172.17.0.1', {}, gw(false, false))).toEqual(unverified)
+    // Declared, but the port answers on the gateway (published on every interface).
+    expect(checkClient('172.17.0.1', {}, gw(true, true))).toEqual(unverified)
+    // Not probed yet.
+    expect(checkClient('172.17.0.1', {}, gw(null, true))).toEqual(unverified)
+    expect(checkClient('::ffff:172.17.0.1', { 'x-forwarded-for': '100.64.0.9' }, gw(false, true))).toEqual({ ok: true, zone: 'tailnet' })
+    expect(checkClient('172.17.0.5', {}, gw(false, true))).toEqual({ ok: false, reason: 'peer' })
   })
   it('accepts ranges the owner named, and everything with `any`', () => {
     expect(checkClient('10.147.17.9', {}, ctx({}, '10.147.17.0/24'))).toEqual({ ok: true, zone: 'trusted' })
@@ -166,9 +190,11 @@ describe('gate matrix', () => {
   it('without a passkey: this computer, the tailnet and named ranges get in; unverified and the LAN do not', () => {
     for (const path of routes) {
       for (const z of ['local', 'tailnet', 'trusted'] as const) expect(decide(z, path, false, false)).toBe('ok')
-      expect(decide('unverified', path, false, false)).toBe('unverified')
       expect(decide('lan', path, false, false)).toBe('network')
     }
+    // Unverified: only the app and the first-passkey routes (bootstrap token required there).
+    for (const path of ['/api/config', '/api/phone', '/api/update', '/api/auth/disable', '/api/auth/login/options', '/uploads/x.png']) expect(decide('unverified', path, false, false)).toBe('unverified')
+    for (const path of ['/', '/_nuxt/app.js', '/api/health', '/api/auth/status', '/api/auth/register/options', '/api/auth/register/verify']) expect(decide('unverified', path, false, false)).toBe('ok')
     for (const z of ['local', 'tailnet', 'trusted'] as const) expect(decide(z, '/ws', false, false, true)).toBe('ok')
     expect(decide('unverified', '/ws', false, false, true)).toBe('unverified')
     expect(decide('lan', '/ws', false, false, true)).toBe('network')
