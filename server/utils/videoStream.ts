@@ -236,10 +236,26 @@ async function openAt(m: Machine, root: string, rel: string, signal?: AbortSigna
   }
 }
 
+// Settles with `p`, or rejects as soon as the request closes (`p` itself
+// is not stopped: its own signal does that where it can).
+function untilClosed<T>(p: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return p
+  if (signal.aborted) return Promise.reject(closedError())
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(closedError())
+    signal.addEventListener('abort', onAbort, { once: true })
+    p.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
+  })
+}
+
 export async function openVideo(m: Machine, cwd: string, rel: unknown, signal?: AbortSignal) {
+  if (signal?.aborted) throw closedError()
   const p = cleanRelative(rel)
   if (!p) throw new HerdrError('not_file', 'Not a file')
-  const root = await rootOf(m, cwd)
+  // The Git root lookup: killed with the request locally; over SSH the
+  // command finishes on its own (shared executor), but nobody waits for it.
+  const root = await untilClosed(rootOf(m, cwd, signal), signal)
+  if (signal?.aborted) throw closedError()
   return openAt(m, root, p, signal)
 }
 

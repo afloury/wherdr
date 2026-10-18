@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { appendFileSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, truncateSync, utimesSync, writeFileSync, writeSync, closeSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, truncateSync, utimesSync, writeFileSync, writeSync, closeSync } from 'node:fs'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -190,6 +190,48 @@ describe('video stream', () => {
     expect(Date.now() - t).toBeLessThan(2000)
     await new Promise(resolve => child!.exitCode !== null || child!.signalCode !== null ? resolve(null) : child!.once('close', resolve))
     expect(child!.signalCode).toBe('SIGKILL')
+  })
+
+  it('looks for no Git root once the request is closed', async () => {
+    const calls: string[] = []
+    const machine = (delay: number) => ({
+      home: root,
+      exec: (script: string) => { calls.push('exec'); return new Promise(resolve => setTimeout(() => resolve({ code: 0, stdout: Buffer.from(`${root}\n`), stderr: '' }), delay)) },
+      spawnShell: () => { calls.push('video'); return null },
+    }) as unknown as Machine
+    // Already closed: no command at all.
+    const gone = new AbortController()
+    gone.abort()
+    await expect(openVideo(machine(0), root, 'clip.webm', gone.signal)).rejects.toMatchObject({ code: 'closed' })
+    expect(calls).toEqual([])
+    // Closed during a slow SSH root lookup: the wait ends at once, no video opens afterwards.
+    const closing = new AbortController()
+    const t = Date.now()
+    const opening = openVideo(machine(400), root, 'clip.webm', closing.signal)
+    setTimeout(() => closing.abort(), 50)
+    await expect(opening).rejects.toMatchObject({ code: 'closed' })
+    expect(Date.now() - t).toBeLessThan(300)
+    await new Promise(resolve => setTimeout(resolve, 500))
+    expect(calls).toEqual(['exec'])
+  })
+
+  it('kills a slow local Git root lookup with the request', async () => {
+    // A `git` that hangs, first on the PATH.
+    const bin = path.join(root, 'slow-bin')
+    mkdirSync(bin, { recursive: true })
+    writeFileSync(path.join(bin, 'git'), '#!/bin/sh\nsleep 3\n', { mode: 0o755 })
+    const saved = process.env.PATH
+    process.env.PATH = `${bin}:${saved}`
+    try {
+      const closing = new AbortController()
+      const t = Date.now()
+      const opening = openVideo(local, root, 'clip.webm', closing.signal)
+      setTimeout(() => closing.abort(), 50)
+      await expect(opening).rejects.toMatchObject({ code: 'closed' })
+      expect(Date.now() - t).toBeLessThan(1000)
+    } finally {
+      process.env.PATH = saved
+    }
   })
 })
 

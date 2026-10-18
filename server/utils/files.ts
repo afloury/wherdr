@@ -194,8 +194,8 @@ export function parseListing(raw: Buffer): { root: string, dir: string, entries:
 }
 
 // Browsed root: the Git root containing the folder, otherwise the folder.
-export async function rootOf(m: Machine, cwd: string) {
-  return (await gitToplevel(m, cwd)) || cwd
+export async function rootOf(m: Machine, cwd: string, signal?: AbortSignal) {
+  return (await gitToplevel(m, cwd, signal)) || cwd
 }
 
 // `rel` null: the pane's own folder (the root when it lies outside).
