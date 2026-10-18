@@ -1256,12 +1256,14 @@ With it installed, wherdr adds:
   to wait while `free` is `0`, even if its project still has slots; In queue tasks start when the
   machine has a free slot. `herdr-projects overview` is the fallback when the file is missing.
   The same data is available read-only at `GET /api/plugins/thread-limits`.
-- **Badges**, the only decoration on task lines, chosen by the coordinator (wherdr adds none
+- **Badges**, the only labels on task lines, chosen by the coordinator (wherdr adds none
   on its own): `[b:color(text)]`, or `[b:color(text)](target)` for a clickable badge with a small ↗.
   The target is an `https://` / `http://` link (new tab) or a thread ID such as `t-0140` (opens
   its tab); any other scheme is ignored. Color is `red`, `orange`, `amber`, `green`, `teal`,
   `blue`, `violet`, `pink`, `gray` (theme-aware), a `#rgb` / `#rrggbb` hex, or empty for neutral;
-  at most 24 characters are shown. A bare URL in the text shows as a plain link, and the owner
+  at most 24 characters are shown. A bare URL in the text shows as a plain link, inline code
+  (`` `npm test` ``) shows as in a conversation, with a Copy / Run… menu (Run: the coordinator
+  runs the command in its shell mode, after a confirmation), and the owner
   `(me)` / `(agent)` is read but not shown. The coordinator rules (Settings) tell the coordinator
   to use badges on its own when they help (status, thread, PR, device, priority…), sparingly,
   and to follow your preferences. Example:

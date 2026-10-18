@@ -43,9 +43,9 @@ const openLabel = computed(() => {
   if (c.kind === 'task') return c.task.text
   return paneTitle(c.pane)
 })
-// A click anywhere on the card opens it, except on its own links, badges and menu.
+// A click anywhere on the card opens it, except on its own links, badges, code and menu.
 function onClick(e: MouseEvent) {
-  if ((e.target as Element | null)?.closest('a, button')) return
+  if ((e.target as Element | null)?.closest('a, button, .pp-code')) return
   emit('open')
 }
 </script>
@@ -78,7 +78,7 @@ function onClick(e: MouseEvent) {
     <template v-else-if="card.kind === 'task'">
       <div class="board-task-row">
         <span class="pp-box" />
-        <span class="pp-task-text"><TaskText :text="card.task.text" /></span>
+        <span class="pp-task-text"><TaskText :text="card.task.text" :pane-id="card.coordinator.id" /></span>
         <span v-if="sent" class="pp-sent"><UIcon name="i-lucide-send" />{{ t('Sent') }}</span>
         <template v-else-if="card.moves.length">
           <SpaceMenu v-if="movable" :items="moveItems" :title="t('Move to…')" :label="t('Move to…')" size="sm" />
