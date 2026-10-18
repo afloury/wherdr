@@ -1,21 +1,35 @@
 // Lock: everything touching agents (API, images, photos) requires an
 // unlocked session as soon as a passkey is registered. The app's files
 // are still served so the lock screen can be shown.
-// (WebSockets do the same check in their `upgrade`.)
+// Before anything else, the client must be this computer or the tailnet
+// (server/utils/network.ts): a device on the open network gets nothing.
+// (WebSockets do the same checks in their `upgrade`.)
 // An authenticated request upgrades a cookie from an earlier version (auth.renew).
-import { crossSiteRequest, hostAllowed, hostRefusalIsHtml, hostRefusedPage } from '../utils/hosts'
+import { crossSiteRequest, hostAllowed, hostRefusalIsHtml, hostRefusedPage, networkRefusedPage } from '../utils/hosts'
+import { checkRequestClient } from '../utils/network'
 import { adoptServed } from '../utils/phone'
 // /api/health: version only, for the one-tap updater (bin/lib/updater.mjs).
 const HOST_RECHECK_MS = 3000
 const needsUnlock = (p: string) => (p.startsWith('/api/') && !p.startsWith('/api/auth/') && p !== '/api/health') || p.startsWith('/uploads/')
 
 export default defineEventHandler(async (event) => {
+  const path = event.path.split('?')[0]!
+  const client = checkRequestClient(event.node.req.socket?.remoteAddress, event.node.req.headers)
+  if (!client.ok) {
+    if (hostRefusalIsHtml(path, event.node.req.headers.accept)) {
+      setResponseStatus(event, 403)
+      setResponseHeader(event, 'content-type', 'text/html; charset=utf-8')
+      setResponseHeader(event, 'cache-control', 'no-store')
+      return networkRefusedPage()
+    }
+    return sendError(event, 403, { error: 'wherdr only answers this computer and your tailnet', code: 'network' })
+  }
   // An unknown host: maybe an address `tailscale serve` just published. The
   // request only triggers reading Tailscale again (at most every few
   // seconds); its Host header is never what gets allowed.
   if (!hostAllowed(event.node.req.headers.host)) await adoptServed(HOST_RECHECK_MS)
   if (!hostAllowed(event.node.req.headers.host)) {
-    if (hostRefusalIsHtml(event.path.split('?')[0]!, event.node.req.headers.accept)) {
+    if (hostRefusalIsHtml(path, event.node.req.headers.accept)) {
       setResponseStatus(event, 403)
       setResponseHeader(event, 'content-type', 'text/html; charset=utf-8')
       setResponseHeader(event, 'cache-control', 'no-store')
@@ -23,7 +37,6 @@ export default defineEventHandler(async (event) => {
     }
     return sendError(event, 403, { error: 'Host not allowed', code: 'host' })
   }
-  const path = event.path.split('?')[0]!
   if (path.startsWith('/api/') && crossSiteRequest(event.node.req.headers)) {
     return sendError(event, 403, { error: 'Origin refused', code: 'origin' })
   }

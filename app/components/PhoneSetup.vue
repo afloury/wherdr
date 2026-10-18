@@ -192,12 +192,12 @@ const failureText = computed(() => {
         <div class="phone-qr-text">
           <p class="phone-url">{{ here }}</p>
           <p>{{ tl('1. Scan it with the iPhone camera, open it, then Share → Add to Home Screen.', '1. Scanne-le avec l’appareil photo de l’iPhone, ouvre-le, puis Partager → Sur l’écran d’accueil.') }}</p>
-          <p>{{ tl('2. In the app from the Home Screen: Settings → Enable notifications, then Security → Enable passkey lock.', '2. Dans l’app ouverte depuis l’écran d’accueil : Réglages → Activer les notifications, puis Sécurité → Activer le verrou passkey.') }}</p>
+          <p>{{ tl('2. In the app from the Home Screen: Settings → Enable notifications, then, if you like, Security → Enable passkey lock.', '2. Dans l’app ouverte depuis l’écran d’accueil : Réglages → Activer les notifications, puis, si tu veux, Sécurité → Activer le verrou passkey.') }}</p>
         </div>
       </div>
-      <p class="phone-note">{{ tl('To publish or remove this address, open wherdr on localhost on its computer, or unlock it with its passkey.', 'Pour publier ou retirer cette adresse, ouvre wherdr sur localhost sur son ordinateur, ou déverrouille-le avec sa passkey.') }}</p>
+      <p class="phone-note">{{ tl('To publish or remove this address, open wherdr on its computer or from your tailnet, or unlock it with its passkey.', 'Pour publier ou retirer cette adresse, ouvre wherdr sur son ordinateur ou depuis ton tailnet, ou déverrouille-le avec sa passkey.') }}</p>
     </template>
-    <p v-else-if="denied" class="phone-note warn">{{ tl('Set it up from the computer that runs wherdr: open http://localhost:' + (status?.port || '7683') + ' there, or unlock wherdr with its passkey.', 'Configure-le depuis l’ordinateur qui fait tourner wherdr : ouvre http://localhost:' + (status?.port || '7683') + ' dessus, ou déverrouille wherdr avec sa passkey.') }}</p>
+    <p v-else-if="denied" class="phone-note warn">{{ tl('Set it up from the computer that runs wherdr (http://localhost:' + (status?.port || '7683') + ') or from your tailnet, or unlock wherdr with its passkey.', 'Configure-le depuis l’ordinateur qui fait tourner wherdr (http://localhost:' + (status?.port || '7683') + ') ou depuis ton tailnet, ou déverrouille wherdr avec sa passkey.') }}</p>
     <p v-else-if="!status" class="phone-note">{{ tl('Checking…', 'Vérification…') }}</p>
 
     <template v-else>
@@ -304,7 +304,7 @@ const failureText = computed(() => {
         <div class="phone-qr-text">
           <p class="phone-url">{{ status.url }}</p>
           <p>{{ tl('1. Scan it with the iPhone camera, open it, then Share → Add to Home Screen.', '1. Scanne-le avec l’appareil photo de l’iPhone, ouvre-le, puis Partager → Sur l’écran d’accueil.') }}</p>
-          <p>{{ tl('2. In the app from the Home Screen: Settings → Enable notifications, then Security → Enable passkey lock.', '2. Dans l’app ouverte depuis l’écran d’accueil : Réglages → Activer les notifications, puis Sécurité → Activer le verrou passkey.') }}</p>
+          <p>{{ tl('2. In the app from the Home Screen: Settings → Enable notifications, then, if you like, Security → Enable passkey lock.', '2. Dans l’app ouverte depuis l’écran d’accueil : Réglages → Activer les notifications, puis, si tu veux, Sécurité → Activer le verrou passkey.') }}</p>
         </div>
       </div>
     </template>

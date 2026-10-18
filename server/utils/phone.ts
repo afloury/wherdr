@@ -16,36 +16,20 @@ import type { PhoneError, PhoneResult, PhoneStatus } from '../../shared/phone'
 import { APP_URL_FILE, BOOT_APP_URL, DATA_DIR, ENV_APP_URL, IN_DOCKER, TAILNET_REFRESH_MS, log } from './env'
 import { setServedHosts } from './hosts'
 import { auth, reqOf } from './http'
+import { checkRequestClient } from './network'
 import { initVapid } from './push'
 
 const PORT = String(process.env.NITRO_PORT || process.env.PORT || 3000)
-const LOOPBACK: Record<string, true> = { 'localhost': true, '127.0.0.1': true, '::1': true }
 
-// These routes run commands and change settings: only for this computer
-// (localhost, not through a proxy such as `tailscale serve`) or a session
-// already unlocked with a passkey.
+// These routes run commands and change settings: for this computer and the
+// tailnet (the guard already refused everything else, network.ts), or a
+// session unlocked with a passkey. A network the owner added
+// (WHERDR_TRUSTED_NETWORKS) needs the passkey for them.
 export function phoneAccess(event: H3Event): boolean {
-  const req = reqOf(event)
-  const lock = auth.status(req)
+  const lock = auth.status(reqOf(event))
   if (lock.enabled && lock.unlocked) return true
-  const headers = getRequestHeaders(event)
-  let host = ''
-  try { host = new URL(`http://${headers.host || ''}`).hostname.replace(/^\[|\]$/g, '').toLowerCase() } catch { return false }
-  const proxied = Object.keys(headers).some(k => k === 'x-forwarded-for' || k === 'forwarded' || k.startsWith('tailscale-'))
-  const peer = (event.node.req.socket.remoteAddress || '').replace(/^::ffff:/, '')
-  // Docker publishes the port on the host's 127.0.0.1 only, through its proxy:
-  // the peer is then the container's gateway.
-  const localPeer = /^127\./.test(peer) || peer === '::1' || (IN_DOCKER && peer === dockerGateway())
-  return Boolean(LOOPBACK[host]) && !proxied && localPeer
-}
-
-// Default gateway of the container (/proc/net/route: little-endian hex).
-function dockerGateway(): string {
-  try {
-    const row = fs.readFileSync('/proc/net/route', 'utf8').split('\n').map(l => l.trim().split(/\s+/)).find(f => f[1] === '00000000')
-    const hex = row?.[2]
-    return hex ? [3, 2, 1, 0].map(i => String(Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16))).join('.') : ''
-  } catch { return '' }
+  const client = checkRequestClient(event.node.req.socket?.remoteAddress, getRequestHeaders(event))
+  return client.ok && (client.zone === 'local' || client.zone === 'tailnet')
 }
 
 // The saved address was adopted from `tailscale serve` (applyServed), which

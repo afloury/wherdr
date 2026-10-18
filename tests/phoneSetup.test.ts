@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import type * as Tailnet from '../bin/lib/tailnet.mjs'
 import { failureCause } from '../bin/lib/tailnet.mjs'
 import { hostAllowed } from '../server/utils/hosts'
+import { parseTrustedNetworks, setNetContextForTests } from '../server/utils/network'
 import { adoptServed, applyServed, httpsPortOf, onTailnetName, phoneAccess, phoneAction, phoneStatus } from '../server/utils/phone'
 import { PHONE_GRACE_MS, phoneReach } from '../shared/phone'
 import type { PhoneReachCause } from '../shared/phone'
@@ -65,15 +66,17 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers() })
 
 describe('phone setup access', () => {
+  beforeEach(() => setNetContextForTests({ trusted: parseTrustedNetworks(''), tailnetUp: true }))
+  afterEach(() => setNetContextForTests(null))
   const event = (headers: Record<string, string>, peer = '127.0.0.1') =>
     ({ node: { req: { headers, socket: { remoteAddress: peer } } } }) as unknown as Parameters<typeof phoneAccess>[0]
 
-  it('is open to this computer only, never through a proxy such as tailscale serve', () => {
+  it('is open to this computer and the tailnet, never to the open network', () => {
     expect(phoneAccess(event({ host: 'localhost:7699' }))).toBe(true)
     expect(phoneAccess(event({ host: '127.0.0.1:7699' }, '::ffff:127.0.0.1'))).toBe(true)
-    expect(phoneAccess(event({ host: `${NAME}:7699` }))).toBe(false)
-    expect(phoneAccess(event({ 'host': 'localhost:7699', 'x-forwarded-for': '100.64.0.2' }))).toBe(false)
-    expect(phoneAccess(event({ 'host': 'localhost:7699', 'tailscale-user-login': 'someone' }))).toBe(false)
+    // Through tailscale serve: a local peer forwarding a tailnet client.
+    expect(phoneAccess(event({ 'host': `${NAME}:7699`, 'x-forwarded-for': '100.64.0.2' }))).toBe(true)
+    expect(phoneAccess(event({ 'host': 'localhost:7699', 'x-forwarded-for': '192.168.1.20' }))).toBe(false)
     expect(phoneAccess(event({ host: 'localhost:7699' }, '192.168.1.20'))).toBe(false)
   })
 })

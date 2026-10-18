@@ -4,6 +4,7 @@ import type { Peer } from 'crossws'
 import { auth } from './http'
 import { sameOrigin } from './http'
 import { hostAllowed } from './hosts'
+import { checkRequestClient } from './network'
 
 const WS_MAX = 256 * 1024
 
@@ -15,8 +16,11 @@ export function headersOf(h: Headers): Record<string, string | undefined> {
 }
 
 // Upgrade refusal: raw HTTP response, like the old server.
-export function checkUpgrade(request: { headers: Headers }): Response | void {
+// The TCP peer comes from the Node request behind crossws's proxy (`_req`);
+// when it cannot be read, the connection is refused.
+export function checkUpgrade(request: { headers: Headers, _req?: { socket?: { remoteAddress?: string } } }): Response | void {
   const headers = headersOf(request.headers)
+  if (!checkRequestClient(request._req?.socket?.remoteAddress, headers).ok) return new Response(null, { status: 403, statusText: 'Network not allowed' })
   if (!hostAllowed(headers.host)) return new Response(null, { status: 403, statusText: 'Host not allowed' })
   if (!sameOrigin(headers)) return new Response(null, { status: 403, statusText: 'Forbidden' })
   if (!auth.isUnlocked({ headers })) return new Response(null, { status: 401, statusText: 'Unauthorized' })

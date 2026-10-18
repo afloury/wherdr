@@ -101,6 +101,36 @@ pre{margin:0;padding:10px 12px;border:1px solid #3a3f47;background:#15181d;white
 `
 }
 
+// A client outside this computer and the tailnet (server/utils/network.ts):
+// the page says why and what to do, without echoing any address.
+export function networkRefusedPage(): string {
+  const opt = '<code>WHERDR_TRUSTED_NETWORKS</code>'
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex"><title>wherdr · network not allowed</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0d0f12;color:#e8eaed;font:15px/1.5 Inter,system-ui,-apple-system,sans-serif;padding:24px max(16px,env(safe-area-inset-right)) 24px max(16px,env(safe-area-inset-left))}
+main{max-width:480px;border:1px solid #3a3f47;padding:24px}
+.tag{font:11px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:#9aa0a8;margin:0 0 16px}
+h1{font:600 20px/1.25 Archivo,system-ui,sans-serif;margin:0 0 8px}
+p{margin:0 0 12px}p:last-child{margin-bottom:0}hr{border:0;border-top:1px solid #3a3f47;margin:20px 0}
+code{font:13px/1.45 "JetBrains Mono",ui-monospace,monospace;overflow-wrap:anywhere}
+</style></head><body><main>
+<p class="tag">wherdr · 403 · network</p>
+<h1>wherdr only answers this computer and your tailnet.</h1>
+<p>This device reached it from another network (Wi-Fi, LAN, Internet), in plain HTTP: anyone there could control the agents, so wherdr refuses.</p>
+<p>Open wherdr on its computer (<code>localhost</code>), or from your devices through Tailscale: Settings › Phone, or <code>wherdr phone</code> on that computer.</p>
+<p>Another private network (ZeroTier, WireGuard…): its owner can name its range in ${opt}, then restart wherdr.</p>
+<hr>
+<h1 lang="fr">wherdr ne répond qu’à cet ordinateur et à ton tailnet.</h1>
+<p lang="fr">Cet appareil l’a joint depuis un autre réseau (Wi-Fi, réseau local, Internet), en HTTP non chiffré : n’importe qui sur ce réseau pourrait piloter les agents, donc wherdr refuse.</p>
+<p lang="fr">Ouvre wherdr sur son ordinateur (<code>localhost</code>), ou depuis tes appareils par Tailscale : Réglages › Téléphone, ou <code>wherdr phone</code> sur cet ordinateur.</p>
+<p lang="fr">Autre réseau privé (ZeroTier, WireGuard…) : son propriétaire peut nommer sa plage dans ${opt}, puis redémarrer wherdr.</p>
+</main></body></html>
+`
+}
+
 // API request made from another page (link, <img>, fetch without CORS):
 // some reads act on a pane (GET /api/models opens /model). Recent
 // browsers say so in Sec-Fetch-Site; without that header (curl,

@@ -493,7 +493,12 @@ onMounted(() => {
 
         <div v-show="activeSection === 'security'" class="settings-section">
           <div class="settings-group">
-            <h3>{{ t('Passkey') }}</h3>
+            <h3>{{ tl('Network access', 'Accès réseau') }}</h3>
+            <OpenNetworkBanner />
+            <p v-if="!appConfig.openNetwork" class="muted settings-hint">{{ tl('wherdr only answers this computer (localhost) and your tailnet. A device on another network (a Wi-Fi, a LAN, the Internet) is refused, even with the address and the port.', 'wherdr ne répond qu’à cet ordinateur (localhost) et à ton tailnet. Un appareil sur un autre réseau (un Wi-Fi, un réseau local, Internet) est refusé, même avec l’adresse et le port.') }}</p>
+          </div>
+          <div class="settings-group">
+            <h3>{{ tl('Passkey · optional', 'Passkey · facultative') }}</h3>
             <PasskeyCard />
           </div>
           <div v-if="sec?.enabled" class="settings-group">

@@ -149,10 +149,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <!-- Security and notifications -->
         <template v-else>
           <p class="eyebrow onboarding-eyebrow">{{ tl('Security and notifications', 'Sécurité et notifications') }}</p>
-          <h2 class="onboarding-title">{{ tl('Lock it, and get notified.', 'Verrouille-le, et sois prévenu.') }}</h2>
+          <h2 class="onboarding-title">{{ tl('Lock it if you like, and get notified.', 'Verrouille-le si tu veux, et sois prévenu.') }}</h2>
           <div class="settings-group">
-            <h3>{{ tl('Passkey lock · recommended', 'Verrou passkey · recommandé') }}</h3>
-            <p class="onboarding-why">{{ tl('Only your devices can open wherdr, with Face ID, Touch ID or Windows Hello: no password to leak.', 'Seuls tes appareils ouvrent wherdr, avec Face ID, Touch ID ou Windows Hello : aucun mot de passe à fuiter.') }}</p>
+            <h3>{{ tl('Passkey lock · optional', 'Verrou passkey · facultatif') }}</h3>
+            <p class="onboarding-why">{{ tl('wherdr already answers only this computer and your tailnet. A passkey adds a lock on each device, with Face ID, Touch ID or Windows Hello: useful if someone else uses your tailnet or your devices.', 'wherdr ne répond déjà qu’à cet ordinateur et à ton tailnet. Une passkey ajoute un verrou sur chaque appareil, avec Face ID, Touch ID ou Windows Hello : utile si quelqu’un d’autre utilise ton tailnet ou tes appareils.') }}</p>
             <PasskeyCard :continue-hash="setupHash('security')" />
           </div>
           <div class="settings-group">

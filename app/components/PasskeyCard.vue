@@ -81,7 +81,7 @@ onMounted(() => {
       <button type="button" class="settings-action" :disabled="!supported" @click="registerKey">
         <UIcon name="i-lucide-lock" />{{ t('Enable passkey lock') }}
       </button>
-      <p class="muted">{{ t(supported ? 'Without a lock, anyone who can reach this server can control your agents. Passkey: Face ID, Touch ID, Windows Hello…' : 'This browser does not support passkeys.') }}</p>
+      <p class="muted">{{ !supported ? t('This browser does not support passkeys.') : appConfig.openNetwork ? tl('wherdr accepts every network here: without a lock, anyone who can reach this machine can control your agents. Passkey: Face ID, Touch ID, Windows Hello…', 'wherdr accepte ici tous les réseaux : sans verrou, toute personne qui joint cette machine peut piloter tes agents. Passkey : Face ID, Touch ID, Windows Hello…') : t('Optional: wherdr already answers only this computer and your tailnet. A passkey adds a lock on each device, with Face ID, Touch ID, Windows Hello…') }}</p>
     </template>
     <template v-else-if="sec">
       <p class="muted keys">{{ t('Registered keys:') }} {{ sec.devices.map(d => d.name).join(', ') }}</p>

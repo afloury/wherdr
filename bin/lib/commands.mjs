@@ -33,7 +33,7 @@ Commands:
 
 Options:
   --port <n>        Listening port (default: 7683, or $PORT)
-  --host <addr>     Listening address (default: 127.0.0.1, or $HOST). Keep it on loopback.
+  --host <addr>     Listening address (default: 127.0.0.1, or $HOST): loopback or this machine's tailnet address.
   --data-dir <dir>  Passkeys, push keys and settings (default: ~/wherdr/data, or $DATA_DIR)
   --session <name>  Named Herdr session to drive (default: Herdr's default session)
   -v, --version     Print the version
