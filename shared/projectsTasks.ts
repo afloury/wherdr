@@ -323,6 +323,8 @@ export function groupCounts(rows: TaskRow[]): Record<TaskGroup, number> {
 // which wherdr already sends to the phone (server/utils/herdrNotify.ts): no
 // state of wherdr's own, and it works on every machine wherdr reaches.
 export const NOTIFY_COMMAND = 'herdr notification show --body="$HERDR_PROJECTS_TITLE" --sound request -- "$HERDR_PROJECTS_ID · $HERDR_PROJECTS_EVENT"'
+// The command that sets it, on each machine that runs herdr-projects.
+export const NOTIFY_SETUP = (launcher: string) => `${launcher} set board.notify '${NOTIFY_COMMAND}'`
 export const NOTIFY_EVENTS = ['needs you', 'ready to approve', 'failed'] as const
 export type NotifyEvent = typeof NOTIFY_EVENTS[number]
 // A notification that NOTIFY_COMMAND sent: its task and what happened; else null.

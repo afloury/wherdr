@@ -24,7 +24,7 @@ import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
   type MachineTasks, type TaskDetails, type TaskRow, type TasksBoard,
-  addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, coordinatorArgs, detailsFromTaskFile, isTaskCommand,
+  type TaskCommand, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, coordinatorArgs, detailsFromTaskFile, isTaskCommand,
   isTaskId, parseTaskDetails, parseTaskList, rowFromTaskFile, taskActions,
 } from '../../shared/projectsTasks'
 import { HERDR_BIN, HERDR_CHILD_ENV, IN_DOCKER, log } from './env'
@@ -260,8 +260,13 @@ export async function readTasksBoard(since?: string): Promise<TasksBoard | { sam
 // named session's key reaches its machine's board.
 const boardOf = (machine: unknown) => boardMachine(machineFor(machine))
 
-function taskOf(m: Machine, id: string): TaskRow | null {
-  return lists.get(m.key)?.tasks.find(t => t.id === id) || null
+// The task's row as the last list has it; read again when that list was
+// dropped (an action just ran) or never read.
+async function taskOf(m: Machine, id: string): Promise<TaskRow | null> {
+  const known = lists.get(m.key)
+  const hit = known?.tasks.find(t => t.id === id)
+  if (hit || (known && !known.error && Date.now() - known.at < REUSE_MS)) return hit || null
+  return (await readList(m)).tasks.find(t => t.id === id) || null
 }
 
 function checkId(id: unknown): string {
@@ -305,7 +310,7 @@ export async function tellTask(machine: unknown, id: unknown, text: unknown): Pr
   const tid = checkId(id)
   const words = cleanTell(text)
   if (!words) throw new HerdrError('empty', 'Nothing to send')
-  const row = taskOf(m, tid)
+  const row = await taskOf(m, tid)
   if (row && !taskActions(row).tell) throw new HerdrError('bad_action', 'This task has no agent to talk to')
   const out = await command(m, ['tell', '--', tid, words])
   forget(m)
@@ -316,7 +321,7 @@ export async function tellTask(machine: unknown, id: unknown, text: unknown): Pr
 export async function approveTask(machine: unknown, id: unknown): Promise<{ ok: true, msg: string }> {
   const m = boardOf(machine)
   const tid = checkId(id)
-  const row = taskOf(m, tid)
+  const row = await taskOf(m, tid)
   if (!row || !taskActions(row).approve) throw new HerdrError('bad_action', 'This task does not wait for approval')
   const out = await command(m, ['approve', '--', tid])
   forget(m)
@@ -330,14 +335,21 @@ export async function taskCommand(machine: unknown, id: unknown, action: unknown
   const m = boardOf(machine)
   const tid = checkId(id)
   if (!isTaskCommand(action)) throw new HerdrError('bad_action', 'Unknown action')
-  const row = taskOf(m, tid)
-  if (!row || !taskActions(row)[action]) throw new HerdrError('bad_action', fmt('This task cannot be {action} now', { action: ACTION_WORDS[action] }))
+  const row = await taskOf(m, tid)
+  if (!row || !taskActions(row)[action]) throw refused(action)
   const out = await command(m, [action, '--', tid])
   forget(m)
   log(`herdr-projects ${action} ${tid}${m.local ? '' : ` on ${m.label}`}`)
   return { ok: true, msg: firstLine(out) }
 }
-const ACTION_WORDS = { delegate: 'started', stop: 'stopped', retry: 'retried', archive: 'archived' } as const
+function refused(action: TaskCommand): HerdrError {
+  switch (action) {
+    case 'delegate': return new HerdrError('bad_action', 'This task cannot be started now')
+    case 'stop': return new HerdrError('bad_action', 'This task has no agent at work to stop')
+    case 'retry': return new HerdrError('bad_action', 'This task has nothing to retry')
+    case 'archive': return new HerdrError('bad_action', 'This task cannot be archived while an agent works on it')
+  }
+}
 
 // A new task (`add`): in a repo the board knows (its name or its folder), or
 // in the home folder; `delegate` puts an agent on it at once.

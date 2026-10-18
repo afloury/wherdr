@@ -2,7 +2,8 @@
 // Settings › Plugins › herdr-projects: where it stands on each machine, and
 // what to do when the Board cannot read it (missing, a 0.2, older than 1.2.1).
 import type { MachineConfig } from '#shared/types'
-import { PROJECTS_COMMAND, PROJECTS_MIN, PROJECTS_REF, PROJECTS_REPO_URL, type ProjectsStatus } from '#shared/projectsPlugin'
+import { PROJECTS_COMMAND, PROJECTS_LAUNCHER, PROJECTS_MIN, PROJECTS_REF, PROJECTS_REPO_URL, type ProjectsStatus } from '#shared/projectsPlugin'
+import { NOTIFY_SETUP } from '#shared/projectsTasks'
 
 const props = defineProps<{ machines: MachineConfig[] }>()
 type PluginState = { status: ProjectsStatus, version: string | null, installable: boolean }
@@ -44,6 +45,17 @@ async function install(machine: MachineConfig) {
   finally { busy.value = { ...busy.value, [machine.key]: false } }
 }
 
+// Push when a task needs you, is ready to approve, or failed: herdr-projects'
+// own `board.notify` hands it to Herdr, which wherdr already relays.
+const notifySetup = NOTIFY_SETUP(PROJECTS_LAUNCHER)
+const anyReady = computed(() => Object.values(states.value).some(s => s.status === 'ready'))
+async function copyNotify() {
+  try {
+    await navigator.clipboard.writeText(notifySetup)
+    toast(t('Copied'))
+  } catch { toast(tl('Copy failed', 'Copie impossible'), true) }
+}
+
 function statusText(s: PluginState): string {
   const v = s.version ? ` · v${s.version}` : ''
   if (s.status === 'ready') return tl('Installed', 'Installé') + v
@@ -56,7 +68,7 @@ function statusText(s: PluginState): string {
 <template>
   <div class="settings-group projects-plugin">
     <h3>herdr-projects</h3>
-    <p class="projects-plugin-intro">{{ tl(`herdr-projects is a work board for Herdr: one list of tasks, each handed to an agent in its own space. wherdr shows its tasks on the Board, where you can reply to an agent, approve finished work and write to the Coordinator. It needs herdr-projects ${PROJECTS_MIN} or later; the plugin is optional.`, `herdr-projects est un tableau de travail pour Herdr : une liste de tâches, chacune confiée à un agent dans son propre space. wherdr affiche ses tâches dans le Board, où tu peux répondre à un agent, approuver un travail fini et écrire au Coordinateur. Il faut herdr-projects ${PROJECTS_MIN} ou plus ; le plugin est facultatif.`) }}</p>
+    <p class="projects-plugin-intro">{{ tl(`herdr-projects is a work board for Herdr: one list of tasks, each handed to an agent in its own space. wherdr shows its tasks on the Board, where you can add tasks, start and stop them, reply to an agent, approve finished work and write to its coordinators. It needs herdr-projects ${PROJECTS_MIN} or later; the plugin is optional.`, `herdr-projects est un tableau de travail pour Herdr : une liste de tâches, chacune confiée à un agent dans son propre space. wherdr affiche ses tâches dans le Board, où tu peux ajouter des tâches, les lancer et les arrêter, répondre à un agent, approuver un travail fini et écrire à ses coordinateurs. Il faut herdr-projects ${PROJECTS_MIN} ou plus ; le plugin est facultatif.`) }}</p>
     <a class="projects-plugin-link" :href="PROJECTS_REPO_URL" target="_blank" rel="noopener noreferrer">
       {{ tl('View plugin repository', 'Voir le dépôt du plugin') }} <UIcon name="i-lucide-external-link" />
     </a>
@@ -90,6 +102,14 @@ function statusText(s: PluginState): string {
         </div>
       </div>
       <p v-if="!machine.online || errors[machine.key]" class="projects-plugin-note">{{ tl('By hand on this machine:', 'À la main sur cette machine :') }} <code>{{ PROJECTS_COMMAND }}</code></p>
+    </div>
+    <div v-if="anyReady" class="projects-plugin-notify">
+      <strong>{{ tl('Push for the Board', 'Notifications du Board') }}</strong>
+      <p class="projects-plugin-note">{{ tl('To get a push when a task needs you, is ready to approve, or failed, run this once on each machine with herdr-projects. A tap on the push opens the task.', 'Pour recevoir une notification quand une tâche a besoin de toi, est prête à approuver ou a échoué, lance ceci une fois sur chaque machine qui a herdr-projects. Toucher la notification ouvre la tâche.') }}</p>
+      <div class="projects-upgrade-cmd">
+        <code class="projects-plugin-command">{{ notifySetup }}</code>
+        <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-copy" :aria-label="t('Copy command')" @click="copyNotify" />
+      </div>
     </div>
   </div>
 </template>

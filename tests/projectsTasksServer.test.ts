@@ -364,13 +364,21 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     expect(calls.filter(c => c[0] !== 'list')).toEqual([['delegate', '--', 'demo/5'], ['stop', '--', 'demo/3'], ['retry', '--', 'demo/6'], ['archive', '--', 'demo/4']])
   })
 
+  it('right after another action (the list dropped): reads the list again, then acts', async () => {
+    await read()
+    await T.addTask('', { title: 'New one' })
+    calls = []
+    await T.taskCommand('', 'demo/5', 'delegate')
+    expect(calls).toEqual([['list', '--json'], ['delegate', '--', 'demo/5']])
+  })
+
   it('refuses what does not apply to the task, or an unknown command, before running anything', async () => {
     await read()
     calls = []
     await expect(T.taskCommand('', 'demo/3', 'delegate')).rejects.toThrow(/cannot be started/)
-    await expect(T.taskCommand('', 'demo/5', 'stop')).rejects.toThrow(/cannot be stopped/)
+    await expect(T.taskCommand('', 'demo/5', 'stop')).rejects.toThrow(/no agent at work to stop/)
     await expect(T.taskCommand('', 'demo/3', 'archive')).rejects.toThrow(/cannot be archived/)
-    await expect(T.taskCommand('', 'demo/4', 'retry')).rejects.toThrow(/cannot be retried/)
+    await expect(T.taskCommand('', 'demo/4', 'retry')).rejects.toThrow(/nothing to retry/)
     await expect(T.taskCommand('', 'demo/5', 'clear')).rejects.toThrow(/Unknown action/)
     await expect(T.taskCommand('', 'demo/99', 'archive')).rejects.toThrow(/cannot be archived/)
     expect(calls).toEqual([])

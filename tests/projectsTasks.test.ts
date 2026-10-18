@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  NO_ACTIONS, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, detailsFromTaskFile, groupByRepo, groupCounts, groupOf,
+  NOTIFY_SETUP, NO_ACTIONS, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, detailsFromTaskFile, groupByRepo, groupCounts, groupOf,
   rowFromTaskFile, stateFromTaskFile, isTaskId, parseReview, parseTaskDetails, parseTaskList, prNumber, sortTasks, taskActions, taskKey, taskNotice,
 } from '../shared/projectsTasks'
 
@@ -227,5 +227,10 @@ describe('commands, by repo, and push', () => {
     expect(taskNotice('../x/1 · failed')).toBeNull()
     expect(taskNotice('demo/1 · merged')).toBeNull()
     expect(taskKey('demo/12')).toBe('DEMO-12')
+  })
+
+  it('the migration guide gives the same board.notify command as Settings', () => {
+    const doc = readFileSync(path.join(import.meta.dirname, '../docs/herdr-projects-1x.md'), 'utf8')
+    expect(doc).toContain(NOTIFY_SETUP('~/.herdr-projects/data/bin/herdr-projects'))
   })
 })
