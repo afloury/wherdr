@@ -3592,6 +3592,8 @@ h4.board-repo-col-head { margin: 0; cursor: default; }
 .board-repo-cols.desk .board-repo-col:last-child { padding-right: 0; }
 .board-repo-cols.desk .board-repo-col + .board-repo-col { border-left: 1px solid var(--line-soft); }
 .board-repo-cols.desk h4.board-repo-col-head { align-items: flex-start; }
+/* An empty group: its name, greyed; no 0 to squeeze into its narrow track. */
+.board-repo-cols.desk .board-repo-col.empty .pp-count { display: none; }
 .board-machine-empty { padding: 10px 4px; }
 .board-card-head .task-state { padding: 2px 5px; font-size: 9px; }
 @media (min-width: 900px) {
