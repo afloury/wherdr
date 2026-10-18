@@ -582,7 +582,8 @@ body.short-bottom { --safe-bottom: 0px; }
 }
 .settings-group .update-banner { margin: 12px 0; }
 /* WHERDR_TRUSTED_NETWORKS=any: the warning keeps the banner's frame, in rose. */
-.open-network-banner { border-color: color-mix(in srgb, var(--rose) 55%, transparent); }
+.open-network-banner { margin-top: 0; border-color: color-mix(in srgb, var(--rose) 55%, transparent); }
+.settings-group .open-network-banner { margin: 12px 0 0; }
 .open-network-banner .update-banner-icon { color: var(--rose); }
 .update-banner-icon { width: 15px; height: 15px; flex: none; margin-top: 1px; color: var(--accent); }
 .update-banner-body { flex: 1 1 220px; min-width: 0; display: grid; gap: 6px; }
