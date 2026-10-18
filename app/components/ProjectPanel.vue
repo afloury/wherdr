@@ -379,7 +379,7 @@ function hideHint() {
               <!-- All tasks share the full-width text and badge/action footer. -->
               <span class="pp-task-body">
                 <span class="pp-task-head">
-                  <span class="pp-task-text"><TaskText :text="task.text" /></span>
+                  <span class="pp-task-text"><TaskText :text="task.text" :pane-id="paneId" @sent="emit('sent', $event)" /></span>
                   <span v-if="moving === taskRefKey(s, task)" class="spinner pp-spin" />
                   <SpaceMenu v-else-if="taskMoves(s, task).length" :items="() => taskMoves(s, task)" :title="task.text" :label="tl(`Move: ${task.text}`, `Déplacer : ${task.text}`)" size="sm" />
                 </span>
