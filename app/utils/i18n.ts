@@ -332,7 +332,7 @@ const FR: Record<string, string> = {
   'This video cannot be played here. Use Open or Download.': 'Cette vidéo ne peut pas être lue ici. Utilise Ouvrir ou Télécharger.',
   'Page': 'Page',
   'PDF too large to preview (50 MB max).': 'PDF trop lourd pour l’aperçu (50 Mo max).',
-  'File not found': 'Fichier introuvable', 'Outside the project folder': 'Hors du dossier du projet', 'Not a file': 'Pas un fichier',
+  'File not found': 'Fichier introuvable', 'Outside the project folder': 'Hors du dossier du projet', 'Not a file': 'Pas un fichier', 'Not a video': 'Pas une vidéo',
   'Added': 'Ajouté', 'Modified': 'Modifié', 'Deleted': 'Supprimé', 'From': 'Depuis', 'Binary file': 'Fichier binaire', 'Binary': 'Binaire',
   'Diff truncated': 'Diff tronqué', 'Diff not loaded (size limit)': 'Diff non chargé (limite de taille)',
   'Generated file or dependency lockfile': 'Fichier généré ou verrouillage de dépendances',
