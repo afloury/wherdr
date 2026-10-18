@@ -6,30 +6,47 @@
 // has received the server's reply at the source address it claims.
 // - Loopback (127.0.0.0/8, ::1): the kernel drops packets that arrive from a
 //   network interface with a loopback source ("martian" packets).
-// - Tailnet (100.64.0.0/10, fd7a:115c:a1e0::/48): Tailscale routes these
-//   ranges into its own interface, so a reply to a forged tailnet source goes
-//   into the encrypted tunnel, never back to the Wi-Fi. They count only while
-//   this machine has an address in that range itself (Tailscale is up), so a
-//   LAN that happens to use 100.64.0.0/10 is not mistaken for the tailnet.
-// - Docker: the port is published on the host's 127.0.0.1; connections made
-//   on the host reach the container from its gateway. A port published on
-//   every interface keeps the real source of outside clients (DNAT), which is
-//   then refused like any other.
+// - Tailnet: an address in 100.64.0.0/10 or fd7a:115c:a1e0::/48 counts only
+//   when Tailscale itself, running on this machine, lists it as one of its
+//   peers or its own. Tailscale routes each peer's address into its encrypted
+//   interface, so a reply to a forged peer address never goes back to the
+//   Wi-Fi. An interface address in that range proves nothing (a LAN may use
+//   it): Tailscale's state is read from Tailscale (CLI or its socket).
+// - Docker: the port is published on the host's 127.0.0.1, and connections
+//   made on the host reach the container from its gateway. That gateway only
+//   counts as this computer while wherdr's port does not answer on it: a port
+//   published on every interface lets Docker's userland proxy relay outside
+//   connections (IPv6 to an IPv4 container) from the gateway too. Checked
+//   from the container on the same port number (the Compose file maps the
+//   same port on both sides).
+//
+// What a peer on this machine cannot prove: a relay running here (a reverse
+// proxy, a TCP forward, `tailscale funnel`) connects from loopback like a
+// local browser. wherdr reads Tailscale's serve configuration and treats
+// every local connection as unverified while Funnel exposes wherdr's port, in
+// any form (HTTPS proxy, TCP, TLS-terminated TCP); unverified connections are
+// only served with a passkey lock, which then asks for the passkey. Any other
+// relay the owner runs is indistinguishable from this computer: documented,
+// with the passkey as the answer.
 //
 // Proxy headers (X-Forwarded-For, Forwarded, X-Real-IP…) are read only when the
-// peer is local (a proxy on this machine, such as `tailscale serve`), and they
-// can only refuse more: every address they name must be trusted too. A client
-// that writes its own headers can therefore only get itself refused. This also
-// refuses what a local proxy brings from the open network or the Internet
-// (a reverse proxy listening on the Wi-Fi, a Cloudflare Tunnel, Tailscale
-// Funnel).
+// peer is on this machine, and they can only refuse more: every address they
+// name must be trusted too. A client that writes its own headers can only get
+// itself refused (unless a relay here passes its headers on unchanged, which
+// is the relay case above).
 import net from 'node:net'
-import os from 'node:os'
 import fs from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { tailnetFacts, tailnetPeers, tailscaleBin } from '../../bin/lib/tailnet.mjs'
 
-export type NetZone = 'local' | 'tailnet' | 'trusted' | 'open'
+export type NetZone = 'local' | 'tailnet' | 'trusted' | 'unverified' | 'open'
+// Why a connection from this machine cannot be told from a relay.
+export type Unverified = 'funnel' | 'docker'
 export type NetRefusal = 'peer' | 'forwarded' | 'funnel'
-export type NetCheck = { ok: true, zone: NetZone } | { ok: false, reason: NetRefusal }
+export type NetCheck =
+  | { ok: true, zone: Exclude<NetZone, 'unverified'> }
+  | { ok: true, zone: 'unverified', why: Unverified }
+  | { ok: false, reason: NetRefusal }
 
 export interface TrustedNetworks {
   // WHERDR_TRUSTED_NETWORKS=any: every network accepted (warned at startup and in the app).
@@ -41,14 +58,20 @@ export interface TrustedNetworks {
   invalid: string[]
 }
 
+// Tailscale as Tailscale reports it. funnel: Funnel exposes wherdr's port
+// (null: unknown).
+export interface TailscaleState { running: boolean, selfIps: string[], peerIps: string[], funnel: boolean | null }
+
 export interface NetContext {
   trusted: TrustedNetworks
-  // This machine has a tailnet address (Tailscale is up), or runs in Docker
-  // (the container cannot see the host's interfaces; the host routes the range).
-  tailnetUp: boolean
+  // null: Tailscale's state is unknown (not installed, unreadable, stale).
+  tailscale: TailscaleState | null
   // In Docker: the container's gateway, through which the host's own
-  // connections arrive.
+  // connections arrive…
   gateway?: string
+  // …and whether wherdr's port also answers on it (published on every
+  // interface). null: not checked yet. Only `false` makes the gateway local.
+  gatewayWide?: boolean | null
 }
 
 const LOOPBACK = new net.BlockList()
@@ -76,6 +99,13 @@ const inList = (list: net.BlockList, ip: string) => {
 }
 export const isLoopbackIp = (ip: string) => inList(LOOPBACK, plainIp(ip))
 export const isTailnetIp = (ip: string) => inList(TAILNET, plainIp(ip))
+const sameIp = (a: string, b: string) => {
+  const fa = family(a)
+  if (!fa || fa !== family(b)) return false
+  const one = new net.BlockList()
+  one.addAddress(a, fa)
+  return one.check(b, fa)
+}
 
 export function parseTrustedNetworks(value = process.env.WHERDR_TRUSTED_NETWORKS || ''): TrustedNetworks {
   const out: TrustedNetworks = { any: false, list: new net.BlockList(), entries: [], invalid: [] }
@@ -93,14 +123,11 @@ export function parseTrustedNetworks(value = process.env.WHERDR_TRUSTED_NETWORKS
   return out
 }
 
-// Where an address comes from, or null when it is not trusted.
-export function addressZone(ip: string, ctx: NetContext): NetZone | null {
+// A tailnet address Tailscale itself vouches for: one of its peers or its own.
+export function tailnetKnown(ip: string, ts: TailscaleState | null): boolean {
   const a = plainIp(ip)
-  if (!family(a)) return ctx.trusted.any ? 'open' : null
-  if (isLoopbackIp(a) || (ctx.gateway && a === ctx.gateway)) return 'local'
-  if (ctx.tailnetUp && isTailnetIp(a)) return 'tailnet'
-  if (inList(ctx.trusted.list, a)) return 'trusted'
-  return ctx.trusted.any ? 'open' : null
+  if (!ts?.running || !isTailnetIp(a)) return false
+  return [...ts.selfIps, ...ts.peerIps].some(x => sameIp(plainIp(x), a))
 }
 
 type Headers = Record<string, string | string[] | undefined>
@@ -128,21 +155,81 @@ export function forwardedClients(h: Headers): string[] {
   return out
 }
 
-// The verdict for one request: its TCP peer, then what a local proxy says.
+// The zone of an address a local proxy names. These only restrict (the
+// connection already comes from this machine), so the tailnet range is taken
+// at its word here: it can only turn "local" into "tailnet".
+function forwardedZone(ip: string, ctx: NetContext): NetZone | null {
+  const a = plainIp(ip)
+  if (!family(a)) return ctx.trusted.any ? 'open' : null
+  if (isLoopbackIp(a)) return 'local'
+  if (isTailnetIp(a)) return 'tailnet'
+  if (inList(ctx.trusted.list, a)) return 'trusted'
+  return ctx.trusted.any ? 'open' : null
+}
+
+const RANK: Record<NetZone, number> = { local: 0, tailnet: 1, trusted: 2, unverified: 3, open: 4 }
+
+// The verdict for one connection: its TCP peer, then what a local proxy says.
 export function checkClient(peer: string | undefined, h: Headers, ctx: NetContext): NetCheck {
-  const peerZone = addressZone(peer || '', ctx)
-  if (!peerZone || (!peer && !ctx.trusted.any)) return { ok: false, reason: 'peer' }
-  if (peerZone !== 'local') return { ok: true, zone: peerZone }
-  // Tailscale Funnel: from the Internet, through `tailscale serve`.
-  if (header(h, 'tailscale-funnel-request') && !ctx.trusted.any) return { ok: false, reason: 'funnel' }
-  const rank: Record<NetZone, number> = { local: 0, tailnet: 1, trusted: 2, open: 3 }
-  let zone: NetZone = 'local'
+  const any = ctx.trusted.any
+  const p = plainIp(peer)
+  if (!family(p)) return any ? { ok: true, zone: 'open' } : { ok: false, reason: 'peer' }
+  let zone: NetZone
+  let why: Unverified | undefined
+  if (isLoopbackIp(p)) zone = 'local'
+  else if (ctx.gateway && sameIp(p, ctx.gateway)) {
+    if (ctx.gatewayWide === false) zone = 'local'
+    else { zone = 'unverified'; why = 'docker' }
+  } else if (tailnetKnown(p, ctx.tailscale)) return { ok: true, zone: 'tailnet' }
+  else if (inList(ctx.trusted.list, p)) return { ok: true, zone: 'trusted' }
+  else return any ? { ok: true, zone: 'open' } : { ok: false, reason: 'peer' }
+
+  // From this machine: a local browser, or a relay running here.
+  if (header(h, 'tailscale-funnel-request') && !any) return { ok: false, reason: 'funnel' }
+  if (ctx.tailscale?.funnel && zone === 'local') { zone = 'unverified'; why = 'funnel' }
   for (const client of forwardedClients(h)) {
-    const z = addressZone(client, ctx)
+    const z = forwardedZone(client, ctx)
     if (!z) return { ok: false, reason: 'forwarded' }
-    if (rank[z] > rank[zone]) zone = z
+    if (RANK[z] > RANK[zone]) zone = z
   }
+  if (zone === 'unverified') return any ? { ok: true, zone: 'open' } : { ok: true, zone, why: why! }
   return { ok: true, zone }
+}
+
+// ------------------------------------------------------------------ gate
+
+export type GateVerdict = 'ok' | 'network' | 'unverified' | 'host' | 'origin' | 'locked'
+const needsUnlock = (p: string) => (p.startsWith('/api/') && !p.startsWith('/api/auth/') && p !== '/api/health') || p.startsWith('/uploads/')
+
+// The whole guard decision for one request (server/middleware/guard.ts) or one
+// WebSocket upgrade (server/utils/ws.ts), in order:
+// 1. network: the provenance above; an unverified one is served only when a
+//    passkey lock exists (which then asks for the passkey everywhere it applies);
+// 2. Host header; 3. cross-site requests (HTTP) or a foreign Origin (WS);
+// 4. the passkey lock.
+export function gateDecision(o: {
+  check: NetCheck
+  passkey: boolean
+  unlocked: boolean
+  hostOk: boolean
+  path: string
+  // HTTP: Sec-Fetch-Site says another site; WS: the Origin differs from the host.
+  crossSite: boolean
+  ws?: boolean
+}): GateVerdict {
+  if (!o.check.ok) return 'network'
+  if (o.check.zone === 'unverified' && !o.passkey) return 'unverified'
+  if (!o.hostOk) return 'host'
+  if (o.crossSite && (o.ws || o.path.startsWith('/api/'))) return 'origin'
+  if ((o.ws || needsUnlock(o.path)) && !o.unlocked) return 'locked'
+  return 'ok'
+}
+
+// Settings › Phone and similar routes that run commands on this machine:
+// this computer and the tailnet, or a session unlocked with a passkey.
+export function fullAccess(check: NetCheck, unlockedWithPasskey: boolean): boolean {
+  if (unlockedWithPasskey) return true
+  return check.ok && (check.zone === 'local' || check.zone === 'tailnet')
 }
 
 // ------------------------------------------------------------------ runtime
@@ -156,30 +243,85 @@ export function dockerGateway(): string {
   } catch { return '' }
 }
 
-export function hasTailnetAddress(interfaces = os.networkInterfaces()): boolean {
-  return Object.values(interfaces).some(list => (list || []).some(a => isTailnetIp(a.address)))
+// Whether something accepts TCP connections at host:port.
+export function portAnswers(host: string, port: number, timeoutMs = 1000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const sock = net.connect({ host, port, timeout: timeoutMs })
+    const done = (v: boolean) => { sock.destroy(); resolve(v) }
+    sock.once('connect', () => done(true))
+    sock.once('timeout', () => done(false))
+    sock.once('error', () => done(false))
+  })
 }
 
 const inDocker = fs.existsSync('/.dockerenv')
 const TRUSTED = parseTrustedNetworks()
-const CTX_MS = 5000
-let cached: { at: number, ctx: NetContext } | null = null
-// Tailscale may come up after wherdr: the interfaces are read again every few seconds.
+const PORT = Number(process.env.NITRO_PORT || process.env.PORT || 3000)
+const REFRESH_MS = 10_000
+// Past this age without a successful read, Tailscale's peers are not trusted.
+const STALE_MS = 3 * REFRESH_MS
+
+let ts: (TailscaleState & { at: number }) | null = null
+// Funnel stays "exposed" until a read says otherwise (a failed read keeps it).
+let lastFunnel: boolean | null = null
+const gateway = inDocker ? dockerGateway() : ''
+let gatewayWide: boolean | null = null
+
+export type TailscaleReader = () => Promise<{ running: boolean, selfIps: string[], peerIps: string[], funnel: boolean | null }>
+const defaultReader: TailscaleReader = () => tailnetFacts(PORT)
+
+export async function refreshTailscale(read: TailscaleReader = defaultReader, now = Date.now()) {
+  try {
+    const f = await read()
+    if (f.funnel !== null) lastFunnel = f.funnel
+    ts = { running: f.running, selfIps: f.selfIps, peerIps: f.peerIps, funnel: f.running ? lastFunnel : false, at: now }
+  } catch { /* keeps the last state until it is stale */ }
+}
+
+export async function refreshGateway(port = PORT) {
+  if (!gateway) return
+  gatewayWide = await portAnswers(gateway, port)
+}
+
 let forced: NetContext | null = null
-// Tests: a fixed context (null = read the machine again).
-export function setNetContextForTests(ctx: NetContext | null) { forced = ctx; cached = null }
+// Tests: a fixed context (null = the live one).
+export function setNetContextForTests(ctx: NetContext | null) { forced = ctx }
+// Tests: forget what was read.
+export function resetNetworkStateForTests() { ts = null; lastFunnel = null; gatewayWide = null }
+
 export function netContext(now = Date.now()): NetContext {
   if (forced) return forced
-  if (cached && now - cached.at < CTX_MS) return cached.ctx
-  const ctx: NetContext = {
+  const fresh = ts && now - ts.at < STALE_MS ? ts : null
+  return {
     trusted: TRUSTED,
-    tailnetUp: inDocker || hasTailnetAddress(),
-    ...(inDocker ? { gateway: dockerGateway() } : {}),
+    // Stale: no peer is trusted, and a Funnel last seen open still counts.
+    tailscale: fresh ?? (lastFunnel ? { running: false, selfIps: [], peerIps: [], funnel: lastFunnel } : null),
+    ...(gateway ? { gateway, gatewayWide } : {}),
   }
-  cached = { at: now, ctx }
-  return ctx
 }
 export const openNetworkMode = () => TRUSTED.any
+
+let ready: Promise<void> | null = null
+let timer: ReturnType<typeof setInterval> | null = null
+let warnedWide = false
+async function refreshAll() {
+  await Promise.all([refreshTailscale(), refreshGateway()])
+  if (gatewayWide && !warnedWide) {
+    console.warn(`${new Date().toISOString()} WARNING: wherdr's port ${PORT} is published on every interface of this host, not only 127.0.0.1: connections through Docker's gateway may come from another network, so wherdr serves them only with a passkey lock. Publish it as "127.0.0.1:${PORT}:${PORT}" (docker-compose.yml).`)
+  }
+  warnedWide = Boolean(gatewayWide)
+}
+// Started once (server/plugins/network.ts); requests wait for the first read
+// (at most a few seconds) so none is judged on an unknown state.
+export function startNetworkWatch() {
+  if (ready) return ready
+  ready = Promise.race([refreshAll(), new Promise<void>(r => setTimeout(r, 5000))])
+  timer = setInterval(() => { void refreshAll() }, REFRESH_MS)
+  timer.unref?.()
+  return ready
+}
+export function stopNetworkWatch() { if (timer) clearInterval(timer); timer = null }
+export const networkReady = () => ready ?? Promise.resolve()
 
 export function checkRequestClient(socketPeer: string | undefined, h: Headers): NetCheck {
   return checkClient(socketPeer, h, netContext())
@@ -189,18 +331,30 @@ export function checkRequestClient(socketPeer: string | undefined, h: Headers): 
 
 export type ListenVerdict = { ok: true, warn?: string } | { ok: false, message: string }
 
+// Tailscale's own addresses, read once at startup when HOST is in a tailnet
+// range, with the CLI (null without one: such a HOST is then refused).
+export function tailscaleSelfSync(bin = tailscaleBin()): { running: boolean, selfIps: string[] } | null {
+  if (!bin) return null
+  try {
+    const p = tailnetPeers(execFileSync(bin, ['status', '--json'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }))
+    return { running: p.running, selfIps: p.selfIps }
+  } catch { return null }
+}
+
 // The address wherdr listens on (HOST), checked before it starts listening.
 // In Docker the container listens on every interface of its own network and
 // the host decides what is published: only the per-request check applies.
-export function listenVerdict(host: string, trusted: TrustedNetworks, docker = inDocker, interfaces = os.networkInterfaces()): ListenVerdict {
+export function listenVerdict(host: string, trusted: TrustedNetworks, docker = inDocker, self: () => { running: boolean, selfIps: string[] } | null = tailscaleSelfSync): ListenVerdict {
   const h = plainIp(host || '127.0.0.1')
   const opt = 'WHERDR_TRUSTED_NETWORKS'
   const openWarn = `${opt}=any: wherdr accepts connections from ANY network, in plain HTTP. Anyone who can reach this machine can control your agents. Remove it unless the network is protected another way.`
   if (trusted.any) return { ok: true, warn: openWarn }
   if (docker) return { ok: true }
   if (h === 'localhost' || isLoopbackIp(h)) return { ok: true }
-  const local = Object.values(interfaces).flatMap(list => (list || []).map(a => plainIp(a.address)))
-  if (isTailnetIp(h) && local.includes(h)) return { ok: true }
+  if (isTailnetIp(h)) {
+    const s = self()
+    if (s?.running && s.selfIps.some(ip => sameIp(plainIp(ip), h))) return { ok: true }
+  }
   const named = family(h) && (inList(trusted.list, h) || ((h === '0.0.0.0' || h === '::') && trusted.entries.length))
   if (named) {
     return { ok: true, warn: `Listening on ${h}: only this computer, the tailnet and ${trusted.entries.join(', ')} are accepted (${opt}).` }
@@ -210,7 +364,7 @@ export function listenVerdict(host: string, trusted: TrustedNetworks, docker = i
     message: [
       `Refusing to listen on ${host}: wherdr would be reachable in plain HTTP by anyone on that network (a coffee shop Wi-Fi, an office LAN), and could control your agents.`,
       'Keep HOST=127.0.0.1 and reach it from your devices through Tailscale (`wherdr phone`, or Settings › Phone),',
-      'or listen on this machine\'s tailnet address (100.x.y.z).',
+      'or listen on this machine\'s tailnet address as Tailscale reports it (`tailscale ip`), with Tailscale running.',
       `For another private network (ZeroTier, WireGuard…), name its range: ${opt}=10.147.17.0/24 (comma-separated).`,
       `To accept any network anyway: ${opt}=any (not recommended).`,
     ].join('\n'),

@@ -2,9 +2,13 @@
 // listenVerdict): wherdr refuses to listen on an open network unless
 // WHERDR_TRUSTED_NETWORKS says so, and warns loudly when it accepts any network.
 // Runs before the server listens (Nitro plugins load first).
-import { listenVerdict, trustedNetworks } from '../utils/network'
+import { listenVerdict, startNetworkWatch, stopNetworkWatch, trustedNetworks } from '../utils/network'
 
-export default defineNitroPlugin(() => {
+export default defineNitroPlugin((nitroApp) => {
+  // Tailscale's peers and Funnel, and in Docker whether the port answers on
+  // the gateway: read now, then every few seconds.
+  void startNetworkWatch()
+  nitroApp.hooks.hook('close', stopNetworkWatch)
   if (import.meta.dev) return
   const trusted = trustedNetworks()
   if (trusted.invalid.length) log(`WARNING: WHERDR_TRUSTED_NETWORKS: ignored ${trusted.invalid.join(', ')} (not an address or a CIDR range)`)

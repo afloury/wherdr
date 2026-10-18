@@ -16,20 +16,19 @@ import type { PhoneError, PhoneResult, PhoneStatus } from '../../shared/phone'
 import { APP_URL_FILE, BOOT_APP_URL, DATA_DIR, ENV_APP_URL, IN_DOCKER, TAILNET_REFRESH_MS, log } from './env'
 import { setServedHosts } from './hosts'
 import { auth, reqOf } from './http'
-import { checkRequestClient } from './network'
+import { checkRequestClient, fullAccess } from './network'
 import { initVapid } from './push'
 
 const PORT = String(process.env.NITRO_PORT || process.env.PORT || 3000)
 
 // These routes run commands and change settings: for this computer and the
-// tailnet (the guard already refused everything else, network.ts), or a
-// session unlocked with a passkey. A network the owner added
-// (WHERDR_TRUSTED_NETWORKS) needs the passkey for them.
+// tailnet, or a session unlocked with a passkey (network.ts, fullAccess). A
+// network the owner added (WHERDR_TRUSTED_NETWORKS) or an unverified
+// provenance needs the passkey for them.
 export function phoneAccess(event: H3Event): boolean {
   const lock = auth.status(reqOf(event))
-  if (lock.enabled && lock.unlocked) return true
-  const client = checkRequestClient(event.node.req.socket?.remoteAddress, getRequestHeaders(event))
-  return client.ok && (client.zone === 'local' || client.zone === 'tailnet')
+  const check = checkRequestClient(event.node.req.socket?.remoteAddress, getRequestHeaders(event))
+  return fullAccess(check, lock.enabled && lock.unlocked)
 }
 
 // The saved address was adopted from `tailscale serve` (applyServed), which

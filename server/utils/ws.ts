@@ -4,7 +4,7 @@ import type { Peer } from 'crossws'
 import { auth } from './http'
 import { sameOrigin } from './http'
 import { hostAllowed } from './hosts'
-import { checkRequestClient } from './network'
+import { checkRequestClient, gateDecision, networkReady } from './network'
 
 const WS_MAX = 256 * 1024
 
@@ -17,13 +17,24 @@ export function headersOf(h: Headers): Record<string, string | undefined> {
 
 // Upgrade refusal: raw HTTP response, like the old server.
 // The TCP peer comes from the Node request behind crossws's proxy (`_req`);
-// when it cannot be read, the connection is refused.
-export function checkUpgrade(request: { headers: Headers, _req?: { socket?: { remoteAddress?: string } } }): Response | void {
+// when it cannot be read, the connection is refused. Same decision as HTTP
+// (gateDecision), with the WebSocket rules: Origin identical to the host, and
+// the passkey lock always applies.
+export async function checkUpgrade(request: { headers: Headers, _req?: { socket?: { remoteAddress?: string } } }): Promise<Response | void> {
+  await networkReady()
   const headers = headersOf(request.headers)
-  if (!checkRequestClient(request._req?.socket?.remoteAddress, headers).ok) return new Response(null, { status: 403, statusText: 'Network not allowed' })
-  if (!hostAllowed(headers.host)) return new Response(null, { status: 403, statusText: 'Host not allowed' })
-  if (!sameOrigin(headers)) return new Response(null, { status: 403, statusText: 'Forbidden' })
-  if (!auth.isUnlocked({ headers })) return new Response(null, { status: 401, statusText: 'Unauthorized' })
+  const verdict = gateDecision({
+    check: checkRequestClient(request._req?.socket?.remoteAddress, headers),
+    passkey: auth.isEnabled(),
+    unlocked: auth.isUnlocked({ headers }),
+    hostOk: hostAllowed(headers.host),
+    crossSite: !sameOrigin(headers),
+    path: '/ws', ws: true,
+  })
+  if (verdict === 'network' || verdict === 'unverified') return new Response(null, { status: 403, statusText: 'Network not allowed' })
+  if (verdict === 'host') return new Response(null, { status: 403, statusText: 'Host not allowed' })
+  if (verdict === 'origin') return new Response(null, { status: 403, statusText: 'Forbidden' })
+  if (verdict === 'locked') return new Response(null, { status: 401, statusText: 'Unauthorized' })
 }
 
 // The raw `ws` WebSocket behind a crossws peer (Node adapter).

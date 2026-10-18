@@ -67,6 +67,54 @@ export function tailnetStatus(statusJson) {
   }
 }
 
+// What wherdr's network check needs from `tailscale status --json` (with
+// peers): whether Tailscale is running, this machine's tailnet addresses and
+// those of its peers. Read from Tailscale itself, never guessed from an
+// interface address in 100.64.0.0/10.
+export function tailnetPeers(statusJson) {
+  let s = null
+  try { s = JSON.parse(statusJson) } catch {}
+  const ips = node => (Array.isArray(node?.TailscaleIPs) ? node.TailscaleIPs.filter(ip => typeof ip === 'string') : [])
+  return {
+    running: s?.BackendState === 'Running',
+    selfIps: ips(s?.Self),
+    peerIps: Object.values(s?.Peer || {}).flatMap(ips),
+  }
+}
+
+// Whether `tailscale funnel` opens wherdr's local port to the Internet, in
+// any form: an HTTPS proxy (`Web` handlers) or a raw TCP forward, with or
+// without TLS termination (`TCP[port].TCPForward`). The TCP forms carry no
+// client address, so wherdr cannot tell their connections from local ones.
+// null: the configuration could not be read.
+export function funnelExposes(port, serveJson) {
+  let config = null
+  try { config = JSON.parse(serveJson) } catch {}
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return null
+  const local = '(127\\.0\\.0\\.1|localhost|\\[::1\\]|::1)'
+  const target = new RegExp(`^((https?(\\+insecure)?|tcp)://)?(${local}:)?${port}/?$`, 'i')
+  for (const part of [config, ...Object.values(config.Foreground || {})]) {
+    for (const [hostPort, on] of Object.entries(part?.AllowFunnel || {})) {
+      if (!on) continue
+      const tcpPort = hostPort.slice(hostPort.lastIndexOf(':') + 1)
+      if (target.test(String(part?.TCP?.[tcpPort]?.TCPForward || ''))) return true
+      if (Object.values(part?.Web?.[hostPort]?.Handlers || {}).some(h => target.test(String(h?.Proxy || '')))) return true
+    }
+  }
+  return false
+}
+
+// Tailscale's state for the network check: { installed, running, selfIps,
+// peerIps, funnel } (funnel: null when unknown). CLI, or Tailscale's socket.
+export async function tailnetFacts(port, bin = tailscaleBin(), socket = bin ? null : tailscaledSocket()) {
+  if (!bin && !socket) return { installed: false, running: false, selfIps: [], peerIps: [], funnel: false }
+  const run = args => exec(bin, args, { encoding: 'utf8', timeout: 8000 }).then(r => r.stdout, () => '')
+  const peers = tailnetPeers(bin ? await run(['status', '--json']) : await localApi(socket, 'status'))
+  if (!peers.running) return { installed: true, ...peers, funnel: false }
+  const serve = bin ? await run(['serve', 'status', '--json']) : await localApi(socket, 'serve-config')
+  return { installed: true, ...peers, funnel: funnelExposes(port, serve) }
+}
+
 // The HTTPS entries of a serve configuration that proxy to wherdr's local
 // port on this machine's own name: [{ hostPort, httpsPort, funnel }], or null
 // when the configuration could not be read (Tailscale stopped, not JSON).

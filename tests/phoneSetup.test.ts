@@ -66,7 +66,7 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers() })
 
 describe('phone setup access', () => {
-  beforeEach(() => setNetContextForTests({ trusted: parseTrustedNetworks(''), tailnetUp: true }))
+  beforeEach(() => setNetContextForTests({ trusted: parseTrustedNetworks(''), tailscale: { running: true, selfIps: [], peerIps: ['100.64.0.2'], funnel: false } }))
   afterEach(() => setNetContextForTests(null))
   const event = (headers: Record<string, string>, peer = '127.0.0.1') =>
     ({ node: { req: { headers, socket: { remoteAddress: peer } } } }) as unknown as Parameters<typeof phoneAccess>[0]
@@ -78,6 +78,13 @@ describe('phone setup access', () => {
     expect(phoneAccess(event({ 'host': `${NAME}:7699`, 'x-forwarded-for': '100.64.0.2' }))).toBe(true)
     expect(phoneAccess(event({ 'host': 'localhost:7699', 'x-forwarded-for': '192.168.1.20' }))).toBe(false)
     expect(phoneAccess(event({ host: 'localhost:7699' }, '192.168.1.20'))).toBe(false)
+    // A tailnet peer Tailscale lists, directly.
+    expect(phoneAccess(event({ host: `${NAME}:7699` }, '100.64.0.2'))).toBe(true)
+  })
+
+  it('asks for the passkey while Funnel exposes wherdr', () => {
+    setNetContextForTests({ trusted: parseTrustedNetworks(''), tailscale: { running: true, selfIps: [], peerIps: [], funnel: true } })
+    expect(phoneAccess(event({ host: 'localhost:7699' }))).toBe(false)
   })
 })
 

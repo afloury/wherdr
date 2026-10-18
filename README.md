@@ -574,9 +574,11 @@ wherdr.example.com {
 
 Point `wherdr.example.com` (an `A` record in your DNS zone) to that private address: from
 anywhere else it leads nowhere. Then set `APP_URL=https://wherdr.example.com/` and restart
-wherdr. wherdr accepts the tailnet range (`100.64.0.0/10`, used by Headscale and NetBird) by
-itself; for another range (ZeroTier, WireGuard), also set `WHERDR_TRUSTED_NETWORKS` to it, such as
-`10.147.17.0/24` ([Network access](#network-access)). To join each device:
+wherdr. Caddy is a relay on this computer ([Network access](#network-access)): keep it bound to
+the private address and turn the passkey lock on. Caddy passes each client's address on: with
+Headscale or NetBird (`100.64.0.0/10`) wherdr accepts it as is; for another range (ZeroTier,
+WireGuard), also set `WHERDR_TRUSTED_NETWORKS` to it, such as `10.147.17.0/24`. To join each
+device:
 
 | Network | Join a device (official docs) | Server's private address |
 | --- | --- | --- |
@@ -939,7 +941,7 @@ All settings are environment variables (`.env` with Docker).
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PORT` | `7683` | Listening port. |
-| `HOST` | `127.0.0.1` (`npm start`) | Listening address without Docker: loopback, or this machine's tailnet address (`100.x.y.z`). Any other address (`0.0.0.0`, a LAN address) stops wherdr at startup unless `WHERDR_TRUSTED_NETWORKS` covers it. |
+| `HOST` | `127.0.0.1` (`npm start`) | Listening address without Docker: loopback, or this machine's tailnet address (`tailscale ip`, with Tailscale running). Any other address (`0.0.0.0`, a LAN address) stops wherdr at startup unless `WHERDR_TRUSTED_NETWORKS` covers it. |
 | `WHERDR_TRUSTED_NETWORKS` | *(empty)* | Other private networks wherdr accepts besides this computer and the tailnet, as comma-separated CIDR ranges or addresses (e.g. `10.147.17.0/24` for ZeroTier). `any` accepts every network, with a warning at startup and in the app: not recommended. See [Network access](#network-access). |
 | `HOST_LABEL` | server hostname | Name of this machine in the app (can be renamed in the app). In Docker the installer writes the host's short name; left empty, wherdr shows the name Tailscale gives the machine, else `wherdr`. |
 | `APP_URL` | *(empty)* | App address and allowed host; a valid HTTPS URL enables Web Push. HTTP, empty or invalid values disable Web Push with a warning. With Tailscale, leave it empty: wherdr adopts the address `tailscale serve` publishes. |
@@ -1434,9 +1436,10 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 ### Network access
 
-wherdr answers **this computer and your tailnet only**. A device on any other network (a café
+wherdr answers **this computer and your tailnet only**. A device on any other network (a coffee shop
 Wi-Fi, an office LAN, the Internet) gets HTTP 403 (`network`), with a page that says why, even
-when it knows the address and the port. The passkey lock is optional on top of that.
+when it knows the address and the port. The passkey lock is optional on top of that, with one
+exception below: a relay on this computer.
 
 How a request is judged, before anything else (WebSockets included):
 
@@ -1444,32 +1447,56 @@ How a request is judged, before anything else (WebSockets included):
   it: a connection only opens once the client has received wherdr's reply at that address.
   - *Loopback* (`127.0.0.0/8`, `::1`): this computer. The kernel drops packets that arrive from a
     network with a loopback source.
-  - *Tailnet* (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`), while this machine has a tailnet address
-    itself (Tailscale is up). Tailscale routes these ranges into its encrypted interface, so a
-    reply to a forged tailnet source never goes back to the Wi-Fi. A LAN that happens to use
-    `100.64.0.0/10` is not mistaken for the tailnet while Tailscale is down.
-  - *Docker*: the port is published on the host's `127.0.0.1`; the host's own connections reach
-    the container from its gateway, which counts as this computer. A port published on every
-    interface keeps the real source address of outside clients, which are refused.
+  - *Tailnet*: an address of `100.64.0.0/10` or `fd7a:115c:a1e0::/48` counts only when
+    Tailscale, running on this machine, lists it as one of its peers (or its own address). wherdr
+    reads that from Tailscale every 10 seconds (the CLI, or Tailscale's socket in Docker); an
+    interface address in that range proves nothing, since a LAN may use it too. When Tailscale is
+    stopped, missing or unreadable for 30 seconds, no direct connection counts as tailnet. In
+    Docker without Tailscale's socket, direct tailnet connections are refused (`tailscale serve`
+    still works, below).
+  - *Docker*: the port is published on the host's `127.0.0.1`, and the host's own connections
+    reach the container from its gateway, which counts as this computer **only while wherdr's
+    port does not answer on that gateway**. A port published on every interface (`7683:7683`)
+    lets Docker's userland proxy relay outside connections (IPv6 to an IPv4 container, for
+    instance) from the gateway, which hides where they come from: wherdr checks this every 10
+    seconds from the container, logs a warning, and then serves the gateway only with a passkey
+    lock. The check uses the container's own port number, as the Compose file publishes it; a
+    different host port published on every interface, or a port published only on an IPv6
+    address of the host, is not detected. Keep the shipped `"127.0.0.1:${PORT}:${PORT}"`.
 - **Proxy headers**, only when the peer is this computer (a proxy on the machine, such as
   `tailscale serve`): every address in `X-Forwarded-For`, `Forwarded`, `X-Real-IP`,
   `CF-Connecting-IP` must be loopback, the tailnet or a trusted range too. They can only refuse
-  more: a client that writes its own headers only gets itself refused. This refuses what a local
-  proxy brings from elsewhere: a reverse proxy listening on the Wi-Fi, a Cloudflare Tunnel,
-  Tailscale Funnel.
+  more: a client that writes its own headers directly only gets itself refused. A proxy that
+  adds the client's address (Caddy, nginx with `proxy_add_x_forwarded_for`, Cloudflare Tunnel)
+  therefore has its outside clients refused.
+- **Tailscale Funnel**: wherdr reads Tailscale's serve configuration. While Funnel exposes
+  wherdr's port, in any form (HTTPS, TCP, or TCP with TLS termination, which carry no client
+  address), every connection from this computer is unverified: served only when a passkey lock
+  is set (which then asks for the passkey), otherwise refused with a page that says so. A Funnel
+  request with Tailscale's `Tailscale-Funnel-Request` header is always refused.
 - **The listening address**: without Docker, wherdr refuses to start on anything else than
-  loopback or this machine's tailnet address (`HOST=0.0.0.0`, a LAN address), and says how to fix
-  it. In Docker the container listens on its own network and the request check above applies.
+  loopback or this machine's tailnet address as Tailscale reports it, with Tailscale running
+  (`HOST=0.0.0.0`, a LAN address), and says how to fix it. In Docker the container listens on its
+  own network and the request check above applies.
+
+> [!IMPORTANT]
+> **A relay on this computer counts as this computer.** A reverse proxy or TCP forward you run
+> on the machine (nginx without forwarded headers, `socat`, an SSH tunnel, a tunnel client) opens
+> its connections from loopback, like your own browser, and may pass on headers its clients
+> wrote. wherdr cannot tell them apart. If you run one, make sure it only listens on a private
+> address, and **turn the passkey lock on**.
 
 `tailscale serve` (npm, Homebrew, the Herdr plugin, Docker) forwards to `127.0.0.1` with the
 tailnet client's address in `X-Forwarded-For`: accepted, nothing to set up.
 
 **Another private network** (ZeroTier, WireGuard, NetBird outside `100.64.0.0/10`): name its
 range, `WHERDR_TRUSTED_NETWORKS=10.147.17.0/24` (comma-separated CIDR ranges or addresses), then
-restart wherdr. Settings › Phone and the one-tap update then ask such devices for the passkey.
-`WHERDR_TRUSTED_NETWORKS=any` accepts every network: wherdr then warns at startup and shows a
-warning that cannot be hidden in the app. Use it only when something else protects the network
-(Cloudflare Access), and keep the passkey lock on.
+restart wherdr. Settings › Phone then asks such devices for the passkey; the one-tap update stays
+offered to every device that can open wherdr. `WHERDR_TRUSTED_NETWORKS=any` accepts every
+network: wherdr then warns at startup and shows a warning that cannot be hidden in the app. Use
+it only when something else protects the network (Cloudflare Access), and keep the passkey lock
+on.
+
 ## Troubleshooting
 
 - **"The Herdr server is not responding"**: start Herdr on the server (`herdr` or
