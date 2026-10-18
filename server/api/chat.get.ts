@@ -2,7 +2,7 @@ import { fmt } from '../../shared/message'
 import { integrationCommand, missingIntegration } from '../../shared/integrations'
 import { integrationStatus } from '../utils/integrations'
 import { multiMachine } from '../utils/machines'
-import { chatDelta, splitToken } from '../utils/chatDelta'
+import { chatDelta } from '../utils/chatDelta'
 export default defineApi(async (event) => {
   const q = getQuery(event)
   const p = findPane(String(q.pane || ''))
@@ -17,8 +17,11 @@ export default defineApi(async (event) => {
   const mark = hidden.length ? `~${seq}` : ''
   // Token sent back by the client: the transcript's token, the taken-back
   // mark, then the fingerprint of the list it holds (see chatDelta.ts).
+  // A fingerprinted token the server does not remember with that count (server
+  // restarted, list forgotten, other count) counts as no token: full list.
   const sent = String(q.since || '')
-  const since = splitToken(sent).base
+  const count = num('n')
+  const since = chatDelta.sinceOf(p.id, sent, count)
   const from = num('from')
   const r = await transcripts.chat(p, {
     since: mark ? (since.endsWith(mark) ? since.slice(0, -mark.length) : '') : since,
@@ -39,7 +42,7 @@ export default defineApi(async (event) => {
     // Bottom of the conversation: only what changed since the client's list
     // when the server still knows it (`n`: the number of items it holds).
     if (r.token && !r.older) {
-      const d = chatDelta.reply(p.id, r.token, r.items, sent, num('n'), from !== null && r.start === from)
+      const d = chatDelta.reply(p.id, r.token, r.items, sent, count, from !== null && r.start === from)
       r.token = d.token
       r.items = d.items
       if (d.keep !== undefined) r.keep = d.keep

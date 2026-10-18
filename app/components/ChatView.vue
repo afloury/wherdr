@@ -12,7 +12,7 @@ import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
-import { nextTail, tailQuery } from '~/utils/chatTail'
+import { createTailLoader, nextTail, tailQuery } from '~/utils/chatTail'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -179,48 +179,46 @@ async function copyIntegration() {
   } catch { toast(t('Copy failed'), true) }
 }
 
-let busy = false
-async function loadChat(): Promise<void> {
-  if (busy) return
-  busy = true
+// One re-read at a time (utils/chatTail.ts): `false` = done, `true` = run
+// again at once, with the lock still held.
+async function loadStep(current: () => boolean): Promise<boolean> {
   const pane = props.pane.id
+  const stale = () => !current() || pane !== props.pane.id
   try {
     const r = await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`)
-    if (pane !== props.pane.id) return
+    if (stale()) return false
     if (!r.available) {
       const m = onUnavailable(misses.value, Boolean(chat.value.file) && items.value.length > 0)
       misses.value = m.next
-      if (!m.clear) return
+      if (!m.clear) return false
       chat.value = fresh()
       unavailable.value = r.reason || 'unsupported'
       integration.value = r.reason === 'no_integration' ? r.integration || null : null
       // Conversation opened before its first reply: that reply is new.
       synced = true
-      return
+      return false
     }
     unavailable.value = null
     integration.value = null
     loadError.value = null
     if (misses.value.misses || misses.value.errors) misses.value = noMisses()
-    if (r.unchanged) return
+    if (r.unchanged) return false
     savedAt.value = null
     // New session (/clear, new agent): the old one's bytes no
     // longer mean anything, we start again from the bottom.
-    // Same for a bottom that no longer starts where ours does (file rewritten
-    // or shrunk): the older pages above it would not join it.
+    // Same for a bottom the server read from another byte (past its read cap,
+    // or a file now shorter than our start): older pages would not join it.
     if ((chat.value.file && r.file !== chat.value.file)
       || (chat.value.tailStart !== null && r.start !== undefined && r.start !== chat.value.tailStart)) {
       chat.value = fresh()
       synced = false
-      busy = false
-      return loadChat()
+      return true
     }
     // Incremental reply that does not fit our list: ask for it in full.
     const tail = nextTail(chat.value.tail, r)
     if (!tail) {
       chat.value = { ...chat.value, token: '' }
-      busy = false
-      return loadChat()
+      return true
     }
     await apply(() => {
       const c = { ...chat.value }
@@ -237,11 +235,15 @@ async function loadChat(): Promise<void> {
     })
     saveChat(pane, items.value)
   } catch (err) {
-    if (pane !== props.pane.id) return
+    if (stale()) return false
     if (!items.value.length) loadError.value = (err as Error).message
     else misses.value = onError(misses.value)
-  } finally { busy = false }
+  }
+  return false
 }
+const tailLoader = createTailLoader(loadStep)
+const loadChat = tailLoader.load
+watch(() => props.pane.id, () => tailLoader.invalidate())
 
 // Older slice, keeping on screen what we were reading.
 async function loadOlder() {

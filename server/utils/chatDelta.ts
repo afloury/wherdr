@@ -11,8 +11,9 @@
 // that suffix, since the suffix starts at the first difference.
 //
 // Anything unknown (server restarted, list forgotten, other count, other
-// start) gets the full list, exactly as before: the delta is an optimisation,
-// never a source of truth.
+// start) gets the full list, exactly as before, and such a token never earns
+// an "unchanged" reply (see knows): the delta is an optimisation, never a
+// source of truth.
 import { createHash } from 'node:crypto'
 import type { ChatItem } from '../../shared/types'
 
@@ -50,7 +51,9 @@ export function createChatDelta() {
   function reply(pane: string, token: string, items: ChatItem[], since: string, n: number | null, sameStart: boolean) {
     const sigs = items.map(itemSig)
     const full = `${token}#${listFp(sigs)}`
-    const old = n !== null && sameStart && splitToken(since).fp ? panes.get(pane)?.get(since) : undefined
+    // Only clients that splice (they send `n`) come back with this token.
+    if (n === null) return { token: full, items }
+    const old = sameStart && splitToken(since).fp ? panes.get(pane)?.get(since) : undefined
     remember(pane, full, sigs)
     if (!old || old.length !== n) return { token: full, items }
     let keep = 0
@@ -59,7 +62,19 @@ export function createChatDelta() {
     return { token: full, items: items.slice(keep), keep }
   }
 
-  return { reply, forget: (pane: string) => panes.delete(pane) }
+  // Whether the client's list is one the server sent and remembers, with
+  // that many items. Otherwise its token must not earn an "unchanged" reply.
+  const knows = (pane: string, since: string, n: number | null) =>
+    n !== null && panes.get(pane)?.get(since)?.length === n
+
+  // Transcript token to compare with the file (`since` of transcripts.chat):
+  // '' for a fingerprinted token it does not know with that count.
+  const sinceOf = (pane: string, sent: string, n: number | null) => {
+    const t = splitToken(sent)
+    return !t.fp || knows(pane, sent, n) ? t.base : ''
+  }
+
+  return { reply, knows, sinceOf, forget: (pane: string) => panes.delete(pane) }
 }
 
 export const chatDelta = createChatDelta()
