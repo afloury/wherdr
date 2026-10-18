@@ -211,6 +211,47 @@ describe('wherdr in a container: the board is read from its files, nothing runs'
     expect(r.machines[0]!.error).toMatch(/acme\/2/)
   })
 
+  it('the same tasks read again are the same version: the poll gets { same: true }', async () => {
+    T.setInContainer(true)
+    taskFile('acme/1', { title: 'Review me', stage: 'approval', app: 'claude' })
+    const first = await read()
+    later(T.REUSE_MS + 2000)
+    expect(await T.readTasksBoard(first.version)).toEqual({ same: true, version: first.version })
+    taskFile('acme/1', { title: 'Review me', stage: 'done', app: 'claude' })
+    later(T.REUSE_MS + 2000)
+    expect(await T.readTasksBoard(first.version)).not.toHaveProperty('same')
+  })
+
+  it('a partial read marks only the rows it kept, each with its own read time', async () => {
+    T.setInContainer(true)
+    taskFile('acme/1', { title: 'Fine', stage: 'todo' })
+    taskFile('acme/2', { title: 'Will break', stage: 'todo' })
+    const first = await read()
+    const firstAt = first.machines[0]!.at
+    later()
+    writeFileSync(path.join(home, '.herdr-projects/data/tasks/acme/2/task.json'), '{ broken')
+    const r = await read()
+    const m = r.machines[0]! as Board['machines'][0] & { tasks: { id: string, stale?: boolean, readAt?: number }[] }
+    expect(m.stale).toBeFalsy()
+    expect(m.at).toBe(clock)
+    expect(m.tasks.find(t => t.id === 'acme/1')).not.toHaveProperty('stale')
+    expect(m.tasks.find(t => t.id === 'acme/2')).toMatchObject({ stale: true, readAt: firstAt })
+  })
+
+  it('archived tasks never push live ones out of the rows shown', async () => {
+    T.setInContainer(true)
+    for (let n = 1000; n < 1600; n++) taskFile(`acme/${n}`, { title: `Old ${n}`, stage: 'done', archivedAt: 1 })
+    for (const n of [1, 2, 3]) taskFile(`acme/${n}`, { title: `Live ${n}`, stage: 'todo' })
+    const r = await read()
+    expect(r.machines[0]!.tasks.map(t => t.id).sort()).toEqual(['acme/1', 'acme/2', 'acme/3'])
+  })
+
+  it('details name the program on the task, from `app` when that is all the file has', async () => {
+    T.setInContainer(true)
+    taskFile('acme/1', { title: 'Review me', stage: 'approval', app: 'claude' })
+    expect(await T.taskDetails('', 'acme/1')).toMatchObject({ agent: 'claude' })
+  })
+
   it('refuses the actions, which belong to the host', async () => {
     T.setInContainer(true)
     await read()

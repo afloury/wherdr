@@ -39,7 +39,10 @@ export const READ_DEADLINE_MS = 4000
 const LIST_TIMEOUT_MS = 30_000
 const ACTION_TIMEOUT_MS = 60_000
 const OUTPUT_MAX = 8 * 1024 * 1024
+// Rows shown per machine, the newest first; task files read to find them
+// (archived ones included, left out after reading).
 const FILES_MAX = 500
+const FILES_READ_MAX = 3000
 
 export interface RunResult { code: number, stdout: string, stderr: string }
 export type Runner = (m: Machine, launcher: string, args: string[], timeoutMs: number) => Promise<RunResult>
@@ -170,19 +173,22 @@ async function listFromFiles(m: Machine): Promise<{ tasks: TaskRow[], failed: st
     catch (e) { if (!missing(e)) failed.push(`${repo} (${(e as Error).message})`); continue }
     for (const n of ns) if (isTaskId(`${repo}/${n}`)) ids.push(`${repo}/${n}`)
   }
+  // Newest first, so the caps keep the latest tasks rather than readdir's order.
+  ids.sort((a, b) => Number(b.split('/')[1]) - Number(a.split('/')[1]) || a.localeCompare(b))
   const panes = getState().panes
-  const rows = await Promise.all(ids.slice(0, FILES_MAX).map(async (id) => {
+  const rows = await Promise.all(ids.slice(0, FILES_READ_MAX).map(async (id) => {
     let t: Record<string, unknown> | null
     try { t = await readTaskFile(m, id) }
     catch (e) { failed.push(`${id} (${(e as Error).message})`); return null }
     const { pane } = linkedPane(m, t)
     return t ? rowFromTaskFile(t, pane ? panes.find(p => p.id === pane)?.status ?? null : null) : null
   }))
-  return { tasks: rows.filter((r): r is TaskRow => r !== null && !r.archived), failed }
+  return { tasks: rows.filter((r): r is TaskRow => r !== null && !r.archived).slice(0, FILES_MAX), failed }
 }
 
 // ---------------------------------------------------------------- the list
-interface Cached { tasks: TaskRow[], at: number, readAt: number, error?: string }
+// `partial`: some tasks could not be read; those rows are marked stale one by one.
+interface Cached { tasks: TaskRow[], at: number, readAt: number, error?: string, partial?: boolean }
 const lists = new Map<string, Cached>()
 const reading = new Map<string, Promise<Cached>>()
 
@@ -195,8 +201,11 @@ function readList(m: Machine): Promise<Cached> {
       if (!failed.length) return { tasks, at: Date.now(), readAt: Date.now() }
       // Some tasks could not be read: the others are fresh, those keep their last row, and it is said.
       const ids = new Set(tasks.map(t => t.id))
-      const kept = (lists.get(m.key)?.tasks || []).filter(t => !ids.has(t.id) && failed.some(f => f.startsWith(`${t.id} `) || f.startsWith(`${t.repo} `)))
-      return { tasks: [...tasks, ...kept], at: Date.now(), readAt: Date.now(), error: fmt('Some tasks could not be read: {list}', { list: failed.slice(0, 3).join(', ') + (failed.length > 3 ? ` (+${failed.length - 3})` : '') }) }
+      const last = lists.get(m.key)
+      const kept = (last?.tasks || [])
+        .filter(t => !ids.has(t.id) && failed.some(f => f.startsWith(`${t.id} `) || f.startsWith(`${t.repo} `)))
+        .map(t => ({ ...t, stale: true, readAt: t.readAt ?? last?.readAt }))
+      return { tasks: [...tasks, ...kept], at: Date.now(), readAt: Date.now(), partial: true, error: fmt('Some tasks could not be read: {list}', { list: failed.slice(0, 3).join(', ') + (failed.length > 3 ? ` (+${failed.length - 3})` : '') }) }
     })
     .catch((e: Error) => {
       const last = lists.get(m.key)
@@ -210,7 +219,7 @@ function readList(m: Machine): Promise<Cached> {
 
 // What a cached read says: its tasks, when they were read, and why they may be old.
 function shown(c: Cached): Pick<MachineTasks, 'tasks' | 'at' | 'error' | 'stale'> {
-  return { tasks: c.tasks, ...(c.readAt ? { at: c.readAt } : {}), ...(c.error ? { error: c.error, stale: c.tasks.length > 0 } : {}) }
+  return { tasks: c.tasks, ...(c.readAt ? { at: c.readAt } : {}), ...(c.error ? { error: c.error, stale: !c.partial && c.tasks.length > 0 } : {}) }
 }
 
 // `fresh`: the Board just opened (or asked to): check the plugin again rather
@@ -240,7 +249,8 @@ async function machineTasks(m: Machine, fresh = false): Promise<MachineTasks | n
 // Without it (the Board opening, or Refresh), each machine's plugin is checked afresh.
 export async function readTasksBoard(since?: string): Promise<TasksBoard | { same: true, version: string }> {
   const machines = (await Promise.all(baseMachines().map(m => machineTasks(m, !since)))).filter((x): x is MachineTasks => x !== null)
-  const version = createHash('sha1').update(JSON.stringify(machines)).digest('hex').slice(0, 16)
+  // What the Board shows, without when it was read: the same tasks read again are the same version.
+  const version = createHash('sha1').update(JSON.stringify(machines, (k, v) => (k === 'at' || k === 'readAt' ? undefined : v))).digest('hex').slice(0, 16)
   return since === version ? { same: true, version } : { version, machines }
 }
 

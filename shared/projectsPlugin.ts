@@ -27,6 +27,11 @@ export const WHERDR_DOWNGRADE_COMMANDS = [
   `npm install -g wherdr@${WHERDR_LAST_02}`,
   'docker compose pull && docker compose up -d',
 ] as const
+// The command herdr-projects 1.x gives agents and hooks, written by any of its
+// runs (flow/send.rs `shim`): 1.2.1 does not put `herdr-projects` on the PATH
+// (its `doctor` says so), so commands for the host name this path.
+export const PROJECTS_LAUNCHER = '~/.herdr-projects/data/bin/herdr-projects'
+
 // The step-by-step guide: in wherdr's repository, and shipped in the npm package
 // (package.json `files`; tests/projectsPlugin.test.ts checks both).
 export const PROJECTS_MIGRATION_GUIDE = 'docs/herdr-projects-1x.md'

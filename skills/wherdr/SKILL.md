@@ -22,6 +22,9 @@ ordinary herdr-projects commands, as if typed on the machine:
 | Reply, on a task | `herdr-projects tell <id> <text>` | that task's agent (on a plan that waits: the plan goes back with the text) |
 | Approve, on a task | `herdr-projects approve <id>` | the board: it merges, or says yes to the plan |
 
+(`herdr-projects` stands for the launcher the board hands you by its full path,
+`~/.herdr-projects/data/bin/herdr-projects`: 1.x puts nothing on the PATH.)
+
 So a message from the Board is the user's own words: answer and act on it as on any message
 from them. Report your progress with `herdr-projects report` as usual: the Board shows the
 state, the message and the progress you report, the pull request and the review.

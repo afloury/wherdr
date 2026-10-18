@@ -27,10 +27,10 @@ const notes = computed(() => (board.value?.machines || []).filter(m => m.status 
 const disabled = computed(() => (board.value?.machines || []).filter(m => m.status === 'disabled'))
 const several = computed(() => (board.value?.machines.length || 0) > 1)
 
-interface Card { key: string, machine: string, task: TaskRow, stale: boolean }
+interface Card { key: string, machine: string, task: TaskRow, stale: boolean, readAt?: number }
 // A machine Herdr did not answer for keeps its last tasks, marked as older.
 const cards = computed<Card[]>(() => (board.value?.machines || []).filter(m => m.status === 'ready' || m.tasks.length).flatMap(m => sortTasks(m.tasks.filter(t => !t.archived))
-  .map(task => ({ key: `${m.machine}|${task.id}`, machine: m.machine, task, stale: Boolean(m.stale) }))))
+  .map(task => ({ key: `${m.machine}|${task.id}`, machine: m.machine, task, stale: Boolean(m.stale || task.stale), readAt: task.stale ? task.readAt : m.at }))))
 const showAll = ref(false)
 const columns = computed(() => TASK_GROUPS.map((id) => {
   const all = cards.value.filter(c => c.task.group === id)
@@ -144,7 +144,7 @@ function back() {
         <section v-for="col in columns" v-show="desk || phoneColumn === col.id" :key="col.id" class="board-col" :class="col.id" :aria-label="col.label">
           <h3 v-if="desk" class="board-col-head"><span>{{ col.label }}</span><span class="pp-count">{{ col.total }}</span></h3>
           <div class="board-col-body">
-            <button v-for="c in col.cards" :key="c.key" type="button" class="board-card task-card" :class="[c.task.group, { stale: c.stale }]" :title="c.stale ? tl('An older read: see the note above', 'Lecture plus ancienne : voir la note plus haut') : undefined" @click="openCard(c)">
+            <button v-for="c in col.cards" :key="c.key" type="button" class="board-card task-card" :class="[c.task.group, { stale: c.stale }]" :title="c.stale ? (c.readAt ? tl(`As read at ${readAt(c.readAt)}: see the note above`, `Lue à ${readAt(c.readAt)} : voir la note plus haut`) : tl('An older read: see the note above', 'Lecture plus ancienne : voir la note plus haut')) : undefined" @click="openCard(c)">
               <span class="board-card-head">
                 <span class="task-key">{{ c.task.repo.toUpperCase() }}-{{ c.task.n }}</span>
                 <span v-if="several" class="board-card-label">{{ machineName(c.machine) }}</span>

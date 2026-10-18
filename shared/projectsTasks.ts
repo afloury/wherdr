@@ -34,6 +34,9 @@ export interface TaskRow {
   archived: boolean
   queue: number | null
   group: TaskGroup
+  // A partial read kept this row from an earlier one (when it was read, in ms).
+  stale?: boolean
+  readAt?: number
 }
 
 export interface TaskDetails {
@@ -266,7 +269,9 @@ export function detailsFromTaskFile(t: unknown): TaskDetails | null {
   if (!o || !isTaskId(o.id)) return null
   return parseTaskDetails(JSON.stringify({
     task: { id: o.id, title: o.title, stage: o.stage, msg: o.msg, description: o.description },
-    failure: o.failure ?? null, review: o.review ?? null, reviews: [], agent: o.on || o.agent || null,
+    failure: o.failure ?? null, review: o.review ?? null, reviews: [],
+    // The program on it: `on` while one works, then `agent`, as `details` gives it; else the row's `app`.
+    agent: o.on || o.agent || o.app || null,
     research: o.research === true, pr: o.pr ?? null, branch: o.branch ?? null, worktree: o.worktree ?? null, plan: null,
   }))
 }

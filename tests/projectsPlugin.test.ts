@@ -3,7 +3,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { projectsPluginFromList } from '../server/utils/projectsPlugin'
 import {
-  PROJECTS_COMMAND, PROJECTS_INSTALL_ARGS, PROJECTS_MIGRATION_GUIDE, PROJECTS_UPGRADE_COMMAND, WHERDR_DOWNGRADE_COMMANDS,
+  PROJECTS_COMMAND, PROJECTS_INSTALL_ARGS, PROJECTS_LAUNCHER, PROJECTS_MIGRATION_GUIDE, PROJECTS_UPGRADE_COMMAND, WHERDR_DOWNGRADE_COMMANDS,
   projectsLauncher, projectsStatus, versionAtLeast,
 } from '../shared/projectsPlugin'
 
@@ -84,5 +84,11 @@ describe('the migration guide the note names', () => {
     const root = path.resolve(import.meta.dirname, '..')
     expect(existsSync(path.join(root, PROJECTS_MIGRATION_GUIDE))).toBe(true)
     expect(JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).files).toContain(PROJECTS_MIGRATION_GUIDE)
+  })
+})
+
+describe('commands for the host', () => {
+  it('name the launcher herdr-projects 1.x writes, since nothing is on the PATH', () => {
+    expect(PROJECTS_LAUNCHER).toBe('~/.herdr-projects/data/bin/herdr-projects')
   })
 })

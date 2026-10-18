@@ -4,6 +4,7 @@
 // approve it (merge, or yes to a plan: asked first, it cannot be undone),
 // open its agent's pane. What 1.x does not give for a task is not shown.
 import { type TaskDetails, type TaskRow, TELL_MAX, prNumber, taskActions } from '#shared/projectsTasks'
+import { PROJECTS_LAUNCHER } from '#shared/projectsPlugin'
 
 // `readOnly`: the board is read from its files (wherdr in a container): the
 // actions are the host's, given as commands.
@@ -144,8 +145,8 @@ function openPane() {
 
       <div v-if="hostActions.tell || hostActions.approve" class="task-sheet-block">
         <h4>{{ tl('On the host', 'Sur l’hôte') }}</h4>
-        <code v-if="hostActions.tell" class="projects-plugin-command">herdr-projects tell {{ task.id }} "…"</code>
-        <code v-if="hostActions.approve" class="projects-plugin-command">herdr-projects approve {{ task.id }}</code>
+        <code v-if="hostActions.tell" class="projects-plugin-command">{{ PROJECTS_LAUNCHER }} tell {{ task.id }} "…"</code>
+        <code v-if="hostActions.approve" class="projects-plugin-command">{{ PROJECTS_LAUNCHER }} approve {{ task.id }}</code>
       </div>
       <form v-if="actions.tell" class="task-sheet-reply" @submit.prevent="send">
         <label for="task-reply">{{ task.stage === 'plan' ? tl('Send the plan back with', 'Renvoyer le plan avec') : tl('Reply to its agent', 'Répondre à son agent') }}</label>
