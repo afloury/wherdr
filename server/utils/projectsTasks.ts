@@ -24,7 +24,8 @@ import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
   type MachineTasks, type TaskDetails, type TaskRow, type TasksBoard,
-  cleanTell, detailsFromTaskFile, isTaskId, parseTaskDetails, parseTaskList, rowFromTaskFile, taskActions,
+  addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, coordinatorArgs, detailsFromTaskFile, isTaskCommand,
+  isTaskId, parseTaskDetails, parseTaskList, rowFromTaskFile, taskActions,
 } from '../../shared/projectsTasks'
 import { HERDR_BIN, HERDR_CHILD_ENV, IN_DOCKER, log } from './env'
 import { HerdrError } from './herdr'
@@ -323,15 +324,48 @@ export async function approveTask(machine: unknown, id: unknown): Promise<{ ok: 
   return { ok: true, msg: firstLine(out) }
 }
 
-// A message to the machine's Coordinator (the agent behind the board's box):
-// it turns it into tasks. Started by herdr-projects when it is not running, in
+// One of the task commands that take only its id (`delegate`, `stop`,
+// `retry`, `archive`), on a task the last list shows it applies to.
+export async function taskCommand(machine: unknown, id: unknown, action: unknown): Promise<{ ok: true, msg: string }> {
+  const m = boardOf(machine)
+  const tid = checkId(id)
+  if (!isTaskCommand(action)) throw new HerdrError('bad_action', 'Unknown action')
+  const row = taskOf(m, tid)
+  if (!row || !taskActions(row)[action]) throw new HerdrError('bad_action', fmt('This task cannot be {action} now', { action: ACTION_WORDS[action] }))
+  const out = await command(m, [action, '--', tid])
+  forget(m)
+  log(`herdr-projects ${action} ${tid}${m.local ? '' : ` on ${m.label}`}`)
+  return { ok: true, msg: firstLine(out) }
+}
+const ACTION_WORDS = { delegate: 'started', stop: 'stopped', retry: 'retried', archive: 'archived' } as const
+
+// A new task (`add`): in a repo the board knows (its name or its folder), or
+// in the home folder; `delegate` puts an agent on it at once.
+export async function addTask(machine: unknown, b: { title?: unknown, description?: unknown, repo?: unknown, delegate?: unknown }): Promise<{ ok: true, msg: string }> {
+  const m = boardOf(machine)
+  const title = cleanTitle(b.title)
+  if (!title) throw new HerdrError('empty', 'A task needs a title')
+  const repo = cleanRepo(b.repo)
+  if (repo === null) throw new HerdrError('bad_repo', 'Invalid repo')
+  const out = await command(m, addArgs({ title, description: cleanTell(b.description), repo, delegate: b.delegate === true }))
+  forget(m)
+  log(`herdr-projects add${b.delegate === true ? ' --delegate' : ''}${m.local ? '' : ` on ${m.label}`}`)
+  return { ok: true, msg: firstLine(out) }
+}
+
+// A message to one of the machine's coordinators (the agent behind the
+// board's box): its Coordinator by default, the machine coordinator, or a
+// repo's project coordinator. It turns it into tasks; `delegate` puts an agent
+// on each task it adds. Started by herdr-projects when it is not running, in
 // the machine's own session.
-export async function tellCoordinator(machine: unknown, text: unknown): Promise<{ ok: true, msg: string }> {
+export async function tellCoordinator(machine: unknown, text: unknown, opts: { to?: unknown, delegate?: unknown } = {}): Promise<{ ok: true, msg: string }> {
   const m = boardOf(machine)
   const words = cleanTell(text)
   if (!words) throw new HerdrError('empty', 'Nothing to send')
-  const out = await command(m, ['coordinator', '--', 'tell', words])
+  const to = cleanTarget(opts.to)
+  if (!to) throw new HerdrError('bad_target', 'Invalid coordinator')
+  const out = await command(m, coordinatorArgs(to, words, opts.delegate === true))
   forget(m)
-  log(`herdr-projects coordinator tell${m.local ? '' : ` on ${m.label}`}`)
+  log(`herdr-projects coordinator${to.kind === 'main' ? '' : ` (${to.kind === 'project' ? to.repo : 'machine'})`} tell${opts.delegate === true ? ' --delegate' : ''}${m.local ? '' : ` on ${m.label}`}`)
   return { ok: true, msg: firstLine(out) }
 }

@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  cleanTell, cleanUrl, detailsFromTaskFile, groupOf, rowFromTaskFile, stateFromTaskFile, isTaskId, parseReview, parseTaskDetails, parseTaskList, prNumber, sortTasks, taskActions,
+  NO_ACTIONS, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, detailsFromTaskFile, groupByRepo, groupCounts, groupOf,
+  rowFromTaskFile, stateFromTaskFile, isTaskId, parseReview, parseTaskDetails, parseTaskList, prNumber, sortTasks, taskActions, taskKey, taskNotice,
 } from '../shared/projectsTasks'
 
 const fixture = (name: string) => readFileSync(path.join(import.meta.dirname, 'recordings/herdr-projects-1.2.1', name), 'utf8')
@@ -84,14 +85,30 @@ describe('groups and actions', () => {
   })
 
   it('offers reply on a live task and approve where the board waits for a yes', () => {
-    const live = { state: 'blocked', stage: 'asks', group: 'needs', archived: false, app: 'claude' } as const
-    expect(taskActions(live)).toEqual({ tell: true, approve: false })
-    expect(taskActions({ ...live, stage: 'approval', group: 'ready' })).toEqual({ tell: true, approve: true })
-    expect(taskActions({ ...live, stage: 'plan' })).toEqual({ tell: true, approve: true })
-    expect(taskActions({ state: 'idle', stage: 'todo', group: 'todo', archived: false, app: '' })).toEqual({ tell: false, approve: false })
-    // No agent has been on it yet: 1.x refuses a message.
-    expect(taskActions({ ...live, app: '' })).toEqual({ tell: false, approve: false })
-    expect(taskActions({ ...live, archived: true })).toEqual({ tell: false, approve: false })
+    const live = { state: 'blocked', kind: 'question', stage: 'asks', group: 'needs', archived: false, app: 'claude' } as const
+    expect(taskActions(live)).toEqual({ ...NO_ACTIONS, tell: true, stop: true, archive: true })
+    expect(taskActions({ ...live, kind: 'permission', stage: 'approval', group: 'ready' })).toMatchObject({ tell: true, approve: true })
+    expect(taskActions({ ...live, kind: 'permission', stage: 'plan' })).toMatchObject({ tell: true, approve: true })
+    // No agent has been on it yet: 1.x refuses a message, and there is none to stop.
+    expect(taskActions({ ...live, app: '' })).toEqual({ ...NO_ACTIONS, archive: true })
+    expect(taskActions({ ...live, archived: true })).toEqual(NO_ACTIONS)
+  })
+
+  it('start on the backlog, stop on an agent at work, retry what went wrong, archive all but work under way', () => {
+    const todo = { state: 'idle', kind: '', stage: 'todo', group: 'todo', archived: false, app: '' } as const
+    expect(taskActions(todo)).toEqual({ ...NO_ACTIONS, delegate: true, archive: true })
+    // A task its agent stopped is back under To do: it can start again.
+    expect(taskActions({ ...todo, stage: 'stopped', app: 'codex' })).toMatchObject({ delegate: true, stop: false })
+    const working = { ...todo, state: 'working', stage: 'working', group: 'working', app: 'codex' } as const
+    expect(taskActions(working)).toEqual({ ...NO_ACTIONS, tell: true, stop: true })
+    expect(taskActions({ ...working, stage: 'queued' })).toMatchObject({ stop: true, archive: false })
+    const failed = { ...todo, state: 'error', stage: 'failed', group: 'needs', app: 'claude' } as const
+    expect(taskActions(failed)).toMatchObject({ retry: true, stop: false, archive: true, delegate: false })
+    // Stopped at a limit: retry continues it; nothing runs to stop.
+    expect(taskActions({ ...failed, state: 'blocked', stage: 'stopped' })).toMatchObject({ retry: true, stop: false })
+    // Waiting for a sign-in: not an agent at work.
+    expect(taskActions({ ...failed, state: 'blocked', kind: 'auth' })).toMatchObject({ stop: false })
+    expect(taskActions({ ...todo, state: 'done', stage: 'done', group: 'done' })).toEqual({ ...NO_ACTIONS, archive: true })
   })
 
   it('orders by group, then repo, newest first', () => {
@@ -166,5 +183,49 @@ describe('a task read from its file (wherdr in a container)', () => {
     expect(detailsFromTaskFile({ id: 'acme/4', title: 'T', stage: 'working', description: 'D', on: 'codex', branch: 'b', worktree: '/w', failure: { msg: 'm' } }))
       .toMatchObject({ id: 'acme/4', description: 'D', agent: 'codex', branch: 'b', worktree: '/w', failure: 'm', plan: '' })
     expect(detailsFromTaskFile({ id: 'nope' })).toBeNull()
+  })
+})
+
+describe('commands, by repo, and push', () => {
+  it('a title is one line; a repo is a name or a folder, never a flag', () => {
+    expect(cleanTitle('  Fix\n  the   login ')).toBe('Fix the login')
+    expect(cleanTitle(3)).toBe('')
+    expect(cleanRepo(undefined)).toBe('')
+    expect(cleanRepo(' wherdr ')).toBe('wherdr')
+    expect(cleanRepo('my.repo-2')).toBe('my.repo-2')
+    expect(cleanRepo('/srv/app')).toBe('/srv/app')
+    expect(cleanRepo('~/code/app')).toBe('~/code/app')
+    for (const bad of ['--all', '-x', '../x', 'a b', '~user/x', '/a\nb', 7]) expect(cleanRepo(bad)).toBeNull()
+  })
+
+  it('add and coordinator: the user\'s words as --flag=value or after --', () => {
+    expect(addArgs({ title: 'T', description: '', repo: '', delegate: false })).toEqual(['add', '--', 'T'])
+    expect(addArgs({ title: '--T', description: '--D', repo: 'r', delegate: true })).toEqual(['add', '--desc=--D', '--repo=r', '--delegate', '--', '--T'])
+    expect(coordinatorArgs({ kind: 'main' }, 'w', false)).toEqual(['coordinator', '--', 'tell', 'w'])
+    expect(coordinatorArgs({ kind: 'machine' }, 'w', true)).toEqual(['coordinator', '--machine', '--delegate', '--', 'tell', 'w'])
+    expect(coordinatorArgs({ kind: 'project', repo: 'wherdr' }, 'w', false)).toEqual(['coordinator', '--project=wherdr', '--', 'tell', 'w'])
+    expect(cleanTarget(undefined)).toEqual({ kind: 'main' })
+    expect(cleanTarget({ kind: 'project', repo: '/abs' })).toBeNull()
+    expect(cleanTarget({ kind: 'nope' })).toBeNull()
+  })
+
+  it('groups a machine\'s tasks by repo, repos by name, each as the board orders it', () => {
+    const rows = parseTaskList(JSON.stringify([
+      { id: 'web/1', state: 'done', stage: 'done' }, { id: 'api/2', state: 'idle', stage: 'todo' },
+      { id: 'web/7', state: 'blocked', kind: 'question', stage: 'asks' }, { id: 'api/5', state: 'working', stage: 'working' },
+    ]))
+    expect(groupByRepo(rows).map(g => [g.repo, g.tasks.map(t => t.id)])).toEqual([['api', ['api/5', 'api/2']], ['web', ['web/7', 'web/1']]])
+    expect(groupCounts(rows)).toEqual({ needs: 1, ready: 0, working: 1, todo: 1, done: 1 })
+    expect(groupByRepo([])).toEqual([])
+  })
+
+  it('reads back the notification board.notify sends, and only that', () => {
+    expect(taskNotice('wherdr/12 · needs you')).toEqual({ id: 'wherdr/12', event: 'needs you' })
+    expect(taskNotice('demo/1 · ready to approve')).toEqual({ id: 'demo/1', event: 'ready to approve' })
+    expect(taskNotice('demo/1 · failed')).toEqual({ id: 'demo/1', event: 'failed' })
+    expect(taskNotice('Build finished')).toBeNull()
+    expect(taskNotice('../x/1 · failed')).toBeNull()
+    expect(taskNotice('demo/1 · merged')).toBeNull()
+    expect(taskKey('demo/12')).toBe('DEMO-12')
   })
 })

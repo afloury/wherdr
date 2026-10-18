@@ -341,3 +341,77 @@ describe('the session on an SSH machine', () => {
     expect(env('')).toBe('/opt/herdr|unset|unset|--keep a')
   })
 })
+
+describe('start, stop, retry, archive, add, and the three coordinators', () => {
+  // A board with a task of each kind these act on.
+  const board = JSON.stringify([
+    { id: 'demo/5', state: 'idle', title: 'In the backlog', stage: 'todo' },
+    { id: 'demo/6', state: 'error', app: 'claude', title: 'Broke', stage: 'failed' },
+    { id: 'demo/3', state: 'working', app: 'codex', title: 'Add dark mode toggle', stage: 'working' },
+    { id: 'demo/4', state: 'done', title: 'Old cleanup', stage: 'done' },
+  ])
+  beforeEach(() => { listReply = { code: 0, stdout: board, stderr: '' } })
+
+  it('runs each command with the task\'s id after --', async () => {
+    await read()
+    await T.taskCommand('', 'demo/5', 'delegate')
+    await read()
+    await T.taskCommand('', 'demo/3', 'stop')
+    await read()
+    await T.taskCommand('', 'demo/6', 'retry')
+    await read()
+    await T.taskCommand('', 'demo/4', 'archive')
+    expect(calls.filter(c => c[0] !== 'list')).toEqual([['delegate', '--', 'demo/5'], ['stop', '--', 'demo/3'], ['retry', '--', 'demo/6'], ['archive', '--', 'demo/4']])
+  })
+
+  it('refuses what does not apply to the task, or an unknown command, before running anything', async () => {
+    await read()
+    calls = []
+    await expect(T.taskCommand('', 'demo/3', 'delegate')).rejects.toThrow(/cannot be started/)
+    await expect(T.taskCommand('', 'demo/5', 'stop')).rejects.toThrow(/cannot be stopped/)
+    await expect(T.taskCommand('', 'demo/3', 'archive')).rejects.toThrow(/cannot be archived/)
+    await expect(T.taskCommand('', 'demo/4', 'retry')).rejects.toThrow(/cannot be retried/)
+    await expect(T.taskCommand('', 'demo/5', 'clear')).rejects.toThrow(/Unknown action/)
+    await expect(T.taskCommand('', 'demo/99', 'archive')).rejects.toThrow(/cannot be archived/)
+    expect(calls).toEqual([])
+  })
+
+  it('adds a task: flags as --flag=value, the title after --; a bad repo runs nothing', async () => {
+    await T.addTask('', { title: '  --fix\nthe login ', description: '--desc trick', repo: 'wherdr', delegate: true })
+    await T.addTask('', { title: 'In the home folder' })
+    await T.addTask('', { title: 'By its folder', repo: '~/code/app' })
+    expect(calls).toEqual([
+      ['add', '--desc=--desc trick', '--repo=wherdr', '--delegate', '--', '--fix the login'],
+      ['add', '--', 'In the home folder'],
+      ['add', '--repo=~/code/app', '--', 'By its folder'],
+    ])
+    calls = []
+    await expect(T.addTask('', { title: 'x', repo: '--all' })).rejects.toThrow(/Invalid repo/)
+    await expect(T.addTask('', { title: '   ' })).rejects.toThrow(/title/)
+    expect(calls).toEqual([])
+  })
+
+  it('talks to the Coordinator, the machine coordinator or a project coordinator, with Send and start', async () => {
+    await T.tellCoordinator('', 'plain')
+    await T.tellCoordinator('', 'and start', { delegate: true })
+    await T.tellCoordinator('', 'machine', { to: { kind: 'machine' } })
+    await T.tellCoordinator('', '--repo', { to: { kind: 'project', repo: 'wherdr' }, delegate: true })
+    expect(calls).toEqual([
+      ['coordinator', '--', 'tell', 'plain'],
+      ['coordinator', '--delegate', '--', 'tell', 'and start'],
+      ['coordinator', '--machine', '--', 'tell', 'machine'],
+      ['coordinator', '--project=wherdr', '--delegate', '--', 'tell', '--repo'],
+    ])
+    calls = []
+    await expect(T.tellCoordinator('', 'x', { to: { kind: 'project', repo: '../etc' } })).rejects.toThrow(/Invalid coordinator/)
+    expect(calls).toEqual([])
+  })
+
+  it('from a container: none of them runs', async () => {
+    T.setInContainer(true)
+    await expect(T.addTask('', { title: 'x' })).rejects.toThrow(/container/)
+    await expect(T.taskCommand('', 'demo/5', 'delegate')).rejects.toThrow()
+    await expect(T.tellCoordinator('', 'x', { to: { kind: 'machine' } })).rejects.toThrow(/container/)
+    expect(calls).toEqual([])
+  })
+})

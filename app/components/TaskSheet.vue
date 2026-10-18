@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // One herdr-projects task (the Board): what it is, where it stands, its pull
-// request and review, and what can be done from here: reply to its agent,
-// approve it (merge, or yes to a plan: asked first, it cannot be undone),
-// open its agent's pane. What 1.x does not give for a task is not shown.
-import { type TaskDetails, type TaskRow, TELL_MAX, prNumber, taskActions } from '#shared/projectsTasks'
+// request and review, and what can be done from here, as 1.x does it: reply
+// to its agent, approve it (merge, or yes to a plan: asked first, it cannot be
+// undone), start it (a task of the backlog), stop its agent (asked first),
+// retry what went wrong, archive it, and open its agent's pane. What 1.x
+// does not give for a task is not shown.
+import { NO_ACTIONS, type TaskCommand, type TaskDetails, type TaskRow, TELL_MAX, prNumber, taskActions, taskKey } from '#shared/projectsTasks'
 import { PROJECTS_LAUNCHER } from '#shared/projectsPlugin'
 
 // `readOnly`: the board is read from its files (wherdr in a container): the
@@ -17,11 +19,12 @@ const error = ref('')
 const loading = ref(false)
 const reply = ref('')
 const busy = ref(false)
-const actions = computed(() => (props.task && !props.readOnly ? taskActions(props.task) : { tell: false, approve: false }))
-const hostActions = computed(() => (props.task && props.readOnly ? taskActions(props.task) : { tell: false, approve: false }))
+const actions = computed(() => (props.task && !props.readOnly ? taskActions(props.task) : NO_ACTIONS))
+const hostActions = computed(() => (props.task && props.readOnly ? taskActions(props.task) : NO_ACTIONS))
+const hostCommands = computed(() => (['delegate', 'stop', 'retry', 'archive'] as const).filter(a => hostActions.value[a]))
 const pr = computed(() => details.value?.pr || props.task?.pr || '')
 const review = computed(() => details.value?.review || props.task?.review || null)
-const label = computed(() => (props.task ? `${props.task.repo.toUpperCase()}-${props.task.n}` : ''))
+const label = computed(() => (props.task ? taskKey(props.task.id) : ''))
 
 let seq = 0
 async function load() {
@@ -80,6 +83,33 @@ async function approve() {
   finally { busy.value = false }
 }
 
+// Start, stop, retry, archive: the task's id only. Stopping is asked first
+// (the agent's turn is cut short); archiving can be undone from Herdr.
+const ACTION_DONE: Record<TaskCommand, () => string> = {
+  delegate: () => tl('Started: an agent is on it', 'Lancée : un agent s’en occupe'),
+  stop: () => tl('Stopped', 'Arrêtée'),
+  retry: () => tl('Sent back to its agent', 'Renvoyée à son agent'),
+  archive: () => tl('Archived', 'Archivée'),
+}
+const running = ref<TaskCommand | null>(null)
+async function act(action: TaskCommand) {
+  const t = props.task
+  if (!t || busy.value) return
+  if (action === 'stop' && !await askConfirm(
+    tl(`Stop the agent of “${t.title}”? Its turn ends now; the task stays, and Retry or Start picks it up again.`, `Arrêter l’agent de « ${t.title} » ? Son tour s’arrête maintenant ; la tâche reste, Réessayer ou Lancer la reprend.`),
+    tl('Stop the agent', 'Arrêter l’agent'))) return
+  busy.value = true
+  running.value = action
+  try {
+    const r = await api<{ msg: string }>('/api/tasks/action', { machine: props.machine, id: t.id, action })
+    haptic()
+    toast(r.msg || ACTION_DONE[action]())
+    emit('changed')
+    if (action === 'archive') open.value = false
+  } catch (e) { toast((e as Error).message, true) }
+  finally { busy.value = false; running.value = null }
+}
+
 function openPane() {
   const p = details.value?.pane
   if (!p) return
@@ -136,17 +166,22 @@ function openPane() {
         <p class="task-sheet-text">{{ details.plan }}</p>
       </section>
 
-      <div v-if="details?.pane || actions.approve" class="task-sheet-actions">
-        <UButton v-if="details?.pane" color="neutral" variant="outline" icon="i-lucide-square-terminal" @click="openPane">{{ tl('Open its agent', 'Ouvrir son agent') }}</UButton>
-        <UButton v-if="actions.approve" color="primary" icon="i-lucide-check" :loading="busy" :disabled="offlineView" @click="approve">
+      <div v-if="details?.pane || actions.approve || actions.delegate || actions.retry || actions.stop || actions.archive" class="task-sheet-actions">
+        <UButton v-if="actions.delegate" color="primary" icon="i-lucide-play" :loading="running === 'delegate'" :disabled="busy || offlineView" @click="act('delegate')">{{ tl('Start', 'Lancer') }}</UButton>
+        <UButton v-if="actions.approve" color="primary" icon="i-lucide-check" :loading="busy && !running" :disabled="busy || offlineView" @click="approve">
           {{ task.stage === 'plan' ? tl('Approve plan', 'Accepter le plan') : tl('Approve', 'Approuver') }}
         </UButton>
+        <UButton v-if="actions.retry" color="primary" variant="outline" icon="i-lucide-rotate-ccw" :loading="running === 'retry'" :disabled="busy || offlineView" @click="act('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
+        <UButton v-if="details?.pane" color="neutral" variant="outline" icon="i-lucide-square-terminal" @click="openPane">{{ tl('Open its agent', 'Ouvrir son agent') }}</UButton>
+        <UButton v-if="actions.stop" color="error" variant="outline" icon="i-lucide-square" :loading="running === 'stop'" :disabled="busy || offlineView" @click="act('stop')">{{ tl('Stop', 'Arrêter') }}</UButton>
+        <UButton v-if="actions.archive" color="neutral" variant="ghost" icon="i-lucide-archive" class="task-archive" :loading="running === 'archive'" :disabled="busy || offlineView" @click="act('archive')">{{ tl('Archive', 'Archiver') }}</UButton>
       </div>
 
-      <div v-if="hostActions.tell || hostActions.approve" class="task-sheet-block">
+      <div v-if="hostActions.tell || hostActions.approve || hostCommands.length" class="task-sheet-block">
         <h4>{{ tl('On the host', 'Sur l’hôte') }}</h4>
         <code v-if="hostActions.tell" class="projects-plugin-command">{{ PROJECTS_LAUNCHER }} tell {{ task.id }} "…"</code>
         <code v-if="hostActions.approve" class="projects-plugin-command">{{ PROJECTS_LAUNCHER }} approve {{ task.id }}</code>
+        <code v-for="a in hostCommands" :key="a" class="projects-plugin-command">{{ PROJECTS_LAUNCHER }} {{ a }} {{ task.id }}</code>
       </div>
       <form v-if="actions.tell" class="task-sheet-reply" @submit.prevent="send">
         <label for="task-reply">{{ task.stage === 'plan' ? tl('Send the plan back with', 'Renvoyer le plan avec') : tl('Reply to its agent', 'Répondre à son agent') }}</label>

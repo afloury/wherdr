@@ -3521,13 +3521,67 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-seg.tasks .board-seg-btn span { white-space: normal; text-align: center; min-height: 2.8em; display: flex; align-items: center; }
 .board-notes { flex: none; display: flex; flex-direction: column; gap: 10px; margin: 12px 16px 0; }
 /* The Coordinator's box: one line, the machine first when there are several. */
-.board-coord { flex: none; display: flex; align-items: center; gap: 8px; margin: 12px 16px 0; padding: 8px 8px 8px 12px; border: 1px solid var(--line); background: var(--bg-2); }
-.board-coord-label { flex: none; font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--mauve); }
-.board-coord-machine { flex: none; max-width: 40%; }
+/* The box that talks to a coordinator: who on top, the words and the two sends under it. */
+.board-coord { flex: none; display: flex; flex-direction: column; gap: 8px; margin: 12px 16px 0; padding: 8px; border: 1px solid var(--line); background: var(--bg-2); }
+.board-coord.machine, .board-coord.project { border-color: color-mix(in srgb, var(--mauve) 55%, var(--line)); box-shadow: inset 2px 0 0 var(--mauve); }
+.board-coord-to { display: flex; align-items: center; gap: 8px; min-height: 28px; padding-left: 4px; min-width: 0; }
+.board-coord-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 10px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--mauve); }
+.board-coord-on { color: var(--muted); }
+.board-coord-machine { flex: none; max-width: 50%; margin-left: auto; }
+.board-coord-back { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 8px; border: 1px solid var(--line); font: 500 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); cursor: pointer; }
+.board-coord-back:hover { border-color: var(--mauve); color: var(--mauve); }
+.board-coord-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .board-coord-input { flex: 1; min-width: 0; }
+.board-coord-row > button { border-radius: 0; }
+.board-coord-start { font: 600 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
+.board-coord-start-short { display: none; }
+@media (max-width: 560px) {
+  .board-coord-start-long { display: none; }
+  .board-coord-start-short { display: inline; }
+}
+/* "+ New task" in the header: words on a computer, the sign alone on a phone. */
+.board-top .board-new { margin-left: auto; border-radius: 0; font: 600 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+.board-top .board-new + .board-filter { margin-left: 0; }
+@media (max-width: 560px) { .board-new-label { display: none; } .board-top .board-new { width: 36px; height: 36px; justify-content: center; } }
+/* Which machines, and how tasks are grouped. */
+.board-tools { flex: none; display: flex; align-items: center; gap: 8px; margin: 10px 16px 0; min-width: 0; }
+.board-scope { flex: 0 1 220px; min-width: 0; }
+.board-grouping { flex: none; display: flex; margin-left: auto; border: 1px solid var(--line); }
+.board-grouping button { min-height: 32px; padding: 0 10px; font: 500 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); cursor: pointer; }
+.board-grouping button + button { border-left: 1px solid var(--line); }
+.board-grouping button.on { background: var(--surface-2); color: var(--text); box-shadow: inset 0 2px 0 var(--mauve); }
+/* Grouped by machine, then by repo: headings that talk to their coordinator. */
+.board-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 4px 16px calc(var(--safe-bottom) + 24px); }
+.board-machine + .board-machine { margin-top: 10px; }
+.board-head { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.board-head.machine { margin-top: 8px; border-bottom: 1px solid var(--line-strong); }
+.board-head.repo { margin-top: 6px; border-bottom: 1px solid var(--line-soft); }
+.board-fold { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 40px; color: var(--muted); cursor: pointer; }
+.board-fold:hover { color: var(--text); }
+.board-head-talk { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; min-height: 40px; padding: 0 8px 0 2px; text-align: left; cursor: pointer; }
+.board-head-talk:disabled { cursor: default; }
+.board-head-talk b { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; align-self: center; }
+.board-head.machine .board-head-talk b { font: 850 17px/1.2 var(--display); letter-spacing: -.02em; color: var(--accent); }
+.board-head.repo .board-head-talk b { font: 600 12px/1.2 var(--mono); letter-spacing: .06em; color: var(--text); }
+.board-head-sum { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); align-self: center; }
+.board-head-icon { flex: none; width: 15px; height: 15px; color: var(--dim); align-self: center; transition: color .12s ease; }
+.board-head-talk:not(:disabled):hover .board-head-icon, .board-head-talk:focus-visible .board-head-icon { color: var(--mauve); }
+.board-head.talking { box-shadow: inset 2px 0 0 var(--mauve); background: color-mix(in srgb, var(--mauve) 7%, transparent); }
+.board-head.talking .board-head-icon { color: var(--mauve); }
+.board-head-add { flex: none; border-radius: 0; }
+.board-rows { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px 0 6px; }
+.board-rows .board-more { justify-self: start; }
+.board-machine-empty { padding: 10px 4px; }
+.board-card-head .task-state { padding: 2px 5px; font-size: 9px; }
+@media (min-width: 900px) {
+  .board-list { padding-left: 24px; padding-right: 24px; }
+  .board-rows { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+  .board-rows .board-more { grid-column: 1 / -1; }
+}
 .task-card.needs { border-left: 2px solid var(--rose); }
 .task-card.ready { border-left: 2px solid var(--green); }
 .task-card.working { border-left: 2px solid var(--working); }
+.task-card.todo { border-left: 2px solid var(--lav); }
 .task-key { font: 600 10.5px/1 var(--mono); letter-spacing: .08em; color: var(--text-3); }
 .task-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .task-chip { padding: 3px 5px; border: 1px solid var(--line); font: 500 9.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
@@ -3541,6 +3595,7 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-state.ready { color: var(--green); }
 .task-state.working { color: var(--working); }
 .task-state.done { color: var(--done); }
+.task-state.todo { color: var(--lav); }
 .task-sheet-msg { margin: 0; font: 12px/1.45 var(--mono); color: var(--text-2); overflow-wrap: anywhere; }
 .task-sheet-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; margin: 0; padding: 12px; border: 1px solid var(--line); }
 .task-sheet-facts dt { font: 500 10px/1.5 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
@@ -3552,6 +3607,8 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-sheet-block h4 { margin: 0 0 6px; font: 600 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .task-sheet-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.55; color: var(--text-2); }
 .task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.task-sheet-actions > button { border-radius: 0; }
+.task-sheet-actions .task-archive { margin-left: auto; }
 .task-sheet-reply { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
 .task-sheet-reply label { font: 500 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .task-sheet-reply button { align-self: flex-end; }

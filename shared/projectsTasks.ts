@@ -56,8 +56,14 @@ export interface TaskDetails {
   research: boolean
 }
 
-// What wherdr can do on a task (1.x `tell`, `approve`, and its pane in Herdr).
-export interface TaskActions { tell: boolean, approve: boolean }
+// What wherdr can do on a task: 1.x `tell`, `approve`, `delegate`, `stop`,
+// `retry`, `archive` (and its pane in Herdr).
+export interface TaskActions { tell: boolean, approve: boolean, delegate: boolean, stop: boolean, retry: boolean, archive: boolean }
+// The task commands that take nothing but the task's id.
+export const TASK_COMMANDS = ['delegate', 'stop', 'retry', 'archive'] as const
+export type TaskCommand = typeof TASK_COMMANDS[number]
+export const isTaskCommand = (v: unknown): v is TaskCommand => TASK_COMMANDS.includes(v as TaskCommand)
+export const NO_ACTIONS: TaskActions = { tell: false, approve: false, delegate: false, stop: false, retry: false, archive: false }
 
 // One board per machine (its HOME): the named sessions of a machine share it.
 export interface MachineTasks {
@@ -87,6 +93,9 @@ const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === '
 export function isTaskId(v: unknown): v is string {
   return typeof v === 'string' && ID_RE.test(v)
 }
+
+// A task as the Board names it: `DEMO-12` for `demo/12`.
+export const taskKey = (id: string) => { const [repo, n] = id.split('/'); return `${(repo || '').toUpperCase()}-${n}` }
 
 // Only an https link is kept: the card opens it in a new tab.
 export function cleanUrl(v: unknown): string {
@@ -197,15 +206,27 @@ export function parseTaskDetails(text: string): TaskDetails {
   }
 }
 
-// What the card offers. `tell` reaches the task's agent (or, on a plan that
-// waits, sends the plan back), so only once an agent has been on it (1.x
-// refuses it before); `approve` merges finished work or says yes to a plan.
-export function taskActions(r: Pick<TaskRow, 'state' | 'stage' | 'group' | 'archived' | 'app'>): TaskActions {
-  if (r.archived) return { tell: false, approve: false }
+// What the card offers, from the row (1.x refuses what does not apply, and
+// says why: these only keep a button from being shown where it cannot work).
+// - `tell` reaches the task's agent (or, on a plan that waits, sends the plan
+//   back), so only once an agent has been on it (1.x refuses it before);
+// - `approve` merges finished work or says yes to a plan;
+// - `delegate` puts an agent on a task of the backlog ("to do");
+// - `stop` stops the agent at work, or the one that waits for your answer;
+// - `retry` sends the saved error back to the agent, or continues a task a
+//   limit stopped;
+// - `archive` puts a task away (`restore` brings it back): not while an agent works on it.
+export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group' | 'archived' | 'app'>): TaskActions {
+  if (r.archived) return NO_ACTIONS
   const live = r.group !== 'todo' && r.group !== 'done'
+  const limitStop = r.stage === 'stopped' && r.state === 'blocked'
   return {
     tell: live && Boolean(r.app),
     approve: r.stage === 'approval' || (r.stage === 'plan' && r.state === 'blocked'),
+    delegate: r.group === 'todo',
+    stop: r.group === 'working' || (r.group === 'needs' && r.state === 'blocked' && Boolean(r.app) && !limitStop && r.kind !== 'auth'),
+    retry: r.state === 'error' || r.stage === 'failed' || limitStop,
+    archive: r.group !== 'working',
   }
 }
 
@@ -218,6 +239,96 @@ export function sortTasks(rows: TaskRow[]): TaskRow[] {
 export const TELL_MAX = 8000
 export function cleanTell(v: unknown): string {
   return typeof v === 'string' ? v.replace(/\r\n?/g, '\n').trim().slice(0, TELL_MAX) : ''
+}
+
+// ---------------------------------------------------------------- commands
+// Every argument comes after the command's own flags, and the user's words
+// after `--` (or as `--flag=value`), so no text is ever read as a flag.
+
+// A new task's title: one line (1.x shortens a long one at a word and keeps
+// the full text in the description).
+export const TITLE_MAX = 300
+export function cleanTitle(v: unknown): string {
+  return typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, TITLE_MAX) : ''
+}
+
+// `--repo NAME|PATH`: a repo the board knows by its name, or a folder's path
+// (absolute, or from the home folder). '' : the home folder (wherdr runs the
+// command there). Anything else is refused, not guessed.
+const REPO_NAME_RE = /^[A-Za-z0-9][\w.-]{0,79}$/
+export function cleanRepo(v: unknown): string | null {
+  if (v === undefined || v === null || v === '') return ''
+  if (typeof v !== 'string') return null
+  const s = v.trim()
+  if (!s) return ''
+  if (REPO_NAME_RE.test(s)) return s
+  // eslint-disable-next-line no-control-regex
+  if (/^(\/|~\/)/.test(s) && s.length <= 500 && !/[\u0000-\u001f]/.test(s)) return s
+  return null
+}
+
+export interface NewTask { title: string, description: string, repo: string, delegate: boolean }
+// `add`: `--delegate` puts an agent on it at once.
+export function addArgs(t: NewTask): string[] {
+  return ['add',
+    ...(t.description ? [`--desc=${t.description}`] : []),
+    ...(t.repo ? [`--repo=${t.repo}`] : []),
+    ...(t.delegate ? ['--delegate'] : []),
+    '--', t.title]
+}
+
+// Who the Board's chat talks to on a machine: its Coordinator (one per Herdr
+// session), the machine coordinator, or a repo's project coordinator.
+export type CoordinatorTarget = { kind: 'main' } | { kind: 'machine' } | { kind: 'project', repo: string }
+export function cleanTarget(v: unknown): CoordinatorTarget | null {
+  const o = obj(v)
+  if (!o || o.kind === 'main') return { kind: 'main' }
+  if (o.kind === 'machine') return { kind: 'machine' }
+  if (o.kind === 'project' && typeof o.repo === 'string' && REPO_NAME_RE.test(o.repo)) return { kind: 'project', repo: o.repo }
+  return null
+}
+// `coordinator [--machine | --project=REPO] [--delegate] -- tell <words>`:
+// `--delegate` (the board's Tab) puts an agent on every task the message adds.
+export function coordinatorArgs(to: CoordinatorTarget, words: string, delegate: boolean): string[] {
+  return ['coordinator',
+    ...(to.kind === 'machine' ? ['--machine'] : to.kind === 'project' ? [`--project=${to.repo}`] : []),
+    ...(delegate ? ['--delegate'] : []),
+    '--', 'tell', words]
+}
+
+// ---------------------------------------------------------------- by repo
+// A machine's rows under their repos (1.x: grouped by repo, `Alt+S`): repos
+// by name, each one's rows as the board orders them (by group, newest first).
+export interface RepoTasks { repo: string, tasks: TaskRow[] }
+export function groupByRepo(rows: TaskRow[]): RepoTasks[] {
+  const by = new Map<string, TaskRow[]>()
+  for (const r of sortTasks(rows)) {
+    const list = by.get(r.repo)
+    if (list) list.push(r)
+    else by.set(r.repo, [r])
+  }
+  return [...by].sort(([a], [b]) => a.localeCompare(b)).map(([repo, tasks]) => ({ repo, tasks }))
+}
+
+// How many rows of each group: a heading's summary.
+export function groupCounts(rows: TaskRow[]): Record<TaskGroup, number> {
+  const c: Record<TaskGroup, number> = { needs: 0, ready: 0, working: 0, todo: 0, done: 0 }
+  for (const r of rows) c[r.group]++
+  return c
+}
+
+// ---------------------------------------------------------------- push
+// `board.notify` runs a command once per event, with the task's id, title and
+// event in its environment. This one hands it to Herdr as a notification,
+// which wherdr already sends to the phone (server/utils/herdrNotify.ts): no
+// state of wherdr's own, and it works on every machine wherdr reaches.
+export const NOTIFY_COMMAND = 'herdr notification show --body="$HERDR_PROJECTS_TITLE" --sound request -- "$HERDR_PROJECTS_ID · $HERDR_PROJECTS_EVENT"'
+export const NOTIFY_EVENTS = ['needs you', 'ready to approve', 'failed'] as const
+export type NotifyEvent = typeof NOTIFY_EVENTS[number]
+// A notification that NOTIFY_COMMAND sent: its task and what happened; else null.
+export function taskNotice(title: string): { id: string, event: NotifyEvent } | null {
+  const m = /^(\S+) · (needs you|ready to approve|failed)$/.exec(title.trim())
+  return m && isTaskId(m[1]) ? { id: m[1], event: m[2] as NotifyEvent } : null
 }
 
 // ---------------------------------------------------------------- read from the files

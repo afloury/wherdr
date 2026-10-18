@@ -278,6 +278,8 @@ export function tasks(agents: { codex: string, omp: string }): TasksBoard {
     row({ id: 'acme-api/15', n: 15, state: 'idle', stage: 'todo', title: 'Redis store for the rate limiter', msg: '' }),
     row({ id: 'acme-api/10', n: 10, state: 'done', stage: 'done', title: 'Webhook retries with exponential backoff', msg: 'Merged', pr: 'https://github.com/acme/acme-api/pull/38' }),
     row({ id: 'acme-api/9', n: 9, state: 'done', stage: 'done', title: 'Paginate the invoices endpoint', msg: 'Merged' }),
+    row({ id: 'acme-web/4', repo: 'acme-web', n: 4, state: 'idle', stage: 'todo', title: 'Show the rate limit headers on the API keys page', msg: '' }),
+    row({ id: 'acme-web/3', repo: 'acme-web', n: 3, state: 'done', stage: 'done', title: 'Dark mode for the dashboard', msg: 'Merged', pr: 'https://github.com/acme/acme-web/pull/21' }),
   ]
   return { version: `${agents.codex}-${agents.omp}`, machines: [{ machine: '', status: 'ready', version: '1.2.1', tasks: list }] }
 }
