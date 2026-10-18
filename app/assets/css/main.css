@@ -272,6 +272,8 @@
   animation: spin .8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes drawer-in { from { transform: translateX(-24px); opacity: .6; } }
+@keyframes scrim-in { from { opacity: 0; } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 
 .view {
@@ -515,7 +517,7 @@ body.short-bottom { --safe-bottom: 0px; }
   border: 1px solid var(--line-strong); color: var(--text-3);
   font: 600 9px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap;
 }
-@media (min-width: 900px) {
+@media (min-width: 900px), (min-width: 700px) and (min-height: 700px) {
   .machine-head { display: grid; grid-template-columns: 15px 16px minmax(0, 1fr) auto; grid-template-rows: auto auto; row-gap: 4px; }
   .machine-chev { grid-column: 1; grid-row: 1 / 3; }
   .machine-icon { grid-column: 2; grid-row: 1 / 3; }
@@ -1814,7 +1816,7 @@ body.kb .composer { padding-bottom: 8px; }
    html/body and the theme-color meta, so whatever iOS paints past the edge
    matches. Keyboard open: it sits on the visible area above the keyboard and
    its content scrolls. */
-@media (max-width: 899px) {
+@media (max-width: 699px), (max-width: 899px) and (max-height: 699px) {
   .hw-sheet:not(.screen) {
     bottom: 0; max-height: calc((100% - var(--safe-top)) * .85);
     background: var(--bg); box-shadow: 0 -20px 50px var(--shadow), 0 160px 0 var(--bg);
@@ -1847,7 +1849,7 @@ body.kb .composer { padding-bottom: 8px; }
    can show around it, even below a page shortened by iOS. It is laid out
    like the agent view: whole layout viewport, then the visible area above
    the keyboard. Safe areas are padded, not left empty. */
-@media (max-width: 899px) {
+@media (max-width: 699px), (max-width: 899px) and (max-height: 699px) {
   .hw-scrim.screen { background: var(--bg); }
   body .hw-sheet.screen {
     top: 0; bottom: auto; height: 100%; max-height: none;
@@ -2314,7 +2316,7 @@ body.kb .composer { padding-bottom: 8px; }
   .onboarding-steps button span { font-size: 9px; letter-spacing: .08em; }
 }
 /* Computer: a centered modal over the blurred app, sized to its content. */
-@media (min-width: 900px) {
+@media (min-width: 900px), (min-width: 700px) and (min-height: 700px) {
   .onboarding {
     align-items: center; justify-content: center; padding: 40px 24px;
     background: color-mix(in srgb, var(--bg) 55%, transparent);
@@ -2369,7 +2371,7 @@ body.kb .composer { padding-bottom: 8px; }
 .theme-name { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 500; color: var(--text); }
 .theme-name small { display: block; font: 400 11px/1.3 var(--mono); color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .theme-check { width: 18px; height: 18px; color: var(--accent); }
-@media (min-width: 900px) { .theme-grid { grid-template-columns: 1fr 1fr; } .theme-grid .theme-opt:nth-child(2) { border-top: 0; } .theme-grid .theme-opt:nth-child(even) { border-left: 1px solid var(--line-soft); } }
+@media (min-width: 900px), (min-width: 700px) and (min-height: 700px) { .theme-grid { grid-template-columns: 1fr 1fr; } .theme-grid .theme-opt:nth-child(2) { border-top: 0; } .theme-grid .theme-opt:nth-child(even) { border-left: 1px solid var(--line-soft); } }
 .settings-card, .settings-action.solo, .settings-stepper, .settings-toggle { background: var(--bg-2); border: 1px solid var(--line); }
 .settings-card { padding: 0 16px 14px; }
 .settings-card > p { margin: 6px 0 0; font-size: 13px; line-height: 1.45; }
@@ -2788,10 +2790,10 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   background: var(--surface); font: 500 12px/1.4 var(--mono);
 }
 .interactive-terminal-reopen:hover { background: var(--surface-2); }
-@media (max-width: 899px) {
+@media (max-width: 699px), (max-width: 899px) and (max-height: 699px) {
   .interactive-terminal-scrim { background: var(--bg); }
 }
-@media (min-width: 900px) {
+@media (min-width: 900px), (min-width: 700px) and (min-height: 700px) {
   .interactive-terminal {
     inset: auto; top: 50%; left: 50%; translate: -50% -50%;
     width: min(1200px, calc(100vw - 96px)); height: min(900px, calc(100dvh - 96px));
@@ -2871,7 +2873,7 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
 .pt-links:empty { display: none; }
 .pt-btn { min-height: 44px; padding: 0 14px; font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
 .pt-output { margin: 0; padding: 10px 12px; border: 1px solid var(--line-soft); background: var(--surface); font: 11.5px/1.5 var(--mono); color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; }
-@media (max-width: 899px) { .pt-links > *, .pt-actions > * { flex: 1 1 calc(50% - 4px); justify-content: center; } }
+@media (max-width: 699px), (max-width: 899px) and (max-height: 699px) { .pt-links > *, .pt-actions > * { flex: 1 1 calc(50% - 4px); justify-content: center; } }
 .pp-list.pi-list { padding-top: 10px; }
 .pp-empty.pi-none { padding: 18px 16px 6px; }
 .pp-empty.pi-more { padding: 4px 16px 6px; }
@@ -2987,6 +2989,10 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .pp-tlink { color: var(--accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); text-underline-offset: 2px; overflow-wrap: anywhere; }
 .pp-task-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
 .pp-task-body .pp-task-text { flex: none; }
+.pp-task-head { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+.pp-task-head .pp-task-text { flex: 1; }
+.pp-task-head .space-menu { flex: none; margin: -4px -6px -4px 0; color: var(--muted); }
+.pp-task-head .pp-spin { flex: none; margin-top: 2px; }
 .pp-reason { font: 11px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 .pp-task-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 26px; }
 /* Confirm / Problem / Question: 26 px tinted squares, in an invisible
@@ -3073,7 +3079,7 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
    Computer (≥ 900 px): list as a sidebar + agent on the right,
    conversation centered on a reading width, sheets as windows.
    ================================================================ */
-@media (min-width: 900px) {
+@media (min-width: 900px), (min-width: 700px) and (min-height: 700px) {
   :root { --side: 340px; }
 
   .settings-layout { flex-direction: row; }
@@ -3096,6 +3102,9 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
   #agent, #placeholder, #settings, #board, #tabview { left: var(--side); }
   /* Collapsed list: column of icons and state counters, the rest hidden (state kept). */
   #home.rail > .home-top, #home.rail > .scroll, #home.rail > .fab-wrap { display: none; }
+  /* Tablet in portrait: the list opened slides over the agent (drawer). */
+  #home.drawer { width: min(360px, 86vw); z-index: 19; box-shadow: 1px 0 0 var(--line), 24px 0 48px rgb(0 0 0 / .35); animation: drawer-in .18s ease-out; }
+  .list-scrim { position: fixed; inset: 0; z-index: 18; background: rgb(0 0 0 / .45); animation: scrim-in .18s ease-out; }
   .home-rail { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 20px 0 16px; min-height: 0; overflow-y: auto; }
   .home-rail .home-logo { margin: 0 0 14px; }
   .rail-stats { list-style: none; margin: 12px 0 0; padding: 14px 0 0; width: 100%; border-top: 1px solid var(--line-soft); display: flex; flex-direction: column; align-items: center; gap: 14px; }
@@ -3746,7 +3755,7 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .list-compact .machine-head { padding-top: 7px; padding-bottom: 7px; }
 .list-compact .machine-grip { min-height: 32px; }
 .list-compact .machine-row { margin-bottom: 4px; }
-@media (min-width: 900px) {
+@media (min-width: 900px), (min-width: 700px) and (min-height: 700px) {
   .list-compact .machine-head { display: flex; }
   .list-compact .machine-head .machine-state { margin-left: auto; }
 }
@@ -3830,7 +3839,7 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .review-pick button { flex: none; }
 /* Full-screen window on the phone: its body has 4 px of top padding, where a
    sliver of diff would show above the pinned bar. */
-@media (max-width: 899px) { .review-toolbar { top: -4px; } }
+@media (max-width: 699px), (max-width: 899px) and (max-height: 699px) { .review-toolbar { top: -4px; } }
 
 /* ---------- Board: projects, threads, tasks and agents in four columns ---------- */
 .board-view { z-index: 3; }
@@ -3883,9 +3892,21 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-counts li.blocked:not(.zero) b { color: var(--rose); }
 .board-note { margin: 0; font: 11px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 .board-note.error { color: var(--rose); }
-@media (min-width: 900px) {
+@media (min-width: 900px), (min-width: 700px) and (min-height: 700px) {
   /* Narrow window: columns keep a readable width and the board scrolls sideways. */
   .board-cols { flex-direction: row; overflow-x: auto; }
   .board-col { flex: 1 1 0; min-width: 220px; }
   .board-col + .board-col { border-left: 1px solid var(--line-soft); }
 }
+
+/* Touch tablet (iPad, shortest side ≥ 700 px): 44 px targets, like on the
+   phone. A large phone in landscape keeps its layout. */
+@media (min-width: 700px) and (min-height: 700px) and (pointer: coarse) {
+  .icon-btn { width: 44px; height: 44px; }
+  .home-rail { gap: 6px; }
+  .card { min-height: 52px; }
+  /* Room for the larger buttons next to the title. */
+  .home-top .home-title-row .display { font-size: 28px; }
+  .home-actions { gap: 0; }
+}
+@media (prefers-reduced-motion: reduce) { #home.drawer, .list-scrim { animation: none; } }

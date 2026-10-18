@@ -19,6 +19,8 @@ import { uploadPhoto } from '~/utils/photoUpload'
 import { lostPhotosText, restoreDraft } from '~/utils/queuedCancel'
 import { isLongPaste, messageBody } from '#shared/pastedText'
 import { rememberPastes } from '~/utils/sentPastes'
+import { enterSends as enterSendsFor } from '~/utils/layoutMode'
+import { kbOpen } from '~/composables/useViewport'
 import { PromptHistory, historyDirection } from '~/utils/promptHistory'
 
 // `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
@@ -68,7 +70,8 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const anyFileInput = ref<HTMLInputElement | null>(null)
 const sending = ref(false)
 // On a touch keyboard, Enter adds a line; the button below the field sends.
-const enterSends = computed(() => desk.value && !isIOS && !touchKeyboard)
+// An iPad with a proven hardware keyboard (utils/layoutMode.ts): Enter sends.
+const enterSends = computed(() => enterSendsFor({ desk: desk.value, touch: Boolean(isIOS || touchKeyboard), tablet: tablet.value, hardwareKeyboard: hardwareKeyboard.value, softKeyboard: kbOpen.value }))
 
 type Att = DraftAtt
 const attachments = toRef(draft, 'atts')
