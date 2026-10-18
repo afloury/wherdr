@@ -340,6 +340,25 @@ describe('actions on a task', () => {
     expect(calls.at(-1)).toEqual(['details', '--json', '--', 'demo/1'])
   })
 
+  it('a linked pane that is gone gives no pane, never another agent in the same worktree', async () => {
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'approval', link: { pane: 'w2:p1' } })
+    // An unrelated agent, in another session, on the same folder.
+    panes.push({ id: 'abcd1234~w8:p1', machine: 'abcd1234', agent: 'claude', cwd: '/home/user/code/demo-wt/1' })
+    panes.push({ id: 'w9:p1', machine: '', agent: 'codex', cwd: '/home/user/code/demo-wt/1' })
+    expect((await T.taskDetails('', 'demo/1')).pane).toBeNull()
+  })
+
+  it('without a link, two agents in the worktree give no pane', async () => {
+    panes.push({ id: 'w5:p1', machine: '', agent: 'codex', cwd: '/home/user/code/demo-wt/1' })
+    panes.push({ id: 'w6:p1', machine: '', agent: 'claude', cwd: '/home/user/code/demo-wt/1/' })
+    expect((await T.taskDetails('', 'demo/1')).pane).toBeNull()
+  })
+
+  it('without a link, an agent of another session in the worktree is not offered', async () => {
+    panes.push({ id: 'abcd1234~w5:p1', machine: 'abcd1234', agent: 'codex', cwd: '/home/user/code/demo-wt/1' })
+    expect((await T.taskDetails('', 'demo/1')).pane).toBeNull()
+  })
+
   it('the closing note comes from the task file, which 1.2.1 details leave it out of', async () => {
     taskFile('demo/1', { title: 'Fix login redirect', stage: 'approval', summary: 'Redirect fixed, two tests added.' })
     expect((await T.taskDetails('', 'demo/1')).summary).toBe('Redirect fixed, two tests added.')

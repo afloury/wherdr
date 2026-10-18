@@ -342,16 +342,19 @@ export async function taskDetails(machine: unknown, id: unknown): Promise<TaskDe
 }
 
 // The task's agent pane in Herdr: the one the board linked it to (its task.json,
-// read only, in the session it names), or else the pane working in its worktree.
+// read only, in the session it names). A linked pane that is gone gives no pane:
+// another agent in the same folder is not proved to be the task's.
+// Without a link only, the one agent working in its worktree in the board's own
+// session; none, or several, give no pane (the sheet opens instead).
 function taskPane(m: Machine, file: Record<string, unknown> | null, worktree: string): string | null {
   const linked = linkedPane(m, file)
   // Linked to a session wherdr has not opened: no pane to offer, not one of another session.
   if (!linked.known) return null
-  if (linked.pane && findPane(linked.pane)) return linked.pane
+  if (linked.pane) return findPane(linked.pane) ? linked.pane : null
   if (!worktree) return null
-  const keys = new Set(allMachines().filter(x => boardMachine(x).key === m.key).map(x => x.key))
-  const hit = getState().panes.find(p => keys.has(p.machine || '') && p.agent && (p.cwd || '').replace(/\/+$/, '') === worktree.replace(/\/+$/, ''))
-  return hit ? hit.id : null
+  const dir = worktree.replace(/\/+$/, '')
+  const hits = getState().panes.filter(p => (p.machine || '') === m.key && p.agent && (p.cwd || '').replace(/\/+$/, '') === dir)
+  return hits.length === 1 ? hits[0]!.id : null
 }
 
 function forget(m: Machine) { lists.delete(m.key) }
