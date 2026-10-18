@@ -48,6 +48,8 @@ export const SAMPLE_PDF_PAGES = Array.from({ length: 12 }, (_, i) => `Style guid
 // WebM (VP8) plays in every test browser, MP4 (H.264) where the codec exists.
 export const SAMPLE_WEBM = 'notes/walkthrough.webm'
 export const SAMPLE_MP4 = 'notes/walkthrough.mp4'
+// Named as a video, but a page: never served inline.
+export const FAKE_MOV = 'notes/fake-clip.mov'
 export const fixture = name => fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', name))
 export const OMP_APPROVAL_PANE = 'w5:p1'
 export const OMP_SHELL_PANE = 'w6:p1'
@@ -251,6 +253,7 @@ export function writeScenario(home) {
   write(path.join(screens, SAMPLE_PDF), samplePdf(SAMPLE_PDF_PAGES))
   write(path.join(screens, SAMPLE_WEBM), fixture('sample.webm'))
   write(path.join(screens, SAMPLE_MP4), fixture('sample.mp4'))
+  write(path.join(screens, FAKE_MOV), '<html><script>alert(1)</script>\n')
   const coordinatorFile = ompTranscript(home, coordinator, 'e2e-coordinator', now, msg => [
     msg({ role: 'user', content: [{ type: 'text', text: 'Where are the threads?' }], attribution: 'user' }),
     msg({ role: 'assistant', content: [{ type: 'text', text: 'Two threads are working.' }], stopReason: 'stop' }),

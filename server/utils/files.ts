@@ -29,13 +29,11 @@ const PDF_HEAD = 1024
 export const isPdf = (name: string, head: Buffer) =>
   path.posix.extname(name).toLowerCase() === '.pdf' && head.subarray(0, PDF_HEAD).includes('%PDF-')
 
-// Videos played by the browser's own <video>, streamed in pieces of at most
-// VIDEO_CHUNK bytes (Range requests), so any size plays without being held
-// in memory. A video: its extension, and its container's signature (WebM's
-// EBML header, or an MP4/QuickTime box at byte 4).
+// Videos played by the browser's own <video>, streamed (videoStream.ts). A
+// video: its extension, and its container's signature (WebM's EBML header,
+// or an MP4/QuickTime box at byte 4).
 export const VIDEO_TYPES: Record<string, string> = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm' }
-export const VIDEO_CHUNK = 2 * 1024 * 1024
-const VIDEO_HEAD = 12
+export const VIDEO_HEAD = 12
 const MP4_BOXES = new Set(['ftyp', 'moov', 'mdat', 'wide', 'free', 'skip', 'pnot'])
 export const videoType = (name: string) => VIDEO_TYPES[path.posix.extname(name).slice(1).toLowerCase()]
 export function isVideo(name: string, head: Buffer) {
@@ -43,25 +41,6 @@ export function isVideo(name: string, head: Buffer) {
   if (!type || head.length < 8) return false
   if (type === 'video/webm') return head.readUInt32BE(0) === 0x1A45DFA3
   return MP4_BOXES.has(head.subarray(4, 8).toString('latin1'))
-}
-
-// Bytes asked by a Range header, at most `max` of them (a browser asking
-// "bytes=0-" gets the first piece and asks for the next). No header: the
-// first piece. null: nothing to serve (416). Several ranges: the first.
-export function parseRange(header: string | undefined, size: number, max = VIDEO_CHUNK): { start: number, end: number } | null {
-  if (size <= 0) return null
-  const cap = (start: number, end: number) => ({ start, end: Math.min(end, size - 1, start + max - 1) })
-  if (!header) return cap(0, size - 1)
-  const m = /^bytes=\s*(\d*)-(\d*)/i.exec(header.trim())
-  if (!m || (!m[1] && !m[2])) return null
-  if (!m[1]) {
-    const n = Number(m[2])
-    return n > 0 ? cap(Math.max(0, size - n), size - 1) : null
-  }
-  const start = Number(m[1])
-  const end = m[2] ? Number(m[2]) : size - 1
-  if (start >= size || end < start) return null
-  return cap(start, end)
 }
 
 // Physical root, then the requested folder resolved under it (exit 5 outside).
@@ -102,10 +81,10 @@ printf '=\\0'
 if stat -f %z / >/dev/null 2>&1; then stat -f %z -- "$@"; else stat -c %s -- "$@"; fi 2>/dev/null
 exit 0`
 
-// The file $2 resolved under the root into $f, then "<size>\\n" printed.
+// The file $2 resolved under the root into $f, then opened on fd 3.
 // Symlinks resolved one link at a time (readlink, cd -P: realpath is missing
 // before macOS 13).
-const FILE_SIZE = `${RESOLVE}
+export const OPEN_FILE = `${RESOLVE}
 case "$2" in */*) d=\${2%/*} ;; *) d=. ;; esac
 b=\${2##*/}
 dir=$(cd "$root" && cd -- "./$d" 2>/dev/null && pwd -P) || { echo "not found" >&2; exit 4; }
@@ -122,21 +101,22 @@ done
 under "$f" || { echo "outside" >&2; exit 5; }
 [ -f "$f" ] || { echo "not a file" >&2; exit 6; }
 [ -r "$f" ] || { echo "permission denied" >&2; exit 7; }
-s=$(wc -c < "$f") || exit 4
-s=$(($s))
-echo $s`
+command exec 3< "$f" || { echo "permission denied" >&2; exit 7; }
+# "<inode> <size> <mtime>" of the opened file, from its metadata: never a
+# read (BusyBox's wc -c reads every byte). GNU/BusyBox stat, then BSD.
+meta() {
+  stat -L -c '%i %s %Y' /dev/fd/3 2>/dev/null || stat -L -f '%i %z %m' /dev/fd/3 2>/dev/null ||
+  stat -L -c '%i %s %Y' "$f" 2>/dev/null || stat -L -f '%i %z %m' "$f" 2>/dev/null || echo "0 $(wc -c < "$f") 0"
+}`
 
 // "<size>\\n" then at most $3 bytes of the file; with $4 set, the size alone
 // when the file has $3 bytes or more (a download refused, nothing sent).
-export const READ_SCRIPT = `${FILE_SIZE}
+export const READ_SCRIPT = `${OPEN_FILE}
+m=$(meta) || exit 4
+s=\${m#* }; s=$((\${s%% *}))
+echo $s
 [ -n "$4" ] && [ "$s" -ge "$3" ] && exit 0
-head -c "$3" < "$f"`
-
-// "<size>\\n" then at most $4 bytes from byte $3 (a video played in pieces):
-// tail seeks in a regular file, nothing before $3 is read.
-export const RANGE_SCRIPT = `${FILE_SIZE}
-[ "$3" -lt "$s" ] || exit 0
-tail -c +$(($3 + 1)) < "$f" | head -c "$4"`
+head -c "$3" <&3`
 
 export const MACOS_SSH_DENIED = 'macOS blocks access to this folder. On the Mac: System Settings › General › Sharing › Remote Login ⓘ › “Allow full disk access for remote users”.'
 export const MACOS_LOCAL_DENIED = 'macOS blocks access to this folder. Allow the app that runs wherdr in System Settings › Privacy & Security › Full Disk Access.'
@@ -159,16 +139,22 @@ function executor(m: Machine, { timeoutMs = 15000, maxBytes = IMAGE_BYTES }: Run
 async function run(m: Machine, script: string, args: string[], opts?: RunOpts) {
   const r = await executor(m, opts)(script, args)
   if (r.code === 0) return r.stdout
-  if (r.code === 3) throw new HerdrError('bad_cwd', 'This agent’s folder is unknown')
-  if (r.code === 4) throw new HerdrError('not_found', 'File not found')
-  if (r.code === 5) throw new HerdrError('outside', 'Outside the project folder')
-  if (r.code === 6) throw new HerdrError('not_file', 'Not a file')
-  if (r.code === 7) throw new HerdrError('denied', 'Permission denied')
+  throw shellError(m, r.code, r.stderr)
+}
+
+// The error of a script that failed with `code`.
+export function shellError(m: Machine, code: number | null, stderr: string): HerdrError {
+  const r = { code, stderr }
+  if (r.code === 3) return new HerdrError('bad_cwd', 'This agent’s folder is unknown')
+  if (r.code === 4) return new HerdrError('not_found', 'File not found')
+  if (r.code === 5) return new HerdrError('outside', 'Outside the project folder')
+  if (r.code === 6) return new HerdrError('not_file', 'Not a file')
+  if (r.code === 7) return new HerdrError('denied', 'Permission denied')
   // macOS privacy protection (Documents, Desktop…): `[ -r . ]` passes, the listing is refused.
-  if (r.code === 8) throw new HerdrError('denied', m.exec ? MACOS_SSH_DENIED : MACOS_LOCAL_DENIED)
-  if (r.code === 124) throw new HerdrError('timeout', 'The folder took too long to read')
-  if (r.code === 255 || r.code === null) throw new HerdrError('unreachable', 'Machine unreachable')
-  throw new HerdrError('remote', r.stderr.trim().split('\n').pop() || `code ${r.code}`)
+  if (r.code === 8) return new HerdrError('denied', m.exec ? MACOS_SSH_DENIED : MACOS_LOCAL_DENIED)
+  if (r.code === 124) return new HerdrError('timeout', 'The folder took too long to read')
+  if (r.code === 255 || r.code === null) return new HerdrError('unreachable', 'Machine unreachable')
+  return new HerdrError('remote', r.stderr.trim().split('\n').pop() || `code ${r.code}`)
 }
 
 // Path relative to the root, from the client: no absolute path, no "..".
@@ -206,7 +192,7 @@ export function parseListing(raw: Buffer): { root: string, dir: string, entries:
 }
 
 // Browsed root: the Git root containing the folder, otherwise the folder.
-async function rootOf(m: Machine, cwd: string) {
+export async function rootOf(m: Machine, cwd: string) {
   return (await gitToplevel(m, cwd)) || cwd
 }
 
@@ -300,38 +286,6 @@ export async function readFileBytes(m: Machine, cwd: string, rel: unknown) {
 export async function readWrittenBytes(m: Machine, cwd: string | null | undefined, written: unknown) {
   const t = writtenTarget(m, cwd, written)
   return bytesAt(m, t.root, t.rel)
-}
-
-// One piece of a video, as asked by a Range header, with the file's size.
-// One call reads both; only a suffix ("the last N bytes") needs the size
-// first. `range` null: nothing to serve (416).
-type Piece = { name: string, size: number, range: { start: number, end: number } | null, body: Buffer }
-async function rangeAt(m: Machine, root: string, rel: string, header: string | undefined): Promise<Piece> {
-  const name = path.posix.basename(rel)
-  let want = /^\s*bytes=\s*-/i.test(header || '') ? null : parseRange(header, Number.MAX_SAFE_INTEGER)
-  if (!want) {
-    const { size } = await readHead(m, root, rel, 0, { whole: true })
-    want = parseRange(header, size)
-    if (!want) return { name, size, range: null, body: Buffer.alloc(0) }
-  }
-  const len = want.end - want.start + 1
-  const out = await run(m, RANGE_SCRIPT, [root, rel, String(want.start), String(len)], { timeoutMs: 60000, maxBytes: len })
-  const nl = out.indexOf(10)
-  const size = Number(out.subarray(0, nl).toString('utf8')) || 0
-  const body = out.subarray(nl + 1, nl + 1 + len)
-  if (want.start >= size || !body.length) return { name, size, range: null, body: Buffer.alloc(0) }
-  return { name, size, range: { start: want.start, end: want.start + body.length - 1 }, body }
-}
-
-export async function readFileRange(m: Machine, cwd: string, rel: unknown, header: string | undefined) {
-  const p = cleanRelative(rel)
-  if (!p) throw new HerdrError('not_file', 'Not a file')
-  return rangeAt(m, await rootOf(m, cwd), p, header)
-}
-
-export async function readWrittenRange(m: Machine, cwd: string | null | undefined, written: unknown, header: string | undefined) {
-  const t = writtenTarget(m, cwd, written)
-  return rangeAt(m, t.root, t.rel, header)
 }
 
 // Content-Disposition of a download (or of a PDF shown `inline`): an ASCII

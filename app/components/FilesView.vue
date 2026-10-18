@@ -65,6 +65,8 @@ function back() {
 }
 function refresh() {
   reloads.value++
+  // Same URL: the player comes back with its new key.
+  videoFailed.value = false
   if (props.file) openFile(props.file)
   else if (preview.value) openFile(preview.value.path)
   else openDir(listing.value ? listing.value.path : null)

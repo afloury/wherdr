@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { DOWNLOAD_BYTES, READ_SCRIPT, VIDEO_CHUNK, attachmentHeader, isPdf, isVideo, cleanRelative, listFiles, parseRange, readFileBytes, readFilePreview, readFileRange, readWrittenBytes, readWrittenPreview, readWrittenRange } from '../server/utils/files'
+import { DOWNLOAD_BYTES, READ_SCRIPT, attachmentHeader, isPdf, isVideo, cleanRelative, listFiles, readFileBytes, readFilePreview, readWrittenBytes, readWrittenPreview } from '../server/utils/files'
 import type { Machine } from '../server/utils/machines'
 import { samplePdf } from './e2e/samplePdf.mjs'
 
@@ -214,41 +214,6 @@ describe('files named in a conversation', () => {
     expect(isVideo('a.mov', Buffer.from('\0\0\0\x14moov\0\0\0\0', 'latin1'))).toBe(true)
     expect(isVideo('a.webm', mp4)).toBe(false)
     expect(isVideo('a.mkv', mp4)).toBe(false)
-  })
-
-  it('parses Range headers into one bounded piece', () => {
-    expect(parseRange('bytes=0-1', 100)).toEqual({ start: 0, end: 1 })
-    expect(parseRange('bytes=10-', 100)).toEqual({ start: 10, end: 99 })
-    expect(parseRange('bytes=90-500', 100)).toEqual({ start: 90, end: 99 })
-    expect(parseRange('bytes=-10', 100)).toEqual({ start: 90, end: 99 })
-    expect(parseRange('bytes=-500', 100)).toEqual({ start: 0, end: 99 })
-    expect(parseRange('bytes=0-10, 20-30', 100)).toEqual({ start: 0, end: 10 })
-    expect(parseRange(undefined, 100)).toEqual({ start: 0, end: 99 })
-    // Open-ended: the first piece only, the browser asks for the next.
-    expect(parseRange('bytes=0-', 10 * VIDEO_CHUNK)).toEqual({ start: 0, end: VIDEO_CHUNK - 1 })
-    expect(parseRange(undefined, 10 * VIDEO_CHUNK)).toEqual({ start: 0, end: VIDEO_CHUNK - 1 })
-    for (const bad of ['bytes=100-', 'bytes=5-2', 'bytes=-0', 'bytes=-', 'items=0-1', 'nonsense']) expect(parseRange(bad, 100)).toBeNull()
-    expect(parseRange('bytes=0-1', 0)).toBeNull()
-  })
-
-  it('reads one piece of a video without reading the rest', async () => {
-    const webm = readFileSync(path.join(root, 'clip.webm'))
-    const n = webm.length
-    expect(await readFileRange(local, root, 'clip.webm', 'bytes=0-1')).toEqual({ name: 'clip.webm', size: n, range: { start: 0, end: 1 }, body: webm.subarray(0, 2) })
-    expect(await readFileRange(local, root, 'clip.webm', 'bytes=1000-')).toMatchObject({ range: { start: 1000, end: n - 1 }, body: webm.subarray(1000) })
-    expect(await readFileRange(local, root, 'clip.webm', 'bytes=-7')).toMatchObject({ range: { start: n - 7, end: n - 1 }, body: webm.subarray(n - 7) })
-    expect(await readFileRange(local, root, 'clip.webm', `bytes=${n}-`)).toMatchObject({ size: n, range: null })
-    expect(await readFileRange(local, root, 'clip.webm', 'bytes=x')).toMatchObject({ size: n, range: null })
-    await expect(readFileRange(local, root, '../secret.txt', 'bytes=0-')).rejects.toMatchObject({ code: 'outside' })
-    // One call per piece on a remote machine, bounded by the chunk size.
-    const calls: string[][] = []
-    const remote = { home: '/home/user', exec: async (_s: string, args: string[] = []) => {
-      calls.push(args)
-      return { code: 0, stdout: Buffer.concat([Buffer.from('900000000\n'), Buffer.alloc(Number(args[3] ?? 0))]), stderr: '' }
-    } } as unknown as Machine
-    const piece = await readWrittenRange(remote, '/home/user/demo', 'film.mp4', 'bytes=500000000-')
-    expect(piece.range).toEqual({ start: 500000000, end: 500000000 + VIDEO_CHUNK - 1 })
-    expect(calls).toEqual([['/home/user', 'demo/film.mp4', '500000000', String(VIDEO_CHUNK)]])
   })
 
   it('names the attachment so that any file name survives', () => {

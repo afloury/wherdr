@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { OMP_IMAGE_PANE, SAMPLE_MP4, SAMPLE_WEBM, fixture } from './scenario.mjs'
+import { FAKE_MOV, OMP_IMAGE_PANE, SAMPLE_MP4, SAMPLE_WEBM, fixture } from './scenario.mjs'
 
 const inline = (file: string) => `/api/files/download?pane=${encodeURIComponent(OMP_IMAGE_PANE)}&path=${encodeURIComponent(file)}&inline=1`
 
@@ -12,8 +12,11 @@ async function openNotes(page: Page) {
 }
 
 test('a video plays in the Files preview, streamed in pieces', async ({ page }, info) => {
-  const statuses: number[] = []
-  page.on('response', (r) => { if (r.url().endsWith(inline(SAMPLE_WEBM))) statuses.push(r.status()) })
+  // Each media request: its Range header and the status it got.
+  const answers: { range?: string, status: number }[] = []
+  page.on('response', async (r) => {
+    if (r.url().endsWith(inline(SAMPLE_WEBM))) answers.push({ range: (await r.request().allHeaders()).range, status: r.status() })
+  })
   await openNotes(page)
   await page.locator('.files-entry', { hasText: 'walkthrough.webm' }).click()
 
@@ -23,11 +26,12 @@ test('a video plays in the Files preview, streamed in pieces', async ({ page }, 
   await expect(page.locator('.files-view').getByText('Binary file')).toHaveCount(0)
   await expect(video).toHaveAttribute('src', inline(SAMPLE_WEBM))
   expect(await video.evaluate((v: HTMLVideoElement) => v.controls && v.playsInline)).toBe(true)
-  // Metadata read through Range requests, every answer a 206 (WebKit's
-  // player also aborts pieces it no longer needs: status 0).
+  // A Range gets a 206, no Range (WebKit's first request on Linux) the whole
+  // file in a 200; WebKit also aborts requests it no longer needs (status 0).
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => Math.round(v.duration))).toBe(2)
-  expect(statuses.filter(s => s !== 206 && s !== 0), String(statuses)).toEqual([])
-  expect(statuses).toContain(206)
+  const done = answers.filter(a => a.status !== 0)
+  expect(done.length).toBeGreaterThan(0)
+  for (const a of done) expect(a.status, JSON.stringify(a)).toBe(a.range ? 206 : 200)
   // It really plays.
   await video.evaluate((v: HTMLVideoElement) => { v.muted = true; return v.play() })
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.2)
@@ -49,10 +53,10 @@ test('a video plays in the Files preview, streamed in pieces', async ({ page }, 
     await page.screenshot({ path: `${process.env.SHOTS}/${info.project.name}-video-preview.png` })
   }
 
-  // Open: a real new-tab navigation, answered in pieces too.
+  // Open: a real new-tab navigation, streamed too.
   const opened = page.context().waitForEvent('response', r => r.url().endsWith(inline(SAMPLE_WEBM)) && r.request().isNavigationRequest())
   await open.click()
-  expect((await opened).status()).toBe(206)
+  expect([200, 206]).toContain((await opened).status())
   for (const tab of page.context().pages()) if (tab !== page) await tab.close()
 })
 
@@ -82,9 +86,37 @@ test('video pieces follow the Range header', async ({ page }) => {
   expect(tail.headers()['content-range']).toBe(`bytes ${size - 10}-${size - 1}/${size}`)
   expect(Buffer.compare(await tail.body(), webm.subarray(size - 10))).toBe(0)
 
+  // No Range: the whole file, 200, streamed.
   const none = await get()
-  expect(none.status()).toBe(206)
+  expect(none.status()).toBe(200)
+  expect(none.headers()['content-range']).toBeUndefined()
+  expect(none.headers()['content-length']).toBe(String(size))
   expect(Buffer.compare(await none.body(), webm)).toBe(0)
+  // HEAD: the same headers, no bytes.
+  const head = await page.request.fetch(inline(SAMPLE_WEBM), { method: 'HEAD' })
+  expect(head.status()).toBe(200)
+  expect(head.headers()['content-length']).toBe(String(size))
+  expect(head.headers()['content-type']).toBe('video/webm')
+  expect((await head.body()).length).toBe(0)
+
+  // If-Range: the current ETag keeps the range, another one gets the whole file.
+  const etag = h.etag!
+  expect(etag).toMatch(/^"[\d-]+"$/)
+  expect((await page.request.get(inline(SAMPLE_WEBM), { headers: { 'range': 'bytes=0-1', 'if-range': etag } })).status()).toBe(206)
+  const stale = await page.request.get(inline(SAMPLE_WEBM), { headers: { 'range': 'bytes=0-1', 'if-range': '"0-1-2"' } })
+  expect(stale.status()).toBe(200)
+  expect((await stale.body()).length).toBe(size)
+
+  // The first satisfiable range; an invalid header is ignored.
+  const later = await get(`bytes=${size + 10}-${size + 20}, 0-1`)
+  expect(later.status()).toBe(206)
+  expect(later.headers()['content-range']).toBe(`bytes 0-1/${size}`)
+  expect((await get('bytes=0-1junk')).status()).toBe(200)
+
+  // A .mov that is not a video is refused inline, even asked directly.
+  const fake = await page.request.get(inline(FAKE_MOV), { headers: { range: 'bytes=0-' } })
+  expect(fake.status()).toBe(400)
+  expect(await fake.json()).toMatchObject({ code: 'not_video' })
 
   const past = await get(`bytes=${size}-`)
   expect(past.status()).toBe(416)
@@ -114,4 +146,12 @@ test('an MP4 opens the player, and a video that cannot play leaves Open', async 
   await expect(notice).toBeVisible()
   await expect(page.locator('.files-view').getByRole('link', { name: 'Open', exact: true })).toBeVisible()
   await expect(page.locator('.files-view').getByRole('button', { name: 'Download', exact: true })).toBeVisible()
+
+  // The server is back: Refresh brings the player back, and it plays.
+  await page.unroute('**/api/files/download?**')
+  await page.locator('.files-view').getByRole('button', { name: 'Refresh' }).click()
+  const video = page.locator('video.files-video')
+  await expect(video).toBeVisible()
+  await expect(notice).toHaveCount(0)
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => Math.round(v.duration))).toBe(2)
 })
