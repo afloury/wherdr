@@ -23,10 +23,11 @@ test('a video plays in the Files preview, streamed in pieces', async ({ page }, 
   await expect(page.locator('.files-view').getByText('Binary file')).toHaveCount(0)
   await expect(video).toHaveAttribute('src', inline(SAMPLE_WEBM))
   expect(await video.evaluate((v: HTMLVideoElement) => v.controls && v.playsInline)).toBe(true)
-  // Metadata read through Range requests, every answer a 206.
+  // Metadata read through Range requests, every answer a 206 (WebKit's
+  // player also aborts pieces it no longer needs: status 0).
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => Math.round(v.duration))).toBe(2)
-  expect(statuses.length).toBeGreaterThan(0)
-  expect(statuses.every(s => s === 206)).toBe(true)
+  expect(statuses.filter(s => s !== 206 && s !== 0), String(statuses)).toEqual([])
+  expect(statuses).toContain(206)
   // It really plays.
   await video.evaluate((v: HTMLVideoElement) => { v.muted = true; return v.play() })
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.2)
@@ -47,6 +48,12 @@ test('a video plays in the Files preview, streamed in pieces', async ({ page }, 
     await page.waitForTimeout(600) // opening animation, seeked frame
     await page.screenshot({ path: `${process.env.SHOTS}/${info.project.name}-video-preview.png` })
   }
+
+  // Open: a real new-tab navigation, answered in pieces too.
+  const opened = page.context().waitForEvent('response', r => r.url().endsWith(inline(SAMPLE_WEBM)) && r.request().isNavigationRequest())
+  await open.click()
+  expect((await opened).status()).toBe(206)
+  for (const tab of page.context().pages()) if (tab !== page) await tab.close()
 })
 
 test('video pieces follow the Range header', async ({ page }) => {
