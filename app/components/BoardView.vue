@@ -104,9 +104,15 @@ const machineGroups = computed(() => shownBoards.value.map((m) => {
     summary: summary(rows),
     readOnly: Boolean(m.readOnly),
     repos: groupByRepo(rows).map(({ repo, tasks }) => {
-      const done = tasks.filter(t => t.group === 'done')
-      const shown = showAll.value ? tasks : [...tasks.filter(t => t.group !== 'done'), ...done.slice(0, DONE_SHOWN_REPO)]
-      return { repo, summary: summary(tasks), cards: shown.map(task => cardOf(m, task)), hidden: tasks.length - shown.length }
+      // The board's five groups under each repo, as "By status" shows them.
+      const cols = TASK_GROUPS.map((id) => {
+        const all = tasks.filter(t => t.group === id)
+        const list = id === 'done' && !showAll.value ? all.slice(0, DONE_SHOWN_REPO) : all
+        return { id, label: taskGroupLabel(id), total: all.length, cards: list.map(task => cardOf(m, task)), hidden: all.length - list.length }
+      })
+      // An empty group keeps a narrow track: its name and its 0.
+      const tracks = cols.map(c => (c.total ? 'minmax(0, 1fr)' : '96px')).join(' ')
+      return { repo, summary: summary(tasks), cols, tracks }
     }),
   }
 }))
@@ -345,13 +351,28 @@ function back() {
                   :aria-label="tl(`New task in ${rg.repo}`, `Nouvelle tâche dans ${rg.repo}`)" @click="newTask(mg.machine, rg.repo)"
                 />
               </div>
-              <div v-if="!folds.has(`r:${mg.machine}|${rg.repo}`)" class="board-rows">
-                <TaskCard
-                  v-for="c in rg.cards" :key="c.key" :task="c.task" status :stale="c.stale" :read-at="readAt(c.readAt)" @open="openCard(c)"
-                />
-                <button v-if="rg.hidden" type="button" class="board-more" @click="showAll = true">
-                  {{ tl(`Show all (${rg.hidden} more done)`, `Tout afficher (${rg.hidden} de plus, faites)`) }}
-                </button>
+              <!-- Its five groups: columns on a computer (an empty one stays narrow), stacked
+                   sections that fold on a phone (an empty one is left out: the heading counts). -->
+              <div v-if="!folds.has(`r:${mg.machine}|${rg.repo}`)" class="board-repo-cols" :class="{ desk }" :style="desk ? { '--repo-cols': rg.tracks } : undefined">
+                <section
+                  v-for="col in rg.cols" v-show="desk || col.total" :key="col.id" class="board-repo-col" :class="[col.id, { empty: !col.total }]"
+                  :data-group="col.id" :aria-label="col.label"
+                >
+                  <h4 v-if="desk" class="board-repo-col-head"><span>{{ col.label }}</span><span class="pp-count">{{ col.total }}</span></h4>
+                  <button
+                    v-else type="button" class="board-repo-col-head" :aria-expanded="!folds.has(`g:${mg.machine}|${rg.repo}|${col.id}`)"
+                    @click="fold(`g:${mg.machine}|${rg.repo}|${col.id}`)"
+                  >
+                    <UIcon :name="folds.has(`g:${mg.machine}|${rg.repo}|${col.id}`) ? 'i-lucide-chevron-right' : 'i-lucide-chevron-down'" />
+                    <span>{{ col.label }}</span><span class="pp-count">{{ col.total }}</span>
+                  </button>
+                  <div v-if="desk ? col.total : !folds.has(`g:${mg.machine}|${rg.repo}|${col.id}`)" class="board-repo-col-body">
+                    <TaskCard v-for="c in col.cards" :key="c.key" :task="c.task" :stale="c.stale" :read-at="readAt(c.readAt)" @open="openCard(c)" />
+                    <button v-if="col.hidden" type="button" class="board-more" @click="showAll = true">
+                      {{ tl(`Show all (${col.hidden} more)`, `Tout afficher (${col.hidden} de plus)`) }}
+                    </button>
+                  </div>
+                </section>
               </div>
             </section>
             <p v-if="!mg.repos.length" class="board-empty board-machine-empty">{{ tl('No task yet: write to the Coordinator, or add one.', 'Aucune tâche : écris au Coordinateur, ou ajoutes-en une.') }}</p>

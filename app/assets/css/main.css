@@ -3570,14 +3570,32 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-head.talking { box-shadow: inset 2px 0 0 var(--mauve); background: color-mix(in srgb, var(--mauve) 7%, transparent); }
 .board-head.talking .board-head-icon { color: var(--mauve); }
 .board-head-add { flex: none; border-radius: 0; }
-.board-rows { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px 0 6px; }
-.board-rows .board-more { justify-self: start; }
+/* A repo's five groups. Phone: stacked sections, each folds. Computer: columns side by side; an empty one stays narrow. */
+.board-repo-cols { display: flex; flex-direction: column; gap: 4px; padding: 8px 0 6px; }
+.board-repo-col-head { display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; min-height: 40px; padding: 6px 4px; border: 0; border-bottom: 1px solid var(--line-soft); background: none; font: 600 10px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--text-2); text-align: left; cursor: pointer; }
+h4.board-repo-col-head { margin: 0; cursor: default; }
+.board-repo-col-head > span:not(.pp-count) { flex: 1; min-width: 0; text-align: left; }
+.board-repo-col-head .pp-count { flex: none; }
+.board-repo-col.needs .board-repo-col-head { color: var(--rose); }
+.board-repo-col.ready .board-repo-col-head { color: var(--green); }
+.board-repo-col.working .board-repo-col-head { color: var(--working); }
+.board-repo-col.todo .board-repo-col-head { color: var(--text-3); }
+.board-repo-col.done .board-repo-col-head { color: var(--done); }
+.board-repo-col.empty .board-repo-col-head { color: var(--dim); }
+.board-repo-col-body { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 8px 0; }
+.board-repo-col-body > .task-card { width: 100%; max-width: none; }
+.board-repo-col-body .board-more { align-self: flex-start; }
+/* Computer: five tracks under each repo; an empty group gets a narrow one, its name on two lines. */
+.board-repo-cols.desk { display: grid; grid-template-columns: var(--repo-cols, repeat(5, minmax(0, 1fr))); align-items: start; gap: 0; }
+.board-repo-cols.desk .board-repo-col { min-width: 0; padding: 0 8px; }
+.board-repo-cols.desk .board-repo-col:first-child { padding-left: 0; }
+.board-repo-cols.desk .board-repo-col:last-child { padding-right: 0; }
+.board-repo-cols.desk .board-repo-col + .board-repo-col { border-left: 1px solid var(--line-soft); }
+.board-repo-cols.desk h4.board-repo-col-head { align-items: flex-start; }
 .board-machine-empty { padding: 10px 4px; }
 .board-card-head .task-state { padding: 2px 5px; font-size: 9px; }
 @media (min-width: 900px) {
   .board-list { padding-left: 24px; padding-right: 24px; }
-  .board-rows { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
-  .board-rows .board-more { grid-column: 1 / -1; }
 }
 .task-card.needs { border-left: 2px solid var(--rose); }
 .task-card.ready { border-left: 2px solid var(--green); }

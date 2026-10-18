@@ -203,6 +203,26 @@ test('grouped by machine then repo: each heading talks to its coordinator, Send 
   await expect(demo.locator('.board-head')).toContainText('1 needs you · 1 working · 1 to do')
   await expect(web).toContainText('Old cleanup')
   await expect(page.locator('.board-head.machine')).toBeVisible()
+  // Under each repo, the board's five groups: each card in its own.
+  const col = (repo: typeof demo, g: string) => repo.locator(`.board-repo-col[data-group="${g}"]`)
+  await expect(col(demo, 'needs')).toContainText('Broke on the tests')
+  await expect(col(demo, 'working')).toContainText('Add dark mode toggle')
+  await expect(col(demo, 'todo')).toContainText('In the backlog')
+  await expect(col(web, 'done')).toContainText('Old cleanup')
+  if (testInfo.project.name.includes('phone')) {
+    // Phone: stacked sections that fold; an empty group is left out.
+    await expect(col(demo, 'ready')).toBeHidden()
+    await col(demo, 'todo').locator('.board-repo-col-head').click()
+    await expect(col(demo, 'todo')).not.toContainText('In the backlog')
+    await col(demo, 'todo').locator('.board-repo-col-head').click()
+    await expect(col(demo, 'todo')).toContainText('In the backlog')
+  } else {
+    // Computer: five columns side by side; an empty one stays, narrow.
+    await expect(col(demo, 'ready')).toBeVisible()
+    await expect(col(demo, 'ready')).toHaveClass(/empty/)
+    const empty = (await col(demo, 'ready').boundingBox())!.width
+    expect(empty).toBeLessThan((await col(demo, 'needs').boundingBox())!.width)
+  }
   await page.screenshot({ path: `.shots/board-1x-repos-${testInfo.project.name}.png` })
 
   const label = page.locator('.board-coord-label')
