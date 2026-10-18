@@ -1062,32 +1062,33 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
    selection tint and a small glyph tinted by what the code holds (data-k from
    utils/codeKind.ts: ❯ command, ▸ path, # ID, ✗ failure, ✓ success). Kept
    quiet so that a sentence full of code stays readable. A wrapped span keeps
-   one rule and one glyph, at its start (box-decoration-break: slice). */
-.md-body code {
+   one rule and one glyph, at its start (box-decoration-break: slice). The
+   same in a task's text (.pp-code, TaskText.vue). */
+.md-body code, .pp-code {
   font-size: .84em; padding: .05em .34em .05em .3em; overflow-wrap: anywhere;
   color: color-mix(in srgb, var(--k, var(--text-2)) 45%, var(--text));
   background: color-mix(in srgb, var(--k, var(--text)) 7%, transparent);
   border-left: 1px solid color-mix(in srgb, var(--k, var(--text)) 50%, transparent);
 }
-.md-body code[data-k="path"] { --k: var(--lav); }
-.md-body code[data-k="cmd"] { --k: var(--green); }
-.md-body code[data-k="id"] { --k: var(--accent); }
-.md-body code[data-k="num"] { --k: var(--teal); }
-.md-body code[data-k="key"] { --k: var(--ochre); }
-.md-body code[data-k="err"] { --k: var(--rose); }
-.md-body code[data-k="ok"] { --k: var(--green); }
-.md-body code[data-k]::before { margin-right: .32em; color: var(--k); opacity: .7; font-weight: 600; }
-.md-body code[data-k="cmd"]::before { content: "❯"; }
-.md-body code[data-k="path"]::before { content: "▸"; }
-.md-body code[data-k="id"]::before { content: "#"; }
-.md-body code[data-k="err"]::before { content: "✗"; opacity: .9; }
-.md-body code[data-k="ok"]::before { content: "✓"; }
+:is(.md-body code, .pp-code)[data-k="path"] { --k: var(--lav); }
+:is(.md-body code, .pp-code)[data-k="cmd"] { --k: var(--green); }
+:is(.md-body code, .pp-code)[data-k="id"] { --k: var(--accent); }
+:is(.md-body code, .pp-code)[data-k="num"] { --k: var(--teal); }
+:is(.md-body code, .pp-code)[data-k="key"] { --k: var(--ochre); }
+:is(.md-body code, .pp-code)[data-k="err"] { --k: var(--rose); }
+:is(.md-body code, .pp-code)[data-k="ok"] { --k: var(--green); }
+:is(.md-body code, .pp-code)[data-k]::before { margin-right: .32em; color: var(--k); opacity: .7; font-weight: 600; }
+:is(.md-body code, .pp-code)[data-k="cmd"]::before { content: "❯"; }
+:is(.md-body code, .pp-code)[data-k="path"]::before { content: "▸"; }
+:is(.md-body code, .pp-code)[data-k="id"]::before { content: "#"; }
+:is(.md-body code, .pp-code)[data-k="err"]::before { content: "✗"; opacity: .9; }
+:is(.md-body code, .pp-code)[data-k="ok"]::before { content: "✓"; }
 /* A failure is the one thing to spot: its own color, unmixed. */
-.md-body code[data-k="err"] { color: var(--rose); }
+:is(.md-body code, .pp-code)[data-k="err"] { color: var(--rose); }
 /* A key is a keycap: framed, no rule. */
-.md-body code[data-k="key"] { border: 1px solid color-mix(in srgb, var(--k) 40%, var(--line)); background: transparent; padding: 0 .3em; }
+:is(.md-body code, .pp-code)[data-k="key"] { border: 1px solid color-mix(in srgb, var(--k) 40%, var(--line)); background: transparent; padding: 0 .3em; }
 /* Short tokens (`exit 0`, `5 min`, `Ctrl+C`) never break across lines. */
-.md-body code:is([data-k="num"], [data-k="key"], [data-k="err"], [data-k="ok"], [data-k="id"]) { white-space: nowrap; }
+:is(.md-body code, .pp-code):is([data-k="num"], [data-k="key"], [data-k="err"], [data-k="ok"], [data-k="id"]) { white-space: nowrap; }
 /* File path in a conversation (ChatView.vue): dotted underline, menu on click or tap. */
 .chat-list .md-body .md-path {
   cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px;
@@ -2987,6 +2988,16 @@ button.pp-badge { font: 500 10px/1 var(--mono); }
 .pp-badge.link:focus-visible { outline: 1px solid var(--bc); outline-offset: 1px; }
 /* URL in a task's text: plain text link. */
 .pp-tlink { color: var(--accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); text-underline-offset: 2px; overflow-wrap: anywhere; }
+/* Inline code in a task's text (TaskText.vue): the conversation's look
+   (above), a dotted underline in its tint, and a menu (Copy, Run) on a tap. */
+.pp-code {
+  cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--k, var(--text)) 40%, transparent);
+  -webkit-tap-highlight-color: transparent;
+}
+@media (hover: hover) { .pp-code:hover { text-decoration-style: solid; text-decoration-color: var(--k, var(--text-2)); background: color-mix(in srgb, var(--k, var(--text)) 13%, var(--surface-2)); } }
+.pp-code:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.pp-task.done .pp-code, .pp-task.sent .pp-code { color: inherit; }
 .pp-task-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
 .pp-task-body .pp-task-text { flex: none; }
 .pp-task-head { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }

@@ -3,6 +3,7 @@ import { boardSections, visibleSections, maxParallelThreads, moveMessage, queueS
 import { decisionRef, isRefLine, refSegments, refsIn } from '../shared/reference'
 import { addAnswer, answerOf } from '../app/utils/questionReply'
 import { pluginBinary } from '../server/utils/projectBoard'
+import { inlineCommand } from '../app/utils/shellCommand'
 import { isCoordinator } from '../shared/projects'
 import type { Pane } from '../shared/types'
 
@@ -190,6 +191,62 @@ describe('bare URLs in the text', () => {
   it('other schemes: text', () => {
     expect(textParts('javascript:alert(1) et data:x')).toEqual([{ text: 'javascript:alert(1) et data:x' }])
     expect(textParts('[x](javascript:alert(1))')).toEqual([{ text: '[x](javascript:alert(1))' }])
+  })
+})
+
+describe('inline code in the text', () => {
+  it('a code span is its own part, the text around it kept', () => {
+    expect(textParts('Run `npm test` then merge')).toEqual([{ text: 'Run ' }, { text: 'npm test', code: true }, { text: ' then merge' }])
+    expect(textParts('`a` and `b`')).toEqual([{ text: 'a', code: true }, { text: ' and ' }, { text: 'b', code: true }])
+  })
+  it('longer fences hold backticks; one padding space on each side is dropped', () => {
+    expect(textParts('See ``a `b` c``.')).toEqual([{ text: 'See ' }, { text: 'a `b` c', code: true }, { text: '.' }])
+    expect(textParts('`` `x` ``')).toEqual([{ text: '`x`', code: true }])
+    expect(textParts('`  two  `')).toEqual([{ text: ' two ', code: true }])
+    expect(textParts('` `')).toEqual([{ text: ' ', code: true }])
+  })
+  it('a URL inside code stays code, one outside is still a link', () => {
+    expect(textParts('`curl https://example.test/x` or https://example.test/y')).toEqual([
+      { text: 'curl https://example.test/x', code: true }, { text: ' or ' }, { text: 'https://example.test/y', href: 'https://example.test/y' },
+    ])
+  })
+  it('unclosed or mismatched backticks are text', () => {
+    expect(textParts('a ` b')).toEqual([{ text: 'a ` b' }])
+    expect(textParts('``a` b')).toEqual([{ text: '``a` b' }])
+    expect(textParts('``')).toEqual([{ text: '``' }])
+  })
+  it('stays fast on a long run of backticks', () => {
+    const line = '`'.repeat(999) + 'x'.repeat(999)
+    const t0 = Date.now()
+    expect(textParts(line)).toEqual([{ text: line }])
+    expect(Date.now() - t0).toBeLessThan(200)
+  })
+  // What Copy and Run use comes from the parsed task: the code must survive
+  // the line's cleanup (badges, old refs, owner, blocked cause) byte for byte.
+  const commandOf = (line: string, kind: Parameters<typeof parseTaskLine>[1] = null) =>
+    textParts(parseTaskLine(line, kind)!.text).filter(p => p.code).map(p => inlineCommand(p.text) ?? p.text)
+  it('keeps the spaces inside code when a badge is removed', () => {
+    expect(commandOf('- [ ] Run `cp "report  final.txt" backup.txt` [b:green(ready)] (me)')).toEqual(['cp "report  final.txt" backup.txt'])
+    // Outside the code the spaces left by the badge are still collapsed.
+    expect(parseTaskLine('- [ ] Run  [b:green(ready)]  `ls  -la` now (me)')!.text).toBe('Run `ls  -la` now')
+  })
+  it('keeps an old [t-NNNN] reference written inside code', () => {
+    expect(commandOf('- [ ] Check `echo "[t-0140]"` [t-0141] (agent)')).toEqual(['echo "[t-0140]"'])
+    expect(parseTaskLine('- [ ] Check `echo "[t-0140]"` [t-0141] (agent)')!.text).toBe('Check `echo "[t-0140]"`')
+  })
+  it('a dash inside code is not the blocked cause', () => {
+    const task = parseTaskLine('- [ ] Run `git log — blocked by: x` — blocked by: review (agent)', 'blocked')!
+    expect(task.reason).toBe('review')
+    expect(commandOf('- [ ] Run `git log — blocked by: x` — blocked by: review (agent)', 'blocked')).toEqual(['git log — blocked by: x'])
+  })
+  it('a prompt in front of the command is dropped, the rest kept', () => {
+    expect(commandOf('- [ ] Merge with `! gh pr merge 5  --squash` [b:red(bug)] [t-0001] (me)')).toEqual(['gh pr merge 5  --squash'])
+  })
+  it('a task line keeps its code, a badge written in code is not a badge', () => {
+    const task = parseTaskLine('- [ ] Run `npm run check:leaks` before `[b:red(x)]` [b:red(bug)] (me)')!
+    expect(task.text).toBe('Run `npm run check:leaks` before `[b:red(x)]`')
+    expect(task.badges).toEqual([{ text: 'bug', color: 'red' }])
+    expect(textParts(task.text).filter(p => p.code).map(p => p.text)).toEqual(['npm run check:leaks', '[b:red(x)]'])
   })
 })
 
