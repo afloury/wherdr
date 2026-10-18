@@ -103,12 +103,47 @@ describe('groups and actions', () => {
     expect(taskActions(working)).toEqual({ ...NO_ACTIONS, tell: true, stop: true })
     expect(taskActions({ ...working, stage: 'queued' })).toMatchObject({ stop: true, archive: false })
     const failed = { ...todo, state: 'error', stage: 'failed', group: 'needs', app: 'claude' } as const
-    expect(taskActions(failed)).toMatchObject({ retry: true, stop: false, archive: true, delegate: false })
+    // What failed is not known yet (no details): neither Retry nor Start.
+    expect(taskActions(failed)).toMatchObject({ retry: false, stop: false, archive: true, delegate: false })
+    expect(taskActions(failed, { failureStage: 'agent', failureAuth: false })).toMatchObject({ retry: true, delegate: false })
     // Stopped at a limit: retry continues it; nothing runs to stop.
     expect(taskActions({ ...failed, state: 'blocked', stage: 'stopped' })).toMatchObject({ retry: true, stop: false })
     // Waiting for a sign-in: not an agent at work.
     expect(taskActions({ ...failed, state: 'blocked', kind: 'auth' })).toMatchObject({ stop: false })
     expect(taskActions({ ...todo, state: 'done', stage: 'done', group: 'done' })).toEqual({ ...NO_ACTIONS, archive: true })
+  })
+
+  // 1.2.1: `retry` is finish_line::send_error (cli/tasks.rs), `archive`
+  // refuses SLOT_STAGES, queued and attempts (actions/archive.rs).
+  it('offers Retry only where 1.2.1 send_error takes it', () => {
+    const failed = { state: 'error', kind: '', stage: 'failed', group: 'needs', archived: false, app: 'claude' } as const
+    const f = (failureStage: string, failureAuth = false) => ({ failureStage, failureAuth })
+    // A failure of the agent or of the finish line goes back to the agent.
+    for (const st of ['agent', 'workflow', 'pr', 'merge']) expect(taskActions(failed, f(st)).retry).toBe(true)
+    // The agent never took its text: started again (retry()).
+    expect(taskActions(failed, f('send')).retry).toBe(true)
+    // Failed before an agent got going (no link.pane): send_error refuses; Start again instead.
+    for (const st of ['start', 'setup', 'attempts']) expect(taskActions(failed, f(st))).toMatchObject({ retry: false, delegate: true })
+    // A login problem needs the human first (the reply goes to the agent).
+    expect(taskActions({ ...failed, state: 'blocked', kind: 'auth' }, f('agent', true))).toMatchObject({ retry: false, delegate: false })
+    // Stopped without a summary: the agent is told to continue.
+    expect(taskActions({ ...failed, stage: 'nosummary' }).retry).toBe(true)
+    // The agent's terminal is gone or it exited: still at work for 1.x ("has no agent error to send").
+    const gone = { ...failed, stage: 'working' }
+    expect(taskActions(gone)).toMatchObject({ retry: false, archive: false, stop: true })
+  })
+
+  it('hides Archive in every stage 1.2.1 refuses, whatever the column', () => {
+    // An agent at work that asks you something: column "needs you", stage still working.
+    const asking = { state: 'blocked', kind: '', stage: 'working', group: 'needs', archived: false, app: 'claude' } as const
+    expect(taskActions(asking)).toMatchObject({ archive: false, stop: true, tell: true })
+    for (const stage of ['starting', 'setup', 'checking', 'pushing', 'reviewing', 'merging', 'queued', 'attempts']) {
+      expect(taskActions({ ...asking, stage }).archive).toBe(false)
+    }
+    // Waiting for you without anything running: archive is fine.
+    for (const stage of ['asks', 'approval', 'plan', 'failed', 'nosummary', 'stopped', 'reviewneeds']) {
+      expect(taskActions({ ...asking, stage }).archive).toBe(true)
+    }
   })
 
   it('orders by group, then repo, newest first', () => {

@@ -3530,6 +3530,7 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-coord-machine { flex: none; max-width: 50%; margin-left: auto; }
 .board-coord-back { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 8px; border: 1px solid var(--line); font: 500 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); cursor: pointer; }
 .board-coord-back:hover { border-color: var(--mauve); color: var(--mauve); }
+.board-coord-away { margin: 0; padding: 6px 8px; border-left: 2px solid var(--ochre); font-size: 12px; line-height: 1.4; color: var(--text-2); }
 .board-coord-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .board-coord-input { flex: 1; min-width: 0; }
 .board-coord-row > button { border-radius: 0; }

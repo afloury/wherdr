@@ -336,7 +336,11 @@ export async function taskCommand(machine: unknown, id: unknown, action: unknown
   const tid = checkId(id)
   if (!isTaskCommand(action)) throw new HerdrError('bad_action', 'Unknown action')
   const row = await taskOf(m, tid)
-  if (!row || !taskActions(row)[action]) throw refused(action)
+  // A failed task: what failed decides between Retry and Start (`details`).
+  const failure = row?.stage === 'failed' && (action === 'retry' || action === 'delegate')
+    ? parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS))
+    : null
+  if (!row || !taskActions(row, failure)[action]) throw refused(action)
   const out = await command(m, [action, '--', tid])
   forget(m)
   log(`herdr-projects ${action} ${tid}${m.local ? '' : ` on ${m.label}`}`)

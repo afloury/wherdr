@@ -293,7 +293,7 @@ const DESCRIPTIONS: Record<string, string> = {
 export function taskDetails(t: TaskRow) {
   return {
     id: t.id, title: t.title, stage: t.stage, msg: t.msg, description: DESCRIPTIONS[t.id] || '',
-    agent: t.app, pr: t.pr, branch: t.group === 'todo' ? '' : `acme-api-${t.n}`, worktree: '', failure: '',
+    agent: t.app, pr: t.pr, branch: t.group === 'todo' ? '' : `acme-api-${t.n}`, worktree: '', failure: '', failureStage: '', failureAuth: false,
     review: t.review, reviewRounds: t.reviewRound, plan: '', research: false,
     pane: t.n === 12 ? CODEX : t.n === 13 ? OMP : null,
   }

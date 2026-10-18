@@ -1,7 +1,9 @@
 // The Board's data (BoardView): herdr-projects 1.x tasks of every machine from
 // GET /api/tasks, read again every 15 s while the page is shown (the server
 // answers `same` when nothing changed) and right after an action.
-// The last board is kept at module level: the view reopens at once with it.
+// The last board is kept at module level: the view reopens at once with it;
+// `reads` counts the reads that answered since then, so what must not trust
+// that kept board (a push that opens a task) waits for a fresh one.
 import type { TasksBoard, TasksReply } from '#shared/projectsTasks'
 
 const POLL_MS = 15000
@@ -10,6 +12,7 @@ let lastBoard: TasksBoard | null = null
 export function useTasksBoard() {
   const board = shallowRef<TasksBoard | null>(lastBoard)
   const error = ref('')
+  const reads = ref(0)
   let seq = 0
   let stopped = false
 
@@ -21,8 +24,8 @@ export function useTasksBoard() {
       const r = await api<TasksReply>(`/api/tasks${since}`)
       if (id !== seq) return
       error.value = ''
-      if ('same' in r) return
-      board.value = lastBoard = r
+      if (!('same' in r)) board.value = lastBoard = r
+      reads.value++
     } catch (e) {
       if (id === seq) error.value = (e as Error).message
     }
@@ -40,5 +43,5 @@ export function useTasksBoard() {
   // Back on the page: at once rather than at the next tick.
   watch(pageVisible, (v) => { if (v) load() })
 
-  return { board, error, reload: () => load(true) }
+  return { board, error, reads, reload: () => load(true) }
 }

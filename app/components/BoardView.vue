@@ -29,7 +29,7 @@ const ALL = '*'
 
 const router = useRouter()
 const route = useRoute()
-const { board, error, reload } = useTasksBoard()
+const { board, error, reads, reload } = useTasksBoard()
 
 const readStore = (k: string) => { try { return localStorage.getItem(k) } catch { return null } }
 const writeStore = (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* storage unavailable */ } }
@@ -136,16 +136,38 @@ const pickedTask = computed(() => {
   const p = picked.value
   return p ? allCards.value.find(c => c.key === p.key)?.task || p.task : null
 })
-// A push about a task opens it: `#/board?machine=<key>&task=<repo>/<n>`.
-watch([board, () => route.query.task], () => {
-  const id = route.query.task
-  if (typeof id !== 'string' || !board.value) return
-  const machine = typeof route.query.machine === 'string' ? route.query.machine : ''
-  const c = allCards.value.find(x => x.task.id === id && x.machine === machine) || allCards.value.find(x => x.task.id === id)
+// A push about a task opens it: `#/board?machine=<key>&task=<repo>/<n>`. The
+// same id can be on two machines: only that machine's task opens (a link with
+// no machine: the one card with that id). The kept board may predate the task,
+// so nothing is concluded before a read of this visit; a machine that cannot be
+// read keeps the request until it answers.
+const opening = ref<{ machine: string | null, id: string } | null>(null)
+const waitNoted = ref(false)
+watch(() => route.query.task, (id) => {
+  if (typeof id !== 'string' || !id) return
+  opening.value = { machine: typeof route.query.machine === 'string' ? route.query.machine : null, id }
+  waitNoted.value = false
   router.replace({ query: {} })
-  if (c) openCard(c)
-  else toast(tl('That task is no longer on the Board', 'Cette tâche n’est plus sur le Board'), true)
 }, { immediate: true })
+watch([opening, board, reads], () => {
+  const want = opening.value
+  if (!want || !board.value || !reads.value) return
+  const hits = allCards.value.filter(x => x.task.id === want.id && (want.machine === null || x.machine === want.machine))
+  const fresh = (machine: string) => board.value!.machines.some(m => m.machine === machine && m.status === 'ready' && !m.error && !m.stale)
+  if (hits.length === 1) {
+    opening.value = null
+    openCard(hits[0]!)
+    return
+  }
+  if (want.machine !== null && !fresh(want.machine)) {
+    // Its machine does not answer now: said once, tried again at each read.
+    if (!waitNoted.value) toast(tl(`${machineLabel(want.machine)} cannot be read now: its task opens once it answers`, `${machineLabel(want.machine)} ne peut pas être lue pour l’instant : sa tâche s’ouvre dès qu’elle répond`), true)
+    waitNoted.value = true
+    return
+  }
+  opening.value = null
+  toast(tl('That task is no longer on the Board', 'Cette tâche n’est plus sur le Board'), true)
+})
 
 // ------------------------------------------------------------ new task
 const newOpen = ref(false)
@@ -159,23 +181,29 @@ function added() { setTimeout(reload, 1500) }
 // ------------------------------------------------------------ the chat
 // Who the box talks to: a machine's Coordinator, machine coordinator, or a
 // repo's project coordinator.
+const coordText = ref('')
 const chat = ref<{ machine: string, to: CoordinatorTarget }>({ machine: '', to: { kind: 'main' } })
+// Chosen by a gesture (a heading, the machine list): kept, even while its
+// machine cannot be reached, so a draft never goes elsewhere on its own. Only
+// an untouched, empty box follows the machines that answer.
+const chatChosen = ref(false)
+const chatReachable = computed(() => writable.value.some(m => m.machine === chat.value.machine))
 watch(writable, (list) => {
-  if (!list.some(m => m.machine === chat.value.machine)) {
-    const shown = list.find(m => m.machine === shownScope.value)
-    chat.value = { machine: (shown || list[0])?.machine ?? '', to: { kind: 'main' } }
-  }
+  if (chatReachable.value || chatChosen.value || coordText.value.trim() || !list.length) return
+  const shown = list.find(m => m.machine === shownScope.value)
+  chat.value = { machine: (shown || list[0])!.machine, to: { kind: 'main' } }
 }, { immediate: true })
 function talkTo(machine: string, to: CoordinatorTarget) {
   if (readOnly(machine)) return
   chat.value = { machine, to }
+  chatChosen.value = true
   haptic()
   nextTick(() => document.getElementById('board-coord-text')?.focus({ preventScroll: true }))
 }
 const talking = (machine: string, to: CoordinatorTarget) => chat.value.machine === machine && chat.value.to.kind === to.kind
   && (to.kind !== 'project' || (chat.value.to.kind === 'project' && chat.value.to.repo === to.repo))
 const coordItems = computed(() => writable.value.map(m => ({ label: machineLabel(m.machine), value: m.machine })))
-const chatMachine = computed({ get: () => chat.value.machine, set: (v: string) => { chat.value = { machine: v, to: { kind: 'main' } } } })
+const chatMachine = computed({ get: () => chat.value.machine, set: (v: string) => { chat.value = { machine: v, to: { kind: 'main' } }; chatChosen.value = true } })
 const onMachine = computed(() => (several.value ? ` · ${machineLabel(chat.value.machine)}` : ''))
 const chatLabel = computed(() => {
   const to = chat.value.to
@@ -186,11 +214,10 @@ const chatLabel = computed(() => {
 const chatPlaceholder = computed(() => (chat.value.to.kind === 'main'
   ? tl('Describe work to add as tasks…', 'Décris le travail à ajouter en tâches…')
   : tl(`Message to the ${chatLabel.value.replace(/ coordinator$/, '')} coordinator…`, `Message au ${chatLabel.value.toLowerCase()}…`)))
-const coordText = ref('')
 const coordBusy = ref<'' | 'send' | 'start'>('')
 async function tellCoordinator(delegate = false) {
   const text = coordText.value.trim()
-  if (!text || coordBusy.value || !writable.value.length) return
+  if (!text || coordBusy.value || !chatReachable.value) return
   coordBusy.value = delegate ? 'start' : 'send'
   try {
     await api('/api/tasks/coordinator', { machine: chat.value.machine, text, to: chat.value.to, delegate })
@@ -250,15 +277,18 @@ function back() {
             <UIcon name="i-lucide-x" />{{ tl('Coordinator', 'Coordinateur') }}
           </button>
         </div>
+        <p v-if="!chatReachable" class="board-coord-away" role="status">
+          {{ tl(`${machineLabel(chat.machine)} cannot be reached now: your message waits for it, or choose who to talk to.`, `${machineLabel(chat.machine)} est injoignable pour l’instant : ton message l’attend, ou choisis à qui parler.`) }}
+        </p>
         <div class="board-coord-row">
           <UInput
             id="board-coord-text" v-model="coordText" class="board-coord-input" :disabled="offlineView" :maxlength="TELL_MAX"
             :placeholder="chatPlaceholder" enterkeyhint="send"
           />
-          <UButton type="submit" color="primary" icon="i-lucide-send" :loading="coordBusy === 'send'" :disabled="!coordText.trim() || offlineView || Boolean(coordBusy)" :aria-label="t('Send')" :title="t('Send')" />
+          <UButton type="submit" color="primary" icon="i-lucide-send" :loading="coordBusy === 'send'" :disabled="!coordText.trim() || offlineView || Boolean(coordBusy) || !chatReachable" :aria-label="t('Send')" :title="t('Send')" />
           <UButton
             type="button" color="primary" variant="outline" icon="i-lucide-play" class="board-coord-start" :loading="coordBusy === 'start'"
-            :disabled="!coordText.trim() || offlineView || Boolean(coordBusy)" :title="tl('Send, and start every task it adds', 'Envoyer, et lancer chaque tâche ajoutée')"
+            :disabled="!coordText.trim() || offlineView || Boolean(coordBusy) || !chatReachable" :title="tl('Send, and start every task it adds', 'Envoyer, et lancer chaque tâche ajoutée')"
             :aria-label="tl('Send and start', 'Envoyer et lancer')"
             @click="tellCoordinator(true)"
           >

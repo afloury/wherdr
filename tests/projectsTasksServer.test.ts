@@ -76,6 +76,10 @@ beforeEach(() => {
     await new Promise(r => setTimeout(r, delay))
     active--
     if (args[0] === 'list') return listReply || { code: 0, stdout: fixture('list.json'), stderr: '' }
+    // A failed task's details say what failed (1.2.1 failure_of): demo/6 its agent, demo/7 its setup.
+    if (args[0] === 'details' && (args[3] === 'demo/6' || args[3] === 'demo/7')) {
+      return { code: 0, stdout: JSON.stringify({ task: { id: args[3], title: 'Broke', stage: 'failed' }, failure: { stage: args[3] === 'demo/6' ? 'agent' : 'setup', title: 'Failed', detail: 'x', auth: false } }), stderr: '' }
+    }
     if (args[0] === 'details') return { code: 0, stdout: fixture('details-approval.json'), stderr: '' }
     if (args[0] === 'approve') return { code: 1, stdout: '', stderr: 'demo/1: its pull request\'s checks failed\nmore' }
     return { code: 0, stdout: `${args[args.length - 2]}: sent\n`, stderr: '' }
@@ -347,6 +351,7 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
   const board = JSON.stringify([
     { id: 'demo/5', state: 'idle', title: 'In the backlog', stage: 'todo' },
     { id: 'demo/6', state: 'error', app: 'claude', title: 'Broke', stage: 'failed' },
+    { id: 'demo/7', state: 'error', app: 'claude', title: 'Setup broke', stage: 'failed' },
     { id: 'demo/3', state: 'working', app: 'codex', title: 'Add dark mode toggle', stage: 'working' },
     { id: 'demo/4', state: 'done', title: 'Old cleanup', stage: 'done' },
   ])
@@ -361,7 +366,19 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     await T.taskCommand('', 'demo/6', 'retry')
     await read()
     await T.taskCommand('', 'demo/4', 'archive')
-    expect(calls.filter(c => c[0] !== 'list')).toEqual([['delegate', '--', 'demo/5'], ['stop', '--', 'demo/3'], ['retry', '--', 'demo/6'], ['archive', '--', 'demo/4']])
+    expect(calls.filter(c => c[0] !== 'list')).toEqual([['delegate', '--', 'demo/5'], ['stop', '--', 'demo/3'], ['details', '--json', '--', 'demo/6'], ['retry', '--', 'demo/6'], ['archive', '--', 'demo/4']])
+  })
+
+  it('a failed task: what failed (details) decides between Retry and Start, as 1.2.1 send_error does', async () => {
+    await read()
+    calls = []
+    // Its setup failed, no agent ever on it: retry is refused, Start runs.
+    await expect(T.taskCommand('', 'demo/7', 'retry')).rejects.toThrow(/nothing to retry/)
+    await T.taskCommand('', 'demo/7', 'delegate')
+    // Its agent failed: Start is refused, Retry is not.
+    await read()
+    await expect(T.taskCommand('', 'demo/6', 'delegate')).rejects.toThrow(/cannot be started/)
+    expect(calls.filter(c => c[0] !== 'list' && c[0] !== 'details')).toEqual([['delegate', '--', 'demo/7']])
   })
 
   it('right after another action (the list dropped): reads the list again, then acts', async () => {

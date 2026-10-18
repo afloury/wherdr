@@ -8,6 +8,8 @@ import { CLAUDE_PANE, SOCK_FILE, fakeHerdr } from './scenario.mjs'
 // herdr-projects 1.x on the Board and in Settings. The plugin's launcher
 // (bin/run.sh) is a fake that answers with the real output of the 1.2.1
 // release (tests/recordings/herdr-projects-1.2.1) and writes down each call.
+// demo/6 failed in its agent's own work: 1.2.1 `retry` sends it back (failure_of's shape).
+const failedDetails = { task: { id: 'demo/6', title: 'Broke on the tests', stage: 'failed', msg: 'Tests failed' }, failure: { stage: 'agent', title: 'Tests failed', detail: 'npm test exited 1', auth: false, agentCanFix: true } }
 const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../recordings/herdr-projects-1.2.1')
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-hp1x-'))
 const calls = path.join(root, 'calls.log')
@@ -16,7 +18,7 @@ fs.writeFileSync(path.join(root, 'bin/run.sh'), `#!/bin/sh
 printf '%s\\n' "$*" >> '${calls}'
 case "$1" in
   list) if [ -f '${root}/list.json' ]; then cat '${root}/list.json'; else cat '${fixtures}/list.json'; fi ;;
-  details) case "$4" in demo/1) cat '${fixtures}/details-approval.json' ;; demo/2) cat '${fixtures}/details-asks.json' ;; *) cat '${fixtures}/details-working.json' ;; esac ;;
+  details) case "$4" in demo/1) cat '${fixtures}/details-approval.json' ;; demo/2) cat '${fixtures}/details-asks.json' ;; demo/6) echo '${JSON.stringify(failedDetails)}' ;; *) cat '${fixtures}/details-working.json' ;; esac ;;
   tell) echo "$3: sent" ;;
   approve) echo "$3: approved, merging" ;;
   coordinator) echo "sent to the Coordinator" ;;
@@ -235,6 +237,7 @@ test('grouped by machine then repo: each heading talks to its coordinator, Send 
 })
 
 test('+ New task: in a repo, with Start now; and the task sheet starts, stops, retries and archives', async ({ page }, testInfo) => {
+  test.setTimeout(60000)
   fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(actionBoard))
   await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
   await page.goto('/#/board')
@@ -296,4 +299,84 @@ test('a push about a task opens it on the Board', async ({ page }) => {
   // Settings give the one command that turns these pushes on.
   await page.goto('/#/settings?section=plugins')
   await expect(page.locator('.projects-plugin-notify')).toContainText(`herdr-projects set board.notify 'herdr notification show`, { timeout: 15000 })
+})
+
+// Two machines, answered by the page itself (/api/tasks): the same task id on
+// both, a machine that stops answering, a board kept from an earlier visit.
+type Fake = { machine: string, status?: string, error?: string, stale?: boolean, tasks: { id: string, title: string }[] }
+const fakeRow = (id: string, title: string) => ({
+  id, repo: id.split('/')[0], n: Number(id.split('/')[1]), state: 'blocked', kind: 'question', stage: 'asks', title, msg: '', app: 'claude',
+  progress: null, eta: null, pr: '', review: null, reviewRound: 0, research: false, archived: false, queue: null, group: 'needs',
+})
+async function fakeBoard(page: import('@playwright/test').Page, get: () => Fake[], delay = 0) {
+  let n = 0
+  await page.route(url => new URL(url).pathname === '/api/tasks', async (route) => {
+    if (delay) await new Promise(r => setTimeout(r, delay))
+    await route.fulfill({ json: { version: `v${++n}`, machines: get().map(m => ({ status: 'ready', version: '1.2.1', at: Date.now(), ...m, tasks: m.tasks.map(t => fakeRow(t.id, t.title)) })) } })
+  })
+  await page.route(url => new URL(url).pathname === '/api/tasks/details', route => route.fulfill({
+    json: { id: new URL(route.request().url()).searchParams.get('id'), title: '', stage: 'asks', msg: '', description: '', agent: 'claude', pr: '', branch: '', worktree: '', failure: '', failureStage: '', failureAuth: false, review: null, reviewRounds: 0, plan: '', research: false, pane: null },
+  }))
+}
+
+test('a push opens its own machine\'s task, never the same id on another machine', async ({ page }) => {
+  let machines: Fake[] = [{ machine: 'ma', tasks: [] }, { machine: 'mb', tasks: [{ id: 'demo/1', title: 'On machine B' }] }]
+  await fakeBoard(page, () => machines)
+  await page.goto('/#/board?machine=ma&task=demo%2F1')
+  await expect(page.locator('.board-machine[data-machine="mb"]')).toContainText('On machine B', { timeout: 15000 })
+  await expect(page.locator('.hw-toast-title', { hasText: 'That task is no longer on the Board' })).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  // Machine A does not answer: said, and its task opens once it does.
+  machines = [{ machine: 'ma', status: 'error', error: 'No answer', tasks: [] }, machines[1]!]
+  await page.evaluate(() => { location.hash = '#/' })
+  await expect(page.locator('.board-view')).toHaveCount(0)
+  await page.evaluate(() => { location.hash = '#/board?machine=ma&task=demo%2F1' })
+  await expect(page.locator('.hw-toast-title', { hasText: /cannot be read now: its task opens once it answers/ })).toBeVisible({ timeout: 15000 })
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  machines = [{ machine: 'ma', tasks: [{ id: 'demo/1', title: 'On machine A' }] }, machines[1]!]
+  await page.locator('.board-filter').click()
+  await expect(page.getByRole('dialog')).toContainText('On machine A', { timeout: 15000 })
+})
+
+test('a push for a task newer than the board kept from the last visit opens it after the next read', async ({ page }) => {
+  let machines: Fake[] = [{ machine: '', tasks: [{ id: 'demo/1', title: 'Older one' }] }]
+  await fakeBoard(page, () => machines, 800)
+  await page.goto('/#/board')
+  await expect(page.locator('.task-card', { hasText: 'Older one' })).toBeVisible({ timeout: 15000 })
+  // Elsewhere in the app; the task is added meanwhile; its push is tapped.
+  await page.evaluate(() => { location.hash = '#/' })
+  await expect(page.locator('.board-view')).toHaveCount(0)
+  machines = [{ machine: '', tasks: [{ id: 'demo/9', title: 'Brand new' }, { id: 'demo/1', title: 'Older one' }] }]
+  await page.evaluate(() => { location.hash = '#/board?machine=&task=demo%2F9' })
+  await expect(page.getByRole('dialog')).toContainText('Brand new', { timeout: 15000 })
+  await expect(page.locator('.hw-toast-title', { hasText: 'That task is no longer on the Board' })).toHaveCount(0)
+})
+
+test('a draft for a coordinator stays with it while its machine is away, and is sent there once it is back', async ({ page }) => {
+  let machines: Fake[] = [{ machine: 'ma', tasks: [{ id: 'demo/1', title: 'On A' }] }, { machine: 'mb', tasks: [{ id: 'web/2', title: 'On B' }] }]
+  await fakeBoard(page, () => machines)
+  const sent: unknown[] = []
+  await page.route(url => new URL(url).pathname === '/api/tasks/coordinator', async (route) => {
+    sent.push(route.request().postDataJSON())
+    await route.fulfill({ json: { ok: true, msg: 'sent' } })
+  })
+  await page.goto('/#/board')
+  await page.locator('.board-machine[data-machine="ma"] .board-repo[data-repo="demo"] .board-head-talk').click({ timeout: 15000 })
+  const text = page.locator('#board-coord-text')
+  await text.fill('Draft for demo on A')
+  const send = page.locator('.board-coord').getByRole('button', { name: 'Send', exact: true })
+  // Machine A stops answering: the box keeps its target and its words, and sends nothing.
+  machines = [{ machine: 'ma', status: 'error', error: 'No answer', tasks: [] }, machines[1]!]
+  await page.locator('.board-filter').click()
+  await expect(page.locator('.board-coord-away')).toBeVisible({ timeout: 15000 })
+  await expect(page.locator('.board-coord-label')).toContainText('demo coordinator')
+  await expect(text).toHaveValue('Draft for demo on A')
+  await expect(send).toBeDisabled()
+  await expect(page.locator('.board-coord-start')).toBeDisabled()
+  // Back: still A's demo coordinator.
+  machines = [{ machine: 'ma', tasks: [{ id: 'demo/1', title: 'On A' }] }, machines[1]!]
+  await page.locator('.board-filter').click()
+  await expect(page.locator('.board-coord-away')).toHaveCount(0, { timeout: 15000 })
+  await send.click()
+  await expect.poll(() => sent).toEqual([{ machine: 'ma', text: 'Draft for demo on A', to: { kind: 'project', repo: 'demo' }, delegate: false }])
 })

@@ -50,6 +50,10 @@ export interface TaskDetails {
   branch: string
   worktree: string
   failure: string
+  // What failed (1.x `failure.stage`: start, setup, send, agent, workflow,
+  // pr, merge, attempts…) and whether a login stopped it: what Retry needs.
+  failureStage: string
+  failureAuth: boolean
   review: TaskReview | null
   reviewRounds: number
   plan: string
@@ -199,6 +203,8 @@ export function parseTaskDetails(text: string): TaskDetails {
     branch: str(d.branch, 200),
     worktree: str(d.worktree, 500),
     failure: failureText(d.failure),
+    failureStage: str(obj(d.failure)?.stage, 30),
+    failureAuth: obj(d.failure)?.auth === true,
     review: parseReview(d.review),
     reviewRounds: Array.isArray(d.reviews) ? d.reviews.length : 0,
     plan: plan ? str(plan.text, 8000) : '',
@@ -206,27 +212,44 @@ export function parseTaskDetails(text: string): TaskDetails {
   }
 }
 
-// What the card offers, from the row (1.x refuses what does not apply, and
-// says why: these only keep a button from being shown where it cannot work).
+// What the card offers, from the row and, for a failed task, what failed
+// (`details`). These follow 1.2.1's own checks, so a button is shown only where
+// the command can work; 1.x still has the last word, and says why it refuses.
 // - `tell` reaches the task's agent (or, on a plan that waits, sends the plan
 //   back), so only once an agent has been on it (1.x refuses it before);
 // - `approve` merges finished work or says yes to a plan;
-// - `delegate` puts an agent on a task of the backlog ("to do");
+// - `delegate` puts an agent on a task of the backlog ("to do"), or again on
+//   one that failed before its agent got going (start, setup, attempts);
 // - `stop` stops the agent at work, or the one that waits for your answer;
-// - `retry` sends the saved error back to the agent, or continues a task a
-//   limit stopped;
-// - `archive` puts a task away (`restore` brings it back): not while an agent works on it.
-export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group' | 'archived' | 'app'>): TaskActions {
+// - `retry` is 1.2.1's `send_error` (cli/tasks.rs): it continues a task a
+//   limit stopped, tells an agent that stopped without a summary to go on,
+//   starts again an agent that never took its text, or sends a failure of the
+//   agent or of the finish line back to it. Not a login problem (that needs
+//   you first: reply instead), not a failure before an agent got going, not an
+//   agent whose terminal is gone (the task is still at work: Stop is offered);
+// - `archive` puts a task away (`restore` brings it back): not in a stage where
+//   something runs (store/files.rs SLOT_STAGES, plus queued and attempts).
+export type TaskFailure = Pick<TaskDetails, 'failureStage' | 'failureAuth'>
+// 1.2.1 store/files.rs SLOT_STAGES, and the stages archive.rs also refuses.
+const ACTIVE_STAGES = ['starting', 'setup', 'working', 'checking', 'pushing', 'reviewing', 'merging', 'queued', 'attempts']
+// A failure before any agent was on it: Start again, not Retry.
+const BEFORE_AGENT = ['start', 'setup', 'attempts']
+export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group' | 'archived' | 'app'>, f?: TaskFailure | null): TaskActions {
   if (r.archived) return NO_ACTIONS
   const live = r.group !== 'todo' && r.group !== 'done'
   const limitStop = r.stage === 'stopped' && r.state === 'blocked'
+  const failed = r.stage === 'failed'
+  // A failed task's Retry depends on what failed: unknown until `details` says.
+  const retryFailed = failed && Boolean(f) && !f!.failureAuth && (f!.failureStage === 'send' || (Boolean(f!.failureStage) && !BEFORE_AGENT.includes(f!.failureStage)))
   return {
     tell: live && Boolean(r.app),
     approve: r.stage === 'approval' || (r.stage === 'plan' && r.state === 'blocked'),
-    delegate: r.group === 'todo',
-    stop: r.group === 'working' || (r.group === 'needs' && r.state === 'blocked' && Boolean(r.app) && !limitStop && r.kind !== 'auth'),
-    retry: r.state === 'error' || r.stage === 'failed' || limitStop,
-    archive: r.group !== 'working',
+    delegate: r.group === 'todo' || (failed && Boolean(f) && BEFORE_AGENT.includes(f!.failureStage)),
+    // Also an agent whose terminal is gone or that exited: still at work for 1.x.
+    stop: r.group === 'working' || (r.group === 'needs' && r.state === 'blocked' && Boolean(r.app) && !limitStop && r.kind !== 'auth')
+      || (r.stage === 'working' && r.state === 'error'),
+    retry: limitStop || r.stage === 'nosummary' || retryFailed,
+    archive: r.group !== 'working' && !ACTIVE_STAGES.includes(r.stage),
   }
 }
 
