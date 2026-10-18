@@ -34,6 +34,7 @@ import { queuedPasted } from './pastes'
 import { type SentRecord, addSent, findSent, hasAttachments, lostPhotos } from './sentHistory'
 import { type GuardError, guardedSend, submittable, withPaneLock } from './guardedSend'
 import { type TranscriptPane, sameMsg } from './transcripts'
+import { chatDelta } from './chatDelta'
 import { agentNotificationTitle, pushSend, subWatchesSession } from './push'
 import { shouldNotify } from './notificationPolicy'
 import { currentModel, forgetModel, noteScreen, modelControlBusy } from './modelctl'
@@ -978,6 +979,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string, publish?: (
   saveSeen()
   saveQueued()
   for (const id of previews.keys()) if (!alive(id)) { previews.delete(id); transcripts.forget(id) }
+  for (const id of chatDelta.ids()) if (!alive(id)) chatDelta.forget(id)
   for (const id of models.keys()) if (!alive(id)) { models.delete(id); forgetModel(id) }
   for (const id of activities.keys()) if (!alive(id)) activities.delete(id)
   for (const id of codexFields.keys()) if (!alive(id)) codexFields.delete(id)

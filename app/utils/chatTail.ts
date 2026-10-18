@@ -11,6 +11,18 @@ export function nextTail(tail: ChatItem[], r: Pick<ChatResponse, 'items' | 'keep
   return r.keep === tail.length && !items.length ? tail : tail.slice(0, r.keep).concat(items)
 }
 
+// Whether a reply means starting again from the bottom, dropping the older
+// pages loaded above: another file (/clear, new session), or a bottom the
+// server read from another byte. The latter happens when the file grew more
+// than 24 MB past our start (the server then reads back from the end) or
+// became shorter than our start; the older pages would not join the new
+// bottom. Keeping them across a 24 MB jump would need each message's byte
+// position (left for later): the reading position is lost in that case.
+export function restartsTail(c: { file: string | null, tailStart: number | null }, r: Pick<ChatResponse, 'file' | 'start'>): boolean {
+  return Boolean(c.file && r.file !== c.file)
+    || (c.tailStart !== null && r.start !== undefined && r.start !== c.tailStart)
+}
+
 // Query of a re-read of the bottom: the token and item count of the list held
 // here let the server send only what changed.
 // `n` also tells the server this client splices incremental replies (other

@@ -12,7 +12,7 @@ import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
-import { createTailLoader, nextTail, tailQuery } from '~/utils/chatTail'
+import { createTailLoader, nextTail, restartsTail, tailQuery } from '~/utils/chatTail'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -204,12 +204,9 @@ async function loadStep(current: () => boolean): Promise<boolean> {
     if (misses.value.misses || misses.value.errors) misses.value = noMisses()
     if (r.unchanged) return false
     savedAt.value = null
-    // New session (/clear, new agent): the old one's bytes no
-    // longer mean anything, we start again from the bottom.
-    // Same for a bottom the server read from another byte (past its read cap,
-    // or a file now shorter than our start): older pages would not join it.
-    if ((chat.value.file && r.file !== chat.value.file)
-      || (chat.value.tailStart !== null && r.start !== undefined && r.start !== chat.value.tailStart)) {
+    // New session (/clear, new agent), or a bottom read from another byte:
+    // we start again from the bottom (utils/chatTail.ts).
+    if (restartsTail(chat.value, r)) {
       chat.value = fresh()
       synced = false
       return true

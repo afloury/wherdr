@@ -4,7 +4,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createChatDelta, splitToken } from '../server/utils/chatDelta'
 import { createTranscripts } from '../server/utils/transcripts'
-import { createTailLoader, nextTail, tailQuery } from '../app/utils/chatTail'
+import { createTailLoader, nextTail, restartsTail, tailQuery } from '../app/utils/chatTail'
 import type { ChatItem } from '../shared/types'
 
 const item = (text: string, role: ChatItem['role'] = 'assistant'): ChatItem => ({ role, text, ts: '2026-01-01T00:00:00Z' })
@@ -50,11 +50,53 @@ describe('chatDelta', () => {
     expect(z.keep).toBe(0) // the client holding x gets its first item again
   })
 
-  it('does not remember lists sent to readers that do not splice (no n)', () => {
+  it('gives readers that do not splice (no n) the plain token, and remembers nothing for them', () => {
     const d = createChatDelta()
-    const x = d.reply('p', 'f:10:0', [item('a')], '', null, true)
+    const items = [item('a')]
+    const x = d.reply('p', 'f:10:0', items, '', null, true)
+    expect(x).toEqual({ token: 'f:10:0', items })
+    expect(d.size()).toBe(0)
+    expect(d.sinceOf('p', x.token, null)).toBe('f:10:0') // "unchanged" stays possible
+  })
+
+  it('expires lists not used for a while, and polling keeps them alive', () => {
+    let t = 0
+    const d = createChatDelta({ now: () => t, ttl: 1000 })
+    const x = d.reply('p', 'f:10:0', [item('a')], '', 0, true)
+    t = 900
+    expect(d.knows('p', x.token, 1)).toBe(true) // a poll touches it
+    t = 1800
+    expect(d.knows('p', x.token, 1)).toBe(true)
+    t = 2900
     expect(d.knows('p', x.token, 1)).toBe(false)
-    expect(d.reply('p', 'f:20:0', [item('a'), item('b')], x.token, 1, true).keep).toBeUndefined()
+    expect(d.size()).toBe(0)
+  })
+
+  it('keeps all panes together under a global budget, dropping the least recently used', () => {
+    let t = 0
+    const d = createChatDelta({ now: () => t, maxSigs: 5 })
+    const two = (k: string) => [item(`${k}1`), item(`${k}2`)]
+    const a = d.reply('a', 'f:1:0', two('a'), '', 0, true); t++
+    const b = d.reply('b', 'f:1:0', two('b'), '', 0, true); t++
+    expect(d.knows('a', a.token, 2)).toBe(true); t++ // a used again: b is now the oldest
+    d.reply('c', 'f:1:0', two('c'), '', 0, true)
+    expect(d.size()).toBeLessThanOrEqual(5)
+    expect(d.knows('b', b.token, 2)).toBe(false)
+    expect(d.knows('a', a.token, 2)).toBe(true)
+    // A list longer than the whole budget is not remembered: full lists.
+    const big = d.reply('d', 'f:1:0', Array.from({ length: 6 }, (_, k) => item(String(k))), '', 0, true)
+    expect(d.knows('d', big.token, 6)).toBe(false)
+  })
+
+  it('forgets a closed pane', () => {
+    const d = createChatDelta()
+    const x = d.reply('p', 'f:10:0', [item('a')], '', 0, true)
+    d.reply('q', 'f:10:0', [item('b')], '', 0, true)
+    expect(d.ids().sort()).toEqual(['p', 'q'])
+    d.forget('p')
+    expect(d.ids()).toEqual(['q'])
+    expect(d.knows('p', x.token, 1)).toBe(false)
+    expect(d.size()).toBe(1)
   })
 
   it('gives the transcript token only for a list it remembers with that count', () => {
@@ -188,6 +230,24 @@ describe('incremental re-read of a Claude transcript', () => {
     expect(nextTail(first.items!, r)).toEqual([...(await call('', start, null)).items!])
   })
 
+  // Documented limit: past the 24 MB read cap the server reads back from the
+  // end, and the client starts again from the bottom (older pages dropped).
+  it('restarts from the bottom when the file grew more than 24 MB past the start', async () => {
+    const { file, call } = setup(20)
+    const load = await call('', null, 0)
+    const start = load.start!
+    const first = await call(load.token!, start, load.items!.length)
+    const chunk = Array.from({ length: 50 }, (_, k) => user(`Big ${k} ${'y'.repeat(100_000)}`)).join('\n') + '\n'
+    for (let k = 0; k < 6; k++) appendFileSync(file, chunk) // about 30 MB
+    const r = await call(first.token!, start, load.items!.length)
+    expect(r.start).toBeGreaterThan(start)
+    expect(r.keep).toBeUndefined() // other start: never a delta
+    expect(restartsTail({ file: first.file!, tailStart: start }, r)).toBe(true)
+    expect(restartsTail({ file: first.file!, tailStart: start }, first)).toBe(false)
+    expect(restartsTail({ file: first.file!, tailStart: start }, { file: 'other.jsonl', start })).toBe(true)
+    expect(restartsTail({ file: null, tailStart: null }, r)).toBe(false)
+  }, 30_000)
+
   it('answers an unknown token or a wrong count with the full list, never "unchanged"', async () => {
     const { call } = setup(20)
     const load = await call('', null, 0)
@@ -197,12 +257,47 @@ describe('incremental re-read of a Claude transcript', () => {
     const held = load.items!.length
     expect((await call(first.token!, start, held)).unchanged).toBe(true)
     const base = splitToken(first.token!).base
+    // (A fingerprinted token without n: not something an old client holds, still full.)
     for (const [since, count] of [[`${base}#0123456789abcdef`, held], [first.token!, 99999], [first.token!, null]] as const) {
       const r = await call(since, start, count)
       expect(r.unchanged).toBeFalsy()
       expect(r.keep).toBeUndefined()
       expect(r.items!.length).toBe(load.items!.length)
     }
+  })
+})
+
+describe('/api/chat for a client without n (older app, plugins)', () => {
+  it('reads in full once, then gets "unchanged" with the token it received', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-delta-old-'))
+    try {
+      const dir = path.join(home, '.claude/projects/-x')
+      mkdirSync(dir, { recursive: true })
+      const file = path.join(dir, 'abc-123.jsonl')
+      const line = (text: string) => JSON.stringify({ type: 'user', message: { role: 'user', content: text }, timestamp: '2026-01-01T00:00:00Z' })
+      writeFileSync(file, `${line('Hello')}\n`)
+      const t = createTranscripts({ home, herdr: async () => { throw new Error('no Herdr') } })
+      const pane = { id: 'w1:p1', agent: 'claude', cwd: '/x', agentSession: 'abc-123' }
+      const d = createChatDelta()
+      // What server/api/chat.get.ts does, for a request without n.
+      const call = async (since: string, from: number | null) => {
+        const r = await t.chat(pane, { since: d.sinceOf(pane.id, since, null), from })
+        if (r.unchanged || !r.items) return { ...r, token: since }
+        return { ...r, ...d.reply(pane.id, r.token!, r.items, since, null, from !== null && r.start === from) }
+      }
+      const load = await call('', null)
+      expect(load.items!.length).toBe(1)
+      expect(splitToken(load.token!).fp).toBeNull()
+      const poll = await call(load.token!, load.start!) // the old app then re-reads from its start
+      expect(poll.items!.length).toBe(1)
+      expect((await call(poll.token!, load.start!)).unchanged).toBe(true)
+      expect((await call(poll.token!, load.start!)).unchanged).toBe(true)
+      appendFileSync(file, `${line('Again')}\n`)
+      const grown = await call(poll.token!, load.start!)
+      expect(grown.keep).toBeUndefined()
+      expect(grown.items!.length).toBe(2)
+      expect(d.size()).toBe(0)
+    } finally { rmSync(home, { recursive: true, force: true }) }
   })
 })
 
