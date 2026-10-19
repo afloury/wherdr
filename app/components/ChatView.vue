@@ -12,6 +12,7 @@ import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
+import { createTailLoader, nextTail, restartsTail, tailQuery } from '~/utils/chatTail'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -56,7 +57,7 @@ const savedAt = ref<number | null>(null)
 const readOnly = computed(() => offlineView.value || paneStale(props.pane))
 // Commands in the agent's replies can be run in its shell mode (Run buttons,
 // utils/shellCommand.ts); the replies carry `can-run` then.
-const canRun = computed(() => !readOnly.value && eventsOpen.value && canRunCommands(props.pane.agent))
+const canRun = computed(() => canRunIn(props.pane))
 async function restoreChat() {
   if (!mayReadOffline(readOfflineAccess())) return
   const saved = (await readOffline()).chats.find(c => c.id === props.pane.id)
@@ -178,40 +179,43 @@ async function copyIntegration() {
   } catch { toast(t('Copy failed'), true) }
 }
 
-let busy = false
-async function loadChat(): Promise<void> {
-  if (busy) return
-  busy = true
+// One re-read at a time (utils/chatTail.ts): `false` = done, `true` = run
+// again at once, with the lock still held.
+async function loadStep(current: () => boolean): Promise<boolean> {
   const pane = props.pane.id
+  const stale = () => !current() || pane !== props.pane.id
   try {
-    const q = new URLSearchParams({ pane, since: chat.value.token })
-    if (chat.value.tailStart !== null) q.set('from', String(chat.value.tailStart))
-    const r = await api<ChatResponse>(`/api/chat?${q}`)
-    if (pane !== props.pane.id) return
+    const r = await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`)
+    if (stale()) return false
     if (!r.available) {
       const m = onUnavailable(misses.value, Boolean(chat.value.file) && items.value.length > 0)
       misses.value = m.next
-      if (!m.clear) return
+      if (!m.clear) return false
       chat.value = fresh()
       unavailable.value = r.reason || 'unsupported'
       integration.value = r.reason === 'no_integration' ? r.integration || null : null
       // Conversation opened before its first reply: that reply is new.
       synced = true
-      return
+      return false
     }
     unavailable.value = null
     integration.value = null
     loadError.value = null
     if (misses.value.misses || misses.value.errors) misses.value = noMisses()
-    if (r.unchanged) return
+    if (r.unchanged) return false
     savedAt.value = null
-    // New session (/clear, new agent): the old one's bytes no
-    // longer mean anything, we start again from the bottom.
-    if (chat.value.file && r.file !== chat.value.file) {
+    // New session (/clear, new agent), or a bottom read from another byte:
+    // we start again from the bottom (utils/chatTail.ts).
+    if (restartsTail(chat.value, r)) {
       chat.value = fresh()
       synced = false
-      busy = false
-      return loadChat()
+      return true
+    }
+    // Incremental reply that does not fit our list: ask for it in full.
+    const tail = nextTail(chat.value.tail, r)
+    if (!tail) {
+      chat.value = { ...chat.value, token: '' }
+      return true
     }
     await apply(() => {
       const c = { ...chat.value }
@@ -221,18 +225,22 @@ async function loadChat(): Promise<void> {
       }
       c.file = r.file || null
       c.token = r.token || ''
-      c.tail = r.items || []
+      c.tail = tail
       c.queue = r.queue || []
       chat.value = c
       noteReplies(c.tail)
     })
     saveChat(pane, items.value)
   } catch (err) {
-    if (pane !== props.pane.id) return
+    if (stale()) return false
     if (!items.value.length) loadError.value = (err as Error).message
     else misses.value = onError(misses.value)
-  } finally { busy = false }
+  }
+  return false
 }
+const tailLoader = createTailLoader(loadStep)
+const loadChat = tailLoader.load
+watch(() => props.pane.id, () => tailLoader.invalidate())
 
 // Older slice, keeping on screen what we were reading.
 async function loadOlder() {
@@ -677,12 +685,7 @@ function gotoOrigin(key: string | null) {
   setTimeout(() => el.classList.remove('msg-flash'), 1700)
 }
 
-async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text)
-    toast(t('Copied'))
-  } catch { toast(t('Copy failed'), true) }
-}
+const copyText = copyCode
 // Markdown code blocks: "Copy" and "Run" buttons; inline paths and commands:
 // their menu (event delegation, the HTML comes from v-html).
 function onListClick(e: MouseEvent) {
@@ -727,27 +730,12 @@ function onListClick(e: MouseEvent) {
 }
 
 // ------------------------------------------------------------ commands
-// A command the agent proposes runs in its own terminal, in its shell mode
-// ("! cmd": Claude Code's bash mode, Codex and omp likewise), only after the
-// user has seen it in full and confirmed. Never from a message of the user's
-// (their messages are not markdown) nor on its own.
+// A command the agent proposes runs in its own terminal, in its shell mode,
+// only after the user has seen it in full and confirmed (composables/useCodeRun.ts).
+// Never from a message of the user's (their messages are not markdown) nor on its own.
 async function runCommand(cmd: string) {
-  const text = runMessage(props.pane.agent, cmd)
-  if (!text || !canRun.value) return
-  // A question on screen would take the command as its typed answer.
-  if (props.pane.status === 'blocked' && props.pane.prompt) return toast(tl('The agent is waiting for your answer: answer it first.', 'L’agent attend ta réponse : réponds-lui d’abord.'), true)
-  haptic()
-  const name = kindLabel(props.pane.agent)
-  const ok = await askConfirm(
-    tl(`Run this command? ${name} runs it in its shell mode (!), in its own folder, and shows the output in the conversation.`,
-      `Lancer cette commande ? ${name} l’exécute dans son mode shell (!), dans son propre dossier, et affiche la sortie dans la conversation.`),
-    tl('Run', 'Lancer'), 'primary', cmd,
-  )
-  if (!ok) return
-  try {
-    emit('sent', await sendMessage(props.pane, props.pane.id, text))
-    haptic()
-  } catch (err) { toast((err as Error).message, true) }
+  const queued = await runInAgent(props.pane.id, cmd)
+  if (queued !== false) emit('sent', queued)
 }
 function cmdMenuItems(cmd: string, runnable: boolean): MenuItem[] {
   const items: MenuItem[] = []

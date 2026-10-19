@@ -101,6 +101,54 @@ pre{margin:0;padding:10px 12px;border:1px solid #3a3f47;background:#15181d;white
 `
 }
 
+// A client outside this computer and the tailnet (server/utils/network.ts),
+// or any connection while wherdr may be exposed (`why`: Tailscale Funnel
+// exposes wherdr's port, or Docker publishes it on every interface): the page
+// says why and what to do, without echoing any address.
+export function networkRefusedPage(why?: 'funnel' | 'docker'): string {
+  const opt = '<code>WHERDR_TRUSTED_NETWORKS</code>'
+  const copy = why === 'funnel'
+    ? {
+        title: 'Tailscale Funnel opens wherdr to the Internet.',
+        body: '<p>Funnel relays connections from anywhere to this computer, where wherdr cannot tell them from yours, so wherdr refuses every connection while it lasts.</p><p>On the computer that runs wherdr, turn Funnel off for wherdr\'s port (<code>tailscale funnel status</code>, then <code>tailscale funnel … off</code>), then reload. To reach wherdr from your devices, use <code>tailscale serve</code>, which stays inside your tailnet.</p>',
+        titleFr: 'Tailscale Funnel ouvre wherdr à Internet.',
+        bodyFr: '<p lang="fr">Funnel relaie vers cet ordinateur des connexions venues de partout, que wherdr ne peut pas distinguer des tiennes : wherdr refuse donc toute connexion tant qu’il est actif.</p><p lang="fr">Sur l’ordinateur qui fait tourner wherdr, coupe Funnel pour le port de wherdr (<code>tailscale funnel status</code>, puis <code>tailscale funnel … off</code>), puis recharge. Pour joindre wherdr depuis tes appareils, utilise <code>tailscale serve</code>, qui reste dans ton tailnet.</p>',
+      }
+    : why === 'docker'
+      ? {
+          title: 'wherdr is published on every network interface.',
+          body: '<p>Docker publishes wherdr\'s port on all the host\'s addresses, so a connection may come from another network through Docker\'s proxy, which hides where it comes from, so wherdr refuses them.</p><p>Publish it on <code>127.0.0.1</code> only (<code>"127.0.0.1:7683:7683"</code> in <code>docker-compose.yml</code>, as shipped), then <code>docker compose up -d</code>.</p>',
+          titleFr: 'wherdr est publié sur toutes les interfaces réseau.',
+          bodyFr: '<p lang="fr">Docker publie le port de wherdr sur toutes les adresses de l’hôte : une connexion peut venir d’un autre réseau par le proxy de Docker, qui masque sa provenance : wherdr les refuse donc.</p><p lang="fr">Publie-le sur <code>127.0.0.1</code> seulement (<code>"127.0.0.1:7683:7683"</code> dans <code>docker-compose.yml</code>, comme livré), puis <code>docker compose up -d</code>.</p>',
+        }
+      : {
+          title: 'wherdr only answers this computer and your tailnet.',
+          body: `<p>This device reached it from another network (Wi-Fi, LAN, Internet), in plain HTTP: anyone there could control the agents, so wherdr refuses.</p><p>Open wherdr on its computer (<code>localhost</code>), or from your devices through Tailscale: Settings › Phone, or <code>wherdr phone</code> on that computer.</p><p>Another private network (ZeroTier, WireGuard…): its owner can name its range in ${opt}, then restart wherdr.</p>`,
+          titleFr: 'wherdr ne répond qu’à cet ordinateur et à ton tailnet.',
+          bodyFr: `<p lang="fr">Cet appareil l’a joint depuis un autre réseau (Wi-Fi, réseau local, Internet), en HTTP non chiffré : n’importe qui sur ce réseau pourrait piloter les agents, donc wherdr refuse.</p><p lang="fr">Ouvre wherdr sur son ordinateur (<code>localhost</code>), ou depuis tes appareils par Tailscale : Réglages › Téléphone, ou <code>wherdr phone</code> sur cet ordinateur.</p><p lang="fr">Autre réseau privé (ZeroTier, WireGuard…) : son propriétaire peut nommer sa plage dans ${opt}, puis redémarrer wherdr.</p>`,
+        }
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex"><title>wherdr · network not allowed</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0d0f12;color:#e8eaed;font:15px/1.5 Inter,system-ui,-apple-system,sans-serif;padding:24px max(16px,env(safe-area-inset-right)) 24px max(16px,env(safe-area-inset-left))}
+main{max-width:480px;border:1px solid #3a3f47;padding:24px}
+.tag{font:11px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:#9aa0a8;margin:0 0 16px}
+h1{font:600 20px/1.25 Archivo,system-ui,sans-serif;margin:0 0 8px}
+p{margin:0 0 12px}p:last-child{margin-bottom:0}hr{border:0;border-top:1px solid #3a3f47;margin:20px 0}
+code{font:13px/1.45 "JetBrains Mono",ui-monospace,monospace;overflow-wrap:anywhere}
+</style></head><body><main>
+<p class="tag">wherdr · 403 · network</p>
+<h1>${copy.title}</h1>
+${copy.body}
+<hr>
+<h1 lang="fr">${copy.titleFr}</h1>
+${copy.bodyFr}
+</main></body></html>
+`
+}
+
 // API request made from another page (link, <img>, fetch without CORS):
 // some reads act on a pane (GET /api/models opens /model). Recent
 // browsers say so in Sec-Fetch-Site; without that header (curl,

@@ -313,6 +313,10 @@ export interface ChatResponse {
   unchanged?: boolean
   older?: boolean
   items?: ChatItem[]
+  // Incremental re-read (server/utils/chatDelta.ts): the client keeps its
+  // first `keep` items and `items` replace the rest. Absent: `items` is the
+  // whole bottom of the conversation.
+  keep?: number
   start?: number
   queue?: ClaudeQueueEntry[]
   model?: ModelInfo | null
@@ -356,6 +360,8 @@ export interface AppConfig {
   hostOpen?: boolean
   dirs: string[]
   push: { enabled: boolean, key: string | null, devices: number }
+  // WHERDR_TRUSTED_NETWORKS=any: wherdr accepts every network (warning banner).
+  openNetwork?: boolean
 }
 
 export interface DirEntry { name: string, path: string, git: boolean }
@@ -459,7 +465,7 @@ export interface FilesListing { root: string, path: string, entries: FileEntry[]
 export interface FilePreview {
   path: string
   size: number
-  kind: 'text' | 'image' | 'pdf' | 'binary' | 'large'
+  kind: 'text' | 'image' | 'pdf' | 'video' | 'binary' | 'large'
   text?: string
   dataUrl?: string
   truncated: boolean
