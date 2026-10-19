@@ -1,13 +1,17 @@
 <script setup lang="ts">
-// The Board: herdr-projects 1.x tasks of every machine. By default every
-// machine, grouped by machine then by repo (1.x: `Alt+M` with `Alt+S`); or in
-// the five groups of its board (Needs you, Ready to approve, Working, To do,
-// Done): columns on a computer, one group at a time on a phone.
+// The Board: herdr-projects 1.x tasks of every machine, always in the five
+// groups of its board (Needs you, Ready to approve, Working, To do, Done), as
+// five columns of equal width. Two views of the same grid: "Global" mixes every
+// machine's and repo's tasks; "By repo" cuts it into lanes, one per machine then
+// per repo (1.x: `Alt+M` with `Alt+S`), aligned from one column to the next.
+// On a phone (or a Board narrowed by the side panel): one group at a time, in
+// tabs, with the lanes inside.
 //
 // Talking to agents happens in a side panel (BoardPanel), never in a box on the
-// Board: a card opens its task's agent there, a machine's heading that
-// machine's Coordinator, a repo's heading that repo's project coordinator
-// (1.x: `Space` on a heading). A task with no agent opens its sheet
+// Board: a card opens its task's agent there; labelled buttons open a
+// coordinator: the Coordinator (top bar, and each machine's lane), the machine
+// coordinator (each machine's lane) and a repo's project coordinator (its lane;
+// 1.x: `Space` on a heading). A task with no agent opens its sheet
 // (TaskSheet), which the panel opens too; "+ New task" adds one (NewTaskSheet).
 // A machine without herdr-projects 1.2.1+ says what to do instead
 // (ProjectsUpgradeNote).
@@ -61,8 +65,9 @@ function pickScope(v: string) {
 }
 const shownBoards = computed(() => boards.value.filter(m => shownScope.value === ALL || m.machine === shownScope.value))
 
-type Grouping = 'repo' | 'status'
-const grouping = ref<Grouping>(readStore(GROUPING_KEY) === 'status' ? 'status' : 'repo')
+// `global` was stored as `status` before it was renamed.
+type Grouping = 'repo' | 'global'
+const grouping = ref<Grouping>(['global', 'status'].includes(readStore(GROUPING_KEY) || '') ? 'global' : 'repo')
 function pickGrouping(g: Grouping) {
   grouping.value = g
   writeStore(GROUPING_KEY, g)
@@ -103,15 +108,13 @@ const machineGroups = computed(() => shownBoards.value.map((m) => {
     summary: summary(rows),
     readOnly: Boolean(m.readOnly),
     repos: groupByRepo(rows).map(({ repo, tasks }) => {
-      // The board's five groups under each repo, as "By status" shows them.
+      // The board's five groups in each repo's lane, under the Board's columns.
       const cols = TASK_GROUPS.map((id) => {
         const all = tasks.filter(t => t.group === id)
         const list = id === 'done' && !showAll.value ? all.slice(0, DONE_SHOWN_REPO) : all
         return { id, label: taskGroupLabel(id), total: all.length, cards: list.map(task => cardOf(m, task)), hidden: all.length - list.length }
       })
-      // An empty group keeps a narrow track: its name and its 0.
-      const tracks = cols.map(c => (c.total ? 'minmax(0, 1fr)' : '96px')).join(' ')
-      return { repo, summary: summary(tasks), cols, tracks }
+      return { repo, summary: summary(tasks), cols }
     }),
   }
 }))
@@ -119,8 +122,7 @@ const machineGroups = computed(() => shownBoards.value.map((m) => {
 const reposByMachine = computed(() => Object.fromEntries(boards.value.map(m => [m.machine, [...new Set(m.tasks.map(t => t.repo))].sort()])))
 
 // Columns side by side need room: on a phone, or a Board narrowed by the side
-// panel, each repo's groups are stacked sections and "By status" one group at
-// a time.
+// panel, one group at a time (tabs), in both views.
 const root = ref<HTMLElement | null>(null)
 const width = ref(0)
 let sizes: ResizeObserver | null = null
@@ -217,6 +219,22 @@ function talkTo(machine: string, to: CoordinatorTarget) {
   panel.value = { machine, kind: 'coordinator', to }
   haptic()
 }
+// Each button says who it talks to: "Coordinator · devbox",
+// "Machine coordinator · devbox", "Coordinator · web" (a repo's).
+function coordLabel(machine: string, to: CoordinatorTarget): string {
+  if (to.kind === 'project') return tl(`Coordinator · ${to.repo}`, `Coordinateur · ${to.repo}`)
+  if (to.kind === 'machine') return tl(`Machine coordinator · ${machineLabel(machine)}`, `Coordinateur de machine · ${machineLabel(machine)}`)
+  return `Coordinator · ${machineLabel(machine)}`
+}
+// A machine's lane: its Coordinator and its machine coordinator.
+const MACHINE_COORDS: CoordinatorTarget[] = [{ kind: 'main' }, { kind: 'machine' }]
+// The top bar's Coordinator: the machine shown, or a choice when several are.
+const coordMachines = computed(() => writable.value.filter(m => shownScope.value === ALL || m.machine === shownScope.value).map(m => m.machine))
+const coordItems = computed(() => [coordMachines.value.map(machine => ({
+  label: coordLabel(machine, { kind: 'main' }),
+  icon: 'i-lucide-server',
+  onSelect: () => talkTo(machine, { kind: 'main' }),
+}))])
 const talking = (machine: string, to: CoordinatorTarget) => {
   const p = panel.value
   if (!p || p.kind !== 'coordinator' || p.machine !== machine || p.to.kind !== to.kind) return false
@@ -270,6 +288,18 @@ function back() {
       >
         <span class="board-new-label">{{ tl('New task', 'Nouvelle tâche') }}</span>
       </UButton>
+      <UButton
+        v-if="coordMachines.length === 1" color="neutral" variant="outline" size="md" class="board-coord board-top-coord"
+        :class="{ on: talking(coordMachines[0]!, { kind: 'main' }) }" :disabled="offlineView" :title="coordLabel(coordMachines[0]!, { kind: 'main' })"
+        @click="talkTo(coordMachines[0]!, { kind: 'main' })"
+      >
+        Coordinator
+      </UButton>
+      <UDropdownMenu v-else-if="coordMachines.length > 1" :items="coordItems" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
+        <UButton color="neutral" variant="outline" size="md" class="board-coord board-top-coord" trailing-icon="i-lucide-chevron-down" :disabled="offlineView">
+          Coordinator
+        </UButton>
+      </UDropdownMenu>
       <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="lg" class="icon-btn board-filter" :aria-label="tl('Refresh', 'Actualiser')" :disabled="offlineView" @click="reload" />
     </header>
     <div v-if="error" class="notice board-notice">{{ error }}</div>
@@ -295,91 +325,30 @@ function back() {
           v-if="boards.length > 1" :model-value="shownScope" :items="scopeItems" size="sm" class="board-scope" :aria-label="tl('Machines shown', 'Machines affichées')"
           @update:model-value="pickScope(String($event))"
         />
-        <div class="board-grouping" role="group" :aria-label="tl('Group tasks', 'Grouper les tâches')">
+        <div class="board-grouping" role="group" :aria-label="tl('View', 'Vue')">
+          <button type="button" :class="{ on: grouping === 'global' }" :aria-pressed="grouping === 'global'" @click="pickGrouping('global')">{{ tl('Global', 'Global') }}</button>
           <button type="button" :class="{ on: grouping === 'repo' }" :aria-pressed="grouping === 'repo'" @click="pickGrouping('repo')">{{ tl('By repo', 'Par dépôt') }}</button>
-          <button type="button" :class="{ on: grouping === 'status' }" :aria-pressed="grouping === 'status'" @click="pickGrouping('status')">{{ tl('By status', 'Par état') }}</button>
         </div>
       </div>
 
-      <!-- Grouped by machine, then by repo. -->
-      <div v-if="grouping === 'repo'" class="board-list">
-        <section v-for="mg in machineGroups" :key="mg.machine || 'local'" class="board-machine" :data-machine="mg.machine || 'local'">
-          <div class="board-head machine" :class="{ talking: talking(mg.machine, { kind: 'main' }) }">
-            <button type="button" class="board-fold" :aria-expanded="!folds.has(`m:${mg.machine}`)" :aria-label="tl('Fold', 'Replier')" @click="fold(`m:${mg.machine}`)">
-              <UIcon :name="folds.has(`m:${mg.machine}`) ? 'i-lucide-chevron-right' : 'i-lucide-chevron-down'" />
-            </button>
-            <button
-              type="button" class="board-head-talk" :disabled="mg.readOnly || offlineView"
-              :aria-label="tl(`Talk to the Coordinator of ${machineLabel(mg.machine)}`, `Parler au Coordinateur de ${machineLabel(mg.machine)}`)"
-              @click="talkTo(mg.machine, { kind: 'main' })"
-            >
-              <b>{{ machineLabel(mg.machine) }}</b>
-              <span class="board-head-sum">{{ mg.summary }}</span>
-              <UIcon v-if="!mg.readOnly" name="i-lucide-message-square-text" class="board-head-icon" />
-            </button>
-          </div>
-          <template v-if="!folds.has(`m:${mg.machine}`)">
-            <section v-for="rg in mg.repos" :key="rg.repo" class="board-repo" :data-repo="rg.repo">
-              <div class="board-head repo" :class="{ talking: talking(mg.machine, { kind: 'project', repo: rg.repo }) }">
-                <button type="button" class="board-fold" :aria-expanded="!folds.has(`r:${mg.machine}|${rg.repo}`)" :aria-label="tl('Fold', 'Replier')" @click="fold(`r:${mg.machine}|${rg.repo}`)">
-                  <UIcon :name="folds.has(`r:${mg.machine}|${rg.repo}`) ? 'i-lucide-chevron-right' : 'i-lucide-chevron-down'" />
-                </button>
-                <button
-                  type="button" class="board-head-talk" :disabled="mg.readOnly || offlineView"
-                  :aria-label="tl(`Talk to the ${rg.repo} coordinator`, `Parler au coordinateur ${rg.repo}`)"
-                  @click="talkTo(mg.machine, { kind: 'project', repo: rg.repo })"
-                >
-                  <b>{{ rg.repo }}</b>
-                  <span class="board-head-sum">{{ rg.summary }}</span>
-                  <UIcon v-if="!mg.readOnly" name="i-lucide-message-square-text" class="board-head-icon" />
-                </button>
-                <UButton
-                  v-if="!mg.readOnly" icon="i-lucide-plus" color="neutral" variant="ghost" size="sm" class="board-head-add" :disabled="offlineView"
-                  :aria-label="tl(`New task in ${rg.repo}`, `Nouvelle tâche dans ${rg.repo}`)" @click="newTask(mg.machine, rg.repo)"
-                />
-              </div>
-              <!-- Its five groups: columns on a computer (an empty one stays narrow), stacked
-                   sections that fold on a phone (an empty one is left out: the heading counts). -->
-              <div v-if="!folds.has(`r:${mg.machine}|${rg.repo}`)" class="board-repo-cols" :class="{ desk: wide }" :style="wide ? { '--repo-cols': rg.tracks } : undefined">
-                <section
-                  v-for="col in rg.cols" v-show="wide || col.total" :key="col.id" class="board-repo-col" :class="[col.id, { empty: !col.total }]"
-                  :data-group="col.id" :aria-label="col.label"
-                >
-                  <h4 v-if="wide" class="board-repo-col-head"><span>{{ col.label }}</span><span class="pp-count">{{ col.total }}</span></h4>
-                  <button
-                    v-else type="button" class="board-repo-col-head" :aria-expanded="!folds.has(`g:${mg.machine}|${rg.repo}|${col.id}`)"
-                    @click="fold(`g:${mg.machine}|${rg.repo}|${col.id}`)"
-                  >
-                    <UIcon :name="folds.has(`g:${mg.machine}|${rg.repo}|${col.id}`) ? 'i-lucide-chevron-right' : 'i-lucide-chevron-down'" />
-                    <span>{{ col.label }}</span><span class="pp-count">{{ col.total }}</span>
-                  </button>
-                  <div v-if="wide ? col.total : !folds.has(`g:${mg.machine}|${rg.repo}|${col.id}`)" class="board-repo-col-body">
-                    <TaskCard v-for="c in col.cards" :key="c.key" :task="c.task" :stale="c.stale" :read-at="readAt(c.readAt)" @open="openCard(c)" />
-                    <button v-if="col.hidden" type="button" class="board-more" @click="showAll = true">
-                      {{ tl(`Show all (${col.hidden} more)`, `Tout afficher (${col.hidden} de plus)`) }}
-                    </button>
-                  </div>
-                </section>
-              </div>
-            </section>
-            <p v-if="!mg.repos.length" class="board-empty board-machine-empty">{{ tl('No task yet: talk to the Coordinator from this machine’s heading, or add one.', 'Aucune tâche : parle au Coordinateur depuis l’en-tête de cette machine, ou ajoutes-en une.') }}</p>
-          </template>
-        </section>
+      <!-- Phone, or a Board narrowed by the panel: one group at a time, in both views. -->
+      <div v-if="!wide" class="board-seg tasks" role="group" :aria-label="t('Board')">
+        <button
+          v-for="col in columns" :key="col.id" type="button" class="board-seg-btn" :class="[col.id, { on: phoneColumn === col.id }]"
+          :aria-pressed="phoneColumn === col.id" @click="selectColumn(col.id)"
+        >
+          <span>{{ col.label }}</span><b>{{ col.total }}</b>
+        </button>
       </div>
 
-      <!-- The five groups of herdr-projects' board. -->
-      <template v-else>
-        <div v-if="!wide" class="board-seg tasks" role="group" :aria-label="t('Board')">
-          <button
-            v-for="col in columns" :key="col.id" type="button" class="board-seg-btn" :class="[col.id, { on: phoneColumn === col.id }]"
-            :aria-pressed="phoneColumn === col.id" @click="selectColumn(col.id)"
-          >
-            <span>{{ col.label }}</span><b>{{ col.total }}</b>
-          </button>
+      <!-- The same grid in both views: five columns of equal width. "By repo" cuts it into lanes. -->
+      <div class="board-grid" :class="{ desk: wide, lanes: grouping === 'repo' }">
+        <div v-if="wide" class="board-grid-head">
+          <h3 v-for="col in columns" :key="col.id" class="board-col-head" :class="col.id"><span>{{ col.label }}</span><span class="pp-count">{{ col.total }}</span></h3>
         </div>
-        <div class="board-cols">
+
+        <div v-if="grouping === 'global'" class="board-cols board-cells">
           <section v-for="col in columns" v-show="wide || phoneColumn === col.id" :key="col.id" class="board-col" :class="col.id" :aria-label="col.label">
-            <h3 v-if="wide" class="board-col-head"><span>{{ col.label }}</span><span class="pp-count">{{ col.total }}</span></h3>
             <div class="board-col-body">
               <TaskCard
                 v-for="c in col.cards" :key="c.key" :task="c.task" :machine="several && shownScope === ALL ? machineName(c.machine) : undefined"
@@ -392,7 +361,65 @@ function back() {
             </div>
           </section>
         </div>
-      </template>
+
+        <template v-else>
+          <section v-for="mg in machineGroups" :key="mg.machine || 'local'" class="board-machine" :data-machine="mg.machine || 'local'">
+            <div class="board-head machine" :class="{ talking: talking(mg.machine, { kind: 'main' }) || talking(mg.machine, { kind: 'machine' }) }">
+              <button type="button" class="board-fold" :aria-expanded="!folds.has(`m:${mg.machine}`)" :aria-label="tl('Fold', 'Replier')" @click="fold(`m:${mg.machine}`)">
+                <UIcon :name="folds.has(`m:${mg.machine}`) ? 'i-lucide-chevron-right' : 'i-lucide-chevron-down'" />
+              </button>
+              <p class="board-head-name"><b>{{ machineLabel(mg.machine) }}</b><span class="board-head-sum">{{ mg.summary }}</span></p>
+              <div class="board-head-actions">
+                <UButton
+                  v-for="to in MACHINE_COORDS" :key="to.kind"
+                  color="neutral" variant="outline" size="sm" class="board-coord" :class="{ on: talking(mg.machine, to) }"
+                  :disabled="mg.readOnly || offlineView" @click="talkTo(mg.machine, to)"
+                >
+                  {{ coordLabel(mg.machine, to) }}
+                </UButton>
+              </div>
+            </div>
+            <template v-if="!folds.has(`m:${mg.machine}`)">
+              <section v-for="rg in mg.repos" :key="rg.repo" class="board-repo" :data-repo="rg.repo">
+                <div class="board-head repo" :class="{ talking: talking(mg.machine, { kind: 'project', repo: rg.repo }) }">
+                  <button type="button" class="board-fold" :aria-expanded="!folds.has(`r:${mg.machine}|${rg.repo}`)" :aria-label="tl('Fold', 'Replier')" @click="fold(`r:${mg.machine}|${rg.repo}`)">
+                    <UIcon :name="folds.has(`r:${mg.machine}|${rg.repo}`) ? 'i-lucide-chevron-right' : 'i-lucide-chevron-down'" />
+                  </button>
+                  <p class="board-head-name"><b>{{ rg.repo }}</b><span class="board-head-sum">{{ rg.summary }}</span></p>
+                  <div class="board-head-actions">
+                    <UButton
+                      color="neutral" variant="outline" size="sm" class="board-coord" :class="{ on: talking(mg.machine, { kind: 'project', repo: rg.repo }) }"
+                      :disabled="mg.readOnly || offlineView" @click="talkTo(mg.machine, { kind: 'project', repo: rg.repo })"
+                    >
+                      {{ coordLabel(mg.machine, { kind: 'project', repo: rg.repo }) }}
+                    </UButton>
+                    <UButton
+                      v-if="!mg.readOnly" icon="i-lucide-plus" color="neutral" variant="outline" size="sm" class="board-head-add" :disabled="offlineView"
+                      :aria-label="tl(`New task in ${rg.repo}`, `Nouvelle tâche dans ${rg.repo}`)" @click="newTask(mg.machine, rg.repo)"
+                    />
+                  </div>
+                </div>
+                <!-- Its lane: one cell under each of the Board's columns. -->
+                <div v-if="!folds.has(`r:${mg.machine}|${rg.repo}`)" class="board-repo-cols board-cells">
+                  <section
+                    v-for="col in rg.cols" v-show="wide || phoneColumn === col.id" :key="col.id" class="board-repo-col" :class="[col.id, { none: !col.total }]"
+                    :data-group="col.id" :aria-label="col.label"
+                  >
+                    <div class="board-repo-col-body">
+                      <TaskCard v-for="c in col.cards" :key="c.key" :task="c.task" :stale="c.stale" :read-at="readAt(c.readAt)" @open="openCard(c)" />
+                      <p v-if="!wide && !col.total" class="board-empty">{{ t('Nothing here') }}</p>
+                      <button v-if="col.hidden" type="button" class="board-more" @click="showAll = true">
+                        {{ tl(`Show all (${col.hidden} more)`, `Tout afficher (${col.hidden} de plus)`) }}
+                      </button>
+                    </div>
+                  </section>
+                </div>
+              </section>
+              <p v-if="!mg.repos.length" class="board-empty board-machine-empty">{{ tl('No task yet: talk to the Coordinator from this machine’s lane, or add one.', 'Aucune tâche : parle au Coordinateur depuis la bande de cette machine, ou ajoutes-en une.') }}</p>
+            </template>
+          </section>
+        </template>
+      </div>
     </template>
     <BoardPanel
       v-if="panel" :key="panelKey" :target="panel" :task="panelTask"

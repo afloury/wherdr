@@ -70,7 +70,7 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   const card = (key: string) => page.locator('.task-card', { hasText: key })
   // Grouped by repo by default; the five groups are one tap away.
   await expect(page.locator('.board-repo[data-repo="demo"]')).toBeVisible({ timeout: 15000 })
-  await page.getByRole('button', { name: 'By status' }).click()
+  await page.getByRole('button', { name: 'Global' }).click()
   if (phone) await page.getByRole('button', { name: /Ready to approve/ }).click()
   await expect(card('DEMO-1')).toContainText('Fix login redirect', { timeout: 15000 })
   await expect(card('DEMO-1')).toContainText('#7')
@@ -141,11 +141,10 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   await expect.poll(callLog).toContain('tell -- demo/3 --keep-a-changelog please')
   await page.keyboard.press('Escape')
   await expect(page.locator('.board-panel')).toHaveCount(0)
-  // No chat box on the Board: a machine's heading opens its Coordinator in the panel;
-  // one not started yet takes a first message, which starts it.
-  await expect(page.locator('.board-coord, #board-coord-text')).toHaveCount(0)
-  await page.getByRole('button', { name: 'By repo' }).click()
-  await page.locator('.board-head.machine .board-head-talk').click()
+  // No chat box on the Board: the top bar's Coordinator button opens it in the panel,
+  // in both views; one not started yet takes a first message, which starts it.
+  await expect(page.locator('#board-coord-text')).toHaveCount(0)
+  await page.locator('.board-top').getByRole('button', { name: 'Coordinator' }).click()
   await expect(panel.locator('.board-panel-name')).toHaveText('Coordinator')
   await panel.locator('#board-panel-first').fill('Add a dark mode toggle')
   await panel.getByRole('button', { name: 'Send', exact: true }).click()
@@ -224,9 +223,11 @@ test('in a container: the tasks show, the actions are the host\'s', async ({ pag
   await page.route('**/api/tasks/details*', route => route.fulfill({ json: { id: 'demo/1', title: 'Task demo/1', stage: 'approval', msg: '', description: 'From the file', agent: 'claude', pr: '', branch: '', worktree: '', failure: '', review: null, reviewRounds: 0, plan: '', research: false, pane: null } }))
   await page.goto('/#/board')
   await expect(page.locator('.board-notes')).toContainText('wherdr runs in a container', { timeout: 15000 })
-  await expect(page.locator('.board-head-talk').first()).toBeDisabled()
+  await expect(page.locator('.board-coord').first()).toBeDisabled()
+  await expect(page.locator('.board-top .board-coord')).toHaveCount(0)
   await expect(page.locator('.board-head-add')).toHaveCount(0)
   await expect(page.locator('.board-new')).toHaveCount(0)
+  if (testInfo.project.name.includes('phone')) await page.locator('.board-seg').getByRole('button', { name: /^Ready to approve/ }).click()
   await page.locator('.task-card', { hasText: 'Task demo/1' }).click()
   const sheet = page.getByRole('dialog')
   await expect(sheet).toContainText('herdr-projects approve demo/1')
@@ -247,41 +248,51 @@ test('grouped by machine then repo: each heading opens its coordinator in the si
   fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(actionBoard))
   await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
   await page.goto('/#/board')
+  const phone = testInfo.project.name.includes('phone')
+  // Phone: one group at a time, in tabs; the lanes inside.
+  const tab = async (name: RegExp) => { if (phone) await page.locator('.board-seg').getByRole('button', { name }).click() }
   const demo = page.locator('.board-repo[data-repo="demo"]')
   const web = page.locator('.board-repo[data-repo="web"]')
-  await expect(demo).toContainText('In the backlog', { timeout: 15000 })
-  await expect(demo.locator('.board-head')).toContainText('1 needs you · 1 working · 1 to do')
+  await expect(demo.locator('.board-head')).toContainText('1 needs you · 1 working · 1 to do', { timeout: 15000 })
+  await tab(/^To do/)
+  await expect(demo).toContainText('In the backlog')
   await expect(web).toContainText('Old cleanup')
   // Each task by its repo's key (show --repo), not its repo's name: web's is SITE.
   await expect(web.locator('.task-card')).toContainText('SITE-2')
   await expect(demo.locator('.task-card', { hasText: 'In the backlog' })).toContainText('DEMO-5')
   await expect(page.locator('.board-head.machine')).toBeVisible()
-  // Under each repo, the board's five groups: each card in its own.
+  // Each repo's lane: one cell under each of the Board's five columns.
   const col = (repo: typeof demo, g: string) => repo.locator(`.board-repo-col[data-group="${g}"]`)
   await expect(col(demo, 'needs')).toContainText('Broke on the tests')
   await expect(col(demo, 'working')).toContainText('Add dark mode toggle')
   await expect(col(demo, 'todo')).toContainText('In the backlog')
   await expect(col(web, 'done')).toContainText('Old cleanup')
-  if (testInfo.project.name.includes('phone')) {
-    // Phone: stacked sections that fold; an empty group is left out.
-    await expect(col(demo, 'ready')).toBeHidden()
-    await col(demo, 'todo').locator('.board-repo-col-head').click()
-    await expect(col(demo, 'todo')).not.toContainText('In the backlog')
-    await col(demo, 'todo').locator('.board-repo-col-head').click()
-    await expect(col(demo, 'todo')).toContainText('In the backlog')
+  if (phone) {
+    // Phone: only the tab's group shows, in every lane; an empty one says so.
+    await expect(col(demo, 'todo')).toBeVisible()
+    await expect(col(demo, 'needs')).toBeHidden()
+    await tab(/^Ready to approve/)
+    await expect(col(demo, 'ready')).toContainText('Nothing here')
+    await expect(col(demo, 'todo')).toBeHidden()
+    await tab(/^Needs you/)
   } else {
-    // Computer: five columns side by side; an empty one stays, narrow.
-    await expect(col(demo, 'ready')).toBeVisible()
-    await expect(col(demo, 'ready')).toHaveClass(/empty/)
-    const empty = (await col(demo, 'ready').boundingBox())!.width
-    expect(empty).toBeLessThan((await col(demo, 'needs').boundingBox())!.width)
+    // Computer: five columns of equal width, aligned from one lane to the next and with the Board's heads.
+    const box = async (l: import('@playwright/test').Locator) => (await l.boundingBox())!
+    for (const g of ['needs', 'ready', 'working', 'todo', 'done']) {
+      const head = await box(page.locator(`.board-grid-head .board-col-head.${g}`))
+      for (const lane of [demo, web]) {
+        const cell = await box(col(lane, g))
+        expect(Math.abs(cell.x - head.x)).toBeLessThan(1.5)
+        expect(Math.abs(cell.width - head.width)).toBeLessThan(1.5)
+      }
+    }
+    expect(Math.abs((await box(col(demo, 'ready'))).width - (await box(col(demo, 'needs'))).width)).toBeLessThan(1.5)
   }
   await page.screenshot({ path: `.shots/board-1x-repos-${testInfo.project.name}.png` })
 
-  const phone = testInfo.project.name.includes('phone')
   const panel = page.locator('.board-panel')
-  // A repo's heading: its project coordinator, not started yet: a first message starts it.
-  await page.getByRole('button', { name: 'Talk to the web coordinator' }).click()
+  // A repo's lane: its project coordinator, not started yet: a first message starts it.
+  await page.getByRole('button', { name: 'Coordinator · web' }).click()
   await expect(panel.locator('.board-panel-name')).toHaveText('web coordinator')
   await expect(panel.locator('.board-panel-repo')).toHaveText('web')
   if (!phone) await expect(web.locator('.board-head')).toHaveClass(/talking/)
@@ -295,14 +306,21 @@ test('grouped by machine then repo: each heading opens its coordinator in the si
   await expect(panel.locator('.cell-view textarea')).toBeVisible()
   await expect(panel.locator('.board-panel-name')).toHaveText('web coordinator')
   await page.screenshot({ path: `.shots/board-1x-coord-panel-${testInfo.project.name}.png` })
-  // The machine's heading: its Coordinator.
+  // The machine's lane: its Coordinator, and its machine coordinator.
   if (phone) await closePanel(page, phone)
-  await page.locator('.board-head.machine .board-head-talk').click()
+  const machineHead = page.locator('.board-head.machine')
+  await machineHead.getByRole('button', { name: /^Coordinator · / }).click()
   await expect(panel.locator('.board-panel-name')).toHaveText('Coordinator')
   await expect(panel.locator('.board-panel-repo')).toHaveCount(0)
   await panel.locator('#board-panel-first').fill('plain')
   await panel.getByRole('button', { name: 'Send', exact: true }).click()
   await expect.poll(callLog).toContain('coordinator -- tell plain')
+  if (phone) await closePanel(page, phone)
+  await machineHead.getByRole('button', { name: /^Machine coordinator · / }).click()
+  await expect(panel.locator('.board-panel-name')).toHaveText('Machine coordinator')
+  await panel.locator('#board-panel-first').fill('for the machine')
+  await panel.getByRole('button', { name: 'Send', exact: true }).click()
+  await expect.poll(callLog).toContain('coordinator --machine -- tell for the machine')
   await closePanel(page, phone)
   await expect(panel).toHaveCount(0)
 
@@ -349,13 +367,17 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
 
   const card = (title: string) => page.locator('.task-card', { hasText: title })
   const task = page.getByRole('dialog')
+  // Phone: one group at a time, picked in its tabs.
+  const tab = async (name: RegExp) => { if (testInfo.project.name.includes('phone')) await page.locator('.board-seg').getByRole('button', { name }).click() }
   // To do: Start.
+  await tab(/^To do/)
   await card('In the backlog').click()
   await expect(task.getByRole('button', { name: 'Stop' })).toHaveCount(0)
   await task.getByRole('button', { name: 'Start', exact: true }).click()
   await expect.poll(callLog).toContain('delegate -- demo/5')
   await page.keyboard.press('Escape')
   // Working: Stop, asked first; no Archive.
+  await tab(/^Working/)
   await card('Add dark mode toggle').click()
   await expect(task.getByRole('button', { name: 'Archive' })).toHaveCount(0)
   await task.getByRole('button', { name: 'Stop', exact: true }).click()
@@ -366,6 +388,7 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   await task.locator('.hw-sheet-close').click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   // Failed: Retry, then Archive (the sheet closes).
+  await tab(/^Needs you/)
   await card('Broke on the tests').click()
   await expect(task.getByRole('button', { name: 'Retry' })).toBeVisible()
   await page.screenshot({ path: `.shots/board-1x-task-actions-${testInfo.project.name}.png` })
@@ -449,7 +472,7 @@ test('a first message to a coordinator stays with it while its machine is away, 
     await route.fulfill({ json: { ok: true, msg: 'sent' } })
   })
   await page.goto('/#/board')
-  await page.locator('.board-machine[data-machine="ma"] .board-repo[data-repo="demo"] .board-head-talk').click({ timeout: 15000 })
+  await page.locator('.board-machine[data-machine="ma"] .board-repo[data-repo="demo"] .board-coord').click({ timeout: 15000 })
   const panel = page.locator('.board-panel')
   const text = panel.locator('#board-panel-first')
   await text.fill('Draft for demo on A')
@@ -515,13 +538,13 @@ test('a reply for the coordinator shown before never lands on the one shown now'
   })
   await page.goto('/#/board')
   const panel = page.locator('.board-panel')
-  await page.getByRole('button', { name: 'Talk to the demo coordinator' }).click({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Coordinator · demo' }).click({ timeout: 15000 })
   await panel.locator('#board-panel-first').fill('For demo')
   await panel.getByRole('button', { name: 'Send', exact: true }).click()
   await expect.poll(() => sent.length).toBe(1)
   // demo's reply is still on its way: web's coordinator is shown, and written to.
   if (phone) await closePanel(page, phone)
-  await page.getByRole('button', { name: 'Talk to the web coordinator' }).click()
+  await page.getByRole('button', { name: 'Coordinator · web' }).click()
   await expect(panel.locator('.board-panel-name')).toHaveText('web coordinator')
   await panel.locator('#board-panel-first').fill('Draft for web')
   release()
