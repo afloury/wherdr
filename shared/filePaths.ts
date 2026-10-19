@@ -20,7 +20,7 @@ const FILE_EXTS = new Set([
   'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'vue', 'svelte', 'json', 'jsonl', 'md', 'mdx', 'txt', 'html', 'htm',
   'css', 'scss', 'less', 'py', 'rb', 'rs', 'go', 'java', 'kt', 'swift', 'c', 'h', 'cpp', 'hpp', 'cs', 'php',
   'sh', 'bash', 'zsh', 'fish', 'yml', 'yaml', 'toml', 'ini', 'conf', 'cfg', 'lock', 'xml', 'svg', 'csv',
-  'tsv', 'sql', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'mov', 'zip', 'gz', 'tgz', 'docx',
+  'tsv', 'sql', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'm4v', 'mov', 'webm', 'zip', 'gz', 'tgz', 'docx',
   'xlsx', 'pptx', 'ipynb', 'dockerfile', 'patch', 'diff',
 ])
 const KNOWN_NAMES = new Set(['Dockerfile', 'Makefile', 'LICENSE', 'Gemfile', 'Procfile', 'Justfile', '.env', '.gitignore'])

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>wherdr — step away, stay in control</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div
+      id="film"
+      data-composition-id="wherdr"
+      data-width="1080"
+      data-height="1080"
+      data-duration="15"
+      data-fps="30"
+    >
+      <div class="halo"></div>
+      <header>
+        <img src=".generated/logo.png" alt="" /><b>wherdr</b
+        ><span>YOUR AGENTS. EVERYWHERE.</span>
+      </header>
+      <section id="desktop-title" class="headline">
+        <h1>Start on PC.<br /><em>Keep going.</em></h1>
+      </section>
+      <div id="desktop" class="screen desktop">
+        <img
+          class="capture"
+          src=".generated/desktop/000.png"
+          alt="Actual wherdr New agent dialog"
+        />
+        <img
+          id="pc-working"
+          class="capture hidden"
+          src=".generated/desktop/035.png"
+          alt="Actual Test suite conversation after launch"
+        />
+      </div>
+      <section id="mobile-title" class="headline side hidden">
+        <h1>
+          Step away.<br /><em>Stay in<br />control.</em>
+        </h1>
+        <p>SAME AGENT.<br />SAME CONVERSATION.</p>
+      </section>
+      <div id="phone" class="screen phone hidden">
+        <img
+          class="capture"
+          src=".generated/mobile/000.png"
+          alt="The same Test suite conversation on mobile"
+        />
+        <img
+          id="permission"
+          class="capture hidden"
+          src=".generated/mobile/030.png"
+          alt="Actual Claude permission request for npm test"
+        />
+        <img
+          id="accepted"
+          class="capture hidden"
+          src=".generated/mobile/085.png"
+          alt="Actual agent result after approval"
+        />
+        <img
+          id="project"
+          class="capture hidden"
+          src=".generated/mobile/130.png"
+          alt="Actual wherdr Project panel"
+        />
+        <div id="button-glow" class="hidden"></div>
+      </div>
+      <div id="handoff" class="stamp hidden">PC <span>→</span> PHONE</div>
+      <section id="reply-title" class="headline side hidden">
+        <h1>Your turn?<br /><em>One tap.</em></h1>
+        <p>KEEP WORK MOVING.</p>
+      </section>
+      <section id="project-title" class="headline side hidden">
+        <h1>
+          Your project.<br /><em>In your<br />pocket.</em>
+        </h1>
+      </section>
+      <section id="board-title" class="headline hidden">
+        <h1>All your work.<br /><em>One view.</em></h1>
+      </section>
+      <div id="board" class="screen desktop hidden">
+        <img
+          class="capture"
+          src=".generated/board/025.png"
+          alt="Actual wherdr Board and agent sidebar"
+        />
+      </div>
+      <section id="end" class="hidden">
+        <span class="eyebrow">TAKE YOUR AGENTS WITH YOU</span>
+        <h1>wherdr<span>_</span></h1>
+        <p>Step away. Stay in control.</p>
+        <div class="cta">wherdr.dev <span>↗</span></div>
+        <small>SELF-HOSTED / PRIVATE / OPEN SOURCE</small>
+      </section>
+      <footer><span>YOUR AGENTS KEEP GOING.</span><b>wherdr.dev</b></footer>
+      <div class="timeline"><i></i></div>
+    </div>
+    <script src="node_modules/gsap/dist/gsap.min.js"></script>
+    <script src="timeline.js"></script>
+    <script>
+      window.__timelines = { wherdr: tl };
+    </script>
+  </body>
+</html>

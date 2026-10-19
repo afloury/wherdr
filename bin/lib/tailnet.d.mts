@@ -39,3 +39,9 @@ export function healthReach(status: number, text: string): 'ok' | 'host' | null
 export function probe(url: string, timeoutMs?: number): Promise<Probe>
 export function failureCause(err: unknown): ReachCause
 export function runTailscale(bin: string, args: string[], timeoutMs?: number): Promise<{ code: number, output: string }>
+export interface TailnetPeers { readable: boolean, state: string | null, running: boolean, selfIps: string[], peerIps: string[] }
+export interface TailnetFacts extends Omit<TailnetPeers, 'state'> { installed: boolean, funnel: boolean | null, funnelAny: boolean | null }
+export function tailnetPeers(statusJson: string): TailnetPeers
+export function targetPort(target: unknown): number | null
+export function funnelExposes(port: string | number, serveJson: string, anyRoute?: boolean): boolean | null
+export function tailnetFacts(port: string | number, bin?: string | null, socket?: string | null, anyRoute?: boolean): Promise<TailnetFacts>

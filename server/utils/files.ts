@@ -29,6 +29,20 @@ const PDF_HEAD = 1024
 export const isPdf = (name: string, head: Buffer) =>
   path.posix.extname(name).toLowerCase() === '.pdf' && head.subarray(0, PDF_HEAD).includes('%PDF-')
 
+// Videos played by the browser's own <video>, streamed (videoStream.ts). A
+// video: its extension, and its container's signature (WebM's EBML header,
+// or an MP4/QuickTime box at byte 4).
+export const VIDEO_TYPES: Record<string, string> = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm' }
+export const VIDEO_HEAD = 12
+const MP4_BOXES = new Set(['ftyp', 'moov', 'mdat', 'wide', 'free', 'skip', 'pnot'])
+export const videoType = (name: string) => VIDEO_TYPES[path.posix.extname(name).slice(1).toLowerCase()]
+export function isVideo(name: string, head: Buffer) {
+  const type = videoType(name)
+  if (!type || head.length < 8) return false
+  if (type === 'video/webm') return head.readUInt32BE(0) === 0x1A45DFA3
+  return MP4_BOXES.has(head.subarray(4, 8).toString('latin1'))
+}
+
 // Physical root, then the requested folder resolved under it (exit 5 outside).
 const RESOLVE = `root=$(cd "$1" 2>/dev/null && pwd -P) || { echo "folder not found" >&2; exit 3; }
 under() { case "$1/" in "\${root%/}/"*) return 0 ;; esac; return 1; }`
@@ -67,11 +81,10 @@ printf '=\\0'
 if stat -f %z / >/dev/null 2>&1; then stat -f %z -- "$@"; else stat -c %s -- "$@"; fi 2>/dev/null
 exit 0`
 
-// "<size>\\n" then at most $3 bytes of the file; with $4 set, the size alone
-// when the file has $3 bytes or more (a download refused, nothing sent).
+// The file $2 resolved under the root into $f, then opened on fd 3.
 // Symlinks resolved one link at a time (readlink, cd -P: realpath is missing
 // before macOS 13).
-export const READ_SCRIPT = `${RESOLVE}
+export const OPEN_FILE = `${RESOLVE}
 case "$2" in */*) d=\${2%/*} ;; *) d=. ;; esac
 b=\${2##*/}
 dir=$(cd "$root" && cd -- "./$d" 2>/dev/null && pwd -P) || { echo "not found" >&2; exit 4; }
@@ -88,10 +101,24 @@ done
 under "$f" || { echo "outside" >&2; exit 5; }
 [ -f "$f" ] || { echo "not a file" >&2; exit 6; }
 [ -r "$f" ] || { echo "permission denied" >&2; exit 7; }
-s=$(wc -c < "$f") || exit 4
+command exec 3< "$f" || { echo "permission denied" >&2; exit 7; }
+# "<inode> <size> <mtime> <version>" of the opened file, from its metadata:
+# never a read (BusyBox's wc -c reads every byte). <version>: modification
+# and change times to the nanosecond (GNU/BusyBox, then BSD). Without the
+# descriptor's metadata, the path's, with no <version>: never a strong ETag.
+meta() {
+  stat -L -c '%i %s %Y %y %z' /dev/fd/3 2>/dev/null || stat -L -f '%i %z %m %Fm %Fc' /dev/fd/3 2>/dev/null ||
+  stat -L -c '%i %s %Y' "$f" 2>/dev/null || stat -L -f '%i %z %m' "$f" 2>/dev/null || echo "0 $(wc -c < "$f") 0"
+}`
+
+// "<size>\\n" then at most $3 bytes of the file; with $4 set, the size alone
+// when the file has $3 bytes or more (a download refused, nothing sent).
+export const READ_SCRIPT = `${OPEN_FILE}
+m=$(meta) || exit 4
+s=\${m#* }; s=$((\${s%% *}))
 echo $s
-[ -n "$4" ] && [ $(($s)) -ge "$3" ] && exit 0
-head -c "$3" < "$f"`
+[ -n "$4" ] && [ "$s" -ge "$3" ] && exit 0
+head -c "$3" <&3`
 
 export const MACOS_SSH_DENIED = 'macOS blocks access to this folder. On the Mac: System Settings › General › Sharing › Remote Login ⓘ › “Allow full disk access for remote users”.'
 export const MACOS_LOCAL_DENIED = 'macOS blocks access to this folder. Allow the app that runs wherdr in System Settings › Privacy & Security › Full Disk Access.'
@@ -114,16 +141,22 @@ function executor(m: Machine, { timeoutMs = 15000, maxBytes = IMAGE_BYTES }: Run
 async function run(m: Machine, script: string, args: string[], opts?: RunOpts) {
   const r = await executor(m, opts)(script, args)
   if (r.code === 0) return r.stdout
-  if (r.code === 3) throw new HerdrError('bad_cwd', 'This agent’s folder is unknown')
-  if (r.code === 4) throw new HerdrError('not_found', 'File not found')
-  if (r.code === 5) throw new HerdrError('outside', 'Outside the project folder')
-  if (r.code === 6) throw new HerdrError('not_file', 'Not a file')
-  if (r.code === 7) throw new HerdrError('denied', 'Permission denied')
+  throw shellError(m, r.code, r.stderr)
+}
+
+// The error of a script that failed with `code`.
+export function shellError(m: Machine, code: number | null, stderr: string): HerdrError {
+  const r = { code, stderr }
+  if (r.code === 3) return new HerdrError('bad_cwd', 'This agent’s folder is unknown')
+  if (r.code === 4) return new HerdrError('not_found', 'File not found')
+  if (r.code === 5) return new HerdrError('outside', 'Outside the project folder')
+  if (r.code === 6) return new HerdrError('not_file', 'Not a file')
+  if (r.code === 7) return new HerdrError('denied', 'Permission denied')
   // macOS privacy protection (Documents, Desktop…): `[ -r . ]` passes, the listing is refused.
-  if (r.code === 8) throw new HerdrError('denied', m.exec ? MACOS_SSH_DENIED : MACOS_LOCAL_DENIED)
-  if (r.code === 124) throw new HerdrError('timeout', 'The folder took too long to read')
-  if (r.code === 255 || r.code === null) throw new HerdrError('unreachable', 'Machine unreachable')
-  throw new HerdrError('remote', r.stderr.trim().split('\n').pop() || `code ${r.code}`)
+  if (r.code === 8) return new HerdrError('denied', m.exec ? MACOS_SSH_DENIED : MACOS_LOCAL_DENIED)
+  if (r.code === 124) return new HerdrError('timeout', 'The folder took too long to read')
+  if (r.code === 255 || r.code === null) return new HerdrError('unreachable', 'Machine unreachable')
+  return new HerdrError('remote', r.stderr.trim().split('\n').pop() || `code ${r.code}`)
 }
 
 // Path relative to the root, from the client: no absolute path, no "..".
@@ -161,8 +194,8 @@ export function parseListing(raw: Buffer): { root: string, dir: string, entries:
 }
 
 // Browsed root: the Git root containing the folder, otherwise the folder.
-async function rootOf(m: Machine, cwd: string) {
-  return (await gitToplevel(m, cwd)) || cwd
+export async function rootOf(m: Machine, cwd: string, signal?: AbortSignal) {
+  return (await gitToplevel(m, cwd, signal)) || cwd
 }
 
 // `rel` null: the pane's own folder (the root when it lies outside).
@@ -211,7 +244,9 @@ async function readHead(m: Machine, root: string, rel: string, max: number, opts
 async function previewAt(m: Machine, root: string, rel: string, shown: string): Promise<FilePreview> {
   const ext = path.posix.extname(rel).slice(1).toLowerCase()
   const mime = IMAGE_TYPES[ext]
-  const { size, body } = await readHead(m, root, rel, mime ? IMAGE_BYTES + 1 : ext === 'pdf' ? PDF_HEAD : TEXT_BYTES + 1)
+  const video = VIDEO_TYPES[ext]
+  const { size, body } = await readHead(m, root, rel, mime ? IMAGE_BYTES + 1 : ext === 'pdf' ? PDF_HEAD : video ? VIDEO_HEAD : TEXT_BYTES + 1)
+  if (video) return { path: shown, size, kind: isVideo(rel, body) ? 'video' : 'binary', truncated: false }
   if (ext === 'pdf') {
     if (!isPdf(rel, body)) return { path: shown, size, kind: 'binary', truncated: false }
     return { path: shown, size, kind: size > DOWNLOAD_BYTES ? 'large' : 'pdf', truncated: false }

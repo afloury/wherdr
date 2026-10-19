@@ -8,7 +8,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { terminalPixelWidth } from '~/utils/terminalSize'
 import { bindTerminalSelection } from '~/utils/terminalSelection'
 import { bindTerminalLinks, type TerminalLinks } from '~/utils/terminalLinks'
-import { bindShiftEnter } from '~/utils/terminalKeys'
+import { bindTerminalKeys } from '~/utils/terminalKeys'
 import { bindTerminalImagePaste } from '~/utils/terminalPaste'
 import { uploadPhoto } from '~/utils/photoUpload'
 import { terminalClosedText, terminalUnavailableText } from '~/utils/terminalClosed'
@@ -102,7 +102,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     // Wheel: xterm does nothing with it (it would send ↑/↓ to the agent, see
     // utils/terminalWheel.ts); TerminalView converts it to terminal.scroll.
     term.attachCustomWheelEventHandler(() => false)
-    bindShiftEnter(term, key => sendKeys([key]))
+    // Shift+Enter as a named key; Ctrl+V (outside Apple) and F12 left to the browser.
+    bindTerminalKeys(term, key => sendKeys([key]))
     term.onData(d => { if (opts.input?.() !== false) sendTerm({ type: 'terminal.input', text: d }) })
     term.onBinary((d) => {
       if (opts.input?.() === false) return
