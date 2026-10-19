@@ -1,4 +1,5 @@
 import type { AppConfig } from '../../shared/types'
+import { openNetworkMode } from '../utils/network'
 import { hostOpenReady } from '../utils/reveal'
 
 export default defineApi(async (): Promise<AppConfig> => ({
@@ -15,4 +16,5 @@ export default defineApi(async (): Promise<AppConfig> => ({
   push: { enabled: pushReady(), key: vapidPublicKey(), devices: (await readSubs()).length },
   // Herdr theme (read-only), for "Follow Herdr".
   herdrTheme: await readHerdrTheme(),
+  openNetwork: openNetworkMode(),
 }))

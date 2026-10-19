@@ -367,6 +367,8 @@ export interface AppConfig {
   dirs: string[]
   projectDirs?: Record<string, ProjectFolderKind>
   push: { enabled: boolean, key: string | null, devices: number }
+  // WHERDR_TRUSTED_NETWORKS=any: wherdr accepts every network (warning banner).
+  openNetwork?: boolean
 }
 
 export interface DirEntry { name: string, path: string, git: boolean, project?: ProjectFolderKind }
@@ -470,7 +472,7 @@ export interface FilesListing { root: string, path: string, entries: FileEntry[]
 export interface FilePreview {
   path: string
   size: number
-  kind: 'text' | 'image' | 'pdf' | 'binary' | 'large'
+  kind: 'text' | 'image' | 'pdf' | 'video' | 'binary' | 'large'
   text?: string
   dataUrl?: string
   truncated: boolean
