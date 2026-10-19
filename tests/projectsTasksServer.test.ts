@@ -333,11 +333,32 @@ describe('actions on a task', () => {
     expect((await T.taskDetails('', 'demo/1')).pane).toBe('abcd1234~w1:p1')
   })
 
-  it('finds the agent\'s pane by its worktree when the task file is elsewhere', async () => {
+  it('no task file: no pane, even with a single agent in its worktree in the board\'s session', async () => {
     panes.push({ id: 'w5:p1', machine: '', agent: 'codex', cwd: '/home/user/code/demo-wt/1' })
     const d = await T.taskDetails('', 'demo/1')
-    expect(d).toMatchObject({ id: 'demo/1', pane: 'w5:p1' })
+    expect(d).toMatchObject({ id: 'demo/1', pane: null })
     expect(calls.at(-1)).toEqual(['details', '--json', '--', 'demo/1'])
+  })
+
+  it('an unreadable task file: no pane, even with a single agent in its worktree', async () => {
+    taskFile('demo/1', {})
+    writeFileSync(path.join(home, '.herdr-projects/data/tasks/demo/1/task.json'), '{ "link": { "pane": "w2:')
+    panes.push({ id: 'w9:p1', machine: '', agent: 'codex', cwd: '/home/user/code/demo-wt/1' })
+    expect((await T.taskDetails('', 'demo/1')).pane).toBeNull()
+  })
+
+  it('a task file without a link: no pane, even with a single agent in its worktree', async () => {
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'approval' })
+    panes.push({ id: 'w9:p1', machine: '', agent: 'codex', cwd: '/home/user/code/demo-wt/1' })
+    expect((await T.taskDetails('', 'demo/1')).pane).toBeNull()
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'approval', link: null })
+    expect((await T.taskDetails('', 'demo/1')).pane).toBeNull()
+  })
+
+  it('a link that is not a pane id: no pane, even with a single agent in its worktree', async () => {
+    taskFile('demo/1', { title: 'Fix login redirect', stage: 'approval', link: { pane: 'not a pane' } })
+    panes.push({ id: 'w9:p1', machine: '', agent: 'codex', cwd: '/home/user/code/demo-wt/1' })
+    expect((await T.taskDetails('', 'demo/1')).pane).toBeNull()
   })
 
   it('a linked pane that is gone gives no pane, never another agent in the same worktree', async () => {
@@ -345,17 +366,6 @@ describe('actions on a task', () => {
     // An unrelated agent, in another session, on the same folder.
     panes.push({ id: 'abcd1234~w8:p1', machine: 'abcd1234', agent: 'claude', cwd: '/home/user/code/demo-wt/1' })
     panes.push({ id: 'w9:p1', machine: '', agent: 'codex', cwd: '/home/user/code/demo-wt/1' })
-    expect((await T.taskDetails('', 'demo/1')).pane).toBeNull()
-  })
-
-  it('without a link, two agents in the worktree give no pane', async () => {
-    panes.push({ id: 'w5:p1', machine: '', agent: 'codex', cwd: '/home/user/code/demo-wt/1' })
-    panes.push({ id: 'w6:p1', machine: '', agent: 'claude', cwd: '/home/user/code/demo-wt/1/' })
-    expect((await T.taskDetails('', 'demo/1')).pane).toBeNull()
-  })
-
-  it('without a link, an agent of another session in the worktree is not offered', async () => {
-    panes.push({ id: 'abcd1234~w5:p1', machine: 'abcd1234', agent: 'codex', cwd: '/home/user/code/demo-wt/1' })
     expect((await T.taskDetails('', 'demo/1')).pane).toBeNull()
   })
 

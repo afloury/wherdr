@@ -338,23 +338,16 @@ export async function taskDetails(machine: unknown, id: unknown): Promise<TaskDe
   } else d = parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS))
   // The closing note: in the task's file only (1.2.1's `details` leaves it out).
   if (!d.summary && typeof file?.summary === 'string') d = { ...d, summary: file.summary.slice(0, 8000).trim() }
-  return { ...d, pane: taskPane(m, file, d.worktree) }
+  return { ...d, pane: taskPane(m, file) }
 }
 
-// The task's agent pane in Herdr: the one the board linked it to (its task.json,
-// read only, in the session it names). A linked pane that is gone gives no pane:
-// another agent in the same folder is not proved to be the task's.
-// Without a link only, the one agent working in its worktree in the board's own
-// session; none, or several, give no pane (the sheet opens instead).
-function taskPane(m: Machine, file: Record<string, unknown> | null, worktree: string): string | null {
+// The task's agent pane in Herdr: only the one the board linked it to (its
+// task.json, read only, in the session it names), while Herdr shows it. No
+// readable link, or a linked pane that is gone: no pane (the sheet opens). An
+// agent working in the same folder is never taken for the task's.
+function taskPane(m: Machine, file: Record<string, unknown> | null): string | null {
   const linked = linkedPane(m, file)
-  // Linked to a session wherdr has not opened: no pane to offer, not one of another session.
-  if (!linked.known) return null
-  if (linked.pane) return findPane(linked.pane) ? linked.pane : null
-  if (!worktree) return null
-  const dir = worktree.replace(/\/+$/, '')
-  const hits = getState().panes.filter(p => (p.machine || '') === m.key && p.agent && (p.cwd || '').replace(/\/+$/, '') === dir)
-  return hits.length === 1 ? hits[0]!.id : null
+  return linked.pane && findPane(linked.pane) ? linked.pane : null
 }
 
 function forget(m: Machine) { lists.delete(m.key) }
