@@ -30,7 +30,7 @@ const COLUMN_KEY = 'boardColumn'
 const SCOPE_KEY = 'boardMachine'
 const GROUPING_KEY = 'boardGrouping'
 const FOLDS_KEY = 'boardFolds'
-const ALL = '*'
+const ALL = SCOPE_ALL
 
 const router = useRouter()
 const route = useRoute()
@@ -47,7 +47,7 @@ const readOnly = (machine: string) => Boolean(board.value?.machines.find(m => m.
 const writable = computed(() => ready.value.filter(m => !m.readOnly))
 // Only read-only boards: the top bar's actions show, off, saying why.
 const onlyReadOnly = computed(() => !writable.value.length && ready.value.some(m => m.readOnly))
-const machineLabel = (key: string) => machineName(key) || hostLabel.value || t('This machine')
+const machineLabel = (key: string) => boardMachineLabel(key, machineName(key), hostLabel.value || t('This machine'))
 const readAt = (at?: number) => (at ? new Date(at).toLocaleTimeString(language === 'fr' ? 'fr-FR' : 'en-US', { hour: '2-digit', minute: '2-digit' }) : '')
 // Machines Herdr answers on but where the Board cannot read herdr-projects.
 const notes = computed(() => (board.value?.machines || []).filter(m => m.status === 'missing' || m.status === 'old'))
@@ -57,12 +57,14 @@ const several = computed(() => (board.value?.machines.length || 0) > 1)
 // ------------------------------------------------------------ what is shown
 // The machines with a board (or tasks from an earlier read), in Herdr's order.
 const boards = computed(() => (board.value?.machines || []).filter(m => m.status === 'ready' || m.tasks.length))
-const scope = ref(readStore(SCOPE_KEY) || ALL)
+// The machine's key (the local one is ''), or ALL.
+const scope = ref(boardScopeMachine(readStore(SCOPE_KEY)))
 // A machine that went away: every machine again.
 const shownScope = computed(() => (scope.value !== ALL && boards.value.some(m => m.machine === scope.value) ? scope.value : ALL))
-const scopeItems = computed(() => [{ label: tl('All machines', 'Toutes les machines'), value: ALL }, ...boards.value.map(m => ({ label: machineLabel(m.machine), value: m.machine }))])
+// The local machine, read-only or not, is in it too, under its own value.
+const scopeItems = computed(() => boardScopeItems(boards.value.map(m => m.machine), machineLabel, tl('All machines', 'Toutes les machines')))
 function pickScope(v: string) {
-  scope.value = v
+  scope.value = boardScopeMachine(v)
   writeStore(SCOPE_KEY, v)
 }
 const shownBoards = computed(() => boards.value.filter(m => shownScope.value === ALL || m.machine === shownScope.value))
@@ -336,7 +338,7 @@ function back() {
     <template v-if="ready.length || cards.length">
       <div class="board-tools">
         <USelect
-          v-if="boards.length > 1" :model-value="shownScope" :items="scopeItems" size="sm" class="board-scope" :aria-label="tl('Machines shown', 'Machines affichées')"
+          v-if="boards.length > 1" :model-value="boardScopeValue(shownScope)" :items="scopeItems" size="sm" class="board-scope" :aria-label="tl('Machines shown', 'Machines affichées')"
           @update:model-value="pickScope(String($event))"
         />
         <div class="board-grouping" role="group" :aria-label="tl('View', 'Vue')">
