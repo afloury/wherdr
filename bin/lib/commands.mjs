@@ -10,7 +10,8 @@ import { pathToFileURL } from 'node:url'
 import { BIN, CliError, SERVER, VERSION, bad, c, homebrewInstall, localUrl, ok, portTaken, probe, row, say, serverEnv, settingsFile, warn, wherdrDir, withSettings } from './core.mjs'
 import { RUNTIME_HELP, findRuntime, isBun, runtimeOk, runtimeVersion, temporaryInstall } from './runtime.mjs'
 import { brewDoctor, brewRedirect, brewService, brewStatusRows } from './brew.mjs'
-import { controlService, installService, serviceFile, servicePlatform, serviceState, uninstallService } from './service.mjs'
+import { controlService, enableLinger, installService, lingerOn, serviceFile, servicePlatform, serviceState, uninstallService } from './service.mjs'
+import { loginShellPath, userPath } from './userpath.mjs'
 import { refreshSkill } from './skill.mjs'
 import { LINKS, inspect, publishCommand, reachable } from './tailnet.mjs'
 
@@ -408,15 +409,31 @@ export async function service(opts) {
   remember(ctx)
   const args = [bin, 'run', '--port', ctx.port, '--host', ctx.host, '--data-dir', ctx.env.DATA_DIR]
   if (ctx.env.HERDR_WEB_SESSION) args.push('--session', ctx.env.HERDR_WEB_SESSION)
-  const PATH = [...new Set([path.dirname(runtime), path.join(os.homedir(), '.local/bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin'])].join(':')
+  // launchd and systemd do not see the shell's PATH: the service gets the
+  // user's, so agents in user folders are found by the Board's commands.
+  const PATH = servicePath(runtime, ctx.env)
   const env = { PATH, WHERDR_DIR: ctx.dir, WHERDR_RUNTIME: runtime }
-  for (const k of ['APP_URL', 'HERDR_BIN', 'HOST_LABEL', 'CLAUDE_CONFIG_DIR', 'WHERDR_SKILL']) if (ctx.env[k]) env[k] = ctx.env[k]
+  for (const k of ['APP_URL', 'HERDR_BIN', 'HOST_LABEL', 'CLAUDE_CONFIG_DIR', 'WHERDR_SKILL', 'HERDR_PROJECTS_DATA_DIR']) if (ctx.env[k]) env[k] = ctx.env[k]
   const file = installService({ runtime, args, env, log: ctx.files.log })
   ok(`login service installed: ${file}`)
   say(c.dim(`    ${runtime} ${args.join(' ')}`))
   if (await waitUp(ctx, () => true)) ok(`wherdr runs: ${c.cyan(ctx.url)} (and starts at every login)`)
   else failWithLog(`the service did not answer on port ${ctx.port} after 45 s.`, ctx.files.log, 0)
-  if (servicePlatform() === 'systemd') say(c.dim('    To keep it running while you are logged out: loginctl enable-linger'))
+  if (servicePlatform() === 'systemd') {
+    // Without lingering, systemd stops the user's services at logout (and
+    // starts them only at the next login): a server reached over SSH or from
+    // the phone would go away. Allowed for one's own user, without sudo, on
+    // most systems; otherwise the command to run is printed.
+    const linger = enableLinger()
+    if (linger.ok) ok(linger.already ? 'lingering is on: wherdr keeps running when you log out.' : 'lingering enabled (loginctl enable-linger): wherdr keeps running when you log out.')
+    else warn(`lingering is off: wherdr stops when you log out. To keep it running, run once: ${c.cyan(`sudo loginctl enable-linger ${os.userInfo().username}`)}`)
+  }
+}
+
+// The service's PATH: the runtime's folder, then the user's PATH (the login
+// shell's, asked once, herdr-projects' record and the usual folders).
+export function servicePath(runtime, env = process.env, { home = os.homedir(), login = loginShellPath(env), exists } = {}) {
+  return userPath({ env, home, first: [path.dirname(runtime)], login, exists })
 }
 
 // ---------------------------------------------------------------- doctor
@@ -478,6 +495,9 @@ export async function doctor(opts) {
   else if (!svc.installed) warn('Login service: not installed (wherdr service install starts wherdr at login).')
   else if (svc.running) ok(`Login service: running (${serviceFile()})`)
   else fail(`Login service: installed but not running (${serviceFile()}). See wherdr logs.`)
+  if (!brew && svc.installed && servicePlatform() === 'systemd' && !lingerOn()) {
+    warn(`Lingering is off: wherdr stops when you log out (sudo loginctl enable-linger ${os.userInfo().username}).`)
+  }
 
   try {
     mkdirSync(ctx.env.DATA_DIR, { recursive: true })

@@ -43,7 +43,7 @@ vi.mock('../server/utils/state', () => ({
   findPane: (id: string) => panes.find(p => p.id === id) || null,
   getState: () => ({ panes }),
 }))
-vi.mock('../server/utils/env', () => ({ HERDR_BIN: 'herdr', HERDR_CHILD_ENV: {}, IN_DOCKER: false, log: () => {} }))
+vi.mock('../server/utils/env', () => ({ HERDR_BIN: 'herdr', HERDR_CHILD_ENV: {}, IN_CONTAINER: false, log: () => {} }))
 
 const T = await import('../server/utils/projectsTasks')
 
@@ -382,6 +382,22 @@ describe('actions on a task', () => {
   })
 })
 
+describe('the user\'s PATH for herdr-projects on this machine', () => {
+  it('finds the agents in user folders, even from a login service\'s short PATH', () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-launcher-'))
+    try {
+      mkdirSync(path.join(home, '.local/bin'), { recursive: true })
+      mkdirSync(path.join(home, 'pd'), { recursive: true })
+      writeFileSync(path.join(home, 'pd/env.json'), JSON.stringify({ PATH: '/login/only/bin' }))
+      const env = T.launcherEnv(home, '/tmp/h.sock', { HERDR_PROJECTS_DATA_DIR: path.join(home, 'pd') })
+      const dirs = String(env.PATH).split(':')
+      expect(dirs).toContain(path.join(home, '.local/bin'))
+      expect(dirs).toContain('/login/only/bin')
+      expect(env).toMatchObject({ HERDR_BIN_PATH: 'herdr', NO_COLOR: '1', HERDR_SOCKET_PATH: '/tmp/h.sock' })
+    } finally { rmSync(home, { recursive: true, force: true }) }
+  })
+})
+
 describe('the session on an SSH machine', () => {
   // The script as the remote shell runs it, with a launcher that says what it gets.
   const env = (name: string, extra: Record<string, string> = {}) => execFileSync('sh', ['-c', T.REMOTE_TASKS_SCRIPT, 'sh', '/opt/herdr', name, 'sh', '-c',
@@ -390,6 +406,17 @@ describe('the session on an SSH machine', () => {
 
   it('names the machine\'s own session, and never a forwarded socket', () => {
     expect(env('review', { HERDR_SOCKET_PATH: '/tmp/forwarded.sock' })).toBe('/opt/herdr|review|unset|--keep a')
+  })
+  it('completes the remote PATH first, as on this machine (not a login shell there)', async () => {
+    const { USER_PATH_SH } = await import('../bin/lib/userpath.mjs')
+    expect(T.REMOTE_TASKS_SCRIPT.startsWith(USER_PATH_SH)).toBe(true)
+    const home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-remote-'))
+    try {
+      mkdirSync(path.join(home, '.cargo/bin'), { recursive: true })
+      const out = execFileSync('sh', ['-c', T.REMOTE_TASKS_SCRIPT, 'sh', '/opt/herdr', '', 'sh', '-c', 'printf %s "$PATH"'],
+        { encoding: 'utf8', env: { HOME: home, PATH: '/usr/bin:/bin' } })
+      expect(out.split(':')).toContain(path.join(home, '.cargo/bin'))
+    } finally { rmSync(home, { recursive: true, force: true }) }
   })
   it('the default session: none named', () => {
     expect(env('default', { HERDR_SESSION: 'stale' })).toBe('/opt/herdr|unset|unset|--keep a')

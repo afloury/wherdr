@@ -119,6 +119,20 @@ export function uninstallService(home = os.homedir()) {
   return file
 }
 
+// systemd: is lingering on for this user (its services run without a login)?
+export function lingerOn(user = os.userInfo().username, run = sh) {
+  const r = run('loginctl', ['show-user', user, '--property=Linger', '--value'])
+  return r.ok && r.out.trim() === 'yes'
+}
+
+// Turns lingering on for this user, without sudo (logind allows it for one's
+// own user on most systems). { ok, already }: ok false when it was refused.
+export function enableLinger(user = os.userInfo().username, run = sh) {
+  if (lingerOn(user, run)) return { ok: true, already: true }
+  const r = run('loginctl', ['enable-linger', user])
+  return { ok: r.ok && lingerOn(user, run), already: false }
+}
+
 // start | stop | restart through the service manager.
 export function controlService(action) {
   if (servicePlatform() === 'launchd') {

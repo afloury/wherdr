@@ -3,12 +3,20 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { PANE_RE as SHARED_PANE_RE } from '../../shared/ids'
+import { userPath } from '../../bin/lib/userpath.mjs'
 
 const env = process.env
 
 export const HOME = env.HOME || os.homedir()
 // In the Docker container (host HOME mounted read-only, see docker-compose.yml).
 export const IN_DOCKER = fs.existsSync('/.dockerenv')
+// In a container of any kind (Docker, or Podman's /run/.containerenv).
+export const IN_CONTAINER = IN_DOCKER || fs.existsSync('/run/.containerenv')
+// On the host, the user's real PATH (bin/lib/userpath.mjs): a login service
+// starts wherdr with a short system PATH, and what wherdr runs (herdr-projects,
+// git, gh, tailscale) must find the agents and tools in user folders. Set
+// before HERDR_CHILD_ENV below copies the environment.
+if (!IN_CONTAINER) env.PATH = userPath({ env, home: HOME })
 export const DATA_DIR = env.DATA_DIR || path.join(process.cwd(), 'data')
 // herdr.dev installer: ~/.local/bin; otherwise (Homebrew…) the one on the PATH.
 const LOCAL_HERDR = path.join(HOME, '.local/bin/herdr')
