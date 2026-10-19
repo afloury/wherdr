@@ -109,6 +109,31 @@ describe('tailnet state over time', () => {
     }
     expect(checkClient('172.17.0.1', {}, { ...netContext(4_000_001), gateway: '172.17.0.1', gatewayWide: false, gatewayDeclared: false })).toEqual({ ok: true, zone: 'local' })
   })
+  it('drops a reading that finishes after a newer one: an old "no Funnel" never clears a newer exposure', async () => {
+    const http = () => gateDecision({ check: checkClient('127.0.0.1', {}, netContext()), unlocked: true, hostOk: true, crossSite: false, path: '/api/config' })
+    let finishA!: () => void
+    // A starts first and is slow; it would say "no Funnel".
+    const a = refreshTailscale(() => new Promise(r => { finishA = () => r({ ...up, funnel: false }) }), Date.now(), false)
+    // B starts later, finishes first and sees Funnel.
+    await refreshTailscale(async () => ({ ...up, funnel: true }), Date.now(), false)
+    expect(http()).toBe('network')
+    finishA()
+    await a
+    expect(http()).toBe('network')
+    // Then an unreadable reading: still refused.
+    await refreshTailscale(async () => ({ ...up, readable: false, running: false, peerIps: [], funnel: null }), Date.now(), false)
+    expect(http()).toBe('network')
+    // An old failure finishing late does not replace a newer valid reading either.
+    let failC!: () => void
+    const c = refreshTailscale(() => new Promise((_, reject) => { failC = () => reject(new Error('late')) }), Date.now(), false)
+    await refreshTailscale(async () => up, Date.now(), false)
+    expect(http()).toBe('ok')
+    expect(checkClient('100.101.102.103', {}, netContext()).ok).toBe(true)
+    failC()
+    await c
+    expect(http()).toBe('ok')
+    expect(checkClient('100.101.102.103', {}, netContext()).ok).toBe(true)
+  })
   it('reads Tailscale again for a WebSocket upgrade, and for HTTP past 2 s', async () => {
     let funnel = false
     let reads = 0

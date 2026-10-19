@@ -2,18 +2,15 @@
 // listenVerdict): wherdr refuses to listen on an open network unless
 // WHERDR_TRUSTED_NETWORKS says so, and warns loudly when it accepts any network.
 // Runs before the server listens (Nitro plugins load first).
-import fs from 'node:fs'
 import { listenVerdict, startNetworkWatch, stopNetworkWatch, trustedNetworks } from '../utils/network'
 
 export default defineNitroPlugin((nitroApp) => {
   // Tailscale's peers and Funnel, and in Docker whether the port answers on
-  // the gateway: read now, then every few seconds.
+  // the gateway: read now, then every few seconds. It also warns when Docker's
+  // publication is not declared (WHERDR_DOCKER_LOOPBACK_ONLY).
   void startNetworkWatch()
   nitroApp.hooks.hook('close', stopNetworkWatch)
   if (import.meta.dev) return
-  if (fs.existsSync('/.dockerenv') && !/^(1|true|yes|on)$/i.test((process.env.WHERDR_DOCKER_LOOPBACK_ONLY || '').trim())) {
-    log('WARNING: WHERDR_DOCKER_LOOPBACK_ONLY is not set: wherdr cannot tell connections from this computer through Docker\'s gateway from relayed ones, so it asks for a passkey. With the port published on 127.0.0.1 only (the shipped docker-compose.yml), set WHERDR_DOCKER_LOOPBACK_ONLY=1.')
-  }
   const trusted = trustedNetworks()
   if (trusted.invalid.length) log(`WARNING: WHERDR_TRUSTED_NETWORKS: ignored ${trusted.invalid.join(', ')} (not an address or a CIDR range)`)
   const host = process.env.NITRO_HOST || process.env.HOST || ''

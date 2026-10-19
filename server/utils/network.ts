@@ -295,10 +295,21 @@ const listeners = new Set<() => void>()
 export function onNetworkReading(fn: () => void) { listeners.add(fn); return () => listeners.delete(fn) }
 const notify = () => { for (const fn of listeners) { try { fn() } catch { /* a listener's own problem */ } } }
 
+// Readings overlap (the periodic one, HTTP and WebSocket checks): each gets
+// a number when it starts, and a result older than the last one published is
+// dropped, so a slow old reading never replaces a newer one (nor clears a
+// Funnel exposure a newer reading saw).
+let started = 0
+let published = 0
+
 // `now`: when the reading starts; it is dated from then.
 export async function refreshTailscale(read: TailscaleReader = defaultReader, now = Date.now(), docker = inDocker) {
-  try {
-    const f = await read()
+  const gen = ++started
+  let f: Awaited<ReturnType<TailscaleReader>> | null = null
+  try { f = await read() } catch { /* unknown: below */ }
+  if (gen < published) return
+  published = gen
+  if (f) {
     // In Docker, no Tailscale socket does not mean no Tailscale: the host may
     // run one (with Funnel) that the container cannot see.
     const funnel = docker && f.installed === false ? null : f.funnel
@@ -308,7 +319,7 @@ export async function refreshTailscale(read: TailscaleReader = defaultReader, no
       funnelSeen = funnel
       funnelElsewhere = !funnel && f.funnelAny === true
     }
-  } catch {
+  } else {
     ts = { running: false, selfIps: [], peerIps: [], funnel: null, at: now }
   }
   notify()
@@ -338,7 +349,7 @@ let forced: NetContext | null = null
 // Tests: a fixed context (null = the live one).
 export function setNetContextForTests(ctx: NetContext | null) { forced = ctx }
 // Tests: forget what was read.
-export function resetNetworkStateForTests() { ts = null; gatewayWide = null; inflight = null; funnelSeen = false; funnelElsewhere = false; warnedElsewhere = false }
+export function resetNetworkStateForTests() { ts = null; gatewayWide = null; inflight = null; started = 0; published = 0; funnelSeen = false; funnelElsewhere = false; warnedElsewhere = false }
 
 export function netContext(now = Date.now()): NetContext {
   if (forced) return forced
