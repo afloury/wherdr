@@ -80,16 +80,16 @@ From now on use `https://<machine>.<tailnet>.ts.net:7683/`, not localhost: **a p
 works on the address it was created on.**
 
 1. Open that address for the user, or give them the link.
-2. **Passkey lock** (required as soon as another device reaches wherdr): on that address,
+2. **Passkey lock** (optional, recommended if others share the tailnet): on that address,
    Settings › Security › **Enable passkey lock**. It asks for a bootstrap token: the last
    `First passkey: bootstrap token` line of `~/wherdr/wherdr.log` (`wherdr logs` with Homebrew,
    `docker compose logs` with Docker). Give the token to the user.
 3. **On the phone**: open the address in Safari (Share › Add to Home Screen, then open wherdr
    from the Home Screen) or in Chrome on Android (menu › Install app), unlock it with the
-   passkey, then Settings › **Enable notifications**.
+   passkey if the lock is on, then Settings › **Enable notifications**.
 
-**Check:** the phone lists the agents. Then tell the user, in a few lines: the address, that the
-lock is on, and how to update (run the install command again).
+**Check:** the phone lists the agents. Then tell the user, in a few lines: the address, whether the
+passkey lock is on, and how to update (run the install command again).
 
 ## Extras (only if asked)
 

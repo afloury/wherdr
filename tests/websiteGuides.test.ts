@@ -52,6 +52,13 @@ describe('agent.md', () => {
     expect(guide.slice(0, 300)).toContain('curl -fsSL https://wherdr.dev/agent.md')
   })
 
+  it('keeps the passkey lock optional, as the README says', () => {
+    // wherdr answers only this computer and the tailnet; a passkey is an extra lock.
+    expect(read('../README.md')).toContain('The passkey lock is never required')
+    expect(guide).not.toMatch(/passkey[^\n]*\(required|\brequired\b[^\n]*passkey/i)
+    expect(guide).toMatch(/\*\*Passkey lock\*\* \(optional/)
+  })
+
   it('cites the Herdr version the installer requires', () => {
     const min = read('../website/public/install').match(/version_lt "\$\{HERDR_VERSION:-0\}" "([\d.]+)"/)![1]
     expect(guide).toContain(`Herdr ≥ ${min}`)
