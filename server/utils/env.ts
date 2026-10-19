@@ -15,8 +15,9 @@ export const IN_CONTAINER = IN_DOCKER || fs.existsSync('/run/.containerenv')
 // On the host, the user's real PATH (bin/lib/userpath.mjs): a login service
 // starts wherdr with a short system PATH, and what wherdr runs (herdr-projects,
 // git, gh, tailscale) must find the agents and tools in user folders. Set
-// before HERDR_CHILD_ENV below copies the environment.
-if (!IN_CONTAINER) env.PATH = userPath({ env, home: HOME })
+// before HERDR_CHILD_ENV below copies the environment. The runtime that runs
+// wherdr stays first, as the login service puts it.
+if (!IN_CONTAINER) env.PATH = userPath({ env, home: HOME, first: [path.dirname(process.execPath)] })
 export const DATA_DIR = env.DATA_DIR || path.join(process.cwd(), 'data')
 // herdr.dev installer: ~/.local/bin; otherwise (Homebrew…) the one on the PATH.
 const LOCAL_HERDR = path.join(HOME, '.local/bin/herdr')

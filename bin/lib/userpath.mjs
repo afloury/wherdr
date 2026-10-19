@@ -7,14 +7,16 @@
 // (~/.local/bin, ~/.bun/bin, ~/.cargo/bin, ~/.npm-global/bin, Homebrew) are
 // then not found, and herdr-projects refuses with "claude is not installed
 // here". herdr-projects only widens its own PATH when Herdr runs it as a plugin
-// command; wherdr runs it directly. So wherdr completes the PATH itself, from:
-//   1. the PATH it already has;
+// command; wherdr runs it directly. So wherdr gives it the PATH an interactive
+// login shell would have, in this order:
+//   1. at `wherdr service install`: the PATH of the login shell, asked once;
 //   2. the PATH herdr-projects recorded from a login shell
 //      ($HERDR_PROJECTS_DATA_DIR/env.json, default ~/.herdr-projects/data);
-//   3. at `wherdr service install`: the PATH of the login shell, asked once;
-//   4. the usual user and system bin folders, when they exist.
-// Folders are only added, never removed or reordered: what the PATH already
-// finds first stays first.
+//   3. the usual user folders and Homebrew's, when they exist;
+//   4. the PATH it was given;
+//   5. the system folders, when they exist.
+// The user's own folders come before the system ones, as in their shell: an
+// old system-wide copy of an agent never wins over theirs. Each folder once.
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import os from 'node:os'
@@ -22,8 +24,12 @@ import path from 'node:path'
 
 // Where agent CLIs install themselves for one user (relative to $HOME).
 export const USER_BIN_DIRS = ['.local/bin', '.bun/bin', '.cargo/bin', '.npm-global/bin', '.deno/bin', '.volta/bin', 'bin']
-// Homebrew (Apple silicon, Intel, Linux) and the system.
-export const SYSTEM_BIN_DIRS = ['/opt/homebrew/bin', '/opt/homebrew/sbin', '/home/linuxbrew/.linuxbrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/local/sbin', '/usr/sbin', '/sbin']
+// Homebrew (Apple silicon, Intel, Linux) and /usr/local/bin, where a user's
+// own installs go too: before the PATH given, with the user folders.
+export const LEAD_BIN_DIRS = ['/opt/homebrew/bin', '/opt/homebrew/sbin', '/home/linuxbrew/.linuxbrew/bin', '/usr/local/bin']
+// The system's own: after the PATH given.
+export const TAIL_BIN_DIRS = ['/usr/bin', '/bin', '/usr/local/sbin', '/usr/sbin', '/sbin']
+export const SYSTEM_BIN_DIRS = [...LEAD_BIN_DIRS, ...TAIL_BIN_DIRS]
 
 // Joins PATH strings or folder lists into one PATH: absolute folders only,
 // each once, in the order first seen.
@@ -82,7 +88,8 @@ export function loginShellPath(env = process.env, run = spawnSync) {
 // `first`: folders to put before everything (the runtime's own folder).
 // `login`: the login shell's PATH, when it was asked.
 export function userPath({ env = process.env, home = os.homedir(), first = [], login = '', exists = isDir } = {}) {
-  return mergePath(first, env.PATH || '', login, projectsEnvPath(env, home), knownBinDirs(home, exists))
+  const lead = [...USER_BIN_DIRS.map(d => path.join(home, d)), ...LEAD_BIN_DIRS].filter(d => exists(d))
+  return mergePath(first, login, projectsEnvPath(env, home), lead, env.PATH || '', TAIL_BIN_DIRS.filter(d => exists(d)))
 }
 
 // The value of the first "PATH" key of a JSON file (env.json), its escapes
@@ -108,26 +115,28 @@ export const JSON_PATH_AWK = String.raw`{ s = s $0 "\n" } `
   + String.raw`else o = o b(240 + int(v / 262144)) b(128 + int(v / 4096) % 64) b(128 + int(v / 64) % 64) b(128 + v % 64) } `
   + String.raw`else exit } }`
 
-// The same for a shell on another machine (SSH): completes $PATH with the
-// PATH herdr-projects recorded there and the usual folders that exist there,
-// by the rules of userPath (added after, each once, absolute, no newline).
-// Fixed text, POSIX sh and awk only; the recorded value is only split and
-// assigned (no globbing), never run.
+// The same for a shell on another machine (SSH), by the rules of userPath:
+// the PATH herdr-projects recorded there, the usual user folders that exist
+// there, the shell's own PATH, then the system folders; each folder trimmed,
+// without a trailing slash, absolute, on one line and once. Fixed text, POSIX
+// sh and awk only; the recorded value is only split and assigned (no
+// globbing), never run.
+const ADD_SH = [
+  '  while :; do case "$d" in [$ws]*) d=${d#?} ;; *[$ws]) d=${d%?} ;; ?*/) d=${d%/} ;; *) break ;; esac; done',
+  '  case "$d" in /*) ;; *) continue ;; esac; case "$d" in *"$nl"*) continue ;; esac',
+  '  case ":$n:" in *":$d:"*) ;; *) n="${n:+$n:}$d" ;; esac',
+  'done',
+]
+const DIRS_SH = (dirs, home = false) => `for d in ${dirs.map(d => (home ? `"$HOME/${d}"` : d)).join(' ')}; do [ -d "$d" ] || continue`
 export const USER_PATH_SH = [
   'f="${HERDR_PROJECTS_DATA_DIR:-${HERDR_PROJECTS_HOME:-$HOME/.herdr-projects}/data}/env.json"',
   // awk where the system keeps it, even from a PATH without /usr/bin.
   `p=""; [ -r "$f" ] && p=$(PATH="\${PATH:+$PATH:}/usr/bin:/bin" LC_ALL=C awk '${JSON_PATH_AWK}' "$f" 2>/dev/null); p=\${p%x}`,
-  "nl='\n'; ws=\" \t\r$nl\"; old_ifs=$IFS; IFS=:; set -f",
-  // The recorded folders as mergePath takes them: trimmed, without a trailing
-  // slash, absolute and on one line; the usual folders when they exist.
-  'for d in $p; do',
-  '  while :; do case "$d" in [$ws]*) d=${d#?} ;; *[$ws]) d=${d%?} ;; ?*/) d=${d%/} ;; *) break ;; esac; done',
-  '  case "$d" in /*) ;; *) continue ;; esac; case "$d" in *"$nl"*) continue ;; esac',
-  '  case ":$PATH:" in *":$d:"*) ;; *) PATH="${PATH:+$PATH:}$d" ;; esac',
-  'done',
-  `for d in ${USER_BIN_DIRS.map(d => `"$HOME/${d}"`).join(' ')} ${SYSTEM_BIN_DIRS.join(' ')}; do`,
-  '  [ -d "$d" ] || continue',
-  '  case ":$PATH:" in *":$d:"*) ;; *) PATH="${PATH:+$PATH:}$d" ;; esac',
-  'done',
-  'set +f; IFS=$old_ifs; export PATH; ',
+  "nl='\n'; ws=\" \t\r$nl\"; n=''; old_ifs=$IFS; IFS=:; set -f",
+  'for d in $p; do', ...ADD_SH,
+  DIRS_SH(USER_BIN_DIRS, true), ...ADD_SH,
+  DIRS_SH(LEAD_BIN_DIRS), ...ADD_SH,
+  'for d in $PATH; do', ...ADD_SH,
+  DIRS_SH(TAIL_BIN_DIRS), ...ADD_SH,
+  'set +f; IFS=$old_ifs; [ -n "$n" ] && PATH=$n; export PATH; ',
 ].join('\n')

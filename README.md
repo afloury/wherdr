@@ -419,11 +419,14 @@ the app: all three fetch the GitHub release package directly.
 
 systemd and launchd start services with a short system `PATH`, and herdr-projects, run by
 wherdr for the Board, then reports `claude is not installed here` for an agent installed in a
-user folder. wherdr completes its `PATH` itself, on the host and over SSH: with the `PATH` your
-login shell gives (asked once by `wherdr service install`), the one herdr-projects records in
-`~/.herdr-projects/data/env.json` (`$HERDR_PROJECTS_DATA_DIR`, or `$HERDR_PROJECTS_HOME/data`), and `~/.local/bin`, `~/.bun/bin`,
-`~/.cargo/bin`, `~/.npm-global/bin`, `~/.deno/bin`, `~/.volta/bin`, `~/bin` and Homebrew's folders
-when they exist. It only adds folders: what your `PATH` finds first stays first. After installing
+user folder. wherdr gives it the `PATH` an interactive login shell would have, on the host and
+over SSH, in this order: the `PATH` your login shell gives (asked once by `wherdr service
+install`), the one herdr-projects records in `~/.herdr-projects/data/env.json`
+(`$HERDR_PROJECTS_DATA_DIR`, or `$HERDR_PROJECTS_HOME/data`), then `~/.local/bin`, `~/.bun/bin`,
+`~/.cargo/bin`, `~/.npm-global/bin`, `~/.deno/bin`, `~/.volta/bin`, `~/bin`, Homebrew's folders and
+`/usr/local/bin` when they exist, then the `PATH` it was started with and the system folders. Your
+own folders come before the system ones, as in your shell: an old system-wide copy of an agent
+never wins over yours. After installing
 an agent somewhere else, run `wherdr service install` again (or the one command).
 
 ### Which setup?

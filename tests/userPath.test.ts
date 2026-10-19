@@ -32,10 +32,11 @@ describe('mergePath', () => {
 })
 
 describe('the user\'s PATH', () => {
-  it('adds what herdr-projects recorded and the user folders that exist, after the PATH it has', () => {
+  it('puts what herdr-projects recorded and the user folders that exist before the PATH it has', () => {
     const h = home(JSON.stringify({ at: 1, PATH: '/opt/agents/bin:/usr/bin', gh: [] }))
     const p = userPath({ env: { PATH: '/usr/bin:/bin' }, home: h }).split(':')
-    expect(p.slice(0, 3)).toEqual(['/usr/bin', '/bin', '/opt/agents/bin'])
+    expect(p.slice(0, 4)).toEqual(['/opt/agents/bin', '/usr/bin', path.join(h, '.local/bin'), path.join(h, '.bun/bin')])
+    expect(p.indexOf('/bin')).toBeGreaterThan(p.indexOf(path.join(h, '.bun/bin')))
     expect(p).toContain(path.join(h, '.local/bin'))
     expect(p).toContain(path.join(h, '.bun/bin'))
     // Folders that do not exist are not added.
@@ -70,13 +71,12 @@ describe('the user\'s PATH', () => {
 })
 
 describe('the login service', () => {
-  it('runs with the runtime first, then the login shell\'s PATH and the user folders', () => {
+  it('runs with the runtime first, then the login shell\'s PATH, the recorded one and the user folders', () => {
     const h = home(JSON.stringify({ PATH: '/recorded/bin' }))
     const p = servicePath('/opt/node22/bin/node', { PATH: '/usr/bin' }, { home: h, login: '/login/bin:/usr/bin' }).split(':')
-    expect(p.slice(0, 4)).toEqual(['/opt/node22/bin', '/usr/bin', '/login/bin', '/recorded/bin'])
-    expect(p).toContain(path.join(h, '.local/bin'))
+    expect(p.slice(0, 5)).toEqual(['/opt/node22/bin', '/login/bin', '/usr/bin', '/recorded/bin', path.join(h, '.local/bin')])
     const unit = systemdUnit({ runtime: '/opt/node22/bin/node', args: ['/w/bin/wherdr.mjs', 'run'], env: { PATH: p.join(':') }, log: '/w/wherdr.log' })
-    expect(unit).toContain(`Environment="PATH=/opt/node22/bin:/usr/bin:/login/bin:/recorded/bin:`)
+    expect(unit).toContain(`Environment="PATH=/opt/node22/bin:/login/bin:/usr/bin:/recorded/bin:`)
   })
 
   it('turns lingering on for the user, without sudo, and says when it is refused', () => {
@@ -98,10 +98,10 @@ describe('the login service', () => {
 })
 
 describe('the same over SSH (a shell that is not a login shell)', () => {
-  it('completes $PATH from the remote record and the user folders, keeping its own order', () => {
+  it('puts the remote record, in its order, and the user folders before the shell\'s PATH', () => {
     const h = home(JSON.stringify({ at: 1, PATH: '/remote/agents:/usr/bin', gh: [] }))
     const out = execFileSync('sh', ['-c', `${USER_PATH_SH}printf %s "$PATH"`], { env: { HOME: h, PATH: '/usr/bin:/bin' }, encoding: 'utf8' }).split(':')
-    expect(out.slice(0, 3)).toEqual(['/usr/bin', '/bin', '/remote/agents'])
+    expect(out.slice(0, 3)).toEqual(['/remote/agents', '/usr/bin', path.join(h, '.local/bin')])
     expect(out).toContain(path.join(h, '.local/bin'))
     expect(new Set(out).size).toBe(out.length)
   })
@@ -152,6 +152,19 @@ describe('one PATH over SSH and on this machine', () => {
     }
     record(h, records[0]!)
     expect(sh(h, {}, odd.map((_, i) => `agent${i}`).join('; '))).toBe('0\n1\n2\n3\n')
+  })
+
+  it('picks the user\'s agent over an older system-wide one, as their login shell does', () => {
+    const h = home()
+    // An old copy in a system folder of the session's PATH (an old `npm -g`).
+    const sys = path.join(h, 'sys-bin')
+    mkdirSync(sys)
+    writeFileSync(path.join(sys, 'claude'), '#!/bin/sh\necho old\n', { mode: 0o755 })
+    for (const shell of SHELLS) expect(shIn(shell, h, { PATH: `${sys}:${SSHD_PATH}` }, 'claude'), shell).toBe('agent\n')
+    expect(execFileSync('sh', ['-c', 'claude'], { env: { PATH: userPath({ env: { PATH: `${sys}:${SSHD_PATH}` }, home: h }) }, encoding: 'utf8' })).toBe('agent\n')
+    // The recorded PATH keeps its order, before the session's.
+    record(h, JSON.stringify({ PATH: `/opt/b/bin:${path.join(h, '.bun/bin')}:/opt/a/bin` }))
+    expect(sh(h).split(':').slice(0, 4)).toEqual(['/opt/b/bin', path.join(h, '.bun/bin'), '/opt/a/bin', path.join(h, '.local/bin')])
   })
 
   it('adds nothing of a record it cannot decode', () => {

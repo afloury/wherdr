@@ -1,5 +1,7 @@
 // Types of userpath.mjs, for the server (server/utils/env.ts, projectsTasks.ts).
 export const USER_BIN_DIRS: string[]
+export const LEAD_BIN_DIRS: string[]
+export const TAIL_BIN_DIRS: string[]
 export const SYSTEM_BIN_DIRS: string[]
 export function mergePath(...parts: Array<string | string[] | undefined | null>): string
 export function knownBinDirs(home?: string, exists?: (p: string) => boolean): string[]
