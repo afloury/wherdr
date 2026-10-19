@@ -62,6 +62,21 @@ Open **Settings › Plugins › herdr-projects**: each machine says **Installed 
 **Board** (next to Settings) shows the tasks; write to the Coordinator in its box to add the
 work your 0.2 projects still had.
 
+## Push when a task needs you
+
+herdr-projects tells you when a task needs you, is ready to approve, or failed, through its
+`board.notify` setting: it can run a command for each event. Point it at Herdr's own
+notifications, which wherdr already sends to your phone. Run once on each machine with
+herdr-projects:
+
+```sh
+~/.herdr-projects/data/bin/herdr-projects set board.notify 'herdr notification show --body="$HERDR_PROJECTS_TITLE" --sound request -- "$HERDR_PROJECTS_ID · $HERDR_PROJECTS_EVENT"'
+```
+
+The push names the task and the event, and a tap opens the task on wherdr's Board. Back to
+none: `herdr-projects set board.notify none`. Settings › Plugins › herdr-projects shows the
+same command.
+
 ## Going back to 0.2
 
 1. **Stop everything of 1.x first**, so nothing writes while folders move:

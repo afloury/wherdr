@@ -13,6 +13,8 @@ import { type HerdrNotification, FrameSplitter, decodeServerFrame, helloFrame } 
 import { NoticeDeduper, forwardableNotice, noticeKey } from './notificationPolicy'
 import { type Machine, allMachines, multiMachine, onMachinesChange } from './machines'
 import { pushSend, subWatchesSession } from './push'
+import { boardMachine, repoKeyOf } from './projectsTasks'
+import { taskKey, taskNotice } from '../../shared/projectsTasks'
 
 const BACKOFF_MS = [2000, 5000, 10000, 30000, 60000]
 // Server refusing the handshake (incompatible version): we retry rarely.
@@ -114,11 +116,16 @@ const dedupe = new NoticeDeduper()
 async function onNotice(m: Machine, n: HerdrNotification) {
   if (!forwardableNotice(n) || !dedupe.fresh(`${m.key}:${noticeKey(n)}`)) return
   const on = multiMachine() ? `${m.label || (m.local ? 'local' : m.key)} · ` : ''
-  const title = `${on}${n.title}`
-  // One notification per title.
-  const tag = `herdr-${crypto.createHash('sha1').update(`${m.key}\n${n.title}`).digest('hex').slice(0, 12)}`
+  // herdr-projects' `board.notify` (NOTIFY_COMMAND): the task's key, one
+  // notification per task, and a tap opens it on the Board.
+  const task = taskNotice(n.title)
+  const board = task ? boardMachine(m).key : ''
+  const title = task ? `${on}${taskKey(task.id, repoKeyOf(board, task.id.split('/')[0]!))} · ${task.event}` : `${on}${n.title}`
+  // One notification per title (per task for the Board's).
+  const tag = `herdr-${crypto.createHash('sha1').update(task ? `task\n${board}\n${task.id}` : `${m.key}\n${n.title}`).digest('hex').slice(0, 12)}`
+  const url = task ? `/#/board?machine=${encodeURIComponent(board)}&task=${encodeURIComponent(task.id)}` : '/#/'
   const sent = await pushSend(
-    { title, body: n.body || '', tag, url: '/#/' },
+    { title, body: n.body || '', tag, url },
     sub => subWatchesSession(sub, m.info().baseKey ?? m.key, m.session,
         allMachines().find(base => base.key === (m.info().baseKey ?? m.key))?.session || 'default'),
   )

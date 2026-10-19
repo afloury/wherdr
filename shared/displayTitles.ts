@@ -1,5 +1,5 @@
 import type { Pane, Workspace } from './types'
-import { cleanTitle, paneTitle } from './paneTitle'
+import { cleanTitle, coordinatorTitle, paneTitle } from './paneTitle'
 
 // herdr-projects marks its spaces with invisible characters (braille blank
 // U+2800, zero-width spaces); some fonts draw them as dot grids.
@@ -8,9 +8,11 @@ export function cleanLabel(label: string | null | undefined): string {
 }
 
 // Herdr's workspace label is the visible identity of a space. A pane title is
-// still useful context, but only when it carries more information.
+// still useful context, but only when it carries more information. A
+// herdr-projects coordinator lives in the home folder's space or its repo's:
+// its own name says what it is ("demo-app coordinator", not "demo-app").
 export function spaceTitle(p: Pane, workspace?: Workspace | null): string {
-  return workspace?.label?.trim() || paneTitle(p)
+  return (!p.label && coordinatorTitle(p)) || workspace?.label?.trim() || paneTitle(p)
 }
 
 export function conversationSubtitle(p: Pane, workspace?: Workspace | null): string {

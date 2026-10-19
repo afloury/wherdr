@@ -405,7 +405,8 @@ function scrollsSideways(el: EventTarget | null, root: HTMLElement) {
 // only scrolls vertically); not on the key bar or the input field.
 function onSwipeStart(e: TouchEvent) {
   axis = 'off'
-  if (desk.value || !inTab.value || e.touches.length !== 1) return
+  // A cell (side by side, the Board's panel) never swipes to its neighbours.
+  if (props.cell || desk.value || !inTab.value || e.touches.length !== 1) return
   const zone = (e.target as HTMLElement | null)?.closest?.('.swipe-area, .choices, #termWrap') as HTMLElement | null
   if (!zone || scrollsSideways(e.target, zone)) return
   sx = e.touches[0]!.clientX

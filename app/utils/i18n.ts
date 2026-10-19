@@ -10,6 +10,12 @@ const FR: Record<string, string> = {
   'This task does not wait for approval': 'Cette tâche n’attend pas d’approbation',
   'wherdr runs in a container: run herdr-projects on the host for this': 'wherdr tourne dans un conteneur : lance herdr-projects sur l’hôte pour cela',
   'Task not found': 'Tâche introuvable',
+  'This task cannot be started now': 'Cette tâche ne peut pas être lancée maintenant',
+  'This task has no agent at work to stop': 'Cette tâche n’a pas d’agent au travail à arrêter',
+  'This task has nothing to retry': 'Cette tâche n’a rien à réessayer',
+  'This task cannot be archived while an agent works on it': 'Cette tâche ne peut pas être archivée pendant qu’un agent y travaille',
+  'Unknown action': 'Action inconnue', 'A task needs a title': 'Une tâche a besoin d’un titre',
+  'Invalid repo': 'Dépôt invalide', 'Invalid coordinator': 'Coordinateur invalide',
   'Some tasks could not be read: {list}': 'Certaines tâches n’ont pas pu être lues : {list}',
   'Move up': 'Monter', 'Move down': 'Descendre', 'Reset order': 'Réinitialiser l’ordre',
   

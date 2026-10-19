@@ -34,6 +34,9 @@ export interface TaskRow {
   archived: boolean
   queue: number | null
   group: TaskGroup
+  // Its repo's short key (`repo.key`, 1.x store/keys.rs), once read: `APP`
+  // names this task `APP-6`. Not in `list --json`: wherdr asks `show --repo`.
+  repoKey?: string
   // A partial read kept this row from an earlier one (when it was read, in ms).
   stale?: boolean
   readAt?: number
@@ -50,14 +53,29 @@ export interface TaskDetails {
   branch: string
   worktree: string
   failure: string
+  // What failed (1.x `failure.stage`: start, setup, send, agent, workflow,
+  // pr, merge, attempts…) and whether a login stopped it: what Retry needs.
+  failureStage: string
+  failureAuth: boolean
+  // The agent's closing note (task.json `summary`: 1.2.1's `details` leaves
+  // it out, so the server reads it from the task's file) and, for research, its
+  // report (`details.report`: the file's name, its link when it is https).
+  summary: string
+  report: { file: string, link: string } | null
   review: TaskReview | null
   reviewRounds: number
   plan: string
   research: boolean
 }
 
-// What wherdr can do on a task (1.x `tell`, `approve`, and its pane in Herdr).
-export interface TaskActions { tell: boolean, approve: boolean }
+// What wherdr can do on a task: 1.x `tell`, `approve`, `delegate`, `stop`,
+// `retry`, `archive` (and its pane in Herdr).
+export interface TaskActions { tell: boolean, approve: boolean, delegate: boolean, stop: boolean, retry: boolean, archive: boolean }
+// The task commands that take nothing but the task's id.
+export const TASK_COMMANDS = ['delegate', 'stop', 'retry', 'archive'] as const
+export type TaskCommand = typeof TASK_COMMANDS[number]
+export const isTaskCommand = (v: unknown): v is TaskCommand => TASK_COMMANDS.includes(v as TaskCommand)
+export const NO_ACTIONS: TaskActions = { tell: false, approve: false, delegate: false, stop: false, retry: false, archive: false }
 
 // One board per machine (its HOME): the named sessions of a machine share it.
 export interface MachineTasks {
@@ -86,6 +104,41 @@ const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === '
 
 export function isTaskId(v: unknown): v is string {
   return typeof v === 'string' && ID_RE.test(v)
+}
+
+// A task as herdr-projects names it (store/keys.rs tag_of): its repo's key and
+// its number, `APP-6` for `demo-app/6`; `#6` while the key is not known.
+export const taskKey = (id: string, repoKey?: string | null) => { const n = id.split('/')[1] || ''; return repoKey ? `${repoKey}-${n}` : `#${n}` }
+
+// A repo's key: 2 to 5 letters or digits, the first a letter, in capitals.
+const REPO_KEY_RE = /^[A-Z][A-Z0-9]{1,4}$/
+// `show --repo <name> --json`: the `repo.key` row. A key another repo has or
+// had is not used: its note names the stand-in the tasks go by, if any.
+export function parseRepoKey(text: string): string {
+  let v: unknown
+  try { v = JSON.parse(text) } catch { return '' }
+  const rows = obj(v)?.settings
+  const row = Array.isArray(rows) ? rows.map(obj).find(r => r?.name === 'repo.key') : null
+  if (!row) return ''
+  const note = str(row.note, 300)
+  const standIn = /its tasks go by ([A-Z][A-Z0-9]{1,4})\b/.exec(note)
+  if (standIn) return standIn[1]!
+  if (note.startsWith('not used')) return ''
+  const key = str(row.value, 10)
+  return REPO_KEY_RE.test(key) ? key : ''
+}
+
+// From `data/repo-keys.json` (store/keys_given.rs), where a container reads the
+// board's files: every key a repo went by (`had`, key -> repo, in the order they
+// were recorded: the last is the latest) and the stand-ins (`standIn`, repo -> key).
+export function repoKeysFromFile(text: string): Record<string, string> {
+  let v: unknown
+  try { v = JSON.parse(text) } catch { return {} }
+  const o = obj(v)
+  const out: Record<string, string> = {}
+  for (const [key, repo] of Object.entries(obj(o?.had) || {})) if (typeof repo === 'string' && REPO_KEY_RE.test(key)) out[repo] = key
+  for (const [repo, key] of Object.entries(obj(o?.standIn) || {})) if (typeof key === 'string' && REPO_KEY_RE.test(key)) out[repo] = key
+  return out
 }
 
 // Only an https link is kept: the card opens it in a new tab.
@@ -190,22 +243,60 @@ export function parseTaskDetails(text: string): TaskDetails {
     branch: str(d.branch, 200),
     worktree: str(d.worktree, 500),
     failure: failureText(d.failure),
+    failureStage: str(obj(d.failure)?.stage, 30),
+    failureAuth: obj(d.failure)?.auth === true,
     review: parseReview(d.review),
     reviewRounds: Array.isArray(d.reviews) ? d.reviews.length : 0,
     plan: plan ? str(plan.text, 8000) : '',
     research: d.research === true,
+    summary: str(d.summary ?? t.summary, 8000).trim(),
+    report: parseReport(d.report),
   }
 }
+function parseReport(v: unknown): TaskDetails['report'] {
+  const r = obj(v)
+  const file = r ? str(r.file, 200) : ''
+  return file ? { file, link: cleanUrl(r!.link) } : null
+}
 
-// What the card offers. `tell` reaches the task's agent (or, on a plan that
-// waits, sends the plan back), so only once an agent has been on it (1.x
-// refuses it before); `approve` merges finished work or says yes to a plan.
-export function taskActions(r: Pick<TaskRow, 'state' | 'stage' | 'group' | 'archived' | 'app'>): TaskActions {
-  if (r.archived) return { tell: false, approve: false }
+// What the card offers, from the row and, for a failed task, what failed
+// (`details`). These follow 1.2.1's own checks, so a button is shown only where
+// the command can work; 1.x still has the last word, and says why it refuses.
+// - `tell` reaches the task's agent (or, on a plan that waits, sends the plan
+//   back), so only once an agent has been on it (1.x refuses it before);
+// - `approve` merges finished work or says yes to a plan;
+// - `delegate` puts an agent on a task of the backlog ("to do"), or again on
+//   one that failed before its agent got going (start, setup, attempts);
+// - `stop` stops the agent at work, or the one that waits for your answer;
+// - `retry` is 1.2.1's `send_error` (cli/tasks.rs): it continues a task a
+//   limit stopped, tells an agent that stopped without a summary to go on,
+//   starts again an agent that never took its text, or sends a failure of the
+//   agent or of the finish line back to it. Not a login problem (that needs
+//   you first: reply instead), not a failure before an agent got going, not an
+//   agent whose terminal is gone (the task is still at work: Stop is offered);
+// - `archive` puts a task away (`restore` brings it back): not in a stage where
+//   something runs (store/files.rs SLOT_STAGES, plus queued and attempts).
+export type TaskFailure = Pick<TaskDetails, 'failureStage' | 'failureAuth'>
+// 1.2.1 store/files.rs SLOT_STAGES, and the stages archive.rs also refuses.
+const ACTIVE_STAGES = ['starting', 'setup', 'working', 'checking', 'pushing', 'reviewing', 'merging', 'queued', 'attempts']
+// A failure before any agent was on it: Start again, not Retry.
+const BEFORE_AGENT = ['start', 'setup', 'attempts']
+export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group' | 'archived' | 'app'>, f?: TaskFailure | null): TaskActions {
+  if (r.archived) return NO_ACTIONS
   const live = r.group !== 'todo' && r.group !== 'done'
+  const limitStop = r.stage === 'stopped' && r.state === 'blocked'
+  const failed = r.stage === 'failed'
+  // A failed task's Retry depends on what failed: unknown until `details` says.
+  const retryFailed = failed && Boolean(f) && !f!.failureAuth && (f!.failureStage === 'send' || (Boolean(f!.failureStage) && !BEFORE_AGENT.includes(f!.failureStage)))
   return {
     tell: live && Boolean(r.app),
     approve: r.stage === 'approval' || (r.stage === 'plan' && r.state === 'blocked'),
+    delegate: r.group === 'todo' || (failed && Boolean(f) && BEFORE_AGENT.includes(f!.failureStage)),
+    // Also an agent whose terminal is gone or that exited: still at work for 1.x.
+    stop: r.group === 'working' || (r.group === 'needs' && r.state === 'blocked' && Boolean(r.app) && !limitStop && r.kind !== 'auth')
+      || (r.stage === 'working' && r.state === 'error'),
+    retry: limitStop || r.stage === 'nosummary' || retryFailed,
+    archive: r.group !== 'working' && !ACTIVE_STAGES.includes(r.stage),
   }
 }
 
@@ -218,6 +309,120 @@ export function sortTasks(rows: TaskRow[]): TaskRow[] {
 export const TELL_MAX = 8000
 export function cleanTell(v: unknown): string {
   return typeof v === 'string' ? v.replace(/\r\n?/g, '\n').trim().slice(0, TELL_MAX) : ''
+}
+
+// ---------------------------------------------------------------- commands
+// Every argument comes after the command's own flags, and the user's words
+// after `--` (or as `--flag=value`), so no text is ever read as a flag.
+
+// A new task's title: one line (1.x shortens a long one at a word and keeps
+// the full text in the description).
+export const TITLE_MAX = 300
+export function cleanTitle(v: unknown): string {
+  return typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, TITLE_MAX) : ''
+}
+
+// `--repo NAME|PATH`: a repo the board knows by its name, or a folder's path
+// (absolute, or from the home folder). '' : the home folder (wherdr runs the
+// command there). Anything else is refused, not guessed.
+const REPO_NAME_RE = /^[A-Za-z0-9][\w.-]{0,79}$/
+export function cleanRepo(v: unknown): string | null {
+  if (v === undefined || v === null || v === '') return ''
+  if (typeof v !== 'string') return null
+  const s = v.trim()
+  if (!s) return ''
+  if (REPO_NAME_RE.test(s)) return s
+  // eslint-disable-next-line no-control-regex
+  if (/^(\/|~\/)/.test(s) && s.length <= 500 && !/[\u0000-\u001f]/.test(s)) return s
+  return null
+}
+
+export interface NewTask { title: string, description: string, repo: string, delegate: boolean }
+// `add`: `--delegate` puts an agent on it at once.
+export function addArgs(t: NewTask): string[] {
+  return ['add',
+    ...(t.description ? [`--desc=${t.description}`] : []),
+    ...(t.repo ? [`--repo=${t.repo}`] : []),
+    ...(t.delegate ? ['--delegate'] : []),
+    '--', t.title]
+}
+
+// Who the Board's chat talks to on a machine: its Coordinator (one per Herdr
+// session), the machine coordinator, or a repo's project coordinator.
+export type CoordinatorTarget = { kind: 'main' } | { kind: 'machine' } | { kind: 'project', repo: string }
+export function cleanTarget(v: unknown): CoordinatorTarget | null {
+  const o = obj(v)
+  if (!o || o.kind === 'main') return { kind: 'main' }
+  if (o.kind === 'machine') return { kind: 'machine' }
+  if (o.kind === 'project' && typeof o.repo === 'string' && REPO_NAME_RE.test(o.repo)) return { kind: 'project', repo: o.repo }
+  return null
+}
+// `coordinator [--machine | --project=REPO] [--delegate] -- tell <words>`:
+// `--delegate` (the board's Tab) puts an agent on every task the message adds.
+export function coordinatorArgs(to: CoordinatorTarget, words: string, delegate: boolean): string[] {
+  return ['coordinator',
+    ...(to.kind === 'machine' ? ['--machine'] : to.kind === 'project' ? [`--project=${to.repo}`] : []),
+    ...(delegate ? ['--delegate'] : []),
+    '--', 'tell', words]
+}
+
+// Which pane a coordinator talks in, as herdr-projects itself keeps it
+// (coordinator/look.rs `summary`): `coordinator [--machine | --project=REPO]
+// status --json` gives its state and its pane in the board's own session.
+// Never guessed from an agent's name: two repos can share one once Herdr's
+// rules shorten it (`demo` and `demo-2`, `demo.app` and `demo-app`).
+export function coordinatorStatusArgs(to: CoordinatorTarget): string[] {
+  return ['coordinator', ...(to.kind === 'machine' ? ['--machine'] : to.kind === 'project' ? [`--project=${to.repo}`] : []), '--json', 'status']
+}
+// Its agent answers in Herdr: working, blocked or idle. Anything else (none,
+// starting, exited) has no pane to talk to yet.
+const LIVE_COORDINATOR = ['working', 'blocked', 'idle']
+const PANE_RE = /^w[0-9a-z]+:p[0-9a-z]+$/i
+export function parseCoordinatorStatus(text: string): { state: string, pane: string | null } {
+  let v: unknown
+  try { v = JSON.parse(text) } catch { throw new Error('herdr-projects coordinator: not JSON') }
+  const o = obj(v)
+  if (!o) throw new Error('herdr-projects coordinator: unexpected reply')
+  const state = str(o.state, 20)
+  const pane = str(o.pane, 40)
+  return { state, pane: LIVE_COORDINATOR.includes(state) && PANE_RE.test(pane) ? pane : null }
+}
+
+// ---------------------------------------------------------------- by repo
+// A machine's rows under their repos (1.x: grouped by repo, `Alt+S`): repos
+// by name, each one's rows as the board orders them (by group, newest first).
+export interface RepoTasks { repo: string, tasks: TaskRow[] }
+export function groupByRepo(rows: TaskRow[]): RepoTasks[] {
+  const by = new Map<string, TaskRow[]>()
+  for (const r of sortTasks(rows)) {
+    const list = by.get(r.repo)
+    if (list) list.push(r)
+    else by.set(r.repo, [r])
+  }
+  return [...by].sort(([a], [b]) => a.localeCompare(b)).map(([repo, tasks]) => ({ repo, tasks }))
+}
+
+// How many rows of each group: a heading's summary.
+export function groupCounts(rows: TaskRow[]): Record<TaskGroup, number> {
+  const c: Record<TaskGroup, number> = { needs: 0, ready: 0, working: 0, todo: 0, done: 0 }
+  for (const r of rows) c[r.group]++
+  return c
+}
+
+// ---------------------------------------------------------------- push
+// `board.notify` runs a command once per event, with the task's id, title and
+// event in its environment. This one hands it to Herdr as a notification,
+// which wherdr already sends to the phone (server/utils/herdrNotify.ts): no
+// state of wherdr's own, and it works on every machine wherdr reaches.
+export const NOTIFY_COMMAND = 'herdr notification show --body="$HERDR_PROJECTS_TITLE" --sound request -- "$HERDR_PROJECTS_ID · $HERDR_PROJECTS_EVENT"'
+// The command that sets it, on each machine that runs herdr-projects.
+export const NOTIFY_SETUP = (launcher: string) => `${launcher} set board.notify '${NOTIFY_COMMAND}'`
+export const NOTIFY_EVENTS = ['needs you', 'ready to approve', 'failed'] as const
+export type NotifyEvent = typeof NOTIFY_EVENTS[number]
+// A notification that NOTIFY_COMMAND sent: its task and what happened; else null.
+export function taskNotice(title: string): { id: string, event: NotifyEvent } | null {
+  const m = /^(\S+) · (needs you|ready to approve|failed)$/.exec(title.trim())
+  return m && isTaskId(m[1]) ? { id: m[1], event: m[2] as NotifyEvent } : null
 }
 
 // ---------------------------------------------------------------- read from the files
@@ -268,7 +473,8 @@ export function detailsFromTaskFile(t: unknown): TaskDetails | null {
   const o = obj(t)
   if (!o || !isTaskId(o.id)) return null
   return parseTaskDetails(JSON.stringify({
-    task: { id: o.id, title: o.title, stage: o.stage, msg: o.msg, description: o.description },
+    task: { id: o.id, title: o.title, stage: o.stage, msg: o.msg, description: o.description, summary: o.summary },
+    report: o.report ?? null,
     failure: o.failure ?? null, review: o.review ?? null, reviews: [],
     // The program on it: `on` while one works, then `agent`, as `details` gives it; else the row's `app`.
     agent: o.on || o.agent || o.app || null,
