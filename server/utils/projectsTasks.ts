@@ -48,10 +48,26 @@ const FILES_READ_MAX = 3000
 export interface RunResult { code: number, stdout: string, stderr: string }
 export type Runner = (m: Machine, launcher: string, args: string[], timeoutMs: number) => Promise<RunResult>
 
+// The PATH a user's own shell has, for a non-interactive SSH session that only
+// gets sshd's default one: herdr-projects looks agents up there (`claude
+// --version`), and one installed in a user folder would be "not installed".
+// First the PATH herdr-projects recorded from a login shell on that machine
+// (`env.json` in its data folder, key PATH), then the session's own. Without
+// that file: the usual user folders that exist, first in that order. Either
+// way none of those folders is left out. Fixed text: nothing of the request
+// is in it, and the file's value is only ever assigned, never run.
+export const USER_PATH_DIRS = ['$HOME/.local/bin', '$HOME/.bun/bin', '$HOME/.cargo/bin', '$HOME/.npm-global/bin', '/opt/homebrew/bin', '/usr/local/bin']
+export const USER_PATH_SCRIPT = 'd="${HERDR_PROJECTS_DATA_DIR:-${HERDR_PROJECTS_HOME:-$HOME/.herdr-projects}/data}"; p=""; '
+  + 'if [ -r "$d/env.json" ]; then p=$(sed -n \'s/.*"PATH"[[:space:]]*:[[:space:]]*"\\([^"\\\\]*\\)".*/\\1/p\' "$d/env.json" 2>/dev/null | head -n 1); fi; '
+  // Folders it lacks: after it with that file, else before, first one leading.
+  + `u=""; for x in ${USER_PATH_DIRS.map(x => `"${x}"`).join(' ')}; do `
+  + '[ -d "$x" ] || continue; case ":$p:$PATH:" in *":$x:"*) continue ;; esac; u="${u:+$u:}$x"; done; '
+  + 'if [ -n "$p" ]; then PATH="$p${PATH:+:$PATH}${u:+:$u}"; elif [ -n "$u" ]; then PATH="$u${PATH:+:$PATH}"; fi; export PATH; '
+
 // On an SSH machine: its own Herdr session, by name, as herdr-projects finds it
-// there (never the socket wherdr forwards here). `$1` herdr binary, `$2` session
-// ('' or 'default': the default one), then the command.
-export const REMOTE_TASKS_SCRIPT = 'export HERDR_BIN_PATH="$1"; unset HERDR_SOCKET_PATH; '
+// there (never the socket wherdr forwards here), with the user's PATH. `$1`
+// herdr binary, `$2` session ('' or 'default': the default one), then the command.
+export const REMOTE_TASKS_SCRIPT = USER_PATH_SCRIPT + 'export HERDR_BIN_PATH="$1"; unset HERDR_SOCKET_PATH; '
   + 'if [ -n "$2" ] && [ "$2" != default ]; then export HERDR_SESSION="$2"; else unset HERDR_SESSION; fi; shift 2; exec "$@"'
 
 // The plugin's launcher with argv only: no shell on this machine, and

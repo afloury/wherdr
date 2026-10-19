@@ -1171,7 +1171,9 @@ What the Board shows and does:
   session by name): `herdr-projects list --json`,
   `details <id> --json`, `tell <id> <text>`, `approve <id>` and `coordinator tell <text>` (your
   words always after `--`, so they are never read as options), through the plugin's own
-  launcher (`bin/run.sh`). Each command also runs herdr-projects' own upkeep, so wherdr calls it
+  launcher (`bin/run.sh`). On an SSH machine they get the user's own `PATH` (the one
+  herdr-projects recorded from a login shell there, else the usual user folders such as
+  `~/.local/bin`), so an agent installed in a user folder is found. Each command also runs herdr-projects' own upkeep, so wherdr calls it
   sparingly: one command at a time per machine, a read every 15 seconds and only while the Board
   is open (a list less than 5 seconds old is reused), and the last list kept when a machine is
   slow or unreachable. Nothing runs where herdr-projects is missing or older than 1.2.1: its first
