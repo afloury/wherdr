@@ -409,10 +409,15 @@ describe('the PATH of a command on an SSH machine', () => {
   const pathOf = (extra: Record<string, string> = {}, cmd = 'printf %s "$PATH"') => execFileSync('/bin/sh', ['-c', T.REMOTE_TASKS_SCRIPT, 'sh', '/opt/herdr', '', '/bin/sh', '-c', cmd],
     { encoding: 'utf8', env: { PATH: SSHD_PATH, HOME: home, ...extra } })
   const order = (p: string) => p.split(':')
+  // The folders the script adds: those of the temporary home, then the absolute
+  // ones this host happens to have (/opt/homebrew/bin…) that `base` lacks.
+  const added = (base: string, ...mine: string[]) => [...mine.map(n => `${home}/${n}`),
+    ...T.USER_PATH_DIRS.filter(d => d.startsWith('/') && existsSync(d) && !base.split(':').includes(d))].join(':')
+  const before = (base: string, ...mine: string[]) => [added(base, ...mine), base].filter(Boolean).join(':')
 
   it('puts the user folders that exist first, in order, and leaves the rest as it was', () => {
     dirs('.local/bin', '.cargo/bin', '.npm-global/bin')
-    expect(pathOf()).toBe(`${home}/.local/bin:${home}/.cargo/bin:${home}/.npm-global/bin:${SSHD_PATH}`)
+    expect(pathOf()).toBe(before(SSHD_PATH, '.local/bin', '.cargo/bin', '.npm-global/bin'))
   })
   it('finds an agent installed in ~/.local/bin', () => {
     dirs('.local/bin')
@@ -421,17 +426,20 @@ describe('the PATH of a command on an SSH machine', () => {
     expect(pathOf({}, 'command -v claude && claude --version')).toBe(`${claude}\n2.1.0 (Claude Code)\n`)
   })
   it('changes nothing when no user folder exists', () => {
-    expect(pathOf()).toBe(SSHD_PATH)
+    expect(pathOf()).toBe(before(SSHD_PATH))
   })
   it('never adds a folder twice', () => {
     dirs('.local/bin')
-    const p = order(pathOf({ PATH: `/usr/bin:${home}/.local/bin:/usr/local/bin:/bin` }))
-    expect(p).toEqual([`/usr/bin`, `${home}/.local/bin`, '/usr/local/bin', '/bin'])
+    const base = `/usr/bin:${home}/.local/bin:/usr/local/bin:/bin`
+    const p = order(pathOf({ PATH: base }))
+    expect(p).toEqual(order(before(base)))
+    expect(new Set(p).size).toBe(p.length)
   })
   it('prefers the PATH herdr-projects recorded (pretty JSON, as its keeper writes it), then the session\'s, then missing folders', () => {
     dirs('.local/bin', '.bun/bin')
-    envFile(`{\n  "at": 1792421223588,\n  "PATH": "/opt/mine/bin:${home}/.local/bin:/usr/bin",\n  "gh": []\n}\n`)
-    expect(pathOf()).toBe(`/opt/mine/bin:${home}/.local/bin:/usr/bin:${SSHD_PATH}:${home}/.bun/bin`)
+    const recorded = `/opt/mine/bin:${home}/.local/bin:/usr/bin`
+    envFile(`{\n  "at": 1792421223588,\n  "PATH": "${recorded}",\n  "gh": []\n}\n`)
+    expect(pathOf()).toBe(`${recorded}:${SSHD_PATH}:${added(`${recorded}:${SSHD_PATH}`, '.bun/bin')}`)
   })
   it('reads it on one line too, and where HERDR_PROJECTS_DATA_DIR or HERDR_PROJECTS_HOME put it', () => {
     envFile('{"at":1,"PATH":"/opt/a/bin","gh":[]}', 'board/data')
@@ -445,7 +453,7 @@ describe('the PATH of a command on an SSH machine', () => {
     for (const text of ['{"at":1,"gh":[]}', '{"PATH":""}', 'not json', '{"PATH":"/opt/a/bin', '{"PATH":"/a\\qb"}',
       '{"PATH":"/a\\u12"}', '{"PATH":"/a\\u0000b"}', '{"PATH":"/a\\ud800b"}', '{"PATH":"/a\\udc00b"}']) {
       envFile(text)
-      expect(pathOf()).toBe(`${home}/.local/bin:${SSHD_PATH}`)
+      expect(pathOf()).toBe(before(SSHD_PATH, '.local/bin'))
     }
   })
   it('decodes a recorded PATH with JSON escapes, so every folder in it is kept', () => {
