@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import TaskSheet from '~/components/TaskSheet.vue'
@@ -12,7 +12,13 @@ function hold() { return new Promise(resolve => { held.push(() => resolve({ ok: 
 registerEndpoint('/api/tasks/tell', { method: 'POST', handler: hold })
 registerEndpoint('/api/tasks/approve', { method: 'POST', handler: hold })
 registerEndpoint('/api/tasks/action', { method: 'POST', handler: hold })
-registerEndpoint('/api/tasks/details', () => ({ id: 'demo/1', title: 'Fix login', stage: 'approval', msg: '', description: '', agent: 'claude', pr: '', branch: '', worktree: '', failure: '', failureStage: '', failureAuth: false, pane: null }))
+// What the details say, and how many times they were read.
+const shown = { stage: 'approval', failure: '', failureStage: '' }
+let detailsReads = 0
+registerEndpoint('/api/tasks/details', () => {
+  detailsReads++
+  return { id: 'demo/1', title: 'Fix login', msg: '', description: '', agent: 'claude', pr: '', branch: '', worktree: '', failureAuth: false, pane: null, ...shown }
+})
 
 const task: TaskRow = {
   id: 'demo/1', repo: 'demo', n: 1, state: 'blocked', kind: '', stage: 'approval', title: 'Fix login', msg: '', app: 'claude',
@@ -106,6 +112,32 @@ describe('the task sheet after a late reply', () => {
     await approved
     await flushPromises()
     expect(w.props('open')).toBe(false)
+    w.unmount()
+  })
+})
+
+describe('the task sheet while its task moves on', () => {
+  it('shows Retry when the open task fails, without reopening, and reads its details once more', async () => {
+    const working: TaskRow = { ...task, state: 'working', stage: 'working', group: 'working' }
+    Object.assign(shown, { stage: 'working', failure: '', failureStage: '' })
+    const w = await mountSuspended(TaskSheet, { props: { task: working, machine: 'a', open: true } })
+    await flushPromises()
+    const vm = w.vm as unknown as { actions: { retry: boolean, stop: boolean } }
+    const before = detailsReads
+    expect(vm.actions.retry).toBe(false)
+
+    // The agent's turn fails: the next read of the Board gives the same task, failed.
+    Object.assign(shown, { stage: 'failed', failure: 'tests failed', failureStage: 'send' })
+    await w.setProps({ task: { ...working, state: 'error', stage: 'failed', group: 'needs' } })
+    await vi.waitFor(() => expect(vm.actions.retry).toBe(true))
+    expect(detailsReads).toBe(before + 1)
+
+    // Another read of the Board, nothing changed: no new read of the details.
+    await w.setProps({ task: { ...working, state: 'error', stage: 'failed', group: 'needs' } })
+    await flushPromises()
+    await new Promise(r => setTimeout(r, 100))
+    expect(detailsReads).toBe(before + 1)
+    Object.assign(shown, { stage: 'approval', failure: '', failureStage: '' })
     w.unmount()
   })
 })

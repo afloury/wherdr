@@ -64,6 +64,13 @@ watch([open, target], ([o]) => {
   reply.value = ''
   load()
 }, { immediate: true })
+// The same task moving on (working → failed, …): its details are read again,
+// so what it now allows (Retry after a failure) shows without reopening. Kept
+// on screen meanwhile; only a real change of stage or state reads again.
+const step = () => `${props.task?.stage ?? ''}|${props.task?.state ?? ''}`
+watch([target, step], ([t, s], [wasT, wasS]) => {
+  if (open.value && t === wasT && s !== wasS) load()
+})
 
 async function send() {
   const t = props.task
