@@ -1178,7 +1178,6 @@ What the Board shows and does:
   their commands run on them.
 
 ## Herdr plugins
-## Herdr plugins
 
 Actions declared by the plugins installed on a machine (`herdr plugin install|link`) appear in
 the menus: workspace / tab / pane actions in the agent menu, global actions in the machine menu.

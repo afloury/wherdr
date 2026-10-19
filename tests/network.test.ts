@@ -159,6 +159,23 @@ describe('tailnet state over time', () => {
     expect(netContext(3_000_001).tailscale?.funnel).toBe(false)
     expect(checkClient('127.0.0.1', {}, netContext(3_000_001))).toEqual({ ok: true, zone: 'local' })
   })
+  it('keeps a seen Funnel exposure when Tailscale’s binary or socket can no longer be found', async () => {
+    const none = { installed: false, readable: true, running: false, selfIps: [], peerIps: [], funnel: false }
+    const t0 = 5_000_000
+    for (const docker of [false, true]) {
+      resetNetworkStateForTests()
+      await refreshTailscale(async () => ({ ...up, funnel: true }), t0, docker)
+      expect(checkClient('127.0.0.1', {}, netContext(t0 + 1000))).toEqual({ ok: false, reason: 'funnel' })
+      // Discovery lost (tailscale updating, tailscaled restarting): unknown, still refused.
+      await refreshTailscale(async () => none, t0 + 10_000, docker)
+      expect(netContext(t0 + 11_000).tailscale?.funnel).toBe(null)
+      expect(checkClient('127.0.0.1', {}, netContext(t0 + 11_000))).toEqual({ ok: false, reason: 'funnel' })
+      expect(checkClient('127.0.0.1', {}, netContext(t0 + 200_000))).toEqual({ ok: false, reason: 'funnel' })
+      // Found again, with Funnel off: served.
+      await refreshTailscale(async () => up, t0 + 210_000, docker)
+      expect(checkClient('127.0.0.1', {}, netContext(t0 + 211_000))).toEqual({ ok: true, zone: 'local' })
+    }
+  })
 })
 
 describe('Funnel configuration', () => {

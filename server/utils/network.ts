@@ -310,9 +310,12 @@ export async function refreshTailscale(read: TailscaleReader = defaultReader, no
   if (gen < published) return
   published = gen
   if (f) {
-    // In Docker, no Tailscale socket does not mean no Tailscale: the host may
-    // run one (with Funnel) that the container cannot see.
-    const funnel = docker && f.installed === false ? null : f.funnel
+    // No Tailscale found is not a reading of Funnel. In Docker, the host may
+    // run one (with Funnel) that the container cannot see. Natively, once
+    // Funnel was seen, the binary or socket may only be missing for a while
+    // (an update, tailscaled restarting) while the relay still runs: unknown,
+    // so the exposure stays until a valid reading shows it gone.
+    const funnel = f.installed === false && (docker || funnelSeen) ? null : f.funnel
     ts = { running: f.readable === false ? false : f.running, selfIps: f.selfIps, peerIps: f.peerIps, funnel, at: now }
     // Only a valid reading changes what is known about Funnel.
     if (funnel !== null) {
