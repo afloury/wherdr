@@ -159,6 +159,10 @@ Details in [Features](#features) and [Security](#security).
   tap** without opening it; the card is one line again once answered. Turn off Settings ›
   Appearance › Home screen › **Compact list** for detailed cards, with the folder, the model and
   a preview of each agent's last answer.
+  With [herdr-projects](#works-great-with-herdr-projects), the board's spaces follow Herdr's sidebar:
+  the Coordinators on top, then each repo's space (branch, `↓` commits behind its upstream) with
+  its project coordinator and its tasks under it (key, title, progress, time on it, the board's
+  current line); closing a space that holds task agents names the tasks it stops.
 - **Conversation view**: the agent's real transcript (Claude Code, Codex and omp), rendered as
   Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan), timestamps, search and infinite scroll back to the
   first message. Reading a conversation never touches the terminal, so it never resizes a pane.
@@ -1239,6 +1243,15 @@ What the Board shows and does:
 - **Coordinators**, in the same panel: a machine's heading opens its Coordinator, the agent that
   turns what you write into tasks; a repo's heading opens that repo's project coordinator. One
   not started yet takes a first message (`coordinator tell`), which starts it.
+- **The agent list** groups the board's spaces under their repo, as Herdr's sidebar does: each
+  machine's Coordinator and machine coordinator first, then per repo its own space (name, branch,
+  commits behind its upstream), its project coordinator and its tasks' spaces (key, title, state,
+  progress, time on it, the line the board reports; the Board icon opens the task there). A repo
+  coordinated from another machine shows **Coordinated from <machine>**. wherdr reads this from
+  the board's files (`~/.herdr-projects/data`: tasks, attempts, reviewers, coordinators, repos)
+  and from Herdr's worktree groups, every 15 seconds while the list is shown, never through
+  herdr-projects' command line; the branch and behind count come from `git` in the repo's main
+  checkout, once a minute, without fetching.
 - **A machine is one board**, shared by its named sessions: one list, one queue, one card per
   task. A machine whose read fails says why on the Board, and its last tasks stay, marked with
   the time they were read.

@@ -126,6 +126,8 @@ const FR: Record<string, string> = {
   'Unknown': 'Inconnu', 'Starting': 'Démarrage', 'Closed': 'Fermé',
   'your turn': 'à toi', 'working': 'au travail', 'ready': 'prêts',
   'coordinator': 'coordinateur',
+  'Coordinator': 'Coordinateur',
+  'review': 'revue',
   'Hide': 'Masquer',
   'Show terminals': 'Afficher les terminaux',
   'Compact list': 'Liste compacte',

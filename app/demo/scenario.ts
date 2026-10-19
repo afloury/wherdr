@@ -3,6 +3,7 @@
 // English, with no real path, machine, person or conversation.
 import type { ChangesResponse, ChatItem, ModelInfo, OmpToolView, Pane, Quotas, SlashCommand, Tab, Workspace } from '#shared/types'
 import { type TaskRow, type TasksBoard, groupOf } from '../../shared/projectsTasks'
+import type { BoardLinks, LinkedTask, MachineLinks } from '../../shared/boardLinks'
 
 export const HOME = '/Users/demo'
 const REPO = `${HOME}/code/acme-api`
@@ -282,6 +283,25 @@ export function tasks(agents: { codex: string, omp: string }): TasksBoard {
     row({ id: 'acme-web/3', repo: 'acme-web', n: 3, state: 'done', stage: 'done', title: 'Dark mode for the dashboard', msg: 'Merged', pr: 'https://github.com/acme/acme-web/pull/21' }),
   ]
   return { version: `${agents.codex}-${agents.omp}`, machines: [{ machine: '', status: 'ready', version: '1.2.1', tasks: list }] }
+}
+
+// What the board's files link (GET /api/tasks/links): the Coordinator is the
+// acme-api project coordinator, the two tasks follow their agents' spaces.
+export function boardLinks(now: number, agents: { codex: string, omp: string }): BoardLinks {
+  const task = (n: number, title: string, pane: string, progress: number, minutes: number, msg: string): LinkedTask => ({
+    id: `acme-api/${n}`, repo: 'acme-api', n, key: `ACME-API-${n}`, title, panes: [{ id: pane, role: 'worker' }],
+    workspace: pane.split(':')[0]!, stage: 'working', progress, msg, since: now - minutes * 60_000,
+  })
+  const machines: MachineLinks[] = [{
+    machine: '',
+    coordinators: [{ level: 'project', repo: 'acme-api', pane: COORD, workspace: 'w1' }],
+    tasks: [
+      task(12, 'Per-key rate limits on the public API', CODEX, agents.codex === 'working' ? 75 : 100, 30, agents.codex === 'working' ? 'Writing tests' : 'Ready for review'),
+      task(13, 'Fix the flaky CSV export test', OMP, 40, 25, agents.omp === 'blocked' ? 'Asks to run npm test -- export.spec.ts' : 'Repeating the spec'),
+    ],
+    repos: [{ repo: 'acme-api', root: REPO, branch: 'main', behind: 3 }],
+  }]
+  return { version: `links-${agents.codex}-${agents.omp}`, machines }
 }
 
 // `details --json` of a demo task.

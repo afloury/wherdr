@@ -318,6 +318,9 @@ function readList(k: string): string[] {
 // Collapsed machine sections (kept on the device).
 export const collapsedMachines = ref<string[]>(readList('collapsedMachines'))
 watch(collapsedMachines, v => ls.set('collapsedMachines', JSON.stringify(v)))
+// Collapsed repo groups of the home list, `<machine>|<group id>` (kept on the device).
+export const collapsedRepos = ref<string[]>(readList('collapsedRepos'))
+watch(collapsedRepos, v => ls.set('collapsedRepos', JSON.stringify(v.slice(-200))))
 // Last machine chosen in "New".
 export const lastMachine = ref(ls.get('lastMachine') || '')
 watch(lastMachine, v => ls.set('lastMachine', v))
