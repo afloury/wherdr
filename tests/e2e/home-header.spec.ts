@@ -56,7 +56,8 @@ for (const width of [null, 280]) {
 test('the eyebrow shows both versions and opens Settings › About', async ({ page }) => {
   await page.goto('/')
   const link = page.locator('.home-version')
-  await expect(link).toHaveText(/^wherdr \d+\.\d+\.\d+ · herdr /)
+  // x.y.z, or a pre-release such as 2.0.0-dev or 2.0.0-rc.1.
+  await expect(link).toHaveText(/^wherdr \d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)? · herdr /)
   await link.click()
   await expect(page).toHaveURL(/section=about/)
 })
