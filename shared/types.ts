@@ -470,7 +470,7 @@ export interface FilesListing { root: string, path: string, entries: FileEntry[]
 export interface FilePreview {
   path: string
   size: number
-  kind: 'text' | 'image' | 'pdf' | 'binary' | 'large'
+  kind: 'text' | 'image' | 'pdf' | 'video' | 'binary' | 'large'
   text?: string
   dataUrl?: string
   truncated: boolean

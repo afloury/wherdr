@@ -59,7 +59,9 @@ export function parseNumstat(raw: string): Map<string, { added: number | null, d
 }
 
 type Run = (script: string, args: string[], timeout?: number) => Promise<Buffer>
-function runner(m: Machine): Run {
+// `signal`: the local command is killed with it (the SSH executor shares
+// identical running commands between callers and takes no signal).
+function runner(m: Machine, signal?: AbortSignal): Run {
   const remoteExec = m.exec
   if (remoteExec) return async (script, args, timeout = 12000) => {
     const r = await remoteExec(script, args, { timeoutMs: timeout })
@@ -67,7 +69,7 @@ function runner(m: Machine): Run {
     return r.stdout
   }
   return (script, args, timeout = 12000) => new Promise((resolve, reject) => {
-    execFile('sh', ['-c', script, 'sh', ...args], { timeout, encoding: 'buffer', maxBuffer: 512 * 1024 }, (err, out, stderr) => {
+    execFile('sh', ['-c', script, 'sh', ...args], { timeout, encoding: 'buffer', maxBuffer: 512 * 1024, signal }, (err, out, stderr) => {
       if (err) reject(new Error(String(stderr || err.message).trim()))
       else resolve(out as Buffer)
     })
@@ -79,8 +81,8 @@ const generated = /(^|\/)(?:dist|build|generated|coverage|node_modules|\.nuxt)\/
 const emptySet = (): ChangeSet => ({ files: [], truncated: false, count: 0 })
 
 // Root of the Git repository containing `cwd` (empty outside a repository), same read-only options.
-export async function gitToplevel(m: Machine, cwd: string): Promise<string> {
-  const out = await runner(m)(`cd "$1" 2>/dev/null && ${git} rev-parse --show-toplevel 2>/dev/null || true`, [cwd]).catch(() => Buffer.alloc(0))
+export async function gitToplevel(m: Machine, cwd: string, signal?: AbortSignal): Promise<string> {
+  const out = await runner(m, signal)(`cd "$1" 2>/dev/null && ${git} rev-parse --show-toplevel 2>/dev/null || true`, [cwd]).catch(() => Buffer.alloc(0))
   return out.toString('utf8').trim()
 }
 
