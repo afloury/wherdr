@@ -652,7 +652,7 @@ cmd_update() {
       ;;
     native)
       # A new checkout, a new copy in $APP, and wherdr restarted (build_start).
-      say "Updating the wherdr plugin from $SOURCE…"
+      say "Updating the wherdr plugin from ${SOURCE}…"
       "$(herdr_bin)" plugin install "$SOURCE" --ref main --yes
       ;;
     *) die "wherdr plugin is not set up: install it again with herdr plugin install $SOURCE." ;;
