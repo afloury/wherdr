@@ -80,7 +80,7 @@ const readySortItems = computed(() => [[
 const boardLinks = useBoardLinks()
 const livePanes = computed(() => new Set(st.value.panes.map(p => p.id)))
 function listOf(rows: Row[]) {
-  const b = boardSections(rows, st.value.workspaces, boardLinks.value, livePanes.value)
+  const b = boardSections(rows, st.value.workspaces, boardLinks.value, livePanes.value, k => machineInfo(k)?.baseKey ?? k)
   return {
     coordinators: b.coordinators,
     projects: b.projects,

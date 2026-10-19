@@ -187,16 +187,27 @@ const hasAgent = (r: Row) => rowPanes(r).some(p => p.agent)
 // herdr-projects keeps its coordinators as tabs of one space ("herdr-projects",
 // or "chat"): such a space is split into one row per coordinator, and its other
 // agents, if any, are listed as before.
-export function boardSections(rows: Row[], workspaces: Pick<Workspace, 'id' | 'repo' | 'repoName' | 'worktree'>[], machines: MachineLinks[], live: ReadonlySet<string>): BoardSections {
+export function boardSections(
+  rows: Row[],
+  workspaces: Pick<Workspace, 'id' | 'repo' | 'repoName' | 'worktree' | 'machine'>[],
+  machines: MachineLinks[],
+  live: ReadonlySet<string>,
+  // The board (base machine) of a machine or named session's key.
+  baseOf: (machine: string) => string = k => k,
+): BoardSections {
   const wsOf = new Map(workspaces.map(w => [w.id, w]))
   const coordByPane = new Map<string, LinkedCoordinator>()
   const coordBySpace = new Map<string, LinkedCoordinator>()
+  const coordBoard = new Map<LinkedCoordinator, string>()
   const taskByPane = new Map<string, { task: LinkedTask, role: PaneRole, letter?: string }>()
   const boardOf = new Map<LinkedTask, string>()
   const taskBySpace = new Map<string, LinkedTask>()
+  // A repo's branch and behind count, per board: the same repo name on two machines is two checkouts.
   const repoInfo = new Map<string, RepoInfo>()
+  const infoKey = (board: string, repo: string) => `${board}|${repo}`
   for (const m of machines) {
     for (const c of m.coordinators) {
+      coordBoard.set(c, m.machine)
       if (c.pane) coordByPane.set(c.pane, c)
       if (c.workspace && !coordBySpace.has(c.workspace)) coordBySpace.set(c.workspace, c)
     }
@@ -205,12 +216,14 @@ export function boardSections(rows: Row[], workspaces: Pick<Workspace, 'id' | 'r
       for (const p of t.panes) if (!taskByPane.has(p.id)) taskByPane.set(p.id, { task: t, role: p.role, letter: p.letter })
       if (t.workspace && !taskBySpace.has(t.workspace)) taskBySpace.set(t.workspace, t)
     }
-    for (const r of m.repos || []) if (!repoInfo.has(r.repo)) repoInfo.set(r.repo, r)
+    for (const r of m.repos || []) repoInfo.set(infoKey(m.machine, r.repo), r)
   }
   const out: BoardSections = { coordinators: [], projects: [], others: [] }
+  const sectionBoard = rows[0] ? baseOf(machineOf(rows[0].lead.id)) : ''
 
-  // 1. Who each row is: a coordinator, a task, a repo space, or none of these.
-  type Sorted = { row: Row, coord?: LinkedCoordinator, task?: { task: LinkedTask, role: PaneRole, letter?: string } }
+  // 1. Who each row is: a coordinator, a task's agent, or neither.
+  type TaskHit = { task: LinkedTask, role: PaneRole, letter?: string }
+  type Sorted = { row: Row, coord?: LinkedCoordinator, task?: TaskHit }
   const sorted: Sorted[] = []
   for (const row of rows) {
     const panes = rowPanes(row)
@@ -224,14 +237,20 @@ export function boardSections(rows: Row[], workspaces: Pick<Workspace, 'id' | 'r
     // A coordinator alone in its space (or known by its space): the whole row.
     const coord = (coordPanes[0] && coordByPane.get(coordPanes[0].id)) || coordBySpace.get(rowSpace(row))
     if (coord) { sorted.push({ row, coord }); continue }
-    // A task's agent: the pane that leads the row, else any of its panes, else its space.
-    const hit = taskByPane.get(row.lead.id) || panes.map(p => taskByPane.get(p.id)).find(Boolean)
+    // A task's agents: a space that holds several (worker, reviewer, attempts)
+    // gives each its own row; its other agents stay listed.
+    const linkedPanes = panes.filter(p => taskByPane.has(p.id))
+    if (row.kind === 'space' && linkedPanes.length > 1) {
+      for (const p of panes) {
+        if (taskByPane.has(p.id)) sorted.push({ row: paneRow(p), task: taskByPane.get(p.id) })
+        else if (p.agent) sorted.push({ row: paneRow(p) })
+      }
+      continue
+    }
+    const hit = linkedPanes[0] ? taskByPane.get(linkedPanes[0].id) : undefined
     const task = hit?.task || taskBySpace.get(rowSpace(row))
     if (!task) { sorted.push({ row }); continue }
-    // A space that holds the task's worker is the task itself, whatever leads it.
-    const worker = panes.some(p => taskByPane.get(p.id)?.task === task && taskByPane.get(p.id)?.role === 'worker')
-    const role = worker || !hit || hit.task !== task ? 'worker' : hit.role
-    sorted.push({ row, task: { task, role, ...(role === 'attempt' && hit?.letter ? { letter: hit.letter } : {}) } })
+    sorted.push({ row, task: hit && hit.task === task ? hit : { task, role: 'worker' } })
   }
 
   // 2. A repo's group id: Herdr's repo_key, learnt from its tasks' spaces and its
@@ -244,53 +263,60 @@ export function boardSections(rows: Row[], workspaces: Pick<Workspace, 'id' | 'r
     if (!nameOfId.has(id)) nameOfId.set(id, name)
   }
   for (const s of sorted) if (s.task) learn(s.task.task.repo, wsOf.get(rowSpace(s.row))?.repo)
-  for (const r of repoInfo.values()) {
-    const w = workspaces.find(x => x.repo && !x.worktree && (x.repo === r.root || x.repo === `${r.root}/.git`))
+  for (const r of machines.find(m => m.machine === sectionBoard)?.repos || []) {
+    // That board's own checkout, in Herdr's spaces of that machine.
+    const w = workspaces.find(x => x.repo && !x.worktree && baseOf(x.machine || '') === sectionBoard && (x.repo === r.root || x.repo === `${r.root}/.git`))
     learn(r.repo, w?.repo)
   }
   const groupId = (name: string) => idOfName.get(name) || `repo:${name}`
-  const groups = new Map<string, ProjectSection>()
-  const group = (id: string, name?: string) => {
+  const groups = new Map<string, ProjectSection & { board: string }>()
+  const group = (id: string, name: string, board: string) => {
     let g = groups.get(id)
     if (!g) {
-      const repo = name || nameOfId.get(id) || workspaces.find(w => w.repo === id)?.repoName || id
-      g = { id, repo, key: '', info: repoInfo.get(repo) || null, space: null, coordinator: null, remote: null, members: [], sum: { blocked: 0, working: 0, ready: 0, total: 0 }, state: 'ready' }
+      g = { id, repo: name, board, key: '', info: null, space: null, coordinator: null, remote: null, members: [], sum: { blocked: 0, working: 0, ready: 0, total: 0 }, state: 'ready' }
       groups.set(id, g)
       out.projects.push(g)
     }
     return g
   }
-  // Repos with a group: the board's (a task, a coordinator, its repos list) and
-  // Herdr's worktree groups that have a linked space open.
-  const linked = new Set(workspaces.filter(w => w.repo && w.worktree).map(w => w.repo!))
+  // Only the board's repos have a group: those of a task or a project coordinator
+  // shown here. Any other space, worktree or not, stays listed as before.
+  const owned = new Set<string>()
+  for (const s of sorted) {
+    if (s.task) owned.add(groupId(s.task.task.repo))
+    else if (s.coord?.level === 'project') owned.add(groupId(s.coord.repo!))
+  }
 
   // 3. Placed in Herdr's order.
   for (const s of sorted) {
     if (s.coord) {
       if (s.coord.level !== 'project') { out.coordinators.push({ row: s.row, level: s.coord.level }); continue }
-      const g = group(groupId(s.coord.repo!), s.coord.repo)
+      const g = group(groupId(s.coord.repo!), s.coord.repo!, coordBoard.get(s.coord) ?? sectionBoard)
       if (!g.coordinator) { g.coordinator = s.row; continue }
       out.others.push(s.row)
       continue
     }
     if (s.task) {
       const t = s.task
-      group(groupId(t.task.repo), t.task.repo).members.push({ row: s.row, task: t.task, board: boardOf.get(t.task) ?? '', role: t.role, ...(t.letter ? { letter: t.letter } : {}) })
+      const board = boardOf.get(t.task) ?? sectionBoard
+      const g = group(groupId(t.task.repo), t.task.repo, board)
+      g.members.push({ row: s.row, task: t.task, board, role: t.role, ...(t.role === 'attempt' && t.letter ? { letter: t.letter } : {}) })
       continue
     }
+    // The repo's own space (main checkout) heads its group.
     const w = wsOf.get(rowSpace(s.row))
-    const known = w?.repo && (nameOfId.has(w.repo) || linked.has(w.repo))
-    if (w?.repo && known) {
-      const g = group(w!.repo!)
-      if (!w!.worktree && !g.space) { g.space = s.row; continue }
-      if (w!.worktree) { g.members.push({ row: s.row, task: null, role: 'worker' }); continue }
+    if (w?.repo && !w.worktree && owned.has(w.repo)) {
+      const g = group(w.repo, nameOfId.get(w.repo) || w.repoName || w.repo, sectionBoard)
+      if (!g.space) { g.space = s.row; continue }
     }
     out.others.push(s.row)
   }
   out.coordinators.sort((a, b) => LEVEL_ORDER.indexOf(a.level) - LEVEL_ORDER.indexOf(b.level))
   const mine = new Set<string>()
   for (const row of rows) for (const p of rowPanes(row)) mine.add(p.id)
-  for (const g of out.projects) {
+  for (const g of groups.values()) {
+    // The checkout of the board whose tasks these are.
+    g.info = repoInfo.get(infoKey(g.board, g.repo)) || null
     g.key = g.members.map(m => m.task && /^([A-Z][A-Z0-9]{1,4})-\d/.exec(m.task.key)?.[1]).find(Boolean) || ''
     // Stable sort: most urgent first, Herdr's order on a tie.
     g.members = g.members.map((m, i) => ({ m, i })).sort((a, b) => GROUP_ORDER.indexOf(rowGroup(a.m.row)) - GROUP_ORDER.indexOf(rowGroup(b.m.row)) || a.i - b.i).map(x => x.m)

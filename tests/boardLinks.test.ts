@@ -101,27 +101,55 @@ describe('the home list follows Herdr\'s worktree groups', () => {
     expect(s.projects[0]!.coordinator?.key).toBe('w1:p2')
   })
 
-  it('the repo space heads its group, the task spaces under it, most urgent first', () => {
+  it('the repo space heads its group, the task agents under it, most urgent first', () => {
     expect(s.projects).toHaveLength(1)
     const g = s.projects[0]!
     expect(g).toMatchObject({ id: REPO_KEY, repo: 'app', key: 'APP', info: { branch: 'main', behind: 38 }, remote: null })
     expect(g.space?.key).toBe('w2:p1')
-    // Both wait on you (APP-1's reviewer leads its space: still the task), Herdr's order between them.
-    expect(g.members.map(m => [m.row.key, m.task?.key ?? null, m.role])).toEqual([['w3', 'APP-1', 'worker'], ['w4:p1', 'APP-2', 'worker'], ['w6:p1', null, 'worker']])
-    expect(g.sum).toEqual({ blocked: 2, working: 1, ready: 1, total: 4 })
+    // Waiting on you first (APP-1's reviewer, APP-2), then APP-1's worker at work.
+    expect(g.members.map(m => [m.row.key, m.task?.key ?? null, m.role])).toEqual([
+      ['w3:p9', 'APP-1', 'reviewer'], ['w4:p1', 'APP-2', 'worker'], ['w3:p1', 'APP-1', 'worker'],
+    ])
+    // The project coordinator counts too (at work).
+    expect(g.sum).toEqual({ blocked: 2, working: 2, ready: 0, total: 4 })
     expect(g.state).toBe('blocked')
   })
 
-  it('spaces that are not the board\'s or in a repo group stay as they were', () => {
-    expect(s.others.map(r => r.key)).toEqual(['w5:p1'])
+  it('a worker and its reviewer in one space: one row each, opening its own pane', () => {
+    const g = s.projects[0]!
+    const app1 = g.members.filter(m => m.task?.id === 'app/1')
+    expect(app1.map(m => [m.row.kind, m.row.lead.id, memberTag(m, 'review')])).toEqual([['pane', 'w3:p9', 'APP-1 · review'], ['pane', 'w3:p1', 'APP-1']])
   })
 
-  it('without links, Herdr\'s worktree group is still a group; a lone repo shell is not', () => {
+  it('spaces that are not the board\'s stay as they were, worktrees of the repo included', () => {
+    expect(s.others.map(r => r.key)).toEqual(['w5:p1', 'w6:p1'])
+  })
+
+  it('without the board, nothing is grouped: Herdr\'s worktree group stays in the usual lists', () => {
     const bare = boardSections(spaceRows(st), st.workspaces, [], live)
     expect(bare.coordinators).toEqual([])
-    expect(bare.projects.map(g => [g.repo, g.space?.key, g.members.length])).toEqual([['app', 'w2:p1', 3]])
-    const alone = st.workspaces.filter(w => !w.worktree)
-    expect(boardSections(spaceRows({ ...st, workspaces: alone }), alone, [], live).projects).toEqual([])
+    expect(bare.projects).toEqual([])
+    expect(bare.others.map(r => r.key)).toEqual(spaceRows(st).map(r => r.key))
+  })
+
+  it('a repo on two machines: each group shows its own machine\'s checkout', () => {
+    const remote = snapshot('abcd1234')
+    const remoteLinks: MachineLinks = {
+      machine: 'abcd1234', coordinators: [],
+      tasks: tasksFromFiles([linksFromTaskFile({ id: 'app/9', title: 'Far', link: { pane: 'w4:p1', workspace: 'w4', ownsWorkspace: true } }, () => 'abcd1234')!], {}),
+      repos: [{ repo: 'app', root: '/home/u/dev/app', branch: 'remote-feature', behind: 1 }],
+    }
+    const both = [links(), remoteLinks]
+    const all = new Set([...live, ...remote.panes.map(p => p.id)])
+    const far = boardSections(spaceRows(remote, 'abcd1234'), [...st.workspaces, ...remote.workspaces], both, all).projects[0]!
+    expect(far.info).toMatchObject({ branch: 'remote-feature', behind: 1 })
+    expect(far.space?.key).toBe('abcd1234~w2:p1')
+    expect(far.members.map(m => m.task?.key)).toEqual(['#9'])
+    const near = boardSections(spaceRows(st, ''), [...st.workspaces, ...remote.workspaces], both, all).projects[0]!
+    expect(near.info).toMatchObject({ branch: 'main', behind: 38 })
+    // A named session of a machine reads that machine's board.
+    const session = boardSections(spaceRows(remote, 'abcd1234'), remote.workspaces, both, all, k => (k === 'abcd1234' ? 'abcd1234' : k)).projects[0]!
+    expect(session.info?.branch).toBe('remote-feature')
   })
 
   it('a repo coordinated from another machine: its tasks stay here, with the link', () => {
