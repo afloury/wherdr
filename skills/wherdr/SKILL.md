@@ -7,14 +7,22 @@ description: How wherdr, the phone and browser app for Herdr, shows a herdr-proj
 
 wherdr shows the user's Herdr agents on their phone and computer. Its **Board** shows the
 herdr-projects work board (1.2.1 or later) of every machine, in the board's own five groups:
-needs you, ready to approve, working, to do, done. wherdr reads the board only through the
+needs you, ready to approve, working, to do, done. wherdr reads the board through the
 herdr-projects command line (`list --json`, `details <id> --json`); it never edits the
 board's files.
+
+When wherdr runs in a container (Docker, Podman), its own machine is the exception: there it
+only reads the board's files (`~/.herdr-projects/data/tasks`) and runs no herdr-projects
+command, since each command also runs the board's upkeep, which belongs to the host. The tasks
+show, but none of the Board's actions below reach you from that machine: the user replies,
+approves and talks to the Coordinator in Herdr on the host. SSH machines are not affected:
+their commands run on them.
 
 ## What reaches you from the Board
 
 wherdr adds no message format of its own. What the user does on the Board goes through the
-ordinary herdr-projects commands, as if typed on the machine:
+ordinary herdr-projects commands, as if typed on the machine (not on a containerized wherdr's
+own machine, see above):
 
 | On the Board | Command wherdr runs | Who gets it |
 |---|---|---|
