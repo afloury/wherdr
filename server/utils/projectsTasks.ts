@@ -62,7 +62,7 @@ export const REMOTE_TASKS_SCRIPT = USER_PATH_SH + 'export HERDR_BIN_PATH="$1"; u
 // user's (bin/lib/userpath.mjs), read again each time since herdr-projects'
 // record of it may be newer, so it finds the agents in user folders.
 export function launcherEnv(home: string, sock?: string | null, env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const PATH = userPath({ env: { PATH: HERDR_CHILD_ENV.PATH, HERDR_PROJECTS_DATA_DIR: env.HERDR_PROJECTS_DATA_DIR }, home })
+  const PATH = userPath({ env: { PATH: HERDR_CHILD_ENV.PATH, HERDR_PROJECTS_DATA_DIR: env.HERDR_PROJECTS_DATA_DIR, HERDR_PROJECTS_HOME: env.HERDR_PROJECTS_HOME }, home })
   return { ...HERDR_CHILD_ENV, PATH, HERDR_BIN_PATH: HERDR_BIN, NO_COLOR: '1', ...(sock ? { HERDR_SOCKET_PATH: sock } : {}) }
 }
 

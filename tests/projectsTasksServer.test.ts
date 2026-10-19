@@ -424,6 +424,22 @@ describe('the session on an SSH machine', () => {
   })
 })
 
+describe('an agent in a user folder, from an SSH command', () => {
+  it('is found by herdr-projects, and the arguments reach the launcher as they were', () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-remote-'))
+    try {
+      const claude = path.join(home, '.local/bin/claude')
+      mkdirSync(path.dirname(claude), { recursive: true })
+      writeFileSync(claude, '#!/bin/sh\necho "2.1.0 (Claude Code)"\n', { mode: 0o755 })
+      // sshd's default PATH, without the user's own folders.
+      const run = (session: string, cmd: string, ...args: string[]) => execFileSync('/bin/sh', ['-c', T.REMOTE_TASKS_SCRIPT, 'sh', '/opt/herdr', session, '/bin/sh', '-c', cmd, 'x', ...args],
+        { encoding: 'utf8', env: { HOME: home, PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' } })
+      expect(run('', 'command -v claude && claude --version')).toBe(`${claude}\n2.1.0 (Claude Code)\n`)
+      expect(run('review', 'printf "%s|%s|%s" "$HERDR_BIN_PATH" "$HERDR_SESSION" "$1"', '$(id) --keep a')).toBe('/opt/herdr|review|$(id) --keep a')
+    } finally { rmSync(home, { recursive: true, force: true }) }
+  })
+})
+
 describe('task keys', () => {
   it('names a task by its repo\'s key, asked once per repo with show --repo, and again after a while', async () => {
     keysOf = { demo: 'APP' }
