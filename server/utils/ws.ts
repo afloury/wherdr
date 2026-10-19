@@ -19,11 +19,10 @@ export function headersOf(h: Headers): Record<string, string | undefined> {
 // The TCP peer comes from the Node request behind crossws's proxy (`_req`);
 // when it cannot be read, the connection is refused. Same decision as HTTP
 // (gateDecision), with the WebSocket rules: Origin identical to the host, and
-// the passkey lock always applies.
+// the passkey lock (when set up) always applies.
 export function upgradeVerdict(headers: Record<string, string | undefined>, remoteAddress: string | undefined) {
   return gateDecision({
     check: checkRequestClient(remoteAddress, headers),
-    passkey: auth.isEnabled(),
     unlocked: auth.isUnlocked({ headers }),
     hostOk: hostAllowed(headers.host),
     crossSite: !sameOrigin(headers),
@@ -37,7 +36,7 @@ export async function checkUpgrade(request: { headers: Headers, _req?: { socket?
   // on a moment ago is seen.
   await ensureFresh(0)
   const verdict = upgradeVerdict(headersOf(request.headers), request._req?.socket?.remoteAddress)
-  if (verdict === 'network' || verdict === 'unverified') return new Response(null, { status: 403, statusText: 'Network not allowed' })
+  if (verdict === 'network') return new Response(null, { status: 403, statusText: 'Network not allowed' })
   if (verdict === 'host') return new Response(null, { status: 403, statusText: 'Host not allowed' })
   if (verdict === 'origin') return new Response(null, { status: 403, statusText: 'Forbidden' })
   if (verdict === 'locked') return new Response(null, { status: 401, statusText: 'Unauthorized' })

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { funnelExposes, tailnetPeers, targetPort } from '../bin/lib/tailnet.mjs'
 import {
-  checkClient, forwardedClients, fullAccess, gateDecision, isLoopbackIp, isTailnetIp, listenVerdict, netContext,
+  checkClient, forwardedClients, gateDecision, isLoopbackIp, isTailnetIp, listenVerdict, netContext,
   ensureFresh, parseTrustedNetworks, plainIp, refreshTailscale, resetNetworkStateForTests, tailnetKnown, type NetContext, type TailscaleState,
 } from '../server/utils/network'
 
@@ -77,21 +77,22 @@ describe('tailnet state over time', () => {
     await refreshTailscale(async () => up, t0 + 40_000, false)
     expect(checkClient('100.101.102.103', {}, netContext(t0 + 80_000))).toEqual({ ok: false, reason: 'peer' })
   })
-  it('counts Funnel as possible until a valid reading proves otherwise', async () => {
+  it('refuses this computer only while a reading shows Funnel; an unknown state is served', async () => {
     const t0 = 2_000_000
-    // Nothing read yet (startup): unverified.
-    expect(checkClient('127.0.0.1', {}, netContext(t0))).toEqual({ ok: true, zone: 'unverified', why: 'funnel' })
+    // Nothing read yet (startup): Funnel unknown, served.
+    expect(checkClient('127.0.0.1', {}, netContext(t0))).toEqual({ ok: true, zone: 'local' })
     await refreshTailscale(async () => ({ ...up, funnel: true }), t0, false)
-    expect(checkClient('127.0.0.1', {}, netContext(t0 + 1000))).toEqual({ ok: true, zone: 'unverified', why: 'funnel' })
-    // Status unreadable: still unverified (not "stopped, so no Funnel").
+    expect(checkClient('127.0.0.1', {}, netContext(t0 + 1000))).toEqual({ ok: false, reason: 'funnel' })
+    // Status unreadable or Tailscale failing: unknown, served (logged at startup).
     await refreshTailscale(async () => ({ ...up, readable: false, running: false, peerIps: [], funnel: null }), t0 + 10_000, false)
-    expect(checkClient('127.0.0.1', {}, netContext(t0 + 11_000))).toEqual({ ok: true, zone: 'unverified', why: 'funnel' })
+    expect(checkClient('127.0.0.1', {}, netContext(t0 + 11_000))).toEqual({ ok: true, zone: 'local' })
+    await refreshTailscale(async () => ({ ...up, funnel: true }), t0 + 15_000, false)
     await refreshTailscale(async () => { throw new Error('socket gone') }, t0 + 20_000, false)
-    expect(checkClient('127.0.0.1', {}, netContext(t0 + 21_000))).toEqual({ ok: true, zone: 'unverified', why: 'funnel' })
-    // A valid reading without Funnel: local again; stale: unverified again.
-    await refreshTailscale(async () => up, t0 + 30_000, false)
-    expect(checkClient('127.0.0.1', {}, netContext(t0 + 31_000))).toEqual({ ok: true, zone: 'local' })
-    expect(checkClient('127.0.0.1', {}, netContext(t0 + 70_000))).toEqual({ ok: true, zone: 'unverified', why: 'funnel' })
+    expect(checkClient('127.0.0.1', {}, netContext(t0 + 21_000))).toEqual({ ok: true, zone: 'local' })
+    // Funnel seen again, then the reading goes stale: unknown, served.
+    await refreshTailscale(async () => ({ ...up, funnel: true }), t0 + 30_000, false)
+    expect(checkClient('127.0.0.1', {}, netContext(t0 + 31_000))).toEqual({ ok: false, reason: 'funnel' })
+    expect(checkClient('127.0.0.1', {}, netContext(t0 + 70_000))).toEqual({ ok: true, zone: 'local' })
   })
   it('reads Tailscale again for a WebSocket upgrade, and for HTTP past 2 s', async () => {
     let funnel = false
@@ -107,13 +108,15 @@ describe('tailnet state over time', () => {
     // A WebSocket upgrade: a reading started after it arrived, which sees Funnel.
     await ensureFresh(0, reader, Date.now() + 1)
     expect(reads).toBe(2)
-    expect(checkClient('127.0.0.1', {}, netContext()).ok && checkClient('127.0.0.1', {}, netContext())).toMatchObject({ zone: 'unverified', why: 'funnel' })
+    expect(checkClient('127.0.0.1', {}, netContext())).toEqual({ ok: false, reason: 'funnel' })
   })
-  it('treats a missing Tailscale socket in Docker as unknown, and no Tailscale natively as none', async () => {
+  it('serves this computer without Tailscale: unknown in Docker (no socket), none natively', async () => {
     const none = { installed: false, readable: true, running: false, selfIps: [], peerIps: [], funnel: false }
     await refreshTailscale(async () => none, 3_000_000, true)
-    expect(checkClient('127.0.0.1', {}, netContext(3_000_001))).toEqual({ ok: true, zone: 'unverified', why: 'funnel' })
+    expect(netContext(3_000_001).tailscale?.funnel).toBe(null)
+    expect(checkClient('127.0.0.1', {}, netContext(3_000_001))).toEqual({ ok: true, zone: 'local' })
     await refreshTailscale(async () => none, 3_000_000, false)
+    expect(netContext(3_000_001).tailscale?.funnel).toBe(false)
     expect(checkClient('127.0.0.1', {}, netContext(3_000_001))).toEqual({ ok: true, zone: 'local' })
   })
 })
@@ -179,25 +182,30 @@ describe('client check', () => {
     expect(checkClient('127.0.0.1', { forwarded: 'for=unknown' }, ctx())).toEqual({ ok: false, reason: 'forwarded' })
     expect(checkClient('127.0.0.1', { 'tailscale-funnel-request': '?1' }, ctx())).toEqual({ ok: false, reason: 'funnel' })
   })
-  it('treats every local connection as unverified while Funnel exposes wherdr', () => {
+  it('refuses every connection from this computer while Funnel exposes wherdr', () => {
     const f = ctx({ tailscale: { ...TS, funnel: true } })
-    expect(checkClient('127.0.0.1', {}, f)).toEqual({ ok: true, zone: 'unverified', why: 'funnel' })
-    expect(checkClient('127.0.0.1', { 'x-forwarded-for': '100.64.0.2' }, f)).toEqual({ ok: true, zone: 'unverified', why: 'funnel' })
+    expect(checkClient('127.0.0.1', {}, f)).toEqual({ ok: false, reason: 'funnel' })
+    expect(checkClient('127.0.0.1', { 'x-forwarded-for': '100.64.0.2' }, f)).toEqual({ ok: false, reason: 'funnel' })
+    expect(checkClient('172.17.0.1', {}, { ...f, gateway: '172.17.0.1', gatewayWide: false, gatewayDeclared: true })).toEqual({ ok: false, reason: 'funnel' })
+    // Unknown: served.
+    expect(checkClient('127.0.0.1', {}, ctx({ tailscale: { ...TS, funnel: null } }))).toEqual({ ok: true, zone: 'local' })
+    expect(checkClient('127.0.0.1', {}, ctx({ tailscale: null }))).toEqual({ ok: true, zone: 'local' })
     // A tailnet peer connecting directly is still the tailnet.
     expect(checkClient('100.101.102.103', {}, f)).toEqual({ ok: true, zone: 'tailnet' })
   })
-  it('trusts the Docker gateway only with the declared loopback publication and a negative probe', () => {
+  it('refuses the Docker gateway when the port answers on it, and serves it otherwise', () => {
     const gw = (gatewayWide: boolean | null, gatewayDeclared: boolean) => ctx({ gateway: '172.17.0.1', gatewayWide, gatewayDeclared })
-    const unverified = { ok: true, zone: 'unverified', why: 'docker' }
+    const wide = { ok: false, reason: 'docker' }
     // The shipped Compose file: 127.0.0.1, same port, declared → local.
     expect(checkClient('172.17.0.1', {}, gw(false, true))).toEqual({ ok: true, zone: 'local' })
-    // A negative probe alone proves nothing: IPv6-only publication ('[::]:7683:7683'),
-    // a remapped host port ('7699:7683'), or an unreachable probe all look like this.
-    expect(checkClient('172.17.0.1', {}, gw(false, false))).toEqual(unverified)
-    // Declared, but the port answers on the gateway (published on every interface).
-    expect(checkClient('172.17.0.1', {}, gw(true, true))).toEqual(unverified)
-    // Not probed yet.
-    expect(checkClient('172.17.0.1', {}, gw(null, true))).toEqual(unverified)
+    // Not declared, or not probed yet: nothing proves an exposure, served
+    // (the startup log warns about the missing declaration).
+    expect(checkClient('172.17.0.1', {}, gw(false, false))).toEqual({ ok: true, zone: 'local' })
+    expect(checkClient('172.17.0.1', {}, gw(null, true))).toEqual({ ok: true, zone: 'local' })
+    // The port answers on the gateway: published on every interface, refused.
+    expect(checkClient('172.17.0.1', {}, gw(true, true))).toEqual(wide)
+    expect(checkClient('172.17.0.1', {}, gw(true, false))).toEqual(wide)
+    expect(checkClient('172.17.0.1', {}, { ...gw(true, true), trusted: parseTrustedNetworks('any') })).toEqual({ ok: true, zone: 'open' })
     expect(checkClient('::ffff:172.17.0.1', { 'x-forwarded-for': '100.64.0.9' }, gw(false, true))).toEqual({ ok: true, zone: 'tailnet' })
     expect(checkClient('172.17.0.5', {}, gw(false, true))).toEqual({ ok: false, reason: 'peer' })
   })
@@ -211,34 +219,35 @@ describe('client check', () => {
   })
 })
 
-// passkey on/off × local/tailnet/trusted/unverified/refused × HTTP/WS, on the
+// passkey on/off × local/tailnet/trusted/open/refused × HTTP/WS, on the
 // routes that matter. auth.disable itself needs an unlocked session (auth.ts).
+// No network requires the passkey: it only locks the app once set up.
 describe('gate matrix', () => {
   const checks = {
     local: checkClient('127.0.0.1', {}, ctx()),
     tailnet: checkClient('100.101.102.103', {}, ctx()),
     trusted: checkClient('10.147.17.9', {}, ctx({}, '10.147.17.0/24')),
-    unverified: checkClient('127.0.0.1', {}, ctx({ tailscale: { ...TS, funnel: true } })),
+    open: checkClient('192.168.1.20', {}, ctx({}, 'any')),
     lan: checkClient('192.168.1.20', {}, ctx()),
+    funnel: checkClient('127.0.0.1', {}, ctx({ tailscale: { ...TS, funnel: true } })),
   } as const
+  const served = ['local', 'tailnet', 'trusted', 'open'] as const
   const routes = ['/api/config', '/api/phone', '/api/update', '/api/auth/disable', '/'] as const
   const decide = (zone: keyof typeof checks, path: string, passkey: boolean, unlocked: boolean, ws = false) =>
-    gateDecision({ check: checks[zone], passkey, unlocked: !passkey || unlocked, hostOk: true, crossSite: false, path, ws })
+    gateDecision({ check: checks[zone], unlocked: !passkey || unlocked, hostOk: true, crossSite: false, path, ws })
 
-  it('without a passkey: this computer, the tailnet and named ranges get in; unverified and the LAN do not', () => {
+  it('without a passkey: every accepted network gets everything, Settings › Phone included', () => {
     for (const path of routes) {
-      for (const z of ['local', 'tailnet', 'trusted'] as const) expect(decide(z, path, false, false)).toBe('ok')
+      for (const z of served) expect(decide(z, path, false, false)).toBe('ok')
       expect(decide('lan', path, false, false)).toBe('network')
+      expect(decide('funnel', path, false, false)).toBe('network')
     }
-    // Unverified: only the app and the first-passkey routes (bootstrap token required there).
-    for (const path of ['/api/config', '/api/phone', '/api/update', '/api/auth/disable', '/api/auth/login/options', '/uploads/x.png']) expect(decide('unverified', path, false, false)).toBe('unverified')
-    for (const path of ['/', '/_nuxt/app.js', '/api/health', '/api/auth/status', '/api/auth/register/options', '/api/auth/register/verify']) expect(decide('unverified', path, false, false)).toBe('ok')
-    for (const z of ['local', 'tailnet', 'trusted'] as const) expect(decide(z, '/ws', false, false, true)).toBe('ok')
-    expect(decide('unverified', '/ws', false, false, true)).toBe('unverified')
+    for (const z of served) expect(decide(z, '/ws', false, false, true)).toBe('ok')
     expect(decide('lan', '/ws', false, false, true)).toBe('network')
+    expect(decide('funnel', '/ws', false, false, true)).toBe('network')
   })
-  it('with a passkey: every zone but the LAN needs the unlocked session for the API and WebSockets', () => {
-    for (const z of ['local', 'tailnet', 'trusted', 'unverified'] as const) {
+  it('with a passkey: every accepted network needs the unlocked session for the API and WebSockets', () => {
+    for (const z of served) {
       for (const path of ['/api/config', '/api/phone', '/api/update']) {
         expect(decide(z, path, true, false)).toBe('locked')
         expect(decide(z, path, true, true)).toBe('ok')
@@ -249,23 +258,19 @@ describe('gate matrix', () => {
       expect(decide(z, '/ws', true, false, true)).toBe('locked')
       expect(decide(z, '/ws', true, true, true)).toBe('ok')
     }
-    expect(decide('lan', '/api/update', true, true)).toBe('network')
-    expect(decide('lan', '/ws', true, true, true)).toBe('network')
+    // An unlocked passkey never opens a refused network.
+    for (const z of ['lan', 'funnel'] as const) {
+      expect(decide(z, '/api/update', true, true)).toBe('network')
+      expect(decide(z, '/', true, true)).toBe('network')
+      expect(decide(z, '/ws', true, true, true)).toBe('network')
+    }
   })
   it('keeps the Host, Origin and cross-site checks after the network one', () => {
-    const base = { check: checks.local, passkey: false, unlocked: true, path: '/api/config' }
+    const base = { check: checks.local, unlocked: true, path: '/api/config' }
     expect(gateDecision({ ...base, hostOk: false, crossSite: false })).toBe('host')
     expect(gateDecision({ ...base, hostOk: true, crossSite: true })).toBe('origin')
     expect(gateDecision({ ...base, path: '/', hostOk: true, crossSite: true })).toBe('ok')
     expect(gateDecision({ ...base, path: '/ws', ws: true, hostOk: true, crossSite: true })).toBe('origin')
-  })
-  it('opens Settings › Phone to this computer and the tailnet, others only once unlocked', () => {
-    expect(fullAccess(checks.local, false)).toBe(true)
-    expect(fullAccess(checks.tailnet, false)).toBe(true)
-    expect(fullAccess(checks.trusted, false)).toBe(false)
-    expect(fullAccess(checks.unverified, false)).toBe(false)
-    expect(fullAccess(checks.unverified, true)).toBe(true)
-    expect(fullAccess(checks.lan, false)).toBe(false)
   })
 })
 

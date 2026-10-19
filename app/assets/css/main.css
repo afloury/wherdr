@@ -585,6 +585,12 @@ body.short-bottom { --safe-bottom: 0px; }
 .open-network-banner { margin-top: 0; border-color: color-mix(in srgb, var(--rose) 55%, transparent); }
 .settings-group .open-network-banner { margin: 12px 0 0; }
 .open-network-banner .update-banner-icon { color: var(--rose); }
+/* Settings › Security and the guide: network advice (NetworkTips.vue). */
+.network-tips { margin: 12px 0 0; padding: 12px 14px; border: 1px solid var(--line); }
+.network-tips-label { margin: 0 0 8px; font: 500 10.5px/1.2 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--text-3); }
+.network-tips ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 7px; }
+.network-tips li { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; line-height: 1.45; color: var(--text-2); }
+.network-tips li .iconify { width: 14px; height: 14px; margin-top: 2px; color: var(--accent); }
 .update-banner-icon { width: 15px; height: 15px; flex: none; margin-top: 1px; color: var(--accent); }
 .update-banner-body { flex: 1 1 220px; min-width: 0; display: grid; gap: 6px; }
 .update-banner-body p { margin: 0; color: var(--text); }

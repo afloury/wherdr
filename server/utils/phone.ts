@@ -7,29 +7,15 @@
 // the publish command on the host. Without that socket, the address is typed
 // (or sent by the installer) and checked through Tailscale's DNS.
 import fs from 'node:fs'
-import type { H3Event } from 'h3'
-import { getRequestHeaders } from 'h3'
 import { inspect, probe, publishArgs, publishCommand, runTailscale, serveError, tailnetDomain, tailnetUrl, tailscaleBin, tailscaledSocket, unpublishArgs } from '../../bin/lib/tailnet.mjs'
 import { phoneReach } from '../../shared/phone'
 import { qrSvg } from '../../shared/qr'
 import type { PhoneError, PhoneResult, PhoneStatus } from '../../shared/phone'
 import { APP_URL_FILE, BOOT_APP_URL, DATA_DIR, ENV_APP_URL, IN_DOCKER, TAILNET_REFRESH_MS, log } from './env'
 import { setServedHosts } from './hosts'
-import { auth, reqOf } from './http'
-import { checkRequestClient, fullAccess } from './network'
 import { initVapid } from './push'
 
 const PORT = String(process.env.NITRO_PORT || process.env.PORT || 3000)
-
-// These routes run commands and change settings: for this computer and the
-// tailnet, or a session unlocked with a passkey (network.ts, fullAccess). A
-// network the owner added (WHERDR_TRUSTED_NETWORKS) or an unverified
-// provenance needs the passkey for them.
-export function phoneAccess(event: H3Event): boolean {
-  const lock = auth.status(reqOf(event))
-  const check = checkRequestClient(event.node.req.socket?.remoteAddress, getRequestHeaders(event))
-  return fullAccess(check, lock.enabled && lock.unlocked)
-}
 
 // The saved address was adopted from `tailscale serve` (applyServed), which
 // then also takes it back; one typed by hand stays until it is replaced.

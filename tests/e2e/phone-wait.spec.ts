@@ -81,14 +81,14 @@ test('/api/health tells a refused host, which the static manifest cannot', async
 })
 
 // The app opened on its tailnet address (HTTPS, not localhost): the requests
-// of that origin are answered by the test server, and /api/phone refuses as
-// it does through `tailscale serve` (only this computer may set the phone up).
+// of that origin are answered by the test server, and /api/phone does not
+// answer, so the page shows the address it was opened on by itself.
 const TAILNET = 'https://box.example.ts.net:7683'
 async function onTailnet(page: Page) {
   await page.route(`${TAILNET}/**`, async (route) => {
     const url = route.request().url().replace(TAILNET, BASE_URL)
     if (new globalThis.URL(url).pathname === '/api/phone') {
-      await route.fulfill({ status: 403, json: { error: 'Open wherdr on this computer (localhost) or unlock it', code: 'phone_local' } })
+      await route.fulfill({ status: 503, json: { error: 'Unavailable' } })
     } else await route.fulfill({ response: await route.fetch({ url }) })
   })
 }

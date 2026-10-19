@@ -89,9 +89,6 @@ export const netDown = ref(false)
 export const cachedAt = ref<number | null>(null)
 export const offlineView = computed(() => cachedAt.value !== null)
 export const locked = ref(false)
-// The lock screen asks to set up the first passkey: wherdr cannot verify where
-// this connection comes from (AuthStatus.setup).
-export const lockSetup = ref<AuthStatus['setup'] | null>(null)
 export const appConfig = ref<AppConfig>({ kinds: ['claude', 'codex'], home: '', dirs: [], push: { enabled: false, key: null, devices: 0 } })
 // Machine name (HOST_LABEL on the server): "<name> · herdr", otherwise "herdr".
 export const hostLabel = ref('')
@@ -376,7 +373,6 @@ export async function api<T = Record<string, unknown>>(path: string, body?: unkn
   // Session expired or app locked: back through the passkey, but only once the
   // server confirms it (a single 401 is not enough to drop the user's screen).
   if (r.status === 401 && data.code === 'locked' && !path.startsWith('/api/auth/')) confirmLock()
-  if (r.status === 403 && data.code === 'unverified' && !path.startsWith('/api/auth/')) confirmLock()
   // Erreurs de Herdr transmises telles quelles (en anglais) : message traduit par code.
   const known = data.code === 'agent_not_ready' ? 'The agent isn’t ready in this pane (stopped or still starting).' : null
   if (!r.ok) throw new ApiError(t(known || data.error || `HTTP ${r.status}`), r.status, data.code)
@@ -541,8 +537,7 @@ watch(herdrState, (s) => {
 export async function confirmLock({ resume = false } = {}) {
   try {
     const st = await api<AuthStatus>(resume ? '/api/auth/status?resume=1' : '/api/auth/status')
-    lockSetup.value = st.setup ?? null
-    if (st.setup || (st.enabled && !st.unlocked)) return showLock()
+    if (st.enabled && !st.unlocked) return showLock()
     const access = leaseFromStatus(st)
     setOfflineAccess(access)
     if (resume) warnDeadline(access)
@@ -605,8 +600,7 @@ export async function start({ resume = false } = {}) {
       ? await api<AuthStatus>('/api/auth/status?resume=1', undefined, AbortSignal.timeout(STATUS_WAIT_MS))
       : await api<AuthStatus>('/api/auth/status')
     if (st.hostLabel !== undefined) hostLabel.value = st.hostLabel
-    lockSetup.value = st.setup ?? null
-    if (st.setup || (st.enabled && !st.unlocked)) return showLock()
+    if (st.enabled && !st.unlocked) return showLock()
     access = leaseFromStatus(st)
     setOfflineAccess(access)
     if (resume) warnDeadline(access)

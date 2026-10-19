@@ -14,12 +14,12 @@ const state: { ctx: NetContext, passkey: boolean } = {
   ctx: { trusted: parseTrustedNetworks(''), tailscale: { running: true, selfIps: [], peerIps: [], funnel: false } },
   passkey: false,
 }
-const STATUS = { ok: 200, network: 403, unverified: 403, host: 403, origin: 403, locked: 401 } as const
+const STATUS = { ok: 200, network: 403, host: 403, origin: 403, locked: 401 } as const
 
 function decide(req: http.IncomingMessage, ws: boolean) {
   const check = checkClient(req.socket.remoteAddress, req.headers, state.ctx)
   // No session cookie in these tests: unlocked only when no passkey exists.
-  return { check, verdict: gateDecision({ check, passkey: state.passkey, unlocked: !state.passkey, hostOk: true, crossSite: false, path: ws ? '/ws' : req.url!, ws }) }
+  return { check, verdict: gateDecision({ check, unlocked: !state.passkey, hostOk: true, crossSite: false, path: ws ? '/ws' : req.url!, ws }) }
 }
 
 const app = http.createServer((req, res) => {
@@ -87,24 +87,23 @@ describe('a raw TCP relay on this machine (Funnel TCP / TLS-terminated TCP, soca
     expect(await upgrade(ports.tcp)).toBe(101)
   })
 
-  it('is refused over HTTP and WebSocket while Funnel exposes wherdr and no passkey exists', async () => {
-    reset(true)
-    expect(await get(ports.tcp)).toEqual({ status: 403, body: { verdict: 'unverified', zone: 'unverified' } })
-    expect(await upgrade(ports.tcp)).toBe(403)
-    // This computer itself is refused too: it cannot be told from the relay.
-    expect((await get(ports.app)).status).toBe(403)
-    // Only the app and the first-passkey routes answer (bootstrap token needed there).
-    expect((await get(ports.tcp, {}, '/')).status).toBe(200)
-    expect((await get(ports.tcp, {}, '/api/auth/register/options')).status).toBe(200)
-    expect((await get(ports.tcp, {}, '/api/auth/login/options')).status).toBe(403)
+  it('is refused over HTTP and WebSocket while Funnel exposes wherdr, passkey or not', async () => {
+    for (const passkey of [false, true]) {
+      reset(true, passkey)
+      expect(await get(ports.tcp)).toEqual({ status: 403, body: { verdict: 'network', zone: null } })
+      expect(await upgrade(ports.tcp)).toBe(403)
+      // This computer itself is refused too: it cannot be told from the relay.
+      expect((await get(ports.app)).status).toBe(403)
+      // Nothing answers, the app shell and the passkey routes included.
+      for (const path of ['/', '/api/auth/status', '/api/auth/register/options']) expect((await get(ports.tcp, {}, path)).status).toBe(403)
+    }
   })
 
-  it('needs the passkey while Funnel exposes wherdr and a passkey exists', async () => {
-    reset(true, true)
-    expect(await get(ports.tcp)).toEqual({ status: 401, body: { verdict: 'locked', zone: 'unverified' } })
-    expect(await upgrade(ports.tcp)).toBe(401)
-    // The lock screen's routes stay reachable.
-    expect((await get(ports.tcp, {}, '/api/auth/status')).status).toBe(200)
+  it('is served as this computer when Tailscale cannot be read (documented limit)', async () => {
+    state.ctx = { trusted: parseTrustedNetworks(''), tailscale: { running: false, selfIps: [], peerIps: [], funnel: null } }
+    state.passkey = false
+    expect(await get(ports.tcp)).toEqual({ status: 200, body: { verdict: 'ok', zone: 'local' } })
+    expect(await upgrade(ports.tcp)).toBe(101)
   })
 
   it('passes on headers its client wrote: an outside address refuses, a tailnet one is believed (documented limit)', async () => {
@@ -148,12 +147,12 @@ describe('the Docker gateway check', () => {
     expect(await portAnswers('127.0.0.1', port)).toBe(false)
   })
 
-  it('makes gateway connections unverified when it answers: refused over HTTP and WS without a passkey, locked with one', () => {
+  it('refuses gateway connections over HTTP and WS when it answers, passkey or not', () => {
     const check = checkClient('172.17.0.1', {}, { trusted: parseTrustedNetworks(''), tailscale: null, gateway: '172.17.0.1', gatewayWide: true })
-    expect(check).toEqual({ ok: true, zone: 'unverified', why: 'docker' })
+    expect(check).toEqual({ ok: false, reason: 'docker' })
     const base = { check, hostOk: true, crossSite: false }
-    expect(gateDecision({ ...base, passkey: false, unlocked: true, path: '/api/config' })).toBe('unverified')
-    expect(gateDecision({ ...base, passkey: false, unlocked: true, path: '/ws', ws: true })).toBe('unverified')
-    expect(gateDecision({ ...base, passkey: true, unlocked: false, path: '/ws', ws: true })).toBe('locked')
+    expect(gateDecision({ ...base, unlocked: true, path: '/api/config' })).toBe('network')
+    expect(gateDecision({ ...base, unlocked: true, path: '/' })).toBe('network')
+    expect(gateDecision({ ...base, unlocked: true, path: '/ws', ws: true })).toBe('network')
   })
 })

@@ -1,8 +1,7 @@
 // Every request goes through gateDecision (server/utils/network.ts): first
-// where it comes from (this computer and the tailnet; an unverified
-// provenance only with a passkey lock), then the Host header, cross-site
-// API reads, and the passkey lock for everything touching agents (API,
-// images, photos). The app's files are still served so the lock screen can
+// where it comes from (this computer, the tailnet, WHERDR_TRUSTED_NETWORKS),
+// then the Host header, cross-site API reads, and, once a passkey is set up,
+// the lock for everything touching agents (API, images, photos). The app's files are still served so the lock screen can
 // be shown. (WebSockets go through the same decision in their `upgrade`.)
 // An authenticated request upgrades a cookie from an earlier version (auth.renew).
 import type { H3Event } from 'h3'
@@ -33,20 +32,21 @@ export default defineEventHandler(async (event) => {
   const req = reqOf(event)
   const verdict = gateDecision({
     check, path,
-    passkey: auth.isEnabled(),
     unlocked: auth.isUnlocked(req),
     hostOk: hostAllowed(headers.host),
     crossSite: crossSiteRequest(headers),
   })
   const html = hostRefusalIsHtml(path, headers.accept)
   switch (verdict) {
-    case 'network':
-      if (html) return htmlRefusal(event, networkRefusedPage())
-      return sendError(event, 403, { error: 'wherdr only answers this computer and your tailnet', code: 'network' })
-    case 'unverified': {
-      const why = check.ok && check.zone === 'unverified' ? check.why : 'funnel'
+    case 'network': {
+      const why = !check.ok && (check.reason === 'funnel' || check.reason === 'docker') ? check.reason : undefined
       if (html) return htmlRefusal(event, networkRefusedPage(why))
-      return sendError(event, 403, { error: 'wherdr cannot tell where this connection comes from: turn on the passkey lock', code: 'unverified', why })
+      const error = why === 'funnel'
+        ? 'Tailscale Funnel exposes wherdr to the Internet: turn it off for wherdr\'s port'
+        : why === 'docker'
+          ? 'Docker publishes wherdr on every network interface: publish it on 127.0.0.1 only'
+          : 'wherdr only answers this computer and your tailnet'
+      return sendError(event, 403, { error, code: 'network', ...(why ? { why } : {}) })
     }
     case 'host':
       if (html) return htmlRefusal(event, hostRefusedPage(undefined, headers.host))

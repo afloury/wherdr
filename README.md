@@ -440,7 +440,7 @@ Edit `.env` (every value has a default; `HOST_HOME` defaults to your `$HOME`):
 | `TZ` | `Europe/Paris` | Time zone for timestamps and logs. |
 | `WHERDR_UPDATE_CHECK` | `off` | Disable the daily check for a new release (default `on`). |
 | `WHERDR_TRUSTED_NETWORKS` | `10.147.17.0/24` | Another private network to accept besides this computer and the tailnet ([Network access](#network-access)). Empty by default. |
-| `WHERDR_DOCKER_LOOPBACK_ONLY` | `1` | Declares that the port is published on the host's `127.0.0.1` only, as in the shipped `docker-compose.yml`: connections from the host then count as this computer without a passkey ([Network access](#network-access)). Remove it if you publish the port another way. |
+| `WHERDR_DOCKER_LOOPBACK_ONLY` | `1` | Declares that the port is published on the host's `127.0.0.1` only, as in the shipped `docker-compose.yml`: wherdr then knows that connections from the host come from this computer (without it, it warns at startup; [Network access](#network-access)). Remove it if you publish the port another way. |
 
 Create the bind-mount folders **before** starting Compose, as your own user. Otherwise Docker
 may create missing host folders as root, leaving the container unable to write to them.
@@ -1439,8 +1439,15 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 wherdr answers **this computer and your tailnet only**. A device on any other network (a coffee shop
 Wi-Fi, an office LAN, the Internet) gets HTTP 403 (`network`), with a page that says why, even
-when it knows the address and the port. The passkey lock is optional on top of that, with one
-exception below: a relay on this computer.
+when it knows the address and the port. The passkey lock is never required, on any network: it
+is an extra lock on top, and it needs HTTPS (or `localhost`).
+
+**Good practices**
+
+- Prefer **Tailscale** (`tailscale serve`): a private HTTPS address, only for your devices.
+- A network you add **without HTTPS** gets no passkey, no installed app and no notifications, and
+  any device on that network can control your agents.
+- **Create a passkey** as soon as wherdr is reached over HTTPS.
 
 How a request is judged, before anything else (WebSockets included):
 
@@ -1453,18 +1460,19 @@ How a request is judged, before anything else (WebSockets included):
     reads that from Tailscale every 10 seconds (the CLI, or Tailscale's socket in Docker); an
     interface address in that range proves nothing, since a LAN may use it too. When Tailscale is
     stopped, missing or unreadable for 30 seconds, no direct connection counts as tailnet. In
-    Docker without Tailscale's socket, direct tailnet connections are refused, and `tailscale
-    serve` only works with a passkey (Funnel cannot be ruled out, below).
+    Docker without Tailscale's socket, direct tailnet connections are refused (`tailscale serve`
+    still works) and Funnel cannot be checked (below).
   - *Docker*: the host's own connections reach the container from its gateway, but so do
     outside ones that Docker's userland proxy relays (a port published on every interface, on an
     IPv6 address, or on another host port), and nothing inside the container tells them apart.
-    The gateway counts as this computer only when **both** hold: the deployment declares a
-    loopback-only publication with `WHERDR_DOCKER_LOOPBACK_ONLY=1` (set in the shipped
-    `docker-compose.yml`, next to its `"127.0.0.1:${PORT}:${PORT}"` line), and wherdr's port does
-    not answer on the gateway (checked every 10 seconds, which catches `7683:7683`). Otherwise
-    connections through the gateway are unverified (below). If you publish the port another way,
-    remove `WHERDR_DOCKER_LOOPBACK_ONLY` too. **Compose files written by an earlier version lack
-    that line:** add it, or set up a passkey, after updating.
+    When wherdr's port also answers on the gateway (checked every 10 seconds, which catches
+    `7683:7683`), it is published on every interface: connections through the gateway are
+    refused, with a page that says how to publish it on `127.0.0.1` only. The shipped
+    `docker-compose.yml` declares its loopback-only publication with
+    `WHERDR_DOCKER_LOOPBACK_ONLY=1`, next to its `"127.0.0.1:${PORT}:${PORT}"` line; without that
+    line wherdr cannot rule out another publication (another host port, IPv6) and says so in its
+    log at startup. If you publish the port another way, remove `WHERDR_DOCKER_LOOPBACK_ONLY` too.
+    **Compose files written by an earlier version lack that line:** add it after updating.
 - **Proxy headers**, only when the peer is this computer (a proxy on the machine, such as
   `tailscale serve`): every address in `X-Forwarded-For`, `Forwarded`, `X-Real-IP`,
   `CF-Connecting-IP` must be loopback, the tailnet or a trusted range too. They can only refuse
@@ -1477,17 +1485,16 @@ How a request is judged, before anything else (WebSockets included):
   wherdr's port, in any form (HTTPS, TCP, or TCP with TLS termination, which carry no client
   address). A Funnel route counts unless its target clearly leads to another port: the host is
   never compared (`0.0.0.0:7683`, `127.1:7683` or a LAN address reach wherdr too), and a target
-  wherdr cannot parse counts. In Docker, every Funnel route counts. Open WebSockets are judged
-  again after every reading and closed when no longer allowed; between two readings (10 seconds
-  at most), a connection opened before Funnel was turned on can last that long. Funnel on, a failed or garbled reading, no reading yet (startup) or
-  none for 30 seconds all make them unverified; Tailscale reporting itself stopped, or absent
-  without Docker, counts as no Funnel. In Docker without Tailscale's socket, nothing can be read:
-  keep the socket mounted. A Funnel request with Tailscale's `Tailscale-Funnel-Request` header is
-  always refused.
-- **Unverified connections**: without a passkey, they only get the app, which shows **A passkey
-  is needed here** with the reason, and the routes that create the first passkey. The first
-  passkey needs the bootstrap token printed in the server's logs, which a client on another
-  network cannot read. Once a passkey exists, the lock applies as everywhere else.
+  wherdr cannot parse counts. In Docker with the shipped
+  `WHERDR_DOCKER_LOOPBACK_ONLY=1`, only routes to wherdr's port count; without it, every Funnel
+  route does (the host's port may differ). While Funnel exposes wherdr, **every connection from
+  this computer is refused**, with a page that says how to turn it off: Funnel puts wherdr on
+  the Internet. Open WebSockets are judged again after every reading and closed when no longer
+  allowed; between two readings (10 seconds at most), a connection opened before Funnel was
+  turned on can last that long. A failed or garbled reading proves nothing: connections are
+  served and the server log says that Funnel cannot be checked. In Docker without Tailscale's
+  socket nothing can be read: keep the socket mounted. A Funnel request with Tailscale's
+  `Tailscale-Funnel-Request` header is always refused.
 - **The listening address**: without Docker, wherdr refuses to start on anything else than
   loopback or this machine's tailnet address as Tailscale reports it, with Tailscale running
   (`HOST=0.0.0.0`, a LAN address), and says how to fix it. In Docker the container listens on its
@@ -1498,18 +1505,17 @@ How a request is judged, before anything else (WebSockets included):
 > on the machine (nginx without forwarded headers, `socat`, an SSH tunnel, a tunnel client) opens
 > its connections from loopback, like your own browser, and may pass on headers its clients
 > wrote. wherdr cannot tell them apart. If you run one, make sure it only listens on a private
-> address, and **turn the passkey lock on**.
+> address, serve it over HTTPS and **create a passkey**.
 
 `tailscale serve` (npm, Homebrew, the Herdr plugin, Docker) forwards to `127.0.0.1` with the
 tailnet client's address in `X-Forwarded-For`: accepted, nothing to set up.
 
 **Another private network** (ZeroTier, WireGuard, NetBird outside `100.64.0.0/10`): name its
 range, `WHERDR_TRUSTED_NETWORKS=10.147.17.0/24` (comma-separated CIDR ranges or addresses), then
-restart wherdr. Settings › Phone then asks such devices for the passkey; the one-tap update stays
-offered to every device that can open wherdr. `WHERDR_TRUSTED_NETWORKS=any` accepts every
-network: wherdr then warns at startup and shows a warning that cannot be hidden in the app. Use
-it only when something else protects the network (Cloudflare Access), and keep the passkey lock
-on.
+restart wherdr. Such devices get the whole app, Settings › Phone and the one-tap update
+included, like the tailnet. `WHERDR_TRUSTED_NETWORKS=any` accepts every network: wherdr then
+warns at startup and shows a warning that cannot be hidden in the app. Use it only when
+something else protects the network (Cloudflare Access), and set up a passkey there too.
 
 ## Troubleshooting
 
@@ -1524,6 +1530,9 @@ on.
 - **HTTP 403 "wherdr only answers this computer and your tailnet"**: the device is on another
   network (Wi-Fi, LAN). Open wherdr through Tailscale, or name that private network in
   `WHERDR_TRUSTED_NETWORKS` ([Network access](#network-access)).
+- **HTTP 403 "Tailscale Funnel opens wherdr to the Internet"** or **"wherdr is published on
+  every network interface"**: turn Funnel off for wherdr's port (`tailscale funnel status`), or
+  publish the Docker port on `127.0.0.1` only, as in the shipped `docker-compose.yml`.
 - **wherdr stops at startup with "Refusing to listen on …"**: `HOST` is not loopback nor this
   machine's tailnet address. Set `HOST=127.0.0.1` and use `tailscale serve`, or see
   [Network access](#network-access).

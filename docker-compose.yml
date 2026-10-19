@@ -55,9 +55,9 @@ services:
     dns_opt:
       - ndots:1
     ports:
-      # Loopback only: wherdr trusts Docker's gateway as this computer only
-      # because of WHERDR_DOCKER_LOOPBACK_ONLY above. Publishing on another
-      # address or host port? Remove that line too (a passkey is then needed).
+      # Loopback only, as WHERDR_DOCKER_LOOPBACK_ONLY above declares. Publishing
+      # on another address or host port? Remove that line too (wherdr then
+      # warns at startup; on every interface, it refuses Docker's gateway).
       - "127.0.0.1:${PORT:-7683}:${PORT:-7683}"
     volumes:
       # VAPID keys, push subscriptions, passkeys, recent folders.

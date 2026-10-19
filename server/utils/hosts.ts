@@ -102,25 +102,24 @@ pre{margin:0;padding:10px 12px;border:1px solid #3a3f47;background:#15181d;white
 }
 
 // A client outside this computer and the tailnet (server/utils/network.ts),
-// or one whose provenance wherdr cannot verify (`why`: Tailscale Funnel
-// exposes wherdr's port, or Docker publishes it on every interface) while no
-// passkey lock is set: the page says why and what to do, without echoing any
-// address.
+// or any connection while wherdr may be exposed (`why`: Tailscale Funnel
+// exposes wherdr's port, or Docker publishes it on every interface): the page
+// says why and what to do, without echoing any address.
 export function networkRefusedPage(why?: 'funnel' | 'docker'): string {
   const opt = '<code>WHERDR_TRUSTED_NETWORKS</code>'
   const copy = why === 'funnel'
     ? {
         title: 'Tailscale Funnel opens wherdr to the Internet.',
-        body: '<p>Funnel relays connections from anywhere to this computer, where wherdr cannot tell them from yours. Without a passkey lock, wherdr refuses every connection while it lasts.</p><p>On the computer that runs wherdr, turn Funnel off for wherdr\'s port (<code>tailscale funnel status</code>, then <code>tailscale funnel … off</code>), then reload. To keep Funnel, turn the passkey lock on first.</p>',
+        body: '<p>Funnel relays connections from anywhere to this computer, where wherdr cannot tell them from yours, so wherdr refuses every connection while it lasts.</p><p>On the computer that runs wherdr, turn Funnel off for wherdr\'s port (<code>tailscale funnel status</code>, then <code>tailscale funnel … off</code>), then reload. To reach wherdr from your devices, use <code>tailscale serve</code>, which stays inside your tailnet.</p>',
         titleFr: 'Tailscale Funnel ouvre wherdr à Internet.',
-        bodyFr: '<p lang="fr">Funnel relaie vers cet ordinateur des connexions venues de partout, que wherdr ne peut pas distinguer des tiennes. Sans verrou passkey, wherdr refuse toute connexion tant qu’il est actif.</p><p lang="fr">Sur l’ordinateur qui fait tourner wherdr, coupe Funnel pour le port de wherdr (<code>tailscale funnel status</code>, puis <code>tailscale funnel … off</code>), puis recharge. Pour garder Funnel, active d’abord le verrou passkey.</p>',
+        bodyFr: '<p lang="fr">Funnel relaie vers cet ordinateur des connexions venues de partout, que wherdr ne peut pas distinguer des tiennes : wherdr refuse donc toute connexion tant qu’il est actif.</p><p lang="fr">Sur l’ordinateur qui fait tourner wherdr, coupe Funnel pour le port de wherdr (<code>tailscale funnel status</code>, puis <code>tailscale funnel … off</code>), puis recharge. Pour joindre wherdr depuis tes appareils, utilise <code>tailscale serve</code>, qui reste dans ton tailnet.</p>',
       }
     : why === 'docker'
       ? {
           title: 'wherdr is published on every network interface.',
-          body: '<p>Docker publishes wherdr\'s port on all the host\'s addresses, so a connection may come from another network through Docker\'s proxy, which hides where it comes from. Without a passkey lock, wherdr refuses them.</p><p>Publish it on <code>127.0.0.1</code> only (<code>"127.0.0.1:7683:7683"</code> in <code>docker-compose.yml</code>, as shipped), then <code>docker compose up -d</code>.</p>',
+          body: '<p>Docker publishes wherdr\'s port on all the host\'s addresses, so a connection may come from another network through Docker\'s proxy, which hides where it comes from, so wherdr refuses them.</p><p>Publish it on <code>127.0.0.1</code> only (<code>"127.0.0.1:7683:7683"</code> in <code>docker-compose.yml</code>, as shipped), then <code>docker compose up -d</code>.</p>',
           titleFr: 'wherdr est publié sur toutes les interfaces réseau.',
-          bodyFr: '<p lang="fr">Docker publie le port de wherdr sur toutes les adresses de l’hôte : une connexion peut venir d’un autre réseau par le proxy de Docker, qui masque sa provenance. Sans verrou passkey, wherdr les refuse.</p><p lang="fr">Publie-le sur <code>127.0.0.1</code> seulement (<code>"127.0.0.1:7683:7683"</code> dans <code>docker-compose.yml</code>, comme livré), puis <code>docker compose up -d</code>.</p>',
+          bodyFr: '<p lang="fr">Docker publie le port de wherdr sur toutes les adresses de l’hôte : une connexion peut venir d’un autre réseau par le proxy de Docker, qui masque sa provenance : wherdr les refuse donc.</p><p lang="fr">Publie-le sur <code>127.0.0.1</code> seulement (<code>"127.0.0.1:7683:7683"</code> dans <code>docker-compose.yml</code>, comme livré), puis <code>docker compose up -d</code>.</p>',
         }
       : {
           title: 'wherdr only answers this computer and your tailnet.',

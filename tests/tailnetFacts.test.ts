@@ -1,7 +1,8 @@
 // The real Tailscale reader (bin/lib/tailnet.mjs tailnetFacts) through a fake
 // `tailscale` CLI, feeding wherdr's network decision: Funnel active → status
-// error → Serve unreadable → recovery. Any failure must keep connections from
-// this computer unverified (fail closed), over HTTP and WebSocket alike.
+// error → Serve unreadable → recovery. A reading that shows Funnel refuses
+// connections from this computer, over HTTP and WebSocket alike; a failed
+// reading proves nothing and serves them (the server log warns).
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -42,30 +43,30 @@ async function readAndDecide() {
   t += 10_000
   await refreshTailscale(() => tailnetFacts(7683, bin, null), t, false)
   const check = checkClient('127.0.0.1', {}, netContext(t + 1))
-  const base = { check, passkey: false, unlocked: true, hostOk: true, crossSite: false }
+  const base = { check, unlocked: true, hostOk: true, crossSite: false }
   return { zone: check.ok ? check.zone : null, http: gateDecision({ ...base, path: '/api/config' }), ws: gateDecision({ ...base, path: '/ws', ws: true }) }
 }
-const CLOSED = { zone: 'unverified', http: 'unverified', ws: 'unverified' }
+const CLOSED = { zone: null, http: 'network', ws: 'network' }
 const OPEN = { zone: 'local', http: 'ok', ws: 'ok' }
 
 describe('Funnel protection through the real reader', () => {
-  it('stays closed from Funnel active, through a failed status and an unreadable Serve, until a valid reading', async () => {
+  it('closes while a reading shows Funnel; a failed status or an unreadable Serve proves nothing', async () => {
     set(RUNNING, FUNNEL_TLS)
     expect(await tailnetFacts(7683, bin, null)).toMatchObject({ readable: true, running: true, funnel: true })
     expect(await readAndDecide()).toEqual(CLOSED)
-    // `tailscale status` fails: not "stopped".
+    // `tailscale status` fails: not "stopped", but unknown.
     set(null, FUNNEL_TLS)
     expect(await tailnetFacts(7683, bin, null)).toMatchObject({ readable: false, funnel: null })
-    expect(await readAndDecide()).toEqual(CLOSED)
+    expect(await readAndDecide()).toEqual(OPEN)
     // Status prints garbage.
     set(RUNNING, FUNNEL_TLS, { status: true })
-    expect(await readAndDecide()).toEqual(CLOSED)
+    expect(await readAndDecide()).toEqual(OPEN)
     // Status fine, Serve fails, then prints garbage.
     set(RUNNING, null)
     expect(await tailnetFacts(7683, bin, null)).toMatchObject({ readable: true, funnel: null })
-    expect(await readAndDecide()).toEqual(CLOSED)
+    expect(await readAndDecide()).toEqual(OPEN)
     set(RUNNING, SERVE_ONLY, { serve: true })
-    expect(await readAndDecide()).toEqual(CLOSED)
+    expect(await readAndDecide()).toEqual(OPEN)
     // Recovery: a valid Serve configuration without Funnel to wherdr.
     set(RUNNING, SERVE_ONLY)
     expect(await readAndDecide()).toEqual(OPEN)
@@ -87,9 +88,9 @@ describe('Funnel protection through the real reader', () => {
     expect(await tailnetFacts(7683, bin, null, true)).toMatchObject({ funnel: true })
   })
 
-  it('starts closed when Serve cannot be read at the first reading', async () => {
+  it('serves this computer when Serve cannot be read at the first reading', async () => {
     set(RUNNING, null)
-    expect(await readAndDecide()).toEqual(CLOSED)
+    expect(await readAndDecide()).toEqual(OPEN)
   })
 
   it('opens when Tailscale reports itself stopped (it relays nothing then)', async () => {
