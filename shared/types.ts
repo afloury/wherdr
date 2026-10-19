@@ -318,6 +318,10 @@ export interface ChatResponse {
   unchanged?: boolean
   older?: boolean
   items?: ChatItem[]
+  // Incremental re-read (server/utils/chatDelta.ts): the client keeps its
+  // first `keep` items and `items` replace the rest. Absent: `items` is the
+  // whole bottom of the conversation.
+  keep?: number
   start?: number
   queue?: ClaudeQueueEntry[]
   model?: ModelInfo | null
