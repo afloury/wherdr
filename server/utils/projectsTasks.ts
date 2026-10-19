@@ -28,6 +28,7 @@ import {
 } from '../../shared/projectsTasks'
 import { HERDR_BIN, HERDR_CHILD_ENV, IN_CONTAINER, log } from './env'
 import { USER_PATH_SH, userPath } from '../../bin/lib/userpath.mjs'
+import { NATIVE_MOVE_URL } from './updates'
 import { HerdrError } from './herdr'
 import { type Machine, allMachines, baseMachines } from './machines'
 import { machineFor } from './actions'
@@ -299,7 +300,7 @@ async function machineTasks(m: Machine, fresh = false): Promise<MachineTasks | n
     // Herdr did not answer: say so, with the last tasks read there.
     return { machine: m.key, status: 'error', version: '', tasks: [], ...(last ? shown(m.key, last) : {}), error: (e as Error).message, ...(last?.tasks.length ? { stale: true } : {}) }
   }
-  const base = { machine: m.key, status: info.status, version: info.version || '', ...(readsFiles(m) ? { readOnly: true } : {}) }
+  const base = { machine: m.key, status: info.status, version: info.version || '', ...(readsFiles(m) ? { readOnly: true, moveUrl: NATIVE_MOVE_URL } : {}) }
   if (info.status !== 'ready') return { ...base, tasks: [] }
   if (last && Date.now() - last.at < REUSE_MS) return { ...base, ...shown(m.key, last) }
   const deadline = new Promise<null>(resolve => setTimeout(() => resolve(null), READ_DEADLINE_MS).unref?.())

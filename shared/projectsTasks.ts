@@ -92,6 +92,8 @@ export interface MachineTasks {
   // wherdr runs in a container: the board is read from its files, nothing is
   // run there (its upkeep belongs to the host), so no action from here.
   readOnly?: boolean
+  // With readOnly: the guide that moves wherdr to the native service.
+  moveUrl?: string
 }
 export interface TasksBoard { version: string, machines: MachineTasks[] }
 export type TasksReply = TasksBoard | { same: true, version: string }

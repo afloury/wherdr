@@ -45,6 +45,8 @@ const troubles = computed(() => (board.value?.machines || []).filter(m => m.erro
 // Read from the board's files (wherdr in a container): no action from here.
 const readOnly = (machine: string) => Boolean(board.value?.machines.find(m => m.machine === machine)?.readOnly)
 const writable = computed(() => ready.value.filter(m => !m.readOnly))
+// Only read-only boards: the top bar's actions show, off, saying why.
+const onlyReadOnly = computed(() => !writable.value.length && ready.value.some(m => m.readOnly))
 const machineLabel = (key: string) => machineName(key) || hostLabel.value || t('This machine')
 const readAt = (at?: number) => (at ? new Date(at).toLocaleTimeString(language === 'fr' ? 'fr-FR' : 'en-US', { hour: '2-digit', minute: '2-digit' }) : '')
 // Machines Herdr answers on but where the Board cannot read herdr-projects.
@@ -288,6 +290,17 @@ function back() {
       >
         <span class="board-new-label">{{ tl('New task', 'Nouvelle tâche') }}</span>
       </UButton>
+      <!-- wherdr in a container: the actions stay in view, off, and say why on hover. -->
+      <template v-else-if="onlyReadOnly">
+        <span class="ro-why" :title="readOnlyWhy()">
+          <UButton icon="i-lucide-plus" color="primary" variant="outline" size="md" class="board-new" disabled :aria-label="tl('New task', 'Nouvelle tâche')" :aria-description="readOnlyWhy()">
+            <span class="board-new-label">{{ tl('New task', 'Nouvelle tâche') }}</span>
+          </UButton>
+        </span>
+        <span class="ro-why" :title="readOnlyWhy()">
+          <UButton color="neutral" variant="outline" size="md" class="board-coord board-top-coord" disabled :aria-description="readOnlyWhy()">Coordinator</UButton>
+        </span>
+      </template>
       <UButton
         v-if="coordMachines.length === 1" color="neutral" variant="outline" size="md" class="board-coord board-top-coord"
         :class="{ on: talking(coordMachines[0]!, { kind: 'main' }) }" :disabled="offlineView" :title="coordLabel(coordMachines[0]!, { kind: 'main' })"
@@ -309,8 +322,9 @@ function back() {
       <p v-for="m in troubles" :key="`e-${m.machine}`" class="board-note error" role="alert">
         <b>{{ several ? machineLabel(m.machine) : tl('herdr-projects', 'herdr-projects') }}</b> · {{ m.error || tl('No answer yet', 'Pas encore de réponse') }}<template v-if="m.stale && m.at"> · {{ tl(`tasks as read at ${readAt(m.at)}`, `tâches lues à ${readAt(m.at)}`) }}</template>
       </p>
-      <p v-for="m in ready.filter(x => x.readOnly)" :key="`r-${m.machine}`" class="board-note">
-        {{ tl('wherdr runs in a container: the Board reads herdr-projects’ files and runs nothing here (its upkeep belongs to the host). Reply, approve, start, stop and the Coordinator: from Herdr on the host, or with herdr-projects there.', 'wherdr tourne dans un conteneur : le Board lit les fichiers de herdr-projects et n’y lance rien (son entretien revient à l’hôte). Répondre, approuver, lancer, arrêter et le Coordinateur : depuis Herdr sur l’hôte, ou avec herdr-projects là-bas.') }}
+      <p v-for="m in ready.filter(x => x.readOnly)" :key="`r-${m.machine}`" class="board-note board-note-ro">
+        <b>{{ tl('Read-only Board', 'Board en lecture seule') }}</b> · {{ tl('wherdr runs in a container: the Board reads herdr-projects’ files and runs nothing here (its upkeep belongs to the host). Reply, approve, start, stop and the Coordinator: from Herdr on the host, or move wherdr to the native service, same port and data, to do them from here.', 'wherdr tourne dans un conteneur : le Board lit les fichiers de herdr-projects et n’y lance rien (son entretien revient à l’hôte). Répondre, approuver, lancer, arrêter et le Coordinateur : depuis Herdr sur l’hôte, ou passe wherdr en service natif, même port et mêmes données, pour les faire d’ici.') }}
+        <a v-if="m.moveUrl" :href="m.moveUrl" target="_blank" rel="noopener noreferrer">{{ tl('Move to the native service', 'Passer au service natif') }} <UIcon name="i-lucide-external-link" /></a>
       </p>
       <ProjectsUpgradeNote
         v-for="m in notes" :key="m.machine" :status="m.status as 'missing' | 'old'" :version="m.version || null"
@@ -370,13 +384,14 @@ function back() {
               </button>
               <p class="board-head-name"><b>{{ machineLabel(mg.machine) }}</b><span class="board-head-sum">{{ mg.summary }}</span></p>
               <div class="board-head-actions">
-                <UButton
-                  v-for="to in MACHINE_COORDS" :key="to.kind"
-                  color="neutral" variant="outline" size="sm" class="board-coord" :class="{ on: talking(mg.machine, to) }"
-                  :disabled="mg.readOnly || offlineView" @click="talkTo(mg.machine, to)"
-                >
-                  {{ coordLabel(mg.machine, to) }}
-                </UButton>
+                <span v-for="to in MACHINE_COORDS" :key="to.kind" class="ro-why" :title="mg.readOnly ? readOnlyWhy() : undefined">
+                  <UButton
+                    color="neutral" variant="outline" size="sm" class="board-coord" :class="{ on: talking(mg.machine, to) }"
+                    :disabled="mg.readOnly || offlineView" :aria-description="mg.readOnly ? readOnlyWhy() : undefined" @click="talkTo(mg.machine, to)"
+                  >
+                    {{ coordLabel(mg.machine, to) }}
+                  </UButton>
+                </span>
               </div>
             </div>
             <template v-if="!folds.has(`m:${mg.machine}`)">
@@ -387,16 +402,20 @@ function back() {
                   </button>
                   <p class="board-head-name"><b>{{ rg.repo }}</b><span class="board-head-sum">{{ rg.summary }}</span></p>
                   <div class="board-head-actions">
-                    <UButton
-                      color="neutral" variant="outline" size="sm" class="board-coord" :class="{ on: talking(mg.machine, { kind: 'project', repo: rg.repo }) }"
-                      :disabled="mg.readOnly || offlineView" @click="talkTo(mg.machine, { kind: 'project', repo: rg.repo })"
-                    >
-                      {{ coordLabel(mg.machine, { kind: 'project', repo: rg.repo }) }}
-                    </UButton>
-                    <UButton
-                      v-if="!mg.readOnly" icon="i-lucide-plus" color="neutral" variant="outline" size="sm" class="board-head-add" :disabled="offlineView"
-                      :aria-label="tl(`New task in ${rg.repo}`, `Nouvelle tâche dans ${rg.repo}`)" @click="newTask(mg.machine, rg.repo)"
-                    />
+                    <span class="ro-why" :title="mg.readOnly ? readOnlyWhy() : undefined">
+                      <UButton
+                        color="neutral" variant="outline" size="sm" class="board-coord" :class="{ on: talking(mg.machine, { kind: 'project', repo: rg.repo }) }"
+                        :disabled="mg.readOnly || offlineView" :aria-description="mg.readOnly ? readOnlyWhy() : undefined" @click="talkTo(mg.machine, { kind: 'project', repo: rg.repo })"
+                      >
+                        {{ coordLabel(mg.machine, { kind: 'project', repo: rg.repo }) }}
+                      </UButton>
+                    </span>
+                    <span class="ro-why" :title="mg.readOnly ? readOnlyWhy() : undefined">
+                      <UButton
+                        icon="i-lucide-plus" color="neutral" variant="outline" size="sm" class="board-head-add" :disabled="mg.readOnly || offlineView"
+                        :aria-label="tl(`New task in ${rg.repo}`, `Nouvelle tâche dans ${rg.repo}`)" :aria-description="mg.readOnly ? readOnlyWhy() : undefined" @click="newTask(mg.machine, rg.repo)"
+                      />
+                    </span>
                   </div>
                 </div>
                 <!-- Its lane: one cell under each of the Board's columns. -->

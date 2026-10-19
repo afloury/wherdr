@@ -3,8 +3,8 @@
 > If your fetch tool summarizes, read the raw file with `curl -fsSL https://wherdr.dev/agent.md`.
 
 You are helping your user install **wherdr**: a self-hosted web app and phone PWA to drive the
-coding agents running in [Herdr](https://herdr.dev). It runs on **one** machine, where Herdr
-runs, as the same user, on `127.0.0.1:7683` only. Details: https://github.com/afloury/wherdr#readme.
+coding agents running in [Herdr](https://herdr.dev). It runs natively on **one** machine, where
+Herdr runs, as the same user, on `127.0.0.1:7683` only. Details: https://github.com/afloury/wherdr#readme.
 
 ## Rules
 
@@ -27,7 +27,7 @@ herdr status server      # its server must be running
 herdr plugin list        # afloury.wherdr: wherdr is installed; herdr-projects: see Extras
 curl -fsS http://127.0.0.1:7683/manifest.webmanifest   # answers: wherdr already runs
 brew list wherdr         # a Homebrew install
-node --version           # Node.js 22, needed by the install
+node --version           # Node.js 22 (the install offers it)
 tailscale status         # Tailscale connected?
 tailscale serve status   # an https://….ts.net address proxying to port 7683: already published
 ```
@@ -44,14 +44,15 @@ Skip it when wherdr already answers. Otherwise:
 curl -fsSL https://wherdr.dev/install | sh
 ```
 
-It installs the Herdr plugin into `~/wherdr`, starts wherdr and opens its setup guide in the
-browser, without sudo. It needs Node.js 22 (or Docker on Linux). Another port:
-`curl -fsSL https://wherdr.dev/install | WHERDR_PORT=7684 sh`, then use it instead of 7683 below.
+It installs the Herdr plugin in `~/wherdr`, starts wherdr and its login service and opens the
+setup guide, no sudo. No Node.js 22: it asks first (user agreed: `WHERDR_YES=1` before `sh`).
+Another port: `WHERDR_PORT=7684` before `sh`.
 
-**Check:** `curl -fsS http://127.0.0.1:7683` returns HTML.
+**Check:** `curl -fsS http://127.0.0.1:7683` returns HTML. If the install says lingering is off,
+give the user `sudo loginctl enable-linger $USER`.
 
-**Startup: nothing to add.** The plugin starts wherdr with Herdr. A Homebrew install uses
-`brew services start wherdr`. `wherdr service install` is for an npm install only.
+Docker only if the user asks (`WHERDR_MODE=docker`): its Board is read-only.
+**wherdr already in Docker**: ask, then https://github.com/afloury/wherdr#moving-from-docker-to-the-native-service.
 
 ## 3. Phone (Tailscale)
 

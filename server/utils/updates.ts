@@ -2,8 +2,11 @@
 // (public API without a token, nothing is sent). WHERDR_UPDATE_CHECK=off disables the call.
 import pkg from '../../package.json'
 import { compareVersions, installMode, oneTapMode, updateCommand, type UpdateInfo } from '../../shared/updates'
+import { NATIVE_MOVE_ANCHOR, PROJECTS_MIGRATION_GUIDE } from '../../shared/projectsPlugin'
 
 export const REPO = 'afloury/wherdr'
+// The move from Docker to the native service, linked from a read-only Board.
+export const NATIVE_MOVE_URL = `https://github.com/${REPO}/blob/main/${PROJECTS_MIGRATION_GUIDE}#${NATIVE_MOVE_ANCHOR}`
 export const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases?per_page=100`
 const DAY_MS = 24 * 60 * 60 * 1000
 // Failure (offline, API limit): new attempt in an hour.
