@@ -48,6 +48,29 @@ const FILES_READ_MAX = 3000
 export interface RunResult { code: number, stdout: string, stderr: string }
 export type Runner = (m: Machine, launcher: string, args: string[], timeoutMs: number) => Promise<RunResult>
 
+// The value of the first "PATH" key of a JSON file, its escapes decoded
+// (\" \\ \/ \b \f \n \r \t \uXXXX, surrogate pairs as UTF-8), then an `x`
+// so that the shell keeps a trailing newline. Nothing when there is no such
+// string, or when it is cut short, holds a NUL or a bad escape. POSIX awk
+// (busybox, mawk, BSD, gawk), run with LC_ALL=C so that %c writes one byte.
+// No single quote in it: the script puts it between single quotes.
+export const JSON_PATH_AWK = String.raw`{ s = s $0 "\n" } `
+  + String.raw`function b(v) { return sprintf("%c", v) } `
+  + String.raw`function hex(t,   j, x, v) { if (length(t) != 4) return -1; v = 0; for (j = 1; j <= 4; j++) { x = index("0123456789abcdef", tolower(substr(t, j, 1))); if (!x) return -1; v = v * 16 + x - 1 } return v } `
+  + String.raw`END { if (!match(s, /"PATH"[ \t\r\n]*:[ \t\r\n]*"/)) exit; s = substr(s, RSTART + RLENGTH); n = length(s); o = ""; `
+  + String.raw`for (k = 1; k <= n; k++) { c = substr(s, k, 1); `
+  + String.raw`if (c == "\"") { printf "%sx", o; exit } `
+  + String.raw`if (c != "\\") { o = o c; continue } `
+  + String.raw`c = substr(s, ++k, 1); `
+  + String.raw`if (c == "\"" || c == "\\" || c == "/") o = o c; else if (c == "b") o = o "\b"; else if (c == "f") o = o "\f"; else if (c == "n") o = o "\n"; else if (c == "r") o = o "\r"; else if (c == "t") o = o "\t"; `
+  + String.raw`else if (c == "u") { v = hex(substr(s, k + 1, 4)); k += 4; `
+  + String.raw`if (v >= 55296 && v < 56320) { if (substr(s, k + 1, 2) != "\\u") exit; w = hex(substr(s, k + 3, 4)); if (w < 56320 || w >= 57344) exit; k += 6; v = 65536 + (v - 55296) * 1024 + w - 56320 } `
+  + String.raw`if (v <= 0 || (v >= 56320 && v < 57344)) exit; `
+  + String.raw`if (v < 128) o = o b(v); else if (v < 2048) o = o b(192 + int(v / 64)) b(128 + v % 64); `
+  + String.raw`else if (v < 65536) o = o b(224 + int(v / 4096)) b(128 + int(v / 64) % 64) b(128 + v % 64); `
+  + String.raw`else o = o b(240 + int(v / 262144)) b(128 + int(v / 4096) % 64) b(128 + int(v / 64) % 64) b(128 + v % 64) } `
+  + String.raw`else exit } }`
+
 // The PATH a user's own shell has, for a non-interactive SSH session that only
 // gets sshd's default one: herdr-projects looks agents up there (`claude
 // --version`), and one installed in a user folder would be "not installed".
@@ -58,7 +81,7 @@ export type Runner = (m: Machine, launcher: string, args: string[], timeoutMs: n
 // is in it, and the file's value is only ever assigned, never run.
 export const USER_PATH_DIRS = ['$HOME/.local/bin', '$HOME/.bun/bin', '$HOME/.cargo/bin', '$HOME/.npm-global/bin', '/opt/homebrew/bin', '/usr/local/bin']
 export const USER_PATH_SCRIPT = 'd="${HERDR_PROJECTS_DATA_DIR:-${HERDR_PROJECTS_HOME:-$HOME/.herdr-projects}/data}"; p=""; '
-  + 'if [ -r "$d/env.json" ]; then p=$(sed -n \'s/.*"PATH"[[:space:]]*:[[:space:]]*"\\([^"\\\\]*\\)".*/\\1/p\' "$d/env.json" 2>/dev/null | head -n 1); fi; '
+  + `if [ -r "$d/env.json" ]; then p=$(LC_ALL=C awk '${JSON_PATH_AWK}' "$d/env.json" 2>/dev/null); p=\${p%x}; fi; `
   // Folders it lacks: after it with that file, else before, first one leading.
   + `u=""; for x in ${USER_PATH_DIRS.map(x => `"${x}"`).join(' ')}; do `
   + '[ -d "$x" ] || continue; case ":$p:$PATH:" in *":$x:"*) continue ;; esac; u="${u:+$u:}$x"; done; '

@@ -441,10 +441,28 @@ describe('the PATH of a command on an SSH machine', () => {
   })
   it('falls back to the folders when the file has no usable PATH', () => {
     dirs('.local/bin')
-    for (const text of ['{"at":1,"gh":[]}', '{"PATH":""}', 'not json', '{"PATH":"/a\\"b"}']) {
+    // No PATH, an empty one, not JSON, a string cut short, bad escapes, a NUL, a lone surrogate.
+    for (const text of ['{"at":1,"gh":[]}', '{"PATH":""}', 'not json', '{"PATH":"/opt/a/bin', '{"PATH":"/a\\qb"}',
+      '{"PATH":"/a\\u12"}', '{"PATH":"/a\\u0000b"}', '{"PATH":"/a\\ud800b"}', '{"PATH":"/a\\udc00b"}']) {
       envFile(text)
       expect(pathOf()).toBe(`${home}/.local/bin:${SSHD_PATH}`)
     }
+  })
+  it('decodes a recorded PATH with JSON escapes, so every folder in it is kept', () => {
+    // Folders whose names JSON escapes, written as herdr-projects writes them (serde: pretty, \uXXXX for controls only).
+    const odd = [path.join(home, 'with "quote"'), path.join(home, 'back\\slash'), path.join(home, 'tab\there'), path.join(home, 'café ünï 🐑'), path.join(home, 'trail\n')]
+    const plain = '/opt/plain/bin'
+    const recorded = [...odd, plain].join(':')
+    for (const [i, dir] of odd.entries()) {
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(path.join(dir, `agent${i}`), `#!/bin/sh\necho agent ${i}\n`, { mode: 0o755 })
+    }
+    envFile(JSON.stringify({ at: 1, PATH: recorded, gh: [] }, null, 2))
+    expect(pathOf().startsWith(`${recorded}:${SSHD_PATH}`)).toBe(true)
+    expect(pathOf({}, odd.map((_, i) => `agent${i}`).join('; '))).toBe(odd.map((_, i) => `agent ${i}\n`).join(''))
+    // Every escape JSON has, the optional ones too (\/, \uXXXX for any character, a surrogate pair).
+    envFile('{"PATH":"\\/opt\\/x\\u0041\\u00e9\\u20ac\\ud83d\\udc11\\b\\f\\r\\"\\\\:/y"}')
+    expect(pathOf().startsWith('/opt/xAé€🐑\b\f\r"\\:/y:')).toBe(true)
   })
   it('only assigns the recorded PATH: nothing in it is run', () => {
     envFile('{"PATH":"$(touch pwned)`touch pwned2`;touch pwned3"}')
