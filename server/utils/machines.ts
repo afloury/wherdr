@@ -87,6 +87,9 @@ export interface Machine {
   clientSock: () => string | null
   // `herdr <args>` on the machine (terminal), stdin/stdout connected.
   spawnHerdr: (args: string[]) => ChildProcessWithoutNullStreams
+  // Remote machines: a shell script whose output is streamed (a video), in
+  // the SSH session budget until it closes; null when offline.
+  spawnShell?: (script: string, args: string[]) => ChildProcessWithoutNullStreams | null
   // Store for photos sent to this machine's agents.
   uploadDir: () => string
   info: () => MachineInfo
@@ -295,6 +298,15 @@ export class RemoteMachine implements Machine {
     const sess = this.session && this.session !== 'default' ? ['--session', this.session] : []
     const cmd = `exec ${[this.bin || 'herdr', ...sess, ...args].map(shq).join(' ')}`
     const child = spawn(SSH_BIN, [...this.muxArgs(), '--', this.target, cmd], { stdio: ['pipe', 'pipe', 'pipe'] })
+    const close = this.gate.openStream()
+    child.on('close', close)
+    child.on('error', close)
+    return child
+  }
+
+  spawnShell(script: string, args: string[]): ChildProcessWithoutNullStreams | null {
+    if (this.status !== 'online') return null
+    const child = spawn(SSH_BIN, [...this.muxArgs(), '--', this.target, remoteCommand(script, args)], { stdio: ['pipe', 'pipe', 'pipe'] })
     const close = this.gate.openStream()
     child.on('close', close)
     child.on('error', close)

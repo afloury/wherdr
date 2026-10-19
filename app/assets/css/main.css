@@ -928,6 +928,8 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .files-pdf { width: 100%; min-width: 0; }
 .pdf-page { width: 100%; background: white; margin-bottom: 12px; overflow: hidden; }
 .pdf-page canvas { display: block; width: 100%; height: 100%; }
+/* The browser's own player: the view's width, never taller than most of the screen. */
+.files-video { display: block; width: 100%; max-height: 70vh; margin: 12px 0; background: #000; border: 1px solid var(--line); }
 @media (max-width: 520px) {
   .changes-inner { padding: 14px 8px 40px; }
   /* Three actions next to the path: Refresh keeps only its icon. */
