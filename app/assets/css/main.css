@@ -3626,6 +3626,15 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-panel-first label { font-size: 13px; color: var(--text-2); }
 .board-panel-away { margin: 0; padding: 6px 8px; border-left: 2px solid var(--ochre); font-size: 12px; line-height: 1.4; color: var(--text-2); }
 .board-panel-first button { align-self: flex-end; border-radius: 0; }
+/* A coordinator whose start failed: why, as herdr-projects wrote it, and Try again. */
+.board-panel-failed { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid var(--line-strong); border-left: 2px solid var(--rose); background: var(--bg-2); }
+.board-panel-failed h4 { margin: 0; display: flex; align-items: center; gap: 7px; font: 600 10.5px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--rose); }
+.board-panel-failed h4 .iconify { flex: none; width: 14px; height: 14px; }
+.board-panel-failed p { margin: 0; overflow-wrap: anywhere; }
+.board-panel-failed-what { font-size: 14px; font-weight: 600; line-height: 1.4; color: var(--text); }
+.board-panel-failed-why { padding: 8px 10px; border: 1px solid var(--line); background: var(--bg); font: 12.5px/1.5 var(--mono); color: var(--text); white-space: pre-wrap; }
+.board-panel-failed-next { font-size: 13px; line-height: 1.45; color: var(--text-2); }
+.board-panel-failed button { align-self: flex-start; border-radius: 0; font: 600 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
 /* "+ New task" in the header: words on a computer, the sign alone on a phone. */
 .board-top .board-new { margin-left: auto; border-radius: 0; font: 600 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
 .board-top .board-new + .board-filter { margin-left: 0; }

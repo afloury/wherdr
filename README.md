@@ -1245,7 +1245,9 @@ What the Board shows and does:
   **Stop**, **Retry** and **Archive** where herdr-projects takes them.
 - **Coordinators**, in the same panel: a machine's heading opens its Coordinator, the agent that
   turns what you write into tasks; a repo's heading opens that repo's project coordinator. One
-  not started yet takes a first message (`coordinator tell`), which starts it.
+  not started yet takes a first message (`coordinator tell`), which starts it. One that
+  herdr-projects could not start (an agent not installed there…) says why, with **Try again**
+  (`coordinator restart`) once it is fixed: the message still waiting then goes in.
 - **The agent list** groups the board's spaces under their repo, as Herdr's sidebar does: each
   machine's Coordinator and machine coordinator first, then per repo its own space (name, branch,
   commits behind its upstream), its project coordinator and its tasks' spaces (key, title, state,
@@ -1260,7 +1262,8 @@ What the Board shows and does:
   the time they were read.
 - What wherdr runs, on the task's machine and in its Herdr session (on an SSH machine, its own
   session by name): `herdr-projects list --json`,
-  `details <id> --json`, `tell <id> <text>`, `approve <id>` and `coordinator tell <text>` (your
+  `details <id> --json`, `tell <id> <text>`, `approve <id>`, `coordinator tell <text>`,
+  `coordinator status --json` and `coordinator restart` (your
   words always after `--`, so they are never read as options), through the plugin's own
   launcher (`bin/run.sh`). Each command also runs herdr-projects' own upkeep, so wherdr calls it
   sparingly: one command at a time per machine, a read every 15 seconds and only while the Board

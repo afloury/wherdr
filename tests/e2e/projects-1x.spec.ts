@@ -15,6 +15,8 @@ const keyReply = (key: string) => JSON.stringify({ settings: [{ name: 'repo.key'
 const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../recordings/herdr-projects-1.2.1')
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-hp1x-'))
 const calls = path.join(root, 'calls.log')
+// The coordinators told something (`coordinator tell`), one file each.
+const told = path.join(root, 'told')
 fs.mkdirSync(path.join(root, 'bin'))
 fs.writeFileSync(path.join(root, 'bin/run.sh'), `#!/bin/sh
 printf '%s\\n' "$*" >> '${calls}'
@@ -23,10 +25,13 @@ case "$1" in
   details) case "$4" in demo/1) cat '${fixtures}/details-approval.json' ;; demo/2) cat '${fixtures}/details-asks.json' ;; demo/6) echo '${JSON.stringify(failedDetails)}' ;; *) cat '${fixtures}/details-working.json' ;; esac ;;
   tell) echo "$3: sent" ;;
   approve) echo "$3: approved, merging" ;;
-  coordinator) case "$*" in
+  coordinator) co="$2"; case "$co" in --machine|--project=*) ;; *) co=main ;; esac
+    case "$*" in
     # status --json: the pane herdr-projects keeps for it; web's runs once the spec says so.
-    *status) if [ "$2" = --project=web ] && [ -f '${root}/web-coordinator' ]; then echo '{"state":"idle","pane":"${COORDINATOR_PANE}"}'; else echo '{"state":"none","pane":""}'; fi ;;
-    *) echo "sent to the Coordinator" ;;
+    # Told something and not running yet: starting, as herdr-projects says while the words wait.
+    *status) if [ "$2" = --project=web ] && [ -f '${root}/web-coordinator' ]; then echo '{"state":"idle","pane":"${COORDINATOR_PANE}"}'
+      elif [ -f "${told}/$co" ]; then echo '{"state":"starting","pane":""}'; else echo '{"state":"none","pane":""}'; fi ;;
+    *) : > "${told}/$co"; echo "sent to the Coordinator" ;;
   esac ;;
   add) echo "demo/7: added" ;;
   delegate|stop|retry|archive) echo "$3: done" ;;
@@ -48,7 +53,8 @@ const home = path.join(path.dirname(fs.readFileSync(SOCK_FILE, 'utf8').trim()), 
 const taskDir = path.join(home, '.herdr-projects/data/tasks/demo/1')
 
 test.beforeEach(() => {
-  for (const f of [calls, path.join(root, 'list.json'), path.join(root, 'web-coordinator')]) fs.rmSync(f, { force: true })
+  for (const f of [calls, path.join(root, 'list.json'), path.join(root, 'web-coordinator'), told]) fs.rmSync(f, { recursive: true, force: true })
+  fs.mkdirSync(told)
 })
 test.afterEach(async () => { await fakeHerdr('e2e.plugins', { plugins: [] }) })
 // The side panel's way back: a close button beside the Board, "Back to the Board" on a phone.
@@ -321,7 +327,10 @@ test('grouped by machine then repo: each heading opens its coordinator in the si
   await expect.poll(callLog).toContain('coordinator -- tell plain')
   if (phone) await closePanel(page, phone)
   await machineHead.getByRole('button', { name: /^Machine coordinator · / }).click()
-  await expect(panel.locator('.board-panel-name')).toHaveText('Machine coordinator')
+  // Named once, after its machine: "<machine> coordinator".
+  const host = ((await panel.locator('.board-panel-machine').textContent()) || '').trim()
+  expect(host).not.toBe('')
+  await expect(panel.locator('.board-panel-name')).toHaveText(`${host} coordinator`)
   await panel.locator('#board-panel-first').fill('for the machine')
   await panel.getByRole('button', { name: 'Send', exact: true }).click()
   await expect.poll(callLog).toContain('coordinator --machine -- tell for the machine')
@@ -557,4 +566,38 @@ test('a reply for the coordinator shown before never lands on the one shown now'
   await expect(panel).not.toContainText('its conversation opens here')
   await expect(panel.getByRole('button', { name: 'Send', exact: true })).toBeEnabled()
   expect(sent.map(b => b.to.repo)).toEqual(['demo'])
+})
+
+test('a coordinator herdr-projects could not start says why, and Try again starts it again', async ({ page }, testInfo) => {
+  await fakeBoard(page, () => [{ machine: '', tasks: [{ id: 'demo/1', title: 'In demo' }] }])
+  // herdr-projects 1.2.1 after a failed start: still "starting" while the words wait, with the error kept.
+  const error = '"claude" is not installed here, so it cannot be the Coordinator.'
+  let status: Record<string, unknown> = { pane: null, state: 'none', error: '', name: 'Coordinator' }
+  const sent: unknown[] = []
+  await page.route(url => new URL(url).pathname === '/api/tasks/coordinator', async (route) => {
+    if (route.request().method() === 'GET') return route.fulfill({ json: status })
+    const body = route.request().postDataJSON()
+    sent.push(body)
+    status = body.restart ? { pane: null, state: 'starting', error: '', name: 'Coordinator' } : { pane: null, state: 'starting', error, name: 'Coordinator' }
+    await route.fulfill({ json: { ok: true, msg: 'sent' } })
+  })
+  await page.goto('/#/board')
+  await page.locator('.board-top').getByRole('button', { name: 'Coordinator' }).click({ timeout: 15000 })
+  const panel = page.locator('.board-panel')
+  await expect(panel.locator('.board-panel-name')).toHaveText('Coordinator')
+  await panel.locator('#board-panel-first').fill('Add a dark mode toggle')
+  await panel.getByRole('button', { name: 'Send', exact: true }).click()
+  // The next lookup has the failure: its reason, never "starting".
+  const failed = panel.locator('.board-panel-failed')
+  await expect(failed).toBeVisible({ timeout: 15000 })
+  await expect(failed).toContainText('Could not start')
+  await expect(failed.locator('.board-panel-failed-why')).toHaveText(error)
+  await expect(panel).not.toContainText('is starting')
+  await expect(panel).not.toContainText('Coordinator coordinator')
+  await page.screenshot({ path: `.shots/board-coord-failed-${testInfo.project.name}.png` })
+  // Fixed on the machine: Try again starts it again, with nothing typed.
+  await failed.getByRole('button', { name: 'Try again' }).click()
+  await expect.poll(() => sent.at(-1)).toEqual({ machine: '', to: { kind: 'main' }, restart: true })
+  await expect(panel.locator('.board-panel-starting')).toHaveText('Sent. The Coordinator is starting: its conversation opens here.')
+  await expect(failed).toHaveCount(0)
 })
