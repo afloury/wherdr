@@ -67,6 +67,87 @@ export function tailnetStatus(statusJson) {
   }
 }
 
+// What wherdr's network check needs from `tailscale status --json` (with
+// peers): whether the answer could be read at all, Tailscale's state, this
+// machine's tailnet addresses and those of its peers. Read from Tailscale
+// itself, never guessed from an interface address in 100.64.0.0/10.
+// readable: false for an empty or broken answer (a failed command, a socket
+// that did not answer): nothing is known then, not "stopped".
+export function tailnetPeers(statusJson) {
+  let s = null
+  try { s = JSON.parse(statusJson) } catch {}
+  const ips = node => (Array.isArray(node?.TailscaleIPs) ? node.TailscaleIPs.filter(ip => typeof ip === 'string') : [])
+  const readable = Boolean(s && typeof s === 'object' && typeof s.BackendState === 'string')
+  return {
+    readable,
+    state: readable ? s.BackendState : null,
+    running: readable && s.BackendState === 'Running',
+    selfIps: readable ? ips(s.Self) : [],
+    peerIps: readable ? Object.values(s.Peer || {}).flatMap(ips) : [],
+  }
+}
+
+// States in which tailscaled relays nothing, Funnel included.
+const IDLE_STATES = new Set(['Stopped', 'NeedsLogin', 'NoState', 'NeedsMachineAuth'])
+
+// The port a Serve or Funnel target leads to, or null when it cannot be told
+// ("127.0.0.1:7683", "0.0.0.0:7683", "[::1]:7683", "http://localhost:7683/x",
+// "https+insecure://host", "7683"…). The host is deliberately not compared:
+// 0.0.0.0, another spelling of loopback, a LAN address of this machine or a
+// name may all reach wherdr, so only the port can rule a target out.
+export function targetPort(target) {
+  const t = String(target ?? '').trim()
+  if (/^\d{1,5}$/.test(t)) return Number(t)
+  const m = /^(?:([a-z][a-z0-9+.-]*):\/\/)?(\[[^\]]*\]|[^/:\s]*)(?::(\d{1,5}))?(?:[/?#].*)?$/i.exec(t)
+  if (!m || !m[2]) return null
+  if (m[3]) return Number(m[3])
+  const scheme = (m[1] || '').toLowerCase().replace(/\+insecure$/, '')
+  return scheme === 'http' ? 80 : scheme === 'https' ? 443 : null
+}
+
+// Whether `tailscale funnel` may open wherdr's port to the Internet, in any
+// form: an HTTPS proxy (`Web` handlers) or a raw TCP forward, with or without
+// TLS termination (`TCP[port].TCPForward`); the TCP forms carry no client
+// address. Fail closed: a Funnel route counts unless its target is parsed and
+// leads to another port (`anyRoute`: every Funnel route counts, for Docker,
+// where the host's port may differ from the container's). null: the
+// configuration could not be read.
+export function funnelExposes(port, serveJson, anyRoute = false) {
+  let config = null
+  try { config = JSON.parse(serveJson) } catch {}
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return null
+  const reaches = target => anyRoute || targetPort(target) === null || targetPort(target) === Number(port)
+  for (const part of [config, ...Object.values(config.Foreground || {})]) {
+    for (const [hostPort, on] of Object.entries(part?.AllowFunnel || {})) {
+      if (!on) continue
+      const tcpPort = hostPort.slice(hostPort.lastIndexOf(':') + 1)
+      const tcp = part?.TCP?.[tcpPort]
+      if (tcp?.TCPForward !== undefined && reaches(tcp.TCPForward)) return true
+      const handlers = Object.values(part?.Web?.[hostPort]?.Handlers || {})
+      if (handlers.some(h => h && typeof h === 'object' && h.Proxy !== undefined && reaches(h.Proxy))) return true
+      // Funnel on a port with neither a TCP forward nor web handlers we can read.
+      if (tcp?.TCPForward === undefined && !part?.Web?.[hostPort] && !tcp?.HTTPS && !tcp?.HTTP) return true
+    }
+  }
+  return false
+}
+
+// Tailscale's state for the network check: { installed, readable, running,
+// selfIps, peerIps, funnel, funnelAny }. funnel: true / false only from a
+// valid reading (Funnel routes to wherdr's port, or none; or Tailscale idle),
+// null when anything could not be read. funnelAny: the same for any Funnel
+// route at all (wherdr in Docker cannot always tell the host's port). CLI, or
+// Tailscale's socket (Docker).
+export async function tailnetFacts(port, bin = tailscaleBin(), socket = bin ? null : tailscaledSocket(), anyRoute = false) {
+  if (!bin && !socket) return { installed: false, readable: true, running: false, selfIps: [], peerIps: [], funnel: false, funnelAny: false }
+  const run = args => exec(bin, args, { encoding: 'utf8', timeout: 8000 }).then(r => r.stdout, () => '')
+  const { state, ...peers } = tailnetPeers(bin ? await run(['status', '--json']) : await localApi(socket, 'status'))
+  if (!peers.readable) return { installed: true, ...peers, funnel: null, funnelAny: null }
+  if (IDLE_STATES.has(state)) return { installed: true, ...peers, funnel: false, funnelAny: false }
+  const serve = bin ? await run(['serve', 'status', '--json']) : await localApi(socket, 'serve-config')
+  return { installed: true, ...peers, funnel: funnelExposes(port, serve, anyRoute), funnelAny: funnelExposes(port, serve, true) }
+}
+
 // The HTTPS entries of a serve configuration that proxy to wherdr's local
 // port on this machine's own name: [{ hostPort, httpsPort, funnel }], or null
 // when the configuration could not be read (Tailscale stopped, not JSON).

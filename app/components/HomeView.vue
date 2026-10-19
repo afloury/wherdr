@@ -527,6 +527,7 @@ function resetListWidth() {
       </div>
       <QuotaStrip :rows="topQuotas" :class="{ 'after-stats': showCounters && agents.length }" />
 
+      <OpenNetworkBanner />
       <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />
       <ClaudeSetupBanner v-if="!sections && localSetup" :setup="localSetup" :name="machineName('') || t('this machine')" class="solo" />
 
