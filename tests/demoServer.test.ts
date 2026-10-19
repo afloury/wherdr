@@ -202,6 +202,11 @@ describe('demo server', () => {
     const s = new DemoServer(clock())
     expect(s.handle('GET', '/api/tasks/details?machine=&id=acme-api%2F12').body).toMatchObject({ id: 'acme-api/12', pane: CODEX })
     expect(s.handle('GET', '/api/tasks/details?machine=&id=acme-api%2F99').status).toBe(404)
+    // The home list's groups: the Coordinator runs acme-api, the tasks follow their agents.
+    const links = s.handle('GET', '/api/tasks/links').body as { version: string, machines: { coordinators: unknown[], tasks: { key: string, panes: { id: string }[] }[] }[] }
+    expect(links.machines[0]!.coordinators).toEqual([{ level: 'project', repo: 'acme-api', pane: COORD, workspace: 'w1' }])
+    expect(links.machines[0]!.tasks.map(t => [t.key, t.panes[0]!.id])).toEqual([['ACME-API-12', CODEX], ['ACME-API-13', OMP]])
+    expect(s.handle('GET', `/api/tasks/links?since=${links.version}`).body).toEqual({ same: true, version: links.version })
     expect(s.handle('POST', '/api/tasks/tell', { machine: '', id: 'acme-api/12', text: 'hi' }).status).toBe(403)
     expect(s.handle('POST', '/api/tasks/approve', { machine: '', id: 'acme-api/12' }).status).toBe(403)
   })

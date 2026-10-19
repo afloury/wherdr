@@ -464,6 +464,64 @@ body.short-bottom { --safe-bottom: 0px; }
   font: 500 9.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
 }
 
+/* herdr-projects on the home list (ProjectGroup): a repo's group as Herdr's
+   sidebar draws it. Header = the repo's own space (name, branch, ↓ behind
+   its upstream, summarized state), foldable; under it, a 1 px rule ties the
+   coordinator and the tasks' spaces to it. */
+.project.collapsed { margin-bottom: 12px; }
+.project-head-row { display: flex; align-items: center; gap: 2px; margin: 0 0 6px; }
+.project-head-row.sel .project-name { color: var(--mauve); }
+.project-head-row > :first-child { flex: 1; min-width: 0; }
+.project-head { width: 100%; min-width: 0; min-height: 30px; margin: 0; padding: 4px 0; text-align: left; cursor: pointer; -webkit-touch-callout: none; user-select: none; }
+.project-head::before { display: none; }
+.project-head:focus-visible { outline: 1px solid var(--mauve); outline-offset: 2px; }
+.project-chev { width: 14px; height: 14px; flex: none; color: var(--dim); transition: transform .15s ease; }
+.project.collapsed .project-chev { transform: rotate(-90deg); }
+.project-icon { width: 13px; height: 13px; flex: none; color: var(--dim); }
+.project-name { flex: 0 1 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; letter-spacing: .12em; color: var(--text); }
+.project.blocked .project-name { color: var(--rose); }
+.project-branch { flex: 0 1 auto; min-width: 0; display: inline-flex; gap: 5px; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: .04em; text-transform: none; color: var(--dim); }
+.project-branch b { font-weight: 500; color: var(--ochre); }
+.project-sum { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; flex: none; letter-spacing: .1em; }
+.project-sum > span { display: inline-flex; align-items: center; gap: 5px; }
+.project-sum i { width: 6px; height: 6px; background: currentColor; flex: none; }
+.project-sum .blocked { color: var(--blocked); }
+.project-sum .blocked i { animation: pulse .9s ease-in-out infinite; }
+.project-sum .working { color: var(--working); }
+.project-sum .ready { color: var(--muted); }
+.project-term, .project-head-row .space-menu { flex: none; color: var(--dim); }
+.project-term:hover, .project-head-row .space-menu:hover { color: var(--text); }
+.project-tree { position: relative; margin-left: 14px; }
+.project-tree::before { content: ''; position: absolute; top: -6px; bottom: 0; left: -9px; width: 1px; background: var(--line); }
+/* The state is said by its color and number; the words are for screen readers. */
+.project-sum-l { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* Coordinated from another machine: a link to that coordinator. */
+.project-remote {
+  display: flex; align-items: center; gap: 8px; width: calc(100% - 14px); margin: -2px 0 8px 14px; padding: 7px 10px; text-align: left;
+  border: 1px dashed var(--line); font: 500 11px/1.3 var(--mono); letter-spacing: .04em; color: var(--muted); cursor: pointer;
+}
+.project-remote b { color: var(--text-2); font-weight: 600; }
+.project-remote > span:nth-of-type(1) { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-remote-icon { width: 13px; height: 13px; flex: none; color: var(--mauve); }
+.project-remote-go { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--mauve); text-transform: uppercase; letter-spacing: .12em; font-size: 10px; }
+.project-remote-go .iconify { width: 12px; height: 12px; }
+.project-remote:hover { border-color: var(--mauve); color: var(--text-2); }
+.project-remote:focus-visible { outline: 1px solid var(--mauve); outline-offset: 2px; }
+/* A task's card: its key, progress and time ("42% 17m"), the board's current line. */
+.home-task-tag { color: var(--mauve); border-color: color-mix(in srgb, var(--mauve) 45%, var(--line)); }
+.home-task-stats { flex: none; font: 500 10.5px/1 var(--mono); letter-spacing: .04em; color: var(--dim); white-space: nowrap; }
+.home-task-msg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-task-go { flex: none; display: inline-flex; padding: 4px; margin: -4px -4px -4px 0; color: var(--dim); }
+.home-task-go:hover { color: var(--text); }
+.home-task-go .iconify { width: 13px; height: 13px; }
+.card.compact.home-task-two { flex-wrap: wrap; row-gap: 1px; }
+.card.compact .home-task-line {
+  order: 9; flex: 1 0 calc(100% - 64px); min-width: 0; margin-left: 26px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; line-height: 1.3; color: var(--muted);
+}
+.card.compact .home-task-go { order: 10; }
+.card.compact .card-more { order: 11; }
+
 /* Several machines: one section per machine, like Herdr's
    sidebar. Header = name (Archivo), connection state, number of agents;
    collapsible. Unreachable machine: its last state, grayed out. */
