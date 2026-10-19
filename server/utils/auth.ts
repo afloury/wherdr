@@ -285,7 +285,9 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   }
 
   return {
-    isUnlocked, status, renew, registerOptions, registerVerify, loginOptions, loginVerify, disable, lockAll, setMaxSession,
+    isUnlocked, status, renew,
+    // A passkey is registered (the lock is on).
+    isEnabled: enabled, registerOptions, registerVerify, loginOptions, loginVerify, disable, lockAll, setMaxSession,
     lock: (req: ReqLike) => ({ ok: true, __cookie: clearCookie(req) }),
     // For tests.
     _sessionCookie: sessionCookie,

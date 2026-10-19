@@ -4,8 +4,15 @@
 
 <h1 align="center">wherdr</h1>
 
-<p align="center"><b>A complete workspace for the coding agents running in <a href="https://herdr.dev">Herdr</a>, on your
-computer and on your phone.</b></p>
+<p align="center"><b>Start your <a href="https://herdr.dev">Herdr</a> agents on your computer.
+Follow their work and answer from your phone.</b></p>
+
+<p align="center">Add it to your home screen like an app — no App Store needed.</p>
+
+<p align="center">
+  <a href="assets/wherdr-launch.mp4"><img src="assets/wherdr-launch.webp" width="720" alt="Animated wherdr launch film with real app captures: launch a Claude agent on desktop, continue the same conversation on a phone, approve its test request, then open project tasks and the Board."></a>
+</p>
+<p align="center"><sub>Start on PC. Stay in control from your phone. Real app, demo data. <a href="assets/wherdr-launch.mp4">Watch the 15-second video</a>.</sub></p>
 
 <p align="center"><a href="https://wherdr.dev"><b>wherdr.dev</b></a> · <a href="#ask-your-ai-agent">Ask your AI agent</a></p>
 
@@ -73,8 +80,8 @@ it on `localhost`, or from your other devices over Tailscale.
 > **wherdr is a remote shell on your machine.** Anyone who can reach it can start agents and
 > run commands as your user. **Never expose it on the public Internet** (no port forwarding, no
 > public reverse proxy, no tunnel). Use it on `localhost`, or from your other devices through a
-> private network such as [Tailscale](https://tailscale.com). Enabling the passkey lock is
-> strongly recommended. See [Security](#security).
+> private network such as [Tailscale](https://tailscale.com). wherdr refuses any other network
+> by itself; the passkey lock is an optional extra. See [Security](#security).
 
 <p align="center">
   <img src="docs/screenshots/desktop.png" alt="wherdr on a computer: agent sidebar and conversation" width="900">
@@ -95,8 +102,9 @@ Claude Code, Codex and other product names are trademarks of their respective ow
 
 - **Herdr's splits, live.** A tab with several panes is drawn in Herdr's real layout, every pane
   live; drag a pane to move it or a divider to resize, and the change goes to Herdr itself.
-- **A passkey lock.** Face ID, Touch ID, Windows Hello or Android unlock the app; once a passkey
-  exists, nothing about your agents is served to a locked session.
+- **Private by default, passkey lock optional.** wherdr answers only its own computer and your
+  tailnet. Add a passkey if you like: Face ID, Touch ID, Windows Hello or Android unlock the app,
+  and nothing about your agents is served to a locked session.
 - **The agent's diff.** Git status and diff of each agent's working folder, one click away from
   its conversation.
 - **The herdr-projects board.** Every machine's herdr-projects tasks in the board's own groups,
@@ -432,6 +440,8 @@ Edit `.env` (every value has a default; `HOST_HOME` defaults to your `$HOME`):
 | `TZ` | `Europe/Paris` | Time zone for timestamps and logs. |
 | `WHERDR_UPDATE_CHECK` | `off` | Disable the daily check for a new release (default `on`). |
 | `WHERDR_TASKS_FROM_FILES` | `1` | Read this machine's herdr-projects board from its files and run nothing of herdr-projects here, as in a container (detected by itself in Docker and Podman). |
+| `WHERDR_TRUSTED_NETWORKS` | `10.147.17.0/24` | Another private network to accept besides this computer and the tailnet ([Network access](#network-access)). Empty by default. |
+| `WHERDR_DOCKER_LOOPBACK_ONLY` | `1` | Declares that the port is published on the host's `127.0.0.1` only, as in the shipped `docker-compose.yml`: wherdr then knows that connections from the host come from this computer (without it, it warns at startup; [Network access](#network-access)). Remove it if you publish the port another way. |
 
 Create the bind-mount folders **before** starting Compose, as your own user. Otherwise Docker
 may create missing host folders as root, leaving the container unable to write to them.
@@ -509,11 +519,12 @@ there.
 Settings → **Enable notifications**. **On the computer:** use the same address in a browser; the
 desktop layout can replace the Herdr terminal client for daily work.
 
-**5. Passkey lock** (recommended, optional): Settings → Security → **Enable passkey lock**. The
+**5. Passkey lock** (optional): Settings → Security → **Enable passkey lock**. The
 first passkey asks for a bootstrap token, printed in the server logs (`docker compose logs`);
 it changes on each restart and is only needed for that first passkey. Add a passkey on each of
 your devices after that (see [New device](#new-device) below). Without one, every device of your
-tailnet can control your agents.
+tailnet can control your agents: enough when the tailnet is yours alone, a passkey adds a lock
+on each device when someone else shares the tailnet or your devices.
 
 **6. More machines** (optional): register your other computers in Herdr over SSH
 (`herdr machine add`, see [Several machines (SSH)](#several-machines-ssh)). Their agents show
@@ -565,7 +576,11 @@ wherdr.example.com {
 
 Point `wherdr.example.com` (an `A` record in your DNS zone) to that private address: from
 anywhere else it leads nowhere. Then set `APP_URL=https://wherdr.example.com/` and restart
-wherdr. To join each device:
+wherdr. Caddy is a relay on this computer ([Network access](#network-access)): keep it bound to
+the private address and turn the passkey lock on. Caddy passes each client's address on: with
+Headscale or NetBird (`100.64.0.0/10`) wherdr accepts it as is; for another range (ZeroTier,
+WireGuard), also set `WHERDR_TRUSTED_NETWORKS` to it, such as `10.147.17.0/24`. To join each
+device:
 
 | Network | Join a device (official docs) | Server's private address |
 | --- | --- | --- |
@@ -595,7 +610,9 @@ instead of step 3.
 2. [Create a tunnel](https://developers.cloudflare.com/tunnel/setup/) and run `cloudflared` on the
    server, then add a **published application** route: hostname `wherdr.example.com`, service
    `http://localhost:7683`.
-3. Set `APP_URL=https://wherdr.example.com/` and restart wherdr.
+3. Set `APP_URL=https://wherdr.example.com/` and `WHERDR_TRUSTED_NETWORKS=any` (the tunnel brings
+   clients from the Internet, which wherdr refuses otherwise; it then shows a warning), and
+   restart wherdr.
 
 Installing the app and notifications behind Access are not tested by the project: the phone must
 first sign in to Access in the browser.
@@ -622,7 +639,8 @@ wherdr phone                # phone state, the app's phone setup page, QR code o
 | `wherdr service install` · `uninstall` | Start at login: a LaunchAgent on macOS (`~/Library/LaunchAgents/dev.wherdr.plist`), a `systemd --user` unit on Linux (`loginctl enable-linger` keeps it running while you are logged out). |
 | `wherdr doctor` | Checks Node/Bun, Herdr and its socket, the port, the service, the data folder and `APP_URL`. |
 
-Options: `--port` (default `7683`), `--host` (default `127.0.0.1`, keep it on loopback),
+Options: `--port` (default `7683`), `--host` (default `127.0.0.1`; loopback or this machine's
+tailnet address, anything else is [refused](#network-access) unless `WHERDR_TRUSTED_NETWORKS` names it),
 `--data-dir` (passkeys, push keys and settings; default `~/wherdr/data`, the folder the Herdr
 plugin and the install script use), `--session` (a named Herdr session). Every
 [environment variable](#configuration) works too, and so do `KEY=VALUE` lines in
@@ -851,8 +869,8 @@ To update an older native plugin earlier, rerun the installer or press **U** in 
 See [Releasing](docs/RELEASING.md) for the publication order and recovery steps.
 
 **Update in one tap.** When wherdr runs from the Herdr plugin (Node.js mode), a global npm install
-or Homebrew, the banner has an **Update** button instead of the command, for a session opened on
-this computer (`localhost`) or unlocked with a passkey. wherdr installs the new version in a
+or Homebrew, the banner has an **Update** button instead of the command, on every device that can
+open wherdr (this computer and your tailnet; unlocked, when a passkey is set). wherdr installs the new version in a
 process of its own, restarts, and checks that `/api/health` reports the new version within 60
 seconds; the app shows the progress and reloads on the new version. If the new version does not
 answer, wherdr goes back to the previous one by itself (the plugin keeps the previous copy in
@@ -925,7 +943,8 @@ All settings are environment variables (`.env` with Docker).
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PORT` | `7683` | Listening port. |
-| `HOST` | `127.0.0.1` (`npm start`) | Listening address without Docker. Keep it on loopback. |
+| `HOST` | `127.0.0.1` (`npm start`) | Listening address without Docker: loopback, or this machine's tailnet address (`tailscale ip`, with Tailscale running). Any other address (`0.0.0.0`, a LAN address) stops wherdr at startup unless `WHERDR_TRUSTED_NETWORKS` covers it. |
+| `WHERDR_TRUSTED_NETWORKS` | *(empty)* | Other private networks wherdr accepts besides this computer and the tailnet, as comma-separated CIDR ranges or addresses (e.g. `10.147.17.0/24` for ZeroTier). `any` accepts every network, with a warning at startup and in the app: not recommended. See [Network access](#network-access). |
 | `HOST_LABEL` | server hostname | Name of this machine in the app (can be renamed in the app). In Docker the installer writes the host's short name; left empty, wherdr shows the name Tailscale gives the machine, else `wherdr`. |
 | `APP_URL` | *(empty)* | App address and allowed host; a valid HTTPS URL enables Web Push. HTTP, empty or invalid values disable Web Push with a warning. With Tailscale, leave it empty: wherdr adopts the address `tailscale serve` publishes. |
 | `TAILNET_REFRESH_MS` | `30000` | How often wherdr reads again what `tailscale serve` publishes for its port. |
@@ -1178,7 +1197,8 @@ container talks to the Herdr server running on the host.
 - It listens on `127.0.0.1` only. Reach it from other devices **only through a private
   network** (Tailscale or [equivalent](#other-private-networks)). Never add a public route
   (port forwarding, public reverse proxy, ngrok…); the only exception is a Cloudflare Tunnel
-  behind Cloudflare Access, with its risks.
+  behind Cloudflare Access, with its risks (it needs `WHERDR_TRUSTED_NETWORKS=any`).
+- It answers only this computer and the tailnet: see [Network access](#network-access).
 - Requests are accepted only for `localhost`, loopback addresses, the runtime's hostname, the
   hostname in `APP_URL`, the tailnet name `tailscale serve` publishes for wherdr's own port
   (read from Tailscale on the machine, never from a request, and only while it is published),
@@ -1187,7 +1207,7 @@ container talks to the Herdr server running on the host.
   (comma-separated) before using them. An unlisted name returns HTTP 403 (`host` / "Host not
   allowed"); add it to `HERDR_WEB_ALLOWED_HOSTS`, then restart wherdr. This host check also
   applies to WebSockets.
-- **Passkey lock** (Settings → Security, recommended): once a passkey is registered, the API,
+- **Passkey lock** (Settings → Security, optional): once a passkey is registered, the API,
   images, photos and WebSockets require an unlocked session (signed HttpOnly cookie). One rule
   applies: the duration set in Settings → Security for every device, counted from the last
   passkey unlock, used or not in between: 1 day, 7 days (default), 30 days, 90 days or 1 year.
@@ -1218,6 +1238,92 @@ container talks to the Herdr server running on the host.
 
 See [SECURITY.md](SECURITY.md) to report a vulnerability.
 
+### Network access
+
+wherdr answers **this computer and your tailnet only**. A device on any other network (a coffee shop
+Wi-Fi, an office LAN, the Internet) gets HTTP 403 (`network`), with a page that says why, even
+when it knows the address and the port. The passkey lock is never required, on any network: it
+is an extra lock on top, and it needs HTTPS (or `localhost`).
+
+**Good practices**
+
+- Prefer **Tailscale** (`tailscale serve`): a private HTTPS address, only for your devices.
+- A network you add **without HTTPS** gets no passkey, no installed app and no notifications, and
+  any device on that network can control your agents.
+- **Create a passkey** as soon as wherdr is reached over HTTPS.
+
+How a request is judged, before anything else (WebSockets included):
+
+- **Its TCP peer** (the address the connection comes from, not a header). A client cannot pick
+  it: a connection only opens once the client has received wherdr's reply at that address.
+  - *Loopback* (`127.0.0.0/8`, `::1`): this computer. The kernel drops packets that arrive from a
+    network with a loopback source.
+  - *Tailnet*: an address of `100.64.0.0/10` or `fd7a:115c:a1e0::/48` counts only when
+    Tailscale, running on this machine, lists it as one of its peers (or its own address). wherdr
+    reads that from Tailscale every 10 seconds (the CLI, or Tailscale's socket in Docker); an
+    interface address in that range proves nothing, since a LAN may use it too. When Tailscale is
+    stopped, missing or unreadable for 30 seconds, no direct connection counts as tailnet. In
+    Docker without Tailscale's socket, direct tailnet connections are refused (`tailscale serve`
+    still works) and Funnel cannot be checked (below).
+  - *Docker*: the host's own connections reach the container from its gateway, but so do
+    outside ones that Docker's userland proxy relays (a port published on every interface, on an
+    IPv6 address, or on another host port), and nothing inside the container tells them apart.
+    When wherdr's port also answers on the gateway (checked every 10 seconds, which catches
+    `7683:7683`), it is published on every interface: connections through the gateway are
+    refused, with a page that says how to publish it on `127.0.0.1` only. The shipped
+    `docker-compose.yml` declares its loopback-only publication with
+    `WHERDR_DOCKER_LOOPBACK_ONLY=1`, next to its `"127.0.0.1:${PORT}:${PORT}"` line; without that
+    line wherdr cannot rule out another publication (another host port, IPv6) and says so in its
+    log at startup. **Publishing the port another way is your choice, and wherdr cannot check
+    it:** a remapped or IPv6 publication may reach wherdr from other networks unnoticed. If you do,
+    remove `WHERDR_DOCKER_LOOPBACK_ONLY` too.
+    **Compose files written by an earlier version lack that line:** add it after updating.
+- **Proxy headers**, only when the peer is this computer (a proxy on the machine, such as
+  `tailscale serve`): every address in `X-Forwarded-For`, `Forwarded`, `X-Real-IP`,
+  `CF-Connecting-IP` must be loopback, the tailnet or a trusted range too. They can only refuse
+  more: a client that writes its own headers directly only gets itself refused. A proxy that
+  adds the client's address (Caddy, nginx with `proxy_add_x_forwarded_for`, Cloudflare Tunnel)
+  therefore has its outside clients refused.
+- **Tailscale Funnel**: wherdr reads Tailscale's serve configuration every 10 seconds, at most
+  2 seconds before an HTTP request, and again for every WebSocket it opens. Connections from this
+  computer stay local only while the latest reading **proves** that Funnel does not expose
+  wherdr's port, in any form (HTTPS, TCP, or TCP with TLS termination, which carry no client
+  address). A Funnel route counts unless its target clearly leads to another port: the host is
+  never compared (`0.0.0.0:7683`, `127.1:7683` or a LAN address reach wherdr too), and a target
+  wherdr cannot parse counts. Funnel routes to other ports do not count (Funnel for another
+  service is fine). In Docker without `WHERDR_DOCKER_LOOPBACK_ONLY=1`, the host's port is unknown:
+  a Funnel route to another port is only reported in the log, since it may lead to wherdr through
+  a remapped port. While Funnel exposes wherdr, **every connection from this computer is
+  refused**, with a page that says how to turn it off: Funnel puts wherdr on the Internet. Once
+  seen, the exposure stays until a valid reading shows it gone: a failed, garbled or late reading
+  does not reopen wherdr. Open WebSockets are judged again after every reading and closed when no
+  longer allowed; between two readings (10 seconds at most), a connection opened before Funnel was
+  turned on can last that long. When Funnel was never seen, a failed or garbled reading proves
+  nothing: connections are served and the server log says that Funnel cannot be checked. In Docker without Tailscale's
+  socket nothing can be read: keep the socket mounted. A Funnel request with Tailscale's
+  `Tailscale-Funnel-Request` header is always refused.
+- **The listening address**: without Docker, wherdr refuses to start on anything else than
+  loopback or this machine's tailnet address as Tailscale reports it, with Tailscale running
+  (`HOST=0.0.0.0`, a LAN address), and says how to fix it. In Docker the container listens on its
+  own network and the request check above applies.
+
+> [!IMPORTANT]
+> **A relay on this computer counts as this computer.** A reverse proxy or TCP forward you run
+> on the machine (nginx without forwarded headers, `socat`, an SSH tunnel, a tunnel client) opens
+> its connections from loopback, like your own browser, and may pass on headers its clients
+> wrote. wherdr cannot tell them apart. If you run one, make sure it only listens on a private
+> address, serve it over HTTPS and **create a passkey**.
+
+`tailscale serve` (npm, Homebrew, the Herdr plugin, Docker) forwards to `127.0.0.1` with the
+tailnet client's address in `X-Forwarded-For`: accepted, nothing to set up.
+
+**Another private network** (ZeroTier, WireGuard, NetBird outside `100.64.0.0/10`): name its
+range, `WHERDR_TRUSTED_NETWORKS=10.147.17.0/24` (comma-separated CIDR ranges or addresses), then
+restart wherdr. Such devices get the whole app, Settings › Phone and the one-tap update
+included, like the tailnet. `WHERDR_TRUSTED_NETWORKS=any` accepts every network: wherdr then
+warns at startup and shows a warning that cannot be hidden in the app. Use it only when
+something else protects the network (Cloudflare Access), and set up a passkey there too.
+
 ## Troubleshooting
 
 - **"The Herdr server is not responding"**: start Herdr on the server (`herdr` or
@@ -1228,6 +1334,15 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability.
   is missing on the agent's machine, the conversation says so with the exact command.
 - **Passkeys or notifications unavailable**: the page must be served over HTTPS (or
   `localhost`). On iPhone, notifications need the app installed on the home screen.
+- **HTTP 403 "wherdr only answers this computer and your tailnet"**: the device is on another
+  network (Wi-Fi, LAN). Open wherdr through Tailscale, or name that private network in
+  `WHERDR_TRUSTED_NETWORKS` ([Network access](#network-access)).
+- **HTTP 403 "Tailscale Funnel opens wherdr to the Internet"** or **"wherdr is published on
+  every network interface"**: turn Funnel off for wherdr's port (`tailscale funnel status`), or
+  publish the Docker port on `127.0.0.1` only, as in the shipped `docker-compose.yml`.
+- **wherdr stops at startup with "Refusing to listen on …"**: `HOST` is not loopback nor this
+  machine's tailnet address. Set `HOST=127.0.0.1` and use `tailscale serve`, or see
+  [Network access](#network-access).
 - **HTTP 403 "This address isn't enabled yet"**: for a tailnet address, run the command the
   page gives on the machine: it tells whether `tailscale serve` publishes wherdr's port there.
   For another private name, add the hostname or IP address to `HERDR_WEB_ALLOWED_HOSTS`, or use

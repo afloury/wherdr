@@ -946,15 +946,15 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
 
   // ------------------------------------------------------------ reading
   // Reads bytes [start, end) of the file. If `start` falls in the middle of a
-  // line, it is skipped: the returned `start` is always a line start.
+  // line, it is skipped: the returned `start` is always a line start. A
+  // `start` already at a line start (the byte before is a newline) is kept:
+  // re-reading the bottom from a known start must not lose its first message.
   async function readRange(file: string, start: number, end: number) {
-    const buf = await fs.read(file, start, end - start)
-    let off = 0
-    if (start > 0) {
-      const nl = buf.indexOf(0x0a)
-      off = nl < 0 ? buf.length : nl + 1
-    }
-    return { start: start + off, text: buf.subarray(off).toString('utf8') }
+    if (start <= 0) return { start: 0, text: (await fs.read(file, 0, end)).toString('utf8') }
+    const buf = await fs.read(file, start - 1, end - start + 1)
+    const nl = buf.indexOf(0x0a)
+    const off = nl < 0 ? buf.length : nl + 1
+    return { start: start - 1 + off, text: buf.subarray(off).toString('utf8') }
   }
 
   // omp session folder, from the file's first line ("session" entry): the

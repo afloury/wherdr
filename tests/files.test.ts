@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { DOWNLOAD_BYTES, READ_SCRIPT, attachmentHeader, isPdf, cleanRelative, listFiles, readFileBytes, readFilePreview, readWrittenBytes, readWrittenPreview } from '../server/utils/files'
+import { DOWNLOAD_BYTES, READ_SCRIPT, attachmentHeader, isPdf, isVideo, cleanRelative, listFiles, readFileBytes, readFilePreview, readWrittenBytes, readWrittenPreview } from '../server/utils/files'
 import type { Machine } from '../server/utils/machines'
 import { samplePdf } from './e2e/samplePdf.mjs'
 
@@ -24,6 +24,9 @@ beforeAll(() => {
   writeFileSync(path.join(root, 'dot.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]))
   writeFileSync(path.join(root, 'Guide.PDF'), samplePdf(['Page one', 'Page two']))
   writeFileSync(path.join(root, 'fake.pdf'), '<script>alert(1)</script>\n')
+  writeFileSync(path.join(root, 'clip.MP4'), readFileSync(path.join(__dirname, 'e2e/fixtures/sample.mp4')))
+  writeFileSync(path.join(root, 'clip.webm'), readFileSync(path.join(__dirname, 'e2e/fixtures/sample.webm')))
+  writeFileSync(path.join(root, 'fake.mov'), '<html><script>alert(1)</script>\n')
   writeFileSync(path.join(root, 'big.txt'), 'line\n'.repeat(60000))
   writeFileSync(path.join(base, 'secret.txt'), 'nope\n')
   symlinkSync(path.join(base, 'secret.txt'), path.join(root, 'escape.txt'))
@@ -200,6 +203,17 @@ describe('files named in a conversation', () => {
     }
     await expect(readWrittenBytes({ exec, home: '/home/user' } as Machine, '/home/user/demo', 'dump.sql')).rejects.toMatchObject({ code: 'too_large' })
     expect(calls).toEqual([['/home/user', 'demo/dump.sql', String(DOWNLOAD_BYTES + 1), '1']])
+  })
+
+  it('previews a video by its extension and container signature', async () => {
+    const mp4 = readFileSync(path.join(root, 'clip.MP4'))
+    expect(await readFilePreview(local, root, 'clip.MP4')).toEqual({ path: 'clip.MP4', size: mp4.length, kind: 'video', truncated: false })
+    expect(await readFilePreview(local, root, 'clip.webm')).toMatchObject({ kind: 'video' })
+    // A .mov that is not one is never handed to the player.
+    expect(await readFilePreview(local, root, 'fake.mov')).toMatchObject({ kind: 'binary' })
+    expect(isVideo('a.mov', Buffer.from('\0\0\0\x14moov\0\0\0\0', 'latin1'))).toBe(true)
+    expect(isVideo('a.webm', mp4)).toBe(false)
+    expect(isVideo('a.mkv', mp4)).toBe(false)
   })
 
   it('names the attachment so that any file name survives', () => {
