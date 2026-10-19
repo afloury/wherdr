@@ -426,7 +426,7 @@ test('a push about a task opens it on the Board', async ({ page }) => {
 
 // Two machines, answered by the page itself (/api/tasks): the same task id on
 // both, a machine that stops answering, a board kept from an earlier visit.
-type Fake = { machine: string, status?: string, error?: string, stale?: boolean, tasks: { id: string, title: string }[] }
+type Fake = { machine: string, status?: string, error?: string, stale?: boolean, readOnly?: boolean, tasks: { id: string, title: string }[] }
 const fakeRow = (id: string, title: string) => ({
   id, repo: id.split('/')[0], n: Number(id.split('/')[1]), state: 'blocked', kind: 'question', stage: 'asks', title, msg: '', app: 'claude',
   progress: null, eta: null, pr: '', review: null, reviewRound: 0, research: false, archived: false, queue: null, group: 'needs',
@@ -459,6 +459,35 @@ test('a push opens its own machine\'s task, never the same id on another machine
   machines = [{ machine: 'ma', tasks: [{ id: 'demo/1', title: 'On machine A' }] }, machines[1]!]
   await page.locator('.board-filter').click()
   await expect(page.getByRole('dialog')).toContainText('On machine A', { timeout: 15000 })
+})
+
+test('the machine filter lists the local machine, read-only or not, and shows only its tasks', async ({ page }, testInfo) => {
+  // The local machine (key '') read from its files, as in a container, and an SSH machine.
+  await fakeBoard(page, () => [{ machine: '', readOnly: true, tasks: [{ id: 'demo/1', title: 'On this machine' }] }, { machine: 'mb', tasks: [{ id: 'web/2', title: 'On machine B' }] }])
+  const selectErrors: string[] = []
+  page.on('console', (m) => { if (m.type() === 'error' && /Select/i.test(m.text())) selectErrors.push(m.text()) })
+  await page.goto('/#/board')
+  await expect(page.locator('.task-card', { hasText: 'On this machine' })).toBeVisible({ timeout: 15000 })
+  await page.locator('.board-scope').click()
+  const options = page.getByRole('option')
+  await expect(options).toHaveCount(3)
+  await expect(options.nth(0)).toHaveText('All machines')
+  // Named as this machine is named (HOST_LABEL), in Herdr's order.
+  const local = 'devbox'
+  await expect(options.nth(1)).toHaveText(local)
+  // A machine Herdr does not name: its key, never this machine's name.
+  await expect(options.nth(2)).toHaveText('mb')
+  await page.screenshot({ path: `.shots/board-scope-local-${testInfo.project.name}.png` })
+  await options.nth(1).click()
+  await expect(page.locator('.board-scope')).toContainText(local)
+  await expect(page.locator('.task-card', { hasText: 'On this machine' })).toBeVisible()
+  await expect(page.locator('.task-card', { hasText: 'On machine B' })).toHaveCount(0)
+  // Kept on this device: still the local machine after a reload.
+  await page.reload()
+  await expect(page.locator('.task-card', { hasText: 'On this machine' })).toBeVisible({ timeout: 15000 })
+  await expect(page.locator('.task-card', { hasText: 'On machine B' })).toHaveCount(0)
+  await expect(page.locator('.board-scope')).toContainText(local)
+  expect(selectErrors).toEqual([])
 })
 
 test('a push for a task newer than the board kept from the last visit opens it after the next read', async ({ page }) => {
