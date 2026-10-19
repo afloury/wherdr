@@ -18,11 +18,15 @@ const list = createListShown()
 import type { Pane } from '#shared/types'
 import type { Row } from '#shared/spaces'
 import { tabStates } from '#shared/spaces'
+import { type BoardCard, elapsedLabel } from '#shared/boardLinks'
 import type { MenuItem } from '~/composables/useUi'
 import { longPress } from '~/utils/longPress'
 import { interactionWindowFor } from '~/utils/interactionWindow'
 
-const props = defineProps<{ pane: Pane, row?: Row | null }>()
+// `board`: the row is herdr-projects' (home list's project groups): named by
+// its role or its task (`tag`, `name`), with the board's progress, time on it
+// and current line, and a way to its task on the Board.
+const props = defineProps<{ pane: Pane, row?: Row | null, board?: BoardCard | null }>()
 const space = computed(() => (props.row && props.row.kind === 'space' ? props.row : null))
 // Pane whose state the card shows.
 const statePane = computed(() => props.pane)
@@ -38,7 +42,15 @@ let touchMenuOpenedAt = 0
 
 const ws = computed(() => herdrState.value.workspaces.find(w => w.id === props.pane.workspace))
 const branch = computed(() => ws.value?.branch || null)
-const title = computed(() => spaceTitle(props.pane, ws.value))
+const title = computed(() => props.board?.name || spaceTitle(props.pane, ws.value))
+// "42% 17m", as Herdr's sidebar shows a task.
+const boardNow = useBoardNow()
+const boardStats = computed(() => {
+  const b = props.board
+  if (!b) return ''
+  return [b.progress != null ? `${b.progress}%` : '', b.since ? elapsedLabel(boardNow.value - b.since) : ''].filter(Boolean).join(' ')
+})
+const boardLine = computed(() => props.board?.msg || '')
 const subtitle = computed(() => conversationSubtitle(props.pane, ws.value))
 // Selection (computer): the pane being viewed, or for a space one of its panes / tabs.
 const route = useRoute()
@@ -62,6 +74,7 @@ const where = computed(() => {
   }
   return [subtitle.value, branch.value || shortPath(p.cwd)].filter(Boolean).join(' · ')
 })
+const boardItem = computed<MenuItem | null>(() => (props.board?.onBoard ? { label: tl('Open the task on the Board', 'Ouvrir la tâche dans le Board'), icon: 'i-lucide-square-kanban', run: props.board.onBoard } : null))
 const prompt = computed(() => (props.pane.status === 'blocked' ? props.pane.prompt : undefined))
 const quick = computed(() => quickChoices(prompt.value, 4))
 const interactive = computed(() => props.pane.interaction === 'terminal' && props.pane.status === 'blocked' && !prompt.value && !props.pane.menu && !props.pane.screen)
@@ -95,9 +108,11 @@ async function setRead(read: boolean) {
   } catch (err) { toast((err as Error).message, true) }
 }
 const menuItems = computed<MenuItem[]>(() => space.value ? [
+  ...(boardItem.value ? [boardItem.value, { kind: 'separator' as const }] : []),
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
   ...workspaceItems(space.value.workspace.id),
 ] : [
+  ...(boardItem.value ? [boardItem.value, { kind: 'separator' as const }] : []),
   ...(readItem.value ? [readItem.value, { kind: 'separator' as const }] : []),
   ...paneSpaceItems(props.pane),
   ...paneWorkspaceItems(props.pane),
@@ -176,17 +191,21 @@ onUnmounted(list.unmount)
 <template>
   <UContextMenu :disabled="sheetMenus" :items="contextItems" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="onContextOpen">
     <div
-      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, compact: compactList, open: compactList && more }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
+      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, compact: compactList, open: compactList && more, 'home-task': board, 'home-task-two': compactList && boardLine }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
       role="button" tabindex="0" @pointerdown="down" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
       @contextmenu="onContext" @selectstart.prevent @click="open" @keydown.enter.self="open"
     >
       <template v-if="compactList">
         <AgentAvatar :agent="pane.agent" />
+        <span v-if="board?.tag" class="card-tag home-task-tag">{{ board.tag }}</span>
         <span class="card-title">{{ title }}</span>
+        <span v-if="boardStats" class="home-task-stats">{{ boardStats }}</span>
         <span v-if="statePane.usageLimit" class="card-tag quota-limit" :title="stateTitle">{{ tl('Limit', 'Quota') }}</span>
         <span v-if="compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
         <span v-else-if="compact.panes" class="card-panes" :title="counts">{{ compact.panes }}</span>
         <span class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
+        <span v-if="boardLine" class="home-task-line" :title="boardLine">{{ boardLine }}</span>
+        <button v-if="board?.onBoard" type="button" class="home-task-go" :title="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" :aria-label="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" @click.stop="board.onBoard"><UIcon name="i-lucide-square-kanban" /></button>
       </template>
       <template v-else>
       <span v-if="space" class="space-avatar" :title="counts"><TabMap :layout="space.leadTab.layout" :panes="space.leadTab.panes" :current="pane.id" /></span>
@@ -196,10 +215,13 @@ onUnmounted(list.unmount)
           {{ title }}
         </div>
         <div class="card-meta">
+          <span v-if="board?.tag" class="card-tag home-task-tag">{{ board.tag }}</span>
+          <span v-if="boardStats" class="home-task-stats">{{ boardStats }}</span>
           <span v-if="space" class="card-count">{{ counts }}</span>
           <StatusPill :pane="statePane" model />
         </div>
-        <div v-if="where" class="card-where">
+        <div v-if="boardLine" class="card-where home-task-msg">{{ boardLine }}</div>
+        <div v-else-if="where" class="card-where">
           <UIcon v-if="space" name="i-lucide-corner-down-right" class="card-where-lead" /><UIcon v-else-if="branch" name="i-lucide-git-branch" />{{ where }}
         </div>
       </div>

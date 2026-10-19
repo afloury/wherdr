@@ -10,9 +10,14 @@
 // by its most urgent pane.
 // Terminals: a shell space is a row like any other, sorted in
 // Ready ("Show terminals" setting).
+// herdr-projects (shared/boardLinks.ts): each machine's Coordinator and machine
+// coordinator at its top, then one group per repo as Herdr's sidebar draws it
+// (the repo's space, its project coordinator, its tasks' spaces), then the
+// state groups of everything else.
 import type { MachineInfo, NamedSession, Pane } from '#shared/types'
 import { type ReadySort, type Row, readyLists, rowGroup, sortReady, spaceRows } from '#shared/spaces'
 import { spaceTitle } from '#shared/displayTitles'
+import { type BoardCard, type CoordinatorLevel, boardSections } from '#shared/boardLinks'
 import { claudeSetupOf, machineQuotaRows, quotaRows } from '~/utils/quotas'
 import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
 import { headerFold } from '~/utils/headerFold'
@@ -69,10 +74,24 @@ const readySortItems = computed(() => [[
     checked: readySort.value === s, onUpdateChecked: () => { readySort.value = s },
   })),
 ]])
-// Rows of a machine: the state groups of its spaces, shells included, in Herdr's order.
+// Rows of a machine: its coordinators, its repo groups, then the state groups
+// of its other spaces, shells included, in Herdr's order. A repo's own space
+// (a shell) heads its group whatever "Show terminals" says.
+const boardLinks = useBoardLinks()
+const livePanes = computed(() => new Set(st.value.panes.map(p => p.id)))
 function listOf(rows: Row[]) {
-  return { groups: groupsOf(rows.filter(r => r.lead.agent || showShells.value)) }
+  const b = boardSections(rows, st.value.workspaces, boardLinks.value, livePanes.value)
+  return {
+    coordinators: b.coordinators,
+    projects: b.projects,
+    groups: groupsOf(b.others.filter(r => r.lead.agent || showShells.value)),
+  }
 }
+const COORD_NAMES: Record<Exclude<CoordinatorLevel, 'project'>, () => string> = {
+  top: () => t('Coordinator'),
+  machine: () => tl('Machine coordinator', 'Coordinateur de la machine'),
+}
+const coordinatorCard = (level: CoordinatorLevel): BoardCard => ({ tag: '', name: level === 'project' ? '' : COORD_NAMES[level]() })
 const solo = computed(() => listOf(spaceRows(st.value)))
 
 const topQuotas = computed(() => (showQuotas.value ? quotaRows(homeQuotas.value, hiddenAgents.value) : []))
@@ -510,6 +529,13 @@ function resetListWidth() {
 
       <!-- A single machine: the previous list. -->
       <template v-if="!sections">
+        <section v-if="solo.coordinators.length" class="agent-group coordinators">
+          <h2 class="group-title"><span>{{ tl('Coordinators', 'Coordinateurs') }}</span><span class="count">{{ solo.coordinators.length }}</span></h2>
+          <div class="card-list">
+            <AgentCard v-for="c in solo.coordinators" :key="c.row.key" :pane="c.row.lead" :row="c.row" :board="coordinatorCard(c.level)" />
+          </div>
+        </section>
+        <ProjectGroup v-for="x in solo.projects" :key="x.id" :group="x" />
         <section v-for="g in solo.groups" :key="g.key" class="agent-group" :class="g.key">
           <h2 class="group-title"><span>{{ g.title }}</span><span class="count">{{ g.list.length }}</span>
             <UDropdownMenu v-if="g.key === 'ready'" :items="readySortItems" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }">
@@ -574,6 +600,13 @@ function resetListWidth() {
           <div v-if="!s.collapsed" class="machine-body">
             <QuotaStrip :rows="s.quotas" class="machine-quotas" />
             <ClaudeSetupBanner v-if="s.setup" :setup="s.setup" :name="s.name" />
+            <section v-if="s.coordinators.length" class="agent-group coordinators">
+              <h2 class="group-title"><span>{{ tl('Coordinators', 'Coordinateurs') }}</span><span class="count">{{ s.coordinators.length }}</span></h2>
+              <div class="card-list">
+                <AgentCard v-for="c in s.coordinators" :key="c.row.key" :pane="c.row.lead" :row="c.row" :board="coordinatorCard(c.level)" />
+              </div>
+            </section>
+            <ProjectGroup v-for="x in s.projects" :key="x.id" :group="x" :machine="s.m.key" />
             <section v-for="g in s.groups" :key="g.key" class="agent-group" :class="g.key">
               <h2 class="group-title"><span>{{ g.title }}</span><span class="count">{{ g.list.length }}</span>
             <UDropdownMenu v-if="g.key === 'ready'" :items="readySortItems" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }">
@@ -587,7 +620,7 @@ function resetListWidth() {
               </template>
             </section>
 
-            <p v-if="!s.agents.length && !s.groups.length" class="machine-empty">
+            <p v-if="!s.agents.length && !s.groups.length && !s.projects.length && !s.coordinators.length" class="machine-empty">
               {{ s.m.status === 'online' ? t('No agents on this machine.') : t('No known agents.') }}
             </p>
           </div>
