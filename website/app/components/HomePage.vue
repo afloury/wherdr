@@ -85,11 +85,12 @@ const runner = computed(() => pm.value === 'brew' ? null : RUNNERS[pm.value])
 
 const faq = [
   { label: 'Is wherdr free?', content: 'Yes. It is open source under the MIT license, with no account, no paid plan and no hosted version. You run it on your own machine.' },
-  { label: 'What do I need?', content: 'Herdr 0.9.1 or newer running on a Mac or a Linux machine, and Node.js 22 (the installer offers brew install node on a Mac without it) or, on Linux, Docker. For your phone: a private HTTPS address, which Tailscale Serve gives you in one command.' },
+  { label: 'What do I need?', content: 'Herdr 0.9.1 or newer running on a Mac or a Linux machine, and Node.js 22: the installer offers to install it when it is missing (Homebrew, or the official build in ~/wherdr/node, no sudo). For your phone: a private HTTPS address, which Tailscale Serve gives you in one command.' },
   { label: 'Can I put it on the Internet?', content: 'No. wherdr is a remote shell on your machine: whoever reaches it can start agents and run commands as your user. Use it on localhost or over a private network such as Tailscale, and enable the passkey lock.' },
   { label: 'Does my code or my conversations leave my machine?', content: 'No. wherdr reads the agents\' transcript files and the Herdr socket locally and serves them to your own devices. Push notifications travel through your browser\'s push service, encrypted as the Web Push standard requires. The only other outgoing request is an optional daily check of the latest GitHub release (WHERDR_UPDATE_CHECK=off disables it).' },
   { label: 'Which agents are supported?', content: 'Every agent Herdr recognizes appears in the list with its terminal. Claude Code, Codex and omp also get the full conversation view, model and effort pickers and one-tap answers.' },
-  { label: 'Does it work on macOS?', content: 'Yes, natively, with the same one command: it installs the wherdr Herdr plugin, which runs wherdr with Node.js. Docker Desktop cannot reach Herdr\'s Unix socket on the host, so Docker is only used on Linux.' },
+  { label: 'Does it work on macOS?', content: 'Yes, natively, with the same one command: it installs the wherdr Herdr plugin, which runs wherdr with Node.js and starts it at login with a LaunchAgent.' },
+  { label: 'Can I run it in Docker?', content: 'On a Linux server, if you ask for it (WHERDR_MODE=docker). The herdr-projects Board is then read-only on that machine: the Coordinator, replies, start, stop and approve need wherdr on the host. The README explains how to move a Docker install to the native service, with the same port and data.' },
   { label: 'Will it change my agents\' settings?', content: 'No. Model and effort changes apply to the current session only; wherdr never changes your default model or your agents\' configuration.' },
   { label: 'Is it an official Herdr project?', content: 'No. wherdr is an independent project built on Herdr\'s public socket API. It is not affiliated with Herdr, Anthropic or OpenAI.' },
 ]
@@ -269,7 +270,7 @@ const faq = [
 
             <div aria-labelledby="installer-title" class="panel one">
               <h3 id="installer-title" class="cell-title">Or run the installer yourself</h3>
-              <p class="cell-text">On the computer that runs Herdr — your Mac, or an always-on Linux box (a Raspberry Pi works). It installs the wherdr Herdr plugin: wherdr in <code>~/wherdr</code>, listening on 127.0.0.1 only, started now and with Herdr. No sudo, and a wherdr that already runs is never replaced. <a href="/install" target="_blank">Read the script first.</a></p>
+              <p class="cell-text">On the computer that runs Herdr — your Mac, or an always-on Linux box (a Raspberry Pi works). It installs the wherdr Herdr plugin with the verified GitHub release: wherdr in <code>~/wherdr</code>, listening on 127.0.0.1 only, running as your user and started at every boot (a systemd user service, or a LaunchAgent on a Mac). No Node.js 22? It offers to install it. No sudo, and a wherdr that already runs is never replaced. Run it again to update. <a href="/install" target="_blank">Read the script first.</a></p>
               <InstallCommand :command="INSTALL_COMMAND" />
               <InstallTerminal :demo="ONE_COMMAND_DEMO" />
               <p class="prereq">
@@ -279,6 +280,7 @@ const faq = [
             </div>
 
             <p class="or"><span>Other methods</span></p>
+            <p class="cell-text other-note">The same app from npm or Homebrew. npm can hold a new release for up to two days: the installer gets it from GitHub at once.</p>
             <div class="tabs" role="tablist" aria-label="Installation methods">
               <button v-for="t in installTabs" :id="`tab-${t.id}`" :key="t.id" type="button" role="tab" class="tab" :aria-label="t.label" :aria-selected="tab === t.id" :aria-controls="`panel-${t.id}`" @click="tab = t.id">
                 <span class="tab-long">{{ t.label }}</span><span class="tab-short" aria-hidden="true">{{ t.short }}</span>
@@ -310,7 +312,7 @@ const faq = [
             <div v-show="tab === 'plugin'" id="panel-plugin" role="tabpanel" aria-labelledby="tab-plugin" class="panel">
               <InstallCommand :command="PLUGIN_COMMAND" />
               <ol class="steps">
-                <li><b>Run it</b> on the machine that runs Herdr (≥ 0.9.1): what the one command does, minus its checks. It installs wherdr in <code>~/wherdr</code> (Docker on Linux when available, Node.js 22 otherwise; no sudo), starts it and, the first time, opens its setup guide.</li>
+                <li><b>Run it</b> on the machine that runs Herdr (≥ 0.9.1): what the one command does, minus its checks. It installs wherdr in <code>~/wherdr</code> with Node.js 22 (no sudo), starts it with Herdr and, the first time, opens its setup guide. <b>A</b> in its panel adds the login service.</li>
                 <li><b>Press <code>prefix+i</code></b> in Herdr: the wherdr panel — start, stop, log, update, phone.</li>
               </ol>
             </div>
@@ -447,6 +449,7 @@ const faq = [
 .prereq a, .steps a, .agent-note a { color: var(--text); text-decoration-color: var(--accent); text-underline-offset: 3px; }
 .panel.one { margin-top: 28px; }
 .or { display: flex; align-items: center; gap: 16px; margin: 28px 0; font: 600 12px/1 var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--dim); }
+.other-note { margin: -12px 0 16px; font-size: 14px; }
 .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .panel.agent { gap: 16px; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: color-mix(in srgb, var(--accent) 5%, var(--surface)); box-shadow: inset 0 2px 0 var(--accent); }
 .agent-label { display: inline-flex; align-items: center; gap: 8px; margin: 0; color: var(--accent); }

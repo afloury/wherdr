@@ -3,21 +3,30 @@
 #
 #   curl -fsSL https://wherdr.dev/install | sh
 #
-# One command on macOS and Linux, run on the computer that runs Herdr. It:
+# One command on macOS and Linux, run on the computer that runs Herdr, as the
+# user who runs it. wherdr runs natively, as that user: the only setup where
+# the herdr-projects Board can act (start, stop, reply, approve, Coordinator).
+# It:
 #   1. checks Herdr (and stops with its install link when it is missing);
 #   2. leaves alone a wherdr that already runs (and offers its update);
-#   3. makes sure wherdr can run: Node.js 22 or Bun, or Docker on Linux
-#      (on macOS without Node.js, it offers `brew install node`);
+#   3. makes sure Node.js 22 (or Bun) is there; without it, it offers
+#      `brew install node` (macOS with Homebrew) or the official Node.js
+#      download into ~/wherdr/node (checksum checked, no sudo), asked first;
 #   4. installs the wherdr Herdr plugin (herdr plugin install afloury/wherdr),
-#      which installs wherdr in ~/wherdr, starts it, opens its setup guide in
-#      your browser and adds a Herdr key for its panel;
-#   5. on a server without a screen (or over SSH): prints the address and the
+#      which downloads the verified GitHub release package into ~/wherdr/app,
+#      starts it, opens its setup guide in your browser and adds a Herdr key
+#      for its panel;
+#   5. starts wherdr at login: a systemd --user unit with lingering on Linux
+#      (it keeps running after you log out), a LaunchAgent on macOS;
+#   6. on a server without a screen (or over SSH): prints the address and the
 #      phone steps instead of opening a browser.
 # It never uses sudo and never stops or replaces a wherdr started another way.
+# Docker is only used when asked (WHERDR_MODE=docker); its Board is read-only.
 #
 # Settings (environment variables):
-#   WHERDR_MODE=docker  no plugin: Docker Compose by hand in WHERDR_DIR (Linux)
-#   WHERDR_MODE=native  plugin with Node.js even when Docker is there (Linux)
+#   WHERDR_MODE=docker  no plugin: Docker Compose by hand in WHERDR_DIR (Linux;
+#                 the Board is then read-only)
+#   WHERDR_SERVICE=off  no login service: wherdr starts with Herdr only
 #   WHERDR_DIR    install folder                (default: ~/wherdr)
 #   WHERDR_PORT   local port                    (default: 7683)
 #   WHERDR_YES=1  answer yes to every question  (non-interactive use)
@@ -44,6 +53,7 @@ main() {
   PORT="${WHERDR_PORT:-7683}"
   URL="http://localhost:$PORT"
   YES="${WHERDR_YES:-0}"
+  MIGRATE="https://github.com/$REPO/blob/main/docs/herdr-projects-1x.md#moving-from-docker-to-the-native-service"
 
   setup_colors
   say ""
@@ -98,9 +108,13 @@ main() {
     existing_wherdr
     return 0
   fi
-  if [ "$MODE" != "native" ] && container_elsewhere; then
+  # A wherdr container (stopped: nothing answers) would take the port back at
+  # its next start. Moving to the native service is a step of its own.
+  if [ "$MODE" != "native" ] && [ -n "$(container_dir)" ]; then
     die "A \"wherdr\" Docker container already exists, managed from $(container_dir).
-     Start or update it from there; this script does not install a second wherdr."
+     wherdr now runs natively (the Board can only act there). Move it, data kept:
+       ${C}$MIGRATE${R}
+     Or keep Docker: start or update it from that folder."
   fi
   # The plugin opens the setup guide on its first install only (no plugin.env).
   FIRST=1
@@ -110,12 +124,9 @@ main() {
   fi
 
   # ---------------------------------------------------------------- runtime
+  MODE=native
   RUNTIME=""
-  CONTAINER=0
-  if [ "$OS" = "Linux" ] && [ "$MODE" != "native" ] && docker_usable; then
-    CONTAINER=1
-    ok "Docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo '?'): wherdr runs in a container"
-  elif RUNTIME="$(find_runtime)"; then
+  if RUNTIME="$(find_runtime)"; then
     ver="$("$RUNTIME" --version 2>/dev/null || true)"
     ok "Runtime: $RUNTIME ($ver)"
   else
@@ -150,6 +161,9 @@ main() {
   fi
   ok "wherdr answers on $URL"
 
+  # --------------------------------------------------------------- service
+  install_service
+
   # ------------------------------------------------------------------ next
   # Already published on the tailnet and answering: that address is the one
   # to use (passkeys are tied to it); the plugin opened the guide there.
@@ -174,8 +188,7 @@ main() {
   else
     say "  No screen here: open the local address from this machine, or use an SSH tunnel:"
     say "    ${C}ssh -L $PORT:127.0.0.1:$PORT $(id -un)@$(hostname 2>/dev/null || echo this-server)${R}"
-    # In Docker, this script offers to publish wherdr on the tailnet itself.
-    if [ "$CONTAINER" = "1" ]; then docker_phone; else phone_steps; fi
+    phone_steps
   fi
   say ""
   say "${D}Update: run this command again, or U in the wherdr panel.${R}"
@@ -219,8 +232,7 @@ plugin_root() {
 # It reads these variables. A local checkout (WHERDR_PLUGIN=/path) is linked
 # and built in place instead.
 plugin_install() {
-  set -- env WHERDR_INSTALLER=1 WHERDR_DIR="$DIR" WHERDR_PORT="$PORT"
-  [ -z "$MODE" ] || set -- "$@" WHERDR_MODE="$MODE"
+  set -- env WHERDR_INSTALLER=1 WHERDR_DIR="$DIR" WHERDR_PORT="$PORT" WHERDR_MODE=native
   [ -z "$RUNTIME" ] || set -- "$@" WHERDR_RUNTIME="$RUNTIME"
   [ "$BROWSER" = "1" ] || set -- "$@" WHERDR_NO_BROWSER=1
   if [ -d "$PLUGIN" ]; then
@@ -256,12 +268,15 @@ existing_wherdr() {
     else
       say "  Update later: U in the wherdr panel, or run this command again."
     fi
+    install_service
     say ""
     say "  On this machine: ${B}$URL${R}"
     phone_steps
     return 0
   elif [ -n "$owner" ]; then
     say "  It runs in Docker, from $owner."
+    warn "In Docker the Board is read-only (no Coordinator, reply, start, stop or approve).
+     Move it to the native service, same port and data: ${C}$MIGRATE${R}"
     if [ "$(real_dir "$owner")" = "$(real_dir "$DIR")" ] && confirm "Update it now (docker compose pull && docker compose up -d)?"; then
       (cd "$DIR" && docker compose pull --quiet && { docker_skill || warn "Optional skill refresh failed."; } && docker compose up -d --remove-orphans >/dev/null)
       ok "wherdr updated"
@@ -294,37 +309,143 @@ phone_steps() {
   fi
 }
 
-# No Node.js 22, no Bun (and no Docker on Linux).
+# No Node.js 22, no Bun. macOS with Homebrew: `brew install node`. Otherwise
+# (or brew declined): the official Node.js 22 build from nodejs.org, unpacked
+# into $DIR/node, its checksum checked. Asked first; no sudo, no PATH change:
+# only wherdr uses it (its absolute path is saved by the plugin).
 no_runtime() {
-  if [ "$OS" = "Darwin" ] && command -v brew >/dev/null 2>&1; then
-    warn "wherdr needs Node.js 22 or newer (or Bun), and none was found."
-    if confirm "Install Node.js with Homebrew now (brew install node)?"; then
-      brew install node || die "brew install node failed."
-      RUNTIME="$(find_runtime)" || die "Node.js was installed but is not found: open a new terminal and run this command again."
-      ver="$("$RUNTIME" --version 2>/dev/null || true)"
-      ok "Runtime: $RUNTIME ($ver)"
+  warn "wherdr needs Node.js 22 or newer (or Bun), and none was found."
+  if [ "$OS" = "Darwin" ] && command -v brew >/dev/null 2>&1 \
+    && confirm "Install Node.js with Homebrew now (brew install node)?"; then
+    brew install node || die "brew install node failed."
+    RUNTIME="$(find_runtime)" || die "Node.js was installed but is not found: open a new terminal and run this command again."
+    ok "Runtime: $RUNTIME ($("$RUNTIME" --version 2>/dev/null || true))"
+    return 0
+  fi
+  if node_target >/dev/null; then
+    if confirm "Download Node.js 22 from nodejs.org into $DIR/node (checksum checked, no sudo; used by wherdr only, your PATH is not changed)?"; then
+      install_node
       return 0
     fi
-    die "Install Node.js 22, then run this command again:
-       ${C}brew install node${R}   (or https://nodejs.org)"
-  elif [ "$OS" = "Darwin" ]; then
-    die "wherdr needs Node.js 22 or newer (or Bun), and none was found.
-     Install it from https://nodejs.org (or Homebrew: brew install node),
-     then run this command again."
-  else
-    die "wherdr needs Node.js 22 or newer (or Bun), or Docker, and none is usable by $(id -un).
-     Install one of them, then run this command again:
-       Node.js: https://nodejs.org/en/download (nvm, fnm, or your package manager)
-       Docker:  https://docs.docker.com/engine/install/"
+    die "Install Node.js 22 or newer, then run this command again:
+       https://nodejs.org/en/download (nvm, fnm, Homebrew or your package manager)
+     Or let this script download it into $DIR/node:
+       ${C}curl -fsSL https://wherdr.dev/install | WHERDR_YES=1 sh${R}"
+  fi
+  die "Install Node.js 22 or newer, then run this command again:
+       https://nodejs.org/en/download (or your package manager: apk add nodejs on Alpine)
+     Docker instead, with a read-only Board: WHERDR_MODE=docker (see the README)."
+}
+
+# "<os>-<arch>" of the official Node.js build for this machine; fails where
+# there is none (musl libc, an unknown processor).
+node_target() {
+  case "$OS" in
+    Linux)
+      if ldd --version 2>&1 | grep -qi musl; then return 1; fi
+      nos=linux ;;
+    Darwin) nos=darwin ;;
+    *) return 1 ;;
+  esac
+  case "$(uname -m)" in
+    x86_64|amd64) narch=x64 ;;
+    aarch64|arm64) narch=arm64 ;;
+    *) return 1 ;;
+  esac
+  printf '%s-%s\n' "$nos" "$narch"
+}
+
+sha256_of() {
+  { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1" 2>/dev/null; } | awk '{print $1}'
+}
+
+# Latest Node.js 22 into $DIR/node; sets RUNTIME.
+install_node() {
+  target="$(node_target)" || die "No official Node.js build for this system: install it from https://nodejs.org."
+  dist="${WHERDR_NODE_DIST:-https://nodejs.org/dist}/latest-v22.x"
+  step "Downloading Node.js 22 ($target) from ${dist%/latest-v22.x}"
+  work="$(mktemp -d)"
+  download "$dist/SHASUMS256.txt" "$work/SHASUMS256.txt" || { rm -rf "$work"; die "Could not download $dist/SHASUMS256.txt."; }
+  file="$(awk -v t="$target" '$2 ~ ("^node-v22\\.[0-9.]+-" t "\\.tar\\.gz$") { print $2; exit }' "$work/SHASUMS256.txt")"
+  sum="$(awk -v f="$file" '$2 == f { print $1; exit }' "$work/SHASUMS256.txt")"
+  [ -n "$file" ] && [ -n "$sum" ] || { rm -rf "$work"; die "No Node.js 22 build for $target at $dist."; }
+  download "$dist/$file" "$work/$file" || { rm -rf "$work"; die "Could not download $dist/$file."; }
+  got="$(sha256_of "$work/$file")"
+  if [ -z "$got" ] || [ "$got" != "$sum" ]; then
+    rm -rf "$work"
+    die "The Node.js download does not match its checksum: nothing installed. Try again later."
+  fi
+  ok "$file (checksum matched)"
+  mkdir -p "$work/x" && tar -xzf "$work/$file" -C "$work/x" || { rm -rf "$work"; die "Could not unpack $file."; }
+  unpacked="$(find "$work/x" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+  [ -x "$unpacked/bin/node" ] || { rm -rf "$work"; die "$file holds no bin/node."; }
+  mkdir -p "$DIR"
+  rm -rf "$DIR/node.old"
+  if [ -d "$DIR/node" ]; then mv "$DIR/node" "$DIR/node.old"; fi
+  mv "$unpacked" "$DIR/node"
+  rm -rf "$DIR/node.old" "$work"
+  RUNTIME="$DIR/node/bin/node"
+  [ "$("$RUNTIME" -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)" -ge 22 ] 2>/dev/null \
+    || die "The downloaded Node.js does not run here ($RUNTIME): install it from https://nodejs.org."
+  ok "Node.js $("$RUNTIME" --version 2>/dev/null) in $DIR/node"
+  say "  Used by wherdr only: your PATH is not changed. It goes with the wherdr folder."
+}
+
+# The login service file `wherdr service install` writes.
+service_file() {
+  if [ "$OS" = "Darwin" ]; then echo "$HOME/Library/LaunchAgents/dev.wherdr.plist"
+  else echo "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/wherdr.service"
   fi
 }
 
-# Node.js 22 or newer, or Bun: WHERDR_RUNTIME, the PATH, then the usual
-# install folders (n, nvm, Volta, fnm, asdf, Homebrew, Bun).
+# Starts wherdr at login, through the plugin (wherdr service install, from
+# $DIR/app with the saved runtime and the user's PATH). Linux: a systemd --user
+# unit and lingering (logind allows it for one's own user without sudo), so
+# wherdr keeps running after logout; macOS: a LaunchAgent. A failure leaves
+# wherdr running with Herdr (the plugin's startup hook), and says so.
+install_service() {
+  if [ "${WHERDR_SERVICE:-on}" = "off" ]; then
+    say "  Login service skipped (WHERDR_SERVICE=off): wherdr starts with Herdr."
+    return 0
+  fi
+  [ -n "$PLUGIN_ROOT" ] && [ -f "$PLUGIN_ROOT/scripts/herdr-plugin.sh" ] || return 0
+  # Installed again on every run, an existing one too: it takes the PATH the
+  # login shell gives now (agents installed since), and repairs a broken one.
+  if [ -f "$(service_file)" ]; then step "Updating the login service"; else step "Starting wherdr at login"; fi
+  if [ "$OS" = "Darwin" ]; then
+    say "  A LaunchAgent ($(service_file)): wherdr starts at login and restarts if it stops."
+  else
+    say "  A systemd --user unit ($(service_file)), and lingering (loginctl enable-linger):"
+    say "  wherdr starts with the machine, restarts if it stops and keeps running after you log out."
+  fi
+  if out="$(WHERDR_DIR="$DIR" WHERDR_PORT="$PORT" sh "$PLUGIN_ROOT/scripts/herdr-plugin.sh" service install 2>&1)"; then
+    printf '%s\n' "$out" | sed 's/^ */     /'
+    ok "Login service installed"
+    return 0
+  fi
+  printf '%s\n' "$out" | tail -n 6 | sed 's/^ */     /' >&2
+  # The install stopped wherdr for the service to take over: running again
+  # before anything says it runs.
+  if ! answers; then
+    WHERDR_DIR="$DIR" WHERDR_PORT="$PORT" sh "$PLUGIN_ROOT/scripts/herdr-plugin.sh" start >/dev/null 2>&1 || true
+    i=0
+    while [ "$i" -lt 45 ] && ! answers; do i=$((i + 1)); sleep 1; done
+  fi
+  answers || die "The login service could not be installed, and wherdr does not answer on port $PORT.
+     In Herdr, open the wherdr panel and press S to start it, or L for its log."
+  warn "No login service: wherdr runs, and starts with Herdr. Try again later:
+     sh $PLUGIN_ROOT/scripts/herdr-plugin.sh service install"
+}
+
+# Node.js 22 or newer, or Bun: WHERDR_RUNTIME, the one a previous install
+# saved in plugin.env, the PATH, the Node.js this script installed in
+# $DIR/node, then the usual install folders (n, nvm, Volta, fnm, asdf,
+# Homebrew, Bun).
 find_runtime() {
+  saved="$(sed -n 's/^WHERDR_RUNTIME=//p' "$DIR/plugin.env" 2>/dev/null | tail -n 1)"
   # ls | sort: the newest version first (paths under $HOME have no spaces to split).
   # shellcheck disable=SC2012
-  for c in "${WHERDR_RUNTIME:-}" "$(command -v node 2>/dev/null || true)" \
+  for c in "${WHERDR_RUNTIME:-}" "$saved" "$(command -v node 2>/dev/null || true)" "$DIR/node/bin/node" \
     "$HOME/.n/bin/node" $(ls -d "$HOME"/.nvm/versions/node/v*/bin/node 2>/dev/null | sort -r) \
     "$HOME/.volta/bin/node" \
     $(ls -d "$HOME"/.local/share/fnm/node-versions/*/installation/bin/node "$HOME"/.fnm/node-versions/*/installation/bin/node 2>/dev/null | sort -r) \
@@ -340,10 +461,6 @@ find_runtime() {
 }
 
 # ------------------------------------------------------------- Docker
-docker_usable() {
-  command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 && docker info >/dev/null 2>&1
-}
-
 real_dir() { (cd "$1" 2>/dev/null && pwd -P) || echo "$1"; }
 
 # Compose folder of the `wherdr` container, empty when there is none.

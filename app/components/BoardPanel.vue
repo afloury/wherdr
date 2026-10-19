@@ -263,7 +263,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       <p v-else-if="failed" class="board-note error board-panel-wait">{{ failed }}</p>
       <p v-else-if="target.kind === 'coordinator' && !coordLoaded && !readOnly" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
       <div v-else-if="target.kind === 'coordinator'" class="board-panel-start">
-        <p v-if="readOnly" class="board-note">{{ tl('This coordinator has not started. wherdr runs in a container here: start it from Herdr on the host.', 'Ce coordinateur n’a pas démarré. wherdr tourne ici dans un conteneur : lance-le depuis Herdr sur l’hôte.') }}</p>
+        <p v-if="readOnly" class="board-note">{{ tl('This coordinator has not started. wherdr runs in a container here: start it from Herdr on the host, or move wherdr to the native service to start it from here.', 'Ce coordinateur n’a pas démarré. wherdr tourne ici dans un conteneur : lance-le depuis Herdr sur l’hôte, ou passe wherdr en service natif pour le lancer d’ici.') }}</p>
         <template v-else-if="sent">
           <p class="board-empty">{{ tl(`Sent. The ${coordName.replace(/ coordinator$/, '')} coordinator is starting: its conversation opens here.`, `Envoyé. Le ${coordName.toLowerCase()} démarre : sa conversation s’ouvre ici.`) }}</p>
         </template>

@@ -219,19 +219,23 @@ test('Herdr not answering for a machine: said, not five empty columns', async ({
 })
 
 test('in a container: the tasks show, the actions are the host\'s', async ({ page }, testInfo) => {
-  await page.route('**/api/tasks*', route => route.fulfill(reply({ tasks: [row('demo/1'), row('demo/3', { state: 'working', stage: 'working', kind: '', group: 'working', app: 'codex' })], at: Date.now(), readOnly: true })))
+  await page.route('**/api/tasks*', route => route.fulfill(reply({ tasks: [row('demo/1'), row('demo/3', { state: 'working', stage: 'working', kind: '', group: 'working', app: 'codex' })], at: Date.now(), readOnly: true, moveUrl: 'https://example.com/guide#moving-from-docker-to-the-native-service' })))
   await page.route('**/api/tasks/details*', route => route.fulfill({ json: { id: 'demo/1', title: 'Task demo/1', stage: 'approval', msg: '', description: 'From the file', agent: 'claude', pr: '', branch: '', worktree: '', failure: '', review: null, reviewRounds: 0, plan: '', research: false, pane: null } }))
   await page.goto('/#/board')
   await expect(page.locator('.board-notes')).toContainText('wherdr runs in a container', { timeout: 15000 })
-  await expect(page.locator('.board-coord').first()).toBeDisabled()
-  await expect(page.locator('.board-top .board-coord')).toHaveCount(0)
-  await expect(page.locator('.board-head-add')).toHaveCount(0)
-  await expect(page.locator('.board-new')).toHaveCount(0)
+  // The actions stay in view, off, each saying why on hover.
+  const why = /wherdr runs in a container here/
+  for (const button of [page.locator('.board-top .board-coord'), page.locator('.board-new'), page.locator('.board-head-add').first(), page.locator('.board-head .board-coord').first()]) {
+    await expect(button).toBeDisabled()
+    await expect(button.locator('xpath=ancestor::span[contains(@class, "ro-why")][1]')).toHaveAttribute('title', why)
+  }
+  await expect(page.locator('.board-notes a', { hasText: 'Move to the native service' })).toHaveAttribute('href', /moving-from-docker-to-the-native-service$/)
   if (testInfo.project.name.includes('phone')) await page.locator('.board-seg').getByRole('button', { name: /^Ready to approve/ }).click()
   await page.locator('.task-card', { hasText: 'Task demo/1' }).click()
   const sheet = page.getByRole('dialog')
   await expect(sheet).toContainText('herdr-projects approve demo/1')
-  await expect(sheet.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0)
+  await expect(sheet.getByRole('button', { name: 'Approve', exact: true })).toBeDisabled()
+  await expect(sheet.locator('.ro-why', { hasText: 'Approve' })).toHaveAttribute('title', why)
   await expect(sheet.getByRole('textbox')).toHaveCount(0)
   await page.screenshot({ path: `.shots/board-1x-container-${testInfo.project.name}.png` })
 })

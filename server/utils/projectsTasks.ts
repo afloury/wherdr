@@ -19,7 +19,6 @@
 // Only where Herdr reports a 1.x from 1.2.1 on (shared/projectsPlugin.ts).
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
@@ -27,7 +26,9 @@ import {
   type TaskCommand, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, coordinatorArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, repoKeysFromFile, rowFromTaskFile, taskActions,
 } from '../../shared/projectsTasks'
-import { HERDR_BIN, HERDR_CHILD_ENV, IN_DOCKER, log } from './env'
+import { HERDR_BIN, HERDR_CHILD_ENV, IN_CONTAINER, log } from './env'
+import { USER_PATH_SH, userPath } from '../../bin/lib/userpath.mjs'
+import { NATIVE_MOVE_URL } from './updates'
 import { HerdrError } from './herdr'
 import { type Machine, allMachines, baseMachines } from './machines'
 import { machineFor } from './actions'
@@ -51,8 +52,19 @@ export type Runner = (m: Machine, launcher: string, args: string[], timeoutMs: n
 // On an SSH machine: its own Herdr session, by name, as herdr-projects finds it
 // there (never the socket wherdr forwards here). `$1` herdr binary, `$2` session
 // ('' or 'default': the default one), then the command.
-export const REMOTE_TASKS_SCRIPT = 'export HERDR_BIN_PATH="$1"; unset HERDR_SOCKET_PATH; '
+// The remote shell is not a login shell: its PATH is completed first, as on
+// this machine (bin/lib/userpath.mjs), so herdr-projects finds the agents.
+export const REMOTE_TASKS_SCRIPT = USER_PATH_SH + 'export HERDR_BIN_PATH="$1"; unset HERDR_SOCKET_PATH; '
   + 'if [ -n "$2" ] && [ "$2" != default ]; then export HERDR_SESSION="$2"; else unset HERDR_SESSION; fi; shift 2; exec "$@"'
+
+// The environment of herdr-projects on this machine. Run directly (not as a
+// Herdr plugin command), it does not widen its PATH by itself: it gets the
+// user's (bin/lib/userpath.mjs), read again each time since herdr-projects'
+// record of it may be newer, so it finds the agents in user folders.
+export function launcherEnv(home: string, sock?: string | null, env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const PATH = userPath({ env: { PATH: HERDR_CHILD_ENV.PATH, HERDR_PROJECTS_DATA_DIR: env.HERDR_PROJECTS_DATA_DIR }, home })
+  return { ...HERDR_CHILD_ENV, PATH, HERDR_BIN_PATH: HERDR_BIN, NO_COLOR: '1', ...(sock ? { HERDR_SOCKET_PATH: sock } : {}) }
+}
 
 // The plugin's launcher with argv only: no shell on this machine, and
 // positional parameters of a fixed script on a remote one.
@@ -66,7 +78,7 @@ const runLauncher: Runner = async (m, launcher, args, timeoutMs) => {
   const sock = m.sock()
   return new Promise(resolve => execFile('sh', [launcher, ...args], {
     cwd: m.home,
-    env: { ...HERDR_CHILD_ENV, HERDR_BIN_PATH: HERDR_BIN, NO_COLOR: '1', ...(sock ? { HERDR_SOCKET_PATH: sock } : {}) },
+    env: launcherEnv(m.home, sock),
     timeout: timeoutMs, maxBuffer: OUTPUT_MAX,
   }, (err, stdout, stderr) => resolve({
     code: err ? (typeof err.code === 'number' ? err.code : 1) : 0,
@@ -79,7 +91,7 @@ let runner: Runner = runLauncher
 export function setRunner(r: Runner | null) { runner = r || runLauncher }
 // wherdr in a container (Docker, or Podman's /run/.containerenv), or told to
 // read the boards from their files (WHERDR_TASKS_FROM_FILES=1). Tests set it.
-const CONTAINER = IN_DOCKER || existsSync('/run/.containerenv') || process.env.WHERDR_TASKS_FROM_FILES === '1'
+const CONTAINER = IN_CONTAINER || process.env.WHERDR_TASKS_FROM_FILES === '1'
 let inContainer = CONTAINER
 export function setInContainer(v: boolean | null) { inContainer = v ?? CONTAINER }
 
@@ -288,7 +300,7 @@ async function machineTasks(m: Machine, fresh = false): Promise<MachineTasks | n
     // Herdr did not answer: say so, with the last tasks read there.
     return { machine: m.key, status: 'error', version: '', tasks: [], ...(last ? shown(m.key, last) : {}), error: (e as Error).message, ...(last?.tasks.length ? { stale: true } : {}) }
   }
-  const base = { machine: m.key, status: info.status, version: info.version || '', ...(readsFiles(m) ? { readOnly: true } : {}) }
+  const base = { machine: m.key, status: info.status, version: info.version || '', ...(readsFiles(m) ? { readOnly: true, moveUrl: NATIVE_MOVE_URL } : {}) }
   if (info.status !== 'ready') return { ...base, tasks: [] }
   if (last && Date.now() - last.at < REUSE_MS) return { ...base, ...shown(m.key, last) }
   const deadline = new Promise<null>(resolve => setTimeout(() => resolve(null), READ_DEADLINE_MS).unref?.())

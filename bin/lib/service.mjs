@@ -1,7 +1,7 @@
 // `wherdr service install|uninstall`: start wherdr at login, with the absolute
 // path of the runtime. macOS: a LaunchAgent; Linux: a systemd --user unit.
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -88,11 +88,24 @@ export function serviceState(home = os.homedir()) {
   return { installed: true, running: sh('systemctl', ['--user', 'is-active', '--quiet', UNIT]).ok }
 }
 
-export function installService(spec, home = os.homedir()) {
+// A failure leaves things as they were: the previous service file back (and
+// loaded again), or no file at all, so a later run does not take a half-made
+// service for an installed one. `run` is injectable for the tests.
+export function installService(spec, home = os.homedir(), run = sh) {
   const file = serviceFile(home)
   if (!file) throw new Error(`no login service on ${process.platform}: keep wherdr running with your own service manager.`)
   mkdirSync(path.dirname(file), { recursive: true })
   mkdirSync(path.dirname(spec.log), { recursive: true })
+  const before = existsSync(file) ? readFileSync(file, 'utf8') : null
+  try {
+    return writeService(file, spec, run)
+  } catch (e) {
+    restoreService(file, before, run)
+    throw e
+  }
+}
+
+function writeService(file, spec, sh) {
   if (servicePlatform() === 'launchd') {
     writeFileSync(file, launchdPlist(spec))
     sh('launchctl', ['bootout', `${domain()}/${LABEL}`])
@@ -109,6 +122,18 @@ export function installService(spec, home = os.homedir()) {
   return file
 }
 
+function restoreService(file, before, sh) {
+  try {
+    if (before === null) rmSync(file, { force: true })
+    else writeFileSync(file, before)
+    if (servicePlatform() === 'launchd') {
+      if (before !== null) sh('launchctl', ['bootstrap', domain(), file])
+    } else {
+      sh('systemctl', ['--user', 'daemon-reload'])
+    }
+  } catch { /* best effort: the original error is the one to report */ }
+}
+
 export function uninstallService(home = os.homedir()) {
   const file = serviceFile(home)
   if (!file || !existsSync(file)) return null
@@ -117,6 +142,20 @@ export function uninstallService(home = os.homedir()) {
   rmSync(file)
   if (servicePlatform() === 'systemd') sh('systemctl', ['--user', 'daemon-reload'])
   return file
+}
+
+// systemd: is lingering on for this user (its services run without a login)?
+export function lingerOn(user = os.userInfo().username, run = sh) {
+  const r = run('loginctl', ['show-user', user, '--property=Linger', '--value'])
+  return r.ok && r.out.trim() === 'yes'
+}
+
+// Turns lingering on for this user, without sudo (logind allows it for one's
+// own user on most systems). { ok, already }: ok false when it was refused.
+export function enableLinger(user = os.userInfo().username, run = sh) {
+  if (lingerOn(user, run)) return { ok: true, already: true }
+  const r = run('loginctl', ['enable-linger', user])
+  return { ok: r.ok && lingerOn(user, run), already: false }
 }
 
 // start | stop | restart through the service manager.

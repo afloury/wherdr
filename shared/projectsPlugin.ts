@@ -35,6 +35,10 @@ export const PROJECTS_LAUNCHER = '~/.herdr-projects/data/bin/herdr-projects'
 // The step-by-step guide: in wherdr's repository, and shipped in the npm package
 // (package.json `files`; tests/projectsPlugin.test.ts checks both).
 export const PROJECTS_MIGRATION_GUIDE = 'docs/herdr-projects-1x.md'
+// Its section that moves a wherdr in Docker to the native service, where the
+// Board can act. The server sends its address with a read-only board
+// (server/utils/updates.ts NATIVE_MOVE_URL), the Board's note links to it.
+export const NATIVE_MOVE_ANCHOR = 'moving-from-docker-to-the-native-service'
 
 export interface PluginCommand { command?: unknown }
 export interface RawProjectsPlugin {
