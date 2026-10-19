@@ -79,14 +79,19 @@ cat > /opt/plugin/scripts/herdr-plugin.sh <<'EOF'
 echo "plugin script: $* (WHERDR_DIR=${WHERDR_DIR:-})" >> /tmp/herdr.log
 case "$1" in
   build) touch /tmp/up ;;
+  start) [ -f /tmp/start-fails ] || touch /tmp/up ;;
   key) echo "prefix+i" ;;
   phone) echo "PHONE STEPS FROM THE PLUGIN" ;;
   address) [ -f /tmp/tailnet ] && echo "https://box.example.ts.net:7683" || echo "http://localhost:${WHERDR_PORT:-7683}" ;;
   service)
-    if [ -f /tmp/service-fails ]; then echo "systemd --user is not available here" >&2; exit 1; fi
+    # Like wherdr service install: the running wherdr is stopped first.
+    rm -f /tmp/up
+    if [ -f /tmp/service-fails ]; then echo "systemctl --user daemon-reload failed" >&2; exit 1; fi
     f="$HOME/.config/systemd/user/wherdr.service"
     [ ! -f /tmp/darwin ] || f="$HOME/Library/LaunchAgents/dev.wherdr.plist"
-    mkdir -p "$(dirname "$f")" && touch "$f"
+    # The unit takes the login shell's PATH of the moment.
+    mkdir -p "$(dirname "$f")" && echo "PATH=$(cat /tmp/login-path 2>/dev/null)" > "$f"
+    touch /tmp/up
     echo "  ✓ lingering enabled (loginctl enable-linger)" ;;
 esac
 EOF
@@ -127,7 +132,7 @@ reset() {
   rm -rf /home/alice/.claude /home/alice/wherdr /home/alice/.local /home/alice/.config /home/alice/.cache /home/alice/.herdr-projects \
     /tmp/docker.log /tmp/curl.log /tmp/herdr.log /tmp/brew.log /tmp/up /tmp/pull-fails /tmp/herdr-version /tmp/darwin \
     /tmp/no-docker-daemon /tmp/container-dir /tmp/plugin-installed /tmp/build-fails /tmp/foreign /tmp/tailnet /stubs/brew \
-    /tmp/glibc /tmp/musl /tmp/bad-sum /tmp/service-fails /tmp/nd /srv/SHASUMS256.txt /srv/node-v22*
+    /tmp/glibc /tmp/musl /tmp/bad-sum /tmp/service-fails /tmp/start-fails /tmp/login-path /tmp/nd /srv/SHASUMS256.txt /srv/node-v22*
   [ -f /usr/local/bin/node.off ] && mv /usr/local/bin/node.off /usr/local/bin/node
   mkdir -p /home/alice/.local/bin && cp /opt/stub/herdr /home/alice/.local/bin/herdr && chown -R "$ME" /home/alice
 }
@@ -167,15 +172,22 @@ check "Docker usable: still native, with Node.js passed to the plugin" \
 check "never runs sudo, nor Docker Compose" '! has sudo /tmp/docker.log && ! has "docker compose" /tmp/docker.log'
 check "installs the login service through the plugin, and says what it is" \
   'has "plugin script: service install (WHERDR_DIR=/home/alice/wherdr)" /tmp/herdr.log && service_installed && has "systemd --user unit" /tmp/out && has "lingering" /tmp/out && has "Login service installed" /tmp/out'
-rm -f /tmp/up
-run; check "second run: the service is already there, not installed again" \
-  'has "Login service already installed" /tmp/out && [ "$(grep -c "service install" /tmp/herdr.log)" = 1 ]'
+echo /new/agent/bin > /tmp/login-path; rm -f /tmp/up
+run; check "second run: the service is installed again, with the PATH of now" \
+  'has "Updating the login service" /tmp/out && [ "$(grep -c "service install" /tmp/herdr.log)" = 2 ] && has "PATH=/new/agent/bin" /home/alice/.config/systemd/user/wherdr.service'
 reset
 run WHERDR_SERVICE=off; check "WHERDR_SERVICE=off: no login service" '! has "service install" /tmp/herdr.log && ! service_installed && has "WHERDR_SERVICE=off" /tmp/out'
 reset; touch /tmp/service-fails
 run && pass "a service failure keeps the install" || fail "a service failure keeps the install"
-check "service failure: wherdr still runs with Herdr, the retry command is given" \
-  'has "No login service" /tmp/out && has "herdr-plugin.sh service install" /tmp/out && has "wherdr is running" /tmp/out'
+check "service failure: wherdr is started again before saying it runs, the retry command is given" \
+  'has "plugin script: start" /tmp/herdr.log && [ -f /tmp/up ] && has "No login service" /tmp/out && has "herdr-plugin.sh service install" /tmp/out && has "wherdr is running" /tmp/out && ! service_installed'
+reset; touch /tmp/service-fails /tmp/start-fails
+run && fail "service failure, wherdr down: exits non-zero" || check "service failure and wherdr cannot start again: says so, never that it runs" \
+  'has "does not answer on port 7683" /tmp/out && ! has "wherdr is running" /tmp/out'
+reset; mkdir -p /home/alice/.config/systemd/user; echo PATH=/old/agent/bin > /home/alice/.config/systemd/user/wherdr.service; chown -R "$ME" /home/alice/.config
+echo /new/agent/bin > /tmp/login-path
+run; check "a service file left by an earlier failure is installed again, not trusted" \
+  'has "plugin script: service install" /tmp/herdr.log && has "PATH=/new/agent/bin" /home/alice/.config/systemd/user/wherdr.service'
 check "names the panel key the plugin bound" 'has "prefix+i" /tmp/out'
 
 # 3. A screen: the plugin opens the setup guide.
@@ -198,6 +210,15 @@ run && fail "no Node.js, no terminal: stops" || check "no Node.js, no terminal: 
   'has "Download Node.js 22 from nodejs.org" /tmp/out && has "WHERDR_YES=1" /tmp/out && [ ! -d /home/alice/wherdr/node ] && [ ! -f /tmp/herdr.log ]'
 run WHERDR_YES=1; check "no Node.js, WHERDR_YES=1: Node.js 22 into ~/wherdr/node, checksum checked, given to the plugin" \
   'has "checksum matched" /tmp/out && [ -x /home/alice/wherdr/node/bin/node ] && has "WHERDR_RUNTIME=/home/alice/wherdr/node/bin/node" /tmp/herdr.log && has "your PATH is not changed" /tmp/out'
+# wherdr stopped, run again without WHERDR_YES: the Node.js installed before is found.
+rm -f /tmp/up
+run; check "rerun after its own Node.js install: found in ~/wherdr/node, no question" \
+  '! has "Download Node.js" /tmp/out && has "Runtime: /home/alice/wherdr/node/bin/node" /tmp/out && has "wherdr is running" /tmp/out'
+# The runtime a previous install saved in plugin.env comes first.
+reset; no_node; mkdir -p /home/alice/custom /home/alice/wherdr
+printf '#!/bin/sh\ncase "$*" in *versions.node*) echo 22 ;; --version) echo v22.1.0 ;; esac\n' > /home/alice/custom/node; chmod +x /home/alice/custom/node
+printf 'WHERDR_MODE=native\nWHERDR_RUNTIME=/home/alice/custom/node\n' > /home/alice/wherdr/plugin.env; chown -R "$ME" /home/alice
+run; check "rerun: the runtime saved in plugin.env is used" 'has "WHERDR_RUNTIME=/home/alice/custom/node" /tmp/herdr.log'
 reset; no_node; touch /tmp/glibc /tmp/bad-sum; make_node_dist linux
 run WHERDR_YES=1 && fail "bad Node.js checksum refused" || check "bad Node.js checksum: refused, nothing installed" \
   'has "does not match its checksum" /tmp/out && [ ! -d /home/alice/wherdr/node ] && [ ! -f /tmp/herdr.log ]'

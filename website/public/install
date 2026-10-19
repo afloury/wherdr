@@ -409,11 +409,9 @@ install_service() {
     return 0
   fi
   [ -n "$PLUGIN_ROOT" ] && [ -f "$PLUGIN_ROOT/scripts/herdr-plugin.sh" ] || return 0
-  if [ -f "$(service_file)" ]; then
-    ok "Login service already installed ($(service_file))"
-    return 0
-  fi
-  step "Starting wherdr at login"
+  # Installed again on every run, an existing one too: it takes the PATH the
+  # login shell gives now (agents installed since), and repairs a broken one.
+  if [ -f "$(service_file)" ]; then step "Updating the login service"; else step "Starting wherdr at login"; fi
   if [ "$OS" = "Darwin" ]; then
     say "  A LaunchAgent ($(service_file)): wherdr starts at login and restarts if it stops."
   else
@@ -423,19 +421,31 @@ install_service() {
   if out="$(WHERDR_DIR="$DIR" WHERDR_PORT="$PORT" sh "$PLUGIN_ROOT/scripts/herdr-plugin.sh" service install 2>&1)"; then
     printf '%s\n' "$out" | sed 's/^ */     /'
     ok "Login service installed"
-  else
-    printf '%s\n' "$out" | tail -n 6 | sed 's/^ */     /' >&2
-    warn "No login service: wherdr still starts with Herdr. Try again later:
-     sh $PLUGIN_ROOT/scripts/herdr-plugin.sh service install"
+    return 0
   fi
+  printf '%s\n' "$out" | tail -n 6 | sed 's/^ */     /' >&2
+  # The install stopped wherdr for the service to take over: running again
+  # before anything says it runs.
+  if ! answers; then
+    WHERDR_DIR="$DIR" WHERDR_PORT="$PORT" sh "$PLUGIN_ROOT/scripts/herdr-plugin.sh" start >/dev/null 2>&1 || true
+    i=0
+    while [ "$i" -lt 45 ] && ! answers; do i=$((i + 1)); sleep 1; done
+  fi
+  answers || die "The login service could not be installed, and wherdr does not answer on port $PORT.
+     In Herdr, open the wherdr panel and press S to start it, or L for its log."
+  warn "No login service: wherdr runs, and starts with Herdr. Try again later:
+     sh $PLUGIN_ROOT/scripts/herdr-plugin.sh service install"
 }
 
-# Node.js 22 or newer, or Bun: WHERDR_RUNTIME, the PATH, then the usual
-# install folders (n, nvm, Volta, fnm, asdf, Homebrew, Bun).
+# Node.js 22 or newer, or Bun: WHERDR_RUNTIME, the one a previous install
+# saved in plugin.env, the PATH, the Node.js this script installed in
+# $DIR/node, then the usual install folders (n, nvm, Volta, fnm, asdf,
+# Homebrew, Bun).
 find_runtime() {
+  saved="$(sed -n 's/^WHERDR_RUNTIME=//p' "$DIR/plugin.env" 2>/dev/null | tail -n 1)"
   # ls | sort: the newest version first (paths under $HOME have no spaces to split).
   # shellcheck disable=SC2012
-  for c in "${WHERDR_RUNTIME:-}" "$(command -v node 2>/dev/null || true)" \
+  for c in "${WHERDR_RUNTIME:-}" "$saved" "$(command -v node 2>/dev/null || true)" "$DIR/node/bin/node" \
     "$HOME/.n/bin/node" $(ls -d "$HOME"/.nvm/versions/node/v*/bin/node 2>/dev/null | sort -r) \
     "$HOME/.volta/bin/node" \
     $(ls -d "$HOME"/.local/share/fnm/node-versions/*/installation/bin/node "$HOME"/.fnm/node-versions/*/installation/bin/node 2>/dev/null | sort -r) \

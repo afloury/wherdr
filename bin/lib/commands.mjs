@@ -404,7 +404,8 @@ export async function service(opts) {
   const runtime = findRuntime(ctx.env)
   if (!runtime) throw new CliError(RUNTIME_HELP)
   // The background server of `wherdr start` would hold the port.
-  if (await stop(opts, { quiet: true })) ok('background wherdr stopped (the service takes over).')
+  const stopped = await stop(opts, { quiet: true })
+  if (stopped) ok('background wherdr stopped (the service takes over).')
   await checkPort(ctx)
   remember(ctx)
   const args = [bin, 'run', '--port', ctx.port, '--host', ctx.host, '--data-dir', ctx.env.DATA_DIR]
@@ -414,7 +415,21 @@ export async function service(opts) {
   const PATH = servicePath(runtime, ctx.env)
   const env = { PATH, WHERDR_DIR: ctx.dir, WHERDR_RUNTIME: runtime }
   for (const k of ['APP_URL', 'HERDR_BIN', 'HOST_LABEL', 'CLAUDE_CONFIG_DIR', 'WHERDR_SKILL', 'HERDR_PROJECTS_DATA_DIR']) if (ctx.env[k]) env[k] = ctx.env[k]
-  const file = installService({ runtime, args, env, log: ctx.files.log })
+  let file
+  try {
+    file = installService({ runtime, args, env, log: ctx.files.log })
+  } catch (e) {
+    // wherdr was stopped above for the service to take over: started again,
+    // as it was (the previous service, or in the background).
+    let back = ''
+    if (stopped) {
+      try {
+        await start(opts)
+        back = '\n  wherdr was started again as before.'
+      } catch (err) { back = `\n  wherdr could not be started again: ${err.message}` }
+    }
+    throw new CliError(`${e.message}${back}`)
+  }
   ok(`login service installed: ${file}`)
   say(c.dim(`    ${runtime} ${args.join(' ')}`))
   if (await waitUp(ctx, () => true)) ok(`wherdr runs: ${c.cyan(ctx.url)} (and starts at every login)`)

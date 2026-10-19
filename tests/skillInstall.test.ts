@@ -153,17 +153,19 @@ it.skipIf(process.platform !== 'linux')('keeps a custom Claude directory in the 
   mkdirSync(claude)
   mkdirSync(path.join(f.root, '.output/server'), { recursive: true })
   writeFileSync(path.join(f.root, '.output/server/index.mjs'), '')
-  // Write the unit but refuse activation, so no real service or server is started.
+  // Refuse activation, so no real service or server is started; keep a copy of
+  // the unit it was asked to enable (a failed install removes it).
   writeFileSync(path.join(f.home, 'tools/systemctl'), `#!/bin/sh
-case "$*" in '--user enable --now skill-test.service') exit 1 ;; esac
+case "$*" in '--user enable --now skill-test.service') cp "$XDG_CONFIG_HOME/systemd/user/skill-test.service" "$HOME/unit.seen"; exit 1 ;; esac
 exit 0
 `, { mode: 0o755 })
   const result = spawnSync(process.execPath, [path.join(f.root, 'bin/wherdr.mjs'), 'service', 'install', '--port', '7699'], {
     env: { ...f.env, CLAUDE_CONFIG_DIR: claude, WHERDR_SERVICE_NAME: 'skill-test', XDG_CONFIG_HOME: path.join(f.home, '.config') }, encoding: 'utf8', timeout: 10000,
   })
   expect(result.stderr).toContain('enable --now failed')
-  const unit = readFileSync(path.join(f.home, '.config/systemd/user/skill-test.service'), 'utf8')
+  const unit = readFileSync(path.join(f.home, 'unit.seen'), 'utf8')
   expect(unit).toContain(`CLAUDE_CONFIG_DIR=${claude}`)
+  expect(existsSync(path.join(f.home, '.config/systemd/user/skill-test.service'))).toBe(false)
 })
 
 
@@ -172,13 +174,13 @@ it.skipIf(process.platform !== 'linux')('normalizes a relative Claude config and
   mkdirSync(path.join(f.root, '.output/server'), { recursive: true })
   writeFileSync(path.join(f.root, '.output/server/index.mjs'), '')
   const tools = path.join(f.home, 'tools')
-  writeFileSync(path.join(tools, 'systemctl'), '#!/bin/sh\ncase "$*" in "--user enable --now skill-test.service") exit 1 ;; esac\nexit 0\n', { mode: 0o755 })
+  writeFileSync(path.join(tools, 'systemctl'), '#!/bin/sh\ncase "$*" in "--user enable --now skill-test.service") cp "$XDG_CONFIG_HOME/systemd/user/skill-test.service" "$HOME/unit.seen"; exit 1 ;; esac\nexit 0\n', { mode: 0o755 })
   const result = spawnSync(process.execPath, [path.join(f.root, 'bin/wherdr.mjs'), 'service', 'install', '--port', '7699'], {
     env: { ...f.env, CLAUDE_CONFIG_DIR: '.custom-claude', WHERDR_SKILL: 'off', WHERDR_SERVICE_NAME: 'skill-test', XDG_CONFIG_HOME: path.join(f.home, '.config') },
     encoding: 'utf8', timeout: 10000,
   })
   // Refuse activation after the unit is written; no real service is started.
-  const unit = readFileSync(path.join(f.home, '.config/systemd/user/skill-test.service'), 'utf8')
+  const unit = readFileSync(path.join(f.home, 'unit.seen'), 'utf8')
   expect(unit).toContain(`CLAUDE_CONFIG_DIR=${f.home}/.custom-claude`)
   expect(unit).toContain('WHERDR_SKILL=off')
   expect(existsSync(f.copy)).toBe(false)

@@ -27,7 +27,7 @@ herdr status server      # its server must be running
 herdr plugin list        # afloury.wherdr: wherdr is installed; herdr-projects: see Extras
 curl -fsS http://127.0.0.1:7683/manifest.webmanifest   # answers: wherdr already runs
 brew list wherdr         # a Homebrew install
-node --version           # Node.js 22 (the install offers it)
+node --version           # Node.js 22
 tailscale status         # Tailscale connected?
 tailscale serve status   # an https://….ts.net address proxying to port 7683: already published
 ```
@@ -44,8 +44,8 @@ Skip it when wherdr already answers. Otherwise:
 curl -fsSL https://wherdr.dev/install | sh
 ```
 
-It installs the Herdr plugin in `~/wherdr`, starts wherdr and its login service and opens the
-setup guide, no sudo. No Node.js 22: it asks first (user agreed: `WHERDR_YES=1` before `sh`).
+It installs the Herdr plugin in `~/wherdr`, runs wherdr as a login service and opens the setup
+guide, no sudo. No Node.js 22: it asks first (user agreed: `WHERDR_YES=1` before `sh`).
 Another port: `WHERDR_PORT=7684` before `sh`.
 
 **Check:** `curl -fsS http://127.0.0.1:7683` returns HTML. If the install says lingering is off,

@@ -386,8 +386,10 @@ The script ([read it first](https://wherdr.dev/install), source in
    Linux, with lingering (`loginctl enable-linger`, allowed for your own user without sudo on
    most systems) so it keeps running after you log out; a LaunchAgent on macOS. The service gets
    your login shell's `PATH`, so the agents you installed in `~/.local/bin`, `~/.bun/bin`,
-   `~/.cargo/bin`, `~/.npm-global/bin` or Homebrew are found (see [Agent PATH](#agent-path)). If
-   this step fails (no systemd), wherdr still starts with Herdr and the script says how to retry;
+   `~/.cargo/bin`, `~/.npm-global/bin` or Homebrew are found (see [Agent PATH](#agent-path)). Each
+   run installs it again, with the `PATH` of now. If this step fails (no systemd), nothing of it
+   is left, wherdr is started again and keeps starting with Herdr, and the script says how to
+   retry;
 6. on a computer **without a screen** (no `DISPLAY` on Linux, or an SSH session): opens nothing,
    prints the local address, an `ssh -L` tunnel to reach it from your computer, and the phone
    steps (`wherdr phone`: Tailscale state, the address, the QR code once it answers). Run the
