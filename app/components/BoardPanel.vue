@@ -77,23 +77,29 @@ const coordPane = ref<string | null>(null)
 const coordLoaded = ref(false)
 let poll: ReturnType<typeof setTimeout> | undefined
 let tries = 0
+// `look` numbers each lookup: only the latest one's answer counts. Two lookups
+// of the same coordinator can come back in any order; an earlier one's answer
+// (a pane, "none", a failure, its retry) is dropped.
+let look = 0
 async function lookCoordinator(g: number) {
   const t = props.target
   if (t.kind !== 'coordinator' || g !== gen) return
   clearTimeout(poll)
+  const n = ++look
+  const latest = () => g === gen && n === look
   try {
     const q = new URLSearchParams({ machine: t.machine, kind: t.to.kind, ...(t.to.kind === 'project' ? { repo: t.to.repo } : {}) })
     const r = await api<{ pane: string | null, state: string }>(`/api/tasks/coordinator?${q}`)
-    if (g !== gen) return
+    if (!latest()) return
     coordPane.value = r.pane
     // Starting (or just told to): asked again until it has a pane. A pane Herdr
     // does not show (yet, or any more): asked again too, for the one it has now.
     const unseen = Boolean(r.pane) && herdrState.value.ok && !herdrState.value.panes.some(p => p.id === r.pane)
     if ((unseen || (!r.pane && (r.state === 'starting' || sent.value))) && ++tries <= 40) poll = setTimeout(() => lookCoordinator(g), 3000)
   } catch {
-    if (g === gen && sent.value && ++tries <= 40) poll = setTimeout(() => lookCoordinator(g), 3000)
+    if (latest() && sent.value && ++tries <= 40) poll = setTimeout(() => lookCoordinator(g), 3000)
   } finally {
-    if (g === gen) coordLoaded.value = true
+    if (latest()) coordLoaded.value = true
   }
 }
 onUnmounted(() => { gen++; clearTimeout(poll) })
@@ -152,6 +158,7 @@ const sent = ref(false)
 watch(() => JSON.stringify(props.target), () => {
   gen++
   clearTimeout(poll)
+  clearTimeout(settle)
   tries = 0
   first.value = ''
   sent.value = false
