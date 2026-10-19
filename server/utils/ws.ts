@@ -4,6 +4,7 @@ import type { Peer } from 'crossws'
 import { auth } from './http'
 import { sameOrigin } from './http'
 import { hostAllowed } from './hosts'
+import { checkRequestClient, ensureFresh, gateDecision, networkReady, onNetworkReading } from './network'
 
 const WS_MAX = 256 * 1024
 
@@ -15,11 +16,30 @@ export function headersOf(h: Headers): Record<string, string | undefined> {
 }
 
 // Upgrade refusal: raw HTTP response, like the old server.
-export function checkUpgrade(request: { headers: Headers }): Response | void {
-  const headers = headersOf(request.headers)
-  if (!hostAllowed(headers.host)) return new Response(null, { status: 403, statusText: 'Host not allowed' })
-  if (!sameOrigin(headers)) return new Response(null, { status: 403, statusText: 'Forbidden' })
-  if (!auth.isUnlocked({ headers })) return new Response(null, { status: 401, statusText: 'Unauthorized' })
+// The TCP peer comes from the Node request behind crossws's proxy (`_req`);
+// when it cannot be read, the connection is refused. Same decision as HTTP
+// (gateDecision), with the WebSocket rules: Origin identical to the host, and
+// the passkey lock (when set up) always applies.
+export function upgradeVerdict(headers: Record<string, string | undefined>, remoteAddress: string | undefined) {
+  return gateDecision({
+    check: checkRequestClient(remoteAddress, headers),
+    unlocked: auth.isUnlocked({ headers }),
+    hostOk: hostAllowed(headers.host),
+    crossSite: !sameOrigin(headers),
+    path: '/ws', ws: true,
+  })
+}
+
+export async function checkUpgrade(request: { headers: Headers, _req?: { socket?: { remoteAddress?: string } } }): Promise<Response | void> {
+  await networkReady()
+  // A reading of Tailscale started after this upgrade arrived: Funnel turned
+  // on a moment ago is seen.
+  await ensureFresh(0)
+  const verdict = upgradeVerdict(headersOf(request.headers), request._req?.socket?.remoteAddress)
+  if (verdict === 'network') return new Response(null, { status: 403, statusText: 'Network not allowed' })
+  if (verdict === 'host') return new Response(null, { status: 403, statusText: 'Host not allowed' })
+  if (verdict === 'origin') return new Response(null, { status: 403, statusText: 'Forbidden' })
+  if (verdict === 'locked') return new Response(null, { status: 401, statusText: 'Unauthorized' })
 }
 
 // The raw `ws` WebSocket behind a crossws peer (Node adapter).
@@ -37,6 +57,26 @@ export function watchPeer(peer: Peer) {
   if (ws) ws.on('pong', () => alive.set(peer, true))
 }
 export function unwatchPeer(peer: Peer) { alive.delete(peer) }
+
+// An open WebSocket is judged again after every reading of the network state
+// (Funnel turned on, Tailscale unreadable, a peer gone from the tailnet) and
+// on the passkey lock: one the new state no longer allows is closed (1008).
+type JudgedPeer = { request?: { headers?: Headers }, remoteAddress?: string, close: (code?: number, reason?: string) => void }
+export function revalidatePeers(peers: Iterable<JudgedPeer> = alive.keys() as Iterable<JudgedPeer>, judge = upgradeVerdict): number {
+  let closed = 0
+  for (const peer of [...peers]) {
+    let verdict: string
+    try { verdict = judge(peer.request?.headers ? headersOf(peer.request.headers) : {}, peer.remoteAddress) }
+    catch { verdict = 'network' }
+    if (verdict === 'ok') continue
+    closed++
+    alive.delete(peer as unknown as Peer)
+    try { peer.close(1008, 'Network policy changed') }
+    catch { /* already closed */ }
+  }
+  return closed
+}
+onNetworkReading(() => { revalidatePeers() })
 setInterval(() => {
   for (const [peer, ok] of alive) {
     const ws = rawWs(peer)

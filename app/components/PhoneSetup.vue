@@ -10,11 +10,9 @@ import pkg from '../../package.json'
 const props = defineProps<{ active: boolean }>()
 
 const status = ref<PhoneStatus | null>(null)
-const denied = ref(false)
 // The page itself came through the phone address (HTTPS, not localhost), so
 // that address answers: it is shown with its QR code, drawn here from
-// location.origin without asking the server, which only tells this computer
-// or an unlocked session more (then `status` takes over).
+// location.origin, until the server answers (then `status` takes over).
 const here = import.meta.client && location.protocol === 'https:' && !isLoopbackHost(location.hostname) ? `${location.origin}/` : ''
 const hereQr = here ? qrSvg(here) : null
 const busy = ref(false)
@@ -27,11 +25,8 @@ watch(status, (s) => { if (s) phoneAddress.value = s })
 async function refresh() {
   try {
     status.value = await api<PhoneStatus>('/api/phone')
-    denied.value = false
     if (!typed.value) typed.value = status.value.url || status.value.suggested || ''
-  } catch (e) {
-    denied.value = (e as ApiError).code === 'phone_local'
-  }
+  } catch { /* shown again at the next check */ }
 }
 
 // Checked again every few seconds while shown, faster until it answers.
@@ -134,7 +129,7 @@ const OTHER_NETWORKS_DOC = pkg.bugs.replace(/\/issues$/, '#other-private-network
 const checking = ref(false)
 async function checkAgain() {
   checking.value = true
-  try { await refresh(); if (denied.value) report(false, tl('Only from the computer that runs wherdr.', 'Seulement depuis l’ordinateur qui fait tourner wherdr.')); else reportReach() }
+  try { await refresh(); reportReach() }
   catch (e) { report(false, (e as Error).message) }
   finally { checking.value = false; schedule() }
 }
@@ -192,12 +187,10 @@ const failureText = computed(() => {
         <div class="phone-qr-text">
           <p class="phone-url">{{ here }}</p>
           <p>{{ tl('1. Scan it with the iPhone camera, open it, then Share → Add to Home Screen.', '1. Scanne-le avec l’appareil photo de l’iPhone, ouvre-le, puis Partager → Sur l’écran d’accueil.') }}</p>
-          <p>{{ tl('2. In the app from the Home Screen: Settings → Enable notifications, then Security → Enable passkey lock.', '2. Dans l’app ouverte depuis l’écran d’accueil : Réglages → Activer les notifications, puis Sécurité → Activer le verrou passkey.') }}</p>
+          <p>{{ tl('2. In the app from the Home Screen: Settings → Enable notifications, then, if you like, Security → Enable passkey lock.', '2. Dans l’app ouverte depuis l’écran d’accueil : Réglages → Activer les notifications, puis, si tu veux, Sécurité → Activer le verrou passkey.') }}</p>
         </div>
       </div>
-      <p class="phone-note">{{ tl('To publish or remove this address, open wherdr on localhost on its computer, or unlock it with its passkey.', 'Pour publier ou retirer cette adresse, ouvre wherdr sur localhost sur son ordinateur, ou déverrouille-le avec sa passkey.') }}</p>
     </template>
-    <p v-else-if="denied" class="phone-note warn">{{ tl('Set it up from the computer that runs wherdr: open http://localhost:' + (status?.port || '7683') + ' there, or unlock wherdr with its passkey.', 'Configure-le depuis l’ordinateur qui fait tourner wherdr : ouvre http://localhost:' + (status?.port || '7683') + ' dessus, ou déverrouille wherdr avec sa passkey.') }}</p>
     <p v-else-if="!status" class="phone-note">{{ tl('Checking…', 'Vérification…') }}</p>
 
     <template v-else>
@@ -304,7 +297,7 @@ const failureText = computed(() => {
         <div class="phone-qr-text">
           <p class="phone-url">{{ status.url }}</p>
           <p>{{ tl('1. Scan it with the iPhone camera, open it, then Share → Add to Home Screen.', '1. Scanne-le avec l’appareil photo de l’iPhone, ouvre-le, puis Partager → Sur l’écran d’accueil.') }}</p>
-          <p>{{ tl('2. In the app from the Home Screen: Settings → Enable notifications, then Security → Enable passkey lock.', '2. Dans l’app ouverte depuis l’écran d’accueil : Réglages → Activer les notifications, puis Sécurité → Activer le verrou passkey.') }}</p>
+          <p>{{ tl('2. In the app from the Home Screen: Settings → Enable notifications, then, if you like, Security → Enable passkey lock.', '2. Dans l’app ouverte depuis l’écran d’accueil : Réglages → Activer les notifications, puis, si tu veux, Sécurité → Activer le verrou passkey.') }}</p>
         </div>
       </div>
     </template>
