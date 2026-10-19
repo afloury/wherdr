@@ -2,6 +2,7 @@
 # Tests public/install in a throwaway Alpine container with stub `docker` and
 # `herdr` binaries: never on the host, never with the real Docker daemon.
 #   sh tests/install.test.sh            (from website/, needs Docker)
+# Without Docker: sh tests/install.bwrap.sh (bubblewrap sandbox, same cases).
 # Also runs shellcheck (koalaman/shellcheck-alpine) when the image is available.
 set -eu
 cd "$(dirname "$0")/.."

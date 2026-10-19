@@ -42,6 +42,7 @@ makes no request to another site.
   test checks every script's timing. Data is invented: never use real data.
 - **Installer**: [`public/install`](public/install) (`curl -fsSL https://wherdr.dev/install | sh`);
   `sh tests/install.test.sh` runs shellcheck and its tests in a throwaway container with stub
-  `docker` and `herdr` binaries. The install section replays its output: if the installer's
+  `docker` and `herdr` binaries; without Docker, `sh tests/install.bwrap.sh` runs the same tests
+  in a bubblewrap sandbox as your user (no network, an empty `/home`, Node.js hidden). The install section replays its output: if the installer's
   output changes, update `app/utils/installDemo.ts` (a root test checks its lines against
   `public/install`).
