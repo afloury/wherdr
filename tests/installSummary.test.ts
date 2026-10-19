@@ -6,13 +6,12 @@ import { INSTALL_OUTPUT } from '../website/app/utils/installDemo'
 const script = readFileSync(new URL('../website/public/install', import.meta.url), 'utf8')
 const summary = script.slice(script.indexOf('  ADDRESS="$(plugin_address)"'), script.indexOf('\n# The address the plugin opens:'))
 
-function run(options: { address?: string, key?: string, browser?: string, first?: string, container?: string } = {}) {
+function run(options: { address?: string, key?: string, browser?: string, first?: string } = {}) {
   return execFileSync('sh', ['-c', `
     say() { printf '%s\\n' "$*"; }
     panel_key() { printf '%s' "$PANEL_KEY"; }
     plugin_address() { printf '%s' "$TEST_ADDRESS"; }
     phone_steps() { say 'Phone steps'; }
-    docker_phone() { say 'Docker phone steps'; }
     id() { printf 'user'; }
     hostname() { printf 'server'; }
     summary() { ${summary}
@@ -20,7 +19,7 @@ function run(options: { address?: string, key?: string, browser?: string, first?
   `], { encoding: 'utf8', env: {
     URL: 'http://localhost:7683', PORT: '7683', TEST_ADDRESS: options.address || 'http://localhost:7683',
     PANEL_KEY: options.key ?? 'prefix+i', PLUGIN_ID: 'example.wherdr', REPO: 'example/wherdr',
-    BROWSER: options.browser ?? '1', FIRST: options.first ?? '1', CONTAINER: options.container ?? '0',
+    BROWSER: options.browser ?? '1', FIRST: options.first ?? '1',
   } }).trim().split('\n')
 }
 
@@ -47,10 +46,10 @@ describe('installer final summary', () => {
     expect(lines[3]).toContain('Phone: open Settings › Phone')
   })
 
-  it.each(['0', '1'])('keeps headless tunnel and phone actions after the Herdr key (container %s)', (container) => {
-    const lines = run({ browser: '0', container })
+  it('keeps headless tunnel and phone actions after the Herdr key', () => {
+    const lines = run({ browser: '0' })
     expect(lines[2]).toContain('prefix+i')
     expect(lines[4]).toContain('ssh -L 7683:127.0.0.1:7683 user@server')
-    expect(lines[5]).toBe(container === '1' ? 'Docker phone steps' : 'Phone steps')
+    expect(lines[5]).toBe('Phone steps')
   })
 })

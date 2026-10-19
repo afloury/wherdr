@@ -2,7 +2,7 @@
 // which commands run, one at a time per machine, how sparingly, in which
 // session, what a failure looks like, and nothing run from a container.
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -43,7 +43,7 @@ vi.mock('../server/utils/state', () => ({
   findPane: (id: string) => panes.find(p => p.id === id) || null,
   getState: () => ({ panes }),
 }))
-vi.mock('../server/utils/env', () => ({ HERDR_BIN: 'herdr', HERDR_CHILD_ENV: {}, IN_DOCKER: false, log: () => {} }))
+vi.mock('../server/utils/env', () => ({ HERDR_BIN: 'herdr', HERDR_CHILD_ENV: {}, IN_CONTAINER: false, log: () => {} }))
 
 const T = await import('../server/utils/projectsTasks')
 
@@ -382,6 +382,22 @@ describe('actions on a task', () => {
   })
 })
 
+describe('the user\'s PATH for herdr-projects on this machine', () => {
+  it('finds the agents in user folders, even from a login service\'s short PATH', () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-launcher-'))
+    try {
+      mkdirSync(path.join(home, '.local/bin'), { recursive: true })
+      mkdirSync(path.join(home, 'pd'), { recursive: true })
+      writeFileSync(path.join(home, 'pd/env.json'), JSON.stringify({ PATH: '/login/only/bin' }))
+      const env = T.launcherEnv(home, '/tmp/h.sock', { HERDR_PROJECTS_DATA_DIR: path.join(home, 'pd') })
+      const dirs = String(env.PATH).split(':')
+      expect(dirs).toContain(path.join(home, '.local/bin'))
+      expect(dirs).toContain('/login/only/bin')
+      expect(env).toMatchObject({ HERDR_BIN_PATH: 'herdr', NO_COLOR: '1', HERDR_SOCKET_PATH: '/tmp/h.sock' })
+    } finally { rmSync(home, { recursive: true, force: true }) }
+  })
+})
+
 describe('the session on an SSH machine', () => {
   // The script as the remote shell runs it, with a launcher that says what it gets.
   const env = (name: string, extra: Record<string, string> = {}) => execFileSync('sh', ['-c', T.REMOTE_TASKS_SCRIPT, 'sh', '/opt/herdr', name, 'sh', '-c',
@@ -391,97 +407,36 @@ describe('the session on an SSH machine', () => {
   it('names the machine\'s own session, and never a forwarded socket', () => {
     expect(env('review', { HERDR_SOCKET_PATH: '/tmp/forwarded.sock' })).toBe('/opt/herdr|review|unset|--keep a')
   })
+  it('completes the remote PATH first, as on this machine (not a login shell there)', async () => {
+    const { USER_PATH_SH } = await import('../bin/lib/userpath.mjs')
+    expect(T.REMOTE_TASKS_SCRIPT.startsWith(USER_PATH_SH)).toBe(true)
+    const home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-remote-'))
+    try {
+      mkdirSync(path.join(home, '.cargo/bin'), { recursive: true })
+      const out = execFileSync('sh', ['-c', T.REMOTE_TASKS_SCRIPT, 'sh', '/opt/herdr', '', 'sh', '-c', 'printf %s "$PATH"'],
+        { encoding: 'utf8', env: { HOME: home, PATH: '/usr/bin:/bin' } })
+      expect(out.split(':')).toContain(path.join(home, '.cargo/bin'))
+    } finally { rmSync(home, { recursive: true, force: true }) }
+  })
   it('the default session: none named', () => {
     expect(env('default', { HERDR_SESSION: 'stale' })).toBe('/opt/herdr|unset|unset|--keep a')
     expect(env('')).toBe('/opt/herdr|unset|unset|--keep a')
   })
 })
 
-describe('the PATH of a command on an SSH machine', () => {
-  // sshd's default PATH, without the user's own folders.
-  const SSHD_PATH = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
-  let home: string
-  beforeEach(() => { home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-path-')) })
-  afterEach(() => rmSync(home, { recursive: true, force: true }))
-  const dirs = (...names: string[]) => names.forEach(n => mkdirSync(path.join(home, n), { recursive: true }))
-  const envFile = (text: string, dir = '.herdr-projects/data') => { dirs(dir); writeFileSync(path.join(home, dir, 'env.json'), text) }
-  // The PATH the launcher gets, through the whole script as the remote shell runs it.
-  const pathOf = (extra: Record<string, string> = {}, cmd = 'printf %s "$PATH"') => execFileSync('/bin/sh', ['-c', T.REMOTE_TASKS_SCRIPT, 'sh', '/opt/herdr', '', '/bin/sh', '-c', cmd],
-    { encoding: 'utf8', env: { PATH: SSHD_PATH, HOME: home, ...extra } })
-  const order = (p: string) => p.split(':')
-  // The folders the script adds: those of the temporary home, then the absolute
-  // ones this host happens to have (/opt/homebrew/bin…) that `base` lacks.
-  const added = (base: string, ...mine: string[]) => [...mine.map(n => `${home}/${n}`),
-    ...T.USER_PATH_DIRS.filter(d => d.startsWith('/') && existsSync(d) && !base.split(':').includes(d))].join(':')
-  const before = (base: string, ...mine: string[]) => [added(base, ...mine), base].filter(Boolean).join(':')
-
-  it('puts the user folders that exist first, in order, and leaves the rest as it was', () => {
-    dirs('.local/bin', '.cargo/bin', '.npm-global/bin')
-    expect(pathOf()).toBe(before(SSHD_PATH, '.local/bin', '.cargo/bin', '.npm-global/bin'))
-  })
-  it('finds an agent installed in ~/.local/bin', () => {
-    dirs('.local/bin')
-    const claude = path.join(home, '.local/bin/claude')
-    writeFileSync(claude, '#!/bin/sh\necho "2.1.0 (Claude Code)"\n', { mode: 0o755 })
-    expect(pathOf({}, 'command -v claude && claude --version')).toBe(`${claude}\n2.1.0 (Claude Code)\n`)
-  })
-  it('changes nothing when no user folder exists', () => {
-    expect(pathOf()).toBe(before(SSHD_PATH))
-  })
-  it('never adds a folder twice', () => {
-    dirs('.local/bin')
-    const base = `/usr/bin:${home}/.local/bin:/usr/local/bin:/bin`
-    const p = order(pathOf({ PATH: base }))
-    expect(p).toEqual(order(before(base)))
-    expect(new Set(p).size).toBe(p.length)
-  })
-  it('prefers the PATH herdr-projects recorded (pretty JSON, as its keeper writes it), then the session\'s, then missing folders', () => {
-    dirs('.local/bin', '.bun/bin')
-    const recorded = `/opt/mine/bin:${home}/.local/bin:/usr/bin`
-    envFile(`{\n  "at": 1792421223588,\n  "PATH": "${recorded}",\n  "gh": []\n}\n`)
-    expect(pathOf()).toBe(`${recorded}:${SSHD_PATH}:${added(`${recorded}:${SSHD_PATH}`, '.bun/bin')}`)
-  })
-  it('reads it on one line too, and where HERDR_PROJECTS_DATA_DIR or HERDR_PROJECTS_HOME put it', () => {
-    envFile('{"at":1,"PATH":"/opt/a/bin","gh":[]}', 'board/data')
-    expect(order(pathOf({ HERDR_PROJECTS_HOME: path.join(home, 'board') }))[0]).toBe('/opt/a/bin')
-    envFile('{"PATH":"/opt/b/bin"}', 'elsewhere')
-    expect(order(pathOf({ HERDR_PROJECTS_DATA_DIR: path.join(home, 'elsewhere') }))[0]).toBe('/opt/b/bin')
-  })
-  it('falls back to the folders when the file has no usable PATH', () => {
-    dirs('.local/bin')
-    // No PATH, an empty one, not JSON, a string cut short, bad escapes, a NUL, a lone surrogate.
-    for (const text of ['{"at":1,"gh":[]}', '{"PATH":""}', 'not json', '{"PATH":"/opt/a/bin', '{"PATH":"/a\\qb"}',
-      '{"PATH":"/a\\u12"}', '{"PATH":"/a\\u0000b"}', '{"PATH":"/a\\ud800b"}', '{"PATH":"/a\\udc00b"}']) {
-      envFile(text)
-      expect(pathOf()).toBe(before(SSHD_PATH, '.local/bin'))
-    }
-  })
-  it('decodes a recorded PATH with JSON escapes, so every folder in it is kept', () => {
-    // Folders whose names JSON escapes, written as herdr-projects writes them (serde: pretty, \uXXXX for controls only).
-    const odd = [path.join(home, 'with "quote"'), path.join(home, 'back\\slash'), path.join(home, 'tab\there'), path.join(home, 'café ünï 🐑'), path.join(home, 'trail\n')]
-    const plain = '/opt/plain/bin'
-    const recorded = [...odd, plain].join(':')
-    for (const [i, dir] of odd.entries()) {
-      mkdirSync(dir, { recursive: true })
-      writeFileSync(path.join(dir, `agent${i}`), `#!/bin/sh\necho agent ${i}\n`, { mode: 0o755 })
-    }
-    envFile(JSON.stringify({ at: 1, PATH: recorded, gh: [] }, null, 2))
-    expect(pathOf().startsWith(`${recorded}:${SSHD_PATH}`)).toBe(true)
-    expect(pathOf({}, odd.map((_, i) => `agent${i}`).join('; '))).toBe(odd.map((_, i) => `agent ${i}\n`).join(''))
-    // Every escape JSON has, the optional ones too (\/, \uXXXX for any character, a surrogate pair).
-    envFile('{"PATH":"\\/opt\\/x\\u0041\\u00e9\\u20ac\\ud83d\\udc11\\b\\f\\r\\"\\\\:/y"}')
-    expect(pathOf().startsWith('/opt/xAé€🐑\b\f\r"\\:/y:')).toBe(true)
-  })
-  it('only assigns the recorded PATH: nothing in it is run', () => {
-    envFile('{"PATH":"$(touch pwned)`touch pwned2`;touch pwned3"}')
-    const p = pathOf({}, 'cd "$HOME" && printf %s "$PATH"')
-    expect(order(p)[0]).toBe('$(touch pwned)`touch pwned2`;touch pwned3')
-    expect(['pwned', 'pwned2', 'pwned3'].filter(f => existsSync(path.join(home, f)))).toEqual([])
-  })
-  it('keeps the arguments and the session as they were', () => {
-    dirs('.local/bin')
-    expect(execFileSync('/bin/sh', ['-c', T.REMOTE_TASKS_SCRIPT, 'sh', '/opt/herdr', 'review', '/bin/sh', '-c', 'printf "%s|%s|%s" "$HERDR_BIN_PATH" "$HERDR_SESSION" "$1"', 'x', '$(id) --keep a'],
-      { encoding: 'utf8', env: { PATH: SSHD_PATH, HOME: home } })).toBe('/opt/herdr|review|$(id) --keep a')
+describe('an agent in a user folder, from an SSH command', () => {
+  it('is found by herdr-projects, and the arguments reach the launcher as they were', () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-remote-'))
+    try {
+      const claude = path.join(home, '.local/bin/claude')
+      mkdirSync(path.dirname(claude), { recursive: true })
+      writeFileSync(claude, '#!/bin/sh\necho "2.1.0 (Claude Code)"\n', { mode: 0o755 })
+      // sshd's default PATH, without the user's own folders.
+      const run = (session: string, cmd: string, ...args: string[]) => execFileSync('/bin/sh', ['-c', T.REMOTE_TASKS_SCRIPT, 'sh', '/opt/herdr', session, '/bin/sh', '-c', cmd, 'x', ...args],
+        { encoding: 'utf8', env: { HOME: home, PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' } })
+      expect(run('', 'command -v claude && claude --version')).toBe(`${claude}\n2.1.0 (Claude Code)\n`)
+      expect(run('review', 'printf "%s|%s|%s" "$HERDR_BIN_PATH" "$HERDR_SESSION" "$1"', '$(id) --keep a')).toBe('/opt/herdr|review|$(id) --keep a')
+    } finally { rmSync(home, { recursive: true, force: true }) }
   })
 })
 

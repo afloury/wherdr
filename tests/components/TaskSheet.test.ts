@@ -141,3 +141,24 @@ describe('the task sheet while its task moves on', () => {
     w.unmount()
   })
 })
+
+describe('the task sheet of a read-only board (wherdr in a container)', () => {
+  it('shows its actions off, each saying why on hover, and the host commands', async () => {
+    Object.assign(shown, { stage: 'approval', failure: '', failureStage: '' })
+    const w = await mountSuspended(TaskSheet, { props: { task, machine: '', open: true, readOnly: true } })
+    await flushPromises()
+    const vm = w.vm as unknown as { actions: { approve: boolean, tell: boolean } }
+    expect(vm.actions.approve).toBe(false)
+    expect(vm.actions.tell).toBe(false)
+    await vi.waitFor(() => expect(document.querySelectorAll('.task-sheet-ro .ro-why').length).toBeGreaterThan(0))
+    const wraps = [...document.querySelectorAll<HTMLElement>('.task-sheet-ro .ro-why')]
+    const labels = wraps.map(s => s.textContent?.trim())
+    expect(labels).toEqual(expect.arrayContaining(['Approve', 'Reply']))
+    for (const s of wraps) {
+      expect(s.title).toMatch(/container/)
+      expect(s.querySelector('button')!.disabled).toBe(true)
+    }
+    expect(document.body.textContent).toContain('herdr-projects approve demo/1')
+    w.unmount()
+  })
+})

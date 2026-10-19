@@ -1,13 +1,18 @@
 #!/bin/sh
-# Runs inside a throwaway node:22-alpine container (see install.test.sh).
-# Stubs: docker, curl, herdr, uname, brew — every call is logged, nothing real runs.
+# Runs inside a throwaway node:22-alpine container, as root with a user
+# "alice" (install.test.sh), or in a bubblewrap sandbox as the current user
+# with /home/alice, /srv, /stubs, /opt and /usr/local/bin of its own
+# (install.bwrap.sh sets CASES_SELF=1).
+# Stubs: docker, curl, herdr, uname, brew, ldd — every call is logged, nothing real runs.
 set -u
 fails=0
+SELF="${CASES_SELF:-0}"
+if [ "$SELF" = 1 ]; then ME="$(id -un)"; else ME=alice; fi
 pass() { echo "ok   - $1"; }
 fail() { echo "FAIL - $1"; fails=$((fails + 1)); }
 check() { if eval "$2"; then pass "$1"; else fail "$1"; sed 's/^/       | /' /tmp/out; fi; }
 
-adduser -D -h /home/alice alice >/dev/null 2>&1
+[ "$SELF" = 1 ] || adduser -D -h /home/alice alice >/dev/null 2>&1
 mkdir -p /srv /stubs /opt/plugin/scripts
 # The brew stub (run as alice) puts node back in /usr/local/bin.
 chmod 777 /usr/local/bin
@@ -74,11 +79,42 @@ cat > /opt/plugin/scripts/herdr-plugin.sh <<'EOF'
 echo "plugin script: $* (WHERDR_DIR=${WHERDR_DIR:-})" >> /tmp/herdr.log
 case "$1" in
   build) touch /tmp/up ;;
+  start) [ -f /tmp/start-fails ] || touch /tmp/up ;;
   key) echo "prefix+i" ;;
   phone) echo "PHONE STEPS FROM THE PLUGIN" ;;
   address) [ -f /tmp/tailnet ] && echo "https://box.example.ts.net:7683" || echo "http://localhost:${WHERDR_PORT:-7683}" ;;
+  service)
+    # Like wherdr service install: the running wherdr is stopped first.
+    rm -f /tmp/up
+    if [ -f /tmp/service-fails ]; then echo "systemctl --user daemon-reload failed" >&2; exit 1; fi
+    f="$HOME/.config/systemd/user/wherdr.service"
+    [ ! -f /tmp/darwin ] || f="$HOME/Library/LaunchAgents/dev.wherdr.plist"
+    # The unit takes the login shell's PATH of the moment.
+    mkdir -p "$(dirname "$f")" && echo "PATH=$(cat /tmp/login-path 2>/dev/null)" > "$f"
+    touch /tmp/up
+    echo "  ✓ lingering enabled (loginctl enable-linger)" ;;
 esac
 EOF
+# ldd: glibc when /tmp/glibc exists, musl when /tmp/musl exists, else the system's.
+cat > /stubs/ldd <<'EOF'
+#!/bin/sh
+if [ -f /tmp/glibc ]; then echo "ldd (GNU libc) 2.36"; exit 0; fi
+if [ -f /tmp/musl ]; then echo "musl libc (x86_64)" >&2; exit 1; fi
+exec /usr/bin/ldd "$@"
+EOF
+# The official Node.js 22 build, as nodejs.org serves it: a tarball with a
+# bin/node that answers like Node.js 22, and SHASUMS256.txt.
+case "$(uname -m)" in aarch64|arm64) NARCH=arm64 ;; *) NARCH=x64 ;; esac
+make_node_dist() {
+  name="node-v22.99.0-$1-$NARCH"
+  rm -rf /tmp/nd; mkdir -p "/tmp/nd/$name/bin"
+  printf '#!/bin/sh\ncase "$*" in *versions.node*) echo 22 ;; --version) echo v22.99.0 ;; esac\n' > "/tmp/nd/$name/bin/node"
+  chmod +x "/tmp/nd/$name/bin/node"
+  (cd /tmp/nd && tar -czf "/srv/$name.tar.gz" "$name")
+  sum="$(sha256sum "/srv/$name.tar.gz" | cut -d ' ' -f 1)"
+  [ ! -f /tmp/bad-sum ] || sum=0000000000000000000000000000000000000000000000000000000000000000
+  printf '%s  node-v22.99.0-aix-ppc64.tar.gz\n%s  %s.tar.gz\n%s  %s.tar.xz\n' "$sum" "$sum" "$name" "$sum" "$name" > /srv/SHASUMS256.txt
+}
 cat > /stubs/uname <<'EOF'
 #!/bin/sh
 if [ "${1:-}" = "-s" ] && [ -f /tmp/darwin ]; then echo Darwin; else /bin/uname "$@"; fi
@@ -95,15 +131,22 @@ chmod +x /stubs/* /opt/stub/herdr /opt/stub/brew
 reset() {
   rm -rf /home/alice/.claude /home/alice/wherdr /home/alice/.local /home/alice/.config /home/alice/.cache /home/alice/.herdr-projects \
     /tmp/docker.log /tmp/curl.log /tmp/herdr.log /tmp/brew.log /tmp/up /tmp/pull-fails /tmp/herdr-version /tmp/darwin \
-    /tmp/no-docker-daemon /tmp/container-dir /tmp/plugin-installed /tmp/build-fails /tmp/foreign /tmp/tailnet /stubs/brew
+    /tmp/no-docker-daemon /tmp/container-dir /tmp/plugin-installed /tmp/build-fails /tmp/foreign /tmp/tailnet /stubs/brew \
+    /tmp/glibc /tmp/musl /tmp/bad-sum /tmp/service-fails /tmp/start-fails /tmp/login-path /tmp/nd /srv/SHASUMS256.txt /srv/node-v22*
   [ -f /usr/local/bin/node.off ] && mv /usr/local/bin/node.off /usr/local/bin/node
-  mkdir -p /home/alice/.local/bin && cp /opt/stub/herdr /home/alice/.local/bin/herdr && chown -R alice /home/alice
+  mkdir -p /home/alice/.local/bin && cp /opt/stub/herdr /home/alice/.local/bin/herdr && chown -R "$ME" /home/alice
 }
 no_node() { mv /usr/local/bin/node /usr/local/bin/node.off; }
-# run [env…]: the installer as alice, piped like `curl … | sh`, with no terminal.
-run() {
-  su alice -s /bin/sh -c "cd /home/alice && env -u DISPLAY PATH=/stubs:/usr/bin:/bin WHERDR_SOURCE=https://example.invalid/src $* sh < /opt/install" > /tmp/out 2>&1 < /dev/null
+# as_user <command>: a shell command as alice (or as the current user, sandboxed).
+as_user() {
+  if [ "$SELF" = 1 ]; then sh -c "$1"; else su alice -s /bin/sh -c "$1"; fi
 }
+# run [env…]: the installer as alice, piped like `curl … | sh`, with no
+# terminal and a clean environment.
+run() {
+  as_user "cd /home/alice && env -i HOME=/home/alice LOGNAME=$ME USER=$ME PATH=/stubs:/usr/bin:/bin WHERDR_SOURCE=https://example.invalid/src $* sh < /opt/install" > /tmp/out 2>&1 < /dev/null
+}
+service_installed() { [ -f /home/alice/.config/systemd/user/wherdr.service ] || [ -f /home/alice/Library/LaunchAgents/dev.wherdr.plist ]; }
 has() { grep -q -- "$1" "$2" 2>/dev/null; }
 
 # 1. Herdr.
@@ -121,11 +164,30 @@ run && pass "fresh install exits 0" || { fail "fresh install exits 0"; cat /tmp/
 check "installs the Herdr plugin from main" 'has "herdr plugin install $REPO --ref main --yes" /tmp/herdr.log'
 check "passes the folder, the port and no-browser to the plugin" \
   'has "WHERDR_DIR=/home/alice/wherdr" /tmp/herdr.log && has "WHERDR_PORT=7683" /tmp/herdr.log && has "WHERDR_NO_BROWSER=1" /tmp/herdr.log'
-check "headless Docker: prints the address, an ssh tunnel and Docker phone steps" \
-  'has "wherdr is running" /tmp/out && has "http://localhost:7683" /tmp/out && has "ssh -L 7683:127.0.0.1:7683" /tmp/out && has "tailscale serve --bg" /tmp/out'
+check "headless: prints the address, an ssh tunnel and the plugin's phone steps" \
+  'has "wherdr is running" /tmp/out && has "http://localhost:7683" /tmp/out && has "ssh -L 7683:127.0.0.1:7683" /tmp/out && has "PHONE STEPS FROM THE PLUGIN" /tmp/out'
 check "warns when the Herdr server is not running" 'has "herdr.sock" /tmp/out'
-check "Docker usable: the plugin picks it (no runtime forced)" '! has "WHERDR_RUNTIME" /tmp/herdr.log && has "runs in a container" /tmp/out'
-check "never runs sudo or compose up itself" '! grep -q sudo /tmp/docker.log && ! has "compose up" /tmp/docker.log'
+check "Docker usable: still native, with Node.js passed to the plugin" \
+  'has "WHERDR_MODE=native" /tmp/herdr.log && has "WHERDR_RUNTIME=/usr/local/bin/node" /tmp/herdr.log && ! has "container" /tmp/out'
+check "never runs sudo, nor Docker Compose" '! has sudo /tmp/docker.log && ! has "docker compose" /tmp/docker.log'
+check "installs the login service through the plugin, and says what it is" \
+  'has "plugin script: service install (WHERDR_DIR=/home/alice/wherdr)" /tmp/herdr.log && service_installed && has "systemd --user unit" /tmp/out && has "lingering" /tmp/out && has "Login service installed" /tmp/out'
+echo /new/agent/bin > /tmp/login-path; rm -f /tmp/up
+run; check "second run: the service is installed again, with the PATH of now" \
+  'has "Updating the login service" /tmp/out && [ "$(grep -c "service install" /tmp/herdr.log)" = 2 ] && has "PATH=/new/agent/bin" /home/alice/.config/systemd/user/wherdr.service'
+reset
+run WHERDR_SERVICE=off; check "WHERDR_SERVICE=off: no login service" '! has "service install" /tmp/herdr.log && ! service_installed && has "WHERDR_SERVICE=off" /tmp/out'
+reset; touch /tmp/service-fails
+run && pass "a service failure keeps the install" || fail "a service failure keeps the install"
+check "service failure: wherdr is started again before saying it runs, the retry command is given" \
+  'has "plugin script: start" /tmp/herdr.log && [ -f /tmp/up ] && has "No login service" /tmp/out && has "herdr-plugin.sh service install" /tmp/out && has "wherdr is running" /tmp/out && ! service_installed'
+reset; touch /tmp/service-fails /tmp/start-fails
+run && fail "service failure, wherdr down: exits non-zero" || check "service failure and wherdr cannot start again: says so, never that it runs" \
+  'has "does not answer on port 7683" /tmp/out && ! has "wherdr is running" /tmp/out'
+reset; mkdir -p /home/alice/.config/systemd/user; echo PATH=/old/agent/bin > /home/alice/.config/systemd/user/wherdr.service; chown -R "$ME" /home/alice/.config
+echo /new/agent/bin > /tmp/login-path
+run; check "a service file left by an earlier failure is installed again, not trusted" \
+  'has "plugin script: service install" /tmp/herdr.log && has "PATH=/new/agent/bin" /home/alice/.config/systemd/user/wherdr.service'
 check "names the panel key the plugin bound" 'has "prefix+i" /tmp/out'
 
 # 3. A screen: the plugin opens the setup guide.
@@ -139,12 +201,30 @@ run DISPLAY=:0; check "tailnet address published: shown instead of localhost, wi
 reset
 run DISPLAY=:0 SSH_CONNECTION=1; check "over SSH: no browser even with a display" 'has "WHERDR_NO_BROWSER=1" /tmp/herdr.log'
 
-# 4. Linux without Docker: Node.js is passed to the plugin; neither: clear message.
+# 4. Linux: Node.js is passed to the plugin; without it, the official build is
+# offered (asked first, checksum checked), or install links on musl libc.
 reset; touch /tmp/no-docker-daemon
 run; check "no Docker: the plugin runs with Node.js" 'has "WHERDR_RUNTIME=/usr/local/bin/node" /tmp/herdr.log'
-reset; touch /tmp/no-docker-daemon; no_node
-run && fail "no Node.js, no Docker refused" || check "no Node.js, no Docker: both install links" \
-  'has "nodejs.org" /tmp/out && has "docs.docker.com" /tmp/out && [ ! -f /tmp/herdr.log ]'
+reset; no_node; touch /tmp/glibc; make_node_dist linux
+run && fail "no Node.js, no terminal: stops" || check "no Node.js, no terminal: offers the nodejs.org download, installs nothing" \
+  'has "Download Node.js 22 from nodejs.org" /tmp/out && has "WHERDR_YES=1" /tmp/out && [ ! -d /home/alice/wherdr/node ] && [ ! -f /tmp/herdr.log ]'
+run WHERDR_YES=1; check "no Node.js, WHERDR_YES=1: Node.js 22 into ~/wherdr/node, checksum checked, given to the plugin" \
+  'has "checksum matched" /tmp/out && [ -x /home/alice/wherdr/node/bin/node ] && has "WHERDR_RUNTIME=/home/alice/wherdr/node/bin/node" /tmp/herdr.log && has "your PATH is not changed" /tmp/out'
+# wherdr stopped, run again without WHERDR_YES: the Node.js installed before is found.
+rm -f /tmp/up
+run; check "rerun after its own Node.js install: found in ~/wherdr/node, no question" \
+  '! has "Download Node.js" /tmp/out && has "Runtime: /home/alice/wherdr/node/bin/node" /tmp/out && has "wherdr is running" /tmp/out'
+# The runtime a previous install saved in plugin.env comes first.
+reset; no_node; mkdir -p /home/alice/custom /home/alice/wherdr
+printf '#!/bin/sh\ncase "$*" in *versions.node*) echo 22 ;; --version) echo v22.1.0 ;; esac\n' > /home/alice/custom/node; chmod +x /home/alice/custom/node
+printf 'WHERDR_MODE=native\nWHERDR_RUNTIME=/home/alice/custom/node\n' > /home/alice/wherdr/plugin.env; chown -R "$ME" /home/alice
+run; check "rerun: the runtime saved in plugin.env is used" 'has "WHERDR_RUNTIME=/home/alice/custom/node" /tmp/herdr.log'
+reset; no_node; touch /tmp/glibc /tmp/bad-sum; make_node_dist linux
+run WHERDR_YES=1 && fail "bad Node.js checksum refused" || check "bad Node.js checksum: refused, nothing installed" \
+  'has "does not match its checksum" /tmp/out && [ ! -d /home/alice/wherdr/node ] && [ ! -f /tmp/herdr.log ]'
+reset; no_node; touch /tmp/musl
+run WHERDR_YES=1 && fail "musl without Node.js refused" || check "musl libc without Node.js: install links, no download" \
+  'has "apk add nodejs" /tmp/out && ! has SHASUMS /tmp/curl.log && [ ! -f /tmp/herdr.log ]'
 reset
 run WHERDR_MODE=native; check "WHERDR_MODE=native goes to the plugin with Node.js" \
   'has "WHERDR_MODE=native" /tmp/herdr.log && has "WHERDR_RUNTIME=" /tmp/herdr.log'
@@ -161,18 +241,22 @@ run WHERDR_YES=1; check "macOS without Node.js, WHERDR_YES=1: brew install node,
   'has "brew install node" /tmp/brew.log && has "WHERDR_RUNTIME=/usr/local/bin/node" /tmp/herdr.log'
 reset; touch /tmp/darwin; no_node
 run && fail "macOS without Node.js nor Homebrew refused" || check "macOS without Node.js nor Homebrew: nodejs.org" 'has "nodejs.org" /tmp/out'
+reset; touch /tmp/darwin; no_node; make_node_dist darwin
+run WHERDR_YES=1; check "macOS without Node.js nor Homebrew, WHERDR_YES=1: the darwin build, then a LaunchAgent" \
+  'has "WHERDR_RUNTIME=/home/alice/wherdr/node/bin/node" /tmp/herdr.log && has "LaunchAgent" /tmp/out && [ -f /home/alice/Library/LaunchAgents/dev.wherdr.plist ]'
 
 # 6. wherdr already running: never replaced.
 reset; touch /tmp/up /tmp/plugin-installed
 run; check "plugin wherdr running, no terminal: says so, no update" \
   'has "already runs" /tmp/out && has "answering no" /tmp/out && ! has "herdr plugin install" /tmp/herdr.log && ! has "plugin script: build" /tmp/herdr.log'
-run WHERDR_YES=1; check "plugin wherdr running, WHERDR_YES=1: updates the plugin" 'has "herdr plugin install $REPO" /tmp/herdr.log && has "wherdr updated" /tmp/out'
+run WHERDR_YES=1; check "plugin wherdr running, WHERDR_YES=1: updates the plugin, adds the login service" \
+  'has "herdr plugin install $REPO" /tmp/herdr.log && has "wherdr updated" /tmp/out && has "plugin script: service install" /tmp/herdr.log'
 reset; touch /tmp/up; echo /srv/prod > /tmp/container-dir
-run WHERDR_YES=1; check "Docker wherdr of another folder running: left alone, update command shown" \
-  'has "cd /srv/prod && docker compose pull" /tmp/out && [ ! -f /tmp/herdr.log ] && ! has "compose pull" /tmp/docker.log && ! has "compose up" /tmp/docker.log'
+run WHERDR_YES=1; check "Docker wherdr of another folder running: left alone, update command and the move to native shown" \
+  'has "cd /srv/prod && docker compose pull" /tmp/out && [ ! -f /tmp/herdr.log ] && ! has "compose pull" /tmp/docker.log && ! has "compose up" /tmp/docker.log && has "read-only" /tmp/out && has "moving-from-docker-to-the-native-service" /tmp/out'
 reset; echo /srv/prod > /tmp/container-dir
-run && fail "stopped container of another folder: refused" || check "stopped container of another folder: refused, nothing installed" \
-  'has "managed from /srv/prod" /tmp/out && [ ! -f /tmp/herdr.log ]'
+run && fail "stopped container of another folder: refused" || check "stopped container: refused, nothing installed, the move to native shown" \
+  'has "managed from /srv/prod" /tmp/out && has "moving-from-docker-to-the-native-service" /tmp/out && [ ! -f /tmp/herdr.log ]'
 run WHERDR_MODE=native WHERDR_PORT=7690; check "…but a native wherdr on another port is fine" 'has "WHERDR_PORT=7690" /tmp/herdr.log'
 reset; touch /tmp/up
 run; check "wherdr installed another way: nothing changed" 'has "installed another way" /tmp/out && [ ! -f /tmp/herdr.log ]'
@@ -188,13 +272,13 @@ run WHERDR_PLUGIN=/opt/plugin; check "WHERDR_PLUGIN=folder: linked and built in 
 
 # 8. WHERDR_MODE=docker: Docker Compose by hand, no plugin.
 reset
-mkdir -p /home/alice/.claude; chown alice /home/alice/.claude
+mkdir -p /home/alice/.claude; chown "$ME" /home/alice/.claude
 run WHERDR_MODE=docker && pass "docker: fresh install exits 0" || { fail "docker: fresh install exits 0"; cat /tmp/out; }
 cmp -s /srv/docker-compose.yml /home/alice/wherdr/docker-compose.yml && pass "docker: docker-compose.yml downloaded" || fail "docker: docker-compose.yml downloaded"
 check "docker: .env has PUID, HOME, PORT, no HERDR_BIN" \
-  'has "PUID=$(id -u alice)" /home/alice/wherdr/.env && has "HOST_HOME=/home/alice" /home/alice/wherdr/.env && has "PORT=7683" /home/alice/wherdr/.env && ! has HERDR_BIN /home/alice/wherdr/.env'
+  'has "PUID=$(id -u "$ME")" /home/alice/wherdr/.env && has "HOST_HOME=/home/alice" /home/alice/wherdr/.env && has "PORT=7683" /home/alice/wherdr/.env && ! has HERDR_BIN /home/alice/wherdr/.env'
 check "docker: bind-mount folders created as the user" \
-  '[ -d /home/alice/wherdr/data ] && [ -d /home/alice/.herdr-projects ] && [ "$(stat -c %U /home/alice/.cache/herdr-web)" = alice ]'
+  '[ -d /home/alice/wherdr/data ] && [ -d /home/alice/.herdr-projects ] && [ "$(stat -c %U /home/alice/.cache/herdr-web)" = "$ME" ]'
 check "docker: pulls then starts, no plugin" 'has "compose pull" /tmp/docker.log && has "compose up -d" /tmp/docker.log && [ ! -f /tmp/herdr.log ]'
 check "docker: installs skill with downloaded local helpers, copies only SKILL.md" \
   'has "image skill v1" /home/alice/.claude/skills/wherdr/SKILL.md && has "cp skill-container:/app/skills/wherdr/SKILL.md" /tmp/docker.log && ! has "cp skill-container:/app/bin" /tmp/docker.log'
@@ -209,10 +293,10 @@ check "docker: rerun on a running Compose install refreshes skill" 'has "image s
 echo 'image skill v4' > /srv/SKILL.md
 run WHERDR_YES=1 WHERDR_SKILL=off
 check "docker: installer respects WHERDR_SKILL=off" 'has "image skill v3" /home/alice/.claude/skills/wherdr/SKILL.md'
-su alice -s /bin/sh -c 'sh /home/alice/wherdr/skill-installer/bin/lib/install-skill.sh uninstall' > /tmp/out 2>&1
+as_user 'HOME=/home/alice sh /home/alice/wherdr/skill-installer/bin/lib/install-skill.sh uninstall' > /tmp/out 2>&1
 run WHERDR_YES=1
 check "docker: installer preserves uninstall" '[ ! -e /home/alice/.claude/skills/wherdr ] && [ -f /home/alice/.local/state/wherdr/skill-disabled ]'
-su alice -s /bin/sh -c 'PATH=/stubs:/usr/bin:/bin sh /home/alice/wherdr/skill-installer/bin/install-docker-skill.sh example/wherdr:latest' > /tmp/out 2>&1
+as_user 'HOME=/home/alice PATH=/stubs:/usr/bin:/bin sh /home/alice/wherdr/skill-installer/bin/install-docker-skill.sh example/wherdr:latest' > /tmp/out 2>&1
 check "docker: saved host helper explicitly re-enables the skill" 'has "image skill v4" /home/alice/.claude/skills/wherdr/SKILL.md'
 rm /tmp/container-dir
 echo "# edited" >> /home/alice/wherdr/docker-compose.yml; rm /tmp/up
@@ -233,12 +317,19 @@ run WHERDR_MODE=docker && fail "docker on macOS refused" || check "docker on mac
 
 # 9. Root, bad mode, truncated download.
 reset
-env PATH=/stubs:/usr/bin:/bin sh < /opt/install > /tmp/out 2>&1 && fail "root refused" || check "root refused" 'has "not as root" /tmp/out'
+if [ "$SELF" = 1 ]; then
+  # No root in the sandbox: an `id` that says 0.
+  mkdir -p /tmp/rootbin
+  printf '#!/bin/sh\n[ "$1" = -u ] && { echo 0; exit 0; }; exec /usr/bin/id "$@"\n' > /tmp/rootbin/id; chmod +x /tmp/rootbin/id
+  env -i HOME=/home/alice PATH=/tmp/rootbin:/stubs:/usr/bin:/bin sh < /opt/install > /tmp/out 2>&1 && fail "root refused" || check "root refused" 'has "not as root" /tmp/out'
+else
+  env PATH=/stubs:/usr/bin:/bin sh < /opt/install > /tmp/out 2>&1 && fail "root refused" || check "root refused" 'has "not as root" /tmp/out'
+fi
 reset
 run WHERDR_MODE=podman && fail "bad WHERDR_MODE refused" || check "bad WHERDR_MODE refused" 'has "docker or native" /tmp/out'
 reset
 head -c 3000 /opt/install > /tmp/partial
-su alice -s /bin/sh -c "cd && env PATH=/stubs:/usr/bin:/bin sh < /tmp/partial" > /tmp/out 2>&1 < /dev/null
+as_user "cd /home/alice && env -i HOME=/home/alice PATH=/stubs:/usr/bin:/bin sh < /tmp/partial" > /tmp/out 2>&1 < /dev/null
 [ ! -d /home/alice/wherdr ] && [ ! -f /tmp/herdr.log ] && [ ! -f /tmp/docker.log ] && pass "truncated script does nothing" || fail "truncated script does nothing"
 
 echo

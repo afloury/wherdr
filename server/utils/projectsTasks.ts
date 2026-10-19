@@ -19,7 +19,6 @@
 // Only where Herdr reports a 1.x from 1.2.1 on (shared/projectsPlugin.ts).
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
@@ -27,7 +26,9 @@ import {
   type TaskCommand, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, coordinatorArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, repoKeysFromFile, rowFromTaskFile, taskActions,
 } from '../../shared/projectsTasks'
-import { HERDR_BIN, HERDR_CHILD_ENV, IN_DOCKER, log } from './env'
+import { HERDR_BIN, HERDR_CHILD_ENV, IN_CONTAINER, log } from './env'
+import { USER_PATH_SH, userPath } from '../../bin/lib/userpath.mjs'
+import { NATIVE_MOVE_URL } from './updates'
 import { HerdrError } from './herdr'
 import { type Machine, allMachines, baseMachines } from './machines'
 import { machineFor } from './actions'
@@ -48,50 +49,22 @@ const FILES_READ_MAX = 3000
 export interface RunResult { code: number, stdout: string, stderr: string }
 export type Runner = (m: Machine, launcher: string, args: string[], timeoutMs: number) => Promise<RunResult>
 
-// The value of the first "PATH" key of a JSON file, its escapes decoded
-// (\" \\ \/ \b \f \n \r \t \uXXXX, surrogate pairs as UTF-8), then an `x`
-// so that the shell keeps a trailing newline. Nothing when there is no such
-// string, or when it is cut short, holds a NUL or a bad escape. POSIX awk
-// (busybox, mawk, BSD, gawk), run with LC_ALL=C so that %c writes one byte.
-// No single quote in it: the script puts it between single quotes.
-export const JSON_PATH_AWK = String.raw`{ s = s $0 "\n" } `
-  + String.raw`function b(v) { return sprintf("%c", v) } `
-  + String.raw`function hex(t,   j, x, v) { if (length(t) != 4) return -1; v = 0; for (j = 1; j <= 4; j++) { x = index("0123456789abcdef", tolower(substr(t, j, 1))); if (!x) return -1; v = v * 16 + x - 1 } return v } `
-  + String.raw`END { if (!match(s, /"PATH"[ \t\r\n]*:[ \t\r\n]*"/)) exit; s = substr(s, RSTART + RLENGTH); n = length(s); o = ""; `
-  + String.raw`for (k = 1; k <= n; k++) { c = substr(s, k, 1); `
-  + String.raw`if (c == "\"") { printf "%sx", o; exit } `
-  + String.raw`if (c != "\\") { o = o c; continue } `
-  + String.raw`c = substr(s, ++k, 1); `
-  + String.raw`if (c == "\"" || c == "\\" || c == "/") o = o c; else if (c == "b") o = o "\b"; else if (c == "f") o = o "\f"; else if (c == "n") o = o "\n"; else if (c == "r") o = o "\r"; else if (c == "t") o = o "\t"; `
-  + String.raw`else if (c == "u") { v = hex(substr(s, k + 1, 4)); k += 4; `
-  + String.raw`if (v >= 55296 && v < 56320) { if (substr(s, k + 1, 2) != "\\u") exit; w = hex(substr(s, k + 3, 4)); if (w < 56320 || w >= 57344) exit; k += 6; v = 65536 + (v - 55296) * 1024 + w - 56320 } `
-  + String.raw`if (v <= 0 || (v >= 56320 && v < 57344)) exit; `
-  + String.raw`if (v < 128) o = o b(v); else if (v < 2048) o = o b(192 + int(v / 64)) b(128 + v % 64); `
-  + String.raw`else if (v < 65536) o = o b(224 + int(v / 4096)) b(128 + int(v / 64) % 64) b(128 + v % 64); `
-  + String.raw`else o = o b(240 + int(v / 262144)) b(128 + int(v / 4096) % 64) b(128 + int(v / 64) % 64) b(128 + v % 64) } `
-  + String.raw`else exit } }`
-
-// The PATH a user's own shell has, for a non-interactive SSH session that only
-// gets sshd's default one: herdr-projects looks agents up there (`claude
-// --version`), and one installed in a user folder would be "not installed".
-// First the PATH herdr-projects recorded from a login shell on that machine
-// (`env.json` in its data folder, key PATH), then the session's own. Without
-// that file: the usual user folders that exist, first in that order. Either
-// way none of those folders is left out. Fixed text: nothing of the request
-// is in it, and the file's value is only ever assigned, never run.
-export const USER_PATH_DIRS = ['$HOME/.local/bin', '$HOME/.bun/bin', '$HOME/.cargo/bin', '$HOME/.npm-global/bin', '/opt/homebrew/bin', '/usr/local/bin']
-export const USER_PATH_SCRIPT = 'd="${HERDR_PROJECTS_DATA_DIR:-${HERDR_PROJECTS_HOME:-$HOME/.herdr-projects}/data}"; p=""; '
-  + `if [ -r "$d/env.json" ]; then p=$(LC_ALL=C awk '${JSON_PATH_AWK}' "$d/env.json" 2>/dev/null); p=\${p%x}; fi; `
-  // Folders it lacks: after it with that file, else before, first one leading.
-  + `u=""; for x in ${USER_PATH_DIRS.map(x => `"${x}"`).join(' ')}; do `
-  + '[ -d "$x" ] || continue; case ":$p:$PATH:" in *":$x:"*) continue ;; esac; u="${u:+$u:}$x"; done; '
-  + 'if [ -n "$p" ]; then PATH="$p${PATH:+:$PATH}${u:+:$u}"; elif [ -n "$u" ]; then PATH="$u${PATH:+:$PATH}"; fi; export PATH; '
-
 // On an SSH machine: its own Herdr session, by name, as herdr-projects finds it
-// there (never the socket wherdr forwards here), with the user's PATH. `$1`
-// herdr binary, `$2` session ('' or 'default': the default one), then the command.
-export const REMOTE_TASKS_SCRIPT = USER_PATH_SCRIPT + 'export HERDR_BIN_PATH="$1"; unset HERDR_SOCKET_PATH; '
+// there (never the socket wherdr forwards here). `$1` herdr binary, `$2` session
+// ('' or 'default': the default one), then the command.
+// The remote shell is not a login shell: its PATH is completed first, as on
+// this machine (bin/lib/userpath.mjs), so herdr-projects finds the agents.
+export const REMOTE_TASKS_SCRIPT = USER_PATH_SH + 'export HERDR_BIN_PATH="$1"; unset HERDR_SOCKET_PATH; '
   + 'if [ -n "$2" ] && [ "$2" != default ]; then export HERDR_SESSION="$2"; else unset HERDR_SESSION; fi; shift 2; exec "$@"'
+
+// The environment of herdr-projects on this machine. Run directly (not as a
+// Herdr plugin command), it does not widen its PATH by itself: it gets the
+// user's (bin/lib/userpath.mjs), read again each time since herdr-projects'
+// record of it may be newer, so it finds the agents in user folders.
+export function launcherEnv(home: string, sock?: string | null, env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const PATH = userPath({ env: { PATH: HERDR_CHILD_ENV.PATH, HERDR_PROJECTS_DATA_DIR: env.HERDR_PROJECTS_DATA_DIR, HERDR_PROJECTS_HOME: env.HERDR_PROJECTS_HOME }, home })
+  return { ...HERDR_CHILD_ENV, PATH, HERDR_BIN_PATH: HERDR_BIN, NO_COLOR: '1', ...(sock ? { HERDR_SOCKET_PATH: sock } : {}) }
+}
 
 // The plugin's launcher with argv only: no shell on this machine, and
 // positional parameters of a fixed script on a remote one.
@@ -105,7 +78,7 @@ const runLauncher: Runner = async (m, launcher, args, timeoutMs) => {
   const sock = m.sock()
   return new Promise(resolve => execFile('sh', [launcher, ...args], {
     cwd: m.home,
-    env: { ...HERDR_CHILD_ENV, HERDR_BIN_PATH: HERDR_BIN, NO_COLOR: '1', ...(sock ? { HERDR_SOCKET_PATH: sock } : {}) },
+    env: launcherEnv(m.home, sock),
     timeout: timeoutMs, maxBuffer: OUTPUT_MAX,
   }, (err, stdout, stderr) => resolve({
     code: err ? (typeof err.code === 'number' ? err.code : 1) : 0,
@@ -118,7 +91,7 @@ let runner: Runner = runLauncher
 export function setRunner(r: Runner | null) { runner = r || runLauncher }
 // wherdr in a container (Docker, or Podman's /run/.containerenv), or told to
 // read the boards from their files (WHERDR_TASKS_FROM_FILES=1). Tests set it.
-const CONTAINER = IN_DOCKER || existsSync('/run/.containerenv') || process.env.WHERDR_TASKS_FROM_FILES === '1'
+const CONTAINER = IN_CONTAINER || process.env.WHERDR_TASKS_FROM_FILES === '1'
 let inContainer = CONTAINER
 export function setInContainer(v: boolean | null) { inContainer = v ?? CONTAINER }
 
@@ -327,7 +300,7 @@ async function machineTasks(m: Machine, fresh = false): Promise<MachineTasks | n
     // Herdr did not answer: say so, with the last tasks read there.
     return { machine: m.key, status: 'error', version: '', tasks: [], ...(last ? shown(m.key, last) : {}), error: (e as Error).message, ...(last?.tasks.length ? { stale: true } : {}) }
   }
-  const base = { machine: m.key, status: info.status, version: info.version || '', ...(readsFiles(m) ? { readOnly: true } : {}) }
+  const base = { machine: m.key, status: info.status, version: info.version || '', ...(readsFiles(m) ? { readOnly: true, moveUrl: NATIVE_MOVE_URL } : {}) }
   if (info.status !== 'ready') return { ...base, tasks: [] }
   if (last && Date.now() - last.at < REUSE_MS) return { ...base, ...shown(m.key, last) }
   const deadline = new Promise<null>(resolve => setTimeout(() => resolve(null), READ_DEADLINE_MS).unref?.())
