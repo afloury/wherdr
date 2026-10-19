@@ -138,7 +138,7 @@ const FR: Record<string, string> = {
   'This terminal is already open elsewhere.': 'Ce terminal est déjà ouvert ailleurs.',
   'Take control': 'Prendre la main', 'Another client took control.': 'Un autre client a pris la main.',
   'Take back control': 'Reprendre', 'Terminal unavailable': 'Terminal indisponible',
-  'Retry': 'Réessayer', 'No conversation for this agent yet.': 'Pas encore de conversation pour cet agent.',
+  'Retry': 'Réessayer', 'Try again': 'Réessayer', 'No conversation for this agent yet.': 'Pas encore de conversation pour cet agent.',
   'Conversation unavailable for this agent.': 'Conversation indisponible pour cet agent.',
   'Conversation not up to date — reconnecting…': 'Conversation non à jour — reconnexion…',
   'View terminal': 'Voir le terminal', 'Interactive menu': 'Menu interactif', 'Search…': 'Rechercher…',

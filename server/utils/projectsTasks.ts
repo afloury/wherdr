@@ -23,7 +23,7 @@ import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
   type MachineTasks, type TaskDetails, type TaskRow, type TasksBoard,
-  type TaskCommand, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, coordinatorArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
+  type TaskCommand, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, repoKeysFromFile, rowFromTaskFile, taskActions,
 } from '../../shared/projectsTasks'
 import { HERDR_BIN, HERDR_CHILD_ENV, IN_CONTAINER, log } from './env'
@@ -442,16 +442,29 @@ export async function addTask(machine: unknown, b: { title?: unknown, descriptio
 // The pane a coordinator talks in, as herdr-projects keeps it: asked in the
 // board's own session (where `coordinator tell` starts it), so its pane id is
 // that session's, and only a pane Herdr shows there now. `pane: null`: not
-// started, starting, or gone (its first message starts it). From a container:
-// not asked (nothing runs there), so no pane.
-export async function coordinatorPane(machine: unknown, to: unknown): Promise<{ pane: string | null, state: string }> {
+// started, starting, or gone (its first message starts it). `error`: why its
+// last start failed (it waits for Try again, `restartCoordinator`). From a
+// container: not asked (nothing runs there), so no pane.
+export async function coordinatorPane(machine: unknown, to: unknown): Promise<CoordinatorStatus> {
   const m = boardOf(machine)
   const target = cleanTarget(to)
   if (!target) throw new HerdrError('bad_target', 'Invalid coordinator')
-  if (readsFiles(m)) return { pane: null, state: 'unknown' }
+  if (readsFiles(m)) return { pane: null, state: 'unknown', error: '', name: '' }
   const st = parseCoordinatorStatus(await command(m, coordinatorStatusArgs(target), LIST_TIMEOUT_MS))
   const pane = st.pane ? joinId(m.key, st.pane) : null
-  return { pane: pane && findPane(pane) ? pane : null, state: st.state }
+  return { ...st, pane: pane && findPane(pane) ? pane : null }
+}
+
+// Try again after a failed start: `coordinator restart` clears the error
+// herdr-projects kept and starts it, with the words still waiting.
+export async function restartCoordinator(machine: unknown, to: unknown): Promise<{ ok: true, msg: string }> {
+  const m = boardOf(machine)
+  const target = cleanTarget(to)
+  if (!target) throw new HerdrError('bad_target', 'Invalid coordinator')
+  const out = await command(m, coordinatorRestartArgs(target))
+  forget(m)
+  log(`herdr-projects coordinator${target.kind === 'main' ? '' : ` (${target.kind === 'project' ? target.repo : 'machine'})`} restart${m.local ? '' : ` on ${m.label}`}`)
+  return { ok: true, msg: firstLine(out) }
 }
 
 export async function tellCoordinator(machine: unknown, text: unknown, opts: { to?: unknown, delegate?: unknown } = {}): Promise<{ ok: true, msg: string }> {

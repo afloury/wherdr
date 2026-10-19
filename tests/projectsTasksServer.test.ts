@@ -56,7 +56,7 @@ let maxActive = 0
 let delay = 0
 let listReply: { code: number, stdout: string, stderr: string } | null = null
 // `coordinator [--machine | --project=R] status --json`, by its flag ('' for the Coordinator).
-let coordStatus: Record<string, { state: string, pane: string }> = {}
+let coordStatus: Record<string, { state: string, pane: string, error?: string }> = {}
 let clock = Date.now()
 const later = (ms = 60_000) => { clock += ms; vi.setSystemTime(clock) }
 beforeEach(() => {
@@ -548,11 +548,11 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     panes.push({ id: 'w1:p1', machine: '', name: 'sw-coordinator-demo' }, { id: 'w2:p1', machine: '', name: 'sw-coordinator-demo-2' }, { id: 'w3:p1', machine: '', name: 'sw-coordinator' })
     // The same pane id and name in the machine's named session: not the board's.
     panes.unshift({ id: 'abcd1234~w2:p1', machine: 'abcd1234', name: 'sw-coordinator-demo' })
-    expect(await T.coordinatorPane('', { kind: 'project', repo: 'demo' })).toEqual({ pane: 'w2:p1', state: 'idle' })
-    expect(await T.coordinatorPane('', { kind: 'project', repo: 'demo-2' })).toEqual({ pane: 'w1:p1', state: 'working' })
-    expect(await T.coordinatorPane('', { kind: 'main' })).toEqual({ pane: 'w3:p1', state: 'blocked' })
+    expect(await T.coordinatorPane('', { kind: 'project', repo: 'demo' })).toEqual({ pane: 'w2:p1', state: 'idle', error: '', name: 'x' })
+    expect(await T.coordinatorPane('', { kind: 'project', repo: 'demo-2' })).toEqual({ pane: 'w1:p1', state: 'working', error: '', name: 'x' })
+    expect(await T.coordinatorPane('', { kind: 'main' })).toEqual({ pane: 'w3:p1', state: 'blocked', error: '', name: 'x' })
     // Not started: no pane, even with one named like it.
-    expect(await T.coordinatorPane('', { kind: 'machine' })).toEqual({ pane: null, state: 'none' })
+    expect(await T.coordinatorPane('', { kind: 'machine' })).toEqual({ pane: null, state: 'none', error: '', name: 'x' })
     // Exited, or a pane Herdr does not show (any more): none either.
     coordStatus = { '--project=demo': { state: 'exited', pane: 'w2:p1' }, '--project=web': { state: 'idle', pane: 'w9:p1' } }
     expect((await T.coordinatorPane('', { kind: 'project', repo: 'demo' })).pane).toBeNull()
@@ -567,7 +567,24 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     // From a container: nothing asked, no pane.
     calls = []
     T.setInContainer(true)
-    expect(await T.coordinatorPane('', { kind: 'main' })).toEqual({ pane: null, state: 'unknown' })
+    expect(await T.coordinatorPane('', { kind: 'main' })).toEqual({ pane: null, state: 'unknown', error: '', name: '' })
+    expect(calls).toEqual([])
+  })
+
+  it('a coordinator whose start failed: why, and Try again (coordinator restart)', async () => {
+    // Only a shell pane opened: herdr-projects gave up, its words still waiting ("starting").
+    coordStatus = { '': { state: 'starting', pane: 'w3:p1', error: '"claude" is not installed here, so it cannot be the Coordinator.' } }
+    panes.push({ id: 'w3:p1', machine: '' })
+    expect(await T.coordinatorPane('', { kind: 'main' })).toEqual({ pane: null, state: 'starting', error: '"claude" is not installed here, so it cannot be the Coordinator.', name: 'x' })
+    calls = []
+    await T.restartCoordinator('', { kind: 'main' })
+    await T.restartCoordinator('', { kind: 'machine' })
+    await T.restartCoordinator('', { kind: 'project', repo: 'web' })
+    expect(calls).toEqual([['coordinator', '--', 'restart'], ['coordinator', '--machine', '--', 'restart'], ['coordinator', '--project=web', '--', 'restart']])
+    calls = []
+    await expect(T.restartCoordinator('', { kind: 'project', repo: '--all' })).rejects.toThrow(/Invalid coordinator/)
+    T.setInContainer(true)
+    await expect(T.restartCoordinator('', { kind: 'main' })).rejects.toThrow(/container/)
     expect(calls).toEqual([])
   })
 

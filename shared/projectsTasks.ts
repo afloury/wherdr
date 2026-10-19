@@ -376,18 +376,57 @@ export function coordinatorArgs(to: CoordinatorTarget, words: string, delegate: 
 export function coordinatorStatusArgs(to: CoordinatorTarget): string[] {
   return ['coordinator', ...(to.kind === 'machine' ? ['--machine'] : to.kind === 'project' ? [`--project=${to.repo}`] : []), '--json', 'status']
 }
+// `coordinator [--machine | --project=REPO] -- restart`: start its program
+// again (the Board's Try again after a failed start). herdr-projects clears
+// the error it kept, and the words still waiting go in once it runs.
+export function coordinatorRestartArgs(to: CoordinatorTarget): string[] {
+  return ['coordinator', ...(to.kind === 'machine' ? ['--machine'] : to.kind === 'project' ? [`--project=${to.repo}`] : []), '--', 'restart']
+}
 // Its agent answers in Herdr: working, blocked or idle. Anything else (none,
 // starting, exited) has no pane to talk to yet.
 const LIVE_COORDINATOR = ['working', 'blocked', 'idle']
 const PANE_RE = /^w[0-9a-z]+:p[0-9a-z]+$/i
-export function parseCoordinatorStatus(text: string): { state: string, pane: string | null } {
+// `error`: why its last start failed, as herdr-projects wrote it down (pump.rs);
+// it is not tried again by itself, and its state may still say "starting".
+// `name`: how herdr-projects names it ("Coordinator", "devbox coordinator").
+export interface CoordinatorStatus { state: string, pane: string | null, error: string, name: string }
+export function parseCoordinatorStatus(text: string): CoordinatorStatus {
   let v: unknown
   try { v = JSON.parse(text) } catch { throw new Error('herdr-projects coordinator: not JSON') }
   const o = obj(v)
   if (!o) throw new Error('herdr-projects coordinator: unexpected reply')
   const state = str(o.state, 20)
   const pane = str(o.pane, 40)
-  return { state, pane: LIVE_COORDINATOR.includes(state) && PANE_RE.test(pane) ? pane : null }
+  return {
+    state,
+    pane: LIVE_COORDINATOR.includes(state) && PANE_RE.test(pane) ? pane : null,
+    error: str(o.error, 400).replace(/\s+/g, ' ').trim(),
+    name: str(o.name, 80).trim(),
+  }
+}
+
+// What the Board's panel shows for a coordinator: its conversation (`live`),
+// why it could not start (`failed`), that it is on its way (`starting`), or
+// the field whose first message starts it (`idle`). A failed start wins over
+// "starting": herdr-projects keeps saying "starting" while the words wait,
+// but it does not try again until it is asked to.
+export type CoordinatorPhase = 'live' | 'failed' | 'starting' | 'idle'
+export function coordinatorPhase(s: { pane: string | null, state: string, error: string }): CoordinatorPhase {
+  if (s.pane) return 'live'
+  if (s.error) return 'failed'
+  if (s.state === 'starting') return 'starting'
+  return 'idle'
+}
+
+// What a coordinator is named after: nothing for the Coordinator, the
+// machine for the machine coordinator (as herdr-projects names it, else
+// wherdr's label for it), the repo for a project coordinator. The UI says
+// "Coordinator", "devbox coordinator", "web coordinator": each named once.
+export function coordinatorSubject(to: CoordinatorTarget, machineLabel: string, statusName = ''): string {
+  if (to.kind === 'project') return to.repo
+  if (to.kind === 'main') return ''
+  const m = /^(.+) coordinator$/i.exec(statusName.trim())
+  return m?.[1]?.trim() || machineLabel
 }
 
 // ---------------------------------------------------------------- by repo

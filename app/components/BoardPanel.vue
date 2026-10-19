@@ -13,13 +13,16 @@
 // status`, asked by the server), never one guessed from a name. One not
 // started yet gets a field whose first message starts it (`coordinator tell`);
 // the panel asks again until its pane shows up, then turns into its
-// conversation. Everything asked for a coordinator belongs to that target: a
-// reply that comes back once another one is shown is dropped.
+// conversation. One whose start failed says why, as herdr-projects wrote it
+// down, with Try again (`coordinator restart`) once it is fixed: it never
+// says "starting" while herdr-projects has given up. Everything asked for a
+// coordinator belongs to that target: a reply that comes back once another
+// one is shown is dropped.
 //
 // Above a task's conversation: its title, its description (folded after a few
 // lines), the Watcher's progress, and the agent's closing note and research
 // report once there is one (`details`, read again as the task moves on).
-import { type CoordinatorTarget, type TaskDetails, type TaskRow, TELL_MAX, taskKey } from '#shared/projectsTasks'
+import { type CoordinatorStatus, type CoordinatorTarget, type TaskDetails, type TaskRow, TELL_MAX, coordinatorPhase, coordinatorSubject, taskKey } from '#shared/projectsTasks'
 
 export type PanelTarget =
   | { machine: string, kind: 'task', id: string }
@@ -75,6 +78,10 @@ const progress = computed(() => {
 let gen = 0
 const coordPane = ref<string | null>(null)
 const coordLoaded = ref(false)
+// What herdr-projects said of it last: its state, why its start failed, its name.
+const coordState = ref('')
+const coordError = ref('')
+const coordStatusName = ref('')
 let poll: ReturnType<typeof setTimeout> | undefined
 let tries = 0
 // `look` numbers each lookup: only the latest one's answer counts. Two lookups
@@ -89,13 +96,19 @@ async function lookCoordinator(g: number) {
   const latest = () => g === gen && n === look
   try {
     const q = new URLSearchParams({ machine: t.machine, kind: t.to.kind, ...(t.to.kind === 'project' ? { repo: t.to.repo } : {}) })
-    const r = await api<{ pane: string | null, state: string }>(`/api/tasks/coordinator?${q}`)
+    const r = await api<Partial<CoordinatorStatus>>(`/api/tasks/coordinator?${q}`)
     if (!latest()) return
-    coordPane.value = r.pane
+    coordPane.value = r.pane ?? null
+    coordState.value = r.state ?? ''
+    coordError.value = r.error ?? ''
+    // Its name stays what it was when a reply leaves it out.
+    if (r.name) coordStatusName.value = r.name
     // Starting (or just told to): asked again until it has a pane. A pane Herdr
     // does not show (yet, or any more): asked again too, for the one it has now.
+    // A failed start is not tried again by itself: nothing to wait for.
+    const phase = coordinatorPhase({ pane: coordPane.value, state: coordState.value, error: coordError.value })
     const unseen = Boolean(r.pane) && herdrState.value.ok && !herdrState.value.panes.some(p => p.id === r.pane)
-    if ((unseen || (!r.pane && (r.state === 'starting' || sent.value))) && ++tries <= 40) poll = setTimeout(() => lookCoordinator(g), 3000)
+    if ((unseen || phase === 'starting' || (sent.value && phase === 'idle')) && ++tries <= 40) poll = setTimeout(() => lookCoordinator(g), 3000)
   } catch {
     if (latest() && sent.value && ++tries <= 40) poll = setTimeout(() => lookCoordinator(g), 3000)
   } finally {
@@ -134,13 +147,20 @@ const gone = computed(() => props.target.kind === 'task' && Boolean(taskPane.val
 watch(gone, (g) => { if (g) emit('noAgent') })
 
 // ------------------------------------------------------------ who it is
+// Each named once: "Coordinator", "devbox coordinator", "web coordinator".
+const coordSubject = computed(() => (props.target.kind === 'coordinator' ? coordinatorSubject(props.target.to, props.machineLabel, coordStatusName.value) : ''))
 const coordName = computed(() => {
-  const t = props.target
-  if (t.kind !== 'coordinator') return ''
-  if (t.to.kind === 'project') return tl(`${t.to.repo} coordinator`, `Coordinateur ${t.to.repo}`)
-  if (t.to.kind === 'machine') return tl('Machine coordinator', 'Coordinateur de la machine')
-  return tl('Coordinator', 'Coordinateur')
+  if (props.target.kind !== 'coordinator') return ''
+  const s = coordSubject.value
+  return s ? tl(`${s} coordinator`, `Coordinateur ${s}`) : tl('Coordinator', 'Coordinateur')
 })
+// "The Coordinator", "the web coordinator", in a sentence.
+const coordThe = computed(() => {
+  const s = coordSubject.value
+  return s ? tl(`The ${s} coordinator`, `Le coordinateur ${s}`) : tl('The Coordinator', 'Le Coordinateur')
+})
+// Not shown (its conversation is): what the panel says instead.
+const coordPhase = computed(() => coordinatorPhase({ pane: coordPane.value, state: coordState.value, error: coordError.value }))
 const repo = computed(() => {
   const t = props.target
   if (t.kind === 'task') return props.task?.repo || t.id.split('/')[0] || ''
@@ -155,6 +175,7 @@ const taskLabel = computed(() => {
 const first = ref('')
 const starting = ref(false)
 const sent = ref(false)
+const retrying = ref(false)
 watch(() => JSON.stringify(props.target), () => {
   gen++
   clearTimeout(poll)
@@ -163,8 +184,12 @@ watch(() => JSON.stringify(props.target), () => {
   first.value = ''
   sent.value = false
   starting.value = false
+  retrying.value = false
   coordPane.value = null
   coordLoaded.value = false
+  coordState.value = ''
+  coordError.value = ''
+  coordStatusName.value = ''
   lookCoordinator(gen)
 }, { immediate: true })
 async function start() {
@@ -180,10 +205,32 @@ async function start() {
     if (g !== gen) return
     first.value = ''
     sent.value = true
+    // herdr-projects queued the words and cleared any earlier failure.
+    coordState.value = 'starting'
+    coordError.value = ''
     tries = 0
     lookCoordinator(g)
   } catch (e) { toast((e as Error).message, true) }
   finally { if (g === gen) starting.value = false }
+}
+// Try again, once what stopped it is fixed: started again with the words
+// still waiting (`coordinator restart`), nothing typed again.
+async function retry() {
+  const t = props.target
+  if (t.kind !== 'coordinator' || retrying.value || !props.reachable) return
+  const g = gen
+  retrying.value = true
+  try {
+    await api('/api/tasks/coordinator', { machine: t.machine, to: t.to, restart: true })
+    haptic()
+    if (g !== gen) return
+    sent.value = true
+    coordState.value = 'starting'
+    coordError.value = ''
+    tries = 0
+    lookCoordinator(g)
+  } catch (e) { if (g === gen) toast((e as Error).message, true) }
+  finally { if (g === gen) retrying.value = false }
 }
 
 // Escape closes it on a computer, unless a sheet or a field has it.
@@ -264,9 +311,20 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       <p v-else-if="target.kind === 'coordinator' && !coordLoaded && !readOnly" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
       <div v-else-if="target.kind === 'coordinator'" class="board-panel-start">
         <p v-if="readOnly" class="board-note">{{ tl('This coordinator has not started. wherdr runs in a container here: start it from Herdr on the host, or move wherdr to the native service to start it from here.', 'Ce coordinateur n’a pas démarré. wherdr tourne ici dans un conteneur : lance-le depuis Herdr sur l’hôte, ou passe wherdr en service natif pour le lancer d’ici.') }}</p>
-        <template v-else-if="sent">
-          <p class="board-empty">{{ tl(`Sent. The ${coordName.replace(/ coordinator$/, '')} coordinator is starting: its conversation opens here.`, `Envoyé. Le ${coordName.toLowerCase()} démarre : sa conversation s’ouvre ici.`) }}</p>
-        </template>
+        <section v-else-if="coordPhase === 'failed'" class="board-panel-failed" role="alert" :aria-label="tl('Could not start', 'Démarrage impossible')">
+          <h4><UIcon name="i-lucide-octagon-alert" />{{ tl('Could not start', 'Démarrage impossible') }}</h4>
+          <p class="board-panel-failed-what">{{ tl(`${coordThe} could not start on ${machineLabel}.`, `${coordThe} n’a pas pu démarrer sur ${machineLabel}.`) }}</p>
+          <p class="board-panel-failed-why">{{ coordError }}</p>
+          <p class="board-panel-failed-next">{{ tl('Fix this on the machine, then try again. Your message is still waiting: it goes in once it runs.', 'Corrige cela sur la machine, puis réessaie. Ton message attend toujours : il part dès qu’il tourne.') }}</p>
+          <p v-if="!reachable" class="board-panel-away" role="status">
+            {{ tl(`${machineLabel} cannot be reached now.`, `${machineLabel} est injoignable pour l’instant.`) }}
+          </p>
+          <UButton color="neutral" variant="outline" icon="i-lucide-rotate-cw" :loading="retrying" :disabled="offlineView || !reachable" @click="retry">{{ t('Try again') }}</UButton>
+        </section>
+        <p v-else-if="coordPhase === 'live'" class="board-empty">{{ t('Loading…') }}</p>
+        <p v-else-if="coordPhase === 'starting'" class="board-empty board-panel-starting" role="status">
+          {{ sent ? tl(`Sent. ${coordThe} is starting: its conversation opens here.`, `Envoyé. ${coordThe} démarre : sa conversation s’ouvre ici.`) : tl(`${coordThe} is starting: its conversation opens here.`, `${coordThe} démarre : sa conversation s’ouvre ici.`) }}
+        </p>
         <form v-else class="board-panel-first" @submit.prevent="start">
           <label for="board-panel-first">{{ tl('Not started yet: your first message starts it.', 'Pas encore démarré : ton premier message le lance.') }}</label>
           <p v-if="!reachable" class="board-panel-away" role="status">

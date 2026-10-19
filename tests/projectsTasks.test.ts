@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  NOTIFY_SETUP, NO_ACTIONS, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, coordinatorStatusArgs, detailsFromTaskFile, parseCoordinatorStatus, groupByRepo, groupCounts, groupOf,
+  NOTIFY_SETUP, NO_ACTIONS, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, coordinatorPhase, coordinatorRestartArgs, coordinatorStatusArgs, coordinatorSubject, detailsFromTaskFile, parseCoordinatorStatus, groupByRepo, groupCounts, groupOf,
   rowFromTaskFile, stateFromTaskFile, isTaskId, parseReview, parseRepoKey, parseTaskDetails, parseTaskList, prNumber, repoKeysFromFile, sortTasks, taskActions, taskKey, taskNotice,
 } from '../shared/projectsTasks'
 
@@ -258,12 +258,52 @@ describe('commands, by repo, and push', () => {
     expect(coordinatorStatusArgs({ kind: 'machine' })).toEqual(['coordinator', '--machine', '--json', 'status'])
     expect(coordinatorStatusArgs({ kind: 'project', repo: 'demo-2' })).toEqual(['coordinator', '--project=demo-2', '--json', 'status'])
     const st = (o: Record<string, unknown>) => parseCoordinatorStatus(JSON.stringify({ name: 'demo coordinator', agent: 'claude', ...o }))
-    for (const state of ['working', 'blocked', 'idle']) expect(st({ state, pane: 'w4:p2' })).toEqual({ state, pane: 'w4:p2' })
+    for (const state of ['working', 'blocked', 'idle']) expect(st({ state, pane: 'w4:p2' })).toEqual({ state, pane: 'w4:p2', error: '', name: 'demo coordinator' })
     // No agent answering in it: nothing to talk to.
     for (const state of ['none', 'starting', 'exited']) expect(st({ state, pane: 'w4:p2' }).pane).toBeNull()
     expect(st({ state: 'idle', pane: '' }).pane).toBeNull()
     expect(st({ state: 'idle', pane: '../w1:p1' }).pane).toBeNull()
     expect(() => parseCoordinatorStatus('sent to the Coordinator')).toThrow(/not JSON/)
+  })
+
+  it('a failed start: why, as herdr-projects wrote it down, on one line', () => {
+    // herdr-projects 1.2.1 after a start that failed: still "starting" (its words wait), never tried again by itself.
+    const failed = parseCoordinatorStatus(JSON.stringify({ name: 'Coordinator', state: 'starting', agent: 'claude', pane: 'w1:p3', queued: 1, error: '"claude" is not installed here, so it cannot be the Coordinator.' }))
+    expect(failed).toEqual({ state: 'starting', pane: null, error: '"claude" is not installed here, so it cannot be the Coordinator.', name: 'Coordinator' })
+    expect(parseCoordinatorStatus(JSON.stringify({ state: 'none', error: '  it could not\n be started  ' })).error).toBe('it could not be started')
+    expect(parseCoordinatorStatus(JSON.stringify({ state: 'none', error: 42 })).error).toBe('')
+    expect(parseCoordinatorStatus(JSON.stringify({ state: 'none', error: 'x'.repeat(1000) })).error).toHaveLength(400)
+    // Older replies, without an error or a name.
+    expect(parseCoordinatorStatus(JSON.stringify({ state: 'none', pane: '' }))).toEqual({ state: 'none', pane: null, error: '', name: '' })
+  })
+
+  it('what the panel shows for a coordinator: its conversation, its failure, its start, or the first-message field', () => {
+    const phase = (state: string, pane: string | null = null, error = '') => coordinatorPhase({ state, pane, error })
+    // Running, with a pane: its conversation, whatever an earlier error said (a message that could not be typed).
+    expect(phase('idle', 'w1:p1')).toBe('live')
+    expect(phase('working', 'w1:p1', 'the message could not be typed')).toBe('live')
+    // Given up: the error, never "starting", though herdr-projects still says so while the words wait.
+    expect(phase('starting', null, '"claude" is not installed here, so it cannot be the Coordinator.')).toBe('failed')
+    for (const state of ['none', 'exited', 'idle', '']) expect(phase(state, null, 'it could not be started')).toBe('failed')
+    // On its way.
+    expect(phase('starting')).toBe('starting')
+    // Not running and nothing wrong: its first message starts it.
+    for (const state of ['none', 'exited', 'unknown', '']) expect(phase(state)).toBe('idle')
+  })
+
+  it('names each coordinator once: Coordinator, <machine> coordinator, <repo> coordinator', () => {
+    expect(coordinatorSubject({ kind: 'main' }, 'devbox', 'Coordinator')).toBe('')
+    expect(coordinatorSubject({ kind: 'project', repo: 'wherdr' }, 'devbox', 'wherdr coordinator')).toBe('wherdr')
+    // The machine coordinator, as herdr-projects names it (its host name), else wherdr's label.
+    expect(coordinatorSubject({ kind: 'machine' }, 'Local', 'devbox coordinator')).toBe('devbox')
+    expect(coordinatorSubject({ kind: 'machine' }, 'Local', '')).toBe('Local')
+    expect(coordinatorSubject({ kind: 'machine' }, 'Local', 'Coordinator')).toBe('Local')
+  })
+
+  it('Try again: the coordinator started again, nothing said (coordinator restart)', () => {
+    expect(coordinatorRestartArgs({ kind: 'main' })).toEqual(['coordinator', '--', 'restart'])
+    expect(coordinatorRestartArgs({ kind: 'machine' })).toEqual(['coordinator', '--machine', '--', 'restart'])
+    expect(coordinatorRestartArgs({ kind: 'project', repo: 'web' })).toEqual(['coordinator', '--project=web', '--', 'restart'])
   })
 
   it('groups a machine\'s tasks by repo, repos by name, each as the board orders it', () => {
