@@ -133,17 +133,19 @@ export function funnelExposes(port, serveJson, anyRoute = false) {
 }
 
 // Tailscale's state for the network check: { installed, readable, running,
-// selfIps, peerIps, funnel }. funnel: true / false only from a valid reading
-// (Funnel routes to wherdr's port, or none; or Tailscale idle), null when
-// anything could not be read. CLI, or Tailscale's socket (Docker).
+// selfIps, peerIps, funnel, funnelAny }. funnel: true / false only from a
+// valid reading (Funnel routes to wherdr's port, or none; or Tailscale idle),
+// null when anything could not be read. funnelAny: the same for any Funnel
+// route at all (wherdr in Docker cannot always tell the host's port). CLI, or
+// Tailscale's socket (Docker).
 export async function tailnetFacts(port, bin = tailscaleBin(), socket = bin ? null : tailscaledSocket(), anyRoute = false) {
-  if (!bin && !socket) return { installed: false, readable: true, running: false, selfIps: [], peerIps: [], funnel: false }
+  if (!bin && !socket) return { installed: false, readable: true, running: false, selfIps: [], peerIps: [], funnel: false, funnelAny: false }
   const run = args => exec(bin, args, { encoding: 'utf8', timeout: 8000 }).then(r => r.stdout, () => '')
   const { state, ...peers } = tailnetPeers(bin ? await run(['status', '--json']) : await localApi(socket, 'status'))
-  if (!peers.readable) return { installed: true, ...peers, funnel: null }
-  if (IDLE_STATES.has(state)) return { installed: true, ...peers, funnel: false }
+  if (!peers.readable) return { installed: true, ...peers, funnel: null, funnelAny: null }
+  if (IDLE_STATES.has(state)) return { installed: true, ...peers, funnel: false, funnelAny: false }
   const serve = bin ? await run(['serve', 'status', '--json']) : await localApi(socket, 'serve-config')
-  return { installed: true, ...peers, funnel: funnelExposes(port, serve, anyRoute) }
+  return { installed: true, ...peers, funnel: funnelExposes(port, serve, anyRoute), funnelAny: funnelExposes(port, serve, true) }
 }
 
 // The HTTPS entries of a serve configuration that proxy to wherdr's local

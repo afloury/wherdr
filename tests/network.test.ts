@@ -77,22 +77,37 @@ describe('tailnet state over time', () => {
     await refreshTailscale(async () => up, t0 + 40_000, false)
     expect(checkClient('100.101.102.103', {}, netContext(t0 + 80_000))).toEqual({ ok: false, reason: 'peer' })
   })
-  it('refuses this computer only while a reading shows Funnel; an unknown state is served', async () => {
+  it('serves an unknown state until Funnel is seen, then refuses until a valid reading shows it gone', async () => {
     const t0 = 2_000_000
-    // Nothing read yet (startup): Funnel unknown, served.
-    expect(checkClient('127.0.0.1', {}, netContext(t0))).toEqual({ ok: true, zone: 'local' })
-    await refreshTailscale(async () => ({ ...up, funnel: true }), t0, false)
-    expect(checkClient('127.0.0.1', {}, netContext(t0 + 1000))).toEqual({ ok: false, reason: 'funnel' })
-    // Status unreadable or Tailscale failing: unknown, served (logged at startup).
-    await refreshTailscale(async () => ({ ...up, readable: false, running: false, peerIps: [], funnel: null }), t0 + 10_000, false)
-    expect(checkClient('127.0.0.1', {}, netContext(t0 + 11_000))).toEqual({ ok: true, zone: 'local' })
-    await refreshTailscale(async () => ({ ...up, funnel: true }), t0 + 15_000, false)
-    await refreshTailscale(async () => { throw new Error('socket gone') }, t0 + 20_000, false)
-    expect(checkClient('127.0.0.1', {}, netContext(t0 + 21_000))).toEqual({ ok: true, zone: 'local' })
-    // Funnel seen again, then the reading goes stale: unknown, served.
-    await refreshTailscale(async () => ({ ...up, funnel: true }), t0 + 30_000, false)
+    const local = { ok: true, zone: 'local' }
+    // Nothing read yet (startup), then an unreadable status: unknown, served.
+    expect(checkClient('127.0.0.1', {}, netContext(t0))).toEqual(local)
+    await refreshTailscale(async () => ({ ...up, readable: false, running: false, peerIps: [], funnel: null }), t0, false)
+    expect(checkClient('127.0.0.1', {}, netContext(t0 + 1000))).toEqual(local)
+    // Funnel seen: refused.
+    await refreshTailscale(async () => ({ ...up, funnel: true }), t0 + 10_000, false)
+    expect(checkClient('127.0.0.1', {}, netContext(t0 + 11_000))).toEqual({ ok: false, reason: 'funnel' })
+    // Failed, unreadable or stale readings do not reopen.
+    await refreshTailscale(async () => ({ ...up, readable: false, running: false, peerIps: [], funnel: null }), t0 + 20_000, false)
+    expect(checkClient('127.0.0.1', {}, netContext(t0 + 21_000))).toEqual({ ok: false, reason: 'funnel' })
+    await refreshTailscale(async () => { throw new Error('socket gone') }, t0 + 30_000, false)
     expect(checkClient('127.0.0.1', {}, netContext(t0 + 31_000))).toEqual({ ok: false, reason: 'funnel' })
-    expect(checkClient('127.0.0.1', {}, netContext(t0 + 70_000))).toEqual({ ok: true, zone: 'local' })
+    expect(checkClient('127.0.0.1', {}, netContext(t0 + 200_000))).toEqual({ ok: false, reason: 'funnel' })
+    // A valid reading without Funnel: served again.
+    await refreshTailscale(async () => up, t0 + 210_000, false)
+    expect(checkClient('127.0.0.1', {}, netContext(t0 + 211_000))).toEqual(local)
+    // Tailscale reporting itself stopped is a valid reading too (it relays nothing).
+    await refreshTailscale(async () => ({ ...up, funnel: true }), t0 + 220_000, false)
+    await refreshTailscale(async () => ({ ...up, running: false, peerIps: [], funnel: false }), t0 + 230_000, false)
+    expect(checkClient('127.0.0.1', {}, netContext(t0 + 231_000))).toEqual(local)
+  })
+  it('keeps a private wherdr open while Funnel publishes another service, in Docker too', async () => {
+    const other = { ...up, funnel: false, funnelAny: true }
+    for (const docker of [false, true]) {
+      await refreshTailscale(async () => other, 4_000_000, docker)
+      expect(checkClient('127.0.0.1', {}, netContext(4_000_001))).toEqual({ ok: true, zone: 'local' })
+    }
+    expect(checkClient('172.17.0.1', {}, { ...netContext(4_000_001), gateway: '172.17.0.1', gatewayWide: false, gatewayDeclared: false })).toEqual({ ok: true, zone: 'local' })
   })
   it('reads Tailscale again for a WebSocket upgrade, and for HTTP past 2 s', async () => {
     let funnel = false
@@ -189,6 +204,8 @@ describe('client check', () => {
     expect(checkClient('172.17.0.1', {}, { ...f, gateway: '172.17.0.1', gatewayWide: false, gatewayDeclared: true })).toEqual({ ok: false, reason: 'funnel' })
     // Unknown: served.
     expect(checkClient('127.0.0.1', {}, ctx({ tailscale: { ...TS, funnel: null } }))).toEqual({ ok: true, zone: 'local' })
+    // Seen earlier and not cleared by a valid reading: refused even when the latest reading failed.
+    expect(checkClient('127.0.0.1', {}, ctx({ tailscale: null, funnelExposed: true }))).toEqual({ ok: false, reason: 'funnel' })
     expect(checkClient('127.0.0.1', {}, ctx({ tailscale: null }))).toEqual({ ok: true, zone: 'local' })
     // A tailnet peer connecting directly is still the tailnet.
     expect(checkClient('100.101.102.103', {}, f)).toEqual({ ok: true, zone: 'tailnet' })

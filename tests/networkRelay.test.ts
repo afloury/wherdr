@@ -8,16 +8,17 @@ import http from 'node:http'
 import net from 'node:net'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { checkClient, gateDecision, parseTrustedNetworks, portAnswers, type NetContext } from '../server/utils/network'
+import { checkClient, gateDecision, netContext, parseTrustedNetworks, portAnswers, refreshTailscale, resetNetworkStateForTests, type NetContext } from '../server/utils/network'
 
-const state: { ctx: NetContext, passkey: boolean } = {
+// live: judge with the server's own state (refreshTailscale), not ctx.
+const state: { ctx: NetContext, passkey: boolean, live?: boolean } = {
   ctx: { trusted: parseTrustedNetworks(''), tailscale: { running: true, selfIps: [], peerIps: [], funnel: false } },
   passkey: false,
 }
 const STATUS = { ok: 200, network: 403, host: 403, origin: 403, locked: 401 } as const
 
 function decide(req: http.IncomingMessage, ws: boolean) {
-  const check = checkClient(req.socket.remoteAddress, req.headers, state.ctx)
+  const check = checkClient(req.socket.remoteAddress, req.headers, state.live ? netContext() : state.ctx)
   // No session cookie in these tests: unlocked only when no passkey exists.
   return { check, verdict: gateDecision({ check, unlocked: !state.passkey, hostOk: true, crossSite: false, path: ws ? '/ws' : req.url!, ws }) }
 }
@@ -78,6 +79,7 @@ function upgrade(port: number, headers: Record<string, string> = {}): Promise<nu
 const reset = (funnel: boolean, passkey = false) => {
   state.ctx = { trusted: parseTrustedNetworks(''), tailscale: { running: true, selfIps: [], peerIps: [], funnel } }
   state.passkey = passkey
+  state.live = false
 }
 
 describe('a raw TCP relay on this machine (Funnel TCP / TLS-terminated TCP, socat)', () => {
@@ -97,6 +99,25 @@ describe('a raw TCP relay on this machine (Funnel TCP / TLS-terminated TCP, soca
       // Nothing answers, the app shell and the passkey routes included.
       for (const path of ['/', '/api/auth/status', '/api/auth/register/options']) expect((await get(ports.tcp, {}, path)).status).toBe(403)
     }
+  })
+
+  it('stays refused while Funnel exposes it and Tailscale readings then fail', async () => {
+    reset(false)
+    state.live = true
+    const facts = { installed: true, readable: true, running: true, selfIps: [], peerIps: [] }
+    try {
+      await refreshTailscale(async () => ({ ...facts, funnel: true }), Date.now(), false)
+      expect((await get(ports.tcp)).status).toBe(403)
+      // The status command fails, then Tailscale hangs: nothing proves Funnel is gone.
+      await refreshTailscale(async () => ({ ...facts, readable: false, running: false, funnel: null }), Date.now(), false)
+      expect((await get(ports.tcp)).status).toBe(403)
+      expect(await upgrade(ports.tcp)).toBe(403)
+      await refreshTailscale(async () => { throw new Error('tailscale hangs') }, Date.now(), false)
+      expect((await get(ports.tcp)).status).toBe(403)
+      // A valid reading without Funnel reopens.
+      await refreshTailscale(async () => ({ ...facts, funnel: false }), Date.now(), false)
+      expect((await get(ports.tcp)).status).toBe(200)
+    } finally { resetNetworkStateForTests(); state.live = false }
   })
 
   it('is served as this computer when Tailscale cannot be read (documented limit)', async () => {

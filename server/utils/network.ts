@@ -26,11 +26,14 @@
 //
 // What a peer on this machine cannot prove: a relay running here (a reverse
 // proxy, a TCP forward, `tailscale funnel`) connects from loopback like a
-// local browser. wherdr reads Tailscale's serve configuration: while it shows
+// local browser. wherdr reads Tailscale's serve configuration: once it shows
 // that Funnel exposes wherdr's port, in any form (HTTPS proxy, TCP,
-// TLS-terminated TCP), every connection from this machine is refused. A
-// failed or missing reading proves nothing either way: connections are
-// served and the server log says Funnel cannot be checked.
+// TLS-terminated TCP), every connection from this machine is refused until
+// a valid reading shows it gone (a failed or stale reading does not reopen).
+// When Funnel was never seen, a failed or missing reading is served and the
+// server log says Funnel cannot be checked. In Docker without the declared
+// publication, a Funnel route to another port may still lead to wherdr (the
+// host's port is unknown): warned, not refused.
 // The passkey is never required by the network: it locks the app when the
 // owner sets one up, wherever the device is. Any other relay the owner runs
 // is indistinguishable from this computer: documented, with the passkey
@@ -82,6 +85,9 @@ export interface NetContext {
   // …and whether the deployment declares a loopback-only publication
   // (WHERDR_DOCKER_LOOPBACK_ONLY; without it, the startup log warns).
   gatewayDeclared?: boolean
+  // Funnel was seen exposing wherdr and no valid reading has shown it gone
+  // since (kept through failed and stale readings).
+  funnelExposed?: boolean
 }
 
 const LOOPBACK = new net.BlockList()
@@ -198,7 +204,7 @@ export function checkClient(peer: string | undefined, h: Headers, ctx: NetContex
 
   // From this machine: a local browser, or a relay running here. While Funnel
   // exposes wherdr's port, it may be the Internet: refused.
-  if (header(h, 'tailscale-funnel-request') || ctx.tailscale?.funnel === true) {
+  if (header(h, 'tailscale-funnel-request') || ctx.tailscale?.funnel === true || ctx.funnelExposed) {
     if (!any) return { ok: false, reason: 'funnel' }
     zone = 'open'
   }
@@ -272,12 +278,16 @@ let ts: (TailscaleState & { at: number }) | null = null
 const gateway = inDocker ? dockerGateway() : ''
 const gatewayDeclared = /^(1|true|yes|on)$/i.test((process.env.WHERDR_DOCKER_LOOPBACK_ONLY || '').trim())
 let gatewayWide: boolean | null = null
+// Funnel seen exposing wherdr; cleared only by a valid reading without it.
+let funnelSeen = false
+// Latest valid reading: a Funnel route that does not lead to wherdr's port.
+let funnelElsewhere = false
 
-export type TailscaleReader = () => Promise<{ installed?: boolean, readable?: boolean, running: boolean, selfIps: string[], peerIps: string[], funnel: boolean | null }>
-// In Docker every Funnel route counts, the host's port may differ from the
-// container's, unless the deployment declares the shipped publication
-// (127.0.0.1, same port: WHERDR_DOCKER_LOOPBACK_ONLY).
-const defaultReader: TailscaleReader = () => tailnetFacts(PORT, undefined, undefined, inDocker && !gatewayDeclared)
+export type TailscaleReader = () => Promise<{ installed?: boolean, readable?: boolean, running: boolean, selfIps: string[], peerIps: string[], funnel: boolean | null, funnelAny?: boolean | null }>
+// Only routes to wherdr's port count: natively the port is known, and with
+// WHERDR_DOCKER_LOOPBACK_ONLY the host publishes the same port. In Docker
+// without it, routes to other ports are only warned about (refreshAll).
+const defaultReader: TailscaleReader = () => tailnetFacts(PORT)
 
 // Called after every reading (server/utils/ws.ts closes the WebSockets the
 // new state no longer allows).
@@ -293,6 +303,11 @@ export async function refreshTailscale(read: TailscaleReader = defaultReader, no
     // run one (with Funnel) that the container cannot see.
     const funnel = docker && f.installed === false ? null : f.funnel
     ts = { running: f.readable === false ? false : f.running, selfIps: f.selfIps, peerIps: f.peerIps, funnel, at: now }
+    // Only a valid reading changes what is known about Funnel.
+    if (funnel !== null) {
+      funnelSeen = funnel
+      funnelElsewhere = !funnel && f.funnelAny === true
+    }
   } catch {
     ts = { running: false, selfIps: [], peerIps: [], funnel: null, at: now }
   }
@@ -323,7 +338,7 @@ let forced: NetContext | null = null
 // Tests: a fixed context (null = the live one).
 export function setNetContextForTests(ctx: NetContext | null) { forced = ctx }
 // Tests: forget what was read.
-export function resetNetworkStateForTests() { ts = null; gatewayWide = null; inflight = null }
+export function resetNetworkStateForTests() { ts = null; gatewayWide = null; inflight = null; funnelSeen = false; funnelElsewhere = false; warnedElsewhere = false }
 
 export function netContext(now = Date.now()): NetContext {
   if (forced) return forced
@@ -333,6 +348,7 @@ export function netContext(now = Date.now()): NetContext {
     trusted: TRUSTED,
     tailscale: fresh ? { running: fresh.running, selfIps: fresh.selfIps, peerIps: fresh.peerIps, funnel: fresh.funnel } : null,
     ...(gateway ? { gateway, gatewayWide, gatewayDeclared } : {}),
+    ...(funnelSeen ? { funnelExposed: true } : {}),
   }
 }
 export const openNetworkMode = () => TRUSTED.any
@@ -341,6 +357,7 @@ let ready: Promise<void> | null = null
 let timer: ReturnType<typeof setInterval> | null = null
 let warnedWide = false
 let warnedFunnel: boolean | null = null
+let warnedElsewhere = false
 const warn = (text: string) => console.warn(`${new Date().toISOString()} WARNING: ${text}`)
 async function refreshAll() {
   await Promise.all([refreshTailscale(), refreshGateway()])
@@ -356,13 +373,21 @@ async function refreshAll() {
       : 'Tailscale\'s serve configuration cannot be read: wherdr cannot check whether Tailscale Funnel exposes it to the Internet.')
   }
   warnedFunnel = unknown
+  // Docker without the declaration: a Funnel route to another port may reach
+  // wherdr through a remapped host port. Not refused (it may be another
+  // service), said once while it lasts.
+  const elsewhere = Boolean(gateway && !gatewayDeclared && funnelElsewhere)
+  if (elsewhere && !warnedElsewhere) {
+    warn(`Tailscale Funnel publishes a port on the Internet. If Docker maps it to wherdr's port ${PORT}, wherdr is on the Internet: wherdr cannot tell, since WHERDR_DOCKER_LOOPBACK_ONLY is not set. Check \`tailscale funnel status\` on the host.`)
+  }
+  warnedElsewhere = elsewhere
 }
 // Started once (server/plugins/network.ts); requests wait for the first read
 // so as few as possible are judged on an unknown state.
 export function startNetworkWatch() {
   if (ready) return ready
   if (gateway && !gatewayDeclared) {
-    warn(`WHERDR_DOCKER_LOOPBACK_ONLY is not set: wherdr cannot confirm that Docker publishes its port on the host's 127.0.0.1 only. If it does ("127.0.0.1:${PORT}:${PORT}"), set WHERDR_DOCKER_LOOPBACK_ONLY=1 next to that line, as in the shipped docker-compose.yml.`)
+    warn(`WHERDR_DOCKER_LOOPBACK_ONLY is not set: wherdr cannot check how Docker publishes its port. Published on another host port or on IPv6 (not only "127.0.0.1:${PORT}:${PORT}"), it may be reachable from other networks without wherdr noticing, and Funnel routes cannot be matched to it. Publish it as "127.0.0.1:${PORT}:${PORT}" and set WHERDR_DOCKER_LOOPBACK_ONLY=1 next to that line, as in the shipped docker-compose.yml.`)
   }
   // A slow Tailscale: requests wait up to 15 s, then are judged on what is
   // known (nothing yet: no tailnet peer, Funnel unknown).

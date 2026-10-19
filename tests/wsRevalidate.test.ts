@@ -1,6 +1,7 @@
 // Open WebSockets are judged again after every reading of the network state
-// (server/utils/ws.ts revalidatePeers): Funnel turned on, or a tailnet peer
-// Tailscale no longer vouches for, closes them, even if no new upgrade comes.
+// (server/utils/ws.ts revalidatePeers): Funnel turned on (and kept through
+// failed readings), or a tailnet peer Tailscale no longer vouches for, closes
+// them, even if no new upgrade comes.
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -39,12 +40,14 @@ describe('open WebSockets after a change of network state', () => {
     expect(local.close).toHaveBeenCalledWith(1008, 'Network policy changed')
     expect(tailnet.close).not.toHaveBeenCalled()
 
-    // Tailscale unreadable: the tailnet peer is not vouched for any more;
-    // Funnel is unknown, so a local WebSocket is served again.
+    // Tailscale unreadable: the tailnet peer is not vouched for any more, and
+    // the Funnel seen before still holds (a failed reading does not reopen).
     await net.refreshTailscale(async () => { throw new Error('socket gone') }, Date.now(), false)
     expect(tailnet.close).toHaveBeenCalledWith(1008, 'Network policy changed')
-    const later = peer('127.0.0.1')
-    expect(ws.revalidatePeers([later])).toBe(0)
+    expect(ws.revalidatePeers([peer('127.0.0.1')])).toBe(1)
+    // A valid reading without Funnel: local WebSockets are allowed again.
+    await net.refreshTailscale(async () => up, Date.now(), false)
+    expect(ws.revalidatePeers([peer('127.0.0.1')])).toBe(0)
     stop()
   })
 

@@ -1471,7 +1471,9 @@ How a request is judged, before anything else (WebSockets included):
     `docker-compose.yml` declares its loopback-only publication with
     `WHERDR_DOCKER_LOOPBACK_ONLY=1`, next to its `"127.0.0.1:${PORT}:${PORT}"` line; without that
     line wherdr cannot rule out another publication (another host port, IPv6) and says so in its
-    log at startup. If you publish the port another way, remove `WHERDR_DOCKER_LOOPBACK_ONLY` too.
+    log at startup. **Publishing the port another way is your choice, and wherdr cannot check
+    it:** a remapped or IPv6 publication may reach wherdr from other networks unnoticed. If you do,
+    remove `WHERDR_DOCKER_LOOPBACK_ONLY` too.
     **Compose files written by an earlier version lack that line:** add it after updating.
 - **Proxy headers**, only when the peer is this computer (a proxy on the machine, such as
   `tailscale serve`): every address in `X-Forwarded-For`, `Forwarded`, `X-Real-IP`,
@@ -1485,14 +1487,16 @@ How a request is judged, before anything else (WebSockets included):
   wherdr's port, in any form (HTTPS, TCP, or TCP with TLS termination, which carry no client
   address). A Funnel route counts unless its target clearly leads to another port: the host is
   never compared (`0.0.0.0:7683`, `127.1:7683` or a LAN address reach wherdr too), and a target
-  wherdr cannot parse counts. In Docker with the shipped
-  `WHERDR_DOCKER_LOOPBACK_ONLY=1`, only routes to wherdr's port count; without it, every Funnel
-  route does (the host's port may differ). While Funnel exposes wherdr, **every connection from
-  this computer is refused**, with a page that says how to turn it off: Funnel puts wherdr on
-  the Internet. Open WebSockets are judged again after every reading and closed when no longer
-  allowed; between two readings (10 seconds at most), a connection opened before Funnel was
-  turned on can last that long. A failed or garbled reading proves nothing: connections are
-  served and the server log says that Funnel cannot be checked. In Docker without Tailscale's
+  wherdr cannot parse counts. Funnel routes to other ports do not count (Funnel for another
+  service is fine). In Docker without `WHERDR_DOCKER_LOOPBACK_ONLY=1`, the host's port is unknown:
+  a Funnel route to another port is only reported in the log, since it may lead to wherdr through
+  a remapped port. While Funnel exposes wherdr, **every connection from this computer is
+  refused**, with a page that says how to turn it off: Funnel puts wherdr on the Internet. Once
+  seen, the exposure stays until a valid reading shows it gone: a failed, garbled or late reading
+  does not reopen wherdr. Open WebSockets are judged again after every reading and closed when no
+  longer allowed; between two readings (10 seconds at most), a connection opened before Funnel was
+  turned on can last that long. When Funnel was never seen, a failed or garbled reading proves
+  nothing: connections are served and the server log says that Funnel cannot be checked. In Docker without Tailscale's
   socket nothing can be read: keep the socket mounted. A Funnel request with Tailscale's
   `Tailscale-Funnel-Request` header is always refused.
 - **The listening address**: without Docker, wherdr refuses to start on anything else than
