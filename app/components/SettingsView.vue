@@ -339,7 +339,7 @@ onMounted(() => {
           <div class="settings-group">
             <h3>{{ t('Home screen') }}</h3>
             <label class="settings-toggle">
-              <span><b>{{ t('Compact list') }}</b><small>{{ t('One line per agent or space: no preview, folder or model; an agent waiting for an answer shows its question and answers. Computer and phone. Saved on this device.') }}</small></span>
+              <span><b>{{ t('Compact list') }}</b><small>{{ t('Tasks: one line in Compact, two in Normal with current activity and relevant labels. Details stay in the task sheet. Saved on this device.') }}</small></span>
               <USwitch v-model="compactOn" color="success" size="xl" />
             </label>
             <label class="settings-toggle">
@@ -358,6 +358,7 @@ onMounted(() => {
               <span><b>{{ t('Show quotas') }}</b><small>{{ t('Show Claude and Codex quotas on the home screen.') }}</small></span>
               <USwitch v-model="quotasOn" color="success" size="xl" />
             </label>
+            <MachineBarSettings />
           </div>
 
           <div class="settings-group">

@@ -1,0 +1,67 @@
+// The machine bar at the top of the home list: "All", then each machine, a tap
+// shows that machine only. Settings › Appearance › Machine bar orders its items
+// and takes some off it; a machine taken off the bar still shows under "All".
+// Items are the machines' base keys (the local machine is ''), and BAR_ALL.
+
+// "All machines": a value no machine key can have.
+export const BAR_ALL = '*'
+
+// Every item the bar can show, in the saved order: the saved ones still known,
+// then the others. "All" missing from the saved order goes first, a machine it
+// does not know (new) goes last, in the home list's order.
+export function barItems(order: readonly string[], machines: readonly string[]): string[] {
+  const known = new Set([BAR_ALL, ...machines])
+  const kept = order.filter((id, i) => known.has(id) && order.indexOf(id) === i)
+  const missing = [BAR_ALL, ...machines].filter(id => !kept.includes(id))
+  return missing.includes(BAR_ALL)
+    ? [BAR_ALL, ...kept, ...missing.filter(id => id !== BAR_ALL)]
+    : [...kept, ...missing]
+}
+
+// The items the bar shows, in order.
+export function barShown(order: readonly string[], hidden: readonly string[], machines: readonly string[]): string[] {
+  return barItems(order, machines).filter(id => !hidden.includes(id))
+}
+
+// The item chosen now: the saved one while the bar shows it, else "All" when
+// the bar shows it, else its first item. null: nothing to choose (an empty bar).
+export function barPick(saved: string | null | undefined, shown: readonly string[]): string | null {
+  if (saved != null && shown.includes(saved)) return saved
+  return shown.includes(BAR_ALL) ? BAR_ALL : shown[0] ?? null
+}
+
+// The machine the home list is filtered on, or null for every machine.
+export const barFilter = (pick: string | null) => (pick === null || pick === BAR_ALL ? null : pick)
+
+// `id` moved to position `to` of `items` (indexes of the list before the move).
+export function moveBarItem(items: readonly string[], id: string, to: number): string[] {
+  const from = items.indexOf(id)
+  if (from < 0) return [...items]
+  const next = items.filter(x => x !== id)
+  next.splice(Math.max(0, Math.min(to > from ? to - 1 : to, next.length)), 0, id)
+  return next
+}
+
+// The hidden items once `id` is shown (or hidden).
+export function setBarItemShown(hidden: readonly string[], id: string, shown: boolean): string[] {
+  const rest = hidden.filter(x => x !== id)
+  return shown ? rest : [...rest, id]
+}
+
+// A saved list (JSON): strings only, no duplicates.
+export function readBarList(raw: string | null | undefined): string[] {
+  try {
+    const v = JSON.parse(raw || '[]')
+    return Array.isArray(v) ? v.filter((x, i): x is string => typeof x === 'string' && v.indexOf(x) === i) : []
+  }
+  catch { return [] }
+}
+
+// The saved choice (JSON, the local machine being ''): null when there is none.
+export function readBarPick(raw: string | null | undefined): string | null {
+  try {
+    const v = JSON.parse(raw ?? 'null')
+    return typeof v === 'string' ? v : null
+  }
+  catch { return null }
+}

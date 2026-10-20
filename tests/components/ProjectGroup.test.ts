@@ -6,6 +6,7 @@ import { collapsedRepos, compactList, herdrState } from '~/composables/useHerdr'
 import type { Pane } from '#shared/types'
 import { type Row, spaceRows } from '#shared/spaces'
 import { type LinkedTask, type Member, type ProjectSection, boardSections, linksFromTaskFile, tasksFromFiles } from '#shared/boardLinks'
+import { useBoardNow } from '~/composables/useBoardLinks'
 import { noteTab } from '~/composables/useWorkspaces'
 
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
@@ -55,6 +56,29 @@ describe('a repo group on the home list', () => {
     expect(w.html().indexOf('project-lead')).toBeLessThan(w.html().indexOf('project-tree'))
     w.unmount()
   })
+
+  for (const compact of [true, false]) {
+    it(`task density (${compact ? 'compact' : 'normal'}) keeps only useful information`, async () => {
+      compactList.value = compact
+      const asking = pane('w9:p1', { status: 'blocked', usageLimit: true, preview: 'Private conversation preview', prompt: { question: 'Continue?', cursor: 0, options: [{ label: 'Yes', hint: null }] } })
+      const w = await mountSuspended(AgentCard, { props: { pane: asking, board: { tag: 'SHOP-9', name: 'A long task title', progress: 30, since: useBoardNow().value - 420000, msg: 'Checking the layout', stage: 'Under review · codex' } } })
+      const card = w.find('.card')
+      expect(card.classes()).toContain('compact')
+      expect(card.find('.card-title').text()).toBe('A long task title')
+      expect(card.find('.home-task-stats').text()).toBe('30% 7m')
+      expect(card.find('.task-attention').text()).toBe('Your turn')
+      expect(card.find('.card-state').exists()).toBe(true)
+      expect(card.find('.card-more').exists()).toBe(false)
+      expect(card.find('.card-main').exists()).toBe(false)
+      expect(card.find('.home-task-line').exists()).toBe(!compact)
+      if (!compact) {
+        expect(card.find('.home-task-line').text()).toContain('Checking the layout')
+        expect(card.find('.home-task-stage.quota-limit').text()).toBe('Limit')
+        expect(card.find('.home-task-line').text()).toContain('Under review · codex')
+      }
+      w.unmount()
+    })
+  }
 
   it('a coordinator alone: its lead row, no empty task list', async () => {
     const w = await mount(section({ members: [] }))
@@ -115,6 +139,7 @@ describe('a repo group on the home list', () => {
   })
 
   it('a task under review: one row, its stage, the reviewer\'s tab opens', async () => {
+    compactList.value = false
     // A task's space as herdr-projects lays it out: its "Agent" tab, then "Reviewer #1".
     const agent = pane('w7:p1', { tab: 'w7:t1', status: 'idle' })
     const reviewer = pane('w7:p2', { tab: 'w7:t2', agent: 'codex', status: 'working' })
@@ -149,12 +174,13 @@ describe('a repo group on the home list', () => {
     w.unmount()
   })
 
-  it('the detailed card: no folder line for a coordinator', async () => {
+  it('normal mode keeps the coordinator dense with its last message', async () => {
     compactList.value = false
     const w = await mount(section())
     const card = w.find('.project-lead .card')
     expect(card.find('.card-where').exists()).toBe(false)
-    expect(card.find('.card-preview').text()).toBe('Two tasks under way.')
+    expect(card.classes()).toContain('compact')
+    expect(card.find('.home-task-line').text()).toBe('Two tasks under way.')
     w.unmount()
   })
 })

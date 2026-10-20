@@ -42,9 +42,9 @@ test('Compact list turned off stays off after a reload', async ({ page }) => {
   await page.reload()
   await expect(page.locator('#home .card').first()).toBeVisible()
   await expect(page.locator('#home')).not.toHaveClass(/list-compact/)
-  await expect(page.locator('#home .card.compact')).toHaveCount(0)
-  await expect(page.locator('#home .card .card-meta').first()).toBeVisible()
-  expect((await cards(page)).compact).toBe(0)
+  await expect(page.locator('#home .card:not(.compact)')).toHaveCount(0)
+  await expect(page.locator('#home .card-main')).toHaveCount(0)
+  expect((await cards(page)).detailed).toBe(0)
 
   await page.goto('/#/settings?section=appearance')
   await expect(compactSwitch(page)).toHaveAttribute('aria-checked', 'false')
