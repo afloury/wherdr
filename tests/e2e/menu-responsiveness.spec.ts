@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
-import { OMP_CHAT_PANE as pane, fakeHerdr } from './scenario.mjs'
+import { OMP_CHAT_PANE as pane, OMP_IMAGE_PANE as OTHER, fakeHerdr } from './scenario.mjs'
 const fx = (name: string) => readFileSync(new URL(`../fixtures/${name}`, import.meta.url), 'utf8')
 const show = (text: string | null, agent: string, transitions = {}) => fakeHerdr('e2e.interaction_screen', { pane_id: pane, text, agent, status: 'blocked', transitions })
 test.afterEach(async ({ request }) => {
@@ -25,6 +25,13 @@ test('MCP arrow paints immediately even while the navigation request is held', a
   await page.keyboard.press('ArrowDown')
   await expect(page.locator('.menu-list .cur')).toContainText('Calendar')
   console.log(`MCP optimistic selection: ${Date.now() - started}ms (request held)`)
+  // The server keeps broadcasting its state meanwhile (another agent moves):
+  // the same menu, read again, must not put the cursor back before the key lands.
+  await fakeHerdr('e2e.pane_status', { pane_id: OTHER, status: 'working' })
+  await expect.poll(async () => (await (await page.request.get('/api/state')).json()).panes.find((p: { id: string }) => p.id === OTHER)?.status).toBe('working')
+  await page.waitForTimeout(500)
+  await expect(page.locator('.menu-list .cur')).toContainText('Calendar')
+  await fakeHerdr('e2e.pane_status', { pane_id: OTHER, status: 'idle' })
   release()
   await expect.poll(async () => (await fakeHerdr('e2e.terminal_screen', { pane_id: pane })).keys).toEqual(['down'])
   await expect.poll(async () => {

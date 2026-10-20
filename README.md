@@ -157,8 +157,12 @@ Details in [Features](#features) and [Security](#security).
   The list is compact by default: agent, title, project badge and state. When an agent asks for
   permission or asks a question, its card opens on the question and its options: **answer in one
   tap** without opening it; the card is one line again once answered. Turn off Settings ›
-  Appearance › Home screen › **Compact list** for detailed cards, with the folder, the model and
-  a preview of each agent's last answer.
+  Appearance › Home screen › **Compact list** for normal mode. Board tasks use one line in
+  compact mode (agent, key, title, progress, duration, state and Your turn when needed); normal
+  mode adds the current activity and relevant limit or review labels on a second line. Task
+  details stay in the task sheet. Existing compact/normal choices are preserved. Other agents
+  also use dense rows, with a last-answer preview in normal mode; waiting agents keep their
+  questions and one-tap answers in both modes.
   With [herdr-projects](#works-great-with-herdr-projects), the board's spaces follow Herdr's sidebar:
   the Coordinators on top, then one group per repo, headed by its project coordinator (the repo's
   name, the wherdr mark, **Coordinator** and its state), a bar that folds the group and sums up its
@@ -198,7 +202,9 @@ Details in [Features](#features) and [Security](#security).
   Codex agent in the browser demo (scripted, no account data).
   In the compact list, native questions keep their preview and one-tap answers.
   Unrecognized blocking screens offer an **Open interactive terminal** button.
-- **Composer**: send messages while the agent works (queued, cancellable), attach or paste
+- **Composer**: send messages while the agent works (queued, cancellable: the agent's own
+  queue when it takes them, else held by wherdr and sent when the turn ends; never left
+  half-typed in its field, and “Not sent” clears once the message shows in its transcript), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
   of local commands. Stop button while the agent works. A long pasted text (log, output) becomes
@@ -258,6 +264,13 @@ Details in [Features](#features) and [Security](#security).
   machine. Browser storage must be available to retain comments after closing the view.
 - **Several machines**: agents of the SSH machines registered in Herdr (`herdr machine add`)
   appear in their own section; everything works the same on a remote agent.
+- **Machine bar**: at the top of the list, “All”, then each machine with its state and count; a
+  tap shows one machine alone. Settings › Appearance › Home screen › **Machine bar** orders its
+  items, takes some off it or hides it (kept on the device). A machine's **…** menu opens the
+  Board filtered on it (**Open the board**). In **Groups**, create a named selection of machines,
+  check its members and drag their handles to set their order. Groups appear after All by default,
+  with their combined task count and a group icon; order or hide them alongside the machines.
+  Choosing a group shows its members in the group's order. Groups are saved on this device.
 - **Named Herdr sessions**, **quotas** (remaining Claude and Codex usage limits), **Herdr plugin
   actions** in the menus, **passkey lock** (Face ID, Touch ID, Windows Hello, Android…).
 - **Themes**: wherdr Titanium (default), herdr.dev and Herdr's built-in themes, or follow your Herdr theme.
@@ -1272,13 +1285,19 @@ What the Board shows and does:
   its terminal), and its tasks' spaces, indented and folding with the bar (key, title, state,
   progress, time on it, the line the board reports; the Board icon opens the task there). One
   row per task: its reviewer, planner and attempts, each in a tab of the task's space, are part
-  of it; the row says the stage (**Under review · codex**) and opens the reviewer's tab while a
-  review runs. The counters count tasks, not tabs. A repo
+  of it; in normal mode the row says the stage (**Under review · codex**), and both modes
+  open the reviewer's tab while a review runs. The counters count tasks, not tabs. A repo
   coordinated from another machine shows **Coordinated from <machine>**. wherdr reads this from
   the board's files (`~/.herdr-projects/data`: tasks, attempts, reviewers, coordinators, repos)
   and from Herdr's worktree groups, every 15 seconds while the list is shown, never through
   herdr-projects' command line; the branch and behind count come from `git` in the repo's main
   checkout, once a minute, without fetching.
+- **Coordinator entry points**: the top of the Board names the host of the main Coordinator,
+  for all repos and machines it can reach. With several hosts, choose one from the menu;
+  unavailable and read-only hosts stay listed with their reason. Machine headings offer
+  **`<machine> setup`** (that machine's setup, folders and repos), repo headings offer
+  **`<repo> coordinator`** (work in that repo). Hover or long-press an entry for its role;
+  the conversation header repeats that description.
 - **A machine is one board**, shared by its named sessions: one list, one queue, one card per
   task. A machine whose read fails says why on the Board, and its last tasks stay, marked with
   the time they were read.

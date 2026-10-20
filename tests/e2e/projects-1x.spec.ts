@@ -182,7 +182,7 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   // No chat box on the Board: the top bar's Coordinator button opens it in the panel,
   // in both views; one not started yet takes a first message, which starts it.
   await expect(page.locator('#board-coord-text')).toHaveCount(0)
-  await page.locator('.board-top').getByRole('button', { name: 'Coordinator' }).click()
+  await page.locator('.board-top').getByRole('button', { name: /^Coordinator · / }).click()
   await expect(panel.locator('.board-panel-name')).toHaveText('Coordinator')
   await panel.locator('#board-panel-first').fill('Add a dark mode toggle')
   await panel.getByRole('button', { name: 'Send', exact: true }).click()
@@ -261,11 +261,34 @@ test('in a container: the tasks show, the actions are the host\'s', async ({ pag
   await page.route('**/api/tasks/details*', route => route.fulfill({ json: { id: 'demo/1', title: 'Task demo/1', stage: 'approval', msg: '', description: 'From the file', agent: 'claude', pr: '', branch: '', worktree: '', failure: '', review: null, reviewRounds: 0, plan: '', research: false, pane: null } }))
   await page.goto('/#/board')
   await expect(page.locator('.board-notes')).toContainText('wherdr runs in a container', { timeout: 15000 })
-  // The actions stay in view, off, each saying why on hover.
+  // Task actions still explain their disabled state with a native title.
   const why = /wherdr runs in a container here/
-  for (const button of [page.locator('.board-top .board-coord'), page.locator('.board-new'), page.locator('.board-head-add').first(), page.locator('.board-head .board-coord').first()]) {
+  for (const button of [page.locator('.board-new'), page.locator('.board-head-add').first()]) {
     await expect(button).toBeDisabled()
     await expect(button.locator('xpath=ancestor::span[contains(@class, "ro-why")][1]')).toHaveAttribute('title', why)
+  }
+  // Coordinators explain both their role and the disabled state in the new hint.
+  await expect(page.locator('.board-top .board-coord')).toHaveText('Coordinator · devbox')
+  await expect(page.getByRole('status').filter({ hasText: 'No Coordinator can be reached' })).toBeVisible()
+  const hints = page.locator('.coordinator-hint')
+  await expect(hints).toHaveCount(3) // Main, machine setup, project.
+  for (const hint of await hints.all()) {
+    await expect(hint.getByRole('button')).toBeDisabled()
+    if (testInfo.project.name.includes('phone')) {
+      await hint.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 10, clientY: 10 })
+    } else {
+      await hint.hover()
+    }
+    const tooltip = page.locator('.coordinator-tooltip')
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toContainText(why)
+    if (testInfo.project.name.includes('phone')) {
+      await hint.dispatchEvent('pointerup', { pointerType: 'touch' })
+      await hint.dispatchEvent('click')
+    }
+    await expect(page.locator('.board-panel')).toHaveCount(0)
+    await page.keyboard.press('Escape')
+    await expect(tooltip).toBeHidden()
   }
   await expect(page.locator('.board-notes a', { hasText: 'Move to the native service' })).toHaveAttribute('href', /moving-from-docker-to-the-native-service$/)
   if (testInfo.project.name.includes('phone')) await page.locator('.board-seg').getByRole('button', { name: /^Ready to approve/ }).click()
@@ -334,7 +357,7 @@ test('grouped by machine then repo: each heading opens its coordinator in the si
 
   const panel = page.locator('.board-panel')
   // A repo's lane: its project coordinator, not started yet: a first message starts it.
-  await page.getByRole('button', { name: 'Coordinator · web' }).click()
+  await page.getByRole('button', { name: 'web coordinator' }).click()
   await expect(panel.locator('.board-panel-name')).toHaveText('web coordinator')
   await expect(panel.locator('.board-panel-repo')).toHaveText('web')
   if (!phone) await expect(web.locator('.board-head')).toHaveClass(/talking/)
@@ -348,21 +371,21 @@ test('grouped by machine then repo: each heading opens its coordinator in the si
   await expect(panel.locator('.cell-view textarea')).toBeVisible()
   await expect(panel.locator('.board-panel-name')).toHaveText('web coordinator')
   await page.screenshot({ path: `.shots/board-1x-coord-panel-${testInfo.project.name}.png` })
-  // The machine's lane: its Coordinator, and its machine coordinator.
+  // The main Coordinator stays at the top; machine setup is in its lane.
   if (phone) await closePanel(page, phone)
   const machineHead = page.locator('.board-head.machine')
-  await machineHead.getByRole('button', { name: /^Coordinator · / }).click()
+  await page.locator('.board-top').getByRole('button', { name: /^Coordinator · / }).click()
   await expect(panel.locator('.board-panel-name')).toHaveText('Coordinator')
   await expect(panel.locator('.board-panel-repo')).toHaveCount(0)
   await panel.locator('#board-panel-first').fill('plain')
   await panel.getByRole('button', { name: 'Send', exact: true }).click()
   await expect.poll(callLog).toContain('coordinator -- tell plain')
   if (phone) await closePanel(page, phone)
-  await machineHead.getByRole('button', { name: /^Machine coordinator · / }).click()
+  await machineHead.getByRole('button', { name: / setup$/ }).click()
   // Named once, after its machine: "<machine> coordinator".
   const host = ((await panel.locator('.board-panel-machine').textContent()) || '').trim()
   expect(host).not.toBe('')
-  await expect(panel.locator('.board-panel-name')).toHaveText(`${host} coordinator`)
+  await expect(panel.locator('.board-panel-name')).toHaveText(`${host} setup`)
   await panel.locator('#board-panel-first').fill('for the machine')
   await panel.getByRole('button', { name: 'Send', exact: true }).click()
   await expect.poll(callLog).toContain('coordinator --machine -- tell for the machine')
@@ -661,13 +684,13 @@ test('a reply for the coordinator shown before never lands on the one shown now'
   })
   await page.goto('/#/board')
   const panel = page.locator('.board-panel')
-  await page.getByRole('button', { name: 'Coordinator · demo' }).click({ timeout: 15000 })
+  await page.getByRole('button', { name: 'demo coordinator' }).click({ timeout: 15000 })
   await panel.locator('#board-panel-first').fill('For demo')
   await panel.getByRole('button', { name: 'Send', exact: true }).click()
   await expect.poll(() => sent.length).toBe(1)
   // demo's reply is still on its way: web's coordinator is shown, and written to.
   if (phone) await closePanel(page, phone)
-  await page.getByRole('button', { name: 'Coordinator · web' }).click()
+  await page.getByRole('button', { name: 'web coordinator' }).click()
   await expect(panel.locator('.board-panel-name')).toHaveText('web coordinator')
   await panel.locator('#board-panel-first').fill('Draft for web')
   release()
@@ -692,7 +715,7 @@ test('a coordinator herdr-projects could not start says why, and Try again start
     await route.fulfill({ json: { ok: true, msg: 'sent' } })
   })
   await page.goto('/#/board')
-  await page.locator('.board-top').getByRole('button', { name: 'Coordinator' }).click({ timeout: 15000 })
+  await page.locator('.board-top').getByRole('button', { name: /^Coordinator · / }).click({ timeout: 15000 })
   const panel = page.locator('.board-panel')
   await expect(panel.locator('.board-panel-name')).toHaveText('Coordinator')
   await panel.locator('#board-panel-first').fill('Add a dark mode toggle')
@@ -711,3 +734,107 @@ test('a coordinator herdr-projects could not start says why, and Try again start
   await expect(panel.locator('.board-panel-starting')).toHaveText('Sent. The Coordinator is starting: its conversation opens here.')
   await expect(failed).toHaveCount(0)
 })
+
+test('Coordinator choices keep unavailable hosts visible and explain the three roles', async ({ page }, testInfo) => {
+  let machines: Fake[] = [
+    { machine: '', readOnly: true, tasks: [] },
+    { machine: 'ma', status: 'error', error: 'SSH unavailable', tasks: [] },
+    { machine: 'mb', tasks: [{ id: 'web/1', title: 'Example work' }] },
+  ]
+  await fakeBoard(page, () => machines)
+  const requests: string[] = []
+  await page.route(url => new URL(url).pathname === '/api/tasks/coordinator', route => {
+    requests.push(new URL(route.request().url()).searchParams.get('machine') || '')
+    return route.fulfill({ json: { pane: null, state: 'none' } })
+  })
+  await page.goto('/#/board')
+  const top = page.locator('.board-top-coord')
+  await expect(top).toHaveText('Coordinator · all work')
+  await expect(page.locator('.board-head.machine .board-coord')).toHaveText(['devbox setup', 'mb setup'])
+  await top.click()
+  const choices = page.getByRole('menuitem')
+  await expect(choices).toHaveCount(3)
+  await expect(choices.nth(0)).toContainText('Coordinator · devbox')
+  await expect(choices.nth(0)).toContainText('container')
+  await expect(choices.nth(0)).toBeDisabled()
+  await expect(choices.nth(1)).toContainText('SSH unavailable')
+  await expect(choices.nth(1)).toBeDisabled()
+  await page.screenshot({ path: `.shots/board-coordinator-choices-${testInfo.project.name}.png` })
+  await choices.nth(2).click()
+  const panel = page.locator('.board-panel')
+  await expect(panel.locator('.board-panel-machine')).toHaveText('mb')
+  await expect(panel.locator('.board-panel-purpose')).toContainText('All work')
+  expect(requests).toEqual(['mb'])
+  await closePanel(page, testInfo.project.name.includes('phone'))
+  await page.getByRole('button', { name: 'mb setup', exact: true }).click()
+  await expect(panel.locator('.board-panel-purpose')).toContainText('setup, folders and repos')
+  await page.screenshot({ path: `.shots/board-machine-setup-${testInfo.project.name}.png` })
+  await closePanel(page, testInfo.project.name.includes('phone'))
+  await page.getByRole('button', { name: 'web coordinator', exact: true }).click()
+  await expect(panel.locator('.board-panel-purpose')).toContainText('this repo')
+  await closePanel(page, testInfo.project.name.includes('phone'))
+  machines = machines.map(m => ({ ...m, status: 'error', error: 'SSH unavailable' }))
+  await page.locator('.board-filter').click()
+  await expect(page.getByRole('status').filter({ hasText: 'No Coordinator can be reached' })).toBeVisible()
+  await page.screenshot({ path: `.shots/board-no-coordinator-${testInfo.project.name}.png` })
+  // A single host keeps its name on the button, even when it is unavailable.
+  machines = [{ machine: 'mb', tasks: [] }]
+  await page.locator('.board-filter').click()
+  await expect(top).toHaveText('Coordinator · mb')
+  await top.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 100, clientY: 20 })
+  await expect(page.locator('.coordinator-tooltip')).toBeVisible()
+  await expect(page.locator('.coordinator-tooltip')).toContainText('All work')
+  await top.dispatchEvent('pointerup', { pointerType: 'touch' })
+  await top.dispatchEvent('click')
+  await expect(panel).toHaveCount(0)
+  await page.screenshot({ path: `.shots/board-coordinator-hint-${testInfo.project.name}.png` })
+  machines = [{ machine: 'mb', status: 'error', error: 'SSH unavailable', tasks: [] }]
+  await page.locator('.board-filter').click()
+  await expect(top).toBeDisabled()
+  await expect(top).toHaveText('Coordinator · mb')
+  // No horizontal overflow at the phone viewport.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.evaluate(() => localStorage.setItem('herdrLanguage', 'fr'))
+  await page.reload()
+  await expect(top).toHaveText('Coordinateur · mb')
+  await expect(page.getByRole('status').filter({ hasText: 'Aucun Coordinateur' })).toBeVisible()
+  await page.screenshot({ path: `.shots/board-no-coordinator-fr-${testInfo.project.name}.png` })
+  machines = [{ machine: 'long-example-workstation-name', tasks: [] }]
+  await page.locator('.board-filter').click()
+  await expect(top).toHaveText('Coordinateur · long-example-workstation-name')
+  expect(await top.evaluate(el => el.scrollHeight <= el.clientHeight)).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({ path: `.shots/board-coordinator-long-host-${testInfo.project.name}.png` })
+})
+
+for (const lang of ['en', 'fr']) {
+  test(`coordinator failure distinguishes delivery and queue counts (${lang})`, async ({ page }, testInfo) => {
+    await fakeBoard(page, () => [{ machine: '', tasks: [] }])
+    await page.addInitScript(l => localStorage.setItem('herdrLanguage', l), lang)
+    let status: Record<string, unknown> = {}
+    await page.route(url => new URL(url).pathname === '/api/tasks/coordinator', route => route.fulfill({ json: status }))
+    for (const delivery of [false, true]) {
+      for (const queued of [0, 1, 3]) {
+        status = { pane: null, state: 'exited', queued, error: delivery ? 'your message sits unsent in its box. Go into it and press enter.' : 'The agent could not be started.' }
+        await page.goto('/#/board')
+        await page.locator('.board-top-coord').click()
+        const failed = page.locator('.board-panel-failed')
+        await expect(failed).toBeVisible()
+        await expect(failed.locator('h4')).toHaveText(delivery
+          ? lang === 'fr' ? 'Envoi du message impossible' : 'Message could not be sent'
+          : lang === 'fr' ? 'Démarrage impossible' : 'Could not start')
+        await expect(failed.locator('.board-panel-failed-why')).toHaveText(String(status.error))
+        if (delivery) {
+          await expect(failed.locator('.board-panel-failed-what')).toContainText(lang === 'fr' ? 'n’a pas été envoyé' : 'was not sent')
+          await expect(failed).not.toContainText(lang === 'fr' ? 'n’a pas pu être saisi' : 'could not be typed')
+        }
+        await expect(failed.locator('.board-panel-failed-next')).toContainText(queued
+          ? lang === 'fr' ? `${queued} message${queued === 1 ? '' : 's'} attend` : `${queued} message${queued === 1 ? '' : 's'} still waiting`
+          : lang === 'fr' ? 'Aucun message en attente.' : 'No message is waiting.')
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+        await page.screenshot({ path: `.shots/coordinator-${lang}-${delivery ? 'delivery' : 'start'}-${queued}-${testInfo.project.name}.png` })
+        await page.locator('.board-panel-back, .board-panel-close').click()
+      }
+    }
+  })
+}

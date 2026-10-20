@@ -115,6 +115,7 @@ const coordLoaded = ref(false)
 // What herdr-projects said of it last: its state, why its start failed, its name.
 const coordState = ref('')
 const coordError = ref('')
+const coordQueued = ref<number | null>(null)
 const coordStatusName = ref('')
 let poll: ReturnType<typeof setTimeout> | undefined
 let tries = 0
@@ -135,6 +136,7 @@ async function lookCoordinator(g: number) {
     coordPane.value = r.pane ?? null
     coordState.value = r.state ?? ''
     coordError.value = r.error ?? ''
+    coordQueued.value = r.queued ?? null
     // Its name stays what it was when a reply leaves it out.
     if (r.name) coordStatusName.value = r.name
     // Starting (or just told to): asked again until it has a pane. A pane Herdr
@@ -181,20 +183,34 @@ const gone = computed(() => props.target.kind === 'task' && Boolean(taskPane.val
 watch(gone, (g) => { if (g) emit('noAgent') })
 
 // ------------------------------------------------------------ who it is
-// Each named once: "Coordinator", "devbox coordinator", "web coordinator".
+// Match the Board entry points: all work, machine setup, repo work.
 const coordSubject = computed(() => (props.target.kind === 'coordinator' ? coordinatorSubject(props.target.to, props.machineLabel, coordStatusName.value) : ''))
 const coordName = computed(() => {
   if (props.target.kind !== 'coordinator') return ''
-  const s = coordSubject.value
-  return s ? tl(`${s} coordinator`, `Coordinateur ${s}`) : tl('Coordinator', 'Coordinateur')
+  return props.target.to.kind === 'main' ? tl('Coordinator', 'Coordinateur') : coordinatorLabel(props.target.to, props.machineLabel)
 })
 // "The Coordinator", "the web coordinator", in a sentence.
 const coordThe = computed(() => {
+  if (props.target.kind === 'coordinator' && props.target.to.kind === 'machine') return tl(`The ${props.machineLabel} setup assistant`, `L’assistant de configuration de ${props.machineLabel}`)
   const s = coordSubject.value
   return s ? tl(`The ${s} coordinator`, `Le coordinateur ${s}`) : tl('The Coordinator', 'Le Coordinateur')
 })
 // Not shown (its conversation is): what the panel says instead.
 const coordPhase = computed(() => coordinatorPhase({ pane: coordPane.value, state: coordState.value, error: coordError.value }))
+// herdr-projects 1.2.1: status_words.rs COORDINATOR_UNSENT (pump.rs keeps it after exit).
+const COORDINATOR_UNSENT = 'your message sits unsent in its box. Go into it and press enter.'
+const coordDeliveryFailed = computed(() => coordError.value === COORDINATOR_UNSENT)
+const coordFailureTitle = computed(() => coordDeliveryFailed.value
+  ? tl('Message could not be sent', 'Envoi du message impossible')
+  : tl('Could not start', 'Démarrage impossible'))
+const coordQueueNotice = computed(() => {
+  const n = coordQueued.value
+  if (n === null) return tl('The message queue status is unavailable.', 'L’état de la file de messages est indisponible.')
+  if (n === 0) return tl('No message is waiting.', 'Aucun message en attente.')
+  return n === 1
+    ? tl('1 message still waiting: it goes in once it runs.', '1 message attend toujours : il part dès qu’il tourne.')
+    : tl(`${n} messages still waiting: they go in once it runs.`, `${n} messages attendent toujours : ils partent dès qu’il tourne.`)
+})
 const repo = computed(() => {
   const t = props.target
   if (t.kind === 'task') return props.task?.repo || t.id.split('/')[0] || ''
@@ -223,6 +239,7 @@ watch(() => JSON.stringify(props.target), () => {
   coordLoaded.value = false
   coordState.value = ''
   coordError.value = ''
+  coordQueued.value = null
   coordStatusName.value = ''
   lookCoordinator(gen)
 }, { immediate: true })
@@ -302,6 +319,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
             <span class="board-panel-title">{{ coordName }}</span>
           </template>
         </p>
+        <p v-if="target.kind === 'coordinator'" class="board-panel-purpose">{{ coordinatorDescription(target.to) }}</p>
       </div>
       <UButton
         v-if="target.kind === 'task'" icon="i-lucide-file-text" color="neutral" variant="outline" size="sm" class="board-panel-sheet"
@@ -357,11 +375,13 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       <p v-else-if="target.kind === 'coordinator' && !coordLoaded && !readOnly" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
       <div v-else-if="target.kind === 'coordinator'" class="board-panel-start">
         <p v-if="readOnly" class="board-note">{{ tl('This coordinator has not started. wherdr runs in a container here: start it from Herdr on the host, or move wherdr to the native service to start it from here.', 'Ce coordinateur n’a pas démarré. wherdr tourne ici dans un conteneur : lance-le depuis Herdr sur l’hôte, ou passe wherdr en service natif pour le lancer d’ici.') }}</p>
-        <section v-else-if="coordPhase === 'failed'" class="board-panel-failed" role="alert" :aria-label="tl('Could not start', 'Démarrage impossible')">
-          <h4><UIcon name="i-lucide-octagon-alert" />{{ tl('Could not start', 'Démarrage impossible') }}</h4>
-          <p class="board-panel-failed-what">{{ tl(`${coordThe} could not start on ${machineLabel}.`, `${coordThe} n’a pas pu démarrer sur ${machineLabel}.`) }}</p>
+        <section v-else-if="coordPhase === 'failed'" class="board-panel-failed" role="alert" :aria-label="coordFailureTitle">
+          <h4><UIcon name="i-lucide-octagon-alert" />{{ coordFailureTitle }}</h4>
+          <p class="board-panel-failed-what">{{ coordDeliveryFailed
+            ? tl(`The message was not sent to ${coordName} on ${machineLabel}.`, `Le message destiné à ${coordName} n’a pas été envoyé sur ${machineLabel}.`)
+            : tl(`${coordThe} could not start on ${machineLabel}.`, `${coordThe} n’a pas pu démarrer sur ${machineLabel}.`) }}</p>
           <p class="board-panel-failed-why">{{ coordError }}</p>
-          <p class="board-panel-failed-next">{{ tl('Fix this on the machine, then try again. Your message is still waiting: it goes in once it runs.', 'Corrige cela sur la machine, puis réessaie. Ton message attend toujours : il part dès qu’il tourne.') }}</p>
+          <p class="board-panel-failed-next">{{ tl('Fix this on the machine, then try again.', 'Corrige cela sur la machine, puis réessaie.') }} {{ coordQueueNotice }}</p>
           <p v-if="!reachable" class="board-panel-away" role="status">
             {{ tl(`${machineLabel} cannot be reached now.`, `${machineLabel} est injoignable pour l’instant.`) }}
           </p>

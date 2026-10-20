@@ -134,7 +134,7 @@ const FR: Record<string, string> = {
   'Hide': 'Masquer',
   'Show terminals': 'Afficher les terminaux',
   'Compact list': 'Liste compacte',
-  'One line per agent or space: no preview, folder or model; an agent waiting for an answer shows its question and answers. Computer and phone. Saved on this device.': 'Une ligne par agent ou space : sans aperçu, dossier ni modèle ; un agent qui attend une réponse montre sa question et ses réponses. Ordinateur et téléphone. Enregistré sur cet appareil.',
+  'Tasks: one line in Compact, two in Normal with current activity and relevant labels. Details stay in the task sheet. Saved on this device.': 'Tâches : une ligne en compact, deux en normal avec l’activité et les étiquettes utiles. Les détails restent dans la fiche de la tâche. Enregistré sur cet appareil.',
   'The Herdr server is not responding': 'Le serveur Herdr ne répond pas',
   'This pane has been closed.': 'Ce pane a été fermé.', 'Back': 'Retour',
   'Type a reply…': 'Réponse libre…', 'Command…': 'Commande…',
@@ -410,6 +410,7 @@ const FR: Record<string, string> = {
   // Machines
   // Herdr plugin actions
   'Plugin actions': 'Actions des plugins', 'Run': 'Exécuter',
+  'All': 'Toutes', 'Open the board': 'Ouvrir le board',
   'Machine': 'Machine', 'This machine': 'Cette machine', 'LOCAL': 'LOCAL', 'online': 'en ligne', 'reconnecting…': 'reconnexion…',
   'offline': 'hors ligne', 'No agents on this machine.': 'Aucun agent sur cette machine.', 'No known agents.': 'Aucun agent connu.',
   'unknown machine': 'machine inconnue',
@@ -529,6 +530,7 @@ const FR: Record<string, string> = {
   'no pane on that side': 'aucun pane de ce côté', 'a pane is zoomed in this tab': 'un pane est agrandi dans cet onglet',
   'Not sent': 'Non envoyé', 'will be sent when the menu closes': 'partira quand le menu sera fermé',
   'will be sent when the agent’s input is free': 'partira quand le champ de l’agent sera libre',
+  'will be sent when the turn ends': 'partira à la fin du tour',
   'Not sent — the agent’s input contains text': 'Non envoyé — le champ de l’agent contient du texte',
   'Not sent — the agent’s input field was not found on its screen': 'Non envoyé — champ de saisie de l’agent introuvable à l’écran',
   'The agent’s input contains text': 'Le champ de l’agent contient du texte',

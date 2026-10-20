@@ -172,11 +172,11 @@ test('a space with several panes says which pane asks, as the detailed card does
     await ask(OMP_ASK_PANE, APPROVAL)
     await expect(card(page, OMP_ASK_PANE)).toHaveClass(/open/)
     await expect(card(page, OMP_ASK_PANE).locator('.card-where')).toHaveCount(0)
-    // The detailed card points at the same pane on its own mini-map.
+    // Normal mode keeps the same dense card and identifies the pane above its question.
     await page.evaluate(() => localStorage.setItem('compactList', '0'))
     await page.reload()
-    await expect(space).not.toHaveClass(/compact/)
-    expect(await space.locator('.space-avatar .tabmap i').first().evaluate(el => el.classList.contains('cur'))).toBe(true)
+    await expect(space).toHaveClass(/compact/)
+    expect(await space.locator('.card-where .tabmap i').first().evaluate(el => el.classList.contains('cur'))).toBe(true)
   } finally { await ask(SPLIT_CHAT_PANE) }
 })
 
@@ -196,14 +196,14 @@ test('the answers open with a transition, off under reduced motion', async ({ pa
   expect(await duration()).toBe(0)
 })
 
-test('detailed list: a waiting agent keeps its detailed card and answers', async ({ page }, testInfo) => {
+test('normal list: a waiting agent keeps its dense card and answers', async ({ page }, testInfo) => {
   await page.addInitScript(() => localStorage.setItem('compactList', '0'))
   await ask(OMP_ASK_PANE, APPROVAL)
   await page.goto('/')
   const omp = card(page, OMP_ASK_PANE)
   await expect(omp.locator('.card-choices button .l')).toHaveText(['Approve', 'Deny'])
-  await expect(omp).not.toHaveClass(/compact|open/)
-  await expect(omp.locator('.card-meta')).toBeVisible()
+  await expect(omp).toHaveClass(/compact.*open/)
+  await expect(omp.locator('.card-main')).toHaveCount(0)
   // The answers stay under the title, as before.
   const [title, choices] = await Promise.all([omp.locator('.card-title').boundingBox(), omp.locator('.card-choices').boundingBox()])
   expect(Math.abs(choices!.x - title!.x)).toBeLessThanOrEqual(1)

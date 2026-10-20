@@ -16,7 +16,14 @@ import type { Choices, WaitAction, WaitScreen } from '#shared/types'
 const props = defineProps<{ paneId: string, prompt?: Choices | null, screen?: WaitScreen | null, keys?: boolean }>()
 const busy = ref(false)
 const cursor = ref(props.prompt?.cursor)
-watch(() => props.prompt, p => { cursor.value = p?.cursor })
+// Arrow keys sent and not answered yet: the same question read again (the
+// server broadcasts its state whenever anything moves) keeps the cursor the
+// arrow already painted, until the server's own cursor moves.
+let navPending = 0
+watch(() => props.prompt, (p, old) => {
+  if (navPending && p && old && p.cursor === old.cursor && p.identity === old.identity) return
+  cursor.value = p?.cursor
+})
 watch(() => [props.prompt, props.screen], () => { busy.value = false })
 
 // With options, Enter already confirms them: we only keep the other keys (Escape…).
@@ -120,7 +127,11 @@ useCardKeys(() => keyboard.value, () => ({ digits: Math.min(9, props.prompt?.opt
     if ((k.key === 'up' || k.key === 'down') && cursor.value !== null && cursor.value !== undefined) {
       cursor.value = Math.max(0, Math.min(p.options.length - 1, cursor.value + (k.key === 'down' ? 1 : -1)))
     }
-    navKey(props.paneId, k.key, p.identity).then(ok => { if (!ok) cursor.value = props.prompt?.cursor })
+    navPending++
+    navKey(props.paneId, k.key, p.identity).then((ok) => {
+      navPending--
+      if (!ok) cursor.value = props.prompt?.cursor
+    })
   }
 })
 </script>

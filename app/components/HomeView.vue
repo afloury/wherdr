@@ -24,7 +24,8 @@ import { headerFold } from '~/utils/headerFold'
 import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
 import { listMode } from '~/utils/layoutMode'
 import pkg from '../../package.json'
-import { dropMachineKey, shiftMachineKey, sortMachines } from '#shared/machineOrder'
+import { dropMachineKey, shiftMachineKey } from '#shared/machineOrder'
+import { BAR_ALL } from '~/utils/machineBar'
 import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
 const emit = defineEmits<{ search: [] }>()
 useQuotaLoader()
@@ -39,8 +40,10 @@ const boardLinks = useBoardLinks()
 // What the counters count: a board task's helpers (reviewer, planner,
 // attempts) count once, as its row on the list.
 const counted = computed(() => countedPanes(agents.value, boardLinks.value))
-// Global counters (every machine), unreachable machines left out.
-const count = (s: string) => counted.value.filter(p => p.status === s && !paneStale(p)).length
+// Counters follow the selected machine or group; unreachable machines stay out.
+const baseOfPane = (p: Pane) => { const m = machineInfo(p.machine); return m ? m.baseKey ?? m.key : p.machine || '' }
+const shownCounted = computed(() => (machineBarSelection.value === null ? counted.value : counted.value.filter(p => machineBarSelection.value!.includes(baseOfPane(p)))))
+const count = (s: string) => shownCounted.value.filter(p => p.status === s && !paneStale(p)).length
 
 const conn = computed(() => {
   if (offlineView.value) return { ok: false, text: t('offline'), idle: false }
@@ -96,7 +99,8 @@ const COORD_NAMES: Record<Exclude<CoordinatorLevel, 'project'>, () => string> = 
   machine: () => tl('Machine coordinator', 'Coordinateur de la machine'),
 }
 const coordinatorCard = (level: CoordinatorLevel): BoardCard => ({ tag: '', name: level === 'project' ? '' : COORD_NAMES[level](), coordinator: true })
-const solo = computed(() => listOf(spaceRows(st.value)))
+const soloSelected = computed(() => machineBarSelection.value === null || machineBarSelection.value.includes(machineBaseKeys.value[0] ?? ''))
+const solo = computed(() => listOf(soloSelected.value ? spaceRows(st.value) : []))
 
 const topQuotas = computed(() => (showQuotas.value ? quotaRows(homeQuotas.value, hiddenAgents.value) : []))
 const hasClaude = (list: Pane[]) => list.some(p => p.agent === 'claude')
@@ -104,30 +108,12 @@ const localSetup = computed(() => (showQuotas.value ? claudeSetupOf(homeQuotas.v
 
 // ------------------------------------------------------------ machines
 const STATE_LABEL: Record<MachineInfo['status'], string> = { online: 'online', connecting: 'reconnecting…', offline: 'offline' }
-const machineOrder = ref<string[]>([])
-const orderedMachines = computed(() => sortMachines(machines.value, machineOrder.value))
-const visibleKeys = computed(() => [...new Set(orderedMachines.value.map(m => m.baseKey ?? m.key))])
+const visibleKeys = machineBaseKeys
 const draggingMachine = ref<string | null>(null)
 const dropMachine = ref<string | null>(null)
 const dropAfter = ref(false)
-let orderLoad = 0
-async function loadMachineOrder() {
-  const request = ++orderLoad
-  try {
-    const { order } = await api<{ order: string[] }>('/api/machine/order')
-    if (request === orderLoad) machineOrder.value = order
-  }
-  catch { /* Herdr's order stays available offline. */ }
-}
 onMounted(loadMachineOrder)
 watch(() => machines.value.map(m => m.baseKey ?? m.key).join('|'), loadMachineOrder)
-async function saveMachineOrder(order: string[]) {
-  ++orderLoad
-  const previous = machineOrder.value
-  machineOrder.value = order
-  try { machineOrder.value = (await api<{ order: string[] }>('/api/machine/order', { order })).order }
-  catch (err) { machineOrder.value = previous; toast((err as Error).message, true) }
-}
 function shiftMachine(key: string, direction: -1 | 1) {
   const next = shiftMachineKey(visibleKeys.value, key, direction)
   if (!next) return
@@ -158,7 +144,10 @@ function onMachineDragStart(key: string, event: DragEvent) {
 function onMachineDragEnd() { draggingMachine.value = null; dropMachine.value = null }
 const sections = computed(() => {
   if (!multiMachine.value) return null
-  return orderedMachines.value.map((m) => {
+  const only = machineBarSelection.value
+  const selected = orderedMachines.value.filter(m => only === null || only.includes(baseKeyOf(m)))
+  if (only) selected.sort((a, b) => only.indexOf(baseKeyOf(a)) - only.indexOf(baseKeyOf(b)))
+  return selected.map((m) => {
     const mine = (p: Pane) => (p.machine || '') === m.key
     const a = agents.value.filter(mine)
     const c = counted.value.filter(mine)
@@ -176,6 +165,40 @@ const sections = computed(() => {
     }
   })
 })
+// Machine bar: "All", then each machine (a named session counts as its machine),
+// with its state and the number of agents the list counts.
+const barEntries = computed(() => machineBarShown.value.map((id) => {
+  if (id === BAR_ALL) return { id, label: t('All'), status: null, title: undefined, n: counted.value.length }
+  const group = machineGroups.value.find(g => g.id === id)
+  if (group) return { id, label: group.name, status: null, title: group.name, n: counted.value.filter(p => group.machines.includes(baseOfPane(p))).length }
+  // A single machine Herdr's state does not list: the one shown in the session row.
+  const listed = machines.value.filter(m => baseKeyOf(m) === id)
+  const mine = listed.length ? listed : id === soloMachine.value.key ? [soloMachine.value] : []
+  const keys = new Set(mine.map(m => m.key))
+  const status: MachineInfo['status'] = mine.some(m => m.status === 'online') ? 'online' : mine.some(m => m.status === 'connecting') ? 'connecting' : 'offline'
+  const label = (listed.length ? machineName(listed[0]!.key) : mine[0]?.label) || id || t('This machine')
+  return { id, label, status, title: `${label} · ${t(STATE_LABEL[status])}`, n: counted.value.filter(p => keys.has(p.machine || '')).length }
+}))
+const homeScroll = ref<HTMLElement | null>(null)
+function pickBar(id: string, event: MouseEvent) {
+  haptic()
+  pickMachineBar(id)
+  // A folded machine opens: shown alone, it would only be a heading.
+  if (id !== BAR_ALL) {
+    const selected = machineGroups.value.find(g => g.id === id)?.machines ?? [id]
+    const keys = machines.value.filter(m => selected.includes(baseKeyOf(m))).map(m => m.key)
+    if (keys.some(k => collapsedMachines.value.includes(k))) collapsedMachines.value = collapsedMachines.value.filter(k => !keys.includes(k))
+  }
+  homeScroll.value?.scrollTo({ top: 0 })
+  ;(event.currentTarget as HTMLElement | null)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+}
+// A mouse wheel scrolls the bar sideways when it overflows (narrow sidebar).
+function onBarWheel(e: WheelEvent) {
+  const bar = e.currentTarget as HTMLElement
+  if (!e.deltaY || Math.abs(e.deltaX) > Math.abs(e.deltaY) || bar.scrollWidth <= bar.clientWidth) return
+  e.preventDefault()
+  bar.scrollLeft += e.deltaY
+}
 function toggleMachine(key: string) {
   haptic()
   const c = collapsedMachines.value
@@ -292,6 +315,8 @@ function machineMenu(m: MachineInfo) {
     if (at >= 0 && at < visibleKeys.value.length - 1) items.push({ label: t('Move down'), icon: 'i-lucide-arrow-down', run: () => shiftMachine(key, 1) })
     if (machineOrder.value.length) items.push({ label: t('Reset order'), icon: 'i-lucide-rotate-ccw', run: () => saveMachineOrder([]) })
   }
+  // The Board, already filtered on this machine (its board is the base machine's).
+  items.push({ label: t('Open the board'), icon: 'i-lucide-square-kanban', run: () => navigateTo({ path: '/board', query: { machine: baseKeyOf(m) } }) })
   if (m.status === 'online' && awakeByMachine.value[m.key]?.supported) {
     items.push({ label: t('Keep awake'), icon: 'i-lucide-sun', run: () => openAwake(m) })
     if (awakeByMachine.value[m.key]?.platform === 'mac') items.push({ label: t('What prevents sleep'), icon: 'i-lucide-list-filter', run: () => openDiagnostic(m) })
@@ -325,8 +350,7 @@ const quietHint = computed(() => {
 const onQuietVisible = () => { if (document.visibilityState === 'visible') refreshQuiet() }
 onMounted(() => { refreshQuiet(); document.addEventListener('visibilitychange', onQuietVisible) })
 onBeforeUnmount(() => document.removeEventListener('visibilitychange', onQuietVisible))
-// A single machine: its plugin actions live in the "…" menu of its session row.
-const soloPlugins = computed(() => !multiMachine.value && machinePluginActions('').length > 0)
+// A single machine: its "…" menu (Open the board, keep awake, plugin actions) is on its session row.
 // Header buttons: when the list is too narrow, the secondary ones move into a "…" menu
 // (settings first, then the board).
 const titleRow = ref<HTMLElement | null>(null)
@@ -521,17 +545,28 @@ function resetListWidth() {
       </div>
     </header>
 
-    <div class="scroll">
+    <nav v-if="barEntries.length" class="machine-bar" :aria-label="tl('Machines shown', 'Machines affichées')" @wheel="onBarWheel">
+      <button
+        v-for="b in barEntries" :key="b.id" type="button" class="machine-bar-item" :class="[b.status, { on: b.id === machineBarPick }]"
+        :aria-pressed="b.id === machineBarPick" :title="b.title" @click="pickBar(b.id, $event)"
+      >
+        <UIcon v-if="machineGroups.some(g => g.id === b.id)" name="i-lucide-group" class="machine-bar-group" aria-hidden="true" />
+        <i v-if="b.status" class="machine-bar-state" aria-hidden="true" />
+        <span class="machine-bar-label">{{ b.label }}</span>
+        <b class="machine-bar-count">{{ b.n }}</b>
+      </button>
+    </nav>
+    <div ref="homeScroll" class="scroll">
       <OfflineNote v-if="(offlineView && cachedAt) || netDown" class="home-offline" :label="offlineView && cachedAt ? t('Last known state') : undefined" :at="cachedAt" date-style="medium" />
       <div v-if="eventsOpen && !st.ok" class="notice">
         {{ t('The Herdr server is not responding') }}{{ st.error ? tl(`: ${t(st.error)}`, ` : ${t(st.error)}`) : '' }}.<br>
         {{ hostLabel ? tl(`Run herdr on ${hostLabel} to start it.`, `Lance herdr sur ${hostLabel} pour le démarrer.`) : tl('Run herdr on the server to start it.', 'Lance herdr sur le serveur pour le démarrer.') }}
       </div>
-      <div v-if="!multiMachine" class="solo-machine-row"><button type="button" class="solo-session-row" :aria-label="t('Herdr sessions')" @click="openSessions(soloMachine)">
+      <div v-if="!multiMachine && soloSelected" class="solo-machine-row"><button type="button" class="solo-session-row" :aria-label="t('Herdr sessions')" @click="openSessions(soloMachine)">
         <span><UIcon name="i-lucide-layers" />{{ soloMachine.label }}</span>
         <b>{{ soloMachine.session || 'default' }}<UIcon name="i-lucide-chevron-right" /></b>
-      </button><UDropdownMenu v-if="awakeByMachine[soloMachine.key]?.supported || soloPlugins" :items="machineMenu(soloMachine)" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :aria-label="t('Options')" class="solo-machine-options" /></UDropdownMenu></div>
-      <p v-if="!multiMachine && awakeByMachine[soloMachine.key]?.active" class="machine-awake"><UIcon name="i-lucide-sun" />{{ awakeLabel(awakeByMachine[soloMachine.key]) }}</p>
+      </button><UDropdownMenu :items="machineMenu(soloMachine)" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :aria-label="t('Options')" class="solo-machine-options" /></UDropdownMenu></div>
+      <p v-if="!multiMachine && soloSelected && awakeByMachine[soloMachine.key]?.active" class="machine-awake"><UIcon name="i-lucide-sun" />{{ awakeLabel(awakeByMachine[soloMachine.key]) }}</p>
       <NuxtLink v-if="quietHint" :to="quietSettings" class="home-quiet" :aria-label="quietLabel"><UIcon name="i-lucide-bell-off" /><span>{{ quietHint }}</span></NuxtLink>
 
       <div v-if="showCounters && agents.length" class="stats">
@@ -544,8 +579,9 @@ function resetListWidth() {
 
       <OpenNetworkBanner />
       <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />
-      <ClaudeSetupBanner v-if="!sections && localSetup" :setup="localSetup" :name="machineName('') || t('this machine')" class="solo" />
+      <ClaudeSetupBanner v-if="!sections && soloSelected && localSetup" :setup="localSetup" :name="machineName('') || t('this machine')" class="solo" />
 
+      <p v-if="machineBarSelection?.length === 0" class="machine-empty">{{ tl('No machines in this group.', 'Aucune machine dans ce groupe.') }}</p>
       <!-- A single machine: the previous list. -->
       <template v-if="!sections">
         <section v-if="solo.coordinators.length" class="agent-group coordinators">

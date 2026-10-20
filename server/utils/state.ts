@@ -24,7 +24,7 @@ import { parseUsageLimit, type UsageLimit } from '../../shared/usageLimit'
 import { classifyScreen, type ScreenInteraction } from '../../shared/interactiveScreen'
 import { parseClaudeActivity } from './activity'
 import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './claudeScreen'
-import { type QueueEntry, INPUT_STATES, checkQueue, giveBackHeld, isUploadLine, leftForGood, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
+import { type QueueEntry, INPUT_STATES, checkQueue, giveBackHeld, isUploadLine, landed, leftForGood, QUEUED_TEXT_MAX, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
 import { inputVisible } from './choices'
 import { isSlashCommand, photosOnly } from '../../shared/queuedMatch'
 import { codexFieldLine, findQueued, inputBox, msgText, unqueueClaude } from './unqueue'
@@ -32,7 +32,7 @@ import { takeBackInterrupted, unansweredTurn } from './interruptRestore'
 import { interruptAgent } from './interruptSeq'
 import { queuedPasted } from './pastes'
 import { type SentRecord, addSent, findSent, hasAttachments, lostPhotos } from './sentHistory'
-import { type GuardError, guardedSend, submittable, withPaneLock } from './guardedSend'
+import { type GuardError, confirmSubmitted, guardedSend, submittable, withPaneLock } from './guardedSend'
 import { type TranscriptPane, sameMsg } from './transcripts'
 import { chatDelta } from './chatDelta'
 import { agentNotificationTitle, pushSend, subWatchesSession } from './push'
@@ -390,15 +390,18 @@ function saveQueued() {
 }
 // `id`: the app's own id for the bubble it already shows (see app/utils/outbox.ts),
 // kept when well-formed and unused, so the bubble keeps its identity.
-export function addQueued(paneId: string, text: string, opts: { held?: boolean, busy?: boolean, failed?: boolean, id?: string } = {}): QueuedMessage {
+// `typedAt`: when wherdr began typing it (see QueueEntry). `turn`: held until
+// the agent's turn ends.
+export function addQueued(paneId: string, text: string, opts: { held?: boolean, busy?: boolean, failed?: boolean, id?: string, typedAt?: number, turn?: boolean } = {}): QueuedMessage {
   const list = queued.get(paneId) || []
   const own = opts.id && /^w-[a-z0-9]{1,32}$/.test(opts.id) && !list.some(q => q.id === opts.id) ? opts.id : null
   // Typed during a turn (see isOmpRun).
   const turn = !opts.held && !opts.failed && TURN.has(findPane(paneId)?.status || '')
   const e: QueueEntry = {
-    id: own || crypto.randomBytes(4).toString('hex'), text: String(text).slice(0, 4000), at: Date.now(),
+    id: own || crypto.randomBytes(4).toString('hex'), text: String(text).slice(0, QUEUED_TEXT_MAX), at: Date.now(),
     ...(opts.held ? { held: true } : {}), ...(opts.busy ? { busy: true } : {}), ...(opts.failed ? { failed: true } : {}),
     ...(turn ? { turnSeen: true } : {}),
+    ...(opts.typedAt ? { typedAt: opts.typedAt } : {}), ...(opts.held && opts.turn ? { turn: true } : {}),
   }
   queued.set(paneId, [...list, e])
   sent.set(paneId, addSent(sent.get(paneId) || [], e.text, e.at))
@@ -423,6 +426,8 @@ export function withSentText(paneId: string, queue: ClaudeQueueEntry[]): ClaudeQ
     return t ? { ...e, sent: t } : e
   })
 }
+// The agent is in a turn (working, or waiting for an answer in the middle of one).
+export const inTurn = (paneId: string) => TURN.has(findPane(paneId)?.status || '')
 export const hasHeld = (paneId: string) => (queued.get(paneId) || []).some(q => q.held && !q.failed)
 // Restart or Codex update in progress (restart.ts): it holds the pane's send
 // lock for its whole sequence; messages wait as held ones instead.
@@ -436,7 +441,9 @@ export const restarting = (paneId: string) => { const r = restarts.get(paneId); 
 const GUARD_STATES = new Set(['idle', 'done', 'working'])
 // What agent.prompt must type for the agent to submit `text` (see guardedSend.ts).
 const typedFor = (p: Pane, text: string) => (p.agent === 'claude' ? submittable(text) : text)
-export function sendPrompt(p: Pane, text: string): Promise<void> {
+// `retry`: a later attempt of a message whose earlier send was given up (its
+// text, if still in the field, is ours: see guardedSend.ts).
+export function sendPrompt(p: Pane, text: string, opts: { retry?: boolean } = {}): Promise<void> {
   return withPaneLock(p.id, async () => {
     // Re-check after waiting for another writer/restart's lock. The Pane
     // passed by a request or a held-message delivery can already be stale.
@@ -446,7 +453,12 @@ export function sendPrompt(p: Pane, text: string): Promise<void> {
     }
     // Herdr may still call a quota wait blocked. Its visible field also takes
     // slash commands, using the same checked send rather than agent.prompt.
-    if (p.agent !== 'claude' || !GUARD_STATES.has(p.status || '') || (isSlashCommand(text) && !p.usageLimit)) return agentPrompt(p.id, typedFor(p, text))
+    if (p.agent !== 'claude' || !GUARD_STATES.has(p.status || '') || (isSlashCommand(text) && !p.usageLimit)) {
+      await agentPrompt(p.id, typedFor(p, text))
+      // Codex: its field must not keep our text (see confirmSubmitted).
+      if (p.agent === 'codex' && !isSlashCommand(text)) await confirmSubmitted(fieldDeps(p, codexFieldLine), text)
+      return
+    }
     const keep = (texts: string[] | undefined) => {
       for (const t of texts || []) {
         addQueued(p.id, t, { held: true })
@@ -455,19 +467,9 @@ export function sendPrompt(p: Pane, text: string): Promise<void> {
     }
     try {
       const r = await guardedSend({
-        box: async () => {
-          const r = await herdr('pane.read', { pane_id: p.id, source: 'visible', format: 'ansi' }, 4000)
-          return inputBox(String((r.read && r.read.text) || ''))
-        },
+        ...fieldDeps(p, inputBox),
         type: async (t) => { await herdr('pane.send_input', { pane_id: p.id, text: t }) },
-        keys: async (keys) => { await herdr('pane.send_input', { pane_id: p.id, keys }) },
-        sleep,
-        sentSince: async (since) => {
-          const r = await transcripts.chat(p, {})
-          return (r.items || []).filter(i => i.role === 'user' && i.ts && Date.parse(i.ts) >= since - 1000).map(i => i.text)
-        },
-        log: m => log(`send ${p.id}: ${m}`),
-      }, text)
+      }, text, { retry: opts.retry })
       keep(r.unsent)
     } catch (e) {
       keep((e as GuardError).unsent)
@@ -475,6 +477,26 @@ export function sendPrompt(p: Pane, text: string): Promise<void> {
     }
   })
 }
+// The agent's input field read from its screen with `read`, keys, and the
+// user messages of its transcript since a moment (see guardedSend.ts).
+function fieldDeps(p: Pane, read: (ansi: string) => string | null) {
+  return {
+    box: async () => {
+      const r = await herdr('pane.read', { pane_id: p.id, source: 'visible', format: 'ansi' }, 4000)
+      return read(String((r.read && r.read.text) || ''))
+    },
+    keys: async (keys: string[]) => { await herdr('pane.send_input', { pane_id: p.id, keys }) },
+    sleep,
+    sentSince: async (since: number) => {
+      const r = await transcripts.chat(p, {})
+      return (r.items || []).filter(i => i.role === 'user' && i.ts && Date.parse(i.ts) >= since - 1000).map(i => i.text)
+    },
+    log: (m: string) => log(`send ${p.id}: ${m}`),
+  }
+}
+// A send given up after our text was typed and taken out of the field again
+// (see guardedSend.ts): nothing of it is left, and it may be tried again.
+export const givenUp = (e: unknown) => e instanceof HerdrError && ['not_shown', 'not_submitted'].includes(e.code) && Boolean((e as GuardError).typed)
 // Field holding someone else's text, or hidden: the message waits.
 export const isBusyError = (e: unknown) => e instanceof HerdrError && (e.code === 'input_busy' || e.code === 'no_input')
 
@@ -490,8 +512,18 @@ function deliverHeld(p: Pane) {
       if (!inputVisible(r.read && r.read.text) || !q.held || q.failed) return
       // Removed (Cancel) meanwhile: nothing to send.
       if (!(queued.get(p.id) || []).includes(q)) return
-      try { await sendPrompt(p, q.text) }
+      // Typed before without being seen taken: the agent may have taken it
+      // late. Its transcript says so; it is never typed twice.
+      if (q.typedAt && landedNow(p, q, (await transcripts.chat(p, { fresh: true })).items || [])) {
+        dropQueued(p.id, q)
+        log(`held message on ${p.id} was taken after all`)
+        setTimeout(poll, 50)
+        return
+      }
+      const at = Date.now()
+      try { await sendPrompt(p, q.text, { retry: Boolean(q.typedAt) }) }
       catch (e) {
+        if ((e as GuardError).typed) q.typedAt = at
         // Someone's text in the field: still held, until BUSY_TTL_MS.
         if (isBusyError(e)) {
           if ((e as HerdrError).code === 'input_busy' && !q.busy) { q.busy = true; setTimeout(poll, 50) }
@@ -501,12 +533,15 @@ function deliverHeld(p: Pane) {
       }
       q.held = false
       delete q.busy
+      delete q.turn
+      q.typedAt = at
+      delete q.readySince
       q.at = Date.now()
       log(`held message sent on ${p.id}`)
       setTimeout(poll, 50)
     })
     .catch((e) => {
-      if (!/not an active|not_ready|blocked/i.test(`${e.code} ${e.message}`)) { q.failed = true; log(`held message ${p.id}: ${e.message}`) }
+      if (!/not an active|not_ready|blocked/i.test(`${e.code} ${e.message}`)) { q.failed = true; log(`held message ${p.id}: ${e.message}`); setTimeout(poll, 50) }
     })
     .finally(() => deliverBusy.delete(p.id))
 }
@@ -560,6 +595,23 @@ async function cancelTurn(p: Pane, text: string): Promise<{ text: string, lost: 
   return takeBack(p.id, item)
 }
 
+// `q` taken by the agent (see landed), the transcript messages that confirm
+// wherdr's earlier messages of the pane set aside first.
+function landedNow(p: Pane, q: QueueEntry, items: ChatItem[]): boolean {
+  const taken = new Set<ChatItem>()
+  const now = Date.now()
+  for (const e of queued.get(p.id) || []) {
+    if (e === q) break
+    if (e.failed || e.typedAt) landed(e, items, now, p.agent, taken)
+  }
+  return landed(q, items, now, p.agent, taken)
+}
+function dropQueued(paneId: string, q: QueueEntry) {
+  const left = (queued.get(paneId) || []).filter(x => x !== q)
+  if (left.length) queued.set(paneId, left)
+  else queued.delete(paneId)
+}
+
 // "Retry" on a failed message: held again, delivered by the next polls.
 export function retryQueued(paneId: string, id: string): QueuedMessage {
   const q = (queued.get(paneId) || []).find(x => x.id === id)
@@ -568,6 +620,10 @@ export function retryQueued(paneId: string, id: string): QueuedMessage {
   q.failed = false
   q.held = true
   q.at = Date.now()
+  // During a turn, it waits for the turn's end. `typedAt` stays: before it
+  // is typed again, its transcript is looked at (see deliverHeld).
+  if (inTurn(paneId)) q.turn = true
+  else delete q.turn
   delete q.back
   delete q.busy
   delete q.readySince
@@ -584,8 +640,16 @@ function reconcileQueued(p: Pane) {
   reconcileBusy.add(p.id)
   transcripts.chat(p, {})
     .then((r) => {
-      // A held message was not typed yet: only the agent's own transcript can't take it.
-      const left = (queued.get(p.id) || []).filter(q => q.held || !queuedDone(q, r.items || [], READY.has(p.status || ''), Date.now(), p.agent))
+      // A held message never typed: the agent cannot have it. A message wherdr
+      // typed without seeing it taken (failed, or held for another attempt):
+      // gone as soon as its words show in the transcript, "Not sent" included
+      // (see landed). Any other: taken as queuedDone says.
+      const items = r.items || []
+      const now = Date.now()
+      // Each transcript message confirms one of wherdr's messages at most.
+      const taken = new Set<ChatItem>()
+      const left = (queued.get(p.id) || []).filter(q => (q.held && !q.typedAt)
+        || ((q.failed || q.held) ? !landed(q, items, now, p.agent, taken) : !queuedDone(q, items, READY.has(p.status || ''), now, p.agent)))
       if (left.length) queued.set(p.id, left)
       else queued.delete(p.id)
     })

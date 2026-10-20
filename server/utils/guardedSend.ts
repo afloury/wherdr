@@ -63,7 +63,13 @@ export interface GuardOptions {
   showWaitMs?: number
   // Wait for the field to empty after Enter (ms).
   submitWaitMs?: number
+  // Extra time a lagging screen gets (a long session, a loaded machine, a
+  // turn being drawn) before the send is given up and our text cleared (ms).
+  lateMs?: number
   pollMs?: number
+  // A text exactly ours already in the field is what an earlier attempt of
+  // this same message left there: cleared, then typed again.
+  retry?: boolean
 }
 
 export interface GuardResult {
@@ -74,11 +80,13 @@ export interface GuardResult {
   unsent: string[]
 }
 
-const DEFAULTS: Required<GuardOptions> = { freeWaitMs: 2000, quietMs: 400, showWaitMs: 4000, submitWaitMs: 4000, pollMs: 50 }
+const DEFAULTS: Required<GuardOptions> = { freeWaitMs: 2000, quietMs: 400, showWaitMs: 4000, submitWaitMs: 4000, lateMs: 8000, pollMs: 50, retry: false }
 // Time for the transcript to record a message just submitted (ms).
 const RECORD_MS = 600
 const MAX_ATTEMPTS = 3
 const MAX_FOREIGN = 5
+// Shortest start of our text a retry takes for its own leftover (see sendOne).
+const RETRY_PART_MIN = 12
 
 // Stand-ins Claude Code shows instead of a long paste or an image.
 const PLACEHOLDER = /\[(?:Pasted text|Image) #\d+[^\]]*\]/g
@@ -131,7 +139,7 @@ export function classifyBox(box: string, ours: string): BoxState {
 
 // Field read twice in a row with the same content (an ongoing paste or
 // redraw has settled). null: not on screen.
-async function settled(d: GuardDeps, o: Required<GuardOptions>): Promise<string | null> {
+async function settled(d: Pick<GuardDeps, 'box' | 'sleep'>, o: Required<GuardOptions>): Promise<string | null> {
   let prev = await d.box()
   for (let i = 0; i < 20; i++) {
     await d.sleep(o.pollMs)
@@ -196,21 +204,49 @@ async function bashReady(d: GuardDeps, o: Required<GuardOptions>, text: string, 
   throw new HerdrError('bash_mode', 'The agent’s input stays in shell mode (!)')
 }
 
+// What is left of our text in the field after a send given up goes: a
+// half-typed message would sit there until someone presses Enter, and the
+// next writer would glue to it. Only text that is ours is cleared; text that
+// is not (or no longer) ours stays. Texts that show up meanwhile join `foreign`.
+async function clearOurs(d: GuardDeps, o: Required<GuardOptions>, text: string, foreign: string[]): Promise<void> {
+  const box = await settled(d, o)
+  if (box === null || isFree(box)) return
+  const kind = classifyBox(box, text).kind
+  if (kind !== 'exact' && kind !== 'partial') return
+  d.log?.('send given up: our text taken out of the input')
+  await clearField(d, o, box.split('\n').length + text.split('\n').length, foreign)
+}
+
 // One message, typed and submitted alone. Foreign texts removed from the
 // field on the way are added to `foreign`, even when the send then fails.
 // The field is read once per poll and Enter pressed as soon as it holds our
 // text alone: the shorter that moment, the less room for another writer.
+// A screen that lags (a long session drawing its turn, a loaded machine) gets
+// `lateMs` more at each step; past it, the send is given up and our text is
+// taken out of the field, never left half-typed (see clearOurs).
 async function sendOne(d: GuardDeps, text: string, o: Required<GuardOptions>, foreign: string[]): Promise<void> {
   const log = d.log || (() => {})
   const now = d.now || Date.now
   const start = now()
   const lines = (box: string) => box.split('\n').length + text.split('\n').length
-  // Already submitted by someone else's Enter (alone, or glued to their text)?
-  const recorded = async (): Promise<string | null> => {
+  // Already submitted (a late Enter, another writer's Enter)? Judged on the
+  // user messages recorded since the send began, never by a substring: a
+  // short "ok" is not taken because "ok so look at this" was. A message
+  // counts when its whole text is ours; with `glued` (the field as read with
+  // a foreign text, see separate), also when it is that glued field: ours
+  // with every foreign part, nothing else.
+  const recorded = async (glued?: { box: string, parts: string[] }): Promise<string | null> => {
     if (!d.sentSince) return null
     await d.sleep(RECORD_MS)
     const o = compact(text)
-    return (await d.sentSince(start).catch(() => [])).find(m => compact(m).includes(o)) ?? null
+    const isOurs = (m: string) => {
+      const c = compact(m)
+      if (c === o) return true
+      if (!glued) return false
+      return c === compact(glued.box) || (c.length === o.length + glued.parts.reduce((n, p) => n + compact(p).length, 0)
+        && c.includes(o) && glued.parts.every(p => c.includes(compact(p))))
+    }
+    return (await d.sentSince(start).catch(() => [])).find(isOurs) ?? null
   }
   // Free field as last read (empty, or bash mode left empty).
   let field = ''
@@ -220,11 +256,22 @@ async function sendOne(d: GuardDeps, text: string, o: Required<GuardOptions>, fo
     const before = foreign.length
     foreign.push(...parts)
     field = await clearField(d, o, lines(box), foreign)
-    const m = await recorded()
+    const m = await recorded({ box, parts })
     if (m === null) return false
     foreign.splice(before)
     log(`another writer submitted the field before it could be separated: ${JSON.stringify(m)}`)
     return true
+  }
+  // Our own text left by an earlier attempt of this message (whole, or the
+  // start of it drawn late): taken out first. A start too short to be told
+  // from someone's draft ("the") is left alone.
+  if (o.retry) {
+    const box = await settled(d, o)
+    const kind = box ? classifyBox(box, text).kind : 'empty'
+    if (box && (kind === 'exact' || (kind === 'partial' && compact(box).length >= Math.min(RETRY_PART_MIN, compact(text).length)))) {
+      log('our text from an earlier attempt still in the input: cleared before typing again')
+      await clearField(d, o, lines(box), foreign)
+    }
   }
   field = await waitFree(d, o)
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -233,7 +280,8 @@ async function sendOne(d: GuardDeps, text: string, o: Required<GuardOptions>, fo
     let state: BoxState = { kind: 'empty' }
     let box: string | null = ''
     const typed = now()
-    while (now() - typed < o.showWaitMs) {
+    let looked = false
+    while (now() - typed < o.showWaitMs + o.lateMs) {
       await d.sleep(o.pollMs)
       box = await d.box()
       if (box === null) throw new HerdrError('no_input', 'Agent input field not found')
@@ -241,10 +289,16 @@ async function sendOne(d: GuardDeps, text: string, o: Required<GuardOptions>, fo
       if (state.kind === 'glued' || state.kind === 'exact') break
       // Unknown: maybe a paste still being drawn; settled before deciding.
       if (state.kind === 'unknown' && (await settled(d, o)) === box) break
+      // Still nothing: maybe taken at once by another writer's Enter.
+      if (!looked && state.kind === 'empty' && now() - typed >= o.showWaitMs) {
+        looked = true
+        if (await recorded() !== null) return
+      }
     }
     if (state.kind === 'empty' || state.kind === 'partial') {
       // Taken by another writer's Enter (our text alone: fine).
       if (state.kind === 'empty' && await recorded() !== null) return
+      await clearOurs(d, o, text, foreign)
       throw new HerdrError('not_shown', 'The message did not show in the agent’s input')
     }
     if (state.kind === 'glued') {
@@ -257,9 +311,10 @@ async function sendOne(d: GuardDeps, text: string, o: Required<GuardOptions>, fo
     // 2. Enter, then the field must empty.
     await d.keys(['enter'])
     let again = false
+    let looked2 = false
     let after: BoxState = state
     const entered = now()
-    while (now() - entered < o.submitWaitMs) {
+    while (now() - entered < o.submitWaitMs + o.lateMs) {
       await d.sleep(o.pollMs)
       box = await d.box()
       // Field gone (a menu, Claude redrawing) or emptied: taken.
@@ -276,11 +331,17 @@ async function sendOne(d: GuardDeps, text: string, o: Required<GuardOptions>, fo
         // Replaced by other text: ours was taken, another writer typed since.
         return
       }
-      // Still there alone: the Enter was lost, pressed once more.
+      // Still there alone: the Enter was lost, pressed once more. Never a
+      // third time: a dialog that opens meanwhile would take it as an answer.
       if (!again && now() - entered >= o.submitWaitMs / 3) {
         again = true
         log('message still in the input after Enter: Enter pressed again')
         await d.keys(['enter'])
+      }
+      // A screen that lags behind the agent: the transcript may already have it.
+      if (!looked2 && now() - entered >= o.submitWaitMs) {
+        looked2 = true
+        if (await recorded() !== null) { log('message recorded while the input still showed it: taken'); return }
       }
     }
     if (after.kind === 'glued') {
@@ -288,6 +349,8 @@ async function sendOne(d: GuardDeps, text: string, o: Required<GuardOptions>, fo
       if (await separate(box!, after.foreign)) return
       continue
     }
+    if (await recorded() !== null) return
+    await clearOurs(d, o, text, foreign)
     throw new HerdrError('not_submitted', 'The agent did not take the message')
   }
   throw new HerdrError('input_contended', 'Another writer keeps typing into the agent’s input')
@@ -295,15 +358,22 @@ async function sendOne(d: GuardDeps, text: string, o: Required<GuardOptions>, fo
 
 // Error of a send that failed after taking foreign text out of the field:
 // that text is in `unsent`, for the caller to keep.
-export type GuardError = HerdrError & { unsent?: string[] }
+export type GuardError = HerdrError & { unsent?: string[], typed?: boolean }
 
 // Our message, then each foreign text taken out of it, each in its own turn.
+// An error carries `typed` once something went into the field: the agent may
+// still take it (an Enter it handles late), so the caller looks for it in the
+// transcript before typing it again. Our text is never left in the field
+// (see clearOurs), except with `clear_failed`.
 export async function guardedSend(d: GuardDeps, text: string, opts: GuardOptions = {}): Promise<GuardResult> {
   const o = { ...DEFAULTS, ...opts }
   const todo: string[] = []
-  try { await sendOne(d, text, o, todo) }
+  let typed = false
+  const deps: GuardDeps = { ...d, type: (t) => { typed = true; return d.type(t) } }
+  try { await sendOne(deps, text, o, todo) }
   catch (e) {
     if (todo.length) (e as GuardError).unsent = todo
+    if (typed) (e as GuardError).typed = true
     throw e
   }
   const result: GuardResult = { foreign: [], unsent: [] }
@@ -311,7 +381,7 @@ export async function guardedSend(d: GuardDeps, text: string, opts: GuardOptions
     const f = todo.shift()!
     if (result.foreign.length >= MAX_FOREIGN) { result.unsent.push(f); continue }
     try {
-      await sendOne(d, f, o, todo)
+      await sendOne(deps, f, o, todo)
       result.foreign.push(f)
       d.log?.(`foreign message typed back after ours: ${JSON.stringify(f)}`)
     } catch (e) {
@@ -320,6 +390,54 @@ export async function guardedSend(d: GuardDeps, text: string, opts: GuardOptions
     }
   }
   return result
+}
+
+// After Herdr's `agent.prompt` (text, then Enter) to Codex: the field must
+// not keep our text. Codex takes Enter during a turn too (0.163: the message
+// joins the running turn at once, written to its transcript right away), but
+// a Codex that lags may drop the Enter. `box`: the first line of its field
+// (see codexFieldLine), '' when empty. Still ours after `submitWaitMs / 3`:
+// Enter once more (never a third time). Still ours past `submitWaitMs +
+// lateMs` and not in the transcript: taken out of the field, and the send
+// fails with `not_submitted` (typed).
+export async function confirmSubmitted(d: Omit<GuardDeps, 'type'>, text: string, opts: GuardOptions = {}): Promise<void> {
+  const o = { ...DEFAULTS, ...opts }
+  const now = d.now || Date.now
+  const start = now()
+  const want = compact(text)
+  // The first line of the field is the start of our text (a long one wraps;
+  // a long paste shows as "[Pasted Content …]").
+  const ours = (box: string | null) => Boolean(box) && (want.startsWith(compact(box!)) || (/^\[Pasted Content/.test(box!.trim()) && text.length > 200))
+  // In the transcript since Herdr typed it (its Enter came before `start`): a
+  // user message whose whole text is ours, never a substring ("ok" is not
+  // "ok so look at this").
+  const recorded = async () => {
+    if (!d.sentSince) return false
+    await d.sleep(RECORD_MS)
+    return (await d.sentSince(start - 2000).catch(() => [])).some(m => compact(m) === want)
+  }
+  let again = false
+  let looked = false
+  while (now() - start < o.submitWaitMs + o.lateMs) {
+    await d.sleep(o.pollMs)
+    if (!ours(await d.box())) return
+    if (!again && now() - start >= o.submitWaitMs / 3) {
+      again = true
+      d.log?.('message still in the input after Enter: Enter pressed again')
+      await d.keys(['enter'])
+    }
+    if (!looked && now() - start >= o.submitWaitMs) {
+      looked = true
+      if (await recorded()) return
+    }
+  }
+  if (await recorded()) return
+  d.log?.('send given up: our text taken out of the input')
+  await d.keys(clearKeys(text.split('\n').length))
+  await d.sleep(o.pollMs)
+  const left = await settled(d, o)
+  const err = new HerdrError(ours(left) ? 'clear_failed' : 'not_submitted', ours(left) ? 'Agent input not cleared: check its terminal' : 'The agent did not take the message')
+  throw Object.assign(err, { typed: true })
 }
 
 // wherdr's own sends to a pane, one at a time.
