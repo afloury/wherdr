@@ -100,3 +100,28 @@ test('the header keeps its shape when quiet mode starts or ends', async ({ page 
   await expect(page.locator('.home-quiet')).toBeVisible()
   expect(await header()).toEqual(off)
 })
+
+test('collapsed list: the rail keeps its buttons and still shows quiet mode', async ({ page }, info) => {
+  test.skip(!info.project.name.includes('desktop'), 'the rail is a computer layout')
+  await page.addInitScript(() => {
+    Object.defineProperty(ServiceWorkerContainer.prototype, 'ready', { get: () => Promise.resolve({ pushManager: { getSubscription: async () => null } }) })
+    localStorage.setItem('listCollapsed', '1')
+  })
+  let quiet = false
+  await page.route('**/api/push/quiet', route => route.fulfill({ json: { global: quiet ? { until: null } : null, device: null } }))
+  const buttons = async () => page.locator('.home-rail').evaluate(el => [...el.querySelectorAll('button, a')].filter(b => !b.classList.contains('rail-quiet')).map(b => b.getAttribute('aria-label')))
+  await page.goto('/')
+  await expect(page.locator('.home-rail .rail-stats')).toBeVisible()
+  await expect(page.locator('.rail-quiet')).toHaveCount(0)
+  const off = await buttons()
+  quiet = true
+  await page.reload()
+  const mark = page.getByRole('link', { name: 'Notifications silenced — open settings' })
+  await expect(mark).toBeVisible()
+  // Below the counters, not among the rail's actions.
+  const stats = (await page.locator('.home-rail .rail-stats').boundingBox())!
+  expect((await mark.boundingBox())!.y).toBeGreaterThan(stats.y + stats.height - 1)
+  expect(await buttons()).toEqual(off)
+  await mark.click()
+  await expect(page).toHaveURL(/section=notifications/)
+})

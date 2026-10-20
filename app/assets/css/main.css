@@ -2843,6 +2843,10 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .rail-stat.done i { background: var(--done); }
   .rail-stat.zero b { color: var(--dim); }
   .rail-stat.blocked:not(.zero) b { color: var(--rose); }
+  /* Quiet mode in the rail: a small ochre mark under the counters (a tap opens the settings). */
+  .rail-quiet { display: flex; justify-content: center; width: 100%; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line-soft); color: var(--ochre); }
+  .rail-quiet svg { width: 14px; height: 14px; }
+  .rail-quiet:hover, .rail-quiet:focus-visible { color: var(--text); }
   .tab-back { display: none; }
   #btnBack { display: none; }
 

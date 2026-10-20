@@ -481,6 +481,11 @@ function resetListWidth() {
           <i aria-hidden="true" /><b>{{ c.n }}</b><span class="sr-only">{{ c.label }}</span>
         </li>
       </ul>
+      <!-- Quiet mode: a small state mark under the counters, not a button among the
+           rail's actions, so the rail keeps its shape. -->
+      <UTooltip v-if="quietHint" :text="quietHint" :content="{ side: 'right' }">
+        <NuxtLink :to="quietSettings" class="rail-quiet" :aria-label="quietLabel"><UIcon name="i-lucide-bell-off" /></NuxtLink>
+      </UTooltip>
     </nav>
     <header class="home-top">
       <p class="eyebrow">
