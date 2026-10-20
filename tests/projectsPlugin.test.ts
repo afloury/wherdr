@@ -1,14 +1,18 @@
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { projectsPluginFromList } from '../server/utils/projectsPlugin'
-import { pluginBinary } from '../server/utils/projectBoard'
-import { PROJECTS_COMMAND, PROJECTS_INSTALL_ARGS, PROJECTS_REINSTALL_COMMAND, isUnsupportedProjects, manifestBinary, updatesToUnsupported } from '../shared/projectsPlugin'
+import {
+  NATIVE_MOVE_ANCHOR, PROJECTS_COMMAND, PROJECTS_INSTALL_ARGS, PROJECTS_LAUNCHER, PROJECTS_MIGRATION_GUIDE, PROJECTS_UPGRADE_COMMAND, WHERDR_DOWNGRADE_COMMANDS,
+  projectsLauncher, projectsStatus, versionAtLeast,
+} from '../shared/projectsPlugin'
 
 // Manifests as Herdr's plugin.list reports them.
 const v02 = {
   plugin_id: 'herdr-projects', enabled: true, version: '0.2.34', plugin_root: '/home/user/.config/herdr/plugins/github/herdr-projects-0123',
   startup: [{ command: ['target/release/herdr-projects', 'startup'] }],
   actions: [{ command: ['target/release/herdr-projects', 'action', 'new'] }],
-  source: { kind: 'github', owner: 'afloury', repo: 'herdr-projects' },
+  source: { kind: 'github', owner: 'someone', repo: 'herdr-projects' },
 }
 const v1 = {
   plugin_id: 'herdr-projects', enabled: true, version: '1.2.1', plugin_root: '/home/user/.config/herdr/plugins/github/herdr-projects-4567',
@@ -17,57 +21,89 @@ const v1 = {
   source: { kind: 'github', owner: 'eliasstravik', repo: 'herdr-projects' },
 }
 
+describe('which herdr-projects wherdr reads', () => {
+  it('reads 1.2.1 and later', () => {
+    expect(projectsStatus(v1)).toBe('ready')
+    expect(projectsStatus({ ...v1, version: '1.3.0' })).toBe('ready')
+    expect(projectsStatus({ ...v1, version: '2.0.0' })).toBe('ready')
+  })
+
+  it('asks for an update on a 0.2, an older 1.x, or a manifest without its launcher', () => {
+    expect(projectsStatus(v02)).toBe('old')
+    expect(projectsStatus({ ...v1, version: '1.2.0' })).toBe('old')
+    expect(projectsStatus({ ...v1, version: '1.0.0' })).toBe('old')
+    expect(projectsStatus({ ...v1, version: undefined })).toBe('old')
+    expect(projectsStatus({ ...v1, version: 'next' })).toBe('old')
+    expect(projectsStatus({ ...v1, actions: [], startup: [] })).toBe('old')
+  })
+
+  it('missing, and disabled', () => {
+    expect(projectsStatus(null)).toBe('missing')
+    expect(projectsStatus({ ...v1, enabled: false })).toBe('disabled')
+  })
+
+  it('finds the launcher the manifest runs, and only under an absolute plugin folder', () => {
+    expect(projectsLauncher(v1)).toBe('/home/user/.config/herdr/plugins/github/herdr-projects-4567/bin/run.sh')
+    expect(projectsLauncher(v02)).toBeNull()
+    expect(projectsLauncher({ ...v1, plugin_root: 'relative' })).toBeNull()
+    expect(projectsLauncher({ ...v1, plugin_root: '/a/../b' })).toBeNull()
+  })
+
+  it('compares versions part by part', () => {
+    expect(versionAtLeast('1.10.0', '1.2.1')).toBe(true)
+    expect(versionAtLeast('1.2.1', '1.2.1')).toBe(true)
+    expect(versionAtLeast('v1.2.1', '1.2.1')).toBe(true)
+    expect(versionAtLeast('1.2.1-rc.1', '1.2.1')).toBe(true)
+    expect(versionAtLeast('1.2', '1.2.1')).toBe(false)
+    expect(versionAtLeast('0.9.9', '1.2.1')).toBe(false)
+    expect(versionAtLeast(null, '1.2.1')).toBe(false)
+  })
+})
+
 describe('herdr-projects in Settings', () => {
   it('detects the plugin by its identifier without confusing another plugin', () => {
-    expect(projectsPluginFromList([{ plugin_id: 'other', version: '1.0' }])).toEqual({ installed: false, enabled: false, version: null, unsupported: false, upstream: false })
-    expect(projectsPluginFromList([{ plugin_id: 'herdr-projects', version: '0.2.25', enabled: true }])).toEqual({ installed: true, enabled: true, version: '0.2.25', unsupported: false, upstream: false })
+    expect(projectsPluginFromList([{ plugin_id: 'other', version: '1.0' }])).toEqual({ status: 'missing', version: null })
+    expect(projectsPluginFromList([v1])).toEqual({ status: 'ready', version: '1.2.1' })
+    expect(projectsPluginFromList([v02])).toEqual({ status: 'old', version: '0.2.34' })
   })
-  it('tells an installed but disabled plugin apart and rejects an unexpected version', () => {
-    expect(projectsPluginFromList([{ plugin_id: 'herdr-projects', enabled: false, version: '<script>' }])).toMatchObject({ installed: true, enabled: false, version: null })
+
+  it('rejects an unexpected version string', () => {
+    expect(projectsPluginFromList([{ ...v1, version: '<script>' }])).toEqual({ status: 'old', version: null })
   })
-  it('installs the 0.2 line from the fork, never upstream (whose newest release is 1.x)', () => {
-    expect(PROJECTS_COMMAND).toBe('herdr plugin install afloury/herdr-projects --ref v0.2.36 --yes')
-    expect(PROJECTS_INSTALL_ARGS).toEqual(['plugin', 'install', 'afloury/herdr-projects', '--ref', 'v0.2.36', '--yes'])
-    expect(PROJECTS_REINSTALL_COMMAND).toBe('herdr plugin uninstall herdr-projects && herdr plugin install afloury/herdr-projects --ref v0.2.36 --yes')
+
+  it('installs 1.2.1 from upstream, replaces an older copy, and names the way back', () => {
+    expect(PROJECTS_COMMAND).toBe('herdr plugin install eliasstravik/herdr-projects --ref v1.2.1 --yes')
+    expect(PROJECTS_INSTALL_ARGS).toEqual(['plugin', 'install', 'eliasstravik/herdr-projects', '--ref', 'v1.2.1', '--yes'])
+    expect(PROJECTS_UPGRADE_COMMAND).toBe('herdr plugin uninstall herdr-projects && herdr plugin install eliasstravik/herdr-projects --ref v1.2.1 --yes')
+    expect(WHERDR_DOWNGRADE_COMMANDS).toContain('npm install -g wherdr@1.3.4')
   })
 })
 
-describe('herdr-projects 1.x', () => {
-  it('is flagged as unsupported, with its version', () => {
-    expect(projectsPluginFromList([v1])).toEqual({ installed: true, enabled: true, version: '1.2.1', unsupported: true, upstream: false })
-    expect(projectsPluginFromList([v02])).toMatchObject({ unsupported: false, upstream: false })
+describe('the migration guide the note names', () => {
+  it('is in the repository and in the npm package', () => {
+    const root = path.resolve(import.meta.dirname, '..')
+    expect(existsSync(path.join(root, PROJECTS_MIGRATION_GUIDE))).toBe(true)
+    expect(JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).files).toContain(PROJECTS_MIGRATION_GUIDE)
   })
-  it('is recognized by its manifest when the version is missing or unreadable', () => {
-    expect(isUnsupportedProjects({ ...v1, version: undefined })).toBe(true)
-    expect(isUnsupportedProjects({ ...v1, version: 'next' })).toBe(true)
-    expect(isUnsupportedProjects({ ...v02, version: undefined })).toBe(false)
-    // Nothing to judge by: not flagged.
-    expect(isUnsupportedProjects({ plugin_id: 'herdr-projects' })).toBe(false)
-  })
-  it('a later major version stays unsupported', () => {
-    expect(isUnsupportedProjects({ ...v02, version: '2.0.0' })).toBe(true)
-    expect(isUnsupportedProjects({ ...v02, version: '0.10.0' })).toBe(false)
-  })
-  it('has no herdr-projects binary, so the Project panel stays off', () => {
-    expect(manifestBinary(v1)).toBeNull()
-    expect(pluginBinary([v1])).toBeNull()
-    expect(manifestBinary(v02)).toBe('target/release/herdr-projects')
-    expect(pluginBinary([v02])).toBe(`${v02.plugin_root}/target/release/herdr-projects`)
-  })
-  it('ignores a binary path that climbs out of the plugin folder', () => {
-    expect(manifestBinary({ actions: [{ command: ['../../bin/herdr-projects'] }] })).toBeNull()
+  it('has the move from Docker the Board of a container links to, and the README points to it', async () => {
+    const root = path.resolve(import.meta.dirname, '..')
+    const guide = readFileSync(path.join(root, PROJECTS_MIGRATION_GUIDE), 'utf8')
+    // GitHub's anchor of "## Moving from Docker to the native service".
+    expect(guide).toMatch(/^## Moving from Docker to the native service$/m)
+    expect(NATIVE_MOVE_ANCHOR).toBe('moving-from-docker-to-the-native-service')
+    const { NATIVE_MOVE_URL, REPO } = await import('../server/utils/updates')
+    expect(NATIVE_MOVE_URL).toBe(`https://github.com/${REPO}/blob/main/${PROJECTS_MIGRATION_GUIDE}#${NATIVE_MOVE_ANCHOR}`)
+    // Backup, container removed, same data folder, the installer, and the way back.
+    for (const step of ['tar czf', 'docker compose down', '~/wherdr/data', 'curl -fsSL https://wherdr.dev/install | sh', '### Going back to Docker', 'docker compose up -d']) expect(guide).toContain(step)
+    const readme = readFileSync(path.join(root, 'README.md'), 'utf8')
+    expect(readme).toContain(`${PROJECTS_MIGRATION_GUIDE}#${NATIVE_MOVE_ANCHOR}`)
+    const installer = readFileSync(path.join(root, 'website/public/install'), 'utf8')
+    expect(installer).toContain(`docs/herdr-projects-1x.md#${NATIVE_MOVE_ANCHOR}`)
   })
 })
 
-describe('0.2 installed from upstream', () => {
-  const upstream02 = { ...v02, source: { kind: 'github', owner: 'eliasstravik', repo: 'herdr-projects' } }
-  it('is flagged: its own update would install 1.x', () => {
-    expect(updatesToUnsupported(upstream02)).toBe(true)
-    expect(projectsPluginFromList([upstream02])).toMatchObject({ unsupported: false, upstream: true })
-  })
-  it('the fork, a linked checkout or 1.x itself are not', () => {
-    expect(updatesToUnsupported(v02)).toBe(false)
-    expect(updatesToUnsupported({ ...upstream02, source: { kind: 'link' } })).toBe(false)
-    expect(updatesToUnsupported(v1)).toBe(false)
+describe('commands for the host', () => {
+  it('name the launcher herdr-projects 1.x writes, since nothing is on the PATH', () => {
+    expect(PROJECTS_LAUNCHER).toBe('~/.herdr-projects/data/bin/herdr-projects')
   })
 })

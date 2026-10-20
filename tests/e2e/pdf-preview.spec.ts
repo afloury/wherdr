@@ -48,7 +48,8 @@ test('a PDF opens in the preview and stays a download', async ({ page }, info) =
   await pages.first().scrollIntoViewIfNeeded()
   await expect(pages.first().locator('canvas')).toBeVisible()
   await page.setViewportSize(originalViewport)
-  await expect.poll(async () => pages.first().locator('canvas').evaluate((c: HTMLCanvasElement) => Math.abs(c.clientWidth - c.parentElement!.clientWidth))).toBeLessThanOrEqual(1)
+  // The viewer may redraw meanwhile: a canvas taken out, or replaced, counts as not fitted yet.
+  await expect.poll(async () => pages.first().locator('canvas').evaluate((c: HTMLCanvasElement) => (c.parentElement ? Math.abs(c.clientWidth - c.parentElement.clientWidth) : Infinity)).catch(() => Infinity)).toBeLessThanOrEqual(1)
   const open = page.locator('.files-view').getByRole('link', { name: 'Open', exact: true })
   await expect(open).toHaveAttribute('href', src)
   await expect(open).toHaveAttribute('target', '_blank')

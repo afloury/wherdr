@@ -1,0 +1,66 @@
+import { expect, test } from '@playwright/test'
+import fs from 'node:fs/promises'
+import { fakeHerdr, OMP_ASK_PANE } from './scenario.mjs'
+
+test.afterEach(async () => {
+  await fakeHerdr('e2e.ask', { pane_id: OMP_ASK_PANE })
+  for (const pane_id of ['w1:p1', 'w2:p1']) await fakeHerdr('e2e.pane_status', { pane_id, status: 'idle' })
+})
+
+// Real home layout with neutral board links; no user's Board is read or written.
+for (const language of ['en', 'fr']) {
+  for (const compact of [true, false]) {
+    test(`board task density: ${compact ? 'compact' : 'normal'}, ${language}`, async ({ page }, info) => {
+      await page.addInitScript(({ language, compact }) => {
+        localStorage.setItem('herdrLanguage', language)
+        localStorage.setItem('compactList', compact ? '1' : '0')
+      }, { language, compact })
+      await page.route('**/api/tasks/links**', route => route.fulfill({ json: {
+        version: 'density-fixture', machines: [{ machine: '',
+          coordinators: [{ level: 'project', repo: 'demo', pane: 'w3:p1', workspace: null }],
+          tasks: [{ id: 'demo/9', repo: 'demo', n: 9, key: 'DEMO-9',
+            title: language === 'fr' ? 'Adapter la navigation et vérifier les petits écrans' : 'Adapt navigation and check smaller screens',
+            panes: [{ id: 'w1:p1', role: 'worker' }], workspace: 'w1', stage: 'working',
+            progress: 30, msg: language === 'fr' ? 'Vérification des espacements' : 'Checking the spacing', since: Date.now() - 450000,
+          }, {
+            id: 'demo/10', repo: 'demo', n: 10, key: 'DEMO-10',
+            title: language === 'fr' ? 'Simplifier les filtres' : 'Simplify filters',
+            panes: [{ id: 'w2:p1', role: 'reviewer', kind: 'codex' }], workspace: 'w2', stage: 'reviewing', review: 'work',
+            progress: 85, msg: language === 'fr' ? 'Relecture du changement' : 'Reviewing the change', since: Date.now() - 150000,
+          }, {
+            id: 'demo/11', repo: 'demo', n: 11, key: 'DEMO-11',
+            title: language === 'fr' ? 'Valider le menu' : 'Approve the menu',
+            panes: [{ id: OMP_ASK_PANE, role: 'worker' }], workspace: 'w11', stage: 'blocked',
+            progress: 60, msg: language === 'fr' ? 'Attente de validation' : 'Waiting for approval', since: Date.now() - 210000,
+          }],
+        }],
+      } }))
+      for (const pane_id of ['w1:p1', 'w2:p1']) await fakeHerdr('e2e.pane_status', { pane_id, status: 'working' })
+      await fakeHerdr('e2e.ask', { pane_id: OMP_ASK_PANE, screen: await fs.readFile(new URL('../fixtures/omp-approve-bash.txt', import.meta.url), 'utf8') })
+      await page.goto('/')
+      const card = page.locator('.project-tree .card', { hasText: 'DEMO-9' })
+      await expect(card).toBeVisible()
+      await expect(card).toHaveClass(/compact/)
+      await expect(card.locator('.home-task-stats')).toHaveText('30% 7m')
+      await expect(card.locator('.home-task-line')).toHaveCount(compact ? 0 : 1)
+      await expect(card.locator('.card-more, .card-main, .card-tab-dots')).toHaveCount(0)
+      const waiting = page.locator('.project-tree .card', { hasText: 'DEMO-11' })
+      await expect(waiting.locator('.task-attention')).toHaveText(language === 'fr' ? 'À toi' : 'Your turn')
+      await expect(waiting.locator('.card-more')).toHaveCount(0)
+      const review = page.locator('.project-tree .card', { hasText: 'DEMO-10' })
+      await expect(review.locator('.home-task-stage')).toHaveCount(compact ? 0 : 1)
+      if (!compact) await expect(review.locator('.home-task-stage')).toHaveText(language === 'fr' ? 'En relecture · codex' : 'Under review · codex')
+      const title = card.locator('.card-title')
+      expect(await title.evaluate(el => el.scrollWidth >= el.clientWidth)).toBe(true)
+      expect(await card.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+      const height = (await card.boundingBox())!.height
+      expect(height).toBeLessThan(compact ? 45 : 65)
+      await fs.mkdir('.shots', { recursive: true })
+      await page.screenshot({ path: `.shots/home-tasks-${compact ? 'compact' : 'normal'}-${language}-${info.project.name}.png` })
+      // The old persisted 0/1 setting survives reload and selects the new task layout.
+      await page.reload()
+      await expect(card.locator('.home-task-line')).toHaveCount(compact ? 0 : 1)
+      expect(await page.evaluate(() => localStorage.getItem('compactList'))).toBe(compact ? '1' : '0')
+    })
+  }
+}

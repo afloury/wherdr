@@ -45,10 +45,13 @@ export function resend(list: OutboxItem[], id: string): OutboxItem[] {
 
 // A new server state: the records it lists win (shown from its state from now
 // on); records it returned but no longer lists go after a while. A bubble
-// still sending, or failed before reaching it, only goes on its own outcome.
+// still sending only goes on its own outcome. A bubble whose request failed
+// stays "Not sent", unless the server lists it: then it got the message after
+// all (the answer was lost on the way), and its record decides from now on,
+// so that once the message lands the old "Not sent" does not come back.
 export function prune(list: OutboxItem[], server: QueuedMessage[], now: number): OutboxItem[] {
   const known = new Set(server.map(q => q.id))
-  return list.filter(q => q.state === 'sending' || q.local || (!known.has(q.id) && now - (q.settledAt ?? q.at ?? 0) < SETTLED_MS))
+  return list.filter(q => q.state === 'sending' || (q.local ? !known.has(q.id) : !known.has(q.id) && now - (q.settledAt ?? q.at ?? 0) < SETTLED_MS))
 }
 
 // What the conversation shows: the server's records (its state wins), then the

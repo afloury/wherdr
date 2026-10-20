@@ -1,6 +1,5 @@
 // Types shared between the server (Nitro) and the app (Vue).
 import type { TabLayout } from './layout'
-import type { ProjectFolderKind } from './projectFolders'
 import type { CodexStatus } from './codexStatus'
 import type { MaxSessionDays } from './sessionLimit'
 import type { UsageLimit } from './usageLimit'
@@ -57,12 +56,13 @@ export interface InteractiveMenu {
 
 // state: held until a menu closes (server side), or failed to send.
 // reason 'busy': held or not sent because the agent's input field held other text.
+// reason 'turn': held until the agent's turn ends (typing it during the turn failed).
 // 'no_input': not sent because the input field was not found on a screen
 // showing no recognized menu (see queued.ts NO_INPUT_MS).
 // `pasted`: the long pasted texts its text holds (see server/utils/pastes.ts).
 // `back`: no agent will take it (see server/utils/queued.ts giveBackHeld): the
 // app puts its text back into the message field.
-export interface QueuedMessage { id: string, text: string, at?: number, state?: 'held' | 'failed', reason?: 'busy' | 'no_input', pasted?: string[], back?: boolean }
+export interface QueuedMessage { id: string, text: string, at?: number, state?: 'held' | 'failed', reason?: 'busy' | 'no_input' | 'turn', pasted?: string[], back?: boolean }
 
 // Claude Code's screen while working (see server/utils/claudeScreen.ts): the
 // "!" command running, the last message sent, the messages
@@ -126,10 +126,6 @@ export interface Pane {
   title: string | null
   cwd: string | null
   agentSession: string | null
-  // Projet herdr-projects (jeton `hp_project` / `hp_group` du pane), see shared/projects.ts.
-  project?: string
-  // Open herdr-projects thread shown by this pane ("<slug>/t-NNNN"), see shared/threadLimits.ts.
-  hpThread?: string
   bornAt?: number
   // Number of the agent's last state change (Herdr's `state_change_seq`,
   // increasing on a machine): "recent" sort of Ready.
@@ -351,8 +347,7 @@ export interface HerdrThemeConfig {
 }
 
 // Machine offered in the "New" sheet: home folder and recent ones.
-// `projectDirs`: herdr-projects folders among `dirs` (shared/projectFolders.ts).
-export interface MachineConfig { key: string, label: string, local: boolean, home: string, dirs: string[], projectDirs?: Record<string, ProjectFolderKind>, online: boolean, kinds: string[] }
+export interface MachineConfig { key: string, label: string, local: boolean, home: string, dirs: string[], online: boolean, kinds: string[] }
 
 export interface AppConfig {
   hostLabel?: string
@@ -365,16 +360,15 @@ export interface AppConfig {
   // up: Reveal in Finder / Open / Mod+Alt+O work on local panes.
   hostOpen?: boolean
   dirs: string[]
-  projectDirs?: Record<string, ProjectFolderKind>
   push: { enabled: boolean, key: string | null, devices: number }
   // WHERDR_TRUSTED_NETWORKS=any: wherdr accepts every network (warning banner).
   openNetwork?: boolean
 }
 
-export interface DirEntry { name: string, path: string, git: boolean, project?: ProjectFolderKind }
+export interface DirEntry { name: string, path: string, git: boolean }
 // `denied`: the folder exists but its content cannot be listed (`dirs` empty);
 // `remote`: listed over SSH (the macOS fix differs from the local one).
-export interface DirListing { path: string, parent: string | null, home: string, dirs: DirEntry[], project?: ProjectFolderKind, denied?: 'macos' | 'permission', remote?: boolean }
+export interface DirListing { path: string, parent: string | null, home: string, dirs: DirEntry[], denied?: 'macos' | 'permission', remote?: boolean }
 
 export interface AuthStatus {
   hostLabel?: string

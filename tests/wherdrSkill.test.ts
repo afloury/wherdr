@@ -7,10 +7,6 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSy
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  decisionPrefix, detailPrefix, infoMessage, launchMessage, listKind, moveMessage, problemPrefix, questionPrefix,
-  reviewCommentPrefix, reviewedMessage, testedMessage, unblockMessage, type ListKind, type MoveAction, type TestLang,
-} from '../shared/projectBoard'
 
 const REPO = path.resolve(import.meta.dirname, '..')
 const skill = readFileSync(path.join(REPO, 'skills', 'wherdr', 'SKILL.md'), 'utf8')
@@ -22,45 +18,8 @@ describe('wherdr skill', () => {
     expect(fm).toMatch(/^description: \S/m)
   })
 
-  it('quotes every panel message as the panel writes it, in both languages', () => {
-    const moves: MoveAction[] = ['up', 'down', 'queue', 'now', 'unqueue', 'backlog', 'block', 'todo', 'done']
-    const builders: ((task: string, lang: TestLang) => string)[] = [
-      testedMessage, problemPrefix, questionPrefix, decisionPrefix, launchMessage, detailPrefix,
-      // Add info names a thread, not a task.
-      (_task: string, lang: TestLang) => infoMessage('t-NNNN', '<text>', lang),
-      reviewedMessage, reviewCommentPrefix, unblockMessage, ...moves.map(a => (task: string, lang: TestLang) => moveMessage(a, task, lang)),
-    ]
-    for (const build of builders) {
-      for (const lang of ['en', 'fr'] as const) {
-        const msg = build('<task>', lang).trimEnd()
-        expect(skill, msg).toContain(msg)
-        // The description lists the message starts, so the skill loads on them.
-        const description = /^description: (.*)$/m.exec(skill)![1]!
-        const starts = [...description.matchAll(/"([^"]+)"/g)].map(m => m[1]!)
-        expect(starts.some(s => msg.startsWith(s)), msg).toBe(true)
-      }
-    }
-  })
-
-  it('lists only titles the panel maps to that list', () => {
-    const kinds: Record<string, ListKind> = {
-      'To test': 'test', 'To decide': 'decide', 'To review': 'review', 'In progress': 'doing', 'In queue': 'queue',
-      'Blocked': 'blocked', 'To do': 'todo', 'Backlog': 'backlog', 'Done': 'done',
-    }
-    const rows = skill.split('\n').filter(l => /^\| [A-Z]/.test(l) && !l.startsWith('| List') && !l.startsWith('| Message'))
-    const seen = new Set<string>()
-    for (const row of rows) {
-      const [name, titles] = row.split('|').slice(1, 3).map(c => c.trim()) as [string, string]
-      const kind = kinds[name]
-      if (!kind) continue
-      seen.add(name)
-      expect(listKind(name), name).toBe(kind)
-      for (const title of titles.split(', ')) {
-        // "Bloqué(e)(s)": the bare and the full form.
-        for (const form of [title.replace(/\([^)]*\)/g, ''), title.replace(/[()]/g, '')]) expect(listKind(form), form).toBe(kind)
-      }
-    }
-    expect([...seen].sort()).toEqual(Object.keys(kinds).sort())
+  it('names the herdr-projects commands the Board runs', () => {
+    for (const c of ['coordinator tell', 'tell <id>', 'approve <id>', 'list --json', 'details <id> --json']) expect(skill, c).toContain(c)
   })
 })
 

@@ -15,7 +15,18 @@ const identity = computed(() => cursor.value === null ? props.menu.identity : pr
 const listRef = ref<HTMLElement | null>(null)
 // Entry under the cursor visible (long list: /model…).
 const showCursor = () => nextTick(() => listRef.value?.querySelector('.cur')?.scrollIntoView({ block: 'nearest' }))
-watch(() => props.menu, () => { busy.value = false; cursor.value = props.menu.cursor; showCursor() })
+// Arrow keys sent and not answered yet (see the keyboard below).
+let navPending = 0
+// A new reading of the menu takes the cursor back from the server. While an
+// arrow is on its way, the server keeps sending the same menu (its state is
+// broadcast whenever anything moves, another agent included): one whose
+// cursor has not moved yet keeps the cursor the arrow already painted.
+watch(() => props.menu, (m, old) => {
+  busy.value = false
+  if (navPending && old && m.cursor === old.cursor && m.identity === old.identity) return
+  cursor.value = m.cursor
+  showCursor()
+})
 onMounted(showCursor)
 
 const disabled = computed(() => busy.value || props.menu.unavailable || !eventsOpen.value || offlineView.value)
@@ -76,7 +87,9 @@ useCardKeys(() => Boolean(props.keys && desk.value && !disabled.value && (known.
     cursor.value = entries[at + (k.key === 'down' ? 1 : -1)] ?? cursor.value
     showCursor()
   }
+  navPending++
   navKey(props.paneId, k.key, identity.value).then(ok => {
+    navPending--
     if (!ok) { cursor.value = props.menu.cursor; showCursor() }
   })
 })

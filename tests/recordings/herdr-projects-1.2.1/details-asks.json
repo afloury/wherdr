@@ -1,0 +1,30 @@
+{
+  "task": {
+    "id": "demo/2",
+    "title": "Write release notes",
+    "stage": "asks",
+    "msg": "Which changelog format?",
+    "description": ""
+  },
+  "failure": null,
+  "review": null,
+  "reviews": [],
+  "agent": null,
+  "handovers": [],
+  "research": false,
+  "report": null,
+  "plan": null,
+  "pr": null,
+  "worktree": null,
+  "branch": null,
+  "limits": {
+    "time": {
+      "limit": "none"
+    },
+    "tokens": {
+      "limit": "none",
+      "used": 0,
+      "total": 0
+    }
+  }
+}

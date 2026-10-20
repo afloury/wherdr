@@ -6,13 +6,14 @@
 #
 # Two ways to run wherdr, picked once at install time and kept in
 # $WHERDR_DIR/plugin.env:
-#   docker  Linux with Docker Compose v2 usable by this user: the published
-#           image, run from $WHERDR_DIR exactly like https://wherdr.dev/install.
-#   native  everywhere else (always on macOS: Docker Desktop cannot reach
-#           Herdr's Unix socket): Node.js 22 (or Bun) runs the prebuilt GitHub
-#           package of this version (or a build made in the plugin folder),
-#           copied to $WHERDR_DIR/app and started detached from there, with
-#           its pid and log in $WHERDR_DIR.
+#   native  the default, everywhere: Node.js 22 (or Bun) runs the prebuilt
+#           GitHub package of this version (or a build made in the plugin
+#           folder), copied to $WHERDR_DIR/app and started detached from there
+#           (or by its login service), with its pid and log in $WHERDR_DIR.
+#           Only a native wherdr can run the herdr-projects Board's commands.
+#   docker  only when asked (WHERDR_MODE=docker), Linux with Docker Compose v2
+#           usable by this user: the published image, run from $WHERDR_DIR
+#           like https://wherdr.dev/install. Its Board is read-only.
 # Herdr builds a plugin in a temporary folder, then moves it: a server started
 # from the checkout during the build would lose its files. $WHERDR_DIR/app
 # stays put, across plugin updates too, so the build can start wherdr and a
@@ -197,9 +198,8 @@ cmd_build() {
   mkdir -p "$DIR"
   printf '%s\n' "$DIR" > "$ROOT/.wherdr-dir"
 
-  if [ -z "$MODE" ]; then
-    if docker_usable; then MODE=docker; else MODE=native; fi
-  fi
+  # Native unless Docker is asked for: in a container the Board is read-only.
+  [ -n "$MODE" ] || MODE=native
   case "$MODE" in
     docker) docker_usable || die "WHERDR_MODE=docker, but Docker Compose v2 is not usable by $(id -un) on this system." ;;
     native) ;;

@@ -57,6 +57,30 @@ marker is left alone. GitHub disables scheduled workflows in public repositories
 without repository activity. Check that `release-ready.yml` remains enabled; re-enable it and
 run it manually if needed. After re-enabling, workflow-completion and manual checks work too.
 
+## Rolling v2 prerelease
+
+`v2-prerelease.yml` rebuilds one prerelease on every push to the `v2` branch, so a machine
+can install v2 from a prebuilt package (the plugin's GitHub download) and never compile it.
+It publishes the version of `herdr-plugin.toml` (today `2.0.0-dev`) as `v<version>`:
+
+- the tag moves to the pushed commit; the release is a prerelease, never `latest`. The update
+  checks of every version, the legacy channel and `release-ready.yml` only read stable
+  `vX.Y.Z` releases, so none of them offers it;
+- `wherdr-<version>.tgz` and `.tgz.sha256` are made as in `release.yml` (`npm pack`,
+  `sha256sum`) and replaced; the archive must hold the built server, `bin` with
+  `bin/lib/install-skill.sh`, `package.json` and `skills/wherdr/SKILL.md`, and no native code
+  (`.node`, `binding.gyp`, `prebuilds`, ELF or Mach-O files): the same file runs on
+  linux-arm64 and x64;
+- `COMMIT` holds the full SHA of the packaged commit, also written in the notes. It is removed
+  before the archive is replaced and attached last: when `COMMIT` is there and names the
+  branch head, the archive is that commit's.
+
+`scripts/prerelease.sh` does the checks and the publication. It refuses a version without a
+prerelease suffix (`X.Y.Z-something`) and a release of that tag that is not a published
+prerelease: stable versions keep going through the steps above. The tag is moved with
+`GITHUB_TOKEN`, which starts neither `release.yml` nor `npm.yml`. The workflow runs from the
+`v2` branch: it acts once this file is on `v2`.
+
 ## Commands for 1.3.3
 
 Run in a release checkout after explicit approval. These commands are documentation, not a

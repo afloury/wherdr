@@ -28,10 +28,6 @@ export class DemoServer {
   private chatListeners = new Set<(pane: string) => void>()
   private viewing: string | null = null
   private turns = new Map<string, number>()
-  // Threads whose report was acknowledged in the Project panel.
-  private acked = new Set<string>()
-  // Inbox items marked as handled in the Project panel.
-  private handled = new Set<string>()
   private sent = 0
   private pending = new Map<string, { token: number, turn: S.ScriptedTurn }>()
   // Messages typed while a question hides the agent's input field: held, like
@@ -357,11 +353,8 @@ export class DemoServer {
         case '/api/sessions': return ok({ sessions: [] })
         case '/api/worktrees': return ok({ worktrees: [] })
         case '/api/plugins/actions': return ok({ actions: [] })
-        case '/api/plugins/profiles': return ok({ choices: null })
-        case '/api/plugins/thread-limits': return ok({ machines: [] })
         case '/api/push/quiet': return ok({})
         case '/api/close/status': return ok({ git: false })
-        case '/api/gitroot': return ok({ root: null })
         case '/api/isgit': return ok({ git: false })
         case '/api/efforts': return ok({ levels: ['low', 'medium', 'high'], current: this.pane(paneId)?.model?.effort || null })
         case '/api/commands': return ok({ commands: S.COMMANDS[this.pane(paneId)?.agent || ''] || [] })
@@ -385,30 +378,16 @@ export class DemoServer {
           { name: 'acme-api', path: `${S.HOME}/code/acme-api`, git: true },
           { name: 'acme-web', path: `${S.HOME}/code/acme-web`, git: true },
         ] })
-        case '/api/project': return this.project(paneId, q.get('since'))
-        case '/api/board': return this.globalBoard(q.get('since'))
-        case '/api/project/report': {
-          const text = S.REPORTS[String(q.get('id'))]
-          return text ? ok({ id: q.get('id'), text, truncated: false }) : fail(404, 'No report yet')
+        case '/api/tasks': return this.tasks(q.get('since'))
+        case '/api/tasks/links': {
+          const l = S.boardLinks(this.clock.now(), { codex: this.pane(S.CODEX)?.status || 'done', omp: this.pane(S.OMP)?.status || 'done' })
+          return q.get('since') === l.version ? ok({ same: true, version: l.version }) : ok(l)
         }
-        case '/api/project/inbox': {
-          if (paneId !== S.COORD) return fail(404, 'project not found')
-          const items = S.inbox(this.clock.now()).filter(x => !this.handled.has(x.id))
-          return ok({ items, total: items.length })
-        }
-        case '/api/project/routines': return paneId === S.COORD ? ok(S.ROUTINES) : fail(404, 'project not found')
-        case '/api/project/settings': return paneId === S.COORD ? ok({ settings: S.SETTINGS }) : fail(404, 'project not found')
-        case '/api/project/memory': {
-          if (paneId !== S.COORD) return fail(404, 'project not found')
-          const name = q.get('name')
-          if (name === null) return ok({ files: S.memoryList() })
-          const text = Object.hasOwn(S.MEMORY, name) ? S.MEMORY[name] : undefined
-          return text === undefined ? fail(404, 'memory file not found') : ok({ name, text, truncated: false })
-        }
-        case '/api/project/thread': {
-          const id = String(q.get('id'))
-          const thread = paneId === S.COORD ? S.threadDetail(this.projectBoard(), id, this.acked.has(id)) : null
-          return thread ? ok({ thread }) : fail(404, 'thread not found')
+        // Start's agent: the built-in default and the demo's agents (Start itself stays refused).
+        case '/api/tasks/start': return ok({ agent: { value: 'claude', kind: 'claude', place: 'builtin', from: 'built in' }, agents: ['claude', 'codex', 'omp'] })
+        case '/api/tasks/details': {
+          const t = this.tasksBoard().machines[0]!.tasks.find(x => x.id === q.get('id'))
+          return t ? ok(S.taskDetails(t)) : fail(404, 'Task not found', 'bad_task')
         }
       }
       return fail(404, DEMO_REFUSAL)
@@ -460,21 +439,6 @@ export class DemoServer {
       }
       case '/api/dismiss': case '/api/push/unsubscribe': case '/api/sessions': return ok()
       case '/api/onboarding': return ok()
-      // Project panel › Threads: acknowledging a report is only a note; the
-      // other actions would stop or remove an agent, which the demo never does.
-      // Project panel › Inbox: an item marked as handled leaves the list.
-      case '/api/project/inbox': {
-        const id = String(body.id || '')
-        if (paneId !== S.COORD || !S.inbox(this.clock.now()).some(x => x.id === id)) return fail(403, DEMO_REFUSAL)
-        this.handled.add(id)
-        return ok()
-      }
-      case '/api/project/thread': {
-        const id = String(body.id || '')
-        if (paneId !== S.COORD || body.action !== 'ack' || !S.threadDetail(this.projectBoard(), id, false)) return fail(403, DEMO_REFUSAL)
-        this.acked.add(id)
-        return ok({ output: `${id}: report acknowledged` })
-      }
     }
     return fail(403, DEMO_REFUSAL)
   }
@@ -497,21 +461,15 @@ export class DemoServer {
     return ok({ agent: p.agent, at: this.clock.now(), options: (S.MODEL_OPTIONS[p.agent] || []).map((label, i) => ({ label, hint: null, current: label === current, isDefault: i === 0 })) })
   }
 
-  private projectBoard() {
-    return S.board(this.clock.now(), { codex: this.pane(S.CODEX)?.status || 'done', omp: this.pane(S.OMP)?.status || 'done' })
+  // The Board: the demo's herdr-projects 1.x tasks (scenario.ts). Telling or
+  // approving would reach a real agent: refused like every other write.
+  private tasksBoard() {
+    return S.tasks({ codex: this.pane(S.CODEX)?.status || 'done', omp: this.pane(S.OMP)?.status || 'done' })
   }
 
-  private project(id: string, since: string | null): DemoReply {
-    if (id !== S.COORD) return ok({ available: false })
-    const b = this.projectBoard()
+  private tasks(since: string | null): DemoReply {
+    const b = this.tasksBoard()
     return since === b.version ? ok({ same: true, version: b.version }) : ok(b)
-  }
-
-  // Global Board: the one project of the demo, shaped like server/utils/globalBoard.ts.
-  private globalBoard(since: string | null): DemoReply {
-    const b = this.projectBoard()
-    if (since === b.version) return ok({ same: true, version: b.version })
-    return ok({ version: b.version, projects: [{ key: `|${this.pane(S.COORD)?.cwd}`, slug: S.PROJECT, panes: [S.COORD], board: b, resolvedTotal: b.resolved.length }] })
   }
 
   private search(text: string) {

@@ -1,4 +1,5 @@
 import type { HerdrState, Pane, Workspace } from '../../shared/types'
+import { type LinkedTask, type MachineLinks, tasksIn } from '../../shared/boardLinks'
 
 export type CloseKind = 'pane' | 'tab' | 'workspace'
 export interface ClosePlan {
@@ -42,4 +43,33 @@ export function checkoutMessage(statuses: CheckoutStatus[], group: boolean, tl: 
       : tl(`${s.label}: no uncommitted changes.`, `${s.label} : aucune modification non commitée.`))
   }
   return parts.join('\n')
+}
+
+// herdr-projects tasks whose agents a close stops: those with a pane among the
+// panes it closes, and, when whole spaces close (a space, a worktree group),
+// those whose space it is. The repo's own space heads its worktree group in
+// Herdr: closing it closes its tasks' spaces too.
+export function tasksClosing(plan: ClosePlan, kind: CloseKind, links: MachineLinks[]): LinkedTask[] {
+  const spaces = kind === 'workspace' || plan.group ? plan.workspaces.map(w => w.id) : []
+  const byPane = new Set(plan.panes.map(p => p.id))
+  const out = tasksIn(spaces, plan.panes, links)
+  for (const m of links) for (const t of m.tasks) if (!out.includes(t) && t.panes.some(p => byPane.has(p.id))) out.push(t)
+  return out
+}
+
+// The warning for them, named (at most 4), and the button that says so.
+export function taskStopMessage(tasks: Pick<LinkedTask, 'key' | 'title'>[], tl: (en: string, fr: string) => string): { message: string, action: string } | null {
+  const n = tasks.length
+  if (!n) return null
+  const names = tasks.slice(0, 4).map(t => `${t.key}${t.title ? ` ${t.title}` : ''}`)
+  const more = n > 4 ? tl(` and ${n - 4} more`, ` et ${n - 4} autre${n - 4 > 1 ? 's' : ''}`) : ''
+  return n === 1
+    ? {
+        message: tl(`⚠ This stops the agent of herdr-projects task ${names[0]}: its terminal closes and the task loses its agent.`, `⚠ Cela arrête l’agent de la tâche herdr-projects ${names[0]} : son terminal se ferme et la tâche perd son agent.`),
+        action: tl('Close and stop the task', 'Fermer et arrêter la tâche'),
+      }
+    : {
+        message: tl(`⚠ This stops the agents of ${n} herdr-projects tasks: ${names.join(', ')}${more}. Their terminals close and the tasks lose their agents.`, `⚠ Cela arrête les agents de ${n} tâches herdr-projects : ${names.join(', ')}${more}. Leurs terminaux se ferment et les tâches perdent leurs agents.`),
+        action: tl(`Close and stop ${n} tasks`, `Fermer et arrêter ${n} tâches`),
+      }
 }

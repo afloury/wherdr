@@ -112,9 +112,6 @@ watch(autoReorderReady, v => ls.set('autoReorderReady', v ? '1' : '0'))
 // Sorting of Ready (see shared/spaces.ts sortReady), specific to the device.
 export const readySort = ref<ReadySort>((READY_SORTS as readonly string[]).includes(ls.get('readySort') || '') ? ls.get('readySort') as ReadySort : 'herdr')
 watch(readySort, v => ls.set('readySort', v))
-// Project panel: hide lists without items (device-specific setting).
-export const projectHideEmpty = ref(ls.get('projectHideEmpty') === '1')
-watch(projectHideEmpty, v => ls.set('projectHideEmpty', v ? '1' : '0'))
 export const quotaDisplay = ref<QuotaDisplay>(readQuotaDisplay(ls.get('quotaDisplay')))
 watch(quotaDisplay, v => ls.set('quotaDisplay', v))
 export const hiddenAgents = ref<string[]>(readHiddenAgents(ls.get('hiddenAgents')))
@@ -204,7 +201,7 @@ if (import.meta.client) {
 // sticks); a pane without one follows the device default on a computer
 // (defaultViewMode, chosen in Settings › Desktop), the conversation on the
 // phone. A change of the default applies at once to the panes without one.
-export type PaneViewMode = 'chat' | 'term' | 'project'
+export type PaneViewMode = 'chat' | 'term'
 function loadViewModes(): Record<string, PaneViewMode> {
   try {
     const v = JSON.parse(ls.get('viewModes') || '{}')
@@ -215,7 +212,7 @@ const viewModes = reactive(loadViewModes())
 export const defaultViewMode = ref<'chat' | 'term'>(ls.get('defaultViewMode') === 'term' ? 'term' : 'chat')
 watch(defaultViewMode, v => ls.set('defaultViewMode', v))
 export const paneViewMode = (id: string): PaneViewMode =>
-  (viewModes[id] === 'term' || viewModes[id] === 'project' || viewModes[id] === 'chat' ? viewModes[id] : paneFallback({ desk: desk.value, defaultMode: defaultViewMode.value }))
+  (viewModes[id] === 'term' || viewModes[id] === 'chat' ? viewModes[id] : paneFallback({ desk: desk.value, defaultMode: defaultViewMode.value }))
 export function setPaneViewMode(id: string, m: PaneViewMode) {
   viewModes[id] = m
   ls.set('viewModes', JSON.stringify(viewModes))
@@ -297,7 +294,7 @@ export const canOpenOnMachine = (p: Pane | null | undefined) => {
   // Local machine: its key is '' (missing from the state, like `machine` itself).
   return Boolean(!(p.machine || '').trim() && appConfig.value.hostOpen)
 }
-// Machines offered by the "New agent" and "New project" sheets (null
+// Machines offered by the "New agent" sheet (null
 // with a single machine); online according to the live state (the config may
 // have been read before the connection).
 export const machineChoices = computed(() => (multiMachine.value ? (appConfig.value.machines || []).filter(m => machines.value.some(s => s.key === m.key)) : null))
@@ -321,12 +318,9 @@ function readList(k: string): string[] {
 // Collapsed machine sections (kept on the device).
 export const collapsedMachines = ref<string[]>(readList('collapsedMachines'))
 watch(collapsedMachines, v => ls.set('collapsedMachines', JSON.stringify(v)))
-// Collapsed herdr-projects projects ("<machine>|<project>", kept on the device).
-export const collapsedProjects = ref<string[]>(readList('collapsedProjects'))
-watch(collapsedProjects, v => ls.set('collapsedProjects', JSON.stringify(v)))
-// Collapsed repositories, by machine, project and repository path on this device.
+// Collapsed repo groups of the home list, `<machine>|<group id>` (kept on the device).
 export const collapsedRepos = ref<string[]>(readList('collapsedRepos'))
-watch(collapsedRepos, v => ls.set('collapsedRepos', JSON.stringify(v)))
+watch(collapsedRepos, v => ls.set('collapsedRepos', JSON.stringify(v.slice(-200))))
 // Last machine chosen in "New".
 export const lastMachine = ref(ls.get('lastMachine') || '')
 watch(lastMachine, v => ls.set('lastMachine', v))
@@ -337,7 +331,11 @@ let toaster: Toaster | null = null
 export function setToaster(t: Toaster) { toaster = t }
 // `detail`: an extra, smaller line (output of a plugin action…).
 export function clearToast() { toaster?.clear() }
-export function toast(msg: string, err = false, detail?: string) {
+// `action`: one button in it (Restore after Archive…), the toast then stays a
+// few seconds longer; a tap runs it and closes the toast.
+export interface ToastAction { label: string, icon?: string, run: () => void }
+export const ACTION_TOAST_MS = 6000
+export function toast(msg: string, err = false, detail?: string, action?: ToastAction) {
   if (!toaster) return
   toaster.clear()
   toaster.add({
@@ -346,8 +344,11 @@ export function toast(msg: string, err = false, detail?: string) {
     color: err ? 'error' : 'neutral',
     class: err ? 'hw-toast-error' : undefined,
     icon: err ? 'i-lucide-circle-alert' : undefined,
-    duration: (err ? 4200 : 2600) + (detail ? 2400 : 0),
+    duration: action ? ACTION_TOAST_MS : (err ? 4200 : 2600) + (detail ? 2400 : 0),
     close: false,
+    ...(action
+      ? { orientation: 'horizontal' as const, actions: [{ label: action.label, icon: action.icon, color: 'neutral' as const, variant: 'outline' as const, size: 'xs' as const, class: 'hw-toast-action', onClick: () => action.run() }] }
+      : {}),
   })
 }
 

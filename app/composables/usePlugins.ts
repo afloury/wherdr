@@ -1,9 +1,9 @@
 // Herdr plugin actions (herdr-plugin.toml): an agent's menu (workspace /
 // tab / pane actions, run with the agent's pane) and the machine's menu
 // (global actions). List kept per machine, re-read at most every 30 s.
-import type { ChatResponse, Pane, PluginAction, PluginActionList, PluginActionResult } from '#shared/types'
-import { PROJECT_REQUIRED, type ProfileChoices, type RepoState, conversationEmpty, projectNameOk, repoState, roleProfiles, suggestedProjectName } from '#shared/projectsActions'
-import { projectOf } from '#shared/projects'
+// herdr-projects 1.x has its own page, the Board (BoardView); its actions
+// here are Herdr's like any plugin's.
+import type { Pane, PluginAction, PluginActionList, PluginActionResult } from '#shared/types'
 
 const REFRESH_MS = 30000
 export const pluginActions = ref<Record<string, PluginAction[]>>({})
@@ -33,132 +33,9 @@ export const machinePluginActions = (machine: string | null | undefined) =>
   (pluginActions.value[machine || ''] || []).filter(a => a.machine)
 
 type Target = { pane: Pane } | { machine: string }
-export const pluginFormState = reactive<{
-  open: boolean, action: PluginAction | null, target: Target | null,
-  name: string, goal: string, task: string, slug: string, repo: string,
-  // "New project": machine of the repository (wherdr key); name still suggested by
-  // the app (follows the repository as long as the user has not typed it); state of the
-  // chosen repository according to /api/gitroot, and its Git root.
-  machine: string, nameAuto: boolean, repoState: 'idle' | 'checking' | RepoState, repoRoot: string,
-  // Adoption: pane conversation without a message (true), with (false), unknown (null).
-  empty: boolean | null, busy: boolean,
-  // "New project": agent profiles of the project's machine (null: none to
-  // choose from), being read, and the ones chosen for its coordinator and threads.
-  profiles: ProfileChoices | null, profilesLoading: boolean, coordinator: string, thread: string,
-}>({
-  open: false, action: null, target: null, name: '', goal: '', task: '', slug: '', repo: '',
-  machine: '', nameAuto: true, repoState: 'idle', repoRoot: '', empty: null, busy: false,
-  profiles: null, profilesLoading: false, coordinator: '', thread: '',
-})
-export function closePluginForm() { if (!pluginFormState.busy) pluginFormState.open = false }
-// Machine where the herdr-projects command runs (the project's).
-export const pluginTargetMachine = (target: Target | null) => (!target ? '' : 'pane' in target ? target.pane.machine || '' : target.machine)
 
-// Fields to fill in before "Run"; valid project name; chosen repository
-// checked (a Git repository, not a subfolder nor HOME); profiles read (Run
-// would otherwise create the project with the plugin's defaults).
-export function pluginFormValid(): boolean {
-  const f = pluginFormState
-  const id = f.action?.id || ''
-  const need = PROJECT_REQUIRED[id] || []
-  const s = f as unknown as Record<string, string>
-  if (!need.every(k => String(s[k] || '').trim())) return false
-  if ((id === 'new' || id === 'adopt-workspace') && !projectNameOk(f.name)) return false
-  if (id === 'new' && f.profilesLoading) return false
-  return id !== 'new' || !f.repo.trim() || f.repoState === 'repo'
-}
-
-// Repository folder of "New project": checked by /api/gitroot on its machine;
-// the suggested name follows the repository as long as the user has not typed it.
-let repoCheck = 0
-export async function checkPluginRepo() {
-  const f = pluginFormState
-  const repo = f.repo.trim()
-  const n = ++repoCheck
-  if (!repo) {
-    Object.assign(f, { repoState: 'idle', repoRoot: '' })
-    if (f.nameAuto) f.name = ''
-    return
-  }
-  f.repoState = 'checking'
-  const r = await api<{ root: string | null }>(`/api/gitroot?machine=${encodeURIComponent(f.machine)}&path=${encodeURIComponent(repo)}`).catch(() => null)
-  if (n !== repoCheck) return
-  f.repoRoot = r?.root || ''
-  f.repoState = repoState(repo, r?.root)
-  // Subfolder: the repository's name (its root), not the subfolder's.
-  if (f.nameAuto) f.name = suggestedProjectName('new', { repo: f.repoState === 'none' ? '' : f.repoRoot })
-}
-export function setPluginFormName(v: string) {
-  pluginFormState.name = v
-  // Field emptied: the app suggests the repository name again.
-  pluginFormState.nameAuto = !v.trim()
-}
-export function setPluginRepoMachine(key: string) {
-  if (pluginFormState.machine === key) return
-  pluginFormState.machine = key
-  pluginFormState.repo = ''
-  checkPluginRepo()
-}
-export async function submitPluginForm() {
-  const { action, target } = pluginFormState
-  if (!action || !target || pluginFormState.busy || !pluginFormValid()) return
-  const f = pluginFormState
-  const input: Record<string, string> = action.id === 'new'
-    ? {
-        name: f.name.trim(), goal: f.goal.trim(), repo: f.repo.trim(), ...(f.repo.trim() ? { machine: f.machine } : {}),
-        ...(f.profiles && f.coordinator ? { coordinatorProfile: f.coordinator } : {}),
-        ...(f.profiles && f.thread ? { threadProfile: f.thread } : {}),
-      }
-    : action.id === 'adopt-workspace'
-      ? { name: f.name.trim(), goal: f.goal.trim(), task: f.task.trim() }
-      : { slug: f.slug.trim() }
-  pluginFormState.busy = true
-  try { if (await executePluginAction(action, target, input)) pluginFormState.open = false }
-  finally { pluginFormState.busy = false }
-}
-
-// Empty conversation: offer "New project" instead of adoption.
-export function newProjectAction(): PluginAction | null {
-  const t = pluginFormState.target
-  if (!t || !('pane' in t)) return null
-  return agentPluginActions(t.pane.machine).find(a => a.plugin === 'herdr-projects' && a.id === 'new') || null
-}
-export function switchToNewProject() {
-  const a = newProjectAction()
-  if (!a || pluginFormState.busy) return
-  pluginFormState.action = a
-  pluginFormState.empty = null
-  // Same sheet as "New project" opened from the menu: suggested repository,
-  // name taken from the repository as long as the user has not typed one.
-  loadConfig()
-  checkPluginRepo()
-  if (pluginFormState.target) {
-    loadProjectProfiles(pluginFormState.target)
-    prepareForm(pluginFormState.target, 'new')
-  }
-}
-
-// "New project": profiles of the project's machine, the plugin's defaults for
-// new projects chosen. No choice shown if the plugin has none or cannot be read:
-// the project then gets the plugin's defaults.
-let profilesLoad = 0
-async function loadProjectProfiles(target: Target) {
-  const f = pluginFormState
-  const n = ++profilesLoad
-  Object.assign(f, { profiles: null, profilesLoading: true, coordinator: '', thread: '' })
-  const r = await api<{ choices: ProfileChoices | null }>(`/api/plugins/profiles?machine=${encodeURIComponent(pluginTargetMachine(target))}`).catch(() => null)
-  if (n !== profilesLoad) return
-  f.profilesLoading = false
-  if (!r?.choices) return
-  Object.assign(f, {
-    profiles: r.choices,
-    coordinator: roleProfiles(r.choices, 'coordinator').chosen,
-    thread: roleProfiles(r.choices, 'thread').chosen,
-  })
-}
-
-// Result that stays on screen: "Check setup" (header and full output) and
-// "Configure" (reminder to reload the Herdr client config).
+// Result that stays on screen: a plugin's "Configure" (reminder to reload the
+// Herdr client config).
 export const pluginResultState = reactive<{
   open: boolean, title: string, result: PluginActionResult | null, reload: boolean,
 }>({ open: false, title: '', result: null, reload: false })
@@ -167,27 +44,6 @@ export function showPluginResult(title: string, result: PluginActionResult, relo
   Object.assign(pluginResultState, { open: true, title, result, reload })
 }
 
-async function prepareForm(target: Target, action: string) {
-  if (!('pane' in target)) return
-  const pane = target.pane
-  if (action === 'adopt-workspace') {
-    const r = await api<ChatResponse>(`/api/chat?pane=${encodeURIComponent(pane.id)}`).catch(() => null)
-    if (toRaw(pluginFormState.target) === target) pluginFormState.empty = conversationEmpty(r)
-  }
-  if (action === 'new') {
-    // Git repository root of the current space, suggested for "New project";
-    // nothing outside a repository (nor for HOME itself, filtered by the server).
-    // Never the space folder as is: only what /api/gitroot returns.
-    if (!pane.cwd) return
-    const machine = pane.machine || ''
-    const r = await api<{ root: string | null }>(`/api/gitroot?machine=${encodeURIComponent(machine)}&path=${encodeURIComponent(pane.cwd)}`).catch(() => null)
-    const f = pluginFormState
-    if (toRaw(f.target) === target && r?.root && shortPath(r.root) !== '~' && !f.repo && f.machine === machine) {
-      f.repo = r.root
-      checkPluginRepo()
-    }
-  }
-}
 // Machine name; a single one: HOST_LABEL.
 const machineLabelOf = (key: string) => machineName(key) || hostLabel.value || t('this machine')
 
@@ -195,28 +51,6 @@ async function runPluginAction(a: PluginAction, target: Target) {
   const where = 'pane' in target
     ? tl(`for “${paneTitle(target.pane)}”`, `pour « ${paneTitle(target.pane)} »`)
     : tl(`on ${machineLabelOf(target.machine)}`, `sur ${machineLabelOf(target.machine)}`)
-  // Toasts: "Projects · Pause project" (the label alone does not say which plugin).
-  const name = a.label === a.title ? a.title : `${a.pluginName} · ${a.label}`
-  // Input first: the sheet, with its Run button, counts as confirmation.
-  if (a.plugin === 'herdr-projects' && ['new', 'adopt-workspace', 'open', 'pause', 'resume'].includes(a.id)) {
-    // Suggested name: the space label for adoption if it makes a valid name
-    // (not "~" nor a path); for "New project", that of the chosen repository.
-    const space = 'pane' in target ? herdrState.value.workspaces.find(w => w.id === target.pane.workspace)?.label || '' : ''
-    Object.assign(pluginFormState, {
-      action: a, target,
-      name: a.id === 'adopt-workspace' ? suggestedProjectName(a.id, { space }) : '',
-      nameAuto: true, machine: pluginTargetMachine(target), repoState: 'idle', repoRoot: '',
-      goal: '', task: '', repo: '', empty: null,
-      slug: 'pane' in target ? projectOf(target.pane) || '' : '',
-      open: true,
-    })
-    if (a.id === 'new') {
-      loadConfig()
-      loadProjectProfiles(target)
-    }
-    prepareForm(target, a.id)
-    return
-  }
   if (a.confirm) {
     const ok = await askConfirm(
       tl(`Run “${a.label}” (${a.pluginName}) ${where}? The plugin runs its command on the machine.`,
@@ -228,61 +62,17 @@ async function runPluginAction(a: PluginAction, target: Target) {
   await executePluginAction(a, target)
 }
 
-// herdr-projects action on an agent's machine, as from its menu (input sheet for
-// the ones that ask for one). False: not offered there (plugin missing).
-export function startProjectsAction(p: Pane, id: string): boolean {
-  const a = agentPluginActions(p.machine).find(x => x.plugin === 'herdr-projects' && x.id === id)
-  if (!a) return false
-  runPluginAction(a, { pane: p })
-  return true
-}
-
-// Dedicated herdr-projects entries of an agent's menus (its view, its card, its
-// project's header) when the plugin is on its machine; the other actions stay
-// under "Plugin actions". `kbds`: show the shortcuts (menu of the agent being viewed).
-export function projectMenuItems(p: Pane, kbds = false): MenuItem[] {
-  const actions = agentPluginActions(p.machine).filter(a => a.plugin === 'herdr-projects')
-  if (!actions.length) return []
-  const items: MenuItem[] = [{ kind: 'group', label: tl('Projects', 'Projets') }]
-  const coordinator = projectCoordinatorOf(p)
-  if (coordinator) {
-    const shown = desk.value && coordinator.id === curPane.value && projectSideOpen.value
-    items.push({
-      label: shown ? tl('Hide the Project panel', 'Masquer le panneau Projet') : t('Show the Project panel'),
-      icon: shown ? 'i-lucide-panel-right-close' : 'i-lucide-folder-kanban',
-      kbds: kbds ? shortcutKbds('project-panel') : undefined, run: () => openProjectPanel(p, true),
-    })
-  }
-  const slug = projectOf(p)
-  const entries: [id: string, label: string, icon: string, offered: boolean][] = [
-    ['new', tl('New project…', 'Nouveau projet…'), 'i-lucide-folder-plus', true],
-    ['adopt-workspace', tl('Continue as a project…', 'Continuer en projet…'), 'i-lucide-git-branch-plus', Boolean(p.agent && !slug)],
-    ['pause', tl('Pause this project…', 'Mettre ce projet en pause…'), 'i-lucide-pause', Boolean(slug)],
-    ['doctor', tl('Check herdr-projects setup', 'Vérifier l’installation de herdr-projects'), 'i-lucide-stethoscope', true],
-  ]
-  for (const [id, label, icon, offered] of entries) {
-    const a = offered && actions.find(x => x.id === id)
-    if (a) items.push({ label, icon, kbds: kbds && id === 'new' ? shortcutKbds('new-project') : undefined, run: () => runPluginAction(a, { pane: p }) })
-  }
-  return items
-}
-
-async function executePluginAction(a: PluginAction, target: Target, input?: Record<string, string>) {
+async function executePluginAction(a: PluginAction, target: Target) {
   const name = a.label === a.title ? a.title : `${a.pluginName} · ${a.label}`
   haptic()
   toast(tl(`${name}: running…`, `${name} : en cours…`))
   try {
     const r = await api<PluginActionResult>('/api/plugins/invoke', {
       plugin: a.plugin, action: a.id, lang: language === 'en' ? 'en' : 'fr',
-      ...(input ? { input } : {}),
       ...('pane' in target ? { pane_id: target.pane.id } : { machine: target.machine }),
     })
-    if (a.plugin === 'herdr-projects' && a.id === 'doctor' && r.setup) {
-      showPluginResult(a.label, r)
-      return r.status !== 'running'
-    }
     // The Herdr client does not re-read its config on its own: reminder that stays shown.
-    if (a.plugin === 'herdr-projects' && a.id === 'configure' && r.status !== 'failed') {
+    if (a.id === 'configure' && r.status !== 'failed') {
       showPluginResult(a.label, r, true)
       return true
     }

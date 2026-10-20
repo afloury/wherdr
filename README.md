@@ -41,16 +41,20 @@ On the computer that runs [Herdr](https://herdr.dev) (≥ 0.9.1), macOS or Linux
 curl -fsSL https://wherdr.dev/install | sh
 ```
 
-It installs the wherdr [Herdr plugin](#install-as-a-herdr-plugin), starts wherdr on
-`http://localhost:7683` and opens its setup guide in your browser; then **prefix+i** in Herdr opens
-the wherdr panel. Without Herdr, it says where to get it; on a Mac without Node.js 22, it offers
-`brew install node`; on Linux, Docker works too. On a server without a screen (or over SSH), it
-prints the address and the phone steps instead. See [The one command](#the-one-command).
+It installs the wherdr [Herdr plugin](#install-as-a-herdr-plugin) with the verified package of the
+GitHub release, runs wherdr natively as your user on `http://localhost:7683`, starts it at every
+boot (a `systemd --user` service with lingering on Linux, a LaunchAgent on macOS) and opens its
+setup guide in your browser; then **prefix+i** in Herdr opens the wherdr panel. Without Herdr, it
+says where to get it; without Node.js 22, it offers to install it (Homebrew, or the official
+build in `~/wherdr/node`, no sudo). On a server without a screen (or over SSH), it prints the
+address and the phone steps instead. See [The one command](#the-one-command).
 
-Other ways, after it: `herdr plugin install afloury/wherdr` (the same plugin, without the
-checks), `npx wherdr` (or `bunx wherdr`, `pnpm dlx wherdr`; see
-[the `wherdr` command](#the-wherdr-command)), `brew install afloury/tap/wherdr`, or
-[Docker by hand](#recommended-always-on-server--tailscale).
+**Native is the setup to use**: only a wherdr running on the host can act on the
+[herdr-projects Board](#works-great-with-herdr-projects) (Coordinator, reply, start, stop,
+approve). Other ways, after it: `herdr plugin install afloury/wherdr` (the same plugin, without
+the checks), and [the `wherdr` command](#the-wherdr-command) from npm or Homebrew (npm can hold a
+new release for up to two days; the installer gets it from GitHub at once).
+[Docker](#docker-on-request) stays possible on request, with a read-only Board.
 
 At first launch, wherdr opens a **setup guide**: the Herdr agents it found, your phone
 (Tailscale), then the passkey lock and notifications. Skip it any time; finishing or skipping is
@@ -68,7 +72,7 @@ that address too when it is already published.
 wherdr is a small self-hosted web app that talks to the Herdr server on your machine. **On a
 computer**, it can replace the Herdr terminal client day to day: your spaces, tabs and split panes
 side by side, live conversations and real terminals, drag-and-drop layout, keyboard shortcuts
-and a project board for herdr-projects. **On a phone**, installed as a PWA, it is the companion
+and a task board for herdr-projects. **On a phone**, installed as a PWA, it is the companion
 that follows your agents when you are away: push notifications when an agent finishes or needs
 you, one-tap answers, quick replies and offline reading.
 
@@ -107,8 +111,8 @@ Claude Code, Codex and other product names are trademarks of their respective ow
   and nothing about your agents is served to a locked session.
 - **The agent's diff.** Git status and diff of each agent's working folder, one click away from
   its conversation.
-- **The herdr-projects board.** A coordinator and its threads grouped under their project, with
-  the project's task lists as a live board and one-click replies.
+- **The herdr-projects board.** Every machine's herdr-projects tasks in the board's own groups,
+  with replies to their agents, approval of finished work and a box for the Coordinator.
 - **Keyboard and global search.** One shortcut searches every agent and conversation; next
   agent, new tab, pane swaps and `1`–`9` answers never need the mouse.
 - **Real time, and private.** The real terminal over a WebSocket, a push when an agent needs
@@ -128,10 +132,11 @@ Details in [Features](#features) and [Security](#security).
   [which setup?](#which-setup) ·
   [always-on server + Tailscale](#recommended-always-on-server--tailscale) ·
   [other private networks](#other-private-networks) ·
-  [the `wherdr` command](#the-wherdr-command) ·
-  [from source](#from-source-no-docker) ·
   [as a Herdr plugin](#install-as-a-herdr-plugin) ·
-  [Docker on a Mac: Reveal/Open](#wherdr-in-docker-on-a-mac-reveal-in-finder-open-and-modalto)
+  [the `wherdr` command (npm, Homebrew)](#the-wherdr-command) ·
+  [from source](#from-source) ·
+  [Docker, on request](#docker-on-request) ·
+  [moving from Docker to the native service](#moving-from-docker-to-the-native-service)
 - [Updating](#updating)
 - [Install it as an app](#install-it-as-an-app)
 - [Configuration](#configuration)
@@ -152,8 +157,17 @@ Details in [Features](#features) and [Security](#security).
   The list is compact by default: agent, title, project badge and state. When an agent asks for
   permission or asks a question, its card opens on the question and its options: **answer in one
   tap** without opening it; the card is one line again once answered. Turn off Settings ›
-  Appearance › Home screen › **Compact list** for detailed cards, with the folder, the model and
-  a preview of each agent's last answer.
+  Appearance › Home screen › **Compact list** for normal mode. Board tasks use one line in
+  compact mode (agent, key, title, progress, duration, state and Your turn when needed); normal
+  mode adds the current activity and relevant limit or review labels on a second line. Task
+  details stay in the task sheet. Existing compact/normal choices are preserved. Other agents
+  also use dense rows, with a last-answer preview in normal mode; waiting agents keep their
+  questions and one-tap answers in both modes.
+  With [herdr-projects](#works-great-with-herdr-projects), the board's spaces follow Herdr's sidebar:
+  the Coordinators on top, then each repo's space (branch, `↓` commits behind its upstream) with
+  its project coordinator as the group's lead, right under it (the coordinator's icon, its state
+  and last message), then its tasks (key, title, progress, time on it, the board's current line);
+  closing a space that holds task agents names the tasks it stops.
 - **Conversation view**: the agent's real transcript (Claude Code, Codex and omp), rendered as
   Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan), timestamps, search and infinite scroll back to the
   first message. Reading a conversation never touches the terminal, so it never resizes a pane.
@@ -187,7 +201,9 @@ Details in [Features](#features) and [Security](#security).
   Codex agent in the browser demo (scripted, no account data).
   In the compact list, native questions keep their preview and one-tap answers.
   Unrecognized blocking screens offer an **Open interactive terminal** button.
-- **Composer**: send messages while the agent works (queued, cancellable), attach or paste
+- **Composer**: send messages while the agent works (queued, cancellable: the agent's own
+  queue when it takes them, else held by wherdr and sent when the turn ends; never left
+  half-typed in its field, and “Not sent” clears once the message shows in its transcript), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
   of local commands. Stop button while the agent works. A long pasted text (log, output) becomes
@@ -209,7 +225,7 @@ Details in [Features](#features) and [Security](#security).
   with the shell in the foreground. Unrecognized shell prompts require a manual restart
   in the terminal. wherdr must have observed Codex before it exited.
   **Dismiss** puts the card away for good: the pane is a plain shell again, to use as you like.
-  Project panel messages wait in the queue until the agent returns; if it does not (Dismiss, or
+  Messages sent meanwhile wait in the queue until the agent returns; if it does not (Dismiss, or
   a Codex that simply left), their text goes back into the pane's message field. Continuation
   prompts (unfinished quotes or heredocs) refuse a restart too. If the final
   transcript read fails, both conversation choices remain available; a session
@@ -247,6 +263,13 @@ Details in [Features](#features) and [Security](#security).
   machine. Browser storage must be available to retain comments after closing the view.
 - **Several machines**: agents of the SSH machines registered in Herdr (`herdr machine add`)
   appear in their own section; everything works the same on a remote agent.
+- **Machine bar**: at the top of the list, “All”, then each machine with its state and count; a
+  tap shows one machine alone. Settings › Appearance › Home screen › **Machine bar** orders its
+  items, takes some off it or hides it (kept on the device). A machine's **…** menu opens the
+  Board filtered on it (**Open the board**). In **Groups**, create a named selection of machines,
+  check its members and drag their handles to set their order. Groups appear after All by default,
+  with their combined task count and a group icon; order or hide them alongside the machines.
+  Choosing a group shows its members in the group's order. Groups are saved on this device.
 - **Named Herdr sessions**, **quotas** (remaining Claude and Codex usage limits), **Herdr plugin
   actions** in the menus, **passkey lock** (Face ID, Touch ID, Windows Hello, Android…).
 - **Themes**: wherdr Titanium (default), herdr.dev and Herdr's built-in themes, or follow your Herdr theme.
@@ -271,9 +294,6 @@ Details in [Features](#features) and [Security](#security).
     text field and the terminal).
   - `Mod+Alt+N` new agent in a new space, `Mod+Alt+T` new tab in the current space,
     `Mod+Alt+W` close the current pane (after confirmation). They work from the terminal too.
-  - With [herdr-projects](#works-great-with-herdr-projects) on the agent's machine: `Mod+Alt+P`
-    shows or collapses the Project panel of the current agent's project (from a thread, it opens
-    the coordinator), and `Mod+Alt+Shift+N` opens **New project**.
   - In an agent: `Mod+F` searches the conversation, ``Ctrl+` `` switches between conversation
     and terminal, and `Esc` stops a working agent when the message field is empty.
   - `Alt+Shift+arrows` swaps the current pane with its neighbour, `Ctrl/⌘+Alt+arrows` moves
@@ -284,13 +304,9 @@ Details in [Features](#features) and [Security](#security).
 - In the message field, `↑` on the first line recalls previous messages and slash commands;
   `↓` on the last line returns to newer entries, then restores your draft. History keeps the
   last 100 texts sent from this device per agent, without attachments or quoted references.
-- **Project board** for [herdr-projects](#works-great-with-herdr-projects): coordinator and threads grouped
-  under their project, and a side panel with the project's task lists (to test, to decide,
-  to review, in progress, in queue, blocked, to do, backlog — each optional) and one-click
-  replies to the coordinator.
-- **Board**: every agent, and with herdr-projects every project, thread and task, in four columns
-  (Blocked, Todo, Ongoing, Finished). Drag a task card to another column, or use its **Move
-  to…** menu, to ask the coordinator to move it.
+- **Board** for [herdr-projects](#works-great-with-herdr-projects) 1.2.1 or later: every machine's
+  tasks in five columns (needs you, ready to approve, working, to do, done), each task with its
+  pull request, review, reply and approval.
 - **Settings** in a sidebar, with desktop-only options such as the content width.
 
 ### On a phone
@@ -333,9 +349,10 @@ Web Push, lock) runs in Nitro.
 - **Herdr ≥ 0.9.1** running on the server (`herdr` or `herdr server`), with its Claude Code /
   Codex / omp integrations installed if you use them (`herdr integration install claude|codex|omp`).
   omp's conversation is only found through its integration, which reports the session file.
-- **Linux or macOS** server with either **Docker** (Compose v2) or **Node.js 22**.
-  The Docker image is for Linux servers (tested on a Raspberry Pi too). **On macOS, run without
-  Docker**: Docker Desktop cannot reach Herdr's Unix socket on the host.
+- **Linux or macOS** server with **Node.js 22** or newer (the installer offers to install it).
+  wherdr runs natively, as the user who runs Herdr. A Docker image exists for Linux servers, on
+  request and with a read-only Board ([Docker, on request](#docker-on-request)); Docker Desktop on
+  macOS cannot reach Herdr's Unix socket on the host.
 - **HTTPS** to use passkeys, push notifications and the installable app from another device.
   Browsers only allow them on `https://` or `http://localhost`. The easiest way is
   [`tailscale serve`](https://tailscale.com/kb/1312/serve); a reverse proxy **reachable only
@@ -370,20 +387,31 @@ The script ([read it first](https://wherdr.dev/install), source in
 
 1. checks **Herdr ≥ 0.9.1**; without it, it stops with the link to [herdr.dev](https://herdr.dev);
 2. leaves alone a wherdr that **already answers** on the port: a Herdr plugin install is offered
-   its update, a Docker install shows its update command, anything else is left as it is. A
-   `wherdr` container managed from another folder is never replaced or stopped;
-3. checks what wherdr runs on: Docker Compose v2 on Linux when your user can use it, otherwise
-   **Node.js 22** or Bun (always on macOS). On a Mac without them, it offers
-   `brew install node` when Homebrew is there; elsewhere it stops with the install links;
+   its update, a Docker install shows its update command and the
+   [move to the native service](#moving-from-docker-to-the-native-service), anything else is left
+   as it is. A stopped `wherdr` container is never replaced either: the script stops and points to
+   that move;
+3. checks **Node.js 22** or newer (or Bun), in your `PATH` and in the folders of n, nvm, fnm,
+   Volta, asdf and Homebrew. Without it, it asks before installing it: `brew install node` on a
+   Mac with Homebrew, otherwise the official Node.js 22 build from nodejs.org, its checksum
+   checked, unpacked in `~/wherdr/node` (used by wherdr only: your `PATH` is not changed). With
+   musl libc (Alpine) it gives the install links instead;
 4. runs `herdr plugin install afloury/wherdr --yes`: the [Herdr plugin](#install-as-a-herdr-plugin)
-   installs wherdr in `~/wherdr`, starts it on `http://localhost:7683`, starts it again with Herdr,
-   opens the setup guide in your browser (first install) and binds **prefix+i** to its panel;
-5. on a computer **without a screen** (no `DISPLAY` on Linux, or an SSH session): opens nothing,
+   downloads the GitHub release package of its version (checksum checked, no wait for npm),
+   installs it in `~/wherdr/app`, starts it on `http://localhost:7683`, opens the setup guide in
+   your browser (first install) and binds **prefix+i** to its panel;
+5. starts wherdr **at every boot**, with `wherdr service install`: a `systemd --user` unit on
+   Linux, with lingering (`loginctl enable-linger`, allowed for your own user without sudo on
+   most systems) so it keeps running after you log out; a LaunchAgent on macOS. The service gets
+   your login shell's `PATH`, so the agents you installed in `~/.local/bin`, `~/.bun/bin`,
+   `~/.cargo/bin`, `~/.npm-global/bin` or Homebrew are found (see [Agent PATH](#agent-path)). Each
+   run installs it again, with the `PATH` of now. If this step fails (no systemd), nothing of it
+   is left, wherdr is started again and keeps starting with Herdr, and the script says how to
+   retry;
+6. on a computer **without a screen** (no `DISPLAY` on Linux, or an SSH session): opens nothing,
    prints the local address, an `ssh -L` tunnel to reach it from your computer, and the phone
-   steps (`wherdr phone`: Tailscale state, the address, the QR code once it answers). With
-   Docker, it offers to run `tailscale serve` for you (asked first), and wherdr enables the
-   published address by itself: no browser is needed on the server. Run the command again at
-   any time to check the phone address.
+   steps (`wherdr phone`: Tailscale state, the address, the QR code once it answers). Run the
+   command again at any time to check the phone address.
 
 Settings, as environment variables (`curl -fsSL https://wherdr.dev/install | WHERDR_PORT=7684 sh`):
 
@@ -391,18 +419,29 @@ Settings, as environment variables (`curl -fsSL https://wherdr.dev/install | WHE
 | --- | --- | --- |
 | `WHERDR_DIR` | `~/wherdr` | Install folder (plugin settings, data, log). |
 | `WHERDR_PORT` | `7683` | Local port. |
-| `WHERDR_MODE` | — | `native`: Node.js even when Docker is there. `docker`: no plugin, Docker Compose by hand in `WHERDR_DIR` (Linux; see below). |
-| `WHERDR_YES` | — | `1` answers yes to every question (non-interactive use). |
+| `WHERDR_MODE` | — | `docker`: no plugin, Docker Compose in `WHERDR_DIR` instead (Linux, read-only Board; see [Docker, on request](#docker-on-request)). |
+| `WHERDR_SERVICE` | — | `off`: no login service; wherdr then starts with Herdr only (the plugin's startup hook). |
+| `WHERDR_YES` | — | `1` answers yes to every question (non-interactive use), installing Node.js included. |
 | `WHERDR_NO_BROWSER` | — | `1` never opens a browser. |
 | `WHERDR_REF` | main | Git tag or branch of the plugin (or of `docker-compose.yml` with `WHERDR_MODE=docker`). |
 | `WHERDR_PLUGIN` | `afloury/wherdr` | A local checkout to link and build instead (development, tests). |
 
-**Docker by hand, with the script:** `curl -fsSL https://wherdr.dev/install | WHERDR_MODE=docker sh`
-writes `docker-compose.yml` and `.env` to `~/wherdr`, creates the bind-mount folders, pulls the
-published image and starts it, without the plugin; it asks before replacing a file it did not
-create. The same steps by hand are in the next section.
+Update: run the command again (it offers the update), **U** in the wherdr panel, or **Update** in
+the app: all three fetch the GitHub release package directly.
 
-Update: run the command again (it offers the update), or **U** in the wherdr panel.
+#### Agent PATH
+
+systemd and launchd start services with a short system `PATH`, and herdr-projects, run by
+wherdr for the Board, then reports `claude is not installed here` for an agent installed in a
+user folder. wherdr gives it the `PATH` an interactive login shell would have, on the host and
+over SSH, in this order: the `PATH` your login shell gives (asked once by `wherdr service
+install`), the one herdr-projects records in `~/.herdr-projects/data/env.json`
+(`$HERDR_PROJECTS_DATA_DIR`, or `$HERDR_PROJECTS_HOME/data`), then `~/.local/bin`, `~/.bun/bin`,
+`~/.cargo/bin`, `~/.npm-global/bin`, `~/.deno/bin`, `~/.volta/bin`, `~/bin`, Homebrew's folders and
+`/usr/local/bin` when they exist, then the `PATH` it was started with and the system folders. Your
+own folders come before the system ones, as in your shell: an old system-wide copy of an agent
+never wins over yours. After installing
+an agent somewhere else, run `wherdr service install` again (or the one command).
 
 ### Which setup?
 
@@ -425,51 +464,9 @@ wherdr stays on your private network: it is **never published on the Internet**.
 (`herdr` or `herdr server`), with the integrations of the agents you use
 (`herdr integration install claude|codex`).
 
-**2. wherdr.** Run [the one command](#the-one-command) on the server (over SSH, it prints the
-address and the phone steps instead of opening a browser), then go to step 3. Or set up Docker
-Compose by hand (Linux, Compose v2), as follows:
-
-```sh
-git clone https://github.com/afloury/wherdr.git
-cd wherdr
-cp .env.example .env
-```
-
-Edit `.env` (every value has a default; `HOST_HOME` defaults to your `$HOME`):
-
-| Variable | Example | Meaning |
-| --- | --- | --- |
-| `HOST_HOME` | `/home/alice` | Your home folder on the server (default: `$HOME`). Mounted at the same path, read-only. |
-| `PUID` / `PGID` | `1000` | Your user and group IDs (`id -u`, `id -g`). |
-| `PORT` | `7683` | Listening port, published on `127.0.0.1` only. |
-| `APP_URL` | `http://localhost:7683/` | Leave it with Tailscale: wherdr adopts the address of step 3 by itself. Set a private HTTPS address only for [another private network](#other-private-networks) (Web Push contact and allowed host; it then always wins). |
-| `HOST_LABEL` | `server` | Name of this machine in the app. |
-| `TZ` | `Europe/Paris` | Time zone for timestamps and logs. |
-| `WHERDR_UPDATE_CHECK` | `off` | Disable the daily check for a new release (default `on`). |
-| `WHERDR_TRUSTED_NETWORKS` | `10.147.17.0/24` | Another private network to accept besides this computer and the tailnet ([Network access](#network-access)). Empty by default. |
-| `WHERDR_DOCKER_LOOPBACK_ONLY` | `1` | Declares that the port is published on the host's `127.0.0.1` only, as in the shipped `docker-compose.yml`: wherdr then knows that connections from the host come from this computer (without it, it warns at startup; [Network access](#network-access)). Remove it if you publish the port another way. |
-
-Create the bind-mount folders **before** starting Compose, as your own user. Otherwise Docker
-may create missing host folders as root, leaving the container unable to write to them.
-
-```sh
-mkdir -p data "$HOME/.config/herdr" "$HOME/.local/state/herdr/client" "$HOME/.cache/herdr-web" \
-  "$HOME/.herdr-projects"
-docker compose up -d          # pulls ghcr.io/afloury/wherdr (arm64 and amd64)
-docker compose logs -f        # optional: follow the logs and find the first-passkey token
-```
-
-The container runs as your user and mounts your home folder **read-only**, except
-`~/.config/herdr` (Herdr sockets), `~/.local/state/herdr/client` (machine names),
-`~/.cache/herdr-web` (uploaded photos and files, quotas) and `~/.herdr-projects` (herdr-projects
-projects, see [Works great with herdr-projects](#works-great-with-herdr-projects)). It uses the
-server's own `herdr` binary, so the client and the server always stay on the same version.
-
-The repository is only needed for `docker-compose.yml` and `.env`: the image is prebuilt and
-published for each release. To build it from source instead, see [Updating](#updating).
-**Custom icons** (optional): copy
-`docker-compose.override.example.yml` to `docker-compose.override.yml` and put your icons in
-`branding/` (both untracked).
+**2. wherdr.** Run [the one command](#the-one-command) on the server, as your user (over SSH, it
+prints the address and the phone steps instead of opening a browser). wherdr runs as a service
+that starts with the machine and keeps running when you log out.
 
 **3. Private HTTPS with Tailscale.** Install [Tailscale](https://tailscale.com) on the server,
 your phone and your computers, on the same tailnet, with
@@ -486,30 +483,18 @@ forwards to wherdr's local HTTP port. Only devices of your tailnet can reach it.
 
 **wherdr enables that address by itself**, on a server without a screen too: at startup, every
 30 seconds, and when an address it does not know yet is opened, it reads what `tailscale serve`
-publishes on this machine and adopts the HTTPS address that points to its own port (allowed
-host and `APP_URL`, saved in `data/app-url.json`; an HTTPS `APP_URL` in `.env` wins). An address
-removed from `tailscale serve` is refused again. Nothing a request says can enable an address:
-only Tailscale's own state on the machine does, and an address that `tailscale funnel` opens to
-the Internet is never adopted. Without Docker, wherdr runs the `tailscale` command; in Docker
-it reads Tailscale's socket, mounted by `docker-compose.yml` (`/var/run/tailscale`). After
-Tailscale itself restarts (an update), restart the container.
-
-What that mount gives: Tailscale's local API, with the rights of the host user the container
-runs as. Anyone may read it; if that user is Tailscale's operator
-(`tailscale set --operator=$USER`), the API also accepts changes from it (serve, funnel…), and
-`:ro` on the folder does not prevent that. wherdr itself only sends `GET` requests. This is not
-a new privilege: the container already drives Herdr, which is a shell of that same user. To do
-without it, remove the line from `docker-compose.yml`: wherdr then no longer finds the address
-by itself, and the one command (or the plugin's phone step) run after `tailscale serve` hands
-it over.
+publishes on this machine (the `tailscale` command) and adopts the HTTPS address that points to
+its own port (allowed host and `APP_URL`, saved in `data/app-url.json`; an HTTPS `APP_URL` in the
+environment or `~/wherdr/wherdr.env` wins). An address removed from `tailscale serve` is refused
+again. Nothing a request says can enable an address: only Tailscale's own state on the machine
+does, and an address that `tailscale funnel` opens to the Internet is never adopted. (In
+[Docker](#docker-on-request) it reads Tailscale's socket instead.)
 
 **Settings › Phone** on the server (`http://localhost:7683/#/settings?section=phone`) shows the
-state and the QR code; without Docker it also publishes wherdr itself: one button, asked first.
-From a terminal, `wherdr phone` (npm, Homebrew) or the [one command](#the-one-command) run again
-(Docker, Herdr plugin) checks the same thing, and
-`curl -fsS http://127.0.0.1:7683/api/phone` prints the state as JSON. A container started from
-an older `docker-compose.yml` has no Tailscale socket: paste the address in Settings › Phone,
-or run the one command again, which sends it.
+state and the QR code and publishes wherdr itself: one button, asked first. From a terminal,
+**P** in the wherdr panel, `wherdr phone` (npm, Homebrew) or the [one command](#the-one-command)
+run again checks the same thing, and `curl -fsS http://127.0.0.1:7683/api/phone` prints the state
+as JSON.
 
 If the phone shows **"This address isn't enabled yet"** (403), the address it opened is not one
 `tailscale serve` publishes for wherdr's port on that machine: the page gives the command to run
@@ -526,8 +511,8 @@ Settings → **Enable notifications**. **On the computer:** use the same address
 desktop layout can replace the Herdr terminal client for daily work.
 
 **5. Passkey lock** (optional): Settings → Security → **Enable passkey lock**. The
-first passkey asks for a bootstrap token, printed in the server logs (`docker compose logs`);
-it changes on each restart and is only needed for that first passkey. Add a passkey on each of
+first passkey asks for a bootstrap token, printed in the server log (`~/wherdr/wherdr.log`,
+**L** in the wherdr panel; `docker compose logs` in Docker); it changes on each restart and is only needed for that first passkey. Add a passkey on each of
 your devices after that (see [New device](#new-device) below). Without one, every device of your
 tailnet can control your agents: enough when the tailnet is yours alone, a passkey adds a lock
 on each device when someone else shares the tailnet or your devices.
@@ -625,8 +610,11 @@ first sign in to Access in the browser.
 
 ### The `wherdr` command
 
-The npm package holds the built app: nothing is compiled on your machine. Try it with
-`npx wherdr` (or `bunx wherdr`, `pnpm dlx wherdr`); to keep it, install it once:
+An alternative to [the one command](#the-one-command), from npm or Homebrew: the same app, without
+the Herdr plugin. npm can hold a new release for up to two days (moderation), so these get updates
+later than the installer, which downloads the GitHub release package. The npm package holds the
+built app: nothing is compiled on your machine. Try it with `npx wherdr` (or `bunx wherdr`,
+`pnpm dlx wherdr`); to keep it, install it once:
 
 ```sh
 npm install -g wherdr       # or: pnpm add -g wherdr, bun add -g wherdr
@@ -642,7 +630,7 @@ wherdr phone                # phone state, the app's phone setup page, QR code o
 | `wherdr logs` (`-f` to follow, `-n 100`) | The log, `~/wherdr/wherdr.log`. |
 | `wherdr open` | Opens wherdr in the browser: its tailnet address when published and answering, else `localhost`. |
 | `wherdr phone` | Whether your phone can reach wherdr (Tailscale, `tailscale serve`, the address answering), the `tailscale serve` command to publish it when it is not (wherdr then enables the address by itself), the link to **Settings › Phone**, and the QR code once the address answers. |
-| `wherdr service install` · `uninstall` | Start at login: a LaunchAgent on macOS (`~/Library/LaunchAgents/dev.wherdr.plist`), a `systemd --user` unit on Linux (`loginctl enable-linger` keeps it running while you are logged out). |
+| `wherdr service install` · `uninstall` | Start at login: a LaunchAgent on macOS (`~/Library/LaunchAgents/dev.wherdr.plist`), a `systemd --user` unit on Linux, with lingering turned on (`loginctl enable-linger`, without sudo; when your system refuses it, the command to run is printed) so it keeps running while you are logged out. The service gets your [PATH](#agent-path). The one command and key **A** of the plugin's panel run it too. |
 | `wherdr doctor` | Checks Node/Bun, Herdr and its socket, the port, the service, the data folder and `APP_URL`. |
 
 Options: `--port` (default `7683`), `--host` (default `127.0.0.1`; loopback or this machine's
@@ -667,7 +655,7 @@ On a Homebrew install, `wherdr start`, `stop`, `restart` and `service install` p
 show the Homebrew service. Update: `brew upgrade wherdr && brew services restart wherdr`.
 
 The login service records the **absolute path** of the runtime (n, nvm, fnm, Volta or Homebrew
-node), since launchd and systemd do not see your shell's `PATH`. It refuses to point at a
+node) and your [PATH](#agent-path), since launchd and systemd do not see your shell's. It refuses to point at a
 temporary `npx` / `pnpm dlx` / `bunx` folder: install the package globally first. To update:
 `npm install -g wherdr@latest && wherdr restart` (with `npx`: stop it, then `npx wherdr@latest`).
 
@@ -675,7 +663,7 @@ Bun runs wherdr too (WebSockets, push, passkeys and Herdr's socket work); when N
 also installed, `bunx wherdr` hands the server to Node, the reference runtime. Set
 `WHERDR_RUNTIME=bun` to keep Bun.
 
-### From source, no Docker
+### From source
 
 For development, or to run a checkout of your own (Docker Desktop cannot reach Herdr's Unix socket
 on macOS, so wherdr always runs natively there). With Herdr running, Git and Node.js 22 on the
@@ -723,18 +711,18 @@ and macOS, with Herdr ≥ 0.9.1 (no checks for Herdr or Node.js first). In three
 
 Herdr shows the manifest and the commands it will run, then the plugin installs wherdr in
 `~/wherdr` and starts it, unless something already answers on the port. If wherdr cannot start,
-the install still succeeds and says why; press **S** in the panel once it is fixed. It picks the
-setup by itself:
+the install still succeeds and says why; press **S** in the panel once it is fixed. It runs
+wherdr natively:
 
-- **Docker** on Linux when Docker Compose v2 works for your user: the published image, from
-  `~/wherdr` (`docker-compose.yml`, `.env`), the same files as `WHERDR_MODE=docker` of
-  [the one command](#the-one-command).
-- **Node.js 22** everywhere else, and always on macOS (Docker Desktop cannot reach Herdr's
-  socket): the plugin downloads the prebuilt package of its version from GitHub Releases and
-  verifies its SHA-256 checksum, copies it to `~/wherdr/app` and runs it detached from there, with
-  its pid and log (`wherdr.log`) in `~/wherdr`. Herdr builds plugins in a temporary folder and
-  then moves them, so the server never runs from the plugin folder. Bun works too when Node.js 22
-  is missing. Without either, the install stops and says so.
+- **Node.js 22**, on Linux and macOS: the plugin downloads the prebuilt package of its version
+  from GitHub Releases and verifies its SHA-256 checksum, copies it to `~/wherdr/app` and runs it
+  from there (detached, or by the login service), with its pid and log (`wherdr.log`) in
+  `~/wherdr`. Herdr builds plugins in a temporary folder and then moves them, so the server never
+  runs from the plugin folder. Bun works too when Node.js 22 is missing. Without either, the
+  install stops and says so ([the one command](#the-one-command) offers to install Node.js).
+- **Docker** only when asked, with `WHERDR_MODE=docker` (Linux): the published image, from
+  `~/wherdr` (`docker-compose.yml`, `.env`), with a read-only Board
+  ([Docker, on request](#docker-on-request)).
 
 The **wherdr** panel (a Herdr popup) shows ● running / ○ stopped, the local address, the phone
 address (with its QR code once it answers), and two main keys: **O** Open wherdr, **P** Set up my
@@ -778,12 +766,13 @@ Up to 1.2.0 the panel action was called `wherdr`: change a key bound to `afloury
 leaves it alone). Remove the block with `sh scripts/herdr-plugin.sh key uninstall` in the plugin
 folder (`~/.config/herdr/plugins/github/wherdr-…`), or delete the lines from `# wherdr:` to `# end wherdr`.
 
-Auto-start: the plugin's startup hook starts wherdr each time the Herdr server starts, which is
-all wherdr needs (it drives Herdr). Key **A** adds a login service as well (a LaunchAgent on
-macOS, a `systemd --user` unit on Linux, pointing at `~/wherdr/app` with the absolute path of the
-runtime): wherdr then runs from login and is restarted if it crashes. It is not installed on its
-own because it changes your login session. In Docker mode the container's restart policy does
-this job.
+Auto-start: the plugin's startup hook starts wherdr each time the Herdr server starts, when
+nothing answers on the port yet. [The one command](#the-one-command) also installs a login
+service (a LaunchAgent on macOS, a `systemd --user` unit with lingering on Linux, pointing at
+`~/wherdr/app` with the absolute path of the runtime and your [PATH](#agent-path)): wherdr then
+runs from boot and is restarted if it crashes. Key **A** in the panel turns it on or off;
+`herdr plugin install` alone does not add it, since it changes your login session. In Docker
+mode the container's restart policy does this job.
 
 Herdr runs the plugin's commands with the environment of its server, whose `PATH` often lacks the
 folders of version managers (n, nvm, fnm, Volta, asdf). The install therefore saves the absolute
@@ -793,8 +782,8 @@ disappears, **Start** looks in the usual places (`~/.n/bin`, `~/.nvm`, `~/.volta
 `WHERDR_RUNTIME` there by hand for anything else. **Start** only reports success once the
 process is alive and the port answers; otherwise it prints the last lines of `wherdr.log`.
 
-Force a setup with `WHERDR_MODE=native herdr plugin install afloury/wherdr` (or `docker`). The
-choice, the port (`WHERDR_PORT`, default 7683) and, in native mode, `APP_URL` are kept in
+Ask for Docker with `WHERDR_MODE=docker herdr plugin install afloury/wherdr` (`native`, the
+default, switches back). The choice, the port (`WHERDR_PORT`, default 7683) and, in native mode, `APP_URL` are kept in
 `~/wherdr/plugin.env`; another folder can be set with `WHERDR_DIR` at install time. Nothing is
 installed globally and nothing runs with sudo.
 
@@ -809,7 +798,110 @@ uninstall` (the panel key) and `sh scripts/herdr-plugin.sh skill uninstall`; the
 `herdr plugin uninstall afloury.wherdr && rm -rf ~/wherdr` (`~/wherdr/data` holds your passkeys
 and push keys).
 
-### wherdr in Docker on a Mac: Reveal in Finder, Open and Mod+Alt+O
+### Docker, on request
+
+wherdr 2.0 is native first. The image still works, on Linux servers with Docker Compose v2, but
+a container is not the host, and it shows:
+
+- **The [Board](#works-great-with-herdr-projects) is read-only on wherdr's own machine.** It
+  reads herdr-projects' files and runs none of its commands there: no Coordinator, reply, start,
+  stop, retry, archive or approve (each button says why on hover; a task gives the command to run
+  on the host). SSH machines are not affected. No way around this is offered: running commands on
+  the host from the container would mean a hole in it.
+- **No one-tap update**: the app gives the `docker compose` command (replacing its own container
+  would need the Docker socket, root on the host, inside it).
+- **Not on macOS**: Docker Desktop cannot reach Herdr's Unix socket on the host.
+- **Codex's Update** runs in the agent's own terminal (the home folder is mounted read-only).
+
+To move an existing container to the native service, see
+[Moving from Docker to the native service](#moving-from-docker-to-the-native-service).
+
+**With the script:** `curl -fsSL https://wherdr.dev/install | WHERDR_MODE=docker sh` writes
+`docker-compose.yml` and `.env` to `~/wherdr`, creates the bind-mount folders, pulls the published
+image and starts it, without the plugin; it asks before replacing a file it did not create. Run
+on a server without a screen, it offers to run `tailscale serve` for you (asked first).
+
+**By hand:**
+
+```sh
+git clone https://github.com/afloury/wherdr.git
+cd wherdr
+cp .env.example .env
+```
+
+Edit `.env` (every value has a default; `HOST_HOME` defaults to your `$HOME`):
+
+| Variable | Example | Meaning |
+| --- | --- | --- |
+| `HOST_HOME` | `/home/alice` | Your home folder on the server (default: `$HOME`). Mounted at the same path, read-only. |
+| `PUID` / `PGID` | `1000` | Your user and group IDs (`id -u`, `id -g`). |
+| `PORT` | `7683` | Listening port, published on `127.0.0.1` only. |
+| `APP_URL` | `http://localhost:7683/` | Leave it with Tailscale: wherdr adopts the address of [step 3](#recommended-always-on-server--tailscale) by itself. Set a private HTTPS address only for [another private network](#other-private-networks) (Web Push contact and allowed host; it then always wins). |
+| `HOST_LABEL` | `server` | Name of this machine in the app. |
+| `TZ` | `Europe/Paris` | Time zone for timestamps and logs. |
+| `WHERDR_UPDATE_CHECK` | `off` | Disable the daily check for a new release (default `on`). |
+| `WHERDR_TASKS_FROM_FILES` | `1` | Read this machine's herdr-projects board from its files and run nothing of herdr-projects here, as in a container (detected by itself in Docker and Podman). |
+| `WHERDR_TRUSTED_NETWORKS` | `10.147.17.0/24` | Another private network to accept besides this computer and the tailnet ([Network access](#network-access)). Empty by default. |
+| `WHERDR_DOCKER_LOOPBACK_ONLY` | `1` | Declares that the port is published on the host's `127.0.0.1` only, as in the shipped `docker-compose.yml`: wherdr then knows that connections from the host come from this computer (without it, it warns at startup; [Network access](#network-access)). Remove it if you publish the port another way. |
+
+Create the bind-mount folders **before** starting Compose, as your own user. Otherwise Docker
+may create missing host folders as root, leaving the container unable to write to them.
+
+```sh
+mkdir -p data "$HOME/.config/herdr" "$HOME/.local/state/herdr/client" "$HOME/.cache/herdr-web" \
+  "$HOME/.herdr-projects"
+docker compose up -d          # pulls ghcr.io/afloury/wherdr (arm64 and amd64)
+docker compose logs -f        # optional: follow the logs and find the first-passkey token
+```
+
+The container runs as your user and mounts your home folder **read-only**, except
+`~/.config/herdr` (Herdr sockets), `~/.local/state/herdr/client` (machine names),
+`~/.cache/herdr-web` (uploaded photos and files, quotas) and `~/.herdr-projects` (the herdr-projects
+board, see [Works great with herdr-projects](#works-great-with-herdr-projects)). It uses the
+server's own `herdr` binary, so the client and the server always stay on the same version.
+
+The repository is only needed for `docker-compose.yml` and `.env`: the image is prebuilt and
+published for each release. To build it from source instead, see **Updates** below.
+**Custom icons** (optional): copy
+`docker-compose.override.example.yml` to `docker-compose.override.yml` and put your icons in
+`branding/` (both untracked).
+
+In Docker, wherdr reads Tailscale's socket, mounted by `docker-compose.yml`
+(`/var/run/tailscale`), to find the address `tailscale serve` publishes. After Tailscale itself
+restarts (an update), restart the container. What that mount gives: Tailscale's local API, with
+the rights of the host user the container runs as. Anyone may read it; if that user is
+Tailscale's operator (`tailscale set --operator=$USER`), the API also accepts changes from it
+(serve, funnel…), and `:ro` on the folder does not prevent that. wherdr itself only sends `GET`
+requests. This is not a new privilege: the container already drives Herdr, which is a shell of
+that same user. To do without it, remove the line from `docker-compose.yml`: wherdr then no
+longer finds the address by itself, and the one command run after `tailscale serve` hands it
+over. A container started from an older `docker-compose.yml` has no Tailscale socket: paste the
+address in Settings › Phone, or run the one command again, which sends it.
+
+Settings only Docker reads (`.env`), besides the table above and [Configuration](#configuration):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `WHERDR_IMAGE` | `ghcr.io/afloury/wherdr:latest` | Image to run; pin a version such as `ghcr.io/afloury/wherdr:2.0.0`. |
+| `HERDR_WEB_HOST_OPEN_TARGET` | *(unset)* | Docker on a Mac: SSH host that runs Reveal/Open for local panes (below). |
+| `HERDR_WEB_HOST_OPEN_USER` | `root` | SSH user for `HERDR_WEB_HOST_OPEN_TARGET` (your Mac user). |
+| `HERDR_WEB_HOST_OPEN_KEY` | `data/host-open-key` | SSH private key for the host-open route. |
+
+**Updates:** `docker compose pull && docker compose up -d` in wherdr's folder (`git pull` now and
+then brings the latest `docker-compose.yml` and `.env.example`). Built from source:
+`docker-compose.build.yml` builds the image locally (`wherdr:local`) instead of pulling it: add
+`-f docker-compose.yml -f docker-compose.build.yml` to every `docker compose` command (and
+`-f docker-compose.override.yml` if you use one). A build needs about 2 GB of free memory.
+[Watchtower](https://containrrr.dev/watchtower/) can pull new images and restart the container
+for you:
+
+```sh
+docker run -d --name watchtower --restart unless-stopped \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  containrrr/watchtower --cleanup --schedule "0 0 4 * * *" wherdr
+```
+
+#### wherdr in Docker on a Mac: Reveal in Finder, Open and Mod+Alt+O
 
 The container is Linux: it has no `open` command, so "Reveal in Finder" / "Open" on file paths
 and `Mod+Alt+O` (the agent's folder in your editor) do nothing by default — the app reports
@@ -844,6 +936,22 @@ Cursor, Sublime Text, TextMate). Change it any time:
 ```sh
 printf %s "Visual Studio Code" > ~/.local/share/wherdr/editor
 ```
+
+### Moving from Docker to the native service
+
+Same port (7683), same data: passkeys, push subscriptions, the phone address and your settings
+are kept, since they all live in wherdr's `data/` folder and the address does not change. The
+steps, with a backup and the way back, are in
+[docs/herdr-projects-1x.md](docs/herdr-projects-1x.md#moving-from-docker-to-the-native-service).
+In short:
+
+1. Back up the compose folder's `data/`, `.env` and `docker-compose.yml`.
+2. `docker compose down` in that folder: the container goes, `data/` stays.
+3. Use the same `data/` from `~/wherdr/data` (nothing to do when the folder is `~/wherdr`).
+4. `curl -fsSL https://wherdr.dev/install | sh`: wherdr runs natively, as a service.
+
+Way back: remove the login service and stop wherdr (**A**, then **X** in the wherdr panel),
+`herdr plugin disable afloury.wherdr`, then `docker compose up -d` in the compose folder.
 
 ## Updating
 
@@ -885,7 +993,7 @@ and the app says so. Every step is logged in `~/wherdr/update.log`.
 
 | Setup | What Update does |
 | --- | --- |
-| Herdr plugin, Node.js | Verifies and unpacks the GitHub release package of the new version into `~/wherdr/app`, keeps the old copy, restarts |
+| The one command / Herdr plugin, Node.js | Verifies and unpacks the GitHub release package of the new version into `~/wherdr/app`, keeps the old copy, restarts (the login service included) |
 | `npm install -g wherdr` | `npm install -g wherdr@X.Y.Z`, then restarts (login service included) |
 | Homebrew | `brew upgrade wherdr`, then `brew services restart wherdr` |
 
@@ -894,33 +1002,16 @@ on the host) inside it. `npx wherdr` runs from a temporary folder: run `npx wher
 
 | Setup | Update command (in the wherdr folder) |
 | --- | --- |
-| Docker, published image (default) | `docker compose pull && docker compose up -d` |
-| Docker, built from source | `git pull && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` |
-| From source | `git pull && npm ci && npm run build`, then restart wherdr |
+| The one command | Run `curl -fsSL https://wherdr.dev/install \| sh` again: it offers the update (GitHub release package) |
+| Herdr plugin, Node.js | **U** in the **wherdr** panel, or `herdr plugin install afloury/wherdr --yes` (wherdr restarts on the new version) |
 | `wherdr` command (npm) | `npm install -g wherdr@latest && wherdr restart` (npx: stop it, then `npx wherdr@latest`) |
 | `wherdr` command (Homebrew) | `brew upgrade wherdr`, then `brew services restart wherdr` |
-| The one command | Run `curl -fsSL https://wherdr.dev/install \| sh` again: it offers the update |
+| From source | `git pull && npm ci && npm run build`, then restart wherdr |
+| Docker, published image | `docker compose pull && docker compose up -d` |
+| Docker, built from source | `git pull && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` |
 | Herdr plugin, Docker | **U** in the **wherdr** panel (pulls the image, restarts the container) |
-| Herdr plugin, Node.js | **U** in the **wherdr** panel, or `herdr plugin install afloury/wherdr --yes` (wherdr restarts on the new version) |
 
-Also run `git pull` now and then with the published image: it brings the latest
-`docker-compose.yml` and `.env.example`.
-
-**Build from source.** `docker-compose.build.yml` builds the image locally (`wherdr:local`)
-instead of pulling it: add `-f docker-compose.yml -f docker-compose.build.yml` to every
-`docker compose` command (and `-f docker-compose.override.yml` if you use one). A build needs
-about 2 GB of free memory.
-
-**Automatic updates** (optional). [Watchtower](https://containrrr.dev/watchtower/) can pull new
-images and restart the container for you:
-
-```sh
-docker run -d --name watchtower --restart unless-stopped \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  containrrr/watchtower --cleanup --schedule "0 0 4 * * *" wherdr
-```
-
-Pin a version instead of `latest` with `WHERDR_IMAGE=ghcr.io/afloury/wherdr:1.2.0` in `.env`.
+Docker's updates, a build from source and Watchtower: [Docker, on request](#docker-on-request).
 
 ## Install it as an app
 
@@ -944,14 +1035,15 @@ Then Settings → Security → **Enable passkey lock** on each device.
 
 ## Configuration
 
-All settings are environment variables (`.env` with Docker).
+All settings are environment variables: `KEY=VALUE` lines in `~/wherdr/wherdr.env` for the
+native service (read at each start: `wherdr restart`, or **R** in the panel), `.env` with Docker.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PORT` | `7683` | Listening port. |
 | `HOST` | `127.0.0.1` (`npm start`) | Listening address without Docker: loopback, or this machine's tailnet address (`tailscale ip`, with Tailscale running). Any other address (`0.0.0.0`, a LAN address) stops wherdr at startup unless `WHERDR_TRUSTED_NETWORKS` covers it. |
 | `WHERDR_TRUSTED_NETWORKS` | *(empty)* | Other private networks wherdr accepts besides this computer and the tailnet, as comma-separated CIDR ranges or addresses (e.g. `10.147.17.0/24` for ZeroTier). `any` accepts every network, with a warning at startup and in the app: not recommended. See [Network access](#network-access). |
-| `HOST_LABEL` | server hostname | Name of this machine in the app (can be renamed in the app). In Docker the installer writes the host's short name; left empty, wherdr shows the name Tailscale gives the machine, else `wherdr`. |
+| `HOST_LABEL` | server hostname | Name of this machine in the app (can be renamed in the app). In Docker the installer writes the host's short name; left empty there, wherdr shows the name Tailscale gives the machine, else `wherdr`. |
 | `APP_URL` | *(empty)* | App address and allowed host; a valid HTTPS URL enables Web Push. HTTP, empty or invalid values disable Web Push with a warning. With Tailscale, leave it empty: wherdr adopts the address `tailscale serve` publishes. |
 | `TAILNET_REFRESH_MS` | `30000` | How often wherdr reads again what `tailscale serve` publishes for its port. |
 | `HERDR_WEB_ALLOWED_HOSTS` | *(empty)* | Additional hostnames or IP addresses allowed to open the app, comma-separated. |
@@ -959,9 +1051,7 @@ All settings are environment variables (`.env` with Docker).
 | `DATA_DIR` | `./data` | VAPID keys, push subscriptions, passkeys, recent folders. |
 | `HERDR_BIN` | `~/.local/bin/herdr`, else `herdr` in `PATH` | Herdr binary. |
 | `HERDR_WEB_SESSION` | *(default session)* | Named Herdr session to drive. Not `HERDR_SESSION`, which Herdr reads itself. |
-| `HERDR_WEB_HOST_OPEN_TARGET` | *(unset)* | Docker on a Mac: SSH host that runs Reveal/Open for local panes (see [Docker on a Mac](#wherdr-in-docker-on-a-mac-reveal-in-finder-open-and-modalto)). |
-| `HERDR_WEB_HOST_OPEN_USER` | `root` | SSH user for `HERDR_WEB_HOST_OPEN_TARGET` (your Mac user). |
-| `HERDR_WEB_HOST_OPEN_KEY` | `data/host-open-key` | SSH private key for the host-open route. |
+| `HERDR_PROJECTS_DATA_DIR` | `~/.herdr-projects/data` | herdr-projects' data folder, where wherdr reads the `PATH` it recorded ([Agent PATH](#agent-path)). |
 | `AGENT_KINDS` | all known agents | Agents offered in **New** (only installed ones are shown). |
 | `HERDR_WEB_MACHINES` | `on` | `off` to ignore the SSH machines registered in Herdr. |
 | `HERDR_WEB_SELF_HOSTS` | | Other names / IPs of this machine, comma-separated (profiles pointing to it are ignored). |
@@ -1005,7 +1095,6 @@ No
 | `↳ Quote point <time> ~<code> : <excerpt> —` | `↳` on a question or a point, **Reply** on a selected passage. |
 | `↳ Quote decision <time> #<n> ~<code> : <question> —` | **Yes**, **No** or `↳` on a row of a decision table. |
 | `↳ Quote decisions <time> #<rows> ~<code> : <questions> —` | **OK to all** on a decision table. |
-| `↳ Decision: <task> —`, `↳ Problem: <task> —`, `↳ Question: <task> —`, `↳ Detail on <task> —`, `↳ Feedback on <task> —` (and their French labels) | **Answer**, **Problem**, **Question**, **Clarify** and **Comment** in the Project panel. |
 
 - The time is the one shown on the agent's message, so an answer to an earlier message is never
   read as an answer to the last one. The types are the same words in every language.
@@ -1118,13 +1207,13 @@ week, with reset times), for every online machine.
 
 With notifications enabled on a device, wherdr sends a Web Push when an agent goes from working
 to **blocked** (with its question and options) or to **done** (with the start of its answer).
-There is no push for the agent currently on screen. Settings → Notifications lets each device
-choose between all agents and main agents only (herdr-projects threads are muted by default).
+There is no push for the agent currently on screen.
 
 **Do not disturb** (top of Settings → Notifications) stops every push, for this device or for all
 devices, for 1 hour, until 8 am or until turned back on. The server applies it before sending and
-keeps it across restarts (`data/quiet.json` for all devices). While it is on, a crossed-out bell
-next to Settings on the home screen turns it off in one tap.
+keeps it across restarts (`data/quiet.json` for all devices). While it is on, the agent list
+shows one line, “Notifications silenced until 08:00”, that opens these settings (a crossed-out bell
+under the counters when the list is collapsed); the header keeps its buttons as they are.
 
 wherdr also relays custom notifications sent with `herdr notification show` (plugins, scripts).
 To receive them it connects to Herdr's client socket as a **passive** client: it never becomes
@@ -1134,230 +1223,104 @@ gets a default workspace, as with any attached client.
 
 ## Works great with herdr-projects
 
-[herdr-projects](https://github.com/afloury/herdr-projects) is a Herdr plugin that runs a
-project as one **coordinator** conversation and parallel **threads**, each in its own Git
-worktree. It is optional. wherdr works with its **0.2** line, installed from the fork (or with
-**Install herdr-projects** in **Settings → Plugins → herdr-projects**):
+[herdr-projects](https://github.com/eliasstravik/herdr-projects) is a work board for Herdr: one
+list of tasks, each handed to an ordinary agent in its own space, reviewed when it finishes and
+merged on your yes. wherdr shows it on the **Board** (the button next to Settings, or `H`), for
+every machine at once. It needs **herdr-projects 1.2.1 or later**; the plugin is optional.
+
+**Install herdr-projects** in **Settings → Plugins → herdr-projects**, or on the machine:
 
 ```sh
-herdr plugin install afloury/herdr-projects --ref v0.2.36 --yes
+herdr plugin install eliasstravik/herdr-projects --ref v1.2.1 --yes
 ```
 
-> **herdr-projects 1.x is not supported yet.** Upstream
-> ([eliasstravik/herdr-projects](https://github.com/eliasstravik/herdr-projects)) moved to a 1.x
-> that is a different product (a task board, with no projects, `TASKS.md` or threads), and its
-> first run moves `~/.herdr-projects` to `~/.herdr-projects-legacy`. Settings says when a machine
-> has 1.x and gives the command to go back to 0.2. A 0.2 installed from upstream must not run
-> `herdr-projects update`, which would install 1.x: reinstall it from the fork
-> (`herdr plugin uninstall herdr-projects && herdr plugin install afloury/herdr-projects --ref v0.2.36 --yes`;
-> projects stay in `~/.herdr-projects`). The pinned v0.2.36 release downloads a prebuilt binary
-> for macOS or Linux, on ARM64 or x86_64.
+> **Breaking change in wherdr 2.0: herdr-projects 0.2 is no longer read.** The Project panel,
+> the `TASKS.md` board, threads, thread limits and **New project** belonged to herdr-projects
+> 0.2 and are gone. With 0.2 (or a 1.x older than 1.2.1), Settings and the Board say
+> **Update herdr-projects to 1.2.1 or later, or downgrade wherdr to 1.3.4**, with the commands.
+> The step-by-step move, with a backup and the way back, is in
+> [docs/herdr-projects-1x.md](docs/herdr-projects-1x.md). wherdr 1.3.4 is the last version
+> that reads herdr-projects 0.2.
 
-With it installed, wherdr adds:
+What the Board shows and does:
 
-- **Project groups** in the agent list: the coordinator first, its threads indented under it,
-  grouped by repository (`Repo web-shop · 2 worktrees`), with their thread number and state.
-- **Project panel** next to the coordinator (a side panel on a computer, a tab on a phone). It
-  reads the project's `TASKS.md` and shows the lists it has, always in this order, with the open
-  threads live (state, progress, report) and threads marked done under Done (**Tasks** tab; the
-  **Threads**, **Inbox**, **Routines**, **Settings** and **Memory** tabs are described below):
-
-  | List | Meaning | Buttons |
-  | --- | --- | --- |
-  | **To test** | You confirm the work | Confirm, Problem, Question |
-  | **To decide** | Only you can unblock it | Question, Answer |
-  | **To review** | Pull requests for you | Reviewed, Comment |
-  | **In progress** | What threads are really doing | (live threads) Add info |
-  | **In queue** | Decided: the coordinator launches the first one as soon as a thread slot frees | Move up / down, Launch now, Clarify, Remove from queue |
-  | **Blocked** | Waiting for someone or something external | Unblock, Clarify |
-  | **To do** | To do soon, in your priority order; never launched on its own | Move up / down, Queue it, Launch now, Clarify, Back to backlog |
-  | **Backlog** | Everything else | Launch, Clarify |
-  | **Done** | Threads marked done | |
-
-  Every list is **optional**: you and your coordinator pick the ones a project uses (a small
-  project may only need Backlog, In progress and Done); any other `##` list shows in a neutral
-  style after Backlog. French titles and common synonyms are recognized (À tester, En file,
-  À faire, Plus tard…). Every button sends a ready-made message to the coordinator, which edits
-  `TASKS.md` (wherdr never writes it). **Add info**, on a working thread, opens a text field:
-  what you type goes to the coordinator, which passes it on to that thread as is. The In queue
-  header shows the thread slots in use (`max_parallel_threads` in `PROJECT.md`) and the next
-  task, plus the machine's global limit when one is set
-  (`2 of 2 thread slots in use on <machine> (all projects)`).
-- **Threads tab** of the Project panel: every thread of the project, including those marked done.
-  Open threads are grouped as herdr-projects groups them (Your turn, Ready for review, Working…),
-  each with its machine and agent profile; threads marked done stay in their own folded section,
-  shown by pages of 30. One filter covers both (ID, title, machine, profile). A tap opens the
-  thread's record: state, its **Next** list, branch, dates, and these actions:
-
-  | Action | Command | Asks first |
-  | --- | --- | --- |
-  | **Acknowledge** | `thread ack`: you have seen its report | |
-  | **Restart** | `thread restart`: bring back a thread whose pane is gone or whose start failed | |
-  | **Stop** | `thread stop`: Escape in its agent's pane | Yes |
-  | **Mark done** | `thread resolve`: final copy, then its worktree, merged branch and tab are cleaned up (report and library kept) | Yes |
-
-  Open agent, View report and Pull request are there too when they apply. wherdr only runs
-  these `herdr-projects` commands on the coordinator's machine (and reads `thread show --json`);
-  it writes no thread file itself, and herdr-projects has the last word (it refuses to restart a
-  running thread, for instance): its answer is shown as is. With Docker, **Mark done** runs in
-  the container, where the home folder is read-only: a thread of this machine is marked done and
-  its open workspace removed through Herdr, but its merged branch, or a worktree whose workspace
-  was already closed, may stay. herdr-projects lists what it kept, and
-  `herdr-projects sweep <project>` on the host removes it.
-- **Inbox tab**: the project's unhandled inbox items, what herdr-projects tells the coordinator
-  (a thread's new report, a routine due, a machine out of reach…), oldest first, up to 100. An
-  item about a thread shows the thread's title and opens it. **Done** (✓) marks one item as
-  handled with `herdr-projects inbox done`; a coordinator that has not read it yet will not see
-  it any more. Summaries are shown as plain text.
-- **Routines tab**: each routine's schedule, whether it is enabled, its kind (prompt only, or a
-  command and its approval) and its last and next run. Read-only: wherdr never approves,
-  switches or runs a routine, and does not expose the plugin's safety settings.
-- **Settings tab**, read-only: what the project's `PROJECT.md` sets, the keys
-  `herdr-projects set` changes (name, goal, coordinator and thread profiles,
-  `max_parallel_threads`, `auto_resolve_days`, `nudge`, `mute`, repositories). A key the file
-  leaves out shows the plugin's default, marked as such. Safety settings are not shown.
-- **Memory tab**, read-only: `MEMORY.md` (the index) and the `.md` files of `memory/`, with the
-  title and hook the index gives them; a file the index does not mention is listed by name. A
-  tap opens one, rendered as Markdown. The coordinator writes memory, wherdr never does.
-
-  With six tabs, the bar scrolls sideways on a phone and in a narrow side panel; a fade on its
-  edge says there are more.
-
-  herdr-projects (0.2.34) has no JSON output for the inbox or the routines: wherdr reads the
-  front matter of the project's `inbox/*.md` files, and the tab-separated lines of
-  `herdr-projects routine list`, showing the run texts (`last … · next …`) as printed. No command
-  prints a project's settings or memory either: those two tabs read the files named above.
-- **Board** (`H`, or the board button above the agent list): every project, thread, task and
-  agent at a glance, in four columns. Agents outside projects show too. Each card opens what it
-  stands for: a project or task opens its Project panel, a thread opens its agent (or its report
-  once closed), an agent opens its conversation. A project card takes the most urgent column of
-  its cards and counts them; Finished shows the 5 most recent threads and done tasks of each
-  project, **Show all** the rest. The filter button in the header hides chosen projects, or the
-  agents outside projects (**Other agents**); the choice is kept on the device, and a new project
-  shows until you hide it.
-
-  | Card | Blocked | Todo | Ongoing | Finished |
-  | --- | --- | --- | --- | --- |
-  | **Task** (its `TASKS.md` list) | Blocked | To test, To decide, To review, In queue, To do, Backlog, other lists | In progress without an open thread | Done, or a checked line |
-  | **Thread** | Its agent is your turn, or *waiting on you* | *Ready for review* | Working, landing, idle | Done |
-  | **Agent** | Your turn | | Working, starting, restarting | Done, ready |
-
-  Moving a **task** card (drag and drop on a computer, **Move to…** everywhere) sends the
-  coordinator the Project panel's message when one says it (**Launch now** from To do or In
-  queue, **Launch** from Backlog, **Unblock** from Blocked, **Tested** from To test, **Reviewed**
-  from To review), otherwise `↳ Mark blocked: …`, `↳ Move to To do: …` or `↳ Mark done: …`. The
-  card shows *Sent* until the coordinator has moved the line; only the allowed columns are
-  offered, and To decide tasks wait for your answer. Thread, agent and project cards follow
-  what they do and do not move. The server reads every project at once
-  (`GET /api/board`); a project on an offline machine keeps its last read, marked as such.
-- **Max threads per machine**, across all projects: herdr-projects only limits threads per
-  project, so three coordinators could still start a dozen threads on one small machine. Set a
-  limit per machine in **Settings → Plugins → herdr-projects** (empty `—` = no global limit;
-  saved on the server, in `data/thread-limits.json`). wherdr counts the active threads of every
-  project from the live panes (herdr-projects marks each open thread's pane): a thread whose agent
-  has finished (idle or done, waiting for review or for you) gives its slot back right away; one
-  started less than 3 minutes ago still counts while it waits for its brief. wherdr writes
-  `.wherdr-limits.json` in each herdr-projects folder where a coordinator runs, refreshed on
-  every change:
-
-  ```json
-  { "updated": "…", "this": "Server", "machines": { "Server": { "max": 2, "open": 2, "free": 0, "threads": ["shop/t-0012", "docs/t-0003"] } } }
-  ```
-
-  The coordinator rules (Settings) tell the coordinator to read it before starting a thread and
-  to wait while `free` is `0`, even if its project still has slots; In queue tasks start when the
-  machine has a free slot. `herdr-projects overview` is the fallback when the file is missing.
-  The same data is available read-only at `GET /api/plugins/thread-limits`.
-- **Badges**, the only labels on task lines, chosen by the coordinator (wherdr adds none
-  on its own): `[b:color(text)]`, or `[b:color(text)](target)` for a clickable badge with a small ↗.
-  The target is an `https://` / `http://` link (new tab) or a thread ID such as `t-0140` (opens
-  its tab); any other scheme is ignored. Color is `red`, `orange`, `amber`, `green`, `teal`,
-  `blue`, `violet`, `pink`, `gray` (theme-aware), a `#rgb` / `#rrggbb` hex, or empty for neutral;
-  at most 24 characters are shown. A bare URL in the text shows as a plain link, inline code
-  (`` `npm test` ``) shows as in a conversation, with a Copy / Run… menu (Run: the coordinator
-  runs the command in its shell mode, after a confirmation), and the owner
-  `(me)` / `(agent)` is read but not shown. The coordinator rules (Settings) tell the coordinator
-  to use badges on its own when they help (status, thread, PR, device, priority…), sparingly,
-  and to follow your preferences. Example:
-
-  ```markdown
-  - [ ] Stop button on iPhone [b:red(bug)] [b:gray(t-0140)](t-0140) [b:blue(PR #12)](https://github.com/owner/repo/pull/12) (me)
-  ```
-- **Settings → Plugins → herdr-projects**: install status per machine (with a warning for an
-  unsupported 1.x, or a 0.2 from upstream whose update would install 1.x), the `TASKS.md` convention,
-  a template, the max threads per machine and the coordinator rules to copy.
-- **Projects entries** in the menus when the plugin is on the agent's machine: an agent's menu
-  (`…`) and its card's (right click, long press on the phone) offer the Project panel, **New
-  project…**, **Continue as a project…** (an agent outside a project), **Pause this project…**
-  and **Check herdr-projects setup**; the project's header in the list has its own menu with
-  the same entries. Shortcuts: `Mod+Alt+P` (Project panel) and `Mod+Alt+Shift+N` (New project).
-  The plugin's other actions stay under **Plugin actions**.
-- **New project** with the same machine and folder picker as **New agent**, and the agent
-  profiles of its coordinator and threads (see [Herdr plugins](#herdr-plugins)).
-
-<p align="center">
-  <img src="docs/screenshots/project-panel.png" alt="A coordinator with the Project panel open, and its project group with threads in the sidebar" width="900">
-</p>
-<p align="center">
-  <img src="docs/screenshots/project-phone.png" alt="The Project panel on a phone" width="340">
-</p>
-<p align="center"><sub>A coordinator with its Project panel, on a computer and on a phone (demo data).</sub></p>
-
-### Using wherdr with herdr-projects
-
-The Project panel only works well when the coordinator follows its conventions: which lists
-mean what, the badges, `(agent → t-NNNN)`, and what to do with each message the buttons send
-(`✓ Tested: …`, `↳ Queue: …`, `↳ Problem: … —` or `↳ Decision: … —` with the answer below it…). They are written once, as an agent skill:
-[`skills/wherdr/SKILL.md`](skills/wherdr/SKILL.md).
-
-The npm package (also used by Homebrew) and Docker image include the skill from that
-release. Installation is best effort: a missing agent or an unwritable home never blocks
-wherdr. It links `~/.claude/skills/wherdr` (or `$CLAUDE_CONFIG_DIR/skills/wherdr`) only
-when the Claude configuration folder exists, and `~/.agents/skills/wherdr` only when
-`.agents`, `.codex` or `.omp` exists. Links point to a stable copy in
-`${WHERDR_DIR:-$HOME/wherdr}/skills/wherdr`. Existing skills from elsewhere are left alone.
-Relative `WHERDR_DIR` resolves from the working directory; relative `CLAUDE_CONFIG_DIR`
-resolves from HOME, including when saved in a login service. Unchanged content is not rewritten.
-A broken link is repaired only when local metadata proves wherdr created it.
-
-| Install mode | Skill installation and refresh |
-| --- | --- |
-| npm / npx / Bun / pnpm | On `wherdr`, `wherdr run`, `wherdr start` or `wherdr service install`; after updating the package, the next start refreshes it. |
-| Homebrew | On `wherdr` startup, including the Homebrew service; restart the service after `brew upgrade`. |
-| One-tap update (npm, Homebrew, native plugin) | Restarting wherdr refreshes the skill from the newly installed package; rollback restores the previous copy when that package also bundles the skill. |
-| Herdr plugin, Node.js | On plugin installation / reinstallation, and on startup from its installed package. |
-| Herdr plugin, Docker | On plugin installation and Update, extracted from the pulled image on the host. |
-| One-command installer, Docker | After each pull, including reruns and `WHERDR_MODE=docker`; saves host helpers in `$WHERDR_DIR/skill-installer`. |
-| Docker by hand | Run the host-side command below after the initial pull and after each image update. |
-| From source | Use `node bin/wherdr.mjs` after building, or run `sh bin/lib/install-skill.sh` yourself after updating; `npm start` alone does not install the skill. |
-
-Docker cannot write the host's agent folders through its read-only home mount. From the
-repository checkout on the **host**, after pulling your image, run:
-
-```sh
-sh bin/install-docker-skill.sh ghcr.io/afloury/wherdr:latest
-```
-
-Pass your image tag if different. The helper creates a stopped temporary container, copies
-only `/app/skills/wherdr/SKILL.md` out of it, uses the local host installer, then removes
-the container. No host home is mounted into it. Repeat this command after each manual Docker update; Docker has no one-tap
-update in the app. Manual failures (including older images without the skill) return a
-nonzero status with diagnostics; plugin and one-command installation warn and continue. Without a checkout, use
-`sh "${WHERDR_DIR:-$HOME/wherdr}/skill-installer/bin/install-docker-skill.sh" <image>` after the one-command install.
-
-Remove managed links with `sh bin/lib/install-skill.sh uninstall` (or
-`sh scripts/herdr-plugin.sh skill uninstall` in the plugin folder). Uninstall leaves
-`~/.local/state/wherdr/skill-disabled`: subsequent starts and updates respect it, even if
-`WHERDR_DIR` changes. To re-enable, explicitly run `sh bin/lib/install-skill.sh install`
-or the plugin's `skill install` (or the Docker host helper above). `WHERDR_SKILL=off`
-disables all installation and refresh, including explicit install; export it for interactive
-starts or set it when installing the login service to preserve it there.
-
-Two limitations remain: rollback to an older package without the helper (such as 1.3.2)
-leaves the failed release's skill in place. With multiple wherdr versions sharing an account,
-the last one started supplies the skill; there is no version comparison.
-
-You can also paste **Settings → Plugins → herdr-projects → Copy rules for the coordinator** to your agent.
+- **The board's five groups**: needs you, ready to approve, working, to do, done (the latest
+  eight, then **Show all**). Side by side on a computer, one at a time on a phone. A card shows
+  the task's key (`DEMO-12`), title, the line its agent reports, the agent program, progress, its
+  pull request and its review (pass or fail, with the findings by severity).
+- **A task** opens its agent in a side panel: wherdr's own agent view (conversation, terminal,
+  message field), under the task's title, its description (folded after a few lines), the
+  Watcher's progress, and the agent's closing note or research report once there is one. The
+  panel always says who you talk to: machine, repo, task. It sits beside the Board on a computer
+  and takes the whole screen on a phone, with a way back.
+- **A task's sheet**, from the panel (or at once for a task with no agent: to do, or its agent
+  gone): description, plan, branch, pull request, review, what went wrong. **Open the chat**
+  closes it and opens the task's agent in the side panel, where you reply: the sheet has no
+  message field. When that agent has no pane now, the panel shows a field instead, and
+  herdr-projects passes your reply on (`tell`; on a plan that waits, it sends the plan back).
+  **Approve** merges finished work or says yes to a plan, after a confirmation; **Start**,
+  **Stop**, **Retry** and **Archive** where herdr-projects takes them. **Start** names the agent
+  the task starts with by default (its `worker.agent` and where that comes from) and offers the
+  other agents installed on its machine: one picked there is for this start only
+  (`delegate --worker.agent`). herdr-projects keeps that pick as the task's own setting while
+  its run lasts; wherdr puts back what the task had once the run is over (back in To do, or
+  done) and before its next Start, so its default, the repo's and your own settings stay as they
+  are (`data/start-agents.json` remembers what to put back). A default agent not installed on that
+  machine is shown but cannot be picked: Start then waits for an installed one. After an action the sheet
+  shows the task's new state, or why it was refused. **Archive** closes the sheet and takes the
+  task off the Board, with **Restore** in a toast for a few seconds; **Archived** lists the
+  archived tasks, whose sheet is read-only with **Restore**, as in herdr-projects.
+- **Coordinators**, in the same panel: a machine's heading opens its Coordinator, the agent that
+  turns what you write into tasks; a repo's heading opens that repo's project coordinator. One
+  not started yet takes a first message (`coordinator tell`), which starts it. One that
+  herdr-projects could not start (an agent not installed there…) says why, with **Try again**
+  (`coordinator restart`) once it is fixed: the message still waiting then goes in.
+- **The agent list** groups the board's spaces under their repo, as Herdr's sidebar does: each
+  machine's Coordinator and machine coordinator first, then per repo its own space (name, branch,
+  commits behind its upstream), its project coordinator in a lead row of its own (the coordinator's
+  icon, **Coordinator**, its state and last message; it stays in view when the group is folded,
+  only the tasks fold) and its tasks' spaces (key, title, state,
+  progress, time on it, the line the board reports; the Board icon opens the task there). One
+  row per task: its reviewer, planner and attempts, each in a tab of the task's space, are part
+  of it; in normal mode the row says the stage (**Under review · codex**), and both modes
+  open the reviewer's tab while a review runs. The counters count tasks, not tabs. A repo
+  coordinated from another machine shows **Coordinated from <machine>**. wherdr reads this from
+  the board's files (`~/.herdr-projects/data`: tasks, attempts, reviewers, coordinators, repos)
+  and from Herdr's worktree groups, every 15 seconds while the list is shown, never through
+  herdr-projects' command line; the branch and behind count come from `git` in the repo's main
+  checkout, once a minute, without fetching.
+- **Coordinator entry points**: the top of the Board names the host of the main Coordinator,
+  for all repos and machines it can reach. With several hosts, choose one from the menu;
+  unavailable and read-only hosts stay listed with their reason. Machine headings offer
+  **`<machine> setup`** (that machine's setup, folders and repos), repo headings offer
+  **`<repo> coordinator`** (work in that repo). Hover or long-press an entry for its role;
+  the conversation header repeats that description.
+- **A machine is one board**, shared by its named sessions: one list, one queue, one card per
+  task. A machine whose read fails says why on the Board, and its last tasks stay, marked with
+  the time they were read.
+- What wherdr runs, on the task's machine and in its Herdr session (on an SSH machine, its own
+  session by name): `herdr-projects list --json`,
+  `details <id> --json`, `show <id> --json`, `set`/`unset worker.agent --task <id>` (to put back a pick), `tell <id> <text>`, `approve <id>`, `delegate`, `stop`, `retry`,
+  `archive` and `restore <id>`, `list --json --archived` (Archived), `coordinator tell <text>`,
+  `coordinator status --json` and `coordinator restart` (your
+  words always after `--`, so they are never read as options), through the plugin's own
+  launcher (`bin/run.sh`). Each command also runs herdr-projects' own upkeep, so wherdr calls it
+  sparingly: one command at a time per machine, a read every 15 seconds and only while the Board
+  is open (a list less than 5 seconds old is reused), and the last list kept when a machine is
+  slow or unreachable. Nothing runs where herdr-projects is missing or older than 1.2.1: its first
+  run would take over an older install's files.
+- **wherdr in a container** (Docker, Podman): for its own machine, the Board reads the board's
+  files (`~/.herdr-projects/data/tasks`) and runs nothing of herdr-projects: each 1.x command also
+  runs the board's upkeep (start queued tasks, sync, clean up, poll pull requests), which belongs
+  to the host, not to a container with read-only repositories and no `gh`. The tasks show, with
+  their state as herdr-projects would show it; reply, approve, start, stop and the coordinators
+  stay visible but off, each saying why on hover, and a task gives the command to run on the
+  host. A note on the Board links to
+  [the move to the native service](#moving-from-docker-to-the-native-service), where all of it
+  works. SSH machines are not affected: their commands run on them.
+- **Agents in user folders**: wherdr runs herdr-projects with your [PATH](#agent-path), on this
+  machine and over SSH, so `claude is not installed here` does not come from a login service's
+  short `PATH`.
 
 ## Herdr plugins
 
@@ -1369,29 +1332,6 @@ Actions that open a plugin pane or popup open it in the attached Herdr terminal 
 phone: the menu marks them **Opens in Herdr**. wherdr's own plugin actions (its panel, open in the
 browser) are not listed. With a single machine, the machine's actions are in the **…** menu of
 its session row, under the agent list header.
-
-**herdr-projects** actions that ask for input (New project, continue this workspace as a
-project, open, pause, resume) are run by wherdr itself as `herdr-projects` commands, because
-Herdr's API cannot pass them arguments. **New project** picks its repository like **New agent**
-picks a folder: the machine (when the project is created from this machine, a repository on an
-SSH machine is passed as `PATH@MACHINE`), a folder browser and recent folders. It suggests the
-root of the current space's Git repository (nothing outside a repository, never your home
-folder itself), offers the root when you pick a subfolder, and names the project after the
-repository. It also asks which agent profile runs the **coordinator** and which one the
-**threads** start with: the profiles of the project's machine (`herdr-projects profile list`:
-yours and the signed-in built-ins such as Claude or omp) that the plugin allows for each role,
-with the plugin's defaults for new projects selected (or the first profile listed, when a default
-is not available there). The choice is written to the project's
-`PROJECT.md` (`coordinator_profile`, `thread_profile`); with a herdr-projects without profiles,
-the choice is not shown.
-With Docker, these commands write to the projects folder, so `docker-compose.yml` mounts
-`~/.herdr-projects` read-write. If you set another `root` in
-`~/.config/herdr-projects/config.toml`, mount that folder instead (same path on both sides);
-otherwise wherdr reports that the home folder is read-only. Check setup only reads; the other
-actions (Configure…) run on the host through Herdr, as in the terminal client. When no herdr-projects
-ticker is running yet, the one these commands start inside the container is stopped right away;
-the next `herdr-projects` command run on the host (a coordinator starting a thread, Herdr
-starting) starts it there.
 
 ## Security
 
@@ -1532,6 +1472,11 @@ something else protects the network (Cloudflare Access), and set up a passkey th
 
 - **"The Herdr server is not responding"**: start Herdr on the server (`herdr` or
   `herdr server`). With Docker, check that `HOST_HOME` and `PUID` match your user.
+- **wherdr stops when you log out** (Linux): lingering is off. `wherdr doctor` says so; run
+  `sudo loginctl enable-linger $USER` once.
+- **The Board says `claude is not installed here`**: the agent is in a folder your login shell
+  does not add to its `PATH`. Add it there, then run `wherdr service install` again
+  ([Agent PATH](#agent-path)).
 - **No conversation, only the terminal**: the agent was started before the Herdr integration
   was installed, or it is not Claude Code / Codex / omp. Install the integration
   (`herdr integration install claude|codex|omp`) and start a new agent. When the integration
@@ -1551,9 +1496,10 @@ something else protects the network (Cloudflare Access), and set up a passkey th
   page gives on the machine: it tells whether `tailscale serve` publishes wherdr's port there.
   For another private name, add the hostname or IP address to `HERDR_WEB_ALLOWED_HOSTS`, or use
   the hostname in `APP_URL`, then restart wherdr.
-- **Remote machine offline**: `docker compose logs | grep machine` shows its state. Test SSH as
-  wherdr does, from the container:
-  `docker compose exec herdr-web ssh -o BatchMode=yes laptop '~/.local/bin/herdr status server'`.
+- **Remote machine offline**: `grep machine ~/wherdr/wherdr.log` (Docker:
+  `docker compose logs | grep machine`) shows its state. Test SSH as wherdr does:
+  `ssh -o BatchMode=yes laptop '~/.local/bin/herdr status server'` (Docker, from the container:
+  `docker compose exec herdr-web ssh …`).
   - `Could not resolve hostname`: container DNS (use the full name in `HostName`);
   - `Permission denied (publickey)` / `Host key verification failed`: key or `known_hosts`
     (run `ssh laptop true` once on the server);

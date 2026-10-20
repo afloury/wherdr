@@ -32,7 +32,7 @@ import {
   REMOTE_SESSION, REMOTE_UPLOAD_SUBDIR, RUNTIME_DIR, SELF_HOSTS, SESSION_ARGS, SSH_BIN, UPLOAD_TTL_MS, log, machineLabel,
 } from './env'
 import { HerdrError, herdr, setSocketResolver } from './herdr'
-import { type ExecResult, type MachineFs, type ShellExec, createShellFs, localFs, remoteCommand, shq } from './fsx'
+import { type ExecResult, type MachineFs, type ShellExec, boundedOutput, createShellFs, localFs, remoteCommand, shq } from './fsx'
 import { SessionGate, isRefused } from './sshgate'
 import { type Transcripts, createTranscripts } from './transcripts'
 import { fmt } from '../../shared/message'
@@ -257,26 +257,26 @@ export class RemoteMachine implements Machine {
 
   // Short command over the shared connection, under the session budget;
   // the same read-only command already running is shared.
-  private run(script: string, args: string[], opts: { input?: Buffer, timeoutMs?: number }): Promise<ExecResult> {
+  private run(script: string, args: string[], opts: { input?: Buffer, timeoutMs?: number, maxBytes?: number }): Promise<ExecResult> {
     if (this.status !== 'online' && !this.connecting) {
       return Promise.resolve({ code: 255, stdout: Buffer.alloc(0), stderr: fmt('{machine} is unreachable', { machine: this.label }) })
     }
     const cmd = remoteCommand(script, args)
-    const key = opts.input ? undefined : `${opts.timeoutMs || 0}\n${cmd}`
+    const key = opts.input ? undefined : `${opts.timeoutMs || 0}\n${opts.maxBytes || 0}\n${cmd}`
     return this.gate.run(() => this.runOnce(cmd, opts), r => r.code === 255 && isRefused(r.stderr), key)
   }
 
-  private runOnce(cmd: string, opts: { input?: Buffer, timeoutMs?: number }): Promise<ExecResult> {
+  private runOnce(cmd: string, opts: { input?: Buffer, timeoutMs?: number, maxBytes?: number }): Promise<ExecResult> {
     return new Promise((resolve) => {
       const child = spawn(SSH_BIN, [...this.muxArgs(), '--', this.target, cmd], { stdio: ['pipe', 'pipe', 'pipe'] })
-      const out: Buffer[] = []
+      const out = boundedOutput(opts.maxBytes)
       let err = ''
       let done = false
       const finish = (code: number | null) => {
         if (done) return
         done = true
         clearTimeout(timer)
-        resolve({ code, stdout: Buffer.concat(out), stderr: err })
+        resolve({ code, stdout: out.take(), stderr: err })
       }
       const timer = setTimeout(() => {
         err += '\n'
@@ -284,7 +284,13 @@ export class RemoteMachine implements Machine {
         child.kill('SIGKILL')
         finish(124)
       }, opts.timeoutMs || 15000)
-      child.stdout.on('data', (b: Buffer) => out.push(b))
+      child.stdout.on('data', (b: Buffer) => {
+        if (out.push(b)) return
+        // Too long: stopped at once, nothing of it kept.
+        err += `\noutput longer than ${opts.maxBytes} bytes`
+        child.kill('SIGKILL')
+        finish(125)
+      })
       child.stderr.on('data', (b: Buffer) => { if (err.length < 4000) err += b.toString('utf8') })
       child.on('error', (e) => { err += e.message; finish(127) })
       child.on('close', code => finish(code))

@@ -5,7 +5,7 @@
 // lightbox, dividers) stay with that component.
 
 export type ShortcutId = 'search-all' | 'search-chat' | 'toggle-term' | 'stop' | 'prev-agent' | 'next-agent'
-  | 'new-space' | 'new-tab' | 'close-pane' | 'open-editor' | 'project-panel' | 'new-project' | 'settings' | 'board' | 'help'
+  | 'new-space' | 'new-tab' | 'close-pane' | 'open-editor' | 'settings' | 'board' | 'help'
 
 type Mod = 'mod' | 'ctrl' | 'alt' | 'shift'
 
@@ -61,8 +61,6 @@ export const SHORTCUTS: readonly Shortcut[] = [
   // project (shown or collapsed on its coordinator, opened from a thread), and New
   // project, the Shift sibling of New agent. Mod+Alt like the other machine actions;
   // ⌘⌥P is unbound in Chrome, Firefox and Safari (Finder's path bar only).
-  { id: 'project-panel', mods: ['mod', 'alt'], key: 'p', fields: 'any', terminal: true, capture: true, kbds: ['meta', 'alt', 'P'] },
-  { id: 'new-project', mods: ['mod', 'alt', 'shift'], key: 'n', fields: 'any', terminal: true, capture: true, kbds: ['meta', 'alt', 'shift', 'N'] },
   { id: 'settings', mods: ['mod'], key: ',', fields: 'any', terminal: true, kbds: ['meta', ','] },
   { id: 'help', mods: ['mod'], anyShift: true, key: '/', fields: 'any', terminal: true, overlay: true, kbds: ['meta', '/'] },
   { id: 'help', mods: [], anyShift: true, key: '?', fields: 'none', terminal: false, overlay: true, kbds: ['?'] },

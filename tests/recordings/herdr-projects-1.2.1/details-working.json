@@ -1,0 +1,32 @@
+{
+  "task": {
+    "id": "demo/3",
+    "title": "Add dark mode toggle",
+    "stage": "working",
+    "msg": "",
+    "description": ""
+  },
+  "failure": null,
+  "review": null,
+  "reviews": [],
+  "agent": "codex",
+  "handovers": [],
+  "research": false,
+  "report": null,
+  "plan": null,
+  "pr": null,
+  "worktree": null,
+  "branch": "demo-3-dark-mode",
+  "limits": {
+    "time": {
+      "limit": "none",
+      "usedMs": 0,
+      "used": "0s"
+    },
+    "tokens": {
+      "limit": "none",
+      "used": 0,
+      "total": 0
+    }
+  }
+}

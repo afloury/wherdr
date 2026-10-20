@@ -76,7 +76,7 @@ export function answerConfirm(ok: boolean) {
 
 // A window is open: Escape closes it instead of acting elsewhere.
 export const anySheetOpen = computed(() => menuState.open || newAgentOpen.value || Boolean(renameTarget.value) || Boolean(renameSpace.value)
-  || commandResult.open || confirmState.open || pluginFormState.open || Boolean(lightboxSrc.value))
+  || commandResult.open || confirmState.open || Boolean(lightboxSrc.value))
 
 // Local commands leave no trace in the transcript: we
 // show what they displayed, extracted from the terminal screen.

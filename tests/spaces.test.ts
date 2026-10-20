@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { reduceSnapshot } from '../server/utils/snapshot'
-import { isShellRow, leadPane, projectRoots, rememberTab, repoRoots, rowGroup, spaceRows, spaceTab } from '../shared/spaces'
-import { groupByProject, leadByCoordinator, projectCounts, projectSections, remoteCoordinator, stateSource, tabStates, waitingTab } from '../shared/projects'
+import { isShellRow, leadPane, rememberTab, rowGroup, spaceRows, spaceTab, tabStates } from '../shared/spaces'
 import type { Pane } from '../shared/types'
 import layouts from './fixtures/snapshot-layouts.json'
 
@@ -58,107 +57,6 @@ describe('state of a space = its most urgent pane', () => {
   })
 })
 
-describe('root terminal of a worktree group', () => {
-  // Herdr: main checkout (w1, a shell), two thread worktrees
-  // (w2, w3), a shell elsewhere (w4), an agent on the checkout (w5).
-  const REPO = '/home/u/code/app/.git'
-  const tree = (checkout: string, linked: boolean, repo = REPO) => ({ checkout_path: checkout, is_linked_worktree: linked, repo_key: repo, repo_name: 'app', repo_root: '/home/u/code/app' })
-  const one = (ws: string, cwd: string, agent: string | null = null, extra: object = {}) => ({
-    pane_id: `${ws}:p1`, workspace_id: ws, tab_id: `${ws}:t1`, agent, agent_status: agent ? 'idle' : 'unknown', cwd, ...extra,
-  })
-  const hp = { tokens: { hp_project: 'demo' } }
-  const raw = {
-    workspaces: [
-      { workspace_id: 'w1', label: 'app', number: 1, worktree: tree('/home/u/code/app', false) },
-      { workspace_id: 'w2', label: 'Thread 1', number: 2, worktree: tree('/home/u/.herdr/worktrees/app/hp-demo-t-0001-a', true) },
-      { workspace_id: 'w3', label: 'Thread 2', number: 3, worktree: tree('/home/u/.herdr/worktrees/app/hp-demo-t-0002-b', true) },
-      { workspace_id: 'w4', label: 'home', number: 4 },
-      { workspace_id: 'w5', label: 'app', number: 5, worktree: tree('/home/u/code/app', false) },
-    ],
-    tabs: ['w1', 'w2', 'w3', 'w4', 'w5'].map((w, i) => ({ tab_id: `${w}:t1`, workspace_id: w, label: '1', number: i + 1 })),
-    panes: [
-      one('w1', '/home/u/code/app'),
-      one('w2', '/home/u/.herdr/worktrees/app/hp-demo-t-0001-a', 'claude', hp),
-      one('w3', '/home/u/.herdr/worktrees/app/hp-demo-t-0002-b', 'codex', hp),
-      one('w4', '/home/u'),
-      one('w5', '/home/u/code/app', 'claude'),
-    ],
-  }
-
-  it('the shell of the main checkout, with its open worktrees', () => {
-    const st = reduceSnapshot(raw)
-    expect(st.workspaces[0]).toMatchObject({ repo: REPO, repoName: 'app', worktree: false })
-    expect(st.workspaces[3]!.repo).toBeUndefined()
-    const roots = repoRoots(st, spaceRows(st))
-    expect(roots.map(r => [r.row.key, r.name, r.worktrees])).toEqual([['w1:p1', 'app', ['w2', 'w3']]])
-    // Attached to the project whose threads are these worktrees.
-    const { projects } = groupByProject(st.panes.filter(p => p.agent))
-    expect(projects.map(g => [g.key, projectRoots(roots, g.panes).map(r => r.name)])).toEqual([['demo', ['app']]])
-    expect(projectRoots(roots, [{ workspace: 'w4' }])).toEqual([])
-  })
-
-  it('no root without an open worktree, nor for an agent or another repository', () => {
-    const alone = reduceSnapshot({ ...raw, workspaces: raw.workspaces.filter(w => w.workspace_id !== 'w2' && w.workspace_id !== 'w3'), panes: raw.panes.filter(p => p.workspace_id !== 'w2' && p.workspace_id !== 'w3') })
-    expect(repoRoots(alone, spaceRows(alone))).toEqual([])
-    const other = reduceSnapshot({ ...raw, workspaces: raw.workspaces.map(w => (w.workspace_id === 'w1' ? { ...w, worktree: tree('/home/u/code/app', false, '/x/.git') } : w)) })
-    expect(repoRoots(other, spaceRows(other))).toEqual([])
-  })
-
-  it('same machine only', () => {
-    const local = reduceSnapshot(raw)
-    const remote = reduceSnapshot({ ...raw, workspaces: raw.workspaces.filter(w => w.workspace_id !== 'w1'), panes: raw.panes.filter(p => p.workspace_id !== 'w1') }, 'abcd1234')
-    const lone = reduceSnapshot({ ...raw, workspaces: raw.workspaces.filter(w => w.workspace_id === 'w1'), panes: raw.panes.filter(p => p.workspace_id === 'w1') })
-    const both = { workspaces: [...lone.workspaces, ...remote.workspaces], panes: [...lone.panes, ...remote.panes], tabs: [...lone.tabs!, ...remote.tabs!] }
-    expect(repoRoots(both, spaceRows(both, ''))).toEqual([])
-    expect(repoRoots(local, spaceRows(local, ''))).toHaveLength(1)
-  })
-
-  it('three shells at the root: a single header, the others stay terminals', () => {
-    // herdr-projects opened two more shells at the root (w6, w7); w1 has the lowest number.
-    const extra = { ...raw,
-      workspaces: [
-        { workspace_id: 'w6', label: 'app', number: 6, worktree: tree('/home/u/code/app', false) },
-        ...raw.workspaces,
-        { workspace_id: 'w7', label: 'app', number: 7, worktree: tree('/home/u/code/app', false) },
-      ],
-      tabs: [...raw.tabs, ...['w6', 'w7'].map((w, i) => ({ tab_id: `${w}:t1`, workspace_id: w, label: '1', number: 6 + i }))],
-      panes: [one('w6', '/home/u/code/app'), ...raw.panes, one('w7', '/home/u/code/app')],
-    }
-    const st = reduceSnapshot(extra)
-    const rows = spaceRows(st)
-    const roots = repoRoots(st, rows)
-    expect(roots.map(r => [r.row.key, r.worktrees])).toEqual([['w1:p1', ['w2', 'w3']]])
-    // The two others are ordinary shells, sorted in Ready.
-    const header = new Set(roots.map(r => r.row.key))
-    const shells = rows.filter(r => isShellRow(r) && !header.has(r.key))
-    expect(shells.map(r => [r.key, rowGroup(r)])).toEqual([['w4:p1', 'ready'], ['w6:p1', 'ready'], ['w7:p1', 'ready']])
-    // Herdr does not give the repository of some shells: same rule.
-    const mixed = reduceSnapshot({ ...extra, workspaces: extra.workspaces.map(({ worktree, ...w }) => (w.workspace_id === 'w6' ? w : { ...w, worktree })) })
-    expect(repoRoots(mixed, spaceRows(mixed)).map(r => r.row.key)).toEqual(['w1:p1'])
-    // Without a known repository (folder only): same rule.
-    const bare = reduceSnapshot({ ...extra, workspaces: extra.workspaces.map(({ worktree: _w, ...w }) => w) })
-    expect(repoRoots(bare, spaceRows(bare)).map(r => r.row.key)).toEqual(['w1:p1'])
-  })
-
-  it('the counter only counts the open worktrees of this repository', () => {
-    // Thread 2 closed (missing from the snapshot); a worktree of another repository open.
-    const st = reduceSnapshot({ ...raw,
-      workspaces: [...raw.workspaces.filter(w => w.workspace_id !== 'w3'),
-        { workspace_id: 'w8', label: 'Autre', number: 8, worktree: { ...tree('/home/u/.herdr/worktrees/lib/x', true, '/home/u/code/lib/.git'), repo_name: 'lib' } }],
-      panes: [...raw.panes.filter(p => p.workspace_id !== 'w3'), one('w8', '/home/u/.herdr/worktrees/lib/x', 'codex')],
-    })
-    expect(repoRoots(st, spaceRows(st)).map(r => [r.name, r.worktrees.length])).toEqual([['app', 1]])
-  })
-
-  it('Herdr without repository in the snapshot: herdr-projects worktrees folder', () => {
-    const bare = reduceSnapshot({ ...raw, workspaces: raw.workspaces.map(({ worktree: _w, ...w }) => w) })
-    expect(repoRoots(bare, spaceRows(bare)).map(r => [r.row.key, r.worktrees])).toEqual([['w1:p1', ['w2', 'w3']]])
-    // A shell in another folder is not a root.
-    const elsewhere = reduceSnapshot({ ...raw, workspaces: raw.workspaces.map(({ worktree: _w, ...w }) => w), panes: raw.panes.map(p => (p.workspace_id === 'w1' ? { ...p, cwd: '/home/u/code/other' } : p)) })
-    expect(repoRoots(elsewhere, spaceRows(elsewhere))).toEqual([])
-  })
-})
-
 describe('tab remembered per space', () => {
   const rows = spaceRows(snap(base))
   const w1 = rows[0]!
@@ -178,117 +76,11 @@ describe('tab remembered per space', () => {
   })
 })
 
-describe('projets et machines', () => {
-  let n = 0
-  const p = (o: Partial<Pane>): Pane => ({
-    id: `w${++n}:p1`, workspace: `w${n}`, tab: `w${n}:t1`, tabLabel: null, agent: 'claude', name: null, label: null,
-    status: 'idle', title: 'Claude', cwd: '/home/u', agentSession: null, ...o,
-  })
-  const coordPi = p({ cwd: '/home/user/.herdr-projects/wherdr' })
-  const tPi = p({ name: 'hp-wherdr-t-0040-quota', cwd: '/home/user/.herdr/worktrees/herdr-web/hp-wherdr-t-0040-quota' })
-  const tMac = p({ machine: 'a1b2c3d4', id: 'a1b2c3d4~w1:p1', name: 'hp-wherdr-t-0041-spaces', cwd: '/Users/a/.herdr/worktrees/herdr-web/hp-wherdr-t-0041-spaces' })
-  const all = [coordPi, tPi, tMac]
-
-  it('threads stay under their machine', () => {
-    const pi = groupByProject(all.filter(x => !x.machine)).projects
-    const mac = groupByProject(all.filter(x => x.machine === 'a1b2c3d4')).projects
-    expect(pi[0]!.panes).toEqual([coordPi, tPi])
-    expect(mac[0]!.panes).toEqual([tMac])
-  })
-
-  it('block of another machine: coordinated from the coordinator\'s', () => {
-    const mac = groupByProject([tMac]).projects[0]!
-    expect(remoteCoordinator(mac, all, 'a1b2c3d4')).toBe(coordPi)
-    // On the coordinator's machine: it is already at the top of the block.
-    const pi = groupByProject([coordPi, tPi]).projects[0]!
-    expect(remoteCoordinator(pi, all, '')).toBeNull()
-    // No coordinator open anywhere: nothing.
-    expect(remoteCoordinator(mac, [tPi, tMac], 'a1b2c3d4')).toBeNull()
-  })
-
-  // Real-world shape: the coordinator's space (w1) holds a thread opened as a
-  // tab (`--kind tab`, same folder, working), a worktree thread has its own space (w2).
-  const tabbed = () => {
-    const st = snap([
-      { ...pane('w1:p1', 'w1:t1', 'claude', 'idle'), cwd: '/home/user/.herdr-projects/demo', tokens: { hp_group: 'demo!0!w1:p1', hp_rank: 5 } },
-      { ...pane('w1:p4', 'w1:t2', 'codex', 'working'), cwd: '/home/user/.herdr-projects/demo', tokens: { hp_group: 'demo!1!2!t-0008' } },
-      { ...pane('w2:p1', 'w2:t1', 'claude', 'working'), cwd: '/home/user/.herdr/worktrees/app/hp-demo-t-0007-fix', tokens: { hp_group: 'demo!1!4!t-0007' } },
-      { ...pane('w2:p2', 'w2:t1'), cwd: '/home/user/.herdr/worktrees/app/hp-demo-t-0007-fix' },
-    ])
-    return leadByCoordinator(spaceRows(st))
-  }
-
-  it('a thread opened as a tab stays a tab of the coordinator\'s single card', () => {
-    const rows = tabbed()
-    expect(rows.map(r => [r.kind, r.key, r.lead.id])).toEqual([['space', 'w1', 'w1:p1'], ['space', 'w2', 'w2:p1']])
-    const [coord] = rows
-    if (coord?.kind !== 'space') throw new Error('space expected')
-    // All tabs stay in the card; the coordinator's tab represents it, even
-    // though the working thread tab is more urgent.
-    expect([coord.tabs.map(e => e.tab.id), coord.leadTab.tab.id]).toEqual([['w1:t1', 'w1:t2'], 'w1:t1'])
-    expect(rowGroup(coord)).toBe('ready')
-    const g = groupByProject(rows.filter(r => r.lead.agent).map(r => r.lead)).projects[0]!
-    expect(g.coordinator?.id).toBe('w1:p1')
-    expect(g.panes.map(p => p.id)).toEqual(['w1:p1', 'w2:p1'])
-    const s = projectSections(g, [])
-    expect(s.coordinator?.id).toBe('w1:p1')
-    expect([...s.repos.flatMap(r => r.panes), ...s.others].map(p => p.id)).toEqual(['w2:p1'])
-    // Opening the card: the coordinator's tab, unless another one was opened last.
-    expect(spaceTab(coord.tabs, {}, 'w1', coord.leadTab.tab.id)).toBe('w1:t1')
-    expect(spaceTab(coord.tabs, { w1: 'w1:t2' }, 'w1', coord.leadTab.tab.id)).toBe('w1:t2')
-  })
-
-  it('spaces without a coordinator keep their most urgent pane as lead', () => {
-    const plain = spaceRows(snap(base))
-    expect(leadByCoordinator(plain)).toEqual(plain)
-    // Worktree thread with a shell tab: the thread represents its space.
-    const wt = snap([
-      { ...pane('w1:p1', 'w1:t1', 'claude', 'working'), name: 'hp-demo-t-0007-fix' },
-      { ...pane('w1:p4', 'w1:t2') },
-    ])
-    expect(leadByCoordinator(spaceRows(wt)).map(r => [r.key, r.lead.id])).toEqual([['w1', 'w1:p1']])
-  })
-
-  it('the coordinator card shows its most urgent tab\'s state without moving', () => {
-    const rows = tabbed()
-    const coord = rows[0]!
-    if (coord.kind !== 'space') throw new Error('space expected')
-    expect([coord.lead.id, coord.state?.id, stateSource(coord)]).toEqual(['w1:p1', 'w1:p4', 'T-0008'])
-    expect(tabStates(coord)).toEqual(['idle', 'working'])
-    // Still in Ready and first of its project: the state does not move it.
-    expect(rowGroup(coord)).toBe('ready')
-    // Only a tab waiting for the user is opened directly.
-    expect(waitingTab(coord)).toBeNull()
-    const g = groupByProject(rows.filter(r => r.lead.agent).map(r => r.lead)).projects[0]!
-    const rowOf = (p: Pane) => rows.find(r => r.lead.id === p.id)
-    // Coordinator ready + thread tab working + worktree thread working.
-    expect(projectCounts(g.panes, rowOf)).toEqual({ total: 3, blocked: 0, working: 2, ready: 1 })
-    expect(projectCounts(g.panes)).toEqual({ total: 2, blocked: 0, working: 1, ready: 1 })
-  })
-
-  it('a blocked thread tab: your turn on the card, a tap opens that tab', () => {
-    const st = snap([
-      { ...pane('w1:p1', 'w1:t1', 'claude', 'working'), cwd: '/home/user/.herdr-projects/demo', tokens: { hp_group: 'demo!0!w1:p1' } },
-      { ...pane('w1:p4', 'w1:t2', 'codex', 'blocked'), cwd: '/home/user/.herdr-projects/demo' },
-    ])
-    const [coord] = leadByCoordinator(spaceRows(st))
-    if (coord?.kind !== 'space') throw new Error('space expected')
-    expect([coord.lead.id, coord.state?.status, waitingTab(coord)]).toEqual(['w1:p1', 'blocked', 'w1:t2'])
-    // No thread number: the tab's label.
-    expect(stateSource(coord)).toBe(coord.tabs[1]!.tab.label || String(coord.tabs[1]!.tab.number))
-    expect(rowGroup(coord)).toBe('working')
-    const g = groupByProject([coord.lead]).projects[0]!
-    expect(projectCounts(g.panes, () => coord)).toEqual({ total: 2, blocked: 1, working: 1, ready: 0 })
-  })
-
-  it('no state override when the coordinator is the most urgent', () => {
-    const st = snap([
-      { ...pane('w1:p1', 'w1:t1', 'claude', 'blocked'), cwd: '/home/user/.herdr-projects/demo', tokens: { hp_group: 'demo!0!w1:p1' } },
-      { ...pane('w1:p4', 'w1:t2', 'codex', 'working'), cwd: '/home/user/.herdr-projects/demo', tokens: { hp_group: 'demo!1!2!t-0008' } },
-    ])
-    const [coord] = leadByCoordinator(spaceRows(st))
-    if (coord?.kind !== 'space') throw new Error('space expected')
-    expect([coord.lead.id, coord.state, stateSource(coord), waitingTab(coord)]).toEqual(['w1:p1', undefined, null, null])
-    expect(tabStates(coord)).toEqual(['blocked', 'working'])
+describe('tab states of a space', () => {
+  it('one state per tab, its most urgent pane; a tab without an agent is a shell', () => {
+    const rows = spaceRows(snap([...base.slice(0, 3), pane('w1:p4', 'w1:t2'), ...base.slice(4)]))
+    const w1 = rows.find(r => r.kind === 'space' && r.workspace.id === 'w1')!
+    expect(tabStates(w1)).toEqual(['working', 'shell'])
+    expect(tabStates(rows.find(r => r.kind === 'pane')!)).toEqual([])
   })
 })

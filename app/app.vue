@@ -91,11 +91,9 @@ onUnmounted(() => {
     <RenameSheet />
     <CommandResultSheet />
     <ConfirmSheet />
-    <PluginInputSheet />
     <PluginResultSheet />
     <ImageLightbox />
     <ShortcutsSheet />
-    <ThreadReportSheet />
     <OnboardingGuide v-if="onboardingOpen && !locked" />
     <NewVersionBanner v-if="!locked" />
     <SelfUpdateScreen v-if="selfUpdate.open" />

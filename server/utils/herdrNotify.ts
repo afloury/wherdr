@@ -10,10 +10,11 @@ import net from 'node:net'
 import crypto from 'node:crypto'
 import { NOTICES_ENABLED, log } from './env'
 import { type HerdrNotification, FrameSplitter, decodeServerFrame, helloFrame } from './herdrEndpoint'
-import { NoticeDeduper, findThreadPane, forwardableNotice, noticeKey, projectThreadOfNotice, shouldNotifyNotice } from './notificationPolicy'
+import { NoticeDeduper, forwardableNotice, noticeKey } from './notificationPolicy'
 import { type Machine, allMachines, multiMachine, onMachinesChange } from './machines'
-import { getState, isViewed } from './state'
 import { pushSend, subWatchesSession } from './push'
+import { boardMachine, repoKeyOf } from './projectsTasks'
+import { taskKey, taskNotice } from '../../shared/projectsTasks'
 
 const BACKOFF_MS = [2000, 5000, 10000, 30000, 60000]
 // Server refusing the handshake (incompatible version): we retry rarely.
@@ -114,22 +115,21 @@ const dedupe = new NoticeDeduper()
 
 async function onNotice(m: Machine, n: HerdrNotification) {
   if (!forwardableNotice(n) || !dedupe.fresh(`${m.key}:${noticeKey(n)}`)) return
-  // Notification from a herdr-projects thread: link to its pane if it is unique.
-  const thread = projectThreadOfNotice(n.title)
-  const panes = getState().panes.filter(p => (p.machine || '') === m.key)
-  const pane = thread ? findThreadPane(panes, thread.project, thread.thread) : null
-  if (pane && isViewed(pane.id)) return
   const on = multiMachine() ? `${m.label || (m.local ? 'local' : m.key)} · ` : ''
-  const title = `${on}${n.title}`
-  // One notification per pane (replaces the one for its state), otherwise one per title.
-  const tag = pane ? `pane-${pane.id}` : `herdr-${crypto.createHash('sha1').update(`${m.key}\n${n.title}`).digest('hex').slice(0, 12)}`
+  // herdr-projects' `board.notify` (NOTIFY_COMMAND): the task's key, one
+  // notification per task, and a tap opens it on the Board.
+  const task = taskNotice(n.title)
+  const board = task ? boardMachine(m).key : ''
+  const title = task ? `${on}${taskKey(task.id, repoKeyOf(board, task.id.split('/')[0]!))} · ${task.event}` : `${on}${n.title}`
+  // One notification per title (per task for the Board's).
+  const tag = `herdr-${crypto.createHash('sha1').update(task ? `task\n${board}\n${task.id}` : `${m.key}\n${n.title}`).digest('hex').slice(0, 12)}`
+  const url = task ? `/#/board?machine=${encodeURIComponent(board)}&task=${encodeURIComponent(task.id)}` : '/#/'
   const sent = await pushSend(
-    { title, body: n.body || '', tag, url: pane ? `/#/a/${encodeURIComponent(pane.id)}` : '/#/' },
-    (scope, sub) => shouldNotifyNotice(scope, n.title) &&
-      subWatchesSession(sub, m.info().baseKey ?? m.key, m.session,
+    { title, body: n.body || '', tag, url },
+    sub => subWatchesSession(sub, m.info().baseKey ?? m.key, m.session,
         allMachines().find(base => base.key === (m.info().baseKey ?? m.key))?.session || 'default'),
   )
-  log(`herdr notification "${title}"${pane ? ` (${pane.id})` : ''} -> ${sent} device(s)`)
+  log(`herdr notification "${title}" -> ${sent} device(s)`)
 }
 
 export function syncNoticeListeners() {
