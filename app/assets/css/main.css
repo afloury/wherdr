@@ -493,6 +493,13 @@ body.short-bottom { --safe-bottom: 0px; }
 .project-term:hover, .project-head-row .space-menu:hover { color: var(--text); }
 .project-tree { position: relative; margin-left: 14px; }
 .project-tree::before { content: ''; position: absolute; top: -6px; bottom: 0; left: -9px; width: 1px; background: var(--line); }
+/* The project coordinator leads the group: its own box right under the
+   header, on the same rule, a gap before the tasks. */
+.project-lead { position: relative; margin: 0 0 8px 14px; }
+.project-lead::before { content: ''; position: absolute; top: -6px; bottom: -8px; left: -9px; width: 1px; background: var(--line); }
+.project-lead.alone::before { bottom: 0; }
+.project.collapsed .project-lead { margin-bottom: 0; }
+.project-lead + .project-tree::before { top: -1px; }
 /* The state is said by its color and number; the words are for screen readers. */
 .project-sum-l { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* Coordinated from another machine: a link to that coordinator. */
@@ -507,6 +514,11 @@ body.short-bottom { --safe-bottom: 0px; }
 .project-remote-go .iconify { width: 12px; height: 12px; }
 .project-remote:hover { border-color: var(--mauve); color: var(--text-2); }
 .project-remote:focus-visible { outline: 1px solid var(--mauve); outline-offset: 2px; }
+/* A coordinator's card: its role as a label (mono, uppercase), not a title. */
+.card.home-coord .card-title { font: 600 12.5px/1.3 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); }
+.card.compact.home-coord .card-title { font: 600 11.5px/1.25 var(--mono); }
+.card.home-coord.done .card-title { color: var(--text); }
+.card.compact.home-coord.blocked .card-title { color: var(--rose); }
 /* A task's card: its key, progress and time ("42% 17m"), the board's current line. */
 .home-task-tag { color: var(--mauve); border-color: color-mix(in srgb, var(--mauve) 45%, var(--line)); }
 .home-task-stats { flex: none; font: 500 10.5px/1 var(--mono); letter-spacing: .04em; color: var(--dim); white-space: nowrap; }
@@ -831,6 +843,10 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
   background: var(--surface); color: var(--text); border: 1px solid var(--line);
 }
 .avatar .iconify { width: 21px; height: 21px; }
+/* A herdr-projects coordinator (AgentAvatar `coordinator`): its role's icon on
+   an accent tint, in its agent's color below. */
+.avatar.coord { color: var(--mauve); background: color-mix(in srgb, var(--mauve) 10%, var(--surface)); border-color: color-mix(in srgb, var(--mauve) 50%, var(--line)); }
+.avatar.coord .iconify { width: 19px; height: 19px; }
 .avatar.claude { color: var(--claude); }
 .avatar.codex { color: var(--codex); }
 .avatar.omp { color: var(--omp); }

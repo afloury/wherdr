@@ -161,8 +161,9 @@ Details in [Features](#features) and [Security](#security).
   a preview of each agent's last answer.
   With [herdr-projects](#works-great-with-herdr-projects), the board's spaces follow Herdr's sidebar:
   the Coordinators on top, then each repo's space (branch, `↓` commits behind its upstream) with
-  its project coordinator and its tasks under it (key, title, progress, time on it, the board's
-  current line); closing a space that holds task agents names the tasks it stops.
+  its project coordinator as the group's lead, right under it (the coordinator's icon, its state
+  and last message), then its tasks (key, title, progress, time on it, the board's current line);
+  closing a space that holds task agents names the tasks it stops.
 - **Conversation view**: the agent's real transcript (Claude Code, Codex and omp), rendered as
   Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan), timestamps, search and infinite scroll back to the
   first message. Reading a conversation never touches the terminal, so it never resizes a pane.
@@ -1254,7 +1255,9 @@ What the Board shows and does:
   (`coordinator restart`) once it is fixed: the message still waiting then goes in.
 - **The agent list** groups the board's spaces under their repo, as Herdr's sidebar does: each
   machine's Coordinator and machine coordinator first, then per repo its own space (name, branch,
-  commits behind its upstream), its project coordinator and its tasks' spaces (key, title, state,
+  commits behind its upstream), its project coordinator in a lead row of its own (the coordinator's
+  icon, **Coordinator**, its state and last message; it stays in view when the group is folded,
+  only the tasks fold) and its tasks' spaces (key, title, state,
   progress, time on it, the line the board reports; the Board icon opens the task there). A repo
   coordinated from another machine shows **Coordinated from <machine>**. wherdr reads this from
   the board's files (`~/.herdr-projects/data`: tasks, attempts, reviewers, coordinators, repos)
