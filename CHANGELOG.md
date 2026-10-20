@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Home machine bar: named groups with editable membership and machine order, combined counts, device storage, and reorder/hide controls (English and French).
+
 - Coordinator failure messages distinguish startup and message delivery errors, and report the actual pending message count in English and French.
 - **Useful home list densities**: Compact keeps each Board task on one line (agent, key, truncated title, progress, duration and state, with Your turn when needed). Normal adds one activity line with relevant limit or review labels. Large detailed cards are removed; coordinators and other agents stay dense too, while agents outside the Board keep their one-tap answers. Settings keeps the existing compact/normal choice, with Compact still the default.
 

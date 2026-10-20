@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BAR_ALL, barFilter, barItems, barPick, barShown, moveBarItem, readBarList, readBarPick, setBarItemShown } from '../app/utils/machineBar'
+import { BAR_ALL, groupedBarItems, readMachineGroups, barMachineSelection, barFilter, barItems, barPick, barShown, moveBarItem, readBarList, readBarPick, setBarItemShown } from '../app/utils/machineBar'
 
 // The local machine's key is ''.
 const machines = ['', 'laptop', 'devbox']
@@ -84,5 +84,27 @@ describe('machine bar settings', () => {
     expect(readBarPick('3')).toBeNull()
     expect(readBarPick('oops')).toBeNull()
     expect(readBarPick(null)).toBeNull()
+  })
+})
+
+describe('saved machine groups', () => {
+  const groups = [{ id: '*group:home', name: 'Home', machines: ['laptop', ''] }]
+  it('inserts groups after All and preserves custom positions', () => {
+    expect(groupedBarItems([], machines, groups)).toEqual([BAR_ALL, '*group:home', ...machines])
+    expect(groupedBarItems(['laptop', BAR_ALL, ''], machines, groups)).toEqual(['laptop', BAR_ALL, '*group:home', '', 'devbox'])
+    expect(groupedBarItems(['*group:home', 'laptop', BAR_ALL], machines, groups)).toEqual(['*group:home', 'laptop', BAR_ALL, '', 'devbox'])
+    expect(groupedBarItems(['*group:old'], machines, [])).toEqual([BAR_ALL, ...machines])
+  })
+  it('selects the ordered members, including the local key and empty groups', () => {
+    expect(barMachineSelection('*group:home', groups)).toEqual(['laptop', ''])
+    expect(barMachineSelection(BAR_ALL, groups)).toBeNull()
+    expect(barMachineSelection('', groups)).toEqual([''])
+    expect(barMachineSelection('*group:empty', [{ id: '*group:empty', name: 'Empty', machines: [] }])).toEqual([])
+  })
+  it('tolerates corrupt storage, duplicate groups and duplicate members', () => {
+    expect(readMachineGroups('invalid')).toEqual([])
+    expect(readMachineGroups('{}')).toEqual([])
+    expect(readMachineGroups(JSON.stringify([null, { id: 'laptop', name: 'Bad', machines: [] }, ...groups, ...groups]))).toEqual(groups)
+    expect(readMachineGroups(JSON.stringify([{ id: '*group:x', name: ' X ', machines: ['', '', 4, '*'] }]))).toEqual([{ id: '*group:x', name: 'X', machines: [''] }])
   })
 })
