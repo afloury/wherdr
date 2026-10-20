@@ -1,8 +1,10 @@
 <script setup lang="ts">
 // A repo's group on the home list, as Herdr's sidebar draws it with
 // herdr-projects: the repo's own space heads it (name, branch, how far behind
-// its upstream), then its project coordinator, then its tasks' spaces (id,
-// title, progress, time on it, the board's current line), most urgent first.
+// its upstream), then its project coordinator as the group's lead (its own
+// icon, "Coordinator" since the header names the repo, its state and last
+// message, a rule before the tasks), then its tasks' spaces (id, title,
+// progress, time on it, the board's current line), most urgent first.
 // The header folds the group (kept on the device); its terminal button opens
 // the repo's space, its menu holds that space's actions (closing it closes
 // the whole worktree group: the confirmation names the tasks it stops).
@@ -60,7 +62,8 @@ const branchTitle = computed(() => {
   return behind.value ? tl(`${i.branch}: ${behind.value} commits behind its upstream`, `${i.branch} : ${behind.value} commits de retard sur sa branche distante`) : i.branch
 })
 
-const coordinatorCard = computed<BoardCard>(() => ({ tag: '', name: tl(`${g.value.repo} coordinator`, `Coordinateur ${g.value.repo}`) }))
+const coordinatorCard = computed<BoardCard>(() => ({ tag: '', name: t('Coordinator'), coordinator: true }))
+const coordinatorLabel = computed(() => tl(`${g.value.repo} coordinator`, `Coordinateur ${g.value.repo}`))
 function memberCard(m: Member): BoardCard | null {
   if (!m.task) return null
   const task = m.task
@@ -109,8 +112,10 @@ const rowKey = (r: Row) => r.key
       <span>{{ tl('Coordinated from', 'Coordonné depuis') }} <b>{{ machineName(group.remote.machine) }}</b></span>
       <span class="project-remote-go">{{ t('coordinator') }}<UIcon name="i-lucide-arrow-up-right" /></span>
     </button>
-    <div v-if="!collapsed" class="card-list project-tree">
-      <AgentCard v-if="group.coordinator" :key="group.coordinator.key" class="project-coordinator" :pane="group.coordinator.lead" :row="group.coordinator" :board="coordinatorCard" />
+    <div v-if="!collapsed && group.coordinator" class="card-list project-lead" :class="{ alone: !group.members.length }" role="group" :aria-label="coordinatorLabel">
+      <AgentCard :key="group.coordinator.key" class="project-coordinator" :pane="group.coordinator.lead" :row="group.coordinator" :board="coordinatorCard" />
+    </div>
+    <div v-if="!collapsed && group.members.length" class="card-list project-tree">
       <AgentCard v-for="m in group.members" :key="rowKey(m.row)" :pane="m.row.lead" :row="m.row" :board="memberCard(m)" />
     </div>
   </section>
