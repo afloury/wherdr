@@ -27,6 +27,9 @@ import { interactionWindowFor } from '~/utils/interactionWindow'
 // its role or its task (`tag`, `name`), with the board's progress, time on it
 // and current line, and a way to its task on the Board. A coordinator's
 // (`board.coordinator`) has its role's icon and its last message as that line.
+// `board.lead`: a repo group's head row (ProjectGroup): one line, larger, the
+// repo's name, the wherdr mark on the accent for a coordinator (an initial
+// otherwise) and its state; no last message, only a question when it asks one.
 const props = defineProps<{ pane: Pane, row?: Row | null, board?: BoardCard | null }>()
 const space = computed(() => (props.row && props.row.kind === 'space' ? props.row : null))
 // Pane whose state the card shows.
@@ -52,7 +55,9 @@ const boardStats = computed(() => {
   return [b.progress != null ? `${b.progress}%` : '', b.since ? elapsedLabel(boardNow.value - b.since) : ''].filter(Boolean).join(' ')
 })
 // A coordinator: its last message, unless the card already shows it opened below.
-const boardLine = computed(() => (props.board?.coordinator ? (more.value ? '' : props.pane.preview || '') : props.board?.msg || ''))
+const lead = computed(() => Boolean(props.board?.lead))
+const leadInitial = computed(() => (title.value.trim()[0] || '?').toUpperCase())
+const boardLine = computed(() => (lead.value ? '' : props.board?.coordinator ? (more.value ? '' : props.pane.preview || '') : props.board?.msg || ''))
 // A task's second line: its stage first (`UNDER REVIEW · CODEX`), then the board's line.
 const twoLines = computed(() => Boolean(boardLine.value || props.board?.stage))
 const subtitle = computed(() => conversationSubtitle(props.pane, ws.value))
@@ -85,7 +90,7 @@ const interactive = computed(() => props.pane.interaction === 'terminal' && prop
 // Recognized waiting screen (Codex hooks…): its title says better what is expected.
 const screen = computed(() => knownScreen(props.pane))
 const preview = computed(() => props.pane.usageLimit ? tl('Usage limit reached', 'Limite de quota atteinte') : interactive.value ? tl('Interactive agent screen', 'Écran interactif de l’agent') : (screen.value && screenSummary(screen.value)) || (props.pane.menu && props.pane.status !== 'working' && menuSummary(props.pane.menu)) || (prompt.value ? prompt.value.kind === 'self-update' ? t(prompt.value.question || '') : prompt.value.question : props.pane.preview))
-const more = computed(() => !compactList.value || compactOpen({ status: props.pane.status, preview: preview.value, detail: prompt.value?.detail, choices: quick.value.length }))
+const more = computed(() => (!compactList.value && !lead.value) || compactOpen({ status: props.pane.status, preview: preview.value, detail: prompt.value?.detail, choices: quick.value.length }))
 // Read / unread: only for an agent that has finished (ready).
 const unread = computed(() => (space.value ? space.value.panes.filter(p => p.agent && p.status === 'done') : []))
 const readItem = computed(() => {
@@ -196,11 +201,21 @@ onUnmounted(list.unmount)
 <template>
   <UContextMenu :disabled="sheetMenus" :items="contextItems" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="onContextOpen">
     <div
-      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, compact: compactList, open: compactList && more, 'home-task': board, 'home-coord': board?.coordinator, 'home-task-two': compactList && twoLines }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
+      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, compact: compactList || lead, open: (compactList || lead) && more, 'home-task': board && !lead, 'home-coord': board?.coordinator && !lead, 'home-lead': lead, 'home-lead-big': lead && !compactList, 'home-task-two': compactList && twoLines }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
       role="button" tabindex="0" @pointerdown="down" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
       @contextmenu="onContext" @selectstart.prevent @click="open" @keydown.enter.self="open"
     >
-      <template v-if="compactList">
+      <template v-if="lead">
+        <span class="avatar lead-mark" :class="{ coord: board?.coordinator }" :title="board?.coordinator && pane.agent ? kindLabel(pane.agent) : undefined" aria-hidden="true">
+          <AppLogo v-if="board?.coordinator" aria-hidden="true" /><template v-else>{{ leadInitial }}</template>
+        </span>
+        <span class="card-title lead-name">{{ title }}</span>
+        <span v-if="board?.coordinator" class="card-tag lead-coord-tag">{{ t('Coordinator') }}</span>
+        <span v-if="statePane.usageLimit" class="card-tag quota-limit" :title="stateTitle">{{ tl('Limit', 'Quota') }}</span>
+        <span v-if="compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
+        <span v-if="pane.agent" class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
+      </template>
+      <template v-else-if="compactList">
         <AgentAvatar :agent="pane.agent" :coordinator="board?.coordinator" />
         <span v-if="board?.tag" class="card-tag home-task-tag">{{ board.tag }}</span>
         <span class="card-title">{{ title }}</span>
@@ -238,7 +253,7 @@ onUnmounted(list.unmount)
         <div v-if="more" class="card-more">
           <div class="card-more-in">
             <!-- Space with several panes: the one that asks, on the mini-map and by name (the detailed card has both around its title). -->
-            <div v-if="compactList && space && space.panes.length > 1" class="card-where">
+            <div v-if="(compactList || lead) && space && space.panes.length > 1" class="card-where">
               <TabMap :layout="space.leadTab.layout" :panes="space.leadTab.panes" :current="pane.id" /><span class="card-where-text">{{ where || kindLabel(pane.agent) }}</span>
             </div>
             <div v-if="prompt?.detail" class="card-detail" :title="detailLine(prompt.detail)">

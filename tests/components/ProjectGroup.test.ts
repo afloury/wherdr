@@ -35,69 +35,121 @@ const mount = (g: ProjectSection) => {
 describe('a repo group on the home list', () => {
   afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] }; compactList.value = true; collapsedRepos.value = [] })
 
-  it('puts its project coordinator in a lead row of its own, above the tasks', async () => {
+  it('heads the group with its coordinator, named after the repo, above the bar and the tasks', async () => {
     const w = await mount(section())
     const lead = w.find('.project-lead')
-    expect(lead.exists()).toBe(true)
     expect(lead.attributes('aria-label')).toBe('shop coordinator')
-    // Labelled by its role (the header names the repo), with its own icon and its last message.
     const card = lead.find('.card')
-    expect(card.classes()).toContain('home-coord')
-    expect(card.find('.card-title').text()).toBe('Coordinator')
-    expect(card.find('.avatar.coord').exists()).toBe(true)
-    expect(card.find('.home-task-line').text()).toBe('Two tasks under way.')
+    expect(card.classes()).toContain('home-lead')
+    // Its title is the repo, the wherdr mark on the accent, the COORDINATOR label, its state.
+    expect(card.find('.card-title').text()).toBe('shop')
+    expect(card.find('.lead-mark.coord .app-logo').exists()).toBe(true)
+    expect(card.find('.lead-coord-tag').text()).toBe('Coordinator')
+    expect(card.find('.card-state').exists()).toBe(true)
+    // Its last message is not shown.
+    expect(card.text()).not.toContain('Two tasks under way.')
+    // The bar: fold button with the summary of the tasks, no terminal button.
+    expect(w.find('.project-bar .project-sum').text()).toBe('2 tasks·2 working')
+    expect(w.find('.project-bar').text()).toContain('main')
+    expect(w.find('[aria-label="Open the terminal of shop"]').exists()).toBe(false)
     // The tasks stay in the tree, with their id chip, and no coordinator among them.
     const tree = w.find('.project-tree')
     expect(tree.findAll('.card').map(c => c.find('.home-task-tag').text())).toEqual(['SHOP-1', 'SHOP-2'])
-    expect(tree.find('.home-coord').exists()).toBe(false)
-    expect(tree.find('.avatar.coord').exists()).toBe(false)
-    // The lead comes first.
-    expect(w.html().indexOf('project-lead')).toBeLessThan(w.html().indexOf('project-tree'))
+    expect(tree.find('.home-lead').exists()).toBe(false)
+    // Lead, bar, tasks: in that order.
+    const html = w.html()
+    expect(html.indexOf('project-lead')).toBeLessThan(html.indexOf('project-bar'))
+    expect(html.indexOf('project-bar')).toBeLessThan(html.indexOf('project-tree'))
     w.unmount()
   })
 
-  it('a coordinator alone: its lead row, no empty task list', async () => {
+  it('opens the coordinator from its row', async () => {
+    const w = await mount(section())
+    navigate.mockClear()
+    await w.find('.project-lead .card').trigger('click')
+    expect(navigate).toHaveBeenCalledWith('/a/w1%3Ap1')
+    w.unmount()
+  })
+
+  it('a coordinator alone: its row and bar, no empty task list', async () => {
     const w = await mount(section({ members: [] }))
-    expect(w.find('.project-lead').classes()).toContain('alone')
+    expect(w.find('.project-lead .home-lead').exists()).toBe(true)
+    expect(w.find('.project-sum').text()).toBe('No tasks')
     expect(w.find('.project-tree').exists()).toBe(false)
     w.unmount()
   })
 
-  it('folded: the coordinator stays in view, its tasks fold under it', async () => {
+  it('folded: the coordinator and the bar stay in view, the tasks fold, the choice is kept per project', async () => {
     const g = section()
     collapsedRepos.value = [`|${g.id}`]
     const w = await mount(g)
     expect(w.find('.project-head').attributes('aria-expanded')).toBe('false')
-    expect(w.find('.project-lead .avatar.coord').exists()).toBe(true)
-    expect(w.find('.project-lead').classes()).toContain('alone')
+    expect(w.find('.project-lead .lead-mark.coord').exists()).toBe(true)
     expect(w.find('.project-tree').exists()).toBe(false)
-    // The header counts what is folded: two working tasks, not the ready coordinator in view.
-    expect(w.find('.project-sum .working').text()).toContain('2')
-    expect(w.find('.project-sum .ready').exists()).toBe(false)
-    // Unfolded again: the tasks come back under it.
+    // The summary says what is folded: the tasks.
+    expect(w.find('.project-sum').text()).toBe('2 tasks·2 working')
+    // Unfolded again: the tasks come back under it, and the list of folded projects forgets it.
     await w.find('.project-head').trigger('click')
     expect(w.findAll('.project-tree .card')).toHaveLength(2)
-    expect(w.find('.project-lead').exists()).toBe(true)
+    expect(collapsedRepos.value).toEqual([])
+    await w.find('.project-head').trigger('click')
+    expect(collapsedRepos.value).toEqual(['|repo:shop'])
     w.unmount()
   })
 
-  it('no coordinator here: the tasks only', async () => {
-    const w = await mount(section({ coordinator: null }))
-    expect(w.find('.project-lead').exists()).toBe(false)
+  it('the summary counts the tasks waiting for you, working and at their usage limit', async () => {
+    const asking = pane('w4:p1', { status: 'blocked' })
+    const limited = pane('w5:p1', { status: 'idle', usageLimit: { text: 'limit' } as Pane['usageLimit'] })
+    const more: Member[] = [asking, limited].map((p, i) => ({ row: row(p), task: task(i + 3, p), role: 'worker' }))
+    herdrState.value = { ok: true, workspaces: [], panes: [coord, ...workers, asking, limited] }
+    const w = await mountSuspended(ProjectGroup, { props: { group: section({ members: [...more, ...members] }) }, global: { stubs: { UContextMenu: { template: '<div><slot /></div>' } } } })
+    const sum = w.find('.project-sum')
+    expect(sum.text()).toBe('4 tasks·1 your turn·2 working·1 limit')
+    expect(sum.find('.project-sum-blocked').text()).toBe('1 your turn')
+    expect(sum.find('.project-sum-limit').text()).toBe('1 limit')
+    w.unmount()
+  })
+
+  it('no coordinator here: the repo\'s space heads the group with its initial, no label', async () => {
+    const shell = pane('w9:p1', { agent: null, status: null })
+    herdrState.value = { ok: true, workspaces: [], panes: [shell, ...workers] }
+    const w = await mountSuspended(ProjectGroup, { props: { group: section({ coordinator: null, space: row(shell) }) }, global: { stubs: { UContextMenu: { template: '<div><slot /></div>' } } } })
+    const card = w.find('.project-lead .card.home-lead')
+    expect(w.find('.project-lead').attributes('aria-label')).toBe('shop')
+    expect(card.find('.card-title').text()).toBe('shop')
+    expect(card.find('.lead-mark').text()).toBe('S')
+    expect(card.find('.lead-mark').classes()).not.toContain('coord')
+    expect(card.find('.lead-coord-tag').exists()).toBe(false)
+    // Its "…" menu is there (the terminal is in it); the tasks hang under the bar.
+    expect(w.find('.project-bar .space-menu').exists()).toBe(true)
     expect(w.findAll('.project-tree .card')).toHaveLength(2)
     w.unmount()
   })
 
-  it('a coordinator that asks something shows its question, not its last message twice', async () => {
-    const asking = { ...coord, status: 'blocked' as const, prompt: { question: 'Run the tests?', cursor: 0, options: [{ label: 'Yes', hint: null }, { label: 'No', hint: null }] } }
-    herdrState.value = { ok: true, workspaces: [], panes: [asking, ...workers] }
-    const w = await mountSuspended(AgentCard, { props: { pane: asking, row: row(asking), board: { tag: '', name: 'Coordinator', coordinator: true } } })
-    expect(w.find('.home-task-line').exists()).toBe(false)
-    expect(w.find('.card-preview').text()).toBe('Run the tests?')
+  it('neither a coordinator nor the repo\'s space: the same head row, nothing to open', async () => {
+    const w = await mount(section({ coordinator: null }))
+    const head = w.find('.project-lead .home-lead')
+    expect(head.find('.card-title').text()).toBe('shop')
+    expect(head.find('.lead-mark').text()).toBe('S')
+    expect(head.attributes('role')).toBeUndefined()
+    expect(w.find('.project-bar .space-menu').exists()).toBe(false)
+    expect(w.findAll('.project-tree .card')).toHaveLength(2)
     w.unmount()
   })
 
-  it('a coordinator sharing its space with a terminal keeps its icon, in both list modes', async () => {
+  it('a coordinator that asks something shows its question and answers in its row', async () => {
+    const asking = { ...coord, status: 'blocked' as const, prompt: { question: 'Run the tests?', cursor: 0, options: [{ label: 'Yes', hint: null }, { label: 'No', hint: null }] } }
+    for (const compact of [true, false]) {
+      compactList.value = compact
+      herdrState.value = { ok: true, workspaces: [], panes: [asking, ...workers] }
+      const w = await mountSuspended(AgentCard, { props: { pane: asking, row: row(asking), board: { tag: '', name: 'shop', coordinator: true, lead: true } } })
+      expect(w.find('.card-preview').text()).toBe('Run the tests?')
+      expect(w.findAll('.card-choices button')).toHaveLength(2)
+      w.unmount()
+    }
+  })
+
+  it('a coordinator sharing its space with a terminal keeps its mark, in both list modes', async () => {
     const shell = pane('w1:p2', { agent: null, status: null })
     const state = { ok: true, workspaces: [{ id: 'w1', label: 'herdr-projects', number: 1, status: null, worktree: false }], panes: [coord, shell] }
     const shared = spaceRows(state)[0]!
@@ -108,7 +160,7 @@ describe('a repo group on the home list', () => {
       const w = await mountSuspended(ProjectGroup, { props: { group: section({ coordinator: shared }) }, global: { stubs: { UContextMenu: { template: '<div><slot /></div>' } } } })
       const card = w.find('.project-lead .card')
       expect(card.classes()).toContain('space-card')
-      expect(card.find('.avatar.coord').exists()).toBe(true)
+      expect(card.find('.lead-mark.coord').exists()).toBe(true)
       expect(card.find('.space-avatar').exists()).toBe(false)
       w.unmount()
     }
@@ -149,12 +201,15 @@ describe('a repo group on the home list', () => {
     w.unmount()
   })
 
-  it('the detailed card: no folder line for a coordinator', async () => {
+  it('the detailed list: the coordinator stays one larger row, without its folder or last message', async () => {
     compactList.value = false
     const w = await mount(section())
     const card = w.find('.project-lead .card')
+    expect(card.classes()).toContain('home-lead-big')
     expect(card.find('.card-where').exists()).toBe(false)
-    expect(card.find('.card-preview').text()).toBe('Two tasks under way.')
+    expect(card.find('.card-preview').exists()).toBe(false)
+    // The tasks keep their detailed cards.
+    expect(w.find('.project-tree .card').classes()).not.toContain('compact')
     w.unmount()
   })
 })
