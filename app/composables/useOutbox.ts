@@ -51,7 +51,8 @@ export function outboxDrop(paneId: string, id: string): string {
   return q ? q.text : ''
 }
 
-// A record the server returned for a send made elsewhere (Project panel…).
+// A record the server returned for a send made outside the outbox (the
+// conversation's run buttons, a file dropped on the terminal…).
 export function outboxAdd(paneId: string, q: QueuedMessage) {
   update(paneId, l => [...l.filter(x => x.id !== q.id), { ...q, settledAt: Date.now() }])
 }

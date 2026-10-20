@@ -16,7 +16,7 @@ const router = useRouter()
 const shortcuts = shortcutsOpen
 // Sections: sidebar on a computer (one section shown), iOS Settings-style
 // list on the phone (a tap opens the section, Back returns to the list).
-// The section lives in the URL (`?section=plugins`, also the Project panel's link):
+// The section lives in the URL (`?section=plugins`):
 // on the phone, opening it adds a history entry, which the system Back button
 // pops like the header's; on a computer, it replaces the entry.
 const route = useRoute()
