@@ -9,15 +9,14 @@ mockNuxtImport('askConfirm', () => async () => true)
 // Each action's reply is held until the test lets it go.
 const held: Array<() => void> = []
 function hold() { return new Promise(resolve => { held.push(() => resolve({ ok: true, msg: 'done' })) }) }
-registerEndpoint('/api/tasks/tell', { method: 'POST', handler: hold })
 registerEndpoint('/api/tasks/approve', { method: 'POST', handler: hold })
 registerEndpoint('/api/tasks/action', { method: 'POST', handler: hold })
 // What the details say, and how many times they were read.
-const shown: { stage: string, failure: string, failureStage: string, archived?: boolean } = { stage: 'approval', failure: '', failureStage: '' }
+const shown: { stage: string, failure: string, failureStage: string, archived?: boolean, pane?: string | null } = { stage: 'approval', failure: '', failureStage: '' }
 let detailsReads = 0
 registerEndpoint('/api/tasks/details', () => {
   detailsReads++
-  return { id: 'demo/1', title: 'Fix login', msg: '', description: '', agent: 'claude', pr: '', branch: '', worktree: '', failureAuth: false, pane: null, ...shown }
+  return { id: 'demo/1', title: 'Fix login', msg: '', description: '', agent: 'claude', pr: '', branch: '', worktree: '', failureAuth: false, pane: null as string | null, ...shown }
 })
 
 const task: TaskRow = {
@@ -25,22 +24,20 @@ const task: TaskRow = {
   progress: null, eta: null, pr: '', review: null, reviewRound: 0, research: false, archived: false, queue: null, group: 'needs',
 }
 
-interface SheetVm { reply: string, busy: boolean, send: () => Promise<void>, approve: () => Promise<void>, act: (a: string) => Promise<void> }
+interface SheetVm { busy: boolean, approve: () => Promise<void>, act: (a: string) => Promise<void> }
 async function sheet() {
   const w = await mountSuspended(TaskSheet, { props: { task, machine: 'a', open: true, 'onUpdate:open': (v: boolean) => w.setProps({ open: v }) } })
   await flushPromises()
   return { w, vm: w.vm as unknown as SheetVm }
 }
-// A sent, held → the same task on machine B, with its own draft → A's reply.
+// A sent, held → the same task on machine B → A's reply.
 async function lateReply(start: (vm: SheetVm) => Promise<void>) {
   const { w, vm } = await sheet()
-  vm.reply = 'for A'
   const done = start(vm)
   await flushPromises()
   expect(held).toHaveLength(1)
   await w.setProps({ machine: 'b' })
   await flushPromises()
-  vm.reply = 'draft for B'
   held.shift()!()
   await done
   await flushPromises()
@@ -48,17 +45,10 @@ async function lateReply(start: (vm: SheetVm) => Promise<void>) {
 }
 
 describe('the task sheet after a late reply', () => {
-  it('Send for A leaves the draft written for B', async () => {
-    const { w, vm } = await lateReply(vm => vm.send())
-    expect(vm.reply).toBe('draft for B')
-    expect(vm.busy).toBe(false)
-    w.unmount()
-  })
-
   it('Approve for A does not close the sheet of B', async () => {
     const { w, vm } = await lateReply(vm => vm.approve())
     expect(w.props('open')).toBe(true)
-    expect(vm.reply).toBe('draft for B')
+    expect(vm.busy).toBe(false)
     w.unmount()
   })
 
@@ -70,8 +60,7 @@ describe('the task sheet after a late reply', () => {
 
   it('B is not kept busy by A\'s request', async () => {
     const { w, vm } = await sheet()
-    vm.reply = 'for A'
-    const done = vm.send()
+    const done = vm.approve()
     await flushPromises()
     await w.setProps({ machine: 'b' })
     await flushPromises()
@@ -81,31 +70,23 @@ describe('the task sheet after a late reply', () => {
     w.unmount()
   })
 
-  it('closed and opened again on A during the request: the new draft stays', async () => {
+  it('closed and opened again on A during the request: the sheet stays open, not busy', async () => {
     const { w, vm } = await sheet()
-    vm.reply = 'first'
     const done = vm.approve()
     await flushPromises()
     await w.setProps({ open: false })
     await w.setProps({ open: true })
     await flushPromises()
-    vm.reply = 'second'
     held.shift()!()
     await done
     await flushPromises()
     expect(w.props('open')).toBe(true)
-    expect(vm.reply).toBe('second')
+    expect(vm.busy).toBe(false)
     w.unmount()
   })
 
-  it('still clears the reply on its own task, and stays open after Approve', async () => {
+  it('stays open after Approve on its own task', async () => {
     const { w, vm } = await sheet()
-    vm.reply = 'hello'
-    const sent = vm.send()
-    await flushPromises()
-    held.shift()!()
-    await sent
-    expect(vm.reply).toBe('')
     const approved = vm.approve()
     await flushPromises()
     held.shift()!()
@@ -274,7 +255,7 @@ describe('the sheet of an archived task', () => {
     await vi.waitFor(() => expect(document.querySelector('.task-archived')?.textContent).toContain('Archived'))
     const labels = [...document.querySelectorAll('.task-sheet-actions button')].map(b => b.textContent?.trim())
     expect(labels).toEqual(['Restore'])
-    expect(document.querySelector('.task-sheet-reply')).toBeNull()
+    expect(document.querySelector('.task-chat')).toBeNull()
 
     const going = vm.act('restore')
     await flushPromises()
@@ -288,6 +269,71 @@ describe('the sheet of an archived task', () => {
     expect(vm.actions.restore).toBe(false)
     expect(document.querySelector('.task-archived')).toBeNull()
     Object.assign(shown, { stage: 'approval', archived: false })
+    w.unmount()
+  })
+})
+
+describe('the sheet\'s chat button (no message field)', () => {
+  const working: TaskRow = { ...task, state: 'working', stage: 'working', group: 'working' }
+  const buttons = () => [...document.querySelectorAll<HTMLButtonElement>('.task-sheet-actions button')]
+  const chatButton = () => document.querySelector<HTMLButtonElement>('.task-sheet-actions .task-chat')
+
+  it('a task under way: Open the chat and Stop, no text field; the chat closes the sheet and asks for the panel', async () => {
+    Object.assign(shown, { stage: 'working', failure: '', failureStage: '', pane: 'p-42' })
+    const chats: Array<[string, string]> = []
+    const w = await mountSuspended(TaskSheet, { props: {
+      task: working, machine: 'far', open: true, 'onUpdate:open': (v: boolean) => w.setProps({ open: v }),
+      onChat: (m: string, t: TaskRow) => chats.push([m, t.id]),
+    } })
+    await vi.waitFor(() => expect(chatButton()?.disabled).toBe(false))
+    expect(buttons().map(b => b.textContent?.trim())).toEqual(['Open the chat', 'Stop'])
+    expect(document.querySelector('.task-sheet textarea, .task-sheet input, .task-sheet form')).toBeNull()
+    chatButton()!.click()
+    await flushPromises()
+    expect(w.props('open')).toBe(false)
+    expect(chats).toEqual([['far', 'demo/1']])
+    Object.assign(shown, { stage: 'approval', pane: null })
+    w.unmount()
+  })
+
+  it('a plan that waits: Approve plan and Open the chat, one chat button only', async () => {
+    Object.assign(shown, { stage: 'plan', failure: '', failureStage: '', pane: 'p-7' })
+    const plan: TaskRow = { ...task, state: 'blocked', kind: 'permission', stage: 'plan', group: 'needs' }
+    const w = await mountSuspended(TaskSheet, { props: { task: plan, machine: 'a', open: true } })
+    await vi.waitFor(() => expect(chatButton()?.disabled).toBe(false))
+    const labels = buttons().map(b => b.textContent?.trim())
+    expect(labels).toEqual(expect.arrayContaining(['Approve plan', 'Open the chat']))
+    expect(labels.filter(l => l === 'Open the chat')).toHaveLength(1)
+    expect(labels).not.toContain('Open its agent')
+    expect(document.querySelector('.task-sheet textarea')).toBeNull()
+    Object.assign(shown, { stage: 'approval', pane: null })
+    w.unmount()
+  })
+
+  it('an agent herdr-projects takes a reply for, with no pane now: the chat still opens the panel (its reply goes through tell there)', async () => {
+    Object.assign(shown, { stage: 'working', failure: '', failureStage: '', pane: null })
+    const chats: string[] = []
+    const w = await mountSuspended(TaskSheet, { props: {
+      task: working, machine: 'a', open: true, 'onUpdate:open': (v: boolean) => w.setProps({ open: v }),
+      onChat: (_m: string, t: TaskRow) => chats.push(t.id),
+    } })
+    await vi.waitFor(() => expect(chatButton()?.disabled).toBe(false))
+    expect(document.querySelector('.task-sheet textarea')).toBeNull()
+    chatButton()!.click()
+    await flushPromises()
+    expect(chats).toEqual(['demo/1'])
+    expect(w.props('open')).toBe(false)
+    Object.assign(shown, { stage: 'approval' })
+    w.unmount()
+  })
+
+  it('a task of the backlog: no chat until it has an agent', async () => {
+    Object.assign(shown, { stage: 'todo', failure: '', failureStage: '', pane: null })
+    const todo: TaskRow = { ...task, state: 'idle', stage: 'todo', group: 'todo', app: '' }
+    const w = await mountSuspended(TaskSheet, { props: { task: todo, machine: 'a', open: true } })
+    await vi.waitFor(() => expect(buttons().map(b => b.textContent?.trim())).toContain('Start'))
+    expect(chatButton()).toBeNull()
+    Object.assign(shown, { stage: 'approval' })
     w.unmount()
   })
 })
