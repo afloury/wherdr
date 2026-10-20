@@ -262,28 +262,22 @@ export function boardSections(
     const coord = (coordPanes[0] && coordByPane.get(coordPanes[0].id)) || coordBySpace.get(rowSpace(row))
     if (coord) { sorted.push({ row, coord }); continue }
     // A task's space is one row, whatever helpers it holds (agent, reviewer,
-    // planner, attempts, each in its own tab). Only a space shared by several
-    // tasks gives each of their agents its own row; its other agents stay listed.
+    // planner, attempts, each in its own tab). A space shared by several tasks
+    // gives each task a row of its own (its panes); its other agents stay listed.
     const linkedPanes = panes.filter(p => taskByPane.has(p.id))
-    if (row.kind === 'space' && new Set(linkedPanes.map(p => taskByPane.get(p.id)!.task)).size > 1) {
-      for (const p of panes) {
-        if (taskByPane.has(p.id)) sorted.push({ row: paneRow(p), task: taskByPane.get(p.id) })
-        else if (p.agent) sorted.push({ row: paneRow(p) })
+    const tasksHere = [...new Set(linkedPanes.map(p => taskByPane.get(p.id)!.task))]
+    if (row.kind === 'space' && tasksHere.length > 1) {
+      for (const task of tasksHere) {
+        const own = panes.filter(p => taskByPane.get(p.id)?.task === task)
+        sorted.push(taskRow(own.length === 1 ? paneRow(own[0]!) : subRow(row, own, `${row.key}|${task.id}`), task, taskByPane.get(own[0]!.id)!))
       }
+      for (const p of panes) if (p.agent && !taskByPane.has(p.id)) sorted.push({ row: paneRow(p) })
       continue
     }
     const hit = linkedPanes[0] ? taskByPane.get(linkedPanes[0].id) : undefined
     const task = hit?.task || taskBySpace.get(rowSpace(row))
     if (!task) { sorted.push({ row }); continue }
-    if (row.kind === 'space') {
-      const here = new Map(panes.map(p => [p.id, p]))
-      const h = taskHelper(task, id => here.has(id))
-      const focus = h ? { id: h.id, role: h.role, kind: h.kind || here.get(h.id)!.agent || '' } : undefined
-      const shown = shownPane(panes, focus?.id)
-      sorted.push({ row: shown ? relead(row, shown) : row, task: { task, role: 'worker', focus } })
-      continue
-    }
-    sorted.push({ row, task: hit && hit.task === task ? hit : { task, role: 'worker' } })
+    sorted.push(taskRow(row, task, hit && hit.task === task ? hit : { task, role: 'worker' }))
   }
 
   // 2. A repo's group id: Herdr's repo_key, learnt from its tasks' spaces and its
@@ -379,6 +373,26 @@ export function shownPane<P extends Pick<Pane, 'id' | 'agent' | 'status'>>(panes
   const lead = leadPane(panes)
   if (!lead || (lead.agent && lead.status === 'blocked')) return lead
   return panes.find(p => p.id === focus && p.agent) ?? lead
+}
+// A task's row: led by the pane it shows, with its helper at work (`focus`),
+// even when that helper's pane is all that is left open of the task.
+function taskRow(row: Row, task: LinkedTask, hit: { role: PaneRole, letter?: string }): { row: Row, task: { task: LinkedTask, role: PaneRole, letter?: string, focus?: Member['focus'] } } {
+  const panes = rowPanes(row)
+  const here = new Map(panes.map(p => [p.id, p]))
+  const h = taskHelper(task, id => here.has(id))
+  const focus = h ? { id: h.id, role: h.role, kind: h.kind || here.get(h.id)!.agent || '' } : undefined
+  const shown = row.kind === 'space' ? shownPane(panes, focus?.id) : null
+  // A space's row is the task's (role worker); a lone pane keeps its role (an attempt's letter).
+  const role = row.kind === 'space' || focus ? 'worker' : hit.role
+  return { row: shown ? relead(row, shown) : row, task: { task, role, ...(role === 'attempt' && hit.letter ? { letter: hit.letter } : {}), ...(focus ? { focus } : {}) } }
+}
+// The part of a space that holds one task's panes (a space several tasks share).
+function subRow(row: Extract<Row, { kind: 'space' }>, keep: Pane[], key: string): Row {
+  const ids = new Set(keep.map(p => p.id))
+  const tabs = row.tabs.map(e => ({ ...e, panes: e.panes.filter(p => ids.has(p.id)) })).filter(e => e.panes.length)
+  const lead = leadPane(keep)!
+  const n = (st: string) => keep.filter(p => p.agent && p.status === st).length
+  return { kind: 'space', key, workspace: row.workspace, tabs, panes: keep, lead, leadTab: tabs.find(e => e.panes.includes(lead))!, sum: { blocked: n('blocked'), working: n('working'), done: n('done'), agents: keep.filter(p => p.agent).length } }
 }
 // A space row led by another of its panes (its state, its tab's mini-map).
 function relead(row: Row, lead: Pane): Row {

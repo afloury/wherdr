@@ -272,6 +272,26 @@ describe('one row per task, whatever helpers its space holds', () => {
     expect(g.members.map(m => [m.row.kind, m.row.lead.id, m.task?.key])).toEqual([['pane', 'w7:p2', 'APP-8'], ['pane', 'w7:p1', 'APP-7']])
   })
 
+  it('a space two tasks share, one under review: a row per task, the counters agree', () => {
+    const other = { id: 'app/8', title: 'Other', stage: 'working', link: { pane: 'w7:p3' } }
+    const st = session([...reviewTabs, ['w7:t3', 'Other', 'w7:p3', 'claude', 'working']])
+    const links = board([reviewing, other])
+    const g = groupOf(st, links)
+    expect(g.members.map(m => [m.row.kind, m.row.lead.id, memberTag(m, 'review'), memberStage(m)])).toEqual([
+      ['space', 'w7:p2', 'APP-7', { what: 'review', by: 'codex' }], ['pane', 'w7:p3', 'APP-8', null],
+    ])
+    expect(tabOf(g.members[0]!)).toBe('Reviewer #1')
+    expect(g.sum.total).toBe(2)
+    expect(countedPanes(st.panes.filter(p => p.agent), [links])).toHaveLength(g.sum.total)
+  })
+
+  it('only its reviewer left open: still "review · codex", one row, no "· review" tag', () => {
+    const g = groupOf(session([reviewTabs[1]!]), board([reviewing]))
+    expect(g.members).toHaveLength(1)
+    const m = g.members[0]!
+    expect([m.row.kind, m.row.lead.id, memberTag(m, 'review'), memberStage(m)]).toEqual(['pane', 'w7:p2', 'APP-7', { what: 'review', by: 'codex' }])
+  })
+
   it('the counters count tasks: a task\'s helpers once', () => {
     const st = session([...reviewTabs, ['w5:t1', '1', 'w5:p1', 'claude', 'done']])
     const counted = countedPanes(st.panes.filter(p => p.agent), [board([reviewing])])
