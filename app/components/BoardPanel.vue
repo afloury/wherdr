@@ -181,15 +181,15 @@ const gone = computed(() => props.target.kind === 'task' && Boolean(taskPane.val
 watch(gone, (g) => { if (g) emit('noAgent') })
 
 // ------------------------------------------------------------ who it is
-// Each named once: "Coordinator", "devbox coordinator", "web coordinator".
+// Match the Board entry points: all work, machine setup, repo work.
 const coordSubject = computed(() => (props.target.kind === 'coordinator' ? coordinatorSubject(props.target.to, props.machineLabel, coordStatusName.value) : ''))
 const coordName = computed(() => {
   if (props.target.kind !== 'coordinator') return ''
-  const s = coordSubject.value
-  return s ? tl(`${s} coordinator`, `Coordinateur ${s}`) : tl('Coordinator', 'Coordinateur')
+  return props.target.to.kind === 'main' ? tl('Coordinator', 'Coordinateur') : coordinatorLabel(props.target.to, props.machineLabel)
 })
 // "The Coordinator", "the web coordinator", in a sentence.
 const coordThe = computed(() => {
+  if (props.target.kind === 'coordinator' && props.target.to.kind === 'machine') return tl(`The ${props.machineLabel} setup assistant`, `L’assistant de configuration de ${props.machineLabel}`)
   const s = coordSubject.value
   return s ? tl(`The ${s} coordinator`, `Le coordinateur ${s}`) : tl('The Coordinator', 'Le Coordinateur')
 })
@@ -302,6 +302,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
             <span class="board-panel-title">{{ coordName }}</span>
           </template>
         </p>
+        <p v-if="target.kind === 'coordinator'" class="board-panel-purpose">{{ coordinatorDescription(target.to) }}</p>
       </div>
       <UButton
         v-if="target.kind === 'task'" icon="i-lucide-file-text" color="neutral" variant="outline" size="sm" class="board-panel-sheet"

@@ -3817,3 +3817,10 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-sheet-archived { margin: 0; }
 .task-sheet-error { margin: 0; }
 .hw-toast .hw-toast-action { border-radius: 0; font: 600 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+
+.coordinator-hint { display: inline-flex; min-width: 0; max-width: 100%; }
+.board-top > .coordinator-hint { flex: 0 1 auto; }
+.board-top .board-top-coord { height: auto; min-height: 36px; white-space: normal; overflow-wrap: anywhere; }
+.board-panel-purpose { margin: 0; font-size: 12px; line-height: 1.4; color: var(--muted); }
+.board-coord-menu { width: min(360px, calc(100vw - 24px)); }
+.coordinator-tooltip { max-width: min(320px, calc(100vw - 24px)); border-radius: 0; border: 1px solid var(--line); background: var(--bg-2); color: var(--text); font: 12px/1.4 var(--sans); }
