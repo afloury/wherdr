@@ -456,6 +456,56 @@ describe('task keys', () => {
   })
 })
 
+describe('archived tasks: their list, their sheet and Restore', () => {
+  const board = JSON.stringify([
+    { id: 'demo/4', state: 'done', title: 'Old cleanup', stage: 'done' },
+    { id: 'demo/8', state: 'done', title: 'Put away', stage: 'done', archivedAt: 1760000000 },
+    { id: 'demo/9', state: 'done', title: 'Put away later', stage: 'done', archivedAt: 1760000500 },
+  ])
+  beforeEach(() => { listReply = { code: 0, stdout: board, stderr: '' } })
+
+  it('lists them with list --json --archived, newest first, and only them', async () => {
+    const r = await T.archivedTasks('')
+    expect(r.machine).toBe('')
+    expect(r.tasks.map(t => [t.id, t.archived])).toEqual([['demo/9', true], ['demo/8', true]])
+    expect(calls).toEqual([['list', '--json', '--archived']])
+  })
+
+  it('from a container: the archived task files, nothing run', async () => {
+    T.setInContainer(true)
+    taskFile('acme/1', { title: 'Live', stage: 'done' })
+    taskFile('acme/2', { title: 'Away', stage: 'done', archivedAt: 1 })
+    expect((await T.archivedTasks('')).tasks.map(t => t.id)).toEqual(['acme/2'])
+    expect(calls).toEqual([])
+  })
+
+  it('details say archived from the task file', async () => {
+    taskFile('demo/8', { title: 'Put away', stage: 'done', archivedAt: 1760000000 })
+    expect(await T.taskDetails('', 'demo/8')).toMatchObject({ archived: true })
+    taskFile('demo/4', { title: 'Old cleanup', stage: 'done' })
+    expect(await T.taskDetails('', 'demo/4')).toMatchObject({ archived: false })
+  })
+
+  it('restores an archived task (its file says so), and refuses one that is not', async () => {
+    taskFile('demo/8', { title: 'Put away', stage: 'done', archivedAt: 1760000000 })
+    taskFile('demo/4', { title: 'Old cleanup', stage: 'done' })
+    await read()
+    calls = []
+    await T.taskCommand('', 'demo/8', 'restore')
+    expect(calls).toEqual([['restore', '--', 'demo/8']])
+    calls = []
+    await expect(T.taskCommand('', 'demo/4', 'restore')).rejects.toThrow(/not archived/)
+    expect(calls).toEqual([])
+    // An archived task takes nothing else (1.x: "Restore it before making changes").
+    await expect(T.taskCommand('', 'demo/8', 'archive')).rejects.toThrow(/cannot be archived/)
+  })
+
+  it('no task file: the archived list says whether it is archived', async () => {
+    await T.taskCommand('', 'demo/9', 'restore')
+    expect(calls).toEqual([['list', '--json', '--archived'], ['restore', '--', 'demo/9']])
+  })
+})
+
 describe('start, stop, retry, archive, add, and the three coordinators', () => {
   // A board with a task of each kind these act on.
   const board = JSON.stringify([

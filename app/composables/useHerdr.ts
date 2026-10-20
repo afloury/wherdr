@@ -331,7 +331,11 @@ let toaster: Toaster | null = null
 export function setToaster(t: Toaster) { toaster = t }
 // `detail`: an extra, smaller line (output of a plugin action…).
 export function clearToast() { toaster?.clear() }
-export function toast(msg: string, err = false, detail?: string) {
+// `action`: one button in it (Restore after Archive…), the toast then stays a
+// few seconds longer; a tap runs it and closes the toast.
+export interface ToastAction { label: string, icon?: string, run: () => void }
+export const ACTION_TOAST_MS = 6000
+export function toast(msg: string, err = false, detail?: string, action?: ToastAction) {
   if (!toaster) return
   toaster.clear()
   toaster.add({
@@ -340,8 +344,11 @@ export function toast(msg: string, err = false, detail?: string) {
     color: err ? 'error' : 'neutral',
     class: err ? 'hw-toast-error' : undefined,
     icon: err ? 'i-lucide-circle-alert' : undefined,
-    duration: (err ? 4200 : 2600) + (detail ? 2400 : 0),
+    duration: action ? ACTION_TOAST_MS : (err ? 4200 : 2600) + (detail ? 2400 : 0),
     close: false,
+    ...(action
+      ? { orientation: 'horizontal' as const, actions: [{ label: action.label, icon: action.icon, color: 'neutral' as const, variant: 'outline' as const, size: 'xs' as const, class: 'hw-toast-action', onClick: () => action.run() }] }
+      : {}),
   })
 }
 

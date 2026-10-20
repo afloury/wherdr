@@ -172,8 +172,8 @@ function linkedPane(base: Machine, t: Record<string, unknown> | null): { pane: s
 
 // Every task's row. Only a board not made yet (no tasks folder) reads as empty;
 // a folder or file that cannot be read fails the read, or, for some tasks only,
-// is named in `failed` (a partial read).
-async function listFromFiles(m: Machine): Promise<{ tasks: TaskRow[], failed: string[] }> {
+// is named in `failed` (a partial read). `archived`: the archived tasks instead.
+async function listFromFiles(m: Machine, archived = false): Promise<{ tasks: TaskRow[], failed: string[] }> {
   const root = tasksRoot(m)
   let repos: string[]
   try { repos = await m.fs.readdir(root) }
@@ -196,7 +196,7 @@ async function listFromFiles(m: Machine): Promise<{ tasks: TaskRow[], failed: st
     const { pane } = linkedPane(m, t)
     return t ? rowFromTaskFile(t, pane ? panes.find(p => p.id === pane)?.status ?? null : null) : null
   }))
-  return { tasks: rows.filter((r): r is TaskRow => r !== null && !r.archived).slice(0, FILES_MAX), failed }
+  return { tasks: rows.filter((r): r is TaskRow => r !== null && r.archived === archived).slice(0, FILES_MAX), failed }
 }
 
 // ---------------------------------------------------------------- the list
@@ -348,8 +348,9 @@ export async function taskDetails(machine: unknown, id: unknown): Promise<TaskDe
     if (!fromFile) throw new HerdrError('bad_task', 'Task not found')
     d = fromFile
   } else d = parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS))
-  // The closing note: in the task's file only (1.2.1's `details` leaves it out).
+  // The closing note and whether it is archived: in the task's file only (1.2.1's `details` leaves them out).
   if (!d.summary && typeof file?.summary === 'string') d = { ...d, summary: file.summary.slice(0, 8000).trim() }
+  if (!d.archived && file?.archivedAt) d = { ...d, archived: true }
   return { ...d, pane: taskPane(m, file) }
 }
 
@@ -400,7 +401,8 @@ export async function taskCommand(machine: unknown, id: unknown, action: unknown
   const m = boardOf(machine)
   const tid = checkId(id)
   if (!isTaskCommand(action)) throw new HerdrError('bad_action', 'Unknown action')
-  const row = await taskOf(m, tid)
+  // An archived task is not in the list: its own row (`restore` only applies to it).
+  const row = action === 'restore' ? await archivedRow(m, tid) : await taskOf(m, tid)
   // A failed task: what failed decides between Retry and Start (`details`).
   const failure = row?.stage === 'failed' && (action === 'retry' || action === 'delegate')
     ? parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS))
@@ -417,7 +419,30 @@ function refused(action: TaskCommand): HerdrError {
     case 'stop': return new HerdrError('bad_action', 'This task has no agent at work to stop')
     case 'retry': return new HerdrError('bad_action', 'This task has nothing to retry')
     case 'archive': return new HerdrError('bad_action', 'This task cannot be archived while an agent works on it')
+    case 'restore': return new HerdrError('bad_action', 'This task is not archived')
   }
+}
+
+// An archived task's row: from its file (read only), else from the archived list.
+async function archivedRow(m: Machine, id: string): Promise<TaskRow | null> {
+  const file = await readTaskFile(m, id).catch(() => null)
+  const row = file ? rowFromTaskFile(file, null) : null
+  if (row) return row
+  return (await archivedList(m)).find(t => t.id === id) || null
+}
+
+// The archived tasks of a machine's board (`list --json --archived`, or the
+// files from a container), newest first. Not cached: asked when the Board's
+// "Archived" is opened, or for one task.
+async function archivedList(m: Machine): Promise<TaskRow[]> {
+  if (readsFiles(m)) return (await listFromFiles(m, true)).tasks
+  return parseTaskList(await command(m, ['list', '--json', '--archived'], LIST_TIMEOUT_MS)).filter(t => t.archived)
+}
+export async function archivedTasks(machine: unknown): Promise<{ machine: string, tasks: TaskRow[] }> {
+  const m = boardOf(machine)
+  const tasks = (await archivedList(m)).sort((a, b) => b.n - a.n || a.repo.localeCompare(b.repo))
+  void readKeys(m, tasks.map(t => t.repo)).catch(() => {})
+  return { machine: m.key, tasks: withKeys(m.key, tasks) }
 }
 
 // A new task (`add`): in a repo the board knows (its name or its folder), or

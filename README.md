@@ -1243,7 +1243,10 @@ What the Board shows and does:
   gone): description, plan, branch, pull request, review, what went wrong. **Reply** sends a
   message to its agent (on a plan that waits, it sends the plan back with your words).
   **Approve** merges finished work or says yes to a plan, after a confirmation; **Start**,
-  **Stop**, **Retry** and **Archive** where herdr-projects takes them.
+  **Stop**, **Retry** and **Archive** where herdr-projects takes them. After an action the sheet
+  shows the task's new state, or why it was refused. **Archive** closes the sheet and takes the
+  task off the Board, with **Restore** in a toast for a few seconds; **Archived** lists the
+  archived tasks, whose sheet is read-only with **Restore**, as in herdr-projects.
 - **Coordinators**, in the same panel: a machine's heading opens its Coordinator, the agent that
   turns what you write into tasks; a repo's heading opens that repo's project coordinator. One
   not started yet takes a first message (`coordinator tell`), which starts it. One that
@@ -1263,7 +1266,8 @@ What the Board shows and does:
   the time they were read.
 - What wherdr runs, on the task's machine and in its Herdr session (on an SSH machine, its own
   session by name): `herdr-projects list --json`,
-  `details <id> --json`, `tell <id> <text>`, `approve <id>`, `coordinator tell <text>`,
+  `details <id> --json`, `tell <id> <text>`, `approve <id>`, `delegate`, `stop`, `retry`,
+  `archive` and `restore <id>`, `list --json --archived` (Archived), `coordinator tell <text>`,
   `coordinator status --json` and `coordinator restart` (your
   words always after `--`, so they are never read as options), through the plugin's own
   launcher (`bin/run.sh`). Each command also runs herdr-projects' own upkeep, so wherdr calls it
