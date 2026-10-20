@@ -48,6 +48,15 @@ export function queuedDone(q: { text: string, at: number, turnSeen?: boolean }, 
   return i >= 0 && items.slice(i + 1).some(a => a.role === 'assistant')
 }
 
+// Taken by the agent, judged on its words alone, as herdr-projects' said_to
+// does: a user message of its transcript, written since wherdr typed it
+// (`typedAt`, else `at`), that holds its text. For a message whose send was
+// given up or that waits for another attempt: never the looser "a reply
+// followed" rule of queuedDone, which another message could satisfy.
+export function landed(q: { text: string, at: number, typedAt?: number }, items: ChatItem[], now: number, agent?: string | null): boolean {
+  return queuedDone({ text: q.text, at: q.typedAt ?? q.at }, items, false, now, agent)
+}
+
 // Messages sent while a menu, panel or dialog hides the agent's input field (an
 // interactive /mcp, /hooks… flow, omp's tool approval): typed into it, they
 // would be lost, or Enter would answer it. They are held here and delivered,
@@ -87,6 +96,12 @@ export interface QueueEntry {
   noInput?: boolean
   // Given back (see giveBackHeld): its text returns to the message field.
   back?: boolean
+  // When wherdr last typed it into the field without seeing it taken (a send
+  // given up, see guardedSend.ts): the agent may still take it late, so its
+  // transcript is looked at (see landed) before any new attempt.
+  typedAt?: number
+  // Held until the agent's turn ends: typing it during the turn failed.
+  turn?: boolean
 }
 
 // Hold a new message instead of typing it now?
@@ -112,7 +127,12 @@ export function checkQueue(list: QueueEntry[], status: string | null | undefined
   for (const q of list) {
     if (q.failed) continue
     if (q.held) {
-      if (now - q.at > (q.busy ? BUSY_TTL_MS : HOLD_TTL_MS)) { q.failed = true; changed = true; continue }
+      // Waiting for the end of a turn: however long the turn lasts, then
+      // counted from the moment the agent rests.
+      const turn = q.turn && !q.busy
+      if (turn && !ready) { delete q.stuckSince; delete q.readySince; continue }
+      if (turn) q.readySince ??= now
+      if (now - (turn ? q.readySince! : q.at) > (q.busy ? BUSY_TTL_MS : HOLD_TTL_MS)) { q.failed = true; changed = true; continue }
       if (q.busy || !ready || menu) { delete q.stuckSince; continue }
       q.stuckSince ??= now
       if (now - q.stuckSince > NO_INPUT_MS) { q.failed = true; q.noInput = true; changed = true }
@@ -143,7 +163,8 @@ export const publicEntry = (q: QueueEntry): QueuedMessage => ({
   id: q.id, text: q.text, at: q.at,
   ...(q.held && !q.failed ? { state: 'held' as const } : {}),
   ...(q.failed ? { state: 'failed' as const } : {}),
-  ...((q.held || q.failed) && q.busy ? { reason: 'busy' as const } : q.failed && q.noInput ? { reason: 'no_input' as const } : {}),
+  ...((q.held || q.failed) && q.busy ? { reason: 'busy' as const } : q.failed && q.noInput ? { reason: 'no_input' as const }
+    : q.held && !q.failed && q.turn ? { reason: 'turn' as const } : {}),
   ...(q.back ? { back: true } : {}),
 })
 
@@ -156,7 +177,8 @@ export function loadQueued(raw: unknown, now: number): [string, QueueEntry[]][] 
     if (!Array.isArray(list)) continue
     const ok = list.filter((q): q is QueueEntry => Boolean(q) && typeof q.id === 'string' && typeof q.text === 'string' && typeof q.at === 'number'
       && now - q.at < QUEUED_TTL_MS)
-      .map(q => ({ id: q.id, text: q.text, at: q.at, ...(q.held ? { held: true } : {}), ...(q.failed ? { failed: true } : {}), ...(q.busy ? { busy: true } : {}), ...(q.back ? { back: true } : {}) }))
+      .map(q => ({ id: q.id, text: q.text, at: q.at, ...(q.held ? { held: true } : {}), ...(q.failed ? { failed: true } : {}), ...(q.busy ? { busy: true } : {}), ...(q.back ? { back: true } : {}),
+        ...(typeof q.typedAt === 'number' ? { typedAt: q.typedAt } : {}), ...(q.turn ? { turn: true } : {}) }))
     if (ok.length) out.push([pane, ok])
   }
   return out

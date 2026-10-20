@@ -527,6 +527,7 @@ const FR: Record<string, string> = {
   'no pane on that side': 'aucun pane de ce côté', 'a pane is zoomed in this tab': 'un pane est agrandi dans cet onglet',
   'Not sent': 'Non envoyé', 'will be sent when the menu closes': 'partira quand le menu sera fermé',
   'will be sent when the agent’s input is free': 'partira quand le champ de l’agent sera libre',
+  'will be sent when the turn ends': 'partira à la fin du tour',
   'Not sent — the agent’s input contains text': 'Non envoyé — le champ de l’agent contient du texte',
   'Not sent — the agent’s input field was not found on its screen': 'Non envoyé — champ de saisie de l’agent introuvable à l’écran',
   'The agent’s input contains text': 'Le champ de l’agent contient du texte',
