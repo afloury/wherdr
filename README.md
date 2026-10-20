@@ -201,7 +201,9 @@ Details in [Features](#features) and [Security](#security).
   Codex agent in the browser demo (scripted, no account data).
   In the compact list, native questions keep their preview and one-tap answers.
   Unrecognized blocking screens offer an **Open interactive terminal** button.
-- **Composer**: send messages while the agent works (queued, cancellable), attach or paste
+- **Composer**: send messages while the agent works (queued, cancellable: the agent's own
+  queue when it takes them, else held by wherdr and sent when the turn ends; never left
+  half-typed in its field, and “Not sent” clears once the message shows in its transcript), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
   of local commands. Stop button while the agent works. A long pasted text (log, output) becomes
