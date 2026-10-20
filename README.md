@@ -197,7 +197,9 @@ Details in [Features](#features) and [Security](#security).
   Codex agent in the browser demo (scripted, no account data).
   In the compact list, native questions keep their preview and one-tap answers.
   Unrecognized blocking screens offer an **Open interactive terminal** button.
-- **Composer**: send messages while the agent works (queued, cancellable), attach or paste
+- **Composer**: send messages while the agent works (queued, cancellable: the agent's own
+  queue when it takes them, else held by wherdr and sent when the turn ends; never left
+  half-typed in its field, and “Not sent” clears once the message shows in its transcript), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
   of local commands. Stop button while the agent works. A long pasted text (log, output) becomes
@@ -1280,6 +1282,12 @@ What the Board shows and does:
   and from Herdr's worktree groups, every 15 seconds while the list is shown, never through
   herdr-projects' command line; the branch and behind count come from `git` in the repo's main
   checkout, once a minute, without fetching.
+- **Coordinator entry points**: the top of the Board names the host of the main Coordinator,
+  for all repos and machines it can reach. With several hosts, choose one from the menu;
+  unavailable and read-only hosts stay listed with their reason. Machine headings offer
+  **`<machine> setup`** (that machine's setup, folders and repos), repo headings offer
+  **`<repo> coordinator`** (work in that repo). Hover or long-press an entry for its role;
+  the conversation header repeats that description.
 - **A machine is one board**, shared by its named sessions: one list, one queue, one card per
   task. A machine whose read fails says why on the Board, and its last tasks stay, marked with
   the time they were read.

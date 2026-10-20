@@ -7,7 +7,7 @@
 // shared/queuedMatch.ts). Claude's queue only keeps "[Image #1]": an entry of
 // it gets the photos of wherdr's record of the same message, from the server
 // (`sent`, see server/utils/sentHistory.ts) or remembered here.
-import type { ChatItem, ClaudeQueueEntry, ClaudeScreen } from '../../shared/types'
+import type { ChatItem, ClaudeQueueEntry, ClaudeScreen, QueuedMessage } from '../../shared/types'
 import type { OutboxItem } from './outbox'
 import { type QueuedPhase, queuedPhases } from '../../shared/queuedPhase'
 import { photosLanded, photosOnly, uploadNames, withoutUploads } from '../../shared/queuedMatch'
@@ -25,7 +25,7 @@ export interface PendingMessage {
   // Never reached the server: Retry / Cancel act on the app's copy.
   local?: boolean
   // 'busy': waiting because the agent's input field holds other text.
-  reason?: 'busy' | 'no_input'
+  reason?: QueuedMessage['reason']
   // Stored names of its photos.
   photos: string[]
   // Photos Claude's queue counts but whose files are unknown.

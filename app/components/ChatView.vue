@@ -1478,7 +1478,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               </button>
             </div>
             <div v-else class="queued-tag">
-              <UIcon name="i-lucide-clock" /><span>{{ t('Queued · ') }}{{ q.state === 'sending' ? t('sending…') : q.state === 'held' ? (q.reason === 'busy' ? t('will be sent when the agent’s input is free') : t('will be sent when the menu closes')) : queuedWhy }}</span>
+              <UIcon name="i-lucide-clock" /><span>{{ t('Queued · ') }}{{ q.state === 'sending' ? t('sending…') : q.state === 'held' ? (q.reason === 'busy' ? t('will be sent when the agent’s input is free') : q.reason === 'turn' ? t('will be sent when the turn ends') : t('will be sent when the menu closes')) : queuedWhy }}</span>
               <button v-if="q.state !== 'sending' && (canCancel || q.state === 'held') && q.raw" type="button" class="queued-cancel" :disabled="Boolean(cancelling)" @click="cancelQueued(q)">
                 <UIcon :name="cancelling === q.id ? 'i-lucide-loader-circle' : 'i-lucide-undo-2'" :class="{ spin: cancelling === q.id }" />{{ t('Cancel') }}
               </button>
