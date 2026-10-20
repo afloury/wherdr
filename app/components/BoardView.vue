@@ -13,13 +13,16 @@
 // coordinator (each machine's lane) and a repo's project coordinator (its lane;
 // 1.x: `Space` on a heading). A task with no agent opens its sheet
 // (TaskSheet), which the panel opens too; "+ New task" adds one (NewTaskSheet).
+// A task archived from its sheet leaves the Board at once, with a toast that
+// offers Restore for a few seconds; "Archived" lists the archived tasks, each
+// one's sheet read-only with Restore (as in 1.x).
 // A machine without herdr-projects 1.2.1+ says what to do instead
 // (ProjectsUpgradeNote).
 //
 // What is kept on this device only: the machine shown, the grouping, folded
 // headings. Nothing about the projects themselves: that is herdr-projects'.
 import {
-  type CoordinatorTarget, TASK_GROUPS, type TaskGroup, type TaskRow, groupByRepo, groupCounts, sortTasks,
+  type CoordinatorTarget, TASK_GROUPS, type TaskGroup, type TaskRow, groupByRepo, groupCounts, sortTasks, taskKey,
 } from '#shared/projectsTasks'
 import type { PanelTarget } from './BoardPanel.vue'
 
@@ -80,8 +83,23 @@ function pickGrouping(g: Grouping) {
 interface Card { key: string, machine: string, task: TaskRow, stale: boolean, readAt?: number }
 const cardOf = (m: { machine: string, stale?: boolean, at?: number }, task: TaskRow): Card =>
   ({ key: `${m.machine}|${task.id}`, machine: m.machine, task, stale: Boolean(m.stale || task.stale), readAt: task.stale ? task.readAt : m.at })
+// Tasks archived from here (`<machine>|<id>`): off the Board at once, before a
+// read of the Board leaves them out; forgotten once a read does.
+const archivedHere = shallowRef(new Set<string>())
+const setArchivedHere = (key: string, on: boolean) => {
+  const next = new Set(archivedHere.value)
+  if (on) next.add(key)
+  else next.delete(key)
+  archivedHere.value = next
+}
+watch(board, (b) => {
+  if (!b || !archivedHere.value.size) return
+  const listed = new Set(b.machines.flatMap(m => m.tasks.filter(t => !t.archived).map(t => `${m.machine}|${t.id}`)))
+  const kept = [...archivedHere.value].filter(k => listed.has(k))
+  if (kept.length !== archivedHere.value.size) archivedHere.value = new Set(kept)
+})
 // A machine Herdr did not answer for keeps its last tasks, marked as older.
-const allCards = computed<Card[]>(() => boards.value.flatMap(m => sortTasks(m.tasks.filter(t => !t.archived)).map(task => cardOf(m, task))))
+const allCards = computed<Card[]>(() => boards.value.flatMap(m => sortTasks(m.tasks.filter(t => !t.archived && !archivedHere.value.has(`${m.machine}|${t.id}`))).map(task => cardOf(m, task))))
 const cards = computed(() => allCards.value.filter(c => shownScope.value === ALL || c.machine === shownScope.value))
 const showAll = ref(false)
 const columns = computed(() => TASK_GROUPS.map((id) => {
@@ -106,7 +124,7 @@ function summary(rows: TaskRow[]): string {
   return parts.join(' · ') || (c.done ? tl(`${c.done} done`, `${c.done} fait${c.done > 1 ? 's' : ''}`) : tl('no task', 'aucune tâche'))
 }
 const machineGroups = computed(() => shownBoards.value.map((m) => {
-  const rows = m.tasks.filter(t => !t.archived)
+  const rows = m.tasks.filter(t => !t.archived && !archivedHere.value.has(`${m.machine}|${t.id}`))
   return {
     machine: m.machine,
     summary: summary(rows),
@@ -171,7 +189,10 @@ function openCard(c: Card) {
 // The open task as the last read has it (its group or review may have moved on).
 const pickedTask = computed(() => {
   const p = picked.value
-  return p ? allCards.value.find(c => c.key === p.key)?.task || p.task : null
+  if (!p) return null
+  return allCards.value.find(c => c.key === p.key)?.task
+    || archivedCards.value.find(c => c.key === p.key)?.task
+    || (archivedHere.value.has(p.key) ? { ...p.task, archived: true } : p.task)
 })
 // A push about a task opens it: `#/board?machine=<key>&task=<repo>/<n>`. The
 // same id can be on two machines: only that machine's task opens (a link with
@@ -203,8 +224,70 @@ watch([opening, board, reads], () => {
     return
   }
   opening.value = null
-  toast(tl('That task is no longer on the Board', 'Cette tâche n’est plus sur le Board'), true)
+  // Not on the Board: maybe archived, whose sheet opens read-only with Restore.
+  openArchived(want)
 })
+async function openArchived(want: { machine: string | null, id: string }) {
+  const where = boards.value.filter(m => m.status === 'ready' && (want.machine === null || m.machine === want.machine)).map(m => m.machine)
+  const found = (await Promise.all(where.map(m => api<{ machine: string, tasks: TaskRow[] }>(`/api/tasks/archived?machine=${encodeURIComponent(m)}`).catch(() => null))))
+    .flatMap(r => (r ? r.tasks.filter(t => t.id === want.id).map(t => cardOf({ machine: r.machine }, t)) : []))
+  if (found.length === 1) return openSheet(found[0]!)
+  toast(tl('That task is no longer on the Board', 'Cette tâche n’est plus sur le Board'), true)
+}
+
+// ------------------------------------------------------------ archived
+// "Archived": each machine's archived tasks, read when it is opened (and again
+// after an archive or a restore from here), newest first.
+const showArchived = ref(false)
+const archivedBoards = shallowRef<{ machine: string, tasks: TaskRow[], error?: string }[]>([])
+const archivedLoading = ref(false)
+let archivedSeq = 0
+async function loadArchived() {
+  if (!showArchived.value) return
+  const id = ++archivedSeq
+  archivedLoading.value = true
+  const where = boards.value.filter(m => m.status === 'ready').map(m => m.machine)
+  const got = await Promise.all(where.map(machine => api<{ machine: string, tasks: TaskRow[] }>(`/api/tasks/archived?machine=${encodeURIComponent(machine)}`)
+    .then(r => ({ machine, tasks: r.tasks }))
+    .catch((e: Error) => ({ machine, tasks: [] as TaskRow[], error: e.message }))))
+  if (id !== archivedSeq) return
+  archivedBoards.value = got
+  archivedLoading.value = false
+}
+function toggleArchived() {
+  showArchived.value = !showArchived.value
+  if (showArchived.value) loadArchived()
+}
+const archivedCards = computed<Card[]>(() => archivedBoards.value
+  .filter(m => shownScope.value === ALL || m.machine === shownScope.value)
+  .flatMap(m => m.tasks.map(t => cardOf({ machine: m.machine }, t))))
+const archivedErrors = computed(() => archivedBoards.value.filter(m => m.error && (shownScope.value === ALL || m.machine === shownScope.value)))
+
+// Archived from its sheet: off the Board now, its agent's panel closed (the
+// agent ends with its space), and a few seconds to take it back.
+function onArchived(machine: string, task: TaskRow) {
+  setArchivedHere(`${machine}|${task.id}`, true)
+  const p = panel.value
+  if (p?.kind === 'task' && p.machine === machine && p.id === task.id) panel.value = null
+  const name = taskKey(task.id, task.repoKey)
+  toast(tl(`${name} archived`, `${name} archivée`), false, undefined, {
+    label: tl('Restore', 'Restaurer'), icon: 'i-lucide-archive-restore', run: () => restoreTask(machine, task),
+  })
+  reload().then(loadArchived)
+}
+async function restoreTask(machine: string, task: TaskRow) {
+  try {
+    await api('/api/tasks/action', { machine, id: task.id, action: 'restore' })
+    haptic()
+    toast(tl(`${taskKey(task.id, task.repoKey)} restored`, `${taskKey(task.id, task.repoKey)} restaurée`))
+    onRestored(machine, task)
+  } catch (e) { toast((e as Error).message, true) }
+}
+function onRestored(machine: string, task: TaskRow) {
+  setArchivedHere(`${machine}|${task.id}`, false)
+  archivedBoards.value = archivedBoards.value.map(m => (m.machine === machine ? { ...m, tasks: m.tasks.filter(t => t.id !== task.id) } : m))
+  reload().then(loadArchived)
+}
 
 // ------------------------------------------------------------ new task
 const newOpen = ref(false)
@@ -269,8 +352,11 @@ const panelKey = computed(() => {
   if (!p) return ''
   return p.kind === 'task' ? `t|${p.machine}|${p.id}` : `c|${p.machine}|${p.to.kind}|${p.to.kind === 'project' ? p.to.repo : ''}`
 })
+// Its agent is gone: its sheet, while the task is on the Board (an archived
+// one, whose space herdr-projects just closed, is not opened again).
 function panelNoAgent() {
-  panelSheet()
+  const p = panel.value
+  if (p?.kind === 'task' && allCards.value.some(c => c.machine === p.machine && c.task.id === p.id)) panelSheet()
   panel.value = null
 }
 
@@ -344,6 +430,11 @@ function back() {
         <div class="board-grouping" role="group" :aria-label="tl('View', 'Vue')">
           <button type="button" :class="{ on: grouping === 'global' }" :aria-pressed="grouping === 'global'" @click="pickGrouping('global')">{{ tl('Global', 'Global') }}</button>
           <button type="button" :class="{ on: grouping === 'repo' }" :aria-pressed="grouping === 'repo'" @click="pickGrouping('repo')">{{ tl('By repo', 'Par dépôt') }}</button>
+        </div>
+        <div class="board-grouping board-archived-toggle">
+          <button type="button" :class="{ on: showArchived }" :aria-pressed="showArchived" :disabled="offlineView" @click="toggleArchived">
+            <UIcon name="i-lucide-archive" />{{ tl('Archived', 'Archivées') }}
+          </button>
         </div>
       </div>
 
@@ -440,6 +531,22 @@ function back() {
             </template>
           </section>
         </template>
+
+        <!-- Archived tasks: each opens its sheet, read-only with Restore. -->
+        <section v-if="showArchived" class="board-archived" :aria-label="tl('Archived tasks', 'Tâches archivées')">
+          <h3 class="board-col-head archived"><span>{{ tl('Archived', 'Archivées') }}</span><span class="pp-count">{{ archivedCards.length }}</span></h3>
+          <p v-for="m in archivedErrors" :key="m.machine" class="board-note error">
+            <b v-if="several">{{ machineLabel(m.machine) }} · </b>{{ m.error }}
+          </p>
+          <div class="board-archived-body">
+            <TaskCard
+              v-for="c in archivedCards" :key="c.key" :task="c.task" :machine="several && shownScope === ALL ? machineName(c.machine) : undefined"
+              @open="openSheet(c)"
+            />
+          </div>
+          <p v-if="archivedLoading && !archivedCards.length" class="board-empty">{{ t('Loading…') }}</p>
+          <p v-else-if="!archivedCards.length" class="board-empty">{{ t('Nothing here') }}</p>
+        </section>
       </div>
     </template>
     <BoardPanel
@@ -447,7 +554,10 @@ function back() {
       :machine-label="machineLabel(panel.machine)" :read-only="readOnly(panel.machine)" :reachable="writable.some(m => m.machine === panel!.machine)"
       @close="panel = null" @sheet="panelSheet" @no-agent="panelNoAgent"
     />
-    <TaskSheet v-model:open="sheetOpen" :task="pickedTask" :machine="picked?.machine ?? ''" :read-only="readOnly(picked?.machine ?? '')" :in-panel="Boolean(panel)" @changed="reload" />
+    <TaskSheet
+      v-model:open="sheetOpen" :task="pickedTask" :machine="picked?.machine ?? ''" :read-only="readOnly(picked?.machine ?? '')" :in-panel="Boolean(panel)"
+      :refresh="reload" @archived="onArchived" @restored="onRestored"
+    />
     <NewTaskSheet v-model:open="newOpen" :machines="writable.map(m => m.machine)" :repos="reposByMachine" :machine="newFor.machine" :repo="newFor.repo" @added="added" />
   </section>
 </template>

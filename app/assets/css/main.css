@@ -3798,3 +3798,22 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
   .home-actions { gap: 0; }
 }
 @media (prefers-reduced-motion: reduce) { #home.drawer, .list-scrim { animation: none; } }
+
+/* Board: archived tasks, and the sheet of one (read-only, Restore). */
+.board-archived-toggle { margin-left: 0; }
+.board-grouping.board-archived-toggle button { display: inline-flex; align-items: center; gap: 6px; }
+.board-archived-toggle svg { width: 13px; height: 13px; }
+.board-archived-toggle button:disabled { opacity: .5; cursor: default; }
+.board-archived { flex: none; margin-top: 18px; border-top: 1px solid var(--line); }
+.board-col-head.archived { color: var(--text-3); padding-left: 0; padding-right: 0; }
+.board-grid.desk .board-col-head.archived { padding-left: 10px; padding-right: 10px; }
+.board-archived-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 8px; padding: 10px 0; }
+.board-grid.desk .board-archived-body { padding: 10px; }
+.board-archived-body > .task-card { width: 100%; max-width: none; }
+.board-archived .board-empty, .board-archived .board-note { margin: 4px 0 10px; }
+.board-grid.desk .board-archived .board-empty, .board-grid.desk .board-archived .board-note { margin-left: 10px; margin-right: 10px; }
+.task-chip.task-archived { display: inline-flex; align-items: center; gap: 4px; color: var(--ochre); border-color: color-mix(in srgb, var(--ochre) 45%, var(--line)); }
+.task-chip.task-archived svg { width: 11px; height: 11px; }
+.task-sheet-archived { margin: 0; }
+.task-sheet-error { margin: 0; }
+.hw-toast .hw-toast-action { border-radius: 0; font: 600 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }

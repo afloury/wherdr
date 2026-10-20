@@ -66,16 +66,19 @@ export interface TaskDetails {
   reviewRounds: number
   plan: string
   research: boolean
+  // Put away (`archivedAt`): 1.2.1's `details` leaves it out, so the server
+  // reads it from the task's file, as the closing note.
+  archived: boolean
 }
 
 // What wherdr can do on a task: 1.x `tell`, `approve`, `delegate`, `stop`,
-// `retry`, `archive` (and its pane in Herdr).
-export interface TaskActions { tell: boolean, approve: boolean, delegate: boolean, stop: boolean, retry: boolean, archive: boolean }
+// `retry`, `archive`, `restore` (and its pane in Herdr).
+export interface TaskActions { tell: boolean, approve: boolean, delegate: boolean, stop: boolean, retry: boolean, archive: boolean, restore: boolean }
 // The task commands that take nothing but the task's id.
-export const TASK_COMMANDS = ['delegate', 'stop', 'retry', 'archive'] as const
+export const TASK_COMMANDS = ['delegate', 'stop', 'retry', 'archive', 'restore'] as const
 export type TaskCommand = typeof TASK_COMMANDS[number]
 export const isTaskCommand = (v: unknown): v is TaskCommand => TASK_COMMANDS.includes(v as TaskCommand)
-export const NO_ACTIONS: TaskActions = { tell: false, approve: false, delegate: false, stop: false, retry: false, archive: false }
+export const NO_ACTIONS: TaskActions = { tell: false, approve: false, delegate: false, stop: false, retry: false, archive: false, restore: false }
 
 // One board per machine (its HOME): the named sessions of a machine share it.
 export interface MachineTasks {
@@ -251,6 +254,7 @@ export function parseTaskDetails(text: string): TaskDetails {
     reviewRounds: Array.isArray(d.reviews) ? d.reviews.length : 0,
     plan: plan ? str(plan.text, 8000) : '',
     research: d.research === true,
+    archived: Boolean(t.archivedAt ?? d.archivedAt),
     summary: str(d.summary ?? t.summary, 8000).trim(),
     report: parseReport(d.report),
   }
@@ -278,13 +282,15 @@ function parseReport(v: unknown): TaskDetails['report'] {
 //   agent whose terminal is gone (the task is still at work: Stop is offered);
 // - `archive` puts a task away (`restore` brings it back): not in a stage where
 //   something runs (store/files.rs SLOT_STAGES, plus queued and attempts).
+//   An archived task is read-only, as 1.x has it (store/tasks.rs refuses any
+//   change "Restore it before making changes"): `restore` is all it offers.
 export type TaskFailure = Pick<TaskDetails, 'failureStage' | 'failureAuth'>
 // 1.2.1 store/files.rs SLOT_STAGES, and the stages archive.rs also refuses.
 const ACTIVE_STAGES = ['starting', 'setup', 'working', 'checking', 'pushing', 'reviewing', 'merging', 'queued', 'attempts']
 // A failure before any agent was on it: Start again, not Retry.
 const BEFORE_AGENT = ['start', 'setup', 'attempts']
 export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group' | 'archived' | 'app'>, f?: TaskFailure | null): TaskActions {
-  if (r.archived) return NO_ACTIONS
+  if (r.archived) return { ...NO_ACTIONS, restore: true }
   const live = r.group !== 'todo' && r.group !== 'done'
   const limitStop = r.stage === 'stopped' && r.state === 'blocked'
   const failed = r.stage === 'failed'
@@ -299,6 +305,7 @@ export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group
       || (r.stage === 'working' && r.state === 'error'),
     retry: limitStop || r.stage === 'nosummary' || retryFailed,
     archive: r.group !== 'working' && !ACTIVE_STAGES.includes(r.stage),
+    restore: false,
   }
 }
 
@@ -514,7 +521,7 @@ export function detailsFromTaskFile(t: unknown): TaskDetails | null {
   const o = obj(t)
   if (!o || !isTaskId(o.id)) return null
   return parseTaskDetails(JSON.stringify({
-    task: { id: o.id, title: o.title, stage: o.stage, msg: o.msg, description: o.description, summary: o.summary },
+    task: { id: o.id, title: o.title, stage: o.stage, msg: o.msg, description: o.description, summary: o.summary, archivedAt: o.archivedAt ?? null },
     report: o.report ?? null,
     failure: o.failure ?? null, review: o.review ?? null, reviews: [],
     // The program on it: `on` while one works, then `agent`, as `details` gives it; else the row's `app`.
