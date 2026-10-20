@@ -1,5 +1,7 @@
 // Compact list (Settings › Appearance), on unless this device turned it off:
 // a missing preference follows the default; a saved choice takes priority.
+// Keep the existing 1/0 storage format: 0 now selects the two-line task row,
+// so devices that chose Normal retain their choice without a storage rewrite.
 export function readCompactList(stored: string | null): boolean {
   return stored !== '0'
 }

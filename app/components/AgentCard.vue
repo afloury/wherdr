@@ -8,10 +8,8 @@ const list = createListShown()
 </script>
 
 <script setup lang="ts">
-// Card of an agent in the list: title, state and model ("working · claude ·
-// opus 5.5"), folder
-// (or worktree branch), preview of its last reply, and one-tap answers
-// to its question.
+// Dense home row: avatar, title and state. Normal mode adds one activity
+// line; agents outside the Board keep one-tap answers while waiting.
 // Space with several tabs or panes (`row`): a single card, named after the space,
 // with its mini-map, the number of tabs / panes, and the state, preview and
 // answers of its most urgent pane (`pane`). Tapping it opens the space.
@@ -31,6 +29,7 @@ const props = defineProps<{ pane: Pane, row?: Row | null, board?: BoardCard | nu
 const space = computed(() => (props.row && props.row.kind === 'space' ? props.row : null))
 // Pane whose state the card shows.
 const statePane = computed(() => props.pane)
+const taskCard = computed(() => Boolean(props.board && !props.board.coordinator))
 // Compact list: one line (avatar, title, tab dots or pane count, state dot);
 // while the agent waits for an answer, its question and one-tap answers open below.
 const compact = computed(() => compactMeta({ tabs: space.value?.tabs.length, panes: space.value?.panes.length }))
@@ -52,9 +51,14 @@ const boardStats = computed(() => {
   return [b.progress != null ? `${b.progress}%` : '', b.since ? elapsedLabel(boardNow.value - b.since) : ''].filter(Boolean).join(' ')
 })
 // A coordinator: its last message, unless the card already shows it opened below.
-const boardLine = computed(() => (props.board?.coordinator ? (more.value ? '' : props.pane.preview || '') : props.board?.msg || ''))
-// A task's second line: its stage first (`UNDER REVIEW · CODEX`), then the board's line.
-const twoLines = computed(() => Boolean(boardLine.value || props.board?.stage))
+const boardLine = computed(() => {
+  if (props.board?.coordinator) return more.value ? '' : props.pane.preview || ''
+  if (props.board) return props.board.msg || ''
+  return !compactList.value && !more.value ? preview.value || '' : ''
+})
+// Normal tasks add one activity line. Compact tasks never expand; their
+// question and details remain in the conversation or the task sheet.
+const twoLines = computed(() => taskCard.value ? !compactList.value : Boolean(boardLine.value || props.board?.stage))
 const subtitle = computed(() => conversationSubtitle(props.pane, ws.value))
 // Selection (computer): the pane being viewed, or for a space one of its panes / tabs.
 const route = useRoute()
@@ -85,7 +89,7 @@ const interactive = computed(() => props.pane.interaction === 'terminal' && prop
 // Recognized waiting screen (Codex hooks…): its title says better what is expected.
 const screen = computed(() => knownScreen(props.pane))
 const preview = computed(() => props.pane.usageLimit ? tl('Usage limit reached', 'Limite de quota atteinte') : interactive.value ? tl('Interactive agent screen', 'Écran interactif de l’agent') : (screen.value && screenSummary(screen.value)) || (props.pane.menu && props.pane.status !== 'working' && menuSummary(props.pane.menu)) || (prompt.value ? prompt.value.kind === 'self-update' ? t(prompt.value.question || '') : prompt.value.question : props.pane.preview))
-const more = computed(() => !compactList.value || compactOpen({ status: props.pane.status, preview: preview.value, detail: prompt.value?.detail, choices: quick.value.length }))
+const more = computed(() => !taskCard.value && compactOpen({ status: props.pane.status, preview: preview.value, detail: prompt.value?.detail, choices: quick.value.length }))
 // Read / unread: only for an agent that has finished (ready).
 const unread = computed(() => (space.value ? space.value.panes.filter(p => p.agent && p.status === 'done') : []))
 const readItem = computed(() => {
@@ -196,49 +200,26 @@ onUnmounted(list.unmount)
 <template>
   <UContextMenu :disabled="sheetMenus" :items="contextItems" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="onContextOpen">
     <div
-      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, compact: compactList, open: compactList && more, 'home-task': board, 'home-coord': board?.coordinator, 'home-task-two': compactList && twoLines }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
+      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, compact: true, open: more, 'home-task': board, 'task-row': taskCard, 'home-coord': board?.coordinator, 'home-task-two': twoLines }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
       role="button" tabindex="0" @pointerdown="down" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
       @contextmenu="onContext" @selectstart.prevent @click="open" @keydown.enter.self="open"
     >
-      <template v-if="compactList">
-        <AgentAvatar :agent="pane.agent" :coordinator="board?.coordinator" />
-        <span v-if="board?.tag" class="card-tag home-task-tag">{{ board.tag }}</span>
-        <span class="card-title">{{ title }}</span>
-        <span v-if="boardStats" class="home-task-stats">{{ boardStats }}</span>
-        <span v-if="statePane.usageLimit" class="card-tag quota-limit" :title="stateTitle">{{ tl('Limit', 'Quota') }}</span>
-        <span v-if="compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
-        <span v-else-if="compact.panes" class="card-panes" :title="counts">{{ compact.panes }}</span>
-        <span class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
-        <span v-if="twoLines" class="home-task-line" :title="[board?.stage, boardLine].filter(Boolean).join(' — ')"><span v-if="board?.stage" class="home-task-stage">{{ board.stage }}</span>{{ boardLine }}</span>
-        <button v-if="board?.onBoard" type="button" class="home-task-go" :title="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" :aria-label="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" @click.stop="board.onBoard"><UIcon name="i-lucide-square-kanban" /></button>
-      </template>
-      <template v-else>
-      <!-- A coordinator keeps its role's icon, even in a space shared with a terminal. -->
-      <span v-if="space && !board?.coordinator" class="space-avatar" :title="counts"><TabMap :layout="space.leadTab.layout" :panes="space.leadTab.panes" :current="pane.id" /></span>
-      <AgentAvatar v-else :agent="pane.agent" :coordinator="board?.coordinator" />
-      <div class="card-main">
-        <div class="card-title">
-          {{ title }}
-        </div>
-        <div class="card-meta">
-          <span v-if="board?.tag" class="card-tag home-task-tag">{{ board.tag }}</span>
-          <span v-if="board?.stage" class="home-task-stage">{{ board.stage }}</span>
-          <span v-if="boardStats" class="home-task-stats">{{ boardStats }}</span>
-          <span v-if="space" class="card-count">{{ counts }}</span>
-          <StatusPill :pane="statePane" model />
-        </div>
-        <div v-if="boardLine" class="card-where home-task-msg">{{ boardLine }}</div>
-        <!-- A coordinator's folder is herdr-projects' own: nothing to read there. -->
-        <div v-else-if="where && !board?.coordinator" class="card-where">
-          <UIcon v-if="space" name="i-lucide-corner-down-right" class="card-where-lead" /><UIcon v-else-if="branch" name="i-lucide-git-branch" />{{ where }}
-        </div>
-      </div>
-      </template>
+      <AgentAvatar :agent="pane.agent" :coordinator="board?.coordinator" />
+      <span v-if="board?.tag" class="card-tag home-task-tag">{{ board.tag }}</span>
+      <span class="card-title">{{ title }}</span>
+      <span v-if="boardStats" class="home-task-stats">{{ boardStats }}</span>
+      <span v-if="taskCard && pane.status === 'blocked'" class="card-tag task-attention">{{ t('Your turn') }}</span>
+      <span v-if="statePane.usageLimit && !taskCard" class="card-tag quota-limit" :title="stateTitle">{{ tl('Limit', 'Quota') }}</span>
+      <span v-if="!taskCard && compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
+      <span v-else-if="!taskCard && compact.panes" class="card-panes" :title="counts">{{ compact.panes }}</span>
+      <span class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
+      <span v-if="twoLines" class="home-task-line" :title="[board?.stage, boardLine].filter(Boolean).join(' — ')"><span v-if="taskCard && pane.usageLimit" class="home-task-stage quota-limit">{{ tl('Limit', 'Limite') }}</span><span v-if="board?.stage" class="home-task-stage">{{ board.stage }}</span>{{ boardLine }}</span>
+      <button v-if="board?.onBoard && !taskCard" type="button" class="home-task-go" :title="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" :aria-label="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" @click.stop="board.onBoard"><UIcon name="i-lucide-square-kanban" /></button>
       <Transition name="card-more" :appear="appear">
         <div v-if="more" class="card-more">
           <div class="card-more-in">
-            <!-- Space with several panes: the one that asks, on the mini-map and by name (the detailed card has both around its title). -->
-            <div v-if="compactList && space && space.panes.length > 1" class="card-where">
+            <!-- Space with several panes: the one that asks, on the mini-map and by name. -->
+            <div v-if="space && space.panes.length > 1" class="card-where">
               <TabMap :layout="space.leadTab.layout" :panes="space.leadTab.panes" :current="pane.id" /><span class="card-where-text">{{ where || kindLabel(pane.agent) }}</span>
             </div>
             <div v-if="prompt?.detail" class="card-detail" :title="detailLine(prompt.detail)">

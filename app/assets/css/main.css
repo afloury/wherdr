@@ -3839,3 +3839,6 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-sheet-archived { margin: 0; }
 .task-sheet-error { margin: 0; }
 .hw-toast .hw-toast-action { border-radius: 0; font: 600 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+
+.card.compact .task-attention { color: var(--rose); border-color: currentColor; }
+.card.compact.task-row .home-task-line { flex-basis: calc(100% - 26px); min-height: 1.3em; }
