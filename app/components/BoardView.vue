@@ -340,7 +340,7 @@ watch(board, (b) => {
 // "Open the chat" in a task's sheet: its agent in the panel, where replying
 // happens (the sheet has closed).
 function chatWith(machine: string, task: TaskRow) {
-  panel.value = { machine, kind: 'task', id: task.id }
+  panel.value = { machine, kind: 'task', id: task.id, chat: true }
   haptic()
 }
 // The panel's task, from its "Task" button or once its agent is gone.

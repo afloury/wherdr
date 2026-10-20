@@ -153,8 +153,9 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   await expect(panel).toHaveCount(0)
 
   // No message field in a sheet. DEMO-2 has had no agent yet: its sheet, nothing to
-  // chat with. DEMO-3 has one, whose pane is not known here: its sheet too, the chat
-  // off and saying why. Nothing is sent from a sheet.
+  // chat with. DEMO-3 has one, whose pane is not known here: its sheet too, whose
+  // chat opens the panel with a field that replies through herdr-projects (tell),
+  // the user's words after "--".
   if (phone) await page.getByRole('button', { name: /Needs you/ }).click()
   await card('DEMO-2').click()
   await expect(page.getByRole('dialog').locator('.task-sheet-msg')).toHaveText('Which changelog format?')
@@ -162,11 +163,15 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   await page.keyboard.press('Escape')
   if (phone) await page.getByRole('button', { name: /Working/ }).click()
   await card('DEMO-3').click()
-  await expect(page.getByRole('dialog').locator('.task-sheet-nochat')).toBeVisible()
-  await expect(page.getByRole('dialog').getByRole('button', { name: 'Open the chat' })).toBeDisabled()
   await expect(page.getByRole('dialog').getByRole('textbox')).toHaveCount(0)
-  await page.keyboard.press('Escape')
-  expect(callLog().some(c => c.startsWith('tell'))).toBe(false)
+  await page.getByRole('dialog').getByRole('button', { name: 'Open the chat' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(panel.locator('.board-panel-name')).toContainText('DEMO-3')
+  await panel.locator('#board-panel-tell').fill('--keep-a-changelog please')
+  await page.screenshot({ path: `.shots/board-1x-tell-panel-${testInfo.project.name}.png` })
+  await panel.getByRole('button', { name: 'Send', exact: true }).click()
+  await expect.poll(callLog).toContain('tell -- demo/3 --keep-a-changelog please')
+  await closePanel(page, phone)
   await expect(page.locator('.board-panel')).toHaveCount(0)
   // No chat box on the Board: the top bar's Coordinator button opens it in the panel,
   // in both views; one not started yet takes a first message, which starts it.

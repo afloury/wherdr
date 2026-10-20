@@ -1243,7 +1243,9 @@ What the Board shows and does:
 - **A task's sheet**, from the panel (or at once for a task with no agent: to do, or its agent
   gone): description, plan, branch, pull request, review, what went wrong. **Open the chat**
   closes it and opens the task's agent in the side panel, where you reply: the sheet has no
-  message field. **Approve** merges finished work or says yes to a plan, after a confirmation; **Start**,
+  message field. When that agent has no pane now, the panel shows a field instead, and
+  herdr-projects passes your reply on (`tell`; on a plan that waits, it sends the plan back).
+  **Approve** merges finished work or says yes to a plan, after a confirmation; **Start**,
   **Stop**, **Retry** and **Archive** where herdr-projects takes them. After an action the sheet
   shows the task's new state, or why it was refused. **Archive** closes the sheet and takes the
   task off the Board, with **Restore** in a toast for a few seconds; **Archived** lists the

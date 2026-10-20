@@ -310,16 +310,19 @@ describe('the sheet\'s chat button (no message field)', () => {
     w.unmount()
   })
 
-  it('an agent herdr-projects would take a reply from, but with no pane now: the chat is off and says why', async () => {
+  it('an agent herdr-projects takes a reply for, with no pane now: the chat still opens the panel (its reply goes through tell there)', async () => {
     Object.assign(shown, { stage: 'working', failure: '', failureStage: '', pane: null })
     const chats: string[] = []
-    const w = await mountSuspended(TaskSheet, { props: { task: working, machine: 'a', open: true, onChat: (_m: string, t: TaskRow) => chats.push(t.id) } })
-    await vi.waitFor(() => expect(document.querySelector('.task-sheet-nochat')).not.toBeNull())
-    expect(chatButton()!.disabled).toBe(true)
+    const w = await mountSuspended(TaskSheet, { props: {
+      task: working, machine: 'a', open: true, 'onUpdate:open': (v: boolean) => w.setProps({ open: v }),
+      onChat: (_m: string, t: TaskRow) => chats.push(t.id),
+    } })
+    await vi.waitFor(() => expect(chatButton()?.disabled).toBe(false))
+    expect(document.querySelector('.task-sheet textarea')).toBeNull()
     chatButton()!.click()
     await flushPromises()
-    expect(chats).toEqual([])
-    expect(w.props('open')).toBe(true)
+    expect(chats).toEqual(['demo/1'])
+    expect(w.props('open')).toBe(false)
     Object.assign(shown, { stage: 'approval' })
     w.unmount()
   })

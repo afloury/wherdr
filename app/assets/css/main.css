@@ -3812,5 +3812,5 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-chip.task-archived { display: inline-flex; align-items: center; gap: 4px; color: var(--ochre); border-color: color-mix(in srgb, var(--ochre) 45%, var(--line)); }
 .task-chip.task-archived svg { width: 11px; height: 11px; }
 .task-sheet-archived { margin: 0; }
-.task-sheet-error, .task-sheet-nochat { margin: 0; }
+.task-sheet-error { margin: 0; }
 .hw-toast .hw-toast-action { border-radius: 0; font: 600 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }

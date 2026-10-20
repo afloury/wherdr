@@ -5,7 +5,8 @@
 // task of the backlog), stop its agent (asked first), retry what went wrong,
 // archive it. What 1.x does not give for a task is not shown.
 // No message field here: "Open the chat" closes the sheet and opens the task's
-// agent in the Board's side panel (`chat`), where replying happens.
+// agent in the Board's side panel (`chat`), where replying happens (with no
+// pane for its agent, the panel's field sends the reply through herdr-projects).
 // After an action (Approve included) the sheet shows where the task now
 // stands: the Board and the task's details are read again before its buttons
 // come back, or the error stays in the sheet. Archive closes it: the Board
@@ -43,12 +44,9 @@ const hostCommands = computed(() => (['delegate', 'stop', 'retry', 'archive', 'r
 const pr = computed(() => details.value?.pr || props.task?.pr || '')
 const review = computed(() => details.value?.review || props.task?.review || null)
 const label = computed(() => (props.task ? taskKey(props.task.id, props.task.repoKey) : ''))
-// Its agent's pane, as this task's details name it: what the chat opens.
-const chatPane = computed(() => (archived.value ? null : failure.value?.pane || null))
-// Offered when it has an agent to talk to, or one herdr-projects would let you
-// reply to (`tell`): off, saying why, while that agent has no pane.
-const chatShown = computed(() => !archived.value && (Boolean(chatPane.value) || actions.value.tell))
-const chatWaiting = computed(() => !chatPane.value && loading.value)
+// Offered when it has an agent to talk to (its pane, as its details name it),
+// or one herdr-projects takes a reply for (`tell`), pane or not.
+const chatShown = computed(() => !archived.value && (Boolean(failure.value?.pane) || actions.value.tell))
 
 let seq = 0
 async function load() {
@@ -175,7 +173,7 @@ async function act(action: TaskCommand) {
 // The task's conversation in the Board's side panel, the sheet closed.
 function chat() {
   const t = props.task
-  if (!t || !chatPane.value) return
+  if (!t || !chatShown.value) return
   open.value = false
   emit('chat', props.machine, t)
 }
@@ -240,14 +238,13 @@ function chat() {
         <UButton v-if="actions.retry" color="primary" variant="outline" icon="i-lucide-rotate-ccw" :loading="running === 'retry'" :disabled="busy || offlineView" @click="act('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
         <UButton
           v-if="chatShown" class="task-chat" color="neutral" variant="outline" icon="i-lucide-message-square"
-          :loading="chatWaiting" :disabled="!chatPane" @click="chat"
+          @click="chat"
         >
           {{ tl('Open the chat', 'Ouvrir la discussion') }}
         </UButton>
         <UButton v-if="actions.stop" color="error" variant="outline" icon="i-lucide-square" :loading="running === 'stop'" :disabled="busy || offlineView" @click="act('stop')">{{ tl('Stop', 'Arrêter') }}</UButton>
         <UButton v-if="actions.archive" color="neutral" variant="ghost" icon="i-lucide-archive" class="task-archive" :loading="running === 'archive'" :disabled="busy || offlineView" @click="act('archive')">{{ tl('Archive', 'Archiver') }}</UButton>
       </div>
-      <p v-if="chatShown && !chatPane && !loading && failure" class="board-note task-sheet-nochat">{{ tl('Its agent is not running now: nothing to chat with.', 'Son agent ne tourne pas en ce moment : pas de discussion à ouvrir.') }}</p>
       <p v-if="actionError" class="board-note error task-sheet-error" role="alert">{{ actionError }}</p>
 
       <!-- wherdr in a container: the same actions, off, each saying why on hover. -->
