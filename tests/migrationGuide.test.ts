@@ -74,3 +74,69 @@ describe.skipIf(process.platform === 'win32')('herdr-projects 1.x guide: the way
     expect(readFileSync(at('.herdr-projects/acme/PROJECT.md'), 'utf8')).toBe('# Acme\n')
   })
 })
+
+// Step 1 (backup) and step 5 of the way back (Herdr's config from that backup), run as written.
+const blocks = (part: string) => [...part.matchAll(/```sh\n([\s\S]*?)```/g)].map(m => m[1]!.replace(/^ {5}|^ {3}/gm, ''))
+const backUp = blocks(guide.slice(guide.indexOf('## 1. Back up'), guide.indexOf('## 2. Install'))).join('')
+const restoreConfig = blocks(back).filter(b => b.includes('config.toml')).join('\n')
+
+describe.skipIf(process.platform === 'win32')('herdr-projects 1.x guide: backup and Herdr config', () => {
+  // A HOME with 0.2's files, and a `herdr` stand-in whose `config check` passes or fails.
+  function setUpHome(check: 'pass' | 'fail') {
+    home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-guide-'))
+    const at = (p: string) => path.join(home, p)
+    mkdirSync(at('.herdr-projects/acme'), { recursive: true })
+    writeFileSync(at('.herdr-projects/acme/PROJECT.md'), '# Acme\n')
+    mkdirSync(at('.config/herdr'), { recursive: true })
+    writeFileSync(at('.config/herdr/config.toml'), '# 0.2 lines\n')
+    mkdirSync(at('bin'))
+    writeFileSync(at('bin/herdr'), `#!/bin/sh\n[ "$1 $2" = "config check" ] && exit ${check === 'pass' ? 0 : 1}\nexit 0\n`, { mode: 0o755 })
+    return at
+  }
+  const sh = (code: string) => spawnSync('sh', ['-c', code], {
+    env: { HOME: home, TMPDIR: home, PATH: `${path.join(home, 'bin')}:${process.env.PATH}` }, encoding: 'utf8',
+  })
+
+  it('makes one archive, records its path, and keeps the first one on a second run', () => {
+    const at = setUpHome('pass')
+    const first = sh(backUp)
+    expect(first.stdout).toContain('backup ok:')
+    const kept = readFileSync(at('herdr-projects-0.2-backup.path'), 'utf8').trim()
+    expect(execFileSync('tar', ['tzf', kept], { encoding: 'utf8' })).toContain('.herdr-projects/acme/PROJECT.md')
+    // 1.x changes the config, then the block runs again: the first backup stays the one recorded.
+    writeFileSync(at('.config/herdr/config.toml'), '# 1.x lines\n')
+    expect(sh(backUp).stdout).toContain('backup already made')
+    expect(readFileSync(at('herdr-projects-0.2-backup.path'), 'utf8').trim()).toBe(kept)
+  })
+
+  it('records no backup when this HOME has none of 0.2\'s files', () => {
+    home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-guide-'))
+    expect(sh(backUp).stdout).toContain('NO 0.2 FILES FOUND')
+    expect(existsSync(path.join(home, 'herdr-projects-0.2-backup.path'))).toBe(false)
+    expect(readdirSync(home).filter(f => f.endsWith('.tgz'))).toEqual([])
+  })
+
+  it('restores Herdr\'s config from the backup and keeps the current file beside it', () => {
+    const at = setUpHome('pass')
+    sh(backUp)
+    writeFileSync(at('.config/herdr/config.toml'), '# 1.x lines\n')
+    expect(sh(restoreConfig).stdout).toContain('checked:')
+    expect(readFileSync(at('.config/herdr/config.toml'), 'utf8')).toBe('# 0.2 lines\n')
+    expect(readFileSync(at('.config/herdr/config.toml.before-0.2-restore'), 'utf8')).toBe('# 1.x lines\n')
+  })
+
+  it('replaces nothing when Herdr rejects the config from the backup', () => {
+    const at = setUpHome('fail')
+    sh(backUp)
+    writeFileSync(at('.config/herdr/config.toml'), '# 1.x lines\n')
+    expect(sh(restoreConfig).stdout).toContain('STOP: nothing restored')
+    expect(readFileSync(at('.config/herdr/config.toml'), 'utf8')).toBe('# 1.x lines\n')
+    expect(existsSync(at('.config/herdr/config.toml.before-0.2-restore'))).toBe(false)
+  })
+
+  it('goes back to wherdr 1.3.4 natively, with no Docker route', () => {
+    const toWherdr134 = back.slice(back.indexOf('Go back to wherdr 1.3.4'), back.indexOf('## Moving from Docker'))
+    expect(toWherdr134).toContain('WHERDR_REF=v1.3.4')
+    expect(toWherdr134).not.toMatch(/docker/i)
+  })
+})
