@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  NOTIFY_SETUP, NO_ACTIONS, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, coordinatorPhase, coordinatorRestartArgs, coordinatorStatusArgs, coordinatorSubject, detailsFromTaskFile, parseCoordinatorStatus, groupByRepo, groupCounts, groupOf,
+  NOTIFY_SETUP, NO_ACTIONS, addArgs, agentKind, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, coordinatorPhase, coordinatorRestartArgs, coordinatorStatusArgs, coordinatorSubject, detailsFromTaskFile, parseCoordinatorStatus, groupByRepo, groupCounts, groupOf,
   rowFromTaskFile, stateFromTaskFile, isTaskId, parseReview, parseRepoKey, parseTaskDetails, parseTaskList, prNumber, repoKeysFromFile, sortTasks, taskActions, taskKey, taskNotice,
 } from '../shared/projectsTasks'
 
@@ -354,5 +354,46 @@ describe('commands, by repo, and push', () => {
   it('the migration guide gives the same board.notify command as Settings', () => {
     const doc = readFileSync(path.join(import.meta.dirname, '../docs/herdr-projects-1x.md'), 'utf8')
     expect(doc).toContain(NOTIFY_SETUP('~/.herdr-projects/data/bin/herdr-projects'))
+  })
+})
+
+describe('Start with an agent (delegate --worker.agent, show <id> --json)', () => {
+  it('delegate: no agent is the task\'s default, exactly as before; an agent goes before -- as a setting for this task', () => {
+    expect(delegateArgs('demo/5')).toEqual(['delegate', '--', 'demo/5'])
+    expect(delegateArgs('demo/5', null)).toEqual(['delegate', '--', 'demo/5'])
+    expect(delegateArgs('demo/5', 'codex')).toEqual(['delegate', '--worker.agent=codex', '--', 'demo/5'])
+  })
+
+  it('an agent name is one plain word, never an option nor a model', () => {
+    for (const ok of ['claude', 'codex', 'pi', 'qodercli', 'kimi-code']) expect(isAgentName(ok)).toBe(true)
+    for (const bad of ['', '--now', 'codex/gpt-5', 'Claude', 'codex --merge.by=itself', 'a b', 7, null, 'x'.repeat(41)]) expect(isAgentName(bad)).toBe(false)
+  })
+
+  it('reads worker.agent and where it comes from in show\'s settings', () => {
+    const show = JSON.stringify({ settings: [
+      { name: 'worker.effort', kind: 'work', value: 'default', from: 'built in', place: 'builtin', own: false, note: '' },
+      { name: 'worker.agent', kind: 'work', value: 'codex/gpt-5.5', from: 'your entry for demo', place: 'repo', own: false, note: '' },
+    ], problems: [] })
+    expect(parseWorkerAgent(show)).toEqual({ value: 'codex/gpt-5.5', kind: 'codex', place: 'repo', from: 'your entry for demo' })
+    expect(agentKind('claude')).toBe('claude')
+  })
+
+  it('putting back what the task had: its own value (set), or none (unset)', () => {
+    expect(restoreAgentArgs('demo/5', null)).toEqual(['unset', '--task=demo/5', '--', 'worker.agent'])
+    expect(restoreAgentArgs('demo/5', 'codex/gpt-5.5')).toEqual(['set', '--task=demo/5', '--', 'worker.agent', 'codex/gpt-5.5'])
+  })
+
+  it('a run is over back in the backlog or done; waiting for another task or a slot is still the run', () => {
+    expect(runOver({ stage: 'todo', state: 'idle', archived: false })).toBe(true)
+    expect(runOver({ stage: 'done', state: 'done', archived: false })).toBe(true)
+    for (const stage of ['after', 'queued', 'starting', 'working', 'approval', 'failed', 'stopped']) expect(runOver({ stage, state: 'idle', archived: false })).toBe(false)
+    expect(runOver({ stage: 'todo', state: 'idle', archived: true })).toBe(false)
+  })
+
+  it('no worker.agent, or not JSON: no default known', () => {
+    expect(parseWorkerAgent('{"settings":[]}')).toBeNull()
+    expect(parseWorkerAgent('{"settings":[{"name":"worker.agent","value":""}]}')).toBeNull()
+    expect(parseWorkerAgent('not json')).toBeNull()
+    expect(parseWorkerAgent('[]')).toBeNull()
   })
 })
