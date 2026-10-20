@@ -62,7 +62,7 @@ test('the eyebrow shows both versions and opens Settings › About', async ({ pa
   await expect(page).toHaveURL(/section=about/)
 })
 
-test('the crossed-out bell opens the notification settings without turning quiet off', async ({ page }) => {
+test('quiet mode: a line in the list opens the notification settings without turning quiet off', async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(ServiceWorkerContainer.prototype, 'ready', { get: () => Promise.resolve({ pushManager: { getSubscription: async () => null } }) })
   })
@@ -73,10 +73,30 @@ test('the crossed-out bell opens the notification settings without turning quiet
     return route.fulfill({ json: { global: { until: null }, device: null } })
   })
   await page.goto('/')
-  const bell = page.getByRole('link', { name: 'Notifications silenced — open settings' }).first()
-  await expect(bell).toBeVisible()
-  await bell.click()
+  const hint = page.getByRole('link', { name: 'Notifications silenced — open settings' })
+  await expect(hint).toHaveCount(1)
+  await expect(hint).toBeVisible()
+  // Outside the header: the header has no bell.
+  await expect(page.locator('.home-top .home-quiet, .home-top [aria-label="Notifications silenced — open settings"]')).toHaveCount(0)
+  await hint.click()
   await expect(page).toHaveURL(/section=notifications/)
   await expect(page.locator('.quiet-toggle').first()).toBeVisible()
   expect(writes).toEqual([])
+})
+
+test('the header keeps its shape when quiet mode starts or ends', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(ServiceWorkerContainer.prototype, 'ready', { get: () => Promise.resolve({ pushManager: { getSubscription: async () => null } }) })
+  })
+  let quiet = false
+  await page.route('**/api/push/quiet', route => route.fulfill({ json: { global: quiet ? { until: null } : null, device: null } }))
+  const header = async () => page.locator('.home-actions').evaluate(el => [...el.querySelectorAll('button, a')].map(b => b.getAttribute('aria-label')))
+  await page.goto('/')
+  await expect(page.locator('.home-version')).toBeVisible()
+  await expect(page.locator('.home-quiet')).toHaveCount(0)
+  const off = await header()
+  quiet = true
+  await page.reload()
+  await expect(page.locator('.home-quiet')).toBeVisible()
+  expect(await header()).toEqual(off)
 })
