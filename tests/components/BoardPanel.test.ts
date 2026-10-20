@@ -7,7 +7,7 @@ import { herdrState } from '~/composables/useHerdr'
 import type { Pane } from '#shared/types'
 
 // What `coordinator status` says now, and how many times it was asked.
-type Status = { pane: string | null, state: string, error?: string, name?: string }
+type Status = { pane: string | null, state: string, error?: string, name?: string, queued?: number }
 let status: Status = { pane: 'w1:p1', state: 'idle' }
 let asked = 0
 // When set, each lookup waits until the test answers it, in the order it picks.
@@ -148,6 +148,44 @@ describe('the Board panel follows its coordinator', () => {
     const before = asked
     await new Promise(r => setTimeout(r, 3300))
     expect(asked).toBe(before)
+    w.unmount()
+  })
+
+  for (const queued of [0, 1, 3]) {
+    for (const delivery of [false, true]) {
+      it(`describes ${delivery ? 'delivery' : 'startup'} failure with ${queued} queued messages`, async () => {
+        status = { pane: null, state: 'exited', queued, error: delivery ? 'the message could not be typed' : NOT_INSTALLED }
+        setPanes([])
+        const { w } = await panel()
+        const failed = w.find('.board-panel-failed')
+        expect(failed.find('h4').text()).toBe(delivery ? 'Message could not be sent' : 'Could not start')
+        expect(failed.attributes('aria-label')).toBe(delivery ? 'Message could not be sent' : 'Could not start')
+        expect(failed.find('.board-panel-failed-what').text()).toBe(delivery
+          ? 'The message could not be typed into Coordinator on Local.'
+          : 'The Coordinator could not start on Local.')
+        expect(failed.find('.board-panel-failed-next').text()).toContain(queued
+          ? `${queued} message${queued === 1 ? '' : 's'} still waiting`
+          : 'No message is waiting.')
+        w.unmount()
+      })
+    }
+  }
+
+  it('does not infer a queued message from an error when the count is missing', async () => {
+    status = { pane: null, state: 'starting', error: NOT_INSTALLED }
+    setPanes([])
+    const { w } = await panel()
+    expect(w.find('.board-panel-failed-next').text()).toContain('The message queue status is unavailable.')
+    expect(w.find('.board-panel-failed-next').text()).not.toContain('still waiting')
+    w.unmount()
+  })
+
+  it('shows the conversation when a live pane has an earlier delivery error', async () => {
+    status = { pane: 'w1:p1', state: 'idle', queued: 0, error: 'the message could not be typed' }
+    setPanes(['w1:p1'])
+    const { w, vm } = await panel()
+    expect(vm.coordShown).toBe('w1:p1')
+    expect(w.find('.board-panel-failed').exists()).toBe(false)
     w.unmount()
   })
 
