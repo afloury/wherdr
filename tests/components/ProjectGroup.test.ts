@@ -1,11 +1,15 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mockNuxtImport, mountSuspended } from '@nuxt/test-utils/runtime'
 import ProjectGroup from '~/components/ProjectGroup.vue'
 import AgentCard from '~/components/AgentCard.vue'
 import { collapsedRepos, compactList, herdrState } from '~/composables/useHerdr'
 import type { Pane } from '#shared/types'
 import { type Row, spaceRows } from '#shared/spaces'
-import type { LinkedTask, Member, ProjectSection } from '#shared/boardLinks'
+import { type LinkedTask, type Member, type ProjectSection, boardSections, linksFromTaskFile, tasksFromFiles } from '#shared/boardLinks'
+import { noteTab } from '~/composables/useWorkspaces'
+
+const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
+mockNuxtImport('navigateTo', () => navigate)
 
 const pane = (id: string, p: Partial<Pane> = {}): Pane => ({ id, workspace: id.split(':')[0]!, tab: `${id.split(':')[0]}:t1`, tabLabel: null, agent: 'claude', name: null, label: null, status: 'idle', title: null, cwd: '/tmp/demo', agentSession: null, ...p })
 const row = (p: Pane): Row => ({ kind: 'pane', key: p.id, pane: p, lead: p })
@@ -108,6 +112,41 @@ describe('a repo group on the home list', () => {
       expect(card.find('.space-avatar').exists()).toBe(false)
       w.unmount()
     }
+  })
+
+  it('a task under review: one row, its stage, the reviewer\'s tab opens', async () => {
+    // A task's space as herdr-projects lays it out: its "Agent" tab, then "Reviewer #1".
+    const agent = pane('w7:p1', { tab: 'w7:t1', status: 'idle' })
+    const reviewer = pane('w7:p2', { tab: 'w7:t2', agent: 'codex', status: 'working' })
+    const tab = (id: string, label: string, number: number, p: Pane) => ({
+      id, workspace: 'w7', label, number,
+      layout: { tab: id, workspace: 'w7', zoomed: false, focused: p.id, area: { x: 0, y: 0, width: 80, height: 24 }, panes: [{ pane: p.id, rect: { x: 0, y: 0, width: 80, height: 24 } }], splits: [] },
+    })
+    const state = {
+      ok: true, panes: [agent, reviewer],
+      workspaces: [{ id: 'w7', label: 'SHOP-7 Payment recap', number: 7, status: null, worktree: true, repo: '/tmp/shop/.git', repoName: 'shop' }],
+      tabs: [tab('w7:t1', 'Agent', 1, agent), tab('w7:t2', 'Reviewer #1', 2, reviewer)],
+    }
+    const file = { id: 'shop/7', title: 'Payment recap', stage: 'reviewing', watch: { progress: 60, msg: 'Reading the diff' }, link: { pane: 'w7:p1', workspace: 'w7', ownsWorkspace: true, reviewer: { pane: 'w7:p2', kind: 'codex' } } }
+    const tasks = tasksFromFiles([linksFromTaskFile(file, () => '')!], { shop: 'SHOP' })
+    const g = boardSections(spaceRows(state), state.workspaces, [{ machine: '', coordinators: [], tasks }], new Set(['w7:p1', 'w7:p2'])).projects[0]!
+    herdrState.value = state
+    // The Agent tab was the one opened last.
+    noteTab('w7:t1')
+    const w = await mountSuspended(ProjectGroup, { props: { group: g }, global: { stubs: { UContextMenu: { template: '<div><slot /></div>' } } } })
+    const cards = w.findAll('.project-tree .card')
+    expect(cards).toHaveLength(1)
+    const card = cards[0]!
+    expect(card.find('.home-task-tag').text()).toBe('SHOP-7')
+    expect(card.find('.home-task-stage').text()).toBe('Under review · codex')
+    expect(card.find('.home-task-line').text()).toContain('Reading the diff')
+    // The reviewer's state and program.
+    expect(card.classes()).toContain('working')
+    expect(card.find('.avatar').classes().join(' ')).toContain('codex')
+    navigate.mockClear()
+    await card.trigger('click')
+    expect(navigate).toHaveBeenCalledWith('/a/w7%3Ap2')
+    w.unmount()
   })
 
   it('the detailed card: no folder line for a coordinator', async () => {

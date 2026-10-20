@@ -6,25 +6,36 @@
 // What the board knows is read from its files only (server/utils/boardLinks.ts),
 // never through its CLI, whose every command also runs the board's upkeep:
 //  - a task's `task.json` (data/tasks/<repo>/<n>): `link.pane`, `link.workspace`
-//    (`ownsWorkspace`: the board made that space for it), `link.reviewer.pane`,
-//    in the session `link.socket` names;
+//    (`ownsWorkspace`: the board made that space for it), `link.reviewer`
+//    (`pane`, `kind`: its program; set while a review runs, null after), in
+//    the session `link.socket` names. While a planner of its own writes the
+//    plan, `link.pane` is the planner's and `plan.home.pane` the agent's;
+//    `comparing`: the reviewer compares the attempts (the Picker);
 //  - an attempt's `task.json` (data/tasks/<repo>/<n><letter>, `attemptOf`);
 //  - each coordinator's `state.json` (data/coordinator/<session>/state.json,
 //    `machine/state.json`, `projects/<repo>/state.json`): `pane`, `space`.
 // Pure functions, tested in tests/boardLinks.test.ts.
 import type { Pane, Workspace } from './types'
-import { type RowGroup, type Row, rowGroup } from './spaces'
+import { type RowGroup, type Row, leadPane, rowGroup } from './spaces'
 import { joinId, machineOf } from './ids'
 
-export type PaneRole = 'worker' | 'reviewer' | 'attempt'
+// herdr-projects gives each helper of a task its own tab in the task's space
+// (its docs/tabs.md): `Agent`, `Reviewer #N`, `Planner`, `Plan review`,
+// `Agent A` / `Agent B` and `Picker`.
+export type PaneRole = 'worker' | 'reviewer' | 'attempt' | 'planner'
+// What its reviewer looks at: the work, the plan, or the attempts (the Picker).
+export type ReviewKind = 'work' | 'plan' | 'pick'
 export interface LinkedTask {
   id: string // `<repo>/<n>`
   repo: string
   n: number
   key: string // `WHR-2`, or `#2` while the repo's key is not known
   title: string
-  // Its agents' panes (app ids), with their role; `letter`: an attempt's.
-  panes: { id: string, role: PaneRole, letter?: string }[]
+  // Its agents' panes (app ids), with their role; `letter`: an attempt's;
+  // `kind`: the program on it, when the board says (`codex`).
+  panes: { id: string, role: PaneRole, letter?: string, kind?: string }[]
+  // What its reviewer pane is for, while one runs.
+  review?: ReviewKind | null
   // The space the board made for it (app id), if any.
   workspace: string | null
   stage: string
@@ -66,7 +77,7 @@ const spaceOf = (key: string | null, v: unknown) => (key !== null && typeof v ==
 
 // What a `task.json` links to. An attempt (`attemptOf`) comes back as its
 // task's id with its pane as an attempt; the caller merges it into the task.
-export interface FileLinks extends Pick<LinkedTask, 'stage' | 'progress' | 'msg' | 'since'> { id: string, repo: string, n: number, title: string, attemptOf: string | null, letter: string, archived: boolean, panes: LinkedTask['panes'], workspace: string | null }
+export interface FileLinks extends Pick<LinkedTask, 'stage' | 'progress' | 'msg' | 'since' | 'review'> { id: string, repo: string, n: number, title: string, attemptOf: string | null, letter: string, archived: boolean, panes: LinkedTask['panes'], workspace: string | null }
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 export function linksFromTaskFile(t: unknown, sessionKey: SessionKey): FileLinks | null {
   const r = obj(t)
@@ -79,11 +90,19 @@ export function linksFromTaskFile(t: unknown, sessionKey: SessionKey): FileLinks
   const link = obj(r.link)
   const key = link ? sessionKey(link.socket) : null
   const panes: LinkedTask['panes'] = []
+  const kind = (v: unknown) => { const k = str(v, 30); return /^[a-z][\w-]*$/i.test(k) ? { kind: k } : {} }
+  // A plan not yet approved; `home`: the agent's own pane while a planner writes it.
+  const plan = obj(r.plan)
+  const planOpen = Boolean(plan) && !plan!.approvedAt
+  const home = planOpen ? obj(plan!.home) : null
   const worker = paneOf(key, link?.pane)
   const letter = m[3] ? (str(r.letter, 1) || m[3]).toUpperCase() : ''
-  if (worker) panes.push(attemptOf ? { id: worker, role: 'attempt', letter } : { id: worker, role: 'worker' })
-  const reviewer = paneOf(key, obj(link?.reviewer)?.pane)
-  if (reviewer) panes.push({ id: reviewer, role: 'reviewer' })
+  const agentPane = home ? paneOf(key, home.pane) : null
+  if (agentPane) panes.push({ id: agentPane, role: 'worker', ...kind(home!.agent) })
+  if (worker) panes.push(attemptOf ? { id: worker, role: 'attempt', letter, ...kind(r.agent) } : { id: worker, role: home ? 'planner' : 'worker', ...kind(r.agent) })
+  const rv = obj(link?.reviewer)
+  const reviewer = paneOf(key, rv?.pane)
+  if (reviewer) panes.push({ id: reviewer, role: 'reviewer', ...kind(rv!.kind) })
   const stage = str(r.stage, 30)
   const watch = obj(r.watch)
   const progress = num(watch?.progress)
@@ -94,6 +113,7 @@ export function linksFromTaskFile(t: unknown, sessionKey: SessionKey): FileLinks
     attemptOf: attemptOf || null, letter, archived: Boolean(r.archivedAt),
     panes, workspace: link?.ownsWorkspace === true ? spaceOf(key, link.workspace) : null,
     stage,
+    review: reviewer ? (r.comparing ? 'pick' : planOpen ? 'plan' : 'work') : null,
     progress: progress === null ? null : Math.max(0, Math.min(100, Math.round(progress))),
     msg: (str(watch?.msg, 400) || str(r.msg, 400)).replace(/\s+/g, ' ').trim(),
     since: began && began > 0 ? began : null,
@@ -105,12 +125,12 @@ export function linksFromTaskFile(t: unknown, sessionKey: SessionKey): FileLinks
 export function tasksFromFiles(files: FileLinks[], keys: Record<string, string>): LinkedTask[] {
   const byId = new Map<string, LinkedTask>()
   const own = files.filter(f => !f.attemptOf)
-  const task = (f: FileLinks): LinkedTask => ({ id: f.id, repo: f.repo, n: f.n, key: taskKeyOf(f.id, keys[f.repo]), title: f.title, panes: [...f.panes], workspace: f.workspace, stage: f.stage, progress: f.progress, msg: f.msg, since: f.since })
+  const task = (f: FileLinks): LinkedTask => ({ id: f.id, repo: f.repo, n: f.n, key: taskKeyOf(f.id, keys[f.repo]), title: f.title, panes: [...f.panes], workspace: f.workspace, stage: f.stage, review: f.review, progress: f.progress, msg: f.msg, since: f.since })
   for (const f of own) byId.set(f.id, task(f))
   for (const a of files.filter(f => f.attemptOf)) {
     const t = byId.get(a.id)
     // An attempt whose task is gone (or unread) still belongs to that task.
-    if (t) t.panes.push(...a.panes)
+    if (t) { t.panes.push(...a.panes); t.review ??= a.review }
     else byId.set(a.id, task(a))
   }
   return [...byId.values()].filter(t => t.panes.length || t.workspace).sort((a, b) => a.repo.localeCompare(b.repo) || b.n - a.n)
@@ -147,6 +167,10 @@ export interface Member {
   board?: string
   role: PaneRole
   letter?: string
+  // The task's space as one row (its Agent, Reviewer, Planner… tabs): the
+  // helper at work in it, its reviewer while a review runs (or its planner),
+  // whose pane the row shows and whose tab opens first. `kind`: its program.
+  focus?: { id: string, role: PaneRole, kind: string }
 }
 export interface ProjectSection {
   id: string // Herdr's repo_key, else `repo:<name>`
@@ -222,7 +246,7 @@ export function boardSections(
   const sectionBoard = rows[0] ? baseOf(machineOf(rows[0].lead.id)) : ''
 
   // 1. Who each row is: a coordinator, a task's agent, or neither.
-  type TaskHit = { task: LinkedTask, role: PaneRole, letter?: string }
+  type TaskHit = { task: LinkedTask, role: PaneRole, letter?: string, focus?: Member['focus'] }
   type Sorted = { row: Row, coord?: LinkedCoordinator, task?: TaskHit }
   const sorted: Sorted[] = []
   for (const row of rows) {
@@ -237,20 +261,23 @@ export function boardSections(
     // A coordinator alone in its space (or known by its space): the whole row.
     const coord = (coordPanes[0] && coordByPane.get(coordPanes[0].id)) || coordBySpace.get(rowSpace(row))
     if (coord) { sorted.push({ row, coord }); continue }
-    // A task's agents: a space that holds several (worker, reviewer, attempts)
-    // gives each its own row; its other agents stay listed.
+    // A task's space is one row, whatever helpers it holds (agent, reviewer,
+    // planner, attempts, each in its own tab). A space shared by several tasks
+    // gives each task a row of its own (its panes); its other agents stay listed.
     const linkedPanes = panes.filter(p => taskByPane.has(p.id))
-    if (row.kind === 'space' && linkedPanes.length > 1) {
-      for (const p of panes) {
-        if (taskByPane.has(p.id)) sorted.push({ row: paneRow(p), task: taskByPane.get(p.id) })
-        else if (p.agent) sorted.push({ row: paneRow(p) })
+    const tasksHere = [...new Set(linkedPanes.map(p => taskByPane.get(p.id)!.task))]
+    if (row.kind === 'space' && tasksHere.length > 1) {
+      for (const task of tasksHere) {
+        const own = panes.filter(p => taskByPane.get(p.id)?.task === task)
+        sorted.push(taskRow(own.length === 1 ? paneRow(own[0]!) : subRow(row, own, `${row.key}|${task.id}`), task, taskByPane.get(own[0]!.id)!))
       }
+      for (const p of panes) if (p.agent && !taskByPane.has(p.id)) sorted.push({ row: paneRow(p) })
       continue
     }
     const hit = linkedPanes[0] ? taskByPane.get(linkedPanes[0].id) : undefined
     const task = hit?.task || taskBySpace.get(rowSpace(row))
     if (!task) { sorted.push({ row }); continue }
-    sorted.push({ row, task: hit && hit.task === task ? hit : { task, role: 'worker' } })
+    sorted.push(taskRow(row, task, hit && hit.task === task ? hit : { task, role: 'worker' }))
   }
 
   // 2. A repo's group id: Herdr's repo_key, learnt from its tasks' spaces and its
@@ -300,7 +327,7 @@ export function boardSections(
       const t = s.task
       const board = boardOf.get(t.task) ?? sectionBoard
       const g = group(groupId(t.task.repo), t.task.repo, board)
-      g.members.push({ row: s.row, task: t.task, board, role: t.role, ...(t.role === 'attempt' && t.letter ? { letter: t.letter } : {}) })
+      g.members.push({ row: s.row, task: t.task, board, role: t.role, ...(t.role === 'attempt' && t.letter ? { letter: t.letter } : {}), ...(t.focus ? { focus: t.focus } : {}) })
       continue
     }
     // The repo's own space (main checkout) heads its group.
@@ -335,6 +362,82 @@ export function boardSections(
   return out
 }
 
+// The helper at work among a task's panes that `here` holds: its reviewer
+// (a review, the plan's, the Picker), else its planner.
+export function taskHelper(task: Pick<LinkedTask, 'panes'>, here: (id: string) => boolean): LinkedTask['panes'][number] | null {
+  return task.panes.find(p => p.role === 'reviewer' && here(p.id)) || task.panes.find(p => p.role === 'planner' && here(p.id)) || null
+}
+// The pane a task's row shows: one that waits for you, else its helper at
+// work (`focus`), else the most urgent.
+export function shownPane<P extends Pick<Pane, 'id' | 'agent' | 'status'>>(panes: P[], focus?: string | null): P | null {
+  const lead = leadPane(panes)
+  if (!lead || (lead.agent && lead.status === 'blocked')) return lead
+  return panes.find(p => p.id === focus && p.agent) ?? lead
+}
+// A task's row: led by the pane it shows, with its helper at work (`focus`),
+// even when that helper's pane is all that is left open of the task.
+function taskRow(row: Row, task: LinkedTask, hit: { role: PaneRole, letter?: string }): { row: Row, task: { task: LinkedTask, role: PaneRole, letter?: string, focus?: Member['focus'] } } {
+  const panes = rowPanes(row)
+  const here = new Map(panes.map(p => [p.id, p]))
+  const h = taskHelper(task, id => here.has(id))
+  const focus = h ? { id: h.id, role: h.role, kind: h.kind || here.get(h.id)!.agent || '' } : undefined
+  const shown = row.kind === 'space' ? shownPane(panes, focus?.id) : null
+  // A space's row is the task's (role worker); a lone pane keeps its role (an attempt's letter).
+  const role = row.kind === 'space' || focus ? 'worker' : hit.role
+  return { row: shown ? relead(row, shown) : row, task: { task, role, ...(role === 'attempt' && hit.letter ? { letter: hit.letter } : {}), ...(focus ? { focus } : {}) } }
+}
+// The part of a space that holds one task's panes (a space several tasks share).
+function subRow(row: Extract<Row, { kind: 'space' }>, keep: Pane[], key: string): Row {
+  const ids = new Set(keep.map(p => p.id))
+  const tabs = row.tabs.map(e => ({ ...e, panes: e.panes.filter(p => ids.has(p.id)) })).filter(e => e.panes.length)
+  const lead = leadPane(keep)!
+  const n = (st: string) => keep.filter(p => p.agent && p.status === st).length
+  return { kind: 'space', key, workspace: row.workspace, tabs, panes: keep, lead, leadTab: tabs.find(e => e.panes.includes(lead))!, sum: { blocked: n('blocked'), working: n('working'), done: n('done'), agents: keep.filter(p => p.agent).length } }
+}
+// A space row led by another of its panes (its state, its tab's mini-map).
+function relead(row: Row, lead: Pane): Row {
+  if (row.kind !== 'space' || row.lead.id === lead.id) return row
+  return { ...row, lead, leadTab: row.tabs.find(e => e.panes.some(p => p.id === lead.id)) ?? row.leadTab }
+}
+
+// The agents the list's counters count (summary, machine heading): a task's
+// helpers count once, as its row does (the pane it shows). Once per space it
+// is open in, as the rows (a reviewer an older board put in a space of its own).
+export function countedPanes<P extends Pick<Pane, 'id' | 'agent' | 'status' | 'workspace'>>(panes: P[], machines: MachineLinks[]): P[] {
+  const taskOf = new Map<string, LinkedTask>()
+  for (const m of machines) for (const t of m.tasks) for (const p of t.panes) if (!taskOf.has(p.id)) taskOf.set(p.id, t)
+  const byTask = new Map<string, { t: LinkedTask, list: P[] }>()
+  const out: P[] = []
+  for (const p of panes) {
+    const t = taskOf.get(p.id)
+    if (!t) { out.push(p); continue }
+    const k = `${t.id}|${p.workspace}`
+    const e = byTask.get(k)
+    if (e) e.list.push(p)
+    else byTask.set(k, { t, list: [p] })
+  }
+  for (const { t, list } of byTask.values()) {
+    const ids = new Set(list.map(p => p.id))
+    const shown = shownPane(list, taskHelper(t, id => ids.has(id))?.id)
+    if (shown) out.push(shown)
+  }
+  return out
+}
+
+// What a task's row says of its stage, beyond its state: under review (the
+// work, the plan, the attempts: the Picker) or planning, with the helper's
+// program; several attempts at once.
+export type MemberStage = { what: 'review' | 'plan-review' | 'pick' | 'planning', by: string } | { what: 'attempts', n: number }
+export function memberStage(m: Pick<Member, 'task' | 'focus' | 'row'>): MemberStage | null {
+  if (!m.task) return null
+  const f = m.focus
+  if (f?.role === 'reviewer') return { what: m.task.review === 'pick' ? 'pick' : m.task.review === 'plan' ? 'plan-review' : 'review', by: f.kind }
+  if (f?.role === 'planner') return { what: 'planning', by: f.kind }
+  const here = new Set(rowPanes(m.row).map(p => p.id))
+  const n = m.task.panes.filter(p => p.role === 'attempt' && here.has(p.id)).length
+  return n > 1 ? { what: 'attempts', n } : null
+}
+
 // The board's tasks whose agents a set of spaces holds (what closing them stops).
 export function tasksIn(spaces: string[], panes: Pick<Pane, 'id' | 'workspace'>[], machines: MachineLinks[]): LinkedTask[] {
   const set = new Set(spaces)
@@ -348,7 +451,9 @@ export function tasksIn(spaces: string[], panes: Pick<Pane, 'id' | 'workspace'>[
 
 // What a card of the board says (app/components/AgentCard.vue `board`).
 // `coordinator`: a coordinator's card (its role's icon, its last message).
-export interface BoardCard { tag: string, name?: string, progress?: number | null, since?: number | null, msg?: string, onBoard?: () => void, coordinator?: boolean }
+// `stage`: the task's stage beyond its state (`Under review · codex`); `tab`:
+// the tab its row opens, whatever tab was opened last (its reviewer's while a review runs).
+export interface BoardCard { tag: string, name?: string, progress?: number | null, since?: number | null, msg?: string, stage?: string, tab?: string, onBoard?: () => void, coordinator?: boolean }
 
 // What a member's card says before its title: `WHR-2`, `WHR-2 · review`, `WHR-2 · A`.
 export function memberTag(m: Pick<Member, 'task' | 'role' | 'letter'>, review: string): string {
