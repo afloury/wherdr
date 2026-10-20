@@ -291,8 +291,8 @@ Details in [Features](#features) and [Security](#security).
   `↓` on the last line returns to newer entries, then restores your draft. History keeps the
   last 100 texts sent from this device per agent, without attachments or quoted references.
 - **Board** for [herdr-projects](#works-great-with-herdr-projects) 1.2.1 or later: every machine's
-  tasks in five columns (needs you, ready to approve, working, to do, done), each task with its
-  pull request, review, reply and approval.
+  tasks in four columns (needs you, ready to approve, working, to do), done one tap away, each
+  task with its pull request, review, reply and approval.
 - **Settings** in a sidebar, with desktop-only options such as the content width.
 
 ### On a phone
@@ -1230,8 +1230,11 @@ herdr plugin install eliasstravik/herdr-projects --ref v1.2.1 --yes
 
 What the Board shows and does:
 
-- **The board's five groups**: needs you, ready to approve, working, to do, done (the latest
-  eight, then **Show all**). Side by side on a computer, one at a time on a phone. A card shows
+- **The board's groups**: needs you, ready to approve, working, to do. **Done** is history, so it
+  is hidden by default: **Done · 9** at the end of the column heads (the last tab on a phone)
+  shows it, newest first, the latest five then **Show all**, and hides it again; the choice is
+  kept on the device. Headings still count done tasks. Side by side on a computer, one at a time
+  on a phone. A card shows
   the task's key (`DEMO-12`), title, the line its agent reports, the agent program, progress, its
   pull request and its review (pass or fail, with the findings by severity).
 - **A task** opens its agent in a side panel: wherdr's own agent view (conversation, terminal,

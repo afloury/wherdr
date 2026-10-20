@@ -194,9 +194,12 @@ async function listFromFiles(m: Machine): Promise<{ tasks: TaskRow[], failed: st
     try { t = await readTaskFile(m, id) }
     catch (e) { failed.push(`${id} (${(e as Error).message})`); return null }
     const { pane } = linkedPane(m, t)
-    return t ? rowFromTaskFile(t, pane ? panes.find(p => p.id === pane)?.status ?? null : null) : null
+    const row = t ? rowFromTaskFile(t, pane ? panes.find(p => p.id === pane)?.status ?? null : null) : null
+    return row ? { row, created: typeof t?.created === 'number' ? t.created : 0 } : null
   }))
-  return { tasks: rows.filter((r): r is TaskRow => r !== null && !r.archived).slice(0, FILES_MAX), failed }
+  // In the order of `list --json`: newest created first (stable: by number when unknown).
+  const kept = rows.filter((r): r is { row: TaskRow, created: number } => r !== null && !r.row.archived)
+  return { tasks: kept.sort((a, b) => b.created - a.created).map(r => r.row).slice(0, FILES_MAX), failed }
 }
 
 // ---------------------------------------------------------------- the list

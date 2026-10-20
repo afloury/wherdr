@@ -267,6 +267,15 @@ describe('wherdr in a container: the board is read from its files, nothing runs'
     expect(r.machines[0]!.tasks.map(t => t.id).sort()).toEqual(['acme/1', 'acme/2', 'acme/3'])
   })
 
+  it('gives the tasks in the order of `list --json`: newest created first, whatever the repo', async () => {
+    T.setInContainer(true)
+    taskFile('acme/9', { title: 'Old', stage: 'done', created: 1000 })
+    taskFile('web/2', { title: 'Newest', stage: 'done', created: 3000 })
+    taskFile('acme/4', { title: 'Middle', stage: 'done', created: 2000 })
+    const r = await read()
+    expect(r.machines[0]!.tasks.map(t => t.id)).toEqual(['web/2', 'acme/4', 'acme/9'])
+  })
+
   it('details name the program on the task, from `app` when that is all the file has', async () => {
     T.setInContainer(true)
     taskFile('acme/1', { title: 'Review me', stage: 'approval', app: 'claude' })
