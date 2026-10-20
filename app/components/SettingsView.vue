@@ -72,6 +72,7 @@ const quotasOn = showQuotas
 const compactOn = compactList
 const autoReorderOn = autoReorderReady
 const encryptedOn = encryptedText
+const agentClipboardOn = agentClipboard
 // Quoted replies: the mode of this device.
 const quoteChoice = quoteMode
 const quoteItems = computed(() => [
@@ -437,6 +438,13 @@ onMounted(() => {
                 <button type="button" :aria-label="t('Increase text size')" @click="changeFont(1)">A+</button>
               </div>
             </div>
+          </div>
+          <div class="settings-group">
+            <h3>{{ t('Clipboard') }}</h3>
+            <label class="settings-toggle">
+              <span><b>{{ t('Agent copies') }}</b><small>{{ t('Text an agent copies in the terminal (OSC 52) goes to this device’s clipboard. Never read from it. Saved on this device.') }}</small></span>
+              <USwitch v-model="agentClipboardOn" color="success" size="xl" />
+            </label>
           </div>
           <div class="settings-group settings-renderer">
             <h3>{{ t('Terminal rendering') }}</h3>
