@@ -37,12 +37,16 @@ case "$1" in
     *) : > "${told}/$co"; echo "sent to the Coordinator" ;;
   esac ;;
   add) echo "demo/7: added" ;;
-  delegate|stop|retry) echo "$3: done" ;;
+  # delegate --worker.agent=X keeps X as the task's own setting, as 1.x does; set/unset --task change it.
+  delegate) case "$2" in --worker.agent=*) printf '%s' "\${2#--worker.agent=}" > '${root}/own-agent' ;; esac; echo "done" ;;
+  set) printf '%s' "$5" > '${root}/own-agent'; echo "set" ;;
+  unset) rm -f '${root}/own-agent'; echo "unset" ;;
+  stop|retry) echo "$3: done" ;;
   # Archived: in the archived list from now on (the board's list still has it here).
   archive) printf '[{"id":"%s","state":"done","title":"Archived","stage":"failed","archivedAt":1}]' "$3" > '${root}/archived.json'; echo "$3: done" ;;
   # What the board lists once a task is restored, when the spec gives it.
   restore) if [ -f '${root}/after-restore.json' ]; then mv '${root}/after-restore.json' '${root}/list.json'; echo '[]' > '${root}/archived.json'; fi; echo "$3: done" ;;
-  show) case "$2" in --json) echo '${taskAgentReply}' ;; --repo=demo) echo '${keyReply('DEMO')}' ;; --repo=web) echo '${keyReply('SITE')}' ;; *) echo '${keyReply('none')}' ;; esac ;;
+  show) case "$2" in --json) if [ -f '${root}/own-agent' ]; then printf '{"settings":[{"name":"worker.agent","kind":"work","value":"%s","from":"this task","place":"task","own":true,"note":""}],"problems":[]}\\n' "$(cat '${root}/own-agent')"; else echo '${taskAgentReply}'; fi ;; --repo=demo) echo '${keyReply('DEMO')}' ;; --repo=web) echo '${keyReply('SITE')}' ;; *) echo '${keyReply('none')}' ;; esac ;;
   *) echo "unexpected: $*" >&2; exit 1 ;;
 esac
 `, { mode: 0o755 })
@@ -60,7 +64,7 @@ const home = path.join(path.dirname(fs.readFileSync(SOCK_FILE, 'utf8').trim()), 
 const taskDir = path.join(home, '.herdr-projects/data/tasks/demo/1')
 
 test.beforeEach(() => {
-  for (const f of [calls, path.join(root, 'list.json'), path.join(root, 'archived.json'), path.join(root, 'after-restore.json'), path.join(root, 'after-approve.json'), path.join(root, 'web-coordinator'), told]) fs.rmSync(f, { recursive: true, force: true })
+  for (const f of [calls, path.join(root, 'own-agent'), path.join(root, 'list.json'), path.join(root, 'archived.json'), path.join(root, 'after-restore.json'), path.join(root, 'after-approve.json'), path.join(root, 'web-coordinator'), told]) fs.rmSync(f, { recursive: true, force: true })
   fs.mkdirSync(told)
 })
 test.afterEach(async () => { await fakeHerdr('e2e.plugins', { plugins: [] }) })
@@ -427,7 +431,13 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   await expect(agents).toContainText('For this start only: the default stays.')
   await task.getByRole('button', { name: 'Start with codex', exact: true }).click()
   await expect.poll(callLog).toContain('delegate --worker.agent=codex -- demo/5')
-  expect(callLog().filter(l => /^(set|unset) /.test(l))).toEqual([])
+  await page.keyboard.press('Escape')
+  // That pick was for one start: the task's default is claude again (its own setting taken back).
+  await card('In the backlog').click()
+  await expect(agents.getByRole('radio', { name: /claude/ })).toHaveAttribute('aria-checked', 'true')
+  await expect(agents).toContainText('Default from your settings for demo')
+  await expect.poll(callLog).toContain('unset --task=demo/5 -- worker.agent')
+  expect(fs.existsSync(path.join(root, 'own-agent'))).toBe(false)
   await page.keyboard.press('Escape')
   // Working: Stop, asked first; no Archive.
   await tab(/^Working/)

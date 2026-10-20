@@ -366,6 +366,18 @@ export function delegateArgs(id: string, agent?: string | null): string[] {
   return ['delegate', ...(agent ? [`--worker.agent=${agent}`] : []), '--', id]
 }
 
+// 1.x keeps that option as the task's own setting (`show` then says `place:
+// task`) and reads it at every start of its agent, so it stays for the run;
+// afterwards wherdr puts back what the task had: its own value (`set`), or
+// none (`unset`: its repo's or the user's default applies again).
+export function restoreAgentArgs(id: string, prev: string | null): string[] {
+  return prev ? ['set', `--task=${id}`, '--', 'worker.agent', prev] : ['unset', `--task=${id}`, '--', 'worker.agent']
+}
+// A run is over, so the agent picked for it can be taken back: the task is
+// back in the backlog, or done. (A task that waits for another, `after`, or
+// for a slot, `queued`, is in To do too, and still starts with it.)
+export const runOver = (r: Pick<TaskRow, 'stage' | 'state' | 'archived'>) => !r.archived && (r.stage === 'todo' || r.state === 'done')
+
 // The agent a task starts with by default: its `worker.agent` as `show <id>
 // --json` resolves it, and where that comes from (`place`: task, carried,
 // repo, you, builtin; `from`: 1.x's own words for it).

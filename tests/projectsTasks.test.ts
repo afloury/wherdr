@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  NOTIFY_SETUP, NO_ACTIONS, addArgs, agentKind, delegateArgs, isAgentName, parseWorkerAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, coordinatorPhase, coordinatorRestartArgs, coordinatorStatusArgs, coordinatorSubject, detailsFromTaskFile, parseCoordinatorStatus, groupByRepo, groupCounts, groupOf,
+  NOTIFY_SETUP, NO_ACTIONS, addArgs, agentKind, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, coordinatorPhase, coordinatorRestartArgs, coordinatorStatusArgs, coordinatorSubject, detailsFromTaskFile, parseCoordinatorStatus, groupByRepo, groupCounts, groupOf,
   rowFromTaskFile, stateFromTaskFile, isTaskId, parseReview, parseRepoKey, parseTaskDetails, parseTaskList, prNumber, repoKeysFromFile, sortTasks, taskActions, taskKey, taskNotice,
 } from '../shared/projectsTasks'
 
@@ -376,6 +376,18 @@ describe('Start with an agent (delegate --worker.agent, show <id> --json)', () =
     ], problems: [] })
     expect(parseWorkerAgent(show)).toEqual({ value: 'codex/gpt-5.5', kind: 'codex', place: 'repo', from: 'your entry for demo' })
     expect(agentKind('claude')).toBe('claude')
+  })
+
+  it('putting back what the task had: its own value (set), or none (unset)', () => {
+    expect(restoreAgentArgs('demo/5', null)).toEqual(['unset', '--task=demo/5', '--', 'worker.agent'])
+    expect(restoreAgentArgs('demo/5', 'codex/gpt-5.5')).toEqual(['set', '--task=demo/5', '--', 'worker.agent', 'codex/gpt-5.5'])
+  })
+
+  it('a run is over back in the backlog or done; waiting for another task or a slot is still the run', () => {
+    expect(runOver({ stage: 'todo', state: 'idle', archived: false })).toBe(true)
+    expect(runOver({ stage: 'done', state: 'done', archived: false })).toBe(true)
+    for (const stage of ['after', 'queued', 'starting', 'working', 'approval', 'failed', 'stopped']) expect(runOver({ stage, state: 'idle', archived: false })).toBe(false)
+    expect(runOver({ stage: 'todo', state: 'idle', archived: true })).toBe(false)
   })
 
   it('no worker.agent, or not JSON: no default known', () => {

@@ -59,15 +59,24 @@ const startLoading = ref(false)
 const pick = ref<string | null>(null)
 const defaultKind = computed(() => startOpts.value?.agent?.kind || '')
 // The default first (as herdr-projects resolves it, model included), then the others.
+// The default is offered only where it is installed. Unknown (no agent found:
+// the machine could not be checked) it stays what Start does, as before.
+const defaultUsable = computed(() => {
+  const o = startOpts.value
+  return !o?.agent || !o.agents.length || o.agents.includes(o.agent.kind)
+})
 const startAgents = computed(() => {
   const o = startOpts.value
   if (!o) return []
   return [
-    { id: null as string | null, label: o.agent?.value || tl('default', 'par défaut'), isDefault: true },
-    ...o.agents.filter(k => k !== defaultKind.value).map(k => ({ id: k as string | null, label: k, isDefault: false })),
+    { id: null as string | null, label: o.agent?.value || tl('default', 'par défaut'), isDefault: true, usable: defaultUsable.value },
+    ...o.agents.filter(k => k !== defaultKind.value).map(k => ({ id: k as string | null, label: k, isDefault: false, usable: true })),
   ]
 })
 const startAgent = computed(() => (pick.value && pick.value !== defaultKind.value ? pick.value : null))
+// The default is not installed there: Start waits for another agent.
+const needsPick = computed(() => !defaultUsable.value && !startAgent.value)
+const checked = (a: { id: string | null, isDefault: boolean, usable: boolean }) => (a.isDefault ? a.usable && !startAgent.value : a.id === startAgent.value)
 // Where the default comes from, in the user's words (1.x's own as a fallback).
 function agentSource(): string {
   const a = startOpts.value?.agent
@@ -203,6 +212,7 @@ const ACTION_DONE: Record<Exclude<TaskCommand, 'archive'>, () => string> = {
 async function act(action: TaskCommand) {
   const t = props.task
   if (!t || busy.value) return
+  if (action === 'delegate' && needsPick.value) return
   const was = target()
   const machine = props.machine
   if (action === 'stop' && !await askConfirm(
@@ -295,18 +305,19 @@ function chat() {
         <span v-if="!startOpts" class="task-start-wait">{{ startLoading ? t('Loading…') : tl('the task’s default', 'celui de la tâche par défaut') }}</span>
         <button
           v-for="a in startAgents" :key="a.id ?? ''" type="button" role="radio" class="task-start-chip"
-          :class="{ on: (a.isDefault && !startAgent) || (a.id !== null && a.id === startAgent) }"
-          :aria-checked="(a.isDefault && !startAgent) || (a.id !== null && a.id === startAgent)"
-          :disabled="busy || offlineView" @click="pick = a.id"
+          :class="{ on: checked(a), off: !a.usable }"
+          :aria-checked="checked(a)"
+          :disabled="busy || offlineView || !a.usable" @click="pick = a.id"
         >
-          <AgentAvatar v-if="a.id || startOpts?.agent" :agent="a.id || defaultKind" /><span class="task-start-name">{{ a.label }}</span><small v-if="a.isDefault">{{ tl('default', 'défaut') }}</small>
+          <AgentAvatar v-if="a.id || startOpts?.agent" :agent="a.id || defaultKind" /><span class="task-start-name">{{ a.label }}</span><small v-if="a.isDefault">{{ a.usable ? tl('default', 'défaut') : tl('default · not installed', 'défaut · pas installé') }}</small>
         </button>
         <span v-if="startOpts?.agent" class="task-start-from">{{ agentSource() }}</span>
+        <span v-if="needsPick" class="task-start-from task-start-missing" role="status">{{ tl(`${defaultKind} is not installed on this machine: pick another agent to start it.`, `${defaultKind} n’est pas installé sur cette machine : choisis un autre agent pour la lancer.`) }}</span>
         <span v-if="startAgent" class="task-start-from">{{ tl('For this start only: the default stays.', 'Pour ce lancement seulement : le défaut ne change pas.') }}</span>
       </div>
       <div v-if="chatShown || actions.approve || actions.delegate || actions.retry || actions.stop || actions.archive || actions.restore" class="task-sheet-actions">
         <UButton v-if="actions.restore" color="primary" icon="i-lucide-archive-restore" :loading="running === 'restore'" :disabled="busy || offlineView" @click="act('restore')">{{ tl('Restore', 'Restaurer') }}</UButton>
-        <UButton v-if="actions.delegate" color="primary" icon="i-lucide-play" :loading="running === 'delegate'" :disabled="busy || offlineView" @click="act('delegate')">{{ startAgent ? tl(`Start with ${startAgent}`, `Lancer avec ${startAgent}`) : tl('Start', 'Lancer') }}</UButton>
+        <UButton v-if="actions.delegate" color="primary" icon="i-lucide-play" :loading="running === 'delegate'" :disabled="busy || offlineView || needsPick" @click="act('delegate')">{{ startAgent ? tl(`Start with ${startAgent}`, `Lancer avec ${startAgent}`) : tl('Start', 'Lancer') }}</UButton>
         <UButton v-if="actions.approve" color="primary" icon="i-lucide-check" :loading="busy && !running" :disabled="busy || offlineView" @click="approve">
           {{ task.stage === 'plan' ? tl('Approve plan', 'Accepter le plan') : tl('Approve', 'Approuver') }}
         </UButton>

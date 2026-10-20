@@ -43,17 +43,21 @@ vi.mock('../server/utils/state', () => ({
   findPane: (id: string) => panes.find(p => p.id === id) || null,
   getState: () => ({ panes }),
 }))
-vi.mock('../server/utils/env', () => ({ HERDR_BIN: 'herdr', HERDR_CHILD_ENV: {}, IN_CONTAINER: false, log: () => {} }))
+vi.mock('../server/utils/env', () => ({ HERDR_BIN: 'herdr', HERDR_CHILD_ENV: {}, IN_CONTAINER: false, DATA_DIR: path.join(home, 'wherdr-data'), log: () => {} }))
 // The agents installed on the machine (server/utils/agentAvailability.ts).
 let installed: string[] = ['claude', 'codex']
 vi.mock('../server/utils/agentAvailability', () => ({ installedAgentKinds: async () => installed }))
 // `show --json -- <id>`: the task's settings, worker.agent among them.
+// Each task's own worker.agent, as 1.x keeps it: `delegate --worker.agent` writes
+// it (1.2.1 start.rs delegate_with), `set`/`unset --task` change it.
+let own: Record<string, string> = {}
 const taskSettings = (value: string, place: string, from: string) => JSON.stringify({ settings: [
   { name: 'worker.agent', kind: 'work', value, from, place, own: false, note: '' },
   { name: 'worker.effort', kind: 'work', value: 'default', from: 'built in', place: 'builtin', own: false, note: '' },
 ], problems: [] })
 
 const T = await import('../server/utils/projectsTasks')
+const SA = await import('../server/utils/startAgents')
 
 let calls: string[][]
 // `show --repo` (a repo's key): kept apart, so `calls` stays the Board's own commands.
@@ -78,6 +82,9 @@ beforeEach(() => {
   listReply = null
   coordStatus = {}
   installed = ['claude', 'codex']
+  own = {}
+  rmSync(path.join(home, 'wherdr-data'), { recursive: true, force: true })
+  SA.resetStartAgents()
   infoFails = false
   info.status = 'ready'
   panes.length = 0
@@ -89,8 +96,13 @@ beforeEach(() => {
     expect(launcher).toBe('/plugins/herdr-projects/bin/run.sh')
     if (args[0] === 'show' && args[2] === '--') {
       calls.push(args)
-      return { code: 0, stdout: taskSettings('claude', 'repo', 'your entry for demo'), stderr: '' }
+      const mine = own[args[3]!]
+      return { code: 0, stdout: mine ? taskSettings(mine, 'task', 'this task') : taskSettings('claude', 'repo', 'your entry for demo'), stderr: '' }
     }
+    const id = args.at(-1)!
+    if (args[0] === 'delegate' && args[1]?.startsWith('--worker.agent=')) own[id] = args[1].slice('--worker.agent='.length)
+    if (args[0] === 'set' && args[3] === 'worker.agent') own[args[1]!.slice('--task='.length)] = args[4]!
+    if (args[0] === 'unset' && args[3] === 'worker.agent') delete own[args[1]!.slice('--task='.length)]
     if (args[0] === 'show') {
       shows.push(args)
       const repo = args[1]!.replace('--repo=', '')
@@ -542,25 +554,97 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     expect(calls.filter(c => c[0] !== 'list')).toEqual([['delegate', '--', 'demo/5'], ['stop', '--', 'demo/3'], ['details', '--json', '--', 'demo/6'], ['retry', '--', 'demo/6'], ['archive', '--', 'demo/4']])
   })
 
-  it('Start with another agent: passed for this task\'s delegate only, nothing else run (no setting changed)', async () => {
+  // The task's worker.agent as 1.x resolves it now.
+  const resolved = async (id: string) => { const before = calls.length; const o = await T.taskStartOptions('', id); calls.splice(before); return o.agent }
+  // herdr-projects keeps the list a moment: an action dropped it, the next read is fresh.
+  const settle = async () => { later(T.REUSE_MS + 1); await read(); await new Promise(r => setTimeout(r, 20)) }
+  const working = (id: string) => JSON.stringify(JSON.parse(board).map((t: { id: string }) => (t.id === id ? { ...t, state: 'working', app: 'codex', stage: 'working' } : t)))
+
+  it('Start with another agent: passed for this start only; the task\'s default comes back once the run is over', async () => {
     await read()
     calls = []
-    shows = []
     await T.taskCommand('', 'demo/5', 'delegate', 'codex')
-    expect(calls).toEqual([['delegate', '--worker.agent=codex', '--', 'demo/5']])
-    // The defaults are untouched: no set/unset, and the next plain Start sends no agent.
+    expect(calls).toEqual([['show', '--json', '--', 'demo/5'], ['delegate', '--worker.agent=codex', '--', 'demo/5']])
+    // 1.x keeps it as the task's own setting while the run lasts (a restart of its agent reads it again).
+    expect(own['demo/5']).toBe('codex')
+    listReply = { code: 0, stdout: working('demo/5'), stderr: '' }
+    await settle()
+    expect(own['demo/5']).toBe('codex')
+    expect(calls.some(c => c[0] === 'unset' || c[0] === 'set')).toBe(false)
+    // The run is over (back in the backlog): what the task had is put back.
+    listReply = { code: 0, stdout: board, stderr: '' }
+    calls = []
+    await settle()
+    await vi.waitFor(() => expect(own['demo/5']).toBeUndefined())
+    expect(calls).toContainEqual(['unset', '--task=demo/5', '--', 'worker.agent'])
+    expect(await resolved('demo/5')).toMatchObject({ value: 'claude', place: 'repo' })
+    // Nothing left to put back: the next plain Start runs alone.
+    calls = []
+    await T.taskCommand('', 'demo/5', 'delegate')
+    expect(calls.filter(c => c[0] !== 'list')).toEqual([['delegate', '--', 'demo/5']])
+  })
+
+  it('done: the default comes back too', async () => {
+    await read()
+    await T.taskCommand('', 'demo/5', 'delegate', 'codex')
+    listReply = { code: 0, stdout: JSON.stringify(JSON.parse(board).map((t: { id: string }) => (t.id === 'demo/5' ? { ...t, state: 'done', stage: 'done' } : t))), stderr: '' }
+    await settle()
+    await vi.waitFor(() => expect(own['demo/5']).toBeUndefined())
+  })
+
+  it('the next Start (and what Start offers) puts the default back first, whatever the list said', async () => {
+    await read()
+    await T.taskCommand('', 'demo/5', 'delegate', 'codex')
+    // What Start offers: the task's own default, not the earlier pick.
+    expect(await resolved('demo/5')).toMatchObject({ value: 'claude', place: 'repo' })
+    expect(own['demo/5']).toBeUndefined()
+    await T.taskCommand('', 'demo/5', 'delegate', 'codex')
     await read()
     calls = []
     await T.taskCommand('', 'demo/5', 'delegate')
-    expect(calls).toEqual([['delegate', '--', 'demo/5']])
-    expect(shows).toEqual([])
-    // An empty or null agent is the default too.
+    expect(calls.filter(c => c[0] !== 'list')).toEqual([
+      ['show', '--json', '--', 'demo/5'], ['unset', '--task=demo/5', '--', 'worker.agent'], ['delegate', '--', 'demo/5'],
+    ])
+    expect(own['demo/5']).toBeUndefined()
+  })
+
+  it('a task with its own agent gets it back (set), and a value someone set since is left alone', async () => {
+    own['demo/5'] = 'pi'
+    await read()
+    await T.taskCommand('', 'demo/5', 'delegate', 'codex')
+    expect(await resolved('demo/5')).toMatchObject({ value: 'pi', place: 'task' })
+    // Picked again, then changed by hand meanwhile: that choice stays.
+    await T.taskCommand('', 'demo/5', 'delegate', 'codex')
+    own['demo/5'] = 'claude'
+    calls = []
+    expect(await T.taskStartOptions('', 'demo/5')).toMatchObject({ agent: { value: 'claude', place: 'task' } })
+    expect(calls.some(c => c[0] === 'set' || c[0] === 'unset')).toBe(false)
+  })
+
+  it('picking the agent the task already has as its own changes nothing to put back', async () => {
+    own['demo/5'] = 'codex'
+    await read()
+    await T.taskCommand('', 'demo/5', 'delegate', 'codex')
+    expect(await resolved('demo/5')).toMatchObject({ value: 'codex', place: 'task' })
+  })
+
+  it('kept across a restart of wherdr (its data folder)', async () => {
+    await read()
+    await T.taskCommand('', 'demo/5', 'delegate', 'codex')
+    expect(JSON.parse(readFileSync(path.join(home, 'wherdr-data/start-agents.json'), 'utf8'))['|demo/5']).toMatchObject({ agent: 'codex', prev: null })
+    SA.resetStartAgents()
+    expect(await resolved('demo/5')).toMatchObject({ value: 'claude', place: 'repo' })
+    expect(JSON.parse(readFileSync(path.join(home, 'wherdr-data/start-agents.json'), 'utf8'))).toEqual({})
+  })
+
+  it('no agent picked: nothing is written down nor put back', async () => {
     await read()
     calls = []
     await T.taskCommand('', 'demo/5', 'delegate', '')
     await read()
     await T.taskCommand('', 'demo/5', 'delegate', null)
     expect(calls.filter(c => c[0] !== 'list')).toEqual([['delegate', '--', 'demo/5'], ['delegate', '--', 'demo/5']])
+    expect(await SA.startAgentsOf('')).toEqual([])
   })
 
   it('refuses an agent not installed on the task\'s machine, a malformed one, or one on another command, before running anything', async () => {

@@ -432,6 +432,39 @@ describe('Start: the agent it starts with', () => {
     done(w)
   })
 
+  it('a default not installed on the task\'s machine: shown, not selectable; Start waits for an installed agent', async () => {
+    startReply = { agent: { value: 'gemini', kind: 'gemini', place: 'you', from: 'you' }, agents: ['codex'] }
+    const w = await open()
+    await vi.waitFor(() => expect(chips()).toHaveLength(2))
+    expect(names()).toEqual(['gemini (default)', 'codex'])
+    expect(chips()[0]!.disabled).toBe(true)
+    expect(chips().map(c => c.getAttribute('aria-checked'))).toEqual(['false', 'false'])
+    expect(chips()[0]!.textContent).toContain('not installed')
+    expect(document.querySelector('.task-start-missing')?.textContent).toBe('gemini is not installed on this machine: pick another agent to start it.')
+    expect(startButton()!.disabled).toBe(true)
+    startButton()!.click()
+    await flushPromises()
+    expect(sent).toEqual([])
+    chips()[1]!.click()
+    await flushPromises()
+    expect(startButton()!.disabled).toBe(false)
+    expect(document.querySelector('.task-start-missing')).toBeNull()
+    startButton()!.click()
+    await vi.waitFor(() => expect(sent).toHaveLength(1))
+    expect(sent[0]).toEqual({ machine: 'a', id: 'demo/1', action: 'delegate', agent: 'codex' })
+    done(w)
+  })
+
+  it('the machine\'s agents could not be checked (none found): Start keeps the task\'s default, as before', async () => {
+    startReply = { agent: { value: 'claude', kind: 'claude', place: 'builtin', from: 'built in' }, agents: [] }
+    const w = await open()
+    await vi.waitFor(() => expect(chips()).toHaveLength(1))
+    expect(chips()[0]!.disabled).toBe(false)
+    expect(chips()[0]!.getAttribute('aria-checked')).toBe('true')
+    expect(startButton()!.disabled).toBe(false)
+    done(w)
+  })
+
   it('the options cannot be read: Start still starts with the task\'s default', async () => {
     startReply = null
     const before = startReads

@@ -1249,7 +1249,11 @@ What the Board shows and does:
   **Stop**, **Retry** and **Archive** where herdr-projects takes them. **Start** names the agent
   the task starts with by default (its `worker.agent` and where that comes from) and offers the
   other agents installed on its machine: one picked there is for this start only
-  (`delegate --worker.agent`), the repo's and your own settings stay as they are. After an action the sheet
+  (`delegate --worker.agent`). herdr-projects keeps that pick as the task's own setting while
+  its run lasts; wherdr puts back what the task had once the run is over (back in To do, or
+  done) and before its next Start, so its default, the repo's and your own settings stay as they
+  are (`data/start-agents.json` remembers what to put back). A default agent not installed on that
+  machine is shown but cannot be picked: Start then waits for an installed one. After an action the sheet
   shows the task's new state, or why it was refused. **Archive** closes the sheet and takes the
   task off the Board, with **Restore** in a toast for a few seconds; **Archived** lists the
   archived tasks, whose sheet is read-only with **Restore**, as in herdr-projects.
@@ -1277,7 +1281,7 @@ What the Board shows and does:
   the time they were read.
 - What wherdr runs, on the task's machine and in its Herdr session (on an SSH machine, its own
   session by name): `herdr-projects list --json`,
-  `details <id> --json`, `show <id> --json`, `tell <id> <text>`, `approve <id>`, `delegate`, `stop`, `retry`,
+  `details <id> --json`, `show <id> --json`, `set`/`unset worker.agent --task <id>` (to put back a pick), `tell <id> <text>`, `approve <id>`, `delegate`, `stop`, `retry`,
   `archive` and `restore <id>`, `list --json --archived` (Archived), `coordinator tell <text>`,
   `coordinator status --json` and `coordinator restart` (your
   words always after `--`, so they are never read as options), through the plugin's own

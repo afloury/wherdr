@@ -3773,6 +3773,10 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-start-chip.on { border-color: var(--accent); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent); }
 .task-start-chip:focus-visible { outline: 2px solid var(--ring-2); outline-offset: 1px; }
 .task-start-chip:disabled { opacity: .5; cursor: default; }
+.task-start-chip.off { border-style: dashed; }
+.task-start-chip.off .task-start-name { text-decoration: line-through; text-decoration-color: var(--dim); }
+.task-start-chip.off small { color: var(--ochre); }
+.task-start-missing { color: var(--ochre); }
 .task-start-from { flex-basis: 100%; font: 11px/1.4 var(--mono); color: var(--dim); }
 /* herdr-projects missing or too old: the way forward, with its commands. */
 .projects-upgrade > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
