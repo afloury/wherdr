@@ -1246,7 +1246,10 @@ What the Board shows and does:
   message field. When that agent has no pane now, the panel shows a field instead, and
   herdr-projects passes your reply on (`tell`; on a plan that waits, it sends the plan back).
   **Approve** merges finished work or says yes to a plan, after a confirmation; **Start**,
-  **Stop**, **Retry** and **Archive** where herdr-projects takes them. After an action the sheet
+  **Stop**, **Retry** and **Archive** where herdr-projects takes them. **Start** names the agent
+  the task starts with by default (its `worker.agent` and where that comes from) and offers the
+  other agents installed on its machine: one picked there is for this start only
+  (`delegate --worker.agent`), the repo's and your own settings stay as they are. After an action the sheet
   shows the task's new state, or why it was refused. **Archive** closes the sheet and takes the
   task off the Board, with **Restore** in a toast for a few seconds; **Archived** lists the
   archived tasks, whose sheet is read-only with **Restore**, as in herdr-projects.
@@ -1271,7 +1274,7 @@ What the Board shows and does:
   the time they were read.
 - What wherdr runs, on the task's machine and in its Herdr session (on an SSH machine, its own
   session by name): `herdr-projects list --json`,
-  `details <id> --json`, `tell <id> <text>`, `approve <id>`, `delegate`, `stop`, `retry`,
+  `details <id> --json`, `show <id> --json`, `tell <id> <text>`, `approve <id>`, `delegate`, `stop`, `retry`,
   `archive` and `restore <id>`, `list --json --archived` (Archived), `coordinator tell <text>`,
   `coordinator status --json` and `coordinator restart` (your
   words always after `--`, so they are never read as options), through the plugin's own

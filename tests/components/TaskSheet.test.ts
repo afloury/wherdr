@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
+import { readBody } from 'h3'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import TaskSheet from '~/components/TaskSheet.vue'
 import type { TaskRow } from '#shared/projectsTasks'
@@ -14,6 +15,14 @@ registerEndpoint('/api/tasks/action', { method: 'POST', handler: hold })
 // What the details say, and how many times they were read.
 const shown: { stage: string, failure: string, failureStage: string, archived?: boolean, pane?: string | null } = { stage: 'approval', failure: '', failureStage: '' }
 let detailsReads = 0
+// Start's agent: the task's default (worker.agent, where it comes from) and the installed ones.
+let startReply: unknown = { agent: { value: 'claude', kind: 'claude', place: 'repo', from: 'your entry for demo' }, agents: ['claude', 'codex', 'pi'] }
+let startReads = 0
+registerEndpoint('/api/tasks/start', () => {
+  startReads++
+  if (!startReply) throw createError({ statusCode: 502, data: { error: 'herdr-projects did not answer' } })
+  return startReply
+})
 registerEndpoint('/api/tasks/details', () => {
   detailsReads++
   return { id: 'demo/1', title: 'Fix login', msg: '', description: '', agent: 'claude', pr: '', branch: '', worktree: '', failureAuth: false, pane: null as string | null, ...shown }
@@ -334,6 +343,116 @@ describe('the sheet\'s chat button (no message field)', () => {
     await vi.waitFor(() => expect(buttons().map(b => b.textContent?.trim())).toContain('Start'))
     expect(chatButton()).toBeNull()
     Object.assign(shown, { stage: 'approval' })
+    w.unmount()
+  })
+})
+
+describe('Start: the agent it starts with', () => {
+  const todo: TaskRow = { ...task, state: 'idle', stage: 'todo', group: 'todo', app: '' }
+  const startButton = () => [...document.querySelectorAll<HTMLButtonElement>('.task-sheet-actions button')].find(b => /^Start/.test(b.textContent?.trim() || ''))
+  const chips = () => [...document.querySelectorAll<HTMLButtonElement>('.task-start-chip')]
+  // The bodies Start sends, answered at once.
+  let sent: Record<string, unknown>[] = []
+  async function open() {
+    sent = []
+    registerEndpoint('/api/tasks/action', { method: 'POST', handler: async (e) => { sent.push(await readBody(e)); return { ok: true, msg: 'demo/1: started' } } })
+    Object.assign(shown, { stage: 'todo', failure: '', failureStage: '', pane: null })
+    const w = await mountSuspended(TaskSheet, { props: { task: todo, machine: 'a', open: true } })
+    mounted = w
+    await vi.waitFor(() => expect(startButton()).toBeTruthy())
+    return w
+  }
+  let mounted: { unmount: () => void } | null = null
+  afterEach(() => {
+    registerEndpoint('/api/tasks/action', { method: 'POST', handler: hold })
+    Object.assign(shown, { stage: 'approval' })
+    startReply = { agent: { value: 'claude', kind: 'claude', place: 'repo', from: 'your entry for demo' }, agents: ['claude', 'codex', 'pi'] }
+    mounted?.unmount()
+    mounted = null
+  })
+  const done = (w: { unmount: () => void }) => { mounted = w }
+  const names = () => chips().map(c => `${c.querySelector('.task-start-name')?.textContent}${c.querySelector('small') ? ' (default)' : ''}`)
+
+  it('shows the default agent, preselected, and where it comes from; the other installed agents after it', async () => {
+    const w = await open()
+    await vi.waitFor(() => expect(chips()).toHaveLength(3))
+    expect(names()).toEqual(['claude (default)', 'codex', 'pi'])
+    expect(chips().map(c => c.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false'])
+    expect(document.querySelector('.task-start-from')?.textContent).toBe('Default from your settings for demo')
+    expect(startButton()!.textContent?.trim()).toBe('Start')
+    done(w)
+  })
+
+  it('Start without a change: one click, no agent sent (the task\'s default, exactly as before)', async () => {
+    const w = await open()
+    await vi.waitFor(() => expect(chips()).toHaveLength(3))
+    startButton()!.click()
+    await vi.waitFor(() => expect(sent).toHaveLength(1))
+    expect(sent[0]).toEqual({ machine: 'a', id: 'demo/1', action: 'delegate' })
+    done(w)
+  })
+
+  it('another agent: sent for this start only, and the sheet says the default stays', async () => {
+    const w = await open()
+    await vi.waitFor(() => expect(chips()).toHaveLength(3))
+    chips()[1]!.click()
+    await flushPromises()
+    expect(chips().map(c => c.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false'])
+    expect(startButton()!.textContent?.trim()).toBe('Start with codex')
+    expect(document.body.textContent).toContain('For this start only: the default stays.')
+    startButton()!.click()
+    await vi.waitFor(() => expect(sent).toHaveLength(1))
+    expect(sent[0]).toEqual({ machine: 'a', id: 'demo/1', action: 'delegate', agent: 'codex' })
+    // Back to the default: nothing sent again.
+    chips()[0]!.click()
+    await flushPromises()
+    expect(startButton()!.textContent?.trim()).toBe('Start')
+    done(w)
+  })
+
+  it('the choice is per sheet: another task, or the sheet opened again, starts from its default', async () => {
+    const w = await open()
+    await vi.waitFor(() => expect(chips()).toHaveLength(3))
+    chips()[2]!.click()
+    await flushPromises()
+    expect(startButton()!.textContent?.trim()).toBe('Start with pi')
+    await w.setProps({ task: { ...todo, id: 'demo/2', n: 2 } })
+    await vi.waitFor(() => expect(chips()).toHaveLength(3))
+    expect(startButton()!.textContent?.trim()).toBe('Start')
+    expect(chips()[0]!.getAttribute('aria-checked')).toBe('true')
+    done(w)
+  })
+
+  it('a default model (codex/gpt-5.5) is shown as is; the same agent is not offered twice', async () => {
+    startReply = { agent: { value: 'codex/gpt-5.5', kind: 'codex', place: 'builtin', from: 'built in' }, agents: ['claude', 'codex'] }
+    const w = await open()
+    await vi.waitFor(() => expect(chips()).toHaveLength(2))
+    expect(names()).toEqual(['codex/gpt-5.5 (default)', 'claude'])
+    expect(document.querySelector('.task-start-from')?.textContent).toBe('herdr-projects’ built-in default')
+    done(w)
+  })
+
+  it('the options cannot be read: Start still starts with the task\'s default', async () => {
+    startReply = null
+    const before = startReads
+    const w = await open()
+    await vi.waitFor(() => expect(startReads).toBe(before + 1))
+    await flushPromises()
+    expect(chips()).toHaveLength(0)
+    startButton()!.click()
+    await vi.waitFor(() => expect(sent).toHaveLength(1))
+    expect(sent[0]).toEqual({ machine: 'a', id: 'demo/1', action: 'delegate' })
+    done(w)
+  })
+
+  it('not asked where the sheet offers no Start', async () => {
+    Object.assign(shown, { stage: 'approval', failure: '', failureStage: '', pane: null })
+    const before = startReads
+    const w = await mountSuspended(TaskSheet, { props: { task, machine: 'a', open: true } })
+    mounted = w
+    await flushPromises()
+    expect(startReads).toBe(before)
+    expect(document.querySelector('.task-start-agent')).toBeNull()
     w.unmount()
   })
 })

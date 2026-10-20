@@ -12,6 +12,8 @@ import { CLAUDE_PANE, COORDINATOR_PANE, SOCK_FILE, fakeHerdr } from './scenario.
 const failedDetails = { task: { id: 'demo/6', title: 'Broke on the tests', stage: 'failed', msg: 'Tests failed' }, failure: { stage: 'agent', title: 'Tests failed', detail: 'npm test exited 1', auth: false, agentCanFix: true } }
 // `show --repo <name> --json`: a repo's key (1.2.1 settings show). web's is not its name.
 const keyReply = (key: string) => JSON.stringify({ settings: [{ name: 'repo.key', kind: 'repo', value: key, from: 'your entry', place: 'you', own: false, note: '' }], problems: [] })
+// `show --json -- <id>`: the task's worker.agent, from the user's entry for its repo.
+const taskAgentReply = JSON.stringify({ settings: [{ name: 'worker.agent', kind: 'work', value: 'claude', from: 'your entry for demo', place: 'repo', own: false, note: '' }], problems: [] })
 const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../recordings/herdr-projects-1.2.1')
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-hp1x-'))
 const calls = path.join(root, 'calls.log')
@@ -40,7 +42,7 @@ case "$1" in
   archive) printf '[{"id":"%s","state":"done","title":"Archived","stage":"failed","archivedAt":1}]' "$3" > '${root}/archived.json'; echo "$3: done" ;;
   # What the board lists once a task is restored, when the spec gives it.
   restore) if [ -f '${root}/after-restore.json' ]; then mv '${root}/after-restore.json' '${root}/list.json'; echo '[]' > '${root}/archived.json'; fi; echo "$3: done" ;;
-  show) case "$2" in --repo=demo) echo '${keyReply('DEMO')}' ;; --repo=web) echo '${keyReply('SITE')}' ;; *) echo '${keyReply('none')}' ;; esac ;;
+  show) case "$2" in --json) echo '${taskAgentReply}' ;; --repo=demo) echo '${keyReply('DEMO')}' ;; --repo=web) echo '${keyReply('SITE')}' ;; *) echo '${keyReply('none')}' ;; esac ;;
   *) echo "unexpected: $*" >&2; exit 1 ;;
 esac
 `, { mode: 0o755 })
@@ -412,8 +414,20 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   await tab(/^To do/)
   await card('In the backlog').click()
   await expect(task.getByRole('button', { name: 'Stop' })).toHaveCount(0)
+  // Start names the task's default agent, preselected; one click starts with it, as before.
+  const agents = task.getByRole('radiogroup', { name: 'Agent for this start' })
+  await expect(agents.getByRole('radio', { name: /claude/ })).toHaveAttribute('aria-checked', 'true')
+  await expect(agents).toContainText('Default from your settings for demo')
   await task.getByRole('button', { name: 'Start', exact: true }).click()
   await expect.poll(callLog).toContain('delegate -- demo/5')
+  await page.keyboard.press('Escape')
+  // Another installed agent, for this start only: passed to delegate, no setting changed.
+  await card('In the backlog').click()
+  await agents.getByRole('radio', { name: /codex/ }).click()
+  await expect(agents).toContainText('For this start only: the default stays.')
+  await task.getByRole('button', { name: 'Start with codex', exact: true }).click()
+  await expect.poll(callLog).toContain('delegate --worker.agent=codex -- demo/5')
+  expect(callLog().filter(l => /^(set|unset) /.test(l))).toEqual([])
   await page.keyboard.press('Escape')
   // Working: Stop, asked first; no Archive.
   await tab(/^Working/)

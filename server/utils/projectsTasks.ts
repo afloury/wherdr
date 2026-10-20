@@ -23,7 +23,7 @@ import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
   type MachineTasks, type TaskDetails, type TaskRow, type TasksBoard,
-  type TaskCommand, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
+  type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, repoKeysFromFile, rowFromTaskFile, taskActions,
 } from '../../shared/projectsTasks'
 import { HERDR_BIN, HERDR_CHILD_ENV, IN_CONTAINER, log } from './env'
@@ -33,6 +33,7 @@ import { HerdrError } from './herdr'
 import { type Machine, allMachines, baseMachines } from './machines'
 import { machineFor } from './actions'
 import { projectsPluginInfo } from './projectsPlugin'
+import { installedAgentKinds } from './agentAvailability'
 import { findPane, getState } from './state'
 import { fmt } from '../../shared/message'
 
@@ -397,10 +398,17 @@ export async function approveTask(machine: unknown, id: unknown): Promise<{ ok: 
 
 // One of the task commands that take only its id (`delegate`, `stop`,
 // `retry`, `archive`), on a task the last list shows it applies to.
-export async function taskCommand(machine: unknown, id: unknown, action: unknown): Promise<{ ok: true, msg: string }> {
+// `agent` (delegate only): start it with that agent, one installed on the
+// task's machine, for this start only (shared delegateArgs); none: its default.
+export async function taskCommand(machine: unknown, id: unknown, action: unknown, agent?: unknown): Promise<{ ok: true, msg: string }> {
   const m = boardOf(machine)
   const tid = checkId(id)
   if (!isTaskCommand(action)) throw new HerdrError('bad_action', 'Unknown action')
+  const chosen = agent === undefined || agent === null || agent === '' ? null : agent
+  if (chosen !== null && action !== 'delegate') throw new HerdrError('bad_action', 'Only Start takes an agent')
+  if (chosen !== null && (!isAgentName(chosen) || !(await installedAgentKinds(m)).includes(chosen))) {
+    throw new HerdrError('bad_agent', fmt('{agent} is not installed on {machine}', { agent: isAgentName(chosen) ? chosen : '?', machine: m.label }))
+  }
   // An archived task is not in the list: its own row (`restore` only applies to it).
   const row = action === 'restore' ? await archivedRow(m, tid) : await taskOf(m, tid)
   // A failed task: what failed decides between Retry and Start (`details`).
@@ -408,11 +416,24 @@ export async function taskCommand(machine: unknown, id: unknown, action: unknown
     ? parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS))
     : null
   if (!row || !taskActions(row, failure)[action]) throw refused(action)
-  const out = await command(m, [action, '--', tid])
+  const out = await command(m, action === 'delegate' ? delegateArgs(tid, chosen) : [action, '--', tid])
   forget(m)
-  log(`herdr-projects ${action} ${tid}${m.local ? '' : ` on ${m.label}`}`)
+  log(`herdr-projects ${action} ${tid}${chosen ? ` --worker.agent=${chosen}` : ''}${m.local ? '' : ` on ${m.label}`}`)
   return { ok: true, msg: firstLine(out) }
 }
+// What Start offers on a task: the agent it starts with by default (`show <id>
+// --json`: its worker.agent and where that comes from) and the agents
+// installed on its machine. From a container nothing is run: no default known.
+export async function taskStartOptions(machine: unknown, id: unknown): Promise<StartOptions> {
+  const m = boardOf(machine)
+  const tid = checkId(id)
+  const [agent, agents] = await Promise.all([
+    readsFiles(m) ? null : command(m, ['show', '--json', '--', tid], LIST_TIMEOUT_MS).then(parseWorkerAgent),
+    installedAgentKinds(m).catch(() => [] as string[]),
+  ])
+  return { agent, agents }
+}
+
 function refused(action: TaskCommand): HerdrError {
   switch (action) {
     case 'delegate': return new HerdrError('bad_action', 'This task cannot be started now')

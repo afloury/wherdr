@@ -44,6 +44,14 @@ vi.mock('../server/utils/state', () => ({
   getState: () => ({ panes }),
 }))
 vi.mock('../server/utils/env', () => ({ HERDR_BIN: 'herdr', HERDR_CHILD_ENV: {}, IN_CONTAINER: false, log: () => {} }))
+// The agents installed on the machine (server/utils/agentAvailability.ts).
+let installed: string[] = ['claude', 'codex']
+vi.mock('../server/utils/agentAvailability', () => ({ installedAgentKinds: async () => installed }))
+// `show --json -- <id>`: the task's settings, worker.agent among them.
+const taskSettings = (value: string, place: string, from: string) => JSON.stringify({ settings: [
+  { name: 'worker.agent', kind: 'work', value, from, place, own: false, note: '' },
+  { name: 'worker.effort', kind: 'work', value: 'default', from: 'built in', place: 'builtin', own: false, note: '' },
+], problems: [] })
 
 const T = await import('../server/utils/projectsTasks')
 
@@ -69,6 +77,7 @@ beforeEach(() => {
   delay = 0
   listReply = null
   coordStatus = {}
+  installed = ['claude', 'codex']
   infoFails = false
   info.status = 'ready'
   panes.length = 0
@@ -78,6 +87,10 @@ beforeEach(() => {
   rmSync(path.join(home, '.herdr-projects'), { recursive: true, force: true })
   T.setRunner(async (_m, launcher, args) => {
     expect(launcher).toBe('/plugins/herdr-projects/bin/run.sh')
+    if (args[0] === 'show' && args[2] === '--') {
+      calls.push(args)
+      return { code: 0, stdout: taskSettings('claude', 'repo', 'your entry for demo'), stderr: '' }
+    }
     if (args[0] === 'show') {
       shows.push(args)
       const repo = args[1]!.replace('--repo=', '')
@@ -527,6 +540,54 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     await read()
     await T.taskCommand('', 'demo/4', 'archive')
     expect(calls.filter(c => c[0] !== 'list')).toEqual([['delegate', '--', 'demo/5'], ['stop', '--', 'demo/3'], ['details', '--json', '--', 'demo/6'], ['retry', '--', 'demo/6'], ['archive', '--', 'demo/4']])
+  })
+
+  it('Start with another agent: passed for this task\'s delegate only, nothing else run (no setting changed)', async () => {
+    await read()
+    calls = []
+    shows = []
+    await T.taskCommand('', 'demo/5', 'delegate', 'codex')
+    expect(calls).toEqual([['delegate', '--worker.agent=codex', '--', 'demo/5']])
+    // The defaults are untouched: no set/unset, and the next plain Start sends no agent.
+    await read()
+    calls = []
+    await T.taskCommand('', 'demo/5', 'delegate')
+    expect(calls).toEqual([['delegate', '--', 'demo/5']])
+    expect(shows).toEqual([])
+    // An empty or null agent is the default too.
+    await read()
+    calls = []
+    await T.taskCommand('', 'demo/5', 'delegate', '')
+    await read()
+    await T.taskCommand('', 'demo/5', 'delegate', null)
+    expect(calls.filter(c => c[0] !== 'list')).toEqual([['delegate', '--', 'demo/5'], ['delegate', '--', 'demo/5']])
+  })
+
+  it('refuses an agent not installed on the task\'s machine, a malformed one, or one on another command, before running anything', async () => {
+    await read()
+    calls = []
+    await expect(T.taskCommand('', 'demo/5', 'delegate', 'pi')).rejects.toThrow('pi is not installed on devbox')
+    await expect(T.taskCommand('', 'demo/5', 'delegate', '--now')).rejects.toThrow(/is not installed/)
+    await expect(T.taskCommand('', 'demo/5', 'delegate', 'codex --merge.by=itself')).rejects.toThrow(/is not installed/)
+    await expect(T.taskCommand('', 'demo/5', 'delegate', { kind: 'codex' })).rejects.toThrow(/is not installed/)
+    await expect(T.taskCommand('', 'demo/3', 'stop', 'codex')).rejects.toThrow(/Only Start takes an agent/)
+    expect(calls).toEqual([])
+  })
+
+  it('what Start offers: the task\'s worker.agent as show resolves it, and the installed agents', async () => {
+    installed = ['claude', 'codex', 'omp']
+    expect(await T.taskStartOptions('', 'demo/5')).toEqual({
+      agent: { value: 'claude', kind: 'claude', place: 'repo', from: 'your entry for demo' },
+      agents: ['claude', 'codex', 'omp'],
+    })
+    expect(calls).toEqual([['show', '--json', '--', 'demo/5']])
+    await expect(T.taskStartOptions('', '../x')).rejects.toThrow(/Invalid task/)
+  })
+
+  it('from a container: no command run, only the installed agents', async () => {
+    T.setInContainer(true)
+    expect(await T.taskStartOptions('', 'demo/5')).toEqual({ agent: null, agents: ['claude', 'codex'] })
+    expect(calls).toEqual([])
   })
 
   it('a failed task: what failed (details) decides between Retry and Start, as 1.2.1 send_error does', async () => {

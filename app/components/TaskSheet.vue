@@ -4,6 +4,9 @@
 // it (merge, or yes to a plan: asked first, it cannot be undone), start it (a
 // task of the backlog), stop its agent (asked first), retry what went wrong,
 // archive it. What 1.x does not give for a task is not shown.
+// Start names the agent the task starts with by default (its worker.agent, and
+// where that comes from) and offers the other agents installed on its machine:
+// a pick is for this start only (`delegate --worker.agent`), the defaults stay.
 // No message field here: "Open the chat" closes the sheet and opens the task's
 // agent in the Board's side panel (`chat`), where replying happens (with no
 // pane for its agent, the panel's field sends the reply through herdr-projects).
@@ -12,7 +15,7 @@
 // come back, or the error stays in the sheet. Archive closes it: the Board
 // offers Restore for a few seconds. An archived task (Board › Archived, a link to it) is read-only, as
 // in 1.x: an "Archived" tag and Restore, nothing else.
-import { NO_ACTIONS, type TaskCommand, type TaskDetails, type TaskRow, prNumber, taskActions, taskKey } from '#shared/projectsTasks'
+import { NO_ACTIONS, type StartOptions, type TaskCommand, type TaskDetails, type TaskRow, prNumber, taskActions, taskKey } from '#shared/projectsTasks'
 import { PROJECTS_LAUNCHER } from '#shared/projectsPlugin'
 
 // `readOnly`: the board is read from its files (wherdr in a container): the
@@ -48,6 +51,53 @@ const label = computed(() => (props.task ? taskKey(props.task.id, props.task.rep
 // or one herdr-projects takes a reply for (`tell`), pane or not.
 const chatShown = computed(() => !archived.value && (Boolean(failure.value?.pane) || actions.value.tell))
 
+// Start: the task's default agent and the installed ones (`/api/tasks/start`),
+// read when the sheet offers Start. `pick`: another agent for this start; null
+// is the default, which sends no agent at all (Start exactly as before).
+const startOpts = ref<StartOptions | null>(null)
+const startLoading = ref(false)
+const pick = ref<string | null>(null)
+const defaultKind = computed(() => startOpts.value?.agent?.kind || '')
+// The default first (as herdr-projects resolves it, model included), then the others.
+const startAgents = computed(() => {
+  const o = startOpts.value
+  if (!o) return []
+  return [
+    { id: null as string | null, label: o.agent?.value || tl('default', 'par défaut'), isDefault: true },
+    ...o.agents.filter(k => k !== defaultKind.value).map(k => ({ id: k as string | null, label: k, isDefault: false })),
+  ]
+})
+const startAgent = computed(() => (pick.value && pick.value !== defaultKind.value ? pick.value : null))
+// Where the default comes from, in the user's words (1.x's own as a fallback).
+function agentSource(): string {
+  const a = startOpts.value?.agent
+  if (!a) return ''
+  const repo = props.task?.repo || ''
+  switch (a.place) {
+    case 'task': return tl('Default set on this task', 'Défaut réglé sur cette tâche')
+    case 'repo': return tl(`Default from your settings for ${repo}`, `Défaut de tes réglages pour ${repo}`)
+    case 'you': return tl('Default from your settings', 'Défaut de tes réglages')
+    case 'builtin': return tl('herdr-projects’ built-in default', 'Défaut intégré de herdr-projects')
+    default: return tl(`Default: ${a.from}`, `Défaut : ${a.from}`)
+  }
+}
+let startSeq = 0
+async function loadStart() {
+  const t = props.task
+  if (!t) return
+  const id = ++startSeq
+  startLoading.value = true
+  try {
+    const o = await api<StartOptions>(`/api/tasks/start?machine=${encodeURIComponent(props.machine)}&id=${encodeURIComponent(t.id)}`)
+    if (id === startSeq) startOpts.value = o
+  } catch {
+    // Start still works with the task's default: only the choice is missing.
+    if (id === startSeq) startOpts.value = null
+  } finally {
+    if (id === startSeq) startLoading.value = false
+  }
+}
+
 let seq = 0
 async function load() {
   const t = props.task
@@ -79,9 +129,19 @@ watch([open, target], ([o]) => {
   running.value = null
   actionError.value = ''
   restored.value = false
+  pick.value = null
+  startOpts.value = null
+  startLoading.value = false
+  startSeq++
   if (!o) return
   details.value = null
   load()
+}, { immediate: true })
+// Asked once per sheet, when it offers Start (a failed task may offer it only
+// once its details say what failed).
+// Watched after the reset above, so another task's sheet asks again.
+watch(() => `${open.value && actions.value.delegate}|${target()}`, () => {
+  if (open.value && actions.value.delegate && !startOpts.value && !startLoading.value) loadStart()
 }, { immediate: true })
 // The same task moving on (working → failed, …): its details are read again,
 // so what it now allows (Retry after a failure) shows without reopening. Kept
@@ -154,7 +214,8 @@ async function act(action: TaskCommand) {
   running.value = action
   actionError.value = ''
   try {
-    const r = await api<{ msg: string }>('/api/tasks/action', { machine, id: t.id, action })
+    const agent = action === 'delegate' ? startAgent.value : null
+    const r = await api<{ msg: string }>('/api/tasks/action', { machine, id: t.id, action, ...(agent ? { agent } : {}) })
     haptic()
     if (action === 'archive') {
       // The Board says it, with Restore, and reads itself again.
@@ -229,9 +290,23 @@ function chat() {
         <p class="task-sheet-text">{{ details.plan }}</p>
       </section>
 
+      <div v-if="actions.delegate" class="task-start-agent" role="radiogroup" :aria-label="tl('Agent for this start', 'Agent pour ce lancement')">
+        <span class="task-start-label">{{ tl('Agent', 'Agent') }}</span>
+        <span v-if="!startOpts" class="task-start-wait">{{ startLoading ? t('Loading…') : tl('the task’s default', 'celui de la tâche par défaut') }}</span>
+        <button
+          v-for="a in startAgents" :key="a.id ?? ''" type="button" role="radio" class="task-start-chip"
+          :class="{ on: (a.isDefault && !startAgent) || (a.id !== null && a.id === startAgent) }"
+          :aria-checked="(a.isDefault && !startAgent) || (a.id !== null && a.id === startAgent)"
+          :disabled="busy || offlineView" @click="pick = a.id"
+        >
+          <AgentAvatar v-if="a.id || startOpts?.agent" :agent="a.id || defaultKind" /><span class="task-start-name">{{ a.label }}</span><small v-if="a.isDefault">{{ tl('default', 'défaut') }}</small>
+        </button>
+        <span v-if="startOpts?.agent" class="task-start-from">{{ agentSource() }}</span>
+        <span v-if="startAgent" class="task-start-from">{{ tl('For this start only: the default stays.', 'Pour ce lancement seulement : le défaut ne change pas.') }}</span>
+      </div>
       <div v-if="chatShown || actions.approve || actions.delegate || actions.retry || actions.stop || actions.archive || actions.restore" class="task-sheet-actions">
         <UButton v-if="actions.restore" color="primary" icon="i-lucide-archive-restore" :loading="running === 'restore'" :disabled="busy || offlineView" @click="act('restore')">{{ tl('Restore', 'Restaurer') }}</UButton>
-        <UButton v-if="actions.delegate" color="primary" icon="i-lucide-play" :loading="running === 'delegate'" :disabled="busy || offlineView" @click="act('delegate')">{{ tl('Start', 'Lancer') }}</UButton>
+        <UButton v-if="actions.delegate" color="primary" icon="i-lucide-play" :loading="running === 'delegate'" :disabled="busy || offlineView" @click="act('delegate')">{{ startAgent ? tl(`Start with ${startAgent}`, `Lancer avec ${startAgent}`) : tl('Start', 'Lancer') }}</UButton>
         <UButton v-if="actions.approve" color="primary" icon="i-lucide-check" :loading="busy && !running" :disabled="busy || offlineView" @click="approve">
           {{ task.stage === 'plan' ? tl('Approve plan', 'Accepter le plan') : tl('Approve', 'Approuver') }}
         </UButton>
