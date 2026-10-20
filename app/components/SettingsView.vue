@@ -7,6 +7,7 @@ import pkg from '../../package.json'
 import { SETTINGS_SECTIONS, settingsBack } from '~/utils/settingsNav'
 import type { SettingsSection } from '~/utils/settingsNav'
 import { type QuietDuration, type QuietScope, quietUntil } from '#shared/quiet'
+import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
 import { DEFAULT_MAX_SESSION_DAYS, MAX_SESSION_DAYS, type MaxSessionDays } from '#shared/sessionLimit'
 
 const appVersion = pkg.version
@@ -185,13 +186,13 @@ const quietEnd = computed(() => {
   const cur = quietCurrent.value
   if (!cur) return ''
   const who = cur.scope === 'all' ? tl('all devices', 'tous les appareils') : tl('this device', 'cet appareil')
-  if (cur.quiet.until === null) return tl(`Silenced on ${who} until turned back on.`, `Silence sur ${who} jusqu’à réactivation.`)
-  const end = new Date(cur.quiet.until)
-  const time = end.toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' })
-  const today = end.toDateString() === new Date(quietNow.value).toDateString()
-  return today
-    ? tl(`Silenced on ${who} until ${time}.`, `Silence sur ${who} jusqu’à ${time}.`)
-    : tl(`Silenced on ${who} until tomorrow ${time}.`, `Silence sur ${who} jusqu’à demain ${time}.`)
+  const end = quietPeriodEnd(cur.quiet, quietNow.value)
+  if (end.kind === 'manual') return tl(`Silenced on ${who} until turned back on.`, `Silence sur ${who} jusqu’à réactivation.`)
+  const time = new Date(end.at).toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' })
+  if (end.kind === 'today') return tl(`Silenced on ${who} until ${time}.`, `Silence sur ${who} jusqu’à ${time}.`)
+  if (end.kind === 'tomorrow') return tl(`Silenced on ${who} until tomorrow ${time}.`, `Silence sur ${who} jusqu’à demain ${time}.`)
+  const day = new Date(end.at).toLocaleDateString(language, { weekday: 'short', day: 'numeric', month: 'short' })
+  return tl(`Silenced on ${who} until ${day} ${time}.`, `Silence sur ${who} jusqu’au ${day} ${time}.`)
 })
 
 // ------------------------------------------------------------ theme

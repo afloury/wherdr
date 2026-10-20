@@ -21,6 +21,7 @@ import { type BoardCard, type CoordinatorLevel, boardSections } from '#shared/bo
 import { claudeSetupOf, machineQuotaRows, quotaRows } from '~/utils/quotas'
 import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
 import { headerFold } from '~/utils/headerFold'
+import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
 import { listMode } from '~/utils/layoutMode'
 import pkg from '../../package.json'
 import { dropMachineKey, shiftMachineKey, sortMachines } from '#shared/machineOrder'
@@ -300,16 +301,29 @@ function machineMenu(m: MachineInfo) {
 // Plugin actions of each online machine (a single one: the local one).
 const onlineKeys = computed(() => JSON.stringify(multiMachine.value ? machines.value.filter(m => m.status === 'online').map(m => m.key) : (st.value.ok ? [''] : [])))
 watch(onlineKeys, (keys) => { for (const k of JSON.parse(keys) as string[]) loadPluginActions(k) }, { immediate: true })
-// Quiet mode active: crossed-out bell next to the settings; tapping it opens the notification settings.
+// Quiet mode active: no header button (the header keeps its shape), a discreet line in
+// the list instead, and an entry in the header "…" menu when it shows. Both open the
+// notification settings.
 const quietLabel = computed(() => tl('Notifications silenced — open settings', 'Notifications en silence — ouvrir les réglages'))
 const quietSettings = '/settings?section=notifications'
+const quietHint = computed(() => {
+  const cur = quietCurrent.value
+  if (!cur) return ''
+  const end = quietPeriodEnd(cur.quiet, quietNow.value)
+  if (end.kind === 'manual') return tl('Notifications silenced', 'Notifications en silence')
+  const time = fmtTime(end.at)
+  if (end.kind === 'today') return tl(`Notifications silenced until ${time}`, `Notifications en silence jusqu’à ${time}`)
+  if (end.kind === 'tomorrow') return tl(`Notifications silenced until tomorrow ${time}`, `Notifications en silence jusqu’à demain ${time}`)
+  const day = new Date(end.at).toLocaleDateString(language, { weekday: 'short', day: 'numeric', month: 'short' })
+  return tl(`Notifications silenced until ${day} ${time}`, `Notifications en silence jusqu’au ${day} ${time}`)
+})
 const onQuietVisible = () => { if (document.visibilityState === 'visible') refreshQuiet() }
 onMounted(() => { refreshQuiet(); document.addEventListener('visibilitychange', onQuietVisible) })
 onBeforeUnmount(() => document.removeEventListener('visibilitychange', onQuietVisible))
 // A single machine: its plugin actions live in the "…" menu of its session row.
 const soloPlugins = computed(() => !multiMachine.value && machinePluginActions('').length > 0)
 // Header buttons: when the list is too narrow, the secondary ones move into a "…" menu
-// (settings first, then the do-not-disturb bell).
+// (settings first, then the board).
 const titleRow = ref<HTMLElement | null>(null)
 const titleRowWidth = ref(0)
 let titleRowObserver: ResizeObserver | null = null
@@ -318,17 +332,17 @@ onMounted(() => {
   if (titleRow.value) titleRowObserver.observe(titleRow.value)
 })
 onBeforeUnmount(() => titleRowObserver?.disconnect())
-// First to fold first: the quiet bell is a state, so it stays in sight longest.
-const headerFoldable = computed(() => ['settings', 'board', ...(quietCurrent.value ? ['quiet'] : [])])
+// First to fold first.
+const headerFoldable = ['settings', 'board']
 const headerFolded = computed(() => {
   if (!titleRowWidth.value) return new Set<string>()
-  const total = headerFoldable.value.length + 1 + (desk.value ? 1 : 0)
-  return new Set(headerFoldable.value.slice(0, headerFold(titleRowWidth.value, total, headerFoldable.value.length)))
+  const total = headerFoldable.length + 1 + (desk.value ? 1 : 0)
+  return new Set(headerFoldable.slice(0, headerFold(titleRowWidth.value, total, headerFoldable.length)))
 })
 function headerMenuItems(): MenuItem[] {
   const f = headerFolded.value
   return [
-    ...(f.has('quiet') ? [{ label: quietLabel.value, icon: 'i-lucide-bell-off', run: () => navigateTo(quietSettings) }] : []),
+    ...(quietCurrent.value ? [{ label: quietLabel.value, icon: 'i-lucide-bell-off', run: () => navigateTo(quietSettings) }] : []),
     ...(f.has('board') ? [{ label: t('Board'), icon: 'i-lucide-square-kanban', run: () => navigateTo('/board') }] : []),
     ...(f.has('settings') ? [{ label: t('Settings'), icon: 'i-lucide-settings-2', run: () => navigateTo('/settings') }] : []),
   ]
@@ -456,9 +470,6 @@ function resetListWidth() {
       <UTooltip :text="t('New')" :kbds="shortcutKbds('new-space')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('New')" :disabled="!eventsOpen || offlineView" @click="newAgent" />
       </UTooltip>
-      <UTooltip v-if="quietCurrent" :text="quietLabel" :content="{ side: 'right' }">
-        <UButton icon="i-lucide-bell-off" color="neutral" variant="ghost" size="lg" class="icon-btn quiet-on" :aria-label="quietLabel" :to="quietSettings" />
-      </UTooltip>
       <UTooltip :text="t('Board')" :kbds="shortcutKbds('board')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Board')" to="/board" />
       </UTooltip>
@@ -470,6 +481,11 @@ function resetListWidth() {
           <i aria-hidden="true" /><b>{{ c.n }}</b><span class="sr-only">{{ c.label }}</span>
         </li>
       </ul>
+      <!-- Quiet mode: a small state mark under the counters, not a button among the
+           rail's actions, so the rail keeps its shape. -->
+      <UTooltip v-if="quietHint" :text="quietHint" :content="{ side: 'right' }">
+        <NuxtLink :to="quietSettings" class="rail-quiet" :aria-label="quietLabel"><UIcon name="i-lucide-bell-off" /></NuxtLink>
+      </UTooltip>
     </nav>
     <header class="home-top">
       <p class="eyebrow">
@@ -482,9 +498,6 @@ function resetListWidth() {
         <div class="home-actions">
           <UTooltip :text="tl('Search agents and conversations', 'Rechercher agents et conversations')" :kbds="shortcutKbds('search-all')" :disabled="!desk">
             <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" @click="openSearch" />
-          </UTooltip>
-          <UTooltip v-if="quietCurrent && !headerFolded.has('quiet')" :text="quietLabel" :disabled="!desk">
-            <UButton icon="i-lucide-bell-off" color="neutral" variant="ghost" size="lg" class="icon-btn quiet-on" :aria-label="quietLabel" :to="quietSettings" />
           </UTooltip>
           <UTooltip v-if="!headerFolded.has('board')" :text="t('Board')" :kbds="shortcutKbds('board')" :disabled="!desk">
             <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Board')" to="/board" />
@@ -514,6 +527,7 @@ function resetListWidth() {
         <b>{{ soloMachine.session || 'default' }}<UIcon name="i-lucide-chevron-right" /></b>
       </button><UDropdownMenu v-if="awakeByMachine[soloMachine.key]?.supported || soloPlugins" :items="machineMenu(soloMachine)" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :aria-label="t('Options')" class="solo-machine-options" /></UDropdownMenu></div>
       <p v-if="!multiMachine && awakeByMachine[soloMachine.key]?.active" class="machine-awake"><UIcon name="i-lucide-sun" />{{ awakeLabel(awakeByMachine[soloMachine.key]) }}</p>
+      <NuxtLink v-if="quietHint" :to="quietSettings" class="home-quiet" :aria-label="quietLabel"><UIcon name="i-lucide-bell-off" /><span>{{ quietHint }}</span></NuxtLink>
 
       <div v-if="showCounters && agents.length" class="stats">
         <div v-for="c in stats" :key="c.s" class="stat" :class="[c.s, { zero: !c.n }]">

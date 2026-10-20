@@ -1016,8 +1016,9 @@ There is no push for the agent currently on screen.
 
 **Do not disturb** (top of Settings → Notifications) stops every push, for this device or for all
 devices, for 1 hour, until 8 am or until turned back on. The server applies it before sending and
-keeps it across restarts (`data/quiet.json` for all devices). While it is on, a crossed-out bell
-next to Settings on the home screen turns it off in one tap.
+keeps it across restarts (`data/quiet.json` for all devices). While it is on, the agent list
+shows one line, “Notifications silenced until 08:00”, that opens these settings (a crossed-out bell
+under the counters when the list is collapsed); the header keeps its buttons as they are.
 
 wherdr also relays custom notifications sent with `herdr notification show` (plugins, scripts).
 To receive them it connects to Herdr's client socket as a **passive** client: it never becomes
