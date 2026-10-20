@@ -168,6 +168,9 @@ export const fontSize = ref(Number(ls.get('fontSize')) || 12)
 watch(fontSize, v => ls.set('fontSize', String(v)))
 export const terminalRenderer = ref(parseTerminalRenderer(ls.get('terminalRenderer')))
 watch(terminalRenderer, v => ls.set('terminalRenderer', v))
+// OSC 52 copies of the agents written to this device's clipboard (on by default).
+export const agentClipboard = ref(ls.get('agentClipboard') !== '0')
+watch(agentClipboard, v => ls.set('agentClipboard', v ? '1' : '0'))
 // The engine actually loaded in xterm; kept after the terminal view
 // is closed so Settings can show the last observed result.
 export const terminalRenderStatus = ref<ActiveTerminalRenderer | null>(null)
@@ -348,6 +351,21 @@ export function toast(msg: string, err = false, detail?: string) {
     icon: err ? 'i-lucide-circle-alert' : undefined,
     duration: (err ? 4200 : 2600) + (detail ? 2400 : 0),
     close: false,
+  })
+}
+
+// A toast with one button (`fn` runs in the tap: a user gesture, which iOS
+// Safari asks for before writing the clipboard).
+export function toastAction(msg: string, label: string, fn: () => void) {
+  if (!toaster) return
+  toaster.clear()
+  toaster.add({
+    title: msg,
+    color: 'neutral',
+    duration: 10000,
+    close: false,
+    orientation: 'horizontal',
+    actions: [{ label, color: 'primary', variant: 'solid', onClick: fn }],
   })
 }
 
