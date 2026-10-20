@@ -9,7 +9,7 @@
 //
 // Talking to agents happens in a side panel (BoardPanel), never in a box on the
 // Board: a card opens its task's agent there; labelled buttons open a
-// coordinator: the Coordinator (top bar, and each machine's lane), the machine
+// coordinator: the Coordinator (top bar), the machine
 // coordinator (each machine's lane) and a repo's project coordinator (its lane;
 // 1.x: `Space` on a heading). A task with no agent opens its sheet
 // (TaskSheet), which the panel opens too; the sheet's "Open the chat" brings
@@ -303,26 +303,27 @@ function added() { setTimeout(reload, 1500) }
 // Who the side panel talks to (BoardPanel): a task's agent or a coordinator.
 const panel = shallowRef<PanelTarget | null>(null)
 function talkTo(machine: string, to: CoordinatorTarget) {
-  if (readOnly(machine)) return
+  if (coordWhy(machine)) return
   panel.value = { machine, kind: 'coordinator', to }
   haptic()
 }
-// Each button says who it talks to: "Coordinator · devbox",
-// "Machine coordinator · devbox", "Coordinator · web" (a repo's).
-function coordLabel(machine: string, to: CoordinatorTarget): string {
-  if (to.kind === 'project') return tl(`Coordinator · ${to.repo}`, `Coordinateur · ${to.repo}`)
-  if (to.kind === 'machine') return tl(`Machine coordinator · ${machineLabel(machine)}`, `Coordinateur de machine · ${machineLabel(machine)}`)
-  return `Coordinator · ${machineLabel(machine)}`
+const coordLabel = (machine: string, to: CoordinatorTarget) => coordinatorLabel(to, machineLabel(machine))
+const MACHINE_COORDS: CoordinatorTarget[] = [{ kind: 'machine' }]
+// The main Coordinator is an entry point for all work, independent of task filters.
+const coordMachines = computed(() => board.value?.machines || [])
+const coordWhy = (machine: string) => {
+  const m = coordMachines.value.find(m => m.machine === machine)
+  return m ? coordinatorUnavailable(m, offlineView.value) : tl('Machine unavailable', 'Machine indisponible')
 }
-// A machine's lane: its Coordinator and its machine coordinator.
-const MACHINE_COORDS: CoordinatorTarget[] = [{ kind: 'main' }, { kind: 'machine' }]
-// The top bar's Coordinator: the machine shown, or a choice when several are.
-const coordMachines = computed(() => writable.value.filter(m => shownScope.value === ALL || m.machine === shownScope.value).map(m => m.machine))
-const coordItems = computed(() => [coordMachines.value.map(machine => ({
-  label: coordLabel(machine, { kind: 'main' }),
+const coordHint = (machine: string, to: CoordinatorTarget) => [coordinatorDescription(to), coordWhy(machine)].filter(Boolean).join(' ')
+const coordItems = computed(() => [coordMachines.value.map(m => ({
+  label: coordLabel(m.machine, { kind: 'main' }),
+  description: coordHint(m.machine, { kind: 'main' }),
+  disabled: Boolean(coordWhy(m.machine)),
   icon: 'i-lucide-server',
-  onSelect: () => talkTo(machine, { kind: 'main' }),
+  onSelect: () => talkTo(m.machine, { kind: 'main' }),
 }))])
+const noCoordinator = computed(() => Boolean(board.value) && !coordMachines.value.some(m => !coordWhy(m.machine)))
 const talking = (machine: string, to: CoordinatorTarget) => {
   const p = panel.value
   if (!p || p.kind !== 'coordinator' || p.machine !== machine || p.to.kind !== to.kind) return false
@@ -392,28 +393,27 @@ function back() {
             <span class="board-new-label">{{ tl('New task', 'Nouvelle tâche') }}</span>
           </UButton>
         </span>
-        <span class="ro-why" :title="readOnlyWhy()">
-          <UButton color="neutral" variant="outline" size="md" class="board-coord board-top-coord" disabled :aria-description="readOnlyWhy()">Coordinator</UButton>
-        </span>
       </template>
-      <UButton
-        v-if="coordMachines.length === 1" color="neutral" variant="outline" size="md" class="board-coord board-top-coord"
-        :class="{ on: talking(coordMachines[0]!, { kind: 'main' }) }" :disabled="offlineView" :title="coordLabel(coordMachines[0]!, { kind: 'main' })"
-        @click="talkTo(coordMachines[0]!, { kind: 'main' })"
-      >
-        Coordinator
-      </UButton>
-      <UDropdownMenu v-else-if="coordMachines.length > 1" :items="coordItems" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
-        <UButton color="neutral" variant="outline" size="md" class="board-coord board-top-coord" trailing-icon="i-lucide-chevron-down" :disabled="offlineView">
-          Coordinator
-        </UButton>
+      <CoordinatorHint v-if="coordMachines.length === 1" :text="coordHint(coordMachines[0]!.machine, { kind: 'main' })">
+        <UButton color="neutral" variant="outline" size="md" class="board-coord board-top-coord"
+          :class="{ on: talking(coordMachines[0]!.machine, { kind: 'main' }) }" :disabled="Boolean(coordWhy(coordMachines[0]!.machine))"
+          @click="talkTo(coordMachines[0]!.machine, { kind: 'main' })"
+        >{{ coordLabel(coordMachines[0]!.machine, { kind: 'main' }) }}</UButton>
+      </CoordinatorHint>
+      <UDropdownMenu v-else-if="coordMachines.length > 1" :items="coordItems" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown board-coord-menu', itemLabel: 'whitespace-normal', itemDescription: 'whitespace-normal' }">
+        <CoordinatorHint :text="coordinatorDescription({ kind: 'main' })">
+          <UButton color="neutral" variant="outline" size="md" class="board-coord board-top-coord" trailing-icon="i-lucide-chevron-down">
+            {{ tl('Coordinator · all work', 'Coordinateur · tout le travail') }}
+          </UButton>
+        </CoordinatorHint>
       </UDropdownMenu>
       <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="lg" class="icon-btn board-filter" :aria-label="tl('Refresh', 'Actualiser')" :disabled="offlineView" @click="reload" />
     </header>
     <div v-if="error" class="notice board-notice">{{ error }}</div>
     <p v-else-if="!board && !offlineView" class="board-empty board-loading">{{ t('Loading…') }}</p>
 
-    <div v-if="notes.length || disabled.length || troubles.length || ready.some(m => m.readOnly)" class="board-notes">
+    <div v-if="noCoordinator || notes.length || disabled.length || troubles.length || ready.some(m => m.readOnly)" class="board-notes">
+      <p v-if="noCoordinator" class="board-note" role="status">{{ tl('No Coordinator can be reached now. See each machine’s availability.', 'Aucun Coordinateur n’est joignable pour l’instant. Consulte la disponibilité de chaque machine.') }}</p>
       <p v-for="m in troubles" :key="`e-${m.machine}`" class="board-note error" role="alert">
         <b>{{ several ? machineLabel(m.machine) : tl('herdr-projects', 'herdr-projects') }}</b> · {{ m.error || tl('No answer yet', 'Pas encore de réponse') }}<template v-if="m.stale && m.at"> · {{ tl(`tasks as read at ${readAt(m.at)}`, `tâches lues à ${readAt(m.at)}`) }}</template>
       </p>
@@ -484,14 +484,14 @@ function back() {
               </button>
               <p class="board-head-name"><b>{{ machineLabel(mg.machine) }}</b><span class="board-head-sum">{{ mg.summary }}</span></p>
               <div class="board-head-actions">
-                <span v-for="to in MACHINE_COORDS" :key="to.kind" class="ro-why" :title="mg.readOnly ? readOnlyWhy() : undefined">
+                <CoordinatorHint v-for="to in MACHINE_COORDS" :key="to.kind" :text="coordHint(mg.machine, to)">
                   <UButton
                     color="neutral" variant="outline" size="sm" class="board-coord" :class="{ on: talking(mg.machine, to) }"
-                    :disabled="mg.readOnly || offlineView" :aria-description="mg.readOnly ? readOnlyWhy() : undefined" @click="talkTo(mg.machine, to)"
+                    :disabled="Boolean(coordWhy(mg.machine))" :aria-description="coordWhy(mg.machine) || undefined" @click="talkTo(mg.machine, to)"
                   >
                     {{ coordLabel(mg.machine, to) }}
                   </UButton>
-                </span>
+                </CoordinatorHint>
               </div>
             </div>
             <template v-if="!folds.has(`m:${mg.machine}`)">
@@ -502,14 +502,14 @@ function back() {
                   </button>
                   <p class="board-head-name"><b>{{ rg.repo }}</b><span class="board-head-sum">{{ rg.summary }}</span></p>
                   <div class="board-head-actions">
-                    <span class="ro-why" :title="mg.readOnly ? readOnlyWhy() : undefined">
+                    <CoordinatorHint :text="coordHint(mg.machine, { kind: 'project', repo: rg.repo })">
                       <UButton
                         color="neutral" variant="outline" size="sm" class="board-coord" :class="{ on: talking(mg.machine, { kind: 'project', repo: rg.repo }) }"
-                        :disabled="mg.readOnly || offlineView" :aria-description="mg.readOnly ? readOnlyWhy() : undefined" @click="talkTo(mg.machine, { kind: 'project', repo: rg.repo })"
+                        :disabled="Boolean(coordWhy(mg.machine))" :aria-description="coordWhy(mg.machine) || undefined" @click="talkTo(mg.machine, { kind: 'project', repo: rg.repo })"
                       >
                         {{ coordLabel(mg.machine, { kind: 'project', repo: rg.repo }) }}
                       </UButton>
-                    </span>
+                    </CoordinatorHint>
                     <span class="ro-why" :title="mg.readOnly ? readOnlyWhy() : undefined">
                       <UButton
                         icon="i-lucide-plus" color="neutral" variant="outline" size="sm" class="board-head-add" :disabled="mg.readOnly || offlineView"
@@ -534,7 +534,7 @@ function back() {
                   </section>
                 </div>
               </section>
-              <p v-if="!mg.repos.length" class="board-empty board-machine-empty">{{ tl('No task yet: talk to the Coordinator from this machine’s lane, or add one.', 'Aucune tâche : parle au Coordinateur depuis la bande de cette machine, ou ajoutes-en une.') }}</p>
+              <p v-if="!mg.repos.length" class="board-empty board-machine-empty">{{ tl('No task yet: talk to the Coordinator at the top, or add one.', 'Aucune tâche : parle au Coordinateur en haut, ou ajoutes-en une.') }}</p>
             </template>
           </section>
         </template>
