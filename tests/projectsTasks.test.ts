@@ -293,9 +293,9 @@ describe('commands, by repo, and push', () => {
 
   it('what the panel shows for a coordinator: its conversation, its failure, its start, or the first-message field', () => {
     const phase = (state: string, pane: string | null = null, error = '') => coordinatorPhase({ state, pane, error })
-    // Running, with a pane: its conversation, whatever an earlier error said (a message that could not be typed).
+    // Running, with a pane: its conversation, whatever an earlier error said (an unsent message).
     expect(phase('idle', 'w1:p1')).toBe('live')
-    expect(phase('working', 'w1:p1', 'the message could not be typed')).toBe('live')
+    expect(phase('working', 'w1:p1', 'your message sits unsent in its box. Go into it and press enter.')).toBe('live')
     // Given up: the error, never "starting", though herdr-projects still says so while the words wait.
     expect(phase('starting', null, '"claude" is not installed here, so it cannot be the Coordinator.')).toBe('failed')
     for (const state of ['none', 'exited', 'idle', '']) expect(phase(state, null, 'it could not be started')).toBe('failed')

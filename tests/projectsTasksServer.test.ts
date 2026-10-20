@@ -769,9 +769,9 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
   it('keeps queue counts when a coordinator has exited or its pane is missing', async () => {
     for (const state of ['exited', 'idle']) {
       for (const queued of [0, 1, 3]) {
-        coordStatus = { '': { state, pane: 'w9:p1', queued, error: 'the message could not be typed' } }
+        coordStatus = { '': { state, pane: 'w9:p1', queued, error: 'your message sits unsent in its box. Go into it and press enter.' } }
         expect(await T.coordinatorPane('', { kind: 'main' })).toEqual({
-          state, pane: null, queued, error: 'the message could not be typed', name: 'x',
+          state, pane: null, queued, error: 'your message sits unsent in its box. Go into it and press enter.', name: 'x',
         })
       }
     }

@@ -197,8 +197,9 @@ const coordThe = computed(() => {
 })
 // Not shown (its conversation is): what the panel says instead.
 const coordPhase = computed(() => coordinatorPhase({ pane: coordPane.value, state: coordState.value, error: coordError.value }))
-// herdr-projects keeps delivery errors even after the agent exits.
-const coordDeliveryFailed = computed(() => /\bmessage could not be typed\b/i.test(coordError.value))
+// herdr-projects 1.2.1: status_words.rs COORDINATOR_UNSENT (pump.rs keeps it after exit).
+const COORDINATOR_UNSENT = 'your message sits unsent in its box. Go into it and press enter.'
+const coordDeliveryFailed = computed(() => coordError.value === COORDINATOR_UNSENT)
 const coordFailureTitle = computed(() => coordDeliveryFailed.value
   ? tl('Message could not be sent', 'Envoi du message impossible')
   : tl('Could not start', 'Démarrage impossible'))
@@ -377,7 +378,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         <section v-else-if="coordPhase === 'failed'" class="board-panel-failed" role="alert" :aria-label="coordFailureTitle">
           <h4><UIcon name="i-lucide-octagon-alert" />{{ coordFailureTitle }}</h4>
           <p class="board-panel-failed-what">{{ coordDeliveryFailed
-            ? tl(`The message could not be typed into ${coordName} on ${machineLabel}.`, `Le message n’a pas pu être saisi dans ${coordName} sur ${machineLabel}.`)
+            ? tl(`The message was not sent to ${coordName} on ${machineLabel}.`, `Le message destiné à ${coordName} n’a pas été envoyé sur ${machineLabel}.`)
             : tl(`${coordThe} could not start on ${machineLabel}.`, `${coordThe} n’a pas pu démarrer sur ${machineLabel}.`) }}</p>
           <p class="board-panel-failed-why">{{ coordError }}</p>
           <p class="board-panel-failed-next">{{ tl('Fix this on the machine, then try again.', 'Corrige cela sur la machine, puis réessaie.') }} {{ coordQueueNotice }}</p>

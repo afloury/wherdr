@@ -154,14 +154,14 @@ describe('the Board panel follows its coordinator', () => {
   for (const queued of [0, 1, 3]) {
     for (const delivery of [false, true]) {
       it(`describes ${delivery ? 'delivery' : 'startup'} failure with ${queued} queued messages`, async () => {
-        status = { pane: null, state: 'exited', queued, error: delivery ? 'the message could not be typed' : NOT_INSTALLED }
+        status = { pane: null, state: 'exited', queued, error: delivery ? 'your message sits unsent in its box. Go into it and press enter.' : NOT_INSTALLED }
         setPanes([])
         const { w } = await panel()
         const failed = w.find('.board-panel-failed')
         expect(failed.find('h4').text()).toBe(delivery ? 'Message could not be sent' : 'Could not start')
         expect(failed.attributes('aria-label')).toBe(delivery ? 'Message could not be sent' : 'Could not start')
         expect(failed.find('.board-panel-failed-what').text()).toBe(delivery
-          ? 'The message could not be typed into Coordinator on Local.'
+          ? 'The message was not sent to Coordinator on Local.'
           : 'The Coordinator could not start on Local.')
         expect(failed.find('.board-panel-failed-next').text()).toContain(queued
           ? `${queued} message${queued === 1 ? '' : 's'} still waiting`
@@ -181,7 +181,7 @@ describe('the Board panel follows its coordinator', () => {
   })
 
   it('shows the conversation when a live pane has an earlier delivery error', async () => {
-    status = { pane: 'w1:p1', state: 'idle', queued: 0, error: 'the message could not be typed' }
+    status = { pane: 'w1:p1', state: 'idle', queued: 0, error: 'your message sits unsent in its box. Go into it and press enter.' }
     setPanes(['w1:p1'])
     const { w, vm } = await panel()
     expect(vm.coordShown).toBe('w1:p1')
