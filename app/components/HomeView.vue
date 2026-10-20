@@ -92,7 +92,7 @@ const COORD_NAMES: Record<Exclude<CoordinatorLevel, 'project'>, () => string> = 
   top: () => t('Coordinator'),
   machine: () => tl('Machine coordinator', 'Coordinateur de la machine'),
 }
-const coordinatorCard = (level: CoordinatorLevel): BoardCard => ({ tag: '', name: level === 'project' ? '' : COORD_NAMES[level]() })
+const coordinatorCard = (level: CoordinatorLevel): BoardCard => ({ tag: '', name: level === 'project' ? '' : COORD_NAMES[level](), coordinator: true })
 const solo = computed(() => listOf(spaceRows(st.value)))
 
 const topQuotas = computed(() => (showQuotas.value ? quotaRows(homeQuotas.value, hiddenAgents.value) : []))

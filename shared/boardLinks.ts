@@ -347,7 +347,8 @@ export function tasksIn(spaces: string[], panes: Pick<Pane, 'id' | 'workspace'>[
 }
 
 // What a card of the board says (app/components/AgentCard.vue `board`).
-export interface BoardCard { tag: string, name?: string, progress?: number | null, since?: number | null, msg?: string, onBoard?: () => void }
+// `coordinator`: a coordinator's card (its role's icon, its last message).
+export interface BoardCard { tag: string, name?: string, progress?: number | null, since?: number | null, msg?: string, onBoard?: () => void, coordinator?: boolean }
 
 // What a member's card says before its title: `WHR-2`, `WHR-2 · review`, `WHR-2 · A`.
 export function memberTag(m: Pick<Member, 'task' | 'role' | 'letter'>, review: string): string {
