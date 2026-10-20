@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import ProjectGroup from '~/components/ProjectGroup.vue'
 import AgentCard from '~/components/AgentCard.vue'
-import { compactList, herdrState } from '~/composables/useHerdr'
+import { collapsedRepos, compactList, herdrState } from '~/composables/useHerdr'
 import type { Pane } from '#shared/types'
 import { type Row, spaceRows } from '#shared/spaces'
 import type { LinkedTask, Member, ProjectSection } from '#shared/boardLinks'
@@ -29,7 +29,7 @@ const mount = (g: ProjectSection) => {
 }
 
 describe('a repo group on the home list', () => {
-  afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] }; compactList.value = true })
+  afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] }; compactList.value = true; collapsedRepos.value = [] })
 
   it('puts its project coordinator in a lead row of its own, above the tasks', async () => {
     const w = await mount(section())
@@ -56,6 +56,24 @@ describe('a repo group on the home list', () => {
     const w = await mount(section({ members: [] }))
     expect(w.find('.project-lead').classes()).toContain('alone')
     expect(w.find('.project-tree').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('folded: the coordinator stays in view, its tasks fold under it', async () => {
+    const g = section()
+    collapsedRepos.value = [`|${g.id}`]
+    const w = await mount(g)
+    expect(w.find('.project-head').attributes('aria-expanded')).toBe('false')
+    expect(w.find('.project-lead .avatar.coord').exists()).toBe(true)
+    expect(w.find('.project-lead').classes()).toContain('alone')
+    expect(w.find('.project-tree').exists()).toBe(false)
+    // The header counts what is folded: two working tasks, not the ready coordinator in view.
+    expect(w.find('.project-sum .working').text()).toContain('2')
+    expect(w.find('.project-sum .ready').exists()).toBe(false)
+    // Unfolded again: the tasks come back under it.
+    await w.find('.project-head').trigger('click')
+    expect(w.findAll('.project-tree .card')).toHaveLength(2)
+    expect(w.find('.project-lead').exists()).toBe(true)
     w.unmount()
   })
 

@@ -1253,7 +1253,8 @@ What the Board shows and does:
 - **The agent list** groups the board's spaces under their repo, as Herdr's sidebar does: each
   machine's Coordinator and machine coordinator first, then per repo its own space (name, branch,
   commits behind its upstream), its project coordinator in a lead row of its own (the coordinator's
-  icon, **Coordinator**, its state and last message) and its tasks' spaces (key, title, state,
+  icon, **Coordinator**, its state and last message; it stays in view when the group is folded,
+  only the tasks fold) and its tasks' spaces (key, title, state,
   progress, time on it, the line the board reports; the Board icon opens the task there). A repo
   coordinated from another machine shows **Coordinated from <machine>**. wherdr reads this from
   the board's files (`~/.herdr-projects/data`: tasks, attempts, reviewers, coordinators, repos)

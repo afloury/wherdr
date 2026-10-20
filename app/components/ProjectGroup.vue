@@ -5,12 +5,13 @@
 // icon, "Coordinator" since the header names the repo, its state and last
 // message, a rule before the tasks), then its tasks' spaces (id, title,
 // progress, time on it, the board's current line), most urgent first.
-// The header folds the group (kept on the device); its terminal button opens
+// The header folds the tasks (kept on the device): the coordinator stays in
+// view above them; its terminal button opens
 // the repo's space, its menu holds that space's actions (closing it closes
 // the whole worktree group: the confirmation names the tasks it stops).
 // Coordinator on another machine (`remote`): the tasks stay here, a line
 // says where the repo is coordinated from and opens that coordinator.
-import type { Row } from '#shared/spaces'
+import { type Row, rowGroup } from '#shared/spaces'
 import { type BoardCard, type Member, type ProjectSection, memberTag } from '#shared/boardLinks'
 import type { MenuItem } from '~/composables/useUi'
 import { longPress } from '~/utils/longPress'
@@ -53,6 +54,14 @@ const headLp = longPress({
     haptic()
     openMenu(items, g.value.repo)
   },
+})
+
+// Folded, the counts say what is folded: the coordinator stays in view.
+const sum = computed(() => {
+  const s = { ...g.value.sum }
+  const c = g.value.coordinator
+  if (collapsed.value && c) s[rowGroup(c)]--
+  return s
 })
 
 const behind = computed(() => g.value.info?.behind || 0)
@@ -98,9 +107,9 @@ const rowKey = (r: Row) => r.key
           <span class="project-name">{{ group.repo }}</span>
           <span v-if="group.info?.branch" class="project-branch" :title="branchTitle">{{ group.info.branch }}<b v-if="behind">↓{{ behind }}</b></span>
           <span class="project-sum">
-            <span v-if="group.sum.blocked" class="blocked"><i />{{ group.sum.blocked }}<span class="project-sum-l">{{ t('your turn') }}</span></span>
-            <span v-if="group.sum.working" class="working"><i />{{ group.sum.working }}<span class="project-sum-l">{{ t('working') }}</span></span>
-            <span v-if="group.sum.ready && (collapsed || !group.sum.blocked && !group.sum.working)" class="ready"><i />{{ group.sum.ready }}<span class="project-sum-l">{{ t('ready') }}</span></span>
+            <span v-if="sum.blocked" class="blocked"><i />{{ sum.blocked }}<span class="project-sum-l">{{ t('your turn') }}</span></span>
+            <span v-if="sum.working" class="working"><i />{{ sum.working }}<span class="project-sum-l">{{ t('working') }}</span></span>
+            <span v-if="sum.ready && (collapsed || !sum.blocked && !sum.working)" class="ready"><i />{{ sum.ready }}<span class="project-sum-l">{{ t('ready') }}</span></span>
           </span>
         </button>
       </UContextMenu>
@@ -112,7 +121,7 @@ const rowKey = (r: Row) => r.key
       <span>{{ tl('Coordinated from', 'Coordonné depuis') }} <b>{{ machineName(group.remote.machine) }}</b></span>
       <span class="project-remote-go">{{ t('coordinator') }}<UIcon name="i-lucide-arrow-up-right" /></span>
     </button>
-    <div v-if="!collapsed && group.coordinator" class="card-list project-lead" :class="{ alone: !group.members.length }" role="group" :aria-label="coordinatorLabel">
+    <div v-if="group.coordinator" class="card-list project-lead" :class="{ alone: collapsed || !group.members.length }" role="group" :aria-label="coordinatorLabel">
       <AgentCard :key="group.coordinator.key" class="project-coordinator" :pane="group.coordinator.lead" :row="group.coordinator" :board="coordinatorCard" />
     </div>
     <div v-if="!collapsed && group.members.length" class="card-list project-tree">

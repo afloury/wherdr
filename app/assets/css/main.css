@@ -498,6 +498,7 @@ body.short-bottom { --safe-bottom: 0px; }
 .project-lead { position: relative; margin: 0 0 8px 14px; }
 .project-lead::before { content: ''; position: absolute; top: -6px; bottom: -8px; left: -9px; width: 1px; background: var(--line); }
 .project-lead.alone::before { bottom: 0; }
+.project.collapsed .project-lead { margin-bottom: 0; }
 .project-lead + .project-tree::before { top: -1px; }
 /* The state is said by its color and number; the words are for screen readers. */
 .project-sum-l { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
