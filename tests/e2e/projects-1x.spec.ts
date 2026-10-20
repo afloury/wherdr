@@ -806,3 +806,35 @@ test('Coordinator choices keep unavailable hosts visible and explain the three r
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: `.shots/board-coordinator-long-host-${testInfo.project.name}.png` })
 })
+
+for (const lang of ['en', 'fr']) {
+  test(`coordinator failure distinguishes delivery and queue counts (${lang})`, async ({ page }, testInfo) => {
+    await fakeBoard(page, () => [{ machine: '', tasks: [] }])
+    await page.addInitScript(l => localStorage.setItem('herdrLanguage', l), lang)
+    let status: Record<string, unknown> = {}
+    await page.route(url => new URL(url).pathname === '/api/tasks/coordinator', route => route.fulfill({ json: status }))
+    for (const delivery of [false, true]) {
+      for (const queued of [0, 1, 3]) {
+        status = { pane: null, state: 'exited', queued, error: delivery ? 'your message sits unsent in its box. Go into it and press enter.' : 'The agent could not be started.' }
+        await page.goto('/#/board')
+        await page.locator('.board-top-coord').click()
+        const failed = page.locator('.board-panel-failed')
+        await expect(failed).toBeVisible()
+        await expect(failed.locator('h4')).toHaveText(delivery
+          ? lang === 'fr' ? 'Envoi du message impossible' : 'Message could not be sent'
+          : lang === 'fr' ? 'Démarrage impossible' : 'Could not start')
+        await expect(failed.locator('.board-panel-failed-why')).toHaveText(String(status.error))
+        if (delivery) {
+          await expect(failed.locator('.board-panel-failed-what')).toContainText(lang === 'fr' ? 'n’a pas été envoyé' : 'was not sent')
+          await expect(failed).not.toContainText(lang === 'fr' ? 'n’a pas pu être saisi' : 'could not be typed')
+        }
+        await expect(failed.locator('.board-panel-failed-next')).toContainText(queued
+          ? lang === 'fr' ? `${queued} message${queued === 1 ? '' : 's'} attend` : `${queued} message${queued === 1 ? '' : 's'} still waiting`
+          : lang === 'fr' ? 'Aucun message en attente.' : 'No message is waiting.')
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+        await page.screenshot({ path: `.shots/coordinator-${lang}-${delivery ? 'delivery' : 'start'}-${queued}-${testInfo.project.name}.png` })
+        await page.locator('.board-panel-back, .board-panel-close').click()
+      }
+    }
+  })
+}
