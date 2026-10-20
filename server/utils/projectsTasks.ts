@@ -23,7 +23,7 @@ import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
   type MachineTasks, type TaskDetails, type TaskRow, type TasksBoard,
-  type TaskCommand, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
+  type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, type TaskAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, repoKeysFromFile, rowFromTaskFile, taskActions,
 } from '../../shared/projectsTasks'
 import { HERDR_BIN, HERDR_CHILD_ENV, IN_CONTAINER, log } from './env'
@@ -33,6 +33,8 @@ import { HerdrError } from './herdr'
 import { type Machine, allMachines, baseMachines } from './machines'
 import { machineFor } from './actions'
 import { projectsPluginInfo } from './projectsPlugin'
+import { installedAgentKinds } from './agentAvailability'
+import { dropStartAgent, rememberStartAgent, startAgentKey, startAgentOf, startAgentsOf } from './startAgents'
 import { findPane, getState } from './state'
 import { fmt } from '../../shared/message'
 
@@ -209,6 +211,7 @@ const reading = new Map<string, Promise<Cached>>()
 function readList(m: Machine): Promise<Cached> {
   const now = reading.get(m.key)
   if (now) return now
+  const started = Date.now()
   const read = (readsFiles(m) ? listFromFiles(m) : command(m, ['list', '--json'], LIST_TIMEOUT_MS).then(tasks => ({ tasks: parseTaskList(tasks), failed: [] as string[] })))
     .then(({ tasks, failed }): Cached => {
       if (!failed.length) return { tasks, at: Date.now(), readAt: Date.now() }
@@ -227,6 +230,7 @@ function readList(m: Machine): Promise<Cached> {
     .then(async (c: Cached) => {
       lists.set(m.key, c)
       if (c.error && !c.partial) return c
+      if (!readsFiles(m)) void restoreFinished(m, c.tasks, started).catch(() => {})
       // A repo never seen: its key is waited for a moment, so the first look names its tasks right.
       const keys = readKeys(m, c.tasks.map(t => t.repo))
       if (c.tasks.some(t => !repoKeys.get(m.key)?.has(t.repo))) await Promise.race([keys, new Promise(r => setTimeout(r, KEYS_WAIT_MS).unref?.())])
@@ -397,10 +401,17 @@ export async function approveTask(machine: unknown, id: unknown): Promise<{ ok: 
 
 // One of the task commands that take only its id (`delegate`, `stop`,
 // `retry`, `archive`), on a task the last list shows it applies to.
-export async function taskCommand(machine: unknown, id: unknown, action: unknown): Promise<{ ok: true, msg: string }> {
+// `agent` (delegate only): start it with that agent, one installed on the
+// task's machine, for this start only (shared delegateArgs); none: its default.
+export async function taskCommand(machine: unknown, id: unknown, action: unknown, agent?: unknown): Promise<{ ok: true, msg: string }> {
   const m = boardOf(machine)
   const tid = checkId(id)
   if (!isTaskCommand(action)) throw new HerdrError('bad_action', 'Unknown action')
+  const chosen = agent === undefined || agent === null || agent === '' ? null : agent
+  if (chosen !== null && action !== 'delegate') throw new HerdrError('bad_action', 'Only Start takes an agent')
+  if (chosen !== null && (!isAgentName(chosen) || !(await installedAgentKinds(m)).includes(chosen))) {
+    throw new HerdrError('bad_agent', fmt('{agent} is not installed on {machine}', { agent: isAgentName(chosen) ? chosen : '?', machine: m.label }))
+  }
   // An archived task is not in the list: its own row (`restore` only applies to it).
   const row = action === 'restore' ? await archivedRow(m, tid) : await taskOf(m, tid)
   // A failed task: what failed decides between Retry and Start (`details`).
@@ -408,11 +419,63 @@ export async function taskCommand(machine: unknown, id: unknown, action: unknown
     ? parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS))
     : null
   if (!row || !taskActions(row, failure)[action]) throw refused(action)
-  const out = await command(m, [action, '--', tid])
+  // A new start: an agent picked for an earlier one goes first, so the task
+  // starts from its own default again (or from the one picked now).
+  let prev: string | null = null
+  if (action === 'delegate') {
+    await restoreStartAgent(m, tid)
+    if (chosen) { const own = await taskAgent(m, tid); prev = own?.place === 'task' ? own.value : null }
+  }
+  const out = await command(m, action === 'delegate' ? delegateArgs(tid, chosen) : [action, '--', tid])
   forget(m)
-  log(`herdr-projects ${action} ${tid}${m.local ? '' : ` on ${m.label}`}`)
+  if (chosen && chosen !== prev) await rememberStartAgent(startAgentKey(m.key, tid), { agent: chosen, prev, at: Date.now() })
+  log(`herdr-projects ${action} ${tid}${chosen ? ` --worker.agent=${chosen}` : ''}${m.local ? '' : ` on ${m.label}`}`)
   return { ok: true, msg: firstLine(out) }
 }
+
+// The task's worker.agent as 1.x resolves it, and where it comes from.
+async function taskAgent(m: Machine, id: string): Promise<TaskAgent | null> {
+  return parseWorkerAgent(await command(m, ['show', '--json', '--', id], LIST_TIMEOUT_MS))
+}
+
+// Puts back what the task had before an agent was picked for one start, while
+// its own worker.agent is still that pick (one set since by someone else stays).
+async function restoreStartAgent(m: Machine, id: string): Promise<void> {
+  const key = startAgentKey(m.key, id)
+  const rec = await startAgentOf(key)
+  if (!rec) return
+  const own = await taskAgent(m, id)
+  if (own?.place === 'task' && own.value === rec.agent) {
+    await command(m, restoreAgentArgs(id, rec.prev))
+    log(`herdr-projects ${rec.prev ? `set worker.agent ${rec.prev}` : 'unset worker.agent'} --task ${id} (after a start with ${rec.agent})${m.local ? '' : ` on ${m.label}`}`)
+  }
+  await dropStartAgent(key)
+}
+
+// After a list: the picks of runs now over are taken back, behind the Board's
+// own commands. Only with a list read after the pick (`since`): an older one
+// still shows the task as it was before its start.
+async function restoreFinished(m: Machine, tasks: TaskRow[], since: number): Promise<void> {
+  for (const [id, rec] of await startAgentsOf(m.key)) {
+    const row = tasks.find(t => t.id === id)
+    if (rec.at >= since || !row || !runOver(row)) continue
+    await restoreStartAgent(m, id).catch(e => log(`herdr-projects: could not put back worker.agent of ${id}: ${(e as Error).message}`))
+  }
+}
+// What Start offers on a task: the agent it starts with by default (`show <id>
+// --json`: its worker.agent and where that comes from) and the agents
+// installed on its machine. From a container nothing is run: no default known.
+export async function taskStartOptions(machine: unknown, id: unknown): Promise<StartOptions> {
+  const m = boardOf(machine)
+  const tid = checkId(id)
+  const [agent, agents] = await Promise.all([
+    // The default as the next start will have it: an earlier pick put back first.
+    readsFiles(m) ? null : restoreStartAgent(m, tid).then(() => taskAgent(m, tid)),
+    installedAgentKinds(m).catch(() => [] as string[]),
+  ])
+  return { agent, agents }
+}
+
 function refused(action: TaskCommand): HerdrError {
   switch (action) {
     case 'delegate': return new HerdrError('bad_action', 'This task cannot be started now')
