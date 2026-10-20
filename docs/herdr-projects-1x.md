@@ -35,7 +35,9 @@ else
   backup="$HOME/herdr-projects-0.2-backup-$(date +%Y%m%d-%H%M%S).tgz"
   files=$(for p in .herdr-projects .config/herdr-projects .local/state/herdr/plugins/herdr-projects \
     .config/herdr/config.toml .config/herdr/plugins.json; do [ -e "$p" ] && echo "$p"; done)
-  if [ ! -e "$backup" ] && printf '%s\n' "$files" | tar czf "$backup" -T - \
+  if ! printf '%s\n' "$files" | grep -q herdr-projects; then
+    echo "NO 0.2 FILES FOUND in $HOME: nothing backed up, check you are the user who runs Herdr"
+  elif [ ! -e "$backup" ] && printf '%s\n' "$files" | tar czf "$backup" -T - \
     && tar tzf "$backup" > /dev/null; then
     echo "$backup" > ~/herdr-projects-0.2-backup.path && echo "backup ok: $backup"
     printf '%s\n' "$files" | grep -qx .config/herdr/config.toml \

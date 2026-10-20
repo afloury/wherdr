@@ -109,6 +109,13 @@ describe.skipIf(process.platform === 'win32')('herdr-projects 1.x guide: backup 
     expect(readFileSync(at('herdr-projects-0.2-backup.path'), 'utf8').trim()).toBe(kept)
   })
 
+  it('records no backup when this HOME has none of 0.2\'s files', () => {
+    home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-guide-'))
+    expect(sh(backUp).stdout).toContain('NO 0.2 FILES FOUND')
+    expect(existsSync(path.join(home, 'herdr-projects-0.2-backup.path'))).toBe(false)
+    expect(readdirSync(home).filter(f => f.endsWith('.tgz'))).toEqual([])
+  })
+
   it('restores Herdr\'s config from the backup and keeps the current file beside it', () => {
     const at = setUpHome('pass')
     sh(backUp)
