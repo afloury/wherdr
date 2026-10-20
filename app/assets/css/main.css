@@ -2353,8 +2353,13 @@ body.kb .composer { padding-bottom: 8px; }
 .settings-toggle.quiet-toggle b { display: flex; align-items: center; gap: 8px; }
 .quiet-toggle b .iconify { width: 17px; height: 17px; color: var(--muted); }
 .notify-hint.quiet-end { font: 500 11.5px/1.4 var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--ochre); }
-/* Home: crossed-out bell while quiet mode is active (a tap turns it off). */
-.icon-btn.quiet-on { color: var(--ochre); }
+/* Home: one discreet line while quiet mode is active, outside the header (which keeps
+   its shape); a tap opens Settings › Notifications. */
+.home-quiet { display: flex; align-items: center; gap: 6px; width: fit-content; max-width: 100%; margin: 0 0 16px; color: var(--ochre); font: 600 10px/1.3 var(--mono); letter-spacing: .1em; text-transform: uppercase; text-decoration: none; }
+.home-quiet span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.solo-machine-row ~ .home-quiet { margin-top: -6px; }
+.home-quiet svg { width: 13px; height: 13px; flex: none; }
+.home-quiet:hover, .home-quiet:focus-visible { color: var(--text); }
 /* Themes: color swatches, selection marked by the accent. */
 .theme-list { display: flex; flex-direction: column; gap: 18px; padding-top: 18px; }
 .theme-grid { display: grid; grid-template-columns: 1fr; border: 1px solid var(--line); }
@@ -2838,6 +2843,10 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .rail-stat.done i { background: var(--done); }
   .rail-stat.zero b { color: var(--dim); }
   .rail-stat.blocked:not(.zero) b { color: var(--rose); }
+  /* Quiet mode in the rail: a small ochre mark under the counters (a tap opens the settings). */
+  .rail-quiet { display: flex; justify-content: center; width: 100%; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line-soft); color: var(--ochre); }
+  .rail-quiet svg { width: 14px; height: 14px; }
+  .rail-quiet:hover, .rail-quiet:focus-visible { color: var(--text); }
   .tab-back { display: none; }
   #btnBack { display: none; }
 
