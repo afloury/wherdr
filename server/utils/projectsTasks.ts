@@ -537,7 +537,7 @@ export async function coordinatorPane(machine: unknown, to: unknown): Promise<Co
   const m = boardOf(machine)
   const target = cleanTarget(to)
   if (!target) throw new HerdrError('bad_target', 'Invalid coordinator')
-  if (readsFiles(m)) return { pane: null, state: 'unknown', error: '', name: '' }
+  if (readsFiles(m)) return { pane: null, state: 'unknown', error: '', name: '', queued: null }
   const st = parseCoordinatorStatus(await command(m, coordinatorStatusArgs(target), LIST_TIMEOUT_MS))
   const pane = st.pane ? joinId(m.key, st.pane) : null
   return { ...st, pane: pane && findPane(pane) ? pane : null }
