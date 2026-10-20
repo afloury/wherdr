@@ -11,6 +11,8 @@ const FR: Record<string, string> = {
   'wherdr runs in a container: run herdr-projects on the host for this': 'wherdr tourne dans un conteneur : lance herdr-projects sur l’hôte pour cela',
   'Task not found': 'Tâche introuvable',
   'This task cannot be started now': 'Cette tâche ne peut pas être lancée maintenant',
+  'Only Start takes an agent': 'Seul Lancer prend un agent',
+  '{agent} is not installed on {machine}': '{agent} n’est pas installé sur {machine}',
   'This task has no agent at work to stop': 'Cette tâche n’a pas d’agent au travail à arrêter',
   'This task has nothing to retry': 'Cette tâche n’a rien à réessayer',
   'This task is not archived': 'Cette tâche n’est pas archivée',

@@ -3756,6 +3756,28 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .task-sheet-actions > button, .task-sheet-actions .ro-why > button { border-radius: 0; }
 .task-sheet-actions .task-archive { margin-left: auto; }
+/* Start's agent (TaskSheet): the task's default, preselected, and the other
+   installed agents, for this start only. Square mono chips on 1 px rules. */
+.task-start-agent { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 0 0; border-top: 1px solid var(--line-soft); }
+.task-start-label { font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); margin-right: 4px; }
+.task-start-wait { font: 11px/1.4 var(--mono); color: var(--dim); }
+.task-start-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--text-2);
+  font: 500 12px/1 var(--mono); cursor: pointer;
+}
+.task-start-chip small { font: 500 9px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.task-start-chip .avatar { width: 18px; height: 18px; border: 0; background: none; font-size: 10px; }
+.task-start-chip .avatar .iconify { width: 14px; height: 14px; }
+.task-start-chip:hover:not(:disabled) { border-color: var(--line-strong); color: var(--text); }
+.task-start-chip.on { border-color: var(--accent); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent); }
+.task-start-chip:focus-visible { outline: 2px solid var(--ring-2); outline-offset: 1px; }
+.task-start-chip:disabled { opacity: .5; cursor: default; }
+.task-start-chip.off { border-style: dashed; }
+.task-start-chip.off .task-start-name { text-decoration: line-through; text-decoration-color: var(--dim); }
+.task-start-chip.off small { color: var(--ochre); }
+.task-start-missing { color: var(--ochre); }
+.task-start-from { flex-basis: 100%; font: 11px/1.4 var(--mono); color: var(--dim); }
 /* herdr-projects missing or too old: the way forward, with its commands. */
 .projects-upgrade > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .projects-upgrade p { margin: 0; }
