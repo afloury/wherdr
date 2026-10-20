@@ -356,6 +356,47 @@ export function addArgs(t: NewTask): string[] {
     '--', t.title]
 }
 
+// Start with another agent, for this start only: `delegate --worker.agent=<kind>
+// -- <id>` is a work setting for this task (1.x "any work setting, for this
+// task only"); the repo's and the user's defaults are not touched. No agent:
+// the task's own default, exactly as before.
+const AGENT_NAME_RE = /^[a-z][a-z0-9-]{0,39}$/
+export const isAgentName = (v: unknown): v is string => typeof v === 'string' && AGENT_NAME_RE.test(v)
+export function delegateArgs(id: string, agent?: string | null): string[] {
+  return ['delegate', ...(agent ? [`--worker.agent=${agent}`] : []), '--', id]
+}
+
+// 1.x keeps that option as the task's own setting (`show` then says `place:
+// task`) and reads it at every start of its agent, so it stays for the run;
+// afterwards wherdr puts back what the task had: its own value (`set`), or
+// none (`unset`: its repo's or the user's default applies again).
+export function restoreAgentArgs(id: string, prev: string | null): string[] {
+  return prev ? ['set', `--task=${id}`, '--', 'worker.agent', prev] : ['unset', `--task=${id}`, '--', 'worker.agent']
+}
+// A run is over, so the agent picked for it can be taken back: the task is
+// back in the backlog, or done. (A task that waits for another, `after`, or
+// for a slot, `queued`, is in To do too, and still starts with it.)
+export const runOver = (r: Pick<TaskRow, 'stage' | 'state' | 'archived'>) => !r.archived && (r.stage === 'todo' || r.state === 'done')
+
+// The agent a task starts with by default: its `worker.agent` as `show <id>
+// --json` resolves it, and where that comes from (`place`: task, carried,
+// repo, you, builtin; `from`: 1.x's own words for it).
+export interface TaskAgent { value: string, kind: string, place: string, from: string }
+// What Start offers: that default, and the agents installed on the task's machine.
+export interface StartOptions { agent: TaskAgent | null, agents: string[] }
+// `codex/gpt-5.5` → `codex`.
+export const agentKind = (v: string) => v.split('/')[0] || ''
+export function parseWorkerAgent(stdout: string): TaskAgent | null {
+  let v: unknown
+  try { v = JSON.parse(stdout) } catch { return null }
+  const list = obj(v)?.settings
+  if (!Array.isArray(list)) return null
+  const row = list.map(obj).find(r => r?.name === 'worker.agent')
+  const value = row && typeof row.value === 'string' ? row.value.trim().slice(0, 120) : ''
+  if (!value) return null
+  return { value, kind: agentKind(value), place: str(row!.place, 40), from: str(row!.from, 200) }
+}
+
 // Who the Board's chat talks to on a machine: its Coordinator (one per Herdr
 // session), the machine coordinator, or a repo's project coordinator.
 export type CoordinatorTarget = { kind: 'main' } | { kind: 'machine' } | { kind: 'project', repo: string }

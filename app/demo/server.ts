@@ -383,6 +383,8 @@ export class DemoServer {
           const l = S.boardLinks(this.clock.now(), { codex: this.pane(S.CODEX)?.status || 'done', omp: this.pane(S.OMP)?.status || 'done' })
           return q.get('since') === l.version ? ok({ same: true, version: l.version }) : ok(l)
         }
+        // Start's agent: the built-in default and the demo's agents (Start itself stays refused).
+        case '/api/tasks/start': return ok({ agent: { value: 'claude', kind: 'claude', place: 'builtin', from: 'built in' }, agents: ['claude', 'codex', 'omp'] })
         case '/api/tasks/details': {
           const t = this.tasksBoard().machines[0]!.tasks.find(x => x.id === q.get('id'))
           return t ? ok(S.taskDetails(t)) : fail(404, 'Task not found', 'bad_task')

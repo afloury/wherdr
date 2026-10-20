@@ -161,8 +161,9 @@ Details in [Features](#features) and [Security](#security).
   a preview of each agent's last answer.
   With [herdr-projects](#works-great-with-herdr-projects), the board's spaces follow Herdr's sidebar:
   the Coordinators on top, then each repo's space (branch, `↓` commits behind its upstream) with
-  its project coordinator and its tasks under it (key, title, progress, time on it, the board's
-  current line); closing a space that holds task agents names the tasks it stops.
+  its project coordinator as the group's lead, right under it (the coordinator's icon, its state
+  and last message), then its tasks (key, title, progress, time on it, the board's current line);
+  closing a space that holds task agents names the tasks it stops.
 - **Conversation view**: the agent's real transcript (Claude Code, Codex and omp), rendered as
   Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan), timestamps, search and infinite scroll back to the
   first message. Reading a conversation never touches the terminal, so it never resizes a pane.
@@ -1240,10 +1241,19 @@ What the Board shows and does:
   panel always says who you talk to: machine, repo, task. It sits beside the Board on a computer
   and takes the whole screen on a phone, with a way back.
 - **A task's sheet**, from the panel (or at once for a task with no agent: to do, or its agent
-  gone): description, plan, branch, pull request, review, what went wrong. **Reply** sends a
-  message to its agent (on a plan that waits, it sends the plan back with your words).
+  gone): description, plan, branch, pull request, review, what went wrong. **Open the chat**
+  closes it and opens the task's agent in the side panel, where you reply: the sheet has no
+  message field. When that agent has no pane now, the panel shows a field instead, and
+  herdr-projects passes your reply on (`tell`; on a plan that waits, it sends the plan back).
   **Approve** merges finished work or says yes to a plan, after a confirmation; **Start**,
-  **Stop**, **Retry** and **Archive** where herdr-projects takes them. After an action the sheet
+  **Stop**, **Retry** and **Archive** where herdr-projects takes them. **Start** names the agent
+  the task starts with by default (its `worker.agent` and where that comes from) and offers the
+  other agents installed on its machine: one picked there is for this start only
+  (`delegate --worker.agent`). herdr-projects keeps that pick as the task's own setting while
+  its run lasts; wherdr puts back what the task had once the run is over (back in To do, or
+  done) and before its next Start, so its default, the repo's and your own settings stay as they
+  are (`data/start-agents.json` remembers what to put back). A default agent not installed on that
+  machine is shown but cannot be picked: Start then waits for an installed one. After an action the sheet
   shows the task's new state, or why it was refused. **Archive** closes the sheet and takes the
   task off the Board, with **Restore** in a toast for a few seconds; **Archived** lists the
   archived tasks, whose sheet is read-only with **Restore**, as in herdr-projects.
@@ -1254,8 +1264,13 @@ What the Board shows and does:
   (`coordinator restart`) once it is fixed: the message still waiting then goes in.
 - **The agent list** groups the board's spaces under their repo, as Herdr's sidebar does: each
   machine's Coordinator and machine coordinator first, then per repo its own space (name, branch,
-  commits behind its upstream), its project coordinator and its tasks' spaces (key, title, state,
-  progress, time on it, the line the board reports; the Board icon opens the task there). A repo
+  commits behind its upstream), its project coordinator in a lead row of its own (the coordinator's
+  icon, **Coordinator**, its state and last message; it stays in view when the group is folded,
+  only the tasks fold) and its tasks' spaces (key, title, state,
+  progress, time on it, the line the board reports; the Board icon opens the task there). One
+  row per task: its reviewer, planner and attempts, each in a tab of the task's space, are part
+  of it; the row says the stage (**Under review · codex**) and opens the reviewer's tab while a
+  review runs. The counters count tasks, not tabs. A repo
   coordinated from another machine shows **Coordinated from <machine>**. wherdr reads this from
   the board's files (`~/.herdr-projects/data`: tasks, attempts, reviewers, coordinators, repos)
   and from Herdr's worktree groups, every 15 seconds while the list is shown, never through
@@ -1266,7 +1281,7 @@ What the Board shows and does:
   the time they were read.
 - What wherdr runs, on the task's machine and in its Herdr session (on an SSH machine, its own
   session by name): `herdr-projects list --json`,
-  `details <id> --json`, `tell <id> <text>`, `approve <id>`, `delegate`, `stop`, `retry`,
+  `details <id> --json`, `show <id> --json`, `set`/`unset worker.agent --task <id>` (to put back a pick), `tell <id> <text>`, `approve <id>`, `delegate`, `stop`, `retry`,
   `archive` and `restore <id>`, `list --json --archived` (Archived), `coordinator tell <text>`,
   `coordinator status --json` and `coordinator restart` (your
   words always after `--`, so they are never read as options), through the plugin's own

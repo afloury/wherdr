@@ -211,3 +211,58 @@ describe('the Board panel follows its coordinator', () => {
     w.unmount()
   })
 })
+
+// A task's agent with no pane: what its details say, and what `tell` received.
+const told: unknown[] = []
+registerEndpoint('/api/tasks/details', () => ({
+  id: 'demo/3', title: 'Add dark mode', msg: '', description: '', agent: 'claude', pr: '', branch: '', worktree: '',
+  failure: '', failureStage: '', failureAuth: false, stage: 'working', summary: '', report: null, review: null, reviewRounds: 0, plan: '', research: false, pane: null,
+}))
+registerEndpoint('/api/tasks/tell', { method: 'POST', handler: async (event) => {
+  told.push(await readBody(event))
+  return { ok: true, msg: 'sent' }
+} })
+const working = {
+  id: 'demo/3', repo: 'demo', n: 3, state: 'working', kind: '', stage: 'working', title: 'Add dark mode', msg: '', app: 'claude',
+  progress: null, eta: null, pr: '', review: null, reviewRound: 0, research: false, archived: false, queue: null, group: 'working' as const,
+}
+async function taskPanel(chat: boolean, extra: Record<string, unknown> = {}) {
+  const noAgent: number[] = []
+  const w = await mountSuspended(BoardPanel, {
+    props: { target: { machine: 'far', kind: 'task', id: 'demo/3', chat }, task: working, machineLabel: 'Far', reachable: true, onNoAgent: () => noAgent.push(1), ...extra },
+    global: { stubs: { AgentView: true, FoldText: true } },
+  })
+  await flushPromises()
+  return { w, noAgent }
+}
+
+describe('the Board panel for a task whose agent has no pane', () => {
+  afterEach(() => { told.length = 0; herdrState.value = { ok: false, workspaces: [], panes: [] } })
+
+  it('opened from the sheet\'s chat: a message field, sent through herdr-projects (tell)', async () => {
+    const { w, noAgent } = await taskPanel(true)
+    await vi.waitFor(() => expect(w.find('#board-panel-tell').exists()).toBe(true))
+    expect(noAgent).toEqual([])
+    const vm = w.vm as unknown as { reply: string, tell: () => Promise<void> }
+    vm.reply = '--keep it short'
+    await vm.tell()
+    await flushPromises()
+    expect(told).toEqual([{ machine: 'far', id: 'demo/3', text: '--keep it short' }])
+    expect(vm.reply).toBe('')
+    w.unmount()
+  })
+
+  it('opened from its card: its sheet instead, as before', async () => {
+    const { w, noAgent } = await taskPanel(false)
+    expect(noAgent).toEqual([1])
+    expect(w.find('#board-panel-tell').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('read-only (wherdr in a container): no field, its sheet gives the host command', async () => {
+    const { w, noAgent } = await taskPanel(true, { readOnly: true })
+    expect(noAgent).toEqual([1])
+    expect(w.find('#board-panel-tell').exists()).toBe(false)
+    w.unmount()
+  })
+})

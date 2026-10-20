@@ -12,6 +12,8 @@ import { CLAUDE_PANE, COORDINATOR_PANE, SOCK_FILE, fakeHerdr } from './scenario.
 const failedDetails = { task: { id: 'demo/6', title: 'Broke on the tests', stage: 'failed', msg: 'Tests failed' }, failure: { stage: 'agent', title: 'Tests failed', detail: 'npm test exited 1', auth: false, agentCanFix: true } }
 // `show --repo <name> --json`: a repo's key (1.2.1 settings show). web's is not its name.
 const keyReply = (key: string) => JSON.stringify({ settings: [{ name: 'repo.key', kind: 'repo', value: key, from: 'your entry', place: 'you', own: false, note: '' }], problems: [] })
+// `show --json -- <id>`: the task's worker.agent, from the user's entry for its repo.
+const taskAgentReply = JSON.stringify({ settings: [{ name: 'worker.agent', kind: 'work', value: 'claude', from: 'your entry for demo', place: 'repo', own: false, note: '' }], problems: [] })
 const fixtures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../recordings/herdr-projects-1.2.1')
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-hp1x-'))
 const calls = path.join(root, 'calls.log')
@@ -35,12 +37,16 @@ case "$1" in
     *) : > "${told}/$co"; echo "sent to the Coordinator" ;;
   esac ;;
   add) echo "demo/7: added" ;;
-  delegate|stop|retry) echo "$3: done" ;;
+  # delegate --worker.agent=X keeps X as the task's own setting, as 1.x does; set/unset --task change it.
+  delegate) case "$2" in --worker.agent=*) printf '%s' "\${2#--worker.agent=}" > '${root}/own-agent' ;; esac; echo "done" ;;
+  set) printf '%s' "$5" > '${root}/own-agent'; echo "set" ;;
+  unset) rm -f '${root}/own-agent'; echo "unset" ;;
+  stop|retry) echo "$3: done" ;;
   # Archived: in the archived list from now on (the board's list still has it here).
   archive) printf '[{"id":"%s","state":"done","title":"Archived","stage":"failed","archivedAt":1}]' "$3" > '${root}/archived.json'; echo "$3: done" ;;
   # What the board lists once a task is restored, when the spec gives it.
   restore) if [ -f '${root}/after-restore.json' ]; then mv '${root}/after-restore.json' '${root}/list.json'; echo '[]' > '${root}/archived.json'; fi; echo "$3: done" ;;
-  show) case "$2" in --repo=demo) echo '${keyReply('DEMO')}' ;; --repo=web) echo '${keyReply('SITE')}' ;; *) echo '${keyReply('none')}' ;; esac ;;
+  show) case "$2" in --json) if [ -f '${root}/own-agent' ]; then printf '{"settings":[{"name":"worker.agent","kind":"work","value":"%s","from":"this task","place":"task","own":true,"note":""}],"problems":[]}\\n' "$(cat '${root}/own-agent')"; else echo '${taskAgentReply}'; fi ;; --repo=demo) echo '${keyReply('DEMO')}' ;; --repo=web) echo '${keyReply('SITE')}' ;; *) echo '${keyReply('none')}' ;; esac ;;
   *) echo "unexpected: $*" >&2; exit 1 ;;
 esac
 `, { mode: 0o755 })
@@ -58,7 +64,7 @@ const home = path.join(path.dirname(fs.readFileSync(SOCK_FILE, 'utf8').trim()), 
 const taskDir = path.join(home, '.herdr-projects/data/tasks/demo/1')
 
 test.beforeEach(() => {
-  for (const f of [calls, path.join(root, 'list.json'), path.join(root, 'archived.json'), path.join(root, 'after-restore.json'), path.join(root, 'after-approve.json'), path.join(root, 'web-coordinator'), told]) fs.rmSync(f, { recursive: true, force: true })
+  for (const f of [calls, path.join(root, 'own-agent'), path.join(root, 'list.json'), path.join(root, 'archived.json'), path.join(root, 'after-restore.json'), path.join(root, 'after-approve.json'), path.join(root, 'web-coordinator'), told]) fs.rmSync(f, { recursive: true, force: true })
   fs.mkdirSync(told)
 })
 test.afterEach(async () => { await fakeHerdr('e2e.plugins', { plugins: [] }) })
@@ -125,8 +131,10 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   await expect(sheet.locator('.task-sheet-facts')).toContainText('Pass · 1 minor · codex')
   await expect(sheet.getByRole('link', { name: /#7/ })).toHaveAttribute('href', 'https://github.com/example/demo/pull/7')
   await expect(sheet.locator('.task-sheet-text')).toHaveText('The login page loops')
-  // Its agent is already in the panel.
+  // No message field: one button opens the chat (the panel), none other leads to its agent.
+  await expect(sheet.getByRole('button', { name: 'Open the chat' })).toBeEnabled()
   await expect(sheet.getByRole('button', { name: 'Open its agent' })).toHaveCount(0)
+  await expect(sheet.getByRole('textbox')).toHaveCount(0)
   await page.screenshot({ path: `.shots/board-1x-task-${testInfo.project.name}.png` })
   // Once approved, the board lists it merging (herdr-projects' stage while it lands).
   const listed = JSON.parse(fs.readFileSync(path.join(fixtures, 'list.json'), 'utf8')) as Record<string, unknown>[]
@@ -139,16 +147,21 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   const approved = page.getByRole('dialog')
   await expect(approved.locator('.task-state')).toHaveText('Working')
   await expect(approved.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0)
+  await expect(approved.getByRole('button', { name: 'Stop', exact: true })).toBeVisible()
+  await expect(approved.getByRole('textbox')).toHaveCount(0)
   await page.screenshot({ path: `.shots/board-1x-approved-${testInfo.project.name}.png` })
-  await approved.locator('.hw-sheet-close').click()
+  // Open the chat: the sheet closes on the task's conversation in the panel.
+  await approved.getByRole('button', { name: 'Open the chat' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  await expect(panel).toBeVisible()
+  await expect(panel.locator('.board-panel-name')).toContainText('DEMO-1')
+  await expect(panel.locator('.cell-view textarea')).toBeVisible()
   await closePanel(page, phone)
   await expect(panel).toHaveCount(0)
 
-  // A reply to a task's agent, and a message to the Coordinator: the user's words after "--".
-  // DEMO-2 has had no agent yet: its sheet, nothing to reply to. DEMO-3 has one,
-  // whose pane is not known here: its sheet too, with Reply.
+  // No message field in a sheet. DEMO-2 has had no agent yet: its sheet, nothing to
+  // chat with. DEMO-3 has one, whose pane is not known here: its sheet too, whose
+  // chat opens the panel with a field that replies through herdr-projects (tell),
+  // the user's words after "--".
   if (phone) await page.getByRole('button', { name: /Needs you/ }).click()
   await card('DEMO-2').click()
   await expect(page.getByRole('dialog').locator('.task-sheet-msg')).toHaveText('Which changelog format?')
@@ -156,10 +169,15 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   await page.keyboard.press('Escape')
   if (phone) await page.getByRole('button', { name: /Working/ }).click()
   await card('DEMO-3').click()
-  await page.getByRole('dialog').getByRole('textbox').fill('--keep-a-changelog please')
-  await page.getByRole('dialog').getByRole('button', { name: 'Send' }).click()
+  await expect(page.getByRole('dialog').getByRole('textbox')).toHaveCount(0)
+  await page.getByRole('dialog').getByRole('button', { name: 'Open the chat' }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(panel.locator('.board-panel-name')).toContainText('DEMO-3')
+  await panel.locator('#board-panel-tell').fill('--keep-a-changelog please')
+  await page.screenshot({ path: `.shots/board-1x-tell-panel-${testInfo.project.name}.png` })
+  await panel.getByRole('button', { name: 'Send', exact: true }).click()
   await expect.poll(callLog).toContain('tell -- demo/3 --keep-a-changelog please')
-  await page.keyboard.press('Escape')
+  await closePanel(page, phone)
   await expect(page.locator('.board-panel')).toHaveCount(0)
   // No chat box on the Board: the top bar's Coordinator button opens it in the panel,
   // in both views; one not started yet takes a first message, which starts it.
@@ -400,8 +418,26 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   await tab(/^To do/)
   await card('In the backlog').click()
   await expect(task.getByRole('button', { name: 'Stop' })).toHaveCount(0)
+  // Start names the task's default agent, preselected; one click starts with it, as before.
+  const agents = task.getByRole('radiogroup', { name: 'Agent for this start' })
+  await expect(agents.getByRole('radio', { name: /claude/ })).toHaveAttribute('aria-checked', 'true')
+  await expect(agents).toContainText('Default from your settings for demo')
   await task.getByRole('button', { name: 'Start', exact: true }).click()
   await expect.poll(callLog).toContain('delegate -- demo/5')
+  await page.keyboard.press('Escape')
+  // Another installed agent, for this start only: passed to delegate, no setting changed.
+  await card('In the backlog').click()
+  await agents.getByRole('radio', { name: /codex/ }).click()
+  await expect(agents).toContainText('For this start only: the default stays.')
+  await task.getByRole('button', { name: 'Start with codex', exact: true }).click()
+  await expect.poll(callLog).toContain('delegate --worker.agent=codex -- demo/5')
+  await page.keyboard.press('Escape')
+  // That pick was for one start: the task's default is claude again (its own setting taken back).
+  await card('In the backlog').click()
+  await expect(agents.getByRole('radio', { name: /claude/ })).toHaveAttribute('aria-checked', 'true')
+  await expect(agents).toContainText('Default from your settings for demo')
+  await expect.poll(callLog).toContain('unset --task=demo/5 -- worker.agent')
+  expect(fs.existsSync(path.join(root, 'own-agent'))).toBe(false)
   await page.keyboard.press('Escape')
   // Working: Stop, asked first; no Archive.
   await tab(/^Working/)
@@ -587,7 +623,7 @@ test('a first message to a coordinator stays with it while its machine is away, 
   await expect.poll(() => sent).toEqual([{ machine: 'ma', text: 'Draft for demo on A', to: { kind: 'project', repo: 'demo' } }])
 })
 
-test('the same task id on another machine: its sheet starts empty, and what is sent goes there', async ({ page }) => {
+test('the same task id on another machine: its sheet starts empty, with that machine\'s details', async ({ page }) => {
   const machines: Fake[] = [{ machine: 'ma', tasks: [{ id: 'demo/1', title: 'On machine A' }] }, { machine: 'mb', tasks: [{ id: 'demo/1', title: 'On machine B' }] }]
   await fakeBoard(page, () => machines)
   const asked: string[] = []
@@ -596,26 +632,18 @@ test('the same task id on another machine: its sheet starts empty, and what is s
     asked.push(q.get('machine')!)
     await route.fulfill({ json: { id: q.get('id'), title: '', stage: 'asks', msg: '', description: `Details of ${q.get('machine')}`, agent: 'claude', pr: '', branch: '', worktree: '', failure: '', failureStage: '', failureAuth: false, summary: '', report: null, review: null, reviewRounds: 0, plan: '', research: false, pane: null } })
   })
-  const told: unknown[] = []
-  await page.route(url => new URL(url).pathname === '/api/tasks/tell', async (route) => {
-    told.push(route.request().postDataJSON())
-    await route.fulfill({ json: { ok: true, msg: 'sent' } })
-  })
   await page.goto('/#/board')
-  // A's task (no pane for its agent here: its sheet), with words written for A.
+  // A's task (no pane for its agent here: its sheet).
   await page.locator('.board-machine[data-machine="ma"] .task-card').click({ timeout: 15000 })
   const sheet = page.getByRole('dialog')
   await expect(sheet.locator('.task-sheet-text')).toHaveText('Details of ma')
-  await sheet.locator('#task-reply').fill('Only for A')
   // A push opens B's task with the same id while A's sheet is open.
   await page.evaluate(() => { location.hash = '#/board?machine=mb&task=demo%2F1' })
   await expect(sheet.locator('.task-sheet-text')).toHaveText('Details of mb', { timeout: 15000 })
   await expect(sheet).toContainText('On machine B')
-  await expect(sheet.locator('#task-reply')).toHaveValue('')
+  await expect(sheet).not.toContainText('Details of ma')
   expect(asked.at(-1)).toBe('mb')
-  await sheet.locator('#task-reply').fill('For B')
-  await sheet.getByRole('button', { name: 'Send' }).click()
-  await expect.poll(() => told).toEqual([{ machine: 'mb', id: 'demo/1', text: 'For B' }])
+  await expect(sheet.getByRole('textbox')).toHaveCount(0)
 })
 
 test('a reply for the coordinator shown before never lands on the one shown now', async ({ page }, testInfo) => {

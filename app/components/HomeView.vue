@@ -17,7 +17,7 @@
 import type { MachineInfo, NamedSession, Pane } from '#shared/types'
 import { type ReadySort, type Row, readyLists, rowGroup, sortReady, spaceRows } from '#shared/spaces'
 import { spaceTitle } from '#shared/displayTitles'
-import { type BoardCard, type CoordinatorLevel, boardSections } from '#shared/boardLinks'
+import { type BoardCard, type CoordinatorLevel, boardSections, countedPanes } from '#shared/boardLinks'
 import { claudeSetupOf, machineQuotaRows, quotaRows } from '~/utils/quotas'
 import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
 import { headerFold } from '~/utils/headerFold'
@@ -35,8 +35,12 @@ watch(eventsOpen, (v) => { if (v) everOpen.value = true })
 
 const st = herdrState
 const agents = computed(() => st.value.panes.filter(p => p.agent))
-// Compteurs globaux (toutes machines), hors machines injoignables.
-const count = (s: string) => agents.value.filter(p => p.status === s && !paneStale(p)).length
+const boardLinks = useBoardLinks()
+// What the counters count: a board task's helpers (reviewer, planner,
+// attempts) count once, as its row on the list.
+const counted = computed(() => countedPanes(agents.value, boardLinks.value))
+// Global counters (every machine), unreachable machines left out.
+const count = (s: string) => counted.value.filter(p => p.status === s && !paneStale(p)).length
 
 const conn = computed(() => {
   if (offlineView.value) return { ok: false, text: t('offline'), idle: false }
@@ -78,7 +82,6 @@ const readySortItems = computed(() => [[
 // Rows of a machine: its coordinators, its repo groups, then the state groups
 // of its other spaces, shells included, in Herdr's order. A repo's own space
 // (a shell) heads its group whatever "Show terminals" says.
-const boardLinks = useBoardLinks()
 const livePanes = computed(() => new Set(st.value.panes.map(p => p.id)))
 function listOf(rows: Row[]) {
   const b = boardSections(rows, st.value.workspaces, boardLinks.value, livePanes.value, k => machineInfo(k)?.baseKey ?? k)
@@ -92,7 +95,7 @@ const COORD_NAMES: Record<Exclude<CoordinatorLevel, 'project'>, () => string> = 
   top: () => t('Coordinator'),
   machine: () => tl('Machine coordinator', 'Coordinateur de la machine'),
 }
-const coordinatorCard = (level: CoordinatorLevel): BoardCard => ({ tag: '', name: level === 'project' ? '' : COORD_NAMES[level]() })
+const coordinatorCard = (level: CoordinatorLevel): BoardCard => ({ tag: '', name: level === 'project' ? '' : COORD_NAMES[level](), coordinator: true })
 const solo = computed(() => listOf(spaceRows(st.value)))
 
 const topQuotas = computed(() => (showQuotas.value ? quotaRows(homeQuotas.value, hiddenAgents.value) : []))
@@ -158,13 +161,15 @@ const sections = computed(() => {
   return orderedMachines.value.map((m) => {
     const mine = (p: Pane) => (p.machine || '') === m.key
     const a = agents.value.filter(mine)
+    const c = counted.value.filter(mine)
     return {
       m,
       name: machineName(m.key),
       state: t(STATE_LABEL[m.status]),
       agents: a,
+      counted: c,
       ...listOf(spaceRows(st.value, m.key)),
-      waiting: a.filter(p => p.status === 'blocked').length,
+      waiting: c.filter(p => p.status === 'blocked').length,
       collapsed: collapsedMachines.value.includes(m.key),
       quotas: showQuotas.value && m.status === 'online' ? machineQuotaRows(homeQuotas.value, m.baseKey ?? m.key, hiddenAgents.value) : [],
       setup: showQuotas.value && m.status === 'online' ? claudeSetupOf(homeQuotas.value, m.baseKey ?? m.key, hasClaude(a), hiddenAgents.value) : null,
@@ -602,7 +607,7 @@ function resetListWidth() {
               <span class="machine-state"><i />{{ s.state }}</span>
               <span class="machine-count">
                 <b v-if="s.waiting && s.collapsed" class="machine-waiting">{{ s.waiting }}</b>
-                {{ s.agents.length }}
+                {{ s.counted.length }}
               </span>
             </button>
             <UDropdownMenu :items="machineMenu(s.m)" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }" @update:open="(o: boolean) => { if (o && s.m.status === 'online') loadPluginActions(s.m.key) }">

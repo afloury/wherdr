@@ -25,7 +25,8 @@ import { interactionWindowFor } from '~/utils/interactionWindow'
 
 // `board`: the row is herdr-projects' (home list's project groups): named by
 // its role or its task (`tag`, `name`), with the board's progress, time on it
-// and current line, and a way to its task on the Board.
+// and current line, and a way to its task on the Board. A coordinator's
+// (`board.coordinator`) has its role's icon and its last message as that line.
 const props = defineProps<{ pane: Pane, row?: Row | null, board?: BoardCard | null }>()
 const space = computed(() => (props.row && props.row.kind === 'space' ? props.row : null))
 // Pane whose state the card shows.
@@ -50,7 +51,10 @@ const boardStats = computed(() => {
   if (!b) return ''
   return [b.progress != null ? `${b.progress}%` : '', b.since ? elapsedLabel(boardNow.value - b.since) : ''].filter(Boolean).join(' ')
 })
-const boardLine = computed(() => props.board?.msg || '')
+// A coordinator: its last message, unless the card already shows it opened below.
+const boardLine = computed(() => (props.board?.coordinator ? (more.value ? '' : props.pane.preview || '') : props.board?.msg || ''))
+// A task's second line: its stage first (`UNDER REVIEW · CODEX`), then the board's line.
+const twoLines = computed(() => Boolean(boardLine.value || props.board?.stage))
 const subtitle = computed(() => conversationSubtitle(props.pane, ws.value))
 // Selection (computer): the pane being viewed, or for a space one of its panes / tabs.
 const route = useRoute()
@@ -158,6 +162,7 @@ function recentTouchMenu() { return Date.now() - touchMenuOpenedAt < 1000 || lp.
 function open() {
   if (recentTouchMenu()) return
   if (space.value) {
+    if (props.board?.tab) return openTab(props.board.tab)
     return openSpace(space.value.workspace.id, space.value.leadTab.tab.id)
   }
   haptic()
@@ -191,12 +196,12 @@ onUnmounted(list.unmount)
 <template>
   <UContextMenu :disabled="sheetMenus" :items="contextItems" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="onContextOpen">
     <div
-      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, compact: compactList, open: compactList && more, 'home-task': board, 'home-task-two': compactList && boardLine }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
+      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, compact: compactList, open: compactList && more, 'home-task': board, 'home-coord': board?.coordinator, 'home-task-two': compactList && twoLines }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
       role="button" tabindex="0" @pointerdown="down" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
       @contextmenu="onContext" @selectstart.prevent @click="open" @keydown.enter.self="open"
     >
       <template v-if="compactList">
-        <AgentAvatar :agent="pane.agent" />
+        <AgentAvatar :agent="pane.agent" :coordinator="board?.coordinator" />
         <span v-if="board?.tag" class="card-tag home-task-tag">{{ board.tag }}</span>
         <span class="card-title">{{ title }}</span>
         <span v-if="boardStats" class="home-task-stats">{{ boardStats }}</span>
@@ -204,24 +209,27 @@ onUnmounted(list.unmount)
         <span v-if="compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
         <span v-else-if="compact.panes" class="card-panes" :title="counts">{{ compact.panes }}</span>
         <span class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
-        <span v-if="boardLine" class="home-task-line" :title="boardLine">{{ boardLine }}</span>
+        <span v-if="twoLines" class="home-task-line" :title="[board?.stage, boardLine].filter(Boolean).join(' — ')"><span v-if="board?.stage" class="home-task-stage">{{ board.stage }}</span>{{ boardLine }}</span>
         <button v-if="board?.onBoard" type="button" class="home-task-go" :title="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" :aria-label="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" @click.stop="board.onBoard"><UIcon name="i-lucide-square-kanban" /></button>
       </template>
       <template v-else>
-      <span v-if="space" class="space-avatar" :title="counts"><TabMap :layout="space.leadTab.layout" :panes="space.leadTab.panes" :current="pane.id" /></span>
-      <AgentAvatar v-else :agent="pane.agent" />
+      <!-- A coordinator keeps its role's icon, even in a space shared with a terminal. -->
+      <span v-if="space && !board?.coordinator" class="space-avatar" :title="counts"><TabMap :layout="space.leadTab.layout" :panes="space.leadTab.panes" :current="pane.id" /></span>
+      <AgentAvatar v-else :agent="pane.agent" :coordinator="board?.coordinator" />
       <div class="card-main">
         <div class="card-title">
           {{ title }}
         </div>
         <div class="card-meta">
           <span v-if="board?.tag" class="card-tag home-task-tag">{{ board.tag }}</span>
+          <span v-if="board?.stage" class="home-task-stage">{{ board.stage }}</span>
           <span v-if="boardStats" class="home-task-stats">{{ boardStats }}</span>
           <span v-if="space" class="card-count">{{ counts }}</span>
           <StatusPill :pane="statePane" model />
         </div>
         <div v-if="boardLine" class="card-where home-task-msg">{{ boardLine }}</div>
-        <div v-else-if="where" class="card-where">
+        <!-- A coordinator's folder is herdr-projects' own: nothing to read there. -->
+        <div v-else-if="where && !board?.coordinator" class="card-where">
           <UIcon v-if="space" name="i-lucide-corner-down-right" class="card-where-lead" /><UIcon v-else-if="branch" name="i-lucide-git-branch" />{{ where }}
         </div>
       </div>

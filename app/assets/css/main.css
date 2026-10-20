@@ -493,6 +493,13 @@ body.short-bottom { --safe-bottom: 0px; }
 .project-term:hover, .project-head-row .space-menu:hover { color: var(--text); }
 .project-tree { position: relative; margin-left: 14px; }
 .project-tree::before { content: ''; position: absolute; top: -6px; bottom: 0; left: -9px; width: 1px; background: var(--line); }
+/* The project coordinator leads the group: its own box right under the
+   header, on the same rule, a gap before the tasks. */
+.project-lead { position: relative; margin: 0 0 8px 14px; }
+.project-lead::before { content: ''; position: absolute; top: -6px; bottom: -8px; left: -9px; width: 1px; background: var(--line); }
+.project-lead.alone::before { bottom: 0; }
+.project.collapsed .project-lead { margin-bottom: 0; }
+.project-lead + .project-tree::before { top: -1px; }
 /* The state is said by its color and number; the words are for screen readers. */
 .project-sum-l { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* Coordinated from another machine: a link to that coordinator. */
@@ -507,10 +514,18 @@ body.short-bottom { --safe-bottom: 0px; }
 .project-remote-go .iconify { width: 12px; height: 12px; }
 .project-remote:hover { border-color: var(--mauve); color: var(--text-2); }
 .project-remote:focus-visible { outline: 1px solid var(--mauve); outline-offset: 2px; }
+/* A coordinator's card: its role as a label (mono, uppercase), not a title. */
+.card.home-coord .card-title { font: 600 12.5px/1.3 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); }
+.card.compact.home-coord .card-title { font: 600 11.5px/1.25 var(--mono); }
+.card.home-coord.done .card-title { color: var(--text); }
+.card.compact.home-coord.blocked .card-title { color: var(--rose); }
 /* A task's card: its key, progress and time ("42% 17m"), the board's current line. */
 .home-task-tag { color: var(--mauve); border-color: color-mix(in srgb, var(--mauve) 45%, var(--line)); }
 .home-task-stats { flex: none; font: 500 10.5px/1 var(--mono); letter-spacing: .04em; color: var(--dim); white-space: nowrap; }
 .home-task-msg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Its stage beyond its state, when a helper is on it: "UNDER REVIEW · CODEX". */
+.home-task-stage { flex: none; font: 600 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); white-space: nowrap; }
+.home-task-line .home-task-stage { margin-right: 8px; }
 .home-task-go { flex: none; display: inline-flex; padding: 4px; margin: -4px -4px -4px 0; color: var(--dim); }
 .home-task-go:hover { color: var(--text); }
 .home-task-go .iconify { width: 13px; height: 13px; }
@@ -831,6 +846,10 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
   background: var(--surface); color: var(--text); border: 1px solid var(--line);
 }
 .avatar .iconify { width: 21px; height: 21px; }
+/* A herdr-projects coordinator (AgentAvatar `coordinator`): its role's icon on
+   an accent tint, in its agent's color below. */
+.avatar.coord { color: var(--mauve); background: color-mix(in srgb, var(--mauve) 10%, var(--surface)); border-color: color-mix(in srgb, var(--mauve) 50%, var(--line)); }
+.avatar.coord .iconify { width: 19px; height: 19px; }
 .avatar.claude { color: var(--claude); }
 .avatar.codex { color: var(--codex); }
 .avatar.omp { color: var(--omp); }
@@ -3737,9 +3756,28 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .task-sheet-actions > button, .task-sheet-actions .ro-why > button { border-radius: 0; }
 .task-sheet-actions .task-archive { margin-left: auto; }
-.task-sheet-reply { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
-.task-sheet-reply label { font: 500 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
-.task-sheet-reply button { align-self: flex-end; }
+/* Start's agent (TaskSheet): the task's default, preselected, and the other
+   installed agents, for this start only. Square mono chips on 1 px rules. */
+.task-start-agent { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px 0 0; border-top: 1px solid var(--line-soft); }
+.task-start-label { font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); margin-right: 4px; }
+.task-start-wait { font: 11px/1.4 var(--mono); color: var(--dim); }
+.task-start-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--text-2);
+  font: 500 12px/1 var(--mono); cursor: pointer;
+}
+.task-start-chip small { font: 500 9px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.task-start-chip .avatar { width: 18px; height: 18px; border: 0; background: none; font-size: 10px; }
+.task-start-chip .avatar .iconify { width: 14px; height: 14px; }
+.task-start-chip:hover:not(:disabled) { border-color: var(--line-strong); color: var(--text); }
+.task-start-chip.on { border-color: var(--accent); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent); }
+.task-start-chip:focus-visible { outline: 2px solid var(--ring-2); outline-offset: 1px; }
+.task-start-chip:disabled { opacity: .5; cursor: default; }
+.task-start-chip.off { border-style: dashed; }
+.task-start-chip.off .task-start-name { text-decoration: line-through; text-decoration-color: var(--dim); }
+.task-start-chip.off small { color: var(--ochre); }
+.task-start-missing { color: var(--ochre); }
+.task-start-from { flex-basis: 100%; font: 11px/1.4 var(--mono); color: var(--dim); }
 /* herdr-projects missing or too old: the way forward, with its commands. */
 .projects-upgrade > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .projects-upgrade p { margin: 0; }

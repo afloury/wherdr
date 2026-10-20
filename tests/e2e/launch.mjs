@@ -43,6 +43,10 @@ fs.writeFileSync(bin, `#!/bin/sh\nexec '${process.execPath}' '${cli}' '${sock}' 
 // Where the specs reach the fake Herdr (see fakeHerdr in scenario.mjs).
 fs.writeFileSync(SOCK_FILE, sock)
 
+// Agents "installed" in the fake HOME (~/.local/bin), so the Board's Start offers
+// the same choice on every machine that runs the suite. They never run.
+fs.mkdirSync(path.join(home, '.local/bin'), { recursive: true })
+for (const kind of ['claude', 'codex']) fs.writeFileSync(path.join(home, '.local/bin', kind), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
 const workspaces = writeScenario(home)
 const server = await startFakeHerdr({ sock, workspaces, log: m => console.log(m) })
 
