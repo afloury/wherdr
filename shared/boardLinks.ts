@@ -401,20 +401,22 @@ function relead(row: Row, lead: Pane): Row {
 }
 
 // The agents the list's counters count (summary, machine heading): a task's
-// helpers count once, as its row does (the pane it shows).
-export function countedPanes<P extends Pick<Pane, 'id' | 'agent' | 'status'>>(panes: P[], machines: MachineLinks[]): P[] {
+// helpers count once, as its row does (the pane it shows). Once per space it
+// is open in, as the rows (a reviewer an older board put in a space of its own).
+export function countedPanes<P extends Pick<Pane, 'id' | 'agent' | 'status' | 'workspace'>>(panes: P[], machines: MachineLinks[]): P[] {
   const taskOf = new Map<string, LinkedTask>()
   for (const m of machines) for (const t of m.tasks) for (const p of t.panes) if (!taskOf.has(p.id)) taskOf.set(p.id, t)
-  const byTask = new Map<LinkedTask, P[]>()
+  const byTask = new Map<string, { t: LinkedTask, list: P[] }>()
   const out: P[] = []
   for (const p of panes) {
     const t = taskOf.get(p.id)
     if (!t) { out.push(p); continue }
-    const list = byTask.get(t)
-    if (list) list.push(p)
-    else byTask.set(t, [p])
+    const k = `${t.id}|${p.workspace}`
+    const e = byTask.get(k)
+    if (e) e.list.push(p)
+    else byTask.set(k, { t, list: [p] })
   }
-  for (const [t, list] of byTask) {
+  for (const { t, list } of byTask.values()) {
     const ids = new Set(list.map(p => p.id))
     const shown = shownPane(list, taskHelper(t, id => ids.has(id))?.id)
     if (shown) out.push(shown)

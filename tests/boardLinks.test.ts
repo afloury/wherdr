@@ -296,6 +296,11 @@ describe('one row per task, whatever helpers its space holds', () => {
     const st = session([...reviewTabs, ['w5:t1', '1', 'w5:p1', 'claude', 'done']])
     const counted = countedPanes(st.panes.filter(p => p.agent), [board([reviewing])])
     expect(counted.map(p => p.id).sort()).toEqual(['w5:p1', 'w7:p2'])
+    // A reviewer an older board put in a space of its own: two rows, counted twice.
+    const apart = session([reviewTabs[0]!, ['w6:t1', 'Reviewer', 'w6:p2', 'codex', 'working']])
+    const far = board([{ ...reviewing, link: { ...reviewing.link, reviewer: { pane: 'w6:p2', kind: 'codex' } } }])
+    expect(groupOf(apart, far).sum.total).toBe(2)
+    expect(countedPanes(apart.panes.filter(p => p.agent), [far])).toHaveLength(2)
     // Without the board, every agent counts.
     expect(countedPanes(st.panes.filter(p => p.agent), [])).toHaveLength(3)
   })
