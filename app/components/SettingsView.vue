@@ -358,6 +358,7 @@ onMounted(() => {
               <span><b>{{ t('Show quotas') }}</b><small>{{ t('Show Claude and Codex quotas on the home screen.') }}</small></span>
               <USwitch v-model="quotasOn" color="success" size="xl" />
             </label>
+            <MachineBarSettings />
           </div>
 
           <div class="settings-group">

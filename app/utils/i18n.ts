@@ -410,6 +410,7 @@ const FR: Record<string, string> = {
   // Machines
   // Herdr plugin actions
   'Plugin actions': 'Actions des plugins', 'Run': 'Exécuter',
+  'All': 'Toutes', 'Open the board': 'Ouvrir le board',
   'Machine': 'Machine', 'This machine': 'Cette machine', 'LOCAL': 'LOCAL', 'online': 'en ligne', 'reconnecting…': 'reconnexion…',
   'offline': 'hors ligne', 'No agents on this machine.': 'Aucun agent sur cette machine.', 'No known agents.': 'Aucun agent connu.',
   'unknown machine': 'machine inconnue',

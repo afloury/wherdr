@@ -263,6 +263,10 @@ Details in [Features](#features) and [Security](#security).
   machine. Browser storage must be available to retain comments after closing the view.
 - **Several machines**: agents of the SSH machines registered in Herdr (`herdr machine add`)
   appear in their own section; everything works the same on a remote agent.
+- **Machine bar**: at the top of the list, “All”, then each machine with its state and count; a
+  tap shows one machine alone. Settings › Appearance › Home screen › **Machine bar** orders its
+  items, takes some off it or hides it (kept on the device). A machine's **…** menu opens the
+  Board filtered on it (**Open the board**).
 - **Named Herdr sessions**, **quotas** (remaining Claude and Codex usage limits), **Herdr plugin
   actions** in the menus, **passkey lock** (Face ID, Touch ID, Windows Hello, Android…).
 - **Themes**: wherdr Titanium (default), herdr.dev and Herdr's built-in themes, or follow your Herdr theme.
