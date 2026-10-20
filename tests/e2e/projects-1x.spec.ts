@@ -255,11 +255,34 @@ test('in a container: the tasks show, the actions are the host\'s', async ({ pag
   await page.route('**/api/tasks/details*', route => route.fulfill({ json: { id: 'demo/1', title: 'Task demo/1', stage: 'approval', msg: '', description: 'From the file', agent: 'claude', pr: '', branch: '', worktree: '', failure: '', review: null, reviewRounds: 0, plan: '', research: false, pane: null } }))
   await page.goto('/#/board')
   await expect(page.locator('.board-notes')).toContainText('wherdr runs in a container', { timeout: 15000 })
-  // The actions stay in view, off, each saying why on hover.
+  // Task actions still explain their disabled state with a native title.
   const why = /wherdr runs in a container here/
-  for (const button of [page.locator('.board-top .board-coord'), page.locator('.board-new'), page.locator('.board-head-add').first(), page.locator('.board-head .board-coord').first()]) {
+  for (const button of [page.locator('.board-new'), page.locator('.board-head-add').first()]) {
     await expect(button).toBeDisabled()
     await expect(button.locator('xpath=ancestor::span[contains(@class, "ro-why")][1]')).toHaveAttribute('title', why)
+  }
+  // Coordinators explain both their role and the disabled state in the new hint.
+  await expect(page.locator('.board-top .board-coord')).toHaveText('Coordinator · devbox')
+  await expect(page.getByRole('status').filter({ hasText: 'No Coordinator can be reached' })).toBeVisible()
+  const hints = page.locator('.coordinator-hint')
+  await expect(hints).toHaveCount(3) // Main, machine setup, project.
+  for (const hint of await hints.all()) {
+    await expect(hint.getByRole('button')).toBeDisabled()
+    if (testInfo.project.name.includes('phone')) {
+      await hint.dispatchEvent('pointerdown', { pointerType: 'touch', clientX: 10, clientY: 10 })
+    } else {
+      await hint.hover()
+    }
+    const tooltip = page.locator('.coordinator-tooltip')
+    await expect(tooltip).toBeVisible()
+    await expect(tooltip).toContainText(why)
+    if (testInfo.project.name.includes('phone')) {
+      await hint.dispatchEvent('pointerup', { pointerType: 'touch' })
+      await hint.dispatchEvent('click')
+    }
+    await expect(page.locator('.board-panel')).toHaveCount(0)
+    await page.keyboard.press('Escape')
+    await expect(tooltip).toBeHidden()
   }
   await expect(page.locator('.board-notes a', { hasText: 'Move to the native service' })).toHaveAttribute('href', /moving-from-docker-to-the-native-service$/)
   if (testInfo.project.name.includes('phone')) await page.locator('.board-seg').getByRole('button', { name: /^Ready to approve/ }).click()
