@@ -33,9 +33,9 @@ const stories = [
   {
     id: 'projects',
     label: 'herdr-projects',
-    title: 'A coordinator, its threads, one board.',
-    text: 'With the herdr-projects plugin (v0.2.36 from the fork; 1.x is not supported yet), a coordinator conversation runs parallel threads, each in its own Git worktree. wherdr groups them under their project and shows the project\'s TASKS.md as a live board: to test, to decide, in progress, blocked, backlog — with one-click replies.',
-    points: ['Threads live: state, progress, report', 'Thread slots per machine, across projects', 'wherdr never writes TASKS.md: buttons message the coordinator'],
+    title: 'Tasks, coordinators, one Board.',
+    text: 'With herdr-projects 1.2.1 or later, each task gets its own agent, is reviewed when it finishes and merged on your yes. The Board shows every machine\'s tasks in five groups — needs you, ready to approve, working, to do, done — with each task\'s agent, pull request and review. Write to a Coordinator from the Board: it turns your words into tasks.',
+    points: ['Approve finished work: herdr-projects merges it', 'Reply to a task\'s agent, start, stop, retry or archive it', 'Coordinators for all work, a machine\'s setup or one repo'],
   },
 ] as const
 
@@ -44,7 +44,7 @@ const why = [
   { k: 'SPLITS', title: 'Herdr\'s splits, live', text: 'A tab with several panes is drawn in Herdr\'s real layout, every pane live. Drag a pane to move it or a divider to resize: the change goes to Herdr itself.' },
   { k: 'LOCK', title: 'A passkey lock', text: 'Face ID, Touch ID, Windows Hello or Android unlock the app. Once a passkey exists, nothing about your agents is served to a locked session.' },
   { k: 'DIFF', title: 'The agent\'s diff', text: 'Git status and diff of each agent\'s working folder, one click away from its conversation.' },
-  { k: 'BOARD', title: 'The herdr-projects board', text: 'A coordinator and its threads grouped under their project, with the project\'s task lists as a live board and one-click replies.' },
+  { k: 'BOARD', title: 'The herdr-projects Board', text: 'Every machine\'s tasks in five groups, each with its agent, pull request and review. Reply, approve, and talk to the Coordinator.' },
   { k: 'KEYS', title: 'Keyboard and global search', text: 'One shortcut searches every agent and conversation. Next agent, new tab, pane swaps and 1–9 answers never need the mouse.' },
   { k: 'LIVE', title: 'Real time, and private', text: 'The real terminal over a WebSocket, a push when an agent needs you, and your phone through Tailscale. Nothing is on the Internet.' },
 ]
@@ -193,8 +193,8 @@ const faq = [
                   <AgentListDemo />
                 </PhoneFrame>
               </div>
-              <BrowserFrame v-else alt="A coordinator with the project board: a thread becomes ready for review, is merged and moves to To test; a To decide question is answered from the board">
-                <ProjectDemo />
+              <BrowserFrame v-else alt="The herdr-projects Board: a task becomes ready to approve, is approved and moves to Done; the Coordinator, opened from the Board, turns a message into a new task">
+                <BoardDemo />
               </BrowserFrame>
             </div>
           </article>
