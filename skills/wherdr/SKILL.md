@@ -7,7 +7,8 @@ description: How wherdr, the phone and browser app for Herdr, shows a herdr-proj
 
 wherdr shows the user's Herdr agents on their phone and computer. Its **Board** shows the
 herdr-projects work board (1.2.1 or later) of every machine, in the board's own five groups:
-needs you, ready to approve, working, to do, done. wherdr reads the board through the
+needs you, ready to approve, working, to do, done (Done is hidden until the user shows it, so
+the user may not see a finished task there). wherdr reads the board through the
 herdr-projects command line (`list --json`, `details <id> --json`); it never edits the
 board's files.
 

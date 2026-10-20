@@ -1,7 +1,8 @@
 <script setup lang="ts">
-// The Board: herdr-projects 1.x tasks of every machine, always in the five
-// groups of its board (Needs you, Ready to approve, Working, To do, Done), as
-// five columns of equal width. Two views of the same grid: "Global" mixes every
+// The Board: herdr-projects 1.x tasks of every machine, in the groups of its
+// board (Needs you, Ready to approve, Working, To do, Done), as columns of
+// equal width. Done is history: hidden until its toggle in the column heads
+// ("Done · 9") shows it (boardDone.ts). Two views of the same grid: "Global" mixes every
 // machine's and repo's tasks; "By repo" cuts it into lanes, one per machine then
 // per repo (1.x: `Alt+M` with `Alt+S`), aligned from one column to the next.
 // On a phone (or a Board narrowed by the side panel): one group at a time, in
@@ -17,15 +18,12 @@
 // (ProjectsUpgradeNote).
 //
 // What is kept on this device only: the machine shown, the grouping, folded
-// headings. Nothing about the projects themselves: that is herdr-projects'.
+// headings, Done shown or not. Nothing about the projects themselves: that is herdr-projects'.
 import {
   type CoordinatorTarget, TASK_GROUPS, type TaskGroup, type TaskRow, groupByRepo, groupCounts, sortTasks,
 } from '#shared/projectsTasks'
 import type { PanelTarget } from './BoardPanel.vue'
 
-// Done tasks shown until "Show all": per column, and per repo.
-const DONE_SHOWN = 8
-const DONE_SHOWN_REPO = 3
 const COLUMN_KEY = 'boardColumn'
 const SCOPE_KEY = 'boardMachine'
 const GROUPING_KEY = 'boardGrouping'
@@ -83,12 +81,28 @@ const cardOf = (m: { machine: string, stale?: boolean, at?: number }, task: Task
 // A machine Herdr did not answer for keeps its last tasks, marked as older.
 const allCards = computed<Card[]>(() => boards.value.flatMap(m => sortTasks(m.tasks.filter(t => !t.archived)).map(task => cardOf(m, task))))
 const cards = computed(() => allCards.value.filter(c => shownScope.value === ALL || c.machine === shownScope.value))
+// Done: hidden until asked for, on this device; shown, its latest few until "N more".
+const showDone = ref(boardDoneShown(readStore(BOARD_DONE_KEY)))
 const showAll = ref(false)
-const columns = computed(() => TASK_GROUPS.map((id) => {
+const doneCount = computed(() => cards.value.filter(c => c.task.group === 'done').length)
+function toggleDone() {
+  showDone.value = !showDone.value
+  writeStore(BOARD_DONE_KEY, boardDoneStored(showDone.value))
+  if (!showDone.value) showAll.value = false
+  // Phone: what was asked for comes into view.
+  else if (!wide.value) selectColumn('done')
+  haptic()
+}
+const doneToggleLabel = computed(() => (showDone.value
+  ? tl('Hide done tasks', 'Masquer les tâches faites')
+  : tl(`Show done tasks (${doneCount.value})`, `Afficher les tâches faites (${doneCount.value})`)))
+const groups = computed(() => boardGroups(showDone.value))
+const columns = computed(() => groups.value.map((id) => {
   const all = cards.value.filter(c => c.task.group === id)
-  const list = id === 'done' && !showAll.value ? all.slice(0, DONE_SHOWN) : all
-  return { id, label: taskGroupLabel(id), total: all.length, cards: list, hidden: all.length - list.length }
+  return { id, label: taskGroupLabel(id), total: all.length, ...boardCell(id, all, showAll.value, DONE_LATEST) }
 }))
+// As many columns as groups shown, of equal width.
+const gridStyle = computed(() => ({ '--board-cols': `repeat(${columns.value.length}, minmax(0, 1fr))` }))
 
 // Folded headings (`m:<machine>`, `r:<machine>|<repo>`), on this device.
 const folds = ref(new Set<string>((() => { try { return JSON.parse(readStore(FOLDS_KEY) || '[]') as string[] } catch { return [] } })()))
@@ -99,11 +113,12 @@ function fold(key: string) {
   writeStore(FOLDS_KEY, JSON.stringify([...next].slice(-200)))
 }
 
-// What a heading holds, in a few words: what needs you first, done left out.
-function summary(rows: TaskRow[]): string {
+// What a heading holds, in a few words: what needs you first; done last, and quietly.
+function summary(rows: TaskRow[]): { main: string, done: string } {
   const c = groupCounts(rows)
   const parts = (['needs', 'ready', 'working', 'todo'] as const).filter(g => c[g]).map(g => `${c[g]} ${taskGroupLabel(g).toLowerCase()}`)
-  return parts.join(' · ') || (c.done ? tl(`${c.done} done`, `${c.done} fait${c.done > 1 ? 's' : ''}`) : tl('no task', 'aucune tâche'))
+  const done = c.done ? tl(`${c.done} done`, `${c.done} fait${c.done > 1 ? 's' : ''}`) : ''
+  return { main: parts.join(' · ') || (done ? '' : tl('no task', 'aucune tâche')), done }
 }
 const machineGroups = computed(() => shownBoards.value.map((m) => {
   const rows = m.tasks.filter(t => !t.archived)
@@ -112,11 +127,10 @@ const machineGroups = computed(() => shownBoards.value.map((m) => {
     summary: summary(rows),
     readOnly: Boolean(m.readOnly),
     repos: groupByRepo(rows).map(({ repo, tasks }) => {
-      // The board's five groups in each repo's lane, under the Board's columns.
-      const cols = TASK_GROUPS.map((id) => {
-        const all = tasks.filter(t => t.group === id)
-        const list = id === 'done' && !showAll.value ? all.slice(0, DONE_SHOWN_REPO) : all
-        return { id, label: taskGroupLabel(id), total: all.length, cards: list.map(task => cardOf(m, task)), hidden: all.length - list.length }
+      // The board's groups in each repo's lane, under the Board's columns.
+      const cols = groups.value.map((id) => {
+        const all = tasks.filter(t => t.group === id).map(task => cardOf(m, task))
+        return { id, label: taskGroupLabel(id), total: all.length, ...boardCell(id, all, showAll.value, DONE_LATEST_REPO) }
       })
       return { repo, summary: summary(tasks), cols }
     }),
@@ -144,6 +158,8 @@ function readColumn(): TaskGroup {
   return TASK_GROUPS.includes(v as TaskGroup) ? v as TaskGroup : 'needs'
 }
 const phoneColumn = ref<TaskGroup>(readColumn())
+// Done hidden: its tab is gone, the first one shows.
+const shownColumn = computed(() => boardPhoneColumn(phoneColumn.value, showDone.value))
 function selectColumn(id: TaskGroup) {
   phoneColumn.value = id
   writeStore(COLUMN_KEY, id)
@@ -348,23 +364,41 @@ function back() {
       </div>
 
       <!-- Phone, or a Board narrowed by the panel: one group at a time, in both views. -->
-      <div v-if="!wide" class="board-seg tasks" role="group" :aria-label="t('Board')">
+      <div v-if="!wide" class="board-seg tasks" :style="{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr)) auto` }" role="group" :aria-label="t('Board')">
         <button
-          v-for="col in columns" :key="col.id" type="button" class="board-seg-btn" :class="[col.id, { on: phoneColumn === col.id }]"
-          :aria-pressed="phoneColumn === col.id" @click="selectColumn(col.id)"
+          v-for="col in columns" :key="col.id" type="button" class="board-seg-btn" :class="[col.id, { on: shownColumn === col.id }]"
+          :aria-pressed="shownColumn === col.id" @click="selectColumn(col.id)"
         >
           <span>{{ col.label }}</span><b>{{ col.total }}</b>
         </button>
+        <!-- Done, hidden: its toggle shows it (as a tab); shown: the same place hides it. -->
+        <button
+          type="button" class="board-seg-btn board-done-toggle" :class="{ shown: showDone }" :aria-pressed="showDone"
+          :aria-label="doneToggleLabel" :title="doneToggleLabel" @click="toggleDone"
+        >
+          <template v-if="showDone"><UIcon name="i-lucide-eye-off" class="board-done-icon" /></template>
+          <template v-else><span>{{ taskGroupLabel('done') }}</span><b><UIcon name="i-lucide-eye" class="board-done-icon" />{{ doneCount }}</b></template>
+        </button>
       </div>
 
-      <!-- The same grid in both views: five columns of equal width. "By repo" cuts it into lanes. -->
-      <div class="board-grid" :class="{ desk: wide, lanes: grouping === 'repo' }">
+      <!-- The same grid in both views: columns of equal width. "By repo" cuts it into lanes. -->
+      <div class="board-grid" :class="{ desk: wide, lanes: grouping === 'repo' }" :style="gridStyle">
         <div v-if="wide" class="board-grid-head">
-          <h3 v-for="col in columns" :key="col.id" class="board-col-head" :class="col.id"><span>{{ col.label }}</span><span class="pp-count">{{ col.total }}</span></h3>
+          <h3 v-for="(col, i) in columns" :key="col.id" class="board-col-head" :class="col.id">
+            <span>{{ col.label }}</span><span class="pp-count">{{ col.total }}</span>
+            <!-- At the end of the heads: "Done · 9" shows Done, "Hide" on its head hides it. -->
+            <button
+              v-if="i === columns.length - 1" type="button" class="board-done-toggle" :class="{ shown: showDone }" :aria-pressed="showDone"
+              :aria-label="doneToggleLabel" :title="doneToggleLabel" @click="toggleDone"
+            >
+              <UIcon :name="showDone ? 'i-lucide-eye-off' : 'i-lucide-eye'" class="board-done-icon" />
+              <span>{{ showDone ? tl('Hide', 'Masquer') : `${taskGroupLabel('done')} · ${doneCount}` }}</span>
+            </button>
+          </h3>
         </div>
 
         <div v-if="grouping === 'global'" class="board-cols board-cells">
-          <section v-for="col in columns" v-show="wide || phoneColumn === col.id" :key="col.id" class="board-col" :class="col.id" :aria-label="col.label">
+          <section v-for="col in columns" v-show="wide || shownColumn === col.id" :key="col.id" class="board-col" :class="col.id" :aria-label="col.label">
             <div class="board-col-body">
               <TaskCard
                 v-for="c in col.cards" :key="c.key" :task="c.task" :machine="several && shownScope === ALL ? machineName(c.machine) : undefined"
@@ -384,7 +418,7 @@ function back() {
               <button type="button" class="board-fold" :aria-expanded="!folds.has(`m:${mg.machine}`)" :aria-label="tl('Fold', 'Replier')" @click="fold(`m:${mg.machine}`)">
                 <UIcon :name="folds.has(`m:${mg.machine}`) ? 'i-lucide-chevron-right' : 'i-lucide-chevron-down'" />
               </button>
-              <p class="board-head-name"><b>{{ machineLabel(mg.machine) }}</b><span class="board-head-sum">{{ mg.summary }}</span></p>
+              <p class="board-head-name"><b>{{ machineLabel(mg.machine) }}</b><span class="board-head-sum">{{ mg.summary.main }}<span v-if="mg.summary.done" class="board-head-done">{{ mg.summary.main ? ' · ' : '' }}{{ mg.summary.done }}</span></span></p>
               <div class="board-head-actions">
                 <span v-for="to in MACHINE_COORDS" :key="to.kind" class="ro-why" :title="mg.readOnly ? readOnlyWhy() : undefined">
                   <UButton
@@ -402,7 +436,7 @@ function back() {
                   <button type="button" class="board-fold" :aria-expanded="!folds.has(`r:${mg.machine}|${rg.repo}`)" :aria-label="tl('Fold', 'Replier')" @click="fold(`r:${mg.machine}|${rg.repo}`)">
                     <UIcon :name="folds.has(`r:${mg.machine}|${rg.repo}`) ? 'i-lucide-chevron-right' : 'i-lucide-chevron-down'" />
                   </button>
-                  <p class="board-head-name"><b>{{ rg.repo }}</b><span class="board-head-sum">{{ rg.summary }}</span></p>
+                  <p class="board-head-name"><b>{{ rg.repo }}</b><span class="board-head-sum">{{ rg.summary.main }}<span v-if="rg.summary.done" class="board-head-done">{{ rg.summary.main ? ' · ' : '' }}{{ rg.summary.done }}</span></span></p>
                   <div class="board-head-actions">
                     <span class="ro-why" :title="mg.readOnly ? readOnlyWhy() : undefined">
                       <UButton
@@ -423,7 +457,7 @@ function back() {
                 <!-- Its lane: one cell under each of the Board's columns. -->
                 <div v-if="!folds.has(`r:${mg.machine}|${rg.repo}`)" class="board-repo-cols board-cells">
                   <section
-                    v-for="col in rg.cols" v-show="wide || phoneColumn === col.id" :key="col.id" class="board-repo-col" :class="[col.id, { none: !col.total }]"
+                    v-for="col in rg.cols" v-show="wide || shownColumn === col.id" :key="col.id" class="board-repo-col" :class="[col.id, { none: !col.total }]"
                     :data-group="col.id" :aria-label="col.label"
                   >
                     <div class="board-repo-col-body">
