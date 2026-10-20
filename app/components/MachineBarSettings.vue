@@ -17,12 +17,14 @@ const drag = ref<{ id: string, from: number, dy: number, to: number, h: number }
 const STATE: Record<MachineInfo['status'], string> = { online: 'online', connecting: 'reconnecting…', offline: 'offline' }
 function statusOf(id: string): MachineInfo['status'] {
   const mine = machines.value.filter(m => (m.baseKey ?? m.key) === id)
+  // A single machine Herdr's state does not list: online while Herdr answers.
+  if (!mine.length) return herdrState.value.ok ? 'online' : 'offline'
   return mine.some(m => m.status === 'online') ? 'online' : mine.some(m => m.status === 'connecting') ? 'connecting' : 'offline'
 }
 const rows = computed(() => {
   return machineBarItems.value.map(x => ({
     ...x,
-    label: x.id === BAR_ALL ? t('All') : machineName(machines.value.find(m => (m.baseKey ?? m.key) === x.id)?.key ?? x.id) || x.id,
+    label: x.id === BAR_ALL ? t('All') : machineName(machines.value.find(m => (m.baseKey ?? m.key) === x.id)?.key ?? x.id) || x.id || hostLabel.value || 'herdr',
     status: x.id === BAR_ALL ? null : statusOf(x.id),
   }))
 })
@@ -106,10 +108,11 @@ function onGrab(id: string, e: PointerEvent) {
 </script>
 
 <template>
-  <div class="settings-group machine-bar-settings">
-    <h3>{{ tl('Machine bar', 'Barre des machines') }}</h3>
+  <!-- Inside the Home screen group (Settings › Appearance › Home screen). -->
+  <div class="machine-bar-settings">
+    <h4 class="theme-section-title bar-pref-title">{{ tl('Machine bar', 'Barre des machines') }}</h4>
     <label class="settings-toggle">
-      <span><b>{{ tl('Show the machine bar', 'Afficher la barre des machines') }}</b><small>{{ tl('At the top of the home screen with several machines: “All”, then each machine. A tap shows that machine only.', 'En haut de l’accueil avec plusieurs machines : « Toutes », puis chaque machine. Un toucher n’affiche que cette machine.') }}</small></span>
+      <span><b>{{ tl('Show the machine bar', 'Afficher la barre des machines') }}</b><small>{{ tl('At the top of the home screen: “All”, then each machine. A tap shows that machine only.', 'En haut de l’accueil : « Toutes », puis chaque machine. Un toucher n’affiche que cette machine.') }}</small></span>
       <USwitch v-model="barOn" color="success" size="xl" />
     </label>
     <template v-if="barOn">
@@ -128,7 +131,6 @@ function onGrab(id: string, e: PointerEvent) {
           </label>
         </li>
       </ul>
-      <p v-if="!multiMachine" class="muted settings-hint">{{ tl('The bar shows once Herdr knows several machines.', 'La barre s’affiche dès que Herdr connaît plusieurs machines.') }}</p>
       <UButton color="neutral" variant="outline" icon="i-lucide-rotate-ccw" class="bar-pref-reset" :disabled="isDefault" @click="resetMachineBar">
         {{ tl('Reset: All + every machine', 'Rétablir : Toutes + toutes les machines') }}
       </UButton>

@@ -43,14 +43,17 @@ export async function saveMachineOrder(order: string[]) {
 // counts as its machine).
 export const orderedMachines = computed(() => sortMachines(machines.value, machineOrder.value))
 export const machineBaseKeys = computed(() => [...new Set(orderedMachines.value.map(m => m.baseKey ?? m.key))])
+// The machines the bar offers: with a single machine Herdr's state may list
+// none, and that machine is the local one ('').
+const barMachines = computed(() => (machineBaseKeys.value.length ? machineBaseKeys.value : ['']))
 
 // ------------------------------------------------------------ the bar
 // Settings list: every item, in order, with whether the bar shows it.
-export const machineBarItems = computed(() => barItems(machineBarOrder.value, machineBaseKeys.value)
+export const machineBarItems = computed(() => barItems(machineBarOrder.value, barMachines.value)
   .map(id => ({ id, shown: !machineBarHidden.value.includes(id) })))
-// The bar shows with several machines only (one machine has nothing to filter).
-export const machineBarShown = computed(() => (machineBarOn.value && multiMachine.value
-  ? barShown(machineBarOrder.value, machineBarHidden.value, machineBaseKeys.value)
+// The bar shows by default, a single machine included ("All", then that machine).
+export const machineBarShown = computed(() => (machineBarOn.value
+  ? barShown(machineBarOrder.value, machineBarHidden.value, barMachines.value)
   : []))
 export const machineBarPick = computed(() => barPick(machineBarSaved.value, machineBarShown.value))
 // The machine (base key) the home list shows alone, or null for all of them.

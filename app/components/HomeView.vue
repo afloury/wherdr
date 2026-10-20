@@ -167,10 +167,12 @@ const sections = computed(() => {
 // with its state and the number of agents the list counts.
 const barEntries = computed(() => machineBarShown.value.map((id) => {
   if (id === BAR_ALL) return { id, label: t('All'), status: null, title: undefined, n: counted.value.length }
-  const mine = machines.value.filter(m => baseKeyOf(m) === id)
+  // A single machine Herdr's state does not list: the one shown in the session row.
+  const listed = machines.value.filter(m => baseKeyOf(m) === id)
+  const mine = listed.length ? listed : id === soloMachine.value.key ? [soloMachine.value] : []
   const keys = new Set(mine.map(m => m.key))
   const status: MachineInfo['status'] = mine.some(m => m.status === 'online') ? 'online' : mine.some(m => m.status === 'connecting') ? 'connecting' : 'offline'
-  const label = machineName(mine[0]?.key ?? id)
+  const label = (listed.length ? machineName(listed[0]!.key) : mine[0]?.label) || id || t('This machine')
   return { id, label, status, title: `${label} · ${t(STATE_LABEL[status])}`, n: counted.value.filter(p => keys.has(p.machine || '')).length }
 }))
 const homeScroll = ref<HTMLElement | null>(null)
@@ -307,9 +309,9 @@ function machineMenu(m: MachineInfo) {
     if (at > 0) items.push({ label: t('Move up'), icon: 'i-lucide-arrow-up', run: () => shiftMachine(key, -1) })
     if (at >= 0 && at < visibleKeys.value.length - 1) items.push({ label: t('Move down'), icon: 'i-lucide-arrow-down', run: () => shiftMachine(key, 1) })
     if (machineOrder.value.length) items.push({ label: t('Reset order'), icon: 'i-lucide-rotate-ccw', run: () => saveMachineOrder([]) })
-    // The Board, already filtered on this machine (its board is the base machine's).
-    items.push({ label: t('Open the board'), icon: 'i-lucide-square-kanban', run: () => navigateTo({ path: '/board', query: { machine: key } }) })
   }
+  // The Board, already filtered on this machine (its board is the base machine's).
+  items.push({ label: t('Open the board'), icon: 'i-lucide-square-kanban', run: () => navigateTo({ path: '/board', query: { machine: baseKeyOf(m) } }) })
   if (m.status === 'online' && awakeByMachine.value[m.key]?.supported) {
     items.push({ label: t('Keep awake'), icon: 'i-lucide-sun', run: () => openAwake(m) })
     if (awakeByMachine.value[m.key]?.platform === 'mac') items.push({ label: t('What prevents sleep'), icon: 'i-lucide-list-filter', run: () => openDiagnostic(m) })
@@ -343,8 +345,7 @@ const quietHint = computed(() => {
 const onQuietVisible = () => { if (document.visibilityState === 'visible') refreshQuiet() }
 onMounted(() => { refreshQuiet(); document.addEventListener('visibilitychange', onQuietVisible) })
 onBeforeUnmount(() => document.removeEventListener('visibilitychange', onQuietVisible))
-// A single machine: its plugin actions live in the "…" menu of its session row.
-const soloPlugins = computed(() => !multiMachine.value && machinePluginActions('').length > 0)
+// A single machine: its "…" menu (Open the board, keep awake, plugin actions) is on its session row.
 // Header buttons: when the list is too narrow, the secondary ones move into a "…" menu
 // (settings first, then the board).
 const titleRow = ref<HTMLElement | null>(null)
@@ -558,7 +559,7 @@ function resetListWidth() {
       <div v-if="!multiMachine" class="solo-machine-row"><button type="button" class="solo-session-row" :aria-label="t('Herdr sessions')" @click="openSessions(soloMachine)">
         <span><UIcon name="i-lucide-layers" />{{ soloMachine.label }}</span>
         <b>{{ soloMachine.session || 'default' }}<UIcon name="i-lucide-chevron-right" /></b>
-      </button><UDropdownMenu v-if="awakeByMachine[soloMachine.key]?.supported || soloPlugins" :items="machineMenu(soloMachine)" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :aria-label="t('Options')" class="solo-machine-options" /></UDropdownMenu></div>
+      </button><UDropdownMenu :items="machineMenu(soloMachine)" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :aria-label="t('Options')" class="solo-machine-options" /></UDropdownMenu></div>
       <p v-if="!multiMachine && awakeByMachine[soloMachine.key]?.active" class="machine-awake"><UIcon name="i-lucide-sun" />{{ awakeLabel(awakeByMachine[soloMachine.key]) }}</p>
       <NuxtLink v-if="quietHint" :to="quietSettings" class="home-quiet" :aria-label="quietLabel"><UIcon name="i-lucide-bell-off" /><span>{{ quietHint }}</span></NuxtLink>
 

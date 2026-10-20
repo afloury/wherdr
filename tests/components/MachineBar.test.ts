@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import HomeView from '~/components/HomeView.vue'
 import MachineBarSettings from '~/components/MachineBarSettings.vue'
-import { collapsedMachines, eventsOpen, herdrState } from '~/composables/useHerdr'
+import { collapsedMachines, eventsOpen, herdrState, hostLabel } from '~/composables/useHerdr'
 import { machineBarHidden, machineBarOn, machineBarOrder, machineBarSaved } from '~/composables/useMachineBar'
 import { BAR_ALL } from '~/utils/machineBar'
 import type { MachineInfo, Pane } from '#shared/types'
@@ -99,10 +99,40 @@ describe('the machine bar on the home list', () => {
     expect(w.findAll('section.machine').length).toBe(3)
   })
 
-  it('no bar with a single machine', async () => {
-    herdrState.value = { ok: true, workspaces: workspaces.slice(0, 2), panes: panes.slice(0, 2), machines: [machines[0]] } as never
+  it('a single machine has the bar too: All, then that machine', async () => {
+    // Herdr's state lists no machine when there is only this one.
+    herdrState.value = { ok: true, workspaces: workspaces.slice(0, 2), panes: panes.slice(0, 2) } as never
+    hostLabel.value = 'Server'
     const w = await mountHome()
-    expect(w.find('.machine-bar').exists()).toBe(false)
+    const items = w.findAll('.machine-bar-item')
+    expect(items.map(i => i.find('.machine-bar-label').text())).toEqual(['All', 'Server'])
+    expect(items.map(i => i.find('.machine-bar-count').text())).toEqual(['2', '2'])
+    expect(items[1]!.classes()).toContain('online')
+    // Choosing it keeps the whole list: it is the only machine.
+    await items[1]!.trigger('click')
+    expect(w.findAll('.card').length).toBeGreaterThan(0)
+    hostLabel.value = ''
+  })
+
+  it('a single machine\'s menu opens its board', async () => {
+    herdrState.value = { ok: true, workspaces: workspaces.slice(0, 2), panes: panes.slice(0, 2) } as never
+    const w = await mountHome()
+    navigate.mockClear()
+    await w.find('.solo-machine-options').trigger('click')
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Open the board'))
+    const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(e => e.textContent?.includes('Open the board'))!
+    item.click()
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: '' } }))
+  })
+
+  it('every machine\'s menu opens its board, filtered on it', async () => {
+    const w = await mountHome()
+    navigate.mockClear()
+    await w.findAll('.machine-options')[1]!.trigger('click')
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Open the board'))
+    const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(e => e.textContent?.includes('Open the board'))!
+    item.click()
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: 'laptop' } }))
   })
 })
 
@@ -135,6 +165,14 @@ describe('Settings › Machine bar', () => {
     expect(machineBarOrder.value).toEqual([])
     expect(machineBarHidden.value).toEqual([])
     expect(machineBarSaved.value).toBe(BAR_ALL)
+  })
+
+  it('a single machine: All and that machine', async () => {
+    herdrState.value = { ok: true, workspaces: [], panes: [] } as never
+    const w = track(await mountSuspended(MachineBarSettings))
+    expect(w.findAll('.bar-pref-row').map(r => r.attributes('data-bar-id'))).toEqual([BAR_ALL, ''])
+    expect(w.findAll('.bar-pref-label span').map(r => r.text())).toEqual(['All', 'herdr'])
+    expect(w.find('.bar-pref-state').classes()).toContain('online')
   })
 
   it('turned off, the list goes', async () => {
