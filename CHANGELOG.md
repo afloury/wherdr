@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **Useful home list densities**: Compact keeps each Board task on one line (agent, key, truncated title, progress, duration and state, with Your turn when needed). Normal adds one activity line with relevant limit or review labels. Large detailed cards are removed; coordinators and other agents stay dense too, while agents outside the Board keep their one-tap answers. Settings keeps the existing compact/normal choice, with Compact still the default.
+
 ### ⚠ Breaking change: herdr-projects 1.2.1 or later (next major version, 2.0.0)
 
 - **herdr-projects 0.2 is no longer read; wherdr now reads herdr-projects 1.2.1 and later.** Upstream herdr-projects 1.x is a different product (one work board of tasks, each handed to an agent, reviewed and merged on your yes), and wherdr now follows it. wherdr 1.3.4 is the last version for herdr-projects 0.2. See [docs/herdr-projects-1x.md](docs/herdr-projects-1x.md) for the move, with a backup and the way back.

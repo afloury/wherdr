@@ -157,8 +157,12 @@ Details in [Features](#features) and [Security](#security).
   The list is compact by default: agent, title, project badge and state. When an agent asks for
   permission or asks a question, its card opens on the question and its options: **answer in one
   tap** without opening it; the card is one line again once answered. Turn off Settings ›
-  Appearance › Home screen › **Compact list** for detailed cards, with the folder, the model and
-  a preview of each agent's last answer.
+  Appearance › Home screen › **Compact list** for normal mode. Board tasks use one line in
+  compact mode (agent, key, title, progress, duration, state and Your turn when needed); normal
+  mode adds the current activity and relevant limit or review labels on a second line. Task
+  details stay in the task sheet. Existing compact/normal choices are preserved. Other agents
+  also use dense rows, with a last-answer preview in normal mode; waiting agents keep their
+  questions and one-tap answers in both modes.
   With [herdr-projects](#works-great-with-herdr-projects), the board's spaces follow Herdr's sidebar:
   the Coordinators on top, then each repo's space (branch, `↓` commits behind its upstream) with
   its project coordinator as the group's lead, right under it (the coordinator's icon, its state
@@ -1275,8 +1279,8 @@ What the Board shows and does:
   only the tasks fold) and its tasks' spaces (key, title, state,
   progress, time on it, the line the board reports; the Board icon opens the task there). One
   row per task: its reviewer, planner and attempts, each in a tab of the task's space, are part
-  of it; the row says the stage (**Under review · codex**) and opens the reviewer's tab while a
-  review runs. The counters count tasks, not tabs. A repo
+  of it; in normal mode the row says the stage (**Under review · codex**), and both modes
+  open the reviewer's tab while a review runs. The counters count tasks, not tabs. A repo
   coordinated from another machine shows **Coordinated from <machine>**. wherdr reads this from
   the board's files (`~/.herdr-projects/data`: tasks, attempts, reviewers, coordinators, repos)
   and from Herdr's worktree groups, every 15 seconds while the list is shown, never through
