@@ -2208,10 +2208,6 @@ body.kb .composer { padding-bottom: 8px; }
 .phone-wait .iconify, .phone-result.wait .iconify { flex: none; width: 15px; height: 15px; margin-top: 1px; color: var(--mauve); animation: spin .8s linear infinite; }
 .phone-url { font-family: var(--mono); font-size: 12.5px !important; overflow-wrap: anywhere; color: var(--text); }
 .phone-link { display: inline-flex; align-items: center; gap: 4px; font: 500 12px var(--mono); color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
-.phone-command { display: flex; align-items: center; gap: 8px; width: 100%; }
-.phone-command code { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); background: var(--code-bg); font: 12px/1.45 var(--mono); overflow-wrap: anywhere; }
-.phone-address { display: flex; gap: 8px; width: 100%; }
-.phone-address-input { flex: 1; min-width: 0; font-family: var(--mono); }
 .phone-note { margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .phone-note p { margin: 0 0 6px; }
 .phone-note.warn { padding: 10px 12px; border: 1px solid var(--ochre); color: var(--text); }
@@ -2246,7 +2242,6 @@ body.kb .composer { padding-bottom: 8px; }
   .phone-steps li { padding-left: 16px; }
   .phone-step-label { position: static; }
   .phone-qr { flex-direction: column; align-items: flex-start; }
-  .phone-command, .phone-address { flex-wrap: wrap; }
 }
 /* First-launch setup guide (OnboardingGuide.vue): full screen on a phone, grid
    backdrop like the lock screen; top bar (brand, Skip), step rail, one page, Back / Next. */
@@ -3726,7 +3721,7 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-sheet-block h4 { margin: 0 0 6px; font: 600 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .task-sheet-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.55; color: var(--text-2); }
 .task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.task-sheet-actions > button, .task-sheet-actions .ro-why > button { border-radius: 0; }
+.task-sheet-actions > button { border-radius: 0; }
 .task-sheet-actions .task-archive { margin-left: auto; }
 .task-sheet-reply { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
 .task-sheet-reply label { font: 500 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
@@ -3756,11 +3751,6 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 
 .board-note { margin: 0; font: 11px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 .board-note.error { color: var(--rose); }
-.board-note-ro b { color: var(--text); text-transform: uppercase; letter-spacing: .06em; }
-.board-note-ro a { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
-/* A disabled Board action in a container: the wrapper carries the reason (a disabled button gets no hover). */
-.ro-why { display: inline-flex; }
-.ro-why:has(button:disabled) { cursor: not-allowed; }
 
 /* Touch tablet (iPad, shortest side ≥ 700 px): 44 px targets, like on the
    phone. A large phone in landscape keeps its layout. */

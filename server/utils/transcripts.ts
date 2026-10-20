@@ -1,18 +1,3 @@
-// Agent transcripts, for the "Conversation" view: the real
-// conversation, as text reflowed to the phone's width, without touching the
-// terminal (so without resizing the pane the computer is looking at).
-//
-// Finding a pane's file:
-//  - session identifier passed by the agent's Herdr integration
-//    (`herdr integration install claude|codex|omp`): exact, follows /clear. omp
-//    reports the path of its session directly.
-//  - Claude Code without integration: Herdr gives the PID of the pane's `claude`
-//    process, and Claude keeps ~/.claude/sessions/<pid>.json -> { sessionId, cwd }.
-//    The file is ~/.claude/projects/<encoded cwd>/<sessionId>.jsonl.
-//  - Codex without integration: no PID -> session table readable from the
-//    container (the host's /proc is closed by AppArmor). We take the main
-//    rollout (thread_source "user", no parent) of the same cwd, modified
-//    last. Ambiguous only if two Codex run in the same folder.
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { imageTagCount } from '../../shared/queuedMatch'

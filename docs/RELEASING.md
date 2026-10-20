@@ -12,12 +12,10 @@ Publishing (`npm.yml`), and the tap uses the existing optional `HOMEBREW_TAP_TOK
 3. Create the GitHub release as a **draft**, with reviewed, nonempty English notes under New / Improved /
    Fixed / Update. Push its version tag only after these notes are ready. The workflow fails
    if this draft or its notes are missing; it never creates or publishes generated notes.
-4. The tag starts `release.yml` and `npm.yml` independently. `release.yml` builds a multiarch
-   Docker image and runs `npm pack` (prepack builds Nitro, includes `skills/wherdr`, resolves
+4. The tag starts `release.yml` and `npm.yml` independently. `release.yml` runs `npm pack` (prepack builds Nitro, includes `skills/wherdr`, resolves
    linked packages). It attaches `wherdr-X.Y.Z.tgz` and `wherdr-X.Y.Z.tgz.sha256` to the draft.
-   After both jobs succeed, it publishes the release with `latest=false`. Docker and the
-   public GitHub package are now usable; native plugins compare the archive checksum. A failed
-   image or package job leaves the release draft; fix and rerun the failed jobs.
+   After the package job succeeds, it publishes the release with `latest=false`. The public GitHub package is now usable; native plugins compare the archive checksum. A failed
+   package job leaves the release draft; fix and rerun the failed jobs.
 5. The Homebrew job updates the formula URL and SHA from GitHub, without waiting for npm.
    **The manual Homebrew step is MANDATORY while `HOMEBREW_TAP_TOKEN` is absent** (including
    the current 1.3.3 preparation). Wait for `release.yml` to finish successfully first, so its
@@ -91,7 +89,6 @@ sh scripts/bump-homebrew.sh 1.3.3 "$(gh repo view --json owner -q .owner.login)"
 gh workflow run release-ready.yml --ref main
 ```
 
-Use Node.js 22 for npm commands (on the project Pi, use Docker and the shared heavy-operation
-lock for installation/build/tests). Do not manually publish the draft or mark it latest ahead
+Use Node.js 22 for npm commands. Do not manually publish the draft or mark it latest ahead
 of these checks. A GitHub release created by `GITHUB_TOKEN` does not trigger other workflows;
 all publication work is driven by the pushed tag, not `release: published` events.

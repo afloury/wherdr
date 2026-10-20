@@ -29,7 +29,7 @@ export type PanelTarget =
   | { machine: string, kind: 'coordinator', to: CoordinatorTarget }
 
 // `reachable`: its machine's board answers now (a message waits while it does not).
-const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, readOnly?: boolean, reachable?: boolean }>()
+const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, reachable?: boolean }>()
 const emit = defineEmits<{ close: [], sheet: [], noAgent: [] }>()
 
 // ------------------------------------------------------------ a task's agent
@@ -308,10 +308,9 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       <AgentView v-if="paneId" :key="paneId" :pane-id="paneId" cell active />
       <p v-else-if="target.kind === 'task' && loading" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
       <p v-else-if="failed" class="board-note error board-panel-wait">{{ failed }}</p>
-      <p v-else-if="target.kind === 'coordinator' && !coordLoaded && !readOnly" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
+      <p v-else-if="target.kind === 'coordinator' && !coordLoaded" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
       <div v-else-if="target.kind === 'coordinator'" class="board-panel-start">
-        <p v-if="readOnly" class="board-note">{{ tl('This coordinator has not started. wherdr runs in a container here: start it from Herdr on the host, or move wherdr to the native service to start it from here.', 'Ce coordinateur n’a pas démarré. wherdr tourne ici dans un conteneur : lance-le depuis Herdr sur l’hôte, ou passe wherdr en service natif pour le lancer d’ici.') }}</p>
-        <section v-else-if="coordPhase === 'failed'" class="board-panel-failed" role="alert" :aria-label="tl('Could not start', 'Démarrage impossible')">
+        <section v-if="coordPhase === 'failed'" class="board-panel-failed" role="alert" :aria-label="tl('Could not start', 'Démarrage impossible')">
           <h4><UIcon name="i-lucide-octagon-alert" />{{ tl('Could not start', 'Démarrage impossible') }}</h4>
           <p class="board-panel-failed-what">{{ tl(`${coordThe} could not start on ${machineLabel}.`, `${coordThe} n’a pas pu démarrer sur ${machineLabel}.`) }}</p>
           <p class="board-panel-failed-why">{{ coordError }}</p>

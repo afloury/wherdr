@@ -44,11 +44,6 @@ async function copy(text: string) {
           <code class="projects-plugin-command">{{ WHERDR_DOWNGRADE_COMMANDS[0] }}</code>
           <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-copy" :aria-label="t('Copy command')" @click="copy(WHERDR_DOWNGRADE_COMMANDS[0])" />
         </div>
-        <p class="projects-upgrade-step">{{ tl(`With Docker: in docker-compose.yml, change the image tag from latest to ${WHERDR_LAST_02}, then:`, `Avec Docker : dans docker-compose.yml, remplace le tag latest de l’image par ${WHERDR_LAST_02}, puis :`) }}</p>
-        <div class="projects-upgrade-cmd">
-          <code class="projects-plugin-command">{{ WHERDR_DOWNGRADE_COMMANDS[1] }}</code>
-          <UButton size="sm" color="neutral" variant="outline" icon="i-lucide-copy" :aria-label="t('Copy command')" @click="copy(WHERDR_DOWNGRADE_COMMANDS[1])" />
-        </div>
       </template>
       <p class="projects-upgrade-step">{{ tl('Step by step, with a backup and the way back:', 'Pas à pas, avec la sauvegarde et le retour arrière :') }} <code>{{ PROJECTS_MIGRATION_GUIDE }}</code> {{ tl('in wherdr’s repository.', 'dans le dépôt de wherdr.') }}</p>
     </div>

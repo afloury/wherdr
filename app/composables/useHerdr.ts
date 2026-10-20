@@ -285,15 +285,8 @@ export const multiMachine = computed(() => machines.value.length > 1 || Boolean(
 export const machineInfo = (key: string | null | undefined) => machines.value.find(m => m.key === (key || ''))
 // `uname -s` of a pane's machine ('Darwin' = macOS); the local one from the config.
 export const machineOs = (key: string | null | undefined) => machineInfo(key)?.os || (key ? undefined : appConfig.value.os)
-// "Reveal in Finder" / "Open" / Mod+Alt+O apply to a pane: its machine is a
-// Mac, or wherdr runs in a container on a Mac with the "open on the host"
-// route set up (server: /api/config hostOpen — local panes only).
-export const canOpenOnMachine = (p: Pane | null | undefined) => {
-  if (!p || !p.cwd) return false
-  if (machineOs(p.machine) === 'Darwin') return true
-  // Local machine: its key is '' (missing from the state, like `machine` itself).
-  return Boolean(!(p.machine || '').trim() && appConfig.value.hostOpen)
-}
+// Reveal and Open apply to panes on macOS.
+export const canOpenOnMachine = (p: Pane | null | undefined) => Boolean(p?.cwd && machineOs(p.machine) === 'Darwin')
 // Machines offered by the "New agent" sheet (null
 // with a single machine); online according to the live state (the config may
 // have been read before the connection).

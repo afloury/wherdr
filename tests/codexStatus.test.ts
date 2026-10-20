@@ -404,7 +404,7 @@ describe('Codex status service', () => {
     await vi.waitFor(async () => expect((await svc.compute(pane))?.update?.job).toEqual({ phase: 'failed', error: 'curl: (6) Could not resolve host' }))
   })
 
-  it('read-only home (container): never runs locally, types it into the agent pane', async () => {
+  it('read-only home: never runs locally, types it into the agent pane', async () => {
     const { svc, pane, runLocal } = setup({ local: true, writable: false })
     expect((await svc.compute(pane))?.update).toMatchObject({ runnable: true, method: 'terminal', command: CODEX_STANDALONE_COMMAND })
     await expect(svc.startUpdate(pane)).rejects.toThrow(/cannot be run/)

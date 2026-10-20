@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs the installer cases (install-cases.sh) without Docker, in a bubblewrap
+# Runs the installer cases (install-cases.sh) in a bubblewrap
 # sandbox, as the current user: a root of its own (the system's /usr and /etc
 # read-only, Node.js hidden from /usr/bin), an empty /home with /home/alice,
 # fresh /tmp, /srv, /stubs, /opt and /usr/local/bin, and no network. The real
@@ -7,7 +7,7 @@
 #   sh tests/install.bwrap.sh            (from website/, needs bwrap)
 set -eu
 cd "$(dirname "$0")/.."
-command -v bwrap >/dev/null 2>&1 || { echo "bwrap (bubblewrap) is needed: use tests/install.test.sh with Docker instead." >&2; exit 2; }
+command -v bwrap >/dev/null 2>&1 || { echo "bwrap (bubblewrap) is needed: install bubblewrap first." >&2; exit 2; }
 node="$(command -v node)" || { echo "node is needed (the cases run it as Node.js 22)." >&2; exit 2; }
 
 R="$(mktemp -d)"
@@ -15,7 +15,6 @@ trap 'rm -rf "$R"' EXIT INT TERM
 mkdir -p "$R/home/alice" "$R/srv" "$R/stubs" "$R/opt" "$R/ulb" "$R/usrbin"
 cp public/install "$R/opt/install"
 cp tests/install-cases.sh "$R/opt/cases.sh"
-cp -R ../bin "$R/opt/skill-bin"
 # /usr/bin without node: links to the real one, mounted at /realbin.
 for f in /usr/bin/* /usr/bin/.[!.]*; do
   [ -e "$f" ] || [ -L "$f" ] || continue

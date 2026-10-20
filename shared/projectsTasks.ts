@@ -89,11 +89,6 @@ export interface MachineTasks {
   at?: number
   error?: string
   stale?: boolean
-  // wherdr runs in a container: the board is read from its files, nothing is
-  // run there (its upkeep belongs to the host), so no action from here.
-  readOnly?: boolean
-  // With readOnly: the guide that moves wherdr to the native service.
-  moveUrl?: string
 }
 export interface TasksBoard { version: string, machines: MachineTasks[] }
 export type TasksReply = TasksBoard | { same: true, version: string }
@@ -130,8 +125,7 @@ export function parseRepoKey(text: string): string {
   return REPO_KEY_RE.test(key) ? key : ''
 }
 
-// From `data/repo-keys.json` (store/keys_given.rs), where a container reads the
-// board's files: every key a repo went by (`had`, key -> repo, in the order they
+// From `data/repo-keys.json` (store/keys_given.rs): every key a repo went by (`had`, key -> repo, in the order they
 // were recorded: the last is the latest) and the stand-ins (`standIn`, repo -> key).
 export function repoKeysFromFile(text: string): Record<string, string> {
   let v: unknown
@@ -464,61 +458,4 @@ export type NotifyEvent = typeof NOTIFY_EVENTS[number]
 export function taskNotice(title: string): { id: string, event: NotifyEvent } | null {
   const m = /^(\S+) · (needs you|ready to approve|failed)$/.exec(title.trim())
   return m && isTaskId(m[1]) ? { id: m[1], event: m[2] as NotifyEvent } : null
-}
-
-// ---------------------------------------------------------------- read from the files
-// wherdr in a container reads the board's own files (`data/tasks/<repo>/<n>/task.json`)
-// instead of running herdr-projects there: no upkeep, nothing written. The row
-// follows 1.2.1's own rules (flow/state.rs `show`) from the task's stage; for an
-// agent at work, `paneStatus` is the status wherdr sees on its pane (Herdr's
-// own, as 1.x reads it). A close reading, not the program's: the CLI stays the
-// reference wherever it may run.
-type Raw = Record<string, unknown>
-const BLOCKED_STAGES: Record<string, string> = { approval: 'permission', plan: 'permission', pick: 'permission' }
-
-export function stateFromTaskFile(t: Raw, paneStatus: string | null): { state: string, kind: string } {
-  const stage = str(t.stage, 30)
-  const failure = obj(t.failure)
-  switch (stage) {
-    case 'todo': return { state: 'idle', kind: '' }
-    case 'after': return t.afterBlocked ? { state: 'blocked', kind: 'question' } : { state: 'working', kind: '' }
-    case 'done': case 'tried': return { state: 'done', kind: '' }
-    case 'failed': return failure?.auth ? { state: 'blocked', kind: 'auth' } : { state: 'error', kind: '' }
-    case 'asks': return { state: 'blocked', kind: str(t.kind, 20) || 'question' }
-    case 'nosummary': return { state: 'error', kind: '' }
-    case 'reviewneeds': return { state: 'blocked', kind: '' }
-    case 'stopped': return t.limitStop ? { state: 'blocked', kind: '' } : { state: 'idle', kind: '' }
-    case 'working': return paneStatus === 'blocked' ? { state: 'blocked', kind: '' } : { state: 'working', kind: '' }
-  }
-  if (BLOCKED_STAGES[stage]) return { state: 'blocked', kind: BLOCKED_STAGES[stage]! }
-  return { state: 'working', kind: '' } // queued, starting, reviewing, checking, merging, attempts…
-}
-
-// One row of the board from a task file; null for what the board does not list
-// on its own (an attempt of a task done several times at once) or cannot read.
-export function rowFromTaskFile(t: unknown, paneStatus: string | null): TaskRow | null {
-  const o = obj(t)
-  if (!o || o.attemptOf) return null
-  const { state, kind } = stateFromTaskFile(o, paneStatus)
-  const review = obj(o.review)
-  return parseTaskRow({
-    id: o.id, state, kind, stage: o.stage, title: o.title, msg: o.msg, app: o.app,
-    pr: o.pr, review: review && !review.stale ? review : null, reviewRound: o.reviewRound,
-    research: o.research === true, archivedAt: o.archivedAt,
-    progress: obj(o.watch)?.progress,
-  })
-}
-
-// `details` from a task file: what the file holds (no plan text, no review history).
-export function detailsFromTaskFile(t: unknown): TaskDetails | null {
-  const o = obj(t)
-  if (!o || !isTaskId(o.id)) return null
-  return parseTaskDetails(JSON.stringify({
-    task: { id: o.id, title: o.title, stage: o.stage, msg: o.msg, description: o.description, summary: o.summary },
-    report: o.report ?? null,
-    failure: o.failure ?? null, review: o.review ?? null, reviews: [],
-    // The program on it: `on` while one works, then `agent`, as `details` gives it; else the row's `app`.
-    agent: o.on || o.agent || o.app || null,
-    research: o.research === true, pr: o.pr ?? null, branch: o.branch ?? null, worktree: o.worktree ?? null, plan: null,
-  }))
 }

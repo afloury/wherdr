@@ -1,10 +1,3 @@
-// `wherdr panel`: the Herdr plugin's "panel" action opens it in a popup.
-// The state, and two main keys: O opens wherdr, P opens its phone setup
-// (Settings › Phone) in the browser. The other commands stay as a fallback,
-// in a quieter line. Refreshed every few seconds.
-//
-// Commands run through a controller: `wherdr` itself, or the Herdr plugin
-// script when WHERDR_CONTROL holds its argv as JSON (it knows Docker mode).
 import { spawn } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
@@ -43,7 +36,7 @@ export async function tailnet(port) {
 
 export async function gather(ctx, env = process.env, net = null) {
   const answer = await probe(ctx.port, ctx.host)
-  const mode = env.WHERDR_MODE === 'docker' ? 'docker' : 'native'
+  const mode = 'native'
   return {
     version: VERSION,
     mode,
@@ -55,7 +48,7 @@ export async function gather(ctx, env = process.env, net = null) {
     port: ctx.port,
     answer,
     pid: livePid(ctx.files.pid),
-    service: mode === 'docker' ? { installed: false, running: false } : serviceState(),
+    service: serviceState(),
     serviceFile: serviceFile(),
     dir: ctx.dir,
     tailnet: net ?? await tailnet(ctx.port),
@@ -95,14 +88,13 @@ export function render(state, qrText = '') {
   out.push(`  ${MAIN_KEYS.map(([k, label]) => `${c.bold(k.toUpperCase())} ${label}`).join('    ')}`)
   out.push('')
   out.push(`  ${c.dim(OTHER_KEYS.map(([k, label]) => `${k.toUpperCase()} ${label}`).join('  '))}`)
-  out.push(`  ${c.dim(`${state.mode === 'docker' ? 'Docker' : `native · ${state.runtime}`} · auto-start ${autostart(state)}`)}`)
+  out.push(`  ${c.dim(`native · ${state.runtime} · auto-start ${autostart(state)}`)}`)
   if (state.hotkey) out.push(`  ${c.dim(`Herdr key ${state.hotkey} opens this panel`)}`)
   out.push(`  ${c.dim(removeHint(state))}`)
   return out.join('\n')
 }
 
 function autostart(state) {
-  if (state.mode === 'docker') return 'yes · Docker restart policy'
   if (state.service.installed) return `at login (${state.service.running ? 'running' : 'not running'}) · A turns it off`
   if (state.plugin) return 'with Herdr (plugin startup) · A: also at login'
   return 'no · A: at login'

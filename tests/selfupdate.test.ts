@@ -121,7 +121,6 @@ describe('one-tap update: commands of each installation', () => {
   })
 
   it('refuses installations it cannot update', () => {
-    expect(() => driverFor({ ...base, kind: 'docker', root: '/app' }, fakeIo())).toThrow(/no one-tap update/)
   })
 
   it('checks health on loopback when the server listens everywhere', () => {
@@ -225,8 +224,8 @@ describe('one-tap update: who may start it', () => {
     expect(() => buildPlan({ ...ok, latest: null })).toThrow(/No newer version/)
   })
 
-  it('refuses Docker, npx and checkouts', () => {
-    for (const mode of ['docker', 'docker-build', 'npm', 'native'] as const) expect(() => buildPlan({ ...ok, mode })).toThrow(/cannot update itself/)
+  it('refuses npx and checkouts', () => {
+    for (const mode of ['npm', 'native'] as const) expect(() => buildPlan({ ...ok, mode })).toThrow(/cannot update itself/)
   })
 
   it('runs one update at a time, unless the last one was abandoned', () => {

@@ -49,12 +49,11 @@ says where to get it; without Node.js 22, it offers to install it (Homebrew, or 
 build in `~/wherdr/node`, no sudo). On a server without a screen (or over SSH), it prints the
 address and the phone steps instead. See [The one command](#the-one-command).
 
-**Native is the setup to use**: only a wherdr running on the host can act on the
+**wherdr 2.0 runs only natively**, as your user, so it can act on the
 [herdr-projects Board](#works-great-with-herdr-projects) (Coordinator, reply, start, stop,
 approve). Other ways, after it: `herdr plugin install afloury/wherdr` (the same plugin, without
 the checks), and [the `wherdr` command](#the-wherdr-command) from npm or Homebrew (npm can hold a
 new release for up to two days; the installer gets it from GitHub at once).
-[Docker](#docker-on-request) stays possible on request, with a read-only Board.
 
 At first launch, wherdr opens a **setup guide**: the Herdr agents it found, your phone
 (Tailscale), then the passkey lock and notifications. Skip it any time; finishing or skipping is
@@ -135,7 +134,6 @@ Details in [Features](#features) and [Security](#security).
   [as a Herdr plugin](#install-as-a-herdr-plugin) ·
   [the `wherdr` command (npm, Homebrew)](#the-wherdr-command) ·
   [from source](#from-source) ·
-  [Docker, on request](#docker-on-request) ·
   [moving from Docker to the native service](#moving-from-docker-to-the-native-service)
 - [Updating](#updating)
 - [Install it as an app](#install-it-as-an-app)
@@ -205,7 +203,7 @@ Details in [Features](#features) and [Security](#security).
 - **Codex updates and limits**: in a Codex conversation, a new Codex version shows above the
   field with an **Update** button (runs Codex's official update command on that machine, after
   confirmation), then **Restart to update** on the same conversation. When wherdr cannot run it
-  (Docker, read-only home), Update exits Codex, runs the command in the agent's own terminal and
+  (read-only home), Update exits Codex, runs the command in the agent's own terminal and
   resumes the same conversation (only while Codex is idle). Codex's own weekly-limit warning
   (its footer gauge, or its startup heads-up) is repeated above the field, with its values, while
   Codex shows it.
@@ -336,9 +334,7 @@ Web Push, lock) runs in Nitro.
   Codex / omp integrations installed if you use them (`herdr integration install claude|codex|omp`).
   omp's conversation is only found through its integration, which reports the session file.
 - **Linux or macOS** server with **Node.js 22** or newer (the installer offers to install it).
-  wherdr runs natively, as the user who runs Herdr. A Docker image exists for Linux servers, on
-  request and with a read-only Board ([Docker, on request](#docker-on-request)); Docker Desktop on
-  macOS cannot reach Herdr's Unix socket on the host.
+  wherdr runs natively, as the user who runs Herdr.
 - **HTTPS** to use passkeys, push notifications and the installable app from another device.
   Browsers only allow them on `https://` or `http://localhost`. The easiest way is
   [`tailscale serve`](https://tailscale.com/kb/1312/serve); a reverse proxy **reachable only
@@ -373,10 +369,7 @@ The script ([read it first](https://wherdr.dev/install), source in
 
 1. checks **Herdr ≥ 0.9.1**; without it, it stops with the link to [herdr.dev](https://herdr.dev);
 2. leaves alone a wherdr that **already answers** on the port: a Herdr plugin install is offered
-   its update, a Docker install shows its update command and the
-   [move to the native service](#moving-from-docker-to-the-native-service), anything else is left
-   as it is. A stopped `wherdr` container is never replaced either: the script stops and points to
-   that move;
+   its update, anything else is left as it is;
 3. checks **Node.js 22** or newer (or Bun), in your `PATH` and in the folders of n, nvm, fnm,
    Volta, asdf and Homebrew. Without it, it asks before installing it: `brew install node` on a
    Mac with Homebrew, otherwise the official Node.js 22 build from nodejs.org, its checksum
@@ -405,11 +398,10 @@ Settings, as environment variables (`curl -fsSL https://wherdr.dev/install | WHE
 | --- | --- | --- |
 | `WHERDR_DIR` | `~/wherdr` | Install folder (plugin settings, data, log). |
 | `WHERDR_PORT` | `7683` | Local port. |
-| `WHERDR_MODE` | — | `docker`: no plugin, Docker Compose in `WHERDR_DIR` instead (Linux, read-only Board; see [Docker, on request](#docker-on-request)). |
 | `WHERDR_SERVICE` | — | `off`: no login service; wherdr then starts with Herdr only (the plugin's startup hook). |
 | `WHERDR_YES` | — | `1` answers yes to every question (non-interactive use), installing Node.js included. |
 | `WHERDR_NO_BROWSER` | — | `1` never opens a browser. |
-| `WHERDR_REF` | main | Git tag or branch of the plugin (or of `docker-compose.yml` with `WHERDR_MODE=docker`). |
+| `WHERDR_REF` | main | Git tag or branch of the plugin. |
 | `WHERDR_PLUGIN` | `afloury/wherdr` | A local checkout to link and build instead (development, tests). |
 
 Update: run the command again (it offers the update), **U** in the wherdr panel, or **Update** in
@@ -473,8 +465,7 @@ publishes on this machine (the `tailscale` command) and adopts the HTTPS address
 its own port (allowed host and `APP_URL`, saved in `data/app-url.json`; an HTTPS `APP_URL` in the
 environment or `~/wherdr/wherdr.env` wins). An address removed from `tailscale serve` is refused
 again. Nothing a request says can enable an address: only Tailscale's own state on the machine
-does, and an address that `tailscale funnel` opens to the Internet is never adopted. (In
-[Docker](#docker-on-request) it reads Tailscale's socket instead.)
+does, and an address that `tailscale funnel` opens to the Internet is never adopted.
 
 **Settings › Phone** on the server (`http://localhost:7683/#/settings?section=phone`) shows the
 state and the QR code and publishes wherdr itself: one button, asked first. From a terminal,
@@ -498,7 +489,7 @@ desktop layout can replace the Herdr terminal client for daily work.
 
 **5. Passkey lock** (optional): Settings → Security → **Enable passkey lock**. The
 first passkey asks for a bootstrap token, printed in the server log (`~/wherdr/wherdr.log`,
-**L** in the wherdr panel; `docker compose logs` in Docker); it changes on each restart and is only needed for that first passkey. Add a passkey on each of
+**L** in the wherdr panel); it changes on each restart and is only needed for that first passkey. Add a passkey on each of
 your devices after that (see [New device](#new-device) below). Without one, every device of your
 tailnet can control your agents: enough when the tailnet is yours alone, a passkey adds a lock
 on each device when someone else shares the tailnet or your devices.
@@ -522,8 +513,7 @@ works with any private network that gives it an **HTTPS address with a valid cer
 - **HTTPS with a certificate your phone trusts.** The installed app (PWA), push notifications
   and passkeys only work on `https://`. A self-signed certificate or plain `http://` on your
   LAN is not enough, and is never a supported way to reach wherdr.
-- **`APP_URL` set to that address** (`.env` with Docker, or the environment of `wherdr` /
-  `npm start`), then restart wherdr. Its hostname is allowed automatically and it enables Web
+- **`APP_URL` set to that address** (the environment of `wherdr` / `npm start`), then restart wherdr. Its hostname is allowed automatically and it enables Web
   Push. Add `HERDR_WEB_ALLOWED_HOSTS` only if you also open wherdr under another name. The
   automatic adoption and the address check in **Settings › Phone** only know the `*.ts.net`
   addresses of `tailscale serve`; an HTTPS `APP_URL` in the environment always wins.
@@ -651,9 +641,7 @@ also installed, `bunx wherdr` hands the server to Node, the reference runtime. S
 
 ### From source
 
-For development, or to run a checkout of your own (Docker Desktop cannot reach Herdr's Unix socket
-on macOS, so wherdr always runs natively there). With Herdr running, Git and Node.js 22 on the
-same machine:
+For development, or to run a checkout of your own. With Herdr running, Git and Node.js 22 on the same machine:
 
 ```sh
 git clone https://github.com/afloury/wherdr.git
@@ -706,15 +694,10 @@ wherdr natively:
   `~/wherdr`. Herdr builds plugins in a temporary folder and then moves them, so the server never
   runs from the plugin folder. Bun works too when Node.js 22 is missing. Without either, the
   install stops and says so ([the one command](#the-one-command) offers to install Node.js).
-- **Docker** only when asked, with `WHERDR_MODE=docker` (Linux): the published image, from
-  `~/wherdr` (`docker-compose.yml`, `.env`), with a read-only Board
-  ([Docker, on request](#docker-on-request)).
-
 The **wherdr** panel (a Herdr popup) shows ● running / ○ stopped, the local address, the phone
 address (with its QR code once it answers), and two main keys: **O** Open wherdr, **P** Set up my
 phone (Settings › Phone in the browser). The other keys stay as a fallback: **S** start, **X**
-stop, **R** restart, **L** log (Ctrl+C to go back), **U** update (reinstalls the plugin, or pulls
-the image in Docker mode), **A** auto-start at login on/off, **Q** quit.
+stop, **R** restart, **L** log (Ctrl+C to go back), **U** update (reinstalls the plugin), **A** auto-start at login on/off, **Q** quit.
 
 #### Panel key
 
@@ -757,8 +740,7 @@ nothing answers on the port yet. [The one command](#the-one-command) also instal
 service (a LaunchAgent on macOS, a `systemd --user` unit with lingering on Linux, pointing at
 `~/wherdr/app` with the absolute path of the runtime and your [PATH](#agent-path)): wherdr then
 runs from boot and is restarted if it crashes. Key **A** in the panel turns it on or off;
-`herdr plugin install` alone does not add it, since it changes your login session. In Docker
-mode the container's restart policy does this job.
+`herdr plugin install` alone does not add it, since it changes your login session.
 
 Herdr runs the plugin's commands with the environment of its server, whose `PATH` often lacks the
 folders of version managers (n, nvm, fnm, Volta, asdf). The install therefore saves the absolute
@@ -768,12 +750,7 @@ disappears, **Start** looks in the usual places (`~/.n/bin`, `~/.nvm`, `~/.volta
 `WHERDR_RUNTIME` there by hand for anything else. **Start** only reports success once the
 process is alive and the port answers; otherwise it prints the last lines of `wherdr.log`.
 
-Ask for Docker with `WHERDR_MODE=docker herdr plugin install afloury/wherdr` (`native`, the
-default, switches back). The choice, the port (`WHERDR_PORT`, default 7683) and, in native mode, `APP_URL` are kept in
-`~/wherdr/plugin.env`; another folder can be set with `WHERDR_DIR` at install time. Nothing is
-installed globally and nothing runs with sudo.
-
-When something already answers on the port (a wherdr started with Docker, systemd or by hand),
+When something already answers on the port (a wherdr started with systemd or by hand),
 the plugin starts nothing and never stops it: **Stop** only stops what the plugin started. The
 output of the install and of the startup hook is in the plugin logs:
 `herdr plugin log list --plugin afloury.wherdr`.
@@ -784,160 +761,11 @@ uninstall` (the panel key) and `sh scripts/herdr-plugin.sh skill uninstall`; the
 `herdr plugin uninstall afloury.wherdr && rm -rf ~/wherdr` (`~/wherdr/data` holds your passkeys
 and push keys).
 
-### Docker, on request
-
-wherdr 2.0 is native first. The image still works, on Linux servers with Docker Compose v2, but
-a container is not the host, and it shows:
-
-- **The [Board](#works-great-with-herdr-projects) is read-only on wherdr's own machine.** It
-  reads herdr-projects' files and runs none of its commands there: no Coordinator, reply, start,
-  stop, retry, archive or approve (each button says why on hover; a task gives the command to run
-  on the host). SSH machines are not affected. No way around this is offered: running commands on
-  the host from the container would mean a hole in it.
-- **No one-tap update**: the app gives the `docker compose` command (replacing its own container
-  would need the Docker socket, root on the host, inside it).
-- **Not on macOS**: Docker Desktop cannot reach Herdr's Unix socket on the host.
-- **Codex's Update** runs in the agent's own terminal (the home folder is mounted read-only).
-
-To move an existing container to the native service, see
-[Moving from Docker to the native service](#moving-from-docker-to-the-native-service).
-
-**With the script:** `curl -fsSL https://wherdr.dev/install | WHERDR_MODE=docker sh` writes
-`docker-compose.yml` and `.env` to `~/wherdr`, creates the bind-mount folders, pulls the published
-image and starts it, without the plugin; it asks before replacing a file it did not create. Run
-on a server without a screen, it offers to run `tailscale serve` for you (asked first).
-
-**By hand:**
-
-```sh
-git clone https://github.com/afloury/wherdr.git
-cd wherdr
-cp .env.example .env
-```
-
-Edit `.env` (every value has a default; `HOST_HOME` defaults to your `$HOME`):
-
-| Variable | Example | Meaning |
-| --- | --- | --- |
-| `HOST_HOME` | `/home/alice` | Your home folder on the server (default: `$HOME`). Mounted at the same path, read-only. |
-| `PUID` / `PGID` | `1000` | Your user and group IDs (`id -u`, `id -g`). |
-| `PORT` | `7683` | Listening port, published on `127.0.0.1` only. |
-| `APP_URL` | `http://localhost:7683/` | Leave it with Tailscale: wherdr adopts the address of [step 3](#recommended-always-on-server--tailscale) by itself. Set a private HTTPS address only for [another private network](#other-private-networks) (Web Push contact and allowed host; it then always wins). |
-| `HOST_LABEL` | `server` | Name of this machine in the app. |
-| `TZ` | `Europe/Paris` | Time zone for timestamps and logs. |
-| `WHERDR_UPDATE_CHECK` | `off` | Disable the daily check for a new release (default `on`). |
-| `WHERDR_TASKS_FROM_FILES` | `1` | Read this machine's herdr-projects board from its files and run nothing of herdr-projects here, as in a container (detected by itself in Docker and Podman). |
-| `WHERDR_TRUSTED_NETWORKS` | `10.147.17.0/24` | Another private network to accept besides this computer and the tailnet ([Network access](#network-access)). Empty by default. |
-| `WHERDR_DOCKER_LOOPBACK_ONLY` | `1` | Declares that the port is published on the host's `127.0.0.1` only, as in the shipped `docker-compose.yml`: wherdr then knows that connections from the host come from this computer (without it, it warns at startup; [Network access](#network-access)). Remove it if you publish the port another way. |
-
-Create the bind-mount folders **before** starting Compose, as your own user. Otherwise Docker
-may create missing host folders as root, leaving the container unable to write to them.
-
-```sh
-mkdir -p data "$HOME/.config/herdr" "$HOME/.local/state/herdr/client" "$HOME/.cache/herdr-web" \
-  "$HOME/.herdr-projects"
-docker compose up -d          # pulls ghcr.io/afloury/wherdr (arm64 and amd64)
-docker compose logs -f        # optional: follow the logs and find the first-passkey token
-```
-
-The container runs as your user and mounts your home folder **read-only**, except
-`~/.config/herdr` (Herdr sockets), `~/.local/state/herdr/client` (machine names),
-`~/.cache/herdr-web` (uploaded photos and files, quotas) and `~/.herdr-projects` (the herdr-projects
-board, see [Works great with herdr-projects](#works-great-with-herdr-projects)). It uses the
-server's own `herdr` binary, so the client and the server always stay on the same version.
-
-The repository is only needed for `docker-compose.yml` and `.env`: the image is prebuilt and
-published for each release. To build it from source instead, see **Updates** below.
-**Custom icons** (optional): copy
-`docker-compose.override.example.yml` to `docker-compose.override.yml` and put your icons in
-`branding/` (both untracked).
-
-In Docker, wherdr reads Tailscale's socket, mounted by `docker-compose.yml`
-(`/var/run/tailscale`), to find the address `tailscale serve` publishes. After Tailscale itself
-restarts (an update), restart the container. What that mount gives: Tailscale's local API, with
-the rights of the host user the container runs as. Anyone may read it; if that user is
-Tailscale's operator (`tailscale set --operator=$USER`), the API also accepts changes from it
-(serve, funnel…), and `:ro` on the folder does not prevent that. wherdr itself only sends `GET`
-requests. This is not a new privilege: the container already drives Herdr, which is a shell of
-that same user. To do without it, remove the line from `docker-compose.yml`: wherdr then no
-longer finds the address by itself, and the one command run after `tailscale serve` hands it
-over. A container started from an older `docker-compose.yml` has no Tailscale socket: paste the
-address in Settings › Phone, or run the one command again, which sends it.
-
-Settings only Docker reads (`.env`), besides the table above and [Configuration](#configuration):
-
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `WHERDR_IMAGE` | `ghcr.io/afloury/wherdr:latest` | Image to run; pin a version such as `ghcr.io/afloury/wherdr:2.0.0`. |
-| `HERDR_WEB_HOST_OPEN_TARGET` | *(unset)* | Docker on a Mac: SSH host that runs Reveal/Open for local panes (below). |
-| `HERDR_WEB_HOST_OPEN_USER` | `root` | SSH user for `HERDR_WEB_HOST_OPEN_TARGET` (your Mac user). |
-| `HERDR_WEB_HOST_OPEN_KEY` | `data/host-open-key` | SSH private key for the host-open route. |
-
-**Updates:** `docker compose pull && docker compose up -d` in wherdr's folder (`git pull` now and
-then brings the latest `docker-compose.yml` and `.env.example`). Built from source:
-`docker-compose.build.yml` builds the image locally (`wherdr:local`) instead of pulling it: add
-`-f docker-compose.yml -f docker-compose.build.yml` to every `docker compose` command (and
-`-f docker-compose.override.yml` if you use one). A build needs about 2 GB of free memory.
-[Watchtower](https://containrrr.dev/watchtower/) can pull new images and restart the container
-for you:
-
-```sh
-docker run -d --name watchtower --restart unless-stopped \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  containrrr/watchtower --cleanup --schedule "0 0 4 * * *" wherdr
-```
-
-#### wherdr in Docker on a Mac: Reveal in Finder, Open and Mod+Alt+O
-
-The container is Linux: it has no `open` command, so "Reveal in Finder" / "Open" on file paths
-and `Mod+Alt+O` (the agent's folder in your editor) do nothing by default — the app reports
-"not a Mac". wherdr can ask your Mac to run them over SSH:
-
-```sh
-sh scripts/install-host-open.sh          # on the Mac; --user/--target/--port optional
-```
-
-This creates a dedicated key pair in `data/` (`host-open-key`), installs
-`~/.local/share/wherdr/{reveal.sh,wherdr-open.sh}` on the Mac, loads a small LaunchAgent
-(`dev.wherdr.open`, in `~/Library/LaunchAgents`) that launches GUI apps on behalf of the SSH
-session, and adds one `authorized_keys` line whose forced command only ever runs the reveal
-checks on a path wherdr passes (existing, under your home folder, never an app or a script —
-the same rules as a native install).
-
-Then add to `docker-compose.override.yml` and restart the container:
-
-```yaml
-services:
-  herdr-web:
-    environment:
-      - HERDR_WEB_HOST_OPEN_TARGET=host.docker.internal   # the Mac as the container sees it
-      - HERDR_WEB_HOST_OPEN_USER=<your mac user>
-```
-
-Without these variables nothing changes: a non-Mac server refuses with "not a Mac" as before.
-
-The installer picks the editor that opens folders (first of Zed, Trae, Visual Studio Code,
-Cursor, Sublime Text, TextMate). Change it any time:
-
-```sh
-printf %s "Visual Studio Code" > ~/.local/share/wherdr/editor
-```
-
 ### Moving from Docker to the native service
 
-Same port (7683), same data: passkeys, push subscriptions, the phone address and your settings
-are kept, since they all live in wherdr's `data/` folder and the address does not change. The
-steps, with a backup and the way back, are in
-[docs/herdr-projects-1x.md](docs/herdr-projects-1x.md#moving-from-docker-to-the-native-service).
-In short:
-
-1. Back up the compose folder's `data/`, `.env` and `docker-compose.yml`.
-2. `docker compose down` in that folder: the container goes, `data/` stays.
-3. Use the same `data/` from `~/wherdr/data` (nothing to do when the folder is `~/wherdr`).
-4. `curl -fsSL https://wherdr.dev/install | sh`: wherdr runs natively, as a service.
-
-Way back: remove the login service and stop wherdr (**A**, then **X** in the wherdr panel),
-`herdr plugin disable afloury.wherdr`, then `docker compose up -d` in the compose folder.
+wherdr 2.0 runs only natively as your user. Published 1.x images remain on GHCR for users
+staying on 1.x. To keep your port, passkeys and settings when moving, follow the
+[1.x migration steps](docs/herdr-projects-1x.md#moving-from-docker-to-the-native-service).
 
 ## Updating
 
@@ -947,7 +775,7 @@ home screen and in Settings › About, with the release notes and the exact comm
 Hide it until the next version with ×. Set `WHERDR_UPDATE_CHECK=off` to disable the check. The
 installed version is shown in Settings › About.
 
-GitHub release packages (including the bundled agent skill), Docker images, and Homebrew
+GitHub release packages (including the bundled agent skill) and Homebrew
 updates are published without waiting for npm moderation. Native plugin installs and updates
 use the GitHub `.tgz` and verify its SHA-256 checksum before extraction. A failed one-tap
 download or checksum check leaves the running version in place. Plugin installation tries
@@ -983,8 +811,7 @@ and the app says so. Every step is logged in `~/wherdr/update.log`.
 | `npm install -g wherdr` | `npm install -g wherdr@X.Y.Z`, then restarts (login service included) |
 | Homebrew | `brew upgrade wherdr`, then `brew services restart wherdr` |
 
-Docker shows the command instead: replacing its own container would need the Docker socket (root
-on the host) inside it. `npx wherdr` runs from a temporary folder: run `npx wherdr@latest` again.
+`npx wherdr` runs from a temporary folder: run `npx wherdr@latest` again.
 
 | Setup | Update command (in the wherdr folder) |
 | --- | --- |
@@ -993,11 +820,7 @@ on the host) inside it. `npx wherdr` runs from a temporary folder: run `npx wher
 | `wherdr` command (npm) | `npm install -g wherdr@latest && wherdr restart` (npx: stop it, then `npx wherdr@latest`) |
 | `wherdr` command (Homebrew) | `brew upgrade wherdr`, then `brew services restart wherdr` |
 | From source | `git pull && npm ci && npm run build`, then restart wherdr |
-| Docker, published image | `docker compose pull && docker compose up -d` |
-| Docker, built from source | `git pull && docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build` |
-| Herdr plugin, Docker | **U** in the **wherdr** panel (pulls the image, restarts the container) |
 
-Docker's updates, a build from source and Watchtower: [Docker, on request](#docker-on-request).
 
 ## Install it as an app
 
@@ -1022,14 +845,14 @@ Then Settings → Security → **Enable passkey lock** on each device.
 ## Configuration
 
 All settings are environment variables: `KEY=VALUE` lines in `~/wherdr/wherdr.env` for the
-native service (read at each start: `wherdr restart`, or **R** in the panel), `.env` with Docker.
+native service (read at each start: `wherdr restart`, or **R** in the panel).
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PORT` | `7683` | Listening port. |
-| `HOST` | `127.0.0.1` (`npm start`) | Listening address without Docker: loopback, or this machine's tailnet address (`tailscale ip`, with Tailscale running). Any other address (`0.0.0.0`, a LAN address) stops wherdr at startup unless `WHERDR_TRUSTED_NETWORKS` covers it. |
+| `HOST` | `127.0.0.1` (`npm start`) | Listening address: loopback, or this machine's tailnet address (`tailscale ip`, with Tailscale running). Any other address (`0.0.0.0`, a LAN address) stops wherdr at startup unless `WHERDR_TRUSTED_NETWORKS` covers it. |
 | `WHERDR_TRUSTED_NETWORKS` | *(empty)* | Other private networks wherdr accepts besides this computer and the tailnet, as comma-separated CIDR ranges or addresses (e.g. `10.147.17.0/24` for ZeroTier). `any` accepts every network, with a warning at startup and in the app: not recommended. See [Network access](#network-access). |
-| `HOST_LABEL` | server hostname | Name of this machine in the app (can be renamed in the app). In Docker the installer writes the host's short name; left empty there, wherdr shows the name Tailscale gives the machine, else `wherdr`. |
+| `HOST_LABEL` | server hostname | Name of this machine in the app (can be renamed in the app). |
 | `APP_URL` | *(empty)* | App address and allowed host; a valid HTTPS URL enables Web Push. HTTP, empty or invalid values disable Web Push with a warning. With Tailscale, leave it empty: wherdr adopts the address `tailscale serve` publishes. |
 | `TAILNET_REFRESH_MS` | `30000` | How often wherdr reads again what `tailscale serve` publishes for its port. |
 | `HERDR_WEB_ALLOWED_HOSTS` | *(empty)* | Additional hostnames or IP addresses allowed to open the app, comma-separated. |
@@ -1161,10 +984,6 @@ herdr machine add laptop --label Laptop    # see `herdr machine --help`
 wherdr picks it up within 30 seconds; `herdr machine rename|disable|remove` work the same way.
 Machines can also be renamed from the app (machine menu → Options).
 
-With Docker, the image includes `openssh-client` and reads `~/.ssh` through the read-only home
-mount. At startup the container creates its user with your `PUID`/`PGID` and `HOST_HOME` as its
-home folder, so ssh finds `~/.ssh` there.
-
 ## Claude and Codex quotas
 
 The home screen shows what is left of the Claude and Codex usage limits (5-hour window and
@@ -1270,15 +1089,6 @@ What the Board shows and does:
   is open (a list less than 5 seconds old is reused), and the last list kept when a machine is
   slow or unreachable. Nothing runs where herdr-projects is missing or older than 1.2.1: its first
   run would take over an older install's files.
-- **wherdr in a container** (Docker, Podman): for its own machine, the Board reads the board's
-  files (`~/.herdr-projects/data/tasks`) and runs nothing of herdr-projects: each 1.x command also
-  runs the board's upkeep (start queued tasks, sync, clean up, poll pull requests), which belongs
-  to the host, not to a container with read-only repositories and no `gh`. The tasks show, with
-  their state as herdr-projects would show it; reply, approve, start, stop and the coordinators
-  stay visible but off, each saying why on hover, and a task gives the command to run on the
-  host. A note on the Board links to
-  [the move to the native service](#moving-from-docker-to-the-native-service), where all of it
-  works. SSH machines are not affected: their commands run on them.
 - **Agents in user folders**: wherdr runs herdr-projects with your [PATH](#agent-path), on this
   machine and over SSH, so `claude is not installed here` does not come from a login service's
   short `PATH`.
@@ -1296,8 +1106,7 @@ its session row, under the agent list header.
 
 ## Security
 
-wherdr drives Herdr, so **it can run anything as your user**. Docker does not change that: the
-container talks to the Herdr server running on the host.
+wherdr drives Herdr, so **it can run anything as your user**.
 
 - It listens on `127.0.0.1` only. Reach it from other devices **only through a private
   network** (Tailscale or [equivalent](#other-private-networks)). Never add a public route
@@ -1307,8 +1116,7 @@ container talks to the Herdr server running on the host.
 - Requests are accepted only for `localhost`, loopback addresses, the runtime's hostname, the
   hostname in `APP_URL`, the tailnet name `tailscale serve` publishes for wherdr's own port
   (read from Tailscale on the machine, never from a request, and only while it is published),
-  and the runtime's network interface addresses (those of the container
-  with Docker). Add other private names or IP addresses to `HERDR_WEB_ALLOWED_HOSTS`
+  and the runtime's network interface addresses. Add other private names or IP addresses to `HERDR_WEB_ALLOWED_HOSTS`
   (comma-separated) before using them. An unlisted name returns HTTP 403 (`host` / "Host not
   allowed"); add it to `HERDR_WEB_ALLOWED_HOSTS`, then restart wherdr. This host check also
   applies to WebSockets.
@@ -1365,24 +1173,9 @@ How a request is judged, before anything else (WebSockets included):
     network with a loopback source.
   - *Tailnet*: an address of `100.64.0.0/10` or `fd7a:115c:a1e0::/48` counts only when
     Tailscale, running on this machine, lists it as one of its peers (or its own address). wherdr
-    reads that from Tailscale every 10 seconds (the CLI, or Tailscale's socket in Docker); an
+    reads that from Tailscale every 10 seconds (the CLI or Tailscale's socket); an
     interface address in that range proves nothing, since a LAN may use it too. When Tailscale is
-    stopped, missing or unreadable for 30 seconds, no direct connection counts as tailnet. In
-    Docker without Tailscale's socket, direct tailnet connections are refused (`tailscale serve`
-    still works) and Funnel cannot be checked (below).
-  - *Docker*: the host's own connections reach the container from its gateway, but so do
-    outside ones that Docker's userland proxy relays (a port published on every interface, on an
-    IPv6 address, or on another host port), and nothing inside the container tells them apart.
-    When wherdr's port also answers on the gateway (checked every 10 seconds, which catches
-    `7683:7683`), it is published on every interface: connections through the gateway are
-    refused, with a page that says how to publish it on `127.0.0.1` only. The shipped
-    `docker-compose.yml` declares its loopback-only publication with
-    `WHERDR_DOCKER_LOOPBACK_ONLY=1`, next to its `"127.0.0.1:${PORT}:${PORT}"` line; without that
-    line wherdr cannot rule out another publication (another host port, IPv6) and says so in its
-    log at startup. **Publishing the port another way is your choice, and wherdr cannot check
-    it:** a remapped or IPv6 publication may reach wherdr from other networks unnoticed. If you do,
-    remove `WHERDR_DOCKER_LOOPBACK_ONLY` too.
-    **Compose files written by an earlier version lack that line:** add it after updating.
+    stopped, missing or unreadable for 30 seconds, no direct connection counts as tailnet.
 - **Proxy headers**, only when the peer is this computer (a proxy on the machine, such as
   `tailscale serve`): every address in `X-Forwarded-For`, `Forwarded`, `X-Real-IP`,
   `CF-Connecting-IP` must be loopback, the tailnet or a trusted range too. They can only refuse
@@ -1396,21 +1189,17 @@ How a request is judged, before anything else (WebSockets included):
   address). A Funnel route counts unless its target clearly leads to another port: the host is
   never compared (`0.0.0.0:7683`, `127.1:7683` or a LAN address reach wherdr too), and a target
   wherdr cannot parse counts. Funnel routes to other ports do not count (Funnel for another
-  service is fine). In Docker without `WHERDR_DOCKER_LOOPBACK_ONLY=1`, the host's port is unknown:
-  a Funnel route to another port is only reported in the log, since it may lead to wherdr through
-  a remapped port. While Funnel exposes wherdr, **every connection from this computer is
+  service is fine). While Funnel exposes wherdr, **every connection from this computer is
   refused**, with a page that says how to turn it off: Funnel puts wherdr on the Internet. Once
   seen, the exposure stays until a valid reading shows it gone: a failed, garbled or late reading
   does not reopen wherdr. Open WebSockets are judged again after every reading and closed when no
   longer allowed; between two readings (10 seconds at most), a connection opened before Funnel was
   turned on can last that long. When Funnel was never seen, a failed or garbled reading proves
-  nothing: connections are served and the server log says that Funnel cannot be checked. In Docker without Tailscale's
-  socket nothing can be read: keep the socket mounted. A Funnel request with Tailscale's
+  nothing: connections are served and the server log says that Funnel cannot be checked. A Funnel request with Tailscale's
   `Tailscale-Funnel-Request` header is always refused.
-- **The listening address**: without Docker, wherdr refuses to start on anything else than
+- **The listening address**: wherdr refuses to start on anything else than
   loopback or this machine's tailnet address as Tailscale reports it, with Tailscale running
-  (`HOST=0.0.0.0`, a LAN address), and says how to fix it. In Docker the container listens on its
-  own network and the request check above applies.
+  (`HOST=0.0.0.0`, a LAN address), and says how to fix it.
 
 > [!IMPORTANT]
 > **A relay on this computer counts as this computer.** A reverse proxy or TCP forward you run
@@ -1419,7 +1208,7 @@ How a request is judged, before anything else (WebSockets included):
 > wrote. wherdr cannot tell them apart. If you run one, make sure it only listens on a private
 > address, serve it over HTTPS and **create a passkey**.
 
-`tailscale serve` (npm, Homebrew, the Herdr plugin, Docker) forwards to `127.0.0.1` with the
+`tailscale serve` (npm, Homebrew, the Herdr plugin) forwards to `127.0.0.1` with the
 tailnet client's address in `X-Forwarded-For`: accepted, nothing to set up.
 
 **Another private network** (ZeroTier, WireGuard, NetBird outside `100.64.0.0/10`): name its
@@ -1432,7 +1221,7 @@ something else protects the network (Cloudflare Access), and set up a passkey th
 ## Troubleshooting
 
 - **"The Herdr server is not responding"**: start Herdr on the server (`herdr` or
-  `herdr server`). With Docker, check that `HOST_HOME` and `PUID` match your user.
+  `herdr server`).
 - **wherdr stops when you log out** (Linux): lingering is off. `wherdr doctor` says so; run
   `sudo loginctl enable-linger $USER` once.
 - **The Board says `claude is not installed here`**: the agent is in a folder your login shell
@@ -1447,9 +1236,7 @@ something else protects the network (Cloudflare Access), and set up a passkey th
 - **HTTP 403 "wherdr only answers this computer and your tailnet"**: the device is on another
   network (Wi-Fi, LAN). Open wherdr through Tailscale, or name that private network in
   `WHERDR_TRUSTED_NETWORKS` ([Network access](#network-access)).
-- **HTTP 403 "Tailscale Funnel opens wherdr to the Internet"** or **"wherdr is published on
-  every network interface"**: turn Funnel off for wherdr's port (`tailscale funnel status`), or
-  publish the Docker port on `127.0.0.1` only, as in the shipped `docker-compose.yml`.
+- **HTTP 403 "Tailscale Funnel opens wherdr to the Internet"**: turn Funnel off for wherdr’s port (`tailscale funnel status`).
 - **wherdr stops at startup with "Refusing to listen on …"**: `HOST` is not loopback nor this
   machine's tailnet address. Set `HOST=127.0.0.1` and use `tailscale serve`, or see
   [Network access](#network-access).
@@ -1457,11 +1244,9 @@ something else protects the network (Cloudflare Access), and set up a passkey th
   page gives on the machine: it tells whether `tailscale serve` publishes wherdr's port there.
   For another private name, add the hostname or IP address to `HERDR_WEB_ALLOWED_HOSTS`, or use
   the hostname in `APP_URL`, then restart wherdr.
-- **Remote machine offline**: `grep machine ~/wherdr/wherdr.log` (Docker:
-  `docker compose logs | grep machine`) shows its state. Test SSH as wherdr does:
-  `ssh -o BatchMode=yes laptop '~/.local/bin/herdr status server'` (Docker, from the container:
-  `docker compose exec herdr-web ssh …`).
-  - `Could not resolve hostname`: container DNS (use the full name in `HostName`);
+- **Remote machine offline**: `grep machine ~/wherdr/wherdr.log` shows its state. Test SSH:
+  `ssh -o BatchMode=yes laptop '~/.local/bin/herdr status server'`.
+  - `Could not resolve hostname`: check the full name in `HostName`;
   - `Permission denied (publickey)` / `Host key verification failed`: key or `known_hosts`
     (run `ssh laptop true` once on the server);
   - `Bad owner or permissions`: `~/.ssh/config` must belong to you and not be group-writable.

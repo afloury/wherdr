@@ -21,19 +21,15 @@
 #   6. on a server without a screen (or over SSH): prints the address and the
 #      phone steps instead of opening a browser.
 # It never uses sudo and never stops or replaces a wherdr started another way.
-# Docker is only used when asked (WHERDR_MODE=docker); its Board is read-only.
 #
 # Settings (environment variables):
-#   WHERDR_MODE=docker  no plugin: Docker Compose by hand in WHERDR_DIR (Linux;
-#                 the Board is then read-only)
 #   WHERDR_SERVICE=off  no login service: wherdr starts with Herdr only
 #   WHERDR_DIR    install folder                (default: ~/wherdr)
 #   WHERDR_PORT   local port                    (default: 7683)
 #   WHERDR_YES=1  answer yes to every question  (non-interactive use)
 #   WHERDR_NO_BROWSER=1  never open a browser
 #   WHERDR_SKILL=off  skip agent skill installation and refresh
-#   WHERDR_REF    Git tag or branch of the plugin / compose file (default: main)
-#   WHERDR_IMAGE  Docker image, WHERDR_MODE=docker (default: ghcr.io/afloury/wherdr:latest)
+#   WHERDR_REF    Git tag or branch of the plugin (default: main)
 #   WHERDR_PLUGIN a local checkout to install instead of afloury/wherdr (development)
 #
 # Source: https://github.com/afloury/wherdr/blob/main/website/public/install
@@ -47,13 +43,11 @@ main() {
   PLUGIN_ID="afloury.wherdr"
   PLUGIN="${WHERDR_PLUGIN:-$REPO}"
   REF="${WHERDR_REF:-main}"
-  MODE="${WHERDR_MODE:-}"
   DIR="${WHERDR_DIR:-$HOME/wherdr}"
   case "$DIR" in /*) ;; *) DIR="$PWD/$DIR" ;; esac
   PORT="${WHERDR_PORT:-7683}"
   URL="http://localhost:$PORT"
   YES="${WHERDR_YES:-0}"
-  MIGRATE="https://github.com/$REPO/blob/main/docs/herdr-projects-1x.md#moving-from-docker-to-the-native-service"
 
   setup_colors
   say ""
@@ -66,10 +60,6 @@ main() {
     Linux) ok "Linux $(uname -m)" ;;
     Darwin) ok "macOS $(sw_vers -productVersion 2>/dev/null || uname -r)" ;;
     *) die "Unsupported system: $OS. wherdr runs on macOS and Linux." ;;
-  esac
-  case "$MODE" in
-    ""|native|docker) ;;
-    *) die "WHERDR_MODE must be docker or native (got: $MODE)." ;;
   esac
   if [ "$(id -u)" = "0" ]; then
     die "Run this script as the user who runs Herdr, not as root.
@@ -95,26 +85,11 @@ main() {
      Start it with \`herdr\` or \`herdr server\`; wherdr waits for it."
   fi
 
-  if [ "$MODE" = "docker" ]; then
-    [ "$OS" = "Linux" ] || die "WHERDR_MODE=docker is for Linux: on macOS, Docker Desktop cannot reach Herdr's socket.
-     Run the command without WHERDR_MODE: wherdr then runs with Node.js."
-    docker_install
-    return 0
-  fi
-
   # ------------------------------------------------------- existing wherdr
   PLUGIN_ROOT="$(plugin_root)"
   if answers; then
     existing_wherdr
     return 0
-  fi
-  # A wherdr container (stopped: nothing answers) would take the port back at
-  # its next start. Moving to the native service is a step of its own.
-  if [ "$MODE" != "native" ] && [ -n "$(container_dir)" ]; then
-    die "A \"wherdr\" Docker container already exists, managed from $(container_dir).
-     wherdr now runs natively (the Board can only act there). Move it, data kept:
-       ${C}$MIGRATE${R}
-     Or keep Docker: start or update it from that folder."
   fi
   # The plugin opens the setup guide on its first install only (no plugin.env).
   FIRST=1
@@ -124,7 +99,6 @@ main() {
   fi
 
   # ---------------------------------------------------------------- runtime
-  MODE=native
   RUNTIME=""
   if RUNTIME="$(find_runtime)"; then
     ver="$("$RUNTIME" --version 2>/dev/null || true)"
@@ -232,7 +206,7 @@ plugin_root() {
 # It reads these variables. A local checkout (WHERDR_PLUGIN=/path) is linked
 # and built in place instead.
 plugin_install() {
-  set -- env WHERDR_INSTALLER=1 WHERDR_DIR="$DIR" WHERDR_PORT="$PORT" WHERDR_MODE=native
+  set -- env WHERDR_INSTALLER=1 WHERDR_DIR="$DIR" WHERDR_PORT="$PORT"
   [ -z "$RUNTIME" ] || set -- "$@" WHERDR_RUNTIME="$RUNTIME"
   [ "$BROWSER" = "1" ] || set -- "$@" WHERDR_NO_BROWSER=1
   if [ -d "$PLUGIN" ]; then
@@ -245,15 +219,14 @@ plugin_install() {
 }
 
 # Something answers on the port: never replaced. A wherdr of the plugin, or
-# of a Docker folder of this script, can be updated; anything else is left as is.
+# can be updated; anything else is left as is.
 existing_wherdr() {
   if ! is_wherdr; then
     die "Port $PORT is already used by another program.
      Pick another port: curl -fsSL https://wherdr.dev/install | WHERDR_PORT=7684 sh"
   fi
   ok "wherdr already runs on $URL"
-  owner="$(container_dir)"
-  if [ -n "$PLUGIN_ROOT" ] && [ -z "$owner" ]; then
+  if [ -n "$PLUGIN_ROOT" ]; then
     say "  Installed as a Herdr plugin."
     if confirm "Update it now (herdr plugin install $REPO)?"; then
       step "Updating the wherdr Herdr plugin"
@@ -273,25 +246,11 @@ existing_wherdr() {
     say "  On this machine: ${B}$URL${R}"
     phone_steps
     return 0
-  elif [ -n "$owner" ]; then
-    say "  It runs in Docker, from $owner."
-    warn "In Docker the Board is read-only (no Coordinator, reply, start, stop or approve).
-     Move it to the native service, same port and data: ${C}$MIGRATE${R}"
-    if [ "$(real_dir "$owner")" = "$(real_dir "$DIR")" ] && confirm "Update it now (docker compose pull && docker compose up -d)?"; then
-      (cd "$DIR" && docker compose pull --quiet && { docker_skill || warn "Optional skill refresh failed."; } && docker compose up -d --remove-orphans >/dev/null)
-      ok "wherdr updated"
-      i=0
-      while [ "$i" -lt 30 ] && ! answers; do i=$((i + 1)); sleep 1; done
-    else
-      say "  Update: cd $owner && docker compose pull && docker compose up -d"
-    fi
-    say ""
-    say "  On this machine: ${B}$URL${R}"
-    docker_phone
-    return 0
   else
     say "  It was installed another way (npm, Homebrew, by hand): nothing changed."
     say "  Update it the same way: https://github.com/$REPO#updating"
+    say "  A wherdr 1.x Docker container? wherdr 2.0 runs natively only; move it:"
+    say "  https://github.com/$REPO/blob/main/docs/herdr-projects-1x.md#moving-from-docker-to-the-native-service"
     say "  Phone: ${C}wherdr phone${R} (or ${C}npx wherdr phone${R}) checks the address your phone opens."
   fi
   say ""
@@ -333,8 +292,7 @@ no_runtime() {
        ${C}curl -fsSL https://wherdr.dev/install | WHERDR_YES=1 sh${R}"
   fi
   die "Install Node.js 22 or newer, then run this command again:
-       https://nodejs.org/en/download (or your package manager: apk add nodejs on Alpine)
-     Docker instead, with a read-only Board: WHERDR_MODE=docker (see the README)."
+       https://nodejs.org/en/download (or your package manager: apk add nodejs on Alpine)"
 }
 
 # "<os>-<arch>" of the official Node.js build for this machine; fails where
@@ -460,254 +418,6 @@ find_runtime() {
   return 1
 }
 
-# ------------------------------------------------------------- Docker
-real_dir() { (cd "$1" 2>/dev/null && pwd -P) || echo "$1"; }
-
-# Compose folder of the `wherdr` container, empty when there is none.
-container_dir() {
-  command -v docker >/dev/null 2>&1 || return 0
-  docker inspect wherdr --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' 2>/dev/null || true
-}
-
-# True when a `wherdr` container exists and belongs to another folder than
-# $DIR: Compose would replace it (same project and container name).
-container_elsewhere() {
-  owner="$(container_dir)"
-  [ -n "$owner" ] && [ "$(real_dir "$owner")" != "$(real_dir "$DIR")" ]
-}
-
-# Keep trusted host helpers beside Compose, also for installs without a checkout.
-# Image contents supply only SKILL.md. Failures remain optional for wherdr.
-docker_skill() (
-  set -eu
-  [ "${WHERDR_SKILL:-}" != off ] || return 0
-  [ ! -e "$HOME/.local/state/wherdr/skill-disabled" ] || return 0
-  source="${WHERDR_SOURCE:-https://raw.githubusercontent.com/$REPO/${REF:-main}}"
-  helper_dir="$DIR/skill-installer"
-  mkdir -p "$helper_dir/bin/lib"
-  for file in bin/lib/install-skill.sh bin/install-docker-skill.sh; do
-    download "$source/$file" "$helper_dir/$file.new" || {
-      rm -f "$helper_dir/$file.new"
-      warn "Could not download the optional wherdr skill installer. Run this installer again to retry."
-      return 0
-    }
-    mv "$helper_dir/$file.new" "$helper_dir/$file"
-  done
-  image="$(docker compose config --images herdr-web | head -n 1)"
-  if [ -z "$image" ]; then warn "Could not find the wherdr image for the optional skill."; return 0; fi
-  WHERDR_DIR="$DIR" sh "$helper_dir/bin/install-docker-skill.sh" "$image" refresh \
-    || warn "wherdr skill refresh failed (optional): run this installer again to retry."
-)
-
-# WHERDR_MODE=docker: Docker Compose with the prebuilt image in $DIR, no plugin.
-docker_install() {
-  SOURCE="${WHERDR_SOURCE:-https://raw.githubusercontent.com/$REPO/${REF:-main}}"
-  IMAGE="${WHERDR_IMAGE:-ghcr.io/afloury/wherdr:latest}"
-  command -v docker >/dev/null 2>&1 \
-    || die "Docker is not installed. Install Docker Engine first: https://docs.docker.com/engine/install/"
-  docker compose version >/dev/null 2>&1 \
-    || die "Docker Compose v2 (\`docker compose\`) is missing. Install the compose plugin: https://docs.docker.com/compose/install/linux/"
-  if ! docker info >/dev/null 2>&1; then
-    die "Cannot talk to the Docker daemon as $(id -un).
-     Start Docker, or let your user use it (then log out and back in):
-       sudo usermod -aG docker $(id -un)
-     This script does not run sudo itself."
-  fi
-  ok "Docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo '?'), $(docker compose version --short 2>/dev/null || echo 'compose v2')"
-  if container_elsewhere; then
-    die "A \"wherdr\" Docker container already exists, managed from $(container_dir).
-     Update it from there: cd $(container_dir) && docker compose pull && docker compose up -d"
-  fi
-  if answers && [ -z "$(container_dir)" ]; then
-    die "Something already answers on port $PORT (a wherdr installed another way?): nothing changed.
-     Pick another port with WHERDR_PORT=7684."
-  fi
-  if [ "$HERDR" != "$HOME/.local/bin/herdr" ]; then
-    warn "The container looks for Herdr in ~/.local/bin/herdr: HERDR_BIN=$HERDR is set in .env."
-  fi
-
-  step "Preparing $DIR"
-  mkdir -p "$DIR"
-  cd "$DIR"
-  TMP="$(mktemp)"
-  trap 'rm -f "$TMP"' EXIT INT TERM
-  download "$SOURCE/docker-compose.yml" "$TMP" \
-    || die "Could not download docker-compose.yml from $SOURCE."
-  if [ ! -f docker-compose.yml ]; then
-    mv "$TMP" docker-compose.yml
-    ok "docker-compose.yml (${REF:-main})"
-  elif cmp -s "$TMP" docker-compose.yml; then
-    ok "docker-compose.yml is up to date"
-  elif confirm "docker-compose.yml differs from the ${REF:-main} version. Replace it (a backup is kept)?"; then
-    cp docker-compose.yml docker-compose.yml.bak
-    mv "$TMP" docker-compose.yml
-    ok "docker-compose.yml replaced (previous one: docker-compose.yml.bak)"
-  else
-    ok "Keeping your docker-compose.yml"
-  fi
-
-  if [ -f .env ]; then
-    ok ".env kept as it is"
-  else
-    {
-      echo "# wherdr settings, read by docker compose (see .env.example in the repository)."
-      echo "HOST_HOME=$HOME"
-      echo "PUID=$(id -u)"
-      echo "PGID=$(id -g)"
-      echo "PORT=$PORT"
-      echo "# Private HTTPS address (tailscale serve), needed for push notifications."
-      echo "APP_URL=http://localhost:$PORT/"
-      echo "HOST_LABEL=$(short_host)"
-      echo "TZ=$(local_tz)"
-      if [ "$HERDR" != "$HOME/.local/bin/herdr" ]; then echo "HERDR_BIN=$HERDR"; fi
-      if [ "$IMAGE" != "ghcr.io/afloury/wherdr:latest" ]; then echo "WHERDR_IMAGE=$IMAGE"; fi
-    } > .env
-    ok ".env created"
-  fi
-
-  # Created as this user before Compose runs: otherwise Docker creates the
-  # missing bind-mount folders as root and the container cannot write them.
-  mkdir -p data "$HOME/.config/herdr" "$HOME/.local/state/herdr/client" \
-    "$HOME/.cache/herdr-web" "$HOME/.herdr-projects"
-  ok "Data folders ready"
-
-  step "Starting wherdr"
-  if ! docker compose pull --quiet 2>"$TMP"; then
-    sed 's/^/     /' "$TMP" >&2
-    die "Could not pull the wherdr image ($IMAGE).
-     If it is not published yet, build it from source instead:
-       git clone https://github.com/$REPO.git && cd wherdr
-       docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-     Your $DIR folder and .env are kept: run this script again later."
-  fi
-  ok "Image pulled"
-  docker_skill || warn "Optional skill refresh failed."
-  docker compose up -d --remove-orphans >/dev/null
-  ok "Container started"
-
-  i=0
-  while [ "$i" -lt 30 ] && ! answers; do i=$((i + 1)); sleep 1; done
-  if answers; then
-    ok "wherdr answers on $URL"
-  else
-    warn "wherdr does not answer on 127.0.0.1:$PORT yet. Check: cd $DIR && docker compose logs"
-  fi
-
-  say ""
-  say "${G}${B}wherdr is running.${R} On this machine: ${B}$URL${R}"
-  docker_phone
-  say ""
-  say "${D}Update: cd $DIR && docker compose pull && docker compose up -d${R}"
-  say "${D}Docs:   https://github.com/$REPO#readme${R}"
-}
-
-# "<machine>.<tailnet>.ts.net[:port]" of the address `tailscale serve`
-# publishes for wherdr's local port, empty when there is none.
-served_host() {
-  host="$(tailscale serve status --json 2>/dev/null | tr '{,' '\n' | awk -v port="$PORT" '
-    /"[^"]*:[0-9]+"[ \t]*:[ \t]*$/ { key = $0; sub(/^[^"]*"/, "", key); sub(/".*$/, "", key) }
-    /"Proxy"/ && $0 ~ ("\"(https?://)?(127\\.0\\.0\\.1|localhost):" port "/?\"") { print key; exit }')"
-  printf '%s\n' "${host%:443}"
-}
-
-# The phone address of a wherdr in Docker. The container has no `tailscale`
-# command; this script, on the host, has. wherdr adopts what `tailscale serve`
-# publishes for its port by itself, through Tailscale's socket mounted by
-# docker-compose.yml. So: publish it when it is not (asked first; private to
-# the tailnet), hand the address to wherdr (a container started from an older
-# compose file has no socket), and check that it answers.
-docker_phone() {
-  publish="tailscale serve --bg --https=$PORT http://127.0.0.1:$PORT"
-  say ""
-  say "${B}Your phone${R} (private network only, never the public Internet):"
-  if ! command -v tailscale >/dev/null 2>&1; then
-    say "  1. Install Tailscale on this machine and your phone (same account), with HTTPS"
-    say "     certificates enabled: https://tailscale.com/download"
-    say "  2. ${C}$publish${R}"
-    say "  3. Open the https://<machine>.<tailnet>.ts.net:$PORT/ address on the phone: wherdr"
-    say "     enables it by itself. Add it to the home screen, enable notifications."
-    say "  4. Settings → Security → Enable passkey lock (first token: ${C}docker compose logs${R})."
-    return 0
-  fi
-  name="$(tailscale status --json 2>/dev/null | sed -n 's/.*"DNSName": *"\([^"]*\)\.".*/\1/p' | head -n 1)"
-  if [ -z "$name" ]; then
-    warn "Tailscale is not connected on this machine: run tailscale up, then this script again."
-    return 0
-  fi
-  host="$(served_host)"
-  if [ -z "$host" ] && confirm "Publish wherdr on your tailnet now ($publish)? Only your Tailscale devices reach it."; then
-    # Without HTTPS on the tailnet, `tailscale serve` prints a link and waits.
-    limit=""
-    if command -v timeout >/dev/null 2>&1; then limit="timeout 30"; fi
-    if out="$($limit tailscale serve --bg "--https=$PORT" "http://127.0.0.1:$PORT" 2>&1)"; then
-      host="$(served_host)"
-    else
-      printf '%s\n' "$out" | sed 's/^/     /' >&2
-      warn "tailscale serve failed. Not allowed? Run once: sudo tailscale set --operator=\$USER"
-    fi
-  fi
-  if [ -z "$host" ]; then
-    say "  Publish wherdr on your tailnet (only your Tailscale devices reach it):"
-    say "    ${C}$publish${R}"
-    say "  Then open ${B}https://$name:$PORT/${R} on the phone: wherdr enables that address by itself."
-    return 0
-  fi
-  phone="https://$host/"
-  post_address "$phone"
-  i=0
-  while [ "$i" -lt 12 ] && ! wherdr_at "$phone"; do
-    if [ "$i" -eq 0 ]; then say "  Waiting for $phone (a new address takes up to a minute: HTTPS certificate)…"; fi
-    i=$((i + 1)); sleep 5
-    post_address "$phone"
-  done
-  if wherdr_at "$phone"; then
-    ok "${B}$phone${R} answers"
-    if command -v qrencode >/dev/null 2>&1; then qrencode -t ANSIUTF8 -m 2 "$phone"; fi
-    say "  Open it on the phone, add it to the home screen, then in the app:"
-    say "  Settings → Enable notifications, then Security → Enable passkey lock"
-    say "  (first token: ${C}cd $DIR && docker compose logs${R})."
-  elif [ "$(phone_reach "$phone")" = host ]; then
-    warn "wherdr answers on $phone but refuses that address."
-    say "     Restart it: ${C}cd $DIR && docker compose up -d --force-recreate${R}"
-    say "     (wherdr reads Tailscale when it starts), then run this script again."
-  else
-    warn "$phone is published but does not answer like wherdr yet."
-    say "     A new address takes up to a minute (HTTPS certificate): run this script again then."
-  fi
-}
-
-# Hands the phone address to the local wherdr (POST /api/phone, accepted from
-# this machine only): it checks it and sets APP_URL.
-post_address() {
-  body="{\"action\":\"address\",\"url\":\"$1\"}"
-  if [ "$FETCH" = "curl" ]; then
-    curl -s -o /dev/null --max-time 20 -H 'content-type: application/json' -d "$body" "http://127.0.0.1:$PORT/api/phone" 2>/dev/null || true
-  else
-    wget -q -O /dev/null -T 20 --header='content-type: application/json' --post-data="$body" "http://127.0.0.1:$PORT/api/phone" 2>/dev/null || true
-  fi
-}
-
-# Does the phone address answer? "ok" (wherdr, and it accepts that address),
-# "host" (wherdr refuses that address), or "none". /api/health goes through
-# wherdr's host check; the static manifest answers for any host name and only
-# recognizes a wherdr older than that route.
-phone_reach() {
-  if [ "$FETCH" = "curl" ]; then
-    body="$(curl -s --max-time 8 "${1}api/health" 2>/dev/null || true)"
-    case "$body" in
-      *'"name":"wherdr"'*) echo ok; return 0 ;;
-      *'"code":"host"'*) echo host; return 0 ;;
-    esac
-    if curl -fs --max-time 8 "${1}manifest.webmanifest" 2>/dev/null | grep -q '"wherdr"'; then echo ok; else echo none; fi
-  else
-    # wget prints no body for an error: the status line tells a refusal (403).
-    if wget -q -O - -T 8 "${1}api/health" 2>/dev/null | grep -q '"wherdr"'; then echo ok; return 0; fi
-    if wget -S -q -O /dev/null -T 8 "${1}api/health" 2>&1 | grep -q 'HTTP/[0-9.]* 403'; then echo host; return 0; fi
-    if wget -q -O - -T 8 "${1}manifest.webmanifest" 2>/dev/null | grep -q '"wherdr"'; then echo ok; else echo none; fi
-  fi
-}
-wherdr_at() { [ "$(phone_reach "$1")" = ok ]; }
-
 # ------------------------------------------------------------- helpers
 setup_colors() {
   if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -763,21 +473,6 @@ version_lt() {
   [ "$1" = "$2" ] && return 1
   lowest="$(printf '%s\n%s\n' "$1" "$2" | sort -t. -k1,1n -k2,2n -k3,3n | head -n 1)"
   [ "$lowest" = "$1" ]
-}
-
-# The machine's short name (no domain): what the app shows, and the container's
-# host name. Without it the container would be called "wherdr".
-short_host() {
-  h="$(hostname 2>/dev/null | cut -d. -f1)"
-  echo "${h:-server}"
-}
-
-local_tz() {
-  if [ -n "${TZ:-}" ]; then echo "$TZ"
-  elif [ -r /etc/timezone ]; then head -n 1 /etc/timezone
-  elif [ -L /etc/localtime ]; then readlink /etc/localtime | sed 's#.*/zoneinfo/##'
-  else echo UTC
-  fi
 }
 
 main "$@"

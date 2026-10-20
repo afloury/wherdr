@@ -11,18 +11,10 @@ needs you, ready to approve, working, to do, done. wherdr reads the board throug
 herdr-projects command line (`list --json`, `details <id> --json`); it never edits the
 board's files.
 
-When wherdr runs in a container (Docker, Podman), its own machine is the exception: there it
-only reads the board's files (`~/.herdr-projects/data/tasks`) and runs no herdr-projects
-command, since each command also runs the board's upkeep, which belongs to the host. The tasks
-show, but none of the Board's actions below reach you from that machine: the user replies,
-approves and talks to the Coordinator in Herdr on the host. SSH machines are not affected:
-their commands run on them.
-
 ## What reaches you from the Board
 
 wherdr adds no message format of its own. What the user does on the Board goes through the
-ordinary herdr-projects commands, as if typed on the machine (not on a containerized wherdr's
-own machine, see above):
+ordinary herdr-projects commands, as if typed on the machine:
 
 | On the Board | Command wherdr runs | Who gets it |
 |---|---|---|

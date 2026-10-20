@@ -12,10 +12,6 @@
 //    any 1.x command does on that machine; wherdr calls it sparingly: one
 //    command at a time per machine, a list reused for REUSE_MS, the last list
 //    kept (marked stale) when a read outlives READ_DEADLINE_MS.
-//  - wherdr in a container, for its own machine: the board's files, read only.
-//    The CLI would run the upkeep in the container (repositories read-only,
-//    no gh, another environment) with write access to the shared board, so it
-//    is never run there, and the actions are left to the host.
 // Only where Herdr reports a 1.x from 1.2.1 on (shared/projectsPlugin.ts).
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -23,17 +19,16 @@ import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
   type MachineTasks, type TaskDetails, type TaskRow, type TasksBoard,
-  type TaskCommand, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
-  isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, repoKeysFromFile, rowFromTaskFile, taskActions,
+  type TaskCommand, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, isTaskCommand,
+  isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, taskActions,
 } from '../../shared/projectsTasks'
-import { HERDR_BIN, HERDR_CHILD_ENV, IN_CONTAINER, log } from './env'
+import { HERDR_BIN, HERDR_CHILD_ENV, log } from './env'
 import { USER_PATH_SH, userPath } from '../../bin/lib/userpath.mjs'
-import { NATIVE_MOVE_URL } from './updates'
 import { HerdrError } from './herdr'
 import { type Machine, allMachines, baseMachines } from './machines'
 import { machineFor } from './actions'
 import { projectsPluginInfo } from './projectsPlugin'
-import { findPane, getState } from './state'
+import { findPane } from './state'
 import { fmt } from '../../shared/message'
 
 export const REUSE_MS = 5000
@@ -41,11 +36,6 @@ export const READ_DEADLINE_MS = 4000
 const LIST_TIMEOUT_MS = 30_000
 const ACTION_TIMEOUT_MS = 60_000
 const OUTPUT_MAX = 8 * 1024 * 1024
-// Rows shown per machine, the newest first; task files read to find them
-// (archived ones included, left out after reading).
-const FILES_MAX = 500
-const FILES_READ_MAX = 3000
-
 export interface RunResult { code: number, stdout: string, stderr: string }
 export type Runner = (m: Machine, launcher: string, args: string[], timeoutMs: number) => Promise<RunResult>
 
@@ -89,15 +79,6 @@ const runLauncher: Runner = async (m, launcher, args, timeoutMs) => {
 let runner: Runner = runLauncher
 // Tests replace the launcher with recorded output.
 export function setRunner(r: Runner | null) { runner = r || runLauncher }
-// wherdr in a container (Docker, or Podman's /run/.containerenv), or told to
-// read the boards from their files (WHERDR_TASKS_FROM_FILES=1). Tests set it.
-const CONTAINER = IN_CONTAINER || process.env.WHERDR_TASKS_FROM_FILES === '1'
-let inContainer = CONTAINER
-export function setInContainer(v: boolean | null) { inContainer = v ?? CONTAINER }
-
-// The board of this machine is read from its files: wherdr's own machine, from a container.
-export const readsFiles = (m: Machine) => m.local && inContainer
-
 // The base machine of a machine or a named session: the board's owner.
 export function boardMachine(m: Machine): Machine {
   const key = m.info().baseKey
@@ -123,7 +104,6 @@ async function launcherOf(m: Machine): Promise<string> {
 }
 
 async function command(m: Machine, args: string[], timeoutMs = ACTION_TIMEOUT_MS): Promise<string> {
-  if (readsFiles(m)) throw new HerdrError('projects_host_only', 'wherdr runs in a container: run herdr-projects on the host for this')
   const launcher = await launcherOf(m)
   const r = await serial(m.key, () => runner(m, launcher, args, timeoutMs))
   if (r.code !== 0) throw new HerdrError('projects_failed', firstLine(r.stderr) || firstLine(r.stdout) || `herdr-projects ${args[0]}: code ${r.code}`)
@@ -170,38 +150,8 @@ function linkedPane(base: Machine, t: Record<string, unknown> | null): { pane: s
   return key === null ? { pane: null, known: false } : { pane: joinId(key, link.pane), known: true }
 }
 
-// Every task's row. Only a board not made yet (no tasks folder) reads as empty;
-// a folder or file that cannot be read fails the read, or, for some tasks only,
-// is named in `failed` (a partial read).
-async function listFromFiles(m: Machine): Promise<{ tasks: TaskRow[], failed: string[] }> {
-  const root = tasksRoot(m)
-  let repos: string[]
-  try { repos = await m.fs.readdir(root) }
-  catch (e) { if (missing(e)) return { tasks: [], failed: [] }; throw e }
-  const ids: string[] = []
-  const failed: string[] = []
-  for (const repo of repos) {
-    let ns: string[]
-    try { ns = await m.fs.readdir(path.posix.join(root, repo)) }
-    catch (e) { if (!missing(e)) failed.push(`${repo} (${(e as Error).message})`); continue }
-    for (const n of ns) if (isTaskId(`${repo}/${n}`)) ids.push(`${repo}/${n}`)
-  }
-  // Newest first, so the caps keep the latest tasks rather than readdir's order.
-  ids.sort((a, b) => Number(b.split('/')[1]) - Number(a.split('/')[1]) || a.localeCompare(b))
-  const panes = getState().panes
-  const rows = await Promise.all(ids.slice(0, FILES_READ_MAX).map(async (id) => {
-    let t: Record<string, unknown> | null
-    try { t = await readTaskFile(m, id) }
-    catch (e) { failed.push(`${id} (${(e as Error).message})`); return null }
-    const { pane } = linkedPane(m, t)
-    return t ? rowFromTaskFile(t, pane ? panes.find(p => p.id === pane)?.status ?? null : null) : null
-  }))
-  return { tasks: rows.filter((r): r is TaskRow => r !== null && !r.archived).slice(0, FILES_MAX), failed }
-}
-
 // ---------------------------------------------------------------- the list
-// `partial`: some tasks could not be read; those rows are marked stale one by one.
-interface Cached { tasks: TaskRow[], at: number, readAt: number, error?: string, partial?: boolean }
+interface Cached { tasks: TaskRow[], at: number, readAt: number, error?: string }
 const lists = new Map<string, Cached>()
 const reading = new Map<string, Promise<Cached>>()
 
@@ -209,24 +159,15 @@ const reading = new Map<string, Promise<Cached>>()
 function readList(m: Machine): Promise<Cached> {
   const now = reading.get(m.key)
   if (now) return now
-  const read = (readsFiles(m) ? listFromFiles(m) : command(m, ['list', '--json'], LIST_TIMEOUT_MS).then(tasks => ({ tasks: parseTaskList(tasks), failed: [] as string[] })))
-    .then(({ tasks, failed }): Cached => {
-      if (!failed.length) return { tasks, at: Date.now(), readAt: Date.now() }
-      // Some tasks could not be read: the others are fresh, those keep their last row, and it is said.
-      const ids = new Set(tasks.map(t => t.id))
-      const last = lists.get(m.key)
-      const kept = (last?.tasks || [])
-        .filter(t => !ids.has(t.id) && failed.some(f => f.startsWith(`${t.id} `) || f.startsWith(`${t.repo} `)))
-        .map(t => ({ ...t, stale: true, readAt: t.readAt ?? last?.readAt }))
-      return { tasks: [...tasks, ...kept], at: Date.now(), readAt: Date.now(), partial: true, error: fmt('Some tasks could not be read: {list}', { list: failed.slice(0, 3).join(', ') + (failed.length > 3 ? ` (+${failed.length - 3})` : '') }) }
-    })
+  const read = command(m, ['list', '--json'], LIST_TIMEOUT_MS)
+    .then((tasks): Cached => ({ tasks: parseTaskList(tasks), at: Date.now(), readAt: Date.now() }))
     .catch((e: Error) => {
       const last = lists.get(m.key)
       return { tasks: last?.tasks || [], at: Date.now(), readAt: last?.readAt ?? 0, error: e.message }
     })
     .then(async (c: Cached) => {
       lists.set(m.key, c)
-      if (c.error && !c.partial) return c
+      if (c.error) return c
       // A repo never seen: its key is waited for a moment, so the first look names its tasks right.
       const keys = readKeys(m, c.tasks.map(t => t.repo))
       if (c.tasks.some(t => !repoKeys.get(m.key)?.has(t.repo))) await Promise.race([keys, new Promise(r => setTimeout(r, KEYS_WAIT_MS).unref?.())])
@@ -241,8 +182,7 @@ function readList(m: Machine): Promise<Cached> {
 // A task's name on the board is its repo's short key and its number (`APP-6`).
 // `list --json` gives ids only, so each repo's key is asked once
 // (`show --repo=<name> --json`), after a list, behind the Board's own commands,
-// and asked again after a while (a key can be changed). In a container: read
-// from the board's record of keys (data/repo-keys.json).
+// and asked again after a while (a key can be changed).
 const KEYS_TTL_MS = 10 * 60_000
 const KEYS_RETRY_MS = 60_000
 const KEYS_WAIT_MS = 3_000
@@ -265,17 +205,10 @@ async function readKeys(m: Machine, repos: string[]): Promise<void> {
   if (!due.length) return
   keysReading.add(m.key)
   try {
-    if (readsFiles(m)) {
-      let keys: Record<string, string> = {}
-      try { keys = repoKeysFromFile(await m.fs.readFile(path.posix.join(m.home, '.herdr-projects/data/repo-keys.json'))) }
-      catch { /* no record yet: no keys */ }
-      for (const r of due) known.set(r, { key: keys[r] || '', at: Date.now() })
-    } else {
-      for (const r of due) {
-        // A failed read is asked again sooner.
-        try { known.set(r, { key: parseRepoKey(await command(m, ['show', `--repo=${r}`, '--json'], LIST_TIMEOUT_MS)), at: Date.now() }) }
-        catch { known.set(r, { key: known.get(r)?.key || '', at: Date.now() - KEYS_TTL_MS + KEYS_RETRY_MS }) }
-      }
+    for (const r of due) {
+      // A failed read is asked again sooner.
+      try { known.set(r, { key: parseRepoKey(await command(m, ['show', `--repo=${r}`, '--json'], LIST_TIMEOUT_MS)), at: Date.now() }) }
+      catch { known.set(r, { key: known.get(r)?.key || '', at: Date.now() - KEYS_TTL_MS + KEYS_RETRY_MS }) }
     }
     repoKeys.set(m.key, known)
   } finally { keysReading.delete(m.key) }
@@ -283,7 +216,7 @@ async function readKeys(m: Machine, repos: string[]): Promise<void> {
 
 // What a cached read says: its tasks, when they were read, and why they may be old.
 function shown(machine: string, c: Cached): Pick<MachineTasks, 'tasks' | 'at' | 'error' | 'stale'> {
-  return { tasks: withKeys(machine, c.tasks), ...(c.readAt ? { at: c.readAt } : {}), ...(c.error ? { error: c.error, stale: !c.partial && c.tasks.length > 0 } : {}) }
+  return { tasks: withKeys(machine, c.tasks), ...(c.readAt ? { at: c.readAt } : {}), ...(c.error ? { error: c.error, stale: c.tasks.length > 0 } : {}) }
 }
 
 // `fresh`: the Board just opened (or asked to): check the plugin again rather
@@ -300,7 +233,7 @@ async function machineTasks(m: Machine, fresh = false): Promise<MachineTasks | n
     // Herdr did not answer: say so, with the last tasks read there.
     return { machine: m.key, status: 'error', version: '', tasks: [], ...(last ? shown(m.key, last) : {}), error: (e as Error).message, ...(last?.tasks.length ? { stale: true } : {}) }
   }
-  const base = { machine: m.key, status: info.status, version: info.version || '', ...(readsFiles(m) ? { readOnly: true, moveUrl: NATIVE_MOVE_URL } : {}) }
+  const base = { machine: m.key, status: info.status, version: info.version || '' }
   if (info.status !== 'ready') return { ...base, tasks: [] }
   if (last && Date.now() - last.at < REUSE_MS) return { ...base, ...shown(m.key, last) }
   const deadline = new Promise<null>(resolve => setTimeout(() => resolve(null), READ_DEADLINE_MS).unref?.())
@@ -340,14 +273,8 @@ function checkId(id: unknown): string {
 export async function taskDetails(machine: unknown, id: unknown): Promise<TaskDetails & { pane: string | null }> {
   const m = boardOf(machine)
   const tid = checkId(id)
-  // From a container the file is the only source: an unreadable one is said.
-  const file = readsFiles(m) ? await readTaskFile(m, tid) : await readTaskFile(m, tid).catch(() => null)
-  let d: TaskDetails
-  if (readsFiles(m)) {
-    const fromFile = detailsFromTaskFile(file)
-    if (!fromFile) throw new HerdrError('bad_task', 'Task not found')
-    d = fromFile
-  } else d = parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS))
+  const file = await readTaskFile(m, tid).catch(() => null)
+  let d = parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS))
   // The closing note: in the task's file only (1.2.1's `details` leaves it out).
   if (!d.summary && typeof file?.summary === 'string') d = { ...d, summary: file.summary.slice(0, 8000).trim() }
   return { ...d, pane: taskPane(m, file) }
@@ -443,13 +370,11 @@ export async function addTask(machine: unknown, b: { title?: unknown, descriptio
 // board's own session (where `coordinator tell` starts it), so its pane id is
 // that session's, and only a pane Herdr shows there now. `pane: null`: not
 // started, starting, or gone (its first message starts it). `error`: why its
-// last start failed (it waits for Try again, `restartCoordinator`). From a
-// container: not asked (nothing runs there), so no pane.
+// last start failed (it waits for Try again, `restartCoordinator`).
 export async function coordinatorPane(machine: unknown, to: unknown): Promise<CoordinatorStatus> {
   const m = boardOf(machine)
   const target = cleanTarget(to)
   if (!target) throw new HerdrError('bad_target', 'Invalid coordinator')
-  if (readsFiles(m)) return { pane: null, state: 'unknown', error: '', name: '' }
   const st = parseCoordinatorStatus(await command(m, coordinatorStatusArgs(target), LIST_TIMEOUT_MS))
   const pane = st.pane ? joinId(m.key, st.pane) : null
   return { ...st, pane: pane && findPane(pane) ? pane : null }

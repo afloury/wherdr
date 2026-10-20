@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  NOTIFY_SETUP, NO_ACTIONS, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, coordinatorPhase, coordinatorRestartArgs, coordinatorStatusArgs, coordinatorSubject, detailsFromTaskFile, parseCoordinatorStatus, groupByRepo, groupCounts, groupOf,
-  rowFromTaskFile, stateFromTaskFile, isTaskId, parseReview, parseRepoKey, parseTaskDetails, parseTaskList, prNumber, repoKeysFromFile, sortTasks, taskActions, taskKey, taskNotice,
+  NOTIFY_SETUP, NO_ACTIONS, addArgs, cleanRepo, cleanTarget, cleanTell, cleanTitle, cleanUrl, coordinatorArgs, coordinatorPhase, coordinatorRestartArgs, coordinatorStatusArgs, coordinatorSubject, parseCoordinatorStatus, groupByRepo, groupCounts, groupOf,
+  isTaskId, parseReview, parseRepoKey, parseTaskDetails, parseTaskList, prNumber, repoKeysFromFile, sortTasks, taskActions, taskKey, taskNotice,
 } from '../shared/projectsTasks'
 
 const fixture = (name: string) => readFileSync(path.join(import.meta.dirname, 'recordings/herdr-projects-1.2.1', name), 'utf8')
@@ -184,49 +184,13 @@ describe('small checks', () => {
   })
 })
 
-describe('a task read from its file (wherdr in a container)', () => {
-  it('follows the stages as herdr-projects 1.2.1 shows them', () => {
-    const st = (t: Record<string, unknown>, pane: string | null = null) => stateFromTaskFile(t, pane)
-    expect(st({ stage: 'todo' })).toEqual({ state: 'idle', kind: '' })
-    expect(st({ stage: 'approval' })).toEqual({ state: 'blocked', kind: 'permission' })
-    expect(st({ stage: 'plan' })).toEqual({ state: 'blocked', kind: 'permission' })
-    expect(st({ stage: 'asks', kind: 'auth' })).toEqual({ state: 'blocked', kind: 'auth' })
-    expect(st({ stage: 'asks' })).toEqual({ state: 'blocked', kind: 'question' })
-    expect(st({ stage: 'failed', failure: { auth: true } })).toEqual({ state: 'blocked', kind: 'auth' })
-    expect(st({ stage: 'failed' })).toEqual({ state: 'error', kind: '' })
-    expect(st({ stage: 'nosummary' })).toEqual({ state: 'error', kind: '' })
-    expect(st({ stage: 'stopped', limitStop: true }).state).toBe('blocked')
-    expect(st({ stage: 'stopped' }).state).toBe('idle')
-    expect(st({ stage: 'after', afterBlocked: true })).toEqual({ state: 'blocked', kind: 'question' })
-    expect(st({ stage: 'reviewing' }).state).toBe('working')
-    expect(st({ stage: 'done' }).state).toBe('done')
-    // The agent's own turn: what Herdr says of its pane.
-    expect(st({ stage: 'working' }, 'blocked').state).toBe('blocked')
-    expect(st({ stage: 'working' }, 'working').state).toBe('working')
-    expect(st({ stage: 'working' }, null).state).toBe('working')
-  })
-
-  it('a row as the list gives it, and nothing for an attempt of another task', () => {
-    const r = rowFromTaskFile({ id: 'acme/4', title: 'T', stage: 'approval', app: 'claude', pr: 'https://github.com/o/r/pull/9', review: { meets: true, pass: false, findings: [{ severity: 'major' }] }, reviewRound: 2, watch: { progress: 40 } }, null)
-    expect(r).toMatchObject({ id: 'acme/4', group: 'needs', pr: 'https://github.com/o/r/pull/9', reviewRound: 2, progress: 40, review: { pass: false, tally: '1 major' } })
-    expect(rowFromTaskFile({ id: 'acme/5', attemptOf: 'acme/4', stage: 'working' }, null)).toBeNull()
-    expect(rowFromTaskFile({ id: '../5', stage: 'todo' }, null)).toBeNull()
-    expect(rowFromTaskFile({ id: 'acme/6', stage: 'approval', review: { stale: true, meets: true, pass: true, findings: [] } }, null)!.review).toBeNull()
-  })
-
-  it('details from the file', () => {
-    expect(detailsFromTaskFile({ id: 'acme/4', title: 'T', stage: 'working', description: 'D', on: 'codex', branch: 'b', worktree: '/w', failure: { msg: 'm' } }))
-      .toMatchObject({ id: 'acme/4', description: 'D', agent: 'codex', branch: 'b', worktree: '/w', failure: 'm', plan: '' })
-    expect(detailsFromTaskFile({ id: 'nope' })).toBeNull()
-  })
-
+describe('task closing notes', () => {
   it('the closing note and a research report, as details or the file give them', () => {
     expect(parseTaskDetails(fixture('details-approval.json'))).toMatchObject({ summary: '', report: null })
     const d = parseTaskDetails(JSON.stringify({ task: { id: 'acme/4', title: 'T' }, summary: ' Done. ', report: { file: 'REPORT.md', link: 'https://example.test/r/REPORT.md', at: 1 } }))
     expect(d).toMatchObject({ summary: 'Done.', report: { file: 'REPORT.md', link: 'https://example.test/r/REPORT.md' } })
     // A local path is not a link: the file's name is kept.
     expect(parseTaskDetails(JSON.stringify({ task: { id: 'acme/4' }, report: { file: 'R.md', link: '/tmp/r/R.md' } })).report).toEqual({ file: 'R.md', link: '' })
-    expect(detailsFromTaskFile({ id: 'acme/4', summary: 'All green.', report: { file: 'R.md' } })).toMatchObject({ summary: 'All green.', report: { file: 'R.md', link: '' } })
   })
 })
 

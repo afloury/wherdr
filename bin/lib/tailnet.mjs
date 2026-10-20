@@ -27,11 +27,7 @@ export function tailscaleBin(env = process.env, exists = existsSync) {
   return dirs.find(p => exists(p)) || null
 }
 
-// Tailscale's own socket on Linux. Its local API answers the same JSON as the
-// CLI: a Docker container has no `tailscale` command, but docker-compose.yml
-// mounts this folder, so wherdr reads the state there. Anyone may read; the
-// API also accepts changes from Tailscale's operator, but wherdr only ever
-// sends GET requests to it (localApi below).
+// The local read-only API is useful when the CLI is absent from PATH.
 export const TAILSCALED_SOCKET = '/var/run/tailscale/tailscaled.sock'
 export function tailscaledSocket(env = process.env, exists = existsSync) {
   const file = env.WHERDR_TAILSCALED_SOCKET || TAILSCALED_SOCKET
@@ -105,18 +101,11 @@ export function targetPort(target) {
   return scheme === 'http' ? 80 : scheme === 'https' ? 443 : null
 }
 
-// Whether `tailscale funnel` may open wherdr's port to the Internet, in any
-// form: an HTTPS proxy (`Web` handlers) or a raw TCP forward, with or without
-// TLS termination (`TCP[port].TCPForward`); the TCP forms carry no client
-// address. Fail closed: a Funnel route counts unless its target is parsed and
-// leads to another port (`anyRoute`: every Funnel route counts, for Docker,
-// where the host's port may differ from the container's). null: the
-// configuration could not be read.
-export function funnelExposes(port, serveJson, anyRoute = false) {
+export function funnelExposes(port, serveJson) {
   let config = null
   try { config = JSON.parse(serveJson) } catch {}
   if (!config || typeof config !== 'object' || Array.isArray(config)) return null
-  const reaches = target => anyRoute || targetPort(target) === null || targetPort(target) === Number(port)
+  const reaches = target => targetPort(target) === null || targetPort(target) === Number(port)
   for (const part of [config, ...Object.values(config.Foreground || {})]) {
     for (const [hostPort, on] of Object.entries(part?.AllowFunnel || {})) {
       if (!on) continue
@@ -132,20 +121,15 @@ export function funnelExposes(port, serveJson, anyRoute = false) {
   return false
 }
 
-// Tailscale's state for the network check: { installed, readable, running,
-// selfIps, peerIps, funnel, funnelAny }. funnel: true / false only from a
-// valid reading (Funnel routes to wherdr's port, or none; or Tailscale idle),
-// null when anything could not be read. funnelAny: the same for any Funnel
-// route at all (wherdr in Docker cannot always tell the host's port). CLI, or
-// Tailscale's socket (Docker).
-export async function tailnetFacts(port, bin = tailscaleBin(), socket = bin ? null : tailscaledSocket(), anyRoute = false) {
-  if (!bin && !socket) return { installed: false, readable: true, running: false, selfIps: [], peerIps: [], funnel: false, funnelAny: false }
+// Only a valid reading may prove the absence of Funnel on this port.
+export async function tailnetFacts(port, bin = tailscaleBin(), socket = bin ? null : tailscaledSocket()) {
+  if (!bin && !socket) return { installed: false, readable: true, running: false, selfIps: [], peerIps: [], funnel: false }
   const run = args => exec(bin, args, { encoding: 'utf8', timeout: 8000 }).then(r => r.stdout, () => '')
   const { state, ...peers } = tailnetPeers(bin ? await run(['status', '--json']) : await localApi(socket, 'status'))
-  if (!peers.readable) return { installed: true, ...peers, funnel: null, funnelAny: null }
-  if (IDLE_STATES.has(state)) return { installed: true, ...peers, funnel: false, funnelAny: false }
+  if (!peers.readable) return { installed: true, ...peers, funnel: null }
+  if (IDLE_STATES.has(state)) return { installed: true, ...peers, funnel: false }
   const serve = bin ? await run(['serve', 'status', '--json']) : await localApi(socket, 'serve-config')
-  return { installed: true, ...peers, funnel: funnelExposes(port, serve, anyRoute), funnelAny: funnelExposes(port, serve, true) }
+  return { installed: true, ...peers, funnel: funnelExposes(port, serve) }
 }
 
 // The HTTPS entries of a serve configuration that proxy to wherdr's local
@@ -201,21 +185,9 @@ export function servedPorts(serveJson) {
   } catch { return [] }
 }
 
-// The command that publishes wherdr's port, as typed by hand (Docker mode).
-// `httpsPort`: the tailnet port, wherdr's own by default.
 export const publishCommand = (port, httpsPort = port) => `tailscale serve --bg --https=${httpsPort} http://127.0.0.1:${port}`
 export const publishArgs = port => ['serve', '--bg', `--https=${port}`, `http://127.0.0.1:${port}`]
 export const unpublishArgs = httpsPort => ['serve', `--https=${httpsPort}`, 'off']
-
-// A tailnet address typed by hand: https://machine.tailnet.ts.net[:port]/ → its
-// normalized form, or null.
-export function tailnetUrl(text) {
-  try {
-    const u = new URL(String(text || '').trim())
-    if (u.protocol !== 'https:' || !/^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net$/i.test(u.hostname) || u.username || u.password) return null
-    return `https://${u.host.toLowerCase()}/`
-  } catch { return null }
-}
 
 // A failed `tailscale serve` → { code, link } for the known causes, else null.
 // code: 'operator' (Linux: the user may not change Tailscale's settings),
@@ -229,9 +201,6 @@ export function serveError(output) {
   return null
 }
 
-// Tailscale's state for wherdr's port: { installed, bin, socket, connected,
-// https, name, phone, taken, served }. Read with the CLI, or without one
-// (Docker) from Tailscale's socket.
 export async function inspect(port, bin = tailscaleBin(), socket = bin ? null : tailscaledSocket()) {
   if (!bin && !socket) return { installed: false }
   const run = args => exec(bin, args, { encoding: 'utf8', timeout: 8000 }).then(r => r.stdout, () => '')
@@ -243,18 +212,6 @@ export async function inspect(port, bin = tailscaleBin(), socket = bin ? null : 
   return { installed: true, bin, socket, ...status, phone, taken, served: servedAddresses(status.name, port, serve) }
 }
 
-// The tailnet's DNS suffix (tailnet.ts.net) from /etc/resolv.conf's search
-// line: a Docker container copies it from the host when MagicDNS is on.
-export function tailnetDomain(resolvConf) {
-  for (const line of String(resolvConf || '').split('\n')) {
-    const m = /^\s*search\s+(.+)$/.exec(line)
-    const hit = m?.[1].split(/\s+/).find(d => /^[a-z0-9-]+\.ts\.net$/i.test(d))
-    if (hit) return hit.toLowerCase()
-  }
-  return null
-}
-
-// Tailscale's DNS (MagicDNS): a Docker container does not use it, but reaches it.
 const MAGIC_DNS = '100.100.100.100'
 
 // The system's lookup, then MagicDNS for *.ts.net names.

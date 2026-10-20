@@ -8,7 +8,6 @@ const FR: Record<string, string> = {
   'Invalid task': 'Tâche invalide', 'Nothing to send': 'Rien à envoyer',
   'This task has no agent to talk to': 'Cette tâche n’a pas d’agent à qui parler',
   'This task does not wait for approval': 'Cette tâche n’attend pas d’approbation',
-  'wherdr runs in a container: run herdr-projects on the host for this': 'wherdr tourne dans un conteneur : lance herdr-projects sur l’hôte pour cela',
   'Task not found': 'Tâche introuvable',
   'This task cannot be started now': 'Cette tâche ne peut pas être lancée maintenant',
   'This task has no agent at work to stop': 'Cette tâche n’a pas d’agent au travail à arrêter',
@@ -16,13 +15,12 @@ const FR: Record<string, string> = {
   'This task cannot be archived while an agent works on it': 'Cette tâche ne peut pas être archivée pendant qu’un agent y travaille',
   'Unknown action': 'Action inconnue', 'A task needs a title': 'Une tâche a besoin d’un titre',
   'Invalid repo': 'Dépôt invalide', 'Invalid coordinator': 'Coordinateur invalide',
-  'Some tasks could not be read: {list}': 'Certaines tâches n’ont pas pu être lues : {list}',
   'Move up': 'Monter', 'Move down': 'Descendre', 'Reset order': 'Réinitialiser l’ordre',
-  
-  
-  
-  
-  
+
+
+
+
+
   'Drag to reorder': 'Glisser pour réordonner',
   'Keep awake': 'Garder éveillé',
   'Extend by one hour': 'Prolonger d’une heure',
@@ -434,7 +432,7 @@ const FR: Record<string, string> = {
   'Space closed': 'Espace fermé', 'Pane moved': 'Pane déplacé',
   'Start in a new pane': 'Lancer dans un nouveau pane', 'Start in a new tab': 'Lancer dans un nouvel onglet', 'New pane': 'Nouveau pane',
   // Project panel (herdr-projects coordinator)
-  'List width': 'Largeur de la liste', 'Drag to resize · double-click: default width': 'Glisser pour élargir · double-clic : largeur par défaut', 
+  'List width': 'Largeur de la liste', 'Drag to resize · double-click: default width': 'Glisser pour élargir · double-clic : largeur par défaut',
   'Pull request': 'Pull request',
   // Server messages (shared/message.ts: {name} = value filled in by the server)
   '{machine} is unreachable: {reason}': '{machine} injoignable : {reason}',
@@ -491,7 +489,7 @@ const FR: Record<string, string> = {
   'Invalid action': 'Action invalide',
   'Action not found on this machine': 'Action introuvable sur cette machine',
   'Action not available here': 'Action non disponible ici',
-  
+
   'Invalid bootstrap token (see the server logs)': 'Jeton d’amorçage invalide (voir les journaux du serveur)',
   'Challenge expired, try again': 'Défi expiré, recommence',
   'Unlock first': 'Déverrouille d’abord',
@@ -510,7 +508,7 @@ const FR: Record<string, string> = {
   'No agent in this pane': 'Pas d’agent dans ce pane',
   'This agent’s folder is unknown': 'Dossier de cet agent inconnu',
   'Name: lowercase letters, digits, - and _ (32 max), starting with a letter': 'Nom : minuscules, chiffres, - et _ (32 max), commence par une lettre',
-  
+
   'Uncommitted changes in this worktree': 'Modifications non commitées dans ce worktree',
   'This pane’s folder is unknown': 'Dossier de ce pane inconnu',
   'Invalid machine order': 'Ordre des machines invalide',
@@ -534,7 +532,7 @@ const FR: Record<string, string> = {
   'The agent did not take the message': 'L’agent n’a pas pris le message',
   'Another writer keeps typing into the agent’s input': 'Un autre programme écrit sans arrêt dans le champ de l’agent',
   'message already being sent': 'message déjà en cours d’envoi',
-  'same pane': 'même pane', 'pane in another tab': 'pane d’un autre onglet', 
+  'same pane': 'même pane', 'pane in another tab': 'pane d’un autre onglet',
 }
 
 export type Lang = 'en' | 'fr'

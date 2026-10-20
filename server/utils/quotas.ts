@@ -298,8 +298,6 @@ export function mergeQuotas(readings: { key: string, label: string, claude: Clau
   return out
 }
 
-// Can the server write to ~/.claude? Remote: yes (SSH). Local: not
-// in the container, where $HOME is read-only (command to copy).
 async function canInstall(m: Machine): Promise<boolean> {
   if (!m.local) return Boolean(m.exec)
   for (const d of [path.join(m.home, '.claude'), m.home]) {

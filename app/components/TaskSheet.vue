@@ -6,12 +6,8 @@
 // retry what went wrong, archive it, and open its agent's pane. What 1.x
 // does not give for a task is not shown.
 import { NO_ACTIONS, type TaskCommand, type TaskDetails, type TaskRow, TELL_MAX, prNumber, taskActions, taskKey } from '#shared/projectsTasks'
-import { PROJECTS_LAUNCHER } from '#shared/projectsPlugin'
 
-// `readOnly`: the board is read from its files (wherdr in a container): the
-// actions are the host's, given as commands. `inPanel`: opened over the Board's
-// side panel, which already shows its agent.
-const props = defineProps<{ task: TaskRow | null, machine: string, readOnly?: boolean, inPanel?: boolean }>()
+const props = defineProps<{ task: TaskRow | null, machine: string, inPanel?: boolean }>()
 const emit = defineEmits<{ changed: [] }>()
 const open = defineModel<boolean>('open', { default: false })
 
@@ -23,9 +19,7 @@ const busy = ref(false)
 const running = ref<TaskCommand | null>(null)
 // A failed task's Retry or Start waits for its details (what failed).
 const failure = computed(() => (details.value && details.value.id === props.task?.id ? details.value : null))
-const actions = computed(() => (props.task && !props.readOnly ? taskActions(props.task, failure.value) : NO_ACTIONS))
-const hostActions = computed(() => (props.task && props.readOnly ? taskActions(props.task, failure.value) : NO_ACTIONS))
-const hostCommands = computed(() => (['delegate', 'stop', 'retry', 'archive'] as const).filter(a => hostActions.value[a]))
+const actions = computed(() => (props.task ? taskActions(props.task, failure.value) : NO_ACTIONS))
 const pr = computed(() => details.value?.pr || props.task?.pr || '')
 const review = computed(() => details.value?.review || props.task?.review || null)
 const label = computed(() => (props.task ? taskKey(props.task.id, props.task.repoKey) : ''))
@@ -211,23 +205,6 @@ function openPane() {
         <UButton v-if="actions.archive" color="neutral" variant="ghost" icon="i-lucide-archive" class="task-archive" :loading="running === 'archive'" :disabled="busy || offlineView" @click="act('archive')">{{ tl('Archive', 'Archiver') }}</UButton>
       </div>
 
-      <!-- wherdr in a container: the same actions, off, each saying why on hover. -->
-      <div v-if="hostActions.tell || hostActions.approve || hostCommands.length" class="task-sheet-actions task-sheet-ro">
-        <span v-if="hostActions.delegate" class="ro-why" :title="readOnlyWhy()"><UButton color="primary" icon="i-lucide-play" disabled :aria-description="readOnlyWhy()">{{ tl('Start', 'Lancer') }}</UButton></span>
-        <span v-if="hostActions.approve" class="ro-why" :title="readOnlyWhy()">
-          <UButton color="primary" icon="i-lucide-check" disabled :aria-description="readOnlyWhy()">{{ task.stage === 'plan' ? tl('Approve plan', 'Accepter le plan') : tl('Approve', 'Approuver') }}</UButton>
-        </span>
-        <span v-if="hostActions.retry" class="ro-why" :title="readOnlyWhy()"><UButton color="primary" variant="outline" icon="i-lucide-rotate-ccw" disabled :aria-description="readOnlyWhy()">{{ tl('Retry', 'Réessayer') }}</UButton></span>
-        <span v-if="hostActions.tell" class="ro-why" :title="readOnlyWhy()"><UButton color="neutral" variant="outline" icon="i-lucide-send" disabled :aria-description="readOnlyWhy()">{{ tl('Reply', 'Répondre') }}</UButton></span>
-        <span v-if="hostActions.stop" class="ro-why" :title="readOnlyWhy()"><UButton color="error" variant="outline" icon="i-lucide-square" disabled :aria-description="readOnlyWhy()">{{ tl('Stop', 'Arrêter') }}</UButton></span>
-        <span v-if="hostActions.archive" class="ro-why" :title="readOnlyWhy()"><UButton color="neutral" variant="ghost" icon="i-lucide-archive" disabled :aria-description="readOnlyWhy()">{{ tl('Archive', 'Archiver') }}</UButton></span>
-      </div>
-      <div v-if="hostActions.tell || hostActions.approve || hostCommands.length" class="task-sheet-block">
-        <h4>{{ tl('On the host', 'Sur l’hôte') }}</h4>
-        <code v-if="hostActions.tell" class="projects-plugin-command">{{ PROJECTS_LAUNCHER }} tell {{ task.id }} "…"</code>
-        <code v-if="hostActions.approve" class="projects-plugin-command">{{ PROJECTS_LAUNCHER }} approve {{ task.id }}</code>
-        <code v-for="a in hostCommands" :key="a" class="projects-plugin-command">{{ PROJECTS_LAUNCHER }} {{ a }} {{ task.id }}</code>
-      </div>
       <form v-if="actions.tell" class="task-sheet-reply" @submit.prevent="send">
         <label for="task-reply">{{ task.stage === 'plan' ? tl('Send the plan back with', 'Renvoyer le plan avec') : tl('Reply to its agent', 'Répondre à son agent') }}</label>
         <UTextarea id="task-reply" v-model="reply" :rows="3" autoresize :maxlength="TELL_MAX" :placeholder="tl('Message', 'Message')" />

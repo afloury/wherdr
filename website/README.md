@@ -14,16 +14,14 @@ makes no request to another site.
   `CLOUDFLARE_ACCOUNT_ID`; without them the deploy job is skipped. By hand:
   `npm run generate && npm run deploy` (`npx wrangler deploy --dry-run` checks the config
   without an account).
-- **Headers**: `public/_headers` (Workers) and `nginx.conf` (Docker) set the same security headers,
-  `text/plain` for `/install` and long caching for `/_nuxt/`. Change both together.
+- **Headers**: `public/_headers` (Workers) sets security headers,
+  `text/plain` for `/install` and long caching for `/_nuxt/`.
   `_headers` alone adds `Cache-Control: no-transform` to the pages, so Cloudflare does not inject
   its Web Analytics beacon (the site has no analytics, and its policy would block the script).
-- **Deploy (private preview)**: `SITE_BIND=<tailscale-ip> docker compose up -d --build` — nginx on
-  `${SITE_BIND:-127.0.0.1}:${SITE_PORT:-8120}`, serving the same `nuxt generate` output.
 - **Search engines and link previews**: `app/utils/seo.ts` holds the title, the description, the
   pages of `sitemap.xml` and the JSON-LD `SoftwareApplication` block. `nuxt.config.ts` sets the
   Open Graph / Twitter tags and writes `sitemap.xml` at build time, each page dated by the last
-  commit of its sources (the build date without Git history, as in the Docker build); the home
+  commit of its sources (the build date without Git history); the home
   page adds the canonical link and the structured data. `public/robots.txt` allows everything and
   names the sitemap. The demo (`/demo/`) is `noindex` and `/install` is sent with
   `X-Robots-Tag: noindex`: neither is in the sitemap. `public/og.png` (1200×630) is a screenshot
@@ -41,8 +39,6 @@ makes no request to another site.
   only on screen in a visible tab; `prefers-reduced-motion` shows its final step, still. A root
   test checks every script's timing. Data is invented: never use real data.
 - **Installer**: [`public/install`](public/install) (`curl -fsSL https://wherdr.dev/install | sh`);
-  `sh tests/install.test.sh` runs shellcheck and its tests in a throwaway container with stub
-  `docker` and `herdr` binaries; without Docker, `sh tests/install.bwrap.sh` runs the same tests
-  in a bubblewrap sandbox as your user (no network, an empty `/home`, Node.js hidden). The install section replays its output: if the installer's
-  output changes, update `app/utils/installDemo.ts` (a root test checks its lines against
-  `public/install`).
+  `sh tests/install.test.sh` runs its cases in a bubblewrap sandbox as your user
+  (no network, an empty `/home`, Node.js hidden), with stub `herdr` and download commands.
+  The install section replays its output: if it changes, update `app/utils/installDemo.ts`.
