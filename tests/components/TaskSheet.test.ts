@@ -13,7 +13,7 @@ registerEndpoint('/api/tasks/tell', { method: 'POST', handler: hold })
 registerEndpoint('/api/tasks/approve', { method: 'POST', handler: hold })
 registerEndpoint('/api/tasks/action', { method: 'POST', handler: hold })
 // What the details say, and how many times they were read.
-const shown = { stage: 'approval', failure: '', failureStage: '' }
+const shown: { stage: string, failure: string, failureStage: string, archived?: boolean } = { stage: 'approval', failure: '', failureStage: '' }
 let detailsReads = 0
 registerEndpoint('/api/tasks/details', () => {
   detailsReads++
@@ -159,6 +159,103 @@ describe('the task sheet of a read-only board (wherdr in a container)', () => {
       expect(s.querySelector('button')!.disabled).toBe(true)
     }
     expect(document.body.textContent).toContain('herdr-projects approve demo/1')
+    w.unmount()
+  })
+})
+
+describe('the task sheet after an action', () => {
+  it('Archive closes the sheet and hands the task to the Board (which offers Restore)', async () => {
+    Object.assign(shown, { stage: 'done', failure: '', failureStage: '' })
+    const done: TaskRow = { ...task, state: 'done', stage: 'done', group: 'done' }
+    const archived: Array<[string, string]> = []
+    const w = await mountSuspended(TaskSheet, { props: {
+      task: done, machine: 'far', open: true, 'onUpdate:open': (v: boolean) => w.setProps({ open: v }),
+      onArchived: (m: string, t: TaskRow) => archived.push([m, t.id]),
+    } })
+    await flushPromises()
+    const vm = w.vm as unknown as SheetVm & { actions: { archive: boolean } }
+    expect(vm.actions.archive).toBe(true)
+    const going = vm.act('archive')
+    await flushPromises()
+    held.shift()!()
+    await going
+    await flushPromises()
+    expect(w.props('open')).toBe(false)
+    expect(archived).toEqual([['far', 'demo/1']])
+    Object.assign(shown, { stage: 'approval' })
+    w.unmount()
+  })
+
+  it('reads the Board and the task again before its buttons come back, so they match the new state', async () => {
+    Object.assign(shown, { stage: 'todo', failure: '', failureStage: '' })
+    const todo: TaskRow = { ...task, state: 'idle', stage: 'todo', group: 'todo', app: '' }
+    let release: () => void = () => {}
+    const refresh = vi.fn(() => new Promise<void>((r) => { release = r }))
+    const w = await mountSuspended(TaskSheet, { props: { task: todo, machine: 'a', open: true, refresh } })
+    await flushPromises()
+    const vm = w.vm as unknown as SheetVm & { actions: { delegate: boolean, stop: boolean } }
+    const before = detailsReads
+    const going = vm.act('delegate')
+    await flushPromises()
+    held.shift()!()
+    await flushPromises()
+    // Started, the Board not read yet: still busy, Start not offered again.
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledOnce())
+    expect(vm.busy).toBe(true)
+    // The Board's read: the task is at work; its details are read again.
+    Object.assign(shown, { stage: 'working' })
+    await w.setProps({ task: { ...todo, state: 'working', stage: 'working', group: 'working', app: 'claude' } })
+    release()
+    await going
+    await flushPromises()
+    expect(vm.busy).toBe(false)
+    expect(detailsReads).toBeGreaterThan(before)
+    expect(vm.actions.delegate).toBe(false)
+    expect(vm.actions.stop).toBe(true)
+    Object.assign(shown, { stage: 'approval' })
+    w.unmount()
+  })
+
+  it('a refused action: its error stays in the sheet', async () => {
+    registerEndpoint('/api/tasks/action', { method: 'POST', handler: () => { throw createError({ statusCode: 400, data: { error: 'demo/1 is still active' } }) } })
+    const done: TaskRow = { ...task, state: 'done', stage: 'done', group: 'done' }
+    const w = await mountSuspended(TaskSheet, { props: { task: done, machine: 'a', open: true } })
+    await flushPromises()
+    await (w.vm as unknown as SheetVm).act('archive')
+    await flushPromises()
+    expect(w.props('open')).toBe(true)
+    await vi.waitFor(() => expect(document.querySelector('.task-sheet-error')?.textContent).toBeTruthy())
+    registerEndpoint('/api/tasks/action', { method: 'POST', handler: hold })
+    w.unmount()
+  })
+})
+
+describe('the sheet of an archived task', () => {
+  it('says Archived, offers Restore only (read-only, as in herdr-projects), then shows Archive once restored', async () => {
+    Object.assign(shown, { stage: 'done', failure: '', failureStage: '', archived: true })
+    const away: TaskRow = { ...task, state: 'done', stage: 'done', group: 'done', archived: true }
+    const restored: string[] = []
+    const w = await mountSuspended(TaskSheet, { props: { task: away, machine: 'a', open: true, onRestored: (_m: string, t: TaskRow) => restored.push(t.id) } })
+    await flushPromises()
+    const vm = w.vm as unknown as SheetVm & { actions: Record<string, boolean> }
+    expect(vm.actions).toMatchObject({ restore: true, archive: false, tell: false, approve: false, delegate: false })
+    await vi.waitFor(() => expect(document.querySelector('.task-archived')?.textContent).toContain('Archived'))
+    const labels = [...document.querySelectorAll('.task-sheet-actions button')].map(b => b.textContent?.trim())
+    expect(labels).toEqual(['Restore'])
+    expect(document.querySelector('.task-sheet-reply')).toBeNull()
+
+    const going = vm.act('restore')
+    await flushPromises()
+    Object.assign(shown, { archived: false })
+    held.shift()!()
+    await going
+    await flushPromises()
+    expect(restored).toEqual(['demo/1'])
+    // Its details now say it is back: Archive again, no tag.
+    await vi.waitFor(() => expect(vm.actions.archive).toBe(true))
+    expect(vm.actions.restore).toBe(false)
+    expect(document.querySelector('.task-archived')).toBeNull()
+    Object.assign(shown, { stage: 'approval', archived: false })
     w.unmount()
   })
 })

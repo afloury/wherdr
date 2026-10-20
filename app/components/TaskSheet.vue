@@ -5,14 +5,22 @@
 // undone), start it (a task of the backlog), stop its agent (asked first),
 // retry what went wrong, archive it, and open its agent's pane. What 1.x
 // does not give for a task is not shown.
+// After an action the sheet shows where the task now stands: the Board and the
+// task's details are read again before its buttons come back (or the error
+// stays in the sheet). Archive closes it: the Board offers Restore for a few
+// seconds. An archived task (Board › Archived, a link to it) is read-only, as
+// in 1.x: an "Archived" tag and Restore, nothing else.
 import { NO_ACTIONS, type TaskCommand, type TaskDetails, type TaskRow, TELL_MAX, prNumber, taskActions, taskKey } from '#shared/projectsTasks'
 import { PROJECTS_LAUNCHER } from '#shared/projectsPlugin'
 
 // `readOnly`: the board is read from its files (wherdr in a container): the
 // actions are the host's, given as commands. `inPanel`: opened over the Board's
 // side panel, which already shows its agent.
-const props = defineProps<{ task: TaskRow | null, machine: string, readOnly?: boolean, inPanel?: boolean }>()
-const emit = defineEmits<{ changed: [] }>()
+// `refresh`: reads the Board again (its promise ends with the read); without
+// it, `changed` asks for that. `archived` / `restored`: the task was put away
+// or brought back from here.
+const props = defineProps<{ task: TaskRow | null, machine: string, readOnly?: boolean, inPanel?: boolean, refresh?: () => Promise<unknown> }>()
+const emit = defineEmits<{ changed: [], archived: [machine: string, task: TaskRow], restored: [machine: string, task: TaskRow] }>()
 const open = defineModel<boolean>('open', { default: false })
 
 const details = ref<(TaskDetails & { pane: string | null }) | null>(null)
@@ -21,11 +29,17 @@ const loading = ref(false)
 const reply = ref('')
 const busy = ref(false)
 const running = ref<TaskCommand | null>(null)
+// Why the last action failed, kept in the sheet (a toast goes away).
+const actionError = ref('')
 // A failed task's Retry or Start waits for its details (what failed).
 const failure = computed(() => (details.value && details.value.id === props.task?.id ? details.value : null))
-const actions = computed(() => (props.task && !props.readOnly ? taskActions(props.task, failure.value) : NO_ACTIONS))
-const hostActions = computed(() => (props.task && props.readOnly ? taskActions(props.task, failure.value) : NO_ACTIONS))
-const hostCommands = computed(() => (['delegate', 'stop', 'retry', 'archive'] as const).filter(a => hostActions.value[a]))
+// Archived: as its details (its file) or its row say, until Restore from here.
+const restored = ref(false)
+const archived = computed(() => Boolean(failure.value?.archived) || (Boolean(props.task?.archived) && !restored.value))
+const row = computed(() => (props.task ? { ...props.task, archived: archived.value } : null))
+const actions = computed(() => (row.value && !props.readOnly ? taskActions(row.value, failure.value) : NO_ACTIONS))
+const hostActions = computed(() => (row.value && props.readOnly ? taskActions(row.value, failure.value) : NO_ACTIONS))
+const hostCommands = computed(() => (['delegate', 'stop', 'retry', 'archive', 'restore'] as const).filter(a => hostActions.value[a]))
 const pr = computed(() => details.value?.pr || props.task?.pr || '')
 const review = computed(() => details.value?.review || props.task?.review || null)
 const label = computed(() => (props.task ? taskKey(props.task.id, props.task.repoKey) : ''))
@@ -59,6 +73,8 @@ watch([open, target], ([o]) => {
   gen++
   busy.value = false
   running.value = null
+  actionError.value = ''
+  restored.value = false
   if (!o) return
   details.value = null
   reply.value = ''
@@ -72,19 +88,33 @@ watch([target, step], ([t, s], [wasT, wasS]) => {
   if (open.value && t === wasT && s !== wasS) load()
 })
 
+// After an action: the Board, then the task's details, read again, so the
+// sheet shows what the task now allows before its buttons come back.
+async function settle(g: number) {
+  if (props.refresh) await props.refresh().catch(() => {})
+  else emit('changed')
+  if (g === gen && open.value) await load()
+}
+function failed(e: unknown, g: number) {
+  const msg = (e as Error).message
+  toast(msg, true)
+  if (g === gen) actionError.value = msg
+}
+
 async function send() {
   const t = props.task
   const text = reply.value.trim()
   if (!t || !text || busy.value) return
   const g = gen
   busy.value = true
+  actionError.value = ''
   try {
     await api('/api/tasks/tell', { machine: props.machine, id: t.id, text })
     haptic()
     toast(tl('Sent to the task’s agent', 'Envoyé à l’agent de la tâche'))
-    emit('changed')
     if (g === gen) reply.value = ''
-  } catch (e) { toast((e as Error).message, true) }
+    await settle(g)
+  } catch (e) { failed(e, g) }
   finally { if (g === gen) busy.value = false }
 }
 
@@ -105,22 +135,25 @@ async function approve() {
   if (!ok || !still(was)) return
   const g = gen
   busy.value = true
+  actionError.value = ''
   try {
     const r = await api<{ msg: string }>('/api/tasks/approve', { machine, id: t.id })
     toast(r.msg || tl('Approved', 'Approuvé'))
-    emit('changed')
     if (g === gen) open.value = false
-  } catch (e) { toast((e as Error).message, true) }
+    if (props.refresh) props.refresh().catch(() => {})
+    else emit('changed')
+  } catch (e) { failed(e, g) }
   finally { if (g === gen) busy.value = false }
 }
 
-// Start, stop, retry, archive: the task's id only. Stopping is asked first
-// (the agent's turn is cut short); archiving can be undone from Herdr.
-const ACTION_DONE: Record<TaskCommand, () => string> = {
+// Start, stop, retry, archive, restore: the task's id only. Stopping is asked
+// first (the agent's turn is cut short); archiving is undone by Restore, which
+// the Board offers right after it.
+const ACTION_DONE: Record<Exclude<TaskCommand, 'archive'>, () => string> = {
   delegate: () => tl('Started: an agent is on it', 'Lancée : un agent s’en occupe'),
   stop: () => tl('Stopped', 'Arrêtée'),
   retry: () => tl('Sent back to its agent', 'Renvoyée à son agent'),
-  archive: () => tl('Archived', 'Archivée'),
+  restore: () => tl('Restored', 'Restaurée'),
 }
 async function act(action: TaskCommand) {
   const t = props.task
@@ -134,13 +167,21 @@ async function act(action: TaskCommand) {
   const g = gen
   busy.value = true
   running.value = action
+  actionError.value = ''
   try {
     const r = await api<{ msg: string }>('/api/tasks/action', { machine, id: t.id, action })
     haptic()
+    if (action === 'archive') {
+      // The Board says it, with Restore, and reads itself again.
+      if (g === gen) open.value = false
+      emit('archived', machine, t)
+      return
+    }
     toast(r.msg || ACTION_DONE[action]())
-    emit('changed')
-    if (action === 'archive' && g === gen) open.value = false
-  } catch (e) { toast((e as Error).message, true) }
+    if (action === 'restore' && g === gen) restored.value = true
+    if (action === 'restore') emit('restored', machine, t)
+    await settle(g)
+  } catch (e) { failed(e, g) }
   finally { if (g === gen) { busy.value = false; running.value = null } }
 }
 
@@ -158,11 +199,13 @@ function openPane() {
       <p class="task-sheet-meta">
         <span class="task-key">{{ label }}</span>
         <span class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
+        <span v-if="archived" class="task-chip task-archived"><UIcon name="i-lucide-archive" />{{ tl('Archived', 'Archivée') }}</span>
         <span v-if="task.app" class="task-chip">{{ task.app }}</span>
         <span v-if="task.research" class="task-chip">{{ tl('research', 'recherche') }}</span>
         <span v-if="multiMachine && machine !== undefined" class="task-chip">{{ machineName(machine) }}</span>
       </p>
       <p v-if="task.msg" class="task-sheet-msg">{{ task.msg }}</p>
+      <p v-if="archived" class="board-note task-sheet-archived">{{ tl('Archived: read-only, as in herdr-projects. Restore it to change or start it again.', 'Archivée : en lecture seule, comme dans herdr-projects. Restaure-la pour la modifier ou la relancer.') }}</p>
 
       <p v-if="loading && !details" class="board-empty">{{ t('Loading…') }}</p>
       <p v-if="error" class="board-note error">{{ error }}</p>
@@ -200,16 +243,18 @@ function openPane() {
         <p class="task-sheet-text">{{ details.plan }}</p>
       </section>
 
-      <div v-if="(details?.pane && !inPanel) || actions.approve || actions.delegate || actions.retry || actions.stop || actions.archive" class="task-sheet-actions">
+      <div v-if="(details?.pane && !inPanel && !archived) || actions.approve || actions.delegate || actions.retry || actions.stop || actions.archive || actions.restore" class="task-sheet-actions">
+        <UButton v-if="actions.restore" color="primary" icon="i-lucide-archive-restore" :loading="running === 'restore'" :disabled="busy || offlineView" @click="act('restore')">{{ tl('Restore', 'Restaurer') }}</UButton>
         <UButton v-if="actions.delegate" color="primary" icon="i-lucide-play" :loading="running === 'delegate'" :disabled="busy || offlineView" @click="act('delegate')">{{ tl('Start', 'Lancer') }}</UButton>
         <UButton v-if="actions.approve" color="primary" icon="i-lucide-check" :loading="busy && !running" :disabled="busy || offlineView" @click="approve">
           {{ task.stage === 'plan' ? tl('Approve plan', 'Accepter le plan') : tl('Approve', 'Approuver') }}
         </UButton>
         <UButton v-if="actions.retry" color="primary" variant="outline" icon="i-lucide-rotate-ccw" :loading="running === 'retry'" :disabled="busy || offlineView" @click="act('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
-        <UButton v-if="details?.pane && !inPanel" color="neutral" variant="outline" icon="i-lucide-square-terminal" @click="openPane">{{ tl('Open its agent', 'Ouvrir son agent') }}</UButton>
+        <UButton v-if="details?.pane && !inPanel && !archived" color="neutral" variant="outline" icon="i-lucide-square-terminal" @click="openPane">{{ tl('Open its agent', 'Ouvrir son agent') }}</UButton>
         <UButton v-if="actions.stop" color="error" variant="outline" icon="i-lucide-square" :loading="running === 'stop'" :disabled="busy || offlineView" @click="act('stop')">{{ tl('Stop', 'Arrêter') }}</UButton>
         <UButton v-if="actions.archive" color="neutral" variant="ghost" icon="i-lucide-archive" class="task-archive" :loading="running === 'archive'" :disabled="busy || offlineView" @click="act('archive')">{{ tl('Archive', 'Archiver') }}</UButton>
       </div>
+      <p v-if="actionError" class="board-note error task-sheet-error" role="alert">{{ actionError }}</p>
 
       <!-- wherdr in a container: the same actions, off, each saying why on hover. -->
       <div v-if="hostActions.tell || hostActions.approve || hostCommands.length" class="task-sheet-actions task-sheet-ro">
@@ -221,6 +266,7 @@ function openPane() {
         <span v-if="hostActions.tell" class="ro-why" :title="readOnlyWhy()"><UButton color="neutral" variant="outline" icon="i-lucide-send" disabled :aria-description="readOnlyWhy()">{{ tl('Reply', 'Répondre') }}</UButton></span>
         <span v-if="hostActions.stop" class="ro-why" :title="readOnlyWhy()"><UButton color="error" variant="outline" icon="i-lucide-square" disabled :aria-description="readOnlyWhy()">{{ tl('Stop', 'Arrêter') }}</UButton></span>
         <span v-if="hostActions.archive" class="ro-why" :title="readOnlyWhy()"><UButton color="neutral" variant="ghost" icon="i-lucide-archive" disabled :aria-description="readOnlyWhy()">{{ tl('Archive', 'Archiver') }}</UButton></span>
+        <span v-if="hostActions.restore" class="ro-why" :title="readOnlyWhy()"><UButton color="primary" icon="i-lucide-archive-restore" disabled :aria-description="readOnlyWhy()">{{ tl('Restore', 'Restaurer') }}</UButton></span>
       </div>
       <div v-if="hostActions.tell || hostActions.approve || hostCommands.length" class="task-sheet-block">
         <h4>{{ tl('On the host', 'Sur l’hôte') }}</h4>

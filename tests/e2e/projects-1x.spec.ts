@@ -21,7 +21,8 @@ fs.mkdirSync(path.join(root, 'bin'))
 fs.writeFileSync(path.join(root, 'bin/run.sh'), `#!/bin/sh
 printf '%s\\n' "$*" >> '${calls}'
 case "$1" in
-  list) if [ -f '${root}/list.json' ]; then cat '${root}/list.json'; else cat '${fixtures}/list.json'; fi ;;
+  list) if [ "$3" = --archived ]; then if [ -f '${root}/archived.json' ]; then cat '${root}/archived.json'; else echo '[]'; fi
+    elif [ -f '${root}/list.json' ]; then cat '${root}/list.json'; else cat '${fixtures}/list.json'; fi ;;
   details) case "$4" in demo/1) cat '${fixtures}/details-approval.json' ;; demo/2) cat '${fixtures}/details-asks.json' ;; demo/6) echo '${JSON.stringify(failedDetails)}' ;; *) cat '${fixtures}/details-working.json' ;; esac ;;
   tell) echo "$3: sent" ;;
   approve) echo "$3: approved, merging" ;;
@@ -34,7 +35,11 @@ case "$1" in
     *) : > "${told}/$co"; echo "sent to the Coordinator" ;;
   esac ;;
   add) echo "demo/7: added" ;;
-  delegate|stop|retry|archive) echo "$3: done" ;;
+  delegate|stop|retry) echo "$3: done" ;;
+  # Archived: in the archived list from now on (the board's list still has it here).
+  archive) printf '[{"id":"%s","state":"done","title":"Archived","stage":"failed","archivedAt":1}]' "$3" > '${root}/archived.json'; echo "$3: done" ;;
+  # What the board lists once a task is restored, when the spec gives it.
+  restore) if [ -f '${root}/after-restore.json' ]; then mv '${root}/after-restore.json' '${root}/list.json'; echo '[]' > '${root}/archived.json'; fi; echo "$3: done" ;;
   show) case "$2" in --repo=demo) echo '${keyReply('DEMO')}' ;; --repo=web) echo '${keyReply('SITE')}' ;; *) echo '${keyReply('none')}' ;; esac ;;
   *) echo "unexpected: $*" >&2; exit 1 ;;
 esac
@@ -53,7 +58,7 @@ const home = path.join(path.dirname(fs.readFileSync(SOCK_FILE, 'utf8').trim()), 
 const taskDir = path.join(home, '.herdr-projects/data/tasks/demo/1')
 
 test.beforeEach(() => {
-  for (const f of [calls, path.join(root, 'list.json'), path.join(root, 'web-coordinator'), told]) fs.rmSync(f, { recursive: true, force: true })
+  for (const f of [calls, path.join(root, 'list.json'), path.join(root, 'archived.json'), path.join(root, 'after-restore.json'), path.join(root, 'web-coordinator'), told]) fs.rmSync(f, { recursive: true, force: true })
   fs.mkdirSync(told)
 })
 test.afterEach(async () => { await fakeHerdr('e2e.plugins', { plugins: [] }) })
@@ -409,7 +414,46 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   await expect.poll(callLog).toContain('retry -- demo/6')
   await task.getByRole('button', { name: 'Archive' }).click()
   await expect.poll(callLog).toContain('archive -- demo/6')
+  // Archived: the sheet closes, the card leaves the Board at once (the list read
+  // again still has it here), and a toast offers Restore for a few seconds.
   await expect(page.getByRole('dialog')).toHaveCount(0)
+  const toastBox = page.locator('.hw-toast', { hasText: 'DEMO-6 archived' })
+  await expect(toastBox).toBeVisible()
+  await expect(card('Broke on the tests')).toHaveCount(0)
+  await page.screenshot({ path: `.shots/board-1x-archived-toast-${testInfo.project.name}.png` })
+  await toastBox.getByRole('button', { name: 'Restore' }).click()
+  await expect.poll(callLog).toContain('restore -- demo/6')
+  await expect(card('Broke on the tests')).toBeVisible()
+})
+
+test('Archived: the archived tasks, each one\'s sheet read-only with Restore', async ({ page }, testInfo) => {
+  fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(actionBoard))
+  fs.writeFileSync(path.join(root, 'archived.json'), JSON.stringify([
+    { id: 'demo/2', state: 'done', title: 'Put away last week', msg: 'Merged', stage: 'done', archivedAt: 1760000000 },
+  ]))
+  await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
+  await page.goto('/#/board')
+  await expect(page.locator('.board-repo[data-repo="demo"]')).toContainText('In the backlog', { timeout: 15000 })
+  await page.getByRole('button', { name: 'Archived' }).click()
+  const archived = page.locator('.board-archived')
+  const card = archived.locator('.task-card', { hasText: 'Put away last week' })
+  await expect(card).toBeVisible()
+  expect(callLog()).toContain('list --json --archived')
+  await card.scrollIntoViewIfNeeded()
+  await page.screenshot({ path: `.shots/board-1x-archived-list-${testInfo.project.name}.png` })
+  await card.click()
+  const sheet = page.getByRole('dialog')
+  await expect(sheet.locator('.task-archived')).toHaveText('Archived')
+  await expect(sheet.locator('.task-sheet-actions').getByRole('button')).toHaveText(['Restore'])
+  await expect(sheet.getByRole('textbox')).toHaveCount(0)
+  await page.screenshot({ path: `.shots/board-1x-archived-sheet-${testInfo.project.name}.png` })
+  // Restored: off the archived list, back on the Board, and its sheet offers Archive again.
+  fs.writeFileSync(path.join(root, 'after-restore.json'), JSON.stringify([...actionBoard, { id: 'demo/2', state: 'done', title: 'Put away last week', msg: 'Merged', stage: 'done' }]))
+  await sheet.getByRole('button', { name: 'Restore' }).click()
+  await expect.poll(callLog).toContain('restore -- demo/2')
+  await expect(sheet.locator('.task-archived')).toHaveCount(0)
+  await expect(sheet.getByRole('button', { name: 'Archive' })).toBeVisible()
+  await expect(archived.locator('.task-card')).toHaveCount(0)
 })
 
 test('a push about a task opens it on the Board', async ({ page }) => {

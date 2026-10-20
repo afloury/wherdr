@@ -91,7 +91,10 @@ describe('groups and actions', () => {
     expect(taskActions({ ...live, kind: 'permission', stage: 'plan' })).toMatchObject({ tell: true, approve: true })
     // No agent has been on it yet: 1.x refuses a message, and there is none to stop.
     expect(taskActions({ ...live, app: '' })).toEqual({ ...NO_ACTIONS, archive: true })
-    expect(taskActions({ ...live, archived: true })).toEqual(NO_ACTIONS)
+    // Archived: read-only, as 1.x has it; Restore is all it offers.
+    expect(taskActions({ ...live, archived: true })).toEqual({ ...NO_ACTIONS, restore: true })
+    expect(taskActions({ ...live, archived: true, stage: 'failed', state: 'error' }, { failureStage: 'agent', failureAuth: false })).toEqual({ ...NO_ACTIONS, restore: true })
+    expect(taskActions(live).restore).toBe(false)
   })
 
   it('start on the backlog, stop on an agent at work, retry what went wrong, archive all but work under way', () => {
@@ -218,6 +221,12 @@ describe('a task read from its file (wherdr in a container)', () => {
     expect(detailsFromTaskFile({ id: 'acme/4', title: 'T', stage: 'working', description: 'D', on: 'codex', branch: 'b', worktree: '/w', failure: { msg: 'm' } }))
       .toMatchObject({ id: 'acme/4', description: 'D', agent: 'codex', branch: 'b', worktree: '/w', failure: 'm', plan: '' })
     expect(detailsFromTaskFile({ id: 'nope' })).toBeNull()
+  })
+
+  it('whether a task is archived, from the file (1.2.1 details leave it out)', () => {
+    expect(parseTaskDetails(fixture('details-approval.json')).archived).toBe(false)
+    expect(detailsFromTaskFile({ id: 'acme/4', title: 'T', stage: 'done', archivedAt: 1760000000 })!.archived).toBe(true)
+    expect(detailsFromTaskFile({ id: 'acme/4', title: 'T', stage: 'done', archivedAt: null })!.archived).toBe(false)
   })
 
   it('the closing note and a research report, as details or the file give them', () => {
