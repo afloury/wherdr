@@ -229,12 +229,24 @@ async function sendOne(d: GuardDeps, text: string, o: Required<GuardOptions>, fo
   const now = d.now || Date.now
   const start = now()
   const lines = (box: string) => box.split('\n').length + text.split('\n').length
-  // Already submitted by someone else's Enter (alone, or glued to their text)?
-  const recorded = async (): Promise<string | null> => {
+  // Already submitted (a late Enter, another writer's Enter)? Judged on the
+  // user messages recorded since the send began, never by a substring: a
+  // short "ok" is not taken because "ok so look at this" was. A message
+  // counts when its whole text is ours; with `glued` (the field as read with
+  // a foreign text, see separate), also when it is that glued field: ours
+  // with every foreign part, nothing else.
+  const recorded = async (glued?: { box: string, parts: string[] }): Promise<string | null> => {
     if (!d.sentSince) return null
     await d.sleep(RECORD_MS)
     const o = compact(text)
-    return (await d.sentSince(start).catch(() => [])).find(m => compact(m).includes(o)) ?? null
+    const isOurs = (m: string) => {
+      const c = compact(m)
+      if (c === o) return true
+      if (!glued) return false
+      return c === compact(glued.box) || (c.length === o.length + glued.parts.reduce((n, p) => n + compact(p).length, 0)
+        && c.includes(o) && glued.parts.every(p => c.includes(compact(p))))
+    }
+    return (await d.sentSince(start).catch(() => [])).find(isOurs) ?? null
   }
   // Free field as last read (empty, or bash mode left empty).
   let field = ''
@@ -244,7 +256,7 @@ async function sendOne(d: GuardDeps, text: string, o: Required<GuardOptions>, fo
     const before = foreign.length
     foreign.push(...parts)
     field = await clearField(d, o, lines(box), foreign)
-    const m = await recorded()
+    const m = await recorded({ box, parts })
     if (m === null) return false
     foreign.splice(before)
     log(`another writer submitted the field before it could be separated: ${JSON.stringify(m)}`)
@@ -396,10 +408,13 @@ export async function confirmSubmitted(d: Omit<GuardDeps, 'type'>, text: string,
   // The first line of the field is the start of our text (a long one wraps;
   // a long paste shows as "[Pasted Content …]").
   const ours = (box: string | null) => Boolean(box) && (want.startsWith(compact(box!)) || (/^\[Pasted Content/.test(box!.trim()) && text.length > 200))
+  // In the transcript since Herdr typed it (its Enter came before `start`): a
+  // user message whose whole text is ours, never a substring ("ok" is not
+  // "ok so look at this").
   const recorded = async () => {
     if (!d.sentSince) return false
     await d.sleep(RECORD_MS)
-    return (await d.sentSince(start - 2000).catch(() => [])).some(m => compact(m).includes(want.slice(0, 200)))
+    return (await d.sentSince(start - 2000).catch(() => [])).some(m => compact(m) === want)
   }
   let again = false
   let looked = false

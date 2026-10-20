@@ -167,6 +167,56 @@ describe('Codex: Enter checked after Herdr’s agent.prompt', () => {
   })
 })
 
+describe('the send path judges "taken" by whole messages too, never a substring', () => {
+  it('Claude: "ok" never shows in the field; "look at the token handling" was recorded: not taken, reported', async () => {
+    const { f, deps } = laggy()
+    deps.type = async (t) => { f.typed.push(t) }
+    deps.sentSince = async () => ['look at the token handling', 'ok so look at this']
+    await expect(guardedSend(deps, 'ok', opts)).rejects.toMatchObject({ code: 'not_shown', typed: true })
+  })
+
+  it('Claude: Enter never taken, a longer message holding "ok" recorded: not taken, our text cleared', async () => {
+    const { f, deps, view } = laggy({ loseEnters: 9 })
+    deps.sentSince = async () => ['ok so look at this']
+    await expect(guardedSend(deps, 'ok', opts)).rejects.toMatchObject({ code: 'not_submitted' })
+    expect(view()).toBe('')
+    expect(f.submitted).toEqual([])
+  })
+
+  it('Claude: the message itself recorded while the screen lags: taken', async () => {
+    const { deps } = laggy({ loseEnters: 9 })
+    deps.sentSince = async () => ['  ok ']
+    await guardedSend(deps, 'ok', opts)
+  })
+
+  it('Codex: Enter dropped, "ok so look at this" in the transcript: "ok" is not taken, it leaves the field', async () => {
+    const { f, deps, view } = laggy({ loseEnters: 9 })
+    f.set('ok')
+    deps.sentSince = async () => ['ok so look at this']
+    await expect(confirmSubmitted(deps, 'ok', opts)).rejects.toMatchObject({ code: 'not_submitted', typed: true })
+    expect(f.keys).toContain('ctrl+u')
+    expect(view()).toBe('')
+  })
+
+  it('glued by another writer: only the glued field as read counts, not any message holding ours', async () => {
+    // Another writer's text joins ours, and their Enter beats our clear.
+    const notice = '[hp inbox] t-0171 new report'
+    const glued = laggy()
+    const keys = glued.deps.keys
+    glued.deps.type = async (t) => { glued.f.typed.push(t); glued.f.set(glued.f.box + t + notice) }
+    glued.deps.keys = async (k) => { if (k[0] === 'ctrl+u' && glued.f.submitted.length === 0) glued.f.submitted.push(glued.f.box); await keys(k) }
+    await guardedSend(glued.deps, OURS, opts)
+    expect(glued.f.typed).toEqual([OURS])
+    // The same, but what was recorded is ours inside some other text: not taken, typed again.
+    const other = laggy()
+    let first = true
+    other.deps.type = async (t) => { other.f.typed.push(t); other.f.set(other.f.box + t + (first ? notice : '')); first = false }
+    other.deps.sentSince = async () => [`please ${OURS} later`]
+    await guardedSend(other.deps, OURS, opts)
+    expect(other.f.typed).toEqual([OURS, OURS, notice])
+  })
+})
+
 describe('message held for the end of the turn', () => {
   const T0 = Date.parse('2026-10-20T10:00:00Z')
   const held = (more: Partial<QueueEntry> = {}): QueueEntry => ({ id: 'w-a', text: OURS, at: T0, held: true, turn: true, typedAt: T0, ...more })
