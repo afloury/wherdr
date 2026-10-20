@@ -360,6 +360,8 @@ onMounted(() => {
             </label>
           </div>
 
+          <MachineBarSettings />
+
           <div class="settings-group">
             <h3>{{ t('Quotas') }}</h3>
             <URadioGroup v-model="quotaMode" :items="quotaItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />

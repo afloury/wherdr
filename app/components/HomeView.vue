@@ -24,7 +24,8 @@ import { headerFold } from '~/utils/headerFold'
 import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
 import { listMode } from '~/utils/layoutMode'
 import pkg from '../../package.json'
-import { dropMachineKey, shiftMachineKey, sortMachines } from '#shared/machineOrder'
+import { dropMachineKey, shiftMachineKey } from '#shared/machineOrder'
+import { BAR_ALL } from '~/utils/machineBar'
 import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
 const emit = defineEmits<{ search: [] }>()
 useQuotaLoader()
@@ -40,7 +41,10 @@ const boardLinks = useBoardLinks()
 // attempts) count once, as its row on the list.
 const counted = computed(() => countedPanes(agents.value, boardLinks.value))
 // Global counters (every machine), unreachable machines left out.
-const count = (s: string) => counted.value.filter(p => p.status === s && !paneStale(p)).length
+// The machine bar's choice: a machine's base key, or null for every machine.
+const baseOfPane = (p: Pane) => { const m = machineInfo(p.machine); return m ? m.baseKey ?? m.key : p.machine || '' }
+const shownCounted = computed(() => (machineBarFilter.value === null ? counted.value : counted.value.filter(p => baseOfPane(p) === machineBarFilter.value)))
+const count = (s: string) => shownCounted.value.filter(p => p.status === s && !paneStale(p)).length
 
 const conn = computed(() => {
   if (offlineView.value) return { ok: false, text: t('offline'), idle: false }
@@ -104,30 +108,12 @@ const localSetup = computed(() => (showQuotas.value ? claudeSetupOf(homeQuotas.v
 
 // ------------------------------------------------------------ machines
 const STATE_LABEL: Record<MachineInfo['status'], string> = { online: 'online', connecting: 'reconnecting…', offline: 'offline' }
-const machineOrder = ref<string[]>([])
-const orderedMachines = computed(() => sortMachines(machines.value, machineOrder.value))
-const visibleKeys = computed(() => [...new Set(orderedMachines.value.map(m => m.baseKey ?? m.key))])
+const visibleKeys = machineBaseKeys
 const draggingMachine = ref<string | null>(null)
 const dropMachine = ref<string | null>(null)
 const dropAfter = ref(false)
-let orderLoad = 0
-async function loadMachineOrder() {
-  const request = ++orderLoad
-  try {
-    const { order } = await api<{ order: string[] }>('/api/machine/order')
-    if (request === orderLoad) machineOrder.value = order
-  }
-  catch { /* Herdr's order stays available offline. */ }
-}
 onMounted(loadMachineOrder)
 watch(() => machines.value.map(m => m.baseKey ?? m.key).join('|'), loadMachineOrder)
-async function saveMachineOrder(order: string[]) {
-  ++orderLoad
-  const previous = machineOrder.value
-  machineOrder.value = order
-  try { machineOrder.value = (await api<{ order: string[] }>('/api/machine/order', { order })).order }
-  catch (err) { machineOrder.value = previous; toast((err as Error).message, true) }
-}
 function shiftMachine(key: string, direction: -1 | 1) {
   const next = shiftMachineKey(visibleKeys.value, key, direction)
   if (!next) return
@@ -158,7 +144,8 @@ function onMachineDragStart(key: string, event: DragEvent) {
 function onMachineDragEnd() { draggingMachine.value = null; dropMachine.value = null }
 const sections = computed(() => {
   if (!multiMachine.value) return null
-  return orderedMachines.value.map((m) => {
+  const only = machineBarFilter.value
+  return orderedMachines.value.filter(m => only === null || baseKeyOf(m) === only).map((m) => {
     const mine = (p: Pane) => (p.machine || '') === m.key
     const a = agents.value.filter(mine)
     const c = counted.value.filter(mine)
@@ -176,6 +163,35 @@ const sections = computed(() => {
     }
   })
 })
+// Machine bar: "All", then each machine (a named session counts as its machine),
+// with its state and the number of agents the list counts.
+const barEntries = computed(() => machineBarShown.value.map((id) => {
+  if (id === BAR_ALL) return { id, label: t('All'), status: null, title: undefined, n: counted.value.length }
+  const mine = machines.value.filter(m => baseKeyOf(m) === id)
+  const keys = new Set(mine.map(m => m.key))
+  const status: MachineInfo['status'] = mine.some(m => m.status === 'online') ? 'online' : mine.some(m => m.status === 'connecting') ? 'connecting' : 'offline'
+  const label = machineName(mine[0]?.key ?? id)
+  return { id, label, status, title: `${label} · ${t(STATE_LABEL[status])}`, n: counted.value.filter(p => keys.has(p.machine || '')).length }
+}))
+const homeScroll = ref<HTMLElement | null>(null)
+function pickBar(id: string, event: MouseEvent) {
+  haptic()
+  pickMachineBar(id)
+  // A folded machine opens: shown alone, it would only be a heading.
+  if (id !== BAR_ALL) {
+    const keys = machines.value.filter(m => baseKeyOf(m) === id).map(m => m.key)
+    if (keys.some(k => collapsedMachines.value.includes(k))) collapsedMachines.value = collapsedMachines.value.filter(k => !keys.includes(k))
+  }
+  homeScroll.value?.scrollTo({ top: 0 })
+  ;(event.currentTarget as HTMLElement | null)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+}
+// A mouse wheel scrolls the bar sideways when it overflows (narrow sidebar).
+function onBarWheel(e: WheelEvent) {
+  const bar = e.currentTarget as HTMLElement
+  if (!e.deltaY || Math.abs(e.deltaX) > Math.abs(e.deltaY) || bar.scrollWidth <= bar.clientWidth) return
+  e.preventDefault()
+  bar.scrollLeft += e.deltaY
+}
 function toggleMachine(key: string) {
   haptic()
   const c = collapsedMachines.value
@@ -291,6 +307,8 @@ function machineMenu(m: MachineInfo) {
     if (at > 0) items.push({ label: t('Move up'), icon: 'i-lucide-arrow-up', run: () => shiftMachine(key, -1) })
     if (at >= 0 && at < visibleKeys.value.length - 1) items.push({ label: t('Move down'), icon: 'i-lucide-arrow-down', run: () => shiftMachine(key, 1) })
     if (machineOrder.value.length) items.push({ label: t('Reset order'), icon: 'i-lucide-rotate-ccw', run: () => saveMachineOrder([]) })
+    // The Board, already filtered on this machine (its board is the base machine's).
+    items.push({ label: t('Open the board'), icon: 'i-lucide-square-kanban', run: () => navigateTo({ path: '/board', query: { machine: key } }) })
   }
   if (m.status === 'online' && awakeByMachine.value[m.key]?.supported) {
     items.push({ label: t('Keep awake'), icon: 'i-lucide-sun', run: () => openAwake(m) })
@@ -521,7 +539,17 @@ function resetListWidth() {
       </div>
     </header>
 
-    <div class="scroll">
+    <nav v-if="barEntries.length" class="machine-bar" :aria-label="tl('Machines shown', 'Machines affichées')" @wheel="onBarWheel">
+      <button
+        v-for="b in barEntries" :key="b.id" type="button" class="machine-bar-item" :class="[b.status, { on: b.id === machineBarPick }]"
+        :aria-pressed="b.id === machineBarPick" :title="b.title" @click="pickBar(b.id, $event)"
+      >
+        <i v-if="b.status" class="machine-bar-state" aria-hidden="true" />
+        <span class="machine-bar-label">{{ b.label }}</span>
+        <b class="machine-bar-count">{{ b.n }}</b>
+      </button>
+    </nav>
+    <div ref="homeScroll" class="scroll">
       <OfflineNote v-if="(offlineView && cachedAt) || netDown" class="home-offline" :label="offlineView && cachedAt ? t('Last known state') : undefined" :at="cachedAt" date-style="medium" />
       <div v-if="eventsOpen && !st.ok" class="notice">
         {{ t('The Herdr server is not responding') }}{{ st.error ? tl(`: ${t(st.error)}`, ` : ${t(st.error)}`) : '' }}.<br>

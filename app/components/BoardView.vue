@@ -202,6 +202,14 @@ const pickedTask = computed(() => {
 // read keeps the request until it answers.
 const opening = ref<{ machine: string | null, id: string } | null>(null)
 const waitNoted = ref(false)
+// `#/board?machine=<key>` alone (a machine's menu on the home list): the Board
+// filtered on that machine, as if picked here. The local machine is `machine=`.
+watch(() => route.query, (q) => {
+  if (('task' in q && q.task) || !('machine' in q)) return
+  const m = q.machine
+  if (typeof m === 'string' || m === null) pickScope(boardScopeValue(m ?? ''))
+  router.replace({ query: {} })
+}, { immediate: true })
 watch(() => route.query.task, (id) => {
   if (typeof id !== 'string' || !id) return
   opening.value = { machine: typeof route.query.machine === 'string' ? route.query.machine : null, id }
