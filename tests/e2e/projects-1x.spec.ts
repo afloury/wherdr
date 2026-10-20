@@ -125,8 +125,10 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   await expect(sheet.locator('.task-sheet-facts')).toContainText('Pass · 1 minor · codex')
   await expect(sheet.getByRole('link', { name: /#7/ })).toHaveAttribute('href', 'https://github.com/example/demo/pull/7')
   await expect(sheet.locator('.task-sheet-text')).toHaveText('The login page loops')
-  // Its agent is already in the panel.
+  // No message field: one button opens the chat (the panel), none other leads to its agent.
+  await expect(sheet.getByRole('button', { name: 'Open the chat' })).toBeEnabled()
   await expect(sheet.getByRole('button', { name: 'Open its agent' })).toHaveCount(0)
+  await expect(sheet.getByRole('textbox')).toHaveCount(0)
   await page.screenshot({ path: `.shots/board-1x-task-${testInfo.project.name}.png` })
   // Once approved, the board lists it merging (herdr-projects' stage while it lands).
   const listed = JSON.parse(fs.readFileSync(path.join(fixtures, 'list.json'), 'utf8')) as Record<string, unknown>[]
@@ -139,16 +141,20 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   const approved = page.getByRole('dialog')
   await expect(approved.locator('.task-state')).toHaveText('Working')
   await expect(approved.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0)
+  await expect(approved.getByRole('button', { name: 'Stop', exact: true })).toBeVisible()
+  await expect(approved.getByRole('textbox')).toHaveCount(0)
   await page.screenshot({ path: `.shots/board-1x-approved-${testInfo.project.name}.png` })
-  await approved.locator('.hw-sheet-close').click()
+  // Open the chat: the sheet closes on the task's conversation in the panel.
+  await approved.getByRole('button', { name: 'Open the chat' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  await expect(panel).toBeVisible()
+  await expect(panel.locator('.board-panel-name')).toContainText('DEMO-1')
+  await expect(panel.locator('.cell-view textarea')).toBeVisible()
   await closePanel(page, phone)
   await expect(panel).toHaveCount(0)
 
-  // A reply to a task's agent, and a message to the Coordinator: the user's words after "--".
-  // DEMO-2 has had no agent yet: its sheet, nothing to reply to. DEMO-3 has one,
-  // whose pane is not known here: its sheet too, with Reply.
+  // No message field in a sheet. DEMO-2 has had no agent yet: its sheet, nothing to
+  // chat with. DEMO-3 has one, whose pane is not known here: its sheet too, the chat
+  // off and saying why. Nothing is sent from a sheet.
   if (phone) await page.getByRole('button', { name: /Needs you/ }).click()
   await card('DEMO-2').click()
   await expect(page.getByRole('dialog').locator('.task-sheet-msg')).toHaveText('Which changelog format?')
@@ -156,10 +162,11 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   await page.keyboard.press('Escape')
   if (phone) await page.getByRole('button', { name: /Working/ }).click()
   await card('DEMO-3').click()
-  await page.getByRole('dialog').getByRole('textbox').fill('--keep-a-changelog please')
-  await page.getByRole('dialog').getByRole('button', { name: 'Send' }).click()
-  await expect.poll(callLog).toContain('tell -- demo/3 --keep-a-changelog please')
+  await expect(page.getByRole('dialog').locator('.task-sheet-nochat')).toBeVisible()
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Open the chat' })).toBeDisabled()
+  await expect(page.getByRole('dialog').getByRole('textbox')).toHaveCount(0)
   await page.keyboard.press('Escape')
+  expect(callLog().some(c => c.startsWith('tell'))).toBe(false)
   await expect(page.locator('.board-panel')).toHaveCount(0)
   // No chat box on the Board: the top bar's Coordinator button opens it in the panel,
   // in both views; one not started yet takes a first message, which starts it.
@@ -587,7 +594,7 @@ test('a first message to a coordinator stays with it while its machine is away, 
   await expect.poll(() => sent).toEqual([{ machine: 'ma', text: 'Draft for demo on A', to: { kind: 'project', repo: 'demo' } }])
 })
 
-test('the same task id on another machine: its sheet starts empty, and what is sent goes there', async ({ page }) => {
+test('the same task id on another machine: its sheet starts empty, with that machine\'s details', async ({ page }) => {
   const machines: Fake[] = [{ machine: 'ma', tasks: [{ id: 'demo/1', title: 'On machine A' }] }, { machine: 'mb', tasks: [{ id: 'demo/1', title: 'On machine B' }] }]
   await fakeBoard(page, () => machines)
   const asked: string[] = []
@@ -596,26 +603,18 @@ test('the same task id on another machine: its sheet starts empty, and what is s
     asked.push(q.get('machine')!)
     await route.fulfill({ json: { id: q.get('id'), title: '', stage: 'asks', msg: '', description: `Details of ${q.get('machine')}`, agent: 'claude', pr: '', branch: '', worktree: '', failure: '', failureStage: '', failureAuth: false, summary: '', report: null, review: null, reviewRounds: 0, plan: '', research: false, pane: null } })
   })
-  const told: unknown[] = []
-  await page.route(url => new URL(url).pathname === '/api/tasks/tell', async (route) => {
-    told.push(route.request().postDataJSON())
-    await route.fulfill({ json: { ok: true, msg: 'sent' } })
-  })
   await page.goto('/#/board')
-  // A's task (no pane for its agent here: its sheet), with words written for A.
+  // A's task (no pane for its agent here: its sheet).
   await page.locator('.board-machine[data-machine="ma"] .task-card').click({ timeout: 15000 })
   const sheet = page.getByRole('dialog')
   await expect(sheet.locator('.task-sheet-text')).toHaveText('Details of ma')
-  await sheet.locator('#task-reply').fill('Only for A')
   // A push opens B's task with the same id while A's sheet is open.
   await page.evaluate(() => { location.hash = '#/board?machine=mb&task=demo%2F1' })
   await expect(sheet.locator('.task-sheet-text')).toHaveText('Details of mb', { timeout: 15000 })
   await expect(sheet).toContainText('On machine B')
-  await expect(sheet.locator('#task-reply')).toHaveValue('')
+  await expect(sheet).not.toContainText('Details of ma')
   expect(asked.at(-1)).toBe('mb')
-  await sheet.locator('#task-reply').fill('For B')
-  await sheet.getByRole('button', { name: 'Send' }).click()
-  await expect.poll(() => told).toEqual([{ machine: 'mb', id: 'demo/1', text: 'For B' }])
+  await expect(sheet.getByRole('textbox')).toHaveCount(0)
 })
 
 test('a reply for the coordinator shown before never lands on the one shown now', async ({ page }, testInfo) => {

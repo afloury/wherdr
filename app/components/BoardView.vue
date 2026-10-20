@@ -12,7 +12,8 @@
 // coordinator: the Coordinator (top bar, and each machine's lane), the machine
 // coordinator (each machine's lane) and a repo's project coordinator (its lane;
 // 1.x: `Space` on a heading). A task with no agent opens its sheet
-// (TaskSheet), which the panel opens too; "+ New task" adds one (NewTaskSheet).
+// (TaskSheet), which the panel opens too; the sheet's "Open the chat" brings
+// the task's agent back to the panel. "+ New task" adds one (NewTaskSheet).
 // A task archived from its sheet leaves the Board at once, with a toast that
 // offers Restore for a few seconds; "Archived" lists the archived tasks, each
 // one's sheet read-only with Restore (as in 1.x).
@@ -336,6 +337,12 @@ const panelTask = computed(() => {
 watch(board, (b) => {
   if (panel.value && b && !b.machines.some(m => m.machine === panel.value!.machine)) panel.value = null
 })
+// "Open the chat" in a task's sheet: its agent in the panel, where replying
+// happens (the sheet has closed).
+function chatWith(machine: string, task: TaskRow) {
+  panel.value = { machine, kind: 'task', id: task.id }
+  haptic()
+}
 // The panel's task, from its "Task" button or once its agent is gone.
 function panelSheet() {
   const p = panel.value
@@ -555,8 +562,8 @@ function back() {
       @close="panel = null" @sheet="panelSheet" @no-agent="panelNoAgent"
     />
     <TaskSheet
-      v-model:open="sheetOpen" :task="pickedTask" :machine="picked?.machine ?? ''" :read-only="readOnly(picked?.machine ?? '')" :in-panel="Boolean(panel)"
-      :refresh="reload" @archived="onArchived" @restored="onRestored"
+      v-model:open="sheetOpen" :task="pickedTask" :machine="picked?.machine ?? ''" :read-only="readOnly(picked?.machine ?? '')"
+      :refresh="reload" @archived="onArchived" @restored="onRestored" @chat="chatWith"
     />
     <NewTaskSheet v-model:open="newOpen" :machines="writable.map(m => m.machine)" :repos="reposByMachine" :machine="newFor.machine" :repo="newFor.repo" @added="added" />
   </section>

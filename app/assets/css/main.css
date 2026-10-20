@@ -3737,9 +3737,6 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .task-sheet-actions > button, .task-sheet-actions .ro-why > button { border-radius: 0; }
 .task-sheet-actions .task-archive { margin-left: auto; }
-.task-sheet-reply { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
-.task-sheet-reply label { font: 500 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
-.task-sheet-reply button { align-self: flex-end; }
 /* herdr-projects missing or too old: the way forward, with its commands. */
 .projects-upgrade > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .projects-upgrade p { margin: 0; }
@@ -3799,5 +3796,5 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-chip.task-archived { display: inline-flex; align-items: center; gap: 4px; color: var(--ochre); border-color: color-mix(in srgb, var(--ochre) 45%, var(--line)); }
 .task-chip.task-archived svg { width: 11px; height: 11px; }
 .task-sheet-archived { margin: 0; }
-.task-sheet-error { margin: 0; }
+.task-sheet-error, .task-sheet-nochat { margin: 0; }
 .hw-toast .hw-toast-action { border-radius: 0; font: 600 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
