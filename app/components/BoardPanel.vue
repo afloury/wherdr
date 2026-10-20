@@ -9,6 +9,9 @@
 // A task's agent is the pane its details name. A task with no agent (to do,
 // or its agent gone) is not shown here: `noAgent` asks the Board for its
 // sheet instead; `sheet` (its "Task" button) opens the sheet over the panel.
+// Opened from the sheet's "Open the chat" (`chat`), a task herdr-projects
+// takes a reply for but whose agent has no pane gets a message field instead,
+// sent with `tell`, until its agent shows up again.
 // A coordinator's pane is the one herdr-projects keeps for it (`coordinator
 // status`, asked by the server), never one guessed from a name. One not
 // started yet gets a field whose first message starts it (`coordinator tell`);
@@ -22,10 +25,10 @@
 // Above a task's conversation: its title, its description (folded after a few
 // lines), the Watcher's progress, and the agent's closing note and research
 // report once there is one (`details`, read again as the task moves on).
-import { type CoordinatorStatus, type CoordinatorTarget, type TaskDetails, type TaskRow, TELL_MAX, coordinatorPhase, coordinatorSubject, taskKey } from '#shared/projectsTasks'
+import { type CoordinatorStatus, type CoordinatorTarget, type TaskDetails, type TaskRow, TELL_MAX, coordinatorPhase, coordinatorSubject, taskActions, taskKey } from '#shared/projectsTasks'
 
 export type PanelTarget =
-  | { machine: string, kind: 'task', id: string }
+  | { machine: string, kind: 'task', id: string, chat?: boolean }
   | { machine: string, kind: 'coordinator', to: CoordinatorTarget }
 
 // `reachable`: its machine's board answers now (a message waits while it does not).
@@ -37,6 +40,9 @@ const taskPane = ref<string | null>(null)
 const details = ref<TaskDetails | null>(null)
 const loading = ref(false)
 const failed = ref('')
+// No pane, but herdr-projects passes a reply on (`tell`): the field shown instead.
+const tellOnly = ref(false)
+const canTell = (d: TaskDetails) => Boolean(props.task) && !props.readOnly && taskActions(props.task!, d).tell
 let seq = 0
 // `again`: the same task moved on (a closing note, a report): the agent stays shown.
 async function loadTask(again = false) {
@@ -53,8 +59,16 @@ async function loadTask(again = false) {
     const d = await api<TaskDetails & { pane: string | null }>(`/api/tasks/details?machine=${encodeURIComponent(t.machine)}&id=${encodeURIComponent(t.id)}`)
     if (n !== seq) return
     details.value = d
-    // No agent to talk to: its sheet, with what can be done (Start…).
-    if (!d.pane) return emit('noAgent')
+    if (!d.pane) {
+      // Asked for its chat, and a reply can still reach it: the field here.
+      if (t.chat && canTell(d)) {
+        tellOnly.value = true
+        return
+      }
+      // No agent to talk to: its sheet, with what can be done (Start…).
+      return emit('noAgent')
+    }
+    tellOnly.value = false
     taskPane.value = d.pane
   } catch (e) {
     if (n === seq && !again) failed.value = (e as Error).message
@@ -72,6 +86,26 @@ const progress = computed(() => {
   const eta = r.eta === null ? '' : r.eta < 60 ? tl(`about ${r.eta} min left`, `environ ${r.eta} min restantes`) : tl(`about ${Math.round(r.eta / 60)} h left`, `environ ${Math.round(r.eta / 60)} h restantes`)
   return { pct: Math.max(0, Math.min(100, r.progress)), eta }
 })
+
+// A reply to a task with no pane: herdr-projects passes it on (`tell`). The
+// panel is one per task, so a late answer never lands on another one.
+const reply = ref('')
+const telling = ref(false)
+async function tell() {
+  const t = props.target
+  const text = reply.value.trim()
+  if (t.kind !== 'task' || !text || telling.value || !props.reachable) return
+  telling.value = true
+  try {
+    await api('/api/tasks/tell', { machine: t.machine, id: t.id, text })
+    haptic()
+    toast(tl('Sent to the task’s agent', 'Envoyé à l’agent de la tâche'))
+    reply.value = ''
+    // Its agent may be back on a pane: its conversation then shows here.
+    loadTask(true)
+  } catch (e) { toast((e as Error).message, true) }
+  finally { telling.value = false }
+}
 
 // ------------------------------------------------------------ a coordinator
 // `gen` changes with the target: what comes back for an earlier one is dropped.
@@ -308,6 +342,18 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       <AgentView v-if="paneId" :key="paneId" :pane-id="paneId" cell active />
       <p v-else-if="target.kind === 'task' && loading" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
       <p v-else-if="failed" class="board-note error board-panel-wait">{{ failed }}</p>
+      <div v-else-if="target.kind === 'task' && tellOnly" class="board-panel-start">
+        <form class="board-panel-first board-panel-tell" @submit.prevent="tell">
+          <label for="board-panel-tell">{{ task?.stage === 'plan'
+            ? tl('Its agent is not running now: your words send the plan back, through herdr-projects.', 'Son agent ne tourne pas en ce moment : tes mots renvoient le plan, par herdr-projects.')
+            : tl('Its agent is not running now: herdr-projects passes your reply on.', 'Son agent ne tourne pas en ce moment : herdr-projects lui transmet ta réponse.') }}</label>
+          <p v-if="!reachable" class="board-panel-away" role="status">
+            {{ tl(`${machineLabel} cannot be reached now.`, `${machineLabel} est injoignable pour l’instant.`) }}
+          </p>
+          <UTextarea id="board-panel-tell" v-model="reply" :rows="3" autoresize :maxlength="TELL_MAX" :placeholder="tl('Message', 'Message')" :disabled="offlineView" />
+          <UButton type="submit" color="primary" icon="i-lucide-send" :loading="telling" :disabled="!reply.trim() || offlineView || !reachable">{{ t('Send') }}</UButton>
+        </form>
+      </div>
       <p v-else-if="target.kind === 'coordinator' && !coordLoaded && !readOnly" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
       <div v-else-if="target.kind === 'coordinator'" class="board-panel-start">
         <p v-if="readOnly" class="board-note">{{ tl('This coordinator has not started. wherdr runs in a container here: start it from Herdr on the host, or move wherdr to the native service to start it from here.', 'Ce coordinateur n’a pas démarré. wherdr tourne ici dans un conteneur : lance-le depuis Herdr sur l’hôte, ou passe wherdr en service natif pour le lancer d’ici.') }}</p>

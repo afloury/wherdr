@@ -3753,9 +3753,6 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .task-sheet-actions > button, .task-sheet-actions .ro-why > button { border-radius: 0; }
 .task-sheet-actions .task-archive { margin-left: auto; }
-.task-sheet-reply { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
-.task-sheet-reply label { font: 500 10.5px/1.4 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
-.task-sheet-reply button { align-self: flex-end; }
 /* herdr-projects missing or too old: the way forward, with its commands. */
 .projects-upgrade > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .projects-upgrade p { margin: 0; }
