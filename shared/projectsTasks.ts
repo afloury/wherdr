@@ -422,8 +422,11 @@ export function failureIsStale(stage: string, failureAt: number | null | undefin
 }
 
 // Rows of one group, as the board orders them: by repo, then newest first.
+// Done is history, newest first whatever its repo: it keeps the order of the
+// list, which herdr-projects gives newest first (store/tasks.rs: by `created`).
 export function sortTasks(rows: TaskRow[]): TaskRow[] {
-  return [...rows].sort((a, b) => TASK_GROUPS.indexOf(a.group) - TASK_GROUPS.indexOf(b.group) || a.repo.localeCompare(b.repo) || b.n - a.n)
+  return [...rows].sort((a, b) => TASK_GROUPS.indexOf(a.group) - TASK_GROUPS.indexOf(b.group)
+    || (a.group === 'done' ? 0 : a.repo.localeCompare(b.repo) || b.n - a.n))
 }
 
 // Text sent with `tell`: one message, bounded. Empty: nothing to send.

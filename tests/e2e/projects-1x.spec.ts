@@ -100,10 +100,13 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', { tag
     await page.getByRole('button', { name: /Needs you/ }).click()
     await expect(card('DEMO-2')).toContainText('Which changelog format?')
   } else {
-    for (const [col, key] of [['needs', 'DEMO-2'], ['ready', 'DEMO-1'], ['working', 'DEMO-3'], ['done', 'DEMO-4']] as const) {
+    for (const [col, key] of [['needs', 'DEMO-2'], ['ready', 'DEMO-1'], ['working', 'DEMO-3']] as const) {
       await expect(page.locator(`.board-col.${col} .task-card`, { hasText: key })).toBeVisible()
     }
   }
+  // Done is hidden by default: its toggle counts it.
+  await expect(page.locator('.board-col.done')).toHaveCount(0)
+  await expect(page.locator('.board-done-toggle')).toHaveAccessibleName('Show done tasks (1)')
   expect(callLog()).toContain('list --json')
 
   // A task with an agent: its agent in the side panel (wherdr's agent view), under
@@ -331,14 +334,19 @@ test('grouped by machine then repo: each heading opens its coordinator in the si
   const demo = page.locator('.board-repo[data-repo="demo"]')
   const web = page.locator('.board-repo[data-repo="web"]')
   await expect(demo.locator('.board-head')).toContainText('1 needs you · 1 working · 1 to do', { timeout: 15000 })
+  // Done is hidden: web's heading still counts it, quietly.
+  await expect(web.locator('.board-head-done')).toHaveText('1 done')
+  await expect(web.locator('.board-repo-col[data-group="done"]')).toHaveCount(0)
   await tab(/^To do/)
   await expect(demo).toContainText('In the backlog')
+  await page.getByRole('button', { name: 'Show done tasks (1)' }).click()
   await expect(web).toContainText('Old cleanup')
   // Each task by its repo's key (show --repo), not its repo's name: web's is SITE.
   await expect(web.locator('.task-card')).toContainText('SITE-2')
+  await tab(/^To do/)
   await expect(demo.locator('.task-card', { hasText: 'In the backlog' })).toContainText('DEMO-5')
   await expect(page.locator('.board-head.machine')).toBeVisible()
-  // Each repo's lane: one cell under each of the Board's five columns.
+  // Each repo's lane: one cell under each of the Board's columns.
   const col = (repo: typeof demo, g: string) => repo.locator(`.board-repo-col[data-group="${g}"]`)
   await expect(col(demo, 'needs')).toContainText('Broke on the tests')
   await expect(col(demo, 'working')).toContainText('Add dark mode toggle')
@@ -353,7 +361,7 @@ test('grouped by machine then repo: each heading opens its coordinator in the si
     await expect(col(demo, 'todo')).toBeHidden()
     await tab(/^Needs you/)
   } else {
-    // Computer: five columns of equal width, aligned from one lane to the next and with the Board's heads.
+    // Computer: the columns of equal width, aligned from one lane to the next and with the Board's heads.
     const box = async (l: import('@playwright/test').Locator) => (await l.boundingBox())!
     for (const g of ['needs', 'ready', 'working', 'todo', 'done']) {
       const head = await box(page.locator(`.board-grid-head .board-col-head.${g}`))
@@ -410,6 +418,59 @@ test('grouped by machine then repo: each heading opens its coordinator in the si
   await page.reload()
   await expect(page.locator('.board-repo[data-repo="web"]')).not.toContainText('Old cleanup', { timeout: 15000 })
   await expect(page.locator('.board-repo[data-repo="demo"]')).toContainText('In the backlog')
+})
+
+// Seven done tasks, newest first as herdr-projects lists them, across two repos.
+const doneBoard = [
+  { id: 'demo/5', state: 'idle', title: 'In the backlog', stage: 'todo' },
+  ...[['web/9', 'Newest done'], ['demo/8', 'Second'], ['web/7', 'Third'], ['demo/6', 'Fourth'], ['web/5', 'Fifth'], ['demo/4', 'Sixth'], ['web/3', 'Oldest done']]
+    .map(([id, title]) => ({ id, state: 'done', title, msg: 'Merged', stage: 'done' })),
+]
+
+test('Done is hidden by default; its toggle shows the latest five, newest first, and is kept on the device', async ({ page }, testInfo) => {
+  fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(doneBoard))
+  await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
+  await page.goto('/#/board')
+  const phone = testInfo.project.name.includes('phone')
+  await page.getByRole('button', { name: 'Global' }).click()
+  const toggle = page.locator('.board-done-toggle')
+  await expect(toggle).toHaveAccessibleName('Show done tasks (7)', { timeout: 15000 })
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+  // Four columns (or tabs), none of them Done.
+  if (phone) await expect(page.locator('.board-seg .board-seg-btn:not(.board-done-toggle)')).toHaveCount(4)
+  else await expect(page.locator('.board-grid-head .board-col-head')).toHaveCount(4)
+  await expect(page.locator('.board-col.done')).toHaveCount(0)
+  await expect(page.locator('.task-card', { hasText: 'Newest done' })).toHaveCount(0)
+  await page.screenshot({ path: `.shots/board-done-hidden-${testInfo.project.name}.png` })
+
+  await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true')
+  await expect(toggle).toHaveAccessibleName('Hide done tasks')
+  // Shown (the phone goes to its tab): the latest five, newest first, then how many more.
+  const done = page.locator('.board-col.done')
+  await expect(done).toBeVisible()
+  await expect(done.locator('.task-card')).toHaveCount(5)
+  await expect(done.locator('.task-card').first()).toContainText('Newest done')
+  await expect(done.locator('.task-card').last()).toContainText('Fifth')
+  await expect(done.locator('.board-more')).toHaveText('Show all (2 more)')
+  await page.screenshot({ path: `.shots/board-done-shown-${testInfo.project.name}.png` })
+  await done.locator('.board-more').click()
+  await expect(done.locator('.task-card')).toHaveCount(7)
+  await expect(done.locator('.task-card').last()).toContainText('Oldest done')
+
+  // Kept on this device.
+  await page.reload()
+  await expect(page.locator('.board-done-toggle')).toHaveAttribute('aria-pressed', 'true', { timeout: 15000 })
+  if (phone) await page.locator('.board-seg').getByRole('button', { name: /^Done/ }).click()
+  await expect(page.locator('.board-col.done .task-card')).toHaveCount(5)
+  // Hidden again, in both views.
+  await page.locator('.board-done-toggle').click()
+  await expect(page.locator('.board-col.done')).toHaveCount(0)
+  await page.getByRole('button', { name: 'By repo' }).click()
+  await expect(page.locator('.board-repo-col[data-group="done"]')).toHaveCount(0)
+  await expect(page.locator('.board-repo[data-repo="web"] .board-head-done')).toHaveText('4 done')
+  await page.reload()
+  await expect(page.locator('.board-done-toggle')).toHaveAttribute('aria-pressed', 'false', { timeout: 15000 })
 })
 
 test('+ New task: in a repo, with Start now; and the task sheet starts, stops, retries and archives', { tag: '@webkit-phone' }, async ({ page }, testInfo) => {
