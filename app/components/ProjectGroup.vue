@@ -5,6 +5,9 @@
 // icon, "Coordinator" since the header names the repo, its state and last
 // message, a rule before the tasks), then its tasks' spaces (id, title,
 // progress, time on it, the board's current line), most urgent first.
+// One row per task: its helpers (reviewer, planner, attempts, each in a tab
+// of the task's space) are part of it, the row says the stage ("Under review
+// · codex") and opens the helper's tab while it works.
 // The header folds the tasks (kept on the device): the coordinator stays in
 // view above them; its terminal button opens
 // the repo's space, its menu holds that space's actions (closing it closes
@@ -12,7 +15,7 @@
 // Coordinator on another machine (`remote`): the tasks stay here, a line
 // says where the repo is coordinated from and opens that coordinator.
 import { type Row, rowGroup } from '#shared/spaces'
-import { type BoardCard, type Member, type ProjectSection, memberTag } from '#shared/boardLinks'
+import { type BoardCard, type Member, type MemberStage, type ProjectSection, memberStage, memberTag } from '#shared/boardLinks'
 import type { MenuItem } from '~/composables/useUi'
 import { longPress } from '~/utils/longPress'
 
@@ -73,11 +76,25 @@ const branchTitle = computed(() => {
 
 const coordinatorCard = computed<BoardCard>(() => ({ tag: '', name: t('Coordinator'), coordinator: true }))
 const coordinatorLabel = computed(() => tl(`${g.value.repo} coordinator`, `Coordinateur ${g.value.repo}`))
+function stageLabel(s: MemberStage): string {
+  if (s.what === 'attempts') return tl(`${s.n} attempts`, `${s.n} essais`)
+  const what = {
+    'review': tl('Under review', 'En revue'),
+    'plan-review': tl('Plan review', 'Revue du plan'),
+    'pick': tl('Comparing attempts', 'Comparaison des essais'),
+    'planning': tl('Planning', 'Plan en cours'),
+  }[s.what]
+  return s.by ? `${what} · ${s.by}` : what
+}
 function memberCard(m: Member): BoardCard | null {
   if (!m.task) return null
   const task = m.task
+  const stage = memberStage(m)
   return {
     tag: memberTag(m, t('review')),
+    stage: stage ? stageLabel(stage) : undefined,
+    // While a helper works, its tab (the row's pane's) opens, not the one opened last.
+    tab: m.focus && m.row.kind === 'space' ? m.row.leadTab.tab.id : undefined,
     name: task.title || undefined,
     progress: task.progress,
     since: task.since,

@@ -1258,7 +1258,10 @@ What the Board shows and does:
   commits behind its upstream), its project coordinator in a lead row of its own (the coordinator's
   icon, **Coordinator**, its state and last message; it stays in view when the group is folded,
   only the tasks fold) and its tasks' spaces (key, title, state,
-  progress, time on it, the line the board reports; the Board icon opens the task there). A repo
+  progress, time on it, the line the board reports; the Board icon opens the task there). One
+  row per task: its reviewer, planner and attempts, each in a tab of the task's space, are part
+  of it; the row says the stage (**Under review · codex**) and opens the reviewer's tab while a
+  review runs. The counters count tasks, not tabs. A repo
   coordinated from another machine shows **Coordinated from <machine>**. wherdr reads this from
   the board's files (`~/.herdr-projects/data`: tasks, attempts, reviewers, coordinators, repos)
   and from Herdr's worktree groups, every 15 seconds while the list is shown, never through

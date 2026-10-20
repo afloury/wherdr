@@ -53,6 +53,8 @@ const boardStats = computed(() => {
 })
 // A coordinator: its last message, unless the card already shows it opened below.
 const boardLine = computed(() => (props.board?.coordinator ? (more.value ? '' : props.pane.preview || '') : props.board?.msg || ''))
+// A task's second line: its stage first (`UNDER REVIEW · CODEX`), then the board's line.
+const twoLines = computed(() => Boolean(boardLine.value || props.board?.stage))
 const subtitle = computed(() => conversationSubtitle(props.pane, ws.value))
 // Selection (computer): the pane being viewed, or for a space one of its panes / tabs.
 const route = useRoute()
@@ -160,6 +162,7 @@ function recentTouchMenu() { return Date.now() - touchMenuOpenedAt < 1000 || lp.
 function open() {
   if (recentTouchMenu()) return
   if (space.value) {
+    if (props.board?.tab) return openTab(props.board.tab)
     return openSpace(space.value.workspace.id, space.value.leadTab.tab.id)
   }
   haptic()
@@ -193,7 +196,7 @@ onUnmounted(list.unmount)
 <template>
   <UContextMenu :disabled="sheetMenus" :items="contextItems" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="onContextOpen">
     <div
-      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, compact: compactList, open: compactList && more, 'home-task': board, 'home-coord': board?.coordinator, 'home-task-two': compactList && boardLine }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
+      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, compact: compactList, open: compactList && more, 'home-task': board, 'home-coord': board?.coordinator, 'home-task-two': compactList && twoLines }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
       role="button" tabindex="0" @pointerdown="down" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
       @contextmenu="onContext" @selectstart.prevent @click="open" @keydown.enter.self="open"
     >
@@ -206,7 +209,7 @@ onUnmounted(list.unmount)
         <span v-if="compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
         <span v-else-if="compact.panes" class="card-panes" :title="counts">{{ compact.panes }}</span>
         <span class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
-        <span v-if="boardLine" class="home-task-line" :title="boardLine">{{ boardLine }}</span>
+        <span v-if="twoLines" class="home-task-line" :title="[board?.stage, boardLine].filter(Boolean).join(' — ')"><span v-if="board?.stage" class="home-task-stage">{{ board.stage }}</span>{{ boardLine }}</span>
         <button v-if="board?.onBoard" type="button" class="home-task-go" :title="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" :aria-label="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" @click.stop="board.onBoard"><UIcon name="i-lucide-square-kanban" /></button>
       </template>
       <template v-else>
@@ -219,6 +222,7 @@ onUnmounted(list.unmount)
         </div>
         <div class="card-meta">
           <span v-if="board?.tag" class="card-tag home-task-tag">{{ board.tag }}</span>
+          <span v-if="board?.stage" class="home-task-stage">{{ board.stage }}</span>
           <span v-if="boardStats" class="home-task-stats">{{ boardStats }}</span>
           <span v-if="space" class="card-count">{{ counts }}</span>
           <StatusPill :pane="statePane" model />

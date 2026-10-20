@@ -523,6 +523,9 @@ body.short-bottom { --safe-bottom: 0px; }
 .home-task-tag { color: var(--mauve); border-color: color-mix(in srgb, var(--mauve) 45%, var(--line)); }
 .home-task-stats { flex: none; font: 500 10.5px/1 var(--mono); letter-spacing: .04em; color: var(--dim); white-space: nowrap; }
 .home-task-msg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Its stage beyond its state, when a helper is on it: "UNDER REVIEW · CODEX". */
+.home-task-stage { flex: none; font: 600 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); white-space: nowrap; }
+.home-task-line .home-task-stage { margin-right: 8px; }
 .home-task-go { flex: none; display: inline-flex; padding: 4px; margin: -4px -4px -4px 0; color: var(--dim); }
 .home-task-go:hover { color: var(--text); }
 .home-task-go .iconify { width: 13px; height: 13px; }

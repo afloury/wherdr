@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { reduceSnapshot } from '../server/utils/snapshot'
 import { spaceRows } from '../shared/spaces'
 import {
-  type MachineLinks, boardSections, coordinatorFromFile, elapsedLabel, linksFromTaskFile, memberTag,
-  parseRepoGit, tasksFromFiles, tasksIn,
+  type MachineLinks, boardSections, coordinatorFromFile, countedPanes, elapsedLabel, linksFromTaskFile, memberStage, memberTag,
+  parseRepoGit, shownPane, tasksFromFiles, tasksIn,
 } from '../shared/boardLinks'
 
 // A Herdr session as herdr-projects 1.2.1 leaves it: the coordinators as tabs of
@@ -106,19 +106,25 @@ describe('the home list follows Herdr\'s worktree groups', () => {
     const g = s.projects[0]!
     expect(g).toMatchObject({ id: REPO_KEY, repo: 'app', key: 'APP', info: { branch: 'main', behind: 38 }, remote: null })
     expect(g.space?.key).toBe('w2:p1')
-    // Waiting on you first (APP-1's reviewer, APP-2), then APP-1's worker at work.
-    expect(g.members.map(m => [m.row.key, m.task?.key ?? null, m.role])).toEqual([
-      ['w3:p9', 'APP-1', 'reviewer'], ['w4:p1', 'APP-2', 'worker'], ['w3:p1', 'APP-1', 'worker'],
+    // One row per task, both waiting on you (APP-1's reviewer asks), in Herdr's order.
+    expect(g.members.map(m => [m.row.key, m.row.lead.id, m.task?.key ?? null])).toEqual([
+      ['w3', 'w3:p9', 'APP-1'], ['w4:p1', 'w4:p1', 'APP-2'],
     ])
-    // The project coordinator counts too (at work).
-    expect(g.sum).toEqual({ blocked: 2, working: 2, ready: 0, total: 4 })
+    // Tasks, not tabs: the project coordinator (at work) and the two tasks.
+    expect(g.sum).toEqual({ blocked: 2, working: 1, ready: 0, total: 3 })
     expect(g.state).toBe('blocked')
   })
 
-  it('a worker and its reviewer in one space: one row each, opening its own pane', () => {
+  it('a worker and its reviewer in one space: one row, led by the reviewer', () => {
     const g = s.projects[0]!
     const app1 = g.members.filter(m => m.task?.id === 'app/1')
-    expect(app1.map(m => [m.row.kind, m.row.lead.id, memberTag(m, 'review')])).toEqual([['pane', 'w3:p9', 'APP-1 · review'], ['pane', 'w3:p1', 'APP-1']])
+    expect(app1).toHaveLength(1)
+    const m = app1[0]!
+    expect([m.row.kind, m.row.lead.id, memberTag(m, 'review')]).toEqual(['space', 'w3:p9', 'APP-1'])
+    expect(m.focus).toEqual({ id: 'w3:p9', role: 'reviewer', kind: 'codex' })
+    expect(memberStage(m)).toEqual({ what: 'review', by: 'codex' })
+    // The reviewer's tab is the one the row opens.
+    expect(m.row.kind === 'space' && m.row.leadTab.tab.id).toBe('w3:t2')
   })
 
   it('spaces that are not the board\'s stay as they were, worktrees of the repo included', () => {
@@ -165,6 +171,121 @@ describe('the home list follows Herdr\'s worktree groups', () => {
   it('closing the repo space: the tasks whose agents stop with it', () => {
     expect(tasksIn(['w2', 'w3', 'w4', 'w6'], st.panes, [links()]).map(t => t.key)).toEqual(['APP-2', 'APP-1'])
     expect(tasksIn(['w5'], st.panes, [links()])).toEqual([])
+  })
+})
+
+// herdr-projects 1.2.1 gives each helper of a task its own tab in the task's
+// space (its docs/tabs.md): Agent, Reviewer #N, Planner, Plan review, Agent A /
+// Agent B and Picker. The list keeps one row per task.
+describe('one row per task, whatever helpers its space holds', () => {
+  // [tab id, tab label, pane id, agent, status]
+  type T = [string, string, string, string | null, string]
+  function session(tabs: T[]) {
+    const ids = [...new Set(tabs.map(x => x[2].split(':')[0]!))]
+    const workspaces = [
+      { workspace_id: 'w2', label: 'app', number: 2, worktree: wt(false, '/home/u/dev/app') },
+      ...ids.map(id => ({ workspace_id: id, label: `task ${id}`, number: Number(id.slice(1)), worktree: wt(true, `/home/u/wt/${id}`) })),
+    ]
+    const all: T[] = [['w2:t1', '1', 'w2:p1', null, ''], ...tabs]
+    const panes = all.map(([tab, , id, agent, status]) => ({ pane_id: id, workspace_id: id.split(':')[0]!, tab_id: tab, agent, agent_status: agent ? status : 'unknown' }))
+    const seen = new Set<string>()
+    const tabList = all.filter(x => !seen.has(x[0]) && seen.add(x[0])).map(([tab, label]) => ({ tab_id: tab, workspace_id: tab.split(':')[0]!, label, number: Number(tab.split(':t')[1]) }))
+    return reduceSnapshot({ workspaces, tabs: tabList, panes }, '')
+  }
+  const board = (files: unknown[]): MachineLinks => ({
+    machine: '', coordinators: [],
+    tasks: tasksFromFiles(files.map(f => linksFromTaskFile(f, local)!), { app: 'APP' }),
+    repos: [{ repo: 'app', root: '/home/u/dev/app', branch: 'main', behind: 0 }],
+  })
+  const groupOf = (st: ReturnType<typeof session>, links: MachineLinks) =>
+    boardSections(spaceRows(st), st.workspaces, [links], new Set(st.panes.map(p => p.id))).projects[0]!
+  const tabOf = (m: { row: { kind: string } }) => (m.row as { leadTab?: { tab: { label: string } } }).leadTab?.tab.label
+
+  const reviewing = { id: 'app/7', title: 'Payment recap', stage: 'reviewing', reviewAt: 9000, link: { pane: 'w7:p1', workspace: 'w7', ownsWorkspace: true, reviewer: { pane: 'w7:p2', tab: 'w7:t2', kind: 'codex' } } }
+  const reviewTabs: T[] = [['w7:t1', 'Agent', 'w7:p1', 'claude', 'idle'], ['w7:t2', 'Reviewer #1', 'w7:p2', 'codex', 'working']]
+
+  it('under review: one row, the reviewer\'s state and tab, "review · codex"', () => {
+    const g = groupOf(session(reviewTabs), board([reviewing]))
+    expect(g.members).toHaveLength(1)
+    const m = g.members[0]!
+    expect([m.row.kind, m.row.lead.id, m.task?.key, tabOf(m)]).toEqual(['space', 'w7:p2', 'APP-7', 'Reviewer #1'])
+    expect(memberStage(m)).toEqual({ what: 'review', by: 'codex' })
+    // The repo group counts one task, at work.
+    expect(g.sum).toEqual({ blocked: 0, working: 1, ready: 0, total: 1 })
+  })
+
+  it('the review over: its tab closed, the task\'s own agent again', () => {
+    const done = { ...reviewing, stage: 'approval', link: { ...reviewing.link, reviewer: null } }
+    const g = groupOf(session([reviewTabs[0]!]), board([done]))
+    expect(g.members.map(m => [m.row.kind, m.row.lead.id, memberStage(m)])).toEqual([['pane', 'w7:p1', null]])
+  })
+
+  it('a worker that asks during a review: the row shows its question', () => {
+    const tabs: T[] = [['w7:t1', 'Agent', 'w7:p1', 'claude', 'blocked'], reviewTabs[1]!]
+    const m = groupOf(session(tabs), board([reviewing])).members[0]!
+    expect([m.row.lead.id, tabOf(m)]).toEqual(['w7:p1', 'Agent'])
+    // Still under review: the stage says so.
+    expect(memberStage(m)).toEqual({ what: 'review', by: 'codex' })
+  })
+
+  it('a reviewer pane without its program on file: Herdr\'s agent names it', () => {
+    const file = { ...reviewing, link: { ...reviewing.link, reviewer: { pane: 'w7:p2' } } }
+    expect(memberStage(groupOf(session(reviewTabs), board([file])).members[0]!)).toEqual({ what: 'review', by: 'codex' })
+  })
+
+  it('a plan: its planner, then its plan review, in the task\'s row', () => {
+    const planning = { id: 'app/8', title: 'Plan first', stage: 'working', agent: 'codex', plan: { asked: 1, home: { pane: 'w8:p1', agent: 'claude' } }, link: { pane: 'w8:p2', workspace: 'w8', ownsWorkspace: true } }
+    const tabs: T[] = [['w8:t1', 'Agent', 'w8:p1', 'claude', 'idle'], ['w8:t2', 'Planner', 'w8:p2', 'codex', 'working']]
+    const links = board([planning])
+    expect(links.tasks[0]!.panes).toEqual([{ id: 'w8:p1', role: 'worker', kind: 'claude' }, { id: 'w8:p2', role: 'planner', kind: 'codex' }])
+    const m = groupOf(session(tabs), links).members[0]!
+    expect([m.row.lead.id, tabOf(m), memberStage(m)]).toEqual(['w8:p2', 'Planner', { what: 'planning', by: 'codex' }])
+    // The plan written, a reviewer checks it in "Plan review".
+    const looked = { ...planning, plan: { asked: 1 }, link: { pane: 'w8:p1', workspace: 'w8', ownsWorkspace: true, reviewer: { pane: 'w8:p3', kind: 'claude' } } }
+    const g = groupOf(session([tabs[0]!, ['w8:t3', 'Plan review', 'w8:p3', 'claude', 'working']]), board([looked]))
+    expect(g.members).toHaveLength(1)
+    expect([g.members[0]!.row.lead.id, tabOf(g.members[0]!), memberStage(g.members[0]!)]).toEqual(['w8:p3', 'Plan review', { what: 'plan-review', by: 'claude' }])
+    // An approved plan: its old home is not read.
+    expect(linksFromTaskFile({ ...planning, plan: { approvedAt: 2, home: { pane: 'w8:p1' } } }, local)!.panes).toEqual([{ id: 'w8:p2', role: 'worker', kind: 'codex' }])
+  })
+
+  it('several attempts, then the Picker: one row', () => {
+    const own = { id: 'app/9', title: 'Two ways', stage: 'attempts', link: { workspace: 'w9', ownsWorkspace: true } }
+    const a = { id: 'app/9a', attemptOf: 'app/9', letter: 'A', agent: 'claude', link: { pane: 'w9:p1' } }
+    const b = { id: 'app/9b', attemptOf: 'app/9', letter: 'B', agent: 'codex', link: { pane: 'w9:p2' } }
+    const tabs: T[] = [['w9:t1', 'Agent A', 'w9:p1', 'claude', 'working'], ['w9:t2', 'Agent B', 'w9:p2', 'codex', 'idle']]
+    const g = groupOf(session(tabs), board([own, a, b]))
+    expect(g.members).toHaveLength(1)
+    expect([g.members[0]!.task?.key, memberTag(g.members[0]!, 'review'), memberStage(g.members[0]!)]).toEqual(['APP-9', 'APP-9', { what: 'attempts', n: 2 }])
+    expect(g.sum.total).toBe(1)
+    // The reviewer comparing them, in "Picker".
+    const picking = { ...own, stage: 'reviewing', comparing: { at: 1 }, link: { ...own.link, reviewer: { pane: 'w9:p3', kind: 'claude' } } }
+    const m = groupOf(session([...tabs, ['w9:t3', 'Picker', 'w9:p3', 'claude', 'working']]), board([picking, a, b])).members
+    expect(m).toHaveLength(1)
+    expect([m[0]!.row.lead.id, tabOf(m[0]!), memberStage(m[0]!)]).toEqual(['w9:p3', 'Picker', { what: 'pick', by: 'claude' }])
+  })
+
+  it('a space two tasks share: each agent keeps its own row', () => {
+    const one = { id: 'app/7', title: 'One', link: { pane: 'w7:p1' } }
+    const two = { id: 'app/8', title: 'Two', link: { pane: 'w7:p2' } }
+    const g = groupOf(session(reviewTabs), board([one, two]))
+    expect(g.members.map(m => [m.row.kind, m.row.lead.id, m.task?.key])).toEqual([['pane', 'w7:p2', 'APP-8'], ['pane', 'w7:p1', 'APP-7']])
+  })
+
+  it('the counters count tasks: a task\'s helpers once', () => {
+    const st = session([...reviewTabs, ['w5:t1', '1', 'w5:p1', 'claude', 'done']])
+    const counted = countedPanes(st.panes.filter(p => p.agent), [board([reviewing])])
+    expect(counted.map(p => p.id).sort()).toEqual(['w5:p1', 'w7:p2'])
+    // Without the board, every agent counts.
+    expect(countedPanes(st.panes.filter(p => p.agent), [])).toHaveLength(3)
+  })
+
+  it('the pane a task shows', () => {
+    const p = (id: string, status: string) => ({ id, agent: 'claude', status })
+    expect(shownPane([p('a', 'idle'), p('b', 'working')], 'b')?.id).toBe('b')
+    expect(shownPane([p('a', 'blocked'), p('b', 'working')], 'b')?.id).toBe('a')
+    expect(shownPane([p('a', 'idle'), p('b', 'working')], null)?.id).toBe('b')
+    expect(shownPane([], 'b')).toBeNull()
   })
 })
 
