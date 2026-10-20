@@ -4,7 +4,7 @@ import ProjectGroup from '~/components/ProjectGroup.vue'
 import AgentCard from '~/components/AgentCard.vue'
 import { compactList, herdrState } from '~/composables/useHerdr'
 import type { Pane } from '#shared/types'
-import type { Row } from '#shared/spaces'
+import { type Row, spaceRows } from '#shared/spaces'
 import type { LinkedTask, Member, ProjectSection } from '#shared/boardLinks'
 
 const pane = (id: string, p: Partial<Pane> = {}): Pane => ({ id, workspace: id.split(':')[0]!, tab: `${id.split(':')[0]}:t1`, tabLabel: null, agent: 'claude', name: null, label: null, status: 'idle', title: null, cwd: '/tmp/demo', agentSession: null, ...p })
@@ -73,6 +73,23 @@ describe('a repo group on the home list', () => {
     expect(w.find('.home-task-line').exists()).toBe(false)
     expect(w.find('.card-preview').text()).toBe('Run the tests?')
     w.unmount()
+  })
+
+  it('a coordinator sharing its space with a terminal keeps its icon, in both list modes', async () => {
+    const shell = pane('w1:p2', { agent: null, status: null })
+    const state = { ok: true, workspaces: [{ id: 'w1', label: 'herdr-projects', number: 1, status: null, worktree: false }], panes: [coord, shell] }
+    const shared = spaceRows(state)[0]!
+    expect(shared.kind).toBe('space')
+    for (const compact of [false, true]) {
+      compactList.value = compact
+      herdrState.value = { ...state, panes: [coord, shell, ...workers] }
+      const w = await mountSuspended(ProjectGroup, { props: { group: section({ coordinator: shared }) }, global: { stubs: { UContextMenu: { template: '<div><slot /></div>' } } } })
+      const card = w.find('.project-lead .card')
+      expect(card.classes()).toContain('space-card')
+      expect(card.find('.avatar.coord').exists()).toBe(true)
+      expect(card.find('.space-avatar').exists()).toBe(false)
+      w.unmount()
+    }
   })
 
   it('the detailed card: no folder line for a coordinator', async () => {

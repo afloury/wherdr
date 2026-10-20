@@ -210,7 +210,8 @@ onUnmounted(list.unmount)
         <button v-if="board?.onBoard" type="button" class="home-task-go" :title="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" :aria-label="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" @click.stop="board.onBoard"><UIcon name="i-lucide-square-kanban" /></button>
       </template>
       <template v-else>
-      <span v-if="space" class="space-avatar" :title="counts"><TabMap :layout="space.leadTab.layout" :panes="space.leadTab.panes" :current="pane.id" /></span>
+      <!-- A coordinator keeps its role's icon, even in a space shared with a terminal. -->
+      <span v-if="space && !board?.coordinator" class="space-avatar" :title="counts"><TabMap :layout="space.leadTab.layout" :panes="space.leadTab.panes" :current="pane.id" /></span>
       <AgentAvatar v-else :agent="pane.agent" :coordinator="board?.coordinator" />
       <div class="card-main">
         <div class="card-title">
