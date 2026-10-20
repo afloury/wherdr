@@ -40,10 +40,9 @@ const boardLinks = useBoardLinks()
 // What the counters count: a board task's helpers (reviewer, planner,
 // attempts) count once, as its row on the list.
 const counted = computed(() => countedPanes(agents.value, boardLinks.value))
-// Global counters (every machine), unreachable machines left out.
-// The machine bar's choice: a machine's base key, or null for every machine.
+// Counters follow the selected machine or group; unreachable machines stay out.
 const baseOfPane = (p: Pane) => { const m = machineInfo(p.machine); return m ? m.baseKey ?? m.key : p.machine || '' }
-const shownCounted = computed(() => (machineBarFilter.value === null ? counted.value : counted.value.filter(p => baseOfPane(p) === machineBarFilter.value)))
+const shownCounted = computed(() => (machineBarSelection.value === null ? counted.value : counted.value.filter(p => machineBarSelection.value!.includes(baseOfPane(p)))))
 const count = (s: string) => shownCounted.value.filter(p => p.status === s && !paneStale(p)).length
 
 const conn = computed(() => {
@@ -100,7 +99,8 @@ const COORD_NAMES: Record<Exclude<CoordinatorLevel, 'project'>, () => string> = 
   machine: () => tl('Machine coordinator', 'Coordinateur de la machine'),
 }
 const coordinatorCard = (level: CoordinatorLevel): BoardCard => ({ tag: '', name: level === 'project' ? '' : COORD_NAMES[level](), coordinator: true })
-const solo = computed(() => listOf(spaceRows(st.value)))
+const soloSelected = computed(() => machineBarSelection.value === null || machineBarSelection.value.includes(machineBaseKeys.value[0] ?? ''))
+const solo = computed(() => listOf(soloSelected.value ? spaceRows(st.value) : []))
 
 const topQuotas = computed(() => (showQuotas.value ? quotaRows(homeQuotas.value, hiddenAgents.value) : []))
 const hasClaude = (list: Pane[]) => list.some(p => p.agent === 'claude')
@@ -144,8 +144,10 @@ function onMachineDragStart(key: string, event: DragEvent) {
 function onMachineDragEnd() { draggingMachine.value = null; dropMachine.value = null }
 const sections = computed(() => {
   if (!multiMachine.value) return null
-  const only = machineBarFilter.value
-  return orderedMachines.value.filter(m => only === null || baseKeyOf(m) === only).map((m) => {
+  const only = machineBarSelection.value
+  const selected = orderedMachines.value.filter(m => only === null || only.includes(baseKeyOf(m)))
+  if (only) selected.sort((a, b) => only.indexOf(baseKeyOf(a)) - only.indexOf(baseKeyOf(b)))
+  return selected.map((m) => {
     const mine = (p: Pane) => (p.machine || '') === m.key
     const a = agents.value.filter(mine)
     const c = counted.value.filter(mine)
@@ -167,6 +169,8 @@ const sections = computed(() => {
 // with its state and the number of agents the list counts.
 const barEntries = computed(() => machineBarShown.value.map((id) => {
   if (id === BAR_ALL) return { id, label: t('All'), status: null, title: undefined, n: counted.value.length }
+  const group = machineGroups.value.find(g => g.id === id)
+  if (group) return { id, label: group.name, status: null, title: group.name, n: counted.value.filter(p => group.machines.includes(baseOfPane(p))).length }
   // A single machine Herdr's state does not list: the one shown in the session row.
   const listed = machines.value.filter(m => baseKeyOf(m) === id)
   const mine = listed.length ? listed : id === soloMachine.value.key ? [soloMachine.value] : []
@@ -181,7 +185,8 @@ function pickBar(id: string, event: MouseEvent) {
   pickMachineBar(id)
   // A folded machine opens: shown alone, it would only be a heading.
   if (id !== BAR_ALL) {
-    const keys = machines.value.filter(m => baseKeyOf(m) === id).map(m => m.key)
+    const selected = machineGroups.value.find(g => g.id === id)?.machines ?? [id]
+    const keys = machines.value.filter(m => selected.includes(baseKeyOf(m))).map(m => m.key)
     if (keys.some(k => collapsedMachines.value.includes(k))) collapsedMachines.value = collapsedMachines.value.filter(k => !keys.includes(k))
   }
   homeScroll.value?.scrollTo({ top: 0 })
@@ -545,6 +550,7 @@ function resetListWidth() {
         v-for="b in barEntries" :key="b.id" type="button" class="machine-bar-item" :class="[b.status, { on: b.id === machineBarPick }]"
         :aria-pressed="b.id === machineBarPick" :title="b.title" @click="pickBar(b.id, $event)"
       >
+        <UIcon v-if="machineGroups.some(g => g.id === b.id)" name="i-lucide-group" class="machine-bar-group" aria-hidden="true" />
         <i v-if="b.status" class="machine-bar-state" aria-hidden="true" />
         <span class="machine-bar-label">{{ b.label }}</span>
         <b class="machine-bar-count">{{ b.n }}</b>
@@ -556,11 +562,11 @@ function resetListWidth() {
         {{ t('The Herdr server is not responding') }}{{ st.error ? tl(`: ${t(st.error)}`, ` : ${t(st.error)}`) : '' }}.<br>
         {{ hostLabel ? tl(`Run herdr on ${hostLabel} to start it.`, `Lance herdr sur ${hostLabel} pour le démarrer.`) : tl('Run herdr on the server to start it.', 'Lance herdr sur le serveur pour le démarrer.') }}
       </div>
-      <div v-if="!multiMachine" class="solo-machine-row"><button type="button" class="solo-session-row" :aria-label="t('Herdr sessions')" @click="openSessions(soloMachine)">
+      <div v-if="!multiMachine && soloSelected" class="solo-machine-row"><button type="button" class="solo-session-row" :aria-label="t('Herdr sessions')" @click="openSessions(soloMachine)">
         <span><UIcon name="i-lucide-layers" />{{ soloMachine.label }}</span>
         <b>{{ soloMachine.session || 'default' }}<UIcon name="i-lucide-chevron-right" /></b>
       </button><UDropdownMenu :items="machineMenu(soloMachine)" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :aria-label="t('Options')" class="solo-machine-options" /></UDropdownMenu></div>
-      <p v-if="!multiMachine && awakeByMachine[soloMachine.key]?.active" class="machine-awake"><UIcon name="i-lucide-sun" />{{ awakeLabel(awakeByMachine[soloMachine.key]) }}</p>
+      <p v-if="!multiMachine && soloSelected && awakeByMachine[soloMachine.key]?.active" class="machine-awake"><UIcon name="i-lucide-sun" />{{ awakeLabel(awakeByMachine[soloMachine.key]) }}</p>
       <NuxtLink v-if="quietHint" :to="quietSettings" class="home-quiet" :aria-label="quietLabel"><UIcon name="i-lucide-bell-off" /><span>{{ quietHint }}</span></NuxtLink>
 
       <div v-if="showCounters && agents.length" class="stats">
@@ -573,8 +579,9 @@ function resetListWidth() {
 
       <OpenNetworkBanner />
       <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />
-      <ClaudeSetupBanner v-if="!sections && localSetup" :setup="localSetup" :name="machineName('') || t('this machine')" class="solo" />
+      <ClaudeSetupBanner v-if="!sections && soloSelected && localSetup" :setup="localSetup" :name="machineName('') || t('this machine')" class="solo" />
 
+      <p v-if="machineBarSelection?.length === 0" class="machine-empty">{{ tl('No machines in this group.', 'Aucune machine dans ce groupe.') }}</p>
       <!-- A single machine: the previous list. -->
       <template v-if="!sections">
         <section v-if="solo.coordinators.length" class="agent-group coordinators">
