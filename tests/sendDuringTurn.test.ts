@@ -94,6 +94,15 @@ describe('Claude Code: send during a turn on a screen that lags', () => {
     expect(f.keys).not.toContain('ctrl+u')
   })
 
+  it('a later attempt finds the start of its own text drawn late: cleared too; a short start is not', async () => {
+    const { f, deps } = laggy({ box: OURS.slice(0, 20) })
+    await guardedSend(deps, OURS, { ...opts, retry: true })
+    expect(f.submitted).toEqual([OURS])
+    const draft = laggy({ box: 'and' })
+    await expect(guardedSend(draft.deps, OURS, { ...opts, retry: true })).rejects.toMatchObject({ code: 'input_busy' })
+    expect(draft.view()).toBe('and')
+  })
+
   it('a later attempt finds its own text left in the field: cleared, typed again, submitted once', async () => {
     const { f, deps } = laggy({ box: OURS })
     await guardedSend(deps, OURS, { ...opts, retry: true })
@@ -184,28 +193,82 @@ describe('message held for the end of the turn', () => {
   })
 })
 
-describe('delivery read from the transcript (as herdr-projects’ said_to)', () => {
+describe('delivery read from the transcript: exact, never a substring', () => {
   const T0 = Date.parse('2026-10-20T10:00:00Z')
   const iso = (ms: number) => new Date(ms).toISOString()
+  const user = (text: string, ms: number | null): ChatItem => ({ role: 'user', text, ts: ms === null ? null : iso(ms) })
   const q = { text: OURS, at: T0 + 30000, typedAt: T0 }
 
-  it('the agent took it late: its words in a user message written since it was typed', () => {
+  it('the agent took it late: the same message, written since it was typed', () => {
     // Claude's queued_command keeps the time the message was queued.
-    const items: ChatItem[] = [{ role: 'user', text: OURS, ts: iso(T0 + 200) }]
-    expect(landed(q, items, T0 + 60000, 'claude')).toBe(true)
+    expect(landed(q, [user(OURS, T0 + 200)], T0 + 60000, 'claude')).toBe(true)
+    // Spaces and line wrapping aside.
+    expect(landed(q, [user(OURS.replace(/ /g, '  ') + '\n', T0 + 200)], T0 + 60000, 'claude')).toBe(true)
   })
 
-  it('not there: still not delivered, even when another message got a reply since', () => {
-    const items: ChatItem[] = [
-      { role: 'user', text: 'something else', ts: iso(T0 + 1000) },
-      { role: 'assistant', text: 'ok', ts: iso(T0 + 2000) },
-    ]
+  it('a short message is never found inside another one', () => {
+    const ok = { text: 'ok', at: T0, typedAt: T0 }
+    expect(landed(ok, [user('look at the token handling', T0 + 500)], T0 + 9000, 'claude')).toBe(false)
+    expect(landed(ok, [user('ok, and check the token', T0 + 500)], T0 + 9000, 'claude')).toBe(false)
+    const yes = { text: 'yes', at: T0, typedAt: T0 }
+    expect(landed(yes, [user('yes, and also check the logs', T0 + 500)], T0 + 9000, 'claude')).toBe(false)
+    expect(landed(yes, [user('Yes', T0 + 500)], T0 + 9000, 'claude')).toBe(false)
+    expect(landed(yes, [user('yes', T0 + 500)], T0 + 9000, 'claude')).toBe(true)
+  })
+
+  it('the review’s case: "check the token" landing does not count as the held "ok"', () => {
+    const ok = { text: 'ok', at: T0 + 2000, typedAt: T0 + 2000, held: true }
+    const items = [user('check the token', T0), { role: 'assistant', text: 'Done.', ts: iso(T0 + 9000) } as ChatItem]
+    expect(landed(ok, items, T0 + 10000, 'claude')).toBe(false)
+  })
+
+  it('the same words said before it was typed do not count (2 s of slack, no more)', () => {
+    const go = { text: 'continue', at: T0, typedAt: T0 }
+    expect(landed(go, [user('continue', T0 - 8000)], T0 + 9000, 'claude')).toBe(false)
+    expect(landed(go, [user('continue', T0 - 1500)], T0 + 9000, 'claude')).toBe(true)
+  })
+
+  it('a transcript message without a time never counts', () => {
+    expect(landed(q, [user(OURS, null)], T0 + 60000, 'claude')).toBe(false)
+  })
+
+  it('a reply after another message does not count either', () => {
+    const items: ChatItem[] = [user('something else', T0 + 1000), { role: 'assistant', text: 'ok', ts: iso(T0 + 2000) }]
     expect(landed(q, items, T0 + 60000, 'claude')).toBe(false)
   })
 
-  it('the same words said long before it was typed do not count', () => {
-    const items: ChatItem[] = [{ role: 'user', text: OURS, ts: iso(T0 - 3600000) }]
-    expect(landed(q, items, T0 + 60000, 'claude')).toBe(false)
+  it('one transcript message confirms one of wherdr’s messages: "ok" sent twice, landed once', () => {
+    const taken = new Set<ChatItem>()
+    const items = [user('ok', T0 + 500)]
+    expect(landed({ text: 'ok', at: T0, typedAt: T0 }, items, T0 + 9000, 'claude', taken)).toBe(true)
+    expect(landed({ text: 'ok', at: T0 + 100, typedAt: T0 + 100 }, items, T0 + 9000, 'claude', taken)).toBe(false)
+  })
+
+  it('a long message grouped with others into one prompt: found as whole lines; a short one is not', () => {
+    const grouped = user(`first thing\n${OURS}\nlast thing`, T0 + 500)
+    expect(landed(q, [grouped], T0 + 9000, 'claude')).toBe(true)
+    expect(landed({ text: 'first thing', at: T0, typedAt: T0 }, [grouped], T0 + 9000, 'claude')).toBe(false)
+    // Part of a line is not enough.
+    expect(landed(q, [user(`${OURS} please`, T0 + 500)], T0 + 9000, 'claude')).toBe(false)
+  })
+
+  it('a message cut by wherdr’s 4000-character record: known by its start', () => {
+    const long = Array.from({ length: 200 }, (_, i) => `line ${i} of a long pasted log`).join('\n')
+    const kept = { text: long.slice(0, 4000), at: T0, typedAt: T0 }
+    expect(landed(kept, [user(long, T0 + 500)], T0 + 9000, 'claude')).toBe(true)
+    expect(landed(kept, [user(long.replace('line 3 ', 'line three '), T0 + 500)], T0 + 9000, 'claude')).toBe(false)
+  })
+
+  it('photos: their lines became images; "!" commands: the command the agent ran', () => {
+    const photo = { text: 'what is this?\n/home/u/.cache/herdr-web/uploads/a1.png', at: T0, typedAt: T0 }
+    expect(landed(photo, [{ role: 'user', text: 'what is this?', images: 1, ts: iso(T0 + 300) }], T0 + 9000, 'claude')).toBe(true)
+    const bang = { text: '! git status', at: T0, typedAt: T0 }
+    expect(landed(bang, [{ role: 'bash', text: 'git status', ts: iso(T0 + 300) }], T0 + 9000, 'claude')).toBe(true)
+    expect(landed(bang, [{ role: 'bash', text: 'git status --short', ts: iso(T0 + 300) }], T0 + 9000, 'claude')).toBe(false)
+  })
+
+  it('never judged taken because it is old', () => {
+    expect(landed(q, [], T0 + 10 * 3600000, 'claude')).toBe(false)
   })
 })
 

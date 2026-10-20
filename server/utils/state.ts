@@ -24,7 +24,7 @@ import { parseUsageLimit, type UsageLimit } from '../../shared/usageLimit'
 import { classifyScreen, type ScreenInteraction } from '../../shared/interactiveScreen'
 import { parseClaudeActivity } from './activity'
 import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './claudeScreen'
-import { type QueueEntry, INPUT_STATES, checkQueue, giveBackHeld, isUploadLine, landed, leftForGood, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
+import { type QueueEntry, INPUT_STATES, checkQueue, giveBackHeld, isUploadLine, landed, leftForGood, QUEUED_TEXT_MAX, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
 import { inputVisible } from './choices'
 import { isSlashCommand, photosOnly } from '../../shared/queuedMatch'
 import { codexFieldLine, findQueued, inputBox, msgText, unqueueClaude } from './unqueue'
@@ -390,7 +390,7 @@ function saveQueued() {
 }
 // `id`: the app's own id for the bubble it already shows (see app/utils/outbox.ts),
 // kept when well-formed and unused, so the bubble keeps its identity.
-// `typedAt`: a send given up after typing (see QueueEntry). `turn`: held until
+// `typedAt`: when wherdr began typing it (see QueueEntry). `turn`: held until
 // the agent's turn ends.
 export function addQueued(paneId: string, text: string, opts: { held?: boolean, busy?: boolean, failed?: boolean, id?: string, typedAt?: number, turn?: boolean } = {}): QueuedMessage {
   const list = queued.get(paneId) || []
@@ -398,7 +398,7 @@ export function addQueued(paneId: string, text: string, opts: { held?: boolean, 
   // Typed during a turn (see isOmpRun).
   const turn = !opts.held && !opts.failed && TURN.has(findPane(paneId)?.status || '')
   const e: QueueEntry = {
-    id: own || crypto.randomBytes(4).toString('hex'), text: String(text).slice(0, 4000), at: Date.now(),
+    id: own || crypto.randomBytes(4).toString('hex'), text: String(text).slice(0, QUEUED_TEXT_MAX), at: Date.now(),
     ...(opts.held ? { held: true } : {}), ...(opts.busy ? { busy: true } : {}), ...(opts.failed ? { failed: true } : {}),
     ...(turn ? { turnSeen: true } : {}),
     ...(opts.typedAt ? { typedAt: opts.typedAt } : {}), ...(opts.held && opts.turn ? { turn: true } : {}),
@@ -514,7 +514,7 @@ function deliverHeld(p: Pane) {
       if (!(queued.get(p.id) || []).includes(q)) return
       // Typed before without being seen taken: the agent may have taken it
       // late. Its transcript says so; it is never typed twice.
-      if (q.typedAt && landed(q, (await transcripts.chat(p, { fresh: true })).items || [], Date.now(), p.agent)) {
+      if (q.typedAt && landedNow(p, q, (await transcripts.chat(p, { fresh: true })).items || [])) {
         dropQueued(p.id, q)
         log(`held message on ${p.id} was taken after all`)
         setTimeout(poll, 50)
@@ -534,7 +534,7 @@ function deliverHeld(p: Pane) {
       q.held = false
       delete q.busy
       delete q.turn
-      delete q.typedAt
+      q.typedAt = at
       delete q.readySince
       q.at = Date.now()
       log(`held message sent on ${p.id}`)
@@ -595,6 +595,17 @@ async function cancelTurn(p: Pane, text: string): Promise<{ text: string, lost: 
   return takeBack(p.id, item)
 }
 
+// `q` taken by the agent (see landed), the transcript messages that confirm
+// wherdr's earlier messages of the pane set aside first.
+function landedNow(p: Pane, q: QueueEntry, items: ChatItem[]): boolean {
+  const taken = new Set<ChatItem>()
+  const now = Date.now()
+  for (const e of queued.get(p.id) || []) {
+    if (e === q) break
+    if (e.failed || e.typedAt) landed(e, items, now, p.agent, taken)
+  }
+  return landed(q, items, now, p.agent, taken)
+}
 function dropQueued(paneId: string, q: QueueEntry) {
   const left = (queued.get(paneId) || []).filter(x => x !== q)
   if (left.length) queued.set(paneId, left)
@@ -635,8 +646,10 @@ function reconcileQueued(p: Pane) {
       // (see landed). Any other: taken as queuedDone says.
       const items = r.items || []
       const now = Date.now()
+      // Each transcript message confirms one of wherdr's messages at most.
+      const taken = new Set<ChatItem>()
       const left = (queued.get(p.id) || []).filter(q => (q.held && !q.typedAt)
-        || ((q.failed || q.held) ? !landed(q, items, now, p.agent) : !queuedDone(q, items, READY.has(p.status || ''), now, p.agent)))
+        || ((q.failed || q.held) ? !landed(q, items, now, p.agent, taken) : !queuedDone(q, items, READY.has(p.status || ''), now, p.agent)))
       if (left.length) queued.set(p.id, left)
       else queued.delete(p.id)
     })

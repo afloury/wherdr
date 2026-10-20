@@ -85,6 +85,8 @@ const DEFAULTS: Required<GuardOptions> = { freeWaitMs: 2000, quietMs: 400, showW
 const RECORD_MS = 600
 const MAX_ATTEMPTS = 3
 const MAX_FOREIGN = 5
+// Shortest start of our text a retry takes for its own leftover (see sendOne).
+const RETRY_PART_MIN = 12
 
 // Stand-ins Claude Code shows instead of a long paste or an image.
 const PLACEHOLDER = /\[(?:Pasted text|Image) #\d+[^\]]*\]/g
@@ -248,10 +250,13 @@ async function sendOne(d: GuardDeps, text: string, o: Required<GuardOptions>, fo
     log(`another writer submitted the field before it could be separated: ${JSON.stringify(m)}`)
     return true
   }
-  // Our own text left by an earlier attempt of this message: taken out first.
+  // Our own text left by an earlier attempt of this message (whole, or the
+  // start of it drawn late): taken out first. A start too short to be told
+  // from someone's draft ("the") is left alone.
   if (o.retry) {
     const box = await settled(d, o)
-    if (box && classifyBox(box, text).kind === 'exact') {
+    const kind = box ? classifyBox(box, text).kind : 'empty'
+    if (box && (kind === 'exact' || (kind === 'partial' && compact(box).length >= Math.min(RETRY_PART_MIN, compact(text).length)))) {
       log('our text from an earlier attempt still in the input: cleared before typing again')
       await clearField(d, o, lines(box), foreign)
     }

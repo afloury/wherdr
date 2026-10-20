@@ -110,7 +110,7 @@ export default defineApi(async (event, b) => {
     setTimeout(poll, 1500)
     return { ok: true }
   }
-  const q = addQueued(b.pane_id, text, { id })
+  const q = addQueued(b.pane_id, text, { id, typedAt })
   setTimeout(poll, 50)
   return { ok: true, queued: q }
 })

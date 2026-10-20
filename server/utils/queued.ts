@@ -48,13 +48,55 @@ export function queuedDone(q: { text: string, at: number, turnSeen?: boolean }, 
   return i >= 0 && items.slice(i + 1).some(a => a.role === 'assistant')
 }
 
-// Taken by the agent, judged on its words alone, as herdr-projects' said_to
-// does: a user message of its transcript, written since wherdr typed it
-// (`typedAt`, else `at`), that holds its text. For a message whose send was
-// given up or that waits for another attempt: never the looser "a reply
-// followed" rule of queuedDone, which another message could satisfy.
-export function landed(q: { text: string, at: number, typedAt?: number }, items: ChatItem[], now: number, agent?: string | null): boolean {
-  return queuedDone({ text: q.text, at: q.typedAt ?? q.at }, items, false, now, agent)
+// Taken by the agent, for a message wherdr typed without seeing it taken (a
+// send given up, failed, or waiting for another attempt). Deciding wrongly
+// "taken" would drop it unsent, so the rule is exact, never a substring:
+// - a user message of the transcript, with a time, written at most
+//   LANDED_SLACK_MS before wherdr typed it (`typedAt`, else `at`): Claude's
+//   queued_command keeps the moment Enter queued it, after the typing began;
+// - whose whole text is this message (spaces aside; photo lines may have
+//   become images), or, for a message of LANDED_PART_MIN characters or more,
+//   a run of its whole lines (an agent grouping queued messages into one);
+//   "ok" or "yes" never match inside "ok, and check the token";
+// - a photos-only message: a user message with its photos;
+// - `taken`: transcript messages already matched to another of wherdr's
+//   messages, each counted once (the same "ok" sent twice).
+// The matching transcript message is added to `taken`. No expiry here: a
+// message is never judged taken because it is old.
+export const LANDED_SLACK_MS = 2000
+// Longest text wherdr keeps of a queued message (see addQueued).
+export const QUEUED_TEXT_MAX = 4000
+export const LANDED_PART_MIN = 20
+const flat = (t: unknown) => String(t || '').replace(/\s+/g, ' ').trim()
+const lineList = (t: string) => t.split('\n').map(flat).filter(Boolean)
+export function landed(q: { text: string, at: number, typedAt?: number }, items: ChatItem[], _now: number, agent?: string | null, taken: Set<ChatItem> = new Set()): boolean {
+  const since = (q.typedAt ?? q.at) - LANDED_SLACK_MS
+  const photos = photosOnly(q.text)
+  const bash = /^\s*!/.test(q.text) || isOmpRun(agent, q.text) ? flat(bashText(q.text)) : null
+  const bare = q.text.split('\n').filter(l => !isUploadLine(l)).join('\n')
+  const wholes = new Set([flat(bare), flat(q.text)].filter(Boolean))
+  const lines = lineList(bare)
+  // wherdr keeps the first QUEUED_TEXT_MAX characters: a longer message is
+  // known by its start (its last kept line may be cut).
+  const cut = q.text.length >= QUEUED_TEXT_MAX
+  const want = cut ? lines.slice(0, -1) : lines
+  const partOf = (text: string) => {
+    if (flat(bare).length < LANDED_PART_MIN || !want.length) return false
+    const theirs = lineList(text)
+    if (cut) return want.every((l, j) => theirs[j] === l)
+    for (let i = 0; i + want.length <= theirs.length; i++) if (want.every((l, j) => theirs[i + j] === l)) return true
+    return false
+  }
+  const hit = items.find((u) => {
+    if (taken.has(u) || !u.ts || !(Date.parse(u.ts) >= since)) return false
+    if (u.role === 'bash') return bash !== null && Boolean(bash) && flat(u.text) === bash
+    if (u.role !== 'user' && u.role !== 'cmd') return false
+    if (photos) return photosLanded(q.text, u)
+    return wholes.has(flat(u.text)) || partOf(u.text)
+  })
+  if (!hit) return false
+  taken.add(hit)
+  return true
 }
 
 // Messages sent while a menu, panel or dialog hides the agent's input field (an
@@ -96,9 +138,10 @@ export interface QueueEntry {
   noInput?: boolean
   // Given back (see giveBackHeld): its text returns to the message field.
   back?: boolean
-  // When wherdr last typed it into the field without seeing it taken (a send
-  // given up, see guardedSend.ts): the agent may still take it late, so its
-  // transcript is looked at (see landed) before any new attempt.
+  // When wherdr last began typing it into the field. On a held message, set
+  // only after a send given up (see guardedSend.ts): the agent may still take
+  // it late, so its transcript is looked at (see landed) before any new
+  // attempt. On a message sent or failed, where landed looks from.
   typedAt?: number
   // Held until the agent's turn ends: typing it during the turn failed.
   turn?: boolean
