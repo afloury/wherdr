@@ -5,10 +5,10 @@
 // undone), start it (a task of the backlog), stop its agent (asked first),
 // retry what went wrong, archive it, and open its agent's pane. What 1.x
 // does not give for a task is not shown.
-// After an action the sheet shows where the task now stands: the Board and the
-// task's details are read again before its buttons come back (or the error
-// stays in the sheet). Archive closes it: the Board offers Restore for a few
-// seconds. An archived task (Board › Archived, a link to it) is read-only, as
+// After an action (Approve included) the sheet shows where the task now
+// stands: the Board and the task's details are read again before its buttons
+// come back, or the error stays in the sheet. Archive closes it: the Board
+// offers Restore for a few seconds. An archived task (Board › Archived, a link to it) is read-only, as
 // in 1.x: an "Archived" tag and Restore, nothing else.
 import { NO_ACTIONS, type TaskCommand, type TaskDetails, type TaskRow, TELL_MAX, prNumber, taskActions, taskKey } from '#shared/projectsTasks'
 import { PROJECTS_LAUNCHER } from '#shared/projectsPlugin'
@@ -139,9 +139,8 @@ async function approve() {
   try {
     const r = await api<{ msg: string }>('/api/tasks/approve', { machine, id: t.id })
     toast(r.msg || tl('Approved', 'Approuvé'))
-    if (g === gen) open.value = false
-    if (props.refresh) props.refresh().catch(() => {})
-    else emit('changed')
+    // The sheet stays: it shows where the task now stands (merging, building the plan…).
+    await settle(g)
   } catch (e) { failed(e, g) }
   finally { if (g === gen) busy.value = false }
 }

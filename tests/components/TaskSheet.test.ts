@@ -98,7 +98,7 @@ describe('the task sheet after a late reply', () => {
     w.unmount()
   })
 
-  it('still clears the reply and closes on its own task', async () => {
+  it('still clears the reply on its own task, and stays open after Approve', async () => {
     const { w, vm } = await sheet()
     vm.reply = 'hello'
     const sent = vm.send()
@@ -111,7 +111,7 @@ describe('the task sheet after a late reply', () => {
     held.shift()!()
     await approved
     await flushPromises()
-    expect(w.props('open')).toBe(false)
+    expect(w.props('open')).toBe(true)
     w.unmount()
   })
 })
@@ -211,6 +211,38 @@ describe('the task sheet after an action', () => {
     expect(vm.busy).toBe(false)
     expect(detailsReads).toBeGreaterThan(before)
     expect(vm.actions.delegate).toBe(false)
+    expect(vm.actions.stop).toBe(true)
+    Object.assign(shown, { stage: 'approval' })
+    w.unmount()
+  })
+
+  it('Approve keeps the sheet open and shows the new state once the Board and the task are read again', async () => {
+    Object.assign(shown, { stage: 'plan', failure: '', failureStage: '' })
+    const plan: TaskRow = { ...task, state: 'blocked', kind: 'permission', stage: 'plan', group: 'needs' }
+    let release: () => void = () => {}
+    const refresh = vi.fn(() => new Promise<void>((r) => { release = r }))
+    const w = await mountSuspended(TaskSheet, { props: { task: plan, machine: 'a', open: true, refresh, 'onUpdate:open': (v: boolean) => w.setProps({ open: v }) } })
+    await flushPromises()
+    const vm = w.vm as unknown as SheetVm & { actions: { approve: boolean, stop: boolean } }
+    expect(vm.actions.approve).toBe(true)
+    const before = detailsReads
+    const going = vm.approve()
+    await flushPromises()
+    held.shift()!()
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledOnce())
+    // Approved, the Board not read yet: open and busy, Approve not offered again meanwhile.
+    expect(w.props('open')).toBe(true)
+    expect(vm.busy).toBe(true)
+    // The Board's read: its agent builds the plan.
+    Object.assign(shown, { stage: 'working' })
+    await w.setProps({ task: { ...plan, state: 'working', kind: '', stage: 'working', group: 'working' } })
+    release()
+    await going
+    await flushPromises()
+    expect(w.props('open')).toBe(true)
+    expect(vm.busy).toBe(false)
+    expect(detailsReads).toBeGreaterThan(before)
+    expect(vm.actions.approve).toBe(false)
     expect(vm.actions.stop).toBe(true)
     Object.assign(shown, { stage: 'approval' })
     w.unmount()

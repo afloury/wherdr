@@ -25,7 +25,7 @@ case "$1" in
     elif [ -f '${root}/list.json' ]; then cat '${root}/list.json'; else cat '${fixtures}/list.json'; fi ;;
   details) case "$4" in demo/1) cat '${fixtures}/details-approval.json' ;; demo/2) cat '${fixtures}/details-asks.json' ;; demo/6) echo '${JSON.stringify(failedDetails)}' ;; *) cat '${fixtures}/details-working.json' ;; esac ;;
   tell) echo "$3: sent" ;;
-  approve) echo "$3: approved, merging" ;;
+  approve) if [ -f '${root}/after-approve.json' ]; then mv '${root}/after-approve.json' '${root}/list.json'; fi; echo "$3: approved, merging" ;;
   coordinator) co="$2"; case "$co" in --machine|--project=*) ;; *) co=main ;; esac
     case "$*" in
     # status --json: the pane herdr-projects keeps for it; web's runs once the spec says so.
@@ -58,7 +58,7 @@ const home = path.join(path.dirname(fs.readFileSync(SOCK_FILE, 'utf8').trim()), 
 const taskDir = path.join(home, '.herdr-projects/data/tasks/demo/1')
 
 test.beforeEach(() => {
-  for (const f of [calls, path.join(root, 'list.json'), path.join(root, 'archived.json'), path.join(root, 'after-restore.json'), path.join(root, 'web-coordinator'), told]) fs.rmSync(f, { recursive: true, force: true })
+  for (const f of [calls, path.join(root, 'list.json'), path.join(root, 'archived.json'), path.join(root, 'after-restore.json'), path.join(root, 'after-approve.json'), path.join(root, 'web-coordinator'), told]) fs.rmSync(f, { recursive: true, force: true })
   fs.mkdirSync(told)
 })
 test.afterEach(async () => { await fakeHerdr('e2e.plugins', { plugins: [] }) })
@@ -128,10 +128,19 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   // Its agent is already in the panel.
   await expect(sheet.getByRole('button', { name: 'Open its agent' })).toHaveCount(0)
   await page.screenshot({ path: `.shots/board-1x-task-${testInfo.project.name}.png` })
+  // Once approved, the board lists it merging (herdr-projects' stage while it lands).
+  const listed = JSON.parse(fs.readFileSync(path.join(fixtures, 'list.json'), 'utf8')) as Record<string, unknown>[]
+  fs.writeFileSync(path.join(root, 'after-approve.json'), JSON.stringify(listed.map(t => (t.id === 'demo/1' ? { ...t, state: 'working', kind: '', stage: 'merging' } : t))))
   await sheet.getByRole('button', { name: 'Approve', exact: true }).click()
   await page.getByRole('dialog').last().getByRole('button', { name: 'Approve and merge' }).click()
   await expect.poll(callLog).toContain('approve -- demo/1')
-  // Approved: the sheet closes, the panel stays.
+  // Approved: the sheet stays, showing the task as the Board now reads it
+  // (merging here), Approve no longer offered; the panel stays behind it.
+  const approved = page.getByRole('dialog')
+  await expect(approved.locator('.task-state')).toHaveText('Working')
+  await expect(approved.getByRole('button', { name: 'Approve', exact: true })).toHaveCount(0)
+  await page.screenshot({ path: `.shots/board-1x-approved-${testInfo.project.name}.png` })
+  await approved.locator('.hw-sheet-close').click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(panel).toBeVisible()
   await closePanel(page, phone)
