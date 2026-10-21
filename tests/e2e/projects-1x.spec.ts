@@ -938,16 +938,22 @@ for (const lang of ['en', 'fr']) {
     fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(path.join(dir, 'task.json'), JSON.stringify({ ...task, at: at + 3_600_000, armedAt: at + 60_000, failure }))
     await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
-    await page.goto('/#/board?machine=&task=demo%2F11')
     const banner = page.locator('.board-panel .task-needs')
+    // The board's list of the test before may still be kept a few seconds.
+    await expect(async () => {
+      await page.goto('/#/board?machine=&task=demo%2F11')
+      await expect(banner).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 20_000 })
     await expect(banner.locator('h3')).toHaveText(`${lang === 'fr' ? 'À toi' : 'Needs you'} · Stopped at its 2h limit`)
     await expect(banner).not.toContainText('Review failed')
     await expect(banner.getByRole('button', { name: lang === 'fr' ? 'Envoyer l’erreur à l’agent' : 'Send the error to the agent' })).toHaveCount(0)
     await expect(banner.locator('.task-finish-why')).toContainText(lang === 'fr' ? 'même limite' : 'same limit again')
-    // The old failure stays in the Task tab, as history.
-    await expect(page.locator('.board-panel .task-sheet-earlier')).toContainText('Review failed')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: `.shots/task-finish-${lang}-${testInfo.project.name}.png` })
+    // The old failure stays in the Task tab, as history.
+    await page.locator('.board-panel-tabs').getByRole('button', { name: lang === 'fr' ? 'Tâche' : 'Task', exact: true }).click()
+    await expect(page.locator('.board-panel .task-sheet-earlier')).toContainText('Review failed')
+    await page.screenshot({ path: `.shots/task-finish-${lang}-earlier-${testInfo.project.name}.png` })
     await banner.getByRole('button', { name: lang === 'fr' ? 'Terminer' : 'Finish', exact: true }).click()
     const dialog = page.getByRole('dialog')
     await expect(dialog).toContainText('merge.by itself')
