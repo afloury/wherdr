@@ -87,6 +87,9 @@ test('"OK to all" accepts the table under a reference to it, a second tap takes 
   await all.click()
   await expectDraft(field, `${ALL}\nOK to all\n`)
   await expect(all).toHaveAttribute('aria-pressed', 'true')
+  // On a computer the field takes the focus, so that Enter sends; not on a phone.
+  if (testInfo.project.name.includes('phone')) await expect(field).not.toBeFocused()
+  else await expect(field).toBeFocused()
   // An exception still goes below it.
   await panel.getByRole('button', { name: `3 · No: ${ROWS[2]![1]}` }).click()
   await expectDraft(field, `${ALL}\nOK to all\n${row(3)}\nNo\n`)
