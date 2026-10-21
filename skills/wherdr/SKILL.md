@@ -1,6 +1,6 @@
 ---
 name: wherdr
-description: How wherdr, the phone and browser app for Herdr, shows a herdr-projects 1.x board and what reaches you from it. Use when you are the herdr-projects Coordinator or a task's agent and a message may come from wherdr's Board.
+description: Handle messages from wherdr 2.0's Board for herdr-projects 1.x. Use as the Coordinator or a task's agent when a message may come from the Board.
 ---
 
 # wherdr and herdr-projects
