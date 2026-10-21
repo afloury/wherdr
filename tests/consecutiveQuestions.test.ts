@@ -97,7 +97,7 @@ it('bounds eight slow pane readings to two at once', async () => {
   seenMachines:new Set(['']),mstates:map(),agentBorn:new Map(panes.map(p=>[p.id,{agent:p.agent,at:null}])),
   selfUpdates:{prune:()=>{},observe:async()=>false},commands:map(),READY:new Set(),
   getMachine:()=>({transcripts:{observe:()=>{}}}),joinId:(_:string,id:string)=>id,
-  restarts:map(),leftForGood:()=>false,findPane:()=>null,pendingPrompts:map(),queued:map(),
+  restarts:map(),leftForGood:()=>false,lookForLeftMenu:()=>false,findPane:()=>null,pendingPrompts:map(),queued:map(),
   screenVersions:new WeakMap(),mapScreenPanes,choicesFor,previews:new Map(panes.map(p=>[p.id,{status:'blocked',at:Date.now()}])),
   models:new Map(panes.map(p=>[p.id,{status:'blocked',at:Date.now()}])),isViewed:()=>false,
   activities:map(),ompStatuses:map(),codexFields:map(),codexStatus:{forget:()=>{}},chatDelta:{ids:()=>[],forget:()=>{}},choicesCache:new ScreenCache(),askChecks:map(),

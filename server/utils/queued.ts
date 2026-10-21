@@ -161,6 +161,17 @@ export function nextHeld(list: QueueEntry[]): QueueEntry | null {
   return list.find(q => q.held && !q.failed) || null
 }
 
+// A menu or panel left open on the agent's screen (Claude's /status opened in
+// its terminal during a turn…) hides its input field, with no card of the
+// conversation showing it: held messages would wait for it with no word.
+// Worth a look at the screen: messages wait for the input field (held, or
+// not sent for lack of it), and nothing on the conversation explains why.
+export function lookForLeftMenu(p: Pick<Pane, 'agent' | 'status' | 'stopped' | 'queued' | 'menu' | 'prompt' | 'screen'>): boolean {
+  if (!p.agent || !HOLD_AGENTS.has(p.agent) || p.stopped || p.menu || p.prompt || p.screen) return false
+  if (p.status !== 'working' && !INPUT_STATES.has(p.status || '')) return false
+  return (p.queued || []).some(q => (q.state === 'held' && q.reason !== 'busy') || (q.state === 'failed' && q.reason === 'no_input'))
+}
+
 // Updates timers in place on each poll; true when an entry just failed.
 // `menu`: a menu, question or panel recognized on the agent's screen (or a
 // restart running): something a held message legitimately waits for.
