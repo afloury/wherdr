@@ -38,6 +38,7 @@ const HALVES = [{ x: 0, y: 0, width: 60, height: 40 }, { x: 61, y: 0, width: 59,
 // the fake agent appends to when it receives a prompt; `shell`: a "!" prompt
 // starts a run that lasts until Escape, written nowhere, like a fresh omp).
 export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
+  const allWorkspaces = workspaces
   // `size`: the pane's PTY. No Herdr client is attached to this session: a
   // terminal control session resizes it, and it keeps that size afterwards.
   // `control`: the control session attached to the pane's terminal, if any.
@@ -45,9 +46,13 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     const rect = w.panes.length === 2 ? HALVES[i] : AREA
     return { ...p, workspace: w.id, size: { cols: rect.width, rows: rect.height }, control: null }
   }))
+  const allPanes = panes
   const paneById = id => panes.find(p => p.id === id)
 
   function snapshot() {
+    const gone = new Set(allPanes.filter(p => p.hidden).map(p => p.id))
+    const workspaces = allWorkspaces.map(w => ({ ...w, panes: w.panes.filter(p => !gone.has(p.id)) }))
+    const panes = allPanes.filter(p => !p.hidden)
     return {
       version: 'e2e',
       workspaces: workspaces.map((w, i) => ({
@@ -175,6 +180,18 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     'e2e.integrations': params => { integrations = { ...(params.states || {}) }; return {} },
     'e2e.integration_states': () => ({ states: integrations }),
     'e2e.pane_status': params => { need(params.pane_id).status = params.status; return {} },
+    // Herdr closes the pane and opens another one for the same agent (same
+    // conversation, as herdr-projects restarting a coordinator): a new id.
+    'e2e.replace_pane': (params) => {
+      const p = need(params.pane_id)
+      const w = workspaces.find(x => x.id === p.workspace)
+      const at = w.panes.findIndex(x => x.id === p.id)
+      w.panes[at] = { ...w.panes[at], id: params.new_id }
+      p.id = params.new_id
+      return {}
+    },
+    // Herdr closes the pane for good (`hidden: false` brings it back).
+    'e2e.hide_pane': (params) => { need(params.pane_id).hidden = Boolean(params.hidden); return {} },
     'e2e.update_session': params => { need(params.pane_id).session = params.session; return {} },
     'e2e.update_draft': params => { need(params.pane_id).updateOutput += params.text; return {} },
     'e2e.update_foreground': params => { need(params.pane_id).foreground = true; return {} },
