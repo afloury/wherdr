@@ -91,6 +91,7 @@ function memberCard(m: Member): BoardCard | null {
   const task = m.task
   const stage = memberStage(m)
   return {
+    group: task.group === 'working' && (m.row.kind === 'space' ? m.row.lead : m.row.pane).status === 'blocked' ? 'needs' : task.group,
     tag: memberTag(m, t('review')),
     stage: stage && ['review', 'plan-review', 'pick'].includes(stage.what) ? stageLabel(stage) : undefined,
     // While a helper works, its tab (the row's pane's) opens, not the one opened last.
