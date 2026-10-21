@@ -2,9 +2,11 @@
 // On a computer, or a phone on this machine's own address: welcome, phone
 // setup (Tailscale), security. A phone that already came through the tailnet
 // address has done the phone step: it gets Add to Home Screen instead
-// (skipped once the app runs from the Home Screen).
+// (skipped once the app runs from the Home Screen). With a machine whose Claude
+// quotas are not set up (or set up by an older status line), an optional
+// Quotas step comes before security.
 
-export type OnboardingStep = 'welcome' | 'phone' | 'homescreen' | 'security'
+export type OnboardingStep = 'welcome' | 'phone' | 'homescreen' | 'quotas' | 'security'
 export type MobileOs = 'ios' | 'android' | null
 
 export function isLoopbackHost(host: string): boolean {
@@ -18,9 +20,11 @@ export function mobileOs(userAgent: string, touchMac = false): MobileOs {
   return null
 }
 
-export function onboardingSteps(o: { phone: boolean, host: string, standalone: boolean }): OnboardingStep[] {
-  if (o.phone && !isLoopbackHost(o.host)) return o.standalone ? ['welcome', 'security'] : ['welcome', 'homescreen', 'security']
-  return ['welcome', 'phone', 'security']
+export function onboardingSteps(o: { phone: boolean, host: string, standalone: boolean, quotas?: boolean }): OnboardingStep[] {
+  const first: OnboardingStep[] = o.phone && !isLoopbackHost(o.host)
+    ? (o.standalone ? ['welcome'] : ['welcome', 'homescreen'])
+    : ['welcome', 'phone']
+  return [...first, ...(o.quotas ? ['quotas' as const] : []), 'security']
 }
 
 // The page is open on localhost while wherdr's phone address (tailnet) is

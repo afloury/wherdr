@@ -416,10 +416,14 @@ export interface Quotas {
   // (missing: all configured).
   claudeSetup?: ClaudeSetup[]
 }
-// Claude quota status line of a machine: `missing` = to install,
-// `pending` = installed, waiting for the next exchange with a Claude.
+// Claude quota status line of each machine read: `ok` = set up, `pending` =
+// installed, waiting for the next exchange with a Claude, `outdated` = quotas
+// read but from an older status line (update offered), `missing` = to install.
 // `installable`: the server can install it itself (otherwise, a command to copy).
-export interface ClaudeSetup { key: string, state: 'missing' | 'pending', installable: boolean }
+// `dismissed`: the suggestion was declined or skipped (home menu, setup guide);
+// Settings still offers it.
+export type ClaudeSetupState = 'ok' | 'pending' | 'outdated' | 'missing'
+export interface ClaudeSetup { key: string, state: ClaudeSetupState, installable: boolean, dismissed?: boolean }
 
 // Git worktree linked to a repository (Herdr), for the cleanup list.
 export interface WorktreeInfo {

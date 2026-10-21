@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import type { Quotas } from '../shared/types'
 import { readClaude, mergeQuotas } from '../server/utils/quotas'
 import { localFs } from '../server/utils/fsx'
-import { claudeInstallCommand, claudeSetupOf, machineQuotaRows, quotaLeft, quotaRows, resetText } from '../app/utils/quotas'
+import { claudeInstallCommand, claudeSetupOf, claudeSetupRows, claudeSuggestion, machineQuotaRows, quotaLeft, quotaRows, resetText } from '../app/utils/quotas'
 
 // The install command passes settings.json to python3 (missing from node:22-alpine).
 const hasPython = (() => { try { execFileSync('python3', ['-V'], { stdio: 'ignore' }); return true } catch { return false } })()
@@ -67,13 +67,42 @@ describe('reset time', () => {
 
 describe('Claude quotas not configured', () => {
   const q: Quotas = { claude: null, codex: null, claudeSetup: [{ key: '0a1b2c3d', state: 'missing', installable: true }] }
-  it('only on a listed machine that has Claude agents', () => {
-    expect(claudeSetupOf(q, '0a1b2c3d', true)).toEqual({ key: '0a1b2c3d', state: 'missing', installable: true })
-    expect(claudeSetupOf(q, '0a1b2c3d', false)).toBeNull()
-    expect(claudeSetupOf(q, '', true)).toBeNull()
-    expect(claudeSetupOf(null, '', true)).toBeNull()
-    expect(claudeSetupOf(q, '0a1b2c3d', true, ['claude'])).toBeNull()
-    expect(claudeSetupOf(q, '0a1b2c3d', true, ['codex'])).not.toBeNull()
+  it('suggested only on a listed machine that has Claude', () => {
+    expect(claudeSuggestion(q, '0a1b2c3d', true)).toEqual({ key: '0a1b2c3d', state: 'missing', installable: true })
+    expect(claudeSuggestion(q, '0a1b2c3d', false)).toBeNull()
+    expect(claudeSuggestion(q, '', true)).toBeNull()
+    expect(claudeSuggestion(null, '', true)).toBeNull()
+    expect(claudeSuggestion(q, '0a1b2c3d', true, ['claude'])).toBeNull()
+    expect(claudeSuggestion(q, '0a1b2c3d', true, ['codex'])).not.toBeNull()
+  })
+
+  it('regression: no suggestion once set up, waiting, or declined; an update for an old status line', () => {
+    const of = (state: 'ok' | 'pending' | 'outdated' | 'missing', dismissed?: boolean): Quotas => ({ claude: null, codex: null, claudeSetup: [{ key: '', state, installable: true, ...(dismissed ? { dismissed } : {}) }] })
+    expect(claudeSuggestion(of('ok'), '', true)).toBeNull()
+    expect(claudeSuggestion(of('pending'), '', true)).toBeNull()
+    expect(claudeSuggestion(of('missing', true), '', true)).toBeNull()
+    expect(claudeSuggestion(of('outdated', true), '', true)).toBeNull()
+    expect(claudeSuggestion(of('outdated'), '', true)?.state).toBe('outdated')
+    // Settings still sees the state of a declined machine.
+    expect(claudeSetupOf(of('missing', true), '')?.dismissed).toBe(true)
+  })
+
+  it('Settings lists the machines with Claude, or whose status line was found', () => {
+    const qs: Quotas = { claude: null, codex: null, claudeSetup: [
+      { key: '', state: 'ok', installable: true },
+      { key: 'aa11', state: 'outdated', installable: true },
+      { key: 'bb22', state: 'missing', installable: false },
+      { key: 'cc33', state: 'missing', installable: true },
+    ] }
+    const rows = claudeSetupRows(qs, [
+      { key: '', name: 'Server', online: true, kinds: ['claude', 'codex'] },
+      { key: 'aa11', name: 'Codex box', online: true, kinds: ['codex'] },
+      { key: 'bb22', name: 'Laptop', online: true, kinds: ['claude'] },
+      { key: 'cc33', name: 'No Claude', online: true, kinds: ['codex'] },
+      { key: 'dd44', name: 'Asleep', online: false, kinds: ['claude'] },
+    ])
+    expect(rows.map(r => [r.key, r.setup?.state ?? null])).toEqual([['', 'ok'], ['aa11', 'outdated'], ['bb22', 'missing'], ['dd44', null]])
+    expect(claudeSetupRows(null, [{ key: '', name: 'Server', online: true, kinds: ['claude'] }])).toEqual([{ key: '', name: 'Server', online: true, setup: null }])
   })
 
   it.skipIf(!hasPython)('binds each reading to its account immediately after switching', async () => {

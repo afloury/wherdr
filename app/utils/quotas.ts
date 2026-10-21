@@ -33,10 +33,18 @@ export function machineQuotaRows(q: Quotas | null, key: string, hidden: readonly
   return rows
 }
 
-// "Claude quotas not configured" banner of a machine that has Claude agents.
-export function claudeSetupOf(q: Quotas | null, key: string, hasClaude: boolean, hidden: readonly string[] = []): ClaudeSetup | null {
-  if (!hasClaude || hidden.includes('claude')) return null
+// Claude quota status line of a machine (key '' = local), as the server read it.
+export function claudeSetupOf(q: Quotas | null, key: string): ClaudeSetup | null {
   return q?.claudeSetup?.find(s => s.key === key) || null
+}
+
+// Something to offer for a machine with Claude: install (`missing`) or update
+// (`outdated`), unless declined or skipped. Never a block in the home list:
+// an item of the machine's "…" menu and a step of the setup guide.
+export function claudeSuggestion(q: Quotas | null, key: string, hasClaude: boolean, hidden: readonly string[] = []): ClaudeSetup | null {
+  if (!hasClaude || hidden.includes('claude')) return null
+  const s = claudeSetupOf(q, key)
+  return s && (s.state === 'missing' || s.state === 'outdated') && !s.dismissed ? s : null
 }
 
 // Self-contained command to paste into a terminal on the machine: the install
@@ -77,4 +85,16 @@ export function resetText(w: QuotaWindow, now: number, locale: string): string |
   const d = new Date(w.resetsAt)
   const time = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
   return w.resetsAt - now < 86400000 ? time : `${d.toLocaleDateString(locale, { weekday: 'short' })} ${time}`
+}
+
+// Machines listed in Settings › Agents › Claude quotas and the setup guide:
+// those where Claude is installed, and those whose status line was found
+// anyway. `setup` null: not read (offline, read failed, not loaded yet).
+export interface ClaudeSetupRow { key: string, name: string, online: boolean, setup: ClaudeSetup | null }
+export function claudeSetupRows(q: Quotas | null, machines: readonly { key: string, name: string, online: boolean, kinds: readonly string[] }[]): ClaudeSetupRow[] {
+  return machines.flatMap((m) => {
+    const setup = m.online ? claudeSetupOf(q, m.key) : null
+    if (!m.kinds.includes('claude') && (!setup || setup.state === 'missing')) return []
+    return [{ key: m.key, name: m.name, online: m.online, setup }]
+  })
 }

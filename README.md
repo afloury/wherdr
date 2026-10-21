@@ -1205,9 +1205,14 @@ week, with reset times), for every online machine.
   sh scripts/install-claude-statusline.sh
   ```
 
-  The app offers the same thing: a banner "Claude quotas not configured" with **Install** (runs
-  it over SSH on a remote machine) and **Copy command**. Quotas show after the next exchange with
-  a Claude agent. The status line stores the limits in `~/.cache/herdr-web/claude-status.json`
+  The app offers the same thing in **Settings › Agents › Claude quotas**: each machine with
+  Claude, its state (set up, installed, update available, not set up), **Install** or **Update**
+  (runs it over SSH on a remote machine) and **Copy command**. The setup guide has it as an
+  optional **Quotas** step, and the home list only adds **Set up Claude quotas** and **Don’t
+  suggest again** to the machine's **…** menu, never a banner. Skipped or declined, it is no
+  longer suggested on any device (`data/claude-quotas.json`); Settings still offers it. A machine
+  whose quotas show from an older status line reads **Update available**, never "not set up".
+  Quotas show after the next exchange with a Claude agent. The status line stores the limits in `~/.cache/herdr-web/claude-status.json`
   and a short hash of the account ID (never a token or email) to tell accounts apart. The hash
   and observation time are stored together with the limits in one atomic snapshot, so a
   new login takes effect on the next status-line update. Machines sharing a known account
@@ -1221,8 +1226,9 @@ week, with reset times), for every online machine.
   with Claude to produce the new snapshot. The status line also requires `python3` in Claude’s
   `PATH` at runtime.
 
-  **New machine**: run `sh scripts/install-claude-statusline.sh` on it once (or click **Install** in
-  the banner), then send a message to any Claude agent there; its quotas appear on the home screen.
+  **New machine**: run `sh scripts/install-claude-statusline.sh` on it once (or **Install** in
+  Settings › Agents › Claude quotas), then send a message to any Claude agent there; its quotas
+  appear on the home screen.
 
 ## Notifications
 

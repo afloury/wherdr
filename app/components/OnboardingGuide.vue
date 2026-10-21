@@ -2,21 +2,44 @@
 // First-launch setup guide: a centered modal over the blurred app on a
 // computer, a full-screen page on a phone. Welcome (what wherdr is, the Herdr
 // agents found), the phone (Tailscale, PhoneSetup.vue) or Add to Home Screen
-// on a phone already on the tailnet address, then passkey lock and
-// notifications. On localhost, once the tailnet address answers, a button
+// on a phone already on the tailnet address, Claude quotas when a machine has
+// them to set up (optional: leaving the step stops suggesting them), then
+// passkey lock and notifications. On localhost, once the tailnet address answers, a button
 // continues at the same step on that address. Skip is always there; finishing or skipping is saved by the
 // server (useOnboarding.ts).
 import { type OnboardingStep, mobileOs, onAddress, onboardingSteps, setupHash, stepIndex } from '~/utils/onboarding'
 
 const os = import.meta.client ? mobileOs(navigator.userAgent, isIOS && !/iPhone|iPad|iPod/.test(navigator.userAgent)) : null
+// Quotas step: once offered it stays, so the steps do not shift under the user
+// (an install makes the machine `pending`, no longer suggested).
+const withQuotas = ref(false)
+watch(claudeSuggested, (keys) => { if (keys.length) withQuotas.value = true }, { immediate: true })
 const steps = computed(() => onboardingSteps({
   phone: Boolean(os) || !desk.value,
   host: import.meta.client ? location.hostname : 'localhost',
   standalone: Boolean(standalone),
+  quotas: withQuotas.value,
 }))
 const index = ref(0)
-watch(onboardingStep, (s) => { if (s) index.value = stepIndex(steps.value, s) }, { immediate: true })
-const step = computed<OnboardingStep>(() => steps.value[Math.min(index.value, steps.value.length - 1)]!)
+// A linked step not offered yet (#/setup?step=quotas before /api/quotas
+// answers): opened as soon as it appears, unless the user moved on meanwhile.
+let wanted: string | null = null
+watch(onboardingStep, (s) => {
+  if (!s) return
+  index.value = stepIndex(steps.value, s)
+  const name = String(Array.isArray(s) ? s[0] : s)
+  wanted = steps.value.includes(name as OnboardingStep) ? null : name
+}, { immediate: true })
+// A step added or removed later (quotas arriving after the mount) keeps the
+// user on the step they were looking at.
+watch(steps, (now, before) => {
+  const w = wanted ? now.indexOf(wanted as OnboardingStep) : -1
+  if (w >= 0) { index.value = w; wanted = null; return }
+  const i = now.indexOf(before[Math.min(index.value, before.length - 1)]!)
+  if (i >= 0) index.value = i
+})
+function go(i: number) { wanted = null; index.value = i }
+const step =computed<OnboardingStep>(() => steps.value[Math.min(index.value, steps.value.length - 1)]!)
 const last = computed(() => index.value >= steps.value.length - 1)
 const body = ref<HTMLElement | null>(null)
 watch(index, () => nextTick(() => { if (body.value) body.value.scrollTop = 0 }))
@@ -25,14 +48,22 @@ const STEP_LABELS: Record<OnboardingStep, [string, string]> = {
   welcome: ['Welcome', 'Bienvenue'],
   phone: ['Phone', 'Téléphone'],
   homescreen: ['Home Screen', 'Écran d’accueil'],
+  quotas: ['Quotas', 'Quotas'],
   security: ['Security', 'Sécurité'],
 }
 const label = (s: OnboardingStep) => tl(...STEP_LABELS[s])
 const counter = computed(() => `${String(index.value + 1).padStart(2, '0')} / ${String(steps.value.length).padStart(2, '0')}`)
 
-function next() { if (last.value) finishOnboarding(); else index.value++ }
-function prev() { if (index.value > 0) index.value-- }
-function skip() { finishOnboarding() }
+function next() { if (last.value) finishOnboarding(); else go(index.value + 1) }
+function prev() { if (index.value > 0) go(index.value - 1) }
+function skip() {
+  if (step.value === 'quotas') passQuotas()
+  finishOnboarding()
+}
+// Quotas step left without installing (Next, Skip, another step): the
+// machines still to set up are no longer suggested, on any device.
+function passQuotas() { dismissClaudeQuotas([...claudeSuggested.value]) }
+watch(step, (now, before) => { if (before === 'quotas' && now !== 'quotas') passQuotas() })
 
 // Welcome: Herdr on this machine and the agents it runs.
 const herdrOk = computed(() => herdrState.value.ok)
@@ -49,6 +80,7 @@ function newAgent() { newAgentOpen.value = true }
 
 // Security: the lock and the notifications, as in Settings.
 onMounted(() => {
+  if (!homeQuotas.value) reloadQuotas()
   refreshAuthStatus()
   refreshPushOn()
   refreshPhoneAddress()
@@ -76,7 +108,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       <span class="onboarding-count">{{ counter }}</span>
       <ol>
         <li v-for="(s, i) in steps" :key="s" :class="{ current: i === index, done: i < index }" :aria-current="i === index ? 'step' : undefined">
-          <button type="button" @click="index = i"><i /><span>{{ label(s) }}</span></button>
+          <button type="button" @click="go(i)"><i /><span>{{ label(s) }}</span></button>
         </li>
       </ol>
     </nav>
@@ -144,6 +176,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               </ol>
             </section>
           </div>
+        </template>
+
+        <!-- Claude quotas: optional -->
+        <template v-else-if="step === 'quotas'">
+          <p class="eyebrow onboarding-eyebrow">{{ tl('Quotas · optional', 'Quotas · facultatif') }}</p>
+          <h2 class="onboarding-title">{{ tl('See what is left of your Claude limits.', 'Vois ce qu’il reste de tes limites Claude.') }}</h2>
+          <p class="onboarding-lead">{{ tl('Claude Code only gives its usage limits to its status line. Install wherdr’s on each machine: it displays nothing and keeps the one you have. Skip this step if you like: it stays in Settings › Agents.', 'Claude Code ne donne ses limites d’usage qu’à sa barre d’état. Installe celle de wherdr sur chaque machine : elle n’affiche rien et garde la tienne. Passe cette étape si tu veux : elle reste dans Réglages › Agents.') }}</p>
+          <ClaudeQuotaSetup :intro="false" :declined="false" />
         </template>
 
         <!-- Security and notifications -->
