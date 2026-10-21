@@ -150,3 +150,4 @@ describe('Composer references', () => {
   })
 })
 
+

@@ -25,12 +25,16 @@ import { interactionWindowFor } from '~/utils/interactionWindow'
 // its role or its task (`tag`, `name`), with the board's progress, time on it
 // and current line, and a way to its task on the Board. A coordinator's
 // (`board.coordinator`) has its role's icon and its last message as that line.
+// `board.lead`: a repo group's head row (ProjectGroup): one line, larger, the
+// repo's name, the wherdr mark on the accent for a coordinator (an initial
+// otherwise) and its state; no last message, only a question when it asks one.
 const props = defineProps<{ pane: Pane, row?: Row | null, board?: BoardCard | null }>()
 const space = computed(() => (props.row && props.row.kind === 'space' ? props.row : null))
 // Pane whose state the card shows.
 const statePane = computed(() => props.pane)
+const lead = computed(() => Boolean(props.board?.lead))
 const cardStatus = computed(() => props.board?.group ? ({ needs: 'blocked', ready: 'done', working: 'working', todo: 'idle', done: 'idle' }[props.board.group]) : statusKey(statePane.value))
-const taskCard = computed(() => Boolean(props.board && !props.board.coordinator))
+const taskCard = computed(() => Boolean(props.board && !props.board.coordinator && !lead.value))
 // Compact list: one line (avatar, title, tab dots or pane count, state dot);
 // while the agent waits for an answer, its question and one-tap answers open below.
 const compact = computed(() => compactMeta({ tabs: space.value?.tabs.length, panes: space.value?.panes.length }))
@@ -52,14 +56,16 @@ const boardStats = computed(() => {
   return [b.progress != null ? `${b.progress}%` : '', b.since ? elapsedLabel(boardNow.value - b.since) : ''].filter(Boolean).join(' ')
 })
 // A coordinator: its last message, unless the card already shows it opened below.
+const leadInitial = computed(() => (title.value.trim()[0] || '?').toUpperCase())
 const boardLine = computed(() => {
+  if (lead.value) return ''
   if (props.board?.coordinator) return more.value ? '' : props.pane.preview || ''
   if (props.board) return props.board.msg || ''
   return !compactList.value && !more.value ? preview.value || '' : ''
 })
 // Normal tasks add one activity line. Compact tasks never expand; their
 // question and details remain in the conversation or the task sheet.
-const twoLines = computed(() => taskCard.value ? !compactList.value : Boolean(boardLine.value || props.board?.stage))
+const twoLines = computed(() => lead.value ? false : taskCard.value ? !compactList.value : Boolean(boardLine.value || props.board?.stage))
 const subtitle = computed(() => conversationSubtitle(props.pane, ws.value))
 // Selection (computer): the pane being viewed, or for a space one of its panes / tabs.
 const route = useRoute()
@@ -202,10 +208,21 @@ onUnmounted(list.unmount)
 <template>
   <UContextMenu :disabled="sheetMenus" :items="contextItems" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="onContextOpen">
     <div
-      ref="card" class="card" :class="[cardStatus, { sel: selected, stale: paneStale(pane), 'space-card': space, compact: true, open: more, 'home-task': board, 'task-row': taskCard, 'home-coord': board?.coordinator, 'home-task-two': twoLines }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
+      ref="card" class="card" :class="[cardStatus, { sel: selected, stale: paneStale(pane), 'space-card': space, compact: true, open: more, 'home-task': board && !lead, 'task-row': taskCard, 'home-coord': board?.coordinator && !lead, 'home-lead': lead, 'home-lead-big': lead && !compactList, 'home-task-two': twoLines }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
       role="button" tabindex="0" @pointerdown="down" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
       @contextmenu="onContext" @selectstart.prevent @click="open" @keydown.enter.self="open"
     >
+      <template v-if="lead">
+        <span class="avatar lead-mark" :class="{ coord: board?.coordinator }" :title="board?.coordinator && pane.agent ? kindLabel(pane.agent) : undefined" aria-hidden="true">
+          <AppLogo v-if="board?.coordinator" aria-hidden="true" /><template v-else>{{ leadInitial }}</template>
+        </span>
+        <span class="card-title lead-name">{{ title }}</span>
+        <span v-if="board?.coordinator" class="card-tag lead-coord-tag">{{ t('Coordinator') }}</span>
+        <span v-if="statePane.usageLimit" class="card-tag quota-limit" :title="stateTitle">{{ tl('Limit', 'Quota') }}</span>
+        <span v-if="compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
+        <span v-if="pane.agent" class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
+      </template>
+      <template v-else>
       <AgentAvatar :agent="pane.agent" :coordinator="board?.coordinator" />
       <span v-if="board?.tag" class="card-tag home-task-tag">{{ board.tag }}</span>
       <span class="card-title">{{ title }}</span>
@@ -217,6 +234,7 @@ onUnmounted(list.unmount)
       <span v-if="!taskCard || !board?.group" class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
       <span v-if="twoLines" class="home-task-line" :title="[board?.stage, boardLine].filter(Boolean).join(' — ')"><span v-if="taskCard && pane.usageLimit" class="home-task-stage quota-limit">{{ tl('Limit', 'Limite') }}</span><span v-if="board?.stage" class="home-task-stage">{{ board.stage }}</span>{{ boardLine }}</span>
       <button v-if="board?.onBoard && !taskCard" type="button" class="home-task-go" :title="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" :aria-label="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" @click.stop="board.onBoard"><UIcon name="i-lucide-square-kanban" /></button>
+      </template>
       <Transition name="card-more" :appear="appear">
         <div v-if="more" class="card-more">
           <div class="card-more-in">

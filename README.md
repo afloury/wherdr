@@ -164,10 +164,11 @@ Details in [Features](#features) and [Security](#security).
   also use dense rows, with a last-answer preview in normal mode; waiting agents keep their
   questions and one-tap answers in both modes.
   With [herdr-projects](#works-great-with-herdr-projects), the board's spaces follow Herdr's sidebar:
-  the Coordinators on top, then each repo's space (branch, `↓` commits behind its upstream) with
-  its project coordinator as the group's lead, right under it (the coordinator's icon, its state
-  and last message), then its tasks (key, title, progress, time on it, the board's current line);
-  closing a space that holds task agents names the tasks it stops.
+  the Coordinators on top, then one group per repo, headed by its project coordinator (the repo's
+  name, the wherdr mark, **Coordinator** and its state), a bar that folds the group and sums up its
+  tasks (`4 TASKS · 1 YOUR TURN · 1 LIMIT`, the branch and `↓` commits behind its upstream, the
+  repo space's menu), then its tasks, indented (key, title, progress, time on it, the board's
+  current line); closing a space that holds task agents names the tasks it stops.
 - **Conversation view**: the agent's real transcript (Claude Code, Codex and omp), rendered as
   Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan), timestamps, search and infinite scroll back to the
   first message. Reading a conversation never touches the terminal, so it never resizes a pane.
@@ -206,9 +207,15 @@ Details in [Features](#features) and [Security](#security).
   half-typed in its field, and “Not sent” clears once the message shows in its transcript), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
-  of local commands. Stop button while the agent works. A long pasted text (log, output) becomes
+  of local commands. Stop button while the agent works. When Claude Code suggests a reply
+  (grayed-out in the empty field), `Tab` takes it on a computer and **Use**, inside the field on
+  its right, on a phone: the field gets the text, to edit or send. A long pasted text (log, output) becomes
   a "Pasted text · N lines" card, sent to the agent as it is and shown the same way in the
   conversation, where it opens in full with Copy; long typed messages fold with Show more.
+  The draft (text, quotes, attachments) is kept per agent, across reloads: when Herdr closes a
+  pane and opens a new one for the same agent (the same conversation, or the same herdr-projects
+  coordinator or task, as after `coordinator restart`), the view moves to the new pane and the
+  draft comes along. A pane closed for good keeps it under its banner, with **Copy draft**.
 - **Codex updates and limits**: in a Codex conversation, a new Codex version shows above the
   field with an **Update** button (runs Codex's official update command on that machine, after
   confirmation), then **Restart to update** on the same conversation. When wherdr cannot run it
@@ -1303,10 +1310,12 @@ What the Board shows and does:
   herdr-projects could not start (an agent not installed there…) says why, with **Try again**
   (`coordinator restart`) once it is fixed: the message still waiting then goes in.
 - **The agent list** groups the board's spaces under their repo, as Herdr's sidebar does: each
-  machine's Coordinator and machine coordinator first, then per repo its own space (name, branch,
-  commits behind its upstream), its project coordinator in a lead row of its own (the coordinator's
-  icon, **Coordinator**, its state and last message; it stays in view when the group is folded,
-  only the tasks fold) and its tasks' spaces (key, title, state,
+  machine's Coordinator and machine coordinator first, then per repo a head row, its project
+  coordinator (named after the repo, the wherdr mark on the accent, **Coordinator**, its state; its
+  question and one-tap answers when it asks one; without a coordinator here, the repo's own space
+  with its initial), a bar under it (fold, the tasks' summary such as `4 TASKS · 1 YOUR TURN ·
+  1 LIMIT`, branch and commits behind its upstream, and the repo space's **…** menu, which opens
+  its terminal), and its tasks' spaces, indented and folding with the bar (key, title, state,
   progress, time on it, the line the board reports; the Board icon opens the task there). One
   row per task: its reviewer, planner and attempts, each in a tab of the task's space, are part
   of it; in normal mode the row says the stage (**Under review · codex**), and both modes

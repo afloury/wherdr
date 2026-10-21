@@ -22,6 +22,7 @@ import { rememberPastes } from '~/utils/sentPastes'
 import { enterSends as enterSendsFor } from '~/utils/layoutMode'
 import { kbOpen } from '~/composables/useViewport'
 import { PromptHistory, historyDirection } from '~/utils/promptHistory'
+import { createTouchTap } from '~/utils/touchTap'
 
 // `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
 // `takeBack`: conversation view; a prompt Claude puts back into its field on Stop
@@ -97,13 +98,28 @@ const readOnly = computed(() => Boolean(props.pane?.stopped || props.pane?.promp
 const shellRun = computed(() => Boolean(props.pane && props.pane.agent === 'omp' && props.pane.ompShell && props.pane.status !== 'working'))
 const stopMode = computed(() => Boolean(!readOnly.value && props.pane && props.pane.agent && (props.pane.status === 'working' || shellRun.value) && !canSend.value))
 // Claude Code's grayed-out suggestion (see parseClaudeSuggestion): placeholder of the
-// empty field; Tab (or the chip, on a touch screen) puts it in the field, without sending it.
+// empty field; Tab puts it in the field, without sending it. A touch screen has no Tab:
+// a "Use" button inside the field, on the right, does the same (`suggestTap`).
 const suggestion = computed(() => (!readOnly.value && !canSend.value && props.pane?.claudeSuggestion) || null)
+const suggestTap = computed(() => Boolean(suggestion.value && !enterSends.value))
 function useSuggestion() {
   const s = suggestion.value
   if (!s) return
   text.value = s
   focusEnd()
+}
+// The field's text stops before the button, whatever the language's label.
+const suggestBtn = ref<HTMLButtonElement | null>(null)
+const suggestRoom = ref(0)
+watch(suggestTap, () => nextTick(() => { suggestRoom.value = suggestBtn.value ? suggestBtn.value.offsetWidth + 16 : 0 }), { immediate: true })
+// The button keeps the keyboard as it is: up, the caret goes to the end of the text;
+// down, it stays down (a tap on the field opens it to edit).
+function tapSuggestion() {
+  const s = suggestion.value
+  if (!s) return
+  const typing = Boolean(ta.value && document.activeElement === ta.value)
+  text.value = s
+  if (typing) focusEnd()
 }
 const placeholder = computed(() => {
   const p = props.pane
@@ -177,6 +193,17 @@ function onSubmitClick(e: MouseEvent) {
   e.preventDefault()
   submit()
 }
+// "streaming" status (Stop) ignores :disabled, as UChatPromptSubmit does.
+const sendDisabled = computed(() => readOnly.value || (!canSend.value && !stopMode.value) || sending.value || interrupting.value === 'running')
+// A touch acts on its own, without the browser's click: on an iPhone with the
+// keyboard open, a tap that drifts a pixel becomes a pan and the click never
+// comes (utils/touchTap.ts). The field keeps the focus, the keyboard stays up.
+const sendPressed = ref(false)
+const sendTap = createTouchTap({
+  enabled: () => stopMode.value || !sendDisabled.value,
+  run: () => { if (stopMode.value) interrupt(); else submit() },
+  press: (on) => { sendPressed.value = on },
+})
 const hint = computed(() => desk.value && !stopMode.value)
 
 async function submit() {
@@ -617,11 +644,6 @@ defineExpose({
       <button type="button" class="notice-btn" :disabled="readOnly || clearingField" :title="codexFieldHint" @click="clearCodexField">{{ tl('Clear', 'Vider') }}</button>
       <button type="button" class="notice-btn" @click="emit('showTerminal')"><UIcon name="i-lucide-terminal" /><span class="notice-label">{{ t('View terminal') }}</span></button>
     </div>
-    <button
-      v-if="suggestion && !enterSends" type="button" class="composer-suggest" @mousedown.prevent @click="useSuggestion"
-    >
-      <UIcon name="i-lucide-corner-down-left" /> {{ t('Use suggestion') }}
-    </button>
     <div v-if="slashOpen" class="slash-menu" role="listbox" :aria-label="t('Commands')">
       <div v-if="slashMatches.length" ref="slashListEl" class="slash-list">
         <button
@@ -666,7 +688,7 @@ defineExpose({
       ref="promptRef" v-model="text" :disabled="Boolean(pane?.stopped)" :placeholder="pane?.stopped ? t('Restart Codex before sending a message') : readOnly ? t('Draft saved — sending unavailable offline') : placeholder" variant="outline" color="neutral"
       :rows="1" :maxrows="7" :autofocus="false" :submit-on-enter="enterSends && !slashOpen"
       :enterkeyhint="enterSends ? 'send' : 'enter'" autocapitalize="sentences"
-      class="prompt" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"
+      class="prompt" :class="{ suggesting: suggestTap }" :style="suggestRoom ? { '--suggest-room': `${suggestRoom}px` } : undefined" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"
       @submit="submit" @keydown="onKeydown" @paste="onPaste"
     >
       <template v-if="attachments.length" #header>
@@ -689,6 +711,13 @@ defineExpose({
         </div>
       </template>
       <template #footer>
+        <!-- Out of the footer's flow: top right of the field, over its first line. -->
+        <button
+          v-if="suggestTap" ref="suggestBtn" type="button" class="prompt-suggest" :aria-label="t('Use suggestion')"
+          @mousedown.prevent @click="tapSuggestion"
+        >
+          <UIcon name="i-lucide-corner-down-left" /><span>{{ tl('Use', 'Utiliser') }}</span>
+        </button>
         <UButton
           icon="i-lucide-plus" color="neutral" variant="outline" size="sm" class="prompt-plus" :disabled="readOnly"
           :aria-label="t('Photo, file, paste, commands')" @click="openPlus"
@@ -700,10 +729,11 @@ defineExpose({
         <span v-else-if="hint" class="prompt-hint"><UKbd value="enter" size="sm" /> {{ t('send') }} <span class="sep">·</span> <UKbd value="shift" size="sm" /><UKbd value="enter" size="sm" /> {{ t('new line') }}</span>
         <span v-else-if="desk && escStops && stopMode && interrupting !== 'running'" class="prompt-hint"><UKbd value="escape" size="sm" /> {{ tl('stop', 'arrêter') }}</span>
         <UChatPromptSubmit
-          :status="stopMode ? 'streaming' : 'ready'" :disabled="readOnly || (!canSend && !stopMode) || sending || interrupting === 'running'"
+          :status="stopMode ? 'streaming' : 'ready'" :disabled="sendDisabled"
           color="primary" variant="solid" streaming-color="neutral" streaming-variant="solid" streaming-icon="i-herdr-stop" size="sm"
-          class="prompt-send" :class="{ stop: stopMode }" :aria-label="stopMode && shellRun ? tl('Cancel the command', 'Annuler la commande') : t(stopMode ? 'Stop the agent' : 'Send')"
+          class="prompt-send" :class="{ stop: stopMode, pressed: sendPressed }" :aria-label="stopMode && shellRun ? tl('Cancel the command', 'Annuler la commande') : t(stopMode ? 'Stop the agent' : 'Send')"
           @mousedown.prevent @click="onSubmitClick" @stop="interrupt"
+          @touchstart="sendTap.start" @touchend="sendTap.end" @touchcancel="sendTap.cancel"
         />
       </template>
     </UChatPrompt>
