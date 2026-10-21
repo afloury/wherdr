@@ -157,7 +157,7 @@ test('a Codex that simply left gives the message held meanwhile back into the fi
   if (info.project.name.startsWith('chromium')) await page.screenshot({ path: `.shots/codex-left-${info.project.name}.png`, fullPage: true })
 })
 
-test('an existing Codex resumes its exact session', async ({ page }) => {
+test('an existing Codex resumes its exact session', { tag: '@chromium-desktop' }, async ({ page }) => {
   await stopAfterUpdate(page, true)
   await expect(card(page).getByRole('button', { name: /Start fresh/ })).toBeVisible()
   expect((await (await post(page, 'prompt', { text: 'Held until exact resume' })).json()).queued.state).toBe('held')

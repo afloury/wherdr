@@ -1,24 +1,36 @@
-# Checks on every push and pull request to main: unit + component tests, type check,
-# leak check (gitleaks only: the forbidden patterns file is local and never committed),
-# then the end-to-end tests in Chromium and WebKit against a fake Herdr server.
+# Checks: unit + component tests, type check, leak check (gitleaks only: the
+# forbidden patterns file is local and never committed), then the end-to-end tests
+# in Chromium and WebKit against a fake Herdr server.
 #
-# The browser tests run as four parallel jobs, one per Playwright project. The
-# branch protection requires the checks named `checks` and `e2e`: `e2e` is the
-# last job, green only when every project is. After a failure, "Re-run failed
-# jobs" runs the failed project again, then `e2e`.
+# Two depths of browser tests (tests/e2e/scope.ts):
+# - light (E2E_SCOPE=light), for pull requests and pushes to main or v2: every test
+#   on chromium-phone in two shards, plus the tests tagged for chromium-desktop
+#   (keyboard, split view), webkit-phone (Safari/iOS journeys) and webkit-desktop
+#   (iPad, desktop Safari);
+# - full, on a manual run or a release tag vX.Y.Z: every test on all four projects.
+# The same five jobs run in both cases; only their selection changes.
+#
+# The branch protection requires the checks named `checks` and `e2e`: `e2e` is the
+# last job, green only when every browser job is. After a failure, "Re-run failed
+# jobs" runs the failed job again, then `e2e`.
 name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, v2]
+    # Release tags get the full suite.
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
   pull_request:
     branches: [main, v2]
+  # Manual run: the full suite, on any branch.
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # The event is part of the group: a push never cancels a manual run.
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -89,16 +101,28 @@ jobs:
           fi
           echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
 
+  # Each job builds the app itself: the build takes 10-20 s, less than a separate
+  # build job would add before the browser jobs (its own setup, upload, download).
   e2e-project:
-    name: e2e-project (${{ matrix.project }})
+    name: e2e-project (${{ matrix.project }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }})
     needs: changes
     if: needs.changes.outputs.e2e == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # Full on a manual run or a release tag, light otherwise.
+      E2E_SCOPE: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')) && 'full' || 'light' }}
     strategy:
       fail-fast: false
       matrix:
-        project: [chromium-desktop, chromium-phone, webkit-desktop, webkit-phone]
+        include:
+          - project: chromium-phone
+            shard: 1/2
+          - project: chromium-phone
+            shard: 2/2
+          - project: chromium-desktop
+          - project: webkit-phone
+          - project: webkit-desktop
     steps:
       - uses: actions/checkout@v4
 
@@ -140,12 +164,24 @@ jobs:
       # The timing reporter records startup/collection and test/teardown in ms;
       # the JSON report includes collected tests and their final skip status.
       - name: End-to-end tests
-        run: npm run test:e2e -- --project=${{ matrix.project }}
+        env:
+          PROJECT: ${{ matrix.project }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          echo "scope: $E2E_SCOPE, project: $PROJECT, shard: ${SHARD:-all}"
+          npm run test:e2e -- --project="$PROJECT" ${SHARD:+--shard="$SHARD"}
+
+      - name: Artifact name
+        id: artifact
+        if: always()
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: echo "suffix=${SHARD:+-${SHARD%/*}}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report-${{ matrix.project }}-${{ github.run_attempt }}
+          name: playwright-report-${{ matrix.project }}${{ steps.artifact.outputs.suffix }}-${{ github.run_attempt }}
           path: |
             playwright-report/
             test-results/
@@ -154,23 +190,27 @@ jobs:
           retention-days: 7
 
   # The required check. `always()`: a skipped job would count as a success, so
-  # this one runs whatever happened and reads the results itself.
+  # this one runs whatever happened and reads the results itself. The matrix
+  # result is `success` only when all five browser jobs passed: a failed,
+  # cancelled or skipped one turns it red.
   e2e:
     needs: [changes, e2e-project]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Require every browser project to pass
+      - name: Require every browser job to pass
         env:
           CHANGES: ${{ needs.changes.result }}
           NEEDED: ${{ needs.changes.outputs.e2e }}
           PROJECTS: ${{ needs.e2e-project.result }}
         run: |
-          echo "changes: $CHANGES, browser tests needed: $NEEDED, projects: $PROJECTS"
+          echo "changes: $CHANGES, browser tests needed: $NEEDED, browser jobs: $PROJECTS"
           [ "$CHANGES" = success ] || exit 1
-          if [ "$NEEDED" = false ]; then
-            [ "$PROJECTS" = skipped ] && echo "No change needs the browser tests." && exit 0
-            exit 1
-          fi
-          [ "$PROJECTS" = success ]
+          case "$NEEDED" in
+            false)
+              [ "$PROJECTS" = skipped ] && echo "No change needs the browser tests." && exit 0
+              exit 1 ;;
+            true) [ "$PROJECTS" = success ] ;;
+            *) echo "unexpected browser-test decision: '$NEEDED'"; exit 1 ;;
+          esac

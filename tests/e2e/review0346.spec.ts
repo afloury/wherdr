@@ -14,7 +14,7 @@ test.afterEach(async({request})=>{
   return {agent:p?.agent,status:p?.status,prompt:p?.prompt??null}
  }).toEqual({agent:'omp',status:'idle',prompt:null})
 })
-test('R1: Enter on an old card refuses the new question without sending a key',async({page})=>{
+test('R1: Enter on an old card refuses the new question without sending a key',{ tag: '@chromium-desktop' },async({page})=>{
  test.skip(!test.info().project.name.includes('desktop'), 'Card keyboard is a desktop control')
  await show('codex-request-increase');await page.goto(`/#/a/${pane}`)
  await expect(page.locator('.choices-list')).toContainText('Yes (y)')

@@ -10,7 +10,7 @@ test.afterEach(async ({ request }) => {
     return state.panes.find((p: { id: string }) => p.id === pane)?.agent
   }).toBe('omp')
 })
-test('MCP arrow paints immediately even while the navigation request is held', async ({ page }, info) => {
+test('MCP arrow paints immediately even while the navigation request is held', { tag: '@chromium-desktop' }, async ({ page }, info) => {
   test.skip(!info.project.name.includes('desktop'), 'Card keyboard needs a hardware keyboard')
   const text = fx('claude-mcp.ansi')
   const moved = text.replace('❯ ✔ Docs', '  ✔ Docs').replace('     ✔ Calendar', '   ❯ ✔ Calendar')
@@ -65,7 +65,7 @@ test('MCP arrow paints immediately even while the navigation request is held', a
     await fakeHerdr('e2e.pane_status', { pane_id: OTHER, status: 'idle' })
   }
 })
-test('usage subtitle opens the real terminal and its arrows update the live frame', async ({ page }, info) => {
+test('usage subtitle opens the real terminal and its arrows update the live frame', { tag: ['@chromium-desktop', '@webkit-desktop'] }, async ({ page }, info) => {
   const raw = fx('codex-usage-subtitle.txt')
   const text = raw.replace(/› 1\..*$/m, '\x1b[7m$&\x1b[0m')
   const moved = raw.replace('› 1.', '  1.').replace('  2.', '› 2.').replace(/› 2\..*$/m, '\x1b[7m$&\x1b[0m')

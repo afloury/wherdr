@@ -101,7 +101,7 @@ test('the header keeps its shape when quiet mode starts or ends', async ({ page 
   expect(await header()).toEqual(off)
 })
 
-test('collapsed list: the rail keeps its buttons and still shows quiet mode', async ({ page }, info) => {
+test('collapsed list: the rail keeps its buttons and still shows quiet mode', { tag: '@chromium-desktop' }, async ({ page }, info) => {
   test.skip(!info.project.name.includes('desktop'), 'the rail is a computer layout')
   await page.addInitScript(() => {
     Object.defineProperty(ServiceWorkerContainer.prototype, 'ready', { get: () => Promise.resolve({ pushManager: { getSubscription: async () => null } }) })

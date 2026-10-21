@@ -40,7 +40,7 @@ test.beforeEach(async () => {
   for (const pane of [SPLIT_CHAT_PANE, SPLIT_SHELL_PANE]) await expect.poll(() => paneSize(pane), { timeout: 15_000 }).toEqual(original(pane))
 })
 
-test('focus preserves every visible terminal and its connection', async ({ page }) => {
+test('focus preserves every visible terminal and its connection', { tag: ['@chromium-desktop', '@webkit-desktop'] }, async ({ page }) => {
   const connections: string[] = []
   const frames = new Map<string, number>()
   page.on('websocket', ws => {
@@ -80,7 +80,7 @@ test('focus preserves every visible terminal and its connection', async ({ page 
 })
 
 for (const [width, height] of [[1440, 900], [2000, 1125]] as const) {
-  test(`the terminal of the focused cell fills the cell (${width} px)`, async ({ page }, testInfo) => {
+  test(`the terminal of the focused cell fills the cell (${width} px)`, { tag: '@chromium-desktop' }, async ({ page }, testInfo) => {
     await open(page, width, height)
     const chat = cell(page, SPLIT_CHAT_PANE)
     await expect(chat.locator('.chat').getByText('It runs in the pane on the right.')).toBeVisible()
@@ -98,7 +98,7 @@ for (const [width, height] of [[1440, 900], [2000, 1125]] as const) {
   })
 }
 
-test('the terminal follows its cell when the window is resized', async ({ page }) => {
+test('the terminal follows its cell when the window is resized', { tag: '@chromium-desktop' }, async ({ page }) => {
   await open(page, 2000, 1125)
   const shell = cell(page, SPLIT_SHELL_PANE)
   await shell.click()
@@ -114,7 +114,7 @@ test('the terminal follows its cell when the window is resized', async ({ page }
   await expectFilled(shell.locator('#termWrap'), narrow.cols, narrow.rows)
 })
 
-test('inactive terminals follow cell resizing and restore their size after leaving', async ({ page }) => {
+test('inactive terminals follow cell resizing and restore their size after leaving', { tag: '@chromium-desktop' }, async ({ page }) => {
   await open(page, 1440, 900)
   const shell = cell(page, SPLIT_SHELL_PANE)
   await expect(shell.locator('#term .xterm-rows')).toContainText('fake terminal')
@@ -142,7 +142,7 @@ function typedInto(page: Page, pane: string) {
   return typed
 }
 
-test('a click on the header of the active cell keeps the keyboard in its terminal', async ({ page }) => {
+test('a click on the header of the active cell keeps the keyboard in its terminal', { tag: '@chromium-desktop' }, async ({ page }) => {
   const typed = typedInto(page, SPLIT_SHELL_PANE)
   await open(page, 1440, 900)
   const shell = cell(page, SPLIT_SHELL_PANE)
@@ -157,7 +157,7 @@ test('a click on the header of the active cell keeps the keyboard in its termina
   expect(await page.evaluate(pane => Boolean(document.activeElement?.closest(`.cell-view[data-pane="${pane}"] #term`)), SPLIT_SHELL_PANE)).toBe(true)
 })
 
-test('Ctrl+Alt+arrow without a neighbour that way sends nothing to the terminal', async ({ page }) => {
+test('Ctrl+Alt+arrow without a neighbour that way sends nothing to the terminal', { tag: '@chromium-desktop' }, async ({ page }) => {
   const typed = typedInto(page, SPLIT_SHELL_PANE)
   await open(page, 1440, 900)
   const shell = cell(page, SPLIT_SHELL_PANE)

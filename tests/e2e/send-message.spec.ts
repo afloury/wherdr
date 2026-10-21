@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { OMP_CHAT_PANE } from './scenario.mjs'
 
-test('a sent message shows at once as pending, then settles into the conversation', async ({ page }, testInfo) => {
+test('a sent message shows at once as pending, then settles into the conversation', { tag: '@webkit-phone' }, async ({ page }, testInfo) => {
   await page.goto(`/#/a/${OMP_CHAT_PANE}`)
   await expect(page.locator('.chat').getByText('Ready when you are.')).toBeVisible()
 

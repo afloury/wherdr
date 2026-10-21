@@ -11,7 +11,7 @@ async function openNotes(page: Page) {
   await page.locator('.files-entry', { hasText: 'notes' }).click()
 }
 
-test('a video plays in the Files preview, streamed in pieces', async ({ page }, info) => {
+test('a video plays in the Files preview, streamed in pieces', { tag: '@webkit-phone' }, async ({ page }, info) => {
   // Each media request: its Range header and the status it got.
   const answers: { range?: string, status: number }[] = []
   page.on('response', async (r) => {
