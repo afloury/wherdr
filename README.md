@@ -1123,7 +1123,9 @@ same lines as text, a fallback if the tokens misbehave. The message sent is the 
 A **closed question**, one that yes or no answers in full, also gets **Yes** and **No** next to
 its `↳` (at the end of its row in the list style). A tap refers to the question and writes the
 answer under it, in the language of the interface, exactly as Reply and typing would; nothing is sent, so several questions can be
-answered in a row before sending. The keyboard stays down on a phone. Tapping the other answer
+answered in a row before sending. On a computer a click hands the field the focus, the caret
+right after the answer, so Enter sends it at once; the keyboard stays down on a phone, and a
+button pressed with the keyboard keeps the focus. Tapping the other answer
 replaces the first; words you typed under a quote are never replaced. The rule is cautious, and
 in doubt only Reply is offered: a single sentence that opens like a yes/no question (`Shall I…`,
 `Do you…`, `Is it…`, `Want me to…`, `Est-ce que…`, `Je lance… ?`, `On…`, `Dois-je…`) or ends
@@ -1136,7 +1138,8 @@ under it (a second tap takes it back), and each row has **Yes**, **No** and `↳
 the row by its number and write `Yes` or `No` under it, or nothing for an answer in words; a row
 that asks an open question has `↳` alone. Every answer names the message and the row, even for
 the last message: the agent may write another one before you send. In French: `OK tout`, `Oui`,
-`Non`. Here too everything is composed in the field and you send. A table qualifies when it has a
+`Non`. Here too everything is composed in the field and you send; on a computer the field takes the focus
+after a click, so Enter sends. A table qualifies when it has a
 number column (a header `#`, `N°`, `No`, `Num`, `ID` or `Q` over short numbers, each once) and a
 question column, known by its header (`Question`, `Decision`, `Choix`…), by cells that all end
 with `?`, or by an advice column next to it (`Avis`, `Recommendation`, `Suggestion`…). Any other
@@ -1199,7 +1202,18 @@ week, with reset times), for every online machine.
   The app offers the same thing: a banner "Claude quotas not configured" with **Install** (runs
   it over SSH on a remote machine) and **Copy command**. Quotas show after the next exchange with
   a Claude agent. The status line stores the limits in `~/.cache/herdr-web/claude-status.json`
-  and a short hash of the account ID (never a token or email) to tell accounts apart.
+  and a short hash of the account ID (never a token or email) to tell accounts apart. The hash
+  and observation time are stored together with the limits in one atomic snapshot, so a
+  new login takes effect on the next status-line update. Machines sharing a known account
+  use its newest snapshot; an unknown identity never overrides a known account. A failed
+  Claude read is retried once;
+  if both attempts fail, its previous identity is not reused. This prevents an old
+  successful reading from masking a newer file indefinitely during SSH failures.
+  Failed attempts are logged with the machine key and error code, without account data.
+  After upgrading from the older status
+  line, rerun the install command on each machine (or use **Install**) and exchange a message
+  with Claude to produce the new snapshot. The status line also requires `python3` in Claude’s
+  `PATH` at runtime.
 
   **New machine**: run `sh scripts/install-claude-statusline.sh` on it once (or click **Install** in
   the banner), then send a message to any Claude agent there; its quotas appear on the home screen.
@@ -1249,16 +1263,23 @@ What the Board shows and does:
   eight, then **Show all**). Side by side on a computer, one at a time on a phone. A card shows
   the task's key (`DEMO-12`), title, the line its agent reports, the agent program, progress, its
   pull request and its review (pass or fail, with the findings by severity).
-- **A task** opens its agent in a side panel: wherdr's own agent view (conversation, terminal,
-  message field), under the task's title, its description (folded after a few lines), the
-  Watcher's progress, and the agent's closing note or research report once there is one. The
-  panel always says who you talk to: machine, repo, task. It sits beside the Board on a computer
-  and takes the whole screen on a phone, with a way back.
-- **A task's sheet**, from the panel (or at once for a task with no agent: to do, or its agent
-  gone): description, plan, branch, pull request, review, what went wrong. **Open the chat**
-  closes it and opens the task's agent in the side panel, where you reply: the sheet has no
-  message field. When that agent has no pane now, the panel shows a field instead, and
-  herdr-projects passes your reply on (`tell`; on a plan that waits, it sends the plan back).
+- **A task** opens one compact side panel from the Board or its home row. The header names
+  the machine, repo, task and agent program, with the Board's one state: Needs you, Ready to
+  approve, Working, To do or Done. **Conversation**, **Terminal** and **Task** sit below it.
+  Task holds the description, closing note, report, pull request, review findings, limits,
+  token use and actions; a dot marks a new closing note or review. The agent's own Herdr state
+  is in a tooltip, separate from the task's state. The panel sits beside the Board on a
+  computer (with a full-screen button) and fills the screen on a phone.
+- **Needs you** shows the Board's failure or question, its command output and next-step hint.
+  It offers **Retry**, **Send the error to the agent** (`fix`), **Open terminal** and, when
+  allowed, **Approve anyway** with confirmation. A setup failure offers **Start again**:
+  herdr-projects uses `delegate` before an agent has started. With no conversation, the panel
+  keeps the explanation visible instead of opening a bare shell; Terminal stays reachable
+  when a pane exists. Read-only and unreachable machines cannot run banner actions.
+- **A task's sheet**, from the panel's **…** button, has the same details and actions as
+  the Task tab. **Open the chat** closes it and opens the conversation. When the agent has
+  no pane, a field sends a reply through herdr-projects (`tell`; on a waiting plan, it sends
+  the plan back).
   **Approve** merges finished work or says yes to a plan, after a confirmation; **Start**,
   **Stop**, **Retry** and **Archive** where herdr-projects takes them. **Start** names the agent
   the task starts with by default (its `worker.agent` and where that comes from) and offers the
@@ -1286,7 +1307,7 @@ What the Board shows and does:
   progress, time on it, the line the board reports; the Board icon opens the task there). One
   row per task: its reviewer, planner and attempts, each in a tab of the task's space, are part
   of it; in normal mode the row says the stage (**Under review · codex**), and both modes
-  open the reviewer's tab while a review runs. The counters count tasks, not tabs. A repo
+  open the task panel while a review runs. The counters count tasks, not tabs. A repo
   coordinated from another machine shows **Coordinated from <machine>**. wherdr reads this from
   the board's files (`~/.herdr-projects/data`: tasks, attempts, reviewers, coordinators, repos)
   and from Herdr's worktree groups, every 15 seconds while the list is shown, never through

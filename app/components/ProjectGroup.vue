@@ -20,7 +20,7 @@ import type { Row } from '#shared/spaces'
 import { type BoardCard, type Member, type MemberStage, type ProjectSection, memberStage, memberTag } from '#shared/boardLinks'
 import type { MenuItem } from '~/composables/useUi'
 import { longPress } from '~/utils/longPress'
-import { summaryParts, taskSummary } from '~/utils/projectSummary'
+import { memberGroup, summaryParts, taskSummary } from '~/utils/projectSummary'
 
 const props = defineProps<{ group: ProjectSection, machine?: string }>()
 const g = computed(() => props.group)
@@ -93,6 +93,7 @@ function memberCard(m: Member): BoardCard | null {
   const task = m.task
   const stage = memberStage(m)
   return {
+    group: memberGroup(m) || undefined,
     tag: memberTag(m, t('review')),
     stage: stage && ['review', 'plan-review', 'pick'].includes(stage.what) ? stageLabel(stage) : undefined,
     // While a helper works, its tab (the row's pane's) opens, not the one opened last.

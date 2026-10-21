@@ -370,7 +370,7 @@ function onPaste(e: ClipboardEvent) {
       return
     }
     // A pasted line that reads as a reference stays plain text: only the
-    // buttons of the conversation and of the Project panel write references.
+    // conversation's own buttons write references.
     const plain = unreference(s)
     if (plain === s) return // normal paste
     e.preventDefault()
@@ -545,19 +545,31 @@ async function runSlash(cmd: string, result = true) {
 // panel). The focus is given right away, within the gesture, so that the iPhone
 // opens the keyboard; the cursor is placed once the text is rendered.
 function focusEnd() {
+  focusAt(null)
+}
+function focusAt(at: number | null) {
   ta.value?.focus()
   nextTick(() => {
     const el = ta.value
     if (!el) return
     el.focus()
-    el.setSelectionRange(el.value.length, el.value.length)
-    el.scrollTop = el.scrollHeight
+    const pos = at === null ? el.value.length : Math.min(at, el.value.length)
+    el.setSelectionRange(pos, pos)
+    if (at === null) el.scrollTop = el.scrollHeight
   })
+}
+// A one-tap answer written in the field (ChatView's Yes / No / OK to all):
+// the caret right after it, so that Enter sends it. Only where Enter sends: on
+// a touch keyboard Enter adds a line, and the focus would only open the
+// keyboard over the next question.
+function focusAnswer(at: number) {
+  if (enterSends.value) focusAt(at)
 }
 
 defineExpose({
   focus: () => ta.value?.focus(),
   focusEnd,
+  focusAnswer,
   blur: () => ta.value?.blur(),
   addImages, addFiles, stop,
 })

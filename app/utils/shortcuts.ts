@@ -57,10 +57,6 @@ export const SHORTCUTS: readonly Shortcut[] = [
   // (⌘O "Open File" needs no Alt). Caught before the terminal: on Linux Ctrl+Alt+letter
   // would be ESC + the control byte.
   { id: 'open-editor', mods: ['mod', 'alt'], key: 'o', fields: 'any', terminal: true, capture: true, kbds: ['meta', 'alt', 'O'] },
-  // herdr-projects (machine with the plugin): the Project panel of the current agent's
-  // project (shown or collapsed on its coordinator, opened from a thread), and New
-  // project, the Shift sibling of New agent. Mod+Alt like the other machine actions;
-  // ⌘⌥P is unbound in Chrome, Firefox and Safari (Finder's path bar only).
   { id: 'settings', mods: ['mod'], key: ',', fields: 'any', terminal: true, kbds: ['meta', ','] },
   { id: 'help', mods: ['mod'], anyShift: true, key: '/', fields: 'any', terminal: true, overlay: true, kbds: ['meta', '/'] },
   { id: 'help', mods: [], anyShift: true, key: '?', fields: 'none', terminal: false, overlay: true, kbds: ['?'] },

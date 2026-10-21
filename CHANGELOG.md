@@ -6,8 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **Yes, No and OK to all hand the field the focus on a computer**: after a click, the caret sits right after the answer written in the field, so Enter sends it at once. On a phone the keyboard stays down as before (Enter adds a line there), and a button pressed with the keyboard keeps the focus, to answer the next question.
+- **Enter sends in a narrow computer window too**: a window narrow enough for the phone layout no longer turns Enter into a new line when the device has no touch screen (Shift+Enter still adds one).
+
+- Task panels use one compact header and Conversation / Terminal / Task tabs, with structured Needs you explanations and actions, setup failures kept visible, and the Board’s state vocabulary on home rows. The Task tab holds descriptions, closing notes, review findings, limits and actions in English and French.
+- Claude quota snapshots bind the account fingerprint and observation time atomically. Update older status lines to remove the ten-minute identity cache. Failed Claude reads are retried once; after two failures, that machine's Claude gauge is temporarily omitted until reading recovers, instead of reusing an old account reading indefinitely. This supersedes the earlier keep-last-reading behavior for Claude; Codex is unchanged.
+
 - Home machine bar: named groups with editable membership and machine order, combined counts, device storage, and reorder/hide controls (English and French).
 
+- **wherdr.dev shows the herdr-projects 1.x Board**: the herdr-projects story and its live demo now show the Board (a task reviewed, approved and moved to Done; the Coordinator turning a message into a task) instead of herdr-projects 0.2's Project panel, threads and TASKS.md.
 - Coordinator failure messages distinguish startup and message delivery errors, and report the actual pending message count in English and French.
 - **Useful home list densities**: Compact keeps each Board task on one line (agent, key, truncated title, progress, duration and state, with Your turn when needed). Normal adds one activity line with relevant limit or review labels. Large detailed cards are removed; coordinators and other agents stay dense too, while agents outside the Board keep their one-tap answers. Settings keeps the existing compact/normal choice, with Compact still the default.
 

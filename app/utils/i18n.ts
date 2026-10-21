@@ -5,6 +5,9 @@
 const FR: Record<string, string> = {
   // herdr-projects 1.x tasks (server/utils/projectsTasks.ts)
   'herdr-projects 1.2.1 or later is not available on {machine}': 'herdr-projects 1.2.1 ou plus n’est pas disponible sur {machine}',
+  'Invalid approval': 'Approbation invalide',
+  'This task cannot bypass approval checks': 'Cette tâche ne peut pas ignorer les contrôles d’approbation',
+  'This failure needs the human first': 'Cet échec nécessite d’abord ton intervention',
   'Invalid task': 'Tâche invalide', 'Nothing to send': 'Rien à envoyer',
   'This task has no agent to talk to': 'Cette tâche n’a pas d’agent à qui parler',
   'This task does not wait for approval': 'Cette tâche n’attend pas d’approbation',
@@ -437,7 +440,7 @@ const FR: Record<string, string> = {
   'Tab created': 'Onglet créé', 'Tab closed': 'Onglet fermé',
   'Space closed': 'Espace fermé', 'Pane moved': 'Pane déplacé',
   'Start in a new pane': 'Lancer dans un nouveau pane', 'Start in a new tab': 'Lancer dans un nouvel onglet', 'New pane': 'Nouveau pane',
-  // Project panel (herdr-projects coordinator)
+  // Agent list resize handle (computer)
   'List width': 'Largeur de la liste', 'Drag to resize · double-click: default width': 'Glisser pour élargir · double-clic : largeur par défaut', 
   'Pull request': 'Pull request',
   // Server messages (shared/message.ts: {name} = value filled in by the server)

@@ -3,16 +3,26 @@
 // coordinator has its own row and state above it), so it says the same thing
 // folded or not.
 import type { Member } from '../../shared/boardLinks'
+import type { TaskGroup } from '../../shared/projectsTasks'
 import { rowGroup } from '../../shared/spaces'
+
+// The Board's group a task's row shows: its task's, except "needs you" while
+// its agent asks a question during the work. Null for a row without a task.
+export function memberGroup(m: Member): TaskGroup | null {
+  const g = m.task?.group
+  if (!g) return null
+  return g === 'working' && m.row.lead.status === 'blocked' ? 'needs' : g
+}
 
 export interface TaskSummary { tasks: number, blocked: number, working: number, limit: number }
 
 export function taskSummary(members: Member[]): TaskSummary {
   const s: TaskSummary = { tasks: members.length, blocked: 0, working: 0, limit: 0 }
   for (const m of members) {
-    const g = rowGroup(m.row)
-    if (g === 'blocked') s.blocked++
-    else if (g === 'working') s.working++
+    // As its row says it: the Board's group, else its agents' state.
+    const g = memberGroup(m)
+    if (g ? g === 'needs' : rowGroup(m.row) === 'blocked') s.blocked++
+    else if (g ? g === 'working' : rowGroup(m.row) === 'working') s.working++
     // The pane the row shows: the one its card tags with "Limit".
     if (m.row.lead.usageLimit) s.limit++
   }

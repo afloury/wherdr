@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { Pane } from '../shared/types'
 import type { Member } from '../shared/boardLinks'
-import { summaryParts, taskSummary } from '../app/utils/projectSummary'
+import type { TaskGroup } from '../shared/projectsTasks'
+import { memberGroup, summaryParts, taskSummary } from '../app/utils/projectSummary'
 
 const pane = (id: string, p: Partial<Pane> = {}): Pane => ({ id, workspace: id.split(':')[0]!, tab: `${id}:t`, tabLabel: null, agent: 'claude', name: null, label: null, status: 'idle', title: null, cwd: '/tmp/demo', agentSession: null, ...p })
 const member = (p: Pane): Member => ({ row: { kind: 'pane', key: p.id, pane: p, lead: p }, task: null, role: 'worker' })
+const onBoard = (p: Pane, group: TaskGroup): Member => ({
+  ...member(p),
+  task: { id: `t-${p.id}`, repo: 'demo', n: 1, key: 'DEMO-1', title: 'Demo', panes: [], workspace: null, stage: '', group, progress: null, msg: '', since: null },
+})
 const en = (e: string) => e
 const fr = (_: string, f: string) => f
 
@@ -27,5 +32,18 @@ describe('the summary of a repo group', () => {
     expect(summaryParts(taskSummary([member(pane('a:1'))]), fr).map(p => p.text)).toEqual(['1 tâche'])
     expect(summaryParts({ tasks: 3, blocked: 0, working: 0, limit: 2 }, en).map(p => p.key)).toEqual(['tasks', 'limit'])
     expect(summaryParts({ tasks: 3, blocked: 0, working: 0, limit: 2 }, fr)[1]!.text).toBe('2 limites')
+  })
+
+  it('counts the tasks of the Board as their rows say them', () => {
+    const ms = [
+      onBoard(pane('a:1', { status: 'idle' }), 'needs'),
+      onBoard(pane('b:1', { status: 'blocked' }), 'working'),
+      onBoard(pane('c:1', { status: 'working' }), 'working'),
+      onBoard(pane('d:1', { status: 'blocked' }), 'ready'),
+      onBoard(pane('e:1', { status: 'working' }), 'todo'),
+    ]
+    expect(ms.map(memberGroup)).toEqual(['needs', 'needs', 'working', 'ready', 'todo'])
+    expect(taskSummary(ms)).toEqual({ tasks: 5, blocked: 2, working: 1, limit: 0 })
+    expect(memberGroup(member(pane('f:1')))).toBeNull()
   })
 })

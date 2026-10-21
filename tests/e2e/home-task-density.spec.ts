@@ -20,17 +20,17 @@ for (const language of ['en', 'fr']) {
           coordinators: [{ level: 'project', repo: 'demo', pane: 'w3:p1', workspace: null }],
           tasks: [{ id: 'demo/9', repo: 'demo', n: 9, key: 'DEMO-9',
             title: language === 'fr' ? 'Adapter la navigation et vérifier les petits écrans' : 'Adapt navigation and check smaller screens',
-            panes: [{ id: 'w1:p1', role: 'worker' }], workspace: 'w1', stage: 'working',
+            panes: [{ id: 'w1:p1', role: 'worker' }], workspace: 'w1', stage: 'working', group: 'working',
             progress: 30, msg: language === 'fr' ? 'Vérification des espacements' : 'Checking the spacing', since: Date.now() - 450000,
           }, {
             id: 'demo/10', repo: 'demo', n: 10, key: 'DEMO-10',
             title: language === 'fr' ? 'Simplifier les filtres' : 'Simplify filters',
-            panes: [{ id: 'w2:p1', role: 'reviewer', kind: 'codex' }], workspace: 'w2', stage: 'reviewing', review: 'work',
+            panes: [{ id: 'w2:p1', role: 'reviewer', kind: 'codex' }], workspace: 'w2', stage: 'reviewing', group: 'working', review: 'work',
             progress: 85, msg: language === 'fr' ? 'Relecture du changement' : 'Reviewing the change', since: Date.now() - 150000,
           }, {
             id: 'demo/11', repo: 'demo', n: 11, key: 'DEMO-11',
             title: language === 'fr' ? 'Valider le menu' : 'Approve the menu',
-            panes: [{ id: OMP_ASK_PANE, role: 'worker' }], workspace: 'w11', stage: 'blocked',
+            panes: [{ id: OMP_ASK_PANE, role: 'worker' }], workspace: 'w11', stage: 'asks', group: 'needs',
             progress: 60, msg: language === 'fr' ? 'Attente de validation' : 'Waiting for approval', since: Date.now() - 210000,
           }],
         }],
@@ -45,7 +45,7 @@ for (const language of ['en', 'fr']) {
       await expect(card.locator('.home-task-line')).toHaveCount(compact ? 0 : 1)
       await expect(card.locator('.card-more, .card-main, .card-tab-dots')).toHaveCount(0)
       const waiting = page.locator('.project-tree .card', { hasText: 'DEMO-11' })
-      await expect(waiting.locator('.task-attention')).toHaveText(language === 'fr' ? 'À toi' : 'Your turn')
+      await expect(waiting.locator('.task-state')).toHaveText(language === 'fr' ? 'À toi' : 'Needs you')
       await expect(waiting.locator('.card-more')).toHaveCount(0)
       const review = page.locator('.project-tree .card', { hasText: 'DEMO-10' })
       await expect(review.locator('.home-task-stage')).toHaveCount(compact ? 0 : 1)

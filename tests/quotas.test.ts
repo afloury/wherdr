@@ -138,7 +138,7 @@ describe('quotas par compte', () => {
   it('without a fingerprint, compares the weekly reset time', () => {
     // Same account: same anchor, even read a week earlier.
     expect(sameAccount(q(1, null), q(2, null, 1790600400000 + WEEK))).toBe(true)
-    expect(sameAccount(q(1, 'aaaaaaaaaaaaaaaa'), q(2, null, 1790600400000 + 60000))).toBe(true)
+    expect(sameAccount(q(1, 'aaaaaaaaaaaaaaaa'), q(2, null, 1790600400000 + 60000))).toBe(false)
     // Autre compte : autre ancrage.
     expect(sameAccount(q(1, null), q(2, 'bbbbbbbbbbbbbbbb', 1790600400000 + 14 * H))).toBe(false)
     // Empreintes connues : elles priment.
@@ -146,6 +146,18 @@ describe('quotas par compte', () => {
     expect(sameAccount(q(1, 'aaaaaaaaaaaaaaaa'), q(2, 'aaaaaaaaaaaaaaaa', 1790600400000 + 3 * H))).toBe(true)
     // Nothing comparable: same account (previous display).
     expect(sameAccount({ ...q(1, null), week: null }, q(2, null, 1790600400000 + 3 * H))).toBe(true)
+  })
+
+  it('an unknown identity cannot replace or bridge known accounts', () => {
+    const out = mergeQuotas([
+      r('server', 'Server', q(1, 'aaaaaaaaaaaaaaaa')),
+      r('unknown', 'Unknown', q(100, null)),
+      r('laptop', 'Laptop', q(2, 'bbbbbbbbbbbbbbbb')),
+      r('desktop', 'Desktop', q(3, 'aaaaaaaaaaaaaaaa', 1790600400000, 98)),
+    ])
+    expect(out.claudeAccounts!.map(a => [a.machines.map(m => m.key), a.five!.used])).toEqual([
+      [['server', 'desktop'], 98], [['unknown'], 10], [['laptop'], 10],
+    ])
   })
 
   it('a machine without a reading (offline, unread) creates no block', () => {
@@ -283,6 +295,21 @@ describe('readClaude over SSH', () => {
     const r = spawnSync('sh', ['-c', script, 'sh', ...args])
     return { code: r.status, stdout: r.stdout, stderr: r.stderr.toString('utf8') }
   }, { statTtlMs: 0 })
+
+  it('keeps legacy quotas readable and offers to update the old writer', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-legacy-'))
+    try {
+      const dir = path.join(home, '.cache/herdr-web')
+      fs.mkdirSync(dir, { recursive: true })
+      fs.mkdirSync(path.join(home, '.claude'), { recursive: true })
+      fs.writeFileSync(path.join(dir, 'claude-status.json'), JSON.stringify({ rate_limits: { five_hour: { used_percentage: 44 } } }))
+      fs.writeFileSync(path.join(dir, 'claude-account'), 'aaaaaaaaaaaaaaaa')
+      fs.writeFileSync(path.join(home, '.claude/wherdr-statusline.sh'), '# legacy claude-account writer')
+      const reading = await readClaude(localFs, home)
+      expect(reading.q).toMatchObject({ account: 'aaaaaaaaaaaaaaaa', five: { used: 44 } })
+      expect(reading.setup).toBe('missing')
+    } finally { fs.rmSync(home, { recursive: true, force: true }) }
+  })
 
   it('reports a machine without the status line as missing', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-q-'))

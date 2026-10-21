@@ -11,9 +11,9 @@
 // Board: a card opens its task's agent there; labelled buttons open a
 // coordinator: the Coordinator (top bar), the machine
 // coordinator (each machine's lane) and a repo's project coordinator (its lane;
-// 1.x: `Space` on a heading). A task with no agent opens its sheet
-// (TaskSheet), which the panel opens too; the sheet's "Open the chat" brings
-// the task's agent back to the panel. "+ New task" adds one (NewTaskSheet).
+// 1.x: `Space` on a heading). Every task opens the panel, including tasks
+// without an agent. Its Task tab and optional sheet keep details and actions
+// available. "+ New task" adds one (NewTaskSheet).
 // A task archived from its sheet leaves the Board at once, with a toast that
 // offers Restore for a few seconds; "Archived" lists the archived tasks, each
 // one's sheet read-only with Restore (as in 1.x).
@@ -175,14 +175,9 @@ function openSheet(c: Card) {
   picked.value = c
   sheetOpen.value = true
 }
-// A card: its agent in the panel; a task with no agent program on it (to do,
-// one that never started): its sheet at once. The panel asks for the sheet too
-// when the task's agent is gone.
+// A card always opens the task panel. No agent yet: the panel explains
+// setup failures and keeps the task's details and actions reachable.
 function openCard(c: Card) {
-  if (!c.task.app) {
-    panel.value = null
-    return openSheet(c)
-  }
   picked.value = c
   panel.value = { machine: c.machine, kind: 'task', id: c.task.id }
   haptic()
@@ -566,8 +561,8 @@ function back() {
     </template>
     <BoardPanel
       v-if="panel" :key="panelKey" :target="panel" :task="panelTask"
-      :machine-label="machineLabel(panel.machine)" :read-only="readOnly(panel.machine)" :reachable="writable.some(m => m.machine === panel!.machine)"
-      @close="panel = null" @sheet="panelSheet" @no-agent="panelNoAgent"
+      :refresh="reload" :machine-label="machineLabel(panel.machine)" :read-only="readOnly(panel.machine)" :reachable="writable.some(m => m.machine === panel!.machine)"
+      @archived="onArchived" @restored="onRestored" @changed="reload" @close="panel = null" @sheet="panelSheet" @no-agent="panelNoAgent"
     />
     <TaskSheet
       v-model:open="sheetOpen" :task="pickedTask" :machine="picked?.machine ?? ''" :read-only="readOnly(picked?.machine ?? '')"

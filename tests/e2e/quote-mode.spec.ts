@@ -10,9 +10,11 @@ const shot = (page: Page, name: string, project: string) =>
 
 const saved = (page: Page, key: string) => page.evaluate(k => localStorage.getItem(k), key)
 
-async function settings(page: Page) {
-  await page.goto('/#/settings')
-  await page.locator('.settings-nav-item', { hasText: 'Conversation' }).click()
+async function settings(page: Page, navigate = true) {
+  if (navigate) {
+    await page.goto('/#/settings')
+    await page.locator('.settings-nav-item', { hasText: 'Conversation' }).click()
+  }
   const group = page.locator('.settings-group', { has: page.locator('h3', { hasText: 'Quoted replies' }) })
   await expect(group).toBeVisible()
   const radio = (value: string) => group.locator(`[role="radio"][value="${value}"]`)
@@ -48,16 +50,17 @@ test('an empty storage gets tokens in the native field, from one list', async ({
 })
 
 test('the former per-device values are overwritten once, then a new choice is kept', async ({ page }) => {
-  await page.goto('/#/settings')
-  // A device of an earlier version: a value per device kind, the single key absent.
-  await page.evaluate(() => {
+  // Seed the old device before the app imports its preference modules.
+  // Run once so the same context can verify persistence after a real reload.
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('legacyQuotesSeeded')) return
+    sessionStorage.setItem('legacyQuotesSeeded', '1')
     localStorage.removeItem('quoteMode')
     localStorage.setItem('quoteModeComputer', 'lines')
     localStorage.setItem('quoteModePhone', 'rich')
     localStorage.setItem('quoteTokensComputer', '1')
     localStorage.setItem('quoteTokensPhone', '0')
   })
-  await page.reload()
   let { radio } = await settings(page)
   await expect(radio('native')).toHaveAttribute('aria-checked', 'true')
   expect(await saved(page, 'quoteMode')).toBe('native')
@@ -69,15 +72,13 @@ test('the former per-device values are overwritten once, then a new choice is ke
   await expect(radio('lines')).toHaveAttribute('aria-checked', 'true')
   expect(await saved(page, 'quoteMode')).toBe('lines')
   await page.reload()
-  ;({ radio } = await settings(page))
+  ;({ radio } = await settings(page, false))
   await expect(radio('lines')).toHaveAttribute('aria-checked', 'true')
   expect(await saved(page, 'quoteMode')).toBe('lines')
 })
 
 test('a device set to the former rich field moves to the native one', async ({ page }) => {
-  await page.goto('/#/settings')
-  await page.evaluate(() => localStorage.setItem('quoteMode', 'rich'))
-  await page.reload()
+  await page.addInitScript(() => localStorage.setItem('quoteMode', 'rich'))
   const { radio } = await settings(page)
   await expect(radio('native')).toHaveAttribute('aria-checked', 'true')
   expect(await saved(page, 'quoteMode')).toBe('native')
@@ -143,4 +144,28 @@ test('the plain text mode writes the same line, without a token', async ({ page 
   await shot(page, 'quote-mode-field-plain', testInfo.project.name)
   await page.locator('.composer-quote-x').click()
   await expect(field).toHaveValue('')
+})
+
+// Exercise the date boundary on every run, independently of the CI wall clock.
+test('a quoted question keeps its reference across UTC midnight', async ({ page }) => {
+  const response = await page.request.get(`/api/chat?pane=${encodeURIComponent(OMP_QUESTIONS_PANE)}`)
+  const chat = await response.json()
+  const question = chat.items.find((item: { text?: string, ts?: string }) => item.text?.includes('Shall I start step 1 now?'))
+  expect(question?.ts).toBeTruthy()
+  const quotedTime = new Date(question.ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })
+  const timestamps = chat.items.map((item: { ts?: string }) => item.ts).filter(Boolean)
+  const latest = new Date(Math.max(...timestamps.map((ts: string) => Date.parse(ts))))
+  expect(Number.isNaN(latest.getTime())).toBe(false)
+  const midnight = Date.UTC(latest.getUTCFullYear(), latest.getUTCMonth(), latest.getUTCDate() + 1)
+  await page.clock.setFixedTime(midnight - 1000)
+  await page.addInitScript(() => localStorage.setItem('typewriterSpeed', 'off'))
+  await page.goto(`/#/a/${OMP_QUESTIONS_PANE}`)
+  await expect(page.locator('.chat').getByText('All 48 tests pass.')).toBeVisible()
+  await page.clock.setFixedTime(midnight + 1000)
+  expect(await page.evaluate(() => new Date().toISOString())).toMatch(/T00:00:01\.000Z$/)
+  await page.locator('.q-reply[data-q="Shall I start step 1 now?"]').click()
+  const field = page.locator('.prompt textarea').first()
+  await expectDraft(field, `${point('Shall I start step 1 now?')}\n`)
+  await expect(field).toHaveValue(new RegExp(`^↳ Quote point ${quotedTime} ~`))
+  await expect(page.locator('.prompt .qm-mirror .qm-q')).toHaveCount(1)
 })
