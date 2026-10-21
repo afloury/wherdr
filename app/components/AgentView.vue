@@ -23,6 +23,7 @@ import { swipeAxis, swipeOffset, swipeStep } from '~/utils/swipe'
 import { cellMode, showComposer, terminalAttachment } from '~/utils/viewMode'
 import { carriesFiles, dragDepth } from '~/utils/fileDrop'
 import { interactionWindowFor } from '~/utils/interactionWindow'
+import { agentKeys, mergeKeys, replacementPane } from '~/utils/agentIdentity'
 
 const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, grip?: boolean, embedded?: boolean, selectedMode?: PaneViewMode }>()
 const emit = defineEmits<{ activate: [], 'update:selectedMode': [mode: PaneViewMode] }>()
@@ -153,6 +154,55 @@ usePaneShortcuts(() => props.paneId, () => live.value, {
 })
 
 const draft = useDraft(props.paneId)
+
+// The same agent in another pane (utils/agentIdentity.ts). Herdr may close
+// this pane and open a new one for the same agent (herdr-projects restarting
+// a coordinator): the draft follows the agent, and the view moves to the new
+// pane. The keys are gathered while the pane is open; the board's links say
+// which coordinator or task it is.
+const boardLinks = useBoardLinks()
+const known = shallowRef<string[]>([])
+const liveIds = computed(() => (herdrState.value.ok ? herdrState.value.panes.map(p => p.id).join(' ') : ''))
+watch([() => pane.value && agentKeys(pane.value, boardLinks.value).join(' '), liveIds], ([keys, ids]) => {
+  if (!keys || !ids) return
+  const add = keys.split(' ')
+  known.value = mergeKeys(known.value, add)
+  noteDraftOwner(props.paneId, add)
+  // A draft left by this agent's closed pane comes into this field.
+  if (adoptDrafts(props.paneId, add, new Set(ids.split(' ')))) {
+    toast(tl('Draft from the closed pane restored', 'Brouillon du pane fermé récupéré'))
+  }
+}, { immediate: true })
+const replacement = computed(() => (closed.value ? replacementPane(props.paneId, known.value, herdrState.value.panes, boardLinks.value) : null))
+watch(replacement, (r) => {
+  if (!r) return
+  moveDraft(props.paneId, r.id)
+  // A cell or the Board's panel follows its own layout: it offers the way.
+  if (props.cell || props.embedded) return
+  toast(tl('The agent restarted in a new pane: opened it', 'L’agent a redémarré dans un nouveau pane : il est ouvert'))
+  router.replace(panePath(r.id))
+}, { immediate: true })
+// Closed with no replacement yet: the board names the new pane within seconds.
+let linksTimer: ReturnType<typeof setInterval> | undefined
+watch(() => closed.value && !replacement.value, (waiting) => {
+  clearInterval(linksTimer)
+  linksTimer = undefined
+  if (!waiting) return
+  refreshBoardLinks()
+  let left = 20
+  linksTimer = setInterval(() => {
+    if (--left <= 0) { clearInterval(linksTimer); linksTimer = undefined }
+    if (pageVisible.value) refreshBoardLinks()
+  }, 3000)
+}, { immediate: true })
+onUnmounted(() => clearInterval(linksTimer))
+const hasDraft = computed(() => draftFilled(draft))
+async function copyDraft() {
+  try {
+    await navigator.clipboard.writeText(draftAsText(draft))
+    toast(tl('Draft copied', 'Brouillon copié'))
+  } catch { toast(t('Copy failed'), true) }
+}
 
 // Messages just sent (or still sending), shown without waiting for the next
 // state (see composables/useOutbox.ts).
@@ -544,9 +594,15 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
       <UIcon name="i-lucide-unplug" class="term-banner-icon" />
       <span>{{ machine.status === 'connecting' ? tl(`${machineName(machine.key)} unreachable — reconnecting…`, `${machineName(machine.key)} injoignable — reconnexion…`) : tl(`${machineName(machine.key)} offline`, `${machineName(machine.key)} hors ligne`) }}<small v-if="machine.error">{{ t(machine.error) }}</small></span>
     </div>
-    <div v-if="banner" class="term-banner">
+    <div v-if="banner === closedBanner && replacement" class="term-banner closed-banner">
+      <UIcon name="i-lucide-refresh-cw" class="term-banner-icon" />
+      <span>{{ tl('This agent continues in a new pane.', 'Cet agent continue dans un nouveau pane.') }}</span>
+      <UButton size="xs" color="warning" variant="outline" :to="panePath(replacement.id)">{{ tl('Open', 'Ouvrir') }}</UButton>
+    </div>
+    <div v-else-if="banner" class="term-banner" :class="{ 'closed-banner': banner === closedBanner }">
       <UIcon name="i-lucide-triangle-alert" class="term-banner-icon" />
-      <span>{{ banner.text }}</span>
+      <span>{{ banner === closedBanner && hasDraft ? tl('This pane has been closed. Your draft is kept below.', 'Ce pane a été fermé. Ton brouillon est gardé ci-dessous.') : banner.text }}</span>
+      <UButton v-if="banner === closedBanner && hasDraft" size="xs" color="warning" variant="outline" icon="i-lucide-copy" @click="copyDraft">{{ tl('Copy draft', 'Copier le brouillon') }}</UButton>
       <UButton size="xs" color="warning" variant="outline" @click="banner.fn()">{{ banner.btn }}</UButton>
     </div>
 
