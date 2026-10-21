@@ -1563,7 +1563,8 @@ something else protects the network (Cloudflare Access), and set up a passkey th
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md), including the [agent test rule](CONTRIBUTING.md#agent-test-rule)
+and `npm run test:affected -- --base origin/v2 --dry-run`. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 Every commit is public: a leak check (gitleaks plus your own forbidden patterns) covers the files
 and the commits about to be pushed; see [Leak check](CONTRIBUTING.md#leak-check).

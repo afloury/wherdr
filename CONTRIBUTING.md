@@ -15,7 +15,7 @@ npm run build        # production build in .output/
 npm run build:demo   # browser demo (wherdr.dev/demo/) in .output-demo/public/
 ```
 
-Before opening a pull request, make sure `npx vitest run` and `npx nuxt typecheck` pass, and add
+Before opening a pull request, run the [affected tests](#agent-test-rule) and `npx nuxt typecheck`, and add
 tests for new logic (see [Tests](#tests) below; fixtures in `tests/fixtures/`, **never real
 conversations or personal paths**: use neutral names such as `host-a`, `laptop`, `alice`,
 `/home/user`).
@@ -41,11 +41,12 @@ sent request, a stored value), not the wiring.
 | --- | --- | --- | --- |
 | Unit | `tests/*.test.ts` | `npx vitest run --project unit` | Pure modules of `server/`, `shared/`, `app/utils/`, in Node. |
 | Component | `tests/components/*.test.ts` | `npx vitest run --project components` | Vue components mounted in a Nuxt environment (auto-imports, Nuxt UI) on happy-dom, with `mountSuspended` and `registerEndpoint` from `@nuxt/test-utils/runtime`. |
-| End to end | `tests/e2e/*.spec.ts` | `npm run build && npm run test:e2e` | The built app in Chromium and WebKit (Safari's engine, for iOS bugs), at iPhone and desktop sizes, against a fake Herdr server with neutral data. |
+| End to end | `tests/e2e/*.spec.ts` | `npm run build && npm run test:e2e -- tests/e2e/<name>.spec.ts --project chromium-phone` | The built app in Chromium and WebKit (Safari's engine, for iOS bugs), at iPhone and desktop sizes, against a fake Herdr server with neutral data. |
 
 `npx vitest run` runs the unit and component projects together. For the end-to-end tests,
 install the browsers once with `npx playwright install --with-deps chromium webkit`; a single
-project runs with `npm run test:e2e -- --project=webkit-phone` (names in `playwright.config.ts`),
+project and spec run with `npm run test:e2e -- tests/e2e/<name>.spec.ts --project=webkit-phone`
+(names in `playwright.config.ts`),
 and `npx playwright show-report` opens the last report. They never touch a real Herdr session.
 
 For a focused check of browser-test stability, build once, then run
@@ -65,6 +66,41 @@ workflow and on release tags `vX.Y.Z`.
 `E2E_SCOPE=light npm run test:e2e -- --project=webkit-phone` reproduces the light selection
 locally; without `E2E_SCOPE`, a local run is the whole suite. CI retries a failed test once (it
 then shows as flaky); local runs never retry.
+
+## Agent test rule
+
+Test each change at the lowest level that can detect the regression. Use Node for parsers,
+state transitions and server contracts; `mountSuspended` on happy-dom for component state
+and emitted actions. Use a real browser for focus, keyboard, selection, layout and overlays
+(the repository currently uses Playwright, with no Vitest Browser Mode project). Add an
+end-to-end test when the regression crosses the built app, routing, transport or Herdr
+boundaries. Reuse an existing journey when it proves the same contract.
+
+Start with `npm run test:affected -- --base <target-branch> --dry-run`, review its selection,
+then run `npm run test:affected -- --base <target-branch>`. Use `origin/v2` when targeting v2.
+The selector combines `vitest related --run` with the reviewed domain table in
+[`scripts/test-affected.mjs`](scripts/test-affected.mjs). The dry run prints changed paths
+(including both sides of renames), domain reasons, explicit tests and sources passed to
+Vitest related; the import graph is resolved by Vitest during execution. Deleted files use
+their former domains. Changed tests run explicitly. Documentation alone runs no browser.
+Unknown paths, missing merge-bases and global infrastructure select all unit/component
+tests plus a startup e2e smoke, and recommend CI's complete reduced suite; review additional
+journeys for these broad changes. A missing base must be fetched before relying on the diff.
+
+Run typecheck and the configured lint checks for code changes. There is currently no lint
+script: do not invent a successful lint command. Do not run the full Playwright suite locally.
+Run only relevant specs on one project, `chromium-phone` by default; pass `--safari` to the
+selector for Safari-specific behavior (`webkit-phone`). The selector serializes heavy
+commands with `flock /tmp/wherdr-heavy.lock`, builds once only if e2e tests are selected,
+and finds a free port in 7690–7699. Its e2e tests use the existing isolated fake-data launcher.
+For manual commands, use the same lock, port range, isolated data and sessions.
+Never connect tests to a user's live agents.
+
+For a new regression, demonstrate that the test fails with the broken behavior and passes
+with the fix. Assert observable output or effects, not only internal wiring. Do not use
+happy-dom to prove geometry, touch behavior or focus. Do not add arbitrary sleeps or retries
+to hide races. Report selected tests, results and any untested boundary. CI runs the complete
+reduced suite and required Safari selection; this local selector does not change CI.
 
 ## Testing without touching your real agents
 
