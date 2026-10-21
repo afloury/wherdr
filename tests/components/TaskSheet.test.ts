@@ -525,35 +525,3 @@ describe('Start: the agent it starts with', () => {
     w.unmount()
   })
 })
-
-describe('Finish, and a failure the task moved on from', () => {
-  const stopped: TaskRow = { ...task, state: 'blocked', stage: 'stopped', msg: 'Stopped at its 2h limit', group: 'needs' }
-  const buttons = () => [...document.querySelectorAll<HTMLButtonElement>('.task-sheet-actions button')].map(b => b.textContent?.trim())
-  let sent: Record<string, unknown>[] = []
-  afterEach(() => {
-    registerEndpoint('/api/tasks/action', { method: 'POST', handler: hold })
-    Object.assign(shown, { stage: 'approval', failure: '', failureStage: '', failureStale: undefined, failureTitle: undefined, failureAt: undefined })
-  })
-
-  it('a limit stop: Retry and Finish, what each does, and Finish sends finish', async () => {
-    sent = []
-    registerEndpoint('/api/tasks/action', { method: 'POST', handler: async (e) => { sent.push(await readBody(e)); return { ok: true, msg: 'demo/1: taking the work as it is' } } })
-    Object.assign(shown, { stage: 'stopped', failure: '', failureStage: '' })
-    const w = await mountSuspended(TaskSheet, { props: { task: stopped, machine: 'a', open: true } })
-    await vi.waitFor(() => expect(buttons()).toEqual(expect.arrayContaining(['Retry', 'Finish'])))
-    expect(document.querySelector('.task-finish-why')?.textContent).toContain('the same limit again')
-    await (w.vm as unknown as SheetVm).act('finish')
-    await flushPromises()
-    expect(sent).toEqual([{ machine: 'a', id: 'demo/1', action: 'finish' }])
-    w.unmount()
-  })
-
-  it('an old failure is shown as history, not as a warning', async () => {
-    Object.assign(shown, { stage: 'stopped', failure: 'Review failed: no verdict', failureTitle: 'Review failed', failureStage: 'review', failureStale: true, failureAt: 1_792_500_000_000 })
-    const w = await mountSuspended(TaskSheet, { props: { task: stopped, machine: 'a', open: true } })
-    await vi.waitFor(() => expect(document.querySelector('.task-sheet-earlier')?.textContent).toContain('Review failed'))
-    expect(document.querySelector('.task-sheet-earlier h4')?.textContent).toContain('Earlier failure')
-    expect(document.querySelector('.plugin-input-note.warn')).toBeNull()
-    w.unmount()
-  })
-})

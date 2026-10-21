@@ -557,38 +557,6 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     expect(calls.filter(c => c[0] !== 'list')).toEqual([['delegate', '--', 'demo/5'], ['stop', '--', 'demo/3'], ['details', '--json', '--', 'demo/6'], ['retry', '--', 'demo/6'], ['archive', '--', 'demo/4']])
   })
 
-  // WHR-38, WHR-13: 1.x keeps an old failure on a task that has moved on.
-  it('a failure the task moved on from is marked stale, and never sent to its agent', async () => {
-    const at = 1_792_500_000_000
-    listReply = { code: 0, stdout: JSON.stringify([{ id: 'demo/8', state: 'blocked', kind: 'question', app: 'claude', title: 'PR base', stage: 'asks', msg: 'Rebase on v2?' }]), stderr: '' }
-    detailsReply = JSON.stringify({ task: { id: 'demo/8', title: 'PR base', stage: 'asks', msg: 'Rebase on v2?' }, failure: { stage: 'pr', title: 'The agent\'s pull request merges into another branch', detail: 'x', auth: false, agentCanFix: true, at } })
-    taskFile('demo/8', { stage: 'asks', at: at + 120_000, armedAt: at + 56_000 })
-    await read()
-    expect(await T.taskDetails('', 'demo/8')).toMatchObject({ failureAt: at, failureStale: true })
-    await expect(T.taskCommand('', 'demo/8', 'fix')).rejects.toThrow('This failure needs the human first')
-    expect(calls.filter(c => c[0] === 'fix')).toEqual([])
-    // The same failure, just recorded: current, sent.
-    taskFile('demo/8', { stage: 'asks', at: at + 30 })
-    expect(await T.taskDetails('', 'demo/8')).toMatchObject({ failureStale: false })
-    await T.taskCommand('', 'demo/8', 'fix')
-    expect(calls.filter(c => c[0] === 'fix')).toEqual([['fix', '--', 'demo/8']])
-  })
-
-  it('Finish takes the work as it is where 1.x finish does, and is refused elsewhere', async () => {
-    listReply = { code: 0, stdout: JSON.stringify([
-      { id: 'demo/10', state: 'blocked', app: 'claude', title: 'Limit', stage: 'stopped', msg: 'Stopped at its 2h limit' },
-      { id: 'demo/11', state: 'working', app: 'claude', title: 'Stuck', stage: 'working', msg: 'Finishing' },
-      { id: 'demo/12', state: 'working', app: 'claude', title: 'Busy', stage: 'working', msg: 'Running tests' },
-    ]), stderr: '' }
-    await read()
-    await T.taskCommand('', 'demo/10', 'finish')
-    await read()
-    await T.taskCommand('', 'demo/11', 'finish')
-    await read()
-    await expect(T.taskCommand('', 'demo/12', 'finish')).rejects.toThrow('This task has nothing to finish as it is')
-    expect(calls.filter(c => c[0] === 'finish')).toEqual([['finish', '--', 'demo/10'], ['finish', '--', 'demo/11']])
-  })
-
   // The task's worker.agent as 1.x resolves it now.
   const resolved = async (id: string) => { const before = calls.length; const o = await T.taskStartOptions('', id); calls.splice(before); return o.agent }
   // herdr-projects keeps the list a moment: an action dropped it, the next read is fresh.

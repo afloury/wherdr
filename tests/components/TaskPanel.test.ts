@@ -12,21 +12,18 @@ mockNuxtImport('askConfirm', () => async () => decision.yes)
 let failure: Record<string, unknown> = {}
 let pane: string | null = 'w1:p1'
 let stage = 'failed'
-let msg = ''
-// What the server adds from the task's file (failureStale).
-let more: Record<string, unknown> = {}
 const calls: unknown[] = []
-registerEndpoint('/api/tasks/details', () => ({ ...parseTaskDetails(JSON.stringify({ task: { id: 'demo/9', title: 'Improve search', stage, msg, description: 'Search by title' }, failure, summary: 'Search tested.' })), ...more, pane }))
+registerEndpoint('/api/tasks/details', () => ({ ...parseTaskDetails(JSON.stringify({ task: { id: 'demo/9', title: 'Improve search', stage, description: 'Search by title' }, failure, summary: 'Search tested.' })), pane }))
 registerEndpoint('/api/tasks/action', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
 registerEndpoint('/api/tasks/approve', { method: 'POST', handler: async event => { calls.push(await readBody(event)); return { ok: true } } })
 const row = () => parseTaskRow({ id: 'demo/9', title: 'Improve search', stage, state: 'error', app: 'claude' })!
-async function panel(extra = {}, agent: string | null = null, status: 'idle' | 'working' = 'idle') {
-  herdrState.value = { ok: true, workspaces: [], panes: [{ id: 'w1:p1', workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent, name: null, label: null, status, title: null, cwd: '/tmp/demo', agentSession: null }] }
+async function panel(extra = {}, agent: string | null = null) {
+  herdrState.value = { ok: true, workspaces: [], panes: [{ id: 'w1:p1', workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent, name: null, label: null, status: 'idle', title: null, cwd: '/tmp/demo', agentSession: null }] }
   const w = await mountSuspended(BoardPanel, { props: { target: { kind: 'task', machine: '', id: 'demo/9' }, task: row(), machineLabel: 'devbox', reachable: true, ...extra }, global: { stubs: { AgentView: { props: ['selectedMode'], template: '<div class="embedded-agent">{{ selectedMode }}</div>' }, TaskSheet: { template: '<div class="task-content">Search by title</div>' } } } })
   await flushPromises()
   return w
 }
-afterEach(() => { failure = {}; pane = 'w1:p1'; stage = 'failed'; msg = ''; more = {}; calls.length = 0; decision.yes = true; herdrState.value = { ok: false, workspaces: [], panes: [] } })
+afterEach(() => { failure = {}; pane = 'w1:p1'; stage = 'failed'; calls.length = 0; decision.yes = true; herdrState.value = { ok: false, workspaces: [], panes: [] } })
 
 describe('task panel', () => {
   it('explains setup failure instead of opening a bare shell', async () => {
@@ -155,78 +152,4 @@ describe('task panel', () => {
     w.unmount()
   })
 
-  // WHR-38: a review that failed the day before, then a run stopped at its limit.
-  it('shows where the task stands now, not a failure it moved on from', async () => {
-    stage = 'stopped'
-    msg = 'Stopped at its 2h limit'
-    failure = { stage: 'review', title: 'Review failed', detail: 'The reviewer finished without a verdict.', next: 'Finish again for a fresh review.', agentCanFix: true, at: 1 }
-    more = { failureStale: true }
-    const task = { ...row(), stage, state: 'blocked', msg, group: 'needs' as const }
-    const w = await panel({ task })
-    const banner = w.find('.task-needs')
-    expect(banner.find('h3').text()).toBe('Needs you · Stopped at its 2h limit')
-    expect(banner.text()).not.toContain('Review failed')
-    expect(banner.text()).not.toContain('without a verdict')
-    expect(banner.text()).not.toContain('Finish again for a fresh review')
-    // Its buttons would act on the old failure: not offered.
-    expect(banner.text()).not.toContain('Send the error to the agent')
-    expect(banner.findAll('button').map(b => b.text())).toEqual(expect.arrayContaining(['Retry', 'Finish']))
-    expect(banner.find('.task-finish-why').text()).toContain('the same limit again')
-    w.unmount()
-  })
-  // WHR-13: the agent started again and asks something new.
-  it('a new question replaces a pull request error once the agent is back', async () => {
-    stage = 'asks'
-    failure = { stage: 'pr', title: 'The agent\'s pull request merges into another branch', detail: 'PR #90 merges into main.', agentCanFix: true, at: 1 }
-    more = { failureStale: true }
-    const task = { ...row(), stage, state: 'blocked', kind: 'question', msg: 'Rebase on v2 or close it?', group: 'needs' as const }
-    const w = await panel({ task })
-    expect(w.find('.task-needs h3').text()).toBe('Needs you · Rebase on v2 or close it?')
-    expect(w.find('.task-needs').text()).not.toContain('merges into another branch')
-    expect(w.find('.task-needs').text()).not.toContain('Send the error to the agent')
-    w.unmount()
-  })
-  it('a current failure keeps its title and its buttons', async () => {
-    failure = { stage: 'pr', title: 'Could not open the pull request', detail: 'gh failed', agentCanFix: true, at: 1 }
-    more = { failureStale: false }
-    const w = await panel()
-    expect(w.find('.task-needs h3').text()).toBe('Needs you · Could not open the pull request')
-    expect(w.find('.task-needs').text()).toContain('Send the error to the agent')
-    expect(w.find('.task-needs').text()).not.toContain('Finish')
-    w.unmount()
-  })
-  it('Finish on a limit stop asks first, then sends finish', async () => {
-    stage = 'stopped'
-    const task = { ...row(), stage, state: 'blocked', msg: 'Stopped at its token limit', group: 'needs' as const }
-    const w = await panel({ task })
-    const finish = () => w.findAll('.task-needs button').find(b => b.text() === 'Finish')!
-    await vi.waitFor(() => expect(finish().attributes('disabled')).toBeUndefined())
-    expect(finish().attributes('title')).toBe('Take the work as it is: checks, then review')
-    decision.yes = false
-    await finish().trigger('click'); await flushPromises()
-    expect(calls).toHaveLength(0)
-    decision.yes = true
-    await finish().trigger('click')
-    await vi.waitFor(() => expect(calls).toContainEqual({ machine: '', id: 'demo/9', action: 'finish' }))
-    w.unmount()
-  })
-  it('stopped without a summary: Retry and Finish, each said', async () => {
-    stage = 'nosummary'
-    const w = await panel({ task: { ...row(), stage, group: 'needs' as const } })
-    expect(w.findAll('.task-needs button').map(b => b.text())).toEqual(expect.arrayContaining(['Retry', 'Finish']))
-    expect(w.find('.task-finish-why').text()).toContain('its screen as the summary')
-    w.unmount()
-  })
-  it('a row stuck at "Finishing": Finish while its agent rests, nothing while it works', async () => {
-    stage = 'working'
-    const task = { ...row(), stage, state: 'working', msg: 'Finishing', group: 'working' as const }
-    const w = await panel({ task, target: { kind: 'task', machine: '', id: `demo/9-${Math.random()}` } }, 'claude')
-    expect(w.find('.task-needs h3').text()).toBe('Finishing · its agent is at rest')
-    expect(w.findAll('.task-needs button').map(b => b.text())).toContain('Finish')
-    expect(w.find('.task-needs').text()).not.toContain('Retry')
-    w.unmount()
-    const busy = await panel({ task, target: { kind: 'task', machine: '', id: `demo/9-${Math.random()}` } }, 'claude', 'working')
-    expect(busy.find('.task-needs').exists()).toBe(false)
-    busy.unmount()
-  })
 })

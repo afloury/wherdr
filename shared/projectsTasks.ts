@@ -62,11 +62,6 @@ export interface TaskDetails {
   failureCanFix?: boolean
   failureRemoteKind?: string
   failureSent?: boolean
-  // When the board recorded it (ms), and whether the task moved on since: a
-  // later stage, or its agent started again (failureIsStale). A stale one is
-  // history, not where the task stands.
-  failureAt?: number | null
-  failureStale?: boolean
   limits?: { time: string, timeUsed: string, tokens: string, tokensUsed: number | null }
   findings?: { severity: string, title: string, detail: string }[]
   failureStage: string
@@ -86,13 +81,13 @@ export interface TaskDetails {
 }
 
 // What wherdr can do on a task: 1.x `tell`, `approve`, `delegate`, `stop`,
-// `retry`, `finish`, `archive`, `restore` (and its pane in Herdr).
-export interface TaskActions { tell: boolean, approve: boolean, delegate: boolean, stop: boolean, retry: boolean, finish: boolean, archive: boolean, restore: boolean }
+// `retry`, `archive`, `restore` (and its pane in Herdr).
+export interface TaskActions { tell: boolean, approve: boolean, delegate: boolean, stop: boolean, retry: boolean, archive: boolean, restore: boolean }
 // The task commands that take nothing but the task's id.
-export const TASK_COMMANDS = ['delegate', 'stop', 'retry', 'finish', 'fix', 'archive', 'restore'] as const
+export const TASK_COMMANDS = ['delegate', 'stop', 'retry', 'fix', 'archive', 'restore'] as const
 export type TaskCommand = typeof TASK_COMMANDS[number]
 export const isTaskCommand = (v: unknown): v is TaskCommand => TASK_COMMANDS.includes(v as TaskCommand)
-export const NO_ACTIONS: TaskActions = { tell: false, approve: false, delegate: false, stop: false, retry: false, finish: false, archive: false, restore: false }
+export const NO_ACTIONS: TaskActions = { tell: false, approve: false, delegate: false, stop: false, retry: false, archive: false, restore: false }
 
 // One board per machine (its HOME): the named sessions of a machine share it.
 export interface MachineTasks {
@@ -285,7 +280,6 @@ export function parseTaskDetails(text: string): TaskDetails {
     failureCanFix: obj(d.failure)?.agentCanFix === true,
     failureRemoteKind: str(obj(d.failure)?.remoteKind, 40),
     failureSent: Boolean(obj(d.failure)?.sentAt),
-    failureAt: num(obj(d.failure)?.at),
     limits: parseTaskLimits(d.limits),
     findings: parseFindings(d.review),
     failureStage: str(obj(d.failure)?.stage, 30),
@@ -320,10 +314,6 @@ function parseReport(v: unknown): TaskDetails['report'] {
 //   agent or of the finish line back to it. Not a login problem (that needs
 //   you first: reply instead), not a failure before an agent got going, not an
 //   agent whose terminal is gone (the task is still at work: Stop is offered);
-// - `finish` is 1.x `finish_anyway` (actions/finish_line.rs): it takes the work
-//   as it is (check, then review) when a limit stopped the agent, when it
-//   stopped without a summary, or when the board missed the end of its turn
-//   (shown/states.rs stuck_finishing: its row stays on "Finishing");
 // - `archive` puts a task away (`restore` brings it back): not in a stage where
 //   something runs (store/files.rs SLOT_STAGES, plus queued and attempts).
 //   An archived task is read-only, as 1.x has it (store/tasks.rs refuses any
@@ -333,7 +323,7 @@ export type TaskFailure = Pick<TaskDetails, 'failureStage' | 'failureAuth'>
 const ACTIVE_STAGES = ['starting', 'setup', 'working', 'checking', 'pushing', 'reviewing', 'merging', 'queued', 'attempts']
 // A failure before any agent was on it: Start again, not Retry.
 const BEFORE_AGENT = ['start', 'setup', 'attempts']
-export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group' | 'archived' | 'app'> & { msg?: string }, f?: TaskFailure | null): TaskActions {
+export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group' | 'archived' | 'app'>, f?: TaskFailure | null): TaskActions {
   if (r.archived) return { ...NO_ACTIONS, restore: true }
   const live = r.group !== 'todo' && r.group !== 'done'
   const limitStop = r.stage === 'stopped' && r.state === 'blocked'
@@ -348,41 +338,9 @@ export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group
     stop: r.group === 'working' || (r.group === 'needs' && r.state === 'blocked' && Boolean(r.app) && !limitStop && r.kind !== 'auth')
       || (r.stage === 'working' && r.state === 'error'),
     retry: limitStop || r.stage === 'nosummary' || retryFailed,
-    finish: finishCase(r) !== null,
     archive: r.group !== 'working' && !ACTIVE_STAGES.includes(r.stage),
     restore: false,
   }
-}
-
-// Why Finish is offered: a limit, no summary, or a finish the board missed.
-export type FinishCase = 'limit' | 'nosummary' | 'stuck'
-// 1.x shown/states.rs stuck_finishing: an agent task at stage "working" whose
-// row says "Finishing" (state.rs: its agent idle or done, its turn's end not
-// seen). 1.x refuses it while the agent is still at work.
-type FinishRow = Pick<TaskRow, 'state' | 'stage' | 'app' | 'archived'> & { msg?: string }
-export function taskStuckFinishing(r: FinishRow): boolean {
-  return !r.archived && Boolean(r.app) && r.stage === 'working' && r.state === 'working' && r.msg === 'Finishing'
-}
-export function finishCase(r: FinishRow): FinishCase | null {
-  if (r.archived) return null
-  if (r.stage === 'stopped' && r.state === 'blocked') return 'limit'
-  if (r.stage === 'nosummary') return 'nosummary'
-  return taskStuckFinishing(r) ? 'stuck' : null
-}
-
-// A failure the task has moved on from. 1.x keeps `failure` on the task after
-// it goes on (a review that failed, then a run stopped at its limit; a pull
-// request error, then the agent started again and asks something new), so the
-// failure alone is not where the task stands. It is stale when, after it was
-// recorded, the stage changed (`at`) or its agent was started again
-// (`armedAt`, `startedAgentAt`). A failed task's failure is always its own.
-// 1.x stamps the failure just before the change that records it
-// (store/failures.rs failure_patch, then store/tasks.rs update), hence the margin.
-const STALE_MARGIN_MS = 10_000
-export function failureIsStale(stage: string, failureAt: number | null | undefined, file: Record<string, unknown> | null): boolean {
-  if (stage === 'failed' || !failureAt || !file) return false
-  const later = ['at', 'armedAt', 'startedAgentAt'].map(k => num(file[k]) ?? 0)
-  return Math.max(...later) > failureAt + STALE_MARGIN_MS
 }
 
 // Rows of one group, as the board orders them: by repo, then newest first.
@@ -650,9 +608,8 @@ export function detailsFromTaskFile(t: unknown): TaskDetails | null {
 }
 
 // `fix` is distinct from `retry`: only the board's structured failure can offer it.
-// A stale failure is never sent: the agent has moved on from it.
 export function taskCanFix(r: Pick<TaskRow, 'archived' | 'stage' | 'app'>, d: TaskDetails | null): boolean {
-  return !r.archived && Boolean(r.app) && Boolean(d?.failureCanFix) && !d?.failureAuth && !d?.failureStale
+  return !r.archived && Boolean(r.app) && Boolean(d?.failureCanFix) && !d?.failureAuth
     && !(d?.failureSent && r.stage === 'working') && r.stage !== 'merging'
 }
 export function taskCanApproveAnyway(r: Pick<TaskRow, 'archived' | 'stage' | 'research' | 'review'>, d: TaskDetails | null): boolean {

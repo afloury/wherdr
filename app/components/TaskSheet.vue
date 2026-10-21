@@ -3,8 +3,7 @@
 // request and review, and what can be done from here, as 1.x does it: approve
 // it (merge, or yes to a plan: asked first, it cannot be undone), start it (a
 // task of the backlog), stop its agent (asked first), retry what went wrong,
-// finish it as it is (asked first: it goes on to checks and review), archive
-// it. What 1.x does not give for a task is not shown.
+// archive it. What 1.x does not give for a task is not shown.
 // Start names the agent the task starts with by default (its worker.agent, and
 // where that comes from) and offers the other agents installed on its machine
 // that Settings › Agents offers (the default is shown even when unchecked):
@@ -17,11 +16,10 @@
 // come back, or the error stays in the sheet. Archive closes it: the Board
 // offers Restore for a few seconds. An archived task (Board › Archived, a link to it) is read-only, as
 // in 1.x: an "Archived" tag and Restore, nothing else.
-import { NO_ACTIONS, type StartOptions, type TaskCommand, type TaskDetails, type TaskRow, finishCase, prNumber, taskActions, taskKey } from '#shared/projectsTasks'
+import { NO_ACTIONS, type StartOptions, type TaskCommand, type TaskDetails, type TaskRow, prNumber, taskActions, taskKey } from '#shared/projectsTasks'
 import AppSheet from './AppSheet.vue'
 import { PROJECTS_LAUNCHER } from '#shared/projectsPlugin'
 import { type StartAgentChoice, startAgentChoices } from '~/utils/agentChoices'
-import { finishHint, finishLabel, finishQuestion, finishTitle, finishOffered } from '~/utils/taskFinish'
 
 // `readOnly`: the board is read from its files (wherdr in a container): the
 // actions are the host's, given as commands.
@@ -46,13 +44,9 @@ const failure = computed(() => (details.value && details.value.id === props.task
 const restored = ref(false)
 const archived = computed(() => Boolean(failure.value?.archived) || (Boolean(props.task?.archived) && !restored.value))
 const row = computed(() => (props.task ? { ...props.task, archived: archived.value } : null))
-// Finish on a row stuck at "Finishing": not while its agent is still at work (1.x refuses).
-const paneStatus = computed(() => herdrState.value.panes.find(p => p.id === failure.value?.pane)?.status ?? null)
-const withFinish = (a: ReturnType<typeof taskActions>) => ({ ...a, finish: a.finish && Boolean(row.value) && finishOffered(row.value!, paneStatus.value) })
-const actions = computed(() => (row.value && !props.readOnly ? withFinish(taskActions(row.value, failure.value)) : NO_ACTIONS))
-const hostActions = computed(() => (row.value && props.readOnly ? withFinish(taskActions(row.value, failure.value)) : NO_ACTIONS))
-const hostCommands = computed(() => (['delegate', 'stop', 'retry', 'finish', 'archive', 'restore'] as const).filter(a => hostActions.value[a]))
-const finishWhy = computed(() => { const c = row.value ? finishCase(row.value) : null; return c ? finishHint(c) : '' })
+const actions = computed(() => (row.value && !props.readOnly ? taskActions(row.value, failure.value) : NO_ACTIONS))
+const hostActions = computed(() => (row.value && props.readOnly ? taskActions(row.value, failure.value) : NO_ACTIONS))
+const hostCommands = computed(() => (['delegate', 'stop', 'retry', 'archive', 'restore'] as const).filter(a => hostActions.value[a]))
 const pr = computed(() => details.value?.pr || props.task?.pr || '')
 const review = computed(() => details.value?.review || props.task?.review || null)
 const label = computed(() => (props.task ? taskKey(props.task.id, props.task.repoKey) : ''))
@@ -212,7 +206,6 @@ const ACTION_DONE: Record<Exclude<TaskCommand, 'archive'>, () => string> = {
   stop: () => tl('Stopped', 'Arrêtée'),
   fix: () => tl('Sent to the agent to fix', 'Envoyée à l’agent pour correction'),
   retry: () => tl('Sent back to its agent', 'Renvoyée à son agent'),
-  finish: () => tl('Taken as it is: checks, then review', 'Prise telle quelle : vérifications puis relecture'),
   restore: () => tl('Restored', 'Restaurée'),
 }
 async function act(action: TaskCommand) {
@@ -224,7 +217,6 @@ async function act(action: TaskCommand) {
   if (action === 'stop' && !await askConfirm(
     tl(`Stop the agent of “${t.title}”? Its turn ends now; the task stays, and Retry or Start picks it up again.`, `Arrêter l’agent de « ${t.title} » ? Son tour s’arrête maintenant ; la tâche reste, Réessayer ou Lancer la reprend.`),
     tl('Stop the agent', 'Arrêter l’agent'))) return
-  if (action === 'finish' && !await askConfirm(finishQuestion(t.title), finishLabel(), 'primary')) return
   if (!still(was)) return
   const g = gen
   busy.value = true
@@ -295,15 +287,10 @@ function chat() {
           <dd>{{ details.agent }}</dd>
         </template>
       </dl>
-      <div v-if="details?.failure && !details.failureStale && !embedded" class="plugin-input-note warn">
+      <div v-if="details?.failure && !embedded" class="plugin-input-note warn">
         <UIcon name="i-lucide-triangle-alert" />
         <p>{{ details.failure }}</p>
       </div>
-      <!-- A failure the task has moved on from: history, not where it stands. -->
-      <section v-if="details?.failure && details.failureStale" class="task-sheet-block task-sheet-earlier">
-        <h4>{{ tl('Earlier failure', 'Échec précédent') }}<template v-if="details.failureAt"> · {{ new Date(details.failureAt).toLocaleString() }}</template></h4>
-        <p class="task-sheet-text">{{ details.failureTitle || details.failure }}</p>
-      </section>
       <section v-if="details?.description" class="task-sheet-block">
         <h4>{{ tl('Description', 'Description') }}</h4>
         <p class="task-sheet-text">{{ details.description }}</p>
@@ -347,14 +334,13 @@ function chat() {
         <span v-if="needsPick" class="task-start-from task-start-missing" role="status">{{ tl(`${defaultKind} is not installed on this machine: pick another agent to start it.`, `${defaultKind} n’est pas installé sur cette machine : choisis un autre agent pour la lancer.`) }}</span>
         <span v-if="startAgent" class="task-start-from">{{ tl('For this start only: the default stays.', 'Pour ce lancement seulement : le défaut ne change pas.') }}</span>
       </div>
-      <div v-if="chatShown || actions.approve || actions.delegate || actions.retry || actions.finish || actions.stop || actions.archive || actions.restore" class="task-sheet-actions">
+      <div v-if="chatShown || actions.approve || actions.delegate || actions.retry || actions.stop || actions.archive || actions.restore" class="task-sheet-actions">
         <UButton v-if="actions.restore" color="primary" icon="i-lucide-archive-restore" :loading="running === 'restore'" :disabled="busy || offlineView" @click="act('restore')">{{ tl('Restore', 'Restaurer') }}</UButton>
         <UButton v-if="actions.delegate" color="primary" icon="i-lucide-play" :loading="running === 'delegate'" :disabled="busy || offlineView || needsPick" @click="act('delegate')">{{ startAgent ? tl(`Start with ${startAgent}`, `Lancer avec ${startAgent}`) : tl('Start', 'Lancer') }}</UButton>
         <UButton v-if="actions.approve" color="primary" icon="i-lucide-check" :loading="busy && !running" :disabled="busy || offlineView" @click="approve">
           {{ task.stage === 'plan' ? tl('Approve plan', 'Accepter le plan') : tl('Approve', 'Approuver') }}
         </UButton>
         <UButton v-if="actions.retry" color="primary" variant="outline" icon="i-lucide-rotate-ccw" :loading="running === 'retry'" :disabled="busy || offlineView" @click="act('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
-        <UButton v-if="actions.finish" color="primary" variant="outline" icon="i-lucide-flag" class="task-finish" :title="finishTitle()" :aria-description="finishTitle()" :loading="running === 'finish'" :disabled="busy || offlineView" @click="act('finish')">{{ finishLabel() }}</UButton>
         <UButton
           v-if="chatShown && !embedded" class="task-chat" color="neutral" variant="outline" icon="i-lucide-message-square"
           @click="chat"
@@ -364,7 +350,6 @@ function chat() {
         <UButton v-if="actions.stop" color="error" variant="outline" icon="i-lucide-square" :loading="running === 'stop'" :disabled="busy || offlineView" @click="act('stop')">{{ tl('Stop', 'Arrêter') }}</UButton>
         <UButton v-if="actions.archive" color="neutral" variant="ghost" icon="i-lucide-archive" class="task-archive" :loading="running === 'archive'" :disabled="busy || offlineView" @click="act('archive')">{{ tl('Archive', 'Archiver') }}</UButton>
       </div>
-      <p v-if="(actions.finish || hostActions.finish) && !embedded" class="task-finish-why">{{ finishWhy }}</p>
       <p v-if="actionError" class="board-note error task-sheet-error" role="alert">{{ actionError }}</p>
 
       <!-- wherdr in a container: the same actions, off, each saying why on hover. -->
@@ -374,7 +359,6 @@ function chat() {
           <UButton color="primary" icon="i-lucide-check" disabled :aria-description="readOnlyWhy()">{{ task.stage === 'plan' ? tl('Approve plan', 'Accepter le plan') : tl('Approve', 'Approuver') }}</UButton>
         </span>
         <span v-if="hostActions.retry" class="ro-why" :title="readOnlyWhy()"><UButton color="primary" variant="outline" icon="i-lucide-rotate-ccw" disabled :aria-description="readOnlyWhy()">{{ tl('Retry', 'Réessayer') }}</UButton></span>
-        <span v-if="hostActions.finish" class="ro-why" :title="readOnlyWhy()"><UButton color="primary" variant="outline" icon="i-lucide-flag" disabled :aria-description="readOnlyWhy()">{{ finishLabel() }}</UButton></span>
         <span v-if="hostActions.tell" class="ro-why" :title="readOnlyWhy()"><UButton color="neutral" variant="outline" icon="i-lucide-send" disabled :aria-description="readOnlyWhy()">{{ tl('Reply', 'Répondre') }}</UButton></span>
         <span v-if="hostActions.stop" class="ro-why" :title="readOnlyWhy()"><UButton color="error" variant="outline" icon="i-lucide-square" disabled :aria-description="readOnlyWhy()">{{ tl('Stop', 'Arrêter') }}</UButton></span>
         <span v-if="hostActions.archive" class="ro-why" :title="readOnlyWhy()"><UButton color="neutral" variant="ghost" icon="i-lucide-archive" disabled :aria-description="readOnlyWhy()">{{ tl('Archive', 'Archiver') }}</UButton></span>
