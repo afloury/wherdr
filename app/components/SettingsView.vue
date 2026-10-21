@@ -442,8 +442,8 @@ onMounted(() => {
 
         <div v-show="activeSection === 'agents'" class="settings-section">
           <div class="settings-group">
-            <h3>{{ t('New agent') }}</h3>
-            <p class="muted agent-pref-intro">{{ t('Types shown in New agent. Terminal is always available.') }}</p>
+            <h3>{{ t('Offered agents') }}</h3>
+            <p class="muted agent-pref-intro">{{ t('Agents offered wherever an agent is chosen. Terminal is always available.') }}</p>
             <div v-if="installedAgents.length" class="agent-pref-list">
               <label v-for="agent in installedAgents" :key="agent" class="settings-toggle">
                 <span><b>{{ kindLabel(agent) }}</b><small v-if="agentMachineHint(agent)">{{ agentMachineHint(agent) }}</small></span>
@@ -452,6 +452,10 @@ onMounted(() => {
             </div>
             <p v-else class="muted agent-pref-intro">{{ t('No agents installed on online machines.') }}</p>
             <p class="muted agent-pref-note">{{ t('Choices saved on this device.') }}</p>
+          </div>
+          <div id="claude-quotas" class="settings-group">
+            <h3>{{ tl('Claude quotas', 'Quotas Claude') }}</h3>
+            <ClaudeQuotaSetup v-if="activeSection === 'agents'" />
           </div>
           <WorktreesSection />
         </div>

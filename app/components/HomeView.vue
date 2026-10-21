@@ -18,7 +18,7 @@ import type { MachineInfo, NamedSession, Pane } from '#shared/types'
 import { type ReadySort, type Row, readyLists, rowGroup, sortReady, spaceRows } from '#shared/spaces'
 import { spaceTitle } from '#shared/displayTitles'
 import { type BoardCard, type CoordinatorLevel, boardSections, countedPanes } from '#shared/boardLinks'
-import { claudeSetupOf, machineQuotaRows, quotaRows } from '~/utils/quotas'
+import { claudeSuggestion, machineQuotaRows, quotaRows } from '~/utils/quotas'
 import { LIST_DEFAULT, LIST_MAX, LIST_MIN, LIST_RAIL, clampListWidth, listWidthCss, readListCollapsed, readListWidth, saveListCollapsed, saveListWidth } from '~/utils/sideWidth'
 import { headerFold } from '~/utils/headerFold'
 import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
@@ -103,8 +103,15 @@ const soloSelected = computed(() => machineBarSelection.value === null || machin
 const solo = computed(() => listOf(soloSelected.value ? spaceRows(st.value) : []))
 
 const topQuotas = computed(() => (showQuotas.value ? quotaRows(homeQuotas.value, hiddenAgents.value) : []))
-const hasClaude = (list: Pane[]) => list.some(p => p.agent === 'claude')
-const localSetup = computed(() => (showQuotas.value ? claudeSetupOf(homeQuotas.value, '', hasClaude(agents.value), hiddenAgents.value) : null))
+// Claude quotas to install or update on a machine: never a block in the list,
+// only two items in its "…" menu (Settings › Agents, or don't suggest again).
+function claudeHint(m: MachineInfo) {
+  if (!showQuotas.value || m.status !== 'online') return null
+  const key = baseKeyOf(m)
+  const kinds = appConfig.value.machines?.find(c => c.key === key)?.kinds ?? (multiMachine.value ? [] : appConfig.value.kinds)
+  const has = kinds.includes('claude') || agents.value.some(p => p.agent === 'claude' && baseOfPane(p) === key)
+  return claudeSuggestion(homeQuotas.value, key, has, hiddenAgents.value)
+}
 
 // ------------------------------------------------------------ machines
 const STATE_LABEL: Record<MachineInfo['status'], string> = { online: 'online', connecting: 'reconnecting…', offline: 'offline' }
@@ -161,7 +168,6 @@ const sections = computed(() => {
       waiting: c.filter(p => p.status === 'blocked').length,
       collapsed: collapsedMachines.value.includes(m.key),
       quotas: showQuotas.value && m.status === 'online' ? machineQuotaRows(homeQuotas.value, m.baseKey ?? m.key, hiddenAgents.value) : [],
-      setup: showQuotas.value && m.status === 'online' ? claudeSetupOf(homeQuotas.value, m.baseKey ?? m.key, hasClaude(a), hiddenAgents.value) : null,
     }
   })
 })
@@ -325,6 +331,21 @@ function machineMenu(m: MachineInfo) {
   const pluginKey = multiMachine.value ? m.key : ''
   if (m.status === 'online' && machinePluginActions(pluginKey).length) {
     items.push({ label: t('Plugin actions'), icon: 'i-lucide-puzzle', run: () => openPluginMenu({ machine: pluginKey }) })
+  }
+  const hint = claudeHint(m)
+  if (hint) {
+    items.push(
+      { kind: 'separator' },
+      {
+        label: hint.state === 'outdated' ? tl('Update Claude quotas', 'Mettre à jour les quotas Claude') : tl('Set up Claude quotas', 'Configurer les quotas Claude'),
+        desc: tl('In Settings › Agents', 'Dans Réglages › Agents'),
+        icon: 'i-lucide-gauge',
+        run: () => navigateTo({ path: '/settings', query: { section: 'agents' } }),
+      },
+      { label: tl('Don’t suggest again', 'Ne plus proposer'), icon: 'i-lucide-eye-off', run: async () => {
+        if (await dismissClaudeQuotas([hint.key])) toast(tl('Claude quotas stay in Settings › Agents.', 'Les quotas Claude restent dans Réglages › Agents.'))
+      } },
+    )
   }
   return toDropdown(items)
 }
@@ -579,7 +600,6 @@ function resetListWidth() {
 
       <OpenNetworkBanner />
       <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />
-      <ClaudeSetupBanner v-if="!sections && soloSelected && localSetup" :setup="localSetup" :name="machineName('') || t('this machine')" class="solo" />
 
       <p v-if="machineBarSelection?.length === 0" class="machine-empty">{{ tl('No machines in this group.', 'Aucune machine dans ce groupe.') }}</p>
       <!-- A single machine: the previous list. -->
@@ -654,7 +674,6 @@ function resetListWidth() {
 
           <div v-if="!s.collapsed" class="machine-body">
             <QuotaStrip :rows="s.quotas" class="machine-quotas" />
-            <ClaudeSetupBanner v-if="s.setup" :setup="s.setup" :name="s.name" />
             <section v-if="s.coordinators.length" class="agent-group coordinators">
               <h2 class="group-title"><span>{{ tl('Coordinators', 'Coordinateurs') }}</span><span class="count">{{ s.coordinators.length }}</span></h2>
               <div class="card-list">

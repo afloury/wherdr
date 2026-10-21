@@ -192,23 +192,27 @@ describe('Claude status line set up?', () => {
     expect(claudeSetupState({ status, account: true, statusline: null, settings: null })).toBe('ok')
     expect(claudeSetupState({ status: { cwd: '/' }, account: false, statusline: null, settings: null })).toBe('ok')
   })
-  it('nothing, or old status line without a fingerprint: missing', () => {
+  it('nothing at all: missing', () => {
     expect(claudeSetupState({ status: null, account: false, statusline: null, settings: null })).toBe('missing')
-    expect(claudeSetupState({ status, account: false, statusline: '#!/bin/sh\n# ancienne', settings: wired })).toBe('missing')
     // Status line written but not wired into settings.json.
     expect(claudeSetupState({ status: null, account: false, statusline: ours, settings: '{}' })).toBe('missing')
+  })
+  it('regression: quotas read from an old status line are outdated, never "not set up"', () => {
+    expect(claudeSetupState({ status, account: false, statusline: '#!/bin/sh\n# ancienne', settings: wired })).toBe('outdated')
+    expect(claudeSetupState({ status, account: false, statusline: null, settings: null })).toBe('outdated')
   })
   it('installed, waiting for the next exchange: pending', () => {
     expect(claudeSetupState({ status: null, account: false, statusline: ours, settings: wired })).toBe('pending')
     // Up to date but unreadable fingerprint: nothing more to install.
     expect(claudeSetupState({ status, account: false, statusline: ours, settings: wired })).toBe('ok')
   })
-  it('mergeQuotas lists the machines to configure', () => {
+  it('mergeQuotas lists the state of every machine read', () => {
     const out = mergeQuotas([
-      { key: '', label: 'Server', claude: null, codex: null, setup: null },
-      { key: '0a1b2c3d', label: 'Laptop', claude: null, codex: null, setup: { key: '0a1b2c3d', state: 'missing', installable: true } },
+      { key: '', label: 'Server', claude: null, codex: null, setup: { key: '', state: 'ok', installable: true } },
+      { key: '1f2e3d4c', label: 'Offline', claude: null, codex: null, setup: null },
+      { key: '0a1b2c3d', label: 'Laptop', claude: null, codex: null, setup: { key: '0a1b2c3d', state: 'missing', installable: true, dismissed: true } },
     ])
-    expect(out.claudeSetup).toEqual([{ key: '0a1b2c3d', state: 'missing', installable: true }])
+    expect(out.claudeSetup).toEqual([{ key: '', state: 'ok', installable: true }, { key: '0a1b2c3d', state: 'missing', installable: true, dismissed: true }])
     expect(mergeQuotas([{ key: '', label: 'Server', claude: null, codex: null }])).toEqual({ claude: null, codex: null })
   })
 })
@@ -307,7 +311,8 @@ describe('readClaude over SSH', () => {
       fs.writeFileSync(path.join(home, '.claude/wherdr-statusline.sh'), '# legacy claude-account writer')
       const reading = await readClaude(localFs, home)
       expect(reading.q).toMatchObject({ account: 'aaaaaaaaaaaaaaaa', five: { used: 44 } })
-      expect(reading.setup).toBe('missing')
+      // Regression (WHR-48): its quotas show, so it is an update, not "not set up".
+      expect(reading.setup).toBe('outdated')
     } finally { fs.rmSync(home, { recursive: true, force: true }) }
   })
 
@@ -327,5 +332,18 @@ describe('readClaude over SSH', () => {
     fs.writeFileSync(path.join(home, '.cache/herdr-web/claude-status.json'), '{}')
     let calls = 0
     await expect(readClaude(shellFs(() => ++calls > 1), home)).rejects.toMatchObject({ code: 'unreachable' })
+  })
+})
+
+describe('WHR-48 regression: quotas read never look "not set up"', () => {
+  it('any status file with quotas gives ok or outdated, whatever the status line', () => {
+    const status = { rate_limits: { five_hour: { used_percentage: 96 }, seven_day: { used_percentage: 57 } } }
+    for (const account of [true, false]) {
+      for (const statusline of [null, '# old', '# claude-account']) {
+        for (const settings of [null, '{}', '"wherdr-statusline.sh"']) {
+          expect(claudeSetupState({ status, account, statusline, settings })).not.toBe('missing')
+        }
+      }
+    }
   })
 })

@@ -218,7 +218,8 @@ const FR: Record<string, string> = {
   'Cancel': 'Annuler', 'Choose this folder': 'Choisir ce dossier',
   'Language': 'Langue', 'English': 'English',
   'The interface language is saved on this device.': 'La langue de l’interface est enregistrée sur cet appareil.',
-  'Types shown in New agent. Terminal is always available.': 'Types proposés dans Nouvel agent. Le terminal reste toujours disponible.',
+  'Offered agents': 'Agents proposés',
+  'Agents offered wherever an agent is chosen. Terminal is always available.': 'Agents proposés partout où l’on choisit un agent. Terminal toujours disponible.',
   'No agents installed on online machines.': 'Aucun agent installé sur les machines en ligne.',
   'Choices saved on this device.': 'Choix enregistrés sur cet appareil.',
   'Notifications': 'Notifications', 'Application': 'Application', 'Phone': 'Téléphone',
@@ -526,6 +527,7 @@ const FR: Record<string, string> = {
   'Notifications are not enabled on this device': 'Notifications non activées sur cet appareil',
   'Invalid path': 'Chemin invalide',
   'done must be true or false': 'done doit valoir true ou false',
+  'keys and dismissed are required': 'keys et dismissed sont requis',
   // Space action errors (shared/spaceActions.ts)
   'empty name': 'nom vide', 'invalid direction': 'direction invalide', 'invalid destination': 'destination invalide',
   'tab on another machine': 'onglet d’une autre machine', 'pane on another machine': 'pane d’une autre machine',

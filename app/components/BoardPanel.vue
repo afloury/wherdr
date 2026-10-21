@@ -71,8 +71,6 @@ async function tell() {
   finally { telling.value = false }
 }
 
-// The parent owns view selection so a setup shell never opens by default.
-const selected = ref<'chat' | 'term' | 'task'>('chat')
 const full = ref(false)
 const taskOpen = ref(true)
 const actionBusy = ref(false)
@@ -88,6 +86,35 @@ const disabled = computed(() => Boolean(actionBusy.value || props.readOnly || of
 const needs = computed(() => props.task?.group === 'needs')
 const failureTitle = computed(() => details.value?.failureTitle || details.value?.msg || props.task?.msg || agentPane.value?.prompt?.question || tl('Your answer is needed', 'Ta réponse est attendue'))
 const failureDetail = computed(() => details.value?.failureDetail || details.value?.failure || '')
+
+// The panel owns view selection so a setup shell never opens by default. A task
+// with nothing to talk to (never started, no pane) opens on the task, its other
+// tabs hidden; a tab picked by hand stays while it is offered (taskPanelTab.ts).
+const choiceKey = computed(() => (props.target.kind === 'task' ? `${props.target.machine}|${props.target.id}` : ''))
+const choice = ref<TaskPanelTab | null>(taskPanelChoice(choiceKey.value))
+// Its details read once (or failed): until then no tab is picked.
+const settled = computed(() => !loading.value || details.value !== null)
+const views = computed(() => ({
+  chat: Boolean(taskPane.value) || tellOnly.value || Boolean(failureDetail.value && !needs.value),
+  term: Boolean(taskPane.value),
+}))
+const tabs = computed(() => taskPanelTabs(views.value))
+const selected = computed(() => taskPanelTab(views.value, choice.value))
+function choose(tab: TaskPanelTab, force = false) {
+  if (!force && tab === selected.value) return
+  choice.value = tab
+  setTaskPanelChoice(choiceKey.value, tab)
+}
+// "Open the chat" from a task's sheet asks for its conversation.
+watch(() => props.target, (t) => { if (t.kind === 'task' && t.chat) choose('chat', true) }, { immediate: true })
+// A choice no longer offered (its agent gone) is dropped: once an agent starts
+// again, its conversation is the default view again.
+watch([tabs, settled], () => {
+  if (settled.value && !failed.value && choice.value && !tabs.value.includes(choice.value)) {
+    choice.value = null
+    setTaskPanelChoice(choiceKey.value, null)
+  }
+})
 const noticeKey = computed(() => JSON.stringify([details.value?.summary, details.value?.review, details.value?.findings]))
 const seenNote = ref('')
 const newNote = computed(() => Boolean(details.value?.summary || details.value?.review) && noticeKey.value !== seenNote.value)
@@ -345,8 +372,8 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       />
     </header>
 
-    <nav v-if="target.kind === 'task'" class="board-panel-tabs" :aria-label="tl('Task views', 'Vues de la tâche')">
-      <button v-for="tab in (['chat', 'term', 'task'] as const)" :key="tab" type="button" :class="{ on: selected === tab }" :aria-pressed="selected === tab" :aria-label="tab === 'chat' ? t('Conversation') : tab === 'term' ? t('Terminal') : tl('Task', 'Tâche')" :aria-description="tab === 'task' && newNote ? tl('New task details', 'Nouveaux détails de la tâche') : undefined" :title="tab === 'task' ? undefined : agentHint" @click="selected = tab">
+    <nav v-if="target.kind === 'task' && settled" class="board-panel-tabs" :aria-label="tl('Task views', 'Vues de la tâche')">
+      <button v-for="tab in tabs" :key="tab" type="button" :class="{ on: selected === tab }" :aria-pressed="selected === tab" :aria-label="tab === 'chat' ? t('Conversation') : tab === 'term' ? t('Terminal') : tl('Task', 'Tâche')" :aria-description="tab === 'task' && newNote ? tl('New task details', 'Nouveaux détails de la tâche') : undefined" :title="tab === 'task' ? undefined : agentHint" @click="choose(tab)">
         {{ tab === 'chat' ? t('Conversation') : tab === 'term' ? t('Terminal') : tl('Task', 'Tâche') }}<i v-if="tab === 'task' && newNote" class="task-new" aria-hidden="true" />
       </button>
     </nav>
@@ -358,7 +385,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         <UButton v-if="taskPermissions?.retry" :disabled="disabled" @click="taskAction('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
         <UButton v-if="canFix" :disabled="disabled" @click="taskAction('fix')">{{ tl('Send the error to the agent', 'Envoyer l’erreur à l’agent') }}</UButton>
         <UButton v-if="taskPermissions?.delegate" :disabled="disabled" @click="taskAction('delegate')">{{ tl('Start again', 'Relancer') }}</UButton>
-        <UButton v-if="taskPane" :disabled="offlineView || !reachable" @click="selected = 'term'">{{ tl('Open terminal', 'Ouvrir le terminal') }}</UButton>
+        <UButton v-if="taskPane" :disabled="offlineView || !reachable" @click="choose('term')">{{ tl('Open terminal', 'Ouvrir le terminal') }}</UButton>
         <UButton v-if="canAnyway" :disabled="disabled" @click="taskAction('anyway')">{{ tl('Approve anyway', 'Approuver quand même') }}</UButton>
         <UButton v-else-if="taskPermissions?.approve" :disabled="disabled" @click="taskAction('approve')">{{ tl('Approve', 'Approuver') }}</UButton>
       </div>
@@ -368,8 +395,9 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
     </section>
 
     <div class="board-panel-body">
-      <TaskSheet v-if="target.kind === 'task' && selected === 'task'" v-model:open="taskOpen" embedded :task="task" :machine="target.machine" :read-only="readOnly" :refresh="refreshTask" @chat="selected = 'chat'" @archived="archivedTask" @restored="restoredTask" />
-      <AgentView v-else-if="paneId && (target.kind === 'coordinator' || selected === 'term' || conversation)" :key="paneId" :pane-id="paneId" cell active :embedded="target.kind === 'task'" @update:selected-mode="selected = $event" :selected-mode="target.kind === 'task' ? (selected === 'term' ? 'term' : 'chat') : undefined" />
+      <p v-if="target.kind === 'task' && settled && failed && selected === 'task'" class="board-note error">{{ failed }}</p>
+      <TaskSheet v-if="target.kind === 'task' && settled && selected === 'task'" v-model:open="taskOpen" embedded :task="task" :machine="target.machine" :read-only="readOnly" :refresh="refreshTask" @chat="choose('chat')" @archived="archivedTask" @restored="restoredTask" />
+      <AgentView v-else-if="paneId && (target.kind === 'coordinator' || selected === 'term' || conversation)" :key="paneId" :pane-id="paneId" cell active :embedded="target.kind === 'task'" @update:selected-mode="choose($event)" :selected-mode="target.kind === 'task' ? (selected === 'term' ? 'term' : 'chat') : undefined" />
       <p v-else-if="target.kind === 'task' && loading" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
       <p v-else-if="failed" class="board-note error board-panel-wait">{{ failed }}</p>
       <div v-else-if="target.kind === 'task'" class="board-panel-start task-setup">

@@ -19,6 +19,13 @@ describe('onboarding steps', () => {
     expect(onboardingSteps({ phone: true, host: 'box.example.ts.net', standalone: true })).toEqual(['welcome', 'security'])
   })
 
+  it('adds the optional Claude quotas step before security when a machine needs it', () => {
+    expect(onboardingSteps({ phone: false, host: 'localhost', standalone: false, quotas: true })).toEqual(['welcome', 'phone', 'quotas', 'security'])
+    expect(onboardingSteps({ phone: true, host: 'box.example.ts.net', standalone: false, quotas: true })).toEqual(['welcome', 'homescreen', 'quotas', 'security'])
+    expect(onboardingSteps({ phone: true, host: 'box.example.ts.net', standalone: true, quotas: true })).toEqual(['welcome', 'quotas', 'security'])
+    expect(stepIndex(onboardingSteps({ phone: false, host: 'localhost', standalone: false, quotas: true }), 'quotas')).toBe(2)
+  })
+
   it('tells loopback hosts and phone systems apart', () => {
     expect(['localhost', '127.0.0.1', '127.1.2.3', '[::1]', '::1'].every(isLoopbackHost)).toBe(true)
     expect(['box.example.ts.net', '100.64.0.1', 'localhost.example.com'].some(isLoopbackHost)).toBe(false)

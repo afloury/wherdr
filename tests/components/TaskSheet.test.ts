@@ -4,6 +4,7 @@ import { readBody } from 'h3'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import TaskSheet from '~/components/TaskSheet.vue'
 import type { TaskRow } from '#shared/projectsTasks'
+import { hiddenAgents } from '~/composables/useHerdr'
 
 mockNuxtImport('askConfirm', () => async () => true)
 
@@ -476,6 +477,41 @@ describe('Start: the agent it starts with', () => {
     await vi.waitFor(() => expect(sent).toHaveLength(1))
     expect(sent[0]).toEqual({ machine: 'a', id: 'demo/1', action: 'delegate' })
     done(w)
+  })
+
+  it('agents unchecked in Settings › Agents are not offered; an unchecked default stays, marked', async () => {
+    hiddenAgents.value = ['codex', 'pi']
+    try {
+      const w = await open()
+      await vi.waitFor(() => expect(chips()).toHaveLength(1))
+      expect(names()).toEqual(['claude (default)'])
+      done(w)
+      w.unmount()
+      mounted = null
+      hiddenAgents.value = ['claude', 'pi']
+      const w2 = await open()
+      await vi.waitFor(() => expect(chips()).toHaveLength(2))
+      expect(names()).toEqual(['claude (default)', 'codex'])
+      expect(chips()[0]!.disabled).toBe(false)
+      expect(chips()[0]!.getAttribute('aria-checked')).toBe('true')
+      expect(chips()[0]!.querySelector('small')?.textContent).toBe('default · hidden in Settings')
+      done(w2)
+    } finally { hiddenAgents.value = [] }
+  })
+
+  it('a pick unchecked meanwhile falls back to the default', async () => {
+    try {
+      const w = await open()
+      await vi.waitFor(() => expect(chips()).toHaveLength(3))
+      chips()[1]!.click()
+      await flushPromises()
+      expect(startButton()!.textContent?.trim()).toBe('Start with codex')
+      hiddenAgents.value = ['codex']
+      await flushPromises()
+      expect(names()).toEqual(['claude (default)', 'pi'])
+      expect(startButton()!.textContent?.trim()).toBe('Start')
+      done(w)
+    } finally { hiddenAgents.value = [] }
   })
 
   it('not asked where the sheet offers no Start', async () => {
