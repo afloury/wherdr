@@ -4,6 +4,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Quotas } from '../shared/types'
+import { readClaude, mergeQuotas } from '../server/utils/quotas'
+import { localFs } from '../server/utils/fsx'
 import { claudeInstallCommand, claudeSetupOf, machineQuotaRows, quotaLeft, quotaRows, resetText } from '../app/utils/quotas'
 
 // The install command passes settings.json to python3 (missing from node:22-alpine).
@@ -74,6 +76,42 @@ describe('Claude quotas not configured', () => {
     expect(claudeSetupOf(q, '0a1b2c3d', true, ['codex'])).not.toBeNull()
   })
 
+  it.skipIf(!hasPython)('binds each reading to its account immediately after switching', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-switch-'))
+    try {
+      const env = { PATH: process.env.PATH, HOME: home }
+      execFileSync('sh', ['-c', claudeInstallCommand], { env })
+      const config = path.join(home, '.claude.json')
+      const write = (account: string, used: number) => {
+        fs.writeFileSync(config, JSON.stringify({ oauthAccount: { accountUuid: account } }))
+        execFileSync('sh', [path.join(home, '.claude/wherdr-statusline.sh')], {
+          env, input: JSON.stringify({ rate_limits: { five_hour: { used_percentage: used } } }),
+        })
+      }
+      write('test-account-a', 98)
+      const original = (await readClaude(localFs, home)).q!
+      write('test-account-b', 11)
+      const switched = (await readClaude(localFs, home)).q!
+      expect(switched.account).not.toBe(original.account)
+      // A stale compatibility sidecar cannot relabel an atomic reading.
+      fs.writeFileSync(path.join(home, '.cache/herdr-web/claude-account'), original.account!)
+      expect((await readClaude(localFs, home)).q!.account).toBe(switched.account)
+      const out = mergeQuotas([
+        { key: 'server', label: 'Server', claude: switched, codex: null },
+        { key: 'laptop', label: 'Laptop', claude: original, codex: null },
+        { key: 'desktop', label: 'Desktop', claude: { ...original, at: original.at - 1000 }, codex: null },
+      ])
+      expect(machineQuotaRows(out, 'server')[0]!.q.five!.used).toBe(11)
+      expect(machineQuotaRows(out, 'laptop')[0]!.q.five!.used).toBe(98)
+      expect(machineQuotaRows(out, 'desktop')[0]!.q.five!.used).toBe(98)
+      fs.rmSync(config)
+      execFileSync('sh', [path.join(home, '.claude/wherdr-statusline.sh')], {
+        env, input: '{"rate_limits":{"five_hour":{"used_percentage":7}}}',
+      })
+      expect((await readClaude(localFs, home)).q!.account).toBeNull()
+    } finally { fs.rmSync(home, { recursive: true, force: true }) }
+  })
+
   it.skipIf(!hasPython)('the command to copy is self-contained: status line written and wired', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'wherdr-'))
     try {
@@ -84,7 +122,7 @@ describe('Claude quotas not configured', () => {
       // It keeps the quotas and lets a chained status line through.
       const out = execFileSync('sh', [path.join(home, '.claude/wherdr-statusline.sh'), 'cat'], { env, input: '{"rate_limits":{}}' }).toString()
       expect(out).toBe('{"rate_limits":{}}')
-      expect(fs.readFileSync(path.join(home, '.cache/herdr-web/claude-status.json'), 'utf8')).toBe('{"rate_limits":{}}')
+      expect(JSON.parse(fs.readFileSync(path.join(home, '.cache/herdr-web/claude-status.json'), 'utf8'))).toMatchObject({ rate_limits: {}, _wherdr: { account: null } })
       // Run again: nothing changes in settings.json.
       execFileSync('sh', ['-c', claudeInstallCommand], { env, stdio: 'pipe' })
       expect(JSON.parse(fs.readFileSync(path.join(home, '.claude/settings.json'), 'utf8'))).toEqual(settings)

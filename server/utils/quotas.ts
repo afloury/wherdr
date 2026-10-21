@@ -29,6 +29,7 @@ import { type KnownWeek, type WeekReading, codexWeekWindow } from '../../shared/
 
 const TTL = 30000
 let cache: { at: number, q: Quotas } | null = null
+let readVersion = 0
 
 type Json = Record<string, any> // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -125,26 +126,36 @@ export async function readClaude(fs: MachineFs, home: string): Promise<ClaudeMac
     const raw = await text(f)
     try { status = raw === null ? null : JSON.parse(raw) } catch { status = null }
   }
-  const acc = (await text(path.posix.join(dir, 'claude-account')))?.trim() || ''
-  const account = /^[0-9a-f]{16,64}$/.test(acc) ? acc : null
-  const setup = claudeSetupState(status && account
+  // New writers bind identity and observation time to the same atomic payload.
+  // In particular, an explicit unknown identity must not reuse a stale sidecar.
+  const bound = status?._wherdr?.version === 1
+  const fingerprint = bound ? status!._wherdr.account : (await text(path.posix.join(dir, 'claude-account')))?.trim() || ''
+  const account = typeof fingerprint === 'string' && /^[0-9a-f]{16,64}$/.test(fingerprint) ? fingerprint : null
+  if (bound && Number.isFinite(status!._wherdr.at) && status!._wherdr.at > 0) at = status!._wherdr.at
+  let setup = claudeSetupState(status && account
     ? { status, account: true, statusline: null, settings: null }
     : {
         status, account: Boolean(account),
         statusline: await text(path.posix.join(home, '.claude/wherdr-statusline.sh')),
         settings: await text(path.posix.join(home, '.claude/settings.json')),
       })
+  // Legacy snapshots remain readable, but offer an update to remove the old
+  // ten-minute identity cache and separate-file race on every machine.
+  if (status && !bound) {
+    const script = await text(path.posix.join(home, '.claude/wherdr-statusline.sh'))
+    if (!script?.includes('_wherdr')) setup = 'missing'
+  }
   const q = status ? claudeQuota(status, at) : null
   return { q: q ? { ...q, account } : null, setup }
 }
 
-// Same account? The fingerprints if both machines have one; otherwise the weekly
+// Same account? Known fingerprints never merge with unknown identities. Otherwise the weekly
 // reset time, fixed for an account (compared modulo one
 // week, as an old reading may date from a previous week); with
 // nothing comparable, we assume the same account (previous display).
 const WEEK_MS = 7 * 86400000
 export function sameAccount(a: ClaudeReading, b: ClaudeReading): boolean {
-  if (a.account && b.account) return a.account === b.account
+  if (a.account || b.account) return a.account === b.account
   const x = a.week?.resetsAt
   const y = b.week?.resetsAt
   if (!x || !y) return true
@@ -311,18 +322,18 @@ async function canInstall(m: Machine): Promise<boolean> {
   return false
 }
 
-// Last successful reading of each machine: kept while a read fails (refused
-// SSH session, timeout), so a passing error neither hides the quotas nor
-// shows the setup prompt.
-const lastRead = new Map<string, { claude?: ClaudeMachineReading, codex?: CodexAccountReading | null }>()
+// Last successful Codex reading of each machine. Claude cannot reuse an old
+// identity after a failed read: the machine may have changed accounts meanwhile.
+const lastRead = new Map<string, { codex?: CodexAccountReading | null }>()
 
 export async function readQuotas(force = false): Promise<Quotas> {
   if (!force && cache && Date.now() - cache.at < TTL) return cache.q
+  const version = ++readVersion
   const online = allMachines().filter(m => m.home && !m.info().baseKey && (m.local || m.status === 'online'))
   const readings = await Promise.all(online.map(async (m) => {
     const last = lastRead.get(m.key) || {}
     const [claude, rolled] = await Promise.all([
-      readClaude(m.fs, m.home).then((r) => { last.claude = r; return r }, () => last.claude ?? null),
+      readClaude(m.fs, m.home).catch(() => null),
       readCodex(m.fs, m.home).then((r) => { last.codex = r; return r }, () => last.codex ?? null),
     ])
     lastRead.set(m.key, last)
@@ -334,7 +345,8 @@ export async function readQuotas(force = false): Promise<Quotas> {
     return { key: m.key, label: m.label, claude: claude?.q || null, codex, setup }
   }))
   const q = mergeQuotas(readings)
-  cache = { at: Date.now(), q }
+  // A slow older poll must not replace a newer completed snapshot.
+  if (version === readVersion) cache = { at: Date.now(), q }
   return q
 }
 
@@ -373,6 +385,7 @@ export async function installClaudeStatusline(m: Machine): Promise<string> {
   const r = m.local ? await runLocal(script, m.home) : await m.exec!('exec sh -s', [], { input: Buffer.from(script), timeoutMs: 60000 })
   const last = (s: string) => (s.trim().split('\n').filter(Boolean).pop() || '').slice(0, 300)
   if (r.code !== 0) throw new HerdrError('install_failed', fmt('Install failed on {machine}: {reason}', { machine: m.label, reason: last(r.stderr) || `code ${r.code}` }))
+  readVersion++
   cache = null
   return last(r.stdout.toString('utf8'))
 }
