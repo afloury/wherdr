@@ -1026,6 +1026,28 @@ html.reordering, html.reordering * { cursor: grabbing !important; }
 .files-num { flex: none; min-width: 4ch; padding: 6px 8px 6px 6px !important; text-align: right; color: var(--dim); user-select: none; border-right: 1px solid var(--line); }
 .files-text { flex: 1; padding: 6px 10px !important; color: var(--text-2); }
 .files-image { display: block; max-width: 100%; max-height: 70vh; margin: 12px auto; background: repeating-conic-gradient(var(--code-bg) 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
+/* A Markdown file, formatted: the conversation's Markdown styles on a framed
+   page, headings ruled as a document, light syntax colours in code blocks. */
+.files-md-mode { max-width: 280px; margin: 10px 0 0; }
+.files-md-mode button { padding: 9px 6px 8px; }
+.files-md { margin: 12px 0 0; padding: 20px 22px 24px; border: 1px solid var(--line); background: var(--surface); min-width: 0; }
+.md-body.files-md h1 { font: 700 26px/1.2 var(--display); letter-spacing: -.02em; }
+.md-body.files-md h2 { font: 650 20px/1.25 var(--display); letter-spacing: -.015em; }
+.md-body.files-md :is(h1, h2) { padding-bottom: .3em; border-bottom: 1px solid var(--line); }
+.md-body.files-md h5, .md-body.files-md h6 { font: 600 11px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 1.2em 0 .5em; }
+.md-body.files-md li:has(> input[type="checkbox"], > p > input[type="checkbox"]) { list-style: none; }
+.md-body.files-md li input[type="checkbox"] { margin: 0 .55em 0 -1.35em; vertical-align: -2px; accent-color: var(--mauve); }
+/* A table scrolls sideways: its columns stay readable rather than squeezed. */
+.md-body.files-md :is(td, th) { min-width: 7.5em; }
+.md-body.files-md td code { white-space: nowrap; overflow-wrap: normal; }
+.md-body.files-md img { cursor: default; }
+.md-body.files-md img:not([src]) { border-style: dashed; padding: 4px 8px; font: 11px/1.4 var(--mono); color: var(--muted); }
+.md-body.files-md .hl-c { color: var(--muted); }
+.md-body.files-md .hl-s { color: var(--green); }
+.md-body.files-md .hl-n { color: var(--teal); }
+.md-body.files-md .hl-k { color: var(--mauve); }
+.md-body.files-md .hl-t { color: var(--blue); }
+@media (max-width: 520px) { .files-md { padding: 14px 13px 18px; } .files-md-mode { max-width: none; } }
 /* The browser's PDF viewer: its own toolbar and scrolling, framed in a 1 px line. */
 .files-pdf { width: 100%; min-width: 0; }
 .pdf-page { width: 100%; background: white; margin-bottom: 12px; overflow: hidden; }
