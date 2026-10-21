@@ -24,7 +24,7 @@ it.each([
   { code: 255, failure: 'refused session', persistent: true },
   { code: 124, failure: 'timeout', persistent: true },
 ])('does not display cached 19/5 remaining over a fresh 98/98 file after a $failure (persistent: $persistent)', async ({ code, persistent }) => {
-  const now = Date.parse('2026-10-11T14:50:00Z')
+  const now = Date.parse('2026-10-11T14:50:39Z')
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(now - 5 * 3600000)
   vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -46,8 +46,8 @@ it.each([
     // All fingerprints are already stable; the login happened hours earlier.
     const file = path.join(m.home, '.cache/herdr-web/claude-status.json')
     fs.writeFileSync(file, JSON.stringify({ rate_limits: {
-      five_hour: { used_percentage: five, resets_at: (now + (expired ? -250 : 50) * 60000) / 1000 },
-      seven_day: { used_percentage: week, resets_at: (now + 4 * 86400000) / 1000 },
+      five_hour: { used_percentage: five, resets_at: Date.parse(expired ? '2026-10-11T10:40:00Z' : '2026-10-11T15:40:00Z') / 1000 },
+      seven_day: { used_percentage: week, resets_at: Date.parse('2026-10-16T09:00:00Z') / 1000 },
     } }))
     fs.utimesSync(file, at / 1000, at / 1000)
     const sidecar = path.join(m.home, '.cache/herdr-web/claude-account')
@@ -69,12 +69,12 @@ it.each([
     return { code: result.status, stdout: result.stdout, stderr: result.stderr.toString() }
   }, { statTtlMs: 0 })
   state.machines = [primary, shared, other]
-  write(primary, account, 1, 80, now - 5 * 3600000, true)
+  write(primary, account, 3, 80, now - 5 * 3600000, true)
   write(shared, account, 3, 72, now - 394 * 60000, true)
   write(other, otherAccount, 11, 25, now - 5 * 3600000, true)
   const displayed = (q: Awaited<ReturnType<typeof readQuotas>>, key: string) => machineQuotaRows(q, key)
     .map(r => [quotaLeft(r.q.five!, Date.now()), quotaLeft(r.q.week!, Date.now())])
-  expect(displayed(await readQuotas(true), primary.key)).toEqual([[99, 20]])
+  expect(displayed(await readQuotas(true), primary.key)).toEqual([[97, 20]])
   // Five hours later the same fingerprints still identify both accounts.
   vi.setSystemTime(now - 6 * 60000)
   write(primary, account, 81, 95, now - 6 * 60000)
@@ -110,4 +110,22 @@ it.each([
   expect(displayed(recovered, primary.key)).toEqual([[2, 2]])
   expect(displayed(recovered, shared.key)).toEqual([[2, 2]])
   expect(machineQuotaRows(recovered, primary.key)[0]!.q.at).toBe(now)
+
+  // A second fresh snapshot arrives 4 min 41 s later, while the shared
+  // machine's expired file stays unchanged and ages from 394 to 398 minutes.
+  const sharedFile = path.join(shared.home, '.cache/herdr-web/claude-status.json')
+  const sharedStamp = fs.statSync(sharedFile).mtimeMs
+  expect(Math.floor((now - sharedStamp) / 60000)).toBe(394)
+  const next = Date.parse('2026-10-11T14:55:20Z')
+  write(primary, account, 98, 98, next)
+  vi.setSystemTime(next)
+  const refreshed = await readQuotas()
+  for (const key of [primary.key, shared.key]) {
+    expect(displayed(refreshed, key)).toEqual([[2, 2]])
+    expect(machineQuotaRows(refreshed, key)[0]!.q.at).toBe(next)
+  }
+  expect(fs.statSync(sharedFile).mtimeMs).toBe(sharedStamp)
+  expect(Math.floor((next - sharedStamp) / 60000)).toBe(398)
+  const old = JSON.parse(fs.readFileSync(sharedFile, 'utf8')).rate_limits
+  expect([old.five_hour.used_percentage, old.seven_day.used_percentage]).toEqual([3, 72])
 })
