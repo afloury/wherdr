@@ -16,6 +16,7 @@
 // offers Restore for a few seconds. An archived task (Board › Archived, a link to it) is read-only, as
 // in 1.x: an "Archived" tag and Restore, nothing else.
 import { NO_ACTIONS, type StartOptions, type TaskCommand, type TaskDetails, type TaskRow, prNumber, taskActions, taskKey } from '#shared/projectsTasks'
+import AppSheet from './AppSheet.vue'
 import { PROJECTS_LAUNCHER } from '#shared/projectsPlugin'
 
 // `readOnly`: the board is read from its files (wherdr in a container): the
@@ -24,7 +25,7 @@ import { PROJECTS_LAUNCHER } from '#shared/projectsPlugin'
 // it, `changed` asks for that. `archived` / `restored`: the task was put away
 // or brought back from here.
 // `chat`: open this task's agent in the side panel (the sheet has closed).
-const props = defineProps<{ task: TaskRow | null, machine: string, readOnly?: boolean, refresh?: () => Promise<unknown> }>()
+const props = defineProps<{ task: TaskRow | null, machine: string, readOnly?: boolean, refresh?: () => Promise<unknown>, embedded?: boolean }>()
 const emit = defineEmits<{ changed: [], archived: [machine: string, task: TaskRow], restored: [machine: string, task: TaskRow], chat: [machine: string, task: TaskRow] }>()
 const open = defineModel<boolean>('open', { default: false })
 
@@ -206,6 +207,7 @@ async function approve() {
 const ACTION_DONE: Record<Exclude<TaskCommand, 'archive'>, () => string> = {
   delegate: () => tl('Started: an agent is on it', 'Lancée : un agent s’en occupe'),
   stop: () => tl('Stopped', 'Arrêtée'),
+  fix: () => tl('Sent to the agent to fix', 'Envoyée à l’agent pour correction'),
   retry: () => tl('Sent back to its agent', 'Renvoyée à son agent'),
   restore: () => tl('Restored', 'Restaurée'),
 }
@@ -251,9 +253,9 @@ function chat() {
 </script>
 
 <template>
-  <AppSheet v-model:open="open" :title="task?.title || tl('Task', 'Tâche')" wide>
+  <component :is="embedded ? 'section' : AppSheet" v-model:open="open" :title="task?.title || tl('Task', 'Tâche')" wide>
     <div v-if="task" class="task-sheet">
-      <p class="task-sheet-meta">
+      <p v-if="!embedded" class="task-sheet-meta">
         <span class="task-key">{{ label }}</span>
         <span class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
         <span v-if="archived" class="task-chip task-archived"><UIcon name="i-lucide-archive" />{{ tl('Archived', 'Archivée') }}</span>
@@ -261,6 +263,7 @@ function chat() {
         <span v-if="task.research" class="task-chip">{{ tl('research', 'recherche') }}</span>
         <span v-if="multiMachine && machine !== undefined" class="task-chip">{{ machineName(machine) }}</span>
       </p>
+      <p v-if="embedded && task.group === 'working' && task.progress !== null" class="task-sheet-msg">{{ tl('Progress', 'Avancement') }} · {{ task.progress }}%<template v-if="task.eta !== null"> · {{ tl(`${task.eta} min left`, `${task.eta} min restantes`) }}</template></p>
       <p v-if="task.msg" class="task-sheet-msg">{{ task.msg }}</p>
       <p v-if="archived" class="board-note task-sheet-archived">{{ tl('Archived: read-only, as in herdr-projects. Restore it to change or start it again.', 'Archivée : en lecture seule, comme dans herdr-projects. Restaure-la pour la modifier ou la relancer.') }}</p>
 
@@ -287,7 +290,7 @@ function chat() {
           <dd>{{ details.agent }}</dd>
         </template>
       </dl>
-      <div v-if="details?.failure" class="plugin-input-note warn">
+      <div v-if="details?.failure && !embedded" class="plugin-input-note warn">
         <UIcon name="i-lucide-triangle-alert" />
         <p>{{ details.failure }}</p>
       </div>
@@ -299,6 +302,25 @@ function chat() {
         <h4>{{ tl('Plan', 'Plan') }}</h4>
         <p class="task-sheet-text">{{ details.plan }}</p>
       </section>
+
+      <section v-if="details?.summary" class="task-sheet-block board-panel-note">
+        <h4>{{ tl('Closing note', 'Note de fin') }}</h4>
+        <p class="task-sheet-text">{{ details.summary }}</p>
+      </section>
+      <p v-if="details?.report" class="board-panel-report">
+        <span>{{ details.research ? tl('Research report', 'Rapport de recherche') : tl('Report', 'Rapport') }}</span>
+        <a v-if="details.report.link" :href="details.report.link" target="_blank" rel="noopener noreferrer">{{ details.report.file }}</a>
+        <span v-else>{{ details.report.file }}</span>
+      </p>
+      <section v-if="details?.findings?.length" class="task-sheet-block">
+        <h4>{{ tl('Review findings', 'Remarques de relecture') }}</h4>
+        <p v-for="(f, i) in details.findings" :key="i" class="task-sheet-text">{{ f.severity }} · {{ f.title }}<template v-if="f.detail"> — {{ f.detail }}</template></p>
+      </section>
+      <dl v-if="details?.limits" class="task-sheet-facts">
+        <dt>{{ tl('Time limit', 'Limite de temps') }}</dt><dd>{{ details.limits.time }}<template v-if="details.limits.timeUsed"> · {{ details.limits.timeUsed }}</template></dd>
+        <dt>{{ tl('Token limit', 'Limite de tokens') }}</dt><dd>{{ details.limits.tokens }}</dd>
+        <dt>{{ tl('Tokens used', 'Tokens utilisés') }}</dt><dd>{{ details.limits.tokensUsed ?? '—' }}</dd>
+      </dl>
 
       <div v-if="actions.delegate" class="task-start-agent" role="radiogroup" :aria-label="tl('Agent for this start', 'Agent pour ce lancement')">
         <span class="task-start-label">{{ tl('Agent', 'Agent') }}</span>
@@ -323,7 +345,7 @@ function chat() {
         </UButton>
         <UButton v-if="actions.retry" color="primary" variant="outline" icon="i-lucide-rotate-ccw" :loading="running === 'retry'" :disabled="busy || offlineView" @click="act('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
         <UButton
-          v-if="chatShown" class="task-chat" color="neutral" variant="outline" icon="i-lucide-message-square"
+          v-if="chatShown && !embedded" class="task-chat" color="neutral" variant="outline" icon="i-lucide-message-square"
           @click="chat"
         >
           {{ tl('Open the chat', 'Ouvrir la discussion') }}
@@ -352,5 +374,5 @@ function chat() {
         <code v-for="a in hostCommands" :key="a" class="projects-plugin-command">{{ PROJECTS_LAUNCHER }} {{ a }} {{ task.id }}</code>
       </div>
     </div>
-  </AppSheet>
+  </component>
 </template>

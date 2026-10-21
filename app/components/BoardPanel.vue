@@ -1,39 +1,15 @@
 <script setup lang="ts">
-// The Board's side panel: one agent to talk to, a task's or a coordinator's,
-// in wherdr's own agent view (AgentView, as a side-by-side cell: conversation,
-// terminal, message field). Its heading always says who: the machine, the
-// repo, the task or the coordinator, so several machines on one Board are
-// never mixed up. A computer keeps the Board beside it; a phone shows it full
-// screen, with a way back to the Board.
-//
-// A task's agent is the pane its details name. A task with no agent (to do,
-// or its agent gone) is not shown here: `noAgent` asks the Board for its
-// sheet instead; `sheet` (its "Task" button) opens the sheet over the panel.
-// Opened from the sheet's "Open the chat" (`chat`), a task herdr-projects
-// takes a reply for but whose agent has no pane gets a message field instead,
-// sent with `tell`, until its agent shows up again.
-// A coordinator's pane is the one herdr-projects keeps for it (`coordinator
-// status`, asked by the server), never one guessed from a name. One not
-// started yet gets a field whose first message starts it (`coordinator tell`);
-// the panel asks again until its pane shows up, then turns into its
-// conversation. One whose start failed says why, as herdr-projects wrote it
-// down, with Try again (`coordinator restart`) once it is fixed: it never
-// says "starting" while herdr-projects has given up. Everything asked for a
-// coordinator belongs to that target: a reply that comes back once another
-// one is shown is dropped.
-//
-// Above a task's conversation: its title, its description (folded after a few
-// lines), the Watcher's progress, and the agent's closing note and research
-// report once there is one (`details`, read again as the task moves on).
-import { type CoordinatorStatus, type CoordinatorTarget, type TaskDetails, type TaskRow, TELL_MAX, coordinatorPhase, coordinatorSubject, taskActions, taskKey } from '#shared/projectsTasks'
+// Task panels own their compact header, three tabs and board failure banner.
+// Coordinators keep their own startup/delivery lifecycle.
+import { type CoordinatorStatus, type CoordinatorTarget, type TaskDetails, type TaskRow, TELL_MAX, coordinatorPhase, coordinatorSubject, taskActions, taskCanFix, taskCanApproveAnyway, taskKey, type TaskCommand } from '#shared/projectsTasks'
 
 export type PanelTarget =
   | { machine: string, kind: 'task', id: string, chat?: boolean }
   | { machine: string, kind: 'coordinator', to: CoordinatorTarget }
 
 // `reachable`: its machine's board answers now (a message waits while it does not).
-const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, readOnly?: boolean, reachable?: boolean }>()
-const emit = defineEmits<{ close: [], sheet: [], noAgent: [] }>()
+const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, readOnly?: boolean, reachable?: boolean, refresh?: () => Promise<unknown> }>()
+const emit = defineEmits<{ close: [], sheet: [], noAgent: [], changed: [], archived: [machine: string, task: TaskRow], restored: [machine: string, task: TaskRow] }>()
 
 // ------------------------------------------------------------ a task's agent
 const taskPane = ref<string | null>(null)
@@ -60,13 +36,9 @@ async function loadTask(again = false) {
     if (n !== seq) return
     details.value = d
     if (!d.pane) {
-      // Asked for its chat, and a reply can still reach it: the field here.
-      if (t.chat && canTell(d)) {
-        tellOnly.value = true
-        return
-      }
-      // No agent to talk to: its sheet, with what can be done (Start…).
-      return emit('noAgent')
+      tellOnly.value = canTell(d)
+      taskPane.value = null
+      return
     }
     tellOnly.value = false
     taskPane.value = d.pane
@@ -77,15 +49,7 @@ async function loadTask(again = false) {
   }
 }
 watch(() => props.target.kind === 'task' ? `${props.target.machine}|${props.target.id}` : '', (k) => { if (k) loadTask() }, { immediate: true })
-watch(() => (props.task ? `${props.task.stage}|${props.task.group}|${props.task.state}` : ''), (k, was) => { if (k && was && k !== was) loadTask(true) })
-
-// The Watcher's estimate, as the row has it (1.x `watch`: a percentage, minutes left).
-const progress = computed(() => {
-  const r = props.task
-  if (!r || r.progress === null || r.group !== 'working') return null
-  const eta = r.eta === null ? '' : r.eta < 60 ? tl(`about ${r.eta} min left`, `environ ${r.eta} min restantes`) : tl(`about ${Math.round(r.eta / 60)} h left`, `environ ${Math.round(r.eta / 60)} h restantes`)
-  return { pct: Math.max(0, Math.min(100, r.progress)), eta }
-})
+watch(() => (props.task ? `${props.task.stage}|${props.task.group}|${props.task.state}|${props.task.msg}` : ''), (k, was) => { if (k && was && k !== was) loadTask(true) })
 
 // A reply to a task with no pane: herdr-projects passes it on (`tell`). The
 // panel is one per task, so a late answer never lands on another one.
@@ -105,6 +69,56 @@ async function tell() {
     loadTask(true)
   } catch (e) { toast((e as Error).message, true) }
   finally { telling.value = false }
+}
+
+// The parent owns view selection so a setup shell never opens by default.
+const selected = ref<'chat' | 'term' | 'task'>('chat')
+const full = ref(false)
+const taskOpen = ref(true)
+const actionBusy = ref(false)
+const actionError = ref('')
+const agentPane = computed(() => herdrState.value.panes.find(p => p.id === taskPane.value))
+const conversation = computed(() => Boolean(agentPane.value && hasChat(agentPane.value))
+  && !(props.task?.stage === 'failed' && ['start', 'setup', 'attempts'].includes(details.value?.failureStage || '')))
+const agentHint = computed(() => agentPane.value ? tl(`Herdr agent: ${statusLabel(agentPane.value)}`, `Agent Herdr : ${statusLabel(agentPane.value)}`) : tl('Agent not running', 'Agent arrêté'))
+const taskPermissions = computed(() => props.task ? taskActions(props.task, details.value) : null)
+const canFix = computed(() => props.task && taskCanFix(props.task, details.value))
+const canAnyway = computed(() => props.task && taskCanApproveAnyway(props.task, details.value))
+const disabled = computed(() => Boolean(actionBusy.value || props.readOnly || offlineView.value || !props.reachable || props.task?.stale))
+const needs = computed(() => props.task?.group === 'needs')
+const failureTitle = computed(() => details.value?.failureTitle || details.value?.msg || props.task?.msg || agentPane.value?.prompt?.question || tl('Your answer is needed', 'Ta réponse est attendue'))
+const failureDetail = computed(() => details.value?.failureDetail || details.value?.failure || '')
+const noticeKey = computed(() => JSON.stringify([details.value?.summary, details.value?.review, details.value?.findings]))
+const seenNote = ref('')
+const newNote = computed(() => Boolean(details.value?.summary || details.value?.review) && noticeKey.value !== seenNote.value)
+watch([selected, noticeKey], () => { if (selected.value === 'task') seenNote.value = noticeKey.value })
+function archivedTask(machine: string, task: TaskRow) { emit('archived', machine, task); emit('close') }
+function restoredTask(machine: string, task: TaskRow) { emit('restored', machine, task) }
+async function refreshTask() {
+  if (props.refresh) await props.refresh()
+  else emit('changed')
+  await loadTask(true)
+}
+async function taskAction(action: TaskCommand | 'approve' | 'anyway') {
+  const target = props.target
+  if (target.kind !== 'task' || disabled.value) return
+  if (action === 'anyway' && !canAnyway.value) return
+  if (action === 'fix' && !canFix.value) return
+  if ((action === 'approve' || action === 'anyway') && !await askConfirm(
+    action === 'anyway' ? tl('Approve despite the failed review or checks? This merges the work.', 'Approuver malgré la relecture ou les contrôles en échec ? Cela fusionne le travail.') : tl('Approve this task?', 'Approuver cette tâche ?'),
+    action === 'anyway' ? tl('Approve anyway', 'Approuver quand même') : tl('Approve', 'Approuver'), 'primary')) return
+  if (props.target !== target || disabled.value) return
+  actionBusy.value = true
+  actionError.value = ''
+  try {
+    await api(action === 'approve' || action === 'anyway' ? '/api/tasks/approve' : '/api/tasks/action', {
+      machine: target.machine, id: target.id,
+      ...(action === 'approve' || action === 'anyway' ? { anyway: action === 'anyway' } : { action }),
+    })
+    haptic()
+    await refreshTask()
+  } catch (e) { actionError.value = (e as Error).message }
+  finally { actionBusy.value = false }
 }
 
 // ------------------------------------------------------------ a coordinator
@@ -180,7 +194,7 @@ const paneId = computed(() => (props.target.kind === 'task' ? taskPane.value : c
 // A task's agent that closes while shown: back to its sheet.
 const gone = computed(() => props.target.kind === 'task' && Boolean(taskPane.value) && herdrState.value.ok
   && !herdrState.value.panes.some(p => p.id === taskPane.value))
-watch(gone, (g) => { if (g) emit('noAgent') })
+watch(gone, (g) => { if (g) loadTask(true) })
 
 // ------------------------------------------------------------ who it is
 // Match the Board entry points: all work, machine setup, repo work.
@@ -298,7 +312,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
 </script>
 
 <template>
-  <aside class="board-panel" :class="{ desk }" :style="style" :data-kind="target.kind" :aria-label="tl('Conversation', 'Conversation')">
+  <aside class="board-panel" :class="{ desk, expanded: full }" :style="style" :data-kind="target.kind" :aria-label="tl('Conversation', 'Conversation')">
     <header class="board-panel-head">
       <UButton
         v-if="!desk" icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn board-panel-back"
@@ -307,12 +321,12 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
       <div class="board-panel-who">
         <p class="board-panel-path">
           <span class="board-panel-machine"><UIcon name="i-lucide-server" />{{ machineLabel }}</span>
-          <span v-if="repo" class="board-panel-repo">{{ repo }}</span>
+          <span v-if="repo" class="board-panel-repo">{{ repo }}</span><span v-if="target.kind === 'task' && (task?.app || details?.agent)" :title="agentHint">· {{ task?.app || details?.agent }}</span>
         </p>
         <p class="board-panel-name">
           <template v-if="target.kind === 'task'">
-            <span class="task-key">{{ taskLabel }}</span>
-            <span class="board-panel-title">{{ task?.app ? tl(`its agent · ${task.app}`, `son agent · ${task.app}`) : tl('its agent', 'son agent') }}</span>
+            <AgentAvatar :agent="task?.app || details?.agent || null" :title="agentHint" />
+            <span class="task-key">{{ taskLabel }}</span><span class="board-panel-title" :title="details?.title || task?.title">{{ details?.title || task?.title }}</span><span v-if="task" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
           </template>
           <template v-else>
             <UIcon name="i-lucide-message-square-text" class="board-panel-coord-icon" />
@@ -321,47 +335,48 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         </p>
         <p v-if="target.kind === 'coordinator'" class="board-panel-purpose">{{ coordinatorDescription(target.to) }}</p>
       </div>
-      <UButton
-        v-if="target.kind === 'task'" icon="i-lucide-file-text" color="neutral" variant="outline" size="sm" class="board-panel-sheet"
-        :aria-label="tl('Task details and actions', 'Fiche et actions de la tâche')" @click="emit('sheet')"
-      >
-        <span class="board-panel-sheet-label">{{ tl('Task', 'Fiche') }}</span>
-        <span v-if="task" class="task-state" :class="task.group">{{ taskGroupLabel(task.group) }}</span>
-      </UButton>
+      <template v-if="target.kind === 'task'">
+        <UButton v-if="desk" :icon="full ? 'i-lucide-minimize' : 'i-lucide-maximize'" color="neutral" variant="ghost" class="icon-btn" :aria-label="full ? tl('Exit full screen', 'Quitter le plein écran') : tl('Full screen', 'Plein écran')" @click="full = !full" />
+        <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" class="icon-btn board-panel-sheet" :aria-label="tl('Task details and actions', 'Fiche et actions de la tâche')" @click="emit('sheet')" />
+      </template>
       <UButton
         v-if="desk" icon="i-lucide-x" color="neutral" variant="ghost" size="md" class="icon-btn board-panel-close"
         :aria-label="t('Close')" @click="emit('close')"
       />
     </header>
 
-    <section v-if="target.kind === 'task' && (details || task)" class="board-panel-task" :aria-label="tl('The task', 'La tâche')">
-      <h3 class="board-panel-task-title">{{ details?.title || task?.title }}</h3>
-      <div v-if="details?.description" class="board-panel-desc"><FoldText :lines="4"><span class="board-panel-text">{{ details.description }}</span></FoldText></div>
-      <div v-if="progress || task?.msg" class="board-panel-watch">
-        <div v-if="progress" class="board-panel-progress" role="progressbar" :aria-valuenow="progress.pct" aria-valuemin="0" aria-valuemax="100" :aria-label="tl('Progress', 'Avancement')">
-          <span :style="{ width: `${progress.pct}%` }" />
-        </div>
-        <p class="board-panel-watch-line">
-          <b v-if="progress">{{ progress.pct }}%</b><span v-if="progress?.eta">{{ progress.eta }}</span><span v-if="task?.msg" class="board-panel-msg">{{ task.msg }}</span>
-        </p>
+    <nav v-if="target.kind === 'task'" class="board-panel-tabs" :aria-label="tl('Task views', 'Vues de la tâche')">
+      <button v-for="tab in (['chat', 'term', 'task'] as const)" :key="tab" type="button" :class="{ on: selected === tab }" :aria-pressed="selected === tab" :aria-label="tab === 'chat' ? t('Conversation') : tab === 'term' ? t('Terminal') : tl('Task', 'Tâche')" :aria-description="tab === 'task' && newNote ? tl('New task details', 'Nouveaux détails de la tâche') : undefined" :title="tab === 'task' ? undefined : agentHint" @click="selected = tab">
+        {{ tab === 'chat' ? t('Conversation') : tab === 'term' ? t('Terminal') : tl('Task', 'Tâche') }}<i v-if="tab === 'task' && newNote" class="task-new" aria-hidden="true" />
+      </button>
+    </nav>
+    <section v-if="target.kind === 'task' && needs" class="task-needs" role="alert">
+      <h3>{{ tl('Needs you', 'À toi') }} · {{ failureTitle }}</h3>
+      <pre v-if="failureDetail">{{ failureDetail }}</pre>
+      <p v-if="details?.failureNext">{{ details.failureNext }}</p>
+      <div class="task-needs-actions">
+        <UButton v-if="taskPermissions?.retry" :disabled="disabled" @click="taskAction('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
+        <UButton v-if="canFix" :disabled="disabled" @click="taskAction('fix')">{{ tl('Send the error to the agent', 'Envoyer l’erreur à l’agent') }}</UButton>
+        <UButton v-if="taskPermissions?.delegate" :disabled="disabled" @click="taskAction('delegate')">{{ tl('Start again', 'Relancer') }}</UButton>
+        <UButton v-if="taskPane" :disabled="offlineView || !reachable" @click="selected = 'term'">{{ tl('Open terminal', 'Ouvrir le terminal') }}</UButton>
+        <UButton v-if="canAnyway" :disabled="disabled" @click="taskAction('anyway')">{{ tl('Approve anyway', 'Approuver quand même') }}</UButton>
+        <UButton v-else-if="taskPermissions?.approve" :disabled="disabled" @click="taskAction('approve')">{{ tl('Approve', 'Approuver') }}</UButton>
       </div>
-      <div v-if="details?.summary || details?.report" class="board-panel-note">
-        <h4>{{ tl('Closing note', 'Rapport de fin') }}</h4>
-        <FoldText v-if="details.summary" :lines="4"><span class="board-panel-text">{{ details.summary }}</span></FoldText>
-        <p v-if="details.report" class="board-panel-report">
-          <UIcon name="i-lucide-file-text" />
-          <a v-if="details.report.link" :href="details.report.link" target="_blank" rel="noopener noreferrer">{{ details.report.file }}</a>
-          <span v-else>{{ tl(`Research report: ${details.report.file}`, `Rapport de recherche : ${details.report.file}`) }}</span>
-        </p>
-      </div>
+      <p v-if="readOnly">{{ readOnlyWhy() }}</p>
+      <p v-else-if="!reachable">{{ tl('Machine unavailable', 'Machine indisponible') }}</p>
+      <p v-if="actionError" class="error">{{ actionError }}</p>
     </section>
 
     <div class="board-panel-body">
-      <AgentView v-if="paneId" :key="paneId" :pane-id="paneId" cell active />
+      <TaskSheet v-if="target.kind === 'task' && selected === 'task'" v-model:open="taskOpen" embedded :task="task" :machine="target.machine" :read-only="readOnly" :refresh="refreshTask" @chat="selected = 'chat'" @archived="archivedTask" @restored="restoredTask" />
+      <AgentView v-else-if="paneId && (target.kind === 'coordinator' || selected === 'term' || conversation)" :key="paneId" :pane-id="paneId" cell active :embedded="target.kind === 'task'" @update:selected-mode="selected = $event" :selected-mode="target.kind === 'task' ? (selected === 'term' ? 'term' : 'chat') : undefined" />
       <p v-else-if="target.kind === 'task' && loading" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
       <p v-else-if="failed" class="board-note error board-panel-wait">{{ failed }}</p>
-      <div v-else-if="target.kind === 'task' && tellOnly" class="board-panel-start">
-        <form class="board-panel-first board-panel-tell" @submit.prevent="tell">
+      <div v-else-if="target.kind === 'task'" class="board-panel-start task-setup">
+        <h3>{{ details?.failureStage === 'setup' || details?.failureStage === 'start' ? tl('Setup output', 'Sortie du démarrage') : tl('No agent conversation yet', 'Pas encore de conversation avec l’agent') }}</h3>
+        <pre v-if="failureDetail && !needs">{{ failureDetail }}</pre>
+        <p>{{ tl('The terminal stays available when the task has a pane. Task details and actions are in the Task tab.', 'Le terminal reste accessible quand la tâche a un pane. Les détails et actions sont dans l’onglet Tâche.') }}</p>
+        <form v-if="tellOnly" class="board-panel-first board-panel-tell" @submit.prevent="tell">
           <label for="board-panel-tell">{{ task?.stage === 'plan'
             ? tl('Its agent is not running now: your words send the plan back, through herdr-projects.', 'Son agent ne tourne pas en ce moment : tes mots renvoient le plan, par herdr-projects.')
             : tl('Its agent is not running now: herdr-projects passes your reply on.', 'Son agent ne tourne pas en ce moment : herdr-projects lui transmet ta réponse.') }}</label>

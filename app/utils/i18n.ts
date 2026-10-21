@@ -5,6 +5,9 @@
 const FR: Record<string, string> = {
   // herdr-projects 1.x tasks (server/utils/projectsTasks.ts)
   'herdr-projects 1.2.1 or later is not available on {machine}': 'herdr-projects 1.2.1 ou plus n’est pas disponible sur {machine}',
+  'Invalid approval': 'Approbation invalide',
+  'This task cannot bypass approval checks': 'Cette tâche ne peut pas ignorer les contrôles d’approbation',
+  'This failure needs the human first': 'Cet échec nécessite d’abord ton intervention',
   'Invalid task': 'Tâche invalide', 'Nothing to send': 'Rien à envoyer',
   'This task has no agent to talk to': 'Cette tâche n’a pas d’agent à qui parler',
   'This task does not wait for approval': 'Cette tâche n’attend pas d’approbation',

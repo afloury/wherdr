@@ -15,6 +15,7 @@
 //  - each coordinator's `state.json` (data/coordinator/<session>/state.json,
 //    `machine/state.json`, `projects/<repo>/state.json`): `pane`, `space`.
 // Pure functions, tested in tests/boardLinks.test.ts.
+import { rowFromTaskFile, type TaskGroup } from './projectsTasks'
 import type { Pane, Workspace } from './types'
 import { type RowGroup, type Row, leadPane, rowGroup } from './spaces'
 import { joinId, machineOf } from './ids'
@@ -39,6 +40,7 @@ export interface LinkedTask {
   // The space the board made for it (app id), if any.
   workspace: string | null
   stage: string
+  group?: TaskGroup
   // The board's report: progress (0-100), the line on what it does now, and
   // when the current agent's turn on it began (ms; the reviewer's while it reviews).
   progress: number | null
@@ -77,7 +79,7 @@ const spaceOf = (key: string | null, v: unknown) => (key !== null && typeof v ==
 
 // What a `task.json` links to. An attempt (`attemptOf`) comes back as its
 // task's id with its pane as an attempt; the caller merges it into the task.
-export interface FileLinks extends Pick<LinkedTask, 'stage' | 'progress' | 'msg' | 'since' | 'review'> { id: string, repo: string, n: number, title: string, attemptOf: string | null, letter: string, archived: boolean, panes: LinkedTask['panes'], workspace: string | null }
+export interface FileLinks extends Pick<LinkedTask, 'stage' | 'progress' | 'msg' | 'since' | 'review' | 'group'> { id: string, repo: string, n: number, title: string, attemptOf: string | null, letter: string, archived: boolean, panes: LinkedTask['panes'], workspace: string | null }
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 export function linksFromTaskFile(t: unknown, sessionKey: SessionKey): FileLinks | null {
   const r = obj(t)
@@ -113,6 +115,7 @@ export function linksFromTaskFile(t: unknown, sessionKey: SessionKey): FileLinks
     attemptOf: attemptOf || null, letter, archived: Boolean(r.archivedAt),
     panes, workspace: link?.ownsWorkspace === true ? spaceOf(key, link.workspace) : null,
     stage,
+    group: rowFromTaskFile(r, null)?.group,
     review: reviewer ? (r.comparing ? 'pick' : planOpen ? 'plan' : 'work') : null,
     progress: progress === null ? null : Math.max(0, Math.min(100, Math.round(progress))),
     msg: (str(watch?.msg, 400) || str(r.msg, 400)).replace(/\s+/g, ' ').trim(),
@@ -125,7 +128,7 @@ export function linksFromTaskFile(t: unknown, sessionKey: SessionKey): FileLinks
 export function tasksFromFiles(files: FileLinks[], keys: Record<string, string>): LinkedTask[] {
   const byId = new Map<string, LinkedTask>()
   const own = files.filter(f => !f.attemptOf)
-  const task = (f: FileLinks): LinkedTask => ({ id: f.id, repo: f.repo, n: f.n, key: taskKeyOf(f.id, keys[f.repo]), title: f.title, panes: [...f.panes], workspace: f.workspace, stage: f.stage, review: f.review, progress: f.progress, msg: f.msg, since: f.since })
+  const task = (f: FileLinks): LinkedTask => ({ id: f.id, repo: f.repo, n: f.n, key: taskKeyOf(f.id, keys[f.repo]), title: f.title, panes: [...f.panes], workspace: f.workspace, stage: f.stage, group: f.group, review: f.review, progress: f.progress, msg: f.msg, since: f.since })
   for (const f of own) byId.set(f.id, task(f))
   for (const a of files.filter(f => f.attemptOf)) {
     const t = byId.get(a.id)
@@ -453,7 +456,7 @@ export function tasksIn(spaces: string[], panes: Pick<Pane, 'id' | 'workspace'>[
 // `coordinator`: a coordinator's card (its role's icon, its last message).
 // `stage`: the task's stage beyond its state (`Under review · codex`); `tab`:
 // the tab its row opens, whatever tab was opened last (its reviewer's while a review runs).
-export interface BoardCard { tag: string, name?: string, progress?: number | null, since?: number | null, msg?: string, stage?: string, tab?: string, onBoard?: () => void, coordinator?: boolean }
+export interface BoardCard { group?: TaskGroup, tag: string, name?: string, progress?: number | null, since?: number | null, msg?: string, stage?: string, tab?: string, onBoard?: () => void, coordinator?: boolean }
 
 // What a member's card says before its title: `WHR-2`, `WHR-2 · review`, `WHR-2 · A`.
 export function memberTag(m: Pick<Member, 'task' | 'role' | 'letter'>, review: string): string {

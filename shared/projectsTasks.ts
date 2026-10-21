@@ -34,6 +34,7 @@ export interface TaskRow {
   archived: boolean
   queue: number | null
   group: TaskGroup
+  approvalBlocked?: boolean
   // Its repo's short key (`repo.key`, 1.x store/keys.rs), once read: `APP`
   // names this task `APP-6`. Not in `list --json`: wherdr asks `show --repo`.
   repoKey?: string
@@ -55,6 +56,14 @@ export interface TaskDetails {
   failure: string
   // What failed (1.x `failure.stage`: start, setup, send, agent, workflow,
   // pr, merge, attempts…) and whether a login stopped it: what Retry needs.
+  failureTitle?: string
+  failureDetail?: string
+  failureNext?: string
+  failureCanFix?: boolean
+  failureRemoteKind?: string
+  failureSent?: boolean
+  limits?: { time: string, timeUsed: string, tokens: string, tokensUsed: number | null }
+  findings?: { severity: string, title: string, detail: string }[]
   failureStage: string
   failureAuth: boolean
   // The agent's closing note (task.json `summary`: 1.2.1's `details` leaves
@@ -75,7 +84,7 @@ export interface TaskDetails {
 // `retry`, `archive`, `restore` (and its pane in Herdr).
 export interface TaskActions { tell: boolean, approve: boolean, delegate: boolean, stop: boolean, retry: boolean, archive: boolean, restore: boolean }
 // The task commands that take nothing but the task's id.
-export const TASK_COMMANDS = ['delegate', 'stop', 'retry', 'archive', 'restore'] as const
+export const TASK_COMMANDS = ['delegate', 'stop', 'retry', 'fix', 'archive', 'restore'] as const
 export type TaskCommand = typeof TASK_COMMANDS[number]
 export const isTaskCommand = (v: unknown): v is TaskCommand => TASK_COMMANDS.includes(v as TaskCommand)
 export const NO_ACTIONS: TaskActions = { tell: false, approve: false, delegate: false, stop: false, retry: false, archive: false, restore: false }
@@ -185,10 +194,10 @@ export function parseReview(v: unknown): TaskReview | null {
 }
 
 // The group the 1.x board puts a row in (shown/states.rs: group_of). The list
-// does not carry merge failures: such a row shows as ready, its message says why.
-export function groupOf(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'review'>): TaskGroup {
+// needs the task file's merge/sync blockers too, absent from the CLI list.
+export function groupOf(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'review' | 'approvalBlocked'>): TaskGroup {
   const awaitsYes = r.state === 'blocked' && r.kind === 'permission' && r.stage === 'approval'
-  if (awaitsYes && r.review?.pass !== false) return 'ready'
+  if (awaitsYes && !r.approvalBlocked && r.review?.pass !== false) return 'ready'
   if (r.state === 'blocked' || r.state === 'error') return 'needs'
   if (r.state === 'working') return 'working'
   if (r.state === 'done') return 'done'
@@ -212,6 +221,7 @@ export function parseTaskRow(v: unknown): TaskRow | null {
     research: t.research === true,
     archived: Boolean(t.archivedAt),
     queue: num(t.queue),
+    ...(t.mergeFailed || t.syncBlocked || t.prFailure || t.prState === 'failing' ? { approvalBlocked: true } : {}),
   }
   return { ...row, group: groupOf(row) }
 }
@@ -233,6 +243,22 @@ function failureText(v: unknown): string {
   return ''
 }
 
+function parseTaskLimits(v: unknown): TaskDetails['limits'] {
+  const limits = obj(v)
+  if (!limits) return undefined
+  const time = obj(limits.time)
+  const tokens = obj(limits.tokens)
+  return { time: str(time?.limit, 40), timeUsed: str(time?.used, 40), tokens: str(tokens?.limit, 40), tokensUsed: num(tokens?.total) ?? num(tokens?.used) }
+}
+function parseFindings(v: unknown): NonNullable<TaskDetails['findings']> {
+  const review = obj(v)
+  if (review?.stale === true || !Array.isArray(review?.findings)) return []
+  return review.findings.slice(0, 200).map(v => {
+    const f = obj(v)
+    return { severity: str(f?.severity, 20), title: str(f?.subject ?? f?.title, 400), detail: [str(f?.where, 200), str(f?.proof ?? f?.detail, 4000)].filter(Boolean).join(' — ') }
+  })
+}
+
 export function parseTaskDetails(text: string): TaskDetails {
   let v: unknown
   try { v = JSON.parse(text) } catch { throw new Error('herdr-projects details: not JSON') }
@@ -247,7 +273,15 @@ export function parseTaskDetails(text: string): TaskDetails {
     pr: cleanUrl(d.pr),
     branch: str(d.branch, 200),
     worktree: str(d.worktree, 500),
-    failure: failureText(d.failure),
+    failure: failureText(d.failure) || [str(obj(d.failure)?.title, 300), str(obj(d.failure)?.detail, 12000)].filter(Boolean).join(': '),
+    failureTitle: str(obj(d.failure)?.title, 300),
+    failureDetail: str(obj(d.failure)?.detail, 12000),
+    failureNext: str(obj(d.failure)?.next, 2000),
+    failureCanFix: obj(d.failure)?.agentCanFix === true,
+    failureRemoteKind: str(obj(d.failure)?.remoteKind, 40),
+    failureSent: Boolean(obj(d.failure)?.sentAt),
+    limits: parseTaskLimits(d.limits),
+    findings: parseFindings(d.review),
     failureStage: str(obj(d.failure)?.stage, 30),
     failureAuth: obj(d.failure)?.auth === true,
     review: parseReview(d.review),
@@ -297,7 +331,7 @@ export function taskActions(r: Pick<TaskRow, 'state' | 'kind' | 'stage' | 'group
   // A failed task's Retry depends on what failed: unknown until `details` says.
   const retryFailed = failed && Boolean(f) && !f!.failureAuth && (f!.failureStage === 'send' || (Boolean(f!.failureStage) && !BEFORE_AGENT.includes(f!.failureStage)))
   return {
-    tell: live && Boolean(r.app),
+    tell: live && Boolean(r.app) && !(failed && f && BEFORE_AGENT.includes(f.failureStage)),
     approve: r.stage === 'approval' || (r.stage === 'plan' && r.state === 'blocked'),
     delegate: r.group === 'todo' || (failed && Boolean(f) && BEFORE_AGENT.includes(f!.failureStage)),
     // Also an agent whose terminal is gone or that exited: still at work for 1.x.
@@ -552,7 +586,7 @@ export function rowFromTaskFile(t: unknown, paneStatus: string | null): TaskRow 
   const { state, kind } = stateFromTaskFile(o, paneStatus)
   const review = obj(o.review)
   return parseTaskRow({
-    id: o.id, state, kind, stage: o.stage, title: o.title, msg: o.msg, app: o.app,
+    id: o.id, state, kind, mergeFailed: o.mergeFailed, syncBlocked: o.syncBlocked, prFailure: o.prFailure, prState: o.prState, stage: o.stage, title: o.title, msg: o.msg, app: o.app,
     pr: o.pr, review: review && !review.stale ? review : null, reviewRound: o.reviewRound,
     research: o.research === true, archivedAt: o.archivedAt,
     progress: obj(o.watch)?.progress,
@@ -566,9 +600,19 @@ export function detailsFromTaskFile(t: unknown): TaskDetails | null {
   return parseTaskDetails(JSON.stringify({
     task: { id: o.id, title: o.title, stage: o.stage, msg: o.msg, description: o.description, summary: o.summary, archivedAt: o.archivedAt ?? null },
     report: o.report ?? null,
-    failure: o.failure ?? null, review: o.review ?? null, reviews: [],
+    failure: o.failure ?? o.prFailure ?? null, limits: o.limits, review: o.review ?? null, reviews: [],
     // The program on it: `on` while one works, then `agent`, as `details` gives it; else the row's `app`.
     agent: o.on || o.agent || o.app || null,
     research: o.research === true, pr: o.pr ?? null, branch: o.branch ?? null, worktree: o.worktree ?? null, plan: null,
   }))
+}
+
+// `fix` is distinct from `retry`: only the board's structured failure can offer it.
+export function taskCanFix(r: Pick<TaskRow, 'archived' | 'stage' | 'app'>, d: TaskDetails | null): boolean {
+  return !r.archived && Boolean(r.app) && Boolean(d?.failureCanFix) && !d?.failureAuth
+    && !(d?.failureSent && r.stage === 'working') && r.stage !== 'merging'
+}
+export function taskCanApproveAnyway(r: Pick<TaskRow, 'archived' | 'stage' | 'research' | 'review'>, d: TaskDetails | null): boolean {
+  return !r.archived && !r.research && r.stage === 'approval'
+    && (r.review?.pass === false || (d?.failureRemoteKind === 'checks'))
 }

@@ -24,8 +24,8 @@ import { cellMode, showComposer, terminalAttachment } from '~/utils/viewMode'
 import { carriesFiles, dragDepth } from '~/utils/fileDrop'
 import { interactionWindowFor } from '~/utils/interactionWindow'
 
-const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, grip?: boolean }>()
-const emit = defineEmits<{ activate: [] }>()
+const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, grip?: boolean, embedded?: boolean, selectedMode?: PaneViewMode }>()
+const emit = defineEmits<{ activate: [], 'update:selectedMode': [mode: PaneViewMode] }>()
 const route = useRoute()
 const router = useRouter()
 
@@ -70,6 +70,7 @@ const viewMode = computed<PaneViewMode>({
 const mode = computed<PaneViewMode | null>(() => {
   const p = pane.value
   if (!p) return null
+  if (props.embedded && props.selectedMode) return props.selectedMode
   if (props.cell) return cellMode({ chat: hasChat(p), viewMode: viewMode.value, active: props.active })
   return hasChat(p) ? viewMode.value : 'term'
 })
@@ -84,7 +85,7 @@ const ctl = createTerminal(props.paneId, {
 const chatRef = ref<{ scrollToEnd: (force: boolean) => void, reload: () => void, focusSearch: () => void, gotoUnanswered: () => void } | null>(null)
 // Questions of the agent's last message the draft does not answer yet (ChatView): the composer's reminder.
 const unanswered = ref(0)
-const composer = ref<{ focus: () => void, focusEnd: () => void, blur: () => void, addImages: (files: File[]) => Promise<void>, addFiles: (files: File[]) => Promise<number>, stop: () => boolean } | null>(null)
+const composer = ref<{ focus: () => void, focusEnd: () => void, focusAnswer: (at: number) => void, blur: () => void, addImages: (files: File[]) => Promise<void>, addFiles: (files: File[]) => Promise<number>, stop: () => boolean } | null>(null)
 const searchOpen = ref(typeof route.query.q === 'string' && typeof route.query.hit === 'string')
 
 // Pane closed while being viewed. A pane just created may be missing
@@ -114,6 +115,7 @@ watch(mode, (m, old) => {
 }, { immediate: true })
 
 function setMode(m: PaneViewMode) {
+  if (props.embedded) emit('update:selectedMode', m)
   if (props.cell) emit('activate')
   viewMode.value = m
   if (desk.value && m === 'term') nextTick(() => ctl.focus())
@@ -477,7 +479,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
       <small>{{ dropTarget === 'term' ? t('The file path is sent to the terminal') : dropHint }}</small>
     </div>
     <SpaceTabs v-if="!cell && pane" :workspace="pane.workspace" :current="pane.tab" />
-    <HeaderMenu :items="() => agentMenu" :disabled="!pane">
+    <HeaderMenu v-if="!embedded" :items="() => agentMenu" :disabled="!pane">
       <header class="top bar agent-top">
         <span v-if="cell && grip" class="cell-grip" role="button" :aria-label="t('Drag to move the pane')" :title="t('Drag to move the pane')">
           <UIcon name="i-lucide-grip-vertical" />
@@ -553,7 +555,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     >
       <ChatView
         ref="chatRef" v-model:search="searchOpen" :pane="pane" :local-queued="localQueued"
-        @goto-term="setMode('term')" @restored="composer?.focus()" @quote="composer?.focusEnd()" @unanswered="unanswered = $event" @sent="onSent"
+        @goto-term="setMode('term')" @restored="composer?.focus()" @quote="composer?.focusEnd()" @answered="composer?.focusAnswer($event)" @unanswered="unanswered = $event" @sent="onSent"
       />
     </div>
     <div v-else-if="mode === 'term' && (!eventsOpen || offlineView || machineDown)" class="chat-empty offline-terminal"><UIcon name="i-lucide-wifi-off" class="chat-empty-icon" /><p>{{ t('Terminal unavailable offline') }}</p></div>
