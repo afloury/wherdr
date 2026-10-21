@@ -31,3 +31,10 @@ export function setTaskPanelChoice(key: string, tab: TaskPanelTab | null) {
   if (tab) chosen.set(key, tab)
   else chosen.delete(key)
 }
+
+// The tab a "Needs you" banner offers to jump to: never the one already shown.
+// From the terminal, the conversation (where the answer goes); elsewhere, the terminal.
+export function needsJumpTab(tabs: TaskPanelTab[], selected: TaskPanelTab): TaskPanelTab | null {
+  const want: TaskPanelTab = selected === 'term' ? 'chat' : 'term'
+  return tabs.includes(want) ? want : null
+}

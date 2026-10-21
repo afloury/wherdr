@@ -109,6 +109,8 @@ const views = computed(() => ({
 }))
 const tabs = computed(() => taskPanelTabs(views.value))
 const selected = computed(() => taskPanelTab(views.value, choice.value))
+// The banner's way to another tab, never to the one already shown.
+const jump = computed(() => needsJumpTab(tabs.value, selected.value))
 function choose(tab: TaskPanelTab, force = false) {
   if (!force && tab === selected.value) return
   choice.value = tab
@@ -398,7 +400,8 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         <UButton v-if="canFinish" class="task-finish" :title="finishTitle()" :aria-description="finishTitle()" :disabled="disabled" @click="taskAction('finish')">{{ finishLabel() }}</UButton>
         <UButton v-if="canFix" :disabled="disabled" @click="taskAction('fix')">{{ tl('Send the error to the agent', 'Envoyer l’erreur à l’agent') }}</UButton>
         <UButton v-if="taskPermissions?.delegate" :disabled="disabled" @click="taskAction('delegate')">{{ tl('Start again', 'Relancer') }}</UButton>
-        <UButton v-if="taskPane" :disabled="offlineView || !reachable" @click="choose('term')">{{ tl('Open terminal', 'Ouvrir le terminal') }}</UButton>
+        <UButton v-if="jump === 'term'" class="task-needs-term" :disabled="offlineView || !reachable" @click="choose('term')">{{ tl('Open terminal', 'Ouvrir le terminal') }}</UButton>
+        <UButton v-else-if="jump === 'chat'" class="task-needs-chat" @click="choose('chat')">{{ tl('Answer in the conversation', 'Répondre dans la conversation') }}</UButton>
         <UButton v-if="canAnyway" :disabled="disabled" @click="taskAction('anyway')">{{ tl('Approve anyway', 'Approuver quand même') }}</UButton>
         <UButton v-else-if="taskPermissions?.approve" :disabled="disabled" @click="taskAction('approve')">{{ tl('Approve', 'Approuver') }}</UButton>
       </div>
