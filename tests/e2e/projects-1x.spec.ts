@@ -512,7 +512,23 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   await expect(card('Broke on the tests')).toBeVisible()
 })
 
-test('Archived: the archived tasks, each one\'s sheet read-only with Restore', async ({ page }, testInfo) => {
+test('agents unchecked in Settings › Agents are not offered at Start; an unchecked default stays, marked', async ({ page }, testInfo) => {
+  fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(actionBoard))
+  await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
+  await page.addInitScript(() => localStorage.setItem('hiddenAgents', JSON.stringify(['claude', 'codex'])))
+  await page.goto('/#/board')
+  if (testInfo.project.name.includes('phone')) await page.locator('.board-seg').getByRole('button', { name: /^To do/ }).click()
+  await page.locator('.task-card', { hasText: 'In the backlog' }).click({ timeout: 15000 })
+  await page.locator('.board-panel-sheet').click()
+  const agents = page.getByRole('dialog').getByRole('radiogroup', { name: 'Agent for this start' })
+  const claude = agents.getByRole('radio', { name: /claude/ })
+  await expect(claude).toHaveAttribute('aria-checked', 'true')
+  await expect(claude).toContainText('default · hidden in Settings')
+  await expect(agents.getByRole('radio', { name: /codex/ })).toHaveCount(0)
+  await page.screenshot({ path: `.shots/board-1x-start-hidden-agents-${testInfo.project.name}.png` })
+})
+
+test('Archived:the archived tasks, each one\'s sheet read-only with Restore', async ({ page }, testInfo) => {
   fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(actionBoard))
   fs.writeFileSync(path.join(root, 'archived.json'), JSON.stringify([
     { id: 'demo/2', state: 'done', title: 'Put away last week', msg: 'Merged', stage: 'done', archivedAt: 1760000000 },
