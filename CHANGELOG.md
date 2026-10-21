@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-- **Send answers the first tap on an iPhone with the keyboard open**: the button acts on the touch itself instead of waiting for Safari's click, which never came when the finger drifted a pixel while the keyboard made the page pannable. The keyboard stays up after sending; a finger that slides off the button still cancels.
+- **Send acts on the touch itself on a phone**: on an iPhone with the keyboard open, a tap on Send could do nothing until the keyboard was closed. The likely cause is a tap that drifts slightly while the keyboard makes the page pannable: it becomes a pan and Safari sends no click. The button no longer waits for that click; it sends when the finger lifts on it. The keyboard stays up after sending, and a finger that slides off the button still cancels. Not yet confirmed on a real iPhone.
 - **Yes, No and OK to all hand the field the focus on a computer**: after a click, the caret sits right after the answer written in the field, so Enter sends it at once. On a phone the keyboard stays down as before (Enter adds a line there), and a button pressed with the keyboard keeps the focus, to answer the next question.
 - **Enter sends in a narrow computer window too**: a window narrow enough for the phone layout no longer turns Enter into a new line when the device has no touch screen (Shift+Enter still adds one).
 

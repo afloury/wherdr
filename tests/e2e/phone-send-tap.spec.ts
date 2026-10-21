@@ -13,8 +13,12 @@ import { OMP_CHAT_PANE } from './scenario.mjs'
 //   as an open keyboard, body.kb), and a trusted touch (CDP, the browser's own
 //   input pipeline) lands on Send and drifts past the browser's tap slop, which
 //   starts a native pan and drops the click.
-// - WebKit: the visible area is shortened as the keyboard does (body.kb on,
-//   the view fitted to it) and a trusted Playwright tap lands on Send.
+// - WebKit: Playwright can only send it a whole tap (no finger movement), so
+//   no native pan. The visible area is shortened as the keyboard does (body.kb
+//   on, the view fitted to it), a trusted tap lands on Send, and the browser's
+//   click after it is dropped, as Safari drops it once the touch became a pan.
+//   Without the fix nothing is sent; with it the touch itself sends.
+// - Both: a plain trusted tap with the keyboard viewport sends once.
 
 test.skip(({ isMobile }) => !isMobile, 'phone only')
 
@@ -101,13 +105,48 @@ test('keyboard open: a touch that slides off Send does not send', async ({ page,
   await expect(field).toHaveValue(text)
 })
 
-test('keyboard open: a tap on Send sends once and keeps the focus in the field', async ({ page }, testInfo) => {
-  const text = `One tap (${testInfo.project.name} ${Date.now()})`
-  const field = await openChat(page, text)
-  // The keyboard takes the bottom of the screen: the app fits the view to the rest.
+// The keyboard takes the bottom of the screen: the app fits the view to the rest.
+async function shortViewport(page: Page) {
   const size = page.viewportSize()!
   await page.setViewportSize({ width: size.width, height: size.height - 200 })
   await expect.poll(async () => (await viewport(page)).kb).toBe(true)
+}
+
+test('keyboard open: Send still sends when the browser drops the click after the touch, as Safari does after a pan', async ({ page }, testInfo) => {
+  const text = `No click (${testInfo.project.name} ${Date.now()})`
+  const field = await openChat(page, text)
+  await shortViewport(page)
+  // Every click the browser makes of a touch on Send is stopped before the
+  // button sees it. Counted, to tell which path the touch took.
+  await page.evaluate(() => {
+    const w = window as unknown as { droppedClicks: number }
+    w.droppedClicks = 0
+    window.addEventListener('click', (e) => {
+      if (!e.isTrusted || !(e.target as Element | null)?.closest?.('.prompt-send')) return
+      w.droppedClicks++
+      e.stopImmediatePropagation()
+      e.preventDefault()
+    }, true)
+  })
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/${testInfo.project.name}-noclick-before-tap.png` })
+
+  await page.locator('.prompt-send').tap()
+
+  if (process.env.SHOTS) {
+    await page.waitForTimeout(600)
+    await page.screenshot({ path: `${process.env.SHOTS}/${testInfo.project.name}-noclick-after-tap.png` })
+  }
+  await expect(page.locator('.msg-user', { hasText: text })).toHaveCount(1)
+  await expect(field).toHaveValue('')
+  await expect(field).toBeFocused()
+  // The touch sent it: the browser made no click of it (touchstart cancelled).
+  expect(await page.evaluate(() => (window as unknown as { droppedClicks: number }).droppedClicks)).toBe(0)
+})
+
+test('keyboard open: a tap on Send sends once and keeps the focus in the field', async ({ page }, testInfo) => {
+  const text = `One tap (${testInfo.project.name} ${Date.now()})`
+  const field = await openChat(page, text)
+  await shortViewport(page)
   await expect(field).toBeFocused()
 
   await page.locator('.prompt-send').tap()
