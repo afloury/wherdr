@@ -131,6 +131,10 @@ describe('a repo group on the home list', () => {
     expect(sum.text()).toBe('4 tasks·1 your turn·2 working·1 limit')
     expect(sum.find('.project-sum-blocked').text()).toBe('1 your turn')
     expect(sum.find('.project-sum-limit').text()).toBe('1 limit')
+    // Each part is whole (a narrow column wraps between parts), and the
+    // fold button's title says the whole summary.
+    expect(sum.findAll('.project-sum-part').map(p => p.text())).toEqual(['4 tasks·', '1 your turn·', '2 working·', '1 limit'])
+    expect(w.find('.project-head').attributes('title')).toBe('Hide the tasks of shop: 4 tasks · 1 your turn · 2 working · 1 limit')
     w.unmount()
   })
 

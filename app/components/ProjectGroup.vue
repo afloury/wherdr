@@ -65,6 +65,8 @@ const foldLabel = computed(() => (collapsed.value
   ? tl(`Show the tasks of ${g.value.repo}`, `Afficher les tâches de ${g.value.repo}`)
   : tl(`Hide the tasks of ${g.value.repo}`, `Masquer les tâches de ${g.value.repo}`)))
 
+const headTitle = computed(() => `${foldLabel.value}: ${parts.value.map(p => p.text).join(' · ')}`)
+
 const behind = computed(() => g.value.info?.behind || 0)
 const branchTitle = computed(() => {
   const i = g.value.info
@@ -126,14 +128,15 @@ const rowKey = (r: Row) => r.key
     <div class="project-bar">
       <UContextMenu :disabled="sheetMenus || !spaceId" :items="sheetMenus || !spaceId ? [] : toDropdown(headItems())" :ui="{ content: 'hw-dropdown' }">
         <button
-          type="button" class="project-head" :aria-expanded="!collapsed" :title="foldLabel"
+          type="button" class="project-head" :aria-expanded="!collapsed" :title="headTitle"
           @pointerdown="sheetMenus && barLp.down($event)" @pointermove="barLp.move" @pointerup="barLp.cancel" @pointercancel="barLp.cancel"
           @contextmenu="sheetMenus && $event.preventDefault()" @click="toggle"
         >
           <UIcon name="i-lucide-chevron-down" class="project-chev" />
           <span class="sr-only">{{ foldLabel }}</span>
           <span class="project-sum">
-            <template v-for="(p, i) in parts" :key="p.key"><span v-if="i" class="project-sum-sep" aria-hidden="true">·</span><span :class="`project-sum-${p.key}`">{{ p.text }}</span></template>
+            <!-- Each part stays whole: a narrow column wraps the line between parts, never cuts one. -->
+            <span v-for="(p, i) in parts" :key="p.key" class="project-sum-part"><span :class="`project-sum-${p.key}`">{{ p.text }}</span><span v-if="i < parts.length - 1" class="project-sum-sep" aria-hidden="true">·</span></span>
           </span>
         </button>
       </UContextMenu>

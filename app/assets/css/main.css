@@ -507,10 +507,11 @@ body.short-bottom { --safe-bottom: 0px; }
 .project-chev { width: 14px; height: 14px; flex: none; color: var(--dim); transition: transform .15s ease; }
 .project.collapsed .project-chev { transform: rotate(-90deg); }
 .project-sum {
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: flex; flex-wrap: wrap; row-gap: 4px; min-width: 0;
   font: 500 10.5px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
 }
 .list-compact .project-sum { font-size: 10px; }
+.project-sum-part { white-space: nowrap; }
 .project-sum-sep { margin: 0 .5em; color: var(--dim); }
 .project-sum-blocked { color: var(--blocked); }
 .project-sum-working { color: var(--working); }
