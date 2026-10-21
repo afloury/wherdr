@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { setTaskPanelChoice, taskPanelChoice, taskPanelTab, taskPanelTabs } from '../app/utils/taskPanelTab'
+import { needsJumpTab, setTaskPanelChoice, taskPanelChoice, taskPanelTab, taskPanelTabs } from '../app/utils/taskPanelTab'
 
 describe('task panel tab', () => {
   it('opens on Task with the other tabs hidden when there is nothing to talk to', () => {
@@ -23,5 +23,20 @@ describe('task panel tab', () => {
     expect(taskPanelChoice('m|demo/2')).toBeNull()
     setTaskPanelChoice('m|demo/1', null)
     expect(taskPanelChoice('m|demo/1')).toBeNull()
+  })
+})
+
+describe('Needs you banner jump', () => {
+  it('never leads to the tab already shown', () => {
+    const all = taskPanelTabs({ chat: true, term: true })
+    expect(needsJumpTab(all, 'chat')).toBe('term')
+    expect(needsJumpTab(all, 'task')).toBe('term')
+    expect(needsJumpTab(all, 'term')).toBe('chat')
+    for (const tab of all) expect(needsJumpTab(all, tab)).not.toBe(tab)
+  })
+  it('offers nothing when the other tab is not there', () => {
+    expect(needsJumpTab(taskPanelTabs({ chat: true, term: false }), 'chat')).toBeNull()
+    expect(needsJumpTab(taskPanelTabs({ chat: false, term: false }), 'task')).toBeNull()
+    expect(needsJumpTab(['term', 'task'], 'term')).toBeNull()
   })
 })

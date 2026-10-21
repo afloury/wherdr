@@ -94,11 +94,12 @@ function listOf(rows: Row[]) {
     groups: groupsOf(b.others.filter(r => r.lead.agent || showShells.value)),
   }
 }
-const COORD_NAMES: Record<Exclude<CoordinatorLevel, 'project'>, () => string> = {
-  top: () => t('Coordinator'),
-  machine: () => tl('Machine coordinator', 'Coordinateur de la machine'),
+// Each kind of coordinator with its own icon and label (coordinatorKind).
+function coordinatorCard(level: CoordinatorLevel, local = true): BoardCard {
+  const k = coordinatorKind(level, local)
+  return { tag: '', name: k.name, icon: k.icon, hint: k.hint, coordinator: true }
 }
-const coordinatorCard = (level: CoordinatorLevel): BoardCard => ({ tag: '', name: level === 'project' ? '' : COORD_NAMES[level](), coordinator: true })
+const soloLocal = computed(() => machineInfo(machineBaseKeys.value[0] ?? '')?.local ?? true)
 const soloSelected = computed(() => machineBarSelection.value === null || machineBarSelection.value.includes(machineBaseKeys.value[0] ?? ''))
 const solo = computed(() => listOf(soloSelected.value ? spaceRows(st.value) : []))
 
@@ -607,7 +608,7 @@ function resetListWidth() {
         <section v-if="solo.coordinators.length" class="agent-group coordinators">
           <h2 class="group-title"><span>{{ tl('Coordinators', 'Coordinateurs') }}</span><span class="count">{{ solo.coordinators.length }}</span></h2>
           <div class="card-list">
-            <AgentCard v-for="c in solo.coordinators" :key="c.row.key" :pane="c.row.lead" :row="c.row" :board="coordinatorCard(c.level)" />
+            <AgentCard v-for="c in solo.coordinators" :key="c.row.key" :pane="c.row.lead" :row="c.row" :board="coordinatorCard(c.level, soloLocal)" />
           </div>
         </section>
         <ProjectGroup v-for="x in solo.projects" :key="x.id" :group="x" />
@@ -677,7 +678,7 @@ function resetListWidth() {
             <section v-if="s.coordinators.length" class="agent-group coordinators">
               <h2 class="group-title"><span>{{ tl('Coordinators', 'Coordinateurs') }}</span><span class="count">{{ s.coordinators.length }}</span></h2>
               <div class="card-list">
-                <AgentCard v-for="c in s.coordinators" :key="c.row.key" :pane="c.row.lead" :row="c.row" :board="coordinatorCard(c.level)" />
+                <AgentCard v-for="c in s.coordinators" :key="c.row.key" :pane="c.row.lead" :row="c.row" :board="coordinatorCard(c.level, s.m.local)" />
               </div>
             </section>
             <ProjectGroup v-for="x in s.projects" :key="x.id" :group="x" :machine="s.m.key" />

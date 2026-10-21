@@ -25,7 +25,10 @@
 import {
   type CoordinatorTarget, TASK_GROUPS, type TaskGroup, type TaskRow, groupByRepo, groupCounts, sortTasks, taskKey,
 } from '#shared/projectsTasks'
+import type { SelectItem } from '@nuxt/ui'
 import type { PanelTarget } from './BoardPanel.vue'
+// The home list's machine groups (Settings › Machine bar); `machineGroups` here is the Board's lanes.
+import { machineGroups as barGroups } from '~/composables/useMachineBar'
 
 // Done tasks shown until "Show all": per column, and per repo.
 const DONE_SHOWN = 8
@@ -34,7 +37,6 @@ const COLUMN_KEY = 'boardColumn'
 const SCOPE_KEY = 'boardMachine'
 const GROUPING_KEY = 'boardGrouping'
 const FOLDS_KEY = 'boardFolds'
-const ALL = SCOPE_ALL
 
 const router = useRouter()
 const route = useRoute()
@@ -61,17 +63,25 @@ const several = computed(() => (board.value?.machines.length || 0) > 1)
 // ------------------------------------------------------------ what is shown
 // The machines with a board (or tasks from an earlier read), in Herdr's order.
 const boards = computed(() => (board.value?.machines || []).filter(m => m.status === 'ready' || m.tasks.length))
-// The machine's key (the local one is ''), or ALL.
+// The machine's key (the local one is ''), a machine group's ID (the home
+// list's groups, edited in Settings), or SCOPE_ALL.
 const scope = ref(boardScopeMachine(readStore(SCOPE_KEY)))
-// A machine that went away: every machine again.
-const shownScope = computed(() => (scope.value !== ALL && boards.value.some(m => m.machine === scope.value) ? scope.value : ALL))
+// A machine that went away, or a group deleted: every machine again. A group
+// edited in Settings: its machines now.
+const shownScope = computed<string>(() => boardShownScope(scope.value, boards.value.map(m => m.machine), barGroups.value))
+// The machines shown (null: every machine).
+const scopeMachines = computed<string[] | null>(() => boardScopeMachines(shownScope.value, barGroups.value))
+const inScope = (machine: string): boolean => scopeMachines.value === null || scopeMachines.value.includes(machine)
+// The machine named on each card: when the cards can come from several machines.
+const namesOnCards = computed(() => several.value && (scopeMachines.value === null || scopeMachines.value.length > 1))
 // The local machine, read-only or not, is in it too, under its own value.
-const scopeItems = computed(() => boardScopeItems(boards.value.map(m => m.machine), machineLabel, tl('All machines', 'Toutes les machines')))
+const scopeItems = computed<SelectItem[]>(() => boardScopeItems(boards.value.map(m => m.machine), machineLabel, tl('All machines', 'Toutes les machines'),
+  barGroups.value, tl('Groups', 'Groupes'), tl('Machines', 'Machines')))
 function pickScope(v: string) {
   scope.value = boardScopeMachine(v)
   writeStore(SCOPE_KEY, v)
 }
-const shownBoards = computed(() => boards.value.filter(m => shownScope.value === ALL || m.machine === shownScope.value))
+const shownBoards = computed(() => boards.value.filter(m => inScope(m.machine)))
 
 // `global` was stored as `status` before it was renamed.
 type Grouping = 'repo' | 'global'
@@ -101,7 +111,7 @@ watch(board, (b) => {
 })
 // A machine Herdr did not answer for keeps its last tasks, marked as older.
 const allCards = computed<Card[]>(() => boards.value.flatMap(m => sortTasks(m.tasks.filter(t => !t.archived && !archivedHere.value.has(`${m.machine}|${t.id}`))).map(task => cardOf(m, task))))
-const cards = computed(() => allCards.value.filter(c => shownScope.value === ALL || c.machine === shownScope.value))
+const cards = computed(() => allCards.value.filter(c => inScope(c.machine)))
 const showAll = ref(false)
 const columns = computed(() => TASK_GROUPS.map((id) => {
   const all = cards.value.filter(c => c.task.group === id)
@@ -263,9 +273,9 @@ function toggleArchived() {
   if (showArchived.value) loadArchived()
 }
 const archivedCards = computed<Card[]>(() => archivedBoards.value
-  .filter(m => shownScope.value === ALL || m.machine === shownScope.value)
+  .filter(m => inScope(m.machine))
   .flatMap(m => m.tasks.map(t => cardOf({ machine: m.machine }, t))))
-const archivedErrors = computed(() => archivedBoards.value.filter(m => m.error && (shownScope.value === ALL || m.machine === shownScope.value)))
+const archivedErrors = computed(() => archivedBoards.value.filter(m => m.error && inScope(m.machine)))
 
 // Archived from its sheet: off the Board now, its agent's panel closed (the
 // agent ends with its space), and a few seconds to take it back.
@@ -297,7 +307,7 @@ function onRestored(machine: string, task: TaskRow) {
 const newOpen = ref(false)
 const newFor = ref<{ machine?: string, repo?: string }>({})
 function newTask(machine?: string, repo?: string) {
-  newFor.value = { machine: machine ?? (shownScope.value !== ALL ? shownScope.value : panel.value?.machine), repo }
+  newFor.value = { machine: machine ?? (scopeMachines.value?.length === 1 ? scopeMachines.value[0] : panel.value?.machine), repo }
   newOpen.value = true
 }
 function added() { setTimeout(reload, 1500) }
@@ -468,7 +478,7 @@ function back() {
           <section v-for="col in columns" v-show="wide || phoneColumn === col.id" :key="col.id" class="board-col" :class="col.id" :aria-label="col.label">
             <div class="board-col-body">
               <TaskCard
-                v-for="c in col.cards" :key="c.key" :task="c.task" :machine="several && shownScope === ALL ? machineName(c.machine) : undefined"
+                v-for="c in col.cards" :key="c.key" :task="c.task" :machine="namesOnCards ? machineName(c.machine) : undefined"
                 :stale="c.stale" :read-at="readAt(c.readAt)" @open="openCard(c)"
               />
               <p v-if="!col.cards.length" class="board-empty">{{ t('Nothing here') }}</p>
@@ -550,7 +560,7 @@ function back() {
           </p>
           <div class="board-archived-body">
             <TaskCard
-              v-for="c in archivedCards" :key="c.key" :task="c.task" :machine="several && shownScope === ALL ? machineName(c.machine) : undefined"
+              v-for="c in archivedCards" :key="c.key" :task="c.task" :machine="namesOnCards ? machineName(c.machine) : undefined"
               @open="openSheet(c)"
             />
           </div>

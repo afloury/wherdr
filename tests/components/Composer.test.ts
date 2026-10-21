@@ -47,6 +47,23 @@ describe('Composer send', () => {
     w.unmount()
   })
 
+  it('offers View terminal only while the terminal is not on screen', async () => {
+    const p: Pane = { ...pane('w3:p7'), agent: 'codex', codexField: 'left over' }
+    const termShown = ref(false)
+    let shown = 0
+    const Host = defineComponent({ render: () => h(UApp, null, () => h(Composer, { pane: p, paneId: p.id, sendKeys: async () => {}, termShown: termShown.value, onShowTerminal: () => { shown++ } })) })
+    const w = await mountSuspended(Host)
+    const view = () => w.findAll('.codex-field button').filter(b => b.text() === 'View terminal')
+    expect(view()).toHaveLength(1)
+    await view()[0]!.trigger('click')
+    expect(shown).toBe(1)
+    termShown.value = true
+    await nextTick()
+    expect(view()).toHaveLength(0)
+    expect(w.find('.codex-field').exists()).toBe(true)
+    w.unmount()
+  })
+
   it('shows text left in Codex’s field and clears it with Ctrl+U / Backspace', async () => {
     const keys: string[][] = []
     const p = ref<Pane>({ ...pane('w3:p8'), agent: 'codex', codexField: '[<65;76;23M' })

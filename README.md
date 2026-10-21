@@ -1321,7 +1321,8 @@ What the Board shows and does:
   herdr-projects could not start (an agent not installed there…) says why, with **Try again**
   (`coordinator restart`) once it is fixed: the message still waiting then goes in.
 - **The agent list** groups the board's spaces under their repo, as Herdr's sidebar does: each
-  machine's Coordinator and machine coordinator first, then per repo a head row, its project
+  machine's Coordinator and machine coordinator first, each with its own icon and label (**Board
+  coordinator** with the board's icon, **Machine coordinator** with the machine's), then per repo a head row, its project
   coordinator (named after the repo, the wherdr mark on the accent, **Coordinator**, its state; its
   question and one-tap answers when it asks one; without a coordinator here, the repo's own space
   with its initial), a bar under it (fold, the tasks' summary such as `4 TASKS · 1 YOUR TURN ·

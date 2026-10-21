@@ -640,6 +640,51 @@ test('the machine filter lists the local machine, read-only or not, and shows on
   expect(selectErrors).toEqual([])
 })
 
+test('the machine filter offers the home list\'s machine groups, and follows them when Settings change them', async ({ page }, testInfo) => {
+  await fakeBoard(page, () => [
+    { machine: 'ma', tasks: [{ id: 'demo/1', title: 'On machine A' }] },
+    { machine: 'mb', tasks: [{ id: 'web/2', title: 'On machine B' }] },
+    { machine: 'mc', tasks: [{ id: 'api/3', title: 'On machine C' }] },
+  ])
+  // Groups as Settings › Machine bar saves them; set once, so a reload keeps what the test changes.
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('seeded')) return
+    sessionStorage.setItem('seeded', '1')
+    localStorage.setItem('machineGroups', JSON.stringify([{ id: '*group:pair', name: 'Pair', machines: ['ma', 'mb'] }]))
+  })
+  await page.goto('/#/board')
+  await expect(page.locator('.task-card', { hasText: 'On machine C' })).toBeVisible({ timeout: 15000 })
+  await page.locator('.board-scope').click()
+  const options = page.getByRole('option')
+  await expect(options).toHaveText(['All machines', 'Pair', 'ma', 'mb', 'mc'])
+  await expect(page.getByRole('listbox')).toContainText('Groups')
+  await page.screenshot({ path: `.shots/board-scope-groups-${testInfo.project.name}.png` })
+  await options.nth(1).click()
+  await expect(page.locator('.board-scope')).toContainText('Pair')
+  await expect(page.locator('.task-card', { hasText: 'On machine A' })).toBeVisible()
+  await expect(page.locator('.task-card', { hasText: 'On machine B' })).toBeVisible()
+  await expect(page.locator('.task-card', { hasText: 'On machine C' })).toHaveCount(0)
+  // Counters follow: two tasks need you in this group (phone tabs, or the wide Board's column heads).
+  const needs = page.locator('.board-seg-btn.needs b, .board-col-head.needs .pp-count')
+  await expect(needs).toHaveText('2')
+  // Kept on this device; a group edited in Settings shows its machines now.
+  await page.evaluate(() => localStorage.setItem('machineGroups', JSON.stringify([{ id: '*group:pair', name: 'Pair', machines: ['mc'] }])))
+  await page.reload()
+  await expect(page.locator('.task-card', { hasText: 'On machine C' })).toBeVisible({ timeout: 15000 })
+  await expect(page.locator('.task-card', { hasText: 'On machine A' })).toHaveCount(0)
+  await expect(page.locator('.board-scope')).toContainText('Pair')
+  await expect(needs).toHaveText('1')
+  // Deleted in Settings: All machines again, and the menu as without groups.
+  await page.evaluate(() => localStorage.setItem('machineGroups', '[]'))
+  await page.reload()
+  await expect(page.locator('.task-card', { hasText: 'On machine A' })).toBeVisible({ timeout: 15000 })
+  await expect(page.locator('.task-card', { hasText: 'On machine C' })).toBeVisible()
+  await expect(page.locator('.board-scope')).toContainText('All machines')
+  await page.locator('.board-scope').click()
+  await expect(page.getByRole('option')).toHaveText(['All machines', 'ma', 'mb', 'mc'])
+  await expect(page.getByRole('listbox')).not.toContainText('Groups')
+})
+
 test('a push for a task newer than the board kept from the last visit opens it after the next read', async ({ page }) => {
   let machines: Fake[] = [{ machine: '', tasks: [{ id: 'demo/1', title: 'Older one' }] }]
   await fakeBoard(page, () => machines, 800)
@@ -884,7 +929,7 @@ for (const lang of ['en', 'fr']) {
     const task = { id: 'demo/9', title: 'Improve search results', stage: 'failed', state: 'error', app: 'claude', msg: 'Setup failed' }
     const failure = { stage: 'setup', title: 'Setup failed', detail: 'npm ci\nENOENT: package-lock.json is missing', next: 'Restore the lockfile, then start again.', auth: false, agentCanFix: false }
     fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify([task]))
-    fs.writeFileSync(path.join(root, 'details.json'), JSON.stringify({ task: { ...task, description: 'Search supports titles and labels.' }, failure, report: { file: 'report.md' }, limits: { time: { limit: '2h', used: '3m' }, tokens: { limit: '1m', total: 4200 } } }))
+    fs.writeFileSync(path.join(root, 'details.json'), JSON.stringify({ task: { ...task, description: 'Search supports titles and labels.' }, failure, report: { file: 'report.md' }, limits: { time: { limit: '2h', used: '3m' }, tokens: { limit: '30m', total: 41088783 } } }))
     const dir = path.join(home, '.herdr-projects/data/tasks/demo/9')
     fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(path.join(dir, 'task.json'), JSON.stringify({ ...task, link: { pane: CLAUDE_PANE }, summary: 'Search checked with fictional data.' }))
@@ -900,12 +945,42 @@ for (const lang of ['en', 'fr']) {
     await page.screenshot({ path: `.shots/task-panel-${lang}-setup-${testInfo.project.name}.png` })
     await panel.locator('.board-panel-tabs').getByRole('button', { name: 'Terminal', exact: true }).click()
     await expect(panel.locator('#term')).toBeVisible()
-    await panel.locator('.board-panel-tabs').getByRole('button', { name: 'Conversation', exact: true }).click()
+    // WHR-62: the banner never offers the tab already shown. From the
+    // terminal it leads to the conversation, where the answer goes.
+    const needsBanner = panel.locator('.task-needs')
+    const openTerm = needsBanner.getByRole('button', { name: lang === 'fr' ? 'Ouvrir le terminal' : 'Open terminal', exact: true })
+    const answer = needsBanner.getByRole('button', { name: lang === 'fr' ? 'Répondre dans la conversation' : 'Answer in the conversation', exact: true })
+    await expect(openTerm).toHaveCount(0)
+    await page.screenshot({ path: `.shots/needs-${lang}-term-${testInfo.project.name}.png` })
+    const phoneSize = page.viewportSize()!
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.screenshot({ path: `.shots/needs-${lang}-term-desktop.png` })
+    await page.setViewportSize(phoneSize)
+    await answer.click()
+    await expect(panel.locator('.board-panel-tabs').getByRole('button', { name: 'Conversation', exact: true })).toHaveAttribute('aria-pressed', 'true')
     await expect(panel.locator('.task-setup')).toBeVisible()
+    await expect(answer).toHaveCount(0)
+    await expect(openTerm).toBeVisible()
     await panel.locator('.board-panel-tabs').getByRole('button', { name: lang === 'fr' ? 'Tâche' : 'Task', exact: true }).click()
     await expect(panel.locator('.task-sheet')).toContainText('Search supports titles and labels.')
+    await expect(openTerm).toBeVisible()
     await expect(panel.locator('.board-panel-note')).toContainText('Search checked with fictional data.')
-    await expect(panel.locator('.task-sheet')).toContainText('4200')
+    const counts = panel.locator('.token-count button')
+    await expect(counts).toHaveText(['30M', '41M'])
+    await expect(counts.nth(1)).toHaveAttribute('title', '41088783')
+    await counts.nth(1).click()
+    await expect(panel.locator('.token-count-exact')).toHaveText('(41088783)')
+    await counts.nth(1).click()
+    await expect(panel.locator('.token-count-exact')).toHaveCount(0)
+    await counts.first().focus()
+    await page.keyboard.press('Enter')
+    await expect(panel.locator('.token-count-exact')).toHaveText('(30000000)')
+    await counts.first().click()
+    await page.screenshot({ path: `.shots/tokens-${lang}-phone.png` })
+    const phone = page.viewportSize()!
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.screenshot({ path: `.shots/tokens-${lang}-desktop.png` })
+    await page.setViewportSize(phone)
     await expect(panel.locator('.board-panel-report')).toContainText(lang === 'fr' ? 'Rapport' : 'Report')
     await expect(panel.locator('.board-panel-report')).not.toContainText(lang === 'fr' ? 'recherche' : 'Research')
     await page.screenshot({ path: `.shots/task-panel-${lang}-details-${testInfo.project.name}.png` })

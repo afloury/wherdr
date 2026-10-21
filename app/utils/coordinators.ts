@@ -1,4 +1,5 @@
 import type { CoordinatorTarget, MachineTasks } from '../../shared/projectsTasks'
+import type { CoordinatorLevel } from '../../shared/boardLinks'
 import { tl } from './i18n'
 import { readOnlyWhy } from './tasks'
 
@@ -23,4 +24,17 @@ export function coordinatorUnavailable(m: MachineTasks, offline = false): string
   if (m.status === 'old') return tl('Update herdr-projects to use its Coordinators.', 'Mets herdr-projects à jour pour utiliser ses Coordinateurs.')
   if (m.status === 'disabled') return tl('herdr-projects is disabled.', 'herdr-projects est désactivé.')
   return ''
+}
+
+// How the home list shows each kind of herdr-projects coordinator (it has
+// three: the board's Coordinator, the machine coordinator and one per repo).
+// Each has its own icon and label, so a glance tells which one it is:
+//  - `top`: the board's Coordinator (all work): the board's icon;
+//  - `machine`: the machine coordinator: the machine's own icon, as on its heading;
+//  - `project`: drawn by ProjectGroup (the wherdr mark and "Coordinator").
+export interface CoordinatorKind { icon: string, name: string, hint: string }
+export function coordinatorKind(level: CoordinatorLevel, local = true): CoordinatorKind {
+  if (level === 'top') return { icon: 'i-lucide-square-kanban', name: tl('Board coordinator', 'Coordinateur du board'), hint: coordinatorDescription({ kind: 'main' }) }
+  if (level === 'machine') return { icon: local ? 'i-lucide-server' : 'i-lucide-laptop', name: tl('Machine coordinator', 'Coordinateur de la machine'), hint: coordinatorDescription({ kind: 'machine' }) }
+  return { icon: 'i-lucide-message-square-text', name: tl('Project coordinator', 'Coordinateur du projet'), hint: coordinatorDescription({ kind: 'project', repo: '' }) }
 }
