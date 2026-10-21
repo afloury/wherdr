@@ -83,7 +83,17 @@ export interface TaskDetails {
   // Put away (`archivedAt`): 1.2.1's `details` leaves it out, so the server
   // reads it from the task's file, as the closing note.
   archived: boolean
+  // What it waits for before it starts (`delegate --after`, 1.x after.rs), and
+  // its place in the queue for a free slot (1 gets the next one).
+  after?: TaskWait | null
+  queue?: number | null
 }
+
+// A task's wait (1.x `details` `after`): the tasks it waits for (`waitsFor`,
+// ids, `machine:repo/n` for another machine's), those not done yet (`left`),
+// whether it waits now (stage `after`; else it is to wait once delegated), and
+// why it waits for you instead (one of them failed, was stopped…).
+export interface TaskWait { waitsFor: string[], left: string[], waiting: boolean, forYou: string, titles: Record<string, string> }
 
 // What wherdr can do on a task: 1.x `tell`, `approve`, `delegate`, `stop`,
 // `retry`, `finish`, `archive`, `restore` (and its pane in Herdr).
@@ -297,6 +307,32 @@ export function parseTaskDetails(text: string): TaskDetails {
     archived: Boolean(t.archivedAt ?? d.archivedAt),
     summary: str(d.summary ?? t.summary, 8000).trim(),
     report: parseReport(d.report),
+    after: parseWait(d.after),
+    queue: queuePlace(obj(d.queue)?.place),
+  }
+}
+const queuePlace = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : null)
+
+// A task named in a wait: `repo/n`, or another machine's `label:repo/n`.
+const WAIT_ID_RE = /^(?:[A-Za-z0-9][\w.-]{0,39}:)?[A-Za-z0-9][\w.-]{0,79}\/\d{1,7}$/
+const waitIds = (v: unknown) => (Array.isArray(v) ? v.slice(0, 50).filter((x): x is string => typeof x === 'string' && WAIT_ID_RE.test(x)) : [])
+export function parseWait(v: unknown): TaskWait | null {
+  const a = obj(v)
+  if (!a) return null
+  const waitsFor = waitIds(a.waitsFor)
+  if (!waitsFor.length) return null
+  const titles: Record<string, string> = {}
+  for (const x of Array.isArray(a.tasks) ? a.tasks.slice(0, 50) : []) {
+    const o = obj(x)
+    if (o && typeof o.id === 'string' && waitsFor.includes(o.id) && typeof o.title === 'string') titles[o.id] = o.title.slice(0, 300)
+  }
+  return {
+    waitsFor,
+    // No `left` (a task not delegated yet): all of them, as far as wherdr knows.
+    left: Array.isArray(a.left) ? waitIds(a.left).filter(x => waitsFor.includes(x)) : waitsFor,
+    waiting: a.waiting === true,
+    forYou: str(a.waitsForYou, 500),
+    titles,
   }
 }
 function parseReport(v: unknown): TaskDetails['report'] {
@@ -438,8 +474,71 @@ export function addArgs(t: NewTask): string[] {
 // the task's own default, exactly as before.
 const AGENT_NAME_RE = /^[a-z][a-z0-9-]{0,39}$/
 export const isAgentName = (v: unknown): v is string => typeof v === 'string' && AGENT_NAME_RE.test(v)
-export function delegateArgs(id: string, agent?: string | null): string[] {
-  return ['delegate', ...(agent ? [`--worker.agent=${agent}`] : []), '--', id]
+export function delegateArgs(id: string, agent?: string | null, after?: string[] | null): string[] {
+  return ['delegate', ...(agent ? [`--worker.agent=${agent}`] : []), ...(after?.length ? [`--after=${after.join(',')}`] : []), '--', id]
+}
+
+// `delegate --after`: the tasks to wait for, as a person names them: an id
+// (`demo/12`), a key (`DEMO-12`, `#12` is not taken: it needs the repo), each
+// with another machine's label first (`vm-str:ELA-3`, 1.x after/far.rs). The
+// board checks the rest (does it exist, a circle, a machine that does not
+// answer) and says why it refuses.
+export const AFTER_MAX = 20
+const AFTER_REF_RE = /^(?:[A-Za-z0-9][\w.-]{0,39}:)?(?:[A-Za-z0-9][\w.-]{0,79}\/\d{1,7}|[A-Za-z][A-Za-z0-9]{1,4}-\d{1,7})$/
+export function cleanAfterRefs(v: unknown): string[] | null {
+  if (!Array.isArray(v) || !v.length || v.length > AFTER_MAX) return null
+  const out: string[] = []
+  for (const r of v) {
+    if (typeof r !== 'string' || !AFTER_REF_RE.test(r.trim())) return null
+    if (!out.includes(r.trim())) out.push(r.trim())
+  }
+  return out
+}
+// `after --clear -- <id>`: it waits for nothing; one that waited goes on to a slot.
+export const clearAfterArgs = (id: string) => ['after', '--clear', '--', id]
+
+// A machine as 1.x names it in a wait (remote.rs short_label): its label up to
+// the first dot, what follows an `@` for a target.
+export function boardLabel(raw: string): string {
+  const s = (raw.split('@').pop() || '').split('.')[0] || ''
+  return s.replace(/[^A-Za-z0-9_.-]/g, '-')
+}
+// How a task is named to wait for it: its key (`DEMO-12`) or its id, with its
+// machine's label first when it is on another machine than the waiting task.
+export function afterRef(id: string, repoKey?: string | null, label?: string | null): string {
+  const own = repoKey ? taskKey(id, repoKey) : id
+  return label ? `${boardLabel(label)}:${own}` : own
+}
+
+// ---------------------------------------------------------------- slots
+// The board's slots (1.x actions/start.rs start_queued): at most `board.agents`
+// tasks in a slot stage at once (store/files.rs SLOT_STAGES, on every session
+// of the machine); a task started with none free waits in the queue
+// (stage `queued`, `queue` its place: 1 gets the next).
+export const SLOT_STAGES = ['starting', 'setup', 'working', 'checking', 'pushing', 'reviewing', 'merging'] as const
+export interface TaskSlots { max: number, busy: number, waiting: number }
+export function slotsOf(rows: Pick<TaskRow, 'stage' | 'archived'>[], max: number): TaskSlots {
+  const live = rows.filter(r => !r.archived)
+  return {
+    max,
+    busy: live.filter(r => (SLOT_STAGES as readonly string[]).includes(r.stage)).length,
+    waiting: live.filter(r => r.stage === 'queued').length,
+  }
+}
+// Where Start would put the task: null when a slot is free (or not known: it
+// says Start), else its place in the queue, after those already waiting.
+export function startPlace(s: TaskSlots | null | undefined): number | null {
+  return s && s.max > 0 && s.busy >= s.max ? s.waiting + 1 : null
+}
+// `board.agents` from `show --json` (how many work at once; 1.x's own default 4).
+export function parseBoardAgents(stdout: string): number | null {
+  let v: unknown
+  try { v = JSON.parse(stdout) } catch { return null }
+  const list = obj(v)?.settings
+  if (!Array.isArray(list)) return null
+  const row = list.map(obj).find(r => r?.name === 'board.agents')
+  const n = row ? (typeof row.value === 'number' ? row.value : typeof row.value === 'string' ? Number(row.value) : NaN) : NaN
+  return Number.isSafeInteger(n) && n > 0 && n <= 1000 ? n : null
 }
 
 // 1.x keeps that option as the task's own setting (`show` then says `place:
@@ -459,7 +558,8 @@ export const runOver = (r: Pick<TaskRow, 'stage' | 'state' | 'archived'>) => !r.
 // repo, you, builtin; `from`: 1.x's own words for it).
 export interface TaskAgent { value: string, kind: string, place: string, from: string }
 // What Start offers: that default, and the agents installed on the task's machine.
-export interface StartOptions { agent: TaskAgent | null, agents: string[] }
+// `slots`: the board's slots as Start finds them (Queue when none is free).
+export interface StartOptions { agent: TaskAgent | null, agents: string[], slots?: TaskSlots | null }
 // `codex/gpt-5.5` → `codex`.
 export const agentKind = (v: string) => v.split('/')[0] || ''
 export function parseWorkerAgent(stdout: string): TaskAgent | null {
@@ -646,6 +746,7 @@ export function detailsFromTaskFile(t: unknown): TaskDetails | null {
     // The program on it: `on` while one works, then `agent`, as `details` gives it; else the row's `app`.
     agent: o.on || o.agent || o.app || null,
     research: o.research === true, pr: o.pr ?? null, branch: o.branch ?? null, worktree: o.worktree ?? null, plan: null,
+    after: o.after ? { waitsFor: o.after, left: o.stage === 'after' ? o.afterLeft : undefined, waiting: o.stage === 'after', waitsForYou: o.afterBlocked } : null,
   }))
 }
 

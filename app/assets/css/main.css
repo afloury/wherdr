@@ -3868,6 +3868,37 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-start-chip.off small { color: var(--ochre); }
 .task-start-missing { color: var(--ochre); }
 .task-start-from { flex-basis: 100%; font: 11px/1.4 var(--mono); color: var(--dim); }
+/* Queue and "Start after…" (TaskSheet): the place Start would get, what a task waits for, the picker. */
+.task-queue-place { margin: 6px 0 0; font: 500 11px/1.4 var(--mono); letter-spacing: .04em; color: var(--text-2); }
+.task-wait-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text); }
+.task-wait-line > .iconify { width: 14px; height: 14px; color: var(--muted); }
+.task-wait-line strong { font: 600 12px/1 var(--mono); }
+.task-wait-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 8px;
+  border: 1px solid var(--accent); color: var(--text); font: 500 12px/1 var(--mono);
+}
+.task-wait-chip.done { border-color: var(--line); color: var(--dim); }
+.task-wait-chip small { font: 500 9px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+.task-wait-unchoose { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-right: -8px; border: 0; border-left: 1px solid var(--line); background: none; color: var(--dim); cursor: pointer; }
+.task-wait-unchoose:hover { color: var(--text); }
+.task-wait-unchoose .iconify { width: 13px; height: 13px; }
+.task-wait-hint { margin: 6px 0; font-size: 12px; line-height: 1.5; color: var(--text-2); }
+.task-wait .board-note { margin: 6px 0; }
+.task-wait-clear { border-radius: 0; }
+.task-after-pick { display: flex; flex-direction: column; gap: 8px; }
+.task-after-pick .task-wait-hint { margin: 0; }
+.task-after-search input { font-size: 16px; border-radius: 0; }
+.task-after-list { list-style: none; margin: 0; padding: 0; max-height: 264px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--line); }
+.task-after-list:empty { display: none; }
+.task-after-list li + li { border-top: 1px solid var(--line-soft); }
+.task-after-choice {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 6px 10px;
+  border: 0; background: none; color: var(--text); text-align: left; font-size: 13px; cursor: pointer;
+}
+.task-after-choice:hover, .task-after-choice:focus-visible { background: var(--line-soft); outline: none; }
+.task-after-choice .mono { flex: none; font: 500 12px/1.2 var(--mono); }
+.task-after-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+.task-after-choice small { flex: none; font: 500 9px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
 /* herdr-projects missing or too old: the way forward, with its commands. */
 .projects-upgrade > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .projects-upgrade p { margin: 0; }

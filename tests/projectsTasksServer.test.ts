@@ -51,9 +51,12 @@ vi.mock('../server/utils/agentAvailability', () => ({ installedAgentKinds: async
 // Each task's own worker.agent, as 1.x keeps it: `delegate --worker.agent` writes
 // it (1.2.1 start.rs delegate_with), `set`/`unset --task` change it.
 let own: Record<string, string> = {}
+// `board.agents` in the same reply (how many work at once); null: left out.
+let boardAgents: number | null = null
 const taskSettings = (value: string, place: string, from: string) => JSON.stringify({ settings: [
   { name: 'worker.agent', kind: 'work', value, from, place, own: false, note: '' },
   { name: 'worker.effort', kind: 'work', value: 'default', from: 'built in', place: 'builtin', own: false, note: '' },
+  ...(boardAgents === null ? [] : [{ name: 'board.agents', kind: 'board', value: boardAgents, from: 'you', place: 'you', own: false, note: '' }]),
 ], problems: [] })
 
 const T = await import('../server/utils/projectsTasks')
@@ -85,6 +88,7 @@ beforeEach(() => {
   coordStatus = {}
   installed = ['claude', 'codex']
   own = {}
+  boardAgents = null
   rmSync(path.join(home, 'wherdr-data'), { recursive: true, force: true })
   SA.resetStartAgents()
   infoFails = false
@@ -127,6 +131,8 @@ beforeEach(() => {
       return { code: 0, stdout: JSON.stringify({ name: 'x', agent: 'claude', ...(coordStatus[flag] || { state: 'none', pane: '' }) }), stderr: '' }
     }
     if (args[0] === 'approve') return { code: 1, stdout: '', stderr: 'demo/1: its pull request\'s checks failed\nmore' }
+    // 1.x refuses a wait in a circle, and says so (after.rs checked).
+    if (args[0] === 'delegate' && args.includes('--after=demo/5')) return { code: 1, stdout: '', stderr: 'DEMO-5 cannot wait for that: tasks would wait on each other (DEMO-5 → DEMO-5). Nothing was changed.' }
     return { code: 0, stdout: `${args[args.length - 2]}: sent\n`, stderr: '' }
   })
 })
@@ -698,14 +704,59 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     expect(await T.taskStartOptions('', 'demo/5')).toEqual({
       agent: { value: 'claude', kind: 'claude', place: 'repo', from: 'your entry for demo' },
       agents: ['claude', 'codex', 'omp'],
+      slots: null,
     })
     expect(calls).toEqual([['show', '--json', '--', 'demo/5']])
     await expect(T.taskStartOptions('', '../x')).rejects.toThrow(/Invalid task/)
   })
 
+  // Queue: board.agents (the same show) against the tasks in a slot stage on the list.
+  it('Start options say the board\'s slots: board.agents, the tasks at work and those queued', async () => {
+    boardAgents = 2
+    listReply = { code: 0, stdout: JSON.stringify([
+      ...JSON.parse(board),
+      { id: 'demo/20', state: 'working', app: 'claude', title: 'Reviewing', stage: 'reviewing' },
+      { id: 'demo/21', state: 'working', title: 'Queued', stage: 'queued', queue: 1 },
+      { id: 'demo/22', state: 'working', title: 'Waits', stage: 'after' },
+    ]), stderr: '' }
+    await read()
+    calls = []
+    expect((await T.taskStartOptions('', 'demo/5')).slots).toEqual({ max: 2, busy: 2, waiting: 1 })
+    // The list just read is reused: one show, no list.
+    expect(calls).toEqual([['show', '--json', '--', 'demo/5']])
+  })
+
+  it('Start after…: delegate --after with the tasks named, checked first; the board\'s refusal is said as it is', async () => {
+    await read()
+    calls = []
+    await T.taskCommand('', 'demo/5', 'delegate', null, ['DEMO-3', 'vm-str:ELA-3', 'demo/4'])
+    expect(calls.filter(c => c[0] === 'delegate')).toEqual([['delegate', '--after=DEMO-3,vm-str:ELA-3,demo/4', '--', 'demo/5']])
+    await read()
+    await T.taskCommand('', 'demo/5', 'delegate', 'codex', ['DEMO-3'])
+    expect(calls.filter(c => c[0] === 'delegate').at(-1)).toEqual(['delegate', '--worker.agent=codex', '--after=DEMO-3', '--', 'demo/5'])
+    await read()
+    await expect(T.taskCommand('', 'demo/5', 'delegate', null, ['demo/5'])).rejects.toThrow('DEMO-5 cannot wait for that: tasks would wait on each other (DEMO-5 → DEMO-5). Nothing was changed.')
+    calls = []
+    for (const bad of [['--now'], ['DEMO-3 --merge.by=itself'], [], 'DEMO-3', [3], Array.from({ length: 21 }, (_, i) => `DEMO-${i + 1}`)]) {
+      await expect(T.taskCommand('', 'demo/5', 'delegate', null, bad)).rejects.toThrow('Invalid tasks to wait for')
+    }
+    await expect(T.taskCommand('', 'demo/3', 'stop', null, ['DEMO-4'])).rejects.toThrow('Invalid tasks to wait for')
+    expect(calls).toEqual([])
+  })
+
+  it('Stop waiting: after --clear on the task', async () => {
+    listReply = { code: 0, stdout: JSON.stringify([...JSON.parse(board), { id: 'demo/22', state: 'working', title: 'Waits', stage: 'after' }]), stderr: '' }
+    await read()
+    calls = []
+    expect(await T.clearTaskAfter('', 'demo/22')).toEqual({ ok: true, msg: '--: sent' })
+    expect(calls).toEqual([['after', '--clear', '--', 'demo/22']])
+    await expect(T.clearTaskAfter('', 'demo/99')).rejects.toThrow('This task does not wait for other tasks')
+    await expect(T.clearTaskAfter('', '../x')).rejects.toThrow('Invalid task')
+  })
+
   it('from a container: no command run, only the installed agents', async () => {
     T.setInContainer(true)
-    expect(await T.taskStartOptions('', 'demo/5')).toEqual({ agent: null, agents: ['claude', 'codex'] })
+    expect(await T.taskStartOptions('', 'demo/5')).toEqual({ agent: null, agents: ['claude', 'codex'], slots: null })
     expect(calls).toEqual([])
   })
 

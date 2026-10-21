@@ -15,6 +15,8 @@ const FR: Record<string, string> = {
   'Task not found': 'Tâche introuvable',
   'This task cannot be started now': 'Cette tâche ne peut pas être lancée maintenant',
   'Only Start takes an agent': 'Seul Lancer prend un agent',
+  'Invalid tasks to wait for': 'Tâches à attendre invalides',
+  'This task does not wait for other tasks': 'Cette tâche n’attend pas d’autres tâches',
   '{agent} is not installed on {machine}': '{agent} n’est pas installé sur {machine}',
   'This task has no agent at work to stop': 'Cette tâche n’a pas d’agent au travail à arrêter',
   'This task has nothing to retry': 'Cette tâche n’a rien à réessayer',
