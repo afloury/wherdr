@@ -892,11 +892,14 @@ for (const lang of ['en', 'fr']) {
     await page.screenshot({ path: `.shots/task-panel-${lang}-details-${testInfo.project.name}.png` })
     await panel.locator('.task-needs').getByRole('button', { name: lang === 'fr' ? 'Relancer' : 'Start again', exact: true }).click()
     await expect.poll(callLog).toContain('delegate -- demo/9')
-    // No pane at all: the explanation stays here instead of opening a sheet.
+    // No pane at all: the panel opens straight on the task (no sheet), its
+    // Conversation and Terminal tabs hidden, the failure in its banner.
     fs.writeFileSync(path.join(dir, 'task.json'), JSON.stringify({ ...task, summary: 'Search checked with fictional data.' }))
     await page.reload()
     await page.goto('/#/board?machine=&task=demo%2F9')
-    await expect(panel.locator('.task-setup')).toBeVisible()
+    await expect(panel.locator('.task-sheet')).toContainText('Search supports titles and labels.')
+    await expect(panel.locator('.board-panel-tabs button')).toHaveText([lang === 'fr' ? 'Tâche' : 'Task'])
+    await expect(panel.locator('.task-setup')).toHaveCount(0)
     await expect(panel.locator('.task-needs')).toContainText('npm ci')
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await page.screenshot({ path: `.shots/task-panel-${lang}-no-agent-${testInfo.project.name}.png` })
