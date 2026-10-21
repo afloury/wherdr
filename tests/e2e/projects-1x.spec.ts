@@ -25,7 +25,7 @@ printf '%s\\n' "$*" >> '${calls}'
 case "$1" in
   list) if [ "$3" = --archived ]; then if [ -f '${root}/archived.json' ]; then cat '${root}/archived.json'; else echo '[]'; fi
     elif [ -f '${root}/list.json' ]; then cat '${root}/list.json'; else cat '${fixtures}/list.json'; fi ;;
-  details) case "$4" in demo/1) cat '${fixtures}/details-approval.json' ;; demo/2) cat '${fixtures}/details-asks.json' ;; demo/6) echo '${JSON.stringify(failedDetails)}' ;; *) cat '${fixtures}/details-working.json' ;; esac ;;
+  details) if [ -f '${root}/details.json' ]; then cat '${root}/details.json'; else case "$4" in demo/1) cat '${fixtures}/details-approval.json' ;; demo/2) cat '${fixtures}/details-asks.json' ;; demo/6) echo '${JSON.stringify(failedDetails)}' ;; *) cat '${fixtures}/details-working.json' ;; esac; fi ;;
   tell) echo "$3: sent" ;;
   approve) if [ -f '${root}/after-approve.json' ]; then mv '${root}/after-approve.json' '${root}/list.json'; fi; echo "$3: approved, merging" ;;
   coordinator) co="$2"; case "$co" in --machine|--project=*) ;; *) co=main ;; esac
@@ -41,7 +41,7 @@ case "$1" in
   delegate) case "$2" in --worker.agent=*) printf '%s' "\${2#--worker.agent=}" > '${root}/own-agent' ;; esac; echo "done" ;;
   set) printf '%s' "$5" > '${root}/own-agent'; echo "set" ;;
   unset) rm -f '${root}/own-agent'; echo "unset" ;;
-  stop|retry) echo "$3: done" ;;
+  stop|retry|fix) echo "$3: done" ;;
   # Archived: in the archived list from now on (the board's list still has it here).
   archive) printf '[{"id":"%s","state":"done","title":"Archived","stage":"failed","archivedAt":1}]' "$3" > '${root}/archived.json'; echo "$3: done" ;;
   # What the board lists once a task is restored, when the spec gives it.
@@ -64,7 +64,7 @@ const home = path.join(path.dirname(fs.readFileSync(SOCK_FILE, 'utf8').trim()), 
 const taskDir = path.join(home, '.herdr-projects/data/tasks/demo/1')
 
 test.beforeEach(() => {
-  for (const f of [calls, path.join(root, 'own-agent'), path.join(root, 'list.json'), path.join(root, 'archived.json'), path.join(root, 'after-restore.json'), path.join(root, 'after-approve.json'), path.join(root, 'web-coordinator'), told]) fs.rmSync(f, { recursive: true, force: true })
+  for (const f of [path.join(root, 'details.json'), calls, path.join(root, 'own-agent'), path.join(root, 'list.json'), path.join(root, 'archived.json'), path.join(root, 'after-restore.json'), path.join(root, 'after-approve.json'), path.join(root, 'web-coordinator'), told]) fs.rmSync(f, { recursive: true, force: true })
   fs.mkdirSync(told)
 })
 test.afterEach(async () => { await fakeHerdr('e2e.plugins', { plugins: [] }) })
@@ -111,10 +111,13 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   await expect(panel.locator('.board-panel-repo')).toHaveText('demo', { timeout: 15000 })
   await expect(panel.locator('.board-panel-machine')).not.toBeEmpty()
   await expect(panel.locator('.board-panel-name')).toContainText('DEMO-1')
-  await expect(panel.locator('.board-panel-task-title')).toHaveText('Fix login redirect')
-  await expect(panel.locator('.board-panel-desc')).toContainText('The login page loops')
+  await expect(panel.locator('.board-panel-name')).toContainText('Fix login redirect')
+  await expect(panel.locator('.board-panel-note')).toHaveCount(0)
+  await expect(panel.locator('.cell-view .agent-top')).toHaveCount(0)
+  await panel.locator('.board-panel-tabs').getByRole('button', { name: 'Task', exact: true }).click()
+  await expect(panel.locator('.task-sheet-text').first()).toContainText('The login page loops')
   await expect(panel.locator('.board-panel-note')).toContainText('Redirect fixed; a test covers the loop.')
-  await expect(panel.locator(`.cell-view .agent-top`)).toBeVisible()
+  await panel.locator('.board-panel-tabs').getByRole('button', { name: 'Conversation', exact: true }).click()
   await expect(panel.locator('.cell-view textarea')).toBeVisible()
   const box = (await panel.boundingBox())!
   const view = page.viewportSize()!
@@ -128,9 +131,9 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   // Its sheet, from the panel: pull request, review, approve (asked first).
   await panel.locator('.board-panel-sheet').click()
   const sheet = page.getByRole('dialog')
-  await expect(sheet.locator('.task-sheet-facts')).toContainText('Pass · 1 minor · codex')
+  await expect(sheet.locator('.task-sheet-facts').first()).toContainText('Pass · 1 minor · codex')
   await expect(sheet.getByRole('link', { name: /#7/ })).toHaveAttribute('href', 'https://github.com/example/demo/pull/7')
-  await expect(sheet.locator('.task-sheet-text')).toHaveText('The login page loops')
+  await expect(sheet.locator('.task-sheet-text').first()).toHaveText('The login page loops')
   // No message field: one button opens the chat (the panel), none other leads to its agent.
   await expect(sheet.getByRole('button', { name: 'Open the chat' })).toBeEnabled()
   await expect(sheet.getByRole('button', { name: 'Open its agent' })).toHaveCount(0)
@@ -164,11 +167,14 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
   // the user's words after "--".
   if (phone) await page.getByRole('button', { name: /Needs you/ }).click()
   await card('DEMO-2').click()
+  await panel.locator('.board-panel-sheet').click()
   await expect(page.getByRole('dialog').locator('.task-sheet-msg')).toHaveText('Which changelog format?')
   await expect(page.getByRole('dialog').getByRole('textbox')).toHaveCount(0)
   await page.keyboard.press('Escape')
+  if (await panel.count()) await closePanel(page, phone)
   if (phone) await page.getByRole('button', { name: /Working/ }).click()
   await card('DEMO-3').click()
+  await panel.locator('.board-panel-sheet').click()
   await expect(page.getByRole('dialog').getByRole('textbox')).toHaveCount(0)
   await page.getByRole('dialog').getByRole('button', { name: 'Open the chat' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
@@ -293,6 +299,7 @@ test('in a container: the tasks show, the actions are the host\'s', async ({ pag
   await expect(page.locator('.board-notes a', { hasText: 'Move to the native service' })).toHaveAttribute('href', /moving-from-docker-to-the-native-service$/)
   if (testInfo.project.name.includes('phone')) await page.locator('.board-seg').getByRole('button', { name: /^Ready to approve/ }).click()
   await page.locator('.task-card', { hasText: 'Task demo/1' }).click()
+  await page.locator('.board-panel-sheet').click()
   const sheet = page.getByRole('dialog')
   await expect(sheet).toContainText('herdr-projects approve demo/1')
   await expect(sheet.getByRole('button', { name: 'Approve', exact: true })).toBeDisabled()
@@ -440,6 +447,7 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   // To do: Start.
   await tab(/^To do/)
   await card('In the backlog').click()
+  await page.locator('.board-panel-sheet').click()
   await expect(task.getByRole('button', { name: 'Stop' })).toHaveCount(0)
   // Start names the task's default agent, preselected; one click starts with it, as before.
   const agents = task.getByRole('radiogroup', { name: 'Agent for this start' })
@@ -448,23 +456,29 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   await task.getByRole('button', { name: 'Start', exact: true }).click()
   await expect.poll(callLog).toContain('delegate -- demo/5')
   await page.keyboard.press('Escape')
+  if (await page.locator('.board-panel').count()) await closePanel(page, testInfo.project.name.includes('phone'))
   // Another installed agent, for this start only: passed to delegate, no setting changed.
   await card('In the backlog').click()
+  await page.locator('.board-panel-sheet').click()
   await agents.getByRole('radio', { name: /codex/ }).click()
   await expect(agents).toContainText('For this start only: the default stays.')
   await task.getByRole('button', { name: 'Start with codex', exact: true }).click()
   await expect.poll(callLog).toContain('delegate --worker.agent=codex -- demo/5')
   await page.keyboard.press('Escape')
+  if (await page.locator('.board-panel').count()) await closePanel(page, testInfo.project.name.includes('phone'))
   // That pick was for one start: the task's default is claude again (its own setting taken back).
   await card('In the backlog').click()
+  await page.locator('.board-panel-sheet').click()
   await expect(agents.getByRole('radio', { name: /claude/ })).toHaveAttribute('aria-checked', 'true')
   await expect(agents).toContainText('Default from your settings for demo')
   await expect.poll(callLog).toContain('unset --task=demo/5 -- worker.agent')
   expect(fs.existsSync(path.join(root, 'own-agent'))).toBe(false)
   await page.keyboard.press('Escape')
+  if (await page.locator('.board-panel').count()) await closePanel(page, testInfo.project.name.includes('phone'))
   // Working: Stop, asked first; no Archive.
   await tab(/^Working/)
   await card('Add dark mode toggle').click()
+  await page.locator('.board-panel-sheet').click()
   await expect(task.getByRole('button', { name: 'Archive' })).toHaveCount(0)
   await task.getByRole('button', { name: 'Stop', exact: true }).click()
   await page.getByRole('dialog').last().getByRole('button', { name: 'Stop the agent' }).click()
@@ -472,10 +486,12 @@ test('+ New task: in a repo, with Start now; and the task sheet starts, stops, r
   await expect(page.getByRole('dialog')).toHaveCount(1)
   // The sheet stays open after a stop (to reply or retry): closed by its button.
   await task.locator('.hw-sheet-close').click()
+  if (await page.locator('.board-panel').count()) await closePanel(page, testInfo.project.name.includes('phone'))
   await expect(page.getByRole('dialog')).toHaveCount(0)
   // Failed: Retry, then Archive (the sheet closes).
   await tab(/^Needs you/)
   await card('Broke on the tests').click()
+  await page.locator('.board-panel-sheet').click()
   await expect(task.getByRole('button', { name: 'Retry' })).toBeVisible()
   await page.screenshot({ path: `.shots/board-1x-task-actions-${testInfo.project.name}.png` })
   await task.getByRole('button', { name: 'Retry' }).click()
@@ -528,6 +544,7 @@ test('a push about a task opens it on the Board', async ({ page }) => {
   fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(actionBoard))
   await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
   await page.goto('/#/board?machine=&task=demo%2F6')
+  await page.locator('.board-panel-sheet').click()
   const sheet = page.getByRole('dialog')
   await expect(sheet).toContainText('Broke on the tests', { timeout: 15000 })
   await expect(sheet.getByRole('button', { name: 'Retry' })).toBeVisible()
@@ -570,7 +587,7 @@ test('a push opens its own machine\'s task, never the same id on another machine
   await expect(page.getByRole('dialog')).toHaveCount(0)
   machines = [{ machine: 'ma', tasks: [{ id: 'demo/1', title: 'On machine A' }] }, machines[1]!]
   await page.locator('.board-filter').click()
-  await expect(page.getByRole('dialog')).toContainText('On machine A', { timeout: 15000 })
+  await expect(page.locator('.board-panel')).toContainText('On machine A', { timeout: 15000 })
 })
 
 test('the machine filter lists the local machine, read-only or not, and shows only its tasks', async ({ page }, testInfo) => {
@@ -612,7 +629,7 @@ test('a push for a task newer than the board kept from the last visit opens it a
   await expect(page.locator('.board-view')).toHaveCount(0)
   machines = [{ machine: '', tasks: [{ id: 'demo/9', title: 'Brand new' }, { id: 'demo/1', title: 'Older one' }] }]
   await page.evaluate(() => { location.hash = '#/board?machine=&task=demo%2F9' })
-  await expect(page.getByRole('dialog')).toContainText('Brand new', { timeout: 15000 })
+  await expect(page.locator('.board-panel')).toContainText('Brand new', { timeout: 15000 })
   await expect(page.locator('.hw-toast-title', { hasText: 'That task is no longer on the Board' })).toHaveCount(0)
 })
 
@@ -658,6 +675,7 @@ test('the same task id on another machine: its sheet starts empty, with that mac
   await page.goto('/#/board')
   // A's task (no pane for its agent here: its sheet).
   await page.locator('.board-machine[data-machine="ma"] .task-card').click({ timeout: 15000 })
+  await page.locator('.board-panel-sheet').click()
   const sheet = page.getByRole('dialog')
   await expect(sheet.locator('.task-sheet-text')).toHaveText('Details of ma')
   // A push opens B's task with the same id while A's sheet is open.
@@ -836,5 +854,51 @@ for (const lang of ['en', 'fr']) {
         await page.locator('.board-panel-back, .board-panel-close').click()
       }
     }
+  })
+}
+
+for (const lang of ['en', 'fr']) {
+  test(`task panel setup failure and task tab (${lang})`, async ({ page }, testInfo) => {
+    await page.addInitScript(l => localStorage.setItem('herdrLanguage', l), lang)
+    const task = { id: 'demo/9', title: 'Improve search results', stage: 'failed', state: 'error', app: 'claude', msg: 'Setup failed' }
+    const failure = { stage: 'setup', title: 'Setup failed', detail: 'npm ci\nENOENT: package-lock.json is missing', next: 'Restore the lockfile, then start again.', auth: false, agentCanFix: false }
+    fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify([task]))
+    fs.writeFileSync(path.join(root, 'details.json'), JSON.stringify({ task: { ...task, description: 'Search supports titles and labels.' }, failure, report: { file: 'report.md' }, limits: { time: { limit: '2h', used: '3m' }, tokens: { limit: '1m', total: 4200 } } }))
+    const dir = path.join(home, '.herdr-projects/data/tasks/demo/9')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, 'task.json'), JSON.stringify({ ...task, link: { pane: CLAUDE_PANE }, summary: 'Search checked with fictional data.' }))
+    await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
+    await page.goto('/#/board?machine=&task=demo%2F9')
+    const panel = page.locator('.board-panel')
+    await expect(panel.locator('.task-needs')).toContainText('package-lock.json is missing')
+    await expect(panel.locator('.task-needs')).toContainText('Restore the lockfile')
+    await expect(panel.locator('.agent-top')).toHaveCount(0)
+    // A stale agent link must not make setup failure open a conversation.
+    await expect(panel.locator('.board-panel-tabs button')).toHaveCount(3)
+    await expect(panel.locator('.board-panel-name .task-state')).toHaveText(lang === 'fr' ? 'À toi' : 'Needs you')
+    await page.screenshot({ path: `.shots/task-panel-${lang}-setup-${testInfo.project.name}.png` })
+    await panel.locator('.board-panel-tabs').getByRole('button', { name: 'Terminal', exact: true }).click()
+    await expect(panel.locator('#term')).toBeVisible()
+    await panel.locator('.board-panel-tabs').getByRole('button', { name: 'Conversation', exact: true }).click()
+    await expect(panel.locator('.task-setup')).toBeVisible()
+    await panel.locator('.board-panel-tabs').getByRole('button', { name: lang === 'fr' ? 'Tâche' : 'Task', exact: true }).click()
+    await expect(panel.locator('.task-sheet')).toContainText('Search supports titles and labels.')
+    await expect(panel.locator('.board-panel-note')).toContainText('Search checked with fictional data.')
+    await expect(panel.locator('.task-sheet')).toContainText('4200')
+    await expect(panel.locator('.board-panel-report')).toContainText(lang === 'fr' ? 'Rapport' : 'Report')
+    await expect(panel.locator('.board-panel-report')).not.toContainText(lang === 'fr' ? 'recherche' : 'Research')
+    await page.screenshot({ path: `.shots/task-panel-${lang}-details-${testInfo.project.name}.png` })
+    await panel.locator('.task-needs').getByRole('button', { name: lang === 'fr' ? 'Relancer' : 'Start again', exact: true }).click()
+    await expect.poll(callLog).toContain('delegate -- demo/9')
+    // No pane at all: the explanation stays here instead of opening a sheet.
+    fs.writeFileSync(path.join(dir, 'task.json'), JSON.stringify({ ...task, summary: 'Search checked with fictional data.' }))
+    await page.reload()
+    await page.goto('/#/board?machine=&task=demo%2F9')
+    await expect(panel.locator('.task-setup')).toBeVisible()
+    await expect(panel.locator('.task-needs')).toContainText('npm ci')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await page.screenshot({ path: `.shots/task-panel-${lang}-no-agent-${testInfo.project.name}.png` })
+    expect(await panel.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+    fs.rmSync(dir, { recursive: true, force: true })
   })
 }

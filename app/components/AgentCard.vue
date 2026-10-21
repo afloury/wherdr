@@ -29,6 +29,7 @@ const props = defineProps<{ pane: Pane, row?: Row | null, board?: BoardCard | nu
 const space = computed(() => (props.row && props.row.kind === 'space' ? props.row : null))
 // Pane whose state the card shows.
 const statePane = computed(() => props.pane)
+const cardStatus = computed(() => props.board?.group ? ({ needs: 'blocked', ready: 'done', working: 'working', todo: 'idle', done: 'idle' }[props.board.group]) : statusKey(statePane.value))
 const taskCard = computed(() => Boolean(props.board && !props.board.coordinator))
 // Compact list: one line (avatar, title, tab dots or pane count, state dot);
 // while the agent waits for an answer, its question and one-tap answers open below.
@@ -165,6 +166,7 @@ function onContextOpen(open: boolean) {
 function recentTouchMenu() { return Date.now() - touchMenuOpenedAt < 1000 || lp.swallowClick() }
 function open() {
   if (recentTouchMenu()) return
+  if (taskCard.value && props.board?.onBoard) return props.board.onBoard()
   if (space.value) {
     if (props.board?.tab) return openTab(props.board.tab)
     return openSpace(space.value.workspace.id, space.value.leadTab.tab.id)
@@ -200,7 +202,7 @@ onUnmounted(list.unmount)
 <template>
   <UContextMenu :disabled="sheetMenus" :items="contextItems" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="onContextOpen">
     <div
-      ref="card" class="card" :class="[statusKey(statePane), { sel: selected, stale: paneStale(pane), 'space-card': space, compact: true, open: more, 'home-task': board, 'task-row': taskCard, 'home-coord': board?.coordinator, 'home-task-two': twoLines }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
+      ref="card" class="card" :class="[cardStatus, { sel: selected, stale: paneStale(pane), 'space-card': space, compact: true, open: more, 'home-task': board, 'task-row': taskCard, 'home-coord': board?.coordinator, 'home-task-two': twoLines }]" :data-pane="pane.id" :data-space="space?.workspace.id" :data-ws="pane.workspace"
       role="button" tabindex="0" @pointerdown="down" @pointermove="lp.move" @pointerup="lp.cancel" @pointercancel="lp.cancel"
       @contextmenu="onContext" @selectstart.prevent @click="open" @keydown.enter.self="open"
     >
@@ -208,11 +210,11 @@ onUnmounted(list.unmount)
       <span v-if="board?.tag" class="card-tag home-task-tag">{{ board.tag }}</span>
       <span class="card-title">{{ title }}</span>
       <span v-if="boardStats" class="home-task-stats">{{ boardStats }}</span>
-      <span v-if="taskCard && pane.status === 'blocked'" class="card-tag task-attention">{{ t('Your turn') }}</span>
+      <span v-if="taskCard && board?.group" class="task-state" :class="board.group">{{ taskGroupLabel(board.group) }}</span>
       <span v-if="statePane.usageLimit && !taskCard" class="card-tag quota-limit" :title="stateTitle">{{ tl('Limit', 'Quota') }}</span>
       <span v-if="!taskCard && compactDots.length" class="card-tab-dots" :title="counts" :aria-label="tl('Tab states', 'États des onglets')"><i v-for="(d, i) in compactDots" :key="i" :class="d" /></span>
       <span v-else-if="!taskCard && compact.panes" class="card-panes" :title="counts">{{ compact.panes }}</span>
-      <span class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
+      <span v-if="!taskCard || !board?.group" class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
       <span v-if="twoLines" class="home-task-line" :title="[board?.stage, boardLine].filter(Boolean).join(' — ')"><span v-if="taskCard && pane.usageLimit" class="home-task-stage quota-limit">{{ tl('Limit', 'Limite') }}</span><span v-if="board?.stage" class="home-task-stage">{{ board.stage }}</span>{{ boardLine }}</span>
       <button v-if="board?.onBoard && !taskCard" type="button" class="home-task-go" :title="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" :aria-label="tl('Open the task on the Board', 'Ouvrir la tâche dans le Board')" @click.stop="board.onBoard"><UIcon name="i-lucide-square-kanban" /></button>
       <Transition name="card-more" :appear="appear">

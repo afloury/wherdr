@@ -23,7 +23,7 @@ import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
   type MachineTasks, type TaskDetails, type TaskRow, type TasksBoard,
-  type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, type TaskAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
+  taskCanFix, taskCanApproveAnyway, type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, type TaskAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, repoKeysFromFile, rowFromTaskFile, taskActions,
 } from '../../shared/projectsTasks'
 import { HERDR_BIN, HERDR_CHILD_ENV, IN_CONTAINER, log } from './env'
@@ -212,7 +212,14 @@ function readList(m: Machine): Promise<Cached> {
   const now = reading.get(m.key)
   if (now) return now
   const started = Date.now()
-  const read = (readsFiles(m) ? listFromFiles(m) : command(m, ['list', '--json'], LIST_TIMEOUT_MS).then(tasks => ({ tasks: parseTaskList(tasks), failed: [] as string[] })))
+  const read = (readsFiles(m) ? listFromFiles(m) : command(m, ['list', '--json'], LIST_TIMEOUT_MS).then(async text => ({ tasks: await Promise.all(parseTaskList(text).map(async row => {
+    if (row.stage !== 'approval') return row
+    // The CLI list omits these blockers. Read only their file flags, with no
+    // extra upkeep commands, so Home, Board and panel use the same group.
+    const file = await readTaskFile(m, row.id).catch(() => null)
+    return file?.stage === 'approval' && rowFromTaskFile(file, null)?.approvalBlocked
+      ? { ...row, approvalBlocked: true, group: 'needs' as const } : row
+  })), failed: [] as string[] })))
     .then(({ tasks, failed }): Cached => {
       if (!failed.length) return { tasks, at: Date.now(), readAt: Date.now() }
       // Some tasks could not be read: the others are fresh, those keep their last row, and it is said.
@@ -388,12 +395,14 @@ export async function tellTask(machine: unknown, id: unknown, text: unknown): Pr
   return { ok: true, msg: firstLine(out) }
 }
 
-export async function approveTask(machine: unknown, id: unknown): Promise<{ ok: true, msg: string }> {
+export async function approveTask(machine: unknown, id: unknown, anyway: unknown = false): Promise<{ ok: true, msg: string }> {
   const m = boardOf(machine)
   const tid = checkId(id)
   const row = await taskOf(m, tid)
   if (!row || !taskActions(row).approve) throw new HerdrError('bad_action', 'This task does not wait for approval')
-  const out = await command(m, ['approve', '--', tid])
+  if (anyway !== false && anyway !== true) throw new HerdrError('bad_action', 'Invalid approval')
+  if (anyway && (!row || !taskCanApproveAnyway(row, await taskDetails(machine, id)))) throw new HerdrError('bad_action', 'This task cannot bypass approval checks')
+  const out = await command(m, ['approve', ...(anyway ? ['--anyway'] : []), '--', tid])
   forget(m)
   log(`herdr-projects approve ${tid}${m.local ? '' : ` on ${m.label}`}`)
   return { ok: true, msg: firstLine(out) }
@@ -415,10 +424,10 @@ export async function taskCommand(machine: unknown, id: unknown, action: unknown
   // An archived task is not in the list: its own row (`restore` only applies to it).
   const row = action === 'restore' ? await archivedRow(m, tid) : await taskOf(m, tid)
   // A failed task: what failed decides between Retry and Start (`details`).
-  const failure = row?.stage === 'failed' && (action === 'retry' || action === 'delegate')
+  const failure = action === 'fix' || (row?.stage === 'failed' && (action === 'retry' || action === 'delegate'))
     ? parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS))
     : null
-  if (!row || !taskActions(row, failure)[action]) throw refused(action)
+  if (!row || (action === 'fix' ? !taskCanFix(row, failure) : !taskActions(row, failure)[action])) throw refused(action)
   // A new start: an agent picked for an earlier one goes first, so the task
   // starts from its own default again (or from the one picked now).
   let prev: string | null = null
@@ -480,6 +489,7 @@ function refused(action: TaskCommand): HerdrError {
   switch (action) {
     case 'delegate': return new HerdrError('bad_action', 'This task cannot be started now')
     case 'stop': return new HerdrError('bad_action', 'This task has no agent at work to stop')
+    case 'fix': return new HerdrError('bad_action', 'This failure needs the human first')
     case 'retry': return new HerdrError('bad_action', 'This task has nothing to retry')
     case 'archive': return new HerdrError('bad_action', 'This task cannot be archived while an agent works on it')
     case 'restore': return new HerdrError('bad_action', 'This task is not archived')

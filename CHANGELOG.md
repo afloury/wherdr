@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 - **Yes, No and OK to all hand the field the focus on a computer**: after a click, the caret sits right after the answer written in the field, so Enter sends it at once. On a phone the keyboard stays down as before (Enter adds a line there), and a button pressed with the keyboard keeps the focus, to answer the next question.
 
+- Task panels use one compact header and Conversation / Terminal / Task tabs, with structured Needs you explanations and actions, setup failures kept visible, and the Board’s state vocabulary on home rows. The Task tab holds descriptions, closing notes, review findings, limits and actions in English and French.
 - Claude quota snapshots bind the account fingerprint and observation time atomically. Update older status lines to remove the ten-minute identity cache. Failed Claude reads are retried once; after two failures, that machine's Claude gauge is temporarily omitted until reading recovers, instead of reusing an old account reading indefinitely. This supersedes the earlier keep-last-reading behavior for Claude; Codex is unchanged.
 
 - Home machine bar: named groups with editable membership and machine order, combined counts, device storage, and reorder/hide controls (English and French).

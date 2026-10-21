@@ -1262,16 +1262,23 @@ What the Board shows and does:
   eight, then **Show all**). Side by side on a computer, one at a time on a phone. A card shows
   the task's key (`DEMO-12`), title, the line its agent reports, the agent program, progress, its
   pull request and its review (pass or fail, with the findings by severity).
-- **A task** opens its agent in a side panel: wherdr's own agent view (conversation, terminal,
-  message field), under the task's title, its description (folded after a few lines), the
-  Watcher's progress, and the agent's closing note or research report once there is one. The
-  panel always says who you talk to: machine, repo, task. It sits beside the Board on a computer
-  and takes the whole screen on a phone, with a way back.
-- **A task's sheet**, from the panel (or at once for a task with no agent: to do, or its agent
-  gone): description, plan, branch, pull request, review, what went wrong. **Open the chat**
-  closes it and opens the task's agent in the side panel, where you reply: the sheet has no
-  message field. When that agent has no pane now, the panel shows a field instead, and
-  herdr-projects passes your reply on (`tell`; on a plan that waits, it sends the plan back).
+- **A task** opens one compact side panel from the Board or its home row. The header names
+  the machine, repo, task and agent program, with the Board's one state: Needs you, Ready to
+  approve, Working, To do or Done. **Conversation**, **Terminal** and **Task** sit below it.
+  Task holds the description, closing note, report, pull request, review findings, limits,
+  token use and actions; a dot marks a new closing note or review. The agent's own Herdr state
+  is in a tooltip, separate from the task's state. The panel sits beside the Board on a
+  computer (with a full-screen button) and fills the screen on a phone.
+- **Needs you** shows the Board's failure or question, its command output and next-step hint.
+  It offers **Retry**, **Send the error to the agent** (`fix`), **Open terminal** and, when
+  allowed, **Approve anyway** with confirmation. A setup failure offers **Start again**:
+  herdr-projects uses `delegate` before an agent has started. With no conversation, the panel
+  keeps the explanation visible instead of opening a bare shell; Terminal stays reachable
+  when a pane exists. Read-only and unreachable machines cannot run banner actions.
+- **A task's sheet**, from the panel's **…** button, has the same details and actions as
+  the Task tab. **Open the chat** closes it and opens the conversation. When the agent has
+  no pane, a field sends a reply through herdr-projects (`tell`; on a waiting plan, it sends
+  the plan back).
   **Approve** merges finished work or says yes to a plan, after a confirmation; **Start**,
   **Stop**, **Retry** and **Archive** where herdr-projects takes them. **Start** names the agent
   the task starts with by default (its `worker.agent` and where that comes from) and offers the
@@ -1297,7 +1304,7 @@ What the Board shows and does:
   progress, time on it, the line the board reports; the Board icon opens the task there). One
   row per task: its reviewer, planner and attempts, each in a tab of the task's space, are part
   of it; in normal mode the row says the stage (**Under review · codex**), and both modes
-  open the reviewer's tab while a review runs. The counters count tasks, not tabs. A repo
+  open the task panel while a review runs. The counters count tasks, not tabs. A repo
   coordinated from another machine shows **Coordinated from <machine>**. wherdr reads this from
   the board's files (`~/.herdr-projects/data`: tasks, attempts, reviewers, coordinators, repos)
   and from Herdr's worktree groups, every 15 seconds while the list is shown, never through

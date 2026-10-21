@@ -61,13 +61,13 @@ describe('a repo group on the home list', () => {
     it(`task density (${compact ? 'compact' : 'normal'}) keeps only useful information`, async () => {
       compactList.value = compact
       const asking = pane('w9:p1', { status: 'blocked', usageLimit: true, preview: 'Private conversation preview', prompt: { question: 'Continue?', cursor: 0, options: [{ label: 'Yes', hint: null }] } })
-      const w = await mountSuspended(AgentCard, { props: { pane: asking, board: { tag: 'SHOP-9', name: 'A long task title', progress: 30, since: useBoardNow().value - 420000, msg: 'Checking the layout', stage: 'Under review · codex' } } })
+      const w = await mountSuspended(AgentCard, { props: { pane: asking, board: { group: 'needs', tag: 'SHOP-9', name: 'A long task title', progress: 30, since: useBoardNow().value - 420000, msg: 'Checking the layout', stage: 'Under review · codex' } } })
       const card = w.find('.card')
       expect(card.classes()).toContain('compact')
       expect(card.find('.card-title').text()).toBe('A long task title')
       expect(card.find('.home-task-stats').text()).toBe('30% 7m')
-      expect(card.find('.task-attention').text()).toBe('Your turn')
-      expect(card.find('.card-state').exists()).toBe(true)
+      expect(card.find('.task-state').text()).toBe('Needs you')
+      expect(card.find('.card-state').exists()).toBe(false)
       expect(card.find('.card-more').exists()).toBe(false)
       expect(card.find('.card-main').exists()).toBe(false)
       expect(card.find('.home-task-line').exists()).toBe(!compact)
@@ -170,7 +170,7 @@ describe('a repo group on the home list', () => {
     expect(card.find('.avatar').classes().join(' ')).toContain('codex')
     navigate.mockClear()
     await card.trigger('click')
-    expect(navigate).toHaveBeenCalledWith('/a/w7%3Ap2')
+    expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: '', task: 'shop/7' } })
     w.unmount()
   })
 

@@ -24,8 +24,8 @@ import { cellMode, showComposer, terminalAttachment } from '~/utils/viewMode'
 import { carriesFiles, dragDepth } from '~/utils/fileDrop'
 import { interactionWindowFor } from '~/utils/interactionWindow'
 
-const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, grip?: boolean }>()
-const emit = defineEmits<{ activate: [] }>()
+const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, grip?: boolean, embedded?: boolean, selectedMode?: PaneViewMode }>()
+const emit = defineEmits<{ activate: [], 'update:selectedMode': [mode: PaneViewMode] }>()
 const route = useRoute()
 const router = useRouter()
 
@@ -70,6 +70,7 @@ const viewMode = computed<PaneViewMode>({
 const mode = computed<PaneViewMode | null>(() => {
   const p = pane.value
   if (!p) return null
+  if (props.embedded && props.selectedMode) return props.selectedMode
   if (props.cell) return cellMode({ chat: hasChat(p), viewMode: viewMode.value, active: props.active })
   return hasChat(p) ? viewMode.value : 'term'
 })
@@ -114,6 +115,7 @@ watch(mode, (m, old) => {
 }, { immediate: true })
 
 function setMode(m: PaneViewMode) {
+  if (props.embedded) emit('update:selectedMode', m)
   if (props.cell) emit('activate')
   viewMode.value = m
   if (desk.value && m === 'term') nextTick(() => ctl.focus())
@@ -477,7 +479,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
       <small>{{ dropTarget === 'term' ? t('The file path is sent to the terminal') : dropHint }}</small>
     </div>
     <SpaceTabs v-if="!cell && pane" :workspace="pane.workspace" :current="pane.tab" />
-    <HeaderMenu :items="() => agentMenu" :disabled="!pane">
+    <HeaderMenu v-if="!embedded" :items="() => agentMenu" :disabled="!pane">
       <header class="top bar agent-top">
         <span v-if="cell && grip" class="cell-grip" role="button" :aria-label="t('Drag to move the pane')" :title="t('Drag to move the pane')">
           <UIcon name="i-lucide-grip-vertical" />
