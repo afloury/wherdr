@@ -76,9 +76,9 @@ export function createSelectionSettler(o: { show: () => void, hide: () => void, 
   }
 }
 
-// Length of a piece of text without its trailing whitespace (spaces, newlines).
-// Returns the piece (index) and the offset just after its last non-blank
-// character, starting from the end; null if everything is blank.
+// Finds the last non-blank piece, ignoring trailing whitespace (spaces, newlines).
+// Returns its index and the offset just after its last non-blank character;
+// null if every piece is blank.
 export function trimmedEnd(parts: readonly string[]): { index: number, offset: number } | null {
   for (let i = parts.length - 1; i >= 0; i--) {
     const offset = parts[i]!.replace(/\s+$/u, '').length
