@@ -120,7 +120,7 @@ const faq = [
             </p>
             <div class="hero-ctas">
               <a class="btn primary" href="#install">Ask your AI agent <UIcon name="i-lucide-arrow-right" class="size-4" /></a>
-              <a class="btn" href="/demo/"><UIcon name="i-lucide-play" class="size-4" /> Try it in your browser — no install</a>
+              <a class="btn" href="/demo/"><UIcon name="i-lucide-play" class="size-4" /><span>Try it in your browser<span class="demo-install-note"> — no install</span></span></a>
               <a class="btn" :href="REPO" target="_blank" rel="noopener"><GithubMark /> Star on GitHub</a>
             </div>
             <p class="hero-note label">macOS and Linux · needs Herdr ≥ 0.9.1 · phone through Tailscale</p>
@@ -510,6 +510,9 @@ const faq = [
   .hv-phone { right: 0; }
   .sec-grid { grid-template-columns: repeat(2, 1fr); }
   .cells { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 400px) {
+  .demo-install-note { display: none; }
 }
 @media (max-width: 760px) {
   .story, .story.phones { grid-template-columns: minmax(0, 1fr); }
