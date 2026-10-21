@@ -20,7 +20,8 @@ import { spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { AccountQuota, ClaudeSetup, Quota, QuotaWindow, Quotas } from '../../shared/types'
+import type { AccountQuota, ClaudeSetup, ClaudeSetupState, Quota, QuotaWindow, Quotas } from '../../shared/types'
+import { readDismissed } from './claudeSetup'
 import type { ExecResult, MachineFs } from './fsx'
 import { HerdrError } from './herdr'
 import { allMachines, type Machine } from './machines'
@@ -96,17 +97,19 @@ async function ls(fs: MachineFs, d: string) {
 
 // Claude reading of a machine, with its account fingerprint if known.
 export type ClaudeReading = Quota & { account: string | null }
-export interface ClaudeMachineReading { q: ClaudeReading | null, setup: 'ok' | ClaudeSetup['state'] }
+export interface ClaudeMachineReading { q: ClaudeReading | null, setup: ClaudeSetupState }
 
 // wherdr's status line set up on a machine? `ok`: complete reading
 // (quotas + fingerprint), or an account without quotas (API key: nothing to show).
-// Otherwise, `pending` if the up-to-date status line (with fingerprint) is wired in
-// settings.json — the quotas will come with the next exchange —, `missing` otherwise.
-export function claudeSetupState(f: { status: Json | null, account: boolean, statusline: string | null, settings: string | null }): 'ok' | ClaudeSetup['state'] {
+// `pending`: the up-to-date status line (with fingerprint) is wired in
+// settings.json, the quotas will come with the next exchange. `outdated`: a
+// status file is there (the quotas show) but written by an older status line:
+// an update is offered, never "not set up". `missing`: nothing at all.
+export function claudeSetupState(f: { status: Json | null, account: boolean, statusline: string | null, settings: string | null }): ClaudeSetupState {
   if (f.status && (!f.status.rate_limits || f.account)) return 'ok'
   const installed = Boolean(f.statusline?.includes('claude-account') && f.settings?.includes('wherdr-statusline.sh'))
   if (installed) return f.status ? 'ok' : 'pending' // up to date, but no readable fingerprint: nothing more to do
-  return 'missing'
+  return f.status ? 'outdated' : 'missing'
 }
 
 // A file that is absent reads as null; any other failure (refused SSH session,
@@ -140,10 +143,11 @@ export async function readClaude(fs: MachineFs, home: string): Promise<ClaudeMac
         settings: await text(path.posix.join(home, '.claude/settings.json')),
       })
   // Legacy snapshots remain readable, but offer an update to remove the old
-  // ten-minute identity cache and separate-file race on every machine.
-  if (status && !bound) {
+  // ten-minute identity cache and separate-file race on every machine. Their
+  // quotas still show: `outdated`, not `missing` (which reads "not set up").
+  if (status && !bound && setup === 'ok') {
     const script = await text(path.posix.join(home, '.claude/wherdr-statusline.sh'))
-    if (!script?.includes('_wherdr')) setup = 'missing'
+    if (!script?.includes('_wherdr')) setup = 'outdated'
   }
   const q = status ? claudeQuota(status, at) : null
   return { q: q ? { ...q, account } : null, setup }
@@ -351,6 +355,7 @@ export async function readQuotas(force = false): Promise<Quotas> {
   if (!force && cache && Date.now() - cache.at < TTL) return cache.q
   const version = ++readVersion
   const online = allMachines().filter(m => m.home && !m.info().baseKey && (m.local || m.status === 'online'))
+  const dismissed = readDismissed()
   const readings = await Promise.all(online.map(async (m) => {
     const last = lastRead.get(m.key) || {}
     const [claude, rolled] = await Promise.all([
@@ -361,14 +366,24 @@ export async function readQuotas(force = false): Promise<Quotas> {
     const week = rolled?.week ? { used: rolled.week.used, resetsAt: rolled.week.resetsAt, at: rolled.at, account: rolled.account } : null
     const known = knownWeek ? await knownWeek(m.key, week).catch(() => null) : null
     const codex = rolled && applyCodexKnown(rolled, known, Date.now())
+    // Every machine read gets its state (Settings lists them all); a failed
+    // read gets none, so it never looks "not set up".
     const state = claude?.setup
-    const setup = state === 'missing' || state === 'pending' ? { key: m.key, state, installable: await canInstall(m) } : null
+    const setup: ClaudeSetup | null = state
+      ? { key: m.key, state, installable: await canInstall(m), ...(dismissed.has(m.key) ? { dismissed: true } : {}) }
+      : null
     return { key: m.key, label: m.label, claude: claude?.q || null, codex, setup }
   }))
   const q = mergeQuotas(readings)
   // A slow older poll must not replace a newer completed snapshot.
   if (version === readVersion) cache = { at: Date.now(), q }
   return q
+}
+
+// Next read starts afresh (install, suggestion dismissed).
+export function forgetQuotas() {
+  readVersion++
+  cache = null
 }
 
 // ---------------------------------------------------------------- installation
@@ -406,7 +421,6 @@ export async function installClaudeStatusline(m: Machine): Promise<string> {
   const r = m.local ? await runLocal(script, m.home) : await m.exec!('exec sh -s', [], { input: Buffer.from(script), timeoutMs: 60000 })
   const last = (s: string) => (s.trim().split('\n').filter(Boolean).pop() || '').slice(0, 300)
   if (r.code !== 0) throw new HerdrError('install_failed', fmt('Install failed on {machine}: {reason}', { machine: m.label, reason: last(r.stderr) || `code ${r.code}` }))
-  readVersion++
-  cache = null
+  forgetQuotas()
   return last(r.stdout.toString('utf8'))
 }

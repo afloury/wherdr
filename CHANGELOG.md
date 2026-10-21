@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **Claude quota setup moves to Settings › Agents and the setup guide.** Fixes “Claude quotas not set up” shown under machines whose Claude quotas were displayed (a regression of the atomic snapshots above: an older status line was reported as not installed; it is now *Update available*). The home list no longer shows an install banner: a machine's **…** menu offers **Set up Claude quotas** (or **Update**) and **Don’t suggest again**. Settings › Agents › **Claude quotas** lists each machine with Claude, its state, **Install** / **Update** and **Copy command**. The setup guide adds an optional **Quotas** step when a machine needs it; leaving it without installing stops the suggestion on every device (`data/claude-quotas.json`).
 - Claude quota snapshots bind the account fingerprint and observation time atomically. Update older status lines to remove the ten-minute identity cache. Failed Claude reads are retried once; after two failures, that machine's Claude gauge is temporarily omitted until reading recovers, instead of reusing an old account reading indefinitely. This supersedes the earlier keep-last-reading behavior for Claude; Codex is unchanged.
 
 - Home machine bar: named groups with editable membership and machine order, combined counts, device storage, and reorder/hide controls (English and French).

@@ -642,17 +642,18 @@ body.short-bottom { --safe-bottom: 0px; }
 /* Quotas of the Claude account specific to the machine (different accounts), under its header. */
 .machine-body .quotas.machine-quotas { margin: 2px 0 18px; }
 /* Claude quotas not configured on a machine that has Claude agents. */
-.claude-setup {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 2px 0 18px; padding: 9px 10px 9px 12px;
-  border: 1px dashed var(--line-strong); font: 400 12px/1.4 var(--mono); color: var(--text-3);
-}
-.claude-setup.solo { margin-top: -12px; margin-bottom: 26px; }
-.claude-setup-icon { width: 15px; height: 15px; flex: none; color: var(--ochre); }
-.claude-setup.pending .claude-setup-icon { color: var(--dim); }
-.claude-setup p { flex: 1 1 180px; min-width: 0; margin: 0; }
-.claude-setup p small { display: block; margin-top: 2px; font-size: 11px; color: var(--dim); }
-.claude-setup-actions { display: flex; gap: 6px; margin-left: auto; }
-.claude-setup-actions .iconify { width: 14px; height: 14px; }
+/* Claude quota status line per machine (ClaudeQuotaSetup.vue): Settings › Agents, setup guide. */
+.claude-quotas .settings-lead { margin-bottom: 12px; }
+.claude-quotas-empty { font-size: 13px; margin: 0 2px; }
+.claude-quotas-machine { padding: 14px 16px; border: 1px solid var(--line); background: var(--bg-2); }
+.claude-quotas-machine + .claude-quotas-machine { border-top: 0; }
+.claude-quotas-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.claude-quotas-head strong { min-width: 0; font-size: 15px; overflow-wrap: anywhere; }
+.claude-quotas-head span { flex: none; text-align: right; color: var(--muted); font: 500 10.5px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+.claude-quotas-head .ok { color: var(--teal); }
+.claude-quotas-head .missing, .claude-quotas-head .outdated { color: var(--ochre); }
+.claude-quotas-note { margin: 8px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.claude-quotas-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 /* New wherdr version (home, Settings › About). */
 .update-banner {
   display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px 12px; margin: -12px 0 26px; padding: 9px 10px 9px 12px;
