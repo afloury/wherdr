@@ -210,6 +210,10 @@ Details in [Features](#features) and [Security](#security).
   of local commands. Stop button while the agent works. A long pasted text (log, output) becomes
   a "Pasted text · N lines" card, sent to the agent as it is and shown the same way in the
   conversation, where it opens in full with Copy; long typed messages fold with Show more.
+  The draft (text, quotes, attachments) is kept per agent, across reloads: when Herdr closes a
+  pane and opens a new one for the same agent (the same conversation, or the same herdr-projects
+  coordinator or task, as after `coordinator restart`), the view moves to the new pane and the
+  draft comes along. A pane closed for good keeps it under its banner, with **Copy draft**.
 - **Codex updates and limits**: in a Codex conversation, a new Codex version shows above the
   field with an **Update** button (runs Codex's official update command on that machine, after
   confirmation), then **Restart to update** on the same conversation. When wherdr cannot run it
