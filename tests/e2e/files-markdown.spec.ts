@@ -145,3 +145,37 @@ test('the Markdown toggle speaks French', async ({ page }, info) => {
   await expect(page.locator('.files-md').getByRole('heading', { level: 1, name: 'Lantern' })).toBeVisible()
   if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/${info.project.name}-files-markdown-fr.png` })
 })
+
+// Each file read gets its own images: Refresh reads them again, and another
+// file with the same text shows its own, not the previous one's.
+test('images follow the file shown and Refresh', async ({ page }) => {
+  const svg = (fill: string) => `data:image/svg+xml;base64,${Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="${fill}"/></svg>`).toString('base64')}`
+  const text = 'Pictures.\n\n![Diagram](diagram.svg)\n\n[Other](b/README.md)\n'
+  const images: Record<string, string> = { 'diagram.svg': svg('red'), 'b/diagram.svg': svg('blue') }
+  const read: string[] = []
+  await page.route('**/api/files?**', r => r.fulfill({ json: { root: ROOT, path: new URL(r.request().url()).searchParams.get('path') ?? '', truncated: false, entries: [{ name: 'README.md', kind: 'file', size: text.length, link: false }] } }))
+  await page.route('**/api/files/read?**', (r) => {
+    const path = new URL(r.request().url()).searchParams.get('path')!
+    read.push(path)
+    if (path.endsWith('README.md')) return r.fulfill({ json: { path, size: text.length, kind: 'text', text, truncated: false } })
+    return r.fulfill({ json: { path, size: 100, kind: 'image', dataUrl: images[path], truncated: false } })
+  })
+  await page.goto(`/#/a/${OMP_CHAT_PANE}`)
+  await expect(page.locator('.chat').getByText('Ready when you are.')).toBeVisible()
+  await page.locator('.agent-top').getByRole('button', { name: 'Options', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Browse files', exact: true }).or(page.getByRole('button', { name: 'Browse files', exact: true })).click()
+  await page.locator('.files-entry', { hasText: 'README.md' }).click()
+  const img = page.locator('.files-md img[alt="Diagram"]')
+  await expect(img).toHaveAttribute('src', svg('red'))
+
+  images['diagram.svg'] = svg('green')
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click()
+  await expect(img).toHaveAttribute('src', svg('green'))
+
+  await page.locator('.files-md').getByRole('link', { name: 'Other' }).click()
+  await expect(page.locator('.files-crumb.current')).toHaveText('README.md')
+  await expect(page.locator('.files-crumb').nth(1)).toHaveText('b')
+  await expect(img).toHaveAttribute('src', svg('blue'))
+  expect(read.filter(p => p === 'diagram.svg')).toHaveLength(2)
+  expect(read).toContain('b/diagram.svg')
+})

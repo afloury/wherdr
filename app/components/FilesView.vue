@@ -143,7 +143,11 @@ async function loadImages(el: HTMLElement, from: string) {
     if (url) img.src = url
   }
 }
-watch([rendered, doc], async ([html, el]) => {
+// Each file read is a new document (its own DOM, its images read again), even
+// when its text is the same as the previous one's: Refresh, or another file.
+const readSerial = ref(0)
+watch(preview, () => { readSerial.value++ })
+watch([rendered, doc, readSerial], async ([html, el]) => {
   imageRun++
   if (!html || !el || !preview.value) return
   await nextTick()
@@ -251,7 +255,7 @@ function icon(e: FileEntry) {
         <p v-else-if="preview.kind === 'binary'" class="changes-notice">{{ t('Binary file') }}</p>
         <p v-else-if="preview.kind === 'large'" class="changes-notice">{{ /\.pdf$/i.test(preview.path) ? t('PDF too large to preview (50 MB max).') : t('Image too large to preview.') }}</p>
         <!-- eslint-disable-next-line vue/no-v-html -- sanitised by utils/markdown.ts -->
-        <article v-else-if="rendered" ref="doc" class="md md-body files-md" :aria-label="preview.path" @click="onDocClick" v-html="rendered" />
+        <article v-else-if="rendered" :key="readSerial" ref="doc" class="md md-body files-md" :aria-label="preview.path" @click="onDocClick" v-html="rendered" />
         <div v-else class="files-code" role="region" :aria-label="preview.path">
           <pre class="files-num" aria-hidden="true">{{ code.numbers }}</pre><pre class="files-text">{{ code.text }}</pre>
         </div>
