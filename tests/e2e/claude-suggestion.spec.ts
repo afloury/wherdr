@@ -98,7 +98,7 @@ test.describe('phone', () => {
 test.describe('computer', () => {
   test.skip(({ isMobile }) => Boolean(isMobile), 'computers only')
 
-  test('no button; Tab takes the suggestion', async ({ page }, testInfo) => {
+  test('no button; Tab takes the suggestion', { tag: '@chromium-desktop' }, async ({ page }, testInfo) => {
     const { field, use, ask } = await open(page, CLAUDE_SUGGEST_ASK_PANE, SUGGEST_ASK)
     await expect(ask).toHaveText('2 questions unanswered')
     await expect(use).toHaveCount(0)

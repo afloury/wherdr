@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import fs from 'node:fs/promises'
 
 for (const language of ['en', 'fr']) {
-  test(`machine groups: filter, edit, drag and persist (${language})`, async ({ page }, info) => {
+  test(`machine groups: filter, edit, drag and persist (${language})`, { tag: '@webkit-phone' }, async ({ page }, info) => {
     await expect.poll(async () => (await (await page.request.get('/api/state')).json()).ok).toBe(true)
     const base = await (await page.request.get('/api/state')).json()
     const keys = ['', 'laptop', 'buildbox']

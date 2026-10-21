@@ -112,7 +112,7 @@ async function shortViewport(page: Page) {
   await expect.poll(async () => (await viewport(page)).kb).toBe(true)
 }
 
-test('keyboard open: Send still sends when the browser drops the click after the touch, as Safari does after a pan', async ({ page }, testInfo) => {
+test('keyboard open: Send still sends when the browser drops the click after the touch, as Safari does after a pan', { tag: '@webkit-phone' }, async ({ page }, testInfo) => {
   const text = `No click (${testInfo.project.name} ${Date.now()})`
   const field = await openChat(page, text)
   await shortViewport(page)
@@ -143,7 +143,7 @@ test('keyboard open: Send still sends when the browser drops the click after the
   expect(await page.evaluate(() => (window as unknown as { droppedClicks: number }).droppedClicks)).toBe(0)
 })
 
-test('keyboard open: a tap on Send sends once and keeps the focus in the field', async ({ page }, testInfo) => {
+test('keyboard open: a tap on Send sends once and keeps the focus in the field', { tag: '@webkit-phone' }, async ({ page }, testInfo) => {
   const text = `One tap (${testInfo.project.name} ${Date.now()})`
   const field = await openChat(page, text)
   await shortViewport(page)
