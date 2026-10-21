@@ -526,6 +526,7 @@ const FR: Record<string, string> = {
   'Notifications are not enabled on this device': 'Notifications non activées sur cet appareil',
   'Invalid path': 'Chemin invalide',
   'done must be true or false': 'done doit valoir true ou false',
+  'keys and dismissed are required': 'keys et dismissed sont requis',
   // Space action errors (shared/spaceActions.ts)
   'empty name': 'nom vide', 'invalid direction': 'direction invalide', 'invalid destination': 'destination invalide',
   'tab on another machine': 'onglet d’une autre machine', 'pane on another machine': 'pane d’une autre machine',
