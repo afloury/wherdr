@@ -131,7 +131,7 @@ describe('a repo group on the home list', () => {
     expect(sum.text()).toBe('4 tasks·1 your turn·2 working·1 limit')
     expect(sum.find('.project-sum-blocked').text()).toBe('1 your turn')
     expect(sum.find('.project-sum-limit').text()).toBe('1 limit')
-    // Each part is whole (a narrow column wraps between parts), and the
+    // Each part is whole, and the
     // fold button's title says the whole summary.
     expect(sum.findAll('.project-sum-part').map(p => p.text())).toEqual(['4 tasks·', '1 your turn·', '2 working·', '1 limit'])
     expect(w.find('.project-head').attributes('title')).toBe('Hide the tasks of shop: 4 tasks · 1 your turn · 2 working · 1 limit')
@@ -230,11 +230,11 @@ describe('a repo group on the home list', () => {
     w.unmount()
   })
 
-  it('the normal list: the coordinator stays one larger row, without its folder or last message', async () => {
+  it('the normal list: the coordinator keeps the compact hierarchy, without its folder or last message', async () => {
     compactList.value = false
     const w = await mount(section())
     const card = w.find('.project-lead .card')
-    expect(card.classes()).toContain('home-lead-big')
+    expect(card.classes()).not.toContain('home-lead-big')
     expect(card.find('.card-where').exists()).toBe(false)
     expect(card.find('.home-task-line').exists()).toBe(false)
     expect(card.find('.card-preview').exists()).toBe(false)

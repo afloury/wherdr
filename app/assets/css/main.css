@@ -466,37 +466,32 @@ body.short-bottom { --safe-bottom: 0px; }
 
 /* herdr-projects on the home list (ProjectGroup): a repo's group. Its head
    row is its coordinator (the wherdr mark on the accent, the repo's name in
-   the title face, COORDINATOR, its state), larger than its tasks; under it the
+   the title face, COORDINATOR, its state), bold above its tasks; under it the
    group's bar (fold, summary of the tasks, branch, "…"); then the tasks,
    indented on a 1 px rule that starts at the fold chevron. */
 .project.collapsed { margin-bottom: 12px; }
 .list-compact .project.collapsed { margin-bottom: 8px; }
-.card.compact.home-lead { min-height: 44px; gap: 10px; padding: 7px 12px 7px 12px; }
-.card.compact.home-lead.home-lead-big { min-height: 56px; gap: 12px; padding: 10px 14px 10px 14px; }
+.card.compact.home-lead { min-height: 40px; gap: 8px; padding: 5px 10px; }
 .card.compact.home-lead .lead-mark {
-  width: 28px; height: 28px; display: grid; place-items: center; flex: none;
+  width: 18px; height: 18px; display: grid; place-items: center; flex: none;
   font: 700 13px/1 var(--mono); color: var(--text-2); background: var(--surface); border: 1px solid var(--line-strong);
 }
-.card.compact.home-lead-big .lead-mark { width: 34px; height: 34px; font-size: 15px; }
 .card.compact.home-lead .lead-mark.coord { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
-.card.compact.home-lead .lead-mark .app-logo { width: 18px; height: 8px; }
-.card.compact.home-lead-big .lead-mark .app-logo { width: 22px; height: 9.6px; }
+.card.compact.home-lead .lead-mark .app-logo { width: 14px; height: 6px; }
 .card.compact.home-lead .card-title.lead-name {
-  font: 750 16px/1.2 var(--display); letter-spacing: -.02em; color: var(--text);
+  font: 750 14px/1.2 var(--display); letter-spacing: -.02em; color: var(--text);
 }
-.card.compact.home-lead-big .card-title.lead-name { font-size: 18px; }
 .card.compact.home-lead .card-tag.lead-coord-tag {
-  padding: 2px 6px; font-size: 9.5px; letter-spacing: .14em; color: var(--accent); border-color: var(--accent);
+  padding: 2px 4px; font-size: 8px; letter-spacing: .06em; color: var(--muted); border-color: var(--line);
 }
 .card.compact.home-lead .card-state { width: 12px; height: 12px; }
 .card.compact.home-lead .card-state i { width: 9px; height: 9px; }
 .card.compact.home-lead .card-state.blocked i { width: 10px; height: 10px; }
-.card.compact.home-lead .card-more-in { padding-left: 38px; }
-.card.compact.home-lead-big .card-more-in { padding-left: 46px; }
-@media (pointer: coarse) { .card.compact.home-lead { min-height: 48px; } }
+.card.compact.home-lead .card-more-in { padding-left: 26px; }
+@media (pointer: coarse) { .card.compact.home-lead { min-height: 44px; } }
 
 .project-bar { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 0 0 0 5px; }
-.project-bar > :first-child { flex: 1; min-width: 0; }
+.project-bar > :first-child { flex: 1 0 auto; width: max-content; min-width: 0; max-width: calc(100% - 44px); }
 .project-head {
   display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: 32px; padding: 4px 0; text-align: left; cursor: pointer;
   -webkit-touch-callout: none; user-select: none; color: var(--muted);
@@ -507,17 +502,17 @@ body.short-bottom { --safe-bottom: 0px; }
 .project-chev { width: 14px; height: 14px; flex: none; color: var(--dim); transition: transform .15s ease; }
 .project.collapsed .project-chev { transform: rotate(-90deg); }
 .project-sum {
-  display: flex; flex-wrap: wrap; row-gap: 4px; min-width: 0;
-  font: 500 10.5px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+  display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font: 500 10px/1.2 var(--mono); letter-spacing: .02em; text-transform: uppercase; color: var(--muted);
 }
 .list-compact .project-sum { font-size: 10px; }
 .project-sum-part { white-space: nowrap; }
-.project-sum-sep { margin: 0 .5em; color: var(--dim); }
+.project-sum-sep { margin: 0 .3em; color: var(--dim); }
 .project-sum-blocked { color: var(--blocked); }
 .project-sum-working { color: var(--working); }
 .project-sum-limit { color: var(--ochre); }
 .project-branch {
-  flex: 0 1 auto; min-width: 0; max-width: 40%; display: inline-flex; align-items: center; gap: 4px;
+  flex: 0 1 auto; min-width: 0; max-width: 24%; overflow: hidden; display: inline-flex; align-items: center; gap: 4px;
   font: 400 11px/1.2 var(--mono); letter-spacing: .02em; color: var(--dim); white-space: nowrap;
 }
 .project-branch .iconify { width: 11px; height: 11px; flex: none; }
