@@ -31,8 +31,10 @@ const stats = () => fakeHerdr('e2e.update_starts', { pane_id: CODEX_UPDATE_PANE 
 const post = (page: Page, endpoint: string, data: object) => page.request.post(`/api/${endpoint}`, {
   headers: { Origin: new URL(page.url()).origin }, data: { pane_id: CODEX_UPDATE_PANE, ...data },
 })
+// Commit resets at the next poll snapshot: an in-flight observation must
+// finish reading the old invocation before the fake exposes the new PID.
 async function stopAfterUpdate(page: Page, existing = false, question = 'Codex updated itself and stopped') {
-  const { pid } = await fakeHerdr('e2e.update_reset', { pane_id: CODEX_UPDATE_PANE, ...(existing ? { session: CODEX_UPDATE_SESSION } : {}) })
+  const { pid } = await fakeHerdr('e2e.update_reset', { onSnapshot: true, pane_id: CODEX_UPDATE_PANE, ...(existing ? { session: CODEX_UPDATE_SESSION } : {}) })
   await page.goto(`/#/a/${CODEX_UPDATE_PANE}`)
   // Wait for wherdr to capture this invocation's argv and conversation.
   await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, conversation: existing ? 'existing' : 'empty', ...(existing ? { session: CODEX_UPDATE_SESSION } : {}) })
@@ -66,7 +68,7 @@ const leaving = async (page: Page) => {
 }
 
 test('a Project message sent before the card appears is held, never typed into the shell', async ({ page }) => {
-  const { pid } = await fakeHerdr('e2e.update_reset', { pane_id: CODEX_UPDATE_PANE })
+  const { pid } = await fakeHerdr('e2e.update_reset', { onSnapshot: true, pane_id: CODEX_UPDATE_PANE })
   await page.goto(`/#/a/${CODEX_UPDATE_PANE}`)
   await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, conversation: 'empty' })
   await fakeHerdr('e2e.update_exit', { pane_id: CODEX_UPDATE_PANE })
@@ -135,7 +137,7 @@ test('Dismiss forgets the update and gives the pane back as a plain shell', asyn
 })
 
 test('a Codex that simply left gives the message held meanwhile back into the field', async ({ page }, info) => {
-  const { pid } = await fakeHerdr('e2e.update_reset', { pane_id: CODEX_UPDATE_PANE })
+  const { pid } = await fakeHerdr('e2e.update_reset', { onSnapshot: true, pane_id: CODEX_UPDATE_PANE })
   await page.goto(`/#/a/${CODEX_UPDATE_PANE}`)
   await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, conversation: 'empty' })
   // /exit, no update: a bare shell whose screen is not checked yet.
@@ -209,7 +211,7 @@ for (const draft of ["echo '\n> ", 'cat <<EOF\n> ']) {
   test(`a continuation draft present before the first exit check never allows a restart: ${draft.split('\n')[0]}`, async ({ page }) => {
     await stopAfterUpdate(page)
     // Re-arm a new invocation, then atomically exit with a pre-existing draft.
-    const { pid } = await fakeHerdr('e2e.update_reset', { pane_id: CODEX_UPDATE_PANE })
+    const { pid } = await fakeHerdr('e2e.update_reset', { onSnapshot: true, pane_id: CODEX_UPDATE_PANE })
     await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, conversation: 'empty' })
     await fakeHerdr('e2e.update_exit', { pane_id: CODEX_UPDATE_PANE, draft })
     await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, checked: true })
@@ -223,7 +225,7 @@ for (const draft of ["echo '\n> ", 'cat <<EOF\n> ']) {
 
 test('a rapidly replaced process keeps its own arguments through the restart API', async ({ page }) => {
   await stopAfterUpdate(page)
-  const first = await fakeHerdr('e2e.update_reset', { pane_id: CODEX_UPDATE_PANE })
+  const first = await fakeHerdr('e2e.update_reset', { onSnapshot: true, pane_id: CODEX_UPDATE_PANE })
   await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid: first.pid, conversation: 'empty' })
   const second = await fakeHerdr('e2e.update_replace', { pane_id: CODEX_UPDATE_PANE, argv: ['codex', '--profile', 'second', 'second task'] })
   await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid: second.pid, argv: ['codex', '--profile', 'second', 'second task'] })
@@ -238,7 +240,7 @@ test('an empty transcript followed by a failed final read offers Resume with the
   const original = fs.readFileSync(file, 'utf8')
   try {
     fs.writeFileSync(file, original.split('\n')[0] + '\n')
-    const { pid } = await fakeHerdr('e2e.update_reset', { pane_id: CODEX_UPDATE_PANE, session: CODEX_UPDATE_SESSION })
+    const { pid } = await fakeHerdr('e2e.update_reset', { onSnapshot: true, pane_id: CODEX_UPDATE_PANE, session: CODEX_UPDATE_SESSION })
     await page.goto(`/#/a/${CODEX_UPDATE_PANE}`)
     await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, conversation: 'empty', session: CODEX_UPDATE_SESSION })
     // First messages arrive, but the final re-read cannot read the transcript.
@@ -258,7 +260,7 @@ test('an empty transcript followed by a failed final read offers Resume with the
 
 test('guessed B invalidates exact A before a final read failure and Resume opens the picker', async ({ page }) => {
   await stopAfterUpdate(page, true)
-  const { pid } = await fakeHerdr('e2e.update_reset', { pane_id: CODEX_UPDATE_PANE, session: CODEX_UPDATE_SESSION })
+  const { pid } = await fakeHerdr('e2e.update_reset', { onSnapshot: true, pane_id: CODEX_UPDATE_PANE, session: CODEX_UPDATE_SESSION })
   await expect.poll(record, { timeout: 15000 }).toMatchObject({ pid, session: CODEX_UPDATE_SESSION, conversation: 'existing' })
   const sessionB = `00000000-0000-4000-8000-${String(pid).padStart(12, '0')}`
   const file = transcriptFile(sessionB)
