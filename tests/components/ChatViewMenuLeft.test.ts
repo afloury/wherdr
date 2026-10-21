@@ -8,7 +8,8 @@ import ChatView from '~/components/ChatView.vue'
 import { herdrState } from '~/composables/useHerdr'
 import type { Pane } from '#shared/types'
 
-registerEndpoint('/api/chat', () => ({ available: true, token: 'menu-left', file: '/tmp/demo/transcript.jsonl', items: [{ role: 'user', text: 'Write the release notes.', ts: '2026-01-01T00:00:00Z' }] }))
+let available = true
+registerEndpoint('/api/chat', () => ({ available, reason: available ? undefined : 'not_found', token: 'menu-left', file: '/tmp/demo/transcript.jsonl', items: [{ role: 'user', text: 'Write the release notes.', ts: '2026-01-01T00:00:00Z' }] }))
 const calls: unknown[] = []
 registerEndpoint('/api/menu-left', { method: 'POST', handler: async (event) => { calls.push(await readBody(event)); return { ok: true, closed: true, sent: 1 } } })
 
@@ -23,7 +24,7 @@ async function mount(pane: Pane) {
 }
 
 describe('menu left open in the terminal', () => {
-  afterEach(() => { calls.length = 0; herdrState.value = { ok: false, workspaces: [], panes: [] } })
+  afterEach(() => { available = true; calls.length = 0; herdrState.value = { ok: false, workspaces: [], panes: [] } })
 
   it('says the menu is still open and closes it, or sends anyway', async () => {
     const w = await mount({ ...base, queued, menuLeftOpen: true })
@@ -49,4 +50,31 @@ describe('menu left open in the terminal', () => {
       expect(w.find('.menu-left').exists()).toBe(false)
     } finally { w.unmount() }
   })
+
+  it('leaves the waiting explanation to the open menu on a blocked agent', async () => {
+    const w = await mount({ ...base, status: 'blocked', queued, menu: {
+      title: 'Hooks', items: [], lines: [], actions: [{ key: 'esc', label: 'cancel' }],
+      cursor: null, search: null, more: null,
+    } })
+    try {
+      expect(w.find('.chat-status.waiting').exists()).toBe(false)
+      expect(w.find('.chat-empty.waiting').exists()).toBe(false)
+      // An unrecognized blocked screen still needs its terminal hint.
+      await w.setProps({ pane: { ...base, status: 'blocked', queued } })
+      expect(w.find('.chat-status.waiting').text()).toContain('Waiting for your reply')
+    } finally { w.unmount() }
+  })
+
+
+  it('shows only one waiting hint when a transcript is not available yet', async () => {
+    available = false
+    const w = await mount({ ...base, id: 'w1:p2', status: 'blocked', queued, screen: {
+      kind: 'other', title: null, lines: ['Waiting for input'], actions: [],
+    } })
+    try {
+      await expect.poll(() => w.find('.chat-empty.waiting').exists()).toBe(true)
+      expect(w.find('.chat-status.waiting').exists()).toBe(false)
+    } finally { w.unmount() }
+  })
+
 })
