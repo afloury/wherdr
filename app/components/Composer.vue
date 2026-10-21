@@ -370,7 +370,7 @@ function onPaste(e: ClipboardEvent) {
       return
     }
     // A pasted line that reads as a reference stays plain text: only the
-    // buttons of the conversation and of the Project panel write references.
+    // conversation's own buttons write references.
     const plain = unreference(s)
     if (plain === s) return // normal paste
     e.preventDefault()

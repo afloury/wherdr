@@ -1,6 +1,6 @@
 // One syntax for everything a message of the user refers to: an agent message,
 // a point of it (a question, a list item, a selected passage), a row of a
-// decision table, or a task of the Project panel. A reference is one whole
+// decision table, or a task (older messages). A reference is one whole
 // line, the answer goes on the lines below it:
 //   ↳ Quote message 11:37 : I can merge the PR —
 //   Go ahead.
@@ -16,8 +16,9 @@
 //   minute, or two tables of one message. The app reads it, nobody else has to.
 // - The excerpt is plain text on one line, cut with "…" when long: the time
 //   and the number find the message, the excerpt says which part of it.
-// - The actions of the Project panel keep their own labels, in both languages
-//   ("↳ Decision: <task> —", "↳ Décision : <task> —").
+// - Task references keep their own labels, in both languages ("↳ Decision:
+//   <task> —", "↳ Décision : <task> —"): herdr-projects 0.2's task actions
+//   wrote them, and messages sent then still show them as references.
 // Any other line is the user's own text, a "↳" typed by hand included.
 import { OLD_MARKER_START, plainText, truncate, truncateMiddle } from './replyQuote'
 

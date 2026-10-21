@@ -267,7 +267,7 @@ describe('commands, by repo, and push', () => {
     expect(coordinatorStatusArgs({ kind: 'machine' })).toEqual(['coordinator', '--machine', '--json', 'status'])
     expect(coordinatorStatusArgs({ kind: 'project', repo: 'demo-2' })).toEqual(['coordinator', '--project=demo-2', '--json', 'status'])
     const st = (o: Record<string, unknown>) => parseCoordinatorStatus(JSON.stringify({ name: 'demo coordinator', agent: 'claude', ...o }))
-    for (const state of ['working', 'blocked', 'idle']) expect(st({ state, pane: 'w4:p2' })).toEqual({ state, pane: 'w4:p2', error: '', name: 'demo coordinator' })
+    for (const state of ['working', 'blocked', 'idle']) expect(st({ state, pane: 'w4:p2' })).toEqual({ state, pane: 'w4:p2', error: '', name: 'demo coordinator', queued: null })
     // No agent answering in it: nothing to talk to.
     for (const state of ['none', 'starting', 'exited']) expect(st({ state, pane: 'w4:p2' }).pane).toBeNull()
     expect(st({ state: 'idle', pane: '' }).pane).toBeNull()
@@ -278,19 +278,24 @@ describe('commands, by repo, and push', () => {
   it('a failed start: why, as herdr-projects wrote it down, on one line', () => {
     // herdr-projects 1.2.1 after a start that failed: still "starting" (its words wait), never tried again by itself.
     const failed = parseCoordinatorStatus(JSON.stringify({ name: 'Coordinator', state: 'starting', agent: 'claude', pane: 'w1:p3', queued: 1, error: '"claude" is not installed here, so it cannot be the Coordinator.' }))
-    expect(failed).toEqual({ state: 'starting', pane: null, error: '"claude" is not installed here, so it cannot be the Coordinator.', name: 'Coordinator' })
+    expect(failed).toEqual({ state: 'starting', pane: null, error: '"claude" is not installed here, so it cannot be the Coordinator.', name: 'Coordinator', queued: 1 })
     expect(parseCoordinatorStatus(JSON.stringify({ state: 'none', error: '  it could not\n be started  ' })).error).toBe('it could not be started')
     expect(parseCoordinatorStatus(JSON.stringify({ state: 'none', error: 42 })).error).toBe('')
     expect(parseCoordinatorStatus(JSON.stringify({ state: 'none', error: 'x'.repeat(1000) })).error).toHaveLength(400)
     // Older replies, without an error or a name.
-    expect(parseCoordinatorStatus(JSON.stringify({ state: 'none', pane: '' }))).toEqual({ state: 'none', pane: null, error: '', name: '' })
+    expect(parseCoordinatorStatus(JSON.stringify({ state: 'none', pane: '' }))).toEqual({ state: 'none', pane: null, error: '', name: '', queued: null })
+  })
+
+  it('preserves only valid queue counts and leaves missing counts unknown', () => {
+    for (const queued of [0, 1, 3]) expect(parseCoordinatorStatus(JSON.stringify({ queued })).queued).toBe(queued)
+    for (const queued of [undefined, null, -1, 1.5, '1', true]) expect(parseCoordinatorStatus(JSON.stringify({ queued })).queued).toBeNull()
   })
 
   it('what the panel shows for a coordinator: its conversation, its failure, its start, or the first-message field', () => {
     const phase = (state: string, pane: string | null = null, error = '') => coordinatorPhase({ state, pane, error })
-    // Running, with a pane: its conversation, whatever an earlier error said (a message that could not be typed).
+    // Running, with a pane: its conversation, whatever an earlier error said (an unsent message).
     expect(phase('idle', 'w1:p1')).toBe('live')
-    expect(phase('working', 'w1:p1', 'the message could not be typed')).toBe('live')
+    expect(phase('working', 'w1:p1', 'your message sits unsent in its box. Go into it and press enter.')).toBe('live')
     // Given up: the error, never "starting", though herdr-projects still says so while the words wait.
     expect(phase('starting', null, '"claude" is not installed here, so it cannot be the Coordinator.')).toBe('failed')
     for (const state of ['none', 'exited', 'idle', '']) expect(phase(state, null, 'it could not be started')).toBe('failed')

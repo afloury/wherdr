@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Home machine bar: named groups with editable membership and machine order, combined counts, device storage, and reorder/hide controls (English and French).
+
+- **wherdr.dev shows the herdr-projects 1.x Board**: the herdr-projects story and its live demo now show the Board (a task reviewed, approved and moved to Done; the Coordinator turning a message into a task) instead of herdr-projects 0.2's Project panel, threads and TASKS.md.
+- Coordinator failure messages distinguish startup and message delivery errors, and report the actual pending message count in English and French.
 - **Useful home list densities**: Compact keeps each Board task on one line (agent, key, truncated title, progress, duration and state, with Your turn when needed). Normal adds one activity line with relevant limit or review labels. Large detailed cards are removed; coordinators and other agents stay dense too, while agents outside the Board keep their one-tap answers. Settings keeps the existing compact/normal choice, with Compact still the default.
 
 ### ⚠ Breaking change: herdr-projects 1.2.1 or later (next major version, 2.0.0)
