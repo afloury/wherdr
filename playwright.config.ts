@@ -13,7 +13,13 @@ export default defineConfig({
   retries: 0,
   timeout: 30_000,
   expect: { timeout: 10_000 },
-  reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
+  reporter: process.env.CI ? [
+    ['list'],
+    ['html', { open: 'never' }],
+    ['json', { outputFile: 'test-results/report.json' }],
+    ['blob'],
+    ['./tests/e2e/timing-reporter.ts'],
+  ] : 'list',
   use: {
     baseURL: BASE_URL,
     locale: 'en-US',

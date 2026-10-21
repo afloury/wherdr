@@ -132,18 +132,25 @@ jobs:
         if: steps.pw-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps ${{ steps.pw.outputs.browser }}
 
-      - run: npm run build
+      - name: Build and record duration
+        run: |
+          mkdir -p e2e-metrics
+          /usr/bin/time -f '%e' -o e2e-metrics/build-seconds.txt npm run build
 
+      # The timing reporter records startup/collection and test/teardown in ms;
+      # the JSON report includes collected tests and their final skip status.
       - name: End-to-end tests
         run: npm run test:e2e -- --project=${{ matrix.project }}
 
       - uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: playwright-report-${{ matrix.project }}-${{ github.run_attempt }}
           path: |
             playwright-report/
             test-results/
+            blob-report/
+            e2e-metrics/
           retention-days: 7
 
   # The required check. `always()`: a skipped job would count as a success, so
