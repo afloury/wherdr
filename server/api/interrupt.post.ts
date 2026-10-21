@@ -7,21 +7,24 @@ import { interruptAgent } from '../utils/interruptSeq'
 
 export default defineApi(async (event, b) => {
   if (!PANE_RE.test(b.pane_id || '')) throw new HerdrError('bad_pane', 'Invalid pane')
-  const p = findPane(b.pane_id)
-  if (!p || !p.agent) throw new HerdrError('bad_pane', 'No agent in this pane')
-  const r = await interruptAgent({ call: (m, params, t) => herdr(m, params, t), sleep, now: Date.now }, p)
-  let restored: string | undefined
-  let lost = 0
-  if (r.stopped && b.restore === true && p.agent === 'claude') {
-    const item = await takeBackFromClaude(p)
-    if (item) {
-      const back = takeBack(p.id, item)
-      restored = back.text
-      lost = back.lost
-      log(`interrupted prompt taken back on ${p.id}`)
+  // Keep Escape, verification and draft recovery together with other pane writes.
+  return withPaneLock(b.pane_id, async () => {
+    const p = findPane(b.pane_id)
+    if (!p || !p.agent) throw new HerdrError('bad_pane', 'No agent in this pane')
+    const r = await interruptAgent({ call: (m, params, t) => herdr(m, params, t), sleep, now: Date.now }, p)
+    let restored: string | undefined
+    let lost = 0
+    if (r.stopped && b.restore === true && p.agent === 'claude') {
+      const item = await takeBackFromClaude(p)
+      if (item) {
+        const back = takeBack(p.id, item)
+        restored = back.text
+        lost = back.lost
+        log(`interrupted prompt taken back on ${p.id}`)
+      }
     }
-  }
-  setTimeout(poll, 100)
-  // `lost`: photos of that prompt whose path is unknown (Claude keeps no copy).
-  return { ok: true, ...r, ...(restored !== undefined ? { restored } : {}), ...(lost ? { lost } : {}) }
+    setTimeout(poll, 100)
+    // `lost`: photos of that prompt whose path is unknown (Claude keeps no copy).
+    return { ok: true, ...r, ...(restored !== undefined ? { restored } : {}), ...(lost ? { lost } : {}) }
+  })
 })
