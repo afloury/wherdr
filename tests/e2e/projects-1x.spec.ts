@@ -41,7 +41,7 @@ case "$1" in
   delegate) case "$2" in --worker.agent=*) printf '%s' "\${2#--worker.agent=}" > '${root}/own-agent' ;; esac; echo "done" ;;
   set) printf '%s' "$5" > '${root}/own-agent'; echo "set" ;;
   unset) rm -f '${root}/own-agent'; echo "unset" ;;
-  stop|retry|fix) echo "$3: done" ;;
+  stop|retry|fix|finish) echo "$3: done" ;;
   # Archived: in the archived list from now on (the board's list still has it here).
   archive) printf '[{"id":"%s","state":"done","title":"Archived","stage":"failed","archivedAt":1}]' "$3" > '${root}/archived.json'; echo "$3: done" ;;
   # What the board lists once a task is restored, when the spec gives it.
@@ -920,6 +920,46 @@ for (const lang of ['en', 'fr']) {
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await page.screenshot({ path: `.shots/task-panel-${lang}-no-agent-${testInfo.project.name}.png` })
     expect(await panel.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+}
+
+// WHR-38: a review that failed the day before, then a run stopped at its limit.
+// The banner says the limit, not the old failure; Finish takes the work as it is.
+for (const lang of ['en', 'fr']) {
+  test(`a stale failure is history; Finish on a limit stop (${lang})`, async ({ page }, testInfo) => {
+    await page.addInitScript(l => localStorage.setItem('herdrLanguage', l), lang)
+    const at = Date.now() - 86_400_000
+    const task = { id: 'demo/11', title: 'Group projects by coordinator', stage: 'stopped', state: 'blocked', app: 'claude', msg: 'Stopped at its 2h limit' }
+    const failure = { stage: 'review', title: 'Review failed', detail: 'The reviewer finished without a verdict.', next: 'Finish again for a fresh review.', auth: false, agentCanFix: true, at }
+    fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify([task]))
+    fs.writeFileSync(path.join(root, 'details.json'), JSON.stringify({ task: { ...task, description: 'Projects sit under their coordinator.' }, failure, limits: { time: { limit: '2h', used: '2h' }, tokens: { limit: 'none', total: 0 } } }))
+    const dir = path.join(home, '.herdr-projects/data/tasks/demo/11')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, 'task.json'), JSON.stringify({ ...task, at: at + 3_600_000, armedAt: at + 60_000, failure }))
+    await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
+    const banner = page.locator('.board-panel .task-needs')
+    // The board's list of the test before may still be kept a few seconds.
+    await expect(async () => {
+      await page.goto('/#/board?machine=&task=demo%2F11')
+      await expect(banner).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 20_000 })
+    await expect(banner.locator('h3')).toHaveText(`${lang === 'fr' ? 'À toi' : 'Needs you'} · Stopped at its 2h limit`)
+    await expect(banner).not.toContainText('Review failed')
+    await expect(banner.getByRole('button', { name: lang === 'fr' ? 'Envoyer l’erreur à l’agent' : 'Send the error to the agent' })).toHaveCount(0)
+    await expect(banner.locator('.task-finish-why')).toContainText(lang === 'fr' ? 'même limite' : 'same limit again')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.screenshot({ path: `.shots/task-finish-${lang}-${testInfo.project.name}.png` })
+    // The old failure stays in the Task tab, as history.
+    await page.locator('.board-panel-tabs').getByRole('button', { name: lang === 'fr' ? 'Tâche' : 'Task', exact: true }).click()
+    await expect(page.locator('.board-panel .task-sheet-earlier')).toContainText('Review failed')
+    await page.screenshot({ path: `.shots/task-finish-${lang}-earlier-${testInfo.project.name}.png` })
+    await banner.getByRole('button', { name: lang === 'fr' ? 'Terminer' : 'Finish', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toContainText('merge.by itself')
+    await page.screenshot({ path: `.shots/task-finish-${lang}-confirm-${testInfo.project.name}.png` })
+    await dialog.getByRole('button', { name: lang === 'fr' ? 'Terminer' : 'Finish', exact: true }).click()
+    await expect.poll(callLog).toContain('finish -- demo/11')
     fs.rmSync(dir, { recursive: true, force: true })
   })
 }
