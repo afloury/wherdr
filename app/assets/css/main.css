@@ -3959,6 +3959,10 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-needs p, .task-setup p { margin: 8px 0; color: var(--text-2); font-size: 13px; }
 .task-needs-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .task-needs-actions button { border-radius: 0; font-size: 11px; }
+/* Retry or Finish: what each does, in one line. */
+.task-finish-why { margin: 8px 0; color: var(--text-2); font-size: 12px; line-height: 1.5; }
+/* A failure the task moved on from: kept as history, dimmed. */
+.task-sheet-earlier h4, .task-sheet-earlier .task-sheet-text { color: var(--text-3); }
 .board-panel-body > section { min-height: 0; overflow-y: auto; padding: 16px; overscroll-behavior: contain; }
 .board-panel-body > .task-setup { overflow-y: auto; }
 .board-panel-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }

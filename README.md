@@ -1282,9 +1282,14 @@ What the Board shows and does:
   token use and actions; a dot marks a new closing note or review. The agent's own Herdr state
   is in a tooltip, separate from the task's state. The panel sits beside the Board on a
   computer (with a full-screen button) and fills the screen on a phone.
-- **Needs you** shows the Board's failure or question, its command output and next-step hint.
+- **Needs you** shows where the task stands now: the Board's failure or question, its command
+  output and next-step hint. A failure the task has moved on from (a later stage, or its agent
+  started again) is not the banner, and gets no buttons: it stays in Task as an earlier failure.
   It offers **Retry**, **Send the error to the agent** (`fix`), **Open terminal** and, when
-  allowed, **Approve anyway** with confirmation. A setup failure offers **Start again**:
+  allowed, **Approve anyway** with confirmation. **Finish** (`finish`, after a confirmation)
+  takes the work as it is, then runs its checks and review: offered when the agent stopped at
+  a limit (Retry gives it the same limit again) or without a summary, and when its agent is at
+  rest while the row stays on "Finishing". A setup failure offers **Start again**:
   herdr-projects uses `delegate` before an agent has started. With no conversation, the panel
   keeps the explanation visible instead of opening a bare shell; Terminal stays reachable
   when a pane exists. Read-only and unreachable machines cannot run banner actions.
@@ -1293,7 +1298,7 @@ What the Board shows and does:
   no pane, a field sends a reply through herdr-projects (`tell`; on a waiting plan, it sends
   the plan back).
   **Approve** merges finished work or says yes to a plan, after a confirmation; **Start**,
-  **Stop**, **Retry** and **Archive** where herdr-projects takes them. **Start** names the agent
+  **Stop**, **Retry**, **Finish** and **Archive** where herdr-projects takes them. **Start** names the agent
   the task starts with by default (its `worker.agent` and where that comes from) and offers the
   other agents installed on its machine: one picked there is for this start only
   (`delegate --worker.agent`). herdr-projects keeps that pick as the task's own setting while
