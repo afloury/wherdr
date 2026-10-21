@@ -11,7 +11,7 @@ import { canCancelQueued, lostPhotosText, restoreDraft } from '~/utils/queuedCan
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
-import { addAnswer, addQuote, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
+import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
 import { createTailLoader, nextTail, restartsTail, tailQuery } from '~/utils/chatTail'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
@@ -28,7 +28,7 @@ const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
 // A version of a reply replaced while the agent writes takes its question marks with it.
 onMdDropped(forgetReply)
 const route = useRoute()
-const emit = defineEmits<{ gotoTerm: [], restored: [], quote: [], unanswered: [count: number], sent: [queued: QueuedMessage | null] }>()
+const emit = defineEmits<{ gotoTerm: [], restored: [], quote: [], answered: [caret: number], unanswered: [count: number], sent: [queued: QueuedMessage | null] }>()
 const searchOpen = defineModel<boolean>('search', { default: false })
 
 const box = ref<HTMLElement | null>(null)
@@ -539,28 +539,33 @@ function quote(ref: Reference | null) {
 }
 // "Yes" / "No" of a closed question or of a row of a decision table: refers to
 // it and writes the answer under the reference, as Reply and typing would;
-// nothing is sent. The field does not take the focus: on a phone the keyboard
-// would cover the next question to answer.
+// nothing is sent. After a click, `answered` hands the caret to the field
+// (components/Composer.vue): it takes the focus only where Enter sends, so
+// Enter sends the answer at once on a computer, while on a phone the keyboard
+// stays down and the next question to answer stays in sight. A button
+// pressed with the keyboard keeps the focus, to answer the next one.
 const answerWord = (a: Answer) => a === 'yes' ? t('Yes') : t('No')
 // A one-tap answer adds lines to the field, which grows over the bottom of the
 // conversation: the messages stay where they are (no re-pinning to the end),
 // so the next button to tap does not move under the finger.
 const holdScroll = () => { stick = false; held = true }
-function answer(ref: Reference | null, a: Answer) {
+function answer(ref: Reference | null, a: Answer, click: boolean) {
   if (!ref) return
   holdScroll()
   const draft = useDraft(props.pane.id)
   const next = addAnswer(draft.text, ref, answerWord(a))
   if (next !== null) draft.text = next
   haptic()
+  if (click) emit('answered', answerEnd(draft.text, ref))
 }
 // "OK to all" of a decision table; a second tap takes it back.
-function okAll(ref: Reference | null) {
+function okAll(ref: Reference | null, click: boolean) {
   if (!ref) return
   holdScroll()
   const draft = useDraft(props.pane.id)
   draft.text = toggleOkAll(draft.text, ref, tl('OK to all', 'OK tout'))
   haptic()
+  if (click) emit('answered', answerEnd(draft.text, ref))
 }
 const answered = (ref: Reference, a: Answer) => tappedAnswer(answerOf(draftText.value, ref) || '') === a
 // "Quoted" state of the question and point buttons (and of the words of a
@@ -691,11 +696,13 @@ const copyText = copyCode
 function onListClick(e: MouseEvent) {
   const target = e.target as HTMLElement
   const ans = target.closest?.('.q-ans') as HTMLElement | null
-  if (ans?.dataset.q) { e.preventDefault(); arm(null); pickKey.value = null; answer(refOf(ans), ans.dataset.a === 'no' ? 'no' : 'yes'); return }
+  // `detail` counts the clicks of a pointer; 0 for a button pressed with the keyboard.
+  const click = e.detail > 0
+  if (ans?.dataset.q) { e.preventDefault(); arm(null); pickKey.value = null; answer(refOf(ans), ans.dataset.a === 'no' ? 'no' : 'yes', click); return }
   const rowAns = target.closest?.('.q-tans') as HTMLElement | null
-  if (rowAns?.dataset.n) { e.preventDefault(); arm(null); pickKey.value = null; answer(refOf(rowAns), rowAns.dataset.a === 'no' ? 'no' : 'yes'); return }
+  if (rowAns?.dataset.n) { e.preventDefault(); arm(null); pickKey.value = null; answer(refOf(rowAns), rowAns.dataset.a === 'no' ? 'no' : 'yes', click); return }
   const all = target.closest?.('.q-all') as HTMLElement | null
-  if (all) { e.preventDefault(); arm(null); pickKey.value = null; okAll(refOf(all)); return }
+  if (all) { e.preventDefault(); arm(null); pickKey.value = null; okAll(refOf(all), click); return }
   const question = target.closest?.('.q-reply, .q-point, .q-tquote') as HTMLElement | null
   if (question) { e.preventDefault(); arm(null); pickKey.value = null; quote(refOf(question)); return }
   // "Tap the text" style: the words of a question are its button.
@@ -1266,7 +1273,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                       <template v-if="q.closed">
                         <button
                           v-for="a in (['yes', 'no'] as const)" :key="a" type="button" class="q-row-ans" :aria-pressed="answered(pointRef(q.text, b.time, b.rid), a)"
-                          :aria-label="`${answerWord(a)}: ${q.text}`" @click="answer(pointRef(q.text, b.time, b.rid), a)"
+                          :aria-label="`${answerWord(a)}: ${q.text}`" @click="answer(pointRef(q.text, b.time, b.rid), a, $event.detail > 0)"
                         >{{ answerWord(a) }}</button>
                       </template>
                     </div>

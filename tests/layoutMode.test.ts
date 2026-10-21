@@ -45,6 +45,12 @@ describe('Enter in the message field', () => {
     expect(enterSends({ ...base, touch: false, tablet: false })).toBe(true)
     expect(enterSends({ ...base, desk: false, tablet: false, hardwareKeyboard: true })).toBe(false)
   })
+  it('sends in a narrow computer window too: no touch screen, no on-screen keyboard', () => {
+    expect(enterSends({ ...base, desk: false, touch: false, tablet: false })).toBe(true)
+  })
+  it('a tablet in the phone layout adds a line, even with a hardware keyboard', () => {
+    expect(enterSends({ ...base, desk: false, hardwareKeyboard: true })).toBe(false)
+  })
   it('iPad without proof of a hardware keyboard (floating keyboard, no viewport change): a line', () => {
     expect(enterSends(base)).toBe(false)
   })
