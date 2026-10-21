@@ -1877,6 +1877,8 @@ body.kb .composer { padding-bottom: 8px; }
 .prompt-send .iconify { width: 18px; height: 18px; }
 .prompt-send:disabled { opacity: .35; background: var(--surface-3); color: var(--text-2); }
 .prompt-send.stop { background: var(--text); color: var(--bg); }
+/* Pressed by a touch (Composer's sendTap): its touchstart is cancelled, which can drop :active on iOS. */
+.prompt-send.pressed { opacity: .75; }
 
 .prompt-head { padding: 4px 2px 2px; }
 .attachments { display: flex; gap: 8px; overflow-x: auto; }
