@@ -14,32 +14,56 @@ test('MCP arrow paints immediately even while the navigation request is held', a
   test.skip(!info.project.name.includes('desktop'), 'Card keyboard needs a hardware keyboard')
   const text = fx('claude-mcp.ansi')
   const moved = text.replace('❯ ✔ Docs', '  ✔ Docs').replace('     ✔ Calendar', '   ❯ ✔ Calendar')
+  await fakeHerdr('e2e.pane_status', { pane_id: OTHER, status: 'idle' })
+  // An idle pane is exposed as done while its last reply is unread.
+  await expect.poll(async () => (await (await page.request.get('/api/state')).json()).panes.find((p: { id: string }) => p.id === OTHER)?.status).toMatch(/^(idle|done)$/)
+  let receivedWorking!: () => void
+  const workingFrame = new Promise<void>(resolve => { receivedWorking = resolve })
+  page.on('websocket', ws => {
+    if (!ws.url().endsWith('/ws/events')) return
+    ws.on('framereceived', ({ payload }) => {
+      const state = JSON.parse(String(payload))
+      if (state.panes?.some((p: { id: string, status: string }) => p.id === OTHER && p.status === 'working')) receivedWorking()
+    })
+  })
   await show(text, 'claude', { down: moved })
   await page.goto(`/#/a/${pane}`)
   await expect(page.locator('.menu-list .cur')).toContainText('Docs')
+  // Send keyboard gestures only while the menu controls are enabled.
+  await expect(page.locator('.menu-list .cur')).toBeEnabled()
   let release!: () => void
   const held = new Promise<void>(r => { release = r })
-  await page.route('**/api/nav', async route => { await held; await route.continue() })
-  await page.locator('.choices-q').click()
-  const started = Date.now()
-  await page.keyboard.press('ArrowDown')
-  await expect(page.locator('.menu-list .cur')).toContainText('Calendar')
-  console.log(`MCP optimistic selection: ${Date.now() - started}ms (request held)`)
-  // The server keeps broadcasting its state meanwhile (another agent moves):
-  // the same menu, read again, must not put the cursor back before the key lands.
-  await fakeHerdr('e2e.pane_status', { pane_id: OTHER, status: 'working' })
-  await expect.poll(async () => (await (await page.request.get('/api/state')).json()).panes.find((p: { id: string }) => p.id === OTHER)?.status).toBe('working')
-  await page.waitForTimeout(500)
-  await expect(page.locator('.menu-list .cur')).toContainText('Calendar')
-  await fakeHerdr('e2e.pane_status', { pane_id: OTHER, status: 'idle' })
-  release()
-  await expect.poll(async () => (await fakeHerdr('e2e.terminal_screen', { pane_id: pane })).keys).toEqual(['down'])
-  await expect.poll(async () => {
-    const state = await (await page.request.get('/api/state')).json()
-    const menu = state.panes.find((p: { id: string }) => p.id === pane)?.menu
-    return menu?.items[menu.cursor]?.label
-  }).toContain('Calendar')
-  await page.screenshot({ path: `.shots/menu-responsive-${info.project.name}.png` })
+  let navStarted!: () => void
+  const navigation = new Promise<void>(resolve => { navStarted = resolve })
+  await page.route('**/api/nav', async route => { navStarted(); await held; await route.continue() })
+  try {
+    await page.locator('.choices-q').click()
+    const started = Date.now()
+    await page.keyboard.press('ArrowDown')
+    await expect(page.locator('.menu-list .cur')).toContainText('Calendar')
+    console.log(`MCP optimistic selection: ${Date.now() - started}ms (request held)`)
+    await navigation
+    expect((await fakeHerdr('e2e.terminal_screen', { pane_id: pane })).keys).toEqual([])
+    // The server keeps broadcasting its state meanwhile (another agent moves):
+    // the same menu, read again, must not put the cursor back before the key lands.
+    await fakeHerdr('e2e.pane_status', { pane_id: OTHER, status: 'working' })
+    await workingFrame
+    // Let Vue consume the delivered frame before checking the predicted cursor.
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+    await expect(page.locator('.menu-list .cur')).toContainText('Calendar')
+    await fakeHerdr('e2e.pane_status', { pane_id: OTHER, status: 'idle' })
+    release()
+    await expect.poll(async () => (await fakeHerdr('e2e.terminal_screen', { pane_id: pane })).keys).toEqual(['down'])
+    await expect.poll(async () => {
+      const state = await (await page.request.get('/api/state')).json()
+      const menu = state.panes.find((p: { id: string }) => p.id === pane)?.menu
+      return menu?.items[menu.cursor]?.label
+    }).toContain('Calendar')
+    await page.screenshot({ path: `.shots/menu-responsive-${info.project.name}.png` })
+  } finally {
+    release()
+    await fakeHerdr('e2e.pane_status', { pane_id: OTHER, status: 'idle' })
+  }
 })
 test('usage subtitle opens the real terminal and its arrows update the live frame', async ({ page }, info) => {
   const raw = fx('codex-usage-subtitle.txt')
