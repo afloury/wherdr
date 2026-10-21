@@ -435,8 +435,8 @@ function chat() {
       </section>
       <dl v-if="details?.limits" class="task-sheet-facts">
         <dt>{{ tl('Time limit', 'Limite de temps') }}</dt><dd>{{ details.limits.time }}<template v-if="details.limits.timeUsed"> · {{ details.limits.timeUsed }}</template></dd>
-        <dt>{{ tl('Token limit', 'Limite de tokens') }}</dt><dd>{{ details.limits.tokens }}</dd>
-        <dt>{{ tl('Tokens used', 'Tokens utilisés') }}</dt><dd>{{ details.limits.tokensUsed ?? '—' }}</dd>
+        <dt>{{ tl('Token limit', 'Limite de tokens') }}</dt><dd><TokenCount :value="details.limits.tokens" /></dd>
+        <dt>{{ tl('Tokens used', 'Tokens utilisés') }}</dt><dd><TokenCount :value="details.limits.tokensUsed" /></dd>
       </dl>
 
       <div v-if="actions.delegate" class="task-start-agent" role="radiogroup" :aria-label="tl('Agent for this start', 'Agent pour ce lancement')">
