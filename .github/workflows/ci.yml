@@ -3,10 +3,11 @@
 # in Chromium and WebKit against a fake Herdr server.
 #
 # Two depths of browser tests (tests/e2e/scope.ts):
-# - pull request (E2E_SCOPE=pr): every test on chromium-phone in two shards, plus
-#   the tests tagged for chromium-desktop (keyboard, split view), webkit-phone
-#   (Safari/iOS journeys) and webkit-desktop (iPad, desktop Safari);
-# - push to main or v2, manual run: every test on all four projects.
+# - light (E2E_SCOPE=light), for pull requests and pushes to main or v2: every test
+#   on chromium-phone in two shards, plus the tests tagged for chromium-desktop
+#   (keyboard, split view), webkit-phone (Safari/iOS journeys) and webkit-desktop
+#   (iPad, desktop Safari);
+# - full, on a manual run or a release tag vX.Y.Z: every test on all four projects.
 # The same five jobs run in both cases; only their selection changes.
 #
 # The branch protection requires the checks named `checks` and `e2e`: `e2e` is the
@@ -17,9 +18,11 @@ name: ci
 on:
   push:
     branches: [main, v2]
+    # Release tags get the full suite.
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
   pull_request:
     branches: [main, v2]
-  # Manual run of the full suite on any branch.
+  # Manual run: the full suite, on any branch.
   workflow_dispatch:
 
 permissions:
@@ -107,7 +110,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      E2E_SCOPE: ${{ github.event_name == 'pull_request' && 'pr' || 'full' }}
+      # Full on a manual run or a release tag, light otherwise.
+      E2E_SCOPE: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')) && 'full' || 'light' }}
     strategy:
       fail-fast: false
       matrix:

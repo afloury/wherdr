@@ -5,7 +5,7 @@ import { BASE_URL } from './tests/e2e/scenario.mjs'
 import { e2eScope, projectGrep, type Project } from './tests/e2e/scope'
 
 const desktop = { viewport: { width: 1440, height: 900 } }
-// E2E_SCOPE=pr: chromium-phone runs everything, the others their tagged tests (tests/e2e/scope.ts).
+// E2E_SCOPE=light: chromium-phone runs everything, the others their tagged tests (tests/e2e/scope.ts).
 const scope = e2eScope()
 const grep = (name: Project) => {
   const filter = projectGrep(name, scope)

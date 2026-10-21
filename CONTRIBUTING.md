@@ -55,13 +55,16 @@ Use this small set for a quick regression check; `npm run test:e2e` still runs t
 Repeated runs of entire files can take tens of minutes on a small machine.
 
 GitHub Actions (`.github/workflows/ci.yml`) runs all of them, the type check and the leak check
-(gitleaks only: your `.leak-patterns` stays local). A pull request runs every end-to-end test on
-`chromium-phone` (two shards) and, on the other three projects, only the tests tagged with that
-project's name: `{ tag: '@webkit-phone' }` for a Safari/iOS journey, `'@chromium-desktop'` for a
-keyboard or split-view case, `'@webkit-desktop'` for iPad and desktop Safari. A test skipped on
-phones must carry one of these tags, or the run fails (`tests/e2e/scope.ts`). Pushes to `main`
-and `v2` and a manual run of the workflow run the whole suite on all four projects. `E2E_SCOPE=pr npm run test:e2e -- --project=webkit-phone` reproduces a pull request's
-selection locally. CI retries a failed test once (it then shows as flaky); local runs never retry.
+(gitleaks only: your `.leak-patterns` stays local). Pull requests and pushes run a light
+end-to-end set: every test on `chromium-phone` (two shards) and, on the other three projects,
+only the tests tagged with that project's name: `{ tag: '@webkit-phone' }` for a Safari/iOS
+journey, `'@chromium-desktop'` for a keyboard or split-view case, `'@webkit-desktop'` for iPad
+and desktop Safari. A test skipped on phones must carry one of these tags, or the run fails
+(`tests/e2e/scope.ts`). The whole suite on all four projects runs only on a manual run of the
+workflow and on release tags `vX.Y.Z`.
+`E2E_SCOPE=light npm run test:e2e -- --project=webkit-phone` reproduces the light selection
+locally; without `E2E_SCOPE`, a local run is the whole suite. CI retries a failed test once (it
+then shows as flaky); local runs never retry.
 
 ## Testing without touching your real agents
 
