@@ -76,7 +76,7 @@ test.afterAll(() => {
   fs.rmSync(path.join(home, '.herdr-projects'), { recursive: true, force: true })
 })
 
-test('the Board shows the 1.x tasks in its five groups, and acts on them', async ({ page }, testInfo) => {
+test('the Board shows the 1.x tasks in its five groups, and acts on them', { tag: '@chromium-desktop' }, async ({ page }, testInfo) => {
   // Long, and WebKit on a small machine draws the agent's conversation slowly.
   test.setTimeout(120000)
   fs.mkdirSync(taskDir, { recursive: true })
@@ -409,7 +409,7 @@ test('grouped by machine then repo: each heading opens its coordinator in the si
   await expect(page.locator('.board-repo[data-repo="demo"]')).toContainText('In the backlog')
 })
 
-test('+ New task: in a repo, with Start now; and the task sheet starts, stops, retries and archives', async ({ page }, testInfo) => {
+test('+ New task: in a repo, with Start now; and the task sheet starts, stops, retries and archives', { tag: '@webkit-phone' }, async ({ page }, testInfo) => {
   test.setTimeout(60000)
   fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify(actionBoard))
   await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })

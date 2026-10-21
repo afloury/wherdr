@@ -60,7 +60,7 @@ test('#/setup?step=security opens the guide at that step', async ({ page }) => {
   await expect(guide(page).getByRole('button', { name: 'Finish' })).toBeVisible()
 })
 
-test('a direct Security link stays at that step when the first-launch check arrives late', async ({ page }) => {
+test('a direct Security link stays at that step when the first-launch check arrives late', { tag: '@webkit-phone' }, async ({ page }) => {
   await setDone(page, true)
   await page.route('**/api/phone', route => route.fulfill({ json: missing }))
   let release!: () => void

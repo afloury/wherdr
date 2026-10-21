@@ -5,7 +5,7 @@ import { pdfSession } from './pdfAuth.mjs'
 import { samplePdf } from './samplePdf.mjs'
 
 // Exercise real canvas rendering in Linux WebKit as well as Chromium.
-test('a PDF opens in the preview and stays a download', async ({ page }, info) => {
+test('a PDF opens in the preview and stays a download', { tag: '@webkit-phone' }, async ({ page }, info) => {
   if (process.env.E2E_PDF_AUTH) {
     const denied = await page.request.get(`/api/files/download?pane=${encodeURIComponent(OMP_IMAGE_PANE)}&path=${encodeURIComponent(SAMPLE_PDF)}&inline=1`)
     expect(denied.status()).toBe(401)

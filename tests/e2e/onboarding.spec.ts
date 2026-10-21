@@ -27,7 +27,7 @@ test('Skip closes the setup guide and it stays closed', async ({ page }) => {
   await expect(guide(page)).toHaveCount(0)
 })
 
-test('Escape closes the setup guide', async ({ page, isMobile }) => {
+test('Escape closes the setup guide', { tag: '@chromium-desktop' }, async ({ page, isMobile }) => {
   test.skip(isMobile, 'no keyboard on a phone')
   await page.keyboard.press('Escape')
   await expect(guide(page)).toHaveCount(0)
@@ -45,7 +45,7 @@ test('the guide is a centered modal on a computer, full screen on a phone', asyn
   }
 })
 
-test('Next walks every step, Finish closes the guide', async ({ page }) => {
+test('Next walks every step, Finish closes the guide', { tag: '@webkit-phone' }, async ({ page }) => {
   const next = guide(page).getByRole('button', { name: /^(Next|Finish)$/ })
   for (let i = 0; i < 6 && await guide(page).count(); i++) await next.click()
   await expect(guide(page)).toHaveCount(0)

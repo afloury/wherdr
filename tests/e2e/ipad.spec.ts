@@ -19,7 +19,7 @@ test.beforeEach(() => {
 })
 
 for (const name of ['mini', 'portrait'] as const) {
-  test(`iPad ${name}: sidebar layout, list slides over the conversation`, async ({ browser }) => {
+  test(`iPad ${name}: sidebar layout, list slides over the conversation`, { tag: '@webkit-desktop' }, async ({ browser }) => {
     const { ctx, page } = await ipad(browser, sizes[name])
     // Home: no agent to show, the list is open.
     await page.goto('/')
@@ -68,7 +68,7 @@ for (const name of ['mini', 'portrait'] as const) {
   })
 }
 
-test('iPad landscape: list docked beside the conversation, 44 px targets', async ({ browser }) => {
+test('iPad landscape: list docked beside the conversation, 44 px targets', { tag: '@webkit-desktop' }, async ({ browser }) => {
   const { ctx, page } = await ipad(browser, sizes.landscape)
   await page.goto(`/#/a/${CLAUDE_PANE}`)
   const home = page.locator('#home')
@@ -87,7 +87,7 @@ test('iPad landscape: list docked beside the conversation, 44 px targets', async
   await ctx.close()
 })
 
-test('iPad: Enter adds a line until a hardware keyboard is proven, then sends', async ({ browser }) => {
+test('iPad: Enter adds a line until a hardware keyboard is proven, then sends', { tag: '@webkit-desktop' }, async ({ browser }) => {
   const { ctx, page } = await ipad(browser, sizes.portrait)
   await page.goto(`/#/a/${OMP_CHAT_PANE}`)
   await expect(page.locator('.chat').getByText('Ready when you are.')).toBeVisible()
@@ -109,7 +109,7 @@ test('iPad: Enter adds a line until a hardware keyboard is proven, then sends', 
   await ctx.close()
 })
 
-test('iPad: hardware keyboard, then a touch (floating keyboard next): Enter adds a line again', async ({ browser }) => {
+test('iPad: hardware keyboard, then a touch (floating keyboard next): Enter adds a line again', { tag: '@webkit-desktop' }, async ({ browser }) => {
   const { ctx, page } = await ipad(browser, sizes.portrait)
   await page.goto(`/#/a/${OMP_CHAT_PANE}`)
   await expect(page.locator('.chat').getByText('Ready when you are.')).toBeVisible()
@@ -132,7 +132,7 @@ test('iPad: hardware keyboard, then a touch (floating keyboard next): Enter adds
   await ctx.close()
 })
 
-test('large iPhone in landscape (932 × 430): docked list, Enter adds a line, as before', async ({ browser }) => {
+test('large iPhone in landscape (932 × 430): docked list, Enter adds a line, as before', { tag: '@webkit-desktop' }, async ({ browser }) => {
   const ctx = await browser.newContext({
     viewport: { width: 932, height: 430 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1, serviceWorkers: 'block',
     baseURL: test.info().project.use.baseURL, locale: 'en-US', timezoneId: 'UTC',

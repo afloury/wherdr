@@ -58,7 +58,7 @@ test('S2 browser: a native menu click carries its identity and refuses a changed
  expect((await fakeHerdr('e2e.terminal_screen',{pane_id:pane})).keys).toEqual([])
 })
 
-test('S8 keyboard: a rapid arrow then Enter uses the displayed target identity',async({page})=>{
+test('S8 keyboard: a rapid arrow then Enter uses the displayed target identity',{ tag: '@chromium-desktop' },async({page})=>{
  test.skip(!test.info().project.name.includes('desktop'),'Keyboard navigation is a desktop control')
  const text=readFileSync(new URL('../fixtures/claude-resume.ansi',import.meta.url),'utf8')
  await show(text,'claude');await page.goto(`/#/a/${pane}`)
