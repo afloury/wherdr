@@ -1,7 +1,10 @@
 <script setup lang="ts">
 // Task panels own their compact header, three tabs and board failure banner.
+// The banner says where the task stands now: a failure it has moved on from
+// (failureStale) is history in the Task tab, never its title or its buttons.
 // Coordinators keep their own startup/delivery lifecycle.
-import { type CoordinatorStatus, type CoordinatorTarget, type TaskDetails, type TaskRow, TELL_MAX, coordinatorPhase, coordinatorSubject, taskActions, taskCanFix, taskCanApproveAnyway, taskKey, type TaskCommand } from '#shared/projectsTasks'
+import { type CoordinatorStatus, type CoordinatorTarget, type TaskDetails, type TaskRow, TELL_MAX, coordinatorPhase, coordinatorSubject, taskActions, taskCanFix, taskCanApproveAnyway, taskKey, type TaskCommand, finishCase } from '#shared/projectsTasks'
+import { finishHint, finishLabel, finishOffered, finishQuestion, finishTitle } from '~/utils/taskFinish'
 
 export type PanelTarget =
   | { machine: string, kind: 'task', id: string, chat?: boolean }
@@ -83,9 +86,15 @@ const taskPermissions = computed(() => props.task ? taskActions(props.task, deta
 const canFix = computed(() => props.task && taskCanFix(props.task, details.value))
 const canAnyway = computed(() => props.task && taskCanApproveAnyway(props.task, details.value))
 const disabled = computed(() => Boolean(actionBusy.value || props.readOnly || offlineView.value || !props.reachable || props.task?.stale))
+// Finish: a limit, no summary, or a row stuck at "Finishing" with its agent at rest.
+const finishKind = computed(() => (props.task ? finishCase(props.task) : null))
+const canFinish = computed(() => Boolean(props.task && taskPermissions.value?.finish && finishOffered(props.task, agentPane.value?.status ?? null)))
+const stuck = computed(() => canFinish.value && finishKind.value === 'stuck')
 const needs = computed(() => props.task?.group === 'needs')
-const failureTitle = computed(() => details.value?.failureTitle || details.value?.msg || props.task?.msg || agentPane.value?.prompt?.question || tl('Your answer is needed', 'Ta réponse est attendue'))
-const failureDetail = computed(() => details.value?.failureDetail || details.value?.failure || '')
+// Its failure, unless the task moved on since (a later stage, its agent started again).
+const failureNow = computed(() => (details.value && !details.value.failureStale ? details.value : null))
+const failureTitle = computed(() => failureNow.value?.failureTitle || details.value?.msg || props.task?.msg || agentPane.value?.prompt?.question || tl('Your answer is needed', 'Ta réponse est attendue'))
+const failureDetail = computed(() => failureNow.value?.failureDetail || failureNow.value?.failure || '')
 
 // The panel owns view selection so a setup shell never opens by default. A task
 // with nothing to talk to (never started, no pane) opens on the task, its other
@@ -131,6 +140,7 @@ async function taskAction(action: TaskCommand | 'approve' | 'anyway') {
   if (target.kind !== 'task' || disabled.value) return
   if (action === 'anyway' && !canAnyway.value) return
   if (action === 'fix' && !canFix.value) return
+  if (action === 'finish' && (!canFinish.value || !await askConfirm(finishQuestion(props.task?.title || details.value?.title || ''), finishLabel(), 'primary'))) return
   if ((action === 'approve' || action === 'anyway') && !await askConfirm(
     action === 'anyway' ? tl('Approve despite the failed review or checks? This merges the work.', 'Approuver malgré la relecture ou les contrôles en échec ? Cela fusionne le travail.') : tl('Approve this task?', 'Approuver cette tâche ?'),
     action === 'anyway' ? tl('Approve anyway', 'Approuver quand même') : tl('Approve', 'Approuver'), 'primary')) return
@@ -377,12 +387,15 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         {{ tab === 'chat' ? t('Conversation') : tab === 'term' ? t('Terminal') : tl('Task', 'Tâche') }}<i v-if="tab === 'task' && newNote" class="task-new" aria-hidden="true" />
       </button>
     </nav>
-    <section v-if="target.kind === 'task' && needs" class="task-needs" role="alert">
-      <h3>{{ tl('Needs you', 'À toi') }} · {{ failureTitle }}</h3>
+    <section v-if="target.kind === 'task' && (needs || stuck)" class="task-needs" role="alert">
+      <h3 v-if="needs">{{ tl('Needs you', 'À toi') }} · {{ failureTitle }}</h3>
+      <h3 v-else>{{ tl('Finishing', 'Fin en cours') }} · {{ tl('its agent is at rest', 'son agent est au repos') }}</h3>
       <pre v-if="failureDetail">{{ failureDetail }}</pre>
-      <p v-if="details?.failureNext">{{ details.failureNext }}</p>
+      <p v-if="failureNow?.failureNext">{{ failureNow.failureNext }}</p>
+      <p v-if="canFinish && finishKind" class="task-finish-why">{{ finishHint(finishKind) }}</p>
       <div class="task-needs-actions">
         <UButton v-if="taskPermissions?.retry" :disabled="disabled" @click="taskAction('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
+        <UButton v-if="canFinish" class="task-finish" :title="finishTitle()" :aria-description="finishTitle()" :disabled="disabled" @click="taskAction('finish')">{{ finishLabel() }}</UButton>
         <UButton v-if="canFix" :disabled="disabled" @click="taskAction('fix')">{{ tl('Send the error to the agent', 'Envoyer l’erreur à l’agent') }}</UButton>
         <UButton v-if="taskPermissions?.delegate" :disabled="disabled" @click="taskAction('delegate')">{{ tl('Start again', 'Relancer') }}</UButton>
         <UButton v-if="taskPane" :disabled="offlineView || !reachable" @click="choose('term')">{{ tl('Open terminal', 'Ouvrir le terminal') }}</UButton>

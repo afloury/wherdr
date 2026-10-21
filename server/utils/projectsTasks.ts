@@ -23,7 +23,7 @@ import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
   type MachineTasks, type TaskDetails, type TaskRow, type TasksBoard,
-  taskCanFix, taskCanApproveAnyway, type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, type TaskAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
+  taskCanFix, taskCanApproveAnyway, failureIsStale, type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, type TaskAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, repoKeysFromFile, rowFromTaskFile, taskActions,
 } from '../../shared/projectsTasks'
 import { HERDR_BIN, HERDR_CHILD_ENV, IN_CONTAINER, log } from './env'
@@ -362,7 +362,12 @@ export async function taskDetails(machine: unknown, id: unknown): Promise<TaskDe
   // The closing note and whether it is archived: in the task's file only (1.2.1's `details` leaves them out).
   if (!d.summary && typeof file?.summary === 'string') d = { ...d, summary: file.summary.slice(0, 8000).trim() }
   if (!d.archived && file?.archivedAt) d = { ...d, archived: true }
-  return { ...d, pane: taskPane(m, file) }
+  return { ...withStale(d, file), pane: taskPane(m, file) }
+}
+
+// Whether its failure is behind it: the task's file has when it last moved on.
+function withStale(d: TaskDetails, file: Record<string, unknown> | null): TaskDetails {
+  return { ...d, failureStale: failureIsStale(d.stage, d.failureAt, file) }
 }
 
 // The task's agent pane in Herdr: only the one the board linked it to (its
@@ -424,8 +429,9 @@ export async function taskCommand(machine: unknown, id: unknown, action: unknown
   // An archived task is not in the list: its own row (`restore` only applies to it).
   const row = action === 'restore' ? await archivedRow(m, tid) : await taskOf(m, tid)
   // A failed task: what failed decides between Retry and Start (`details`).
+  // `fix` also needs to know the failure is still current (its file).
   const failure = action === 'fix' || (row?.stage === 'failed' && (action === 'retry' || action === 'delegate'))
-    ? parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS))
+    ? withStale(parseTaskDetails(await command(m, ['details', '--json', '--', tid], LIST_TIMEOUT_MS)), action === 'fix' ? await readTaskFile(m, tid).catch(() => null) : null)
     : null
   if (!row || (action === 'fix' ? !taskCanFix(row, failure) : !taskActions(row, failure)[action])) throw refused(action)
   // A new start: an agent picked for an earlier one goes first, so the task
@@ -491,6 +497,7 @@ function refused(action: TaskCommand): HerdrError {
     case 'stop': return new HerdrError('bad_action', 'This task has no agent at work to stop')
     case 'fix': return new HerdrError('bad_action', 'This failure needs the human first')
     case 'retry': return new HerdrError('bad_action', 'This task has nothing to retry')
+    case 'finish': return new HerdrError('bad_action', 'This task has nothing to finish as it is')
     case 'archive': return new HerdrError('bad_action', 'This task cannot be archived while an agent works on it')
     case 'restore': return new HerdrError('bad_action', 'This task is not archived')
   }
