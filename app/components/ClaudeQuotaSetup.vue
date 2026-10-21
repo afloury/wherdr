@@ -6,9 +6,11 @@
 // "…" menu that leads here.
 import type { ClaudeSetupRow } from '~/utils/quotas'
 
-withDefaults(defineProps<{ intro?: boolean }>(), { intro: true })
+// `declined`: also list the machines whose setup was declined (Settings); the
+// setup guide leaves them out, they are no longer suggested there.
+const props = withDefaults(defineProps<{ intro?: boolean, declined?: boolean }>(), { intro: true, declined: true })
 
-const rows = claudeSetupList
+const rows = computed(() => props.declined ? claudeSetupList.value : claudeSetupList.value.filter(r => !r.setup?.dismissed))
 const busy = ref<Record<string, boolean>>({})
 onMounted(reloadQuotas)
 
