@@ -322,6 +322,27 @@ async function canInstall(m: Machine): Promise<boolean> {
   return false
 }
 
+// A legacy Claude read spans separate SSH requests (status, fingerprint, setup).
+// Even after reading a new status file, a later request can fail. Retrying once
+// recovers a refused multiplexed session without hiding the machine's gauge.
+// Never substitute the last successful reading: that cache had no expiry and
+// could mask a newer file indefinitely, independently of the 30-second TTL.
+async function readMachineClaude(m: Machine): Promise<ClaudeMachineReading | null> {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try { return await readClaude(m.fs, m.home) }
+    catch (error) {
+      const code = (error as { code?: unknown } | null)?.code
+      // No account, quota payload or raw SSH diagnostics in logs.
+      console.warn(new Date().toISOString(), 'Claude quota read failed', {
+        machine: m.key || 'local',
+        code: typeof code === 'string' && /^[a-z_0-9]+$/i.test(code) ? code : 'unknown',
+        attempt, action: attempt === 1 ? 'retry' : 'discard',
+      })
+    }
+  }
+  return null
+}
+
 // Last successful Codex reading of each machine. Claude cannot reuse an old
 // identity after a failed read: the machine may have changed accounts meanwhile.
 const lastRead = new Map<string, { codex?: CodexAccountReading | null }>()
@@ -333,7 +354,7 @@ export async function readQuotas(force = false): Promise<Quotas> {
   const readings = await Promise.all(online.map(async (m) => {
     const last = lastRead.get(m.key) || {}
     const [claude, rolled] = await Promise.all([
-      readClaude(m.fs, m.home).catch(() => null),
+      readMachineClaude(m),
       readCodex(m.fs, m.home).then((r) => { last.codex = r; return r }, () => last.codex ?? null),
     ])
     lastRead.set(m.key, last)
