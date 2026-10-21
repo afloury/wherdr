@@ -22,7 +22,13 @@ const steps = computed(() => onboardingSteps({
 }))
 const index = ref(0)
 watch(onboardingStep, (s) => { if (s) index.value = stepIndex(steps.value, s) }, { immediate: true })
-const step = computed<OnboardingStep>(() => steps.value[Math.min(index.value, steps.value.length - 1)]!)
+// A step added or removed later (quotas arriving after the mount) keeps the
+// user on the step they were looking at.
+watch(steps, (now, before) => {
+  const i = now.indexOf(before[Math.min(index.value, before.length - 1)]!)
+  if (i >= 0) index.value = i
+})
+const step =computed<OnboardingStep>(() => steps.value[Math.min(index.value, steps.value.length - 1)]!)
 const last = computed(() => index.value >= steps.value.length - 1)
 const body = ref<HTMLElement | null>(null)
 watch(index, () => nextTick(() => { if (body.value) body.value.scrollTop = 0 }))
