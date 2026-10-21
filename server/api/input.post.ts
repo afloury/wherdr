@@ -19,7 +19,7 @@ export default defineApi(async (event, b) => {
         }
       }
       if (now?.stopped || now?.leaving) {
-        // Old clients and Project panel actions can still reach the raw route.
+        // Old clients and other callers can still reach the raw route.
         // Preserve complete messages; never send raw keys or commands to a shell.
         if (typeof b.text !== 'string' || !b.text.trim() || isSlashCommand(b.text)
           || !Array.isArray(b.keys) || b.keys.length !== 1 || b.keys[0] !== 'enter') {

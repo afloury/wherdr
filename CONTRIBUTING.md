@@ -48,6 +48,12 @@ install the browsers once with `npx playwright install --with-deps chromium webk
 project runs with `npm run test:e2e -- --project=webkit-phone` (names in `playwright.config.ts`),
 and `npx playwright show-report` opens the last report. They never touch a real Herdr session.
 
+For a focused check of browser-test stability, build once, then run
+`npm run test:e2e:stability`. It covers Codex startup, held MCP navigation, legacy quote
+preferences, UTC midnight, and setup deep links on all four profiles, with retries disabled.
+Use this small set for a quick regression check; `npm run test:e2e` still runs the full suite.
+Repeated runs of entire files can take tens of minutes on a small machine.
+
 GitHub Actions (`.github/workflows/ci.yml`) runs all of them, the type check and the leak check
 (gitleaks only: your `.leak-patterns` stays local) on every push and pull request to `main`.
 

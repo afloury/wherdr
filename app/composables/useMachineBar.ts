@@ -3,7 +3,7 @@
 // home list's machine order (server side, /api/machine/order) lives here too:
 // the bar and its settings list follow it for the machines they do not place.
 import { sortMachines } from '#shared/machineOrder'
-import { BAR_ALL, barFilter, barItems, barPick, barShown, readBarList, readBarPick } from '~/utils/machineBar'
+import { BAR_ALL, groupedBarItems, barMachineSelection, barPick, readBarList, readBarPick, readMachineGroups } from '~/utils/machineBar'
 
 const store = {
   get(k: string) { try { return localStorage.getItem(k) } catch { return null } },
@@ -16,9 +16,12 @@ export const machineBarOrder = ref<string[]>(readBarList(store.get('machineBarOr
 watch(machineBarOrder, v => store.set('machineBarOrder', JSON.stringify(v)))
 export const machineBarHidden = ref<string[]>(readBarList(store.get('machineBarHidden')))
 watch(machineBarHidden, v => store.set('machineBarHidden', JSON.stringify(v)))
-// The item last tapped (BAR_ALL, or a machine's base key).
+// The item last tapped (BAR_ALL, a group's ID, or a machine's base key).
 export const machineBarSaved = ref<string | null>(readBarPick(store.get('machineBarPick')))
 watch(machineBarSaved, v => store.set('machineBarPick', JSON.stringify(v)))
+
+export const machineGroups = ref(readMachineGroups(store.get('machineGroups')))
+watch(machineGroups, v => store.set('machineGroups', JSON.stringify(v)), { deep: true })
 
 // ------------------------------------------------------------ machine order
 export const machineOrder = ref<string[]>([])
@@ -49,15 +52,15 @@ const barMachines = computed(() => (machineBaseKeys.value.length ? machineBaseKe
 
 // ------------------------------------------------------------ the bar
 // Settings list: every item, in order, with whether the bar shows it.
-export const machineBarItems = computed(() => barItems(machineBarOrder.value, barMachines.value)
+export const machineBarItems = computed(() => groupedBarItems(machineBarOrder.value, barMachines.value, machineGroups.value)
   .map(id => ({ id, shown: !machineBarHidden.value.includes(id) })))
 // The bar shows by default, a single machine included ("All", then that machine).
 export const machineBarShown = computed(() => (machineBarOn.value
-  ? barShown(machineBarOrder.value, machineBarHidden.value, barMachines.value)
+  ? machineBarItems.value.filter(x => x.shown).map(x => x.id)
   : []))
 export const machineBarPick = computed(() => barPick(machineBarSaved.value, machineBarShown.value))
-// The machine (base key) the home list shows alone, or null for all of them.
-export const machineBarFilter = computed(() => barFilter(machineBarPick.value))
+// Ordered base keys shown by the selection, or null for every machine.
+export const machineBarSelection = computed(() => barMachineSelection(machineBarPick.value, machineGroups.value))
 export function pickMachineBar(id: string) {
   machineBarSaved.value = id
 }

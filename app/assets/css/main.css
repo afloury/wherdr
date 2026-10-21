@@ -3923,3 +3923,13 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-panel-body > section { min-height: 0; overflow-y: auto; padding: 16px; overscroll-behavior: contain; }
 .board-panel-body > .task-setup { overflow-y: auto; }
 .board-panel-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+
+/* Machine groups share the machine bar's device preferences and reorder handles. */
+.machine-group-list { list-style: none; padding: 0; margin: 0 0 12px; }
+.machine-group-list button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.machine-group-summary { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.machine-group-list small { display: block; color: var(--muted); }
+.machine-group-name { display: grid; gap: 8px; margin: 16px 0; }
+.machine-group-name input { width: 100%; border: 1px solid var(--line); padding: 10px; background: var(--bg); color: var(--text); font-size: 16px; border-radius: 0; }
+.machine-group-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; }
+.machine-bar-group { flex-shrink: 0; width: 14px; height: 14px; }

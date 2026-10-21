@@ -93,7 +93,7 @@ export function navKey(paneId: string, key: 'up' | 'down' | 'enter' | 'esc' | 'l
   return run
 }
 
-// Send a message to an agent (input field, Project panel): as a message, held
+// Send a message to an agent (input field, Run command): as a message, held
 // by the server while a menu or dialog hides the input field, or typed as the
 // answer to the question on screen (see viaPrompt). Working agent: the server
 // queues the message (returned in `queued`).
