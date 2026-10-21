@@ -140,6 +140,9 @@ export interface Pane {
   screen?: WaitScreen
   // Menu interactif ouvert (agent au repos) : il remplace `prompt` et `screen`.
   menu?: InteractiveMenu
+  // A menu or panel no card shows hides the agent's input field while
+  // messages wait for it (see server/utils/queued.ts lookForLeftMenu).
+  menuLeftOpen?: boolean
   preview?: string
   model?: ModelInfo
   // Claude working, conversation shown: verb of its activity line ("Orbiting").
