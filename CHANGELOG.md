@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **Send acts on the touch itself on a phone**: on an iPhone with the keyboard open, a tap on Send could do nothing until the keyboard was closed. The likely cause is a tap that drifts slightly while the keyboard makes the page pannable: it becomes a pan and Safari sends no click. The button no longer waits for that click; it sends when the finger lifts on it. The keyboard stays up after sending, and a finger that slides off the button still cancels. Not yet confirmed on a real iPhone.
 - **Claude's suggestion on a phone**: the grayed-out reply Claude Code suggests in the empty field gets a **Use** button inside the field, on its right (a 44 px target), since a phone has no Tab key. It fills the field, editable, without sending it, and leaves the keyboard as it was. The former chip above the field was hidden behind the “N questions unanswered” tab. Computers keep Tab.
 
 - **A draft follows its agent when Herdr replaces its pane**: when a pane is closed and a new one opens for the same agent (the same conversation, or the same herdr-projects coordinator or task, as after `coordinator restart`), the open view moves to the new pane and the message being written (text, quotes, pasted texts, attachments) comes along; opening the new pane from the list brings it back too. A pane closed with no successor keeps its draft under the “pane closed” banner, with **Copy draft**.
