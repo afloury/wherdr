@@ -25,9 +25,10 @@ import { PromptHistory, historyDirection } from '~/utils/promptHistory'
 import { createTouchTap } from '~/utils/touchTap'
 
 // `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
+// `termShown`: the terminal is on screen, so no notice offers to open it.
 // `takeBack`: conversation view; a prompt Claude puts back into its field on Stop
 // comes back here instead (never in the terminal view, where the user sees Claude's field).
-const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void>, conversation?: boolean, escStops?: boolean, takeBack?: boolean, unanswered?: number }>()
+const props = defineProps<{ pane: Pane | undefined, paneId: string, sendKeys: (keys: string[]) => Promise<void>, conversation?: boolean, escStops?: boolean, takeBack?: boolean, unanswered?: number, termShown?: boolean }>()
 const emit = defineEmits<{ sent: [queued: QueuedMessage | null], showTerminal: [], showUnanswered: [] }>()
 
 // Claude Code update installed: the status line restarts the agent.
@@ -607,7 +608,7 @@ defineExpose({
     <div v-if="interrupting" class="composer-notice restart" :class="{ failed: interrupting === 'failed' }" role="status">
       <template v-if="interrupting === 'failed'">
         <span class="restart-text">{{ stoppingShell ? tl('The command is still running.', 'La commande tourne encore.') : t('The agent is still working.') }}</span>
-        <button type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('View terminal') }}</button>
+        <button v-if="!termShown" type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('View terminal') }}</button>
         <button type="button" class="notice-btn" @click="interrupting = null">{{ t('Hide') }}</button>
       </template>
       <template v-else>
@@ -618,7 +619,7 @@ defineExpose({
     <div v-else-if="pane?.restart" class="composer-notice restart" :class="pane.restart.phase" role="status">
       <template v-if="pane.restart.phase === 'failed'">
         <span class="restart-text">{{ pane.restart.update ? t('Codex update failed') : t('Restart failed') }}{{ tl(': ', ' : ') }}{{ t(pane.restart.error || '') }}</span>
-        <button type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('View terminal') }}</button>
+        <button v-if="!termShown" type="button" class="notice-btn" @click="emit('showTerminal')">{{ t('View terminal') }}</button>
         <button v-if="pane.restart.update" type="button" class="notice-btn" @click="copyUpdate"><UIcon name="i-lucide-copy" />{{ t('Copy command') }}</button>
         <button type="button" class="notice-btn" @click="dismissRestart(paneId)">{{ t('Hide') }}</button>
       </template>
@@ -642,7 +643,7 @@ defineExpose({
       <UIcon name="i-lucide-text-cursor-input" class="notice-icon" />
       <span class="restart-text" :title="codexFieldHint">{{ tl('In Codex’s field:', 'Dans le champ de Codex :') }} <code>{{ pane.codexField }}</code></span>
       <button type="button" class="notice-btn" :disabled="readOnly || clearingField" :title="codexFieldHint" @click="clearCodexField">{{ tl('Clear', 'Vider') }}</button>
-      <button type="button" class="notice-btn" @click="emit('showTerminal')"><UIcon name="i-lucide-terminal" /><span class="notice-label">{{ t('View terminal') }}</span></button>
+      <button v-if="!termShown" type="button" class="notice-btn" @click="emit('showTerminal')"><UIcon name="i-lucide-terminal" /><span class="notice-label">{{ t('View terminal') }}</span></button>
     </div>
     <div v-if="slashOpen" class="slash-menu" role="listbox" :aria-label="t('Commands')">
       <div v-if="slashMatches.length" ref="slashListEl" class="slash-list">
