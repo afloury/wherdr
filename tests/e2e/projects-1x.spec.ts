@@ -199,8 +199,10 @@ test('the Board shows the 1.x tasks in its five groups, and acts on them', async
 test('a 0.2 or a 1.x older than 1.2.1: the Board and Settings say what to do, and run nothing', async ({ page }, testInfo) => {
   for (const plugin of [manifest('0.2.34', false), manifest('1.2.0')]) {
     await fakeHerdr('e2e.plugins', { plugins: [plugin] })
+    // A full load for each version. Not goto + reload: the second goto only changes the
+    // hash, and a reload on top of it made WebKit fail with an internal error.
+    await page.goto('about:blank')
     await page.goto('/#/settings?section=plugins')
-    await page.reload()
     const machine = page.locator('.projects-plugin-machine').first()
     await expect(machine.locator('.projects-plugin-head')).toContainText(`Update needed · v${plugin.version}`, { timeout: 15000 })
     const note = machine.locator('.projects-upgrade')
