@@ -135,7 +135,7 @@ const rowKey = (r: Row) => r.key
           <UIcon name="i-lucide-chevron-down" class="project-chev" />
           <span class="sr-only">{{ foldLabel }}</span>
           <span class="project-sum">
-            <!-- Each part stays whole: a narrow column wraps the line between parts, never cuts one. -->
+            <!-- Keep the summary on one line; the button title retains every count on narrow screens. -->
             <span v-for="(p, i) in parts" :key="p.key" class="project-sum-part"><span :class="`project-sum-${p.key}`">{{ p.text }}</span><span v-if="i < parts.length - 1" class="project-sum-sep" aria-hidden="true">·</span></span>
           </span>
         </button>

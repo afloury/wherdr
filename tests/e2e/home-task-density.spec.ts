@@ -15,8 +15,19 @@ for (const language of ['en', 'fr']) {
         localStorage.setItem('herdrLanguage', language)
         localStorage.setItem('compactList', compact ? '1' : '0')
       }, { language, compact })
+      // Give the repo a main space so its real options menu shares the summary bar.
+      await page.routeWebSocket('**/ws/events', ws => {
+        const server = ws.connectToServer()
+        server.onMessage(message => {
+          const state = JSON.parse(String(message))
+          const workspace = state.workspaces?.find((w: { id: string }) => w.id === 'w4')
+          if (workspace) Object.assign(workspace, { repo: '/project', repoName: 'demo', worktree: false })
+          ws.send(JSON.stringify(state))
+        })
+      })
       await page.route('**/api/tasks/links**', route => route.fulfill({ json: {
         version: 'density-fixture', machines: [{ machine: '',
+          repos: [{ repo: 'demo', root: '/project', branch: 'feature/compact-project-header', behind: 2 }],
           coordinators: [{ level: 'project', repo: 'demo', pane: 'w3:p1', workspace: null }],
           tasks: [{ id: 'demo/9', repo: 'demo', n: 9, key: 'DEMO-9',
             title: language === 'fr' ? 'Adapter la navigation et vérifier les petits écrans' : 'Adapt navigation and check smaller screens',
@@ -57,6 +68,25 @@ for (const language of ['en', 'fr']) {
       expect(height).toBeLessThan(compact ? 45 : 65)
       await fs.mkdir('.shots', { recursive: true })
       await page.screenshot({ path: `.shots/home-tasks-${compact ? 'compact' : 'normal'}-${language}-${info.project.name}.png` })
+      // Project hierarchy stays compact in both list modes and at both viewport sizes.
+      const project = page.locator('.project', { has: card })
+      const lead = project.locator('.home-lead')
+      const bar = project.locator('.project-bar')
+      await expect(bar.locator('.space-menu')).toBeVisible()
+      for (const [width, height] of [[390, 844], [1440, 900]] as const) {
+        await page.setViewportSize({ width, height })
+        await expect(lead).toBeVisible()
+        expect((await lead.boundingBox())!.height).toBeLessThanOrEqual(44)
+        await expect(lead.locator('.lead-mark')).toHaveCSS('width', '18px')
+        await expect(lead.locator('.lead-name')).toHaveCSS('font-size', '14px')
+        await expect(project.locator('.project-branch')).toHaveAttribute('title', /feature\/compact-project-header/)
+        for (const row of [lead, bar]) expect(await row.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+        const summary = project.locator('.project-sum')
+        expect(await summary.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+        expect((await bar.boundingBox())!.height).toBeLessThanOrEqual(44)
+        expect((await card.boundingBox())!.x).toBeGreaterThan((await lead.boundingBox())!.x)
+        await page.screenshot({ path: `.shots/home-project-${compact ? 'compact' : 'normal'}-${language}-${width}.png` })
+      }
       // The old persisted 0/1 setting survives reload and selects the new task layout.
       await page.reload()
       await expect(card.locator('.home-task-line')).toHaveCount(compact ? 0 : 1)
