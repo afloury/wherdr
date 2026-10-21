@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **Claude's suggestion on a phone**: the grayed-out reply Claude Code suggests in the empty field gets a **Use** button inside the field, on its right (a 44 px target), since a phone has no Tab key. It fills the field, editable, without sending it, and leaves the keyboard as it was. The former chip above the field was hidden behind the “N questions unanswered” tab. Computers keep Tab.
+
 - **A draft follows its agent when Herdr replaces its pane**: when a pane is closed and a new one opens for the same agent (the same conversation, or the same herdr-projects coordinator or task, as after `coordinator restart`), the open view moves to the new pane and the message being written (text, quotes, pasted texts, attachments) comes along; opening the new pane from the list brings it back too. A pane closed with no successor keeps its draft under the “pane closed” banner, with **Copy draft**.
 - **Yes, No and OK to all hand the field the focus on a computer**: after a click, the caret sits right after the answer written in the field, so Enter sends it at once. On a phone the keyboard stays down as before (Enter adds a line there), and a button pressed with the keyboard keeps the focus, to answer the next question.
 - **Enter sends in a narrow computer window too**: a window narrow enough for the phone layout no longer turns Enter into a new line when the device has no touch screen (Shift+Enter still adds one).

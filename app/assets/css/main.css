@@ -1714,13 +1714,23 @@ body.kb .composer { padding-bottom: 8px; }
 }
 @keyframes notice-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .notice-spin { animation: none; } }
-/* Claude suggestion (touch screen): discreet chip above the field. */
-.composer-suggest {
-  display: inline-flex; align-items: center; gap: 6px; margin: 0 0 6px 2px; padding: 3px 8px;
-  font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase;
-  color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 0; cursor: pointer;
+/* Claude suggestion (touch screen): "Use" at the top right of the field, over its first
+   line, which leaves it room. 28 px drawn, 44 px to the finger, all above the footer row. */
+.prompt.suggesting { position: relative; }
+.prompt.suggesting .prompt-input { padding-right: var(--suggest-room, 96px); }
+/* One line of suggestion, cut with "…": its second line would be clipped by the one-row field. */
+.prompt.suggesting .prompt-input::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prompt-suggest {
+  position: absolute; top: 7px; right: 6px; z-index: 1;
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px;
+  font: 500 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap;
+  color: var(--text-2); background: var(--bg); border: 1px solid var(--line); border-radius: 0; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
-.composer-suggest:active { background: var(--bg-2); }
+.prompt-suggest::after { content: ""; position: absolute; inset: -8px -6px; }
+.prompt-suggest .iconify, .prompt-suggest svg { width: 12px; height: 12px; color: var(--accent); }
+.prompt-suggest:active { background: var(--bg-2); color: var(--text); border-color: var(--accent); }
+.prompt-suggest:focus-visible { outline: 0; border-color: var(--accent); color: var(--text); }
 /* "/" suggestions: just above the field, like the terminal's menu. */
 .slash-menu {
   position: absolute; left: 12px; right: 12px; bottom: calc(100% - 2px); z-index: 20;

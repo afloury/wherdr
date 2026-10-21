@@ -83,6 +83,15 @@ test('icon style: a question in the middle of a paragraph gets its own Reply but
 // One-tap answers: "Yes" / "No" next to the Reply button of a closed question.
 const ansBtn = (text: string, a: 'yes' | 'no') => quoteBtn(text, `q-${a}`)
 const sentCount = (page: Page) => page.locator('.msg-user-wrap').count()
+// Messages an earlier test sent here stay queued on the server (this pane's fake agent
+// writes no transcript), and their bubbles may reach a new page a little after the
+// conversation. Count once every one of them shows, or a late one passes for a new send.
+async function settledSentCount(page: Page) {
+  const state = await (await page.request.get('/api/state')).json()
+  const held = (state.panes.find((p: { id: string }) => p.id === OMP_QUESTIONS_PANE)?.queued || []).length
+  await expect.poll(() => page.locator('.queued-list .msg-user-wrap').count()).toBeGreaterThanOrEqual(held)
+  return sentCount(page)
+}
 // Caret of the field when it has the focus, else null.
 const focusedAt = (field: Locator) => field.evaluate((el: HTMLTextAreaElement) => document.activeElement === el ? el.selectionStart : null)
 
@@ -144,7 +153,7 @@ for (const width of [1440, 650]) test(`on a computer ${width} px wide, Enter sen
   // 650 px: a narrow window gets the phone layout, but no on-screen keyboard.
   await page.setViewportSize({ width, height: 900 })
   const { chat, field } = await open(page)
-  const before = await sentCount(page)
+  const before = await settledSentCount(page)
   const yes = chat.locator(ansBtn(STEP, 'yes'))
   await yes.scrollIntoViewIfNeeded()
   await yes.click()
