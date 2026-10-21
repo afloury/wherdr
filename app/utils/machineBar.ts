@@ -1,7 +1,7 @@
 // The machine bar at the top of the home list: "All", then each machine, a tap
 // shows that machine only. Settings › Appearance › Machine bar orders its items
 // and takes some off it; a machine taken off the bar still shows under "All".
-// Items are the machines' base keys (the local machine is ''), and BAR_ALL.
+// Items are base machine keys (local is ''), reserved group IDs, and BAR_ALL.
 
 // "All machines": a value no machine key can have.
 export const BAR_ALL = '*'
@@ -64,4 +64,36 @@ export function readBarPick(raw: string | null | undefined): string | null {
     return typeof v === 'string' ? v : null
   }
   catch { return null }
+}
+
+// Group IDs use the same reserved namespace as All, never a machine key.
+export interface MachineGroup { id: string, name: string, machines: string[] }
+export function readMachineGroups(raw: string | null): MachineGroup[] {
+  try {
+    const value = JSON.parse(raw || '[]')
+    if (!Array.isArray(value)) return []
+    const seen = new Set<string>()
+    return value.filter((g): g is MachineGroup => {
+      if (!g || typeof g.id !== 'string' || !g.id.startsWith('*group:') || seen.has(g.id)
+        || typeof g.name !== 'string' || !g.name.trim() || !Array.isArray(g.machines)) return false
+      seen.add(g.id)
+      return true
+    }).map(g => ({ id: g.id, name: g.name.trim(), machines: [...new Set(g.machines.filter((m): m is string => typeof m === 'string' && !m.startsWith('*')))] }))
+  }
+  catch { return [] }
+}
+
+// New groups go after All, before machines, while explicit positions survive.
+export function groupedBarItems(order: readonly string[], machines: readonly string[], groups: readonly MachineGroup[]): string[] {
+  const defaults = [BAR_ALL, ...groups.map(g => g.id), ...machines]
+  const result = barItems(order, defaults.slice(1))
+  const added = groups.map(g => g.id).filter(id => !order.includes(id))
+  const placed = result.filter(id => !added.includes(id))
+  placed.splice(placed.indexOf(BAR_ALL) + 1, 0, ...added)
+  return placed
+}
+
+export function barMachineSelection(pick: string | null, groups: readonly MachineGroup[]): string[] | null {
+  if (pick === null || pick === BAR_ALL) return null
+  return groups.find(g => g.id === pick)?.machines ?? [pick]
 }

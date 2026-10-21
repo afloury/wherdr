@@ -434,10 +434,11 @@ export function coordinatorRestartArgs(to: CoordinatorTarget): string[] {
 // starting, exited) has no pane to talk to yet.
 const LIVE_COORDINATOR = ['working', 'blocked', 'idle']
 const PANE_RE = /^w[0-9a-z]+:p[0-9a-z]+$/i
-// `error`: why its last start failed, as herdr-projects wrote it down (pump.rs);
+// `error`: why its last start or message delivery failed (pump.rs);
 // it is not tried again by itself, and its state may still say "starting".
 // `name`: how herdr-projects names it ("Coordinator", "devbox coordinator").
-export interface CoordinatorStatus { state: string, pane: string | null, error: string, name: string }
+// `queued`: pending messages; null for older or invalid replies.
+export interface CoordinatorStatus { state: string, pane: string | null, error: string, name: string, queued: number | null }
 export function parseCoordinatorStatus(text: string): CoordinatorStatus {
   let v: unknown
   try { v = JSON.parse(text) } catch { throw new Error('herdr-projects coordinator: not JSON') }
@@ -447,6 +448,7 @@ export function parseCoordinatorStatus(text: string): CoordinatorStatus {
   const pane = str(o.pane, 40)
   return {
     state,
+    queued: typeof o.queued === 'number' && Number.isSafeInteger(o.queued) && o.queued >= 0 ? o.queued : null,
     pane: LIVE_COORDINATOR.includes(state) && PANE_RE.test(pane) ? pane : null,
     error: str(o.error, 400).replace(/\s+/g, ' ').trim(),
     name: str(o.name, 80).trim(),

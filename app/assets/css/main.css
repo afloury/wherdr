@@ -3900,3 +3900,13 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-panel-purpose { margin: 0; font-size: 12px; line-height: 1.4; color: var(--muted); }
 .board-coord-menu { width: min(360px, calc(100vw - 24px)); }
 .coordinator-tooltip { max-width: min(320px, calc(100vw - 24px)); border-radius: 0; border: 1px solid var(--line); background: var(--bg-2); color: var(--text); font: 12px/1.4 var(--sans); }
+
+/* Machine groups share the machine bar's device preferences and reorder handles. */
+.machine-group-list { list-style: none; padding: 0; margin: 0 0 12px; }
+.machine-group-list button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.machine-group-summary { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.machine-group-list small { display: block; color: var(--muted); }
+.machine-group-name { display: grid; gap: 8px; margin: 16px 0; }
+.machine-group-name input { width: 100%; border: 1px solid var(--line); padding: 10px; background: var(--bg); color: var(--text); font-size: 16px; border-radius: 0; }
+.machine-group-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; }
+.machine-bar-group { flex-shrink: 0; width: 14px; height: 14px; }
