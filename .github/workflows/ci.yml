@@ -6,8 +6,7 @@
 # - pull request (E2E_SCOPE=pr): every test on chromium-phone in two shards, plus
 #   the tests tagged for chromium-desktop (keyboard, split view), webkit-phone
 #   (Safari/iOS journeys) and webkit-desktop (iPad, desktop Safari);
-# - push to main or v2, manual run (the nightly one comes from nightly.yml):
-#   every test on all four projects.
+# - push to main or v2, manual run: every test on all four projects.
 # The same five jobs run in both cases; only their selection changes.
 #
 # The branch protection requires the checks named `checks` and `e2e`: `e2e` is the
@@ -20,14 +19,14 @@ on:
     branches: [main, v2]
   pull_request:
     branches: [main, v2]
-  # Manual run, and the nightly full suite on v2 started by nightly.yml.
+  # Manual run of the full suite on any branch.
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  # The event is part of the group: a push never cancels the nightly run.
+  # The event is part of the group: a push never cancels a manual run.
   group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
@@ -93,7 +92,6 @@ jobs:
                 assets/* | tools/launch-video/*) ;;
                 .github/workflows/npm.yml | .github/workflows/release.yml) ;;
                 .github/workflows/release-ready.yml | .github/workflows/site.yml) ;;
-                .github/workflows/nightly.yml) ;;
                 *) echo "needs the browser tests: $file"; e2e=true ;;
               esac
             done <<< "$files"
