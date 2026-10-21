@@ -1,0 +1,27 @@
+# Nightly full end-to-end suite on v2: starts ci.yml on v2 as a manual run
+# (workflow_dispatch), which runs every test on all four browser projects.
+#
+# GitHub starts scheduled workflows only from the default branch (main): this file
+# fires once it is on main. ci.yml stays on v2, so the nightly tests v2's own code
+# and tests. A run started with GITHUB_TOKEN through workflow_dispatch is one of
+# the events GitHub lets that token trigger.
+name: nightly
+
+on:
+  schedule:
+    # 03:17 UTC, outside the hour marks GitHub delays most.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  full-suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Start the full suite on v2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref v2

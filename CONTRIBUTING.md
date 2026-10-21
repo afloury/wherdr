@@ -60,8 +60,9 @@ GitHub Actions (`.github/workflows/ci.yml`) runs all of them, the type check and
 project's name: `{ tag: '@webkit-phone' }` for a Safari/iOS journey, `'@chromium-desktop'` for a
 keyboard or split-view case, `'@webkit-desktop'` for iPad and desktop Safari. A test skipped on
 phones must carry one of these tags, or the run fails (`tests/e2e/scope.ts`). Pushes to `main`
-and `v2`, the nightly run and a manual run of the workflow run the whole suite on all four
-projects. `E2E_SCOPE=pr npm run test:e2e -- --project=webkit-phone` reproduces a pull request's
+and `v2` and a manual run of the workflow run the whole suite on all four projects; so does the
+nightly run on `v2`, which `.github/workflows/nightly.yml` starts (GitHub fires schedules only
+from `main`, so that file must be on `main`). `E2E_SCOPE=pr npm run test:e2e -- --project=webkit-phone` reproduces a pull request's
 selection locally. CI retries a failed test once (it then shows as flaky); local runs never retry.
 
 ## Testing without touching your real agents
