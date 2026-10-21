@@ -640,6 +640,51 @@ test('the machine filter lists the local machine, read-only or not, and shows on
   expect(selectErrors).toEqual([])
 })
 
+test('the machine filter offers the home list\'s machine groups, and follows them when Settings change them', async ({ page }, testInfo) => {
+  await fakeBoard(page, () => [
+    { machine: 'ma', tasks: [{ id: 'demo/1', title: 'On machine A' }] },
+    { machine: 'mb', tasks: [{ id: 'web/2', title: 'On machine B' }] },
+    { machine: 'mc', tasks: [{ id: 'api/3', title: 'On machine C' }] },
+  ])
+  // Groups as Settings › Machine bar saves them; set once, so a reload keeps what the test changes.
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('seeded')) return
+    sessionStorage.setItem('seeded', '1')
+    localStorage.setItem('machineGroups', JSON.stringify([{ id: '*group:pair', name: 'Pair', machines: ['ma', 'mb'] }]))
+  })
+  await page.goto('/#/board')
+  await expect(page.locator('.task-card', { hasText: 'On machine C' })).toBeVisible({ timeout: 15000 })
+  await page.locator('.board-scope').click()
+  const options = page.getByRole('option')
+  await expect(options).toHaveText(['All machines', 'Pair', 'ma', 'mb', 'mc'])
+  await expect(page.getByRole('listbox')).toContainText('Groups')
+  await page.screenshot({ path: `.shots/board-scope-groups-${testInfo.project.name}.png` })
+  await options.nth(1).click()
+  await expect(page.locator('.board-scope')).toContainText('Pair')
+  await expect(page.locator('.task-card', { hasText: 'On machine A' })).toBeVisible()
+  await expect(page.locator('.task-card', { hasText: 'On machine B' })).toBeVisible()
+  await expect(page.locator('.task-card', { hasText: 'On machine C' })).toHaveCount(0)
+  // Counters follow: two tasks need you in this group (phone tabs, or the wide Board's column heads).
+  const needs = page.locator('.board-seg-btn.needs b, .board-col-head.needs .pp-count')
+  await expect(needs).toHaveText('2')
+  // Kept on this device; a group edited in Settings shows its machines now.
+  await page.evaluate(() => localStorage.setItem('machineGroups', JSON.stringify([{ id: '*group:pair', name: 'Pair', machines: ['mc'] }])))
+  await page.reload()
+  await expect(page.locator('.task-card', { hasText: 'On machine C' })).toBeVisible({ timeout: 15000 })
+  await expect(page.locator('.task-card', { hasText: 'On machine A' })).toHaveCount(0)
+  await expect(page.locator('.board-scope')).toContainText('Pair')
+  await expect(needs).toHaveText('1')
+  // Deleted in Settings: All machines again, and the menu as without groups.
+  await page.evaluate(() => localStorage.setItem('machineGroups', '[]'))
+  await page.reload()
+  await expect(page.locator('.task-card', { hasText: 'On machine A' })).toBeVisible({ timeout: 15000 })
+  await expect(page.locator('.task-card', { hasText: 'On machine C' })).toBeVisible()
+  await expect(page.locator('.board-scope')).toContainText('All machines')
+  await page.locator('.board-scope').click()
+  await expect(page.getByRole('option')).toHaveText(['All machines', 'ma', 'mb', 'mc'])
+  await expect(page.getByRole('listbox')).not.toContainText('Groups')
+})
+
 test('a push for a task newer than the board kept from the last visit opens it after the next read', async ({ page }) => {
   let machines: Fake[] = [{ machine: '', tasks: [{ id: 'demo/1', title: 'Older one' }] }]
   await fakeBoard(page, () => machines, 800)
