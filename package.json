@@ -40,6 +40,7 @@
     "typecheck": "nuxt typecheck",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:stability": "playwright test menu-responsiveness codex-self-update quote-mode onboarding-tailnet --grep \"MCP arrow paints|a new Codex restarts|the former per-device values|a quoted question keeps|#/setup[?]step=security opens|a direct Security link\"",
     "prepare": "nuxt prepare",
     "prepack": "nuxt build && node scripts/pack-output.mjs",
     "check:leaks": "node scripts/check-leaks.mjs",

@@ -103,10 +103,28 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     return p
   }
 
+  // Apply an invocation reset at the start of a poll, never between its
+  // session snapshot and its process/transcript reads.
+  const snapshotActions = []
+  function resetUpdate(params) {
+    const p = need(params.pane_id)
+    p.agent = 'codex'; p.status = 'idle'; p.pid = (p.pid || 3000) + 1
+    p.updateOutput = params.session ? '' : '✨ Update available! 0.148.0 -> 0.162.1'; p.foreground = false; p.starts = []
+    p.processReads = 0
+    p.argv = null; p.writes = []; p.prompts = []
+    p.baseCwd ||= p.cwd
+    p.cwd = params.session ? p.baseCwd : `${p.baseCwd}/fresh`
+    p.session = params.session || null
+    return { pid: p.pid }
+  }
+
   let integrations = {}
   let plugins = []
   const methods = {
-    'session.snapshot': () => ({ snapshot: snapshot() }),
+    'session.snapshot': () => {
+      for (const action of snapshotActions.splice(0)) action()
+      return { snapshot: snapshot() }
+    },
     'agent.prompt': prompt,
     'agent.get': (params) => {
       const p = paneById(params.target)
@@ -135,15 +153,10 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
       return { process_info: { shell_pid: 2000, foreground_process_group_id: p?.foreground ? 4000 : p?.agent ? (p.pid || 2001) : 2000, foreground_processes: procs } }
     },
     'e2e.update_reset': params => {
-      const p = need(params.pane_id)
-      p.agent = 'codex'; p.status = 'idle'; p.pid = (p.pid || 3000) + 1
-      p.updateOutput = params.session ? '' : '✨ Update available! 0.148.0 -> 0.162.1'; p.foreground = false; p.starts = []
-      p.processReads = 0
-      p.argv = null; p.writes = []; p.prompts = []
-      p.baseCwd ||= p.cwd
-      p.cwd = params.session ? p.baseCwd : `${p.baseCwd}/fresh`
-      p.session = params.session || null
-      return { pid: p.pid }
+      need(params.pane_id)
+      return params.onSnapshot
+        ? new Promise(resolve => snapshotActions.push(() => resolve(resetUpdate(params))))
+        : resetUpdate(params)
     },
     'e2e.update_exit': params => {
       const p = need(params.pane_id)
