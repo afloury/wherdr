@@ -41,11 +41,12 @@ export function provesHardwareKeyboard(e: { key: string, metaKey: boolean, ctrlK
   return ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Escape', 'Tab'].includes(e.key)
 }
 
-// Enter in the message field: sends on a computer. On a touch screen Enter
-// adds a line (the button sends), unless it is a tablet with a proven
-// hardware keyboard and no on-screen keyboard showing. When in doubt: a line.
+// Enter in the message field: sends on a computer, a narrow window included
+// (no touch screen, so no on-screen keyboard). On a touch screen Enter adds a
+// line (the button sends), unless it is a tablet in the computer layout with
+// a proven hardware keyboard and no on-screen keyboard showing. When in
+// doubt: a line.
 export function enterSends(o: { desk: boolean, touch: boolean, tablet: boolean, hardwareKeyboard: boolean, softKeyboard: boolean }): boolean {
-  if (!o.desk) return false
   if (!o.touch) return true
-  return o.tablet && o.hardwareKeyboard && !o.softKeyboard
+  return o.desk && o.tablet && o.hardwareKeyboard && !o.softKeyboard
 }

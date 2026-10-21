@@ -139,8 +139,10 @@ test('a closed question is answered in one tap, several in a row, nothing is sen
   expect(await fits(page)).toBe(true)
 })
 
-test('on a computer, Enter sends the answer a click on Yes wrote; a key on Yes keeps the focus on it', async ({ page }, testInfo) => {
+for (const width of [1440, 650]) test(`on a computer ${width} px wide, Enter sends the answer a click on Yes wrote; a key on Yes keeps the focus on it`, async ({ page }, testInfo) => {
   test.skip(phone(testInfo.project.name), 'a phone keeps the keyboard down: no focus, Enter adds a line there')
+  // 650 px: a narrow window gets the phone layout, but no on-screen keyboard.
+  await page.setViewportSize({ width, height: 900 })
   const { chat, field } = await open(page)
   const before = await sentCount(page)
   const yes = chat.locator(ansBtn(STEP, 'yes'))
@@ -148,7 +150,7 @@ test('on a computer, Enter sends the answer a click on Yes wrote; a key on Yes k
   await yes.click()
   await expectDraft(field, `${point(STEP)}\nYes\n`)
   await expect.poll(() => focusedAt(field)).toBe((await field.inputValue()).length - 1)
-  await shot(page, 'yes-focused', testInfo.project.name)
+  await shot(page, `yes-focused-${width}`, testInfo.project.name)
   await page.keyboard.press('Enter')
   await expect.poll(() => sentCount(page)).toBe(before + 1)
   await expectDraft(field, '')
