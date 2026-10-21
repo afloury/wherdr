@@ -206,7 +206,9 @@ Details in [Features](#features) and [Security](#security).
   half-typed in its field, and “Not sent” clears once the message shows in its transcript), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
-  of local commands. Stop button while the agent works. A long pasted text (log, output) becomes
+  of local commands. Stop button while the agent works. When Claude Code suggests a reply
+  (grayed-out in the empty field), `Tab` takes it on a computer and **Use**, inside the field on
+  its right, on a phone: the field gets the text, to edit or send. A long pasted text (log, output) becomes
   a "Pasted text · N lines" card, sent to the agent as it is and shown the same way in the
   conversation, where it opens in full with Copy; long typed messages fold with Show more.
 - **Codex updates and limits**: in a Codex conversation, a new Codex version shows above the

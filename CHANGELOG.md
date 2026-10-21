@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **Claude's suggestion on a phone**: the grayed-out reply Claude Code suggests in the empty field gets a **Use** button inside the field, on its right (a 44 px target), since a phone has no Tab key. It fills the field, editable, without sending it, and leaves the keyboard as it was. The former chip above the field was hidden behind the “N questions unanswered” tab. Computers keep Tab.
+
 - Claude quota snapshots bind the account fingerprint and observation time atomically. Update older status lines to remove the ten-minute identity cache. Failed Claude reads are retried once; after two failures, that machine's Claude gauge is temporarily omitted until reading recovers, instead of reusing an old account reading indefinitely. This supersedes the earlier keep-last-reading behavior for Claude; Codex is unchanged.
 
 - Home machine bar: named groups with editable membership and machine order, combined counts, device storage, and reorder/hide controls (English and French).

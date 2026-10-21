@@ -4,7 +4,7 @@ import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import { UApp } from '#components'
 import Composer from '~/components/Composer.vue'
-import { eventsOpen } from '~/composables/useHerdr'
+import { desk, eventsOpen } from '~/composables/useHerdr'
 import { outboxFor } from '~/composables/useOutbox'
 import type { Pane } from '#shared/types'
 
@@ -150,3 +150,59 @@ describe('Composer references', () => {
   })
 })
 
+
+// Claude Code's grayed-out suggestion: Tab on a computer, a "Use" button in the field on a phone.
+describe('Composer suggestion', () => {
+  // Earlier mounts may leave the wide-screen layout on: start each test on a phone.
+  beforeEach(() => { eventsOpen.value = true; desk.value = false })
+  afterEach(() => { eventsOpen.value = false; desk.value = false })
+  const SUGGESTION = 'yes add the teardown and check both'
+  const suggesting = (id: string): Pane => ({ ...pane(id), claudeSuggestion: SUGGESTION })
+  const mountSuggesting = (id: string, unanswered?: number) =>
+    mountSuspended(Composer, { props: { pane: suggesting(id), paneId: id, sendKeys: async () => {}, unanswered } })
+
+  it('phone: the button fills the field with the suggestion without sending it', async () => {
+    const w = await mountSuggesting('w4:p1')
+    const field = w.find('textarea')
+    expect(field.attributes('placeholder')).toBe(SUGGESTION)
+    const use = w.find('button.prompt-suggest')
+    expect(use.exists()).toBe(true)
+    expect(use.attributes('aria-label')).toBe('Use suggestion')
+    await use.trigger('click')
+    expect((field.element as HTMLTextAreaElement).value).toBe(SUGGESTION)
+    expect(outboxFor('w4:p1')).toHaveLength(0)
+    // Text in the field: no suggestion, no button.
+    expect(w.find('button.prompt-suggest').exists()).toBe(false)
+    // Still editable.
+    await field.setValue(`${SUGGESTION}, then merge`)
+    expect((field.element as HTMLTextAreaElement).value).toBe(`${SUGGESTION}, then merge`)
+    w.unmount()
+  })
+
+  it('phone: the button and the unanswered questions tab show together', async () => {
+    const w = await mountSuggesting('w4:p2', 2)
+    expect(w.find('.composer-ask').text()).toContain('2 questions unanswered')
+    // In the field, not above it where the tab hangs.
+    expect(w.find('.prompt button.prompt-suggest').exists()).toBe(true)
+    expect(w.find('.prompt').classes()).toContain('suggesting')
+    w.unmount()
+  })
+
+  it('no suggestion: no button', async () => {
+    const w = await mountSuspended(Composer, { props: { pane: pane('w4:p3'), paneId: 'w4:p3', sendKeys: async () => {}, unanswered: 1 } })
+    expect(w.find('button.prompt-suggest').exists()).toBe(false)
+    expect(w.find('.prompt').classes()).not.toContain('suggesting')
+    w.unmount()
+  })
+
+  it('computer: no button, Tab takes the suggestion', async () => {
+    desk.value = true
+    const w = await mountSuggesting('w4:p4')
+    expect(w.find('button.prompt-suggest').exists()).toBe(false)
+    const field = w.find('textarea')
+    await field.trigger('keydown', { key: 'Tab' })
+    expect((field.element as HTMLTextAreaElement).value).toBe(SUGGESTION)
+    expect(outboxFor('w4:p4')).toHaveLength(0)
+    w.unmount()
+  })
+})
