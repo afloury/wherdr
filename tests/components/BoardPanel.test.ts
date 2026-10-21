@@ -290,16 +290,16 @@ describe('the Board panel for a task whose agent has no pane', () => {
     w.unmount()
   })
 
-  it('opened from its card: its sheet instead, as before', async () => {
+  it('opened from its card: keeps the panel and offers a reply', async () => {
     const { w, noAgent } = await taskPanel(false)
-    expect(noAgent).toEqual([1])
-    expect(w.find('#board-panel-tell').exists()).toBe(false)
+    expect(noAgent).toEqual([])
+    expect(w.find('#board-panel-tell').exists()).toBe(true)
     w.unmount()
   })
 
   it('read-only (wherdr in a container): no field, its sheet gives the host command', async () => {
     const { w, noAgent } = await taskPanel(true, { readOnly: true })
-    expect(noAgent).toEqual([1])
+    expect(noAgent).toEqual([])
     expect(w.find('#board-panel-tell').exists()).toBe(false)
     w.unmount()
   })

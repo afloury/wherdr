@@ -66,6 +66,7 @@ let keysOf: Record<string, string> = {}
 let active = 0
 let maxActive = 0
 let delay = 0
+let detailsReply: string | null = null
 let listReply: { code: number, stdout: string, stderr: string } | null = null
 // `coordinator [--machine | --project=R] status --json`, by its flag ('' for the Coordinator).
 let coordStatus: Record<string, { state: string, pane: string, error?: string, queued?: number }> = {}
@@ -80,6 +81,7 @@ beforeEach(() => {
   active = maxActive = 0
   delay = 0
   listReply = null
+  detailsReply = null
   coordStatus = {}
   installed = ['claude', 'codex']
   own = {}
@@ -115,6 +117,7 @@ beforeEach(() => {
     active--
     if (args[0] === 'list') return listReply || { code: 0, stdout: fixture('list.json'), stderr: '' }
     // A failed task's details say what failed (1.2.1 failure_of): demo/6 its agent, demo/7 its setup.
+    if (args[0] === 'details' && detailsReply) return { code: 0, stdout: detailsReply, stderr: '' }
     if (args[0] === 'details' && (args[3] === 'demo/6' || args[3] === 'demo/7')) {
       return { code: 0, stdout: JSON.stringify({ task: { id: args[3], title: 'Broke', stage: 'failed' }, failure: { stage: args[3] === 'demo/6' ? 'agent' : 'setup', title: 'Failed', detail: 'x', auth: false } }), stderr: '' }
     }
@@ -801,4 +804,42 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     await expect(T.tellCoordinator('', 'x', { to: { kind: 'machine' } })).rejects.toThrow(/container/)
     expect(calls).toEqual([])
   })
+})
+
+describe('structured failure commands', () => {
+  it('refuses fix when the board says the failure needs the human', async () => {
+    listReply = { code: 0, stdout: JSON.stringify([{ id: 'demo/7', stage: 'failed', state: 'error', app: 'claude' }]), stderr: '' }
+    await read()
+    await expect(T.taskCommand('', 'demo/7', 'fix')).rejects.toThrow(/human first/)
+    expect(calls.some(c => c[0] === 'fix')).toBe(false)
+  })
+  it('does not allow an approval override on a passing review', async () => {
+    await read()
+    await expect(T.approveTask('', 'demo/1', true)).rejects.toThrow(/cannot bypass/)
+    expect(calls.some(c => c[0] === 'approve')).toBe(false)
+  })
+})
+
+
+describe('failure repair and explicit override', () => {
+  it('sends fix separately from retry, after checking the structured permission', async () => {
+    listReply = { code: 0, stdout: JSON.stringify([{ id: 'demo/6', stage: 'failed', state: 'error', app: 'claude' }]), stderr: '' }
+    detailsReply = JSON.stringify({ task: { id: 'demo/6' }, failure: { stage: 'agent', title: 'Tests failed', detail: 'npm test', agentCanFix: true } })
+    await read()
+    await T.taskCommand('', 'demo/6', 'fix')
+    expect(calls.at(-1)).toEqual(['fix', '--', 'demo/6'])
+  })
+  it('passes --anyway only for the explicit override of failed checks', async () => {
+    detailsReply = JSON.stringify({ task: { id: 'demo/1' }, failure: { stage: 'pr', remoteKind: 'checks', title: 'Checks failed' } })
+    await read()
+    // The fake merge fails, but its arguments record the explicit decision.
+    await expect(T.approveTask('', 'demo/1', true)).rejects.toThrow(/checks failed/)
+    expect(calls.at(-1)).toEqual(['approve', '--anyway', '--', 'demo/1'])
+  })
+})
+
+it('uses the saved merge blocker missing from the CLI list to group an approval', async () => {
+  taskFile('demo/1', { stage: 'approval', mergeFailed: true, prFailure: { stage: 'pr', remoteKind: 'checks', title: 'Checks failed' } })
+  const result = await read()
+  expect(result.machines[0]!.tasks.find(t => t.id === 'demo/1')?.group).toBe('needs')
 })
