@@ -1,23 +1,26 @@
 <script setup lang="ts">
 // A repo's group on the home list, as Herdr's sidebar draws it with
-// herdr-projects: the repo's own space heads it (name, branch, how far behind
-// its upstream), then its project coordinator as the group's lead (its own
-// icon, "Coordinator" since the header names the repo, its state and last
-// message, a rule before the tasks), then its tasks' spaces (id, title,
-// progress, time on it, the board's current line), most urgent first.
+// herdr-projects. Its head row is its project coordinator, named after the
+// repo: the wherdr mark on the accent, "Coordinator", its state (no last
+// message; its question and one-tap answers when it asks one). Without a
+// coordinator here, the repo's own space takes that row, with its initial.
+// Under it, the group's bar: the fold button with a summary of the tasks
+// ("4 TASKS · 1 YOUR TURN · 1 LIMIT"), the branch, and the "…" menu of the
+// repo's space (its terminal, its actions; closing it closes the whole
+// worktree group: the confirmation names the tasks it stops). Then its tasks'
+// spaces, indented on a rule (id, title, progress, time on it, the board's
+// current line), most urgent first; they fold with the group (kept per
+// project on the device).
 // One row per task: its helpers (reviewer, planner, attempts, each in a tab
 // of the task's space) are part of it, the row says the stage ("Under review
 // · codex") and opens the helper's tab while it works.
-// The header folds the tasks (kept on the device): the coordinator stays in
-// view above them; its terminal button opens
-// the repo's space, its menu holds that space's actions (closing it closes
-// the whole worktree group: the confirmation names the tasks it stops).
 // Coordinator on another machine (`remote`): the tasks stay here, a line
 // says where the repo is coordinated from and opens that coordinator.
-import { type Row, rowGroup } from '#shared/spaces'
+import type { Row } from '#shared/spaces'
 import { type BoardCard, type Member, type MemberStage, type ProjectSection, memberStage, memberTag } from '#shared/boardLinks'
 import type { MenuItem } from '~/composables/useUi'
 import { longPress } from '~/utils/longPress'
+import { memberGroup, summaryParts, taskSummary } from '~/utils/projectSummary'
 
 const props = defineProps<{ group: ProjectSection, machine?: string }>()
 const g = computed(() => props.group)
@@ -25,7 +28,7 @@ const g = computed(() => props.group)
 const id = computed(() => `${props.machine || ''}|${g.value.id}`)
 const collapsed = computed(() => collapsedRepos.value.includes(id.value))
 function toggle() {
-  if (headLp.swallowClick()) return
+  if (barLp.swallowClick()) return
   haptic()
   const c = collapsedRepos.value
   collapsedRepos.value = c.includes(id.value) ? c.filter(k => k !== id.value) : [...c, id.value]
@@ -42,15 +45,12 @@ function openRepo() {
   if (r.kind === 'space') openSpace(r.workspace.id, r.leadTab.tab.id)
   else navigateTo(panePath(r.pane.id))
 }
-const isOpen = computed(() => {
-  const r = g.value.space
-  return Boolean(r && (r.kind === 'space' ? r.panes : [r.pane]).some(p => p.id === curPane.value))
-})
 const repoLabel = computed(() => tl(`Open the terminal of ${g.value.repo}`, `Ouvrir le terminal de ${g.value.repo}`))
 const headItems = (): MenuItem[] => (spaceId.value
   ? [{ label: repoLabel.value, icon: 'i-lucide-square-terminal', run: openRepo }, { kind: 'separator' }, ...workspaceItems(spaceId.value)]
   : [])
-const headLp = longPress({
+// Touch: a long press on the bar opens the same menu as "…".
+const barLp = longPress({
   onPress: () => {
     const items = headItems()
     if (!items.length) return
@@ -59,13 +59,13 @@ const headLp = longPress({
   },
 })
 
-// Folded, the counts say what is folded: the coordinator stays in view.
-const sum = computed(() => {
-  const s = { ...g.value.sum }
-  const c = g.value.coordinator
-  if (collapsed.value && c) s[rowGroup(c)]--
-  return s
-})
+// The tasks only: the coordinator has its own row and state above.
+const parts = computed(() => summaryParts(taskSummary(g.value.members), tl))
+const foldLabel = computed(() => (collapsed.value
+  ? tl(`Show the tasks of ${g.value.repo}`, `Afficher les tâches de ${g.value.repo}`)
+  : tl(`Hide the tasks of ${g.value.repo}`, `Masquer les tâches de ${g.value.repo}`)))
+
+const headTitle = computed(() => `${foldLabel.value}: ${parts.value.map(p => p.text).join(' · ')}`)
 
 const behind = computed(() => g.value.info?.behind || 0)
 const branchTitle = computed(() => {
@@ -74,8 +74,12 @@ const branchTitle = computed(() => {
   return behind.value ? tl(`${i.branch}: ${behind.value} commits behind its upstream`, `${i.branch} : ${behind.value} commits de retard sur sa branche distante`) : i.branch
 })
 
-const coordinatorCard = computed<BoardCard>(() => ({ tag: '', name: t('Coordinator'), coordinator: true }))
-const coordinatorLabel = computed(() => tl(`${g.value.repo} coordinator`, `Coordinateur ${g.value.repo}`))
+// The head row: the coordinator, else the repo's own space, named after the repo.
+const leadRow = computed(() => g.value.coordinator || g.value.space)
+const leadCard = computed<BoardCard>(() => ({ tag: '', name: g.value.repo, coordinator: Boolean(g.value.coordinator), lead: true }))
+const leadLabel = computed(() => (g.value.coordinator ? tl(`${g.value.repo} coordinator`, `Coordinateur ${g.value.repo}`) : g.value.repo))
+const initial = computed(() => (g.value.repo.trim()[0] || '?').toUpperCase())
+
 function stageLabel(s: MemberStage): string {
   if (s.what === 'attempts') return tl(`${s.n} attempts`, `${s.n} essais`)
   const what = {
@@ -91,7 +95,7 @@ function memberCard(m: Member): BoardCard | null {
   const task = m.task
   const stage = memberStage(m)
   return {
-    group: task.group === 'working' && (m.row.kind === 'space' ? m.row.lead : m.row.pane).status === 'blocked' ? 'needs' : task.group,
+    group: memberGroup(m) || undefined,
     tag: memberTag(m, t('review')),
     stage: stage && ['review', 'plan-review', 'pick'].includes(stage.what) ? stageLabel(stage) : undefined,
     // While a helper works, its tab (the row's pane's) opens, not the one opened last.
@@ -113,25 +117,30 @@ const rowKey = (r: Row) => r.key
 
 <template>
   <section class="agent-group project" :class="[group.state, { collapsed }]" :data-repo="group.repo">
-    <div class="project-head-row" :class="{ sel: isOpen }">
+    <div class="card-list project-lead" role="group" :aria-label="leadLabel">
+      <AgentCard v-if="leadRow" :key="leadRow.key" :pane="leadRow.lead" :row="leadRow" :board="leadCard" />
+      <!-- Neither a coordinator nor the repo's space here: the same row, nothing to open. -->
+      <div v-else class="card compact home-lead">
+        <span class="avatar lead-mark" aria-hidden="true">{{ initial }}</span>
+        <span class="card-title lead-name">{{ group.repo }}</span>
+      </div>
+    </div>
+    <div class="project-bar">
       <UContextMenu :disabled="sheetMenus || !spaceId" :items="sheetMenus || !spaceId ? [] : toDropdown(headItems())" :ui="{ content: 'hw-dropdown' }">
         <button
-          type="button" class="group-title project-head" :aria-expanded="!collapsed"
-          @pointerdown="sheetMenus && headLp.down($event)" @pointermove="headLp.move" @pointerup="headLp.cancel" @pointercancel="headLp.cancel"
+          type="button" class="project-head" :aria-expanded="!collapsed" :title="headTitle"
+          @pointerdown="sheetMenus && barLp.down($event)" @pointermove="barLp.move" @pointerup="barLp.cancel" @pointercancel="barLp.cancel"
           @contextmenu="sheetMenus && $event.preventDefault()" @click="toggle"
         >
           <UIcon name="i-lucide-chevron-down" class="project-chev" />
-          <UIcon name="i-lucide-git-fork" class="project-icon" />
-          <span class="project-name">{{ group.repo }}</span>
-          <span v-if="group.info?.branch" class="project-branch" :title="branchTitle">{{ group.info.branch }}<b v-if="behind">↓{{ behind }}</b></span>
+          <span class="sr-only">{{ foldLabel }}</span>
           <span class="project-sum">
-            <span v-if="sum.blocked" class="blocked"><i />{{ sum.blocked }}<span class="project-sum-l">{{ t('your turn') }}</span></span>
-            <span v-if="sum.working" class="working"><i />{{ sum.working }}<span class="project-sum-l">{{ t('working') }}</span></span>
-            <span v-if="sum.ready && (collapsed || !sum.blocked && !sum.working)" class="ready"><i />{{ sum.ready }}<span class="project-sum-l">{{ t('ready') }}</span></span>
+            <!-- Each part stays whole: a narrow column wraps the line between parts, never cuts one. -->
+            <span v-for="(p, i) in parts" :key="p.key" class="project-sum-part"><span :class="`project-sum-${p.key}`">{{ p.text }}</span><span v-if="i < parts.length - 1" class="project-sum-sep" aria-hidden="true">·</span></span>
           </span>
         </button>
       </UContextMenu>
-      <UButton v-if="group.space" icon="i-lucide-square-terminal" color="neutral" variant="ghost" size="sm" class="icon-btn project-term" :aria-label="repoLabel" :title="repoLabel" @click="openRepo" />
+      <span v-if="group.info?.branch" class="project-branch" :title="branchTitle"><UIcon name="i-lucide-git-branch" /><span class="project-branch-name">{{ group.info.branch }}</span><b v-if="behind">↓{{ behind }}</b></span>
       <SpaceMenu v-if="spaceId" :items="headItems" :title="group.repo" size="sm" :label="tl(`Options: ${group.repo}`, `Options : ${group.repo}`)" />
     </div>
     <button v-if="group.remote" type="button" class="project-remote" @click="openRemote">
@@ -139,9 +148,6 @@ const rowKey = (r: Row) => r.key
       <span>{{ tl('Coordinated from', 'Coordonné depuis') }} <b>{{ machineName(group.remote.machine) }}</b></span>
       <span class="project-remote-go">{{ t('coordinator') }}<UIcon name="i-lucide-arrow-up-right" /></span>
     </button>
-    <div v-if="group.coordinator" class="card-list project-lead" :class="{ alone: collapsed || !group.members.length }" role="group" :aria-label="coordinatorLabel">
-      <AgentCard :key="group.coordinator.key" class="project-coordinator" :pane="group.coordinator.lead" :row="group.coordinator" :board="coordinatorCard" />
-    </div>
     <div v-if="!collapsed && group.members.length" class="card-list project-tree">
       <AgentCard v-for="m in group.members" :key="rowKey(m.row)" :pane="m.row.lead" :row="m.row" :board="memberCard(m)" />
     </div>
