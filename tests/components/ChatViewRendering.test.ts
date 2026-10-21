@@ -16,7 +16,8 @@ describe('conversation rendering', () => {
     herdrState.value = { ok: true, workspaces: [], panes: [pane] }
     items = [
       { role: 'user', text: 'Clean the build folder.', ts: '2026-01-01T00:00:00Z' },
-      { role: 'tool', text: 'rm -rf build', name: 'Bash', ts: '2026-01-01T00:00:01Z' },
+      // Pending omp calls already carry their console view before any tool result.
+      { role: 'tool', text: 'rm -rf build', name: 'Bash', ts: '2026-01-01T00:00:01Z', omp: { title: 'Bash', target: 'rm -rf build', intent: 'Removing the build folder' } },
     ]
     const w = await mountSuspended(ChatView, { props: { pane, localQueued: [] } })
     try {
@@ -24,7 +25,8 @@ describe('conversation rendering', () => {
       const message = w.find('.msg-user .msg-fold')
       expect(message.element.textContent).toBe('Clean the build folder.')
       expect(message.isVisible()).toBe(true)
-      expect(w.find('.tools.live').isVisible()).toBe(true)
+      expect(w.find('.tools.omp-console.live').isVisible()).toBe(true)
+      expect(w.find('.omp-console .omp-tool-cmd').text()).toBe('rm -rf build')
       expect(w.findAll('.turn-end')).toHaveLength(0)
     } finally { w.unmount() }
   })
