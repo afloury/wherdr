@@ -223,9 +223,9 @@ onUnmounted(list.unmount)
         <span v-if="pane.agent" class="card-state" :class="statusKey(statePane)" :title="stateTitle" role="img" :aria-label="stateTitle"><i /></span>
       </template>
       <template v-else>
-      <AgentAvatar :agent="pane.agent" :coordinator="board?.coordinator" />
+      <AgentAvatar :agent="pane.agent" :coordinator="board?.coordinator" :icon="board?.icon" />
       <span v-if="board?.tag" class="card-tag home-task-tag">{{ board.tag }}</span>
-      <span class="card-title">{{ title }}</span>
+      <span class="card-title" :title="board?.hint">{{ title }}</span>
       <span v-if="boardStats" class="home-task-stats">{{ boardStats }}</span>
       <span v-if="taskCard && board?.group" class="task-state" :class="board.group">{{ taskGroupLabel(board.group) }}</span>
       <span v-if="statePane.usageLimit && !taskCard" class="card-tag quota-limit" :title="stateTitle">{{ tl('Limit', 'Quota') }}</span>
