@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Claude quota snapshots bind the account fingerprint and observation time atomically. Update older status lines to remove the ten-minute identity cache. Failed Claude reads are retried once; after two failures, that machine's Claude gauge is temporarily omitted until reading recovers, instead of reusing an old account reading indefinitely. This supersedes the earlier keep-last-reading behavior for Claude; Codex is unchanged.
+
 - Home machine bar: named groups with editable membership and machine order, combined counts, device storage, and reorder/hide controls (English and French).
 
 - **wherdr.dev shows the herdr-projects 1.x Board**: the herdr-projects story and its live demo now show the Board (a task reviewed, approved and moved to Done; the Coordinator turning a message into a task) instead of herdr-projects 0.2's Project panel, threads and TASKS.md.
