@@ -161,7 +161,9 @@ const draft = useDraft(props.paneId)
 // pane. The keys are gathered while the pane is open; the board's links say
 // which coordinator or task it is.
 const boardLinks = useBoardLinks()
-const known = shallowRef<string[]>([])
+// Seeded with the keys stored with the draft: after a reload on a pane already
+// closed, they are all that says who it was.
+const known = shallowRef<string[]>(draftOwnerKeys(props.paneId))
 const liveIds = computed(() => (herdrState.value.ok ? herdrState.value.panes.map(p => p.id).join(' ') : ''))
 watch([() => pane.value && agentKeys(pane.value, boardLinks.value).join(' '), liveIds], ([keys, ids]) => {
   if (!keys || !ids) return

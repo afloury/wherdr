@@ -108,6 +108,13 @@ export function useDraft(paneId: string): Draft {
 
 export const draftFilled = (d: Draft) => Boolean(d.text.trim() || d.atts.length)
 
+// The agent keys stored with the pane's draft (read again after a reload,
+// when the pane may already be gone).
+export function draftOwnerKeys(paneId: string): string[] {
+  useDraft(paneId)
+  return [...(owners.get(paneId) || [])]
+}
+
 // Record who the pane's agent is (keys only add up: a pane that just closed
 // loses its board link before it leaves Herdr's state).
 export function noteDraftOwner(paneId: string, keys: readonly string[]) {

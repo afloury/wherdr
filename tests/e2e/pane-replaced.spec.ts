@@ -29,6 +29,7 @@ async function writeDraft(page: Page) {
 test.afterEach(async () => {
   // Back to the scenario's own pane, whatever the test left.
   await fakeHerdr('e2e.replace_pane', { pane_id: NEW_PANE, new_id: OMP_OLD_TABLE_PANE }).catch(() => {})
+  await fakeHerdr('e2e.hide_pane', { pane_id: OMP_OLD_TABLE_PANE, hidden: false }).catch(() => {})
 })
 
 test('the open view moves to the new pane of the same agent, with its draft', async ({ page }, testInfo) => {
@@ -41,6 +42,18 @@ test('the open view moves to the new pane of the same agent, with its draft', as
   await shot(page, 'pane-replaced', testInfo.project.name)
   // The draft lives under the new pane now: it survives a reload there.
   await page.reload()
+  await expectDraft(page.locator('.prompt textarea').first(), DRAFT)
+})
+
+test('a view reloaded on the closed pane still moves to its successor', async ({ page }) => {
+  await writeDraft(page)
+  await fakeHerdr('e2e.hide_pane', { pane_id: OMP_OLD_TABLE_PANE, hidden: true })
+  await page.reload()
+  await expect(page.locator('.term-banner.closed-banner')).toContainText('Your draft is kept below.')
+  // The same agent comes back under a new id.
+  await fakeHerdr('e2e.replace_pane', { pane_id: OMP_OLD_TABLE_PANE, new_id: NEW_PANE })
+  await fakeHerdr('e2e.hide_pane', { pane_id: NEW_PANE, hidden: false })
+  await expect(page).toHaveURL(new RegExp(`#/a/${encodeURIComponent(NEW_PANE)}$`))
   await expectDraft(page.locator('.prompt textarea').first(), DRAFT)
 })
 

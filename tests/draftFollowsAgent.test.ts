@@ -12,7 +12,7 @@ globalThis.localStorage = {
   clear: () => store.clear(),
 } as Storage
 
-const { adoptDrafts, draftAsText, moveDraft, noteDraftOwner, useDraft } = await import('../app/composables/useDraft')
+const { adoptDrafts, draftAsText, draftOwnerKeys, moveDraft, noteDraftOwner, useDraft } = await import('../app/composables/useDraft')
 const QUOTE = '↳ Quote point 15:50 ~k3f : Shall I tag the release today? —'
 
 describe('a draft follows its agent', () => {
@@ -44,6 +44,13 @@ describe('a draft follows its agent', () => {
     await nextTick()
     expect(store.has('draft:w2:p1')).toBe(false)
     expect(JSON.parse(store.get('draft:w2:p2')!).who).toEqual(['coord::top:', 'session::b'])
+  })
+
+  it('gives back the stored keys of a pane after a reload', () => {
+    // Written by an earlier page: nothing of it in memory yet.
+    store.set('draft:w6:p1', JSON.stringify({ text: 'hello', atts: [], who: ['coord::top:'] }))
+    expect(draftOwnerKeys('w6:p1')).toEqual(['coord::top:'])
+    expect(draftOwnerKeys('w6:p9')).toEqual([])
   })
 
   it('keeps what the new field already holds, after the moved draft', () => {
