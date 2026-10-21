@@ -1,9 +1,9 @@
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createChatDelta, splitToken } from '../server/utils/chatDelta'
-import { createTranscripts } from '../server/utils/transcripts'
+import { anchorOf, createTranscripts } from '../server/utils/transcripts'
 import { createTailLoader, nextTail, restartsTail, tailQuery } from '../app/utils/chatTail'
 import type { ChatItem } from '../shared/types'
 
@@ -164,11 +164,11 @@ describe('incremental re-read of a Claude transcript', () => {
     const d = createChatDelta()
     // What /api/chat does with the transcript's reply (server/api/chat.get.ts).
     const call = async (since: string, from: number | null, count: number | null) => {
-      const r = await t.chat(pane, { since: d.sinceOf(pane.id, since, count), from })
+      const r = await t.chat(pane, { since: d.sinceOf(pane.id, since, count), from, anchor: since })
       if (r.unchanged || !r.items) return { ...r, token: since }
-      return { ...r, ...d.reply(pane.id, r.token!, r.items, since, count, from !== null && r.start === from) }
+      return { ...r, ...d.reply(pane.id, r.token!, r.items, since, count, from !== null && r.start === from && !r.rewritten) }
     }
-    return { file, t, pane, call }
+    return { file, t, pane, call, d }
   }
 
   it('sends one new message instead of the whole conversation, and rebuilds the same list', async () => {
@@ -264,6 +264,86 @@ describe('incremental re-read of a Claude transcript', () => {
       expect(r.keep).toBeUndefined()
       expect(r.items!.length).toBe(load.items!.length)
     }
+  })
+  it('re-reads a transcript rewritten at the same size', async () => {
+    const { file, call } = setup(20)
+    const load = await call('', null, 0)
+    const first = await call(load.token!, load.start!, load.items!.length)
+    const before = readFileSync(file, 'utf8')
+    const after = before.replace('Question 3', 'Answered 3')
+    expect(after.length).toBe(before.length)
+    writeFileSync(file, after)
+    utimesSync(file, new Date(), new Date(Date.now() + 5000)) // another modification time
+    const r = await call(first.token!, load.start!, load.items!.length)
+    expect(r.unchanged).toBeFalsy()
+    const tail = nextTail(load.items!, r)!
+    expect(tail.some(i => i.text === 'Answered 3')).toBe(true)
+    expect(tail.some(i => i.text === 'Question 3')).toBe(false)
+  })
+
+  // A file shortened above the cursor, whose old cursor byte now happens to be
+  // a line start: without the join check the client kept its older pages.
+  function rewriteAbove(file: string, start: number) {
+    const old = readFileSync(file)
+    // One line ending exactly at `start`, then a shorter bottom.
+    const msg = (pad: string) => JSON.stringify({ type: 'user', message: { role: 'user', content: 'Rewritten' }, timestamp: '2026-01-02T00:00:00.000Z', pad })
+    const filler = msg('z'.repeat(start - 1 - Buffer.byteLength(msg(''))))
+    const bottom = user('After the rewrite') + '\n'
+    writeFileSync(file, `${filler}\n${bottom}`)
+    expect(statSync(file).size).toBeLessThan(old.length)
+    expect(readFileSync(file)[start - 1]).toBe(0x0a)
+  }
+
+  it('starts again from the bottom when the file was shortened above the cursor', async () => {
+    const { file, call } = setup(6000, ` ${'x'.repeat(400)}`)
+    const load = await call('', null, 0)
+    const start = load.start!
+    expect(start).toBeGreaterThan(5000)
+    const first = await call(load.token!, start, load.items!.length)
+    expect(first.keep).toBe(load.items!.length)
+    rewriteAbove(file, start)
+    const r = await call(first.token!, start, load.items!.length)
+    expect(r.rewritten).toBe(true)
+    expect(r.keep).toBeUndefined()
+    expect(restartsTail({ file: first.file!, tailStart: start }, r)).toBe(true)
+    // A fresh bottom, read back from the end.
+    expect(r.items!.at(-1)!.text).toBe('After the rewrite')
+    // From that new start, re-reads are incremental again.
+    const again = await call(r.token!, r.start!, r.items!.length)
+    expect(again.rewritten).toBeUndefined()
+    expect(again.unchanged || again.keep === r.items!.length).toBe(true)
+  })
+
+  it('checks the join point even for a list the server forgot (restart)', async () => {
+    const { file, call, t, pane } = setup(6000, ` ${'x'.repeat(400)}`)
+    const load = await call('', null, 0)
+    const start = load.start!
+    rewriteAbove(file, start)
+    // A server that forgot the list gets no `since`, only the token as sent.
+    const r = await t.chat(pane, { since: '', from: start, anchor: `${load.token!}#0123456789abcdef` })
+    expect(r.rewritten).toBe(true)
+    expect(r.items!.at(-1)!.text).toBe('After the rewrite')
+  })
+
+  it('keeps plain growth incremental and "unchanged" when nothing moved', async () => {
+    const { file, call } = setup(6000, ` ${'x'.repeat(400)}`)
+    const load = await call('', null, 0)
+    const start = load.start!
+    const first = await call(load.token!, start, load.items!.length)
+    expect((await call(first.token!, start, load.items!.length)).unchanged).toBe(true)
+    appendFileSync(file, user('More') + '\n')
+    const r = await call(first.token!, start, load.items!.length)
+    expect(r.rewritten).toBeUndefined()
+    expect(r.keep).toBe(load.items!.length)
+  })
+})
+
+describe('anchorOf', () => {
+  it('reads the anchor of a token as the client sends it', () => {
+    expect(anchorOf('a.jsonl:900:120:77-1700:42/120.0123456789ab')).toEqual({ start: 120, hash: '0123456789ab' })
+    expect(anchorOf('a.jsonl:900:120:77-1700:42/120.0123456789ab~3#0123456789abcdef')).toEqual({ start: 120, hash: '0123456789ab' })
+    expect(anchorOf('a.jsonl:900:120')).toBeNull() // token of an older server
+    expect(anchorOf('')).toBeNull()
   })
 })
 

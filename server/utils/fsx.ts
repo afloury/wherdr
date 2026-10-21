@@ -7,7 +7,9 @@ import path from 'node:path'
 
 const fsp = fs.promises
 
-export interface FsStat { size: number, mtimeMs: number, isFile: boolean, isDir: boolean }
+// `ino`: inode number when known (a file replaced by another, even at the same
+// size and second, gets another one).
+export interface FsStat { size: number, mtimeMs: number, isFile: boolean, isDir: boolean, ino?: number }
 
 export interface MachineFs {
   stat: (p: string) => Promise<FsStat> // rejette si absent
@@ -19,7 +21,7 @@ export interface MachineFs {
 }
 
 // ---------------------------------------------------------------- disque local
-const toStat = (st: fs.Stats): FsStat => ({ size: st.size, mtimeMs: st.mtimeMs, isFile: st.isFile(), isDir: st.isDirectory() })
+const toStat = (st: fs.Stats): FsStat => ({ size: st.size, mtimeMs: st.mtimeMs, isFile: st.isFile(), isDir: st.isDirectory(), ino: st.ino })
 
 export const localFs: MachineFs = {
   stat: async p => toStat(await fsp.stat(p)),
@@ -76,12 +78,12 @@ export const shq = (s: string) => `'${String(s).replace(/'/g, `'\\''`)}'`
 // every part quoted, so a path is never interpreted by either shell.
 export const remoteCommand = (script: string, args: string[] = []) => `sh -c ${shq(script)} sh ${args.map(shq).join(' ')}`.trimEnd()
 
-// BSD (macOS) or GNU `stat`: one "size mtime type" line per file, "x" if missing.
+// BSD (macOS) or GNU `stat`: one "size mtime inode type" line per file, "x" if missing.
 export const STAT_SCRIPT = `if stat -f %z / >/dev/null 2>&1; then bsd=1; else bsd=; fi
 for f; do
   if [ ! -e "$f" ]; then echo x
-  elif [ -n "$bsd" ]; then stat -f '%z %m %HT' "$f" 2>/dev/null || echo x
-  else stat -c '%s %Y %F' "$f" 2>/dev/null || echo x; fi
+  elif [ -n "$bsd" ]; then stat -f '%z %m %i %HT' "$f" 2>/dev/null || echo x
+  else stat -c '%s %Y %i %F' "$f" 2>/dev/null || echo x; fi
 done`
 
 // Reserved by our read scripts, independent of shell/utility diagnostics
@@ -90,10 +92,13 @@ const MISSING_PATH_EXIT = 44
 const REQUIRE_PATH = `[ -e "$1" ] || exit ${MISSING_PATH_EXIT}\n`
 
 export function parseStatLine(line: string): FsStat | null {
-  const m = /^(\d+) (\d+) (.+)$/.exec(String(line || '').trim())
+  // The inode is optional: "size mtime type" from an older script still parses.
+  const m = /^(\d+) (\d+) (?:(\d+) )?(\D.*)$/.exec(String(line || '').trim())
   if (!m) return null
-  const type = m[3]!.toLowerCase()
-  return { size: Number(m[1]), mtimeMs: Number(m[2]) * 1000, isFile: type.includes('regular'), isDir: type.includes('directory') }
+  const type = m[4]!.toLowerCase()
+  const st: FsStat = { size: Number(m[1]), mtimeMs: Number(m[2]) * 1000, isFile: type.includes('regular'), isDir: type.includes('directory') }
+  if (m[3]) st.ino = Number(m[3])
+  return st
 }
 
 export function createShellFs(exec: ShellExec, opts: { statTtlMs?: number } = {}): MachineFs {
