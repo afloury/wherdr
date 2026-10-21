@@ -5,7 +5,8 @@
 // task of the backlog), stop its agent (asked first), retry what went wrong,
 // archive it. What 1.x does not give for a task is not shown.
 // Start names the agent the task starts with by default (its worker.agent, and
-// where that comes from) and offers the other agents installed on its machine:
+// where that comes from) and offers the other agents installed on its machine
+// that Settings › Agents offers (the default is shown even when unchecked):
 // a pick is for this start only (`delegate --worker.agent`), the defaults stay.
 // No message field here: "Open the chat" closes the sheet and opens the task's
 // agent in the Board's side panel (`chat`), where replying happens (with no
@@ -18,6 +19,7 @@
 import { NO_ACTIONS, type StartOptions, type TaskCommand, type TaskDetails, type TaskRow, prNumber, taskActions, taskKey } from '#shared/projectsTasks'
 import AppSheet from './AppSheet.vue'
 import { PROJECTS_LAUNCHER } from '#shared/projectsPlugin'
+import { type StartAgentChoice, startAgentChoices } from '~/utils/agentChoices'
 
 // `readOnly`: the board is read from its files (wherdr in a container): the
 // actions are the host's, given as commands.
@@ -59,25 +61,20 @@ const startOpts = ref<StartOptions | null>(null)
 const startLoading = ref(false)
 const pick = ref<string | null>(null)
 const defaultKind = computed(() => startOpts.value?.agent?.kind || '')
-// The default first (as herdr-projects resolves it, model included), then the others.
-// The default is offered only where it is installed. Unknown (no agent found:
-// the machine could not be checked) it stays what Start does, as before.
-const defaultUsable = computed(() => {
-  const o = startOpts.value
-  return !o?.agent || !o.agents.length || o.agents.includes(o.agent.kind)
-})
-const startAgents = computed(() => {
-  const o = startOpts.value
-  if (!o) return []
-  return [
-    { id: null as string | null, label: o.agent?.value || tl('default', 'par défaut'), isDefault: true, usable: defaultUsable.value },
-    ...o.agents.filter(k => k !== defaultKind.value).map(k => ({ id: k as string | null, label: k, isDefault: false, usable: true })),
-  ]
-})
-const startAgent = computed(() => (pick.value && pick.value !== defaultKind.value ? pick.value : null))
+// The default, then the other installed agents that Settings › Agents offers
+// (an unchecked default is still shown, marked: it is what Start runs).
+const startAgents = computed(() => (startOpts.value ? startAgentChoices(startOpts.value, hiddenAgents.value, tl('default', 'par défaut')) : []))
+const defaultUsable = computed(() => startAgents.value[0]?.usable ?? true)
+// A pick no longer offered (unchecked meanwhile) falls back to the default.
+const startAgent = computed(() => (pick.value && startAgents.value.some(a => !a.isDefault && a.id === pick.value) ? pick.value : null))
 // The default is not installed there: Start waits for another agent.
 const needsPick = computed(() => !defaultUsable.value && !startAgent.value)
-const checked = (a: { id: string | null, isDefault: boolean, usable: boolean }) => (a.isDefault ? a.usable && !startAgent.value : a.id === startAgent.value)
+const checked = (a: StartAgentChoice) => (a.isDefault ? a.usable && !startAgent.value : a.id === startAgent.value)
+// The default's tag: not installed there, or unchecked in Settings › Agents.
+function defaultTag(a: StartAgentChoice) {
+  if (!a.usable) return tl('default · not installed', 'défaut · pas installé')
+  return a.hidden ? tl('default · hidden in Settings', 'défaut · masqué dans les réglages') : tl('default', 'défaut')
+}
 // Where the default comes from, in the user's words (1.x's own as a fallback).
 function agentSource(): string {
   const a = startOpts.value?.agent
@@ -331,7 +328,7 @@ function chat() {
           :aria-checked="checked(a)"
           :disabled="busy || offlineView || !a.usable" @click="pick = a.id"
         >
-          <AgentAvatar v-if="a.id || startOpts?.agent" :agent="a.id || defaultKind" /><span class="task-start-name">{{ a.label }}</span><small v-if="a.isDefault">{{ a.usable ? tl('default', 'défaut') : tl('default · not installed', 'défaut · pas installé') }}</small>
+          <AgentAvatar v-if="a.id || startOpts?.agent" :agent="a.id || defaultKind" /><span class="task-start-name">{{ a.label }}</span><small v-if="a.isDefault">{{ defaultTag(a) }}</small>
         </button>
         <span v-if="startOpts?.agent" class="task-start-from">{{ agentSource() }}</span>
         <span v-if="needsPick" class="task-start-from task-start-missing" role="status">{{ tl(`${defaultKind} is not installed on this machine: pick another agent to start it.`, `${defaultKind} n’est pas installé sur cette machine : choisis un autre agent pour la lancer.`) }}</span>
