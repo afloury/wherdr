@@ -1456,6 +1456,11 @@ button.omp-tool-head:hover .omp-tool-chev { color: var(--text-strong); }
 .queued-cancel:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
 .queued-cancel:disabled { opacity: .55; cursor: default; }
 .queued-cancel .spin { animation: spin .8s linear infinite; }
+.menu-left { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; margin-left: auto; max-width: min(100%, 460px); padding: 10px 12px; border: 1px solid var(--line); border-left: 2px solid var(--blocked); border-radius: 0; background: var(--surface-2); }
+.menu-left-text { display: flex; align-items: flex-start; gap: 8px; margin: 0; font: 400 12px/1.45 var(--sans); color: var(--text-2); }
+.menu-left-text .iconify { width: 14px; height: 14px; flex: none; margin-top: 2px; color: var(--blocked); }
+.menu-left-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.menu-left-actions .queued-cancel { margin-left: 0; }
 /* Sent but not yet in the transcript; "!" command running. */
 .queued-tag.sent .iconify { color: var(--accent); }
 .queued-tag.running { color: var(--text-2); letter-spacing: .08em; text-transform: uppercase; font-size: 10.5px; }

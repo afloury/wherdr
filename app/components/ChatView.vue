@@ -926,6 +926,22 @@ async function retryQueued(q: { id: string, local?: boolean }) {
     retrying.value = null
   }
 }
+// Menu left open on the agent's screen (see server/utils/queued.ts
+// lookForLeftMenu): closed with Escape, or closed and the messages typed now.
+const menuLeftShown = computed(() => Boolean(props.pane.menuLeftOpen) && queuedList.value.some(q => q.phase === 'queued'))
+const menuLeftBusy = ref<'close' | 'send' | null>(null)
+async function menuLeft(action: 'close' | 'send') {
+  if (menuLeftBusy.value) return
+  menuLeftBusy.value = action
+  haptic()
+  try {
+    await api('/api/menu-left', { pane_id: props.pane.id, action })
+  } catch (err) {
+    toast((err as Error).message, true)
+  } finally {
+    menuLeftBusy.value = null
+  }
+}
 const queuedWhy = computed(() => {
   const p = props.pane
   if (p.pendingPrompt) return tl(`will be sent when ${kindLabel(p.agent)} is ready`, `partira dès que ${kindLabel(p.agent)} sera prêt`)
@@ -1488,6 +1504,20 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <UIcon name="i-lucide-clock" /><span>{{ t('Queued · ') }}{{ q.state === 'sending' ? t('sending…') : q.state === 'held' ? (q.reason === 'busy' ? t('will be sent when the agent’s input is free') : q.reason === 'turn' ? t('will be sent when the turn ends') : t('will be sent when the menu closes')) : queuedWhy }}</span>
               <button v-if="q.state !== 'sending' && (canCancel || q.state === 'held') && q.raw" type="button" class="queued-cancel" :disabled="Boolean(cancelling)" @click="cancelQueued(q)">
                 <UIcon :name="cancelling === q.id ? 'i-lucide-loader-circle' : 'i-lucide-undo-2'" :class="{ spin: cancelling === q.id }" />{{ t('Cancel') }}
+              </button>
+            </div>
+          </div>
+          <!-- A menu left open in the agent's terminal (no card shows it) holds the messages back. -->
+          <div v-if="menuLeftShown" class="menu-left" role="status">
+            <p class="menu-left-text">
+              <UIcon name="i-lucide-square-terminal" /><span>{{ t('A menu is still open in the agent’s terminal. Your messages wait for it to close.') }}</span>
+            </p>
+            <div class="menu-left-actions">
+              <button type="button" class="queued-cancel" :disabled="Boolean(menuLeftBusy)" @click="menuLeft('close')">
+                <UIcon :name="menuLeftBusy === 'close' ? 'i-lucide-loader-circle' : 'i-lucide-x'" :class="{ spin: menuLeftBusy === 'close' }" />{{ t('Close menu') }}
+              </button>
+              <button type="button" class="queued-cancel" :disabled="Boolean(menuLeftBusy)" @click="menuLeft('send')">
+                <UIcon :name="menuLeftBusy === 'send' ? 'i-lucide-loader-circle' : 'i-lucide-send'" :class="{ spin: menuLeftBusy === 'send' }" />{{ t('Send anyway') }}
               </button>
             </div>
           </div>

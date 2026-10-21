@@ -24,7 +24,7 @@ import { parseUsageLimit, type UsageLimit } from '../../shared/usageLimit'
 import { classifyScreen, type ScreenInteraction } from '../../shared/interactiveScreen'
 import { parseClaudeActivity } from './activity'
 import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './claudeScreen'
-import { type QueueEntry, INPUT_STATES, checkQueue, giveBackHeld, isUploadLine, landed, leftForGood, QUEUED_TEXT_MAX, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
+import { type QueueEntry, HOLD_AGENTS, INPUT_STATES, checkQueue, giveBackHeld, isUploadLine, landed, leftForGood, lookForLeftMenu, QUEUED_TEXT_MAX, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
 import { inputVisible } from './choices'
 import { isSlashCommand, photosOnly } from '../../shared/queuedMatch'
 import { codexFieldLine, findQueued, inputBox, msgText, unqueueClaude } from './unqueue'
@@ -509,41 +509,86 @@ function deliverHeld(p: Pane) {
   deliverBusy.add(p.id)
   herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
     .then(async (r) => {
-      if (!inputVisible(r.read && r.read.text) || !q.held || q.failed) return
-      // Removed (Cancel) meanwhile: nothing to send.
-      if (!(queued.get(p.id) || []).includes(q)) return
-      // Typed before without being seen taken: the agent may have taken it
-      // late. Its transcript says so; it is never typed twice.
-      if (q.typedAt && landedNow(p, q, (await transcripts.chat(p, { fresh: true })).items || [])) {
-        dropQueued(p.id, q)
-        log(`held message on ${p.id} was taken after all`)
-        setTimeout(poll, 50)
-        return
-      }
-      const at = Date.now()
-      try { await sendPrompt(p, q.text, { retry: Boolean(q.typedAt) }) }
-      catch (e) {
-        if ((e as GuardError).typed) q.typedAt = at
-        // Someone's text in the field: still held, until BUSY_TTL_MS.
-        if (isBusyError(e)) {
-          if ((e as HerdrError).code === 'input_busy' && !q.busy) { q.busy = true; setTimeout(poll, 50) }
-          return
-        }
-        throw e
-      }
-      q.held = false
-      delete q.busy
-      delete q.turn
-      q.typedAt = at
-      delete q.readySince
-      q.at = Date.now()
-      log(`held message sent on ${p.id}`)
-      setTimeout(poll, 50)
+      if (!inputVisible(r.read && r.read.text)) return
+      await typeHeld(p, q)
     })
-    .catch((e) => {
-      if (!/not an active|not_ready|blocked/i.test(`${e.code} ${e.message}`)) { q.failed = true; log(`held message ${p.id}: ${e.message}`); setTimeout(poll, 50) }
-    })
+    .catch(e => heldFailed(p, q, e))
     .finally(() => deliverBusy.delete(p.id))
+}
+// A held message typed into the agent's input field. False when it stays
+// held (someone's text in the field, or it went away meanwhile).
+async function typeHeld(p: Pane, q: QueueEntry): Promise<boolean> {
+  if (!q.held || q.failed) return false
+  // Removed (Cancel) meanwhile: nothing to send.
+  if (!(queued.get(p.id) || []).includes(q)) return false
+  // Typed before without being seen taken: the agent may have taken it
+  // late. Its transcript says so; it is never typed twice.
+  if (q.typedAt && landedNow(p, q, (await transcripts.chat(p, { fresh: true })).items || [])) {
+    dropQueued(p.id, q)
+    log(`held message on ${p.id} was taken after all`)
+    setTimeout(poll, 50)
+    return true
+  }
+  const at = Date.now()
+  try { await sendPrompt(p, q.text, { retry: Boolean(q.typedAt) }) }
+  catch (e) {
+    if ((e as GuardError).typed) q.typedAt = at
+    // Someone's text in the field: still held, until BUSY_TTL_MS.
+    if (isBusyError(e)) {
+      if ((e as HerdrError).code === 'input_busy' && !q.busy) { q.busy = true; setTimeout(poll, 50) }
+      return false
+    }
+    throw e
+  }
+  q.held = false
+  delete q.busy
+  delete q.turn
+  q.typedAt = at
+  delete q.readySince
+  q.at = Date.now()
+  log(`held message sent on ${p.id}`)
+  setTimeout(poll, 50)
+  return true
+}
+function heldFailed(p: Pane, q: QueueEntry, e: HerdrError) {
+  if (/not an active|not_ready|blocked/i.test(`${e.code} ${e.message}`)) return
+  q.failed = true
+  log(`held message ${p.id}: ${e.message}`)
+  setTimeout(poll, 50)
+}
+
+// "Close menu" / "Send anyway" on a menu left open (see lookForLeftMenu): one
+// Escape, only while the input field is still hidden (Escape on Claude's
+// input field during a turn would interrupt it). Messages not sent for lack
+// of the field wait again. `send`: the held messages are typed now, in
+// order, even during a turn, instead of waiting for its end.
+export async function closeLeftMenu(paneId: string, send: boolean): Promise<{ closed: boolean, sent: number }> {
+  const p = findPane(paneId)
+  if (!p || !p.agent || !HOLD_AGENTS.has(p.agent) || p.stopped || restarting(paneId)) throw new HerdrError('stale', 'No menu to close')
+  const shown = async () => inputVisible(((await herdr('pane.read', { pane_id: paneId, source: 'detection' }, 4000)).read || {}).text)
+  const closed = await withPaneLock(paneId, async () => {
+    if (await shown()) return false
+    await herdr('pane.send_input', { pane_id: paneId, keys: ['esc'] })
+    await sleep(400)
+    if (!(await shown())) throw new HerdrError('menu_open', 'The menu is still open. Close it in the terminal.')
+    log(`menu left open closed on ${paneId}`)
+    return true
+  })
+  for (const q of queued.get(paneId) || []) if (q.failed && q.noInput) retryQueued(paneId, q.id)
+  let sent = 0
+  if (send && !deliverBusy.has(paneId)) {
+    deliverBusy.add(paneId)
+    try {
+      for (let q = nextHeld(queued.get(paneId) || []); q; q = nextHeld(queued.get(paneId) || [])) {
+        const now = findPane(paneId) || p
+        try { if (!(await typeHeld(now, q))) break }
+        catch (e) { heldFailed(now, q, e as HerdrError); throw e }
+        sent++
+      }
+    } finally { deliverBusy.delete(paneId) }
+  }
+  setTimeout(poll, 50)
+  return { closed, sent }
 }
 
 // Messages taken back after a Stop (see interruptRestore.ts): hidden from the
@@ -990,6 +1035,12 @@ async function enrich(next: HerdrState, snap: Json, machine: string, publish?: (
       p.interaction = 'working'
       choicesCache.delete(p.id)
       askChecks.delete(p.id)
+    }
+    // Messages waiting for an input field that a menu no card shows hides
+    // (see lookForLeftMenu): the conversation says so, with Close / Send anyway.
+    if (lookForLeftMenu(p)) {
+      const r = await herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000).catch(() => null)
+      if (r && !inputVisible(r.read && r.read.text)) p.menuLeftOpen = true
     }
     const pv = previews.get(p.id)
     if (!pv || pv.status !== p.status || (p.status === 'working' && Date.now() - pv.at > 10000)) refreshPreview(p)

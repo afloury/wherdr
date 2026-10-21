@@ -50,7 +50,7 @@ it('S7: independent viewed reads publish within two seconds and survive the old 
  const enrich=bindFunction(source,'enrich',{
  seenMachines:new Set(['']),mstates:states,agentBorn:new Map(panes.map(p=>[p.id,{agent:p.agent,at:null}])),
  selfUpdates:{prune:()=>{},observe:async()=>false},commands:map(),READY:new Set(),
- getMachine:()=>({transcripts:{observe:()=>{}}}),joinId:(_:string,id:string)=>id,restarts:map(),leftForGood:()=>false,
+ getMachine:()=>({transcripts:{observe:()=>{}}}),joinId:(_:string,id:string)=>id,restarts:map(),leftForGood:()=>false,lookForLeftMenu:()=>false,
  findPane:()=>null,pendingPrompts:map(),queued:map(),screenVersions:versions,mapScreenPanes,choicesFor,refreshModel:()=>{},refreshPreview:()=>{},
  previews:new Map(panes.map(p=>[p.id,{status:'blocked',at:Date.now()}])),models:new Map(panes.map(p=>[p.id,{status:'blocked',at:Date.now()}])),
  isViewed,activities:map(),ompStatuses:map(),codexFields:map(),codexStatus:{forget:()=>{},statusOf:()=>null},chatDelta:{ids:()=>[],forget:()=>{}},
