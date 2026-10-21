@@ -387,10 +387,9 @@ test('the reply style is chosen in Settings and kept on the device', async ({ pa
 })
 
 // Reference screenshots of each style, dark and light (SHOTS=<folder> only).
-for (const style of ['icon', 'text', 'list']) {
+if (process.env.SHOTS) for (const style of ['icon', 'text', 'list']) {
   for (const theme of ['wherdr-titanium', 'catppuccin-latte']) {
     test(`screenshot: ${style} style, ${theme}`, async ({ page }, testInfo) => {
-      test.skip(!process.env.SHOTS, 'screenshots on demand')
       if (!phone(testInfo.project.name)) await page.setViewportSize({ width: 1280, height: 800 })
       const { chat } = await open(page, style, theme)
       const item = chat.locator('li', { hasText: EXPORT })
