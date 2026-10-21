@@ -3185,7 +3185,15 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
 @media (hover: hover) and (pointer: fine) {
   .rs-icon .q-point { width: 0; height: 1em; margin: 0; padding: 0; vertical-align: -1px; transition: opacity 120ms; }
   .rs-icon .q-point::before { position: absolute; left: .45em; top: 62%; translate: 0 -50%; padding: 4px; }
-  .rs-icon .q-point::after { left: calc(.45em + 9px); }
+  /* The hit area covers the glyph only, and each point keeps room on its
+     right for it: a point whose last line fills the width (a long path) must
+     not push the glyph past the conversation's edge, which would make it
+     scroll sideways. */
+  .rs-icon .q-point::after { left: .45em; width: calc(1ch + 8px); height: 24px; translate: 0 -50%; }
+  .rs-icon .md-body .q-pt { padding-right: 28px; }
+  /* What a point holds after its own text (a nested list, a code block)
+     keeps the full width. */
+  .rs-icon .md-body .q-pt > :is(ul, ol, pre, div, blockquote, table) { margin-right: -28px; }
   .rs-icon .q-point:not(.quoted) { opacity: 0; }
   .rs-icon .md-body :is(p, li):hover > .q-point, .rs-icon .q-point:focus-visible { opacity: 1; }
 }
@@ -3985,9 +3993,9 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .board-panel-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
 .task-new { display: inline-block; margin-left: 5px; width: 5px; height: 5px; background: var(--ochre); }
 .task-needs { flex: 0 1 auto; max-height: 38%; overflow-y: auto; overscroll-behavior: contain; padding: 12px 14px; border-bottom: 1px solid var(--line-strong); border-left: 3px solid var(--ochre); background: var(--bg-2); }
-.task-needs h3 { margin: 0 0 8px; color: var(--ochre); font: 600 12px/1.4 var(--mono); }
+.task-needs h3 { margin: 0 0 8px; color: var(--ochre); font: 600 12px/1.4 var(--mono); overflow-wrap: anywhere; }
 .task-needs pre, .task-setup pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; font: 12px/1.5 var(--mono); }
-.task-needs p, .task-setup p { margin: 8px 0; color: var(--text-2); font-size: 13px; }
+.task-needs p, .task-setup p { margin: 8px 0; color: var(--text-2); font-size: 13px; overflow-wrap: anywhere; }
 .task-needs-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .task-needs-actions button { border-radius: 0; font-size: 11px; }
 /* Retry or Finish: what each does, in one line. */
