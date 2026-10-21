@@ -1122,7 +1122,9 @@ same lines as text, a fallback if the tokens misbehave. The message sent is the 
 A **closed question**, one that yes or no answers in full, also gets **Yes** and **No** next to
 its `↳` (at the end of its row in the list style). A tap refers to the question and writes the
 answer under it, in the language of the interface, exactly as Reply and typing would; nothing is sent, so several questions can be
-answered in a row before sending. The keyboard stays down on a phone. Tapping the other answer
+answered in a row before sending. On a computer a click hands the field the focus, the caret
+right after the answer, so Enter sends it at once; the keyboard stays down on a phone, and a
+button pressed with the keyboard keeps the focus. Tapping the other answer
 replaces the first; words you typed under a quote are never replaced. The rule is cautious, and
 in doubt only Reply is offered: a single sentence that opens like a yes/no question (`Shall I…`,
 `Do you…`, `Is it…`, `Want me to…`, `Est-ce que…`, `Je lance… ?`, `On…`, `Dois-je…`) or ends
@@ -1135,7 +1137,8 @@ under it (a second tap takes it back), and each row has **Yes**, **No** and `↳
 the row by its number and write `Yes` or `No` under it, or nothing for an answer in words; a row
 that asks an open question has `↳` alone. Every answer names the message and the row, even for
 the last message: the agent may write another one before you send. In French: `OK tout`, `Oui`,
-`Non`. Here too everything is composed in the field and you send. A table qualifies when it has a
+`Non`. Here too everything is composed in the field and you send; on a computer the field takes the focus
+after a click, so Enter sends. A table qualifies when it has a
 number column (a header `#`, `N°`, `No`, `Num`, `ID` or `Q` over short numbers, each once) and a
 question column, known by its header (`Question`, `Decision`, `Choix`…), by cells that all end
 with `?`, or by an advice column next to it (`Avis`, `Recommendation`, `Suggestion`…). Any other

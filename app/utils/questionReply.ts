@@ -169,6 +169,16 @@ export function answerOf(draft: string, ref: Reference): string | null {
   const at = answerSpan(draft, ref)
   return at ? draft.slice(at.start, at.end).trim() : null
 }
+// Where the caret goes after a one-tap answer: right after the answer written
+// under the reference (an answer may sit above others), else the end of the
+// draft (the reference is gone: "OK to all" taken back).
+export function answerEnd(draft: string, ref: Reference): number {
+  const text = String(draft || '')
+  const at = answerSpan(text, ref)
+  if (!at) return text.length
+  const answer = text.slice(at.start, at.end).replace(/\s+$/, '')
+  return answer.trim() ? at.start + answer.length : at.start
+}
 // Draft with the reference and its answer, in one tap. A reference already
 // there gets the answer under it; a "yes" or "no" written by an earlier tap
 // is replaced. Null when there is nothing to change: the same answer is
