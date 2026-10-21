@@ -17,11 +17,18 @@
 // come back, or the error stays in the sheet. Archive closes it: the Board
 // offers Restore for a few seconds. An archived task (Board › Archived, a link to it) is read-only, as
 // in 1.x: an "Archived" tag and Restore, nothing else.
-import { NO_ACTIONS, type StartOptions, type TaskCommand, type TaskDetails, type TaskRow, finishCase, prNumber, taskActions, taskKey } from '#shared/projectsTasks'
+// With every slot of its board taken (`board.agents` tasks at work), Start says
+// Queue and the place the task would get: the same `delegate`, which queues it.
+// "Start after…" picks tasks to wait for, on any machine the Board reads
+// (`delegate --after`); a task that waits says for what, with "Stop waiting"
+// (`after --clear`), and one in the queue says its place.
+import { AFTER_MAX, NO_ACTIONS, type StartOptions, type TaskCommand, type TaskDetails, type TaskRow, type TasksReply, finishCase, prNumber, startPlace, taskActions, taskKey } from '#shared/projectsTasks'
 import AppSheet from './AppSheet.vue'
 import { PROJECTS_LAUNCHER } from '#shared/projectsPlugin'
 import { type StartAgentChoice, startAgentChoices } from '~/utils/agentChoices'
 import { finishHint, finishLabel, finishQuestion, finishTitle, finishOffered } from '~/utils/taskFinish'
+import { type WaitChoice, queuePlaceText, typedRef, waitChoices, waitName } from '~/utils/taskWait'
+import { sawTasksBoard, seenTasksBoard } from '~/composables/useTasksBoard'
 
 // `readOnly`: the board is read from its files (wherdr in a container): the
 // actions are the host's, given as commands.
@@ -111,6 +118,63 @@ async function loadStart() {
   }
 }
 
+// Queue: no slot free on the task's board, so Start puts it in the queue, at this place.
+const place = computed(() => startPlace(startOpts.value?.slots))
+function startLabel(): string {
+  const a = startAgent.value
+  if (place.value) return a ? tl(`Queue with ${a}`, `Mettre en file avec ${a}`) : tl('Queue', 'Mettre en file')
+  return a ? tl(`Start with ${a}`, `Lancer avec ${a}`) : tl('Start', 'Lancer')
+}
+const placeLine = computed(() => {
+  const s = startOpts.value?.slots
+  if (!place.value || !s) return ''
+  return `${queuePlaceText(place.value)} · ${tl(`all ${s.max} slots are taken`, s.max === 1 ? 'la seule place est prise' : `les ${s.max} places sont prises`)}`
+})
+// Where a task already started stands: its place in the queue, or what it
+// waits for (a task not delegated yet: what it is to wait for, once it is).
+const queued = computed(() => (props.task?.stage === 'queued' && !archived.value ? props.task.queue ?? failure.value?.queue ?? 0 : null))
+const wait = computed(() => {
+  const w = failure.value?.after
+  return w && !archived.value && (w.waiting || props.task?.stage === 'todo' || props.task?.stage === 'after') ? w : null
+})
+const labelOf = (key: string) => (key ? machineInfo(key)?.label || key : hostLabel.value)
+const boards = computed(() => seenTasksBoard.value?.machines ?? [])
+const nameOf = (id: string) => waitName(id, props.machine, boards.value, labelOf)
+// Not in a container (the host's command is given there).
+const canClear = computed(() => Boolean(wait.value) && !props.readOnly)
+
+// "Start after…": the picker, in the sheet (no sheet over the sheet on a phone).
+const picking = ref(false)
+const query = ref('')
+const chosen = ref<WaitChoice[]>([])
+const boardLoading = ref(false)
+const choices = computed(() => (picking.value && props.task
+  ? waitChoices(boards.value, props.machine, props.task.id, labelOf, query.value).filter(c => !chosen.value.some(x => x.ref === c.ref))
+  : []))
+// What was typed, as the board reads it, when the list has no such task.
+const typed = computed(() => { const r = typedRef(query.value); return r && !chosen.value.some(x => x.ref === r) && !choices.value.some(c => c.ref.toLowerCase() === r.toLowerCase()) ? r : null })
+let boardSeq = 0
+async function openPicker() {
+  picking.value = true
+  query.value = ''
+  chosen.value = []
+  const id = ++boardSeq
+  boardLoading.value = !seenTasksBoard.value
+  try {
+    // Every machine's tasks, as the Board reads them (its last read reused when fresh).
+    const r = await api<TasksReply>('/api/tasks')
+    if (!('same' in r)) sawTasksBoard(r)
+  } catch { /* the last board read, or typed ids */ }
+  finally { if (id === boardSeq) boardLoading.value = false }
+}
+function closePicker() { picking.value = false; query.value = ''; chosen.value = [] }
+function choose(c: WaitChoice) { if (chosen.value.length < AFTER_MAX) chosen.value = [...chosen.value, c]; query.value = '' }
+function chooseTyped() {
+  const r = typed.value
+  if (r) choose({ ref: r, id: r, machine: '', title: '', group: 'todo' })
+}
+function unchoose(ref: string) { chosen.value = chosen.value.filter(c => c.ref !== ref) }
+
 let seq = 0
 async function load() {
   const t = props.task
@@ -143,6 +207,7 @@ watch([open, target], ([o]) => {
   actionError.value = ''
   restored.value = false
   pick.value = null
+  closePicker()
   startOpts.value = null
   startLoading.value = false
   startSeq++
@@ -215,7 +280,7 @@ const ACTION_DONE: Record<Exclude<TaskCommand, 'archive'>, () => string> = {
   finish: () => tl('Taken as it is: checks, then review', 'Prise telle quelle : vérifications puis relecture'),
   restore: () => tl('Restored', 'Restaurée'),
 }
-async function act(action: TaskCommand) {
+async function act(action: TaskCommand, after?: string[]) {
   const t = props.task
   if (!t || busy.value) return
   if (action === 'delegate' && needsPick.value) return
@@ -232,7 +297,8 @@ async function act(action: TaskCommand) {
   actionError.value = ''
   try {
     const agent = action === 'delegate' ? startAgent.value : null
-    const r = await api<{ msg: string }>('/api/tasks/action', { machine, id: t.id, action, ...(agent ? { agent } : {}) })
+    const r = await api<{ msg: string }>('/api/tasks/action', { machine, id: t.id, action, ...(agent ? { agent } : {}), ...(action === 'delegate' && after?.length ? { after } : {}) })
+    if (action === 'delegate' && g === gen) closePicker()
     haptic()
     if (action === 'archive') {
       // The Board says it, with Restore, and reads itself again.
@@ -246,6 +312,27 @@ async function act(action: TaskCommand) {
     await settle(g)
   } catch (e) { failed(e, g) }
   finally { if (g === gen) { busy.value = false; running.value = null } }
+}
+
+// Start after the tasks picked: the board checks them, and says why it refuses.
+function startAfter() {
+  if (chosen.value.length) act('delegate', chosen.value.map(c => c.ref))
+}
+// Stop waiting (`after --clear`): it starts, or takes its place in the queue.
+async function clearWait() {
+  const t = props.task
+  if (!t || busy.value || !canClear.value) return
+  const machine = props.machine
+  const g = gen
+  busy.value = true
+  actionError.value = ''
+  try {
+    const r = await api<{ msg: string }>('/api/tasks/after', { machine, id: t.id })
+    haptic()
+    toast(r.msg || tl('No longer waiting', 'N’attend plus'))
+    await settle(g)
+  } catch (e) { failed(e, g) }
+  finally { if (g === gen) busy.value = false }
 }
 
 // The task's conversation in the Board's side panel, the sheet closed.
@@ -269,7 +356,27 @@ function chat() {
         <span v-if="multiMachine && machine !== undefined" class="task-chip">{{ machineName(machine) }}</span>
       </p>
       <p v-if="embedded && task.group === 'working' && task.progress !== null" class="task-sheet-msg">{{ tl('Progress', 'Avancement') }} · {{ task.progress }}%<template v-if="task.eta !== null"> · {{ tl(`${task.eta} min left`, `${task.eta} min restantes`) }}</template></p>
-      <p v-if="task.msg" class="task-sheet-msg">{{ task.msg }}</p>
+      <p v-if="task.msg && !wait && queued === null" class="task-sheet-msg">{{ task.msg }}</p>
+      <!-- Where a started task stands before an agent is on it: the queue, or what it waits for. -->
+      <section v-if="queued !== null" class="task-sheet-block task-wait" role="status">
+        <h4>{{ tl('In the queue', 'En file') }}</h4>
+        <p class="task-wait-line"><UIcon name="i-lucide-list-ordered" />{{ tl('Waiting for a free slot', 'Attend une place libre') }}<template v-if="queued"> · <strong>{{ queuePlaceText(queued) }}</strong></template></p>
+      </section>
+      <section v-if="wait" class="task-sheet-block task-wait" role="status">
+        <h4>{{ wait.waiting ? tl('Waiting', 'En attente') : tl('To wait for', 'À attendre') }}</h4>
+        <p class="task-wait-line">
+          <UIcon name="i-lucide-hourglass" />{{ wait.waiting ? tl('Waits for', 'Attend') : tl('Will wait for', 'Attendra') }}
+          <span v-for="id in wait.waitsFor" :key="id" class="task-wait-chip" :class="{ done: !wait.left.includes(id) }" :title="wait.titles[id] || undefined">
+            {{ nameOf(id) }}<small v-if="!wait.left.includes(id)">{{ tl('done', 'fait') }}</small>
+          </span>
+        </p>
+        <p v-if="wait.forYou" class="board-note error">{{ wait.forYou }}</p>
+        <p class="task-wait-hint">{{ wait.waiting ? tl('It starts by itself once they are done.', 'Elle démarre d’elle-même quand elles sont faites.') : tl('Once started, it waits for them to be done.', 'Une fois lancée, elle attend qu’elles soient faites.') }}</p>
+        <UButton v-if="canClear" color="neutral" variant="outline" icon="i-lucide-x" class="task-wait-clear" :disabled="busy || offlineView" @click="clearWait">
+          {{ tl('Stop waiting', 'Ne plus attendre') }}
+        </UButton>
+        <code v-else-if="readOnly" class="projects-plugin-command">{{ PROJECTS_LAUNCHER }} after {{ task.id }} --clear</code>
+      </section>
       <p v-if="archived" class="board-note task-sheet-archived">{{ tl('Archived: read-only, as in herdr-projects. Restore it to change or start it again.', 'Archivée : en lecture seule, comme dans herdr-projects. Restaure-la pour la modifier ou la relancer.') }}</p>
 
       <p v-if="loading && !details" class="board-empty">{{ t('Loading…') }}</p>
@@ -349,7 +456,8 @@ function chat() {
       </div>
       <div v-if="chatShown || actions.approve || actions.delegate || actions.retry || actions.finish || actions.stop || actions.archive || actions.restore" class="task-sheet-actions">
         <UButton v-if="actions.restore" color="primary" icon="i-lucide-archive-restore" :loading="running === 'restore'" :disabled="busy || offlineView" @click="act('restore')">{{ tl('Restore', 'Restaurer') }}</UButton>
-        <UButton v-if="actions.delegate" color="primary" icon="i-lucide-play" :loading="running === 'delegate'" :disabled="busy || offlineView || needsPick" @click="act('delegate')">{{ startAgent ? tl(`Start with ${startAgent}`, `Lancer avec ${startAgent}`) : tl('Start', 'Lancer') }}</UButton>
+        <UButton v-if="actions.delegate" color="primary" :icon="place ? 'i-lucide-list-ordered' : 'i-lucide-play'" class="task-start" :loading="running === 'delegate' && !picking" :disabled="busy || offlineView || needsPick" @click="act('delegate')">{{ startLabel() }}</UButton>
+        <UButton v-if="actions.delegate" color="primary" variant="outline" icon="i-lucide-hourglass" class="task-start-after" :aria-expanded="picking" :disabled="busy || offlineView || needsPick" @click="picking ? closePicker() : openPicker()">{{ tl('Start after…', 'Démarrer après…') }}</UButton>
         <UButton v-if="actions.approve" color="primary" icon="i-lucide-check" :loading="busy && !running" :disabled="busy || offlineView" @click="approve">
           {{ task.stage === 'plan' ? tl('Approve plan', 'Accepter le plan') : tl('Approve', 'Approuver') }}
         </UButton>
@@ -364,6 +472,35 @@ function chat() {
         <UButton v-if="actions.stop" color="error" variant="outline" icon="i-lucide-square" :loading="running === 'stop'" :disabled="busy || offlineView" @click="act('stop')">{{ tl('Stop', 'Arrêter') }}</UButton>
         <UButton v-if="actions.archive" color="neutral" variant="ghost" icon="i-lucide-archive" class="task-archive" :loading="running === 'archive'" :disabled="busy || offlineView" @click="act('archive')">{{ tl('Archive', 'Archiver') }}</UButton>
       </div>
+      <p v-if="actions.delegate && placeLine" class="task-queue-place" role="status">{{ placeLine }}</p>
+      <!-- Start after…: the tasks to wait for, searched by key, id or title, on every machine the Board reads. -->
+      <section v-if="actions.delegate && picking" class="task-sheet-block task-after-pick">
+        <h4>{{ tl('Start after…', 'Démarrer après…') }}</h4>
+        <p class="task-wait-hint">{{ tl('It starts by itself once these tasks are done. Another machine’s task: machine:KEY-12.', 'Elle démarre d’elle-même quand ces tâches sont faites. Tâche d’une autre machine : machine:CLÉ-12.') }}</p>
+        <p v-if="chosen.length" class="task-wait-line">
+          <span v-for="c in chosen" :key="c.ref" class="task-wait-chip">
+            {{ c.ref }}<button type="button" class="task-wait-unchoose" :aria-label="tl(`Remove ${c.ref}`, `Retirer ${c.ref}`)" @click="unchoose(c.ref)"><UIcon name="i-lucide-x" /></button>
+          </span>
+        </p>
+        <UInput
+          v-model="query" size="xl" class="w-full task-after-search" icon="i-lucide-search" autocapitalize="none" autocorrect="off" :spellcheck="false" enterkeyhint="done" maxlength="120"
+          :placeholder="tl('Key, id or title', 'Clé, id ou titre')" :aria-label="tl('Task to wait for', 'Tâche à attendre')"
+          @keydown.enter.prevent="typed ? chooseTyped() : choices[0] && choose(choices[0])"
+        />
+        <ul class="task-after-list">
+          <li v-if="typed"><button type="button" class="task-after-choice" @click="chooseTyped"><span class="mono">{{ typed }}</span><span>{{ tl('Wait for this task', 'Attendre cette tâche') }}</span></button></li>
+          <li v-for="c in choices" :key="c.ref">
+            <button type="button" class="task-after-choice" @click="choose(c)"><span class="mono">{{ c.ref }}</span><span class="task-after-title">{{ c.title }}</span><small>{{ taskGroupLabel(c.group) }}</small></button>
+          </li>
+        </ul>
+        <p v-if="!choices.length && !typed" class="board-empty">{{ boardLoading ? t('Loading…') : tl('No task to wait for matches.', 'Aucune tâche à attendre ne correspond.') }}</p>
+        <div class="task-sheet-actions">
+          <UButton color="primary" :icon="place ? 'i-lucide-list-ordered' : 'i-lucide-hourglass'" :loading="running === 'delegate'" :disabled="busy || offlineView || needsPick || !chosen.length" @click="startAfter">
+            {{ chosen.length ? tl(`Start after ${chosen.length === 1 ? chosen[0]!.ref : `${chosen.length} tasks`}`, `Démarrer après ${chosen.length === 1 ? chosen[0]!.ref : `${chosen.length} tâches`}`) : tl('Pick a task', 'Choisis une tâche') }}
+          </UButton>
+          <UButton color="neutral" variant="ghost" :disabled="running === 'delegate'" @click="closePicker">{{ t('Cancel') }}</UButton>
+        </div>
+      </section>
       <p v-if="(actions.finish || hostActions.finish) && !embedded" class="task-finish-why">{{ finishWhy }}</p>
       <p v-if="actionError" class="board-note error task-sheet-error" role="alert">{{ actionError }}</p>
 

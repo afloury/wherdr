@@ -38,7 +38,10 @@ case "$1" in
   esac ;;
   add) echo "demo/7: added" ;;
   # delegate --worker.agent=X keeps X as the task's own setting, as 1.x does; set/unset --task change it.
-  delegate) case "$2" in --worker.agent=*) printf '%s' "\${2#--worker.agent=}" > '${root}/own-agent' ;; esac; echo "done" ;;
+  # A refusal the spec writes (a wait in a circle…) is said on stderr, as 1.x does.
+  delegate) if [ -f '${root}/refuse' ]; then cat '${root}/refuse' >&2; exit 1; fi
+    case "$2" in --worker.agent=*) printf '%s' "\${2#--worker.agent=}" > '${root}/own-agent' ;; esac; echo "done" ;;
+  after) echo "$4: waits for nothing, so it starts now" ;;
   set) printf '%s' "$5" > '${root}/own-agent'; echo "set" ;;
   unset) rm -f '${root}/own-agent'; echo "unset" ;;
   stop|retry|fix|finish) echo "$3: done" ;;
@@ -46,7 +49,7 @@ case "$1" in
   archive) printf '[{"id":"%s","state":"done","title":"Archived","stage":"failed","archivedAt":1}]' "$3" > '${root}/archived.json'; echo "$3: done" ;;
   # What the board lists once a task is restored, when the spec gives it.
   restore) if [ -f '${root}/after-restore.json' ]; then mv '${root}/after-restore.json' '${root}/list.json'; echo '[]' > '${root}/archived.json'; fi; echo "$3: done" ;;
-  show) case "$2" in --json) if [ -f '${root}/own-agent' ]; then printf '{"settings":[{"name":"worker.agent","kind":"work","value":"%s","from":"this task","place":"task","own":true,"note":""}],"problems":[]}\\n' "$(cat '${root}/own-agent')"; else echo '${taskAgentReply}'; fi ;; --repo=demo) echo '${keyReply('DEMO')}' ;; --repo=web) echo '${keyReply('SITE')}' ;; *) echo '${keyReply('none')}' ;; esac ;;
+  show) case "$2" in --json) if [ -f '${root}/show.json' ]; then cat '${root}/show.json'; elif [ -f '${root}/own-agent' ]; then printf '{"settings":[{"name":"worker.agent","kind":"work","value":"%s","from":"this task","place":"task","own":true,"note":""}],"problems":[]}\\n' "$(cat '${root}/own-agent')"; else echo '${taskAgentReply}'; fi ;; --repo=demo) echo '${keyReply('DEMO')}' ;; --repo=web) echo '${keyReply('SITE')}' ;; *) echo '${keyReply('none')}' ;; esac ;;
   *) echo "unexpected: $*" >&2; exit 1 ;;
 esac
 `, { mode: 0o755 })
@@ -64,7 +67,7 @@ const home = path.join(path.dirname(fs.readFileSync(SOCK_FILE, 'utf8').trim()), 
 const taskDir = path.join(home, '.herdr-projects/data/tasks/demo/1')
 
 test.beforeEach(() => {
-  for (const f of [path.join(root, 'details.json'), calls, path.join(root, 'own-agent'), path.join(root, 'list.json'), path.join(root, 'archived.json'), path.join(root, 'after-restore.json'), path.join(root, 'after-approve.json'), path.join(root, 'web-coordinator'), told]) fs.rmSync(f, { recursive: true, force: true })
+  for (const f of [path.join(root, 'details.json'), calls, path.join(root, 'own-agent'), path.join(root, 'list.json'), path.join(root, 'archived.json'), path.join(root, 'after-restore.json'), path.join(root, 'after-approve.json'), path.join(root, 'web-coordinator'), path.join(root, 'refuse'), path.join(root, 'show.json'), told]) fs.rmSync(f, { recursive: true, force: true })
   fs.mkdirSync(told)
 })
 test.afterEach(async () => { await fakeHerdr('e2e.plugins', { plugins: [] }) })
@@ -961,5 +964,75 @@ for (const lang of ['en', 'fr']) {
     await dialog.getByRole('button', { name: lang === 'fr' ? 'Terminer' : 'Finish', exact: true }).click()
     await expect.poll(callLog).toContain('finish -- demo/11')
     fs.rmSync(dir, { recursive: true, force: true })
+  })
+}
+
+// WHR-50: every slot taken, Start says Queue and the place; Start after… waits
+// for other tasks (delegate --after), and a task that waits or is queued says so.
+for (const lang of ['en', 'fr']) {
+  test(`Queue, Start after… and a task that waits (${lang})`, async ({ page }, testInfo) => {
+    test.setTimeout(60000)
+    const fr = lang === 'fr'
+    await page.addInitScript(l => localStorage.setItem('herdrLanguage', l), lang)
+    fs.writeFileSync(path.join(root, 'list.json'), JSON.stringify([
+      { id: 'demo/5', state: 'idle', title: 'In the backlog', stage: 'todo' },
+      { id: 'demo/3', state: 'working', app: 'codex', title: 'Add dark mode toggle', stage: 'working', progress: 40 },
+      { id: 'demo/8', state: 'working', app: 'claude', title: 'Search page', stage: 'reviewing', msg: 'Under review' },
+      { id: 'demo/9', state: 'working', title: 'Footer links', stage: 'queued', msg: 'Waiting for a free slot', queue: 1 },
+      { id: 'demo/10', state: 'working', title: 'Release notes', stage: 'after', msg: 'queued after DEMO-3' },
+    ]))
+    // Two agents at once (board.agents), both taken.
+    fs.writeFileSync(path.join(root, 'show.json'), JSON.stringify({ settings: [
+      { name: 'worker.agent', kind: 'work', value: 'claude', from: 'your entry for demo', place: 'repo', own: false, note: '' },
+      { name: 'board.agents', kind: 'board', value: 2, from: 'you', place: 'you', own: false, note: '' },
+    ], problems: [] }))
+    const details = (id: string, title: string, stage: string, extra: Record<string, unknown> = {}) =>
+      fs.writeFileSync(path.join(root, 'details.json'), JSON.stringify({ task: { id, title, stage, description: 'Steps in the description.' }, ...extra }))
+    details('demo/5', 'In the backlog', 'todo')
+    await fakeHerdr('e2e.plugins', { plugins: [manifest('1.2.1')] })
+    const panel = page.locator('.board-panel')
+    const queue = panel.getByRole('button', { name: fr ? 'Mettre en file' : 'Queue', exact: true })
+    // The board's list of the test before may still be kept a few seconds.
+    await expect(async () => {
+      await page.goto('/#/board?machine=&task=demo%2F5')
+      await expect(queue).toBeVisible({ timeout: 3000 })
+    }).toPass({ timeout: 20_000 })
+    await expect(panel.locator('.task-queue-place')).toHaveText(fr ? '2e dans la file · les 2 places sont prises' : '2nd in the queue · all 2 slots are taken')
+    // Start after…: the tasks of the board, found by title.
+    await panel.getByRole('button', { name: fr ? 'Démarrer après…' : 'Start after…', exact: true }).click()
+    const pick = panel.locator('.task-after-pick')
+    await expect(pick.locator('.task-after-choice')).toHaveCount(4)
+    await pick.getByRole('textbox').fill('dark')
+    await expect(pick.locator('.task-after-choice')).toHaveCount(1)
+    await pick.locator('.task-after-choice', { hasText: 'DEMO-3' }).click()
+    await expect(pick.locator('.task-wait-chip')).toHaveText('DEMO-3')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.screenshot({ path: `.shots/task-after-${lang}-pick-${testInfo.project.name}.png` })
+    // The board refuses (a wait in a circle): its words, as they are.
+    const circle = 'DEMO-5 cannot wait for that: tasks would wait on each other (DEMO-5 → DEMO-3 → DEMO-5). Nothing was changed.'
+    fs.writeFileSync(path.join(root, 'refuse'), `${circle}\n`)
+    const go = pick.getByRole('button', { name: fr ? 'Démarrer après DEMO-3' : 'Start after DEMO-3', exact: true })
+    await go.click()
+    await expect(panel.locator('.task-sheet-error')).toHaveText(circle)
+    fs.rmSync(path.join(root, 'refuse'))
+    await go.click()
+    await expect.poll(callLog).toContain('delegate --after=DEMO-3 -- demo/5')
+
+    // A task that waits: for what, and Stop waiting.
+    details('demo/10', 'Release notes', 'after', { after: { waitsFor: ['demo/3', 'demo/8'], waiting: true, left: ['demo/3'], waitsForYou: null, tasks: [{ id: 'demo/3', title: 'Add dark mode toggle', done: false }] } })
+    await page.goto('/#/board?machine=&task=demo%2F10')
+    const wait = panel.locator('.task-wait')
+    await expect(wait).toContainText(fr ? 'Attend' : 'Waits for')
+    await expect(wait.locator('.task-wait-chip').first()).toHaveText('DEMO-3')
+    await expect(wait.locator('.task-wait-chip.done')).toContainText('DEMO-8')
+    await page.screenshot({ path: `.shots/task-after-${lang}-waits-${testInfo.project.name}.png` })
+    await wait.getByRole('button', { name: fr ? 'Ne plus attendre' : 'Stop waiting' }).click()
+    await expect.poll(callLog).toContain('after --clear -- demo/10')
+
+    // A task in the queue: its place.
+    details('demo/9', 'Footer links', 'queued', { queue: { place: 1, words: 'waiting for a free slot, Q#1' } })
+    await page.goto('/#/board?machine=&task=demo%2F9')
+    await expect(panel.locator('.task-wait')).toContainText(fr ? 'Attend une place libre · 1re dans la file' : 'Waiting for a free slot · 1st in the queue')
+    await page.screenshot({ path: `.shots/task-after-${lang}-queued-${testInfo.project.name}.png` })
   })
 }

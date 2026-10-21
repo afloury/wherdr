@@ -8,6 +8,10 @@ import type { TasksBoard, TasksReply } from '#shared/projectsTasks'
 
 const POLL_MS = 15000
 let lastBoard: TasksBoard | null = null
+// The last board read, from here or by a task's sheet (its "Start after…"
+// picker and the names of the tasks it waits for).
+export const seenTasksBoard = shallowRef<TasksBoard | null>(null)
+export function sawTasksBoard(b: TasksBoard) { lastBoard = b; seenTasksBoard.value = b }
 
 export function useTasksBoard() {
   const board = shallowRef<TasksBoard | null>(lastBoard)
@@ -24,7 +28,7 @@ export function useTasksBoard() {
       const r = await api<TasksReply>(`/api/tasks${since}`)
       if (id !== seq) return
       error.value = ''
-      if (!('same' in r)) board.value = lastBoard = r
+      if (!('same' in r)) { board.value = r; sawTasksBoard(r) }
       reads.value++
     } catch (e) {
       if (id === seq) error.value = (e as Error).message

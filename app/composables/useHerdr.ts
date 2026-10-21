@@ -376,6 +376,9 @@ export async function api<T = Record<string, unknown>>(path: string, body?: unkn
   if (r.status === 401 && data.code === 'locked' && !path.startsWith('/api/auth/')) confirmLock()
   // Erreurs de Herdr transmises telles quelles (en anglais) : message traduit par code.
   const known = data.code === 'agent_not_ready' ? 'The agent isn’t ready in this pane (stopped or still starting).' : null
+  // herdr-projects' own refusal (a wait in a circle, an unknown task…): its words as they are,
+  // never pieced together from the dictionary's templates.
+  if (!r.ok && data.code === 'projects_failed' && data.error) throw new ApiError(String(data.error), r.status, data.code)
   if (!r.ok) throw new ApiError(t(known || data.error || `HTTP ${r.status}`), r.status, data.code)
   return data as T
 }

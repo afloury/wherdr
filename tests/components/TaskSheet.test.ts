@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
-import { readBody } from 'h3'
+import { readBody, setResponseStatus } from 'h3'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import TaskSheet from '~/components/TaskSheet.vue'
 import type { TaskRow } from '#shared/projectsTasks'
@@ -555,5 +555,141 @@ describe('Finish, and a failure the task moved on from', () => {
     expect(document.querySelector('.task-sheet-earlier h4')?.textContent).toContain('Earlier failure')
     expect(document.querySelector('.plugin-input-note.warn')).toBeNull()
     w.unmount()
+  })
+})
+
+describe('Queue and Start after…', () => {
+  const todo: TaskRow = { ...task, id: 'demo/1', state: 'idle', stage: 'todo', group: 'todo', app: '', repoKey: 'DEMO' }
+  const button = (re: RegExp) => [...document.querySelectorAll<HTMLButtonElement>('.task-sheet-actions button')].find(b => re.test(b.textContent?.trim() || ''))
+  const agent = { value: 'claude', kind: 'claude', place: 'repo', from: 'your entry for demo' }
+  // The Board as GET /api/tasks gives it: this machine and another one.
+  const board = { version: 'v1', machines: [
+    { machine: 'a', status: 'ready', version: '1.2.1', tasks: [
+      todo,
+      { ...task, id: 'demo/37', n: 37, title: 'Login page', state: 'working', stage: 'working', group: 'working', repoKey: 'DEMO' },
+      { ...task, id: 'demo/38', n: 38, title: 'Old', state: 'done', stage: 'done', group: 'done', repoKey: 'DEMO' },
+    ] },
+    { machine: 'b', status: 'ready', version: '1.2.1', tasks: [
+      { ...task, id: 'ela/3', repo: 'ela', n: 3, title: 'API endpoint', state: 'working', stage: 'working', group: 'working', repoKey: 'ELA' },
+    ] },
+  ] }
+  let sent: { url: string, body: Record<string, unknown> }[] = []
+  let refuse = ''
+  let mounted: { unmount: () => void } | null = null
+  const record = (url: string) => async (e: Parameters<typeof readBody>[0]) => {
+    const body = await readBody(e)
+    sent.push({ url, body })
+    // As the server says a refusal: its words in `error`.
+    if (refuse) { setResponseStatus(e, 400); return { error: refuse, code: 'projects_failed' } }
+    return { ok: true, msg: `${url}: done` }
+  }
+  async function open(row: TaskRow, details: Record<string, unknown> = {}) {
+    sent = []
+    refuse = ''
+    registerEndpoint('/api/tasks/action', { method: 'POST', handler: record('action') })
+    registerEndpoint('/api/tasks/after', { method: 'POST', handler: record('after') })
+    registerEndpoint('/api/tasks', () => board)
+    Object.assign(shown, { stage: row.stage, failure: '', failureStage: '', pane: null, ...details })
+    const w = await mountSuspended(TaskSheet, { props: { task: row, machine: 'a', open: true } })
+    mounted = w
+    await flushPromises()
+    return w
+  }
+  afterEach(() => {
+    registerEndpoint('/api/tasks/action', { method: 'POST', handler: hold })
+    Object.assign(shown, { stage: 'approval', after: undefined, queue: undefined })
+    startReply = { agent, agents: ['claude', 'codex', 'pi'] }
+    mounted?.unmount()
+    mounted = null
+  })
+
+  it('every slot taken: Start says Queue, with the place it would get; the action is the same delegate', async () => {
+    startReply = { agent, agents: ['claude'], slots: { max: 2, busy: 2, waiting: 2 } }
+    await open(todo)
+    await vi.waitFor(() => expect(button(/^Queue$/)).toBeTruthy())
+    expect(button(/^Start$/)).toBeUndefined()
+    expect(document.querySelector('.task-queue-place')?.textContent).toBe('3rd in the queue · all 2 slots are taken')
+    button(/^Queue$/)!.click()
+    await vi.waitFor(() => expect(sent).toHaveLength(1))
+    expect(sent[0]).toEqual({ url: 'action', body: { machine: 'a', id: 'demo/1', action: 'delegate' } })
+  })
+
+  it('a free slot (or slots not known): Start, no place', async () => {
+    startReply = { agent, agents: ['claude'], slots: { max: 2, busy: 1, waiting: 0 } }
+    await open(todo)
+    await vi.waitFor(() => expect(button(/^Start$/)).toBeTruthy())
+    expect(document.querySelector('.task-queue-place')).toBeNull()
+  })
+
+  it('Start after…: finds tasks of every machine by key or title, and sends delegate --after', async () => {
+    startReply = { agent, agents: ['claude'], slots: null }
+    await open(todo)
+    await vi.waitFor(() => expect(button(/^Start after…$/)).toBeTruthy())
+    button(/^Start after…$/)!.click()
+    const refs = () => [...document.querySelectorAll('.task-after-choice .mono')].map(e => e.textContent)
+    // Not itself, nor a done task; another machine's with its label.
+    await vi.waitFor(() => expect(refs()).toEqual(['DEMO-37', 'b:ELA-3']))
+    const input = document.querySelector<HTMLInputElement>('.task-after-search input')!
+    input.value = 'api'
+    input.dispatchEvent(new Event('input'))
+    await vi.waitFor(() => expect(refs()).toEqual(['b:ELA-3']))
+    document.querySelector<HTMLButtonElement>('.task-after-choice')!.click()
+    await flushPromises()
+    expect([...document.querySelectorAll('.task-after-pick .task-wait-chip')].map(c => c.textContent?.trim())).toEqual(['b:ELA-3'])
+    // A key typed for a task the Board does not list is taken as it is.
+    input.value = 'vm-str:ELA-9'
+    input.dispatchEvent(new Event('input'))
+    await vi.waitFor(() => expect(refs()).toEqual(['vm-str:ELA-9']))
+    document.querySelector<HTMLButtonElement>('.task-after-choice')!.click()
+    await flushPromises()
+    button(/^Start after 2 tasks$/)!.click()
+    await vi.waitFor(() => expect(sent).toHaveLength(1))
+    expect(sent[0]).toEqual({ url: 'action', body: { machine: 'a', id: 'demo/1', action: 'delegate', after: ['b:ELA-3', 'vm-str:ELA-9'] } })
+  })
+
+  it('the board\'s refusal (a circle, an unknown id, a machine that does not answer) is shown as it is', async () => {
+    startReply = { agent, agents: ['claude'], slots: null }
+    await open(todo)
+    await vi.waitFor(() => expect(button(/^Start after…$/)).toBeTruthy())
+    button(/^Start after…$/)!.click()
+    await vi.waitFor(() => expect(document.querySelector('.task-after-choice')).toBeTruthy())
+    document.querySelector<HTMLButtonElement>('.task-after-choice')!.click()
+    await flushPromises()
+    refuse = 'DEMO-1 cannot wait for that: tasks would wait on each other (DEMO-1 → DEMO-37 → DEMO-1). Nothing was changed.'
+    button(/^Start after DEMO-37$/)!.click()
+    await vi.waitFor(() => expect(document.querySelector('.task-sheet-error')?.textContent).toBe(refuse))
+    // The picker stays, with its pick, to change it.
+    expect(document.querySelector('.task-after-pick .task-wait-chip')?.textContent?.trim()).toBe('DEMO-37')
+  })
+
+  it('a task that waits: what for (its key, done or not), and Stop waiting sends after --clear', async () => {
+    const waiting: TaskRow = { ...todo, state: 'working', stage: 'after', group: 'working', msg: 'queued after DEMO-37' }
+    await open(waiting, { after: { waitsFor: ['demo/37', 'demo/36'], left: ['demo/37'], waiting: true, forYou: '', titles: { 'demo/37': 'Login page' } } })
+    await vi.waitFor(() => expect(document.querySelector('.task-wait')).toBeTruthy())
+    const chips = [...document.querySelectorAll('.task-wait .task-wait-chip')]
+    // Named by their keys, as the Board names them; the one done marked.
+    expect(chips.map(c => c.firstChild?.textContent?.trim())).toEqual(['DEMO-37', 'DEMO-36'])
+    expect(chips.map(c => c.querySelector('small')?.textContent ?? '')).toEqual(['', 'done'])
+    expect(document.querySelector('.task-wait-line')?.textContent).toContain('Waits for')
+    expect(chips[0]!.getAttribute('title')).toBe('Login page')
+    // Its line is not said twice.
+    expect(document.querySelector('.task-sheet-msg')).toBeNull()
+    document.querySelector<HTMLButtonElement>('.task-wait-clear')!.click()
+    await vi.waitFor(() => expect(sent).toHaveLength(1))
+    expect(sent[0]).toEqual({ url: 'after', body: { machine: 'a', id: 'demo/1' } })
+  })
+
+  it('a task in the queue: its place', async () => {
+    await open({ ...todo, state: 'working', stage: 'queued', group: 'working', queue: 2, msg: 'Waiting for a free slot' })
+    await vi.waitFor(() => expect(document.querySelector('.task-wait')?.textContent).toContain('Waiting for a free slot · 2nd in the queue'))
+    expect(document.querySelector('.task-wait h4')?.textContent).toBe('In the queue')
+  })
+
+  it('a task of the backlog that is to wait: said, with Start and Stop waiting', async () => {
+    startReply = { agent, agents: ['claude'], slots: null }
+    await open(todo, { after: { waitsFor: ['demo/37'], left: ['demo/37'], waiting: false, forYou: '', titles: {} } })
+    await vi.waitFor(() => expect(document.querySelector('.task-wait-line')?.textContent).toContain('Will wait for'))
+    expect(button(/^Start$/)).toBeTruthy()
+    expect(document.querySelector('.task-wait-clear')).toBeTruthy()
   })
 })

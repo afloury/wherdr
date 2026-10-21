@@ -25,6 +25,7 @@ import {
   type MachineTasks, type TaskDetails, type TaskRow, type TasksBoard,
   taskCanFix, taskCanApproveAnyway, failureIsStale, type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, type TaskAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, repoKeysFromFile, rowFromTaskFile, taskActions,
+  cleanAfterRefs, clearAfterArgs, parseBoardAgents, slotsOf, type TaskSlots,
 } from '../../shared/projectsTasks'
 import { HERDR_BIN, HERDR_CHILD_ENV, IN_CONTAINER, log } from './env'
 import { USER_PATH_SH, userPath } from '../../bin/lib/userpath.mjs'
@@ -342,6 +343,12 @@ async function taskOf(m: Machine, id: string): Promise<TaskRow | null> {
   if (hit || (known && !known.error && Date.now() - known.at < REUSE_MS)) return hit || null
   return (await readList(m)).tasks.find(t => t.id === id) || null
 }
+// The machine's rows: the last list while it is fresh, else read again.
+async function rowsOf(m: Machine): Promise<TaskRow[]> {
+  const known = lists.get(m.key)
+  if (known && !known.error && Date.now() - known.at < REUSE_MS) return known.tasks
+  return (await readList(m)).tasks
+}
 
 function checkId(id: unknown): string {
   if (!isTaskId(id)) throw new HerdrError('bad_task', 'Invalid task')
@@ -417,12 +424,15 @@ export async function approveTask(machine: unknown, id: unknown, anyway: unknown
 // `retry`, `archive`), on a task the last list shows it applies to.
 // `agent` (delegate only): start it with that agent, one installed on the
 // task's machine, for this start only (shared delegateArgs); none: its default.
-export async function taskCommand(machine: unknown, id: unknown, action: unknown, agent?: unknown): Promise<{ ok: true, msg: string }> {
+export async function taskCommand(machine: unknown, id: unknown, action: unknown, agent?: unknown, after?: unknown): Promise<{ ok: true, msg: string }> {
   const m = boardOf(machine)
   const tid = checkId(id)
   if (!isTaskCommand(action)) throw new HerdrError('bad_action', 'Unknown action')
   const chosen = agent === undefined || agent === null || agent === '' ? null : agent
   if (chosen !== null && action !== 'delegate') throw new HerdrError('bad_action', 'Only Start takes an agent')
+  // Start after…: the tasks to wait for (`delegate --after`); the board checks them.
+  const waits = after === undefined || after === null ? null : cleanAfterRefs(after)
+  if (after !== undefined && after !== null && (!waits || action !== 'delegate')) throw new HerdrError('bad_after', 'Invalid tasks to wait for')
   if (chosen !== null && (!isAgentName(chosen) || !(await installedAgentKinds(m)).includes(chosen))) {
     throw new HerdrError('bad_agent', fmt('{agent} is not installed on {machine}', { agent: isAgentName(chosen) ? chosen : '?', machine: m.label }))
   }
@@ -441,17 +451,18 @@ export async function taskCommand(machine: unknown, id: unknown, action: unknown
     await restoreStartAgent(m, tid)
     if (chosen) { const own = await taskAgent(m, tid); prev = own?.place === 'task' ? own.value : null }
   }
-  const out = await command(m, action === 'delegate' ? delegateArgs(tid, chosen) : [action, '--', tid])
+  const out = await command(m, action === 'delegate' ? delegateArgs(tid, chosen, waits) : [action, '--', tid])
   forget(m)
   if (chosen && chosen !== prev) await rememberStartAgent(startAgentKey(m.key, tid), { agent: chosen, prev, at: Date.now() })
-  log(`herdr-projects ${action} ${tid}${chosen ? ` --worker.agent=${chosen}` : ''}${m.local ? '' : ` on ${m.label}`}`)
+  log(`herdr-projects ${action} ${tid}${chosen ? ` --worker.agent=${chosen}` : ''}${waits ? ` --after=${waits.join(',')}` : ''}${m.local ? '' : ` on ${m.label}`}`)
   return { ok: true, msg: firstLine(out) }
 }
 
 // The task's worker.agent as 1.x resolves it, and where it comes from.
 async function taskAgent(m: Machine, id: string): Promise<TaskAgent | null> {
-  return parseWorkerAgent(await command(m, ['show', '--json', '--', id], LIST_TIMEOUT_MS))
+  return parseWorkerAgent(await taskShow(m, id))
 }
+const taskShow = (m: Machine, id: string) => command(m, ['show', '--json', '--', id], LIST_TIMEOUT_MS)
 
 // Puts back what the task had before an agent was picked for one start, while
 // its own worker.agent is still that pick (one set since by someone else stays).
@@ -483,12 +494,32 @@ async function restoreFinished(m: Machine, tasks: TaskRow[], since: number): Pro
 export async function taskStartOptions(machine: unknown, id: unknown): Promise<StartOptions> {
   const m = boardOf(machine)
   const tid = checkId(id)
-  const [agent, agents] = await Promise.all([
+  const [show, agents] = await Promise.all([
     // The default as the next start will have it: an earlier pick put back first.
-    readsFiles(m) ? null : restoreStartAgent(m, tid).then(() => taskAgent(m, tid)),
+    readsFiles(m) ? null : restoreStartAgent(m, tid).then(() => taskShow(m, tid)),
     installedAgentKinds(m).catch(() => [] as string[]),
   ])
-  return { agent, agents }
+  return { agent: show === null ? null : parseWorkerAgent(show), agents, slots: show === null ? null : await slotsFor(m, show) }
+}
+// The board's slots as Start finds them: `board.agents` (the same `show`) and
+// the tasks of its list. Not known: null (Start, as before).
+async function slotsFor(m: Machine, show: string): Promise<TaskSlots | null> {
+  const max = parseBoardAgents(show)
+  if (max === null) return null
+  return slotsOf(await rowsOf(m).catch(() => []), max)
+}
+
+// Stop waiting: `after --clear`. A task that waited goes on to a slot (it
+// starts, or waits in the queue); one not delegated yet keeps nothing to wait for.
+export async function clearTaskAfter(machine: unknown, id: unknown): Promise<{ ok: true, msg: string }> {
+  const m = boardOf(machine)
+  const tid = checkId(id)
+  const row = await taskOf(m, tid)
+  if (!row || row.archived) throw new HerdrError('bad_action', 'This task does not wait for other tasks')
+  const out = await command(m, clearAfterArgs(tid))
+  forget(m)
+  log(`herdr-projects after ${tid} --clear${m.local ? '' : ` on ${m.label}`}`)
+  return { ok: true, msg: firstLine(out) }
 }
 
 function refused(action: TaskCommand): HerdrError {

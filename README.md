@@ -1305,7 +1305,13 @@ What the Board shows and does:
   its run lasts; wherdr puts back what the task had once the run is over (back in To do, or
   done) and before its next Start, so its default, the repo's and your own settings stay as they
   are (`data/start-agents.json` remembers what to put back). A default agent not installed on that
-  machine is shown but cannot be picked: Start then waits for an installed one. After an action the sheet
+  machine is shown but cannot be picked: Start then waits for an installed one. With every slot of
+  the board taken (`board.agents` tasks at work), **Start** says **Queue** and the place the task
+  would get (`delegate` queues it). **Start after…** picks tasks to wait for, by key, id or title, on
+  every machine the Board reads (another machine's as `machine:KEY-12`): `delegate --after`. A task
+  that waits names them, with **Stop waiting** (`after --clear`); one in the queue says its place.
+  herdr-projects' refusals (a circle, an unknown task, a machine that does not answer) are shown as
+  they are. After an action the sheet
   shows the task's new state, or why it was refused. **Archive** closes the sheet and takes the
   task off the Board, with **Restore** in a toast for a few seconds; **Archived** lists the
   archived tasks, whose sheet is read-only with **Restore**, as in herdr-projects.
@@ -1341,7 +1347,7 @@ What the Board shows and does:
   the time they were read.
 - What wherdr runs, on the task's machine and in its Herdr session (on an SSH machine, its own
   session by name): `herdr-projects list --json`,
-  `details <id> --json`, `show <id> --json`, `set`/`unset worker.agent --task <id>` (to put back a pick), `tell <id> <text>`, `approve <id>`, `delegate`, `stop`, `retry`,
+  `details <id> --json`, `show <id> --json`, `set`/`unset worker.agent --task <id>` (to put back a pick), `tell <id> <text>`, `approve <id>`, `delegate` (with `--after`), `after <id> --clear`, `stop`, `retry`,
   `archive` and `restore <id>`, `list --json --archived` (Archived), `coordinator tell <text>`,
   `coordinator status --json` and `coordinator restart` (your
   words always after `--`, so they are never read as options), through the plugin's own
