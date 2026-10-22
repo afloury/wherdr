@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **State grouping keeps every machine in reach.** In State mode, online machines sit in a compact row of chips above the groups; each chip opens that machine's menu (sessions, keep awake, board, plugin actions, Claude quota setup) and shows its keep-awake time and a Claude quota setup marker. Machine-specific quotas follow under the row, and offline or reconnecting machines stay on one line at the bottom with their state and last known agent count.
+
 - **Group the home list by state across online machines.** Settings › Appearance › Home screen › Group by offers Machine (the default) and State. State mode keeps machine and project badges, task details, compact/normal density and machine-bar group filters. Part of #46; offline machines and per-machine controls follow separately.
 
 - **Herdr 0.9.2+ machine diagnostics and terminal mouse:** a remote machine's Options menu checks native reachability and offers the interactive reconnect command plus a wherdr connection retry. Terminal clicks, taps and drags use structured mouse events; Shift + drag selects text. Older Herdr retains legacy input and SSH retries.

@@ -25,7 +25,7 @@ import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
 import { listMode } from '~/utils/layoutMode'
 import pkg from '../../package.json'
 import { dropMachineKey, shiftMachineKey } from '#shared/machineOrder'
-import { stateEntries } from '~/utils/homeGrouping'
+import { stateEntries, stateMachines } from '~/utils/homeGrouping'
 import { BAR_ALL } from '~/utils/machineBar'
 import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
 const emit = defineEmits<{ search: [] }>()
@@ -175,12 +175,23 @@ const sections = computed(() => {
 })
 // State mode includes online machines only. The bar's selected base keys
 // also cover named sessions; iterating them preserves the selected group order.
+const stateShown = computed(() => stateMachines(machines.value.length ? orderedMachines.value : [soloMachine.value], machineBarSelection.value))
+// What belongs to one machine stays reachable in State mode: its "…" menu
+// (sessions, keep awake, board, plugins, Claude quotas) on its chip, and its
+// own quotas under the row; offline or reconnecting machines keep their state
+// and last known agent count on one line at the bottom.
+const stateMachineChips = computed(() => stateShown.value.online.map(m => ({
+  m, name: machineName(m.key) || m.label || t('This machine'),
+  awake: awakeByMachine.value[m.key]?.active ? awakeByMachine.value[m.key] : undefined,
+  claude: claudeHint(m),
+  quotas: showQuotas.value ? machineQuotaRows(homeQuotas.value, baseKeyOf(m), hiddenAgents.value) : [],
+})))
+const stateAway = computed(() => stateShown.value.away.map(m => ({
+  m, name: machineName(m.key) || m.label || t('This machine'), state: t(STATE_LABEL[m.status]),
+  known: counted.value.filter(p => (p.machine || '') === m.key).length,
+})))
 const stateCards = computed(() => {
-  const selected = machineBarSelection.value
-  const online = machines.value.length ? orderedMachines.value.filter(m => m.status === 'online') : [soloMachine.value].filter(m => m.status === 'online')
-  const shown = online.filter(m => selected === null || selected.includes(baseKeyOf(m)))
-  if (selected) shown.sort((a, b) => selected.indexOf(baseKeyOf(a)) - selected.indexOf(baseKeyOf(b)))
-  return shown.flatMap(m => {
+  return stateShown.value.online.flatMap(m => {
     const b = boardSections(spaceRows(st.value, m.key), st.value.workspaces, boardLinks.value, livePanes.value, k => machineInfo(k)?.baseKey ?? k)
     return stateEntries(b, showShells.value).map(e => ({
       ...e,
@@ -630,6 +641,26 @@ function resetListWidth() {
 
       <p v-if="machineBarSelection?.length === 0" class="machine-empty">{{ tl('No machines in this group.', 'Aucune machine dans ce groupe.') }}</p>
       <template v-if="homeGrouping === 'state'">
+        <ul v-if="stateMachineChips.length" class="state-machines" :aria-label="tl('Online machines', 'Machines en ligne')">
+          <li v-for="c in stateMachineChips" :key="c.m.key" class="state-machine" :data-machine="c.m.key || 'local'">
+            <UDropdownMenu :items="machineMenu(c.m)" :content="{ align: 'start', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }" @update:open="(o: boolean) => { if (o) loadPluginActions(multiMachine ? c.m.key : '') }">
+              <button type="button" class="state-machine-chip" :aria-label="`${t('Options')} : ${c.name}`" :title="c.m.target ? `ssh ${c.m.target}` : c.name">
+                <i class="state-machine-dot" aria-hidden="true" />
+                <span class="state-machine-name">{{ c.name }}</span>
+                <small v-if="c.m.session && c.m.session !== 'default'" class="state-machine-session">{{ c.m.session }}</small>
+                <span v-if="c.awake" class="machine-awake" :title="awakeLabel(c.awake)"><UIcon name="i-lucide-sun" /><span>{{ c.awake.until ? fmtTime(c.awake.until) : '∞' }}</span></span>
+                <UIcon v-if="c.claude" name="i-lucide-gauge" class="state-machine-claude" role="img" :aria-label="c.claude.state === 'outdated' ? tl('Update Claude quotas', 'Mettre à jour les quotas Claude') : tl('Set up Claude quotas', 'Configurer les quotas Claude')" />
+                <UIcon name="i-lucide-ellipsis" class="state-machine-more" aria-hidden="true" />
+              </button>
+            </UDropdownMenu>
+          </li>
+        </ul>
+        <template v-for="c in stateMachineChips" :key="`q-${c.m.key}`">
+          <div v-if="c.quotas.length" class="state-machine-quotas">
+            <p class="state-machine-quotas-label">{{ c.name }}</p>
+            <QuotaStrip :rows="c.quotas" class="machine-quotas" />
+          </div>
+        </template>
         <section v-for="g in stateGroups" :key="g.key" class="agent-group state-group" :class="g.key">
           <h2 class="group-title"><span>{{ g.title }}</span><span class="count">{{ g.list.length }}</span>
             <UDropdownMenu v-if="g.key === 'ready'" :items="readySortItems" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }">
@@ -643,6 +674,20 @@ function resetListWidth() {
             </div>
           </template>
         </section>
+        <p v-if="stateMachineChips.length && !stateGroups.length" class="machine-empty state-empty">{{ t('No agents yet.') }}</p>
+        <div v-if="stateAway.length" class="state-away" role="group" :aria-label="tl('Machines not connected', 'Machines non connectées')">
+          <UDropdownMenu v-for="a in stateAway" :key="a.m.key" :items="machineMenu(a.m)" :content="{ align: 'start', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
+            <button type="button" class="state-away-item" :class="a.m.status" :data-machine="a.m.key || 'local'"
+              :aria-label="`${t('Options')} : ${a.name} · ${a.state}`"
+              :title="[`${a.name} · ${a.state}`, a.known ? tl(`${a.known} known agents`, `${a.known} agents connus`) : '', a.m.error ? t(a.m.error) : ''].filter(Boolean).join(' — ')"
+            >
+              <i class="state-machine-dot" aria-hidden="true" />
+              <span class="state-machine-name">{{ a.name }}</span>
+              <span class="state-away-state">{{ a.state }}</span>
+              <b v-if="a.known" class="state-away-known">{{ a.known }}</b>
+            </button>
+          </UDropdownMenu>
+        </div>
       </template>
       <!-- A single machine: the previous list. -->
       <template v-else-if="!sections">
