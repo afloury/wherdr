@@ -158,10 +158,9 @@ both change the account's default model. wherdr itself only uses "this session" 
 The repository is public, and so is every commit in its history: a private value committed and
 then removed is still published. `scripts/check-leaks.mjs` combines two checks:
 
-- **gitleaks** for tokens and keys: the `gitleaks` binary when installed, otherwise the
-  `zricethezav/gitleaks` Docker image when it has been pulled (`docker pull zricethezav/gitleaks`),
-  run with read-only mounts and no network; otherwise it is skipped with a message. This is a
-  contributor tool only: wherdr itself no longer runs in Docker.
+- **gitleaks** for tokens and keys: the `gitleaks` binary when installed
+  ([install it](https://github.com/gitleaks/gitleaks#installing)); otherwise it is skipped with a
+  message.
 - **Your forbidden patterns** for what no generic tool knows: your user name, host names,
   e-mail addresses, tailnet, private IPs, project and client names. They live in `.leak-patterns`,
   which git ignores (format in `.leak-patterns.example`: one case-insensitive regex per line,
