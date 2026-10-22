@@ -4,8 +4,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'vitest'
+import { hasCommands } from './helpers/commands'
 
-it('sets the authenticated GitHub identity only in the temporary tap clone', () => {
+it.skipIf(!hasCommands('sha256sum') && !hasCommands('shasum'))('sets the authenticated GitHub identity only in the temporary tap clone', () => {
   const home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-brew-'))
   try {
     const bin = path.join(home, 'bin')
