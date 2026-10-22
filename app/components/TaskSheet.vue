@@ -24,19 +24,16 @@
 // (`after --clear`), and one in the queue says its place.
 import { AFTER_MAX, TASK_QUESTION_MAX, NO_ACTIONS, type StartOptions, type TaskCommand, type TaskDetails, type TaskRow, type TasksReply, finishCase, prNumber, startPlace, taskActions, taskKey } from '#shared/projectsTasks'
 import AppSheet from './AppSheet.vue'
-import { PROJECTS_LAUNCHER } from '#shared/projectsPlugin'
 import { type StartAgentChoice, startAgentChoices } from '~/utils/agentChoices'
 import { finishHint, finishLabel, finishQuestion, finishTitle, finishOffered } from '~/utils/taskFinish'
 import { type WaitChoice, queuePlaceText, typedRef, waitChoices, waitName } from '~/utils/taskWait'
 import { sawTasksBoard, seenTasksBoard } from '~/composables/useTasksBoard'
 
-// `readOnly`: the board is read from its files (wherdr in a container): the
-// actions are the host's, given as commands.
 // `refresh`: reads the Board again (its promise ends with the read); without
 // it, `changed` asks for that. `archived` / `restored`: the task was put away
 // or brought back from here.
 // `chat`: open this task's agent in the side panel (the sheet has closed).
-const props = defineProps<{ task: TaskRow | null, machine: string, readOnly?: boolean, refresh?: () => Promise<unknown>, embedded?: boolean }>()
+const props = defineProps<{ task: TaskRow | null, machine: string, refresh?: () => Promise<unknown>, embedded?: boolean }>()
 const emit = defineEmits<{ changed: [], archived: [machine: string, task: TaskRow], restored: [machine: string, task: TaskRow], chat: [machine: string, task: TaskRow], coordinator: [machine: string, task: TaskRow] }>()
 const open = defineModel<boolean>('open', { default: false })
 
@@ -58,9 +55,7 @@ const row = computed(() => (props.task ? { ...props.task, archived: archived.val
 // Finish on a row stuck at "Finishing": not while its agent is still at work (1.x refuses).
 const paneStatus = computed(() => herdrState.value.panes.find(p => p.id === failure.value?.pane)?.status ?? null)
 const withFinish = (a: ReturnType<typeof taskActions>) => ({ ...a, finish: a.finish && Boolean(row.value) && finishOffered(row.value!, paneStatus.value) })
-const actions = computed(() => (row.value && !props.readOnly ? withFinish(taskActions(row.value, failure.value)) : NO_ACTIONS))
-const hostActions = computed(() => (row.value && props.readOnly ? withFinish(taskActions(row.value, failure.value)) : NO_ACTIONS))
-const hostCommands = computed(() => (['delegate', 'stop', 'retry', 'finish', 'archive', 'restore'] as const).filter(a => hostActions.value[a]))
+const actions = computed(() => (row.value ? withFinish(taskActions(row.value, failure.value)) : NO_ACTIONS))
 const finishWhy = computed(() => { const c = row.value ? finishCase(row.value) : null; return c ? finishHint(c) : '' })
 const pr = computed(() => details.value?.pr || props.task?.pr || '')
 const review = computed(() => details.value?.review || props.task?.review || null)
@@ -142,8 +137,7 @@ const wait = computed(() => {
 const labelOf = (key: string) => (key ? machineInfo(key)?.label || key : hostLabel.value)
 const boards = computed(() => seenTasksBoard.value?.machines ?? [])
 const nameOf = (id: string) => waitName(id, props.machine, boards.value, labelOf)
-// Not in a container (the host's command is given there).
-const canClear = computed(() => Boolean(wait.value) && !props.readOnly)
+const canClear = computed(() => Boolean(wait.value))
 
 // "Start after…": the picker, in the sheet (no sheet over the sheet on a phone).
 const picking = ref(false)
@@ -342,7 +336,7 @@ async function clearWait() {
 // A question to the project's coordinator, separate from the task agent.
 async function askCoordinator() {
   const task = props.task
-  if (!task || archived.value || busy.value || !question.value.trim() || props.readOnly || offlineView.value) return
+  if (!task || archived.value || busy.value || !question.value.trim() || offlineView.value) return
   const machine = props.machine
   const g = gen
   busy.value = true
@@ -402,7 +396,6 @@ function chat() {
         <UButton v-if="canClear" color="neutral" variant="outline" icon="i-lucide-x" class="task-wait-clear" :disabled="busy || offlineView" @click="clearWait">
           {{ tl('Stop waiting', 'Ne plus attendre') }}
         </UButton>
-        <code v-else-if="readOnly" class="projects-plugin-command">{{ PROJECTS_LAUNCHER }} after {{ task.id }} --clear</code>
       </section>
       <p v-if="archived" class="board-note task-sheet-archived">{{ tl('Archived: read-only, as in herdr-projects. Restore it to change or start it again.', 'Archivée : en lecture seule, comme dans herdr-projects. Restaure-la pour la modifier ou la relancer.') }}</p>
 
@@ -466,7 +459,7 @@ function chat() {
         <dt>{{ tl('Tokens used', 'Tokens utilisés') }}</dt><dd><TokenCount :value="details.limits.tokensUsed" /></dd>
       </dl>
 
-      <section v-if="!archived && !readOnly" class="task-sheet-block">
+      <section v-if="!archived" class="task-sheet-block">
         <div class="task-sheet-actions">
           <UButton color="neutral" variant="outline" icon="i-lucide-message-circle-question-mark" :aria-expanded="asking" :disabled="busy || offlineView" @click="asking = !asking">{{ tl('Ask the coordinator', 'Demander au coordinateur') }}</UButton>
           <UButton color="neutral" variant="ghost" :disabled="busy || offlineView" @click="coordinator">{{ tl('Coordinator replies', 'Réponses du coordinateur') }}</UButton>
@@ -543,28 +536,9 @@ function chat() {
           <UButton color="neutral" variant="ghost" :disabled="running === 'delegate'" @click="closePicker">{{ t('Cancel') }}</UButton>
         </div>
       </section>
-      <p v-if="(actions.finish || hostActions.finish) && !embedded" class="task-finish-why">{{ finishWhy }}</p>
+      <p v-if="actions.finish && !embedded" class="task-finish-why">{{ finishWhy }}</p>
       <p v-if="actionError" class="board-note error task-sheet-error" role="alert">{{ actionError }}</p>
 
-      <!-- wherdr in a container: the same actions, off, each saying why on hover. -->
-      <div v-if="hostActions.tell || hostActions.approve || hostCommands.length" class="task-sheet-actions task-sheet-ro">
-        <span v-if="hostActions.delegate" class="ro-why" :title="readOnlyWhy()"><UButton color="primary" icon="i-lucide-play" disabled :aria-description="readOnlyWhy()">{{ tl('Start', 'Lancer') }}</UButton></span>
-        <span v-if="hostActions.approve" class="ro-why" :title="readOnlyWhy()">
-          <UButton color="primary" icon="i-lucide-check" disabled :aria-description="readOnlyWhy()">{{ task.stage === 'plan' ? tl('Approve plan', 'Accepter le plan') : tl('Approve', 'Approuver') }}</UButton>
-        </span>
-        <span v-if="hostActions.retry" class="ro-why" :title="readOnlyWhy()"><UButton color="primary" variant="outline" icon="i-lucide-rotate-ccw" disabled :aria-description="readOnlyWhy()">{{ tl('Retry', 'Réessayer') }}</UButton></span>
-        <span v-if="hostActions.finish" class="ro-why" :title="readOnlyWhy()"><UButton color="primary" variant="outline" icon="i-lucide-flag" disabled :aria-description="readOnlyWhy()">{{ finishLabel() }}</UButton></span>
-        <span v-if="hostActions.tell" class="ro-why" :title="readOnlyWhy()"><UButton color="neutral" variant="outline" icon="i-lucide-send" disabled :aria-description="readOnlyWhy()">{{ tl('Reply', 'Répondre') }}</UButton></span>
-        <span v-if="hostActions.stop" class="ro-why" :title="readOnlyWhy()"><UButton color="error" variant="outline" icon="i-lucide-square" disabled :aria-description="readOnlyWhy()">{{ tl('Stop', 'Arrêter') }}</UButton></span>
-        <span v-if="hostActions.archive" class="ro-why" :title="readOnlyWhy()"><UButton color="neutral" variant="ghost" icon="i-lucide-archive" disabled :aria-description="readOnlyWhy()">{{ tl('Archive', 'Archiver') }}</UButton></span>
-        <span v-if="hostActions.restore" class="ro-why" :title="readOnlyWhy()"><UButton color="primary" icon="i-lucide-archive-restore" disabled :aria-description="readOnlyWhy()">{{ tl('Restore', 'Restaurer') }}</UButton></span>
-      </div>
-      <div v-if="hostActions.tell || hostActions.approve || hostCommands.length" class="task-sheet-block">
-        <h4>{{ tl('On the host', 'Sur l’hôte') }}</h4>
-        <code v-if="hostActions.tell" class="projects-plugin-command">{{ PROJECTS_LAUNCHER }} tell {{ task.id }} "…"</code>
-        <code v-if="hostActions.approve" class="projects-plugin-command">{{ PROJECTS_LAUNCHER }} approve {{ task.id }}</code>
-        <code v-for="a in hostCommands" :key="a" class="projects-plugin-command">{{ PROJECTS_LAUNCHER }} {{ a }} {{ task.id }}</code>
-      </div>
     </div>
   </component>
 </template>

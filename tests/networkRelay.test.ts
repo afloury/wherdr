@@ -8,7 +8,7 @@ import http from 'node:http'
 import net from 'node:net'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { checkClient, gateDecision, netContext, parseTrustedNetworks, portAnswers, refreshTailscale, resetNetworkStateForTests, type NetContext } from '../server/utils/network'
+import { checkClient, gateDecision, netContext, parseTrustedNetworks, refreshTailscale, resetNetworkStateForTests, type NetContext } from '../server/utils/network'
 
 // live: judge with the server's own state (refreshTailscale), not ctx.
 const state: { ctx: NetContext, passkey: boolean, live?: boolean } = {
@@ -153,27 +153,5 @@ describe('an HTTP proxy that adds the client address (tailscale serve)', () => {
   it('refuses a Funnel HTTPS request by its header', async () => {
     reset(false)
     expect((await get(ports.serve, { 'tailscale-funnel-request': '?1' })).status).toBe(403)
-  })
-})
-
-// Docker's userland proxy relays an outside connection from the gateway: the
-// container cannot see where it came from, but it can see whether its port
-// answers on the gateway at all (published on every interface).
-describe('the Docker gateway check', () => {
-  it('finds whether a port answers on an address', async () => {
-    expect(await portAnswers('127.0.0.1', ports.app)).toBe(true)
-    const closed = net.createServer()
-    const port = await listen(closed)
-    await new Promise(r => closed.close(r))
-    expect(await portAnswers('127.0.0.1', port)).toBe(false)
-  })
-
-  it('refuses gateway connections over HTTP and WS when it answers, passkey or not', () => {
-    const check = checkClient('172.17.0.1', {}, { trusted: parseTrustedNetworks(''), tailscale: null, gateway: '172.17.0.1', gatewayWide: true })
-    expect(check).toEqual({ ok: false, reason: 'docker' })
-    const base = { check, hostOk: true, crossSite: false }
-    expect(gateDecision({ ...base, unlocked: true, path: '/api/config' })).toBe('network')
-    expect(gateDecision({ ...base, unlocked: true, path: '/' })).toBe('network')
-    expect(gateDecision({ ...base, unlocked: true, path: '/ws', ws: true })).toBe('network')
   })
 })

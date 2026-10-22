@@ -14,9 +14,8 @@ describe('Board coordinator entry points', () => {
     expect(coordinatorDescription({ kind: 'project', repo: 'web' })).toContain('this repo')
   })
 
-  it('only enables a fresh, reachable, writable board', () => {
+  it('only enables a fresh, reachable board', () => {
     expect(coordinatorUnavailable(machine())).toBe('')
-    expect(coordinatorUnavailable(machine({ readOnly: true }))).toContain('container')
     expect(coordinatorUnavailable(machine({ status: 'error', error: 'SSH unavailable' }))).toBe('SSH unavailable')
     expect(coordinatorUnavailable(machine({ stale: true }))).toContain('cannot be reached')
     expect(coordinatorUnavailable(machine({ error: 'Read failed' }))).toBe('Read failed')

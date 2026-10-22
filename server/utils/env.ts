@@ -8,16 +8,12 @@ import { userPath } from '../../bin/lib/userpath.mjs'
 const env = process.env
 
 export const HOME = env.HOME || os.homedir()
-// In the Docker container (host HOME mounted read-only, see docker-compose.yml).
-export const IN_DOCKER = fs.existsSync('/.dockerenv')
-// In a container of any kind (Docker, or Podman's /run/.containerenv).
-export const IN_CONTAINER = IN_DOCKER || fs.existsSync('/run/.containerenv')
 // On the host, the user's real PATH (bin/lib/userpath.mjs): a login service
 // starts wherdr with a short system PATH, and what wherdr runs (herdr-projects,
 // git, gh, tailscale) must find the agents and tools in user folders. Set
 // before HERDR_CHILD_ENV below copies the environment. The runtime that runs
 // wherdr stays first, as the login service puts it.
-if (!IN_CONTAINER) env.PATH = userPath({ env, home: HOME, first: [path.dirname(process.execPath)] })
+env.PATH = userPath({ env, home: HOME, first: [path.dirname(process.execPath)] })
 export const DATA_DIR = env.DATA_DIR || path.join(process.cwd(), 'data')
 // herdr.dev installer: ~/.local/bin; otherwise (Homebrew…) the one on the PATH.
 const LOCAL_HERDR = path.join(HOME, '.local/bin/herdr')
@@ -60,18 +56,6 @@ if (!ENV_APP_URL && savedAppUrl()) env.APP_URL = savedAppUrl()
 export const appUrl = () => env.APP_URL || 'mailto:herdr-web@localhost'
 // Machine name shown in the app ("<HOST_LABEL> · herdr"); empty = "herdr".
 export const HOST_LABEL = (env.HOST_LABEL || os.hostname()).trim().slice(0, 40)
-// The name to show for this machine, given the one Tailscale knows it by
-// (machine.tailnet.ts.net). In Docker without HOST_LABEL the host name is the
-// container's ("wherdr"): the machine's Tailscale name is shown instead. A
-// HOST_LABEL the user set, or a real host name, is kept.
-export function machineLabel(
-  tailnetName: string | null | undefined,
-  fallback = HOST_LABEL,
-  containerName = IN_DOCKER && !(env.HOST_LABEL || '').trim(),
-): string {
-  const short = (tailnetName || '').split('.')[0]!.trim().slice(0, 40)
-  return containerName && short ? short : fallback
-}
 // User name of the passkeys created by the app.
 export const PASSKEY_USER = (env.PASSKEY_USER || 'wherdr').trim().slice(0, 64)
 export const POLL_MS = Number(env.POLL_MS || 1000)
@@ -111,17 +95,5 @@ export const SELF_HOSTS = (env.HERDR_WEB_SELF_HOSTS || '').split(',').map(s => s
 export const RUNTIME_DIR = env.WHERDR_RUNTIME_DIR || '/tmp/wherdr'
 // Photo store on remote machines, relative to their $HOME.
 export const REMOTE_UPLOAD_SUBDIR = '.cache/herdr-web/uploads'
-
-// "Reveal in Finder" / "Open" / "Open in editor" on a Mac that runs wherdr in a Linux
-// container (Docker on macOS): `open` does not exist there, so the reveal script is run
-// on the host through this SSH target (e.g. `host.docker.internal`, the OrbStack bridge
-// user). Wherdr connects with its own key pair (HOST_OPEN_KEY, mounted read-write so a
-// host-side setup script can install the public half), and the Mac side decides what the
-// key may run: a forced command in authorized_keys (scripts/wherdr-open.sh, installed by
-// scripts/install-host-open.sh) only opens paths under the Mac user's home. Empty
-// (default): no host route, a non-Mac local machine reports "not a Mac" as before.
-export const HOST_OPEN_TARGET = (env.HERDR_WEB_HOST_OPEN_TARGET || '').trim()
-export const HOST_OPEN_USER = (env.HERDR_WEB_HOST_OPEN_USER || '').trim()
-export const HOST_OPEN_KEY = (env.HERDR_WEB_HOST_OPEN_KEY || path.join(DATA_DIR, 'host-open-key')).trim()
 
 export const log = (...a: unknown[]) => console.log(new Date().toISOString(), ...a)

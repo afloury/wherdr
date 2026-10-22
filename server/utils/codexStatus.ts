@@ -101,8 +101,6 @@ export function createCodexStatus(d: CodexStatusDeps) {
     const [vf, pkg] = await Promise.all([read('version.json'), read(pkgFile)])
     const { latest, dismissed } = parseVersionFile(vf)
     const installed = parsePackageVersion(pkg)
-    // Remote: over SSH. Local: only if ~/.codex can be written (not in the
-    // container, whose home is read-only: the command is then copied).
     const canRun = m.local ? await d.writable(codex) : Boolean(m.exec && m.online)
     const f = { latest, dismissed, installed, standalone: Boolean(installed), canRun, at: now() }
     files.set(m.key, f)

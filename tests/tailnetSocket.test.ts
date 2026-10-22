@@ -1,6 +1,3 @@
-// Docker has no `tailscale` command: wherdr reads Tailscale's state from its
-// socket (mounted by docker-compose.yml). Here a fake local API on a Unix
-// socket answers what tailscaled would.
 import { mkdtempSync, rmSync } from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'

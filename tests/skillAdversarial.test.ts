@@ -179,23 +179,6 @@ describe('one-tap update: which skill is left in place', () => {
   })
 })
 
-// Docker supplies only skill data; the helper executed on the host is local.
-it('DEFECT: the Docker helper does not execute a script taken from the image on the host', () => {
-  const h = home()
-  mkdirSync(path.join(h, '.claude'))
-  const image = path.join(h, 'image')
-  mkdirSync(path.join(image, 'skills/wherdr'), { recursive: true })
-  mkdirSync(path.join(image, 'bin/lib'), { recursive: true })
-  writeFileSync(path.join(image, 'skills/wherdr/SKILL.md'), 'skill')
-  writeFileSync(path.join(image, 'bin/lib/install-skill.sh'), `touch "$HOME/ran-image-code"\n`)
-  const bin = path.join(h, 'tools')
-  mkdirSync(bin)
-  writeFileSync(path.join(bin, 'docker'), `#!/bin/sh
-case "$1" in create) echo c ;; cp) cp -R "${image}/\${2#*:/app/}" "$3" ;; rm) : ;; *) exit 1 ;; esac
-`, { mode: 0o755 })
-  execFileSync('sh', [path.join(repo, 'bin/install-docker-skill.sh'), 'any-image'], { env: env(h, { PATH: `${bin}:${process.env.PATH}` }) })
-  expect(existsSync(path.join(h, 'ran-image-code'))).toBe(false)
-})
 
 it('the managed link target is the stable copy, never the package folder', () => {
   const h = home()
@@ -246,19 +229,6 @@ it('requires explicit installation to clear uninstall, and off prevents that too
   expect(existsSync(path.join(h, '.local/state/wherdr/skill-disabled'))).toBe(false)
 })
 
-it('manual Docker extraction reports failures and protects an image argument starting with a dash', () => {
-  const h = home()
-  const bin = path.join(h, 'tools')
-  mkdirSync(bin)
-  writeFileSync(path.join(bin, 'docker'), '#!/bin/sh\nprintf "%s\\n" "$@" > "$HOME/args"\necho "image not found" >&2\nexit 1\n', { mode: 0o755 })
-  const result = spawnSync('sh', [path.join(repo, 'bin/install-docker-skill.sh'), '--bad-image'], { env: env(h, { PATH: `${bin}:${process.env.PATH}` }), encoding: 'utf8' })
-  expect(result.status).not.toBe(0)
-  expect(result.stderr).toContain('image not found')
-  expect(readFileSync(path.join(h, 'args'), 'utf8')).toBe('create\n--\n--bad-image\n')
-  const disabled = spawnSync('sh', [path.join(repo, 'bin/install-docker-skill.sh'), '--bad-image'], { env: env(h, { PATH: `${bin}:${process.env.PATH}`, WHERDR_SKILL: 'off' }), encoding: 'utf8' })
-  expect(disabled.status).toBe(0)
-  expect(disabled.stdout).toContain('disabled')
-})
 
 
 it('bounds updater helper execution and requests the bounded refresh mode', async () => {

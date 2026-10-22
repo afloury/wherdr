@@ -4,7 +4,6 @@ export interface PhoneAddress { url: string, served: boolean, httpsPort: string,
 export interface Tailnet {
   installed: boolean
   bin?: string | null
-  // Tailscale's socket, when the state was read there (no CLI: Docker).
   socket?: string | null
   name?: string | null
   connected?: boolean
@@ -30,18 +29,16 @@ export function servedPorts(serveJson: string): string[]
 export function publishCommand(port: string | number, httpsPort?: string | number): string
 export function publishArgs(port: string | number): string[]
 export function unpublishArgs(httpsPort: string): string[]
-export function tailnetUrl(text: unknown): string | null
 export function serveError(output: string): { code: ServeErrorCode, link: string } | null
 export function inspect(port: string | number, bin?: string | null, socket?: string | null): Promise<Tailnet>
-export function tailnetDomain(resolvConf: string): string | null
 export function reachable(url: string, timeoutMs?: number): Promise<Reach>
 export function healthReach(status: number, text: string): 'ok' | 'host' | null
 export function probe(url: string, timeoutMs?: number): Promise<Probe>
 export function failureCause(err: unknown): ReachCause
 export function runTailscale(bin: string, args: string[], timeoutMs?: number): Promise<{ code: number, output: string }>
 export interface TailnetPeers { readable: boolean, state: string | null, running: boolean, selfIps: string[], peerIps: string[] }
-export interface TailnetFacts extends Omit<TailnetPeers, 'state'> { installed: boolean, funnel: boolean | null, funnelAny: boolean | null }
+export interface TailnetFacts extends Omit<TailnetPeers, 'state'> { installed: boolean, funnel: boolean | null }
 export function tailnetPeers(statusJson: string): TailnetPeers
 export function targetPort(target: unknown): number | null
-export function funnelExposes(port: string | number, serveJson: string, anyRoute?: boolean): boolean | null
-export function tailnetFacts(port: string | number, bin?: string | null, socket?: string | null, anyRoute?: boolean): Promise<TailnetFacts>
+export function funnelExposes(port: string | number, serveJson: string): boolean | null
+export function tailnetFacts(port: string | number, bin?: string | null, socket?: string | null): Promise<TailnetFacts>

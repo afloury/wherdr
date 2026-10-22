@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import type * as Tailnet from '../bin/lib/tailnet.mjs'
 import { failureCause } from '../bin/lib/tailnet.mjs'
 import { hostAllowed } from '../server/utils/hosts'
-import { adoptServed, applyServed, httpsPortOf, onTailnetName, phoneAction, phoneStatus } from '../server/utils/phone'
+import { adoptServed, applyServed, onTailnetName, phoneAction, phoneStatus } from '../server/utils/phone'
 import { PHONE_GRACE_MS, phoneReach } from '../shared/phone'
 import type { PhoneReachCause } from '../shared/phone'
 
@@ -138,9 +138,9 @@ describe('phone setup', () => {
     expect(r.status.served).toBe(false)
   })
 
-  it('refuses an unknown action or a typed address that is not a tailnet one', async () => {
+  it('refuses unknown actions, including the removed manual-address action', async () => {
     expect(await phoneAction({ action: 'rm -rf' })).toMatchObject({ ok: false, error: 'failed' })
-    expect(await phoneAction({ action: 'address', url: 'https://example.com/' })).toMatchObject({ ok: false, error: 'address' })
+    expect(await phoneAction({ action: 'address', url: 'https://example.com/' })).toMatchObject({ ok: false, error: 'failed' })
     expect(callLog()).toEqual([])
   })
 })
@@ -239,12 +239,6 @@ describe('phone address check', () => {
     expect(failureCause({ code: 'DEPTH_ZERO_SELF_SIGNED_CERT' })).toBe('cert')
     expect(failureCause({ code: 'EPROTO', message: 'SSL routines:ssl3_get_record:wrong version number' })).toBe('tls')
     expect(failureCause({ code: 'ECONNRESET' })).toBe('network')
-  })
-
-  it('keeps the HTTPS port an address is already published on', () => {
-    expect(httpsPortOf('https://box.example.ts.net:8103/')).toBe('8103')
-    expect(httpsPortOf('https://box.example.ts.net/')).toBe('')
-    expect(httpsPortOf(null)).toBe('')
   })
 
   it('records the reason and the time of an unreachable address', async () => {

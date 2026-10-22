@@ -79,7 +79,7 @@ export default defineNuxtConfig({
         ? [{ rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32.png' }, { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' }]
         : [
             // App icon (">_" + orange dot). An installation can replace it without
-            // touching the code: see docker-compose.override.example.yml (branding/ folder).
+            // touching the code: set BRANDING_DIR to your branding folder.
             { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/icons/favicon-32.png?v=5' },
             { rel: 'icon', type: 'image/png', sizes: '192x192', href: '/icons/icon-192.png?v=5' },
             { rel: 'apple-touch-icon', href: '/icons/apple-touch-icon.png?v=5' },
@@ -110,7 +110,7 @@ export default defineNuxtConfig({
   },
 
   nitro: demo
-    // Its own output folder: `.output` stays the app (npm package, Docker image).
+    // Its own output folder: `.output` stays the app (npm package).
     ? { preset: 'static', output: { dir: '.output-demo' } }
     : {
         preset: 'node-server',

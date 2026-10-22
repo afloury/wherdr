@@ -70,7 +70,7 @@ describe('a task\'s wait, from details', () => {
     expect(details({ queue: { place: 0 } }).queue).toBeNull()
     expect(details({}).queue).toBeNull()
   })
-  it('from a task file (wherdr in a container)', () => {
+  it('from a task file', () => {
     expect(detailsFromTaskFile({ id: 'demo/9', stage: 'after', after: ['demo/3', 'demo/4'], afterLeft: ['demo/4'], afterBlocked: null })?.after)
       .toMatchObject({ waitsFor: ['demo/3', 'demo/4'], left: ['demo/4'], waiting: true })
     expect(detailsFromTaskFile({ id: 'demo/9', stage: 'todo', after: ['demo/3'] })?.after).toMatchObject({ waiting: false, left: ['demo/3'] })

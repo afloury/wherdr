@@ -46,12 +46,12 @@ export function hostRefusalIsHtml(path: string, accept: string | string[] | unde
 
 // The command that checks and fixes the phone address on the machine, which
 // may have no screen: `wherdr phone` where that command exists (npm, Homebrew),
-// else the installer, which ends with the same check (Docker, Herdr plugin).
+// else the installer, which ends with the same check (Herdr plugin).
 // `wherdr phone` looks at its default port: one started on another port
 // (--port, PORT=…, from the sources) is named, or the command checks nothing.
 const CLI_DEFAULT_PORT = '7683'
 export function phoneFixCommand(install = process.env.WHERDR_INSTALL || '', port = process.env.NITRO_PORT || process.env.PORT || ''): string {
-  if (install === 'docker' || install === 'docker-build' || install === 'plugin') return 'curl -fsSL https://wherdr.dev/install | sh'
+  if (install === 'plugin') return 'curl -fsSL https://wherdr.dev/install | sh'
   const command = install === 'brew' || install === 'npm-global' ? 'wherdr phone' : 'npx wherdr phone'
   return /^\d+$/.test(port) && port !== CLI_DEFAULT_PORT ? `${command} --port ${port}` : command
 }
@@ -68,9 +68,8 @@ export function tailnetName(host: string | undefined): boolean {
 export function hostRefusedPage(install?: string, host?: string, port?: string): string {
   const kind = install ?? process.env.WHERDR_INSTALL ?? ''
   const command = phoneFixCommand(kind, port)
-  const docker = kind === 'docker' || kind === 'docker-build'
-  const where = docker ? 'in the container\'s environment' : 'in <code>~/wherdr/wherdr.env</code>'
-  const whereFr = docker ? 'dans l’environnement du conteneur' : 'dans <code>~/wherdr/wherdr.env</code>'
+  const where = 'in <code>~/wherdr/wherdr.env</code>'
+  const whereFr = 'dans <code>~/wherdr/wherdr.env</code>'
   const other = !tailnetName(host)
   const serve = other ? 'If you reach wherdr through <code>tailscale serve</code>, wherdr enables that address by itself.' : 'wherdr enables by itself the address <code>tailscale serve</code> publishes for it.'
   const serveFr = other ? 'Si tu passes par <code>tailscale serve</code>, wherdr active cette adresse tout seul.' : 'wherdr active tout seul l’adresse que <code>tailscale serve</code> publie pour lui.'
@@ -103,9 +102,9 @@ pre{margin:0;padding:10px 12px;border:1px solid #3a3f47;background:#15181d;white
 
 // A client outside this computer and the tailnet (server/utils/network.ts),
 // or any connection while wherdr may be exposed (`why`: Tailscale Funnel
-// exposes wherdr's port, or Docker publishes it on every interface): the page
+// exposes wherdr's port): the page
 // says why and what to do, without echoing any address.
-export function networkRefusedPage(why?: 'funnel' | 'docker'): string {
+export function networkRefusedPage(why?: 'funnel'): string {
   const opt = '<code>WHERDR_TRUSTED_NETWORKS</code>'
   const copy = why === 'funnel'
     ? {
@@ -114,13 +113,6 @@ export function networkRefusedPage(why?: 'funnel' | 'docker'): string {
         titleFr: 'Tailscale Funnel ouvre wherdr à Internet.',
         bodyFr: '<p lang="fr">Funnel relaie vers cet ordinateur des connexions venues de partout, que wherdr ne peut pas distinguer des tiennes : wherdr refuse donc toute connexion tant qu’il est actif.</p><p lang="fr">Sur l’ordinateur qui fait tourner wherdr, coupe Funnel pour le port de wherdr (<code>tailscale funnel status</code>, puis <code>tailscale funnel … off</code>), puis recharge. Pour joindre wherdr depuis tes appareils, utilise <code>tailscale serve</code>, qui reste dans ton tailnet.</p>',
       }
-    : why === 'docker'
-      ? {
-          title: 'wherdr is published on every network interface.',
-          body: '<p>Docker publishes wherdr\'s port on all the host\'s addresses, so a connection may come from another network through Docker\'s proxy, which hides where it comes from, so wherdr refuses them.</p><p>Publish it on <code>127.0.0.1</code> only (<code>"127.0.0.1:7683:7683"</code> in <code>docker-compose.yml</code>, as shipped), then <code>docker compose up -d</code>.</p>',
-          titleFr: 'wherdr est publié sur toutes les interfaces réseau.',
-          bodyFr: '<p lang="fr">Docker publie le port de wherdr sur toutes les adresses de l’hôte : une connexion peut venir d’un autre réseau par le proxy de Docker, qui masque sa provenance : wherdr les refuse donc.</p><p lang="fr">Publie-le sur <code>127.0.0.1</code> seulement (<code>"127.0.0.1:7683:7683"</code> dans <code>docker-compose.yml</code>, comme livré), puis <code>docker compose up -d</code>.</p>',
-        }
       : {
           title: 'wherdr only answers this computer and your tailnet.',
           body: `<p>This device reached it from another network (Wi-Fi, LAN, Internet), in plain HTTP: anyone there could control the agents, so wherdr refuses.</p><p>Open wherdr on its computer (<code>localhost</code>), or from your devices through Tailscale: Settings › Phone, or <code>wherdr phone</code> on that computer.</p><p>Another private network (ZeroTier, WireGuard…): its owner can name its range in ${opt}, then restart wherdr.</p>`,
