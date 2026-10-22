@@ -4,14 +4,14 @@
 
 You are helping your user install **wherdr**: a self-hosted web app and phone PWA to drive the
 coding agents running in [Herdr](https://herdr.dev). It runs natively on **one** machine, where
-Herdr runs, as the same user, on `127.0.0.1:7683` only. Details: https://github.com/afloury/wherdr#readme.
+Herdr runs, as the same user, on `127.0.0.1:7683` only. Details: https://github.com/afloury/wherdr/blob/main/docs/installation.md.
 
 ## Rules
 
 1. **Security first.** wherdr is a remote shell on that machine. Never expose it: no port
    forwarding, no public proxy, no ngrok, no `tailscale funnel`, no plain HTTP on the local
    network. Other devices use `tailscale serve` only (private HTTPS inside the user's tailnet).
-   Another private network: https://github.com/afloury/wherdr#other-private-networks.
+   Another private network: https://github.com/afloury/wherdr/blob/main/docs/networks.md#other-private-networks.
 2. **Detect before you ask.** Never offer to install what is already there.
 3. **Ask before** installing anything (wherdr, Tailscale, Node.js) and before any `sudo`.
 4. Do not edit `~/.claude`, `~/.codex`, Herdr's config or wherdr's files (`plugin.env`, `.env`).
@@ -91,7 +91,7 @@ passkey lock is on, and how to update (run the install command again).
 
 - **Only a terminal, no conversation**: `herdr integration install claude|codex|omp`.
 - **Agents on other computers**: Herdr only on them, registered with `herdr machine add`:
-  https://github.com/afloury/wherdr#several-machines-ssh.
+  https://github.com/afloury/wherdr/blob/main/docs/machines.md#several-machines-ssh.
 - **herdr-projects** (task board): `herdr plugin install eliasstravik/herdr-projects --ref v1.2.1 --yes`.
 - **Something fails**: the **L** key (log) of the wherdr panel in Herdr, and
-  https://github.com/afloury/wherdr#troubleshooting.
+  https://github.com/afloury/wherdr/blob/main/docs/troubleshooting.md#troubleshooting.

@@ -50,7 +50,7 @@ export const INSTALL_OUTPUT: InstallLine[] = [
   { kind: 'say', text: '  Phone: follow its Phone step to set up Tailscale (private network only).', wait: 60 },
   { kind: 'blank', text: '', wait: 60 },
   { kind: 'dim', text: 'Update: run this command again, or U in the wherdr panel.', wait: 60 },
-  { kind: 'dim', text: `Docs:   ${REPO}#readme`, wait: 60 },
+  { kind: 'dim', text: `Docs:   ${REPO}/blob/main/docs/installation.md`, wait: 60 },
 ]
 
 // The one command, on the Mac that runs Herdr.
