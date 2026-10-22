@@ -1,12 +1,14 @@
+import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'vitest'
+import { hasCommands } from './helpers/commands'
 
 const workflow = readFileSync('.github/workflows/release.yml', 'utf8')
 for (const job of ['package', 'publish-release']) {
-  it(`${job} refuses missing drafts/notes and never generates release notes`, () => {
+  it.skipIf(job === 'package' && !hasCommands('sha256sum'))(`${job} refuses missing drafts/notes and never generates release notes`, () => {
     const home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-draft-'))
     try {
       const bin = path.join(home, 'bin')
@@ -75,7 +77,7 @@ it('uses one release tag for dispatch, checkout and concurrency, preserving OIDC
   expect(npmWorkflow).not.toMatch(/^\s+environment:/m)
 })
 
-it('rejects invalid or missing releases before checkout', () => {
+it.skipIf(!hasCommands('bash'))('rejects invalid or missing releases before checkout', () => {
   const home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-npm-tag-'))
   try {
     writeFileSync(path.join(home, 'gh'), `#!/bin/sh
@@ -104,7 +106,8 @@ printf '%s\\n' "$*" >> "$HOME/requests"
   } finally { rmSync(home, { recursive: true, force: true }) }
 })
 
-it('checks tagged versions and downloads and publishes the requested local archive from main', () => {
+// Execute the real CI shell and checksum verifier only when they are installed.
+it.skipIf(!hasCommands('bash', 'sha256sum'))('checks tagged versions and downloads and publishes the requested local archive from main', () => {
   const home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-npm-publish-'))
   try {
     const bin = path.join(home, 'bin')
@@ -113,7 +116,7 @@ it('checks tagged versions and downloads and publishes the requested local archi
 [ "$*" = 'release download v1.3.3 --pattern wherdr-1.3.3.tgz* --dir package --clobber' ] || exit 1
 mkdir -p package
 printf archive > package/wherdr-1.3.3.tgz
-(cd package && sha256sum wherdr-1.3.3.tgz > wherdr-1.3.3.tgz.sha256)
+printf '%s  wherdr-1.3.3.tgz\\n' '${createHash('sha256').update('archive').digest('hex')}' > package/wherdr-1.3.3.tgz.sha256
 `, { mode: 0o755 })
     writeFileSync(path.join(bin, 'npm'), `#!/bin/sh
 printf '%s\\n' "$@" > "$HOME/publish-args"

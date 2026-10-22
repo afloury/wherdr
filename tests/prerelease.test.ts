@@ -6,6 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, describe, expect, it } from 'vitest'
+import { hasCommands } from './helpers/commands'
 
 const SCRIPT = path.resolve('scripts/prerelease.sh')
 const SHA = 'a'.repeat(40)
@@ -49,7 +50,7 @@ function run(home: string, args: string[], env: Record<string, string> = {}) {
   return spawnSync('bash', [SCRIPT, ...args], { cwd: home, encoding: 'utf8', env: { ...process.env, ...env } })
 }
 
-describe('version', () => {
+describe.skipIf(!hasCommands('bash'))('version', () => {
   for (const [plugin, pkg, ok] of [
     ['2.0.0-dev', '2.0.0-dev', true], ['2.1.0-rc.1', '2.1.0-rc.1', true],
     ['2.0.0', '2.0.0', false], ['1.3.4', '1.3.4', false], ['2.0.0-dev', '2.0.0', false], ['2.0.0-dev;x', '2.0.0-dev;x', false],
@@ -62,7 +63,7 @@ describe('version', () => {
   }
 })
 
-describe('package', () => {
+describe.skipIf(!hasCommands('bash', 'tar'))('package', () => {
   it('writes the checksum verify-release.mjs accepts, COMMIT and notes with the SHA', () => {
     const home = workspace()
     const tgz = archive(home)
@@ -105,7 +106,7 @@ describe('package', () => {
   })
 })
 
-describe('publish', () => {
+describe.skipIf(!hasCommands('bash', 'tar'))('publish', () => {
   // A fake gh: `state` is the existing release ("" = none), `tag` whether
   // the tag exists, `assets` the names already attached.
   function publish(state: string, opts: { tag?: boolean, assets?: string[] } = {}) {
@@ -194,7 +195,7 @@ describe('workflow', () => {
   })
 })
 
-it('a prerelease package installs through fetch_prebuilt without compiling', async () => {
+it.skipIf(!hasCommands('bash', 'tar', 'curl'))('a prerelease package installs through fetch_prebuilt without compiling', async () => {
   const home = workspace()
   const tgz = archive(home)
   expect(run(home, ['package', tgz, SHA]).status).toBe(0)
