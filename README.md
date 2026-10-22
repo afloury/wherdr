@@ -88,14 +88,19 @@ it on `localhost`, or from your other devices over Tailscale.
 > by itself; the passkey lock is an optional extra. See [Security](#security).
 
 <p align="center">
-  <img src="docs/screenshots/desktop.png" alt="wherdr on a computer: agent sidebar and conversation" width="900">
+  <img src="docs/screenshots/desktop.png" alt="wherdr on a computer: compact agent list with a project and its tasks, and a task's conversation waiting for an approval" width="900">
 </p>
 <p align="center"><sub>On a computer</sub></p>
 <br>
 <p align="center">
-  <img src="docs/screenshots/home-phone.png" alt="Agent list on a phone" width="340">
+  <img src="docs/screenshots/board.png" alt="The Board: tasks of each project in Needs you, Ready to approve, Working and To do columns" width="900">
+</p>
+<p align="center"><sub>The Board: every task of every project, with <a href="#works-great-with-herdr-projects">herdr-projects</a></sub></p>
+<br>
+<p align="center">
+  <img src="docs/screenshots/home-phone.png" alt="Compact agent list on a phone: a project coordinator and its tasks" width="340">
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="docs/screenshots/chat-phone.png" alt="Conversation view on a phone" width="340">
+  <img src="docs/screenshots/chat-phone.png" alt="A task's conversation on a phone, waiting for an approval" width="340">
 </p>
 <p align="center"><sub>On a phone: the same agents, the same session.</sub></p>
 

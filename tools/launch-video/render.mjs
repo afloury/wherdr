@@ -60,7 +60,7 @@ await copyFile(
 if (!process.argv.includes("--reuse-captures")) {
   run(
     "git",
-    ["diff", "--exit-code", "origin/main", "--", "app", "nuxt.config.ts"],
+    ["diff", "--exit-code", process.env.WHERDR_FILM_BASE || "origin/main", "--", "app", "nuxt.config.ts"],
     root,
   );
   if (!process.argv.includes("--skip-build"))
