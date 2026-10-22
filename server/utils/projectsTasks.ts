@@ -629,12 +629,25 @@ export async function restartCoordinator(machine: unknown, to: unknown): Promise
   return { ok: true, msg: firstLine(out) }
 }
 
-export async function tellCoordinator(machine: unknown, text: unknown, opts: { to?: unknown, delegate?: unknown } = {}): Promise<{ ok: true, msg: string }> {
+export async function tellCoordinator(machine: unknown, text: unknown, opts: { to?: unknown, delegate?: unknown, start?: unknown } = {}): Promise<{ ok: true, msg: string }> {
   const m = boardOf(machine)
   const words = cleanTell(text)
   if (!words) throw new HerdrError('empty', 'Nothing to send')
   const to = cleanTarget(opts.to)
   if (!to) throw new HerdrError('bad_target', 'Invalid coordinator')
+  if (opts.start !== undefined) {
+    const start = opts.start as { agent?: unknown, effort?: unknown } | null
+    if (!start || typeof start.agent !== 'string' || !/^[a-z][a-z0-9-]*(?:\/[A-Za-z0-9._/-]+)?$/.test(start.agent) || start.agent.length > 160
+      || (start.effort !== undefined && !['low', 'medium', 'high', 'xhigh', 'max'].includes(String(start.effort)))) {
+      throw new HerdrError('bad_agent', 'Invalid agent')
+    }
+    if (to.kind !== 'project') throw new HerdrError('bad_target', 'Invalid coordinator')
+    // Never reset an existing conversation, including a stopped or failed one.
+    const status = parseCoordinatorStatus(await command(m, coordinatorStatusArgs(to), LIST_TIMEOUT_MS))
+    if (status.state === 'none' && !status.pane && !status.error) {
+      await command(m, ['coordinator', `--project=${to.repo}`, `--agent=${start.agent}`, ...(start.effort ? [`--effort=${start.effort}`] : []), '--', 'new'])
+    }
+  }
   const out = await command(m, coordinatorArgs(to, words, opts.delegate === true))
   forget(m)
   log(`herdr-projects coordinator${to.kind === 'main' ? '' : ` (${to.kind === 'project' ? to.repo : 'machine'})`} tell${opts.delegate === true ? ' --delegate' : ''}${m.local ? '' : ` on ${m.label}`}`)

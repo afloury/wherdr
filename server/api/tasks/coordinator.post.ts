@@ -7,4 +7,4 @@ import { restartCoordinator, tellCoordinator } from '../../utils/projectsTasks'
 
 export default defineApi((_event, b) => (b.restart === true
   ? restartCoordinator(b.machine ?? '', b.to)
-  : tellCoordinator(b.machine ?? '', b.text, { to: b.to, delegate: b.delegate })))
+  : tellCoordinator(b.machine ?? '', b.text, { to: b.to, delegate: b.delegate, start: b.start })))

@@ -4,14 +4,25 @@
 // (failureStale) is history in the Task tab, never its title or its buttons.
 // Coordinators keep their own startup/delivery lifecycle.
 import { type CoordinatorStatus, type CoordinatorTarget, type TaskDetails, type TaskRow, TELL_MAX, coordinatorPhase, coordinatorSubject, taskActions, taskCanFix, taskCanApproveAnyway, taskKey, type TaskCommand, finishCase } from '#shared/projectsTasks'
+import { visibleAgentKinds } from '~/utils/agentChoices'
 import { finishHint, finishLabel, finishOffered, finishQuestion, finishTitle } from '~/utils/taskFinish'
 
 export type PanelTarget =
   | { machine: string, kind: 'task', id: string, chat?: boolean }
-  | { machine: string, kind: 'coordinator', to: CoordinatorTarget }
+  | { machine: string, kind: 'coordinator', to: CoordinatorTarget, freshProject?: boolean }
 
 // `reachable`: its machine's board answers now (a message waits while it does not).
 const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, readOnly?: boolean, reachable?: boolean, refresh?: () => Promise<unknown> }>()
+const launchAgent = ref('__default')
+const launchModel = ref('')
+const launchEffort = ref('__default')
+const launchChoices = computed(() => {
+  const key = props.target.machine
+  const cfg = machineChoices.value?.find(m => m.key === key)
+  return [{ label: tl('Default', 'Par défaut'), value: '__default' },
+    ...visibleAgentKinds(cfg?.kinds || appConfig.value.kinds || [], hiddenAgents.value).filter(k => k !== 'shell').map(k => ({ label: kindLabel(k), value: k }))]
+})
+const effortChoices = computed(() => [{ label: tl('Default', 'Par défaut'), value: '__default' }, ...['low', 'medium', 'high', 'xhigh', 'max'].map(value => ({ label: value, value }))])
 const emit = defineEmits<{ coordinator: [machine: string, task: TaskRow], close: [], sheet: [], noAgent: [], changed: [], archived: [machine: string, task: TaskRow], restored: [machine: string, task: TaskRow] }>()
 
 // ------------------------------------------------------------ a task's agent
@@ -303,18 +314,23 @@ async function start() {
   const g = gen
   starting.value = true
   try {
-    await api('/api/tasks/coordinator', { machine: t.machine, text, to: t.to })
+    await api('/api/tasks/coordinator', { machine: t.machine, text, to: t.to, ...(t.freshProject && launchAgent.value !== '__default' ? { start: { agent: launchAgent.value + (launchModel.value.trim() ? `/${launchModel.value.trim()}` : ''), ...(launchEffort.value !== '__default' ? { effort: launchEffort.value } : {}) } } : {}) })
     haptic()
     // Another coordinator is shown now: its field and its words stay as they are.
     if (g !== gen) return
     first.value = ''
+    refreshBoardLinks()
+    emit('changed')
     sent.value = true
     // herdr-projects queued the words and cleared any earlier failure.
     coordState.value = 'starting'
     coordError.value = ''
     tries = 0
     lookCoordinator(g)
-  } catch (e) { toast((e as Error).message, true) }
+  } catch (e) {
+    toast((e as Error).message, true)
+    if (g === gen) lookCoordinator(g)
+  }
   finally { if (g === gen) starting.value = false }
 }
 // Try again, once what stopped it is fixed: started again with the words
@@ -455,6 +471,16 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
           <p v-if="!reachable" class="board-panel-away" role="status">
             {{ tl(`${machineLabel} cannot be reached now: your message waits for it here.`, `${machineLabel} est injoignable pour l’instant : ton message l’attend ici.`) }}
           </p>
+          <template v-if="target.freshProject && coordState === 'none'">
+            <label for="coordinator-agent">{{ t('Agent') }}</label>
+            <USelect id="coordinator-agent" v-model="launchAgent" :items="launchChoices" :disabled="starting" />
+            <template v-if="launchAgent !== '__default'">
+              <label for="coordinator-model">{{ t('Model') }} {{ t('(optional)') }}</label>
+              <UInput id="coordinator-model" v-model="launchModel" :disabled="starting" autocapitalize="none" autocorrect="off" :spellcheck="false" />
+              <label for="coordinator-effort">{{ t('Effort') }}</label>
+              <USelect id="coordinator-effort" v-model="launchEffort" :items="effortChoices" :disabled="starting" />
+            </template>
+          </template>
           <UTextarea id="board-panel-first" v-model="first" :rows="3" autoresize :maxlength="TELL_MAX" :placeholder="tl('Message', 'Message')" :disabled="offlineView" />
           <UButton type="submit" color="primary" icon="i-lucide-send" :loading="starting" :disabled="!first.trim() || offlineView || !reachable">{{ t('Send') }}</UButton>
         </form>
