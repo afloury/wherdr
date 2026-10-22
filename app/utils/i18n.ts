@@ -503,6 +503,8 @@ const FR: Record<string, string> = {
   'Herdr server stopped on {machine}': 'Serveur Herdr arrêté sur {machine}',
   'Herdr socket forwarding failed: {reason}': 'Transfert du socket Herdr impossible : {reason}',
   'SSH connection closed': 'Connexion SSH fermée',
+  'SSH control connection lost': 'Connexion SSH de contrôle perdue',
+  'SSH sessions refused': 'Sessions SSH refusées',
   'profile changed': 'profil modifié',
   'Session list unavailable': 'Liste des sessions indisponible',
   'Invalid session': 'Session invalide',

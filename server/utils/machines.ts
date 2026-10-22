@@ -165,6 +165,34 @@ done; exit 0`
 const BACKOFF_MS = [1000, 2000, 5000, 10000, 20000, 30000]
 // Beyond this number of consecutive failures, the machine goes "offline".
 const FAILS_BEFORE_OFFLINE = 2
+// Refused sessions in a row before the master connection is reopened.
+const REFUSALS_BEFORE_RECONNECT = 3
+// Reopenings for refusals closer than this to the previous one wait longer.
+const RECOVERY_WINDOW_MS = 10 * 60 * 1000
+
+// Control socket of one master connection: `<key>.<pid>.<n>.ctl`, a new path
+// per connection. An ssh master removes its control path when it exits, so an
+// older master dying late (stopped slowly, or left behind by a previous
+// wherdr) must never share the path of the one in use: every multiplexed
+// session would then fail ("Connection closed by UNKNOWN port 65535") while
+// the machine still looked online.
+export const ctlName = (key: string, pid: number, n: number) => `${key}.${pid}.${n}.ctl`
+// Control sockets of earlier connections to remove (their master, if still
+// running, is asked to exit): those of wherdr processes no longer running,
+// and the old fixed `<key>.ctl`. A running wherdr's own are left alone.
+export function staleCtls(files: string[], key: string, alive: (pid: number) => boolean): string[] {
+  const esc = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(`^${esc}(?:\\.(\\d+)\\.\\d+)?\\.ctl$`)
+  return files.filter((f) => {
+    const m = re.exec(f)
+    return Boolean(m && (!m[1] || !alive(Number(m[1]))))
+  })
+}
+const pidAlive = (pid: number) => {
+  if (pid === process.pid) return true
+  try { process.kill(pid, 0); return true }
+  catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM' }
+}
 
 function runFile(bin: string, args: string[], timeoutMs: number): Promise<ExecResult> {
   return new Promise((resolve) => {
@@ -192,7 +220,9 @@ export class RemoteMachine implements Machine {
   os = ''
   bin = ''
   remoteSock = ''
-  readonly ctl: string
+  // Control socket of the current master connection (see ctlName).
+  ctl: string
+  private ctlSeq = 0
   readonly fwd: string
   readonly fwdClient: string
   private clientFwd = false
@@ -207,6 +237,10 @@ export class RemoteMachine implements Machine {
   private stopped = false
   private connecting = false
   private pollFails = 0
+  // Reopenings after refused sessions (growing delay), see sessionRefused.
+  private recoveries = 0
+  private lastRecovery = 0
+  private checking = false
   // Identity seen at connection (host name + remote socket): duplicates.
   ident = ''
   private onChange: () => void
@@ -214,7 +248,11 @@ export class RemoteMachine implements Machine {
   onOnline: (m: RemoteMachine) => void = () => {}
   // Session budget of the shared connection (sshd MaxSessions).
   readonly gate = new SessionGate({
-    onRefused: (s, attempt) => log(`machine ${this.label}: SSH session refused (attempt ${attempt}; open: ${s.execs} commands + ${s.streams} streams, ${s.queued} queued, peak ${s.peak})`),
+    onRefused: (s, attempt) => {
+      // Logged once per streak, then when the connection is reopened.
+      if (s.streak === 1) log(`machine ${this.label}: SSH session refused (attempt ${attempt}; open: ${s.execs} commands + ${s.streams} streams, ${s.queued} queued, peak ${s.peak})`)
+      void this.sessionRefused()
+    },
   })
 
   constructor(p: MachineProfile, onChange: () => void) {
@@ -224,7 +262,7 @@ export class RemoteMachine implements Machine {
     this.target = p.target
     this.profileSession = p.session
     this.onChange = onChange
-    this.ctl = path.join(RUNTIME_DIR, `${p.key}.ctl`)
+    this.ctl = path.join(RUNTIME_DIR, ctlName(p.key, process.pid, 0))
     this.fwd = path.join(RUNTIME_DIR, `${p.key}.sock`)
     this.fwdClient = path.join(RUNTIME_DIR, `${p.key}.client.sock`)
     this.exec = (script, args = [], opts = {}) => this.run(script, args, opts)
@@ -294,20 +332,58 @@ export class RemoteMachine implements Machine {
   spawnHerdr(args: string[]): ChildProcessWithoutNullStreams {
     const sess = this.session && this.session !== 'default' ? ['--session', this.session] : []
     const cmd = `exec ${[this.bin || 'herdr', ...sess, ...args].map(shq).join(' ')}`
-    const child = spawn(SSH_BIN, [...this.muxArgs(), '--', this.target, cmd], { stdio: ['pipe', 'pipe', 'pipe'] })
-    const close = this.gate.openStream()
-    child.on('close', close)
-    child.on('error', close)
-    return child
+    return this.stream(cmd)
   }
 
   spawnShell(script: string, args: string[]): ChildProcessWithoutNullStreams | null {
     if (this.status !== 'online') return null
-    const child = spawn(SSH_BIN, [...this.muxArgs(), '--', this.target, remoteCommand(script, args)], { stdio: ['pipe', 'pipe', 'pipe'] })
+    return this.stream(remoteCommand(script, args))
+  }
+
+  // Long-lived session in the budget; a refused one counts in the streak
+  // (a terminal retrying alone must also bring the connection back).
+  private stream(cmd: string): ChildProcessWithoutNullStreams {
+    const child = spawn(SSH_BIN, [...this.muxArgs(), '--', this.target, cmd], { stdio: ['pipe', 'pipe', 'pipe'] })
     const close = this.gate.openStream()
-    child.on('close', close)
+    let err = ''
+    let opened = false
+    child.stdout.once('data', () => { opened = true })
+    child.stderr.on('data', (b: Buffer) => { if (err.length < 4000) err += b.toString('utf8') })
+    child.on('close', (code) => {
+      close()
+      if (!opened && code === 255 && isRefused(err)) this.gate.refused()
+    })
     child.on('error', close)
     return child
+  }
+
+  // A session was refused. The master may be gone or its control socket
+  // removed (`-O check` fails): reopen at once. Otherwise reopen after
+  // REFUSALS_BEFORE_RECONNECT refusals in a row (sshd refusing every session
+  // on that connection), never in a burst: the delay grows with each
+  // reopening close to the previous one.
+  private async sessionRefused() {
+    if (this.stopped || this.status !== 'online' || this.connecting || this.checking) return
+    this.checking = true
+    const ctl = this.ctl
+    let reason: string | null = null
+    try {
+      const check = await runFile(SSH_BIN, ['-S', ctl, '-O', 'check', '--', this.target], 5000)
+      if (check.code !== 0) {
+        log(`machine ${this.label}: control socket check failed (${lastLine(check.stderr) || check.code})`)
+        reason = 'SSH control connection lost'
+      }
+      else if (this.gate.stats().streak >= REFUSALS_BEFORE_RECONNECT) reason = 'SSH sessions refused'
+    } finally { this.checking = false }
+    if (!reason || this.stopped || this.status !== 'online' || this.connecting || this.ctl !== ctl) return
+    const now = Date.now()
+    if (now - this.lastRecovery > RECOVERY_WINDOW_MS) this.recoveries = 0
+    this.lastRecovery = now
+    this.recoveries++
+    this.gate.accepted()
+    // fail() counts one more: the first reopening waits BACKOFF_MS[0], the next ones longer.
+    this.fails = this.recoveries - 1
+    this.restart(reason)
   }
 
   async putUpload(name: string, data: Buffer, kind: 'photo' | 'file' = 'photo'): Promise<string> {
@@ -399,6 +475,8 @@ export class RemoteMachine implements Machine {
     this.timer = null
     try {
       await fsp.mkdir(RUNTIME_DIR, { recursive: true, mode: 0o700 })
+      await this.reapStaleMasters()
+      this.ctl = path.join(RUNTIME_DIR, ctlName(this.key, process.pid, ++this.ctlSeq))
       await fsp.unlink(this.ctl).catch(() => {})
       await fsp.unlink(this.fwd).catch(() => {})
       await fsp.unlink(this.fwdClient).catch(() => {})
@@ -476,6 +554,18 @@ export class RemoteMachine implements Machine {
       this.fail((e as Error).message)
     } finally {
       this.connecting = false
+    }
+  }
+
+  // Masters left by a previous wherdr (crash, kill): asked to exit through
+  // their own control socket, then the socket file is removed.
+  private async reapStaleMasters() {
+    const files = await fsp.readdir(RUNTIME_DIR).catch(() => [] as string[])
+    for (const f of staleCtls(files, this.key, pidAlive)) {
+      const p = path.join(RUNTIME_DIR, f)
+      const r = await runFile(SSH_BIN, ['-S', p, '-O', 'exit', '--', this.target], 5000)
+      if (r.code === 0) log(`machine ${this.label}: stopped a leftover SSH connection (${f})`)
+      await fsp.unlink(p).catch(() => {})
     }
   }
 
