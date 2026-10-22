@@ -118,7 +118,7 @@ const waitKind = computed(() => (needs.value && !failureNow.value?.failureTitle 
 const waitText = computed(() => failureTitle.value)
 // The agent's own question (`report --state blocked`): a message answers it.
 const asks = computed(() => props.task?.stage === 'asks')
-const answerable = computed(() => Boolean(waitKind.value && waitKind.value !== 'auth' && asks.value && !props.readOnly))
+const answerable = computed(() => Boolean(waitKind.value && waitKind.value !== 'auth' && asks.value))
 // One tap sends the answer, through herdr-projects (`tell`).
 const canTap = computed(() => answerable.value && Boolean(taskPermissions.value?.tell))
 const choices = computed(() => (canTap.value && waitKind.value === 'question' ? blockChoices(waitText.value) : []))

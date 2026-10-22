@@ -235,11 +235,19 @@ describe('task panel', () => {
       expect(a.attributes('target')).toBe('_blank')
       w.unmount()
     })
-    it('read only: nothing to send from here', async () => {
+    it('machine unavailable: its answers cannot be sent', async () => {
       stage = 'asks'
-      const w = await panel({ task: asks('permission', 'Need your OK to delete the test data'), readOnly: true })
-      expect(buttons(w)).not.toContain('Allow')
-      expect(buttons(w)).not.toContain('Reply…')
+      const w = await panel({ task: asks('permission', 'Need your OK to delete the test data'), reachable: false })
+      const allow = w.find('.task-needs-allow')
+      expect(allow.attributes('disabled')).toBeDefined()
+      await allow.trigger('click')
+      expect(calls).toHaveLength(0)
+      w.unmount()
+    })
+    it('a numbered offer to allow for good gets its button', async () => {
+      stage = 'asks'
+      const w = await panel({ task: asks('permission', 'Run the cleanup?\n1) Allow once\n2) Always allow\n3) Refuse') })
+      expect(buttons(w)).toEqual(['Allow', 'Always allow', 'Refuse'])
       w.unmount()
     })
   })

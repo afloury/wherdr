@@ -115,17 +115,17 @@ export function blockChoices(msg: string): BlockChoice[] {
 }
 
 // A permission its agent also offers to give for good: "always" offered as
-// an answer where the question ends, a choice of its closing group
-// ("(yes / always / no)") or its last words ("…, or always?", "ou toujours
+// an answer, one of its numbered answers ("2) Always allow"), a choice of
+// its closing group ("(yes / always / no)") or its last words ("…, or always?", "ou toujours
 // autoriser ?"), or said to the human as something they can do ("you can
 // also always allow it", "tu peux aussi toujours autoriser ce script").
 // The word anywhere else describes something ("our policy is to always
 // allow…") and offers nothing.
-const ALWAYS_ITEM = /^(?:always|toujours)(?:\s+(?:allow|allowed|autoriser|autorisé))?$/i
+const ALWAYS_ITEM = /^(?:(?:always|toujours)(?:\s+(?:allow|allowed|autoriser|autorisé))?|(?:allow|autoriser)\s+always|autoriser\s+toujours)$/i
 const ALWAYS_LAST = /\b(?:or|ou)\s+(?:always|toujours)(?:\s+(?:allow|autoriser))?\s*[?.!]?\s*$/i
 const ALWAYS_YOU = /\b(?:you\s+(?:can|could|may|might)|(?:tu|vous)\s+(?:peux|pouvez|pourrais|pourriez))\s+(?:(?:also|aussi|également|plutôt|instead)\s+)?(?:always\s+allow|toujours\s+(?:l['’]\s*)?autoriser|(?:l['’]\s*)?autoriser\s+toujours|allow\s+(?:it\s+|this\s+)?always)\b/i
 export function offersAlways(msg: string): boolean {
-  if (grouped(msg).some(c => ALWAYS_ITEM.test(c.label))) return true
+  if ([...grouped(msg), ...listed(msg)].some(c => ALWAYS_ITEM.test(c.label.replace(/[.!]+$/, '')))) return true
   return ALWAYS_LAST.test(msg.trim()) || ALWAYS_YOU.test(msg)
 }
 
@@ -137,13 +137,18 @@ export function permissionReply(answer: 'allow' | 'refuse' | 'always'): string {
 }
 
 // The conversation's message that asks it: the last agent message holding
-// the start of the question, else its last agent message.
+// the question's words, else its last agent message.
 export function questionMessage(root: ParentNode, msg: string): HTMLElement | null {
   const all = [...root.querySelectorAll<HTMLElement>('.msg-ai')]
   if (!all.length) return null
-  const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase()
-  const head = norm(msg.split(/https?:\/\//)[0]!).slice(0, 40)
-  if (head.length >= 8) {
+  // Compared as shown: links stand under a short name and markdown marks go,
+  // so its words are looked for between its links, the longest stretch first.
+  const norm = (s: string) => s.replace(/[*_`#>]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
+  const heads = msg.split(/https?:\/\/\S+/)
+    .map(s => norm(s).replace(/^[^\p{L}\p{N}]+/u, '').slice(0, 40).trim())
+    .filter(s => s.length >= 8)
+    .sort((a, b) => b.length - a.length)
+  for (const head of heads) {
     for (let i = all.length - 1; i >= 0; i--) if (norm(all[i]!.textContent || '').includes(head)) return all[i]!
   }
   return all[all.length - 1]!

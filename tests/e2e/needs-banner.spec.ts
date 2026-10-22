@@ -40,7 +40,7 @@ const transcript = path.join(home, '.claude/projects', cwd.replace(/[/.]/g, '-')
 
 // Its conversation: the agent's question, then many lines after it so that
 // See ↓ has to scroll back up to it.
-function writeTranscript() {
+function writeTranscript(question = QUESTION) {
   const base = { isSidechain: false, cwd, sessionId: sid }
   let t = Date.now() - 120_000
   const at = () => new Date(t += 1000).toISOString()
@@ -48,7 +48,7 @@ function writeTranscript() {
   const ai = (text: string) => ({ ...base, type: 'assistant', timestamp: at(), message: { model: 'claude-opus-4-1', role: 'assistant', content: [{ type: 'text', text }] } })
   const lines = [
     user('Retire the old payment provider.'),
-    ai(QUESTION),
+    ai(question),
     ai(Array.from({ length: 40 }, (_, i) => `- Checked file ${i + 1} of the checkout module.`).join('\n')),
   ]
   fs.mkdirSync(path.dirname(transcript), { recursive: true })
@@ -159,6 +159,18 @@ test('a question: one line, its answers as buttons, See ↓ to its message', asy
   await expect.poll(() => fs.existsSync(path.join(root, 'told')) && fs.readFileSync(path.join(root, 'told'), 'utf8')).toBe('drop')
 })
 
+test('See ↓ finds a question that starts with a link', async ({ page }) => {
+  const asked = `${PR} — Keep or drop the old provider?`
+  write({ ...task, msg: asked })
+  writeTranscript(asked)
+  await shows(page, 'PR #484 — Keep or drop the old provider?', '.task-needs-text')
+  await expect(page.locator('.board-panel .chat').getByText('Checked file 40 of the checkout module.')).toBeVisible()
+  await page.locator('.board-panel .task-needs').getByRole('button', { name: 'See ↓' }).click()
+  const lit = page.locator('.board-panel .msg-ai.msg-lit')
+  await expect(lit).toContainText('Keep or drop the old provider?')
+  await expect(lit).not.toContainText('Checked file')
+})
+
 test('a question with no answers: Reply… goes to the field', async ({ page }) => {
   write({ ...task, msg: 'Should the old settings file be removed' })
   await shows(page, 'Should the old settings file be removed', '.task-needs-text')
@@ -179,6 +191,11 @@ test('a permission: Allow, Always allow, Refuse; a sign-in: Open terminal (Frenc
   await desktopShot(page, '.shots/needs-permission-fr-desktop.png')
   await banner.getByRole('button', { name: 'Refuser' }).click()
   await expect.poll(() => fs.existsSync(path.join(root, 'told')) && fs.readFileSync(path.join(root, 'told'), 'utf8')).toBe('Refusé : ne le fais pas.')
+
+  // One of its numbered answers, it is offered too.
+  write({ ...task, kind: 'permission', msg: 'Lancer le nettoyage ?\n1) Autoriser une fois\n2) Toujours autoriser\n3) Refuser' })
+  await shows(page, 'Lancer le nettoyage ? 1) Autoriser une fois 2) Toujours autoriser 3) Refuser', '.task-needs-text')
+  await expect(banner.locator('.task-needs-actions button')).toHaveText(['Autoriser', 'Toujours autoriser', 'Refuser'])
 
   // Said to the human as something they can do, it is offered too.
   write({ ...task, kind: 'permission', msg: 'Lancer le script de nettoyage ? Tu peux aussi toujours autoriser ce script.' })

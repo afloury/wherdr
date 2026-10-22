@@ -1,5 +1,6 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest'
-import { blockChoices, blockKind, linkLabel, offersAlways, prLink, shortText, textParts } from '../app/utils/blockNotice'
+import { blockChoices, blockKind, linkLabel, offersAlways, prLink, questionMessage, shortText, textParts } from '../app/utils/blockNotice'
 
 describe('blockKind', () => {
   it('knows the three kinds of wait and nothing else', () => {
@@ -74,5 +75,27 @@ describe('offersAlways', () => {
     expect(offersAlways('Le script supprime toujours les données. Autoriser une seule fois ?')).toBe(false)
     expect(offersAlways('Push to the release branch: allow once, or always?')).toBe(true)
     expect(offersAlways('Run the migration? [allow | always allow | refuse]')).toBe(true)
+  })
+  it('sees it among numbered or lettered answers', () => {
+    expect(offersAlways('Run the cleanup?\n1) Allow once\n2) Always allow\n3) Refuse')).toBe(true)
+    expect(offersAlways('Lancer le nettoyage ?\nA. Autoriser une fois\nB. Autoriser toujours\nC. Refuser')).toBe(true)
+    expect(offersAlways('Run the cleanup?\n1) Allow once\n2) Refuse')).toBe(false)
+  })
+})
+
+describe('questionMessage', () => {
+  const chat = (...texts: string[]) => {
+    const root = document.createElement('div')
+    root.innerHTML = texts.map(t => `<div class="msg-ai">${t}</div>`).join('')
+    return root
+  }
+  it('finds the message that asks, even when it starts with a link', () => {
+    const root = chat('<a href="https://github.com/example/shop/pull/484">PR #484</a> — Keep or drop the old provider?', 'Checked file 40 of the checkout module.')
+    expect(questionMessage(root, 'https://github.com/example/shop/pull/484 — Keep or drop the old provider?')!.textContent).toContain('Keep or drop')
+  })
+  it('reads past markdown marks, else falls back to the last message', () => {
+    const root = chat('Keep <strong>the old provider</strong> behind a flag?', 'Checked file 40.')
+    expect(questionMessage(root, 'Keep **the old provider** behind a flag?')!.textContent).toContain('behind a flag')
+    expect(questionMessage(root, 'Something never said here at all')!.textContent).toBe('Checked file 40.')
   })
 })
