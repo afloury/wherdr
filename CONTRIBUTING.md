@@ -73,6 +73,11 @@ then shows as flaky); local runs never retry.
 
 ## Agent test rule
 
+Read the relevant [documentation page](docs/README.md), rather than the entire documentation.
+For setup use [Installation and updates](docs/installation.md); for UI changes read the
+[device guide](docs/devices.md) and the iOS notes in [Conventions](#conventions).
+Check documentation links with `npm run check:docs`.
+
 Test each change at the lowest level that can detect the regression. Use Node for parsers,
 state transitions and server contracts; `mountSuspended` on happy-dom for component state
 and emitted actions. Use a real browser for focus, keyboard, selection, layout and overlays

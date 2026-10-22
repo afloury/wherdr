@@ -274,7 +274,7 @@ const faq = [
               <InstallTerminal :demo="ONE_COMMAND_DEMO" />
               <p class="prereq">
                 Needs <a href="https://herdr.dev" target="_blank" rel="noopener">Herdr</a> 0.9.1+ <span class="sep" aria-hidden="true">·</span> macOS or Linux <span class="sep" aria-hidden="true">·</span> phone through <a href="https://tailscale.com/download" target="_blank" rel="noopener">Tailscale</a>.
-                <a :href="`${REPO}#other-private-networks`" target="_blank" rel="noopener">Other private networks</a>.
+                <a :href="`${REPO}/blob/main/docs/networks.md#other-private-networks`" target="_blank" rel="noopener">Other private networks</a>.
               </p>
             </div>
 
@@ -328,7 +328,7 @@ const faq = [
             </div>
 
             <p class="install-foot">
-              Full guide, configuration and troubleshooting in the <a :href="`${REPO}#installation`" target="_blank" rel="noopener">README</a>.
+              Full guide, configuration and troubleshooting in the <a :href="`${REPO}/blob/main/docs/README.md`" target="_blank" rel="noopener">documentation</a>.
             </p>
           </div>
         </div>

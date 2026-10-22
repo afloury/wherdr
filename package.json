@@ -27,7 +27,7 @@
     "!.output/**/*.map",
     "bin",
     "skills/wherdr",
-    "docs/herdr-projects-1x.md"
+    "docs/*.md"
   ],
   "engines": {
     "node": ">=22"
@@ -45,6 +45,7 @@
     "test:e2e:stability": "playwright test menu-responsiveness codex-self-update quote-mode onboarding-tailnet --grep \"MCP arrow paints|a new Codex restarts|the former per-device values|a quoted question keeps|#/setup[?]step=security opens|a direct Security link\"",
     "prepare": "nuxt prepare",
     "prepack": "nuxt build && node scripts/pack-output.mjs",
+    "check:docs": "node scripts/check-doc-links.mjs",
     "check:leaks": "node scripts/check-leaks.mjs",
     "hooks:install": "git config core.hooksPath .githooks",
     "test:affected": "node scripts/test-affected.mjs"

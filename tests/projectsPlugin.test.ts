@@ -83,13 +83,13 @@ describe('the migration guide the note names', () => {
   it('is in the repository and in the npm package', () => {
     const root = path.resolve(import.meta.dirname, '..')
     expect(existsSync(path.join(root, PROJECTS_MIGRATION_GUIDE))).toBe(true)
-    expect(JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).files).toContain(PROJECTS_MIGRATION_GUIDE)
+    expect(JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).files).toContain('docs/*.md')
   })
   it('keeps a migration for existing 1.x image installs', () => {
     const root = path.resolve(import.meta.dirname, '..')
     const guide = readFileSync(path.join(root, PROJECTS_MIGRATION_GUIDE), 'utf8')
     expect(guide).toContain('Published 1.x images')
     for (const step of ['back up', 'docker compose down', '~/wherdr/data', 'curl -fsSL https://wherdr.dev/install | sh']) expect(guide).toContain(step)
-    expect(readFileSync(path.join(root, 'README.md'), 'utf8')).toContain(`${PROJECTS_MIGRATION_GUIDE}#moving-from-docker-to-the-native-service`)
+    expect(readFileSync(path.join(root, 'docs/installation.md'), 'utf8')).toContain(`${path.basename(PROJECTS_MIGRATION_GUIDE)}#moving-from-docker-to-the-native-service`)
   })
 })

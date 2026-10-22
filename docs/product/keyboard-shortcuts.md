@@ -20,7 +20,7 @@ Someone using wherdr on a computer (≥ 900 px wide, hardware keyboard) can do t
 without the mouse: find an agent, move between agents, read and search its conversation, switch
 to its terminal, stop it, answer it, start a new agent or tab, and close a pane. The keys are the
 ones they would guess from Slack, VS Code or ChatGPT. None of them takes a key away from the
-program running in the terminal, apart from the documented exceptions in C1. This backs the README's
+program running in the terminal, apart from the documented exceptions in C1. This backs the [first-launch guide's](../quick-start.md)
 promise that wherdr "can replace the Herdr terminal client day to day".
 
 ## Shortcuts

@@ -115,8 +115,8 @@ const needsTailscale = computed(() => status.value?.mode === 'missing' || (statu
 const DOWNLOADS: Record<string, string> = { darwin: 'https://tailscale.com/download/mac', win32: 'https://tailscale.com/download/windows', linux: 'https://tailscale.com/download/linux' }
 const downloadUrl = computed(() => DOWNLOADS[status.value?.platform || ''] || 'https://tailscale.com/download')
 // Headscale, NetBird, ZeroTier, WireGuard, Cloudflare Tunnel + Access: documented
-// in the README (repository URL from package.json), not automated.
-const OTHER_NETWORKS_DOC = pkg.bugs.replace(/\/issues$/, '#other-private-networks')
+// in the network guide (repository URL from package.json), not automated.
+const OTHER_NETWORKS_DOC = pkg.bugs.replace(/\/issues$/, '/blob/main/docs/networks.md#other-private-networks')
 const checking = ref(false)
 async function checkAgain() {
   checking.value = true
