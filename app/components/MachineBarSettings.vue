@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // Settings › Appearance › Machine bar: show the bar or not, the order of its
 // items (drag the ⠿ handle, or arrow keys on it) and which ones it shows. A
-// machine taken off the bar still shows under "All". Kept on this device
-// (composables/useMachineBar.ts).
+// machine taken off the bar still shows under "All". Kept on the server, so
+// they follow the user across devices (composables/useMachineBar.ts).
 import type { MachineGroup } from '~/utils/machineBar'
 import type { MachineInfo } from '#shared/types'
 import { BAR_ALL, moveBarItem, setBarItemShown } from '~/utils/machineBar'
@@ -189,6 +189,6 @@ function onGrab(id: string, e: PointerEvent) {
         <UButton class="save-machine-group" color="neutral" :disabled="!editing.name.trim()" @click="saveGroup">{{ t('Save') }}</UButton>
       </div>
     </template>
-    <p class="muted settings-hint">{{ t('Choices saved on this device.') }}</p>
+    <p class="muted settings-hint">{{ t('Choices follow you on every device.') }}</p>
   </div>
 </template>

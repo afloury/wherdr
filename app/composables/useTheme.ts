@@ -1,35 +1,22 @@
-// App theme: chosen in Settings (kept on the device), applied
+// App theme: chosen in Settings (kept on the server, so it follows the user
+// across devices: useSyncedSettings.ts), applied
 // right away through the data-theme attribute of <html>, with the color of the
 // iOS bar (theme-color) and the terminal palette. "Follow Herdr": the
 // theme of ~/.config/herdr/config.toml, passed by /api/config.
 
+import { syncedRef } from './useSyncedSettings'
+
 export const FOLLOW_HERDR = 'follow'
 
-function readChoice() {
-  try { return storedThemeChoice(localStorage.getItem('theme'), FOLLOW_HERDR) }
-  catch { return DEFAULT_THEME }
-}
-export const themeChoice = ref<string>(import.meta.client ? readChoice() : DEFAULT_THEME)
+export const themeChoice = syncedRef<string>('theme', raw => storedThemeChoice(raw, FOLLOW_HERDR), v => v)
 
-// Border of the focused message field (utils/focusBorder.ts), kept on the device too.
-function readFocusBorder() {
-  try { return parseFocusBorder(localStorage.getItem('focusBorder')) }
-  catch { return DEFAULT_FOCUS_BORDER }
-}
-export const focusBorder = ref<FocusBorder>(import.meta.client ? readFocusBorder() : DEFAULT_FOCUS_BORDER)
+// Border of the focused message field (utils/focusBorder.ts).
+export const focusBorder = syncedRef<FocusBorder>('focusBorder', parseFocusBorder, v => v)
 
-// Background in the conversation margins on a computer (utils/backdrop.ts), kept on the device too.
-function readBackdrop() {
-  try { return parseBackdrop(localStorage.getItem('backdrop')) }
-  catch { return DEFAULT_BACKDROP }
-}
-export const backdrop = ref<Backdrop>(import.meta.client ? readBackdrop() : DEFAULT_BACKDROP)
-// Light packets running on the wherdr grid; off: the grid stays still. Kept on the device.
-function readPackets() {
-  try { return localStorage.getItem('backdropPackets') !== 'off' }
-  catch { return true }
-}
-export const backdropPackets = ref(import.meta.client ? readPackets() : true)
+// Background in the conversation margins on a computer (utils/backdrop.ts).
+export const backdrop = syncedRef<Backdrop>('backdrop', parseBackdrop, v => v)
+// Light packets running on the wherdr grid; off: the grid stays still.
+export const backdropPackets = syncedRef('backdropPackets', raw => raw !== 'off', v => (v ? 'on' : 'off'))
 
 const systemLight = ref(false)
 if (import.meta.client) {
@@ -70,24 +57,8 @@ export function installTheme() {
   }
   apply()
   watch(activeTheme, apply)
-  watch(themeChoice, (v) => {
-    try { localStorage.setItem('theme', v) }
-    catch { /* stockage indisponible */ }
-  })
-  watch(focusBorder, (v) => {
-    document.documentElement.dataset.focusBorder = v
-    try { localStorage.setItem('focusBorder', v) }
-    catch { /* storage unavailable */ }
-  }, { immediate: true })
-  watch(backdrop, (v) => {
-    document.documentElement.dataset.backdrop = v
-    try { localStorage.setItem('backdrop', v) }
-    catch { /* storage unavailable */ }
-  }, { immediate: true })
-  watch(backdropPackets, (v) => {
-    try { localStorage.setItem('backdropPackets', v ? 'on' : 'off') }
-    catch { /* storage unavailable */ }
-  })
+  watch(focusBorder, (v) => { document.documentElement.dataset.focusBorder = v }, { immediate: true })
+  watch(backdrop, (v) => { document.documentElement.dataset.backdrop = v }, { immediate: true })
 }
 
 // xterm palette of the theme shown.
