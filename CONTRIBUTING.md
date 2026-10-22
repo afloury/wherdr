@@ -31,6 +31,10 @@ under `/demo/` to try it (for example `.output-demo/public` copied to `<root>/de
 workflow (`.github/workflows/site.yml`) builds it and deploys it with the site. Demo content stays
 invented and in English, like the test fixtures.
 
+The README screenshots (`docs/screenshots/`) are taken from that build: `npm run build:demo`, then
+`npm run shots:readme` (computer at 1440×900, phone as an iPhone 13). The launch film in `assets/`
+is made from it too: see `tools/launch-video/README.md`.
+
 ## Tests
 
 **A fixed bug comes with a test that fails before the fix and passes after it.** Write the test

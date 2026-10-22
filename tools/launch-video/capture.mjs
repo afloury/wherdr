@@ -15,10 +15,13 @@ const generated = join(here, ".generated");
 const fps = 15;
 const git = (args) =>
   execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
-git(["diff", "--exit-code", "origin/main", "--", "app", "nuxt.config.ts"]);
+// The branch the film is made from (origin/v2 while 2.0 is prepared there).
+const base = process.env.WHERDR_FILM_BASE || "origin/main";
+git(["diff", "--exit-code", base, "--", "app", "nuxt.config.ts"]);
 const provenance = {
   source: "Unmodified wherdr app, static app/demo build",
-  mainCommit: git(["rev-parse", "origin/main"]),
+  base,
+  mainCommit: git(["rev-parse", base]),
   appTree: git(["rev-parse", "HEAD:app"]),
   uiChanges: false,
   overlaysInsideApp: false,
@@ -162,36 +165,17 @@ try {
     if (frame === 150)
       await action(
         frame,
-        "Open the actual coordinator and its Project panel",
+        "Go back to the actual compact agent list: project coordinator and task rows",
         async () => {
           await page
             .getByRole("button", { name: "Back", exact: true })
             .click({ force: true });
           await tick();
           await until(
-            () => page.locator('.card[data-pane="w1:p1"]').isVisible(),
-            "agent list",
-          );
-          await page.locator('.card[data-pane="w1:p1"]').click({ force: true });
-          await tick();
-          await until(
-            () =>
-              page
-                .getByRole("button", { name: "Project", exact: true })
-                .isVisible(),
-            "Project control",
-          );
-          await page
-            .getByRole("button", { name: "Project", exact: true })
-            .click({ force: true });
-          await tick();
-          await until(
             async () =>
-              (await page.locator(".project-panel").count()) > 0 &&
-              (await page.locator(".project-panel").innerText())
-                .toLowerCase()
-                .includes("tasks"),
-            "project tasks",
+              (await page.locator('.card[data-pane="w1:p1"]').isVisible()) &&
+              (await page.locator(".task-row").count()) > 0,
+            "compact agent list with tasks",
           );
         },
       );
@@ -211,7 +195,7 @@ try {
             .click({ force: true });
           await tick();
           await until(
-            async () => (await page.locator(".board-col").count()) === 4,
+            async () => (await page.locator(".board-col-head").count()) === 4,
             "four board columns",
           );
         },
