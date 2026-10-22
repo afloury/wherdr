@@ -22,6 +22,9 @@ export type SettingApplier = (raw: string | null) => void
 // The changes not yet accepted by the server, kept with the copy: a change
 // made just before a reload, or offline, still goes out on the next load.
 export const PENDING_KEY = 'syncedSettingsPending'
+// Set once this browser's values have been merged into the server's (the
+// first load after the update, on each device).
+export const MIGRATED_KEY = 'syncedSettingsMigrated'
 
 function readPending(raw: string | null): Map<SyncedSetting, string | null> {
   const out = new Map<SyncedSetting, string | null>()
@@ -114,23 +117,26 @@ export function createSettingsSync(opts: { local: LocalStore, transport?: Settin
       savePending()
       if (transport) schedule()
     },
-    // At startup and on every reconnection. The first time the server has
-    // nothing, this device's values are sent (migration); afterwards the
-    // server is the reference. Changes not sent yet go out, then the server's
-    // values apply.
+    // At startup and on every reconnection. The first time on each device
+    // (migration), this browser's values are merged into the server's: the
+    // server takes the keys it lacks and keeps the ones it has, so a second
+    // device's own settings (groups built only there…) are not lost. Afterwards
+    // the server is the reference. Changes not sent yet go out, then the
+    // server's values apply.
     load(): Promise<void> {
       if (loading) return loading
       loading = (async () => {
         if (!transport) return
-        let map = await transport.get()
-        if (!SYNCED_SETTINGS.some(k => map[k] !== undefined)) {
+        let map: SettingsMap
+        if (local.get(MIGRATED_KEY) !== '1') {
           const mine: SettingsPatch = {}
           for (const key of SYNCED_SETTINGS) {
             const raw = local.get(key)
             if (raw !== null) mine[key] = raw
           }
-          if (Object.keys(mine).length) map = await transport.post(mine, true)
-        }
+          map = Object.keys(mine).length ? await transport.post(mine, true) : await transport.get()
+          local.set(MIGRATED_KEY, '1')
+        } else map = await transport.get()
         // flush applies the server's answer itself.
         if (pending.size) await flush()
         else applyServer(map, true)

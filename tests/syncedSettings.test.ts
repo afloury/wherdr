@@ -38,9 +38,26 @@ describe('settings kept on the server', () => {
     expect(a.data.get('contentWidth')).toBe('wide')
   })
 
-  it('afterwards the server is the reference: a second device takes its values', async () => {
+  it('a second device merges in what the server lacks, and takes the server’s values for the rest', async () => {
+    const groups = JSON.stringify([{ id: '*group:home', name: 'Home', machines: ['laptop'] }])
+    const { server, device } = fakeServer()
+    const phone = device({ theme: 'nord', typewriterSpeed: 'medium' })
+    await phone.sync.load()
+    const ipad = device({ theme: 'paper', typewriterSpeed: 'fast', machineGroups: groups, compactList: '1', collapsedMachines: '["laptop"]' })
+    await ipad.sync.load()
+    expect(server.map).toEqual({ theme: 'nord', typewriterSpeed: 'medium', machineGroups: groups, compactList: '1', collapsedMachines: '["laptop"]' })
+    expect(ipad.data.get('machineGroups')).toBe(groups)
+    expect(ipad.data.get('theme')).toBe('nord')
+    // The phone gets the iPad's groups at once (/ws/events).
+    expect(phone.data.get('machineGroups')).toBe(groups)
+    // Each device merges only once.
+    await ipad.sync.load()
+    expect(server.posts.filter(p => p.migrate)).toHaveLength(2)
+  })
+
+  it('afterwards the server is the reference: a migrated device takes its values', async () => {
     const { server, device } = fakeServer({ theme: 'nord', homeGrouping: 'state' })
-    const b = device({ theme: 'paper', compactList: '1' })
+    const b = device({ theme: 'paper', compactList: '1', syncedSettingsMigrated: '1' })
     const applied: (string | null)[] = []
     b.sync.bind('theme', raw => applied.push(raw))
     await b.sync.load()

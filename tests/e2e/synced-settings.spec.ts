@@ -9,7 +9,7 @@ const serverSettings = async (page: Page) => (await (await page.request.get('/ap
 const themeOf = (page: Page) => page.evaluate(() => document.documentElement.dataset.theme)
 const groupBy = (page: Page, language: string) => page.getByRole('radio', { name: language === 'fr' ? 'État' : 'State', exact: true })
 
-test('migration: the first load sends this browser’s settings, not the device ones', async ({ page }) => {
+test('migration: each browser merges in its settings once, not the device ones', async ({ page }) => {
   await page.addInitScript(() => {
     if (localStorage.getItem('migrationFixture')) return
     localStorage.setItem('migrationFixture', '1')
@@ -21,11 +21,25 @@ test('migration: the first load sends this browser’s settings, not the device 
   await expect.poll(() => serverSettings(page)).toMatchObject({ theme: 'wherdr-graphite', compactList: '1' })
   expect(await serverSettings(page)).not.toHaveProperty('contentWidth')
   await expect.poll(() => themeOf(page)).toBe('wherdr-graphite')
-  // Afterwards the server is the reference: a new browser takes its values.
+  // A second browser merges in its own settings the server lacks, and takes
+  // the server's values for the others.
   const other = await page.context().browser()!.newContext({ baseURL: BASE_URL, viewport: page.viewportSize(), serviceWorkers: 'block' })
   const b = await other.newPage()
+  const groups = JSON.stringify([{ id: '*group:ipad', name: 'iPad', machines: [''] }])
+  await b.addInitScript((groups) => {
+    if (localStorage.getItem('migrationFixture')) return
+    localStorage.setItem('migrationFixture', '1')
+    localStorage.setItem('theme', 'wherdr-neon')
+    localStorage.setItem('machineGroups', groups)
+  }, groups)
   await b.goto('/')
+  await expect.poll(() => serverSettings(page)).toMatchObject({ theme: 'wherdr-graphite', compactList: '1', machineGroups: groups })
   await expect.poll(() => themeOf(b)).toBe('wherdr-graphite')
+  expect(await b.evaluate(() => localStorage.getItem('machineGroups'))).toBe(groups)
+  // Merged once: afterwards the server is the reference on this device too.
+  await page.request.post(`${BASE_URL}/api/settings`, { headers: { Origin: BASE_URL }, data: { settings: { machineGroups: null } } })
+  await b.reload()
+  await expect.poll(() => b.evaluate(() => localStorage.getItem('machineGroups'))).toBeNull()
   expect(await b.evaluate(() => localStorage.getItem('contentWidth'))).not.toBe('wide')
   await other.close()
 })
