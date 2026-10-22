@@ -25,6 +25,7 @@ import { quietPeriodEnd } from '~/utils/quietPeriodEnd'
 import { listMode } from '~/utils/layoutMode'
 import pkg from '../../package.json'
 import { dropMachineKey, shiftMachineKey } from '#shared/machineOrder'
+import { stateEntries } from '~/utils/homeGrouping'
 import { BAR_ALL } from '~/utils/machineBar'
 import type { AwakeState, SleepAssertion, AwakeMode } from '../../server/utils/awake'
 const emit = defineEmits<{ search: [] }>()
@@ -62,11 +63,11 @@ const stats = computed(() => ([
 
 // Herdr's order stays that of each repository list. The Ready group may
 // show unread before read, and be sorted differently (readySort).
-function groupsOf(list: Row[]) {
+function groupsOf(list: Row[], group = rowGroup) {
   return ([
-    { key: 'blocked', title: t('Your turn'), list: list.filter(r => rowGroup(r) === 'blocked') },
-    { key: 'working', title: t('Working'), list: list.filter(r => rowGroup(r) === 'working') },
-    { key: 'ready', title: tl('Ready', 'Prêts'), list: list.filter(r => rowGroup(r) === 'ready') },
+    { key: 'blocked', title: t('Your turn'), list: list.filter(r => group(r) === 'blocked') },
+    { key: 'working', title: t('Working'), list: list.filter(r => group(r) === 'working') },
+    { key: 'ready', title: tl('Ready', 'Prêts'), list: list.filter(r => group(r) === 'ready') },
   ] as const).filter(g => g.list.length).map(g => ({ ...g, lists: g.key === 'ready' ? readyLists(g.list, autoReorderReady.value).map(l => sortReady(l, readySort.value, rowTitle)) : [g.list] }))
 }
 const rowTitle = (r: Row) => spaceTitle(r.lead, st.value.workspaces.find(w => w.id === r.lead.workspace))
@@ -172,6 +173,27 @@ const sections = computed(() => {
     }
   })
 })
+// State mode includes online machines only. The bar's selected base keys
+// also cover named sessions; iterating them preserves the selected group order.
+const stateCards = computed(() => {
+  const selected = machineBarSelection.value
+  const online = machines.value.length ? orderedMachines.value.filter(m => m.status === 'online') : [soloMachine.value].filter(m => m.status === 'online')
+  const shown = online.filter(m => selected === null || selected.includes(baseKeyOf(m)))
+  if (selected) shown.sort((a, b) => selected.indexOf(baseKeyOf(a)) - selected.indexOf(baseKeyOf(b)))
+  return shown.flatMap(m => {
+    const b = boardSections(spaceRows(st.value, m.key), st.value.workspaces, boardLinks.value, livePanes.value, k => machineInfo(k)?.baseKey ?? k)
+    return stateEntries(b, showShells.value).map(e => ({
+      ...e,
+      machine: machineName(m.key) || m.label,
+      board: e.member ? memberCard(e.member) : e.level ? coordinatorCard(e.level, m.local) : null,
+    }))
+  })
+})
+const stateCardByKey = computed(() => new Map(stateCards.value.map(c => [c.row.key, c])))
+const stateGroups = computed(() => groupsOf(stateCards.value.map(c => c.row), r => {
+  const group = stateCardByKey.value.get(r.key)?.board?.group
+  return group ? group === 'needs' ? 'blocked' : group === 'working' ? 'working' : 'ready' : rowGroup(r)
+}))
 // Machine bar: "All", then each machine (a named session counts as its machine),
 // with its state and the number of agents the list counts.
 const barEntries = computed(() => machineBarShown.value.map((id) => {
@@ -588,11 +610,11 @@ function resetListWidth() {
         {{ t('The Herdr server is not responding') }}{{ st.error ? tl(`: ${t(st.error)}`, ` : ${t(st.error)}`) : '' }}.<br>
         {{ hostLabel ? tl(`Run herdr on ${hostLabel} to start it.`, `Lance herdr sur ${hostLabel} pour le démarrer.`) : tl('Run herdr on the server to start it.', 'Lance herdr sur le serveur pour le démarrer.') }}
       </div>
-      <div v-if="!multiMachine && soloSelected" class="solo-machine-row"><button type="button" class="solo-session-row" :aria-label="t('Herdr sessions')" @click="openSessions(soloMachine)">
+      <div v-if="homeGrouping === 'machine' && !multiMachine && soloSelected" class="solo-machine-row"><button type="button" class="solo-session-row" :aria-label="t('Herdr sessions')" @click="openSessions(soloMachine)">
         <span><UIcon name="i-lucide-layers" />{{ soloMachine.label }}</span>
         <b>{{ soloMachine.session || 'default' }}<UIcon name="i-lucide-chevron-right" /></b>
       </button><UDropdownMenu :items="machineMenu(soloMachine)" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }"><UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :aria-label="t('Options')" class="solo-machine-options" /></UDropdownMenu></div>
-      <p v-if="!multiMachine && soloSelected && awakeByMachine[soloMachine.key]?.active" class="machine-awake"><UIcon name="i-lucide-sun" />{{ awakeLabel(awakeByMachine[soloMachine.key]) }}</p>
+      <p v-if="homeGrouping === 'machine' && !multiMachine && soloSelected && awakeByMachine[soloMachine.key]?.active" class="machine-awake"><UIcon name="i-lucide-sun" />{{ awakeLabel(awakeByMachine[soloMachine.key]) }}</p>
       <NuxtLink v-if="quietHint" :to="quietSettings" class="home-quiet" :aria-label="quietLabel"><UIcon name="i-lucide-bell-off" /><span>{{ quietHint }}</span></NuxtLink>
 
       <div v-if="showCounters && agents.length" class="stats">
@@ -607,8 +629,23 @@ function resetListWidth() {
       <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />
 
       <p v-if="machineBarSelection?.length === 0" class="machine-empty">{{ tl('No machines in this group.', 'Aucune machine dans ce groupe.') }}</p>
+      <template v-if="homeGrouping === 'state'">
+        <section v-for="g in stateGroups" :key="g.key" class="agent-group state-group" :class="g.key">
+          <h2 class="group-title"><span>{{ g.title }}</span><span class="count">{{ g.list.length }}</span>
+            <UDropdownMenu v-if="g.key === 'ready'" :items="readySortItems" :content="{ align: 'end' }" :ui="{ content: 'hw-dropdown' }">
+              <UButton :icon="READY_SORT_LABELS[readySort][1]" color="neutral" variant="ghost" size="xs" class="group-sort" :aria-label="`${t('Sort ready')} : ${t(READY_SORT_LABELS[readySort][0])}`" />
+            </UDropdownMenu>
+          </h2>
+          <template v-for="(cards, i) in g.lists" :key="i">
+            <p v-if="g.key === 'ready' && g.lists.length > 1" class="ready-subgroup-label">{{ t(i === 0 ? 'Unread' : 'Read') }}</p>
+            <div class="card-list">
+              <AgentCard v-for="r in cards" :key="r.key" :pane="r.lead" :row="r" :board="stateCardByKey.get(r.key)?.board" :machine-badge="stateCardByKey.get(r.key)?.machine" :project-badge="stateCardByKey.get(r.key)?.repo" />
+            </div>
+          </template>
+        </section>
+      </template>
       <!-- A single machine: the previous list. -->
-      <template v-if="!sections">
+      <template v-else-if="!sections">
         <section v-if="solo.coordinators.length" class="agent-group coordinators">
           <h2 class="group-title"><span>{{ tl('Coordinators', 'Coordinateurs') }}</span><span class="count">{{ solo.coordinators.length }}</span></h2>
           <div class="card-list">

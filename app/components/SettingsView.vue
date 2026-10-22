@@ -70,6 +70,8 @@ watch(lang, (l) => {
 const shellsOn = showShells
 const countersOn = showCounters
 const quotasOn = showQuotas
+const homeGroup = homeGrouping
+const homeGroupItems = computed(() => [{ value: 'machine', label: t('Machine') }, { value: 'state', label: t('State') }])
 const compactOn = compactList
 const autoReorderOn = autoReorderReady
 const encryptedOn = encryptedText
@@ -338,6 +340,9 @@ onMounted(() => {
 
           <div class="settings-group">
             <h3>{{ t('Home screen') }}</h3>
+            <h4 id="home-group-label">{{ t('Group by') }}</h4>
+            <URadioGroup v-model="homeGroup" :items="homeGroupItems" aria-labelledby="home-group-label" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+
             <label class="settings-toggle">
               <span><b>{{ t('Compact list') }}</b><small>{{ t('Tasks: one line in Compact, two in Normal with current activity and relevant labels. Details stay in the task sheet. Saved on this device.') }}</small></span>
               <USwitch v-model="compactOn" color="success" size="xl" />

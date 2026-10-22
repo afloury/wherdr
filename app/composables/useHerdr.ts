@@ -17,6 +17,7 @@ import { checkNewVersion } from './useAppVersion'
 import { migrateContentWidth } from '~/utils/contentWidth'
 import { readQuotaDisplay } from '~/utils/quotas'
 import { readShowShells } from '~/utils/terminalVisibility'
+import { readHomeGrouping } from '~/utils/homeGrouping'
 import { readCompactList } from '~/utils/compactCard'
 import { paneFallback } from '~/utils/viewMode'
 import { menuAsSheet } from '~/utils/menuRoute'
@@ -103,8 +104,12 @@ export const showCounters = ref(ls.get('showCounters') !== '0')
 watch(showCounters, v => ls.set('showCounters', v ? '1' : '0'))
 export const showQuotas = ref(ls.get('showQuotas') !== '0')
 watch(showQuotas, v => ls.set('showQuotas', v ? '1' : '0'))
+// Home grouping is a device preference; existing devices keep Machine.
+export const homeGrouping = ref(readHomeGrouping(ls.get('homeGrouping')))
+watch(homeGrouping, v => ls.set('homeGrouping', v))
+
 // Compact list: one line per card (sidebar on a computer, home list on the phone).
-// The default; read before the first render, so the list never shows detailed first.
+// Read before the first render, so the list never shows detailed first.
 export const compactList = ref(readCompactList(ls.get('compactList')))
 watch(compactList, v => ls.set('compactList', v ? '1' : '0'))
 export const autoReorderReady = ref(ls.get('autoReorderReady') !== '0')
