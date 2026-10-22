@@ -77,7 +77,9 @@ cmd_package() {
   # The format bin/lib/verify-release.mjs reads, as release.yml writes it.
   (cd "$dir" && sha256sum "$name" > "$name.sha256")
   printf '%s\n' "$sha" > "$dir/COMMIT"
+  node "$(dirname "${BASH_SOURCE[0]}")/prerelease-summary.mjs" "$sha" > "$dir/prerelease-notes.md"
   {
+    echo
     echo "Rolling prerelease of the \`v2\` branch, rebuilt on every push. Not a stable release: never marked latest, never offered as an update."
     echo
     echo "Commit: \`$sha\`"
@@ -85,7 +87,7 @@ cmd_package() {
     echo "Built $(date -u '+%Y-%m-%d %H:%M UTC')${GITHUB_RUN_ID:+ by ${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/$GITHUB_RUN_ID}."
     echo
     echo "\`COMMIT\` holds the commit of \`$name\`. It is removed while the files are replaced and attached last: when it is present, the archive matches it."
-  } > "$dir/prerelease-notes.md"
+  } >> "$dir/prerelease-notes.md"
   echo "prerelease: $name for $sha checked"
 }
 
