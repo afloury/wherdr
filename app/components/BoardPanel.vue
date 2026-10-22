@@ -6,6 +6,7 @@
 import { type CoordinatorStatus, type CoordinatorTarget, type TaskDetails, type TaskRow, TELL_MAX, coordinatorPhase, coordinatorSubject, taskActions, taskCanFix, taskCanApproveAnyway, taskKey, type TaskCommand, finishCase } from '#shared/projectsTasks'
 import { visibleAgentKinds } from '~/utils/agentChoices'
 import { finishHint, finishLabel, finishOffered, finishQuestion, finishTitle } from '~/utils/taskFinish'
+import { blockChoices, blockKind, blockKindLabel, offersAlways, permissionReply, questionMessage } from '~/utils/blockNotice'
 
 export type PanelTarget =
   | { machine: string, kind: 'task', id: string, chat?: boolean }
@@ -69,16 +70,17 @@ watch(() => (props.task ? `${props.task.stage}|${props.task.group}|${props.task.
 // panel is one per task, so a late answer never lands on another one.
 const reply = ref('')
 const telling = ref(false)
-async function tell() {
+// `said`: an answer picked in the banner, sent as it is; else the field's text.
+async function tell(said?: string) {
   const t = props.target
-  const text = reply.value.trim()
+  const text = (said ?? reply.value).trim()
   if (t.kind !== 'task' || !text || telling.value || !props.reachable) return
   telling.value = true
   try {
     await api('/api/tasks/tell', { machine: t.machine, id: t.id, text })
     haptic()
     toast(tl('Sent to the task’s agent', 'Envoyé à l’agent de la tâche'))
-    reply.value = ''
+    if (said === undefined) reply.value = ''
     // Its agent may be back on a pane: its conversation then shows here.
     loadTask(true)
   } catch (e) { toast((e as Error).message, true) }
@@ -106,6 +108,68 @@ const needs = computed(() => props.task?.group === 'needs')
 const failureNow = computed(() => (details.value && !details.value.failureStale ? details.value : null))
 const failureTitle = computed(() => failureNow.value?.failureTitle || details.value?.msg || props.task?.msg || agentPane.value?.prompt?.question || tl('Your answer is needed', 'Ta réponse est attendue'))
 const failureDetail = computed(() => failureNow.value?.failureDetail || failureNow.value?.failure || '')
+
+// ------------------------------------------------- the one-line "Needs you"
+// A wait its agent reported (`report --kind`), with no failure to show: one
+// line (its kind, its words, folded) and the actions that answer that kind.
+// Only a sign-in keeps "Open terminal": a question or a permission is answered
+// by a message, in the field below or with one tap.
+const waitKind = computed(() => (needs.value && !failureNow.value?.failureTitle && !failureDetail.value ? blockKind(props.task?.kind) : null))
+const waitText = computed(() => failureTitle.value)
+// The agent's own question (`report --state blocked`): a message answers it.
+const asks = computed(() => props.task?.stage === 'asks')
+const answerable = computed(() => Boolean(waitKind.value && waitKind.value !== 'auth' && asks.value && !props.readOnly))
+// One tap sends the answer, through herdr-projects (`tell`).
+const canTap = computed(() => answerable.value && Boolean(taskPermissions.value?.tell))
+const choices = computed(() => (canTap.value && waitKind.value === 'question' ? blockChoices(waitText.value) : []))
+const permissionTaps = computed(() => canTap.value && waitKind.value === 'permission')
+const always = computed(() => offersAlways(waitText.value))
+const tapOff = computed(() => telling.value || disabled.value)
+const waitOpen = ref(false)
+const waitEl = ref<HTMLElement | null>(null)
+// Its text is cut: the line offers to unfold it.
+const waitCut = ref(false)
+function measureWait() {
+  const el = waitEl.value
+  if (el && !waitOpen.value) waitCut.value = el.scrollWidth > el.clientWidth + 1
+}
+watch(waitEl, (el, _, onCleanup) => {
+  if (!el || typeof ResizeObserver === 'undefined') return
+  const ro = new ResizeObserver(measureWait)
+  ro.observe(el)
+  onCleanup(() => ro.disconnect())
+})
+watch(waitText, () => { waitOpen.value = false; nextTick(measureWait) })
+const panelEl = ref<HTMLElement | null>(null)
+// Waits for what the conversation tab shows, as it opens.
+async function inPanel<T>(find: (root: HTMLElement) => T | null): Promise<T | null> {
+  for (let i = 0; i < 60; i++) {
+    await nextTick()
+    const root = panelEl.value?.querySelector<HTMLElement>('.board-panel-body')
+    const got = root ? find(root) : null
+    if (got) return got
+    await new Promise(r => setTimeout(r, 50))
+  }
+  return null
+}
+// Reply…: into the conversation's field (or the one herdr-projects passes on).
+async function replyHere() {
+  choose('chat')
+  const field = await inPanel(root => root.querySelector<HTMLElement>('.composer textarea, #board-panel-tell'))
+  field?.focus()
+}
+// See ↓: the conversation's message that asks it, scrolled to and lit up.
+const canSee = computed(() => Boolean(waitKind.value && taskPane.value && conversation.value))
+async function seeQuestion() {
+  choose('chat')
+  const el = await inPanel(root => questionMessage(root, waitText.value))
+  if (!el) return
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  el.classList.remove('msg-lit')
+  void el.offsetWidth
+  el.classList.add('msg-lit')
+  setTimeout(() => el.classList.remove('msg-lit'), 2600)
+}
 
 // The panel owns view selection so a setup shell never opens by default. A task
 // with nothing to talk to (never started, no pane) opens on the task, its other
@@ -367,7 +431,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
 </script>
 
 <template>
-  <aside class="board-panel" :class="{ desk, expanded: full }" :style="style" :data-kind="target.kind" :aria-label="tl('Conversation', 'Conversation')">
+  <aside ref="panelEl" class="board-panel" :class="{ desk, expanded: full }" :style="style" :data-kind="target.kind" :aria-label="tl('Conversation', 'Conversation')">
     <header class="board-panel-head">
       <UButton
         v-if="!desk" icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn board-panel-back"
@@ -405,19 +469,38 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         {{ tab === 'chat' ? t('Conversation') : tab === 'term' ? t('Terminal') : tl('Task', 'Tâche') }}<i v-if="tab === 'task' && newNote" class="task-new" aria-hidden="true" />
       </button>
     </nav>
-    <section v-if="target.kind === 'task' && (needs || stuck)" class="task-needs" role="alert">
-      <h3 v-if="needs">{{ tl('Needs you', 'À toi') }} · {{ failureTitle }}</h3>
-      <h3 v-else>{{ tl('Finishing', 'Fin en cours') }} · {{ tl('its agent is at rest', 'son agent est au repos') }}</h3>
-      <pre v-if="failureDetail">{{ failureDetail }}</pre>
-      <p v-if="failureNow?.failureNext">{{ failureNow.failureNext }}</p>
+    <section v-if="target.kind === 'task' && (needs || stuck)" class="task-needs" :class="{ 'task-needs-wait': waitKind }" :data-kind="waitKind || undefined" role="alert">
+      <div v-if="waitKind" class="task-needs-line" :class="{ open: waitOpen }">
+        <span class="task-needs-type">{{ blockKindLabel(waitKind) }}</span>
+        <h3 ref="waitEl" class="task-needs-text" :title="waitOpen ? undefined : waitText"><LinkedText :text="waitText" /></h3>
+        <button v-if="waitCut || waitOpen" type="button" class="task-needs-more" :aria-expanded="waitOpen" :aria-label="waitOpen ? tl('Show less', 'Réduire') : tl('Show all', 'Tout afficher')" @click="waitOpen = !waitOpen">
+          <UIcon :name="waitOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" />
+        </button>
+        <button v-if="canSee" type="button" class="task-needs-see" @click="seeQuestion">{{ tl('See ↓', 'Voir ↓') }}</button>
+      </div>
+      <template v-else>
+        <h3 v-if="needs">{{ tl('Needs you', 'À toi') }} · <LinkedText :text="failureTitle" /></h3>
+        <h3 v-else>{{ tl('Finishing', 'Fin en cours') }} · {{ tl('its agent is at rest', 'son agent est au repos') }}</h3>
+        <pre v-if="failureDetail"><LinkedText :text="failureDetail" /></pre>
+        <p v-if="failureNow?.failureNext"><LinkedText :text="failureNow.failureNext" /></p>
+      </template>
       <p v-if="canFinish && finishKind" class="task-finish-why">{{ finishHint(finishKind) }}</p>
       <div class="task-needs-actions">
         <UButton v-if="taskPermissions?.retry" :disabled="disabled" @click="taskAction('retry')">{{ tl('Retry', 'Réessayer') }}</UButton>
         <UButton v-if="canFinish" class="task-finish" :title="finishTitle()" :aria-description="finishTitle()" :disabled="disabled" @click="taskAction('finish')">{{ finishLabel() }}</UButton>
         <UButton v-if="canFix" :disabled="disabled" @click="taskAction('fix')">{{ tl('Send the error to the agent', 'Envoyer l’erreur à l’agent') }}</UButton>
         <UButton v-if="taskPermissions?.delegate" :disabled="disabled" @click="taskAction('delegate')">{{ tl('Start again', 'Relancer') }}</UButton>
-        <UButton v-if="jump === 'term'" class="task-needs-term" :disabled="offlineView || !reachable" @click="choose('term')">{{ tl('Open terminal', 'Ouvrir le terminal') }}</UButton>
-        <UButton v-else-if="jump === 'chat'" class="task-needs-chat" @click="choose('chat')">{{ tl('Answer in the conversation', 'Répondre dans la conversation') }}</UButton>
+        <template v-if="permissionTaps">
+          <UButton class="task-needs-allow" color="primary" :disabled="tapOff" @click="tell(permissionReply('allow'))">{{ tl('Allow', 'Autoriser') }}</UButton>
+          <UButton v-if="always" class="task-needs-always" :disabled="tapOff" @click="tell(permissionReply('always'))">{{ tl('Always allow', 'Toujours autoriser') }}</UButton>
+          <UButton class="task-needs-refuse" :disabled="tapOff" @click="tell(permissionReply('refuse'))">{{ tl('Refuse', 'Refuser') }}</UButton>
+        </template>
+        <UButton v-for="c in choices" :key="c.reply" class="task-needs-choice" :title="c.label" :disabled="tapOff" @click="tell(c.reply)">{{ c.label }}</UButton>
+        <UButton v-if="answerable && !choices.length && !permissionTaps" class="task-needs-reply" icon="i-lucide-corner-down-left" :disabled="offlineView" @click="replyHere">{{ tl('Reply…', 'Répondre…') }}</UButton>
+        <template v-if="!answerable">
+          <UButton v-if="jump === 'term' && (!waitKind || waitKind === 'auth')" class="task-needs-term" :disabled="offlineView || !reachable" @click="choose('term')">{{ tl('Open terminal', 'Ouvrir le terminal') }}</UButton>
+          <UButton v-else-if="jump === 'chat' && waitKind !== 'auth'" class="task-needs-chat" @click="choose('chat')">{{ tl('Answer in the conversation', 'Répondre dans la conversation') }}</UButton>
+        </template>
         <UButton v-if="canAnyway" :disabled="disabled" @click="taskAction('anyway')">{{ tl('Approve anyway', 'Approuver quand même') }}</UButton>
         <UButton v-else-if="taskPermissions?.approve" :disabled="disabled" @click="taskAction('approve')">{{ tl('Approve', 'Approuver') }}</UButton>
       </div>
@@ -436,7 +519,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
         <h3>{{ details?.failureStage === 'setup' || details?.failureStage === 'start' ? tl('Setup output', 'Sortie du démarrage') : tl('No agent conversation yet', 'Pas encore de conversation avec l’agent') }}</h3>
         <pre v-if="failureDetail && !needs">{{ failureDetail }}</pre>
         <p>{{ tl('The terminal stays available when the task has a pane. Task details and actions are in the Task tab.', 'Le terminal reste accessible quand la tâche a un pane. Les détails et actions sont dans l’onglet Tâche.') }}</p>
-        <form v-if="tellOnly" class="board-panel-first board-panel-tell" @submit.prevent="tell">
+        <form v-if="tellOnly" class="board-panel-first board-panel-tell" @submit.prevent="tell()">
           <label for="board-panel-tell">{{ task?.stage === 'plan'
             ? tl('Its agent is not running now: your words send the plan back, through herdr-projects.', 'Son agent ne tourne pas en ce moment : tes mots renvoient le plan, par herdr-projects.')
             : tl('Its agent is not running now: herdr-projects passes your reply on.', 'Son agent ne tourne pas en ce moment : herdr-projects lui transmet ta réponse.') }}</label>
