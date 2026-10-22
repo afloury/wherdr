@@ -5,6 +5,7 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { pathCandidate } from '../../shared/filePaths'
 import { codeKind } from './codeKind'
+import { highlightCode } from './codeHighlight'
 import { createRenderCache, createSupersedeTracker } from './renderCache'
 import { blockCommand, inlineCommand } from './shellCommand'
 
@@ -28,15 +29,22 @@ export function onMdDropped(fn: (html: string) => void) { dropListeners.add(fn) 
 // outside a conversation. Its raw HTML must not restyle the app or draw
 // controls over it: no `<style>`, no `style` attribute, no form or field. A
 // task list's own checkbox (`- [ ]`, disabled) is kept.
-export interface MdOptions { plain?: boolean }
+// `doc`: a whole Markdown document read in the file explorer (implies
+// `plain`). Line breaks follow Markdown (a single newline is a space), code
+// blocks get light syntax colours and only Copy, inline code is never a
+// control, and an image with a relative path keeps it in `data-src` (no
+// request to the app's own address): FilesView loads it from the folder.
+export interface MdOptions { plain?: boolean, doc?: boolean }
 const PLAIN = { FORBID_TAGS: ['style', 'form', 'textarea', 'select', 'option', 'optgroup', 'fieldset', 'legend', 'label', 'datalist', 'output', 'dialog'], FORBID_ATTR: ['style'] }
 let plainNow = false
+let docNow = false
+const isRelativeUrl = (u: string) => !/^[a-z][a-z\d+.-]*:/i.test(u) && !u.startsWith('//') && !u.startsWith('#')
 
 const escHtml = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' }[c]!))
 
 export function md(text: string, options: MdOptions = {}): string {
-  // The two modes never share a cached result.
-  const key = options.plain ? `\0plain\0${text}` : text
+  // The modes never share a cached result.
+  const key = options.doc ? `\0doc\0${text}` : options.plain ? `\0plain\0${text}` : text
   const hit = cache.get(key)
   if (hit !== undefined) return hit
   if (!hooked) {
@@ -49,6 +57,11 @@ export function md(text: string, options: MdOptions = {}): string {
       renderer: {
         code({ text, lang }) {
           const l = escHtml((lang || '').split(/\s/)[0] || '')
+          if (docNow) {
+            return `<div class="code-block"><div class="code-head"><span>${l || 'code'}</span>`
+              + `<span class="code-tools"><button type="button" class="code-copy">${escHtml(t('Copy'))}</button></span></div>`
+              + `<pre><code${l ? ` class="language-${l}"` : ''}>${highlightCode(text, l)}</code></pre></div>`
+          }
           const cmd = blockCommand(text, lang)
           const run = cmd === null ? '' : `<button type="button" class="code-run">${escHtml(tl('Run', 'Lancer'))}</button>`
           return `<div class="code-block"${cmd === null ? '' : ` data-cmd="${escHtml(cmd)}"`}><div class="code-head"><span>${l || 'code'}</span>`
@@ -61,6 +74,10 @@ export function md(text: string, options: MdOptions = {}): string {
         // (utils/codeKind.ts) for the terminal-style tints.
         codespan({ text }) {
           const code = escHtml(text)
+          if (docNow) {
+            const kind = codeKind(text)
+            return `<code${kind ? ` data-k="${kind}"` : ''}>${code}</code>`
+          }
           if (pathCandidate(text)) return `<code class="md-path" data-k="path" role="button" tabindex="0">${code}</code>`
           const cmd = inlineCommand(text)
           if (cmd !== null) return `<code class="md-cmd" data-k="cmd" data-cmd="${escHtml(cmd)}" role="button" tabindex="0">${code}</code>`
@@ -75,6 +92,13 @@ export function md(text: string, options: MdOptions = {}): string {
       if (!(el.getAttribute('type') === 'checkbox' && el.hasAttribute('disabled'))) el.parentNode?.removeChild(el)
     })
     DOMPurify.addHook('afterSanitizeAttributes', (n) => {
+      if (docNow && n.tagName === 'IMG') {
+        const src = n.getAttribute('src')
+        if (src && isRelativeUrl(src)) {
+          n.setAttribute('data-src', src)
+          n.removeAttribute('src')
+        }
+      }
       if (n.tagName === 'A') {
         n.setAttribute('target', '_blank')
         n.setAttribute('rel', 'noopener noreferrer')
@@ -82,12 +106,13 @@ export function md(text: string, options: MdOptions = {}): string {
     })
   }
   let html: string
-  plainNow = Boolean(options.plain)
+  plainNow = Boolean(options.plain || options.doc)
+  docNow = Boolean(options.doc)
   try {
-    const parsed = marked.parse(text, { breaks: true, gfm: true, async: false }) as string
+    const parsed = marked.parse(text, { breaks: !docNow, gfm: true, async: false }) as string
     html = plainNow ? DOMPurify.sanitize(parsed, PLAIN) : DOMPurify.sanitize(parsed)
   } catch { html = `<p>${escHtml(text)}</p>` }
-  finally { plainNow = false }
+  finally { plainNow = false; docNow = false }
   for (const old of superseded(key)) {
     const gone = cache.delete(old)
     if (gone !== undefined && gone !== html) for (const fn of dropListeners) fn(gone)

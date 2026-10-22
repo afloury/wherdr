@@ -335,6 +335,8 @@ const FR: Record<string, string> = {
   // Read-only file browser
   'Browse files': 'Parcourir les fichiers', 'Back to folder': 'Retour au dossier',
   'Reading files…': 'Lecture des fichiers…', 'Empty folder.': 'Dossier vide.', 'Show hidden files': 'Afficher les fichiers cachés',
+  'Markdown view': 'Affichage Markdown', 'Rendered': 'Mis en forme', 'Source': 'Source',
+  'This link leads outside the folder.': 'Ce lien mène hors du dossier.',
   'Permission denied': 'Accès refusé', 'The folder took too long to read': 'Le dossier a mis trop de temps à se lire',
   'macOS blocks access to this folder. On the Mac: System Settings › General › Sharing › Remote Login ⓘ › “Allow full disk access for remote users”.':
     'macOS bloque l’accès à ce dossier. Sur le Mac : Réglages Système › Général › Partage › Session à distance ⓘ › « Autoriser l’accès complet au disque pour les utilisateurs distants ».',
