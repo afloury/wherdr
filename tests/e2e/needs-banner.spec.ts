@@ -180,6 +180,11 @@ test('a permission: Allow, Always allow, Refuse; a sign-in: Open terminal (Frenc
   await banner.getByRole('button', { name: 'Refuser' }).click()
   await expect.poll(() => fs.existsSync(path.join(root, 'told')) && fs.readFileSync(path.join(root, 'told'), 'utf8')).toBe('Refusé : ne le fais pas.')
 
+  // Said to the human as something they can do, it is offered too.
+  write({ ...task, kind: 'permission', msg: 'Lancer le script de nettoyage ? Tu peux aussi toujours autoriser ce script.' })
+  await shows(page, 'Lancer le script de nettoyage ? Tu peux aussi toujours autoriser ce script.', '.task-needs-text')
+  await expect(banner.locator('.task-needs-actions button')).toHaveText(['Autoriser', 'Toujours autoriser', 'Refuser'])
+
   // A sentence that only uses the word offers no permanent permission.
   write({ ...task, kind: 'permission', msg: 'Ce script supprime toujours les données de test. Autoriser cette seule exécution ?' })
   await shows(page, 'Ce script supprime toujours les données de test. Autoriser cette seule exécution ?', '.task-needs-text')
