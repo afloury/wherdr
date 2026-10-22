@@ -414,9 +414,9 @@ body.short-bottom { --safe-bottom: 0px; }
 .quotas { margin: 0 0 26px; }
 .quotas.after-stats { margin-top: -14px; }
 .quotas .quota-row:last-child { margin-bottom: 0; }
-.quota-row { display: grid; grid-template-columns: 50px 1fr 1fr; border: 1px solid var(--line); }
+.quota-row { display: grid; grid-template-columns: 44px 1fr 1fr; border: 1px solid var(--line); }
 .quota-row + .quota-row { border-top: 0; }
-.quota-who { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-right: 1px solid var(--line); min-width: 0; }
+.quota-who { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; border-right: 1px solid var(--line); min-width: 0; }
 .quota-who small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font: 400 8.5px/1 var(--mono); color: var(--dim); white-space: nowrap; }
 .quota-who small .iconify { width: 9px; height: 9px; margin-right: 2px; vertical-align: -1px; }
 /* Reading older than an hour: age in ochre, numbers dimmed. Window
@@ -424,21 +424,24 @@ body.short-bottom { --safe-bottom: 0px; }
 .quota-row.stale .quota-who small { color: var(--ochre); }
 .quota-row.stale .quota-top b { color: var(--muted); }
 .quota.guessed .quota-bar i { background: repeating-linear-gradient(90deg, var(--teal) 0 4px, transparent 4px 7px); }
-.quota-who .avatar { width: 30px; height: 30px; border: 0; background: none; }
-.quota-who .avatar .iconify { width: 17px; height: 17px; }
-.quota { padding: 9px 12px 8px; min-width: 0; }
+.quota-who .avatar { width: 18px; height: 18px; border: 0; background: none; }
+.quota-who .avatar .iconify { width: 14px; height: 14px; }
+.quota-who .avatar.codex .iconify { width: 17px; height: 17px; }
+/* One compact line per window: label, percentage and a thin bar, the reset
+   time under them. On a very narrow sidebar the bar wraps to its own line. */
+.quota { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; padding: 4px 8px 4px; min-width: 0; }
 .quota + .quota { border-left: 1px solid var(--line); }
-.quota-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.quota-label { font: 500 9.5px/1.2 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
-.quota-top b { font: 850 19px/1 var(--display); letter-spacing: -.04em; color: var(--text); }
-.quota-top b small { font-size: 11px; color: var(--muted); margin-left: 1px; }
-.quota-bar { height: 3px; margin: 7px 0 6px; background: var(--line); }
+.quota-top { flex: none; display: flex; align-items: baseline; gap: 6px; }
+.quota-label { flex: none; font: 500 9.5px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.quota-top b { flex: none; font: 850 13px/1 var(--display); letter-spacing: -.02em; color: var(--text); }
+.quota-top b small { font-size: 9.5px; color: var(--muted); margin-left: 1px; }
+.quota-bar { flex: 1 1 16px; min-width: 16px; height: 2px; background: var(--line); }
 .quota-bar i { display: block; height: 100%; background: var(--teal); }
 .quota.mid .quota-bar i { background: var(--ochre); }
 .quota.hi .quota-bar i { background: var(--rose); }
 .quota.hi .quota-top b { color: var(--rose); }
-.quota-reset { display: flex; align-items: center; gap: 5px; font: 400 10px/1.2 var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.quota-reset .iconify { width: 10px; height: 10px; flex: none; }
+.quota-reset { flex: 0 0 100%; display: flex; align-items: center; gap: 4px; font: 400 9.5px/1.2 var(--mono); color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.quota-reset .iconify { width: 9px; height: 9px; flex: none; }
 .quota-foot { margin: 6px 0 0; text-align: right; font: 400 9.5px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
 
 .agent-group { margin-bottom: 26px; }
@@ -3680,9 +3683,13 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .list-compact .quota-who .avatar { width: 20px; height: 20px; }
 .list-compact .quota-who .avatar .iconify { width: 13px; height: 13px; }
 .list-compact .quota-who small { display: none; }
-.list-compact .quota { padding: 5px 9px 5px; }
-.list-compact .quota-top b { font-size: 14px; }
-.list-compact .quota-bar { margin: 4px 0 0; }
+.list-compact .quota-who { gap: 2px; }
+.list-compact .quota { display: block; padding: 5px 9px 5px; }
+.list-compact .quota-top { justify-content: space-between; gap: 8px; }
+.list-compact .quota-label { letter-spacing: .14em; }
+.list-compact .quota-top b { font-size: 14px; letter-spacing: -.04em; }
+.list-compact .quota-top b small { font-size: 11px; }
+.list-compact .quota-bar { height: 3px; margin: 4px 0 0; }
 .list-compact .quota-reset, .list-compact .quota-foot { display: none; }
 
 /* Inline review: comments start from the gutter; code is plain selectable text. */
