@@ -591,7 +591,7 @@ body.short-bottom { --safe-bottom: 0px; }
   border: 1px solid var(--line-strong); color: var(--text-3);
   font: 600 9px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap;
 }
-@media (min-width: 900px), (min-width: 700px) and (min-height: 700px) {
+@media (min-width: 900px), (min-width: 700px) and (min-height: 700px), (min-width: 700px) and (min-device-width: 700px) and (min-device-height: 700px) and (pointer: coarse) {
   .machine-head { display: grid; grid-template-columns: 15px 16px minmax(0, 1fr) auto; grid-template-rows: auto auto; row-gap: 4px; }
   .machine-chev { grid-column: 1; grid-row: 1 / 3; }
   .machine-icon { grid-column: 2; grid-row: 1 / 3; }
@@ -2005,7 +2005,7 @@ body.kb .composer { padding-bottom: 8px; }
    html/body and the theme-color meta, so whatever iOS paints past the edge
    matches. Keyboard open: it sits on the visible area above the keyboard and
    its content scrolls. */
-@media (max-width: 699px), (max-width: 899px) and (max-height: 699px) {
+@media (max-width: 699px), (max-width: 899px) and (max-height: 699px) and (max-device-width: 699px), (max-width: 899px) and (max-height: 699px) and (max-device-height: 699px), (max-width: 899px) and (max-height: 699px) and (pointer: fine), (max-width: 899px) and (max-height: 699px) and (pointer: none) {
   .hw-sheet:not(.screen) {
     bottom: 0; max-height: calc((100% - var(--safe-top)) * .85);
     background: var(--bg); box-shadow: 0 -20px 50px var(--shadow), 0 160px 0 var(--bg);
@@ -2038,7 +2038,7 @@ body.kb .composer { padding-bottom: 8px; }
    can show around it, even below a page shortened by iOS. It is laid out
    like the agent view: whole layout viewport, then the visible area above
    the keyboard. Safe areas are padded, not left empty. */
-@media (max-width: 699px), (max-width: 899px) and (max-height: 699px) {
+@media (max-width: 699px), (max-width: 899px) and (max-height: 699px) and (max-device-width: 699px), (max-width: 899px) and (max-height: 699px) and (max-device-height: 699px), (max-width: 899px) and (max-height: 699px) and (pointer: fine), (max-width: 899px) and (max-height: 699px) and (pointer: none) {
   .hw-scrim.screen { background: var(--bg); }
   body .hw-sheet.screen {
     top: 0; bottom: auto; height: 100%; max-height: none;
@@ -2459,7 +2459,7 @@ body.kb .composer { padding-bottom: 8px; }
   .onboarding-steps button span { font-size: 9px; letter-spacing: .08em; }
 }
 /* Computer: a centered modal over the blurred app, sized to its content. */
-@media (min-width: 900px), (min-width: 700px) and (min-height: 700px) {
+@media (min-width: 900px), (min-width: 700px) and (min-height: 700px), (min-width: 700px) and (min-device-width: 700px) and (min-device-height: 700px) and (pointer: coarse) {
   .onboarding {
     align-items: center; justify-content: center; padding: 40px 24px;
     background: color-mix(in srgb, var(--bg) 55%, transparent);
@@ -2519,7 +2519,7 @@ body.kb .composer { padding-bottom: 8px; }
 .theme-name { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 500; color: var(--text); }
 .theme-name small { display: block; font: 400 11px/1.3 var(--mono); color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .theme-check { width: 18px; height: 18px; color: var(--accent); }
-@media (min-width: 900px), (min-width: 700px) and (min-height: 700px) { .theme-grid { grid-template-columns: 1fr 1fr; } .theme-grid .theme-opt:nth-child(2) { border-top: 0; } .theme-grid .theme-opt:nth-child(even) { border-left: 1px solid var(--line-soft); } }
+@media (min-width: 900px), (min-width: 700px) and (min-height: 700px), (min-width: 700px) and (min-device-width: 700px) and (min-device-height: 700px) and (pointer: coarse) { .theme-grid { grid-template-columns: 1fr 1fr; } .theme-grid .theme-opt:nth-child(2) { border-top: 0; } .theme-grid .theme-opt:nth-child(even) { border-left: 1px solid var(--line-soft); } }
 .settings-card, .settings-action.solo, .settings-stepper, .settings-toggle { background: var(--bg-2); border: 1px solid var(--line); }
 .settings-card { padding: 0 16px 14px; }
 .settings-card > p { margin: 6px 0 0; font-size: 13px; line-height: 1.45; }
@@ -2918,16 +2918,17 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   background: var(--surface); font: 500 12px/1.4 var(--mono);
 }
 .interactive-terminal-reopen:hover { background: var(--surface-2); }
-@media (max-width: 699px), (max-width: 899px) and (max-height: 699px) {
+@media (max-width: 699px), (max-width: 899px) and (max-height: 699px) and (max-device-width: 699px), (max-width: 899px) and (max-height: 699px) and (max-device-height: 699px), (max-width: 899px) and (max-height: 699px) and (pointer: fine), (max-width: 899px) and (max-height: 699px) and (pointer: none) {
   .interactive-terminal-scrim { background: var(--bg); }
 }
-@media (min-width: 900px), (min-width: 700px) and (min-height: 700px) {
+@media (min-width: 900px), (min-width: 700px) and (min-height: 700px), (min-width: 700px) and (min-device-width: 700px) and (min-device-height: 700px) and (pointer: coarse) {
   .interactive-terminal {
     inset: auto; top: 50%; left: 50%; translate: -50% -50%;
     width: min(1200px, calc(100vw - 96px)); height: min(900px, calc(100dvh - 96px));
     padding-top: 0; border: 1px solid var(--line); box-shadow: 0 30px 80px var(--shadow);
   }
   .interactive-terminal[data-state="open"] { animation: pop .16s ease; }
+  body.kb .interactive-terminal { top: calc(var(--vv-top, 0px) + var(--vv-h, 100dvh) / 2); height: min(900px, calc(var(--vv-h, 100dvh) - 24px)); }
 }
 /* Override the desktop reading column: fit the TUI to this window, as in a split. */
 .interactive-terminal #termWrap { padding: 6px; background: var(--bg); }
@@ -2973,7 +2974,7 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
    Computer (≥ 900 px): list as a sidebar + agent on the right,
    conversation centered on a reading width, sheets as windows.
    ================================================================ */
-@media (min-width: 900px), (min-width: 700px) and (min-height: 700px) {
+@media (min-width: 900px), (min-width: 700px) and (min-height: 700px), (min-width: 700px) and (min-device-width: 700px) and (min-device-height: 700px) and (pointer: coarse) {
   :root { --side: 340px; }
 
   .settings-layout { flex-direction: row; }
@@ -3125,7 +3126,8 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
      a cell keeps a solid background, without the column lines. */
   .cell-view .chat, .cell-view .composer,
   html[data-backdrop='wherdr'] .cell-view :is(.chat, .composer) { background-color: var(--bg); background-image: none; }
-  .cell-view .keybar { background-image: none; border-top: 1px solid var(--line-soft); }
+  /* Narrow cell: from the left, so the first keys stay reachable when it scrolls. */
+  .cell-view .keybar { background-image: none; border-top: 1px solid var(--line-soft); justify-content: flex-start; }
   .cell-view .keybar::before { content: none; }
   .cell-view .search-bar { max-width: none; }
   /* The terminal of the focused cell takes the whole cell (no reading column). */
@@ -3142,6 +3144,10 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .hw-sheet.tall { height: auto; max-height: 86vh; }
   .hw-sheet.full { width: min(1100px, 92vw); height: 86vh; max-height: 86vh; padding-top: 20px; }
   :root[data-content-width="full"] .hw-sheet.full { width: calc(100vw - 48px); }
+  /* On-screen keyboard (iPad): the window is centered in the visible area
+     above it and never taller than that area. */
+  body.kb .hw-sheet { top: calc(var(--vv-top, 0px) + var(--vv-h, 100dvh) / 2); max-height: calc(var(--vv-h, 100dvh) - 24px); }
+  body.kb .hw-sheet.full { height: calc(var(--vv-h, 100dvh) - 24px); }
   .hw-sheet[data-state="open"] { animation: pop .16s ease; }
   .hw-sheet[data-state="closed"] { animation: fade .12s ease reverse; }
   .hw-sheet-handle { display: none; }
@@ -3654,7 +3660,7 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .list-compact .machine-head { padding-top: 7px; padding-bottom: 7px; }
 .list-compact .machine-grip { min-height: 32px; }
 .list-compact .machine-row { margin-bottom: 4px; }
-@media (min-width: 900px), (min-width: 700px) and (min-height: 700px) {
+@media (min-width: 900px), (min-width: 700px) and (min-height: 700px), (min-width: 700px) and (min-device-width: 700px) and (min-device-height: 700px) and (pointer: coarse) {
   .list-compact .machine-head { display: flex; }
   .list-compact .machine-head .machine-state { margin-left: auto; }
 }
@@ -3738,7 +3744,7 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .review-pick button { flex: none; }
 /* Full-screen window on the phone: its body has 4 px of top padding, where a
    sliver of diff would show above the pinned bar. */
-@media (max-width: 699px), (max-width: 899px) and (max-height: 699px) { .review-toolbar { top: -4px; } }
+@media (max-width: 699px), (max-width: 899px) and (max-height: 699px) and (max-device-width: 699px), (max-width: 899px) and (max-height: 699px) and (max-device-height: 699px), (max-width: 899px) and (max-height: 699px) and (pointer: fine), (max-width: 899px) and (max-height: 699px) and (pointer: none) { .review-toolbar { top: -4px; } }
 
 /* ---------- Board: herdr-projects 1.x tasks, in the five groups of its board ---------- */
 .board-view { z-index: 3; }
@@ -3996,15 +4002,31 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .ro-why { display: inline-flex; }
 .ro-why:has(button:disabled) { cursor: not-allowed; }
 
-/* Touch tablet (iPad, shortest side ≥ 700 px): 44 px targets, like on the
+/* Touch tablet (iPad, shortest side ≥ 700 px, also by its screen while the
+   on-screen keyboard shortens the window): 44 px targets, like on the
    phone. A large phone in landscape keeps its layout. */
-@media (min-width: 700px) and (min-height: 700px) and (pointer: coarse) {
+@media (min-width: 700px) and (min-height: 700px) and (pointer: coarse), (min-width: 700px) and (min-device-width: 700px) and (min-device-height: 700px) and (pointer: coarse) {
   .icon-btn { width: 44px; height: 44px; }
   .home-rail { gap: 6px; }
   .card { min-height: 52px; }
   /* Room for the larger buttons next to the title. */
   .home-top .home-title-row .display { font-size: 28px; }
   .home-actions { gap: 0; }
+  /* Tabs of a space. */
+  .tab-chip { min-height: 44px; }
+  .tab-chip.tab-add { min-width: 44px; }
+  .keybar button { height: 44px; }
+  /* Side by side: cell buttons, selector and grip at finger size. */
+  .cell-view .agent-actions .icon-btn { width: 44px; height: 44px; }
+  .cell-view .agent-top .hw-tab { min-height: 44px; }
+  .cell-grip { width: 32px; height: 44px; }
+  /* Dividers: wider touch area, line marked with a notch (as in the plan). */
+  .split .divider.right { width: 24px; }
+  .split .divider.down { height: 24px; }
+  .split .divider::before { content: ''; position: absolute; left: 50%; top: 50%; background: var(--line-strong); transform: translate(-50%, -50%); }
+  .split .divider.right::before { width: 4px; height: 26px; }
+  .split .divider.down::before { width: 26px; height: 4px; }
+  .split .divider.on::before { background: var(--mauve); }
 }
 @media (prefers-reduced-motion: reduce) { #home.drawer, .list-scrim { animation: none; } }
 

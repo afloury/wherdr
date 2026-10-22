@@ -252,6 +252,10 @@ function resizeKey(d: Divider, e: KeyboardEvent) {
   const ratio = ratioAt(entry.value.layout, d, d.start + d.size * (d.ratio + step * 0.05))
   if (ratio !== d.ratio) resizeSplit(props.tabId, d.path, ratio)
 }
+// On-screen keyboard: the whole view (tabs, header, split) fits the visible
+// area above it, as AgentView does; the split shrinks to what is left, so the
+// active cell's message field stays above the keyboard.
+const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`, top: `${vvTop.value}px` } : {}))
 const divStyle = (d: Divider) => (d.direction === 'right'
   ? { left: `${d.at}%`, top: `${d.from}%`, height: `${d.span}%` }
   : { top: `${d.at}%`, left: `${d.from}%`, width: `${d.span}%` })
@@ -264,7 +268,7 @@ function open(paneId: string) {
 </script>
 
 <template>
-  <section id="tabview" class="view">
+  <section id="tabview" class="view" :style="viewStyle">
     <SpaceTabs v-if="entry" :workspace="entry.tab.workspace" :current="tabId" />
     <HeaderMenu :items="tabMenu" :title="tabMenuTitle" :disabled="!entry">
       <header class="top bar tab-top">

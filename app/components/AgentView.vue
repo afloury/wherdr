@@ -412,6 +412,10 @@ const tab = computed({
   get: () => (mode.value === 'term' ? 'term' : 'chat'),
   set: (v: string) => setMode(v === 'term' ? 'term' : 'chat'),
 })
+// Terminal keys: under the terminal, and in the active side-by-side cell on a
+// touch screen (iPad without a hardware keyboard: Esc, arrows, ^C).
+const keybarShown = computed(() => mode.value === 'term' && (!props.cell || Boolean(coarse.value && props.active))
+  && eventsOpen.value && !offlineView.value && !machineDown.value)
 const controls = computed(() => viewControls({ desk: desk.value, cell: Boolean(props.cell), chat: hasChat(pane.value), live: live.value }))
 const headerAdd = computed(() => !props.cell && pane.value && spaceTabControls(spaceTabs(pane.value.workspace).length).headerAdd)
 
@@ -629,7 +633,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     </button>
     <ChoicesPanel v-if="(prompt || screen) && !interactionOpen && !interactive && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :screen="screen" :keys="live" />
     <MenuPanel v-else-if="menu && !interactionOpen && !interactive && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :menu="menu" :keys="live" @terminal="setMode('term')" />
-    <Keybar v-if="mode === 'term' && !cell && eventsOpen && !offlineView && !machineDown" :ctl="ctl" />
+    <Keybar v-if="keybarShown" :ctl="ctl" />
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :conversation="mode === 'chat'" :term-shown="termShown" :esc-stops="!searchOpen" :take-back="mode === 'chat'" :unanswered="mode === 'chat' ? unanswered : 0" @sent="onSent" @show-terminal="setMode('term')" @show-unanswered="chatRef?.gotoUnanswered()" />
     </div>
     </div>
