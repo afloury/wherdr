@@ -3,7 +3,7 @@ import { CHOICE_GUARD_MS } from '../../app/utils/compactCard'
 import { expect, test, type Page } from './test'
 import { BASE_URL, CLAUDE_ASK_PANE, CLAUDE_PANE, OMP_ASK_PANE, SPLIT_CHAT_PANE, fakeHerdr } from './scenario.mjs'
 
-// Compact list (the default): the card of an agent waiting for an answer opens
+// Compact list (turned on here; 2.0's default is normal): the card of an agent waiting for an answer opens
 // on its question and the one-tap answers of the detailed card, and is one
 // line again once answered.
 const shot = (page: Page, name: string, project: string) =>
@@ -19,7 +19,9 @@ const answers = async (pane: string) => (await fakeHerdr('e2e.answers', { pane_i
 // Among the agents of this spec (other specs may leave one of theirs waiting).
 const opened = (page: Page) => page.locator(['.open', ':has(.card-more)'].flatMap(s => [OMP_ASK_PANE, CLAUDE_ASK_PANE, CLAUDE_PANE].map(p => `#home .card[data-pane="${p}"]${s}`)).join(', '))
 
-test.beforeEach(async () => {
+test.beforeEach(async ({ page }) => {
+  // Compact unless a test chooses normal (its own init script runs after this one).
+  await page.addInitScript(() => localStorage.setItem('compactListV2', '1'))
   await ask(OMP_ASK_PANE)
   await ask(CLAUDE_ASK_PANE)
 })
@@ -174,9 +176,9 @@ test('a space with several panes says which pane asks, as the detailed card does
     await expect(card(page, OMP_ASK_PANE).locator('.card-where')).toHaveCount(0)
     // Normal mode keeps the same dense card and identifies the pane above its question.
     // Kept on the server: changed there, as Settings does.
-    expect((await page.request.post(`${BASE_URL}/api/settings`, { headers: { Origin: BASE_URL }, data: { settings: { compactList: '0' } } })).ok()).toBe(true)
+    expect((await page.request.post(`${BASE_URL}/api/settings`, { headers: { Origin: BASE_URL }, data: { settings: { compactListV2: '0' } } })).ok()).toBe(true)
     await page.reload()
-    await expect.poll(() => page.evaluate(() => localStorage.getItem('compactList'))).toBe('0')
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('compactListV2'))).toBe('0')
     await expect(space).toHaveClass(/compact/)
     expect(await space.locator('.card-where .tabmap i').first().evaluate(el => el.classList.contains('cur'))).toBe(true)
   } finally { await ask(SPLIT_CHAT_PANE) }
@@ -199,7 +201,7 @@ test('the answers open with a transition, off under reduced motion', async ({ pa
 })
 
 test('normal list: a waiting agent keeps its dense card and answers', async ({ page }, testInfo) => {
-  await page.addInitScript(() => localStorage.setItem('compactList', '0'))
+  await page.addInitScript(() => localStorage.setItem('compactListV2', '0'))
   await ask(OMP_ASK_PANE, APPROVAL)
   await page.goto('/')
   const omp = card(page, OMP_ASK_PANE)
