@@ -184,6 +184,9 @@ test('a permission: Allow, Always allow, Refuse; a sign-in: Open terminal (Frenc
   write({ ...task, kind: 'permission', msg: 'Ce script supprime toujours les données de test. Autoriser cette seule exécution ?' })
   await shows(page, 'Ce script supprime toujours les données de test. Autoriser cette seule exécution ?', '.task-needs-text')
   await expect(banner.locator('.task-needs-actions button')).toHaveText(['Autoriser', 'Refuser'])
+  write({ ...task, kind: 'permission', msg: 'Our policy is to always allow read-only commands. May I delete the staging data for this run only?' })
+  await shows(page, 'Our policy is to always allow read-only commands. May I delete the staging data for this run only?', '.task-needs-text')
+  await expect(banner.locator('.task-needs-actions button')).toHaveText(['Autoriser', 'Refuser'])
 
   write({ ...task, kind: 'auth', msg: 'Need a GitHub login to open the PR' })
   await shows(page, 'Connexion')

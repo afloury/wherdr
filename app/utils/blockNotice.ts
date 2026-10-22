@@ -115,15 +115,15 @@ export function blockChoices(msg: string): BlockChoice[] {
 }
 
 // A permission its agent also offers to give for good.
-// Only when "always" is offered as an answer: in its closing group of answers
-// ("(yes / always / no)"), as "always allow" / "toujours autoriser", or as an
-// alternative ("…, or always?"). A sentence that merely uses the word
-// ("this script always deletes…") offers nothing.
-const ALWAYS_ITEM = /^(?:always|toujours)(?:\s+(?:allow|autoriser))?$/i
-const ALWAYS_OFFER = /\b(?:always\s+allow|allow\s+always|toujours\s+autoriser|autoriser\s+toujours|(?:or|ou)\s+(?:always|toujours)\s*[?.!)\]]?\s*$)/i
+// Only when "always" is offered as an answer, where the question ends: a
+// choice of its closing group ("(yes / always / no)"), or its last words
+// ("…, or always?", "ou toujours autoriser ?"). The word anywhere else
+// describes something ("our policy is to always allow…") and offers nothing.
+const ALWAYS_ITEM = /^(?:always|toujours)(?:\s+(?:allow|allowed|autoriser|autorisé))?$/i
+const ALWAYS_LAST = /\b(?:or|ou)\s+(?:always|toujours)(?:\s+(?:allow|autoriser))?\s*[?.!]?\s*$/i
 export function offersAlways(msg: string): boolean {
   if (grouped(msg).some(c => ALWAYS_ITEM.test(c.label))) return true
-  return msg.split('\n').some(line => ALWAYS_OFFER.test(line.trim()))
+  return ALWAYS_LAST.test(msg.trim())
 }
 
 // What Allow, Refuse and Always allow send.

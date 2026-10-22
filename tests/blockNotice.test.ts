@@ -59,7 +59,10 @@ describe('blockChoices', () => {
 describe('offersAlways', () => {
   it('sees an offer to allow for good, in English or French', () => {
     expect(offersAlways('Run npm publish? (yes / always / no)')).toBe(true)
-    expect(offersAlways('Lancer le script ? Tu peux aussi toujours autoriser ce script.')).toBe(true)
+    expect(offersAlways('Lancer le script une fois, ou toujours ?')).toBe(true)
+    expect(offersAlways('Lancer le script ? Tu peux aussi toujours autoriser ce script.')).toBe(false)
+    expect(offersAlways('Our policy is to always allow read-only commands. May I delete the staging data for this run only?')).toBe(false)
+    expect(offersAlways('Always allow is off here. Delete the cache, or always allow it? Just this once, please.')).toBe(false)
     expect(offersAlways('Delete the test data?')).toBe(false)
     expect(offersAlways('This script always deletes the staging data. Allow this one run only?')).toBe(false)
     expect(offersAlways('Le script supprime toujours les données. Autoriser une seule fois ?')).toBe(false)
