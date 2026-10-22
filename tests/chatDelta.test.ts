@@ -3,9 +3,12 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createChatDelta, splitToken } from '../server/utils/chatDelta'
-import { anchorOf, createTranscripts } from '../server/utils/transcripts'
+import { anchorOf, createTranscripts, headOf } from '../server/utils/transcripts'
 import { createTailLoader, nextTail, restartsTail, tailQuery } from '../app/utils/chatTail'
 import type { ChatItem } from '../shared/types'
+import { type MachineFs, type ShellExec, createShellFs, localFs } from '../server/utils/fsx'
+import { spawn } from 'node:child_process'
+import { renameSync } from 'node:fs'
 
 const item = (text: string, role: ChatItem['role'] = 'assistant'): ChatItem => ({ role, text, ts: '2026-01-01T00:00:00Z' })
 
@@ -150,7 +153,7 @@ describe('incremental re-read of a Claude transcript', () => {
   const reply = (k: number) => said([{ type: 'text', text: `Reply ${k}:\n\n- a point\n- another point\n\n\`\`\`js\nconst x = ${k}\n\`\`\`\n\nShall I go on?` }])
   const result = (id: string, text: string) => JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: text }] }, timestamp: at() })
 
-  function setup(messages: number, pad = '') {
+  function setup(messages: number, pad = '', opts: { fs?: MachineFs, now?: () => number } = {}) {
     const home = mkdtempSync(path.join(tmpdir(), 'hw-delta-'))
     homes.push(home)
     const dir = path.join(home, '.claude/projects/-x')
@@ -159,7 +162,7 @@ describe('incremental re-read of a Claude transcript', () => {
     const lines: string[] = []
     for (let k = 0; k < messages / 2; k++) lines.push(user(`Question ${k}${pad}`), reply(k))
     writeFileSync(file, lines.join('\n') + '\n')
-    const t = createTranscripts({ home, herdr: noHerdr })
+    const t = createTranscripts({ home, herdr: noHerdr, ...opts })
     const pane = { id: 'w1:p1', agent: 'claude', cwd: '/x', agentSession: 'abc-123' }
     const d = createChatDelta()
     // What /api/chat does with the transcript's reply (server/api/chat.get.ts).
@@ -325,6 +328,71 @@ describe('incremental re-read of a Claude transcript', () => {
     expect(r.items!.at(-1)!.text).toBe('After the rewrite')
   })
 
+  it('starts again when the file is replaced by another one (inode), join bytes unchanged', async () => {
+    const { file, call } = setup(6000, ` ${'x'.repeat(400)}`)
+    const load = await call('', null, 0)
+    const start = load.start!
+    const first = await call(load.token!, start, load.items!.length)
+    // Same length, change far above the cursor (outside the anchor), renamed over.
+    const before = readFileSync(file, 'utf8')
+    const after = before.replace('Question 0 ', 'Answered 0 ')
+    expect(after.length).toBe(before.length)
+    const ino = statSync(file).ino
+    writeFileSync(`${file}.tmp`, after)
+    renameSync(`${file}.tmp`, file)
+    expect(statSync(file).ino).not.toBe(ino)
+    const r = await call(first.token!, start, load.items!.length)
+    expect(r.rewritten).toBe(true)
+    expect(restartsTail({ file: first.file!, tailStart: start }, r)).toBe(true)
+  })
+
+  it('starts again when the file is rewritten in place at the same size', async () => {
+    const { file, call } = setup(6000, ` ${'x'.repeat(400)}`)
+    const load = await call('', null, 0)
+    const start = load.start!
+    const first = await call(load.token!, start, load.items!.length)
+    const ino = statSync(file).ino
+    writeFileSync(file, readFileSync(file, 'utf8').replace('Question 0 ', 'Answered 0 '))
+    utimesSync(file, new Date(), new Date(Date.now() + 5000))
+    expect(statSync(file).ino).toBe(ino)
+    const r = await call(first.token!, start, load.items!.length)
+    expect(r.rewritten).toBe(true)
+  })
+
+  it('never says "unchanged" for a remote state read within its mtime second', async () => {
+    // Remote machine: the real stat script (whole seconds), local reads.
+    const sh: ShellExec = (script, args = []) => new Promise((resolve) => {
+      const child = spawn('sh', ['-c', script, 'sh', ...args])
+      const out: Buffer[] = []
+      child.stdout.on('data', (b: Buffer) => out.push(b))
+      child.on('close', code => resolve({ code, stdout: Buffer.concat(out), stderr: '' }))
+    })
+    const remote = createShellFs(sh, { statTtlMs: 0 })
+    let clock = 1_000_000
+    const { file, call } = setup(6000, ` ${'x'.repeat(400)}`, { fs: { ...localFs, stat: remote.stat, statMany: remote.statMany }, now: () => clock })
+    const second = 1767225600
+    utimesSync(file, second + 0.1, second + 0.1)
+    const load = await call('', null, 0)
+    const start = load.start!
+    clock += 200
+    let token = (await call(load.token!, start, load.items!.length)).token!
+    // Rewritten at the same size and inode, within the same second.
+    const ino = statSync(file).ino
+    writeFileSync(file, readFileSync(file, 'utf8').replace('Question 2999 ', 'Answered 2999 '))
+    utimesSync(file, second + 0.8, second + 0.8)
+    expect(statSync(file).ino).toBe(ino)
+    clock += 300
+    const r = await call(token, start, load.items!.length)
+    expect(r.unchanged).toBeFalsy()
+    const tail = nextTail(load.items!, r)!
+    expect(tail.some(i => i.text?.startsWith('Answered 2999'))).toBe(true)
+    // Once the second is over, polls are "unchanged" again.
+    token = r.token!
+    clock += 2000
+    token = (await call(token, start, tail.length)).token!
+    expect((await call(token, start, tail.length)).unchanged).toBe(true)
+  })
+
   it('keeps plain growth incremental and "unchanged" when nothing moved', async () => {
     const { file, call } = setup(6000, ` ${'x'.repeat(400)}`)
     const load = await call('', null, 0)
@@ -344,6 +412,12 @@ describe('anchorOf', () => {
     expect(anchorOf('a.jsonl:900:120:77-1700:42/120.0123456789ab~3#0123456789abcdef')).toEqual({ start: 120, hash: '0123456789ab' })
     expect(anchorOf('a.jsonl:900:120')).toBeNull() // token of an older server
     expect(anchorOf('')).toBeNull()
+  })
+
+  it('reads the state a token was read from', () => {
+    expect(headOf('a.jsonl:900:120:77-1700!/120.0123456789ab~3#0123456789abcdef')).toEqual({ file: 'a.jsonl', size: 900, from: 120, ino: 77, gen: '77-1700' })
+    expect(headOf('a.jsonl:900:null:1700')).toEqual({ file: 'a.jsonl', size: 900, from: null, ino: null, gen: '1700' })
+    expect(headOf('a.jsonl:900:120')).toBeNull() // token of an older server
   })
 })
 

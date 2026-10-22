@@ -73,6 +73,19 @@ export function anchorOf(token: string | null | undefined): { start: number, has
 // File generation for the token: another inode or another modification time
 // is another state, even at the same size.
 const genOf = (st: { mtimeMs: number, ino?: number }) => `${st.ino ? `${st.ino}-` : ''}${Math.floor(st.mtimeMs)}`
+// State a client's token was read from: file, size, cursor, inode, mtime
+// (`!`: read before its mtime second was over, see SETTLE_MS).
+const HEAD = /^(.*):(\d+):(null|\d+):(?:(\d+)-)?(\d+)!?(?=[/~#]|$)/
+export function headOf(token: string | null | undefined): { file: string, size: number, from: number | null, ino: number | null, gen: string } | null {
+  const m = HEAD.exec(String(token || ''))
+  if (!m) return null
+  return { file: m[1]!, size: Number(m[2]), from: m[3] === 'null' ? null : Number(m[3]), ino: m[4] ? Number(m[4]) : null, gen: `${m[4] ? `${m[4]}-` : ''}${m[5]}` }
+}
+// A remote stat gives whole seconds: a rewrite at the same size within the
+// second already read keeps the same generation. A state is only trusted
+// ("unchanged", parse cache) once read this long after it was first seen:
+// any write of that second happened before first sight + 1 s.
+const SETTLE_MS = 1500
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type HerdrCall = (method: string, params?: Record<string, unknown>, timeoutMs?: number) => Promise<any>
 
@@ -757,10 +770,21 @@ export function isMissing(e: unknown): boolean {
   return err.code === 'remote' && /no such file|not a directory|introuvable/i.test(err.message || '')
 }
 
-export function createTranscripts({ home, herdr, fs = localFs }: { home: string, herdr: HerdrCall, fs?: MachineFs }) {
+export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }: { home: string, herdr: HerdrCall, fs?: MachineFs, now?: () => number }) {
+  // File -> generation and when this server first saw it (see SETTLE_MS).
+  const genSeen = new Map<string, { gen: string, at: number }>()
+  function settledGen(file: string, st: { mtimeMs: number }, gen: string) {
+    if (Math.floor(st.mtimeMs) % 1000) return true // sub-second mtime: exact
+    const seen = genSeen.get(file)
+    if (seen && seen.gen === gen) return now() - seen.at >= SETTLE_MS
+    genSeen.delete(file)
+    genSeen.set(file, { gen, at: now() })
+    if (genSeen.size > 64) genSeen.delete(genSeen.keys().next().value!)
+    return false
+  }
   const locCache = new Map<string, { at: number, loc: Loc | null, session?: string | null }>()
   const lastLoc = new Map<string, Loc>() // last file found, fallback if a lookup fails
-  const parseCache = new Map<string, { size: number, gen: string, r: TailResult }>()
+  const parseCache = new Map<string, { size: number, gen: string, settled: boolean, r: TailResult }>()
   const metaCache = new Map<string, Json>()
   // omp file commands of this machine (see parseOmp), re-read every 5 min.
   let ompTemplates: { at: number, list: CommandTemplate[] } = { at: 0, list: [] }
@@ -1028,11 +1052,11 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
 
   // Bottom of the conversation: from `from` (already shown on the phone) or,
   // on first load, the last PAGE_ITEMS messages. Cached by
-  // (file, kind, size, generation, from).
-  async function tail(file: string, kind: string | null, size: number, gen: string, from: number | null): Promise<TailResult> {
+  // (file, kind, size, generation, from), when read once the state settled.
+  async function tail(file: string, kind: string | null, size: number, gen: string, from: number | null, settled = true): Promise<TailResult> {
     const key = `${file}|${kind}|${from}`
     const c = parseCache.get(key)
-    if (c && c.size === size && c.gen === gen) return c.r
+    if (c && c.settled && c.size === size && c.gen === gen) return c.r
     let r: TailResult
     if (from !== null && from <= size && size - from <= MAX_READ_BYTES) {
       // One read for the anchor above `from` and the bottom (as readRange: a
@@ -1053,7 +1077,7 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
       r = await readBackwards(file, size, kind)
       r.anchor = await anchorAt(file, r.start)
     }
-    parseCache.set(key, { size, gen, r })
+    parseCache.set(key, { size, gen, settled, r })
     if (parseCache.size > 16) parseCache.delete(parseCache.keys().next().value!)
     return r
   }
@@ -1099,18 +1123,28 @@ export function createTranscripts({ home, herdr, fs = localFs }: { home: string,
     }
     const from = opts.from === undefined ? null : opts.from
     const gen = genOf(st)
-    // Token: file, size, cursor, generation (unchanged as long as these are),
-    // then the anchor of the reply's start.
+    const settled = settledGen(loc.file, st, gen)
+    // Token: file, size, cursor, generation (unchanged as long as these are,
+    // once settled), then the anchor of the reply's start.
     const head = `${fileId}:${st.size}:${from}:${gen}`
-    if (opts.since && opts.since.split('/')[0] === head) return { ...base, unchanged: true, token: opts.since }
-    let r = await tail(loc.file, kind, st.size, gen, from)
-    // Re-read from the cursor of a list whose anchor no longer matches (or
-    // that no longer starts at a line start): the file was rewritten above the
-    // cursor. Read back from the end, and say so: the client starts again.
-    const at = anchorOf(opts.anchor ?? opts.since)
-    const rewritten = from !== null && from > 0 && at !== null && at.start === from && r.anchor !== at.hash
-    if (rewritten) r = await tail(loc.file, kind, st.size, gen, null)
-    const token = r.anchor ? `${head}/${r.start}.${r.anchor}` : head
+    if (settled && opts.since && opts.since.split('/')[0] === head) return { ...base, unchanged: true, token: opts.since }
+    let r = await tail(loc.file, kind, st.size, gen, from, settled)
+    // The client's list starts at the cursor, and the file was rewritten
+    // above it: replaced by another file (inode), shorter, rewritten at the
+    // same size (appends always grow it), or other bytes just above the cursor
+    // (anchor), or no line start there any more. Read back from the end, and
+    // say so: the client starts again.
+    const sent = opts.anchor ?? opts.since
+    const at = anchorOf(sent)
+    const prev = headOf(sent)
+    const same = prev !== null && prev.file === fileId
+    const rewritten = from !== null && from > 0 && at !== null && at.start === from && (r.anchor !== at.hash
+      || (same && prev.ino !== null && st.ino !== undefined && prev.ino !== st.ino)
+      || (same && st.size < prev.size)
+      || (same && st.size === prev.size && prev.gen !== gen))
+    if (rewritten) r = await tail(loc.file, kind, st.size, gen, null, settled)
+    const mark = `${head}${settled ? '' : '!'}`
+    const token = r.anchor ? `${mark}/${r.start}.${r.anchor}` : mark
     return { ...base, token, items: r.items, start: r.start, queue: r.queue || [], ...(rewritten ? { rewritten: true } : {}) }
   }
 
