@@ -70,6 +70,17 @@ describe('SessionGate', () => {
     expect(gate.stats().refusals).toBe(3)
   })
 
+  it('counts refusals in a row, and starts over once a session opens', async () => {
+    const streaks: number[] = []
+    const gate = new SessionGate({ retryDelays: [1, 1], onRefused: s => streaks.push(s.streak) })
+    await gate.run(async () => 'refused', v => v === 'refused')
+    expect(gate.stats().streak).toBe(3)
+    expect(gate.refused()).toBe(4)
+    await gate.run(async () => 'ok', v => v === 'refused')
+    expect(gate.stats().streak).toBe(0)
+    expect(streaks).toEqual([1, 2, 3, 4])
+  })
+
   it('shares an identical command already running, not a finished one', async () => {
     const gate = new SessionGate()
     const d = deferred<string>()
