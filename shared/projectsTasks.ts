@@ -38,6 +38,9 @@ export interface TaskRow {
   // Its repo's short key (`repo.key`, 1.x store/keys.rs), once read: `APP`
   // names this task `APP-6`. Not in `list --json`: wherdr asks `show --repo`.
   repoKey?: string
+  // When it was made (ms, the task file's `created`): orders Done across
+  // machines. Not in `list --json`: wherdr reads it from the task's file.
+  created?: number
   // A partial read kept this row from an earlier one (when it was read, in ms).
   stale?: boolean
   readAt?: number
@@ -236,6 +239,7 @@ export function parseTaskRow(v: unknown): TaskRow | null {
     research: t.research === true,
     archived: Boolean(t.archivedAt),
     queue: num(t.queue),
+    ...(num(t.created) !== null ? { created: num(t.created)! } : {}),
     ...(t.mergeFailed || t.syncBlocked || t.prFailure || t.prState === 'failing' ? { approvalBlocked: true } : {}),
   }
   return { ...row, group: groupOf(row) }
@@ -422,9 +426,14 @@ export function failureIsStale(stage: string, failureAt: number | null | undefin
 }
 
 // Rows of one group, as the board orders them: by repo, then newest first.
+// Done is history, newest first whatever its repo (store/tasks.rs: by `created`);
+// without a creation time, it keeps the order of the list, newest first too.
 export function sortTasks(rows: TaskRow[]): TaskRow[] {
-  return [...rows].sort((a, b) => TASK_GROUPS.indexOf(a.group) - TASK_GROUPS.indexOf(b.group) || a.repo.localeCompare(b.repo) || b.n - a.n)
+  return [...rows].sort((a, b) => TASK_GROUPS.indexOf(a.group) - TASK_GROUPS.indexOf(b.group)
+    || (a.group === 'done' ? newerFirst(a, b) : a.repo.localeCompare(b.repo) || b.n - a.n))
 }
+// Newest created first; rows with no creation time last, in their order.
+export const newerFirst = (a: Pick<TaskRow, 'created'>, b: Pick<TaskRow, 'created'>): number => (b.created ?? 0) - (a.created ?? 0)
 
 // Text sent with `tell`: one message, bounded. Empty: nothing to send.
 // Leave room for task context in a coordinator message.
@@ -732,7 +741,7 @@ export function rowFromTaskFile(t: unknown, paneStatus: string | null): TaskRow 
   return parseTaskRow({
     id: o.id, state, kind, mergeFailed: o.mergeFailed, syncBlocked: o.syncBlocked, prFailure: o.prFailure, prState: o.prState, stage: o.stage, title: o.title, msg: o.msg, app: o.app,
     pr: o.pr, review: review && !review.stale ? review : null, reviewRound: o.reviewRound,
-    research: o.research === true, archivedAt: o.archivedAt,
+    research: o.research === true, archivedAt: o.archivedAt, created: o.created,
     progress: obj(o.watch)?.progress,
   })
 }

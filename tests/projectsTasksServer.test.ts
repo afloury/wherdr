@@ -302,6 +302,34 @@ describe('wherdr in a container: the board is read from its files, nothing runs'
     expect(r.machines[0]!.tasks.map(t => t.id).sort()).toEqual(['acme/1', 'acme/2', 'acme/3'])
   })
 
+  it('gives the tasks in the order of `list --json`: newest created first, whatever the repo', async () => {
+    T.setInContainer(true)
+    taskFile('acme/9', { title: 'Old', stage: 'done', created: 1000 })
+    taskFile('web/2', { title: 'Newest', stage: 'done', created: 3000 })
+    taskFile('acme/4', { title: 'Middle', stage: 'done', created: 2000 })
+    const r = await read()
+    expect(r.machines[0]!.tasks.map(t => t.id)).toEqual(['web/2', 'acme/4', 'acme/9'])
+  })
+
+  it('a done task from `list --json` carries when it was made, read once from its file', async () => {
+    listReply = { code: 0, stdout: JSON.stringify([
+      { id: 'demo/9', state: 'done', title: 'Done late', stage: 'done' }, { id: 'demo/3', state: 'idle', title: 'To do', stage: 'todo' },
+      { id: 'demo/2', state: 'done', title: 'No file', stage: 'done' },
+    ]), stderr: '' }
+    taskFile('demo/9', { title: 'Done late', stage: 'done', created: 5000 })
+    taskFile('demo/3', { title: 'To do', stage: 'todo', created: 4000 })
+    const r = await read()
+    const byId = Object.fromEntries(r.machines[0]!.tasks.map(t => [t.id, t.created]))
+    // Done only (the others are ordered by repo and number); no file, no time.
+    expect(byId).toEqual({ 'demo/9': 5000, 'demo/3': undefined, 'demo/2': undefined })
+    // Known: not read again, even when the file changes.
+    taskFile('demo/9', { title: 'Done late', stage: 'done', created: 1 })
+    later()
+    const again = await read()
+    expect(calls.filter(c => c[0] === 'list').length).toBe(2)
+    expect(again.machines[0]!.tasks.find(t => t.id === 'demo/9')!.created).toBe(5000)
+  })
+
   it('details name the program on the task, from `app` when that is all the file has', async () => {
     T.setInContainer(true)
     taskFile('acme/1', { title: 'Review me', stage: 'approval', app: 'claude' })
