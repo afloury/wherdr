@@ -4,7 +4,7 @@
 //  - Claude Code: skills (~/.claude/skills/**/SKILL.md, including those
 //    synced from the account), commands (~/.claude/commands/**.md), and
 //    the same in the .claude/ of the pane's folder and of its parents (see
-//    claudeProjectDirs).
+//    claudeProjectDirs), plus enabled plugins (namespaced skills/commands).
 //  - Codex: personal prompts ~/.codex/prompts/*.md -> /prompts:<name>.
 //  - omp: commands (~/.omp/agent/commands, and those of Claude Code, Codex and
 //    ~/.agents that it also discovers), skills -> /skill:<name> (same folders,
@@ -71,6 +71,8 @@ export interface SlashFile { root: number, rel: string, text: string }
 export interface SlashFiles { files: SlashFile[], denied: number[] }
 
 const HEAD = 16384
+// Registries can list hundreds of plugins; do not truncate them like skill text.
+const META_HEAD = 1024 * 1024
 
 async function collectLocal(fs: MachineFs, roots: SlashRoot[]): Promise<SlashFiles> {
   const out: SlashFile[] = []
@@ -131,7 +133,7 @@ while [ $# -ge 2 ]; do
   k=$1; d=$2; shift 2
   case $k in
     exists) if [ -e "$d" ]; then printf '\\036%s\\037\\037' "$i"; fi ;;
-    file) if [ -f "$d" ]; then printf '\\036%s\\037\\037' "$i"; head -c ${HEAD} "$d"; fi ;;
+    file) if [ -f "$d" ]; then printf '\\036%s\\037\\037' "$i"; head -c ${META_HEAD} "$d"; fi ;;
     skills|commands*)
       if [ "$k" = skills ]; then lo=2; hi=4; name=SKILL.md; else lo=1; hi=$((\${k#commands} + 1)); name='*.md'; fi
       case $(LC_ALL=C ls -A "$d" 2>&1 >/dev/null) in
@@ -268,12 +270,84 @@ async function claudeCommands(collect: (roots: SlashRoot[]) => Promise<SlashFile
     { dir: path.join(d, '.claude/commands'), kind: 'commands' as const },
   ])
   roots.push({ dir: path.join(home, '.claude/skills'), kind: 'skills' }, { dir: path.join(home, '.claude/commands'), kind: 'commands' })
+  const settings = [home, ...dirs.toReversed()].flatMap(d => [
+    { dir: path.join(d, '.claude/settings.json'), kind: 'file' as const },
+    ...(d === home ? [] : [{ dir: path.join(d, '.claude/settings.local.json'), kind: 'file' as const }]),
+  ])
+  const settingsStart = roots.length
+  roots.push(...settings, { dir: path.join(home, '.claude/plugins/installed_plugins.json'), kind: 'file' })
   const { files, denied } = await collect(roots)
   // Folders above the Git root: Claude Code does not read them.
   const git = files.filter(f => roots[f.root]!.kind === 'exists').map(f => f.root / 3)
   const last = git.length ? Math.min(...git) : Infinity
   const kept = (root: number) => root >= dirs.length * 3 || Math.floor(root / 3) <= last
-  return { commands: commandsOf(roots, files.filter(f => kept(f.root))), denied: denied.some(kept) }
+  const projects = dirs.slice(0, last + 1)
+  const enabled: Record<string, unknown> = {}
+  for (let i = 0; i < settings.length; i++) {
+    const setting = settings[i]!
+    const dir = path.dirname(path.dirname(setting.dir))
+    if (dir !== home && !projects.includes(dir)) continue
+    const file = files.find(f => f.root === settingsStart + i)
+    Object.assign(enabled, jsonObject(file?.text).enabledPlugins)
+  }
+  const installed = files.find(f => f.root === roots.length - 1)
+  const plugins = await claudePluginCommands(collect, jsonObject(installed?.text).plugins, enabled, projects)
+  return { commands: [...commandsOf(roots, files.filter(f => kept(f.root))), ...plugins.commands], denied: denied.some(kept) || plugins.denied }
+}
+
+// Parse only metadata files, never ~/.claude.json (which also holds credentials).
+function jsonObject(text?: string): Record<string, unknown> {
+  try {
+    const value = JSON.parse(text || '')
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  } catch { return {} }
+}
+
+// Installed versions only: scanning the cache would also offer disabled plugins
+// and obsolete versions. Settings override from user to project to local.
+async function claudePluginCommands(collect: (roots: SlashRoot[]) => Promise<SlashFiles>, installed: unknown, enabled: Record<string, unknown>, projects: string[]) {
+  const plugins: { name: string, dir: string }[] = []
+  if (installed && typeof installed === 'object' && !Array.isArray(installed)) {
+    for (const [id, records] of Object.entries(installed)) {
+      if (enabled[id] !== true || !Array.isArray(records)) continue
+      const applicable = records.filter(r => r && typeof r.installPath === 'string' && path.isAbsolute(r.installPath)
+        && (r.scope === 'user' || ((r.scope === 'project' || r.scope === 'local') && projects.includes(r.projectPath))))
+      // A matching project install takes precedence over a user install.
+      applicable.sort((a, b) => {
+        const rank = (r: typeof a) => r.scope === 'user' ? Infinity : projects.indexOf(r.projectPath) * 2 + (r.scope === 'local' ? 0 : 1)
+        return rank(a) - rank(b)
+      })
+      if (applicable[0]) plugins.push({ name: id.split('@')[0]!, dir: applicable[0].installPath })
+    }
+  }
+  if (!plugins.length) return { commands: [], denied: false }
+  const manifests = await collect(plugins.map(p => ({ dir: path.join(p.dir, '.claude-plugin/plugin.json'), kind: 'file' })))
+  const roots: SlashRoot[] = []
+  for (let i = 0; i < plugins.length; i++) {
+    const plugin = plugins[i]!
+    const manifest = jsonObject(manifests.files.find(f => f.root === i)?.text)
+    const prefix = plugin.name + ':'
+    roots.push({ dir: path.join(plugin.dir, 'skills'), kind: 'skills', prefix })
+    const add = (value: unknown, kind: 'skills' | 'commands') => {
+      for (const rel of typeof value === 'string' ? [value] : Array.isArray(value) ? value : []) {
+        if (typeof rel !== 'string') continue
+        const dir = path.resolve(plugin.dir, rel)
+        if (!dir.startsWith(path.resolve(plugin.dir) + path.sep)) continue
+        roots.push({ dir, kind: kind === 'commands' && rel.endsWith('.md') ? 'file' : kind, prefix })
+      }
+    }
+    add(manifest.skills, 'skills')
+    add(manifest.commands ?? './commands', 'commands')
+  }
+  const found = await collect(roots)
+  // Explicit command files use the same metadata and naming as directory entries.
+  const commands = commandsOf(roots, found.files)
+  for (const f of found.files) {
+    const root = roots[f.root]!
+    if (root.kind !== 'file') continue
+    commands.push(...commandsOf([{ ...root, kind: 'commands' }], [{ ...f, root: 0, rel: path.basename(root.dir) }]))
+  }
+  return { commands, denied: found.denied.length > 0 }
 }
 
 export async function slashCommands(opts: { key: string, fs: MachineFs, exec?: ShellExec | null, home: string, kind: string, cwd: string | null }): Promise<SlashResult> {

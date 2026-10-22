@@ -369,6 +369,13 @@ export function writeScenario(home) {
   write(path.join(api, '.claude/skills/daily-notes/SKILL.md'), '---\nname: daily-notes\ndescription: Write the daily notes of the project\n---\nSteps.\n')
   write(path.join(api, '.claude/commands/daily-check.md'), '# Check the daily build\n')
   write(path.join(demo, '.omp/commands/daily-sync.md'), '---\ndescription: Sync the daily branch\n---\nSync.\n')
+  const ciPlugin = path.join(home, '.claude/plugins/cache/market/circleci/1.0')
+  write(path.join(home, '.claude/settings.json'), JSON.stringify({ enabledPlugins: { 'circleci@market': true } }))
+  write(path.join(home, '.claude/plugins/installed_plugins.json'), JSON.stringify({ version: 2, plugins: {
+    'circleci@market': [{ scope: 'user', installPath: ciPlugin }],
+  } }))
+  write(path.join(ciPlugin, 'skills/build/SKILL.md'), '---\nname: build\ndescription: Inspect the CI build\nargument-hint: <branch>\n---\n')
+  write(path.join(ciPlugin, 'commands/config.md'), '---\ndescription: Validate CI configuration\n---\n')
   // In the .claude/ of a parent folder: Claude Code offers it in every project below.
   write(path.join(home, 'projects/.claude/commands/team-standup.md'), '---\ndescription: Prepare the team standup\n---\nStandup.\n')
 

@@ -69,6 +69,64 @@ describe('"/" commands', () => {
     expect(calls).toBe(1)
   })
 
+  for (const ssh of [false, true]) {
+    it(`Claude plugins${ssh ? ' over SSH' : ''}: enabled install, namespace, scopes and metadata`, async () => {
+      const home = mkdtempSync(path.join(tmpdir(), 'hw-slash-plugins-'))
+      const w = (f: string, t: string) => { mkdirSync(path.dirname(path.join(home, f)), { recursive: true }); writeFileSync(path.join(home, f), t) }
+      const json = (f: string, o: unknown) => w(f, JSON.stringify(o))
+      const cwd = path.join(home, 'repo/src')
+      w('repo/.git/HEAD', 'ref: refs/heads/main')
+      w('repo/src/.keep', '')
+      json('.claude/settings.json', { enabledPlugins: { 'circleci@market': true, 'off@market': true, 'other@market': true } })
+      json('repo/.claude/settings.local.json', { enabledPlugins: { 'off@market': false } })
+      const installPath = path.join(home, 'plugins/circleci')
+      json('.claude/plugins/installed_plugins.json', { version: 2, plugins: {
+        'circleci@market': [{ scope: 'user', installPath }, { scope: 'project', projectPath: path.join(home, 'elsewhere'), installPath: path.join(home, 'plugins/wrong') }],
+        'off@market': [{ scope: 'user', installPath: path.join(home, 'plugins/off') }],
+        'other@market': [{ scope: 'project', projectPath: path.join(home, 'elsewhere'), installPath: path.join(home, 'plugins/other') }],
+        'stale@market': [{ scope: 'user', installPath: path.join(home, 'plugins/stale') }],
+      } })
+      w('plugins/circleci/skills/build/SKILL.md', '---\nname: build\ndescription: Inspect the build\nargument-hint: <branch>\n---\n')
+      w('plugins/circleci/skills/hidden/SKILL.md', '---\nuser-invocable: false\n---\n')
+      w('plugins/circleci/commands/config/validate.md', '---\ndescription: Validate CI config\n---\n')
+      for (const name of ['wrong', 'off', 'other', 'stale']) w(`plugins/${name}/commands/absent.md`, 'Must not appear')
+      let calls = 0
+      const exec: ShellExec = (s, a, o) => { calls++; return shExec(s, a, o) }
+      const result = await slashCommands({ key: `plugins-${ssh}`, fs: localFs, exec: ssh ? exec : null, home, kind: 'claude', cwd })
+      expect(result.find(c => c.name === 'circleci:build')).toMatchObject({ desc: 'Inspect the build', hint: '<branch>', source: 'skill' })
+      expect(result.find(c => c.name === 'circleci:config:validate')).toMatchObject({ desc: 'Validate CI config', source: 'command' })
+      expect(result.some(c => c.name.includes('hidden') || c.name.includes('absent'))).toBe(false)
+      if (ssh) expect(calls).toBeLessThanOrEqual(3)
+    })
+  }
+
+  for (const ssh of [false, true]) {
+    it(`Claude plugin manifest${ssh ? ' over SSH' : ''}: extra paths and project installation override`, async () => {
+      const home = mkdtempSync(path.join(tmpdir(), 'hw-slash-manifest-'))
+      const w = (f: string, t: string) => { mkdirSync(path.dirname(path.join(home, f)), { recursive: true }); writeFileSync(path.join(home, f), t) }
+      const json = (f: string, o: unknown) => w(f, JSON.stringify(o))
+      const cwd = path.join(home, 'repo')
+      w('repo/.git/HEAD', '')
+      json('.claude/settings.json', { enabledPlugins: { 'ci@market': true } })
+      json('.claude/plugins/installed_plugins.json', { version: 2, padding: 'x'.repeat(17000), plugins: {
+        'ci@market': [
+          { scope: 'user', installPath: path.join(home, 'user-plugin') },
+          { scope: 'project', projectPath: cwd, installPath: path.join(home, 'project-plugin') },
+        ],
+      } })
+      w('user-plugin/commands/wrong.md', 'Wrong installation')
+      json('project-plugin/.claude-plugin/plugin.json', { skills: ['./extra/'], commands: ['./actions/run.md', '../outside/'] })
+      w('project-plugin/skills/base/SKILL.md', '---\nname: base\n---\n')
+      w('project-plugin/extra/extra/SKILL.md', '---\nname: extra\n---\n')
+      w('project-plugin/actions/run.md', '---\ndescription: Run checks\nargument-hint: [target]\n---\n')
+      w('project-plugin/commands/ignored.md', 'Manifest replaces the default commands directory')
+      w('outside/escape.md', 'Outside the plugin')
+      const result = await slashCommands({ key: `manifest-${ssh}`, fs: localFs, exec: ssh ? shExec : null, home, kind: 'claude', cwd })
+      expect(result.filter(c => c.name.startsWith('ci:')).map(c => c.name)).toEqual(['ci:base', 'ci:extra', 'ci:run'])
+      expect(result.find(c => c.name === 'ci:run')).toMatchObject({ desc: 'Run checks', hint: '[target]' })
+    })
+  }
+
   it('SSH machine: a refused session is retried once; two refusals throw and are not cached', async () => {
     const home = mkdtempSync(path.join(tmpdir(), 'hw-slash-retry-'))
     mkdirSync(path.join(home, '.claude/skills/notes'), { recursive: true })
