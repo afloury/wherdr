@@ -37,8 +37,11 @@ const coordinator = ref(false)
 const links = useBoardLinks()
 const repoPick = ref('')
 const repos = computed(() => links.value.find(m => m.machine === machine.value)?.repos || [])
-const repoItems = computed(() => [...repos.value.map(r => ({ label: r.repo, value: r.root || r.repo })), { label: tl('Other repository…', 'Autre dépôt…'), value: '__other' }])
-const project = computed(() => repoPick.value === '__other' ? dir.value : repoPick.value)
+// A known repo's name is its coordinator key; its root would name another coordinator.
+const repoItems = computed(() => [...repos.value.map(r => ({ label: r.repo, value: r.repo })), { label: tl('Other repository…', 'Autre dépôt…'), value: '__other' }])
+const project = computed(() => repoPick.value === '__other'
+  ? repos.value.find(r => r.root === dir.value)?.repo || dir.value
+  : repoPick.value)
 const shell = computed(() => kind.value === 'shell')
 const canResume = computed(() => kind.value === 'claude' || kind.value === 'codex')
 

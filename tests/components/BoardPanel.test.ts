@@ -40,6 +40,19 @@ async function panel(reachable = true, to: To = { kind: 'main' }) {
 describe('the Board panel follows its coordinator', () => {
   afterEach(() => { vi.useRealTimers(); holding = false; waiting.length = 0; herdrState.value = { ok: false, workspaces: [], panes: [] }; status = { pane: 'w1:p1', state: 'idle' }; asked = 0; posted.length = 0 })
 
+  it('opens the existing known project conversation from New without a first-message form or a POST', async () => {
+    status = { pane: 'w2:p1', state: 'idle' }
+    setPanes(['w2:p1'])
+    const { w, vm } = await panel(true, { kind: 'project', repo: 'demo' })
+    try {
+      await w.setProps({ target: { machine: '', kind: 'coordinator', to: { kind: 'project', repo: 'demo' }, freshProject: true } })
+      await vi.waitFor(() => expect(vm.coordShown).toBe('w2:p1'))
+      expect(w.find('#board-panel-first').exists()).toBe(false)
+      expect(w.find('#coordinator-agent').exists()).toBe(false)
+      expect(posted).toEqual([])
+    } finally { w.unmount() }
+  })
+
   it('keeps the first message empty and sends launch choices only for a new project', async () => {
     status = { pane: null, state: 'none' }
     const { w } = await panel(true, { kind: 'project', repo: '/repos/new-demo' })

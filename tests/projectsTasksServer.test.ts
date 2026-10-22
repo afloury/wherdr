@@ -852,6 +852,20 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     expect(calls).toEqual([])
   })
 
+  it('opens and tells a known repo by its coordinator key without creating another conversation', async () => {
+    const to = { kind: 'project', repo: 'demo' }
+    // The CLI keys coordinators by the --project value: a root path is a different key.
+    coordStatus = { '--project=demo': { state: 'idle', pane: 'w2:p1' } }
+    panes.push({ id: 'w2:p1', machine: '', name: 'sw-coordinator-demo' })
+    expect((await T.coordinatorPane('', to)).pane).toBe('w2:p1')
+    await T.tellCoordinator('', 'Continue the project', { to, start: { agent: 'codex' } })
+    expect(calls).toEqual([
+      ['coordinator', '--project=demo', '--json', 'status'],
+      ['coordinator', '--project=demo', '--json', 'status'],
+      ['coordinator', '--project=demo', '--', 'tell', 'Continue the project'],
+    ])
+  })
+
   it('sends an unknown repository path and configures only a coordinator that does not exist', async () => {
     const to = { kind: 'project', repo: '~/repos/new demo' }
     await T.tellCoordinator('', '--hello', { to, start: { agent: 'codex/demo-model', effort: 'high' } })

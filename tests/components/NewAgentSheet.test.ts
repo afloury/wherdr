@@ -26,12 +26,16 @@ describe('New project coordinator', () => {
     newAgentOpen.value = true
     await flushPromises()
     await w.get('[data-kind="coordinator"]').trigger('click')
-    const vm = w.vm as unknown as { repoItems: { value: string }[], repoPick: string, project: string, launch: () => Promise<void> }
-    expect(vm.repoItems.map(r => r.value)).toEqual(['/repos/demo', '__other'])
-    expect(vm.project).toBe('/repos/demo')
+    const vm = w.vm as unknown as { repoItems: { value: string }[], repoPick: string, dir: string, project: string, launch: () => Promise<void> }
+    expect(vm.repoItems.map(r => r.value)).toEqual(['demo', '__other'])
+    expect(vm.project).toBe('demo')
+    await vm.launch()
+    expect(navigate).toHaveBeenLastCalledWith({ path: '/board', query: { machine: '', coordinator: 'demo' } })
     expect(w.find('#newPrompt').exists()).toBe(false)
     expect(w.find('#newName').exists()).toBe(false)
     vm.repoPick = '__other'
+    vm.dir = '/repos/demo'
+    expect(vm.project).toBe('demo')
     await flushPromises()
     await w.get('.dir-pick').trigger('click')
     await w.get('.choose-demo').trigger('click')
@@ -51,12 +55,14 @@ describe('New project coordinator', () => {
     const w = await mountSuspended(NewAgentSheet, { global: { stubs } })
     newAgentOpen.value = true
     await flushPromises()
-    const vm = w.vm as unknown as { machine: string, repoPick: string, project: string, launch: () => Promise<void> }
+    const vm = w.vm as unknown as { machine: string, repoPick: string, dir: string, project: string, launch: () => Promise<void> }
     await vi.waitFor(() => expect(w.find('[data-machine="remote"]').exists()).toBe(true))
     await w.get('[data-machine="remote"]').trigger('click')
     await flushPromises()
     await w.get('[data-kind="coordinator"]').trigger('click')
-    expect(vm.project).toBe('/srv/demo')
+    expect(vm.project).toBe('remote-demo')
+    await vm.launch()
+    expect(navigate).toHaveBeenLastCalledWith({ path: '/board', query: { machine: 'remote', coordinator: 'remote-demo' } })
     vm.repoPick = '__other'
     await flushPromises()
     await w.get('.dir-pick').trigger('click')
