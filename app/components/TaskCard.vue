@@ -6,13 +6,14 @@
 // share a list. The whole card opens the task; its pull request link opens
 // the pull request.
 import { type TaskRow, prNumber, taskKey } from '#shared/projectsTasks'
-import { blockKind, blockKindLabel, prLink, shortText } from '~/utils/blockNotice'
+import { blockKind, blockKindLabel, prLink } from '~/utils/blockNotice'
 
 const props = defineProps<{ task: TaskRow, status?: boolean, machine?: string, stale?: boolean, readAt?: string }>()
 defineEmits<{ open: [] }>()
 
 const waitKind = computed(() => (props.task.group === 'needs' ? blockKind(props.task.kind) : null))
-const line = computed(() => shortText(props.task.msg || ''))
+// One line: its words with their links kept (LinkedText shortens them).
+const line = computed(() => (props.task.msg || '').replace(/\s+/g, ' ').trim())
 const pr = computed(() => props.task.pr || prLink(props.task.msg || ''))
 const meta = computed(() => [props.task.app, props.task.progress !== null && props.task.group === 'working' ? `${props.task.progress}%` : ''].filter(Boolean))
 const staleTitle = computed(() => (props.stale
@@ -34,7 +35,7 @@ const staleTitle = computed(() => (props.stale
     </span>
     <span v-if="line" class="board-note task-card-msg" :title="task.msg">
       <span v-if="waitKind" class="task-needs-type" :data-kind="waitKind">{{ blockKindLabel(waitKind) }}</span>
-      <span class="task-card-msg-text">{{ line }}</span>
+      <span class="task-card-msg-text"><LinkedText :text="line" /></span>
     </span>
     <span v-if="meta.length || task.review" class="task-chips">
       <span v-for="m in meta" :key="m" class="task-chip">{{ m }}</span>

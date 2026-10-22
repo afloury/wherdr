@@ -87,6 +87,12 @@ async function shows(page: Page, text: string, where = '.task-needs-type') {
   }).toPass({ timeout: 25_000 })
 }
 
+// The element a tap on the middle of this link reaches is the link itself.
+const top = (l: import('@playwright/test').Locator) => l.evaluate((a) => {
+  const r = a.getBoundingClientRect()
+  return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === a
+})
+
 async function desktopShot(page: Page, file: string) {
   const phone = page.viewportSize()!
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -104,10 +110,23 @@ test('Board card: the wait on one line, its pull request beside the title', asyn
   const pr = card.locator('.task-card-title a.task-card-pr')
   await expect(pr).toHaveText('PR #484')
   await expect(pr).toHaveAttribute('href', PR)
+  expect(await top(pr)).toBe(true)
   await page.screenshot({ path: `.shots/needs-card-${testInfo.project.name}.png` })
   await desktopShot(page, '.shots/needs-card-desktop.png')
   await card.click()
   await expect(page.locator('.board-panel .task-needs')).toBeVisible()
+})
+
+test('Board card: any link of its message is a link, above the card', async ({ page }) => {
+  write({ ...task, msg: 'Use https://example.com/settings or keep it?' })
+  const link = page.locator('.task-card-msg-text a[href="https://example.com/settings"]')
+  await expect(async () => {
+    await page.goto('about:blank')
+    await page.goto('/#/board')
+    await expect(link).toHaveText('example.com/settings', { timeout: 2000 })
+  }).toPass({ timeout: 25_000 })
+  await expect(link).toHaveAttribute('target', '_blank')
+  expect(await top(link)).toBe(true)
 })
 
 test('a question: one line, its answers as buttons, See ↓ to its message', async ({ page }, testInfo) => {
@@ -160,6 +179,11 @@ test('a permission: Allow, Always allow, Refuse; a sign-in: Open terminal (Frenc
   await desktopShot(page, '.shots/needs-permission-fr-desktop.png')
   await banner.getByRole('button', { name: 'Refuser' }).click()
   await expect.poll(() => fs.existsSync(path.join(root, 'told')) && fs.readFileSync(path.join(root, 'told'), 'utf8')).toBe('Refusé : ne le fais pas.')
+
+  // A sentence that only uses the word offers no permanent permission.
+  write({ ...task, kind: 'permission', msg: 'Ce script supprime toujours les données de test. Autoriser cette seule exécution ?' })
+  await shows(page, 'Ce script supprime toujours les données de test. Autoriser cette seule exécution ?', '.task-needs-text')
+  await expect(banner.locator('.task-needs-actions button')).toHaveText(['Autoriser', 'Refuser'])
 
   write({ ...task, kind: 'auth', msg: 'Need a GitHub login to open the PR' })
   await shows(page, 'Connexion')

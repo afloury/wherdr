@@ -115,7 +115,16 @@ export function blockChoices(msg: string): BlockChoice[] {
 }
 
 // A permission its agent also offers to give for good.
-export const offersAlways = (msg: string) => /\b(?:always|toujours)\b/i.test(msg)
+// Only when "always" is offered as an answer: in its closing group of answers
+// ("(yes / always / no)"), as "always allow" / "toujours autoriser", or as an
+// alternative ("…, or always?"). A sentence that merely uses the word
+// ("this script always deletes…") offers nothing.
+const ALWAYS_ITEM = /^(?:always|toujours)(?:\s+(?:allow|autoriser))?$/i
+const ALWAYS_OFFER = /\b(?:always\s+allow|allow\s+always|toujours\s+autoriser|autoriser\s+toujours|(?:or|ou)\s+(?:always|toujours)\s*[?.!)\]]?\s*$)/i
+export function offersAlways(msg: string): boolean {
+  if (grouped(msg).some(c => ALWAYS_ITEM.test(c.label))) return true
+  return msg.split('\n').some(line => ALWAYS_OFFER.test(line.trim()))
+}
 
 // What Allow, Refuse and Always allow send.
 export function permissionReply(answer: 'allow' | 'refuse' | 'always'): string {

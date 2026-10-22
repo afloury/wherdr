@@ -4029,6 +4029,8 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 .task-card-msg { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; white-space: nowrap; }
 .task-card-msg .task-needs-type { font-size: 9.5px; }
 .task-card-msg-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Its links sit above the card's button, as its PR link does. */
+.task-card-msg-text a { position: relative; z-index: 2; }
 
 .board-note { margin: 0; font: 11px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
 .board-note.error { color: var(--rose); }

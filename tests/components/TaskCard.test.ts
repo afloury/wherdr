@@ -13,6 +13,15 @@ describe('TaskCard', () => {
     expect(line.find('.task-card-msg-text').text()).toBe('Merge PR #484 or wait?')
     expect(line.attributes('title')).toContain('https://github.com/acme/app/pull/484')
   })
+  it('every link of its message is clickable, short, above the card', async () => {
+    const w = await mountSuspended(TaskCard, { props: { task: row({ msg: 'Which endpoint should we use? https://example.com/settings' }) } })
+    const a = w.find('.task-card-msg-text a[href="https://example.com/settings"]')
+    expect(a.exists()).toBe(true)
+    expect(a.text()).toBe('example.com/settings')
+    expect(a.attributes('target')).toBe('_blank')
+    await a.trigger('click')
+    expect(w.emitted('open')).toBeUndefined()
+  })
   it('puts its pull request beside the title, as a link', async () => {
     const w = await mountSuspended(TaskCard, { props: { task: row({ msg: 'See https://github.com/acme/app/pull/484.' }) } })
     const pr = w.find('.task-card-title a.task-card-pr')
