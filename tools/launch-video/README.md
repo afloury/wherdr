@@ -2,7 +2,7 @@
 
 A silent 15-second marketing animation: big Archivo headlines, Titanium grid,
 zooming desktop screenshots, an animated PC-to-phone handoff, one-tap approval,
-Project tasks, Board, and a wherdr.dev end card. The square cut is 1080×1080; the
+the compact agent list with a project's tasks, Board, and a wherdr.dev end card. The square cut is 1080×1080; the
 wide cut reflows the composition to 1920×1080. Both are H.264 at 30 fps.
 The README uses an infinitely looping 720×720 animated WebP sampled at 15 fps.
 
@@ -22,7 +22,8 @@ On a shared host, hold the heavy-job lock and use low priority:
 flock /tmp/wherdr-heavy.lock nice -n 15 node tools/launch-video/render.mjs
 ```
 
-The script checks that `app/` and `nuxt.config.ts` match `origin/main`, builds
+The script checks that `app/` and `nuxt.config.ts` match `origin/main` (another
+branch with `WHERDR_FILM_BASE`, e.g. `WHERDR_FILM_BASE=origin/v2`), builds
 `npm run build:demo`, captures actual interactions, verifies every source PNG's
 SHA-256, then renders the HTML/GSAP stage with HyperFrames 0.8.169 (one worker,
 low-memory mode, no GPU). FFmpeg adds source metadata and makes the WebP.

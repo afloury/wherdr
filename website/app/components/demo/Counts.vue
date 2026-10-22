@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// The three counters at the top of wherdr's agent list (app/components/HomeView.vue
-// `stats`): your turn, working, ready (done + idle); zeros dimmed.
+// The counters at the top of wherdr's agent list (app/components/HomeView.vue
+// `stats`), on one strip as in the compact list: your turn, working, ready
+// (done + idle); zeros dimmed.
 import type { AgentState } from '~/utils/demoScript'
 
 const props = defineProps<{ agents: readonly { state: AgentState }[] }>()

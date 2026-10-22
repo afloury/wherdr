@@ -28,12 +28,39 @@ export type DemoAgent = {
   state: AgentState
   model: string
   effort?: string
-  /** Last line of its conversation (card preview). */
+  /** Last line of its conversation: the question its line opens on when it waits for you. */
   line: string
-  /** Role in a project: COORDINATOR, T-0001. */
+  /** A project task's key (SHOP-15), before its title. */
   tag?: string
-  /** Folder, under the state. */
-  where?: string
+  /** A project task's progress and time ("40% 24m"). */
+  stats?: string
+}
+/** A herdr-projects repo in the list (app/components/ProjectGroup.vue): its coordinator's row, then its tasks. */
+export type DemoProject = {
+  repo: string
+  /** Its coordinator's state. */
+  coordinator: AgentState
+  branch?: string
+  tasks: readonly DemoAgent[]
+}
+
+/** The other agents of the list by state, as HomeView.vue groups them: your turn, working, ready (done or idle); empty groups left out. */
+export function listGroups(agents: readonly DemoAgent[]) {
+  return [
+    { key: 'blocked', title: 'Your turn', list: agents.filter(a => a.state === 'blocked') },
+    { key: 'working', title: 'Working', list: agents.filter(a => a.state === 'working') },
+    { key: 'ready', title: 'Ready', list: agents.filter(a => a.state === 'done' || a.state === 'idle') },
+  ].filter(g => g.list.length)
+}
+
+/** A project's bar (ProjectGroup.vue): "2 tasks · 1 your turn · 1 working", counts of zero left out. */
+export function projectSummary(tasks: readonly DemoAgent[]) {
+  const n = (s: AgentState) => tasks.filter(t => t.state === s).length
+  return [
+    { key: 'all', text: `${tasks.length} tasks` },
+    { key: 'blocked', text: `${n('blocked')} your turn`, n: n('blocked') },
+    { key: 'working', text: `${n('working')} working`, n: n('working') },
+  ].filter(p => p.n !== 0)
 }
 
 /** Problems that would make a script play wrong (empty when it is sound). */
