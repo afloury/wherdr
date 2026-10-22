@@ -16,6 +16,7 @@ afterEach(() => { for (const h of homes.splice(0)) rmSync(h, { recursive: true, 
 function workspace(version = '2.0.0-dev', pkgVersion = version) {
   const home = mkdtempSync(path.join(os.tmpdir(), 'wherdr-prerelease-'))
   homes.push(home)
+  writeFileSync(path.join(home, 'CHANGELOG.md'), '# Changelog\n\n## [Unreleased]\n\n- Downloads now work reliably. Temporary links are cleaned up after each download.\n')
   writeFileSync(path.join(home, 'herdr-plugin.toml'), `id = "example.wherdr"\nversion = "${version}"\n`)
   writeFileSync(path.join(home, 'package.json'), JSON.stringify({ name: 'wherdr', version: pkgVersion }))
   return home
@@ -74,8 +75,20 @@ describe.skipIf(!hasCommands('bash', 'tar'))('package', () => {
     execFileSync(process.execPath, ['bin/lib/verify-release.mjs', tgz, `${tgz}.sha256`])
     expect(readFileSync(path.join(home, 'out/COMMIT'), 'utf8')).toBe(`${SHA}\n`)
     const notes = readFileSync(path.join(home, 'out/prerelease-notes.md'), 'utf8')
+    expect(notes).toContain("## Update")
+    expect(notes).toContain("Downloads now work reliably.")
+    expect(notes).toContain(`/blob/${SHA}/CHANGELOG.md`)
     expect(notes).toContain(SHA)
     expect(notes).toMatch(/never marked latest/)
+  })
+
+  it('refuses to package link-only prerelease notes when Unreleased has no changes', () => {
+    const home = workspace()
+    const tgz = archive(home)
+    writeFileSync(path.join(home, 'CHANGELOG.md'), '# Changelog\n## [Unreleased]\n')
+    const result = run(home, ['package', tgz, SHA])
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('Unreleased entries')
   })
 
   for (const [name, opts] of [

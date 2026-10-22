@@ -108,10 +108,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -o pipefail
           version="${GITHUB_REF_NAME#v}"
           sha256sum "wherdr-${version}.tgz" > "wherdr-${version}.tgz.sha256"
           test "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)" = true
-          test -n "$(gh release view "$GITHUB_REF_NAME" --json body --jq '.body | gsub("\\s"; "")')"
+          gh release view "$GITHUB_REF_NAME" --json body --jq .body | node scripts/check-release-notes.mjs
           gh release upload "$GITHUB_REF_NAME" "wherdr-${version}.tgz" "wherdr-${version}.tgz.sha256" --clobber
 
   publish-release:
@@ -121,12 +122,17 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - name: Publish without advancing the legacy update channel
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -o pipefail
           test "$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
-          test -n "$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json body --jq '.body | gsub("\\s"; "")')"
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json body --jq .body | node scripts/check-release-notes.mjs
           gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
 
   homebrew:

@@ -9,9 +9,12 @@ Publishing (`npm.yml`), and the tap uses the existing optional `HOMEBREW_TAP_TOK
 2. Set the same version in `package.json`, `package-lock.json` and `herdr-plugin.toml`.
    Move the Unreleased changelog into a dated version entry. Run tests, typecheck and leak
    checks; review and merge this version commit before tagging it.
-3. Create the GitHub release as a **draft**, with reviewed, nonempty English notes under New / Improved /
-   Fixed / Update. Push its version tag only after these notes are ready. The workflow fails
-   if this draft or its notes are missing; it never creates or publishes generated notes.
+3. Create the GitHub release as a **draft**, with reviewed English notes under one or more of New / Improved /
+   Fixed / Update. Write at least two readable sentences explaining what changed for users,
+   then link to the tagged CHANGELOG.md (see the example below). A link alone, including
+   "See CHANGELOG.md", is never sufficient. Push its version tag only after these notes are ready.
+   The workflow validates the draft before attaching the package and again immediately before
+   publication; missing or insufficient notes fail the job. It never generates stable release notes.
 4. The tag starts `release.yml` and `npm.yml` independently. `release.yml` builds a multiarch
    Docker image and runs `npm pack` (prepack builds Nitro, includes `skills/wherdr`, resolves
    linked packages). It attaches `wherdr-X.Y.Z.tgz` and `wherdr-X.Y.Z.tgz.sha256` to the draft.
@@ -57,6 +60,28 @@ marker is left alone. GitHub disables scheduled workflows in public repositories
 without repository activity. Check that `release-ready.yml` remains enabled; re-enable it and
 run it manually if needed. After re-enabling, workflow-completion and manual checks work too.
 
+## Release notes checklist
+
+- Summarize the changes in English under `## New`, `## Improved`, `## Fixed` or `## Update`;
+  omit categories with no relevant changes. Use complete sentences, at least two in total
+  (at least twelve words), describing the user-visible behavior and any required upgrade action.
+- Put the full changelog link after the summary, using the release tag rather than `main`.
+- Review the text against that version's changelog. The automated check enforces structure
+  and minimum content; the reviewer checks accuracy and clarity.
+- Validate the exact draft text locally before pushing the tag:
+  `GITHUB_REPOSITORY=example/wherdr GITHUB_REF_NAME=vX.Y.Z node scripts/check-release-notes.mjs < /tmp/wherdr-X.Y.Z.md`.
+  If the workflow refuses the notes, edit the draft and rerun the failed jobs.
+
+Example (replace `example/wherdr` and the version, and describe the actual release):
+
+```markdown
+## Improved
+File downloads now work with the supported Node versions. Temporary download links
+are released after the browser saves the file, keeping repeated downloads reliable.
+
+[Full changelog](https://github.com/example/wherdr/blob/vX.Y.Z/CHANGELOG.md)
+```
+
 ## Rolling v2 prerelease
 
 `v2-prerelease.yml` rebuilds one prerelease on every push to the `v2` branch, so a machine
@@ -74,6 +99,10 @@ It publishes the version of `herdr-plugin.toml` (today `2.0.0-dev`) as `v<versio
 - `COMMIT` holds the full SHA of the packaged commit, also written in the notes. It is removed
   before the archive is replaced and attached last: when `COMMIT` is there and names the
   branch head, the archive is that commit's.
+
+The rolling notes start with an Update summary of the first three top-level Unreleased
+changelog entries and a link to the changelog at the packaged commit, followed by build
+metadata. Keep these entries readable and current; packaging fails if they are absent or fail the same minimum-content check.
 
 `scripts/prerelease.sh` does the checks and the publication. It refuses a version without a
 prerelease suffix (`X.Y.Z-something`) and a release of that tag that is not a published
@@ -101,7 +130,8 @@ gh pr create --base main --head release/1.3.3 --title "Prepare release 1.3.3" --
 # Open, review and merge the version PR; refresh main before continuing.
 git switch main
 git pull --ff-only
-# Write reviewed English New / Improved / Fixed / Update notes to /tmp/wherdr-1.3.3.md.
+# Write reviewed English notes and the tagged changelog link to /tmp/wherdr-1.3.3.md.
+GITHUB_REPOSITORY="$(gh repo view --json nameWithOwner -q .nameWithOwner)" GITHUB_REF_NAME=v1.3.3 node scripts/check-release-notes.mjs < /tmp/wherdr-1.3.3.md
 gh release create v1.3.3 --target "$(git rev-parse HEAD)" --draft --title "wherdr 1.3.3" --notes-file /tmp/wherdr-1.3.3.md
 git tag v1.3.3
 git push origin v1.3.3
