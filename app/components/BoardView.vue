@@ -21,8 +21,9 @@
 // A machine without herdr-projects 1.2.1+ says what to do instead
 // (ProjectsUpgradeNote).
 //
-// What is kept on this device only: the machine shown, the grouping, folded
-// headings, Done shown or not. Nothing about the projects themselves: that is herdr-projects'.
+// Kept on this device: the machine shown and the phone's column. Kept on the
+// server (they follow the user): the grouping, folded headings, Done shown or
+// not. Nothing about the projects themselves: that is herdr-projects'.
 import {
   type CoordinatorTarget, TASK_GROUPS, type TaskGroup, type TaskRow, groupCounts, sortTasks, taskKey,
 } from '#shared/projectsTasks'
@@ -79,10 +80,11 @@ const shownBoards = computed(() => boards.value.filter(m => inScope(m.machine)))
 
 // `global` was stored as `status` before it was renamed.
 type Grouping = 'repo' | 'global'
-const grouping = ref<Grouping>(['global', 'status'].includes(readStore(GROUPING_KEY) || '') ? 'global' : 'repo')
+// Kept on the server, like Done and the folds below: they follow the user
+// across devices (useSyncedSettings.ts).
+const grouping = syncedRef<Grouping>(GROUPING_KEY, raw => (['global', 'status'].includes(raw || '') ? 'global' : 'repo'), g => g)
 function pickGrouping(g: Grouping) {
   grouping.value = g
-  writeStore(GROUPING_KEY, g)
 }
 
 interface Card { key: string, machine: string, task: TaskRow, stale: boolean, readAt?: number }
@@ -106,13 +108,12 @@ watch(board, (b) => {
 // A machine Herdr did not answer for keeps its last tasks, marked as older.
 const allCards = computed<Card[]>(() => boards.value.flatMap(m => sortTasks(m.tasks.filter(t => !t.archived && !archivedHere.value.has(`${m.machine}|${t.id}`))).map(task => cardOf(m, task))))
 const cards = computed(() => allCards.value.filter(c => inScope(c.machine)))
-// Done: hidden until asked for, on this device; shown, its latest few until "N more".
-const showDone = ref(boardDoneShown(readStore(BOARD_DONE_KEY)))
+// Done: hidden until asked for; shown, its latest few until "N more".
+const showDone = syncedRef(BOARD_DONE_KEY, boardDoneShown, boardDoneStored)
 const showAll = ref(false)
 const doneCount = computed(() => cards.value.filter(c => c.task.group === 'done').length)
 function toggleDone() {
   showDone.value = !showDone.value
-  writeStore(BOARD_DONE_KEY, boardDoneStored(showDone.value))
   if (!showDone.value) showAll.value = false
   // Phone: what was asked for comes into view.
   else if (!wide.value) selectColumn('done')
@@ -131,13 +132,18 @@ const columns = computed(() => groups.value.map((id) => {
 // As many columns as groups shown, of equal width.
 const gridStyle = computed(() => ({ '--board-cols': `repeat(${columns.value.length}, minmax(0, 1fr))` }))
 
-// Folded headings (`m:<machine>`, `r:<machine>|<repo>`), on this device.
-const folds = ref(new Set<string>((() => { try { return JSON.parse(readStore(FOLDS_KEY) || '[]') as string[] } catch { return [] } })()))
+// Folded headings (`m:<machine>`, `r:<machine>|<repo>`).
+const readFolds = (raw: string | null) => {
+  try {
+    const v: unknown = JSON.parse(raw || '[]')
+    return new Set<string>(Array.isArray(v) ? v.map(String) : [])
+  } catch { return new Set<string>() }
+}
+const folds = syncedRef(FOLDS_KEY, readFolds, v => JSON.stringify([...v].slice(-200)))
 function fold(key: string) {
   const next = new Set(folds.value)
   if (!next.delete(key)) next.add(key)
   folds.value = next
-  writeStore(FOLDS_KEY, JSON.stringify([...next].slice(-200)))
 }
 
 // What a heading holds, in a few words: what needs you first; done last, and quietly.

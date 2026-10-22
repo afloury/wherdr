@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 
 // Agent list header: at the minimum sidebar width the buttons must stay inside the
 // row. No plugin button there: plugin actions are in the machine row's "…" menu.

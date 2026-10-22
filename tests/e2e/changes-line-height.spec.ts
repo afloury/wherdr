@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { OMP_CHAT_PANE } from './scenario.mjs'
 
 // One diff line is one line on screen: the comment gutter must not stretch a

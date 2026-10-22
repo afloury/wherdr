@@ -1,11 +1,12 @@
 // Done on the Board. The Board is for the work in progress: Done is history, so
 // it is hidden by default, in both views, on a phone and on a computer. One
-// toggle ("Done · 9") shows it and hides it again; the choice is kept on the
-// device. Shown, it follows herdr-projects' rule: newest first, only the latest
-// few, then "N more" (herdr-projects docs/board.md, "The list: five groups").
+// toggle ("Done · 9") shows it and hides it again; the choice follows the user
+// across devices (kept on the server). Shown, it follows herdr-projects' rule:
+// newest first, only the latest few, then "N more" (herdr-projects
+// docs/board.md, "The list: five groups").
 import { TASK_GROUPS, type TaskGroup, type TaskRow, newerFirst } from '../../shared/projectsTasks'
 
-// The device's choice: '1' shown, anything else (nothing stored) hidden.
+// The choice: '1' shown, anything else (nothing stored) hidden.
 export const BOARD_DONE_KEY = 'boardDone'
 export const boardDoneShown = (stored: string | null | undefined) => stored === '1'
 export const boardDoneStored = (shown: boolean) => (shown ? '1' : '0')

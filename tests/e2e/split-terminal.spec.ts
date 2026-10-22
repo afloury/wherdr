@@ -1,4 +1,4 @@
-import { type Locator, type Page, expect, test } from '@playwright/test'
+import { type Locator, type Page, expect, test } from './test'
 import { SPLIT_CHAT_PANE, SPLIT_SHELL_PANE, SPLIT_TAB, fakeHerdr } from './scenario.mjs'
 
 // Every visible terminal stays connected and fitted to its cell. Focus routes

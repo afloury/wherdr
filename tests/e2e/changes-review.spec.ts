@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from './test'
 import { OMP_CHAT_PANE } from './scenario.mjs'
 
 // Review comments in Changes: on one line or on a block of lines, started from

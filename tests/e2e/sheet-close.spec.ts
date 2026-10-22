@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { OMP_CHAT_PANE } from './scenario.mjs'
 
 // Phone only: on a computer the menu is a dropdown, not a bottom sheet.
