@@ -88,6 +88,33 @@ describe('SSH session refusals', () => {
     await online(m)
   }, 45000)
 
+  it('an accepted terminal ends the refusal streak: refusals between successes never reconnect', async () => {
+    const { m } = startMachine()
+    await online(m)
+    // The upload purge run after connecting must not meet the refusals below.
+    await vi.waitFor(() => expect(sshLog()).toContain('session ok'), { timeout: 10000, interval: 20 })
+    const first = m.ctl
+    const term = async () => {
+      const child = m.spawnHerdr(['terminal', 'session', 'control', 'p1'])
+      child.stdout.resume()
+      await new Promise(res => child.on('close', res))
+    }
+    const streaks: number[] = []
+    for (let i = 0; i < 3; i++) {
+      fs.writeFileSync(path.join(dir, 'refuse'), '')
+      await term()
+      streaks.push(m.gate.stats().streak)
+      fs.rmSync(path.join(dir, 'refuse'))
+      await term()
+      streaks.push(m.gate.stats().streak)
+    }
+    expect(streaks).toEqual([1, 0, 1, 0, 1, 0])
+    await new Promise(res => setTimeout(res, 300))
+    expect(m.status).toBe('online')
+    expect(m.ctl).toBe(first)
+    expect(masters().length).toBe(1)
+  }, 45000)
+
   it('stops a master left behind by a previous wherdr and removes its control socket', async () => {
     fs.mkdirSync(runtime, { recursive: true })
     const old = path.join(runtime, 'abcd1234.ctl')

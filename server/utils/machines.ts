@@ -341,17 +341,24 @@ export class RemoteMachine implements Machine {
   }
 
   // Long-lived session in the budget; a refused one counts in the streak
-  // (a terminal retrying alone must also bring the connection back).
+  // (a terminal retrying alone must also bring the connection back), an
+  // accepted one ends it.
   private stream(cmd: string): ChildProcessWithoutNullStreams {
     const child = spawn(SSH_BIN, [...this.muxArgs(), '--', this.target, cmd], { stdio: ['pipe', 'pipe', 'pipe'] })
     const close = this.gate.openStream()
     let err = ''
     let opened = false
-    child.stdout.once('data', () => { opened = true })
+    child.stdout.once('data', () => {
+      opened = true
+      this.gate.accepted()
+    })
     child.stderr.on('data', (b: Buffer) => { if (err.length < 4000) err += b.toString('utf8') })
     child.on('close', (code) => {
       close()
-      if (!opened && code === 255 && isRefused(err)) this.gate.refused()
+      if (opened) return
+      // A session that ran (any end but ssh's own 255) was accepted too.
+      if (code === 255 && isRefused(err)) this.gate.refused()
+      else if (code !== null && code !== 255) this.gate.accepted()
     })
     child.on('error', close)
     return child
