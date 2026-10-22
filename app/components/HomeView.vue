@@ -310,11 +310,15 @@ const renameMachineOpen = computed({
   get: () => Boolean(renamingMachine.value),
   set: (open: boolean) => { if (!open) renamingMachine.value = null },
 })
+const connectionMachine = ref<MachineInfo | null>(null)
+const connectionInfo = computed(() => machines.value.find(m => m.key === connectionMachine.value?.key) ?? connectionMachine.value)
+const connectionOpen = computed({ get: () => !!connectionMachine.value, set: (v: boolean) => { if (!v) connectionMachine.value = null } })
 function machineMenu(m: MachineInfo) {
   const items: MenuItem[] = [{ label: t('Herdr sessions'), icon: 'i-lucide-layers', run: () => openSessions(m) }, { label: t('Rename'), icon: 'i-lucide-pencil', run: () => {
     renamingMachine.value = m
     machineLabel.value = m.label
   } }]
+  if (!m.local) items.push({ label: t('Connection status'), icon: 'i-lucide-plug', run: () => { connectionMachine.value = m } })
   if (multiMachine.value) {
     const key = baseKeyOf(m)
     const at = visibleKeys.value.indexOf(key)
@@ -708,6 +712,9 @@ function resetListWidth() {
         {{ t('New') }}
       </UButton>
     </div>
+    <AppSheet v-model:open="connectionOpen" :title="t('Connection status')" screen>
+      <MachineConnection v-if="connectionInfo" :machine="connectionInfo" />
+    </AppSheet>
     <AppSheet v-model:open="renameMachineOpen" :title="t('Rename machine')" screen>
       <form id="rename-machine-form" class="rename" @submit.prevent="saveMachine">
         <UInput v-model="machineLabel" maxlength="40" size="xl" class="w-full" :placeholder="t('Machine name')" autofocus />

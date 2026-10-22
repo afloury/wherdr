@@ -1,6 +1,6 @@
 // "Shift + drag" hint: while the program has taken the mouse, on a
-// mouse screen, until it is hidden (once and for all). Herdr does not
-// pass the mouse mode on (mouse_capture: false): a safeguard if that changes.
+// mouse screen, until it is hidden (once and for all). Structured mouse input
+// also requires Shift for local selection, even without xterm mouse mode.
 import type { Terminal } from '@xterm/xterm'
 
 const HINT_KEY = 'wherdr.mouse-selection-hint.dismissed'
@@ -16,8 +16,8 @@ export function useTerminalSelectionHint() {
   const mouseMode = ref(false)
   const fine = typeof matchMedia !== 'undefined' && matchMedia('(hover: hover) and (pointer: fine)').matches
   const visible = computed(() => fine && mouseMode.value && !dismissed.value)
-  function refresh(term: Terminal) {
-    mouseMode.value = term.modes.mouseTrackingMode !== 'none'
+  function refresh(term: Terminal, structuredMouse = false) {
+    mouseMode.value = structuredMouse || term.modes.mouseTrackingMode !== 'none'
   }
   function dismiss() {
     dismissed.value = true
