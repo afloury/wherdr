@@ -24,7 +24,7 @@ import { parseUsageLimit, type UsageLimit } from '../../shared/usageLimit'
 import { classifyScreen, type ScreenInteraction } from '../../shared/interactiveScreen'
 import { parseClaudeActivity } from './activity'
 import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './claudeScreen'
-import { type QueueEntry, HOLD_AGENTS, INPUT_STATES, checkQueue, giveBackHeld, isUploadLine, landed, leftForGood, lookForLeftMenu, QUEUED_TEXT_MAX, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
+import { type QueueEntry, HOLD_AGENTS, INPUT_STATES, checkQueue, checkSent, giveBackHeld, isUploadLine, landed, leftForGood, lookForLeftMenu, QUEUED_TEXT_MAX, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
 import { inputVisible } from './choices'
 import { isSlashCommand, photosOnly } from '../../shared/queuedMatch'
 import { codexFieldLine, findQueued, inputBox, msgText, unqueueClaude } from './unqueue'
@@ -675,6 +675,9 @@ export function retryQueued(paneId: string, id: string): QueuedMessage {
   delete q.turnSeen
   delete q.stuckSince
   delete q.noInput
+  delete q.lost
+  delete q.unseen
+  delete q.lostSince
   setTimeout(poll, 50)
   return queuedPasted(publicEntry(q))
 }
@@ -695,6 +698,14 @@ function reconcileQueued(p: Pane) {
       const taken = new Set<ChatItem>()
       const left = (queued.get(p.id) || []).filter(q => (q.held && !q.typedAt)
         || ((q.failed || q.held) ? !landed(q, items, now, p.agent, taken) : !queuedDone(q, items, READY.has(p.status || ''), now, p.agent)))
+      // Still not in the conversation: pulled out of Claude's queue and not
+      // queued again, or not seen for an hour (see checkSent). Claude's queue
+      // is only trusted from its own transcript, not a guessed one.
+      const claude = r.available && !r.guessed ? { queue: r.queue || [], popped: r.popped || [] } : null
+      if (checkSent(left, { agent: p.agent, claude, now })) {
+        log(`message not seen on ${p.id}`)
+        setTimeout(poll, 50)
+      }
       if (left.length) queued.set(p.id, left)
       else queued.delete(p.id)
     })
