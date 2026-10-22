@@ -852,6 +852,25 @@ describe('start, stop, retry, archive, add, and the three coordinators', () => {
     expect(calls).toEqual([])
   })
 
+  it('sends an unknown repository path and configures only a coordinator that does not exist', async () => {
+    const to = { kind: 'project', repo: '~/repos/new demo' }
+    await T.tellCoordinator('', '--hello', { to, start: { agent: 'codex/demo-model', effort: 'high' } })
+    expect(calls).toEqual([
+      ['coordinator', '--project=~/repos/new demo', '--json', 'status'],
+      ['coordinator', '--project=~/repos/new demo', '--agent=codex/demo-model', '--effort=high', '--', 'new'],
+      ['coordinator', '--project=~/repos/new demo', '--', 'tell', '--hello'],
+    ])
+    for (const state of ['idle', 'starting', 'stopped']) {
+      calls = []
+      coordStatus['--project=~/repos/new demo'] = { state, pane: '' }
+      await T.tellCoordinator('', 'keep it', { to, start: { agent: 'claude' } })
+      expect(calls.some(c => c.includes('new'))).toBe(false)
+    }
+    calls = []
+    await expect(T.tellCoordinator('', 'hello', { to, start: { agent: '--bad' } })).rejects.toThrow(/Invalid agent/)
+    expect(calls).toEqual([])
+  })
+
   it('a coordinator\'s pane is the one herdr-projects keeps for it, never one found by name', async () => {
     // Two repos whose agents' names Herdr would mix up (demo, demo-2): each has its own pane.
     coordStatus = { '--project=demo': { state: 'idle', pane: 'w2:p1' }, '--project=demo-2': { state: 'working', pane: 'w1:p1' }, '': { state: 'blocked', pane: 'w3:p1' } }

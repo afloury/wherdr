@@ -40,6 +40,23 @@ async function panel(reachable = true, to: To = { kind: 'main' }) {
 describe('the Board panel follows its coordinator', () => {
   afterEach(() => { vi.useRealTimers(); holding = false; waiting.length = 0; herdrState.value = { ok: false, workspaces: [], panes: [] }; status = { pane: 'w1:p1', state: 'idle' }; asked = 0; posted.length = 0 })
 
+  it('keeps the first message empty and sends launch choices only for a new project', async () => {
+    status = { pane: null, state: 'none' }
+    const { w } = await panel(true, { kind: 'project', repo: '/repos/new-demo' })
+    await w.setProps({ target: { machine: '', kind: 'coordinator', to: { kind: 'project', repo: '/repos/new-demo' }, freshProject: true } })
+    await flushPromises()
+    expect(posted).toEqual([])
+    await vi.waitFor(() => expect(w.find('#coordinator-agent').exists()).toBe(true))
+    const vm = w.vm as unknown as { first: string, launchAgent: string, launchModel: string, launchEffort: string, start: () => Promise<void> }
+    vm.launchAgent = 'codex'
+    vm.launchModel = 'demo-model'
+    vm.launchEffort = 'high'
+    vm.first = 'Plan this project'
+    await vm.start()
+    expect(posted).toEqual([{ machine: '', to: { kind: 'project', repo: '/repos/new-demo' }, text: 'Plan this project', start: { agent: 'codex/demo-model', effort: 'high' } }])
+    w.unmount()
+  })
+
   it('a coordinator restarted in a new pane is shown without closing the panel', async () => {
     setPanes(['w1:p1'])
     const { w, vm } = await panel()

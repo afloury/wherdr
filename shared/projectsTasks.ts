@@ -591,7 +591,10 @@ export function cleanTarget(v: unknown): CoordinatorTarget | null {
   const o = obj(v)
   if (!o || o.kind === 'main') return { kind: 'main' }
   if (o.kind === 'machine') return { kind: 'machine' }
-  if (o.kind === 'project' && typeof o.repo === 'string' && REPO_NAME_RE.test(o.repo)) return { kind: 'project', repo: o.repo }
+  if (o.kind === 'project') {
+    const repo = cleanRepo(o.repo)
+    return repo ? { kind: 'project', repo } : null
+  }
   return null
 }
 // `coordinator [--machine | --project=REPO] [--delegate] -- tell <words>`:

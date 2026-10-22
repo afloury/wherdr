@@ -24,7 +24,7 @@
 // What is kept on this device only: the machine shown, the grouping, folded
 // headings, Done shown or not. Nothing about the projects themselves: that is herdr-projects'.
 import {
-  type CoordinatorTarget, TASK_GROUPS, type TaskGroup, type TaskRow, groupByRepo, groupCounts, sortTasks, taskKey,
+  type CoordinatorTarget, TASK_GROUPS, type TaskGroup, type TaskRow, groupCounts, sortTasks, taskKey,
 } from '#shared/projectsTasks'
 import type { SelectItem } from '@nuxt/ui'
 import type { PanelTarget } from './BoardPanel.vue'
@@ -39,6 +39,7 @@ const FOLDS_KEY = 'boardFolds'
 const router = useRouter()
 const route = useRoute()
 const { board, error, reads, reload } = useTasksBoard()
+const projectLinks = useBoardLinks()
 
 const readStore = (k: string) => { try { return localStorage.getItem(k) } catch { return null } }
 const writeStore = (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* storage unavailable */ } }
@@ -157,7 +158,8 @@ const machineGroups = computed(() => shownBoards.value.map((m) => {
     machine: m.machine,
     summary: summary(rows),
     readOnly: Boolean(m.readOnly),
-    repos: groupByRepo(rows).map(({ repo, tasks }) => {
+    repos: [...new Set([...rows.map(t => t.repo), ...(projectLinks.value.find(b => b.machine === m.machine)?.repos || []).map(r => r.repo)])].sort().map(repo => {
+      const tasks = sortTasks(rows.filter(t => t.repo === repo))
       // The board's groups in each repo's lane, under the Board's columns.
       const cols = groups.value.map((id) => {
         const all = tasks.filter(t => t.group === id).map(task => cardOf(m, task))
@@ -228,7 +230,7 @@ const waitNoted = ref(false)
 // `#/board?machine=<key>` alone (a machine's menu on the home list): the Board
 // filtered on that machine, as if picked here. The local machine is `machine=`.
 watch(() => route.query, (q) => {
-  if (('task' in q && q.task) || !('machine' in q)) return
+  if (q.coordinator || ('task' in q && q.task) || !('machine' in q)) return
   const m = q.machine
   if (typeof m === 'string' || m === null) pickScope(boardScopeValue(m ?? ''))
   router.replace({ query: {} })
@@ -338,6 +340,12 @@ function talkTo(machine: string, to: CoordinatorTarget) {
   panel.value = { machine, kind: 'coordinator', to }
   haptic()
 }
+// New opens the same panel, including an unregistered repository path.
+watch(() => route.query.coordinator, (repo) => {
+  if (typeof repo !== 'string' || !repo) return
+  panel.value = { machine: typeof route.query.machine === 'string' ? route.query.machine : '', kind: 'coordinator', to: { kind: 'project', repo }, freshProject: true }
+  router.replace({ query: {} })
+}, { immediate: true })
 const coordLabel = (machine: string, to: CoordinatorTarget) => coordinatorLabel(to, machineLabel(machine))
 const MACHINE_COORDS: CoordinatorTarget[] = [{ kind: 'machine' }]
 // The main Coordinator is an entry point for all work, independent of task filters.

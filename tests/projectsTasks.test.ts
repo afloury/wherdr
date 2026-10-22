@@ -277,7 +277,10 @@ describe('commands, by repo, and push', () => {
     expect(coordinatorArgs({ kind: 'machine' }, 'w', true)).toEqual(['coordinator', '--machine', '--delegate', '--', 'tell', 'w'])
     expect(coordinatorArgs({ kind: 'project', repo: 'wherdr' }, 'w', false)).toEqual(['coordinator', '--project=wherdr', '--', 'tell', 'w'])
     expect(cleanTarget(undefined)).toEqual({ kind: 'main' })
-    expect(cleanTarget({ kind: 'project', repo: '/abs' })).toBeNull()
+    expect(cleanTarget({ kind: 'project', repo: '/abs' })).toEqual({ kind: 'project', repo: '/abs' })
+    expect(cleanTarget({ kind: 'project', repo: '~/repos/demo' })).toEqual({ kind: 'project', repo: '~/repos/demo' })
+    expect(coordinatorArgs({ kind: 'project', repo: '/repos/demo space' }, 'hello', false)).toEqual(['coordinator', '--project=/repos/demo space', '--', 'tell', 'hello'])
+    expect(cleanTarget({ kind: 'project', repo: '../demo' })).toBeNull()
     expect(cleanTarget({ kind: 'nope' })).toBeNull()
   })
 
