@@ -23,7 +23,7 @@ import path from 'node:path'
 import { joinId } from '../../shared/ids'
 import {
   type MachineTasks, type TaskDetails, type TaskRow, type TasksBoard,
-  taskCanFix, taskCanApproveAnyway, failureIsStale, type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, type TaskAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
+  TASK_QUESTION_MAX, taskCanFix, taskCanApproveAnyway, failureIsStale, type StartOptions, type TaskCommand, addArgs, delegateArgs, isAgentName, parseWorkerAgent, restoreAgentArgs, runOver, type TaskAgent, cleanRepo, cleanTarget, cleanTell, cleanTitle, type CoordinatorStatus, coordinatorArgs, coordinatorRestartArgs, coordinatorStatusArgs, parseCoordinatorStatus, detailsFromTaskFile, isTaskCommand,
   isTaskId, parseRepoKey, parseTaskDetails, parseTaskList, repoKeysFromFile, rowFromTaskFile, taskActions,
   cleanAfterRefs, clearAfterArgs, parseBoardAgents, slotsOf, type TaskSlots,
 } from '../../shared/projectsTasks'
@@ -613,4 +613,14 @@ export async function tellCoordinator(machine: unknown, text: unknown, opts: { t
   forget(m)
   log(`herdr-projects coordinator${to.kind === 'main' ? '' : ` (${to.kind === 'project' ? to.repo : 'machine'})`} tell${opts.delegate === true ? ' --delegate' : ''}${m.local ? '' : ` on ${m.label}`}`)
   return { ok: true, msg: firstLine(out) }
+}
+
+// Questions only: target and context come from the task on its owning board.
+// Never pass delegation flags or invoke a task action here.
+export async function askTaskCoordinator(machine: unknown, id: unknown, text: unknown) {
+  const tid = checkId(id)
+  const words = cleanTell(text).slice(0, TASK_QUESTION_MAX)
+  if (!words) throw new HerdrError('empty', 'Nothing to send')
+  const task = await taskDetails(machine, tid)
+  return tellCoordinator(machine, `Question about task ${tid}: “${task.title}”. References to “it” or “this task” mean this task. Answer the question only; do not start, delegate or change any task.\n\n${words}`, { to: { kind: 'project', repo: tid.split('/')[0] } })
 }

@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Task sheets offer **Ask the coordinator** before starting work, and in other active states. Questions name the task and go to its project coordinator on its owning machine; the coordinator chat opens after sending. Asking never delegates or changes the task. The separate Chat action still opens the task’s agent. Available in English and French.
+
 - **Readable GitHub release notes**: stable releases now require a reviewed summary under New / Improved / Fixed / Update and a link to the tagged changelog. The workflow refuses link-only notes before attaching the package and again before publishing; the release checklist includes an example and a local validation command. Rolling v2 prereleases summarize current Unreleased entries and link to the changelog at the packaged commit.
 
 - **A conversation rewritten at the same size or shorter reloads from the bottom.** The incremental re-read of a long conversation could keep showing the old messages when the transcript file was rewritten without growing (same size, or shorter but still past the reading position). The server now tells file states apart by modification time and inode, and sends a fresh bottom that the app starts again from when the file was replaced, shortened, rewritten at the same size, or when the bytes just above the reading position changed. A remote machine's file times now include fractions of a second; where they have whole seconds only, a conversation is only reported unchanged once the second of its last write is over, and a checksum of the file tells whether a list read during that second is still there.

@@ -12,7 +12,7 @@ export type PanelTarget =
 
 // `reachable`: its machine's board answers now (a message waits while it does not).
 const props = defineProps<{ target: PanelTarget, task: TaskRow | null, machineLabel: string, readOnly?: boolean, reachable?: boolean, refresh?: () => Promise<unknown> }>()
-const emit = defineEmits<{ close: [], sheet: [], noAgent: [], changed: [], archived: [machine: string, task: TaskRow], restored: [machine: string, task: TaskRow] }>()
+const emit = defineEmits<{ coordinator: [machine: string, task: TaskRow], close: [], sheet: [], noAgent: [], changed: [], archived: [machine: string, task: TaskRow], restored: [machine: string, task: TaskRow] }>()
 
 // ------------------------------------------------------------ a task's agent
 const taskPane = ref<string | null>(null)
@@ -412,7 +412,7 @@ const style = computed(() => (!desk.value && kbOpen.value ? { height: `${vvHeigh
 
     <div class="board-panel-body">
       <p v-if="target.kind === 'task' && settled && failed && selected === 'task'" class="board-note error">{{ failed }}</p>
-      <TaskSheet v-if="target.kind === 'task' && settled && selected === 'task'" v-model:open="taskOpen" embedded :task="task" :machine="target.machine" :read-only="readOnly" :refresh="refreshTask" @chat="choose('chat')" @archived="archivedTask" @restored="restoredTask" />
+      <TaskSheet v-if="target.kind === 'task' && settled && selected === 'task'" v-model:open="taskOpen" embedded :task="task" :machine="target.machine" :read-only="readOnly" :refresh="refreshTask" @chat="choose('chat')" @coordinator="(machine, task) => emit('coordinator', machine, task)" @archived="archivedTask" @restored="restoredTask" />
       <AgentView v-else-if="paneId && (target.kind === 'coordinator' || selected === 'term' || conversation)" :key="paneId" :pane-id="paneId" cell active :embedded="target.kind === 'task'" @update:selected-mode="choose($event)" :selected-mode="target.kind === 'task' ? (selected === 'term' ? 'term' : 'chat') : undefined" />
       <p v-else-if="target.kind === 'task' && loading" class="board-empty board-panel-wait">{{ t('Loading…') }}</p>
       <p v-else-if="failed" class="board-note error board-panel-wait">{{ failed }}</p>

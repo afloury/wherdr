@@ -22,7 +22,7 @@
 // "Start after…" picks tasks to wait for, on any machine the Board reads
 // (`delegate --after`); a task that waits says for what, with "Stop waiting"
 // (`after --clear`), and one in the queue says its place.
-import { AFTER_MAX, NO_ACTIONS, type StartOptions, type TaskCommand, type TaskDetails, type TaskRow, type TasksReply, finishCase, prNumber, startPlace, taskActions, taskKey } from '#shared/projectsTasks'
+import { AFTER_MAX, TASK_QUESTION_MAX, NO_ACTIONS, type StartOptions, type TaskCommand, type TaskDetails, type TaskRow, type TasksReply, finishCase, prNumber, startPlace, taskActions, taskKey } from '#shared/projectsTasks'
 import AppSheet from './AppSheet.vue'
 import { PROJECTS_LAUNCHER } from '#shared/projectsPlugin'
 import { type StartAgentChoice, startAgentChoices } from '~/utils/agentChoices'
@@ -37,10 +37,12 @@ import { sawTasksBoard, seenTasksBoard } from '~/composables/useTasksBoard'
 // or brought back from here.
 // `chat`: open this task's agent in the side panel (the sheet has closed).
 const props = defineProps<{ task: TaskRow | null, machine: string, readOnly?: boolean, refresh?: () => Promise<unknown>, embedded?: boolean }>()
-const emit = defineEmits<{ changed: [], archived: [machine: string, task: TaskRow], restored: [machine: string, task: TaskRow], chat: [machine: string, task: TaskRow] }>()
+const emit = defineEmits<{ changed: [], archived: [machine: string, task: TaskRow], restored: [machine: string, task: TaskRow], chat: [machine: string, task: TaskRow], coordinator: [machine: string, task: TaskRow] }>()
 const open = defineModel<boolean>('open', { default: false })
 
 const details = ref<(TaskDetails & { pane: string | null }) | null>(null)
+const question = ref('')
+const asking = ref(false)
 const error = ref('')
 const loading = ref(false)
 const busy = ref(false)
@@ -208,6 +210,8 @@ watch([open, target], ([o]) => {
   restored.value = false
   pick.value = null
   closePicker()
+  question.value = ''
+  asking.value = false
   startOpts.value = null
   startLoading.value = false
   startSeq++
@@ -335,6 +339,29 @@ async function clearWait() {
   finally { if (g === gen) busy.value = false }
 }
 
+// A question to the project's coordinator, separate from the task agent.
+async function askCoordinator() {
+  const task = props.task
+  if (!task || archived.value || busy.value || !question.value.trim() || props.readOnly || offlineView.value) return
+  const machine = props.machine
+  const g = gen
+  busy.value = true
+  actionError.value = ''
+  try {
+    await api('/api/tasks/question', { machine, id: task.id, text: question.value.trim() })
+    if (g === gen) {
+      question.value = ''
+      open.value = false
+      emit('coordinator', machine, task)
+    }
+  } catch (e) { failed(e, g) }
+  finally { if (g === gen) busy.value = false }
+}
+function coordinator() {
+  if (!props.task || busy.value) return
+  open.value = false
+  emit('coordinator', props.machine, props.task)
+}
 // The task's conversation in the Board's side panel, the sheet closed.
 function chat() {
   const t = props.task
@@ -439,6 +466,21 @@ function chat() {
         <dt>{{ tl('Tokens used', 'Tokens utilisés') }}</dt><dd><TokenCount :value="details.limits.tokensUsed" /></dd>
       </dl>
 
+      <section v-if="!archived && !readOnly" class="task-sheet-block">
+        <div class="task-sheet-actions">
+          <UButton color="neutral" variant="outline" icon="i-lucide-message-circle-question-mark" :aria-expanded="asking" :disabled="busy || offlineView" @click="asking = !asking">{{ tl('Ask the coordinator', 'Demander au coordinateur') }}</UButton>
+          <UButton color="neutral" variant="ghost" :disabled="busy || offlineView" @click="coordinator">{{ tl('Coordinator replies', 'Réponses du coordinateur') }}</UButton>
+        </div>
+        <form v-if="asking" class="task-question sheet-form" @submit.prevent="askCoordinator">
+          <label for="task-question" class="field-label">{{ tl('Your question about this task', 'Ta question sur cette tâche') }}</label>
+          <UTextarea id="task-question" v-model="question" :maxlength="TASK_QUESTION_MAX" :disabled="busy" :rows="3" />
+          <p>{{ tl('The project coordinator answers in its chat. Asking leaves the task as it is.', 'Le coordinateur du projet répond dans son chat. Poser une question laisse la tâche en l’état.') }}</p>
+          <div class="task-sheet-actions">
+            <UButton type="submit" :loading="busy" :disabled="busy || offlineView || !question.trim()">{{ tl('Send question', 'Envoyer la question') }}</UButton>
+          </div>
+        </form>
+      </section>
+
       <div v-if="actions.delegate" class="task-start-agent" role="radiogroup" :aria-label="tl('Agent for this start', 'Agent pour ce lancement')">
         <span class="task-start-label">{{ tl('Agent', 'Agent') }}</span>
         <span v-if="!startOpts" class="task-start-wait">{{ startLoading ? t('Loading…') : tl('the task’s default', 'celui de la tâche par défaut') }}</span>
@@ -526,3 +568,8 @@ function chat() {
     </div>
   </component>
 </template>
+
+<style scoped>
+.task-question { display: grid; gap: 12px; margin-top: 16px; }
+.task-question p { color: var(--muted); font-size: 13px; }
+</style>
