@@ -13,7 +13,7 @@ for (const language of ['en', 'fr']) {
     test(`board task density: ${compact ? 'compact' : 'normal'}, ${language}`, async ({ page }, info) => {
       await page.addInitScript(({ language, compact }) => {
         localStorage.setItem('herdrLanguage', language)
-        localStorage.setItem('compactList', compact ? '1' : '0')
+        localStorage.setItem('compactListV2', compact ? '1' : '0')
       }, { language, compact })
       // Give the repo a main space so its real options menu shares the summary bar.
       await page.routeWebSocket('**/ws/events', ws => {
@@ -90,7 +90,7 @@ for (const language of ['en', 'fr']) {
       // The old persisted 0/1 setting survives reload and selects the new task layout.
       await page.reload()
       await expect(card.locator('.home-task-line')).toHaveCount(compact ? 0 : 1)
-      expect(await page.evaluate(() => localStorage.getItem('compactList'))).toBe(compact ? '1' : '0')
+      expect(await page.evaluate(() => localStorage.getItem('compactListV2'))).toBe(compact ? '1' : '0')
     })
   }
 }

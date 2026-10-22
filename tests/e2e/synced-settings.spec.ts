@@ -14,11 +14,11 @@ test('migration: each browser merges in its settings once, not the device ones',
     if (localStorage.getItem('migrationFixture')) return
     localStorage.setItem('migrationFixture', '1')
     localStorage.setItem('theme', 'wherdr-graphite')
-    localStorage.setItem('compactList', '1')
+    localStorage.setItem('compactListV2', '1')
     localStorage.setItem('contentWidth', 'wide')
   })
   await page.goto('/')
-  await expect.poll(() => serverSettings(page)).toMatchObject({ theme: 'wherdr-graphite', compactList: '1' })
+  await expect.poll(() => serverSettings(page)).toMatchObject({ theme: 'wherdr-graphite', compactListV2: '1' })
   expect(await serverSettings(page)).not.toHaveProperty('contentWidth')
   await expect.poll(() => themeOf(page)).toBe('wherdr-graphite')
   // A second browser merges in its own settings the server lacks, and takes
@@ -33,7 +33,7 @@ test('migration: each browser merges in its settings once, not the device ones',
     localStorage.setItem('machineGroups', groups)
   }, groups)
   await b.goto('/')
-  await expect.poll(() => serverSettings(page)).toMatchObject({ theme: 'wherdr-graphite', compactList: '1', machineGroups: groups })
+  await expect.poll(() => serverSettings(page)).toMatchObject({ theme: 'wherdr-graphite', compactListV2: '1', machineGroups: groups })
   await expect.poll(() => themeOf(b)).toBe('wherdr-graphite')
   expect(await b.evaluate(() => localStorage.getItem('machineGroups'))).toBe(groups)
   // Merged once: afterwards the server is the reference on this device too.
