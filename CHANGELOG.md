@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **Herdr 0.9.2+ machine diagnostics and terminal mouse:** a remote machine's Options menu checks native reachability and offers the interactive reconnect command plus a wherdr connection retry. Terminal clicks, taps and drags use structured mouse events; Shift + drag selects text. Older Herdr retains legacy input and SSH retries.
+
 - Task sheets offer **Ask the coordinator** before starting work, and in other active states. Questions name the task and go to its project coordinator on its owning machine; the coordinator chat opens after sending. Asking never delegates or changes the task. The separate Chat action still opens the task’s agent. Available in English and French.
 
 - **A message lost during a turn is shown as not sent, with Retry.** A message sent to Claude while it works, then pulled back out of its queue before Claude read it (↑ in its terminal, then erased), stayed “Queued” until the end of the turn, however long. It is now marked **Not sent — it was taken out of the agent’s queue before being read** a minute later, during the turn, with **Retry** (sent when the turn ends) and **Cancel**. A message that never shows in the conversation no longer disappears silently after an hour: it is marked **Not sent — still not in the conversation after an hour**, with the same buttons, unless Claude still has it in its queue. Messages marked not sent are kept for a day, across restarts.

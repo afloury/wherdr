@@ -1185,6 +1185,18 @@ herdr machine add laptop --label Laptop    # see `herdr machine --help`
 
 wherdr picks it up within 30 seconds; `herdr machine rename|disable|remove` work the same way.
 Machines can also be renamed from the app (machine menu → Options).
+With Herdr 0.9.2 or later, **Options → Connection status** checks the saved profile
+with `herdr machine status --json`: reachable, authentication required, error or disabled.
+It also gives a `herdr machine reconnect <profile-id>` command to run interactively
+on the wherdr host. **Retry connection** restarts wherdr's own SSH connection;
+Herdr's approved SSH connection and wherdr's connection are separate, so key-based
+SSH access is still required for wherdr. Older Herdr keeps automatic retries and
+manual **Retry connection**, without the native diagnostic.
+
+The terminal view uses `terminal.mouse` on Herdr 0.9.2+ (both CLI and server): clicks,
+touch taps, drags and movement are encoded by Herdr for the application's mouse mode.
+Use **Shift + drag** to select text, and Ctrl/⌘+click to open links. Older or unknown
+versions keep the existing terminal keyboard, selection and scrolling behavior.
 
 With Docker, the image includes `openssh-client` and reads `~/.ssh` through the read-only home
 mount. At startup the container creates its user with your `PUID`/`PGID` and `HOST_HOME` as its

@@ -54,7 +54,7 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     const workspaces = allWorkspaces.map(w => ({ ...w, panes: w.panes.filter(p => !gone.has(p.id)) }))
     const panes = allPanes.filter(p => !p.hidden)
     return {
-      version: 'e2e',
+      version: terminalVersion,
       workspaces: workspaces.map((w, i) => ({
         workspace_id: w.id, label: w.label, number: i + 1, focused: i === 0,
         agent_status: w.panes[0]?.status || 'unknown', active_tab_id: `${w.id}:t1`,
@@ -123,9 +123,19 @@ export function startFakeHerdr({ sock, workspaces, log = () => {} }) {
     return { pid: p.pid }
   }
 
+  let terminalVersion = '0.9.1'
+  const terminalMouse = []
   let integrations = {}
   let plugins = []
   const methods = {
+    'e2e.terminal_version': params => {
+      if (params.version) { terminalVersion = params.version; terminalMouse.length = 0 }
+      return { version: terminalVersion }
+    },
+    'e2e.terminal_mouse': params => {
+      if (params.event) terminalMouse.push(params)
+      return { events: terminalMouse }
+    },
     'session.snapshot': () => {
       for (const action of snapshotActions.splice(0)) action()
       return { snapshot: snapshot() }

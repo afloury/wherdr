@@ -19,6 +19,7 @@
 // itself (name, localhost, or same ~/.cache/herdr-web/machine-id identifier
 // seen remotely) is ignored; two profiles to the same host and session
 // count as one.
+import { parseMachineDiagnostic, type MachineDiagnostic } from '../../shared/machineDiagnostics'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -348,6 +349,11 @@ export class RemoteMachine implements Machine {
     this.killMaster()
   }
 
+  retry() {
+    this.fails = 0
+    this.restart('manual retry')
+  }
+
   // Restarts the connection (target or session changed, silent remote server…).
   restart(reason: string) {
     if (this.stopped) return
@@ -649,6 +655,28 @@ async function readMachines() {
   remotes.clear()
   for (const [k, m] of sorted) remotes.set(k, m)
   if (dirty) changed()
+}
+
+// These commands address this host's saved profile, even for a named session.
+export async function machineDiagnostic(key: string): Promise<MachineDiagnostic> {
+  const machine = getMachine(key)
+  const base = machine && remotes.get((machine as RemoteMachine).baseKey ?? machine.key)
+  if (!base) throw new HerdrError('bad_machine', 'unknown remote machine')
+  const result = await runFile(HERDR_BIN, ['machine', 'status', base.profileId, '--json'], 30000)
+  const diagnostic = parseMachineDiagnostic(result.stdout.toString('utf8'), base.profileId)
+  if (diagnostic) return diagnostic
+  // Old CLI: only a rejected subcommand means unsupported. Operational failures
+  // must stay visible rather than being mistaken for an older Herdr version.
+  if (/unrecognized subcommand|unknown (?:command|subcommand)|Usage:[\s\S]*machine/i.test(result.stderr)) {
+    return { supported: false, status: null, error: null, reconnect: null }
+  }
+  throw new HerdrError('machine_status', lastLine(result.stderr) || 'Machine status unavailable')
+}
+
+export function retryMachine(key: string) {
+  const machine = getMachine(key)
+  if (!(machine instanceof RemoteMachine)) throw new HerdrError('bad_machine', 'unknown remote machine')
+  machine.retry()
 }
 
 export async function renameMachine(key: string, label: string) {

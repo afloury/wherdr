@@ -61,7 +61,10 @@ function onTouchEnd(e: TouchEvent) {
   // terminal stays readable in full.
   if (!moved) {
     // No keyboard for a link: cancels the mousedown that follows the tap.
-    if (t && props.ctl.tapLink(t.clientX, t.clientY)) e.preventDefault()
+    if (t) {
+      if (props.ctl.tapLink(t.clientX, t.clientY)) e.preventDefault()
+      else props.ctl.tapMouse(t.clientX, t.clientY)
+    }
     props.ctl.blur()
     ;(document.activeElement as HTMLElement | null)?.blur?.()
   }

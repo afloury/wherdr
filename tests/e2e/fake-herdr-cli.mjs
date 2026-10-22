@@ -26,6 +26,12 @@ function call(method, params) {
   })
 }
 
+if (args[0] === '--version') {
+  const { version } = await call('e2e.terminal_version', {})
+  console.log(`herdr ${version}`)
+  process.exit(0)
+}
+
 // `herdr integration status`: the states set by the specs (e2e.integrations).
 if (args[0] === 'integration' && args[1] === 'status') {
   const { states } = await call('e2e.integration_states', {})
@@ -97,6 +103,8 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
   } else if (m.type === 'terminal.release') {
     out({ type: 'terminal.closed', reason: 'detached' })
     leave(0)
+  } else if (m.type === 'terminal.mouse') {
+    await call('e2e.terminal_mouse', { pane_id: pane, event: m }).catch(() => {})
   } else if (m.type === 'terminal.input') {
     const text = m.text || ''
     const keys = [...text].map(c => c === '\x1b' ? 'esc' : c === '\r' ? 'enter' : c)

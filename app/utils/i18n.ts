@@ -3,6 +3,18 @@
 // checks that every key used in the code has one). The choice is saved on the device.
 
 const FR: Record<string, string> = {
+  'Herdr authentication and the wherdr SSH connection are checked separately.': 'L’authentification Herdr et la connexion SSH de wherdr sont vérifiées séparément.',
+  'Connection status': 'État de la connexion',
+  'Disabled': 'Désactivée',
+  'Reachable': 'Joignable',
+  'Authentication required': 'Authentification requise',
+  'Connection failed': 'Échec de la connexion',
+  'Check status': 'Vérifier l’état',
+  'Retry connection': 'Réessayer la connexion',
+  'Machine diagnostics require Herdr 0.9.2 or later. The wherdr connection still retries automatically.': 'Le diagnostic des machines nécessite Herdr 0.9.2 ou plus. wherdr continue de réessayer la connexion automatiquement.',
+  'For SSH authentication, run this command in a terminal on the machine running wherdr, then retry the connection here.': 'Pour l’authentification SSH, lance cette commande dans un terminal sur la machine qui exécute wherdr, puis réessaie la connexion ici.',
+  'unknown remote machine': 'Machine distante inconnue',
+  'Machine status unavailable': 'État de la machine indisponible',
   // herdr-projects 1.x tasks (server/utils/projectsTasks.ts)
   'herdr-projects 1.2.1 or later is not available on {machine}': 'herdr-projects 1.2.1 ou plus n’est pas disponible sur {machine}',
   'Invalid approval': 'Approbation invalide',

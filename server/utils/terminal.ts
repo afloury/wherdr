@@ -3,7 +3,7 @@
 //   output: {"type":"terminal.frame","encoding":"ansi","full":bool,"width","height","seq","bytes":<b64>}
 //            {"type":"terminal.closed","reason":…}
 //   input: terminal.input {text|bytes}, terminal.resize {cols,rows},
-//            terminal.scroll {direction:up|down,lines}, terminal.release
+//            terminal.scroll {direction:up|down,lines}, terminal.mouse, terminal.release
 // Only one "attached" client per terminal: without --takeover, the connection is
 // refused if someone else already is; with it, the other one is detached.
 // Pane of a remote machine: the same CLI, launched on that machine over the
@@ -14,8 +14,9 @@ import path from 'node:path'
 import readline from 'node:readline'
 import { DATA_DIR, IN_DOCKER, PANE_RE, log } from './env'
 import { herdr } from './herdr'
-import { termSessions, type TermView } from './state'
-import { machineOfPane } from './machines'
+import { getState, termSessions, type TermView } from './state'
+import { cleanTerminalMouse, hasTerminalMouse } from '../../shared/herdrFeatures'
+import { machineOfPane, runHerdrCli } from './machines'
 import { type PaneHold, type PaneSize, cleanSavedSizes, createPaneSizes, parseSttySize } from './paneSizes'
 import { splitId } from '../../shared/ids'
 import { createScrollThrottle } from './scrollThrottle'
@@ -135,6 +136,7 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
   // (a refused session, terminal open elsewhere, never resizes the pane).
   let size = { cols, rows }
   let attached = false
+  let mouse = false
   // What the client sends before the control session is started.
   const early: unknown[] = []
 
@@ -179,9 +181,15 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
   const scroll = createScrollThrottle((direction, lines) => toChild({ type: 'terminal.scroll', direction, lines }))
 
   // The pane's size is read before the control session resizes it (see paneSizes.ts).
-  paneSizes().hold(pane).then((h) => {
+  paneSizes().hold(pane).then(async (h) => {
     if (closed) return h.release(true)
     hold = h
+    const version = await runHerdrCli(machine!, ['--version']).catch(() => null)
+    if (closed) return
+    const state = getState()
+    const serverVersion = state.machines?.find(m => m.key === machine!.key)?.version ?? (machine!.key === '' ? state.version : '')
+    mouse = version?.code === 0 && hasTerminalMouse(version.stdout.toString('utf8')) && hasTerminalMouse(serverVersion || '')
+    if (ws.isOpen()) ws.send(JSON.stringify({ type: 'web.capabilities', mouse }))
     start()
   })
 
@@ -196,6 +204,11 @@ export function openTerm(ws: WsLike, url: URL): TermSession | null {
           if (typeof m.text === 'string' && m.text.length <= 65536) toChild({ type: 'terminal.input', text: m.text })
           else if (typeof m.bytes === 'string' && m.bytes.length <= 90000) toChild({ type: 'terminal.input', bytes: m.bytes })
           break
+        case 'terminal.mouse': {
+          const event = mouse && cleanTerminalMouse(m, size.cols, size.rows)
+          if (event) toChild(event)
+          break
+        }
         case 'terminal.resize': {
           size = { cols: clampInt(m.cols, 10, 400, cols), rows: clampInt(m.rows, 5, 200, rows) }
           if (attached) hold?.resized(size.cols, size.rows)
