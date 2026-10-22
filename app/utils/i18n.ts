@@ -3,6 +3,8 @@
 // checks that every key used in the code has one). The choice is saved on the device.
 
 const FR: Record<string, string> = {
+  'Group by': 'Grouper par',
+  'State': 'État',
   'Herdr authentication and the wherdr SSH connection are checked separately.': 'L’authentification Herdr et la connexion SSH de wherdr sont vérifiées séparément.',
   'Connection status': 'État de la connexion',
   'Disabled': 'Désactivée',

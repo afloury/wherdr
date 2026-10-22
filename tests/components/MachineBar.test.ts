@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import HomeView from '~/components/HomeView.vue'
 import MachineBarSettings from '~/components/MachineBarSettings.vue'
-import { collapsedMachines, eventsOpen, herdrState, hostLabel } from '~/composables/useHerdr'
+import { collapsedMachines, eventsOpen, herdrState, homeGrouping, hostLabel } from '~/composables/useHerdr'
 import { machineBarHidden, machineBarOn, machineBarOrder, machineBarSaved, machineGroups } from '~/composables/useMachineBar'
 import { BAR_ALL } from '~/utils/machineBar'
 import type { MachineInfo, Pane } from '#shared/types'
@@ -34,6 +34,7 @@ function setState() {
 function reset() {
   for (const w of mounted) w.unmount()
   mounted = []
+  homeGrouping.value = 'machine'
   machineGroups.value = []
   machineBarOn.value = true
   machineBarOrder.value = []
@@ -49,6 +50,58 @@ const mountHome = async () => track(await mountSuspended(HomeView, { global: { s
 describe('the machine bar on the home list', () => {
   beforeEach(() => { reset(); setState() })
   afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] }; eventsOpen.value = false; reset() })
+
+  it('merges online machines into state groups and badges every flat card', async () => {
+    homeGrouping.value = 'state'
+    const w = await mountHome()
+    expect(w.findAll('section.machine, .project')).toHaveLength(0)
+    expect(w.findAll('.state-group.working .card')).toHaveLength(2)
+    expect(w.findAll('.state-group.blocked .card')).toHaveLength(1)
+    expect(w.findAll('.state-group .card-origin').map(b => b.text())).toEqual(['Server', 'Server', 'Laptop'])
+    expect(w.find('[data-pane="devbox/w1:p1"]').exists()).toBe(false)
+    await w.findAll('.machine-bar-item')[2]!.trigger('click')
+    expect(w.findAll('.state-group .card')).toHaveLength(1)
+    expect(w.find('.state-group .card-origin').text()).toBe('Laptop')
+  })
+
+  it('filters state groups by a machine group, including an empty group', async () => {
+    homeGrouping.value = 'state'
+    machineGroups.value = [{ id: '*group:studio', name: 'Studio', machines: ['laptop', 'devbox'] }, { id: '*group:empty', name: 'Empty', machines: [] }]
+    const w = await mountHome()
+    await w.findAll('.machine-bar-item').find(b => b.text().includes('Studio'))!.trigger('click')
+    expect(w.findAll('.state-group .card')).toHaveLength(1)
+    expect(w.find('.state-group .card-origin').text()).toBe('Laptop')
+    await w.findAll('.machine-bar-item').find(b => b.text().includes('Empty'))!.trigger('click')
+    expect(w.findAll('.state-group .card')).toHaveLength(0)
+    expect(w.find('.machine-empty').text()).toBe('No machines in this group.')
+  })
+
+  it('filters named sessions by their base machine and excludes reconnecting rows', async () => {
+    homeGrouping.value = 'state'
+    const session = { ...machine('laptop/session', 'Laptop'), baseKey: 'laptop', session: 'review' }
+    const sessionPane = pane('session/w1:p1', session.key, 'working')
+    herdrState.value = { ok: true,
+      machines: [machines[0]!, session, machine('reconnecting', 'Reconnecting', 'connecting')],
+      workspaces: [...workspaces.slice(0, 2), { id: sessionPane.workspace, number: 3, label: 'Review', focused: false, machine: session.key }],
+      panes: [...panes.slice(0, 2), sessionPane, pane('reconnecting/w1:p1', 'reconnecting', 'blocked')],
+    }
+    machineGroups.value = [{ id: '*group:studio', name: 'Studio', machines: ['laptop'] }]
+    const w = await mountHome()
+    expect(w.find('[data-pane="reconnecting/w1:p1"]').exists()).toBe(false)
+    await w.findAll('.machine-bar-item').find(b => b.text().includes('Studio'))!.trigger('click')
+    expect(w.findAll('.state-group .card')).toHaveLength(1)
+    expect(w.find('.state-group .card').attributes('data-pane')).toBe(sessionPane.id)
+  })
+
+  it('shows a machine badge with a single online machine in State mode', async () => {
+    homeGrouping.value = 'state'
+    herdrState.value = { ok: true, workspaces: workspaces.slice(0, 2), panes: panes.slice(0, 2) }
+    hostLabel.value = 'Server'
+    const w = await mountHome()
+    expect(w.findAll('.state-group .card')).toHaveLength(2)
+    expect(w.findAll('.state-group .card-origin').map(b => b.text())).toEqual(['Server', 'Server'])
+    expect(w.find('.solo-machine-row').exists()).toBe(false)
+  })
 
   it('shows All first, then each machine with its state and count', async () => {
     const w = await mountHome()
