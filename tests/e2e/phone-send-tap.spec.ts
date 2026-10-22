@@ -1,4 +1,4 @@
-import { expect, test, type CDPSession, type Locator, type Page } from '@playwright/test'
+import { expect, test, type CDPSession, type Locator, type Page } from './test'
 import { OMP_CHAT_PANE } from './scenario.mjs'
 
 // Phone, keyboard open: one touch on Send sends, and the field keeps the focus

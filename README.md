@@ -44,7 +44,7 @@ Tailscale; never expose it to the public Internet. Read [Security](docs/security
 - **[The wherdr command](docs/command.md)** — Install through npm or Homebrew and manage the native service from the command line.
 - **[Herdr plugins](docs/plugins.md)** — Install and configure the wherdr plugin, its panel key and plugin actions.
 - **[Install as an app](docs/phone.md)** — Add wherdr to your home screen on a phone or install it in a desktop browser.
-- **[Settings and configuration](docs/configuration.md)** — Configure the service through environment variables and the app through per-device preferences.
+- **[Settings and configuration](docs/configuration.md)** — Configure the service through environment variables and the app through shared and device-specific preferences.
 - **[Machines and SSH](docs/machines.md)** — Register remote machines and use their agents through SSH. Includes sessions and connection troubleshooting.
 - **[Claude and Codex quotas](docs/quotas.md)** — Show remaining usage and handle Codex updates, limits and restarts.
 - **[Notifications](docs/notifications.md)** — Enable Web Push, relay Herdr notifications and configure Do not disturb.

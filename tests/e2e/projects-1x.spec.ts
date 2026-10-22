@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
+import { BASE_URL } from './scenario.mjs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -708,15 +709,20 @@ test('the machine filter offers the home list\'s machine groups, and follows the
   // Counters follow: two tasks need you in this group (phone tabs, or the wide Board's column heads).
   const needs = page.locator('.board-seg-btn.needs b, .board-col-head.needs .pp-count')
   await expect(needs).toHaveText('2')
-  // Kept on this device; a group edited in Settings shows its machines now.
-  await page.evaluate(() => localStorage.setItem('machineGroups', JSON.stringify([{ id: '*group:pair', name: 'Pair', machines: ['mc'] }])))
+  // Kept on the server (it follows the user across devices); a group edited in
+  // Settings shows its machines now.
+  const saveGroups = async (groups: unknown[]) => {
+    const r = await page.request.post(`${BASE_URL}/api/settings`, { headers: { Origin: BASE_URL }, data: { settings: { machineGroups: JSON.stringify(groups) } } })
+    expect(r.ok()).toBe(true)
+  }
+  await saveGroups([{ id: '*group:pair', name: 'Pair', machines: ['mc'] }])
   await page.reload()
   await expect(page.locator('.task-card', { hasText: 'On machine C' })).toBeVisible({ timeout: 15000 })
   await expect(page.locator('.task-card', { hasText: 'On machine A' })).toHaveCount(0)
   await expect(page.locator('.board-scope')).toContainText('Pair')
   await expect(needs).toHaveText('1')
   // Deleted in Settings: All machines again, and the menu as without groups.
-  await page.evaluate(() => localStorage.setItem('machineGroups', '[]'))
+  await saveGroups([])
   await page.reload()
   await expect(page.locator('.task-card', { hasText: 'On machine A' })).toBeVisible({ timeout: 15000 })
   await expect(page.locator('.task-card', { hasText: 'On machine C' })).toBeVisible()

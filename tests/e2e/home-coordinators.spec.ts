@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import fs from 'node:fs/promises'
 import { CLAUDE_PANE, COORDINATOR_PANE, OMP_CHAT_PANE } from './scenario.mjs'
 

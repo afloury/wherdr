@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { FileEntry, FilePreview, FilesListing } from '#shared/types'
 import { findHeading, isMarkdownPath, resolveLink } from '~/utils/mdLinks'
-import { readMdView, saveMdView } from '~/utils/filesPrefs'
+import { MD_VIEW_KEY, SHOW_HIDDEN_KEY, readMdView, readShowHidden, writeShowHidden } from '~/utils/filesPrefs'
 import type { MdView } from '~/utils/filesPrefs'
 
 // Read-only browser of the agent's folder: listing, then a file's text or image.
@@ -12,8 +12,7 @@ const listing = ref<FilesListing | null>(null)
 const preview = ref<FilePreview | null>(null)
 const loading = ref(false)
 const error = ref('')
-const showHidden = ref(readShowHidden())
-watch(showHidden, saveShowHidden)
+const showHidden = syncedRef(SHOW_HIDDEN_KEY, readShowHidden, writeShowHidden)
 let request = 0
 
 const pane = () => encodeURIComponent(props.paneId)
@@ -109,8 +108,7 @@ const code = computed(() => {
 
 // A Markdown file is shown formatted (the conversation's renderer, in its
 // file mode: utils/markdown.ts) or as its source with line numbers.
-const mdView = ref<MdView>(readMdView())
-watch(mdView, saveMdView)
+const mdView = syncedRef<MdView>(MD_VIEW_KEY, readMdView, v => v)
 const isMd = computed(() => preview.value?.kind === 'text' && isMarkdownPath(preview.value.path))
 const rendered = computed(() => isMd.value && mdView.value === 'rendered' ? md(preview.value!.text ?? '', { doc: true }) : '')
 const root = ref<HTMLElement | null>(null)

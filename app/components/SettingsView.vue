@@ -128,7 +128,7 @@ const backdropItems = computed(() => [
 ])
 const langItems = [{ label: 'English', value: 'en' }, { label: 'Français', value: 'fr' }]
 
-// Inventory of the reachable machines; the preferences stay specific to this device.
+// Inventory of the reachable machines; the preferences follow the user across devices.
 const agentMachines = computed(() => {
   const configured = appConfig.value.machines
   return configured?.filter(m => m.local || (Boolean(m.home) && (machineInfo(m.key)?.status === 'online' || (!machineInfo(m.key) && m.online))))
@@ -324,12 +324,12 @@ onMounted(() => {
               </section>
             </div>
           </div>
-          <p class="muted settings-hint">{{ t('The theme is saved on this device.') }}</p>
+          <p class="muted settings-hint">{{ t('The theme follows you on every device.') }}</p>
 
           <div class="settings-group">
             <h3>{{ t('Message field border on focus') }}</h3>
             <URadioGroup v-model="focusBorderMode" :items="focusBorderItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
-            <p class="muted settings-hint">{{ t('Also on omp’s running actions (border only). Frozen when the system asks for reduced motion. Saved on this device.') }}</p>
+            <p class="muted settings-hint">{{ t('Also on omp’s running actions (border only). Frozen when the system asks for reduced motion. Follows you on every device.') }}</p>
           </div>
 
           <div class="settings-group">
@@ -344,11 +344,11 @@ onMounted(() => {
             <URadioGroup v-model="homeGroup" :items="homeGroupItems" aria-labelledby="home-group-label" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
 
             <label class="settings-toggle">
-              <span><b>{{ t('Compact list') }}</b><small>{{ t('Tasks: one line in Compact, two in Normal with current activity and relevant labels. Details stay in the task sheet. Saved on this device.') }}</small></span>
+              <span><b>{{ t('Compact list') }}</b><small>{{ t('Tasks: one line in Compact, two in Normal with current activity and relevant labels. Details stay in the task sheet. Follows you on every device.') }}</small></span>
               <USwitch v-model="compactOn" color="success" size="xl" />
             </label>
             <label class="settings-toggle">
-              <span><b>{{ t('Reorder automatically') }}</b><small>{{ t('In Ready, show unread agents before read ones. Saved on this device.') }}</small></span>
+              <span><b>{{ t('Reorder automatically') }}</b><small>{{ t('In Ready, show unread agents before read ones. Follows you on every device.') }}</small></span>
               <USwitch v-model="autoReorderOn" color="success" size="xl" />
             </label>
             <label class="settings-toggle">
@@ -369,7 +369,7 @@ onMounted(() => {
           <div class="settings-group">
             <h3>{{ t('Quotas') }}</h3>
             <URadioGroup v-model="quotaMode" :items="quotaItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
-            <p class="muted settings-hint">{{ t('The color always flags a nearly exhausted quota. Saved on this device.') }}</p>
+            <p class="muted settings-hint">{{ t('The color always flags a nearly exhausted quota. Follows you on every device.') }}</p>
           </div>
 
           <!-- Computer layout only (same threshold as the app: 900 px). -->
@@ -382,7 +382,7 @@ onMounted(() => {
                 <span><b>{{ t('Animated packets') }}</b><small>{{ t('Small glowing squares running along the wherdr grid.') }}</small></span>
                 <USwitch v-model="packetsOn" color="success" size="xl" />
               </label>
-              <p class="muted settings-hint">{{ t('In the margins of the conversation. Still when the system asks for reduced motion. Saved on this device.') }}</p>
+              <p class="muted settings-hint">{{ t('In the margins of the conversation. Still when the system asks for reduced motion. Follows you on every device.') }}</p>
             </div>
             <div class="settings-group settings-width">
               <h3>{{ t('Content width') }}</h3>
@@ -396,7 +396,7 @@ onMounted(() => {
           <div class="settings-group settings-typing">
             <h3>{{ t('Typewriter') }}</h3>
             <URadioGroup v-model="typewriter" :items="typingItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" :disabled="reducedMotion" />
-            <p class="muted settings-hint">{{ t(reducedMotion ? 'Off: the system asks for reduced motion.' : 'Only new replies are animated; history appears at once. Tap a reply while it types to show it in full. Saved on this device only.') }}</p>
+            <p class="muted settings-hint">{{ t(reducedMotion ? 'Off: the system asks for reduced motion.' : 'Only new replies are animated; history appears at once. Tap a reply while it types to show it in full. Follows you on every device.') }}</p>
             <label class="settings-toggle encrypted-toggle" :class="{ 'is-disabled': !typewriterActive }">
               <span><b>{{ t('Encrypted text') }}</b><small>{{ t('Writing advances in glyphs, then the text decrypts behind it.') }}</small></span>
               <USwitch v-model="encryptedOn" :disabled="!typewriterActive" color="success" size="xl" />
@@ -407,7 +407,7 @@ onMounted(() => {
             <h3>{{ tl('Reply style', 'Style de réponse') }}</h3>
             <p class="muted settings-lead">{{ tl('Each question an agent asks, and each point it lists, can be quoted in the field to answer them one by one. Choose how they offer it.', 'Chaque question d’un agent, et chaque point qu’il liste, peut être cité dans le champ pour y répondre un par un. Choisis comment ils le proposent.') }}</p>
             <URadioGroup v-model="replyStyleChoice" :items="replyStyleItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio reply-style-radio" />
-            <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
+            <p class="muted settings-hint">{{ tl('Follows you on every device.', 'Te suit sur tous tes appareils.') }}</p>
           </div>
           <div class="settings-group">
             <h3>{{ tl('Quoted replies', 'Réponses citées') }}</h3>
@@ -456,7 +456,7 @@ onMounted(() => {
               </label>
             </div>
             <p v-else class="muted agent-pref-intro">{{ t('No agents installed on online machines.') }}</p>
-            <p class="muted agent-pref-note">{{ t('Choices saved on this device.') }}</p>
+            <p class="muted agent-pref-note">{{ t('Choices follow you on every device.') }}</p>
           </div>
           <div id="claude-quotas" class="settings-group">
             <h3>{{ tl('Claude quotas', 'Quotas Claude') }}</h3>
@@ -515,7 +515,7 @@ onMounted(() => {
           <div class="settings-group">
             <h3>{{ t('Default pane view') }}</h3>
             <URadioGroup v-model="defaultPane" :items="defaultPaneItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
-            <p class="muted settings-hint">{{ t('What an agent pane opens on. A pane you switched to Terminal stays there. Saved on this device.') }}</p>
+            <p class="muted settings-hint">{{ t('What an agent pane opens on. A pane you switched to Terminal stays there. Follows you on every device.') }}</p>
           </div>
           <div class="settings-group">
             <h3>{{ tl('Keyboard shortcuts', 'Raccourcis clavier') }}</h3>

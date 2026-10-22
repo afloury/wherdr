@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { OMP_CHAT_PANE } from './scenario.mjs'
 
 // A Markdown file in the file explorer: formatted by default (headings, task

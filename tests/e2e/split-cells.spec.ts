@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { OMP_CHAT_PANE, SPLIT_TAB } from './scenario.mjs'
 
 // Panes side by side on a computer: a cell is full width on a solid background.

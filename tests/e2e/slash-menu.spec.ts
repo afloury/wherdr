@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { CLAUDE_ASK_PANE, CLAUDE_PANE, OMP_CHAT_PANE } from './scenario.mjs'
 
 async function typeInField(page: Page, text: string) {

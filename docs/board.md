@@ -28,8 +28,8 @@ What the Board shows and does:
 - **The board's groups**: needs you, ready to approve, working, to do. **Done** is history, so it
   is hidden by default: **Done · 9** at the end of the column heads (the last tab on a phone)
   shows it, newest first, the latest five then **Show all**, and hides it again; the choice is
-  kept on the device. Headings still count done tasks. Side by side on a computer, one at a time
-  on a phone. A card shows
+  saved on the server and shared across devices. Headings still count done tasks. Side by side
+  on a computer, one at a time on a phone. A card shows
   the task's key (`DEMO-12`), title, the line its agent reports, the agent program, progress, its
   pull request and its review (pass or fail, with the findings by severity).
 - **A task** opens one compact side panel from the Board or its home row. The header names

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 
 // The launcher marks the guide done so the other specs reach the app; these
 // tests reset it through the API, and always leave it done again.

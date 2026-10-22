@@ -32,10 +32,10 @@
   Git **worktree** and branch, resume the last conversation, and queue a first message.
 - **Machine bar**: at the top of the list, “All”, then each machine with its state and count; a
   tap shows one machine alone. Settings › Appearance › Home screen › **Machine bar** orders its
-  items, takes some off it or hides it (kept on the device). A machine's **…** menu opens the
+  items, takes some off it or hides it (saved on the server). A machine's **…** menu opens the
   Board filtered on it (**Open the board**). In **Groups**, create a named selection of machines,
   check its members and drag their handles to set their order. Groups appear after All by default,
   with their combined task count and a group icon; order or hide them alongside the machines.
-  Choosing a group shows its members in the group's order. Groups are saved on this device.
+  Choosing a group shows its members in the group's order. Groups follow you across devices.
 - **Named Herdr sessions**, **quotas** (remaining Claude and Codex usage limits), **Herdr plugin
   actions** in the menus, **passkey lock** (Face ID, Touch ID, Windows Hello, Android…).

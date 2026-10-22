@@ -15,7 +15,7 @@ Read only the page relevant to your task. Start with [Installation and updates](
 - [The wherdr command](command.md) — Install through npm or Homebrew and manage the native service from the command line.
 - [Herdr plugins](plugins.md) — Install and configure the wherdr plugin, its panel key and plugin actions.
 - [Install as an app](phone.md) — Add wherdr to your home screen on a phone or install it in a desktop browser.
-- [Settings and configuration](configuration.md) — Configure the service through environment variables and the app through per-device preferences.
+- [Settings and configuration](configuration.md) — Configure the service through environment variables and the app through shared and device-specific preferences.
 - [Machines and SSH](machines.md) — Register remote machines and use their agents through SSH. Includes sessions and connection troubleshooting.
 - [Claude and Codex quotas](quotas.md) — Show remaining usage and handle Codex updates, limits and restarts.
 - [Notifications](notifications.md) — Enable Web Push, relay Herdr notifications and configure Do not disturb.
