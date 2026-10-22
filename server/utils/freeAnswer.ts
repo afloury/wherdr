@@ -74,6 +74,11 @@ async function typeAnswer(d: RestartDeps, paneId: string, choices: Choices, inde
 // One line only: the answer's line breaks become spaces.
 // Among checkboxes, typing ticks the box and Enter would untick it: the text
 // stays there, ticked, until Submit.
+// As in its main input, a backslash right before the cursor makes Enter a line
+// break (the backslash is dropped, nothing is submitted). An answer ending with one
+// is submitted with the cursor moved to the line start (Ctrl+A) first: Enter
+// then submits the text as typed. A trailing space would also do, but this
+// field keeps it in the answer (Claude Code 2.1.307).
 const squash = (s: string) => s.replace(/\s+/g, '')
 async function typeClaudeAnswer(d: RestartDeps, paneId: string, choices: Choices, index: number, answer: string) {
   const keys = (k: string[]) => d.call('pane.send_input', { pane_id: paneId, keys: k })
@@ -81,7 +86,7 @@ async function typeClaudeAnswer(d: RestartDeps, paneId: string, choices: Choices
   const field = async () => {
     const c = parseChoices((await d.call('pane.read', { pane_id: paneId, source: 'detection' }, 4000))?.read?.text)
     const o = c && c.options[c.cursor]
-    return o && o.free ? { value: o.hint || '', checked: o.checked } : null
+    return o && o.free ? { value: o.hint || '', checked: o.checked, question: c.question } : null
   }
   const moves = keysFor(choices, index).slice(0, -1)
   if (moves.length) await keys(moves)
@@ -91,12 +96,15 @@ async function typeClaudeAnswer(d: RestartDeps, paneId: string, choices: Choices
     f = await field()
   }
   if (!f) throw new HerdrError('stale', 'Claude’s answer field could not be reached — check the current screen.')
-  if (f.value) {
+  // Ctrl+U empties one line: a field left on several (an earlier answer ending
+  // with a backslash) takes one per line.
+  for (let round = 0; f && f.value; round++) {
+    if (round === 4) throw new HerdrError('stale', 'Claude’s answer field could not be cleared — check the current screen.')
     await keys(['ctrl+u'])
     await d.sleep(150)
     f = await field()
-    if (!f || f.value) throw new HerdrError('stale', 'Claude’s answer field could not be cleared — check the current screen.')
   }
+  if (!f) throw new HerdrError('stale', 'Claude’s answer field could not be cleared — check the current screen.')
   const text = answer.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '').replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim()
   await d.call('pane.send_input', { pane_id: paneId, text })
   // Enter only once the text shows in place of the label (its start: a long
@@ -108,5 +116,19 @@ async function typeClaudeAnswer(d: RestartDeps, paneId: string, choices: Choices
     f = await field()
   }
   if (!f || !squash(f.value).startsWith(want)) throw new HerdrError('stale', 'Claude’s answer field closed — answer not submitted, check the current screen.')
-  if (f.checked === undefined || f.checked === false) await keys(['enter'])
+  if (f.checked !== undefined && f.checked !== false) return
+  if (text.endsWith('\\')) {
+    await keys(['ctrl+a'])
+    await d.sleep(50)
+  }
+  await keys(['enter'])
+  // Submitted: the box closes, or the next question shows. Still on this
+  // question's field: Claude kept the text (a line break typed instead).
+  const still = (g: Awaited<ReturnType<typeof field>>) => Boolean(g) && g!.question === f!.question
+  let g = await field()
+  for (const end = d.now() + OPEN_MS; still(g) && d.now() < end;) {
+    await d.sleep(100)
+    g = await field()
+  }
+  if (still(g)) throw new HerdrError('stale', 'Claude kept the answer in its field — answer not submitted, check the current screen.')
 }

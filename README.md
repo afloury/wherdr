@@ -204,7 +204,8 @@ Details in [Features](#features) and [Security](#security).
   Unrecognized blocking screens offer an **Open interactive terminal** button.
 - **Composer**: send messages while the agent works (queued, cancellable: the agent's own
   queue when it takes them, else held by wherdr and sent when the turn ends; never left
-  half-typed in its field, and “Not sent” clears once the message shows in its transcript), attach or paste
+  half-typed in its field; a message pulled back out of Claude's queue before it read it, or not seen after an hour, is
+  marked “Not sent” with Retry / Cancel, and “Not sent” clears once the message shows in its transcript), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
   of local commands. Stop button while the agent works. When Claude Code suggests a reply
