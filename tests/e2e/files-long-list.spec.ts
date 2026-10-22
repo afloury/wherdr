@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { OMP_CHAT_PANE } from './scenario.mjs'
 
 // A folder of 1500 files: the list scrolls in the Files window and its last

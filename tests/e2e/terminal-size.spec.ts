@@ -1,4 +1,4 @@
-import { type Page, expect, test } from '@playwright/test'
+import { type Page, expect, test } from './test'
 import { OMP_CHAT_PANE, fakeHerdr } from './scenario.mjs'
 
 // The fake pane starts at 120x40 and, like a Herdr session nobody is attached

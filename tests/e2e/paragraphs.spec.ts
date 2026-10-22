@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { CLAUDE_PANE, CODEX_UPDATE_PANE, OMP_CHAT_PANE } from './scenario.mjs'
 
 const text = 'First paragraph.\n\nSecond paragraph.\n\n\nThird paragraph.'

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { BASE_URL } from './scenario.mjs'
 
 // The setup guide on localhost while wherdr's tailnet address is published

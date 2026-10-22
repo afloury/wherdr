@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from './test'
 import { COORDINATOR_PANE, FOLLOWUP_REPLY, OMP_DECISIONS_PANE, OMP_FOLLOWUP_PANE } from './scenario.mjs'
 
 // "N questions unanswered" above the field: the questions of the agent's last

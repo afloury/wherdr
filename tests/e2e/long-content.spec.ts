@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { LONG_END, OMP_LONG_PANE } from './scenario.mjs'
 
 for (const width of [390, 320]) {

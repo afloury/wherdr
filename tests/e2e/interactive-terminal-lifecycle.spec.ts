@@ -1,6 +1,6 @@
 // Regressions reproduced by the independent t-0325 review.
 import { readFileSync } from 'node:fs'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { screenChoices } from '../../server/utils/choices'
 import { OMP_CHAT_PANE as pane, fakeHerdr } from './scenario.mjs'
 

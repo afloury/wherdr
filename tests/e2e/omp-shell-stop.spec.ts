@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { OMP_SHELL_PANE } from './scenario.mjs'
 
 // omp writes nothing for a "!" command cancelled before its first prompt: the

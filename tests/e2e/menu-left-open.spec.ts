@@ -2,7 +2,7 @@
 // a message sent meanwhile waits, the conversation says the menu is still
 // open and closes it with a single Escape.
 import { readFileSync } from 'node:fs'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { OMP_CHAT_PANE as pane, fakeHerdr } from './scenario.mjs'
 
 const fx = (name: string) => readFileSync(new URL(`../fixtures/${name}.txt`, import.meta.url), 'utf8')

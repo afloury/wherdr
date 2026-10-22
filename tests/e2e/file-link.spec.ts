@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { OMP_IMAGE_PANE, REVIEW_CSV, REVIEW_CSV_TEXT } from './scenario.mjs'
 
 // A file path in a reply: Preview shows the file, Download saves it, both read

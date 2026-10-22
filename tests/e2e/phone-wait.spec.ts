@@ -1,5 +1,5 @@
 import http from 'node:http'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './test'
 import { BASE_URL, PORT } from './scenario.mjs'
 
 // Settings › Phone right after publishing: the address waits for Tailscale's

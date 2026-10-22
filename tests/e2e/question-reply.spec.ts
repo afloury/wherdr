@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from './test'
 import { COORDINATOR_PANE, OMP_QUESTIONS_PANE } from './scenario.mjs'
 import { expectDraft, point } from './refs'
 

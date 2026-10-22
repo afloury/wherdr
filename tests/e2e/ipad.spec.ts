@@ -1,4 +1,4 @@
-import { expect, test, type Browser } from '@playwright/test'
+import { expect, test, type Browser } from './test'
 import { CLAUDE_PANE, OMP_CHAT_PANE, SPLIT_TAB } from './scenario.mjs'
 
 // iPad sizes in WebKit (touch, iPadOS Safari user agent). Run once, in the

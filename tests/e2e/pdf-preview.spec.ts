@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './test'
 import { OMP_IMAGE_PANE, REVIEW_CSV, SAMPLE_PDF, SAMPLE_PDF_PAGES } from './scenario.mjs'
 import { pdfSession } from './pdfAuth.mjs'
 import { samplePdf } from './samplePdf.mjs'
