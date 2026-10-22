@@ -269,7 +269,7 @@ const faq = [
 
             <div aria-labelledby="installer-title" class="panel one">
               <h3 id="installer-title" class="cell-title">Or run the installer yourself</h3>
-              <p class="cell-text">On the computer that runs Herdr — your Mac, or an always-on Linux box (a Raspberry Pi works). It installs the wherdr Herdr plugin with the verified GitHub release: wherdr in <code>~/wherdr</code>, listening on 127.0.0.1 only, running as your user and started at every boot (a systemd user service, or a LaunchAgent on a Mac). No Node.js 22? It offers to install it. No sudo, and a wherdr that already runs is never replaced. Run it again to update. <a href="/install" target="_blank">Read the script first.</a></p>
+              <p class="cell-text">On the computer that runs Herdr — your Mac, or an always-on Linux box (a Raspberry Pi works). It installs the wherdr Herdr plugin with the verified GitHub release: wherdr in <code>~/wherdr</code>, listening on 127.0.0.1 only, running as your user and started at login on macOS (LaunchAgent), or at boot on Linux when lingering is enabled (otherwise at login, with a systemd user service). No Node.js 22? It offers to install it. No sudo, and a wherdr that already runs is never replaced. Run it again to update. <a href="/install" target="_blank">Read the script first.</a></p>
               <InstallCommand :command="INSTALL_COMMAND" />
               <InstallTerminal :demo="ONE_COMMAND_DEMO" />
               <p class="prereq">
@@ -302,7 +302,7 @@ const faq = [
                 <InstallCommand :command="runner.run" />
                 <ol class="steps">
                   <li><b>Try it</b> on the machine that runs Herdr, macOS or Linux, with Node.js 22{{ pm === 'bunx' ? ' or Bun' : '' }}. The package is prebuilt: nothing compiles. Open <code>http://localhost:7683</code>.</li>
-                  <li><b>Keep it:</b> <code>{{ runner.keep }}</code>, then <code>wherdr service install</code> starts it at every login.</li>
+                  <li><b>Keep it:</b> <code>{{ runner.keep }}</code>, then <code>wherdr service install</code> configures startup: at login on macOS; at boot on Linux with lingering enabled, otherwise at login.</li>
                   <li><b>Stuck?</b> <code>wherdr doctor</code> checks Node, Herdr and its socket, the port and the service.</li>
                 </ol>
               </template>
