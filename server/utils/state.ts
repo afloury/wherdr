@@ -27,12 +27,12 @@ import { parseClaudeNotice, parseClaudeScreen, parseClaudeSuggestion } from './c
 import { type QueueEntry, HOLD_AGENTS, INPUT_STATES, checkQueue, checkSent, giveBackHeld, isUploadLine, landed, leftForGood, lookForLeftMenu, QUEUED_TEXT_MAX, loadQueued, nextHeld, ompRunShown, publicEntry, queuedDone } from './queued'
 import { inputVisible } from './choices'
 import { isSlashCommand, photosOnly } from '../../shared/queuedMatch'
-import { codexFieldLine, findQueued, inputBox, msgText, unqueueClaude } from './unqueue'
+import { clearKeys, codexFieldLine, findQueued, inputBox, msgText, unqueueClaude } from './unqueue'
 import { takeBackInterrupted, unansweredTurn } from './interruptRestore'
 import { interruptAgent } from './interruptSeq'
 import { queuedPasted } from './pastes'
 import { type SentRecord, addSent, findSent, hasAttachments, lostPhotos } from './sentHistory'
-import { type GuardError, confirmSubmitted, guardedSend, submittable, withPaneLock } from './guardedSend'
+import { type GuardError, BASH_EMPTY, confirmSubmitted, guardedSend, submittable, withPaneLock } from './guardedSend'
 import { type TranscriptPane, sameMsg } from './transcripts'
 import { chatDelta } from './chatDelta'
 import { agentNotificationTitle, pushSend, subWatchesSession } from './push'
@@ -510,6 +510,13 @@ function deliverHeld(p: Pane) {
   herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
     .then(async (r) => {
       if (!inputVisible(r.read && r.read.text)) return
+      if (p.agent === 'claude') {
+        const box = await fieldDeps(p, inputBox).box()
+        q.busy = Boolean(box && box !== BASH_EMPTY)
+        q.inputText = q.busy && box ? box.slice(0, 160) + (box.length > 160 ? '…' : '') : undefined
+        // A prior attempt may already be in the transcript; typeHeld checks it first.
+        if (q.busy && !q.typedAt) return
+      }
       await typeHeld(p, q)
     })
     .catch(e => heldFailed(p, q, e))
@@ -533,7 +540,7 @@ async function typeHeld(p: Pane, q: QueueEntry): Promise<boolean> {
   try { await sendPrompt(p, q.text, { retry: Boolean(q.typedAt) }) }
   catch (e) {
     if ((e as GuardError).typed) q.typedAt = at
-    // Someone's text in the field: still held, until BUSY_TTL_MS.
+    // Someone's text in the field: held until the field becomes free.
     if (isBusyError(e)) {
       if ((e as HerdrError).code === 'input_busy' && !q.busy) { q.busy = true; setTimeout(poll, 50) }
       return false
@@ -655,6 +662,34 @@ function dropQueued(paneId: string, q: QueueEntry) {
   const left = (queued.get(paneId) || []).filter(x => x !== q)
   if (left.length) queued.set(paneId, left)
   else queued.delete(paneId)
+}
+
+// Explicitly discard a terminal draft, only after fresh checks under the send lock.
+export async function clearQueuedInput(paneId: string, id: string, expected: string): Promise<void> {
+  await withPaneLock(paneId, async () => {
+    const p = findPane(paneId)
+    const q = (queued.get(paneId) || []).find(q => q.id === id)
+    if (!p || p.agent !== 'claude' || p.stopped || p.leaving || !['idle', 'done'].includes(p.status || '') || restarting(paneId)
+      || p.menu || p.prompt || !q?.held || !q.busy || q.failed) throw new HerdrError('stale', 'Agent is not ready')
+    const detection = await herdr('pane.read', { pane_id: paneId, source: 'detection' }, 4000)
+    if (!inputVisible(detection.read?.text)) throw new HerdrError('stale', 'Agent is not ready')
+    const d = fieldDeps(p, inputBox)
+    const box = await d.box()
+    if (box === null) throw new HerdrError('no_input', 'Agent input field not found')
+    if (box && box !== BASH_EMPTY) {
+      const preview = box.slice(0, 160) + (box.length > 160 ? '…' : '')
+      if (!['idle', 'done'].includes(findPane(paneId)?.status || '') || !(queued.get(paneId) || []).includes(q)) throw new HerdrError('stale', 'Agent is not ready')
+      if (preview !== expected) throw new HerdrError('stale', 'Agent input changed')
+      await d.keys(clearKeys(box.split('\n').length))
+      await sleep(100)
+      if (!['', BASH_EMPTY].includes((await d.box()) ?? 'missing')) throw new HerdrError('input_busy', 'The agent’s input contains text')
+    }
+    // Keep the busy hold until deliverHeld re-reads the empty field and
+    // immediately delivers it. Clearing must not expose an old message to
+    // the generic hold timeout on the next poll.
+    delete q.inputText
+  })
+  setTimeout(poll, 50)
 }
 
 // "Retry" on a failed message: held again, delivered by the next polls.

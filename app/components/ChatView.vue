@@ -7,6 +7,7 @@
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ClaudeScreen, OmpToolView, Pane, QueuedMessage } from '#shared/types'
 import { readOffline, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
+import { queueReason, canClearQueued } from '~/utils/queuedReason'
 import { canCancelQueued, lostPhotosText, restoreDraft } from '~/utils/queuedCancel'
 import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
 import { pendingQueue, rememberSent } from '~/utils/pendingQueue'
@@ -950,13 +951,28 @@ function failedText(reason: QueuedMessage['reason'] | undefined) {
   if (reason === 'unseen') return t('Not sent — still not in the conversation after an hour')
   return t('Not sent')
 }
-const queuedWhy = computed(() => {
-  const p = props.pane
-  if (p.pendingPrompt) return tl(`will be sent when ${kindLabel(p.agent)} is ready`, `partira dès que ${kindLabel(p.agent)} sera prêt`)
-  if (p.status === 'working') return t('will be read at the agent’s next step')
-  if (p.status === 'blocked') return t('after you answer the question')
-  return t('sending…')
-})
+const clearing = ref<string | null>(null)
+async function clearAndSend(q: { id: string, inputText?: string }) {
+  if (clearing.value) return
+  clearing.value = q.id
+  try { await api('/api/clear-queued-input', { pane_id: props.pane.id, id: q.id, input_text: q.inputText }) }
+  catch (err) { toast((err as Error).message, true) }
+  finally { clearing.value = null }
+}
+function queuedLabel(q: { reason?: QueuedMessage['reason'], inputText?: string, state: string | null }) {
+  if (q.state === 'sending') return t('Queued · ') + t('sending…')
+  switch (queueReason(props.pane, q)) {
+    case 'busy': return q.inputText
+      ? tl(`Not sent: the agent’s input already contains text (“${q.inputText}”)`, `Pas envoyé : la saisie de l’agent contient déjà du texte (« ${q.inputText} »)`)
+      : t('Not sent — the agent’s input contains text')
+    case 'stopped': return t('Queued · ') + t('agent stopped')
+    case 'question': return t('Queued · ') + t('after you answer the question')
+    case 'dialog': return t('Queued · ') + t('will be sent when the menu closes')
+    case 'starting': return t('Queued · ') + t('agent starting')
+    case 'working': return t('Queued')
+    default: return t('Queued · ') + t('sending…')
+  }
+}
 watch(() => queuedList.value.map(q => `${q.id}:${q.phase}`).join(','), () => nextTick(() => scrollToEnd(false)))
 watch(() => liveShell.value && liveShell.value.lines.join('\n'), () => nextTick(() => scrollToEnd(false)))
 
@@ -1509,7 +1525,9 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               </button>
             </div>
             <div v-else class="queued-tag">
-              <UIcon name="i-lucide-clock" /><span>{{ t('Queued · ') }}{{ q.state === 'sending' ? t('sending…') : q.state === 'held' ? (q.reason === 'busy' ? t('will be sent when the agent’s input is free') : q.reason === 'turn' ? t('will be sent when the turn ends') : t('will be sent when the menu closes')) : queuedWhy }}</span>
+              <UIcon name="i-lucide-clock" /><span>{{ queuedLabel(q) }}</span>
+              <button v-if="canClearQueued(pane, q)" type="button" class="queued-cancel" :disabled="Boolean(clearing)" @click="clearAndSend(q)">{{ t('Clear and send') }}</button>
+              <button v-if="q.state === 'held' && queueReason(pane, q) !== 'working'" type="button" class="queued-cancel" @click="emit('gotoTerm')">{{ t('Open terminal') }}</button>
               <button v-if="q.state !== 'sending' && (canCancel || q.state === 'held') && q.raw" type="button" class="queued-cancel" :disabled="Boolean(cancelling)" @click="cancelQueued(q)">
                 <UIcon :name="cancelling === q.id ? 'i-lucide-loader-circle' : 'i-lucide-undo-2'" :class="{ spin: cancelling === q.id }" />{{ t('Cancel') }}
               </button>

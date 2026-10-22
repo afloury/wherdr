@@ -111,9 +111,6 @@ export function landed(q: { text: string, at: number, typedAt?: number }, items:
 // agent sits ready is reported as failed, with Retry / Cancel, instead of
 // staying "sending…" forever.
 export const HOLD_TTL_MS = 10 * 60 * 1000
-// Held because the agent's input field holds someone else's text (see
-// guardedSend.ts): reported as not sent sooner, the field may stay so.
-export const BUSY_TTL_MS = 2 * 60 * 1000
 export const LOST_MS = 60 * 1000
 // Held while the agent is ready and no menu, question or panel is recognized
 // on its screen: nothing will close, the input field is just not found
@@ -131,6 +128,7 @@ export interface QueueEntry {
   held?: boolean
   failed?: boolean
   // Held (or failed) because the agent's input field was not empty.
+  inputText?: string
   busy?: boolean
   // Since when the agent has been ready with this message delivered.
   readySince?: number
@@ -193,13 +191,16 @@ export function checkQueue(list: QueueEntry[], status: string | null | undefined
   for (const q of list) {
     if (q.failed) continue
     if (q.held) {
+      // A terminal draft needs the user's attention, not a retry. Keep the
+      // explanation/actions and automatic delivery for as long as it remains.
+      if (q.busy) { delete q.stuckSince; continue }
       // Waiting for the end of a turn: however long the turn lasts, then
       // counted from the moment the agent rests.
-      const turn = q.turn && !q.busy
+      const turn = q.turn
       if (turn && !ready) { delete q.stuckSince; delete q.readySince; continue }
       if (turn) q.readySince ??= now
-      if (now - (turn ? q.readySince! : q.at) > (q.busy ? BUSY_TTL_MS : HOLD_TTL_MS)) { q.failed = true; changed = true; continue }
-      if (q.busy || !ready || menu) { delete q.stuckSince; continue }
+      if (now - (turn ? q.readySince! : q.at) > HOLD_TTL_MS) { q.failed = true; changed = true; continue }
+      if (!ready || menu) { delete q.stuckSince; continue }
       q.stuckSince ??= now
       if (now - q.stuckSince > NO_INPUT_MS) { q.failed = true; q.noInput = true; changed = true }
       continue
@@ -289,13 +290,15 @@ export const publicEntry = (q: QueueEntry): QueuedMessage => ({
   ...((q.held || q.failed) && q.busy ? { reason: 'busy' as const } : q.failed && q.noInput ? { reason: 'no_input' as const }
     : q.failed && q.lost ? { reason: 'lost' as const } : q.failed && q.unseen ? { reason: 'unseen' as const }
       : q.held && !q.failed && q.turn ? { reason: 'turn' as const } : {}),
+  ...(q.busy && q.inputText ? { inputText: q.inputText } : {}),
   ...(q.back ? { back: true } : {}),
 })
 
 // Records read back from data/queued.json at startup: well-formed ones (a
 // delivery interrupted by the restart is held again). A message older than
 // QUEUED_TTL_MS comes back as not sent (sent: not seen) rather than
-// vanishing; one older than FAILED_TTL_MS is dropped.
+// vanishing, except a held terminal draft still waiting for the user; one
+// older than FAILED_TTL_MS is dropped.
 export function loadQueued(raw: unknown, now: number): [string, QueueEntry[]][] {
   if (!raw || typeof raw !== 'object') return []
   const out: [string, QueueEntry[]][] = []
@@ -304,7 +307,7 @@ export function loadQueued(raw: unknown, now: number): [string, QueueEntry[]][] 
     const ok = list.filter((q): q is QueueEntry => Boolean(q) && typeof q.id === 'string' && typeof q.text === 'string' && typeof q.at === 'number'
       && now - q.at < FAILED_TTL_MS)
       .map((q) => {
-        const old = !q.failed && now - q.at >= QUEUED_TTL_MS
+        const old = !q.failed && !(q.held && q.busy) && now - q.at >= QUEUED_TTL_MS
         return { id: q.id, text: q.text, at: q.at, ...(q.held && !old ? { held: true } : {}), ...(q.failed || old ? { failed: true } : {}), ...(q.busy ? { busy: true } : {}), ...(q.back ? { back: true } : {}),
           ...(typeof q.typedAt === 'number' ? { typedAt: q.typedAt } : {}), ...(q.turn && !old ? { turn: true } : {}),
           ...(q.noInput ? { noInput: true } : {}), ...(q.lost ? { lost: true } : {}), ...(q.unseen || (old && !q.held) ? { unseen: true } : {}) }

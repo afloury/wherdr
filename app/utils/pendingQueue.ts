@@ -25,6 +25,7 @@ export interface PendingMessage {
   // Never reached the server: Retry / Cancel act on the app's copy.
   local?: boolean
   // 'busy': waiting because the agent's input field holds other text.
+  inputText?: string
   reason?: QueuedMessage['reason']
   // Stored names of its photos.
   photos: string[]
@@ -101,6 +102,7 @@ export function pendingQueue(o: {
     phase: q.state ? 'queued' : phases[i]!,
     state: q.state || null,
     ...(q.local ? { local: true } : {}),
+    ...(q.inputText ? { inputText: q.inputText } : {}),
     ...(q.reason ? { reason: q.reason } : {}),
     photos: uploadNames(q.text),
     missing: q.missing || 0,

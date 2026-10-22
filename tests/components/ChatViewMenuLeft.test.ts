@@ -7,11 +7,14 @@ import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import ChatView from '~/components/ChatView.vue'
 import { herdrState } from '~/composables/useHerdr'
 import type { Pane } from '#shared/types'
+import { checkQueue, publicEntry, type QueueEntry } from '../../server/utils/queued'
 
 let available = true
 registerEndpoint('/api/chat', () => ({ available, reason: available ? undefined : 'not_found', token: 'menu-left', file: '/tmp/demo/transcript.jsonl', items: [{ role: 'user', text: 'Write the release notes.', ts: '2026-01-01T00:00:00Z' }] }))
 const calls: unknown[] = []
 registerEndpoint('/api/menu-left', { method: 'POST', handler: async (event) => { calls.push(await readBody(event)); return { ok: true, closed: true, sent: 1 } } })
+
+registerEndpoint('/api/clear-queued-input', { method: 'POST', handler: async (event) => { calls.push(await readBody(event)); return { ok: true } } })
 
 const base: Pane = { id: 'w1:p1', workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent: 'claude', name: null, label: null, status: 'working', title: null, cwd: '/tmp/demo', agentSession: null }
 const queued = [{ id: 'm1', text: 'Also update the changelog.', at: Date.now(), state: 'held' as const, reason: 'turn' as const }]
@@ -77,4 +80,39 @@ describe('menu left open in the terminal', () => {
     } finally { w.unmount() }
   })
 
+})
+
+describe('terminal draft blocking a message', () => {
+  it('keeps the draft explanation and all actions after waiting through a long turn', async () => {
+    const now = Date.now()
+    const entry: QueueEntry = { id: 'm1', text: queued[0]!.text, at: now - 5 * 60_000, held: true, busy: true, turn: true, inputText: 'ns' }
+    checkQueue([entry], 'idle', now)
+    const w = await mount({ ...base, status: 'idle', queued: [publicEntry(entry)] })
+    try {
+      const tag = w.find('.queued-tag')
+      expect(tag.classes()).not.toContain('failed')
+      expect(tag.text()).toContain('Not sent: the agent’s input already contains text (“ns”)')
+      expect(tag.findAll('button').map(b => b.text())).toEqual(['Clear and send', 'Open terminal', 'Cancel'])
+    } finally { w.unmount() }
+  })
+
+  it('shows the draft, clear action and terminal action, then hides clear while working', async () => {
+    const pane = { ...base, status: 'idle' as const, queued: [{ ...queued[0]!, reason: 'busy' as const, inputText: 'ns' }] }
+    const w = await mount(pane)
+    try {
+      const tag = w.find('.queued-tag')
+      expect(tag.text()).toContain('Not sent: the agent’s input already contains text (“ns”)')
+      expect(tag.text()).toContain('Clear and send')
+      const before = calls.length
+      await tag.findAll('button').find(b => b.text() === 'Clear and send')!.trigger('click')
+      await expect.poll(() => calls.length).toBe(before + 1)
+      expect(calls.at(-1)).toEqual({ pane_id: pane.id, id: 'm1', input_text: 'ns' })
+      await tag.findAll('button').find(b => b.text() === 'Open terminal')!.trigger('click')
+      expect(w.emitted('gotoTerm')).toHaveLength(1)
+      await w.setProps({ pane: { ...pane, status: 'working' } })
+      expect(w.find('.queued-tag').text()).not.toContain('Clear and send')
+      expect(w.find('.queued-tag').text()).toContain('Queued')
+      expect(w.find('.queued-tag').text()).not.toContain('ns')
+    } finally { w.unmount() }
+  })
 })
